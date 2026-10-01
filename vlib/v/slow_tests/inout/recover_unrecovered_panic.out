@@ -1,0 +1,7 @@
+deferred in inner
+deferred in main
+================ V panic ================
+   module: main
+ function: inner()
+  message: boom
+     file: vlib/v/slow_tests/inout/recover_unrecovered_panic.vv:13

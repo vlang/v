@@ -616,6 +616,16 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 }
 
 fn (t &Transformer) sum_type_variants_for_index(sum_name string) []string {
+	// A bare name the checker registered is the storage name of a main or builtin sum
+	// type, also inside an imported module's specialization. The candidate lookup below
+	// would rebind it to a same-named sum of the current module (`Any` -> `json2.Any`)
+	// and tag the value with that sum's variant indices.
+	if !isnil(t.tc) && t.cur_module !in ['', 'main', 'builtin'] && !sum_name.contains('.')
+		&& sum_name in t.tc.sum_types && '${t.cur_module}.${sum_name}' in t.tc.sum_types {
+		if variants := t.sum_types[sum_name] {
+			return variants
+		}
+	}
 	_, variants := t.concrete_sum_name_and_variants(sum_name)
 	return variants
 }
@@ -1186,21 +1196,21 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 			return canonical
 		}
 	}
-	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
+	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+		'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 		return name
 	}
 	if name.starts_with('builtin.') {
 		short := name['builtin.'.len..]
-		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
+		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+			'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return short
 		}
 	}
 	if name.contains('.') {
 		short := name.all_after_last('.')
-		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
+		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+			'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return short
 		}
 	}

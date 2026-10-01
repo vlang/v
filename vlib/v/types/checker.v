@@ -140,7 +140,8 @@ const export_v3_reserved_c_symbols = {
 	'mapnode':       true
 	'DenseArray':    true
 	'SortedMap':     true
-	'Optional':      true
+	'__v_option':    true
+	'__v_result':    true
 	'IError':        true
 	'true':          true
 	'false':         true
@@ -857,6 +858,7 @@ pub mut:
 	cur_file               string
 	generic_decl_file      string // declaring file of the generic param text being inferred ('' = cur_file)
 	unsafe_depth           int
+	sort_comparator_depth  int
 	lock_depth             int
 	autolocked_map         string // the `shared` map locked by the operation being checked, see SharedMapAutolock
 	comptime_static_depth  int
@@ -928,6 +930,7 @@ pub mut:
 	is_js_backend                 bool
 	warn_about_allocs             bool
 	warns_are_errors              bool
+	explicit_warns_are_errors     bool
 	notes_are_errors              bool
 	is_prod                       bool
 	suppress_dump_output          bool
@@ -1373,6 +1376,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		nofloat:                               tc.nofloat
 		warn_about_allocs:                     tc.warn_about_allocs
 		warns_are_errors:                      tc.warns_are_errors
+		explicit_warns_are_errors:             tc.explicit_warns_are_errors
 		notes_are_errors:                      tc.notes_are_errors
 		is_prod:                               tc.is_prod
 		suppress_dump_output:                  tc.suppress_dump_output
@@ -2392,6 +2396,7 @@ pub fn (mut tc TypeChecker) materialize_sparse_transform_node_caches(n int, capa
 	if !tc.parallel_check_sparse {
 		tc.reserve_transform_node_caches(capacity)
 		tc.extend_node_caches(n)
+		tc.widen_mixed_integer_expr_types()
 		return
 	}
 	target_cap := if capacity > n { capacity } else { n }
@@ -2419,6 +2424,28 @@ pub fn (mut tc TypeChecker) materialize_sparse_transform_node_caches(n int, capa
 	tc.sparse_statement_nodes = map[int]bool{}
 	tc.sparse_expr_type_values = map[int]Type{}
 	tc.sparse_checking_nodes = map[int]bool{}
+	tc.widen_mixed_integer_expr_types()
+}
+
+// widen_mixed_integer_expr_types fixes the recorded type of every arithmetic node
+// that mixes a 128-bit type with a narrower one. During checking a worker could not
+// resolve operands outside its own range, so those nodes were recorded with the
+// narrower operand's type and every reader of the record then cut the value to 64
+// bits. Checking has finished by the time this runs, so the operand types are final.
+fn (mut tc TypeChecker) widen_mixed_integer_expr_types() {
+	for idx in 0 .. tc.expr_type_set.len {
+		if !tc.expr_type_set[idx] || idx >= tc.a.nodes.len {
+			continue
+		}
+		if tc.a.nodes[idx].kind != .infix {
+			continue
+		}
+		typ := tc.expr_type_values[idx]
+		widened := tc.widen_mixed_integer_expr_type(flat.NodeId(idx), typ)
+		if widened.name() != typ.name() {
+			tc.expr_type_values[idx] = widened
+		}
+	}
 }
 
 // reserve_scoped_transform_metadata keeps tables that receive escaping
@@ -2733,10 +2760,14 @@ fn (mut tc TypeChecker) record_notice_with_details_at(kind TypeErrorKind, msg st
 }
 
 fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos) {
+	tc.record_warning_or_error_at(kind, msg, node, pos, tc.warns_are_errors)
+}
+
+fn (mut tc TypeChecker) record_warning_or_error_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, as_error bool) {
 	if !tc.should_diagnose(node) {
 		return
 	}
-	if tc.warns_are_errors {
+	if as_error {
 		if tc.errors.any(it.kind == kind && it.msg == msg && it.pos == pos) {
 			return
 		}
@@ -2762,6 +2793,31 @@ fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token
 		'builtin.closure', 'strconv', 'os', 'sync', 'v.debug', 'v.embed_file'] {
 		return
 	}
+	tc.warn_alloc_at(description, id, pos)
+}
+
+// record_transform_alloc_warning reports an allocation the transform adds
+// where the source shows none, such as a local moved to the heap because its
+// address escapes. Only project code is reported. The transform has already
+// left out assignments marked `@[freed]`: the node may be one it made, which
+// has no parents here to look for the attribute on.
+pub fn (mut tc TypeChecker) record_transform_alloc_warning(id flat.NodeId, pos token.Pos, description string) {
+	if !tc.warn_about_allocs || !tc.valid_node_id(id) {
+		return
+	}
+	// should_diagnose judges by the file and function being checked, and
+	// checking is over: judge by the file the position is in instead.
+	file := tc.a.source_files[pos.id] or { return }
+	saved_file := tc.cur_file
+	saved_fn_node := tc.fn_context.node_id
+	tc.cur_file = file.name
+	tc.fn_context.node_id = -1
+	tc.record_warning_at(.compile_error, 'allocation (${description})', id, pos)
+	tc.cur_file = saved_file
+	tc.fn_context.node_id = saved_fn_node
+}
+
+fn (mut tc TypeChecker) warn_alloc_at(description string, id flat.NodeId, pos token.Pos) {
 	mut current := id
 	mut direct_child := flat.empty_node
 	mut value_path := true
@@ -4277,7 +4333,9 @@ fn source_field_decl_is_mut(field flat.Node) bool {
 	return meta.len > 0 && meta[0].contains('m')
 }
 
-fn source_field_decl_is_volatile(field flat.Node) bool {
+// source_field_decl_is_volatile reports whether a `field_decl` node was declared
+// `volatile` (the `v` flag the parser packs into its payload).
+pub fn source_field_decl_is_volatile(field flat.Node) bool {
 	meta := field.generic_params()
 	return meta.len > 0 && meta[0].contains('v')
 }
@@ -5107,6 +5165,10 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 		return tc.file_scope.lookup(qname)
 	}
 	if resolved == 'main' || resolved == tc.cur_module {
+		// A current-module const owns this name over the cross-module global_names bare hit; return none defers to const_type_for_selector. No shadow check here — node.value is a selector name, not a scope ident.
+		if tc.qualify_name(node.value) in tc.const_types {
+			return none
+		}
 		if node.value in tc.global_names {
 			return tc.file_scope.lookup(node.value)
 		}
@@ -6094,6 +6156,11 @@ fn (mut tc TypeChecker) check_selective_type_imports(node flat.Node, module_path
 }
 
 fn (mut tc TypeChecker) check_unused_import_diagnostics() {
+	// import_is_used looks at the nodes of the import's own file. Listing each
+	// file's nodes once, on the first import that needs it, saves a walk of the
+	// whole program for every import.
+	mut nodes_by_file := map[int][]int{}
+	mut nodes_listed := false
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
 		if node.kind == .file {
@@ -6108,8 +6175,16 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 			continue
 		}
 		if node.kind != .import_decl || !node.pos.is_valid() || node.pos.end <= node.pos.offset
-			|| node.typ == '_'
-			|| tc.import_is_used(flat.NodeId(idx), node) {
+			|| node.typ == '_' {
+			continue
+		}
+		if !nodes_listed {
+			for node_idx, file_node in tc.a.nodes {
+				nodes_by_file[file_node.pos.id] << node_idx
+			}
+			nodes_listed = true
+		}
+		if tc.import_is_used(flat.NodeId(idx), node, nodes_by_file[node.pos.id] or { []int{} }) {
 			continue
 		}
 		if tc.errors.any(it.file == tc.cur_file && it.kind == .unknown_ident
@@ -6135,7 +6210,9 @@ fn (mut tc TypeChecker) record_unused_import_warning(id flat.NodeId, node flat.N
 	} else {
 		'${node.typ} (${module_path})'
 	}
-	tc.record_warning_at(.unknown_ident, "module '${display_name}' is imported but never used. Use `import ${display_name} as _`, to silence this warning, or just remove the unused import line", id, tc.import_module_path_pos(node))
+	// V1 reports unused imports from the parser, where only an explicit `-W`
+	// turns a warning into an error; `-prod` alone does not.
+	tc.record_warning_or_error_at(.unknown_ident, "module '${display_name}' is imported but never used. Use `import ${display_name} as _`, to silence this warning, or just remove the unused import line", id, tc.import_module_path_pos(node), tc.explicit_warns_are_errors)
 }
 
 fn (tc &TypeChecker) node_has_unused_import_warning(id flat.NodeId) bool {
@@ -6253,7 +6330,9 @@ fn is_import_ident_byte(ch u8) bool {
 	return ch.is_alnum() || ch == `_`
 }
 
-fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node) bool {
+// import_is_used reports whether anything in the import's file uses it;
+// `file_nodes` lists the indices of that file's nodes, in order.
+fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node, file_nodes []int) bool {
 	module_path := tc.import_module_path_text(import_node)
 	mut selective_names := []string{cap: int(import_node.children_count)}
 	for i in 0 .. import_node.children_count {
@@ -6262,7 +6341,8 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			selective_names << child.value
 		}
 	}
-	for idx, node in tc.a.nodes {
+	for idx in file_nodes {
+		node := tc.a.nodes[idx]
 		if idx == int(import_id) || node.kind == .import_decl || node.pos.id != import_node.pos.id {
 			continue
 		}
@@ -6388,363 +6468,6 @@ fn type_text_contains_qualified_import(text string, alias string) bool {
 		start = index + needle.len
 	}
 	return false
-}
-
-fn (mut tc TypeChecker) check_deprecated_byte_types() {
-	mut has_byte_source := tc.a.source_files.len == 0
-	for _, file in tc.a.source_files {
-		if tc.diagnostic_files.len > 0 && file.name !in tc.diagnostic_files {
-			continue
-		}
-		source := tc.source_texts_by_file[file.name] or {
-			os.read_file(file.name) or {
-				has_byte_source = true
-				break
-			}
-		}
-		if source.contains('byte') {
-			has_byte_source = true
-			break
-		}
-	}
-	if !has_byte_source {
-		return
-	}
-	mut identifier_offsets := map[u64]bool{}
-	mut inline_asm_ranges := map[int][]token.Pos{}
-	for node in tc.a.nodes {
-		if node.value == 'byte' && node.pos.is_valid() {
-			if offset := deprecated_byte_name_offset(node) {
-				identifier_offsets[deprecated_byte_position_key(node.pos.id, offset)] = true
-			}
-		} else if node.kind == .asm_stmt && node.pos.is_valid() {
-			mut ranges := inline_asm_ranges[node.pos.id]
-			ranges << node.pos
-			inline_asm_ranges[node.pos.id] = ranges
-		}
-	}
-	mut pending_file := ''
-	for idx in tc.top_level_idx {
-		node := tc.a.nodes[idx]
-		if node.kind == .file {
-			pending_file = node.value
-			tc.enter_file(node.value)
-			continue
-		}
-		if pending_file.len == 0 || !node.pos.is_valid() {
-			continue
-		}
-		tc.check_deprecated_byte_types_in_file(flat.NodeId(idx), node.pos.id, pending_file,
-			identifier_offsets, inline_asm_ranges[node.pos.id])
-		pending_file = ''
-	}
-}
-
-fn deprecated_byte_position_key(file_id int, offset int) u64 {
-	return (u64(u32(file_id)) << 32) | u64(u32(offset))
-}
-
-// deprecated_byte_name_offset returns the source offset at which `node` spells
-// `byte` as a name (variable, parameter, field, enum value), not as a type.
-fn deprecated_byte_name_offset(node flat.Node) ?int {
-	match node.kind {
-		.ident, .field_decl, .interface_field, .enum_field {
-			return node.pos.offset
-		}
-		.param {
-			// Receiver param nodes have no name span, and a param without a type
-			// is a type-only param (`fn f(byte)`).
-			if node.op != .dot && node.typ.len > 0 {
-				return node.pos.offset
-			}
-		}
-		.selector, .enum_val {
-			// `x.byte` and `.byte` end with the name.
-			return node.pos.end - 'byte'.len
-		}
-		else {}
-	}
-	return none
-}
-
-// deprecated_byte_is_field_key reports `byte:` in a struct init or config call,
-// whose field_init node has no name span.
-fn deprecated_byte_is_field_key(source string, end int) bool {
-	next := deprecated_byte_skip_trivia_forward(source, end)
-	return next < source.len && source[next] == `:`
-		&& (next + 1 >= source.len || source[next + 1] != `=`)
-}
-
-// deprecated_byte_is_receiver_name reports the name in `fn (byte T)` and
-// `fn (mut byte T)`, whose receiver param node has no name span.
-fn deprecated_byte_is_receiver_name(source string, start int, end int) bool {
-	next := deprecated_byte_skip_trivia_forward(source, end)
-	if next == end {
-		// `fn (byte) m()` is a type-only receiver.
-		return false
-	}
-	if next >= source.len || !deprecated_byte_starts_type(source[next]) {
-		// `fn (byte )`, `fn (byte , u8)`, `fn (byte\n)` and `fn (byte /* c */)` are type-only
-		// params: no type follows the name.
-		return false
-	}
-	mut i := deprecated_byte_skip_trivia_back(source, start)
-	mut word_start := i
-	for word_start > 0 && source[word_start - 1].is_letter() {
-		word_start--
-	}
-	if source[word_start..i] in ['mut', 'shared'] {
-		i = deprecated_byte_skip_trivia_back(source, word_start)
-	}
-	if i == 0 || source[i - 1] != `(` {
-		return false
-	}
-	i = deprecated_byte_skip_trivia_back(source, i - 1)
-	return i >= 2 && source[i - 2..i] == 'fn'
-		&& (i == 2 || !(source[i - 3].is_alnum() || source[i - 3] == `_`))
-}
-
-// deprecated_byte_starts_type reports whether `c` can begin the type after a
-// name: `T`, `&T`, `[]T`, `?T`, `!T` or `...T`.
-fn deprecated_byte_starts_type(c u8) bool {
-	return c.is_letter() || c in [`_`, `&`, `[`, `?`, `!`, `.`]
-}
-
-// deprecated_byte_skip_trivia_forward returns the offset of the first token at or after
-// `offset`, skipping whitespace, line breaks, `// ...` and `/* ... */` comments.
-fn deprecated_byte_skip_trivia_forward(source string, offset int) int {
-	mut i := offset
-	for i < source.len {
-		if source[i] in [` `, `\t`, `\n`, `\r`] {
-			i++
-		} else if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
-			i = deprecated_byte_block_comment_end(source, i)
-		} else if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
-			i = source.index_after('\n', i + 2) or { source.len }
-		} else {
-			break
-		}
-	}
-	return i
-}
-
-// deprecated_byte_skip_trivia_back returns the offset just after the last token before
-// `offset`, skipping whitespace, line breaks, `/* ... */` comments and `//` comments that
-// end an earlier line, as in `fn ( /* c */\n\tbyte T)` or `fn ( // c\n\tbyte T)`.
-fn deprecated_byte_skip_trivia_back(source string, offset int) int {
-	mut i := offset
-	for i > 0 {
-		if source[i - 1] == `\n` {
-			i--
-			// The line before may end in a `//` comment, as in `fn ( // c\n\tbyte T)`.
-			if comment := deprecated_byte_line_comment_start(source, i) {
-				i = comment
-			}
-		} else if source[i - 1] in [` `, `\t`, `\r`] {
-			i--
-		} else if i >= 2 && source[i - 2] == `*` && source[i - 1] == `/` {
-			i = deprecated_byte_block_comment_start(source, i)
-		} else {
-			break
-		}
-	}
-	return i
-}
-
-// deprecated_byte_line_comment_start returns the offset of the `//` comment that ends the
-// line ending at `line_end`, skipping string literals and block comments on that line.
-fn deprecated_byte_line_comment_start(source string, line_end int) ?int {
-	mut i := line_end
-	for i > 0 && source[i - 1] != `\n` {
-		i--
-	}
-	for i + 1 < line_end {
-		c := source[i]
-		if c in [`'`, `"`, `\``] {
-			i++
-			for i < line_end && source[i] != c {
-				if source[i] == `\\` {
-					i++
-				}
-				i++
-			}
-			i++
-		} else if c == `/` && source[i + 1] == `*` {
-			i = deprecated_byte_block_comment_end(source, i)
-		} else if c == `/` && source[i + 1] == `/` {
-			return i
-		} else {
-			i++
-		}
-	}
-	return none
-}
-
-// deprecated_byte_block_comment_end returns the offset after the `/* ... */` comment that
-// starts at `start`. Like the scanner, it nests: an inner `/*` (but not `/*/`) needs its own `*/`.
-fn deprecated_byte_block_comment_end(source string, start int) int {
-	mut depth := 1
-	mut i := start + 2
-	for i < source.len {
-		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*`
-			&& (i + 2 >= source.len || source[i + 2] != `/`) {
-			depth++
-			i += 2
-		} else if i + 1 < source.len && source[i] == `*` && source[i + 1] == `/` {
-			depth--
-			i += 2
-			if depth == 0 {
-				return i
-			}
-		} else {
-			i++
-		}
-	}
-	return source.len
-}
-
-// deprecated_byte_block_comment_start returns the offset of the `/*` that opens the nested
-// block comment ending at `end`, just after its `*/`.
-fn deprecated_byte_block_comment_start(source string, end int) int {
-	mut depth := 1
-	mut i := end - 2
-	for i >= 2 {
-		if source[i - 2] == `*` && source[i - 1] == `/` {
-			depth++
-			i -= 2
-		} else if source[i - 2] == `/` && source[i - 1] == `*` {
-			depth--
-			i -= 2
-			if depth == 0 {
-				return i
-			}
-		} else {
-			i--
-		}
-	}
-	return 0
-}
-
-fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool, inline_asm_ranges []token.Pos) {
-	if tc.diagnostic_files.len > 0 && path !in tc.diagnostic_files {
-		return
-	}
-	builtin_dir := os.real_path(os.join_path(tc.compiler_vroot, 'vlib', 'builtin'))
-	real_path := os.real_path(path)
-	if real_path == builtin_dir || real_path.starts_with(builtin_dir + os.path_separator) {
-		return
-	}
-	source := os.read_file(path) or { return }
-	mut i := 0
-	for i < source.len {
-		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
-			i = source.index_after('\n', i + 2) or { source.len }
-			continue
-		}
-		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
-			i = deprecated_byte_block_comment_end(source, i)
-			continue
-		}
-		if source[i] in [`'`, `"`, `\``] {
-			quote := source[i]
-			i++
-			for i < source.len {
-				if source[i] == `\\` {
-					i += 2
-					continue
-				}
-				if source[i] == quote {
-					i++
-					break
-				}
-				i++
-			}
-			continue
-		}
-		if !source[i].is_letter() && source[i] != `_` {
-			i++
-			continue
-		}
-		start := i
-		for i < source.len && (source[i].is_alnum() || source[i] == `_`) {
-			i++
-		}
-		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start)
-			|| deprecated_byte_position_key(file_id, start) in identifier_offsets
-			|| tc.deprecated_byte_is_value_ident(file_id, start)
-			|| deprecated_byte_is_field_key(source, i)
-			|| deprecated_byte_is_receiver_name(source, start, i)
-			|| deprecated_byte_is_in_ranges(inline_asm_ranges, start)
-			|| deprecated_byte_is_type_comparison(source, start) {
-			continue
-		}
-		mut end := i
-		mut next := i
-		for next < source.len && source[next] in [` `, `\t`] {
-			next++
-		}
-		if next < source.len && source[next] == `(` {
-			if close := matching_source_paren(source, next) {
-				end = close + 1
-			}
-		}
-		tc.errors << tc.make_type_error_at(.unknown_type, 'byte is deprecated, use u8 instead', anchor, token.new_span(file_id, start, end))
-	}
-}
-
-fn deprecated_byte_is_in_ranges(ranges []token.Pos, offset int) bool {
-	for pos in ranges {
-		if pos.offset <= offset && offset < pos.end {
-			return true
-		}
-	}
-	return false
-}
-
-fn deprecated_byte_is_type_comparison(source string, offset int) bool {
-	end := deprecated_byte_skip_trivia_back(source, offset)
-	mut start := end
-	for start > 0 && (source[start - 1].is_alnum() || source[start - 1] == `_`) {
-		start--
-	}
-	return source[start..end] == 'is'
-}
-
-fn (tc &TypeChecker) deprecated_byte_is_value_ident(file_id int, offset int) bool {
-	for node in tc.a.nodes {
-		if node.kind == .ident && node.value == 'byte' && node.pos.id == file_id
-			&& node.pos.offset <= offset && node.pos.end >= offset + 4 {
-			return true
-		}
-	}
-	return false
-}
-
-fn deprecated_byte_is_alias_base(source string, offset int) bool {
-	line_start := if offset > 0 {
-		if idx := source[..offset].last_index('\n') { idx + 1 } else { 0 }
-	} else {
-		0
-	}
-	prefix := source[line_start..offset].trim_space()
-	return prefix.starts_with('type ') && prefix.contains('=')
-}
-
-fn matching_source_paren(source string, open int) ?int {
-	mut depth := 0
-	for i := open; i < source.len; i++ {
-		if source[i] == `(` {
-			depth++
-		} else if source[i] == `)` {
-			depth--
-			if depth == 0 {
-				return i
-			}
-		} else if source[i] == `\n` && depth == 1 {
-			return none
-		}
-	}
-	return none
 }
 
 fn (tc &TypeChecker) import_module_path_pos(node flat.Node) token.Pos {
@@ -7068,7 +6791,8 @@ fn (tc &TypeChecker) vsh_os_const_key(name string) ?string {
 // AST-wide flag so non-script compilations never pay for it.
 @[inline]
 fn (tc &TypeChecker) vsh_script_file() bool {
-	return tc.a.has_vsh_source && tc.cur_file.ends_with('.vsh')
+	return tc.a.has_vsh_source
+		&& (tc.cur_file.ends_with('.vsh') || tc.cur_file == tc.a.raw_vsh_file)
 }
 
 fn (tc &TypeChecker) selective_import_candidates(name string) ?[]string {
@@ -7770,6 +7494,146 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 	if tc.errors.len > 0 || !tc.has_main_module_fn_main() {
 		return
 	}
+	tc.report_unused_private_declarations(used_fns, false)
+}
+
+// diagnose_unused_library_private_declarations reports the unused private
+// declarations of a library, a module checked on its own, as an editor checks a
+// module that no program imports, and tells whether the check is one. Its public
+// declarations are what other programs use, and what a private one serves cannot
+// be told without a program: one that is named at all counts as used, as one
+// exported to C or kept with `@[markused]` does.
+pub fn (mut tc TypeChecker) diagnose_unused_library_private_declarations() bool {
+	if !tc.is_library_check() {
+		return false
+	}
+	used, _ := tc.named_private_fns()
+	tc.report_unused_private_declarations(used, true)
+	return true
+}
+
+// is_library_check reports whether the checked files are a library: no main
+// function, and no test or script, which are programs of their own.
+fn (tc &TypeChecker) is_library_check() bool {
+	if tc.has_main_module_fn_main() || tc.a.has_vsh_source || tc.has_c_test_harness_main() {
+		return false
+	}
+	for file, _ in tc.diagnostic_files {
+		if file.ends_with('_test.v') {
+			return false
+		}
+	}
+	return true
+}
+
+// diagnose_unused_private_declarations_with_errors reports, in a program with
+// errors, the private functions and constants that nothing names. What is
+// reachable cannot be told there: a call the checker could not resolve would
+// leave its function looking unused. So a function that is called or named at
+// all counts as used, and no notice is one that fixing the errors takes back.
+pub fn (mut tc TypeChecker) diagnose_unused_private_declarations_with_errors() {
+	if tc.diagnose_unused_library_private_declarations() || !tc.has_main_module_fn_main() {
+		return
+	}
+	used, _ := tc.named_private_fns()
+	tc.report_unused_private_declarations(used, false)
+}
+
+// report_unused_private_declarations records the notices; for a `library`, see
+// unused_private_declarations.
+fn (mut tc TypeChecker) report_unused_private_declarations(used_fns map[string]bool, library bool) {
+	unused := tc.unused_private_declarations(used_fns, library)
+	// The diagnostic filter and recorded file both read tc.cur_file; replay each
+	// candidate's file so deferred emission matches the former in-walk emission.
+	walk_end_file := tc.cur_file
+	for cand in unused {
+		tc.cur_file = cand.file
+		if cand.is_fn {
+			tc.record_notice_at(.unknown_ident, 'unused function: `${cand.name}`', cand.node_id, tc.node_value_diagnostic_pos(cand.node_id))
+		} else {
+			tc.record_notice_at(.unknown_ident, 'unused constant: `${cand.name}`', cand.node_id, cand.position)
+		}
+	}
+	tc.cur_file = walk_end_file
+}
+
+// used_fns_without_markused returns what a check can take as the used functions
+// without running markused: the private functions that are never called but are
+// named as values, such as callbacks. It returns none when a private function is
+// not named at all, since only markused can tell whether that one is used (an
+// exported one is). A function named only by unused code counts as used here,
+// where a build, which knows what is reachable, can report it.
+pub fn (mut tc TypeChecker) used_fns_without_markused() ?map[string]bool {
+	if tc.errors.len > 0 || !tc.has_main_module_fn_main() {
+		return map[string]bool{}
+	}
+	used, all_named := tc.named_private_fns()
+	if !all_named {
+		return none
+	}
+	return used
+}
+
+// named_private_fns returns the private functions that are never called but are
+// named, as values such as callbacks, and whether every one of them is named.
+fn (mut tc TypeChecker) named_private_fns() (map[string]bool, bool) {
+	mut used := map[string]bool{}
+	// Markused may run next, and resolves names in the current file and module.
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	mut uncalled := []UnusedDeclCandidate{}
+	mut keys := map[string][]int{}
+	for cand in tc.unused_private_declarations(map[string]bool{}, false) {
+		tc.cur_file = cand.file
+		if !cand.is_fn || !tc.should_diagnose(cand.node_id) {
+			continue
+		}
+		keys[cand.name] << uncalled.len
+		if cand.qname != cand.name {
+			keys[cand.qname] << uncalled.len
+		}
+		uncalled << cand
+	}
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
+	if uncalled.len == 0 {
+		return used, true
+	}
+	mut named := []bool{len: uncalled.len}
+	for node in tc.a.nodes {
+		if node.kind !in [.ident, .selector] || node.value.len == 0 {
+			continue
+		}
+		if hits := keys[node.value] {
+			for idx in hits {
+				named[idx] = true
+			}
+		}
+		short_name := short_name_view(node.value)
+		if short_name.len != node.value.len {
+			if hits := keys[short_name] {
+				for idx in hits {
+					named[idx] = true
+				}
+			}
+		}
+	}
+	mut all_named := true
+	for idx, cand in uncalled {
+		if !named[idx] {
+			all_named = false
+			continue
+		}
+		used[cand.qname] = true
+	}
+	return used, all_named
+}
+
+// unused_private_declarations returns the private functions that are not in
+// `used_fns` and that nothing calls, and the private constants nothing names.
+// Of a `library`, the public constants are left out, since other programs use
+// them, and so are the functions exported to C or kept with `@[markused]`.
+fn (mut tc TypeChecker) unused_private_declarations(used_fns map[string]bool, library bool) []UnusedDeclCandidate {
 	// Collect the (few) candidate declarations first, then scan the AST once
 	// probing only against that small candidate set. Building referenced-name
 	// maps over every ident/selector/call in the program did the same work as
@@ -7808,6 +7672,10 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 			if tc.declaration_contains_error(node) {
 				continue
 			}
+			if library && (tc.declaration_has_attribute(flat.NodeId(idx), 'export')
+				|| tc.declaration_has_attribute(flat.NodeId(idx), 'markused')) {
+				continue
+			}
 			qname := checker_qualified_fn_name(module_name, node.value)
 			cname := tc.cached_c_name(qname)
 			if used_fns[node.value] || used_fns[qname] || used_fns[cname] {
@@ -7828,7 +7696,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 			}
 			continue
 		}
-		if node.kind != .const_decl {
+		if node.kind != .const_decl || (library && node.op == .arrow) {
 			continue
 		}
 		if node.op == .arrow {
@@ -7863,7 +7731,7 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 		}
 	}
 	if candidates.len == 0 {
-		return
+		return []UnusedDeclCandidate{}
 	}
 	// A reference through either the full spelling or its short (last-segment)
 	// spelling keeps a candidate alive, mirroring the referenced-name maps the
@@ -7877,21 +7745,9 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 			candidates[cand_idx].alive = true
 		}
 	}
-	// The diagnostic filter and recorded file both read tc.cur_file; replay each
-	// candidate's file so deferred emission matches the former in-walk emission.
-	walk_end_file := tc.cur_file
-	for cand in candidates {
-		if cand.alive || tc.used_in_skipped_comptime_branch(cand, module_files) {
-			continue
-		}
-		tc.cur_file = cand.file
-		if cand.is_fn {
-			tc.record_notice_at(.unknown_ident, 'unused function: `${cand.name}`', cand.node_id, tc.node_value_diagnostic_pos(cand.node_id))
-		} else {
-			tc.record_notice_at(.unknown_ident, 'unused constant: `${cand.name}`', cand.node_id, cand.position)
-		}
-	}
-	tc.cur_file = walk_end_file
+	// A private declaration named in a `$if` branch this build does not take is
+	// used there (see used_in_skipped_comptime_branch).
+	return candidates.filter(!it.alive && !tc.used_in_skipped_comptime_branch(it, module_files))
 }
 
 // used_in_skipped_comptime_branch reports whether a file of the candidate's own
@@ -9909,22 +9765,27 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 		return
 	}
 	kind := if int(id) < tc.a.nodes.len { tc.a.nodes[int(id)].kind } else { flat.NodeKind.empty }
-	if should_cache_expr_type(kind, typ) {
+	// An arithmetic node that mixes a 128-bit type with a narrower one arrives here
+	// with the narrower operand's type. Every reader of the recorded type (printing,
+	// `typeof`, a method receiver) then cut the value to 64 bits, so the 128-bit side
+	// is what gets cached.
+	cached_typ := if kind == .infix { tc.widen_mixed_integer_expr_type(id, typ) } else { typ }
+	if should_cache_expr_type(kind, cached_typ) {
 		idx := int(id)
 		if tc.parallel_check_sparse {
 			if tc.in_check_range(idx) && idx < tc.expr_type_values.len {
-				tc.expr_type_values[idx] = typ
+				tc.expr_type_values[idx] = cached_typ
 				tc.expr_type_set[idx] = true
 				return
 			}
-			tc.sparse_expr_type_values[idx] = typ
+			tc.sparse_expr_type_values[idx] = cached_typ
 			return
 		}
 		if idx >= tc.expr_type_values.len {
 			tc.extend_node_caches(tc.a.nodes.len)
 		}
 		if idx < tc.expr_type_values.len {
-			tc.expr_type_values[idx] = typ
+			tc.expr_type_values[idx] = cached_typ
 			tc.expr_type_set[idx] = true
 		}
 	}
@@ -9958,7 +9819,6 @@ pub fn (mut tc TypeChecker) check_semantics() {
 	tc.check_import_diagnostics()
 	tc.check_c_js_generic_declarations()
 	tc.check_duplicate_fn_declarations()
-	tc.check_deprecated_byte_types()
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
 	tc.check_labelled_loop_controls()
@@ -10229,13 +10089,20 @@ fn (mut tc TypeChecker) check_selective_builtin_import_diagnostics() {
 }
 
 fn (mut tc TypeChecker) check_c_js_generic_declarations() {
+	// Each report is on the declaration itself: trusted library files have none.
+	selected_files_only := tc.selected_files_only()
 	for declaration_kind in [flat.NodeKind.struct_decl, flat.NodeKind.fn_decl] {
 		tc.cur_module = ''
 		tc.cur_file = ''
+		mut skip_file := false
 		for index in tc.top_level_idx {
 			node := tc.a.node(flat.NodeId(index))
 			if node.kind == .file {
 				tc.enter_file(node.value)
+				skip_file = selected_files_only && !tc.diagnostic_files[node.value]
+				continue
+			}
+			if skip_file {
 				continue
 			}
 			if node.kind == .module_decl {
@@ -14827,6 +14694,11 @@ fn (tc &TypeChecker) type_text_has_generic_struct_placeholder_application(typ st
 	return false
 }
 
+// generic_type_application_parts splits a `Base[A, B]` type name into its base and its generic
+// arguments. A map is spelled `map[K]V`, so its value type is a suffix *outside* the brackets and
+// not a generic argument; it is appended as a second argument here. Without that, every match that
+// goes through this function sees `map[string]FooBar` and `map[string]string` as the very same
+// `map[string]` application, and the value type never participates in the comparison.
 fn generic_type_application_parts(typ string) (string, []string, bool) {
 	if typ == '' || typ[0] == `[` {
 		return '', []string{}, false
@@ -14847,7 +14719,76 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 	for i in 0 .. args.len {
 		args[i] = trimmed_space(args[i])
 	}
-	return typ[..bracket], args, true
+	base := typ[..bracket]
+	if generic_application_base_is_map(base) {
+		if bracket_end >= typ.len {
+			return '', []string{}, false
+		}
+		value := trimmed_space(typ[bracket_end + 1..])
+		// A bare `map[K]` with no value type is not a complete map type, so it must not
+		// compare equal to a fully spelled `map[K]V`.
+		if value.len == 0 {
+			return '', []string{}, false
+		}
+		args << value
+	}
+	return base, args, true
+}
+
+// generic_application_base_is_map reports whether the base of a bracketed type name is the `map`
+// container, with any wrapper layers in front of it (`map`, `&map`, `mut &map`, `?map`,
+// `chan map`, ...). The layers are stripped in a single pass, so their order does not matter.
+fn generic_application_base_is_map(base string) bool {
+	mut clean := trimmed_space(base)
+	for {
+		n := type_wrapper_prefix_len(clean)
+		if n == 0 {
+			break
+		}
+		clean = trimmed_space(clean[n..])
+	}
+	return clean == 'map'
+}
+
+// type_wrapper_prefix_len returns the length of the wrapper layer that leads a type name
+// (`&`, `?`, `!`, `[]`, `...`, `mut `, `shared ` or `chan `), or 0 when the name has none.
+// What follows such a layer is a whole type, never a generic base name.
+fn type_wrapper_prefix_len(typ string) int {
+	if typ.len == 0 {
+		return 0
+	}
+	match typ[0] {
+		`&`, `?`, `!` {
+			return 1
+		}
+		`[` {
+			if typ.len > 1 && typ[1] == `]` {
+				return 2
+			}
+		}
+		`.` {
+			if typ.starts_with('...') {
+				return 3
+			}
+		}
+		`m` {
+			if typ.starts_with('mut ') {
+				return 4
+			}
+		}
+		`s` {
+			if typ.starts_with('shared ') {
+				return 7
+			}
+		}
+		`c` {
+			if typ.starts_with('chan ') {
+				return 5
+			}
+		}
+		else {}
+	}
+	return 0
 }
 
 // is_fixed_array_len_text reports whether a postfix `Base[inner]` bracket holds a fixed-array
@@ -16108,6 +16049,27 @@ fn (tc &TypeChecker) current_fn_param_is_mut_receiver(name string) bool {
 	return param.kind == .param && param.op == .dot && param.is_mut && param.value == name
 }
 
+// expr_is_mut_struct_param reports whether `id` names a `mut` parameter of a struct
+// type. Like a `mut` receiver, it is a reference in the generated C, so it can be
+// compared with `nil` or cast to an integer address, as in V1.
+fn (tc &TypeChecker) expr_is_mut_struct_param(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	// Parentheses and blocks do not change what the parameter is: `u64((h))` and
+	// `unsafe { h }` are the reference too, as in mut_param_expr_base.
+	if node.kind in [.block, .expr_stmt, .paren] && node.children_count > 0 {
+		child_idx := if node.kind == .block { node.children_count - 1 } else { 0 }
+		return tc.expr_is_mut_struct_param(tc.a.child(node, child_idx))
+	}
+	if node.kind != .ident || node.value !in tc.fn_context.mut_param_owners {
+		return false
+	}
+	base := tc.fn_context.mut_param_base_types[node.value] or { return false }
+	return tc.mut_param_binding_matches_lvalue(node.value) && struct_type_from_type(base) != none
+}
+
 fn (mut tc TypeChecker) record_non_heap_pointer_param_escape(id flat.NodeId) bool {
 	if tc.unsafe_depth > 0 || !tc.valid_node_id(id) || tc.node_is_in_translated_file(id) {
 		return false
@@ -16572,8 +16534,17 @@ fn (tc &TypeChecker) stmt_has_v1_compatible_returning_or_fallback(id flat.NodeId
 	return false
 }
 
-fn (mut tc TypeChecker) check_noreturn_fn_semantics(id flat.NodeId, node flat.Node, qname string) {
-	if node.value !in tc.a.noreturn_fns && qname !in tc.a.noreturn_fns {
+fn (tc &TypeChecker) fn_decl_is_noreturn(module_name string, name string) bool {
+	if checker_qualified_fn_name(module_name, name) in tc.a.noreturn_fns {
+		return true
+	}
+	short_module := module_name.all_after_last('.')
+	return short_module != module_name
+		&& checker_qualified_fn_name(short_module, name) in tc.a.noreturn_fns
+}
+
+fn (mut tc TypeChecker) check_noreturn_fn_semantics(id flat.NodeId, node flat.Node, module_name string) {
+	if !tc.fn_decl_is_noreturn(module_name, node.value) {
 		return
 	}
 	mut tail_id := flat.NodeId(-1)
@@ -16849,7 +16820,8 @@ fn (tc &TypeChecker) call_never_returns(id flat.NodeId) bool {
 	}
 	callee := tc.a.child_node(&call, 0)
 	if callee.kind == .ident {
-		if callee.value in ['panic', 'exit'] && tc.no_return_builtin_is_shadowed(callee.value) {
+		if callee.value in ['panic', 'exit'] && (tc.no_return_builtin_is_shadowed(callee.value)
+			|| tc.module_declares_fn(tc.cur_module, callee.value)) {
 			return false
 		}
 		return callee.value in ['panic', 'exit', '__v_compile_error']
@@ -16875,6 +16847,16 @@ fn (tc &TypeChecker) no_return_builtin_is_shadowed(name string) bool {
 		return true
 	}
 	return false
+}
+
+pub fn (tc &TypeChecker) module_declares_fn(module_name string, name string) bool {
+	if module_name in ['', 'main', 'builtin'] {
+		return false
+	}
+	visibility := tc.declaration_visibility[checker_qualified_fn_name(module_name, name)] or {
+		return false
+	}
+	return visibility.kind == .fn_decl
 }
 
 fn (mut tc TypeChecker) call_never_returns_resolving(id flat.NodeId) bool {

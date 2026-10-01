@@ -51,6 +51,27 @@ fn test_prod_is_a_fact() {
 	})
 }
 
+fn test_race_is_a_define_and_never_uses_tcc() {
+	with_clean_build_environment(fn () {
+		environment := vtest_build_environment(@VEXEROOT, ['-race'])
+		assert 'race' in environment.defines, environment.defines.str()
+		assert 'tinyc' !in environment.facts, environment.facts.str()
+	})
+}
+
+// -prod cannot use TCC, so on Windows the compiler a `-prod` build names no `-cc` for is
+// MSVC, clang or gcc, and `// vtest build:` expressions must see that one.
+fn test_a_windows_prod_build_without_cc_is_not_a_tinyc_build() {
+	$if !windows {
+		return
+	}
+	with_clean_build_environment(fn () {
+		facts := vtest_build_environment(@VEXEROOT, ['-prod']).facts
+		assert 'prod' in facts, facts.str()
+		assert 'tinyc' !in facts, facts.str()
+	})
+}
+
 fn test_the_explicit_c_compiler_is_the_compiler_fact() {
 	with_clean_build_environment(fn () {
 		gcc := vtest_build_environment(@VEXEROOT, ['-cc', 'gcc']).facts

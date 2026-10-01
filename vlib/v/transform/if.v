@@ -48,7 +48,7 @@ fn (mut t Transformer) if_guard_source_clear_stmts(clear_id flat.NodeId) []flat.
 fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, value_type string) []flat.NodeId {
 	t.clear_heaped_local_binding(name)
 	if t.guard_value_needs_heap_storage(name, value_type) {
-		return t.heap_escaping_value_decl(name, value_type, value, false)
+		return t.heap_escaping_value_decl(name, value_type, value_type, value, false)
 	}
 	return [t.make_decl_assign_typed(name, value, value_type)]
 }
@@ -301,14 +301,14 @@ fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
 	if typ is types.OptionType {
 		base_name := t.value_type_name(typ.base_type)
-		if typ.base_type is types.Void || base_name == 'Optional' {
+		if typ.base_type is types.Void || base_name == '__v_option' {
 			return '?void'
 		}
 		return '?${base_name}'
 	}
 	if typ is types.ResultType {
 		base_name := t.value_type_name(typ.base_type)
-		if typ.base_type is types.Void || base_name == 'Optional' {
+		if typ.base_type is types.Void || base_name == '__v_option' {
 			return '!void'
 		}
 		return '!${base_name}'
@@ -324,13 +324,13 @@ fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
 fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, err_source string, return_context ?IfGuardReturnContext) flat.NodeId {
 	heaped_state := t.save_heaped_local_state()
 	defer { t.restore_heaped_local_state(heaped_state) }
-	err_scope := t.enter_implicit_err_scope()
 	mut children := []flat.NodeId{}
 	err_expr := if err_source != '' {
-		t.make_selector(t.make_ident(err_source), 'err', 'IError')
+		t.result_error_expr(t.make_ident(err_source))
 	} else {
 		flat.empty_node
 	}
+	err_scope := t.enter_implicit_err_scope(int(err_expr) >= 0)
 	t.append_implicit_err_decl(mut children, err_expr)
 	if context := return_context {
 		block := t.return_block_from_branch(else_id, context.ret_typ, context.extra_return_vals, context.source_return_id)
@@ -426,30 +426,27 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, ptr_name string, value_type string, return_context ?IfGuardReturnContext) flat.NodeId {
 	heaped_state := t.save_heaped_local_state()
 	defer { t.restore_heaped_local_state(heaped_state) }
-	err_scope := t.enter_implicit_err_scope()
+	is_result := t.normalize_type_alias(value_type).starts_with('!')
+	err_scope := t.enter_implicit_err_scope(is_result)
 	mut children := []flat.NodeId{}
-	// Without `IError` (`-no-builtin`) there is no implicit `err` to bind.
-	if t.has_ierror_interface() {
-		missing_error := t.make_map_key_missing_error()
-		if t.is_optional_type_name(value_type) {
-			t.append_implicit_err_decl(mut children, t.make_struct_init('IError'))
-			ptr_found := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
-			ptr_value := t.make_prefix(.mul, t.make_cast('&${value_type}', t.make_ident(ptr_name),
-				'&${value_type}'))
-			stored_error := t.make_selector(ptr_value, 'err', 'IError')
-			err_target := if t.heaped_amp_locals['err'] {
-				t.make_prefix(.mul, t.make_ident('err'))
-			} else {
-				t.make_ident('err')
-			}
-			children << t.make_if(ptr_found, t.make_block([
-				t.make_assign(err_target, stored_error),
-			]), t.make_block([
-				t.make_assign(err_target, missing_error),
-			]))
+	if is_result && t.has_ierror_interface() {
+		zero := t.make_struct_init('IError')
+		t.append_implicit_err_decl(mut children, zero)
+		pointer := t.make_ident(ptr_name)
+		found := t.make_infix(.ne, pointer, t.a.add(.nil_literal))
+		cast := t.make_cast('&${value_type}', pointer, '&${value_type}')
+		stored := t.make_selector(t.make_prefix(.mul, cast), 'err', 'IError')
+		err_target := if t.heaped_amp_locals['err'] {
+			t.make_prefix(.mul, t.make_ident('err'))
 		} else {
-			t.append_implicit_err_decl(mut children, missing_error)
+			t.make_ident('err')
 		}
+		missing := t.make_call_typed('error', [
+			t.make_string_literal('map key does not exist'),
+		], 'IError')
+		present_branch := t.make_block([t.make_assign(err_target, stored)])
+		missing_branch := t.make_block([t.make_assign(err_target, missing)])
+		children << t.make_if(found, present_branch, missing_branch)
 	}
 	if context := return_context {
 		block := t.return_block_from_branch(else_id, context.ret_typ, context.extra_return_vals, context.source_return_id)
@@ -584,7 +581,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(saved_heaped_state)
 
-	err_scope := t.enter_implicit_err_scope()
+	err_scope := t.enter_implicit_err_scope(rhs_type.starts_with('!'))
 	else_id := t.a.child(&node, 2)
 	else_node := t.a.nodes[int(else_id)]
 	else_type := if else_node.kind == .if_expr {
@@ -1233,9 +1230,8 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
 	mut err_decls := []flat.NodeId{cap: 1}
-	err_scope := t.enter_implicit_err_scope()
-	t.append_implicit_err_decl(mut err_decls, t.make_selector(t.make_ident(tmp_name), 'err',
-		'IError'))
+	err_scope := t.enter_implicit_err_scope(t.node_type(t.make_ident(tmp_name)).starts_with('!'))
+	t.append_implicit_err_decl(mut err_decls, t.result_error_expr(t.make_ident(tmp_name)))
 	else_block0 := if else_node.kind == .if_expr {
 		t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
 	} else {

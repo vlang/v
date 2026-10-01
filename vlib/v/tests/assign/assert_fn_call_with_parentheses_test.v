@@ -1,4 +1,4 @@
-fn foo(fail bool) ?string {
+fn foo(fail bool) !string {
 	return if fail { error('failure') } else { 'success' }
 }
 

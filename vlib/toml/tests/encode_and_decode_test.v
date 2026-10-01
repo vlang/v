@@ -16,23 +16,12 @@ struct Pet {
 	title          JobTitle
 	address        Address
 	meal_frequency map[string]int
-	// *¹ Currently it is only possible to decode a single nested struct generically.
-	// As soon as we decode another nested struct (e.g. within this struct, like `contact` below)
-	// or only one nested struct within another struct, it results in wrong values or errors.
-	// Related issue: https://github.com/vlang/v/issues/18110
-	// contact Contact
 }
 
 struct Address {
 	street string
 	city   string
 }
-
-// *¹
-/*
-struct Contact {
-	phone string
-}*/
 
 struct AnyStruct {
 	val toml.Any
@@ -78,8 +67,6 @@ struct MapDoc {
 }
 
 fn test_encode_and_decode() {
-	// *¹
-	// p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, Contact{'123-456-7890'}}
 	p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, {
 		'bones':  2
 		'kibble': 5
@@ -97,7 +84,6 @@ has_furr = true
 title = 2
 address = { street = "1428 Elm Street", city = "Springwood" }
 meal_frequency = { bones = 2, kibble = 5 }'
-	// contact = { phone = "123-456-7890" }' // *¹
 
 	assert toml.encode[Pet](p) == s
 	assert toml.decode[Pet](s)! == p

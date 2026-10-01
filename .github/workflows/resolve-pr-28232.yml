@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: fix-master-ci-batch-2-current
           fetch-depth: 0
       - name: Show exact merge conflicts

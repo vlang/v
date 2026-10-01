@@ -227,11 +227,11 @@ fn test_tuple_value_block_failure_with_concrete_error_payload() {
 	}
 }
 
-fn test_match_tuple_error_promotes_to_optional_slot() {
+fn test_match_tuple_none_promotes_to_optional_slot() {
 	for flag in [true, false] {
 		value, text := match flag {
 			true { wrapped_pair() }
-			else { 2, error('x') }
+			else { 2, none }
 		}
 		if flag {
 			assert value == 1
@@ -285,9 +285,9 @@ fn test_match_tuple_error_promotes_to_result_slot() {
 	}
 }
 
-fn test_if_tuple_error_promotes_to_wrapped_slot() {
+fn test_if_tuple_failure_preserves_wrapper_kind() {
 	for flag in [true, false] {
-		value, text := if flag { wrapped_pair() } else { 2, error('x') }
+		value, text := if flag { wrapped_pair() } else { 2, none }
 		assert value == if flag { 1 } else { 2 }
 		assert (text or { 'failed' }) == if flag { 'ok' } else { 'failed' }
 

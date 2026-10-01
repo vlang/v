@@ -31,7 +31,7 @@ syn match vNumber /\v<\d[\d_]*([eE][+-]?\d[\d_]*)?>/
 syn keyword vBoolean true false
 syn keyword vConstant none nil
 syn keyword vKeyword as asm assert atomic break const continue defer else enum false for fn __global go goto if import in interface is match module mut shared lock rlock none nil return select sizeof isreftype _likely_ _unlikely_ __offsetof struct true type typeof dump or union pub static volatile unsafe spawn implements like ilike
-syn keyword vType bool string rune i8 i16 int i64 i128 isize byte u8 u16 u32 u64 u128 usize f32 f64 char map chan any voidptr byteptr charptr
+syn keyword vType bool string rune i8 i16 int i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 char map chan any voidptr byteptr charptr
 
 syn match vComptime /\$[A-Za-z_][A-Za-z0-9_]*/
 syn match vComptime /@[A-Z_][A-Z0-9_]*/

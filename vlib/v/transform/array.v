@@ -651,7 +651,7 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 		// which the zeroed array element already provides. Never expand it into a
 		// runtime default of its base struct: cross-module `normalize_type_alias`
 		// can strip the `?`/`!`, which would otherwise emit the base struct's
-		// fields into the optional wrapper (`(Optional_T){<T fields>}`).
+		// fields into the optional wrapper (`(__v_option_T){<T fields>}`).
 		raw_field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
 		field_is_optional := field_type.starts_with('?') || field_type.starts_with('!')
 			|| raw_field_type.starts_with('?') || raw_field_type.starts_with('!')
@@ -1972,6 +1972,14 @@ fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, 
 // value at a storage/return boundary. A pointer escape gets a separate heap header,
 // so retaining it does not detach the caller's still-shared argument header.
 fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ string) flat.NodeId {
+	return t.clone_owned_array_storage_value(value, typ, false)
+}
+
+fn (mut t Transformer) clone_owned_array_value_for_capture(value flat.NodeId, typ string) flat.NodeId {
+	return t.clone_owned_array_storage_value(value, typ, true)
+}
+
+fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ string, clone_owned_value bool) flat.NodeId {
 	resolved_type := t.comptime_normalize_type_alias_chain(typ)
 	mut storage_type := resolved_type
 	for t.is_optional_type_name(storage_type) {
@@ -2005,9 +2013,13 @@ fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ
 		return bound
 	}
 	array_value := t.array_lvalue_value(bound, resolved_type)
-	is_slice := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
+	is_slice := if clone_owned_value {
+		t.make_bool_literal(true)
+	} else {
+		t.mark_fn_used('array.is_slice_view')
+		t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
+	}
 	t.set_node_typ(int(is_slice), 'bool')
-	t.mark_fn_used('array.is_slice_view')
 	mut body := []flat.NodeId{}
 	mut owned_value := flat.empty_node
 	if bad_type := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(array_type[2..])) {
@@ -6115,12 +6127,9 @@ fn (t &Transformer) bound_builtin_method_receiver_type(elem_type string, method 
 	if method !in ['hex', 'hex_full'] {
 		return none
 	}
-	mut clean := t.normalize_type_alias(elem_type)
+	clean := t.normalize_type_alias(elem_type)
 	if clean.starts_with('&') {
 		return none
-	}
-	if clean == 'byte' {
-		clean = 'u8'
 	}
 	if clean in ['u8', 'i8', 'u16', 'i16', 'u32', 'int', 'u64', 'i64', 'rune'] {
 		return clean

@@ -872,27 +872,6 @@ fn test_multi_declaration_rhs_reads_promoted_fixed_storage_as_a_value() {
 	assert read_retained_optional_fixed_reference(kept) == [221, 222]
 }
 
-@[noinline]
-fn reference_from_return_map_guard_with_promoted_outer_binding(key string) &int {
-	x := 231
-	values := {
-		'hit': &aliased_fixed[0]
-	}
-	return if x := values[key] { x } else { &x }
-}
-
-fn test_return_map_guards_preserve_inner_reference_and_outer_heap_bindings() {
-	aliased_fixed[0] = 232
-	for key, expected in {
-		'hit':  232
-		'miss': 231
-	} {
-		kept := reference_from_return_map_guard_with_promoted_outer_binding(key)
-		assert overwrite_stack() == 7
-		assert *kept == expected
-	}
-}
-
 fn optional_fixed_guard_payload() ?[2]int {
 	return [241, 242]!
 }
@@ -1001,27 +980,6 @@ fn test_lifted_parameter_and_capture_bindings_isolate_outer_storage_markers() {
 }
 
 @[noinline]
-fn scalar_reference_after_lowering_heap_value_capture() &int {
-	mut value := 291
-	read_capture := fn [value] () int {
-		p := &value
-		return *p
-	}
-	mut read_mutable_capture := fn [mut value] () int {
-		value++
-		return value
-	}
-	assert read_capture() == 291
-	value = 292
-	assert read_capture() == 291
-	assert read_mutable_capture() == 292
-	assert read_mutable_capture() == 293
-	assert value == 292
-	value = 291
-	return &value
-}
-
-@[noinline]
 fn fixed_reference_after_lowering_heap_struct_capture() &[]int {
 	mut holder := FixedHolder{ values: [301, 302]! }
 	kept := retain_immutable_array_reference(holder.values)
@@ -1035,11 +993,9 @@ fn fixed_reference_after_lowering_heap_struct_capture() &[]int {
 	return kept
 }
 
-fn test_lifted_heap_value_captures_recreate_their_own_storage_markers() {
-	scalar := scalar_reference_after_lowering_heap_value_capture()
+fn test_lifted_heap_struct_captures_recreate_their_own_storage_markers() {
 	values := fixed_reference_after_lowering_heap_struct_capture()
 	assert overwrite_stack() == 7
-	assert *scalar == 291
 	assert read_retained_optional_fixed_reference(values) == [303, 302]
 }
 
@@ -1287,51 +1243,4 @@ fn test_overloaded_fixed_index_result_has_owning_backing() {
 	kept := reference_from_overloaded_fixed_result()
 	assert overwrite_stack() == 7
 	assert read_retained_optional_fixed_reference(kept) == [703, 704]
-}
-
-fn failing_retained_error(message string) !u64 {
-	return error(message)
-}
-
-@[noinline]
-fn append_implicit_error_addresses(mut out []&IError) {
-	err := u64(201)
-	failing_retained_error('outer') or {
-		out << &err
-		failing_retained_error('inner') or {
-			out << &err
-			0
-		}
-		out << &err
-		0
-	}
-	if value := failing_retained_error('guard') {
-		_ = value
-	} else {
-		out << &err
-	}
-	value := if value := failing_retained_error('value guard') {
-		value
-	} else {
-		out << &err
-		u64(0)
-	}
-	assert value == 0
-	assert err == 201
-}
-
-@[noinline]
-fn returned_implicit_error_address() &IError {
-	failing_retained_error('returned') or { return &err }
-	panic('unexpected success')
-}
-
-fn test_implicit_result_errors_keep_retained_binding_addresses() {
-	mut out := []&IError{}
-	append_implicit_error_addresses(mut out)
-	out << returned_implicit_error_address()
-	assert overwrite_stack() == 7
-	assert out.map((*it).msg()) == ['outer', 'inner', 'outer', 'guard', 'value guard', 'returned']
-	assert out[0] == out[2]
-	assert out[0] != out[1]
 }

@@ -171,7 +171,7 @@ fn (mut t Transformer) return_values_from_ids(ids []flat.NodeId) []flat.NodeId {
 }
 
 fn (mut t Transformer) transformed_branch_error_return(value_id flat.NodeId, ret_typ string, source_return_id flat.NodeId) ?flat.NodeId {
-	if !t.is_optional_type_name(ret_typ) {
+	if !t.normalize_type_alias(ret_typ).starts_with('!') {
 		return none
 	}
 	payload_type := t.optional_base_type(t.qualify_optional_type(ret_typ))
@@ -400,7 +400,7 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type, ret_type, source_return_id) or {
 		t.make_block([t.make_transformed_return(value, ret_type, source_return_id)])
 	}
-	err_expr := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
+	err_expr := t.result_error_expr(t.make_ident(tmp_name))
 	err_return := t.make_none_return_stmt_with_err_expr(err_expr)
 	t.mark_transformed_return(err_return, source_return_id)
 	else_block := t.make_block([err_return])
@@ -687,13 +687,7 @@ fn forwarded_return_type_is_unresolved(typ types.Type) bool {
 fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, actual_type types.Type, actual_payload types.Type, expected_type types.Type, expected_wrapper types.Type, expected_payload types.Type, clone_borrowed bool) flat.NodeId {
 	source := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), t.semantic_type_name(actual_type), 'return_optional')
 	result_name := t.new_temp('return_optional')
-	err := t.make_selector(source, 'err', 'IError')
-	return_err := if clone_borrowed {
-		t.make_call_typed('__v3_clone_owned_ierror', [err], 'IError')
-	} else {
-		err
-	}
-	initial := t.make_optional_none_with_err(t.semantic_type_name(expected_wrapper), return_err)
+	initial := t.make_optional_none(t.semantic_type_name(expected_wrapper))
 	t.pending_stmts << t.make_decl_assign_typed(result_name, initial, t.semantic_type_name(expected_type))
 	pending_start := t.pending_stmts.len
 	payload := t.make_selector(source, 'value', t.semantic_type_name(actual_payload))
@@ -702,7 +696,17 @@ fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, a
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	wrapped := t.make_optional_some(converted, t.semantic_type_name(expected_wrapper))
 	then_body << t.make_assign(t.make_ident(result_name), wrapped)
-	t.pending_stmts << t.make_if(t.make_selector(source, 'ok', 'bool'), t.make_block(then_body), t.make_empty())
+	// Results share their error and payload storage, so read the error only on failure.
+	return_err := if clone_borrowed {
+		t.clone_result_error(source)
+	} else {
+		t.result_error_expr(source)
+	}
+	failure := t.make_optional_none_with_err(t.semantic_type_name(expected_wrapper), return_err)
+	mut else_body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	else_body << t.make_assign(t.make_ident(result_name), failure)
+	t.pending_stmts << t.make_if(t.make_selector(source, 'ok', 'bool'), t.make_block(then_body), t.make_block(else_body))
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), t.semantic_type_name(expected_type))
 	return result

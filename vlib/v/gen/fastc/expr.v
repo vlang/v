@@ -749,14 +749,22 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	g.next()
 	g.expect(.lcbr)!
 	temporary := g.temporary_name('option')
+	wrapper := g.infer_expression_type(option_tokens) or { 'Option' }
+	error_binding := if wrapper == '__v_result' {
+		'IError err = ${temporary}.err;'
+	} else {
+		''
+	}
 	if g.or_block_has_statements() {
 		previous_capture := g.capturing_defer
 		previous_lines := g.captured_defer_lines.clone()
 		previous_err := g.locals['err'] or { FastcLocal{} }
 		had_err := 'err' in g.locals
 		g.type_memo.clear()
-		g.locals['err'] = FastcLocal{
-			typ: 'IError'
+		if wrapper == '__v_result' {
+			g.locals['err'] = FastcLocal{
+				typ: 'IError'
+			}
 		}
 		g.capturing_defer = true
 		g.captured_defer_lines = []string{}
@@ -822,11 +830,11 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 			// The or-block ends in a fallback VALUE: run the leading statements and
 			// use the value on failure, the unwrapped option value on success.
 			or_result := g.temporary_name('or_result')
-			'({ Option ${temporary} = (${option_expression}); ${complex_value_type} ${or_result}; if (${temporary}.state) { IError err = ${temporary}.err; ${block_lines.join(' ')} ${or_result} = (${fallback_value}); } else { ${or_result} = ${complex_success}; } ${or_result}; })'
+			'({ __auto_type ${temporary} = (${option_expression}); ${complex_value_type} ${or_result}; if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} ${or_result} = (${fallback_value}); } else { ${or_result} = ${complex_success}; } ${or_result}; })'
 		} else {
 			// The or-block only runs statements (it diverges): run them on failure,
 			// then use the unwrapped value.
-			'({ Option ${temporary} = (${option_expression}); if (${temporary}.state) { IError err = ${temporary}.err; ${block_lines.join(' ')} } ${complex_success}; })'
+			'({ __auto_type ${temporary} = (${option_expression}); if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} } ${complex_success}; })'
 		}
 		result.write_string(assignment_prefix)
 		result.write_string(scoped_operand_prefix)
@@ -905,8 +913,10 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	previous_err := g.locals['err'] or { FastcLocal{} }
 	had_err := 'err' in g.locals
 	g.type_memo.clear()
-	g.locals['err'] = FastcLocal{
-		typ: 'IError'
+	if wrapper == '__v_result' {
+		g.locals['err'] = FastcLocal{
+			typ: 'IError'
+		}
 	}
 	// A multiline final expression gets a scanner-inserted semicolon before
 	// the block's `}`. Keep it out of the expression tokens so composite
@@ -943,7 +953,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	}
 	g.skip_semicolons()
 	g.expect(.rcbr)!
-	if fastc_contains(fallback, 'err') {
+	if wrapper == '__v_result' && fastc_contains(fallback, 'err') {
 		fallback = '({ IError err = ${temporary}.err; ${fallback}; })'
 	}
 	if value_type == '' {
@@ -996,20 +1006,20 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	} else {
 		unwrapped_value
 	}
-	if fallback_type == 'Option' && option_value_type != '' {
-		success_value = fastc_option_success_expression(option_value_type, unwrapped_value)
-		value_type = 'Option'
+	if fallback_type in ['Option', '__v_result'] && option_value_type != '' {
+		success_value = fastc_option_success_expression(fallback_type, option_value_type, unwrapped_value)
+		value_type = fallback_type
 	}
-	or_expr_body := if fallback_type == 'IError' && g.return_type == 'Option' {
+	or_expr_body := if fallback_type == 'IError' && g.return_type == '__v_result' {
 		// `return result_call() or { error(...) }`: the IError is a replacement
 		// result failure, not a value of the result payload type.
-		'({ Option ${temporary} = (${option_expression}); if (${temporary}.state) { return (Option){.err = (${fallback}), .state = 1}; } ${success_value}; })'
+		'({ __auto_type ${temporary} = (${option_expression}); if (${temporary}.state) { return (__v_result){.err = (${fallback}), .state = 1}; } ${success_value}; })'
 	} else if value_type == 'void' || fallback_type in ['', 'void'] {
-		'({ Option ${temporary} = (${option_expression}); if (${temporary}.state) { ${fallback}; } ${success_value}; })'
+		'({ __auto_type ${temporary} = (${option_expression}); if (${temporary}.state) { ${fallback}; } ${success_value}; })'
 	} else {
-		'({ Option ${temporary} = (${option_expression}); ${temporary}.state ? (${fallback}) : ${success_value}; })'
+		'({ __auto_type ${temporary} = (${option_expression}); ${temporary}.state ? (${fallback}) : ${success_value}; })'
 	}
-	if fallback_type == 'IError' && g.return_type == 'Option' && option_value_type != '' {
+	if fallback_type == 'IError' && g.return_type == '__v_result' && option_value_type != '' {
 		value_type = option_value_type
 	}
 	result.write_string(assignment_prefix)
@@ -2996,7 +3006,7 @@ fn (mut g Parser) read_channel_receive(stops []token.Token) !string {
 	channel_tokens := g.last_expression.clone()
 	g.expected_expression_type = expected
 	mut element_type := fastc_normalize_inferred_type(expected)
-	if element_type in ['', 'chan', 'Option', 'void'] {
+	if element_type in ['', 'chan', 'Option', '__v_result', 'void'] {
 		element_type = g.channel_element_type(channel_tokens)
 	}
 	if element_type == '' {
@@ -4194,7 +4204,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 			failure := if g.in_main {
 				deferred := g.deferred_scopes_source()
 				'${deferred} builtin__panic_result_not_set(builtin__IError_msg(${temporary}.err));'
-			} else if g.return_type == 'Option' {
+			} else if g.return_type in ['Option', '__v_result'] {
 				'return ${temporary};'
 			} else {
 				'return 1;'
@@ -4205,7 +4215,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 				'*((${value_type} *)${temporary}.data)'
 			}
 			return FastcRenderedExpression{
-				source: '({ Option ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
+				source: '({ __auto_type ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
 				typ:    value_type
 			}
 		}

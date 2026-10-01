@@ -871,6 +871,7 @@ fn (mut t Transformer) clone_attribute_subst_children_with_value(node flat.Node,
 		typ:            node.typ
 		payload:        flat.node_payload(node.generic_params().clone())
 		is_mut:         node.is_mut
+		flags:          node.flags & flat.node_flag_freed_assignment
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -1127,6 +1128,7 @@ fn (mut t Transformer) clone_param_subst_children_with_value(node flat.Node, var
 		typ:            node.typ
 		payload:        flat.node_payload(node.generic_params().clone())
 		is_mut:         node.is_mut
+		flags:          node.flags & flat.node_flag_freed_assignment
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -1977,6 +1979,7 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 		typ:            typ
 		payload:        flat.node_payload(node.generic_params().clone())
 		is_mut:         node.is_mut
+		flags:          node.flags & flat.node_flag_freed_assignment
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -2648,6 +2651,7 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 		value:          node.value
 		typ:            node.typ
 		is_mut:         node.is_mut
+		flags:          node.flags & flat.node_flag_freed_assignment
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -3173,6 +3177,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		}
 		typ:            typ
 		is_mut:         node.is_mut
+		flags:          node.flags & flat.node_flag_freed_assignment
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -3324,6 +3329,8 @@ fn (mut t Transformer) make_named_field_init(field string, value flat.NodeId, ty
 	})
 }
 
+// The clones a comptime `$for` makes keep an assignment's `@[freed]`, which
+// -warn-about-allocs reads off the declaration it expanded.
 fn (mut t Transformer) clone_node_preserving_children(node flat.Node) flat.NodeId {
 	return t.clone_node_preserving_children_with_type(node, node.typ)
 }
@@ -3340,6 +3347,7 @@ fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, 
 		value:          node.value
 		typ:            typ
 		is_mut:         node.is_mut
+		flags:          node.flags & flat.node_flag_freed_assignment
 		children_start: start
 		children_count: node.children_count
 	})
@@ -3800,7 +3808,7 @@ fn comptime_builtin_type_idx(name string) int {
 		'int' { 8 }
 		'i64' { 9 }
 		'isize' { 10 }
-		'u8', 'byte' { 11 }
+		'u8' { 11 }
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
@@ -3941,8 +3949,8 @@ fn comptime_type_id_hash(key string) int {
 
 fn comptime_is_primitive_type(typ string) bool {
 	return typ in ['string', 'bool', 'rune', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize',
-		'u8', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal',
-		'voidptr', 'byteptr', 'charptr', 'nil', 'void']
+		'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
+		'byteptr', 'charptr', 'nil', 'void']
 }
 
 // comptime_strip_field_wrappers removes the `?` option, `shared`/`atomic`, and `&` reference
@@ -4174,6 +4182,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 			value:          node.value
 			typ:            node.typ
 			is_mut:         node.is_mut
+			flags:          node.flags & flat.node_flag_freed_assignment
 			children_start: start
 			children_count: flat.child_count(children.len)
 		})
@@ -4580,6 +4589,7 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 		value:          cloned_value
 		typ:            typ
 		is_mut:         node.is_mut
+		flags:          node.flags & flat.node_flag_freed_assignment
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})

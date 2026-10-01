@@ -1577,6 +1577,7 @@ fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[stri
 				has_default: field.has_default
 				is_embed:    field.is_embed
 				is_mut:      field.is_mut
+				is_volatile: field.is_volatile
 			}
 		}
 		cloned[name.clone()] = owned_fields
@@ -2718,6 +2719,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		print_fn_names:                     g.print_fn_names
 		is_prod:                            g.is_prod
 		is_debug:                           g.is_debug
+		race:                               g.race
+		line_directives:                    g.line_directives
+		uses_recover:                       g.uses_recover
 		check_overflow:                     g.check_overflow
 		force_bounds_checking:              g.force_bounds_checking
 		object_file_mode:                   g.object_file_mode

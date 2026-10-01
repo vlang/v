@@ -3,11 +3,11 @@ fn f() ?int {
 }
 
 fn test_option_if_expr() {
+	fallback := 0
 	i := f() or {
-		if err is none {
+		if fallback == 0 {
 			int(0)
 		} else {
-			eprintln(err)
 			int(-1)
 		}
 	}

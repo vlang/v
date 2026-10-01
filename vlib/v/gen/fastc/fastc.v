@@ -72,7 +72,8 @@ typedef struct VMapData {
 	int count;
 } VMapData;
 typedef struct { VMapData *data; } map;
-typedef struct { void *data; void *err; unsigned char state; } Option;
+typedef struct { void *data; unsigned char state; } Option;
+typedef struct { void *data; void *err; unsigned char state; } __v_result;
 /* One multi-return component. Values up to 32 bytes are stored inline; larger
    ones are boxed and referenced through `ptr`, so no component size can
    overflow the slot. */

@@ -35,7 +35,7 @@ fn test_map_callbacks_preserve_fixed_width_and_string_keys() {
 	for bits in [32, 64] {
 		types.set_platform_int_bits(bits)
 		for size, keys in {
-			'1': ['u8', 'i8', 'byte', 'bool', 'char']
+			'1': ['u8', 'i8', 'bool', 'char']
 			'2': ['u16', 'i16']
 			'4': ['u32', 'i32', 'f32', 'rune']
 			'8': ['u64', 'i64', 'f64']

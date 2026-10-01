@@ -1,4 +1,4 @@
-// `byte` is deprecated only as a type; it stays usable as a name.
+// `byte` is not a type (use `u8`), so it is usable as any other name.
 struct Packet {
 mut:
 	byte u8
@@ -19,6 +19,14 @@ fn is_letter(byte u8) bool {
 
 fn sum(byte u8, other u8) u8 {
 	return byte + other
+}
+
+fn byte() u8 {
+	return 42
+}
+
+fn test_byte_as_fn_name() {
+	assert byte() == 42
 }
 
 fn test_byte_as_param_field_receiver_and_enum_value_name() {

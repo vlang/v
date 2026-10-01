@@ -602,6 +602,156 @@ fn repl_string_literal(s string) string {
 	return "'${escaped}'"
 }
 
+const vrepl_i64_max = '9223372036854775807'
+const vrepl_u64_max = '18446744073709551615'
+const vrepl_u128_max = '340282366920938463463374607431768211455'
+
+// decimal_within reports whether a positive decimal number fits under `max`. The lengths are
+// compared first, so a 39-digit literal never has to be parsed.
+fn decimal_within(value string, max string) bool {
+	if value.len != max.len {
+		return value.len < max.len
+	}
+	return value <= max
+}
+
+// repl_digit_of_base reports whether a character can appear in a literal of that base.
+fn repl_digit_of_base(c u8, base int) bool {
+	return match base {
+		2 { c == `0` || c == `1` }
+		8 { c >= `0` && c <= `7` }
+		16 { (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`) }
+		else { c >= `0` && c <= `9` }
+	}
+}
+
+// repl_literal_is_negated reports whether the literal at `start` has a minus in front of it.
+fn repl_literal_is_negated(line string, start int) bool {
+	mut k := start - 1
+	for k >= 0 && line[k] == ` ` {
+		k--
+	}
+	return k >= 0 && line[k] == `-`
+}
+
+// repl_literal_carries_its_type reports whether the literal is already the argument of a
+// conversion, since the type that conversion names is the one that governs.
+fn repl_literal_carries_its_type(line string, start int) bool {
+	names := ['u8', 'u16', 'u32', 'u64', 'u128', 'i8', 'i16', 'i32', 'i64', 'i128', 'int', 'usize',
+		'isize', 'rune', 'char', 'f32', 'f64']
+	mut k := start - 1
+	for k >= 0 && line[k] == ` ` {
+		k--
+	}
+	if k < 0 || line[k] != `(` {
+		return false
+	}
+	mut b := k
+	for b > 0 && is_repl_ident_char(line[b - 1]) {
+		b--
+	}
+	return b < k && line[b..k] in names
+}
+
+// widen_oversized_literals gives an integer literal beyond `int`'s range the narrowest type
+// that holds it. A bare integer literal is typed `int`, so the REPL either refuses a value a
+// user typed only to look at, or, under `-repl run`, keeps its low bits and prints a
+// different number. The REPL compiles a program it wrote itself, so it can name the type.
+fn widen_oversized_literals(line string) string {
+	mut out := []u8{}
+	mut i := 0
+	for i < line.len {
+		ch := line[i]
+		if ch == `'` || ch == `"` {
+			out << ch
+			i++
+			for i < line.len {
+				out << line[i]
+				if line[i] == `\\` && i + 1 < line.len {
+					out << line[i + 1]
+					i += 2
+					continue
+				}
+				if line[i] == ch {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if ch == `/` && i + 1 < line.len && line[i + 1] == `/` {
+			out << line[i..].bytes()
+			break
+		}
+		if !(ch >= `0` && ch <= `9`) || (i > 0 && is_repl_ident_char(line[i - 1])) {
+			out << ch
+			i++
+			continue
+		}
+		mut base := 10
+		mut j := i
+		if ch == `0` && i + 1 < line.len
+			&& (line[i + 1] == `x` || line[i + 1] == `X` || line[i + 1] == `b` || line[i + 1] == `B`
+				|| line[i + 1] == `o` || line[i + 1] == `O`) {
+			base = if line[i + 1] == `x` || line[i + 1] == `X` {
+				16
+			} else if line[i + 1] == `b` || line[i + 1] == `B` {
+				2
+			} else {
+				8
+			}
+			j = i + 2
+		}
+		for j < line.len && (line[j] == `_` || repl_digit_of_base(line[j], base)) {
+			j++
+		}
+		digits := line[i..j].replace('_', '').trim_left('0')
+		mut typ := ''
+		part_of_a_bigger_token := j < line.len && (is_repl_ident_char(line[j])
+			|| (line[j] == `.` && j + 1 < line.len && line[j + 1] >= `0` && line[j + 1] <= `9`))
+		if !part_of_a_bigger_token && !repl_literal_carries_its_type(line, i) {
+			n := digits.len
+			negated := repl_literal_is_negated(line, i)
+			if base == 10 {
+				if !decimal_within(digits, vrepl_i64_max) {
+					if decimal_within(digits, vrepl_u64_max) {
+						typ = if negated { 'i128' } else { 'u64' }
+					} else if decimal_within(digits, vrepl_u128_max) {
+						typ = if negated { 'i128' } else { 'u128' }
+					}
+				}
+			} else if base == 16 {
+				if n == 16 && digits[0] > `7` {
+					typ = if negated { 'i128' } else { 'u64' }
+				} else if n > 16 && n <= 32 {
+					typ = if negated { 'i128' } else { 'u128' }
+				}
+			} else if base == 2 {
+				if n == 64 && digits[0] == `1` {
+					typ = if negated { 'i128' } else { 'u64' }
+				} else if n > 64 && n <= 128 {
+					typ = if negated { 'i128' } else { 'u128' }
+				}
+			} else {
+				if n > 21 && n <= 42 {
+					typ = if negated { 'i128' } else { 'u128' }
+				}
+			}
+		}
+		if typ.len == 0 {
+			out << line[i..j].bytes()
+		} else {
+			out << typ.bytes()
+			out << `(`
+			out << line[i..j].bytes()
+			out << `)`
+		}
+		i = j
+	}
+	return out.bytestr()
+}
+
 fn (mut r Repl) add_statement_line(display_line string, exec_line string) {
 	r.lines << display_line
 	r.exec_lines << exec_line
@@ -700,7 +850,9 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		}
 
 		oline := r.get_one_line(prompt) or { break }
-		line := remove_comment(oline).trim_space()
+		// `oline` stays as typed, for the two-space escape and the echo; the widened line is
+		// what the REPL writes into the program it compiles.
+		line := widen_oversized_literals(remove_comment(oline).trim_space())
 
 		if line == '' {
 			continue

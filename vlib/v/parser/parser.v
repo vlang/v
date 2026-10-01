@@ -398,7 +398,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.comptime_value_scopes.clear()
 	p.imported_module_names.clear()
 	p.file_method_names.clear()
-	if !p.prefs.is_fmt && path.ends_with('.vsh') {
+	if !p.prefs.is_fmt && p.is_vsh_path(path) {
 		// V script mode: `os` is in scope from the first statement on, so the alias
 		// has to be known before the body is parsed, not only once the synthetic
 		// `import os` node below is appended.
@@ -543,8 +543,11 @@ pub fn (mut p Parser) parse_into(path string) {
 		}
 	}
 	p.end_local_binding_scope()
-	if !p.prefs.is_fmt && path.ends_with('.vsh') {
+	if !p.prefs.is_fmt && p.is_vsh_path(path) {
 		p.a.has_vsh_source = true
+		if !path.ends_with('.vsh') {
+			p.a.raw_vsh_file = path
+		}
 		if implicit_os_id := p.vsh_implicit_os_import(ids) {
 			ids << implicit_os_id
 		}
@@ -606,6 +609,15 @@ fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback
 			state.end = fallback_end
 		}
 	}
+}
+
+// is_vsh_path reports whether `path` is parsed in V script mode: a `.vsh` file, or
+// the extensionless script passed with `-raw-vsh-tmp-prefix`.
+fn (p &Parser) is_vsh_path(path string) bool {
+	if path.ends_with('.vsh') {
+		return true
+	}
+	return p.prefs.raw_vsh_file != '' && os.real_path(path) == p.prefs.raw_vsh_file
 }
 
 fn (p &Parser) script_definition_diagnostic_span(node flat.Node, fallback_start int, fallback_end int) (int, int) {
@@ -1876,7 +1888,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		})
 		p.record_formatter_param_list_end(id, param_list_end)
 		p.pending_export = ''
-		p.register_pending_noreturn(name)
+		p.register_pending_noreturn(name, interop_prefix)
 		return id
 	}
 
@@ -1978,7 +1990,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	}
 	p.record_formatter_param_list_end(id, param_list_end)
 	p.register_pending_export(name)
-	p.register_pending_noreturn(name)
+	p.register_pending_noreturn(name, interop_prefix)
 	return id
 }
 
@@ -2066,16 +2078,20 @@ fn (mut p Parser) mark_disabled_fn(name string) {
 
 // register_pending_noreturn records a `@[noreturn]` function so the checker's
 // missing-return analysis treats calls to it as terminating.
-fn (mut p Parser) register_pending_noreturn(name string) {
+fn (mut p Parser) register_pending_noreturn(name string, interop_prefix string) {
 	if !p.pending_noreturn || name.len == 0 {
 		p.pending_noreturn = false
 		return
 	}
-	if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
+	if interop_prefix.len > 0 {
+		// Foreign names are global: `C.name()` resolves to `C.name` in every module.
+		p.a.noreturn_fns['${interop_prefix}.${name}'] = true
+	} else if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
 		&& !name.starts_with('${p.cur_module}.') {
 		p.a.noreturn_fns['${p.cur_module}.${name}'] = true
+	} else {
+		p.a.noreturn_fns[name] = true
 	}
-	p.a.noreturn_fns[name] = true
 	p.pending_noreturn = false
 }
 
@@ -12533,7 +12549,8 @@ fn (mut p Parser) map_init_after_type(map_type string, start int) flat.NodeId {
 
 fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.NodeId {
 	inner_node := p.a.node(inner)
-	if inner_node.kind == .or_expr && inner_node.value == '?' && inner_node.children_count >= 2 {
+	// `<-ch?` and `<-ch!` propagate the receive, not the channel operand.
+	if inner_node.kind == .or_expr && inner_node.value in ['?', '!'] && inner_node.children_count >= 2 {
 		source := p.a.child(inner_node, 0)
 		fallback := p.a.child(inner_node, 1)
 		receive := p.a.add_node(flat.Node{
@@ -12545,7 +12562,7 @@ fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.Nod
 		})
 		return p.a.add_node(flat.Node{
 			kind:           .or_expr
-			value:          '?'
+			value:          inner_node.value
 			children_start: p.add_children2(receive, fallback)
 			children_count: 2
 			pos:            p.span_to(op_start)
@@ -13426,11 +13443,16 @@ fn type_name_can_init(type_name string) bool {
 // of the preceding expression. Fall back to walking the source backwards in that case.
 fn (p &Parser) struct_init_name_start(name string) int {
 	lcbr := clamp_source_offset(p.tok_pos, p.s.src.len)
-	guess := lcbr - name.len
-	if guess >= 0 && p.s.src[guess..lcbr] == name {
+	// `struct {` separates the name from its brace.
+	mut name_end := lcbr
+	for name_end > 0 && p.s.src[name_end - 1] in [` `, `\t`] {
+		name_end--
+	}
+	guess := name_end - name.len
+	if guess >= 0 && p.s.src[guess..name_end] == name {
 		return guess
 	}
-	mut start := lcbr
+	mut start := name_end
 	for start > 0 {
 		c := p.s.src[start - 1]
 		if c == `]` {
@@ -13458,7 +13480,7 @@ fn (p &Parser) struct_init_name_start(name string) int {
 		}
 		start--
 	}
-	if start == lcbr {
+	if start == name_end {
 		return int_max(0, guess)
 	}
 	return start
@@ -13952,6 +13974,12 @@ fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size
 	if node.kind in [.int_literal, .ident] && node.value.len > 0 {
 		return node.value
 	}
+	if node.kind == .selector && node.children_count == 1 {
+		// Use the parsed name instead of source text, which can include comments.
+		if base := p.fixed_array_const_name(p.a.child_node(&node, 0)) {
+			return '${base}.${node.value}'
+		}
+	}
 	if node.kind == .paren && node.value == '__v3_comptime_d' && node.children_count > 0 {
 		resolved := p.a.child_node(&node, 0)
 		if resolved.kind == .int_literal && resolved.value.len > 0 {
@@ -13959,9 +13987,27 @@ fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size
 		}
 	}
 	if size_start >= 0 && size_end > size_start && size_end <= p.s.src.len {
-		return p.s.src[size_start..size_end].trim_space()
+		// Comptime replacement nodes can have no span. Keep their original bound
+		// so the checker can still reject unsupported comptime size quantifiers.
+		end := if node.pos.end > size_start && node.pos.end <= size_end {
+			node.pos.end
+		} else {
+			size_end
+		}
+		return p.s.src[size_start..end].trim_space()
 	}
 	return node.value
+}
+
+fn (p &Parser) fixed_array_const_name(node &flat.Node) ?string {
+	if node.kind == .ident {
+		return node.value
+	}
+	if node.kind == .selector && node.children_count == 1 {
+		base := p.fixed_array_const_name(p.a.child_node(node, 0))?
+		return '${base}.${node.value}'
+	}
+	return none
 }
 
 fn (mut p Parser) parse_fixed_array_literal_type_name() string {
@@ -14660,6 +14706,8 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	if !p.can_start_type_name()
+		|| (p.tok == .name && !type_name_can_init(p.lit)
+			&& p.translated_sizeof_name_is_const(p.lit))
 		|| (p.is_translated && p.tok == .name
 			&& (p.is_local_binding(p.lit)
 				|| p.translated_sizeof_name_is_global(p.lit)
@@ -16328,8 +16376,8 @@ fn (p &Parser) anonymous_struct_candidate_field_types(candidate string, field_na
 
 fn anonymous_struct_untyped_numeric_literal_matches(value flat.Node, expected string) bool {
 	if value.kind == .int_literal {
-		return expected in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
-			'u64', 'usize', 'f32', 'f64']
+		return expected in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+			'usize', 'f32', 'f64']
 	}
 	if value.kind == .float_literal {
 		return expected in ['f32', 'f64']
@@ -17122,9 +17170,9 @@ fn write_utf8_codepoint(buf &u8, j int, code u32) int {
 }
 
 fn is_builtin_type(name string) bool {
-	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'byte', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'usize', 'isize',
-		'array', 'map', 'mapnode', '_result', '_option', 'any']
+	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'i128', 'u8', 'u16', 'u32', 'u64', 'u128',
+		'f32', 'f64', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'usize',
+		'isize', 'array', 'map', 'mapnode', '_result', '_option', 'any']
 }
 
 fn parser_name_can_start_pointer_type(name string) bool {
