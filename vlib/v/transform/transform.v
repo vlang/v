@@ -7062,7 +7062,9 @@ fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string
 	ptr_typ := '&${elem_typ}'
 	mut stmts := []flat.NodeId{}
 	mut heap_rhs := flat.NodeId(0)
-	if is_struct_init {
+	// A generic `T{}` with a scalar `T` is lowered to a literal like `0`, which has no
+	// address; only a value that is still a struct literal can be taken with `&`.
+	if is_struct_init && t.a.nodes[int(value)].kind == .struct_init {
 		heap_rhs = t.make_prefix(.amp, value)
 	} else {
 		tmp := t.new_temp('esc')

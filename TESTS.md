@@ -55,6 +55,11 @@ workload and machine capacity are known.
 Skipped test paths are resolved before comparison, so selecting a file through a symlink
 does not bypass its platform or architecture exclusion.
 
+Tests ending in `_windows_test.v` or `_windows_test.c.v` run only on Windows.
+The compound `_android_outside_termux_test.v` and `_android_outside_termux_test.c.v`
+suffixes select Android outside Termux; `_termux_test.v` and `_termux_test.c.v`
+select Termux.
+
 ## `v test vlib/v/tests`:
 
 This folder contains _test.v files, testing the different features of the V

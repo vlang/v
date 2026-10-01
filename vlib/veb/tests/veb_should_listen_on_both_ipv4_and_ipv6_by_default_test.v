@@ -14,6 +14,8 @@ const welcome_text = 'Welcome to our simple veb server'
 // Use a known good http client like `curl` (if it exists):
 const curl_executable = os.find_abs_path_of_executable('curl') or { '' }
 const curl_ok = curl_supports_ipv6()
+// The server is local, so ignore any `http_proxy` from the environment.
+const curl_local_options = "--noproxy '*'"
 
 fn curl_supports_ipv6() bool {
 	if curl_executable == '' {
@@ -56,7 +58,7 @@ fn ensure_curl_works(tname string) ? {
 
 fn test_curl_connecting_through_ipv4_works() {
 	ensure_curl_works(@FN) or { return }
-	res := os.execute('${curl_executable} --connect-timeout 0.5 --silent http://127.0.0.1:${port}/')
+	res := os.execute('${curl_executable} ${curl_local_options} --connect-timeout 0.5 --silent http://127.0.0.1:${port}/')
 	assert res.exit_code == 0, res.output
 	assert res.output == welcome_text
 	log.info('> ${@FN}')
@@ -72,7 +74,7 @@ fn test_net_http_connecting_through_ipv4_works() {
 
 fn test_curl_connecting_through_ipv6_works() {
 	ensure_curl_works(@FN) or { return }
-	res := os.execute('${curl_executable} --silent --connect-timeout 0.5 http://[::1]:${port}/')
+	res := os.execute('${curl_executable} ${curl_local_options} --silent --connect-timeout 0.5 http://[::1]:${port}/')
 	assert res.exit_code == 0, res.output
 	assert res.output == welcome_text
 	log.info('> ${@FN}')
