@@ -73,7 +73,7 @@ pub mut:
 	on_progress_body RequestProgressBodyFn = unsafe { nil }
 	on_finish        RequestFinishFn       = unsafe { nil }
 
-	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
+	stop_copying_limit   i64 = -1 // positive limits cap body bytes copied to the response. Progress callbacks continue until the full response is read
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
 }
 
@@ -679,6 +679,7 @@ struct ReceivedResponseInfo {
 	headers_end         int = -1
 	is_chunked_transfer bool
 	has_truncated_body  bool
+	body_is_decoded     bool
 	// reusable is true when the read loop terminated via precise response
 	// framing (Content-Length satisfied, chunked transfer complete, or a
 	// no-body status), meaning the connection holds no response leftovers and
@@ -688,9 +689,10 @@ struct ReceivedResponseInfo {
 }
 
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
-	if info.is_chunked_transfer && info.has_truncated_body && info.headers_end > 0
-		&& info.headers_end <= response_text.len {
-		return parse_response(response_text[..info.headers_end])
+	if info.body_is_decoded {
+		mut response := parse_response(response_text[..info.headers_end])!
+		response.body = response_text[info.headers_end..]
+		return response
 	}
 	return parse_response(response_text)
 }
@@ -815,7 +817,9 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 				}
 			}
 		}
-		if headers_end >= 0 && old_len < u64(headers_end) {
+		if headers_end < 0 {
+			bchunk = []u8{}
+		} else if old_len < u64(headers_end) {
 			header_bytes_in_chunk := int(u64(headers_end) - old_len)
 			if header_bytes_in_chunk >= len {
 				bchunk = []u8{}
@@ -829,8 +833,8 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		}
 		mut progress_body_so_far := body_so_far
 		mut chunked_complete := false
+		mut dechunked := []u8{}
 		if is_chunked_transfer {
-			mut dechunked := []u8{}
 			chunked_complete = chunked_body_tracker.advance(bchunk, mut dechunked)
 			progress_body_so_far = chunked_body_tracker.decoded_len
 			if req.on_progress_body != unsafe { nil } && dechunked.len > 0 {
@@ -840,10 +844,28 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		} else if req.on_progress_body != unsafe { nil } {
 			req.on_progress_body(req, bchunk, progress_body_so_far, expected_size, status_code)!
 		}
-		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
+		if headers_end < 0 || req.stop_copying_limit <= 0 {
 			unsafe { content.write_ptr(bp, len) }
-		} else if headers_end >= 0 && new_len > body_pos {
-			has_truncated_body = true
+		} else {
+			// Preserve every header byte, even when the limit is small or the
+			// headers span multiple reads. Only decoded body bytes count.
+			if old_len < body_pos {
+				unsafe { content.write_ptr(bp, int(body_pos - old_len)) }
+			}
+			body_chunk := if is_chunked_transfer { dechunked } else { bchunk }
+			copied_body_len := i64(content.len - headers_end)
+			remaining := req.stop_copying_limit - copied_body_len
+			copy_len := if remaining <= 0 {
+				0
+			} else if remaining < body_chunk.len {
+				int(remaining)
+			} else {
+				body_chunk.len
+			}
+			content.write(body_chunk[..copy_len])!
+			if copy_len < body_chunk.len {
+				has_truncated_body = true
+			}
 		}
 		if is_chunked_transfer && chunked_complete {
 			framed_complete = true
@@ -874,6 +896,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	return ReceivedResponseInfo{
 		headers_end:         headers_end
 		is_chunked_transfer: is_chunked_transfer
+		body_is_decoded:     is_chunked_transfer && req.stop_copying_limit > 0
 		has_truncated_body:  has_truncated_body
 		reusable:            framed_complete
 	}
