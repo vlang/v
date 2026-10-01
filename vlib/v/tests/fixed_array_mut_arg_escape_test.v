@@ -1154,3 +1154,25 @@ fn test_expanded_multi_return_fixed_arguments_keep_their_backing_alive() {
 	assert read_retained_optional_fixed_reference(left) == [421, 422]
 	assert read_retained_optional_fixed_reference(right) == [431, 432]
 }
+
+@[noinline]
+fn references_from_map_fixed_row_bindings() []&[]int {
+	rows := {
+		1: [441, 442]!
+		2: [451, 452]!
+	}
+	mut kept := []&[]int{}
+	for _, row in rows {
+		kept << retain_immutable_array_reference(row)
+	}
+	return kept
+}
+
+fn test_map_fixed_row_loop_bindings_keep_retained_views_alive() {
+	kept := references_from_map_fixed_row_bindings()
+	assert overwrite_stack() == 7
+	assert kept.len == 2
+	assert read_retained_optional_fixed_reference(kept[0]) == [441, 442]
+	assert read_retained_optional_fixed_reference(kept[1]) == [451, 452]
+}
+
