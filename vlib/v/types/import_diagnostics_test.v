@@ -97,6 +97,33 @@ fn test_explicit_unused_import_keeps_source_diagnostics() {
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
 }
 
+fn unused_import_diagnostics(warns_are_errors bool, explicit_warns_are_errors bool) TypeChecker {
+	path := os.join_path(os.vtmp_dir(), 'v3_unused_import_prod_${os.getpid()}.v')
+	os.write_file(path, 'import os\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.warns_are_errors = warns_are_errors
+	tc.explicit_warns_are_errors = explicit_warns_are_errors
+	tc.collect(a)
+	tc.check_import_diagnostics()
+	tc.check_unused_import_diagnostics()
+	return tc
+}
+
+fn test_unused_import_stays_a_warning_in_prod_builds() {
+	// -prod makes checker warnings errors, but like V1 not the unused import
+	// warning, which V1 reports from the parser.
+	prod := unused_import_diagnostics(true, false)
+	assert prod.errors.len == 0, prod.errors.str()
+	assert prod.notices.any(it.msg.contains("module 'os' is imported but never used")), prod.notices.str()
+	strict := unused_import_diagnostics(true, true)
+	assert strict.errors.any(it.msg.contains("module 'os' is imported but never used")), strict.errors.str()
+}
+
 fn test_aliased_import_may_have_the_same_basename() {
 	path := os.join_path(os.vtmp_dir(), 'v3_same_basename_import_${os.getpid()}.v')
 	os.write_file(path, 'module html\n\nimport net.html as net_html\n')!

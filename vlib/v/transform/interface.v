@@ -251,7 +251,10 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			if child_type.len == 0 {
 				child_type = t.checker_node_type(child_id)
 			}
-			if t.normalize_type_alias(child_type) in ['voidptr', '&void'] {
+			// `&Iface(unsafe { nil })` is a null interface pointer, as in V1: box a
+			// voidptr value, but never nil itself.
+			if t.normalize_type_alias(child_type) in ['voidptr', '&void']
+				&& !t.expr_is_bare_nil(child_id) {
 				literal := t.make_interface_literal_from_expr(child_id, iface_name, false) or {
 					return none
 				}

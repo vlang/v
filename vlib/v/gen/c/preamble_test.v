@@ -16,10 +16,28 @@ fn test_windows_translation_unit_preserves_configuration_preincludes() {
 		'#include <synchapi.h>', '#include <windows.h>']
 	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
-	assert c_code.index('#include "winapi_config.h"')? < c_code.index('#include <windows.h>')?
+	config_index := c_code.index('#include "winapi_config.h"')?
+	assert c_code.index('#ifndef UNICODE\n#define UNICODE\n#endif')? < config_index
+	assert c_code.index('#ifndef _UNICODE\n#define _UNICODE\n#endif')? < config_index
+	assert config_index < c_code.index('#include <windows.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <bcrypt.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <synchapi.h>')?
 	assert c_code.count('#include <windows.h>') == 1
+}
+
+fn test_cross_c_translation_unit_guards_windows_unicode_apis() {
+	for target_os in ['linux', 'windows'] {
+		mut g := FlatGen.new()
+		g.a = &flat.FlatAst{}
+		g.set_target(pref.target_from(target_os, 'amd64') or { panic(err) })
+		g.set_output_cross_c(true)
+		g.preinclude_directives = ['#include "winapi_config.h"']
+		g.emit_translation_unit_include_directives()
+		c_code := g.sb.str()
+		unicode_guard := '#if defined(_WIN32)\n#ifndef UNICODE\n#define UNICODE\n#endif\n#ifndef _UNICODE\n#define _UNICODE\n#endif\n#endif\n'
+		assert c_code.starts_with(unicode_guard), target_os
+		assert c_code.index('#include "winapi_config.h"')? >= unicode_guard.len
+	}
 }
 
 fn test_windows_translation_unit_adds_windows_header_after_configuration_preincludes() {
@@ -377,6 +395,8 @@ fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
 	assert c_code.contains('pthread_create(&result.handle, NULL, (void*)start, arg)')
 	assert c_code.contains('pthread_create(&handle, NULL, (void*)__v_detached_thread_start, context)')
 	assert c_code.contains('if (pthread_detach(handle) != 0) exit(1);')
+	// Detached spawn wrappers free their argument block with it.
+	assert c_code.contains('static void __v_thread_free(void* ptr) { free(ptr); }')
 	assert !c_code.contains('pthread_attr_init(&attr)')
 	assert !c_code.contains('fprintf(stderr, "V thread')
 	assert !c_code.contains('abort();')
@@ -509,4 +529,59 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
 	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
+}
+
+fn test_system_libc_headers_leave_the_msvc_only_headers_to_the_c_preprocessor() {
+	// The generated C is compiled by whatever C compiler the user picked, which is
+	// not the one V generated it for: `vc/v_win.c` comes out of
+	// `-cross -os windows -cc msvc` (gen_vc_ci.yml) and is then built by tcc, clang
+	// and gcc (makev.bat). Choosing the MSVC-only headers at generation time baked
+	// <intrin.h> and <dbghelp.h> into every Windows snapshot, and the bundled
+	// TinyCC ships neither, so `makev.bat` died on
+	// `include file 'intrin.h' not found` before compiling any line of V.
+	// See #29146.
+	mut g := FlatGen.new()
+	// Generated exactly the way gen_vc_ci.yml generates the Windows snapshot.
+	g.set_ccompiler('msvc')
+	g.system_libc_headers()
+	c_code := g.sb.str()
+	// Only MSVC has these two, so the guard is the whole story: pinned as one block,
+	// because a bare include of either one is exactly the regression.
+	emitted := c_code.split_into_lines().filter(it.trim_space() in [
+		'#include <intrin.h>',
+		'#include <dbghelp.h>',
+	]).map(it.trim_space())
+	assert c_code_is_guarded_msvc_only(c_code), 'the snapshot emits ${emitted} unguarded, but only MSVC has those headers, so a snapshot built by tcc, clang or gcc fails with `include file not found`'
+}
+
+// c_code_is_guarded_msvc_only reports whether <intrin.h> and <dbghelp.h> are emitted
+// as one `#if defined(_MSC_VER)` block, which is the only shape that lets a snapshot
+// built by tcc, clang or gcc skip headers they do not have.
+fn c_code_is_guarded_msvc_only(c_code string) bool {
+	return c_code.contains('#if defined(_MSC_VER)\n#include <intrin.h>\n#include <dbghelp.h>\n#endif')
+}
+
+fn test_system_libc_headers_do_not_depend_on_the_c_compiler_v_was_generated_for() {
+	// A snapshot is generated for one C compiler and compiled by another, so the
+	// header set must not vary with `g.ccompiler`. Branches on it belong in the C
+	// preprocessor instead: see #29146, where `if g.ccompiler == 'msvc'` made
+	// `-cc msvc` the only spelling that could build a Windows snapshot, even
+	// though <intrin.h>/<dbghelp.h> exist nowhere but under MSVC anyway.
+	mut reference := []string{}
+	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc', 'tinyc'] {
+		mut g := FlatGen.new()
+		g.set_ccompiler(ccompiler)
+		g.system_libc_headers()
+		includes := g.sb.str().split_into_lines().filter(it.trim_space().starts_with('#include'))
+			.map(it.trim_space())
+		if reference.len == 0 {
+			reference = includes.clone()
+			continue
+		}
+		// Report the difference rather than both full lists: a header that is
+		// missing from one spelling of the same snapshot is the whole finding.
+		only_here := includes.filter(it !in reference)
+		only_there := reference.filter(it !in includes)
+		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
+	}
 }

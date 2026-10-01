@@ -818,7 +818,6 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.checked_const_names = map[string]bool{}
 	tc.check_import_diagnostics()
 	tc.check_duplicate_fn_declarations()
-	tc.check_deprecated_byte_types()
 	tc.install_type_cache_overlay()
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.selected_file_called_fns = map[string]bool{}
@@ -1037,11 +1036,10 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.check_duplicate_fn_declarations()
 	tc.timing_profile('  [ttime]   ck dup fns       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	presw.restart()
-	tc.check_deprecated_byte_types()
 	// Freeze the warm post-collect type cache as the shared read-only base
 	// for every worker thread and the master itself via a private overlay.
 	tc.install_type_cache_overlay()
-	tc.timing_profile('  [ttime]   ck byte+overlay  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	tc.timing_profile('  [ttime]   ck overlay       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	// Invalid-IError-return diagnostics are gated to functions reachable
 	// from the selected files. Most successful compiles never produce a
 	// candidate, so defer the call-graph walk until after checking and only
@@ -1113,6 +1111,9 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 	tc.cur_module = ''
 	tc.cur_file = ''
 	blocking_import_files := tc.blocking_import_error_files()
+	// A library body is trusted, even an open generic one: it is checked for its
+	// own type parameters, never for the types a program passes to it.
+	library_bodies_trusted := tc.selected_files_only()
 	mut items := []CheckWorkItem{}
 	// Fn subtrees are contiguous: the fn_decl at index i owns exactly the node
 	// range (previous top-level node, i], so the span doubles as the cost
@@ -1131,6 +1132,10 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 			}
 			.fn_decl {
 				if blocking_import_files[tc.cur_file] {
+					prev_tl = i
+					continue
+				}
+				if library_bodies_trusted && !tc.diagnostic_files[tc.cur_file] {
 					prev_tl = i
 					continue
 				}
@@ -1154,6 +1159,15 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 		prev_tl = i
 	}
 	return items
+}
+
+// selected_files_only reports whether diagnostics are wanted for the selected
+// files alone, as a client that shows no others asks with
+// V_CHECK_SELECTED_FILES_ONLY. Library code outside them is then trusted: its
+// concrete bodies and its signatures, which could only report on themselves,
+// are left unchecked.
+fn (tc &TypeChecker) selected_files_only() bool {
+	return tc.diagnostic_files.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') != ''
 }
 
 // check_top_level_declarations runs every declaration-level check (type
@@ -1185,15 +1199,20 @@ fn (mut tc TypeChecker) check_top_level_declaration_signatures() {
 	tc.check_top_level_declarations_filtered(false, true)
 }
 
-fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do_signatures bool) {
+fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, all_signatures bool) {
 	tc.cur_module = ''
 	tc.cur_file = ''
 	blocking_import_files := tc.blocking_import_error_files()
+	selected_files_only := tc.selected_files_only()
 	mut skip_file_semantics := false
+	mut do_signatures := all_signatures
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
 		if node.kind == .file {
 			skip_file_semantics = blocking_import_files[node.value]
+			// A signature check only reports on its own declaration.
+			do_signatures = all_signatures
+				&& (!selected_files_only || tc.diagnostic_files[node.value])
 		} else if skip_file_semantics && node.kind != .module_decl {
 			continue
 		}
@@ -2453,8 +2472,7 @@ fn duplicate_match_case_int(message string) ?int {
 fn type_errors_equal(a TypeError, b TypeError) bool {
 	if a.node == b.node && a.kind == b.kind && a.msg == b.msg
 		&& (is_inline_asm_instruction_error(a.msg)
-			|| a.msg.starts_with('cannot embed non-struct `')
-			|| a.msg == 'byte is deprecated, use u8 instead') {
+			|| a.msg.starts_with('cannot embed non-struct `')) {
 		return a.pos == b.pos
 	}
 	return a.node == b.node && a.kind == b.kind && a.msg == b.msg

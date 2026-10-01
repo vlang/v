@@ -366,7 +366,7 @@ fn test_url_lookup_preserves_legacy_dotted_layout() {
 	legacy_path := os.join_path(vmodules_path, 'publisher', 'foo.bar')
 	os.mkdir_all(legacy_path) or { panic(err) }
 	found := get_path_of_existing_url_module(vmodules_path, 'publisher', 'foo.bar') or {
-		panic(err)
+		panic('module not found for publisher `foo.bar` in `${vmodules_path}`')
 	}
 	assert found == os.real_path(legacy_path)
 }

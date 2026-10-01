@@ -1,4 +1,3 @@
-// TODO: remove this after the deprecation period for `?Type` representing both Result and Option passes.
 fn opt_err_with_code(code int) !string {
 	return error_with_code('hi', code)
 }
@@ -159,7 +158,7 @@ fn test_or_return() {
 	if _ := or_return_none() {
 		assert false
 	} else {
-		assert err.msg().len == 0
+		assert or_return_none() == none
 	}
 }
 

@@ -4,6 +4,9 @@ import term
 import v.util.diff
 import json2
 
+// The compiler under test, not the first `v` on PATH, which may be another checkout.
+const vexe = os.quoted_path(@VEXE)
+
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
 const text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
@@ -77,87 +80,87 @@ struct TestData {
 const test_data = [
 	TestData{
 		method: .completion
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:19:3" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:19:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
 		method: .completion
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:20:13" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:20:13" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod2
 	},
 	TestData{
 		method: .completion
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:22:3" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:22:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_struct
 	},
 	TestData{
 		method: .completion
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:23:3" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:23:3" ${os.quoted_path(text_file)}'
 		output: ''
 	},
 	TestData{
 		method: .completion
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:28" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:28" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
 		method: .signature_help
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:25:fn^26" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:25:fn^26" ${os.quoted_path(text_file)}'
 		output: fn_signature_info_for_all_before_last
 	},
 	TestData{
 		method: .completion
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:9" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:9" ${os.quoted_path(text_file)}'
 		output: ''
 	},
 	TestData{
 		method: .completion
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
 		output: ''
 	},
 	TestData{
 		method: .hover
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:hv^10" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:hv^10" ${os.quoted_path(text_file)}'
 		output: hover_info_for_public_fn1
 	},
 	TestData{
 		method: .hover
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:hv^12" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:hv^12" ${os.quoted_path(text_file)}'
 		output: hover_info_for_public_struct1
 	},
 	TestData{
 		method: .definition
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:gd^10" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:gd^10" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:50:7'
 	},
 	TestData{
 		method: .definition
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:gd^12" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:gd^12" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:8:11'
 	},
 	TestData{
 		method: .definition
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:32:gd^11" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:32:gd^11" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:41:9'
 	},
 	TestData{
 		method: .definition
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:33:gd^15" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:33:gd^15" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:44:9'
 	},
 	TestData{
 		method: .definition
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:34:gd^13" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:34:gd^13" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:19:10'
 	},
 	TestData{
 		method: .definition
-		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:39:gd^13" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:39:gd^13" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:50:7'
 	},
 	TestData{
 		method: .did_change
-		cmd:    'v -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'
 		output: '[
 {
 "path":"${json_errors_text_file}",

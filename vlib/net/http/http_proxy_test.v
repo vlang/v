@@ -335,8 +335,8 @@ fn multipart_https_serve_once(mut listener mbedtls.SSLListener, expected_body st
 	assert req.url == '/upload'
 	assert req.data == expected_body
 	assert req.data.len == expected_body.len
-	assert req.header.get(.content_length) or { panic(err) } == expected_body.len.str()
-	assert req.header.get(.content_type) or { panic(err) } == 'multipart/form-data; boundary="${boundary}"'
+	assert req.header.get(.content_length) or { panic('missing header content_length') } == expected_body.len.str()
+	assert req.header.get(.content_type) or { panic('missing header content_type') } == 'multipart/form-data; boundary="${boundary}"'
 
 	form, files := parse_multipart_form(req.data, boundary)
 	assert form == expected_form

@@ -44,7 +44,9 @@ fn test_raw_empty_string() {
 
 fn test_stringified_object_returns_error_for_raw_field() {
 	stringified_json :=
-		json2.encode('{"metadata":{"topLevelProperty":{"nestedProperty1":"Value 1"}}}', escape_unicode: true)
+		json2.encode('{"metadata":{"topLevelProperty":{"nestedProperty1":"Value 1"}}}',
+			escape_unicode: true
+		)
 	json2.decode[TestRawStringifiedObject](stringified_json) or {
 		assert err.msg().contains('Invalid json: Data: Expected object, but got string')
 		return

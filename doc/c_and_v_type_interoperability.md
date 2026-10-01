@@ -97,6 +97,10 @@ use `a.data`. NOTE: do *not* use `&a` for that purpose. That will result in the 
 of the `array` itself, getting passed to the C function, and *not* the address of the
 elements of the V array.
 
+Passing `a.data` to a V pointer parameter also passes the element buffer directly.
+Parenthesizing the argument, such as `(a.data)`, preserves that behavior.
+This holds when `a` is a pointer to an array or a mutable array parameter.
+
 
 ## Passing V fixed array elements to C functions:
 Unlike dynamic arrays, fixed arrays are the same in both V and C.

@@ -30,6 +30,9 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   macos-gitly-ci:
     if: ${{ github.repository == 'vlang/v' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
@@ -39,6 +42,8 @@ jobs:
       GITLY_CI_URL: http://localhost:8081
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Check gitly_ci is up
         run: |

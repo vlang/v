@@ -14,6 +14,9 @@ An entire tar file can be read in memory or by chunks. Keeps in memory a single 
 and also keeps in memory a single tar block of 512 bytes at a time. Convert paths to strings until 
 needed and the user reader implementation can stop early the reading process.
 
+`Reader.data_block()` receives a borrowed view of the reusable parser buffer.
+Consume it during the callback, or clone it to retain the bytes after the callback returns.
+
 ### Read Example
 
 The tar blocks are parsed and some fields are passed to `Reader` implemented methods.

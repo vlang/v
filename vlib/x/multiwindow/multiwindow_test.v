@@ -2178,12 +2178,13 @@ fn test_appkit_macos_cgen_emits_record_and_literal_input_mapping() {
 	assert !c_source.contains(leaked_display_field)
 	assert !c_source.contains('Optional_${leaked_probe_type}')
 	assert !c_source.contains('_option_C__${leaked_probe_type}')
+	assert !c_source.contains('__v_option_${leaked_probe_type}')
 	v1_typedef := 'typedef struct x__multiwindow__AppKitWindowRecord x__multiwindow__AppKitWindowRecord;'
 	v1_struct := 'struct x__multiwindow__AppKitWindowRecord {'
 	v1_mapping := 'VV_LOC _option_x__multiwindow__QueuedEvent x__multiwindow__appkit_queued_event_from_native('
 	v3_typedef := 'typedef struct multiwindow__AppKitWindowRecord multiwindow__AppKitWindowRecord;'
 	v3_struct := 'struct multiwindow__AppKitWindowRecord {'
-	v3_mapping := 'Optional_multiwindow__QueuedEvent multiwindow__appkit_queued_event_from_native('
+	v3_mapping := '__v_option_multiwindow__QueuedEvent multiwindow__appkit_queued_event_from_native('
 	c_lines := c_source.split_into_lines()
 	mut v1_typedef_indices := []int{}
 	mut v1_struct_indices := []int{}

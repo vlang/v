@@ -7,25 +7,6 @@ interface Any {}
 
 type ErrorOrText = IError | string
 
-type ErrorText = string
-
-fn test_error_is_optional_failure_for_string_payloads() {
-	mut text := ?string(none)
-	mut alias_text := ?ErrorText(none)
-	text = error('string failure')
-	alias_text = error('alias failure')
-	if _ := text {
-		assert false
-	} else {
-		assert err.msg() == 'string failure'
-	}
-	if _ := alias_text {
-		assert false
-	} else {
-		assert err.msg() == 'alias failure'
-	}
-}
-
 struct ConcreteError {
 	reason string
 }
@@ -52,31 +33,11 @@ fn test_error_is_successful_optional_interface_payload() {
 	assert got is IError
 }
 
-fn test_error_is_optional_failure_for_concrete_error_payload() {
-	mut value := ?ConcreteError(none)
-	value = error('boom')
-	if _ := value {
-		assert false
-	} else {
-		assert err.msg() == 'boom'
-	}
-}
-
 fn test_concrete_error_is_successful_optional_payload() {
 	mut value := ?ConcreteError(none)
 	value = ConcreteError{ reason: 'ok' }
 	got := value or { panic('expected concrete payload') }
 	assert got.msg() == 'ok'
-}
-
-fn test_error_is_optional_failure_for_pointer_interface_payload() {
-	mut value := ?&IError(none)
-	value = error('boom')
-	if _ := value {
-		assert false
-	} else {
-		assert err.msg() == 'boom'
-	}
 }
 
 fn (mut h Holder) set_err(e IError) {
@@ -96,4 +57,36 @@ fn test_method_assignment() {
 	h.set_err(error('method boom'))
 	got := h.err or { panic('expected Some, got none') }
 	assert got.msg() == 'method boom'
+}
+
+fn optional_error_payload() ?IError {
+	return error('payload')
+}
+
+fn test_returned_error_is_an_option_payload() {
+	value := optional_error_payload() or { panic('missing error payload') }
+	assert value.msg() == 'payload'
+}
+
+@[noinline]
+fn optional_local_error() ?IError {
+	local := ConcreteError{ reason: 'local' }
+	return &local
+}
+
+fn test_returned_error_payload_outlives_local_value() {
+	value := optional_local_error() or { panic('missing local payload') }
+	other := optional_local_error() or { panic('missing second payload') }
+	assert value.msg() == 'local'
+	assert other.msg() == 'local'
+}
+
+fn conditional_option_error(present bool) ?IError {
+	return if present { error('conditional') } else { none }
+}
+
+fn test_conditional_error_is_an_option_payload() {
+	value := conditional_option_error(true) or { panic('missing conditional payload') }
+	assert value.msg() == 'conditional'
+	assert conditional_option_error(false) == none
 }

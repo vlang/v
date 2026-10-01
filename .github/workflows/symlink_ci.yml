@@ -17,6 +17,9 @@ concurrency:
   group: symlink-${{ github.workflow }}-${{ github.ref_name == 'master' && github.sha || github.ref_name }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   symlink-unix:
     runs-on: ${{ matrix.os }}
@@ -26,6 +29,8 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make -j4
       - name: Symlink
@@ -67,6 +72,8 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: ./makev.bat
       - name: Symlink
