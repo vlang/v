@@ -91,8 +91,12 @@ fn test_windows_translation_unit_interposes_windows_header_before_dependent_head
 // legacy_winsock_guarded is the C that keeps windows.h from loading the legacy
 // winsock.h while `directive` is included, and releases the macro again afterwards.
 fn legacy_winsock_guarded(directive string) string {
-	return '#ifndef _WINSOCKAPI_\n#define _WINSOCKAPI_\n#define V_LEGACY_WINSOCK_GUARD\n#endif\n${directive}\n#ifdef V_LEGACY_WINSOCK_GUARD\n#undef V_LEGACY_WINSOCK_GUARD\n#ifndef _WINSOCK2API_\n#undef _WINSOCKAPI_\n#endif\n#endif\n'
+	return '#ifndef _WINSOCKAPI_\n#define _WINSOCKAPI_\n#define V_LEGACY_WINSOCK_GUARD\n#endif\n${directive}\n#ifdef V_LEGACY_WINSOCK_GUARD\n#undef V_LEGACY_WINSOCK_GUARD\n#ifndef _WINSOCK2API_\n#undef _WINSOCKAPI_\n#define V_LEGACY_WINSOCK_SUPPRESSED\n#endif\n#endif\n'
 }
+
+// legacy_winsock_restore follows the last lifted winsock2.h include. It loads the
+// suppressed winsock.h when that include, and every one before it, was inactive.
+const legacy_winsock_restore = '#if defined(V_LEGACY_WINSOCK_SUPPRESSED) && defined(_WINDOWS_) && !defined(WIN32_LEAN_AND_MEAN) && !defined(_WINSOCKAPI_)\n#include <winsock.h>\n#endif\n'
 
 fn test_windows_translation_unit_keeps_legacy_winsock_out_of_headers_that_include_windows_header() {
 	// builtin is ordered before every module that uses sockets, and with the Boehm GC
@@ -120,6 +124,36 @@ fn test_windows_translation_unit_keeps_legacy_winsock_out_of_headers_that_includ
 	assert c_code.count('#define _WINSOCKAPI_') == 1
 	assert c_code.count('#include <winsock2.h>') == 1
 	assert c_code.count('#include <windows.h>') == 1
+	// One restore, after the last header that can load winsock2.h.
+	assert c_code.contains('#include <ws2tcpip.h>\n' + legacy_winsock_restore), c_code
+	assert c_code.count(legacy_winsock_restore) == 1
+}
+
+fn test_windows_translation_unit_restores_legacy_winsock_after_inactive_winsock_includes() {
+	// Only the C preprocessor knows whether a guarded winsock2.h include is active.
+	// When it is not, nothing may be lost: windows.h is include-guarded by then, so
+	// the winsock.h that was kept out of it has to be loaded after all.
+	mut g := windows_preamble_test_gen()
+	g.add_c_directive('builtin', '#include <gc.h>', false)
+	g.add_c_directive('main', '#if 0\n#include <winsock2.h>\n#endif', false)
+	g.add_c_directive('main', '#ifdef USE_WINSOCK2', false)
+	g.add_c_directive('main', '#include <winsock2.h>', false)
+	g.add_c_directive('main', '#endif', false)
+	g.add_c_directive('main', '#include <io.h>', false)
+	g.emit_translation_unit_include_directives()
+	c_code := g.sb.str()
+	assert c_code.contains(legacy_winsock_guarded('#include <gc.h>')), c_code
+	// After the last of them and its lifted context, ahead of the headers that follow.
+	assert c_code.contains('#if 0\n#include <winsock2.h>\n#endif\n#ifdef USE_WINSOCK2\n#include <winsock2.h>\n#endif\n' +
+		legacy_winsock_restore + '#include <io.h>\n'), c_code
+	assert c_code.count(legacy_winsock_restore) == 1
+	assert c_code.index(legacy_winsock_restore)? < c_code.index('#include <windows.h>')?
+
+	mut block := windows_preamble_test_gen()
+	block.add_c_directive('builtin', '#include <gc.h>', false)
+	block.add_c_directive('main', '#if 0\n#include <winsock2.h>\n#endif', false)
+	block.emit_translation_unit_include_directives()
+	assert block.sb.str().contains('#if 0\n#include <winsock2.h>\n#endif\n' + legacy_winsock_restore)
 }
 
 fn test_windows_translation_unit_keeps_winsock_prerequisite_headers_in_place() {
@@ -161,6 +195,7 @@ fn test_windows_translation_unit_guards_every_windows_header_including_form() {
 	assert c_code.contains(guarded), c_code
 	assert c_code.index(block)? < c_code.index(guarded)?
 	assert c_code.index(guarded)? < c_code.index('#include <ws2tcpip.h>')?
+	assert c_code.contains('#include <ws2tcpip.h>\n' + legacy_winsock_restore), c_code
 	assert c_code.count('#include <windows.h>') == 1
 }
 
@@ -170,13 +205,17 @@ fn test_translation_unit_leaves_headers_alone_without_a_later_winsock_include() 
 	plain.add_c_directive('builtin', '#include <gc.h>', false)
 	plain.add_c_directive('os', '#include <io.h>', false)
 	plain.emit_translation_unit_include_directives()
-	assert !plain.sb.str().contains('_WINSOCKAPI_')
+	plain_code := plain.sb.str()
+	assert !plain_code.contains('WINSOCK'), plain_code
+	assert !plain_code.contains('<winsock.h>'), plain_code
 
 	mut ordered := windows_preamble_test_gen()
 	ordered.add_c_directive('builtin', '#include <winsock2.h>', false)
 	ordered.add_c_directive('builtin', '#include <gc.h>', false)
 	ordered.emit_translation_unit_include_directives()
-	assert !ordered.sb.str().contains('_WINSOCKAPI_')
+	ordered_code := ordered.sb.str()
+	assert !ordered_code.contains('WINSOCK'), ordered_code
+	assert !ordered_code.contains('<winsock.h>'), ordered_code
 
 	mut linux := FlatGen.new()
 	linux.a = &flat.FlatAst{}
@@ -185,7 +224,7 @@ fn test_translation_unit_leaves_headers_alone_without_a_later_winsock_include() 
 	linux.add_c_directive('os', '#include <winsock2.h>', false)
 	linux.emit_translation_unit_include_directives()
 	linux_code := linux.sb.str()
-	assert !linux_code.contains('_WINSOCKAPI_')
+	assert !linux_code.contains('WINSOCK'), linux_code
 	assert linux_code.index('#include <gc.h>')? < linux_code.index('#include <winsock2.h>')?
 }
 

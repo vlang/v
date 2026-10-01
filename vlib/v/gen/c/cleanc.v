@@ -10442,6 +10442,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 	use_system_libc := g.c_directives_use_system_libc()
 	// Index of the last lifted include of winsock2.h; -1 when there is none.
 	mut last_winsock2_index := -1
+	mut suppressed_legacy_winsock := false
 	if g.target.os == 'windows' {
 		for i, directive in directives {
 			if c_preserved_directive_includes(directive, c_winsock2_headers) {
@@ -10466,10 +10467,14 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 		if directive.contains('\n') {
 			if without_legacy_winsock {
 				g.emit_preserved_c_directive_without_legacy_winsock(directive)
+				suppressed_legacy_winsock = true
 			} else {
 				g.emit_preserved_c_directive(directive)
 			}
 			emitted = true
+			if suppressed_legacy_winsock && i == last_winsock2_index {
+				g.emit_suppressed_legacy_winsock_restore()
+			}
 			continue
 		}
 		if g.target.os == 'windows' {
@@ -10486,6 +10491,12 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 		}
 		if g.emit_preserved_c_directive_at(directives, i, without_legacy_winsock, mut emitted_includes) {
 			emitted = true
+			if without_legacy_winsock {
+				suppressed_legacy_winsock = true
+			}
+		}
+		if suppressed_legacy_winsock && i == last_winsock2_index {
+			g.emit_suppressed_legacy_winsock_restore()
 		}
 	}
 	if deferred_windows_header_indices.len > 0 {
@@ -10670,6 +10681,8 @@ fn c_preserved_directive_includes(directive string, headers []string) bool {
 // alike, so defining it around the include keeps winsock.h out without moving any
 // header: reordering would cut a prerequisite header off from the winsock2.h that it
 // configures. The macro is released afterwards, so winsock2.h still comes first.
+// Whether that winsock2.h is active is only known to the C preprocessor, see
+// emit_suppressed_legacy_winsock_restore().
 fn (mut g FlatGen) emit_preserved_c_directive_without_legacy_winsock(directive string) {
 	g.writeln('#ifndef _WINSOCKAPI_')
 	g.writeln('#define _WINSOCKAPI_')
@@ -10681,7 +10694,20 @@ fn (mut g FlatGen) emit_preserved_c_directive_without_legacy_winsock(directive s
 	// A guarded block that includes winsock2.h itself leaves the macro to that header.
 	g.writeln('#ifndef _WINSOCK2API_')
 	g.writeln('#undef _WINSOCKAPI_')
+	g.writeln('#define V_LEGACY_WINSOCK_SUPPRESSED')
 	g.writeln('#endif')
+	g.writeln('#endif')
+}
+
+// emit_suppressed_legacy_winsock_restore follows the last lifted winsock2.h include.
+// That include may sit under a condition that turns out false (`#if 0`, a feature
+// macro that is not defined), and then no Winsock header was loaded at all: the
+// windows.h that would have supplied winsock.h is already include-guarded. Load the
+// suppressed header here in that case, so the program sees the declarations that an
+// unguarded windows.h gives it. A lean windows.h never includes winsock.h.
+fn (mut g FlatGen) emit_suppressed_legacy_winsock_restore() {
+	g.writeln('#if defined(V_LEGACY_WINSOCK_SUPPRESSED) && defined(_WINDOWS_) && !defined(WIN32_LEAN_AND_MEAN) && !defined(_WINSOCKAPI_)')
+	g.writeln('#include <winsock.h>')
 	g.writeln('#endif')
 }
 
