@@ -204,19 +204,6 @@ fn decode_narrow_int_array[T](values []Any) []T {
 	return arr
 }
 
-// decode_narrow_int_map decodes `values` into a `map[string]T` of narrow
-// integers, skipping the values that `T` cannot represent.
-fn decode_narrow_int_map[T](values map[string]Any) map[string]T {
-	mut decoded := map[string]T{}
-	for key, value in values {
-		n, ok := to_narrow_int[T](value)
-		if ok {
-			decoded[key] = n
-		}
-	}
-	return decoded
-}
-
 fn decode_array[T](current []T, values []Any) []T {
 	$if T is string {
 		return values.map(it.string())
@@ -257,84 +244,89 @@ fn decode_array[T](current []T, values []Any) []T {
 	}
 }
 
-fn decode_map[T](current map[string]T, values map[string]Any) map[string]T {
-	$if T is string {
-		mut decoded := map[string]T{}
-		for key, value in values {
+// decode_map preserves the actual key type rather than treating every map as
+// a string-keyed map. Invalid keys are skipped like invalid narrow values.
+fn decode_map[K, T](current map[K]T, values map[string]Any) map[K]T {
+	mut decoded := map[K]T{}
+	for key_string, value in values {
+		key := decode_map_key[K](key_string) or { continue }
+		$if T is string {
 			decoded[key] = value.string()
-		}
-		return decoded
-	} $else $if T is bool {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is bool {
 			decoded[key] = value.bool()
-		}
-		return decoded
-	} $else $if T is int {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is int {
 			decoded[key] = value.int()
-		}
-		return decoded
-	} $else $if T is i64 {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is i64 {
 			decoded[key] = value.i64()
-		}
-		return decoded
-	} $else $if T is u64 {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is u64 {
 			decoded[key] = value.u64()
-		}
-		return decoded
-	} $else $if T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 {
-		return decode_narrow_int_map[T](values)
-	} $else $if T is f32 {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 {
+			n, ok := to_narrow_int[T](value)
+			if ok { decoded[key] = n }
+		} $else $if T is f32 {
 			decoded[key] = value.f32()
-		}
-		return decoded
-	} $else $if T is f64 {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is f64 {
 			decoded[key] = value.f64()
-		}
-		return decoded
-	} $else $if T is DateTime {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is DateTime {
 			decoded[key] = value.datetime()
-		}
-		return decoded
-	} $else $if T is Date {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is Date {
 			decoded[key] = value.date()
-		}
-		return decoded
-	} $else $if T is Time {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is Time {
 			decoded[key] = value.time()
-		}
-		return decoded
-	} $else $if T is Any {
-		return values.clone()
-	} $else $if T is $struct {
-		mut decoded := map[string]T{}
-		for key, value in values {
+		} $else $if T is Any {
+			decoded[key] = value
+		} $else $if T is $map {
+			if value is map[string]Any {
+				mut item := decode_map(T{}, value)
+				decoded[key] = item.move()
+			}
+		} $else $if T is $struct {
 			if value is map[string]Any {
 				mut item := T{}
 				decode_struct(value, mut item)
 				decoded[key] = item
 			}
+		} $else {
+			return current
 		}
+	}
+	$if T is string || T is bool || T is int || T is i64 || T is u64 || T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 || T is f32 || T is f64 || T is Any || T is $struct || T is $map {
 		return decoded
 	} $else {
 		return current
 	}
+}
+
+fn decode_map_key[K](text string) ?K {
+	$if K is string {
+		return K(text)
+	} $else $if K is bool {
+		if text == 'true' { return K(true) }
+		if text == 'false' { return K(false) }
+		return none
+	} $else $if K is i128 || K is u128 {
+		$compile_error('toml.decode: integer map keys wider than 64 bits are not supported')
+	} $else $if K is $int {
+		// Check the complete decimal spelling before parsing: strconv accepts an
+		// empty string as zero, and unchecked casts can truncate large integers.
+		start := if text.starts_with('-') || text.starts_with('+') { 1 } else { 0 }
+		if text.len <= start { return none }
+		for digit in text[start..].bytes() {
+			if digit < `0` || digit > `9` { return none }
+		}
+		$if K is u8 || K is u16 || K is u32 || K is u64 || K is usize {
+			if text.starts_with('-') { return none }
+			unsigned_text := if text.starts_with('+') { text[1..] } else { text }
+			n := strconv.common_parse_uint(unsigned_text, 10, int(sizeof(K) * 8), true, true) or { return none }
+			return K(n)
+		} $else {
+			n := strconv.common_parse_int(text, 10, int(sizeof(K) * 8), true, true) or { return none }
+			return K(n)
+		}
+	} $else {
+		$compile_error('toml.decode: map keys must be strings, booleans, or integers')
+	}
+	return none
 }
 
 // encode encodes the type `T` into a TOML string.

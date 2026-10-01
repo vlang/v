@@ -100,6 +100,13 @@ assert encoded == 'host = "localhost"\nport = 5432\napp_name = "app"'
 assert toml.decode[Config](encoded)! == config
 ```
 
+Map fields support string, boolean, and integer keys up to 64 bits. TOML keys are strings;
+integer keys are parsed as decimal numbers with the destination type's range,
+including full-width `i64` and `u64` keys. Invalid or out-of-range keys are skipped,
+as are out-of-range narrow integer values. Boolean keys must be `true` or `false`.
+Other map key types are rejected at compile time. Nested maps retain their own key
+types.
+
 ## Value retrieval
 
 The `toml` module supports easy retrieval of values from
