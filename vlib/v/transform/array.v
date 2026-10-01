@@ -1961,6 +1961,9 @@ fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value fl
 // which were introduced after the checker recorded ordinary projection ownership.
 // Call-time borrowed arguments use clone_borrowed_projection instead.
 fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, value flat.NodeId, typ string) flat.NodeId {
+	if t.is_owned_array_storage_value(value) {
+		return value
+	}
 	cloned := t.clone_borrowed_projection(source_id, value, typ)
 	if cloned != value {
 		return cloned
@@ -1968,8 +1971,8 @@ fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, 
 	return t.clone_owned_array_storage_value(value, typ, t.array_storage_source_is_mut_param(source_id))
 }
 
-// A mut []T parameter borrows its caller's owners even when the runtime array
-// has a managed, unsliced buffer. Explicit pointer parameters retain their identity.
+// Mutable array parameters also borrow through option/result and sum wrappers,
+// even with a managed, unsliced buffer. Explicit pointer values retain their identity.
 fn (t &Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) bool {
 	mut id := t.unwrap_parens(source_id)
 	for int(id) >= 0 && int(id) < t.a.nodes.len {
@@ -1986,9 +1989,16 @@ fn (t &Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) boo
 			|| t.pointer_value_rvalues[node.value] {
 			return false
 		}
-		raw_type := t.raw_var_type(node.value)
-		return raw_type.starts_with('&')
-			&& t.comptime_normalize_type_alias_chain(raw_type).starts_with('&[]')
+		raw_type := t.comptime_normalize_type_alias_chain(t.raw_var_type(node.value))
+		if !raw_type.starts_with('&') {
+			return false
+		}
+		mut payload_type := t.comptime_normalize_type_alias_chain(raw_type[1..])
+		for t.is_optional_type_name(payload_type) {
+			payload_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(payload_type))
+		}
+		return payload_type.starts_with('[]')
+			|| (!payload_type.starts_with('&') && t.is_sum_type_name(payload_type))
 	}
 	return false
 }
@@ -2004,7 +2014,29 @@ fn (mut t Transformer) clone_owned_array_value_for_capture(value flat.NodeId, ty
 	return t.clone_owned_array_storage_value(value, typ, true)
 }
 
+const owned_array_storage_expr_value = '__v3_owned_array_storage'
+
+// A sum conversion can acquire its payload before the outer storage hook runs.
+// Keep that fact on the expression so the same boundary does not clone it twice.
+fn (t &Transformer) is_owned_array_storage_value(value flat.NodeId) bool {
+	node := t.a.node(value)
+	return node.kind == .paren && node.value == owned_array_storage_expr_value
+}
+
+fn (mut t Transformer) mark_owned_array_storage_value(value flat.NodeId, typ string) flat.NodeId {
+	if t.is_owned_array_storage_value(value) {
+		return value
+	}
+	owned := t.make_paren(value)
+	t.set_node_value(int(owned), owned_array_storage_expr_value)
+	t.set_node_typ(int(owned), typ)
+	return owned
+}
+
 fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ string, clone_owned_value bool) flat.NodeId {
+	if t.is_owned_array_storage_value(value) {
+		return value
+	}
 	resolved_type := t.comptime_normalize_type_alias_chain(typ)
 	mut storage_type := resolved_type
 	for t.is_optional_type_name(storage_type) {
@@ -2017,7 +2049,12 @@ fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ st
 		return value
 	}
 	if storage_is_sum && !t.is_optional_type_name(resolved_type) {
-		return t.clone_owned_sum_array_views_for_storage(value, typ, true)
+		if clone_owned_value {
+			if owned := t.clone_owned_sum_literal_for_storage(value, typ) {
+				return owned
+			}
+		}
+		return t.clone_owned_sum_array_views_for_storage(value, typ, !clone_owned_value, clone_owned_value)
 	}
 	name := t.new_temp('owned_array_escape')
 	t.pending_stmts << t.make_decl_assign_typed(name, value, typ)
@@ -2035,7 +2072,7 @@ fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ st
 		body << t.make_assign_without_ownership_drop(payload, owned_payload)
 		t.pending_stmts << t.make_if_with_skip_ownership_drops(t.make_selector(bound, 'ok', 'bool'),
 			t.make_block_skip_scope_drops(body), t.make_empty())
-		return bound
+		return if clone_owned_value { t.mark_owned_array_storage_value(bound, typ) } else { bound }
 	}
 	array_value := t.array_lvalue_value(bound, resolved_type)
 	is_slice := if clone_owned_value {
@@ -2065,7 +2102,7 @@ fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ st
 	body << t.make_assign_without_ownership_drop(bound, owned_value)
 	t.pending_stmts << t.make_if_with_skip_ownership_drops(is_slice,
 		t.make_block_skip_scope_drops(body), t.make_empty())
-	return bound
+	return if clone_owned_value { t.mark_owned_array_storage_value(bound, typ) } else { bound }
 }
 
 struct OwnedArraySumVariant {
@@ -2073,22 +2110,56 @@ struct OwnedArraySumVariant {
 	variant  string
 }
 
-fn (mut t Transformer) clone_owned_sum_array_views_for_storage(value flat.NodeId, typ string, drop_old_root bool) flat.NodeId {
+// Acquire a fresh literal's payload before boxing it. Its boxes have not been
+// emitted yet, whereas a copied mutable sum borrows boxes owned by its caller.
+fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, typ string) ?flat.NodeId {
+	node := t.a.node(t.unwrap_parens(value))
+	resolved_sum, variants := t.concrete_sum_name_and_variants(typ)
+	if node.kind != .struct_init || node.children_count != 2
+		|| t.resolve_sum_name(node.value) != resolved_sum
+		|| t.resolve_sum_name(node.typ) != resolved_sum {
+		return none
+	}
+	tag := t.a.child_node(&node, 0)
+	field := t.a.child_node(&node, 1)
+	if tag.kind != .field_init || tag.value != 'typ' || tag.children_count != 1
+		|| field.kind != .field_init || field.children_count != 1
+		|| field.typ.starts_with('sum_ref ') {
+		return none
+	}
+	for variant in variants {
+		qvariant := t.resolve_variant(resolved_sum, variant)
+		if qvariant.len == 0 || field.value != t.sum_field_name(qvariant) {
+			continue
+		}
+		variant_type := t.comptime_normalize_type_alias_chain(qvariant)
+		if variant_type.starts_with('&')
+			|| (!variant_type.starts_with('[]') && !t.is_sum_type_name(variant_type)) {
+			return value
+		}
+		payload := t.a.child(&field, 0)
+		owned := t.clone_owned_array_storage_value(t.sum_owned_value_payload(payload, qvariant), qvariant, true)
+		return t.make_sum_literal(typ, qvariant, owned)
+	}
+	return none
+}
+
+fn (mut t Transformer) clone_owned_sum_array_views_for_storage(value flat.NodeId, typ string, drop_old_root bool, clone_owned_value bool) flat.NodeId {
 	pending_start := t.pending_stmts.len
 	name := t.new_temp('owned_sum_array_escape')
 	t.pending_stmts << t.make_decl_assign_typed(name, value, typ)
 	bound := t.make_ident(name)
 	t.set_node_typ(int(bound), typ)
-	branches := t.owned_sum_array_storage_branches(bound, typ, bound, typ, []flat.NodeId{}, []OwnedArraySumVariant{}, []string{}, drop_old_root)
+	branches := t.owned_sum_array_storage_branches(bound, typ, bound, typ, []flat.NodeId{}, []OwnedArraySumVariant{}, []string{}, drop_old_root, clone_owned_value)
 	if branches.len == 0 {
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		return value
 	}
 	t.pending_stmts << branches
-	return bound
+	return if clone_owned_value { t.mark_owned_array_storage_value(bound, typ) } else { bound }
 }
 
-fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_type string, root flat.NodeId, root_type string, guards []flat.NodeId, path []OwnedArraySumVariant, seen []string, drop_old_root bool) []flat.NodeId {
+fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_type string, root flat.NodeId, root_type string, guards []flat.NodeId, path []OwnedArraySumVariant, seen []string, drop_old_root bool, clone_owned_value bool) []flat.NodeId {
 	resolved_sum, variants := t.concrete_sum_name_and_variants(sum_type)
 	if resolved_sum in seen { return []flat.NodeId{} }
 	mut next_seen := seen.clone()
@@ -2120,16 +2191,19 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 		mut branch_path := path.clone()
 		branch_path << OwnedArraySumVariant{ sum_type: sum_type, variant: qvariant }
 		if is_nested_sum {
-			branches << t.owned_sum_array_storage_branches(payload, qvariant, root, root_type, branch_guards, branch_path, next_seen, drop_old_root)
+			branches << t.owned_sum_array_storage_branches(payload, qvariant, root, root_type, branch_guards, branch_path, next_seen, drop_old_root, clone_owned_value)
 			continue
 		}
-		array_value := t.array_lvalue_value(payload, clean_variant)
-		is_slice := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
-		t.set_node_typ(int(is_slice), 'bool')
-		t.mark_fn_used('array.is_slice_view')
-		branch_guards << is_slice
+		force_owned_array := clone_owned_value && !clean_variant.starts_with('&')
+		if !force_owned_array {
+			array_value := t.array_lvalue_value(payload, clean_variant)
+			is_slice := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
+			t.set_node_typ(int(is_slice), 'bool')
+			t.mark_fn_used('array.is_slice_view')
+			branch_guards << is_slice
+		}
 		pending_start := t.pending_stmts.len
-		mut rebuilt := t.clone_owned_array_view_for_storage(payload, qvariant)
+		mut rebuilt := t.clone_owned_array_storage_value(payload, qvariant, force_owned_array)
 		mut body := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		for i := branch_path.len - 1; i >= 0; i-- {

@@ -1060,13 +1060,15 @@ fn (g &FlatGen) ownership_destructor_method_name() string {
 	return if g.tc.autofree_mode { 'free' } else { 'drop' }
 }
 
-// ownership_free_call releases the storage of a dropped value. Ownership builds use
-// libc allocations, but the result of a discarded spawn is dropped in every build, and
-// with Boehm GC its storage comes from the GC heap: `__v_thread_free` uses `GC_FREE`
-// there and `free` otherwise.
+// ownership_free_call releases boxed storage with the allocator used to create it.
+// Detached spawn results use the thread allocator; ordinary boxes use memdup,
+// which allocates from the Boehm heap when GC is enabled.
 fn (g &FlatGen) ownership_free_call(ptr string) string {
 	if g.detached_spawn_drop {
 		return '__v_thread_free(${ptr});'
+	}
+	if 'gcboehm' in g.compile_defines {
+		return 'GC_FREE(${ptr});'
 	}
 	return 'free(${ptr});'
 }

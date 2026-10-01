@@ -36,10 +36,14 @@ fn testsuite_end() {
 }
 
 fn borrow_storage_compile(name string, src string) os.Result {
+	return borrow_storage_compile_with_flags(name, src, '')
+}
+
+fn borrow_storage_compile_with_flags(name string, src string, flags string) os.Result {
 	path := os.join_path(borrow_storage_tmp_dir, '${name}.v')
 	os.write_file(path, src) or { panic(err) }
 	out := os.join_path(borrow_storage_tmp_dir, name)
-	return os.execute('${os.quoted_path(borrow_storage_v3)} -ownership -d ownership -no-parallel -o ${os.quoted_path(out)} ${os.quoted_path(path)}')
+	return os.execute('${os.quoted_path(borrow_storage_v3)} -ownership -d ownership -no-parallel ${flags} -o ${os.quoted_path(out)} ${os.quoted_path(path)}')
 }
 
 fn borrow_storage_run(name string, src string) string {
@@ -48,6 +52,27 @@ fn borrow_storage_run(name string, src string) string {
 	run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
 	assert run.exit_code == 0, '${name}: ${run.output}'
 	return run.output.trim_space()
+}
+
+fn test_owned_sum_box_cleanup_matches_gc_allocator() {
+	src := borrow_storage_drop_decls + '
+type Bucket = Res | int
+
+fn main() {
+	bucket := Bucket(Res{1})
+	drop_owned(bucket)
+	mut direct := Res{2}
+	if direct.id == 0 { direct.drop() }
+}
+'
+	for i, flags in ['', '-gc none'] {
+		name := 'sum_box_allocator_${i}'
+		build := borrow_storage_compile_with_flags(name, src, flags)
+		assert build.exit_code == 0, '${name}: ${build.output}'
+		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == 'drop 1\ndrop 2'
+	}
 }
 
 fn test_owned_borrowed_array_views_clone_only_when_detaching() {
@@ -575,6 +600,65 @@ fn main() {
 }
 ')
 	assert output == 'drop 101\ndrop 1'
+	nested := borrow_storage_compile('nested_optional_sum_cast', '
+type Bucket = []int | int
+fn absent() ?Bucket { return ?Bucket(?Bucket(none)) }
+fn main() { _ = absent() }
+')
+	assert nested.exit_code != 0
+	assert nested.output.contains('cannot cast `?Bucket` to `?Bucket`')
+}
+
+fn test_mutable_wrapped_array_storage_acquires_managed_payloads() {
+	for wrapper in ['?[]Res', 'Storage', '?Storage'] {
+		payload := if wrapper == '?[]Res' { '[Res{1}]' } else { 'Storage([Res{1}])' }
+		initial := if wrapper == 'Storage' { payload } else { '${wrapper}(${payload})' }
+		unwrapped := if wrapper == 'Storage' {
+			'keep(mut source)'
+		} else {
+			'keep(mut source) or { panic("missing payload") }'
+		}
+		check := if wrapper == '?[]Res' {
+			'assert retained[0].id == 101'
+		} else {
+			'if retained is []Res { assert retained[0].id == 101 } else { assert false }'
+		}
+		output := borrow_storage_run('wrapped_mut_array_${wrapper.len}', borrow_storage_drop_decls + '
+type Storage = []Res | int
+fn keep(mut source ${wrapper}) ${wrapper} { return source }
+fn main() {
+	mut source := ${initial}
+	retained := ${unwrapped}
+	drop_owned(source)
+	${check}
+	drop_owned(retained)
+}
+')
+		assert output == 'drop 1\ndrop 101'
+	}
+}
+
+fn test_mutable_wrapped_array_storage_keeps_inactive_payloads() {
+	output := borrow_storage_run('wrapped_mut_array_inactive', borrow_storage_drop_decls + '
+type Storage = []Res | int
+fn keep_option(mut source ?[]Res) ?[]Res { return source }
+fn keep_sum(mut source Storage) Storage { return source }
+fn keep_optional_sum(mut source ?Storage) ?Storage { return source }
+fn main() {
+	mut absent := ?[]Res(none)
+	assert keep_option(mut absent) == none
+	mut scalar := Storage(7)
+	retained := keep_sum(mut scalar)
+	assert retained == Storage(7)
+	mut absent_sum := ?Storage(none)
+	assert keep_optional_sum(mut absent_sum) == none
+	mut scalar_sum := ?Storage(Storage(9))
+	kept := keep_optional_sum(mut scalar_sum) or { panic("missing scalar") }
+	assert kept == Storage(9)
+	println("ok")
+}
+')
+	assert output == 'ok'
 }
 
 fn test_mutable_array_value_captures_acquire_owned_snapshots() {

@@ -10,6 +10,7 @@ This includes map values, interface values, active sum variants, successful opti
 result payloads, and closure value captures. A retained array reference receives a
 separate header, so acquisition does not replace the caller's header.
 Explicit option and result casts keep their wrappers when acquisition clones a successful payload.
+Mutable parameters wrapped in options, results, or sums follow the same acquisition rule.
 
 With ownership checking enabled, capturing a mutable array parameter by value snapshots
 its elements for the closure. This also applies when the caller's array has an ordinary
