@@ -6,7 +6,7 @@ import veb
 pub fn (mut app App) products(mut ctx Context) !veb.Result {
 	token := ctx.get_cookie('token') or {
 		ctx.res.set_status(.bad_request)
-		return ctx.text('${err}')
+		return ctx.text('missing token cookie')
 	}
 
 	user := get_user(token) or {

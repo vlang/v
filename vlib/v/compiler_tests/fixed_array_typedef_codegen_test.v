@@ -558,3 +558,55 @@ fn main() {
 	run := os.execute(os.quoted_path(bin))
 	assert run.exit_code == 0, run.output
 }
+
+fn test_import_alias_const_fixed_array_length_is_folded() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('import_alias_const', 'module fixture
+
+pub const max_name_size = u32(256)
+', 'module main
+
+import fixture as fx
+import fx as otherfx
+
+fn name_size(name [fx /* imported const */ .max_name_size]char) int {
+	return name.len
+}
+
+fn main() {
+	assert otherfx.max_name_size == 16
+	println(name_size([fx.max_name_size /* trailing comment */]char{}))
+}
+')
+	// A real module named like the alias must not capture its constant.
+	os.mkdir_all(os.join_path(root, 'fx')) or { panic(err) }
+	os.write_file(os.join_path(root, 'fx', 'fx.v'), 'module fx
+pub const max_name_size = 16
+') or { panic(err) }
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '256', run.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('Array_fixed_char_256[256]'), generated
+	assert !generated.contains('Array_fixed_char_fx__max_name_size'), generated
+
+	// A second source file gives the alias another meaning. The real fx module
+	// must not silently supply its length when the stored type cannot choose one.
+	os.mkdir_all(os.join_path(root, 'second')) or { panic(err) }
+	os.write_file(os.join_path(root, 'second', 'second.v'), 'module second
+pub const max_name_size = 128
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'second_import.v'), 'module main
+import second as fx
+fn second_size() int {
+	return fx.max_name_size
+}
+') or { panic(err) }
+	ambiguous_bin := os.join_path(root, 'ambiguous')
+	ambiguous := os.execute('${v3_bin} -b c -o ${ambiguous_bin} ${root}')
+	assert ambiguous.exit_code != 0, ambiguous.output
+	assert ambiguous.output.contains('non-constant array bound `fx.max_name_size`'), ambiguous.output
+}

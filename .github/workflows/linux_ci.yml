@@ -27,6 +27,9 @@ concurrency:
   group: linux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   tcc-linux:
     runs-on: ubuntu-24.04
@@ -40,6 +43,8 @@ jobs:
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
@@ -120,6 +125,8 @@ jobs:
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
@@ -198,6 +205,8 @@ jobs:
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.

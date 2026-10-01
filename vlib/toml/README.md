@@ -64,6 +64,42 @@ fn main() {
 }
 ```
 
+## Struct conversion
+
+`toml.decode[T]` decodes TOML text into a struct and `toml.encode[T]` encodes a struct
+as TOML. A field maps to the key of the same name; `@[toml: <name>]` changes the key
+and `@[skip]` ignores the field. Fields missing from the document keep their default
+values. A `from_toml(toml.Any)` or `to_toml() string` method on `T` replaces the
+generic conversion.
+
+TOML has no struct embedding, so the fields of an embedded struct are read from and
+written to the same table as the fields of the embedding struct. When decoding, a
+table named after the embedded struct (e.g. `[Db]`) is accepted too and takes
+precedence. Embedded `toml.Date`, `toml.Time` and `toml.DateTime` are scalars, stored
+under their type name (e.g. `Date = 2026-09-30`).
+
+```v
+import toml
+
+struct Db {
+	host string
+	port int
+}
+
+struct Config {
+	Db
+	name   string @[toml: app_name]
+	secret string @[skip]
+}
+
+config := toml.decode[Config]('app_name = "app"\nhost = "localhost"\nport = 5432')!
+assert config.host == 'localhost' // promoted from Db
+assert config.name == 'app'
+encoded := toml.encode(config)
+assert encoded == 'host = "localhost"\nport = 5432\napp_name = "app"'
+assert toml.decode[Config](encoded)! == config
+```
+
 ## Value retrieval
 
 The `toml` module supports easy retrieval of values from

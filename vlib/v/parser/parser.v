@@ -12675,7 +12675,8 @@ fn (mut p Parser) map_init_after_type(map_type string, start int) flat.NodeId {
 
 fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.NodeId {
 	inner_node := p.a.node(inner)
-	if inner_node.kind == .or_expr && inner_node.value == '?' && inner_node.children_count >= 2 {
+	// `<-ch?` and `<-ch!` propagate the receive, not the channel operand.
+	if inner_node.kind == .or_expr && inner_node.value in ['?', '!'] && inner_node.children_count >= 2 {
 		source := p.a.child(inner_node, 0)
 		fallback := p.a.child(inner_node, 1)
 		receive := p.a.add_node(flat.Node{
@@ -12687,7 +12688,7 @@ fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.Nod
 		})
 		return p.a.add_node(flat.Node{
 			kind:           .or_expr
-			value:          '?'
+			value:          inner_node.value
 			children_start: p.add_children2(receive, fallback)
 			children_count: 2
 			pos:            p.span_to(op_start)
@@ -14099,6 +14100,12 @@ fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size
 	if node.kind in [.int_literal, .ident] && node.value.len > 0 {
 		return node.value
 	}
+	if node.kind == .selector && node.children_count == 1 {
+		// Use the parsed name instead of source text, which can include comments.
+		if base := p.fixed_array_const_name(p.a.child_node(&node, 0)) {
+			return '${base}.${node.value}'
+		}
+	}
 	if node.kind == .paren && node.value == '__v3_comptime_d' && node.children_count > 0 {
 		resolved := p.a.child_node(&node, 0)
 		if resolved.kind == .int_literal && resolved.value.len > 0 {
@@ -14106,9 +14113,27 @@ fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size
 		}
 	}
 	if size_start >= 0 && size_end > size_start && size_end <= p.s.src.len {
-		return p.s.src[size_start..size_end].trim_space()
+		// Comptime replacement nodes can have no span. Keep their original bound
+		// so the checker can still reject unsupported comptime size quantifiers.
+		end := if node.pos.end > size_start && node.pos.end <= size_end {
+			node.pos.end
+		} else {
+			size_end
+		}
+		return p.s.src[size_start..end].trim_space()
 	}
 	return node.value
+}
+
+fn (p &Parser) fixed_array_const_name(node &flat.Node) ?string {
+	if node.kind == .ident {
+		return node.value
+	}
+	if node.kind == .selector && node.children_count == 1 {
+		base := p.fixed_array_const_name(p.a.child_node(node, 0))?
+		return '${base}.${node.value}'
+	}
+	return none
 }
 
 fn (mut p Parser) parse_fixed_array_literal_type_name() string {

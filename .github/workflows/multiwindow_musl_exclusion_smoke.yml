@@ -22,6 +22,9 @@ concurrency:
 env:
   V_CI_MUSL: 1
 
+permissions:
+  contents: read
+
 jobs:
   multiwindow-musl-exclusion:
     runs-on: ubuntu-24.04
@@ -35,6 +38,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Add Alpine build dependencies
         run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V

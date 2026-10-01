@@ -43,41 +43,59 @@ fn decode_struct[T](doc Any, mut typ T) {
 				field_name = attr.all_after(':').trim_space()
 			}
 		}
-		value := doc.value(field_name)
-		// only set the field's value when value != null and !skip, else field got it's default value
-		if !skip && value != null {
-			$if field.is_enum {
-				typ.$(field.name) = value.int()
-			} $else $if field.typ is string {
-				typ.$(field.name) = value.string()
-			} $else $if field.typ is bool {
-				typ.$(field.name) = value.bool()
-			} $else $if field.typ is int {
-				typ.$(field.name) = value.int()
-			} $else $if field.typ is i64 {
-				typ.$(field.name) = value.i64()
-			} $else $if field.typ is u64 {
-				typ.$(field.name) = value.u64()
-			} $else $if field.typ is f32 {
-				typ.$(field.name) = value.f32()
-			} $else $if field.typ is f64 {
-				typ.$(field.name) = value.f64()
-			} $else $if field.typ is DateTime {
-				typ.$(field.name) = value.datetime()
-			} $else $if field.typ is Date {
-				typ.$(field.name) = value.date()
-			} $else $if field.typ is Time {
-				typ.$(field.name) = value.time()
-			} $else $if field.typ is Any {
-				typ.$(field.name) = value
-			} $else $if field.is_array {
-				typ.$(field.name) = decode_array(typ.$(field.name), value.array())
-			} $else $if field.is_map {
-				typ.$(field.name) = decode_map(typ.$(field.name), value.as_map())
-			} $else $if field.is_struct {
-				mut s := typ.$(field.name)
-				decode_struct(value, mut s)
-				typ.$(field.name) = s
+		$if field.is_embed && field.typ !is DateTime && field.typ !is Date && field.typ !is Time {
+			// Embedding is a V concept, TOML has no equivalent: the fields of an
+			// embedded struct live at the same level as the fields of the embedding
+			// struct. A table named after the embedded field is accepted as well,
+			// and takes precedence when present. Embedded `DateTime`, `Date` and
+			// `Time` are TOML scalars, so they are decoded below like other fields.
+			if !skip {
+				mut embedded := typ.$(field.name)
+				value := doc.value(field_name)
+				if value is map[string]Any {
+					decode_struct(value, mut embedded)
+				} else {
+					decode_struct(doc, mut embedded)
+				}
+				typ.$(field.name) = embedded
+			}
+		} $else {
+			value := doc.value(field_name)
+			// only set the field's value when value != null and !skip, else field got it's default value
+			if !skip && value != null {
+				$if field.is_enum {
+					typ.$(field.name) = value.int()
+				} $else $if field.typ is string {
+					typ.$(field.name) = value.string()
+				} $else $if field.typ is bool {
+					typ.$(field.name) = value.bool()
+				} $else $if field.typ is int {
+					typ.$(field.name) = value.int()
+				} $else $if field.typ is i64 {
+					typ.$(field.name) = value.i64()
+				} $else $if field.typ is u64 {
+					typ.$(field.name) = value.u64()
+				} $else $if field.typ is f32 {
+					typ.$(field.name) = value.f32()
+				} $else $if field.typ is f64 {
+					typ.$(field.name) = value.f64()
+				} $else $if field.typ is DateTime {
+					typ.$(field.name) = value.datetime()
+				} $else $if field.typ is Date {
+					typ.$(field.name) = value.date()
+				} $else $if field.typ is Time {
+					typ.$(field.name) = value.time()
+				} $else $if field.typ is Any {
+					typ.$(field.name) = value
+				} $else $if field.is_array {
+					typ.$(field.name) = decode_array(typ.$(field.name), value.array())
+				} $else $if field.is_map {
+					typ.$(field.name) = decode_map(typ.$(field.name), value.as_map())
+				} $else $if field.is_struct {
+					mut s := typ.$(field.name)
+					decode_struct(value, mut s)
+					typ.$(field.name) = s
+				}
 			}
 		}
 	}
@@ -231,7 +249,25 @@ fn encode_struct[T](typ T) map[string]Any {
 			}
 		}
 		if !skip {
-			mp[field_name] = to_any(typ.$(field.name))
+			$if field.is_embed {
+				// Embedding is a V concept, TOML has no equivalent, so the fields of an
+				// embedded struct are flattened into the encoding struct's table. Fields
+				// of the embedding struct shadow same-named embedded fields.
+				embedded_any := to_any(typ.$(field.name))
+				if embedded_any is map[string]Any {
+					for key, value in embedded_any {
+						if key !in mp {
+							mp[key] = value
+						}
+					}
+				} else {
+					// Scalar embeds (`DateTime`, `Date`, `Time`) and embedded types with a
+					// custom `to_toml` method are kept as one value under the field name.
+					mp[field_name] = embedded_any
+				}
+			} $else {
+				mp[field_name] = to_any(typ.$(field.name))
+			}
 		}
 	}
 	return mp
