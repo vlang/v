@@ -1,5 +1,6 @@
 module driver
 
+import os
 import v.pref
 
 const v3_default_gc_mode = 'boehm_full_opt'
@@ -37,4 +38,29 @@ fn apply_v3_gc_mode(gc_mode string, disable_gc bool, mut user_defines []string, 
 	for define in v3_gc_mode_defines(gc_mode, disable_gc)! {
 		record_user_define(mut user_defines, mut compile_values, define)
 	}
+}
+
+fn v3_missing_bundled_gc_library(flags []string, vroot string) ?string {
+	lexical_root := os.norm_path(os.abs_path(os.join_path(vroot, 'thirdparty', 'tcc', 'lib')))
+	root := os.real_path(os.join_path(os.real_path(vroot), 'thirdparty', 'tcc', 'lib'))
+	for index in c_link_input_indices(flags) {
+		path := flags[index]
+		canonical := os.join_path(os.real_path(os.dir(path)), os.file_name(path))
+		lexical := os.norm_path(os.abs_path(path))
+		if (canonical in [os.join_path(root, 'libgc.a'), os.join_path(root, 'libgc.dylib')]
+			|| lexical in [os.join_path(lexical_root, 'libgc.a'),
+				os.join_path(lexical_root, 'libgc.dylib')])
+			&& !os.is_file(path) {
+			return path
+		}
+	}
+	return none
+}
+
+fn v3_missing_gc_library_message(path string) string {
+	return 'builder error:
+==================
+Boehm GC library `${path}` was not found.
+Reinstall V to restore its bundled libraries, or pass `-d use_bundled_libgc` to build GC from source.
+To compile without garbage collection, pass `-gc none`.'
 }

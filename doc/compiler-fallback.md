@@ -44,6 +44,12 @@ Use `v -new-compiler ...` to disable the C-error compatibility fallback as well.
 An explicit `v -old-compiler ...` request still selects V 0.5.2 directly and does not
 have a failed default compilation to display.
 
+If a build needs a missing bundled Boehm GC archive, V reports the missing library
+before invoking the C compiler. Reinstall V to restore the bundled libraries, or
+pass `-d use_bundled_libgc` to build GC from source. `-gc none` compiles without GC.
+Generating C or an object file does not require this archive. Missing system `-lgc`
+libraries retain the linker diagnostic and advice to install the development package.
+
 On Linux amd64, V's TCC fence shim uses a private symbol so it can link alongside
 TCC's atomic runtime helpers. Boehm GC builds use the canonical GC header under
 TCC, avoiding a duplicate compatibility definition of `GC_noop1_ptr`. These builds
