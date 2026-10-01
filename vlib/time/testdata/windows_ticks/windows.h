@@ -5,14 +5,10 @@
 
 #define WINAPI
 typedef unsigned long long ULONGLONG;
+typedef int BOOL;
+typedef unsigned long DWORD;
 typedef void *HMODULE;
 typedef void (*FARPROC)(void);
 typedef struct { long long QuadPart; } LARGE_INTEGER;
-
-HMODULE GetModuleHandleA(const char *name);
-FARPROC GetProcAddress(HMODULE module, const char *name);
-int QueryPerformanceFrequency(LARGE_INTEGER *frequency);
-int QueryPerformanceCounter(LARGE_INTEGER *counter);
-unsigned long GetTickCount(void);
 
 #endif
