@@ -10440,30 +10440,16 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 	mut deferred_windows_header_indices := []int{}
 	directives := g.ordered_c_directives(false)
 	use_system_libc := g.c_directives_use_system_libc()
-	mut hoisted_winsock_indices := []int{}
+	// Index of the last lifted include of winsock2.h; -1 when there is none.
+	mut last_winsock2_index := -1
 	if g.target.os == 'windows' {
-		// Winsock2 must precede every header that includes windows.h on its own, not
-		// only the windows.h emitted here. builtin's <gc.h> does so for the Boehm GC,
-		// and builtin is ordered before the modules that use sockets: windows.h then
-		// loads the legacy winsock.h, whose declarations winsock2.h redefines. GCC and
-		// Clang only warn about that, MSVC rejects the translation unit.
 		for i, directive in directives {
-			if !c_directive_includes_winsock2(directive) {
-				continue
-			}
-			hoisted_winsock_indices << i
-			if directive.contains('\n') {
-				g.emit_preserved_c_directive(directive)
-				emitted = true
-			} else if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
-				emitted = true
+			if c_preserved_directive_includes(directive, c_winsock2_headers) {
+				last_winsock2_index = i
 			}
 		}
 	}
 	for i, directive in directives {
-		if i in hoisted_winsock_indices {
-			continue
-		}
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
 		}
@@ -10475,8 +10461,14 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 			has_mach_headers = true
 		}
 		clean := trimmed_space(directive)
+		without_legacy_winsock := i < last_winsock2_index
+			&& c_preserved_directive_includes(directive, c_headers_including_windows_h)
 		if directive.contains('\n') {
-			g.emit_preserved_c_directive(directive)
+			if without_legacy_winsock {
+				g.emit_preserved_c_directive_without_legacy_winsock(directive)
+			} else {
+				g.emit_preserved_c_directive(directive)
+			}
 			emitted = true
 			continue
 		}
@@ -10492,7 +10484,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 				continue
 			}
 		}
-		if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
+		if g.emit_preserved_c_directive_at(directives, i, without_legacy_winsock, mut emitted_includes) {
 			emitted = true
 		}
 	}
@@ -10505,7 +10497,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 			emitted = true
 		}
 		for i in deferred_windows_header_indices {
-			if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
+			if g.emit_preserved_c_directive_at(directives, i, false, mut emitted_includes) {
 				emitted = true
 			}
 		}
@@ -10524,7 +10516,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 	return emitted_windows_header
 }
 
-fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int, mut emitted_includes map[string]bool) bool {
+fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int, without_legacy_winsock bool, mut emitted_includes map[string]bool) bool {
 	directive := directives[index]
 	clean := trimmed_space(directive)
 	prefix := if c_lifted_include_skips_context(directive) {
@@ -10547,7 +10539,11 @@ fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int,
 	for line in prefix {
 		g.writeln(line)
 	}
-	g.emit_preserved_c_directive(directive)
+	if without_legacy_winsock {
+		g.emit_preserved_c_directive_without_legacy_winsock(directive)
+	} else {
+		g.emit_preserved_c_directive(directive)
+	}
 	for _ in 0 .. c_lifted_include_context_depth(prefix) {
 		g.writeln('#endif')
 	}
@@ -10643,19 +10639,50 @@ fn c_contains_preserved_system_include_directive(directive string) bool {
 	return has_include
 }
 
-// c_directive_includes_winsock2 reports whether a lifted system include directive
-// includes <winsock2.h>, either on its own or inside a guarded multi-line block.
-fn c_directive_includes_winsock2(directive string) bool {
-	if !directive.contains('winsock2.h') || !c_contains_preserved_system_include_directive(directive) {
+// Lifted system headers that include winsock2.h, or are winsock2.h.
+const c_winsock2_headers = ['<winsock2.h>', '<ws2tcpip.h>']
+
+// Lifted system headers known to include windows.h on their own. builtin's gc.h does
+// so for the Win32 thread declarations of the Boehm GC.
+const c_headers_including_windows_h = ['<windows.h>', '<gc.h>', '<gc/gc.h>']
+
+// c_preserved_directive_includes reports whether a lifted system include directive
+// includes one of `headers`, either on its own or inside a guarded multi-line block.
+fn c_preserved_directive_includes(directive string, headers []string) bool {
+	if !c_contains_preserved_system_include_directive(directive) {
 		return false
 	}
 	for line in directive.split_into_lines() {
 		clean := trimmed_space(line)
-		if c_is_preserved_system_include_directive(clean) && c_directive_arg(clean) == '<winsock2.h>' {
+		if c_is_preserved_system_include_directive(clean) && c_directive_arg(clean) in headers {
 			return true
 		}
 	}
 	return false
+}
+
+// emit_preserved_c_directive_without_legacy_winsock emits a header that includes
+// windows.h on its own and is followed by winsock2.h. Without WIN32_LEAN_AND_MEAN,
+// windows.h loads the legacy winsock.h, whose declarations winsock2.h then redefines:
+// GCC and Clang only warn about that, MSVC rejects the translation unit. builtin's
+// gc.h is such a header, and builtin is ordered before the modules that use sockets.
+// winsock.h is guarded by _WINSOCKAPI_ in the Windows SDK, MinGW and TinyCC headers
+// alike, so defining it around the include keeps winsock.h out without moving any
+// header: reordering would cut a prerequisite header off from the winsock2.h that it
+// configures. The macro is released afterwards, so winsock2.h still comes first.
+fn (mut g FlatGen) emit_preserved_c_directive_without_legacy_winsock(directive string) {
+	g.writeln('#ifndef _WINSOCKAPI_')
+	g.writeln('#define _WINSOCKAPI_')
+	g.writeln('#define V_LEGACY_WINSOCK_GUARD')
+	g.writeln('#endif')
+	g.emit_preserved_c_directive(directive)
+	g.writeln('#ifdef V_LEGACY_WINSOCK_GUARD')
+	g.writeln('#undef V_LEGACY_WINSOCK_GUARD')
+	// A guarded block that includes winsock2.h itself leaves the macro to that header.
+	g.writeln('#ifndef _WINSOCK2API_')
+	g.writeln('#undef _WINSOCKAPI_')
+	g.writeln('#endif')
+	g.writeln('#endif')
 }
 
 fn c_is_ptrace_system_include_directive(directive string) bool {

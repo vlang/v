@@ -88,11 +88,17 @@ fn test_windows_translation_unit_interposes_windows_header_before_dependent_head
 	assert c_code.count('#include <windows.h>') == 1
 }
 
-fn test_windows_translation_unit_hoists_winsock_before_headers_that_include_windows_header() {
+// legacy_winsock_guarded is the C that keeps windows.h from loading the legacy
+// winsock.h while `directive` is included, and releases the macro again afterwards.
+fn legacy_winsock_guarded(directive string) string {
+	return '#ifndef _WINSOCKAPI_\n#define _WINSOCKAPI_\n#define V_LEGACY_WINSOCK_GUARD\n#endif\n${directive}\n#ifdef V_LEGACY_WINSOCK_GUARD\n#undef V_LEGACY_WINSOCK_GUARD\n#ifndef _WINSOCK2API_\n#undef _WINSOCKAPI_\n#endif\n#endif\n'
+}
+
+fn test_windows_translation_unit_keeps_legacy_winsock_out_of_headers_that_include_windows_header() {
 	// builtin is ordered before every module that uses sockets, and with the Boehm GC
-	// its <gc.h> includes windows.h itself. Emitted in module order, that loaded the
-	// legacy winsock.h first, and MSVC then rejected `os`'s winsock2.h with
-	// `'sockaddr': 'struct' type redefinition` for every program importing `os`.
+	// its <gc.h> includes windows.h itself. That loaded the legacy winsock.h first, and
+	// MSVC then rejected `os`'s winsock2.h with `'sockaddr': 'struct' type redefinition`
+	// for every program importing `os`.
 	mut g := windows_preamble_test_gen()
 	g.add_c_directive('builtin', '#include <gc.h>', false)
 	g.add_c_directive('os', '#include <io.h>', false)
@@ -100,48 +106,87 @@ fn test_windows_translation_unit_hoists_winsock_before_headers_that_include_wind
 	g.add_c_directive('net', '#include <ws2tcpip.h>', false)
 	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
-	winsock_index := c_code.index('#include <winsock2.h>')?
+	assert c_code.contains(legacy_winsock_guarded('#include <gc.h>') + '#include <io.h>\n'), c_code
+	// No header moves: the guard alone keeps winsock.h out of gc.h's windows.h.
 	gc_index := c_code.index('#include <gc.h>')?
 	io_index := c_code.index('#include <io.h>')?
+	winsock_index := c_code.index('#include <winsock2.h>')?
 	ws2tcpip_index := c_code.index('#include <ws2tcpip.h>')?
 	windows_index := c_code.index('#include <windows.h>')?
-	assert winsock_index < gc_index
-	// Only winsock2.h moves; the other headers keep their module order.
 	assert gc_index < io_index
-	assert io_index < ws2tcpip_index
+	assert io_index < winsock_index
+	assert winsock_index < ws2tcpip_index
 	assert ws2tcpip_index < windows_index
+	assert c_code.count('#define _WINSOCKAPI_') == 1
 	assert c_code.count('#include <winsock2.h>') == 1
 	assert c_code.count('#include <windows.h>') == 1
 }
 
-fn test_windows_translation_unit_hoists_winsock_with_its_guard_context() {
-	mut g := windows_preamble_test_gen()
-	g.add_c_directive('builtin', '#include <gc.h>', false)
-	g.add_c_directive('main', '#ifdef USE_SOCKETS', false)
-	g.add_c_directive('main', '#define FD_SETSIZE 1024', false)
-	g.add_c_directive('main', '#include <winsock2.h>', false)
-	g.add_c_directive('main', '#endif', false)
-	g.add_c_directive('picoev', '#if defined(_WIN32)\n#include <winsock2.h>\n#include <ws2tcpip.h>\n#endif',
-		false)
-	g.emit_translation_unit_include_directives()
-	c_code := g.sb.str()
-	guarded := '#ifdef USE_SOCKETS\n#define FD_SETSIZE 1024\n#include <winsock2.h>\n#endif\n'
-	block := '#if defined(_WIN32)\n#include <winsock2.h>\n#include <ws2tcpip.h>\n#endif\n'
-	gc_index := c_code.index('#include <gc.h>')?
-	assert c_code.index(guarded)? < gc_index
-	assert c_code.index(block)? < gc_index
-	assert c_code.count('#include <winsock2.h>') == 2
+fn test_windows_translation_unit_keeps_winsock_prerequisite_headers_in_place() {
+	// A header that configures Winsock (FD_SETSIZE, ...) has to stay ahead of the
+	// winsock2.h it configures, with or without a windows.h-including header before it.
+	for with_gc in [true, false] {
+		mut g := windows_preamble_test_gen()
+		if with_gc {
+			g.add_c_directive('builtin', '#include <gc.h>', false)
+		}
+		g.add_c_directive('main', '#include <project/socket_config.h>', false)
+		g.add_c_directive('main', '#define FD_SETSIZE 1024', false)
+		g.add_c_directive('main', '#include <winsock2.h>', false)
+		g.emit_translation_unit_include_directives()
+		c_code := g.sb.str()
+		assert c_code.contains('#include <project/socket_config.h>\n#define FD_SETSIZE 1024\n#include <winsock2.h>\n'), c_code
+		assert c_code.contains(legacy_winsock_guarded('#include <gc.h>')) == with_gc, c_code
+		assert c_code.contains('_WINSOCKAPI_') == with_gc, c_code
+		if with_gc {
+			assert c_code.index('#include <gc.h>')? < c_code.index('#include <project/socket_config.h>')?
+		}
+	}
 }
 
-fn test_non_windows_translation_unit_keeps_winsock_in_module_order() {
-	mut g := FlatGen.new()
-	g.a = &flat.FlatAst{}
-	g.target = pref.target_from('linux', 'amd64') or { panic(err) }
-	g.add_c_directive('builtin', '#include <gc.h>', false)
-	g.add_c_directive('os', '#include <winsock2.h>', false)
+fn test_windows_translation_unit_guards_every_windows_header_including_form() {
+	mut g := windows_preamble_test_gen()
+	g.add_c_directive('builtin', '#if defined(_WIN32)\n#include <gc/gc.h>\n#endif', false)
+	g.add_c_directive('term', '#ifdef USE_CONSOLE', false)
+	g.add_c_directive('term', '#include <windows.h>', false)
+	g.add_c_directive('term', '#endif', false)
+	// ws2tcpip.h includes winsock2.h itself.
+	g.add_c_directive('net', '#include <ws2tcpip.h>', false)
 	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
-	assert c_code.index('#include <gc.h>')? < c_code.index('#include <winsock2.h>')?
+	block := legacy_winsock_guarded('#if defined(_WIN32)\n#include <gc/gc.h>\n#endif')
+	// The guard stays inside the lifted context of the include that it protects.
+	guarded := '#ifdef USE_CONSOLE\n' + legacy_winsock_guarded('#include <windows.h>') + '#endif\n'
+	assert c_code.contains(block), c_code
+	assert c_code.contains(guarded), c_code
+	assert c_code.index(block)? < c_code.index(guarded)?
+	assert c_code.index(guarded)? < c_code.index('#include <ws2tcpip.h>')?
+	assert c_code.count('#include <windows.h>') == 1
+}
+
+fn test_translation_unit_leaves_headers_alone_without_a_later_winsock_include() {
+	// Nothing to protect: no winsock2.h, or winsock2.h already ahead of gc.h.
+	mut plain := windows_preamble_test_gen()
+	plain.add_c_directive('builtin', '#include <gc.h>', false)
+	plain.add_c_directive('os', '#include <io.h>', false)
+	plain.emit_translation_unit_include_directives()
+	assert !plain.sb.str().contains('_WINSOCKAPI_')
+
+	mut ordered := windows_preamble_test_gen()
+	ordered.add_c_directive('builtin', '#include <winsock2.h>', false)
+	ordered.add_c_directive('builtin', '#include <gc.h>', false)
+	ordered.emit_translation_unit_include_directives()
+	assert !ordered.sb.str().contains('_WINSOCKAPI_')
+
+	mut linux := FlatGen.new()
+	linux.a = &flat.FlatAst{}
+	linux.target = pref.target_from('linux', 'amd64') or { panic(err) }
+	linux.add_c_directive('builtin', '#include <gc.h>', false)
+	linux.add_c_directive('os', '#include <winsock2.h>', false)
+	linux.emit_translation_unit_include_directives()
+	linux_code := linux.sb.str()
+	assert !linux_code.contains('_WINSOCKAPI_')
+	assert linux_code.index('#include <gc.h>')? < linux_code.index('#include <winsock2.h>')?
 }
 
 fn test_thread_local_decl_uses_portable_c_dialects() {
