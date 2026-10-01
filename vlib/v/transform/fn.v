@@ -11517,14 +11517,18 @@ fn (mut t Transformer) lower_owned_array_detach_call(node flat.Node, base_id fla
 		}
 		capacity := t.snapshot_expr_for_reuse(t.a.child(&node, 1))
 		args << capacity
-		if method == 'grow_cap' {
-			t.make_infix(.gt, capacity, t.make_int_literal(0))
-		} else if method == 'grow_len' {
-			t.make_infix(.gt, t.make_infix(.plus, capacity, t.make_selector(array_value, 'len', 'int')),
-				t.make_selector(array_value, 'cap', 'int'))
+		current_cap := t.make_cast('i64', t.make_selector(array_value, 'cap', 'int'), 'i64')
+		required := if method in ['grow_cap', 'grow_len'] {
+			field := if method == 'grow_cap' { 'cap' } else { 'len' }
+			t.make_infix(.plus, t.make_cast('i64', capacity, 'i64'), t.make_cast('i64', t.make_selector(array_value, field, 'int'), 'i64'))
 		} else {
-			t.make_infix(.gt, capacity, t.make_selector(array_value, 'cap', 'int'))
+			t.make_cast('i64', capacity, 'i64')
 		}
+		flags := t.make_selector(array_value, 'flags', 'ArrayFlags')
+		nogrow := t.make_selector(t.make_ident('ArrayFlags'), 'nogrow', 'ArrayFlags')
+		can_grow := t.make_infix(.eq, t.make_infix(.amp, flags, nogrow), t.make_int_literal(0))
+		valid_size := t.make_infix(.le, required, t.make_int_literal(max_int))
+		t.make_infix(.logical_and, t.make_infix(.logical_and, valid_size, can_grow), t.make_infix(.gt, required, current_cap))
 	} else {
 		t.make_infix(.gt, t.make_selector(array_value, 'len', 'int'), t.make_int_literal(0))
 	}
