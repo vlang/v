@@ -324,4 +324,15 @@ fn test_heap_value_captures_snapshot_the_semantic_value() {
 	record.value = 134
 	assert read_record() == 133
 	assert records[0].value == 134
+	mut buffer := [u64(141), 142]!
+	addresses << &buffer[0]
+	bump_buffer := fn [mut buffer] () u64 {
+		buffer[0]++
+		return buffer[0]
+	}
+	buffer[0] = 143
+	assert bump_buffer() == 142
+	assert bump_buffer() == 143
+	assert buffer[0] == 143
+	assert *addresses[1] == 143
 }

@@ -12370,12 +12370,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				// value itself in the heap context and expose a pointer alias only
 				// inside the lifted body; storing `&outer_local` would dangle when a
 				// closure is returned and would make separate instances interfere.
-				context_field_types[child.value] = if is_ref_capture
-					&& t.is_fixed_array_type(capture_type) {
-					'&${capture_type}'
-				} else {
-					capture_type
-				}
+				context_field_types[child.value] = capture_type
 				capture_by_ref[child.value] = is_ref_capture
 			}
 		} else {
