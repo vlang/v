@@ -96,6 +96,8 @@ fn noops(mut values []Resource) {
 	values << []Resource{}
 	values.prepend([]Resource{})
 	values.insert(0, []Resource{})
+	values.delete_many(0, 0)
+	values.delete_many(values.len, 0)
 }
 
 fn change(mut values []Resource, operation int) []Resource {
@@ -117,22 +119,28 @@ fn change(mut values []Resource, operation int) []Resource {
 		assert !dropped[popped.id]
 	} else if operation == 7 {
 		values.grow_cap(1)
-	} else {
+	} else if operation == 8 {
 		unsafe { values.grow_len(1) }
 		values[2] = fresh()
+	} else if operation == 9 {
+		values << values
+	} else if operation == 10 {
+		values.prepend(values)
+	} else {
+		values.insert(1, values)
 	}
 	return values
 }
 
 fn main() {
-	for operation in 0 .. 9 {
+	for operation in 0 .. 12 {
 		mut fixed := [fresh(), fresh()]
 		original_id := fixed[0].id
 		before := clone_count
 		noops(mut fixed[..])
 		assert clone_count == before
 		changed := change(mut fixed[..], operation)
-		assert clone_count == before + 2
+		assert clone_count == before + if operation >= 9 { 4 } else { 2 }
 		assert fixed[0].id == original_id
 		assert fixed[0].value == 7
 		assert !dropped[original_id]
@@ -160,15 +168,30 @@ fn (mut h Handle) drop() {
 	assert !dropped[h.id]
 	dropped[h.id] = true
 }
+fn duplicate_empty(mut values []Handle) {
+	values << values
+	values.prepend(values)
+	values.insert(0, values)
+}
+fn delete_empty_range(mut values []Handle) {
+	values.delete_many(0, 0)
+	values.delete_many(values.len, 0)
+}
 fn grow(mut values []Handle, reserve bool) []Handle {
 	if reserve { values.ensure_cap(2) }
 	values << Handle{2}
 	return values
 }
 fn main() {
+	mut empty := []Handle{}
+	duplicate_empty(mut empty)
+	assert empty.len == 0
 	for reserve in [false, true] {
 		dropped = map[int]bool{}
 		mut fixed := [Handle{1}]
+		delete_empty_range(mut fixed[..])
+		assert fixed.len == 1 && fixed[0].id == 1
+		assert dropped.len == 0
 		result := grow(mut fixed[0..0], reserve)
 		assert result.len == 1
 		assert result[0].id == 2
@@ -564,4 +587,48 @@ fn main() {
 }
 ')
 	assert output == 'ok'
+}
+
+fn test_uncloneable_mut_array_bulk_copies_fail_before_duplicating_owners() {
+	for index, operation in ['values << values', 'values.prepend(values)', 'values.insert(0, values)'] {
+		for borrowed in [false, true] {
+			name := 'uncloneable_bulk_${index}_${borrowed}'
+			source := 'interface Drop { mut: drop() }
+struct Handle implements Drop { id int }
+fn (mut h Handle) drop() {}
+fn duplicate(mut values []Handle) {
+	${operation}
+}
+fn main() {
+	mut values := [Handle{1}]
+	if ${borrowed} { duplicate(mut values[..]) } else { duplicate(mut values) }
+}
+'
+			build := borrow_storage_compile(name, source)
+			assert build.exit_code == 0, build.output
+			run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+			assert run.exit_code != 0, run.output
+			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
+		}
+	}
+}
+
+fn test_empty_owned_array_deletion_preserves_invalid_index_diagnostics() {
+	for index in [-1, 2] {
+		name := 'empty_delete_invalid_${index}'
+		source := 'interface Drop { mut: drop() }
+struct Handle implements Drop { id int }
+fn (mut h Handle) drop() {}
+fn delete_empty_range(mut values []Handle) { values.delete_many(${index}, 0) }
+fn main() {
+	mut values := [Handle{1}]
+	delete_empty_range(mut values[..])
+}
+'
+		build := borrow_storage_compile(name, source)
+		assert build.exit_code == 0, build.output
+		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+		assert run.exit_code != 0, run.output
+		assert run.output.contains('array.delete: index out of range'), run.output
+	}
 }
