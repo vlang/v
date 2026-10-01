@@ -7038,15 +7038,20 @@ fn (t &Transformer) closure_return_candidate_use_is_safe(id flat.NodeId, name st
 // allocation so `v` is a `&T` to a heap object. A struct literal becomes `&T{..}` (the cgen
 // memdup's it); any other initializer is copied into a stack temp and memdup'd. Subsequent
 // `v.field = ..` writes then mutate the heap object the returned pointer alias also sees.
-fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string, elem_typ string) []flat.NodeId {
-	raw_typ := t.raw_var_type(var_name)
+fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string, elem_typ string, raw_typ string) []flat.NodeId {
 	rhs_id := t.a.child(&node, 1)
 	rhs := t.a.nodes[int(rhs_id)]
 	mut stmts := []flat.NodeId{}
 	transformed_init := t.transform_expr(rhs_id)
+	struct_init := rhs.kind == .struct_init
+		&& !(t.expr_uses_ident(transformed_init, var_name)
+			&& (t.heaped_amp_locals[var_name] || t.pointer_value_rvalues[var_name]
+				|| t.pointer_value_lvalues[var_name]))
 	// Statements lifted out while transforming the initializer must precede the heap decl.
 	t.drain_pending(mut stmts)
-	stmts << t.heap_escaping_value_decl(var_name, elem_typ, raw_typ, transformed_init, rhs.kind == .struct_init)
+	t.clear_source_decl_heaped_bindings(node)
+	t.set_var_type_with_raw(var_name, elem_typ, raw_typ)
+	stmts << t.heap_escaping_value_decl(var_name, elem_typ, raw_typ, transformed_init, struct_init)
 	return stmts
 }
 
@@ -15510,11 +15515,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	if node.children_count == 0 {
 		return [id]
 	}
-	if t.multi_assign_rhs_count(node) <= 1 {
-		// Source declarations introduce a new binding. Generated heap declarations
-		// have no source span and must keep their already-lowered storage markers.
-		t.clear_source_decl_heaped_bindings(node)
-	}
+	source_single_decl := node.children_count == 2 && node.pos.is_valid()
 	if discarded := t.try_lower_discarded_spawn_assign(node) {
 		return discarded
 	}
@@ -15542,7 +15543,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		}
 		panic('internal error: empty decl_assign child in ${t.cur_fn_name}: count=${node.children_count} typ=${node.typ} value=${node.value} children=${parts.join('|')}')
 	}
+	lhs := t.a.child_node(&node, 0)
+	shadows_pointer_storage := source_single_decl && lhs.kind == .ident
+		&& (t.heaped_amp_locals[lhs.value] || t.pointer_value_rvalues[lhs.value]
+			|| t.pointer_value_lvalues[lhs.value])
 	mut inferred_typ := ''
+	mut inferred_raw_typ := ''
 	multi_match_decl_type := t.multi_match_smartcast_decl_type(node) or { '' }
 	if node.children_count > 2 && !isnil(t.tc) {
 		rhs_id := t.a.child(&node, 1)
@@ -15786,8 +15792,11 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 						'atomic ${clean_raw}'
 					}
 				}
-				t.set_var_type_with_raw(lhs.value, typ, raw_typ)
+				if !source_single_decl {
+					t.set_var_type_with_raw(lhs.value, typ, raw_typ)
+				}
 				inferred_typ = typ
+				inferred_raw_typ = raw_typ
 			}
 		}
 	}
@@ -15797,14 +15806,16 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	if node.children_count == 2 {
 		src := t.a.child_node(&node, 0)
 		if src.kind == .ident && src.value in t.mut_fixed_array_capture_sources
-			&& src.value !in t.heaped_amp_locals && t.is_fixed_array_type(inferred_typ) {
+			&& (source_single_decl || src.value !in t.heaped_amp_locals)
+			&& t.is_fixed_array_type(inferred_typ) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: a closure captures it mutably')
-			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ, inferred_raw_typ)
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
-			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
+			&& (source_single_decl || src.value !in t.heaped_amp_locals)
+			&& t.heapable_value_type(inferred_typ) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: its address escapes')
-			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ, inferred_raw_typ)
 		}
 		// A struct declared `@[heap]` is always heap-allocated at its own declaration,
 		// regardless of whether its address is later taken (`@[heap]` is an unconditional
@@ -15812,9 +15823,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		if src.kind == .ident && node.value != stack_value_decl_marker
 			&& node.value != zeroed_stack_value_decl_marker
 			&& !decl_assign_value_is_shared(node.value)
-			&& src.value !in t.heaped_amp_locals && t.heap_attr_struct_type(inferred_typ) {
+			&& (source_single_decl || src.value !in t.heaped_amp_locals)
+			&& t.heap_attr_struct_type(inferred_typ) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local of a `@[heap]` struct')
-			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ, inferred_raw_typ)
 		}
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
@@ -15826,6 +15838,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				lhs := t.make_ident(child.value)
 				t.set_node_typ(int(lhs), multi_match_decl_type)
 				new_children << lhs
+			} else if source_single_decl && child.kind == .ident {
+				new_lhs := t.a.add_node(child)
+				if inferred_typ.len > 0 {
+					t.set_node_typ(int(new_lhs), inferred_typ)
+				}
+				new_children << new_lhs
 			} else {
 				new_children << t.transform_lvalue(child_id)
 			}
@@ -15839,7 +15857,9 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				amp_src := t.a.nodes[int(t.a.child(&amp, 0))]
 				if amp_src.kind == .ident && amp_src.value in t.heaped_amp_locals {
 					inferred_typ = t.var_type(amp_src.value)
-					t.set_decl_var_type(node, t.a.nodes[int(t.a.child(&node, 0))].value, inferred_typ)
+					if !source_single_decl {
+						t.set_decl_var_type(node, t.a.nodes[int(t.a.child(&node, 0))].value, inferred_typ)
+					}
 				}
 			}
 		} else {
@@ -15865,6 +15885,18 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				new_children << t.clone_borrowed_storage_projection(child_id, t.transform_expr_for_type(child_id, lhs_type), clone_type)
 			}
 		}
+	}
+	// Initializers read incoming bindings before the new declaration replaces them.
+	if shadows_pointer_storage && new_children.len == 2
+		&& t.expr_uses_ident(new_children[1], lhs.value) {
+		tmp_name := t.new_temp('decl_init')
+		tmp_type := if inferred_typ.len > 0 { inferred_typ } else { t.node_type(new_children[1]) }
+		t.pending_stmts << t.make_stack_value_decl_assign_typed(tmp_name, new_children[1], tmp_type)
+		new_children[1] = t.make_ident(tmp_name)
+	}
+	t.clear_source_decl_heaped_bindings(node)
+	if source_single_decl && lhs.kind == .ident && inferred_typ.len > 0 {
+		t.set_var_type_with_raw(lhs.value, inferred_typ, inferred_raw_typ)
 	}
 	if node.children_count == 2 {
 		lhs := t.a.nodes[int(new_children[0])]

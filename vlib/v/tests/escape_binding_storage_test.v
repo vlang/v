@@ -107,3 +107,75 @@ fn test_implicit_result_errors_keep_retained_binding_addresses() {
 	assert out[0] == out[2]
 	assert out[0] != out[1]
 }
+
+@[noinline]
+fn single_shadow_binding_references() []&int {
+	mut x := 251
+	outer := &x
+	mut inner := unsafe { &int(nil) }
+	// Nested unsafe scopes permit the shadowing needed to exercise both initializer paths.
+	unsafe {
+		unsafe {
+			x := &x
+			assert x == outer
+			assert *x == 251
+		}
+		unsafe {
+			mut x := x
+			x++
+			inner = &x
+		}
+	}
+	x += 2
+	return [outer, inner]
+}
+
+fn shadow_binding_pair(value int) (int, int) {
+	return value, value + 1
+}
+
+@[noinline]
+fn tuple_shadow_binding_references() []&int {
+	mut x := 271
+	mut kept := [&x]
+	unsafe {
+		unsafe {
+			x, y := shadow_binding_pair(x)
+			kept << &x
+			kept << &y
+		}
+	}
+	x += 2
+	return kept
+}
+
+struct ShadowBindingRecord {
+mut:
+	value int
+}
+
+@[noinline]
+fn struct_shadow_binding_references() []&ShadowBindingRecord {
+	mut x := ShadowBindingRecord{ value: 281 }
+	mut kept := [&x]
+	unsafe {
+		unsafe {
+			x := ShadowBindingRecord{ value: x.value + 1 }
+			kept << &x
+		}
+	}
+	x.value += 2
+	return kept
+}
+
+fn test_shadow_initializers_read_incoming_heap_storage() {
+	single := single_shadow_binding_references()
+	tuple := tuple_shadow_binding_references()
+	records := struct_shadow_binding_references()
+	assert escape_binding_overwrite_stack() == 7
+	assert single.map(*it) == [253, 252]
+	assert tuple.map(*it) == [273, 271, 272]
+	assert records.map(it.value) == [283, 282]
+	assert single[0] != single[1]
+	assert records[0] != records[1]
+}
