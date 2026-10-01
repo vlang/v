@@ -1531,7 +1531,7 @@ fn (mut t Transformer) transform_if_branch_value(id flat.NodeId, target_type str
 	if converted := t.fixed_array_value_to_dynamic(id, target_type) {
 		return converted
 	}
-	return t.clone_borrowed_projection(id, t.transform_expr_for_type(id, target_type), target_type)
+	return t.clone_borrowed_storage_projection(id, t.transform_expr_for_type(id, target_type), target_type)
 }
 
 // transform_is_condition transforms an `x is Type` condition node into the
