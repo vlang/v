@@ -31,7 +31,11 @@ fn main() {
 	mut args := ['-gc', 'none', '-cc', @CCOMPILER]
 	$if clang || gcc {
 		// Clang 16+ rejects the historical NodePayloadTable** -> uint64_t* ABI.
-		args << ['-cflags', '-Werror=incompatible-pointer-types']
+		args << ['-cstrict', '-cflags', '-Werror=incompatible-pointer-types']
+	}
+	$if clang {
+		// Keep existing const-discard warnings separate from the slot ABI mismatch.
+		args << ['-cflags', '-Wno-error=incompatible-pointer-types-discards-qualifiers']
 	}
 	args << ['run', source]
 	result := cmdexec.run(@VEXE, args)
