@@ -6374,6 +6374,7 @@ However a reference to `b` is part of `e` which is returned. Also a reference to
 
 Heap allocation preserves value reads in declaration initializers. An initializer reads
 the bindings that are visible before the new declaration is installed.
+Leaving a nested scope restores the storage and type metadata of outer heap-backed bindings.
 
 Things become less obvious when a reference to an object is passed as a function argument:
 

@@ -179,3 +179,45 @@ fn test_shadow_initializers_read_incoming_heap_storage() {
 	assert single[0] != single[1]
 	assert records[0] != records[1]
 }
+
+@[noinline]
+fn block_shadow_preserves_outer_heap_type() &int {
+	mut x := 301
+	kept := &x
+	unsafe {
+		unsafe {
+			x := 'inner'
+			assert x == 'inner'
+			assert typeof(x).name == 'string'
+		}
+	}
+	assert typeof(x).name == 'int'
+	x = 303
+	return kept
+}
+
+@[noinline]
+fn loop_shadow_preserves_outer_heap_type() &int {
+	mut x := 311
+	kept := &x
+	unsafe {
+		unsafe {
+			for _ in 0 .. 1 {
+				x := 'inner'
+				assert x == 'inner'
+				assert typeof(x).name == 'string'
+			}
+			assert typeof(x).name == 'int'
+			x = 313
+		}
+	}
+	return kept
+}
+
+fn test_nested_scopes_restore_outer_heap_binding_types() {
+	block := block_shadow_preserves_outer_heap_type()
+	loop := loop_shadow_preserves_outer_heap_type()
+	assert escape_binding_overwrite_stack() == 7
+	assert *block == 303
+	assert *loop == 313
+}
