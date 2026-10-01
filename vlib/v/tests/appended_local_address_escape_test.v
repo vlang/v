@@ -376,3 +376,49 @@ fn test_map_values_and_keys_keep_retained_binding_addresses() {
 	copied_keys.sort()
 	assert copied_keys == [7, 8]
 }
+
+@[noinline]
+fn append_fixed_mutable_iteration_addresses(mut out []&u64) {
+	mut first := [u64(161), 162]!
+	for mut item in first {
+		out << &item
+		item += 10
+	}
+	mut second := [u64(163), 164]!
+	for mut item in second {
+		out << &item
+		item += 10
+	}
+	mut third := [u64(165), 166]!
+	mut delayed := unsafe { &u64(nil) }
+	for mut item in third {
+		delayed = &item
+		item += 10
+	}
+	out << delayed
+	assert first == [u64(171), 172]!
+	assert second == [u64(173), 174]!
+	assert third == [u64(175), 176]!
+	assert sizeof(first) == 2 * sizeof(u64)
+	mut fourth := [u64(167), 168, 169]!
+	for mut item in fourth[1..] {
+		out << &item
+		item += 10
+	}
+	assert fourth == [u64(167), 178, 179]!
+	for mut item in escaping_fixed_iteration_values() {
+		out << &item
+		item += 10
+	}
+}
+
+fn escaping_fixed_iteration_values() [2]u64 {
+	return [u64(177), 178]!
+}
+
+fn test_mutable_fixed_iteration_retains_backing_array_storage() {
+	mut out := []&u64{}
+	append_fixed_mutable_iteration_addresses(mut out)
+	_ = use_the_stack(10)
+	assert out.map(*it) == [u64(171), 172, 173, 174, 176, 178, 179, 187, 188]
+}
