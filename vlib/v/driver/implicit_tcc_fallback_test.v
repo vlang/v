@@ -141,3 +141,73 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 	assert quiet.exit_code == 0, quiet.output
 	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
 }
+
+// TCC has no `-framework`/`-F` support, but links a framework's `.tbd` stub or
+// binary when it is given as a file.
+fn test_tcc_macos_framework_flags_are_replaced_by_link_files() {
+	dir := os.join_path(os.vtmp_dir(), 'v_tcc_macos_frameworks_${os.getpid()}')
+	sdk := os.join_path(dir, 'MacOSX.sdk')
+	sdk_frameworks := os.join_path(sdk, 'System', 'Library', 'Frameworks')
+	custom_frameworks := os.join_path(dir, 'custom')
+	os.mkdir_all(os.join_path(sdk_frameworks, 'Foundation.framework'))!
+	os.mkdir_all(os.join_path(custom_frameworks, 'Custom.framework'))!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	foundation := os.join_path(sdk_frameworks, 'Foundation.framework', 'Foundation.tbd')
+	custom := os.join_path(custom_frameworks, 'Custom.framework', 'Custom')
+	os.write_file(foundation, '')!
+	os.write_file(custom, '')!
+	flags := ['-o', 'out', 'src.c', '-F', custom_frameworks, '-framework', 'Foundation',
+		'-F${custom_frameworks}', '-framework', 'Custom', '-framework', 'V3NoSuchFramework',
+		'-weak_framework', 'Foundation', '-lobjc']
+	assert v3_tcc_macos_framework_flags(flags, 'macos', sdk) == ['-o', 'out', 'src.c', foundation,
+		custom, '-framework', 'V3NoSuchFramework', '-weak_framework', 'Foundation', '-lobjc']
+	assert v3_tcc_macos_framework_flags(flags, 'linux', sdk) == flags
+}
+
+// The macos module's Objective-C bridge must not stop the bundled tcc from
+// building programs that include the SDK runtime headers themselves.
+fn test_implicit_tcc_builds_programs_using_the_macos_module() {
+	$if !macos {
+		return
+	}
+	vexe := @VEXE
+	bundled_tcc := os.join_path(os.dir(vexe), 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(bundled_tcc) {
+		eprintln('skipping: ${vexe} has no bundled tcc')
+		return
+	}
+	sdk := macos_sdk_root()
+	if sdk == '' || !os.is_file(os.join_path(sdk, 'System', 'Library', 'Frameworks',
+		'Foundation.framework', 'Foundation.tbd')) {
+		eprintln('skipping: no macOS SDK with a Foundation.tbd stub')
+		return
+	}
+	dir := os.join_path(os.vtmp_dir(), 'v_implicit_tcc_macos_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'objc_class.v')
+	os.write_file(source, "import macos\n\n#include <objc/runtime.h>\n\nfn C.class_getName(voidptr) &char\n\nfn main() {\n\tprintln(unsafe { cstring_to_vstring(C.class_getName(macos.get_class('NSString'))) })\n}\n")!
+	exe := os.join_path(dir, 'objc_class')
+	old_vflags := os.getenv_opt('VFLAGS')
+	old_vosargs := os.getenv_opt('VOSARGS')
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+		if value := old_vosargs {
+			os.setenv('VOSARGS', value, true)
+		}
+	}
+	build := cmdexec.run(vexe, ['-nocache', '-o', exe, source])
+	assert build.exit_code == 0, build.output
+	assert !build.output.contains('implicit tcc could not be used'), build.output
+	run := cmdexec.run(exe, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'NSString'
+}
