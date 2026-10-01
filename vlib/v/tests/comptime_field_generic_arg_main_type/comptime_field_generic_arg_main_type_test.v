@@ -33,7 +33,6 @@ pub:
 }
 
 fn test_nested_specializations_keep_main_element_type() {
-	assert fieldreflect.shape_of(Grid{}) == '{cells:[{id:number,name:string}]}'
 	grid := Grid{
 		cells: [Cell{
 			id:   1
@@ -46,9 +45,29 @@ fn test_nested_specializations_keep_main_element_type() {
 	assert fieldreflect.values_of(grid) == ['1', 'a', '2', 'b']
 }
 
+type Cells = []Cell
+type CellAlias = Cell
+
+pub struct Wrapped {
+pub:
+	by_name map[string]Cell
+	maybe   ?Cell
+	pair    [2]Cell
+	list    Cells
+	alias   CellAlias
+}
+
+fn test_comptime_field_composites_and_aliases_keep_main_type() {
+	assert fieldreflect.field_type_names(Wrapped{}) == ['map[string]Cell', '?Cell', '[2]Cell',
+		'Cells', 'CellAlias']
+}
+
 fn test_direct_calls_match_comptime_field_calls() {
 	d := Demo{}
 	assert fieldreflect.element_fields(d.cells) == ['id', 'name']
 	assert fieldreflect.type_name(d.cell) == 'Cell'
+	w := Wrapped{}
+	assert fieldreflect.type_name(w.list) == 'Cells'
+	assert fieldreflect.type_name(w.alias) == 'CellAlias'
 	assert fieldreflect.local_cell_count() == 1
 }

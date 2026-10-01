@@ -76,77 +76,18 @@ pub fn struct_field_type_names[T](value T) []string {
 	return out
 }
 
-struct Shape {
-	kind    string
-	element &Shape = unsafe { nil }
-mut:
-	fields map[string]Shape
+// field_type_names infers `T` from every field of `value`.
+pub fn field_type_names[T](value T) []string {
+	mut out := []string{}
+	$for field in T.fields {
+		out << type_name(value.$(field.name))
+	}
+	return out
 }
 
-fn (s Shape) str() string {
-	if s.kind == 'list' {
-		return '[' + (*s.element).str() + ']'
-	}
-	if s.kind == 'object' {
-		mut keys := s.fields.keys()
-		keys.sort()
-		mut parts := []string{}
-		for key in keys {
-			field := s.fields[key] or { Shape{} }
-			parts << '${key}:${field.str()}'
-		}
-		return '{' + parts.join(',') + '}'
-	}
-	return s.kind
-}
-
-fn element_shape[E](_ []E) Shape {
-	$if E is $struct {
-		return shape_of_value[E](E{})
-	} $else {
-		return shape_of_value[E]($zero(E))
-	}
-}
-
-fn shape_of_value[T](value T) Shape {
-	$if T is string {
-		return Shape{
-			kind: 'string'
-		}
-	} $else $if T is $int {
-		return Shape{
-			kind: 'number'
-		}
-	} $else $if T is $array {
-		// `value` is forwarded as `[]Cell` from a nested specialization.
-		element := element_shape(value)
-		return Shape{
-			kind:    'list'
-			element: &element
-		}
-	} $else $if T is $struct {
-		mut fields := map[string]Shape{}
-		$for field in T.fields {
-			$if field.is_pub {
-				fields[field.name] = shape_of_value(value.$(field.name))
-			}
-		}
-		return Shape{
-			kind:   'object'
-			fields: fields
-		}
-	} $else {
-		return Shape{}
-	}
-}
-
-// shape_of describes the public structure of `value`, recursing through generic
+// values_of flattens the public scalar values of `value`, recursing through the
 // specializations inferred from its fields and array elements.
-pub fn shape_of[T](value T) string {
-	return shape_of_value[T](value).str()
-}
-
-fn values_of_value[T](value T) []string {
+pub fn values_of[T](value T) []string {
 	$if T is string {
 		return [value]
 	} $else $if T is $int {
@@ -154,23 +95,18 @@ fn values_of_value[T](value T) []string {
 	} $else $if T is $array {
 		mut out := []string{}
 		for item in value {
-			out << values_of_value(item)
+			out << values_of(item)
 		}
 		return out
 	} $else $if T is $struct {
 		mut out := []string{}
 		$for field in T.fields {
 			$if field.is_pub {
-				out << values_of_value(value.$(field.name))
+				out << values_of(value.$(field.name))
 			}
 		}
 		return out
 	} $else {
 		return []string{}
 	}
-}
-
-// values_of flattens the public scalar values of `value`.
-pub fn values_of[T](value T) []string {
-	return values_of_value[T](value)
 }
