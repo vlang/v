@@ -6,9 +6,12 @@ import v.vmod
 
 struct Module {
 mut:
-	name               string
-	url                string
-	version            string // specifies the requested version.
+	name    string
+	url     string
+	version string // specifies the requested version.
+	// requested is the dependency string the module was parsed from, as it is
+	// written in the `v.mod` or on the command line, including any `@version`.
+	requested          string
 	tmp_path           string
 	install_path       string
 	install_path_fmted string
@@ -36,10 +39,10 @@ enum ModuleKind {
 	local
 }
 
-fn parse_query(query []string, mut selector VpmInstallServerSelector) []Module {
+fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope) []Module {
 	mut p := Parser{}
 	for m in query {
-		p.parse_module(m, mut selector)
+		p.parse_module(m, mut selector, mut scope)
 	}
 	if p.errors > 0 && p.errors == query.len {
 		exit(1)
@@ -77,7 +80,7 @@ fn (mut p Parser) lookup_registered_name_for_url(manifest_name string, ident str
 	return none
 }
 
-fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) {
+fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, mut scope LockScope) {
 	kind := match true {
 		m.starts_with('https://') { ModuleKind.https }
 		m.starts_with('git@') { ModuleKind.ssh }
@@ -134,7 +137,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 			p.errors++
 			return
 		}
-		settings.vcs.clone(ident, version, tmp_path) or {
+		clone_module_source(settings.vcs, m, ident, version, tmp_path, mut scope) or {
 			vpm_error('failed to install `${ident}`.', details: err.msg())
 			p.errors++
 			return
@@ -197,7 +200,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 			p.errors++
 			return
 		}
-		vcs.clone(info.url, version, tmp_path) or {
+		clone_module_source(vcs, m, info.url, version, tmp_path, mut scope) or {
 			vpm_error('failed to install `${ident}`.', details: err.msg())
 			p.errors++
 			return
@@ -228,12 +231,13 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 		}
 	}
 	mod.install_path_fmted = fmt_mod_path(mod.install_path)
+	mod.requested = m
 	mod.get_installed()
 	p.modules[key] = mod
 	if mod.manifest.dependencies.len > 0 {
 		verbose_println('Found ${mod.manifest.dependencies.len} dependencies for `${mod.name}`: ${mod.manifest.dependencies}.')
 		for d in mod.manifest.dependencies {
-			p.parse_module(d, mut selector)
+			p.parse_module(d, mut selector, mut scope)
 		}
 	}
 }

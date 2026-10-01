@@ -118,6 +118,66 @@ fn vcs_from_str(str string) ?VCS {
 	}
 }
 
+// head_revision returns the full SHA of the current HEAD of the git checkout
+// in `dir`, trimmed, or '' when it cannot be determined, e.g. when `dir` is
+// not a checkout at all. `hg` checkouts are reported as ''.
+fn head_revision(dir string) string {
+	head_vcs := vcs_used_in_dir(dir) or { return '' }
+	if head_vcs != .git {
+		return ''
+	}
+	res := os.execute_opt('git -C ${os.quoted_path(dir)} rev-parse HEAD') or { return '' }
+	return res.output.trim_space()
+}
+
+// head_commit_unix_ts returns the time of the current HEAD of the git checkout
+// in `dir`, as a unix timestamp, or 0 when it cannot be determined. `hg`
+// checkouts are reported as 0.
+fn head_commit_unix_ts(dir string) i64 {
+	head_vcs := vcs_used_in_dir(dir) or { return 0 }
+	if head_vcs != .git {
+		return 0
+	}
+	res := os.execute_opt('git -C ${os.quoted_path(dir)} log -1 --format=%ct') or { return 0 }
+	return res.output.trim_space().i64()
+}
+
+// checkout switches the git checkout in `dir` to the revision `rev`, e.g. the
+// full SHA recorded for a module in the lockfile of a project. `hg` checkouts
+// are left untouched, since a lockfile records git revisions only.
+fn (vcs VCS) checkout(dir string, rev string) {
+	if vcs != .git {
+		return
+	}
+	if rev == '' || rev.starts_with('-') || rev.contains_any(' \0\r\n') {
+		vpm_error('refusing to checkout the invalid revision `${rev}`.')
+		return
+	}
+	cmd := 'git -C ${os.quoted_path(dir)} checkout ${rev}'
+	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
+	os.execute_opt(cmd) or {
+		vpm_error('failed to checkout `${rev}` in `${fmt_mod_path(dir)}`.', details: err.msg())
+	}
+}
+
+// checkout_origin_url returns the source url recorded in the VCS metadata of
+// the checkout in `dir`, or '' when it cannot be determined.
+fn checkout_origin_url(dir string) string {
+	existing_vcs := vcs_used_in_dir(dir) or { return '' }
+	match existing_vcs {
+		.git {
+			res := os.execute_opt('git -C ${os.quoted_path(dir)} remote get-url origin') or {
+				return ''
+			}
+			return res.output.trim_space()
+		}
+		.hg {
+			res := os.execute_opt('hg -R ${os.quoted_path(dir)} paths default') or { return '' }
+			return res.output.trim_space()
+		}
+	}
+}
+
 // parse_git_version retrieves only the stable version part of the output of `git version`.
 // For example: parse_git_version('git version 2.39.3')! will return just '2.39.3'.
 pub fn parse_git_version(version string) !string {

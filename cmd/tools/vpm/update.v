@@ -11,6 +11,9 @@ struct UpdateSession {
 pub struct UpdateResult {
 mut:
 	success bool
+	// install_path is where the updated checkout lives, so that the lockfile
+	// of the project in scope can refresh the entries of the updated modules.
+	install_path string
 }
 
 fn vpm_update(query []string) {
@@ -22,13 +25,17 @@ fn vpm_update(query []string) {
 	ctx := UpdateSession{idents}
 	pp.set_shared_context(&ctx)
 	pp.work_on_items(idents)
+	results := pp.get_results[UpdateResult]()
 	mut errors := 0
-	for res in pp.get_results[UpdateResult]() {
+	for res in results {
 		if !res.success {
 			errors++
 			continue
 		}
 	}
+	// Refresh the lock entries of the project in scope even when some module
+	// failed: the ones that did update sit at new revisions already.
+	refresh_lock_entries(results)
 	if errors > 0 {
 		exit(1)
 	}
@@ -85,5 +92,8 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 	ctx := unsafe { &UpdateSession(pp.get_shared_context()) }
 	vpm_log(@FILE_LINE, @FN, 'ident: ${ident}; ctx: ${ctx}')
 	resolve_dependencies(get_manifest(install_path), ctx.idents)
-	return &UpdateResult{true}
+	return &UpdateResult{
+		success:      true
+		install_path: install_path
+	}
 }

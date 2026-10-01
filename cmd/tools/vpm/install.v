@@ -20,7 +20,7 @@ fn vpm_install(query []string) {
 	}
 
 	mut selector := new_install_server_selector()
-	mut modules := parse_query(if query.len == 0 {
+	dep_strings := if query.len == 0 {
 		if os.exists('./v.mod') {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
@@ -39,7 +39,16 @@ fn vpm_install(query []string) {
 		}
 	} else {
 		query
-	}, mut selector)
+	}
+
+	// Anchor the run to the project in scope, so that the resolved revisions of
+	// its dependencies are recorded in `v.mod.lock` once everything installed.
+	mut scope := LockScope{}
+	if settings.is_local || query.len == 0 {
+		scope.begin()
+	}
+
+	mut modules := parse_query(dep_strings, mut selector, mut scope)
 
 	installed_modules := get_installed_modules()
 
@@ -70,15 +79,16 @@ fn vpm_install(query []string) {
 		}
 	}
 
-	install_modules(modules, selector.selected_url)
+	install_modules(modules, selector.selected_url, mut scope)
+	scope.finish()
 }
 
-fn install_modules(modules []Module, selected_server_url string) {
+fn install_modules(modules []Module, selected_server_url string, mut scope LockScope) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
-		match m.install() {
+		match m.install(mut scope) {
 			.installed {}
 			.failed {
 				errors++
@@ -141,7 +151,7 @@ fn (m Module) manifest_name_was_normalized() bool {
 	return normalized_name != m.manifest.name
 }
 
-fn (m Module) install() InstallResult {
+fn (m Module) install(mut scope LockScope) InstallResult {
 	defer {
 		os.rmdir_all(m.tmp_path) or {}
 	}
@@ -176,6 +186,9 @@ fn (m Module) install() InstallResult {
 			} else {
 				vpm_update([m.name])
 			}
+			// The module sits at a new revision now, so what the lockfile of the
+			// project records for it has to follow.
+			scope.record(m)
 			return .skipped
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
@@ -229,6 +242,7 @@ fn (m Module) install() InstallResult {
 			return .failed
 		}
 	}
+	scope.record(m)
 	return .installed
 }
 

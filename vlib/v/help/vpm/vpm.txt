@@ -1,6 +1,8 @@
 Package Management Utilities:
 
-  install   Installs each PACKAGE.
+  install   Installs each PACKAGE. Dependencies resolved for a project (a directory with
+            a v.mod file) are recorded in a v.mod.lock file next to it; `v install --locked`
+            fails rather than resolving a dependency differently from that file.
 
   link      Symlink the current project into VMODULES.
 
