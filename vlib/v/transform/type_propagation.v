@@ -780,6 +780,13 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 		// supply the method's function type instead.
 		return ''
 	}
+	// An interface declares the types of its fields: do not guess them from the name.
+	iface_name := t.resolve_interface_type_name(lookup_type)
+	if iface_name.len > 0 {
+		if ftyp := t.interface_field_type_name(iface_name, field_name) {
+			return ftyp
+		}
+	}
 	if ftyp := t.lookup_unique_field_type(field_name) {
 		return ftyp
 	}
