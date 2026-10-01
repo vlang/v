@@ -455,7 +455,7 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 	mut children := []flat.NodeId{}
 	if is_result && t.has_ierror_interface() {
 		zero := t.make_struct_init('IError')
-		children << t.make_decl_assign_typed('err', zero, 'IError')
+		t.append_implicit_err_decl(mut children, zero)
 		pointer := t.make_ident(ptr_name)
 		found := t.make_infix(.ne, pointer, t.a.add(.nil_literal))
 		cast := t.make_cast('&${value_type}', pointer, '&${value_type}')
@@ -463,8 +463,13 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 		missing := t.make_call_typed('error', [
 			t.make_string_literal('map key does not exist'),
 		], 'IError')
-		present_branch := t.make_block([t.make_assign(t.make_ident('err'), stored)])
-		missing_branch := t.make_block([t.make_assign(t.make_ident('err'), missing)])
+		err_target := if t.heaped_amp_locals['err'] {
+			t.make_prefix(.mul, t.make_ident('err'))
+		} else {
+			t.make_ident('err')
+		}
+		present_branch := t.make_block([t.make_assign(err_target, stored)])
+		missing_branch := t.make_block([t.make_assign(err_target, missing)])
 		children << t.make_if(found, present_branch, missing_branch)
 	}
 	if else_node.kind == .block {
@@ -1251,8 +1256,8 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
 	mut err_decls := []flat.NodeId{cap: 1}
-	t.append_implicit_err_decl(mut err_decls, t.result_error_expr(t.make_ident(tmp_name)))
 	err_scope := t.enter_implicit_err_scope(t.node_type(t.make_ident(tmp_name)).starts_with('!'))
+	t.append_implicit_err_decl(mut err_decls, t.result_error_expr(t.make_ident(tmp_name)))
 	else_block0 := if else_node.kind == .if_expr {
 		t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
 	} else {

@@ -442,3 +442,50 @@ fn test_pointer_arithmetic_retains_backing_array_storage() {
 	_ = use_the_stack(10)
 	assert out.map(*it) == [u64(194), 193, 191, 193]
 }
+
+fn failing_retained_error(message string) !u64 {
+	return error(message)
+}
+
+@[noinline]
+fn append_implicit_error_addresses(mut out []&IError) {
+	err := u64(201)
+	failing_retained_error('outer') or {
+		out << &err
+		failing_retained_error('inner') or {
+			out << &err
+			0
+		}
+		out << &err
+		0
+	}
+	if value := failing_retained_error('guard') {
+		_ = value
+	} else {
+		out << &err
+	}
+	value := if value := failing_retained_error('value guard') {
+		value
+	} else {
+		out << &err
+		u64(0)
+	}
+	assert value == 0
+	assert err == 201
+}
+
+@[noinline]
+fn returned_implicit_error_address() &IError {
+	failing_retained_error('returned') or { return &err }
+	panic('unexpected success')
+}
+
+fn test_implicit_result_errors_keep_retained_binding_addresses() {
+	mut out := []&IError{}
+	append_implicit_error_addresses(mut out)
+	out << returned_implicit_error_address()
+	_ = use_the_stack(10)
+	assert out.map((*it).msg()) == ['outer', 'inner', 'outer', 'guard', 'value guard', 'returned']
+	assert out[0] == out[2]
+	assert out[0] != out[1]
+}
