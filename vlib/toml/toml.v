@@ -64,7 +64,12 @@ fn decode_struct[T](doc Any, mut typ T) {
 			value := doc.value(field_name)
 			// only set the field's value when value != null and !skip, else field got it's default value
 			if !skip && value != null {
-				$if field.is_enum {
+				$if field.typ is $option {
+					// Checked before `is_enum`: an `?SomeEnum` field reports
+					// `is_enum` too, and the bare enum branch would assign a
+					// plain `int` into the Option.
+					decode_option(mut typ.$(field.name), value)
+				} $else $if field.is_enum {
 					typ.$(field.name) = value.int()
 				} $else $if field.typ is string {
 					typ.$(field.name) = value.string()
@@ -129,6 +134,74 @@ fn decode_struct[T](doc Any, mut typ T) {
 				}
 			}
 		}
+	}
+}
+
+// decode_option fills `val` from `value`. It mirrors the conversions
+// `decode_struct` applies to a plain field of the same type, so that `a = 5`
+// fills a `?int` instead of being ignored. A payload that is itself an array or
+// a map is not unwrapped: the element type of a container cannot be named from
+// its container type, so `decode_array` and `decode_map` cannot be instantiated
+// for it.
+fn decode_option[T](mut val ?T, value Any) {
+	$if T is string {
+		val = value.string()
+	} $else $if T is bool {
+		val = value.bool()
+	} $else $if T is int {
+		val = value.int()
+	} $else $if T is i64 {
+		val = value.i64()
+	} $else $if T is u64 {
+		val = value.u64()
+	} $else $if T is u8 {
+		n, ok := to_narrow_int[u8](value)
+		if ok {
+			val = n
+		}
+	} $else $if T is u16 {
+		n, ok := to_narrow_int[u16](value)
+		if ok {
+			val = n
+		}
+	} $else $if T is u32 {
+		n, ok := to_narrow_int[u32](value)
+		if ok {
+			val = n
+		}
+	} $else $if T is i8 {
+		n, ok := to_narrow_int[i8](value)
+		if ok {
+			val = n
+		}
+	} $else $if T is i16 {
+		n, ok := to_narrow_int[i16](value)
+		if ok {
+			val = n
+		}
+	} $else $if T is i32 {
+		n, ok := to_narrow_int[i32](value)
+		if ok {
+			val = n
+		}
+	} $else $if T is f32 {
+		val = value.f32()
+	} $else $if T is f64 {
+		val = value.f64()
+	} $else $if T is DateTime {
+		val = value.datetime()
+	} $else $if T is Date {
+		val = value.date()
+	} $else $if T is Time {
+		val = value.time()
+	} $else $if T is Any {
+		val = value
+	} $else $if T is $enum {
+		val = unsafe { T(value.int()) }
+	} $else $if T is $struct {
+		mut inner := T{}
+		decode_struct(value, mut inner)
+		val = inner
 	}
 }
 
@@ -417,6 +490,13 @@ pub fn encode[T](typ T) string {
 	return ''
 }
 
+// get_option_payload unwraps an Option<T> known to be `Some`. Its signature
+// exists so that V's generic inferrer picks up the inner T at the comptime call
+// site, which is how `decode_option` reads a field's payload type.
+fn get_option_payload[T](val ?T) T {
+	return val or { T{} }
+}
+
 fn encode_struct[T](typ T) map[string]Any {
 	mut mp := map[string]Any{}
 	$for field in T.fields {
@@ -447,6 +527,12 @@ fn encode_struct[T](typ T) map[string]Any {
 					// Scalar embeds (`DateTime`, `Date`, `Time`) and embedded types with a
 					// custom `to_toml` method are kept as one value under the field name.
 					mp[field_name] = embedded_any
+				}
+			} $else $if field.typ is $option {
+				// TOML has no null, so a `none` field is left out of the table.
+				opt_value := typ.$(field.name)
+				if opt_value != none {
+					mp[field_name] = to_any(get_option_payload(opt_value))
 				}
 			} $else {
 				mp[field_name] = to_any(typ.$(field.name))
