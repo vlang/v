@@ -255,9 +255,7 @@ fn decode_array[T](current []T, values []Any) []T {
 		mut arr := []T{cap: values.len}
 		for value in values {
 			if value is map[string]Any {
-				mut item := T{}
-				decode_map_element[T](mut item, value)
-				arr << item
+				arr << decode_map(T{}, value)
 			}
 		}
 		return arr
