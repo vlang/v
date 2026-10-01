@@ -1415,7 +1415,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	}
 	mut lhs_type := t.lvalue_type(lhs_id)
 	if !array_type_has_generic_placeholder(lhs_type) {
-		lhs_type = t.normalize_type_alias(lhs_type)
+		lhs_type = t.normalize_type_alias_chain(lhs_type)
 	}
 	mut array_type := t.clean_array_append_lhs_type(lhs_type)
 	if !array_type.starts_with('[]') {
@@ -1970,14 +1970,45 @@ fn (mut t Transformer) clone_borrowed_assignment_value(source_id flat.NodeId, va
 
 // clean_array_append_lhs_type transforms clean array append lhs type data for transform.
 fn (t &Transformer) clean_array_append_lhs_type(typ string) string {
-	mut clean := if array_type_has_generic_placeholder(typ) {
-		typ.trim_space()
-	} else {
-		t.normalize_type_alias(typ).trim_space()
+	if array_type_has_generic_placeholder(typ) {
+		return strip_array_append_lhs_prefixes(typ.trim_space())
 	}
+	// An alias can name a pointer to an array (`type Ptrs = &[]&int`) or another such
+	// alias: expand and strip until the text no longer changes.
+	mut clean := typ.trim_space()
+	for _ in 0 .. 16 {
+		next := strip_array_append_lhs_prefixes(t.normalize_type_alias_chain(clean).trim_space())
+		if next == clean {
+			break
+		}
+		clean = next
+	}
+	return clean
+}
+
+// normalize_type_alias_chain expands an alias of an alias (`type MorePtrs = Ptrs`,
+// `type Ptrs = &[]&int`) to the type they both name.
+fn (t &Transformer) normalize_type_alias_chain(typ string) string {
+	mut current := typ
+	for _ in 0 .. 16 {
+		next := t.normalize_type_alias(current)
+		if next == current {
+			break
+		}
+		current = next
+	}
+	return current
+}
+
+fn strip_array_append_lhs_prefixes(typ string) string {
+	mut clean := typ
 	for {
 		if clean.starts_with('&') {
 			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('mut ') {
+			clean = clean[4..].trim_space()
 			continue
 		}
 		if clean.starts_with('shared ') {
