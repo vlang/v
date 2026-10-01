@@ -433,6 +433,8 @@ fn (tc &TypeChecker) or_fallback_embed_file_value(id flat.NodeId) ?flat.NodeId {
 			value_id = tc.a.child(value, value.children_count - 1)
 		} else if value.kind in [.expr_stmt, .paren] && value.children_count == 1 {
 			value_id = tc.a.child(value, 0)
+		} else if value.kind == .or_expr && value.children_count >= 2 {
+			value_id = tc.a.child(value, 1)
 		} else {
 			break
 		}

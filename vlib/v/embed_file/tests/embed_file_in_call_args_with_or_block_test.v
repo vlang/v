@@ -51,8 +51,11 @@ fn test_embed_file_in_statements_of_or_block() {
 	mut sink := EmbedSink{}
 	always_fails() or { sink.push($embed_file('a.txt').to_string()) or { panic(err) } }
 	always_fails() or {
+		always_fails() or { sink.push($embed_file('a.txt').to_string()) or { panic(err) } }
+	}
+	always_fails() or {
 		sink.values << $embed_file('a.txt').to_string().trim_space()
 		sink.values << 'after'
 	}
-	assert sink.values == ['test', 'test', 'after']
+	assert sink.values == ['test', 'test', 'test', 'after']
 }

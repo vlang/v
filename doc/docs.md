@@ -7863,6 +7863,10 @@ already compressed.
 [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
 which could be used to obtain the file contents as `string` or `[]u8`.
 
+Use the returned value: discarding `$embed_file` as a statement is an error, including
+when it is the fallback value of an unused `or` expression with nested `or` blocks.
+Passing it as a call argument consumes the value, even when the call has an `or` block.
+
 #### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily
