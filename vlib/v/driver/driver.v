@@ -13444,6 +13444,7 @@ pub fn run(args []string) {
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
+			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -13515,6 +13516,7 @@ pub fn run(args []string) {
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
+			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -14579,16 +14581,20 @@ Please install the corresponding development package/libraries and make sure the
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}
 		}
-		for source_flag in generated_c_flags {
-			clean := source_flag.trim_space()
-			if c_generated_native_source_context(clean, cc_dir) {
-				os.rm(clean) or {}
+		// C debug information names these exact sources, including the per-build src.c.
+		// Keep them available for the debugger instead of retaining only a renamed copy.
+		if !is_c_debug {
+			for source_flag in generated_c_flags {
+				clean := source_flag.trim_space()
+				if c_generated_native_source_context(clean, cc_dir) {
+					os.rm(clean) or {}
+				}
 			}
+			os.rm(tcc_main_file) or {}
+			os.rm(cache_full_tcc_source) or {}
+			os.rm(retained_full_c_source) or {}
+			cleanup_c_build_dir(cc_dir)
 		}
-		os.rm(tcc_main_file) or {}
-		os.rm(cache_full_tcc_source) or {}
-		os.rm(retained_full_c_source) or {}
-		cleanup_c_build_dir(cc_dir)
 		for scope_free_thread in scope_free_threads {
 			scope_free_thread.wait()
 		}
