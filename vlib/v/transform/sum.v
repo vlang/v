@@ -1753,10 +1753,19 @@ fn (t &Transformer) single_pointer_sum_nil_variant(expr_id flat.NodeId, sum_name
 
 // wrap_sum_value transforms wrap sum value data for transform.
 fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) flat.NodeId {
+	return t.wrap_sum_value_with_storage(expr_id, target_sum, false)
+}
+
+fn (mut t Transformer) wrap_sum_value_for_storage(expr_id flat.NodeId, target_sum string) flat.NodeId {
+	return t.wrap_sum_value_with_storage(expr_id, target_sum, true)
+}
+
+fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_sum string, storage_boundary bool) flat.NodeId {
 	resolved_sum := t.resolve_sum_name(target_sum)
 	if resolved_sum.len == 0 || resolved_sum !in t.sum_types {
 		return t.transform_expr(expr_id)
 	}
+	detach_array_payload := storage_boundary && !t.borrowed_projection_clone_required(expr_id, target_sum)
 	storage_sum := t.sum_literal_type_name(target_sum, resolved_sum)
 	if nil_variant := t.single_pointer_sum_nil_variant(expr_id, resolved_sum) {
 		value := t.transform_expr_for_type(expr_id, nil_variant)
@@ -1946,7 +1955,7 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		} else if path.len > 1 {
 			nested_sum := t.resolve_sum_name(t.trim_pointer_type(path[0]))
 			if nested_sum.len > 0 && nested_sum in t.sum_types {
-				nested_value := t.wrap_sum_value(expr_id, nested_sum)
+				nested_value := t.wrap_sum_value_with_storage(expr_id, nested_sum, detach_array_payload)
 				return t.make_sum_literal(resolved_sum, path[0], nested_value)
 			}
 		}
@@ -1985,6 +1994,9 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		t.transform_expr_for_type(expr_id, matched_variant)
 	} else {
 		t.transform_expr(expr_id)
+	}
+	if detach_array_payload {
+		inner = t.clone_owned_array_view_for_storage(inner, matched_variant)
 	}
 	if ref_variant {
 		return t.make_sum_literal(storage_sum, matched_variant, inner)
