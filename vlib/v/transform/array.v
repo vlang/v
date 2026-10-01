@@ -2055,10 +2055,10 @@ fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ st
 	name := t.new_temp('owned_array_escape')
 	t.pending_stmts << t.make_decl_assign_typed(name, value, typ)
 	bound := t.make_ident(name)
-	t.set_node_typ(int(bound), typ)
+	t.set_node_typ(int(bound), resolved_type)
 	if t.is_optional_type_name(resolved_type) {
-		// The shallow wrapper keeps its failure state. Only a present payload can
-		// borrow array storage, and its clone must stay inside that success branch.
+		// Acquire only the active payload. A retained failed Result also needs
+		// an independent error owner, without reading its absent array value.
 		payload_type := t.optional_base_type(resolved_type)
 		payload := t.make_selector(bound, 'value', payload_type)
 		pending_start := t.pending_stmts.len
@@ -2066,8 +2066,18 @@ fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ st
 		mut body := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		body << t.make_assign_without_ownership_drop(payload, owned_payload)
+		mut else_branch := t.make_empty()
+		if clone_owned_value {
+			cloned_err := t.clone_result_error(bound)
+			if int(cloned_err) >= 0 {
+				failed := t.make_optional_none_with_err(resolved_type, cloned_err)
+				else_branch = t.make_block_skip_scope_drops([
+					t.make_assign_without_ownership_drop(bound, failed),
+				])
+			}
+		}
 		t.pending_stmts << t.make_if_with_skip_ownership_drops(t.make_selector(bound, 'ok', 'bool'),
-			t.make_block_skip_scope_drops(body), t.make_empty())
+			t.make_block_skip_scope_drops(body), else_branch)
 		return if clone_owned_value { t.mark_owned_array_storage_value(bound, typ) } else { bound }
 	}
 	array_value := t.array_lvalue_value(bound, resolved_type)

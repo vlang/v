@@ -609,6 +609,33 @@ fn main() {
 	assert output == 'ok'
 }
 
+fn test_mutable_failed_result_storage_acquires_error_owners() {
+	output := borrow_storage_run('failed_result_storage', borrow_storage_drop_decls + '
+struct Fault implements IClone, Drop { id int }
+fn (r Fault) msg() string { return "failed" }
+fn (r Fault) code() int { return r.id }
+fn (r &Fault) clone() Fault { return Fault{r.id + 100} }
+fn (mut r Fault) drop() { println("error \${r.id}") }
+type ArrayResult = ![]Res
+type ArrayResultAlias = ArrayResult
+type ResultStorage = ArrayResultAlias | int
+fn fail(id int) ![]Res { return Fault{id} }
+fn keep_alias(mut source ArrayResultAlias) ArrayResultAlias { return source }
+fn keep_sum(mut source ResultStorage) ResultStorage { return source }
+fn main() {
+	mut source := ArrayResultAlias(fail(1))
+	retained := ArrayResultAlias(keep_alias(mut source))
+	drop_owned(source)
+	drop_owned(retained)
+	mut sum_source := ResultStorage(ArrayResultAlias(fail(2)))
+	sum_retained := keep_sum(mut sum_source)
+	drop_owned(sum_source)
+	drop_owned(sum_retained)
+}
+')
+	assert output == 'error 1\nerror 101\nerror 2\nerror 102'
+}
+
 fn test_mutable_array_value_captures_acquire_owned_snapshots() {
 	output := borrow_storage_run('array_capture_storage', '@[has_globals]
 module main
