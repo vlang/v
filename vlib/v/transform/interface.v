@@ -311,6 +311,10 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			// storage, but transform_expr reads it as &Iface. Do not restore the
 			// storage type on that dereference and make cgen box it again.
 			source_type = storage_type[1..]
+		} else if node.value in t.heaped_amp_locals && storage_type.starts_with('&') {
+			// A local moved to the heap is stored as `&Iface` but read as its `Iface`
+			// value; keeping the storage type would dereference that value again.
+			source_type = storage_type[1..]
 		}
 	}
 	mut source_is_smartcast_interface := false
