@@ -694,6 +694,21 @@ fn stored_option_reference(present bool) StoredOption {
 fn store_option_reference(mut values []Resource) StoredOption {
 	return StoredOption{values: &values}
 }
+fn map_literal_from_borrow(mut values []Resource) map[string][]Resource {
+	return {"hit": values}
+}
+fn map_set_from_borrow(mut values []Resource, mut stored map[string][]Resource) {
+	stored["hit"] = values
+}
+fn stored_map(initializer bool) map[string][]Resource {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	if initializer {
+		return map_literal_from_borrow(mut holder.values)
+	}
+	mut stored := map[string][]Resource{}
+	map_set_from_borrow(mut holder.values, mut stored)
+	return stored
+}
 fn main() {
 	ordinary_scope()
 	assert dropped.len == 1
@@ -728,6 +743,13 @@ fn main() {
 	stored_option := stored_option_reference(true)
 	assert clones == 6
 	check_stored_alias(stored_option.values or { panic("missing retained reference") })
+	for index, initializer in [false, true] {
+		stored_values := stored_map(initializer)
+		assert clones == 7 + index
+		assert !dropped[stored_values["hit"][0].id]
+		assert stored_values["hit"][0].payload == "payload".repeat(4)
+		drop_owned(stored_values)
+	}
 	assert dropped.len == next_id
 	println("ok")
 }
