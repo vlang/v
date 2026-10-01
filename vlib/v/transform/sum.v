@@ -1996,7 +1996,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		t.transform_expr(expr_id)
 	}
 	if detach_array_payload {
-		inner = t.sum_array_value_payload(inner, matched_variant)
+		inner = t.sum_owned_value_payload(inner, matched_variant)
 		inner = t.clone_owned_array_view_for_storage(inner, matched_variant)
 	}
 	if ref_variant {
@@ -2103,14 +2103,23 @@ fn (mut t Transformer) make_default_sum_value(typ string) ?flat.NodeId {
 	return t.make_sum_literal(resolved_sum, variant, value)
 }
 
-// A by-value array variant owns its header box. ABI pointers to a borrowed
-// header must be loaded before CGen decides whether the box already exists.
-fn (mut t Transformer) sum_array_value_payload(value flat.NodeId, variant string) flat.NodeId {
+// By-value container variants own their boxes. ABI pointers borrow the caller
+// header; nested sums also need independent active payload boxes before boxing.
+fn (mut t Transformer) sum_owned_value_payload(value flat.NodeId, variant string) flat.NodeId {
 	variant_type := t.comptime_normalize_type_alias_chain(variant)
 	value_type := t.comptime_normalize_type_alias_chain(t.node_type(value))
-	if variant_type.starts_with('[]') && value_type == '&${variant_type}' {
+	if value_type == '&${variant_type}' && (variant_type.starts_with('[]') || t.is_sum_type_name(variant_type)) {
 		payload := t.array_lvalue_value(value, value_type)
 		t.set_node_typ(int(payload), variant)
+		if t.is_sum_type_name(variant_type) && !isnil(t.tc)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(variant_type)) {
+			if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(variant_type)) {
+				// An empty borrowed array can still be retained; its runtime guard rejects
+				// nonempty uncloneable payloads without destroying the caller's boxes.
+				return t.clone_owned_sum_array_views_for_storage(payload, variant, false)
+			}
+			return t.make_compiler_default_borrowed_clone_value(payload, variant, true)
+		}
 		return payload
 	}
 	return value
@@ -2121,7 +2130,7 @@ fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value f
 	qvariant := t.resolve_variant(sum_name, variant)
 	typ_field := t.make_sum_literal_field('typ', t.make_int_literal(t.sum_type_index(sum_name,
 		qvariant)), 'int')
-	payload := t.sum_array_value_payload(value, qvariant)
+	payload := t.sum_owned_value_payload(value, qvariant)
 	raw_value_type := t.node_type(payload)
 	mut value_type := if raw_value_type.starts_with('&') {
 		raw_value_type

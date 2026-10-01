@@ -727,6 +727,7 @@ fn stored_generic_sum() ResourceGenericStorage[Resource] {
 	mut holder := Holder{[fresh()]!, "label".repeat(4)}
 	return keep_generic_sum(mut holder.values)
 }
+fn keep_nested_source(mut inner ResourceStorageSum) ResourceStorageLayer { return inner }
 fn keep_optional_sum(mut values []Resource, mode int) ?ResourceStorageSum {
 	if mode == 0 { return none }
 	if mode == 2 { return ?ResourceStorageSum(ResourceStorageSum(values)) }
@@ -831,6 +832,21 @@ fn main() {
 		assert result_sum[0].payload == "payload".repeat(4)
 	} else { assert false }
 	drop_owned(result_sum)
+	mut inner := ResourceStorageSum([fresh()])
+	outer := keep_nested_source(mut inner)
+	assert clones == 15
+	if inner is []Resource {
+		assert !dropped[inner[0].id]
+		inner[0].value = 19
+	} else { assert false }
+	if outer is ResourceStorageSum {
+		if outer is []Resource {
+			assert !dropped[outer[0].id]
+			assert outer[0].value == 0
+		} else { assert false }
+	} else { assert false }
+	drop_owned(outer)
+	drop_owned(inner)
 	assert dropped.len == next_id
 	println("ok")
 }

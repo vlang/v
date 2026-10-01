@@ -1984,7 +1984,7 @@ fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ
 		return value
 	}
 	if storage_is_sum && !t.is_optional_type_name(resolved_type) {
-		return t.clone_owned_sum_array_views_for_storage(value, typ)
+		return t.clone_owned_sum_array_views_for_storage(value, typ, true)
 	}
 	name := t.new_temp('owned_array_escape')
 	t.pending_stmts << t.make_decl_assign_typed(name, value, typ)
@@ -2036,13 +2036,13 @@ struct OwnedArraySumVariant {
 	variant  string
 }
 
-fn (mut t Transformer) clone_owned_sum_array_views_for_storage(value flat.NodeId, typ string) flat.NodeId {
+fn (mut t Transformer) clone_owned_sum_array_views_for_storage(value flat.NodeId, typ string, drop_old_root bool) flat.NodeId {
 	pending_start := t.pending_stmts.len
 	name := t.new_temp('owned_sum_array_escape')
 	t.pending_stmts << t.make_decl_assign_typed(name, value, typ)
 	bound := t.make_ident(name)
 	t.set_node_typ(int(bound), typ)
-	branches := t.owned_sum_array_storage_branches(bound, typ, bound, typ, []flat.NodeId{}, []OwnedArraySumVariant{}, []string{})
+	branches := t.owned_sum_array_storage_branches(bound, typ, bound, typ, []flat.NodeId{}, []OwnedArraySumVariant{}, []string{}, drop_old_root)
 	if branches.len == 0 {
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		return value
@@ -2051,7 +2051,7 @@ fn (mut t Transformer) clone_owned_sum_array_views_for_storage(value flat.NodeId
 	return bound
 }
 
-fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_type string, root flat.NodeId, root_type string, guards []flat.NodeId, path []OwnedArraySumVariant, seen []string) []flat.NodeId {
+fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_type string, root flat.NodeId, root_type string, guards []flat.NodeId, path []OwnedArraySumVariant, seen []string, drop_old_root bool) []flat.NodeId {
 	resolved_sum, variants := t.concrete_sum_name_and_variants(sum_type)
 	if resolved_sum in seen { return []flat.NodeId{} }
 	mut next_seen := seen.clone()
@@ -2083,7 +2083,7 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 		mut branch_path := path.clone()
 		branch_path << OwnedArraySumVariant{ sum_type: sum_type, variant: qvariant }
 		if is_nested_sum {
-			branches << t.owned_sum_array_storage_branches(payload, qvariant, root, root_type, branch_guards, branch_path, next_seen)
+			branches << t.owned_sum_array_storage_branches(payload, qvariant, root, root_type, branch_guards, branch_path, next_seen, drop_old_root)
 			continue
 		}
 		array_value := t.array_lvalue_value(payload, clean_variant)
@@ -2100,9 +2100,12 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 		}
 		new_name := t.new_temp('owned_sum_array_value')
 		body << t.make_decl_assign_typed(new_name, rebuilt, root_type)
-		// Rebuild every box before one drop of the old active path. Its borrowed
-		// array skips element destruction; nested boxes are freed exactly once.
-		body << t.make_expr_stmt(t.make_call_typed('drop_owned', [root], 'void'))
+		// Owning roots release the old active path once after rebuilding every box.
+		// Borrowed ABI roots keep their caller-owned boxes; neither mode drops elements
+		// from the old borrowed array payload.
+		if drop_old_root {
+			body << t.make_expr_stmt(t.make_call_typed('drop_owned', [root], 'void'))
+		}
 		body << t.make_assign_without_ownership_drop(root, t.make_ident(new_name))
 		mut cond := branch_guards[0]
 		for guard in branch_guards[1..] {
