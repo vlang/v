@@ -679,7 +679,8 @@ struct ReceivedResponseInfo {
 	headers_end         int = -1
 	is_chunked_transfer bool
 	has_truncated_body  bool
-	body_is_decoded     bool
+	body_is_dechunked   bool
+	stop_copying_limit  i64 = -1
 	// reusable is true when the read loop terminated via precise response
 	// framing (Content-Length satisfied, chunked transfer complete, or a
 	// no-body status), meaning the connection holds no response leftovers and
@@ -689,12 +690,21 @@ struct ReceivedResponseInfo {
 }
 
 fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
-	if info.body_is_decoded {
-		mut response := parse_response(response_text[..info.headers_end])!
-		response.body = response_text[info.headers_end..]
-		return response
+	mut response := if info.body_is_dechunked {
+		parse_response(response_text[..info.headers_end])!
+	} else {
+		parse_response(response_text)!
 	}
-	return parse_response(response_text)
+	if info.body_is_dechunked {
+		// Chunk framing is already removed, but Content-Encoding still applies.
+		response.body = decode_response_body(response_text[info.headers_end..],
+			response.header.get(.content_encoding) or { '' })
+	}
+	// A complete compressed body can expand beyond the copying limit.
+	if info.stop_copying_limit > 0 && response.body.len > info.stop_copying_limit {
+		response.body = response.body[..int(info.stop_copying_limit)]
+	}
+	return response
 }
 
 // response_has_no_body returns true when the HTTP method or status code
@@ -848,7 +858,7 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			unsafe { content.write_ptr(bp, len) }
 		} else {
 			// Preserve every header byte, even when the limit is small or the
-			// headers span multiple reads. Only decoded body bytes count.
+			// headers span multiple reads. Chunk framing does not count toward the limit.
 			if old_len < body_pos {
 				unsafe { content.write_ptr(bp, int(body_pos - old_len)) }
 			}
@@ -896,7 +906,8 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	return ReceivedResponseInfo{
 		headers_end:         headers_end
 		is_chunked_transfer: is_chunked_transfer
-		body_is_decoded:     is_chunked_transfer && req.stop_copying_limit > 0
+		body_is_dechunked:   is_chunked_transfer && req.stop_copying_limit > 0
+		stop_copying_limit:  req.stop_copying_limit
 		has_truncated_body:  has_truncated_body
 		reusable:            framed_complete
 	}

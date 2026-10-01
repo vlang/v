@@ -38,9 +38,11 @@ HTTPS requests use HTTP/1.1 by default. Set `enable_http2: true` in
 
 A positive `stop_copying_limit` caps the stored HTTP/1.1 or HTTP/2 response body in bytes,
 independently of response headers and network read boundaries. HTTP/1.1 preserves the full body
-for nonpositive limits. Chunked HTTP/1.1 responses count decoded body bytes. The client still
-reads the full response and invokes progress callbacks, so streaming downloads can keep a bounded
-preview without losing data in the callbacks.
+for nonpositive limits. Chunked HTTP/1.1 responses count body bytes after removing chunk framing.
+HTTP/1.1 still applies `Content-Encoding` decompression, and caps the resulting body at the limit.
+If the bounded compressed prefix cannot be decompressed, it retains the encoded prefix, as with
+ordinary response parsing. The client still reads the full response and invokes progress callbacks,
+so streaming downloads can keep a bounded preview without losing data in the callbacks.
 
 ## Serving requests
 
