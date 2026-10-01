@@ -134,7 +134,37 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 	if wrapper.len > 0 {
 		statement = '${wrapper} ${lock_receiver} {\n\t\t${statement}\n\t}'
 	}
-	parameter_name := if expression.contains('parameter_shadow_items') {
+	closure_name := if expression.contains('whole_parameter_closure_items') {
+		'whole_parameter_closure_items'
+	} else if expression.contains('parameter_closure_items') {
+		'parameter_closure_items'
+	} else if expression.contains('nested_closure_items') {
+		'nested_closure_items'
+	} else if expression.contains('closure_items') {
+		'closure_items'
+	} else {
+		''
+	}
+	if closure_name.len > 0 {
+		body := if closure_name == 'nested_closure_items' {
+			'inner := fn [mut db, ${closure_name}] () ! {\n\t\t${statement}\n\t}\n\tinner()!'
+		} else {
+			statement
+		}
+		capture := if closure_name.starts_with('whole_') {
+			'shared ${closure_name}'
+		} else {
+			closure_name
+		}
+		statement = 'callback := fn [mut db, ${capture}] () ! {\n\t${body}\n}\n\tcallback()!'
+	}
+	parameter_name := if expression.contains('whole_parameter_closure_items') {
+		'whole_parameter_closure_items'
+	} else if expression.contains('whole_parameter_items') {
+		'whole_parameter_items'
+	} else if expression.contains('parameter_closure_items') {
+		'parameter_closure_items'
+	} else if expression.contains('parameter_shadow_items') {
 		'parameter_shadow_items'
 	} else if expression.contains('parameter_items') {
 		'parameter_items'
@@ -148,8 +178,18 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		} else {
 			statement
 		}
-		parameter_query = 'fn query(mut db sqlite.DB, ${parameter_name} []shared aliases.WrappedNames) ! {\n\t${body}\n}'
-		statement = 'query(mut db, ${parameter_name})!'
+		parameter_type := if parameter_name.starts_with('whole_') {
+			'shared ${parameter_name} []aliases.WrappedNames'
+		} else {
+			'${parameter_name} []shared aliases.WrappedNames'
+		}
+		argument := if parameter_name.starts_with('whole_') {
+			'shared ${parameter_name}'
+		} else {
+			parameter_name
+		}
+		parameter_query = 'fn query(mut db sqlite.DB, ${parameter_type}) ! {\n\t${body}\n}'
+		statement = 'query(mut db, ${argument})!'
 	}
 	source := os.join_path(dir, 'main.v')
 	main_source := sql_alias_visibility_main.replace('STATEMENT', statement)
@@ -164,7 +204,13 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 		.replace('EXTRA_BINDINGS', if expression.contains('shared_values') {
 			'shared shared_values := aliases.make()'
 		} else if parameter_name.len > 0 {
-			'mut ${parameter_name} := []shared aliases.WrappedNames{}\n\t${parameter_name} << aliases.make()'
+			if parameter_name.starts_with('whole_') {
+				'shared ${parameter_name} := [aliases.make()]'
+			} else {
+				'mut ${parameter_name} := []shared aliases.WrappedNames{}\n\t${parameter_name} << aliases.make()'
+			}
+		} else if closure_name.len > 0 {
+			'mut ${closure_name} := []shared aliases.WrappedNames{}\n\t${closure_name} << aliases.make()'
 		} else if expression.contains('shared_items') {
 			'mut shared_items := []shared aliases.WrappedNames{}\n\tshared_items << aliases.make()'
 		} else if expression.contains('shared_collection') {
@@ -401,6 +447,63 @@ fn test_alias_methods_keep_shared_element_and_quoted_field_lock_keys_in_sql_valu
 						result := sql_alias_visibility_wrapped_result('shared_element_${i}_${method}_${wrapper}_${is_update}_${check_only}',
 							true, '${receiver}.${method}()[0].name', is_update, check_only,
 							true, import_name, wrapper, receiver)
+						if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+							assert result.exit_code == 0, result.output
+						} else {
+							assert result.exit_code != 0, result.output
+							if method == 'clone' {
+								assert result.output.contains('must be `rlock`ed or `lock`ed'), result.output
+							} else if wrapper == 'rlock' {
+								assert result.output.contains('has an `rlock` but needs a `lock`'), result.output
+							} else {
+								assert result.output.contains('is `shared` and must be `lock`ed'), result.output
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+fn test_alias_methods_keep_captured_shared_array_locks_in_sql_values() {
+	for i, receiver in ['closure_items[0]', 'parameter_closure_items[0]', 'nested_closure_items[0]'] {
+		for method in ['mutate', 'clone'] {
+			import_name := if method == 'clone' { 'renamed' } else { 'aliases' }
+			for wrapper in ['', 'rlock', 'lock'] {
+				for is_update in [false, true] {
+					for check_only in [false, true] {
+						result := sql_alias_visibility_wrapped_result('shared_capture_${i}_${method}_${wrapper}_${is_update}_${check_only}',
+							true, '${receiver}.${method}()[0].name', is_update, check_only,
+							true, import_name, wrapper, receiver)
+						if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
+							assert result.exit_code == 0, result.output
+						} else {
+							assert result.exit_code != 0, result.output
+							if method == 'clone' {
+								assert result.output.contains('must be `rlock`ed or `lock`ed'), result.output
+							} else if wrapper == 'rlock' {
+								assert result.output.contains('has an `rlock` but needs a `lock`'), result.output
+							} else {
+								assert result.output.contains('is `shared` and must be `lock`ed'), result.output
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+fn test_alias_methods_keep_whole_shared_array_locks_in_sql_values() {
+	for i, name in ['whole_parameter_items', 'whole_parameter_closure_items'] {
+		for method in ['mutate', 'clone'] {
+			for wrapper in ['', 'rlock', 'lock'] {
+				for is_update in [false, true] {
+					for check_only in [false, true] {
+						result := sql_alias_visibility_wrapped_result('shared_whole_${i}_${method}_${wrapper}_${is_update}_${check_only}',
+							true, '${name}[0].${method}()[0].name', is_update, check_only,
+							true, 'aliases', wrapper, name)
 						if wrapper == 'lock' || (method == 'clone' && wrapper == 'rlock') {
 							assert result.exit_code == 0, result.output
 						} else {

@@ -11020,6 +11020,7 @@ fn (tc &TypeChecker) sql_orm_receiver_has_shared_elements(tokens []string, start
 	}
 	if end == start + 1 {
 		return tc.current_binding_has_shared_elements(tokens[start])
+			&& !tc.current_binding_is_shared(tokens[start])
 	}
 	if end >= start + 3 && tokens[end - 2] == '.' {
 		base_type := tc.sql_orm_receiver_type(tokens, start, end - 2) or { return false }
@@ -12694,12 +12695,21 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	}
 	mut captured_pointer_values := map[string][]string{}
 	mut captured_mut_params := map[string]Type{}
+	mut captured_shared_arrays := map[string]ScopeBindingOwner{}
+	mut captured_whole_shared_arrays := map[string]bool{}
 	for i in 0 .. node.children_count {
 		capture := tc.a.child_node(&node, i)
 		if capture.kind != .ident || capture.value.len == 0 {
 			continue
 		}
 		capture_type := tc.cur_scope.lookup(capture.value) or { continue }
+		if tc.current_binding_has_shared_elements(capture.value) {
+			if owner := tc.cur_scope.lookup_owner(capture.value) {
+				captured_shared_arrays[capture.value] = owner
+				captured_whole_shared_arrays[capture.value] =
+					tc.current_binding_is_shared(capture.value)
+			}
+		}
 		if capture.is_mut {
 			if base := tc.mut_param_base_for_current_ident(capture.value, capture_type) {
 				captured_mut_params[capture.value] = base
@@ -12740,6 +12750,14 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
 		tc.insert_fn_param_binding(child_id, child)
+		if child.kind == .ident {
+			if owner := captured_shared_arrays[child.value] {
+				tc.mark_shared_array_binding_owner(child.value, owner)
+				if captured_whole_shared_arrays[child.value] {
+					tc.mark_shared_binding_owner(child.value, owner)
+				}
+			}
+		}
 		if child.kind == .ident && (child.is_mut || child.typ == 'atomic') && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
 				tc.fn_context.mut_local_owners[child.value] = owner
