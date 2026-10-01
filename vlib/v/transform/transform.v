@@ -15799,18 +15799,6 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				t.set_node_typ(int(rhs_id), concrete)
 			}
 		}
-		if rhs_types := t.multi_return_types_for_expr(rhs_id, node.children_count - 1) {
-			for j, field_type in rhs_types {
-				lhs_idx := if j == 0 { 0 } else { j + 1 }
-				if lhs_idx >= node.children_count {
-					continue
-				}
-				lhs := t.a.child_node(&node, lhs_idx)
-				if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
-					t.set_var_type(lhs.value, t.normalize_type_alias(field_type.name()))
-				}
-			}
-		}
 	}
 	if expanded := t.try_expand_multi_return_decl(node) {
 		return expanded
@@ -16484,8 +16472,44 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 		rhs_preludes << prelude
 	}
 	// Every RHS sees the incoming bindings before the declarations shadow them.
-	t.clear_source_decl_heaped_bindings(node)
 	mut result := []flat.NodeId{}
+	mut snapshot_rhs := false
+	for i in 1 .. lhs_count {
+		for j in 0 .. i {
+			lhs := t.a.nodes[int(t.multi_assign_lhs_id(node, j))]
+			if lhs.kind != .ident || lhs.value == '_' {
+				continue
+			}
+			if t.expr_uses_ident(lowered_rhs[i], lhs.value) {
+				snapshot_rhs = true
+			}
+			for prelude in rhs_preludes[i] {
+				if t.expr_uses_ident(prelude, lhs.value) {
+					snapshot_rhs = true
+				}
+			}
+		}
+	}
+	if snapshot_rhs {
+		// C name lookup must also read incoming bindings before any new LHS exists.
+		for i in 0 .. lhs_count {
+			result << rhs_preludes[i]
+			rhs_preludes[i] = []flat.NodeId{}
+			lhs := t.a.nodes[int(t.multi_assign_lhs_id(node, i))]
+			if lhs.kind != .ident || lhs.value == '_' {
+				result << t.make_expr_stmt(lowered_rhs[i])
+				continue
+			}
+			tmp_name := t.new_temp('multi_decl')
+			result << if rhs_types[i].len > 0 {
+				t.make_decl_assign_typed(tmp_name, lowered_rhs[i], rhs_types[i])
+			} else {
+				t.make_decl_assign(tmp_name, lowered_rhs[i])
+			}
+			lowered_rhs[i] = t.make_ident(tmp_name)
+		}
+	}
+	t.clear_source_decl_heaped_bindings(node)
 	for i in 0 .. lhs_count {
 		lhs := t.a.nodes[int(t.multi_assign_lhs_id(node, i))]
 		rhs_id := t.multi_assign_rhs_id(node, i)
@@ -16496,9 +16520,9 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 			continue
 		}
 		if typ.len > 0 {
-			t.set_var_type(lhs.value, typ)
-			result << t.make_decl_assign_typed(lhs.value, rhs, typ)
+			result << t.make_guard_value_decls(lhs.value, rhs, typ)
 		} else {
+			t.clear_heaped_local_binding(lhs.value)
 			result << t.make_decl_assign(lhs.value, rhs)
 		}
 		if typ.len > 0 {
@@ -16569,14 +16593,7 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 			field_name := 'arg${j}'
 			field_type_name := field_type.name()
 			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_name)
-			t.set_var_type(lhs.value, t.normalize_type_alias(field_type_name))
-			decl := t.make_decl_assign_typed(lhs.value, field, field_type_name)
-			if lhs.value in t.escaping_fixed_array_view_sources
-				&& (t.is_fixed_array_type(field_type_name) || t.heapable_value_type(field_type_name)) {
-				result << t.heap_escaping_source_decl(t.a.nodes[int(decl)], lhs.value, field_type_name)
-			} else {
-				result << decl
-			}
+			result << t.make_guard_value_decls(lhs.value, field, field_type_name)
 		}
 		return result
 	}
@@ -17041,25 +17058,31 @@ fn (t &Transformer) multi_return_type_name(items []types.Type) string {
 
 // expand_multi_return_if_decl builds expand multi return if decl data for transform.
 fn (mut t Transformer) expand_multi_return_if_decl(rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
-	if lhs_ids.len == 0 {
-		return none
-	}
-	if !t.if_expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
+	if lhs_ids.len == 0 || !t.if_expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
 		return none
 	}
 	value_types := t.promoted_multi_if_value_types(rhs_id, rhs, lhs_ids.len)
 	mut result := []flat.NodeId{}
+	mut target_lhs_ids := []flat.NodeId{cap: lhs_ids.len}
+	for i, lhs_id in lhs_ids {
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind != .ident || lhs.value == '_' {
+			target_lhs_ids << lhs_id
+			continue
+		}
+		typ := if i < value_types.len { value_types[i] } else { 'int' }
+		target_name := t.new_temp('if_result')
+		result << t.make_decl_assign_typed(target_name, t.zero_value_for_type(typ), typ)
+		target_lhs_ids << t.make_ident(target_name)
+	}
+	result << t.expand_multi_return_if_assign(rhs_id, rhs, target_lhs_ids) or { return none }
 	for i, lhs_id in lhs_ids {
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind != .ident || lhs.value == '_' {
 			continue
 		}
 		typ := if i < value_types.len { value_types[i] } else { 'int' }
-		result << t.make_decl_assign_typed(lhs.value, t.zero_value_for_type(typ), typ)
-	}
-	if_stmts := t.expand_multi_return_if_assign(rhs_id, rhs, lhs_ids) or { return none }
-	for stmt in if_stmts {
-		result << stmt
+		result << t.make_guard_value_decls(lhs.value, target_lhs_ids[i], typ)
 	}
 	return result
 }
@@ -17102,21 +17125,19 @@ fn (mut t Transformer) expand_multi_return_match_decl(rhs_id flat.NodeId, rhs fl
 			continue
 		}
 		typ := if i < value_types.len { value_types[i].name() } else { 'int' }
-		t.set_var_type(lhs.value, t.normalize_type_alias(typ))
-		result << t.make_decl_assign_typed(lhs.value, t.zero_value_for_type(typ), typ)
-		// A match branch may declare a local with the same name as a result slot.
-		// Keep an address of the outer storage so the lowered branch assignment
-		// cannot bind to that inner local in C.
-		target_type := '&${typ}'
 		target_name := t.new_temp('match_result')
-		address := t.make_prefix(.amp, t.make_ident(lhs.value))
-		t.set_node_typ(int(address), target_type)
-		result << t.make_decl_assign_typed(target_name, address, target_type)
-		target := t.make_prefix(.mul, t.make_ident(target_name))
-		t.set_node_typ(int(target), typ)
-		target_lhs_ids << target
+		result << t.make_decl_assign_typed(target_name, t.zero_value_for_type(typ), typ)
+		target_lhs_ids << t.make_ident(target_name)
 	}
 	result << t.expand_multi_return_match_assign(rhs_id, rhs, target_lhs_ids) or { return none }
+	for i, lhs_id in lhs_ids {
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind != .ident || lhs.value == '_' {
+			continue
+		}
+		typ := if i < value_types.len { value_types[i].name() } else { 'int' }
+		result << t.make_guard_value_decls(lhs.value, target_lhs_ids[i], typ)
+	}
 	return result
 }
 

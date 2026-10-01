@@ -1060,3 +1060,35 @@ fn test_select_receive_fixed_bindings_keep_retained_views_alive() {
 	assert overwrite_stack() == 7
 	assert read_retained_optional_fixed_reference(kept) == [311, 312]
 }
+
+@[noinline]
+fn reference_from_plain_fixed_multi_declaration() &[]int {
+	values, unused := [351, 352]!, 0
+	assert unused == 0
+	return retain_immutable_array_reference(values)
+}
+
+@[noinline]
+fn reference_from_tuple_fixed_multi_declaration(use_match bool) &[]int {
+	if use_match {
+		values, unused := match true {
+			true { [361, 362]!, 0 }
+			false { [0, 0]!, 1 }
+		}
+		assert unused == 0
+		return retain_immutable_array_reference(values)
+	}
+	values, unused := if true { [371, 372]!, 0 } else { [0, 0]!, 1 }
+	assert unused == 0
+	return retain_immutable_array_reference(values)
+}
+
+fn test_generated_multi_declaration_fixed_bindings_keep_retained_views_alive() {
+	plain := reference_from_plain_fixed_multi_declaration()
+	matched := reference_from_tuple_fixed_multi_declaration(true)
+	conditional := reference_from_tuple_fixed_multi_declaration(false)
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(plain) == [351, 352]
+	assert read_retained_optional_fixed_reference(matched) == [361, 362]
+	assert read_retained_optional_fixed_reference(conditional) == [371, 372]
+}
