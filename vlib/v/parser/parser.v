@@ -1888,7 +1888,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		})
 		p.record_formatter_param_list_end(id, param_list_end)
 		p.pending_export = ''
-		p.register_pending_noreturn(name)
+		p.register_pending_noreturn(name, interop_prefix)
 		return id
 	}
 
@@ -1990,7 +1990,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	}
 	p.record_formatter_param_list_end(id, param_list_end)
 	p.register_pending_export(name)
-	p.register_pending_noreturn(name)
+	p.register_pending_noreturn(name, interop_prefix)
 	return id
 }
 
@@ -2078,12 +2078,15 @@ fn (mut p Parser) mark_disabled_fn(name string) {
 
 // register_pending_noreturn records a `@[noreturn]` function so the checker's
 // missing-return analysis treats calls to it as terminating.
-fn (mut p Parser) register_pending_noreturn(name string) {
+fn (mut p Parser) register_pending_noreturn(name string, interop_prefix string) {
 	if !p.pending_noreturn || name.len == 0 {
 		p.pending_noreturn = false
 		return
 	}
-	if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
+	if interop_prefix.len > 0 {
+		// Foreign names are global: `C.name()` resolves to `C.name` in every module.
+		p.a.noreturn_fns['${interop_prefix}.${name}'] = true
+	} else if p.cur_module.len > 0 && p.cur_module != 'main' && p.cur_module != 'builtin'
 		&& !name.starts_with('${p.cur_module}.') {
 		p.a.noreturn_fns['${p.cur_module}.${name}'] = true
 	} else {

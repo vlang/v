@@ -5,6 +5,11 @@ const vexe = @VEXE
 // build compiles and runs a project with the local modules in modules (a map
 // of module name to source) and main_source, returning the exit code and output.
 fn build(name string, modules map[string]string, main_source string) (int, string) {
+	return compile(name, 'run', modules, main_source)
+}
+
+// compile runs `v -new-compiler <command>` on a project laid out like build's.
+fn compile(name string, command string, modules map[string]string, main_source string) (int, string) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_noreturn_${name}_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	defer {
@@ -16,7 +21,7 @@ fn build(name string, modules map[string]string, main_source string) (int, strin
 	}
 	os.write_file(os.join_path(dir, 'v.mod'), "Module{ name: '${name}' }\n") or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), main_source) or { panic(err) }
-	res := os.execute('${os.quoted_path(vexe)} -new-compiler run ${os.quoted_path(dir)}')
+	res := os.execute('${os.quoted_path(vexe)} -new-compiler ${command} ${os.quoted_path(dir)}')
 	return res.exit_code, res.output
 }
 
@@ -201,4 +206,77 @@ fn main() {
 ')
 	assert code != 0, output
 	assert output.contains('[noreturn] functions cannot use return statements'), output
+}
+
+const bridge_source = "module bridge
+
+@[noreturn]
+fn C.foreign_halt()
+
+pub fn stop() int {
+	C.foreign_halt()
+}
+
+@[noreturn]
+pub fn halt() {
+	C.foreign_halt()
+}
+
+pub fn wrapped() int {
+	halt()
+}
+
+fn may() !int {
+	return error('no')
+}
+
+pub fn in_or_block() int {
+	return may() or { C.foreign_halt() }
+}
+"
+
+fn test_noreturn_foreign_fn_declared_in_a_module_terminates_calls() {
+	// -check only: the foreign function is never defined, so nothing is linked.
+	code, output := compile('foreign', '-check', {
+		'bridge': bridge_source
+	}, 'module main
+
+import bridge
+
+fn main() {
+	println(bridge.stop())
+	println(bridge.wrapped())
+	println(bridge.in_or_block())
+}
+')
+	assert code == 0, output
+}
+
+fn test_noreturn_foreign_fn_does_not_leak_to_same_named_module_fn() {
+	code, output := compile('foreign_leak', '-check', {
+		'bridge': 'module bridge
+
+@[noreturn]
+fn C.foreign_halt()
+
+pub fn foreign_halt() int {
+	return 1
+}
+
+pub fn falls_through() int {
+	foreign_halt()
+}
+'
+	}, 'module main
+
+import bridge
+
+fn main() {
+	println(bridge.foreign_halt())
+	println(bridge.falls_through())
+}
+')
+	assert code != 0, output
+	assert output.contains('missing return at end of function `falls_through`'), output
+	assert !output.contains('[noreturn] functions cannot use return statements'), output
 }
