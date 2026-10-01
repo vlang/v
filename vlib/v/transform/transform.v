@@ -19065,15 +19065,6 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
 			bound_name = lhs.value
 			saved_var_types = t.var_types.clone()
-			t.clear_heaped_local_binding(bound_name)
-			if t.smartcast_stack.len > 0 {
-				remaining_smartcasts := smartcasts_without_binding(t.smartcast_stack, bound_name)
-				if remaining_smartcasts.len < t.smartcast_stack.len {
-					saved_smartcasts = t.smartcast_stack.clone()
-					saved_invalidated = t.invalidated_smartcasts.clone()
-					t.smartcast_stack = remaining_smartcasts
-				}
-			}
 		}
 	}
 	mut children := []flat.NodeId{cap: int(branch.children_count)}
@@ -19082,6 +19073,8 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 		child := t.a.nodes[int(child_id)]
 		children << if branch.value == 'recv_assign' && body_start == 2 && i == 0 {
 			t.transform_lvalue_without_smartcast(child_id)
+		} else if branch.value == 'recv' && body_start == 2 && i == 0 {
+			child_id
 		} else if body_start == 2 && i == 0 {
 			t.transform_lvalue(child_id)
 		} else if order_cases && child.kind == .infix && child.op == .arrow
@@ -19100,6 +19093,15 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 		t.invalidate_smartcast_for_lvalue(t.a.child(&branch, 0))
 	}
 	if bound_name.len > 0 {
+		t.clear_heaped_local_binding(bound_name)
+		if t.smartcast_stack.len > 0 {
+			remaining_smartcasts := smartcasts_without_binding(t.smartcast_stack, bound_name)
+			if remaining_smartcasts.len < t.smartcast_stack.len {
+				saved_smartcasts = t.smartcast_stack.clone()
+				saved_invalidated = t.invalidated_smartcasts.clone()
+				t.smartcast_stack = remaining_smartcasts
+			}
+		}
 		lhs_id := t.a.child(&branch, 0)
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident {
