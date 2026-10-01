@@ -9108,11 +9108,26 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		if array_type := t.array_call_type_name(id, node) {
 			return array_type
 		}
+		// A checked call can carry its base type after lowering. Preserve the
+		// declaration's alias identity when inferring a generic argument.
+		if !isnil(t.tc) {
+			if name := t.tc.resolved_call_name(id) {
+				if ret := t.tc.fn_ret_types[name] {
+					ret_name := t.semantic_type_name(ret)
+					decl_module := t.tc.fn_type_modules[name] or { t.cur_module }
+					if !t.generic_arg_is_unresolved(ret_name)
+						&& t.generic_type_text_contains_alias(ret_name, decl_module) {
+						return t.generic_inference_argument_type(ret_name, decl_module)
+					}
+				}
+			}
+		}
 		// A call already rewritten to a concrete generic specialization carries its
 		// authoritative return type on the node. Re-inferring that rewritten callee as
 		// though it were the open generic can mistake the specialization name for T.
 		if generic_inference_arg_type_usable(node.typ) {
-			concrete_node_type := t.normalize_type_alias(node.typ)
+			concrete_node_type := t.generic_inference_argument_type(node.typ,
+				t.node_module_or(int(id), t.cur_module))
 			if !t.generic_arg_is_unresolved(concrete_node_type) {
 				return concrete_node_type
 			}

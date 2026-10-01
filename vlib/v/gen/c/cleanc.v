@@ -21750,13 +21750,12 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	g.writeln('#endif')
 	// tcc has no `__atomic_thread_fence` builtin. On the architectures where
 	// thirdparty/stdatomic/nix/atomic.S provides `_V_atomic_thread_fence`, route to
-	// that shim; on x86_64 Unix TCC's <stdatomic.h> already declares
-	// `atomic_thread_fence` and maps `__atomic_thread_fence` to it. Redeclaring the
-	// mapped name with `int` conflicts with TCC's `memory_order` enum parameter.
+	// that shim. x86_64 Linux uses V's separately named fence too, so linking the
+	// runtime's atomic helpers cannot introduce a duplicate fence definition.
 	// clang/gcc keep the builtin.
 	g.writeln('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
 	g.writeln('/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
-	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv))')
+	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(__linux__)))')
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')

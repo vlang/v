@@ -1974,6 +1974,10 @@ fn (t &Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) boo
 	mut id := t.unwrap_parens(source_id)
 	for int(id) >= 0 && int(id) < t.a.nodes.len {
 		node := t.a.nodes[int(id)]
+		if node.kind == .cast_expr && node.children_count == 1 {
+			id = t.unwrap_parens(t.a.child(&node, 0))
+			continue
+		}
 		if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count == 1 {
 			id = t.unwrap_parens(t.a.child(&node, 0))
 			continue

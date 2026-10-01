@@ -249,6 +249,10 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	if !link_atomic_s {
 		return ''
 	}
+	if target_os == 'linux' && prefs.target.arch == 'amd64' {
+		// Keep V's fence distinct from the atomic helpers supplied by libtcc1.a.
+		return os.join_path(prefs.vroot, 'vlib', 'sync', 'stdatomic', 'atomic_fence_amd64.S')
+	}
 	atomic_s := os.join_path(prefs.vroot, 'thirdparty', 'stdatomic', 'nix', 'atomic.S')
 	return atomic_s
 }

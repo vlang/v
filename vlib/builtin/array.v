@@ -33,7 +33,7 @@ pub enum ArrayFlags {
 
 // Bit 31 is reserved for compiler-owned aligned fixed-array backing. Future
 // public ArrayFlags members must leave it unused; it fits the flags' u32 storage.
-const array_flag_retained_aligned_fixed = ArrayFlags(u32(1) << 31)
+const array_flag_retained_aligned_fixed = unsafe { ArrayFlags(u32(1) << 31) }
 
 @[_packed]
 struct ArrayDataHeader {
