@@ -858,6 +858,7 @@ pub mut:
 	cur_file               string
 	generic_decl_file      string // declaring file of the generic param text being inferred ('' = cur_file)
 	unsafe_depth           int
+	sort_comparator_depth  int
 	lock_depth             int
 	autolocked_map         string // the `shared` map locked by the operation being checked, see SharedMapAutolock
 	comptime_static_depth  int
@@ -5169,6 +5170,10 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 		return tc.file_scope.lookup(qname)
 	}
 	if resolved == 'main' || resolved == tc.cur_module {
+		// A current-module const owns this name over the cross-module global_names bare hit; return none defers to const_type_for_selector. No shadow check here — node.value is a selector name, not a scope ident.
+		if tc.qualify_name(node.value) in tc.const_types {
+			return none
+		}
 		if node.value in tc.global_names {
 			return tc.file_scope.lookup(node.value)
 		}
@@ -6791,7 +6796,8 @@ fn (tc &TypeChecker) vsh_os_const_key(name string) ?string {
 // AST-wide flag so non-script compilations never pay for it.
 @[inline]
 fn (tc &TypeChecker) vsh_script_file() bool {
-	return tc.a.has_vsh_source && tc.cur_file.ends_with('.vsh')
+	return tc.a.has_vsh_source
+		&& (tc.cur_file.ends_with('.vsh') || tc.cur_file == tc.a.raw_vsh_file)
 }
 
 fn (tc &TypeChecker) selective_import_candidates(name string) ?[]string {
@@ -14693,6 +14699,11 @@ fn (tc &TypeChecker) type_text_has_generic_struct_placeholder_application(typ st
 	return false
 }
 
+// generic_type_application_parts splits a `Base[A, B]` type name into its base and its generic
+// arguments. A map is spelled `map[K]V`, so its value type is a suffix *outside* the brackets and
+// not a generic argument; it is appended as a second argument here. Without that, every match that
+// goes through this function sees `map[string]FooBar` and `map[string]string` as the very same
+// `map[string]` application, and the value type never participates in the comparison.
 fn generic_type_application_parts(typ string) (string, []string, bool) {
 	if typ == '' || typ[0] == `[` {
 		return '', []string{}, false
@@ -14713,7 +14724,76 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 	for i in 0 .. args.len {
 		args[i] = trimmed_space(args[i])
 	}
-	return typ[..bracket], args, true
+	base := typ[..bracket]
+	if generic_application_base_is_map(base) {
+		if bracket_end >= typ.len {
+			return '', []string{}, false
+		}
+		value := trimmed_space(typ[bracket_end + 1..])
+		// A bare `map[K]` with no value type is not a complete map type, so it must not
+		// compare equal to a fully spelled `map[K]V`.
+		if value.len == 0 {
+			return '', []string{}, false
+		}
+		args << value
+	}
+	return base, args, true
+}
+
+// generic_application_base_is_map reports whether the base of a bracketed type name is the `map`
+// container, with any wrapper layers in front of it (`map`, `&map`, `mut &map`, `?map`,
+// `chan map`, ...). The layers are stripped in a single pass, so their order does not matter.
+fn generic_application_base_is_map(base string) bool {
+	mut clean := trimmed_space(base)
+	for {
+		n := type_wrapper_prefix_len(clean)
+		if n == 0 {
+			break
+		}
+		clean = trimmed_space(clean[n..])
+	}
+	return clean == 'map'
+}
+
+// type_wrapper_prefix_len returns the length of the wrapper layer that leads a type name
+// (`&`, `?`, `!`, `[]`, `...`, `mut `, `shared ` or `chan `), or 0 when the name has none.
+// What follows such a layer is a whole type, never a generic base name.
+fn type_wrapper_prefix_len(typ string) int {
+	if typ.len == 0 {
+		return 0
+	}
+	match typ[0] {
+		`&`, `?`, `!` {
+			return 1
+		}
+		`[` {
+			if typ.len > 1 && typ[1] == `]` {
+				return 2
+			}
+		}
+		`.` {
+			if typ.starts_with('...') {
+				return 3
+			}
+		}
+		`m` {
+			if typ.starts_with('mut ') {
+				return 4
+			}
+		}
+		`s` {
+			if typ.starts_with('shared ') {
+				return 7
+			}
+		}
+		`c` {
+			if typ.starts_with('chan ') {
+				return 5
+			}
+		}
+		else {}
+	}
+	return 0
 }
 
 // is_fixed_array_len_text reports whether a postfix `Base[inner]` bracket holds a fixed-array
@@ -16459,8 +16539,17 @@ fn (tc &TypeChecker) stmt_has_v1_compatible_returning_or_fallback(id flat.NodeId
 	return false
 }
 
-fn (mut tc TypeChecker) check_noreturn_fn_semantics(id flat.NodeId, node flat.Node, qname string) {
-	if node.value !in tc.a.noreturn_fns && qname !in tc.a.noreturn_fns {
+fn (tc &TypeChecker) fn_decl_is_noreturn(module_name string, name string) bool {
+	if checker_qualified_fn_name(module_name, name) in tc.a.noreturn_fns {
+		return true
+	}
+	short_module := module_name.all_after_last('.')
+	return short_module != module_name
+		&& checker_qualified_fn_name(short_module, name) in tc.a.noreturn_fns
+}
+
+fn (mut tc TypeChecker) check_noreturn_fn_semantics(id flat.NodeId, node flat.Node, module_name string) {
+	if !tc.fn_decl_is_noreturn(module_name, node.value) {
 		return
 	}
 	mut tail_id := flat.NodeId(-1)
@@ -16736,7 +16825,8 @@ fn (tc &TypeChecker) call_never_returns(id flat.NodeId) bool {
 	}
 	callee := tc.a.child_node(&call, 0)
 	if callee.kind == .ident {
-		if callee.value in ['panic', 'exit'] && tc.no_return_builtin_is_shadowed(callee.value) {
+		if callee.value in ['panic', 'exit'] && (tc.no_return_builtin_is_shadowed(callee.value)
+			|| tc.module_declares_fn(tc.cur_module, callee.value)) {
 			return false
 		}
 		return callee.value in ['panic', 'exit', '__v_compile_error']
@@ -16762,6 +16852,16 @@ fn (tc &TypeChecker) no_return_builtin_is_shadowed(name string) bool {
 		return true
 	}
 	return false
+}
+
+pub fn (tc &TypeChecker) module_declares_fn(module_name string, name string) bool {
+	if module_name in ['', 'main', 'builtin'] {
+		return false
+	}
+	visibility := tc.declaration_visibility[checker_qualified_fn_name(module_name, name)] or {
+		return false
+	}
+	return visibility.kind == .fn_decl
 }
 
 fn (mut tc TypeChecker) call_never_returns_resolving(id flat.NodeId) bool {

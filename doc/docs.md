@@ -3437,9 +3437,15 @@ Use `.clone()` for a mutable copy.
 
 A pointer returned through a callback can still refer to an immutable argument, even if the
 callback returns `voidptr`. Converting that result to a typed reference does not make the
-underlying object mutable. For a type-erased container lookup that guarantees separate mutable
-component storage, place the conversion in `unsafe { ... }`. The caller must ensure the returned
-pointer does not provide mutable access to an immutable argument.
+underlying object mutable. Different pointee types do not prove separate storage: a `voidptr`
+can erase the type of an existing reference. For an opaque container lookup that guarantees
+separate mutable component storage, place the conversion in `unsafe { ... }`. The caller must
+ensure the returned pointer does not provide mutable access to an immutable argument.
+
+When a readable function returns a stored pointer to separate storage, or newly allocated storage
+that contains no references or other shared storage from its arguments, the returned reference does
+not borrow the containing object or the function's other arguments. A new outer object can still
+borrow an argument through a reference-bearing field, such as `&Box{item: item}`.
 
 A scalar passed by value to a callback is independent of the caller's storage. If a callback
 parameter is a reference, an implicitly referenced scalar remains borrowed from its immutable
@@ -4234,6 +4240,9 @@ The enum type can be any integer type, but can be omitted, if it is `int`: `enum
 When a struct field expects an enum, its value can use the short `.field` form, including
 inside parentheses in a collapsed struct call argument.
 
+An unqualified enum name or alias in a struct field's default resolves in the struct's module.
+An importing module's same-named enum does not change that default, including in fixed arrays.
+
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
 
@@ -4369,6 +4378,10 @@ example:
 ```v
 type Filter = fn (string) string
 ```
+
+Function signatures can include fixed-size arrays, pointers to fixed-size arrays, and other
+function types. Arrays of explicitly backed enums retain their element type in these signatures.
+This also applies to optional and result callback return types.
 
 This works like any other type - for example, a function can accept an
 argument of a function type:
@@ -5260,6 +5273,11 @@ println(compare(1.1, 1.2)) //         -1
 V can also infer a generic callback's return type from an unbound instance
 method passed as an argument, such as `item.call(Item.value)` when `call[T]`
 accepts a `fn (mut Item) T` callback.
+
+Generic type inference also works with field initialization shorthand in nested calls.
+For `struct Box[T] { value T }` and `fn wrap[U](box Box[U]) Box[U]`,
+`wrap(value: 42)` infers `U` as `int`. The struct and function may use different
+parameter names or arrange those parameters in a different order.
 
 #### Structured generic receiver patterns
 
@@ -7085,7 +7103,12 @@ Package are up to date.
    You can also add `subdirs: ['internal']` to `v.mod` to compile files from
    selected subdirectories as part of the same module. These paths are relative
    to the module source root, and files there should declare the same
-   `module mypackage`.
+   `module mypackage`. `v doc` documents them as part of that module too.
+   `v doc -m` also discovers modules whose sources are all in external `subdirs`.
+   HTML source links use the common root of the nearest manifest and its declared
+   source directories, including external `subdirs` and the `base_url` source folder.
+   An unrelated enclosing Git checkout does not override this root. Without a
+   manifest, a discovered Git root is used instead.
 
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
@@ -10352,6 +10375,10 @@ See also [V Types](#v-types).
 ## Appendix II: Operators
 
 This lists operators for [primitive types](#primitive-types) only.
+
+Boolean values, including aliases of `bool` without an overloaded `<` operator, cannot be ordered
+with `<`, `>`, `<=`, or `>=`. The checker currently does not enforce this restriction for
+comparisons between generic operands specialized to `bool` or its aliases.
 
 ```v ignore
 +    sum                    integers, floats, strings

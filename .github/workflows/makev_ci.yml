@@ -61,6 +61,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Test bootstrap configuration and batch error handling
         run: python cmd/tools/makev_test.py
       - name: Test Windows CI build failures and W3 integrity pins

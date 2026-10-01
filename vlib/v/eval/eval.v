@@ -6344,10 +6344,17 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		return TypeLayout{ size: 8, align: 8 }
 	}
 	if name.starts_with('?') || name.starts_with('!') {
-		elem := e.sizeof_type_layout(name[1..], module_name, visited)
+		// An option is `{ bool ok; T value; }`, and a result keeps its 16 byte IError
+		// in a union with the value. A bare `?` or `!` stores an `int`.
+		elem_name := name[1..].trim_space()
+		elem := if elem_name in ['', 'void'] { TypeLayout{ size: 4, align: 4 } } else { e.sizeof_type_layout(elem_name, module_name, visited) }
+		if name[0] == `?` {
+			align := if elem.align > 1 { elem.align } else { i64(1) }
+			return TypeLayout{ size: sizeof_aligned_size(sizeof_aligned_size(1, align) + elem.size, align), align: align }
+		}
 		align := if elem.align > 8 { elem.align } else { i64(8) }
-		// Concrete option/result storage: state, aligned IError, then its payload.
-		return TypeLayout{ size: sizeof_aligned_size(sizeof_aligned_size(56, elem.align) + elem.size, align), align: align }
+		union_size := sizeof_aligned_size(if elem.size > 16 { elem.size } else { i64(16) }, align)
+		return TypeLayout{ size: sizeof_aligned_size(1, align) + union_size, align: align }
 	}
 	if is_fixed_array_type_name(name) && !e.sizeof_is_generic_aggregate(name, module_name) {
 		if len := e.sizeof_fixed_array_len(fixed_array_len_text(name), module_name, []) {
@@ -6403,7 +6410,7 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		'i32', 'u32', 'rune', 'f32' { TypeLayout{ size: 4, align: 4 } }
 		'i128', 'u128' { TypeLayout{ size: 16, align: 16 } }
 		'string' { TypeLayout{ size: 24, align: 8 } }
-		'IError' { TypeLayout{ size: 48, align: 8 } }
+		'IError' { TypeLayout{ size: 16, align: 8 } }
 		else { TypeLayout{ size: 8, align: 8 } }
 	}
 }

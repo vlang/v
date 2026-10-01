@@ -7277,21 +7277,17 @@ fn (mut g FlatGen) gen_large_heap_struct_decl(lhs_id flat.NodeId, rhs_id flat.No
 		}
 		set_fields[field_info.name] = true
 	}
-	if info := g.find_struct_decl(lookup_name) {
-		old_module := g.tc.cur_module
-		old_file := g.tc.cur_file
-		old_default_module := g.struct_default_module
-		g.tc.cur_module = info.module
-		g.tc.cur_file = info.file
-		g.struct_default_module = info.module
+	if source := g.struct_default_decl_source(lookup_name) {
+		info := source.info
+		old_ctx := g.enter_struct_default_source(source)
 		for i in 0 .. info.node.children_count {
 			field := g.a.child_node(&info.node, i)
 			if field.kind != .field_decl || field.children_count == 0
 				|| field.value in set_fields {
 				continue
 			}
-			field_type := g.struct_default_field_type(info, field)
-			cfield := g.init_field_c_name(info.full_name, field.value)
+			field_type := g.struct_default_field_type_for_source(source, field)
+			cfield := g.init_field_c_name(source.owner_name, field.value)
 			value_id := g.a.child(field, 0)
 			if _ := array_fixed_type(field_type) {
 				g.write('memcpy(${lhs_str}->${cfield}, ')
@@ -7299,14 +7295,12 @@ fn (mut g FlatGen) gen_large_heap_struct_decl(lhs_id flat.NodeId, rhs_id flat.No
 				g.writeln(', sizeof(${lhs_str}->${cfield}));')
 			} else {
 				g.write('${lhs_str}->${cfield} = ')
-				g.gen_struct_field_expr_for_field(value_id, info.full_name, field.value,
+				g.gen_struct_field_expr_for_field(value_id, source.owner_name, field.value,
 					field_type)
 				g.writeln(';')
 			}
 		}
-		g.tc.cur_module = old_module
-		g.tc.cur_file = old_file
-		g.struct_default_module = old_default_module
+		g.restore_struct_default_context(old_ctx)
 	}
 	owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
 	g.track_local_pointer_storage_decl(lhs, owner, v_type, ct)

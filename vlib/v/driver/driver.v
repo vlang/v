@@ -7727,6 +7727,7 @@ fn v3_usable_tcc_compiler(tcc_path string) bool {
 struct V3BundledTccProbeOptions {
 	backend             string
 	c_only              bool
+	is_o                bool
 	is_prod             bool
 	is_c_debug          bool
 	race                bool // TCC has no ThreadSanitizer, so `-race` never selects it implicitly
@@ -7762,12 +7763,18 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	if options.dump_c_flags || (options.parallel_cc && options.target.os != 'windows') {
 		return false
 	}
+	// -prod needs optimizations that TCC cannot do, so TCC is never its default, not
+	// even on Windows. Probing it there would generate C for TCC, skip TCC when
+	// compiling, and then re-run the whole compilation for the platform compiler.
+	if options.is_prod {
+		return false
+	}
 	// Windows uses its bundled TCC as the platform default, including modes that
-	// use an optimizing or debug compiler by default on other hosts.
+	// use a debug compiler by default on other hosts.
 	if options.host_os == 'windows' && options.target.os == 'windows' {
 		return true
 	}
-	return !options.is_prod && !options.is_c_debug && !options.race
+	return !options.is_c_debug && !options.race
 }
 
 fn v3_bundled_tcc_available(options V3BundledTccProbeOptions) bool {
@@ -7903,8 +7910,11 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 		&& v3_system_tcc_runtime_available(vroot, options.target.os)
 	implicit_tcc := v3_default_tcc_compiler(options.bundled_tcc, bundled_tcc_available,
 		allow_system_tcc, options.dump_c_flags, options.host_os)
-	c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
+	mut c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
 		implicit_tcc)
+	if v3_windows_prod_needs_default_c_compiler(options) {
+		c_compiler = v3_windows_prod_default_c_compiler(options.target.arch, options.is_o)
+	}
 	// Generate for the compiler that receives the first build attempt. If implicit
 	// TCC cannot be used, the caller regenerates before invoking the `cc` fallback.
 	use_implicit_tcc_semantics := options.backend == 'c' && !options.c_compiler_explicit
@@ -7951,6 +7961,110 @@ fn v3_platform_c_compiler(host_os string) string {
 fn v3_platform_c_compiler_command(host_os string) string {
 	name := v3_platform_c_compiler(host_os)
 	return os.find_abs_path_of_executable(name) or { name }
+}
+
+// v3_windows_prod_needs_default_c_compiler reports whether a native Windows `-prod`
+// build that named no `-cc` needs a default C compiler chosen for it. The bundled TCC
+// stands in for the platform compiler on Windows, but it cannot do the optimizations
+// `-prod` asks for, and the bare `cc` is whichever compiler comes first on PATH, so
+// neither is a sound default here. A cross-architecture build is left as it was.
+fn v3_windows_prod_needs_default_c_compiler(options V3BundledTccProbeOptions) bool {
+	return options.is_prod && !options.c_compiler_explicit && options.backend == 'c'
+		&& !options.c_only && !options.dump_c_flags && options.host_os == 'windows'
+		&& options.target.os == 'windows' && options.target.arch == options.host_target.arch
+}
+
+// v3_windows_prod_default_c_compiler is the C compiler of a build that
+// v3_windows_prod_needs_default_c_compiler accepts. On amd64 it is MSVC, Clang or GCC,
+// in the order v3_windows_prod_c_compiler gives. V's MSVC code and the MinGW Clang check
+// are written for amd64, so the other architectures keep the platform GCC, which the
+// regeneration after the skipped implicit TCC used to give them.
+fn v3_windows_prod_default_c_compiler(arch string, is_o bool) string {
+	if arch == 'amd64' {
+		return v3_windows_prod_c_compiler(v3_windows_prod_toolchain(is_o))
+	}
+	return v3_platform_c_compiler_command('windows')
+}
+
+// V3WindowsProdToolchain is what the environment offers a Windows `-prod` build that
+// named no `-cc`. An empty field means that tool is absent, unusable or was not probed.
+struct V3WindowsProdToolchain {
+	cl           string // `cl` on PATH
+	include      string // INCLUDE, which a Developer Command Prompt sets
+	lib          string // LIB, which a Developer Command Prompt sets
+	target_arch  string // VSCMD_ARG_TGT_ARCH: the architecture `cl` builds for
+	is_o         bool   // the build writes an object file, not an executable
+	clang        string // `clang` on PATH
+	clang_triple string // what `clang -dumpmachine` printed
+	gcc          string
+}
+
+// v3_windows_prod_msvc_ready reports whether `cl` can build V's C for amd64. `cl` on PATH
+// is not enough. A Developer Command Prompt also sets INCLUDE and LIB, and without them
+// `cl` cannot find `assert.h`. Its target has to be x64: an x86 prompt puts an x86 `cl`
+// on PATH, which lacks the intrinsics V's MSVC code uses (`_umul128` in math.bits). And
+// `cl` cannot produce the object file of `-o x.o`, which V builds with gcc or clang. An
+// unset VSCMD_ARG_TGT_ARCH is trusted, since older scripts do not set it.
+fn v3_windows_prod_msvc_ready(tc V3WindowsProdToolchain) bool {
+	return tc.cl != '' && tc.include != '' && tc.lib != '' && !tc.is_o
+		&& (tc.target_arch == '' || tc.target_arch.to_lower_ascii() == 'x64')
+}
+
+// v3_windows_prod_clang_ready reports whether the probed `clang` builds amd64 code for
+// the MinGW ABI, which V's Windows link flags assume. A clang for the MSVC ABI
+// (`x86_64-pc-windows-msvc`) would fail to link them, and a 32-bit or ARM one builds the
+// wrong architecture.
+fn v3_windows_prod_clang_ready(tc V3WindowsProdToolchain) bool {
+	triple := tc.clang_triple
+	return tc.clang != '' && triple.starts_with('x86_64')
+		&& (triple.contains('mingw') || triple.contains('windows-gnu'))
+}
+
+// v3_windows_prod_c_compiler is the order in which a Windows `-prod` build tries C
+// compilers when none was named: MSVC, then Clang, then GCC.
+fn v3_windows_prod_c_compiler(tc V3WindowsProdToolchain) string {
+	if v3_windows_prod_msvc_ready(tc) {
+		return 'cl'
+	}
+	if v3_windows_prod_clang_ready(tc) {
+		return tc.clang
+	}
+	return tc.gcc
+}
+
+// v3_windows_prod_clang_triple is what `clang -dumpmachine` prints, or '' when it fails,
+// times out or prints anything but one word. The probe is bounded because it runs a PATH
+// program that has not been chosen, and it must never be able to hang a build.
+fn v3_windows_prod_clang_triple(clang string) string {
+	probe := cmdexec.run_with_timeout(clang, ['-dumpmachine'], 5000)
+	triple := probe.output.trim_space().to_lower_ascii()
+	if probe.exit_code != 0 || triple.contains(' ') || triple.split_into_lines().len != 1 {
+		return ''
+	}
+	return triple
+}
+
+// v3_windows_prod_toolchain looks for the compilers v3_windows_prod_c_compiler chooses
+// between. Once MSVC is ready nothing else is looked up: the later tools cannot be
+// chosen, and probing a PATH `clang` runs a program.
+fn v3_windows_prod_toolchain(is_o bool) V3WindowsProdToolchain {
+	tc := V3WindowsProdToolchain{
+		cl:          os.find_abs_path_of_executable('cl') or { '' }
+		include:     os.getenv('INCLUDE')
+		lib:         os.getenv('LIB')
+		target_arch: os.getenv('VSCMD_ARG_TGT_ARCH')
+		is_o:        is_o
+	}
+	if v3_windows_prod_msvc_ready(tc) {
+		return tc
+	}
+	clang := os.find_abs_path_of_executable('clang') or { '' }
+	return V3WindowsProdToolchain{
+		...tc
+		clang:        clang
+		clang_triple: if clang == '' { '' } else { v3_windows_prod_clang_triple(clang) }
+		gcc:          v3_platform_c_compiler_command('windows')
+	}
 }
 
 fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_tcc_semantics bool, tried_tcc bool, tcc_exit_code int) bool {
@@ -9173,7 +9287,7 @@ fn v3_driver_option_requires_value(option string) bool {
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
 		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files', '-icon',
-		'--icon', '-seticon', '--seticon', '-line-info']
+		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -9678,6 +9792,9 @@ pub fn run(args []string) {
 	mut should_run := false
 	mut is_crun := false
 	mut is_direct_vsh := false
+	// raw_vsh_tmp_prefix runs an input without the `.vsh` extension as a V script,
+	// and names its executable `<prefix>.<script name>` (see doc/docs.md).
+	mut raw_vsh_tmp_prefix := ''
 	mut is_test_command := false
 	mut is_checker_fixture := false
 	mut coverage_dir := v3_environment_coverage_dir()
@@ -10169,6 +10286,9 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-retry-compilation' {
 			retry_compilation = false
 			i++
+		} else if args[i] == '-raw-vsh-tmp-prefix' {
+			raw_vsh_tmp_prefix = args[i + 1]
+			i += 2
 		} else if args[i] in ['-show-timings', '-usecache', '-new-generic-solver', '-progress',
 			'-use-os-system-to-run'] {
 			// v3 already reports phase metrics, suppresses C warnings, leaves
@@ -10223,7 +10343,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			input_file = args[i]
-			if input_file.ends_with('.vsh') {
+			if input_file.ends_with('.vsh') || raw_vsh_tmp_prefix != '' {
 				is_direct_vsh = !should_run
 				should_run = true
 			}
@@ -10617,7 +10737,11 @@ pub fn run(args []string) {
 	mut c_only := false
 	mut c_to_stdout := false
 	if output_file == '' {
-		bin_file = default_bin_file_for_input(input_file)
+		bin_file = if raw_vsh_tmp_prefix != '' {
+			os.join_path_single(os.dir(input_file), '${raw_vsh_tmp_prefix}.${os.file_name(input_file)}')
+		} else {
+			default_bin_file_for_input(input_file)
+		}
 		if is_shared {
 			bin_file = with_shared_library_postfix(bin_file, target.os)
 		}
@@ -10756,6 +10880,10 @@ pub fn run(args []string) {
 
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
+	is_vsh_input := input_file.ends_with('.vsh') || raw_vsh_tmp_prefix != ''
+	if raw_vsh_tmp_prefix != '' {
+		prefs.raw_vsh_file = os.real_path(input_file)
+	}
 	if os.getenv('FASTC_BENCH_PHASES') != '' {
 		eprintln('fastc-phase driver.prefs ${driver_sw.elapsed().microseconds()}us')
 	}
@@ -10786,6 +10914,7 @@ pub fn run(args []string) {
 	selection := v3_select_c_compiler(prefs.vroot, V3BundledTccProbeOptions{
 		backend:             backend
 		c_only:              c_only
+		is_o:                is_o
 		is_prod:             is_prod
 		is_c_debug:          is_c_debug
 		race:                race
@@ -11460,7 +11589,11 @@ pub fn run(args []string) {
 	mut fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot, cache_state.cached_source_digests, v3_fallback_ignored_warmup_source_paths(cache_state))
 	_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
 	if print_v_files || print_watched_files || dump_files != '' {
-		watched := watched_v_source_paths(a, cache_state.module_sources)
+		mut watched := watched_v_source_paths(a, cache_state.module_sources)
+		if prefs.raw_vsh_file != '' {
+			// The script passed with `-raw-vsh-tmp-prefix` has no V extension.
+			watched[prefs.raw_vsh_file] = true
+		}
 		mut watched_files := watched.keys()
 		watched_files.sort()
 		// `$embed_file` reads a non-V file at compile time and puts its bytes in the binary,
@@ -12054,7 +12187,7 @@ pub fn run(args []string) {
 		prepare_markused_overlap := building_v && current_parallel_transform
 			&& scope_prealloc_markused && !incremental_cache_hit && !generic_cache_hit
 			&& !cache_state.manager.enabled && test_files.len == 0 && !is_checker_fixture
-			&& !trivial_literal_output && !input_file.ends_with('.vsh') && !no_skip_unused
+			&& !trivial_literal_output && !is_vsh_input && !no_skip_unused
 		prepared_markused_thread := spawn markused.prepare_markused_declarations(a, &pre_tc, prepare_markused_overlap)
 		mut check_was_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {
@@ -12331,7 +12464,7 @@ pub fn run(args []string) {
 			}
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a, markused_tc, test_files)
-		} else if input_file.ends_with('.vsh') {
+		} else if is_vsh_input {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
 		} else if trivial_literal_output && used_fns.len > 0 {
 			uses_generics = false
@@ -19176,8 +19309,21 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 			}
 			return typ
 		}
+		.match_stmt {
+			return implicit_match_type(a, node, bindings, index, depth + 1)
+		}
 		.call {
 			return implicit_call_return_type(a, node, bindings, index, depth + 1)
+		}
+		.infix {
+			// Only string concatenation: `+` on strings is never overloaded.
+			if node.op == .plus && node.children_count == 2 {
+				for child_idx in 0 .. 2 {
+					if implicit_expr_type(a, a.child(node, child_idx), bindings, index, depth + 1) == 'string' {
+						return 'string'
+					}
+				}
+			}
 		}
 		.selector {
 			if node.children_count > 0 {
@@ -19188,6 +19334,20 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 		.index {
 			if node.children_count > 0 {
 				base_type := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index.aliases)
+				if node.value == 'range' {
+					// A slice keeps its base type: `s[..n]` is a string, and slicing a
+					// fixed array yields a dynamic one.
+					if base_type == 'string' || base_type.starts_with('[]') {
+						return base_type
+					}
+					if base_type.starts_with('[') {
+						close := base_type.index(']') or { return '' }
+						if close + 1 < base_type.len {
+							return '[]' + base_type[close + 1..]
+						}
+					}
+					return ''
+				}
 				if base_type.starts_with('[]') {
 					return base_type[2..]
 				}
@@ -19214,6 +19374,52 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 	}
 
 	return ''
+}
+
+// implicit_match_type types a `match` used as a value like an `if`: every branch value
+// must have the same type. A branch that yields the matched variable under a single
+// struct type pattern yields it smartcast to that type.
+fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+	if node.children_count < 2 {
+		return ''
+	}
+	subject := a.child_node(node, 0)
+	mut typ := ''
+	for child_idx in 1 .. node.children_count {
+		branch := a.child_node(node, child_idx)
+		if branch.kind != .match_branch {
+			return ''
+		}
+		n_conds := if branch.value == 'else' { 0 } else { branch.value.int() }
+		if branch.children_count <= n_conds {
+			return ''
+		}
+		value_id := a.child(branch, branch.children_count - 1)
+		mut branch_type := ''
+		if n_conds == 1 && subject.kind == .ident {
+			mut value := a.node(value_id)
+			for value.kind in [.expr_stmt, .paren] && value.children_count == 1 {
+				value = a.child_node(value, 0)
+			}
+			cond := a.child_node(branch, 0)
+			if value.kind == .ident && value.value == subject.value && cond.kind == .ident
+				&& cond.value in index.fields {
+				branch_type = cond.value
+			}
+		}
+		if branch_type == '' {
+			branch_type = implicit_expr_type(a, value_id, bindings, index, depth + 1)
+		}
+		if branch_type == '' {
+			return ''
+		}
+		if typ == '' {
+			typ = branch_type
+		} else if implicit_normalize_type(typ, index.aliases) != implicit_normalize_type(branch_type, index.aliases) {
+			return ''
+		}
+	}
+	return typ
 }
 
 fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {

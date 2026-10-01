@@ -26,6 +26,9 @@ concurrency:
   group: windows-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   tcc-windows:
     runs-on: windows-2022
@@ -37,6 +40,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Install OpenSSL
         run: |
           $opensslBin = 'C:\Program Files\OpenSSL\bin'
@@ -199,6 +204,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build with makev.bat -tcc
         run: |
           .\makev.bat -tcc

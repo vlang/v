@@ -2768,7 +2768,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				t.transform_expr(lhs_id)
 			}
 			new_rhs := t.transform_value_operand(rhs_id)
-			fn_name := if t.node_type(lhs_id) in ['u8'] {
+			fn_name := if t.node_type(lhs_id) == 'u8' {
 				'string__contains_u8'
 			} else {
 				'string__contains'

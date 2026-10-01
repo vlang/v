@@ -46,6 +46,10 @@ concurrency:
   group: riscv64-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   riscv64_linux:
     # The host should always be Linux
@@ -55,7 +59,9 @@ jobs:
     name: Build on ubuntu-24.04 riscv64
     steps:
       - uses: actions/checkout@v7
-      - uses: uraimo/run-on-arch-action@v3
+        with:
+          persist-credentials: false
+      - uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68 # v3
         name: Run commands
         id: runcmd
         with:

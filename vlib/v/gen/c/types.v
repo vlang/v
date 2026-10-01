@@ -110,6 +110,9 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	} else if clean_type is types.ResultType {
 		base_type = clean_type.base_type
 	} else {
+		if clean_type is types.FnType {
+			return g.fn_ptr_type_key(clean_type)
+		}
 		if clean_type is types.MultiReturn {
 			// The checker-level name spells fn-type parts as `fn_ptr_void_void`;
 			// the emitted typedef uses the resolved `_fn_ptr_<hash>` form.
@@ -168,7 +171,7 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 			// `fn_ptr:void|void*` is ambiguous: it can mean `&fn ()` or
 			// `fn (voidptr)`. Resolve the function itself first, then add the
 			// pointer declarator explicitly.
-			return g.resolve_fn_ptr_type(g.tc.c_type(fn_type)) + '*'
+			return g.resolve_fn_ptr_type(g.fn_ptr_type_key(fn_type)) + '*'
 		}
 	}
 	if clean_type is types.MultiReturn {
@@ -179,6 +182,9 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	}
 	if clean_type is types.ArrayFixed {
 		return g.fixed_array_c_type(clean_type)
+	}
+	if clean_type is types.FnType {
+		return g.resolve_fn_ptr_type(g.fn_ptr_type_key(clean_type))
 	}
 	if clean_type is types.Channel {
 		return 'chan'
@@ -659,13 +665,14 @@ fn type_has_import_alias_text(typ types.Type) bool {
 }
 
 fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {
-	canonical := g.canonical_import_alias_type_text_in_file(value, file)
-	if canonical != value {
+	target := g.generic_default_type_text(value)
+	canonical := g.canonical_import_alias_type_text_in_file(target, file)
+	if canonical != target {
 		if exact := g.exact_known_import_type_text(canonical) {
 			return g.value_sizeof_target(exact)
 		}
 	}
-	return g.sizeof_target(value)
+	return g.sizeof_target(target)
 }
 
 fn (mut g FlatGen) import_alias_sizeof_target_in_file(value string, file string) ?string {
@@ -888,9 +895,29 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 	g.optional_types_ready = true
 }
 
+// collect_sizeof_optional_types collects `sizeof(?T)` and `sizeof(!T)` operands,
+// which can be the only place a program names an option or result type.
+fn (mut g FlatGen) collect_sizeof_optional_types() {
+	old_file := g.tc.cur_file
+	old_module := g.tc.cur_module
+	for idx in g.type_metadata_nodes() {
+		node := g.a.nodes[idx]
+		if node.kind == .file {
+			g.tc.cur_file = node.value
+			g.tc.cur_module = g.tc.file_modules[node.value] or { old_module }
+		} else if node.kind == .module_decl {
+			g.tc.cur_module = node.value
+		} else if is_optional_sizeof_node(&node) {
+			g.collect_optional_typedef_type(g.tc.parse_type(node.value))
+		}
+	}
+	g.tc.cur_file = old_file
+	g.tc.cur_module = old_module
+}
+
 fn (mut g FlatGen) collect_unresolved_call_optional_types() {
-	// Calls without a resolved expression type are the only optional-type source
-	// not covered by the shared declaration-signature scan.
+	// Calls without a resolved expression type and `sizeof` operands are the only
+	// optional-type sources not covered by the shared declaration-signature scan.
 	mut seen_type_ids := []bool{len: 65536}
 	mut seen_type_texts := map[string]bool{}
 	for idx in g.type_metadata_nodes() {
@@ -932,6 +959,7 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		}
 		g.collect_optional_typedef_type(g.parse_node_type(&node))
 	}
+	g.collect_sizeof_optional_types()
 }
 
 fn cgen_type_text_is_complete(text string) bool {
@@ -2351,7 +2379,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 			if node.children_count == 0 {
 				return none
 			}
-			target_type := g.tc.parse_type(node.value)
+			target_type := g.tc.parse_type(g.generic_default_type_text(node.value))
 			mut ct := g.cast_c_type(target_type)
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
@@ -2492,7 +2520,12 @@ fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 		if g.tc.autofree_mode && !main_aliases[name] {
 			continue
 		}
-		mut ct := g.tc.c_type(g.tc.parse_type(target))
+		parsed_target := g.tc.parse_type(target)
+		mut ct := if parsed_target is types.FnType {
+			g.fn_ptr_type_key(parsed_target)
+		} else {
+			g.tc.c_type(parsed_target)
+		}
 		is_fn_ptr_alias := ct.starts_with('fn_ptr:')
 		if is_fn_ptr_alias {
 			ct = g.resolve_fn_ptr_type(ct)

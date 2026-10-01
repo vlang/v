@@ -44,6 +44,8 @@ jobs:
       V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V with the system C compiler
         id: build
         run: ${{ matrix.build }}

@@ -7356,7 +7356,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		fn_node.value
 	}
 	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
-	if fn_node.kind == .ident && !callee_is_fn_value
+	// An unqualified panic() in a module that declares its own panic (such as
+	// a log.panic() Logger) resolves to that function, not to the builtin.
+	calls_module_panic := fn_name == 'panic' && ((resolved_target_name.contains('.')
+		&& resolved_target_name != 'builtin.panic')
+		|| g.tc.module_declares_fn(g.tc.cur_module, fn_name))
+	if fn_node.kind == .ident && !callee_is_fn_value && !calls_module_panic
 		&& (fn_name == 'panic' || target_name == 'builtin.panic'
 			|| resolved_target_name == 'builtin.panic') {
 		g.gen_builtin_panic_call(node)
@@ -7782,10 +7787,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	dispatch_name := if callee_is_fn_value
+	dispatch_name := if callee_is_fn_value || calls_module_panic
 		|| (fn_name in ['error', 'error_with_code'] && !g.expr_is_error_call(id)) {
 		// User modules can declare ordinary functions with the builtin error
-		// helper names. Only a call resolved to builtin constructs an IError.
+		// and panic names. Only a call resolved to builtin gets builtin lowering.
 		''
 	} else {
 		fn_name
@@ -12392,7 +12397,7 @@ fn (mut g FlatGen) callback_c_type(typ types.Type) string {
 	mut ct := if typ is types.OptionType || typ is types.ResultType {
 		g.optional_type_name(typ)
 	} else {
-		g.tc.c_type(typ)
+		g.fn_ptr_signature_type(typ) or { g.tc.c_type(typ) }
 	}
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
@@ -17137,6 +17142,9 @@ const c_static_helper_symbols = {
 // `fn (voidptr, int, int)` keeps its `int` arguments, since C invokes it with
 // 32-bit ints).
 fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
+	if t is types.ArrayFixed {
+		return g.fixed_array_c_type(t)
+	}
 	if t is types.Primitive {
 		if t.size == 0 && t.props.has(.integer) && !t.props.has(.unsigned) {
 			return 'int'
@@ -18270,7 +18278,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		} else if wide_ct := g.wide_enum_signature_c_type(effective_pt) {
 			wide_ct
 		} else {
-			g.tc.c_type(effective_pt)
+			g.fn_ptr_signature_type(effective_pt) or { g.tc.c_type(effective_pt) }
 		}
 		if ct.starts_with('fn_ptr:') {
 			g.write(g.resolve_fn_ptr_type(ct))
@@ -18360,7 +18368,7 @@ fn (mut g FlatGen) write_c_fn_node_params(node flat.Node) {
 		ct := if pt is types.OptionType || pt is types.ResultType {
 			g.optional_type_name(pt)
 		} else {
-			g.tc.c_type(pt)
+			g.fn_ptr_signature_type(pt) or { g.tc.c_type(pt) }
 		}
 		if written > 0 {
 			g.write(', ')
@@ -18738,12 +18746,33 @@ fn (mut g FlatGen) register_fn_ptr_type(typ string) string {
 
 // fn_ptr_type_key returns the normalized key used for function-pointer typedefs.
 fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
-	ret := if typ.return_type is types.Void { 'void' } else { g.tc.c_type(typ.return_type) }
+	ret := g.fn_ptr_signature_type(typ.return_type) or { g.tc.c_type(typ.return_type) }
 	mut params := []string{}
 	for i in 0 .. typ.params.len {
-		params << g.tc.c_type(fn_type_effective_param(typ, i))
+		param := fn_type_effective_param(typ, i)
+		params << g.fn_ptr_signature_type(param) or { g.tc.c_type(param) }
 	}
 	return naming.fn_ptr_encoded(ret, params)
+}
+
+// fn_ptr_signature_type normalizes fixed arrays and nested callbacks while preserving pointer depth.
+fn (mut g FlatGen) fn_ptr_signature_type(typ types.Type) ?string {
+	if typ is types.OptionType || typ is types.ResultType {
+		return g.optional_type_name(typ)
+	}
+	if typ is types.FnType {
+		return g.fn_ptr_type_key(typ)
+	}
+	if typ is types.ArrayFixed {
+		return g.fixed_array_c_type(typ)
+	}
+	if typ is types.Pointer {
+		return g.fn_ptr_signature_type(typ.base_type)? + '*'
+	}
+	if typ is types.Alias {
+		return g.fn_ptr_signature_type(typ.base_type)
+	}
+	return none
 }
 
 fn (g &FlatGen) shared_optional_call_type(id flat.NodeId, node flat.Node) ?types.Type {

@@ -43,6 +43,9 @@ pub fn (err IError) str() string {
 	if err is None__ {
 		return 'none'
 	}
+	if err == none {
+		return 'nil'
+	}
 	c := err.code()
 	if c > 0 {
 		return err.msg() + '; code: ' + c.str()
