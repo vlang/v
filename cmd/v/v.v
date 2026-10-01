@@ -1077,6 +1077,12 @@ fn v1_fallback_cache_parent() !string {
 	if home != '' {
 		return os.abs_path(os.join_path(home, '.cache', 'v', 'v1-fallback'))
 	}
+	$if windows {
+		local_app_data := os.getenv('LOCALAPPDATA')
+		if local_app_data != '' {
+			return os.abs_path(os.join_path(local_app_data, 'v', 'v1-fallback'))
+		}
+	}
 	return v1_fallback_private_temp_cache_parent(os.temp_dir())
 }
 
