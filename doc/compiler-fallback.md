@@ -11,6 +11,10 @@ including callbacks, stored function values, and transitive calls, are reported 
 dependency's source location before C generation. This also applies to standard-library
 and installed modules. Dependency warnings and notices remain limited to project-owned files.
 
+Compiler builds report ordinary checker diagnostics before C generation, including `v -check cmd/v`.
+The compiler entry paths select self-build optimizations; naming an ordinary program `v.v` does
+not. Explicit `-building-v` builds still validate assignments, field access, and mutability.
+
 For a C compiler failure, V prints the saved output when available, without compiling
 again, before retrying. It is labeled `C compiler output from the default V compiler:`.
 
