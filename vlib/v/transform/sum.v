@@ -1763,10 +1763,19 @@ fn (t &Transformer) single_pointer_sum_nil_variant(expr_id flat.NodeId, sum_name
 
 // wrap_sum_value transforms wrap sum value data for transform.
 fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) flat.NodeId {
+	return t.wrap_sum_value_with_storage(expr_id, target_sum, false)
+}
+
+fn (mut t Transformer) wrap_sum_value_for_storage(expr_id flat.NodeId, target_sum string) flat.NodeId {
+	return t.wrap_sum_value_with_storage(expr_id, target_sum, true)
+}
+
+fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_sum string, storage_boundary bool) flat.NodeId {
 	resolved_sum := t.resolve_sum_name(target_sum)
 	if resolved_sum.len == 0 || resolved_sum !in t.sum_types {
 		return t.transform_expr(expr_id)
 	}
+	detach_array_payload := storage_boundary && !t.borrowed_projection_clone_required(expr_id, target_sum)
 	storage_sum := t.sum_literal_type_name(target_sum, resolved_sum)
 	if nil_variant := t.single_pointer_sum_nil_variant(expr_id, resolved_sum) {
 		value := t.transform_expr_for_type(expr_id, nil_variant)
@@ -1956,7 +1965,7 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		} else if path.len > 1 {
 			nested_sum := t.resolve_sum_name(t.trim_pointer_type(path[0]))
 			if nested_sum.len > 0 && nested_sum in t.sum_types {
-				nested_value := t.wrap_sum_value(expr_id, nested_sum)
+				nested_value := t.wrap_sum_value_with_storage(expr_id, nested_sum, detach_array_payload)
 				return t.make_sum_literal(resolved_sum, path[0], nested_value)
 			}
 		}
@@ -1995,6 +2004,10 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		t.transform_expr_for_type(expr_id, matched_variant)
 	} else {
 		t.transform_expr(expr_id)
+	}
+	if detach_array_payload {
+		inner = t.sum_owned_value_payload(inner, matched_variant)
+		inner = t.clone_owned_array_view_for_storage(inner, matched_variant)
 	}
 	if ref_variant {
 		return t.make_sum_literal(storage_sum, matched_variant, inner)
@@ -2100,12 +2113,35 @@ fn (mut t Transformer) make_default_sum_value(typ string) ?flat.NodeId {
 	return t.make_sum_literal(resolved_sum, variant, value)
 }
 
+// By-value container variants own their boxes. ABI pointers borrow the caller
+// header; nested sums also need independent active payload boxes before boxing.
+fn (mut t Transformer) sum_owned_value_payload(value flat.NodeId, variant string) flat.NodeId {
+	variant_type := t.comptime_normalize_type_alias_chain(variant)
+	value_type := t.comptime_normalize_type_alias_chain(t.node_type(value))
+	if value_type == '&${variant_type}' && (variant_type.starts_with('[]') || t.is_sum_type_name(variant_type)) {
+		payload := t.array_lvalue_value(value, value_type)
+		t.set_node_typ(int(payload), variant)
+		if t.is_sum_type_name(variant_type) && !isnil(t.tc)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(variant_type)) {
+			if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(variant_type)) {
+				// An empty borrowed array can still be retained; its runtime guard rejects
+				// nonempty uncloneable payloads without destroying the caller's boxes.
+				return t.clone_owned_sum_array_views_for_storage(payload, variant, false)
+			}
+			return t.make_compiler_default_borrowed_clone_value(payload, variant, true)
+		}
+		return payload
+	}
+	return value
+}
+
 // make_sum_literal builds make sum literal data for transform.
 fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value flat.NodeId) flat.NodeId {
 	qvariant := t.resolve_variant(sum_name, variant)
 	typ_field := t.make_sum_literal_field('typ', t.make_int_literal(t.sum_type_index(sum_name,
 		qvariant)), 'int')
-	raw_value_type := t.node_type(value)
+	payload := t.sum_owned_value_payload(value, qvariant)
+	raw_value_type := t.node_type(payload)
 	mut value_type := if raw_value_type.starts_with('&') {
 		raw_value_type
 	} else {
@@ -2115,7 +2151,7 @@ fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value f
 		&& !value_type.starts_with('&') {
 		value_type = '&${qvariant}'
 	}
-	value_field := t.make_sum_literal_field(t.sum_field_name(qvariant), value, value_type)
+	value_field := t.make_sum_literal_field(t.sum_field_name(qvariant), payload, value_type)
 	start := t.a.children.len
 	t.a.children << typ_field
 	t.a.children << value_field

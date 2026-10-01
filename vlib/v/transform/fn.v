@@ -11386,6 +11386,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 				if lowered := t.lower_owned_array_accessor_call(base_id, base_type, elem_type, fn_node.value) {
 					return lowered
 				}
+				if lowered := t.lower_owned_array_detach_call(node, base_id, base_type, elem_type, fn_node.value) {
+					return lowered
+				}
 				if lowered := t.lower_owned_array_removal_call(node, base_id, base_type, elem_type, fn_node.value) {
 					return lowered
 				}
@@ -11406,6 +11409,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 				if lowered := t.lower_owned_array_accessor_call(base_id, base_type, elem_type, fn_node.value) {
 					return lowered
 				}
+				if lowered := t.lower_owned_array_detach_call(node, base_id, base_type, elem_type, fn_node.value) {
+					return lowered
+				}
 				if lowered := t.lower_owned_array_removal_call(node, base_id, base_type, elem_type, fn_node.value) {
 					return lowered
 				}
@@ -11414,6 +11420,91 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 				return t.make_call_typed(array_builtin_method, args, ret_type)
 			}
 			return none
+		}
+	}
+}
+
+fn (mut t Transformer) lower_owned_array_detach_call(node flat.Node, base_id flat.NodeId, base_type string, elem_type string, method string) ?flat.NodeId {
+	if method !in ['ensure_cap', 'grow_cap', 'grow_len', 'pop', 'pop_left'] || !t.owned_array_slice_detach_needed(elem_type) {
+		return none
+	}
+	base := t.stabilize_transformed_lvalue_for_reuse(t.transform_lvalue(base_id))
+	array_value := t.array_lvalue_value(base, base_type)
+	mut args := []flat.NodeId{}
+	changes := if method in ['ensure_cap', 'grow_cap', 'grow_len'] {
+		if node.children_count < 2 {
+			return none
+		}
+		capacity := t.snapshot_expr_for_reuse(t.a.child(&node, 1))
+		args << capacity
+		if method == 'grow_cap' {
+			t.make_infix(.gt, capacity, t.make_int_literal(0))
+		} else if method == 'grow_len' {
+			t.make_infix(.gt, t.make_infix(.plus, capacity, t.make_selector(array_value, 'len', 'int')),
+				t.make_selector(array_value, 'cap', 'int'))
+		} else {
+			t.make_infix(.gt, capacity, t.make_selector(array_value, 'cap', 'int'))
+		}
+	} else {
+		t.make_infix(.gt, t.make_selector(array_value, 'len', 'int'), t.make_int_literal(0))
+	}
+	t.detach_owned_array_slice_for_mutation(array_value, base_type.trim_left('&'), changes)
+	t.mark_fn_used('array__${method}')
+	if method in ['ensure_cap', 'grow_cap', 'grow_len'] {
+		return t.make_call_typed('array__${method}', [t.runtime_addr(base, base_type), args[0]], 'void')
+	}
+	call := t.make_method_call(base, method, args)
+	t.set_node_typ(int(call), node.typ)
+	return call
+}
+
+// Promoted storage and synthetic borrowed headers have no checker cleanup snapshot.
+// Keep concrete destructors reachable for explicit destruction of their element owners.
+fn (mut t Transformer) mark_fixed_array_element_drops(typ string, seen []string) {
+	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(typ)) {
+		return
+	}
+	clean := t.normalize_type_alias(typ).trim_space()
+	if clean.len == 0 || clean.starts_with('&') || clean in seen {
+		return
+	}
+	mut visited := seen.clone()
+	visited << clean
+	if clean.starts_with('?') || clean.starts_with('!') {
+		t.mark_fixed_array_element_drops(t.optional_base_type(clean), visited)
+		if clean.starts_with('!') {
+			for concrete in t.tc.ierror_impl_names() {
+				t.mark_fixed_array_element_drops(concrete, visited)
+			}
+		}
+		return
+	}
+	if clean.starts_with('[]') || t.is_fixed_array_type(clean) {
+		elem_type := if clean.starts_with('[]') { clean[2..] } else { fixed_array_elem_type(clean) }
+		t.mark_fixed_array_element_drops(elem_type, visited)
+		return
+	}
+	if clean.starts_with('map[') {
+		key_type, value_type := t.map_type_parts(clean)
+		t.mark_fixed_array_element_drops(key_type, visited)
+		t.mark_fixed_array_element_drops(value_type, visited)
+		return
+	}
+	method := if t.tc.autofree_mode { 'free' } else { 'drop' }
+	if signature := t.tc.concrete_method_signature_key(clean, method) {
+		t.mark_fn_used_name(signature)
+		return
+	}
+	if t.is_sum_type_name(clean) {
+		resolved := t.resolve_sum_name(clean)
+		for variant in t.sum_types[resolved] or { []string{} } {
+			t.mark_fixed_array_element_drops(t.resolve_variant(resolved, variant), visited)
+		}
+		return
+	}
+	if info := t.lookup_struct_info(clean) {
+		for field in info.fields {
+			t.mark_fixed_array_element_drops(t.compiler_default_clone_field_type(clean, field), visited)
 		}
 	}
 }
@@ -11539,6 +11630,17 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	}
 
 	if drop_stmts.len > 0 {
+		if method in ['delete', 'delete_many', 'trim', 'delete_last'] {
+			changes := if int(valid_drop_range) >= 0 {
+				valid_drop_range
+			} else if args.len > 0 {
+				t.make_infix(.logical_and, t.make_infix(.ge, args[0], t.make_int_literal(0)),
+					t.make_infix(.lt, args[0], t.make_selector(array_value, 'len', 'int')))
+			} else {
+				t.make_bool_literal(true)
+			}
+			t.detach_owned_array_slice_for_mutation(array_value, clean_base_type, changes)
+		}
 		needs_unique_shrink := t.make_method_call(array_value, 'needs_unique_shrink', []flat.NodeId{})
 		t.set_node_typ(int(needs_unique_shrink), 'bool')
 		t.mark_fn_used('array.needs_unique_shrink')
@@ -11643,6 +11745,9 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 			array_value = t.make_prefix(.mul, base)
 			t.set_node_typ(int(array_value), clean_base_type)
 		}
+		t.detach_owned_array_slice_for_mutation(array_value, clean_base_type,
+			t.make_infix(.gt, t.make_selector(array_value, 'len', 'int'), t.make_int_literal(0)))
+		t.drain_pending(mut result)
 		needs_unique_shrink := t.make_method_call(array_value, 'needs_unique_shrink', []flat.NodeId{})
 		t.set_node_typ(int(needs_unique_shrink), 'bool')
 		t.mark_fn_used('array.needs_unique_shrink')
@@ -12687,6 +12792,13 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		} else if capture_by_ref[capture_name] or { false } && context_field_type.starts_with('&') {
 			value = t.make_prefix(.amp, value)
 			t.set_node_typ(int(value), context_field_type)
+		}
+		if t.comptime_normalize_type_alias_chain(context_field_type).starts_with('[]') {
+			value = if capture_array_param_snapshots[capture_name] or { false } {
+				t.clone_owned_array_value_for_capture(value, context_field_type)
+			} else {
+				t.clone_owned_array_view_for_storage(value, context_field_type)
+			}
 		}
 		context_fields << t.make_named_field_init(capture_name, value, context_field_type)
 	}
