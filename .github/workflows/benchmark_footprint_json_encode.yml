@@ -9,6 +9,9 @@ on:
       - '!vlib/json2/strict/**' # Ignore
       - '!vlib/json2/tests/**' # Ignore
 
+permissions:
+  contents: read
+
 jobs:
   json-encode-benchmark:
     runs-on: ubuntu-latest
@@ -17,6 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Build V
         run: make -j4 && ./v symlink

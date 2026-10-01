@@ -16,7 +16,7 @@ module ecdsa
 // LR3AGUldy+bBpV2nT306qCIwgUAMeOJP
 // -----END PUBLIC KEY-----'
 //
-// block, _ := pem.decode(pubkey_sample) or { panic(err) }
+// block, _ := pem.decode(pubkey_sample) or { panic('invalid PEM block') }
 // pubkey := ecdsa.pubkey_from_bytes(block.data)!
 // ```
 pub fn pubkey_from_bytes(bytes []u8) !PublicKey {

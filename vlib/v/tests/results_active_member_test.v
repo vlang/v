@@ -35,6 +35,32 @@ fn test_result_sum_assignment_preserves_both_states() {
 	}
 }
 
+fn active_text(mut source ActiveSource, fail bool) (int, !string) {
+	return 7, source.text(fail)
+}
+
+fn active_text_pointer() (int, !&string) {
+	mut initial := 'initial'
+	return 7, &initial
+}
+
+fn test_result_pointer_assignment_preserves_both_states() {
+	for fail in [false, true] {
+		mut source := ActiveSource{}
+		_, mut value := active_text(mut source, fail)
+		_, mut result := active_text_pointer()
+		result = &value
+		if pointer := result {
+			assert !fail
+			assert *pointer == 'present'
+		} else {
+			assert fail
+			assert err.msg() == 'missing'
+			assert err.code() == 37
+		}
+	}
+}
+
 fn test_option_pointer_conversion_preserves_both_states() {
 	pointer := active_pointer(true)?
 	assert *pointer == 'present'

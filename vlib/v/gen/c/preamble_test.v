@@ -25,6 +25,21 @@ fn test_windows_translation_unit_preserves_configuration_preincludes() {
 	assert c_code.count('#include <windows.h>') == 1
 }
 
+fn test_cross_c_translation_unit_guards_windows_unicode_apis() {
+	for target_os in ['linux', 'windows'] {
+		mut g := FlatGen.new()
+		g.a = &flat.FlatAst{}
+		g.set_target(pref.target_from(target_os, 'amd64') or { panic(err) })
+		g.set_output_cross_c(true)
+		g.preinclude_directives = ['#include "winapi_config.h"']
+		g.emit_translation_unit_include_directives()
+		c_code := g.sb.str()
+		unicode_guard := '#if defined(_WIN32)\n#ifndef UNICODE\n#define UNICODE\n#endif\n#ifndef _UNICODE\n#define _UNICODE\n#endif\n#endif\n'
+		assert c_code.starts_with(unicode_guard), target_os
+		assert c_code.index('#include "winapi_config.h"')? >= unicode_guard.len
+	}
+}
+
 fn test_windows_translation_unit_adds_windows_header_after_configuration_preincludes() {
 	mut g := windows_preamble_test_gen()
 	g.preinclude_directives = ['#include "winapi_config.h"']
