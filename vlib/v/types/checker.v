@@ -14736,19 +14736,59 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 }
 
 // generic_application_base_is_map reports whether the base of a bracketed type name is the `map`
-// container, with any number of pointer layers in front of it (`map`, `&map`, `mut &map`, ...).
+// container, with any wrapper layers in front of it (`map`, `&map`, `mut &map`, `?map`,
+// `chan map`, ...). The layers are stripped in a single pass, so their order does not matter.
 fn generic_application_base_is_map(base string) bool {
 	mut clean := trimmed_space(base)
-	if clean.contains('.') {
-		return false
-	}
-	for clean.starts_with('&') {
-		clean = clean[1..]
-	}
-	for clean.starts_with('mut ') {
-		clean = trimmed_space(clean[4..])
+	for {
+		n := type_wrapper_prefix_len(clean)
+		if n == 0 {
+			break
+		}
+		clean = trimmed_space(clean[n..])
 	}
 	return clean == 'map'
+}
+
+// type_wrapper_prefix_len returns the length of the wrapper layer that leads a type name
+// (`&`, `?`, `!`, `[]`, `...`, `mut `, `shared ` or `chan `), or 0 when the name has none.
+// What follows such a layer is a whole type, never a generic base name.
+fn type_wrapper_prefix_len(typ string) int {
+	if typ.len == 0 {
+		return 0
+	}
+	match typ[0] {
+		`&`, `?`, `!` {
+			return 1
+		}
+		`[` {
+			if typ.len > 1 && typ[1] == `]` {
+				return 2
+			}
+		}
+		`.` {
+			if typ.starts_with('...') {
+				return 3
+			}
+		}
+		`m` {
+			if typ.starts_with('mut ') {
+				return 4
+			}
+		}
+		`s` {
+			if typ.starts_with('shared ') {
+				return 7
+			}
+		}
+		`c` {
+			if typ.starts_with('chan ') {
+				return 5
+			}
+		}
+		else {}
+	}
+	return 0
 }
 
 // is_fixed_array_len_text reports whether a postfix `Base[inner]` bracket holds a fixed-array

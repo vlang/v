@@ -13961,6 +13961,15 @@ pub fn (tc &TypeChecker) generic_type_name_matches(a string, b string) bool {
 	if tc.fixed_array_type_name_matches(a, b) {
 		return true
 	}
+	// Compare wrapper layers (`?`, `&`, `chan `, `[]`, ...) one at a time and keep their identity.
+	// Splitting `?[]int` or `chan map[string]int` at its first `[` would make `?` or `chan map`
+	// the generic base and drop the wrapped type, so `?[]int` would match `?[]string`.
+	a_wrap := type_wrapper_prefix_len(a)
+	b_wrap := type_wrapper_prefix_len(b)
+	if a_wrap > 0 || b_wrap > 0 {
+		return a_wrap == b_wrap && a[..a_wrap] == b[..b_wrap]
+			&& tc.generic_type_name_matches(trimmed_space(a[a_wrap..]), trimmed_space(b[b_wrap..]))
+	}
 	a_base, a_args, a_ok := generic_type_application_parts(a)
 	b_base, b_args, b_ok := generic_type_application_parts(b)
 	if a_ok || b_ok {
@@ -14057,29 +14066,11 @@ fn (tc &TypeChecker) generic_type_arg_matches(a string, b string) bool {
 	if tc.generic_match_arg_is_open_param(a_clean) || tc.generic_match_arg_is_open_param(b_clean) {
 		return true
 	}
-	if a_clean.starts_with('&') || b_clean.starts_with('&') {
-		return a_clean.starts_with('&') && b_clean.starts_with('&')
-			&& tc.generic_type_arg_matches(a_clean[1..], b_clean[1..])
-	}
-	if a_clean.starts_with('mut ') || b_clean.starts_with('mut ') {
-		return a_clean.starts_with('mut ') && b_clean.starts_with('mut ')
-			&& tc.generic_type_arg_matches(a_clean[4..], b_clean[4..])
-	}
-	if a_clean.starts_with('?') || b_clean.starts_with('?') {
-		return a_clean.starts_with('?') && b_clean.starts_with('?')
-			&& tc.generic_type_arg_matches(a_clean[1..], b_clean[1..])
-	}
-	if a_clean.starts_with('!') || b_clean.starts_with('!') {
-		return a_clean.starts_with('!') && b_clean.starts_with('!')
-			&& tc.generic_type_arg_matches(a_clean[1..], b_clean[1..])
-	}
-	if a_clean.starts_with('...') || b_clean.starts_with('...') {
-		return a_clean.starts_with('...') && b_clean.starts_with('...')
-			&& tc.generic_type_arg_matches(a_clean[3..], b_clean[3..])
-	}
-	if a_clean.starts_with('[]') || b_clean.starts_with('[]') {
-		return a_clean.starts_with('[]') && b_clean.starts_with('[]')
-			&& tc.generic_type_arg_matches(a_clean[2..], b_clean[2..])
+	a_wrap := type_wrapper_prefix_len(a_clean)
+	b_wrap := type_wrapper_prefix_len(b_clean)
+	if a_wrap > 0 || b_wrap > 0 {
+		return a_wrap == b_wrap && a_clean[..a_wrap] == b_clean[..b_wrap]
+			&& tc.generic_type_arg_matches(a_clean[a_wrap..], b_clean[b_wrap..])
 	}
 	if a_clean.starts_with('map[') || b_clean.starts_with('map[') {
 		if !a_clean.starts_with('map[') || !b_clean.starts_with('map[') {
