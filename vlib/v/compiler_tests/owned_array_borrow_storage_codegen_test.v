@@ -832,3 +832,52 @@ fn main() {
 		}
 	}
 }
+
+fn test_invalid_owned_array_growth_preserves_diagnostics_without_cloning() {
+	for method in ['ensure_cap', 'grow_cap', 'grow_len'] {
+		for overflow in [false, true] {
+			if overflow && method == 'ensure_cap' {
+				continue
+			}
+			for cloneable in [false, true] {
+				name := 'invalid_growth_${method}_${overflow}_${cloneable}'
+				clone_method := if cloneable {
+					'fn (h &Handle) clone() Handle { println("unexpected clone"); return Handle{h.id + 100} }'
+				} else {
+					''
+				}
+				amount := if overflow {
+					'max_int'
+				} else if method == 'ensure_cap' {
+					'2'
+				} else {
+					'1'
+				}
+				source := 'interface Drop { mut: drop() }
+struct Handle implements Drop { id int }
+fn (mut h Handle) drop() {}
+${clone_method}
+fn grow(mut values []Handle, amount int) {
+	if !${overflow} { unsafe { values.flags.set(.nogrow) } }
+	unsafe { values.${method}(amount) }
+}
+fn main() {
+	mut values := [Handle{1}]
+	grow(mut values[..], ${amount})
+}
+'
+				build := borrow_storage_compile(name, source)
+				assert build.exit_code == 0, build.output
+				run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+				assert run.exit_code != 0, run.output
+				assert !run.output.contains('unexpected clone'), run.output
+				expected := if overflow {
+					'array.${method}: max_int will be exceeded'
+				} else {
+					'flag `.nogrow` cannot grow in size'
+				}
+				assert run.output.contains(expected), run.output
+			}
+		}
+	}
+}

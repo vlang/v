@@ -3,6 +3,7 @@
 Borrowed array views share their source elements while a function reads or writes those
 elements. Growing the buffer or removing owned elements first acquires independent
 element owners. Operations that leave the buffer and elements unchanged keep borrowing.
+Invalid growth requests report their builtin diagnostic before cloning borrowed elements.
 Trimming destroys removed elements only when the index is nonnegative and below the length.
 
 Storing or returning a borrowed view with owned elements acquires independent owners.
