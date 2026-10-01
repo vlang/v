@@ -1344,3 +1344,134 @@ fn test_mutable_dynamic_fixed_rows_retain_their_original_buffer() {
 		assert read_retained_optional_fixed_reference(kept[1]) == [742, 742]
 	}
 }
+
+struct FixedProjectionTrace {
+mut:
+	calls int
+}
+
+fn fixed_map_key(mut trace FixedProjectionTrace, missing bool) string {
+	trace.calls++
+	return if missing { 'missing' } else { 'row' }
+}
+
+@[noinline]
+fn reference_from_map_fixed_value(missing bool, field bool) &[]int {
+	mut trace := FixedProjectionTrace{}
+	if field {
+		mut rows := map[string]FixedHolder{}
+		rows['row'] = FixedHolder{[751, 752]!}
+		kept := retain_immutable_array_reference(rows[fixed_map_key(mut trace, missing)].values)
+		assert trace.calls == 1
+		rows['row'].values[0] = 753
+		unsafe { rows.free() }
+		return kept
+	}
+	mut rows := map[string][2]int{}
+	rows['row'] = [751, 752]!
+	kept := retain_immutable_array_reference(rows[fixed_map_key(mut trace, missing)])
+	assert trace.calls == 1
+	rows['row'] = [753, 754]!
+	unsafe { rows.free() }
+	return kept
+}
+
+fn test_map_fixed_values_and_inline_fields_have_independent_backing() {
+	for field in [false, true] {
+		for missing in [false, true] {
+			kept := reference_from_map_fixed_value(missing, field)
+			assert overwrite_stack() == 7
+			assert read_retained_optional_fixed_reference(kept) == if missing {
+				[0, 0]
+			} else {
+				[751, 752]
+			}
+		}
+	}
+}
+
+fn test_map_fixed_pointer_values_keep_the_original_storage_identity() {
+	mut row := [761, 762]!
+	mut rows := map[string]&[2]int{}
+	rows['row'] = &row
+	kept := retain_immutable_array_reference(rows['row'])
+	row[0] = 763
+	unsafe { rows.free() }
+	assert read_retained_optional_fixed_reference(kept) == [763, 762]
+}
+
+@[noinline]
+fn references_from_first_last_fixed_rows(slice_alias bool) []&[]int {
+	mut rows := [[771, 772]!, [781, 782]!, [791, 792]!]
+	mut view := if slice_alias { rows[1..] } else { rows }
+	kept := [retain_immutable_array_reference(view.first()),
+		retain_immutable_array_reference(view.last())]
+	rows[if slice_alias { 1 } else { 0 }][0]++
+	rows[2][0]++
+	unsafe { rows.free() }
+	return kept
+}
+
+fn test_first_last_fixed_rows_share_the_retained_receiver_buffer() {
+	for slice_alias in [false, true] {
+		kept := references_from_first_last_fixed_rows(slice_alias)
+		assert overwrite_stack() == 7
+		assert read_retained_optional_fixed_reference(kept[0]) == if slice_alias {
+			[782, 782]
+		} else {
+			[772, 772]
+		}
+		assert read_retained_optional_fixed_reference(kept[1]) == [792, 792]
+	}
+}
+
+fn fixed_accessor_receiver_index(mut trace FixedProjectionTrace) int {
+	trace.calls++
+	return 0
+}
+
+@[noinline]
+fn references_from_nested_fixed_accessors() []&[]int {
+	mut trace := FixedProjectionTrace{}
+	mut groups := [[FixedHolder{[801, 802]!}, FixedHolder{[811, 812]!}]]
+	kept := [
+		retain_immutable_array_reference(groups[fixed_accessor_receiver_index(mut trace)].first().values),
+		retain_immutable_array_reference(groups[fixed_accessor_receiver_index(mut trace)].last().values),
+	]
+	assert trace.calls == 2
+	groups[0][0].values[0]++
+	groups[0][1].values[0]++
+	unsafe {
+		groups[0].free()
+		groups.free()
+	}
+	return kept
+}
+
+fn test_nested_fixed_accessor_fields_evaluate_and_retain_the_receiver_once() {
+	kept := references_from_nested_fixed_accessors()
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(kept[0]) == [802, 802]
+	assert read_retained_optional_fixed_reference(kept[1]) == [812, 812]
+}
+
+struct FixedAccessorReferences {
+	fixed &FixedHolder
+mut:
+	rows [][2]int
+}
+
+fn test_fixed_accessor_pointer_and_dynamic_fields_keep_storage_identity() {
+	mut fixed := FixedHolder{[821, 822]!}
+	mut holders := [FixedAccessorReferences{&fixed, [[831, 832]!]}]
+	pointer_view := retain_immutable_array_reference(holders.first().fixed.values)
+	dynamic_view := retain_immutable_array_reference(holders.last().rows[0])
+	fixed.values[0]++
+	holders[0].rows[0][0]++
+	unsafe {
+		holders[0].rows.free()
+		holders.free()
+	}
+	assert read_retained_optional_fixed_reference(pointer_view) == [822, 822]
+	assert read_retained_optional_fixed_reference(dynamic_view) == [832, 832]
+}

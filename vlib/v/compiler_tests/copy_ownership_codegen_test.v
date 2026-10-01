@@ -561,3 +561,52 @@ fn main() {
 ')
 	assert output == 'ok'
 }
+
+fn test_owned_map_and_accessor_fixed_results_acquire_durable_element_owners() {
+	output := copy_ownership_run('fixed_map_accessor_retention', copy_ownership_drop_decls + '
+fn retain(values &[]Res) &[]Res { return values }
+fn map_reference() &[]Res {
+	mut rows := map[string][1]Res{}
+	rows["row"] = [Res{10}]!
+	return retain(rows["row"])
+}
+fn accessor_reference(last bool) &[]Res {
+	mut rows := [[Res{20}]!, [Res{30}]!]
+	if last { return retain(rows.last()) }
+	return retain(rows.first())
+}
+struct FixedResultHolder implements IClone { values [1]Res other Res }
+fn holder_reference(last bool) &[]Res {
+	mut rows := [FixedResultHolder{[Res{40}]!, Res{41}},
+		FixedResultHolder{[Res{50}]!, Res{51}}]
+	if last { return retain(rows.last().values) }
+	return retain(rows.first().values)
+}
+fn check_map() {
+	kept := map_reference()
+	assert kept[0].id == 110
+	unsafe { kept.free() }
+}
+fn check_accessor(last bool) {
+	kept := accessor_reference(last)
+	assert kept[0].id == if last { 130 } else { 120 }
+	unsafe { kept.free() }
+}
+fn check_holder(last bool) {
+	kept := holder_reference(last)
+	assert kept[0].id == if last { 250 } else { 240 }
+	unsafe { kept.free() }
+}
+fn main() {
+	check_map()
+	check_accessor(false)
+	check_accessor(true)
+	check_holder(false)
+	check_holder(true)
+}
+')
+	assert output.split_into_lines().sorted() == ['drop 10', 'drop 110', 'drop 120', 'drop 130',
+		'drop 140', 'drop 141', 'drop 150', 'drop 151', 'drop 20', 'drop 20', 'drop 240', 'drop 250',
+		'drop 30', 'drop 30', 'drop 40', 'drop 40', 'drop 41', 'drop 41', 'drop 50', 'drop 50',
+		'drop 51', 'drop 51']
+}

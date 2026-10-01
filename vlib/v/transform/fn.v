@@ -13814,14 +13814,57 @@ fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_t
 	overloaded_result_type := t.comptime_normalize_type_alias_chain(t.overloaded_index_result_type(source_id) or { '' })
 	overloaded_fixed_reference := overloaded_result_type.starts_with('&')
 		&& t.is_fixed_array_type(overloaded_result_type[1..])
-	borrowed := !source_is_multi_return_value
+	map_value_source := t.fixed_array_source_map_value(source_id) or { flat.empty_node }
+	source_is_map_value := int(map_value_source) >= 0
+	accessor_source := t.fixed_array_source_accessor(source_id, false) or { flat.empty_node }
+	source_is_array_accessor := int(accessor_source) >= 0
+	accessor_type := if source_is_array_accessor { t.lvalue_type(accessor_source) } else { '' }
+	mut borrowed := !source_is_multi_return_value
+		&& !source_is_map_value
 		&& (!t.expr_is_overloaded_index_result(source_id) || overloaded_fixed_reference)
 		&& (t.expr_can_take_address(source_id)
 			|| (t.node_type(source_id).starts_with('&')
 				&& t.is_fixed_array_type(t.unaliased_value_type(source_id))))
-	mut storage_id := source_id
+	mut value := t.transform_expr(source_id)
+	if source_is_map_value && !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(fixed_type)) {
+		cloned := t.clone_borrowed_projection(source_id, value, fixed_type)
+		if cloned != value {
+			value = cloned
+		} else if !t.tc.ownership_index_read_moves_value(map_value_source) {
+			// A map read passed by reference still borrows the map's element owners.
+			// Acquire them through the shared clone/empty/uncloneable storage policy.
+			view := t.fixed_array_data_to_array_no_alloc(value, fixed_type, array_type)
+			return t.clone_owned_array_storage_value(view, array_type, true)
+		}
+	}
+	if borrowed && source_is_array_accessor
+		&& !t.comptime_normalize_type_alias_chain(t.node_type(value)).starts_with('&')
+		&& t.fixed_array_source_accessor(value, true) == none {
+		// Ownership accessors can produce a cloned fixed value in a generated local.
+		// That value has no original receiver storage to retain, so move it to owning backing.
+		borrowed = false
+		if accessor_source != source_id && !isnil(t.tc)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(accessor_type)) {
+			if projection, owner := t.stabilize_fixed_array_accessor_projection(value, accessor_type) {
+				value = t.stabilize_transformed_lvalue_for_reuse(projection)
+				cloned := t.clone_borrowed_projection(source_id, value, fixed_type)
+				if cloned != value {
+					value = cloned
+				} else {
+					// A partial projection cannot move fields out of an aggregate with custom
+					// destruction. Acquire the field before destroying the accessor clone.
+					view := t.fixed_array_data_to_array_no_alloc(value, fixed_type, array_type)
+					owned_view := t.clone_owned_array_storage_value(view, array_type, true)
+					t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [owner], 'void'))
+					return owned_view
+				}
+				t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [owner], 'void'))
+			}
+		}
+	}
+	mut storage_id := value
 	if borrowed {
-		storage_id = t.transform_expr(source_id)
 		if overloaded_fixed_reference {
 			// The overload returns an existing pointer, even when expected array-reference
 			// context changed the index annotation. Keep that original storage identity.
@@ -13830,7 +13873,6 @@ fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_t
 		storage_id = t.retain_fixed_array_index_containers(storage_id)
 	} else {
 		value_name := t.new_temp('fixed_array_source')
-		value := t.transform_expr(source_id)
 		t.pending_stmts << t.make_stack_value_decl_assign_typed(value_name, value, fixed_type)
 		addr := t.make_prefix(.amp, t.make_ident(value_name))
 		mut aligned := map[string]bool{}
@@ -13862,10 +13904,98 @@ fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_t
 	return t.make_ident(view_name)
 }
 
+// Map lookups yield values backed by the map or its stack-local missing-key default.
+// Inline projections share that lifetime; a pointer or dynamic buffer has its own storage.
+fn (mut t Transformer) fixed_array_source_map_value(value flat.NodeId) ?flat.NodeId {
+	id := t.unwrap_parens(value)
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	if info := t.map_index_info(id) {
+		if !t.comptime_normalize_type_alias_chain(info.value_type).starts_with('&') {
+			return id
+		}
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.children_count == 0 || node.kind !in [.selector, .index, .prefix] {
+		return none
+	}
+	base := t.a.child(&node, 0)
+	base_type := t.comptime_normalize_type_alias_chain(t.lvalue_type(base))
+	if base_type.starts_with('&') || base_type.starts_with('[]') {
+		return none
+	}
+	return t.fixed_array_source_map_value(base)
+}
+
+// Only inline projections depend on the accessor's aggregate lifetime. Pointer and
+// dynamic-array fields lead to independent storage. Borrowed owned accessors may already
+// have become ordinary dynamic indexes during selector lowering.
+fn (t &Transformer) fixed_array_source_accessor(value flat.NodeId, include_lowered_index bool) ?flat.NodeId {
+	id := t.unwrap_parens(value)
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call && t.array_accessor_call_can_take_address(node) {
+		return id
+	}
+	if node.children_count == 0 || node.kind !in [.selector, .index, .prefix] {
+		return none
+	}
+	base := t.a.child(&node, 0)
+	base_type := t.comptime_normalize_type_alias_chain(t.lvalue_type(base))
+	if include_lowered_index && node.kind == .index && !t.is_range_index_expr(id)
+		&& base_type.trim_left('&').starts_with('[]') {
+		return id
+	}
+	if base_type.starts_with('&') || base_type.starts_with('[]') {
+		return none
+	}
+	return t.fixed_array_source_accessor(base, include_lowered_index)
+}
+
+// Stabilize the cloned accessor aggregate before its inline field is acquired, then
+// retain that same value for cleanup rather than evaluating a clone method twice.
+fn (mut t Transformer) stabilize_fixed_array_accessor_projection(value flat.NodeId, owner_type string) ?(flat.NodeId, flat.NodeId) {
+	if t.comptime_normalize_type_alias_chain(t.lvalue_type(value)) ==
+		t.comptime_normalize_type_alias_chain(owner_type) {
+		owner := t.stable_transformed_expr_for_reuse(value, owner_type, 'fixed_accessor_owner')
+		return owner, owner
+	}
+	node := t.a.nodes[int(value)]
+	if node.children_count == 0 || node.kind !in [.selector, .index, .paren, .prefix] {
+		return none
+	}
+	projection, owner := t.stabilize_fixed_array_accessor_projection(t.a.child(&node, 0), owner_type) or {
+		return none
+	}
+	mut children := t.a.children_of(&node).clone()
+	children[0] = projection
+	return t.copy_node_with_children(node, children), owner
+}
+
 // Retained fixed elements share their indexed owner buffer. Managed slices
 // identify that original buffer through their preserved allocation provenance.
 fn (mut t Transformer) retain_fixed_array_index_containers(value flat.NodeId) flat.NodeId {
 	node := t.a.nodes[int(value)]
+	if node.kind == .call && t.array_accessor_call_can_take_address(node) {
+		callee := t.a.child_node(&node, 0)
+		mut base := t.retain_fixed_array_index_containers(t.a.child(callee, 0))
+		base_type := t.comptime_normalize_type_alias_chain(t.address_expr_type_name(base))
+		if !base_type.trim_left('&').starts_with('[]') {
+			return value
+		}
+		elem_type := t.comptime_normalize_type_alias_chain(base_type.trim_left('&')[2..])
+		if !elem_type.starts_with('&') && !elem_type.starts_with('[]')
+			&& !elem_type.starts_with('map[') {
+			base = t.retain_fixed_array_container(base, base_type)
+		}
+		mut children := t.a.children_of(&node).clone()
+		children[0] = t.copy_node_with_children(*callee, [base])
+		return t.copy_node_with_children(node, children)
+	}
 	if node.children_count == 0 || node.kind !in [.index, .selector, .paren, .prefix] {
 		return value
 	}
@@ -13876,20 +14006,24 @@ fn (mut t Transformer) retain_fixed_array_index_containers(value flat.NodeId) fl
 		value_type := t.comptime_normalize_type_alias_chain(t.node_type(value))
 		if base_type.trim_left('&').starts_with('[]') && !value_type.starts_with('&')
 			&& !value_type.starts_with('[]') && !value_type.starts_with('map[') {
-			mut base := t.stabilize_transformed_lvalue_for_reuse(children[0])
-			if !t.expr_is_plain_lvalue(base) {
-				base = t.stable_transformed_expr_for_reuse(base, base_type, 'fixed_array_container')
-			}
-			array_value := t.array_lvalue_value(base, base_type)
-			t.mark_fn_used('array.retain_fixed_array_buffer')
-			t.pending_stmts << t.make_expr_stmt(t.make_method_call(array_value, 'retain_fixed_array_buffer', []flat.NodeId{}))
-			children[0] = base
+			children[0] = t.retain_fixed_array_container(children[0], base_type)
 			for i in 1 .. children.len {
 				children[i] = t.stabilize_transformed_lvalue_component(children[i], 'fixed_array_container_index')
 			}
 		}
 	}
 	return t.copy_node_with_children(node, children)
+}
+
+fn (mut t Transformer) retain_fixed_array_container(value flat.NodeId, base_type string) flat.NodeId {
+	mut base := t.stabilize_transformed_lvalue_for_reuse(value)
+	if !t.expr_is_plain_lvalue(base) {
+		base = t.stable_transformed_expr_for_reuse(base, base_type, 'fixed_array_container')
+	}
+	array_value := t.array_lvalue_value(base, base_type)
+	t.mark_fn_used('array.retain_fixed_array_buffer')
+	t.pending_stmts << t.make_expr_stmt(t.make_method_call(array_value, 'retain_fixed_array_buffer', []flat.NodeId{}))
+	return base
 }
 
 // fixed_array_range_view lowers `fixed[a..b]`, where the result is written to, to a slice of
