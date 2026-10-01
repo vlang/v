@@ -25747,7 +25747,7 @@ fn (g &FlatGen) integer_overflow_helper(typ types.Type, op flat.Op) ?string {
 }
 
 fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, result_type types.Type) bool {
-	if !g.has_builtins || node.op !in [.div, .mod] {
+	if !g.has_builtins || g.static_c_initializer || node.op !in [.div, .mod] {
 		return false
 	}
 	checked_integer_bounds(result_type) or { return false }
