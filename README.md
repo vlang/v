@@ -91,6 +91,9 @@ make
 That should be it, and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
+On macOS, `make` guards Linux-only `prctl` code in older bootstrap snapshots before
+compiling them. It writes the build copy to `vc/v_macos.c` and keeps `vc/v.c` intact.
+
 (Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 
 Now try running `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).

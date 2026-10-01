@@ -170,6 +170,11 @@ endif
 # it can create v2 before either the compiler driver or v1_fallback exists.
 BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
 BOOTSTRAP_VC_SOURCES := $(VC)/$(VCFILE)
+ifdef MAC
+# Older portable snapshots contain the diagnostics server's Linux-only prctl
+# header and call without guards. Compile a guarded copy until vc is regenerated.
+BOOTSTRAP_VC_SOURCES := $(VC)/v_macos.c
+endif
 # Portable vc snapshots generated before the OpenBSD entropy and semaphore guards
 # still reference two libc symbols that OpenBSD does not provide. Supply the small
 # bootstrap-only compatibility implementations until vc is regenerated.
@@ -234,6 +239,9 @@ ifdef LEGACY
 	'$(MAKE)' -C $(TMPLEGACY) PREFIX=$(realpath $(LEGACYLIBS)) CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' install
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
+endif
+ifdef MAC
+	awk -f "$(VROOT)/cmd/tools/macos_vc_compat.awk" "$(VC)/$(VCFILE)" > "$(BOOTSTRAP_VC_SOURCES)"
 endif
 	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) $(BOOTSTRAP_VC_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
