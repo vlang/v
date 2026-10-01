@@ -14,6 +14,7 @@ Explicit option and result casts keep their wrappers when acquisition clones a s
 Mutable parameters wrapped in options, results, or sums follow the same acquisition rule.
 An active option or result array variant in a sum acquires its successful payload as well.
 Internal Result wrapper acquisition clones a failed wrapper's boxed error owner.
+Destructible custom errors need a compatible clone; failure to provide one rejects retention.
 Mutable sum copies also acquire independent boxes for their active by-value variants.
 
 With ownership checking enabled, capturing a mutable array parameter by value snapshots

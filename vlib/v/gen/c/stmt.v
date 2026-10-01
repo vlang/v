@@ -1712,7 +1712,9 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 			g.writeln('${result}._object_is_boxed = true;')
 		} else {
 			clone_method := g.resolve_method_name(concrete, 'clone')
-			if clone_method.len > 0 {
+			has_compatible_clone := g.tc.ownership_type_has_clone_method(concrete_type)
+				|| g.tc.ownership_type_has_clone_method(types.Pointer{ base_type: concrete_type })
+			if clone_method.len > 0 && has_compatible_clone {
 				params := g.tc.fn_param_types[clone_method] or { []types.Type{} }
 				receiver := if params.len > 0 && params[0] is types.Pointer {
 					'((${concrete_ct}*)${object})'
@@ -1730,6 +1732,9 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 					g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
 					g.writeln('${result}._object_is_boxed = true;')
 				}
+			} else if g.ownership_type_requires_destruction(concrete_type, 0) {
+				message := 'cannot retain borrowed Result error: `${concrete}` requires ownership destruction but has no compatible `clone()` method'
+				g.writeln('v_panic(${g.interface_str_lit(message)});')
 			} else {
 				g.writeln('${result}._object = memdup(${object}, sizeof(${concrete_ct}));')
 				g.writeln('${result}._object_is_boxed = true;')

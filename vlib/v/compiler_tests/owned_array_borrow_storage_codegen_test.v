@@ -927,3 +927,43 @@ fn main() {
 		assert output == if index == 0 { 'drop 1\nok' } else { 'ok' }
 	}
 }
+
+fn test_sum_result_error_clone_matrix_rejects_unsupported_result_aliases() {
+	for clone_kind in ['none', 'incompatible', 'value', 'pointer'] {
+		clone_method := match clone_kind {
+			'incompatible' { 'fn (r &Fault) clone() int { return r.id }' }
+			'value' { 'fn (r &Fault) clone() Fault { return Fault{r.id + 100} }' }
+			'pointer' { 'fn (r &Fault) clone() &Fault { return &Fault{r.id + 100} }' }
+			else { '' }
+		}
+		for failed in [false, true] {
+			name := 'sum_result_error_${clone_kind}_${failed}'
+			source := borrow_storage_drop_decls + '
+struct Fault implements Drop { id int }
+fn (r Fault) msg() string { return "failed" }
+fn (r Fault) code() int { return r.id }
+fn (mut r Fault) drop() { println("error \${r.id}") }
+${clone_method}
+type StringResult = !string
+type StringResultAlias = StringResult
+type Storage = []Res | StringResultAlias
+fn make_result(failed bool) !string {
+	if failed { return Fault{1} }
+	return "payload".repeat(4)
+}
+fn keep(mut source Storage) Storage { return source }
+fn main() {
+	mut source := Storage(StringResultAlias(make_result(${failed})))
+	retained := keep(mut source)
+	drop_owned(source)
+	drop_owned(retained)
+	println("ok")
+}
+'
+			build := borrow_storage_compile(name, source)
+			assert build.exit_code != 0, build.output
+			assert build.output.contains('cannot make an alias of Result type'), build.output
+			assert build.output.contains('Result types cannot be stored and have to be unwrapped immediately'), build.output
+		}
+	}
+}
