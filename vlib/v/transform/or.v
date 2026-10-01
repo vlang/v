@@ -1792,6 +1792,8 @@ fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.No
 }
 
 fn (mut t Transformer) transform_or_body_for_codegen(body_id flat.NodeId) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	if int(body_id) < 0 || int(body_id) >= t.a.nodes.len {
 		return body_id
 	}
@@ -2219,7 +2221,8 @@ fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_exp
 	if int(err_expr) < 0 || !t.has_ierror_interface() {
 		return
 	}
-	stmts << t.make_decl_assign_typed('err', err_expr, 'IError')
+	stmts << t.make_guard_value_decls('err', err_expr, 'IError')
+	t.set_var_type_binding('err', t.var_type('err'), t.raw_var_type('err'), true)
 }
 
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.
