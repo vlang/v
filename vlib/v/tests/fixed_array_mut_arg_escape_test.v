@@ -1201,3 +1201,36 @@ fn test_mutable_fixed_value_captures_own_their_context_storage() {
 	assert overwrite_stack() == 7
 	assert read_retained_optional_fixed_reference(kept) == [471, 462]
 }
+
+fn temporary_fixed_rows() [2][2]int {
+	return [[501, 502]!, [511, 512]!]!
+}
+
+@[noinline]
+fn references_from_mutable_fixed_backing(use_temporary bool) []&[]int {
+	mut kept := []&[]int{}
+	if use_temporary {
+		for mut row in temporary_fixed_rows() {
+			kept << retain_immutable_array_reference(row)
+			row[0]++
+		}
+	} else {
+		mut rows := [[481, 482]!, [491, 492]!]!
+		for mut row in rows {
+			kept << retain_immutable_array_reference(row)
+			row[0]++
+		}
+		assert rows[0][0] == 482
+		assert rows[1][0] == 492
+	}
+	return kept
+}
+
+fn test_mutable_fixed_loop_views_keep_original_or_temporary_backing_alive() {
+	for use_temporary, expected in [[482, 482], [502, 502]] {
+		kept := references_from_mutable_fixed_backing(use_temporary == 1)
+		assert overwrite_stack() == 7
+		assert read_retained_optional_fixed_reference(kept[0]) == expected
+		assert read_retained_optional_fixed_reference(kept[1]) == [expected[0] + 10, expected[1] + 10]
+	}
+}
