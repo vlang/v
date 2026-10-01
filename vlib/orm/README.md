@@ -215,6 +215,8 @@ sql db {
 ### Create & Drop Tables
 
 You can create and drop tables by passing the struct to `create table` and `drop table`.
+Table structs from imported modules can use the module name or its import alias as a qualifier.
+These references count as uses of the import, even when it is used only inside the SQL block.
 
 ```v ignore
 import models.Foo
