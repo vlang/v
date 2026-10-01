@@ -725,14 +725,18 @@ pub fn uname() Uname {
 	// ToDO: environment variables have low reliability; check for another quick way
 	machine :=
 		getenv('PROCESSOR_ARCHITECTURE') // * note: 'AMD64' == 'x86_64' (not standardized, but 'x86_64' use is more common; but, python == 'AMD64')
-	version_info := execute('cmd /d/c ver').output
-	version_n := (version_info.split(' '))[3].replace(']', '').trim_space()
+	version_info := execute('cmd /d/c ver')
+	release, version := if version_info.exit_code == 0 {
+		windows_version_parts(version_info.output)
+	} else {
+		'', ''
+	}
 	return Uname{
 		sysname:  'Windows_NT' // as of 2022-12, WinOS has only two possible kernels ~ 'Windows_NT' or 'Windows_9x'
 		nodename: nodename
 		machine:  machine.trim_space()
-		release:  (version_n.split('.'))[0..2].join('.').trim_space() // Major.minor-only == "primary"/release version
-		version:  (version_n.split('.'))[2].trim_space()
+		release:  release // Major.minor-only == "primary"/release version
+		version:  version
 	}
 }
 
