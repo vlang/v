@@ -1405,6 +1405,19 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		return addr
 	}
 	call_name := t.call_name_for_node(id, node)
+	if node.children_count == 2 && (call_name in ['drop_owned', 'builtin.drop_owned']
+		|| call_name.starts_with('builtin.drop_owned_T_') || call_name.starts_with('drop_owned_T_')) {
+		arg_id := t.unwrap_parens(t.a.child(&node, 1))
+		arg := t.a.nodes[int(arg_id)]
+		if arg.kind == .ident && arg.value in t.heaped_amp_locals {
+			// Promotion adds storage indirection, not a language-level reference.
+			// Explicit destruction still targets the original value's elements.
+			storage := t.transform_expr_preserving_pointer_value(arg_id)
+			value := t.make_prefix(.mul, storage)
+			t.set_node_typ(int(value), t.var_type(arg.value)[1..])
+			return t.copy_node_with_children(node, [t.a.child(&node, 0), value])
+		}
+	}
 	mut params := t.call_param_types_for_node(call_name, node)
 	mut param_type_names := t.call_param_type_names(params)
 	mut is_generic_variadic := false
