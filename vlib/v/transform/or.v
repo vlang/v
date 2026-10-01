@@ -1792,6 +1792,8 @@ fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.No
 }
 
 fn (mut t Transformer) transform_or_body_for_codegen(body_id flat.NodeId) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	if int(body_id) < 0 || int(body_id) >= t.a.nodes.len {
 		return body_id
 	}

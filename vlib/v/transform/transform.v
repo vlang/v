@@ -7045,15 +7045,20 @@ fn (t &Transformer) closure_return_candidate_use_is_safe(id flat.NodeId, name st
 // allocation so `v` is a `&T` to a heap object. A struct literal becomes `&T{..}` (the cgen
 // memdup's it); any other initializer is copied into a stack temp and memdup'd. Subsequent
 // `v.field = ..` writes then mutate the heap object the returned pointer alias also sees.
-fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string, elem_typ string) []flat.NodeId {
-	raw_typ := t.raw_var_type(var_name)
+fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string, elem_typ string, raw_typ string) []flat.NodeId {
 	rhs_id := t.a.child(&node, 1)
 	rhs := t.a.nodes[int(rhs_id)]
 	mut stmts := []flat.NodeId{}
 	transformed_init := t.transform_expr(rhs_id)
+	struct_init := rhs.kind == .struct_init
+		&& !(t.expr_uses_ident(transformed_init, var_name)
+			&& (t.heaped_amp_locals[var_name] || t.pointer_value_rvalues[var_name]
+				|| t.pointer_value_lvalues[var_name]))
 	// Statements lifted out while transforming the initializer must precede the heap decl.
 	t.drain_pending(mut stmts)
-	stmts << t.heap_escaping_value_decl(var_name, elem_typ, raw_typ, transformed_init, rhs.kind == .struct_init)
+	t.clear_source_decl_heaped_bindings(node)
+	t.set_var_type_with_raw(var_name, elem_typ, raw_typ)
+	stmts << t.heap_escaping_value_decl(var_name, elem_typ, raw_typ, transformed_init, struct_init)
 	return stmts
 }
 
@@ -7303,13 +7308,13 @@ fn (mut t Transformer) collect_mut_capture_sources(id flat.NodeId) {
 	}
 }
 
-// HeapedLocalState records which locals are moved to the heap (and so read and written
-// through their storage pointer) when a lexical scope starts.
+// HeapedLocalState records which locals use heap storage and their complete binding metadata.
 struct HeapedLocalState {
 	cloned                bool
 	heaped_amp_locals     map[string]bool
 	pointer_value_lvalues map[string]bool
 	pointer_value_rvalues map[string]bool
+	bindings              []VarTypeBinding
 }
 
 // save_heaped_local_state records the state before a lexical scope: a block, a loop, an
@@ -7323,11 +7328,19 @@ fn (t &Transformer) save_heaped_local_state() HeapedLocalState {
 		&& t.pointer_value_rvalues.len == 0 {
 		return HeapedLocalState{}
 	}
+	mut bindings := []VarTypeBinding{}
+	for binding in t.var_types {
+		if t.heaped_amp_locals[binding.name] || t.pointer_value_lvalues[binding.name]
+			|| t.pointer_value_rvalues[binding.name] {
+			bindings << binding
+		}
+	}
 	return HeapedLocalState{
 		cloned:                true
 		heaped_amp_locals:     t.heaped_amp_locals.clone()
 		pointer_value_lvalues: t.pointer_value_lvalues.clone()
 		pointer_value_rvalues: t.pointer_value_rvalues.clone()
+		bindings:              bindings
 	}
 }
 
@@ -7341,12 +7354,31 @@ fn (mut t Transformer) restore_heaped_local_state(state HeapedLocalState) {
 	t.heaped_amp_locals = state.heaped_amp_locals.clone()
 	t.pointer_value_lvalues = state.pointer_value_lvalues.clone()
 	t.pointer_value_rvalues = state.pointer_value_rvalues.clone()
+	for binding in state.bindings {
+		// Recreate a removed binding through the setter so indices and caches stay valid,
+		// then retain the complete incoming metadata, including its semantic heap type.
+		t.set_var_type_with_raw(binding.name, binding.typ, binding.raw_typ)
+		i := t.var_type_index(binding.name)
+		t.var_types[i] = binding
+	}
 }
 
 fn (mut t Transformer) clear_heaped_local_binding(name string) {
 	t.heaped_amp_locals.delete(name)
 	t.pointer_value_lvalues.delete(name)
 	t.pointer_value_rvalues.delete(name)
+}
+
+fn (mut t Transformer) clear_source_decl_heaped_bindings(node flat.Node) {
+	if !node.pos.is_valid() {
+		return
+	}
+	for lhs_id in t.multi_assign_lhs_ids(node) {
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .ident {
+			t.clear_heaped_local_binding(lhs.value)
+		}
+	}
 }
 
 // transform_scope_stmts transforms the statements of a lexical scope; see
@@ -15833,6 +15865,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	if node.children_count == 0 {
 		return [id]
 	}
+	source_single_decl := node.children_count == 2 && node.pos.is_valid()
 	if discarded := t.try_lower_discarded_spawn_assign(node) {
 		return discarded
 	}
@@ -15860,7 +15893,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		}
 		panic('internal error: empty decl_assign child in ${t.cur_fn_name}: count=${node.children_count} typ=${node.typ} value=${node.value} children=${parts.join('|')}')
 	}
+	source_lhs := t.a.child_node(&node, 0)
+	shadows_pointer_storage := source_single_decl && source_lhs.kind == .ident
+		&& (t.heaped_amp_locals[source_lhs.value] || t.pointer_value_rvalues[source_lhs.value]
+			|| t.pointer_value_lvalues[source_lhs.value])
 	mut inferred_typ := ''
+	mut inferred_raw_typ := ''
 	multi_match_decl_type := t.multi_match_smartcast_decl_type(node) or { '' }
 	if node.children_count > 2 && !isnil(t.tc) {
 		rhs_id := t.a.child(&node, 1)
@@ -16104,8 +16142,11 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 						'atomic ${clean_raw}'
 					}
 				}
-				t.set_var_type_with_raw(lhs.value, typ, raw_typ)
+				if !source_single_decl {
+					t.set_var_type_with_raw(lhs.value, typ, raw_typ)
+				}
 				inferred_typ = typ
+				inferred_raw_typ = raw_typ
 			}
 		}
 	}
@@ -16115,18 +16156,20 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	if node.children_count == 2 {
 		src := t.a.child_node(&node, 0)
 		if src.kind == .ident && src.value in t.mut_fixed_array_capture_sources
-			&& src.value !in t.heaped_amp_locals && t.is_fixed_array_type(inferred_typ) {
+			&& (source_single_decl || src.value !in t.heaped_amp_locals)
+			&& t.is_fixed_array_type(inferred_typ) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: a closure captures it mutably')
-			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ, inferred_raw_typ)
 		}
 		// Every declaration of the name is moved: uses are rewritten by name, and sibling
 		// scopes (the branches of a `match`) can each declare it. A declaration already
 		// moved has a pointer type, which is not heapable. Fixed arrays use the same
 		// whole-value heap copy so retained element addresses still share later writes.
 		if src.kind == .ident && src.value in t.escaping_amp_sources
+			&& (source_single_decl || src.value !in t.heaped_amp_locals)
 			&& (t.heapable_value_type(inferred_typ) || t.is_fixed_array_type(inferred_typ)) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: its address escapes')
-			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ, inferred_raw_typ)
 		}
 		// A struct declared `@[heap]` is always heap-allocated at its own declaration,
 		// regardless of whether its address is later taken (`@[heap]` is an unconditional
@@ -16134,9 +16177,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		if src.kind == .ident && node.value != stack_value_decl_marker
 			&& node.value != zeroed_stack_value_decl_marker
 			&& !decl_assign_value_is_shared(node.value)
-			&& src.value !in t.heaped_amp_locals && t.heap_attr_struct_type(inferred_typ) {
+			&& (source_single_decl || src.value !in t.heaped_amp_locals)
+			&& t.heap_attr_struct_type(inferred_typ) {
 			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local of a `@[heap]` struct')
-			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ, inferred_raw_typ)
 		}
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
@@ -16148,6 +16192,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				lhs := t.make_ident(child.value)
 				t.set_node_typ(int(lhs), multi_match_decl_type)
 				new_children << lhs
+			} else if source_single_decl && child.kind == .ident {
+				new_lhs := t.a.add_node(child)
+				if inferred_typ.len > 0 {
+					t.set_node_typ(int(new_lhs), inferred_typ)
+				}
+				new_children << new_lhs
 			} else {
 				new_children << t.transform_lvalue(child_id)
 			}
@@ -16161,7 +16211,9 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				amp_src := t.a.nodes[int(t.a.child(&amp, 0))]
 				if amp_src.kind == .ident && amp_src.value in t.heaped_amp_locals {
 					inferred_typ = t.var_type(amp_src.value)
-					t.set_decl_var_type(node, t.a.nodes[int(t.a.child(&node, 0))].value, inferred_typ)
+					if !source_single_decl {
+						t.set_decl_var_type(node, t.a.nodes[int(t.a.child(&node, 0))].value, inferred_typ)
+					}
 				}
 			}
 		} else {
@@ -16187,6 +16239,18 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				new_children << t.clone_borrowed_projection(child_id, t.transform_expr_for_type(child_id, lhs_type), clone_type)
 			}
 		}
+	}
+	// Initializers read incoming bindings before the new declaration replaces them.
+	if shadows_pointer_storage && new_children.len == 2
+		&& t.expr_uses_ident(new_children[1], source_lhs.value) {
+		tmp_name := t.new_temp('decl_init')
+		tmp_type := if inferred_typ.len > 0 { inferred_typ } else { t.node_type(new_children[1]) }
+		t.pending_stmts << t.make_stack_value_decl_assign_typed(tmp_name, new_children[1], tmp_type)
+		new_children[1] = t.make_ident(tmp_name)
+	}
+	t.clear_source_decl_heaped_bindings(node)
+	if source_single_decl && source_lhs.kind == .ident && inferred_typ.len > 0 {
+		t.set_var_type_with_raw(source_lhs.value, inferred_typ, inferred_raw_typ)
 	}
 	if node.children_count == 2 {
 		lhs := t.a.nodes[int(new_children[0])]
@@ -16581,6 +16645,7 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 			lowered_rhs[i] = t.make_ident(tmp_name)
 		}
 	}
+	t.clear_source_decl_heaped_bindings(node)
 	for i in 0 .. lhs_count {
 		lhs := t.a.nodes[int(t.multi_assign_lhs_id(node, i))]
 		rhs_id := t.multi_assign_rhs_id(node, i)
@@ -17418,6 +17483,8 @@ fn (t &Transformer) branch_has_tuple_tail_values(branch_id flat.NodeId, count in
 
 // lower_multi_if_assign builds lower multi if assign data for transform.
 fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.NodeId) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	if node.children_count < 2 {
 		return []
 	}
@@ -17439,6 +17506,7 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 	t.smartcast_stack = base_smartcasts.clone()
 	t.invalidated_smartcasts = base_invalidated.clone()
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(heaped_state)
 	mut else_block := t.make_empty()
 	if node.children_count >= 3 {
 		for info in all_none_eq {
@@ -18156,6 +18224,8 @@ fn (mut t Transformer) transform_for_in_stmt(id flat.NodeId, node flat.Node) []f
 
 // transform_block_stmt transforms transform block stmt data for transform.
 fn (mut t Transformer) transform_block_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	mut child_ids := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_ids << t.a.children[node.children_start + i]
@@ -18234,9 +18304,9 @@ fn (mut t Transformer) lower_retained_comptime_if(node flat.Node) flat.NodeId {
 		branch_id := t.a.child(&node, i)
 		branch := t.a.nodes[int(branch_id)]
 		stmts := if branch.kind == .block {
-			t.transform_stmts(t.a.children_of(&branch))
+			t.transform_scope_stmts(t.a.children_of(&branch))
 		} else {
-			t.transform_stmt(branch_id)
+			t.transform_scope_stmts([branch_id])
 		}
 		t.restore_heaped_local_state(heaped_state)
 		branches << t.make_block(stmts)
@@ -19171,14 +19241,6 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
 			bound_name = lhs.value
 			saved_var_types = t.var_types.clone()
-			if t.smartcast_stack.len > 0 {
-				remaining_smartcasts := smartcasts_without_binding(t.smartcast_stack, bound_name)
-				if remaining_smartcasts.len < t.smartcast_stack.len {
-					saved_smartcasts = t.smartcast_stack.clone()
-					saved_invalidated = t.invalidated_smartcasts.clone()
-					t.smartcast_stack = remaining_smartcasts
-				}
-			}
 		}
 	}
 	mut children := []flat.NodeId{cap: int(branch.children_count)}
@@ -19207,6 +19269,15 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 		t.invalidate_smartcast_for_lvalue(t.a.child(&branch, 0))
 	}
 	if bound_name.len > 0 {
+		t.clear_heaped_local_binding(bound_name)
+		if t.smartcast_stack.len > 0 {
+			remaining_smartcasts := smartcasts_without_binding(t.smartcast_stack, bound_name)
+			if remaining_smartcasts.len < t.smartcast_stack.len {
+				saved_smartcasts = t.smartcast_stack.clone()
+				saved_invalidated = t.invalidated_smartcasts.clone()
+				t.smartcast_stack = remaining_smartcasts
+			}
+		}
 		lhs_id := t.a.child(&branch, 0)
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident {

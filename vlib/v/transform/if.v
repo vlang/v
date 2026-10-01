@@ -54,7 +54,7 @@ fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, va
 }
 
 fn (t &Transformer) guard_value_needs_heap_storage(name string, value_type string) bool {
-	clean_type := t.normalize_type_alias_chain(value_type)
+	clean_type := t.comptime_normalize_type_alias_chain(value_type)
 	is_fixed_array := t.is_fixed_array_type(clean_type)
 	needs_escape_storage := name in t.escaping_amp_sources
 		&& (t.heapable_value_type(clean_type) || is_fixed_array)
@@ -1818,6 +1818,7 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 
 	// Transform then-block children under the smartcast context.
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
 	then_base_smartcasts := t.smartcast_stack.clone()
 	base_invalidated := t.invalidated_smartcasts.clone()
 	for info in all_is {
@@ -1828,6 +1829,7 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	t.smartcast_stack = then_base_smartcasts.clone()
 	t.invalidated_smartcasts = base_invalidated.clone()
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 
 	// Transform else-block. A `!is` condition narrows in the else branch, and
 	// `x == none` unwraps x there.
@@ -1846,6 +1848,7 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 		}
 		t.smartcast_stack = else_base_smartcasts
 		t.restore_var_types(saved_var_types)
+		t.restore_heaped_local_state(saved_heaped_state)
 	}
 	else_invalidated := t.invalidated_smartcasts.clone()
 	for key, value in else_invalidated {
