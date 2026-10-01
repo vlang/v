@@ -19181,8 +19181,6 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 }
 
 fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool) flat.NodeId {
-	heaped_state := t.save_heaped_local_state()
-	defer { t.restore_heaped_local_state(heaped_state) }
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return id
 	}
