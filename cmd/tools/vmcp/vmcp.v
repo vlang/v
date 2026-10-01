@@ -16,6 +16,22 @@
 //   v mcp tools                     list the tools this server exposes
 module main
 
+// Winsock, for the `--http` transport.
+//
+// `vlib/net` asks for this itself through `#flag -lws2_32` in
+// `net_windows.c.v`, but a `#flag` that comes from an imported module is emitted
+// on the link line *before* the object files, and GNU ld only pulls symbols out of
+// an archive for the objects it has already seen. Winsock's import library is
+// therefore never searched for the objects that actually call into it, and the
+// link fails with `undefined reference to __imp_getsockopt`.
+//
+// A `#flag` in the main module is emitted after the objects instead, which is what
+// GNU ld needs. Repeating it here is therefore what makes this tool linkable with
+// `-cc gcc` on Windows, rather than requiring every caller to pass
+// `-cflags -lws2_32`.
+// Upstream report: https://github.com/vlang/v/issues/29293
+#flag windows -lws2_32
+
 import mcp
 import os
 

@@ -1,6 +1,6 @@
 ---
 name: v-mcp
-description: Use the V MCP server (`v mcp serve`) to read and change V code through the compiler itself - AST, symbols, references, diagnostics, rename and formatting. Read this before editing a V file through an agent.
+description: Use the V MCP server to read and change V code through the compiler itself.
 ---
 
 # Working with V through the MCP server

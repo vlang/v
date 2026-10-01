@@ -1,6 +1,6 @@
 ---
 name: v-lang
-description: The parts of the V language agents get wrong - option versus result, compile-time $ forms, immutability, module naming and the map versus struct choice. Read before writing or reviewing V code.
+description: The V language rules agents most often get wrong, before writing V code.
 ---
 
 # V rules worth knowing before writing V
@@ -13,7 +13,7 @@ Most V mistakes an agent makes are not algorithmic. They are these rules.
 or an error. They are unwrapped differently, and mixing them up does not always
 look like a type error.
 
-```v
+```v ignore
 // Option
 config := load_config(path) or { return }
 if config != none {
@@ -34,7 +34,7 @@ text := read_file(path) or { return error('cannot read ${path}') }
 
 Unwrapping inside an `if` guard is a common trap:
 
-```v
+```v ignore
 if x := maybe_value() {
     // only reached when there is a value
 }
@@ -45,7 +45,7 @@ if x := maybe_value() {
 Anything starting with `$` runs while the compiler runs. A runtime `if` that
 mentions a platform specific symbol will not compile on the other platforms.
 
-```v
+```v ignore
 $if windows {
     import sys.windows as wsys
 }
@@ -65,7 +65,7 @@ Available in `$if`: `windows`, `linux`, `macos`, `js`, `freebsd`, `android`,
 
 Function arguments are immutable. Add `mut` to change one:
 
-```v
+```v ignore
 fn build(mut app &App) {
     app.port = 8080  // mut receiver
 }
