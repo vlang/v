@@ -154,3 +154,14 @@ fn client_ip(req http.Request) string {
 `Header` provides both `CommonHeader` enum access (`get`, `set`, `add`) and
 string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 `http.parse_multipart_form` and `http.post_multipart_form` cover form bodies.
+
+### Windows TLS handshake compatibility
+
+On Windows, HTTPS uses Schannel first. If its handshake returns `SEC_E_INVALID_TOKEN`
+(`0x80090308`), the client retries the connection using the configured `net.ssl` backend
+(mbedTLS by default). This happens before sending any HTTP request bytes and also applies
+to pooled connections. Other Schannel errors, including certificate failures, propagate.
+Errors after sending a request do not trigger this backend fallback.
+
+The retry preserves certificate validation, configured certificates, HTTP/2 negotiation,
+request headers, method, and body. `-d no_vschannel` continues to select `net.ssl` directly.
