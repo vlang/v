@@ -7140,6 +7140,11 @@ Package are up to date.
    `base_url` is optional. When set, V resolves the package sources relative to
    that folder, next to the `v.mod` file.
 
+   Prefer a string list for `dependencies`, such as `['ui', 'nedpals.args']`.
+   Legacy entries such as `[ui: 0.1]`, `['ui': '0.1']`, and `[ui]` are also
+   accepted for compatibility. Only the dependency names are retained; legacy
+   version values are ignored.
+
    Minimal file structure:
    ```
    v.mod
