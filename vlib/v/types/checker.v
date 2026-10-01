@@ -6410,6 +6410,15 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 				return true
 			}
 		}
+		if node.kind == .sql_expr {
+			// SQL qualifiers are stored as separate tokens, e.g. `schema . Region`.
+			for table_name in sql_orm_table_names(node.value.split(' ')) {
+				if type_text_contains_qualified_import(table_name, import_node.typ)
+					|| type_text_contains_qualified_import(table_name, module_path) {
+					return true
+				}
+			}
+		}
 		if type_text_contains_qualified_import(node.typ, import_node.typ)
 			|| type_text_contains_qualified_import(node.value, import_node.typ)
 			|| type_text_contains_qualified_import(node.typ, module_path)
