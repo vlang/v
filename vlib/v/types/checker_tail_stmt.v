@@ -9215,7 +9215,8 @@ fn (tc &TypeChecker) c_integer_constant_context_type(id flat.NodeId) Type {
 }
 
 fn c_upper_constant_is_pointer(qname string) bool {
-	return qname == 'C.NULL' || qname == 'C.SIG_DFL' || qname == 'C.SIG_ERR' || qname == 'C.SIG_IGN'
+	return qname == 'C.NULL' || qname == 'C.INVALID_HANDLE_VALUE' || qname == 'C.SIG_DFL'
+		|| qname == 'C.SIG_ERR' || qname == 'C.SIG_IGN'
 }
 
 fn c_int_selector_name(name string) bool {
