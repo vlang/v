@@ -7092,8 +7092,13 @@ fn (mut tc TypeChecker) build_struct_embed_index() {
 	}
 }
 
+// embedded_method_candidates returns the embedded structs that a call of `method` on a
+// `struct_name` could mean: more than one is an ambiguity. A method of the struct itself
+// hides those of the structs it embeds, and so does a method of an embedded struct for
+// the structs that one embeds in turn.
 fn (tc &TypeChecker) embedded_method_candidates(struct_name string, method string) []string {
-	if tc.struct_embed_receiver_names(struct_name).len == 0 {
+	if tc.struct_embed_receiver_names(struct_name).len == 0
+		|| '${struct_name}.${method}' in tc.fn_ret_types {
 		return []string{}
 	}
 	mut candidates := []string{}
@@ -7109,8 +7114,11 @@ fn (tc &TypeChecker) collect_embedded_method_candidates(struct_name string, meth
 	}
 	seen[struct_name] = true
 	for receiver in tc.struct_embed_receiver_names(struct_name) {
-		if '${receiver}.${method}' in tc.fn_ret_types && receiver !in candidates {
-			candidates << receiver
+		if '${receiver}.${method}' in tc.fn_ret_types {
+			if receiver !in candidates {
+				candidates << receiver
+			}
+			continue
 		}
 		tc.collect_embedded_method_candidates(receiver, method, mut candidates, mut seen)
 	}
