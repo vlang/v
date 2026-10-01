@@ -19299,8 +19299,21 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 			}
 			return typ
 		}
+		.match_stmt {
+			return implicit_match_type(a, node, bindings, index, depth + 1)
+		}
 		.call {
 			return implicit_call_return_type(a, node, bindings, index, depth + 1)
+		}
+		.infix {
+			// Only string concatenation: `+` on strings is never overloaded.
+			if node.op == .plus && node.children_count == 2 {
+				for child_idx in 0 .. 2 {
+					if implicit_expr_type(a, a.child(node, child_idx), bindings, index, depth + 1) == 'string' {
+						return 'string'
+					}
+				}
+			}
 		}
 		.selector {
 			if node.children_count > 0 {
@@ -19311,6 +19324,20 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 		.index {
 			if node.children_count > 0 {
 				base_type := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index.aliases)
+				if node.value == 'range' {
+					// A slice keeps its base type: `s[..n]` is a string, and slicing a
+					// fixed array yields a dynamic one.
+					if base_type == 'string' || base_type.starts_with('[]') {
+						return base_type
+					}
+					if base_type.starts_with('[') {
+						close := base_type.index(']') or { return '' }
+						if close + 1 < base_type.len {
+							return '[]' + base_type[close + 1..]
+						}
+					}
+					return ''
+				}
 				if base_type.starts_with('[]') {
 					return base_type[2..]
 				}
@@ -19337,6 +19364,52 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 	}
 
 	return ''
+}
+
+// implicit_match_type types a `match` used as a value like an `if`: every branch value
+// must have the same type. A branch that yields the matched variable under a single
+// struct type pattern yields it smartcast to that type.
+fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+	if node.children_count < 2 {
+		return ''
+	}
+	subject := a.child_node(node, 0)
+	mut typ := ''
+	for child_idx in 1 .. node.children_count {
+		branch := a.child_node(node, child_idx)
+		if branch.kind != .match_branch {
+			return ''
+		}
+		n_conds := if branch.value == 'else' { 0 } else { branch.value.int() }
+		if branch.children_count <= n_conds {
+			return ''
+		}
+		value_id := a.child(branch, branch.children_count - 1)
+		mut branch_type := ''
+		if n_conds == 1 && subject.kind == .ident {
+			mut value := a.node(value_id)
+			for value.kind in [.expr_stmt, .paren] && value.children_count == 1 {
+				value = a.child_node(value, 0)
+			}
+			cond := a.child_node(branch, 0)
+			if value.kind == .ident && value.value == subject.value && cond.kind == .ident
+				&& cond.value in index.fields {
+				branch_type = cond.value
+			}
+		}
+		if branch_type == '' {
+			branch_type = implicit_expr_type(a, value_id, bindings, index, depth + 1)
+		}
+		if branch_type == '' {
+			return ''
+		}
+		if typ == '' {
+			typ = branch_type
+		} else if implicit_normalize_type(typ, index.aliases) != implicit_normalize_type(branch_type, index.aliases) {
+			return ''
+		}
+	}
+	return typ
 }
 
 fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {

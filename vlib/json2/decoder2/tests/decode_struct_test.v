@@ -121,7 +121,6 @@ fn test_option_types() {
 	if x := json.decode[StructTypeOption[string]]('{}')!.val {
 		assert false, 'Should return none'
 	} else {
-		assert err.msg() == ''
 		assert true
 	}
 

@@ -16,6 +16,9 @@ concurrency:
   group: vpm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   setup-vpm:
     strategy:
@@ -26,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           path: vlang
       - name: Show git version
         run: git version

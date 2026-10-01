@@ -42,12 +42,12 @@ fn main() {
 	if c := f.bar {
 		println(c)
 	} else {
-		println(err)
+		println('none')
 	}
 	if c := f.baz {
 		println(c)
 	} else {
-		println(err)
+		println('none')
 	}
 	// `match` test
 	match f.bar? {

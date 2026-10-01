@@ -894,9 +894,29 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 	g.optional_types_ready = true
 }
 
+// collect_sizeof_optional_types collects `sizeof(?T)` and `sizeof(!T)` operands,
+// which can be the only place a program names an option or result type.
+fn (mut g FlatGen) collect_sizeof_optional_types() {
+	old_file := g.tc.cur_file
+	old_module := g.tc.cur_module
+	for idx in g.type_metadata_nodes() {
+		node := g.a.nodes[idx]
+		if node.kind == .file {
+			g.tc.cur_file = node.value
+			g.tc.cur_module = g.tc.file_modules[node.value] or { old_module }
+		} else if node.kind == .module_decl {
+			g.tc.cur_module = node.value
+		} else if is_optional_sizeof_node(&node) {
+			g.collect_optional_typedef_type(g.tc.parse_type(node.value))
+		}
+	}
+	g.tc.cur_file = old_file
+	g.tc.cur_module = old_module
+}
+
 fn (mut g FlatGen) collect_unresolved_call_optional_types() {
-	// Calls without a resolved expression type are the only optional-type source
-	// not covered by the shared declaration-signature scan.
+	// Calls without a resolved expression type and `sizeof` operands are the only
+	// optional-type sources not covered by the shared declaration-signature scan.
 	mut seen_type_ids := []bool{len: 65536}
 	mut seen_type_texts := map[string]bool{}
 	for idx in g.type_metadata_nodes() {
@@ -938,6 +958,7 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		}
 		g.collect_optional_typedef_type(g.parse_node_type(&node))
 	}
+	g.collect_sizeof_optional_types()
 }
 
 fn cgen_type_text_is_complete(text string) bool {

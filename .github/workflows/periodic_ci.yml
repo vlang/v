@@ -17,6 +17,9 @@ concurrency:
   group: periodic-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   periodic-network:
     strategy:
@@ -37,6 +40,8 @@ jobs:
       V_CI_PERIODIC: 1
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build
         if: runner.os != 'Windows'
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor

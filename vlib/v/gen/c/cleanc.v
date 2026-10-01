@@ -1519,8 +1519,16 @@ fn is_type_metadata_node(node &flat.Node, mut cache TypeMetadataTextCache) bool 
 	if cache.may_need_array_typedef(node.typ) {
 		return true
 	}
+	if is_optional_sizeof_node(node) {
+		return true
+	}
 	return node.kind in [.array_init, .array_literal, .cast_expr, .sizeof_expr, .typeof_expr]
 		&& cache.may_need_array_typedef(node.value)
+}
+
+fn is_optional_sizeof_node(node &flat.Node) bool {
+	return node.kind == .sizeof_expr && node.children_count == 0 && node.value.len > 1
+		&& node.value[0] in [`?`, `!`]
 }
 
 fn (g &FlatGen) type_metadata_nodes() []i32 {
@@ -4153,12 +4161,13 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 }
 
 fn (mut g FlatGen) emit_translation_unit_include_directives() {
-	if g.target.os == 'windows' {
-		// V's encoding-neutral WinAPI bindings pass UTF-16 strings. Select the wide APIs
-		// before any preinclude can load Windows or CRT headers and lock in ANSI aliases.
-		g.writeln('#ifndef UNICODE\n#define UNICODE\n#endif')
-		g.writeln('#ifndef _UNICODE\n#define _UNICODE\n#endif')
-	}
+	// V's encoding-neutral WinAPI bindings pass UTF-16 strings. Select the wide APIs
+	// before any preinclude can load Windows or CRT headers and lock in ANSI aliases.
+	// Let the C compiler choose the platform for portable cross output.
+	g.writeln('#if defined(_WIN32)')
+	g.writeln('#ifndef UNICODE\n#define UNICODE\n#endif')
+	g.writeln('#ifndef _UNICODE\n#define _UNICODE\n#endif')
+	g.writeln('#endif')
 	mut windows_header_emitted := g.emit_preinclude_directives()
 	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
 	if g.target.os == 'windows' && !windows_header_emitted {
@@ -12084,10 +12093,7 @@ fn map_str_kind(tc &types.TypeChecker, typ types.Type) int {
 		if name in ['i8', 'i16', 'i32', 'i64', 'int'] {
 			return 2
 		}
-		if name in ['u8'] {
-			return 3
-		}
-		if name in ['u16', 'u32', 'u64'] {
+		if name in ['u8', 'u16', 'u32', 'u64'] {
 			return 3
 		}
 		if name == 'u128' {
@@ -23326,6 +23332,10 @@ fn (mut g FlatGen) test_failure_helpers() {
 	g.writeln('')
 }
 
+fn is_builtin_closure_runtime_file(file string) bool {
+	return os.dir(file).replace('\\', '/').ends_with('vlib/builtin/closure')
+}
+
 // emit_global_inits queues explicit `__global x = expr` assignments and implicit
 // struct-field defaults into _vinit in source declaration order. The C globals are
 // emitted zero-initialized above; initializer expressions (often function calls like
@@ -23346,9 +23356,17 @@ fn (mut g FlatGen) emit_global_inits() {
 		g.tc.cur_file = old_file
 		g.in_global_array_pointer_init = old_array_pointer_init
 	}
+	// The closure runtime can be imported for syntax that only might need it. Its state
+	// is set up for `closure_init`, and without it the map runtime its fields default to
+	// may not be emitted at all.
+	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
 		if qname in g.global_cinit_names {
+			continue
+		}
+		if skip_closure_runtime_globals && g.global_modules[qname] == 'closure'
+			&& is_builtin_closure_runtime_file(g.global_files[qname]) {
 			continue
 		}
 		if mod := g.global_modules[qname] {

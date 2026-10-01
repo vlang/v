@@ -38,12 +38,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
         if: github.event_name == 'pull_request'
       # Push runs may wait in the Actions queue while master advances. Generate from
       # the current tip when the job starts, so the snapshot can still be published.
       - uses: actions/checkout@v7
         if: github.event_name != 'pull_request'
         with:
+          persist-credentials: false
           ref: master
       - name: Build V
         run: make -j4
