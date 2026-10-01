@@ -188,7 +188,14 @@ $if gcboehm_leak ? {
 	#flag -DGC_DEBUG=1
 }
 
-#include <gc.h>
+$if tinyc && linux {
+	// The legacy gc.h wrapper defines GC_noop1_ptr again; TCC rejects the
+	// duplicate when it loads the object containing GC_noop1 from libgc.a.
+	#include <gc/gc.h>
+} $else {
+	#include <gc.h>
+}
+
 #include "@VEXEROOT/vlib/builtin/gc_debugger_linux.h"
 #define v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))
 #define v_gc_get_warn_proc() ((void *)GC_get_warn_proc())
