@@ -6289,7 +6289,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		}
 	}
 	if !cached_declaration_has_attr(declaration_attrs, 'noreturn')
-		&& fn_is_noreturn(a, module_name, decl_name) {
+		&& fn_is_noreturn(a, module_name, if is_c { 'C.${decl_name}' } else { decl_name }) {
 		attrs << 'noreturn'
 	}
 	if attrs.len > 0 {
@@ -6344,7 +6344,7 @@ fn fn_export_name(a &flat.FlatAst, module_name string, name string) ?string {
 }
 
 fn fn_is_noreturn(a &flat.FlatAst, module_name string, name string) bool {
-	if module_name.len == 0 || module_name in ['main', 'builtin'] {
+	if module_name.len == 0 || module_name in ['main', 'builtin'] || name.starts_with('C.') {
 		return name in a.noreturn_fns
 	}
 	qualified_name := if name.starts_with('${module_name}.') {
