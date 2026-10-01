@@ -11695,6 +11695,7 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 			index := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1), 'int'), 'int', 'array_trim_index')
 			args << index
 			t.append_owned_array_drop_range(array_value, elem_type, index, t.make_selector(array_value, 'len', 'int'), mut drop_stmts)
+			valid_drop_range = t.make_infix(.logical_and, t.make_infix(.ge, index, t.make_int_literal(0)), t.make_infix(.lt, index, t.make_selector(array_value, 'len', 'int')))
 		}
 		'drop' {
 			if node.children_count < 2 {

@@ -740,3 +740,20 @@ fn main() {
 		assert run.output.contains('array.delete: index out of range'), run.output
 	}
 }
+
+fn test_owned_array_trim_drops_only_a_valid_range() {
+	for index in [-1, 0, 1, 2] {
+		output := borrow_storage_run('trim_drop_range_${index}', 'import os\n' + borrow_storage_drop_decls + '
+fn trim_at(mut values []Res, index int) {
+	values.trim(index)
+	println("ok")
+	os.exit(0)
+}
+fn main() {
+	mut values := [Res{1}]
+	trim_at(mut values, ${index})
+}
+')
+		assert output == if index == 0 { 'drop 1\nok' } else { 'ok' }
+	}
+}
