@@ -16857,7 +16857,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write(g.cname('${short_mod}.${node.value}'))
 				}
-			} else if node.value == 'len' && base.kind == .ident {
+			} else if node.value == 'len' && base.kind == .ident
+				&& g.embedded_field_path_for_promoted_selector(base_type0, node.value) == none {
+				// A `len` promoted from an embedded struct takes the embedded path below.
 				base_type := g.tc.resolve_type(base_id)
 				if fixed := array_fixed_type(types.unwrap_pointer(base_type)) {
 					g.write(g.fixed_array_len_value(fixed))
