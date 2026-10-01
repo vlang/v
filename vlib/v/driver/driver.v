@@ -558,7 +558,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		if c_link_flags_use_objective_c_language(passthrough) {
 			add_c_language_runtime_link_flags(mut passthrough, flags, 'objective-c', target)
 		}
-		return passthrough
+		return c_source_language_flags(passthrough)
 	}
 	mut common_compile_flags := optimization_flags.clone()
 	common_compile_flags << c_object_compile_support_flags(flags)
@@ -582,7 +582,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 			stats.content_key_hits = plan.requests - plan.direct_objects
 			stats.dependency_manifest_hits = plan.requests - plan.direct_objects
 			stats.dependency_files = plan.dependency_files
-			return plan.flags
+			return c_source_language_flags(plan.flags)
 		}
 	}
 	mut prepared := []string{}
@@ -654,13 +654,13 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		write_c_link_plan(plan_path, prepared, stats) or {}
 		stats.link_plan_signature = modulecache.file_signature(plan_path)
 	}
-	return prepared
+	return c_source_language_flags(prepared)
 }
 
 fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v4', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v5', os.getwd(), flags.join('\x00'),
 		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
 		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
@@ -675,7 +675,7 @@ fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagP
 fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	content := os.read_file(plan_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v4' {
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v5' {
 		return none
 	}
 	mut plan := CLinkPlan{}
@@ -739,7 +739,7 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
 	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
-	out.writeln('format=v3-c-link-plan-v4')
+	out.writeln('format=v3-c-link-plan-v5')
 	out.writeln('requests=${stats.requests}')
 	out.writeln('direct_objects=${stats.direct_objects}')
 	out.writeln('dependency_files=${stats.dependency_files}')
@@ -851,7 +851,7 @@ fn c_link_flags_use_language(flags []string, include_objective_c bool) bool {
 				|| (include_objective_c && language == 'objective-c') {
 				return true
 			}
-			if language in ['', 'none'] && (clean.ends_with('.cc') || clean.ends_with('.cpp')
+			if language in ['', 'none'] && (clean.ends_with('.C') || clean.ends_with('.cc') || clean.ends_with('.cpp')
 				|| clean.ends_with('.mm')
 				|| (include_objective_c && clean.ends_with('.m'))) {
 				return true
@@ -1470,8 +1470,11 @@ fn c_source_language(source_file string, source_language string) string {
 	if source_file.ends_with('.m') {
 		return 'objective-c'
 	}
-	if source_file.ends_with('.cc') || source_file.ends_with('.cpp') {
+	if source_file.ends_with('.C') || source_file.ends_with('.cc') || source_file.ends_with('.cpp') {
 		return 'c++'
+	}
+	if source_file.ends_with('.c') {
+		return 'c'
 	}
 	return ''
 }
@@ -1810,7 +1813,7 @@ fn c_flag_is_object_file(flag string) bool {
 }
 
 fn c_flag_is_c_source_file(flag string) bool {
-	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.cc')
+	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.C') || flag.ends_with('.cc')
 		|| flag.ends_with('.cpp') || flag.ends_with('.m') || flag.ends_with('.mm'))
 }
 
