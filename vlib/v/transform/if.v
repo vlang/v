@@ -204,7 +204,9 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 	}
 	then_children << t.guard_branch_stmts(then_id, tail)
 	then_block := t.make_block_prefix_scope_drops(then_children)
-	t.restore_var_types(saved_var_types)
+	// The saved bindings are restored again on return, and the `else` branch changes the
+	// restored ones in place (its `err`), so it must not get the saved array itself.
+	t.restore_var_types(saved_var_types.clone())
 	t.restore_heaped_local_state(heaped_state)
 
 	mut else_block := flat.empty_node
