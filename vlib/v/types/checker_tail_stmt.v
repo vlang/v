@@ -332,7 +332,7 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	}
 	if semantic.kind == .or_expr {
 		if has_embed_file_value {
-			if embed_id := tc.nested_embed_file_value(semantic_id) {
+			if embed_id := tc.or_fallback_embed_file_value(semantic_id) {
 				tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id,
 					tc.a.node(embed_id).pos)
 			}
@@ -416,6 +416,36 @@ fn (tc &TypeChecker) nested_embed_file_value(id flat.NodeId) ?flat.NodeId {
 	return none
 }
 
+// or_fallback_embed_file_value returns the `$embed_file` value produced by the
+// `or { ... }` block of an `or_expr`, i.e. the value that is discarded when the
+// whole `expr or { ... }` is unused. `$embed_file` values inside the guarded
+// expression (for example call arguments in `f($embed_file('x')) or { ... }`) or
+// in earlier statements of the block are consumed, so they are not reported.
+fn (tc &TypeChecker) or_fallback_embed_file_value(id flat.NodeId) ?flat.NodeId {
+	node := tc.a.node(id)
+	if node.kind != .or_expr || node.children_count < 2 {
+		return none
+	}
+	mut value_id := tc.a.child(node, 1)
+	mut value := tc.a.node(value_id)
+	for _ in 0 .. 64 {
+		if value.kind == .block && value.children_count > 0 {
+			value_id = tc.a.child(value, value.children_count - 1)
+		} else if value.kind in [.expr_stmt, .paren] && value.children_count == 1 {
+			value_id = tc.a.child(value, 0)
+		} else if value.kind == .or_expr && value.children_count >= 2 {
+			value_id = tc.a.child(value, 1)
+		} else {
+			break
+		}
+		value = tc.a.node(value_id)
+	}
+	if value.kind == .struct_init && value.value == 'embed_file.EmbedFileData' {
+		return value_id
+	}
+	return none
+}
+
 fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, semantic_id flat.NodeId, semantic flat.Node,
 	has_embed_file_value bool) token.Pos {
 	mut pos := if expr_id == semantic_id && semantic.kind == .selector {
@@ -442,12 +472,17 @@ fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, seman
 		return token.new_span(pos.id, pos.offset + 1, pos.end)
 	}
 	if semantic.kind == .selector && semantic.children_count > 0 {
-		base_id := tc.a.child(&semantic, 0)
+		mut base_id := tc.a.child(&semantic, 0)
 		mut base := tc.a.node(base_id)
 		for base.kind == .paren && base.children_count == 1 {
-			base = tc.a.child_node(base, 0)
+			base_id = tc.a.child(base, 0)
+			base = tc.a.node(base_id)
 		}
-		if base.kind in [.or_expr, .lock_expr] {
+		if base.kind == .or_expr {
+			if embed_id := tc.or_fallback_embed_file_value(base_id) {
+				return tc.a.node(embed_id).pos
+			}
+		} else if base.kind == .lock_expr {
 			if embed_id := tc.nested_embed_file_value(base_id) {
 				return tc.a.node(embed_id).pos
 			}
@@ -468,7 +503,7 @@ fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, seman
 		}
 	}
 	if lhs.kind == .or_expr {
-		if embed_id := tc.nested_embed_file_value(lhs_id) {
+		if embed_id := tc.or_fallback_embed_file_value(lhs_id) {
 			return tc.a.node(embed_id).pos
 		}
 	}
