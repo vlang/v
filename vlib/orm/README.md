@@ -347,6 +347,9 @@ Dynamic ORM blocks can build `WHERE` and `SET` data conditionally. Commas betwee
 emitted dynamic `where` items are joined with `AND`; use `&&` and `||` inside an
 item for explicit boolean conditions.
 
+The formatter preserves conditions, commas and comments in query-data blocks,
+including standalone `sql { ... }` declaration assignments while editing.
+
 ```v ignore
 where_filter := {
     if name := req.name {
