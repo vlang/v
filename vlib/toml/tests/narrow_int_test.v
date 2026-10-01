@@ -91,3 +91,88 @@ fn test_decode_narrow_ints_in_collections_out_of_range() {
 		'a': i32(1)
 	}
 }
+
+fn test_decode_narrow_int_rejects_non_integers() {
+	// `Any.i64()` returns 0 for these; that 0 must not replace the declared default.
+	for text in ['port = inf', 'port = -inf', 'port = nan', 'port = 1.5', 'port = true', 'port = "abc"',
+		'port = ""', 'port = [1]', 'port = { a = 1 }', 'port = 1979-05-27'] {
+		n := toml.decode[Defaults](text) or { panic(err) }
+		assert n.port == u16(8080), text
+	}
+}
+
+fn test_decode_narrow_int_from_numeric_string() {
+	// Older versions of `toml.encode` wrote narrow integers as quoted strings.
+	n := toml.decode[Defaults]('port = "9090"\nretries = "5"\noffset = "-2"') or { panic(err) }
+	assert n.port == u16(9090)
+	assert n.retries == u8(5)
+	assert n.offset == i8(-2)
+	m := toml.decode[Defaults]('port = "99999"\nretries = "-1"\noffset = "1.5"') or {
+		panic(err)
+	}
+	assert m.port == u16(8080)
+	assert m.retries == u8(3)
+	assert m.offset == i8(7)
+}
+
+fn test_decode_narrow_ints_in_collections_rejects_non_integers() {
+	c := toml.decode[NarrowCollections]('ports = [80, inf, -inf, nan, 1.5, true, "443", "x"]\n\n[by_name]\na = 1\nb = inf\nc = nan\nd = "-7"\ne = 2.5\n') or {
+		panic(err)
+	}
+	assert c.ports == [u16(80), u16(443)]
+	assert c.by_name == {
+		'a': i32(1)
+		'd': i32(-7)
+	}
+}
+
+struct OtherInts {
+	sizes  []usize          = [usize(7)]
+	isizes map[string]isize = {
+		'a': isize(5)
+	}
+	runes  []rune = [`x`]
+}
+
+fn test_decode_other_int_collections_keep_current() {
+	// Only u8, u16, u32, i8, i16 and i32 are decoded as narrow integers. Collections
+	// of the other integer types keep their current value, as before.
+	o := toml.decode[OtherInts]('sizes = [1]\nrunes = [1]\n\n[isizes]\nb = 2\n') or {
+		panic(err)
+	}
+	assert o.sizes == [usize(7)]
+	assert o.isizes == {
+		'a': isize(5)
+	}
+	assert o.runes == [`x`]
+}
+
+struct WideInts {
+	u usize
+	r rune
+}
+
+fn test_encode_other_ints() {
+	w := WideInts{~usize(0), `🚀`}
+	encoded := toml.encode[WideInts](w)
+	// `usize` is not widened to `i64`, which would wrap its largest values.
+	assert encoded.contains('${w.u}')
+	// `rune` is still encoded as a string.
+	assert encoded.contains('r = "🚀"')
+}
+
+struct Listen {
+	port u16
+}
+
+struct Server {
+	Listen
+	name string
+}
+
+fn test_encode_and_decode_embedded_narrow_ints() {
+	s := Server{Listen{8080}, 'web'}
+	encoded := toml.encode[Server](s)
+	assert encoded == 'port = 8080\nname = "web"'
+	assert toml.decode[Server](encoded)! == s
+}
