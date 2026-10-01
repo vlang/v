@@ -417,7 +417,9 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 	} else if normalized.starts_with('vlib/') {
 		relative = normalized['vlib/'.len..]
 	} else {
-		return false
+		// A matching directory name alone cannot establish a top-level module.
+		// An entry directory can be a sibling of imported project submodules.
+		return os.is_dir(dir)
 	}
 	return relative.all_before_last('/').contains('/')
 }
