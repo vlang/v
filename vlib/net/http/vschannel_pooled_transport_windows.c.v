@@ -68,7 +68,7 @@ fn new_vschannel_pooled_transport(host string, port int, validate bool, alpn_pro
 		err_code := C.vschannel_last_error(&t.ctx)
 		C.vschannel_cleanup(&t.ctx)
 		if err_code != 0 {
-			return vschannel_request_error(err_code)
+			return vschannel_handshake_error(err_code)
 		}
 		return error('http: vschannel connect failed')
 	}
@@ -221,7 +221,12 @@ fn h2_dial_probe_vschannel(req &Request, host string, port int) !H2ProbeResult {
 		}
 	}
 	mut t := new_vschannel_pooled_transport(host, port, req.validate, ['h2', 'http/1.1'],
-		h2_pooled_io_timeout, h2_pooled_write_stall_limit)!
+		h2_pooled_io_timeout, h2_pooled_write_stall_limit) or {
+		if vschannel_handshake_retry_allowed(err) {
+			return h2_dial_probe_ssl(req, host, port)
+		}
+		return err
+	}
 	if t.negotiated_alpn() != 'h2' {
 		// Hand the still-open, ALPN-probed connection back for h1 reuse
 		// instead of closing it: widen its timeouts from the h2-poll-tuned
@@ -260,7 +265,12 @@ fn (mut t Transport) vschannel_fresh_round_trip(req &Request, key string, raw st
 		[]string{}
 	}
 	mut vt := new_vschannel_pooled_transport(host, port, req.validate, alpn, req.read_timeout,
-		req.write_timeout)!
+		req.write_timeout) or {
+		if vschannel_handshake_retry_allowed(err) {
+			return t.tls_fresh_round_trip_ssl(req, key, raw, method, host, port, path, data, header)
+		}
+		return err
+	}
 	if req.enable_http2 && vt.negotiated_alpn() == 'h2' {
 		defer {
 			vt.close()
