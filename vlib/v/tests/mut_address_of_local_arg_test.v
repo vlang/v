@@ -35,6 +35,11 @@ fn mut_addr_fill_option(mut e MutAddrEntry) ?u64 {
 	return 2
 }
 
+fn mut_addr_fill_option_pair(mut e MutAddrEntry) ?(u64, u64) {
+	e.ino = 19
+	return 5, 6
+}
+
 fn mut_addr_fill_result_pair(mut e MutAddrEntry) !(u64, u64) {
 	e.ino = 17
 	return 3, 4
@@ -158,6 +163,20 @@ fn mut_addr_option(start u64) ?u64 {
 	return n
 }
 
+fn mut_addr_forwarded_option() ?u64 {
+	mut e := MutAddrEntry{}
+	return mut_addr_fill_option(mut &e)
+}
+
+fn mut_addr_option_pair() ?(u64, u64) {
+	mut e := MutAddrEntry{}
+	a, b := mut_addr_fill_option_pair(mut &e)?
+	if e.ino != 19 {
+		return none
+	}
+	return a, b
+}
+
 fn mut_addr_result_pair() !(u64, u64) {
 	mut e := MutAddrEntry{}
 	a, b := mut_addr_fill_result_pair(mut &e)!
@@ -199,6 +218,10 @@ fn test_result_and_option_of_scalars_from_a_call_taking_mut_address() {
 	assert mut_addr_forwarded_result()! == 1
 	assert mut_addr_option(0)? == 2
 	assert mut_addr_option(99) == none
+	assert mut_addr_forwarded_option()? == 2
+	c, d := mut_addr_option_pair() or { u64(0), u64(0) }
+	assert c == 5
+	assert d == 6
 	a, b := mut_addr_result_pair()!
 	assert a == 3
 	assert b == 4

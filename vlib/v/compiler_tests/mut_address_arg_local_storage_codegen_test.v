@@ -36,6 +36,11 @@ fn fill_option(mut e Entry) ?u64 {
 	return 2
 }
 
+fn fill_option_pair(mut e Entry) ?(u64, u64) {
+	e.ino = 19
+	return 5, 6
+}
+
 fn fill_result_pair(mut e Entry) !(u64, u64) {
 	e.ino = 17
 	return 3, 4
@@ -77,6 +82,17 @@ fn option() ?u64 {
 	return n
 }
 
+fn forwarded_option() ?u64 {
+	mut forwarded_option_on_stack := Entry{}
+	return fill_option(mut &forwarded_option_on_stack)
+}
+
+fn option_pair() ?(u64, u64) {
+	mut option_pair_on_stack := Entry{}
+	a, b := fill_option_pair(mut &option_pair_on_stack)?
+	return a, b
+}
+
 fn result_pair() !(u64, u64) {
 	mut pair_on_heap := Entry{}
 	a, b := fill_result_pair(mut &pair_on_heap)!
@@ -96,8 +112,10 @@ fn main() {
 	d := forwarded_result() or { 0 }
 	e := option() or { 0 }
 	f, _ := result_pair() or { 0, 0 }
+	g := forwarded_option() or { 0 }
+	h, _ := option_pair() or { u64(0), u64(0) }
 	_, kept := pointer()
-	println(a + b + c + d + e + f + kept.ino)
+	println(a + b + c + d + e + f + g + h + kept.ino)
 }
 '
 	os.write_file(main_path, source) or { panic(err) }
@@ -116,8 +134,10 @@ fn main() {
 	assert c_code.contains('fill(&on_stack)')
 	assert c_code.contains('main__Entry forwarded_on_stack = '), 'forwarded_on_stack was moved to the heap'
 	assert c_code.contains('fill(&forwarded_on_stack)')
-	assert c_code.contains('main__Entry option_on_stack = '), 'option_on_stack was moved to the heap'
-	assert c_code.contains('fill_option(&option_on_stack)')
+	for name in ['option_on_stack', 'forwarded_option_on_stack', 'option_pair_on_stack'] {
+		assert c_code.contains('main__Entry ${name} = '), '${name} was moved to the heap'
+		assert c_code.contains('(&${name})'), '${name} is not passed by its address'
+	}
 	for name in on_heap {
 		assert c_code.contains('main__Entry* ${name} = '), '${name} was left on the stack'
 		assert c_code.contains('(${name})'), '${name} is not passed as its storage'
