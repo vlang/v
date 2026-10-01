@@ -9355,11 +9355,15 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 				// pointer cannot alias the source stack local.
 				return []string{}
 			}
-			if !isnil(t.tc) && escape_type_is_scalar_value(t.tc.resolve_type(id)) {
+			if !isnil(t.tc) && escape_call_result_is_scalar(t.tc.resolve_type(id)) {
 				// A scalar result cannot carry an address argument through the call.
 				// Without this guard, returning `child(&node)` heap-promotes `node`
 				// even though `child` returns only an integer node id. That pattern is
 				// ubiquitous in the compiler and makes each temporary an allocation.
+				// Several scalar results are no different, nor is an Option or a Result
+				// of them: `n, err := read(mut &buf)` followed by `return n, err`, or
+				// `n := read(mut &buf)!` followed by `return n`, leaves `buf` on the
+				// stack.
 				return []string{}
 			}
 			mut sources := []string{}
@@ -9411,6 +9415,34 @@ fn escape_type_is_scalar_value(typ types.Type) bool {
 		types.Alias { escape_type_is_scalar_value(typ.base_type) }
 		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum { true }
 		else { false }
+	}
+}
+
+// escape_call_result_is_scalar reports whether a call result of this type has no room for
+// an address: a scalar, a multi-return made of scalars only, or an Option or Result of
+// either.
+fn escape_call_result_is_scalar(typ types.Type) bool {
+	match typ {
+		types.OptionType {
+			return escape_call_result_is_scalar(typ.base_type)
+		}
+		types.ResultType {
+			return escape_call_result_is_scalar(typ.base_type)
+		}
+		types.MultiReturn {
+			if typ.types.len == 0 {
+				return false
+			}
+			for elem in typ.types {
+				if !escape_type_is_scalar_value(elem) {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return escape_type_is_scalar_value(typ)
+		}
 	}
 }
 
