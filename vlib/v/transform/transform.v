@@ -9256,6 +9256,25 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 		.ident {
 			return escape_alias_sources(node.value, amp_sources, ptr_aliases)
 		}
+		.infix {
+			if node.op !in [.plus, .minus] || node.children_count != 2 || isnil(t.tc)
+				|| types.unalias_type(t.tc.resolve_type(id)) !is types.Pointer {
+				return []string{}
+			}
+			mut sources := []string{}
+			for i in 0 .. node.children_count {
+				operand_id := t.a.child(&node, i)
+				if types.unalias_type(t.tc.resolve_type(operand_id)) !is types.Pointer {
+					continue
+				}
+				for source_name in t.escape_aggregate_address_sources(operand_id, amp_sources, ptr_aliases) {
+					if source_name !in sources {
+						sources << source_name
+					}
+				}
+			}
+			return sources
+		}
 		.postfix {
 			if node.op == .not && node.children_count > 0 {
 				return t.escape_aggregate_address_sources(t.a.child(&node, 0), amp_sources, ptr_aliases)

@@ -422,3 +422,23 @@ fn test_mutable_fixed_iteration_retains_backing_array_storage() {
 	_ = use_the_stack(10)
 	assert out.map(*it) == [u64(171), 172, 173, 174, 176, 178, 179, 187, 188]
 }
+
+@[noinline]
+fn append_pointer_arithmetic_addresses(mut out []&u64) {
+	mut items := [u64(191), 192, 193]!
+	out << unsafe { &items[0] + 1 }
+	out << unsafe { 1 + &items[1] }
+	out << unsafe { &items[2] - 2 }
+	base := &items[0]
+	advanced := unsafe { (base + 1) + 1 }
+	out << advanced
+	items[1] = 194
+	assert sizeof(items) == 3 * sizeof(u64)
+}
+
+fn test_pointer_arithmetic_retains_backing_array_storage() {
+	mut out := []&u64{}
+	append_pointer_arithmetic_addresses(mut out)
+	_ = use_the_stack(10)
+	assert out.map(*it) == [u64(194), 193, 191, 193]
+}
