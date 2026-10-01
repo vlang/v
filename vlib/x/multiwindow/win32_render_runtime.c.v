@@ -1,10 +1,10 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn (mut backend Win32Backend) create_renderer_anchor() ! {
 		$if windows && sokol_d3d11 ? {
 			if backend.anchor_committed {
@@ -394,7 +394,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if windows && sokol_d3d11 ? {
 		struct Win32RenderObservation {
 			available            bool
@@ -482,7 +482,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 
 fn (mut backend Win32Backend) collect_render_updates() ![]BackendRenderUpdate {
 	mut updates := []BackendRenderUpdate{}
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if windows && sokol_d3d11 ? {
 			for i in 0 .. backend.windows.len {
 				mut record := backend.windows[i]

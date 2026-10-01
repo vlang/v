@@ -4,10 +4,10 @@ module http
 // how download_file_with_progress works, and what output it produces while a file
 // is downloaded.
 pub interface Downloader {
-mut:
 	// Called once, at the start of the streaming download. You can do setup here,
 	// like opening a target file, changing request.stop_copying_limit to a different value,
 	// if you need it.
+mut:
 	on_start(mut request Request, path string) !
 	// Called many times, once a chunk of data is received
 	on_chunk(request &Request, chunk []u8, already_received u64, expected u64) !

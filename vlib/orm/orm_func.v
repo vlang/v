@@ -1175,8 +1175,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 								}
 							} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
 								embedded.$(sub.name) = value as string
-							} $else $if sub.unaliased_typ is time.Time
-								|| sub.unaliased_typ is ?time.Time {
+							} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
 								if m.typ == time_ {
 									embedded.$(sub.name) = value as time.Time
 								} else if m.typ == type_string {
@@ -1373,8 +1372,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							}
 						} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
 							instance.$(field.name) = value as string
-						} $else $if field.unaliased_typ is time.Time
-							|| field.unaliased_typ is ?time.Time {
+						} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
 							if m.typ == time_ {
 								instance.$(field.name) = value as time.Time
 							} else if m.typ == type_string {
@@ -1969,7 +1967,8 @@ fn orm_field_sql_name(attrs []string, field_name string) string {
 		if has_arg && name == 'sql' {
 			sql_name := trim_attr_arg(arg)
 			if sql_name.len > 0
-				&& sql_name !in ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'bool', 'string'] {
+				&& sql_name !in ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64',
+					'f32', 'f64', 'bool', 'string'] {
 				return sql_name
 			}
 		}

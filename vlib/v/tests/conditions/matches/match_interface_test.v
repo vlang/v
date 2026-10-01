@@ -15,8 +15,14 @@ fn test_interface_match() {
 		name: 'Jet'
 	})
 	match a {
-		Dog { assert true }
-		Cat { assert false }
-		else { assert false }
+		Dog {
+			assert true
+		}
+		Cat {
+			assert false
+		}
+		else {
+			assert false
+		}
 	}
 }

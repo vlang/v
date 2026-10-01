@@ -49,9 +49,9 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	// cannot be the declaration they use and the prototype has to stay.
 	mut postinclude_g := FlatGen.new()
 	postinclude_g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'postinclude'
-		typ: '"${header}"'
+		typ:   '"${header}"'
 	}, source, false)
 	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
 	assert '#include "${header}"' in postinclude_g.postinclude_directives
@@ -60,9 +60,9 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	// A preincluded header comes first, so it owns what it declares.
 	mut preinclude_g := FlatGen.new()
 	preinclude_g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'preinclude'
-		typ: '"${header}"'
+		typ:   '"${header}"'
 	}, source, false)
 	assert 'postinclude_api' !in preinclude_g.inlined_c_declared_fns
 	assert !preinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source, 'main')
@@ -83,9 +83,9 @@ fn test_include_preserves_header_without_scanning_declarations() {
 
 	mut g := FlatGen.new()
 	g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'include'
-		typ: '"${header}"'
+		typ:   '"${header}"'
 	}, source, false)
 
 	assert g.c_directives.len == 1
@@ -101,6 +101,29 @@ fn test_include_preserves_header_without_scanning_declarations() {
 	mut linked := FlatGen.new()
 	linked.note_c_flag_directive('main', source, '@VMODROOT/api.o')
 	assert linked.should_emit_c_extern_decl_from_file('header_api', source, 'main')
+}
+
+fn test_include_from_cflag_directory_keeps_portable_spelling() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cflag_header_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	include_dir := os.join_path(root, 'include')
+	os.mkdir_all(include_dir)!
+	header := os.join_path(include_dir, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(header, 'int api(void);\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut g := FlatGen.new()
+	g.c_flags = ['-I', include_dir]
+	assert g.c_include_directive_text(0, '', '"api.h"', source) == '#include "api.h"'
+
+	local_header := os.join_path(root, 'local.h')
+	os.write_file(local_header, 'int local(void);\n')!
+	assert g.c_include_directive_text(0, '', '"local.h"', source) == c_native_source_context_include(local_header)
 }
 
 fn test_preinclude_does_not_scan_macro_state() {
@@ -119,14 +142,14 @@ fn test_preinclude_does_not_scan_macro_state() {
 
 	mut g := FlatGen.new()
 	g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'preinclude'
-		typ: '"${config_header}"'
+		typ:   '"${config_header}"'
 	}, source, false)
 	g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'preinclude'
-		typ: '"${api_header}"'
+		typ:   '"${api_header}"'
 	}, source, false)
 
 	assert 'chained_api' !in g.inlined_c_active_macros
@@ -260,7 +283,6 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/tcc_compat_aliases.h"', root)
-	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/thirdparty/stdatomic/nix/atomic.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"C:\\root\\thirdparty\\stdatomic\\win\\atomic.h"', 'C:\\root')
 	// A trailing slash on VROOT resolves to the same anchored path.
@@ -280,6 +302,9 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	assert !c_include_arg_is_builtin_abi_helper('"prealloc_atomics.h"', root)
 	assert !c_include_arg_is_builtin_abi_helper('"my_stdatomic_wrapper.h"', root)
 	assert !c_include_arg_is_builtin_abi_helper('"vendor/atomic.h"', root)
+	// This regression-test header declares a callable probe and must remain included.
+	assert !c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"',
+		root)
 	// The `/` boundary keeps a `.../myvlib/...` path from matching `/vlib/...`.
 	assert !c_include_arg_is_builtin_abi_helper('"/home/user/myvlib/os/filelock/filelock_helpers.h"', root)
 	// The real system header is not one of the superseded inline helpers either.
@@ -389,6 +414,123 @@ fn test_cache_split_uses_system_sigaction_declaration() {
 	assert g.skip_builtin_struct('C.sigaction')
 }
 
+fn test_cocoa_nsfont_binding_uses_the_framework_class() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'ui', 'ui_darwin.c.v', flat.Node{})
+	// Without an AppKit include, `C.NSFont` is an ordinary header-owned C struct.
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	for include in ['#include <Cocoa/Cocoa.h>', '#import <AppKit/AppKit.h>',
+		'# include <AppKit/NSFont.h>'] {
+		g.c_directives = [CDirective{
+			module: 'ui'
+			text:   include
+		}]
+		assert g.skip_builtin_struct('C.NSFont'), include
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), include
+	}
+	g.c_directives = [CDirective{
+		module: 'ui'
+		text:   '#include <MyCocoa/types.h>'
+	}]
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_directives.clear()
+	g.preinclude_directives << '#include <Cocoa/Cocoa.h>'
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_nsfont_binding_accepts_a_target_qualified_cocoa_include() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from('macos', 'arm64') or { panic(err) })
+	// Portable output keeps a target-qualified include under its preprocessor guard,
+	// as a build for macOS on another host does.
+	g.set_output_cross_c(true)
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'ui', 'ui_darwin.c.v', flat.Node{})
+	g.collect_c_directive('ui', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   'macos <Cocoa/Cocoa.h>'
+	}, '', false)
+	directives := g.ordered_c_directives(false)
+	assert directives.len == 1 && directives[0].starts_with('#if '), directives.str()
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	// The guard of another target does not make NSFont the Cocoa class.
+	g.c_directives.clear()
+	g.collect_c_directive('ui', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   'linux <Cocoa/Cocoa.h>'
+	}, '', false)
+	assert g.ordered_c_directives(false).len == 1
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_nsfont_binding_respects_ordered_conditional_directives() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from('macos', 'arm64') or { panic(err) })
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'main', 'main.c.v', flat.Node{})
+	for source in [
+		'#if 0\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#if 1\n#else\n#import <AppKit/AppKit.h>\n#endif',
+		'#if 0\n#if 1\n#include <AppKit/NSFont.h>\n#endif\n#endif',
+		'#if 0\n#elif 0\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#define USE_COCOA 0\n#if USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#define USE_COCOA 1\n#undef USE_COCOA\n#ifdef USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif',
+	] {
+		g.c_directives.clear()
+		for line in source.split_into_lines() {
+			g.add_c_directive('main', line, false)
+		}
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont'), source
+	}
+	for source in [
+		'#if 0\n#else\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#if 0\n#elif 1\n#import <AppKit/AppKit.h>\n#endif',
+		'#define USE_COCOA 1\n#if USE_COCOA\n#include <AppKit/NSFont.h>\n#endif',
+	] {
+		g.c_directives.clear()
+		for line in source.split_into_lines() {
+			g.add_c_directive('main', line, false)
+		}
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), source
+	}
+	g.c_directives.clear()
+	for line in ['#if USE_COCOA', '#include <Cocoa/Cocoa.h>', '#endif'] {
+		g.add_c_directive('main', line, false)
+	}
+	g.c_flags = ['-DUSE_COCOA=0']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-D', 'USE_COCOA=1']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-DUSE_COCOA=1', '-UUSE_COCOA']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags.clear()
+	g.c_directives.clear()
+	g.preinclude_directives = ['#if 0\n#include <Cocoa/Cocoa.h>\n#endif']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives.clear()
+	// An import is emitted between its importer's before- and after-import directives.
+	g.module_imports['main'] = ['child']
+	g.add_c_directive('main', '#if 0', true)
+	g.add_c_directive('main', '#endif', false)
+	g.add_c_directive('child', '#include <Cocoa/Cocoa.h>', false)
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
 fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_c_struct_source_owner_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -444,6 +586,17 @@ fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	assert !system_libc.should_emit_c_extern_decl('sendfile')
 }
 
+fn test_target_libc_headers_own_their_c_extern_declarations() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	source := '/project/include_less.v'
+	for name in ['strlen', 'puts', 'fseeko', 'pthread_sigmask', 'clock_gettime', 'nanosleep', 'sqrtf',
+		'readdir', 'syscall'] {
+		assert !g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
+	}
+	assert g.should_emit_c_extern_decl_from_file('target_specific_api', source, 'main')
+}
+
 fn test_builtin_boehm_directives_use_system_libc() {
 	mut boehm := FlatGen.new()
 	boehm.add_c_directive('builtin', '#include <gc.h>', false)
@@ -452,6 +605,32 @@ fn test_builtin_boehm_directives_use_system_libc() {
 	mut closure := FlatGen.new()
 	closure.add_c_directive('closure', '#include <sys/mman.h>\n#include <pthread.h>', false)
 	assert !closure.c_directives_use_system_libc()
+}
+
+fn test_target_libc_headers_preserve_explicit_pthread_include() {
+	mut target := FlatGen.new()
+	target.set_target_libc_headers(true)
+	target.add_c_directive('binding', '#include <pthread.h>', false)
+	assert target.ordered_c_directives(false) == ['#include <pthread.h>']
+
+	mut headerless := FlatGen.new()
+	headerless.add_c_directive('closure', '#include <sys/mman.h>\n#include <pthread.h>', false)
+	assert headerless.ordered_c_directives(false) == ['#include <sys/mman.h>']
+}
+
+fn test_target_libc_headers_preserve_explicit_ptrace_include() {
+	mut target := FlatGen.new()
+	target.set_target_libc_headers(true)
+	target.c_extern_refs_ready = true
+	target.add_c_directive('os', '#include <sys/ptrace.h>', false)
+	target.emit_preserved_c_directives(false)
+	assert target.sb.str().contains('#include <sys/ptrace.h>')
+
+	mut headerless := FlatGen.new()
+	headerless.c_extern_refs_ready = true
+	headerless.add_c_directive('os', '#include <sys/ptrace.h>', false)
+	headerless.emit_preserved_c_directives(false)
+	assert !headerless.sb.str().contains('#include <sys/ptrace.h>')
 }
 
 fn test_builtin_abi_compat_macros_precede_late_c_source() {
@@ -503,9 +682,9 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 	g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
 	for kind in ['include', 'preinclude'] {
 		g.collect_c_directive('main', flat.Node{
-			kind: .directive
+			kind:  .directive
 			value: kind
-			typ: '${inactive_target} <ownership_probe.h>'
+			typ:   '${inactive_target} <ownership_probe.h>'
 		}, source, false)
 	}
 	assert source !in g.files_with_c_includes
@@ -517,10 +696,28 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 	active_g.set_target(pref.target_from(os.user_os(), 'amd64') or { panic(err) })
 	active_g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
 	active_g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'include'
-		typ: '${os.user_os()} <ownership_probe.h>'
+		typ:   '${os.user_os()} <ownership_probe.h>'
 	}, source, false)
 	assert source in active_g.files_with_c_includes
 	assert !active_g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')
+}
+
+fn test_cross_os_target_include_is_guarded_for_the_c_compiler() {
+	host := pref.host_target()
+	target_os := if host.os == 'linux' { 'macos' } else { 'linux' }
+	target := pref.target_from(target_os, host.arch) or { panic(err) }
+	mut g := FlatGen.new()
+	g.set_target(target)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '${target_os} <target_only.h>'
+	}, '', false)
+	condition := pref.cross_target_c_condition(target_os) or { panic('missing target condition') }
+	directives := g.ordered_c_directives(false)
+	assert directives == [
+		'#if ${condition}\n#include <target_only.h>\n#endif',
+	], 'unexpected directives: ${directives}'
 }

@@ -65,14 +65,16 @@ fn run_timer(duration Duration, output chan Time, stop chan chan bool, done chan
 			reply <- true
 			return
 		}
-		duration {}
+		duration {
+		}
 	}
 	fired_at := now()
 	select {
 		reply := <-stop {
 			reply <- true
 		}
-		output <- fired_at {}
+		output <- fired_at {
+		}
 	}
 }
 
@@ -80,7 +82,8 @@ fn run_timer(duration Duration, output chan Time, stop chan chan bool, done chan
 pub fn (timer &Timer) stop() bool {
 	reply := chan bool{cap: 1}
 	select {
-		timer.stop <- reply {}
+		timer.stop <- reply {
+		}
 		_ := <-timer.done {
 			return false
 		}

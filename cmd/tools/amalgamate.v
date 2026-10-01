@@ -62,15 +62,17 @@ fn parse_arguments() Config {
 	parser.footer('')
 
 	cfg.output_file = parser.string('output', `o`, '', 'output file.  If not specified,\n' +
-		flag.space + 'defaults to stdout.\n', val_desc: '<filename>')
+		flag.space + 'defaults to stdout.\n',
+		val_desc: '<filename>'
+	)
 
-	cfg.blacklist = parser.string_multi('blacklist', `b`,
-		'blacklist a file name.  This prevents\n' + flag.space +
+	cfg.blacklist = parser.string_multi('blacklist', `b`, 'blacklist a file name.  This prevents\n' + flag.space +
 		'the named file from being included.\n' + flag.space +
-		'This can be specified more that once.\n', val_desc: '<include_file>')
+		'This can be specified more that once.\n',
+		val_desc: '<include_file>'
+	)
 
-	cfg.search_dirs = parser.string_multi('search_path', `s`,
-		'add a directory to the search path.\n' + flag.space +
+	cfg.search_dirs = parser.string_multi('search_path', `s`, 'add a directory to the search path.\n' + flag.space +
 		'An include file is searched for in\n' + flag.space +
 		'the current working directory and\n' + flag.space +
 		'if not found, the directories in this\n' + flag.space +

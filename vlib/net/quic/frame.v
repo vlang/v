@@ -361,7 +361,7 @@ fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
 	mut smallest_in_range := largest_acknowledged - first_ack_range
 	ranges << AckRange{
 		smallest: smallest_in_range
-		largest: largest_in_range
+		largest:  largest_in_range
 	}
 
 	for _ in 0 .. ack_range_count {
@@ -384,7 +384,7 @@ fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
 		smallest_in_range = largest_in_range - range_length
 		ranges << AckRange{
 			smallest: smallest_in_range
-			largest: largest_in_range
+			largest:  largest_in_range
 		}
 	}
 
@@ -397,17 +397,17 @@ fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
 		ecn_ce, ne2 := decode_varint(buf[offset..])!
 		offset += ne2
 		ecn_counts = EcnCounts{
-			ect0: ect0
-			ect1: ect1
+			ect0:   ect0
+			ect1:   ect1
 			ecn_ce: ecn_ce
 		}
 	}
 
 	return QuicFrame(AckFrame{
 		largest_acknowledged: largest_acknowledged
-		ack_delay: ack_delay
-		ranges: ranges
-		ecn_counts: ecn_counts
+		ack_delay:            ack_delay
+		ranges:               ranges
+		ecn_counts:           ecn_counts
 	}), offset
 }
 
@@ -435,7 +435,7 @@ fn parse_crypto_frame(buf []u8, start int) !(QuicFrame, int) {
 	offset += int(length)
 	return QuicFrame(CryptoFrame{
 		offset: crypto_offset
-		data: data
+		data:   data
 	}), offset
 }
 
@@ -448,7 +448,7 @@ fn parse_reset_stream_frame(buf []u8, start int) !(QuicFrame, int) {
 	final_size, n3 := decode_varint(buf[offset..])!
 	offset += n3
 	return QuicFrame(ResetStreamFrame{
-		stream_id: stream_id
+		stream_id:  stream_id
 		error_code: error_code
 		final_size: final_size
 	}), offset
@@ -461,7 +461,7 @@ fn parse_stop_sending_frame(buf []u8, start int) !(QuicFrame, int) {
 	error_code, n2 := decode_varint(buf[offset..])!
 	offset += n2
 	return QuicFrame(StopSendingFrame{
-		stream_id: stream_id
+		stream_id:  stream_id
 		error_code: error_code
 	}), offset
 }
@@ -516,9 +516,9 @@ fn parse_stream_frame(buf []u8, start int, type_byte u8) !(QuicFrame, int) {
 
 	return QuicFrame(StreamFrame{
 		stream_id: stream_id
-		offset: stream_offset
-		fin: fin
-		data: data
+		offset:    stream_offset
+		fin:       fin
+		data:      data
 	}), offset
 }
 
@@ -536,7 +536,7 @@ fn parse_max_stream_data_frame(buf []u8, start int) !(QuicFrame, int) {
 	maximum_stream_data, n2 := decode_varint(buf[offset..])!
 	offset += n2
 	return QuicFrame(MaxStreamDataFrame{
-		stream_id: stream_id
+		stream_id:           stream_id
 		maximum_stream_data: maximum_stream_data
 	}), offset
 }
@@ -552,7 +552,7 @@ fn parse_max_streams_frame(buf []u8, start int, is_uni bool) !(QuicFrame, int) {
 		return error('quic: MAX_STREAMS frame: value ${maximum_streams} exceeds the ${max_initial_max_streams} (2^60) limit (RFC 9000 §4.6)')
 	}
 	return QuicFrame(MaxStreamsFrame{
-		direction: if is_uni {
+		direction:       if is_uni {
 			StreamDirection.unidirectional
 		} else {
 			StreamDirection.bidirectional
@@ -575,7 +575,7 @@ fn parse_stream_data_blocked_frame(buf []u8, start int) !(QuicFrame, int) {
 	maximum_stream_data, n2 := decode_varint(buf[offset..])!
 	offset += n2
 	return QuicFrame(StreamDataBlockedFrame{
-		stream_id: stream_id
+		stream_id:           stream_id
 		maximum_stream_data: maximum_stream_data
 	}), offset
 }
@@ -589,7 +589,7 @@ fn parse_streams_blocked_frame(buf []u8, start int, is_uni bool) !(QuicFrame, in
 		return error('quic: STREAMS_BLOCKED frame: value ${maximum_streams} exceeds the ${max_initial_max_streams} (2^60) limit (RFC 9000 §19.14)')
 	}
 	return QuicFrame(StreamsBlockedFrame{
-		direction: if is_uni {
+		direction:       if is_uni {
 			StreamDirection.unidirectional
 		} else {
 			StreamDirection.bidirectional
@@ -620,9 +620,9 @@ fn parse_connection_close_frame(buf []u8, start int, is_application_error bool) 
 
 	return QuicFrame(ConnectionCloseFrame{
 		is_application_error: is_application_error
-		error_code: error_code
-		frame_type: frame_type
-		reason: reason
+		error_code:           error_code
+		frame_type:           frame_type
+		reason:               reason
 	}), offset
 }
 

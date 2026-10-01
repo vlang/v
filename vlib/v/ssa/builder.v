@@ -1,6 +1,7 @@
 module ssa
 
 import v.flat
+import v.token
 import v.types
 
 const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit', '_abort',
@@ -11,37 +12,37 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_unlink', '_rename', '_remove', '_stat', '_lstat', '_fstat', '_chmod', '_chdir', '_realpath',
 	'_symlink', '_link', '_getpid', '_getuid', '_geteuid', '_fork', '_execve', '_execvp', '_waitpid',
 	'_kill', '_system', '_posix_spawn', '_signal', '_atexit', '_fgets', '_fputs', '_fread', '_fseek',
-	'_ftell', '_rewind', '_fileno', '_popen', '_pclose', '_dup', '_dup2', '_pipe', '_isatty',
-	'_freopen', '_dprintf', '_getc', '_strdup', '_strcmp', '_strncmp', '_strchr', '_strrchr',
-	'_strerror', '_strncasecmp', '_strcasecmp', '_atoi', '_atof', '_qsort', '_time', '_localtime_r',
-	'_gmtime_r', '_mktime', '_gettimeofday', '_clock', '_clock_gettime_nsec_np',
-	'_mach_absolute_time', '_mach_timebase_info', '_nanosleep', '_sleep', '_usleep', '_strftime',
-	'_task_info', '_mach_task_self', '_mach_task_self_', '_proc_pid_rusage', '_rand', '_srand',
-	'_isdigit', '_isspace', '_tolower', '_toupper', '_setenv', '_unsetenv', '_sysconf', '_uname',
-	'_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock', '_pthread_mutex_trylock',
-	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_pthread_create',
-	'_pthread_join', '_pthread_attr_init', '_pthread_attr_setstacksize', '_pthread_attr_destroy',
-	'_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared', '_pthread_rwlockattr_destroy',
-	'_pthread_rwlock_init', '_pthread_rwlock_rdlock', '_pthread_rwlock_wrlock',
-	'_pthread_rwlock_tryrdlock', '_pthread_rwlock_trywrlock', '_pthread_rwlock_unlock',
-	'_pthread_rwlock_destroy', '_pthread_condattr_init', '_pthread_condattr_setpshared',
-	'_pthread_condattr_destroy', '_pthread_cond_init', '_pthread_cond_signal', '_pthread_cond_wait',
-	'_pthread_cond_timedwait', '_pthread_cond_destroy', '_arc4random_buf', '_proc_pidpath',
-	'_backtrace', '_backtrace_symbols', '_backtrace_symbols_fd', '_dispatch_semaphore_create',
-	'_dispatch_semaphore_signal', '_dispatch_semaphore_wait', '_dispatch_time', '_dispatch_release',
-	'_setvbuf', '_setbuf', '_memchr', '_getlogin_r', '_getppid', '_getgid', '_getegid', '_ftruncate',
-	'_mkstemp', '_statvfs', '_chown', '_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask',
-	'_select', '_kqueue', '_abs', '_tcgetattr', '_tcsetattr', '_ioctl', '_getchar', '_getline',
-	'_fdopen', '_feof', '_ferror', '_setpgid', '_ptrace', '_wait', '_timegm', '_clock_gettime',
-	'_aligned_alloc', '_utime', '_getlogin', '_environ', '___error', '___stdinp',
-	'__dyld_get_image_name', '__dyld_get_image_header', '_cos', '_sin', '_tan', '_acos', '_asin',
-	'_atan', '_atan2', '_cosh', '_sinh', '_tanh', '_acosh', '_asinh', '_atanh', '_exp', '_exp2',
-	'_log', '_log2', '_log10', '_pow', '_sqrt', '_cbrt', '_ceil', '_floor', '_round', '_trunc',
-	'_fmod', '_remainder', '_fabs', '_copysign', '_fmax', '_fmin', '_hypot', '_ldexp', '_frexp',
-	'_modf', '_scalbn', '_ilogb', '_logb', '_erf', '_erfc', '_lgamma', '_tgamma', '_j0', '_j1',
-	'_jn', '_y0', '_y1', '_yn', '_getrusage', '_mprotect', '_sys_icache_invalidate', '_objc_msgSend',
-	'_objc_getClass', '_sel_registerName', '_objc_alloc_init', '_objc_autoreleasePoolPush',
-	'_objc_autoreleasePoolPop', '_MTLCreateSystemDefaultDevice', '_dlopen', '_dlsym']
+	'_ftell', '_rewind', '_fileno', '_popen', '_pclose', '_dup', '_dup2', '_pipe', '_isatty', '_freopen',
+	'_dprintf', '_getc', '_strdup', '_strcmp', '_strncmp', '_strchr', '_strrchr', '_strerror',
+	'_strncasecmp', '_strcasecmp', '_atoi', '_atof', '_qsort', '_time', '_localtime_r', '_gmtime_r',
+	'_mktime', '_gettimeofday', '_clock', '_clock_gettime_nsec_np', '_mach_absolute_time',
+	'_mach_timebase_info', '_nanosleep', '_sleep', '_usleep', '_strftime', '_task_info',
+	'_mach_task_self', '_mach_task_self_', '_proc_pid_rusage', '_rand', '_srand', '_isdigit', '_isspace',
+	'_tolower', '_toupper', '_setenv', '_unsetenv', '_sysconf', '_uname', '_gethostname',
+	'_pthread_mutex_init', '_pthread_mutex_lock', '_pthread_mutex_trylock', '_pthread_mutex_unlock',
+	'_pthread_mutex_destroy', '_pthread_self', '_pthread_create', '_pthread_join', '_pthread_attr_init',
+	'_pthread_attr_setstacksize', '_pthread_attr_destroy', '_pthread_rwlockattr_init',
+	'_pthread_rwlockattr_setpshared', '_pthread_rwlockattr_destroy', '_pthread_rwlock_init',
+	'_pthread_rwlock_rdlock', '_pthread_rwlock_wrlock', '_pthread_rwlock_tryrdlock',
+	'_pthread_rwlock_trywrlock', '_pthread_rwlock_unlock', '_pthread_rwlock_destroy',
+	'_pthread_condattr_init', '_pthread_condattr_setpshared', '_pthread_condattr_destroy',
+	'_pthread_cond_init', '_pthread_cond_signal', '_pthread_cond_wait', '_pthread_cond_timedwait',
+	'_pthread_cond_destroy', '_arc4random_buf', '_proc_pidpath', '_backtrace', '_backtrace_symbols',
+	'_backtrace_symbols_fd', '_dispatch_semaphore_create', '_dispatch_semaphore_signal',
+	'_dispatch_semaphore_wait', '_dispatch_time', '_dispatch_release', '_setvbuf', '_setbuf', '_memchr',
+	'_getlogin_r', '_getppid', '_getgid', '_getegid', '_ftruncate', '_mkstemp', '_statvfs', '_chown',
+	'_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask', '_select', '_kqueue', '_abs',
+	'_tcgetattr', '_tcsetattr', '_ioctl', '_getchar', '_getline', '_fdopen', '_feof', '_ferror',
+	'_setpgid', '_ptrace', '_wait', '_timegm', '_clock_gettime', '_aligned_alloc', '_utime', '_getlogin',
+	'_environ', '___error', '___stdinp', '__dyld_get_image_name', '__dyld_get_image_header', '_cos',
+	'_sin', '_tan', '_acos', '_asin', '_atan', '_atan2', '_cosh', '_sinh', '_tanh', '_acosh', '_asinh',
+	'_atanh', '_exp', '_exp2', '_log', '_log2', '_log10', '_pow', '_sqrt', '_cbrt', '_ceil', '_floor',
+	'_round', '_trunc', '_fmod', '_remainder', '_fabs', '_copysign', '_fmax', '_fmin', '_hypot',
+	'_ldexp', '_frexp', '_modf', '_scalbn', '_ilogb', '_logb', '_erf', '_erfc', '_lgamma', '_tgamma',
+	'_j0', '_j1', '_jn', '_y0', '_y1', '_yn', '_getrusage', '_mprotect', '_sys_icache_invalidate',
+	'_objc_msgSend', '_objc_getClass', '_sel_registerName', '_objc_alloc_init',
+	'_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop', '_MTLCreateSystemDefaultDevice', '_dlopen',
+	'_dlsym']
 
 const bench_runtime_stub_names = ['current_rss_kb', 'macos_rss_kb', 'linux_rss_kb',
 	'bench.current_rss_kb', 'bench.macos_rss_kb', 'bench.linux_rss_kb', 'v.bench.current_rss_kb',
@@ -465,10 +466,9 @@ fn native_c_struct_abi(struct_name string) ?NativeCStructAbi {
 	if struct_name == 'C.rusage' {
 		// getrusage fills two 16-byte timeval values followed by fourteen longs.
 		return NativeCStructAbi{
-			field_names: ['ru_utime_sec', 'ru_utime_usec', 'ru_stime_sec', 'ru_stime_usec',
-				'ru_maxrss', 'ru_ixrss', 'ru_idrss', 'ru_isrss', 'ru_minflt', 'ru_majflt', 'ru_nswap',
-				'ru_inblock', 'ru_oublock', 'ru_msgsnd', 'ru_msgrcv', 'ru_nsignals', 'ru_nvcsw',
-				'ru_nivcsw']
+			field_names: ['ru_utime_sec', 'ru_utime_usec', 'ru_stime_sec', 'ru_stime_usec', 'ru_maxrss',
+				'ru_ixrss', 'ru_idrss', 'ru_isrss', 'ru_minflt', 'ru_majflt', 'ru_nswap', 'ru_inblock',
+				'ru_oublock', 'ru_msgsnd', 'ru_msgrcv', 'ru_nsignals', 'ru_nvcsw', 'ru_nivcsw']
 			field_types: ['i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64',
 				'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64']
 		}
@@ -596,10 +596,10 @@ fn (mut b Builder) ssa_type_from_checker_type(typ types.Type) TypeID {
 		return b.m.type_store.get_ptr(b.ssa_type_from_checker_type(typ.base_type))
 	}
 	if typ is types.OptionType {
-		return b.option_type_id(typ.base_type.name())
+		return b.option_type_id(typ.base_type.name(), false)
 	}
 	if typ is types.ResultType {
-		return b.option_type_id(typ.base_type.name())
+		return b.option_type_id(typ.base_type.name(), true)
 	}
 	if typ is types.Enum {
 		return b.i32_type
@@ -644,7 +644,7 @@ fn (mut b Builder) register_enum_values(node flat.Node, module_name string) {
 			continue
 		}
 		if field.children_count > 0 {
-			if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
+			if explicit := b.enum_field_expr_value(b.a.child(field, 0), enum_names.last()) {
 				value = explicit
 			}
 		}
@@ -760,8 +760,8 @@ fn qualify_type_ref_name(name string, module_name string) string {
 
 // type_ref_is_builtin returns type ref is builtin data for ssa.
 fn type_ref_is_builtin(name string) bool {
-	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'bool', 'string', 'void', 'voidptr', 'rune', 'char', 'array', 'map']
+	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
+		'bool', 'string', 'void', 'voidptr', 'rune', 'char', 'array', 'map']
 }
 
 // sum_type_variants_for_decl supports sum type variants for decl handling for Builder.
@@ -1235,10 +1235,8 @@ fn (mut b Builder) register_enum_autostr_fns() {
 					if field.kind != .enum_field {
 						continue
 					}
-					if field.children_count > 0 {
-						if explicit := b.enum_field_expr_value(b.a.child(field, 0)) {
-							val = explicit
-						}
+					if registered := b.enum_values['${qualified}.${field.value}'] {
+						val = registered
 					}
 					names << field.value
 					// Flag enums store one bit per field, matching `enum_value_for_type`.
@@ -1263,12 +1261,10 @@ fn (mut b Builder) register_enum_autostr_fns() {
 }
 
 // enum_field_expr_value evaluates the constant integer value of an enum-field initializer
-// expression, mirroring cgen's enum_field_expr_value (gen/c/types.v). Without this the
-// autostr helpers above would only honour bare `.int_literal` initializers and leave a
-// field like `a = 1 << 3` / `a = -1` at the previous sequential value, so the generated
-// `<Enum>__autostr` would compare against the wrong number.
-fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
-	if int(id) < 0 {
+// expression. References resolve against already registered fields of the same enum,
+// preserving exact declaration names before trying an escaped keyword alternative.
+fn (b &Builder) enum_field_expr_value(id flat.NodeId, enum_name string) ?int {
+	if int(id) < 0 || int(id) >= b.a.nodes.len {
 		return none
 	}
 	node := b.a.nodes[int(id)]
@@ -1276,17 +1272,32 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
 		.int_literal {
 			return parse_int_literal(node.value)
 		}
-		.paren {
+		.ident, .enum_val, .selector {
+			name := if node.kind == .selector { b.qualified_expr_name(id) } else { node.value }
+			return b.enum_field_value_for_type(enum_name, name, false)
+		}
+		.paren, .cast_expr {
 			if node.children_count == 0 {
 				return none
 			}
-			return b.enum_field_expr_value(b.a.child(&node, 0))
+			return b.enum_field_expr_value(b.a.child(&node, 0), enum_name)
+		}
+		.call {
+			if node.children_count != 2 {
+				return none
+			}
+			cast_name := b.qualified_expr_name(b.a.child(&node, 0))
+			if cast_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+				'usize', 'rune'] {
+				return none
+			}
+			return b.enum_field_expr_value(b.a.child(&node, 1), enum_name)
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			value := b.enum_field_expr_value(b.a.child(&node, 0))?
+			value := b.enum_field_expr_value(b.a.child(&node, 0), enum_name)?
 			return match node.op {
 				.plus { value }
 				.minus { -value }
@@ -1298,8 +1309,8 @@ fn (b &Builder) enum_field_expr_value(id flat.NodeId) ?int {
 			if node.children_count < 2 {
 				return none
 			}
-			left := b.enum_field_expr_value(b.a.child(&node, 0))?
-			right := b.enum_field_expr_value(b.a.child(&node, 1))?
+			left := b.enum_field_expr_value(b.a.child(&node, 0), enum_name)?
+			right := b.enum_field_expr_value(b.a.child(&node, 1), enum_name)?
 			return match node.op {
 				.plus {
 					left + right
@@ -1500,30 +1511,29 @@ fn (b &Builder) skip_source_fn(name string) bool {
 	}
 	if name in ['_wymix', 'wyhash', 'wyhash64', 'string__eq', 'string__lt', 'array_new', 'array_get',
 		'string__plus', 'string_plus_many', 'string.trim_right', 'array_push', 'array_push_many',
-		'array.push_many', 'array_clone', 'panic', 'fast_string_eq', 'strings.new_builder',
-		'strings.Builder.write_string', 'strings.Builder.writeln', 'strings.Builder.str',
-		'strings.Builder.write_ptr', 'strings.Builder.write_u8', 'strings.Builder.write_runes',
-		'strings.Builder.free', 'strings.Builder.last_n', 'Builder.write_string', 'Builder.writeln',
-		'Builder.str', 'Builder.write_ptr', 'Builder.write_u8', 'Builder.write_runes', 'Builder.free',
-		'Builder.last_n', 'new_map', 'map__set', 'map__get', 'map__exists', 'map__get_check',
-		'map__get_key_check', 'map__get_or_set', 'map__delete', 'map__clear', 'map__clone',
-		'map__move', 'map__free', 'map__reserve', 'map__keys', 'map__values', 'v3_map_find',
-		'v3_map_set_sized', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital', 'bytestr',
-		'[]u8.bytestr', '[]u8.hex', '[]rune.string', 'Array_u8__bytestr', 'Array_u8__hex',
-		'Array_rune__string', 'array.repeat_to_depth', 'string.all_before_last',
-		'string__all_before_last', 'all_before_last', 'string.all_after_last',
-		'string__all_after_last', 'all_after_last', '_ht_alloc', '_ht_free', 'f32_to_str_l',
-		'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot', 'print', 'println',
-		'eprint', 'eprintln', 'arguments', 'at_exit', 'tos2', 'tos3', 'tos_clone',
-		'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32',
-		'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast',
-		'normalize_path_in_builder', 'check_fwrite', 'check_fread', 'os.check_fwrite',
-		'os.check_fread', 'array_eq_raw', 'array_eq_string', 'array_eq_array', 'fxx_to_str_l_parse',
-		'fxx_to_str_l_parse_with_dot', 'u8.vstring', 'u8.vstring_with_len', 'char.vstring',
-		'char.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len', 'charptr.vstring',
-		'charptr.vstring_with_len', 'u8.vstring_literal', 'u8.vstring_literal_with_len',
-		'char.vstring_literal', 'char.vstring_literal_with_len', 'byteptr.vstring_literal',
-		'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
+		'array.push_many', 'array_clone', 'panic', 'panic_debug', 'fast_string_eq',
+		'strings.new_builder', 'strings.Builder.write_string', 'strings.Builder.writeln',
+		'strings.Builder.str', 'strings.Builder.write_ptr', 'strings.Builder.write_u8',
+		'strings.Builder.write_runes', 'strings.Builder.free', 'strings.Builder.last_n',
+		'Builder.write_string', 'Builder.writeln', 'Builder.str', 'Builder.write_ptr',
+		'Builder.write_u8', 'Builder.write_runes', 'Builder.free', 'Builder.last_n', 'new_map',
+		'map__set', 'map__get', 'map__exists', 'map__get_check', 'map__get_key_check', 'map__get_or_set',
+		'map__delete', 'map__clear', 'map__clone', 'map__move', 'map__free', 'map__reserve', 'map__keys',
+		'map__values', 'v3_map_find', 'v3_map_set_sized', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum',
+		'u8.is_capital', 'bytestr', '[]u8.bytestr', '[]u8.hex', '[]rune.string', 'Array_u8__bytestr',
+		'Array_u8__hex', 'Array_rune__string', 'array.repeat_to_depth', 'string.all_before_last',
+		'string__all_before_last', 'all_before_last', 'string.all_after_last', 'string__all_after_last',
+		'all_after_last', '_ht_alloc', '_ht_free', 'f32_to_str_l', 'f32_to_str_l_with_dot',
+		'f64_to_str_l', 'f64_to_str_l_with_dot', 'print', 'println', 'eprint', 'eprintln', 'arguments',
+		'at_exit', 'tos2', 'tos3', 'tos_clone', 'v_prealloc_atomic_add_i32',
+		'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32', 'v_prealloc_atomic_cas_i32',
+		'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast', 'normalize_path_in_builder',
+		'check_fwrite', 'check_fread', 'os.check_fwrite', 'os.check_fread', 'array_eq_raw',
+		'array_eq_string', 'array_eq_array', 'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot',
+		'u8.vstring', 'u8.vstring_with_len', 'char.vstring', 'char.vstring_with_len', 'byteptr.vstring',
+		'byteptr.vstring_with_len', 'charptr.vstring', 'charptr.vstring_with_len', 'u8.vstring_literal',
+		'u8.vstring_literal_with_len', 'char.vstring_literal', 'char.vstring_literal_with_len',
+		'byteptr.vstring_literal', 'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
 		'charptr.vstring_literal_with_len', 'prealloc_malloc', 'prealloc_malloc_align',
 		'prealloc_calloc', 'prealloc_realloc', 'prealloc_scope_begin', 'v_realloc'] {
 		return true
@@ -3384,7 +3394,7 @@ fn (mut b Builder) register_os_stat_stubs() {
 		is_link_id := b.register_synthetic_function(name, b.i1_type, p1)
 		b.generate_os_stat_kind_body(is_link_id, 'lstat', '40960')
 	}
-	ls_result_type := b.option_type_id('[]string')
+	ls_result_type := b.option_type_id('[]string', true)
 	for name in ['ls', 'os.ls'] {
 		ls_id := b.register_synthetic_function(name, ls_result_type, p1)
 		b.generate_os_ls_body(ls_id, ls_result_type)
@@ -3507,6 +3517,13 @@ fn (mut b Builder) block_option_value(block_id BlockID, opt_typ TypeID, ok bool,
 			value = b.m.get_or_add_const(value_typ, '0')
 		}
 		b.block_instr2(.store, block_id, b.void_type, value, value_ptr)
+	}
+	err_index := b.m.type_store.types[opt_typ].field_names.index('err')
+	if err_index >= 0 {
+		err_type := b.m.type_store.types[opt_typ].fields[err_index]
+		err_ptr := b.block_struct_field_ptr(block_id, alloca, opt_typ, err_index)
+		err_value := b.m.get_or_add_const(err_type, '0')
+		b.block_instr2(.store, block_id, b.void_type, err_value, err_ptr)
 	}
 	return b.block_instr1(.load, block_id, opt_typ, alloca)
 }
@@ -4071,7 +4088,7 @@ fn (mut b Builder) generate_array_bytestr_body(func_id int) {
 fn (mut b Builder) register_at_exit_stub() {
 	mut p1 := []TypeID{}
 	p1 << b.resolve_type('FnExitCb')
-	result_type := b.option_type_id('void')
+	result_type := b.option_type_id('void', true)
 	func_id := b.register_synthetic_function('at_exit', result_type, p1)
 	b.generate_at_exit_body(func_id, result_type, p1)
 }
@@ -4168,7 +4185,7 @@ fn (mut b Builder) register_rand_prng_interface_stubs() {
 }
 
 fn (mut b Builder) register_embed_file_interface_stubs() {
-	result_type := b.option_type_id('[]u8')
+	result_type := b.option_type_id('[]u8', true)
 	mut params := []TypeID{}
 	params << b.resolve_type('embed_file.Decoder')
 	params << b.array_type
@@ -6079,7 +6096,8 @@ fn (b &Builder) fn_is_used(name string) bool {
 		return true
 	}
 	runtime_name := name.replace('__', '.').all_after_last('.')
-	if runtime_name in ['error_file_not_opened', 'error_size_of_type_0', 'fileno', 'posix_wait4_to_exit_status', 'vpopen', 'vpclose']
+	if runtime_name in ['error_file_not_opened', 'error_size_of_type_0', 'fileno',
+		'posix_wait4_to_exit_status', 'vpopen', 'vpclose']
 		|| runtime_name.starts_with('posix_wait_status_') {
 		return true
 	}
@@ -6111,8 +6129,8 @@ fn (b &Builder) fn_is_used(name string) bool {
 		return true
 	}
 	if name in ['new_map', 'memdup', 'int_str', 'bool_str', 'print', 'println', 'eprint', 'eprintln',
-		'exit', 'arguments', 'tos', 'tos2', 'tos3', 'tos_clone', 'cstring_to_vstring',
-		'malloc_noscan', 'isnil', 'error', 'error_with_code', 'join_path_single'] {
+		'exit', 'arguments', 'tos', 'tos2', 'tos3', 'tos_clone', 'cstring_to_vstring', 'malloc_noscan',
+		'isnil', 'error', 'error_with_code', 'join_path_single'] {
 		return true
 	}
 	return false
@@ -6133,7 +6151,8 @@ fn (b &Builder) ownership_drop_intrinsic_name(name string) bool {
 		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_') {
 		return true
 	}
-	if name in ['drop_owned_v3_interface', 'builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
+	if name in ['drop_owned_v3_interface', 'builtin.drop_owned_v3_interface',
+		'builtin__drop_owned_v3_interface']
 		|| name.starts_with('drop_owned_v3_interface_T_')
 		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
 		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
@@ -6492,7 +6511,8 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 		}
 		.fn_decl, .c_fn_decl, .struct_decl, .field_decl, .global_decl, .const_decl, .const_field,
 		.enum_decl, .enum_field, .type_decl, .interface_decl, .interface_field, .import_decl,
-		.module_decl, .directive, .param {}
+		.module_decl, .directive, .param {
+		}
 		.empty {}
 		else {
 			eprintln('build_stmt: unsupported node kind: ${node.kind}')
@@ -7565,7 +7585,11 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 		}
 		.sizeof_expr {
 			mut size := 0
-			if type_name := b.var_type_names[node.value] {
+			if node.children_count > 0 {
+				operand := b.a.child(&node, 0)
+				// sizeof uses the operand's type without evaluating its value.
+				size = b.sizeof_type_name(b.checked_expr_type_name(operand))
+			} else if type_name := b.var_type_names[node.value] {
 				size = b.sizeof_type_name(type_name)
 			} else if addr := b.vars[node.value] {
 				size = b.m.type_size(b.deref_type(addr))
@@ -7802,9 +7826,12 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 			return b.m.get_or_add_const(b.i64_type, value.str())
 		}
 	}
-	clean_member0 := node.value.trim_left('.')
-	if value := b.enum_values[clean_member0] {
-		return b.m.get_or_add_const(b.i64_type, value.str())
+	raw_member := node.value.trim_left('.')
+	member_keys := enum_member_lookup_keys(raw_member)
+	for key in member_keys {
+		if value := b.enum_values[key] {
+			return b.m.get_or_add_const(b.i64_type, value.str())
+		}
 	}
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.expr_type(id) {
@@ -7814,35 +7841,63 @@ fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 			}
 		}
 	}
-	if !b.enum_member_dupes[node.value] {
-		if value := b.enum_member_values[node.value] {
-			return b.m.get_or_add_const(b.i64_type, value.str())
+	for key in member_keys {
+		member_name := key.all_after_last('.')
+		if !b.enum_member_dupes[member_name] {
+			if value := b.enum_member_values[member_name] {
+				return b.m.get_or_add_const(b.i64_type, value.str())
+			}
 		}
 	}
 	return b.m.get_or_add_const(b.i64_type, '0')
 }
 
+fn enum_member_lookup_keys(member string) []string {
+	field := member.all_after_last('.')
+	plain := if field.starts_with('@') { field[1..] } else { field }
+	if token.Token.from_string_tinyv(plain).is_keyword() {
+		alternate := if field.starts_with('@') { plain } else { '@' + field }
+		return [member, member[..member.len - field.len] + alternate]
+	}
+	return [member]
+}
+
 // enum_value_for_type supports enum value for type handling for Builder.
 fn (b &Builder) enum_value_for_type(type_name string, member string) ?int {
+	return b.enum_field_value_for_type(type_name, member, true)
+}
+
+fn (b &Builder) enum_field_value_for_type(type_name string, member string, as_flag_bit bool) ?int {
 	if type_name.len == 0 || type_name in ['int', 'unknown'] {
 		return none
 	}
-	clean_member0 := member.trim_left('.')
-	if value := b.enum_values[clean_member0] {
-		enum_name := clean_member0.all_before_last('.')
-		return if b.is_flag_enum_type_name(enum_name) { 1 << value } else { value }
-	}
-	clean_member := clean_member0.all_after_last('.')
+	raw_member := member.trim_left('.')
+	member_keys := enum_member_lookup_keys(raw_member)
 	mut names := []string{}
 	names << type_name
 	short_type := type_name.all_after('.')
 	if short_type != type_name {
 		names << short_type
 	}
-	for name in names {
-		key := name + '.' + clean_member
-		if value := b.enum_values[key] {
-			return if b.is_flag_enum_type_name(name) { 1 << value } else { value }
+	for candidate in member_keys {
+		if value := b.enum_values[candidate] {
+			enum_name := candidate.all_before_last('.')
+			return if as_flag_bit && b.is_flag_enum_type_name(enum_name) {
+				1 << value
+			} else {
+				value
+			}
+		}
+		clean_member := candidate.all_after_last('.')
+		for name in names {
+			key := name + '.' + clean_member
+			if value := b.enum_values[key] {
+				return if as_flag_bit && b.is_flag_enum_type_name(name) {
+					1 << value
+				} else {
+					value
+				}
+			}
 		}
 	}
 	return none
@@ -8256,8 +8311,8 @@ fn (b &Builder) is_decimal_int_text(text string) bool {
 
 fn (mut b Builder) sizeof_type_name(type_name string) int {
 	if b.is_fixed_array_type_name(type_name) {
-		elem_type := b.resolve_type(b.fixed_array_elem_type_name(type_name))
-		return b.fixed_array_len_text(type_name).int() * b.m.type_size(elem_type)
+		// Recurse so nested fixed arrays (`[2][3]u8`) use their element's full size.
+		return b.fixed_array_len_text(type_name).int() * b.sizeof_type_name(b.fixed_array_elem_type_name(type_name))
 	}
 	return b.m.type_size(b.resolve_type(type_name))
 }
@@ -8523,6 +8578,13 @@ fn (mut b Builder) build_option_value(opt_typ TypeID, ok bool, raw_value ValueID
 			}
 		}
 		b.emit2(.store, b.void_type, value, value_ptr)
+	}
+	err_index := b.m.type_store.types[opt_typ].field_names.index('err')
+	if err_index >= 0 {
+		err_type := b.m.type_store.types[opt_typ].fields[err_index]
+		err_ptr := b.block_struct_field_ptr(b.cur_block, alloca, opt_typ, err_index)
+		err_value := b.m.get_or_add_const(err_type, '0')
+		b.emit2(.store, b.void_type, err_value, err_ptr)
 	}
 	return b.emit1(.load, opt_typ, alloca)
 }
@@ -9077,7 +9139,7 @@ fn sum_variant_field_name(variant string) string {
 		'i8' { '_i8' }
 		'i16' { '_i16' }
 		'i64' { '_i64' }
-		'u8', 'byte' { '_u8' }
+		'u8' { '_u8' }
 		'u16' { '_u16' }
 		'u32' { '_u32' }
 		'u64' { '_u64' }
@@ -9649,8 +9711,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	}
 	if resolved_name !in b.fn_ids && resolved_name.contains('.') {
 		method_name := resolved_name.all_after_last('.')
-		if method_name in ['vstring', 'vstring_with_len', 'vstring_literal',
-			'vstring_literal_with_len'] {
+		if method_name in ['vstring', 'vstring_with_len', 'vstring_literal', 'vstring_literal_with_len'] {
 			u8_name := 'u8.${method_name}'
 			if u8_name in b.fn_ids {
 				resolved_name = u8_name
@@ -10807,8 +10868,8 @@ fn (b &Builder) builder_method_name_for_base(base flat.Node, method string) ?str
 }
 
 fn is_builder_method(method string) bool {
-	return method in ['write_string', 'writeln', 'str', 'free', 'write_u8', 'write_ptr',
-		'write_runes', 'last_n', 'push_many']
+	return method in ['write_string', 'writeln', 'str', 'free', 'write_u8', 'write_ptr', 'write_runes',
+		'last_n', 'push_many']
 }
 
 fn (b &Builder) resolved_call_name(id flat.NodeId) ?string {
@@ -11188,7 +11249,7 @@ fn (mut b Builder) load_selector_field(node flat.Node, struct_typ_id TypeID, fie
 
 fn (b &Builder) is_option_like_var(name string) bool {
 	typ := b.var_type_names[name] or { return false }
-	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!` || typ == 'Optional')
+	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!` || typ == '__v_option')
 }
 
 fn (b &Builder) selector_has_addressable_root(node &flat.Node) bool {
@@ -11799,7 +11860,7 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 
 fn (mut b Builder) resolve_type(name string) TypeID {
 	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return b.option_type_id(name[1..])
+		return b.option_type_id(name[1..], name[0] == `!`)
 	}
 	if name.starts_with('&') {
 		inner := b.resolve_type(name[1..])
@@ -11884,7 +11945,7 @@ fn (mut b Builder) primitive_type_id(name string) ?TypeID {
 		'i64' {
 			b.i64_type
 		}
-		'u8', 'byte' {
+		'u8' {
 			b.u8_type
 		}
 		'u16' {
@@ -11923,7 +11984,7 @@ fn (mut b Builder) primitive_type_id(name string) ?TypeID {
 fn normalize_primitive_type_name(name string) string {
 	short_name := name.all_after('.')
 	return match short_name {
-		'int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64', 'f32',
+		'int', 'i8', 'char', 'i16', 'i32', 'rune', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
 		'f64', 'bool', 'string', 'void', 'voidptr', '' {
 			short_name
 		}
@@ -11933,8 +11994,8 @@ fn normalize_primitive_type_name(name string) string {
 	}
 }
 
-fn (mut b Builder) option_type_id(base_name string) TypeID {
-	key := '?' + base_name
+fn (mut b Builder) option_type_id(base_name string, is_result bool) TypeID {
+	key := (if is_result { '!' } else { '?' }) + base_name
 	if typ := b.option_types[key] {
 		return typ
 	}
@@ -11947,6 +12008,10 @@ fn (mut b Builder) option_type_id(base_name string) TypeID {
 		fields << base_typ
 		field_names << 'value'
 	}
+	if is_result {
+		fields << b.resolve_type('IError')
+		field_names << 'err'
+	}
 	typ_id := b.m.type_store.register(Type{
 		kind:        .struct_t
 		fields:      fields
@@ -11954,7 +12019,6 @@ fn (mut b Builder) option_type_id(base_name string) TypeID {
 	})
 	b.option_types[key] = typ_id
 	b.struct_types[key] = typ_id
-	b.struct_types['!' + base_name] = typ_id
 	return typ_id
 }
 
@@ -12021,7 +12085,7 @@ fn (b &Builder) enum_autostr_fn_name(type_name string) ?string {
 
 fn (mut b Builder) resolve_type_in_module(name string, module_name string) TypeID {
 	if name.len > 1 && (name[0] == `?` || name[0] == `!`) {
-		return b.option_type_id(name[1..])
+		return b.option_type_id(name[1..], name[0] == `!`)
 	}
 	if name.starts_with('&') {
 		inner := b.resolve_type_in_module(name[1..], module_name)

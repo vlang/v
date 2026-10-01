@@ -294,7 +294,8 @@ fn run_app_resource_only_identity_probe(backend gg.MultiWindowBackend, stale_ima
 			// A successful `post` means queued, not stopped. Keep this first frame active
 			// until the driver acknowledges that the stop closure was accepted.
 			select {
-				_ := <-stop_queued_ack {}
+				_ := <-stop_queued_ack {
+				}
 				dynamic_texture_probe_watchdog {
 					return error('watchdog expired waiting for app-resource-only stop admission acknowledgement')
 				}
@@ -321,7 +322,8 @@ fn run_app_resource_only_identity_probe(backend gg.MultiWindowBackend, stale_ima
 
 fn drive_app_resource_only_probe(mut app gg.App, frame_ready chan bool, stop_queued_ack chan bool, result chan string) {
 	select {
-		_ := <-frame_ready {}
+		_ := <-frame_ready {
+		}
 		dynamic_texture_probe_watchdog {
 			result <- 'watchdog expired waiting for app-resource-only frame'
 			return
@@ -374,7 +376,8 @@ fn drive_cleanup_only_probe(mut app gg.App, owner_barrier chan bool, result chan
 		return
 	}
 	select {
-		_ := <-owner_barrier {}
+		_ := <-owner_barrier {
+		}
 		dynamic_texture_probe_watchdog {
 			result <- 'watchdog expired waiting for cleanup-only owner barrier'
 			return

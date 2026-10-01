@@ -27,6 +27,28 @@ fn formatted_u8_interp_c_expr(format string) string {
 	return g.sb.str()
 }
 
+fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
+	mut a := flat.FlatAst.new()
+	stale_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'callback'
+		typ:   'fn ()'
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['gg.WindowReadbackId'] = []types.StructField{}
+	tc.struct_modules['gg.WindowReadbackId'] = 'gg'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	value_node := flat.Node{
+		kind:  .ident
+		value: 'request'
+		typ:   'gg.WindowReadbackId'
+	}
+	assert type_is_fn_value(g.usable_expr_type(stale_id))
+	assert !g.node_is_fn_value_for_voidptr(stale_id, value_node)
+}
+
 fn test_string_literal_table_has_internal_const_linkage() {
 	mut g := FlatGen.new()
 	g.intern_string('literal')
@@ -47,7 +69,7 @@ fn test_character_interpolation_unwraps_integer_alias() {
 	g.a = &a
 	g.tc = &tc
 	assert g.gen_formatted_string_interp_child_expr(value_id, types.Alias{
-		name: 'Code'
+		name:      'Code'
 		base_type: types.Type(types.u8_)
 	}, 'c')
 	assert g.sb.str() == 'rune__str((u32)(65))'
@@ -63,13 +85,13 @@ fn test_width_only_enum_interpolation_uses_enum_text() {
 fn test_ierror_interpolation_uses_dynamic_message_dispatch() {
 	mut a := flat.FlatAst.new()
 	err_id := a.add_node(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'err'
-		typ: 'IError'
+		typ:   'IError'
 	})
 	a.children << err_id
 	interp_id := a.add_node(flat.Node{
-		kind: .string_interp
+		kind:           .string_interp
 		children_start: 0
 		children_count: 1
 	})
@@ -88,9 +110,9 @@ fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namesp
 	mut a := flat.FlatAst.new()
 	name := '__v3_internal_symbol_join_0'
 	part := a.add_node(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: name
-		typ: 'string'
+		typ:   'string'
 	})
 	a.children << part
 	a.children << part
@@ -100,9 +122,9 @@ fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namesp
 	g.a = &a
 	g.tc = &tc
 	g.gen_string_interp(flat.Node{
-		kind: .string_interp
-		value: '__v3_string_join'
-		typ: 'string'
+		kind:           .string_interp
+		value:          '__v3_string_join'
+		typ:            'string'
 		children_count: 2
 	})
 	output := g.sb.str()

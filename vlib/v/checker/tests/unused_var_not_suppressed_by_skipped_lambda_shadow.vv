@@ -1,0 +1,118 @@
+fn consume_lambda(callback fn (int) int) {
+	_ = callback(1)
+}
+
+fn lambda_parameter_shadows_outer() {
+	// The lambda parameter below shadows this binding.
+	x := 1
+	$if prealloc {
+		consume_lambda(|x| x + 1)
+	}
+}
+
+fn lambda_uses_outer(x int) {
+	$if prealloc {
+		consume_lambda(|y| x + y)
+	}
+}
+
+fn lambda_scope_restores_outer(x int) {
+	$if prealloc {
+		consume_lambda(|x| x + 1)
+		println(x)
+	}
+}
+
+fn identity(value int) int {
+	return value
+}
+
+fn multiline_lambda_parameter_shadows_outer() {
+	x := 1
+	$if prealloc {
+		callback := |x| identity
+			(x)
+		_ = callback
+	}
+}
+
+fn newline_selector_lambda_parameter_shadows_outer() {
+	x := 1
+	$if prealloc {
+		callback := |x| [1]
+			.contains(x)
+		_ = callback
+	}
+}
+
+fn enclosing_lambda_parameter_shadows_outer() {
+	x := 1
+	consume_action(|x| {
+		$if prealloc {
+			println(x)
+		}
+		_ = x
+	})
+}
+
+fn newline_infix_lambda_parameter_shadows_outer() {
+	x := 1
+	$if prealloc {
+		consume_lambda(|x| x
+			+ x)
+	}
+}
+
+fn main() {
+	consume_lambda(|x| x)
+	lambda_parameter_shadows_outer()
+	lambda_uses_outer(1)
+	lambda_scope_restores_outer(1)
+	_ = identity(1)
+	multiline_lambda_parameter_shadows_outer()
+	newline_selector_lambda_parameter_shadows_outer()
+	enclosing_lambda_parameter_shadows_outer()
+	newline_infix_lambda_parameter_shadows_outer()
+	keyword_lambda_parameters_shadow_outer()
+}
+
+fn consume_action(callback fn (int)) {
+	callback(1)
+}
+
+fn keyword_lambda_parameters_shadow_outer() {
+	module := 1
+	type := 2
+	shared := 3
+	$if prealloc {
+		consume_lambda(|module| module + 1)
+		consume_lambda(|type| type + 1)
+		consume_lambda(|shared| shared + 1)
+	}
+	type_newline_call_lambda_parameter_shadows_outer()
+}
+
+fn type_newline_call_lambda_parameter_shadows_outer() {
+	type := identity
+	x := 1
+	$if prealloc {
+		callback := |x| type
+			(x)
+		_ = callback
+	}
+	keyword_selector_newline_call_lambda_parameter_shadows_outer()
+}
+
+struct KeywordSelectorHolder {
+	lock fn (int) int @[required]
+}
+
+fn keyword_selector_newline_call_lambda_parameter_shadows_outer() {
+	holder := KeywordSelectorHolder{ lock: identity }
+	x := 1
+	$if prealloc {
+		callback := |x| holder.lock
+			(x)
+		_ = callback
+	}
+}

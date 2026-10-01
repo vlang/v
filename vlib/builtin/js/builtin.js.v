@@ -14,6 +14,7 @@ pub fn js_throw(s any) {
 }
 
 #let globalPrint, globalWrite;
+
 $if js_freestanding {
 	#globalPrint = globalThis.print
 	#globalWrite = (typeof globalThis.write === 'function')? write: globalThis.print
@@ -97,7 +98,6 @@ pub fn exit(c int) {
 
 fn opt_ok(data voidptr, option Option) {
 	#option.state = 0
-	#option.err = none__
 	#option.data = data
 }
 
@@ -105,7 +105,7 @@ pub fn unwrap(opt string) string {
 	mut o := Option{}
 	#o = opt
 	if o.state != 0 {
-		js_throw(o.err)
+		js_throw('none')
 	}
 
 	mut res := ''

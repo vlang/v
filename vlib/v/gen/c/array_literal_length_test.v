@@ -40,3 +40,14 @@ fn test_array_literal_compound_literal_carries_its_length() {
 	assert out.contains('(string[2]){'), out
 	assert !out.contains('(string[]){'), out
 }
+
+fn test_target_libc_thread_array_marks_type_without_runtime() {
+	mut g := array_literal_length_test_gen()
+	g.set_target_libc_headers(true)
+	g.gen_array_literal_value(flat.Node{}, types.Type(types.Struct{
+		name: 'thread'
+	}))
+	assert g.needs_thread_type
+	assert !g.needs_thread_runtime
+	assert g.sb.str().contains('sizeof(__v_thread)')
+}

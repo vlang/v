@@ -274,3 +274,339 @@ fn main() {
 	assert typedef_pos > size_pos, generated
 	assert holder_pos > typedef_pos, generated
 }
+
+fn test_imported_fn_pointer_fixed_array_of_backed_enum_uses_emitted_typedef() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('fn_pointer_enum', 'module fixture
+
+pub enum Mode as u32 {
+	one
+	two
+}
+
+pub struct Extent {
+	width u32
+}
+
+pub type Callback = fn (handle voidptr, extent &Extent, modes [2]Mode)
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.Mode.one)
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'one', run.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('typedef fixture__Mode Array_fixed_fixture__Mode_2[2];'), generated
+	assert !generated.contains('Array_fixed_int_2'), generated
+}
+
+fn test_enum_fixed_array_fn_pointer_uses_emitted_typedef_name() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_fn_pointer', 'module fixture
+
+pub enum Combiner as i32 {
+	keep = 0
+	replace = 1
+}
+
+pub type Callback = fn (command voidptr, ops [2]Combiner)
+
+pub fn callback_size() int {
+	return sizeof(Callback)
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.callback_size())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('Array_fixed_fixture__Combiner_2[2]'), generated
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
+}
+
+fn test_enum_fixed_array_fn_pointer_pointer_param_uses_emitted_typedef_name() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_fn_pointer_param', 'module fixture
+
+pub enum Mode as u32 {
+	one
+	two
+}
+
+pub type Callback = fn (modes &[2]Mode)
+
+pub fn callback_size() int {
+	return sizeof(Callback)
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.callback_size())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} -b c -o ${bin} ${root}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('(Array_fixed_fixture__Mode_2*)'), generated
+	assert !generated.contains('Array_fixed_int_2'), generated
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
+}
+
+fn test_enum_fixed_array_fn_pointer_return_alias_emits_wrapper() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_fn_pointer_return', 'module fixture
+
+pub enum Mode as u32 {
+	one
+	two
+}
+
+pub type Callback = fn () [2]Mode
+
+pub fn callback_size() int {
+	return sizeof(Callback)
+}
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.callback_size())
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} -b c -o ${bin} ${root}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('typedef _v_ret_Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
+	assert !generated.contains('Array_fixed_int_2'), generated
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
+}
+
+fn test_backed_enum_callbacks_are_passed_and_invoked() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_callback_calls', 'module fixture
+pub enum Mode as i32 {
+	one = 7
+	two = 19
+}
+', '')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'callbacks.h')
+	os.write_file(header, '#include <stdint.h>
+static int32_t foreign_invoke(int32_t (*cb)(int32_t*)) {
+	int32_t modes[2] = {7, 19};
+	return cb(modes);
+}
+static int32_t foreign_first(int32_t* modes) {
+	return modes[0] + modes[1];
+}
+static int32_t foreign_nested(int32_t (*cb)(int32_t (*)(int32_t*))) {
+	return cb(foreign_first);
+}
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+import fixture
+#insert "${header}"
+
+type Callback = fn (modes [2]fixture.Mode) int
+type NestedCallback = fn (inner Callback) int
+
+fn first(modes [2]fixture.Mode) int {
+	return int(modes[0]) + int(modes[1])
+}
+fn invoke(cb fn (modes [2]fixture.Mode) int) int {
+	return cb([fixture.Mode.one, fixture.Mode.two]!)
+}
+fn forward(cb Callback) int {
+	return invoke(cb) + 1
+}
+fn nested(cb fn (inner fn (modes [2]fixture.Mode) int) int) int {
+	return cb(first)
+}
+fn first_pointer(modes &[2]fixture.Mode) int {
+	return int(modes[0]) + int(modes[1])
+}
+fn invoke_pointer(cb fn (modes &[2]fixture.Mode) int) int {
+	mut modes := [fixture.Mode.one, fixture.Mode.two]!
+	return cb(&modes)
+}
+fn make_modes() [2]fixture.Mode {
+	return [fixture.Mode.one, fixture.Mode.two]!
+}
+fn invoke_factory(cb fn () [2]fixture.Mode) int {
+	modes := cb()
+	return int(modes[0]) + int(modes[1])
+}
+fn C.foreign_invoke(cb fn (modes [2]fixture.Mode) i32) i32
+fn C.foreign_nested(cb fn (inner fn (modes [2]fixture.Mode) i32) i32) i32
+fn c_first(modes [2]fixture.Mode) i32 {
+	return i32(modes[0]) + i32(modes[1])
+}
+fn c_forward(cb fn (modes [2]fixture.Mode) i32) i32 {
+	return cb([fixture.Mode.one, fixture.Mode.two]!) + 1
+}
+fn main() {
+	assert invoke(first) == 26
+	assert invoke(Callback(first)) == 26
+	assert nested(forward) == 27
+	assert nested(NestedCallback(forward)) == 27
+	assert invoke_pointer(first_pointer) == 26
+	assert invoke_factory(make_modes) == 26
+	assert C.foreign_invoke(c_first) == 26
+	assert C.foreign_nested(c_forward) == 27
+}
+') or { panic(err) }
+	exe_suffix := $if windows { '.exe' } $else { '' }
+	bin := os.join_path(root, 'out${exe_suffix}')
+	compile := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(bin)} ${os.quoted_path(root)}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert !generated.contains('Array_fixed_int_2'), generated
+	run := os.execute(os.quoted_path(bin))
+	assert run.exit_code == 0, run.output
+}
+
+fn test_backed_enum_optional_result_callbacks_keep_payload_types() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('enum_optional_callback_calls', 'module fixture
+pub enum Mode as i32 {
+ one = 7
+ two = 19
+}
+', "module main
+import fixture
+
+type OptionalMaker = fn () ?[2]fixture.Mode
+type ResultMaker = fn () ![2]fixture.Mode
+
+fn make_option() ?[2]fixture.Mode {
+ return [fixture.Mode.one, fixture.Mode.two]!
+}
+fn none_option() ?[2]fixture.Mode {
+ return none
+}
+fn make_result() ![2]fixture.Mode {
+ return [fixture.Mode.one, fixture.Mode.two]!
+}
+fn error_result() ![2]fixture.Mode {
+ return error('missing modes')
+}
+fn invoke_option(cb fn () ?[2]fixture.Mode) int {
+ modes := cb() or { return -1 }
+ return int(modes[0]) + int(modes[1])
+}
+fn invoke_result(cb fn () ![2]fixture.Mode) int {
+ modes := cb() or { return -1 }
+ return int(modes[0]) + int(modes[1])
+}
+fn result_error_message(cb fn () ![2]fixture.Mode) string {
+ cb() or { return err.msg() }
+ return 'ok'
+}
+fn main() {
+ assert invoke_option(make_option) == 26
+ assert invoke_option(OptionalMaker(make_option)) == 26
+ assert invoke_option(none_option) == -1
+ assert invoke_option(OptionalMaker(none_option)) == -1
+ assert invoke_result(make_result) == 26
+ assert invoke_result(ResultMaker(make_result)) == 26
+ assert invoke_result(error_result) == -1
+ assert invoke_result(ResultMaker(error_result)) == -1
+ assert result_error_message(error_result) == 'missing modes'
+ assert result_error_message(ResultMaker(error_result)) == 'missing modes'
+ assert result_error_message(make_result) == 'ok'
+}
+")
+	defer {
+		os.rm(v3_bin) or {}
+		os.rmdir_all(root) or {}
+	}
+	exe_suffix := $if windows { '.exe' } $else { '' }
+	bin := os.join_path(root, 'out${exe_suffix}')
+	compile := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(bin)} ${os.quoted_path(root)}')
+	assert compile.exit_code == 0, compile.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert !generated.contains('Array_fixed_int_2'), generated
+	assert generated.contains('Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
+	run := os.execute(os.quoted_path(bin))
+	assert run.exit_code == 0, run.output
+}
+
+fn test_import_alias_const_fixed_array_length_is_folded() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('import_alias_const', 'module fixture
+
+pub const max_name_size = u32(256)
+', 'module main
+
+import fixture as fx
+import fx as otherfx
+
+fn name_size(name [fx /* imported const */ .max_name_size]char) int {
+	return name.len
+}
+
+fn main() {
+	assert otherfx.max_name_size == 16
+	println(name_size([fx.max_name_size /* trailing comment */]char{}))
+}
+')
+	// A real module named like the alias must not capture its constant.
+	os.mkdir_all(os.join_path(root, 'fx')) or { panic(err) }
+	os.write_file(os.join_path(root, 'fx', 'fx.v'), 'module fx
+pub const max_name_size = 16
+') or { panic(err) }
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '256', run.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('Array_fixed_char_256[256]'), generated
+	assert !generated.contains('Array_fixed_char_fx__max_name_size'), generated
+
+	// A second source file gives the alias another meaning. The real fx module
+	// must not silently supply its length when the stored type cannot choose one.
+	os.mkdir_all(os.join_path(root, 'second')) or { panic(err) }
+	os.write_file(os.join_path(root, 'second', 'second.v'), 'module second
+pub const max_name_size = 128
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'second_import.v'), 'module main
+import second as fx
+fn second_size() int {
+	return fx.max_name_size
+}
+') or { panic(err) }
+	ambiguous_bin := os.join_path(root, 'ambiguous')
+	ambiguous := os.execute('${v3_bin} -b c -o ${ambiguous_bin} ${root}')
+	assert ambiguous.exit_code != 0, ambiguous.output
+	assert ambiguous.output.contains('non-constant array bound `fx.max_name_size`'), ambiguous.output
+}

@@ -27,6 +27,25 @@ fn test_to_h2_request_lowercases_and_keeps_custom_headers() {
 	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
 	assert h2req.headers.any(it.name == 'accept' && it.value == 'application/json')
 	assert h2req.headers.any(it.name == 'content-type' && it.value == 'text/plain')
+	assert h2req.headers.any(it.name == 'content-length' && it.value == '0')
+}
+
+fn test_to_h2_request_does_not_add_content_length_to_trace() {
+	req := Request{}
+	h2req := req.to_h2_request(.trace, 'h.example', '/', '', new_header())
+	assert !h2req.headers.any(it.name == 'content-length')
+}
+
+fn test_to_h2_request_deduplicates_header_name_casing() {
+	mut h := new_header()
+	h.add_custom('X-Foo', 'a')!
+	h.add_custom('x-foo', 'b')!
+	req := Request{}
+	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
+	values := h2req.headers.filter(it.name == 'x-foo')
+	assert values.len == 2
+	assert values[0].value == 'a'
+	assert values[1].value == 'b'
 }
 
 fn test_to_h2_request_strips_hop_by_hop_and_host() {
@@ -73,11 +92,20 @@ fn test_to_h2_request_collapses_cookies() {
 	assert cookie[0].value.contains('a=1')
 }
 
+fn test_to_h2_request_preserves_present_empty_cookie_field() {
+	mut h := new_header()
+	h.add(.cookie, '')
+	req := Request{}
+	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
+	cookie := h2req.headers.filter(it.name == 'cookie')
+	assert cookie.len == 1
+	assert cookie[0].value == ''
+}
+
 fn test_h2_response_to_http() {
 	h2resp := H2ClientResponse{
 		status:  200
-		headers: [H2HeaderField{'content-type', 'text/plain'},
-			H2HeaderField{'x-foo', 'bar'}]
+		headers: [H2HeaderField{'content-type', 'text/plain'}, H2HeaderField{'x-foo', 'bar'}]
 		body:    'hi'.bytes()
 	}
 	resp := h2_response_to_http(h2resp)
@@ -93,6 +121,8 @@ fn test_h2_authority_omits_default_port() {
 	assert h2_authority('example.com', 443) == 'example.com'
 	assert h2_authority('example.com', 0) == 'example.com'
 	assert h2_authority('example.com', 8443) == 'example.com:8443'
+	assert h2_authority('2001:db8::1', 443) == '[2001:db8::1]'
+	assert h2_authority('2001:db8::1', 8443) == '[2001:db8::1]:8443'
 }
 
 // End-to-end test against a real HTTP/2 server. Run with `-d network`,
@@ -101,15 +131,15 @@ fn test_http2_fetch_real_server() {
 	$if !network ? {
 		return
 	}
-	// HTTP/2 is negotiated by default for https requests. On Windows this runs
-	// over the SChannel backend's ALPN + HTTP/2 path (vlang/v#27383).
-	resp := get('https://www.google.com/')!
+	// An ordinary HTTPS request stays on HTTP/1.1.
+	plain := get('https://www.google.com/')!
+	assert plain.version() == .v1_1
+	// Explicit opt-in negotiates HTTP/2 when the server supports it. On
+	// Windows this uses the SChannel ALPN + HTTP/2 path (vlang/v#27383).
+	resp := fetch(url: 'https://www.google.com/', enable_http2: true)!
 	assert resp.version() == .v2_0
 	assert resp.status_code == 200
 	assert resp.body.len > 0
-	// Opting out forces HTTP/1.1 against the same server.
-	plain := fetch(url: 'https://www.google.com/', enable_http2: false)!
-	assert plain.version() == .v1_1
 }
 
 fn test_to_h2_request_authority_from_host_header() {
@@ -120,4 +150,12 @@ fn test_to_h2_request_authority_from_host_header() {
 	h2req := req.to_h2_request(.get, 'origin.example', '/', '', h)
 	assert h2req.authority == 'override.example:8443'
 	assert !h2req.headers.any(it.name == 'host')
+}
+
+fn test_to_h2_request_trims_authority_from_host_header() {
+	mut h := new_header()
+	h.add(.host, ' override.example:8443 ')
+	req := Request{}
+	h2req := req.to_h2_request(.get, 'origin.example', '/', '', h)
+	assert h2req.authority == 'override.example:8443'
 }

@@ -161,7 +161,7 @@ fn (mut g Parser) parse_for() !bool {
 					g.write_line('${map_value_type} ${fastc_c_identifier(value_name)} = ((${map_value_type} *)${values_name}.data)[${index_name}];')
 					g.locals[value_name] = FastcLocal{
 						is_mut: value_is_mut
-						typ: map_value_type
+						typ:    map_value_type
 					}
 				}
 				_ = g.parse_loop_block_body()!
@@ -242,14 +242,14 @@ fn (mut g Parser) parse_for() !bool {
 						g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_data})[${index_name}];')
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut: true
-							typ: element_type
+							typ:    element_type
 						}
 					} else {
 						g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
 						g.locals[actual_value_name] = FastcLocal{
-							is_mut: true
+							is_mut:       true
 							is_reference: true
-							typ: element_type + '*'
+							typ:          element_type + '*'
 						}
 					}
 				} else if is_ordinary_string {
@@ -303,7 +303,7 @@ fn (mut g Parser) parse_for() !bool {
 			if is_declaration {
 				g.locals[name] = FastcLocal{
 					is_mut: true
-					typ: initial_type
+					typ:    initial_type
 				}
 			}
 			condition := g.read_expression([token.Token.semicolon])!
@@ -391,7 +391,7 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 			}
 		}
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-			typ: plan.type_c + '*'
+			typ:    plan.type_c + '*'
 			source: plan.member_tmp
 		}
 	}

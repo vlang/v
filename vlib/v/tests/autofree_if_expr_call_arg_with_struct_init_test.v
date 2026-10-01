@@ -24,6 +24,8 @@ fn test_autofree_if_expr_call_arg_with_struct_init() {
 		'Empty listbox. Drop files here ...'
 	} else {
 		''
-	}, color: 'gray')
+	},
+		color: 'gray'
+	)
 	assert got == 'Empty listbox. Drop files here ...gray'
 }

@@ -335,8 +335,7 @@ pub fn (v Vec3[T]) angle_between(u Vec3[T]) T {
 		return math.acos(((v.x * u.x) + (v.y * u.y) + (v.z * u.z)) / math.sqrt((v.x * v.x) +
 			(v.y * v.y) + (v.z * v.z)) * math.sqrt((u.x * u.x) + (u.y * u.y) + (u.z * u.z)))
 	} $else {
-		return T(math.acos(f64((v.x * u.x) + (v.y * u.y) + (v.z * u.z)) / math.sqrt(
-			f64(v.x * v.x) + (v.y * v.y) + (v.z * v.z)) * math.sqrt(f64(u.x * u.x) + (u.y * u.y) +
+		return T(math.acos(f64((v.x * u.x) + (v.y * u.y) + (v.z * u.z)) / math.sqrt(f64(v.x * v.x) + (v.y * v.y) + (v.z * v.z)) * math.sqrt(f64(u.x * u.x) + (u.y * u.y) +
 			(u.z * u.z))))
 	}
 }

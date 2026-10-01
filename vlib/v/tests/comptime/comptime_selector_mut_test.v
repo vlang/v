@@ -47,7 +47,7 @@ fn decode_option[T]() T {
 	mut result := T{}
 	$for field in T.fields {
 		$if field.typ is $option {
-			decode_option_int(mut result.$(field.name) ?)
+			decode_option_int(mut result.$(field.name)?)
 		}
 	}
 	return result

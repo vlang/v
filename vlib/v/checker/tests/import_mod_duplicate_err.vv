@@ -1,7 +1,7 @@
-module json
+module strings
 
-import json
+import strings
 
 const used = true
 
-println(json.used)
+println(strings.used)

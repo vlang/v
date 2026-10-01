@@ -17,10 +17,18 @@ const h2_hop_by_hop = ['connection', 'keep-alive', 'proxy-connection', 'transfer
 // h2_authority returns the :authority value for a host and port, omitting the
 // port for the default HTTPS port.
 fn h2_authority(host string, port int) string {
+	wire_host := authority_host(host)
 	if port == 443 || port == 0 {
-		return host
+		return wire_host
 	}
-	return '${host}:${port}'
+	return '${wire_host}:${port}'
+}
+
+fn authority_host(host string) string {
+	if host.contains(':') && !(host.starts_with('[') && host.ends_with(']')) {
+		return '[${host}]'
+	}
+	return host
 }
 
 // to_h2_request builds an HTTP/2 request from this request. Header names are
@@ -31,18 +39,19 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	// path (used for virtual-host / host-override requests).
 	mut auth := authority
 	if host := header.get(.host) {
-		if host != '' {
-			auth = host
+		trimmed_host := host.trim_space()
+		if trimmed_host != '' {
+			auth = trimmed_host
 		}
 	}
 	mut extra := []H2HeaderField{}
-	if !header.contains(.user_agent) && req.user_agent != '' {
+	if !header.contains(.user_agent) {
 		extra << H2HeaderField{'user-agent', req.user_agent}
 	}
-	if data.len > 0 && !header.contains(.content_length) {
+	if method != .trace && !header.contains(.content_length) {
 		extra << H2HeaderField{'content-length', data.len.str()}
 	}
-	for key in header.keys() {
+	for key in header.unique_keys() {
 		lkey := key.to_lower()
 		if lkey in h2_hop_by_hop {
 			continue
@@ -59,15 +68,9 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	}
 	// Cookies: the request's own cookie map plus any Cookie header values,
 	// joined into one field (RFC 7540 Section 8.1.2.5 also allows splitting).
-	mut cookie_parts := []string{}
-	for k, v in req.cookies {
-		cookie_parts << '${k}=${v}'
-	}
-	for cv in header.values(.cookie) {
-		cookie_parts << cv
-	}
-	if cookie_parts.len > 0 {
-		extra << H2HeaderField{'cookie', cookie_parts.join('; ')}
+	cookie_value := req.cookie_header_value_with_header(header)
+	if cookie_value != '' || header.contains(.cookie) {
+		extra << H2HeaderField{'cookie', cookie_value}
 	}
 	return H2ClientRequest{
 		method:    method.str()

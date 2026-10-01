@@ -145,8 +145,8 @@ fn test_pg_orm() {
 
 	db.create(table, [
 		orm.TableField{
-			name: 'id'
-			typ:  typeof[string]().idx
+			name:        'id'
+			typ:         typeof[string]().idx
 			//			is_time: false
 			default_val: ''
 			is_arr:      false
@@ -166,16 +166,16 @@ fn test_pg_orm() {
 			]
 		},
 		orm.TableField{
-			name: 'name'
-			typ:  typeof[string]().idx
+			name:        'name'
+			typ:         typeof[string]().idx
 			//			is_time: false
 			default_val: ''
 			is_arr:      false
 			attrs:       []
 		},
 		orm.TableField{
-			name: 'age'
-			typ:  typeof[i64]().idx
+			name:        'age'
+			typ:         typeof[i64]().idx
 			//			is_time: false
 			default_val: ''
 			is_arr:      false

@@ -24,13 +24,15 @@ fn write_project() {
 	os.write_file(os.join_path(basepath, 'v.mod'),
 		"Module {\n\tname: 'issue_28074'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
 	os.write_file(os.join_path(basepath, 'main.v'),
-		['module main', '', 'import calculator', '', 'fn main() {', '\tprintln(calculator.evaluate(calculator.Op.add))', '}'].join('\n') +
-		'\n') or { panic(err) }
+		['module main', '', 'import calculator', '', 'fn main() {',
+			'\tprintln(calculator.evaluate(calculator.Op.add))', '}'].join('\n') +
+			'\n') or { panic(err) }
 	// A submodule file living directly in the project root, that also declares an
 	// enum, so the parser generates helper code (which triggered the bug).
 	os.write_file(os.join_path(basepath, 'calculator.v'),
-		['module calculator', '', 'pub enum Op {', '\tadd', '\tsub', '}', '', 'pub fn evaluate(op Op) int {', '\treturn if op == .add { 1 } else { -1 }', '}'].join('\n') +
-		'\n') or { panic(err) }
+		['module calculator', '', 'pub enum Op {', '\tadd', '\tsub', '}', '',
+			'pub fn evaluate(op Op) int {', '\treturn if op == .add { 1 } else { -1 }', '}'].join('\n') +
+			'\n') or { panic(err) }
 }
 
 fn compile_project(target string) os.Result {
@@ -44,9 +46,7 @@ fn compile_project(target string) os.Result {
 		os.rmdir_all(basepath) or {}
 		os.rm(out_name) or {}
 	}
-	// `-old-compiler` forces the compatibility compiler (the default on non-macOS,
-	// a fallback on macOS) where the mis-qualification happened.
-	return os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(out_name)} ${os.quoted_path(target)}')
+	return os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out_name)} ${os.quoted_path(target)}')
 }
 
 fn test_root_submodule_with_enum_compiles_from_project_dir() {

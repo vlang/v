@@ -1,10 +1,10 @@
 module main
 
 import os
-import v.vcache
 
 fn main() {
-	wipe_path(vcache.new_cache_manager([]).basepath, 'V cache')
+	cache_path := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
+	wipe_path(cache_path, 'V cache')
 	wipe_path(os.vtmp_dir(), 'V tmp.c and tests folder')
 }
 

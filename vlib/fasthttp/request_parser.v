@@ -96,11 +96,11 @@ pub fn decode_http_request(buffer []u8) !HttpRequest {
 	if head.head_len >= 0 {
 		req.header_fields = Slice{
 			start: header_start
-			len: head.header_fields_end - header_start
+			len:   head.header_fields_end - header_start
 		}
 		req.body = Slice{
 			start: head.head_len
-			len: buffer.len - head.head_len
+			len:   buffer.len - head.head_len
 		}
 	} else {
 		// Keep decode_http_request useful for callers that only pass a request line
@@ -305,10 +305,10 @@ fn scan_request_head(buf []u8, max_header int) RequestHead {
 				}
 			}
 			return RequestHead{
-				head_len: blank
+				head_len:          blank
 				header_fields_end: header_fields_end
-				content_length: content_length
-				chunked: transfer.final_chunked
+				content_length:    content_length
+				chunked:           transfer.final_chunked
 			}
 		}
 		line_lf := find_byte(&buf[pos], buf.len - pos, lf_char)
@@ -445,7 +445,7 @@ fn line_header_value(buf []u8, line_start int, line_len int, name string) ?Slice
 	}
 	return Slice{
 		start: v
-		len: line_end - v
+		len:   line_end - v
 	}
 }
 

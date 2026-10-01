@@ -17,8 +17,12 @@ fn test_fixed_array_variant_assigned_to_var() {
 	mut v := Val(0.0)
 	v = [4.0, 5.0, 6.0]!
 	match v {
-		[3]f64 { assert v == [4.0, 5.0, 6.0]! }
-		else { assert false }
+		[3]f64 {
+			assert v == [4.0, 5.0, 6.0]!
+		}
+		else {
+			assert false
+		}
 	}
 }
 
@@ -82,8 +86,12 @@ fn test_match_branch_on_fixed_array_variant() {
 
 	n := Num([3, 4]!)
 	match n {
-		[2]int { assert n == [3, 4]! }
-		int { assert false }
+		[2]int {
+			assert n == [3, 4]!
+		}
+		int {
+			assert false
+		}
 	}
 }
 

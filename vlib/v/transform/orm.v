@@ -32,6 +32,15 @@ struct SqlTransformSet {
 	value string
 }
 
+// SqlValueMemberChain is a value ending in member accesses on a receiver that is not a
+// plain name, e.g. `time.now().format_ss()`, `f(x).field` or `items[0].name`.
+struct SqlValueMemberChain {
+	receiver string
+	members  []string
+	is_call  bool
+	args     []string
+}
+
 struct SqlTransformJoin {
 	kind        string
 	left_table  SqlTransformTableInfo
@@ -698,8 +707,95 @@ fn (mut t Transformer) sql_type_name_expr(name string) flat.NodeId {
 	return t.sql_qualified_selector(name)
 }
 
+// SQL keeps value expressions as tokens, outside ordinary identifier substitution.
+fn (mut t Transformer) bind_sql_array_it(lambda_param string, elem_name string) string {
+	saved := t.sql_array_it_name
+	if lambda_param.len == 0 {
+		t.sql_array_it_name = elem_name
+	} else if lambda_param == 'it' {
+		t.sql_array_it_name = ''
+	}
+	return saved
+}
+
+fn (t &Transformer) sql_bound_value_name(name string) string {
+	if t.sql_array_it_name.len > 0 && (name == 'it' || name.starts_with('it.')) {
+		return t.sql_array_it_name + name[2..]
+	}
+	return name
+}
+
+fn (t &Transformer) sql_bound_interpolation_text(value string) string {
+	if t.sql_array_it_name.len == 0 {
+		return value
+	}
+	mut result := ''
+	mut start := 0
+	mut i := 0
+	for i < value.len - 1 {
+		if value[i] != `$` || value[i + 1] != `{`
+			|| nested_interp_start_is_escaped(value, i) {
+			i++
+			continue
+		}
+		end := nested_interp_closing_brace(value, i + 2) or { return value }
+		inner := value[i + 2..end]
+		bound_inner := sql_replace_interpolation_it(inner, t.sql_array_it_name)
+		if bound_inner != inner {
+			result += value[start..i] + '$' + '{' + bound_inner + '}'
+			start = end + 1
+		}
+		i = end + 1
+	}
+	return result + value[start..]
+}
+
+fn sql_replace_interpolation_it(inner string, bound_name string) string {
+	mut result := ''
+	mut i := 0
+	mut quote := u8(0)
+	for i < inner.len {
+		ch := inner[i]
+		if quote != 0 {
+			if ch == `\\` && i + 1 < inner.len {
+				result += inner[i..i + 2]
+				i += 2
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+			result += inner[i..i + 1]
+			i++
+			continue
+		}
+		if ch == `'` || ch == `"` || ch == `\`` {
+			quote = ch
+			result += inner[i..i + 1]
+			i++
+			continue
+		}
+		if ch.is_letter() || ch == `_` {
+			mut end := i + 1
+			for end < inner.len && (inner[end].is_alnum() || inner[end] == `_`) {
+				end++
+			}
+			if inner[i..end] == 'it' && (i == 0 || inner[i - 1] != `.`) {
+				result += bound_name
+			} else {
+				result += inner[i..end]
+			}
+			i = end
+			continue
+		}
+		result += inner[i..i + 1]
+		i++
+	}
+	return result
+}
+
 fn (mut t Transformer) sql_value_name_expr(name string) flat.NodeId {
-	return t.sql_qualified_selector(name)
+	return t.sql_qualified_selector(t.sql_bound_value_name(name))
 }
 
 fn (mut t Transformer) sql_string_array(values []string) flat.NodeId {
@@ -711,7 +807,7 @@ fn (mut t Transformer) sql_string_array(values []string) flat.NodeId {
 }
 
 fn (t &Transformer) sql_initialized_fields(value_name string) []string {
-	if value_name.len == 0 {
+	if value_name == '' {
 		return []string{}
 	}
 	if value_name.contains('.') {
@@ -989,7 +1085,7 @@ fn (t &Transformer) sql_dynamic_value_type(tokens []string) string {
 	if clean.len != 1 {
 		return ''
 	}
-	token := clean[0]
+	token := t.sql_bound_value_name(clean[0])
 	if token.contains('.') {
 		root := token.all_before('.')
 		field_name := token.all_after('.')
@@ -1027,7 +1123,7 @@ fn (mut t Transformer) sql_dynamic_if_value_expr(tokens []string, typ string) fl
 	then_block := t.make_block([t.make_expr_stmt(then_expr)])
 	else_block := t.make_block([t.make_expr_stmt(else_expr)])
 	node := t.make_if(cond, then_block, else_block)
-	if typ.len > 0 {
+	if typ != '' {
 		t.set_node_typ(int(node), typ)
 	}
 	return node
@@ -1360,7 +1456,7 @@ fn (t &Transformer) sql_transform_type_is_struct(field_type string) bool {
 		clean = clean[1..]
 	}
 	if clean in ['bool', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'string',
-		'rune', 'byte', 'time.Time'] {
+		'rune', 'time.Time'] {
 		return false
 	}
 	if clean.starts_with('[]') {
@@ -1451,9 +1547,19 @@ fn (mut t Transformer) sql_expr_from_token(token string) flat.NodeId {
 }
 
 fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) flat.NodeId {
+	if token.contains(' ') {
+		clean := sql_trim_outer_empty(sql_clean_tokens(token.split(' ')))
+		// `(names)[0]`, `(f()).g()`, `f((x))`: lower the parenthesised value itself.
+		if inner := sql_wrapped_tokens(clean) {
+			return t.sql_expr_from_token_for_type(sql_value_token_text(inner), typ)
+		}
+		if literal := sql_signed_literal_text(clean) {
+			return t.sql_expr_from_token_for_type(literal, typ)
+		}
+	}
 	if sql_token_is_quoted_string(token) {
 		value := sql_unquote_string_token(token)
-		if interp := t.simple_nested_string_interpolation(value) {
+		if interp := t.simple_nested_string_interpolation(t.sql_bound_interpolation_text(value)) {
 			return interp
 		}
 		return t.make_string_literal(value)
@@ -1489,14 +1595,23 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 		fn_name := token[..token.len - 2]
 		return t.sql_value_call_expr(fn_name, []string{}, typ)
 	}
-	if token.starts_with('.') && typ.len > 0 {
+	if token.starts_with('.') && typ != '' {
 		return t.a.add_node(flat.Node{
 			kind:  .enum_val
 			value: '${typ}${token}'
 			typ:   typ
 		})
 	}
-	if typ.len > 0 && t.sql_transform_type_is_enum(typ) && token.contains('.')
+	// Without an expected type (a call argument such as `.hhmm24`), keep the parser's
+	// shorthand shape; call lowering resolves it against the parameter type.
+	if token.len > 1 && token.starts_with('.') && !token[1..].contains('.')
+		&& sql_token_is_plain_ident(token[1..]) {
+		return t.a.add_node(flat.Node{
+			kind:  .enum_val
+			value: token[1..]
+		})
+	}
+	if typ != '' && t.sql_transform_type_is_enum(typ) && token.contains('.')
 		&& t.sql_token_root_is_enum_type(token.all_before('.')) {
 		return t.a.add_node(flat.Node{
 			kind:  .enum_val
@@ -1504,7 +1619,97 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 			typ:   typ
 		})
 	}
+	if chain := sql_value_member_chain_parts(token) {
+		return t.sql_value_member_chain_expr(chain, typ)
+	}
 	return t.sql_value_name_expr(token)
+}
+
+fn (mut t Transformer) sql_value_member_chain_expr(chain SqlValueMemberChain, typ string) flat.NodeId {
+	mut value := t.sql_expr_from_token_for_type(chain.receiver, '')
+	for i, member in chain.members {
+		if chain.is_call && i == chain.members.len - 1 {
+			mut arg_ids := []flat.NodeId{cap: chain.args.len}
+			for arg in chain.args {
+				arg_ids << t.sql_expr_from_token(arg)
+			}
+			call := t.make_call_expr_typed(t.make_selector(value, member, ''), arg_ids, typ)
+			return t.transform_expr(call)
+		}
+		value_type := t.node_type(value)
+		field_type := t.lookup_struct_field_type(value_type, member) or {
+			t.builtin_selector_type(value_type, member) or { '' }
+		}
+		value = t.make_selector(value, member, field_type)
+	}
+	return t.transform_expr(value)
+}
+
+// sql_value_member_chain_parts splits a value such as `time.now().add_days(1).format_ss()`
+// at its last top-level member access. The SQL token cleaner only merges selectors into
+// plain names, so a member access on a call, index or literal stays a separate `.name`
+// token, which would otherwise be lowered as a bogus identifier.
+fn sql_value_member_chain_parts(token string) ?SqlValueMemberChain {
+	clean := sql_trim_outer_empty(sql_clean_tokens(token.split(' ')))
+	mut depth := 0
+	mut member_idx := -1
+	for i := clean.len - 1; i > 0; i-- {
+		tok := clean[i]
+		if tok in [')', ']', '}'] {
+			depth++
+		} else if tok in ['(', '[', '{'] {
+			depth--
+		} else if depth == 0 && tok.len > 1 && tok[0] == `.` {
+			member_idx = i
+			break
+		}
+	}
+	if member_idx <= 0 {
+		return none
+	}
+	mut member_text := clean[member_idx][1..]
+	mut is_call := member_text.ends_with('()')
+	if is_call {
+		member_text = member_text[..member_text.len - 2]
+	}
+	members := member_text.split('.')
+	for member in members {
+		if member.len == 0 || !sql_token_is_plain_ident(member) {
+			return none
+		}
+	}
+	mut args := []string{}
+	rest := clean[member_idx + 1..]
+	if rest.len > 0 {
+		if is_call {
+			return none
+		}
+		close_idx := sql_matching_pair(rest, 0, '(', ')') or { return none }
+		if close_idx != rest.len - 1 {
+			return none
+		}
+		args = sql_value_call_args(rest[1..close_idx]) or { return none }
+		is_call = true
+	}
+	// In `a + f().b` the member binds to `f()`; the caller splits the operator first.
+	mut receiver := clean[..member_idx]
+	if sql_tokens_have_top_level_infix(receiver) {
+		return none
+	}
+	// `(time.now()).format_ss()`: value lowering has no parenthesised-expression case.
+	for {
+		inner := sql_wrapped_tokens(receiver) or { break }
+		receiver = sql_trim_outer_empty(inner)
+	}
+	if receiver.len == 0 {
+		return none
+	}
+	return SqlValueMemberChain{
+		receiver: sql_value_token_text(receiver)
+		members:  members
+		is_call:  is_call
+		args:     args
+	}
 }
 
 fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, typ string) flat.NodeId {
@@ -1517,20 +1722,21 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 		return t.transform_expr(t.make_cast(callee_name, arg_ids[0], callee_name))
 	}
 	callee := t.sql_value_call_callee(callee_name)
-	call := t.make_call_expr_typed(callee, arg_ids, if typ.len > 0 { typ } else { '' })
+	call := t.make_call_expr_typed(callee, arg_ids, if typ != '' { typ } else { '' })
 	// Preserve the source call shape so ordinary lowering can distinguish module
 	// functions, receiver methods, and static associated functions.
 	return t.transform_expr(call)
 }
 
 fn (mut t Transformer) sql_value_call_callee(callee_name string) flat.NodeId {
-	parts := callee_name.split('.')
+	bound_name := t.sql_bound_value_name(callee_name)
+	parts := bound_name.split('.')
 	if parts.len < 2 {
-		return t.make_ident(callee_name)
+		return t.make_ident(bound_name)
 	}
 	mut receiver_type := t.sql_root_value_type_name(parts[0])
 	if receiver_type.len == 0 {
-		return t.sql_qualified_selector(callee_name)
+		return t.sql_qualified_selector(bound_name)
 	}
 	mut receiver := t.make_ident(parts[0])
 	t.set_node_typ(int(receiver), receiver_type)
@@ -1575,11 +1781,16 @@ fn sql_value_call_parts(token string) ?(string, []string) {
 	if close_idx != clean.len - 1 {
 		return none
 	}
+	args := sql_value_call_args(clean[open_idx + 1..close_idx]) or { return none }
+	return name_parts.join('.'), args
+}
+
+// sql_value_call_args splits the tokens between a call's parentheses into argument texts.
+fn sql_value_call_args(tokens []string) ?[]string {
 	mut args := []string{}
-	mut arg_start := open_idx + 1
+	mut arg_start := 0
 	mut depth := 0
-	for i in open_idx + 1 .. close_idx {
-		part := clean[i]
+	for i, part in tokens {
 		if part in ['(', '[', '{'] {
 			depth++
 		} else if part in [')', ']', '}'] {
@@ -1588,16 +1799,16 @@ fn sql_value_call_parts(token string) ?(string, []string) {
 			if i == arg_start {
 				return none
 			}
-			args << sql_value_token_text(clean[arg_start..i])
+			args << sql_value_token_text(tokens[arg_start..i])
 			arg_start = i + 1
 		}
 	}
-	if arg_start < close_idx {
-		args << sql_value_token_text(clean[arg_start..close_idx])
-	} else if arg_start > open_idx + 1 {
+	if arg_start < tokens.len {
+		args << sql_value_token_text(tokens[arg_start..])
+	} else if arg_start > 0 {
 		return none
 	}
-	return name_parts.join('.'), args
+	return args
 }
 
 fn (mut t Transformer) sql_index_expr_from_token_for_type(token string, typ string) ?flat.NodeId {
@@ -1607,11 +1818,9 @@ fn (mut t Transformer) sql_index_expr_from_token_for_type(token string, typ stri
 
 fn (mut t Transformer) sql_index_expr_from_tokens_for_type(tokens []string, typ string) ?flat.NodeId {
 	clean := sql_trim_outer_empty(tokens)
-	if !sql_value_tokens_are_index_expr(clean) {
-		return none
-	}
-	mut value := t.sql_expr_from_token_for_type(clean[0], '')
-	mut i := 1
+	base_len := sql_value_index_base_len(clean) or { return none }
+	mut value := t.sql_expr_from_token_for_type(sql_value_token_text(clean[..base_len]), '')
+	mut i := base_len
 	for i < clean.len {
 		close_idx := sql_matching_pair(clean, i, '[', ']') or { return none }
 		index_expr := t.sql_expr_from_token_for_type(sql_value_token_text(clean[i + 1..close_idx]),
@@ -1682,7 +1891,7 @@ fn (mut t Transformer) sql_infix_expr_from_token_for_type(token string, typ stri
 	expr := t.make_infix(op, lhs, rhs)
 	result_type := if op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		'bool'
-	} else if typ.len > 0 {
+	} else if typ != '' {
 		typ
 	} else {
 		t.node_type(lhs)
@@ -1712,6 +1921,10 @@ fn sql_split_infix_value_tokens(tokens []string) ?(string, string, string) {
 				depth--
 			}
 			if depth != 0 || tok !in op_group || idx == 0 || idx + 1 >= clean.len {
+				continue
+			}
+			// A sign after another operator is unary: `a - -1`, `a * -b`.
+			if clean[idx - 1] in ['==', '!=', '>=', '<=', '>', '<', '+', '-', '*', '/', '%'] {
 				continue
 			}
 			return sql_value_token_text(clean[..idx]), tok, sql_value_token_text(clean[idx + 1..])
@@ -2321,17 +2534,17 @@ fn sql_reject_mutating_tail(kind string, where SqlTransformWhere, order_field st
 	if where.error.len > 0 {
 		return where
 	}
-	if order_field.len > 0 {
+	if order_field != '' {
 		return SqlTransformWhere{
 			error: 'SQL ${kind} does not support ORDER BY'
 		}
 	}
-	if limit.len > 0 {
+	if limit != '' {
 		return SqlTransformWhere{
 			error: 'SQL ${kind} does not support LIMIT'
 		}
 	}
-	if offset.len > 0 {
+	if offset != '' {
 		return SqlTransformWhere{
 			error: 'SQL ${kind} does not support OFFSET'
 		}
@@ -2423,22 +2636,67 @@ fn sql_value_token_text(tokens []string) string {
 }
 
 fn sql_value_tokens_are_index_expr(tokens []string) bool {
-	clean := sql_trim_outer_empty(tokens)
-	if clean.len < 4 || !sql_token_is_plain_ident(clean[0]) || clean[1] != '[' {
+	if _ := sql_value_index_base_len(sql_trim_outer_empty(tokens)) {
+		return true
+	}
+	return false
+}
+
+// sql_value_index_base_len returns how many of the (trimmed) `tokens` form the value that
+// the trailing `[...]` groups index: a name (`names[0]`), a call (`make_names()[0]`,
+// `f(x)[0][1]`), a parenthesised value or a member chain (`f().items[0]`).
+fn sql_value_index_base_len(tokens []string) ?int {
+	mut base_len := tokens.len
+	for base_len > 0 && tokens[base_len - 1] == ']' {
+		mut depth := 0
+		mut open_idx := -1
+		for j := base_len - 1; j >= 0; j-- {
+			if tokens[j] == ']' {
+				depth++
+			} else if tokens[j] == '[' {
+				depth--
+				if depth == 0 {
+					open_idx = j
+					break
+				}
+			}
+		}
+		if open_idx < 0 || open_idx + 1 >= base_len - 1 {
+			return none
+		}
+		base_len = open_idx
+	}
+	if base_len == 0 || base_len == tokens.len {
+		return none
+	}
+	base := tokens[..base_len]
+	if base.len == 1 {
+		if sql_token_is_plain_ident(base[0]) || sql_token_is_no_arg_call(base[0]) {
+			return base_len
+		}
+		return none
+	}
+	if _ := sql_wrapped_tokens(base) {
+		return base_len
+	}
+	text := sql_value_token_text(base)
+	if _, _ := sql_value_call_parts(text) {
+		return base_len
+	}
+	if _ := sql_value_member_chain_parts(text) {
+		return base_len
+	}
+	return none
+}
+
+fn sql_tokens_have_top_level_infix(tokens []string) bool {
+	if tokens.len < 2 {
 		return false
 	}
-	mut i := 1
-	for i < clean.len {
-		if clean[i] != '[' {
-			return false
-		}
-		close_idx := sql_matching_pair(clean, i, '[', ']') or { return false }
-		if close_idx <= i + 1 {
-			return false
-		}
-		i = close_idx + 1
+	if _, _, _ := sql_split_infix_value_tokens(tokens) {
+		return true
 	}
-	return i == clean.len
+	return false
 }
 
 fn sql_index_token_parts(token string) []string {
@@ -2512,7 +2770,7 @@ fn (t &Transformer) sql_select_tail(table SqlTransformTableInfo, tokens []string
 			continue
 		}
 		if tokens[i] == 'order' {
-			if order_field.len > 0 || i + 2 >= tokens.len || tokens[i + 1] != 'by'
+			if order_field != '' || i + 2 >= tokens.len || tokens[i + 1] != 'by'
 				|| !sql_token_is_plain_ident(tokens[i + 2]) {
 				return none
 			}
@@ -2526,7 +2784,7 @@ fn (t &Transformer) sql_select_tail(table SqlTransformTableInfo, tokens []string
 		}
 		if tokens[i] == 'limit' {
 			value, next := sql_tail_value_token(tokens, i + 1) or { return none }
-			if limit.len > 0 {
+			if limit != '' {
 				return none
 			}
 			limit = value
@@ -2535,7 +2793,7 @@ fn (t &Transformer) sql_select_tail(table SqlTransformTableInfo, tokens []string
 		}
 		if tokens[i] == 'offset' {
 			value, next := sql_tail_value_token(tokens, i + 1) or { return none }
-			if offset.len > 0 {
+			if offset != '' {
 				return none
 			}
 			offset = value
@@ -2833,6 +3091,16 @@ fn sql_condition_value_text(tokens []string) string {
 	if wrapped := sql_wrapped_tokens(clean) {
 		return sql_condition_value_text(wrapped)
 	}
+	if literal := sql_signed_literal_text(clean) {
+		return literal
+	}
+	return sql_value_token_text(clean)
+}
+
+// sql_signed_literal_text joins a sign that the SQL tokens split from its numeric
+// literal, so `- 1` becomes `-1` (and `+ 1` becomes `1`).
+fn sql_signed_literal_text(tokens []string) ?string {
+	clean := sql_trim_outer_empty(tokens)
 	if clean.len == 2 && clean[0] in ['-', '+']
 		&& (sql_token_is_int_literal(clean[1]) || sql_token_is_float_literal(clean[1])) {
 		if clean[0] == '-' {
@@ -2840,7 +3108,7 @@ fn sql_condition_value_text(tokens []string) string {
 		}
 		return clean[1]
 	}
-	return sql_value_token_text(clean)
+	return none
 }
 
 fn sql_static_where_value_is_supported(tokens []string) bool {
@@ -2852,8 +3120,8 @@ fn sql_static_where_value_is_supported(tokens []string) bool {
 	if sql_token_is_value(text) {
 		return true
 	}
-	if sql_value_tokens_are_index_expr(sql_clean_tokens(sql_index_token_parts(text))) {
-		return true
+	if supported := sql_static_where_index_is_supported(sql_clean_tokens(sql_index_token_parts(text))) {
+		return supported
 	}
 	if wrapped := sql_wrapped_tokens(clean) {
 		return sql_static_where_value_is_supported(wrapped)
@@ -2862,12 +3130,36 @@ fn sql_static_where_value_is_supported(tokens []string) bool {
 		return sql_static_where_value_is_supported(source_tokens)
 			&& sql_static_where_value_is_supported(fallback_tokens)
 	}
-	if sql_value_tokens_are_index_expr(clean) {
-		return true
+	if supported := sql_static_where_index_is_supported(clean) {
+		return supported
 	}
-	lhs_text, _, rhs_text := sql_split_infix_value_tokens(clean) or { return false }
-	return sql_static_where_value_is_supported(sql_clean_tokens(sql_index_token_parts(lhs_text)))
-		&& sql_static_where_value_is_supported(sql_clean_tokens(sql_index_token_parts(rhs_text)))
+	if lhs_text, _, rhs_text := sql_split_infix_value_tokens(clean) {
+		return sql_static_where_value_is_supported(sql_clean_tokens(sql_index_token_parts(lhs_text)))
+			&& sql_static_where_value_is_supported(sql_clean_tokens(sql_index_token_parts(rhs_text)))
+	}
+	if _, args := sql_value_call_parts(text) {
+		return sql_static_where_values_are_supported(args)
+	}
+	if chain := sql_value_member_chain_parts(text) {
+		return sql_static_where_values_are_supported([chain.receiver])
+			&& sql_static_where_values_are_supported(chain.args)
+	}
+	return false
+}
+
+fn sql_static_where_index_is_supported(tokens []string) ?bool {
+	clean := sql_trim_outer_empty(tokens)
+	base_len := sql_value_index_base_len(clean) or { return none }
+	return sql_static_where_value_is_supported(clean[..base_len])
+}
+
+fn sql_static_where_values_are_supported(values []string) bool {
+	for value in values {
+		if !sql_static_where_value_is_supported(sql_clean_tokens(value.split(' '))) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (t &Transformer) sql_dynamic_where_condition(_table SqlTransformTableInfo, tokens []string) ?SqlTransformWhere {
@@ -3002,6 +3294,7 @@ fn (t &Transformer) sql_resolved_table_name(table string) string {
 	} else {
 		table
 	}
+	table_name = t.comptime_resolve_selective_import_type(table_name)
 	if imported := t.resolve_imported_type_name(table_name) {
 		table_name = imported
 	}
@@ -3067,7 +3360,7 @@ fn (t &Transformer) sql_table_info(table string) ?SqlTransformTableInfo {
 		mut found_fields := []types.StructField{}
 		for candidate, fields in t.tc.structs {
 			if candidate.ends_with('.${base}') && fields.len > 0 {
-				if found_name.len > 0 {
+				if found_name != '' {
 					found_name = ''
 					found_fields = []types.StructField{}
 					break
@@ -3076,7 +3369,7 @@ fn (t &Transformer) sql_table_info(table string) ?SqlTransformTableInfo {
 				found_fields = fields.clone()
 			}
 		}
-		if found_name.len > 0 {
+		if found_name != '' {
 			return SqlTransformTableInfo{
 				name:   found_name
 				fields: found_fields
@@ -3222,8 +3515,8 @@ fn (t &Transformer) sql_decl_attribute_metas(node_id int, node flat.Node) []Attr
 }
 
 fn sql_module_name_matches(decl_module string, requested_module string) bool {
-	decl := if decl_module.len == 0 { 'main' } else { decl_module }
-	requested := if requested_module.len == 0 { 'main' } else { requested_module }
+	decl := if decl_module == '' { 'main' } else { decl_module }
+	requested := if requested_module == '' { 'main' } else { requested_module }
 	return decl == requested
 }
 
@@ -3323,17 +3616,18 @@ fn (t &Transformer) sql_selector_value_type_name(value_name string) string {
 }
 
 fn (t &Transformer) sql_root_value_type_name(value_name string) string {
-	if smartcast := t.find_smartcast(value_name) {
+	bound_name := t.sql_bound_value_name(value_name)
+	if smartcast := t.find_smartcast(bound_name) {
 		narrowed := t.smartcast_target_type(smartcast)
 		if narrowed.len > 0 {
 			return narrowed
 		}
 	}
-	mut typ := t.var_type(value_name)
+	mut typ := t.var_type(bound_name)
 	if typ.len == 0 && !isnil(t.tc) {
-		if current := t.tc.cur_scope.lookup(value_name) {
+		if current := t.tc.cur_scope.lookup(bound_name) {
 			typ = current.name()
-		} else if file := t.tc.file_scope.lookup(value_name) {
+		} else if file := t.tc.file_scope.lookup(bound_name) {
 			typ = file.name()
 		}
 	}
@@ -3387,7 +3681,9 @@ fn sql_clean_tokens(tokens []string) []string {
 
 fn sql_token_can_precede_selector(token string) bool {
 	return sql_token_is_plain_ident(token)
-		&& token !in ['create', 'drop', 'delete', 'table', 'insert', 'upsert', 'into', 'select', 'from', 'where', 'update', 'set', 'order', 'by', 'limit', 'offset', 'dynamic', 'distinct', 'and', 'or', 'in', 'is', 'none', 'nil', 'true', 'false']
+		&& token !in ['create', 'drop', 'delete', 'table', 'insert', 'upsert', 'into', 'select',
+			'from', 'where', 'update', 'set', 'order', 'by', 'limit', 'offset', 'dynamic', 'distinct',
+			'and', 'or', 'in', 'is', 'none', 'nil', 'true', 'false']
 }
 
 fn sql_token_index(tokens []string, needle string) int {
@@ -3407,7 +3703,7 @@ fn sql_token_is_value(token string) bool {
 }
 
 fn sql_token_is_int_literal(token string) bool {
-	if token.len == 0 {
+	if token == '' {
 		return false
 	}
 	start := if token.len > 1 && token[0] in [`-`, `+`] { 1 } else { 0 }
@@ -3418,7 +3714,7 @@ fn sql_token_is_int_literal(token string) bool {
 }
 
 fn sql_token_is_float_literal(token string) bool {
-	if token.len == 0 || !token.contains('.') {
+	if token == '' || !token.contains('.') {
 		return false
 	}
 	mut dot_count := 0
@@ -3455,7 +3751,7 @@ fn sql_unquote_string_token(token string) string {
 }
 
 fn sql_token_is_plain_ident(token string) bool {
-	if token.len == 0 {
+	if token == '' {
 		return false
 	}
 	for ch in token.bytes() {

@@ -215,8 +215,7 @@ fn (mut checker Decoder) check_boolean() ! {
 			}
 
 			if is_not_ok != 0 {
-				return checker.checker_error('invalid boolean value. Got `${checker.json[checker.checker_idx..
-					checker.checker_idx + 4]}` instead of `true`')
+				return checker.checker_error('invalid boolean value. Got `${checker.json[checker.checker_idx..checker.checker_idx + 4]}` instead of `true`')
 			}
 			checker.checker_idx += 3
 		}
@@ -230,8 +229,7 @@ fn (mut checker Decoder) check_boolean() ! {
 			}
 
 			if is_not_ok != 0 {
-				return checker.checker_error('invalid boolean value. Got `${checker.json[checker.checker_idx..
-					checker.checker_idx + 5]}` instead of `false`')
+				return checker.checker_error('invalid boolean value. Got `${checker.json[checker.checker_idx..checker.checker_idx + 5]}` instead of `false`')
 			}
 
 			checker.checker_idx += 4
@@ -254,8 +252,7 @@ fn (mut checker Decoder) check_null() ! {
 	}
 
 	if is_not_ok != 0 {
-		return checker.checker_error('invalid null value. Got `${checker.json[checker.checker_idx..
-			checker.checker_idx + 4]}` instead of `null`')
+		return checker.checker_error('invalid null value. Got `${checker.json[checker.checker_idx..checker.checker_idx + 4]}` instead of `null`')
 	}
 	checker.checker_idx += 3
 }

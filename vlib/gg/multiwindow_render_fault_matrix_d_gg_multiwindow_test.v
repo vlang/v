@@ -601,7 +601,9 @@ fn multiwindow_fault_matrix_new_app() !&App {
 		'wayland' { .wayland }
 		'appkit' { .appkit }
 		'win32' { .win32 }
-		else { return error('VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32') }
+		else {
+			return error('VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32')
+		}
 	}
 
 	mut app := new_app(
@@ -1015,8 +1017,8 @@ fn multiwindow_fault_matrix_make_sgl_recipes(mut resources AppResourceContext, m
 		multiwindow_sokol_trace.typed_snapshot())
 	default_registry := multiwindow_record_retry_registry('make_sgl_pipeline',
 		armed_default.registry, [
-		multiwindow_fault_matrix_key(sgl_pipeline_resource_key(proof.sgl_default)),
-	], 1, 0, resources.app.render_runtime, mut proof)
+			multiwindow_fault_matrix_key(sgl_pipeline_resource_key(proof.sgl_default)),
+		], 1, 0, resources.app.render_runtime, mut proof)
 	multiwindow_assert_sgl_recipe_retry_slot(armed_default.registry, default_registry,
 		proof.sgl_default, WindowShaderId{}, valid)
 
@@ -1045,9 +1047,9 @@ fn multiwindow_fault_matrix_make_sgl_recipes(mut resources AppResourceContext, m
 		multiwindow_sokol_trace.typed_snapshot())
 	shader_registry := multiwindow_record_retry_registry('make_sgl_pipeline_with_shader',
 		armed_shader.registry, [
-		multiwindow_fault_matrix_key(sgl_pipeline_resource_key(proof.sgl_shader)),
-		multiwindow_fault_matrix_key(shader_resource_key(proof.shader)),
-	], 1, 0, resources.app.render_runtime, mut proof)
+			multiwindow_fault_matrix_key(sgl_pipeline_resource_key(proof.sgl_shader)),
+			multiwindow_fault_matrix_key(shader_resource_key(proof.shader)),
+		], 1, 0, resources.app.render_runtime, mut proof)
 	multiwindow_assert_sgl_recipe_retry_slot(armed_shader.registry, shader_registry,
 		proof.sgl_shader, proof.shader, valid)
 }

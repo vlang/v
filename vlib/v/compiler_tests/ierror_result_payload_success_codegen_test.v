@@ -192,19 +192,19 @@ fn main() {
 	assert run.output.trim_space() == 'OK:payload\nOK:payload-defer\nIERR_OK:payload-ierror\nIERR_LOCAL_OK:payload-local-err\nIERR_DEFER_OK:payload-ierror-defer\nIERR_FALLBACK_OK:fallback-ierror\nIERR_PAYLOAD_FAILURE:payload-error\nERR:real-error:7\nFIXED_ERR:fixed-error\nIERR:boom\nIERR_DEFER:boom'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	payload_ierror_body := c_fn_body(c_code, 'Optional_IError payload_ierror(void) {')
+	payload_ierror_body := c_fn_body(c_code, '__v_result_IError payload_ierror(void) {')
 	assert payload_ierror_body.contains('.ok = true, .value = (IError){._typ = '), payload_ierror_body
 	assert !payload_ierror_body.contains('.ok = false'), payload_ierror_body
 
 	payload_ierror_local_body := c_fn_body(c_code,
-		'Optional_IError payload_ierror_local_err(void) {')
+		'__v_result_IError payload_ierror_local_err(void) {')
 	assert payload_ierror_local_body.contains('.ok = true, .value = (IError){._typ = '), payload_ierror_local_body
 	assert payload_ierror_local_body.contains('memdup((main__MyErr[]){\terr}, sizeof(main__MyErr))'), payload_ierror_local_body
 	assert !payload_ierror_local_body.contains('.ok = false'), payload_ierror_local_body
 
-	payload_ierror_defer_body := c_fn_body(c_code, 'Optional_IError payload_ierror_defer(void) {')
-	assert payload_ierror_defer_body.contains('= (Optional_IError){.ok = true, .value = '), payload_ierror_defer_body
+	payload_ierror_defer_body := c_fn_body(c_code, '__v_result_IError payload_ierror_defer(void) {')
+	assert payload_ierror_defer_body.contains('= (__v_result_IError){.ok = true, .value = '), payload_ierror_defer_body
 
 	assert payload_ierror_defer_body.contains('(IError){._typ = '), payload_ierror_defer_body
-	assert !payload_ierror_defer_body.contains('= (Optional_IError){.ok = false'), payload_ierror_defer_body
+	assert !payload_ierror_defer_body.contains('= (__v_result_IError){.ok = false'), payload_ierror_defer_body
 }

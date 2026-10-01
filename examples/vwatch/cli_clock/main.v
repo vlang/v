@@ -1,4 +1,5 @@
 import time
+
 // This example demonstrates how to use `v watch` for simple CLI apps.
 
 fn main() {

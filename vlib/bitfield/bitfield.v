@@ -78,7 +78,7 @@ pub fn (bf BitField) bytes() []u8 {
 // new creates an empty bit array capable of storing `size` bits.
 pub fn new(size int) BitField {
 	output := BitField{
-		size: size
+		size:  size
 		// field: *u32(calloc(zbitnslots(size) * slot_size / 8))
 		field: []u32{len: zbitnslots(size)}
 	}

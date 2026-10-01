@@ -2,7 +2,7 @@ module multiwindow
 
 import os
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import gg.testdata.multiwindow_probe_gate
 	import gg.testdata.multiwindow_sokol_trace
 	import sokol.gfx
@@ -14,8 +14,7 @@ const native_wayland_frame_callback_setup_ordinal_span_for_test = u64(5)
 const native_wayland_transport_boundary_ordinal_span_for_test = u64(2)
 const native_wayland_transport_compound_trace_span_for_test = 8
 const native_wayland_listener_registration_ordinal_offset_for_test = u64(2)
-const native_wayland_frame_callback_cleanup_ordinal_offset_from_listener_for_test =
-	native_wayland_frame_callback_setup_ordinal_span_for_test -
+const native_wayland_frame_callback_cleanup_ordinal_offset_from_listener_for_test = native_wayland_frame_callback_setup_ordinal_span_for_test -
 	native_wayland_listener_registration_ordinal_offset_for_test - 1
 const native_wayland_quiescent_read_predecessor_count_for_test = u64(5)
 const native_wayland_quiescent_read_ordinal_offset_for_test = native_wayland_transport_boundary_ordinal_span_for_test * native_wayland_quiescent_read_predecessor_count_for_test
@@ -48,7 +47,7 @@ struct NativeWaylandSyncDispatchProof {
 #flag -DSOKOL_TRACE_HOOKS
 #preinclude windows "@VMODROOT/vlib/x/multiwindow/testdata/native_win32_lifetime_oracle_helpers.h"
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	#flag darwin -DV_MULTIWINDOW_NATIVE_PROOF_TEST
 	$if windows {
 		$if sokol_d3d11 ? {
@@ -66,7 +65,7 @@ $if linux {
 	#include <signal.h>
 	#include <sys/wait.h>
 
-	$if x_multiwindow_x11 ? || sokol_wayland ? {
+	$if x_multiwindow_x11 ?|| sokol_wayland ? {
 		#flag -include @VMODROOT/vlib/x/multiwindow/testdata/native_egl_release_oracle_helpers.h
 		#insert "@VMODROOT/vlib/x/multiwindow/testdata/native_egl_release_oracle_helpers.h"
 
@@ -123,7 +122,7 @@ $if linux {
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if windows {
 		$if sokol_d3d11 ? {
 			@[typedef]
@@ -449,7 +448,7 @@ struct NativePhaseABackendOwnershipSnapshot {
 const native_egl_bad_display_child_marker = 'V_MULTIWINDOW_NATIVE_PROOF_EGL_BAD_DISPLAY_CHILD'
 const native_appkit_ordinal_exhaustion_child_marker = 'V_MULTIWINDOW_NATIVE_PROOF_APPKIT_ORDINAL_EXHAUSTION_CHILD'
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	@[markused]
 	fn native_terminal_child_marker_for_test() string {
 		if os.getenv(native_egl_bad_display_child_marker) == '1' {
@@ -480,7 +479,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 }
 
 fn before_each() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		marker := native_terminal_child_marker_for_test()
 		if marker == '' {
 			return
@@ -494,7 +493,7 @@ fn before_each() {
 }
 
 fn after_each() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if native_terminal_child_marker_for_test() != '' {
 			exit(86)
 		}
@@ -672,16 +671,16 @@ fn test_native_lifetime_registry_transitions_release_children_before_parent_and_
 
 	attempt_ticket, _ := native_reserve_lifetime_ticket_for_scope_for_test(mut authority,
 		.renderer_attempt, .wayland_frame_callback, NativeOperationSeed{
-		presence_mask:     native_context_has_window | native_context_has_target_generation
-		call_site:         .window_finalize
-		scope:             .window_target
-		window:            WindowId{
-			app_instance: 701
-			slot:         7
-			generation:   9
-		}
-		target_generation: 13
-	})!
+			presence_mask:     native_context_has_window | native_context_has_target_generation
+			call_site:         .window_finalize
+			scope:             .window_target
+			window:            WindowId{
+				app_instance: 701
+				slot:         7
+				generation:   9
+			}
+			target_generation: 13
+		})!
 	authority.bind_lifetime_ticket(attempt_ticket, 0xca11, 0x5fce)
 	attempt_snapshot := native_lifetime_ticket_snapshot_for_test(&authority, attempt_ticket)!
 	assert attempt_snapshot.authority_scope == .renderer_attempt
@@ -2314,7 +2313,7 @@ fn native_proof_evidence_equal(actual NativePrimitiveEvidence, expected NativePr
 }
 
 fn test_native_egl_prepass_bad_surface_keeps_serials_dirty_and_replaces_target() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_egl_runtime_requested_for_test() {
 			return
 		}
@@ -2323,7 +2322,7 @@ fn test_native_egl_prepass_bad_surface_keeps_serials_dirty_and_replaces_target()
 }
 
 fn test_native_egl_postcommit_bad_surface_consumes_only_frame_and_replaces_target() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_egl_runtime_requested_for_test() {
 			return
 		}
@@ -2332,7 +2331,7 @@ fn test_native_egl_postcommit_bad_surface_consumes_only_frame_and_replaces_targe
 }
 
 fn test_native_egl_bad_native_window_is_window_local_and_clears_target() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_egl_runtime_requested_for_test() {
 			return
 		}
@@ -2341,7 +2340,7 @@ fn test_native_egl_bad_native_window_is_window_local_and_clears_target() {
 }
 
 fn test_native_egl_context_lost_forbids_later_operations_and_uses_lifetime_releases() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_egl_runtime_requested_for_test() {
 			return
 		}
@@ -2350,7 +2349,7 @@ fn test_native_egl_context_lost_forbids_later_operations_and_uses_lifetime_relea
 }
 
 fn test_native_egl_bad_display_logically_abandons_without_native_release_calls() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_egl_runtime_requested_for_test() {
 			return
 		}
@@ -2359,7 +2358,7 @@ fn test_native_egl_bad_display_logically_abandons_without_native_release_calls()
 }
 
 fn test_native_egl_bad_current_surface_queries_previous_binding_and_recovers_once() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_egl_runtime_requested_for_test() {
 			return
 		}
@@ -2368,7 +2367,7 @@ fn test_native_egl_bad_current_surface_queries_previous_binding_and_recovers_onc
 }
 
 fn test_native_wayland_flush_and_poll_use_fresh_errno_and_display_evidence() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2377,7 +2376,7 @@ fn test_native_wayland_flush_and_poll_use_fresh_errno_and_display_evidence() {
 }
 
 fn test_native_wayland_fatal_transport_uses_local_proxy_anchor_release() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2386,7 +2385,7 @@ fn test_native_wayland_fatal_transport_uses_local_proxy_anchor_release() {
 }
 
 fn test_native_linux_egl_failed_start_closes_all_native_ownership_and_replays() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_egl_runtime_requested_for_test() {
 			return
 		}
@@ -2395,7 +2394,7 @@ fn test_native_linux_egl_failed_start_closes_all_native_ownership_and_replays() 
 }
 
 fn test_native_wayland_prepare_and_read_failures_are_balanced_and_retry_once() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2405,7 +2404,7 @@ fn test_native_wayland_prepare_and_read_failures_are_balanced_and_retry_once() {
 }
 
 fn test_native_wayland_bad_poll_revents_latch_loss_after_balanced_cancel() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2414,7 +2413,7 @@ fn test_native_wayland_bad_poll_revents_latch_loss_after_balanced_cancel() {
 }
 
 fn test_native_wayland_listener_failure_arms_after_exact_callback_identity_exists() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2423,7 +2422,7 @@ fn test_native_wayland_listener_failure_arms_after_exact_callback_identity_exist
 }
 
 fn test_native_wayland_normal_frame_callback_retires_only_after_post_destroy_completion() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2432,7 +2431,7 @@ fn test_native_wayland_normal_frame_callback_retires_only_after_post_destroy_com
 }
 
 fn test_native_wayland_frame_callback_registry_completion_follows_native_destroy() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2441,7 +2440,7 @@ fn test_native_wayland_frame_callback_registry_completion_follows_native_destroy
 }
 
 fn test_native_wayland_stop_releases_callback_before_egl_and_wayland_children() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2450,7 +2449,7 @@ fn test_native_wayland_stop_releases_callback_before_egl_and_wayland_children() 
 }
 
 fn test_native_wayland_display_error_outranks_null_egl_window_and_forbids_fallback() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2459,7 +2458,7 @@ fn test_native_wayland_display_error_outranks_null_egl_window_and_forbids_fallba
 }
 
 fn test_native_wayland_private_anchor_acquisitions_rollback_and_retry() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_wayland_runtime_requested_for_test() {
 			return
 		}
@@ -2468,7 +2467,7 @@ fn test_native_wayland_private_anchor_acquisitions_rollback_and_retry() {
 }
 
 fn test_native_dxgi_null_success_and_direct_losses_forbid_fallback_and_release_outputs() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_dxgi_runtime_requested_for_test() {
 			return
 		}
@@ -2477,7 +2476,7 @@ fn test_native_dxgi_null_success_and_direct_losses_forbid_fallback_and_release_o
 }
 
 fn test_native_dxgi_present_captures_operation_and_removal_before_release() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_dxgi_runtime_requested_for_test() {
 			return
 		}
@@ -2486,7 +2485,7 @@ fn test_native_dxgi_present_captures_operation_and_removal_before_release() {
 }
 
 fn test_native_dxgi_resize_physically_calls_after_view_release_and_propagates_failure() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_dxgi_runtime_requested_for_test() {
 			return
 		}
@@ -2495,7 +2494,7 @@ fn test_native_dxgi_resize_physically_calls_after_view_release_and_propagates_fa
 }
 
 fn test_native_sokol_swapchain_attachment_matches_backend_authority() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_runtime_proofs_requested_for_test() {
 			return
 		}
@@ -2504,7 +2503,7 @@ fn test_native_sokol_swapchain_attachment_matches_backend_authority() {
 }
 
 fn test_native_ordinal_exhaustion_at_real_boundary_is_terminal_and_replay_safe() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_runtime_proofs_requested_for_test() {
 			return
 		}
@@ -2513,7 +2512,7 @@ fn test_native_ordinal_exhaustion_at_real_boundary_is_terminal_and_replay_safe()
 }
 
 fn test_native_phase_a_trace_overflow_does_not_block_lifetime_cleanup_or_replay() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !native_egl_runtime_requested_for_test() {
 			return
 		}
@@ -2522,7 +2521,7 @@ fn test_native_phase_a_trace_overflow_does_not_block_lifetime_cleanup_or_replay(
 }
 
 fn test_native_win32_phase_b_com_lifetimes_are_bijective_and_child_first() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if windows {
 			$if sokol_d3d11 ? {
 				if !native_dxgi_runtime_requested_for_test() {
@@ -2535,7 +2534,7 @@ fn test_native_win32_phase_b_com_lifetimes_are_bijective_and_child_first() {
 }
 
 fn test_native_win32_phase_b_alias_null_burn_rejection_and_wrong_thread() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if windows {
 			$if sokol_d3d11 ? {
 				native_win32_exercise_phase_b_registry_edges()!
@@ -2545,7 +2544,7 @@ fn test_native_win32_phase_b_alias_null_burn_rejection_and_wrong_thread() {
 }
 
 fn test_native_win32_phase_b_exhaustion_overflow_and_stop_replay() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if windows {
 			$if sokol_d3d11 ? {
 				if !native_dxgi_runtime_requested_for_test() {
@@ -2558,7 +2557,7 @@ fn test_native_win32_phase_b_exhaustion_overflow_and_stop_replay() {
 }
 
 fn test_native_appkit_phase_b_lifetimes_are_bijective_and_child_first() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if darwin {
 			if !native_appkit_runtime_requested_for_test() {
 				return
@@ -2569,7 +2568,7 @@ fn test_native_appkit_phase_b_lifetimes_are_bijective_and_child_first() {
 }
 
 fn test_native_appkit_phase_b_null_burn_rejection_and_wrong_thread() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if darwin {
 			if !native_appkit_runtime_requested_for_test() {
 				return
@@ -2580,7 +2579,7 @@ fn test_native_appkit_phase_b_null_burn_rejection_and_wrong_thread() {
 }
 
 fn test_native_appkit_phase_b_exhaustion_overflow_and_stop_replay() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if darwin {
 			if !native_appkit_runtime_requested_for_test() {
 				return
@@ -2591,7 +2590,7 @@ fn test_native_appkit_phase_b_exhaustion_overflow_and_stop_replay() {
 }
 
 fn test_native_appkit_physical_nil_window_drawable_is_transient_and_retryable() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if darwin {
 			if !native_appkit_runtime_requested_for_test() {
 				return
@@ -2602,7 +2601,7 @@ fn test_native_appkit_physical_nil_window_drawable_is_transient_and_retryable() 
 }
 
 fn test_native_appkit_physical_nil_anchor_drawable_is_transient_and_retryable() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if darwin {
 			if !native_appkit_runtime_requested_for_test() {
 				return
@@ -2612,7 +2611,7 @@ fn test_native_appkit_physical_nil_anchor_drawable_is_transient_and_retryable() 
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	@[heap]
 	struct NativeEglFrameProof {
 	mut:
@@ -3162,9 +3161,9 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			}
 		}
 		mut slot_ids := []u64{}
-		for ticket_id in [snapshot.egl_display_ticket, snapshot.egl_context_ticket, snapshot.egl_thread_ticket,
-			snapshot.anchor_surface_ticket, snapshot.anchor_wl_egl_window_ticket,
-			snapshot.anchor_wl_surface_ticket] {
+		for ticket_id in [snapshot.egl_display_ticket, snapshot.egl_context_ticket,
+			snapshot.egl_thread_ticket, snapshot.anchor_surface_ticket,
+			snapshot.anchor_wl_egl_window_ticket, snapshot.anchor_wl_surface_ticket] {
 			if ticket_id != 0 {
 				assert ticket_id !in slot_ids
 				slot_ids << ticket_id
@@ -4752,13 +4751,15 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			'wayland' { .wayland }
 			'appkit' { .appkit }
 			'win32' { .win32 }
-			else { error('VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32') }
+			else {
+				error('VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32')
+			}
 		}
 	}
 
 	fn native_release_oracle_reset_for_test(backend BackendKind) {
 		$if linux {
-			$if x_multiwindow_x11 ? || sokol_wayland ? {
+			$if x_multiwindow_x11 ?|| sokol_wayland ? {
 				if backend in [.x11, .wayland] {
 					C.v_multiwindow_test_release_oracle_reset_sequence()
 					C.v_multiwindow_test_egl_release_oracle_reset()
@@ -4778,7 +4779,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		mut unticketed_releases := []NativeReleaseOracleRecord{}
 		mut overflow := false
 		$if linux {
-			$if x_multiwindow_x11 ? || sokol_wayland ? {
+			$if x_multiwindow_x11 ?|| sokol_wayland ? {
 				if backend in [.x11, .wayland] {
 					count := C.v_multiwindow_test_egl_release_oracle_count()
 					for raw_index in 0 .. int(count) {
@@ -5011,10 +5012,9 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			for identity in [native_identity(backend.data_offer), pending_alias,
 				native_identity(backend.incoming_offer), native_identity(backend.selection_offer),
 				native_identity(backend.clipboard_source),
-				native_identity(backend.cursor_shape_device),
-				native_identity(backend.pointer), native_identity(backend.keyboard),
-				native_identity(backend.touch), native_identity(backend.data_device),
-				native_identity(backend.data_device_manager),
+				native_identity(backend.cursor_shape_device), native_identity(backend.pointer),
+				native_identity(backend.keyboard), native_identity(backend.touch),
+				native_identity(backend.data_device), native_identity(backend.data_device_manager),
 				native_identity(backend.cursor_shape_manager), relative_manager, pointer_constraints,
 				foreign_exporter, fractional_manager, viewporter,
 				native_identity(backend.decoration_manager), native_identity(backend.shm),
@@ -5296,7 +5296,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		}
 		backend := native_runtime_backend_for_test() or { panic(err) }
 		if backend == .win32 {
-			$if multiwindow_d3d11_warp ? || gg_multiwindow_d3d11_warp ? {
+			$if multiwindow_d3d11_warp ?|| gg_multiwindow_d3d11_warp ? {
 				return true
 			} $else {
 				panic('Win32 native primitive proofs require the forced-WARP compile define')
@@ -5751,8 +5751,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		} else {
 			native_context_window_target_fields
 		}
-		return
-			context.renderer_attempt_token == app.backend.native_operations.renderer_attempt_token
+		return context.renderer_attempt_token == app.backend.native_operations.renderer_attempt_token
 			&& context.renderer_attempt_token != 0 && context.app_identity == app.instance_id
 			&& context.presence_mask == expected_presence && context.domain == domain
 			&& context.operation == operation && context.call_site == .window_activate
@@ -6375,7 +6374,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 						&& app.backend.wayland.anchor_wl_egl_window_ticket == 0
 						&& app.backend.wayland.anchor_wl_surface_ticket == 0
 						&& app.backend.wayland.windows.all(it.egl_surface_ticket == 0
-						&& it.wl_egl_window_ticket == 0 && it.frame_callback_ticket == 0)
+							&& it.wl_egl_window_ticket == 0 && it.frame_callback_ticket == 0)
 						&& app.backend.native_operations.lifetime_tickets.len == 0
 				} $else {
 					false
@@ -6502,7 +6501,8 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		for index in 0 .. authority.proof.trace_len {
 			entry := authority.proof.trace[index]
 			if entry.milestone == .actual_primitive
-				&& entry.context.operation in [.current_draw_query, .current_read_query, .current_context_query] {
+				&& entry.context.operation in [.current_draw_query, .current_read_query,
+					.current_context_query] {
 				result << entry
 			}
 		}
@@ -6671,10 +6671,8 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			assert snapshot.trace[index + 5].milestone == .effective_primitive
 			assert snapshot.trace[index + 6].milestone == .acceptance
 			assert snapshot.trace[index + 7].milestone == .health_latched
-			assert native_proof_evidence_equal(snapshot.trace[index + 1].actual, snapshot.trace[
-				index + 2].effective)
-			assert native_proof_evidence_equal(snapshot.trace[index + 4].actual, snapshot.trace[
-				index + 5].effective)
+			assert native_proof_evidence_equal(snapshot.trace[index + 1].actual, snapshot.trace[index + 2].effective)
+			assert native_proof_evidence_equal(snapshot.trace[index + 4].actual, snapshot.trace[index + 5].effective)
 			assert (snapshot.trace[index + 4].actual.valid_mask & native_valid_wayland_display_error) != 0
 			assert snapshot.trace[index + 4].actual.wayland_display_error == 0
 			if snapshot.trace[index + 6].result.disposition == .ok {
@@ -6928,10 +6926,11 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			}
 			record := app.backend.win32.windows[index]
 			mut identities := []u64{}
-			for value in [app.backend.win32.device, app.backend.win32.device_context, app.backend.win32.factory,
-				app.backend.win32.anchor_color_texture, app.backend.win32.anchor_render_view,
-				app.backend.win32.anchor_depth_texture, app.backend.win32.anchor_depth_stencil_view,
-				record.swapchain, record.render_view, record.depth_texture, record.depth_stencil_view] {
+			for value in [app.backend.win32.device, app.backend.win32.device_context,
+				app.backend.win32.factory, app.backend.win32.anchor_color_texture,
+				app.backend.win32.anchor_render_view, app.backend.win32.anchor_depth_texture,
+				app.backend.win32.anchor_depth_stencil_view, record.swapchain, record.render_view,
+				record.depth_texture, record.depth_stencil_view] {
 				identity := native_identity(value)
 				if identity != 0 && identity !in identities {
 					identities << identity
@@ -7251,7 +7250,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			for candidate in after.registry.tickets {
 				if candidate.ticket_id == ticket.ticket_id
 					|| (candidate.release_kind == .wayland_frame_callback
-					&& candidate.native_identity == ticket.native_identity) {
+						&& candidate.native_identity == ticket.native_identity) {
 					final_ticket_matches++
 				}
 			}
@@ -7379,7 +7378,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		assert actual.has(native_valid_return_value)
 		assert (actual.return_value >= 0 && !actual.has(native_valid_errno))
 			|| (actual.return_value == -1 && actual.has(native_valid_errno)
-			&& actual.native_errno == 11)
+				&& actual.native_errno == 11)
 		expected_ordinal = native_wayland_next_transport_ordinal_for_test(context.ordinal)
 
 		mut released_callback_tickets := []NativeLifetimeTicketProofSnapshot{}
@@ -7599,7 +7598,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			}
 			failure_context := native_wayland_primary_context_for_test(app, .display_read, seed,
 				app.backend.native_operations.next_ordinal +
-				native_wayland_quiescent_read_ordinal_offset_for_test)
+					native_wayland_quiescent_read_ordinal_offset_for_test)
 			native_arm_wayland_primitive_for_test(mut app, failure_context, injected, 0)!
 			failure := app.backend.wayland.dispatch_pending_nonblocking()
 			if sync_state.done || sync_state.callback_identity != 0 {
@@ -9783,8 +9782,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 						native_identity(backend.wayland.data_device),
 						native_identity(backend.wayland.data_offer),
 						native_identity(backend.wayland.pending_drop_offer),
-						native_identity(backend.wayland.shm),
-						native_identity(backend.wayland.wm_base),
+						native_identity(backend.wayland.shm), native_identity(backend.wayland.wm_base),
 						native_identity(backend.wayland.decoration_manager),
 						native_identity(backend.wayland.xkb_context),
 						native_identity(backend.wayland.xkb_keymap),
@@ -11010,7 +11008,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			.wayland, 1, actual_object)
 		assert temporary_physical_release_count ==
 			native_release_oracle_record_count_for_test(temporary_release_oracle_before.records, .wayland, 1, actual_object) +
-			1
+				1
 		stop_sokol_generation := native_install_sokol_trace_for_test()!
 		defer {
 			if multiwindow_sokol_trace.active_generation() == stop_sokol_generation {
@@ -12007,8 +12005,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			assert app.backend.renderer_health() == .ready
 			assert app.render_runtime.renderer_terminal == outcome.error
 			assert C.v_multiwindow_test_win32_resize_invalid_call_consumed_once() == 1
-			resize_results := app.backend.native_operations.proof.trace[..app.backend.native_operations.proof.trace_len].filter(
-				it.milestone == .acceptance && it.context.operation == .resize_buffers).map(it.result)
+			resize_results := app.backend.native_operations.proof.trace[..app.backend.native_operations.proof.trace_len].filter(it.milestone == .acceptance && it.context.operation == .resize_buffers).map(it.result)
 			assert resize_results.len == 1
 			assert resize_results[0].disposition == .operation_failed
 			assert u32(resize_results[0].native_code) == u32(C.v_multiwindow_test_win32_resize_invalid_call_code())
@@ -12050,8 +12047,8 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			_ = app.prepare_stop()!
 			assert C.v_multiwindow_test_win32_oracle_count_get() == prepare_event_count
 			replayed := app.backend.win32.windows[index]
-			assert [replayed.swapchain_ticket, replayed.render_view_ticket, replayed.depth_texture_ticket,
-				replayed.depth_stencil_view_ticket] == prepared_ticket_ids
+			assert [replayed.swapchain_ticket, replayed.render_view_ticket,
+				replayed.depth_texture_ticket, replayed.depth_stencil_view_ticket] == prepared_ticket_ids
 			assert !replayed.render_resize_pending
 			app.stop()!
 			assert app.status() == .stopped
@@ -13485,8 +13482,8 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 				release_tickets := [window_depth_view_lifetime_ticket, window_depth_lifetime_ticket,
 					window_view_lifetime_ticket, window_swapchain_lifetime_ticket,
 					anchor_depth_view_lifetime_ticket, anchor_depth_lifetime_ticket,
-					anchor_view_lifetime_ticket, anchor_color_lifetime_ticket,
-					factory_lifetime_ticket, context_lifetime_ticket, device_lifetime_ticket]
+					anchor_view_lifetime_ticket, anchor_color_lifetime_ticket, factory_lifetime_ticket,
+					context_lifetime_ticket, device_lifetime_ticket]
 				release_identities := [
 					native_identity(live_window_record.depth_stencil_view),
 					native_identity(live_window_record.depth_texture),
@@ -13618,9 +13615,8 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 				]
 				expected_status_actual := [NativePrimitiveEvidence{}, expected_status_evidence,
 					NativePrimitiveEvidence{}, expected_status_evidence, NativePrimitiveEvidence{}]
-				expected_status_effective := [NativePrimitiveEvidence{},
-					NativePrimitiveEvidence{}, expected_status_evidence, expected_status_evidence,
-					NativePrimitiveEvidence{}]
+				expected_status_effective := [NativePrimitiveEvidence{}, NativePrimitiveEvidence{},
+					expected_status_evidence, expected_status_evidence, NativePrimitiveEvidence{}]
 				for offset, milestone in expected_status_milestones {
 					entry := first.authority.trace[status_start + offset]
 					assert entry.milestone == milestone
@@ -15015,9 +15011,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			assert after_device_release.trace[before_device_release.trace_len + 2].effective.object_identity_0 == 0
 			assert after_device_release.trace[before_device_release.trace_len + 3].result.disposition == .renderer_unavailable
 			assert after_device_release.trace[before_device_release.trace_len + 4].health == .unavailable
-			assert native_proof_result_equal(after_device_release.trace[
-				before_device_release.trace_len + 5].result, after_device_release.trace[
-				before_device_release.trace_len + 3].result)
+			assert native_proof_result_equal(after_device_release.trace[before_device_release.trace_len + 5].result, after_device_release.trace[before_device_release.trace_len + 3].result)
 			assert !authority.has_pending_native_plans()
 			assert backend.poll_error.count(err_appkit_metal_device_failed) == 1
 		}
@@ -15055,9 +15049,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			assert after_window_release.trace[before_window_release.trace_len + 2].effective.object_identity_0 == 0
 			assert after_window_release.trace[before_window_release.trace_len + 3].result.disposition == .renderer_unavailable
 			assert after_window_release.trace[before_window_release.trace_len + 4].health == .unavailable
-			assert native_proof_result_equal(after_window_release.trace[
-				before_window_release.trace_len + 5].result, after_window_release.trace[
-				before_window_release.trace_len + 3].result)
+			assert native_proof_result_equal(after_window_release.trace[before_window_release.trace_len + 5].result, after_window_release.trace[before_window_release.trace_len + 3].result)
 			assert !authority.has_pending_native_plans()
 			assert backend.poll_error.count(err_appkit_metal_device_failed) == 1
 			assert backend.poll_error.count(err_appkit_destroy_window_failed) == 1
@@ -15348,7 +15340,8 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		mut expected := []NativeLifetimeTicketProofSnapshot{}
 		for ticket in tickets {
 			if ticket.state == .bound
-				&& ticket.release_kind in [.metal_device, .appkit_state, .appkit_autorelease_pool, .metal_drawable] {
+				&& ticket.release_kind in [.metal_device, .appkit_state, .appkit_autorelease_pool,
+					.metal_drawable] {
 				expected << ticket
 			}
 		}

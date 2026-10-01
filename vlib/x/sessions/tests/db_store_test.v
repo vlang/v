@@ -82,7 +82,7 @@ fn test_store_session_expired() {
 
 	time.sleep(2 * max_age)
 
-	if data := store.get('c', max_age) {
+	if _ := store.get('c', max_age) {
 		assert false, 'session should be expired!'
 	} else {
 		assert err.msg() == 'session is expired'

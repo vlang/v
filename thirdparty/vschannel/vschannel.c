@@ -1,5 +1,28 @@
 #include <vschannel.h>
 #include <sspi.h>
+#include <limits.h>
+
+#ifndef WC_ERR_INVALID_CHARS
+#define WC_ERR_INVALID_CHARS 0x00000080
+#endif
+
+#ifndef IDN_USE_STD3_ASCII_RULES
+#define IDN_USE_STD3_ASCII_RULES 0x00000002
+#endif
+
+#ifndef SCHANNEL_NAME
+#ifdef UNICODE
+#define SCHANNEL_NAME L"Schannel"
+#else
+#define SCHANNEL_NAME "Schannel"
+#endif
+#endif
+
+#ifdef VSCHANNEL_DEBUG
+#define VSCHANNEL_LOG(...) do { wprintf(__VA_ARGS__); } while (0)
+#else
+#define VSCHANNEL_LOG(...) do {} while (0)
+#endif
 
 // ALPN (RFC 7301) compatibility shim. Older toolchain headers (notably the
 // ones bundled with tcc) predate the SChannel ALPN additions, so the structs,
@@ -284,19 +307,26 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 }
 
 void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate) {
+	SECURITY_STATUS status;
+
 	tls_ctx->sspi = InitSecurityInterface();
 	tls_ctx->validate_server_certificate = validate_server_certificate;
 
 	if(tls_ctx->sspi == NULL) {
-		wprintf(L"Error 0x%x reading security interface.\n",
-			   GetLastError());
+		DWORD err = GetLastError();
+		VSCHANNEL_LOG(L"Error 0x%x reading security interface.\n", err);
+		vschannel_set_last_error(tls_ctx, err != 0 ? (INT)err : (INT)SEC_E_INTERNAL_ERROR);
 		vschannel_cleanup(tls_ctx);
+		return;
 	}
 
 	// Create credentials.
-	if(create_credentials(tls_ctx)) {
-		wprintf(L"Error creating credentials\n");
+	status = create_credentials(tls_ctx);
+	if(status != SEC_E_OK) {
+		VSCHANNEL_LOG(L"Error creating credentials\n");
+		vschannel_set_last_error(tls_ctx, status);
 		vschannel_cleanup(tls_ctx);
+		return;
 	}
 	tls_ctx->creds_initialized = TRUE;
 }
@@ -318,6 +348,13 @@ static SECURITY_STATUS vschannel_open_and_handshake(TlsContext *tls_ctx, INT ipo
 
 	extra->pvBuffer = NULL;
 	extra->cbBuffer = 0;
+
+	if(!tls_ctx->creds_initialized) {
+		if(tls_ctx->last_error_code == 0) {
+			vschannel_set_last_error(tls_ctx, SEC_E_NO_CREDENTIALS);
+		}
+		return tls_ctx->last_error_code;
+	}
 
 	protocol = SP_PROT_TLS1_2_CLIENT;
 	port_number = iport;
@@ -397,7 +434,7 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	Status = disconnect_from_server(tls_ctx);
 	if(Status) {
 		vschannel_set_last_error(tls_ctx, Status);
-		wprintf(L"Error disconnecting from server\n");
+		VSCHANNEL_LOG(L"Error disconnecting from server\n");
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
@@ -831,10 +868,10 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 	// Open the "MY" certificate store, which is where Internet Explorer
 	// stores its client certificates.
 	if(tls_ctx->cert_store == NULL) {
-		tls_ctx->cert_store = CertOpenSystemStore(0, L"MY");
+		tls_ctx->cert_store = CertOpenSystemStoreW(0, L"MY");
 
 		if(!tls_ctx->cert_store) {
-			wprintf(L"Error 0x%x returned by CertOpenSystemStore\n", 
+			VSCHANNEL_LOG(L"Error 0x%x returned by CertOpenSystemStore\n",
 			GetLastError());
 			return SEC_E_NO_CREDENTIALS;
 		}
@@ -877,7 +914,7 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 
 	Status = tls_ctx->sspi->AcquireCredentialsHandle(
 						NULL,                   // Name of principal    
-						UNISP_NAME_W,           // Name of package
+						SCHANNEL_NAME,           // Name of package
 						SECPKG_CRED_OUTBOUND,   // Flags indicating use
 						NULL,                   // Pointer to logon ID
 						&tls_ctx->schannel_cred,          // Package specific data
@@ -886,7 +923,7 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 						&tls_ctx->h_client_creds,                // (out) Cred Handle
 						&tsExpiry);             // (out) Lifetime (optional)
 	if(Status != SEC_E_OK) {
-		wprintf(L"Error 0x%x returned by AcquireCredentialsHandle\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by AcquireCredentialsHandle\n", Status);
 		goto cleanup;
 	}
 
@@ -902,6 +939,90 @@ cleanup:
 	return Status;
 }
 
+
+static INT vschannel_idn_to_ascii(LPCWSTR host, LPWSTR ascii_host, INT capacity) {
+	// TCC does not ship a normaliz import library. Use an absolute system path
+	// so loading the API also works on Windows 7 without newer loader flags.
+	const WCHAR dll_name[] = L"\\normaliz.dll";
+	WCHAR dll_path[MAX_PATH];
+	UINT dir_length = GetSystemDirectoryW(dll_path, MAX_PATH);
+	if(dir_length == 0) {
+		return (INT)GetLastError();
+	}
+	if(dir_length > MAX_PATH - sizeof(dll_name) / sizeof(WCHAR)) {
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+	memcpy(dll_path + dir_length, dll_name, sizeof(dll_name));
+	HMODULE normaliz = LoadLibraryExW(dll_path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+	if(normaliz == NULL) {
+		return (INT)GetLastError();
+	}
+	typedef INT (WINAPI *IdnToAsciiFn)(DWORD, LPCWSTR, INT, LPWSTR, INT);
+	IdnToAsciiFn idn_to_ascii = (IdnToAsciiFn)GetProcAddress(normaliz, "IdnToAscii");
+	INT err_code = ERROR_SUCCESS;
+	if(idn_to_ascii == NULL) {
+		err_code = (INT)GetLastError();
+	} else if(idn_to_ascii(IDN_USE_STD3_ASCII_RULES, host, -1, ascii_host, capacity) == 0) {
+		err_code = (INT)GetLastError();
+	}
+	FreeLibrary(normaliz);
+	return err_code;
+}
+
+// The caller owns the returned ASCII request and must release it with LocalFree.
+static INT vschannel_build_proxy_request(LPCWSTR host, INT port_number, CHAR **request, INT *length) {
+	*request = NULL;
+	*length = 0;
+	if(host == NULL || host[0] == L'\0' || port_number < 1 || port_number > 65535) {
+		return ERROR_INVALID_PARAMETER;
+	}
+	BOOL needs_idna = FALSE;
+	for(LPCWSTR p = host; *p; ++p) {
+		if(*p <= L' ' || *p == 0x7f) {
+			return ERROR_INVALID_PARAMETER;
+		}
+		if(*p > 0x7f) {
+			needs_idna = TRUE;
+		}
+	}
+	// DNS names fit in 255 ASCII characters, including a trailing dot.
+	WCHAR ascii_host[256];
+	if(needs_idna) {
+		INT err_code = vschannel_idn_to_ascii(host, ascii_host, sizeof(ascii_host) / sizeof(WCHAR));
+		if(err_code != ERROR_SUCCESS) {
+			return err_code;
+		}
+		host = ascii_host;
+	}
+
+	INT host_size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, host, -1, NULL, 0, NULL, NULL);
+	if(host_size == 0) {
+		return (INT)GetLastError();
+	}
+	const CHAR prefix[] = "CONNECT ";
+	const INT prefix_len = sizeof(prefix) - 1;
+	CHAR suffix[64];
+	INT suffix_len = snprintf(suffix, sizeof(suffix), ":%d HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n", port_number);
+	if(suffix_len < 0 || suffix_len >= (INT)sizeof(suffix) || host_size > INT_MAX - prefix_len - suffix_len) {
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+	CHAR *message = (CHAR *)LocalAlloc(LMEM_FIXED, (SIZE_T)prefix_len + host_size + suffix_len);
+	if(message == NULL) {
+		return ERROR_NOT_ENOUGH_MEMORY;
+	}
+	INT converted = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, host, -1,
+		message + prefix_len, host_size, NULL, NULL);
+	if(converted == 0) {
+		INT err_code = (INT)GetLastError();
+		LocalFree(message);
+		return err_code;
+	}
+	memcpy(message, prefix, prefix_len);
+	memcpy(message + prefix_len + converted - 1, suffix, suffix_len + 1);
+	*request = message;
+	*length = prefix_len + converted - 1 + suffix_len;
+	return ERROR_SUCCESS;
+}
 
 static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) {
 	SOCKET Socket;
@@ -928,8 +1049,8 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	WCHAR service_name[10];
 	int res = wsprintf(service_name, L"%d", port_number);
 
-	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length, 
-		&local_address, &remote_address_length, &remote_address, &tv, NULL) == FALSE) {
+	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length,
+		(SOCKADDR *)&local_address, &remote_address_length, (SOCKADDR *)&remote_address, &tv, NULL) == FALSE) {
 		INT err_code = WSAGetLastError();
 		vschannel_set_last_error(tls_ctx, err_code);
 		closesocket(Socket);
@@ -937,29 +1058,37 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	}
 
 	if(use_proxy) {
-		BYTE  pbMessage[200]; 
-		DWORD cbMessage;
-
-		// Build message for proxy server
-		strcpy(pbMessage, "CONNECT ");
-		strcat(pbMessage, host);
-		strcat(pbMessage, ":");
-		_itoa(port_number, pbMessage + strlen(pbMessage), 10);
-		strcat(pbMessage, " HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n");
-		cbMessage = (DWORD)strlen(pbMessage);
-
-		// Send message to proxy server
-		if(send(Socket, pbMessage, cbMessage, 0) == SOCKET_ERROR) {
-			INT err_code = WSAGetLastError();
+		CHAR *message = NULL;
+		INT message_length = 0;
+		INT err_code = vschannel_build_proxy_request(host, port_number, &message, &message_length);
+		if(err_code != ERROR_SUCCESS) {
 			vschannel_set_last_error(tls_ctx, err_code);
+			closesocket(Socket);
 			return err_code;
 		}
 
+		// Send message to proxy server
+		INT sent = 0;
+		while(sent < message_length) {
+			INT n = send(Socket, message + sent, message_length - sent, 0);
+			if(n <= 0) {
+				err_code = n == SOCKET_ERROR ? WSAGetLastError() : WSAECONNRESET;
+				LocalFree(message);
+				vschannel_set_last_error(tls_ctx, err_code);
+				closesocket(Socket);
+				return err_code;
+			}
+			sent += n;
+		}
+		LocalFree(message);
+
 		// Receive message from proxy server
-		cbMessage = recv(Socket, pbMessage, 200, 0);
+		CHAR response[200];
+		INT cbMessage = recv(Socket, response, sizeof(response), 0);
 		if(cbMessage == SOCKET_ERROR) {
-			INT err_code = WSAGetLastError();
+			err_code = WSAGetLastError();
 			vschannel_set_last_error(tls_ctx, err_code);
+			closesocket(Socket);
 			return err_code;
 		}
 
@@ -1001,7 +1130,7 @@ static LONG disconnect_from_server(TlsContext *tls_ctx) {
 	Status = tls_ctx->sspi->ApplyControlToken(&tls_ctx->h_context, &OutBuffer);
 
 	if(FAILED(Status)) {
-		wprintf(L"Error 0x%x returned by ApplyControlToken\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by ApplyControlToken\n", Status);
 		goto cleanup;
 	}
 
@@ -1027,7 +1156,7 @@ static LONG disconnect_from_server(TlsContext *tls_ctx) {
 		NULL, 0, &tls_ctx->h_context, &OutBuffer, &dwSSPIOutFlags, &tsExpiry);
 
 	if(FAILED(Status))  {
-		wprintf(L"Error 0x%x returned by InitializeSecurityContext\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by InitializeSecurityContext\n", Status);
 		goto cleanup;
 	}
 
@@ -1040,7 +1169,7 @@ static LONG disconnect_from_server(TlsContext *tls_ctx) {
 		cbData = send(tls_ctx->socket, pbMessage, cbMessage, 0);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
 			Status = WSAGetLastError();
-			wprintf(L"Error %d sending close notify\n", Status);
+			VSCHANNEL_LOG(L"Error %d sending close notify\n", Status);
 			goto cleanup;
 		}
 
@@ -1137,7 +1266,7 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 
 	if(scRet != SEC_I_CONTINUE_NEEDED)
 	{
-		wprintf(L"Error %d returned by InitializeSecurityContext (1)\n", scRet);
+		VSCHANNEL_LOG(L"Error %d returned by InitializeSecurityContext (1)\n", scRet);
 		return scRet;
 	}
 
@@ -1146,7 +1275,7 @@ static SECURITY_STATUS perform_client_handshake(TlsContext *tls_ctx, WCHAR *host
 	{
 		cbData = send(tls_ctx->socket, OutBuffers[0].pvBuffer, OutBuffers[0].cbBuffer, 0);
 		if(cbData == SOCKET_ERROR || cbData == 0) {
-			wprintf(L"Error %d sending data to server (1)\n", WSAGetLastError());
+			VSCHANNEL_LOG(L"Error %d sending data to server (1)\n", WSAGetLastError());
 			tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
 			tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
 			return SEC_E_INTERNAL_ERROR;
@@ -1191,7 +1320,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 	IoBuffer = LocalAlloc(LPTR, IO_BUFFER_SIZE);
 	if(IoBuffer == NULL)
 	{
-		wprintf(L"Out of memory (1)\n");
+		VSCHANNEL_LOG(L"Out of memory (1)\n");
 		return SEC_E_INTERNAL_ERROR;
 	}
 	cbIoBuffer = 0;
@@ -1217,12 +1346,12 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 							  IO_BUFFER_SIZE - cbIoBuffer, 
 							  0);
 				if(cbData == SOCKET_ERROR) {
-					wprintf(L"Error %d reading data from server\n", WSAGetLastError());
+					VSCHANNEL_LOG(L"Error %d reading data from server\n", WSAGetLastError());
 					scRet = SEC_E_INTERNAL_ERROR;
 					break;
 				}
 				else if(cbData == 0) {
-					wprintf(L"Server unexpectedly disconnected\n");
+					VSCHANNEL_LOG(L"Server unexpectedly disconnected\n");
 					scRet = SEC_E_INTERNAL_ERROR;
 					break;
 				}
@@ -1282,7 +1411,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 							  OutBuffers[0].cbBuffer,
 							  0);
 				if(cbData == SOCKET_ERROR || cbData == 0) {
-					wprintf(L"Error %d sending data to server (2)\n", 
+					VSCHANNEL_LOG(L"Error %d sending data to server (2)\n",
 						WSAGetLastError());
 					tls_ctx->sspi->FreeContextBuffer(OutBuffers[0].pvBuffer);
 					tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
@@ -1313,7 +1442,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 			{
 				pExtraData->pvBuffer = LocalAlloc(LPTR, InBuffers[1].cbBuffer);
 				if(pExtraData->pvBuffer == NULL) {
-					wprintf(L"Out of memory (2)\n");
+					VSCHANNEL_LOG(L"Out of memory (2)\n");
 					return SEC_E_INTERNAL_ERROR;
 				}
 
@@ -1338,7 +1467,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 
 		// Check for fatal error.
 		if(FAILED(scRet)) {
-			wprintf(L"Error 0x%x returned by InitializeSecurityContext (2)\n", scRet);
+			VSCHANNEL_LOG(L"Error 0x%x returned by InitializeSecurityContext (2)\n", scRet);
 			break;
 		}
 
@@ -1677,7 +1806,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 	// Read stream encryption properties.
 	scRet = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context, SECPKG_ATTR_STREAM_SIZES, &Sizes);
 	if(scRet != SEC_E_OK) {
-		wprintf(L"Error 0x%x reading SECPKG_ATTR_STREAM_SIZES\n", scRet);
+		VSCHANNEL_LOG(L"Error 0x%x reading SECPKG_ATTR_STREAM_SIZES\n", scRet);
 		return scRet;
 	}
 
@@ -1688,7 +1817,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 
 	pbIoBuffer = LocalAlloc(LPTR, cbIoBufferLength);
 	if(pbIoBuffer == NULL) {
-		wprintf(L"Out of memory (2)\n");
+		VSCHANNEL_LOG(L"Out of memory (2)\n");
 		return SEC_E_INTERNAL_ERROR;
 	}
 	
@@ -1725,7 +1854,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 
 		scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
 		if(FAILED(scRet)) {
-			wprintf(L"Error 0x%x returned by EncryptMessage\n", scRet);
+			VSCHANNEL_LOG(L"Error 0x%x returned by EncryptMessage\n", scRet);
 			LocalFree(pbIoBuffer);
 			return scRet;
 		}
@@ -1736,7 +1865,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		while(sent < to_send) {
 			cbData = send(tls_ctx->socket, (char*)pbIoBuffer + sent, (int)(to_send - sent), 0);
 			if(cbData == SOCKET_ERROR || cbData == 0) {
-				wprintf(L"Error %d sending data to server (3)\n", WSAGetLastError());
+				VSCHANNEL_LOG(L"Error %d sending data to server (3)\n", WSAGetLastError());
 				tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
 				LocalFree(pbIoBuffer);
 				return SEC_E_INTERNAL_ERROR;
@@ -1755,14 +1884,14 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		if(0 == cbIoBuffer || scRet == SEC_E_INCOMPLETE_MESSAGE) {
 			cbData = recv(tls_ctx->socket, pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer, 0);
 			if(cbData == SOCKET_ERROR) {
-				wprintf(L"Error %d reading data from server\n", WSAGetLastError());
+				VSCHANNEL_LOG(L"Error %d reading data from server\n", WSAGetLastError());
 				scRet = SEC_E_INTERNAL_ERROR;
 				break;
 			}
 			else if(cbData == 0) {
 				// Server disconnected.
 				if(cbIoBuffer) {
-					wprintf(L"Server unexpectedly disconnected\n");
+					VSCHANNEL_LOG(L"Server unexpectedly disconnected\n");
 					scRet = SEC_E_INTERNAL_ERROR;
 					LocalFree(pbIoBuffer);
 					return scRet;
@@ -1807,7 +1936,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			scRet != SEC_I_RENEGOTIATE && 
 			scRet != SEC_I_CONTEXT_EXPIRED)
 		{
-			wprintf(L"Error 0x%x returned by DecryptMessage\n", scRet);
+			VSCHANNEL_LOG(L"Error 0x%x returned by DecryptMessage\n", scRet);
 			LocalFree(pbIoBuffer);
 			return scRet;
 		}
@@ -1927,7 +2056,7 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 		CERT_CHAIN_REVOCATION_ACCUMULATIVE_TIMEOUT,
 		NULL, &pChainContext)) {
 		Status = GetLastError();
-		wprintf(L"Error 0x%x returned by CertGetCertificateChain!\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by CertGetCertificateChain!\n", Status);
 		goto cleanup;
 	}
 
@@ -1948,7 +2077,7 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 
 	if(!CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_SSL, pChainContext, &PolicyPara, &PolicyStatus)){
 		Status = GetLastError();
-		wprintf(L"Error 0x%x returned by CertVerifyCertificateChainPolicy!\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x returned by CertVerifyCertificateChainPolicy!\n", Status);
 		goto cleanup;
 	}
 
@@ -1988,7 +2117,7 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 	// Read list of trusted issuers from schannel.
 	Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context, SECPKG_ATTR_ISSUER_LIST_EX, (PVOID)&IssuerListInfo);
 	if(Status != SEC_E_OK) {
-		wprintf(L"Error 0x%x querying issuer list info\n", Status);
+		VSCHANNEL_LOG(L"Error 0x%x querying issuer list info\n", Status);
 		return;
 	}
 
@@ -2013,7 +2142,7 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 											 &FindByIssuerPara,
 											 pChainContext);
 		if(pChainContext == NULL) {
-			wprintf(L"Error 0x%x finding cert chain\n", GetLastError());
+			VSCHANNEL_LOG(L"Error 0x%x finding cert chain\n", GetLastError());
 			break;
 		}
 
@@ -2027,7 +2156,7 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 
 		Status = tls_ctx->sspi->AcquireCredentialsHandle(
 							NULL,                   // Name of principal
-							UNISP_NAME_W,           // Name of package
+							SCHANNEL_NAME,           // Name of package
 							SECPKG_CRED_OUTBOUND,   // Flags indicating use
 							NULL,                   // Pointer to logon ID
 							&tls_ctx->schannel_cred,          // Package specific data
@@ -2036,7 +2165,7 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 							&hCreds,                // (out) Cred Handle
 							&tsExpiry);             // (out) Lifetime (optional)
 		if(Status != SEC_E_OK) {
-			wprintf(L"Error 0x%x returned by AcquireCredentialsHandle\n", Status);
+			VSCHANNEL_LOG(L"Error 0x%x returned by AcquireCredentialsHandle\n", Status);
 			continue;
 		}
 
@@ -2065,3 +2194,5 @@ static void get_new_client_credentials(TlsContext *tls_ctx) {
 		break;
 	}
 }
+
+#undef VSCHANNEL_LOG

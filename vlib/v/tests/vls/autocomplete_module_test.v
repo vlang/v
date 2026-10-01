@@ -2,7 +2,10 @@
 import os
 import term
 import v.util.diff
-import json
+import json2
+
+// The compiler under test, not the first `v` on PATH, which may be another checkout.
+const vexe = os.quoted_path(@VEXE)
 
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
@@ -53,19 +56,19 @@ const fn_signature_info_for_all_before_last = '{
 '
 
 enum Method {
-	unknown @['unknown']
-	initialize @['initialize']
-	initialized @['initialized']
-	did_open @['textDocument/didOpen']
-	did_change @['textDocument/didChange']
-	definition @['textDocument/definition']
-	completion @['textDocument/completion']
-	signature_help @['textDocument/signatureHelp']
-	hover @['textDocument/hover']
-	set_trace @['$/setTrace']
-	cancel_request @['$/cancelRequest']
-	shutdown @['shutdown']
-	exit @['exit']
+	unknown         @['unknown']
+	initialize      @['initialize']
+	initialized     @['initialized']
+	did_open        @['textDocument/didOpen']
+	did_change      @['textDocument/didChange']
+	definition      @['textDocument/definition']
+	completion      @['textDocument/completion']
+	signature_help  @['textDocument/signatureHelp']
+	hover           @['textDocument/hover']
+	set_trace       @['$/setTrace']
+	cancel_request  @['$/cancelRequest']
+	shutdown        @['shutdown']
+	exit            @['exit']
 }
 
 struct TestData {
@@ -77,87 +80,87 @@ struct TestData {
 const test_data = [
 	TestData{
 		method: .completion
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:19:3" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:19:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
 		method: .completion
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:20:13" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:20:13" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod2
 	},
 	TestData{
 		method: .completion
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:22:3" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:22:3" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_struct
 	},
 	TestData{
 		method: .completion
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:23:3" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:23:3" ${os.quoted_path(text_file)}'
 		output: ''
 	},
 	TestData{
 		method: .completion
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:28" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:26:28" ${os.quoted_path(text_file)}'
 		output: autocomplete_info_for_mod_sample_mod1
 	},
 	TestData{
 		method: .signature_help
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:25:fn^26" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:25:fn^26" ${os.quoted_path(text_file)}'
 		output: fn_signature_info_for_all_before_last
 	},
 	TestData{
 		method: .completion
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:9" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:27:9" ${os.quoted_path(text_file)}'
 		output: ''
 	},
 	TestData{
 		method: .completion
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
 		output: ''
 	},
 	TestData{
 		method: .hover
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:hv^10" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:hv^10" ${os.quoted_path(text_file)}'
 		output: hover_info_for_public_fn1
 	},
 	TestData{
 		method: .hover
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:hv^12" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:hv^12" ${os.quoted_path(text_file)}'
 		output: hover_info_for_public_struct1
 	},
 	TestData{
 		method: .definition
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:gd^10" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:gd^10" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:50:7'
 	},
 	TestData{
 		method: .definition
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:gd^12" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:gd^12" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:8:11'
 	},
 	TestData{
 		method: .definition
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:32:gd^11" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:32:gd^11" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:41:9'
 	},
 	TestData{
 		method: .definition
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:33:gd^15" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:33:gd^15" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:44:9'
 	},
 	TestData{
 		method: .definition
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:34:gd^13" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:34:gd^13" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:19:10'
 	},
 	TestData{
 		method: .definition
-		cmd: 'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:39:gd^13" ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:39:gd^13" ${os.quoted_path(text_file)}'
 		output: '${mod1_text_file}:50:7'
 	},
 	TestData{
 		method: .did_change
-		cmd: 'v -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -vls-mode -check -json-errors ${os.quoted_path(text_file)}'
 		output: '[
 {
 "path":"${json_errors_text_file}",
@@ -277,12 +280,12 @@ struct JsonError {
 }
 
 struct Detail {
-	kind               int // The type of item (e.g., Method, Function, Field)
+	kind               int    // The type of item (e.g., Method, Function, Field)
 	label              string // The name of the completion item
 	detail             string // Additional info like the function signature or return type
 	documentation      string // The documentation for the item
 	insert_text        ?string @[json: 'insertText']
-	insert_text_format ?int @[json: 'insertTextFormat'] // 1 for PlainText, 2 for Snippet
+	insert_text_format ?int    @[json: 'insertTextFormat'] // 1 for PlainText, 2 for Snippet
 }
 
 struct JsonVarAC {
@@ -380,7 +383,7 @@ fn check_valid_goto_definition(message string) ! {
 
 fn check_valid_auto_completion(message string) ! {
 	// {"kind":5,"label":"a","detail":"int","documentation":""},
-	result := json.decode(JsonVarAC, message) or { return error('completion: fail to json decode') }
+	result := json2.decode[JsonVarAC](message) or { return error('completion: fail to json decode') }
 	for detail in result.details {
 		if detail.kind <= 0 || detail.kind > 25 {
 			return error('completion: kind should in 1-25 : ${detail.kind}')
@@ -389,7 +392,7 @@ fn check_valid_auto_completion(message string) ! {
 }
 
 fn check_valid_json_errors(message string) ! {
-	results := json.decode([]JsonError{}, message) or {
+	results := json2.decode[[]JsonError](message) or {
 		return error('json_errors: fail to json decode')
 	}
 	for result in results {
@@ -418,7 +421,7 @@ struct HoverResult {
 }
 
 fn check_valid_hover(message string) ! {
-	result := json.decode(HoverResult, message) or {
+	result := json2.decode[HoverResult](message) or {
 		return error('hover: fail to json decode: ${err}')
 	}
 	if result.contents.kind != 'markdown' {
@@ -430,7 +433,7 @@ fn check_valid_hover(message string) ! {
 }
 
 fn check_valid_fn_signature(message string) ! {
-	result := json.decode(SignatureHelp, message) or {
+	result := json2.decode[SignatureHelp](message) or {
 		return error('fn_signature: fail to json decode')
 	}
 	if result.signatures.len != 1 {

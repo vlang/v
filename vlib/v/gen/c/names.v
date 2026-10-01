@@ -3,6 +3,7 @@ module c
 import strings
 import v.gen.c.naming
 import v.types
+import v.util
 
 // c_name converts c name data for c.
 fn c_name(name string) string {
@@ -263,6 +264,8 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 }
 
 fn (mut g FlatGen) reset_context_lookup_caches() {
+	g.import_key_cache = &util.KeyRecentCache{}
+	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
 	g.enum_selector_cache = &ContextStringLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
@@ -306,26 +309,26 @@ struct ScratchLookupCaches {
 // everything the batch memoized is then dropped together with that arena.
 fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
 	saved := ScratchLookupCaches{
-		interface_receiver_cache: g.interface_receiver_cache
-		normalize_call_cache: g.normalize_call_cache
-		flattened_generic_name_cache: g.flattened_generic_name_cache
+		interface_receiver_cache:        g.interface_receiver_cache
+		normalize_call_cache:            g.normalize_call_cache
+		flattened_generic_name_cache:    g.flattened_generic_name_cache
 		generic_struct_context_ct_cache: g.generic_struct_context_ct_cache
-		struct_cname_cache: g.struct_cname_cache
-		unique_struct_ct_cache: g.unique_struct_ct_cache
-		alias_method_cache: g.alias_method_cache
-		import_alias_cache: g.import_alias_cache
-		enum_selector_cache: g.enum_selector_cache
-		enum_method_cache: g.enum_method_cache
-		qualified_enum_method_cache: g.qualified_enum_method_cache
-		import_type_cache: g.import_type_cache
-		mut_recv_facts: g.mut_recv_facts
-		local_typedef_shadow_facts: g.local_typedef_shadow_facts
-		local_global_shadow_facts: g.local_global_shadow_facts
-		generic_app_cache: g.generic_app_cache
-		struct_decl_pref_cache: g.struct_decl_pref_cache
-		sum_variant_actual_cache: g.sum_variant_actual_cache
-		array_method_cache: g.array_method_cache
-		param_types_cache: g.param_types_cache
+		struct_cname_cache:              g.struct_cname_cache
+		unique_struct_ct_cache:          g.unique_struct_ct_cache
+		alias_method_cache:              g.alias_method_cache
+		import_alias_cache:              g.import_alias_cache
+		enum_selector_cache:             g.enum_selector_cache
+		enum_method_cache:               g.enum_method_cache
+		qualified_enum_method_cache:     g.qualified_enum_method_cache
+		import_type_cache:               g.import_type_cache
+		mut_recv_facts:                  g.mut_recv_facts
+		local_typedef_shadow_facts:      g.local_typedef_shadow_facts
+		local_global_shadow_facts:       g.local_global_shadow_facts
+		generic_app_cache:               g.generic_app_cache
+		struct_decl_pref_cache:          g.struct_decl_pref_cache
+		sum_variant_actual_cache:        g.sum_variant_actual_cache
+		array_method_cache:              g.array_method_cache
+		param_types_cache:               g.param_types_cache
 	}
 	// A cache the generator has disabled stays disabled, so this only changes
 	// where entries are written, never whether they are memoized at all.
@@ -553,7 +556,18 @@ fn c_escape(s string) string {
 // c_escape_into appends the C-escaped form of s to out, without the temporary
 // builder and copy that c_escape needs for its return value.
 fn c_escape_into(mut out strings.Builder, s string) {
-	for b in s.bytes() {
+	// Copy runs of bytes that need no escape in one write; literal tables are
+	// mostly plain text, and a per-byte write dominated emitting them.
+	mut run_start := 0
+	for i in 0 .. s.len {
+		b := s[i]
+		if b >= 32 && b != 127 && b != `\\` && b != `"` {
+			continue
+		}
+		if i > run_start {
+			unsafe { out.write_ptr(s.str + run_start, i - run_start) }
+		}
+		run_start = i + 1
 		match b {
 			`\\` {
 				out.write_string('\\\\')
@@ -583,16 +597,102 @@ fn c_escape_into(mut out strings.Builder, s string) {
 			}
 		}
 	}
+	if s.len > run_start {
+		unsafe { out.write_ptr(s.str + run_start, s.len - run_start) }
+	}
 }
 
+// c_string_literal_chunk_len bounds how much of an escaped byte string is written
+// before it is continued in the next adjacent literal, on the next source line.
+// Two separate implementation limits make that necessary, and only the pair of them
+// together is enough: a single string literal has a maximum length (C requires only
+// 4095 characters of one, and MSVC rejects long ones outright), and so does one
+// logical source line (again 4095 in C, 16384 in MSVC). Concatenating adjacent
+// literals answers the first; putting them on their own lines answers the second.
+// The bound is well under 4095 so that the text sharing the payload's first and last
+// line -- the rest of the enclosing initializer -- still fits with room to spare.
+const c_string_literal_chunk_len = 2048
+
+// c_string_literal_max_total bounds how many bytes are spelled as a string
+// literal at all. Adjacent literals concatenate into a single literal, and the
+// *result* has a maximum length of its own, which no amount of splitting gets
+// past. Past this, the bytes are written as an array object instead, which has
+// no such limit.
+//
+// This is the 4095 characters C99 5.2.4.1 requires an implementation to accept
+// in a string literal after concatenation, rather than the larger figure any
+// particular compiler happens to allow. `-os cross` output is documented as
+// compiling on any C compiler, so it has to hold to what C guarantees.
+const c_string_literal_max_total = 4095
+
+// embed_payload_needs_blob reports whether an `$embed_file` payload is too long
+// to spell as a string literal; see c_string_literal_max_total.
+fn embed_payload_needs_blob(payload_len int) bool {
+	return payload_len > c_string_literal_max_total
+}
+
+// embed_blob_part_count is how many byte objects a payload is split into.
+fn embed_blob_part_count(payload_len int) int {
+	return (payload_len + c_max_object_size - 1) / c_max_object_size
+}
+
+// embed_blob_table_count is how many chunk tables it takes to list that many
+// parts. Each table spends its last entry on the terminator, or on the link to
+// the table that continues it.
+fn embed_blob_table_count(parts int) int {
+	per_table := embed_chunk_table_entries - 1
+	return (parts + per_table - 1) / per_table
+}
+
+// c_max_object_size is how many bytes C99 5.2.4.1 requires a hosted
+// implementation to accept in a single object. A payload past this is emitted as
+// several objects and joined at runtime, for the same reason the literal cutoff
+// is C's figure rather than one compiler's.
+const c_max_object_size = 65535
+
+// embed_chunk_table_entries is how many entries one chunk table holds, the last
+// of which ends it or links to the next. A table is an object like any other, so
+// it is bounded the same way: 4095 entries of a pointer and an int come to 65520
+// bytes where that pair is widest, just inside c_max_object_size.
+const embed_chunk_table_entries = 4095
+
+// embed_blob_bytes_per_line keeps the array initializer of such a payload to
+// short source lines, for the same reason the literal form is split.
+const embed_blob_bytes_per_line = 20
+const c_hex_digits = '0123456789abcdef'
+
+// c_byte_string_escape renders arbitrary bytes as the body of a C string literal.
+// Bytes that a C compiler reads back unchanged are kept as they are, and the rest become
+// three digit octal escapes, which are never continued by the character after them.
+// Keeping the common case one character wide matters for size: `$embed_file` payloads go
+// through here, so escaping every byte would make each embedded byte cost four.
+// A long result is continued in further literals on their own source lines; see
+// c_string_literal_chunk_len. The caller can therefore write it out in one piece.
 fn c_byte_string_escape(s string) string {
-	mut out := strings.new_builder(s.len * 4)
-	for b in s.bytes() {
-		v := int(b)
-		out.write_u8(`\\`)
-		out.write_u8(u8(`0` + ((v >> 6) & 7)))
-		out.write_u8(u8(`0` + ((v >> 3) & 7)))
-		out.write_u8(u8(`0` + (v & 7)))
+	mut out := strings.new_builder(s.len + (s.len >> 2))
+	mut chunk := 0
+	for i in 0 .. s.len {
+		b := s[i]
+		if chunk >= c_string_literal_chunk_len {
+			out.write_string('"\n"')
+			chunk = 0
+		}
+		if b == `"` || b == `\\` || b == `?` {
+			// `?` is escaped so that `??x` cannot be read back as a trigraph.
+			out.write_u8(`\\`)
+			out.write_u8(b)
+			chunk += 2
+		} else if b >= 0x20 && b < 0x7f {
+			out.write_u8(b)
+			chunk++
+		} else {
+			v := int(b)
+			out.write_u8(`\\`)
+			out.write_u8(u8(`0` + ((v >> 6) & 7)))
+			out.write_u8(u8(`0` + ((v >> 3) & 7)))
+			out.write_u8(u8(`0` + (v & 7)))
+			chunk += 4
+		}
 	}
 	return out.str()
 }

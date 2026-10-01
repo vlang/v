@@ -2029,9 +2029,78 @@ fn test_mux_response_rejects_malformed_fields() {
 		H2HeaderField{'transfer-encoding', 'chunked'}], 'transfer-encoding')
 	mux_response_rejected([H2HeaderField{':status', '200'},
 		H2HeaderField{'Content-Type', 'text/plain'}], 'uppercase')
+	// TE is permitted only in requests (RFC 9113 §8.2.2).
+	mux_response_rejected([H2HeaderField{':status', '200'}, H2HeaderField{'te', 'trailers'}],
+		'only in requests')
 	// An undefined response pseudo-header is also malformed (§8.3.1).
 	mux_response_rejected([H2HeaderField{':status', '200'}, H2HeaderField{':custom', 'x'}],
 		'pseudo-header')
+}
+
+// mux_interim_response_result runs one request whose response is a 1xx HEADERS
+// block carrying `interim` (without END_STREAM) followed by a final 200 that
+// ends the stream, and returns the request error, or a description of the
+// accepted response starting with '<<accepted'.
+fn mux_interim_response_result(interim []H2HeaderField) string {
+	mut cend, mut pend := new_mux_pipe()
+	mut conn := new_test_mux_conn(mut cend)
+	mut peer := &MuxTestPeer{
+		end: pend
+	}
+	peer_thread := spawn fn (mut peer MuxTestPeer, interim []H2HeaderField) {
+		peer.read_preface() or {
+			peer.fail('preface: ${err.msg()}')
+			return
+		}
+		ids := peer.wait_for_headers(1) or {
+			peer.fail('headers: ${err.msg()}')
+			return
+		}
+		interim_frame := H2Frame(H2HeadersFrame{
+			stream_id:   ids[0]
+			fragment:    peer.encoder.encode(interim)
+			end_headers: true
+		})
+		final_frame := H2Frame(H2HeadersFrame{
+			stream_id:   ids[0]
+			fragment:    peer.encoder.encode([H2HeaderField{':status', '200'}])
+			end_headers: true
+			end_stream:  true
+		})
+		// Publish both frames under one pipe lock, before rejection can close it.
+		mut frames := interim_frame.encode()
+		frames << final_frame.encode()
+		peer.end.write(frames) or {
+			peer.fail('response: ${err.msg()}')
+			return
+		}
+		// Drain the client's frames until the pipe closes.
+		for {
+			peer.pump() or { return }
+		}
+	}(mut peer, interim)
+	mut got := ''
+	if resp := conn.do(H2ClientRequest{ authority: 't', path: '/x' }) {
+		got = '<<accepted: status=${resp.status} headers=${resp.headers}>>'
+	} else {
+		got = err.msg()
+	}
+	cend.close_both() // unblock the peer's pump loop so its thread exits
+	peer_thread.wait()
+	assert peer.failure_msg() == ''
+	return got
+}
+
+// RFC 9113 §8.2.2 exempts TE only in requests, so a 1xx informational response
+// carrying it is malformed too: the stream must be reset rather than the 1xx
+// block dropped unvalidated and the following 200 accepted.
+fn test_mux_rejects_te_in_informational_response() {
+	ok := mux_interim_response_result([H2HeaderField{':status', '103'},
+		H2HeaderField{'link', '</style.css>; rel=preload'}])
+	assert ok.starts_with('<<accepted: status=200'), 'a valid 103 before the 200 was rejected: ${ok}'
+	got := mux_interim_response_result([H2HeaderField{':status', '103'},
+		H2HeaderField{'te', 'trailers'}])
+	assert got.contains('only in requests'), 'expected the TE rejection, got: ${got}'
 }
 
 // RFC 9113 §8.1: a trailing HEADERS block carrying a pseudo-header (or any
@@ -2264,7 +2333,7 @@ fn test_mux_upload_permanently_stalled_eventually_times_out() {
 		}, mut out)
 		done <- true
 	}()
-	peer_thread := spawn fn [body_len] (mut peer MuxTestPeer) {
+	peer_thread := spawn fn (mut peer MuxTestPeer) {
 		peer.read_preface() or {
 			peer.fail('preface: ${err.msg()}')
 			return
@@ -2292,7 +2361,8 @@ fn test_mux_upload_permanently_stalled_eventually_times_out() {
 	// watchdog not firing) the worker would never return, and an unbounded
 	// wait would hang this test binary instead of failing it cleanly.
 	select {
-		_ := <-done {}
+		_ := <-done {
+		}
 		2 * time.second {
 			cend.close_both()
 			peer_thread.wait()

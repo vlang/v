@@ -32,7 +32,6 @@ on:
       - 'vlib/encoding/**'
       - 'vlib/flag/**'
       - 'vlib/io/**'
-      - 'vlib/json/**'
       - 'vlib/json2/**'
       - 'vlib/math/**'
       - 'vlib/net/**'
@@ -77,16 +76,21 @@ concurrency:
 ### See https://github.com/cross-platform-actions/action
 ### for a description of the used fields here
 
+permissions:
+  contents: read
+
 jobs:
   tcc-openbsd:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start OpenBSD VM for tcc
         id: vm-openbsd-tcc
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
         with:
           operating_system: openbsd
           version: '7.8'
@@ -125,10 +129,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start OpenBSD VM for clang
         id: vm-openbsd-clang
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
         with:
           operating_system: openbsd
           version: '7.8'

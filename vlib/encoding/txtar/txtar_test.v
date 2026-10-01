@@ -1,5 +1,6 @@
 import os
 import encoding.txtar
+import x
 
 // txtar implements a trivial text-based file archive format,
 // Ported from https://cs.opensource.google/go/x/tools/+/master:txtar/archive.go

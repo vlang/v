@@ -2,6 +2,11 @@ module fastc
 
 import v.gen.c.naming
 
+const fastc_module_type_prefix = 'v.gen.fastc.'
+const token_module_type_prefix = 'v.token.'
+const pref_module_type_prefix = 'v.pref.'
+const scanner_module_type_prefix = 'v.scanner.'
+
 fn fastc_type_key(module_name string, name string) string {
 	if module_name in ['', 'main', 'builtin'] {
 		return name
@@ -11,17 +16,17 @@ fn fastc_type_key(module_name string, name string) string {
 
 fn fastc_c_declared_type_name(type_key string) string {
 	if fastc_compact_v3_type_names {
-		if type_key.starts_with('v.gen.fastc.') {
-			return 'F__' + type_key[13..].replace('.', '__')
+		if type_key.starts_with(fastc_module_type_prefix) {
+			return 'F__' + type_key[fastc_module_type_prefix.len..].replace('.', '__')
 		}
-		if type_key.starts_with('v.token.') {
-			return 'T__' + type_key[9..].replace('.', '__')
+		if type_key.starts_with(token_module_type_prefix) {
+			return 'T__' + type_key[token_module_type_prefix.len..].replace('.', '__')
 		}
-		if type_key.starts_with('v.pref.') {
-			return 'P__' + type_key[8..].replace('.', '__')
+		if type_key.starts_with(pref_module_type_prefix) {
+			return 'P__' + type_key[pref_module_type_prefix.len..].replace('.', '__')
 		}
-		if type_key.starts_with('v.scanner.') {
-			return 'S__' + type_key[11..].replace('.', '__')
+		if type_key.starts_with(scanner_module_type_prefix) {
+			return 'S__' + type_key[scanner_module_type_prefix.len..].replace('.', '__')
 		}
 	}
 	return type_key.replace('.', '__')
@@ -96,6 +101,9 @@ fn fastc_global_key(module_name string, name string) string {
 }
 
 fn fastc_c_global_name(key string) string {
+	if key == 'byte' {
+		return 'main__byte'
+	}
 	return fastc_c_identifier(key.replace('.', '__'))
 }
 
@@ -184,7 +192,7 @@ fn fastc_c_function_name_for_key(key string) string {
 	}
 	sanitized := naming.sanitize(key)
 	c_name := naming.c_name(key)
-	if c_name != sanitized || sanitized.starts_with('v_fastc_') {
+	if c_name != sanitized || sanitized.starts_with('v_fastc_') || sanitized == 'byte' {
 		return '__vf_function_${sanitized}'
 	}
 	return c_name

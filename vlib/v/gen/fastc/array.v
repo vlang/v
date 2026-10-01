@@ -74,7 +74,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	saved_it := g.locals[it_name] or { FastcLocal{} }
 	it_c_name := fastc_c_identifier(it_name)
 	w.locals[it_name] = FastcLocal{
-		typ: element_type
+		typ:    element_type
 		c_name: it_c_name
 	}
 	// A closure with a flow-sensitive `&&` narrowing (`it.expr is AnonFn && it.expr.decl.…`) must
@@ -139,7 +139,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	} else {
 		w.locals.delete(it_name)
 	}
-	if method in ['map'] && closure_type == '' {
+	if method == 'map' && closure_type == '' {
 		return none
 	}
 	src := w.temporary_name('collection')
@@ -166,7 +166,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	}
 	return FastcRenderedExpression{
 		source: lowered
-		typ: result_type
+		typ:    result_type
 	}
 }
 
@@ -376,7 +376,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 		return FastcRenderedExpression{
 			source: slice_source
-			typ: slice_type
+			typ:    slice_type
 		}
 	}
 	is_array_pointer := base_type.ends_with('*') && g.array_element_type(base_type) != none
@@ -394,12 +394,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		if g.direct_array_access && !base_type.ends_with('*') {
 			return FastcRenderedExpression{
 				source: '((${base_source}).str[${index_source}])'
-				typ: element_type
+				typ:    element_type
 			}
 		}
 		return FastcRenderedExpression{
 			source: 'builtin__string_at(${base_source}, ${index_source})'
-			typ: element_type
+			typ:    element_type
 		}
 	}
 	is_raw_fixed_array := base_type.starts_with('FixedArray_') && g.fixed_array_uses_raw_storage(base_tokens)
@@ -408,37 +408,37 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		if is_raw_fixed_array {
 			return FastcRenderedExpression{
 				source: '((${base_source})[${checked_index}])'
-				typ: element_type
+				typ:    element_type
 			}
 		}
 		access := if base_type.ends_with('*') { '->' } else { '.' }
 		return FastcRenderedExpression{
 			source: '((${base_source})${access}data[${checked_index}])'
-			typ: element_type
+			typ:    element_type
 		}
 	}
 	if is_raw_fixed_array {
 		return FastcRenderedExpression{
 			source: '((${base_source})[${index_source}])'
-			typ: element_type
+			typ:    element_type
 		}
 	}
 	if base_type.ends_with('*') && !is_array_pointer {
 		return FastcRenderedExpression{
 			source: '((${base_source})[${index_source}])'
-			typ: element_type
+			typ:    element_type
 		}
 	}
 	array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
 	if g.direct_array_access {
 		return FastcRenderedExpression{
 			source: '(((${element_type} *)(${array_value}).data)[${index_source}])'
-			typ: element_type
+			typ:    element_type
 		}
 	}
 	return FastcRenderedExpression{
 		source: '(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
-		typ: element_type
+		typ:    element_type
 	}
 }
 
@@ -562,7 +562,7 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 	inferred_type := g.infer_expression_type(tokens) or { '' }
 	return FastcRenderedExpression{
 		source: rendered
-		typ: inferred_type
+		typ:    inferred_type
 	}
 }
 
@@ -604,7 +604,7 @@ fn (g &Parser) render_indexed_member_receiver(tokens []FastcExpressionToken) ?Fa
 	}
 	return FastcRenderedExpression{
 		source: source
-		typ: current_type
+		typ:    current_type
 	}
 }
 

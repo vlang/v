@@ -7,6 +7,7 @@ import io
 import net
 import time
 import runtime
+
 // ServerStatus is the current status of the server.
 // .closed means that the server is completely inactive (the default on creation, and after calling .close()).
 // .running means that the server is active and serving (after .listen_and_serve()).
@@ -312,11 +313,11 @@ fn normalize_server_response(mut resp Response, req Request) {
 	}
 
 	status := status_from_int(resp.status_code)
-	if status.is_valid() {
+	if resp.status_code >= 100 && resp.status_code <= 599 {
 		if resp.status_msg == '' {
 			resp.status_msg = status.str()
 		}
-	} else if resp.status_code == 0 && resp.status_msg == '' {
+	} else if resp.status_code == 0 {
 		resp.set_status(.ok)
 	} else {
 		resp.set_status(.internal_server_error)

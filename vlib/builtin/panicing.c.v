@@ -4,12 +4,15 @@ module builtin
 // recent versions of tcc print nicer backtraces automatically
 // Note: the duplication here is because tcc_backtrace should be called directly
 // inside the panic functions.
-@[noreturn]
+@[markused; noreturn]
 fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// Note: the order here is important for a stabler test output
 	// module is less likely to change than function, etc...
 	// During edits, the line number will change most frequently,
 	// so it is last
+	if g_panic_state.top != unsafe { nil } || g_panic_state.len > 0 {
+		panic_unwind(s, PanicDebugInfo{ line_no: line_no, file: file, mod: mod, fn_name: fn_name })
+	}
 	$if freestanding {
 		bare_panic(s)
 	} $else $if v2_native_windows_pe_minimal ? {
@@ -50,7 +53,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 			}
 			C.exit(1)
 		} $else {
-			$if use_libbacktrace ? && !tinyc {
+			$if use_libbacktrace ?&& !tinyc {
 				$if openbsd {
 					print_backtrace_skipping_top_frames(1)
 				} $else {
@@ -85,8 +88,13 @@ pub fn panic_result_not_set(s string) {
 
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
+// In a program that calls `recover()`, a panic first runs the pending `defer`
+// blocks up the stack, and one of them can stop it (see `recover`).
 @[noreturn]
 pub fn panic(s string) {
+	if g_panic_state.top != unsafe { nil } || g_panic_state.len > 0 {
+		panic_unwind(s, PanicDebugInfo{})
+	}
 	// Note: be careful to not use string interpolation here:
 	$if freestanding {
 		bare_panic(s)
@@ -121,7 +129,7 @@ pub fn panic(s string) {
 			}
 			C.exit(1)
 		} $else {
-			$if use_libbacktrace ? && !tinyc {
+			$if use_libbacktrace ?&& !tinyc {
 				$if openbsd {
 					print_backtrace_skipping_top_frames(1)
 				} $else {

@@ -144,8 +144,8 @@ fn durable_prepare(source string, event bin.TransitionEvent,
 	}).string_value,
 		(root.object_value('generation') or { return error('generation absent') }).int_value),
 		event, bin.TransitionContext{
-		operation_id: operation_id
-	})
+			operation_id: operation_id
+		})
 }
 
 fn durable_prepare_with_head(source string, event bin.TransitionEvent, operation_id string,
@@ -178,8 +178,8 @@ fn durable_assert_prepare_fails_exact(source string, event bin.TransitionEvent,
 }
 
 fn durable_artifact_from_validation_subject(subject bin.JsonValue) bin.JsonValue {
-	return durable_object(['sha', 'tree', 'input_fingerprint', 'artifact_fingerprint',
-		'manifest_hash', 'digests'], [
+	return durable_object(['sha', 'tree', 'input_fingerprint', 'artifact_fingerprint', 'manifest_hash',
+		'digests'], [
 		durable_member(subject, 'sha'),
 		durable_member(subject, 'tree'),
 		durable_member(subject, 'input_fingerprint'),
@@ -466,22 +466,21 @@ fn test_durable_target_preparation_contract() {
 		'artifact_fingerprint', 'manifest_hash', 'provenance_status', 'affected_targets',
 		'resolved_inputs', 'last_source_refetch', 'last_known_good', 'provisional_published',
 		'active_intent', 'post_validation_operation_id', 'native_gate_subject', 'active_subject_hash',
-		'native_gate_execution', 'v_smoke_execution', 'recovery_handoffs',
-		'active_recovery_handoff_id', 'active_remediation_id', 'active_remediation_binding',
-		'remediation_check_sources', 'last_head_observation', 'last_native_validation',
-		'applied_operations', 'incidents', 'owner_repository', 'issue_number', 'blocking_probe_ids',
-		'last_validation', 'resolved_by', 'last_operation_id', 'last_transition',
-		'manual_green_publications']
+		'native_gate_execution', 'v_smoke_execution', 'recovery_handoffs', 'active_recovery_handoff_id',
+		'active_remediation_id', 'active_remediation_binding', 'remediation_check_sources',
+		'last_head_observation', 'last_native_validation', 'applied_operations', 'incidents',
+		'owner_repository', 'issue_number', 'blocking_probe_ids', 'last_validation', 'resolved_by',
+		'last_operation_id', 'last_transition', 'manual_green_publications']
 	assert member_partition.len == 39
 	immutables := ['schema_version', 'target_id', 'affected_targets']
 	owned := ['generation', 'target_state', 'publication_state', 'bootstrap_required',
 		'canonical_observed_sha', 'input_fingerprint', 'artifact_fingerprint', 'manifest_hash',
 		'provenance_status', 'resolved_inputs', 'last_source_refetch', 'last_known_good',
-		'provisional_published', 'active_intent', 'post_validation_operation_id',
-		'native_gate_subject', 'active_subject_hash', 'native_gate_execution',
-		'active_recovery_handoff_id', 'active_remediation_id', 'remediation_check_sources',
-		'last_head_observation', 'last_native_validation', 'applied_operations', 'last_operation_id',
-		'last_transition', 'manual_green_publications']
+		'provisional_published', 'active_intent', 'post_validation_operation_id', 'native_gate_subject',
+		'active_subject_hash', 'native_gate_execution', 'active_recovery_handoff_id',
+		'active_remediation_id', 'remediation_check_sources', 'last_head_observation',
+		'last_native_validation', 'applied_operations', 'last_operation_id', 'last_transition',
+		'manual_green_publications']
 	root_only := ['v_smoke_execution', 'recovery_handoffs', 'active_remediation_binding',
 		'owner_repository', 'issue_number', 'blocking_probe_ids', 'last_validation', 'resolved_by']
 	assert immutables.len == 3

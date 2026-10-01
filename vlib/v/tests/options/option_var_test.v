@@ -26,7 +26,7 @@ fn (d &Decoder) decode[T](mut typ T) T {
 	$for field in T.fields {
 		$if field.is_option {
 			if typ.$(field.name) != none {
-				dump(typ.$(field.name) ?.str())
+				dump(typ.$(field.name)?.str())
 			}
 			typ.$(field.name) = none
 		}

@@ -1,6 +1,6 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
@@ -181,8 +181,7 @@ fn (record &Win32WindowRecord) has_render_ownership() bool {
 }
 
 fn (backend &Win32Backend) has_anchor_ownership() bool {
-	return
-		win32_identity_is_owned(backend.anchor_depth_stencil_view, backend.anchor_depth_stencil_view_ticket)
+	return win32_identity_is_owned(backend.anchor_depth_stencil_view, backend.anchor_depth_stencil_view_ticket)
 		|| win32_identity_is_owned(backend.anchor_depth_texture, backend.anchor_depth_texture_ticket)
 		|| win32_identity_is_owned(backend.anchor_render_view, backend.anchor_render_view_ticket)
 		|| win32_identity_is_owned(backend.anchor_color_texture, backend.anchor_color_texture_ticket)
@@ -1064,7 +1063,7 @@ fn (mut backend Win32Backend) create_window(id WindowId, config WindowConfig) !W
 			config.min_width, config.min_height, win32_bool_to_int(config.resizable),
 			win32_bool_to_int(config.high_dpi), win32_bool_to_int(config.borderless),
 			win32_bool_to_int(config.fullscreen), win32_bool_to_int(config.visible
-			&& !show_after_modal_activation), owner_hwnd, record_data)
+				&& !show_after_modal_activation), owner_hwnd, record_data)
 		record.suppress_resize_event = false
 		if hwnd == unsafe { nil } {
 			backend.windows.delete(index)
@@ -1533,7 +1532,7 @@ fn (mut backend Win32Backend) release_modal(index int) ! {
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if sokol_d3d11 ? {
 		fn (mut backend Win32Backend) render_environment(id WindowId) !gfx.Environment {
 			$if windows {
@@ -1871,10 +1870,10 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 				}
 				mut allow_warp_fallback := false
 				mut forced_warp := false
-				$if multiwindow_d3d11_warp_fallback ? || gg_multiwindow_d3d11_warp_fallback ? {
+				$if multiwindow_d3d11_warp_fallback ?|| gg_multiwindow_d3d11_warp_fallback ? {
 					allow_warp_fallback = true
 				}
-				$if multiwindow_d3d11_warp ? || gg_multiwindow_d3d11_warp ? {
+				$if multiwindow_d3d11_warp ?|| gg_multiwindow_d3d11_warp ? {
 					forced_warp = true
 					allow_warp_fallback = false
 				}
@@ -2700,7 +2699,7 @@ fn win32_window_operation_seed(id WindowId, target_generation u64, call_site Nat
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if windows && sokol_d3d11 ? {
 		fn (mut backend Win32Backend) accept_dxgi_result(context NativeOperationContext, mut ordinals NativeOrdinalRange, seed NativeOperationSeed, device_identity u64, raw C.VMultiwindowNativePrimitive, validation NativeLocalValidation) NativeRenderResult {
 			primary := backend.native_operations.capture_call(context, raw)
@@ -2742,7 +2741,9 @@ fn win32_actual_output_validation(context NativeOperationContext, raw C.VMultiwi
 		|| dxgi_hresult_failed(raw.return_value) {
 		return requested
 	}
-	if context.operation in [.device_create, .swapchain_create, .backbuffer_acquire, .color_texture_create, .render_view_create, .depth_texture_create, .depth_view_create, .device_query, .adapter_acquire, .factory_acquire]
+	if context.operation in [.device_create, .swapchain_create, .backbuffer_acquire,
+		.color_texture_create, .render_view_create, .depth_texture_create, .depth_view_create,
+		.device_query, .adapter_acquire, .factory_acquire]
 		&& (raw.valid_mask & native_valid_handle == 0 || raw.handle == 0) {
 		return .null_output
 	}

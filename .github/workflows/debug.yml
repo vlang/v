@@ -2,6 +2,9 @@ name: Debug CI
 
 on: [workflow_dispatch]
 
+permissions:
+  contents: read
+
 jobs:
   debug-msvc:
     runs-on: windows-2025
@@ -10,6 +13,8 @@ jobs:
       VFLAGS: -cc msvc
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build
         run: |
           echo %VFLAGS%

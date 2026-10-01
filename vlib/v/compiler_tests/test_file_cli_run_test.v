@@ -105,7 +105,7 @@ fn test_virtual_module_sources_are_available() {
 	assert run.exit_code == 0, run.output
 }
 
-fn test_directory_test_command_sets_test_define_before_collecting_inputs() {
+fn test_directory_test_command_sets_test_define_before_parsing_inputs() {
 	v3_bin := build_v3_test_file_cli_runner()
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_test_directory_define_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
@@ -114,7 +114,7 @@ fn test_directory_test_command_sets_test_define_before_collecting_inputs() {
 		os.rmdir_all(tmp_dir) or {}
 	}
 
-	support_src := os.join_path(tmp_dir, 'support_d_test.v')
+	support_src := os.join_path(tmp_dir, 'support.v')
 	os.write_file(support_src, 'fn value_for_test() bool {
 	return true
 }

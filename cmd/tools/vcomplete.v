@@ -194,7 +194,6 @@ const auto_complete_flags = [
 	'-trace-calls',
 	'-trace-fns',
 	'-manualfree',
-	'-skip-unused',
 	'-no-skip-unused',
 	'-compress',
 	'-freestanding',
@@ -517,10 +516,12 @@ fn auto_complete(args []string) {
 			mut files := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				match true {
-					os.is_dir(entry) { dirs << entry }
-					os.is_file(entry) { files << entry }
-					else { lines << entry }
+				if os.is_dir(entry) {
+					dirs << entry
+				} else if os.is_file(entry) {
+					files << entry
+				} else {
+					lines << entry
 				}
 			}
 			println('compadd -q -- ${lines.join(' ')}')

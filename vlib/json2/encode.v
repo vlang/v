@@ -13,6 +13,13 @@ pub:
 	enum_as_int bool
 
 	escape_unicode bool
+	// time_as_unix encodes a `time.Time` as its Unix timestamp in seconds, like the
+	// removed `json` module did, instead of an RFC 3339 string.
+	time_as_unix bool
+	// legacy_layout, with `prettify: true`, lays the output out like `encode_pretty`
+	// of the removed `json` module: members indented with tabs, a tab after each
+	// key, and array elements on one line, separated by `, `.
+	legacy_layout bool
 }
 
 struct Encoder {
@@ -38,12 +45,23 @@ pub fn encode[T](val T, config EncoderOptions) string {
 fn (mut encoder Encoder) encode_value[T](val T) {
 	$if T is $interface {
 		encoder.encode_null()
+	} $else $if T is $option {
+		// Options outside of struct fields (sum type variants, array elements, map
+		// values, the top-level value) must still produce a JSON value.
+		if val == none {
+			encoder.encode_null()
+		} else {
+			encoder.encode_value(get_value_from_optional(val))
+		}
 	} $else $if T.unaliased_typ is voidptr {
 		encoder.encode_null()
 	} $else $if T.unaliased_typ is string {
 		encoder.encode_string(string(val))
 	} $else $if T.unaliased_typ is bool {
 		encoder.encode_boolean(bool(val))
+	} $else $if T.unaliased_typ is rune {
+		// Like the removed `json` module, a rune is a JSON string of its character.
+		encoder.encode_string(rune(val).str())
 	} $else $if T.unaliased_typ is u8 {
 		encoder.encode_number(u8(val))
 	} $else $if T.unaliased_typ is u16 {
@@ -78,49 +96,45 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		}
 	} $else $if T.unaliased_typ is $array_fixed {
 		encoder.output << `[`
+		// Only the legacy layout spreads a fixed size array like a dynamic one.
+		spread := encoder.prettify && encoder.legacy_layout
+		if spread {
+			encoder.open_items(val.len, true)
+		}
 		for i in 0 .. val.len {
-			encoder.encode_value(val[i])
-			if i < val.len - 1 {
-				encoder.output << `,`
+			if i > 0 {
+				if spread {
+					encoder.separate_items(true)
+				} else {
+					encoder.output << `,`
+				}
 			}
+			encoder.encode_value(val[i])
+		}
+		if spread {
+			encoder.close_items(val.len, true)
 		}
 		encoder.output << `]`
 	} $else $if T.unaliased_typ is $array {
 		encoder.encode_array(val)
 	} $else $if T.unaliased_typ is $map {
 		encoder.output << `{`
-		// An empty map is written as `{}`, for the same reason as in encode_map: the
-		// level raised here would never be lowered, because the lowering lives in the
-		// loop below.
-		if encoder.prettify && val.len > 0 {
-			encoder.increment_level()
-			encoder.add_indent()
-		}
+		encoder.open_items(val.len, false)
 		mut mi := 0
 		for key, value in val {
+			if mi > 0 {
+				encoder.separate_items(false)
+			}
 			encoder.encode_string('${key}')
-			encoder.output << `:`
-			if encoder.prettify {
-				encoder.output << ` `
-			}
+			encoder.write_key_separator()
 			encoder.encode_value(value)
-			if mi < val.len - 1 {
-				encoder.output << `,`
-				if encoder.prettify {
-					encoder.add_indent()
-				}
-			} else {
-				if encoder.prettify {
-					encoder.decrement_level()
-					encoder.add_indent()
-				}
-			}
 			mi++
 		}
+		encoder.close_items(val.len, false)
 		encoder.output << `}`
 	} $else $if T.unaliased_typ is $enum {
 		if encoder.enum_as_int || enum_uses_json_as_number[T]() {
-			encoder.encode_number(int(val))
+			encoder.encode_enum_number(val)
 		} else {
 			mut enum_val := 'unknown enum value'
 			$for member in T.values {
@@ -133,12 +147,20 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 					}
 				}
 			}
-			encoder.output << `"`
-			unsafe { encoder.output.push_many(enum_val.str, enum_val.len) }
-			encoder.output << `"`
+			// A `@[json: '...']` name is arbitrary text; escape it like any string.
+			encoder.encode_string(enum_val)
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		encoder.encode_sumtype[T](val)
+	} $else $if T.unaliased_typ is time.Time {
+		// `time_as_unix` covers aliases of `time.Time` too, like the removed module;
+		// otherwise the value's own (or inherited) `to_json` applies.
+		if encoder.time_as_unix {
+			encoder.encode_number(time.Time(val).unix())
+		} else {
+			time_val := val.to_json()
+			unsafe { encoder.output.push_many(time_val.str, time_val.len) }
+		}
 	} $else $if T is JsonEncoder { // uses T, because alias could be implementing JsonEncoder, while the base type does not
 		integer_val := val.to_json()
 		unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }
@@ -155,11 +177,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 			}
 			encoder.output << `{`
 			is_first := encoder.encode_struct_fields[T](val, true, [], '')
-			if encoder.prettify && !is_first {
-				encoder.decrement_level()
-				encoder.add_indent()
-			}
-			encoder.output << `}`
+			encoder.close_object(!is_first)
 		}
 	}
 }
@@ -236,56 +254,23 @@ fn (mut encoder Encoder) encode_string(val string) {
 
 					continue
 				}
-				if encoder.escape_unicode {
-					if character >= 0b1111_0000 { // four bytes
-						unsafe {
-							encoder.output.push_many(val.str + buffer_start,
-								buffer_end - buffer_start)
-						}
-						unicode_point_low := val[buffer_end..buffer_end + 4].bytes().byterune() or {
-							0
-						} - 0x10000
-
-						hex_string := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${
-							0xDC00 + (unicode_point_low & 0x3FF):04x}'
-
-						buffer_end += 4
-						buffer_start = buffer_end
-
-						unsafe { encoder.output.push_many(hex_string.str, 12) }
-
-						continue
-					} else if character >= 0b1110_0000 { // three bytes
-						unsafe {
-							encoder.output.push_many(val.str + buffer_start,
-								buffer_end - buffer_start)
-						}
-						hex_string := '\\u${val[buffer_end..buffer_end + 3].bytes().byterune() or {
-							0
-						}:04x}'
-
-						buffer_end += 3
-						buffer_start = buffer_end
-
-						unsafe { encoder.output.push_many(hex_string.str, 6) }
-
-						continue
-					} else if character >= 0b1100_0000 { // two bytes
-						unsafe {
-							encoder.output.push_many(val.str + buffer_start,
-								buffer_end - buffer_start)
-						}
-						hex_string := '\\u${val[buffer_end..buffer_end + 2].bytes().byterune() or {
-							0
-						}:04x}'
-
-						buffer_end += 2
-						buffer_start = buffer_end
-
-						unsafe { encoder.output.push_many(hex_string.str, 6) }
-
-						continue
+				if encoder.escape_unicode && character >= 0x80 {
+					unsafe {
+						encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start)
 					}
+					code_point, width := utf8_rune_at(val, buffer_end)
+					hex_string := if code_point > 0xffff {
+						unicode_point_low := u32(code_point) - 0x10000
+						'\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
+					} else {
+						'\\u${u32(code_point):04x}'
+					}
+					buffer_end += width
+					buffer_start = buffer_end
+
+					unsafe { encoder.output.push_many(hex_string.str, hex_string.len) }
+
+					continue
 				}
 
 				buffer_end++
@@ -295,6 +280,66 @@ fn (mut encoder Encoder) encode_string(val string) {
 	unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
 
 	encoder.output << `"`
+}
+
+// utf8_rune_at decodes the UTF-8 sequence at `val[i]` like `string.runes()` does: an
+// invalid or truncated sequence (arbitrary bytes such as `0xff`) is U+FFFD with a
+// width of 1, like in the removed `json` module, so every byte is consumed once.
+@[direct_array_access]
+fn utf8_rune_at(val string, i int) (rune, int) {
+	b0 := val[i]
+	if b0 < 0x80 {
+		return rune(b0), 1
+	}
+	if b0 < 0xc2 || b0 >= 0xf5 {
+		return 0xfffd, 1
+	}
+	width := if b0 < 0xe0 {
+		2
+	} else if b0 < 0xf0 {
+		3
+	} else {
+		4
+	}
+	if i + width > val.len {
+		return 0xfffd, 1
+	}
+	for j in 1 .. width {
+		if val[i + j] & 0xc0 != 0x80 {
+			return 0xfffd, 1
+		}
+	}
+	b1 := val[i + 1]
+	if (b0 == 0xe0 && b1 < 0xa0) || (b0 == 0xed && b1 >= 0xa0)
+		|| (b0 == 0xf0 && b1 < 0x90) || (b0 == 0xf4 && b1 > 0x8f) {
+		return 0xfffd, 1
+	}
+	code_point := match width {
+		2 { ((rune(b0) & 0x1f) << 6) | (rune(b1) & 0x3f) }
+		3 { ((rune(b0) & 0x0f) << 12) | ((rune(b1) & 0x3f) << 6) | (rune(val[i + 2]) & 0x3f) }
+		else {
+			((rune(b0) & 0x07) << 18) | ((rune(b1) & 0x3f) << 12) | ((rune(val[i + 2]) & 0x3f) << 6) | (rune(val[i + 3]) & 0x3f)
+		}
+	}
+	return code_point, width
+}
+
+// encode_enum_number writes the backing value of an enum, like the removed `json`
+// module: `int(val)` would truncate a 64 bit backing value, and misread a large
+// unsigned one as negative.
+fn (mut encoder Encoder) encode_enum_number[T](val T) {
+	// The comparison happens in the enum's C type, which is unsigned for an unsigned
+	// backing type.
+	if unsafe { T(-1) } < unsafe { T(0) } {
+		encoder.encode_number(i64(val))
+	} else {
+		mut bits := u64(val)
+		if sizeof(T) < 8 {
+			// A narrow enum is passed as an `int`, which sign-extends large values.
+			bits &= (u64(1) << (sizeof(T) * 8)) - 1
+		}
+		encoder.encode_number(bits)
+	}
 }
 
 fn (mut encoder Encoder) encode_boolean(val bool) {
@@ -333,6 +378,11 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 		integer_val = f64(val).str()
 	}
 	$if T is $float {
+		// JSON has no NaN or infinity, which V formats as `nan`, `+inf` and `-inf`.
+		if integer_val == 'nan' || integer_val.ends_with('inf') {
+			encoder.encode_null()
+			return
+		}
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
 			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
 			// `2.0` = > `2`
@@ -352,15 +402,11 @@ fn (mut encoder Encoder) encode_null() {
 
 fn (mut encoder Encoder) encode_array[T](val T) {
 	encoder.output << `[`
-	// An empty array is written as `[]`: there is no element to indent, and a level
-	// raised here would never be lowered, because the matching lowering happens in
-	// the loop below, which an empty array never enters.
-	if encoder.prettify && val.len > 0 {
-		encoder.increment_level()
-		encoder.add_indent()
-	}
-
+	encoder.open_items(val.len, true)
 	for i, item in val {
+		if i > 0 {
+			encoder.separate_items(true)
+		}
 		$if T is $pointer {
 			if voidptr(item) == unsafe { nil } {
 				encoder.encode_null()
@@ -370,19 +416,8 @@ fn (mut encoder Encoder) encode_array[T](val T) {
 		} $else {
 			encoder.encode_value(item)
 		}
-		if i < val.len - 1 {
-			encoder.output << `,`
-			if encoder.prettify {
-				encoder.add_indent()
-			}
-		} else {
-			if encoder.prettify {
-				encoder.decrement_level()
-				encoder.add_indent()
-			}
-		}
 	}
-
+	encoder.close_items(val.len, true)
 	encoder.output << `]`
 }
 
@@ -393,43 +428,24 @@ fn (mut encoder Encoder) encode_pointer_array_item[T](item T) {
 
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 	encoder.output << `{`
-	// An empty map is written as `{}`: there is no member to indent, and a level
-	// raised here would never be lowered, because the matching lowering happens in
-	// the loop below, which an empty map never enters.
-	if encoder.prettify && val.len > 0 {
-		encoder.increment_level()
-		encoder.add_indent()
-	}
-
+	encoder.open_items(val.len, false)
 	mut i := 0
 	for key, value in val {
+		if i > 0 {
+			encoder.separate_items(false)
+		}
 		encoder.encode_string('${key}')
-		encoder.output << `:`
-		if encoder.prettify {
-			encoder.output << ` `
-		}
+		encoder.write_key_separator()
 		encoder.encode_value[T](value)
-		if i < val.len - 1 {
-			encoder.output << `,`
-			if encoder.prettify {
-				encoder.add_indent()
-			}
-		} else {
-			if encoder.prettify {
-				encoder.decrement_level()
-				encoder.add_indent()
-			}
-		}
-
 		i++
 	}
-
+	encoder.close_items(val.len, false)
 	encoder.output << `}`
 }
 
 fn (mut encoder Encoder) encode_enum[T](val T) {
 	if encoder.enum_as_int || enum_uses_json_as_number[T]() {
-		encoder.encode_number(int(val))
+		encoder.encode_enum_number(val)
 	} else {
 		mut enum_val := 'unknown enum value'
 		$for member in T.values {
@@ -442,9 +458,7 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 				}
 			}
 		}
-		encoder.output << `"`
-		unsafe { encoder.output.push_many(enum_val.str, enum_val.len) }
-		encoder.output << `"`
+		encoder.encode_string(enum_val)
 	}
 }
 
@@ -455,20 +469,36 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 	} $else {
 		$for variant in T.variants {
 			if val is variant {
-				variant_name := sumtype_variant_name(typeof(variant.typ).name)
-				$if variant.typ is time.Time {
+				// An option variant comes first: the time and struct checks below also
+				// hold for an option of a time or a struct.
+				$if variant.typ is $option {
+					// Like the removed `json` module, a `none` option variant is `{}`.
+					variant_value := val
+					if variant_value == none {
+						encoder.output << `{`
+						encoder.output << `}`
+					} else {
+						encoder.encode_sumtype_option_payload(get_value_from_optional(variant_value))
+					}
+				} $else $if variant.typ.unaliased_typ is time.Time {
+					// A `time.Time` alias variant (`type Timestamp = time.Time`) is a time too.
 					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
 						variant_value := val
 						encoder.encode_value(variant_value)
 					} else {
-						encoder.encode_sumtype_time_variant(val, variant_name)
+						// Like the removed `json` module, every time variant is `Time`, also
+						// an alias such as `type Timestamp = time.Time`.
+						encoder.encode_sumtype_time_variant(time.Time(val), 'Time')
 					}
 				} $else $if variant.typ is $struct {
 					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
 						variant_value := val
 						encoder.encode_value(variant_value)
 					} else {
-						encoder.encode_sumtype_struct_variant(val, variant_name)
+						// A struct alias variant is tagged with the struct's name, like in the
+						// removed module (`Foo` for `type Alias = Foo`).
+						encoder.encode_sumtype_struct_variant(val,
+							sumtype_variant_name(typeof(variant.typ.unaliased_typ).name))
 					}
 				} $else $if variant.typ is $map {
 					encoder.encode_value(val)
@@ -480,12 +510,37 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 						variant_value := val
 						encoder.encode_array_of_sumtype_variants(variant_value)
 					}
+				} $else $if variant.typ is $array_fixed {
+					variant_value := val
+					encoder.encode_fixed_array_of_sumtype_variants(variant_value)
 				} $else {
 					variant_value := val
 					encoder.encode_value(variant_value)
 				}
+				// An alias variant and its base type both match `is`
+				// (`type MyString = string` in `MyString | string`); encode the
+				// value once.
+				return
 			}
 		}
+	}
+}
+
+// encode_sumtype_option_payload writes the value of a set option variant of a sum
+// type like the variant it holds, as the removed `json` module did: a time (also an
+// alias of one) as `{"_type":"Time","value":...}`, and a struct with its `_type`, also
+// as an element of a (nested or fixed size) array.
+fn (mut encoder Encoder) encode_sumtype_option_payload[P](payload P) {
+	$if P.unaliased_typ is time.Time {
+		encoder.encode_sumtype_time_variant(time.Time(payload), 'Time')
+	} $else $if P.unaliased_typ is $struct {
+		encoder.encode_sumtype_struct_variant(payload, struct_variant_tag[P]())
+	} $else $if P is $array_dynamic {
+		encoder.encode_array_of_sumtype_variants(payload)
+	} $else $if P is $array_fixed {
+		encoder.encode_fixed_array_of_sumtype_variants(payload)
+	} $else {
+		encoder.encode_value(payload)
 	}
 }
 
@@ -501,10 +556,7 @@ fn (mut encoder Encoder) encode_object_key(is_first bool, key string) bool {
 		encoder.add_indent()
 	}
 	encoder.encode_string(key)
-	encoder.output << `:`
-	if encoder.prettify {
-		encoder.output << ` `
-	}
+	encoder.write_key_separator()
 	return false
 }
 
@@ -519,48 +571,76 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 	mut is_first := unsafe { encoder.encode_struct_fields[T](val, true, [], '') }
 	is_first = encoder.encode_object_key(is_first, '_type')
 	encoder.encode_string(variant_name)
-	if encoder.prettify && !is_first {
-		encoder.decrement_level()
-		encoder.add_indent()
-	}
-	encoder.output << `}`
+	encoder.close_object(!is_first)
 }
 
+// encode_array_of_sumtype_variants writes an array held by a sum type variant. Like
+// the removed `json` module, its struct elements get their `_type`, also in nested
+// and fixed size arrays.
 fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 	encoder.output << `[`
-	// An empty array is written as `[]`, for the same reason as in encode_array: the
-	// level raised here would never be lowered, because the lowering lives in the
-	// loop below.
-	if encoder.prettify && val.len > 0 {
-		encoder.increment_level()
-		encoder.add_indent()
-	}
+	encoder.open_items(val.len, true)
 	for i, item in val {
-		$if T is time.Time {
-			encoder.encode_value(item)
-		} $else $if T is JsonEncoder {
-			encoder.encode_value(item)
-		} $else $if T is Encodable {
-			encoder.encode_value(item)
-		} $else $if T is $struct {
-			elem_name := sumtype_variant_name(T.name)
-			encoder.encode_sumtype_struct_variant(item, elem_name)
-		} $else {
-			encoder.encode_value(item)
+		if i > 0 {
+			encoder.separate_items(true)
 		}
-		if i < val.len - 1 {
-			encoder.output << `,`
-			if encoder.prettify {
-				encoder.add_indent()
-			}
-		} else {
-			if encoder.prettify {
-				encoder.decrement_level()
-				encoder.add_indent()
+		encoder.encode_sumtype_array_item(item)
+	}
+	encoder.close_items(val.len, true)
+	encoder.output << `]`
+}
+
+// encode_fixed_array_of_sumtype_variants writes a fixed size array held by a sum type
+// variant, laid out like `encode_value` lays out other fixed size arrays.
+fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
+	encoder.output << `[`
+	// Only the legacy layout spreads a fixed size array like a dynamic one.
+	spread := encoder.prettify && encoder.legacy_layout
+	if spread {
+		encoder.open_items(val.len, true)
+	}
+	for i in 0 .. val.len {
+		if i > 0 {
+			if spread {
+				encoder.separate_items(true)
+			} else {
+				encoder.output << `,`
 			}
 		}
+		encoder.encode_sumtype_array_item(val[i])
+	}
+	if spread {
+		encoder.close_items(val.len, true)
 	}
 	encoder.output << `]`
+}
+
+fn (mut encoder Encoder) encode_sumtype_array_item[T](item T) {
+	// An option element comes first, like an option variant: `none` is `{}`, and a set
+	// value is written like the variant it holds, as in the removed module.
+	$if T is $option {
+		if item == none {
+			encoder.output << `{`
+			encoder.output << `}`
+		} else {
+			encoder.encode_sumtype_option_payload(get_value_from_optional(item))
+		}
+	} $else $if T.unaliased_typ is time.Time {
+		// Like a time variant, `{"_type":"Time","value":...}` as in the removed module.
+		encoder.encode_sumtype_time_variant(time.Time(item), 'Time')
+	} $else $if T is JsonEncoder {
+		encoder.encode_value(item)
+	} $else $if T is Encodable {
+		encoder.encode_value(item)
+	} $else $if T is $struct {
+		encoder.encode_sumtype_struct_variant(item, struct_variant_tag[T]())
+	} $else $if T is $array_dynamic {
+		encoder.encode_array_of_sumtype_variants(item)
+	} $else $if T is $array_fixed {
+		encoder.encode_fixed_array_of_sumtype_variants(item)
+	} $else {
+		encoder.encode_value(item)
+	}
 }
 
 @[markused]
@@ -571,11 +651,7 @@ fn (mut encoder Encoder) encode_sumtype_time_variant(val time.Time, variant_name
 	encoder.encode_string(variant_name)
 	is_first = encoder.encode_object_key(is_first, 'value')
 	encoder.encode_number(val.unix())
-	if encoder.prettify && !is_first {
-		encoder.decrement_level()
-		encoder.add_indent()
-	}
-	encoder.output << `}`
+	encoder.close_object(!is_first)
 }
 
 struct EncoderFieldInfo {
@@ -648,6 +724,12 @@ fn check_not_empty[T](val T) ?bool {
 			return sval != ''
 		}
 		return false
+	} $else $if val is ?bool {
+		opt := ?bool(val)
+		if bval := opt {
+			return bval
+		}
+		return false
 	} $else $if val is ?int {
 		opt := ?int(val)
 		if ival := opt {
@@ -667,9 +749,14 @@ fn check_not_empty[T](val T) ?bool {
 		}
 		return false
 	} $else $if T is $option {
-		return !struct_field_is_none(val)
+		if struct_field_is_none(val) {
+			return false
+		}
+		return check_not_empty(get_value_from_optional(val)) or { true }
 	} $else $if T.indirections != 0 {
 		return val != unsafe { nil }
+	} $else $if T.unaliased_typ is bool {
+		return bool(val)
 	} $else $if T.unaliased_typ is string {
 		if val == '' {
 			return false
@@ -680,6 +767,12 @@ fn check_not_empty[T](val T) ?bool {
 		}
 	} $else $if T.unaliased_typ is $array || T.unaliased_typ is $map {
 		return val.len != 0
+	} $else $if T.unaliased_typ is $enum {
+		return val != unsafe { T(0) }
+	} $else $if T.unaliased_typ is $struct || T.unaliased_typ is $sumtype {
+		// Like the removed `json` module, a struct or sum type value is empty when it
+		// is its type's default value (a struct with its field defaults).
+		return val != T{}
 	}
 	return true
 }
@@ -710,12 +803,10 @@ fn (mut encoder Encoder) encode_struct_field_value[T](val T) {
 		} else {
 			encoder.encode_value(get_value_from_optional(val))
 		}
-	} $else $if T.indirections == 1 {
-		encoder.encode_value(*val)
-	} $else $if T.indirections == 2 {
-		encoder.encode_value(**val)
-	} $else $if T.indirections == 3 {
-		encoder.encode_value(***val)
+	} $else $if T is $pointer {
+		// encode_value follows the pointer one level at a time, so a nil pointer at
+		// any level (`&&int` pointing to a nil `&int`) is written as `null`.
+		encoder.encode_value(val)
 	} $else {
 		encoder.encode_value(val)
 	}
@@ -779,11 +870,7 @@ fn (mut encoder Encoder) encode_embedded_struct_field_key(mut used_keys []string
 fn (mut encoder Encoder) encode_struct_with_embeds[T](val T) {
 	encoder.output << `{`
 	is_first := encoder.encode_embedded_struct_fields[T](val, true, [], [], '')
-	if encoder.prettify && !is_first {
-		encoder.decrement_level()
-		encoder.add_indent()
-	}
-	encoder.output << `}`
+	encoder.close_object(!is_first)
 }
 
 @[unsafe]
@@ -792,11 +879,7 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant_with_embeds[T](val T, var
 	mut is_first := encoder.encode_embedded_struct_fields[T](val, true, [], [], '')
 	is_first = encoder.encode_object_key(is_first, '_type')
 	encoder.encode_string(variant_name)
-	if encoder.prettify && !is_first {
-		encoder.decrement_level()
-		encoder.add_indent()
-	}
-	encoder.output << `}`
+	encoder.close_object(!is_first)
 }
 
 @[unsafe]
@@ -926,12 +1009,76 @@ fn (mut encoder Encoder) encode_custom2[T](val T) {
 
 fn (mut encoder Encoder) increment_level() {
 	encoder.level++
-	encoder.prefix = encoder.newline_string + encoder.indent_string.repeat(encoder.level)
+	encoder.prefix = encoder.line_prefix()
 }
 
 fn (mut encoder Encoder) decrement_level() {
 	encoder.level--
-	encoder.prefix = encoder.newline_string + encoder.indent_string.repeat(encoder.level)
+	encoder.prefix = encoder.line_prefix()
+}
+
+// line_prefix is the line break and indentation before a member or element at the
+// current level.
+fn (encoder &Encoder) line_prefix() string {
+	if encoder.legacy_layout {
+		return '\n' + '\t'.repeat(encoder.level)
+	}
+	return encoder.newline_string + encoder.indent_string.repeat(encoder.level)
+}
+
+// open_items starts the members of an object or the elements of an array, after its
+// `{` or `[`. Without members or elements no level is raised: its lowering happens
+// in close_items only for a container that has some.
+fn (mut encoder Encoder) open_items(count int, is_array bool) {
+	if encoder.prettify && count > 0 {
+		encoder.increment_level()
+		if !(is_array && encoder.legacy_layout) {
+			encoder.add_indent()
+		}
+	}
+}
+
+// separate_items writes the separator between two members or elements.
+fn (mut encoder Encoder) separate_items(is_array bool) {
+	encoder.output << `,`
+	if encoder.prettify {
+		if is_array && encoder.legacy_layout {
+			encoder.output << ` `
+		} else {
+			encoder.add_indent()
+		}
+	}
+}
+
+// close_items ends the members or elements started by open_items, before the `}`
+// or `]`.
+fn (mut encoder Encoder) close_items(count int, is_array bool) {
+	if !encoder.prettify {
+		return
+	}
+	if count > 0 {
+		encoder.decrement_level()
+		if !(is_array && encoder.legacy_layout) {
+			encoder.add_indent()
+		}
+	} else if !is_array && encoder.legacy_layout {
+		// The removed module wrote an empty object as `{`, a line break and `}`.
+		prefix := encoder.line_prefix()
+		unsafe { encoder.output.push_many(prefix.str, prefix.len) }
+	}
+}
+
+// close_object ends an object whose members were started with encode_object_key.
+fn (mut encoder Encoder) close_object(has_members bool) {
+	encoder.close_items(if has_members { 1 } else { 0 }, false)
+	encoder.output << `}`
+}
+
+fn (mut encoder Encoder) write_key_separator() {
+	encoder.output << `:`
+	if encoder.prettify {
+		encoder.output << if encoder.legacy_layout { `\t` } else { ` ` }
+	}
 }
 
 fn (mut encoder Encoder) add_indent() {

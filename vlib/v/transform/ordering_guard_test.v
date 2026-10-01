@@ -19,20 +19,20 @@ fn build_namespace_call(mut t Transformer, base_name string, base_type string, m
 	t.a.children << then_val
 	t.a.children << else_val
 	arg := t.a.add_node(flat.Node{
-		kind: .if_expr
+		kind:           .if_expr
 		children_start: branch_start
 		children_count: 3
-		typ: 'int'
+		typ:            'int'
 	})
 
 	call_start := t.a.children.len
 	t.a.children << callee
 	t.a.children << arg
 	call := t.a.add_node(flat.Node{
-		kind: .call
+		kind:           .call
 		children_start: call_start
 		children_count: 2
-		value: '${base_name}.${method}'
+		value:          '${base_name}.${method}'
 	})
 	return call, t.a.nodes[int(call)]
 }
@@ -147,4 +147,18 @@ fn test_callee_base_runtime_value_classification() {
 	typed_base := t.a.add_val(.ident, 'builder')
 	t.set_node_typ(int(typed_base), 'strings.Builder')
 	assert !t.callee_base_is_not_a_runtime_value(typed_base)
+}
+
+// An omitted range bound is represented by an empty node. It has no side effects and must not
+// become an `unknown __order_snapshot` temp when the other bound hoists a value branch.
+fn test_empty_operand_does_not_need_an_ordering_snapshot() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	empty := t.make_empty()
+	assert t.is_pure_constant_expr(empty)
+	assert !t.operand_needs_ordering_snapshot(empty)
+	assert t.snapshot_expr_for_reuse(empty) == empty
+	assert ordering_snapshot_decl_count(&t) == 0
 }

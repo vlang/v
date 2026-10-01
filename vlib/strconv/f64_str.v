@@ -31,4 +31,4 @@ const mantbits64 = u32(52)
 const expbits64 = u32(11)
 const bias64 = 1023 // f64 exponent bias
 
-const maxexp64 = 2047
+const maxexp64 = u64(2047)

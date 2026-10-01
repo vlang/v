@@ -125,7 +125,7 @@ fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	assert tcc_checkout.count('persist-credentials: false') == 1
 	tcc_verify := source[tcc_verify_index..build_index]
 	assert tcc_verify.count('git -C thirdparty/tcc config --local core.autocrlf false') == 1
-	assert tcc_verify.count('test "$(git -C thirdparty/tcc rev-parse HEAD)" = "${tcc_lock}"') == 1
+	assert tcc_verify.count('test "\$(git -C thirdparty/tcc rev-parse HEAD)" = "${tcc_lock}"') == 1
 	assert tcc_verify.count('tcc_symbolic_ref_rc=0') == 1
 	assert tcc_verify.count('git -C thirdparty/tcc symbolic-ref --quiet HEAD >/dev/null || tcc_symbolic_ref_rc=$?') == 1
 	assert tcc_verify.count('test "$tcc_symbolic_ref_rc" -eq 1') == 1

@@ -331,9 +331,9 @@ fn (mut p VmlSourceParser) parse_conditional() !&VmlExpr {
 	when_true := p.parse_expression()!
 	p.take(.colon)!
 	return &VmlExpr{
-		kind: .conditional
-		line: line
-		left: condition
+		kind:  .conditional
+		line:  line
+		left:  condition
 		right: when_true
 		third: p.parse_expression()!
 	}
@@ -345,10 +345,10 @@ fn (mut p VmlSourceParser) parse_or() !&VmlExpr {
 		op := p.at()
 		p.pos++
 		left = &VmlExpr{
-			kind: .binary
+			kind:  .binary
 			value: op.text
-			line: op.line
-			left: left
+			line:  op.line
+			left:  left
 			right: p.parse_and()!
 		}
 	}
@@ -361,10 +361,10 @@ fn (mut p VmlSourceParser) parse_and() !&VmlExpr {
 		op := p.at()
 		p.pos++
 		left = &VmlExpr{
-			kind: .binary
+			kind:  .binary
 			value: op.text
-			line: op.line
-			left: left
+			line:  op.line
+			left:  left
 			right: p.parse_equality()!
 		}
 	}
@@ -377,10 +377,10 @@ fn (mut p VmlSourceParser) parse_equality() !&VmlExpr {
 		op := p.at()
 		p.pos++
 		left = &VmlExpr{
-			kind: .binary
+			kind:  .binary
 			value: op.text
-			line: op.line
-			left: left
+			line:  op.line
+			left:  left
 			right: p.parse_comparison()!
 		}
 	}
@@ -393,10 +393,10 @@ fn (mut p VmlSourceParser) parse_comparison() !&VmlExpr {
 		op := p.at()
 		p.pos++
 		left = &VmlExpr{
-			kind: .binary
+			kind:  .binary
 			value: op.text
-			line: op.line
-			left: left
+			line:  op.line
+			left:  left
 			right: p.parse_term()!
 		}
 	}
@@ -409,10 +409,10 @@ fn (mut p VmlSourceParser) parse_term() !&VmlExpr {
 		op := p.at()
 		p.pos++
 		left = &VmlExpr{
-			kind: .binary
+			kind:  .binary
 			value: op.text
-			line: op.line
-			left: left
+			line:  op.line
+			left:  left
 			right: p.parse_factor()!
 		}
 	}
@@ -425,10 +425,10 @@ fn (mut p VmlSourceParser) parse_factor() !&VmlExpr {
 		op := p.at()
 		p.pos++
 		left = &VmlExpr{
-			kind: .binary
+			kind:  .binary
 			value: op.text
-			line: op.line
-			left: left
+			line:  op.line
+			left:  left
 			right: p.parse_unary()!
 		}
 	}
@@ -469,13 +469,13 @@ fn (mut p VmlSourceParser) parse_primary() !&VmlExpr {
 				return &VmlExpr{ kind: .call, value: token.text, line: token.line, args: args }
 			}
 			return &VmlExpr{
-				kind: if token.kind == .number || token.text in ['true', 'false'] {
+				kind:  if token.kind == .number || token.text in ['true', 'false'] {
 					VmlExprKind.literal
 				} else {
 					VmlExprKind.path
 				}
 				value: token.text
-				line: token.line
+				line:  token.line
 			}
 		}
 		.lpar {
@@ -658,7 +658,7 @@ fn (mut p Parser) parse_vml_template_expr(call_start int) flat.NodeId {
 	generated := compiler.compile(root)
 	template := flat.Node{
 		value: path
-		pos: p.span_to(call_start)
+		pos:   p.span_to(call_start)
 	}
 	return p.parse_veb_template_replacement_expr(generated, template, []TemplateSourceLine{}) or {
 		p.record_diagnostic('could not lower VML file `${path}`', call_start)
@@ -729,7 +729,7 @@ fn (mut c VmlCompiler) compile(root &VmlNode) string {
 	c.out.writeln('(fn ${capture}() ui2.Element {')
 	c.out.writeln('\tvml_input_0 := ui2.bounds()')
 	scope := VmlScope{
-		ids: map[string]VmlNamedValue{}
+		ids:     map[string]VmlNamedValue{}
 		special: map[string]string{}
 	}
 	c.compile_node(root, '0', 'vml_input_0', scope, '')
@@ -740,7 +740,7 @@ fn (mut c VmlCompiler) compile(root &VmlNode) string {
 
 fn vml_clone_scope(scope VmlScope) VmlScope {
 	return VmlScope{
-		ids: scope.ids.clone()
+		ids:     scope.ids.clone()
 		special: scope.special.clone()
 	}
 }
@@ -798,9 +798,8 @@ fn vml_property_use(property VmlProperty) VmlExprUse {
 		'thumb_size'] {
 		return .number
 	}
-	if property.name in ['background', 'color', 'background_color', 'border_color',
-		'value_track_color', 'thumb_color', 'inactive_color', 'active_color', 'disabled_track_color',
-		'disabled_thumb_color'] {
+	if property.name in ['background', 'color', 'background_color', 'border_color', 'value_track_color',
+		'thumb_color', 'inactive_color', 'active_color', 'disabled_track_color', 'disabled_thumb_color'] {
 		return .color
 	}
 	if property.name in ['checked', 'hidden', 'enabled', 'native', 'editable', 'emit_change', 'secure',

@@ -61,3 +61,80 @@ fn test_retry() {
 	output_trimmed := res.output.trim_space()
 	assert output_trimmed == "['--list', '-x', '--', '-b', 'js', 'arguments']"
 }
+
+// The command reaches `v retry` as an argument vector, whatever quoting the caller's
+// own shell already removed, and is run through a shell again. Joining that vector
+// with plain spaces split a destination like `C:\Users\Jane Doe\.vmodules\markdown`
+// back into two arguments, which is how `v build-tools` failed to install `markdown`
+// on a checkout under such a path.
+fn test_retry_keeps_arguments_that_contain_spaces_together() {
+	log.use_stdout()
+	tpath := os.join_path(os.vtmp_dir(), 'vretry space test ${os.getpid()}')
+	os.rmdir_all(tpath) or {}
+	os.mkdir_all(tpath)!
+	defer {
+		os.rmdir_all(tpath) or {}
+	}
+	// `v retry -- git init <dir with spaces>`: the directory has to arrive as one
+	// argument, or git reports a usage error over the extra ones.
+	target := os.join_path(tpath, 'a repo')
+	res := run('${os.quoted_path(vexe)} retry -r 1 -- git init -q ${os.quoted_path(target)}')
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	assert os.is_dir(os.join_path(target, '.git')), 'the spaced destination was split: ${res.output}'
+}
+
+// Wrapping an argument in quotes is not enough on Windows: a trailing backslash
+// escapes the closing quote, so `C:\work space\` swallows whatever follows it. Pass
+// such an argument with another one behind it and check both arrive whole. On unix
+// the single-quoted form has to keep the backslash literal for the same reason.
+fn test_retry_keeps_a_trailing_backslash_argument_separate() {
+	log.use_stdout()
+	os.chdir(vroot)!
+	script := os.join_path('cmd', 'tools', 'check_retry.vsh')
+	trailing := 'a\\'
+	res := run('${os.quoted_path(vexe)} retry -r 1 -- ${os.quoted_path(vexe)} run ${os.quoted_path(script)} ${os.quoted_path(trailing)} b')
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	// `check_retry.vsh` prints its arguments, so `b` staying the last element is what
+	// says it was not merged into the argument before it.
+	assert res.output.trim_space().ends_with("'b']"), res.output
+}
+
+// A command can also be given as shell syntax in one argument, which is the form the
+// SDL workflow uses: `v retry 'sudo apt update'`. That argument has to reach the shell
+// untouched - quoting it asks for a program whose name contains spaces, which fails
+// with `command not found` before the dependencies are ever installed.
+fn test_retry_runs_a_command_given_as_one_shell_string() {
+	log.use_stdout()
+	res := run("${os.quoted_path(vexe)} retry -r 1 'echo one two three'")
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('command not found'), res.output
+	assert res.output.trim_space().ends_with('one two three'), res.output
+}
+
+// The same form, with quoting of its own inside the string.
+fn test_retry_keeps_shell_syntax_inside_one_command_string() {
+	$if windows {
+		return
+	}
+	log.use_stdout()
+	res := run('${os.quoted_path(vexe)} retry -r 1 "sh -c \'echo four five\'"')
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().ends_with('four five'), res.output
+}
+
+// Quoting the caller put inside a single argument has to survive too, so that a
+// command like `sh -c 'echo one two'` still receives one argument after `-c`.
+fn test_retry_keeps_a_quoted_argument_whole() {
+	$if windows {
+		return
+	}
+	log.use_stdout()
+	res := run("${os.quoted_path(vexe)} retry -r 1 -- sh -c 'echo one two'")
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().ends_with('one two'), res.output
+}

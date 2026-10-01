@@ -23,12 +23,12 @@ fn main() {
 	params := args_string.all_before('build-examples')
 	mut requested_flags := vflags.tokenize_to_args(os.getenv('VFLAGS'))
 	requested_flags << vflags.tokenize_to_args(params)
-	strict_v3 := '-new-compiler' in requested_flags && '-old-compiler' !in requested_flags
+	strict_v3 := '-old-compiler' !in requested_flags
 	mut skip_prefixes := efolders.map(normalised_vroot_path(it))
 	res := testing.v_build_failing_skipped(params, 'examples', skip_prefixes, fn [strict_v3] (mut session testing.TestSession) {
 		if strict_v3 {
-			// The V3 compiler currently supports only the C backend. Keep backend-specific
-			// examples visible as skips instead of asking V3 to silently fall back to V1.
+			// V3 has only a limited JavaScript compatibility generator. Keep full-backend
+			// examples visible as skips unless the legacy compiler was explicitly selected.
 			session.skip_files << session.files.filter(it.ends_with('.js.v'))
 		}
 		for x in efolders {

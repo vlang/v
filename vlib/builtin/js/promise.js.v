@@ -8,6 +8,7 @@ pub interface JS.Promise {
 
 @[use_new]
 pub fn JS.Promise.prototype.constructor(JS.Any) JS.Promise
+
 pub fn JS.Promise.reject(JS.Any) JS.Promise
 pub fn JS.Promise.resolve(JS.Any) JS.Promise
 pub fn JS.Promise.race(JS.Array) JS.Promise

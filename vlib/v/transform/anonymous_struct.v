@@ -67,7 +67,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					}
 					semantic_fields << types.StructField{
 						name: field.value
-						typ: field_type
+						typ:  field_type
 					}
 				}
 				if !valid {
@@ -92,10 +92,10 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				for fi, semantic_field in semantic_fields {
 					source_field := t.a.child_node(&node, fi)
 					field_ids << t.a.add_node(flat.Node{
-						kind: .field_decl
+						kind:  .field_decl
 						value: semantic_field.name
-						typ: t.tc.type_name(semantic_field.typ)
-						pos: source_field.pos
+						typ:   t.tc.type_name(semantic_field.typ)
+						pos:   source_field.pos
 					})
 				}
 				base_name := 'AnonStruct_v3_inferred_${idx}'
@@ -115,13 +115,13 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				}
 				if cur_file.len > 0 {
 					t.a.add_node(flat.Node{
-						kind: .file
+						kind:  .file
 						value: cur_file
 					})
 				}
 				if cur_module.len > 0 {
 					t.a.add_node(flat.Node{
-						kind: .module_decl
+						kind:  .module_decl
 						value: cur_module
 					})
 				}
@@ -130,11 +130,11 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					t.a.children << field_id
 				}
 				t.a.add_node(flat.Node{
-					kind: .struct_decl
-					value: name
+					kind:           .struct_decl
+					value:          name
 					children_start: children_start
 					children_count: flat.child_count(field_ids.len)
-					pos: node.pos
+					pos:            node.pos
 				})
 				t.tc.structs[semantic_name] = semantic_fields
 				t.tc.struct_modules[semantic_name] = cur_module

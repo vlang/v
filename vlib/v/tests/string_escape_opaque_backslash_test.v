@@ -1,6 +1,7 @@
+// vtest vflags: -w
 import strings
 import v.reflection
-import json
+import json2
 import db.sqlite
 
 // A \xXX/\uXXXX/\UXXXXXXXX escape that decodes to a backslash byte (0x5C) must never be
@@ -179,7 +180,7 @@ fn test_method_attr_arg_with_decoded_backslash_via_comptime_methods() {
 // ast.Attr consumer covered above, in a file the original fix never touched.
 enum JsonAttrHazardEnum {
 	red
-	blue @[json: 'A\x5cnB']
+	blue  @[json: 'A\x5cnB']
 }
 
 struct JsonAttrHazardWrap {
@@ -191,20 +192,20 @@ struct JsonFieldAttrHazard {
 }
 
 fn test_json_enum_attr_arg_with_decoded_backslash() {
-	encoded := json.encode(JsonAttrHazardWrap{ c: .blue })
+	encoded := json2.encode(JsonAttrHazardWrap{ c: .blue }, escape_unicode: true)
 	// the true attr value is 4 bytes (A, 0x5C, 'n', B); a spec-compliant JSON encoding of that
 	// must double the backslash - a single backslash means the byte was corrupted before encode.
 	assert encoded.bytes() == [u8(123), 34, 99, 34, 58, 34, 65, 92, 92, 110, 66, 34, 125]
 
-	decoded := json.decode(JsonAttrHazardWrap, '{"c":"A\\\\nB"}') or { panic(err) }
+	decoded := json2.decode[JsonAttrHazardWrap]('{"c":"A\\\\nB"}') or { panic(err) }
 	assert decoded.c == .blue
 }
 
 fn test_json_field_attr_arg_with_decoded_backslash() {
-	encoded := json.encode(JsonFieldAttrHazard{ value: 'ok' })
+	encoded := json2.encode(JsonFieldAttrHazard{ value: 'ok' }, escape_unicode: true)
 	assert encoded.bytes() == [u8(123), 34, 67, 92, 92, 110, 68, 34, 58, 34, 111, 107, 34, 125]
 
-	decoded := json.decode(JsonFieldAttrHazard, '{"C\\\\nD":"ok"}') or { panic(err) }
+	decoded := json2.decode[JsonFieldAttrHazard]('{"C\\\\nD":"ok"}') or { panic(err) }
 	assert decoded.value == 'ok'
 }
 
@@ -219,7 +220,7 @@ struct OrmTableHazardItem {
 
 @[table: 'orm_column_hazard_items']
 struct OrmColumnHazardItem {
-	id    int @[primary; sql: serial]
+	id    int    @[primary; sql: serial]
 	value string @[sql: 'A\x5cnB']
 }
 

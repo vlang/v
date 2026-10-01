@@ -1,6 +1,9 @@
 module ssa
 
+import os
 import v.flat
+import v.parser
+import v.pref
 import v.types
 
 // test_bench_runtime_stubs_include_macos_rss_helper validates this v3 regression case.
@@ -17,11 +20,10 @@ fn test_bench_runtime_stubs_include_macos_rss_helper() {
 // test_runtime_helpers_remain_used_when_module_qualified validates this v3 regression case.
 fn test_runtime_helpers_remain_used_when_module_qualified() {
 	b := Builder{}
-	for name in ['os.vpopen', 'os.vpclose', 'os__vpopen', 'os__vpclose', 'os.fileno',
-		'os.Process.close', 'os__Process__close', 'os.fd_close', 'os__fd_close',
-		'os.error_file_not_opened', 'os.error_size_of_type_0', 'os.posix_wait4_to_exit_status',
-		'os.posix_wait_status_exited', 'os.posix_wait_status_exit_code',
-		'os.posix_wait_status_signaled', 'os.posix_wait_status_signal'] {
+	for name in ['os.vpopen', 'os.vpclose', 'os__vpopen', 'os__vpclose', 'os.fileno', 'os.Process.close',
+		'os__Process__close', 'os.fd_close', 'os__fd_close', 'os.error_file_not_opened',
+		'os.error_size_of_type_0', 'os.posix_wait4_to_exit_status', 'os.posix_wait_status_exited',
+		'os.posix_wait_status_exit_code', 'os.posix_wait_status_signaled', 'os.posix_wait_status_signal'] {
 		assert b.fn_is_used(name)
 	}
 }
@@ -207,8 +209,8 @@ fn test_type_size_reuses_module_layout_cache() {
 	i32_type := m.type_store.get_int(32)
 	array_type := m.type_store.get_array(i32_type, 5)
 	struct_type := m.type_store.register(Type{
-		kind: .struct_t
-		fields: [i32_type, array_type]
+		kind:        .struct_t
+		fields:      [i32_type, array_type]
 		field_names: ['number', 'items']
 	})
 	assert m.type_size(array_type) == 20
@@ -247,21 +249,21 @@ fn test_packed_and_aligned_struct_layout() {
 	u8_type := m.type_store.get_uint(8)
 	u64_type := m.type_store.get_uint(64)
 	packed_type := m.type_store.register(Type{
-		kind: .struct_t
-		fields: [u8_type, u64_type]
+		kind:      .struct_t
+		fields:    [u8_type, u64_type]
 		is_packed: true
 	})
 	aligned_type := m.type_store.register(Type{
-		kind: .struct_t
-		fields: [u8_type, u64_type]
+		kind:      .struct_t
+		fields:    [u8_type, u64_type]
 		alignment: 32
 	})
 	small_type := m.type_store.register(Type{
-		kind: .struct_t
+		kind:   .struct_t
 		fields: [u8_type, u8_type]
 	})
 	outer_type := m.type_store.register(Type{
-		kind: .struct_t
+		kind:   .struct_t
 		fields: [u8_type, small_type, u8_type]
 	})
 	assert m.struct_field_offset(packed_type, 1) == 1
@@ -278,14 +280,14 @@ fn test_packed_and_aligned_struct_layout() {
 
 fn test_used_function_alias_lookups_are_precomputed() {
 	mut b := Builder{
-		used_fns: {
+		used_fns:           {
 			'alpha.beta.gamma':      true
 			'delta__Thing__run':     true
 			'leaf':                  true
 			'outer.inner.operation': true
 		}
 		used_fn_normalized: map[string]bool{}
-		used_fn_suffixes: map[string]bool{}
+		used_fn_suffixes:   map[string]bool{}
 	}
 	b.prepare_used_fn_lookups()
 	for name in ['gamma', 'beta.gamma', 'Thing.run', 'run', 'pkg.leaf', 'scope.outer.inner.operation'] {
@@ -293,5 +295,45 @@ fn test_used_function_alias_lookups_are_precomputed() {
 	}
 	for name in ['missing', 'beta.missing', 'scope.outer.other'] {
 		assert !b.fn_is_used(name), 'did not expect `${name}` to match a used function alias'
+	}
+}
+
+fn test_enum_lookup_keeps_exact_keyword_members_before_fallback() {
+	b := Builder{
+		enum_values: {
+			'Keyword.@none':  -10
+			'Plain.struct':   7
+			'Distinct.none':  2
+			'Distinct.@none': 4
+		}
+	}
+	for member in ['none', '@none', 'Keyword.none', 'Keyword.@none'] {
+		assert b.enum_value_for_type('Keyword', member) or { 0 } == -10
+	}
+	assert b.enum_value_for_type('Plain', '@struct') or { 0 } == 7
+	assert b.enum_value_for_type('Distinct', 'none') or { 0 } == 2
+	assert b.enum_value_for_type('Distinct', '@none') or { 0 } == 4
+}
+
+fn test_native_enum_registration_evaluates_escaped_initializer_references() {
+	path := os.join_path(os.vtmp_dir(), 'v3_ssa_escaped_enum_initializers_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'module models\nenum Kind { struct = 4 next = int(Kind.@struct) + 6 @none = 11 reverse = int(Kind.none) + 2 type = 17 @type = 23 plain_exact = int(Kind.type) + 3 escaped_exact = int(Kind.@type) + 3 }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut b := Builder{ a: p.a }
+	for node in p.a.nodes {
+		if node.kind == .enum_decl {
+			b.register_enum_values(node, 'models')
+		}
+	}
+	for field, expected in {
+		'next':          10
+		'reverse':       13
+		'plain_exact':   20
+		'escaped_exact': 26
+	} {
+		assert b.enum_value_for_type('models.Kind', field) or { -1 } == expected, field
 	}
 }

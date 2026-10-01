@@ -53,7 +53,8 @@ fn test_orm_stmt_gen_bulk_insert() {
 	}
 	query, converted := orm.orm_stmt_gen(.default, table, "'", .insert, true, '?', 0, orm.QueryData{
 		fields:     ['name', 'age']
-		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'), orm.Primitive(30)]
+		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'),
+			orm.Primitive(30)]
 		batch_rows: 2
 	}, orm.QueryData{})
 	assert query == "INSERT INTO 'Test' ('name', 'age') VALUES (?0, ?1), (?2, ?3);"
@@ -61,14 +62,16 @@ fn test_orm_stmt_gen_bulk_insert() {
 
 	pg_query, _ := orm.orm_stmt_gen(.pg, table, '"', .insert, true, '$', 1, orm.QueryData{
 		fields:     ['name', 'age']
-		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'), orm.Primitive(30)]
+		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'),
+			orm.Primitive(30)]
 		batch_rows: 2
 	}, orm.QueryData{})
 	assert pg_query == 'INSERT INTO "Test" ("name", "age") VALUES ($1, $2), ($3, $4);'
 
 	mysql_query, _ := orm.orm_stmt_gen(.mysql, table, '`', .insert, false, '?', 1, orm.QueryData{
 		fields:     ['name', 'age']
-		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'), orm.Primitive(30)]
+		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'),
+			orm.Primitive(30)]
 		batch_rows: 2
 	}, orm.QueryData{})
 	assert mysql_query == 'INSERT INTO `Test` (`name`, `age`) VALUES (?, ?), (?, ?);'

@@ -68,7 +68,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args 
 	}
 	if result.exit_code == 0 {
 		real_generated_file := os.real_path(generated_file)
-		defer(fn) {
+		defer {
 			os.rm(generated_file) or {
 				if is_verbose {
 					elog('> unable to delete generated file: ${err}')
