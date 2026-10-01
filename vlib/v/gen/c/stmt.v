@@ -1719,7 +1719,7 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 				} else {
 					'*((${concrete_ct}*)${object})'
 				}
-				return_type := g.tc.fn_ret_types[clone_method] or { concrete_type }
+				return_type := types.unalias_type(g.tc.fn_ret_types[clone_method] or { concrete_type })
 				if return_type is types.Pointer {
 					g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
 					// A compatible pointer-returning clone creates independent owned storage.

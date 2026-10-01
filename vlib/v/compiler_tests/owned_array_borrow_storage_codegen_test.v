@@ -779,11 +779,16 @@ fn main() {
 }
 
 fn test_mutable_sum_result_errors_require_compatible_clones() {
-	for clone_kind in ['none', 'incompatible', 'value', 'pointer'] {
+	for clone_kind in ['none', 'incompatible', 'value', 'pointer', 'pointer_alias'] {
 		clone_method := match clone_kind {
 			'incompatible' { 'fn (r &Fault) clone() int { return r.id }' }
 			'value' { 'fn (r &Fault) clone() Fault { return Fault{r.id + 100} }' }
 			'pointer' { 'fn (r &Fault) clone() &Fault { return &Fault{r.id + 100} }' }
+			'pointer_alias' {
+				'type FaultRef = &Fault
+type FaultRefAlias = FaultRef
+fn (r &Fault) clone() FaultRefAlias { return &Fault{r.id + 100} }'
+			}
 			else { '' }
 		}
 		for failed in [false, true] {
