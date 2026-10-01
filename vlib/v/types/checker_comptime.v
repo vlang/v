@@ -11005,8 +11005,7 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 			continue
 		}
 		if !mutating_receiver || tc.unsafe_depth > 0
-			|| tc.expr_is_inside_unsafe_block(id)
-			|| !tc.mut_receiver_method_requires_mutable_lvalue(method) {
+			|| tc.expr_is_inside_unsafe_block(id) {
 			continue
 		}
 		if tc.sql_orm_mut_receiver_is_mutable(tokens, start, end, receiver) {
