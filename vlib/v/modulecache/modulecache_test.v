@@ -963,17 +963,27 @@ pub mut:
 }
 pub fn (mut c Counter) hidden_only() { c.hidden++ }
 pub fn (mut c Counter) hidden_via_method() { c.hidden_only() }
+pub fn (mut c Counter) hidden_alias() { mut alias := &c.hidden; unsafe { *alias += 1 } }
 @[_v3_hidden_mut_receiver]
 pub fn (mut c Counter) visible_direct() { c.visible++ }
 pub fn (mut c Counter) visible_via_method() { c.visible_direct() }
+pub fn (mut c Counter) visible_alias() { mut alias := &c; alias.visible++ }
+pub fn (mut c Counter) visible_alias_chain() { alias := &c; mut other := alias; other.visible++ }
+pub fn (mut c Counter) visible_alias_via_method() { c.visible_alias() }
 pub fn (mut c Counter) replace() { c = Counter{} }
+pub type Handle = Counter
+pub fn (mut c Counter) same_name() { c.hidden++ }
+pub fn (mut h Handle) same_name() { h.visible++ }
+pub fn (mut h Handle) relay() { h.same_name() }
+pub fn (c Counter) get_hidden() int { return c.hidden }
+pub fn (mut h Handle) follow_hidden() int { h.hidden_only(); return h.get_hidden() }
 ')!
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(source)
 	mut tc := vtypes.TypeChecker.new(a)
 	tc.collect(a)
 	header := module_header(a, &tc, 'counter', '', map[string]string{})
-	assert header.count('@[_v3_hidden_mut_receiver]') == 2, header
+	assert header.count('@[_v3_hidden_mut_receiver]') == 5, header
 	os.write_file(header_path, header)!
 	for trusted in [false, true] {
 		mut header_parser := parser.Parser.new(pref.new_preferences())
@@ -987,10 +997,12 @@ pub fn (mut c Counter) replace() { c = Counter{} }
 		for idx, node in cached.nodes {
 			if node.kind != .fn_decl { continue }
 			method := node.value.all_after_last('.')
-			expected := trusted && method in ['hidden_only', 'hidden_via_method']
+			expected := trusted && (method in ['hidden_only', 'hidden_via_method', 'hidden_alias',
+				'follow_hidden']
+				|| (method == 'same_name' && node.value.all_before_last('.') == 'Counter'))
 			assert cached_tc.fn_has_hidden_mut_receiver(flat.NodeId(idx), 'counter') == expected, '${method}, trusted=${trusted}: ${header}'
 			checked++
 		}
-		assert checked == 5
+		assert checked == 14
 	}
 }

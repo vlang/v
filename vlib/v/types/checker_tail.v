@@ -12925,8 +12925,28 @@ fn (tc &TypeChecker) visible_mutation_call_name(call_id flat.NodeId, call flat.N
 		if base.kind == .ident && base.value.len > 0 && base.value[0] >= `A` && base.value[0] <= `Z` {
 			return checker_qualified_fn_name(decl_mod, '${base.value}.${fn_node.value}')
 		}
-		receiver_name := visible_mutation_receiver_type_name(root_type)
-		return checker_qualified_fn_name(decl_mod, '${receiver_name}.${fn_node.value}')
+		mut receiver_name := visible_mutation_receiver_type_name(root_type)
+		mut seen_aliases := map[string]bool{}
+		for !seen_aliases[receiver_name] {
+			seen_aliases[receiver_name] = true
+			alias_name := if receiver_name.contains('.') {
+				receiver_name
+			} else {
+				checker_qualified_fn_name(decl_mod, receiver_name)
+			}
+			method_name := '${alias_name}.${fn_node.value}'
+			method_module := tc.fn_type_modules[method_name] or { decl_mod }
+			if _ := tc.visible_mutation_fn_decl(method_name, method_module) {
+				return method_name
+			}
+			target := tc.type_aliases[alias_name] or { tc.type_aliases[receiver_name] or { break } }
+			receiver_name = visible_mutation_receiver_type_name(target)
+		}
+		return if receiver_name.contains('.') {
+			'${receiver_name}.${fn_node.value}'
+		} else {
+			checker_qualified_fn_name(decl_mod, '${receiver_name}.${fn_node.value}')
+		}
 	}
 	return ''
 }
@@ -12944,16 +12964,14 @@ fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, cal
 	decl := tc.visible_mutation_fn_decl(called_name, called_mod) or {
 		if fn_node.kind == .selector && fn_node.children_count > 0 {
 			recv_vis := tc.receiver_expr_mutation_visibility(tc.a.child(fn_node, 0), root_name, root_type, decl_mod)
-			if receiver_mutation_is_visible(recv_vis) && (tc.mut_receiver_methods[called_name]
-				|| checker_builtin_array_method_mutates(fn_node.value)) {
+			if receiver_mutation_is_visible(recv_vis) {
 				return true
 			}
 		}
 		for i in 1 .. call.children_count {
 			arg_id := tc.a.child(&call, i)
-			arg := tc.a.nodes[int(arg_id)]
-			if arg.is_mut
-				&& receiver_mutation_is_visible(tc.receiver_expr_mutation_visibility(arg_id, root_name, root_type, decl_mod)) {
+			arg_vis := tc.receiver_expr_mutation_visibility(arg_id, root_name, root_type, decl_mod)
+			if receiver_mutation_is_visible(arg_vis) {
 				return true
 			}
 		}
@@ -12968,6 +12986,20 @@ fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, cal
 	mut param_offset := 0
 	if is_method {
 		param_offset = 1
+		if !receiver_param_is_mut && fn_node.kind == .selector && fn_node.children_count > 0 {
+			recv_vis := tc.receiver_expr_mutation_visibility(tc.a.child(fn_node, 0), root_name, root_type, decl_mod)
+			if recv_vis == .public_path {
+				return true
+			}
+			// A readonly method can still return a pointer or aggregate alias to its
+			// receiver. Without tracking the returned provenance, keep it conservative.
+			return_type := tc.parse_type(tc.a.nodes[decl.idx].typ)
+			if recv_vis == .direct && ((return_type !is Void && return_type !is Primitive
+				&& return_type !is Enum)
+				|| tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting)) {
+				return true
+			}
+		}
 		if fn_node.kind == .selector && fn_node.children_count > 0 && receiver_param_is_mut {
 			recv_vis := tc.receiver_expr_mutation_visibility(tc.a.child(fn_node, 0), root_name, root_type, decl_mod)
 			match recv_vis {
@@ -12986,15 +13018,17 @@ fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, cal
 	for i in 1 .. call.children_count {
 		arg_id := tc.a.child(&call, i)
 		arg := tc.a.nodes[int(arg_id)]
-		if !arg.is_mut {
-			continue
-		}
 		param_idx := i - 1 + param_offset
 		param := tc.visible_mutation_fn_param(decl, param_idx) or { continue }
-		if !param.is_mut {
+		arg_vis := tc.receiver_expr_mutation_visibility(arg_id, root_name, root_type, decl_mod)
+		if !arg.is_mut || !param.is_mut {
+			// Passing the entire receiver can retain pointers or shared aggregate
+			// storage, even when the callee's parameter is not declared `mut`.
+			if receiver_mutation_is_visible(arg_vis) {
+				return true
+			}
 			continue
 		}
-		arg_vis := tc.receiver_expr_mutation_visibility(arg_id, root_name, root_type, decl_mod)
 		match arg_vis {
 			.direct {
 				if tc.visible_mutation_fn_param_has_visible_mutation(decl, param_idx, mut visiting) {
@@ -13010,14 +13044,67 @@ fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, cal
 	return false
 }
 
+fn (tc &TypeChecker) visible_receiver_reference_escapes(id flat.NodeId, root_name string, root_type string, decl_mod string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind in [.ident, .selector, .index] {
+		return receiver_mutation_is_visible(tc.receiver_expr_mutation_visibility(id, root_name, root_type, decl_mod))
+	}
+	if node.kind in [.call, .fn_decl] {
+		// Calls are checked against their parameter/receiver declarations separately.
+		return false
+	}
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return tc.fn_literal_directly_captures_ident(*node, root_name)
+	}
+	for i in 0 .. node.children_count {
+		if tc.visible_receiver_reference_escapes(tc.a.child(node, i), root_name, root_type, decl_mod) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (tc &TypeChecker) node_has_visible_receiver_mutation(id flat.NodeId, root_name string, root_type string, decl_mod string, mut visiting map[u64]bool) bool {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
 	match node.kind {
-		.fn_decl, .fn_literal {
+		.fn_decl {
 			return false
+		}
+		.fn_literal, .lambda_expr {
+			return tc.fn_literal_directly_captures_ident(node, root_name)
+		}
+		.prefix {
+			if node.op == .amp && node.children_count > 0
+				&& receiver_mutation_is_visible(tc.receiver_expr_mutation_visibility(tc.a.child(&node, 0), root_name, root_type, decl_mod)) {
+				// Aliases of caller-visible storage must not acquire a hidden-state proof.
+				return true
+			}
+		}
+		.decl_assign, .return_stmt {
+			start := if node.kind == .decl_assign { 1 } else { 0 }
+			step := if node.kind == .decl_assign { 2 } else { 1 }
+			for i := start; i < int(node.children_count); i += step {
+				if tc.visible_receiver_reference_escapes(tc.a.child(&node, i), root_name, root_type, decl_mod) {
+					return true
+				}
+			}
+		}
+		.array_literal, .array_init, .map_init, .struct_init, .assoc, .field_init {
+			if tc.visible_receiver_reference_escapes(id, root_name, root_type, decl_mod) {
+				return true
+			}
+		}
+		.infix {
+			if node.op in [.arrow, .left_shift] && node.children_count > 1
+				&& tc.visible_receiver_reference_escapes(tc.a.child(&node, 1), root_name, root_type, decl_mod) {
+				return true
+			}
 		}
 		.assign {
 			lhs_count_value := node.value.int()
@@ -13034,6 +13121,9 @@ fn (tc &TypeChecker) node_has_visible_receiver_mutation(id flat.NodeId, root_nam
 				}
 				child_offset++
 				if i < rhs_count {
+					if tc.visible_receiver_reference_escapes(tc.a.child(&node, child_offset), root_name, root_type, decl_mod) {
+						return true
+					}
 					child_offset++
 				}
 			}
@@ -13042,6 +13132,11 @@ fn (tc &TypeChecker) node_has_visible_receiver_mutation(id flat.NodeId, root_nam
 			if node.children_count > 0
 				&& receiver_mutation_is_visible(tc.receiver_expr_mutation_visibility(tc.a.child(&node, 0), root_name, root_type, decl_mod)) {
 				return true
+			}
+			for i in 1 .. node.children_count {
+				if tc.visible_receiver_reference_escapes(tc.a.child(&node, i), root_name, root_type, decl_mod) {
+					return true
+				}
 			}
 		}
 		.postfix {
@@ -13090,10 +13185,6 @@ fn (tc &TypeChecker) visible_mutation_fn_param_has_visible_mutation(decl Visible
 	param := tc.visible_mutation_fn_param(decl, param_idx) or {
 		tc.cache_visible_mutation_result(cache_id, true)
 		return true
-	}
-	if !param.is_mut {
-		tc.cache_visible_mutation_result(cache_id, false)
-		return false
 	}
 	fn_node := tc.a.nodes[decl.idx]
 	mut param_count := 0

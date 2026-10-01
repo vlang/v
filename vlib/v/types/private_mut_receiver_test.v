@@ -9,10 +9,28 @@ mut:
  value int
 pub mut:
  visible int
+ values []int
+ visible_pointer &int = unsafe { nil }
+ inner Inner
+}
+
+pub struct Inner {
+pub mut:
+ value int
+}
+
+struct Box {
+mut:
+ counter Counter
 }
 
 pub fn (mut c Counter) inc() {
  c.value++
+}
+
+pub fn (mut c Counter) inc_private_alias() {
+ mut alias := &c.value
+ unsafe { *alias += 1 }
 }
 
 pub fn (c Counter) get() int {
@@ -25,6 +43,80 @@ pub fn (mut c Counter) change_visible() {
 
 pub fn (mut c Counter) change_visible_via_method() {
  c.change_visible()
+}
+
+pub fn (mut c Counter) change_visible_alias() {
+ mut alias := &c
+ alias.visible++
+}
+
+pub fn (mut c Counter) change_visible_alias_chain() {
+ mut alias := &c
+ mut other := alias
+ other.visible++
+}
+
+pub fn (mut c Counter) change_visible_alias_via_helper() {
+ change_visible_alias_helper(mut c)
+}
+
+fn change_visible_alias_helper(mut c Counter) {
+ mut alias := &c
+ alias.visible++
+}
+
+fn (c &Counter) as_pointer() &Counter {
+ return c
+}
+
+pub fn (mut c Counter) change_visible_returned_alias() {
+ mut alias := c.as_pointer()
+ alias.visible++
+}
+
+pub fn (mut c Counter) change_visible_stored_array() {
+ mut box := Box{}
+ box.counter = c
+ box.counter.values[0] = 42
+}
+
+fn write_visible_pointer(value &int) {
+ unsafe { *value += 1 }
+}
+
+pub fn (mut c Counter) change_visible_pointer_field() {
+ write_visible_pointer(c.visible_pointer)
+}
+
+fn (i &Inner) as_pointer() &Inner {
+ return i
+}
+
+pub fn (mut c Counter) change_visible_field_alias() {
+ mut alias := c.inner.as_pointer()
+ alias.value++
+}
+
+fn alter_values(values []Counter) {
+ mut pointer := &values[0]
+ pointer.values[0] = 42
+}
+
+pub fn (mut c Counter) change_visible_literal_array() {
+ alter_values([c])
+}
+
+pub fn (mut c Counter) change_visible_appended_array() {
+ mut copies := []Counter{}
+ copies << c
+ write_visible_pointer(copies[0].visible_pointer)
+}
+
+pub fn (mut c Counter) change_visible_channel() {
+ copies := chan Counter{cap: 1}
+ copies <- c
+ mut other := <-copies
+ other.values[0] = 43
 }
 
 pub fn (mut c Counter) reset() {
@@ -59,7 +151,8 @@ fn test_private_mut_method_preserves_immutable_local_state() {
  c := counter.Counter{}
  c.inc()
  (c).inc()
- assert c.get() == 2
+ c.inc_private_alias()
+ assert c.get() == 3
  println("ok")
 }', true)
 	assert result.exit_code == 0, result.output
@@ -83,7 +176,11 @@ fn main() {
 }
 
 fn test_mut_method_rejects_caller_visible_local_mutation() {
-	for method in ['change_visible', 'change_visible_via_method', 'reset'] {
+	for method in ['change_visible', 'change_visible_via_method', 'change_visible_alias',
+		'change_visible_alias_chain', 'change_visible_alias_via_helper', 'change_visible_returned_alias',
+		'change_visible_stored_array', 'change_visible_pointer_field', 'change_visible_field_alias',
+		'change_visible_literal_array', 'change_visible_appended_array', 'change_visible_channel',
+		'reset'] {
 		result := check_private_receiver('visible_' + method, 'fn main() {
  c := counter.Counter{}
  c.' + method + '()
@@ -314,7 +411,7 @@ fn test_cached_private_mut_method_rejects_visible_and_transitive_mutation() {
 		'@[_v3_hidden_mut_receiver]\npub fn (mut c Counter) change_visible()')
 	os.write_file(os.join_path(modules, 'counter', 'counter.v'), source)!
 	file := os.join_path(base, 'main.v')
-	os.write_file(file, 'import counter\nfn main() { mut c := counter.Counter{}; c.inc(); c.change_visible_via_method(); assert c.get() == 1; assert c.visible == 1 }')!
+	os.write_file(file, 'import counter\nfn main() { mut pointed := 0; mut c := counter.Counter{values: [0], visible_pointer: &pointed}; c.inc(); c.change_visible_via_method(); c.change_visible_alias(); c.change_visible_alias_chain(); c.change_visible_alias_via_helper(); c.change_visible_returned_alias(); c.change_visible_stored_array(); c.change_visible_pointer_field(); c.change_visible_field_alias(); c.change_visible_literal_array(); c.change_visible_appended_array(); c.change_visible_channel(); assert c.get() == 1; assert c.visible == 5; assert c.values == [43]; assert pointed == 2; assert c.inner.value == 1 }')!
 	mut environment := os.environ()
 	environment['VMODULES'] = modules
 	environment['VTMP'] = cache
@@ -329,7 +426,11 @@ fn test_cached_private_mut_method_rejects_visible_and_transitive_mutation() {
 	cold.close()
 	headers := os.walk_ext(cache, '.vh')
 	assert headers.any((os.read_file(it) or { '' }).contains('module counter')), headers.str()
-	for method in ['change_visible', 'change_visible_via_method', 'reset'] {
+	for method in ['change_visible', 'change_visible_via_method', 'change_visible_alias',
+		'change_visible_alias_chain', 'change_visible_alias_via_helper', 'change_visible_returned_alias',
+		'change_visible_stored_array', 'change_visible_pointer_field', 'change_visible_field_alias',
+		'change_visible_literal_array', 'change_visible_appended_array', 'change_visible_channel',
+		'reset'] {
 		os.write_file(file, 'import counter\nfn main() { c := counter.Counter{}; c.${method}() }')!
 		mut warm := os.new_process(@VEXE)
 		warm.set_args(['-new-compiler', 'run', file])

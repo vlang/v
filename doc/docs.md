@@ -3497,7 +3497,7 @@ intended for low-level applications like kernels and drivers.
 It is possible to modify function arguments by declaring them with the keyword `mut`:
 
 An immutable local value can call a `mut` receiver method from another module when
-that method changes only module-private state, including through helper calls.
+the compiler can prove it changes only module-private state, including through helper calls.
 Methods that change caller-visible state still require a mutable receiver.
 Immutable value parameters, receivers, loop bindings and closure captures require `mut`
 even for private state: mutations can otherwise affect a discarded copy.
