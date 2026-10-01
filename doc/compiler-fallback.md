@@ -44,6 +44,13 @@ Use `v -new-compiler ...` to disable the C-error compatibility fallback as well.
 An explicit `v -old-compiler ...` request still selects V 0.5.2 directly and does not
 have a failed default compilation to display.
 
+The compatibility compiler cache uses `V1_FALLBACK_CACHE_DIR` when set, followed by
+`XDG_CACHE_HOME/v/v1-fallback` and `HOME/.cache/v/v1-fallback`. On Windows, when those
+variables are unset, it uses `LOCALAPPDATA\v\v1-fallback`, reusing the same cache
+across invocations. Looking up this path does not create directories. If none of
+these variables is set, V reserves a private cache under the temporary directory;
+on Windows, that last-resort cache has a fresh random name.
+
 Implicit C compiler selection excludes TCC for `-race`, because TCC has no ThreadSanitizer
 runtime. Test build facts follow this rule on every host, including Windows, where race
 builds themselves are unsupported. Explicit compiler requests are checked separately.
