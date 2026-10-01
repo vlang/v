@@ -35,10 +35,15 @@ fn test_c_debug_build_keeps_the_source_named_by_debug_information() {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() { println("debug source") }')!
-	executable := os.join_path(root, 'program')
+	mut executable := os.join_path(root, 'program')
+	$if windows {
+		executable += '.exe'
+	}
 	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -cg -gc none -nocache -o ${os.quoted_path(executable)} ${os.quoted_path(source)}')
 	assert result.exit_code == 0, result.output
-	dirs := os.ls(root)!.filter(it.starts_with('.program.v3cc.'))
+	// The driver names the retained directory after the final executable file.
+	dir_prefix := '.${os.base(executable)}.v3cc.'
+	dirs := os.ls(root)!.filter(it.starts_with(dir_prefix))
 	assert dirs.len == 1, dirs.str()
 	generated := os.read_file(os.join_path(root, dirs[0], 'src.c'))!
 	assert generated.contains('debug source')
