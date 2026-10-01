@@ -541,6 +541,58 @@ fn main() {
 	}
 }
 
+fn test_mutable_wrapped_array_storage_acquires_managed_payloads() {
+	for wrapper in ['?[]Res', 'Storage', '?Storage'] {
+		payload := if wrapper == '?[]Res' { '[Res{1}]' } else { 'Storage([Res{1}])' }
+		initial := if wrapper == 'Storage' { payload } else { '${wrapper}(${payload})' }
+		unwrapped := if wrapper == 'Storage' {
+			'keep(mut source)'
+		} else {
+			'keep(mut source) or { panic("missing payload") }'
+		}
+		check := if wrapper == '?[]Res' {
+			'assert retained[0].id == 101'
+		} else {
+			'if retained is []Res { assert retained[0].id == 101 } else { assert false }'
+		}
+		output := borrow_storage_run('wrapped_mut_array_${wrapper.len}', borrow_storage_drop_decls + '
+type Storage = []Res | int
+fn keep(mut source ${wrapper}) ${wrapper} { return source }
+fn main() {
+	mut source := ${initial}
+	retained := ${unwrapped}
+	drop_owned(source)
+	${check}
+	drop_owned(retained)
+}
+')
+		assert output == 'drop 1\ndrop 101'
+	}
+}
+
+fn test_mutable_wrapped_array_storage_keeps_inactive_payloads() {
+	output := borrow_storage_run('wrapped_mut_array_inactive', borrow_storage_drop_decls + '
+type Storage = []Res | int
+fn keep_option(mut source ?[]Res) ?[]Res { return source }
+fn keep_sum(mut source Storage) Storage { return source }
+fn keep_optional_sum(mut source ?Storage) ?Storage { return source }
+fn main() {
+	mut absent := ?[]Res(none)
+	assert keep_option(mut absent) == none
+	mut scalar := Storage(7)
+	retained := keep_sum(mut scalar)
+	assert retained == Storage(7)
+	mut absent_sum := ?Storage(none)
+	assert keep_optional_sum(mut absent_sum) == none
+	mut scalar_sum := ?Storage(Storage(9))
+	kept := keep_optional_sum(mut scalar_sum) or { panic("missing scalar") }
+	assert kept == Storage(9)
+	println("ok")
+}
+')
+	assert output == 'ok'
+}
+
 fn test_mutable_array_value_captures_acquire_owned_snapshots() {
 	output := borrow_storage_run('array_capture_storage', '@[has_globals]
 module main

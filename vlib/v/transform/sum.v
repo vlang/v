@@ -2014,13 +2014,18 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	}
 	start := t.a.children.len
 	t.a.children << inner
-	return t.a.add_node(flat.Node{
+	cast := t.a.add_node(flat.Node{
 		kind:           .cast_expr
 		value:          storage_sum
 		children_start: start
 		children_count: 1
 		typ:            storage_sum
 	})
+	return if t.is_owned_array_storage_value(inner) {
+		t.mark_owned_array_storage_value(cast, storage_sum)
+	} else {
+		cast
+	}
 }
 
 fn (t &Transformer) sum_literal_type_name(target_sum string, resolved_sum string) string {
@@ -2121,14 +2126,18 @@ fn (mut t Transformer) sum_owned_value_payload(value flat.NodeId, variant string
 	if value_type == '&${variant_type}' && (variant_type.starts_with('[]') || t.is_sum_type_name(variant_type)) {
 		payload := t.array_lvalue_value(value, value_type)
 		t.set_node_typ(int(payload), variant)
+		if t.is_owned_array_storage_value(value) {
+			return t.mark_owned_array_storage_value(payload, variant)
+		}
 		if t.is_sum_type_name(variant_type) && !isnil(t.tc)
 			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(variant_type)) {
 			if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(variant_type)) {
 				// An empty borrowed array can still be retained; its runtime guard rejects
 				// nonempty uncloneable payloads without destroying the caller's boxes.
-				return t.clone_owned_sum_array_views_for_storage(payload, variant, false)
+				return t.clone_owned_sum_array_views_for_storage(payload, variant, false, true)
 			}
-			return t.make_compiler_default_borrowed_clone_value(payload, variant, true)
+			cloned := t.make_compiler_default_borrowed_clone_value(payload, variant, true)
+			return t.mark_owned_array_storage_value(cloned, variant)
 		}
 		return payload
 	}
@@ -2155,13 +2164,18 @@ fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value f
 	start := t.a.children.len
 	t.a.children << typ_field
 	t.a.children << value_field
-	return t.a.add_node(flat.Node{
+	literal := t.a.add_node(flat.Node{
 		kind:           .struct_init
 		children_start: start
 		children_count: 2
 		value:          sum_name
 		typ:            sum_name
 	})
+	return if t.is_owned_array_storage_value(payload) {
+		t.mark_owned_array_storage_value(literal, sum_name)
+	} else {
+		literal
+	}
 }
 
 fn (mut t Transformer) make_sum_ref_literal(sum_name string, variant string, value flat.NodeId) flat.NodeId {

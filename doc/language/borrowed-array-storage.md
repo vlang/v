@@ -9,6 +9,7 @@ Mutable array parameters also borrow their callers' owners when the buffer is ma
 This includes map values, interface values, active sum variants, successful option and
 result payloads, and closure value captures. A retained array reference receives a
 separate header, so acquisition does not replace the caller's header.
+Mutable parameters wrapped in options, results, or sums follow the same acquisition rule.
 
 With ownership checking enabled, capturing a mutable array parameter by value snapshots
 its elements for the closure. This also applies when the caller's array has an ordinary
