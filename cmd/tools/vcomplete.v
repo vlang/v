@@ -113,6 +113,7 @@ const auto_complete_commands = [
 	'test-parser',
 	'test-self',
 	'test',
+	'tool',
 	'tracev',
 	'up',
 	'watch',

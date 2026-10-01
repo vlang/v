@@ -24,6 +24,9 @@ Other less frequently used commands supported by V include:
 
   share            Send your code to the V Playground
 
+  tool              Run a tool module by name. `v tool` with no argument lists
+                   the tool modules of the project and the global module folders.
+
   translate        Translate C code to V.
 
   tracev           Produce a tracing version of the v compiler.

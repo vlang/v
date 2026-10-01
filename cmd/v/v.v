@@ -75,6 +75,7 @@ const external_commands = [
 	'test-self',
 	'time',
 	'timeout',
+	'tool',
 	'tracev',
 	'translate',
 	'unlink',
