@@ -17760,8 +17760,25 @@ fn (mut tc TypeChecker) check_comptime_for_source_type(id flat.NodeId, node flat
 }
 
 fn (mut tc TypeChecker) check_comptime_for_source_types_preflight() {
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	saved_scope := tc.cur_scope
+	tc.cur_scope = tc.file_scope
+	defer {
+		tc.cur_file = saved_file
+		tc.cur_module = saved_module
+		tc.cur_scope = saved_scope
+	}
 	for index in tc.preflight_nodes(.comptime_for) {
-		tc.check_comptime_for_source_type(flat.NodeId(index), tc.a.nodes[index])
+		node := tc.a.nodes[index]
+		file := tc.a.source_files[node.pos.id] or { continue }
+		tc.enter_file(file.name)
+		// Parameter and local sources need the enclosing function's lexical
+		// scope. The semantic pass checks them once that scope is available.
+		if !tc.type_name_known(node.typ) {
+			continue
+		}
+		tc.check_comptime_for_source_type(flat.NodeId(index), node)
 	}
 }
 
