@@ -68,7 +68,7 @@ fn append_implicit_error_addresses(mut out []&IError) {
 		assert typeof(err).name == 'IError'
 		failing_retained_error('inner') or {
 			out << &err
-		assert typeof(err).name == 'IError'
+			assert typeof(err).name == 'IError'
 			0
 		}
 		out << &err
