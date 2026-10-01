@@ -160,6 +160,8 @@ Note: if that command finds formatting errors, they can be fixed with:
 ## `v test-self`
 
 Run `vlib` module tests, *including* the compiler tests.
+Test discovery includes architecture-suffixed files such as `_test.amd64.v` when
+the suffix matches the host architecture; files for other architectures are excluded.
 
 To run the same suite across separate machines, set `VTEST_SELF_SHARD_COUNT` to the number of
 machines and set `VTEST_SELF_SHARD_INDEX` to a different zero-based index on each one. For example,
