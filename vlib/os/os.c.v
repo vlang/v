@@ -117,6 +117,12 @@ fn find_cfile_size(fp &C.FILE) !int {
 		C.rewind(fp)
 		return 0
 	}
+	// Directories and other non-regular files can make ftell() return LONG_MAX with glibc.
+	// With 64-bit `int` (v3), the old truncation guard below no longer rejects that,
+	// and `read_file` would try to allocate `LONG_MAX + 1` bytes, which overflows.
+	if raw_fsize > i64(max_int) - 1 {
+		return error('file size ${raw_fsize} is too large to be read into memory')
+	}
 	len := int(raw_fsize)
 	// For files > 2GB, C.ftell can return values that, when cast to `int`, can result in values below 0.
 	if i64(len) < raw_fsize {
