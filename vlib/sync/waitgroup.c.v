@@ -84,25 +84,54 @@ pub fn (mut wg WaitGroup) init() {
 // and unblocks any wait() calls if task count becomes zero.
 // add panics if task count drops below zero.
 pub fn (mut wg WaitGroup) add(delta int) {
+	$if race ? {
+		// Like Go's WaitGroup, the race detector sees only the happens-before edges that
+		// the WaitGroup guarantees, not those of its implementation: every done() happens
+		// before wait() returns.
+		if delta < 0 {
+			racerelease(wg)
+		}
+		racedisable()
+		first_add := wg.add_state(delta) or {
+			// A recovered panic must not leave the race detector disabled for this thread.
+			raceenable()
+			panic(err.msg())
+		}
+		raceenable()
+		if first_add {
+			// The first add() must be synchronized with wait(). Like Go, model this as a
+			// read, because several threads can move the task count up from zero at once.
+			raceread(&wg.sem)
+		}
+		return
+	}
+	wg.add_state(delta) or { panic(err.msg()) }
+}
+
+// add_state changes the task count, wakes the waiters when it becomes zero, and returns
+// whether this call moved it up from zero.
+fn (mut wg WaitGroup) add_state(delta int) !bool {
 	state_delta := u64(u32(delta)) << 32
 	old_state := C.atomic_fetch_add_u64(voidptr(&wg.state), state_delta)
 	new_state := old_state + state_delta
 	new_nrjobs := int(i32(new_state >> 32))
 	mut num_waiters := u32(new_state)
 	if new_nrjobs < 0 {
-		panic('Negative number of jobs in waitgroup')
+		return error('Negative number of jobs in waitgroup')
 	}
+	first_add := delta > 0 && new_nrjobs == delta
 	if new_nrjobs > 0 || num_waiters == 0 {
-		return
+		return first_add
 	}
 	if C.atomic_load_u64(voidptr(&wg.state)) != new_state {
-		panic('WaitGroup misuse: add() called concurrently with wait()')
+		return error('WaitGroup misuse: add() called concurrently with wait()')
 	}
 	C.atomic_store_u64(voidptr(&wg.state), 0)
 	for num_waiters > 0 {
 		wg.sem.post()
 		num_waiters--
 	}
+	return first_add
 }
 
 // done is a convenience fn for add(-1).
@@ -112,16 +141,40 @@ pub fn (mut wg WaitGroup) done() {
 
 // wait blocks until all tasks are done (task count becomes zero).
 pub fn (mut wg WaitGroup) wait() {
+	$if race ? {
+		racedisable()
+	}
 	for {
 		mut state := C.atomic_load_u64(voidptr(&wg.state))
 		nrjobs := u32(state >> 32)
 		if nrjobs == 0 {
+			$if race ? {
+				raceenable()
+				raceacquire(wg)
+			}
 			return
 		}
 		if C.atomic_compare_exchange_weak_u64(voidptr(&wg.state), voidptr(&state), state + 1) {
+			$if race ? {
+				if u32(state) == 0 {
+					// wait() must be synchronized with the first add(). Like Go, model this
+					// as a write that races with the read in add(), for the first waiter only,
+					// or concurrent wait() calls would race with each other.
+					raceenable()
+					racewrite(&wg.sem)
+					racedisable()
+				}
+			}
 			wg.sem.wait() // blocks until task_count becomes 0
 			if C.atomic_load_u64(voidptr(&wg.state)) != 0 {
+				$if race ? {
+					raceenable()
+				}
 				panic('WaitGroup misuse: reused before previous wait() returned')
+			}
+			$if race ? {
+				raceenable()
+				raceacquire(wg)
 			}
 			return
 		}

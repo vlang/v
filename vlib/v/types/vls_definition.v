@@ -1,0 +1,312 @@
+module types
+
+import os
+import v.flat
+
+// VlsPos is where a declaration is: a file and a byte offset in it.
+struct VlsPos {
+	file_id int
+	offset  int
+}
+
+// vls_definition answers a go-to-definition request with where the name under
+// the cursor is declared, as V1 printed it: `path:line:column`, the line
+// 1-based and the column 0-based. `input` is what the command line checks.
+fn (mut tc TypeChecker) vls_definition(target VlsTarget, input string) string {
+	at := tc.vls_definition_at(target) or { return '' }
+	return tc.vls_position_text(at.file_id, at.offset, input)
+}
+
+// vls_position_text writes a declaration's position as V1 did: a file of the
+// directory `input` with that directory as the command line wrote it,
+// `./main.v` for `.`, the file `input` as written, any other with its full
+// path.
+fn (tc &TypeChecker) vls_position_text(file_id int, offset int, input string) string {
+	file := tc.a.source_files[file_id] or { return '' }
+	line, col := file.find_line_and_column(offset)
+	mut path := file.name
+	if input != '' {
+		real_path := os.real_path(path)
+		if os.is_dir(input) {
+			if os.dir(real_path) == os.real_path(input) {
+				path = '${input.trim_right('/')}/${os.file_name(path)}'
+			}
+		} else if real_path == os.real_path(input) {
+			path = input
+		}
+	}
+	return '${path}:${line}:${col - 1}'
+}
+
+// vls_definition_at returns the file and byte offset where the name the
+// cursor is on is declared.
+fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
+	id := target.id
+	node := tc.a.nodes[int(id)]
+	tc.vls_enter_file(target.file_id)
+	if call_id := tc.vls_called_by(id) {
+		resolved := tc.vls_call_target(call_id, id) or { return tc.vls_local_definition(id) }
+		return tc.vls_function_definition(resolved)
+	}
+	match node.kind {
+		.ident {
+			if at := tc.vls_declared_here(id) {
+				return at
+			}
+			if module_name := tc.vls_import_symbol_module(id) {
+				return tc.vls_module_member_definition(module_name, node.value)
+			}
+			if at := tc.vls_local_definition(id) {
+				return at
+			}
+			if at := tc.vls_const_definition(node.value) {
+				return at
+			}
+			if at := tc.vls_global_definition(node.value) {
+				return at
+			}
+			if at := tc.vls_type_definition(node.value) {
+				return at
+			}
+			// A module name before one of its members stands for that member.
+			if member := tc.vls_module_receiver_member(id) {
+				if at := tc.vls_module_member_definition(node.value, member) {
+					return at
+				}
+			}
+			// A function named without a call: a callback.
+			return tc.vls_function_definition(tc.qualify_name(node.value))
+		}
+		.selector {
+			return tc.vls_selector_definition(node)
+		}
+		.enum_val {
+			typ := tc.expr_type(id) or { tc.vls_match_subject_type(id) or { return none } }
+			return tc.vls_enum_value_definition(vls_unwrap_type(typ), node.value)
+		}
+		.cast_expr, .struct_init, .is_expr, .as_expr {
+			return tc.vls_type_definition(node.value)
+		}
+		.param, .enum_field, .field_decl, .fn_decl, .const_field, .interface_field {
+			// The name a declaration introduces, which the target spans: also
+			// the name of a method's receiver, whose node has no position of
+			// its own.
+			return VlsPos{target.file_id, target.start}
+		}
+		.field_init {
+			owner := tc.vls_field_init_owner(id)?
+			return tc.vls_field_definition(tc.vls_member_owner(owner)?, node.value)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+// vls_local_definition is where a local name is declared: by the code, or by
+// the language, as `err` of an `or {}` block is.
+fn (tc &TypeChecker) vls_local_definition(id flat.NodeId) ?VlsPos {
+	binding := tc.vls_local_binding(id)?
+	if binding.implicit {
+		return binding.at
+	}
+	decl_id := binding.decl_id
+	decl := tc.a.node(decl_id)
+	if decl.kind == .param {
+		if at := tc.vls_receiver_name_at(decl_id, decl, tc.vls_source(int(decl.pos.id))) {
+			return at
+		}
+	}
+	return VlsPos{int(decl.pos.id), int(decl.pos.offset)}
+}
+
+// vls_receiver_name_at finds the name of a method's receiver in the source:
+// the parser gives the receiver no position of its own.
+fn (tc &TypeChecker) vls_receiver_name_at(param_id flat.NodeId, param &flat.Node, source string) ?VlsPos {
+	fn_id := tc.vls_parent_id(param_id)
+	if !tc.valid_node_id(fn_id) {
+		return none
+	}
+	fn_node := tc.a.node(fn_id)
+	if fn_node.kind != .fn_decl || !fn_node.value.contains('.') || fn_node.children_count == 0
+		|| tc.a.child(fn_node, 0) != param_id {
+		return none
+	}
+	name_offset := int(fn_node.pos.offset)
+	open := vls_last_index_before(source, name_offset, '(') or { return none }
+	close := vls_last_index_before(source, name_offset, ')') or { return none }
+	header := source[open + 1..close]
+	mut rel := 0
+	for word in header.fields() {
+		start := header.index_after(word, rel) or { break }
+		rel = start + word.len
+		if word == param.value {
+			return VlsPos{int(fn_node.pos.id), open + 1 + start}
+		}
+	}
+	return none
+}
+
+// vls_function_definition is where the function a call resolved to is
+// declared, or the member of an interface that declares a method.
+fn (tc &TypeChecker) vls_function_definition(resolved string) ?VlsPos {
+	if decl_id := tc.vls_fn_decl_id(resolved) {
+		decl := tc.a.node(decl_id)
+		return VlsPos{int(decl.pos.id), int(decl.pos.offset)}
+	}
+	if decl_id := tc.vls_builtin_method_decl(resolved) {
+		decl := tc.a.node(decl_id)
+		return VlsPos{int(decl.pos.id), int(decl.pos.offset)}
+	}
+	interface_name := resolved.all_before_last('.')
+	method := resolved.all_after_last('.')
+	if interface_name == resolved {
+		return none
+	}
+	index := tc.first_type_declaration_ids[interface_name] or { return none }
+	decl := tc.a.nodes[index]
+	for i in 0 .. decl.children_count {
+		member := tc.a.child_node(&decl, i)
+		if member.kind == .interface_field && member.value == method {
+			return VlsPos{int(member.pos.id), int(member.pos.offset)}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) vls_const_definition(name string) ?VlsPos {
+	qualified := if name.contains('.') { name } else { tc.qualify_name(name) }
+	expr_id := tc.const_exprs[qualified] or { tc.const_exprs[name] or { return none } }
+	field_id := tc.vls_parent_id(expr_id)
+	if !tc.valid_node_id(field_id) {
+		return none
+	}
+	field := tc.a.node(field_id)
+	return VlsPos{int(field.pos.id), int(field.pos.offset)}
+}
+
+fn (tc &TypeChecker) vls_global_definition(name string) ?VlsPos {
+	if !tc.vls_is_global(name) {
+		return none
+	}
+	for index in tc.top_level_idx {
+		node := tc.a.nodes[index]
+		if node.kind != .global_decl {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := tc.a.child_node(&node, i)
+			if field.value == name {
+				return VlsPos{int(field.pos.id), int(field.pos.offset)}
+			}
+		}
+	}
+	return none
+}
+
+// vls_type_definition is where the type `name` is declared: the name after
+// `struct`, `interface`, `enum` or `type`.
+fn (tc &TypeChecker) vls_type_definition(name string) ?VlsPos {
+	short := name.all_after_last('.')
+	index := tc.first_type_declaration_ids[tc.qualify_name(name)] or {
+		tc.first_type_declaration_ids[name] or { return none }
+	}
+	decl := tc.a.nodes[index]
+	file_id := int(decl.pos.id)
+	start := int(decl.pos.offset)
+	if decl.kind == .enum_decl {
+		return VlsPos{file_id, start}
+	}
+	source := tc.vls_source(file_id)
+	if decl.kind == .type_decl {
+		// The node covers what follows `=`; the name comes before it.
+		at := vls_last_index_before(source, start, short) or { return none }
+		return VlsPos{file_id, at}
+	}
+	at := source.index_after(short, start) or { return none }
+	return VlsPos{file_id, at}
+}
+
+fn (tc &TypeChecker) vls_selector_definition(node flat.Node) ?VlsPos {
+	if node.children_count == 0 {
+		return none
+	}
+	receiver_id := tc.a.child(&node, 0)
+	receiver := tc.a.node(receiver_id)
+	if enum_name := tc.vls_enum_receiver(receiver) {
+		qualified := if enum_name.contains('.') { enum_name } else { tc.qualify_name(enum_name) }
+		return tc.vls_enum_value_definition(Type(Enum{
+			name: qualified
+		}), node.value)
+	}
+	if receiver.kind == .ident && tc.expr_type(receiver_id) == none {
+		if at := tc.vls_module_member_definition(receiver.value, node.value) {
+			return at
+		}
+	}
+	receiver_type := tc.vls_expr_type(receiver_id) or { return none }
+	type_name := tc.vls_member_owner(receiver_type) or { return none }
+	if at := tc.vls_field_definition(type_name, node.value) {
+		return at
+	}
+	// A method named without a call.
+	return tc.vls_function_definition('${type_name}.${node.value}')
+}
+
+// vls_module_member_definition is where `module.member` is declared: a const,
+// a function or a type of that module.
+fn (tc &TypeChecker) vls_module_member_definition(module_name string, member string) ?VlsPos {
+	qualified := tc.vls_member_name(module_name, member)
+	if at := tc.vls_const_definition(qualified) {
+		return at
+	}
+	if at := tc.vls_function_definition(qualified) {
+		return at
+	}
+	return tc.vls_type_definition(qualified)
+}
+
+// vls_field_definition is where the struct or interface `type_name` declares
+// the field `field`, or the struct it embeds that declares it: `u.id` for the
+// `id` of a `Base` that `u`'s struct embeds.
+fn (tc &TypeChecker) vls_field_definition(type_name string, field string) ?VlsPos {
+	index := tc.first_type_declaration_ids[type_name] or { return none }
+	decl := tc.a.nodes[index]
+	for i in 0 .. decl.children_count {
+		member := tc.a.child_node(&decl, i)
+		if member.kind in [.field_decl, .interface_field] && member.value == field {
+			return VlsPos{int(member.pos.id), int(member.pos.offset)}
+		}
+	}
+	// Two embedded structs that declare it make the name ambiguous: V rejects it.
+	owners := tc.embedded_field_candidates(type_name, field)
+	if owners.len == 1 {
+		return tc.vls_field_definition(owners[0], field)
+	}
+	return none
+}
+
+fn (tc &TypeChecker) vls_enum_value_definition(typ Type, value string) ?VlsPos {
+	if typ !is Enum {
+		return none
+	}
+	name := (typ as Enum).name
+	index := tc.first_type_declaration_ids[name] or { return none }
+	decl := tc.a.nodes[index]
+	for i in 0 .. decl.children_count {
+		field := tc.a.child_node(&decl, i)
+		if field.kind == .enum_field && field.value == value {
+			return VlsPos{int(field.pos.id), int(field.pos.offset)}
+		}
+	}
+	return none
+}
+
+// vls_source is the text of the file `file_id`, as the checker read it.
+fn (tc &TypeChecker) vls_source(file_id int) string {
+	file := tc.a.source_files[file_id] or { return '' }
+	if text := tc.source_texts_by_file[file.name] {
+		return text
+	}
+	return os.read_file(file.name) or { '' }
+}

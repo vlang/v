@@ -297,7 +297,7 @@ fn test_parallel_cgen_worker_resolves_generic_struct_method_signature() {
 	assert run.output.trim_space() == '550740'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
 	assert c_code.contains('Box_int__accept'), c_code
-	assert c_code.contains('Optional_i64 x'), c_code
+	assert c_code.contains('__v_option_i64 x'), c_code
 	assert !c_code.contains('?T'), c_code
 }
 
@@ -312,11 +312,11 @@ fn test_parallel_cgen_generic_optional_method_uses_concrete_optional_abi_in_call
 
 	c_code := os.read_file(c_out) or { panic(err) }
 	assert c_code.contains('Box_int__accept'), c_code
-	assert c_code.contains('Optional_i64 x'), c_code
-	assert c_code.contains('Box_int__accept(b, (Optional_i64){.ok = true, .value = 7})'), c_code
-	assert c_code.contains('Box_int__accept(b, (Optional_i64){.ok = true, .value = 8})'), c_code
-	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 7})'), c_code
-	assert !c_code.contains('Box_int__accept(b, (Optional){.ok = true, .value = 8})'), c_code
+	assert c_code.contains('__v_option_i64 x'), c_code
+	assert c_code.contains('Box_int__accept(b, (__v_option_i64){.ok = true, .value = 7})'), c_code
+	assert c_code.contains('Box_int__accept(b, (__v_option_i64){.ok = true, .value = 8})'), c_code
+	assert !c_code.contains('Box_int__accept(b, (__v_option){.ok = true, .value = 7})'), c_code
+	assert !c_code.contains('Box_int__accept(b, (__v_option){.ok = true, .value = 8})'), c_code
 }
 
 fn write_parallel_ierror_payload_success_project(name string) string {
@@ -376,7 +376,7 @@ fn test_parallel_cgen_worker_preserves_ierror_payload_success_with_builtin_error
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'OK::0\n844350'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
-	assert c_code.contains('return (Optional_IError){.ok = true, .value = (IError){._typ ='), c_code
+	assert c_code.contains('return (__v_result_IError){.ok = true, .value = (IError){._typ ='), c_code
 }
 
 fn write_parallel_top_level_no_main_project(name string) string {

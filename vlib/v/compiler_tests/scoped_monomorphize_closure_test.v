@@ -13,7 +13,17 @@ $if windows {
 }
 
 fn scoped_monomorph_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_test${scoped_monomorph_bin_suffix}')
+	return os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_test_${os.getpid()}${scoped_monomorph_bin_suffix}')
+}
+
+fn scoped_monomorph_cc() string {
+	// TinyCC-built compilers disable parallel specialization even when opted in.
+	for cc in ['clang', 'gcc'] {
+		if path := os.find_abs_path_of_executable(cc) {
+			return path
+		}
+	}
+	panic('the scoped monomorphize regression needs clang or gcc')
 }
 
 fn scoped_monomorph_v3_bin() string {
@@ -23,12 +33,16 @@ fn scoped_monomorph_v3_bin() string {
 	}
 	// `-prealloc` is what enables `scope_parallel_workers` and the scoped
 	// monomorphize path, matching how the distributed compiler is built.
-	build := os.execute('${os.quoted_path(scoped_monomorph_vexe)} -gc none -prealloc -path "${scoped_monomorph_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin)} ${os.quoted_path(scoped_monomorph_v3_src)}')
+	build := os.execute('${os.quoted_path(scoped_monomorph_vexe)} -gc none -cc ${os.quoted_path(scoped_monomorph_cc())} -prealloc -path "${scoped_monomorph_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin)} ${os.quoted_path(scoped_monomorph_v3_src)}')
 	assert build.exit_code == 0, build.output
 	return bin
 }
 
 fn testsuite_begin() {
+	os.rm(scoped_monomorph_v3_bin_path()) or {}
+}
+
+fn testsuite_end() {
 	os.rm(scoped_monomorph_v3_bin_path()) or {}
 }
 
@@ -42,8 +56,23 @@ fn testsuite_begin() {
 // This is the small `veb` program from vlang/v#28489, which exercises closures
 // lifted while specializing a generic helper.
 fn test_scoped_monomorphize_keeps_closure_signatures_and_args() {
+	$if linux && arm64 {
+		// The scoped specializer is deliberately disabled on this target.
+		return
+	}
 	v3_bin := scoped_monomorph_v3_bin()
-	dir := os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure')
+	// The driver keeps parallel monomorphization opt-in. Preallocation alone
+	// selects the serial path and never enters the scoped worker merge.
+	parallel := os.getenv_opt('V3_PARALLEL_MONOMORPHIZE')
+	os.setenv('V3_PARALLEL_MONOMORPHIZE', '1', true)
+	defer {
+		if value := parallel {
+			os.setenv('V3_PARALLEL_MONOMORPHIZE', value, true)
+		} else {
+			os.unsetenv('V3_PARALLEL_MONOMORPHIZE')
+		}
+	}
+	dir := os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -96,7 +125,9 @@ fn main() {
 }
 ") or { panic(err) }
 	out := os.join_path(dir, 'app${scoped_monomorph_bin_suffix}')
-	compile := os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(out)} ${os.quoted_path(dir)}')
+	// Run V3 directly without C-compiler retries, so a failed scoped merge
+	// cannot be hidden by a successful retry with another compiler.
+	compile := os.execute('${os.quoted_path(v3_bin)} -new-compiler -no-retry-compilation -gc none -cc ${os.quoted_path(scoped_monomorph_cc())} -nocache -o ${os.quoted_path(out)} ${os.quoted_path(dir)}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert os.is_file(out), 'the compile produced no binary'

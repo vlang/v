@@ -1242,7 +1242,7 @@ fn (mut t Transformer) or_expr_zero_value_expansion_estimate(id flat.NodeId, nod
 	} else {
 		t.nested_optional_leaf_zero_value_expansion_estimate(expr_id, 0)
 	}
-	if value_type in ['', 'void', 'Optional', '!', '?'] {
+	if value_type in ['', 'void', '__v_option', '!', '?'] {
 		return estimate
 	}
 	estimate += t.zero_value_expansion_estimate(id, value_type)
@@ -1587,8 +1587,8 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 		}
 		if alias_target != '' {
 			base := t.normalize_type_alias(alias_target).trim_space()
-			if base in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
-				'u32', 'u64', 'rune', 'char', 'string'] {
+			if base in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32',
+				'u64', 'rune', 'char', 'string'] {
 				return base
 			}
 		}
@@ -1634,7 +1634,7 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
 	mut size_suffix := '4'
-	if key_type in ['u8', 'i8', 'byte', 'bool', 'char'] {
+	if key_type in ['u8', 'i8', 'bool', 'char'] {
 		size_suffix = '1'
 	} else if key_type in ['u16', 'i16'] {
 		size_suffix = '2'
@@ -1645,6 +1645,11 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 	} else if key_type in ['i64', 'u64', 'f64']
 		|| key_type.contains('Arc[') || key_type.contains('Arc_') {
 		size_suffix = '8'
+	} else if key_type in ['i128', 'u128'] {
+		// 128-bit keys need all sixteen bytes hashed, compared and copied; the
+		// 8-byte callbacks keep the low half of every key and let distinct keys
+		// overwrite each other.
+		size_suffix = '16'
 	}
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
@@ -2219,8 +2224,14 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 
 	ptr_ident := t.make_ident(ptr_name)
 	found_cond := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
+	failure := if node.value == '!'
+		|| t.normalize_type_alias(info.value_type).starts_with('!') {
+		t.make_call_typed('error', [t.make_string_literal('map key does not exist')], 'IError')
+	} else {
+		flat.empty_node
+	}
 	else_block := t.make_block(t.lower_map_or_body_to_stmts(body_id, val_name, result_type,
-		node.value, t.make_map_key_missing_error()))
+		node.value, failure))
 	ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name), '&${info.value_type}'))
 	then_block := if source_is_optional {
 		opt_name := t.new_temp('map_opt')
@@ -2237,7 +2248,7 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 			ok_stmts << t.make_clear_map_ptr_value(ptr_name, info.value_type)
 		}
 		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
-		opt_err_expr := t.make_selector(t.make_ident(opt_name), 'err', 'IError')
+		opt_err_expr := t.result_error_expr(t.make_ident(opt_name))
 		mut opt_else_stmts := []flat.NodeId{}
 		if move_found_value && node.value in ['?', '!'] {
 			// Propagation transfers the failed wrapper's error through `opt_name`, so the map
@@ -2267,14 +2278,6 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	return t.make_ident(val_name)
 }
 
-fn (mut t Transformer) make_map_key_missing_error() flat.NodeId {
-	return t.make_call_typed('error', [
-		t.make_string_literal('map key does not exist'),
-	], 'IError')
-}
-
-// make_clear_map_ptr_value zeroes a value after ownership was moved out of a
-// map slot returned by map__get_check.
 fn (mut t Transformer) make_clear_map_ptr_value(ptr_name string, value_type string) flat.NodeId {
 	clean_value_type := if t.is_fixed_array_type(value_type) {
 		fixed_array_canonical_type(value_type)
@@ -2316,7 +2319,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 	if body.children_count == 0 {
 		return result
 	}
-	err_scope := t.enter_implicit_err_scope()
+	err_scope := t.enter_implicit_err_scope(int(err_expr) >= 0)
 	t.append_implicit_err_decl(mut result, err_expr)
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)
@@ -2374,7 +2377,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 
 fn (t &Transformer) map_value_type_is_optional(typ string) bool {
 	clean := t.normalize_type_alias(typ).trim_space()
-	return t.is_optional_type_name(clean) || clean == 'Optional'
+	return t.is_optional_type_name(clean) || clean == '__v_option'
 }
 
 fn (t &Transformer) map_optional_target_type(typ string) string {

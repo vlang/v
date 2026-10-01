@@ -1,7 +1,5 @@
 module builtin
 
-pub type byte = u8
-
 pub const min_i8 = i8(-128)
 pub const max_i8 = i8(127)
 

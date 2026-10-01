@@ -24,6 +24,9 @@ concurrency:
   group: gg-regressions-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   gg-regressions:
     runs-on: ubuntu-24.04
@@ -37,6 +40,8 @@ jobs:
     steps:
       - name: Checkout V
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
 
       - name: Build local v

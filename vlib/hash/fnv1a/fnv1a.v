@@ -42,7 +42,7 @@ pub fn sum32_struct[T](s &T) u32 {
 }
 
 // sum32_bytes returns a fnv1a hash of `data_len` bytes starting at
-// the address in the given &byte pointer `data`.
+// the address in the given &u8 pointer `data`.
 @[direct_array_access; inline; unsafe]
 pub fn sum32_bytes(data &u8, data_len int) u32 {
 	mut hash := fnv32_offset_basis
@@ -74,7 +74,7 @@ pub fn sum64(data []u8) u64 {
 }
 
 // sum64_bytes returns a fnv1a hash of `data_len` bytes starting at
-// the address in the given &byte pointer `data`.
+// the address in the given &u8 pointer `data`.
 @[direct_array_access; inline; unsafe]
 pub fn sum64_bytes(data &u8, data_len int) u64 {
 	mut hash := fnv64_offset_basis
