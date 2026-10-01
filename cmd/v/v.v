@@ -33,6 +33,7 @@ const external_commands = [
 	'build-vbinaries',
 	'bump',
 	'check-md',
+	'clean',
 	'complete',
 	'compress',
 	'cover',

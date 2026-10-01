@@ -248,6 +248,7 @@ argument, e.g. `v new abc`.
 
 * [Tools](#tools)
     * [v fmt](#v-fmt)
+    * [v clean](#v-clean)
     * [v shader](#v-shader)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
@@ -6855,6 +6856,51 @@ To disable formatting for a block of code, wrap it with `// vfmt off` and
 // Affected by fmt
 ... your code here ...
 ```
+
+### v clean
+
+A V build writes its executable next to the sources it was built from, named
+after them. That is convenient for `v run file.v` and awkward for a project you
+have been building in place, because the binaries pile up beside the code and
+nothing else in the toolchain tracks them.
+
+`v clean` removes the executables a default build would produce for the paths
+you name:
+
+```shell
+v clean                 # the current directory
+v clean ./cmd/mytool    # one project folder
+v clean hello.v         # one source file
+```
+
+For a directory the executable is named after the directory, and for a `.v`
+file after the file, which is exactly what the compiler does, so `v clean .`
+after a `v .` build removes the binary that build left:
+
+```shell
+$ v clean .
+removed `/home/me/mytool/mytool`
+```
+
+Anything else in the directory is left alone. `v clean` removes the one name
+the compiler itself would have written and nothing more, so a stray executable
+or a source file survives it.
+
+Use `-n` to see what it would do first, and `-x` to have it print each removal
+as a command:
+
+```shell
+$ v clean -n .
+rm /home/me/mytool/mytool
+```
+
+A path whose executable name cannot be worked out with certainty is refused
+instead of guessed, and the command exits 1, which matters because this command
+deletes files.
+
+`v clean` does not touch the build cache. That is `v wipe-cache`, kept separate
+because it affects every project on the machine rather than the ones named
+here.
 
 ### v shader
 
