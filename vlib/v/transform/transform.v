@@ -9318,8 +9318,21 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 				return []string{}
 			}
 			mut sources := []string{}
-			// The callee selector is consumed by the call; only argument addresses
-			// can flow through a returned pointer value.
+			if node.children_count > 0 {
+				callee := t.a.child_node(&node, 0)
+				if callee.kind == .selector && callee.children_count > 0 {
+					receiver_id := t.a.child(callee, 0)
+					if !t.callee_base_is_not_a_runtime_value(receiver_id)
+						&& t.method_receiver_is_reference(id, receiver_id, callee.value) {
+						for source_name in t.escape_address_sources(receiver_id, amp_sources, ptr_aliases) {
+							if source_name !in sources {
+								sources << source_name
+							}
+						}
+					}
+				}
+			}
+			// Reference receivers and argument addresses can flow through the call result.
 			for i in 1 .. node.children_count {
 				for source_name in t.escape_aggregate_address_sources(t.a.child(&node, i), amp_sources, ptr_aliases) {
 					if source_name !in sources {

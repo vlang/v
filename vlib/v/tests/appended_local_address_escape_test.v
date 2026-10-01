@@ -489,3 +489,45 @@ fn test_implicit_result_errors_keep_retained_binding_addresses() {
 	assert out[0] == out[2]
 	assert out[0] != out[1]
 }
+
+struct RetainedMethodRecord {
+mut:
+	value u64
+}
+
+type RetainedMethodAlias = RetainedMethodRecord
+
+struct RetainedMethodHolder {
+	record RetainedMethodRecord
+}
+
+fn (record &RetainedMethodRecord) identity() &RetainedMethodRecord {
+	return record
+}
+
+fn (record &RetainedMethodRecord) field_addresses() []&u64 {
+	return [&record.value]
+}
+
+@[noinline]
+fn append_reference_method_results(mut out []&RetainedMethodRecord, mut fields []&u64) {
+	mut local := RetainedMethodRecord{ value: 211 }
+	out << local.identity()
+	fields << local.field_addresses()
+	local.value = 214
+	alias := RetainedMethodAlias(RetainedMethodRecord{ value: 212 })
+	out << alias.identity()
+	explicit := &RetainedMethodRecord{ value: 213 }
+	out << explicit.identity()
+	holder := RetainedMethodHolder{ record: RetainedMethodRecord{ value: 215 } }
+	out << holder.record.identity()
+}
+
+fn test_reference_method_results_keep_receiver_storage() {
+	mut out := []&RetainedMethodRecord{}
+	mut fields := []&u64{}
+	append_reference_method_results(mut out, mut fields)
+	_ = use_the_stack(10)
+	assert out.map(it.value) == [u64(214), 212, 213, 215]
+	assert fields.map(*it) == [u64(214)]
+}
