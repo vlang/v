@@ -4584,10 +4584,16 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if clean_target is SumType && !tc.sum_type_contains_variant(clean_target, actual)
-		&& !tc.smartcast_wrapper_cast_payload_compatible(child_id, actual, target) {
-		tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
-		return
+	if clean_target is SumType {
+		// A reference to a value variant can construct the sum, as with ordinary
+		// assignments. Keep explicit pointer variants and mismatched pointees distinct.
+		pointee_is_variant := clean_actual is Pointer
+			&& tc.sum_type_contains_variant(clean_target, clean_actual.base_type)
+		if !tc.sum_type_contains_variant(clean_target, actual) && !pointee_is_variant
+			&& !tc.smartcast_wrapper_cast_payload_compatible(child_id, actual, target) {
+			tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
+			return
+		}
 	}
 	if clean_target is Enum && infix_power_type_is_numeric(clean_actual) && tc.unsafe_depth == 0
 		&& !tc.node_is_in_translated_file(id) {
