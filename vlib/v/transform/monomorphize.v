@@ -2512,6 +2512,18 @@ fn (mut t Transformer) mark_interface_boxed_type(iface_name string, concrete_typ
 	if resolved.len > 0 && resolved != iface_name {
 		iface_names << resolved
 	}
+	// A box also reaches receiver methods inherited from embedded interfaces.
+	// Retain its concrete type there so mutable field access uses the shared object.
+	mut iface_index := 0
+	for iface_index < iface_names.len {
+		iface := iface_names[iface_index]
+		iface_index++
+		for embed in t.tc.interface_embeds[iface] or { []string{} } {
+			if embed !in iface_names {
+				iface_names << embed
+			}
+		}
+	}
 	for iface in iface_names {
 		t.mark_interface_boxed_type_key(interface_boxed_type_key(iface, concrete_type))
 		t.mark_interface_boxed_type_key(interface_boxed_type_key(iface, c_name(concrete_type)))

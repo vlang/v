@@ -4705,6 +4705,10 @@ a convenience for writing `s.xyz()` instead of `xyz(s)`.
 An immediate read-only interface method call on a smart-casted value can return
 a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
 
+Receiver methods are also available through embedded interfaces. A mutable receiver method
+updates the underlying concrete object's mutable fields, including when called through an
+interface pointer or multiple levels of interface embedding.
+
 > [!NOTE]
 > This feature is NOT a "default implementation" like in C#.
 
