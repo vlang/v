@@ -24054,8 +24054,12 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 		// self-contained; allow it. Other prefixes (e.g. `&local`) would need a
 		// dropped temporary, so skip them.
 		if node.op == .amp && node.children_count > 0 {
-			child := g.a.nodes[int(g.a.child(&node, 0))]
+			child_id := g.a.child(&node, 0)
+			child := g.a.nodes[int(child_id)]
+			// A global, or a field or element of one, already has storage:
+			// `__global current = &manager` needs no temporary either.
 			return child.kind == .struct_init || child.kind == .assoc
+				|| g.global_init_operand_is_global_place(child_id)
 		}
 		return node.children_count == 1 && g.is_safe_global_init(g.a.child(&node, 0))
 	}
@@ -24063,6 +24067,28 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 	// them zero/NULL instead of emitting a reference to an undeclared symbol.
 	// Everything else, `.array_init` included, is safe.
 	return node.kind != .array_literal
+}
+
+// global_init_operand_is_global_place reports whether an operand of `&` in a global
+// initializer names a global, or a field or element of one.
+fn (g &FlatGen) global_init_operand_is_global_place(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value in g.global_types
+				|| qualify_name_in_module(g.tc.cur_module, node.value) in g.global_types
+		}
+		.selector, .index, .paren {
+			return node.children_count > 0
+				&& g.global_init_operand_is_global_place(g.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (g &FlatGen) const_get_deps(val_id flat.NodeId) []string {
