@@ -2127,8 +2127,8 @@ fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, ty
 		|| t.resolve_sum_name(node.typ) != resolved_sum {
 		return none
 	}
-	tag := t.a.child_node(&node, 0)
-	field := t.a.child_node(&node, 1)
+	tag := t.a.child_node(node, 0)
+	field := t.a.child_node(node, 1)
 	if tag.kind != .field_init || tag.value != 'typ' || tag.children_count != 1
 		|| field.kind != .field_init || field.children_count != 1
 		|| field.typ.starts_with('sum_ref ') {
@@ -2146,7 +2146,7 @@ fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, ty
 		if t.sum_variant_is_direct_pointer(qvariant) {
 			return value
 		}
-		payload := t.a.child(&field, 0)
+		payload := t.a.child(field, 0)
 		owned := if variant_type.starts_with('[]') || t.is_sum_type_name(variant_type) {
 			t.clone_owned_array_storage_value(t.sum_owned_value_payload(payload, qvariant), qvariant, !variant_type.starts_with('&'))
 		} else {
