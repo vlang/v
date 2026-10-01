@@ -1,34 +1,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#ifdef __TINYC__
-typedef void* id;
-typedef void* Class;
-typedef void* SEL;
-typedef void* IMP;
-typedef void Protocol;
-typedef void* Ivar;
-typedef uintptr_t objc_AssociationPolicy;
-
-id objc_getClass(const char*);
-Protocol* objc_getProtocol(const char*);
-SEL sel_registerName(const char*);
-Class objc_allocateClassPair(Class, const char*, size_t);
-void objc_registerClassPair(Class);
-bool class_addMethod(Class, SEL, IMP, const char*);
-bool class_addIvar(Class, const char*, size_t, uint8_t, const char*);
-bool class_addProtocol(Class, Protocol*);
-void objc_setAssociatedObject(id, const void*, id, objc_AssociationPolicy);
-id objc_getAssociatedObject(id, const void*);
-Class object_getClass(id);
-Ivar class_getInstanceVariable(Class, const char*);
-ptrdiff_t ivar_getOffset(Ivar);
-void objc_msgSend(void);
-
-#define __bridge
-#else
 #include <objc/message.h>
 #include <objc/runtime.h>
+#ifdef __TINYC__
+// TCC reads the SDK runtime headers as plain C. Declaring the runtime types
+// here instead would conflict with any other header that includes them.
+#define __bridge
 #endif
 
 typedef struct macos_rect {
