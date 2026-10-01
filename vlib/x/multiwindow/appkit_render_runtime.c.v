@@ -1,10 +1,10 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn (mut backend AppKitBackend) create_renderer_anchor() ! {
 		$if darwin {
 			if backend.anchor_state != unsafe { nil } || backend.anchor_state_ticket != 0
@@ -527,7 +527,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 
 fn (mut backend AppKitBackend) collect_render_updates() ![]BackendRenderUpdate {
 	mut updates := []BackendRenderUpdate{}
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		$if darwin {
 			for i in 0 .. backend.windows.len {
 				mut record := &backend.windows[i]

@@ -1073,10 +1073,10 @@ fn x11_set_fullscreen(enable bool) {
 	if g_sapp_state.x11.net_wm_state != x_none && g_sapp_state.x11.net_wm_state_fullscreen != x_none {
 		if enable {
 			x11_send_event(g_sapp_state.x11.net_wm_state, 1, // _NET_WM_STATE_ADD
-			 i64(g_sapp_state.x11.net_wm_state_fullscreen), 0, 1, 0)
+				i64(g_sapp_state.x11.net_wm_state_fullscreen), 0, 1, 0)
 		} else {
 			x11_send_event(g_sapp_state.x11.net_wm_state, 0, // _NET_WM_STATE_REMOVE
-			 i64(g_sapp_state.x11.net_wm_state_fullscreen), 0, 1, 0)
+				i64(g_sapp_state.x11.net_wm_state_fullscreen), 0, 1, 0)
 		}
 	}
 	C.XFlush(g_sapp_state.x11.display)

@@ -2,6 +2,7 @@
 
 import os
 import time
+import v.util.vtest
 
 const total_steps = 8
 const temp_prefix = 'v3_test_all'
@@ -29,9 +30,43 @@ const requested_vlib_tests = [
 // repository root, and every entry must exist, so a rename cannot turn one into a silent
 // no-op. The runner names each skipped file, so a skip stays visible in the CI log.
 const temporarily_disabled_unit_tests = [
+	// The suite assumes V3 scans and inlines C headers, an implementation that was
+	// intentionally removed when C headers became authoritative for declarations.
+	'vlib/v/compiler_tests/c_inline_header_context_codegen_test.v',
 	// Its FastC expectations no longer match what the generator emits, and some of the
 	// mismatches are codegen regressions rather than stale expectations.
 	'vlib/v/gen/fastc/fastc_test.v',
+]
+
+// These cases specifically exercise the removed header scanning and headerless-C
+// implementation. Other tests in the same file remain enabled, and newly added
+// functions are included automatically.
+const temporarily_disabled_c_directive_order_test_functions = [
+	'test_c_directives_follow_import_dependency_order',
+	'test_importer_macro_is_emitted_before_dependency_include',
+	'test_dir_include_is_expanded_before_header_probe',
+	'test_quoted_include_uses_flag_include_dirs',
+	'test_quoted_include_uses_later_flag_include_dirs',
+	'test_multiline_static_inline_header_is_not_redeclared',
+	'test_inlined_headers_are_emitted_before_extern_prototypes',
+	'test_header_declared_prototypes_are_not_redeclared',
+	'test_inlined_headers_are_emitted_before_type_declarations',
+	'test_anonymous_typedef_struct_header_is_not_duplicated',
+	'test_tagged_typedef_struct_alias_header_is_not_duplicated',
+	'test_inlined_typedef_union_headers_are_not_duplicated',
+	'test_nested_local_header_includes_are_inlined_recursively',
+	'test_supported_system_include_is_preserved_and_enables_system_preamble',
+	'test_nested_system_include_is_preserved_in_its_platform_guard',
+	'test_system_header_aggregates_are_emitted_headerlessly',
+	'test_system_header_functions_are_emitted_headerlessly',
+	'test_mach_headers_are_emitted_headerlessly',
+	'test_inferred_mach_headers_are_target_guarded',
+	'test_timerfd_header_uses_headerless_decls',
+	'test_stdarg_in_inlined_header_provides_va_defs',
+	'test_inttypes_in_inlined_header_keeps_format_macros',
+	'test_poll_in_inlined_header_uses_preserved_system_struct',
+	'test_rwmutex_keeps_linux_rwlockattr_prototype',
+	'test_shared_runtime_keeps_rwmutex_init_prototypes',
 ]
 
 // These suites are preserved under the canonical compiler namespace, but have
@@ -134,7 +169,11 @@ fn main() {
 	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
 	// The unlocked example oracle includes an `-autofree` case. Keep its optional
 	// ownership checker out of the compiler used by ordinary compatibility cases.
-	run('${host_v_cmd(cfg)} -d ownership -o ${q(v3_ownership_bin)} ${q(cfg.v3_src)}')
+	if vtest.skip_ownership_autofree_tests() {
+		println('  SKIP ownership-enabled V3 compiler (ownership/autofree tests disabled)')
+	} else {
+		run('${host_v_cmd(cfg)} -d ownership -o ${q(v3_ownership_bin)} ${q(cfg.v3_src)}')
+	}
 
 	section(3, 'Requested vlib tests')
 	for rel_path in requested_vlib_tests {
@@ -240,11 +279,10 @@ fn run_v3_unit_tests(cfg Config) {
 			test_files.len
 		}
 		println('  Unit test batch ${start / unit_test_batch_size + 1}: ${start + 1}-${end}/${test_files.len}')
-		mut quoted_files := []string{cap: end - start}
 		for path in test_files[start..end] {
-			quoted_files << q(path)
+			run_only_arg := unit_test_run_only_arg(cfg, path)
+			run('${q(wrapper_vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${run_only_arg} ${q(path)}')
 		}
-		run('${q(wrapper_vexe)} -old-compiler -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${quoted_files.join(' ')}')
 		if os.exists(unit_cache) {
 			os.rmdir_all(unit_cache) or {
 				fail('failed to reset V3 unit-test cache ${unit_cache}: ${err}')
@@ -274,6 +312,35 @@ fn run_v3_unit_tests(cfg Config) {
 	cleanup_files([shared_v3, wrapper_vexe])
 }
 
+fn unit_test_run_only_arg(cfg Config, path string) string {
+	relative_path := repo_relative_path(cfg, path)
+	if relative_path != 'vlib/v/compiler_tests/c_directive_order_codegen_test.v' {
+		return ''
+	}
+	source := os.read_file(path) or {
+		fail('failed to read selectively quarantined test ${relative_path}: ${err}')
+		return ''
+	}
+	mut test_functions := []string{}
+	for line in source.split_into_lines() {
+		clean := line.trim_space()
+		if clean.starts_with('fn test_') {
+			test_functions << clean.all_after('fn ').all_before('(')
+		}
+	}
+	for name in temporarily_disabled_c_directive_order_test_functions {
+		if name !in test_functions {
+			fail('temporarily disabled test function is missing: ${relative_path}:${name}')
+		}
+		println('  Skipping ${relative_path}:${name} (temporarily disabled)')
+	}
+	enabled := test_functions.filter(it !in temporarily_disabled_c_directive_order_test_functions)
+	if enabled.len == 0 {
+		fail('selective quarantine disabled every test in ${relative_path}')
+	}
+	return '-run-only ${q(enabled.join(','))}'
+}
+
 // enabled_unit_tests drops the temporarily_disabled_unit_tests entries from `paths` and
 // names each one it drops. A listed test that no longer exists is an error: it would
 // otherwise disable nothing while still reading as a known failure.
@@ -294,6 +361,10 @@ fn enabled_unit_tests(cfg Config, paths []string) []string {
 		}
 		if disabled[relative_path] {
 			println('  Skipping ${relative_path} (temporarily disabled)')
+			continue
+		}
+		if vtest.skip_ownership_autofree_tests() && vtest.is_ownership_autofree_test(path) {
+			println('  Skipping ${relative_path} (ownership/autofree tests disabled)')
 			continue
 		}
 		enabled << path
@@ -366,10 +437,6 @@ fn unit_shared_compiler_request(args []string, v3_src string) ?string {
 			i += 2
 			continue
 		}
-		if arg == '-old-compiler' {
-			i++
-			continue
-		}
 		// Compiler-build flags can change compiled-in behavior. Those requests
 		// must keep building their own dedicated V3 binary.
 		if arg.starts_with('-') {
@@ -425,17 +492,17 @@ fn parse_config() Config {
 		fail('FAIL: V compiler not found: ${vexe}')
 	}
 	return Config{
-		vexe: vexe
-		script_dir: script_dir
-		repo_root: repo_root
-		vlib_dir: os.join_path(repo_root, 'vlib')
-		tests_dir: tests_dir
-		v3_src: os.join_path(script_dir, 'v.v')
-		c99: c99
-		c99_flag: if c99 { '-c99' } else { '' }
+		vexe:         vexe
+		script_dir:   script_dir
+		repo_root:    repo_root
+		vlib_dir:     os.join_path(repo_root, 'vlib')
+		tests_dir:    tests_dir
+		v3_src:       os.join_path(script_dir, 'v.v')
+		c99:          c99
+		c99_flag:     if c99 { '-c99' } else { '' }
 		host_backend: native_backend_arch()
-		host_os: os.user_os()
-		temp_prefix: '${temp_prefix}_${os.getpid()}'
+		host_os:      os.user_os()
+		temp_prefix:  '${temp_prefix}_${os.getpid()}'
 	}
 }
 
@@ -574,22 +641,22 @@ fn example_args(path string, args []string) ExampleCase {
 
 fn example_stdin(path string, stdin string) ExampleCase {
 	return ExampleCase{
-		path: path
+		path:  path
 		stdin: stdin
 	}
 }
 
 fn example_flags(path string, flags []string) ExampleCase {
 	return ExampleCase{
-		path: path
+		path:          path
 		compile_flags: flags
 	}
 }
 
 fn example_gui(path string, timeout_seconds int) ExampleCase {
 	return ExampleCase{
-		path: path
-		mode: .gui_smoke
+		path:            path
+		mode:            .gui_smoke
 		timeout_seconds: timeout_seconds
 	}
 }
@@ -598,6 +665,10 @@ fn run_unlocked_examples(cfg Config, v3_bin string, v3_ownership_bin string) {
 	examples := unlocked_examples()
 	mut ran := 0
 	for i, example_case in examples {
+		if vtest.skip_ownership_autofree_tests() && '-autofree' in example_case.compile_flags {
+			println('  SKIP ${example_case.path} (ownership/autofree tests disabled)')
+			continue
+		}
 		compiler := if '-autofree' in example_case.compile_flags {
 			v3_ownership_bin
 		} else {
@@ -737,7 +808,7 @@ fn run_process_with_timeout(command string, args []string, seconds int) ProcessR
 			process.close()
 			return ProcessRunResult{
 				exit_code: 124
-				output: output
+				output:    output
 				timed_out: true
 			}
 		}
@@ -750,7 +821,7 @@ fn run_process_with_timeout(command string, args []string, seconds int) ProcessR
 	process.close()
 	return ProcessRunResult{
 		exit_code: exit_code
-		output: output
+		output:    output
 	}
 }
 

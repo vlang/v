@@ -110,8 +110,8 @@ fn test_forwarded_compiler_options_preserve_configuration_flags() {
 	args := ['-silent', '-cc', 'clang', '-d', 'test', '-dfoo', '-o', 'ignored-output', 'test',
 		'/checkout/vlib/v/checker/tests', '-os', 'windows', '-thread-stack-size', '4194304',
 		'-no-parallel', '-keepc']
-	assert forwarded_compiler_options(args) == ['-cc', 'clang', '-d', 'test', '-dfoo', '-os',
-		'windows', '-thread-stack-size', '4194304', '-keepc']
+	assert forwarded_compiler_options(args) == ['-cc', 'clang', '-d', 'test', '-dfoo', '-os', 'windows',
+		'-thread-stack-size', '4194304', '-keepc']
 }
 
 fn test_run_autofixes_missing_and_mismatched_output() {

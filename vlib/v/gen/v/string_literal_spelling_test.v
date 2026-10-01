@@ -68,6 +68,28 @@ fn test_formatter_preserves_hex_unicode_and_backslash_spelling() {
 	}
 }
 
+fn test_formatter_preserves_interpolated_literal_spelling() {
+	// Literal parts keep their source spelling, like plain literals: a bare `$` stays
+	// bare, and hex or Unicode escapes are not decoded.
+	literals := [
+		"'" + r'exec "$CI_TEST_PROBE" ${cmd} "$@"\n' + "'",
+		"'" + r'exec "\$CI_TEST_PROBE" ${cmd} "\$@"' + "'",
+		r"'A\x41 ${cmd} \u00e9 \t\0 end'",
+		r"'lit \${not} ${cmd:5} ${'nested}' + cmd}'",
+		r"'${cmd}${cmd}'",
+	]
+	for i, literal in literals {
+		assert_literal_spelling('interp_${i}', literal)
+	}
+	// A brace in a comment of an embedded expression does not end it, and the comment
+	// stays inline, so the literal suffix is kept exactly.
+	assert_literal_spelling('interp_comment_brace', r"'${1 /* } */} tail'")
+	assert_literal_spelling('interp_nested_comment_brace', r"'${1 /* a /* } */ b */} x \x41'")
+	// Changing the delimiter only rewrites the quote escapes.
+	assert_literal_formats_to('interp_requote_single', r"'it\'s \x41 ${cmd}'", '"' + r"it's \x41 ${cmd}" + '"')
+	assert_literal_formats_to('interp_requote_double', r'"plain \x41 ${cmd}"', r"'plain \x41 ${cmd}'")
+}
+
 fn test_formatter_normalizes_string_quote_delimiters() {
 	// Single quotes are preferred, unless the literal holds a `'` but no `"`.
 	// Interpolated literals already follow that rule, so plain ones must too.
@@ -121,33 +143,33 @@ fn test_formatter_recovers_c_string_prefix_from_quote_only_spans() {
 		g.source = literal
 		// The scanner excludes `c` from a parsed C string's span.
 		quote_only := flat.Node{
-			kind: .char_literal
+			kind:  .char_literal
 			value: 'c:A'
-			pos: token.new_span(1, 1, literal.len)
+			pos:   token.new_span(1, 1, literal.len)
 		}
 		assert g.string_literal_text(&quote_only) == expected
 		// Also accept nodes whose span already includes the prefix.
 		with_prefix := flat.Node{
-			kind: .char_literal
+			kind:  .char_literal
 			value: 'c:A'
-			pos: token.new_span(1, 0, literal.len)
+			pos:   token.new_span(1, 0, literal.len)
 		}
 		assert g.string_literal_text(&with_prefix) == expected
 	}
 	// Do not borrow a different preceding byte for a synthesized node.
 	g.source = r'x"\x41"'
 	no_prefix := flat.Node{
-		kind: .char_literal
+		kind:  .char_literal
 		value: 'c:A'
-		pos: token.new_span(1, 1, g.source.len)
+		pos:   token.new_span(1, 1, g.source.len)
 	}
 	assert g.string_literal_text(&no_prefix) == "c'A'"
 	// Empty and out-of-bounds spans must still use the safe fallback.
 	for start in [0, g.source.len, g.source.len + 1] {
 		missing := flat.Node{
-			kind: .char_literal
+			kind:  .char_literal
 			value: 'c:A'
-			pos: token.new_span(1, start, start)
+			pos:   token.new_span(1, start, start)
 		}
 		assert g.string_literal_text(&missing) == "c'A'"
 	}
@@ -191,18 +213,18 @@ fn test_formatter_keeps_safe_escaping_without_literal_source() {
 	g := Gen.new()
 	// Without a source span, the fallback must not turn NUL + `41` into `\041`.
 	nul := flat.Node{
-		kind: .string_literal
+		kind:  .string_literal
 		value: 'x\x0041y'
 	}
 	assert g.string_literal_text(&nul) == r"'x\x0041y'"
 	// An ordinary string starting with `c:` is not a C-string node.
 	ordinary := flat.Node{
-		kind: .string_literal
+		kind:  .string_literal
 		value: 'c:plain'
 	}
 	assert g.string_literal_text(&ordinary) == "'c:plain'"
 	c_string := flat.Node{
-		kind: .char_literal
+		kind:  .char_literal
 		value: r'c:\0'
 	}
 	assert g.string_literal_text(&c_string) == r"c'\0'"

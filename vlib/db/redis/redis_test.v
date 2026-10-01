@@ -109,28 +109,48 @@ fn test_pipeline_small() {
 	// Expect exactly the five results we queued and validate them precisely.
 	assert res.len == 5
 	match res[0] {
-		string { assert res[0] as string == 'OK' }
-		else { assert false }
+		string {
+			assert res[0] as string == 'OK'
+		}
+		else {
+			assert false
+		}
 	}
 
 	match res[1] {
-		string { assert res[1] as string == 'OK' }
-		else { assert false }
+		string {
+			assert res[1] as string == 'OK'
+		}
+		else {
+			assert false
+		}
 	}
 
 	match res[2] {
-		string { assert res[2] as string == 'OK' }
-		else { assert false }
+		string {
+			assert res[2] as string == 'OK'
+		}
+		else {
+			assert false
+		}
 	}
 
 	match res[3] {
-		[]u8 { assert (res[3] as []u8).bytestr() == '1' }
-		else { assert false }
+		[]u8 {
+			assert (res[3] as []u8).bytestr() == '1'
+		}
+		else {
+			assert false
+		}
 	}
 
 	match res[4] {
-		[]u8 { assert (res[4] as []u8).bytestr() == 'p' }
-		else { assert false }
+		[]u8 {
+			assert (res[4] as []u8).bytestr() == 'p'
+		}
+		else {
+			assert false
+		}
 	}
 }
 
@@ -155,18 +175,30 @@ fn test_pipeline_sequence() {
 	// We queued 3 SET commands above; each should return "OK"
 	assert res.len == 3
 	match res[0] {
-		string { assert res[0] as string == 'OK' }
-		else { assert false }
+		string {
+			assert res[0] as string == 'OK'
+		}
+		else {
+			assert false
+		}
 	}
 
 	match res[1] {
-		string { assert res[1] as string == 'OK' }
-		else { assert false }
+		string {
+			assert res[1] as string == 'OK'
+		}
+		else {
+			assert false
+		}
 	}
 
 	match res[2] {
-		string { assert res[2] as string == 'OK' }
-		else { assert false }
+		string {
+			assert res[2] as string == 'OK'
+		}
+		else {
+			assert false
+		}
 	}
 }
 
@@ -184,9 +216,15 @@ fn test_resp3_ping() {
 	assert db.cmd('SET', r_k_map, 'temp')! as string == 'OK'
 	val := db.cmd('GET', r_k_map)!
 	match val {
-		[]u8 { assert val.bytestr() == 'temp' }
-		string { assert val == 'temp' }
-		else { assert false }
+		[]u8 {
+			assert val.bytestr() == 'temp'
+		}
+		string {
+			assert val == 'temp'
+		}
+		else {
+			assert false
+		}
 	}
 
 	db.cmd('DEL', r_k_map) or { eprintln('cleanup DEL r_k_map failed: ${err}') }
@@ -380,15 +418,23 @@ fn test_many_pipeline_commands() ! {
 		get_idx := i * 2 + 1
 		// SET should return OK
 		match results[set_idx] {
-			string { assert (results[set_idx] as string) == 'OK' }
-			else { assert false }
+			string {
+				assert (results[set_idx] as string) == 'OK'
+			}
+			else {
+				assert false
+			}
 		}
 
 		// GET should return the value as []u8
 		expected := ('v${i}').bytes()
 		match results[get_idx] {
-			[]u8 { assert (results[get_idx] as []u8) == expected }
-			else { assert false }
+			[]u8 {
+				assert (results[get_idx] as []u8) == expected
+			}
+			else {
+				assert false
+			}
 		}
 	}
 }
@@ -535,23 +581,39 @@ fn test_fuzz_random_binary_small() {
 	assert b.len == 7
 
 	match b[0] {
-		i64 { assert (b[0] as i64) == 3 }
-		else { assert false }
+		i64 {
+			assert (b[0] as i64) == 3
+		}
+		else {
+			assert false
+		}
 	}
 
 	match b[1] {
-		[]u8 { assert (b[1] as []u8) == [u8(49)] }
-		else { assert false }
+		[]u8 {
+			assert (b[1] as []u8) == [u8(49)]
+		}
+		else {
+			assert false
+		}
 	}
 
 	match b[2] {
-		[]u8 { assert (b[2] as []u8) == [u8(50)] }
-		else { assert false }
+		[]u8 {
+			assert (b[2] as []u8) == [u8(50)]
+		}
+		else {
+			assert false
+		}
 	}
 
 	match b[3] {
-		[]u8 { assert (b[3] as []u8) == [u8(51)] }
-		else { assert false }
+		[]u8 {
+			assert (b[3] as []u8) == [u8(51)]
+		}
+		else {
+			assert false
+		}
 	}
 
 	// HGETALL may arrive as map[string]RedisValue, RedisMap, or array - accept common shapes.
@@ -579,13 +641,21 @@ fn test_fuzz_random_binary_small() {
 	}
 
 	match b[5] {
-		string { assert b[5] as string == 'OK' }
-		else { assert false }
+		string {
+			assert b[5] as string == 'OK'
+		}
+		else {
+			assert false
+		}
 	}
 
 	match b[6] {
-		[]u8 { assert (b[6] as []u8) == [u8(49), 50, 51, 52, 53, 54] }
-		else { assert false }
+		[]u8 {
+			assert (b[6] as []u8) == [u8(49), 50, 51, 52, 53, 54]
+		}
+		else {
+			assert false
+		}
 	}
 
 	db.close()!

@@ -92,14 +92,14 @@ mut:
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	cap := 8
 	return DenseArray{
-		key_bytes: key_bytes
+		key_bytes:   key_bytes
 		value_bytes: value_bytes
-		cap: cap
-		len: 0
-		deletes: 0
+		cap:         cap
+		len:         0
+		deletes:     0
 		all_deleted: unsafe { nil }
-		keys: unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
-		values: unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
+		keys:        unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
+		values:      unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
 	}
 }
 
@@ -265,6 +265,13 @@ fn map_eq_int_8(a voidptr, b voidptr) bool {
 	return unsafe { *&u64(a) == *&u64(b) }
 }
 
+// A 128-bit key is two u64 halves, so equality is a byte compare. Reading them
+// as u64 would need an alignment guarantee the map's key storage does not give.
+@[inline]
+fn map_eq_int_16(a voidptr, b voidptr) bool {
+	return unsafe { vmemcmp(a, b, 16) == 0 }
+}
+
 // map_map_eq compares two maps for equality.
 // Returns true if both maps have the same keys and associated values.
 fn map_map_eq(a map, b map) bool {
@@ -328,6 +335,13 @@ fn map_clone_int_8(dest voidptr, pkey voidptr) {
 }
 
 @[inline]
+fn map_clone_int_16(dest voidptr, pkey voidptr) {
+	unsafe {
+		vmemcpy(dest, pkey, 16)
+	}
+}
+
+@[inline]
 fn map_free_string(pkey voidptr) {
 	unsafe {
 		(*&string(pkey)).free()
@@ -349,20 +363,20 @@ fn new_map_data(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn Map
 		initial_extra_metas = 32
 	}
 	return &VMapData{
-		key_bytes: key_bytes
-		value_bytes: value_bytes
-		even_index: init_even_index
+		key_bytes:       key_bytes
+		value_bytes:     value_bytes
+		even_index:      init_even_index
 		cached_hashbits: max_cached_hashbits
-		shift: init_log_capicity
-		key_values: DenseArray{ key_bytes: key_bytes, value_bytes: value_bytes }
-		metas: unsafe { nil }
-		extra_metas: initial_extra_metas
-		count: 0
+		shift:           init_log_capicity
+		key_values:      DenseArray{ key_bytes: key_bytes, value_bytes: value_bytes }
+		metas:           unsafe { nil }
+		extra_metas:     initial_extra_metas
+		count:           0
 		has_string_keys: has_string_keys
-		hash_fn: hash_fn
-		key_eq_fn: key_eq_fn
-		clone_fn: clone_fn
-		free_fn: free_fn
+		hash_fn:         hash_fn
+		key_eq_fn:       key_eq_fn
+		clone_fn:        clone_fn
+		free_fn:         free_fn
 	}
 }
 
@@ -371,20 +385,20 @@ fn new_map_with_dense_array(key_bytes int, value_bytes int, hash_fn MapHashFn, k
 	has_string_keys := key_bytes > int(sizeof(voidptr))
 	return map{
 		data: &VMapData{
-			key_bytes: key_bytes
-			value_bytes: value_bytes
-			even_index: init_even_index
+			key_bytes:       key_bytes
+			value_bytes:     value_bytes
+			even_index:      init_even_index
 			cached_hashbits: max_cached_hashbits
-			shift: init_log_capicity
-			key_values: key_values
-			metas: unsafe { metas }
-			extra_metas: extra_metas_inc
-			count: 0
+			shift:           init_log_capicity
+			key_values:      key_values
+			metas:           unsafe { metas }
+			extra_metas:     extra_metas_inc
+			count:           0
 			has_string_keys: has_string_keys
-			hash_fn: hash_fn
-			key_eq_fn: key_eq_fn
-			clone_fn: clone_fn
-			free_fn: free_fn
+			hash_fn:         hash_fn
+			key_eq_fn:       key_eq_fn
+			clone_fn:        clone_fn
+			free_fn:         free_fn
 		}
 	}
 }
@@ -464,15 +478,23 @@ fn (mut m VMapData) clear() {
 	m.count = 0
 }
 
+// panic_nil_map_hash_fn reports a corrupted map header. It is kept out of line
+// so the diagnostic's string building does not stop key_to_index, which runs on
+// every map access, from being inlined.
+@[noinline]
+fn (m &VMapData) panic_nil_map_hash_fn() {
+	unsafe {
+		p := &u64(m)
+		prev2 := (&u64(usize(m) - usize(16)))[0]
+		prev1 := (&u64(usize(m) - usize(8)))[0]
+		panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
+	}
+}
+
 @[inline]
 fn (m &VMapData) key_to_index(pkey voidptr) (u32, u32) {
 	if voidptr(m.hash_fn) == unsafe { nil } {
-		unsafe {
-			p := &u64(m)
-			prev2 := (&u64(usize(m) - usize(16)))[0]
-			prev1 := (&u64(usize(m) - usize(8)))[0]
-			panic('map.hash_fn is nil map_ptr=${usize(m)} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} even_index=${m.even_index} shift=${m.shift} metas=${usize(m.metas)} prev2=${prev2} prev1=${prev1} w0=${p[0]} w1=${p[1]} w2=${p[2]} w3=${p[3]} w4=${p[4]} w5=${p[5]} w6=${p[6]} w7=${p[7]} hash_fn=${usize(voidptr(m.hash_fn))}')
-		}
+		m.panic_nil_map_hash_fn()
 	}
 	hash := m.hash_fn(pkey)
 	index := hash & m.even_index
@@ -561,6 +583,11 @@ fn (mut m map) set(key voidptr, value voidptr) {
 }
 
 fn (mut m VMapData) set(key voidptr, value voidptr) {
+	$if race ? {
+		// Like Go, every insertion is a write of the map, even when it only replaces the
+		// value of an existing key: it races with an unsynchronized `m.len`.
+		racewrite(&m.count)
+	}
 	if m.metas == unsafe { nil } {
 		// Most compiler bookkeeping maps remain empty. Allocate backing storage
 		// only on the first insertion or an explicit reservation.
@@ -719,6 +746,10 @@ fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 }
 
 fn (mut m VMapData) get_and_set(key voidptr, zero voidptr) voidptr {
+	$if race ? {
+		// Used for `m[key] += x`, `m[key]++` and the like: a write of the map, as in set().
+		racewrite(&m.count)
+	}
 	if m.metas == unsafe { nil } {
 		m.set(key, zero)
 	}
@@ -886,6 +917,10 @@ pub fn (mut m map) delete(key voidptr) {
 
 @[unsafe]
 fn (mut m VMapData) delete(key voidptr) {
+	$if race ? {
+		// Like Go, every delete is a write of the map, even of a missing key.
+		racewrite(&m.count)
+	}
 	if m.count == 0 {
 		return
 	}
@@ -993,14 +1028,14 @@ fn (m &VMapData) values() array {
 @[unsafe]
 fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
-		key_bytes: d.key_bytes
+		key_bytes:   d.key_bytes
 		value_bytes: d.value_bytes
-		cap: d.cap
-		len: d.len
-		deletes: d.deletes
+		cap:         d.cap
+		len:         d.len
+		deletes:     d.deletes
 		all_deleted: unsafe { nil }
-		values: unsafe { nil }
-		keys: unsafe { nil }
+		values:      unsafe { nil }
+		keys:        unsafe { nil }
 	}
 	unsafe {
 		if d.deletes != 0 {
@@ -1032,20 +1067,20 @@ fn (m &VMapData) clone() &VMapData {
 	}
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := &VMapData{
-		key_bytes: m.key_bytes
-		value_bytes: m.value_bytes
-		even_index: m.even_index
+		key_bytes:       m.key_bytes
+		value_bytes:     m.value_bytes
+		even_index:      m.even_index
 		cached_hashbits: m.cached_hashbits
-		shift: m.shift
-		key_values: unsafe { m.key_values.clone() }
-		metas: unsafe { &u32(malloc_noscan(metasize)) }
-		extra_metas: m.extra_metas
-		count: m.count
+		shift:           m.shift
+		key_values:      unsafe { m.key_values.clone() }
+		metas:           unsafe { &u32(malloc_noscan(metasize)) }
+		extra_metas:     m.extra_metas
+		count:           m.count
 		has_string_keys: m.has_string_keys
-		hash_fn: m.hash_fn
-		key_eq_fn: m.key_eq_fn
-		clone_fn: m.clone_fn
-		free_fn: m.free_fn
+		hash_fn:         m.hash_fn
+		key_eq_fn:       m.key_eq_fn
+		clone_fn:        m.clone_fn
+		free_fn:         m.free_fn
 	}
 	unsafe { vmemcpy(res.metas, m.metas, metasize) }
 	if !m.has_string_keys {

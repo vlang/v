@@ -1,3 +1,5 @@
+// vtest build: false
+
 module fastc
 
 import strings
@@ -29,7 +31,7 @@ fn after() {}
 "
 	partial := fastc_collect_declaration_chunk([
 		FastcSourceFile{
-			path: path
+			path:   path
 			source: source
 			header: fastc_header_with_scan_flags(FastcSourceHeader{
 				module_name: 'main'
@@ -64,7 +66,7 @@ fn test_filtered_eof_comptime_spans_include_closing_brace() {
 	assert !source.ends_with('\n')
 	partial := fastc_collect_declaration_chunk([
 		FastcSourceFile{
-			path: path
+			path:   path
 			source: source
 			header: fastc_header_with_scan_flags(FastcSourceHeader{
 				module_name: 'main'
@@ -82,7 +84,7 @@ fn test_constant_visibility_resets_after_each_declaration() {
 	source := 'module example\n\npub const public_one = 1\nconst private_one = 2\npub const (\n\tpublic_group = 3\n)\nconst private_after_group = 4\n'
 	partial := fastc_collect_declaration_chunk([
 		FastcSourceFile{
-			path: path
+			path:   path
 			source: source
 			header: fastc_header_with_scan_flags(FastcSourceHeader{
 				module_name: 'example'

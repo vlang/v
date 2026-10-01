@@ -451,7 +451,7 @@ fn fastc_string_interpolation_width(format string) ?FastcInterpolationWidth {
 		width = width * 10 + int(format[i] - `0`)
 	}
 	return FastcInterpolationWidth{
-		width: width
+		width:      width
 		left_align: left_align
 	}
 }
@@ -495,7 +495,7 @@ fn fastc_primitive_interpolation_expression(value_type string, value string, for
 		'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'integer literal', 'negative integer literal' {
 			'v_fastc_signed_str((long long)(${value}))'
 		}
-		'byte', 'u8', 'u16', 'u32', 'u64', 'uint', 'unsigned int', 'usize' {
+		'u8', 'u16', 'u32', 'u64', 'uint', 'unsigned int', 'usize' {
 			'v_fastc_unsigned_str((unsigned long long)(${value}))'
 		}
 		'bool' {

@@ -26,7 +26,7 @@ fn read_c_output_fifo(path string, result chan string) {
 fn test_c_output_path_only_writes_c_file() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_output_only_test')
 	build :=
-		os.execute('${vexe} -old-compiler -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	c_out := os.join_path(os.temp_dir(), 'v3_output_only.c')
@@ -44,10 +44,19 @@ fn test_c_output_path_only_writes_c_file() {
 	}
 	assert os.exists(c_out)
 	assert !os.exists(bin_out)
-	assert compile.output.contains('cgen')
 	assert !compile.output.contains('  > ')
 	assert !compile.output.contains('tcc.exe')
 	assert !compile.output.contains('cc -std=gnu11')
+	// A C-only build is silent, so the pipeline has to be observed with `-v`: it
+	// must reach cgen and stop there, without handing anything to a C compiler.
+	os.rm(c_out) or {}
+	verbose_compile := os.execute('${v3_bin} -v -gc none -o ${c_out} ${hello_src}')
+	assert verbose_compile.exit_code == 0, verbose_compile.output
+	assert os.exists(c_out)
+	assert !os.exists(bin_out)
+	assert verbose_compile.output.contains('cgen'), verbose_compile.output
+	assert !verbose_compile.output.contains('tcc.exe'), verbose_compile.output
+	assert !verbose_compile.output.contains('cc -std=gnu11'), verbose_compile.output
 
 	$if !windows {
 		fifo_out := os.join_path(os.temp_dir(), 'v3_output_fifo_${os.getpid()}.c')

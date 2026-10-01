@@ -274,8 +274,8 @@ fn test_parse_resolution_main_alias_uses_alias_declaration_scope() {
 
 fn test_embedded_field_type_trusts_collected_embed_metadata() {
 	field := StructField{
-		name: 'Middleware[Context]'
-		typ: Type(Struct{
+		name:     'Middleware[Context]'
+		typ:      Type(Struct{
 			name: 'veb.Middleware[veb.Context]'
 		})
 		is_embed: true
@@ -289,15 +289,15 @@ fn test_receiver_embeds_through_alias() {
 	mut tc := TypeChecker.new(&a)
 	tc.structs['Context'] = [
 		StructField{
-			name: 'Context'
-			typ: Type(Struct{
+			name:     'Context'
+			typ:      Type(Struct{
 				name: 'veb.Context'
 			})
 			is_embed: true
 		},
 	]
 	actual := Type(Alias{
-		name: 'AliasContext'
+		name:      'AliasContext'
 		base_type: Type(Struct{
 			name: 'Context'
 		})
@@ -421,13 +421,13 @@ fn test_semantic_type_interner_uses_structural_identity() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	first_id, first := tc.intern_type(Type(Map{
-		key_type: Type(string_)
+		key_type:   Type(string_)
 		value_type: Type(Array{
 			elem_type: Type(int_)
 		})
 	}))
 	second_id, second := tc.intern_type(Type(Map{
-		key_type: Type(string_)
+		key_type:   Type(string_)
 		value_type: Type(Array{
 			elem_type: Type(int_)
 		})
@@ -436,11 +436,11 @@ fn test_semantic_type_interner_uses_structural_identity() {
 	assert semantic_types_equal(first, second)
 
 	int_alias, _ := tc.intern_type(Type(Alias{
-		name: 'sample.Number'
+		name:      'sample.Number'
 		base_type: Type(int_)
 	}))
 	string_alias, _ := tc.intern_type(Type(Alias{
-		name: 'sample.Number'
+		name:      'sample.Number'
 		base_type: Type(string_)
 	}))
 	assert int_alias != string_alias
@@ -450,17 +450,17 @@ fn test_fn_param_mutability_participates_in_type_identity() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	immutable := Type(FnType{
-		params: [Type(int_)]
-		params_mut: [false]
+		params:      [Type(int_)]
+		params_mut:  [false]
 		return_type: Type(void_)
 	})
 	mutable := Type(FnType{
-		params: [Type(int_)]
-		params_mut: [true]
+		params:      [Type(int_)]
+		params_mut:  [true]
 		return_type: Type(void_)
 	})
 	legacy_immutable := Type(FnType{
-		params: [Type(int_)]
+		params:      [Type(int_)]
 		return_type: Type(void_)
 	})
 
@@ -502,7 +502,7 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	typ := Type(Map{
-		key_type: Type(string_)
+		key_type:   Type(string_)
 		value_type: Type(Array{
 			elem_type: Type(int_)
 		})
@@ -581,6 +581,23 @@ fn test_generic_text_substitution_recurses_through_wrappers() {
 	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
 }
 
+fn test_generic_type_substitution_updates_fixed_array_length_expr() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	typ := tc.parse_type('[cache_line_size - sizeof(T)]u8')
+	assert typ is ArrayFixed
+
+	text_substituted := tc.substitute_generic_type(typ, ['int'], ['T'])
+	assert text_substituted is ArrayFixed
+	assert (text_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
+
+	value_substituted := tc.substitute_generic_type_values(typ, [Type(int_)], ['T'])
+	assert value_substituted is ArrayFixed
+	assert (value_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
+	assert subst_generic_const_expr('sizeof(T) + T_SIZE', ['u64'], ['T']) ==
+		'sizeof(u64) + T_SIZE'
+}
+
 fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
 	substituted := subst_generic_text('fn (mut T) string', ['&Dog'], ['T'])
 	assert substituted == 'fn(mut &Dog) string'
@@ -644,4 +661,19 @@ fn test_node_cache_reset_drops_stale_fn_values() {
 	// previous program's targets.
 	tc.reset_node_caches(8)
 	assert tc.resolved_fn_value_name(3) == none
+}
+
+fn test_caller_type_name_qualification_preserves_enclosing_generic_parameters() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'T')
+	mut tc := TypeChecker.new(&a)
+	tc.structs['consumer.T'] = []StructField{}
+	tc.structs['consumer.Payload'] = []StructField{}
+	tc.cur_module = 'unrelated'
+	tc.enclosing_generic_param_masks = []u32{len: a.nodes.len, init: u32(1) << u32(`T` - `A`)}
+	assert tc.qualify_type_name_at('T', id, 'consumer') == 'T'
+	assert tc.qualify_type_name_at('Payload', id, 'consumer') == 'consumer.Payload'
+	assert tc.qualify_type_name_at('int', id, 'consumer') == 'int'
+	assert tc.qualify_type_name_at('UnknownName', id, 'consumer') == 'UnknownName'
+	assert tc.cur_module == 'unrelated'
 }

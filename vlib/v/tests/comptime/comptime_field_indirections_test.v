@@ -43,7 +43,9 @@ fn test_indirection_checking() {
 fn allocate_comptime_typeof_idx_ptrs[T](mut s T) {
 	$for f in T.fields {
 		$if f.indirections == 1 {
-			s.$(f.name) = &typeof(s.$(f.name)).idx{}
+			s.$(f.name) = &typeof(s.$(f.name)).idx
+			{
+			}
 		}
 	}
 }

@@ -693,15 +693,16 @@ pub fn transition_target(current TargetModel, event TransitionEvent,
 		}
 		.candidate_failed {
 			if current.publication_state !in [.candidate_pending, .rollback_pending]
-				|| current.active_intent.stage !in ['candidate_bound', 'checks_running', 'checks_waiting_source'] {
+				|| current.active_intent.stage !in ['candidate_bound', 'checks_running',
+					'checks_waiting_source'] {
 				return error('candidate failure requires candidate_pending')
 			}
 			expected_subject := intent_validation_subject(current.active_intent)!
 			facts := validate_red_verdict(current, context.red_proof, expected_subject,
 				current.active_intent.intent_id, consumer_kind_for_intent(current.active_intent)!, [
-				'functional',
-				'infrastructure',
-			])!
+					'functional',
+					'infrastructure',
+				])!
 			next.last_native_validation = native_validation_record_from_facts(context.operation_id,
 				event_name, current.generation + 1, context.red_proof.failure_kind, facts,
 				context.red_proof.native_gate, context.red_proof.v_smoke_gate)!
@@ -729,8 +730,8 @@ pub fn transition_target(current TargetModel, event TransitionEvent,
 			expected_subject := intent_validation_subject(current.active_intent)!
 			validate_red_verdict(current, context.red_proof, expected_subject,
 				current.active_intent.intent_id, consumer_kind_for_intent(current.active_intent)!, [
-				'publisher',
-			])!
+					'publisher',
+				])!
 			validate_preserved_publisher_validation(current)!
 			next.target_state = .quarantined
 			next.publication_state = if current.active_intent.intent_type == 'rollback' {
@@ -800,8 +801,8 @@ pub fn transition_target(current TargetModel, event TransitionEvent,
 			facts := validate_red_verdict(current, context.red_proof, validation_from_artifact(current.provisional_published,
 				canonical_ref(current.target_id)), current.post_validation_operation_id,
 				'publish_post', [
-				'functional',
-			])!
+					'functional',
+				])!
 			next.last_native_validation = native_validation_record_from_facts(context.operation_id,
 				event_name, current.generation + 1, 'functional', facts,
 				context.red_proof.native_gate, context.red_proof.v_smoke_gate)!
@@ -847,8 +848,8 @@ pub fn transition_target(current TargetModel, event TransitionEvent,
 			facts := validate_red_verdict(current, context.red_proof, validation_from_artifact(current.provisional_published,
 				canonical_ref(current.target_id)), current.post_validation_operation_id,
 				'publish_post', [
-				'infrastructure',
-			])!
+					'infrastructure',
+				])!
 			next.last_native_validation = native_validation_record_from_facts(context.operation_id,
 				event_name, current.generation + 1, 'infrastructure', facts,
 				context.red_proof.native_gate, context.red_proof.v_smoke_gate)!
@@ -971,10 +972,10 @@ pub fn transition_target(current TargetModel, event TransitionEvent,
 			expected_subject := rollback_failure_subject(current)!
 			facts := validate_red_verdict(current, context.red_proof, expected_subject,
 				rollback_failure_consumer_id(current)!, rollback_failure_consumer_kind(current)!, [
-				'functional',
-				'infrastructure',
-				'publisher',
-			])!
+					'functional',
+					'infrastructure',
+					'publisher',
+				])!
 			if context.red_proof.failure_kind == 'publisher' {
 				validate_preserved_publisher_validation(current)!
 			} else {
@@ -1095,7 +1096,7 @@ pub fn validate_target_model(state TargetModel) ! {
 	}
 	if state.target_state == .eligible
 		&& (state.bootstrap_required || !artifact_tuple_is_set(state.last_known_good)
-		|| state.incident_ids.len > 0 || state.provenance_status == 'incomplete') {
+			|| state.incident_ids.len > 0 || state.provenance_status == 'incomplete') {
 		return error('eligible target violates seed, provenance, or blocker invariants')
 	}
 	if intent_is_set(state.active_intent) {
@@ -1148,8 +1149,10 @@ pub fn validate_target_model(state TargetModel) ! {
 	if state.post_validation_operation_id != '' {
 		if !is_lower_hex_64(state.post_validation_operation_id) || !post_subject_active
 			|| !intent_is_set(state.active_intent)
-			|| state.active_intent.stage !in ['post_checks_running', 'post_checks_waiting_source', 'blocked']
-			|| state.publication_state !in [.post_publish_validating, .post_publish_waiting_source, .post_publish_blocked, .rollback_pending, .rollback_waiting_source, .rollback_blocked] {
+			|| state.active_intent.stage !in ['post_checks_running', 'post_checks_waiting_source',
+				'blocked']
+			|| state.publication_state !in [.post_publish_validating, .post_publish_waiting_source,
+				.post_publish_blocked, .rollback_pending, .rollback_waiting_source, .rollback_blocked] {
 			return error('post-validation operation is invalid or outlives its exact consumer')
 		}
 	} else if post_subject_active {
@@ -1159,8 +1162,10 @@ pub fn validate_target_model(state TargetModel) ! {
 		|| state.post_validation_operation_id != ''
 		|| state.active_recovery_handoff_id != ''
 		|| (intent_is_set(state.active_intent)
-		&& (state.active_intent.intent_type in ['adopt-current', 'initial_adopt_current']
-		|| state.active_intent.stage in ['candidate_bound', 'checks_running', 'checks_waiting_source', 'checks_green', 'promotion_unknown', 'post_checks_running', 'post_checks_waiting_source', 'completed', 'blocked']))
+			&& (state.active_intent.intent_type in ['adopt-current', 'initial_adopt_current']
+				|| state.active_intent.stage in ['candidate_bound', 'checks_running',
+					'checks_waiting_source', 'checks_green', 'promotion_unknown', 'post_checks_running',
+					'post_checks_waiting_source', 'completed', 'blocked']))
 	if subject_required != (state.active_subject_hash != '') {
 		return error('active native subject presence does not match its durable consumer stage')
 	}
@@ -1225,8 +1230,8 @@ pub fn validate_target_model(state TargetModel) ! {
 			&& state.active_intent.intent_type == 'publish'
 			&& state.active_native_subject.consumer_kind == 'publish_candidate')
 			|| (state.publication_state == .rollback_blocked
-			&& state.active_intent.intent_type == 'rollback'
-			&& state.active_native_subject.consumer_kind in ['rollback_candidate', 'rollback_post'])
+				&& state.active_intent.intent_type == 'rollback'
+				&& state.active_native_subject.consumer_kind in ['rollback_candidate', 'rollback_post'])
 		publisher_preserved := state.last_native_validation.transition == 'candidate_checks_green'
 			&& state.last_native_validation.verdict == 'green' && publisher_lane_is_exact
 		blocked_red := state.last_native_validation.transition in ['candidate_failed',
@@ -1430,8 +1435,8 @@ pub fn deterministic_intent_id(audience string, target_id string, intent_type st
 		|| !is_lower_hex_40(expected_canonical_head) {
 		return error('intent identity material is incomplete or outside the closed contract')
 	}
-	material := [audience, target_id, intent_type, run_id.str(),
-		run_attempt.str(), ordinal.str(), input_fingerprint, expected_canonical_head].join('\x1f')
+	material := [audience, target_id, intent_type, run_id.str(), run_attempt.str(), ordinal.str(),
+		input_fingerprint, expected_canonical_head].join('\x1f')
 	return sha256.sum256(material.bytes()).hex()
 }
 
@@ -1451,10 +1456,10 @@ pub fn deterministic_operation_id(input OperationIdentityInput) !string {
 		|| (input.intent_id != '' && !is_lower_hex_64(input.intent_id)) {
 		return error('operation identity material is incomplete or outside the closed contract')
 	}
-	material := [input.audience, input.run_id.str(), input.run_attempt.str(),
-		input.ordinal.str(), input.cas_attempt.str(), input.subject_id, input.transition,
-		input.expected_generation.str(), input.expected_canonical_head, input.source_ref, input.source_sha,
-		input.subject_fingerprint, input.input_fingerprint, input.artifact_fingerprint, input.manifest_hash,
+	material := [input.audience, input.run_id.str(), input.run_attempt.str(), input.ordinal.str(),
+		input.cas_attempt.str(), input.subject_id, input.transition, input.expected_generation.str(),
+		input.expected_canonical_head, input.source_ref, input.source_sha, input.subject_fingerprint,
+		input.input_fingerprint, input.artifact_fingerprint, input.manifest_hash,
 		input.native_subject_hash, input.intent_id].join('\x1f')
 	return sha256.sum256(material.bytes()).hex()
 }
@@ -1485,8 +1490,7 @@ pub fn evidence_path(year int, month int, run_id i64, run_attempt int, subject_i
 		|| !safe_path_segment(transition) || !is_lower_hex_64(subject_fingerprint) {
 		return error('evidence path identity is invalid')
 	}
-	return
-		'evidence/${year:04d}/${month:02d}/${run_id}/${run_attempt}/${subject_id}/${operation_id}/' +
+	return 'evidence/${year:04d}/${month:02d}/${run_id}/${run_attempt}/${subject_id}/${operation_id}/' +
 		'${generation}-${transition}-${subject_fingerprint}.json'
 }
 
@@ -1532,7 +1536,10 @@ fn validate_rollback_intent(intent ActiveIntentModel, target TargetModel) ! {
 fn validate_active_intent(intent ActiveIntentModel) ! {
 	if !is_lower_hex_64(intent.intent_id)
 		|| intent.intent_type !in ['publish', 'rollback', 'adopt-current', 'initial_adopt_current']
-		|| intent.stage !in ['intent_reserved', 'building', 'build_waiting_source', 'ref_unknown', 'candidate_bound', 'checks_running', 'checks_waiting_source', 'checks_green', 'promotion_unknown', 'post_checks_running', 'post_checks_waiting_source', 'completed', 'aborted', 'superseded', 'blocked']
+		|| intent.stage !in ['intent_reserved', 'building', 'build_waiting_source', 'ref_unknown',
+			'candidate_bound', 'checks_running', 'checks_waiting_source', 'checks_green',
+			'promotion_unknown', 'post_checks_running', 'post_checks_waiting_source', 'completed',
+			'aborted', 'superseded', 'blocked']
 		|| intent.run_id <= 0 || intent.run_attempt <= 0 || intent.ordinal < 0
 		|| !is_lower_hex_64(intent.input_fingerprint)
 		|| !is_lower_hex_40(intent.expected_canonical_head) || intent.generation < 0
@@ -1555,7 +1562,7 @@ fn validate_active_intent(intent ActiveIntentModel) ! {
 	} else if intent.stage in collecting_stages {
 		if intent.gate_runs.len > 2 || (intent.gate_runs.len == 2
 			&& (intent.gate_runs[0].check_name != 'tccbin-candidate-gate'
-			|| intent.gate_runs[1].check_name != 'v-candidate-smoke')) {
+				|| intent.gate_runs[1].check_name != 'v-candidate-smoke')) {
 			return error('collecting intention permits at most the ordered native and V smoke proofs')
 		}
 		native_source := intent.expected_check_sources.filter(it.name == 'tccbin-candidate-gate')[0]
@@ -1607,7 +1614,8 @@ fn validate_active_intent(intent ActiveIntentModel) ! {
 		return error('active intention deadlines are invalid or non-monotonic')
 	}
 	if intent.intent_type in ['adopt-current', 'initial_adopt_current']
-		&& intent.stage in ['building', 'build_waiting_source', 'promotion_unknown', 'post_checks_running', 'post_checks_waiting_source'] {
+		&& intent.stage in ['building', 'build_waiting_source', 'promotion_unknown',
+			'post_checks_running', 'post_checks_waiting_source'] {
 		return error('adoption and bootstrap can never enter build or promotion stages')
 	}
 	bound_stage := intent.stage in ['candidate_bound', 'checks_running', 'checks_waiting_source',
@@ -1630,7 +1638,8 @@ fn validate_active_intent(intent ActiveIntentModel) ! {
 			'completed']
 		if (rollback_post_stage && !candidate_binding_is_set(intent.rollback_provisional))
 			|| (candidate_binding_is_set(intent.rollback_provisional)
-			&& intent.stage !in ['post_checks_running', 'post_checks_waiting_source', 'completed', 'blocked']) {
+				&& intent.stage !in ['post_checks_running', 'post_checks_waiting_source', 'completed',
+					'blocked']) {
 			return error('rollback provisional binding does not match its post-promotion stage')
 		}
 	} else if artifact_tuple_is_set(intent.bad_provisional)
@@ -1850,7 +1859,10 @@ fn validate_persisted_gate_run_shape(proof PersistedGateRunModel,
 		|| proof.integration_id != expected_source.integration_id
 		|| proof.workflow_id != expected_source.workflow_id
 		|| proof.workflow_path != expected_source.workflow_path
-		|| proof.event != expected_source.event || proof.run_id <= 0 || proof.run_attempt !in [1, 2]
+		|| proof.event != expected_source.event || proof.run_id <= 0 || proof.run_attempt !in [
+		1,
+		2,
+	]
 		|| proof.check_suite_id <= 0
 		|| proof.check_suite_integration_id != expected_suite_integration || proof.job_id <= 0
 		|| !is_lower_hex_64(proof.subject_hash) || proof.check_run_id <= 0
@@ -1863,8 +1875,10 @@ fn validate_persisted_gate_run_shape(proof PersistedGateRunModel,
 		|| proof.triggering_actor == '' || proof.triggering_actor_integration_id <= 0
 		|| !timestamp_is_exact(proof.created_at) || !timestamp_is_exact(proof.completed_at)
 		|| proof.completed_at < proof.created_at
-		|| proof.run_conclusion !in ['success', 'failure', 'cancelled', 'timed_out', 'neutral', 'skipped']
-		|| proof.check_conclusion !in ['success', 'failure', 'cancelled', 'timed_out', 'neutral', 'skipped']
+		|| proof.run_conclusion !in ['success', 'failure', 'cancelled', 'timed_out', 'neutral',
+			'skipped']
+		|| proof.check_conclusion !in ['success', 'failure', 'cancelled', 'timed_out', 'neutral',
+			'skipped']
 		|| !is_lower_hex_64(proof.output_digest) || !is_lower_hex_64(proof.evidence_digest) {
 		return error('persisted gate run is not one complete common gate_run')
 	}
@@ -2041,7 +2055,8 @@ fn validate_source_refetch(refetch SourceRefetchModel, source_state SourceStateM
 		return error('source refetch request differs from the persisted resolved input')
 	}
 	if expected_status == 'unreachable' {
-		if refetch.failure_kind !in ['dns', 'connectivity', 'tls_transient', 'timeout', 'http_429', 'http_5xx']
+		if refetch.failure_kind !in ['dns', 'connectivity', 'tls_transient', 'timeout', 'http_429',
+			'http_5xx']
 			|| refetch.resolved_sha != '' || refetch.resolved_tree != ''
 			|| source_state.resolved_sha != '' || source_state.mode != .upstream_recovery_daily {
 			return error('unreachable source refetch is not a silent transient resolver failure')

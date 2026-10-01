@@ -12,13 +12,13 @@ fn test_c_type_cache_distinguishes_same_named_fixed_arrays() {
 
 	t3 := Type(ArrayFixed{
 		elem_type: Type(int_)
-		len: 3
-		len_expr: 'size'
+		len:       3
+		len_expr:  'size'
 	})
 	t5 := Type(ArrayFixed{
 		elem_type: Type(int_)
-		len: 5
-		len_expr: 'size'
+		len:       5
+		len_expr:  'size'
 	})
 
 	// Same source spelling: this is what a textual cache key would collapse.
@@ -44,13 +44,13 @@ fn test_c_type_cache_reuses_entry_for_equal_types() {
 	mut tc := TypeChecker.new(&a)
 	first := Type(ArrayFixed{
 		elem_type: Type(int_)
-		len: 7
-		len_expr: 'n'
+		len:       7
+		len_expr:  'n'
 	})
 	again := Type(ArrayFixed{
 		elem_type: Type(int_)
-		len: 7
-		len_expr: 'n'
+		len:       7
+		len_expr:  'n'
 	})
 	assert tc.c_type(first) == tc.c_type(again)
 }
@@ -62,16 +62,16 @@ fn test_c_type_cache_preserves_types_after_recent_slot_eviction() {
 	for size in 1 .. 2050 {
 		expected << tc.c_type(Type(ArrayFixed{
 			elem_type: Type(int_)
-			len: size
-			len_expr: 'size'
+			len:       size
+			len_expr:  'size'
 		}))
 	}
 	for i, name in expected {
 		assert name.ends_with('_${i + 1}')
 		assert tc.c_type(Type(ArrayFixed{
 			elem_type: Type(int_)
-			len: i + 1
-			len_expr: 'size'
+			len:       i + 1
+			len_expr:  'size'
 		})) == name
 	}
 }

@@ -2,7 +2,7 @@ import v.tests.testdata.unnamed_receiver_c_module
 
 struct Foo {}
 
-fn (Foo) work(value int) int {
+fn (_ Foo) work(value int) int {
 	return value
 }
 

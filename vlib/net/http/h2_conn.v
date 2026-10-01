@@ -266,6 +266,14 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					// resets the stream with PROTOCOL_ERROR.
 					return error('h2: response with a missing or invalid :status: ${status}')
 				}
+				// RFC 9113 §8.2/§8.3: reject invalid pseudo-headers, uppercase/empty
+				// names and connection-specific fields rather than delivering a
+				// malformed response to the caller. Checked before the 1xx branch
+				// below, which would otherwise discard them unvalidated.
+				reason := h2_response_headers_error(decoded)
+				if reason != '' {
+					return error('h2: malformed response: ${reason}')
+				}
 				if status >= 100 && status < 200 {
 					// 1xx informational: discard and continue waiting for the
 					// final HEADERS block. Do not set got_headers here.
@@ -282,26 +290,9 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 				}
 				// Final response (status >= 200): populate, skipping pseudo-headers.
 				resp.status = status
-				mut seen_regular := false
-				mut seen_status := false
 				for f in decoded {
 					if f.name.starts_with(':') {
-						// RFC 9113 §8.3: in a response only :status is valid; pseudo-
-						// headers MUST precede regular fields and MUST NOT be duplicated.
-						// An undefined pseudo, :status after a regular field, or a
-						// second :status is malformed.
-						if f.name != ':status' || seen_regular || seen_status {
-							return error('h2: malformed response: invalid pseudo-header ${f.name}')
-						}
-						seen_status = true
 						continue
-					}
-					seen_regular = true
-					// RFC 9113 §8.2: reject uppercase/empty names and connection-specific
-					// fields rather than delivering a malformed response to the caller.
-					reason := h2_response_field_error(f.name)
-					if reason != '' {
-						return error('h2: malformed response: ${reason}')
 					}
 					resp.headers << f
 					if f.name == 'content-length' {
@@ -544,8 +535,8 @@ fn (mut c H2Conn) apply_settings(settings []H2Setting) ! {
 			h2_settings_max_header_list_size {
 				c.peer.max_header_list_size = s.value
 			}
-			else {} // unknown settings are ignored (RFC 7540 §6.5.2)
-		}
+			else {}
+		} // unknown settings are ignored (RFC 7540 §6.5.2)
 	}
 }
 

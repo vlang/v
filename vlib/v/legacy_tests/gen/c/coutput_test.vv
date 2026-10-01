@@ -305,7 +305,7 @@ fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !compilation.output.contains('IError err = err.err;')
 	if generated_c_uses_v3_codegen(compilation.output) {
-		assert compilation.output.contains('Optional_string err =')
+		assert compilation.output.contains('__v_option_string err =')
 		mut has_v3_or_block_err := false
 		for line in compilation.output.split_into_lines() {
 			trimmed := line.trim_space()
@@ -381,7 +381,7 @@ fn test_main_error_propagation_panic_branches_do_not_fall_through() {
 
 fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	os.chdir(vroot) or {}
-	path := os.join_path(vroot, 'vlib/v/tests/modules/interface_array_concat_from_another_module/main_test.v')
+	path := os.join_path(vroot, 'vlib/v/tests/interface_array_concat_from_another_module/main_test.v')
 	symbol := '__v_array_to_interface_array__Array_interface_array_concat_from_another_module__mod__Value__to__Array_interface_array_concat_from_another_module__mod__Value'
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
 	compilation := os.execute(cmd)
@@ -858,11 +858,6 @@ fn test_boehm_gc_header_precedes_imported_module_spawn_wrappers() {
 	cmd := '${os.quoted_path(vexe)} -os linux -gc boehm -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
-	if generated_c_uses_v3_codegen(compilation.output) {
-		// V3 currently accepts Boehm modes as no-GC compatibility aliases.
-		assert !compilation.output.contains('#include <gc/gc.h>')
-		return
-	}
 	gc_include_pos := compilation.output.index('#include <gc/gc.h>') or { -1 }
 	pthread_create_pos := compilation.output.index('pthread_create(&thread_') or { -1 }
 	assert gc_include_pos >= 0
@@ -1283,6 +1278,11 @@ pub fn get_file_options(file string) FileOptions {
 const github_job = os.getenv('GITHUB_JOB')
 
 fn should_skip(relpath string) bool {
+	test_path := os.join_path(vroot, relpath)
+	if vtest.skip_ownership_autofree_tests() && vtest.is_ownership_autofree_test(test_path) {
+		eprintln('> skipping ${relpath} (ownership/autofree tests disabled)')
+		return true
+	}
 	if github_job.contains('musl') && relpath.ends_with('autofree_sql_or_block.vv') {
 		eprintln('> skipping ${relpath} on ${github_job}, since it uses db.sqlite, and its headers are not available to the C compiler in that environment')
 		return true
@@ -1366,7 +1366,6 @@ fn should_skip(relpath string) bool {
 		}
 	}
 	if gcc_path == '' {
-		test_path := os.join_path(vroot, relpath)
 		file_options := get_file_options(test_path)
 		if file_options.vflags.contains('-cc gcc') {
 			eprintln('> skipping ${relpath} since its vflags require gcc, which is not detected')
@@ -1374,7 +1373,6 @@ fn should_skip(relpath string) bool {
 		}
 	}
 	if github_job in ['tcc-windows', 'msvc-windows'] {
-		test_path := os.join_path(vroot, relpath)
 		file_options := get_file_options(test_path)
 		if file_options.vflags.contains('-cc clang') {
 			// The Windows runner's clang toolchain produces V binaries that

@@ -28,12 +28,14 @@ pub mut:
 }
 
 fn C.get_string_array() &&char
+
 @[inline]
 pub fn get_string_array() &&char {
 	return C.get_string_array()
 }
 
 fn C.get_struct_array() Struct_array
+
 @[inline]
 pub fn get_struct_array() Struct_array {
 	return C.get_struct_array()
@@ -43,6 +45,7 @@ fn C.array_string_free(&Array_t)
 
 @[keep_args_alive]
 fn C.set_struct_array(&Struct_array)
+
 @[inline]
 pub fn set_struct_array(param &Struct_array) {
 	C.set_struct_array(param)

@@ -7,8 +7,8 @@ __global global_plain_box PlainBox[int]
 
 struct GenericBox[T] {
 mut:
-	x    int = 5
-	size int = sizeof(T)
+	x    int    = 5
+	size int    = sizeof(T)
 	ch   chan T = chan T{cap: 1}
 }
 

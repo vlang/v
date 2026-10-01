@@ -26,10 +26,10 @@ fn test_on_ack_received_tolerates_astronomically_large_ack_range() {
 
 	ack := AckFrame{
 		largest_acknowledged: u64(1) << 62
-		ack_delay: 0
-		ranges: [AckRange{
+		ack_delay:            0
+		ranges:               [AckRange{
 			smallest: 0
-			largest: u64(1) << 62
+			largest:  u64(1) << 62
 		}]
 	}
 	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, 2000)
@@ -48,10 +48,10 @@ fn test_on_ack_received_marks_newly_acked_and_removes_from_sent_packets() {
 
 	ack := AckFrame{
 		largest_acknowledged: 2
-		ack_delay: 0
-		ranges: [AckRange{
+		ack_delay:            0
+		ranges:               [AckRange{
 			smallest: 0
-			largest: 2
+			largest:  2
 		}]
 	}
 	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, 2000)
@@ -78,10 +78,10 @@ fn test_packet_threshold_only_loss_detection() {
 
 	ack := AckFrame{
 		largest_acknowledged: 4
-		ack_delay: 0
-		ranges: [AckRange{
+		ack_delay:            0
+		ranges:               [AckRange{
 			smallest: 4
-			largest: 4
+			largest:  4
 		}]
 	}
 	// Only 1us after send -- far below any possible loss_delay (floored at
@@ -118,10 +118,10 @@ fn test_time_threshold_only_loss_detection() {
 
 	ack := AckFrame{
 		largest_acknowledged: 1
-		ack_delay: 0
-		ranges: [AckRange{
+		ack_delay:            0
+		ranges:               [AckRange{
 			smallest: 1
-			largest: 1
+			largest:  1
 		}]
 	}
 	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, now)
@@ -213,10 +213,10 @@ fn test_on_ack_received_resets_pto_count_only_when_nothing_lost() {
 	ld.on_packet_sent(.application_data, 0, 1200, true, true, 1000)
 	ack := AckFrame{
 		largest_acknowledged: 0
-		ack_delay: 0
-		ranges: [AckRange{
+		ack_delay:            0
+		ranges:               [AckRange{
 			smallest: 0
-			largest: 0
+			largest:  0
 		}]
 	}
 	ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, 2000)
@@ -233,10 +233,10 @@ fn test_on_ack_received_leaves_pto_count_untouched_when_something_lost() {
 	}
 	ack := AckFrame{
 		largest_acknowledged: 4
-		ack_delay: 0
-		ranges: [AckRange{
+		ack_delay:            0
+		ranges:               [AckRange{
 			smallest: 4
-			largest: 4
+			largest:  4
 		}]
 	}
 	result := ld.on_ack_received(.application_data, ack, default_ack_delay_exponent, 25 * time.millisecond, false, base + 1000)
@@ -261,11 +261,11 @@ fn test_on_loss_detection_timeout_reports_loss_when_a_loss_time_is_pending() {
 	ld.initial.loss_time = 5000
 	ld.initial.largest_acked_packet = 10
 	ld.initial.sent_packets[3] = SentPacketInfo{
-		packet_number: 3
-		time_sent: 100
-		sent_bytes: 1200
+		packet_number:    3
+		time_sent:        100
+		sent_bytes:       1200
 		is_ack_eliciting: true
-		in_flight: true
+		in_flight:        true
 	}
 
 	result := ld.on_loss_detection_timeout(1_000_000, false, time.Duration(0))
@@ -304,18 +304,18 @@ fn test_is_persistent_congestion_requires_prior_rtt_sample_existed_at_send_time(
 	pto := 100 * time.millisecond
 	lost := [
 		SentPacketInfo{
-			packet_number: 0
-			time_sent: 1_000_000_000
-			sent_bytes: 1200
+			packet_number:    0
+			time_sent:        1_000_000_000
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 		SentPacketInfo{
-			packet_number: 1
-			time_sent: 1_000_000_000 + u64(4 * pto)
-			sent_bytes: 1200
+			packet_number:    1
+			time_sent:        1_000_000_000 + u64(4 * pto)
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 	]
 	// No RTT sample has ever been taken.
@@ -335,18 +335,18 @@ fn test_is_persistent_congestion_congestion_period_includes_max_ack_delay() {
 	// max_ack_delay into the congestion-period formula: (100+50)*3=450ms.
 	lost := [
 		SentPacketInfo{
-			packet_number: 0
-			time_sent: 1_000_000_000
-			sent_bytes: 1200
+			packet_number:    0
+			time_sent:        1_000_000_000
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 		SentPacketInfo{
-			packet_number: 1
-			time_sent: 1_000_000_000 + u64(350 * time.millisecond)
-			sent_bytes: 1200
+			packet_number:    1
+			time_sent:        1_000_000_000 + u64(350 * time.millisecond)
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 	]
 	assert !is_persistent_congestion(lost, pto, max_ack_delay, u64(1_000_000_000))
@@ -364,41 +364,41 @@ fn test_on_ack_received_persistent_congestion_includes_max_ack_delay_for_initial
 	ld.first_rtt_sample_time = 50
 	ld.initial.largest_acked_packet = 10
 	ld.initial.sent_packets[3] = SentPacketInfo{
-		packet_number: 3
-		time_sent: 100
-		sent_bytes: 1200
+		packet_number:    3
+		time_sent:        100
+		sent_bytes:       1200
 		is_ack_eliciting: true
-		in_flight: true
+		in_flight:        true
 	}
 	ld.initial.sent_packets[4] = SentPacketInfo{
-		packet_number: 4
+		packet_number:    4
 		// Span of 3.5s: >= 3*pto_period() (~3s, the WRONG max_ack_delay-
 		// zeroed threshold a caller-side regression would use), but <
 		// 3*(pto_period()+max_ack_delay) (~4.5s, the correct RFC 9002
 		// §7.6.1 threshold) -- only distinguishes the two if
 		// on_ack_received actually forwards max_ack_delay unchanged.
-		time_sent: 100 + u64(3500 * time.millisecond)
-		sent_bytes: 1200
+		time_sent:        100 + u64(3500 * time.millisecond)
+		sent_bytes:       1200
 		is_ack_eliciting: true
-		in_flight: true
+		in_flight:        true
 	}
 	// A non-ack-eliciting packet we ack here purely to drive
 	// on_ack_received's persistent-congestion computation without
 	// disturbing pn3/pn4 above or taking an RTT sample (which would make
 	// pto_period() unpredictable for this test).
 	ld.initial.sent_packets[10] = SentPacketInfo{
-		packet_number: 10
-		time_sent: 50
-		sent_bytes: 1200
+		packet_number:    10
+		time_sent:        50
+		sent_bytes:       1200
 		is_ack_eliciting: false
-		in_flight: false
+		in_flight:        false
 	}
 	ack := AckFrame{
 		largest_acknowledged: 10
-		ack_delay: 0
-		ranges: [AckRange{
+		ack_delay:            0
+		ranges:               [AckRange{
 			smallest: 10
-			largest: 10
+			largest:  10
 		}]
 	}
 	result := ld.on_ack_received(.initial, ack, default_ack_delay_exponent, max_ack_delay, false, 4_000_000_000)
@@ -412,18 +412,18 @@ fn test_is_persistent_congestion_contiguous_batch_spanning_three_ptos() {
 	pto := 100 * time.millisecond
 	lost := [
 		SentPacketInfo{
-			packet_number: 0
-			time_sent: 1_000_000_000
-			sent_bytes: 1200
+			packet_number:    0
+			time_sent:        1_000_000_000
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 		SentPacketInfo{
-			packet_number: 1
-			time_sent: 1_000_000_000 + u64(4 * pto)
-			sent_bytes: 1200
+			packet_number:    1
+			time_sent:        1_000_000_000 + u64(4 * pto)
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 	]
 	assert is_persistent_congestion(lost, pto, time.Duration(0), u64(0))
@@ -433,18 +433,18 @@ fn test_is_persistent_congestion_requires_span_at_least_three_ptos() {
 	pto := 100 * time.millisecond
 	lost := [
 		SentPacketInfo{
-			packet_number: 0
-			time_sent: 1_000_000_000
-			sent_bytes: 1200
+			packet_number:    0
+			time_sent:        1_000_000_000
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 		SentPacketInfo{
-			packet_number: 1
-			time_sent: 1_000_000_000 + u64(2 * pto) // only 2 PTOs apart
-			sent_bytes: 1200
+			packet_number:    1
+			time_sent:        1_000_000_000 + u64(2 * pto) // only 2 PTOs apart
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 	]
 	assert !is_persistent_congestion(lost, pto, time.Duration(0), u64(0))
@@ -457,18 +457,18 @@ fn test_is_persistent_congestion_requires_contiguous_packet_numbers() {
 	// absent from this batch (it survived: acked, or still outstanding).
 	lost := [
 		SentPacketInfo{
-			packet_number: 0
-			time_sent: 1_000_000_000
-			sent_bytes: 1200
+			packet_number:    0
+			time_sent:        1_000_000_000
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 		SentPacketInfo{
-			packet_number: 2
-			time_sent: 1_000_000_000 + u64(4 * pto)
-			sent_bytes: 1200
+			packet_number:    2
+			time_sent:        1_000_000_000 + u64(4 * pto)
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 	]
 	assert !is_persistent_congestion(lost, pto, time.Duration(0), u64(0))
@@ -478,11 +478,11 @@ fn test_is_persistent_congestion_requires_at_least_two_ack_eliciting_packets() {
 	pto := 100 * time.millisecond
 	lost := [
 		SentPacketInfo{
-			packet_number: 0
-			time_sent: 1_000_000_000
-			sent_bytes: 1200
+			packet_number:    0
+			time_sent:        1_000_000_000
+			sent_bytes:       1200
 			is_ack_eliciting: true
-			in_flight: true
+			in_flight:        true
 		},
 	]
 	assert !is_persistent_congestion(lost, pto, time.Duration(0), u64(0))

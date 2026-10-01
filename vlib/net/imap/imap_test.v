@@ -218,14 +218,14 @@ fn start(mut l net.TcpListener, hello string, seen chan string) !(int, thread) {
 
 fn test_a_full_session() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(
-		server: '127.0.0.1'
-		port: port
-		username: 'bob'
-		password: 'hunter2'
+		server:              '127.0.0.1'
+		port:                port
+		username:            'bob'
+		password:            'hunter2'
 		allow_insecure_auth: true
 	)!
 	assert c.is_open
@@ -301,7 +301,7 @@ fn test_a_full_session() {
 
 fn test_mailbox_names_travel_encoded() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -330,7 +330,7 @@ fn test_mailbox_names_travel_encoded() {
 
 fn test_append_sends_the_message_as_a_literal() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -352,16 +352,16 @@ fn test_append_sends_the_message_as_a_literal() {
 
 fn test_a_password_a_quoted_string_cannot_hold_becomes_a_literal() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	// A password with an accent is eight bit, which a quoted string is not
 	// defined over.
 	mut c := new_client(
-		server: '127.0.0.1'
-		port: port
-		username: 'bob'
-		password: 'mot-de-passé'
+		server:              '127.0.0.1'
+		port:                port
+		username:            'bob'
+		password:            'mot-de-passé'
 		allow_insecure_auth: true
 	)!
 	c.close()!
@@ -374,7 +374,7 @@ fn test_a_password_a_quoted_string_cannot_hold_becomes_a_literal() {
 
 fn test_examine_reports_the_mailbox_as_read_only() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -391,7 +391,7 @@ fn test_examine_reports_the_mailbox_as_read_only() {
 
 fn test_unsolicited_updates_reach_the_client() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -414,7 +414,7 @@ fn test_unsolicited_updates_reach_the_client() {
 
 fn test_an_explicit_count_wins_over_the_arithmetic() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -431,7 +431,7 @@ fn test_an_explicit_count_wins_over_the_arithmetic() {
 
 fn test_unsolicited_counts_and_removals_keep_arrival_order() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 	mut c := new_client(server: '127.0.0.1', port: port)!
 	c.select_mailbox('INBOX')!
@@ -446,7 +446,7 @@ fn test_unsolicited_counts_and_removals_keep_arrival_order() {
 
 fn test_unsolicited_updates_survive_a_refused_command() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 	mut c := new_client(server: '127.0.0.1', port: port)!
 	c.select_mailbox('INBOX')!
@@ -466,17 +466,17 @@ fn test_unsolicited_updates_survive_a_refused_command() {
 
 fn test_a_refused_login_is_an_error() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	// Driven by hand rather than through new_client, so that the connection is
 	// still in reach once the login is refused.
 	mut c := Client{
 		Config: Config{
-			server: '127.0.0.1'
-			port: port
-			username: 'bob'
-			password: 'wrong'
+			server:              '127.0.0.1'
+			port:                port
+			username:            'bob'
+			password:            'wrong'
 			allow_insecure_auth: true
 		}
 	}
@@ -494,7 +494,7 @@ fn test_a_refused_login_is_an_error() {
 
 fn test_a_refused_command_leaves_the_session_usable() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -520,7 +520,7 @@ fn test_a_refused_command_leaves_the_session_usable() {
 
 fn test_an_unknown_command_reports_bad() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -537,13 +537,13 @@ fn test_an_unknown_command_reports_bad() {
 
 fn test_a_bye_greeting_is_refused() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, '* BYE too many connections', seen)!
 
 	mut c := Client{
 		Config: Config{
 			server: '127.0.0.1'
-			port: port
+			port:   port
 		}
 	}
 	c.connect() or {
@@ -558,14 +558,14 @@ fn test_a_bye_greeting_is_refused() {
 
 fn test_a_preauth_greeting_opens_the_session() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, '* PREAUTH IMAP4rev1 already authenticated', seen)!
 
 	mut c := new_client(
-		server: '127.0.0.1'
-		port: port
-		username: 'already'
-		password: 'unused'
+		server:              '127.0.0.1'
+		port:                port
+		username:            'already'
+		password:            'unused'
 		allow_insecure_auth: true
 	)!
 	assert c.is_open
@@ -578,14 +578,14 @@ fn test_a_preauth_greeting_opens_the_session() {
 
 fn test_greeting_logindisabled_prevents_sending_credentials() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, '* OK [CAPABILITY IMAP4rev1 LOGINDISABLED] no cleartext login', seen)!
 
 	new_client(
-		server: '127.0.0.1'
-		port: port
-		username: 'bob'
-		password: 'secret'
+		server:              '127.0.0.1'
+		port:                port
+		username:            'bob'
+		password:            'secret'
 		allow_insecure_auth: true
 	) or {
 		assert err.msg().contains('disabled LOGIN')
@@ -599,7 +599,7 @@ fn test_greeting_logindisabled_prevents_sending_credentials() {
 
 fn test_preauth_cannot_bypass_requested_starttls() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, '* PREAUTH already authenticated', seen)!
 
 	new_client(server: '127.0.0.1', port: port, starttls: true, validate: false) or {
@@ -614,7 +614,7 @@ fn test_preauth_cannot_bypass_requested_starttls() {
 
 fn test_a_refused_starttls_closes_the_transport() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	new_client(server: '127.0.0.1', port: port, starttls: true, validate: false) or {
@@ -629,14 +629,14 @@ fn test_a_refused_starttls_closes_the_transport() {
 
 fn test_a_failed_automatic_login_closes_the_transport() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	new_client(
-		server: '127.0.0.1'
-		port: port
-		username: 'bob'
-		password: 'wrong'
+		server:              '127.0.0.1'
+		port:                port
+		username:            'bob'
+		password:            'wrong'
 		allow_insecure_auth: true
 	) or {
 		assert err.msg().contains('Invalid credentials')
@@ -652,7 +652,7 @@ fn test_a_failed_automatic_login_closes_the_transport() {
 
 fn test_connect_rejects_replacing_a_live_transport() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 	mut c := new_client(server: '127.0.0.1', port: port)!
 	c.connect() or {
@@ -669,7 +669,7 @@ fn test_connect_rejects_replacing_a_live_transport() {
 
 fn test_a_wrong_completion_tag_closes_the_transport() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 	mut c := new_client(server: '127.0.0.1', port: port)!
 	c.command('WRONGTAG') or {
@@ -686,7 +686,7 @@ fn test_a_wrong_completion_tag_closes_the_transport() {
 
 fn test_a_wrong_literal_continuation_tag_closes_the_transport() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 	mut c := new_client(server: '127.0.0.1', port: port)!
 	c.append('BadTag', [], time.Time{}, 'body'.bytes()) or {
@@ -703,7 +703,7 @@ fn test_a_wrong_literal_continuation_tag_closes_the_transport() {
 
 fn test_a_refused_literal_continuation_keeps_the_session_usable() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 	mut c := new_client(server: '127.0.0.1', port: port)!
 	c.append('Reject', [], time.Time{}, 'body'.bytes()) or {
@@ -726,14 +726,14 @@ fn test_a_refused_literal_continuation_keeps_the_session_usable() {
 
 fn test_sasl_plain_can_be_selected_during_construction() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, '* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN LOGINDISABLED] ready', seen)!
 	mut c := new_client(
-		server: '127.0.0.1'
-		port: port
-		username: 'bob'
-		password: 'hunter2'
-		auth_method: .plain
+		server:              '127.0.0.1'
+		port:                port
+		username:            'bob'
+		password:            'hunter2'
+		auth_method:         .plain
 		allow_insecure_auth: true
 	)!
 	c.close()!
@@ -758,7 +758,7 @@ fn test_authentication_debug_lines_are_redacted() {
 
 fn test_an_unsolicited_bye_closes_the_local_transport() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 	mut c := new_client(server: '127.0.0.1', port: port)!
 
@@ -814,7 +814,7 @@ fn test_bracketed_ipv6_is_normalized_for_tls_identity_checks() {
 
 fn test_empty_sets_do_not_reach_the_server() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -834,7 +834,7 @@ fn test_empty_sets_do_not_reach_the_server() {
 
 fn test_a_literal_larger_than_one_read_comes_back_whole() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -854,7 +854,7 @@ fn test_a_literal_larger_than_one_read_comes_back_whole() {
 
 fn test_close_is_idempotent() {
 	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	seen := chan string{ cap: 64 }
+	seen := chan string{cap: 64}
 	port, th := start(mut l, mock_greeting, seen)!
 
 	mut c := new_client(server: '127.0.0.1', port: port)!
@@ -878,7 +878,7 @@ fn test_default_ports() {
 	assert implicit.effective_port() == default_ssl_port
 	explicit := Client{
 		Config: Config{
-			ssl: true
+			ssl:  true
 			port: 1143
 		}
 	}
@@ -904,12 +904,12 @@ fn test_build_args_splits_out_what_must_be_a_literal() {
 
 fn test_append_dates_are_rendered_as_utc() {
 	local := time.Time{
-		year: 2026
-		month: 9
-		day: 7
-		hour: 12
-		minute: 34
-		second: 56
+		year:     2026
+		month:    9
+		day:      7
+		hour:     12
+		minute:   34
+		second:   56
 		is_local: true
 	}
 	utc := local.local_to_utc()

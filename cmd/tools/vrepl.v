@@ -13,31 +13,31 @@ import v.util.version
 struct Repl {
 mut:
 	readline     readline.Readline
-	indent       int // indentation level
-	in_func      bool // inside function decl
-	in_struct    bool // inside struct decl
-	in_enum      bool // inside enum decl
-	in_interface bool // inside interface decl
+	indent       int    // indentation level
+	in_func      bool   // inside function decl
+	in_struct    bool   // inside struct decl
+	in_enum      bool   // inside enum decl
+	in_interface bool   // inside interface decl
 	line         string // the current line entered by the user
-	is_pin       bool // does the repl 'pin' entered source code
+	is_pin       bool   // does the repl 'pin' entered source code
 	folder       string // the folder in which the repl will write its temporary source files
 	last_output  string // the last repl output
 
 	modules         map[string][]string // all the import modules
-	alias           map[string]string // all the alias used in the import
-	includes        []string // all the #include statements
-	functions       []string // all the user function declarations
-	functions_name  []string // all the user function names
-	structs         []string // all the struct definitions
-	enums           []string // all the enum definitions
-	consts          []string // all the const definitions
-	types           []string // all the type definitions
-	interfaces      []string // all the interface definitions
-	lines           []string // all the other lines/statements
-	exec_lines      []string // executable statements with restored runtime values
-	temp_lines      []string // all the temporary expressions/printlns
-	vstartup_lines  []string // lines in the `VSTARTUP` file
-	eval_func_lines []string // same line of the `VSTARTUP` file, but used to test fn type
+	alias           map[string]string   // all the alias used in the import
+	includes        []string            // all the #include statements
+	functions       []string            // all the user function declarations
+	functions_name  []string            // all the user function names
+	structs         []string            // all the struct definitions
+	enums           []string            // all the enum definitions
+	consts          []string            // all the const definitions
+	types           []string            // all the type definitions
+	interfaces      []string            // all the interface definitions
+	lines           []string            // all the other lines/statements
+	exec_lines      []string            // executable statements with restored runtime values
+	temp_lines      []string            // all the temporary expressions/printlns
+	vstartup_lines  []string            // lines in the `VSTARTUP` file
+	eval_func_lines []string            // same line of the `VSTARTUP` file, but used to test fn type
 }
 
 const is_stdin_a_pipe = os.is_atty(0) == 0
@@ -73,14 +73,14 @@ enum FnType {
 }
 
 enum DeclType {
-	include // #include ...
-	const // const ...
-	type // type ...
-	enum // enum ...
-	fn // fn ...
-	struct // struct ...
+	include   // #include ...
+	const     // const ...
+	type      // type ...
+	enum      // enum ...
+	fn        // fn ...
+	struct    // struct ...
 	interface // interface ...
-	stmt // statement
+	stmt      // statement
 }
 
 struct SnapshotAssignment {
@@ -99,16 +99,16 @@ fn new_repl(folder string) Repl {
 	vstartup_source := os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
 	os.mkdir_all(folder) or {}
 	return Repl{
-		readline: readline.Readline{
+		readline:        readline.Readline{
 			skip_empty: true
 		}
-		folder: folder
-		modules: {
+		folder:          folder
+		modules:         {
 			'os':   []
 			'time': []
 			'math': []
 		}
-		vstartup_lines: vstartup_source
+		vstartup_lines:  vstartup_source
 		// Test file used to check if a function as a void return or a value return.
 		eval_func_lines: vstartup_source
 	}
@@ -591,15 +591,165 @@ fn parse_simple_assignment(line string) ?SnapshotAssignment {
 		return none
 	}
 	return SnapshotAssignment{
-		lhs: lhs
+		lhs:  lhs
 		name: name
-		op: op
+		op:   op
 	}
 }
 
 fn repl_string_literal(s string) string {
 	escaped := s.replace_each(['\\', '\\\\', "'", "\\'", '\n', '\\n', '\r', '\\r', '\t', '\\t'])
 	return "'${escaped}'"
+}
+
+const vrepl_i64_max = '9223372036854775807'
+const vrepl_u64_max = '18446744073709551615'
+const vrepl_u128_max = '340282366920938463463374607431768211455'
+
+// decimal_within reports whether a positive decimal number fits under `max`. The lengths are
+// compared first, so a 39-digit literal never has to be parsed.
+fn decimal_within(value string, max string) bool {
+	if value.len != max.len {
+		return value.len < max.len
+	}
+	return value <= max
+}
+
+// repl_digit_of_base reports whether a character can appear in a literal of that base.
+fn repl_digit_of_base(c u8, base int) bool {
+	return match base {
+		2 { c == `0` || c == `1` }
+		8 { c >= `0` && c <= `7` }
+		16 { (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`) }
+		else { c >= `0` && c <= `9` }
+	}
+}
+
+// repl_literal_is_negated reports whether the literal at `start` has a minus in front of it.
+fn repl_literal_is_negated(line string, start int) bool {
+	mut k := start - 1
+	for k >= 0 && line[k] == ` ` {
+		k--
+	}
+	return k >= 0 && line[k] == `-`
+}
+
+// repl_literal_carries_its_type reports whether the literal is already the argument of a
+// conversion, since the type that conversion names is the one that governs.
+fn repl_literal_carries_its_type(line string, start int) bool {
+	names := ['u8', 'u16', 'u32', 'u64', 'u128', 'i8', 'i16', 'i32', 'i64', 'i128', 'int', 'usize',
+		'isize', 'rune', 'char', 'f32', 'f64']
+	mut k := start - 1
+	for k >= 0 && line[k] == ` ` {
+		k--
+	}
+	if k < 0 || line[k] != `(` {
+		return false
+	}
+	mut b := k
+	for b > 0 && is_repl_ident_char(line[b - 1]) {
+		b--
+	}
+	return b < k && line[b..k] in names
+}
+
+// widen_oversized_literals gives an integer literal beyond `int`'s range the narrowest type
+// that holds it. A bare integer literal is typed `int`, so the REPL either refuses a value a
+// user typed only to look at, or, under `-repl run`, keeps its low bits and prints a
+// different number. The REPL compiles a program it wrote itself, so it can name the type.
+fn widen_oversized_literals(line string) string {
+	mut out := []u8{}
+	mut i := 0
+	for i < line.len {
+		ch := line[i]
+		if ch == `'` || ch == `"` {
+			out << ch
+			i++
+			for i < line.len {
+				out << line[i]
+				if line[i] == `\\` && i + 1 < line.len {
+					out << line[i + 1]
+					i += 2
+					continue
+				}
+				if line[i] == ch {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if ch == `/` && i + 1 < line.len && line[i + 1] == `/` {
+			out << line[i..].bytes()
+			break
+		}
+		if !(ch >= `0` && ch <= `9`) || (i > 0 && is_repl_ident_char(line[i - 1])) {
+			out << ch
+			i++
+			continue
+		}
+		mut base := 10
+		mut j := i
+		if ch == `0` && i + 1 < line.len
+			&& (line[i + 1] == `x` || line[i + 1] == `X` || line[i + 1] == `b` || line[i + 1] == `B`
+				|| line[i + 1] == `o` || line[i + 1] == `O`) {
+			base = if line[i + 1] == `x` || line[i + 1] == `X` {
+				16
+			} else if line[i + 1] == `b` || line[i + 1] == `B` {
+				2
+			} else {
+				8
+			}
+			j = i + 2
+		}
+		for j < line.len && (line[j] == `_` || repl_digit_of_base(line[j], base)) {
+			j++
+		}
+		digits := line[i..j].replace('_', '').trim_left('0')
+		mut typ := ''
+		part_of_a_bigger_token := j < line.len && (is_repl_ident_char(line[j])
+			|| (line[j] == `.` && j + 1 < line.len && line[j + 1] >= `0` && line[j + 1] <= `9`))
+		if !part_of_a_bigger_token && !repl_literal_carries_its_type(line, i) {
+			n := digits.len
+			negated := repl_literal_is_negated(line, i)
+			if base == 10 {
+				if !decimal_within(digits, vrepl_i64_max) {
+					if decimal_within(digits, vrepl_u64_max) {
+						typ = if negated { 'i128' } else { 'u64' }
+					} else if decimal_within(digits, vrepl_u128_max) {
+						typ = if negated { 'i128' } else { 'u128' }
+					}
+				}
+			} else if base == 16 {
+				if n == 16 && digits[0] > `7` {
+					typ = if negated { 'i128' } else { 'u64' }
+				} else if n > 16 && n <= 32 {
+					typ = if negated { 'i128' } else { 'u128' }
+				}
+			} else if base == 2 {
+				if n == 64 && digits[0] == `1` {
+					typ = if negated { 'i128' } else { 'u64' }
+				} else if n > 64 && n <= 128 {
+					typ = if negated { 'i128' } else { 'u128' }
+				}
+			} else {
+				if n > 21 && n <= 42 {
+					typ = if negated { 'i128' } else { 'u128' }
+				}
+			}
+		}
+		if typ.len == 0 {
+			out << line[i..j].bytes()
+		} else {
+			out << typ.bytes()
+			out << `(`
+			out << line[i..j].bytes()
+			out << `)`
+		}
+		i = j
+	}
+	return out.bytestr()
 }
 
 fn (mut r Repl) add_statement_line(display_line string, exec_line string) {
@@ -638,9 +788,9 @@ fn (r &Repl) capture_time_snapshot(source_code string, assignment SnapshotAssign
 			return none
 		}
 		return TimeSnapshot{
-			unix: parts[1].i64()
+			unix:       parts[1].i64()
 			nanosecond: parts[2].int()
-			is_local: parts[3] == 'true'
+			is_local:   parts[3] == 'true'
 		}
 	}
 	return none
@@ -700,7 +850,9 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		}
 
 		oline := r.get_one_line(prompt) or { break }
-		line := remove_comment(oline).trim_space()
+		// `oline` stays as typed, for the two-space escape and the echo; the widened line is
+		// what the REPL writes into the program it compiles.
+		line := widen_oversized_literals(remove_comment(oline).trim_space())
 
 		if line == '' {
 			continue
@@ -1050,7 +1202,7 @@ fn execute_repl_v_command(v_path string, args []string) !os.Result {
 		process.close()
 		return os.Result{
 			exit_code: exit_code
-			output: stdout_output + stderr_output
+			output:    stdout_output + stderr_output
 		}
 	} $else {
 		mut cmd := os.quoted_path(v_path)

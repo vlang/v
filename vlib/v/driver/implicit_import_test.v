@@ -67,6 +67,13 @@ fn test_c_executable_bin_file_uses_target_postfix() {
 	assert c_executable_bin_file_for_target('source', 'windows', false, false, true) == 'source'
 }
 
+fn test_c_compiler_output_name_uses_target_postfix() {
+	assert c_compiler_output_name_for_target('windows', false, false) == 'out.exe'
+	assert c_compiler_output_name_for_target('linux', false, false) == 'out'
+	assert c_compiler_output_name_for_target('windows', true, false) == 'out'
+	assert c_compiler_output_name_for_target('windows', false, true) == 'out'
+}
+
 fn scan_implicit_import_source(name string, source string) ImplicitImportScan {
 	path := os.join_path(os.temp_dir(), 'v3_implicit_import_${name}_${os.getpid()}.v')
 	os.write_file(path, source) or { panic(err) }
@@ -137,6 +144,79 @@ fn test_strings_similarity_len_fields_do_not_require_closure_runtime() {
 	assert !scan.needs_closure
 }
 
+fn test_slice_len_fields_do_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('slice_len', '
+fn lengths(s string, values []int, fixed [4]int) int {
+	head := s[..1]
+	tail := values[1..]
+	part := fixed[..2]
+	return head.len + tail.len + part.len
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_string_concatenation_len_field_does_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('concat_len', '
+fn joined(a string, b string, fraction bool) int {
+	digits := a + b
+	text := if fraction { "0." + digits } else { digits + ".0" }
+	return digits.len + text.len
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_match_smartcast_fields_do_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('match_smartcast', '
+struct Separator {
+	integer string
+	decimal string
+}
+
+type SeparatorOptions = string | Separator
+
+fn decimal_of(sep SeparatorOptions) string {
+	separator := match sep {
+		string {
+			Separator{
+				integer: sep
+			}
+		}
+		Separator {
+			sep
+		}
+	}
+	return separator.decimal
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_method_value_on_match_smartcast_requires_closure_runtime() {
+	scan := scan_implicit_import_source('match_smartcast_method', '
+struct Separator {
+	decimal string
+}
+
+fn (s Separator) render() string {
+	return s.decimal
+}
+
+type SeparatorOptions = string | Separator
+
+fn use(sep SeparatorOptions) {
+	separator := match sep {
+		string { Separator{} }
+		Separator { sep }
+	}
+	callback := separator.render
+	_ = callback
+}
+')
+	assert scan.needs_closure
+}
+
 fn test_shared_parameter_and_local_require_sync_runtime() {
 	param_scan := scan_implicit_import_source('shared_param', '
 struct State {}
@@ -182,25 +262,85 @@ fn inspect(mut builder Builder, info Info) int {
 	assert !scan.needs_closure
 }
 
+fn test_qualified_type_selector_does_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('qualified_type', '
+import limine
+
+fn use() {
+	request := limine.LimineBaseRevision{}
+	_ = request
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_imported_constant_selector_does_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('imported_constant', '
+import stat
+
+fn use() {
+	mode := stat.ifdir
+	_ = mode
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_generic_method_call_does_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('generic_method_call', '
+struct Device {}
+
+fn (device Device) read[T](offset u32) T {
+	_ = offset
+	return T{}
+}
+
+fn use(device Device) {
+	value := device.read[u8](1)
+	_ = value
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_local_shadow_of_import_can_require_closure_runtime() {
+	scan := scan_implicit_import_source('local_import_shadow', '
+import stat
+
+struct Item {}
+
+fn (item Item) ifdir() int {
+	return 1
+}
+
+fn use() {
+	stat := Item{}
+	callback := stat.ifdir
+	_ = callback
+}
+')
+	assert scan.needs_closure
+}
+
 fn test_synthetic_import_insertion_remaps_declaration_attribute_targets() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{
-		kind: .field_decl
+		kind:  .field_decl
 		value: 'value'
 	})
 	struct_id := ast.add_node(flat.Node{
-		kind: .struct_decl
+		kind:  .struct_decl
 		value: 'Packed'
 	})
 	ast.add_node(flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: '@attributes:${int(struct_id)}'
 	})
 	insert_synthetic_imports(mut ast, [
 		SyntheticInsertion{
-			pos: 0
+			pos:  0
 			node: flat.Node{
-				kind: .import_decl
+				kind:  .import_decl
 				value: 'builtin'
 			}
 		},

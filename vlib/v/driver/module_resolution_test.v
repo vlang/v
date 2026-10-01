@@ -3,6 +3,14 @@ module driver
 import os
 import v.pref
 
+fn test_shadow_explicit_roots_preserves_filesystem_root() {
+	root := os.real_path(os.path_separator)
+	prefs := pref.Preferences{
+		module_search_paths: [root]
+	}
+	assert shadow_explicit_roots_for(&prefs, []) == [root]
+}
+
 fn test_manifest_subdir_probe_stops_at_nested_modules() {
 	root := os.join_path(os.vtmp_dir(), 'v3_module_probe_nested_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -69,7 +77,7 @@ fn test_manifest_subdir_probe_filters_sources_for_target() {
 	os.write_file(os.join_path(valid, 'sample.v'), 'module sample\n')!
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	prefs := pref.Preferences{
-		target: linux
+		target:              linux
 		module_search_paths: [first_search_root, second_search_root]
 	}
 

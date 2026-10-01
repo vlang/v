@@ -2,8 +2,8 @@ module domainmain
 
 pub struct GenericBox[T] {
 pub mut:
-	x    int = 7
-	size int = sizeof(T)
+	x    int    = 7
+	size int    = sizeof(T)
 	ch   chan T = chan T{cap: 1}
 }
 

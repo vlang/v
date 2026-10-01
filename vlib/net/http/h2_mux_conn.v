@@ -71,15 +71,21 @@ fn all_digits(s string) bool {
 
 // h2_conn_specific_headers are connection-specific header fields that MUST NOT
 // appear in any HTTP/2 message (RFC 9113 §8.2.2). A received response or trailer
-// carrying one is malformed. (TE is the request-only exception and is handled on
-// the send side, so it is not listed here.)
+// carrying one is malformed. TE is deliberately NOT listed: it is the request-only
+// exception (allowed in a request as exactly "trailers" -- h2_request_field_error
+// enforces that), so a list that rejected it everywhere would break requests. The
+// response-side checks must therefore add TE themselves -- h2_server.v's
+// h2_response_field_is_forbidden (outbound) and h2_response_field_error below
+// (received) both do; do not rely on this const alone for a response-side check.
 const h2_conn_specific_headers = ['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding',
 	'upgrade']
 
 // h2_response_field_error returns a non-empty reason when a regular (non-pseudo)
 // received header field is malformed per RFC 9113 §8.2, or '' when it is valid.
 // Field names must be non-empty and lowercase (§8.2.1), and connection-specific
-// fields are forbidden (§8.2.2). A malformed field makes the whole message
+// fields are forbidden (§8.2.2) -- TE included: §8.2.2 exempts it only in a
+// REQUEST, so a response or trailer carrying it is malformed even as "te:
+// trailers". A malformed field makes the whole message
 // malformed (§8.1.1); the mux path resets the stream and the sync path fails the
 // request rather than delivering it. Pseudo-header validity is checked at the
 // call site (the set of valid pseudo-headers differs between headers/trailers).
@@ -94,6 +100,37 @@ fn h2_response_field_error(name string) string {
 	}
 	if name in h2_conn_specific_headers {
 		return 'connection-specific header field "${name}"'
+	}
+	if name == 'te' {
+		return 'connection-specific header field "te" (TE is permitted only in requests)'
+	}
+	return ''
+}
+
+// h2_response_headers_error returns a non-empty reason when a received response
+// HEADERS block (not trailers) is malformed, or '' when it is valid. It applies
+// to 1xx informational responses as well as the final one: both clients discard
+// a 1xx block, so it must be validated before it is dropped, or a malformed
+// interim response (e.g. 103 carrying "te: trailers") would be ignored and the
+// following final response accepted. RFC 9113 §8.3: the only response
+// pseudo-header is :status, pseudo-headers MUST precede regular fields and MUST
+// NOT be duplicated; regular fields follow h2_response_field_error.
+fn h2_response_headers_error(fields []H2HeaderField) string {
+	mut seen_regular := false
+	mut seen_status := false
+	for f in fields {
+		if f.name.starts_with(':') {
+			if f.name != ':status' || seen_regular || seen_status {
+				return 'invalid pseudo-header ${f.name}'
+			}
+			seen_status = true
+			continue
+		}
+		seen_regular = true
+		reason := h2_response_field_error(f.name)
+		if reason != '' {
+			return reason
+		}
 	}
 	return ''
 }
@@ -1578,8 +1615,8 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) ! {
 				c.fmu.unlock()
 				c.wmu.unlock()
 			}
-			else {} // unknown settings are ignored (RFC 7540 6.5.2)
-		}
+			else {}
+		} // unknown settings are ignored (RFC 7540 6.5.2)
 	}
 }
 
@@ -1656,6 +1693,15 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 				'response with a missing or invalid :status')
 			return
 		}
+		// RFC 9113 §8.2/§8.3: reject invalid pseudo-headers, malformed field names
+		// and connection-specific fields rather than delivering them to the caller.
+		// Checked before the 1xx branch below, which would otherwise drop them.
+		reason := h2_response_headers_error(fields)
+		if reason != '' {
+			s.mu.unlock()
+			c.reset_stream(frame.stream_id, .protocol_error, 'malformed response: ${reason}')
+			return
+		}
 		// RFC 9110 §15.2 / RFC 9113 §8.1: a server may send 1xx interim responses
 		// (100 Continue, 103 Early Hints) before the final response. They are not
 		// the final response and carry no body, so ignore them and keep waiting
@@ -1663,32 +1709,9 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 		// and headers — which would make the real final HEADERS look like trailers.
 		if status >= 200 {
 			s.status = status
-			mut seen_regular := false
-			mut seen_status := false
 			for f in fields {
 				if f.name.starts_with(':') {
-					// RFC 9113 §8.3: the only valid response pseudo-header is :status
-					// (consumed above); pseudo-headers MUST precede regular fields and
-					// MUST NOT be duplicated. Any other ':' field, :status after a
-					// regular field, or a second :status makes the response malformed.
-					if f.name != ':status' || seen_regular || seen_status {
-						s.mu.unlock()
-						c.reset_stream(frame.stream_id, .protocol_error,
-							'malformed response: invalid pseudo-header ${f.name}')
-						return
-					}
-					seen_status = true
 					continue
-				}
-				seen_regular = true
-				// RFC 9113 §8.2: reject malformed field names (uppercase, empty) and
-				// connection-specific fields rather than delivering them to the caller.
-				reason := h2_response_field_error(f.name)
-				if reason != '' {
-					s.mu.unlock()
-					c.reset_stream(frame.stream_id, .protocol_error,
-						'malformed response: ${reason}')
-					return
 				}
 				// RFC 9110 §8.6 / RFC 9113 §8.1.1: a malformed Content-Length makes
 				// the message malformed (a stream-level PROTOCOL_ERROR). u64() is

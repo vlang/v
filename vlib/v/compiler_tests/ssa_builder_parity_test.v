@@ -266,8 +266,8 @@ fn test_rand_prng_interface_stubs_are_registered_for_ssa() {
 	m := build_source('rand_prng_interface_stubs', '
 fn main() {}
 ')
-	for name in ['rand.new_default', 'rand.PRNG.seed', 'rand.PRNG.u8', 'rand.PRNG.u16',
-		'rand.PRNG.u32', 'rand.PRNG.u64', 'rand.PRNG.block_size', 'rand.PRNG.free'] {
+	for name in ['rand.new_default', 'rand.PRNG.seed', 'rand.PRNG.u8', 'rand.PRNG.u16', 'rand.PRNG.u32',
+		'rand.PRNG.u64', 'rand.PRNG.block_size', 'rand.PRNG.free'] {
 		f := find_func(m, name)
 		assert f.blocks.len > 0
 	}

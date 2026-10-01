@@ -87,15 +87,15 @@ fn test_node_uses_compact_header_and_uncommon_payload() {
 
 fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	node := Node{
-		value: 'value'
-		typ: '[]string'
-		payload: node_payload(['T'])
+		value:          'value'
+		typ:            '[]string'
+		payload:        node_payload(['T'])
 		children_start: 12
 		children_count: 3
-		kind: .for_stmt
-		op: .plus
-		is_mut: true
-		flags: node_flags(true, true)
+		kind:           .for_stmt
+		op:             .plus
+		is_mut:         true
+		flags:          node_flags(true, true)
 	}
 	cloned := node.clone_owned()
 	assert cloned.value == node.value
@@ -156,8 +156,8 @@ fn test_text_intern_passes_detach_reused_source_storage() {
 			source[j] = name[j]
 		}
 		ast.add_node(Node{
-			value: borrowed
-			typ: borrowed
+			value:   borrowed
+			typ:     borrowed
 			payload: node_payload([borrowed])
 		})
 		if i % 2 == 0 {
@@ -244,4 +244,23 @@ fn test_node_payloads_survive_gc_collections() {
 		assert params[0] == 'T${i}'
 		assert params[1] == 'U'
 	}
+}
+
+// A detached spawn describes the node itself, so the mark has to survive copies such
+// as generic specialization; otherwise the copy would start a joinable thread again.
+fn test_clone_node_flags_keeps_detached_spawn() {
+	source := Node{
+		kind:  .spawn_expr
+		flags: node_flag_detached_spawn | node_flag_skip_ownership_drops
+	}
+	assert source.is_detached_spawn()
+	copy := Node{
+		kind:  .spawn_expr
+		flags: clone_node_flags(&source, false)
+	}
+	assert copy.is_detached_spawn()
+	assert !copy.skip_ownership_drops()
+	assert !Node{
+		kind: .spawn_expr
+	}.is_detached_spawn()
 }

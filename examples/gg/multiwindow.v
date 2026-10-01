@@ -949,8 +949,7 @@ fn draw_window_dashboard(mut window gg.WindowSglContext, dashboard WindowDashboa
 	draw_rect_filled(mut window, 0, 0, f32(width), f32(height), dashboard_background(caps))
 	draw_client_chrome_zones(mut window, dashboard, caps, width, height)
 	if client_chrome {
-		draw_rect_empty(mut window, f32(client_chrome_frame_thickness + 6), f32(content_top + 6), f32(
-			width - 2 * client_chrome_frame_thickness - 12), f32(height - content_top -
+		draw_rect_empty(mut window, f32(client_chrome_frame_thickness + 6), f32(content_top + 6), f32(width - 2 * client_chrome_frame_thickness - 12), f32(height - content_top -
 			client_chrome_frame_thickness - 12), gg.rgb(88, 101, 118))
 	} else {
 		draw_rect_filled(mut window, 0, 0, f32(width), 10, backend_color(caps))

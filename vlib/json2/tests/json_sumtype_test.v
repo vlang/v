@@ -123,10 +123,10 @@ fn test_any_sum_type() {
 }
 
 fn test_sum_type_struct() {
-	if x := json.decode[Animal]('{"cat_name": "Tom"}') {
+	if _ := json.decode[Animal]('{"cat_name": "Tom"}') {
 		assert false
 	}
-	if x := json.decode[Animal]('{"dog_name": "Rex"}') {
+	if _ := json.decode[Animal]('{"dog_name": "Rex"}') {
 		assert false
 	}
 	assert json.decode[Animal]('{"dog_name": "Rex", "_type": "Dog"}')! == Animal(Dog{'Rex'})
@@ -142,8 +142,7 @@ fn test_sum_type_array_with_single_struct_variant() {
 
 	assert json.decode[[]Elem1]('[0, {"a":"b"}, 2]')! == [Elem1(0), Elem1(Empty1{
 		a: 'b'
-	}),
-		Elem1(2)]
+	}), Elem1(2)]
 }
 
 fn test_sum_type_mixed() {
@@ -154,15 +153,20 @@ fn test_sum_type_mixed() {
 }
 
 // to be implemented
-fn test_sum_type_options_fail() {
+fn test_sum_type_options() {
 	assert json.decode[Maybes]('null')! == Maybes(?int(none))
-	if x := json.decode[Maybes]('99') {
+	// A value goes to the option variant whose payload takes it, like in the removed
+	// `json` module.
+	number := json.decode[Maybes]('99')!
+	assert number.type_name() == '?int'
+	assert json.encode(number) == '99'
+	text := json.decode[Maybes]('"hi"')!
+	assert text.type_name() == '?string'
+	assert json.encode(text) == '"hi"'
+	if _ := json.decode[Maybes]('hi') {
 		assert false
 	}
-	if x := json.decode[Maybes]('hi') {
-		assert false
-	}
-	if x := json.decode[Maybes]('true') {
+	if _ := json.decode[Maybes]('true') {
 		assert false
 	}
 }

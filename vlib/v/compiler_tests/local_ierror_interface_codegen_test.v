@@ -104,7 +104,7 @@ fn main() {
 	assert !c_code.contains('string pkg__show(IError err)'), c_code
 	assert !c_code.contains('\nIError* pkg__make_ref'), c_code
 	assert !c_code.contains('string pkg__show_ref(IError* err)'), c_code
-	assert c_code.contains('typedef struct Optional_IError {'), c_code
+	assert c_code.contains('typedef struct __v_result_IError {'), c_code
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

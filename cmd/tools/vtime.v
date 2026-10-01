@@ -33,7 +33,6 @@ fn main() {
 	ecode := os.system(cmd)
 	elapsed := sw.elapsed()
 	stook_time := '${f64(elapsed.microseconds()) / 1000.0:8.3f} ms'
-	eprintln('> ${term.ecolorize(term.bright_yellow, stook_time)}. Exit code: ${ecode:3}. Command: ${term.ecolorize(term.green,
-		cmd)}')
+	eprintln('> ${term.ecolorize(term.bright_yellow, stook_time)}. Exit code: ${ecode:3}. Command: ${term.ecolorize(term.green, cmd)}')
 	exit(ecode)
 }

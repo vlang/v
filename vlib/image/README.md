@@ -34,3 +34,6 @@ assert img.rgba_at(0, 0).r == 255
 The codec packages from Go's image tree, such as PNG, JPEG, and GIF, are not
 part of this module yet. They can be added later by registering decode
 callbacks with this module.
+
+Sub-images share their pixel storage with the parent image, including the Y, Cb, Cr,
+and alpha planes of `YCbCr` and `NYCbCrA`. Changes through either image are visible in both.

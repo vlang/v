@@ -120,12 +120,12 @@ fn test_rfc8392_a1_cwt_claims_set() {
 // Tag 61 (CWT) → tag 17 (COSE_Mac0) → [protected={1:5}, {}, payload, mac_tag]
 // Constructed from §A.1 claims + §A.3 example MAC.
 const a3_mac_hex = 'd83d' + // CWT tag
- 'd1' + // COSE_Mac0 tag
- '84' + // array(4)
- '43a10105' + // bstr(3): {1:5} (HMAC 256/64)
- 'a0' + // {}
- '5850' + a1_claims_hex + // bstr(80): claims
- '48093101ef6d789200' // bstr(8): MAC
+'d1' + // COSE_Mac0 tag
+'84' + // array(4)
+'43a10105' + // bstr(3): {1:5} (HMAC 256/64)
+'a0' + // {}
+'5850' + a1_claims_hex + // bstr(80): claims
+'48093101ef6d789200' // bstr(8): MAC
 
 fn test_rfc8392_a3_cose_mac0_cwt() {
 	v := cbor.decode[cbor.Value](h_(a3_mac_hex), cbor.DecodeOpts{}) or {

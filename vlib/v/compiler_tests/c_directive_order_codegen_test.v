@@ -959,7 +959,10 @@ fn directive_order_gen_c_request_extern(v3_bin string) string {
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_request_extern' }\n")
+	directive_order_write_file(root, 'request.c', 'int request(int code) { return code + 1; }\n')
 	directive_order_write_file(root, 'main.v', 'module main
+
+#flag @VMODROOT/request.c
 
 fn C.request(code int) int
 
@@ -968,6 +971,30 @@ fn main() {
 }
 ')
 	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_request_extern.c')
+	os.rm(c_out) or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
+	assert result.exit_code == 0, result.output
+	return os.read_file(c_out) or { panic(err) }
+}
+
+fn directive_order_gen_c_request_macro(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_request_macro_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_request_macro' }\n")
+	directive_order_write_file(root, 'request.h', '#define request(code) ((code) + 1)\n')
+	directive_order_write_file(root, 'main.v', 'module main
+
+#flag -I@VMODROOT
+#include "request.h"
+
+fn C.request(code int) int
+
+fn main() {
+	_ := C.request(7)
+}
+')
+	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_request_macro.c')
 	os.rm(c_out) or {}
 	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
 	assert result.exit_code == 0, result.output
@@ -1294,4 +1321,10 @@ fn test_shared_runtime_keeps_rwmutex_init_prototypes() {
 fn test_request_named_c_function_keeps_extern_prototype() {
 	c_code := directive_order_gen_c_request_extern(directive_order_build_v3())
 	assert c_code.contains('int request(int'), c_code
+}
+
+fn test_header_backed_request_macro_does_not_get_extern_prototype() {
+	c_code := directive_order_gen_c_request_macro(directive_order_build_v3())
+	assert c_code.contains('#include "request.h"'), c_code
+	assert !c_code.contains('int request(int'), c_code
 }

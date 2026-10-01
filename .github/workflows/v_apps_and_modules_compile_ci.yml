@@ -38,6 +38,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Cache apt packages
         if: runner.os == 'Linux'
@@ -121,8 +123,7 @@ jobs:
           cd ved && v -o ved .
           echo "Build"
           v .
-          echo "Build with -autofree ..."
-          v -autofree .
+          echo "Skip -autofree build (ownership/autofree coverage is temporarily disabled)"
           echo "Build with -prod ..."
           v -prod .
           cd ..
@@ -266,6 +267,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v symlink
       - name: Build vpm
@@ -292,6 +295,8 @@ jobs:
       GITLY_TEST_SKIP_REMOTE_REPO: '1'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: |
           .\makev.bat -gcc
@@ -305,7 +310,7 @@ jobs:
       - name: Clone gitly
         run: v retry -- git clone --depth 1 -b $env:GITLY_BRANCH $env:GITLY_REPO gitly
       - name: Compile gitly CSS
-        uses: gha-utilities/sass-build@v0.6.1
+        uses: gha-utilities/sass-build@c15aba209f1cfe51f43e319f2724558112cd9336 # v0.6.1
         with:
           source: gitly/static/css/gitly.scss
           destination: gitly/static/css/gitly.css

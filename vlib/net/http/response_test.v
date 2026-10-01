@@ -4,6 +4,24 @@ import compress.brotli
 import compress.gzip
 import compress.zlib
 
+fn test_normalize_server_response_preserves_unassigned_three_digit_status() {
+	mut resp := Response{
+		status_code: 299
+	}
+	normalize_server_response(mut resp, Request{})
+	assert resp.status_code == 299
+	assert resp.status_msg == 'Unassigned'
+}
+
+fn test_normalize_server_response_defaults_zero_status_despite_reason_phrase() {
+	mut resp := Response{
+		status_msg: 'custom reason without a status'
+	}
+	normalize_server_response(mut resp, Request{})
+	assert resp.status_code == 200
+	assert resp.status_msg == 'OK'
+}
+
 fn test_response_bytestr_1() {
 	resp := new_response(
 		status: .ok
@@ -114,7 +132,7 @@ fn test_parse_response_with_gzip_content_encoding() {
 	compressed_body := gzip.compress(expected_body.bytes())!
 	content :=
 		'HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
-		compressed_body.bytestr()
+			compressed_body.bytestr()
 	resp := parse_response(content)!
 	assert resp.body == expected_body
 }
@@ -124,7 +142,7 @@ fn test_parse_response_with_deflate_content_encoding() {
 	compressed_body := zlib.compress(expected_body.bytes())!
 	content :=
 		'HTTP/1.1 200 OK\r\nContent-Encoding: deflate\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
-		compressed_body.bytestr()
+			compressed_body.bytestr()
 	resp := parse_response(content)!
 	assert resp.body == expected_body
 }
@@ -138,7 +156,7 @@ fn test_parse_response_with_brotli_content_encoding() {
 	compressed_body := brotli.compress(expected_body.bytes(), mode: .text)!
 	content :=
 		'HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: ${compressed_body.len}\r\n\r\n' +
-		compressed_body.bytestr()
+			compressed_body.bytestr()
 	resp := parse_response(content)!
 	assert resp.body == expected_body
 }

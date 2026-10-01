@@ -120,11 +120,11 @@ pub fn (r Read) str() string {
 
 // Reader is used to read by Untar to parse the blocks.
 pub interface Reader {
-mut:
 	// dir_block is called when untar reads a block of type directory.
 	// Call `Read.get_path()` to get the full name of the directory.
 	// `size` field is zero for directories.
 	// The implementor can set Read's field `stop_early` to suspend the reader.
+mut:
 	dir_block(mut read Read, size u64)
 
 	// file_block is called when untar reads a block of type filename.
@@ -138,6 +138,7 @@ mut:
 	// The `data` size is 512 bytes or less. `pending` indicates how many bytes are left to read.
 	// The implementor can inspect the data and use the pending value
 	// to set Read's field `stop_early` to suspend the reader.
+	// Data borrows the parser buffer and is valid only during this callback; clone it to retain it.
 	data_block(mut read Read, data []u8, pending int)
 
 	// other_block is called when untar reads a block type other than directory,
@@ -273,7 +274,8 @@ fn (mut d ChunksReader) read_blocks(chunk []u8) ReadResult {
 		}
 
 		// send a complete block
-		block := d.buffer[cut..cut + 512]
+		// The callback consumes this block before the fixed buffer is reused.
+		block := unsafe { (&d.buffer[cut]).vbytes(512) }
 		cut += 512
 		d.result = d.read_block_fn(block) or {
 			assert false, 'Should not occur buffer overflow'

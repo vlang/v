@@ -19,7 +19,8 @@ fn test_interface_as_cast_in_anon_fn() {
 	mut fbs := []&FooBar{}
 	fbs << &Foo{1}
 	do_something := fn [mut fbs] () {
-		_ := fbs.last() as Foo // this line works outside of anon fn
+		_ := // this line works outside of anon fn
+		fbs.last() as Foo
 	}
 	do_something()
 	assert true

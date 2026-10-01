@@ -30,12 +30,12 @@ fn global_x() u64 {
 }
 
 fn update_local() u64 {
-	mut x := u64(7)
+	mut n := u64(7)
 	asm arm64 {
-		add x, x, 1
-		; +r (x)
+		add n, n, 1
+		; +r (n)
 	}
-	return x
+	return n
 }
 
 struct AsmOperand {
@@ -115,12 +115,12 @@ fn global_x() u64 {
 }
 
 fn update_local() u64 {
-	mut x := u64(7)
+	mut n := u64(7)
 	asm amd64 {
-		add x, 1
-		; +r (x)
+		add n, 1
+		; +r (n)
 	}
-	return x
+	return n
 }
 
 struct AsmOperand {
@@ -225,7 +225,11 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	assert c_source.contains('__asm__ ('), c_source
 	assert c_source.contains('[b] "+r" (b)'), c_source
 	assert c_source.contains('[a] "r" (a)'), c_source
-	assert c_source.contains('[x] "+r" (x__local)'), c_source
+	// Was `[x] "+r" (x__local)`: the operand held a local named after the global
+	// `x`, so cgen had to suffix it apart. Such a local is rejected now, so the
+	// operand is checked plain -- what it still pins down is that an asm operand
+	// binds the local it names.
+	assert c_source.contains('[n] "+r" (n)'), c_source
 	assert c_source.contains('"+r" (value.v_index)'), c_source
 	assert c_source.contains('array_get(values, 0)'), c_source
 	assert c_source.contains('"+r" (value.ptr->v_index)'), c_source
@@ -355,6 +359,19 @@ fn test_asm_goto_lowers_branch_after_leading_local_label() {
 	assert c_source.contains('"retry: jne %l[__v_user_goto_0]\\n\\t"'), c_source
 }
 
+fn test_asm_goto_lowers_uppercase_branch_mnemonics() {
+	generate, c_source := generate_inline_asm_c('goto_uppercase_mnemonic_program', 'fn main() {
+	asm goto amd64 {
+		retry: JNE done
+		; ; ; ; done
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"retry: JNE %l[__v_user_goto_0]\\n\\t"'), c_source
+}
+
 fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
 	generate, c_source := generate_inline_asm_c('raw_goto_program', 'fn main() {
 	asm goto amd64 raw {
@@ -370,7 +387,7 @@ fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
 }
 
 fn test_asm_goto_across_lock_scope_is_rejected() {
-	generate, c_source := generate_inline_asm_c('goto_lock_scope_program', 'struct Counter {
+	generate, _ := generate_inline_asm_c('goto_lock_scope_program', 'struct Counter {
 mut:
 	value int
 }
@@ -386,8 +403,110 @@ fn main() {
 	done:
 }
 ')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+}
+
+fn test_asm_goto_within_lock_scope_is_allowed() {
+	generate, c_source := generate_inline_asm_c('goto_within_lock_scope_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	lock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+		done:
+	}
+}
+')
 	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('#error asm goto into or out of a lock scope is not supported'), c_source
+	assert c_source.contains('jmp %l[__v_user_goto_0]'), c_source
+	assert !c_source.contains('#error asm goto'), c_source
+}
+
+fn test_asm_goto_across_rlock_scope_is_rejected() {
+	generate, _ := generate_inline_asm_c('goto_rlock_scope_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	rlock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+}
+
+fn test_asm_goto_across_lock_scope_inside_closure_is_rejected() {
+	generate, _ := generate_inline_asm_c('goto_lock_scope_closure_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	f := fn [shared counter] () {
+		lock counter {
+			asm goto amd64 {
+				jmp done
+				; ; ; ; done
+			}
+		}
+		done:
+	}
+	f()
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+}
+
+fn test_asm_goto_to_undeclared_label_in_lock_scope_is_rejected() {
+	generate, _ := generate_inline_asm_c('goto_undeclared_label_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	lock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+}
+')
+	assert generate.exit_code != 0, generate.output
+}
+
+fn test_asm_goto_across_objectless_lock_is_allowed() {
+	generate, c_source := generate_inline_asm_c('goto_objectless_lock_program', 'fn main() {
+	lock {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('jmp %l[__v_user_goto_0]'), c_source
+	assert !c_source.contains('#error asm goto'), c_source
 }
 
 fn generate_inline_asm_c(name string, source string) (os.Result, string) {
@@ -461,6 +580,41 @@ fn test_structured_x86_asm_reverses_three_operand_instructions() {
 ')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"imul \$7, %[lhs], %[result]\\n\\t"'), c_source
+}
+
+fn test_directional_numeric_asm_labels_are_accepted_and_lowered() {
+	generate, c_source := generate_inline_asm_c('directional_numeric_label_program', 'fn main() {
+	asm amd64 {
+		1:
+		nop
+		jmp b1
+		jne f2
+		2:
+	}
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"jmp 1b\\n\\t"'), c_source
+	assert c_source.contains('"jne 2f\\n\\t"'), c_source
+}
+
+fn test_x86_port_io_uses_32_bit_register_for_platform_int() {
+	generate, c_source := generate_inline_asm_c('platform_int_port_io', 'fn read_port(port u16) int {
+	mut result := 0
+	asm amd64 {
+		in result, port
+		; =a (result)
+		; Nd (port)
+	}
+	return result
+}
+
+fn main() {
+	_ = read_port(0)
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"in %[port], %k[result]\\n\\t"'), c_source
 }
 
 fn test_intel_asm_rejects_memory_capable_constraints() {

@@ -54,3 +54,29 @@ fn test_result_or_block_match_error_type() {
 		name: 'my_db'
 	}
 }
+
+struct ExhaustiveMatchReturnError {
+	Error
+}
+
+fn exhaustive_match_return_source() !int {
+	return ExhaustiveMatchReturnError{}
+}
+
+fn result_or_block_exhaustive_match_returns() !bool {
+	value := exhaustive_match_return_source() or {
+		match err {
+			ExhaustiveMatchReturnError {
+				return true
+			}
+			else {
+				return err
+			}
+		}
+	}
+	return value > 0
+}
+
+fn test_result_or_block_exhaustive_match_returns() {
+	assert result_or_block_exhaustive_match_returns()!
+}

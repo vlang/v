@@ -1916,6 +1916,25 @@ fn main() {
 	assert e.stdout() == '0\n10\n'
 }
 
+fn test_eval_escaped_reference_to_plain_keyword_enum_member() {
+	mut e := create()
+	e.run_text('
+enum E {
+	first
+	struct = 7
+}
+
+fn main() {
+	println(int_str(E.@struct))
+	match E.@struct {
+		.@struct { println("seven") }
+		else { println("wrong") }
+	}
+}
+') or { panic(err) }
+	assert e.stdout() == '7\nseven\n'
+}
+
 fn test_eval_enum_selector_preserves_sum_variant_type() {
 	mut e := create()
 	e.run_text('
@@ -2967,7 +2986,7 @@ fn main() {
 	assert e.stdout() == 'none\n'
 }
 
-fn test_eval_or_block_binds_err() {
+fn test_eval_option_or_block_preserves_outer_err() {
 	mut e := create()
 	e.run_text('
 fn maybe() ?int {
@@ -2975,16 +2994,16 @@ fn maybe() ?int {
 }
 
 fn main() {
+	err := "outer"
 	maybe() or {
-		_ := err
-		println("handled")
+		println(err)
 		return
 	}
 }
 	') or {
 		panic(err)
 	}
-	assert e.stdout() == 'handled\n'
+	assert e.stdout() == 'outer\n'
 }
 
 fn test_eval_or_block_return_propagates_from_for_in_header() {
@@ -4002,7 +4021,7 @@ fn main() {
 fn test_v3_eval_backend_cli() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_eval_backend_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.execute('${vexe} -gc none -compile-backend eval,wasm,arm64 -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	src := os.join_path(os.temp_dir(), 'v3_eval_backend_sample.v')
 	os.write_file(src, '

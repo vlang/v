@@ -195,7 +195,9 @@ pub fn decompress_zlib(data []u8) ![]u8 {
 		return error('invalid zlib stream: trailing data before adler32')
 	}
 	decoded := res.decoded
-	if adler32.sum(decoded) != expected { return error('invalid zlib stream: adler32 mismatch') }
+	if adler32.sum(decoded) != expected {
+		return error('invalid zlib stream: adler32 mismatch')
+	}
 	return decoded
 }
 

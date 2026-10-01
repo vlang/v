@@ -1,6 +1,7 @@
 module builtin
 
 import strings
+
 /// Internal representation of `array` type. It is used to implement slices and to make slices behave correctly
 /// it simply stores reference to original array and to index them properly it does index array relative to `index_start`.
 
@@ -29,6 +30,7 @@ fn (mut a array_buffer) make_copy() {
 }
 
 #array_buffer.prototype.make_copy = function() { return array_buffer_make_copy(this) }
+
 // TODO(playX): Should this be implemented fully in JS, use generics or just voidptr?
 fn (a array_buffer) get(ix int) voidptr {
 	mut res := unsafe { nil }
@@ -154,6 +156,7 @@ pub fn (a array) repeat(count int) array {
 
 fn JS.makeEmptyArray() array
 fn JS.makeEmptyJSArray() JS.Array
+
 fn empty_array() array {
 	return JS.makeEmptyArray()
 }
@@ -295,6 +298,7 @@ struct array_iterator {
 #
 #
 #function v_makeSlice(array) { Object.defineProperty(array,'len', {get: function() { return this.arr.len; }, set: function(l) { this.arr.len = l; }}) }
+
 // delete deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
 	a.delete_many(i, 1)

@@ -10,11 +10,11 @@ struct Rectangle {
 
 __global bricks = []Rectangle{}
 
-fn init_bricks(mut bricks []Rectangle) {
+fn init_bricks(mut rectangles []Rectangle) {
 	for i in 0 .. 5 {
-		bricks << Rectangle{i, 2 * i, 3 * i, 4 * i}
+		rectangles << Rectangle{i, 2 * i, 3 * i, 4 * i}
 	}
-	dump(bricks.len)
+	dump(rectangles.len)
 }
 
 fn test_main() {

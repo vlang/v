@@ -79,6 +79,31 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_preserves_contextually_invalid_method_and_range_syntax() {
+	for source in [
+		'struct Example {}\n\nfn (value Example) Foo.bar() {}\n',
+		'struct Example {}\n\nfn (value Example) Foo.@select()\n',
+		'fn main() {\n\tfor i in 0 ... 3 { println(i) }\n}\n',
+	] {
+		formatted := vfmt('contextual_method_range', source)
+		assert formatted == source, formatted
+		assert vfmt('contextual_method_range_twice', formatted) == formatted
+	}
+}
+
+fn test_formatter_preserves_interop_receiver_qualifiers() {
+	for source in [
+		'struct Native {}\n\nfn (value Native) C.foo() {}\n',
+		'struct Native {}\n\nfn (value &Native) JS.nested.foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) C.foo()\n',
+	] {
+		formatted := vfmt('interop_receiver', source)
+		assert formatted == source, formatted
+		assert vfmt('interop_receiver_twice', formatted) == formatted
+	}
+}
+
 fn test_formatter_preserves_operator_method_spacing() {
 	source := 'struct Number {\n\tvalue int\n}\n\nfn (a Number) + (b Number) Number {\n\treturn Number{a.value + b.value}\n}\n\nfn (a Number) == (b Number) bool {\n\treturn a.value == b.value\n}\n\nfn (a Number) < (b Number) bool {\n\treturn a.value < b.value\n}\n\nfn (a Number) [] (index int) int {\n\treturn a.value + index\n}\n'
 	out := vfmt('operator_method_spacing', source)
@@ -106,6 +131,41 @@ fn test_formatter_preserves_blank_lines_between_statements() {
 	out := vfmt('statement_blank_lines', source)
 	assert out == source, out
 	assert vfmt('statement_blank_lines_twice', out) == out
+	assert vfmt_with_options('statement_blank_lines_all_files', source, FormatOptions{}) == source
+}
+
+fn test_formatter_preserves_top_level_statement_spacing() {
+	source := "name := 'Bob'\nage := 20\nif age > 10 {\n\tprintln(name)\n}\n\nprintln(age)\n"
+	assert vfmt_with_options('top_level_statement_spacing', source, FormatOptions{}) == source
+}
+
+fn test_formatter_groups_consecutive_c_declarations_and_directives() {
+	source := 'fn C.first()\nfn C.second()\n\n#flag -lm\n#flag -lpthread\n'
+	assert vfmt_with_options('c_declaration_directive_groups', source, FormatOptions{}) == source
+}
+
+fn test_formatter_preserves_multiline_empty_structs() {
+	source := 'struct Foo {\n}\n\nstruct C.Native {\n}\n'
+	assert vfmt_with_options('multiline_empty_structs', source, FormatOptions{}) == source
+}
+
+fn test_formatter_preserves_multiline_call_struct_arguments() {
+	short_struct := "run(mut app,\n\thost:       '0.0.0.0'\n\tport:       8080\n\tnr_workers: jobs()\n)\n"
+	assert vfmt_with_options('multiline_short_struct_call', short_struct,
+		FormatOptions{}) == short_struct
+	named_argument := "value := encode(Payload{'item'},\n\tescape_unicode: true\n)\n"
+	assert vfmt_with_options('multiline_named_argument_call', named_argument,
+		FormatOptions{}) == named_argument
+	// A line break inside a positional struct literal does not expand the named ones.
+	inline_named := "value := encode(Payload{\n\tname: 'item'\n}, escape_unicode: true)\n"
+	assert vfmt_with_options('inline_named_after_multiline_struct', inline_named,
+		FormatOptions{}) == inline_named
+}
+
+fn test_formatter_keeps_anonymous_struct_generic_type_arguments() {
+	source := 'fn main() {\n\tb := decode[struct {\n\t\ta string\n\t}](text)!.a\n\t_ = b\n}\n'
+	out := vfmt('anon_struct_type_arg', source)
+	assert out == source, out
 }
 
 fn test_formatter_preserves_gated_slices() {
@@ -127,6 +187,208 @@ fn test_formatter_preserves_compact_function_and_expression_bodies() {
 	out := vfmt('compact_bodies', source)
 	assert out == source, out
 	assert vfmt('compact_bodies_twice', out) == out
+}
+
+fn test_formatter_keeps_single_statement_bodies_written_on_one_line() {
+	source := 'struct Point {
+	x int
+mut:
+	y int
+}
+
+fn (p &Point) sum() int { return p.x + p.y }
+
+pub fn (mut p Point) set(y int) { p.y = y }
+
+fn first_positive(a []int) int {
+	mut total := 0
+	for i := 0; i < a.len; i++ { total += a[i] }
+	for x in a { if x > 0 { return x } }
+	for i, x in a { total += i * x }
+	for total > 100 { total /= 2 }
+	if total > 10 { return total } else { total = 0 }
+	if total < 0 { total = -total }
+	cmp := fn (x &int, y &int) int { return *x - *y }
+	_ = cmp
+	return total
+}
+'
+	out := vfmt('single_statement_bodies', source)
+	assert out == source, out
+	assert vfmt('single_statement_bodies_twice', out) == out
+}
+
+fn test_formatter_expands_single_statement_bodies_that_do_not_fit_one_line() {
+	source := "fn expand(a []int, extra_long_argument_name int, another_long_argument_name int) int { return a.len }
+
+fn loops(a []int) {
+	for x in a { m := {'k': x} }
+	for x in a { if x > 1 { println(x) } else if x > 2 { println(x) } }
+	for x in a { // note
+		println(x)
+	}
+	if a.len > 1 { return } else if a.len > 2 { println(a) }
+}
+
+fn multi(x int) int {
+	return x
+}
+"
+	out := vfmt('expanded_single_statement_bodies', source)
+	assert out == "fn expand(a []int, extra_long_argument_name int, another_long_argument_name int) int {
+	return a.len
+}
+
+fn loops(a []int) {
+	for x in a {
+		m := {
+			'k': x
+		}
+	}
+	for x in a {
+		if x > 1 {
+			println(x)
+		} else if x > 2 {
+			println(x)
+		}
+	}
+	for x in a { // note
+		println(x)
+	}
+	if a.len > 1 {
+		return
+	} else if a.len > 2 {
+		println(a)
+	}
+}
+
+fn multi(x int) int {
+	return x
+}
+", out
+	assert vfmt('expanded_single_statement_bodies_twice', out) == out
+}
+
+fn test_formatter_measures_formatted_single_statement_bodies_against_the_line_limit() {
+	// Every source line is at most 99 columns, but `{return x}` gains two spaces when it is
+	// formatted: the bodies that end up over 100 columns are expanded on the first run, not
+	// on the second one.
+	over, fits := 'o'.repeat(71), 'f'.repeat(70)
+	for_in, c_for, lit := 'i'.repeat(66), 'c'.repeat(59), 'l'.repeat(65)
+	source := "fn over() string {return '${over}'}
+
+fn fits() string {return '${fits}'}
+
+fn loops() {
+	for i in 0 .. 3 {println('${for_in}')}
+	for i := 0; i < 3; i++ {println('${c_for}')}
+	cb := fn () string {return '${lit}'}
+	_ = cb
+}
+"
+	out := vfmt('formatted_single_statement_body_width', source)
+	assert out == "fn over() string {
+	return '${over}'
+}
+
+fn fits() string { return '${fits}' }
+
+fn loops() {
+	for i in 0 .. 3 {
+		println('${for_in}')
+	}
+	for i := 0; i < 3; i++ {
+		println('${c_for}')
+	}
+	cb := fn () string {
+		return '${lit}'
+	}
+	_ = cb
+}
+", out
+	assert vfmt('formatted_single_statement_body_width_twice', out) == out
+}
+
+fn test_formatter_measures_formatted_compact_if_branches_against_the_line_limit() {
+	// As for function and loop bodies, `{return x}` and `{'x'}` gain two spaces each: the
+	// branches that end up over 100 columns are expanded on the first run.
+	over, fits := 'o'.repeat(79), 'f'.repeat(78)
+	expr_over, expr_fits := 'e'.repeat(71), 'v'.repeat(68)
+	source := "fn branches(c bool) string {
+	if c {return '${over}'}
+	if c {return '${fits}'}
+	s := if c {'${expr_over}'} else {''}
+	t := if c {'${expr_fits}'} else {''}
+	return s + t
+}
+"
+	out := vfmt('formatted_compact_if_width', source)
+	assert out == "fn branches(c bool) string {
+	if c {
+		return '${over}'
+	}
+	if c { return '${fits}' }
+	s := if c {
+		'${expr_over}'
+	} else {
+		''
+	}
+	t := if c { '${expr_fits}' } else { '' }
+	return s + t
+}
+", out
+	assert vfmt('formatted_compact_if_width_twice', out) == out
+}
+
+fn test_formatter_expands_single_statement_bodies_with_multi_statement_or_blocks() {
+	source := "fn h() ?int { return 1 }
+
+fn first() int { return h() or { println('none') 0 } }
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a { _ = h() or { println(x) continue } }
+	if a.len > 0 { _ = h() or { println(a) return } }
+	cb := fn () int { return h() or { println('none') 0 } }
+	_ = cb
+}
+"
+	out := vfmt('multi_statement_or_block_bodies', source)
+	assert out == "fn h() ?int { return 1 }
+
+fn first() int {
+	return h() or {
+		println('none')
+		0
+	}
+}
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a {
+		_ = h() or {
+			println(x)
+			continue
+		}
+	}
+	if a.len > 0 {
+		_ = h() or {
+			println(a)
+			return
+		}
+	}
+	cb := fn () int {
+		return h() or {
+			println('none')
+			0
+		}
+	}
+	_ = cb
+}
+", out
+	assert vfmt('multi_statement_or_block_bodies_twice', out) == out
 }
 
 fn test_formatter_keeps_trailing_array_comments_inside_literal() {
@@ -974,7 +1236,7 @@ fn test_formatter_ignores_vfmt_directives_inside_strings() {
 	out := vfmt('vfmt_directives_in_strings', "fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n")
 	assert out.contains("off := '// vfmt off'"), out
 	assert out.contains("on := '// vfmt on'"), out
-	assert out.contains("fn format_me() {\n\tprintln('yes')\n}"), out
+	assert out.contains("fn format_me() { println('yes') }"), out
 }
 
 fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {
@@ -1505,7 +1767,7 @@ fn test_formatter_demangles_function_local_aggregate_types() {
 		value: 2
 	}
 	wrapper := Wrapper{
-		Tick: first
+		Tick:    first
 		numbers: {
 			'one': Number{
 				integer: 1
@@ -1738,6 +2000,13 @@ fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
 	assert vfmt('match_branch_trailing_comment_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_comments_on_compact_match_branches() {
+	source := 'fn foo(arg int) int {\n\treturn match arg {\n\t\t1 { 1 } // return 1\n\t\telse { 0 } // return 2\n\t}\n}\n'
+	out := vfmt('compact_match_branch_trailing_comments', source)
+	assert out == source, out
+	assert vfmt('compact_match_branch_trailing_comments_twice', out) == out
+}
+
 // A blank separator line must carry no indentation. Writing it left a line of whitespace, which
 // V source never carries and which the next run read back differently, so the formatter was not a
 // fixed point.
@@ -1882,4 +2151,170 @@ fn test_formatter_keeps_nul_escape_unambiguous() {
 	assert !out.contains("'p\\0q'"), out
 	assert out.contains('`\\x00`'), out
 	assert vfmt('nul_escape_twice', out) == out
+}
+
+// `!in` is only scanned as one token when a space follows it, so `$if T !in [...]` has to keep
+// that space. Writing `!in[` made the next formatting run read `!` `in` and print `!in in[`.
+fn test_formatter_keeps_comptime_type_list_membership_detached() {
+	source := "fn probe[T]() {\n\t\$if T !in [i8, i16] {\n\t\tprintln('a')\n\t}\n\t\$if T in [i8, i16] {\n\t\tprintln('b')\n\t}\n}\n"
+	out := vfmt('comptime_type_list', source)
+	assert out == source, out
+	assert !out.contains('!in['), out
+	assert !out.contains(' in['), out
+	assert vfmt('comptime_type_list_twice', out) == out
+}
+
+// A `$if` condition that wraps onto the next line gets an automatic semicolon, which has no
+// textual form. Writing it left a double separator (`Time  ||`) that the next run collapsed.
+fn test_formatter_keeps_wrapped_comptime_condition_single_spaced() {
+	source := "fn probe[T]() {\n\t\$if T is string || T is int {\n\t\tprintln('a')\n\t}\n}\n"
+	wrapped := "fn probe[T]() {\n\t\$if T is string\n\t\t|| T is int {\n\t\tprintln('a')\n\t}\n}\n"
+	out := vfmt('wrapped_comptime_cond', wrapped)
+	assert out == source, out
+	assert !out.contains('string  ||'), out
+	assert vfmt('wrapped_comptime_cond_twice', out) == out
+}
+
+// A compact block nested inside another inline construct must not end the line: the enclosing
+// construct still owes its own `}`. `defer { unsafe { x } }` used to come out split in two.
+fn test_formatter_keeps_compact_defer_with_nested_unsafe() {
+	source := 'fn free_it(mut idxs []int) {\n\tdefer { unsafe { idxs.free() } }\n\tprintln(idxs.len)\n}\n'
+	out := vfmt('compact_defer_unsafe', source)
+	assert out == source, out
+	assert vfmt('compact_defer_unsafe_twice', out) == out
+}
+
+// `spawn`/`go` nodes used to carry no source position and inherited the *next* token's span,
+// which moved every blank line in a run of spawns one statement earlier.
+fn test_formatter_keeps_blank_lines_around_spawn_statements() {
+	source := 'fn run(a int, b int) {\n\tspawn work(1, 2)\n\tspawn work(3, 4)\n\tspawn work(1, 2)\n\n\tprintln(a + b)\n}\n'
+	out := vfmt('spawn_blank_lines', source)
+	assert out == source, out
+	assert vfmt('spawn_blank_lines_twice', out) == out
+}
+
+// The closing `}` of a match branch is part of its span, but the statements inside only move
+// `source_end` up to the last one of them, so a comment on the next line looked like it
+// followed a blank line and one was invented before it.
+fn test_formatter_keeps_comment_before_a_match_branch() {
+	source := "fn pick(a int) int {\n\tmatch a {\n\t\t1 {\n\t\t\tprintln('one')\n\t\t\treturn 1\n\t\t}\n\t\t// why this branch exists\n\t\telse {\n\t\t\treturn 0\n\t\t}\n\t}\n}\n"
+	out := vfmt('comment_before_match_branch', source)
+	assert out == source, out
+	assert vfmt('comment_before_match_branch_twice', out) == out
+}
+
+// Same for the first comment of a `$else` branch.
+fn test_formatter_keeps_comment_before_a_comptime_else_branch() {
+	source := "fn probe() {\n\t\$if linux {\n\t\tprintln('a')\n\t\tprintln('b')\n\t} \$else {\n\t\t// only here\n\t\tprintln('c')\n\t}\n}\n"
+	out := vfmt('comment_before_comptime_else', source)
+	assert out == source, out
+	assert vfmt('comment_before_comptime_else_twice', out) == out
+}
+
+// A type declared inside a function gets a qualified internal name, so the initializer's span
+// could not be found by subtracting that name's length from the `{`. The span then started
+// inside the preceding tokens and the array layout heuristics read the wrong source.
+fn test_formatter_keeps_layout_of_literals_of_a_function_local_struct() {
+	source := "fn rows() {\n\tstruct Row { // inner\n\t\tname  string\n\t\tvalue int\n\t}\n\n\tok := [\n\t\tRow{'0', 0}, // zeroes\n\t\tRow{'+0', 0},\n\t\tRow{'-0', 0},\n\t]\n\t_ = ok\n}\n"
+	out := vfmt('function_local_struct_literal_layout', source)
+	assert out == source, out
+	assert vfmt('function_local_struct_literal_layout_twice', out) == out
+}
+
+// A body-less `fn Type.method(...)` declaration keeps the internal static-method mangling in
+// its name; the formatter has to print the source spelling instead of the marker.
+fn test_formatter_keeps_bodyless_static_method_declaration() {
+	source := "@[wasm_import_namespace: 'wasi_snapshot_preview1']\nfn WASM.args_get(argv &&u8, argv_buf &u8) int\n"
+	out := vfmt('bodyless_static_method', source)
+	assert out == source, out
+	assert !out.contains('@static@'), out
+	assert vfmt('bodyless_static_method_twice', out) == out
+}
+
+// The `...x` spread node had no span of its own and inherited the `)` after it, so the call's
+// trailing comment was printed inside the argument list and the `)` was pushed onto its own line.
+fn test_formatter_keeps_trailing_comment_after_a_spread_argument() {
+	source := 'fn call(vi ...int) int {\n\tx := [1, 2]\n\t_ = call(...x) // OK\n\treturn 0\n}\n'
+	out := vfmt('spread_trailing_comment', source)
+	assert out == source, out
+	assert vfmt('spread_trailing_comment_twice', out) == out
+}
+
+// Keyed initializer fields line their values up, and a blank line both survives and ends the
+// alignment group. Merging the groups without recomputing the column was not a fixed point.
+fn test_formatter_aligns_struct_literal_values_per_group() {
+	source := 'struct Rec {\n\ta          int\n\tbbbbbbbbbb int\n}\n\nfn make() Rec {\n\treturn Rec{\n\t\ta:          1\n\t\tbbbbbbbbbb: 2\n\t}\n}\n'
+	out := vfmt('struct_literal_alignment', source)
+	assert out == source, out
+	assert vfmt('struct_literal_alignment_twice', out) == out
+
+	grouped := 'struct Rec {\n\ta          int\n\tbbbbbbbbbb int\n}\n\nfn make() Rec {\n\treturn Rec{\n\t\ta: 1\n\n\t\tbbbbbbbbbb: 2\n\t}\n}\n'
+	out2 := vfmt('struct_literal_alignment_groups', grouped)
+	assert out2 == grouped, out2
+	assert vfmt('struct_literal_alignment_groups_twice', out2) == out2
+}
+
+// Everything that can follow a struct field's type gets its own column: the `= default`, the
+// inline attributes and the trailing comment.
+fn test_formatter_aligns_struct_field_defaults_and_comments() {
+	source := "struct ToolCacheEntry {\n\tname       string   // the tool source name\n\tsource     string   // the tool source path\n\tbuild_args []string // the compiler flags used\n\theaders    bool   = true\n\tnullvalue  string = 'NULL'\n\tseparator  string = ','\n}\n"
+	out := vfmt('struct_field_suffix_alignment', source)
+	assert out == source, out
+	assert vfmt('struct_field_suffix_alignment_twice', out) == out
+}
+
+fn test_formatter_aligns_struct_field_attributes_with_defaults() {
+	source := 'struct Foo {\n\ta    int    @[some_attr]\n\tbeta string @[another]\n\tpi   f32 = 3.14    @[yet_another]\n\td    f64 = 2.9999999    @[yet_another]\n}\n\nfn main() {}\n'
+	want := 'struct Foo {\n\ta    int        @[some_attr]\n\tbeta string     @[another]\n\tpi   f32 = 3.14      @[yet_another]\n\td    f64 = 2.9999999 @[yet_another]\n}\n\nfn main() {}\n'
+	out := vfmt('struct_field_attribute_alignment', source)
+	assert out == want, out
+	assert vfmt('struct_field_attribute_alignment_twice', out) == want
+}
+
+// Enum members and interface members align their trailing comments the same way.
+fn test_formatter_aligns_enum_and_interface_trailing_comments() {
+	source := 'enum Stage {\n\tcompile_begin // before\n\tcompile_end   // after\n\tcmd_begin     // before run\n}\n\ninterface Reporter {\n\tsession_start(message string) // at the start\n\tstop()                        // at the end\n}\n'
+	out := vfmt('enum_interface_comment_alignment', source)
+	assert out == source, out
+	assert vfmt('enum_interface_comment_alignment_twice', out) == out
+}
+
+// A branch whose body is a single `return`/assignment/jump is as short as an expression body
+// and stays on the branch line, instead of being expanded over three lines.
+fn test_formatter_keeps_compact_match_branch_statements() {
+	source := 'fn pick(a int) int {\n\tmut r := 0\n\tmatch a {\n\t\t1 { return 1 }\n\t\t2 { r = 2 }\n\t\t3 { r++ }\n\t\telse { return 0 }\n\t}\n\treturn r\n}\n'
+	out := vfmt('compact_match_branch_statements', source)
+	assert out == source, out
+	assert vfmt('compact_match_branch_statements_twice', out) == out
+}
+
+// A truncated file must be refused rather than formatted: the parser balances the missing
+// braces, so printing the result would hand back code the user never wrote.
+fn test_formatter_reports_an_unterminated_block() {
+	assert reparse_diagnostics('unterminated_block', 'module main\n\nfn main() {\n\tif {\n}\n') > 0
+	assert reparse_diagnostics('unterminated_decl', 'module main\n\nfn main() {\n\tx :=\n}\n') > 0
+	assert reparse_diagnostics('terminated_block', 'module main\n\nfn main() {\n\tprintln(1)\n}\n') == 0
+}
+
+// Formatting is a fixed point: running the formatter over its own output must change nothing.
+// This is checked over the whole `vlib/v/fmt/tests` corpus, which covers far more syntax than
+// the individual cases above.
+fn test_formatter_output_is_a_fixed_point_over_the_fixture_corpus() {
+	fixture_dir := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests')
+	mut files := os.walk_ext(fixture_dir, '.vv')
+	files.sort()
+	assert files.len > 0
+	mut checked := 0
+	for path in files {
+		if os.file_name(path).starts_with('json_migrate_') {
+			// those fixtures are driven through the migration pass instead
+			continue
+		}
+		source := os.read_file(path) or { continue }
+		once := vfmt('fixed_point_${checked}', source)
+		twice := vfmt('fixed_point_${checked}_twice', once)
+		assert twice == once, os.file_name(path)
+		checked++
+	}
+	assert checked > 100
 }

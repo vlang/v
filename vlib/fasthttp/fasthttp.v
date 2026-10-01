@@ -268,7 +268,7 @@ pub:
 pub struct ShutdownParams {
 pub:
 	timeout         time.Duration = time.infinite
-	retry_period_ms int = 10
+	retry_period_ms int           = 10
 }
 
 // WaitTillRunningParams allows parametrizing the calls to `ServerHandle.wait_till_running()`.
@@ -379,6 +379,15 @@ $if linux || bsd || windows {
 	fn (s &Server) is_stopped() bool {
 		mut stopped := s.stopped
 		return stopped.load()
+	}
+
+	// mark_starting marks the server live before its first worker starts. Workers
+	// serve requests as soon as they run, so a shutdown can arrive before run()
+	// reaches mark_running; it must not mistake that server for a stopped one and
+	// return without stopping it.
+	fn (mut s Server) mark_starting() {
+		mut stopped := s.stopped
+		stopped.store(false)
 	}
 
 	fn (mut s Server) mark_running() {

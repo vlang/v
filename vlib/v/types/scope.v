@@ -30,7 +30,7 @@ pub mut:
 
 pub struct ScopeBindingOwner {
 	scope       &Scope = unsafe { nil }
-	index       int = -1
+	index       int    = -1
 	generation  int
 	lifetime    int
 	name        string
@@ -81,12 +81,16 @@ fn (mut s Scope) remember_fast_binding(name string, index int) {
 	s.fast_generations[slot] = s.fast_generation
 }
 
+// scope_fast_lookup_enabled is read once: getenv takes the process-wide
+// environment lock, which parallel workers creating scopes contended on.
+const scope_fast_lookup_enabled = os.getenv('V3_NO_SCOPE_DIRECT') == ''
+
 // new_scope returns a reusable type-checker scope with an optional parent.
 pub fn new_scope(parent &Scope) &Scope {
 	unsafe {
 		return &Scope{
-			parent: parent
-			fast_lookup: os.getenv('V3_NO_SCOPE_DIRECT') == ''
+			parent:          parent
+			fast_lookup:     scope_fast_lookup_enabled
 			fast_generation: 1
 		}
 	}
@@ -166,10 +170,10 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 			}
 			if i := scope.own_binding_index(name) {
 				return ScopeBindingOwner{
-					scope: scope
-					index: i
-					lifetime: scope.lifetime
-					name: name
+					scope:       scope
+					index:       i
+					lifetime:    scope.lifetime
+					name:        name
 					storage_key: scope.storage_keys[i]
 				}
 			}
@@ -180,10 +184,10 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	for i := s.names.len - 1; i >= 0; i-- {
 		if s.names[i] == name {
 			return ScopeBindingOwner{
-				scope: s
-				index: i
-				generation: s.generations[i]
-				lifetime: s.lifetime
+				scope:       s
+				index:       i
+				generation:  s.generations[i]
+				lifetime:    s.lifetime
 				storage_key: s.storage_keys[i]
 			}
 		}
@@ -282,10 +286,10 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 			s.types[i] = typ
 			s.remember_fast_binding(name, i)
 			return ScopeBindingOwner{
-				scope: s
-				index: i
-				lifetime: s.lifetime
-				name: name
+				scope:       s
+				index:       i
+				lifetime:    s.lifetime
+				name:        name
 				storage_key: s.storage_keys[i]
 			}
 		}
@@ -298,10 +302,10 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 		storage_key := scope_binding_storage_key(s, s.lifetime, index, 0)
 		s.storage_keys << storage_key
 		return ScopeBindingOwner{
-			scope: s
-			index: index
-			lifetime: s.lifetime
-			name: name
+			scope:       s
+			index:       index
+			lifetime:    s.lifetime
+			name:        name
 			storage_key: storage_key
 		}
 	}
@@ -313,10 +317,10 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 			storage_key := scope_binding_storage_key(s, s.lifetime, i, s.generations[i])
 			s.storage_keys[i] = storage_key
 			return ScopeBindingOwner{
-				scope: s
-				index: i
-				generation: s.generations[i]
-				lifetime: s.lifetime
+				scope:       s
+				index:       i
+				generation:  s.generations[i]
+				lifetime:    s.lifetime
 				storage_key: storage_key
 			}
 		}
@@ -329,10 +333,10 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 	storage_key := scope_binding_storage_key(s, s.lifetime, index, s.next_generation)
 	s.storage_keys << storage_key
 	return ScopeBindingOwner{
-		scope: s
-		index: index
-		generation: s.next_generation
-		lifetime: s.lifetime
+		scope:       s
+		index:       index
+		generation:  s.next_generation
+		lifetime:    s.lifetime
 		storage_key: storage_key
 	}
 }

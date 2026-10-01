@@ -11,7 +11,9 @@ mut:
 }
 
 fn (mut ec EventController[T]) generate_id() int {
-	return ec.id++
+	id := ec.id
+	ec.id++
+	return id
 }
 
 pub fn (mut ec EventController[T]) override(listener EventListener[T]) EventController[T] {

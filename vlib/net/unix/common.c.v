@@ -53,13 +53,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 
 	match test {
 		.read {
-			net.socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+			net.socket_error(C.select(handle + 1, &set, unsafe { nil }, unsafe { nil }, timeval_timeout))!
 		}
 		.write {
-			net.socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+			net.socket_error(C.select(handle + 1, unsafe { nil }, &set, unsafe { nil }, timeval_timeout))!
 		}
 		.except {
-			net.socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+			net.socket_error(C.select(handle + 1, unsafe { nil }, unsafe { nil }, &set, timeval_timeout))!
 		}
 	}
 

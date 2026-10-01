@@ -72,7 +72,8 @@ typedef struct VMapData {
 	int count;
 } VMapData;
 typedef struct { VMapData *data; } map;
-typedef struct { void *data; void *err; unsigned char state; } Option;
+typedef struct { void *data; unsigned char state; } Option;
+typedef struct { void *data; void *err; unsigned char state; } __v_result;
 /* One multi-return component. Values up to 32 bytes are stored inline; larger
    ones are boxed and referenced through `ptr`, so no component size can
    overflow the slot. */
@@ -926,6 +927,7 @@ struct FastcSourceHeader {
 	import_order            []string
 	blank_imports           []string
 	has_globals             bool
+	translated              bool
 	has_constants           bool
 	has_global_declarations bool
 	// Byte-level superset tests over the whole file (see fastc_source_scan_flags):
@@ -1254,6 +1256,7 @@ struct Parser {
 	// source-level functions. It is immutable and shared by file generators.
 	function_c_names map[string]string
 	selfhost         bool
+	translated       bool
 	header_free      bool
 	// source_has_select is false only when the file provably holds no `select`
 	// word (see fastc_source_scan_flags), so block pre-scans for channel
@@ -1439,7 +1442,7 @@ pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 	}
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: path
+			path:   path
 			source: source
 			header: header
 		},
@@ -1467,7 +1470,7 @@ mut:
 fn fastc_new_phase_timer() FastcPhaseTimer {
 	return FastcPhaseTimer{
 		enabled: os.getenv('FASTC_BENCH_PHASES') != ''
-		sw: time.new_stopwatch()
+		sw:      time.new_stopwatch()
 	}
 }
 
@@ -1485,7 +1488,8 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	// The resolve memo is written while the program is generated and joined
 	// once the C pieces exist.
 	mut pending_memo_store := FastcPendingMemoStore{}
-	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, prefs, mut pending_memo_store)!
+	scoped_prefs := fastc_preferences_for_entry_paths(paths, prefs)
+	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
 	for source_file in sources {
@@ -1495,15 +1499,16 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	// multi-return component is not carried correctly by the self-hosted
 	// generator yet.
 	mut units := FastcUnitLayout{}
-	c_pieces, uses_threads, c_flags := generate_source_pieces(sources, module_aliases, prefs, mut units)!
+	c_pieces, uses_threads, c_flags := generate_source_pieces(sources, module_aliases, &scoped_prefs,
+		mut units)!
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
-		c_pieces: c_pieces
+		c_pieces:     c_pieces
 		source_paths: source_paths
 		uses_threads: uses_threads
-		c_flags: c_flags
-		units: units
+		c_flags:      c_flags
+		units:        units
 	}
 }
 
@@ -1578,8 +1583,8 @@ fn fastc_file_gen_result(outputs []FastcFileGenOutput) FastcFileGenResult {
 		}
 	}
 	return FastcFileGenResult{
-		outputs: outputs
-		composite_types: composite_types
+		outputs:           outputs
+		composite_types:   composite_types
 		fixed_array_types: fixed_array_types
 	}
 }
@@ -1616,79 +1621,80 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	prefs := ctx.prefs
 	body_capacity := source_file.source.len * (if prefs.building_v { 4 } else { 2 }) + 1024
 	mut gen := Parser{
-		prefs: unsafe { prefs }
-		unqualified_key_memo: map[string]string{}
-		c_function_name_memo: map[string]string{}
-		nonlocal_name_type_memo: map[string]string{}
-		resolved_name_memo: map[string]string{}
-		declared_type_key_memo: map[string]FastcMemoEntry{}
-		path: source_file.path
-		source_offset: source_file.source_offset
-		source_line_offset: source_file.source_line_offset
-		source_column_offset: source_file.source_column_offset
-		module_name: source_file.header.module_name
-		imports: source_file.header.imports
-		declared_types: ctx.declared_types
-		declared_type_c_names: ctx.declared_type_c_names
+		prefs:                     unsafe { prefs }
+		unqualified_key_memo:      map[string]string{}
+		c_function_name_memo:      map[string]string{}
+		nonlocal_name_type_memo:   map[string]string{}
+		resolved_name_memo:        map[string]string{}
+		declared_type_key_memo:    map[string]FastcMemoEntry{}
+		path:                      source_file.path
+		source_offset:             source_file.source_offset
+		source_line_offset:        source_file.source_line_offset
+		source_column_offset:      source_file.source_column_offset
+		module_name:               source_file.header.module_name
+		imports:                   source_file.header.imports
+		declared_types:            ctx.declared_types
+		declared_type_c_names:     ctx.declared_type_c_names
 		declared_type_key_by_name: ctx.declared_type_key_by_name
-		fastc_prefixed_c_names: ctx.fastc_prefixed_c_names
-		has_c_functions: ctx.has_c_functions
-		comparison_memo: map[i64]FastcRenderedExpression{}
-		type_memo: map[i64]string{}
-		method_key_memo: map[string]map[string]string{}
-		field_memo: map[string]map[string]FastcStructField{}
-		member_smartcasts: map[string]FastcMemberSmartcast{}
-		spawn_typedefs: map[string]string{}
-		spawn_helpers: map[string]string{}
-		thread_value_types: map[string]string{}
-		declared_kinds: ctx.declared_kinds
-		enum_flags: ctx.enum_flags
-		enum_field_types: ctx.enum_field_types
-		enum_field_names: ctx.enum_field_names
-		alias_base_types: ctx.alias_base_types
-		fn_alias_return_types: ctx.fn_alias_return_types
-		sum_types: ctx.sum_types
-		sum_type_variants: ctx.sum_type_variants
-		struct_fields: ctx.struct_fields
-		struct_field_info: ctx.struct_field_info
-		struct_field_lookup: ctx.struct_field_lookup
-		generic_method_sources: ctx.generic_method_sources
-		generic_method_names: ctx.generic_method_names
-		module_aliases: ctx.module_aliases
-		generated_mono: map[string]bool{}
-		mono_functions: map[string]FastcFunctionSignature{}
-		mono_definitions: map[string]string{}
-		interface_fields: ctx.interface_fields
-		constants: ctx.constants
-		constant_values: ctx.constant_values
-		public_constants: ctx.public_constants
-		globals: ctx.globals
-		public_globals: ctx.public_globals
-		used_function_names: ctx.used_function_names
-		function_c_names: ctx.function_c_names
-		selfhost: prefs.building_v
-		source_has_select: source_file.header.has_select
-		has_startup_inits: ctx.has_startup_inits
-		has_cleanup_hooks: ctx.has_cleanup_hooks
-		s: scanner.new_scanner(prefs, .normal)
-		out: strings.new_builder(body_capacity)
-		protos: strings.new_builder(4096)
-		functions: ctx.functions
-		function_id_table: ctx.function_ids
-		constant_types: ctx.constant_types
-		global_types: ctx.global_types
+		fastc_prefixed_c_names:    ctx.fastc_prefixed_c_names
+		has_c_functions:           ctx.has_c_functions
+		comparison_memo:           map[i64]FastcRenderedExpression{}
+		type_memo:                 map[i64]string{}
+		method_key_memo:           map[string]map[string]string{}
+		field_memo:                map[string]map[string]FastcStructField{}
+		member_smartcasts:         map[string]FastcMemberSmartcast{}
+		spawn_typedefs:            map[string]string{}
+		spawn_helpers:             map[string]string{}
+		thread_value_types:        map[string]string{}
+		declared_kinds:            ctx.declared_kinds
+		enum_flags:                ctx.enum_flags
+		enum_field_types:          ctx.enum_field_types
+		enum_field_names:          ctx.enum_field_names
+		alias_base_types:          ctx.alias_base_types
+		fn_alias_return_types:     ctx.fn_alias_return_types
+		sum_types:                 ctx.sum_types
+		sum_type_variants:         ctx.sum_type_variants
+		struct_fields:             ctx.struct_fields
+		struct_field_info:         ctx.struct_field_info
+		struct_field_lookup:       ctx.struct_field_lookup
+		generic_method_sources:    ctx.generic_method_sources
+		generic_method_names:      ctx.generic_method_names
+		module_aliases:            ctx.module_aliases
+		generated_mono:            map[string]bool{}
+		mono_functions:            map[string]FastcFunctionSignature{}
+		mono_definitions:          map[string]string{}
+		interface_fields:          ctx.interface_fields
+		constants:                 ctx.constants
+		constant_values:           ctx.constant_values
+		public_constants:          ctx.public_constants
+		globals:                   ctx.globals
+		public_globals:            ctx.public_globals
+		used_function_names:       ctx.used_function_names
+		function_c_names:          ctx.function_c_names
+		selfhost:                  prefs.building_v
+		translated:                source_file.header.translated
+		source_has_select:         source_file.header.has_select
+		has_startup_inits:         ctx.has_startup_inits
+		has_cleanup_hooks:         ctx.has_cleanup_hooks
+		s:                         scanner.new_scanner(prefs, .normal)
+		out:                       strings.new_builder(body_capacity)
+		protos:                    strings.new_builder(4096)
+		functions:                 ctx.functions
+		function_id_table:         ctx.function_ids
+		constant_types:            ctx.constant_types
+		global_types:              ctx.global_types
 		// These maps are per-file registration deltas. The stitch pass already owns
 		// the declarations collected before file generation, so copying that shared
 		// seed into every parser only adds allocation and hashing work.
-		fixed_array_types: map[string]string{}
-		composite_types: map[string]bool{}
-		deferred_lines: []string{}
-		deferred_block_starts: []int{}
-		loop_defer_block_starts: []int{}
-		loop_has_breaks: []bool{}
-		loop_labels: []string{}
-		parsing_loop_labels: []string{}
-		statement_reachable: true
+		fixed_array_types:         map[string]string{}
+		composite_types:           map[string]bool{}
+		deferred_lines:            []string{}
+		deferred_block_starts:     []int{}
+		loop_defer_block_starts:   []int{}
+		loop_has_breaks:           []bool{}
+		loop_labels:               []string{}
+		parsing_loop_labels:       []string{}
+		statement_reachable:       true
 	}
 	// The per-file lookup memos fill up quickly; size them once instead of
 	// rehashing through the small capacities.
@@ -1701,14 +1707,14 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	gen.s.init(file, source_file.source)
 	generated := gen.run() or {
 		return FastcFileGenOutput{
-			failed: true
+			failed:        true
 			error_message: err.msg()
 		}
 	}
 	if gen.s.diagnostics.len > 0 {
 		diagnostic := gen.s.diagnostics[0]
 		return FastcFileGenOutput{
-			failed: true
+			failed:        true
 			error_message: 'fastc scanner error at byte ${diagnostic.offset + source_file.source_offset} in ${source_file.path}: ${diagnostic.message}'
 		}
 	}
@@ -1730,22 +1736,22 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		}
 	}
 	return FastcFileGenOutput{
-		prototypes: fastc_take_string(mut gen.protos)
-		body: generated
-		directive_lines: fastc_scan_c_directive_lines(generated)
-		function_ids: gen.function_ids
-		function_spans: gen.function_spans
-		proto_spans: gen.proto_spans
-		ref_starts: ref_starts
-		refs: refs
-		root_refs: root_refs
-		has_main_entry: source_file.header.module_name in ['', 'main'] && gen.has_main
+		prototypes:        fastc_take_string(mut gen.protos)
+		body:              generated
+		directive_lines:   fastc_scan_c_directive_lines(generated)
+		function_ids:      gen.function_ids
+		function_spans:    gen.function_spans
+		proto_spans:       gen.proto_spans
+		ref_starts:        ref_starts
+		refs:              refs
+		root_refs:         root_refs
+		has_main_entry:    source_file.header.module_name in ['', 'main'] && gen.has_main
 		fixed_array_types: gen.fixed_array_types
-		composite_types: gen.composite_types
-		spawn_typedefs: gen.spawn_typedefs
-		spawn_helpers: gen.spawn_helpers
-		mono_definitions: gen.mono_definitions
-		c_flags: gen.c_flags
+		composite_types:   gen.composite_types
+		spawn_typedefs:    gen.spawn_typedefs
+		spawn_helpers:     gen.spawn_helpers
+		mono_definitions:  gen.mono_definitions
+		c_flags:           gen.c_flags
 	}
 }
 
@@ -1813,6 +1819,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// value resolve and B gets its own dispatch table entries.
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
 	function_c_names := fastc_compact_function_c_names(functions, prefs.building_v)
+	mut has_entry_module := false
+	for source_file in sources {
+		if source_file.header.module_name in ['', 'main'] {
+			has_entry_module = true
+			break
+		}
+	}
 	mut pending_references := fastc_start_referenced_function_names(sources, prefs, functions)
 	has_c_functions := fastc_functions_declare_c(functions)
 	fastc_prefixed_c_names := fastc_reserved_temporary_c_names(functions, globals)
@@ -1859,26 +1872,26 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut parallel_constant_results := []FastcConstantFileResult{}
 	if fastc_field_defaults_reference_constants(struct_field_info, constants) {
 		seed_ctx := FastcConstantGenContext{
-			prefs: unsafe { prefs }
-			declared_types: declared_types
-			declared_type_c_names: declared_type_c_names
+			prefs:                     unsafe { prefs }
+			declared_types:            declared_types
+			declared_type_c_names:     declared_type_c_names
 			declared_type_key_by_name: declared_type_key_by_name
-			fastc_prefixed_c_names: fastc_prefixed_c_names
-			has_c_functions: fastc_functions_declare_c(functions)
-			declared_kinds: declared_kinds
-			enum_flags: enum_flags
-			enum_field_types: enum_field_types
-			alias_base_types: type_output.alias_base_types
-			struct_fields: struct_fields
-			struct_field_info: struct_field_info
-			sum_types: type_output.sum_types
-			sum_type_variants: type_output.sum_type_variants
-			functions: functions
-			function_c_names: function_c_names
-			constants: constants
-			public_constants: public_constants
-			globals: globals
-			public_globals: public_globals
+			fastc_prefixed_c_names:    fastc_prefixed_c_names
+			has_c_functions:           fastc_functions_declare_c(functions)
+			declared_kinds:            declared_kinds
+			enum_flags:                enum_flags
+			enum_field_types:          enum_field_types
+			alias_base_types:          type_output.alias_base_types
+			struct_fields:             struct_fields
+			struct_field_info:         struct_field_info
+			sum_types:                 type_output.sum_types
+			sum_type_variants:         type_output.sum_type_variants
+			functions:                 functions
+			function_c_names:          function_c_names
+			constants:                 constants
+			public_constants:          public_constants
+			globals:                   globals
+			public_globals:            public_globals
 		}
 		parallel_constant_results = fastc_parse_constant_files_parallel(&seed_ctx, constant_candidates, constant_types)
 		fastc_seed_constant_types(&seed_ctx, constant_candidates, parallel_constant_results, mut constant_types)
@@ -1911,7 +1924,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls, function_c_names)!
 	timer.mark('startup_initializers')
-	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	mut used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	if 'main' !in functions {
+		// A program without an explicit main has no entry roots to walk from, so
+		// every declared function must survive the earlier name-based body filter too.
+		for key in functions.keys() {
+			used_function_names[key.all_after_last('.')] = true
+		}
+	}
 	timer.mark('wait_references')
 	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, used_function_names, prefs.building_v, prefs)
 	struct_field_lookup := constant_output.struct_field_lookup.move()
@@ -1935,13 +1955,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for name, array_type in global_output.fixed_array_types {
 		fixed_array_types[name] = array_type
 	}
-	mut has_entry_module := false
-	for source_file in sources {
-		if source_file.header.module_name in ['', 'main'] {
-			has_entry_module = true
-			break
-		}
-	}
 	mut entry_has_main := false
 	// Self-host builds drop the functions that nothing reachable refers to:
 	// the source-level reachability keeps every function sharing a used name.
@@ -1952,43 +1965,43 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		map[string]int{}
 	}
 	ctx := FastcFileGenContext{
-		prefs: unsafe { prefs }
-		function_ids: function_ids
-		prune_unreachable: prune_unreachable
-		declared_types: declared_types
-		declared_type_c_names: declared_type_c_names
+		prefs:                     unsafe { prefs }
+		function_ids:              function_ids
+		prune_unreachable:         prune_unreachable
+		declared_types:            declared_types
+		declared_type_c_names:     declared_type_c_names
 		declared_type_key_by_name: declared_type_key_by_name
-		fastc_prefixed_c_names: fastc_prefixed_c_names
-		has_c_functions: has_c_functions
-		declared_kinds: declared_kinds
-		enum_flags: enum_flags
-		enum_field_types: enum_field_types
-		enum_field_names: type_output.enum_field_names
-		alias_base_types: type_output.alias_base_types
-		fn_alias_return_types: type_output.fn_alias_return_types
-		sum_types: type_output.sum_types
-		sum_type_variants: type_output.sum_type_variants
-		struct_fields: struct_fields
-		struct_field_info: struct_field_info
-		struct_field_lookup: struct_field_lookup
-		generic_method_sources: generic_method_sources
-		generic_method_names: fastc_generic_method_names(generic_method_sources)
-		module_aliases: module_aliases
-		interface_fields: interface_fields
-		constants: constants
-		constant_values: constant_output.compile_time_values
-		public_constants: public_constants
-		globals: globals
-		public_globals: public_globals
-		used_function_names: used_function_names
-		has_startup_inits: startup_initializers.len > 0
-		has_cleanup_hooks: module_cleanup_calls.len > 0
-		functions: functions
-		function_c_names: function_c_names
-		constant_types: constant_types
-		global_types: global_types
-		fixed_array_types: fixed_array_types
-		composite_types: composite_types
+		fastc_prefixed_c_names:    fastc_prefixed_c_names
+		has_c_functions:           has_c_functions
+		declared_kinds:            declared_kinds
+		enum_flags:                enum_flags
+		enum_field_types:          enum_field_types
+		enum_field_names:          type_output.enum_field_names
+		alias_base_types:          type_output.alias_base_types
+		fn_alias_return_types:     type_output.fn_alias_return_types
+		sum_types:                 type_output.sum_types
+		sum_type_variants:         type_output.sum_type_variants
+		struct_fields:             struct_fields
+		struct_field_info:         struct_field_info
+		struct_field_lookup:       struct_field_lookup
+		generic_method_sources:    generic_method_sources
+		generic_method_names:      fastc_generic_method_names(generic_method_sources)
+		module_aliases:            module_aliases
+		interface_fields:          interface_fields
+		constants:                 constants
+		constant_values:           constant_output.compile_time_values
+		public_constants:          public_constants
+		globals:                   globals
+		public_globals:            public_globals
+		used_function_names:       used_function_names
+		has_startup_inits:         startup_initializers.len > 0
+		has_cleanup_hooks:         module_cleanup_calls.len > 0
+		functions:                 functions
+		function_c_names:          function_c_names
+		constant_types:            constant_types
+		global_types:              global_types
+		fixed_array_types:         fixed_array_types
+		composite_types:           composite_types
 	}
 	mut spawn_typedefs := map[string]string{}
 	mut spawn_helpers := map[string]string{}
@@ -2026,8 +2039,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			}
 			body_directive_lines << FastcCDirectiveLine{
 				start: body_offset + line.start
-				end: body_offset + line.end
-				kind: kind
+				end:   body_offset + line.end
+				kind:  kind
 			}
 		}
 		if output.mono_definitions.len > 0 {
@@ -2701,9 +2714,9 @@ fn fastc_c_unit_plan(prefix string, pieces []string, units FastcUnitLayout, jobs
 		sizes << size
 	}
 	return FastcCUnitPlan{
-		paths: paths
+		paths:       paths
 		first_units: first_units
-		sizes: sizes
+		sizes:       sizes
 	}
 }
 
@@ -2884,9 +2897,9 @@ pub fn fastc_begin_render_c_units(prefix string, pieces []string, units FastcUni
 		workers << spawn fastc_render_c_unit(pieces, &units, g, plan.first_units[g], plan.first_units[g + 1])
 	}
 	return FastcRenderingCUnits{
-		paths: plan.paths
+		paths:   plan.paths
 		workers: workers
-		order: fastc_descending_size_order(plan.sizes)
+		order:   fastc_descending_size_order(plan.sizes)
 	}
 }
 
@@ -2897,7 +2910,7 @@ pub fn fastc_finish_render_c_units(mut rendering FastcRenderingCUnits) FastcRend
 		sources << worker.wait()
 	}
 	return FastcRenderedCUnits{
-		paths: rendering.paths
+		paths:   rendering.paths
 		sources: sources
 	}
 }
@@ -2921,6 +2934,18 @@ pub struct FastcPreparedUnits {
 pub:
 	objects   []string
 	cache_key string
+}
+
+// cache_objects maps build-local objects to their persistent cache entries for
+// reporting linker failures, including units published during this build.
+pub fn (prepared &FastcPreparedUnits) cache_objects() map[string]string {
+	mut cached := map[string]string{}
+	for entry in prepared.entries {
+		if entry.cache_object != '' {
+			cached[entry.object] = entry.cache_object
+		}
+	}
+	return cached
 }
 
 // fastc_unit_compile_order returns the indexes of uncached C units largest
@@ -2963,19 +2988,19 @@ fn fastc_unit_cache_entry(unit_path string, configuration string, cache_dir stri
 		os.link(cache_object, object) or {
 			os.cp(cache_object, object) or {
 				return FastcUnitCacheEntry{
-					object: object
+					object:       object
 					cache_object: cache_object
 				}
 			}
 		}
 		return FastcUnitCacheEntry{
-			object: object
+			object:       object
 			cache_object: cache_object
-			hit: true
+			hit:          true
 		}
 	}
 	return FastcUnitCacheEntry{
-		object: object
+		object:       object
 		cache_object: cache_object
 	}
 }
@@ -3039,8 +3064,8 @@ fn fastc_unit_cache_key(entries []FastcUnitCacheEntry) string {
 pub fn fastc_prepare_c_units(tcc string, base_args []string, unit_paths []string, cache_enabled bool) FastcPreparedUnits {
 	entries := fastc_unit_cache_entries(tcc, base_args, unit_paths, cache_enabled)
 	return FastcPreparedUnits{
-		entries: entries
-		objects: entries.map(it.object)
+		entries:   entries
+		objects:   entries.map(it.object)
 		cache_key: fastc_unit_cache_key(entries)
 	}
 }
@@ -3218,17 +3243,17 @@ fn fastc_promote_embedded_interface_methods(embed_embedders []string, embed_embe
 					promoted_params[0] = embedder_type
 				}
 				functions[promoted_key] = FastcFunctionSignature{
-					parameter_types: promoted_params
-					parameter_mutability: source.parameter_mutability.clone()
-					return_type: source.return_type
-					return_types: source.return_types.clone()
-					option_type: source.option_type
-					is_variadic: source.is_variadic
+					parameter_types:          promoted_params
+					parameter_mutability:     source.parameter_mutability.clone()
+					return_type:              source.return_type
+					return_types:             source.return_types.clone()
+					option_type:              source.option_type
+					is_variadic:              source.is_variadic
 					last_parameter_is_params: source.last_parameter_is_params
-					is_public: source.is_public
-					is_disabled: source.is_disabled
-					module_name: source.module_name
-					path: source.path
+					is_public:                source.is_public
+					is_disabled:              source.is_disabled
+					module_name:              source.module_name
+					path:                     source.path
 				}
 				interface_methods[promoted_key] = true
 				changed = true
@@ -3357,9 +3382,9 @@ fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 		body.write_u8(`\n`)
 	}
 	return FastcHoistedCSource{
-		directives: directives.str()
+		directives:       directives.str()
 		conditional_code: conditional_code.str()
-		body: body.str()
+		body:             body.str()
 	}
 }
 
@@ -3404,11 +3429,11 @@ fn fastc_partition_c_directives(source string) FastcPartitionedCSource {
 	}
 	fastc_append_c_source_range(run_start, source.len, run_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
 	return FastcPartitionedCSource{
-		source: source
-		directive_ranges: directive_ranges
+		source:             source
+		directive_ranges:   directive_ranges
 		conditional_ranges: conditional_ranges
-		body_ranges: body_ranges
-		final_kind: run_kind
+		body_ranges:        body_ranges
+		final_kind:         run_kind
 	}
 }
 
@@ -3424,8 +3449,8 @@ fn fastc_scan_c_directive_lines(source string) []FastcCDirectiveLine {
 		if kind != 0 {
 			lines << FastcCDirectiveLine{
 				start: line_start
-				end: if line_end < source.len { line_end + 1 } else { line_end }
-				kind: kind
+				end:   if line_end < source.len { line_end + 1 } else { line_end }
+				kind:  kind
 			}
 		}
 		line_start = line_end + 1
@@ -3474,10 +3499,10 @@ fn fastc_partition_c_directive_ranges(total_len int, lines []FastcCDirectiveLine
 		fastc_append_c_source_range(cursor, total_len, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
 	}
 	return FastcPartitionedCSource{
-		directive_ranges: directive_ranges
+		directive_ranges:   directive_ranges
 		conditional_ranges: conditional_ranges
-		body_ranges: body_ranges
-		final_kind: final_kind
+		body_ranges:        body_ranges
+		final_kind:         final_kind
 	}
 }
 
@@ -3774,11 +3799,11 @@ fn fastc_partition_c_directive_lines(source string, lines []FastcCDirectiveLine)
 		fastc_append_c_source_range(cursor, source.len, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
 	}
 	return FastcPartitionedCSource{
-		source: source
-		directive_ranges: directive_ranges
+		source:             source
+		directive_ranges:   directive_ranges
 		conditional_ranges: conditional_ranges
-		body_ranges: body_ranges
-		final_kind: final_kind
+		body_ranges:        body_ranges
+		final_kind:         final_kind
 	}
 }
 

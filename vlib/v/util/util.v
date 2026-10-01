@@ -1,6 +1,7 @@
 module util
 
 import os
+import v.pref
 import strings
 import v.ansi
 
@@ -137,13 +138,73 @@ pub fn nearest_vmod_root(path string) ?string {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
 			return dir
 		}
-		parent := os.dir(dir)
-		if parent == dir {
-			break
+		// A checkout or an explicit `.v.mod.stop` marker is the edge of a project:
+		// a `v.mod` above it belongs to something else (an unrelated project that
+		// happens to contain this one, or the shared temp directory tests run in),
+		// and must not become this project's root.
+		if is_project_boundary_dir(dir) {
+			return none
 		}
-		dir = parent
+		// `os.dir` answers `.` for a bare Windows drive (`os.dir('S:') == '.'`),
+		// which would continue the walk against the current directory and report
+		// an unrelated project root. `os.parent_dir` stops at the root instead.
+		dir = os.parent_dir(dir)
 	}
 	return none
+}
+
+// project_boundary_markers are the entries that mark a directory as the root of
+// a checkout or, with pref.module_search_stop_marker, as an explicit end of the
+// module search. The `v.mod` lookup stops here, so an unrelated project above
+// the boundary is never mistaken for the one being compiled. Only the explicit
+// marker also ends the search for modules in the directories above it (see
+// pref.is_module_search_stop_dir): a checkout marker does not, because a project
+// may be built against a module checked out next to it.
+pub const project_boundary_markers = ['.git', '.hg', '.svn', pref.module_search_stop_marker]
+
+// is_project_boundary_dir reports whether `dir` carries one of the
+// project_boundary_markers (a `.git` file counts too: git worktrees use one).
+pub fn is_project_boundary_dir(dir string) bool {
+	return project_boundary_markers.any(os.exists(os.join_path_single(dir, it)))
+}
+
+fn git_reference_root(git_dir string) !string {
+	common_dir_file := os.join_path(git_dir, 'commondir')
+	if !os.is_file(common_dir_file) {
+		return git_dir
+	}
+	common_dir := os.read_file(common_dir_file) or {
+		return error('failed to read `${common_dir_file}`')
+	}
+	configured := common_dir.trim_space()
+	return os.real_path(if os.is_abs_path(configured) {
+		configured
+	} else {
+		os.join_path(git_dir, configured)
+	})
+}
+
+fn read_git_reference(git_dir string, reference_root string, reference string) !string {
+	mut revision_path := os.join_path(git_dir, reference)
+	if !os.is_file(revision_path) && reference_root != git_dir {
+		revision_path = os.join_path(reference_root, reference)
+	}
+	if os.is_file(revision_path) {
+		return os.read_file(revision_path) or {
+			error('failed to read revision file `${revision_path}`')
+		}
+	}
+	packed_refs_file := os.join_path(reference_root, 'packed-refs')
+	packed_refs := os.read_file(packed_refs_file) or {
+		return error('failed to find revision file `${revision_path}`')
+	}
+	for line in packed_refs.split_into_lines() {
+		fields := line.fields()
+		if fields.len == 2 && fields[1] == reference {
+			return fields[0]
+		}
+	}
+	return error('failed to find revision `${reference}` in `${packed_refs_file}`')
 }
 
 // githash returns the current seven-character Git commit hash for path.
@@ -166,26 +227,23 @@ pub fn githash(path string) !string {
 	if !os.exists(head_file) {
 		return error('failed to find `${head_file}`')
 	}
-	head_content := os.read_file(head_file) or { return error('failed to read `${head_file}`') }
-	hash := if head_content.starts_with('ref: ') {
-		reference := head_content[5..].trim_space()
-		mut revision_path := os.join_path(git_dir, reference)
-		if !os.exists(revision_path) {
-			common_dir_file := os.join_path(git_dir, 'commondir')
-			common_dir := os.read_file(common_dir_file) or {
-				return error('failed to find revision `${reference}`')
+	mut hash := os.read_file(head_file) or { return error('failed to read `${head_file}`') }
+	if hash.starts_with('ref: ') {
+		reference_root := git_reference_root(git_dir)!
+		mut visited := map[string]bool{}
+		for hash.starts_with('ref: ') {
+			reference := hash[5..].trim_space()
+			if reference == '' {
+				return error('invalid empty Git symbolic reference')
 			}
-			revision_path = os.real_path(os.join_path(git_dir, common_dir.trim_space(), reference))
+			if reference in visited {
+				return error('cyclic Git symbolic reference `${reference}`')
+			}
+			visited[reference] = true
+			hash = read_git_reference(git_dir, reference_root, reference)!
 		}
-		if !os.exists(revision_path) {
-			return error('failed to find revision file `${revision_path}`')
-		}
-		os.read_file(revision_path) or {
-			return error('failed to read revision file `${revision_path}`')
-		}
-	} else {
-		head_content
 	}
+	hash = hash.trim_space()
 	return hash[..7] or { error('failed to limit hash `${hash}` to 7 characters') }
 }
 
@@ -219,11 +277,11 @@ pub mut:
 // new_suggestion creates a diagnostic suggestion from wanted and possibilities.
 pub fn new_suggestion(wanted string, possibilities []string, params SuggestionParams) Suggestion {
 	mut suggestion := Suggestion{
-		known: []Possibility{cap: int(max_suggestions_limit)}
-		wanted: wanted
-		swanted: short_module_name(wanted)
+		known:                []Possibility{cap: int(max_suggestions_limit)}
+		wanted:               wanted
+		swanted:              short_module_name(wanted)
 		similarity_threshold: params.similarity_threshold
-		similarity_fn: params.similarity_fn
+		similarity_fn:        params.similarity_fn
 	}
 	suggestion.add_many(possibilities)
 	suggestion.sort()
@@ -242,8 +300,8 @@ fn (mut s Suggestion) add(value string) {
 	}
 	similarity := f32(int(s.similarity_fn(s.swanted, short_value) * 1000)) / 1000
 	s.known << Possibility{
-		value: value
-		svalue: short_value
+		value:      value
+		svalue:     short_value
 		similarity: similarity
 	}
 }

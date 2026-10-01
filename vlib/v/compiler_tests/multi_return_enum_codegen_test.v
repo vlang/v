@@ -7,8 +7,7 @@ fn test_multi_return_with_enum_keeps_one_concrete_c_type() {
 	os.mkdir_all(os.join_path(dir, 'choice')) or { panic(err) }
 	v3_dir := os.dir(os.dir(@FILE))
 	vlib_dir := os.dir(v3_dir)
-	build := os.execute('${os.quoted_path(@VEXE)} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(v3_dir,
-		'v.v'))}')
+	build := os.execute('${os.quoted_path(@VEXE)} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(v3_dir, 'v.v'))}')
 	assert build.exit_code == 0, build.output
 	os.write_file(os.join_path(dir, 'v.mod'), "Module { name: 'multi_return_enum_codegen' }\n") or {
 		panic(err)
@@ -22,8 +21,7 @@ fn test_multi_return_with_enum_keeps_one_concrete_c_type() {
 		panic(err)
 	}
 	program := os.join_path(dir, 'program')
-	result := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(program)} ${os.quoted_path(os.join_path(dir,
-		'main.v'))}')
+	result := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(program)} ${os.quoted_path(os.join_path(dir, 'main.v'))}')
 	assert result.exit_code == 0, result.output
 	run := os.execute(program)
 	assert run.exit_code == 0, run.output

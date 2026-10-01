@@ -183,7 +183,7 @@ fn test_run_custom_base_url_uses_project_root_lookup() {
 		os.chdir(test_path) or {}
 	}
 	os.mkdir_all(os.join_path(project_dir, 'source', 'foo'))!
-	os.mkdir_all(os.join_path(project_dir, 'source', 'modules', 'dep'))!
+	os.mkdir_all(os.join_path(project_dir, 'source', 'dep'))!
 	os.write_file(os.join_path(project_dir, 'v.mod'),
 		"Module {\n\tname: 'run_base_url_project'\n\tbase_url: 'source'\n\tdescription: ''\n\tversion: ''\n\tlicense: ''\n\tdependencies: []\n}\n")!
 	os.write_file(os.join_path(project_dir, 'source', 'main.v'), 'module main
@@ -200,7 +200,7 @@ pub fn name() string {
 	return "foo"
 }
 ')!
-	os.write_file(os.join_path(project_dir, 'source', 'modules', 'dep', 'dep.v'), 'module dep
+	os.write_file(os.join_path(project_dir, 'source', 'dep', 'dep.v'), 'module dep
 
 pub fn name() string {
 	return "dep"
@@ -352,8 +352,8 @@ fn test_duplicate_resolved_import_path_still_validates_module_name() {
 	os.chdir(test_path)!
 	workspace := os.join_path(test_path, 'run_duplicate_resolved_import_path_validation')
 	project_dir := os.join_path(workspace, 'project')
-	foo_dir := os.join_path(project_dir, 'modules', 'foo')
-	bar_dir := os.join_path(project_dir, 'modules', 'bar')
+	foo_dir := os.join_path(project_dir, 'foo')
+	bar_dir := os.join_path(project_dir, 'bar')
 	defer {
 		os.chdir(test_path) or {}
 		os.rmdir_all(workspace) or {}
@@ -388,14 +388,13 @@ fn main() {
 
 fn test_module_alias_imports_canonical_module_and_submodule() {
 	project_dir := os.join_path(test_path, 'module_alias_import')
-	modules_dir := os.join_path(project_dir, 'modules')
-	canonical_dir := os.join_path(modules_dir, 'canonical')
+	canonical_dir := os.join_path(project_dir, 'canonical')
 	os.rmdir_all(project_dir) or {}
 	defer {
 		os.rmdir_all(project_dir) or {}
 	}
 	os.mkdir_all(os.join_path(canonical_dir, 'sub'))!
-	os.mkdir_all(os.join_path(modules_dir, 'legacy'))!
+	os.mkdir_all(os.join_path(project_dir, 'legacy'))!
 	os.write_file(os.join_path(project_dir, 'v.mod'),
 		"Module {\n\tname: 'module_alias_import'\n}\n")!
 	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical
@@ -411,8 +410,8 @@ pub fn value() int {
 	return 2
 }
 ')!
-	os.write_file(os.join_path(modules_dir, 'legacy', 'alias.v'),
-		"@[alias: '@VMODROOT/modules/canonical'] module legacy\n")!
+	os.write_file(os.join_path(project_dir, 'legacy', 'alias.v'),
+		"@[alias: '@VMODROOT/canonical'] module legacy\n")!
 	os.write_file(os.join_path(project_dir, 'main.v'), 'module main
 
 import canonical
@@ -622,27 +621,27 @@ fn test_vlib_import_does_not_match_user_project_dir() {
 
 fn test_vendored_sibling_modules_with_own_vmod_resolve_each_other() {
 	// Regression guard for the #27151 fix: when both the importer and the
-	// imported module live as siblings under `<project>/modules/` and each
-	// carry their own `v.mod`, the foreign-project check must still let them
-	// see one another. The importer's `v.mod` anchor needs to climb to the
-	// outermost project root, not stop at its own vendored package.
+	// imported module live as siblings under the project root and each carry
+	// their own `v.mod`, the foreign-project check must still let them see one
+	// another. The importer's `v.mod` anchor needs to climb to the outermost
+	// project root, not stop at its own vendored package.
 	project_dir := os.join_path(test_path, 'vendored_sibling_27151')
 	os.rmdir_all(project_dir) or {}
-	os.mkdir_all(os.join_path(project_dir, 'modules', 'foo'))!
-	os.mkdir_all(os.join_path(project_dir, 'modules', 'bar'))!
+	os.mkdir_all(os.join_path(project_dir, 'foo'))!
+	os.mkdir_all(os.join_path(project_dir, 'bar'))!
 	defer {
 		os.chdir(test_path) or {}
 		os.rmdir_all(project_dir) or {}
 	}
 	os.write_file(os.join_path(project_dir, 'v.mod'),
 		"Module {\n\tname: 'vendored_sibling_27151'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
-	os.write_file(os.join_path(project_dir, 'modules', 'foo', 'v.mod'),
+	os.write_file(os.join_path(project_dir, 'foo', 'v.mod'),
 		"Module {\n\tname: 'foo'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
-	os.write_file(os.join_path(project_dir, 'modules', 'bar', 'v.mod'),
+	os.write_file(os.join_path(project_dir, 'bar', 'v.mod'),
 		"Module {\n\tname: 'bar'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
-	os.write_file(os.join_path(project_dir, 'modules', 'bar', 'bar.v'),
+	os.write_file(os.join_path(project_dir, 'bar', 'bar.v'),
 		'module bar\n\npub fn name() string {\n\treturn "bar"\n}\n')!
-	os.write_file(os.join_path(project_dir, 'modules', 'foo', 'foo.v'),
+	os.write_file(os.join_path(project_dir, 'foo', 'foo.v'),
 		'module foo\n\nimport bar\n\npub fn hello() string {\n\treturn bar.name()\n}\n')!
 	os.write_file(os.join_path(project_dir, 'main.v'),
 		'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.hello())\n}\n')!
@@ -655,22 +654,22 @@ fn test_vendored_sibling_modules_with_own_vmod_resolve_each_other() {
 
 fn test_vendored_modules_dir_with_own_vmod_still_resolves() {
 	// Regression guard for the #27151 fix: a vendored dependency at
-	// `<project>/modules/<name>/` that carries its own `v.mod` must still
-	// resolve when imported from `<project>`'s own code. The foreign-project
-	// skip is path-based, so anything inside the importer's `v.mod` tree —
-	// including nested `v.mod`s under `modules/` — must remain visible.
+	// `<project>/<name>/` that carries its own `v.mod` must still resolve when
+	// imported from `<project>`'s own code. The foreign-project skip is
+	// path-based, so anything inside the importer's `v.mod` tree — including
+	// nested `v.mod`s — must remain visible.
 	project_dir := os.join_path(test_path, 'vendored_modules_27151')
 	os.rmdir_all(project_dir) or {}
-	os.mkdir_all(os.join_path(project_dir, 'modules', 'vendored'))!
+	os.mkdir_all(os.join_path(project_dir, 'vendored'))!
 	defer {
 		os.chdir(test_path) or {}
 		os.rmdir_all(project_dir) or {}
 	}
 	os.write_file(os.join_path(project_dir, 'v.mod'),
 		"Module {\n\tname: 'vendored_modules_27151'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
-	os.write_file(os.join_path(project_dir, 'modules', 'vendored', 'v.mod'),
+	os.write_file(os.join_path(project_dir, 'vendored', 'v.mod'),
 		"Module {\n\tname: 'vendored'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
-	os.write_file(os.join_path(project_dir, 'modules', 'vendored', 'vendored.v'),
+	os.write_file(os.join_path(project_dir, 'vendored', 'vendored.v'),
 		'module vendored\n\npub fn hello() string {\n\treturn "hi from vendored"\n}\n')!
 	os.write_file(os.join_path(project_dir, 'main.v'),
 		'module main\n\nimport vendored\n\nfn main() {\n\tprintln(vendored.hello())\n}\n')!

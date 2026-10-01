@@ -111,8 +111,11 @@ fn main() {
 	_ := wrap(mut reader)
 }
 ')
-	assert c_code.contains('ReaderBox__new(read_from)'), c_code
-	assert !c_code.contains('ReaderBox__new(&read_from)'), c_code
+	wrap_start := 'main__ReaderBox wrap(main__Reader* read_from) {'
+	assert c_code.contains(wrap_start), c_code
+	wrap_body := c_code.all_after(wrap_start).all_before('\n}')
+	assert wrap_body.contains('(read_from);'), wrap_body
+	assert !wrap_body.contains('(&read_from);'), wrap_body
 }
 
 fn test_mut_parameter_address_boxed_as_interface_uses_concrete_pointer() {
@@ -411,15 +414,15 @@ pub fn owned_score() int {
 	assert !c_code.contains('\nFILE* stdout'), c_code
 }
 
-fn test_map_for_bindings_shadowing_global_use_local_c_name() {
-	c_code := gen_c_for_c_global_source('map_for_binding_shadows_global', 'module main
+fn test_map_for_bindings_with_global_use_distinct_c_name() {
+	c_code := gen_c_for_c_global_source('map_for_binding_with_global', 'module main
 
 __global id int
 
 fn sum_entries(values map[int]int) int {
 	mut total := 0
-	for id, value in values {
-		total += id + value
+	for entry_id, value in values {
+		total += entry_id + value
 	}
 	return total
 }
@@ -428,9 +431,8 @@ fn main() {
 	_ := sum_entries({1: 2})
 }
 ')
-	assert c_code.contains('i64 id__local = *(i64*)'), c_code
-	assert c_code.contains('total += id__local + value;'), c_code
-	assert !c_code.contains('i64 id = *(i64*)'), c_code
+	assert c_code.contains('i64 entry_id = *(i64*)'), c_code
+	assert c_code.contains('total += entry_id + value;'), c_code
 }
 
 fn test_mut_pointer_cast_uses_c_typedef_safe_parameter_name() {
@@ -451,8 +453,8 @@ fn main() {
 	_ := cast_buffer(mut ptr)
 }
 ')
-	assert c_code.contains('u8* cast_buffer(u8** buf__local)'), c_code
-	assert c_code.contains('return (u8*)(*buf__local);'), c_code
+	assert c_code.contains('u8* cast_buffer(u8** __v3_internal_symbol_local_buf)'), c_code
+	assert c_code.contains('return (u8*)(*__v3_internal_symbol_local_buf);'), c_code
 	assert !c_code.contains('return (u8*)(*buf);'), c_code
 }
 
@@ -477,8 +479,8 @@ fn main() {
 	_ := copy_buffer(mut values)
 }
 ')
-	assert c_code.contains('i64 copy_buffer(Array* buf__local)'), c_code
-	assert c_code.contains('return copy(buf__local, '), c_code
+	assert c_code.contains('i64 copy_buffer(Array* __v3_internal_symbol_local_buf)'), c_code
+	assert c_code.contains('return copy(__v3_internal_symbol_local_buf, '), c_code
 	assert !c_code.contains('return copy(buf, '), c_code
 }
 
@@ -499,8 +501,8 @@ fn main() {
 	_ := buffer_size()
 }
 ')
-	assert c_code.contains('u8 buf__local[1024]'), c_code
-	assert c_code.contains('return (i64)(sizeof(buf__local));'), c_code
+	assert c_code.contains('u8 __v3_internal_symbol_local_buf[1024]'), c_code
+	assert c_code.contains('return (i64)(sizeof(__v3_internal_symbol_local_buf));'), c_code
 	assert !c_code.contains('return (int)(sizeof(buf));'), c_code
 }
 

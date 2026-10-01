@@ -5,6 +5,8 @@
 @[has_globals]
 module builtin
 
+fn C.v3_vgc_mark_global_arrays()
+
 // ============================================================
 // GC Orchestration (translated from Go's runtime.gcStart, gcMarkDone, gcMarkTermination)
 // ============================================================
@@ -108,10 +110,11 @@ fn vgc_clear_mark_bits() {
 	}
 }
 
-// Conservative root scanning: scan thread stacks and look for pointers into the heap.
+// Conservative root scanning: scan registered global arrays and thread stacks.
 // Translated from Go's markroot() / scanblock() - but using conservative scanning
 // since V compiles to C and we don't have precise type info at runtime.
 fn vgc_mark_roots() {
+	C.v3_vgc_mark_global_arrays()
 	// Scan each registered thread's stack
 	for i in 0 .. vgc_heap.ncaches {
 		cache := unsafe { &vgc_heap.caches[i] }

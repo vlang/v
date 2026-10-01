@@ -69,8 +69,8 @@ pub struct Server {
 	advertises_plus  bool
 	server_nonce     string
 	lookup           fn (username string) !Credentials = unsafe { nil }
-	prepare_username fn (username string) !string = unsafe { nil }
-	prepare_authzid  fn (authzid string) !string = unsafe { nil }
+	prepare_username fn (username string) !string      = unsafe { nil }
+	prepare_authzid  fn (authzid string) !string       = unsafe { nil }
 mut:
 	username     string
 	authzid      string
@@ -98,17 +98,17 @@ pub fn new_server(config ServerConfig) !&Server {
 	// configuration at construction time rather than mid-exchange.
 	config.channel_binding.gs2_flag()!
 	return &Server{
-		mechanism: config.mechanism
-		channel_binding: config.channel_binding
-		advertises_plus: config.advertises_plus || config.channel_binding.mode == .required
-		server_nonce: nonce
-		lookup: config.lookup
+		mechanism:        config.mechanism
+		channel_binding:  config.channel_binding
+		advertises_plus:  config.advertises_plus || config.channel_binding.mode == .required
+		server_nonce:     nonce
+		lookup:           config.lookup
 		prepare_username: if config.prepare_username == unsafe { nil } {
 			prepare_ascii_username
 		} else {
 			config.prepare_username
 		}
-		prepare_authzid: if config.prepare_authzid == unsafe { nil } {
+		prepare_authzid:  if config.prepare_authzid == unsafe { nil } {
 			prepare_ascii_authzid
 		} else {
 			config.prepare_authzid

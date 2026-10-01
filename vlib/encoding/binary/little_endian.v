@@ -204,11 +204,9 @@ pub fn little_endian_u64_at(b []u8, o int) u64 {
 	unsafe {
 		mut u := U64{}
 		$if little_endian {
-			u.b[0], u.b[1], u.b[2], u.b[3], u.b[4], u.b[5], u.b[6], u.b[7] = b[o], b[o + 1], b[o + 2], b[
-				o + 3], b[o + 4], b[o + 5], b[o + 6], b[o + 7]
+			u.b[0], u.b[1], u.b[2], u.b[3], u.b[4], u.b[5], u.b[6], u.b[7] = b[o], b[o + 1], b[o + 2], b[o + 3], b[o + 4], b[o + 5], b[o + 6], b[o + 7]
 		} $else {
-			u.b[0], u.b[1], u.b[2], u.b[3], u.b[4], u.b[5], u.b[6], u.b[7] = b[o + 7], b[o + 6], b[
-				o + 5], b[o + 4], b[o + 3], b[o + 2], b[o + 1], b[o]
+			u.b[0], u.b[1], u.b[2], u.b[3], u.b[4], u.b[5], u.b[6], u.b[7] = b[o + 7], b[o + 6], b[o + 5], b[o + 4], b[o + 3], b[o + 2], b[o + 1], b[o]
 		}
 		return u.u
 	}

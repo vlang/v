@@ -32,9 +32,9 @@ mut:
 fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
-		width:       w
-		height:      h
-		num_mipmaps: 0
+		width:         w
+		height:        h
+		num_mipmaps:   0
 		// usage: .dynamic
 		label:         &char(unsafe { nil })
 		d3d11_texture: 0

@@ -1,0 +1,134 @@
+import os
+
+const scoped_monomorph_vexe = @VEXE
+const scoped_monomorph_tests_dir = os.dir(@FILE)
+const scoped_monomorph_v3_dir = os.dir(scoped_monomorph_tests_dir)
+const scoped_monomorph_vlib_dir = os.dir(scoped_monomorph_v3_dir)
+const scoped_monomorph_v3_src = os.join_path(scoped_monomorph_v3_dir, 'v.v')
+
+$if windows {
+	const scoped_monomorph_bin_suffix = '.exe'
+} $else {
+	const scoped_monomorph_bin_suffix = ''
+}
+
+fn scoped_monomorph_v3_bin_path() string {
+	return os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_test_${os.getpid()}${scoped_monomorph_bin_suffix}')
+}
+
+fn scoped_monomorph_cc() string {
+	// TinyCC-built compilers disable parallel specialization even when opted in.
+	for cc in ['clang', 'gcc'] {
+		if path := os.find_abs_path_of_executable(cc) {
+			return path
+		}
+	}
+	panic('the scoped monomorphize regression needs clang or gcc')
+}
+
+fn scoped_monomorph_v3_bin() string {
+	bin := scoped_monomorph_v3_bin_path()
+	if os.exists(bin) {
+		return bin
+	}
+	// `-prealloc` is what enables `scope_parallel_workers` and the scoped
+	// monomorphize path, matching how the distributed compiler is built.
+	build := os.execute('${os.quoted_path(scoped_monomorph_vexe)} -gc none -cc ${os.quoted_path(scoped_monomorph_cc())} -prealloc -path "${scoped_monomorph_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin)} ${os.quoted_path(scoped_monomorph_v3_src)}')
+	assert build.exit_code == 0, build.output
+	return bin
+}
+
+fn testsuite_begin() {
+	os.rm(scoped_monomorph_v3_bin_path()) or {}
+}
+
+fn testsuite_end() {
+	os.rm(scoped_monomorph_v3_bin_path()) or {}
+}
+
+// Compiler builds use `-prealloc`, and the memory-bounded monomorphize path (the
+// fix for vlang/v#28564) runs for every non-empty specialization batch there.
+// That path used to give two different lifted closures the same `__anon_fn_N`
+// name - the module-keyed signature table then mixed their signatures up and the
+// generated C did not compile - and merged specialization arguments as shallow
+// `[]string` copies that still pointed into the released worker arena, so a later
+// pass read freed arguments (bogus `unknown function` diagnostics or a crash).
+// This is the small `veb` program from vlang/v#28489, which exercises closures
+// lifted while specializing a generic helper.
+fn test_scoped_monomorphize_keeps_closure_signatures_and_args() {
+	$if linux && arm64 {
+		// The scoped specializer is deliberately disabled on this target.
+		return
+	}
+	v3_bin := scoped_monomorph_v3_bin()
+	// The driver keeps parallel monomorphization opt-in. Preallocation alone
+	// selects the serial path and never enters the scoped worker merge.
+	parallel := os.getenv_opt('V3_PARALLEL_MONOMORPHIZE')
+	os.setenv('V3_PARALLEL_MONOMORPHIZE', '1', true)
+	defer {
+		if value := parallel {
+			os.setenv('V3_PARALLEL_MONOMORPHIZE', value, true)
+		} else {
+			os.unsetenv('V3_PARALLEL_MONOMORPHIZE')
+		}
+	}
+	dir := os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'main.v'), "module main
+
+import veb
+
+pub struct Ctx {
+	veb.Context
+}
+
+pub struct ModelApp {
+	veb.Middleware[Ctx]
+	veb.Controller
+}
+
+pub struct Item {
+	ModelApp
+}
+
+pub struct MainApp {
+	veb.Middleware[Ctx]
+	veb.Controller
+}
+
+fn mw() veb.MiddlewareOptions[Ctx] {
+	return veb.MiddlewareOptions[Ctx]{
+		handler: fn (mut ctx Ctx) bool {
+			return true
+		}
+	}
+}
+
+fn (mut app MainApp) common_middleware[T](mut ctrl T) {
+	ctrl.use(mw())
+}
+
+fn (mut app MainApp) register_routes_no_auth[T, U](mut ctrl T, url_path string) {
+	app.common_middleware[T](mut ctrl)
+	app.register_controller[T, U](url_path, mut ctrl) or { panic(err) }
+	ctrl.route_use('/item/*', veb.encode_auto[Ctx]())
+}
+
+fn main() {
+	mut app := &MainApp{}
+	app.register_routes_no_auth[Item, Ctx](mut &Item{}, '/item')
+	veb.run_at[MainApp, Ctx](mut app, port: 9001) or { panic(err) }
+}
+") or { panic(err) }
+	out := os.join_path(dir, 'app${scoped_monomorph_bin_suffix}')
+	// Run V3 directly without C-compiler retries, so a failed scoped merge
+	// cannot be hidden by a successful retry with another compiler.
+	compile := os.execute('${os.quoted_path(v3_bin)} -new-compiler -no-retry-compilation -gc none -cc ${os.quoted_path(scoped_monomorph_cc())} -nocache -o ${os.quoted_path(out)} ${os.quoted_path(dir)}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	assert os.is_file(out), 'the compile produced no binary'
+}

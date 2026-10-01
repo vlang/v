@@ -61,6 +61,12 @@ fn test_fmt_preferences_respect_vflags() {
 			assert !res.output.contains("x := c'abc'"), '${backend_flag} ${backend}: ${res.output}'
 		}
 	}
+	for backend in ['native', 'go', 'arm64', 'eval'] {
+		os.unsetenv('VFLAGS')
+		res := os.execute('${os.quoted_path(vexe)} -b ${backend} fmt ${os.quoted_path(source_path)}')
+		assert res.exit_code == 0, '${backend}: ${res.output}'
+		assert res.output.contains("x := c'abc'"), '${backend}: ${res.output}'
+	}
 
 	for backend_flag in ['-b', '-backend'] {
 		os.setenv('VFLAGS', '${backend_flag} jss', true)
@@ -76,6 +82,285 @@ fn test_fmt_preferences_respect_vflags() {
 	}
 }
 
+fn test_fmt_joined_backend_options() {
+	source_path := os.join_path(vfmt_test_tdir, 'joined_backend.v')
+	os.write_file(source_path, "fn main() { x := 'abc'.str }\n")!
+	old_vflags := os.getenv('VFLAGS')
+	defer {
+		if old_vflags == '' {
+			os.unsetenv('VFLAGS')
+		} else {
+			os.setenv('VFLAGS', old_vflags, true)
+		}
+	}
+	for flag in ['-b', '-backend'] {
+		for backend in ['js', 'js_browser', 'wasm', 'arm64', 'eval'] {
+			option := '${flag}=${backend}'
+			for placement in ['prefix', 'suffix', 'environment'] {
+				os.unsetenv('VFLAGS')
+				args := match placement {
+					'prefix' { '${option} fmt' }
+					'suffix' { 'fmt ${option}' }
+					else {
+						os.setenv('VFLAGS', option, true)
+						'fmt'
+					}
+				}
+				res := os.execute('${os.quoted_path(vexe)} ${args} ${os.quoted_path(source_path)}')
+				assert res.exit_code == 0, '${placement} ${option}: ${res.output}'
+				expected := if backend.starts_with('js') { "x := 'abc'.str" } else { "x := c'abc'" }
+				assert res.output.contains(expected), '${placement} ${option}: ${res.output}'
+			}
+		}
+		os.unsetenv('VFLAGS')
+		invalid := os.execute('${os.quoted_path(vexe)} ${flag}=jss fmt ${os.quoted_path(source_path)}')
+		assert invalid.exit_code != 0, invalid.output
+		assert invalid.output.contains('Unknown V backend: jss'), invalid.output
+	}
+}
+
+fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
+	for source in [
+		'struct Number {}\nfn (n Number) + (other Number) Number { return n }\nfn (n Number) + (other Number) Number { return n }\n',
+		'type Node = Node\n',
+		'type Maybe = int | none\n',
+		'interface T {}\n',
+		'type Callback = fn (Callback)\n',
+		'@[deprecated; deprecated] fn old() {}\n',
+		'fn run(Value int) {}\n',
+		'fn main() { $if myflag { println(1) } }\n',
+		'fn main() { defer { defer {} } }\n',
+		'fn main() { defer { return } }\n',
+		'fn f() ! { defer { f()! } }\n',
+		'fn f() ?int { defer { f()? }; return 1 }\n',
+		'fn main() { println($res()) }\n',
+		'struct Number {}\nfn (n Number) += (other Number) Number { return n }\n',
+		'fn handle(int) {}\n',
+		'fn main() { a := []int{init: 1}; _ = a }\n',
+		'fn main() { select { else {} else {} } }\n',
+		'fn main() { unsafe { unsafe { println(1) } } }\n',
+	] {
+		path := os.join_path(vfmt_test_tdir, 'semantic_editing_buffer.v')
+		os.write_file(path, source)!
+		res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(path)}')
+		assert res.exit_code == 0, res.output
+	}
+}
+
+fn test_fmt_preserves_assembly_compatibility() {
+	for options in ['', '-b=wasm', '-b=arm64', '-b=eval'] {
+		for assembly in ['asm arm64 intel { nop }', 'asm amd64 raw { "nop" }', 'asm goto arm64 { nop }'] {
+			source := 'fn main() { ${assembly} }\n'
+			res, formatted := run_vfmt_write('assembly_compatibility', source, options)
+			assert res.exit_code == 0, res.output
+			assert formatted.contains(assembly), formatted
+			second, twice := run_vfmt_write('assembly_compatibility_twice', formatted, options)
+			assert second.exit_code == 0, second.output
+			assert twice == formatted
+		}
+	}
+}
+
+fn test_fmt_preserves_match_conditions() {
+	source := 'fn f(value int) { if match value { 0 { true } else { false } } { println(value) } }\n'
+	res, formatted := run_vfmt_write('match_condition', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('if match value {')
+	assert formatted.contains('true') && formatted.contains('false')
+	assert formatted.contains('println(value)')
+	second, twice := run_vfmt_write('match_condition_twice', formatted, '')
+	assert second.exit_code == 0, second.output
+	assert twice == formatted
+}
+
+fn test_fmt_preserves_index_propagation() {
+	for source in [
+		'fn f(values []?int) ?int { return values[0]? }\n',
+		'fn f(values map[string]?int) ?int { return values["key"]? }\n',
+	] {
+		res, formatted := run_vfmt_write('index_propagation', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(']?'), formatted
+		second, twice := run_vfmt_write('index_propagation_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_preserves_multiple_attribute_groups() {
+	for source, expected in {
+		'@[inline] @[deprecated] fn f() {}\n':                        [
+			'@[deprecated; inline]',
+			'fn f() {}',
+		]
+		'@[inline]\n@[deprecated]\nfn f() {}\n':                      [
+			'@[deprecated; inline]',
+			'fn f() {}',
+		]
+		"struct Holder { value int @[required] @[json: 'value'] }\n": ['required', "json: 'value'",
+			'value int']
+	} {
+		res, formatted := run_vfmt_write('multiple_attribute_groups', source, '')
+		assert res.exit_code == 0, res.output
+		for part in expected {
+			assert formatted.contains(part), formatted
+		}
+		second, formatted_twice := run_vfmt_write('multiple_attribute_groups_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+	invalid := '@[inline]\n@[deprecated: ]\nfn f() {}\n'
+	res, unchanged := run_vfmt_write('invalid_attribute_group', invalid, '')
+	assert res.exit_code != 0, res.output
+	assert unchanged == invalid
+}
+
+fn test_fmt_preserves_duplicate_deprecated_message_arguments() {
+	source := "@[deprecated(msg: 'old', msg: 'new')] fn old() {}\n"
+	res, formatted := run_vfmt_write('duplicate_deprecated_messages', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains("@[deprecated(msg: 'old', msg: 'new')]")
+	second, formatted_twice := run_vfmt_write('duplicate_deprecated_messages_twice', formatted, '')
+	assert second.exit_code == 0, second.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
+	for source, expected in {
+		'fn f() { match sql { else {} } }\n':         'match sql'
+		'fn f(sql int) {}\n':                         'fn f(sql int)'
+		'fn f(value, sql int) {}\n':                  'fn f(value int, sql int)'
+		'fn f[T](value T) [T] { return value }\n':    'fn f[T](value T) [T]'
+		'fn f(xs ...int, y int) {}\n':                'fn f(xs ...int, y int)'
+		'fn f[T]() { $for field in T.unknown {} }\n': '$for field in T.unknown'
+	} {
+		res, formatted := run_vfmt_write('semantic_signature', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, formatted_twice := run_vfmt_write('semantic_signature_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+	for suffix, prefix in {
+		'c':  'JS'
+		'js': 'C'
+	} {
+		res, formatted := run_vfmt_write('interop_placement.${suffix}', 'fn ${prefix}.alert()\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains('fn ${prefix}.alert()'), formatted
+		second, formatted_twice := run_vfmt_write('interop_placement_twice.${suffix}', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+}
+
+fn test_fmt_preserves_deep_assignment_expressions() {
+	mut expression := '1'
+	for _ in 0 .. 101 {
+		expression = '1 + (${expression})'
+	}
+	source := 'fn main() { value := ${expression}; _ = value }\n'
+	res, formatted := run_vfmt_write('deep_assignment', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('value := ${expression}'), formatted
+	second, twice := run_vfmt_write('deep_assignment_twice', formatted, '')
+	assert second.exit_code == 0, second.output
+	assert twice == formatted
+}
+
+fn test_fmt_preserves_bare_channel_types() {
+	for source, expected in {
+		'fn f(ch chan) {}\n':                   'fn f(ch chan)'
+		'fn main() { ch := chan{}; _ = ch }\n': 'ch := chan{}'
+		'struct Holder { ch chan }\n':          'ch chan'
+		'fn f() chan { return chan{} }\n':      'fn f() chan'
+	} {
+		res, formatted := run_vfmt_write('bare_channel', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, twice := run_vfmt_write('bare_channel_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_preserves_interop_qualifiers_on_receiver_declarations() {
+	for prefix, suffix in {
+		'C':  'c'
+		'JS': 'js'
+	} {
+		for method in ['foo', '@select', 'nested.foo'] {
+			for body in ['', ' {}'] {
+				signature := 'fn (value Example) ${prefix}.${method}()${body}'
+				source := 'struct Example {}\n\n${signature}\n'
+				res, formatted := run_vfmt_write('interop_receiver.${suffix}', source, '')
+				assert res.exit_code == 0, res.output
+				assert formatted.contains(signature), formatted
+				second, formatted_twice := run_vfmt_write('interop_receiver_twice.${suffix}', formatted, '')
+				assert second.exit_code == 0, second.output
+				assert formatted_twice == formatted
+			}
+		}
+	}
+}
+
+fn test_fmt_preserves_qualified_receiver_and_inclusive_range_syntax() {
+	for source, expected in {
+		'struct Example {}\nfn (value Example) Foo.bar() {}':  'fn (value Example) Foo.bar() {}'
+		'struct Example {}\nfn (value Example) Foo.@select()': 'fn (value Example) Foo.@select()'
+		'fn main() { for i in 0 ... 3 { println(i) } }':       'for i in 0 ... 3'
+	} {
+		res, formatted := run_vfmt_write('qualified_method_range', source + '\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, twice := run_vfmt_write('qualified_method_range_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_preserves_semantic_signature_and_collection_restrictions() {
+	for source, expected in {
+		'fn f(value array) {}':                               'value array'
+		'fn f(value map) {}':                                 'value map'
+		'fn main() { _ := [2]map{} }':                        '[2]map{}'
+		'fn main() { asm amd64 raw raw { nop } }':            'asm amd64 raw raw { nop }'
+		'fn main() { asm amd64 intel intel { nop } }':        'asm amd64 intel intel { nop }'
+		'fn main() { asm amd64 { lock nop } }':               'asm amd64 { lock nop }'
+		'struct Holder { value mut int }':                    'value mut int'
+		'fn f() mut int { return 1 }':                        'fn f() mut int'
+		'__global int int':                                   '__global int int'
+		'fn main() { mut _ := 1 }':                           'mut _ := 1'
+		'fn main() { shared _ := 1 }':                        'shared _ := 1'
+		'fn main() { atomic _ := 1 }':                        'atomic _ := 1'
+		'fn main() { mut x := 1; x = 2 @[freed; other] }':    '@[freed; other]'
+		'fn main() { mut x := 1; x = 2 @[freed: 1] }':        '@[freed: 1]'
+		'fn main() { println($res()) }':                      'println($res())'
+		'struct Holder { values &[]int }':                    'values &[]int'
+		'fn + (a int, b int) int { return a + b }':           'fn +('
+		"@[export: 'f'] fn f[T](value T) {}":                 "@[export: 'f']"
+		"@[export: 'f'] fn C.f()":                            'fn C.f()'
+		'fn C.foo() { println(1) }':                          'fn C.foo() { println(1) }'
+		'fn JS.foo() { println(1) }':                         'fn JS.foo() { println(1) }'
+		'fn f(mut values ...int) {}':                         'mut values ...int'
+		'fn f(shared values ...int) {}':                      'shared values ...int'
+		'fn f(atomic values ...int) {}':                      'atomic values ...int'
+		'type Callback = fn (mut ...int)':                    'fn (mut ...int)'
+		'fn main() { values := []!int{}; _ = values }':       '[]!int{}'
+		'fn main() { values := [2]!int{}; _ = values }':      '[2]!int{}'
+		'fn main() { values := [..]!int[1, 2]; _ = values }': '[..]!int[1, 2]'
+		'fn main() { values := chan !int{}; _ = values }':    'chan !int{}'
+		'fn main() { values := [2]int{len: 2}; _ = values }': '[2]int{len: 2}'
+	} {
+		res, formatted := run_vfmt_write('semantic_types', source + '\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, formatted_twice := run_vfmt_write('semantic_types_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert formatted_twice == formatted
+	}
+}
+
 fn test_fmt_uses_v3_formatter() {
 	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter.v')
 	os.write_file(source_path, 'fn main(){println("v3")}\n')!
@@ -84,7 +369,7 @@ fn test_fmt_uses_v3_formatter() {
 
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
-	assert res.output.contains("fn main() {\n\tprintln('v3')\n}"), res.output
+	assert res.output.contains("fn main() { println('v3') }"), res.output
 }
 
 fn test_fmt_checks_accept_legacy_formatted_source() {
@@ -164,7 +449,7 @@ fn test_fmt_preserves_comments_with_v3() {
 	assert formatted.contains('// vfmt off')
 	assert formatted.contains('// vfmt on')
 	assert formatted.contains('println("keep this")')
-	assert formatted.contains("fn format_me() {\n\tprintln('yes')\n}"), formatted
+	assert formatted.contains("fn format_me() { println('yes') }"), formatted
 }
 
 fn test_fmt_keeps_regular_comments_attached_with_v3() {
@@ -766,7 +1051,7 @@ fn test_fmt_ignores_vfmt_directives_inside_strings_with_v3() {
 	assert res.exit_code == 0, res.output
 	assert formatted.contains("off := '// vfmt off'"), formatted
 	assert formatted.contains("on := '// vfmt on'"), formatted
-	assert formatted.contains("fn format_me() {\n\tprintln('yes')\n}"), formatted
+	assert formatted.contains("fn format_me() { println('yes') }"), formatted
 }
 
 fn test_fmt_preserves_go_and_spawn_keywords_with_v3() {
@@ -897,6 +1182,239 @@ fn f() {
 	second_res, formatted_twice := run_vfmt_write('disabled_json_migration_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
+}
+
+fn test_fmt_json_decode_migration_runs_and_skips_option_targets_with_v3() {
+	// Migrated decode calls must still decode the same payloads.
+	migrated_source := 'import json\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tlist := json.decode([]Foo, \'[{"a":1}]\') or { panic(err) }\n\tby_key := json.decode(map[string]Foo, \'{"k":{"a":2}}\') or { panic(err) }\n\tprintln(\'\${list[0].a} \${by_key[\'k\'].a}\')\n}\n'
+	res, migrated := run_vfmt_write('json_decode_targets', migrated_source, '')
+	assert res.exit_code == 0, res.output
+	assert migrated.contains('json2.decode[[]Foo]('), migrated
+	assert migrated.contains('json2.decode[map[string]Foo]('), migrated
+	run_res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(os.join_path(vfmt_test_tdir, 'json_decode_targets.v'))}')
+	assert run_res.exit_code == 0, run_res.output
+	assert run_res.output.trim_space() == '1 2', run_res.output
+	// V does not accept `?Foo` as a type argument, so `json.decode(?Foo, s)` has no
+	// json2 counterpart, and the file keeps its legacy source.
+	option_source := "import json\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tw := json.decode(?Foo, '{}') or { return }\n\tprintln(json.encode(w))\n}\n"
+	option_res, option_formatted := run_vfmt_write('json_decode_option_target', option_source,
+		'')
+	assert option_res.exit_code == 0, option_res.output
+	assert option_formatted == option_source
+	// Without migration, formatting keeps the option type argument too.
+	plain_res, plain_formatted := run_vfmt_write('json_decode_option_target_no_migrate',
+		option_source, '-no-migrate-json2')
+	assert plain_res.exit_code == 0, plain_res.output
+	assert plain_formatted == option_source
+}
+
+fn test_fmt_json_decode_migration_of_value_targets_with_v3() {
+	// A value target names its type with an empty initializer, which is dropped.
+	source := 'import json\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tm := json.decode(map[string]int{}, \'{"a":1}\') or { return }\n\tl := json.decode([]Foo{}, \'[{"a":2}]\') or { return }\n\tf := json.decode(Foo{}, \'{"a":3}\') or { return }\n\tprintln(\'\${m[\'a\']} \${l[0].a} \${f.a}\')\n}\n'
+	res, migrated := run_vfmt_write('json_decode_value_targets', source, '')
+	assert res.exit_code == 0, res.output
+	assert migrated.contains('json2.decode[map[string]int]('), migrated
+	assert migrated.contains('json2.decode[[]Foo]('), migrated
+	assert migrated.contains('json2.decode[Foo]('), migrated
+	run_res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(os.join_path(vfmt_test_tdir, 'json_decode_value_targets.v'))}')
+	assert run_res.exit_code == 0, run_res.output
+	assert run_res.output.trim_space() == '1 2 3', run_res.output
+	// A target with a non-empty initializer names no type to spell back.
+	initialized := "import json\n\nfn main() {\n\tl := json.decode([]int{len: 2}, '[]') or { return }\n\tprintln(l)\n}\n"
+	init_res, init_formatted := run_vfmt_write('json_decode_initialized_target', initialized,
+		'')
+	assert init_res.exit_code == 0, init_res.output
+	assert init_formatted == initialized
+}
+
+fn test_fmt_skips_json2_migration_for_narrowed_sumtype_values_with_v3() {
+	header := 'import json\n\nstruct Cat {\n\tname string\n}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\n'
+	for name, body in {
+		'if_is':       'fn f(x Animal) {\n\tif x is Cat {\n\t\tprintln(json.encode(x))\n\t}\n}\n'
+		'assert_is':   'fn f(animals []Animal) {\n\tassert animals[0] is Cat\n\tprintln(json.encode(animals[0]))\n}\n'
+		'match_arm':   'fn f(x Animal) {\n\tmatch x {\n\t\tCat { println(json.encode(x)) }\n\t\telse {}\n\t}\n}\n'
+		'not_is_exit': 'fn f(x Animal) {\n\tif x !is Cat {\n\t\treturn\n\t}\n\tprintln(json.encode(x))\n}\n'
+	} {
+		source := header + body
+		res, formatted := run_vfmt_write('narrowed_${name}', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, name
+	}
+	// Encoding a value that is not narrowed is migrated as usual.
+	plain := header + 'fn f(x Animal) {\n\tprintln(json.encode(x))\n}\n'
+	_, migrated := run_vfmt_write('not_narrowed', plain, '')
+	assert migrated.contains('json2.encode(x, escape_unicode: true, time_as_unix: true)'), migrated
+}
+
+fn test_fmt_skips_json2_migration_for_shadowed_selective_imports_with_v3() {
+	header := 'import json { decode, encode }\n\nstruct User {\n\tname string\n}\n\n'
+	for name, body in {
+		'param':    "fn use(decode fn (string) string) string {\n\treturn decode('{}')\n}\n"
+		'local':    "fn f() {\n\tdecode := fn (s string) string {\n\t\treturn s\n\t}\n\tprintln(decode('{}'))\n\tprintln(encode(User{}))\n}\n"
+		'for_var':  "fn f() {\n\tfor decode in [fn (s string) string {\n\t\treturn s\n\t}] {\n\t\tprintln(decode('{}'))\n\t}\n}\n"
+		'as_value': 'fn f() {\n\tg := encode[User]\n\t_ = g\n}\n'
+	} {
+		source := header + body
+		res, formatted := run_vfmt_write('shadowed_selective_${name}_test', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, name
+	}
+	// A legacy decode call without both arguments cannot be rewritten either.
+	one_arg := "import json\n\nfn f() {\n\tprintln(json.decode('{}'))\n\tprintln(json.encode(1))\n}\n"
+	res, formatted := run_vfmt_write('one_argument_decode', one_arg, '')
+	assert res.exit_code == 0, res.output
+	assert formatted == one_arg
+}
+
+fn test_fmt_keeps_json_module_found_through_path_flag_with_v3() {
+	path_root := os.join_path(vfmt_test_tdir, 'json_path_root')
+	os.mkdir_all(os.join_path(path_root, 'json'))!
+	os.write_file(os.join_path(path_root, 'json', 'json.v'),
+		"module json\n\npub fn encode[T](x T) string {\n\treturn 'path'\n}\n")!
+	source := 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n'
+	old_vflags := os.getenv('VFLAGS')
+	os.setenv('VFLAGS', '-path ${path_root}|@vlib|@vmodules', true)
+	res, formatted := run_vfmt_write('json_from_path_flag', source, '')
+	if old_vflags == '' {
+		os.unsetenv('VFLAGS')
+	} else {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
+	assert res.exit_code == 0, res.output
+	assert formatted == source
+	// Without `-path`, the same import names the removed vlib module.
+	_, migrated := run_vfmt_write('json_without_path_flag', source, '')
+	assert migrated.contains('import json2\n'), migrated
+}
+
+fn test_fmt_stdin_keeps_the_callers_project_json_module_with_v3() {
+	project_dir := os.join_path(vfmt_test_tdir, 'stdin_json_project')
+	os.mkdir_all(os.join_path(project_dir, 'json'))!
+	os.write_file(os.join_path(project_dir, 'json', 'json.v'),
+		"module json\n\npub fn encode[T](x T) string {\n\treturn 'own'\n}\n")!
+	source_path := os.join_path(project_dir, 'app.v')
+	os.write_file(source_path, 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n')!
+	// stdin is staged in a temporary folder, but its imports belong to the caller's
+	// working directory, which has its own `json` module here.
+	old_wd := os.getwd()
+	os.chdir(project_dir)!
+	res := os.execute('${os.quoted_path(vexe)} fmt < ${os.quoted_path(source_path)}')
+	os.chdir(old_wd)!
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('import json\n'), res.output
+	assert !res.output.contains('json2'), res.output
+}
+
+fn test_fmt_json_lookup_with_path_flag_follows_the_compiler_with_v3() {
+	module_source := "module json\n\npub fn encode[T](x T) string {\n\treturn 'own'\n}\n"
+	source := 'import json\n\nfn main() {\n\tprintln(json.encode(1))\n}\n'
+	root := os.join_path(vfmt_test_tdir, 'json_path_lookup')
+	// A module in ~/.vmodules is not searched when `-path` leaves out `@vmodules`.
+	vmodules := os.join_path(root, 'vmodules')
+	os.mkdir_all(os.join_path(vmodules, 'json'))!
+	os.write_file(os.join_path(vmodules, 'json', 'json.v'), module_source)!
+	os.mkdir_all(os.join_path(root, 'app'))!
+	app_file := os.join_path(root, 'app', 'main.v')
+	os.write_file(app_file, source)!
+	// A sibling of the importing file's directory is still found through `-path`.
+	os.mkdir_all(os.join_path(root, 'project', 'src'))!
+	os.mkdir_all(os.join_path(root, 'project', 'json'))!
+	os.write_file(os.join_path(root, 'project', 'json', 'json.v'), module_source)!
+	project_file := os.join_path(root, 'project', 'src', 'main.v')
+	os.write_file(project_file, source)!
+	old_vflags := os.getenv('VFLAGS')
+	old_vmodules := os.getenv('VMODULES')
+	os.setenv('VMODULES', vmodules, true)
+	os.setenv('VFLAGS', '-path @vlib', true)
+	app_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(app_file)}')
+	project_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(project_file)}')
+	os.unsetenv('VFLAGS')
+	app_copy := os.join_path(root, 'app', 'copy.v')
+	os.write_file(app_copy, source)!
+	with_vmodules_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(app_copy)}')
+	for name, value in {
+		'VFLAGS':   old_vflags
+		'VMODULES': old_vmodules
+	} {
+		if value == '' {
+			os.unsetenv(name)
+		} else {
+			os.setenv(name, value, true)
+		}
+	}
+	assert app_res.exit_code == 0, app_res.output
+	assert os.read_file(app_file)!.contains('import json2\n')
+	assert project_res.exit_code == 0, project_res.output
+	assert os.read_file(project_file)! == source
+	// Without `-path`, ~/.vmodules is searched, so a file importing that module keeps it.
+	assert with_vmodules_res.exit_code == 0, with_vmodules_res.output
+	assert with_vmodules_res.output.contains('import json\n'), with_vmodules_res.output
+	// A `json` folder above another `v.mod` project is not the imported module with
+	// `-path` (the compiler's `module_dir_belongs_to_other_project`).
+	outer := os.join_path(root, 'outer')
+	os.mkdir_all(os.join_path(outer, 'app', 'src'))!
+	os.mkdir_all(os.join_path(outer, 'json'))!
+	os.write_file(os.join_path(outer, 'json', 'json.v'), module_source)!
+	os.write_file(os.join_path(outer, 'app', 'v.mod'), "Module {\n\tname: 'app'\n}\n")!
+	outer_file := os.join_path(outer, 'app', 'src', 'main.v')
+	os.write_file(outer_file, source)!
+	os.setenv('VFLAGS', '-path @vlib', true)
+	outer_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(outer_file)}')
+	if old_vflags == '' {
+		os.unsetenv('VFLAGS')
+	} else {
+		os.setenv('VFLAGS', old_vflags, true)
+	}
+	assert outer_res.exit_code == 0, outer_res.output
+	assert outer_res.output.contains('import json2\n'), outer_res.output
+}
+
+fn test_fmt_keeps_project_owned_json_module_imports_with_v3() {
+	source := "import json
+
+fn test_own() {
+	assert json.encode(1) == 'own 1'
+}
+"
+	project_dir := os.join_path(vfmt_test_tdir, 'own_json_project')
+	os.mkdir_all(os.join_path(project_dir, 'json'))!
+	os.write_file(os.join_path(project_dir, 'json', 'json.v'),
+		"module json\n\npub fn encode[T](x T) string {\n\treturn 'own \${x}'\n}\n")!
+	for name in ['own_json_test.v', 'own_json_consumer.v'] {
+		source_path := os.join_path(project_dir, name)
+		os.write_file(source_path, source)!
+		res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(source_path)}')
+		assert res.exit_code == 0, res.output
+		assert os.read_file(source_path)! == source
+	}
+	// Without a project `json` module, the import names the removed vlib module, and
+	// test files are migrated like other code. A file with a local `json` binding
+	// keeps the legacy source, since its method calls are not module calls.
+	for name, local_source in {
+		'local_var': 'json := Encoder{}\n\tassert json.encode() == 0'
+		'param':     'f := fn (json Encoder) int {\n\t\treturn json.encode()\n\t}\n\tassert f(Encoder{}) == 0'
+		'for_var':   'for json in [Encoder{}] {\n\t\tassert json.encode() == 0\n\t}'
+	} {
+		local_json := 'import json
+
+struct Encoder {}
+
+fn (e Encoder) encode() int {
+	return 0
+}
+
+fn test_local() {
+	${local_source}
+}
+'
+		local_res, local_formatted := run_vfmt_write('local_json_${name}_test', local_json, '')
+		assert local_res.exit_code == 0, local_res.output
+		assert local_formatted == local_json
+	}
+	res, formatted := run_vfmt_write('removed_json_module_test', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('import json2\n'), formatted
+	assert formatted.contains('json2.encode(1, escape_unicode: true, time_as_unix: true)'), formatted
 }
 
 fn test_fmt_keeps_comments_before_expanded_const_fields_with_v3() {
@@ -1477,7 +1995,7 @@ fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 		value: 2
 	}
 	wrapper := Wrapper{
-		Tick: first
+		Tick:    first
 		numbers: {
 			'one': Number{
 				integer: 1
@@ -1496,4 +2014,26 @@ fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 	second_res, formatted_twice := run_vfmt_write('function_local_aggregate_types_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_contextual_range_embed_and_position_restrictions() {
+	for source, expected in {
+		'fn main() { value := [2]field.typ{} }':                  '[2]field.typ{}'
+		'fn f[T]() { if T is int { println(1) } }':               'if T is int'
+		'struct Example { value field.typ }':                     'value field.typ'
+		'struct Example { value pkg.typ }':                       'value pkg.typ'
+		'fn f(a, mut b int) {}':                                  'fn f(a int, mut b int)'
+		'fn f(a, mut b &int) {}':                                 'fn f(a &int, mut b &int)'
+		'fn main() { for i := 0; i < 3; j := 1 { println(j) } }': 'j := 1'
+		'fn main() {}\n#!/usr/bin/env -S v run':                  '#!/usr/bin/env -S v run'
+		'fn f(x int) { match x { 0 .. 3 {} else {} } }':          '0 .. 3'
+		'struct Holder { pkg.lower }':                            'pkg.lower'
+	} {
+		res, formatted := run_vfmt_write('match_range_embed', source + '\n', '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains(expected), formatted
+		second, twice := run_vfmt_write('match_range_embed_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
 }

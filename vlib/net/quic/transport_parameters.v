@@ -164,11 +164,11 @@ pub fn decode_preferred_address(buf []u8) !PreferredAddress {
 		return error("quic: preferred_address connection_id ${cid_len} exceeds QUIC v1's ${quic_v1_max_cid_len}-byte limit")
 	}
 	return PreferredAddress{
-		ipv4_address: ipv4_address
-		ipv4_port: ipv4_port
-		ipv6_address: ipv6_address
-		ipv6_port: ipv6_port
-		connection_id: buf[25..25 + cid_len].clone()
+		ipv4_address:          ipv4_address
+		ipv4_port:             ipv4_port
+		ipv6_address:          ipv6_address
+		ipv6_port:             ipv6_port
+		connection_id:         buf[25..25 + cid_len].clone()
 		stateless_reset_token: buf[25 + cid_len..expected_len].clone()
 	}
 }

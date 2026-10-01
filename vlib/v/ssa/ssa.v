@@ -46,9 +46,9 @@ pub enum OpCode {
 	store
 	get_element_ptr
 	heap_alloc // Heap allocate memory for a type (malloc+zero): returns ptr
-	fence // Memory ordering barrier
-	cmpxchg // Atomic compare-exchange
-	atomicrmw // Atomic read-modify-write
+	fence      // Memory ordering barrier
+	cmpxchg    // Atomic compare-exchange
+	atomicrmw  // Atomic read-modify-write
 	// Comparisons
 	lt
 	gt
@@ -63,7 +63,7 @@ pub enum OpCode {
 	// Other
 	call
 	call_indirect // Indirect call through function pointer
-	call_sret // Call with struct return (x8 indirect return on ARM64)
+	call_sret     // Call with struct return (x8 indirect return on ARM64)
 	neg
 	trunc
 	sext
@@ -75,10 +75,10 @@ pub enum OpCode {
 	bitcast
 	phi
 	select
-	assign // Copy op used during phi elimination
+	assign             // Copy op used during phi elimination
 	inline_string_init // Build a string struct by value: (string){str, len}
 	// Concurrency
-	go_call // Launch goroutine: go_call fn_ref, args...
+	go_call    // Launch goroutine: go_call fn_ref, args...
 	spawn_call // Launch OS thread: spawn_call fn_ref, args...
 	// Aggregate (struct/tuple) operations
 	extractvalue
@@ -99,10 +99,10 @@ pub enum AtomicOrdering {
 
 // InlineHint lists inline hint values used by ssa.
 pub enum InlineHint {
-	none_ // No hint, let optimizer decide
+	none_  // No hint, let optimizer decide
 	always // Always inline (e.g. V's [inline] attribute)
-	never // Never inline (e.g. V's [noinline] attribute)
-	hint // Suggest inlining (optimizer may ignore)
+	never  // Never inline (e.g. V's [noinline] attribute)
+	hint   // Suggest inlining (optimizer may ignore)
 }
 
 // TypeKind lists type kind values used by ssa.
@@ -125,7 +125,7 @@ pub:
 	width       int
 	is_unsigned bool
 	elem_type   TypeID // For Ptr, Array
-	len         int // For Array
+	len         int    // For Array
 	fields      []TypeID
 	field_names []string
 	params      []TypeID
@@ -133,7 +133,7 @@ pub:
 	is_c_struct bool // True for C interop structs (raw field names, typedef to C struct)
 	is_union    bool // True for union types (all fields overlap at offset 0)
 	is_packed   bool // True when struct fields have byte alignment
-	alignment   int // Explicit aggregate alignment in bytes; 0 uses the natural alignment
+	alignment   int  // Explicit aggregate alignment in bytes; 0 uses the natural alignment
 }
 
 // TypeStore represents type store data used by ssa.
@@ -233,7 +233,7 @@ pub fn (mut ts TypeStore) get_tuple(elem_types []TypeID) TypeID {
 		}
 	}
 	id := ts.register(Type{
-		kind: .struct_t
+		kind:   .struct_t
 		fields: elem_types
 	})
 	ts.cache[key] = id
@@ -256,7 +256,7 @@ pub enum ValueKind {
 	instruction
 	phi_result
 	basic_block
-	string_literal // V string struct literal (by value)
+	string_literal   // V string struct literal (by value)
 	c_string_literal // C string literal (raw char pointer)
 	func_ref
 }
@@ -396,14 +396,14 @@ pub mut:
 	linkage       Linkage
 	alignment     int
 	is_constant   bool
-	initial_value i64 // For constants/enums, the initial integer value
+	initial_value i64  // For constants/enums, the initial integer value
 	initial_data  []u8 // For constant arrays: serialized element data
 }
 
 // TargetData represents target data data used by ssa.
 pub struct TargetData {
 pub:
-	ptr_size      int = 8
+	ptr_size      int  = 8
 	endian_little bool = true
 }
 
@@ -442,16 +442,16 @@ mut:
 // new creates a Module value for ssa.
 pub fn Module.new() &Module {
 	mut m := &Module{
-		type_store: TypeStore.new()
-		c_struct_names: map[int]string{}
-		c_typedef_structs: map[int]bool{}
-		const_cache: map[string]ValueID{}
+		type_store:         TypeStore.new()
+		c_struct_names:     map[int]string{}
+		c_typedef_structs:  map[int]bool{}
+		const_cache:        map[string]ValueID{}
 		field_offset_cache: map[u64]int{}
-		field_size_cache: map[u64]int{}
+		field_size_cache:   map[u64]int{}
 	}
 	m.values << Value{
 		kind: .unknown
-		id: 0
+		id:   0
 	}
 	return m
 }
@@ -480,10 +480,10 @@ pub fn (mut m Module) release_codegen_analysis_metadata() {
 pub fn (mut m Module) add_value(kind ValueKind, typ TypeID, name string, index int) ValueID {
 	id := ValueID(m.values.len)
 	m.values << Value{
-		id: id
-		kind: kind
-		typ: typ
-		name: name
+		id:    id
+		kind:  kind
+		typ:   typ
+		name:  name
 		index: index
 	}
 	return id
@@ -493,9 +493,9 @@ pub fn (mut m Module) add_value(kind ValueKind, typ TypeID, name string, index i
 pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands []ValueID) ValueID {
 	instr_idx := m.instrs.len
 	m.instrs << Instruction{
-		op: op
-		block: block
-		typ: typ
+		op:       op
+		block:    block
+		typ:      typ
 		operands: operands
 	}
 	val_id := m.add_value(.instruction, typ, '', instr_idx)
@@ -522,9 +522,9 @@ pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands [
 pub fn (mut m Module) add_instr_front(op OpCode, block BlockID, typ TypeID, operands []ValueID) ValueID {
 	instr_idx := m.instrs.len
 	m.instrs << Instruction{
-		op: op
-		block: block
-		typ: typ
+		op:       op
+		block:    block
+		typ:      typ
 		operands: operands
 	}
 	val_id := m.add_value(.instruction, typ, '', instr_idx)
@@ -686,8 +686,8 @@ pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 	id := BlockID(m.blocks.len)
 	unique := '${name}_${id}'
 	m.blocks << BasicBlock{
-		id: id
-		name: unique
+		id:     id
+		name:   unique
 		parent: func_id
 	}
 	mut f := m.funcs[func_id]
@@ -706,9 +706,9 @@ pub fn (mut m Module) new_function(name string, ret TypeID) int {
 	}
 	id := m.funcs.len
 	m.funcs << Function{
-		id: id
+		id:   id
 		name: name
-		typ: ret
+		typ:  ret
 	}
 	return id
 }
@@ -718,9 +718,9 @@ pub fn (mut m Module) new_function(name string, ret TypeID) int {
 pub fn (mut m Module) add_function(name string, ret TypeID) int {
 	id := m.funcs.len
 	m.funcs << Function{
-		id: id
+		id:   id
 		name: name
-		typ: ret
+		typ:  ret
 	}
 	return id
 }
@@ -766,8 +766,8 @@ pub fn (mut m Module) block_add_pred(to BlockID, from BlockID) {
 pub fn (mut m Module) add_global(name string, typ TypeID) ValueID {
 	id := m.globals.len
 	m.globals << GlobalVar{
-		name: name
-		typ: typ
+		name:    name
+		typ:     typ
 		linkage: .private
 	}
 	ptr_typ := m.type_store.get_ptr(typ)
@@ -779,10 +779,10 @@ pub fn (mut m Module) add_global(name string, typ TypeID) ValueID {
 pub fn (mut m Module) add_global_with_data(name string, elem_type TypeID, is_const bool, data []u8) ValueID {
 	id := m.globals.len
 	m.globals << GlobalVar{
-		name: name
-		typ: elem_type
-		linkage: .private
-		is_constant: is_const
+		name:         name
+		typ:          elem_type
+		linkage:      .private
+		is_constant:  is_const
 		initial_data: data
 	}
 	ptr_typ := m.type_store.get_ptr(elem_type)
@@ -799,8 +799,8 @@ pub fn (mut m Module) add_external_global(name string, typ TypeID) ValueID {
 	}
 	id := m.globals.len
 	m.globals << GlobalVar{
-		name: name
-		typ: typ
+		name:    name
+		typ:     typ
 		linkage: .external
 	}
 	ptr_typ := m.type_store.get_ptr(typ)

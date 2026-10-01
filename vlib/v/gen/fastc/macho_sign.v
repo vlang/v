@@ -56,8 +56,8 @@ pub fn fastc_codesign_shim_dir() FastcCodesignShim {
 	path := previous_path or { '' }
 	os.setenv('PATH', dir + ':' + path, true)
 	return FastcCodesignShim{
-		dir: dir
-		previous_path: path
+		dir:               dir
+		previous_path:     path
 		previous_path_set: previous_path != none
 	}
 }
@@ -227,9 +227,9 @@ fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !Fa
 	load_end := macho_header_size + sizeofcmds
 	return FastcMachoPatch{
 		original_len: original_len
-		tail_start: tail_start
-		load_end: load_end
-		final_len: code_limit + signature.len
+		tail_start:   tail_start
+		load_end:     load_end
+		final_len:    code_limit + signature.len
 	}
 }
 

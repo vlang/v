@@ -4,6 +4,7 @@ import net
 import pico_http_parser
 
 #include <errno.h>
+
 $if windows {
 	#include <winsock2.h>
 	#include <ws2tcpip.h>
@@ -20,7 +21,7 @@ $if windows {
 @[inline]
 fn get_time() i64 {
 	// time.now() is slow
-	return i64(C.time(C.NULL))
+	return i64(C.time(unsafe { nil }))
 }
 
 @[inline]

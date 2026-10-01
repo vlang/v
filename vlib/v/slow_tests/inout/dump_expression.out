@@ -25,4 +25,4 @@
     z: 3
 }
 [vlib/v/slow_tests/inout/dump_expression.vv:47] os.file_name(vfile): dump_expression.vv
-[vlib/v/slow_tests/inout/dump_expression.vv:50] f.read(mut buf): 10
+[vlib/v/slow_tests/inout/dump_expression.vv:50] f.read(mut buf) or { -999 }: 10

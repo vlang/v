@@ -2,6 +2,7 @@ import os
 import time
 import v.cmdexec
 import v.pref
+import v.util
 
 const driver_cli_vlib_dir = os.dir(os.dir(os.dir(@FILE)))
 const driver_cli_v3_dir = os.dir(os.dir(@FILE))
@@ -12,7 +13,12 @@ fn build_driver_cli_v3(root string) string {
 }
 
 fn build_driver_cli_v3_with_flags(root string, flags []string) string {
-	bin := os.join_path(root, 'v3_driver_cli')
+	// The compiler appends `.exe` to an extension-less `-o` target on Windows;
+	// return the name it actually produces, so the callers can spawn it.
+	mut bin := os.join_path(root, 'v3_driver_cli')
+	$if windows {
+		bin += '.exe'
+	}
 	mut args := ['-gc', 'none']
 	args << flags
 	args << ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', bin, driver_cli_v3_src]
@@ -32,6 +38,80 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	result := cmdexec.run(v3_bin, args)
 	assert result.exit_code != 0
 	assert result.output.contains(message), result.output
+}
+
+fn assert_driver_n_diagnostics(result os.Result, hidden bool) {
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('warning:'), result.output
+	assert result.output.contains('notice flag warning'), result.output
+	assert result.output.contains('notice:') == !hidden, result.output
+	assert result.output.contains('unused variable: `notice_only`') == !hidden, result.output
+}
+
+fn test_driver_n_hides_notices() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_notices_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source_dir := os.join_path(root, 'input')
+	os.mkdir_all(source_dir)!
+	source := os.join_path(source_dir, 'main.v')
+	os.write_file(source, r'module main
+
+import os
+
+fn main() {
+	notice_only := 1
+	$compile_warn("notice flag warning")
+	println(os.args[1..].join("|"))
+}
+')!
+	output := os.join_path(root, 'program')
+	args := ['-nocolor', '-o', output, source]
+
+	// Populate the cache, hide notices on repeated builds, then show them
+	// again. Suppression must not discard diagnostics from the cache.
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, args), false)
+	for _ in 0 .. 2 {
+		mut hidden_args := ['-n']
+		hidden_args << args
+		assert_driver_n_diagnostics(cmdexec.run(v3_bin, hidden_args), true)
+	}
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, args), false)
+
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', source]), true)
+
+	// Reproduce the reported directory build without treating the dot as
+	// an option value, or changing the test process's working directory.
+	directory := cmdexec.run_in(v3_bin, ['-n', '-nocolor', '-o', output, '.'], source_dir)
+	assert_driver_n_diagnostics(directory, true)
+
+	mut environment := os.environ()
+	environment['VFLAGS'] = '-n'
+	assert_driver_n_diagnostics(run_driver_with_environment(v3_bin, args, environment), true)
+
+	// A second -n after the run target belongs to the program, not V.
+	run := cmdexec.run(v3_bin, ['-n', '-nocolor', 'run', source, '-n'])
+	assert_driver_n_diagnostics(run, true)
+	assert '-n' in run.output.split_into_lines(), run.output
+
+	error_source := os.join_path(root, 'error.v')
+	os.write_file(error_source, 'fn main() {
+	notice_only := 1
+	println(missing_value)
+}
+')!
+	// A hidden notice must not consume the one diagnostic slot and
+	// prevent the actual error from being printed.
+	failed := cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', '-message-limit', '1', error_source])
+	assert failed.exit_code != 0, failed.output
+	assert failed.output.contains('error:'), failed.output
+	assert failed.output.contains('missing_value'), failed.output
+	assert !failed.output.contains('notice:'), failed.output
+	assert !failed.output.contains('unknown option'), failed.output
 }
 
 fn v3_profile_counter(profile_output string, fn_name string) int {
@@ -275,8 +355,7 @@ fn main() {
 	selective_binary := os.join_path(root, 'profile_selective')
 	selective_profile := os.join_path(root, 'profile_selective.txt')
 	selective_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns', 'main__selected',
-		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary,
-		selective_source])
+		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary, selective_source])
 	assert selective_compile.exit_code == 0, selective_compile.output
 	selective_run := cmdexec.run(selective_binary, [])
 	assert selective_run.exit_code == 0, selective_run.output
@@ -355,21 +434,73 @@ fn main() {
 	assert channel_run.output == '71\n'
 }
 
-fn test_v3_build_rejects_garbage_collectors() {
-	root := os.join_path(os.vtmp_dir(), 'v3_driver_gc_build_${os.getpid()}')
+fn test_v3_garbage_collector_modes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_gc_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	for mode in ['boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt', 'boehm_leak',
-		'vgc'] {
-		output := os.join_path(root, 'v3_${mode}')
-		result := cmdexec.run(@VEXE, ['-old-compiler', '-gc', mode, '-path',
-			'${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', output, driver_cli_v3_src])
-		assert result.exit_code != 0
-		assert result.output.contains('v3 must be built without a garbage collector'), result.output
-		assert !os.is_file(output)
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'gc_mode.v')
+	os.write_file(source, 'fn main() {
+	$if gcboehm ? { println("v3_gc_marker_gcboehm_28636") }
+	$if gcboehm_full ? { println("v3_gc_marker_gcboehm_full_28636") }
+	$if gcboehm_incr ? { println("v3_gc_marker_gcboehm_incr_28636") }
+	$if gcboehm_opt ? { println("v3_gc_marker_gcboehm_opt_28636") }
+	$if gcboehm_leak ? { println("v3_gc_marker_gcboehm_leak_28636") }
+	$if vgc ? { println("v3_gc_marker_vgc_28636") }
+}
+')!
+	cases := {
+		'default':        ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
+		'boehm':          ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
+		'boehm_full':     ['gcboehm', 'gcboehm_full']
+		'boehm_incr':     ['gcboehm', 'gcboehm_incr']
+		'boehm_full_opt': ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
+		'boehm_incr_opt': ['gcboehm', 'gcboehm_incr', 'gcboehm_opt']
+		'boehm_leak':     ['gcboehm', 'gcboehm_leak']
+		'none':           []string{}
+		'vgc':            ['vgc']
+	}
+	markers := ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt', 'gcboehm_leak', 'vgc']
+	for mode, expected in cases {
+		output := os.join_path(root, 'gc_${mode}.c')
+		mut args := ['-silent']
+		if mode != 'default' {
+			args << ['-gc', mode]
+		}
+		args << ['-o', output, source]
+		result := cmdexec.run(v3_bin, args)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+		generated := os.read_file(output)!
+		if mode == 'default' {
+			assert generated.contains('GC_set_pages_executable(0);')
+			assert generated.contains('void _vinit() {\n\tgc_runtime_init();')
+		}
+		for marker in markers {
+			selected := marker in expected
+			assert generated.contains('v3_gc_marker_${marker}_28636') == selected, '${mode}: marker ${marker}, expected ${selected}'
+		}
+	}
+
+	// Cross-target builds must not emit collector-dependent code. The target
+	// runtime/toolchain may not have Boehm headers or libraries available.
+	host := pref.host_target()
+	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }
+	for mode in ['default', 'boehm'] {
+		output := os.join_path(root, 'gc_cross_${mode}.c')
+		mut args := ['-silent', '-os', cross_os]
+		if mode != 'default' {
+			args << ['-gc', mode]
+		}
+		args << ['-o', output, source]
+		result := cmdexec.run(v3_bin, args)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+		generated := os.read_file(output)!
+		for marker in markers {
+			assert !generated.contains('v3_gc_marker_${marker}_28636'), 'cross ${mode}: marker ${marker} must be disabled'
+		}
 	}
 }
 
@@ -426,7 +557,7 @@ fn main() {}
 	assert compile.exit_code == 0, compile.output
 }
 
-fn test_driver_cflags_include_dir_is_visible_to_header_inliner() {
+fn test_driver_cflags_include_dir_is_visible_to_c_compiler() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_cflags_include_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -479,11 +610,53 @@ fn main() {
 	kept_files := kept_c_files(keep_c_dir)
 	assert kept_files.len == 1, kept_files.str()
 	generated_c := os.read_file(kept_files[0])!
-	assert !generated_c.contains('#include "cli_header.h"'), generated_c
-	assert generated_c.contains('static inline int cli_header_value(CliHeaderValue* item)')
+	assert generated_c.contains('#include "cli_header.h"'), generated_c
+	assert !generated_c.contains('static inline int cli_header_value(CliHeaderValue* item)')
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '73'
+}
+
+// windows_suffixing_c_compiler returns a C compiler on PATH that appends `.exe`
+// to an extension-less output name (MinGW gcc, llvm-mingw clang), or '' when
+// none is installed.
+fn windows_suffixing_c_compiler() string {
+	for name in ['gcc', 'clang'] {
+		if path := os.find_abs_path_of_executable(name) {
+			return path
+		}
+	}
+	return ''
+}
+
+fn test_driver_finalizes_binaries_from_suffixing_c_compilers_on_windows() {
+	$if !windows {
+		return
+	}
+	c_compiler := windows_suffixing_c_compiler()
+	if c_compiler == '' {
+		eprintln('skipping ${@FN}: neither gcc nor clang is on PATH')
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_out_suffix_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {\n\tprintln(41 + 1)\n}\n') or { panic(err) }
+	// The driver compiles to an extension-less `out` inside its build directory;
+	// gcc and clang write `out.exe` instead, which used to make the final move
+	// fail with "failed to finalize ...: Source path doesn't exist" (#28625).
+	output := os.join_path(root, 'suffixed_program.exe')
+	compile := cmdexec.run(v3_bin, ['-nocache', '-cc', c_compiler, '-o', output, source])
+	assert compile.exit_code == 0, compile.output
+	assert os.exists(output), compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
 }
 
 fn test_driver_ldflags_are_appended_to_the_link_command() {
@@ -541,8 +714,8 @@ fn main() {
 	warm_run := cmdexec.run(v3_bin, ['-silent', 'run', source])
 	assert warm_run.exit_code == 0, warm_run.output
 	assert warm_run.output.trim_space() == '73'
-	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library', 'run',
-		source])
+	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library',
+		'run', source])
 	assert cached_missing.exit_code != 0, cached_missing.output
 
 	assert_driver_cli_failure(v3_bin, ['-ldflags'], 'option `-ldflags` requires a value')
@@ -568,7 +741,7 @@ fn collect_driver_process_result(mut process os.Process) os.Result {
 	process.close()
 	return os.Result{
 		exit_code: exit_code
-		output: output
+		output:    output
 	}
 }
 
@@ -635,14 +808,22 @@ fn test_driver_macos_wrapv_and_cg_link_flags() {
 	}
 	v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc'])
 	source := os.join_path(root, 'signed_overflow.v')
+	// `int` is 64-bit on a 64-bit target, so the overflow point is spelled with the
+	// fixed-width types: each one must wrap (`-fwrapv`) instead of being folded away
+	// as undefined signed overflow.
 	os.write_file(source, '#flag -O2
 
-fn increment_is_greater(value int) bool {
+fn i32_increment_is_greater(value i32) bool {
+	return value + 1 > value
+}
+
+fn i64_increment_is_greater(value i64) bool {
 	return value + 1 > value
 }
 
 fn main() {
-	println(increment_is_greater(int(2147483647)))
+	println(i32_increment_is_greater(i32(2147483647)))
+	println(i64_increment_is_greater(i64(9223372036854775807)))
 }
 ')!
 	output := os.join_path(root, 'signed_overflow')
@@ -652,7 +833,7 @@ fn main() {
 	assert compile.output.contains('-fwrapv'), compile.output
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
-	assert run.output == 'false\n', run.output
+	assert run.output == 'false\nfalse\n', run.output
 
 	tcc_output := os.join_path(root, 'signed_overflow_tcc')
 	tcc_compile := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-showcc', '-o', tcc_output,
@@ -782,8 +963,8 @@ fn main() {
 	assert project_run.output == '42\n', project_run.output
 
 	backslash_project_dir := os.join_path(root, r'project\backslash')
-	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project',
-		backslash_project_dir, source])
+	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project', backslash_project_dir,
+		source])
 	assert backslash_generate.exit_code == 0, backslash_generate.output
 	backslash_build := cmdexec.run('sh', [
 		os.join_path(backslash_project_dir, 'build.sh'),
@@ -874,29 +1055,45 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	}
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, "fn unused_value() int { return 42 }\n\nfn main() { println('ok') }\n")!
+	os.mkdir_all(os.join_path(root, 'cached'))!
+	os.write_file(os.join_path(root, 'cached', 'cached.v'), 'module cached\n\npub fn value() int { return 40 }\n')!
+	os.write_file(source, 'module main\n\nimport cached\n\nfn identity[T](value T) T { return value }\n\nfn unused_value() int { return 7 }\n\nfn main() { println(identity(cached.value() + 2)) }\n')!
 	mut environment := os.environ()
 	environment['VTMP'] = os.join_path(root, 'vtmp')
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 
 	cold_output := os.join_path(root, 'cold')
-	cold := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', cold_output, source], environment)
+	cold := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', cold_output,
+		source], environment)
 	assert cold.exit_code == 0, cold.output
 	assert !cold.output.contains('(cached)'), cold.output
 
 	warm_output := os.join_path(root, 'warm')
-	warm := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', warm_output, source], environment)
+	warm := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', warm_output,
+		source], environment)
 	assert warm.exit_code == 0, warm.output
 	assert warm.output.contains('cgen (cached)'), warm.output
 
 	no_skip_output := os.join_path(root, 'no_skip')
-	no_skip := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-o',
-		no_skip_output, source], environment)
+	no_skip := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-no-skip-unused',
+		'-o', no_skip_output, source], environment)
 	assert no_skip.exit_code == 0, no_skip.output
 	assert !no_skip.output.contains('(cached)'), no_skip.output
 	no_skip_run := cmdexec.run(no_skip_output, [])
 	assert no_skip_run.exit_code == 0, no_skip_run.output
-	assert no_skip_run.output == 'ok\n', no_skip_run.output
+	assert no_skip_run.output == '42\n', no_skip_run.output
+
+	stripped_c_path := os.join_path(root, 'stripped.c')
+	stripped_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-b', 'c', '-o',
+		stripped_c_path, source], environment)
+	assert stripped_c.exit_code == 0, stripped_c.output
+	assert !os.read_file(stripped_c_path)!.contains('unused_value(')
+
+	no_skip_c_path := os.join_path(root, 'no_skip.c')
+	no_skip_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b',
+		'c', '-o', no_skip_c_path, source], environment)
+	assert no_skip_c.exit_code == 0, no_skip_c.output
+	assert os.read_file(no_skip_c_path)!.contains('unused_value(')
 }
 
 fn test_driver_valued_define_activates_optional_flag_and_source_suffix() {
@@ -1234,8 +1431,11 @@ pub fn values() []string {
 		environment['V_MACOS_V3_VHASH'] = 'delegated-build-hash'
 		environment['V_MACOS_V3_VCURRENT_HASH'] = 'delegated-current-hash'
 		environment['V3CACHE'] = os.join_path(root, 'cache')
+		// Pin the C compiler: the point here is that the selection reaches `$if clang`
+		// and `@CCOMPILER`, not which compiler the driver would pick by default (on
+		// macOS a non-prod build defaults to the bundled TCC).
 		compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
-			'-o', output, 'run', project], environment)
+			'-cc', 'clang', '-o', output, 'run', project], environment)
 		assert compile.exit_code == 0, compile.output
 		assert compile.output == 'clang|clang|delegated-build-hash|delegated-current-hash|hash-condition\n|\n', compile.output
 
@@ -1247,11 +1447,22 @@ pub fn values() []string {
 		environment['V_MACOS_V3_VCURRENT_HASH'] = 'second-current-hash'
 		second_output := os.join_path(root, 'compiler_hash_selection_second')
 		second_compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel',
-			'-no-memory-limit', '-o', second_output, project], environment)
+			'-no-memory-limit', '-cc', 'clang', '-o', second_output, project], environment)
 		assert second_compile.exit_code == 0, second_compile.output
 		second_run := cmdexec.run(second_output, [])
 		assert second_run.exit_code == 0, second_run.output
 		assert second_run.output == 'clang|clang|second-build-hash|second-current-hash\n|\n', second_run.output
+
+		// Self-builds must embed the hash of the compiler sources in the checkout,
+		// rather than carrying the bootstrap compiler's hash into the new binary.
+		self_output := os.join_path(root, 'compiler_hash_selection_self')
+		self_compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel',
+			'-no-memory-limit', '-building-v', '-cc', 'clang', '-o', self_output, project], environment)
+		assert self_compile.exit_code == 0, self_compile.output
+		self_run := cmdexec.run(self_output, [])
+		assert self_run.exit_code == 0, self_run.output
+		checkout_hash := util.githash(@VMODROOT)!
+		assert self_run.output == 'clang|clang|second-build-hash|${checkout_hash}\n|\n', self_run.output
 	}
 }
 
@@ -1528,6 +1739,73 @@ fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
 		assert run.exit_code == 0, run.output
 		assert run.output == 'complete cached translation unit\n', run.output
 	}
+}
+
+fn test_cached_module_keeps_synthesized_default_clone_helper() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_cached_default_clone_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	module_dir := os.join_path(root, 'cachedclone')
+	os.mkdir_all(module_dir) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cached_default_clone' }\n")!
+	os.write_file(os.join_path(module_dir, 'cachedclone.v'), 'module cachedclone
+
+pub struct Node {
+pub:
+	children []Node
+}
+
+pub fn (node Node) flatten() []Node {
+	mut result := []Node{}
+	for i in 0 .. node.children.len {
+		result << node.children[i]
+		result << node.children[i].flatten()
+	}
+	return result
+}
+
+pub fn marker() int {
+	return 42
+}
+')!
+	first_source := os.join_path(root, 'first.v')
+	second_source := os.join_path(root, 'second.v')
+	os.write_file(first_source, 'module main
+
+import cachedclone
+
+fn main() {
+	println(cachedclone.marker())
+}
+')!
+	os.write_file(second_source, 'module main
+
+import cachedclone
+
+fn main() {
+	println(cachedclone.marker() + 1 - 1)
+}
+')!
+	mut environment := os.environ()
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	first := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-cc', 'cc',
+		'-skip-running', '-o', first_output, first_source], environment)
+	assert first.exit_code == 0, first.output
+	second_output := os.join_path(root, 'second')
+	second := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-cc', 'cc',
+		'-skip-running', '-o', second_output, second_source], environment)
+	assert second.exit_code == 0, second.output
+	run := cmdexec.run(second_output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == '42\n', run.output
 }
 
 fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
@@ -1834,8 +2112,8 @@ fn main() {
 	os.write_file(os.join_path(explicit_dir, 'main.v'), 'module main\n\nfn main() { host_os_selected() }\n') or { panic(err) }
 	os.write_file(os.join_path(explicit_dir, 'target_${host.os}.v'), 'module main\n\nfn host_os_selected() {}\n') or { panic(err) }
 	explicit_output := os.join_path(root, 'explicit_target.wasm')
-	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch, '-o',
-		explicit_output, explicit_dir])
+	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch,
+		'-o', explicit_output, explicit_dir])
 	assert explicit_compile.exit_code == 0, explicit_compile.output
 	assert_driver_wasm_output(explicit_output)
 }
@@ -1954,11 +2232,19 @@ fn main() {
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
-	assert_driver_cli_failure(v3_bin, ['-gc', 'boehm', source], 'currently supports only `-gc none`')
+	assert_driver_cli_failure(v3_bin, ['-gc', 'bogus', source], 'unknown garbage collection mode `-gc bogus`')
 	assert_driver_cli_failure(v3_bin, ['-d', 'gcboehm', source], 'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, ['-dvgc', source], 'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, [source, source], 'multiple input paths are not supported')
 	assert_driver_cli_failure(v3_bin, ['-compile-backend', 'bogus', source], 'unknown compile backend `bogus`')
+	assert_driver_cli_failure(v3_bin, ['-target-libc-headers', '-os', 'cross', '-o', c_output,
+		source], 'option `-target-libc-headers` does not support portable cross output')
+	assert_driver_cli_failure(v3_bin, ['-target-libc-headers', '-cross', '-o', c_output, source],
+		'option `-target-libc-headers` does not support portable cross output')
+	for backend in ['fastc', 'arm64', 'wasm', 'eval', 'js'] {
+		assert_driver_cli_failure(v3_bin, ['-b', backend, '-target-libc-headers', '-o', c_output,
+			source], 'option `-target-libc-headers` requires the C backend')
+	}
 
 	if false_exe := os.find_abs_path_of_executable('false') {
 		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, source, '-o',

@@ -3,7 +3,7 @@ type IntMapper = fn (int) int
 type StringMapper = fn (string) string
 
 fn is_int_mapper[T]() bool {
-	$if T is fn (int) int {
+	$if T is fn ( int ) int {
 		return true
 	} $else {
 		return false
@@ -11,7 +11,7 @@ fn is_int_mapper[T]() bool {
 }
 
 fn is_ref_int_mapper[T]() bool {
-	$if T is &fn (int) int {
+	$if T is &fn ( int ) int {
 		return true
 	} $else {
 		return false

@@ -15,9 +15,9 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	scope := helper.merge_scratch_scope
 	helper.used_fns['main.generated'.clone()] = true
 	helper.sum_eq_types['main.Sum'.clone()] = SumEqRequest{
-		sum_name: 'main.Sum'.clone()
-		module: 'main'.clone()
-		file: 'main.v'.clone()
+		sum_name:      'main.Sum'.clone()
+		module:        'main'.clone()
+		file:          'main.v'.clone()
 		helper_module: 'main'.clone()
 	}
 	text := helper.promote_scoped_result_text('main.resolved'.clone())
@@ -25,7 +25,7 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	helper.tc.fork_overlay.resolved_call_names[10] = text
 	helper.generic_call_spec_cache[12] = GenericCallSpec{
 		decl_key: 'main.generic'.clone()
-		args: ['[]int'.clone()]
+		args:     ['[]int'.clone()]
 	}
 	transform_worker_scope_leave(scope)
 	master.merge_worker_used_fns(helper)
@@ -38,6 +38,68 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	assert tc.sparse_resolved_call_names[10] == 'main.resolved'
 	assert master.generic_call_spec_cache[12].decl_key == 'main.generic'
 	assert master.generic_call_spec_cache[12].args == ['[]int']
+}
+
+fn test_scoped_monomorph_specialization_args_are_deep_cloned() {
+	scope := transform_worker_scope_begin(true)
+	scoped_args := ['cloud.Body'.clone(), '[]string'.clone()]
+	transform_worker_scope_leave(scope)
+
+	owned_args := clone_monomorph_specialization_args(scoped_args)
+	assert owned_args == ['cloud.Body', '[]string']
+	for arg in owned_args {
+		assert !transform_scope_owns(scope, arg.str)
+	}
+	transform_worker_scope_free(scope)
+	assert owned_args == ['cloud.Body', '[]string']
+}
+
+fn test_scoped_batch_specialization_names_outlive_scratch_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.a.specialized_fn_modules[3] = 'builtin'
+	t.a.specialized_fn_files[3] = 'builtin.v'
+	nodes_len := t.a.specialized_fn_nodes.len
+	modules_len := t.a.specialized_fn_modules.len
+	files_len := t.a.specialized_fn_files.len
+
+	// A scoped batch records the module/file names of the functions it
+	// specializes, and those names can live in the batch's scratch arena
+	// (vlang/v#28897).
+	scope := transform_worker_scope_begin(true)
+	t.a.specialized_fn_nodes[7] = true
+	t.a.specialized_fn_modules[7] = 'main'.clone()
+	t.a.specialized_fn_files[7] = 'main.v'.clone()
+	transform_worker_scope_leave(scope)
+
+	t.promote_scoped_specialization_maps(scope, nodes_len, modules_len, files_len)
+	assert !transform_scope_owns(scope, t.a.specialized_fn_modules[7].str)
+	assert !transform_scope_owns(scope, t.a.specialized_fn_files[7].str)
+	transform_worker_scope_free(scope)
+	assert t.a.specialized_fn_nodes[7]
+	assert t.a.specialized_fn_modules[7] == 'main'
+	assert t.a.specialized_fn_files[7] == 'main.v'
+	assert t.a.specialized_fn_modules[3] == 'builtin'
+	assert t.a.specialized_fn_files[3] == 'builtin.v'
+}
+
+fn test_generic_unresolved_cache_owns_scoped_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.generic_unresolved_cache = &GenericUnresolvedCache{}
+
+	scope := transform_worker_scope_begin(true)
+	scoped_module := 'cloud'.clone()
+	transform_worker_scope_leave(scope)
+	t.cur_module = scoped_module
+	assert !t.generic_arg_is_unresolved('int')
+	assert !transform_scope_owns(scope, t.generic_unresolved_cache.module.str)
+
+	t.cur_module = 'main'
+	transform_worker_scope_free(scope)
+	assert !t.generic_arg_is_unresolved('int')
 }
 
 fn test_transform_fork_reads_and_merges_source_fn_values() {

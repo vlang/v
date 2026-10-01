@@ -42,12 +42,17 @@ concurrency:
   group: termux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   termux-build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build and test in Termux
         run: |
           set -o xtrace
@@ -74,7 +79,9 @@ jobs:
             export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
             v run examples/hello_world.v
             v run examples/primes.v
-            v -e "import os; dump( os.user_os() )"
+            termux_probe="$(mktemp)"
+            printf "%s\n" "import os" "dump(os.user_os())" > "$termux_probe"
+            v run "$termux_probe"
           '
 
   termux-build-arm64-tcc:
@@ -87,6 +94,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build in Termux (arm64, default tcc)
         run: |
           set -o xtrace

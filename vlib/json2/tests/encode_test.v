@@ -1,5 +1,6 @@
 import json2 as json
 import time
+import math
 import math.big
 
 type StrAlias = string
@@ -99,13 +100,13 @@ struct F64ArrayRoundtripPayload {
 }
 
 struct OmitFields {
-	a ?bool   @[omitempty]
-	b string  @[omitempty]
-	c int     @[omitempty]
-	d f64     @[omitempty]
-	e ?string = '' @[omitempty]
-	f ?int    = 0    @[omitempty]
-	g ?f64    = 0.0    @[omitempty]
+	a ?bool  @[omitempty]
+	b string @[omitempty]
+	c int    @[omitempty]
+	d f64    @[omitempty]
+	e ?string = ''      @[omitempty]
+	f ?int    = 0     @[omitempty]
+	g ?f64    = 0.0   @[omitempty]
 }
 
 type OmitFieldsAlias = OmitFields
@@ -118,7 +119,7 @@ struct OmitemptyRegressionNumber {
 struct OmitemptyRegressionResp {
 	options  []string                   @[omitempty]
 	metadata map[string]string          @[omitempty]
-	number   &OmitemptyRegressionNumber = unsafe { nil } @[omitempty]
+	number   &OmitemptyRegressionNumber = unsafe { nil }                  @[omitempty]
 	config   ?OmitemptyRegressionNumber @[omitempty]
 }
 
@@ -140,6 +141,17 @@ fn test_encode_decode_struct_with_f64_array_roundtrips() ! {
 	encoded := json.encode(original)
 	assert encoded == '{"arr":[0.9716157205240175,0.9336099585062241]}'
 	assert json.decode[F64ArrayRoundtripPayload](encoded)! == original
+}
+
+fn test_non_finite_floats_encode_as_null() {
+	nan := math.nan()
+	inf := math.inf(1)
+	assert json.encode(f32(nan)) == 'null'
+	assert json.encode(f32(-inf)) == 'null'
+	assert json.encode(FloatAlias(inf)) == 'null'
+	assert json.encode([1.5, nan, inf, -inf]) == '[1.5,null,null,null]'
+	assert json.encode(F64ArrayRoundtripPayload{ arr: [nan] }) == '{"arr":[null]}'
+	assert json.encode(json.Any(inf)) == 'null'
 }
 
 fn test_arrays() {
@@ -398,4 +410,53 @@ fn test_pointer_fields() {
     },
     "data": 1
 }'
+}
+
+struct TimeHolder {
+	at       time.Time
+	maybe    ?time.Time
+	ptr      &time.Time
+	list     []time.Time
+	by_label map[string]time.Time
+}
+
+type UnixTimeAlias = time.Time
+
+struct TimeAliasHolder {
+	at   UnixTimeAlias
+	list []UnixTimeAlias
+	opt  ?UnixTimeAlias
+	m    map[string]UnixTimeAlias
+}
+
+fn test_time_as_unix_covers_time_aliases() {
+	t := UnixTimeAlias(time.unix(1608621780))
+	assert json.encode(t, time_as_unix: true) == '1608621780'
+	holder := TimeAliasHolder{
+		at:   t
+		list: [t]
+		opt:  t
+		m:    {
+			'k': t
+		}
+	}
+	assert json.encode(holder, time_as_unix: true) == '{"at":1608621780,"list":[1608621780],"opt":1608621780,"m":{"k":1608621780}}'
+	assert json.encode(t) == '"2020-12-22T07:23:00.000Z"'
+}
+
+fn test_time_as_unix() {
+	t := time.unix(1608621780)
+	holder := TimeHolder{
+		at:       t
+		maybe:    t
+		ptr:      &t
+		list:     [t]
+		by_label: {
+			'a': t
+		}
+	}
+	assert json.encode(t, time_as_unix: true) == '1608621780'
+	assert json.encode(holder, time_as_unix: true) == '{"at":1608621780,"maybe":1608621780,"ptr":1608621780,"list":[1608621780],"by_label":{"a":1608621780}}'
+	assert json.encode(t) == '"2020-12-22T07:23:00.000Z"'
+	assert json.decode[TimeHolder](json.encode(holder, time_as_unix: true))!.list == [t]
 }

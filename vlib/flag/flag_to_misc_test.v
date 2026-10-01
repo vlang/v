@@ -24,7 +24,7 @@ struct Config {
 	mix           bool
 	linker_option string   @[only: m]
 	mix_hard      bool     @[json: muh] // Test that no other attributes get picked up
-	def_test      string = 'def'   @[long: test; short: t]
+	def_test      string = 'def'     @[long: test; short: t]
 	device        []string @[short: d]
 	paths         []string @[tail]
 	amount        int = 1
@@ -36,14 +36,14 @@ struct Config {
 struct LongConfig {
 	f            f32
 	mix          bool
-	some_test    string = 'abc' @[long: test]
+	some_test    string = 'abc'   @[long: test]
 	path         string @[tail]
 	amount       int = 1
 	show_version bool @[long: version]
 }
 
 struct IgnoreConfig {
-	some_test    string = 'abc' @[ignore]
+	some_test    string = 'abc'   @[ignore]
 	path         string @[tail]
 	amount       int = 1
 	show_version bool
@@ -145,7 +145,8 @@ fn test_flag_error_messages() {
 			assert false, 'flags should not have reached this assert'
 		} else {
 			if e_num == .short {
-				assert err.msg() == 'long delimiter `--` encountered in flag `--mix` in short (POSIX) style parsing mode'
+				// `-version` is a cluster of the short flags `-v -e -r -s -i -o -n` in POSIX style
+				assert err.msg() == 'unknown flag `-e` in short flag cluster `-version`'
 			} else if e_num == .long {
 				assert err.msg() == 'short delimiter `-` encountered in flag `-vv` in long (GNU) style parsing mode'
 			} else {

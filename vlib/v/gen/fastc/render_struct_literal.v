@@ -15,7 +15,7 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 		// a struct type and emit an invalid `(chan){.cap=…}` designated initializer on a `void*`.
 		return FastcStructLiteralFieldValue{
 			rendered_field: '.${c_field_name}=((chan){0})'
-			field_value: '(chan){0}'
+			field_value:    '(chan){0}'
 		}
 	}
 	if fixed_element_type := fastc_fixed_array_element_type(expected_type) {
@@ -42,9 +42,9 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 			joined_values := values.join(',')
 			return FastcStructLiteralFieldValue{
 				explicit_initializers: initializers
-				rendered_field: '.${c_field_name}={${joined_values}}'
-				field_value: '{${joined_values}}'
-				is_fixed_array: true
+				rendered_field:        '.${c_field_name}={${joined_values}}'
+				field_value:           '{${joined_values}}'
+				is_fixed_array:        true
 			}
 		}
 		value := g.render_call_argument_expression(value_tokens, expected_type) or { return none }
@@ -57,9 +57,9 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 			'(${value}).data'
 		}
 		return FastcStructLiteralFieldValue{
-			field_value: value
+			field_value:      value
 			fixed_array_copy: 'memcpy(__vf_struct_fixed.${c_field_name}, ${copy_source}, sizeof(__vf_struct_fixed.${c_field_name}));'
-			is_fixed_array: true
+			is_fixed_array:   true
 		}
 	}
 	value := if value_tokens.len == 1 && value_tokens[0].source != '' {
@@ -85,8 +85,8 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 	}
 	return FastcStructLiteralFieldValue{
 		explicit_initializers: ['${field_decl_type} ${temporary} = (${value});']
-		rendered_field: '.${c_field_name}=(${stored_value})'
-		field_value: stored_value
+		rendered_field:        '.${c_field_name}=(${stored_value})'
+		field_value:           stored_value
 	}
 }
 
@@ -132,7 +132,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	if c_type != '' && open + 1 == close && fastc_primitive_c_type(fastc_normalize_inferred_type(g.underlying_alias_type(c_type))) != none {
 		return FastcRenderedExpression{
 			source: '((${c_type})0)'
-			typ: c_type
+			typ:    c_type
 		}
 	}
 	if c_type == '' || (!is_c_struct_literal && layout_type !in g.struct_fields && g.declared_kinds[g.semantic_type_key(c_type)] !in [
@@ -177,7 +177,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			}
 			return FastcRenderedExpression{
 				source: source
-				typ: c_type
+				typ:    c_type
 			}
 		}
 	}
@@ -402,7 +402,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 		return FastcRenderedExpression{
 			source: value_source
-			typ: c_type
+			typ:    c_type
 		}
 	}
 	if update_source != '' {
@@ -415,13 +415,13 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			copy_statements := fixed_array_copies.join(' ')
 			return FastcRenderedExpression{
 				source: '({ ${base_type} __vf_struct_update = *(${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} (${c_type})v_fastc_interface_box(&__vf_struct_update, sizeof(${base_type})); })'
-				typ: c_type
+				typ:    c_type
 			}
 		}
 		copy_statements := fixed_array_copies.join(' ')
 		return FastcRenderedExpression{
 			source: '({ ${c_type} __vf_struct_update = (${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} __vf_struct_update; })'
-			typ: c_type
+			typ:    c_type
 		}
 	}
 	if has_applied_defaults {
@@ -433,7 +433,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		copies := fixed_array_copies.join(' ').replace('__vf_struct_fixed.', '__vf_struct_with_fixed${access}')
 		return FastcRenderedExpression{
 			source: '({ ${c_type} __vf_struct_with_fixed = (${rendered.source}); ${copies} __vf_struct_with_fixed; })'
-			typ: c_type
+			typ:    c_type
 		}
 	}
 	literal_source := if c_type.ends_with('*') {
@@ -451,17 +451,17 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 		return FastcRenderedExpression{
 			source: '({ ${explicit_initializers.join(' ')} ${base_type} __vf_struct_fixed = (${base_type}){${rendered_fields.join(',')}}; ${copies} ${result}; })'
-			typ: c_type
+			typ:    c_type
 		}
 	}
 	if explicit_initializers.len > 0 {
 		return FastcRenderedExpression{
 			source: '({ ${explicit_initializers.join(' ')} ${literal_source}; })'
-			typ: c_type
+			typ:    c_type
 		}
 	}
 	return FastcRenderedExpression{
 		source: literal_source
-		typ: c_type
+		typ:    c_type
 	}
 }

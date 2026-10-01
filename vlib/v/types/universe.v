@@ -59,6 +59,14 @@ pub const u64_ = Primitive{
 	props: .integer | .unsigned
 	size:  64
 }
+pub const i128_ = Primitive{
+	props: .integer
+	size:  128
+}
+pub const u128_ = Primitive{
+	props: .integer | .unsigned
+	size:  128
+}
 pub const f32_ = Primitive{
 	props: .float
 	size:  32
@@ -71,6 +79,7 @@ pub const string_ = String{}
 pub const char_ = Char{}
 pub const rune_ = Rune{}
 pub const isize_ = ISize{}
+pub const uint_ = USize{}
 pub const usize_ = USize{}
 pub const void_ = Void{}
 pub const nil_ = Nil{}
@@ -93,7 +102,7 @@ pub fn is_builtin_type_name(name string) bool {
 	return match name.len {
 		2 { name in ['i8', 'u8'] }
 		3 { name in ['int', 'i16', 'i32', 'i64', 'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'nil'] }
-		4 { name in ['bool', 'byte', 'char', 'rune', 'void', 'none'] }
+		4 { name in ['bool', 'char', 'i128', 'rune', 'u128', 'uint', 'void', 'none'] }
 		5 { name in ['isize', 'usize', 'array'] }
 		6 { name == 'string' }
 		7 { name in ['voidptr', 'charptr', 'byteptr'] }
@@ -137,7 +146,7 @@ pub fn builtin_type_value(name string) Type {
 			size:  64
 		})
 	}
-	if name == 'u8' || name == 'byte' {
+	if name == 'u8' {
 		return Type(Primitive{
 			props: .integer | .unsigned
 			size:  8
@@ -159,6 +168,18 @@ pub fn builtin_type_value(name string) Type {
 		return Type(Primitive{
 			props: .integer | .unsigned
 			size:  64
+		})
+	}
+	if name == 'i128' {
+		return Type(Primitive{
+			props: .integer
+			size:  128
+		})
+	}
+	if name == 'u128' {
+		return Type(Primitive{
+			props: .integer | .unsigned
+			size:  128
 		})
 	}
 	if name == 'f32' {
@@ -185,7 +206,7 @@ pub fn builtin_type_value(name string) Type {
 	if name == 'isize' {
 		return Type(ISize{})
 	}
-	if name == 'usize' {
+	if name == 'uint' || name == 'usize' {
 		return Type(USize{})
 	}
 	if name == 'void' {

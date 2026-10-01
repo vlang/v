@@ -199,7 +199,10 @@ fn draw_timeline(mut app App) {
 		// Frame info
 		frame := frames[app.selected_frame]
 		info := 'Frame ${app.selected_frame}: +${profiler.format_bytes(frame.new_bytes)} / -${profiler.format_bytes(frame.freed_bytes)}'
-		ctx.draw_text(int(w / 2) - 100, int(timeline_y) + 55, info, color: timeline_cursor, size: 16)
+		ctx.draw_text(int(w / 2) - 100, int(timeline_y) + 55, info,
+			color: timeline_cursor
+			size:  16
+		)
 	}
 
 	// Separator line

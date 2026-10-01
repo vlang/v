@@ -26,7 +26,7 @@ pub fn (mut l List[T]) append(mut node Node[T]) ?int {
 
 	mut curr_node := l.head
 	for {
-		if mut curr_node != none {
+		if curr_node != none {
 			if next_node := curr_node.next {
 				curr_node = next_node
 			} else {

@@ -320,7 +320,8 @@ fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() {
 	// scheduler.
 	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'example.com' }, mut outcome, done)
 	select {
-		_ := <-done {}
+		_ := <-done {
+		}
 		2 * time.second {
 			assert false, "do() never returned -- the request queued during the driver's blocked read() was stranded (the exact regression fail_conn.pending draining fixes)"
 			return
@@ -349,14 +350,16 @@ fn test_driver_fails_a_second_concurrent_pending_request_too() {
 	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'b.example.com' }, mut outcome2,
 		done2)
 	select {
-		_ := <-done1 {}
+		_ := <-done1 {
+		}
 		2 * time.second {
 			assert false, 'first concurrent request never returned'
 			return
 		}
 	}
 	select {
-		_ := <-done2 {}
+		_ := <-done2 {
+		}
 		2 * time.second {
 			assert false, 'second concurrent request never returned'
 			return
@@ -521,6 +524,169 @@ fn test_wait_response_rejects_status_after_a_regular_field() {
 		return
 	}
 	assert false, 'RFC 9114 section 4.3 requires :status to precede regular fields, mirroring RFC 9113 section 8.3'
+}
+
+// h3_test_wait_response_error runs wait_response on an already-ended stream
+// carrying `headers` (after a valid :status) and `trailers`, returning the
+// error message, or '' when the response was accepted.
+fn h3_test_wait_response_error(headers []quic.QpackFieldLine, trailers []quic.QpackFieldLine) string {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [quic.QpackFieldLine{
+		name:  ':status'
+		value: '200'
+	}]
+	s.resp_headers << headers
+	s.resp_trailers = trailers
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		msg := err.msg()
+		// Every rejection returns with s.mu still in hand unless it unlocks
+		// first; a leak would deadlock the real caller, do() -> finish_stream,
+		// which re-locks s.mu while holding qmu.
+		assert h3_test_mutex_is_free(mut s.mu), 'wait_response returned "${msg}" with s.mu still held'
+		return msg
+	}
+	assert h3_test_mutex_is_free(mut s.mu), 'wait_response succeeded with s.mu still held'
+	return ''
+}
+
+// h3_test_mutex_is_free reports whether `mu` can be acquired from another
+// thread within 500ms. Deliberately not try_lock(): on Windows that always
+// fails unless built with -d windows_7.
+fn h3_test_mutex_is_free(mut mu sync.Mutex) bool {
+	done := chan bool{cap: 1}
+	spawn h3_test_lock_then_unlock(mut mu, done)
+	select {
+		_ := <-done {
+			return true
+		}
+		500 * time.millisecond {
+			return false
+		}
+	}
+	return false
+}
+
+fn h3_test_lock_then_unlock(mut mu sync.Mutex, done chan bool) {
+	mu.lock()
+	mu.unlock()
+	done <- true
+}
+
+fn h3_test_field(name string, value string) quic.QpackFieldLine {
+	return quic.QpackFieldLine{
+		name:  name
+		value: value
+	}
+}
+
+// RFC 9114 §4.1.2/§4.2: uppercase or invalid field names, invalid characters in
+// values, and connection-specific fields (TE included -- it is permitted only in
+// requests) make a response malformed, in the header AND the trailer section;
+// trailers additionally MUST NOT carry pseudo-headers. h2_mux_conn.v rejects
+// the same classes via h2_response_field_error.
+fn test_wait_response_rejects_malformed_response_fields() {
+	malformed := [
+		h3_test_field('Content-Type', 'text/plain'),
+		h3_test_field('bad name', 'v'),
+		h3_test_field('', 'v'),
+		h3_test_field('connection', 'close'),
+		h3_test_field('transfer-encoding', 'chunked'),
+		h3_test_field('te', 'trailers'),
+		h3_test_field('x-bad', 'a\nb'),
+		h3_test_field('x-bad', 'a\x00b'),
+		// RFC 9114 §10.3: any character outside RFC 9110 §5.5 field-content
+		// (VCHAR, obs-text, SP, HTAB) is invalid, not only NUL/CR/LF.
+		h3_test_field('x-bad', 'a\x01b'),
+		h3_test_field('x-bad', 'a\x1fb'),
+		h3_test_field('x-bad', 'a\x7fb'),
+	]
+	for f in malformed {
+		header_err := h3_test_wait_response_error([f], [])
+		assert header_err.contains('malformed'), 'header "${f.name}: ${f.value}" must be rejected, got "${header_err}"'
+		trailer_err := h3_test_wait_response_error([], [f])
+		assert trailer_err.contains('malformed'), 'trailer "${f.name}: ${f.value}" must be rejected, got "${trailer_err}"'
+	}
+	pseudo_err := h3_test_wait_response_error([], [h3_test_field(':path', '/')])
+	assert pseudo_err.contains('malformed'), 'a pseudo-header in trailers must be rejected, got "${pseudo_err}"'
+}
+
+struct H3ContentLengthCase {
+	values []string
+	reason string // the specific rejection this case must hit
+}
+
+// A non-numeric Content-Length, or two differing ones, makes the response
+// malformed (RFC 9110 §8.6: Content-Length = 1*DIGIT; RFC 9114 §4.1.2) -- it
+// must not be silently ignored, which would skip the body-length check
+// entirely. Each case asserts its OWN reason, so a later check cannot mask a
+// removed earlier one: strconv.parse_uint alone rejects 'abc' too, but accepts
+// '1_0' as 10, so the digits-only guard must be what rejects these.
+fn test_wait_response_rejects_malformed_or_conflicting_content_length() {
+	cases := [
+		H3ContentLengthCase{['abc'], 'invalid content-length'},
+		H3ContentLengthCase{['12junk'], 'invalid content-length'},
+		H3ContentLengthCase{['1_0'], 'invalid content-length'},
+		H3ContentLengthCase{['+5'], 'invalid content-length'},
+		H3ContentLengthCase{['0x10'], 'invalid content-length'},
+		H3ContentLengthCase{['99999999999999999999999'], 'out of range'},
+		H3ContentLengthCase{['0', '5'], 'conflicting content-length'},
+	]
+	for tc in cases {
+		headers := tc.values.map(h3_test_field('content-length', it))
+		msg := h3_test_wait_response_error(headers, [])
+		assert msg.contains(tc.reason), 'content-length ${tc.values} must be rejected with "${tc.reason}", got "${msg}"'
+	}
+}
+
+fn test_wait_response_accepts_well_formed_fields_and_trailers() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [
+		h3_test_field(':status', '200'),
+		h3_test_field('content-length', '3'),
+		// Duplicates are compared as NUMBERS: '03' equals '3' (RFC 9110 §8.6
+		// 1*DIGIT), so this pair is consistent, not conflicting.
+		h3_test_field('content-length', '03'),
+		h3_test_field('x-ok', 'value with spaces'),
+		h3_test_field('x-empty', ''),
+		h3_test_field('x-tab', 'a\tb'),
+		h3_test_field('x-utf8', 'caf\xc3\xa9'),
+	]
+	s.chunks << 'abc'.bytes()
+	s.resp_trailers = [h3_test_field('x-checksum', 'ok'), h3_test_field('x-trailer-tab', 'a\tb')]
+	s.ended = true
+	resp := c.wait_response(mut s, H3ClientRequest{})!
+	assert resp.status == 200
+	assert resp.body == 'abc'.bytes()
+	assert resp.headers.any(it.name == 'x-ok')
+	assert resp.headers.any(it.name == 'x-checksum' && it.value == 'ok')
+	assert resp.headers.any(it.name == 'x-empty' && it.value == '')
+	assert resp.headers.any(it.name == 'x-tab' && it.value == 'a\tb')
+	assert resp.headers.any(it.name == 'x-utf8' && it.value == 'caf\xc3\xa9')
+	assert resp.headers.any(it.name == 'x-trailer-tab')
+}
+
+// A malformed trailer must never mask a retryable terminal stream failure:
+// wait_response reports the trailer verdict only after the stream-error checks,
+// so the caller still sees h3_err_retryable_code and can redial.
+fn test_wait_response_malformed_trailer_does_not_mask_retryable_error() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [h3_test_field(':status', '200')]
+	s.resp_trailers = [h3_test_field('connection', 'close')]
+	s.err = 'request not processed (GOAWAY)'
+	s.retryable = true
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		assert err.code() == h3_err_retryable_code, 'got "${err.msg()}" (code ${err.code()})'
+		return
+	}
+	assert false, 'expected the retryable stream error'
 }
 
 fn test_wait_response_rejects_unknown_pseudo_header() {

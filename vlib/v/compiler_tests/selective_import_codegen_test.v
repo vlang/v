@@ -214,7 +214,7 @@ fn main() {
 	println(int_str(log.sum(4, 5)))
 }
 ', {
-		'logger/logger.v': 'module logger
+			'logger/logger.v': 'module logger
 
 pub fn sum(values ...int) int {
 	mut total := 0
@@ -224,29 +224,14 @@ pub fn sum(values ...int) int {
 	return total
 }
 '
-	})
+		})
 	assert output == '0\n9'
 	assert generated.contains('logger__sum('), generated
 	assert !generated.contains('logger__sum(log'), generated
 }
 
-fn test_selective_import_json_decode_uses_fast_path() {
+fn test_json2_decode_calls_the_module_decoder() {
 	v3_bin := selective_import_build_v3()
-	json_output, json_generated := selective_import_compile_run(v3_bin, 'json_decode', 'module main
-
-import json { decode }
-
-struct Config {
-	value int
-}
-
-fn main() {
-	cfg := decode(Config, "{\\"value\\":1}")!
-	println(int_str(cfg.value))
-}
-')
-	assert json_output == '1'
-	assert json_generated.contains('cJSON_ParseWithLength((char*)'), json_generated
 	json2_output, json2_generated := selective_import_compile_run_with_extra(v3_bin,
 		'json2_decode', 'module main
 
@@ -261,7 +246,7 @@ fn main() {
 	println(int_str(cfg.value))
 }
 ', {
-		'json2/decode.v': 'module json2
+			'json2/decode.v': 'module json2
 
 pub struct DecoderOptions {}
 
@@ -271,7 +256,7 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 	return T{}
 }
 '
-	})
+		})
 	assert json2_output == '0'
 	assert json2_generated.contains('json2__decode'), json2_generated
 }
@@ -319,24 +304,6 @@ pub:
 	assert generated.contains('other__Any'), generated
 }
 
-fn test_selective_import_json_encode_uses_fast_path() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run(v3_bin, 'json_encode', 'module main
-
-import json { encode }
-
-struct User {
-	name string
-}
-
-fn main() {
-	println(encode(User{name: "x"}))
-}
-')
-	assert output == '{"name":"x"}'
-	assert generated.contains('v3_json_encode_string('), generated
-}
-
 fn test_json2_encode_pure_v_is_specialized() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run_with_extra(v3_bin,
@@ -352,7 +319,7 @@ fn main() {
 	println(json2.encode(User{name: "x"}, json2.EncoderOptions{}))
 }
 ', {
-		'json2/encode.v': 'module json2
+			'json2/encode.v': 'module json2
 
 pub struct EncoderOptions {}
 
@@ -362,7 +329,7 @@ pub fn encode[T](value T, options EncoderOptions) string {
 	return "pure-v"
 }
 '
-	})
+		})
 	assert output == 'pure-v'
 	assert generated.contains('json2__encode'), generated
 }
@@ -378,7 +345,7 @@ fn main() {
 	println(int_str(worker.use_add[int](0, 2, 3)))
 }
 ', {
-		'worker/worker.v': 'module worker
+			'worker/worker.v': 'module worker
 
 import mymodules { add_xy }
 import other
@@ -388,13 +355,13 @@ pub fn use_add[T](marker T, x int, y int) int {
 	return add_xy(x, y)
 }
 '
-		'other/other.v':   'module other
+			'other/other.v':   'module other
 
 pub fn add_xy(x int, y int) int {
 	return x * 100 + y
 }
 '
-	})
+		})
 	assert output == '5'
 	assert generated.contains('mymodules__add_xy(x, y)'), generated
 	assert !generated.contains('other__add_xy(x, y)'), generated
@@ -412,19 +379,19 @@ fn main() {
 	println(int_str(id[int](1)))
 }
 ', {
-		'util/util.v':   'module util
+			'util/util.v':   'module util
 
 pub fn id[T](x T) T {
 	return x
 }
 '
-		'other/other.v': 'module other
+			'other/other.v': 'module other
 
 pub fn id[T](x T) T {
 	return x
 }
 '
-	})
+		})
 	assert output == '1'
 	assert generated.contains('util__id_T_v_int(1)'), generated
 	assert !generated.contains('other__id_T_v_int(1)'), generated
@@ -441,7 +408,7 @@ fn main() {
 	println(int_str(worker.use_add_cb[int](0, 2, 3)))
 }
 ', {
-		'worker/worker.v': 'module worker
+			'worker/worker.v': 'module worker
 
 import mymodules { add_xy }
 import other
@@ -455,13 +422,13 @@ pub fn use_add_cb[T](marker T, x int, y int) int {
 	return takes(add_xy, x, y)
 }
 '
-		'other/other.v':   'module other
+			'other/other.v':   'module other
 
 pub fn add_xy(x int, y int) int {
 	return x * 100 + y
 }
 '
-	})
+		})
 	assert output == '5'
 	assert generated.contains('worker__takes(mymodules__add_xy, x, y)'), generated
 	assert !generated.contains('worker__takes(add_xy, x, y)'), generated
@@ -480,7 +447,7 @@ fn main() {
 	println(int_str(worker.take_point[int](p, 2) + p.x))
 }
 ', {
-		'worker/worker.v':     'module worker
+			'worker/worker.v':     'module worker
 
 import geometry { Point }
 import pixels
@@ -497,21 +464,21 @@ pub fn take_point[T](p Point, x T) int {
 	return p.x + 4
 }
 '
-		'geometry/geometry.v': 'module geometry
+			'geometry/geometry.v': 'module geometry
 
 pub struct Point {
 pub:
 	x int
 }
 '
-		'pixels/pixels.v':     'module pixels
+			'pixels/pixels.v':     'module pixels
 
 pub struct Point {
 pub:
 	x int
 }
 '
-	})
+		})
 	assert output == '10'
 	assert generated.contains('geometry__Point worker__make_point_T_v_int(i64 x)'), generated
 	assert generated.contains('i64 worker__take_point_T_v_int(geometry__Point p, i64 x)'), generated
@@ -551,19 +518,19 @@ fn main() {
 	println(int_str(f()))
 }
 ', {
-		'a/a.v': 'module a
+			'a/a.v': 'module a
 
 pub fn choose() int {
 	return 11
 }
 '
-		'b/b.v': 'module b
+			'b/b.v': 'module b
 
 pub fn choose() int {
 	return 99
 }
 '
-	})
+		})
 	assert output == '11'
 	assert generated.contains('a__choose'), generated
 	assert !generated.contains('b__choose'), generated
@@ -704,13 +671,13 @@ fn main() {
 	println(foo.value())
 }
 ', {
-		'foo/foo.v': 'module foo
+			'foo/foo.v': 'module foo
 
 pub fn value() string {
 	return "foo"
 }
 '
-	})
+		})
 	assert output == '7\nfoo'
 	assert generated.contains('i64 value(void);'), generated
 	assert generated.contains('string foo__value(void);'), generated
@@ -730,7 +697,7 @@ fn main() {
 	println(err.str())
 }
 ', {
-		'foo/foo.v': 'module foo
+			'foo/foo.v': 'module foo
 
 pub struct Error {
 	message string
@@ -750,7 +717,7 @@ pub fn (err Error) str() string {
 	return err.msg()
 }
 '
-	})
+		})
 	assert output == 'local'
 	assert generated.contains('string foo__Error__msg(foo__Error err)'), generated
 	assert generated.contains('return foo__Error__msg(err);'), generated

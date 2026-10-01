@@ -123,6 +123,7 @@ pub interface JS.DOMQuad {
 
 @[use_new]
 pub fn JS.DOMQuad.prototype.constructor(p1 JS.DOMPoint, p2 JS.DOMPoint, p3 JS.DOMPoint, p4 JS.DOMPoint) JS.DOMQuad
+
 pub fn JS.DOMQuad.fromQuad(other JS.DOMQuad) JS.DOMQuad
 pub fn JS.DOMQuad.fromRect(other JS.DOMRect) JS.DOMRect
 

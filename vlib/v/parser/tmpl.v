@@ -15,12 +15,13 @@ import strings
 import v.flat
 import v.scanner
 import v.token
+import v.util
 
 enum TmplState {
 	simple // no special interpretation of tags
-	html // default, only when the template extension is .html
-	css // <style>
-	js // <script>
+	html   // default, only when the template extension is .html
+	css    // <style>
+	js     // <script>
 }
 
 fn (mut state TmplState) update(line string) {
@@ -562,8 +563,8 @@ fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
 	}
 	if remainder.ends_with('{') {
 		return TmplControlLine{
-			header: remainder[..remainder.len - 1].trim_space()
-			prefix: line[..pos]
+			header:            remainder[..remainder.len - 1].trim_space()
+			prefix:            line[..pos]
 			opens_brace_block: true
 		}
 	}
@@ -586,11 +587,11 @@ fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
 		}
 	}
 	return TmplControlLine{
-		header: remainder[..open_pos].trim_space()
-		inline_body: remainder[open_pos + 1..close_pos].trim_space()
-		prefix: line[..pos]
-		has_inline_body: open_pos + 1 < close_pos
-		opens_brace_block: true
+		header:              remainder[..open_pos].trim_space()
+		inline_body:         remainder[open_pos + 1..close_pos].trim_space()
+		prefix:              line[..pos]
+		has_inline_body:     open_pos + 1 < close_pos
+		opens_brace_block:   true
 		closes_inline_block: true
 	}
 }
@@ -607,8 +608,8 @@ fn parse_tmpl_else_line(line string) TmplControlLine {
 	if remainder.ends_with('{') {
 		suffix := remainder[..remainder.len - 1].trim_space()
 		return TmplControlLine{
-			header: if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
-			prefix: line[..pos]
+			header:            if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
+			prefix:            line[..pos]
 			opens_brace_block: true
 		}
 	}
@@ -632,11 +633,11 @@ fn parse_tmpl_else_line(line string) TmplControlLine {
 	}
 	suffix := remainder[..open_pos].trim_space()
 	return TmplControlLine{
-		header: if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
-		inline_body: remainder[open_pos + 1..close_pos].trim_space()
-		prefix: line[..pos]
-		has_inline_body: open_pos + 1 < close_pos
-		opens_brace_block: true
+		header:              if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
+		inline_body:         remainder[open_pos + 1..close_pos].trim_space()
+		prefix:              line[..pos]
+		has_inline_body:     open_pos + 1 < close_pos
+		opens_brace_block:   true
 		closes_inline_block: true
 	}
 }
@@ -646,60 +647,60 @@ fn template_control_source_map(line string) ?TemplateControlSourceMap {
 		control := parse_tmpl_control_line(line, '@if')
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
-			generated: 'if ${control.header} {'
-			inline_plain: if control.has_inline_body {
+			generated:        'if ${control.header} {'
+			inline_plain:     if control.has_inline_body {
 				tmpl_line_content(inline_source, false)
 			} else {
 				''
 			}
-			inline_escaped: if control.has_inline_body {
+			inline_escaped:   if control.has_inline_body {
 				tmpl_line_content(inline_source, true)
 			} else {
 				''
 			}
-			column_delta: pos + 1
+			column_delta:     pos + 1
 			directive_offset: pos
-			has_inline_body: control.has_inline_body
+			has_inline_body:  control.has_inline_body
 		}
 	}
 	if pos := tmpl_directive_pos(line, '@for', []) {
 		control := parse_tmpl_control_line(line, '@for')
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
-			generated: 'for ${control.header} {'
-			inline_plain: if control.has_inline_body {
+			generated:        'for ${control.header} {'
+			inline_plain:     if control.has_inline_body {
 				tmpl_line_content(inline_source, false)
 			} else {
 				''
 			}
-			inline_escaped: if control.has_inline_body {
+			inline_escaped:   if control.has_inline_body {
 				tmpl_line_content(inline_source, true)
 			} else {
 				''
 			}
-			column_delta: pos + 1
+			column_delta:     pos + 1
 			directive_offset: pos
-			has_inline_body: control.has_inline_body
+			has_inline_body:  control.has_inline_body
 		}
 	}
 	if pos := tmpl_directive_pos(line, '@else', []) {
 		control := parse_tmpl_else_line(line)
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
-			generated: '} ${control.header} {'
-			inline_plain: if control.has_inline_body {
+			generated:        '} ${control.header} {'
+			inline_plain:     if control.has_inline_body {
 				tmpl_line_content(inline_source, false)
 			} else {
 				''
 			}
-			inline_escaped: if control.has_inline_body {
+			inline_escaped:   if control.has_inline_body {
 				tmpl_line_content(inline_source, true)
 			} else {
 				''
 			}
-			column_delta: pos - 1
+			column_delta:     pos - 1
 			directive_offset: pos
-			has_inline_body: control.has_inline_body
+			has_inline_body:  control.has_inline_body
 		}
 	}
 	return none
@@ -717,6 +718,14 @@ struct TemplateSourceLine {
 	line int
 mut:
 	state TmplState
+}
+
+struct TemplateDiagnostic {
+	path    string
+	line    int
+	start   int
+	end     int
+	message string
 }
 
 struct RegisteredTemplateSource {
@@ -748,14 +757,22 @@ fn nearest_templates_root(start_dir string) ?string {
 // A referenced partial that cannot be opened records a diagnostic instead of being
 // silently dropped, so a missing/misspelled include fails the compile rather than
 // rendering a page without its required partials.
-fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[string]bool) []TemplateSourceLine {
+fn (mut p Parser) process_tmpl_includes(source_line TemplateSourceLine, mut seen map[string]bool) []TemplateSourceLine {
+	dir := os.dir(source_line.path)
+	line := source_line.text
 	include_pos := line.index('@include ') or { return [] }
 	mut quote_pos := include_pos + '@include '.len
 	for quote_pos < line.len && line[quote_pos].is_space() {
 		quote_pos++
 	}
 	if quote_pos >= line.len || (line[quote_pos] != `'` && line[quote_pos] != `"`) {
-		p.record_diagnostic('path for @include must be quoted with \' or "', p.tok_pos)
+		p.pending_template_diagnostics << TemplateDiagnostic{
+			path:    source_line.path
+			line:    source_line.line
+			start:   quote_pos
+			end:     line.len
+			message: 'path for @include must be quoted with \' or "'
+		}
 		return []
 	}
 	quote := line[quote_pos]
@@ -764,7 +781,13 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 		end_pos++
 	}
 	if end_pos >= line.len {
-		p.record_diagnostic('path for @include must be quoted with \' or "', p.tok_pos)
+		p.pending_template_diagnostics << TemplateDiagnostic{
+			path:    source_line.path
+			line:    source_line.line
+			start:   quote_pos
+			end:     line.len
+			message: 'path for @include must be quoted with \' or "'
+		}
 		return []
 	}
 	mut file_name := line[quote_pos + 1..end_pos]
@@ -790,21 +813,36 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 		// stop expanding, rather than silently dropping the include line. (A partial
 		// already fully expanded and popped is NOT in `seen`, so the same partial may
 		// legitimately be included more than once.)
-		p.record_diagnostic('circular veb template include `${file_name}${file_ext}` (${file_path})', p.tok_pos)
+		p.pending_template_diagnostics << TemplateDiagnostic{
+			path:    source_line.path
+			line:    source_line.line
+			start:   include_pos
+			end:     quote_pos
+			message: 'A recursive call is being made on template ${file_name}'
+		}
 		return []
 	}
 	content := os.read_lines(file_path) or {
-		p.record_diagnostic('veb template include `${file_name}${file_ext}` could not be opened (${file_path})', p.tok_pos)
+		p.pending_template_diagnostics << TemplateDiagnostic{
+			path:    source_line.path
+			line:    source_line.line
+			start:   quote_pos
+			end:     end_pos + 1
+			message: 'veb template include `${file_name}${file_ext}` could not be opened (${file_path})'
+		}
 		return []
 	}
 	// Mark this file as on the current recursion stack while its own includes are
 	// resolved, then pop it so a later sibling include of the same file still expands.
 	seen[file_path] = true
-	base := os.dir(file_path)
 	mut out := []TemplateSourceLine{}
 	for line_index, l in content {
 		if l.contains('@include ') {
-			out << p.process_tmpl_includes(base, l, mut seen)
+			out << p.process_tmpl_includes(TemplateSourceLine{
+				text: l
+				path: file_path
+				line: line_index + 1
+			}, mut seen)
 		} else {
 			out << TemplateSourceLine{
 				text: l
@@ -877,6 +915,7 @@ fn expand_veb_tr_shorthand(line string, ctx_name string) string {
 // set (a `$veb.html()` template), interpolated values are HTML-escaped via
 // `veb.filter_html`.
 fn (mut p Parser) compile_template_file(template_file string, bname string, escape bool) (string, []TemplateSourceLine) {
+	p.pending_template_diagnostics.clear()
 	raw_lines := os.read_lines(template_file) or {
 		p.record_diagnostic('reading from template ${template_file} failed', p.tok_pos)
 		return "mut ${bname} := ''\n", []TemplateSourceLine{}
@@ -904,7 +943,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 	mut in_html_comment := false
 	mut brace_block_kinds := []TmplBraceBlockKind{}
 	mut seen_includes := map[string]bool{}
-	base_dir := os.dir(os.real_path(template_file))
+	seen_includes[root_path] = true
 	for i := 0; i < lines.len; i++ {
 		line := lines[i].text
 		trimmed_line := line.trim_space()
@@ -930,7 +969,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			}
 		}
 		if line.contains('@include ') {
-			resolved := p.process_tmpl_includes(base_dir, line, mut seen_includes)
+			resolved := p.process_tmpl_includes(lines[i], mut seen_includes)
 			lines.delete(i)
 			for resolved_line in resolved.reverse() {
 				lines.insert(i, resolved_line)
@@ -1090,6 +1129,12 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 // 'html' (for veb.html, yields a veb.Result) or 'tmpl' (yields a string).
 fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	call_start := int_max(0, p.span_start() - 1)
+	missing_veb_import := is_html && p.check_imports
+		&& !p.imported_module_names['veb']
+	if missing_veb_import {
+		p.record_diagnostic_span('`\$veb` cannot be used without importing veb', call_start,
+			call_start + 4)
+	}
 	if is_html {
 		p.next() // skip `veb`
 		p.check(.dot)
@@ -1123,12 +1168,14 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	}
 	p.next() // skip `(`
 	mut had_arg := false
+	mut arg_pos := token.Pos{}
 	if p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
 		// The path may be a compile-time expression (a `const`, a local binding
 		// with a literal value, or a `+` concatenation of those), not just a raw
 		// string token — e.g. `const p = 'x.html'; $tmpl(p)`. Parse and resolve it.
 		had_arg = true
 		arg_id := p.expr(.lowest)
+		arg_pos = p.a.node(arg_id).pos
 		arg = p.resolve_tmpl_path_arg(arg_id)
 	}
 	for p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
@@ -1150,13 +1197,29 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		p.record_diagnostic('${call}() template path must be a compile-time string (a string literal, `const`, or a `+` of those); dynamic paths are not supported', p.tok_pos)
 		return p.add_val_id(5, '')
 	}
+	if missing_veb_import {
+		return p.add_val_id(5, '')
+	}
 	path := p.resolve_veb_template_path(is_html, arg)
+	if !os.is_file(path) {
+		message := if is_html {
+			'veb HTML template "${arg}" not found'
+		} else {
+			'template file "${arg}" not found'
+		}
+		if had_arg && arg_pos.end >= arg_pos.offset {
+			p.record_diagnostic_span(message, arg_pos.offset, arg_pos.end)
+		} else {
+			p.record_diagnostic(message, call_start)
+		}
+		return p.add_val_id(5, '')
+	}
 	p.has_veb_template = true
 	return p.add_node(flat.Node{
-		kind: .veb_template
+		kind:  .veb_template
 		value: path
-		typ: if is_html { 'html' } else { 'tmpl' }
-		pos: p.span_to(call_start)
+		typ:   if is_html { 'html' } else { 'tmpl' }
+		pos:   p.span_to(call_start)
 	})
 }
 
@@ -1195,7 +1258,7 @@ fn (p &Parser) resolve_tmpl_path_arg(id flat.NodeId) string {
 // resolves `controller/get/all/task.html` in addition to the flat filename.
 fn (p &Parser) resolve_veb_template_path(is_html bool, arg string) string {
 	dir := os.dir(os.real_path(p.cur_file))
-	vmod_dir := nearest_vmod_dir(dir)
+	vmod_dir := util.nearest_vmod_root(dir)
 	if is_html && arg.len == 0 {
 		fn_name := p.cur_fn.all_after_last('.')
 		split_name := fn_name.split('_').join(os.path_separator)
@@ -1249,23 +1312,6 @@ fn (p &Parser) resolve_veb_template_path(is_html bool, arg string) string {
 	return direct
 }
 
-// nearest_vmod_dir walks up from `start_dir` to the closest directory that contains a
-// `v.mod` file (the module root), or returns none when there is none.
-fn nearest_vmod_dir(start_dir string) ?string {
-	mut d := start_dir
-	for d.len > 0 {
-		if os.exists(os.join_path_single(d, 'v.mod')) {
-			return d
-		}
-		parent := os.dir(d)
-		if parent == d {
-			break
-		}
-		d = parent
-	}
-	return none
-}
-
 // parse_stmts_from_source parses `src` as a statement sequence using a temporary
 // sub-scanner, returning the parsed statement node ids. The parser's scanner and
 // token state are saved and restored around the call.
@@ -1278,8 +1324,13 @@ fn (mut p Parser) parse_stmts_from_source(src string, template_path string, call
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file('<veb-template>', stable_src.len)
 	file.index_lines(stable_src)
+	generated_file_id := p.next_file_id
+	p.next_file_id++
+	p.a.source_files[generated_file_id] = file
+	p.a.template_call_sites[generated_file_id] = token.new_pos(call_pos.id, call_pos.offset)
 
 	saved_s := p.s
+	saved_file_id := p.cur_file_id
 	saved_tok := p.tok
 	saved_lit := p.lit
 	saved_tok_pos := p.tok_pos
@@ -1293,6 +1344,7 @@ fn (mut p Parser) parse_stmts_from_source(src string, template_path string, call
 
 	p.s = scanner.new_scanner(p.prefs, .normal)
 	p.s.init(file, stable_src)
+	p.cur_file_id = generated_file_id
 	p.has_peek = false
 	p.next()
 	// Isolate any bindings the re-parsed builder declares (e.g. its `mut <builder> := ''`)
@@ -1313,6 +1365,7 @@ fn (mut p Parser) parse_stmts_from_source(src string, template_path string, call
 	p.remap_template_source(first_node, first_diagnostic, file, stable_src, template_path, call_pos, source_lines)
 
 	p.s = saved_s
+	p.cur_file_id = saved_file_id
 	p.tok = saved_tok
 	p.lit = saved_lit
 	p.tok_pos = saved_tok_pos
@@ -1358,9 +1411,9 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		p.a.template_call_sites[template_id] = token.new_pos(call_pos.id, call_pos.offset)
 		p.a.template_actions[template_id] = action
 		registered_sources[path] = RegisteredTemplateSource{
-			file: template_file
+			file:  template_file
 			lines: source.split_into_lines()
-			id: template_id
+			id:    template_id
 		}
 	}
 
@@ -1370,13 +1423,31 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 	mut control_map := []bool{len: generated_lines.len}
 	mut control_column_delta := []int{len: generated_lines.len}
 	mut interpolation_skip_offset := []int{len: generated_lines.len, init: -1}
+	// Each template line is rendered once. The search below compares a template
+	// line with every generated line until one matches, and rendering it again
+	// for each comparison made remapping quadratic in the template's length.
+	context_name := p.veb_context_name()
+	mut rendered_plain := []string{cap: source_lines.len}
+	mut rendered_escaped := []string{cap: source_lines.len}
+	mut controls := []TemplateControlSourceMap{cap: source_lines.len}
+	mut has_control := []bool{cap: source_lines.len}
+	for source_line in source_lines {
+		expanded_template_line := expand_veb_tr_shorthand(source_line.text, context_name)
+		rendered_plain << tmpl_line_content(expanded_template_line, false)
+		rendered_escaped << tmpl_line_content(expanded_template_line, true)
+		if control := template_control_source_map(source_line.text) {
+			controls << control
+			has_control << true
+		} else {
+			controls << TemplateControlSourceMap{}
+			has_control << false
+		}
+	}
 	mut template_search_start := 0
 	for generated_index, generated_line in generated_lines {
 		for template_index in template_search_start .. source_lines.len {
-			template_line := source_lines[template_index].text
-			expanded_template_line := expand_veb_tr_shorthand(template_line, p.veb_context_name())
-			plain := tmpl_line_content(expanded_template_line, false)
-			escaped := tmpl_line_content(expanded_template_line, true)
+			plain := rendered_plain[template_index]
+			escaped := rendered_escaped[template_index]
 			matches_content := (plain.len > 0 && generated_line.contains(plain))
 				|| (escaped.len > 0 && generated_line.contains(escaped))
 			mut matches_control := false
@@ -1384,7 +1455,8 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 			mut column_delta := 0
 			mut directive_offset := -1
 			mut control_has_inline_body := false
-			if control := template_control_source_map(template_line) {
+			if has_control[template_index] {
+				control := controls[template_index]
 				matches_control = generated_line.trim_space() == control.generated
 				matches_inline_body = control.has_inline_body && ((control.inline_plain.len > 0
 					&& generated_line.contains(control.inline_plain))
@@ -1438,9 +1510,9 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		mapped := template_mapped_pos(registered.file, registered.lines, source_line.line, generated_lines[line_index], generated_position.column, diagnostic.pos.end - diagnostic.pos.offset, registered.id, control_map[line_index], control_column_delta[line_index], interpolation_skip_offset[line_index])
 		p.diagnostics[index] = Diagnostic{
 			...diagnostic
-			file: source_line.path
-			pos: mapped
-			line: source_line.line
+			file:   source_line.path
+			pos:    mapped
+			line:   source_line.line
 			column: generated_position.column
 		}
 	}
@@ -1463,14 +1535,50 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 				continue
 			}
 			p.append_diagnostic(Diagnostic{
-				file: source_line.path
-				pos: pos
-				line: source_line.line
-				column: 30
+				file:    source_line.path
+				pos:     pos
+				line:    source_line.line
+				column:  30
 				message: message
 			})
 		}
 	}
+	mut diagnostic_sources := map[string]RegisteredTemplateSource{}
+	for diagnostic in p.pending_template_diagnostics {
+		mut registered := diagnostic_sources[diagnostic.path] or {
+			source := os.read_file(diagnostic.path) or { continue }
+			mut diagnostic_file_set := token.FileSet.new()
+			mut diagnostic_file := diagnostic_file_set.add_file(diagnostic.path, source.len)
+			diagnostic_file.index_lines(source)
+			diagnostic_id := p.next_file_id
+			p.next_file_id++
+			p.a.source_files[diagnostic_id] = diagnostic_file
+			created := RegisteredTemplateSource{
+				file:  diagnostic_file
+				lines: source.split_into_lines()
+				id:    diagnostic_id
+			}
+			diagnostic_sources[diagnostic.path] = created
+			created
+		}
+		if diagnostic.line <= 0 || diagnostic.line > registered.lines.len {
+			continue
+		}
+		line_text := registered.lines[diagnostic.line - 1]
+		line_start := registered.file.line_start(diagnostic.line)
+		start_column := int_max(0, int_min(diagnostic.start, line_text.len))
+		end_column := int_max(start_column + 1, int_min(diagnostic.end, line_text.len))
+		start := line_start + start_column
+		end := line_start + end_column
+		p.append_diagnostic(Diagnostic{
+			file:    diagnostic.path
+			pos:     token.new_span(registered.id, start, end)
+			line:    diagnostic.line
+			column:  diagnostic.start + 1
+			message: diagnostic.message
+		})
+	}
+	p.pending_template_diagnostics.clear()
 }
 
 fn (p &Parser) template_action_name() string {
@@ -2001,7 +2109,8 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			// Skip the builder's own bindings and imported module names — a module
 			// (`os` in `@{os.base(path)}`) is not a local variable and must not be
 			// captured. A module-qualified helper is still reachable inside the closure.
-			if name.len > 0 && name != '_' && name !in declared && name !in p.imported_module_names {
+			if name.len > 0 && name != '_' && name !in declared && name !in p.imported_module_names
+				&& p.is_local_binding(name) {
 				// A mutable use (`mut buf` argument) must be captured `mut`; record it
 				// even if the name was already seen through an immutable use.
 				if node.is_mut {

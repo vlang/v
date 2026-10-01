@@ -78,13 +78,13 @@ pub fn new_mod_file_cacher() &ModFileCacher {
 @[if debug_mod_file_cacher ?]
 pub fn (mcache &ModFileCacher) debug() {
 	eprintln('ModFileCacher hits: ${mcache.hits}, misses: ${mcache.misses} | get_files_hits: ${mcache.get_files_hits} | get_files_misses: ${mcache.get_files_misses}')
-	eprintln('	 ModFileCacher.cache.len: ${mcache.cache.len}')
+	eprintln('\t ModFileCacher.cache.len: ${mcache.cache.len}')
 	for k, v in mcache.cache {
-		eprintln('	 K: ${k:-42s} | v.mod: ${v.vmod_file:-42s} | folder: `${v.vmod_folder}`')
+		eprintln('\t K: ${k:-42s} | v.mod: ${v.vmod_file:-42s} | folder: `${v.vmod_folder}`')
 	}
 	eprintln('	 ModFileCacher.folder_files:')
 	for k, v in mcache.folder_files {
-		eprintln('	 K: ${k:-42s} | folder_files: ${v}')
+		eprintln('\t K: ${k:-42s} | folder_files: ${v}')
 	}
 }
 

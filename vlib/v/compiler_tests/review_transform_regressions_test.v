@@ -52,10 +52,14 @@ fn build_v3_review_transform_ownership() string {
 }
 
 fn run_bad(v3_bin string, name string, src string, expected string) {
+	run_bad_with_flags(v3_bin, name, '', src, expected)
+}
+
+fn run_bad_with_flags(v3_bin string, name string, flags string, src string, expected string) {
 	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.execute('${v3_bin} -nocache ${bad_src} -b c -o ${bad_bin}')
+	result := os.execute('${v3_bin} -nocache ${flags} ${bad_src} -b c -o ${bad_bin}')
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
@@ -1342,6 +1346,8 @@ fn test_nested_inferred_fixed_array_literal_parses() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'nested_inferred_fixed_array_literal', 'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
 	assert out == '10'
+	from_rows := run_good(v3_bin, 'nested_inferred_fixed_array_literal_rows', 'fn main() {\n\trow1 := [..]int[1, 2]\n\trow2 := [..]int[3, 4]\n\tvalues := [..][..]int[row1, row2]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
+	assert from_rows == '10'
 	run_bad(v3_bin, 'ragged_nested_inferred_fixed_array_literal', 'fn main() {\n\t_ := [..][..]int[[1], [2, 3]]\n}\n', 'inferred fixed-array literal rows must have the same size')
 }
 
@@ -2682,6 +2688,60 @@ fn main() {
 	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
 	out := run_good(v3_bin, 'computed_key_nested_callback_map_hot_loop', source)
 	assert out == '1250025000'
+}
+
+fn test_scope_owned_pointer_reassignment_keeps_field_closure_cleanup() {
+	v3_bin := build_v3_review_transform()
+	source := '@[heap]
+struct Holder {
+mut:
+	callback fn () int = unsafe { nil }
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 3 {
+		mut holder := &Holder{}
+		holder = holder
+		other := &Holder{}
+		holder = other
+		holder.callback = fn [i] () int { return i }
+		total += holder.callback()
+	}
+	println(total)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'fresh_pointer_reassignment_closure_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	assert run_good(v3_bin, 'fresh_pointer_reassignment_closure', source) == '3'
+}
+
+fn test_scope_owned_indexed_pointer_field_keeps_closure_cleanup() {
+	v3_bin := build_v3_review_transform()
+	source := '@[heap]
+struct Holder {
+mut:
+	callback fn () int = unsafe { nil }
+}
+
+struct Wrapper {
+mut:
+	holders []&Holder
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 3 {
+		mut wrapper := Wrapper{ holders: [&Holder{}] }
+		wrapper.holders[0].callback = fn [i] () int { return i }
+		total += wrapper.holders[0].callback()
+	}
+	println(total)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'indexed_pointer_field_closure_c', source)
+	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
+	assert run_good(v3_bin, 'indexed_pointer_field_closure', source) == '3'
 }
 
 fn test_reassigned_non_escaping_bound_method_closures_are_reclaimed() {
@@ -4341,10 +4401,11 @@ fn main() {
 
 fn test_array_literal_separator_handling() {
 	v3_bin := build_v3_review_transform()
-	// Comma-, newline-, and blank-line-separated element lists parse with the expected length.
-	out := run_good(v3_bin, 'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n}\n')
-	assert out == '3:2:3'
-	run_bad(v3_bin, 'array_literal_missing_separator', 'fn main() {\n\t_ := [1 2]\n}\n', 'unexpected token `2`, expecting `]`')
+	// Comma-, newline-, blank-line-, and whitespace-separated element lists parse correctly.
+	out := run_good(v3_bin, 'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tcommaless := [1 2 3 4]\n\toperators := [5-2 7 2*3 -4 -7*8 2*-4 9 - 4]\n\ta := 10\n\tb := 20\n\tpointers := [&a &b]\n\tdereferenced := [*pointers[0] *pointers[1]]\n\tands := [6&3 7 7 & 3]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n\tprintln(commaless)\n\tprintln(operators)\n\tprintln(pointers.len)\n\tprintln(dereferenced)\n\tprintln(ands)\n}\n')
+	assert out == '3:2:3\n[1, 2, 3, 4]\n[3, 7, 6, -4, -56, -8, 5]\n2\n[10, 20]\n[2, 7, 3]', out
+	nested_out := run_good(v3_bin, 'array_literal_nested_expressions', 'fn identity(value int) int {\n\treturn value\n}\n\nfn main() {\n\tvalues := [10, 20, 30]\n\tnested := [(3 -2) identity(5 -3) values[2 -1]]\n\tprintln(nested)\n}\n')
+	assert nested_out == '[1, 2, 20]', nested_out
 	run_bad(v3_bin, 'array_literal_doubled_comma', 'fn main() {\n\t_ := [1,,2]\n}\n', 'unexpected token `,`, expecting `]`')
 }
 
@@ -4456,6 +4517,13 @@ fn test_interface_array_repeat_evaluates_receiver_once() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'interface_repeat_side_effects', 'interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\n__global calls int\n\nfn make_item() Thing {\n\tcalls++\n\treturn Item{\n\t\tn: calls\n\t}\n}\n\nfn main() {\n\titems := [make_item()].repeat(3)\n\tprintln(int_str(calls))\n\tprintln(int_str(items[0].value() + items[1].value() + items[2].value()))\n}\n')
 	assert out == '1\n3'
+}
+
+fn test_array_repeat_safe_wrapper_compiles_in_prod() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'array_repeat_prod', '-prod', 'fn main() {\n\tprintln([1, 2, 3].repeat(2))\n}\n')
+	assert out == '[1, 2, 3, 1, 2, 3]'
+	run_bad_with_flags(v3_bin, 'array_repeat_to_depth_prod', '-prod', 'fn main() {\n\t_ := [1, 2, 3].repeat_to_depth(2, 0)\n}\n', 'must be called from an `unsafe` block')
 }
 
 fn test_negative_is_return_smartcasts_following_statements() {
@@ -5698,10 +5766,10 @@ fn main() {
 fn test_moved_module_alias_uses_target_module_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'moved_module_alias_identity', {
-		'v.mod':                      "Module { name: 'moved_module_alias_identity' }\n"
-		'modules/legacy/alias.v':     "@[alias: '@VMODROOT/modules/canonical'] module legacy\n"
-		'modules/canonical/module.v': 'module canonical\n\npub fn answer() int {\n\treturn 42\n}\n'
-		'main.v':                     'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
+		'v.mod':              "Module { name: 'moved_module_alias_identity' }\n"
+		'legacy/alias.v':     "@[alias: '@VMODROOT/canonical'] module legacy\n"
+		'canonical/module.v': 'module canonical\n\npub fn answer() int {\n\treturn 42\n}\n'
+		'main.v':             'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '42'
 }
@@ -12146,6 +12214,69 @@ fn main() {
 	assert out == '7\n99'
 }
 
+fn test_params_struct_default_prefers_declaring_module_const_over_homonymous_global() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'params_default_const_global_collision', {
+		'v.mod':               "Module { name: 'params_default_const_global_collision' }\n"
+		'api/api.v':           'module api
+
+pub interface Logger {
+	value() int
+}
+
+pub struct Impl {
+pub:
+	n int
+}
+
+pub fn (logger &Impl) value() int {
+	return logger.n
+}
+'
+		'other/other.v':       'module other
+
+import api
+
+__global default_logger &api.Logger
+
+fn init() {
+	default_logger = &api.Impl{n: 99}
+}
+
+pub fn current() int {
+	return default_logger.value()
+}
+'
+		'consumer/consumer.v': 'module consumer
+
+import api
+
+pub const default_logger = &api.Impl{n: 7}
+
+@[params]
+pub struct Opt {
+pub:
+	logger &api.Logger = default_logger
+}
+
+pub fn current(opt Opt) int {
+	return opt.logger.value()
+}
+'
+		'main.v':              'module main
+
+import consumer
+import other
+
+fn main() {
+	println(other.current())
+	println(consumer.current())
+}
+'
+	}, 'main.v')
+	assert out == '99\n7'
+}
+
 fn test_array_accessors_are_addressable_append_targets() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'array_accessor_append_target', 'fn main() {
@@ -13291,4 +13422,263 @@ fn main() {
 }
 ')
 	assert out == '7'
+}
+
+fn test_comptime_method_multi_return_type_guard_is_folded() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'comptime_method_multi_return_guard', {
+		'main.v': 'module main
+
+struct Marker {}
+
+struct Item {}
+
+struct App {}
+
+fn (App) route() Marker {
+	return Marker{}
+}
+
+fn (App) helper() !(Item, []u8) {
+	return Item{}, []u8{}
+}
+
+fn inspect[A]() {
+	$for method in A.methods {
+		$if method.return_type is Marker {
+			println(method.name)
+		}
+	}
+}
+
+fn main() {
+	inspect[App]()
+}
+'
+	}, 'main.v')
+	assert out == 'route'
+}
+
+fn test_implicit_clone_ignores_incompatible_user_clone_method() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'incompatible_user_clone_method', 'struct Item {
+mut:
+	name string
+}
+
+fn (mut item Item) clone(force bool) {
+	_ = force
+	item.name = item.name
+}
+
+fn main() {
+	item := Item{
+		name: "ok"
+	}
+	mut items := []Item{}
+	items << item
+	println(items[0].name)
+}
+')
+	assert out == 'ok'
+}
+
+fn test_implicit_clone_uses_zero_argument_variadic_clone_method() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'zero_argument_variadic_clone_method', 'struct Item {
+	name string
+}
+
+fn (item Item) clone(_ ...bool) Item {
+	return Item{
+		name: "custom:" + item.name
+	}
+}
+
+fn main() {
+	item := Item{
+		name: "ok"
+	}
+	mut items := []Item{}
+	items << item
+	println(items[0].name)
+}
+')
+	assert out == 'custom:ok'
+}
+
+fn test_generic_inference_prefers_local_over_same_named_function() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_local_function_name_collision', 'import math
+
+struct Log {}
+
+fn type_name[T](_ T) string {
+	return typeof(T).name
+}
+
+fn main() {
+	logs := [Log{}]
+	for log in logs {
+		println(type_name(log))
+	}
+	_ = math.log(1.0)
+}
+')
+	assert out == 'Log'
+}
+
+fn test_local_enum_equality_ignores_same_named_imported_struct() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'local_enum_imported_struct_collision', {
+		'main.v':        'module main
+
+import other
+
+enum Lang {
+	en
+	ru
+}
+
+fn lang_name(lang Lang) string {
+	return match lang {
+		.ru { "ru" }
+		.en { "en" }
+	}
+}
+
+fn main() {
+	println(lang_name(.ru))
+	_ = other.Lang{}
+}
+'
+		'other/other.v': 'module other
+
+pub struct Lang {
+pub:
+	keywords []string
+}
+'
+	}, 'main.v')
+	assert out == 'ru'
+}
+
+fn test_local_struct_equality_ignores_same_named_imported_enum() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'local_struct_imported_enum_collision', {
+		'main.v':        'module main
+
+import other
+
+struct Lang {
+	code int
+}
+
+fn main() {
+	println(Lang{code: 7} == Lang{code: 7})
+	_ = other.Lang.en
+}
+'
+		'other/other.v': 'module other
+
+pub enum Lang {
+	en
+	ru
+}
+'
+	}, 'main.v')
+	assert out == 'true'
+}
+
+fn test_builtin_struct_equality_ignores_same_named_imported_enum() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'builtin_struct_imported_enum_collision', {
+		'main.v':          'module main
+
+import other
+import sample
+
+fn main() {
+	left := SliceIndex{value: 7}
+	right := SliceIndex{value: 7}
+	println(sample.slice_indexes_equal(left, right))
+	_ = other.SliceIndex.value
+}
+'
+		'other/other.v':   'module other
+
+pub enum SliceIndex {
+	value
+}
+'
+		'sample/sample.v': 'module sample
+
+pub fn slice_indexes_equal(left SliceIndex, right SliceIndex) bool {
+	return left == right
+}
+'
+	}, 'main.v')
+	assert out == 'true'
+}
+
+fn test_params_struct_branch_fields_keep_call_argument_order() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'params_struct_branch_field_order', 'struct Config {
+	size  int
+	color int
+}
+
+fn draw(text string, config Config) {
+	println(text + ":" + int_str(config.size) + ":" + int_str(config.color))
+}
+
+fn main() {
+	enabled := true
+	draw(if enabled { "yes" } else { "no" },
+		size:  if enabled { 16 } else { 20 }
+		color: if enabled { 1 } else { 2 }
+	)
+}
+')
+	assert out == 'yes:16:1'
+}
+
+fn test_adjacent_bound_method_params_struct_fields_keep_function_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'params_struct_bound_method_values', 'type Callback = fn (voidptr)
+
+struct Config {
+	init_fn  Callback
+	frame_fn Callback
+}
+
+@[heap]
+struct App {
+mut:
+	trace string
+}
+
+fn (mut app App) init() {
+	app.trace += "init"
+}
+
+fn (mut app App) frame(_ voidptr) {
+	app.trace += ":frame"
+}
+
+fn run(config Config) {
+	config.init_fn(unsafe { nil })
+	config.frame_fn(unsafe { nil })
+}
+
+fn main() {
+	mut app := &App{}
+	run(
+		init_fn:  app.init
+		frame_fn: app.frame
+	)
+	println(app.trace)
+}
+')
+	assert out == 'init:frame'
 }

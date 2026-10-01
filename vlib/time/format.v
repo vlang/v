@@ -596,8 +596,6 @@ fn (t Time) custom_format_zone_offset(token string) string {
 // - a date string in "HH:mm" format (24h) for current day
 // - a date string in "MMM D HH:mm" format (24h) for date of current year
 // - a date string formatted with format function for other dates
-@[deprecated: 'use `custom_format()` or `get_fmt_*()` instead']
-@[deprecated_after: '2026-09-30']
 pub fn (t Time) clean() string {
 	znow := now()
 	// Today
@@ -616,8 +614,6 @@ pub fn (t Time) clean() string {
 // - a date string in "hh:mm" format (12h) for current day
 // - a date string in "MMM D hh:mm" format (12h) for date of current year
 // - a date string formatted with format function for other dates
-@[deprecated: 'use `custom_format()` or `get_fmt_*()` instead']
-@[deprecated_after: '2026-09-30']
 pub fn (t Time) clean12() string {
 	znow := now()
 	// Today
@@ -649,8 +645,12 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 		.hhmm24 { '${t.hour:02d}:${t.minute:02d}' }
 		.hhmmss12 { '${hour_}:${t.minute:02d}:${t.second:02d} ${tp}' }
 		.hhmmss24 { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}' }
-		.hhmmss24_milli { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000_000):03d}' }
-		.hhmmss24_micro { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000):06d}' }
+		.hhmmss24_milli {
+			'${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000_000):03d}'
+		}
+		.hhmmss24_micro {
+			'${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000):06d}'
+		}
 		.hhmmss24_nano { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.nanosecond:06d}' }
 		else { 'unknown enumeration ${fmt_time}' }
 	}

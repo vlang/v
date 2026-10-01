@@ -45,14 +45,14 @@ fn main() {
 	}
 	if !fastc_self_build && !has_self_build_configuration_arg(effective_args) {
 		// compiling by default, i.e. `v self`:
-		uname := os.uname()
+		unam := os.uname()
 		if host_os == 'macos' {
 			// Apple Silicon's bundled TCC is much faster for compiler rebuilds. The
 			// generated compiler uses pthread-backed allocator state because native
 			// TinyCC TLS is not reliable on macOS.
-			default_cc := if uname.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+			default_cc := if unam.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
 			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
-		} else if host_os == 'linux' && uname.machine in ['arm64', 'aarch64'] {
+		} else if host_os == 'linux' && unam.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
 			// prefer the system compiler for self-builds there.
 			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
@@ -86,6 +86,14 @@ fn main() {
 		// flag explicitly so the first `v up` built by an older compiler gets
 		// the bounded-memory implementation too.
 		args << '-prealloc'
+	}
+	// A replacement compiler has to be built entirely from the checked-out sources.
+	// Reusing a whole-program cache entry here can carry stale checker/codegen state
+	// from the compiler that is being replaced into a binary that reports the new hash.
+	effective_args = effective_self_build_args(args)
+	if '-nocache' !in effective_args && '--no-cache' !in effective_args {
+		args << '-nocache'
+		effective_args = effective_self_build_args(args)
 	}
 	obinary := self_build_output(args)
 	if fastc_self_build && repeat_count > 1 && obinary == '' {
@@ -225,7 +233,7 @@ fn unsupported_fastc_repeat_args(args []string) []string {
 			i += 2
 			continue
 		}
-		if arg in ['-silent', '-keepc'] {
+		if arg in ['-silent', '-keepc', '-nocache'] {
 			i++
 			continue
 		}

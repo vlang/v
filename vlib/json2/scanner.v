@@ -57,10 +57,10 @@ pub enum TokenKind {
 	null
 	bool
 	eof
-	comma = 44  // ,
-	colon = 58  // :
-	lsbr  = 91  // [
-	rsbr  = 93  // ]
+	comma = 44 // ,
+	colon = 58 // :
+	lsbr  = 91 // [
+	rsbr  = 93 // ]
 	lcbr  = 123 // {
 	rcbr  = 125 // }
 }
@@ -180,6 +180,13 @@ fn invalid_token_description(ch u8) string {
 // move_pos proceeds to the next position.
 fn (mut s Scanner) move() {
 	s.move_pos(true, true)
+}
+
+// move to the next nth position.
+fn (mut s Scanner) move_n(n u8) {
+	for _ in 0 .. n {
+		s.move()
+	}
 }
 
 // move_pos_with_newlines is the same as move_pos but only enables newline checking.
@@ -387,12 +394,9 @@ fn (mut s Scanner) scan() Token {
 				kind = .bool
 			}
 			unsafe { ident.free() }
-			val := s.text[s.pos..s.pos + 4]
+			val := unsafe { s.text[s.pos..s.pos + 4] }
 			tok := s.tokenize(val, kind)
-			s.move() // n / t
-			s.move() // u / r
-			s.move() // l / u
-			s.move() // l / e
+			s.move_n(4) // null / true
 			return tok
 		}
 		unsafe { ident.free() }
@@ -401,13 +405,9 @@ fn (mut s Scanner) scan() Token {
 		ident := s.text[s.pos..s.pos + 5].bytestr()
 		if ident == 'false' {
 			unsafe { ident.free() }
-			val := s.text[s.pos..s.pos + 5]
+			val := unsafe { s.text[s.pos..s.pos + 5] }
 			tok := s.tokenize(val, .bool)
-			s.move() // f
-			s.move() // a
-			s.move() // l
-			s.move() // s
-			s.move() // e
+			s.move_n(5) // false
 			return tok
 		}
 		unsafe { ident.free() }

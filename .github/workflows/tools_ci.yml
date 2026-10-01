@@ -24,7 +24,32 @@ concurrency:
   group: tools-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  shell-contracts:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      VFLAGS: -cc gcc
+      VJOBS: '2'
+      V_C_ERROR_BUG_REPORT_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V for the shell regression tests
+        id: build
+        run: make
+      - name: Check BSD tool job failure propagation
+        run: ./v -new-compiler cmd/tools/tools_ci_test.v
+      - name: Check shell regression test formatting
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v fmt -verify cmd/tools/tools_ci_test.v
+
   tools-linux:
     runs-on: ubuntu-22.04
     timeout-minutes: 40
@@ -33,9 +58,11 @@ jobs:
         cc: [tcc, gcc, clang]
       fail-fast: false
     env:
-      VFLAGS: -old-compiler -cc ${{ matrix.cc }}
+      VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Code in cmd/ is formatted
@@ -73,9 +100,11 @@ jobs:
         cc: [clang]
       fail-fast: false
     env:
-      VFLAGS: -old-compiler -cc ${{ matrix.cc }}
+      VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Check build-tools
@@ -96,6 +125,8 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
       - name: Install OpenSSL for MSVC
@@ -133,12 +164,14 @@ jobs:
       env:
         V_CI_MUSL: 1
         V_CI_UBUNTU_MUSL: 1
-        VFLAGS: -old-compiler -cc musl-gcc -gc none
+        VFLAGS: -cc musl-gcc -gc none
       volumes:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v -cg -o v cmd/v && ./v symlink
       - name: Ensure git commands can be used with no prompts on modern Git versions
@@ -174,9 +207,11 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start FreeBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
         with:
           operating_system: freebsd
           version: '15.1'
@@ -189,6 +224,8 @@ jobs:
       - name: Tests tools on FreeBSD with ${{ matrix.cc }}
         shell: cpa.sh {0}
         run: |
+          # A custom VM shell does not imply GitHub's usual fail-fast options.
+          set -eu
           sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
           if [ "$VFLAGS" = "-cc gcc" ]; then
             sudo pkg install -y gcc
@@ -202,7 +239,10 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           printf "VFLAGS = %s\n" "$VFLAGS"
-          gmake && ./v -showcc -o v cmd/v && sudo ./v symlink
+          # Non-final commands in an && list are exempt from set -e.
+          gmake
+          ./v -showcc -o v cmd/v
+          sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"
           ./v doctor
@@ -237,9 +277,11 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start OpenBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
         with:
           operating_system: openbsd
           version: '7.8'
@@ -251,6 +293,8 @@ jobs:
       - name: Tests tools on OpenBSD with ${{ matrix.cc }}
         shell: cpa.sh {0}
         run: |
+          # A custom VM shell does not imply GitHub's usual fail-fast options.
+          set -eu
           sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
           # Mandatory: hostname not set in VM => some tests fail
           sudo hostname -s openbsd-ci
@@ -263,7 +307,10 @@ jobs:
           printf "VFLAGS = %s\n" "$VFLAGS"
           # V3 self-hosting can exceed OpenBSD's default per-process data limit.
           ulimit -d 4194304
-          gmake && ./v -showcc -o v cmd/v && sudo ./v symlink
+          # Non-final commands in an && list are exempt from set -e.
+          gmake
+          ./v -showcc -o v cmd/v
+          sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"
           ./v doctor
