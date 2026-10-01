@@ -1,6 +1,7 @@
 c_and_v_type_interoperability.md
 codelite.md
 compiler-fallback.md
+comptime-reflection-sources.md
 docs.md
 ownership.md
 packaging_v_for_distributions.md
