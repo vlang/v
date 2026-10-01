@@ -13140,13 +13140,17 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			}
 		}
 	}
-	// Capture the lvalue's declared storage type before the optional-assign
-	// smartcast unwraps it (`?string` -> `string`), so the drop-before-assign
-	// temp below keeps the optional storage type the assigned value is wrapped
-	// to, instead of a `string` temp initialised with an `__v_option_string`.
+	// Whole-variable assignments replace the declared storage, even when a read
+	// is smartcast to a sum variant or optional payload. Capture that storage type
+	// before updating optional smartcasts so the replacement temporary matches it.
 	mut pre_smartcast_lhs_type := ''
 	if node.kind == .assign && node.op == .assign && node.children_count == 2 {
-		pre_smartcast_lhs_type = t.lvalue_type(t.a.child(&node, 0))
+		lhs := t.a.child_node(&node, 0)
+		pre_smartcast_lhs_type = if lhs.kind == .ident {
+			t.var_type(lhs.value)
+		} else {
+			t.lvalue_type(t.a.child(&node, 0))
+		}
 		t.update_option_assignment_smartcast(t.a.child(&node, 0), t.a.child(&node, 1))
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
@@ -13177,6 +13181,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		autofree_aggregate_lvalue := t.tc.autofree_enabled()
 			&& node.kind in [.selector_assign, .index_assign]
 		if !t.cur_fn_manualfree && !autofree_aggregate_lvalue
+			&& !(lhs_node.kind == .ident && lhs_node.value == '_')
 			&& t.tc.ownership_type_requires_destruction(lhs_type)
 			&& !t.tc.ownership_assignment_reinitializes_moved_value(id)
 			&& !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
