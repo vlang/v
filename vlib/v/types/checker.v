@@ -15030,6 +15030,11 @@ fn (tc &TypeChecker) type_text_has_generic_struct_placeholder_application(typ st
 	return false
 }
 
+// generic_type_application_parts splits a `Base[A, B]` type name into its base and its generic
+// arguments. A map is spelled `map[K]V`, so its value type is a suffix *outside* the brackets and
+// not a generic argument; it is appended as a second argument here. Without that, every match that
+// goes through this function sees `map[string]FooBar` and `map[string]string` as the very same
+// `map[string]` application, and the value type never participates in the comparison.
 fn generic_type_application_parts(typ string) (string, []string, bool) {
 	if typ == '' || typ[0] == `[` {
 		return '', []string{}, false
@@ -15050,7 +15055,76 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 	for i in 0 .. args.len {
 		args[i] = trimmed_space(args[i])
 	}
-	return typ[..bracket], args, true
+	base := typ[..bracket]
+	if generic_application_base_is_map(base) {
+		if bracket_end >= typ.len {
+			return '', []string{}, false
+		}
+		value := trimmed_space(typ[bracket_end + 1..])
+		// A bare `map[K]` with no value type is not a complete map type, so it must not
+		// compare equal to a fully spelled `map[K]V`.
+		if value.len == 0 {
+			return '', []string{}, false
+		}
+		args << value
+	}
+	return base, args, true
+}
+
+// generic_application_base_is_map reports whether the base of a bracketed type name is the `map`
+// container, with any wrapper layers in front of it (`map`, `&map`, `mut &map`, `?map`,
+// `chan map`, ...). The layers are stripped in a single pass, so their order does not matter.
+fn generic_application_base_is_map(base string) bool {
+	mut clean := trimmed_space(base)
+	for {
+		n := type_wrapper_prefix_len(clean)
+		if n == 0 {
+			break
+		}
+		clean = trimmed_space(clean[n..])
+	}
+	return clean == 'map'
+}
+
+// type_wrapper_prefix_len returns the length of the wrapper layer that leads a type name
+// (`&`, `?`, `!`, `[]`, `...`, `mut `, `shared ` or `chan `), or 0 when the name has none.
+// What follows such a layer is a whole type, never a generic base name.
+fn type_wrapper_prefix_len(typ string) int {
+	if typ.len == 0 {
+		return 0
+	}
+	match typ[0] {
+		`&`, `?`, `!` {
+			return 1
+		}
+		`[` {
+			if typ.len > 1 && typ[1] == `]` {
+				return 2
+			}
+		}
+		`.` {
+			if typ.starts_with('...') {
+				return 3
+			}
+		}
+		`m` {
+			if typ.starts_with('mut ') {
+				return 4
+			}
+		}
+		`s` {
+			if typ.starts_with('shared ') {
+				return 7
+			}
+		}
+		`c` {
+			if typ.starts_with('chan ') {
+				return 5
+			}
+		}
+		else {}
+	}
+	return 0
 }
 
 // is_fixed_array_len_text reports whether a postfix `Base[inner]` bracket holds a fixed-array
