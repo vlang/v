@@ -709,6 +709,41 @@ fn stored_map(initializer bool) map[string][]Resource {
 	map_set_from_borrow(mut holder.values, mut stored)
 	return stored
 }
+type ResourceStorageSum = []Resource | int
+type ResourceStorageLayer = ResourceStorageSum | bool
+type ResourceGenericStorage[T] = []T | int
+fn keep_sum(mut values []Resource) ResourceStorageSum { return values }
+fn keep_layer(mut values []Resource) ResourceStorageLayer { return values }
+fn keep_generic_sum(mut values []Resource) ResourceGenericStorage[Resource] { return values }
+fn stored_sum() ResourceStorageSum {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	return keep_sum(mut holder.values)
+}
+fn stored_layer() ResourceStorageLayer {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	return keep_layer(mut holder.values)
+}
+fn stored_generic_sum() ResourceGenericStorage[Resource] {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	return keep_generic_sum(mut holder.values)
+}
+fn keep_optional_sum(mut values []Resource, mode int) ?ResourceStorageSum {
+	if mode == 0 { return none }
+	if mode == 2 { return ?ResourceStorageSum(ResourceStorageSum(values)) }
+	return values
+}
+fn stored_optional_sum(mode int) ?ResourceStorageSum {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	return keep_optional_sum(mut holder.values, mode)
+}
+fn keep_result_sum(mut values []Resource, present bool) !ResourceStorageSum {
+	if !present { return error("absent sum") }
+	return values
+}
+fn stored_result_sum(present bool) !ResourceStorageSum {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	return keep_result_sum(mut holder.values, present)
+}
 fn main() {
 	ordinary_scope()
 	assert dropped.len == 1
@@ -750,6 +785,52 @@ fn main() {
 		assert stored_values["hit"][0].payload == "payload".repeat(4)
 		drop_owned(stored_values)
 	}
+	sum_value := stored_sum()
+	assert clones == 9
+	if sum_value is []Resource {
+		assert !dropped[sum_value[0].id]
+		assert sum_value[0].payload == "payload".repeat(4)
+	} else { assert false }
+	drop_owned(sum_value)
+	layer := stored_layer()
+	assert clones == 10
+	if layer is ResourceStorageSum {
+		if layer is []Resource {
+			assert !dropped[layer[0].id]
+			assert layer[0].payload == "payload".repeat(4)
+		} else { assert false }
+	} else { assert false }
+	drop_owned(layer)
+	generic_sum := stored_generic_sum()
+	assert clones == 11
+	if generic_sum is []Resource {
+		assert !dropped[generic_sum[0].id]
+		assert generic_sum[0].payload == "payload".repeat(4)
+	} else { assert false }
+	drop_owned(generic_sum)
+	assert stored_optional_sum(0) == none
+	assert clones == 11
+	for mode in [1, 2] {
+		optional_sum := stored_optional_sum(mode) or { panic("missing sum") }
+		assert clones == 11 + mode
+		if optional_sum is []Resource {
+			assert !dropped[optional_sum[0].id]
+			assert optional_sum[0].payload == "payload".repeat(4)
+		} else { assert false }
+		drop_owned(optional_sum)
+	}
+	if absent_sum := stored_result_sum(false) {
+		drop_owned(absent_sum)
+		assert false
+	} else { assert err.msg() == "absent sum" }
+	assert clones == 13
+	result_sum := stored_result_sum(true) or { panic(err) }
+	assert clones == 14
+	if result_sum is []Resource {
+		assert !dropped[result_sum[0].id]
+		assert result_sum[0].payload == "payload".repeat(4)
+	} else { assert false }
+	drop_owned(result_sum)
 	assert dropped.len == next_id
 	println("ok")
 }

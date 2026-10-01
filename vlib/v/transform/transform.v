@@ -11924,13 +11924,13 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		resolved_payload_type := t.resolve_sum_name(payload_type)
 		if child.kind == .or_expr {
 			if resolved_payload_type in t.sum_types {
-				return t.wrap_sum_value(t.transform_expr(return_child_id), resolved_payload_type)
+				return t.clone_borrowed_storage_projection(return_child_id, t.wrap_sum_value(t.transform_expr(return_child_id), resolved_payload_type), resolved_payload_type)
 			}
-			return t.transform_expr_for_type(return_child_id, target_type)
+			return t.clone_borrowed_storage_projection(return_child_id, t.transform_expr_for_type(return_child_id, target_type), target_type)
 		}
 		if child.kind in [.if_expr, .match_stmt]
 			&& t.return_expr_is_optional_result(return_child_id) {
-			return t.transform_expr_for_type(return_child_id, target_type)
+			return t.clone_borrowed_storage_projection(return_child_id, t.transform_expr_for_type(return_child_id, target_type), target_type)
 		}
 		if resolved_payload_type in t.sum_types {
 			return t.clone_borrowed_storage_projection(return_child_id, t.wrap_sum_value(return_child_id, resolved_payload_type), resolved_payload_type)

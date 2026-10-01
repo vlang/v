@@ -1978,9 +1978,13 @@ fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ
 		storage_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(storage_type))
 	}
 	array_type := storage_type.trim_left('&')
-	if !array_type.starts_with('[]') || storage_type.starts_with('&&') || isnil(t.tc)
+	storage_is_sum := !storage_type.starts_with('&') && t.is_sum_type_name(storage_type)
+	if (!array_type.starts_with('[]') && !storage_is_sum) || storage_type.starts_with('&&') || isnil(t.tc)
 		|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type)) {
 		return value
+	}
+	if storage_is_sum && !t.is_optional_type_name(resolved_type) {
+		return t.clone_owned_sum_array_views_for_storage(value, typ)
 	}
 	name := t.new_temp('owned_array_escape')
 	t.pending_stmts << t.make_decl_assign_typed(name, value, typ)
@@ -2025,6 +2029,88 @@ fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ
 	t.pending_stmts << t.make_if_with_skip_ownership_drops(is_slice,
 		t.make_block_skip_scope_drops(body), t.make_empty())
 	return bound
+}
+
+struct OwnedArraySumVariant {
+	sum_type string
+	variant  string
+}
+
+fn (mut t Transformer) clone_owned_sum_array_views_for_storage(value flat.NodeId, typ string) flat.NodeId {
+	pending_start := t.pending_stmts.len
+	name := t.new_temp('owned_sum_array_escape')
+	t.pending_stmts << t.make_decl_assign_typed(name, value, typ)
+	bound := t.make_ident(name)
+	t.set_node_typ(int(bound), typ)
+	branches := t.owned_sum_array_storage_branches(bound, typ, bound, typ, []flat.NodeId{}, []OwnedArraySumVariant{}, []string{})
+	if branches.len == 0 {
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		return value
+	}
+	t.pending_stmts << branches
+	return bound
+}
+
+fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_type string, root flat.NodeId, root_type string, guards []flat.NodeId, path []OwnedArraySumVariant, seen []string) []flat.NodeId {
+	resolved_sum, variants := t.concrete_sum_name_and_variants(sum_type)
+	if resolved_sum in seen { return []flat.NodeId{} }
+	mut next_seen := seen.clone()
+	next_seen << resolved_sum
+	mut branches := []flat.NodeId{}
+	for variant in variants {
+		qvariant := t.resolve_variant(resolved_sum, variant)
+		if qvariant.len == 0 { continue }
+		clean_variant := t.comptime_normalize_type_alias_chain(qvariant)
+		array_type := clean_variant.trim_left('&')
+		is_array := array_type.starts_with('[]') && !clean_variant.starts_with('&&')
+		is_nested_sum := !clean_variant.starts_with('&') && t.is_sum_type_name(clean_variant)
+		if (!is_array && !is_nested_sum) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type)) {
+			continue
+		}
+		use_ptr := t.variant_references_sum(qvariant, resolved_sum) && !t.sum_variant_is_direct_pointer(qvariant)
+		field_type := if use_ptr { '&${qvariant}' } else { qvariant }
+		field := t.make_selector_op(source, t.sum_field_name(qvariant), field_type, .dot)
+		mut payload := field
+		mut branch_guards := guards.clone()
+		branch_guards << t.make_sum_is_check(source, sum_type, resolved_sum, qvariant)
+		if use_ptr || clean_variant.starts_with('&') {
+			branch_guards << t.make_infix(.ne, field, t.a.add(.nil_literal))
+		}
+		if use_ptr {
+			payload = t.make_prefix(.mul, field)
+			t.set_node_typ(int(payload), qvariant)
+		}
+		mut branch_path := path.clone()
+		branch_path << OwnedArraySumVariant{ sum_type: sum_type, variant: qvariant }
+		if is_nested_sum {
+			branches << t.owned_sum_array_storage_branches(payload, qvariant, root, root_type, branch_guards, branch_path, next_seen)
+			continue
+		}
+		array_value := t.array_lvalue_value(payload, clean_variant)
+		is_slice := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
+		t.set_node_typ(int(is_slice), 'bool')
+		t.mark_fn_used('array.is_slice_view')
+		branch_guards << is_slice
+		pending_start := t.pending_stmts.len
+		mut rebuilt := t.clone_owned_array_view_for_storage(payload, qvariant)
+		mut body := t.pending_stmts[pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		for i := branch_path.len - 1; i >= 0; i-- {
+			rebuilt = t.make_sum_literal(branch_path[i].sum_type, branch_path[i].variant, rebuilt)
+		}
+		new_name := t.new_temp('owned_sum_array_value')
+		body << t.make_decl_assign_typed(new_name, rebuilt, root_type)
+		// Rebuild every box before one drop of the old active path. Its borrowed
+		// array skips element destruction; nested boxes are freed exactly once.
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned', [root], 'void'))
+		body << t.make_assign_without_ownership_drop(root, t.make_ident(new_name))
+		mut cond := branch_guards[0]
+		for guard in branch_guards[1..] {
+			cond = t.make_infix(.logical_and, cond, guard)
+		}
+		branches << t.make_if_with_skip_ownership_drops(cond, t.make_block_skip_scope_drops(body), t.make_empty())
+	}
+	return branches
 }
 
 // owned_rvalue_slice_source reports the base temporary of a slice that has no retained owner.
