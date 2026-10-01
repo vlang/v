@@ -14746,8 +14746,7 @@ fn (mut g FlatGen) gen_local_fn_value_address_arg(arg_node flat.Node, expected t
 	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
 		return false
 	}
-	child_id := g.a.child(&node, 0)
-	child := g.a.nodes[int(child_id)]
+	child_id, child := g.unwrapped_fn_value_operand(g.a.child(&node, 0), g.a.child_node(&node, 0))
 	if child.kind != .ident || !g.ident_is_local_binding(child.value)
 		|| cgen_unalias_type(g.fn_value_candidate_type(child_id, child)) !is types.FnType {
 		return false
@@ -14939,8 +14938,8 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 	mut value_node := arg_node
 	for value_node.children_count > 0 {
 		if value_node.kind == .prefix && value_node.op == .amp {
-			operand_id := g.a.child(&value_node, 0)
-			operand := g.a.nodes[int(operand_id)]
+			operand_id, operand := g.unwrapped_fn_value_operand(g.a.child(&value_node, 0),
+				g.a.child_node(&value_node, 0))
 			// In translated C, `voidptr(&f)` of a function variable is the address of
 			// the variable, as in V1 (C translated by c2v stores `(void*)&finder` and
 			// calls through `**(finder_type*)p`). `&` on a function name is the function.
@@ -14970,6 +14969,17 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 	}
 	g.gen_expr(value_id)
 	return true
+}
+
+// unwrapped_fn_value_operand removes transparent parentheses before classifying storage.
+fn (g &FlatGen) unwrapped_fn_value_operand(id flat.NodeId, node flat.Node) (flat.NodeId, flat.Node) {
+	mut operand_id := id
+	mut operand := node
+	for operand.kind == .paren && operand.children_count == 1 {
+		operand_id = g.a.child(&operand, 0)
+		operand = g.a.nodes[int(operand_id)]
+	}
+	return operand_id, operand
 }
 
 // fn_value_operand_has_storage reports whether a function value is read from a

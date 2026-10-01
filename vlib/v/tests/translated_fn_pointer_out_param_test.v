@@ -31,4 +31,13 @@ fn test_a_callee_stores_a_function_through_the_address_of_a_local() {
 	assert m.find(41, &f, &arg) == 41
 	assert f(unsafe { nil }, 41) == 42
 	assert arg == voidptr(41)
+	// Preserve parentheses around addressed operands as regression inputs.
+	// vfmt off
+	assert m.find(51, &(f), &arg) == 51
+	assert f(unsafe { nil }, 51) == 52
+	assert arg == voidptr(51)
+	assert m.find(61, &((f)), &arg) == 61
+	assert f(unsafe { nil }, 61) == 62
+	assert arg == voidptr(61)
+	// vfmt on
 }

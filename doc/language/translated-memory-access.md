@@ -12,3 +12,6 @@ using types declared by a translated file.
 Translated code may also write through pointers returned by functions, including
 pointers that alias another value. Its parameter and local names may shadow global
 variables, as in C. Ordinary V files retain the alias and global-shadowing checks.
+
+The address of a callback variable, field, or array element refers to its original
+function-pointer slot. Parentheses around the addressed operand preserve this storage identity.
