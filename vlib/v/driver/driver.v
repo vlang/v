@@ -13724,6 +13724,14 @@ pub fn run(args []string) {
 		}
 		resolved_c_flags = v3_shared_object_compile_flags(resolved_c_flags, prefs.normalized_target_os(),
 			is_shared, is_liveshared)
+		if !c_only && !is_o {
+			if missing_gc := v3_missing_bundled_gc_library(resolved_c_flags, prefs.vroot) {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				eprintln(v3_missing_gc_library_message(missing_gc))
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+		}
 		flag_plan_sdk_root := if effective_tcc && prefs.normalized_target_os() == 'macos' {
 			macos_sdk_root_cache.get()
 		} else {
