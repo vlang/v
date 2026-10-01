@@ -11011,7 +11011,9 @@ fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat
 			continue
 		}
 		if !mutating_receiver || tc.unsafe_depth > 0
-			|| tc.expr_is_inside_unsafe_block(id) {
+			|| tc.expr_is_inside_unsafe_block(id)
+			|| (tc.sql_orm_receiver_is_hidden_mut_local(tokens, start, end)
+				&& !tc.mut_receiver_method_requires_mutable_lvalue(method)) {
 			continue
 		}
 		if tc.sql_orm_mut_receiver_is_mutable(tokens, start, end, receiver) {
@@ -11046,6 +11048,20 @@ fn (tc &TypeChecker) sql_orm_receiver_type(tokens []string, start int, end int) 
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) sql_orm_receiver_is_hidden_mut_local(tokens []string, start int, end int) bool {
+	if start >= end {
+		return false
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return false }
+		if close_idx == end - 1 {
+			return tc.sql_orm_receiver_is_hidden_mut_local(tokens, start + 1, close_idx)
+		}
+	}
+	return end == start + 1 && sql_like_identifier(tokens[start])
+		&& tc.ident_is_hidden_mut_receiver_local(tokens[start])
 }
 
 // SQL receiver tokens have no expression AST. Follow the supported call/member/index
@@ -18489,6 +18505,9 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 			return ScopeBindingOwner{}
 		}
 		owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+		if !is_mut && lhs.value != '_' {
+			tc.fn_context.hidden_mut_receiver_local_bindings[owner.storage_key()] = true
+		}
 		if is_mut && lhs.value != '_' {
 			if previous_owner := tc.fn_context.mut_local_owners[lhs.value] {
 				// A `for mut` pointer binding records its pointee type so reads inside

@@ -3496,9 +3496,11 @@ intended for low-level applications like kernels and drivers.
 
 It is possible to modify function arguments by declaring them with the keyword `mut`:
 
-A method with a `mut` receiver requires a mutable value receiver even when it only
-changes private fields in another module. An immutable value parameter cannot call
-such a method: mutations would affect its copy and be lost when the function returns.
+An immutable local value can call a `mut` receiver method from another module when
+that method changes only module-private state, including through helper calls.
+Methods that change caller-visible state still require a mutable receiver.
+Immutable value parameters, receivers, loop bindings and closure captures require `mut`
+even for private state: mutations can otherwise affect a discarded copy.
 Declare the parameter or receiver with `mut` when its changes must reach the caller.
 
 ```v

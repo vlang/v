@@ -4745,6 +4745,18 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 				if attrs_text.len == 0 {
 					attrs_text = cached_declaration_attrs_text(attrs)
 				}
+				if node.kind == .fn_decl && !source_embedded {
+					// Recompute this internal proof rather than copying a source attribute.
+					mut attr_values := declaration_source_attr_values(attrs_text)
+					if cached_declaration_has_attr(attr_values, '_v3_hidden_mut_receiver') {
+						attr_values = attr_values.filter(it.all_before(':').trim_space() != '_v3_hidden_mut_receiver')
+						attrs_text = attr_values.map('@[${it}]').join('\n')
+					}
+					if tc.fn_has_hidden_mut_receiver(effective_id, module_name) {
+						attrs_text += if attrs_text.len > 0 { '\n' } else { '' }
+						attrs_text += '@[_v3_hidden_mut_receiver]'
+					}
+				}
 				if node.kind == .c_fn_decl && trusted_c_fns[node.value]
 					&& !cached_declaration_has_attr(declaration_source_attr_values(attrs_text), 'trusted') {
 					attrs_text = if attrs_text.len > 0 {

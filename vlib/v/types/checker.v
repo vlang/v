@@ -589,6 +589,7 @@ mut:
 	mut_param_base_types                     map[string]Type
 	mut_param_owners                         map[string]ScopeBindingOwner
 	mut_local_owners                         map[string]ScopeBindingOwner
+	hidden_mut_receiver_local_bindings       map[string]bool
 	closure_copy_owners                      map[string]ScopeBindingOwner
 	captured_interface_value_patterns        map[string]bool
 	shared_owners                            map[string][]ScopeBindingOwner
@@ -641,6 +642,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		mut_param_base_types:                     src.mut_param_base_types.clone()
 		mut_param_owners:                         src.mut_param_owners.clone()
 		mut_local_owners:                         src.mut_local_owners.clone()
+		hidden_mut_receiver_local_bindings:       src.hidden_mut_receiver_local_bindings.clone()
 		closure_copy_owners:                      src.closure_copy_owners.clone()
 		captured_interface_value_patterns:        src.captured_interface_value_patterns.clone()
 		shared_owners:                            src.shared_owners.clone()

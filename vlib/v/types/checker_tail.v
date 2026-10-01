@@ -13105,9 +13105,15 @@ fn (tc &TypeChecker) visible_mutation_fn_param_has_visible_mutation(decl Visible
 	}
 	if param_count == int(fn_node.children_count) {
 		// A source method with `{}` has no visible mutation. Header declarations use
-		// `is_mut` as the parser's cached-body marker and remain conservative.
-		tc.cache_visible_mutation_result(cache_id, fn_node.is_mut)
-		return fn_node.is_mut
+		// `is_mut` as the parser's cached-body marker. Only generated cache headers
+		// may carry the proof obtained while their source bodies were available.
+		file := if source := tc.a.source_files[fn_node.pos.id] { source.name } else { '' }
+		trusted_hidden_receiver := param_idx == 0 && param.op == .dot
+			&& is_module_cache_header(file) && file in tc.a.cached_header_sources
+			&& tc.declaration_has_attribute(flat.NodeId(decl.idx), '_v3_hidden_mut_receiver')
+		result := fn_node.is_mut && !trusted_hidden_receiver
+		tc.cache_visible_mutation_result(cache_id, result)
+		return result
 	}
 	visiting[cache_id] = true
 	mut result := false
@@ -13122,6 +13128,18 @@ fn (tc &TypeChecker) visible_mutation_fn_param_has_visible_mutation(decl Visible
 	return result
 }
 
+// fn_has_hidden_mut_receiver reports whether a method only mutates receiver state
+// hidden from callers in other modules, for declaration header serialization.
+pub fn (tc &TypeChecker) fn_has_hidden_mut_receiver(id flat.NodeId, module_name string) bool {
+	decl := VisibleMutationFnDecl{ idx: int(id), mod: module_name }
+	param := tc.visible_mutation_fn_param(decl, 0) or { return false }
+	if !param.is_mut || param.op != .dot {
+		return false
+	}
+	mut visiting := map[u64]bool{}
+	return !tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting)
+}
+
 fn (tc &TypeChecker) cache_visible_mutation_result(key u64, result bool) {
 	if !isnil(tc.visible_mutation_cache) {
 		mut cache := tc.visible_mutation_cache
@@ -13129,15 +13147,57 @@ fn (tc &TypeChecker) cache_visible_mutation_result(key u64, result bool) {
 	}
 }
 
-fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(recv_id flat.NodeId) bool {
+fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(info CallInfo, recv_id flat.NodeId) bool {
 	if tc.expr_is_shared_arg(recv_id) {
 		return false
 	}
 	if tc.expr_root_is_global_binding(recv_id) {
 		return false
 	}
-	// Private fields carry state too, and mutating a value parameter's copy can
-	// lose that state. The receiver's mutability does not depend on visibility.
+	// Locally declared values keep hidden state in their own storage. Value
+	// parameters, receivers, loop bindings and captures may instead be copies
+	// whose changes would be discarded; those still require `mut`.
+	if tc.expr_is_hidden_mut_receiver_local(recv_id) {
+		return tc.mut_receiver_method_requires_mutable_lvalue(info.name)
+	}
+	return true
+}
+
+fn (tc &TypeChecker) ident_is_hidden_mut_receiver_local(name string) bool {
+	if tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	owner := tc.cur_scope.lookup_owner(name) or { return false }
+	return tc.fn_context.hidden_mut_receiver_local_bindings[owner.storage_key()]
+}
+
+fn (tc &TypeChecker) expr_is_hidden_mut_receiver_local(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return tc.ident_is_hidden_mut_receiver_local(node.value)
+	}
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.expr_is_hidden_mut_receiver_local(tc.a.child(node, 0))
+	}
+	return false
+}
+
+fn (tc &TypeChecker) mut_receiver_method_requires_mutable_lvalue(method_name string) bool {
+	method_module := tc.fn_type_modules[method_name] or { '' }
+	if method_module.len > 0 && method_module != tc.cur_module {
+		// Across module boundaries, hidden state is mutable through its methods
+		// only when no direct or transitive mutation reaches caller-visible state.
+		decl := tc.visible_mutation_fn_decl(method_name, method_module) or { return true }
+		cache_id := visible_mutation_cache_id(decl, 0)
+		if cached := tc.cached_visible_mutation_result(cache_id) {
+			return cached
+		}
+		mut visiting := map[u64]bool{}
+		return tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting)
+	}
 	return true
 }
 
@@ -14125,7 +14185,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
 			&& mutating_receiver
 			&& (builtin_map_mutating_receiver
-				|| tc.mut_receiver_call_requires_mutable_lvalue(recv_id))
+				|| tc.mut_receiver_call_requires_mutable_lvalue(info, recv_id))
 			&& !checker_is_raw_collection_method_name(info.name, 'array.')
 			&& !tc.mut_receiver_expr_is_mutable_lvalue(recv_id) && tc.should_diagnose(id) {
 			if const_name := tc.expr_root_constant_name(recv_id) {

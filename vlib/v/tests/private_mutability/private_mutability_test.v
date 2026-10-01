@@ -2,8 +2,9 @@ module main
 
 import private_mutability
 
-fn test_private_receiver_mutation_on_mutable_binding_outside_module() {
-	mut counter := private_mutability.Counter{}
+// Regression test for issues #24719 and #29233.
+fn test_private_receiver_mutation_does_not_require_mut_outside_module() {
+	counter := private_mutability.Counter{}
 	counter.bump_hidden_via_method()
 	counter.bump_hidden_via_helper()
 	assert counter.label_text() == ''

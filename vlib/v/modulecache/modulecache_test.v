@@ -947,3 +947,50 @@ fn test_module_header_preserves_module_attributes() {
 	header := module_header(&a, &tc, 'guarded', '', map[string]string{})
 	assert header.starts_with('@[has_globals]\nmodule guarded\n'), header
 }
+
+fn test_module_header_round_trips_hidden_receiver_mutation_proof() {
+	root := os.join_path(os.vtmp_dir(), 'v3_hidden_receiver_header_${os.getpid()}')
+	source := os.join_path(root, 'counter.v')
+	header_path := os.join_path(root, 'v3_module_cache_test', 'counter.vh')
+	os.mkdir_all(os.dir(header_path))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(source, 'module counter
+pub struct Counter {
+mut:
+ hidden int
+pub mut:
+ visible int
+}
+pub fn (mut c Counter) hidden_only() { c.hidden++ }
+pub fn (mut c Counter) hidden_via_method() { c.hidden_only() }
+@[_v3_hidden_mut_receiver]
+pub fn (mut c Counter) visible_direct() { c.visible++ }
+pub fn (mut c Counter) visible_via_method() { c.visible_direct() }
+pub fn (mut c Counter) replace() { c = Counter{} }
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	mut tc := vtypes.TypeChecker.new(a)
+	tc.collect(a)
+	header := module_header(a, &tc, 'counter', '', map[string]string{})
+	assert header.count('@[_v3_hidden_mut_receiver]') == 2, header
+	os.write_file(header_path, header)!
+	for trusted in [false, true] {
+		mut header_parser := parser.Parser.new(pref.new_preferences())
+		mut cached := header_parser.parse_file(header_path)
+		if trusted {
+			cached.cached_header_sources[header_path] = source
+		}
+		mut cached_tc := vtypes.TypeChecker.new(cached)
+		cached_tc.collect(cached)
+		mut checked := 0
+		for idx, node in cached.nodes {
+			if node.kind != .fn_decl { continue }
+			method := node.value.all_after_last('.')
+			expected := trusted && method in ['hidden_only', 'hidden_via_method']
+			assert cached_tc.fn_has_hidden_mut_receiver(flat.NodeId(idx), 'counter') == expected, '${method}, trusted=${trusted}: ${header}'
+			checked++
+		}
+		assert checked == 5
+	}
+}
