@@ -13,6 +13,7 @@ separate header, so acquisition does not replace the caller's header.
 Mutable parameters wrapped in options, results, or sums follow the same acquisition rule.
 An active option or result array variant in a sum acquires its successful payload as well.
 Retaining a failed mutable Result wrapper clones its boxed error owner.
+Destructible custom errors need a compatible clone; failure to provide one rejects retention.
 Mutable sum copies also acquire independent boxes for their active by-value variants.
 
 With ownership checking enabled, capturing a mutable array parameter by value snapshots

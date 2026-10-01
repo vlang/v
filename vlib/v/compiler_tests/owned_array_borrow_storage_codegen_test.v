@@ -777,3 +777,53 @@ fn main() {
 		assert output == if index == 0 { 'drop 1\nok' } else { 'ok' }
 	}
 }
+
+fn test_mutable_sum_result_errors_require_compatible_clones() {
+	for clone_kind in ['none', 'incompatible', 'value', 'pointer'] {
+		clone_method := match clone_kind {
+			'incompatible' { 'fn (r &Fault) clone() int { return r.id }' }
+			'value' { 'fn (r &Fault) clone() Fault { return Fault{r.id + 100} }' }
+			'pointer' { 'fn (r &Fault) clone() &Fault { return &Fault{r.id + 100} }' }
+			else { '' }
+		}
+		for failed in [false, true] {
+			name := 'sum_result_error_${clone_kind}_${failed}'
+			source := borrow_storage_drop_decls + '
+struct Fault implements Drop { id int }
+fn (r Fault) msg() string { return "failed" }
+fn (r Fault) code() int { return r.id }
+fn (mut r Fault) drop() { println("error \${r.id}") }
+${clone_method}
+type StringResult = !string
+type StringResultAlias = StringResult
+type Storage = []Res | StringResultAlias
+fn make_result(failed bool) !string {
+	if failed { return Fault{1} }
+	return "payload".repeat(4)
+}
+fn keep(mut source Storage) Storage { return source }
+fn main() {
+	mut source := Storage(StringResultAlias(make_result(${failed})))
+	retained := keep(mut source)
+	drop_owned(source)
+	drop_owned(retained)
+	println("ok")
+}
+'
+			build := borrow_storage_compile(name, source)
+			assert build.exit_code == 0, build.output
+			run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+			if failed && clone_kind in ['none', 'incompatible'] {
+				assert run.exit_code != 0, run.output
+				assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
+			} else {
+				assert run.exit_code == 0, run.output
+				assert run.output.trim_space() == if failed {
+					'error 1\nerror 101\nok'
+				} else {
+					'ok'
+				}
+			}
+		}
+	}
+}
