@@ -1,0 +1,158 @@
+import toml
+
+enum JobTitle {
+	worker
+	executive
+}
+
+struct Item {
+	name string
+}
+
+struct Collections {
+	titles     []JobTitle
+	by_title   map[string]JobTitle
+	tables     []map[string]int
+	texts      []map[string]string
+	by_table   map[string]map[string]int
+	by_list    map[string][]int
+	lists      [][]int
+	structs    []Item
+	by_struct  map[string]Item
+	timestamps []toml.DateTime
+	by_day     map[string]toml.Date
+}
+
+// Note that TOML keys written after a `[table]` header belong to that table, so
+// the root level keys come first.
+const toml_text = 'titles = [0, 1, 0]
+lists = [[1, 2], [3]]
+timestamps = [2026-01-02T03:04:05Z]
+
+[by_title]
+main = 1
+
+[by_table]
+main = { x = 7 }
+
+[by_list]
+nums = [1, 2, 3]
+
+[by_day]
+start = 2026-01-02
+
+[[tables]]
+x = 1
+[[tables]]
+x = 2
+
+[[texts]]
+label = "a"
+
+[[structs]]
+name = "first"
+
+[by_struct]
+one = { name = "second" }
+'
+
+fn test_decode_enum_in_array() {
+	c := toml.decode[Collections](toml_text) or { panic(err) }
+	assert c.titles == [JobTitle.worker, JobTitle.executive, JobTitle.worker]
+}
+
+fn test_decode_enum_in_map() {
+	c := toml.decode[Collections](toml_text) or { panic(err) }
+	assert c.by_title == {
+		'main': JobTitle.executive
+	}
+}
+
+fn test_decode_maps_in_array() {
+	c := toml.decode[Collections](toml_text) or { panic(err) }
+	assert c.tables == [
+		{
+			'x': 1
+		}
+		{
+			'x': 2
+		},
+	]
+	assert c.texts == [{
+		'label': 'a'
+	}]
+}
+
+fn test_decode_map_of_maps() {
+	c := toml.decode[Collections](toml_text) or { panic(err) }
+	assert c.by_table == {
+		'main': {
+			'x': 7
+		}
+	}
+}
+
+fn test_decode_map_of_arrays() {
+	c := toml.decode[Collections](toml_text) or { panic(err) }
+	assert c.by_list == {
+		'nums': [1, 2, 3]
+	}
+}
+
+fn test_decode_arrays_of_arrays() {
+	c := toml.decode[Collections](toml_text) or { panic(err) }
+	assert c.lists == [
+		[1, 2]
+		[3],
+	]
+}
+
+fn test_decode_struct_collections_still_work() {
+	c := toml.decode[Collections](toml_text) or { panic(err) }
+	assert c.structs == [Item{'first'}]
+	assert c.by_struct == {
+		'one': Item{'second'}
+	}
+	assert c.timestamps == [toml.DateTime{'2026-01-02T03:04:05Z'}]
+	assert c.by_day == {
+		'start': toml.Date{'2026-01-02'}
+	}
+}
+
+fn test_decode_skips_non_table_in_map_array() {
+	c := toml.decode[Collections]('tables = [1, { x = 3 }, "y"]') or { panic(err) }
+	// The elements that are not tables are skipped.
+	assert c.tables == [{
+		'x': 3
+	}]
+}
+
+fn test_decode_map_skips_non_table_value() {
+	c := toml.decode[Collections]('[by_table]\nnope = 1\nyes = { x = 2 }\n') or { panic(err) }
+	assert c.by_table == {
+		'yes': {
+			'x': 2
+		}
+	}
+}
+
+fn test_decode_collections_round_trip() {
+	original := Collections{
+		titles:   [JobTitle.worker, JobTitle.executive]
+		tables:   [{
+			'x': 1
+		}]
+		by_table: {
+			'main': {
+				'x': 7
+			}
+		}
+		by_list:  {
+			'nums': [1, 2, 3]
+		}
+		lists:    [[1, 2], [3]]
+		structs:  [Item{'first'}]
+	}
+	encoded := toml.encode[Collections](original)
+	assert toml.decode[Collections](encoded)! == original
+}

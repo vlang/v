@@ -204,6 +204,24 @@ fn decode_narrow_int_array[T](values []Any) []T {
 	return arr
 }
 
+// decode_enum_array decodes `values` into a `[]T` of enums. Enum values are
+// stored as their number in TOML, like they are for a plain enum field.
+fn decode_enum_array[T](values []Any) []T {
+	mut arr := []T{cap: values.len}
+	for value in values {
+		arr << unsafe { T(value.int()) }
+	}
+	return arr
+}
+
+// decode_array_element decodes `value` into the array `val`. The element type is
+// taken from `val`, which is what makes an array of arrays decodable.
+fn decode_array_element[T](mut val T, value Any) {
+	$if T is $array {
+		val = decode_array(val, value.array())
+	}
+}
+
 fn decode_array[T](current []T, values []Any) []T {
 	$if T is string {
 		return values.map(it.string())
@@ -229,6 +247,26 @@ fn decode_array[T](current []T, values []Any) []T {
 		return values.map(it.time())
 	} $else $if T is Any {
 		return values
+	} $else $if T is $enum {
+		return decode_enum_array[T](values)
+	} $else $if T is $map {
+		mut arr := []T{cap: values.len}
+		for value in values {
+			if value is map[string]Any {
+				mut item := T{}
+				decode_map_element[T](mut item, value)
+				arr << item
+			}
+		}
+		return arr
+	} $else $if T is $array {
+		mut arr := []T{cap: values.len}
+		for value in values {
+			mut item := T{}
+			decode_array_element[T](mut item, value)
+			arr << item
+		}
+		return arr
 	} $else $if T is $struct {
 		mut decoded := []T{cap: values.len}
 		for value in values {
@@ -273,12 +311,22 @@ fn decode_map[K, T](current map[K]T, values map[string]Any) map[K]T {
 			decoded[key] = value.date()
 		} $else $if T is Time {
 			decoded[key] = value.time()
-		} $else $if T is Any {
+} $else $if T is Any {
 			decoded[key] = value
+		} $else $if T is $enum {
+			decoded[key] = unsafe { T(value.int()) }
 		} $else $if T is $map {
 			if value is map[string]Any {
 				mut item := decode_map(T{}, value)
 				decoded[key] = item.move()
+			}
+		} $else $if T is $array {
+			// See the matching branch in `decode_array`: a scalar or a table is
+			// not an array element.
+			if value is []Any {
+				mut item := T{}
+				decode_array_element[T](mut item, value)
+				decoded[key] = item
 			}
 		} $else $if T is $struct {
 			if value is map[string]Any {
@@ -290,7 +338,7 @@ fn decode_map[K, T](current map[K]T, values map[string]Any) map[K]T {
 			return current
 		}
 	}
-	$if T is string || T is bool || T is int || T is i64 || T is u64 || T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 || T is f32 || T is f64 || T is Any || T is $struct || T is $map {
+	$if T is string || T is bool || T is int || T is i64 || T is u64 || T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 || T is f32 || T is f64 || T is Any || T is $enum || T is $array || T is $struct || T is $map {
 		return decoded
 	} $else {
 		return current
