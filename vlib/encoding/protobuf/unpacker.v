@@ -60,9 +60,19 @@ pub fn (u &Unpacker) remaining() int {
 	return u.data.len - u.pos
 }
 
-// pos_ returns the current read offset.
+// offset returns the current read offset.
 pub fn (u &Unpacker) offset() int {
 	return u.pos
+}
+
+// seek moves the read position back to `pos`.
+//
+// It exists for the one place a caller needs to re-read something: the generic
+// decoder peeks a tag to find out which field comes next, and when the tag
+// turns out to belong to the enclosing message it rewinds so the enclosing loop
+// reads it again.
+pub fn (mut u Unpacker) seek(pos int) {
+	u.pos = pos
 }
 
 // read_tag reads a field tag, returning the field number and wire type. A tag

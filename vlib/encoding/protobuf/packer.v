@@ -103,6 +103,12 @@ pub fn (mut p Packer) write_uint32(field_number int, value u32) {
 	put_varint(mut p.buf, u64(value))
 }
 
+// write_uint64 writes a `uint64` field.
+pub fn (mut p Packer) write_uint64(field_number int, value u64) {
+	p.write_tag(field_number, .varint)
+	put_varint(mut p.buf, value)
+}
+
 // write_int32 writes an `int32` field. A negative value is sign-extended to 64
 // bits, so it costs ten bytes, which is what the spec requires.
 pub fn (mut p Packer) write_int32(field_number int, value i32) {
