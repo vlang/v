@@ -948,6 +948,7 @@ struct VarTypeBinding {
 	name            string
 	typ             string
 	raw_typ         string
+	heap_value_typ  string
 	is_implicit_err bool
 mut:
 	is_ref_param bool
@@ -2834,6 +2835,15 @@ fn (t &Transformer) raw_var_type(name string) string {
 		return if binding.raw_typ.len > 0 { binding.raw_typ } else { binding.typ }
 	}
 	return ''
+}
+
+// typeof_var_type keeps heap storage indirection out of source type reflection.
+fn (t &Transformer) typeof_var_type(name string) string {
+	i := t.var_type_index(name)
+	if i >= 0 && t.var_types[i].heap_value_typ.len > 0 {
+		return t.var_types[i].heap_value_typ
+	}
+	return t.raw_var_type(name)
 }
 
 // declared_var_spelling returns the type of `name` as its declaration wrote it, when the
@@ -7029,18 +7039,19 @@ fn (t &Transformer) closure_return_candidate_use_is_safe(id flat.NodeId, name st
 // memdup's it); any other initializer is copied into a stack temp and memdup'd. Subsequent
 // `v.field = ..` writes then mutate the heap object the returned pointer alias also sees.
 fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string, elem_typ string) []flat.NodeId {
+	raw_typ := t.raw_var_type(var_name)
 	rhs_id := t.a.child(&node, 1)
 	rhs := t.a.nodes[int(rhs_id)]
 	mut stmts := []flat.NodeId{}
 	transformed_init := t.transform_expr(rhs_id)
 	// Statements lifted out while transforming the initializer must precede the heap decl.
 	t.drain_pending(mut stmts)
-	stmts << t.heap_escaping_value_decl(var_name, elem_typ, transformed_init, rhs.kind == .struct_init)
+	stmts << t.heap_escaping_value_decl(var_name, elem_typ, raw_typ, transformed_init, rhs.kind == .struct_init)
 	return stmts
 }
 
 // heap_escaping_value_decl moves an already-lowered value into a local's heap storage.
-fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string, value flat.NodeId, is_struct_init bool) []flat.NodeId {
+fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string, raw_typ string, value flat.NodeId, is_struct_init bool) []flat.NodeId {
 	ptr_typ := '&${elem_typ}'
 	mut stmts := []flat.NodeId{}
 	mut heap_rhs := flat.NodeId(0)
@@ -7059,6 +7070,11 @@ fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string
 	t.pointer_value_lvalues[var_name] = true
 	t.pointer_value_rvalues[var_name] = true
 	stmts << t.make_decl_assign_typed(var_name, heap_rhs, ptr_typ)
+	i := t.var_type_index(var_name)
+	t.var_types[i] = VarTypeBinding{
+		...t.var_types[i]
+		heap_value_typ: if raw_typ.len > 0 { raw_typ } else { elem_typ }
+	}
 	return stmts
 }
 
@@ -23358,7 +23374,7 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 	}
 	if expr.kind == .ident {
 		if typ.len == 0 {
-			typ = t.raw_var_type(expr.value)
+			typ = t.typeof_var_type(expr.value)
 			if t.pointer_value_rvalues[expr.value] && typ.starts_with('&&') {
 				typ = typ[1..]
 			}
@@ -23833,7 +23849,7 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 		if node.children_count > 0 {
 			expr := t.a.child_node(&node, 0)
 			if expr.kind == .ident {
-				raw_type := t.raw_var_type(expr.value)
+				raw_type := t.typeof_var_type(expr.value)
 				if t.mut_param_values[expr.value] || (node.value.starts_with('&')
 					&& raw_type.len > 0 && !raw_type.starts_with('&')) {
 					return node.value.trim_string_left('&')
@@ -23853,7 +23869,7 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 	}
 	if expr.kind == .ident {
 		if typ.len == 0 {
-			typ = t.raw_var_type(expr.value)
+			typ = t.typeof_var_type(expr.value)
 			if t.pointer_value_rvalues[expr.value] && typ.starts_with('&&') {
 				typ = typ[1..]
 			}
