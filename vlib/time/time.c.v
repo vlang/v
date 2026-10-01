@@ -102,9 +102,10 @@ pub fn unix_now() i64 {
 
 // ticks returns the number of milliseconds since the UNIX epoch.
 // On Windows ticks returns the number of milliseconds elapsed since system start.
+// Its 64-bit uptime counter does not wrap after 49.7 days.
 pub fn ticks() i64 {
 	$if windows {
-		return C.GetTickCount()
+		return i64(C.v_time_ticks_ms())
 	} $else {
 		ts := C.timeval{}
 		C.gettimeofday(&ts, 0)
