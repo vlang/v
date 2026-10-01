@@ -1580,6 +1580,8 @@ Immutable array-reference parameters, including each variadic argument, also bor
 original elements. These rules also apply to array-reference parameters declared through aliases.
 Fixed array values introduced by guards, multi-declarations, loop bindings, or select receives
 also receive durable storage when passed to a retaining array-reference parameter.
+Indexed fixed elements of dynamic arrays retain their original backing buffer, including through
+managed slice aliases, so retained headers preserve writes and remain valid after owner cleanup.
 Borrowing does not clone elements or require a `clone()` method.
 Explicitly destroying owned source elements invalidates views of those elements, as with other
 borrowed slices.

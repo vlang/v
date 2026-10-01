@@ -31,10 +31,15 @@ pub enum ArrayFlags {
 	is_slice    // this array is a slice view into another array's managed buffer
 }
 
+// Bit 31 is reserved for compiler-owned aligned fixed-array backing. Future
+// public ArrayFlags members must leave it unused; it fits the flags' u32 storage.
+const array_flag_retained_aligned_fixed = ArrayFlags(u32(1) << 31)
+
 @[_packed]
 struct ArrayDataHeader {
 mut:
-	has_slices bool
+	has_slices           bool
+	retained_fixed_views bool
 }
 
 // Must be aligned to at least the maximum fundamental type alignment (pointer size)
@@ -63,6 +68,7 @@ fn alloc_array_data_uninit(total_size u64) voidptr {
 	raw := unsafe { malloc_uninit(array_data_allocation_size(total_size)) }
 	unsafe {
 		(&ArrayDataHeader(raw)).has_slices = false
+		(&ArrayDataHeader(raw)).retained_fixed_views = false
 		return &u8(raw) + array_data_header_size()
 	}
 }
@@ -103,6 +109,9 @@ fn (a array) data_header() &ArrayDataHeader {
 
 @[inline]
 fn (a array) buffer_has_slices() bool {
+	if a.flags.has(array_flag_retained_aligned_fixed) {
+		return true
+	}
 	if !a.flags.has(.managed) || a.data == unsafe { nil } {
 		return false
 	}
@@ -132,9 +141,39 @@ fn (mut a array) mark_buffer_has_slices() {
 	}
 }
 
+// Only compiler-generated fixed-element reference escapes retain a buffer.
+// Ordinary slices keep their existing owner lifetime and cleanup behavior.
+@[inline]
+fn (a array) retain_fixed_array_buffer() {
+	header := unsafe { a.data_header() }
+	if header == unsafe { nil } {
+		// Unmanaged fixed-array views borrow roots promoted by the transformer.
+		return
+	}
+	unsafe {
+		header.has_slices = true
+		header.retained_fixed_views = true
+	}
+}
+
+@[inline]
+fn (a array) buffer_has_retained_fixed_views() bool {
+	header := unsafe { a.data_header() }
+	return header != unsafe { nil } && unsafe { header.retained_fixed_views }
+}
+
+@[inline]
+fn (mut a array) mark_aligned_fixed_array_buffer() {
+	unsafe { a.flags.set(.nofree | array_flag_retained_aligned_fixed) }
+}
+
 @[inline]
 fn (mut a array) set_managed_flags(is_slice bool) {
 	unsafe {
+		if a.flags.has(array_flag_retained_aligned_fixed) {
+			a.flags.clear(.nofree | array_flag_retained_aligned_fixed)
+		}
+
 		a.flags.set(.managed)
 		if is_slice {
 			a.flags.set(.is_slice)
@@ -978,7 +1017,7 @@ fn (a array) slice(start int, _end int) array {
 	offset := u64(start) * u64(a.element_size)
 	data := unsafe { &u8(a.data) + offset }
 	l := end - start
-	mut flags := ArrayFlags.is_slice
+	mut flags := ArrayFlags.is_slice | (a.flags & ArrayFlags.managed)
 	if a.uses_noscan_data() {
 		unsafe { flags.set(.noscan_data) }
 	}
@@ -1001,7 +1040,7 @@ fn (a array) slice(start int, _end int) array {
 // This function always return a valid array.
 fn (a array) slice_ni(_start int, _end int) array {
 	unsafe { a.mark_buffer_has_slices() }
-	mut flags := ArrayFlags.is_slice
+	mut flags := ArrayFlags.is_slice | (a.flags & ArrayFlags.managed)
 	if a.uses_noscan_data() {
 		unsafe { flags.set(.noscan_data) }
 	}
@@ -1030,7 +1069,7 @@ fn (a array) slice_ni(_start int, _end int) array {
 		res := array{
 			element_size: a.element_size
 			data:         a.data
-			offset:       0
+			offset:       a.offset
 			len:          0
 			cap:          0
 			flags:        flags
@@ -1294,7 +1333,7 @@ pub fn (a array) reverse() array {
 @[unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
-		if !a.flags.has(.is_slice) && !a.flags.has(.nofree) {
+		if !a.flags.has(.is_slice) && !a.flags.has(.nofree) && !a.buffer_has_retained_fixed_views() {
 			unsafe { prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size)) }
 		}
 		return
@@ -1307,7 +1346,7 @@ pub fn (a &array) free() {
 	if a.flags.has(.is_slice) {
 		return
 	}
-	if a.flags.has(.nofree) {
+	if a.flags.has(.nofree) || a.buffer_has_retained_fixed_views() {
 		return
 	}
 	mblock_ptr := &u8(u64(a.data) - u64(a.offset))

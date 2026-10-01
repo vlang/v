@@ -12158,6 +12158,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_from_heap := map[string]bool{}
 	mut capture_heap_value_storage := map[string]bool{}
 	mut capture_heap_snapshots := map[string]bool{}
+	mut capture_array_param_snapshots := map[string]bool{}
 	mut capture_is_ref_param := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -12211,6 +12212,11 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				}
 				if capture_type.len == 0 || capture_type == 'unknown' {
 					capture_type = 'int'
+				}
+				if t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]
+					&& t.comptime_normalize_type_alias_chain(capture_type).starts_with('&[]') {
+					capture_type = capture_type[1..]
+					capture_array_param_snapshots[child.value] = true
 				}
 				if child.value in t.heaped_amp_locals && capture_type.starts_with('&') {
 					capture_type = capture_type[1..]
@@ -12475,7 +12481,10 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for capture_name in capture_names {
 		context_field_type := context_field_types[capture_name] or { continue }
 		mut value := t.make_ident(capture_name)
-		if capture_heap_snapshots[capture_name] or { false } {
+		if capture_array_param_snapshots[capture_name] or { false } {
+			value = t.array_lvalue_value(value, '&${context_field_type}')
+			t.set_node_typ(int(value), context_field_type)
+		} else if capture_heap_snapshots[capture_name] or { false } {
 			value = t.make_prefix(.mul, value)
 			t.set_node_typ(int(value), context_field_type)
 		} else if capture_from_heap[capture_name] or { false } {
@@ -12483,6 +12492,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		} else if capture_by_ref[capture_name] or { false } && context_field_type.starts_with('&') {
 			value = t.make_prefix(.amp, value)
 			t.set_node_typ(int(value), context_field_type)
+		}
+		if t.comptime_normalize_type_alias_chain(context_field_type).starts_with('[]') {
+			value = t.clone_owned_array_view_for_storage(value, context_field_type)
 		}
 		context_fields << t.make_named_field_init(capture_name, value, context_field_type)
 	}
@@ -13465,27 +13477,75 @@ fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_t
 	// A temporary has no declaration to promote and no other alias. Move its
 	// element bytes to durable owning storage before exposing an array reference.
 	source_is_multi_return_value := multi_return_fixed_array_arg_marker in t.a.nodes[int(source_id)].generic_params()
-	borrowed := !source_is_multi_return_value && (t.expr_can_take_address(source_id)
-		|| (t.node_type(source_id).starts_with('&')
-			&& t.is_fixed_array_type(t.unaliased_value_type(source_id))))
+	borrowed := !source_is_multi_return_value && !t.expr_is_overloaded_index_result(source_id)
+		&& (t.expr_can_take_address(source_id)
+			|| (t.node_type(source_id).starts_with('&')
+				&& t.is_fixed_array_type(t.unaliased_value_type(source_id))))
 	mut storage_id := source_id
-	if !borrowed {
+	if borrowed {
+		storage_id = t.retain_fixed_array_index_containers(t.transform_expr(source_id))
+	} else {
 		value_name := t.new_temp('fixed_array_source')
 		value := t.transform_expr(source_id)
 		t.pending_stmts << t.make_stack_value_decl_assign_typed(value_name, value, fixed_type)
 		addr := t.make_prefix(.amp, t.make_ident(value_name))
-		storage_id = t.make_cast('&${fixed_type}', t.make_memdup_call_for_type(addr, fixed_type),
-			'&${fixed_type}')
+		mut aligned := map[string]bool{}
+		storage_id = if t.heap_storage_has_aligned_struct(fixed_type, mut aligned) {
+			t.make_cast('&${fixed_type}', t.make_memdup_call_for_type(addr, fixed_type), '&${fixed_type}')
+		} else {
+			addr
+		}
 	}
-	view := t.fixed_array_value_to_array_no_alloc(storage_id, fixed_type, array_type)
+	mut aligned_storage := map[string]bool{}
+	owned_managed_buffer := !borrowed && !t.heap_storage_has_aligned_struct(fixed_type, mut aligned_storage)
+	view := if owned_managed_buffer {
+		t.fixed_array_data_to_array(storage_id, fixed_type, array_type)
+	} else {
+		t.fixed_array_data_to_array_no_alloc(storage_id, fixed_type, array_type)
+	}
 	view_name := t.new_temp('fixed_array_view')
 	t.pending_stmts << t.make_decl_assign_typed(view_name, view, array_type)
 	if borrowed {
 		flags := t.make_selector(t.make_ident(view_name), 'flags', 'ArrayFlags')
 		slice_flag := t.make_selector(t.make_ident('ArrayFlags'), 'is_slice', 'ArrayFlags')
 		t.pending_stmts << t.make_assign(flags, slice_flag)
+	} else if !owned_managed_buffer {
+		// Aligned temporaries have no outside owner. Preserve that allocation's
+		// lifetime without changing its alignment or allocator family.
+		t.mark_fn_used('array.mark_aligned_fixed_array_buffer')
+		t.pending_stmts << t.make_expr_stmt(t.make_method_call(t.make_ident(view_name), 'mark_aligned_fixed_array_buffer', []flat.NodeId{}))
 	}
 	return t.make_ident(view_name)
+}
+
+// Retained fixed elements share their indexed owner buffer. Managed slices
+// identify that original buffer through their preserved allocation provenance.
+fn (mut t Transformer) retain_fixed_array_index_containers(value flat.NodeId) flat.NodeId {
+	node := t.a.nodes[int(value)]
+	if node.children_count == 0 || node.kind !in [.index, .selector, .paren, .prefix] {
+		return value
+	}
+	mut children := t.a.children_of(&node).clone()
+	children[0] = t.retain_fixed_array_index_containers(children[0])
+	if node.kind == .index && !t.is_range_index_expr(value) {
+		base_type := t.comptime_normalize_type_alias_chain(t.node_type(children[0]))
+		value_type := t.comptime_normalize_type_alias_chain(t.node_type(value))
+		if base_type.trim_left('&').starts_with('[]') && !value_type.starts_with('&')
+			&& !value_type.starts_with('[]') && !value_type.starts_with('map[') {
+			mut base := t.stabilize_transformed_lvalue_for_reuse(children[0])
+			if !t.expr_is_plain_lvalue(base) {
+				base = t.stable_transformed_expr_for_reuse(base, base_type, 'fixed_array_container')
+			}
+			array_value := t.array_lvalue_value(base, base_type)
+			t.mark_fn_used('array.retain_fixed_array_buffer')
+			t.pending_stmts << t.make_expr_stmt(t.make_method_call(array_value, 'retain_fixed_array_buffer', []flat.NodeId{}))
+			children[0] = base
+			for i in 1 .. children.len {
+				children[i] = t.stabilize_transformed_lvalue_component(children[i], 'fixed_array_container_index')
+			}
+		}
+	}
+	return t.copy_node_with_children(node, children)
 }
 
 // fixed_array_range_view lowers `fixed[a..b]`, where the result is written to, to a slice of

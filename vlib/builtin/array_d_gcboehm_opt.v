@@ -16,6 +16,7 @@ fn alloc_array_data_noscan_uninit(total_size u64) voidptr {
 	raw := unsafe { malloc_noscan_uninit(array_data_allocation_size(total_size)) }
 	unsafe {
 		(&ArrayDataHeader(raw)).has_slices = false
+		(&ArrayDataHeader(raw)).retained_fixed_views = false
 		return &u8(raw) + array_data_header_size()
 	}
 }

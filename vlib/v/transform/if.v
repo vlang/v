@@ -432,18 +432,23 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 	if t.has_ierror_interface() {
 		missing_error := t.make_map_key_missing_error()
 		if t.is_optional_type_name(value_type) {
-			children << t.make_decl_assign_typed('err', t.make_struct_init('IError'), 'IError')
+			t.append_implicit_err_decl(mut children, t.make_struct_init('IError'))
 			ptr_found := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
 			ptr_value := t.make_prefix(.mul, t.make_cast('&${value_type}', t.make_ident(ptr_name),
 				'&${value_type}'))
 			stored_error := t.make_selector(ptr_value, 'err', 'IError')
+			err_target := if t.heaped_amp_locals['err'] {
+				t.make_prefix(.mul, t.make_ident('err'))
+			} else {
+				t.make_ident('err')
+			}
 			children << t.make_if(ptr_found, t.make_block([
-				t.make_assign(t.make_ident('err'), stored_error),
+				t.make_assign(err_target, stored_error),
 			]), t.make_block([
-				t.make_assign(t.make_ident('err'), missing_error),
+				t.make_assign(err_target, missing_error),
 			]))
 		} else {
-			children << t.make_decl_assign_typed('err', missing_error, 'IError')
+			t.append_implicit_err_decl(mut children, missing_error)
 		}
 	}
 	if context := return_context {
@@ -1228,9 +1233,9 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
 	mut err_decls := []flat.NodeId{cap: 1}
+	err_scope := t.enter_implicit_err_scope()
 	t.append_implicit_err_decl(mut err_decls, t.make_selector(t.make_ident(tmp_name), 'err',
 		'IError'))
-	err_scope := t.enter_implicit_err_scope()
 	else_block0 := if else_node.kind == .if_expr {
 		t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
 	} else {

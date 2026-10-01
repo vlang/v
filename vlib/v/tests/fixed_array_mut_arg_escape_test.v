@@ -1234,3 +1234,104 @@ fn test_mutable_fixed_loop_views_keep_original_or_temporary_backing_alive() {
 		assert read_retained_optional_fixed_reference(kept[1]) == [expected[0] + 10, expected[1] + 10]
 	}
 }
+
+@[noinline]
+fn references_from_dynamic_fixed_elements(slice_alias bool) []&[]int {
+	mut rows := [[601, 602]!, [611, 612]!]
+	mut kept := []&[]int{}
+	if slice_alias {
+		mut shifted := rows[1..]
+		kept << retain_immutable_array_reference(shifted[0])
+		shifted[0][0]++
+		assert rows[1][0] == 612
+	} else {
+		kept << retain_immutable_array_reference(rows[0])
+		kept << retain_immutable_array_reference(rows[0])
+		rows[0][0]++
+		assert read_retained_optional_fixed_reference(kept[0]) == [602, 602]
+		assert read_retained_optional_fixed_reference(kept[1]) == [602, 602]
+	}
+	return kept
+}
+
+fn test_dynamic_fixed_element_references_share_retained_owner_buffer() {
+	for slice_alias in [false, true] {
+		kept := references_from_dynamic_fixed_elements(slice_alias)
+		assert overwrite_stack() == 7
+		for reference in kept {
+			assert read_retained_optional_fixed_reference(reference) == if slice_alias {
+				[612, 612]
+			} else {
+				[602, 602]
+			}
+		}
+	}
+}
+
+struct FixedRowProvider {
+	seed int
+}
+
+@[noinline]
+fn (provider FixedRowProvider) [] (index int) [2]int {
+	return [provider.seed + index, provider.seed + index + 1]!
+}
+
+@[noinline]
+fn reference_from_overloaded_fixed_result() &[]int {
+	provider := FixedRowProvider{701}
+	return retain_immutable_array_reference(provider[2])
+}
+
+fn test_overloaded_fixed_index_result_has_owning_backing() {
+	kept := reference_from_overloaded_fixed_result()
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(kept) == [703, 704]
+}
+
+fn failing_retained_error(message string) !u64 {
+	return error(message)
+}
+
+@[noinline]
+fn append_implicit_error_addresses(mut out []&IError) {
+	err := u64(201)
+	failing_retained_error('outer') or {
+		out << &err
+		failing_retained_error('inner') or {
+			out << &err
+			0
+		}
+		out << &err
+		0
+	}
+	if value := failing_retained_error('guard') {
+		_ = value
+	} else {
+		out << &err
+	}
+	value := if value := failing_retained_error('value guard') {
+		value
+	} else {
+		out << &err
+		u64(0)
+	}
+	assert value == 0
+	assert err == 201
+}
+
+@[noinline]
+fn returned_implicit_error_address() &IError {
+	failing_retained_error('returned') or { return &err }
+	panic('unexpected success')
+}
+
+fn test_implicit_result_errors_keep_retained_binding_addresses() {
+	mut out := []&IError{}
+	append_implicit_error_addresses(mut out)
+	out << returned_implicit_error_address()
+	assert overwrite_stack() == 7
+	assert out.map((*it).msg()) == ['outer', 'inner', 'outer', 'guard', 'value guard', 'returned']
+	assert out[0] == out[2]
+	assert out[0] != out[1]
+}

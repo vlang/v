@@ -727,6 +727,29 @@ fn stored_generic_sum() ResourceGenericStorage[Resource] {
 	mut holder := Holder{[fresh()]!, "label".repeat(4)}
 	return keep_generic_sum(mut holder.values)
 }
+fn stored_indexed_row() &[]Resource {
+	mut rows := [[fresh()]!]
+	kept := keep_reference(mut rows[0])
+	rows[0][0].value = 23
+	return kept
+}
+fn capture_borrow(mut values []Resource) fn () int {
+	return fn [values] () int {
+		assert !dropped[values[0].id]
+		assert values[0].payload == "payload".repeat(4)
+		return values[0].value
+	}
+}
+fn stored_borrow_capture() fn () int {
+	mut holder := Holder{[fresh()]!, "label".repeat(4)}
+	kept := capture_borrow(mut holder.values)
+	holder.values[0].value = 31
+	return kept
+}
+fn check_borrow_capture() {
+	kept := stored_borrow_capture()
+	assert kept() == 0
+}
 fn keep_nested_source(mut inner ResourceStorageSum) ResourceStorageLayer { return inner }
 fn keep_optional_sum(mut values []Resource, mode int) ?ResourceStorageSum {
 	if mode == 0 { return none }
@@ -847,6 +870,15 @@ fn main() {
 	} else { assert false }
 	drop_owned(outer)
 	drop_owned(inner)
+	indexed_row := stored_indexed_row()
+	assert clones == 16
+	unsafe {
+		assert !dropped[(*indexed_row)[0].id]
+		assert (*indexed_row)[0].value == 0
+		dispose_reference(indexed_row)
+	}
+	check_borrow_capture()
+	assert clones == 17
 	assert dropped.len == next_id
 	println("ok")
 }
