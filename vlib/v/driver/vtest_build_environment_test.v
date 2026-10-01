@@ -139,3 +139,23 @@ fn test_custom_environment_facts_and_defines_are_kept() {
 		assert environment.defines.filter(it == 'lane_define').len == 1, environment.defines.str()
 	})
 }
+
+fn test_prod_build_facts_distinguish_implicit_and_explicit_tcc() {
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !v3_usable_tcc_compiler(bundled_tcc) {
+		eprintln('> skipping: no usable bundled tcc at ${bundled_tcc}')
+		return
+	}
+	with_clean_build_environment(fn [bundled_tcc] () {
+		for args in [['-prod'], ['-prod', '-cg'], ['-cg', '-prod'], ['-prod', '-parallel-cc']] {
+			implicit := vtest_build_environment(@VEXEROOT, args).facts
+			assert 'prod' in implicit, implicit.str()
+			assert 'tinyc' !in implicit, '${args}: ${implicit}'
+			mut explicit_args := args.clone()
+			explicit_args << ['-cc', bundled_tcc]
+			explicit := vtest_build_environment(@VEXEROOT, explicit_args).facts
+			assert 'prod' in explicit, explicit.str()
+			assert 'tinyc' in explicit, '${explicit_args}: ${explicit}'
+		}
+	})
+}
