@@ -3392,6 +3392,10 @@ the same memory location for multiple purposes.
 
 All the members of a union share the same memory location. This means that modifying one member
 automatically modifies all the rest. The largest union member defines the size of the union.
+When constructing a union that contains interface storage, V clears the entire storage before
+initializing the selected member. This also applies to interfaces inside nested union members.
+An inactive interface member with no valid type tag formats as `unknown interface value`.
+Accessing an inactive member still requires `unsafe` and does not create a valid interface value.
 
 ### Why use unions?
 
