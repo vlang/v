@@ -4,6 +4,7 @@ import os
 import crypto.sha256
 import testing
 import v.util.vtest
+import v.pref
 
 struct SelfTestShard {
 	index int
@@ -432,6 +433,29 @@ fn Config.init(vargs []string, targs []string) !Config {
 	return cfg
 }
 
+fn self_test_matches_filename(path string) bool {
+	if path.ends_with('_test.v') || path.ends_with('_test.c.v')
+		|| (testing.is_node_present && path.ends_with('_test.js.v')) {
+		return true
+	}
+	name := os.file_name(path)
+	if !name.ends_with('.v') || name.count('.') != 2 {
+		return false
+	}
+	stem := name.all_before_last('.v')
+	if !stem.all_before_last('.').ends_with('_test') {
+		return false
+	}
+	suffix := stem.all_after_last('.')
+	if pref.suffix_is_backend_name(suffix) {
+		return false
+	}
+	if arch := pref.arch_from_string(suffix) {
+		return arch == pref.host_arch()
+	}
+	return false
+}
+
 fn main() {
 	unbuffer_stdout()
 	os.chdir(vroot)!
@@ -459,8 +483,7 @@ fn main() {
 	mut tpaths_ref := &tpaths
 	for dir in cfg.test_dirs {
 		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref] (p string) {
-			if p.ends_with('_test.v') || p.ends_with('_test.c.v')
-				|| (testing.is_node_present && p.ends_with('_test.js.v')) {
+			if self_test_matches_filename(p) {
 				unsafe {
 					tpaths_ref[p] = true
 				}
