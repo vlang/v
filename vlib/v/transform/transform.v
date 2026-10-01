@@ -6474,9 +6474,10 @@ fn (t &Transformer) try_heap_escaping_amp(node flat.Node, rhs_id flat.NodeId) bo
 		return false
 	}
 	// The source local was moved to the heap at its declaration: the alias is now just that
-	// `&T` pointer (handled below), regardless of its rewritten pointer type.
+	// `&T` pointer (handled below), regardless of its rewritten pointer type. Under a
+	// smartcast `&v` is the address of the narrowed value inside `v`, not of `v` itself.
 	if amp_node.value in t.heaped_amp_locals {
-		return true
+		return !t.has_smartcast(amp_node.value)
 	}
 	if lhs.value !in t.escaping_amp_ptrs {
 		return false
@@ -22141,6 +22142,10 @@ fn (t &Transformer) pointer_storage_amp_decl_type(rhs_id flat.NodeId) ?string {
 	}
 	child := t.a.child_node(&node, 0)
 	if child.kind != .ident {
+		return none
+	}
+	if child.value in t.heaped_amp_locals && t.has_smartcast(child.value) {
+		// The address of a narrowed value lies inside the heap-moved local.
 		return none
 	}
 	mut vt := t.var_type(child.value)
