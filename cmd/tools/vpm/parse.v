@@ -139,6 +139,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 		}
 		clone_module_source(settings.vcs, m, ident, version, tmp_path, mut scope) or {
 			vpm_error('failed to install `${ident}`.', details: err.msg())
+			rmdir_all(tmp_path) or {}
 			p.errors++
 			return
 		}
@@ -202,6 +203,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 		}
 		clone_module_source(vcs, m, info.url, version, tmp_path, mut scope) or {
 			vpm_error('failed to install `${ident}`.', details: err.msg())
+			rmdir_all(tmp_path) or {}
 			p.errors++
 			return
 		}

@@ -23,7 +23,7 @@ fn create_local_git_module(repo_path string, module_name string) string {
 	os.mkdir_all(repo_path) or { panic(err) }
 	os.write_file(os.join_path(repo_path, 'v.mod'),
 		"Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
-	cmd_ok(@LOCATION, 'git init ${os.quoted_path(repo_path)}')
+	cmd_ok(@LOCATION, 'git init -b main ${os.quoted_path(repo_path)}')
 	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} add v.mod')
 	cmd_ok(@LOCATION,
 		'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "initial commit"')
@@ -149,6 +149,60 @@ fn test_locked_install_reuses_the_recorded_revision() {
 	assert installed_head != new_head
 }
 
+// Case: a locked revision that the clone source no longer holds fails the
+// install, instead of silently installing whatever HEAD a fresh clone sits on.
+fn test_locked_install_fails_when_the_recorded_revision_is_unreachable() {
+	// Note: the directory names in here are kept deliberately short. Under
+	// `v test`, VTMP gains a `tsession_*` component, and a clone's deepest
+	// `.git/objects/pack/pack-*.idx` path otherwise overflows MAX_PATH on
+	// Windows (`Filename too long` mid-clone).
+	repo_path := os.join_path(test_path, 'u_repo')
+	head := create_local_git_module(repo_path, 'upkg')
+	project_dir := os.join_path(test_path, 'u_proj')
+	os.mkdir_all(project_dir) or { panic(err) }
+	dep := repo_path.replace('\\', '/')
+	write_project_vmod(project_dir, [dep])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vu1'))
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok(@LOCATION, '${vexe} install')
+
+	// Replace the history of the source repository, and purge the objects of
+	// the old one: clones of a local repository share its whole object store,
+	// so the recorded revision has to be garbage-collected before a fresh
+	// clone can no longer provide it.
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} checkout --orphan freshroot')
+	os.write_file(os.join_path(repo_path, 'fresh.v'), 'module fresh\n') or { panic(err) }
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} add -A')
+	cmd_ok(@LOCATION,
+		'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "fresh history"')
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} branch -D main')
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} branch -M main')
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} reflog expire --expire=now --all')
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} gc --prune=now --quiet')
+	new_head := git_head(repo_path)
+	assert new_head != head
+
+	// The second install runs against a fresh module store, so the module has
+	// to be cloned again: the recorded revision is gone from the source, and
+	// the install must fail, even without `--locked`. Each run gets its own
+	// store/VTMP, so the leftover tmp clone of a failed run cannot collide
+	// with the next one (Windows cannot remove the read-only git objects).
+	test_utils.set_test_env(os.join_path(test_path, 'vu2'))
+	res := cmd_fail(@LOCATION, '${vexe} install')
+	assert res.output.contains('failed to install'), res.output
+	test_utils.set_test_env(os.join_path(test_path, 'vu3'))
+	res_verbose := cmd_fail(@LOCATION, '${vexe} install -v')
+	assert res_verbose.output.contains('failed to checkout'), res_verbose.output
+	test_utils.set_test_env(os.join_path(test_path, 'vu4'))
+	res_locked := cmd_fail(@LOCATION, '${vexe} install --locked')
+	assert res_locked.output.contains('failed to install'), res_locked.output
+}
+
 // Case: `--locked` refuses to install a dependency whose string no longer
 // matches the one recorded in the lockfile.
 fn test_locked_install_fails_when_the_dependency_changed() {
@@ -227,10 +281,15 @@ fn test_global_install_does_not_create_a_lockfile() {
 	create_local_git_module(repo_path, 'unlocked_pkg')
 	test_utils.set_test_env(os.join_path(test_path, 'vmodules_unlocked'))
 
-	old_dir := os.getwd()
+	// Run from a dedicated directory without a v.mod, independent of whatever
+	// directory an earlier test left behind: a plain install is not a project
+	// dependency resolution, so no lockfile is recorded anywhere.
+	run_dir := os.join_path(test_path, 'unlocked_run_dir')
+	os.mkdir_all(run_dir) or { panic(err) }
+	os.chdir(run_dir) or { panic(err) }
 	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
 	assert res.output.contains('Installed `unlocked_pkg`'), res.output
-	assert !os.exists(os.join_path(old_dir, lockfile_name)), 'no lockfile is recorded for a plain install'
+	assert !os.exists(os.join_path(run_dir, lockfile_name)), 'no lockfile is recorded for a plain install'
 	assert !os.exists(os.join_path(test_path, lockfile_name))
 }
 

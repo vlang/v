@@ -127,6 +127,9 @@ fn head_revision(dir string) string {
 		return ''
 	}
 	res := os.execute_opt('git -C ${os.quoted_path(dir)} rev-parse HEAD') or { return '' }
+	if res.exit_code != 0 {
+		return ''
+	}
 	return res.output.trim_space()
 }
 
@@ -139,24 +142,31 @@ fn head_commit_unix_ts(dir string) i64 {
 		return 0
 	}
 	res := os.execute_opt('git -C ${os.quoted_path(dir)} log -1 --format=%ct') or { return 0 }
+	if res.exit_code != 0 {
+		return 0
+	}
 	return res.output.trim_space().i64()
 }
 
 // checkout switches the git checkout in `dir` to the revision `rev`, e.g. the
 // full SHA recorded for a module in the lockfile of a project. `hg` checkouts
-// are left untouched, since a lockfile records git revisions only.
-fn (vcs VCS) checkout(dir string, rev string) {
+// are left untouched, since a lockfile records git revisions only. A failed
+// checkout is an error: installing whatever HEAD the clone happens to sit on
+// instead would silently defeat the pinning the lockfile exists for.
+fn (vcs VCS) checkout(dir string, rev string) ! {
 	if vcs != .git {
 		return
 	}
 	if rev == '' || rev.starts_with('-') || rev.contains_any(' \0\r\n') {
-		vpm_error('refusing to checkout the invalid revision `${rev}`.')
-		return
+		return error('refusing to checkout the invalid revision `${rev}`.')
 	}
 	cmd := 'git -C ${os.quoted_path(dir)} checkout ${rev}'
 	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
-	os.execute_opt(cmd) or {
-		vpm_error('failed to checkout `${rev}` in `${fmt_mod_path(dir)}`.', details: err.msg())
+	res := os.execute_opt(cmd) or {
+		return error('failed to checkout `${rev}` in `${fmt_mod_path(dir)}`: ${err.msg()}')
+	}
+	if res.exit_code != 0 {
+		return error('failed to checkout `${rev}` in `${fmt_mod_path(dir)}`: ${res.output.trim_space()}')
 	}
 }
 

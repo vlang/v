@@ -248,7 +248,7 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 		} else {
 			verbose_println('Cloning `${entry.url}` at the locked revision `${entry.revision}` ...')
 			vcs.clone(entry.url, '', tmp_path)!
-			vcs.checkout(tmp_path, entry.revision)
+			vcs.checkout(tmp_path, entry.revision)!
 			return
 		}
 	} else if settings.is_locked && scope.active {
