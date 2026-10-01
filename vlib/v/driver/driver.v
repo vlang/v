@@ -2127,8 +2127,7 @@ fn executable_path_for_run(path string) string {
 }
 
 fn input_implies_building_v(input_file string) bool {
-	normalized := input_file.replace('\\', '/').trim_right('/')
-	if normalized.all_after_last('/') == 'v.v' {
+	if input_is_cmd_v(input_file) || input_is_v3_compiler_entry(input_file) {
 		return true
 	}
 	if os.is_dir(input_file) {
@@ -12153,11 +12152,8 @@ pub fn run(args []string) {
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
 	pre_tc.building_v_fast = building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
-	// Missing imports are rare error paths and need the authoritative serial
-	// diagnostic pass, even for an otherwise-fast parallel self-host build.
-	pre_tc.valid_diagnostic_fast = building_v && a.missing_imports.len == 0
-		&& os.getenv('V3_NO_VALID_DIAGNOSTIC_FAST') == ''
-	pre_tc.valid_resolution_fast = building_v && os.getenv('V3_NO_VALID_RESOLUTION_FAST') == ''
+	// Self-host scheduling does not prove the input is semantically valid. Keep
+	// diagnostic and expression validation enabled for compiler builds as well.
 	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
 	mut used_fns := map[string]bool{}
 	mut program_used_fns := map[string]bool{}
