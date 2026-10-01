@@ -12281,6 +12281,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_from_context := map[string]bool{}
 	mut capture_from_heap := map[string]bool{}
 	mut capture_heap_slots := map[string]bool{}
+	mut capture_heap_snapshots := map[string]bool{}
 	mut capture_is_ref_param := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -12336,12 +12337,13 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 					capture_type = 'int'
 				}
 				if child.value in t.heaped_amp_locals && capture_type.starts_with('&') {
-					capture_heap_slots[child.value] = true
-				}
-				if child.value in t.heaped_amp_locals && capture_type.starts_with('&')
-					&& t.is_fixed_array_type(capture_type[1..]) {
 					capture_type = capture_type[1..]
-					capture_from_heap[child.value] = true
+					if t.is_fixed_array_type(capture_type) {
+						capture_heap_slots[child.value] = true
+						capture_from_heap[child.value] = true
+					} else {
+						capture_heap_snapshots[child.value] = true
+					}
 				}
 				if t.active_specialization_args.len > 0 {
 					specialized_capture_type := t.subst_type(capture_type, t.active_specialization_args)
@@ -12600,7 +12602,10 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for capture_name in capture_names {
 		context_field_type := context_field_types[capture_name] or { continue }
 		mut value := t.make_ident(capture_name)
-		if capture_from_heap[capture_name] or { false } {
+		if capture_heap_snapshots[capture_name] or { false } {
+			value = t.make_prefix(.mul, value)
+			t.set_node_typ(int(value), context_field_type)
+		} else if capture_from_heap[capture_name] or { false } {
 			t.set_node_typ(int(value), context_field_type)
 		} else if capture_by_ref[capture_name] or { false } && context_field_type.starts_with('&') {
 			value = t.make_prefix(.amp, value)
