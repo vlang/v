@@ -6067,6 +6067,11 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	if name == '' || is_regular_v_test_file(tc.cur_file) {
 		return none
 	}
+	// A module's own C declaration is its local view of the external type.
+	// The canonical visibility entry may belong to a different module's mirror.
+	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, name) in tc.c_struct_scoped_fields {
+		return none
+	}
 	mut candidates := []string{}
 	for candidate in [name, visible_mutation_fn_lookup_name(name)] {
 		if candidate.len > 0 && candidate !in candidates {
@@ -11432,6 +11437,23 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 			tc.collect_selected_file_for_in_called_fns(node)
 			return
 		}
+		.fn_literal {
+			tc.collect_selected_file_fn_body_called_fns(node)
+			return
+		}
+		.lambda_expr {
+			if node.children_count == 0 {
+				return
+			}
+			tc.push_scope()
+			for i in 0 .. node.children_count - 1 {
+				param := tc.a.child_node(&node, i)
+				tc.cur_scope.insert(param.value, unknown_type('lambda parameter'))
+			}
+			tc.collect_selected_file_node_called_fns(tc.a.child(&node, node.children_count - 1))
+			tc.pop_scope()
+			return
+		}
 		.call {
 			if name := tc.selected_file_call_name(node) {
 				tc.enqueue_selected_file_fn(name)
@@ -11443,6 +11465,11 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 			// so a local sharing a function or import name does not keep it.
 			if name := tc.fn_value_decl_key(node) {
 				tc.enqueue_selected_file_fn(name)
+			} else if node.kind == .selector && node.children_count > 0
+				&& tc.fn_value_shadowed_by_value(node) {
+				if name := tc.selected_file_receiver_method_name(tc.a.child(&node, 0), node.value) {
+					tc.enqueue_selected_file_fn(name)
+				}
 			}
 		}
 		else {}
