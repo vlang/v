@@ -66,45 +66,17 @@ fn main() {
 
 ## Struct conversion
 
-TOML `string`s can be decoded into a struct with `toml.decode[T]`, and a struct can
-be encoded into TOML with `toml.encode[T]`. An already parsed document can also be
-decoded directly with `doc.decode[T]()`.
+`toml.decode[T]` decodes TOML text into a struct and `toml.encode[T]` encodes a struct
+as TOML. A field maps to the key of the same name; `@[toml: <name>]` changes the key
+and `@[skip]` ignores the field. Fields missing from the document keep their default
+values. A `from_toml(toml.Any)` or `to_toml() string` method on `T` replaces the
+generic conversion.
 
-```v
-import toml
-
-struct Config {
-	name string
-}
-
-config := toml.decode[Config]('name = "Tom"') or { panic(err) }
-assert config.name == 'Tom'
-assert toml.decode[Config](toml.encode[Config](config))! == config
-```
-
-### Field names and attributes
-
-A field is matched with the TOML key of the same name. The `@[toml: <name>]`
-attribute maps a field to a different key, and `@[skip]` removes a field from both
-directions:
-
-| V field                       | TOML key                |
-| ----------------------------- | ----------------------- |
-| `foo string`                  | `foo = '...'`           |
-| `asrt string @[toml: assert]` | `assert = '...'`        |
-| `secret string @[skip]`       | not encoded, not decoded |
-
-A field that is absent from the document keeps its default value, so `@[skip]` and
-missing keys both leave the declared default in place.
-
-If `T` has a `from_toml(any toml.Any)` or a `to_toml() string` method, that
-method replaces the generic conversion for the whole struct.
-
-### Embedded structs
-
-TOML has no equivalent of V struct embedding, so the fields of an embedded struct
-are treated as fields of the embedding struct, both when decoding and when
-encoding.
+TOML has no struct embedding, so the fields of an embedded struct are read from and
+written to the same table as the fields of the embedding struct. When decoding, a
+table named after the embedded struct (e.g. `[Db]`) is accepted too and takes
+precedence. Embedded `toml.Date`, `toml.Time` and `toml.DateTime` are scalars, stored
+under their type name (e.g. `Date = 2026-09-30`).
 
 ```v
 import toml
@@ -116,28 +88,16 @@ struct Db {
 
 struct Config {
 	Db
-	name string
+	name   string @[toml: app_name]
+	secret string @[skip]
 }
 
-const flat = 'host = "localhost"\nport = 5432\nname = "app"'
-// TOML keys written after a `[Db]` header belong to that table, so the embedding
-// struct's keys come before it.
-const tabled = 'name = "app"\n\n[Db]\nhost = "localhost"\nport = 5432'
-
-config := toml.decode[Config](flat) or { panic(err) }
+config := toml.decode[Config]('app_name = "app"\nhost = "localhost"\nport = 5432')!
 assert config.host == 'localhost' // promoted from Db
-assert config.port == 5432
 assert config.name == 'app'
-
-// Encoding flattens the embedded struct as well
-assert toml.decode[Config](toml.encode[Config](config))! == config
-
-// A table named after the embedded field is accepted too, and takes precedence
-// over the flattened keys.
-config2 := toml.decode[Config](tabled) or { panic(err) }
-assert config2.host == 'localhost'
-assert config2.port == 5432
-assert config2.name == 'app'
+encoded := toml.encode(config)
+assert encoded == 'host = "localhost"\nport = 5432\napp_name = "app"'
+assert toml.decode[Config](encoded)! == config
 ```
 
 ## Value retrieval
