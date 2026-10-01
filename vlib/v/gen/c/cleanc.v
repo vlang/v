@@ -10440,7 +10440,30 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 	mut deferred_windows_header_indices := []int{}
 	directives := g.ordered_c_directives(false)
 	use_system_libc := g.c_directives_use_system_libc()
+	mut hoisted_winsock_indices := []int{}
+	if g.target.os == 'windows' {
+		// Winsock2 must precede every header that includes windows.h on its own, not
+		// only the windows.h emitted here. builtin's <gc.h> does so for the Boehm GC,
+		// and builtin is ordered before the modules that use sockets: windows.h then
+		// loads the legacy winsock.h, whose declarations winsock2.h redefines. GCC and
+		// Clang only warn about that, MSVC rejects the translation unit.
+		for i, directive in directives {
+			if !c_directive_includes_winsock2(directive) {
+				continue
+			}
+			hoisted_winsock_indices << i
+			if directive.contains('\n') {
+				g.emit_preserved_c_directive(directive)
+				emitted = true
+			} else if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
+				emitted = true
+			}
+		}
+	}
 	for i, directive in directives {
+		if i in hoisted_winsock_indices {
+			continue
+		}
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
 		}
@@ -10618,6 +10641,21 @@ fn c_contains_preserved_system_include_directive(directive string) bool {
 		return false
 	}
 	return has_include
+}
+
+// c_directive_includes_winsock2 reports whether a lifted system include directive
+// includes <winsock2.h>, either on its own or inside a guarded multi-line block.
+fn c_directive_includes_winsock2(directive string) bool {
+	if !directive.contains('winsock2.h') || !c_contains_preserved_system_include_directive(directive) {
+		return false
+	}
+	for line in directive.split_into_lines() {
+		clean := trimmed_space(line)
+		if c_is_preserved_system_include_directive(clean) && c_directive_arg(clean) == '<winsock2.h>' {
+			return true
+		}
+	}
+	return false
 }
 
 fn c_is_ptrace_system_include_directive(directive string) bool {
