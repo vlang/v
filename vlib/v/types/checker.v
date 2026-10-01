@@ -11647,6 +11647,11 @@ fn (tc &TypeChecker) selected_file_call_name(node flat.Node) ?string {
 fn (tc &TypeChecker) selected_file_call_base_name(fn_node flat.Node) ?string {
 	match fn_node.kind {
 		.ident {
+			// A callable value, such as a function-typed parameter, shadows the
+			// declared or selectively imported function sharing its name.
+			if tc.bare_call_resolves_to_value(fn_node.value) {
+				return none
+			}
 			if local_name := tc.local_bare_fn_signature_key(fn_node.value) {
 				return local_name
 			}
@@ -11691,6 +11696,16 @@ fn (tc &TypeChecker) selected_file_call_base_name(fn_node flat.Node) ?string {
 	}
 
 	return none
+}
+
+// bare_call_resolves_to_value reports whether call resolution selects a binding in
+// scope for `name(...)` instead of a function declaration.
+fn (tc &TypeChecker) bare_call_resolves_to_value(name string) bool {
+	typ := tc.cur_scope.lookup(name) or { return false }
+	if _ := fn_type_from_type(typ) {
+		return true
+	}
+	return typ is Unknown || unresolved_generic_receiver_type(typ)
 }
 
 fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, method string) ?string {

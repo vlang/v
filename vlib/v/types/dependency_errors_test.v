@@ -51,6 +51,9 @@ fn test_shadowed_names_do_not_keep_unused_dependency_functions() {
 		'module main\nimport dep { unused_callback }\nfn main() { unused_callback := 1; f := fn [unused_callback] (value int) int { return unused_callback + value }; println(f(42)) }\n',
 		'module main\nimport dep { unused_callback }\nfn apply(cb fn (int) int) int { return cb(42) }\nfn main() { println(apply(|unused_callback| unused_callback)) }\n',
 		'module main\nimport dep\nfn main() { item := dep.FieldItem{renamed: 42}; println(item.renamed) }\n',
+		'module main\nimport dep { unused_callback }\nfn apply(unused_callback fn () int) int { return unused_callback() }\nfn good() int { return 42 }\nfn main() { println(apply(good)) }\n',
+		'module main\nimport dep { unused_callback }\nfn good() int { return 42 }\nfn main() { unused_callback := good; println(unused_callback()) }\n',
+		'module main\nimport dep { unused_callback }\nfn main() { f := fn (unused_callback fn () int) int { return unused_callback() }; println(f(fn () int { return 42 })) }\n',
 	] {
 		for parallel in [false, true] {
 			tc := dependency_checker_source(source, parallel)!
