@@ -650,6 +650,21 @@ pub fn (mut ts TestSession) add(file string) {
 	ts.files << file
 }
 
+fn test_file_is_target_of(this_os string, file string) bool {
+	test_stem := if file.ends_with('_test.c.v') {
+		file.all_before_last('_test.c.v')
+	} else {
+		file.all_before_last('_test.v')
+	}
+	// Keep the compound Android target intact instead of selecting Termux.
+	os_target := if test_stem.ends_with('_android_outside_termux') {
+		'android_outside_termux'
+	} else {
+		test_stem.all_after_last('_')
+	}
+	return pref.os_is_target_of(this_os, os_target)
+}
+
 // test processes the selected files, matching exclusions by their resolved paths.
 pub fn (mut ts TestSession) test() {
 	unbuffer_stdout()
@@ -668,24 +683,8 @@ pub fn (mut ts TestSession) test() {
 		if ts.build_tools && dot_relative_file.ends_with('_test.v') {
 			continue
 		}
-		// Skip OS-specific tests if we are not running that OS
-		// Special case for android_outside_termux because of its
-		// underscores
-		if file.ends_with('_android_outside_termux_test.v') {
-			if !pref.os_is_target_of(host_os, 'android_outside_termux') {
-				remaining_files << dot_relative_file
-				ts.skip_files << file
-				continue
-			}
-		}
-		// `foo_windows_test.c.v` names its OS the same way as `foo_windows_test.v`.
-		test_stem := if file.ends_with('_test.c.v') {
-			file.all_before_last('_test.c.v')
-		} else {
-			file.all_before_last('_test.v')
-		}
-		os_target := test_stem.all_after_last('_')
-		if !pref.os_is_target_of(host_os, os_target) {
+		// Skip OS-specific tests if we are not running that OS.
+		if !test_file_is_target_of(host_os, file) {
 			remaining_files << dot_relative_file
 			ts.skip_files << file
 			continue
