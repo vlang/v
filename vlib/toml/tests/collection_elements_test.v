@@ -17,6 +17,7 @@ struct Collections {
 	by_table   map[string]map[string]int
 	by_list    map[string][]int
 	lists      [][]int
+	matrix     []map[string][][]int
 	structs    []Item
 	by_struct  map[string]Item
 	timestamps []toml.DateTime
@@ -134,6 +135,42 @@ fn test_decode_map_skips_non_table_value() {
 			'x': 2
 		}
 	}
+}
+
+// `Any.array()` wraps a scalar in a singleton array and turns a table into its
+// values, so a source shape that is not an array must be skipped rather than
+// coerced into one.
+fn test_decode_skips_non_array_element() {
+	c := toml.decode[Collections]('lists = [1, [2, 3], { x = 4 }, "skip", [], [5]]') or {
+		panic(err)
+	}
+	assert c.lists == [
+		[2, 3]
+		[]
+		[5],
+	]
+}
+
+fn test_decode_map_skips_non_array_value() {
+	c := toml.decode[Collections]('[by_list]\nscalar = 1\ntable = { x = 2 }\ntext = "skip"\nempty = []\nvalid = [3, 4]\n') or {
+		panic(err)
+	}
+	assert c.by_list == {
+		'empty': []int{}
+		'valid': [3, 4]
+	}
+}
+
+fn test_decode_skips_non_array_element_in_nested_map_array() {
+	c := toml.decode[Collections]('matrix = [{ keep = [[1], 2, []], bad = 3 }]') or {
+		panic(err)
+	}
+	assert c.matrix == [{
+		'keep': [
+			[1]
+			[],
+		]
+	}]
 }
 
 fn test_decode_collections_round_trip() {

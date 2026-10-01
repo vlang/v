@@ -214,11 +214,13 @@ fn decode_enum_array[T](values []Any) []T {
 	return arr
 }
 
-// decode_array_element decodes `value` into the array `val`. The element type is
-// taken from `val`, which is what makes an array of arrays decodable.
-fn decode_array_element[T](mut val T, value Any) {
+// decode_array_element decodes the array `values` into the array `val`. The
+// element type is taken from `val`, which is what makes an array of arrays
+// decodable. Callers check that the source is an array, so that the scalar and
+// table wrapping of `Any.array()` cannot be reached from here.
+fn decode_array_element[T](mut val T, values []Any) {
 	$if T is $array {
-		val = decode_array(val, value.array())
+		val = decode_array(val, values)
 	}
 }
 
@@ -262,9 +264,13 @@ fn decode_array[T](current []T, values []Any) []T {
 	} $else $if T is $array {
 		mut arr := []T{cap: values.len}
 		for value in values {
-			mut item := T{}
-			decode_array_element[T](mut item, value)
-			arr << item
+			// `Any.array()` wraps a scalar in a singleton array and turns a table
+			// into its values, so the source shape is checked here instead.
+			if value is []Any {
+				mut item := T{}
+				decode_array_element[T](mut item, value)
+				arr << item
+			}
 		}
 		return arr
 	} $else $if T is $struct {
@@ -311,7 +317,7 @@ fn decode_map[K, T](current map[K]T, values map[string]Any) map[K]T {
 			decoded[key] = value.date()
 		} $else $if T is Time {
 			decoded[key] = value.time()
-} $else $if T is Any {
+		} $else $if T is Any {
 			decoded[key] = value
 		} $else $if T is $enum {
 			decoded[key] = unsafe { T(value.int()) }
