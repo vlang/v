@@ -9442,7 +9442,9 @@ fn (mut t Transformer) scan_for_in_escape_pass(node flat.Node, mut amp_ptrs map[
 	}
 	if header_end >= 3 {
 		container_id := t.a.child(&node, 2)
-		iter_type := t.comptime_normalize_type_alias_chain(t.detect_for_in_type(node)).trim_space()
+		// detect_for_in_type records the type it finds on the loop header, which is too
+		// early here: the names in scope still have the types of the previous function.
+		iter_type := t.comptime_normalize_type_alias_chain(t.node_type(container_id)).trim_space()
 		reference_iteration := node.op == .amp || iter_type.starts_with('&')
 		mut backing_id := container_id
 		mut fixed_backing := t.is_fixed_array_type(iter_type.trim_left('&'))
