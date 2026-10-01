@@ -452,8 +452,10 @@ fn append_implicit_error_addresses(mut out []&IError) {
 	err := u64(201)
 	failing_retained_error('outer') or {
 		out << &err
+		assert typeof(err).name == 'IError'
 		failing_retained_error('inner') or {
 			out << &err
+			assert typeof(err).name == 'IError'
 			0
 		}
 		out << &err

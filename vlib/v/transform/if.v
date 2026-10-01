@@ -48,7 +48,7 @@ fn (mut t Transformer) if_guard_source_clear_stmts(clear_id flat.NodeId) []flat.
 fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, value_type string) []flat.NodeId {
 	t.clear_heaped_local_binding(name)
 	if t.guard_value_needs_heap_storage(name, value_type) {
-		return t.heap_escaping_value_decl(name, value_type, value, false)
+		return t.heap_escaping_value_decl(name, value_type, value_type, value, false)
 	}
 	return [t.make_decl_assign_typed(name, value, value_type)]
 }

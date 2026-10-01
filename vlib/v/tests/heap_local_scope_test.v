@@ -149,3 +149,22 @@ fn test_mut_loop_variable_after_a_nested_scope() {
 	assert numbers == [u64(2), 3]
 	assert values.map(*it) == [u64(11), 12]
 }
+
+type HeapScopeAlias = int
+
+fn retained_type_names(mut values []&int, mut aliases []&HeapScopeAlias) []string {
+	x := 7
+	values << &x
+	y := HeapScopeAlias(8)
+	aliases << &y
+	return [typeof(x).name, typeof(y).name]
+}
+
+fn test_heap_promotion_preserves_semantic_type_reflection() {
+	mut values := []&int{}
+	mut aliases := []&HeapScopeAlias{}
+	assert retained_type_names(mut values, mut aliases) == ['int', 'HeapScopeAlias']
+	_ = use_the_stack(10)
+	assert *values[0] == 7
+	assert *aliases[0] == HeapScopeAlias(8)
+}

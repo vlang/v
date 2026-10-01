@@ -1291,7 +1291,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	if retained_fixed_backing {
 		backing_name := t.new_temp('for_fixed_backing')
 		retained_backing_decls = t.heap_escaping_value_decl(backing_name, actual_iter_type,
-			container, false)
+			actual_iter_type, container, false)
 		if int(optional_container) < 0 {
 			prefix << retained_backing_decls
 		}
