@@ -24671,7 +24671,27 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		}
 		g.writeln('const ${ct} ${qname} = ${init_str};')
 	} else {
-		g.writeln('const ${ct} ${qname} = ${expr_str};')
+		// A struct object cannot be initialized from a compound-literal rvalue
+		// (`= (my_ctx_t){.id = 1}`). gcc and tcc accept it, but MSVC's C front end rejects a
+		// compound literal as a file-scope initializer with C2099 "initializer is not a
+		// constant". Strip the redundant cast so a bare brace list is used, which is the form
+		// every supported compiler accepts and the form the V-struct path already produced.
+		// This is scoped to structs on purpose: for any other type a leading `(${ct})` can be a
+		// meaningful cast that has to survive. Without it `vlib/sokol/sgl`, and therefore every
+		// gg program, fails to build with `-cc msvc`.
+		mut init_str := expr_str
+		if default_init_unalias_type(v_type) is types.Struct {
+			cast_prefix := '(${ct})'
+			rest := if init_str.starts_with(cast_prefix) {
+				init_str[cast_prefix.len..].trim_space()
+			} else {
+				init_str
+			}
+			if rest.starts_with('{') {
+				init_str = rest
+			}
+		}
+		g.writeln('const ${ct} ${qname} = ${init_str};')
 	}
 	g.tc.cur_module = old_module
 }
