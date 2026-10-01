@@ -981,6 +981,14 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 	if expanded := t.build_return_map_index_if_guard_chain(if_node, ret_typ, extra_return_vals, source_return_id) {
 		return expanded
 	}
+	return_context := IfGuardReturnContext{
+		ret_typ:           ret_typ
+		extra_return_vals: extra_return_vals
+		source_return_id:  source_return_id
+	}
+	if expanded := t.expand_if_guard(if_node, return_context) {
+		return t.make_block(expanded)
+	}
 	cond_id := t.a.child(&if_node, 0)
 	cond_smartcasts := t.extract_all_is_exprs(cond_id)
 	else_smartcasts := t.extract_else_branch_smartcasts(cond_id)

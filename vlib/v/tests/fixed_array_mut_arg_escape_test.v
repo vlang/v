@@ -897,6 +897,10 @@ fn optional_fixed_guard_payload() ?[2]int {
 	return [241, 242]!
 }
 
+fn result_fixed_guard_payload() ![2]int {
+	return [321, 322]!
+}
+
 @[noinline]
 fn reference_from_generated_fixed_guard_binding(kind int) &[]int {
 	match kind {
@@ -919,7 +923,7 @@ fn reference_from_generated_fixed_guard_binding(kind int) &[]int {
 				return retain_immutable_array_reference(values)
 			}
 		}
-		else {
+		3 {
 			payloads := {
 				'hit': [271, 272]!
 			}
@@ -929,12 +933,44 @@ fn reference_from_generated_fixed_guard_binding(kind int) &[]int {
 				panic('expected a guard payload')
 			}
 		}
+		4 {
+			return if values := optional_fixed_guard_payload() {
+				retain_immutable_array_reference(values)
+			} else {
+				panic('expected an optional payload')
+			}
+		}
+		5 {
+			payloads := [[331, 332]!]
+			return if values := payloads[0] {
+				retain_immutable_array_reference(values)
+			} else {
+				panic('expected an array payload')
+			}
+		}
+		6 {
+			return if values := result_fixed_guard_payload() {
+				retain_immutable_array_reference(values)
+			} else {
+				panic(err)
+			}
+		}
+		else {
+			channel := chan [2]int{cap: 1}
+			channel <- [341, 342]!
+			return if values := <-channel {
+				retain_immutable_array_reference(values)
+			} else {
+				panic('expected a channel payload')
+			}
+		}
 	}
 	panic('expected a guard payload')
 }
 
 fn test_generated_fixed_guard_bindings_keep_retained_views_alive() {
-	for kind, expected in [[241, 242], [251, 252], [261, 262], [271, 272]] {
+	for kind, expected in [[241, 242], [251, 252], [261, 262], [271, 272], [241, 242], [331, 332],
+		[321, 322], [341, 342]] {
 		kept := reference_from_generated_fixed_guard_binding(kind)
 		assert overwrite_stack() == 7
 		assert read_retained_optional_fixed_reference(kept) == expected
