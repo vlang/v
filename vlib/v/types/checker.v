@@ -11393,14 +11393,25 @@ fn (mut tc TypeChecker) collect_selected_file_top_level_called_fns(node flat.Nod
 
 fn (mut tc TypeChecker) collect_selected_file_fn_body_called_fns(node flat.Node) {
 	tc.push_scope()
+	mut reached_params := false
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
+		if node.kind == .fn_literal && !reached_params && child.kind == .ident {
+			// Captures precede parameters. Bind them before checking the body,
+			// and keep scanning so prefix-only parameter scans see the parameters.
+			if child.value.len > 0 {
+				captured := tc.cur_scope.lookup(child.value) or { unknown_type('captured value') }
+				tc.cur_scope.insert(child.value, captured)
+			}
+			continue
+		}
 		if child.kind != .param {
 			if tc.prefix_param_scan {
 				break
 			}
 			continue
 		}
+		reached_params = true
 		if child.value.len > 0 {
 			tc.cur_scope.insert(child.value, tc.parse_type(child.typ))
 		}
@@ -11466,7 +11477,8 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 			if name := tc.fn_value_decl_key(node) {
 				tc.enqueue_selected_file_fn(name)
 			} else if node.kind == .selector && node.children_count > 0
-				&& tc.fn_value_shadowed_by_value(node) {
+				&& tc.fn_value_shadowed_by_value(node)
+				&& tc.selector_declared_value_type(node) == none {
 				if name := tc.selected_file_receiver_method_name(tc.a.child(&node, 0), node.value) {
 					tc.enqueue_selected_file_fn(name)
 				}

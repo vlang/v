@@ -14,7 +14,7 @@ fn dependency_checker_source(source string, parallel bool) !TypeChecker {
 	defer { os.rmdir_all(root) or {} }
 	dep := os.join_path(root, 'dep.v')
 	main := os.join_path(root, 'main.v')
-	os.write_file(dep, 'module dep\npub struct Item {\npub:\n\tname string\n}\npub fn describe(item Item) string { return item.missing }\npub fn rename(item Item) Item { item.name = "renamed"; return item }\npub fn (item Item) renamed() Item { item.name = "renamed"; return item }\npub fn wrapper(item Item) Item { return rename(item) }\npub fn unused() { unused_value := 1 }\npub fn unused_callback() int { return "invalid" }\n')!
+	os.write_file(dep, 'module dep\npub struct Item {\npub:\n\tname string\n}\npub fn describe(item Item) string { return item.missing }\npub fn rename(item Item) Item { item.name = "renamed"; return item }\npub fn (item Item) renamed() Item { item.name = "renamed"; return item }\npub fn wrapper(item Item) Item { return rename(item) }\npub fn unused() { unused_value := 1 }\npub fn unused_callback() int { return "invalid" }\npub struct FieldItem {\npub:\n\trenamed int\n}\npub fn (item FieldItem) renamed() int { return "invalid" }\n')!
 	os.write_file(main, source)!
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_files([dep, main])
@@ -47,7 +47,10 @@ fn test_shadowed_names_do_not_keep_unused_dependency_functions() {
 		'module main\nimport dep as _\nstruct Holder { rename int }\nfn main() { dep := Holder{ rename: 42 }; println(dep.rename) }\n',
 		'module main\nimport dep { unused_callback }\nfn main() { unused_callback := 42; println(unused_callback) }\n',
 		'module main\nimport dep { unused_callback }\nfn main() { f := fn (unused_callback int) int { return unused_callback }; println(f(42)) }\n',
+		'module main\nimport dep { unused_callback }\nfn main() { x := 1; f := fn [x] (unused_callback int) int { return unused_callback + x }; println(f(42)) }\n',
+		'module main\nimport dep { unused_callback }\nfn main() { unused_callback := 1; f := fn [unused_callback] (value int) int { return unused_callback + value }; println(f(42)) }\n',
 		'module main\nimport dep { unused_callback }\nfn apply(cb fn (int) int) int { return cb(42) }\nfn main() { println(apply(|unused_callback| unused_callback)) }\n',
+		'module main\nimport dep\nfn main() { item := dep.FieldItem{renamed: 42}; println(item.renamed) }\n',
 	] {
 		for parallel in [false, true] {
 			tc := dependency_checker_source(source, parallel)!
