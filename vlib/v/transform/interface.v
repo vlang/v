@@ -319,7 +319,11 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	}
 	mut source_is_smartcast_interface := false
 	if t.expr_has_smartcast(id) {
-		raw_source_type := t.raw_expr_type_without_smartcast(id)
+		raw_source_type := if node.kind == .index {
+			t.resolve_index_elem_type(node)
+		} else {
+			t.raw_expr_type_without_smartcast(id)
+		}
 		if t.resolve_interface_type_name(raw_source_type).len > 0 {
 			source_type = raw_source_type
 			source_is_smartcast_interface = true
@@ -430,7 +434,13 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return t.transform_interface_value_for_type(cloned, target_type, false)
 	}
 	if source_iface == iface_name {
-		expr := t.transform_expr(id)
+		// The target needs the complete interface value, including its type tag,
+		// rather than the concrete payload selected by a smartcast.
+		expr := if source_is_smartcast_interface {
+			t.make_plain_expr_for_smartcast(id)
+		} else {
+			t.transform_expr(id)
+		}
 		if source_type.len > 0 && int(expr) >= 0 {
 			t.set_node_typ(int(expr), source_type)
 		}
