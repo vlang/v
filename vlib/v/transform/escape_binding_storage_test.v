@@ -38,6 +38,43 @@ fn test_inner_pointer_declarations_shadow_and_restore_outer_storage_markers() {
 		assert t.heaped_amp_locals['values']
 		assert t.pointer_value_lvalues['values']
 		assert t.pointer_value_rvalues['values']
+		assert t.var_type('values') == '&[2]int'
+	}
+}
+
+fn test_single_shadow_declaration_reads_incoming_heap_storage_before_rebinding() {
+	for target in ['copied', 'value'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		_ = t.heap_escaping_value_decl('value', 'int', 'int', t.make_int_literal(1), false)
+		value := t.make_ident('value')
+		tc.register_synth_type(value, types.Type(types.int_))
+		start := t.a.children.len
+		t.a.children << [t.make_ident(target), value]
+		decl := t.a.add_node(flat.Node{
+			kind:           .decl_assign
+			typ:            'int'
+			children_start: start
+			children_count: 2
+			pos:            token.new_span(1, 1, 10)
+		})
+		lowered := t.transform_decl_assign_stmt(decl, t.a.nodes[int(decl)])
+		assert lowered.len > 0
+		mut reads_incoming_storage := false
+		for lowered_id in lowered {
+			copied := t.a.nodes[int(lowered_id)]
+			if copied.kind == .decl_assign && copied.children_count == 2 {
+				rhs := t.a.child_node(&copied, 1)
+				if rhs.kind == .prefix && rhs.op == .mul {
+					reads_incoming_storage = t.a.child_node(rhs, 0).value == 'value'
+				}
+			}
+		}
+		assert reads_incoming_storage
+		assert t.heaped_amp_locals['value'] == (target != 'value')
+		assert t.pointer_value_lvalues['value'] == (target != 'value')
+		assert t.pointer_value_rvalues['value'] == (target != 'value')
 	}
 }
 

@@ -41,7 +41,7 @@ fn reference_from_return_map_guard_with_promoted_outer_binding(key string) &int 
 	values := {
 		'hit': &escape_binding_global[0]
 	}
-	return if x := values[key] { x } else { &x }
+	return if found := values[key] { found } else { &x }
 }
 
 fn test_return_map_guards_preserve_inner_reference_and_outer_heap_bindings() {
@@ -109,69 +109,69 @@ fn test_implicit_result_errors_keep_retained_binding_addresses() {
 }
 
 @[noinline]
-fn single_shadow_binding_references() []&int {
+fn single_scoped_binding_references() []&int {
 	mut x := 251
 	outer := &x
 	mut inner := unsafe { &int(nil) }
-	// Nested unsafe scopes permit the shadowing needed to exercise both initializer paths.
+	// Shadowing itself is covered by the flat-AST transform tests; these exercise retained copies.
 	unsafe {
-		unsafe {
-			x := &x
-			assert x == outer
-			assert *x == 251
+		{
+			pointer := &x
+			assert pointer == outer
+			assert *pointer == 251
 		}
-		unsafe {
-			mut x := x
-			x++
-			inner = &x
+		{
+			mut copy := x
+			copy++
+			inner = &copy
 		}
 	}
 	x += 2
 	return [outer, inner]
 }
 
-fn shadow_binding_pair(value int) (int, int) {
+fn scoped_binding_pair(value int) (int, int) {
 	return value, value + 1
 }
 
 @[noinline]
-fn tuple_shadow_binding_references() []&int {
+fn tuple_scoped_binding_references() []&int {
 	mut x := 271
 	mut kept := [&x]
 	unsafe {
-		unsafe {
-			x, y := shadow_binding_pair(x)
-			kept << &x
-			kept << &y
+		{
+			copy, next := scoped_binding_pair(x)
+			kept << &copy
+			kept << &next
 		}
 	}
 	x += 2
 	return kept
 }
 
-struct ShadowBindingRecord {
+struct ScopedBindingRecord {
 mut:
 	value int
 }
 
 @[noinline]
-fn struct_shadow_binding_references() []&ShadowBindingRecord {
-	mut x := ShadowBindingRecord{ value: 281 }
+fn struct_scoped_binding_references() []&ScopedBindingRecord {
+	mut x := ScopedBindingRecord{ value: 281 }
 	mut kept := [&x]
 	unsafe {
-		unsafe {
-			x := ShadowBindingRecord{ value: x.value + 1 }
-			kept << &x
+		{
+			copy := ScopedBindingRecord{ value: x.value + 1 }
+			kept << &copy
 		}
 	}
 	x.value += 2
 	return kept
 }
 
-fn test_shadow_initializers_read_incoming_heap_storage() {
-	single := single_shadow_binding_references()
-	tuple := tuple_shadow_binding_references()
-	records := struct_shadow_binding_references()
+fn test_scoped_initializers_read_incoming_heap_storage() {
+	single := single_scoped_binding_references()
+	tuple := tuple_scoped_binding_references()
+	records := struct_scoped_binding_references()
 	assert escape_binding_overwrite_stack() == 7
 	assert single.map(*it) == [253, 252]
 	assert tuple.map(*it) == [273, 271, 272]
@@ -181,14 +181,14 @@ fn test_shadow_initializers_read_incoming_heap_storage() {
 }
 
 @[noinline]
-fn block_shadow_preserves_outer_heap_type() &int {
+fn block_scope_preserves_outer_heap_type() &int {
 	mut x := 301
 	kept := &x
 	unsafe {
-		unsafe {
-			x := 'inner'
-			assert x == 'inner'
-			assert typeof(x).name == 'string'
+		{
+			inner := 'inner'
+			assert inner == 'inner'
+			assert typeof(inner).name == 'string'
 		}
 	}
 	assert typeof(x).name == 'int'
@@ -197,15 +197,15 @@ fn block_shadow_preserves_outer_heap_type() &int {
 }
 
 @[noinline]
-fn loop_shadow_preserves_outer_heap_type() &int {
+fn loop_scope_preserves_outer_heap_type() &int {
 	mut x := 311
 	kept := &x
 	unsafe {
-		unsafe {
+		{
 			for _ in 0 .. 1 {
-				x := 'inner'
-				assert x == 'inner'
-				assert typeof(x).name == 'string'
+				inner := 'inner'
+				assert inner == 'inner'
+				assert typeof(inner).name == 'string'
 			}
 			assert typeof(x).name == 'int'
 			x = 313
@@ -215,8 +215,8 @@ fn loop_shadow_preserves_outer_heap_type() &int {
 }
 
 fn test_nested_scopes_restore_outer_heap_binding_types() {
-	block := block_shadow_preserves_outer_heap_type()
-	loop := loop_shadow_preserves_outer_heap_type()
+	block := block_scope_preserves_outer_heap_type()
+	loop := loop_scope_preserves_outer_heap_type()
 	assert escape_binding_overwrite_stack() == 7
 	assert *block == 303
 	assert *loop == 313

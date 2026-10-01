@@ -4,6 +4,36 @@ import v.flat
 import v.types
 import v.token
 
+fn test_plain_multi_declaration_copies_promoted_fixed_values_with_their_value_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed_type := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('values', '&[2]int')
+	t.heaped_amp_locals['values'] = true
+	t.pointer_value_lvalues['values'] = true
+	t.pointer_value_rvalues['values'] = true
+	value := t.make_ident('values')
+	tc.register_synth_type(value, fixed_type)
+	start := t.a.children.len
+	t.a.children << [t.make_ident('zero'), t.make_int_literal(0), t.make_ident('copied'), value]
+	decl := t.a.add_node(flat.Node{
+		kind:           .decl_assign
+		value:          '2'
+		children_start: start
+		children_count: 4
+		pos:            token.new_span(1, 1, 10)
+	})
+	lowered := t.transform_decl_assign_stmt(decl, t.a.nodes[int(decl)])
+	assert lowered.len == 2
+	copied := t.a.nodes[int(lowered[1])]
+	assert copied.typ == '[2]int'
+	assert t.var_type('copied') == '[2]int'
+	rhs := t.a.child_node(&copied, 1)
+	assert rhs.kind == .prefix && rhs.op == .mul
+	assert t.heaped_amp_locals['values']
+}
+
 fn add_fixed_array_reference_generic_struct(mut t Transformer, name string, field_text string) {
 	field := t.a.add_node(flat.Node{ kind: .field_decl, value: 'value', typ: field_text })
 	start := t.a.children.len

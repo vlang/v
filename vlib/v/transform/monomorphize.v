@@ -4073,6 +4073,10 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, speci
 	if t.memo_node_types {
 		t.begin_node_type_memo(specialization_nodes_start, t.a.nodes.len - 1)
 	}
+	clone_name := t.a.nodes[int(clone_id)].value
+	t.add_call_param_types_decl_key(clone_name, int(clone_id), file_name, module_name)
+	t.add_call_param_types_decl_key(transform_qualified_fn_name(module_name, clone_name),
+		int(clone_id), file_name, module_name)
 	t.transform_fn_body(int(clone_id))
 	t.end_node_type_memo()
 	t.node_type_memo = old_node_type_memo

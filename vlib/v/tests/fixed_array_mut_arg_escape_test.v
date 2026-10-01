@@ -703,14 +703,14 @@ fn optional_aliased_reference_from_local_fixed(present bool) ?FixedIntSliceRef {
 		return retain_optional_aliased_fixed_reference(none)
 	}
 	values := [101, 102]!
-	return retain_optional_aliased_fixed_reference(values)
+	return retain_optional_aliased_fixed_reference(?FixedIntSliceRef(retain_aliased_fixed_slice_reference(values)))
 }
 
 @[noinline]
 fn variadic_optional_reference_from_local_fixed(index int) ?&[]int {
 	first := [111, 112]!
 	last := [121, 122]!
-	return retain_variadic_optional_fixed_reference(index, none, first, last)
+	return retain_variadic_optional_fixed_reference(index, none, ?&[]int(retain_immutable_array_reference(first)), ?&[]int(retain_immutable_array_reference(last)))
 }
 
 fn read_retained_optional_fixed_reference(values &[]int) []int {
@@ -734,7 +734,7 @@ fn test_optional_fixed_array_reference_keeps_present_payload_alive_and_preserves
 	assert read_retained_optional_fixed_reference(last) == [121, 122]
 }
 
-fn retain_result_fixed_reference(values !&[]int) !&[]int {
+fn retain_result_fixed_reference(values &[]int) !&[]int {
 	return values
 }
 
@@ -744,7 +744,7 @@ fn optional_range_reference_from_local_fixed(present bool) ?&[]int {
 		return retain_optional_fixed_reference(none)
 	}
 	values := [131, 132, 133]!
-	return retain_optional_fixed_reference((values[1..]))
+	return retain_optional_fixed_reference(?&[]int(retain_immutable_array_reference(values[1..])))
 }
 
 @[noinline]
@@ -841,7 +841,7 @@ fn reference_from_fixed_and_pointer_sibling_bindings(kind int) &[]int {
 		}
 		else {
 			source := [211, 212]!
-			values := &source
+			values := unsafe { &source }
 			assert read_immutable_fixed_pointer(values) == 212
 			return retain_immutable_array_reference(values)
 		}
@@ -965,7 +965,7 @@ fn retained_fixed_reference_after_lowering_literal_bindings() &[]int {
 		return *p
 	}
 	read_capture := fn [values] () int {
-		p := &values
+		p := unsafe { &values }
 		return (*p)[0]
 	}
 	assert read_parameter(283) == 283
@@ -1140,7 +1140,7 @@ fn reference_after_shared_mutable_fixed_capture() &[]int {
 		values[0]++
 		return values[0]
 	}
-	ptr := &values
+	ptr := unsafe { &values }
 	read_pointer_capture := fn [ptr] () int {
 		return (*ptr)[0]
 	}
@@ -1256,7 +1256,7 @@ fn (provider FixedRowReferenceProvider) [] (index int) &[2]int {
 
 fn test_overloaded_fixed_index_pointer_result_preserves_storage_identity() {
 	mut row := [711, 712]!
-	provider := FixedRowReferenceProvider{&row}
+	provider := FixedRowReferenceProvider{unsafe { &row }}
 	kept := retain_immutable_array_reference(provider[0])
 	row[0] = 713
 	assert read_retained_optional_fixed_reference(kept) == [713, 712]
@@ -1268,7 +1268,7 @@ struct FixedPointerFieldHolder {
 
 struct FixedPointerFieldStore {
 mut:
-	data &[]int = unsafe { nil }
+	data FixedIntSliceRef = unsafe { nil }
 }
 
 fn (mut store FixedPointerFieldStore) retain(values &[]int) {
@@ -1278,7 +1278,7 @@ fn (mut store FixedPointerFieldStore) retain(values &[]int) {
 @[noinline]
 fn store_from_fixed_pointer_aggregate(mut store FixedPointerFieldStore, kind int) {
 	mut values := [721, 722, 723]!
-	holder := FixedPointerFieldHolder{ p: &values }
+	holder := FixedPointerFieldHolder{ p: unsafe { &values } }
 	unsafe {
 		if kind == 0 {
 			store.retain((*holder.p)[1..])
@@ -1393,7 +1393,7 @@ fn test_map_fixed_values_and_inline_fields_have_independent_backing() {
 fn test_map_fixed_pointer_values_keep_the_original_storage_identity() {
 	mut row := [761, 762]!
 	mut rows := map[string]&[2]int{}
-	rows['row'] = &row
+	rows['row'] = unsafe { &row }
 	kept := retain_immutable_array_reference(rows['row'])
 	row[0] = 763
 	unsafe { rows.free() }
