@@ -14478,7 +14478,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			&& g.gen_lowered_mut_value_storage_arg(arg_id, arg_node, param_types[arg_idx]) {
 			continue
 		}
-		if arg_idx < typed_param_count
+		// C output-pointer casts already point at caller storage; only V mut
+		// parameters need a temporary pointer slot for a pointer-valued cast.
+		if !is_c_call && arg_idx < typed_param_count
 			&& g.gen_mut_pointer_slot_arg(arg_id, arg_node, param_types[arg_idx]) {
 			continue
 		}

@@ -8,7 +8,9 @@ import strings
 
 fn (req &Request) ssl_do(port int, method Method, host_name string, path string, data string, header Header) !Response {
 	$if windows && !no_vschannel ? {
-		return vschannel_ssl_do(req, port, method, host_name, path, data, header)
+		return vschannel_ssl_do(req, port, method, host_name, path, data, header) or {
+			return vschannel_retry_handshake(req, port, method, host_name, path, data, header, err)
+		}
 	}
 	return net_ssl_do(req, port, method, host_name, path, data, header)
 }

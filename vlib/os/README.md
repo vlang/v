@@ -44,6 +44,9 @@ directory, so they are ignored, and `os.parent_dir('/a/b/')` is `/a` rather than
 `/a/b`. A separator is any byte the platform accepts as one, so a Windows path
 may mix `/` and `\` and the last separator of either kind decides the parent.
 
+On Windows, `os.uname()` leaves `release` and `version` empty if the `ver` command
+fails or does not report a numeric version. Localized version labels are accepted.
+
 ### Running commands
 
 Use `os.exec(['program', 'arg 1', 'arg 2'])` when the command and its arguments

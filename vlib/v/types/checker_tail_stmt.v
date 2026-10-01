@@ -2076,11 +2076,17 @@ fn (mut tc TypeChecker) check_match_condition_type(subject_type Type, cond_id fl
 	if cond.kind == .range || tc.match_type_pattern(*cond) != none {
 		return
 	}
-	condition_type := tc.resolve_type(cond_id)
 	clean_subject := unalias_type(subject_type)
 	if clean_subject is OptionType {
 		return
 	}
+	// Qualified enum values are names, so the expression-condition pass skips
+	// them. Validate their selector before accepting a compatible enum type.
+	if clean_subject is Enum && cond.kind == .selector
+		&& !tc.match_condition_is_expression(cond_id) {
+		tc.check_node(cond_id)
+	}
+	condition_type := tc.resolve_type(cond_id)
 	if cond.kind == .enum_val && clean_subject is Enum {
 		enum_name := tc.resolve_enum_name(clean_subject.name) or { clean_subject.name }
 		if !tc.enum_value_matches(cond.value, enum_name) {
@@ -19977,11 +19983,12 @@ fn resolve_type_name_for_method(t Type) string {
 	return ''
 }
 
-// ownership_type_has_clone_method reports whether typ declares a handwritten clone method.
+// ownership_type_has_clone_method reports whether typ declares a compatible handwritten clone method.
 // It is kept in the always-built checker surface because ownership transform support is
 // compiled into the V executable even when the executable itself is built without ownership.
 pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
-	name := resolve_type_name_for_method(typ)
+	receiver_type := unwrap_pointer(typ)
+	name := resolve_type_name_for_method(receiver_type)
 	if name.len == 0 {
 		return false
 	}
@@ -19990,7 +19997,7 @@ pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
 			return true
 		}
 	}
-	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
+	for method_name in receiver_method_name_candidates(receiver_type, 'clone', tc.cur_module) {
 		if method_name in tc.fn_ret_types {
 			if tc.ownership_clone_method_matches_type(tc.call_info(method_name, true), typ) {
 				return true

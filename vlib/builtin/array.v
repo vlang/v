@@ -33,7 +33,7 @@ pub enum ArrayFlags {
 
 // Bit 31 is reserved for compiler-owned aligned fixed-array backing. Future
 // public ArrayFlags members must leave it unused; it fits the flags' u32 storage.
-const array_flag_retained_aligned_fixed = ArrayFlags(u32(1) << 31)
+const array_flag_retained_aligned_fixed = unsafe { ArrayFlags(u32(1) << 31) }
 
 @[_packed]
 struct ArrayDataHeader {
@@ -1592,10 +1592,10 @@ pub fn copy(mut dst []u8, src []u8) int {
 // Internally, it does this by copying the entire array to
 // a new memory location (creating a clone).
 pub fn (mut a array) grow_cap(amount int) {
-	new_cap := i64(amount) + i64(a.cap)
-	if new_cap > max_int {
-		panic_n('array.grow_cap: max_int will be exceeded by new cap:', new_cap)
+	if amount > max_int - a.cap {
+		panic('array.grow_cap: max_int will be exceeded by new cap:${u64(amount) + u64(a.cap)}')
 	}
+	new_cap := i64(amount) + i64(a.cap)
 	a.ensure_cap(int(new_cap))
 }
 
@@ -1605,10 +1605,10 @@ pub fn (mut a array) grow_cap(amount int) {
 // is already large enough.
 @[unsafe]
 pub fn (mut a array) grow_len(amount int) {
-	new_len := i64(amount) + i64(a.len)
-	if new_len > max_int {
-		panic_n('array.grow_len: max_int will be exceeded by new len:', new_len)
+	if amount > max_int - a.len {
+		panic('array.grow_len: max_int will be exceeded by new len:${u64(amount) + u64(a.len)}')
 	}
+	new_len := i64(amount) + i64(a.len)
 	a.ensure_cap(int(new_len))
 	a.len = int(new_len)
 }

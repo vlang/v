@@ -507,6 +507,7 @@ fn main() {
 fn test_owned_fixed_views_keep_retained_headers_and_captures_alive() {
 	output := copy_ownership_run('fixed_owned_retention', '@[has_globals]
 module main
+import builtin.closure
 __global next_id = 0
 __global clones = 0
 __global dropped = map[int]bool{}
@@ -521,7 +522,10 @@ fn (mut r Resource) drop() {
 fn keep_reference(mut values []Resource) &[]Resource { return &values }
 fn fixed_reference() &[]Resource {
 	mut values := [fresh()]!
-	return keep_reference(mut values)
+	kept := keep_reference(mut values)
+	// The returned snapshot owns its elements; release the promoted source explicitly.
+	drop_owned(values)
+	return kept
 }
 fn indexed_reference() &[]Resource {
 	mut rows := [[fresh()]!]
@@ -531,8 +535,8 @@ fn indexed_reference() &[]Resource {
 }
 fn check_reference(indexed bool) {
 	kept := if indexed { indexed_reference() } else { fixed_reference() }
-	assert !dropped[kept[0].id]
-	assert kept[0].value == 0
+	assert !dropped[unsafe { kept[0].id }]
+	assert unsafe { kept[0].value } == 0
 	unsafe { kept.free() }
 }
 fn capture(mut values []Resource) fn () int {
@@ -545,6 +549,7 @@ fn fixed_capture() fn () int {
 	mut values := [fresh()]!
 	kept := capture(mut values)
 	values[0].value = 31
+	drop_owned(values)
 	return kept
 }
 fn check_capture() {
@@ -553,7 +558,9 @@ fn check_capture() {
 }
 fn main() {
 	for indexed in [false, true] { check_reference(indexed) }
-	check_capture()
+	mut lifetime := closure.new_lifetime()
+	lifetime.frame(fn () { check_capture() }) or { panic(err) }
+	lifetime.dispose() or { panic(err) }
 	assert clones == 3
 	assert dropped.len == next_id
 	println("ok")
@@ -584,17 +591,17 @@ fn holder_reference(last bool) &[]Res {
 }
 fn check_map() {
 	kept := map_reference()
-	assert kept[0].id == 110
+	assert unsafe { kept[0].id } == 110
 	unsafe { kept.free() }
 }
 fn check_accessor(last bool) {
 	kept := accessor_reference(last)
-	assert kept[0].id == if last { 130 } else { 120 }
+	assert unsafe { kept[0].id } == if last { 130 } else { 120 }
 	unsafe { kept.free() }
 }
 fn check_holder(last bool) {
 	kept := holder_reference(last)
-	assert kept[0].id == if last { 250 } else { 240 }
+	assert unsafe { kept[0].id } == if last { 250 } else { 240 }
 	unsafe { kept.free() }
 }
 fn main() {

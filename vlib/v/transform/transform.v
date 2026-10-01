@@ -12347,6 +12347,24 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		if child.kind in [.lambda_expr, .fn_literal] {
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}
+		if child.kind == .cast_expr && t.is_optional_type_name(child.value) {
+			// An explicit Option/Result cast already carries its wrapper, including
+			// when its successful payload is a sum containing borrowed arrays.
+			payload_type := t.optional_base_type(t.qualify_optional_type(target_type))
+			if child.children_count == 1 && t.is_sum_type_name(payload_type) {
+				payload_id := t.a.child(&child, 0)
+				payload := t.a.nodes[int(payload_id)]
+				if payload.kind == .cast_expr && payload.children_count == 1
+					&& !t.is_optional_type_name(payload.value) && !payload.value.starts_with('&')
+					&& t.resolve_sum_name(payload.value) == t.resolve_sum_name(payload_type) {
+					owned_payload := t.wrap_sum_value_for_storage(t.a.child(&payload, 0),
+						payload_type)
+					return t.make_optional_some(owned_payload, target_type)
+				}
+			}
+			return t.clone_borrowed_storage_projection(return_child_id,
+				t.transform_expr_for_type(return_child_id, target_type), target_type)
+		}
 		payload_type := t.optional_base_type(t.qualify_optional_type(target_type))
 		resolved_payload_type := t.resolve_sum_name(payload_type)
 		if child.kind == .or_expr {
@@ -16959,7 +16977,14 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 		rhs := t.transform_expr(rhs_id)
 		mut prelude := []flat.NodeId{}
 		t.drain_pending(mut prelude)
-		rhs_authority := t.decl_rhs_type(rhs_id)
+		// Promoted locals use pointers for storage, but a copied binding reads the value.
+		lowered_rhs_node := t.a.nodes[int(rhs)]
+		rhs_authority := if rhs_node.kind == .ident && rhs_node.value in t.heaped_amp_locals
+			&& lowered_rhs_node.kind == .prefix && lowered_rhs_node.op == .mul {
+			t.decl_rhs_type(rhs)
+		} else {
+			t.decl_rhs_type(rhs_id)
+		}
 		mut typ := if t.is_fn_pointer_type_name(rhs_authority) { rhs_authority } else { '' }
 		if typ.len == 0 && decl_type_is_usable(rhs_authority)
 			&& !t.generic_arg_is_unresolved(rhs_authority) {

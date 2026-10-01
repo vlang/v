@@ -1973,10 +1973,14 @@ fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, 
 
 // Mutable array parameters also borrow through option/result and sum wrappers,
 // even with a managed, unsliced buffer. Explicit pointer values retain their identity.
-fn (t &Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) bool {
+fn (mut t Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) bool {
 	mut id := t.unwrap_parens(source_id)
 	for int(id) >= 0 && int(id) < t.a.nodes.len {
 		node := t.a.nodes[int(id)]
+		if node.kind == .cast_expr && node.children_count == 1 {
+			id = t.unwrap_parens(t.a.child(&node, 0))
+			continue
+		}
 		if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count == 1 {
 			id = t.unwrap_parens(t.a.child(&node, 0))
 			continue
@@ -1986,6 +1990,36 @@ fn (t &Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) boo
 			return false
 		}
 		raw_type := t.comptime_normalize_type_alias_chain(t.raw_var_type(node.value))
+		if t.is_optional_type_name(raw_type) {
+			// Local Option bindings carry synthetic pointer payloads. The declaration
+			// preserves whether the source payload itself was a pointer.
+			t.ensure_call_param_types_decl_index()
+			name := transform_qualified_fn_name(t.cur_module, t.cur_fn_name)
+			decl := t.call_param_types_decl_index[name] or { FnParamDeclRef{ idx: t.item_range_hi } }
+			if decl.idx < 0 || decl.idx >= t.a.nodes.len {
+				return false
+			}
+			fn_node := t.a.node(flat.NodeId(decl.idx))
+			if fn_node.kind != .fn_decl || fn_node.value != t.cur_fn_name {
+				return false
+			}
+			for i in 0 .. fn_node.children_count {
+				param := t.a.child_node(fn_node, i)
+				if param.kind != .param || param.value != node.value {
+					continue
+				}
+				mut source_type := t.comptime_normalize_type_alias_chain(param.typ)
+				if source_type.starts_with('&') {
+					source_type = source_type[1..]
+				}
+				for t.is_optional_type_name(source_type) {
+					source_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(source_type))
+				}
+				return source_type.starts_with('[]')
+					|| (!source_type.starts_with('&') && t.is_sum_type_name(source_type))
+			}
+			return false
+		}
 		if !raw_type.starts_with('&') {
 			return false
 		}
