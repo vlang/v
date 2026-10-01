@@ -5,6 +5,8 @@ import v.types
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 
+const multi_return_fixed_array_arg_marker = '__v3_multi_return_fixed_array_arg'
+
 // max_stringify_nesting_depth bounds how deeply the inline autostr lowering
 // (structs, sum types) recurses through *distinct* aggregate types before it
 // defers the remaining expansion to synthesized helpers. The per-type circular
@@ -1606,7 +1608,12 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 					if expected_idx >= params.len {
 						break
 					}
-					field := t.make_selector(value, 'arg${multi_idx}', t.semantic_type_name(item_type))
+					field_type := t.semantic_type_name(item_type)
+					field := t.make_selector(value, 'arg${multi_idx}', field_type)
+					clean_field_type := t.comptime_normalize_type_alias_chain(field_type)
+					if !clean_field_type.starts_with('&') && t.is_fixed_array_type(clean_field_type) {
+						t.set_node_generic_params(int(field), [multi_return_fixed_array_arg_marker])
+					}
 					new_children << t.transform_call_arg_for_named_param(field, param_type_names[expected_idx], call_name)
 				}
 				i++
@@ -13462,9 +13469,10 @@ fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_t
 	}
 	// A temporary has no declaration to promote and no other alias. Move its
 	// element bytes to durable owning storage before exposing an array reference.
-	borrowed := t.expr_can_take_address(source_id)
+	source_is_multi_return_value := multi_return_fixed_array_arg_marker in t.a.nodes[int(source_id)].generic_params()
+	borrowed := !source_is_multi_return_value && (t.expr_can_take_address(source_id)
 		|| (t.node_type(source_id).starts_with('&')
-			&& t.is_fixed_array_type(t.unaliased_value_type(source_id)))
+			&& t.is_fixed_array_type(t.unaliased_value_type(source_id))))
 	mut storage_id := source_id
 	if !borrowed {
 		value_name := t.new_temp('fixed_array_source')
@@ -16719,7 +16727,12 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 					if expected_idx >= params.len {
 						break
 					}
-					field := t.make_selector(value, 'arg${multi_idx}', t.semantic_type_name(item_type))
+					field_type := t.semantic_type_name(item_type)
+					field := t.make_selector(value, 'arg${multi_idx}', field_type)
+					clean_field_type := t.comptime_normalize_type_alias_chain(field_type)
+					if !clean_field_type.starts_with('&') && t.is_fixed_array_type(clean_field_type) {
+						t.set_node_generic_params(int(field), [multi_return_fixed_array_arg_marker])
+					}
 					args << t.transform_call_arg_for_param(field, t.semantic_type_name(params[expected_idx]))
 				}
 				i++

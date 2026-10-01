@@ -1134,3 +1134,23 @@ fn test_by_value_fixed_row_loop_bindings_keep_retained_views_alive() {
 	assert read_retained_optional_fixed_reference(iterator[0]) == [382, 392]
 	assert read_retained_optional_fixed_reference(iterator[1]) == [383, 393]
 }
+
+fn retain_fixed_reference_pair(left &[]int, right &[]int) (&[]int, &[]int) {
+	return left, right
+}
+
+fn temporary_fixed_array_pair() ([2]int, [2]int) {
+	return [421, 422]!, [431, 432]!
+}
+
+@[noinline]
+fn references_from_expanded_temporary_fixed_pair() (&[]int, &[]int) {
+	return retain_fixed_reference_pair(temporary_fixed_array_pair())
+}
+
+fn test_expanded_multi_return_fixed_arguments_keep_their_backing_alive() {
+	left, right := references_from_expanded_temporary_fixed_pair()
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(left) == [421, 422]
+	assert read_retained_optional_fixed_reference(right) == [431, 432]
+}
