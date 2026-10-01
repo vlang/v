@@ -47,6 +47,13 @@ fn (mut t Transformer) if_guard_source_clear_stmts(clear_id flat.NodeId) []flat.
 // make_guard_value_decls gives an escaping generated binding the same storage as a source local.
 fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, value_type string) []flat.NodeId {
 	t.clear_heaped_local_binding(name)
+	if t.guard_value_needs_heap_storage(name, value_type) {
+		return t.heap_escaping_value_decl(name, value_type, value, false)
+	}
+	return [t.make_decl_assign_typed(name, value, value_type)]
+}
+
+fn (t &Transformer) guard_value_needs_heap_storage(name string, value_type string) bool {
 	clean_type := t.comptime_normalize_type_alias_chain(value_type)
 	is_fixed_array := t.is_fixed_array_type(clean_type)
 	needs_escape_storage := name in t.escaping_amp_sources
@@ -55,11 +62,8 @@ fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, va
 		&& !clean_type.starts_with('&')
 		&& (t.heapable_value_type(clean_type) || is_fixed_array)
 	needs_capture_storage := name in t.mut_fixed_array_capture_sources && is_fixed_array
-	if name != '_' && (needs_escape_storage || needs_fixed_view_storage || needs_capture_storage
-		|| t.heap_attr_struct_type(value_type)) {
-		return t.heap_escaping_value_decl(name, value_type, value, false)
-	}
-	return [t.make_decl_assign_typed(name, value, value_type)]
+	return name != '_' && (needs_escape_storage || needs_fixed_view_storage || needs_capture_storage
+		|| t.heap_attr_struct_type(value_type))
 }
 
 // try_expand_if_guard detects an if-guard pattern where the condition is a

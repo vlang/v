@@ -8801,10 +8801,37 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		return
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind in [.if_expr, .match_stmt, .match_branch, .for_stmt] {
+	if node.kind in [.if_expr, .match_stmt, .match_branch, .for_stmt, .select_stmt] {
 		for i in 0 .. node.children_count {
 			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, false)
 		}
+		return
+	}
+	if node.kind == .select_branch {
+		scope_mark := local_stack_added.len
+		mut body_start := if node.value == 'else' { 0 } else { 1 }
+		if node.children_count >= 2 {
+			second := t.a.child_node(&node, 1)
+			if second.kind == .prefix && second.op == .arrow {
+				body_start = 2
+			}
+		}
+		for i in 0 .. body_start {
+			if node.value == 'recv' && body_start == 2 && i == 0 {
+				continue
+			}
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, false)
+		}
+		if node.value == 'recv' && body_start == 2 {
+			lhs := t.a.child_node(&node, 0)
+			if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
+				add_escape_local_stack_name(lhs.value, mut local_stack_names, mut local_stack_added)
+			}
+		}
+		for i in body_start .. node.children_count {
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, false)
+		}
+		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 		return
 	}
 	if node.kind == .block {
@@ -19017,6 +19044,7 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
 			bound_name = lhs.value
 			saved_var_types = t.var_types.clone()
+			t.clear_heaped_local_binding(bound_name)
 			if t.smartcast_stack.len > 0 {
 				remaining_smartcasts := smartcasts_without_binding(t.smartcast_stack, bound_name)
 				if remaining_smartcasts.len < t.smartcast_stack.len {
@@ -19076,8 +19104,16 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 				}
 			}
 			if recv_type.len > 0 {
-				t.clear_heaped_local_binding(bound_name)
-				t.set_var_type(bound_name, recv_type)
+				if t.guard_value_needs_heap_storage(bound_name, recv_type) {
+					recv_name := t.new_temp('select_recv')
+					recv_lhs := t.make_ident(recv_name)
+					t.set_node_typ(int(recv_lhs), recv_type)
+					t.set_var_type(recv_name, recv_type)
+					children[0] = recv_lhs
+					children << t.make_guard_value_decls(bound_name, t.make_ident(recv_name), recv_type)
+				} else {
+					t.set_var_type(bound_name, recv_type)
+				}
 			}
 		}
 	}

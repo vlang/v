@@ -994,3 +994,21 @@ fn test_lifted_heap_value_captures_recreate_their_own_storage_markers() {
 	assert *scalar == 291
 	assert read_retained_optional_fixed_reference(values) == [301, 302]
 }
+
+@[noinline]
+fn reference_from_fixed_array_select_receive(channel chan [2]int) &[]int {
+	select {
+		values := <-channel {
+			return retain_immutable_array_reference(values)
+		}
+	}
+	panic('expected a receive payload')
+}
+
+fn test_select_receive_fixed_bindings_keep_retained_views_alive() {
+	channel := chan [2]int{cap: 1}
+	channel <- [311, 312]!
+	kept := reference_from_fixed_array_select_receive(channel)
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(kept) == [311, 312]
+}
