@@ -7,6 +7,7 @@ import toml.ast
 import toml.input
 import toml.scanner
 import toml.parser
+import strconv
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
@@ -75,6 +76,36 @@ fn decode_struct[T](doc Any, mut typ T) {
 					typ.$(field.name) = value.i64()
 				} $else $if field.typ is u64 {
 					typ.$(field.name) = value.u64()
+				} $else $if field.typ is u8 {
+					n, ok := to_narrow_int[u8](value)
+					if ok {
+						typ.$(field.name) = n
+					}
+				} $else $if field.typ is u16 {
+					n, ok := to_narrow_int[u16](value)
+					if ok {
+						typ.$(field.name) = n
+					}
+				} $else $if field.typ is u32 {
+					n, ok := to_narrow_int[u32](value)
+					if ok {
+						typ.$(field.name) = n
+					}
+				} $else $if field.typ is i8 {
+					n, ok := to_narrow_int[i8](value)
+					if ok {
+						typ.$(field.name) = n
+					}
+				} $else $if field.typ is i16 {
+					n, ok := to_narrow_int[i16](value)
+					if ok {
+						typ.$(field.name) = n
+					}
+				} $else $if field.typ is i32 {
+					n, ok := to_narrow_int[i32](value)
+					if ok {
+						typ.$(field.name) = n
+					}
 				} $else $if field.typ is f32 {
 					typ.$(field.name) = value.f32()
 				} $else $if field.typ is f64 {
@@ -101,6 +132,91 @@ fn decode_struct[T](doc Any, mut typ T) {
 	}
 }
 
+// to_narrow_int converts `value` to the narrow integer type `T` and reports
+// whether `value` holds an integer that `T` can represent. V integer conversions
+// are unchecked (`u8(300)` silently wraps to 44), so values outside the range of
+// `T` are rejected instead of converted.
+fn to_narrow_int[T](value Any) (T, bool) {
+	n := any_to_checked_i64(value) or { return T(0), false }
+	$if T is u8 {
+		if n >= 0 && n <= 255 {
+			return T(n), true
+		}
+	} $else $if T is u16 {
+		if n >= 0 && n <= 65535 {
+			return T(n), true
+		}
+	} $else $if T is u32 {
+		if n >= 0 && n <= 4294967295 {
+			return T(n), true
+		}
+	} $else $if T is i8 {
+		if n >= -128 && n <= 127 {
+			return T(n), true
+		}
+	} $else $if T is i16 {
+		if n >= -32768 && n <= 32767 {
+			return T(n), true
+		}
+	} $else $if T is i32 {
+		if n >= -2147483648 && n <= 2147483647 {
+			return T(n), true
+		}
+	}
+	return T(0), false
+}
+
+// any_to_checked_i64 returns the integer held by `value`. Unlike `Any.i64()`, it
+// does not turn unsupported values into 0: floats, booleans, `inf` and `-inf`
+// (stored as `u64`), `nan`, tables, arrays and dates are rejected. Decimal strings
+// are parsed, because older versions of `encode` wrote narrow integers as quoted
+// strings (`port = "8080"`).
+fn any_to_checked_i64(value Any) ?i64 {
+	match value {
+		i64 {
+			return value
+		}
+		int {
+			return i64(value)
+		}
+		string {
+			if value == '' {
+				return none
+			}
+			return strconv.parse_int(value, 10, 64) or { return none }
+		}
+		else {
+			return none
+		}
+	}
+}
+
+// decode_narrow_int_array decodes `values` into a `[]T` of narrow integers,
+// skipping the values that `T` cannot represent.
+fn decode_narrow_int_array[T](values []Any) []T {
+	mut arr := []T{cap: values.len}
+	for value in values {
+		n, ok := to_narrow_int[T](value)
+		if ok {
+			arr << n
+		}
+	}
+	return arr
+}
+
+// decode_narrow_int_map decodes `values` into a `map[string]T` of narrow
+// integers, skipping the values that `T` cannot represent.
+fn decode_narrow_int_map[T](values map[string]Any) map[string]T {
+	mut decoded := map[string]T{}
+	for key, value in values {
+		n, ok := to_narrow_int[T](value)
+		if ok {
+			decoded[key] = n
+		}
+	}
+	return decoded
+}
+
 fn decode_array[T](current []T, values []Any) []T {
 	$if T is string {
 		return values.map(it.string())
@@ -112,6 +228,8 @@ fn decode_array[T](current []T, values []Any) []T {
 		return values.map(it.i64())
 	} $else $if T is u64 {
 		return values.map(it.u64())
+	} $else $if T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 {
+		return decode_narrow_int_array[T](values)
 	} $else $if T is f32 {
 		return values.map(it.f32())
 	} $else $if T is f64 {
@@ -170,6 +288,8 @@ fn decode_map[T](current map[string]T, values map[string]Any) map[string]T {
 			decoded[key] = value.u64()
 		}
 		return decoded
+	} $else $if T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 {
+		return decode_narrow_int_map[T](values)
 	} $else $if T is f32 {
 		mut decoded := map[string]T{}
 		for key, value in values {
@@ -299,6 +419,10 @@ fn to_any[T](value T) Any {
 		return Any(value)
 	} $else $if T is u64 {
 		return Any(value)
+	} $else $if T is u8 || T is u16 || T is u32 || T is i8 || T is i16 || T is i32 {
+		// `Any` has no narrow integer variant, so these are widened to `i64`, which
+		// represents all of their values.
+		return Any(i64(value))
 	} $else $if T is DateTime {
 		return Any(value)
 	} $else $if T is Any {

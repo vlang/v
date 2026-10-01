@@ -17594,6 +17594,12 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if typ := tc.const_types[node.value] {
 				return typ
 			}
+			// A `.vsh` script uses `os` constants such as `args` unqualified.
+			if key := tc.vsh_os_const_key(node.value) {
+				if typ := tc.const_types[key] {
+					return tc.const_type_from_initializer(key, typ)
+				}
+			}
 			if typ := tc.fn_value_type(node.value) {
 				return typ
 			}
