@@ -934,6 +934,13 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		g.write(g.scalar_zero_init(name))
 		return
 	}
+	if is_union_init && !g.static_c_initializer {
+		mut seen := map[string]bool{}
+		if g.type_contains_interface_storage(init_semantic_type, mut seen) {
+			g.gen_zeroed_union_init(node, name, lookup_name, false)
+			return
+		}
+	}
 	if !g.static_c_initializer && !g.is_interface_type_name(node.value)
 		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		g.gen_struct_init_with_fixed_array_fields(node, name, init_module)
@@ -1122,6 +1129,82 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		g.write(if g.struct_type_is_empty(lookup_name) { 'E_STRUCT' } else { '0' })
 	}
 	g.write('}')
+}
+
+// C union initializers can leave bytes outside the selected member unspecified.
+// Clear interface-bearing storage before writing a member, including nested unions,
+// so an inactive interface cannot inherit a valid tag from reused stack memory.
+fn (g &FlatGen) type_contains_interface_storage(typ types.Type, mut seen map[string]bool) bool {
+	clean := default_init_unalias_type(typ)
+	match clean {
+		types.Interface { return true }
+		types.Struct {
+			if clean.name in seen { return false }
+			seen[clean.name] = true
+			if fields := g.struct_fields_for_type(clean.name) {
+				for field in fields {
+					if g.type_contains_interface_storage(field.typ, mut seen) { return true }
+				}
+			}
+		}
+		types.ArrayFixed { return g.type_contains_interface_storage(clean.elem_type, mut seen) }
+		types.OptionType { return g.type_contains_interface_storage(clean.base_type, mut seen) }
+		types.ResultType { return g.type_contains_interface_storage(clean.base_type, mut seen) }
+		else {}
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_zeroed_union_init(node flat.Node, name string, lookup_name string, heap bool) {
+	tmp := g.tmp_name()
+	if heap { g.write('(${name}*)') }
+	g.write('({ ${name} ${tmp}; memset(&${tmp}, 0, sizeof(${tmp}));')
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.children_count == 0 { continue }
+		field_name := if field.value.len > 0 {
+			if !g.struct_has_direct_named_field(lookup_name, field.value) {
+				if emb := g.embedded_field_for_embed_key(lookup_name, field.value) {
+					emb.name
+				} else {
+					field.value
+				}
+			} else {
+				field.value
+			}
+		} else if sf := g.struct_field_at(lookup_name, i) {
+			sf.name
+		} else {
+			continue
+		}
+		field_type := g.struct_field_type(lookup_name, field_name) or { continue }
+		cfield := g.init_field_c_name(lookup_name, field_name)
+		value_id := g.a.child(field, 0)
+		if _ := array_fixed_type(field_type) {
+			g.write(' memcpy(${tmp}.${cfield}, ')
+			g.gen_fixed_array_copy_source(value_id, field_type)
+			g.write(', sizeof(${tmp}.${cfield}));')
+		} else {
+			g.write(' ${tmp}.${cfield} = ')
+			g.gen_struct_field_expr_for_field(value_id, lookup_name, field_name, field_type)
+			g.write(';')
+		}
+	}
+	if heap {
+		if align := g.struct_decl_alignment_for_init_names(node.value, lookup_name) {
+			align_arg := struct_decl_alignment_memdup_arg(align, name)
+			g.write(' v3_aligned_memdup(&${tmp}, sizeof(${name}), ${align_arg}); })')
+		} else {
+			mut seen := map[string]bool{}
+			if g.global_fixed_array_type_has_aligned_struct(g.tc.parse_type(lookup_name), mut seen) {
+				g.write(' v3_aligned_memdup(&${tmp}, sizeof(${name}), __alignof__(${name})); })')
+			} else {
+				g.write(' memdup(&${tmp}, sizeof(${name})); })')
+			}
+		}
+	} else {
+		g.write(' ${tmp}; })')
+	}
 }
 
 fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
@@ -1965,6 +2048,13 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	lookup_name := g.struct_init_fields_key(lookup_source_name, lookup_source_name)
 	is_union_init := node.value in g.tc.unions || lookup_name in g.tc.unions
+	if is_union_init {
+		mut seen := map[string]bool{}
+		if g.type_contains_interface_storage(parsed_init_type, mut seen) {
+			g.gen_zeroed_union_init(node, name, lookup_name, true)
+			return
+		}
+	}
 	if !is_sum_literal && !g.is_interface_type_name(node.value)
 		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		// Fixed-array fields can't be set in the `&(T){...}` compound literal; build
