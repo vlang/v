@@ -1723,6 +1723,10 @@ fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fi
 }
 
 fn (mut t Transformer) fixed_array_value_to_array_no_alloc(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
+	return t.fixed_array_data_to_array_no_alloc(t.transform_expr(value_id), fixed_type, array_type)
+}
+
+fn (mut t Transformer) fixed_array_data_to_array_no_alloc(data_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	elem_type := fixed_array_elem_type(fixed_type)
 	len_expr := t.make_fixed_array_len_expr(fixed_type)
 	t.mark_fn_used('new_array_from_c_array_no_alloc')
@@ -1730,7 +1734,7 @@ fn (mut t Transformer) fixed_array_value_to_array_no_alloc(value_id flat.NodeId,
 		len_expr,
 		len_expr,
 		t.make_sizeof_type(elem_type),
-		t.transform_expr(value_id),
+		data_id,
 	], array_type)
 }
 

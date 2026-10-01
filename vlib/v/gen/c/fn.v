@@ -2389,20 +2389,10 @@ fn pointer_free_base_type(t types.Type) ?types.Type {
 
 fn (g &FlatGen) pointer_free_needs_aligned_free(t types.Type) bool {
 	base_type := pointer_free_base_type(t) or { return false }
-	if base_type is types.Pointer {
-		return false
-	}
-	if base_type is types.ArrayFixed {
-		return g.global_fixed_array_pointer_alignment(base_type) != none
-	}
-	name := base_type.name()
-	if name.len == 0 {
-		return false
-	}
-	if _ := g.struct_decl_alignment_for_name(name) {
-		return true
-	}
-	return false
+	mut seen := map[string]bool{}
+	// Windows manual builtin malloc and memdup also use _aligned_malloc. Only C.free
+	// releases pointers from the C allocator; it bypasses this builtin free path.
+	return g.global_fixed_array_type_has_aligned_struct(base_type, mut seen)
 }
 
 fn (g &FlatGen) receiver_has_method(base_type types.Type, method string) bool {
@@ -7394,6 +7384,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	}
 	if g.gen_c_call_int_out_wrap(id, node) {
 		return
+	}
+	if fn_node.kind == .ident && fn_name == '__alignof__' && node.children_count == 2 {
+		arg := g.a.child_node(&node, 1)
+		if arg.kind == .sizeof_expr && arg.children_count == 0 {
+			g.write('__alignof__(${g.sizeof_target(arg.value)})')
+			return
+		}
 	}
 	if fn_node.kind == .ident && fn_name == 'v3_heap_array' && node.children_count == 2 {
 		arg_id := g.a.child(&node, 1)

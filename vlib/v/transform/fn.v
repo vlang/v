@@ -6,6 +6,8 @@ import v.types
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 
+const multi_return_fixed_array_arg_marker = '__v3_multi_return_fixed_array_arg'
+
 // max_stringify_nesting_depth bounds how deeply the inline autostr lowering
 // (structs, sum types) recurses through *distinct* aggregate types before it
 // defers the remaining expansion to synthesized helpers. The per-type circular
@@ -1441,7 +1443,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	has_spread_at_variadic_slot := variadic_arg_pos > 0 && variadic_arg_pos < node.children_count
 		&& t.call_arg_is_spread(t.a.child(&node, variadic_arg_pos))
 	is_c_variadic := t.tc.c_variadic_fns[call_name]
-	is_variadic := !is_c_variadic && (t.call_is_variadic(call_name)
+	is_variadic := !is_c_variadic && (t.call_is_variadic_for_node(call_name, node)
 		|| is_generic_variadic || (params.len > 0 && params[params.len - 1] is types.Array
 		&& (explicit_args > expected_explicit || has_spread_at_variadic_slot)))
 	variadic_idx := if is_variadic && params.len > 0 && params[params.len - 1] is types.Array {
@@ -1451,8 +1453,11 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	mut mut_optional_value_writebacks := []flat.NodeId{}
+	// Heap-backed fixed-array views are refreshed after argument evaluation. Keep
+	// ordinary operands in source order too, before a later argument's prelude.
+	ordered_fixed_args := t.call_has_mut_fixed_array_args(node, params, param_offset, variadic_idx)
+	mut snapshotted_args := 1
 	saved_in_call_callee := t.in_call_callee
-	t.in_call_callee = true
 	callee_id := t.a.children[node.children_start]
 	immediate_bound_method := t.immediate_bound_method_value_allocates_runtime_closure(callee_id)
 	immediate_factory_closure := t.call_returns_exclusive_closure(callee_id)
@@ -1469,15 +1474,21 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			t.set_fresh_runtime_closure_expr_type(callee_id, immediate_closure_type)
 		}
 	}
-	mut transformed_callee := t.const_fn_call_target(callee_id) or {
+	ordered_callee_id := if ordered_fixed_args {
+		t.snapshot_fixed_array_call_callee(id, node, callee_id)
+	} else {
+		callee_id
+	}
+	t.in_call_callee = true
+	mut transformed_callee := t.const_fn_call_target(ordered_callee_id) or {
 		if param_offset == 1 && params.len > 0 {
-			if converted_callee := t.transform_method_callee_receiver_for_param(callee_id, t.semantic_type_name(params[0])) {
+			if converted_callee := t.transform_method_callee_receiver_for_param(ordered_callee_id, t.semantic_type_name(params[0])) {
 				converted_callee
 			} else {
-				t.transform_expr(callee_id)
+				t.transform_expr(ordered_callee_id)
 			}
 		} else {
-			t.transform_expr(callee_id)
+			t.transform_expr(ordered_callee_id)
 		}
 	}
 	t.in_call_callee = saved_in_call_callee
@@ -1511,6 +1522,10 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	mut i := 1
 	mut variadic_tail_supplied := false
 	for i < node.children_count {
+		if ordered_fixed_args {
+			t.snapshot_fixed_array_call_args(mut new_children, snapshotted_args)
+			snapshotted_args = new_children.len
+		}
 		arg_idx := new_children.len - 1
 		param_idx := arg_idx + param_offset
 		arg_id := t.a.child(&node, i)
@@ -1604,7 +1619,12 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 					if expected_idx >= params.len {
 						break
 					}
-					field := t.make_selector(value, 'arg${multi_idx}', t.semantic_type_name(item_type))
+					field_type := t.semantic_type_name(item_type)
+					field := t.make_selector(value, 'arg${multi_idx}', field_type)
+					clean_field_type := t.comptime_normalize_type_alias_chain(field_type)
+					if !clean_field_type.starts_with('&') && t.is_fixed_array_type(clean_field_type) {
+						t.set_node_generic_params(int(field), [multi_return_fixed_array_arg_marker])
+					}
 					new_children << t.transform_call_arg_for_named_param(field, param_type_names[expected_idx], call_name)
 				}
 				i++
@@ -1628,6 +1648,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 	}
 	t.append_missing_params_struct_args(mut new_children, params, param_offset)
+	if ordered_fixed_args {
+		t.snapshot_fixed_array_call_args(mut new_children, snapshotted_args)
+	}
 	mut typ := node.typ
 	concrete_ret := t.concrete_generic_call_return_type(id, node)
 	if concrete_ret.len > 0 {
@@ -3440,6 +3463,22 @@ fn (t &Transformer) decl_fn_type_param_in_scope(param string, module_name string
 	return scoped
 }
 
+// call_is_variadic_for_node also follows checker-resolved function-value targets.
+fn (t &Transformer) call_is_variadic_for_node(call_name string, node flat.Node) bool {
+	if (node.flags & flat.node_flag_variadic_call) != 0 {
+		return true
+	}
+	if t.call_is_variadic(call_name) {
+		return true
+	}
+	if !isnil(t.tc) && node.children_count > 0 {
+		if name := t.tc.resolved_fn_value_name(t.a.child(&node, 0)) {
+			return t.call_is_variadic(name)
+		}
+	}
+	return false
+}
+
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
 	// Generic specializations are re-checked on every call (see below).
@@ -3905,31 +3944,44 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	if arg_node.kind == .array_literal && arg_node.typ.len == 0 && param_type.starts_with('[]') {
 		t.set_node_typ(int(arg_id), param_type)
 	}
-	if param_type.starts_with('&[]') {
-		arg_type := t.node_type(arg_id)
-		if arg_node.is_mut {
-			if view := t.fixed_array_range_view(arg_id, if arg_type.starts_with('[]') {
-				arg_type
-			} else {
-				param_type[1..]
-			})
-			{
-				tmp_name := t.new_temp('fixed_array_arg')
-				t.pending_stmts << t.make_decl_assign_typed(tmp_name, view, param_type[1..])
-				addr := t.make_prefix(.amp, t.make_ident(tmp_name))
-				t.set_node_typ(int(addr), param_type)
-				return addr
-			}
+	resolved_param_type := t.comptime_normalize_type_alias_chain(param_type)
+	if t.is_optional_type_name(resolved_param_type) {
+		payload_type := t.optional_base_type(resolved_param_type)
+		mut payload_ref_type := t.comptime_normalize_type_alias_chain(payload_type)
+		for t.is_optional_type_name(payload_ref_type) {
+			payload_ref_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(payload_ref_type))
 		}
-		fixed_type := if arg_type.starts_with('&') { arg_type[1..] } else { arg_type }
+		if payload_ref_type.starts_with('&[]')
+			&& t.fixed_array_reference_arg_needs_durable_header(arg_id, payload_ref_type[1..]) {
+			// Create the durable reference before placing it in a successful wrapper.
+			// None and already-wrapped values follow the ordinary optional conversion.
+			value := t.transform_call_arg_for_param(arg_id, payload_type)
+			wrapped := t.make_optional_some(value, resolved_param_type)
+			t.set_node_typ(int(wrapped), param_type)
+			return wrapped
+		}
+	}
+	array_ref_type := resolved_param_type
+	if array_ref_type.starts_with('&[]') {
+		arg_type := t.node_type(arg_id)
+		range_type := if arg_node.is_mut && arg_type.starts_with('[]') {
+			arg_type
+		} else {
+			array_ref_type[1..]
+		}
+		mut range_arg_id := t.unwrap_parens(arg_id)
+		range_arg := t.a.nodes[int(range_arg_id)]
+		if range_arg.kind == .prefix && range_arg.op == .amp && range_arg.children_count == 1 {
+			range_arg_id = t.unwrap_parens(t.a.child(&range_arg, 0))
+		}
+		if view := t.fixed_array_range_view_for_arg(range_arg_id, range_type, true) {
+			return t.fixed_array_mut_arg(view, range_type, param_type)
+		}
+		fixed_type := t.fixed_array_reference_arg_type(arg_id, array_ref_type[1..])
 		if t.is_fixed_array_type(fixed_type) {
-			array_type := param_type[1..]
-			array_value := t.fixed_array_value_to_array_no_alloc(arg_id, fixed_type, array_type)
-			tmp_name := t.new_temp('fixed_array_arg')
-			t.pending_stmts << t.make_decl_assign_typed(tmp_name, array_value, array_type)
-			addr := t.make_prefix(.amp, t.make_ident(tmp_name))
-			t.set_node_typ(int(addr), param_type)
-			return addr
+			array_type := array_ref_type[1..]
+			view := t.fixed_array_mut_arg_backing(arg_id, fixed_type, array_type)
+			return t.fixed_array_mut_arg(view, array_type, param_type)
 		}
 	}
 	if transform_param_type_is_void_pointer(param_type)
@@ -5142,6 +5194,10 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 		t.wrap_sum_value(arg_id, expected_elem)
 	} else if t.resolve_interface_type_name(expected_elem).len > 0 {
 		t.transform_expr_for_type(arg_id, expected_elem)
+	} else if escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
+		// Reference elements need the same fixed-array view and address conversions
+		// as an ordinary reference parameter before they are packed into the tail.
+		t.transform_call_arg_for_param(arg_id, expected_elem)
 	} else {
 		t.transform_expr(arg_id)
 	}
@@ -13603,11 +13659,382 @@ fn (t &Transformer) unaliased_value_type(id flat.NodeId) string {
 	return t.alias_str_resolved_base_type(t.node_type(id).trim_left('&')).trim_left('&')
 }
 
+// fixed_array_reference_arg_type preserves explicit fixed literals when expected
+// array-reference context has replaced their checker expression type.
+fn (t &Transformer) fixed_array_reference_arg_type(id flat.NodeId, array_type string) string {
+	clean_id := t.unwrap_parens(id)
+	if int(clean_id) >= 0 && int(clean_id) < t.a.nodes.len {
+		node := t.a.nodes[int(clean_id)]
+		if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+			return t.fixed_array_reference_arg_type(t.a.child(&node, 0), array_type)
+		}
+		if node.kind == .postfix && node.op == .not && node.children_count == 1 {
+			literal := t.a.child_node(&node, 0)
+			if literal.kind == .array_literal {
+				return '[${literal.children_count}]${array_type[2..]}'
+			}
+		}
+	}
+	return t.unaliased_value_type(id)
+}
+
+// fixed_array_reference_arg_needs_durable_header includes ranges over fixed backing storage.
+fn (t &Transformer) fixed_array_reference_arg_needs_durable_header(id flat.NodeId, array_type string) bool {
+	arg_id := t.unwrap_parens(id)
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return false
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind == .prefix && arg.op == .amp && arg.children_count == 1 {
+		return t.fixed_array_reference_arg_needs_durable_header(t.a.child(&arg, 0), array_type)
+	}
+	if t.is_fixed_array_type(t.fixed_array_reference_arg_type(arg_id, array_type)) {
+		return true
+	}
+	if t.is_range_index_expr(arg_id) {
+		base_id := t.a.child(&t.a.nodes[int(arg_id)], 0)
+		return t.is_fixed_array_type(t.unaliased_value_type(base_id))
+	}
+	return false
+}
+
+// call_argument_param_type maps each unpacked variadic argument to the tail element type.
+fn call_argument_param_type(params []types.Type, param_idx int, variadic_idx int) ?types.Type {
+	if param_idx < 0 {
+		return none
+	}
+	if variadic_idx >= 0 && variadic_idx < params.len && param_idx >= variadic_idx {
+		variadic_type := params[variadic_idx]
+		if variadic_type is types.Array {
+			return variadic_type.elem_type
+		}
+		return none
+	}
+	if param_idx < params.len {
+		return params[param_idx]
+	}
+	return none
+}
+
+fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []types.Type, offset int, variadic_idx int) bool {
+	for i in 1 .. node.children_count {
+		param_idx := i - 1 + offset
+		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
+		payload_type := fixed_array_reference_param_payload(param_type)
+		array_ref_type := t.comptime_normalize_type_alias_chain(t.semantic_type_name(payload_type))
+		if !array_ref_type.starts_with('&[]') {
+			continue
+		}
+		arg_id := t.unwrap_parens(t.a.child(&node, i))
+		if t.fixed_array_reference_arg_needs_durable_header(arg_id, array_ref_type[1..]) {
+			return true
+		}
+	}
+	return false
+}
+
+// Snapshot the callee before user-defined element clones run. A method keeps its
+// receiver's lvalue identity; a function-valued field snapshots the entire callee.
+fn (mut t Transformer) snapshot_fixed_array_call_callee(id flat.NodeId, call flat.Node, callee_id flat.NodeId) flat.NodeId {
+	callee := t.a.nodes[int(callee_id)]
+	if callee.kind == .selector && callee.children_count > 0 {
+		base_id := t.a.child(&callee, 0)
+		if t.call_selector_base_is_namespace(base_id, callee.value, call.value)
+			|| t.callee_base_is_not_a_runtime_value(base_id) {
+			return callee_id
+		}
+		is_fn_field := t.receiver_selector_is_fn_field(t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(base_id))), callee.value)
+		if !is_fn_field {
+			if !t.operand_needs_ordering_snapshot(base_id) {
+				return callee_id
+			}
+			new_base := if t.method_receiver_is_reference(id, base_id, callee.value) {
+				if stabilized := t.stabilize_original_lvalue_receiver(base_id) {
+					stabilized
+				} else {
+					t.snapshot_expr_for_reuse(base_id)
+				}
+			} else {
+				t.snapshot_expr_for_reuse(base_id)
+			}
+			if new_base == base_id {
+				return callee_id
+			}
+			start := t.a.children.len
+			t.a.children << new_base
+			for i in 1 .. callee.children_count {
+				t.a.children << t.a.child(&callee, i)
+			}
+			result := t.a.add_node(flat.Node{
+				...callee
+				children_start: start
+			})
+			t.copy_cloned_resolution(callee_id, result)
+			return result
+		}
+	}
+	if t.callee_needs_ordering_snapshot(callee_id) {
+		return t.snapshot_expr_for_reuse(callee_id)
+	}
+	return callee_id
+}
+
+fn (mut t Transformer) snapshot_fixed_array_call_args(mut args []flat.NodeId, start int) {
+	for i in start .. args.len {
+		args[i] = t.snapshot_transformed_expr_for_reuse(args[i], t.node_type(args[i]),
+			'fixed_array_call_arg')
+	}
+}
+
+// fixed_array_mut_arg gives an array-reference parameter a separate borrowed header.
+// Mutations write through to the original fixed storage; appending or reassigning
+// the header follows the usual array slice copy-on-grow behavior.
+fn (mut t Transformer) fixed_array_mut_arg(view flat.NodeId, array_type string, param_type string) flat.NodeId {
+	arg_name := t.new_temp('fixed_array_arg')
+	t.pending_stmts << t.make_decl_assign_typed(arg_name, view, array_type)
+	// A callee may legally retain `&values`, so the independent header must
+	// outlive this frame as well as the fixed elements it borrows.
+	return t.make_call_typed('v3_heap_array', [t.make_ident(arg_name)], param_type)
+}
+
+// fixed_array_mut_arg_backing borrows the fixed array's original storage. Local
+// storage is heap-promoted before any aliases form, and globals already outlive
+// the call. Borrowed flags prevent a retained array header from destroying its
+// source's elements or freeing storage it does not own.
+fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
+	t.mark_fixed_array_element_drops(array_type[2..], []string{})
+	mut source_id := t.unwrap_parens(value_id)
+	source_node := t.a.nodes[int(source_id)]
+	if source_node.kind == .prefix && source_node.op == .amp && source_node.children_count == 1 {
+		source_id = t.unwrap_parens(t.a.child(&source_node, 0))
+	}
+	// A temporary has no declaration to promote and no other alias. Move its
+	// element bytes to durable owning storage before exposing an array reference.
+	source_is_multi_return_value := multi_return_fixed_array_arg_marker in t.a.nodes[int(source_id)].generic_params()
+	overloaded_result_type := t.comptime_normalize_type_alias_chain(t.overloaded_index_result_type(source_id) or { '' })
+	overloaded_fixed_reference := overloaded_result_type.starts_with('&')
+		&& t.is_fixed_array_type(overloaded_result_type[1..])
+	map_value_source := t.fixed_array_source_map_value(source_id) or { flat.empty_node }
+	source_is_map_value := int(map_value_source) >= 0
+	accessor_source := t.fixed_array_source_accessor(source_id, false) or { flat.empty_node }
+	source_is_array_accessor := int(accessor_source) >= 0
+	accessor_type := if source_is_array_accessor { t.lvalue_type(accessor_source) } else { '' }
+	mut borrowed := !source_is_multi_return_value
+		&& !source_is_map_value
+		&& (!t.expr_is_overloaded_index_result(source_id) || overloaded_fixed_reference)
+		&& (t.expr_can_take_address(source_id)
+			|| (t.node_type(source_id).starts_with('&')
+				&& t.is_fixed_array_type(t.unaliased_value_type(source_id))))
+	mut value := t.transform_expr(source_id)
+	if source_is_map_value && !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(fixed_type)) {
+		cloned := t.clone_borrowed_projection(source_id, value, fixed_type)
+		if cloned != value {
+			value = cloned
+		} else if !t.tc.ownership_index_read_moves_value(map_value_source) {
+			// A map read passed by reference still borrows the map's element owners.
+			// Acquire them through the shared clone/empty/uncloneable storage policy.
+			view := t.fixed_array_data_to_array_no_alloc(value, fixed_type, array_type)
+			return t.clone_owned_array_storage_value(view, array_type, true)
+		}
+	}
+	if borrowed && source_is_array_accessor
+		&& !t.comptime_normalize_type_alias_chain(t.node_type(value)).starts_with('&')
+		&& t.fixed_array_source_accessor(value, true) == none {
+		// Ownership accessors can produce a cloned fixed value in a generated local.
+		// That value has no original receiver storage to retain, so move it to owning backing.
+		borrowed = false
+		if accessor_source != source_id && !isnil(t.tc)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(accessor_type)) {
+			if projection, owner := t.stabilize_fixed_array_accessor_projection(value, accessor_type) {
+				value = t.stabilize_transformed_lvalue_for_reuse(projection)
+				cloned := t.clone_borrowed_projection(source_id, value, fixed_type)
+				if cloned != value {
+					value = cloned
+				} else {
+					// A partial projection cannot move fields out of an aggregate with custom
+					// destruction. Acquire the field before destroying the accessor clone.
+					view := t.fixed_array_data_to_array_no_alloc(value, fixed_type, array_type)
+					owned_view := t.clone_owned_array_storage_value(view, array_type, true)
+					t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [owner], 'void'))
+					return owned_view
+				}
+				t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [owner], 'void'))
+			}
+		}
+	}
+	mut storage_id := value
+	if borrowed {
+		if overloaded_fixed_reference {
+			// The overload returns an existing pointer, even when expected array-reference
+			// context changed the index annotation. Keep that original storage identity.
+			t.set_node_typ(int(storage_id), overloaded_result_type)
+		}
+		storage_id = t.retain_fixed_array_index_containers(storage_id)
+	} else {
+		value_name := t.new_temp('fixed_array_source')
+		t.pending_stmts << t.make_stack_value_decl_assign_typed(value_name, value, fixed_type)
+		addr := t.make_prefix(.amp, t.make_ident(value_name))
+		mut aligned := map[string]bool{}
+		storage_id = if t.heap_storage_has_aligned_struct(fixed_type, mut aligned) {
+			t.make_cast('&${fixed_type}', t.make_memdup_call_for_type(addr, fixed_type), '&${fixed_type}')
+		} else {
+			addr
+		}
+	}
+	mut aligned_storage := map[string]bool{}
+	owned_managed_buffer := !borrowed && !t.heap_storage_has_aligned_struct(fixed_type, mut aligned_storage)
+	view := if owned_managed_buffer {
+		t.fixed_array_data_to_array(storage_id, fixed_type, array_type)
+	} else {
+		t.fixed_array_data_to_array_no_alloc(storage_id, fixed_type, array_type)
+	}
+	view_name := t.new_temp('fixed_array_view')
+	t.pending_stmts << t.make_decl_assign_typed(view_name, view, array_type)
+	if borrowed {
+		flags := t.make_selector(t.make_ident(view_name), 'flags', 'ArrayFlags')
+		slice_flag := t.make_selector(t.make_ident('ArrayFlags'), 'is_slice', 'ArrayFlags')
+		t.pending_stmts << t.make_assign(flags, slice_flag)
+	} else if !owned_managed_buffer {
+		// Aligned temporaries have no outside owner. Preserve that allocation's
+		// lifetime without changing its alignment or allocator family.
+		t.mark_fn_used('array.mark_aligned_fixed_array_buffer')
+		t.pending_stmts << t.make_expr_stmt(t.make_method_call(t.make_ident(view_name), 'mark_aligned_fixed_array_buffer', []flat.NodeId{}))
+	}
+	return t.make_ident(view_name)
+}
+
+// Map lookups yield values backed by the map or its stack-local missing-key default.
+// Inline projections share that lifetime; a pointer or dynamic buffer has its own storage.
+fn (mut t Transformer) fixed_array_source_map_value(value flat.NodeId) ?flat.NodeId {
+	id := t.unwrap_parens(value)
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	if info := t.map_index_info(id) {
+		if !t.comptime_normalize_type_alias_chain(info.value_type).starts_with('&') {
+			return id
+		}
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.children_count == 0 || node.kind !in [.selector, .index, .prefix] {
+		return none
+	}
+	base := t.a.child(&node, 0)
+	base_type := t.comptime_normalize_type_alias_chain(t.lvalue_type(base))
+	if base_type.starts_with('&') || base_type.starts_with('[]') {
+		return none
+	}
+	return t.fixed_array_source_map_value(base)
+}
+
+// Only inline projections depend on the accessor's aggregate lifetime. Pointer and
+// dynamic-array fields lead to independent storage. Borrowed owned accessors may already
+// have become ordinary dynamic indexes during selector lowering.
+fn (t &Transformer) fixed_array_source_accessor(value flat.NodeId, include_lowered_index bool) ?flat.NodeId {
+	id := t.unwrap_parens(value)
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call && t.array_accessor_call_can_take_address(node) {
+		return id
+	}
+	if node.children_count == 0 || node.kind !in [.selector, .index, .prefix] {
+		return none
+	}
+	base := t.a.child(&node, 0)
+	base_type := t.comptime_normalize_type_alias_chain(t.lvalue_type(base))
+	if include_lowered_index && node.kind == .index && !t.is_range_index_expr(id)
+		&& base_type.trim_left('&').starts_with('[]') {
+		return id
+	}
+	if base_type.starts_with('&') || base_type.starts_with('[]') {
+		return none
+	}
+	return t.fixed_array_source_accessor(base, include_lowered_index)
+}
+
+// Stabilize the cloned accessor aggregate before its inline field is acquired, then
+// retain that same value for cleanup rather than evaluating a clone method twice.
+fn (mut t Transformer) stabilize_fixed_array_accessor_projection(value flat.NodeId, owner_type string) ?(flat.NodeId, flat.NodeId) {
+	if t.comptime_normalize_type_alias_chain(t.lvalue_type(value)) ==
+		t.comptime_normalize_type_alias_chain(owner_type) {
+		owner := t.stable_transformed_expr_for_reuse(value, owner_type, 'fixed_accessor_owner')
+		return owner, owner
+	}
+	node := t.a.nodes[int(value)]
+	if node.children_count == 0 || node.kind !in [.selector, .index, .paren, .prefix] {
+		return none
+	}
+	projection, owner := t.stabilize_fixed_array_accessor_projection(t.a.child(&node, 0), owner_type) or {
+		return none
+	}
+	mut children := t.a.children_of(&node).clone()
+	children[0] = projection
+	return t.copy_node_with_children(node, children), owner
+}
+
+// Retained fixed elements share their indexed owner buffer. Managed slices
+// identify that original buffer through their preserved allocation provenance.
+fn (mut t Transformer) retain_fixed_array_index_containers(value flat.NodeId) flat.NodeId {
+	node := t.a.nodes[int(value)]
+	if node.kind == .call && t.array_accessor_call_can_take_address(node) {
+		callee := t.a.child_node(&node, 0)
+		mut base := t.retain_fixed_array_index_containers(t.a.child(callee, 0))
+		base_type := t.comptime_normalize_type_alias_chain(t.address_expr_type_name(base))
+		if !base_type.trim_left('&').starts_with('[]') {
+			return value
+		}
+		elem_type := t.comptime_normalize_type_alias_chain(base_type.trim_left('&')[2..])
+		if !elem_type.starts_with('&') && !elem_type.starts_with('[]')
+			&& !elem_type.starts_with('map[') {
+			base = t.retain_fixed_array_container(base, base_type)
+		}
+		mut children := t.a.children_of(&node).clone()
+		children[0] = t.copy_node_with_children(*callee, [base])
+		return t.copy_node_with_children(node, children)
+	}
+	if node.children_count == 0 || node.kind !in [.index, .selector, .paren, .prefix] {
+		return value
+	}
+	mut children := t.a.children_of(&node).clone()
+	children[0] = t.retain_fixed_array_index_containers(children[0])
+	if node.kind == .index && !t.is_range_index_expr(value) {
+		base_type := t.comptime_normalize_type_alias_chain(t.node_type(children[0]))
+		value_type := t.comptime_normalize_type_alias_chain(t.node_type(value))
+		if base_type.trim_left('&').starts_with('[]') && !value_type.starts_with('&')
+			&& !value_type.starts_with('[]') && !value_type.starts_with('map[') {
+			children[0] = t.retain_fixed_array_container(children[0], base_type)
+			for i in 1 .. children.len {
+				children[i] = t.stabilize_transformed_lvalue_component(children[i], 'fixed_array_container_index')
+			}
+		}
+	}
+	return t.copy_node_with_children(node, children)
+}
+
+fn (mut t Transformer) retain_fixed_array_container(value flat.NodeId, base_type string) flat.NodeId {
+	mut base := t.stabilize_transformed_lvalue_for_reuse(value)
+	if !t.expr_is_plain_lvalue(base) {
+		base = t.stable_transformed_expr_for_reuse(base, base_type, 'fixed_array_container')
+	}
+	array_value := t.array_lvalue_value(base, base_type)
+	t.mark_fn_used('array.retain_fixed_array_buffer')
+	t.pending_stmts << t.make_expr_stmt(t.make_method_call(array_value, 'retain_fixed_array_buffer', []flat.NodeId{}))
+	return base
+}
+
 // fixed_array_range_view lowers `fixed[a..b]`, where the result is written to, to a slice of
 // a view of the fixed array's storage. Slicing a fixed size array would copy it, so the
 // writes would be lost. Parentheses around the range are ignored. It returns none for
 // other expressions.
 fn (mut t Transformer) fixed_array_range_view(id flat.NodeId, array_type string) ?flat.NodeId {
+	return t.fixed_array_range_view_for_arg(id, array_type, false)
+}
+
+fn (mut t Transformer) fixed_array_range_view_for_arg(id flat.NodeId, array_type string, mut_arg bool) ?flat.NodeId {
 	range_id := t.unwrap_parens(id)
 	if !t.is_range_index_expr(range_id) {
 		return none
@@ -13619,8 +14046,12 @@ fn (mut t Transformer) fixed_array_range_view(id flat.NodeId, array_type string)
 		return none
 	}
 	view_name := t.new_temp('fixed_array_view')
-	t.pending_stmts << t.make_decl_assign_typed(view_name, t.fixed_array_value_to_array_no_alloc(base_id,
-		base_type, array_type), array_type)
+	view := if mut_arg {
+		t.fixed_array_mut_arg_backing(base_id, base_type, array_type)
+	} else {
+		t.fixed_array_value_to_array_no_alloc(base_id, base_type, array_type)
+	}
+	t.pending_stmts << t.make_decl_assign_typed(view_name, view, array_type)
 	mut children := [t.make_ident(view_name)]
 	for i in 1 .. node.children_count {
 		children << t.a.child(&node, i)
@@ -16760,6 +17191,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 	recv_root := t.expr_root_ident_name(base)
 	params := t.call_param_types(method_name)
 	param_offset := t.receiver_method_param_offset(base, node, params, method_name)
+	mut snapshotted_args := 0
 	explicit_args := int(node.children_count) - 1
 	expected_explicit := params.len - param_offset
 	variadic_arg_pos := 1 + params.len - 1 - param_offset
@@ -16773,9 +17205,14 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 	} else {
 		-1
 	}
+	ordered_fixed_args := t.call_has_mut_fixed_array_args(node, params, param_offset, variadic_idx)
 	mut i := 1
 	mut variadic_tail_supplied := false
 	for i < node.children_count {
+		if ordered_fixed_args {
+			t.snapshot_fixed_array_call_args(mut args, snapshotted_args)
+			snapshotted_args = args.len
+		}
 		param_idx := (args.len - 1) + param_offset
 		arg_id := t.a.child(&node, i)
 		arg_node := t.a.nodes[int(arg_id)]
@@ -16858,7 +17295,12 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 					if expected_idx >= params.len {
 						break
 					}
-					field := t.make_selector(value, 'arg${multi_idx}', t.semantic_type_name(item_type))
+					field_type := t.semantic_type_name(item_type)
+					field := t.make_selector(value, 'arg${multi_idx}', field_type)
+					clean_field_type := t.comptime_normalize_type_alias_chain(field_type)
+					if !clean_field_type.starts_with('&') && t.is_fixed_array_type(clean_field_type) {
+						t.set_node_generic_params(int(field), [multi_return_fixed_array_arg_marker])
+					}
 					args << t.transform_call_arg_for_param(field, t.semantic_type_name(params[expected_idx]))
 				}
 				i++
@@ -16875,6 +17317,9 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 		}
 	}
 	t.append_missing_params_struct_args(mut args, params, param_offset)
+	if ordered_fixed_args {
+		t.snapshot_fixed_array_call_args(mut args, snapshotted_args)
+	}
 	return args
 }
 

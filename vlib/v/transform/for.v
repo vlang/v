@@ -1176,7 +1176,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	mut container := if int(fixed_range_container) >= 0 {
 		fixed_range_container
 	} else if direct_map_index_container {
-		container_id
+		if source_container_type.trim_left('&?!').starts_with('[]') {
+			t.stabilize_original_lvalue_receiver(container_id) or { container_id }
+		} else {
+			container_id
+		}
 	} else if t.is_value_match_or_if_operand(container_id) {
 		// Route a value `match`/`if` container through value lowering so a propagating
 		// arm tail is materialized into a value temp (stable for the loop's repeated use);
@@ -1289,6 +1293,31 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	elem_needs_ref := (elem_is_mut || interface_smartcast_ref)
 		&& !(container_is_explicit_reference && elem_keeps_value)
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
+	retained_fixed_backing := source_is_owned_temporary && elem_needs_ref
+		&& t.is_fixed_array_type(actual_iter_type)
+		&& (elem_name in t.escaping_amp_sources || elem_name in t.escaping_fixed_array_view_sources)
+	mut retained_backing_stmts := []flat.NodeId{}
+	mut retained_row_backing_stmts := []flat.NodeId{}
+	if retained_fixed_backing {
+		backing_name := t.new_temp('for_fixed_backing')
+		retained_backing_stmts = t.heap_escaping_value_decl(backing_name, actual_iter_type, actual_iter_type, container, false)
+		container = t.make_prefix(.mul, t.make_ident(backing_name))
+		t.set_node_typ(int(container), actual_iter_type)
+	} else if elem_needs_ref && actual_iter_type.starts_with('[]') && !isnil(t.tc)
+		&& (elem_name in t.escaping_amp_sources || elem_name in t.escaping_fixed_array_view_sources) {
+		mut seen := map[string]bool{}
+		if t.escape_value_contains_fixed_array(t.tc.parse_type(elem_type), mut seen) {
+			// The binding hides its index from argument lowering. Retain each current
+			// buffer before exposing a row, including after growth between iterations.
+			t.mark_fn_used('array.retain_fixed_array_buffer')
+			retained_row_backing_stmts << t.make_expr_stmt(t.make_method_call(container,
+				'retain_fixed_array_buffer', []flat.NodeId{}))
+		}
+	}
+	if int(optional_container) < 0 {
+		prefix << retained_backing_stmts
+	}
+
 	if elem_needs_ref && t.is_fixed_array_type(actual_iter_type) {
 		if direct_container := t.fixed_array_map_index_for_in_container(container_id, mut prefix) {
 			container = direct_container
@@ -1346,6 +1375,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	mut new_body := []flat.NodeId{}
 	new_body << index_decls
 	new_body << binding_clones
+	new_body << retained_row_backing_stmts
 	if elem_name != '_' {
 		// `for _ in a {}` only needs the length; loading every element would be a read
 		// of the elements that the race detector reports.
@@ -1356,7 +1386,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	cleanup_type := if int(optional_container) >= 0 { raw_container_type } else { actual_iter_type }
 	container_needs_drop := !isnil(t.tc) && cleanup_type.len > 0
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(cleanup_type))
-	cleanup_temporary := source_is_owned_temporary && container_needs_drop
+	cleanup_temporary := source_is_owned_temporary && container_needs_drop && !retained_fixed_backing
 	mut cleanup_guard_name := ''
 	if cleanup_temporary {
 		cleanup_guard_name = t.new_temp('for_container_live')
@@ -1379,7 +1409,9 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	for_stmt := t.make_for_stmt(init, cond, post, new_body, node)
 	if int(optional_container) >= 0 {
 		ok_cond := t.make_selector(optional_container, 'ok', 'bool')
-		prefix << t.make_if(ok_cond, t.make_block([for_stmt]), t.make_empty())
+		mut selected_body := retained_backing_stmts.clone()
+		selected_body << for_stmt
+		prefix << t.make_if(ok_cond, t.make_block(selected_body), t.make_empty())
 	} else {
 		prefix << for_stmt
 	}
