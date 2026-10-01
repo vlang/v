@@ -70,3 +70,23 @@ fn test_keyword_property_does_not_depend_on_enum_ordinals() {
 	assert !Token.name.is_keyword()
 	assert !Token.lcbr.is_keyword()
 }
+
+fn test_source_digest_survives_parser_worker_file_clone() {
+	source := 'module main\nfn main() { println(42) }\n'
+	mut files := FileSet.new()
+	mut original := files.add_file('source.v', source.len)
+	original.index_lines(source)
+	mut cloned := files.add_file(original.name, original.size)
+	assert !cloned.has_source_sha256()
+	cloned.set_source_sha256(original.source_sha256())
+	assert cloned.has_source_sha256()
+	assert cloned.source_sha256() == original.source_sha256()
+	// The bootstrap caller can spell the SHA-256 width as a literal too.
+	mut literal_width := [32]u8{}
+	digest := original.source_sha256()
+	for i in 0 .. literal_width.len {
+		literal_width[i] = digest[i]
+	}
+	cloned.set_source_sha256(literal_width)
+	assert cloned.source_sha256() == digest
+}
