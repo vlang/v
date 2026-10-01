@@ -1,5 +1,5 @@
 # Bootstrap compatibility for vc snapshots predating the diagserver prctl guards.
-# Keep the downloaded snapshot intact and reproduce the guards in a build copy.
+# Keep the downloaded snapshot intact and stream the guards to the C compiler.
 /^[ \t]*#include[ \t]+<sys\/prctl.h>[ \t]*$/ {
 	print "#if defined(__linux__) && !defined(__ANDROID__)"
 	print
