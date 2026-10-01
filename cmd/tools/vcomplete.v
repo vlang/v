@@ -93,6 +93,7 @@ const auto_complete_commands = [
 	'create',
 	'doctor',
 	'download',
+	'env',
 	'fmt',
 	'gret',
 	'git-fmt-hook',
