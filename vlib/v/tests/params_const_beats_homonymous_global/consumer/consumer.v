@@ -2,7 +2,7 @@ module consumer
 
 import api
 
-pub const default_logger = &api.Impl{n: 7}
+pub const default_logger = &api.Impl{ n: 7 }
 
 // Field default is this module's const, not other's homonymous `__global`.
 @[params]

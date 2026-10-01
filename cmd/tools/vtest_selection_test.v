@@ -51,10 +51,17 @@ fn testsuite_begin() {
 	write_selection_fixture('directory space.with.dots/host_test.${host_arch}.v', passing)
 	write_selection_fixture('incompatible/arch_test.${other_arch}.v', failing)
 	write_selection_fixture('incompatible/backend_test.wasm.v', failing)
+	other_os := selection_other_os()
+	write_selection_fixture('incompatible/os_${other_os}_test.v', failing)
+	write_selection_fixture('incompatible/os_${other_os}_test.c.v', failing)
 	write_selection_fixture('constraints/multiwindow_test.v',
 		'// vtest build: selection_missing_define?\n' + failing)
 	os.setenv('GITHUB_ACTIONS', 'true', true)
 	os.chdir(selection_root)!
+}
+
+fn selection_other_os() string {
+	return if os.user_os() == 'windows' { 'linux' } else { 'windows' }
 }
 
 fn testsuite_end() {
@@ -176,6 +183,15 @@ fn test_explicit_incompatible_architecture_and_backend_still_skip() {
 	for path in ['incompatible/arch_test.${other_arch}.v', 'incompatible/backend_test.wasm.v'] {
 		result := run_selection(['test', os.join_path(selection_root, path)])
 		assert_selection_summary(result, 0, '1 skipped, 1 total')
+	}
+}
+
+fn test_explicit_other_os_suffix_skips_v_and_c_v_files() {
+	other_os := selection_other_os()
+	for path in ['incompatible/os_${other_os}_test.v', 'incompatible/os_${other_os}_test.c.v'] {
+		result := run_selection(['test', os.join_path(selection_root, path)])
+		assert_selection_summary(result, 0, '1 skipped, 1 total')
+		assert !result.output.split_into_lines().any(it.trim_space() == selection_failure_marker), result.output
 	}
 }
 

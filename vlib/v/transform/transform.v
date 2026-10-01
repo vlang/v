@@ -7110,7 +7110,9 @@ fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string
 	ptr_typ := '&${elem_typ}'
 	mut stmts := []flat.NodeId{}
 	mut heap_rhs := flat.NodeId(0)
-	if is_struct_init {
+	// A generic `T{}` with a scalar `T` is lowered to a literal like `0`, which has no
+	// address; only a value that is still a struct literal can be taken with `&`.
+	if is_struct_init && t.a.nodes[int(value)].kind == .struct_init {
 		heap_rhs = t.make_prefix(.amp, value)
 	} else {
 		tmp := t.new_temp('esc')
@@ -9638,11 +9640,15 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 				// pointer cannot alias the source stack local.
 				return []string{}
 			}
-			if !isnil(t.tc) && escape_type_is_scalar_value(t.tc.resolve_type(id)) {
+			if !isnil(t.tc) && escape_call_result_is_scalar(t.tc.resolve_type(id)) {
 				// A scalar result cannot carry an address argument through the call.
 				// Without this guard, returning `child(&node)` heap-promotes `node`
 				// even though `child` returns only an integer node id. That pattern is
 				// ubiquitous in the compiler and makes each temporary an allocation.
+				// Several scalar results are no different, nor is an Option of them:
+				// `n, err := read(mut &buf)` followed by `return n, err`, or
+				// `n := read(mut &buf)?` followed by `return n`, leaves `buf` on the
+				// stack. A Result does not: its error may hold on to `&buf`.
 				return []string{}
 			}
 			mut sources := []string{}
@@ -9694,6 +9700,32 @@ fn escape_type_is_scalar_value(typ types.Type) bool {
 		types.Alias { escape_type_is_scalar_value(typ.base_type) }
 		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum { true }
 		else { false }
+	}
+}
+
+// escape_call_result_is_scalar reports whether a call result of this type has no room for
+// an address: a scalar, a multi-return made of scalars only, or an Option of either. A
+// Result is not one, whatever it holds on success: its error can be a custom one that
+// keeps the pointer the call was given.
+fn escape_call_result_is_scalar(typ types.Type) bool {
+	match typ {
+		types.OptionType {
+			return escape_call_result_is_scalar(typ.base_type)
+		}
+		types.MultiReturn {
+			if typ.types.len == 0 {
+				return false
+			}
+			for elem in typ.types {
+				if !escape_type_is_scalar_value(elem) {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return escape_type_is_scalar_value(typ)
+		}
 	}
 }
 
@@ -16180,10 +16212,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		}
 		panic('internal error: empty decl_assign child in ${t.cur_fn_name}: count=${node.children_count} typ=${node.typ} value=${node.value} children=${parts.join('|')}')
 	}
-	lhs := t.a.child_node(&node, 0)
-	shadows_pointer_storage := source_single_decl && lhs.kind == .ident
-		&& (t.heaped_amp_locals[lhs.value] || t.pointer_value_rvalues[lhs.value]
-			|| t.pointer_value_lvalues[lhs.value])
+	source_lhs := t.a.child_node(&node, 0)
+	shadows_pointer_storage := source_single_decl && source_lhs.kind == .ident
+		&& (t.heaped_amp_locals[source_lhs.value] || t.pointer_value_rvalues[source_lhs.value]
+			|| t.pointer_value_lvalues[source_lhs.value])
 	mut inferred_typ := ''
 	mut inferred_raw_typ := ''
 	multi_match_decl_type := t.multi_match_smartcast_decl_type(node) or { '' }
@@ -16536,15 +16568,15 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	}
 	// Initializers read incoming bindings before the new declaration replaces them.
 	if shadows_pointer_storage && new_children.len == 2
-		&& t.expr_uses_ident(new_children[1], lhs.value) {
+		&& t.expr_uses_ident(new_children[1], source_lhs.value) {
 		tmp_name := t.new_temp('decl_init')
 		tmp_type := if inferred_typ.len > 0 { inferred_typ } else { t.node_type(new_children[1]) }
 		t.pending_stmts << t.make_stack_value_decl_assign_typed(tmp_name, new_children[1], tmp_type)
 		new_children[1] = t.make_ident(tmp_name)
 	}
 	t.clear_source_decl_heaped_bindings(node)
-	if source_single_decl && lhs.kind == .ident && inferred_typ.len > 0 {
-		t.set_var_type_with_raw(lhs.value, inferred_typ, inferred_raw_typ)
+	if source_single_decl && source_lhs.kind == .ident && inferred_typ.len > 0 {
+		t.set_var_type_with_raw(source_lhs.value, inferred_typ, inferred_raw_typ)
 	}
 	if node.children_count == 2 {
 		lhs := t.a.nodes[int(new_children[0])]

@@ -7362,6 +7362,14 @@ fn (tc &TypeChecker) array_accessor_type_contains_pointer_inner(typ Type, mut se
 
 // should_diagnose reports whether should diagnose applies in types.
 fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
+	return tc.should_diagnose_with_dependencies(id, true)
+}
+
+fn (tc &TypeChecker) should_diagnose_notice(id flat.NodeId) bool {
+	return tc.should_diagnose_with_dependencies(id, false)
+}
+
+fn (tc &TypeChecker) should_diagnose_with_dependencies(id flat.NodeId, include_dependencies bool) bool {
 	if tc.valid_diagnostic_fast {
 		return false
 	}
@@ -7391,7 +7399,17 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 	if tc.diagnostic_files.len == 0 {
 		return true
 	}
-	return tc.cur_file in tc.diagnostic_files
+	if tc.cur_file in tc.diagnostic_files {
+		return true
+	}
+	// Dependency code kept by a call from the selected files must not reach
+	// code generation with a suppressed hard error. Keep notices and warnings
+	// limited to the files the user owns, and ignore uncalled library bodies.
+	if include_dependencies && !tc.checker_fixture_mode {
+		qname := tc.current_checked_fn_qname() or { return false }
+		return qname in tc.selected_file_called_fns
+	}
+	return false
 }
 
 // shadow_check_owns_file reports whether `file` is the project's own code, and
@@ -13111,29 +13129,15 @@ fn (tc &TypeChecker) cache_visible_mutation_result(key u64, result bool) {
 	}
 }
 
-fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(info CallInfo, recv_id flat.NodeId) bool {
+fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(recv_id flat.NodeId) bool {
 	if tc.expr_is_shared_arg(recv_id) {
 		return false
 	}
 	if tc.expr_root_is_global_binding(recv_id) {
 		return false
 	}
-	return tc.mut_receiver_method_requires_mutable_lvalue(info.name)
-}
-
-fn (tc &TypeChecker) mut_receiver_method_requires_mutable_lvalue(method_name string) bool {
-	method_module := tc.fn_type_modules[method_name] or { '' }
-	if method_module.len > 0 && method_module != tc.cur_module {
-		// Match V's private-mutability rule: an immutable binding is accepted across a
-		// module boundary only when the method cannot mutate caller-visible state.
-		decl := tc.visible_mutation_fn_decl(method_name, method_module) or { return true }
-		cache_id := visible_mutation_cache_id(decl, 0)
-		if cached := tc.cached_visible_mutation_result(cache_id) {
-			return cached
-		}
-		mut visiting := map[u64]bool{}
-		return tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting)
-	}
+	// Private fields carry state too, and mutating a value parameter's copy can
+	// lose that state. The receiver's mutability does not depend on visibility.
 	return true
 }
 
@@ -14121,7 +14125,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
 			&& mutating_receiver
 			&& (builtin_map_mutating_receiver
-				|| tc.mut_receiver_call_requires_mutable_lvalue(info, recv_id))
+				|| tc.mut_receiver_call_requires_mutable_lvalue(recv_id))
 			&& !checker_is_raw_collection_method_name(info.name, 'array.')
 			&& !tc.mut_receiver_expr_is_mutable_lvalue(recv_id) && tc.should_diagnose(id) {
 			if const_name := tc.expr_root_constant_name(recv_id) {
@@ -14875,6 +14879,16 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			0
 		})
 		target_name := tc.call_argument_target_name(node, info)
+		// IError stringification is valid in interpolation/printing, but an error
+		// constructor takes a real string and cannot embed an IError in its message.
+		if info.name in ['error', 'error_with_code'] && param_idx == 0
+			&& unalias_type(expected) is String && is_ierror_type(actual) {
+			if info.name == 'error' {
+				tc.record_warning_at(.call_arg_mismatch, '`error(err)` can be shortened to just `err`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			}
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `string` in argument 1 to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			continue
+		}
 		if expected_display := tc.bare_generic_fntype_call_param_display(info.name, param_idx) {
 			if unalias_type(actual) is FnType {
 				actual_display := call_argument_type_name(actual)

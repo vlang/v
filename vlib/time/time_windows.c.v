@@ -4,6 +4,9 @@
 module time
 
 #include <time.h>
+#include "@VEXEROOT/vlib/time/ticks_windows.h"
+
+fn C.v_time_ticks_ms() u64
 
 // #include <sysinfoapi.h>
 

@@ -80,4 +80,18 @@ fn test_coverage_user_text_is_not_embedded_in_c_format_strings() {
 	assert !generated.contains('"${escaped_dir}/vcounters_v3_')
 	assert generated.contains('fprintf(cov_file, "# path: %s\\n", "${escaped_dir}");')
 	assert generated.contains('fprintf(cov_file, "# build_options: %s\\n", "-d percent=%d");')
+	assert generated.contains('unsigned long long cov_ms = __v_windows_now_ms();')
+	assert !generated.contains('GetTickCount64()')
+}
+
+fn test_windows_statistics_and_coverage_clock_avoids_direct_tick_count_import() {
+	mut g := FlatGen.new()
+	g.emit_windows_monotonic_clock()
+	generated := g.sb.str()
+	assert generated.contains('ULONGLONG (WINAPI *tick_count_fn)(void)')
+	assert generated.contains('GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetTickCount64")')
+	assert !generated.contains('GetTickCount64()')
+	assert generated.contains('QueryPerformanceCounter(&counter)')
+	assert generated.contains('counter.QuadPart / frequency.QuadPart')
+	assert generated.contains('counter.QuadPart % frequency.QuadPart')
 }

@@ -55,6 +55,11 @@ workload and machine capacity are known.
 Skipped test paths are resolved before comparison, so selecting a file through a symlink
 does not bypass its platform or architecture exclusion.
 
+Tests ending in `_windows_test.v` or `_windows_test.c.v` run only on Windows.
+The compound `_android_outside_termux_test.v` and `_android_outside_termux_test.c.v`
+suffixes select Android outside Termux; `_termux_test.v` and `_termux_test.c.v`
+select Termux.
+
 ## `v test vlib/v/tests`:
 
 This folder contains _test.v files, testing the different features of the V
@@ -87,6 +92,9 @@ expressions, ABI, linker inputs, or runtime behavior.
 Collect coverage with `v -coverage coverage_dir path/to/file_test.v`, then inspect it with
 `v cover coverage_dir`. Add `-no-skip-unused` when compiling to include uncalled functions
 in the report as well as executed code.
+
+On Windows, test statistics and coverage use a 64-bit monotonic clock resolved at runtime,
+so they also work with bundled TCC versions whose import libraries omit `GetTickCount64`.
 
 ## REPL tests
 
@@ -160,6 +168,8 @@ Note: if that command finds formatting errors, they can be fixed with:
 ## `v test-self`
 
 Run `vlib` module tests, *including* the compiler tests.
+Test discovery includes architecture-suffixed files such as `_test.amd64.v` when
+the suffix matches the host architecture; files for other architectures are excluded.
 
 To run the same suite across separate machines, set `VTEST_SELF_SHARD_COUNT` to the number of
 machines and set `VTEST_SELF_SHARD_INDEX` to a different zero-based index on each one. For example,
