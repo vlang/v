@@ -3,6 +3,7 @@ codelite.md
 compiler-fallback.md
 comptime-reflection-sources.md
 docs.md
+function-field-calls.md
 ownership.md
 packaging_v_for_distributions.md
 tccbin_automation.md

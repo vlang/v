@@ -8666,7 +8666,10 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 				if base_idx >= 0 && base_idx < a.nodes.len {
 					base := a.nodes[base_idx]
 					cname := 'C.${base.value}'
-					if base.kind == .ident && cname in tc.fn_param_types && cname in tc.fn_ret_types {
+					// A local receiver can share a name with a C function. Restore
+					// only identifiers the checker resolved as that function value.
+					if base.kind == .ident && cname in tc.fn_param_types && cname in tc.fn_ret_types
+						&& (tc.resolved_fn_value_name(base_id) or { '' }) == cname {
 						params := tc.fn_param_types[cname] or { []types.Type{} }
 						if ret := tc.fn_ret_types[cname] {
 							tc.expr_type_values[base_idx] = types.FnType{
