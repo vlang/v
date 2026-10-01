@@ -1723,12 +1723,16 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 				}
 				return_type := types.unalias_type(g.tc.fn_ret_types[clone_method] or { concrete_type })
 				if return_type is types.Pointer {
-					g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
+					g.write('${result}._object = ')
+					g.gen_ownership_ierror_clone_method_call(clone_method, receiver, params)
+					g.writeln(';')
 					// A compatible pointer-returning clone creates independent owned storage.
 					g.writeln('${result}._object_is_boxed = true;')
 				} else {
 					value := '_clone_ierror_value${tmp}'
-					g.writeln('${concrete_ct} ${value} = ${g.cname(clone_method)}(${receiver});')
+					g.write('${concrete_ct} ${value} = ')
+					g.gen_ownership_ierror_clone_method_call(clone_method, receiver, params)
+					g.writeln(';')
 					g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
 					g.writeln('${result}._object_is_boxed = true;')
 				}
@@ -1749,6 +1753,31 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 	g.indent--
 	g.writeln('}')
 	g.write('${result}; })')
+}
+
+fn (mut g FlatGen) gen_ownership_ierror_clone_method_call(method string, receiver string, params []types.Type) {
+	g.write('${g.cname(method)}(${receiver}')
+	is_variadic := (g.tc.fn_variadic[method] or { false }) || g.fn_decl_is_variadic(method,
+		method)
+	for i in 1 .. params.len {
+		param := params[i]
+		if is_variadic && i == params.len - 1 && variadic_array_is_native(param) {
+			continue
+		}
+		g.write(', ')
+		if is_variadic && i == params.len - 1 && param is types.Array {
+			c_elem := g.tc.c_type(param.elem_type)
+			g.write('new_array_from_c_array(0, 0, sizeof(${c_elem}), (${c_elem}[]){0})')
+		} else {
+			clean_param := types.unalias_type(param)
+			if clean_param is types.Pointer {
+				g.gen_default_value_addr_for_type(clean_param.base_type)
+			} else {
+				g.gen_default_value_for_type(param)
+			}
+		}
+	}
+	g.write(')')
 }
 
 fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) bool {

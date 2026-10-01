@@ -1007,16 +1007,16 @@ fn main() {
 }
 '
 				build := borrow_storage_compile(name, source)
-				assert build.exit_code == 0, build.output
+				assert build.exit_code == 0, '${name}: ${build.output}'
 				run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
-				assert run.exit_code != 0, run.output
-				assert !run.output.contains('unexpected clone'), run.output
+				assert run.exit_code != 0, '${name}: ${run.output}'
+				assert !run.output.contains('unexpected clone'), '${name}: ${run.output}'
 				expected := if overflow {
 					'array.${method}: max_int will be exceeded'
 				} else {
 					'flag `.nogrow` cannot grow in size'
 				}
-				assert run.output.contains(expected), run.output
+				assert run.output.contains(expected), '${name}: ${run.output}'
 			}
 		}
 	}

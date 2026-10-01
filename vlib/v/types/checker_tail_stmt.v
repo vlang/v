@@ -19695,11 +19695,12 @@ fn resolve_type_name_for_method(t Type) string {
 	return ''
 }
 
-// ownership_type_has_clone_method reports whether typ declares a handwritten clone method.
+// ownership_type_has_clone_method reports whether typ declares a compatible handwritten clone method.
 // It is kept in the always-built checker surface because ownership transform support is
 // compiled into the V executable even when the executable itself is built without ownership.
 pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
-	name := resolve_type_name_for_method(typ)
+	receiver_type := unwrap_pointer(typ)
+	name := resolve_type_name_for_method(receiver_type)
 	if name.len == 0 {
 		return false
 	}
@@ -19708,7 +19709,7 @@ pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
 			return true
 		}
 	}
-	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
+	for method_name in receiver_method_name_candidates(receiver_type, 'clone', tc.cur_module) {
 		if method_name in tc.fn_ret_types {
 			if tc.ownership_clone_method_matches_type(tc.call_info(method_name, true), typ) {
 				return true
