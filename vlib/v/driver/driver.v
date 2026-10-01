@@ -14575,8 +14575,8 @@ Please install the corresponding development package/libraries and make sure the
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		if race && target.os == 'macos' {
-			v3_race_keep_macos_debug_symbols(staged_binary, bin_file)
+		if (is_debug || race) && target.os == 'macos' {
+			v3_keep_macos_debug_symbols(staged_binary, bin_file)
 		}
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}
@@ -14613,8 +14613,8 @@ Please install the corresponding development package/libraries and make sure the
 			run_result := run_binary(bin_file, run_args)
 			if remove_binary_after_run {
 				os.rm(bin_file) or {}
-				if race && target.os == 'macos' {
-					v3_race_remove_macos_debug_symbols(bin_file)
+				if (is_debug || race) && target.os == 'macos' {
+					v3_remove_macos_debug_symbols(bin_file)
 				}
 			}
 			if run_result != 0 {

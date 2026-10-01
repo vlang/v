@@ -47,3 +47,39 @@ fn test_c_debug_build_keeps_the_source_named_by_debug_information() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'debug source'
 }
+
+fn test_macos_clang_debug_symbols_follow_the_final_binary() {
+	$if !macos {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	dwarfdump := os.find_abs_path_of_executable('dwarfdump') or { return }
+	_ := os.find_abs_path_of_executable('dsymutil') or { return }
+	root := os.join_path(os.vtmp_dir(), 'debug_symbols_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'debug_position.v')
+	os.write_file(source, '@[noinline]
+fn debug_position() int {
+ return 42
+}
+fn main() {
+ println(debug_position())
+}
+')!
+	for flags in ['-g', '-cg'] {
+		executable := os.join_path(root, 'program_${flags.all_after('-')}')
+		build := os.execute('${os.quoted_path(@VEXE)} -new-compiler ${flags} -gc none -nocache -cc ${os.quoted_path(clang)} -o ${os.quoted_path(executable)} ${os.quoted_path(source)}')
+		assert build.exit_code == 0, build.output
+		bundle := executable + '.dSYM'
+		assert os.is_dir(bundle), 'missing debug symbols beside ${executable}'
+		symbols := os.execute('${os.quoted_path(dwarfdump)} --debug-info --name=debug_position ${os.quoted_path(bundle)}')
+		assert symbols.exit_code == 0, symbols.output
+		if flags == '-g' {
+			assert symbols.output.contains(os.real_path(source)), symbols.output
+		} else {
+			assert symbols.output.contains('src.c'), symbols.output
+			assert !symbols.output.contains('debug_position.v'), symbols.output
+		}
+	}
+}

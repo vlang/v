@@ -9319,6 +9319,8 @@ To debug issues in the generated binary (flag: `-b c`), you can pass these flags
   compilation. Also keep using the same file path, so it is more stable,
   and easier to keep opened in an editor/IDE.
 
+On macOS, debug builds keep their `.dSYM` bundle beside the final executable.
+
 For best debugging experience if you are writing a low-level wrapper for an existing
 C library, you can pass several of these flags at the same time:
 `v -keepc -cg -showcc yourprogram.v`, then just run your debugger (gdb/lldb) or IDE
