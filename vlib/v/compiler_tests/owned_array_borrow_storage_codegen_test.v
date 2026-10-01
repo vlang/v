@@ -610,21 +610,30 @@ fn main() { _ = absent() }
 }
 
 fn test_mutable_wrapped_array_storage_acquires_managed_payloads() {
-	for wrapper in ['?[]Res', 'Storage', '?Storage'] {
-		payload := if wrapper == '?[]Res' { '[Res{1}]' } else { 'Storage([Res{1}])' }
-		initial := if wrapper == 'Storage' { payload } else { '${wrapper}(${payload})' }
-		unwrapped := if wrapper == 'Storage' {
-			'keep(mut source)'
+	for wrapper in ['?[]Res', 'Storage', '?Storage', 'WrappedStorage'] {
+		payload := if wrapper == '?[]Res' {
+			'[Res{1}]'
+		} else if wrapper == 'WrappedStorage' {
+			'WrappedStorage(?[]Res([Res{1}]))'
 		} else {
+			'Storage([Res{1}])'
+		}
+		initial := if wrapper.starts_with('?') { '${wrapper}(${payload})' } else { payload }
+		unwrapped := if wrapper.starts_with('?') {
 			'keep(mut source) or { panic("missing payload") }'
+		} else {
+			'keep(mut source)'
 		}
 		check := if wrapper == '?[]Res' {
 			'assert retained[0].id == 101'
+		} else if wrapper == 'WrappedStorage' {
+			'assert retained is ?[]Res'
 		} else {
 			'if retained is []Res { assert retained[0].id == 101 } else { assert false }'
 		}
 		output := borrow_storage_run('wrapped_mut_array_${wrapper.len}', borrow_storage_drop_decls + '
 type Storage = []Res | int
+type WrappedStorage = ?[]Res | int
 fn keep(mut source ${wrapper}) ${wrapper} { return source }
 fn main() {
 	mut source := ${initial}
@@ -641,9 +650,11 @@ fn main() {
 fn test_mutable_wrapped_array_storage_keeps_inactive_payloads() {
 	output := borrow_storage_run('wrapped_mut_array_inactive', borrow_storage_drop_decls + '
 type Storage = []Res | int
+type WrappedStorage = ?[]Res | int
 fn keep_option(mut source ?[]Res) ?[]Res { return source }
 fn keep_sum(mut source Storage) Storage { return source }
 fn keep_optional_sum(mut source ?Storage) ?Storage { return source }
+fn keep_wrapped_sum(mut source WrappedStorage) WrappedStorage { return source }
 fn main() {
 	mut absent := ?[]Res(none)
 	assert keep_option(mut absent) == none
@@ -655,6 +666,11 @@ fn main() {
 	mut scalar_sum := ?Storage(Storage(9))
 	kept := keep_optional_sum(mut scalar_sum) or { panic("missing scalar") }
 	assert kept == Storage(9)
+	mut absent_variant := WrappedStorage(?[]Res(none))
+	kept_variant := keep_wrapped_sum(mut absent_variant)
+	assert kept_variant is ?[]Res
+	drop_owned(absent_variant)
+	drop_owned(kept_variant)
 	println("ok")
 }
 ')
@@ -774,5 +790,45 @@ fn main() {
 		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
 		assert run.exit_code != 0, run.output
 		assert run.output.contains('array.delete: index out of range'), run.output
+	}
+}
+
+fn test_owned_array_trim_drops_only_a_valid_removed_range() {
+	source := '@[has_globals]
+module main
+__global calls = 0
+__global drops = 0
+interface Drop { mut: drop() }
+struct Handle implements Drop { id int }
+fn (mut h Handle) drop() { drops++ }
+fn trim_index(index int) int { calls++; return index }
+fn main() {
+	for index in [-1, 2, 3, 1, 0] {
+		calls = 0
+		drops = 0
+		mut values := [Handle{1}, Handle{2}]
+		previous_len := values.len
+		if calls < 0 { values[0].drop() }
+		values.trim(trim_index(index))
+		assert calls == 1
+		assert drops == if index >= 0 && index < previous_len { previous_len - index } else { 0 }
+		assert values.len == if index < previous_len { index } else { previous_len }
+		if index < 0 {
+			// Preserve the raw trim header behavior, then restore it for complete cleanup.
+			unsafe { values.len = previous_len }
+		}
+		drop_owned(values)
+		assert drops == previous_len
+	}
+	println("ok")
+}
+'
+	for i, flags in ['', '-gc none'] {
+		name := 'owned_trim_bounds_${i}'
+		build := borrow_storage_compile_with_flags(name, source, flags)
+		assert build.exit_code == 0, '${name}: ${build.output}'
+		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == 'ok'
 	}
 }

@@ -2123,7 +2123,11 @@ fn (mut t Transformer) make_default_sum_value(typ string) ?flat.NodeId {
 fn (mut t Transformer) sum_owned_value_payload(value flat.NodeId, variant string) flat.NodeId {
 	variant_type := t.comptime_normalize_type_alias_chain(variant)
 	value_type := t.comptime_normalize_type_alias_chain(t.node_type(value))
-	if value_type == '&${variant_type}' && (variant_type.starts_with('[]') || t.is_sum_type_name(variant_type)) {
+	mut payload_type := variant_type
+	for t.is_optional_type_name(payload_type) {
+		payload_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(payload_type))
+	}
+	if value_type == '&${variant_type}' && (payload_type.starts_with('[]') || t.is_sum_type_name(payload_type)) {
 		payload := t.array_lvalue_value(value, value_type)
 		t.set_node_typ(int(payload), variant)
 		if t.is_owned_array_storage_value(value) {
