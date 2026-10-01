@@ -1302,3 +1302,45 @@ fn test_stored_fixed_views_follow_aggregate_pointer_sources() {
 		assert read_retained_optional_fixed_reference(store.data) == [724, 723]
 	}
 }
+
+fn temporary_dynamic_fixed_rows() [][2]int {
+	return [[731, 732]!, [741, 742]!]
+}
+
+@[noinline]
+fn references_from_mutable_dynamic_fixed_rows(kind int) []&[]int {
+	mut kept := []&[]int{}
+	if kind == 0 {
+		for mut row in temporary_dynamic_fixed_rows() {
+			kept << retain_immutable_array_reference(row)
+			row[0]++
+		}
+	} else if kind == 3 {
+		mut rows := [FixedHolder{[731, 732]!}, FixedHolder{[741, 742]!}]
+		for mut row in rows {
+			kept << retain_immutable_array_reference(row.values)
+			row.values[0]++
+		}
+		assert rows[0].values[0] == 732
+		assert rows[1].values[0] == 742
+	} else {
+		mut rows := temporary_dynamic_fixed_rows()
+		mut view := if kind == 1 { rows[..] } else { rows }
+		for mut row in view {
+			kept << retain_immutable_array_reference(row)
+			row[0]++
+		}
+		assert rows[0][0] == 732
+		assert rows[1][0] == 742
+	}
+	return kept
+}
+
+fn test_mutable_dynamic_fixed_rows_retain_their_original_buffer() {
+	for kind in 0 .. 4 {
+		kept := references_from_mutable_dynamic_fixed_rows(kind)
+		assert overwrite_stack() == 7
+		assert read_retained_optional_fixed_reference(kept[0]) == [732, 732]
+		assert read_retained_optional_fixed_reference(kept[1]) == [742, 742]
+	}
+}

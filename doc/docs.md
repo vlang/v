@@ -1674,6 +1674,7 @@ Fixed array values introduced by guards, multi-declarations, loop bindings, or s
 also receive durable storage when passed to a retaining array-reference parameter.
 Indexed fixed elements of dynamic arrays retain their original backing buffer, including through
 managed slice aliases, so retained headers preserve writes and remain valid after owner cleanup.
+Mutable iteration over those fixed elements preserves the same backing lifetime.
 Pointer fields and indexed pointers retain the original fixed-array roots recorded by their owners.
 Borrowing does not clone elements or require a `clone()` method.
 Explicitly destroying owned source elements invalidates views of those elements, as with other
