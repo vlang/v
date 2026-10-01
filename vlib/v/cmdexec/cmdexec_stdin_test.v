@@ -95,8 +95,7 @@ fn test_capture_only_commands_receive_eof_and_preserve_output_and_exit_status() 
 		work_folder := if entry in ['run_in', 'merged'] { root } else { os.getwd() }
 		for code in [0, 37] {
 			result := stdin_eof_run_entry(entry, code, work_folder)
-			assert stdin_eof_result_matches(result, code, entry),
-				'${entry}, expected ${code}; got ${result.exit_code}: ${result.output}'
+			assert stdin_eof_result_matches(result, code, entry), '${entry}, expected ${code}; got ${result.exit_code}: ${result.output}'
 		}
 	}
 }

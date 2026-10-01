@@ -211,7 +211,6 @@ fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
 		'print',
 		'println',
 		'bool',
-		'byte',
 		'char',
 		'f32',
 		'f64',

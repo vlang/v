@@ -117,21 +117,21 @@ fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
 }
 
 fn test_launcher_finds_the_source_root() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	assert os.is_file(os.join_path(root, 'GNUmakefile'))
 	assert os.is_dir(os.join_path(root, 'vlib', 'v'))
-	directory_root := find_vroot(root) or { panic(err) }
+	directory_root := find_vroot(root) or { panic('missing vroot') }
 	assert directory_root == root
 }
 
 fn test_windows_makev_keeps_the_v3_tcc_root_absolute() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	source := os.read_file(os.join_path(root, 'makev.bat'))!
 	assert source.contains('set tcc_dir=%~dp0thirdparty\\tcc')
 	assert source.contains('set tcc_exe=%tcc_dir%\\tcc.exe')
 	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_STAGE%" cmd/v')
 	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
-	assert source.contains('if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!tcc_exe!"')
+	assert source.contains('set stage_vflags=-cc "!tcc_exe!"')
 	assert !source.contains('-cflags -Bthirdparty/tcc')
 }
 
@@ -174,7 +174,7 @@ fn test_json_quote_escapes_report_content() {
 }
 
 fn test_v1_fallback_installer_exposes_compatibility_modules() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	source := os.read_file(os.join_path(root, 'cmd', 'tools', 'install_v1_fallback.sh'))!
 	crypto := source.all_after('install_crypto_subtle_compatibility() {').all_before('\n}')
 	assert crypto.contains('vlib/crypto/internal/subtle')
@@ -243,14 +243,14 @@ fn test_v1_fallback_resolution_requires_compatibility_modules() {
 	os.write_file(os.join_path(json2_dir, 'json2.v'), 'module json2\n')!
 	assert resolve_v1_fallback(fallback) == none
 	os.write_file(os.join_path(json2_dir, v1_fallback_compatibility_marker), '${v_version}\n')!
-	assert resolve_v1_fallback(fallback) or { panic(err) } == cached_fallback
+	assert resolve_v1_fallback(fallback) or { panic('missing v1 fallback') } == cached_fallback
 	legacy := os.join_path(root, 'legacy_' + v1_fallback_binary + $if windows { '.exe' } $else { '' })
 	legacy_root := os.join_path(root, 'legacy_release')
 	os.mkdir_all(legacy_root)!
 	os.cp(@VEXE, legacy)!
 	os.chmod(legacy, 0o755)!
 	os.write_file(legacy + '.vroot', legacy_root)!
-	assert resolve_installed_v1_fallback(legacy, fallback) or { panic(err) } == cached_fallback
+	assert resolve_installed_v1_fallback(legacy, fallback) or { panic('missing installed v1 fallback') } == cached_fallback
 }
 
 fn test_v1_fallback_cached_launcher_uses_the_configured_cache() {
@@ -357,7 +357,7 @@ fn restore_environment(name string, previous ?string) {
 }
 
 fn test_cached_fallback_root_is_preferred_when_installed() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	fallback := os.join_path(root, v1_fallback_binary + $if windows { '.exe' } $else { '' })
 	root_file := fallback + '.vroot'
 	if !os.is_executable(fallback) || !os.is_file(root_file) {
@@ -542,13 +542,30 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 }
 
 fn test_fallback_installer_writes_a_native_windows_root() {
-	root := find_vroot(@FILE) or { panic(err) }
+	root := find_vroot(@FILE) or { panic('missing vroot') }
 	source := os.read_file(os.join_path(root, 'cmd', 'tools', 'install_v1_fallback.sh'))!
 	writer := source.all_after('write_candidate_root() {').all_before('\n}\n\nsha256_of()')
 	assert writer.contains('MSYS*|MINGW*')
 	assert writer.contains('cygpath -w')
 	assert writer.contains('pwd -W')
 	assert source.count('write_candidate_root || return 1') == 2
+}
+
+fn test_fallback_handles_raw_vsh_script_like_a_vsh_script() {
+	previous_norun := os.getenv_opt('VNORUN')
+	os.unsetenv('VNORUN')
+	defer {
+		restore_environment('VNORUN', previous_norun)
+	}
+	// A script run through `-raw-vsh-tmp-prefix` may exit with a non zero code by itself.
+	assert !v1_fallback_exit_identifies_compiler_failure(['-raw-vsh-tmp-prefix', 'tmp', 'script'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', '-raw-vsh-tmp-prefix',
+		'tmp', 'script'])
+	// The arguments after an extensionless script belong to the script, even when
+	// they look like compiler options.
+	assert v1_fallback_compiler_prefix_len(['-raw-vsh-tmp-prefix', 'tmp', 'script', '-b', 'js']) == 2
+	assert v1_fallback_compiler_prefix_len(['-raw-vsh-tmp-prefix', 'tmp', 'run', 'script', '-check']) == 2
+	assert v1_fallback_compiler_prefix_len(['-prod', 'main.v']) == 2
 }
 
 fn test_build_module_uses_the_compatibility_compilers_own_vlib() {

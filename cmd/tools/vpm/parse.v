@@ -139,7 +139,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 			p.errors++
 			return
 		}
-		manifest := get_manifest(tmp_path) or {
+		manifest := vmod.from_file(os.join_path(tmp_path, 'v.mod')) or {
 			vpm_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
 				details: err.msg()
 			)
@@ -202,7 +202,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector) 
 			p.errors++
 			return
 		}
-		manifest := get_manifest(tmp_path) or {
+		manifest := vmod.from_file(os.join_path(tmp_path, 'v.mod')) or {
 			// Add link with issue template requesting to add a manifest.
 			mut details := ''
 			new_issue_url := '${info.url}/issues/new'

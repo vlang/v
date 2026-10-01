@@ -10,7 +10,7 @@ struct Bar {}
 fn (mut f Foo[T]) method(arg T) {
 	mut b := false
 	if f.f != none {
-		b = f.f or { panic(err) }
+		b = f.f or { panic('missing callback') }
 	} else {
 		b = true
 	}

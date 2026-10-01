@@ -520,6 +520,7 @@ fn (mut g Parser) parse_if() !bool {
 	mut guard_name := ''
 	mut guard_type := ''
 	mut guard_option := ''
+	mut guard_result := false
 	mut guard_is_mut := false
 	mut guard_function := FastcStructField{}
 	mut guard_function_source := ''
@@ -552,7 +553,7 @@ fn (mut g Parser) parse_if() !bool {
 			guard_type = map_lookup.typ
 			guard_is_mut = guard_name_index == 1
 			guard_option = g.temporary_name('if_guard')
-			g.write_line('Option ${guard_option} = (${map_lookup.source});')
+			g.write_line('__auto_type ${guard_option} = (${map_lookup.source});')
 			condition = '${guard_option}.state == 0'
 			g.last_expression_type = 'bool'
 		} else if array_lookup := g.render_array_lookup_option_expression(right_tokens) {
@@ -562,7 +563,7 @@ fn (mut g Parser) parse_if() !bool {
 			guard_type = array_lookup.typ
 			guard_is_mut = guard_name_index == 1
 			guard_option = g.temporary_name('if_guard')
-			g.write_line('Option ${guard_option} = (${array_lookup.source});')
+			g.write_line('__auto_type ${guard_option} = (${array_lookup.source});')
 			condition = '${guard_option}.state == 0'
 			g.last_expression_type = 'bool'
 		} else {
@@ -574,7 +575,8 @@ fn (mut g Parser) parse_if() !bool {
 				guard_option = g.temporary_name('if_guard')
 				guard_erased_generic = g.erased_generic_option_value_type_for_expression(right_tokens) != none
 				right_source := condition.all_after(':=').trim_space()
-				g.write_line('Option ${guard_option} = (${right_source});')
+				guard_result = (g.infer_expression_type(right_tokens) or { '' }) == '__v_result'
+				g.write_line('__auto_type ${guard_option} = (${right_source});')
 				condition = '${guard_option}.state == 0'
 				g.last_expression_type = 'bool'
 			}
@@ -797,7 +799,7 @@ fn (mut g Parser) parse_if() !bool {
 		g.indent++
 		previous_err := g.locals['err'] or { FastcLocal{} }
 		had_err := 'err' in g.locals
-		if guard_option != '' {
+		if guard_result {
 			g.write_line('IError err = ${guard_option}.err;')
 			g.locals['err'] = FastcLocal{
 				typ: 'IError'
@@ -820,7 +822,7 @@ fn (mut g Parser) parse_if() !bool {
 	g.indent++
 	previous_err := g.locals['err'] or { FastcLocal{} }
 	had_err := 'err' in g.locals
-	if guard_option != '' {
+	if guard_result {
 		g.write_line('IError err = ${guard_option}.err;')
 		g.locals['err'] = FastcLocal{
 			typ: 'IError'
@@ -858,7 +860,7 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 	g.skip_semicolons()
 	g.expect(.lcbr)!
 	guard_option := g.temporary_name('if_guard')
-	g.write_line('Option ${guard_option} = (${rhs});')
+	g.write_line('__auto_type ${guard_option} = (${rhs});')
 	g.write_line('if (${guard_option}.state == 0) {')
 	g.indent++
 	multi_return := g.temporary_name('multi_return')
@@ -1351,9 +1353,9 @@ fn (g &Parser) match_starts_final_block_expression() bool {
 	return tok == .rcbr
 }
 
-fn fastc_option_success_expression(value_type string, expression string) string {
+fn fastc_option_success_expression(wrapper string, value_type string, expression string) string {
 	base := fastc_normalize_inferred_type(value_type)
-	return '(Option){.data=${fastc_box_expression(base, expression)}, .state=0}'
+	return '(${wrapper}){.data=${fastc_box_expression(base, expression)}, .state=0}'
 }
 
 fn fastc_box_expression(value_type string, expression string) string {
@@ -1441,7 +1443,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 	g.expected_expression_type = outer_expected_type
 	g.last_expression = []FastcExpressionToken{}
 	result_var := g.temporary_name('if_result')
-	return '({ Option ${guard_option} = (${rhs}); ${result_type} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
+	return '({ __auto_type ${guard_option} = (${rhs}); ${result_type} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
 }
 
 // fastc_plan_is_bare_local reports whether a member-smart-cast plan narrows a bare local
@@ -1628,7 +1630,7 @@ fn (mut g Parser) read_if_expression() !string {
 		}
 	}
 	mut then_type := g.last_expression_type
-	mut then_option_value_type := if then_type == 'Option' {
+	mut then_option_value_type := if then_type in ['Option', '__v_result'] {
 		if g.last_expression.len > 0 {
 			g.option_value_type_for_expression(g.last_expression)
 		} else {
@@ -1656,7 +1658,7 @@ fn (mut g Parser) read_if_expression() !string {
 	// invalid `(void)([])`).
 	else_branch_expected := if branch_expected_type != '' {
 		branch_expected_type
-	} else if then_type !in ['', 'Option'] {
+	} else if then_type !in ['', 'Option', '__v_result'] {
 		fastc_normalize_inferred_type(then_type)
 	} else {
 		''
@@ -1675,7 +1677,7 @@ fn (mut g Parser) read_if_expression() !string {
 			g.read_block_expression_value()!
 		}
 		else_type = g.last_expression_type
-		if else_type == 'Option' {
+		if else_type in ['Option', '__v_result'] {
 			else_option_value_type = if g.last_expression.len > 0 {
 				g.option_value_type_for_expression(g.last_expression)
 			} else {
@@ -1689,36 +1691,38 @@ fn (mut g Parser) read_if_expression() !string {
 		g.skip_semicolons()
 		g.expect(.rcbr)!
 	}
-	if g.selfhost && g.return_type == 'Option' && outer_expected_type != 'Option' {
+	if g.selfhost && g.return_type == '__v_result' && outer_expected_type !in ['Option', '__v_result'] {
 		if then_type.trim_right('*') == 'IError' && else_type !in ['', 'IError'] {
-			then_expression = '({ return (Option){.err=${then_expression}, .state=1}; (${fastc_normalize_inferred_type(else_type)}){0}; })'
+			then_expression = '({ return (__v_result){.err=${then_expression}, .state=1}; (${fastc_normalize_inferred_type(else_type)}){0}; })'
 			then_type = else_type
 		} else if else_type.trim_right('*') == 'IError' && then_type !in ['', 'IError'] {
-			else_expression = '({ return (Option){.err=${else_expression}, .state=1}; (${fastc_normalize_inferred_type(then_type)}){0}; })'
+			else_expression = '({ return (__v_result){.err=${else_expression}, .state=1}; (${fastc_normalize_inferred_type(then_type)}){0}; })'
 			else_type = then_type
 		}
 	}
-	if g.selfhost && outer_expected_type == 'Option' {
-		if then_type != 'Option' {
+	if g.selfhost && outer_expected_type in ['Option', '__v_result'] {
+		if then_type !in ['Option', '__v_result'] {
 			then_option_value_type = fastc_normalize_inferred_type(then_type)
-			then_expression = g.option_branch_expression(then_type, then_expression)
-			then_type = 'Option'
+			then_expression = g.option_branch_expression(outer_expected_type, then_type, then_expression)
+			then_type = outer_expected_type
 		}
-		if else_type != 'Option' {
+		if else_type !in ['Option', '__v_result'] {
 			else_option_value_type = fastc_normalize_inferred_type(else_type)
-			else_expression = g.option_branch_expression(else_type, else_expression)
-			else_type = 'Option'
+			else_expression = g.option_branch_expression(outer_expected_type, else_type, else_expression)
+			else_type = outer_expected_type
 		}
-	} else if g.selfhost && then_type == 'Option' && else_type !in ['', 'Option'] {
+	} else if g.selfhost && then_type in ['Option', '__v_result'] && else_type !in ['', 'Option',
+		'__v_result'] {
 		else_option_value_type = fastc_normalize_inferred_type(else_type)
 		else_base := fastc_normalize_inferred_type(else_type)
-		else_expression = '(Option){.data=${fastc_box_expression(else_base, else_expression)}, .state=0}'
-		else_type = 'Option'
-	} else if g.selfhost && else_type == 'Option' && then_type !in ['', 'Option'] {
+		else_expression = '(${then_type}){.data=${fastc_box_expression(else_base, else_expression)}, .state=0}'
+		else_type = then_type
+	} else if g.selfhost && else_type in ['Option', '__v_result'] && then_type !in ['', 'Option',
+		'__v_result'] {
 		then_option_value_type = fastc_normalize_inferred_type(then_type)
 		then_base := fastc_normalize_inferred_type(then_type)
-		then_expression = '(Option){.data=${fastc_box_expression(then_base, then_expression)}, .state=0}'
-		then_type = 'Option'
+		then_expression = '(${else_type}){.data=${fastc_box_expression(then_base, then_expression)}, .state=0}'
+		then_type = else_type
 	}
 	if g.selfhost && then_type == '' && else_type != '' {
 		resolved_type := fastc_normalize_inferred_type(else_type)
@@ -1758,7 +1762,7 @@ fn (mut g Parser) read_if_expression() !string {
 			else_type
 		}
 	}
-	g.last_option_value_type = if g.last_expression_type == 'Option' && then_option_value_type != '' && then_option_value_type == else_option_value_type {
+	g.last_option_value_type = if g.last_expression_type in ['Option', '__v_result'] && then_option_value_type != '' && then_option_value_type == else_option_value_type {
 		then_option_value_type
 	} else {
 		''
@@ -1813,18 +1817,18 @@ fn (mut g Parser) read_if_expression() !string {
 	return if guard_option == '' {
 		wrapped
 	} else {
-		'({ Option ${guard_option} = (${guard_source}); ${wrapped}; })'
+		'({ __auto_type ${guard_option} = (${guard_source}); ${wrapped}; })'
 	}
 }
 
-fn (g &Parser) option_branch_expression(value_type string, expression string) string {
-	if value_type.trim_right('*') == 'IError' {
-		return '(Option){.err=${expression}, .state=1}'
+fn (g &Parser) option_branch_expression(wrapper string, value_type string, expression string) string {
+	if wrapper == '__v_result' && value_type.trim_right('*') == 'IError' {
+		return '(__v_result){.err=${expression}, .state=1}'
 	}
-	if value_type == 'voidptr' && g.option_return_type != 'voidptr' {
-		return '(Option){.err=(IError){._object=(voidptr)(${expression})}, .state=1}'
+	if wrapper == '__v_result' && value_type == 'voidptr' && g.option_return_type != 'voidptr' {
+		return '(__v_result){.err=(IError){._object=(voidptr)(${expression})}, .state=1}'
 	}
-	return fastc_option_success_expression(value_type, expression)
+	return fastc_option_success_expression(wrapper, value_type, expression)
 }
 
 fn (mut g Parser) read_return_expression_branch() !string {
@@ -1853,11 +1857,12 @@ fn (mut g Parser) read_return_expression_branch() !string {
 	// an `Option`, and a bare value is wrapped into the success state — rather than emitting a raw
 	// `return <IError>` that TinyCC rejects.
 	mut return_value := value
-	if g.selfhost && g.return_type == 'Option' && value_type.trim_right('*') == 'IError' {
-		return_value = '(Option){.err=${value}, .state=1}'
-	} else if g.selfhost && g.return_type == 'Option' && value_type !in ['', 'Option'] {
+	if g.selfhost && g.return_type == '__v_result' && value_type.trim_right('*') == 'IError' {
+		return_value = '(__v_result){.err=${value}, .state=1}'
+	} else if g.selfhost && g.return_type in ['Option', '__v_result'] && value_type !in ['', 'Option',
+		'__v_result'] {
 		value_base := fastc_normalize_inferred_type(value_type)
-		return_value = '(Option){.data=${fastc_box_expression(value_base, value)}, .state=0}'
+		return_value = '(${g.return_type}){.data=${fastc_box_expression(value_base, value)}, .state=0}'
 	}
 	g.last_expression_type = ''
 	return '({ return ${return_value}; 0; })'

@@ -93,6 +93,9 @@ pub mut:
 	// architecture or C compiler (`-os cross`). Target-dependent `$if` branches
 	// are all kept and decided by the C preprocessor instead of by the checker.
 	output_cross_c bool
+	// raw_vsh_file is the real path of an input without the `.vsh` extension that
+	// is still compiled as a V script (`-raw-vsh-tmp-prefix`).
+	raw_vsh_file string
 pub:
 	build_date      string
 	build_time      string
@@ -1487,6 +1490,12 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	// `compile_values`.
 	if name == 'test' && name !in p.compile_values {
 		return false
+	}
+	// Builtin spells its native backend check `$if native ?`, because the V1
+	// compatibility compiler, which still checks some fixtures, knows `native`
+	// only as a define. Here it also names the backend, as in `$if native`.
+	if name == 'native' {
+		return comptime_flag_value(p, name) || name in p.user_defines
 	}
 	return name in p.user_defines
 }

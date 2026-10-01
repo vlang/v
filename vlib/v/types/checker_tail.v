@@ -2070,6 +2070,13 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.return_mismatch, '`${tc.source_text_for_node(child_id)}` used as value', id, tc.noreturn_statement_diagnostic_pos(id))
 			return
 		}
+		// Like V1, `return f()` passes on the outcome of another `?` function.
+		if actual is OptionType && actual.base_type is Void {
+			$if ownership ? {
+				tc.ownership_after_return(id, node)
+			}
+			return
+		}
 		tc.record_error_at(.return_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(child_id, actual)}` as Option type in return argument', child_id, child.pos)
 		return
 	}
@@ -2336,7 +2343,8 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.return_mismatch, '`${child_value.value}` used as value', id, tc.noreturn_statement_diagnostic_pos(id))
 		return
 	}
-	if expected is OptionType && is_ierror_type(tc.resolve_type(child_id)) {
+	if expected is OptionType && is_ierror_type(tc.resolve_type(child_id))
+		&& !tc.type_compatible(tc.resolve_type(child_id), Type(expected)) {
 		if tc.valid_node_id(flat.NodeId(tc.fn_context.node_id))
 			&& tc.a.node(flat.NodeId(tc.fn_context.node_id)).typ == '?void' {
 			return
@@ -4189,6 +4197,28 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				tc.check_builtin_array_mutable_receiver(receiver_id)
 			}
 		}
+		if callee.kind == .selector && callee.value == 'wait' && callee.children_count > 0 {
+			// Only thread handles and arrays of them have `.wait()`. On any other
+			// array the call resolves silently, so report it here like V1 does.
+			receiver_id := tc.a.child(callee, 0)
+			raw_receiver_type := tc.resolve_type(receiver_id)
+			receiver_type := unalias_and_unwrap_pointer_type(raw_receiver_type)
+			receiver_name := receiver_type.name()
+			if !unresolved_generic_receiver_type(receiver_type) && receiver_type is Array
+				&& !tc.alias_declares_method(raw_receiver_type, 'wait') {
+				elem := unalias_type(array_elem_type(receiver_type))
+				is_thread_elem := elem is Struct && tc.thread_wait_return_type(elem) != none
+				if elem !is Unknown && !is_thread_elem {
+					tc.record_error(.unknown_fn,
+						'`${receiver_name}` has no method `wait()` (only thread handles and arrays of them have)',
+						receiver_id)
+					tc.register_synth_type(id, Type(MultiReturn{
+						types: []Type{}
+					}))
+					return
+				}
+			}
+		}
 		if callee.kind == .selector && callee.value == 'sort' && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)
 			receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
@@ -5078,12 +5108,9 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		if raw_arg.kind == .field_init {
 			base, _, is_generic := generic_type_application_parts(param_texts[param_idx])
 			if is_generic {
-				for field in tc.source_struct_field_decls(base) {
-					if field.name == raw_arg.value {
-						tc.infer_generic_type_text_from_type(field.typ, actual, generic_params, mut inferred)
-						tc.infer_generic_type_value_from_type(field.typ, actual, generic_params, mut inferred_types)
-						break
-					}
+				if field_text := tc.field_init_struct_field_type(base, param_texts[param_idx], raw_arg.value) {
+					tc.infer_generic_type_text_from_type(field_text, actual, generic_params, mut inferred)
+					tc.infer_generic_type_value_from_type(field_text, actual, generic_params, mut inferred_types)
 				}
 				continue
 			}
@@ -9032,7 +9059,8 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				params_known: true
 			}
 		}
-		if fn_node.value == 'malloc' {
+		// A module's own `malloc` is called before builtin's, as in V1.
+		if fn_node.value == 'malloc' && tc.local_bare_fn_key('malloc') == none {
 			return CallInfo{
 				name:         'malloc'
 				params:       tarr1(Type(ISize{}))
@@ -14759,8 +14787,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		voidptr_arg_node := tc.a.node(arg_id)
-		arg_is_mut_receiver := voidptr_arg_node.kind == .ident
-			&& tc.current_fn_param_is_mut_receiver(voidptr_arg_node.value)
+		arg_is_mut_receiver := (voidptr_arg_node.kind == .ident
+			&& tc.current_fn_param_is_mut_receiver(voidptr_arg_node.value))
+			|| tc.expr_is_mut_struct_param(arg_id)
 		if fn_param_is_voidptr_type(expected) && unalias_type(actual) is Struct
 			&& !arg_is_mut_receiver {
 			tc.record_warning_at(.call_arg_mismatch, 'automatic ${unalias_type(actual).name()} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
@@ -16286,7 +16315,9 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 			arg_id, method_pos)
 	}
 	tc.push_array_dsl_scope(node, 'array.sort')
+	tc.sort_comparator_depth++
 	tc.check_node(arg_id)
+	tc.sort_comparator_depth--
 	if invalid_id := tc.sort_first_invalid_ident(arg_id) {
 		invalid := tc.a.node(invalid_id)
 		mut error_index := tc.errors.len
@@ -16822,6 +16853,53 @@ fn (tc &TypeChecker) variadic_any_arg_is_scalar(id flat.NodeId) bool {
 	return true
 }
 
+// field_init_struct_param_name returns the struct name of the parameter that a
+// shorthand field-init argument initializes. The resolved parameter type is
+// preferred over the declaration text, so pointer, option, result and alias
+// wrappers around the struct do not hide the initialized struct.
+fn field_init_struct_param_name(info CallInfo, param_idx int) ?string {
+	if param_idx < 0 || param_idx >= info.params.len {
+		return none
+	}
+	mut typ := info.params[param_idx]
+	for _ in 0 .. 8 {
+		if typ is Pointer {
+			typ = typ.base_type
+		} else if typ is OptionType {
+			typ = typ.base_type
+		} else if typ is ResultType {
+			typ = typ.base_type
+		} else if typ is Alias {
+			typ = typ.base_type
+		} else {
+			break
+		}
+	}
+	if typ is Struct && typ.name.len > 0 {
+		return typ.name
+	}
+	return none
+}
+
+// field_init_struct_field_type substitutes the struct declaration's parameters
+// with the arguments in the function parameter before inferring from a field.
+fn (tc &TypeChecker) field_init_struct_field_type(struct_name string, param_text string, field_name string) ?string {
+	base, args, is_generic := generic_type_application_parts(comptime_static_unwrap_type_text(param_text))
+	params := if is_generic {
+		tc.struct_generic_params[base] or {
+			tc.struct_generic_params[tc.qualify_name(base)] or { []string{} }
+		}
+	} else {
+		[]string{}
+	}
+	for field in tc.source_struct_field_decls(struct_name) {
+		if field.name == field_name {
+			return subst_generic_text(field.typ, args, params)
+		}
+	}
+	return none
+}
+
 fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info CallInfo) CallInfo {
 	if tc.call_has_explicit_generic_type_args(node) {
 		return info
@@ -16890,7 +16968,35 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		if arg_node.kind == .lambda_expr && param_idx < info.params.len {
 			actual = tc.contextual_generic_lambda_type(arg_id, info.params[param_idx], generic_params, inferred_types) or { actual }
 		}
-		param_text := trimmed_space(param_texts[param_idx])
+		mut param_text := trimmed_space(param_texts[param_idx])
+		if raw_arg.kind == .field_init {
+			// A shorthand field-init argument to a generic struct parameter
+			// (`f(field: value)` for `fn f[T](x Box[T])`) carries no type of its
+			// own. Infer `T` from the declared type of the initialized field and
+			// the shorthand value, reusing the numeric literal deferral below so
+			// that a later argument can still decide the placeholder's type.
+			struct_name := field_init_struct_param_name(info, param_idx) or {
+				base, _, is_generic := generic_type_application_parts(param_text)
+				if is_generic { base } else { '' }
+			}
+			mut field_text := ''
+			if struct_name.len > 0 {
+				if field_type := tc.field_init_struct_field_type(struct_name, param_text, raw_arg.value) {
+					if generic_params.any(type_text_contains_symbol(field_type, it)) {
+						field_text = trimmed_space(field_type)
+					}
+				}
+			}
+			if field_text.len > 0 {
+				if is_anonymous_struct_name(raw_arg.typ) {
+					// A shorthand with a literal value is parsed as an anonymous
+					// aggregate. The initialized field takes its type from the
+					// value, not from that aggregate type.
+					actual = tc.resolve_generic_call_arg_type(arg_id)
+				}
+				param_text = field_text
+			}
+		}
 		mut defer_numeric_literal := false
 		if arg_node.kind in [.int_literal, .float_literal] && param_text in generic_params {
 			for later_param_idx in param_idx + 1 .. param_texts.len {
@@ -17865,9 +17971,6 @@ fn pointer_builtin_receiver_name(typ Type) string {
 	if typ is Pointer {
 		base := typ.base_type
 		if base is Alias {
-			if base.name == 'byte' {
-				return 'byteptr'
-			}
 			return pointer_builtin_receiver_name(base)
 		}
 		if base is Char {
@@ -19005,11 +19108,13 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 	if int(base_id) >= 0 {
 		base_node := tc.a.nodes[int(base_id)]
 		if base_node.kind == .ident {
-			if typ := tc.non_file_scope_type(base_node.value) {
-				if base := tc.mut_param_base_for_current_ident(base_node.value, typ) {
-					return base
+			if !tc.bare_name_is_const_owned_over_global(base_node.value) {
+				if typ := tc.non_file_scope_type(base_node.value) {
+					if base := tc.mut_param_base_for_current_ident(base_node.value, typ) {
+						return base
+					}
+					return typ
 				}
-				return typ
 			}
 		}
 	}
@@ -19316,10 +19421,8 @@ fn multi_return_wrapper_shapes_match(a []Type, b []Type) bool {
 		other := b[i]
 		if (unalias_type(typ) is None && unalias_type(other) is OptionType)
 			|| (unalias_type(other) is None && unalias_type(typ) is OptionType)
-			|| (is_ierror_type(typ) && (unalias_type(other) is OptionType
-				|| unalias_type(other) is ResultType))
-			|| (is_ierror_type(other) && (unalias_type(typ) is OptionType
-				|| unalias_type(typ) is ResultType)) {
+			|| (is_ierror_type(typ) && unalias_type(other) is ResultType)
+			|| (is_ierror_type(other) && unalias_type(typ) is ResultType) {
 			continue
 		}
 		if (unalias_type(typ) is OptionType) != (unalias_type(other) is OptionType)
@@ -19366,20 +19469,20 @@ fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id
 		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
+	if expected is OptionType {
+		if is_ierror_type(actual) && unalias_type(expected.base_type) is String {
+			return false
+		}
+		if tc.type_compatible(actual, expected.base_type) {
+			return true
+		}
+	}
 	if is_ierror_type(actual) {
-		// A direct `return error(...)` from an Option function remains invalid,
-		// but V permits an error-valued tail inside a contextually typed
-		// if/match expression. The surrounding Option stores that IError in its
-		// failure arm, just like `none`, while successful tails provide the
-		// payload value.
-		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
+		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if tc.type_compatible_with_ierror_payload(actual) {
 		return expected is ResultType || is_ierror_type(expected)
-	}
-	if expected is OptionType && tc.type_compatible(actual, expected.base_type) {
-		return true
 	}
 	return tc.type_compatible(actual, expected)
 }
@@ -19446,7 +19549,10 @@ fn (tc &TypeChecker) branch_failure_literal_matches_context(id flat.NodeId, expe
 		return expected is OptionType || is_ierror_type(expected)
 	}
 	if tc.branch_tail_is_error_literal(id) {
-		return expected is OptionType || expected is ResultType || is_ierror_type(expected)
+		if expected is OptionType {
+			return tc.type_compatible(tc.resolve_type(id), expected)
+		}
+		return expected is ResultType || is_ierror_type(expected)
 	}
 	return true
 }
@@ -19725,7 +19831,9 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			if fn_node.value == 'hex' {
 				return tc.is_builtin_hex_receiver(base_type)
 			}
-			return true
+			// The builtin map methods; any other name is an unknown method, as in V1.
+			return fn_node.value in ['clone', 'move', 'delete', 'clear', 'free', 'keys', 'values',
+				'reserve', 'str']
 		}
 		if clean_type is String {
 			if fn_node.value == 'hex' {
@@ -19807,6 +19915,20 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver Type, method string
 			}
 		}
 		return method == 'pointers'
+	}
+	return false
+}
+
+// alias_declares_method reports whether any alias in the chain of `typ` (for
+// `type MyArr = []int`, `MyArr`) declares its own `method`, which takes priority
+// over the builtin methods of the aliased type.
+fn (tc &TypeChecker) alias_declares_method(typ Type, method string) bool {
+	mut current := unwrap_pointer(typ)
+	for current is Alias {
+		if '${current.name}.${method}' in tc.fn_ret_types {
+			return true
+		}
+		current = unwrap_pointer(current.base_type)
 	}
 	return false
 }
@@ -19967,7 +20089,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		if tc.valid_node_id(else_id) && tc.a.node(else_id).kind == .if_expr {
 			tc.fn_context.mut_local_owners = saved_mut_local_owners.clone()
 		}
-		tc.check_branch_node(else_id, value_context)
+		tc.check_if_else_branch(cond_id, else_id, value_context)
 		$if ownership ? {
 			tc.ownership_end_branch(else_id)
 		}
@@ -20113,6 +20235,52 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// check_if_else_branch checks the `else` branch `else_id` of an `if`. After an
+// `if x := call() {` guard, a plain `else` block names the error of the call
+// `err`, as an `or {}` block does; an `else if` does not.
+fn (mut tc TypeChecker) check_if_else_branch(cond_id flat.NodeId, else_id flat.NodeId, value_context bool) {
+	names_err := tc.valid_node_id(cond_id) && tc.a.node(cond_id).kind == .decl_assign
+		&& tc.valid_node_id(else_id) && tc.a.node(else_id).kind != .if_expr
+		&& tc.failure_has_error(cond_id)
+	if names_err {
+		tc.push_scope()
+		if tc.has_ierror_interface() {
+			tc.cur_scope.insert('err', tc.parse_type('IError'))
+		}
+	}
+	tc.check_branch_node(else_id, value_context)
+	if names_err {
+		tc.pop_scope()
+	}
+}
+
+// err_block_holds reports whether the identifier `id` is in a block that names
+// the error it handles `err`: an `or {}` block, or the plain `else` block right
+// after an `if x := call() {` guard. It follows the tree rather than the scopes,
+// for the checks that keep no scope for such a block.
+fn (tc &TypeChecker) err_block_holds(id flat.NodeId) bool {
+	mut child := id
+	mut parent := tc.direct_parent_id(child)
+	for tc.valid_node_id(parent) {
+		node := tc.a.node(parent)
+		if node.kind in [.fn_decl, .fn_literal, .lambda_expr, .file] {
+			return false
+		}
+		if node.kind == .or_expr && node.children_count > 1 && tc.a.child(node, 1) == child
+			&& tc.failure_has_error(tc.a.child(node, 0)) {
+			return true
+		}
+		if node.kind == .if_expr && node.children_count > 2 && tc.a.child(node, 2) == child
+			&& tc.a.node(child).kind != .if_expr && tc.a.child_node(node, 0).kind == .decl_assign
+			&& tc.failure_has_error(tc.a.child(node, 0)) {
+			return true
+		}
+		child = parent
+		parent = tc.direct_parent_id(child)
+	}
+	return false
+}
+
 // check_valid_if_expr preserves scopes, guard bindings, smartcasts, and branch
 // expression typing without rebuilding diagnostics for the valid self-host input.
 fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
@@ -20165,7 +20333,7 @@ fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
 		if tc.valid_node_id(else_id) && tc.a.node(else_id).kind == .if_expr {
 			tc.fn_context.mut_local_owners = saved_mut_local_owners.clone()
 		}
-		tc.check_branch_node(else_id, value_context)
+		tc.check_if_else_branch(cond_id, else_id, value_context)
 		if value_context {
 			tc.branch_tail_type(else_id)
 		}

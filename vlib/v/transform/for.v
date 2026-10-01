@@ -208,7 +208,7 @@ fn (t &Transformer) for_loop_var_unsigned_type(name string) string {
 	for typ.starts_with('&') {
 		typ = typ[1..]
 	}
-	if typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+	if typ in ['u8', 'u16', 'u32', 'u64', 'usize'] {
 		return typ
 	}
 	return ''
@@ -1276,7 +1276,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	mut new_body := []flat.NodeId{}
 	new_body << binding_clones
-	new_body << elem_decl
+	if elem_name != '_' {
+		// `for _ in a {}` only needs the length; loading every element would be a read
+		// of the elements that the race detector reports.
+		new_body << elem_decl
+	}
 	new_body << transformed_body
 	cleanup_target := if int(optional_container) >= 0 { optional_container } else { container }
 	cleanup_type := if int(optional_container) >= 0 { raw_container_type } else { actual_iter_type }

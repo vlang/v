@@ -1,0 +1,10 @@
+struct Entry {
+	inode u32
+}
+
+address := u64(0x1000)
+// Parentheses do not make a plain number a computed address.
+_ = &Entry((address))
+_ = &Entry((1234))
+// A computed address may be cast, as in V1.
+_ = &Entry((address + 8))

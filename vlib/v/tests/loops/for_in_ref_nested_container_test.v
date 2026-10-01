@@ -80,10 +80,10 @@ fn test_ref_map_parenthesized_pointer_array_entries() {
 	}
 	mut refs := []&int{}
 	// vfmt off
- for _, mut values in (&entries) {
-  for item in ((values)) { refs << item }
- }
- // vfmt on
+	for _, mut values in (&entries) {
+		for item in ((values)) { refs << item }
+	}
+	// vfmt on
 	verify_nested_reference_values(mut row, refs)
 }
 

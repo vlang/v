@@ -578,6 +578,10 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 		unsafe {
 			res = C.GC_memalign(align, n)
 		}
+	} $else $if vinix {
+		// The Vinix kernel's libc has no aligned_alloc(). Only GC and prealloc
+		// builds, which Vinix does not use, call this.
+		panic('memdup_align is not implemented on Vinix')
 	} $else $if freestanding {
 		// todo: is this safe to call malloc there? We export __malloc as malloc and it uses dlmalloc behind the scenes
 		// so theoretically it is safe

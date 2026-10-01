@@ -355,7 +355,7 @@ fn sanitize_complex(name string) string {
 		} else if c == `&` {
 			b.write_string('ptr')
 		} else if c == `?` {
-			b.write_string('Optional_')
+			b.write_string('__v_option_')
 		} else if c == `!` {
 			b.write_string('Result_')
 		} else if c == `@` {
