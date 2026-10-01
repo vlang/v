@@ -3192,6 +3192,74 @@ fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 	return flags
 }
 
+// v3_tcc_macos_framework_flags replaces the `-framework` link flags that TCC
+// does not support with the file ld would link for them: the SDK's `.tbd` stub,
+// or the framework binary found through `-F` or in /Library/Frameworks. It drops
+// the `-F` search paths, which TCC rejects. A framework that cannot be resolved,
+// and `-weak_framework`, are kept, so TCC still reports them and an implicit TCC
+// build falls back to the platform C compiler as before.
+fn v3_tcc_macos_framework_flags(flags []string, target_os string, macos_sdk_root string) []string {
+	if target_os != 'macos' || !flags.any(it.trim_space() == '-framework'
+		|| it.trim_space().starts_with('-F')) {
+		return flags
+	}
+	mut search_dirs := []string{}
+	for i, flag in flags {
+		clean := flag.trim_space()
+		if clean == '-F' && i + 1 < flags.len {
+			search_dirs << flags[i + 1].trim_space()
+		} else if clean.starts_with('-F') && clean.len > 2 {
+			search_dirs << clean[2..]
+		}
+	}
+	if macos_sdk_root != '' {
+		search_dirs << os.join_path(macos_sdk_root, 'System', 'Library', 'Frameworks')
+	}
+	search_dirs << '/Library/Frameworks'
+	mut result := []string{cap: flags.len}
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
+		if clean == '-F' {
+			i += 2
+			continue
+		}
+		if clean.starts_with('-F') && clean.len > 2 {
+			i++
+			continue
+		}
+		if clean == '-framework' && i + 1 < flags.len {
+			link_file := v3_macos_framework_link_file(flags[i + 1].trim_space(), search_dirs)
+			if link_file != '' {
+				result << link_file
+			} else {
+				result << [flags[i], flags[i + 1]]
+			}
+			i += 2
+			continue
+		}
+		result << flags[i]
+		i++
+	}
+	return result
+}
+
+fn v3_macos_framework_link_file(name string, search_dirs []string) string {
+	if name == '' {
+		return ''
+	}
+	for dir in search_dirs {
+		framework_dir := os.join_path(dir, '${name}.framework')
+		for candidate in [os.join_path(framework_dir, '${name}.tbd'),
+			os.join_path(framework_dir, name)] {
+			if os.is_file(candidate) {
+				return candidate
+			}
+		}
+	}
+	return ''
+}
+
 fn macos_sdk_root() string {
 	return cmdexec.macos_sdk_root()
 }
@@ -7766,7 +7834,8 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	// -prod needs optimizations that TCC cannot do, so TCC is never its default, not
 	// even on Windows. Probing it there would generate C for TCC, skip TCC when
 	// compiling, and then re-run the whole compilation for the platform compiler.
-	if options.is_prod {
+	// Race builds need ThreadSanitizer, including when computing Windows vtest facts.
+	if options.is_prod || options.race {
 		return false
 	}
 	// Windows uses its bundled TCC as the platform default, including modes that
@@ -7774,7 +7843,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	if options.host_os == 'windows' && options.target.os == 'windows' {
 		return true
 	}
-	return !options.is_c_debug && !options.race
+	return !options.is_c_debug
 }
 
 fn v3_bundled_tcc_available(options V3BundledTccProbeOptions) bool {
@@ -14209,6 +14278,8 @@ pub fn run(args []string) {
 				// executable is never reused across a change of the link flags.
 				tcc_args << link_ld_flags
 			}
+			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
+				tcc_sdk_root)
 			program_source_identity := '${prefix_source_identity}\n${modulecache.file_signature(tcc_main_file)}\n${if cached_program_body_source.len > 0 {
 				modulecache.file_signature(cached_program_body_source)
 			} else {
@@ -14302,6 +14373,8 @@ pub fn run(args []string) {
 			if !is_o {
 				tcc_args << link_ld_flags
 			}
+			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
+				tcc_sdk_root)
 			if verbose || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}

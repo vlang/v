@@ -638,7 +638,8 @@ fn literal_decl_scan_thread(arg voidptr) voidptr {
 		unsafe {
 			flags[i - a.base] = flag
 		}
-		mut may_escape := node.kind == .prefix && node.op == .amp
+		mut may_escape := (node.kind == .prefix && node.op == .amp)
+			|| escape_call_may_return_receiver_address(a.a, a.tc, flat.NodeId(i), *node)
 		if !may_escape && node.kind == .call && node.children_count > 1 {
 			name := a.tc.resolved_call_name(flat.NodeId(i)) or {
 				unsafe {

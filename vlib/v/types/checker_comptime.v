@@ -5,6 +5,7 @@ import strings
 import v.errors as compiler_errors
 import v.flat
 import v.pref
+import v.scanner
 import v.token
 import v.util
 
@@ -3853,10 +3854,13 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 		base := tc.a.node(base_id)
+		// Like V1, translated files take the address of a global array's elements
+		// outside `unsafe` (C translated by c2v: `&sqlite3_str_binary[0]`).
 		if raw_base_type !is Alias && base_type is Array
 			&& unalias_type(base_type.elem_type) !is Pointer
 			&& base.kind == .ident
 			&& (base_pointer_depth > 0 || tc.ident_is_mutable_lvalue(base.value))
+			&& !(tc.node_is_in_translated_file(id) && tc.ident_is_global_binding(base.value))
 			&& tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
 			tc.record_error_at(.assignment_mismatch, 'cannot take the address of mutable array elements outside unsafe blocks', child_id, tc.index_brackets_pos(address_child))
 			return
@@ -10917,6 +10921,7 @@ fn (tc &TypeChecker) sql_expr_is_in_defer(id flat.NodeId) bool {
 }
 
 fn (mut tc TypeChecker) check_sql_orm_constraints(id flat.NodeId, node flat.Node, tokens []string) {
+	tc.check_sql_alias_method_privacy(id, node, tokens)
 	tc.check_sql_aggregate_constraints(id, node, tokens)
 	tc.check_sql_bulk_pointer_arrays(id, node, tokens)
 	tc.check_sql_statement_constraints(id, node, tokens)
@@ -10940,6 +10945,308 @@ fn (mut tc TypeChecker) check_sql_orm_constraints(id flat.NodeId, node flat.Node
 			tc.record_error_at(.assignment_mismatch, 'ORM: select: empty fields in `${table_name}`', id, tc.sql_expr_text_pos(node, ' ${table_name}', 1, table_name.len))
 		}
 	}
+}
+
+fn (mut tc TypeChecker) check_sql_alias_method_privacy(id flat.NodeId, node flat.Node, tokens []string) {
+	for i := 2; i + 1 < tokens.len; i++ {
+		if tokens[i - 1] != '.' || tokens[i + 1] != '(' {
+			continue
+		}
+		if converted := tc.sql_orm_alias_conversion_type(tokens, i) {
+			if tc.private_declaration(converted.name()) != none {
+				tc.record_sql_error_at(.unknown_type, 'type `${converted.name()}` is private', id,
+					tc.sql_expr_text_pos(node, '${tokens[i]}(', 0, tokens[i].len))
+			}
+			continue
+		}
+		receiver := tc.sql_orm_call_receiver_type(tokens, i) or { continue }
+		method := tc.concrete_method_signature_key(unwrap_all_pointers(receiver).name(), tokens[i]) or {
+			continue
+		}
+		if method.all_before_last('.') !in tc.type_aliases {
+			continue
+		}
+		if tc.private_declaration(method) != none {
+			name := '${receiver.name()}.${tokens[i]}'
+			tc.record_sql_error_at(.unknown_fn, 'method `${name}` is private', id,
+				tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+			continue
+		}
+		mutating_receiver := tc.mut_receiver_methods[method]
+		end := i - 1
+		start := sql_value_receiver_start(tokens, end - 1) or { continue }
+		shared_params := tc.fn_shared_params[method] or { []bool{} }
+		if shared_params.len > 0 && shared_params[0] {
+			if tc.lock_depth > 0 {
+				tc.record_sql_error_at(.call_arg_mismatch,
+					'method with `shared` receiver cannot be called inside `lock`/`rlock` block',
+					id, tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+			}
+			if !tc.sql_orm_receiver_is_shared(tokens, start, end) {
+				tc.record_sql_error_at(.call_arg_mismatch,
+					'cannot use shared method `${tokens[i]}` as `${tokens[start..end].join('')}` is not a shared var',
+					id, tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+			}
+			continue
+		}
+		if shared_name := tc.sql_orm_shared_receiver_name(tokens, start, end) {
+			lock_mode := tc.sql_orm_current_shared_lock_mode(shared_name)
+			if (mutating_receiver && lock_mode != `w`) || (!mutating_receiver && lock_mode == 0) {
+				message := if !mutating_receiver {
+					'`${shared_name}` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut receiver'
+				} else if lock_mode == `r` {
+					'${shared_name} has an `rlock` but needs a `lock`'
+				} else {
+					'${shared_name} is `shared` and must be `lock`ed to be passed as `mut`'
+				}
+				tc.record_sql_error_at(.call_arg_mismatch, message, id,
+					tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+			}
+			continue
+		}
+		if !mutating_receiver || tc.unsafe_depth > 0
+			|| tc.expr_is_inside_unsafe_block(id)
+			|| !tc.mut_receiver_method_requires_mutable_lvalue(method) {
+			continue
+		}
+		if tc.sql_orm_mut_receiver_is_mutable(tokens, start, end, receiver) {
+			continue
+		}
+		message := if end == start + 1 && sql_like_identifier(tokens[start]) {
+			'`${tokens[start]}` is immutable, declare it with `mut` to make it mutable'
+		} else {
+			'cannot pass expression as `mut`'
+		}
+		tc.record_sql_error_at(.call_arg_mismatch, message, id,
+			tc.sql_expr_text_pos(node, '.${tokens[i]}(', 1, tokens[i].len))
+	}
+}
+
+fn (tc &TypeChecker) sql_orm_call_receiver_type(tokens []string, name_idx int) ?Type {
+	end := name_idx - 1
+	start := sql_value_receiver_start(tokens, end - 1) or { return none }
+	return tc.sql_orm_receiver_type(tokens, start, end)
+}
+
+fn (tc &TypeChecker) sql_orm_receiver_type(tokens []string, start int, end int) ?Type {
+	if receiver := tc.sql_orm_value_type(tokens, start, end) {
+		return receiver
+	}
+	// Call-free chains are handled above. For returned receivers, use the first
+	// call's declared type and follow its members only up to the selected method.
+	for i := start; i + 1 < end; i++ {
+		if tokens[i + 1] == '(' && should_check_named_type(tokens[i]) {
+			ret_type := tc.sql_orm_source_call_return_type(tokens, i) or { return none }
+			return tc.sql_orm_receiver_result_type(tokens[..end], i + 1, ret_type)
+		}
+	}
+	return none
+}
+
+// SQL receiver tokens have no expression AST. Follow the supported call/member/index
+// chain using the same pointer-storage and binding rules as ordinary mut receivers.
+fn (tc &TypeChecker) sql_orm_mut_receiver_is_mutable(tokens []string, start int, end int, typ Type) bool {
+	if start >= end {
+		return false
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return false }
+		if close_idx == end - 1 {
+			return tc.sql_orm_mut_receiver_is_mutable(tokens, start + 1, close_idx, typ)
+		}
+	}
+	if tokens[end - 1] == '}' {
+		open_idx := sql_value_open_idx(tokens, end - 1, '{', '}') or { return false }
+		if open_idx > start && tokens[open_idx - 1] == 'or' {
+			source_type := tc.sql_orm_receiver_type(tokens, start, open_idx - 1) or {
+				return false
+			}
+			return tc.sql_orm_mut_receiver_is_mutable(tokens, start, open_idx - 1,
+				source_type)
+		}
+	}
+	if tokens[end - 1] == ')' {
+		open_idx := sql_value_open_idx(tokens, end - 1, '(', ')') or { return false }
+		if open_idx > start && tc.sql_orm_alias_conversion_type(tokens, open_idx - 1) != none {
+			return false
+		}
+		return tc.type_is_pointer_receiver(typ)
+	}
+	if tc.type_is_pointer_receiver(typ) {
+		return true
+	}
+	if end == start + 1 && sql_like_identifier(tokens[start]) {
+		return tc.ident_is_global_binding(tokens[start])
+			|| tc.ident_is_mutable_lvalue(tokens[start])
+	}
+	base_end := if tokens[end - 1] == ']' {
+		sql_value_open_idx(tokens, end - 1, '[', ']') or { return false }
+	} else if end >= start + 3 && tokens[end - 2] == '.' {
+		end - 2
+	} else {
+		return false
+	}
+	base_type := tc.sql_orm_receiver_type(tokens, start, base_end) or { return false }
+	return tc.sql_orm_mut_receiver_is_mutable(tokens, start, base_end, base_type)
+}
+
+// Shared storage needs its own write-lock check before pointer or module exceptions.
+// Calls produce separate storage; grouping and fallbacks retain the original receiver.
+fn (tc &TypeChecker) sql_orm_shared_receiver_name(tokens []string, start int, end int) ?string {
+	if start >= end {
+		return none
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return none }
+		if close_idx == end - 1 {
+			return tc.sql_orm_shared_receiver_name(tokens, start + 1, close_idx)
+		}
+	}
+	if tokens[end - 1] == '}' {
+		open_idx := sql_value_open_idx(tokens, end - 1, '{', '}') or { return none }
+		if open_idx > start && tokens[open_idx - 1] == 'or' {
+			return tc.sql_orm_shared_receiver_name(tokens, start, open_idx - 1)
+		}
+	}
+	if end == start + 1 && tc.current_binding_is_shared(tokens[start]) {
+		return tokens[start]
+	}
+	base_end := if tokens[end - 1] == ']' {
+		sql_value_open_idx(tokens, end - 1, '[', ']') or { return none }
+	} else if end >= start + 3 && tokens[end - 2] == '.' {
+		end - 2
+	} else {
+		return none
+	}
+	if tokens[end - 1] == ']'
+		&& tc.sql_orm_receiver_has_shared_elements(tokens, start, base_end) {
+		return sql_orm_receiver_storage_key(tokens, start, end) or {
+			tokens[start..end].join('')
+		}
+	}
+	if tokens[end - 2] == '.' {
+		base_type := tc.sql_orm_receiver_type(tokens, start, base_end) or { return none }
+		clean := unalias_and_unwrap_pointer_type(base_type)
+		if clean is Struct && tc.struct_field_is_shared(clean.name, tokens[end - 1]) {
+			return sql_orm_receiver_storage_key(tokens, start, end) or {
+				tokens[start..end].join('')
+			}
+		}
+	}
+	return tc.sql_orm_shared_receiver_name(tokens, start, base_end)
+}
+
+// Direct shared receivers differ from fields merely contained in a shared root.
+fn (tc &TypeChecker) sql_orm_receiver_is_shared(tokens []string, start int, end int) bool {
+	if start >= end {
+		return false
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return false }
+		if close_idx == end - 1 {
+			return tc.sql_orm_receiver_is_shared(tokens, start + 1, close_idx)
+		}
+	}
+	if end == start + 1 {
+		return tc.current_binding_is_shared(tokens[start])
+	}
+	if tokens[end - 1] == ']' {
+		open_idx := sql_value_open_idx(tokens, end - 1, '[', ']') or { return false }
+		return tc.sql_orm_receiver_has_shared_elements(tokens, start, open_idx)
+	}
+	if end >= start + 3 && tokens[end - 2] == '.' {
+		base_type := tc.sql_orm_receiver_type(tokens, start, end - 2) or { return false }
+		clean := unalias_and_unwrap_pointer_type(base_type)
+		return clean is Struct && tc.struct_field_is_shared(clean.name, tokens[end - 1])
+	}
+	return false
+}
+
+fn (tc &TypeChecker) sql_orm_receiver_has_shared_elements(tokens []string, start int, end int) bool {
+	if start >= end {
+		return false
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return false }
+		if close_idx == end - 1 {
+			return tc.sql_orm_receiver_has_shared_elements(tokens, start + 1, close_idx)
+		}
+	}
+	if end == start + 1 {
+		return tc.current_binding_has_shared_elements(tokens[start])
+			&& !tc.current_binding_is_shared(tokens[start])
+	}
+	if end >= start + 3 && tokens[end - 2] == '.' {
+		base_type := tc.sql_orm_receiver_type(tokens, start, end - 2) or { return false }
+		clean := unalias_and_unwrap_pointer_type(base_type)
+		return clean is Struct
+			&& tc.struct_field_has_shared_elements(clean.name, tokens[end - 1])
+	}
+	return false
+}
+
+fn (tc &TypeChecker) sql_orm_current_shared_lock_mode(name string) u8 {
+	mode := tc.current_shared_lock_mode(name)
+	if mode != 0 {
+		return mode
+	}
+	// Index lock keys keep source whitespace; SQL values are stored as tokens.
+	for lock_name, modes in tc.fn_context.locked_shared_modes {
+		if modes.len > 0 && sql_orm_compact_storage_key(lock_name) == name {
+			return modes.last()
+		}
+	}
+	return 0
+}
+
+fn sql_orm_compact_storage_key(source string) string {
+	mut s := scanner.new_scanner(&pref.Preferences{}, .skip_interpolation)
+	s.init(unsafe { nil }, source)
+	mut parts := []string{}
+	for _ in 0 .. 2 * source.len + 2 {
+		tok := s.scan()
+		if tok == .eof {
+			break
+		}
+		if tok !in [.comment, .semicolon] && s.pos >= 0 && s.offset > s.pos {
+			parts << source[s.pos..s.offset]
+		}
+	}
+	return parts.join('')
+}
+
+fn sql_orm_receiver_storage_key(tokens []string, start int, end int) ?string {
+	if start >= end {
+		return none
+	}
+	if end == start + 1 {
+		return tokens[start]
+	}
+	if tokens[start] == '(' {
+		close_idx := sql_value_close_idx(tokens, start, '(', ')') or { return none }
+		if close_idx == end - 1 {
+			return sql_orm_receiver_storage_key(tokens, start + 1, close_idx)
+		}
+	}
+	if tokens[end - 1] == ']' {
+		// shared_lock_key uses source spelling for the entire index subtree.
+		return tokens[start..end].join('')
+	}
+	if end >= start + 3 && tokens[end - 2] == '.' {
+		base := sql_orm_receiver_storage_key(tokens, start, end - 2) or { return none }
+		return '${base}.${tokens[end - 1]}'
+	}
+	return none
+}
+
+// sql_orm_method_is_private applies ordinary declaration visibility in the SQL source context.
+pub fn (tc &TypeChecker) sql_orm_method_is_private(name string, file string, module_name string) bool {
+	view := if tc.cur_file == file && tc.cur_module == module_name {
+		tc
+	} else {
+		tc.fork_type_parse_view(file, module_name)
+	}
+	return view.private_declaration(name) != none
 }
 
 fn (mut tc TypeChecker) check_sql_orm_table_kind(id flat.NodeId, node flat.Node, table_name string) {
@@ -11526,13 +11833,16 @@ fn (tc &TypeChecker) sql_orm_member_value_type(typ Type, member string) ?Type {
 // is the receiver's element (`make_holders().last()` is `Holder`). Other `voidptr`/generic
 // results stay as they are: rejected as the final value, unresolvable as a receiver.
 fn (tc &TypeChecker) sql_orm_method_call_type(receiver Type, member string) ?Type {
-	// A method declared on an alias (`type Names = []string`) wins over the builtin one.
-	if unwrap_pointer(receiver) is Alias {
-		if method := tc.method_value_type(unwrap_pointer(receiver).name(), member) {
+	// Alias methods, including methods inherited through another alias, win over
+	// builtin collection methods with the same name.
+	mut alias_receiver := unwrap_all_pointers(receiver)
+	for alias_receiver is Alias {
+		if method := tc.method_value_type(alias_receiver.name(), member) {
 			if method is FnType {
 				return method.return_type
 			}
 		}
+		alias_receiver = unwrap_all_pointers(alias_receiver.base_type)
 	}
 	// Builtin collection methods are declared on the raw `array`/`map`; like the ordinary
 	// call checker, specialize their results for the concrete receiver.
@@ -11569,7 +11879,7 @@ fn (tc &TypeChecker) sql_orm_method_call_type(receiver Type, member string) ?Typ
 }
 
 fn (tc &TypeChecker) sql_orm_method_return_type(receiver Type, member string) ?Type {
-	receiver_name := unwrap_pointer(receiver).name()
+	receiver_name := unwrap_all_pointers(receiver).name()
 	if method := tc.method_value_type(receiver_name, member) {
 		if method is FnType {
 			return method.return_type
@@ -11597,7 +11907,7 @@ fn (tc &TypeChecker) sql_orm_method_return_type(receiver Type, member string) ?T
 }
 
 // sql_orm_source_call_return_type returns the result type of the call named at `name_idx`:
-// a function (`f(`, `time.now(`), or a method on a receiver that starts at a local
+// a function (`f(`, `time.now(`), an alias conversion, or a method on a receiver at a local
 // variable, string literal or parenthesised value (`h.get(`, `boxes[0].get(`, `(h).get(`).
 // A receiver containing another call returns none; that call's own receiver chain check
 // already covers the final value.
@@ -11607,8 +11917,12 @@ fn (tc &TypeChecker) sql_orm_source_call_return_type(tokens []string, name_idx i
 		start -= 2
 	}
 	if start == 0 || tokens[start - 1] != '.' {
-		if typ := tc.sql_orm_fn_return_type(tokens[start..name_idx + 1].join('')) {
+		callee := tokens[start..name_idx + 1].join('')
+		if typ := tc.sql_orm_fn_return_type(callee) {
 			return typ
+		}
+		if converted := tc.sql_orm_alias_conversion_type(tokens, name_idx) {
+			return converted
 		}
 	}
 	if name_idx < 2 || tokens[name_idx - 1] != '.' {
@@ -11617,6 +11931,24 @@ fn (tc &TypeChecker) sql_orm_source_call_return_type(tokens []string, name_idx i
 	receiver_start := sql_value_receiver_start(tokens, name_idx - 2) or { return none }
 	receiver := tc.sql_orm_value_type(tokens, receiver_start, name_idx - 1) or { return none }
 	return tc.sql_orm_method_call_type(receiver, tokens[name_idx])
+}
+
+// Alias conversions have no function declaration, but their named result can
+// still be the receiver of a declared or inherited alias method.
+fn (tc &TypeChecker) sql_orm_alias_conversion_type(tokens []string, name_idx int) ?Type {
+	mut start := name_idx
+	for start >= 2 && tokens[start - 1] == '.' && sql_like_identifier(tokens[start - 2]) {
+		start -= 2
+	}
+	if start > 0 && tokens[start - 1] == '.' {
+		return none
+	}
+	callee := tokens[start..name_idx + 1].join('')
+	converted := tc.parse_type(callee)
+	if converted is Alias {
+		return converted
+	}
+	return none
 }
 
 // sql_value_receiver_start returns where the member/index/call chain that ends at `end_idx`
@@ -11648,7 +11980,7 @@ fn sql_value_receiver_start(tokens []string, end_idx int) ?int {
 }
 
 // sql_orm_value_type types a call-free value chain in `tokens[start..end]` that starts at a
-// local variable, string literal or parenthesised value, followed by field and index steps.
+// local variable, string literal or parenthesised value, followed by fallback, field and index steps.
 fn (tc &TypeChecker) sql_orm_value_type(tokens []string, start int, end int) ?Type {
 	if start >= end {
 		return none
@@ -11671,7 +12003,21 @@ fn (tc &TypeChecker) sql_orm_value_type(tokens []string, start int, end int) ?Ty
 		return none
 	}
 	for i < end {
-		if tokens[i] == '[' {
+		if tokens[i] == 'or' && i + 1 < end && tokens[i + 1] == '{' {
+			close_idx := sql_value_close_idx(tokens, i + 1, '{', '}') or { return none }
+			if close_idx >= end {
+				return none
+			}
+			clean := unalias_type(typ)
+			if clean is OptionType {
+				typ = clean.base_type
+			} else if clean is ResultType {
+				typ = clean.base_type
+			} else {
+				return none
+			}
+			i = close_idx + 1
+		} else if tokens[i] == '[' {
 			close_idx := sql_value_close_idx(tokens, i, '[', ']') or { return none }
 			if close_idx >= end {
 				return none
@@ -12503,12 +12849,21 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	}
 	mut captured_pointer_values := map[string][]string{}
 	mut captured_mut_params := map[string]Type{}
+	mut captured_shared_arrays := map[string]ScopeBindingOwner{}
+	mut captured_whole_shared_arrays := map[string]bool{}
 	for i in 0 .. node.children_count {
 		capture := tc.a.child_node(&node, i)
 		if capture.kind != .ident || capture.value.len == 0 {
 			continue
 		}
 		capture_type := tc.cur_scope.lookup(capture.value) or { continue }
+		if tc.current_binding_has_shared_elements(capture.value) {
+			if owner := tc.cur_scope.lookup_owner(capture.value) {
+				captured_shared_arrays[capture.value] = owner
+				captured_whole_shared_arrays[capture.value] =
+					tc.current_binding_is_shared(capture.value)
+			}
+		}
 		if capture.is_mut {
 			if base := tc.mut_param_base_for_current_ident(capture.value, capture_type) {
 				captured_mut_params[capture.value] = base
@@ -12549,6 +12904,14 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
 		tc.insert_fn_param_binding(child_id, child)
+		if child.kind == .ident {
+			if owner := captured_shared_arrays[child.value] {
+				tc.mark_shared_array_binding_owner(child.value, owner)
+				if captured_whole_shared_arrays[child.value] {
+					tc.mark_shared_binding_owner(child.value, owner)
+				}
+			}
+		}
 		if child.kind == .ident && (child.is_mut || child.typ == 'atomic') && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
 				tc.fn_context.mut_local_owners[child.value] = owner

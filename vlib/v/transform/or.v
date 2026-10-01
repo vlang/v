@@ -1799,7 +1799,7 @@ fn (mut t Transformer) transform_or_body_for_codegen(body_id flat.NodeId) flat.N
 	}
 	body := t.a.nodes[int(body_id)]
 	if body.kind == .block {
-		return t.make_block(t.transform_stmts(t.a.children_of(&body)))
+		return t.make_block(t.transform_scope_stmts(t.a.children_of(&body)))
 	}
 	if t.is_stmt_kind_id(int(body.kind)) {
 		return t.make_block(t.transform_stmt(body_id))

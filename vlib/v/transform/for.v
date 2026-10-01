@@ -1289,6 +1289,19 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	elem_needs_ref := (elem_is_mut || interface_smartcast_ref)
 		&& !(container_is_explicit_reference && elem_keeps_value)
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
+	retained_fixed_backing := source_is_owned_temporary && elem_needs_ref
+		&& t.is_fixed_array_type(actual_iter_type) && elem_name in t.escaping_amp_sources
+	mut retained_backing_decls := []flat.NodeId{}
+	if retained_fixed_backing {
+		backing_name := t.new_temp('for_fixed_backing')
+		retained_backing_decls = t.heap_escaping_value_decl(backing_name, actual_iter_type,
+			actual_iter_type, container, false)
+		if int(optional_container) < 0 {
+			prefix << retained_backing_decls
+		}
+		container = t.make_prefix(.mul, t.make_ident(backing_name))
+		t.set_node_typ(int(container), actual_iter_type)
+	}
 	if elem_needs_ref && t.is_fixed_array_type(actual_iter_type) {
 		if direct_container := t.fixed_array_map_index_for_in_container(container_id, mut prefix) {
 			container = direct_container
@@ -1357,6 +1370,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	container_needs_drop := !isnil(t.tc) && cleanup_type.len > 0
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(cleanup_type))
 	cleanup_temporary := source_is_owned_temporary && container_needs_drop
+		&& !retained_fixed_backing
 	mut cleanup_guard_name := ''
 	if cleanup_temporary {
 		cleanup_guard_name = t.new_temp('for_container_live')
@@ -1379,7 +1393,9 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	for_stmt := t.make_for_stmt(init, cond, post, new_body, node)
 	if int(optional_container) >= 0 {
 		ok_cond := t.make_selector(optional_container, 'ok', 'bool')
-		prefix << t.make_if(ok_cond, t.make_block([for_stmt]), t.make_empty())
+		mut selected_body := retained_backing_decls.clone()
+		selected_body << for_stmt
+		prefix << t.make_if(ok_cond, t.make_block(selected_body), t.make_empty())
 	} else {
 		prefix << for_stmt
 	}

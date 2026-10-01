@@ -63,6 +63,22 @@ fn make_names() []string {
 	return ['first', 'second']
 }
 
+type HolderNames = []string
+
+fn (names HolderNames) clone() []Holder {
+	return [make_holder(names[0])]
+}
+
+type WrappedHolderNames = HolderNames
+
+fn make_wrapped_holder_names() WrappedHolderNames {
+	return WrappedHolderNames(HolderNames(['FIRST']))
+}
+
+fn HolderNames.make() WrappedHolderNames {
+	return make_wrapped_holder_names()
+}
+
 fn make_holders() []Holder {
 	return [make_holder('first'), make_holder('second')]
 }
@@ -266,6 +282,38 @@ fn test_where_values_with_chained_calls() {
 	}!
 	assert by_collection_method.len == 1
 	assert by_collection_method[0].mod_at == second.mod_at
+
+	by_inherited_alias_method := sql db {
+		select from Account where name == make_wrapped_holder_names().clone()[0].name
+	}!
+	assert by_inherited_alias_method.len == 1
+	assert by_inherited_alias_method[0].mod_at == first.mod_at
+
+	wrapped_names := make_wrapped_holder_names()
+	by_local_inherited_alias_method := sql db {
+		select from Account where name == wrapped_names.clone()[0].name
+	}!
+	assert by_local_inherited_alias_method.len == 1
+	assert by_local_inherited_alias_method[0].mod_at == first.mod_at
+
+	by_grouped_inherited_alias_method := sql db {
+		select from Account where name == (wrapped_names).clone()[0].name
+	}!
+	assert by_grouped_inherited_alias_method.len == 1
+	assert by_grouped_inherited_alias_method[0].mod_at == first.mod_at
+
+	declared_names := HolderNames(['FIRST'])
+	by_declared_alias_method := sql db {
+		select from Account where name == declared_names.clone()[0].name
+	}!
+	assert by_declared_alias_method.len == 1
+	assert by_declared_alias_method[0].mod_at == first.mod_at
+
+	by_static_alias_call := sql db {
+		select from Account where name == HolderNames.make().clone()[0].name
+	}!
+	assert by_static_alias_call.len == 1
+	assert by_static_alias_call[0].mod_at == first.mod_at
 
 	by_grouped_option := sql db {
 		select from Account where name == (load_name('FIRST')) or { 'missing' }

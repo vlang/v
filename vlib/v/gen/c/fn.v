@@ -5753,9 +5753,10 @@ fn (mut g FlatGen) gen_test_main() {
 	g.tc.cur_module = 'main'
 	fn_start_pos := g.sb.len
 	if g.show_test_stats && tests.len > 0 {
+		g.emit_windows_monotonic_clock()
 		g.writeln('static double __v_test_now_ms(void) {')
 		g.writeln('#if defined(_WIN32)')
-		g.writeln('\treturn (double)GetTickCount64();')
+		g.writeln('\treturn (double)__v_windows_now_ms();')
 		g.writeln('#else')
 		g.writeln('\tstruct timespec ts;')
 		g.writeln('\tclock_gettime(CLOCK_MONOTONIC, &ts);')
@@ -9018,12 +9019,16 @@ fn (mut g FlatGen) gen_c_va_macro_call(node flat.Node, target_name string, resol
 		}
 		type_arg_name := g.generic_call_type_arg_name(g.a.child(&node, 1))
 		target_type := g.tc.parse_type(type_arg_name)
+		mut target_ct := g.tc.c_type(target_type)
+		if target_ct.starts_with('fn_ptr:') {
+			target_ct = g.resolve_fn_ptr_type(target_ct)
+		}
 		g.write('${macro_name}(')
 		arg_id := g.a.child(&node, 2)
 		if !g.gen_c_va_list_macro_arg_direct(1, arg_id, name) {
 			g.gen_expr(arg_id)
 		}
-		g.write(', ${g.tc.c_type(target_type)})')
+		g.write(', ${target_ct})')
 		return true
 	}
 	g.write('${macro_name}(')
@@ -11695,6 +11700,9 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 	if g.gen_mut_sum_lvalue_arg(arg_id, expected) {
 		return
 	}
+	if g.gen_local_fn_value_address_arg(arg_node, expected) {
+		return
+	}
 	// A `mut e &T` param is `T**` in C. Transformed method calls reach here
 	// instead of gen_call_args, so pass the caller's slot the same way.
 	if g.gen_mut_pointer_slot_arg(arg_id, arg_node, expected) {
@@ -12237,13 +12245,18 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	expected_ret_ct := g.callback_expected_return_c_type(expected.return_type, expected_c_abi)
 	mut needs_wrapper := false
 	mut cast_return := false
+	expected_return := cgen_unalias_type(expected.return_type)
+	promote_void_result := actual.return_type is types.Void
+		&& expected_return is types.ResultType
+		&& cgen_unalias_type(expected_return.base_type) is types.Void
+		&& expected_c_abi.len == 0
 	if actual_ret_ct != expected_ret_ct {
-		if !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct)
+		if !promote_void_result && !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct)
 			&& !g.callback_can_cast_userdata_pointer(actual.return_type, expected.return_type) {
 			return none
 		}
 		needs_wrapper = true
-		cast_return = true
+		cast_return = !promote_void_result
 	}
 	mut param_decls := []string{}
 	mut call_args := []string{}
@@ -12304,7 +12317,9 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	call := '${actual_c_name}(${call_args.join(', ')})'
 	return_expr := if cast_return { '(${expected_ret_ct})(${call})' } else { call }
 	setup := if setup_lines.len == 0 { '' } else { setup_lines.join(' ') + ' ' }
-	body := if expected_ret_ct == 'void' {
+	body := if promote_void_result {
+		'static ${expected_ret_ct} ${name}(${params}) { ${setup}${call}; return (${expected_ret_ct}){.ok = true}; }'
+	} else if expected_ret_ct == 'void' {
 		'static void ${name}(${params}) { ${setup}${call}; }'
 	} else {
 		'static ${expected_ret_ct} ${name}(${params}) { ${setup}return ${return_expr}; }'
@@ -14535,6 +14550,16 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				g.write('(${cabi})(')
 				g.gen_expr(arg_id)
 				g.write(')')
+			} else if arg_idx < typed_param_count
+				&& g.gen_local_fn_value_address_arg(arg_node, param_types[arg_idx]) {
+				// handled
+			} else if arg_idx < typed_param_count && g.arg_takes_address(arg_node) {
+				// `&f` of a function value keeps its `&` only where a pointer to a
+				// pointer is expected (`&voidptr`, C's `void **`).
+				old_expected := g.expected_expr_type
+				g.expected_expr_type = param_types[arg_idx]
+				g.gen_expr(arg_id)
+				g.expected_expr_type = old_expected
 			} else {
 				g.gen_expr(arg_id)
 			}
@@ -14717,6 +14742,44 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 	}
 }
 
+// gen_local_fn_value_address_arg emits `&f` for a local function value `f` passed
+// where a pointer to a function (or a `&voidptr`) is expected. The callee can store
+// a function through it (C's `void (**pxFunc)(...)` out-parameters): it must be the
+// variable's own address, not the address of a copy.
+fn (mut g FlatGen) gen_local_fn_value_address_arg(arg_node flat.Node, expected types.Type) bool {
+	mut node := arg_node
+	for node.kind == .paren && node.children_count > 0 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+		return false
+	}
+	child_id, child := g.unwrapped_fn_value_operand(g.a.child(&node, 0), g.a.child_node(&node, 0))
+	if child.kind != .ident || !g.ident_is_local_binding(child.value)
+		|| cgen_unalias_type(g.fn_value_candidate_type(child_id, child)) !is types.FnType {
+		return false
+	}
+	old_expected := g.expected_expr_type
+	g.expected_expr_type = expected
+	wants_pointer := g.context_wants_pointer_to_fn()
+	g.expected_expr_type = old_expected
+	if !wants_pointer {
+		return false
+	}
+	g.write('&')
+	gen_expr_lvalue(mut g, child_id)
+	return true
+}
+
+// arg_takes_address reports whether a call argument is `&x`, possibly in parentheses.
+fn (g &FlatGen) arg_takes_address(arg_node flat.Node) bool {
+	mut node := arg_node
+	for node.kind == .paren && node.children_count > 0 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	return node.kind == .prefix && node.op == .amp
+}
+
 fn (mut g FlatGen) gen_c_alias_pointer_voidptr_arg(arg_node flat.Node, expected types.Type) bool {
 	if arg_node.kind != .cast_expr || arg_node.children_count != 1 || expected !is types.Pointer {
 		return false
@@ -14730,7 +14793,8 @@ fn (mut g FlatGen) gen_c_alias_pointer_voidptr_arg(arg_node flat.Node, expected 
 	if inner.kind != .cast_expr || inner.value != 'voidptr' {
 		return false
 	}
-	g.write('(${expected_name[3..]}*)')
+	// A C struct without a typedef is spelled with its tag (`struct sockaddr *`).
+	g.write('(${g.cast_c_type(expected)})')
 	g.gen_expr(inner_id)
 	return true
 }
@@ -14881,6 +14945,20 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 	mut value_id := arg_id
 	mut value_node := arg_node
 	for value_node.children_count > 0 {
+		if value_node.kind == .prefix && value_node.op == .amp {
+			operand_id, operand := g.unwrapped_fn_value_operand(g.a.child(&value_node, 0),
+				g.a.child_node(&value_node, 0))
+			// In translated C, `voidptr(&f)` of a function variable is the address of
+			// the variable, as in V1 (C translated by c2v stores `(void*)&finder` and
+			// calls through `**(finder_type*)p`). `&` on a function name is the function.
+			if g.expr_is_in_translated_file(operand_id)
+				&& g.fn_value_operand_has_storage(operand_id, operand)
+				&& g.node_is_fn_value_for_voidptr(operand_id, operand) {
+				g.write('&')
+				gen_expr_lvalue(mut g, operand_id)
+				return true
+			}
+		}
 		if value_node.kind in [.cast_expr, .paren]
 			|| (value_node.kind == .prefix && value_node.op == .amp) {
 			value_id = g.a.child(&value_node, 0)
@@ -14899,6 +14977,43 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 	}
 	g.gen_expr(value_id)
 	return true
+}
+
+// unwrapped_fn_value_operand removes transparent parentheses before classifying storage.
+fn (g &FlatGen) unwrapped_fn_value_operand(id flat.NodeId, node flat.Node) (flat.NodeId, flat.Node) {
+	mut operand_id := id
+	mut operand := node
+	for operand.kind == .paren && operand.children_count == 1 {
+		operand_id = g.a.child(&operand, 0)
+		operand = g.a.nodes[int(operand_id)]
+	}
+	return operand_id, operand
+}
+
+// fn_value_operand_has_storage reports whether a function value is read from a
+// variable (a local, parameter or global), a field or an element, whose address
+// differs from the function's, rather than named by a function declaration or bound
+// from a method (`obj.method`).
+fn (g &FlatGen) fn_value_operand_has_storage(id flat.NodeId, node flat.Node) bool {
+	match node.kind {
+		.ident {
+			return g.ident_is_local_binding(node.value) || g.global_type_for_ident(node.value) != none
+		}
+		.selector {
+			if node.children_count == 0 || g.tc.expr_is_method_value(id) {
+				return false
+			}
+			base_type := types.unwrap_pointer(cgen_unalias_type(g.usable_expr_type(g.a.child(&node,
+				0))))
+			return cgen_unalias_type(base_type) is types.Struct
+		}
+		.index {
+			return node.value != 'range'
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (g &FlatGen) fn_value_candidate_type(id flat.NodeId, node flat.Node) types.Type {
@@ -15628,6 +15743,16 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 
 	if !c_type_is_pointer_like(expected_base) {
 		return false
+	}
+	// A pointer cast is a value, not caller-owned pointer storage. Materialize
+	// a temporary slot for `mut unsafe { &T(ctx) }` before passing it as T**.
+	if (arg_node.kind == .cast_expr || (arg_node.kind == .block && arg_node.value == 'unsafe'))
+		&& g.tc.c_type(g.usable_expr_type(arg_id)) == g.tc.c_type(expected_base) {
+		ct := g.tc.c_type(expected_base)
+		g.write('&((${ct}[]){')
+		g.gen_expr_with_expected_type(arg_id, expected_base)
+		g.write('})[0]')
+		return true
 	}
 	if arg_node.is_mut && arg_node.kind == .ident {
 		arg_type := g.usable_expr_type(arg_id)

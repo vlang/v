@@ -6376,6 +6376,9 @@ Heap allocation preserves value reads in declaration initializers. An initialize
 the bindings that are visible before the new declaration is installed.
 Leaving a nested scope restores the storage and type metadata of outer heap-backed bindings.
 
+Moving a local to the heap preserves its source-level type. For example, `typeof(c).name`
+still reports `MyStruct`; the pointer used to store the local does not change type reflection.
+
 Things become less obvious when a reference to an object is passed as a function argument:
 
 ```v
@@ -7866,6 +7869,10 @@ already compressed.
 `$embed_file` returns
 [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
 which could be used to obtain the file contents as `string` or `[]u8`.
+
+Use the returned value: discarding `$embed_file` as a statement is an error, including
+when it is the fallback value of an unused `or` expression with nested `or` blocks.
+Passing it as a call argument consumes the value, even when the call has an `or` block.
 
 #### `$tmpl` for embedding and parsing V template files
 
@@ -9873,6 +9880,9 @@ is `DLL_PROCESS_DETACH`.
 Files marked `@[translated]` retain C storage rules: global declarations and writes through
 pointers do not require additional flags or `unsafe` blocks. These rules apply only to those files.
 Pointer-returning calls can also receive field assignments.
+Pointers to `char`, `i8`, and `u8` of the same pointer depth are interchangeable in translated
+assignments, returns, function arguments, and other typed values. Ordinary V files retain their
+pointer type checks; calls to C functions also accept these character pointers.
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
