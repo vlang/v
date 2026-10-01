@@ -660,7 +660,9 @@ fn main() {
 	assert keep_option(mut absent) == none
 	mut scalar := Storage(7)
 	retained := keep_sum(mut scalar)
+	drop_owned(scalar)
 	assert retained == Storage(7)
+	drop_owned(retained)
 	mut absent_sum := ?Storage(none)
 	assert keep_optional_sum(mut absent_sum) == none
 	mut scalar_sum := ?Storage(Storage(9))
@@ -675,6 +677,34 @@ fn main() {
 }
 ')
 	assert output == 'ok'
+}
+
+fn test_generic_mutable_optional_array_storage_acquires_each_specialization() {
+	output := borrow_storage_run('generic_optional_mut_warmed', borrow_storage_drop_decls + '
+struct OtherRes implements IClone, Drop { id int }
+fn (r &OtherRes) clone() OtherRes { return OtherRes{r.id + 1000} }
+fn (mut r OtherRes) drop() { println("other \${r.id}") }
+fn warm(mut source ?[]Res) ?[]Res { return source }
+fn keep[T](mut source ?[]T) ?[]T { return source }
+fn main() {
+	mut initial := ?[]Res([Res{1}])
+	warmed := warm(mut initial) or { panic("missing warm") }
+	drop_owned(initial)
+	assert warmed[0].id == 101
+	drop_owned(warmed)
+	mut source := ?[]Res([Res{2}])
+	retained := keep[Res](mut source) or { panic("missing first") }
+	drop_owned(source)
+	assert retained[0].id == 102
+	drop_owned(retained)
+	mut other := ?[]OtherRes([OtherRes{3}])
+	other_retained := keep[OtherRes](mut other) or { panic("missing second") }
+	drop_owned(other)
+	assert other_retained[0].id == 1003
+	drop_owned(other_retained)
+}
+')
+	assert output == 'drop 1\ndrop 101\ndrop 2\ndrop 102\nother 3\nother 1003'
 }
 
 fn test_result_storage_aliases_require_immediate_unwrapping() {
@@ -705,6 +735,24 @@ fn main() {
 	assert build.output.contains('cannot make an alias of Result type')
 	assert build.output.contains('Result types cannot be stored and have to be unwrapped immediately')
 	assert build.output.contains('fail() returns `![]Res`')
+}
+
+fn test_mutable_array_sum_storage_acquires_nonarray_variant_owners() {
+	output := borrow_storage_run('sum_string_storage', borrow_storage_drop_decls + '
+type Storage = []Res | string
+fn keep(mut source Storage) Storage { return source }
+fn main() {
+	mut source := Storage("payload".repeat(4))
+	retained := keep(mut source)
+	drop_owned(source)
+	if retained is string {
+		assert retained == "payload".repeat(4)
+	} else { assert false }
+	drop_owned(retained)
+	println("ok")
+}
+')
+	assert output == 'ok'
 }
 
 fn test_mutable_array_value_captures_acquire_owned_snapshots() {
@@ -860,5 +908,22 @@ fn main() {
 		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
 		assert run.exit_code == 0, '${name}: ${run.output}'
 		assert run.output.trim_space() == 'ok'
+	}
+}
+
+fn test_owned_array_trim_drops_only_a_valid_range() {
+	for index in [-1, 0, 1, 2] {
+		output := borrow_storage_run('trim_drop_range_${index}', borrow_storage_drop_decls + '
+fn trim_at(mut values []Res, index int) {
+	values.trim(index)
+	println("ok")
+	exit(0)
+}
+fn main() {
+	mut values := [Res{1}]
+	trim_at(mut values, ${index})
+}
+')
+		assert output == if index == 0 { 'drop 1\nok' } else { 'ok' }
 	}
 }
