@@ -43,11 +43,12 @@ fn decode_struct[T](doc Any, mut typ T) {
 				field_name = attr.all_after(':').trim_space()
 			}
 		}
-		$if field.is_embed {
+		$if field.is_embed && field.typ !is DateTime && field.typ !is Date && field.typ !is Time {
 			// Embedding is a V concept, TOML has no equivalent: the fields of an
 			// embedded struct live at the same level as the fields of the embedding
 			// struct. A table named after the embedded field is accepted as well,
-			// and takes precedence when present.
+			// and takes precedence when present. Embedded `DateTime`, `Date` and
+			// `Time` are TOML scalars, so they are decoded below like other fields.
 			if !skip {
 				mut embedded := typ.$(field.name)
 				value := doc.value(field_name)
@@ -260,7 +261,8 @@ fn encode_struct[T](typ T) map[string]Any {
 						}
 					}
 				} else {
-					// A custom `to_toml` method of the embedded type wins over flattening.
+					// Scalar embeds (`DateTime`, `Date`, `Time`) and embedded types with a
+					// custom `to_toml` method are kept as one value under the field name.
 					mp[field_name] = embedded_any
 				}
 			} $else {

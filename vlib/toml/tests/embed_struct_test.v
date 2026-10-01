@@ -125,3 +125,48 @@ fn test_encode_embedded_shadowed() {
 	doc := toml.parse_text(encoded) or { panic(err) }
 	assert doc.value('foo').int() == 42
 }
+
+// `toml.Date`, `toml.Time` and `toml.DateTime` are TOML scalars, so an embedded one
+// is kept as a single value under its type name instead of being flattened.
+struct DateStamp {
+	toml.Date
+}
+
+struct TimeStamp {
+	toml.Time
+	name string
+}
+
+struct DateTimeStamp {
+	toml.DateTime
+}
+
+fn test_encode_and_decode_embedded_date() {
+	original := DateStamp{toml.Date{'2026-09-30'}}
+	encoded := toml.encode[DateStamp](original)
+	assert encoded == 'Date = 2026-09-30'
+	restored := toml.decode[DateStamp](encoded)!
+	assert restored.date == original.date
+}
+
+fn test_encode_and_decode_embedded_time() {
+	original := TimeStamp{toml.Time{'07:32:59'}, 'x'}
+	encoded := toml.encode[TimeStamp](original)
+	assert encoded == 'Time = 07:32:59\nname = "x"'
+	restored := toml.decode[TimeStamp](encoded)!
+	assert restored.time == original.time
+	assert restored.name == original.name
+}
+
+fn test_encode_and_decode_embedded_datetime() {
+	original := DateTimeStamp{toml.DateTime{'1979-05-27T07:32:00Z'}}
+	encoded := toml.encode[DateTimeStamp](original)
+	assert encoded == 'DateTime = 1979-05-27T07:32:00Z'
+	restored := toml.decode[DateTimeStamp](encoded)!
+	assert restored.datetime == original.datetime
+}
+
+fn test_decode_embedded_date_keeps_default() {
+	parsed := toml.decode[DateStamp]('other = 1') or { panic(err) }
+	assert parsed.date == ''
+}
