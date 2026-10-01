@@ -1,49 +1,142 @@
 ---
 name: v-lang
-description: The V language rules agents most often get wrong, before writing V code.
+description: The V language rules that make code which looks right fail to compile or behave wrongly - ?T versus !T, sum types and match exhaustiveness, mut receivers, module names matching directories, comptime $ forms, and explicit type conversion. Use when writing or reviewing any V code that uses an Option, a Result, a sum type, a match, generics, or a custom flag, and when a V compiler error names an option, a result, exhaustiveness, mutability, or a module. Does not cover the build and test loop (see v-workflow), writing tests (see v-testing), or reading a V project through the MCP server (see v-mcp).
+license: MIT
 ---
 
-# V rules worth knowing before writing V
+# The V rules that bite
 
-Most V mistakes an agent makes are not algorithmic. They are these rules.
+Most mistakes an agent makes in V are not algorithmic. They are these rules, and
+each one fails in a way that does not look like the mistake.
+
+## Resource Routing
+
+- `references/OPTION-RESULT.md` - Read when deciding whether a function returns
+  `?T` or `!T`, or when an `or {}` block is not doing what you expected.
+- `references/SUMTYPES.md` - Read when modelling a closed set of states, or when
+  `match` reports a non-exhaustive match.
+- `references/COMPTIME.md` - Read when a symbol only exists on some platforms, or
+  when reaching for reflection or `$embed_file`.
+- `references/MUTABILITY.md` - Read when an assignment is rejected, or when a
+  mutation to a field does not reach the caller.
+
+## Quick Reference
+
+| You want | Write | Not |
+| --- | --- | --- |
+| A value that may be absent | `fn f() ?int` | `return 0` as a sentinel |
+| An operation that can fail | `fn f() !int` | `return -1` |
+| Unwrap, no default | `x or { return error('...') }` | `x or { 0 }` on a result |
+| Unwrap, with a default | `x or { 0 }` on an option | `x or { return }` on an option |
+| Branch on a closed set | `enum` + exhaustive `match` | a string constant |
+| Mutate an argument | `fn f(mut x T)` | `x = ...` silently failing |
+| Mutate the caller's struct | `fn (mut t &T)` | `fn (mut t T)` (a copy) |
+| Run code at compile time | `$if`, `$for` | a runtime `if` |
 
 ## `?T` is not `!T`
 
-`?T` is an option: it holds a value or `none`. `!T` is a result: it holds a value
-or an error. They are unwrapped differently, and mixing them up does not always
-look like a type error.
+`?T` holds a value or `none`. `!T` holds a value or an error. They unwrap
+differently, and using one where the other belongs is a type error rather than a
+logic error.
 
 ```v ignore
-// Option
-config := load_config(path) or { return }
-if config != none {
-    println(config.port)  // `config` smart-casts to Config here
+// An option: absence is part of the answer.
+fn find_port(cfg Config) ?int {
+    if !cfg.has_port {
+        return none
+    }
+    return cfg.port
 }
 
-// Result
-text := read_file(path) or { return error('cannot read ${path}') }
-// read_file returns !string, so the error carries the message
-```
-
-- `or { ... }` unwraps a **result**; the block must return that result's error
-  type, so it is usually `return error(...)`.
-- `or { Config{} }` supplies a default for an **option**.
-- A function that returns `!void` still needs `return error('...')`.
-- `x or { panic(err) }` only makes sense where a value is needed unconditionally.
-  Inside a library, propagate the error instead.
-
-Unwrapping inside an `if` guard is a common trap:
-
-```v ignore
-if x := maybe_value() {
-    // only reached when there is a value
+// A result: the operation can fail, and the failure carries why.
+fn read_port(path string) !int {
+    lines := os.read_lines(path) or {
+        return error('cannot read ${path}: ${err.msg()}')
+    }
+    ...
 }
 ```
 
-## Comptime is `$`, not `$if` at runtime
+The rule that catches people: inside `or { ... }` on a **result**, the block must
+produce that result's error value, so it is `return error(...)` and not a bare
+`return`. On an **option**, `or { default }` supplies a value.
 
-Anything starting with `$` runs while the compiler runs. A runtime `if` that
-mentions a platform specific symbol will not compile on the other platforms.
+**Default**: return `!T` for anything that touches the outside world, and `?T` for
+a lookup that is legitimately absent. Full detail, including how to propagate and
+when a default is honest, in `references/OPTION-RESULT.md`.
+
+## Sum types and match
+
+V enums plus `match` are the way to model a closed set. `match` over an enum is
+checked for exhaustiveness, which is the point: adding a variant turns every
+incomplete `match` into a compile error instead of a silent fallthrough.
+
+The diagnostic is exact: `non-exhaustive match expression without `else``. Two
+ways out — handle every variant, or add an `else` branch and accept that a new
+variant changes nothing.
+
+```v ignore
+enum Status {
+    pending
+    running
+    done
+    failed
+}
+
+fn label(s Status) string {
+    return match s {
+        .pending { 'queued' }
+        .running { 'in progress' }
+        .done { 'finished' }
+        .failed { 'could not finish' }
+    }
+}
+```
+
+Variants are shared: `type Job = Status | string` is a sum type, and a `match`
+over it must handle both sides. See `references/SUMTYPES.md`.
+
+## mut is not optional
+
+Function arguments are immutable. A receiver is immutable unless it is declared
+`mut`. This is the single most common V compile error, and it always has the same
+cause: the author assumed mutation was the default.
+
+```v ignore
+// Rejected: `app` is immutable.
+// fn serve(app App) { app.port = 8080 }
+
+// Accepted: the argument is mutable.
+fn serve(mut app App) { app.port = 8080 }
+
+// Accepted, and it reaches the caller: the receiver is a pointer.
+fn serve(app &App) { app.port = 8080 }
+
+// Accepted: the field itself is declared mutable.
+struct Server {
+mut:
+    port int
+}
+```
+
+`mut` on a **value** receiver mutates a copy, so the caller's struct is
+unchanged. `mut` on a **pointer** receiver mutates the caller's. That difference
+is silent at the call site, which is why `references/MUTABILITY.md` exists.
+
+## Module names must match directories
+
+`module foo` must live in a directory named `foo`. A mismatch imports cleanly and
+then resolves to nothing, with no error pointing at the name. The `module` line
+carries no hierarchy — the directory nesting supplies it.
+
+This is why a project built by `v new` has `src/main.v` with `module main` rather
+than `module src`.
+
+## Comptime is `$`, and it excludes branches
+
+Anything starting with `$` runs while the compiler runs. The branches of an
+`$if` are **excluded entirely** on a platform that does not match, which is the
+only reason a platform-specific import inside one is safe.
 
 ```v ignore
 $if windows {
@@ -54,53 +147,41 @@ $if linux {
 }
 ```
 
-Supported compile-time forms: `$if`, `$for`, `$compile_error`, `$compile_warn`,
-`$embed_file`, `$tmpl`, `$env`, `$d`. The `$if` branches are excluded entirely on
-a platform that does not match, which is what makes them safe.
-
-Available in `$if`: `windows`, `linux`, `macos`, `js`, `freebsd`, `android`,
-`debug`, `prod`, and your own `$d custom_flag ? { ... }` with the `?`.
-
-## Immutability
-
-Function arguments are immutable. Add `mut` to change one:
-
-```v ignore
-fn build(mut app &App) {
-    app.port = 8080  // mut receiver
-}
-```
-
-Struct fields declared `mut:` can be assigned after construction. A `mut`
-receiver of a pointer type (`mut app &App`) mutates the caller's object rather
-than a copy.
-
-## Module names must match directories
-
-`module foo` must live in a directory named `foo`. A mismatch imports cleanly and
-then fails to find anything, with no error pointing at the name. The `module` line
-carries no hierarchy: the directory nesting supplies it.
-
-## Structs and maps
-
-Use a struct when the fields are known and named; use a map when they are dynamic
-keys. A `map[string]string` for a fixed set of five fields costs a lookup per
-access and loses the field names at every call site. Maps in V are not ordered;
-sort the keys when output order matters.
+A runtime `if` that mentions a platform-specific symbol will not compile on the
+other platforms, because there is no exclusion. Available in `$if`: `windows`,
+`linux`, `macos`, `js`, `freebsd`, `android`, `debug`, `prod`, and your own
+`$d custom_flag ? { ... }` — note the `?`.
 
 ## No implicit conversions
 
-There are no implicit numeric conversions, and `int` is 32 bit while `i64` is 64.
-`f64` and `int` do not mix. Be explicit at the boundary.
+`int` is 32 bit and `i64` is 64. `f64` and `int` do not mix. Nothing converts
+implicitly, which is deliberate: a silent narrowing is a bug you find later.
 
-## Errors and panics
+Be explicit at the boundary, and prefer `strconv` over hand-rolled parsing.
 
-Return `!T` and propagate. Reserve `panic` for a program that cannot continue,
-and `assert` for an invariant the compiler cannot check. `eprintln` writes to
-stderr, which is what a tool should use for diagnostics that are not its answer.
+## Validation
 
-## Formatting
+After changing V code, prove it rather than reading it again:
 
-Run `v fmt` (or the `v_format` MCP tool) on every file you touch. The formatter is
-strict: a file it reformats does not match the one you wrote, so format before you
-finish rather than after.
+```bash
+v -check path/to/file.v        # type-check only, no binary
+v fmt -verify path/to/file.v  # would the formatter change it?
+```
+
+For library code rather than a `main` module, `-check` alone fails with *"project
+must include a `main` module"*; use `v -check -shared path/to/file.v`.
+
+Run both before you report the change done. See `v-workflow` for the full loop.
+
+## Related Skills
+
+- **The build and test loop**: see [v-workflow](../v-workflow/SKILL.md) for
+  `v.mod`, dependencies, when `./v self` is required, and the flags that go
+  before the subcommand.
+- **Writing tests**: see [v-testing](../v-testing/SKILL.md) when the change needs
+  a `_test.v` file, or when `?T` and `!T` need asserting.
+- **Asking the compiler**: see [v-mcp](../v-mcp/SKILL.md) when you want the
+  declarations, references or diagnostics of a file without reading it, or when
+  you want to edit through an AST-aware rename.
+- **Memory and GC**: see [v-memory](../v-memory/SKILL.md) for GC modes, ownership
+  checking and `unsafe`.

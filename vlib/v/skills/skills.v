@@ -19,6 +19,14 @@ import os
 // directory without one is never offered as a skill.
 pub const entry_file = 'SKILL.md'
 
+// max_name_length is the longest a skill name may be, per the Agent Skills spec.
+pub const max_name_length = 64
+
+// max_description_length is the longest a skill description may be. The
+// description is the only part an agent sees before it decides to load the skill,
+// so the spec puts a ceiling on it; a longer one would be truncated anyway.
+pub const max_description_length = 1024
+
 // project_dir is the per-project install location, relative to a project root.
 // It matches the layout `opencode`, Claude Code and friends already scan.
 pub const project_dir = '.agents/skills'
@@ -122,6 +130,38 @@ pub fn catalog(vroot string) []Skill {
 	return skills
 }
 
+// invalid_bundled returns the bundled skills whose front matter does not satisfy
+// the Agent Skills spec, as `"name: reason"` lines.
+//
+// `catalog` skips what it cannot read, which is right for a listing but would
+// leave a malformed bundle invisible. `v skills list` reports these instead, so a
+// broken bundle shows up before someone tries to install it.
+pub fn invalid_bundled(vroot string) []string {
+	root := bundled_root(vroot)
+	if !os.is_dir(root) {
+		return []
+	}
+	mut out := []string{}
+	entries := os.ls(root) or {
+		return out
+	}
+	names := entries.filter(os.is_dir(os.join_path_single(root, it))).sorted()
+	for name in names {
+		if name.starts_with('.') {
+			continue
+		}
+		directory := os.join_path_single(root, name)
+		if !os.is_file(os.join_path_single(directory, entry_file)) {
+			continue
+		}
+		validate_bundle(directory) or {
+			out << '${name}: ${err.msg()}'
+			continue
+		}
+	}
+	return out
+}
+
 // find returns the bundled skill called `name`.
 pub fn find(vroot string, name string) ?Skill {
 	return load(bundled_root(vroot), name)
@@ -146,6 +186,62 @@ fn load(root string, name string) ?Skill {
 		directory:   directory
 		files:       list_files(directory)
 	}
+}
+
+// validate_bundle checks one skill directory against the Agent Skills spec and
+// returns its name, or an error naming the first rule it breaks.
+//
+// The name is what an agent matches a task against and the directory is what
+// `v skills remove` addresses, so the spec requires the two to agree; a bundle
+// where they disagree is one an agent will load under a name the installer cannot
+// find again.
+//
+// Installing checks this too, so a bundle that fails is refused rather than
+// copied somewhere an agent will read it.
+pub fn validate_bundle(directory string) !string {
+	entry := os.join_path_single(directory, entry_file)
+	content := os.read_file(entry) or {
+		return error('no readable `${entry_file}` in `${directory}`')
+	}
+	front := parse_front_matter(content) or {
+		return error('`${entry_file}` has no front matter carrying both a name and a description')
+	}
+	declared := front['name'] or { '' }
+	name := validate_name(declared)!
+	dir_name := os.file_name(directory.trim_right('/\\'))
+	if declared != dir_name {
+		return error('the front matter name `${declared}` does not match the directory name `${dir_name}`')
+	}
+	description := front['description'] or { '' }
+	if description.len > max_description_length {
+		return error('the description is ${description.len} characters, over the ${max_description_length} the spec allows')
+	}
+	return name
+}
+
+// validate_name checks one skill name and returns it, or an error naming the rule
+// it breaks.
+pub fn validate_name(name string) !string {
+	if name.len == 0 {
+		return error('the name is empty')
+	}
+	if name.len > max_name_length {
+		return error('the name is ${name.len} characters, over the ${max_name_length} the spec allows')
+	}
+	if name.starts_with('-') || name.ends_with('-') {
+		return error('the name `${name}` must not start or end with a hyphen')
+	}
+	if name.contains('--') {
+		return error('the name `${name}` must not contain consecutive hyphens')
+	}
+	for c in name {
+		lower := c >= `a` && c <= `z`
+		digit := c >= `0` && c <= `9`
+		if !(lower || digit || c == `-`) {
+			return error('the name `${name}` may only contain lowercase letters, digits and hyphens')
+		}
+	}
+	return name
 }
 
 // parse_front_matter reads the `name:` and `description:` keys from a SKILL.md
@@ -264,10 +360,14 @@ pub fn target_dir(scope Scope, base string) string {
 
 // install copies `skill` into `dir`.
 //
+// The bundle is validated first, so a skill whose front matter does not satisfy
+// the spec is refused here rather than copied somewhere an agent will read it.
+//
 // Without `force`, an already installed skill is skipped and reported as such
 // rather than overwritten: an agent must not silently discard local edits to a
 // checked-in skill. `dry_run` computes the same result without writing.
 pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
+	validate_bundle(skill.directory)!
 	dest := os.join_path_single(dir, skill.name)
 	already_installed := os.is_dir(dest)
 	if already_installed && !opts.force {

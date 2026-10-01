@@ -206,6 +206,15 @@ fn list(vroot string, opts Options) Output {
 	out.lines << ''
 	out.lines << 'project: ${project_dir}${exists_mark(project_dir)}'
 	out.lines << 'global:  ${global_dir}${exists_mark(global_dir)}'
+	// `catalog` skips what it cannot read, so a bundle whose front matter is broken
+	// would otherwise be invisible here. Report it instead: it cannot be installed,
+	// and the reason belongs next to the catalog it belongs to.
+	for problem in skills.invalid_bundled(vroot) {
+		out.errors << 'v skills: cannot install ${problem}'
+	}
+	if out.errors.len > 0 {
+		out.code = 1
+	}
 	return out
 }
 
@@ -245,6 +254,13 @@ fn add(vroot string, opts Options) Output {
 	for name in opts.names {
 		skill := skills.find(vroot, name) or {
 			out.errors << 'v skills: no bundled skill called `${name}`; run `v skills list`'
+			failed = true
+			continue
+		}
+		// Reported here rather than left to `install`, so the message names the rule
+		// that was broken instead of only saying the install failed.
+		skills.validate_bundle(skill.directory) or {
+			out.errors << 'v skills: `${name}` cannot be installed: ${err.msg()}'
 			failed = true
 			continue
 		}

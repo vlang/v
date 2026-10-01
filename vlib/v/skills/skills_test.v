@@ -233,3 +233,228 @@ fn test_human_size_picks_a_unit() {
 	assert skills.human_size(2048) == '2.0 KiB'
 	assert skills.human_size(3 * 1024 * 1024) == '3.0 MiB'
 }
+
+// raw_bundle creates a skill directory whose SKILL.md holds exactly `front`, so a
+// test can write front matter the generator above would not produce.
+fn raw_bundle(vroot string, dir_name string, front string) !string {
+	dir := os.join_path(vroot, 'vlib', 'v', 'skills', dir_name)
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path_single(dir, 'SKILL.md'), front)!
+	return dir
+}
+
+// accepts_name reports whether `name` satisfies the spec.
+fn accepts_name(name string) bool {
+	skills.validate_name(name) or {
+		return false
+	}
+	return true
+}
+
+// rejects_name reports whether `name` breaks the spec.
+fn rejects_name(name string) bool {
+	return !accepts_name(name)
+}
+
+// accepts_bundle reports whether the bundle at `directory` satisfies the spec.
+fn accepts_bundle(directory string) bool {
+	skills.validate_bundle(directory) or {
+		return false
+	}
+	return true
+}
+
+// bundle_problem returns what is wrong with the bundle at `directory`, or an empty
+// string when nothing is.
+fn bundle_problem(directory string) string {
+	skills.validate_bundle(directory) or {
+		return err.msg()
+	}
+	return ''
+}
+
+fn test_validate_name_accepts_what_the_spec_allows() {
+	assert accepts_name('v')
+	assert accepts_name('v-lang')
+	assert accepts_name('go2')
+	assert accepts_name('a1-b2-c3')
+	assert accepts_name('x'.repeat(skills.max_name_length))
+}
+
+fn test_validate_name_rejects_what_the_spec_forbids() {
+	assert rejects_name('')
+	assert rejects_name('V-lang')
+	assert rejects_name('v_lang')
+	assert rejects_name('-v')
+	assert rejects_name('v-')
+	assert rejects_name('v--lang')
+	assert rejects_name('v lang')
+	assert rejects_name('x'.repeat(skills.max_name_length + 1))
+}
+
+fn test_validate_bundle_returns_the_name_of_a_good_bundle() {
+	vroot := fixture_root(['v-lang'])!
+	dir := os.join_path(vroot, 'vlib', 'v', 'skills', 'v-lang')
+	assert skills.validate_bundle(dir)! == 'v-lang'
+}
+
+fn test_validate_bundle_rejects_a_name_that_disagrees_with_the_directory() {
+	// The name an agent matches on and the name `v skills remove` addresses have to
+	// be the same one, so a mismatch is refused rather than installed.
+	vroot := fixture_root([])!
+	dir := raw_bundle(vroot, 'v-lang', '---\nname: v-language\ndescription: A skill.\n---\n\nBody.\n')!
+	problem := bundle_problem(dir)
+	assert problem != '', 'a mismatched name must be refused'
+	assert problem.contains('v-language') && problem.contains('v-lang'), problem
+}
+
+fn test_validate_bundle_rejects_a_missing_description() {
+	vroot := fixture_root([])!
+	dir := raw_bundle(vroot, 'thin', '---\nname: thin\n---\n\nBody.\n')!
+	assert !accepts_bundle(dir), 'a skill with no description is unusable: an agent cannot tell when to load it'
+}
+
+fn test_validate_bundle_rejects_a_description_over_the_spec_limit() {
+	vroot := fixture_root([])!
+	long := 'd'.repeat(skills.max_description_length + 1)
+	dir := raw_bundle(vroot, 'wordy', '---\nname: wordy\ndescription: ${long}\n---\n\nBody.\n')!
+	assert !accepts_bundle(dir), 'an over-long description must be refused'
+	// One character under the limit is still fine.
+	ok := 'd'.repeat(skills.max_description_length)
+	dir2 := raw_bundle(vroot, 'brief', '---\nname: brief\ndescription: ${ok}\n---\n\nBody.\n')!
+	assert accepts_bundle(dir2)
+}
+
+fn test_install_refuses_a_bundle_that_fails_validation() {
+	vroot := fixture_root([])!
+	dir := raw_bundle(vroot, 'broken', '---\nname: wrong-name\ndescription: A skill.\n---\n\nBody.\n')!
+	skill := skills.Skill{
+		name:        'broken'
+		description: 'A skill.'
+		directory:   dir
+	}
+	target := scratch_dir('refused')!
+	if _ := skills.install(skill, target, skills.InstallOptions{}) {
+		assert false, 'a bundle with a mismatched name must not be installed'
+	}
+	assert !os.is_dir(os.join_path_single(target, 'broken')), 'nothing may be written'
+}
+
+fn test_invalid_bundled_reports_what_is_wrong_with_each_one() {
+	vroot := fixture_root(['good'])!
+	raw_bundle(vroot, 'bad-name', '---\nname: other\ndescription: A skill.\n---\n\nBody.\n')!
+	raw_bundle(vroot, 'thin', '---\nname: thin\n---\n\nBody.\n')!
+	problems := skills.invalid_bundled(vroot)
+	assert problems.len == 2, problems.join('\n')
+	joined := problems.join('\n')
+	assert joined.contains('bad-name: ') && joined.contains('other'),
+		'the mismatch should be reported, got: ' + joined
+	assert joined.contains('thin: '), joined
+	// The valid bundle is not reported.
+	assert !joined.contains('good'), joined
+}
+
+fn test_invalid_bundled_is_empty_when_every_bundle_is_valid() {
+	vroot := fixture_root(['alpha', 'beta'])!
+	assert skills.invalid_bundled(vroot) == []
+	assert skills.invalid_bundled(os.join_path(test_root, 'absent')) == []
+}
+
+// The bundled skills are the real ones, so the properties that hold for a fixture
+// are checked here too.
+//
+// `.vcheckignore` exempts the bundled `SKILL.md` files from `v check-md`, because
+// the spec allows a `description` of up to 1024 characters and the repository's
+// limit for ordinary lines is 100. These tests hold the rest of the file to what
+// the exemption gives up.
+fn test_every_bundled_skill_body_stays_within_the_check_md_line_limit() {
+	for skill in skills.catalog(@VEXEROOT) {
+		content := os.read_file(os.join_path_single(skill.directory, 'SKILL.md')) or {
+			continue
+		}
+		_, body := split_front_matter(skills.strip_bom(content))
+		for line in body.split_into_lines() {
+			assert line.len <= 100, '${skill.name}: a body line is ${line.len} ' +
+				'characters, over the ${max_line_length} that `v check-md` allows: ${line}'
+		}
+	}
+}
+
+fn test_every_bundled_skill_has_balanced_code_fences() {
+	for skill in skills.catalog(@VEXEROOT) {
+		content := os.read_file(os.join_path_single(skill.directory, 'SKILL.md')) or {
+			continue
+		}
+		_, body := split_front_matter(skills.strip_bom(content))
+		mut fences := 0
+		for line in body.split_into_lines() {
+			if line.starts_with('```') {
+				fences++
+			}
+		}
+		assert fences % 2 == 0, '${skill.name}: ${fences} fence markers, so a code ' +
+			'block is left open and everything after it is read as code'
+	}
+}
+
+// `v check-md` compiles every `v` fence it finds, and a skill's examples are
+// fragments: they have no `module main` and reference functions that do not exist.
+// They must therefore be marked `v ignore`, or `check-md` tries to build them.
+fn test_every_v_fence_in_a_bundled_skill_is_marked_ignore() {
+	for skill in skills.catalog(@VEXEROOT) {
+		content := os.read_file(os.join_path_single(skill.directory, 'SKILL.md')) or {
+			continue
+		}
+		_, body := split_front_matter(skills.strip_bom(content))
+		for line in body.split_into_lines() {
+			if !line.starts_with('```v') {
+				continue
+			}
+			assert line.trim_space() != '```v', '${skill.name}: this fence would be ' +
+				'compiled as an example, but a skill fragment does not build on its own'
+		}
+	}
+}
+
+fn test_every_bundled_reference_file_is_still_checked_by_check_md() {
+	// The exemption is deliberately narrow. A reference file that `check-md` never
+	// looks at would let a real line-length or formatting error through.
+	ignore := os.join_path(skills.bundled_root(@VEXEROOT), '.vcheckignore')
+	content := os.read_file(ignore) or {
+		panic('the bundled skills must ship a .vcheckignore explaining the exemption')
+	}
+	for line in content.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed == '' || trimmed.starts_with('#') {
+			continue
+		}
+		assert !trimmed.contains('references'),
+			'the exemption must stay narrow; `references/` should still be checked: ${trimmed}'
+	}
+}
+
+// split_front_matter returns the front matter lines and the body of a SKILL.md.
+fn split_front_matter(content string) ([]string, string) {
+	lines := content.split_into_lines()
+	mut start := -1
+	for i, line in lines {
+		if line.trim_space() == '---' {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return []string{}, content
+	}
+	mut end := lines.len
+	for i in start + 1 .. lines.len {
+		if lines[i].trim_space() == '---' {
+			end = i
+			break
+		}
+	}
+	return lines[start + 1..end], lines[end..].join('\n')
+}
+
+// max_line_length is the limit `v check-md` puts on an ordinary markdown line.
+const max_line_length = 100

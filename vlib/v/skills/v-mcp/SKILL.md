@@ -1,84 +1,123 @@
 ---
 name: v-mcp
-description: Use the V MCP server to read and change V code through the compiler itself.
+description: Using the V MCP server, `v mcp serve`, to read and change V code through the compiler itself - the AST, declarations, references, diagnostics, stdlib docs, an AST-aware rename, a guarded edit and the formatter. Use when an agent needs to know what a V file declares, whether V code compiles, where a symbol is used, or what a stdlib function takes, and to make a change safely across files. Does not cover the language rules themselves (see v-lang), the build and test loop (see v-workflow), or writing test cases (see v-testing).
+license: MIT
 ---
 
-# Working with V through the MCP server
+# The V MCP server
 
-`v mcp serve` speaks MCP over stdio (or `--http` for a socket). It is not a
-separate index: it calls the V parser, checker and formatter in process, so it
-answers correctly about code that does not compile yet. That is its whole reason
-to exist, and it is why you should prefer it over reading files as text.
+`v mcp serve` speaks MCP over stdio, or over HTTP with `--http`. It is the V
+compiler exposed as tools: it calls the parser, the checker and the formatter **in
+process**, so it answers correctly about code that does not compile yet.
 
-Start the server with:
-
-```bash
-v mcp serve              # stdio, for a client that spawns it
-v mcp serve --root .     # point it at a project other than the current directory
-v mcp serve --read-only  # register only the tools that cannot write
+```json
+{
+  "mcpServers": {
+    "v": { "command": "v", "args": ["mcp", "serve"] }
+  }
+}
 ```
 
-## A working order
+## Resource Routing
 
-1. `v_project_info` once per session. It names the module, the compiler binary,
-   the workspace root every path is relative to, and whether this is the V
-   checkout itself. If it says `is_v_checkout`, a change to `vlib/v/` or
-   `cmd/v/` affects the compiler and needs a `./v self` rebuild.
-2. `v_files` when you do not know the layout. It lists sources with line counts,
-   so you can pick a file before reading it.
-3. `v_symbols` to learn what a file declares. It carries doc comments, so it
-   usually answers "what is this file for" without reading the body.
-4. `v_ast` when you need the shape of an expression, in the same JSON the
-   `v ast -p` command prints.
-5. `v_check` after every change. It is the only authoritative answer to "does it
-   compile", and it returns records with file, line and column.
-6. `v_test_run` for behaviour. `v_check` cannot catch a wrong result.
+- `references/TOOLS.md` - Read for the arguments of a specific tool, or when you
+  need the tool that answers a particular question.
+- `references/EDITING.md` - Read before changing anything through the server. It
+  covers the guards and why each one exists.
 
-## Finding what you are looking at
+## Quick Reference
 
 | Question | Tool |
 | --- | --- |
-| What does this file declare? | `v_symbols` with `path` |
-| What is under the cursor? | `v_symbol_at` with `line`, `column` |
-| Where is this used? | `v_references` with `name` |
-| What does this stdlib function take? | `v_stdlib_doc` with `symbol` |
-| Which modules can I import? | `v_modules` |
-| What are the routes of this app? | `v_veb_routes` |
+| What project is this? | `v_project_info` |
+| What modules can I import? | `v_modules` |
+| What files are here? | `v_files` |
+| What does this file declare? | `v_symbols` |
+| What is at the cursor? | `v_symbol_at` |
+| Where is this used? | `v_references` |
+| What does this stdlib call take? | `v_stdlib_doc` |
+| Does it compile? | `v_check` |
+| Do the tests pass? | `v_test_run` |
+| What are this app's routes? | `v_veb_routes` |
+| Rename a symbol | `v_rename_symbol` |
+| Change a known range | `v_edit_replace` |
+| Format a file | `v_format` |
 
-`v_stdlib_doc` takes a bare module (`strings`) to list its documented symbols, or
-a dotted name (`strings.Builder`) for one member. Use it rather than guessing a
-signature: an invented signature costs a compile cycle at best.
+## A working order
 
-## Changing code
+1. **`v_project_info` once per session.** It names the module, the compiler, the
+   root every path is relative to, and whether this is the V checkout itself.
+2. **`v_symbols`** to learn what a file declares. It carries the doc comments, so
+   it usually answers "what is this file for" without reading the body.
+3. **`v_check` after every change.** It is the only authoritative answer to "does
+   it compile", and it returns records with file, line and column.
+4. **`v_test_run`** for behaviour. `v_check` cannot catch a wrong result.
 
-Three tools write, and all three default to a plan rather than a write.
+## Prefer asking over reading
 
-- `v_rename_symbol` defaults to `dry_run: true`. The response lists every hit it
-  would change, with line, column and length. Read the plan, then pass
-  `dry_run: false`. It works from the AST, so a comment or a string that happens
-  to hold the name is left alone.
-- `v_edit_replace` requires `expected_old`: read the range first and pass it back
-  verbatim. It refuses to write when the file no longer matches, reporting
-  `expected` and `actual` instead. A concurrent edit by someone else surfaces as
-  a refusal, not as an overwrite. An empty `expected_old` inserts; omitting
-  `new_text` deletes.
+The whole point of the server is that it knows more than a file read does. Reach
+for it before guessing:
+
+- a signature you are unsure of: `v_stdlib_doc`, not an invented one
+- whether an edit is safe: `v_references`, then `v_rename_symbol`
+- what a file contains: `v_symbols`, not a full read
+- what broke: `v_check`, not a re-read
+
+An invented stdlib signature costs a compile cycle at best. A hand-written rename
+misses the comment that mentions the name and the call in a file you never opened.
+
+## Editing is guarded by default
+
+Three tools write. None of them writes unless asked twice:
+
+- `v_rename_symbol` defaults to `dry_run: true` and lists every position it would
+  change.
 - `v_format` defaults to `write: false` and reports `before` and `after`.
+- `v_edit_replace` requires `expected_old`: you read the range and pass it back
+  verbatim, so it refuses to write over a change you did not see.
 
-In `--read-only` mode none of the three is registered at all.
+Read the plan, then pass the flag that applies it. See `references/EDITING.md`.
 
-## Rules that bite
+`--read-only` does not register these three at all, so a session started that way
+cannot write by accident.
 
-- A module name must match its directory name, or the import fails silently.
-- Function arguments are immutable by default; add `mut` to change one.
-- `$if`, `$for` and the other `$` forms are compile time. A runtime `if` that
-  mentions a platform specific symbol does not compile.
-- `?T` is an option that can be `none`; `!T` is a result that can error. They are
-  unwrapped with different syntax.
-- Every file you touch goes through `v_format`.
+## Before guessing, ask
 
-## When a tool is not enough
+- **A language rule**: the `v-lang` skill covers the parts agents get wrong, most
+  of all `?T` versus `!T` and comptime code.
+- **A build or module question**: the `v-workflow` skill, and `v_modules` for what
+  is importable right now.
+- **The code's shape**: `v_ast`, in the same JSON `v ast -p` prints.
 
-`v_run` starts a compiled program, `v_eval` compiles a snippet, and `v_doctor`
-reports the installation. They shell out to the compiler, so they are slower than
-the in-process tools and unavailable when the compiler cannot be started. Prefer
-the in-process tools for anything you do repeatedly.
+## When the tools cannot answer
+
+`v_run`, `v_test_run`, `v_doctor` and `v_eval` start the compiler. They are
+slower than the in-process tools and unavailable when the compiler cannot be
+started. A tool that could not start the compiler says so explicitly — it reports
+`started: false` with an error rather than an exit code, so a sandbox that cannot
+spawn processes is never mistaken for a failed check.
+
+If you see that, the answer is about the environment, not about the code. Do not
+start changing the code to satisfy a tool that never ran.
+
+## Validation
+
+The server is the checker. Do not finish a change without it:
+
+```json
+{"name": "v_check", "arguments": {"path": "src/main.v"}}
+```
+
+Then format what you touched with `v_format`, and run the tests with
+`v_test_run`. See [v-workflow](../v-workflow/SKILL.md) for the equivalent shell
+commands.
+
+## Related Skills
+
+- **The language rules**: see [v-lang](../v-lang/SKILL.md) for `?T` versus `!T`,
+  sum types, `mut` and comptime code.
+- **The build loop**: see [v-workflow](../v-workflow/SKILL.md) for `v.mod`,
+  dependencies, flags and when `./v self` is required.
+- **Tests**: see [v-testing](../v-testing/SKILL.md) for what to assert.
+- **Web apps**: see [v-veb](../v-veb/SKILL.md) for veb, and use `v_veb_routes` to
+  read the routes of an app you have not opened.

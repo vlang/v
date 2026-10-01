@@ -63,6 +63,18 @@ fn run(root string, args ...string) Output {
 	return run_at(root, root, args)
 }
 
+// raw_bundle writes a skill directory whose SKILL.md holds exactly `front`, so a
+// test can write front matter the helper above would not produce.
+fn raw_bundle(root string, dir_name string, front string) {
+	dir := os.join_path(skills.bundled_root(root), dir_name)
+	os.mkdir_all(dir) or {
+		panic(err)
+	}
+	os.write_file(os.join_path_single(dir, skills.entry_file), front) or {
+		panic(err)
+	}
+}
+
 fn test_catalog_of_the_compiler_tree_lists_the_shipped_skills() {
 	catalog := skills.catalog(@VEXEROOT)
 	assert catalog.len > 0, 'the compiler ships no skills'
@@ -232,4 +244,35 @@ fn test_help_returns_the_usage_without_a_subcommand() {
 	out := run(root, '--help')
 	assert out.code == 0, out.text()
 	assert out.lines.join('\n').contains('v skills add'), out.text()
+}
+
+fn test_list_reports_a_bundle_that_cannot_be_installed() {
+	// `catalog` skips a bundle it cannot read, so without this the broken bundle
+	// would simply not appear and nobody would learn why.
+	root := project()
+	raw_bundle(root, 'mismatched', '---\nname: other-name\ndescription: Broken.\n---\n\nBody.\n')
+	out := run(root, 'list')
+	assert out.code != 0, 'a catalog that cannot be fully installed must not read as clean'
+	errors := out.errors.join('\n')
+	assert errors.contains('mismatched'), errors
+	// The message must name both sides of the disagreement, or it is not actionable.
+	assert errors.contains('other-name'), 'the declared name should be named: ' + errors
+	assert errors.contains('does not match the directory name'), errors
+}
+
+fn test_add_refuses_a_bundle_that_fails_validation() {
+	root := project()
+	raw_bundle(root, 'mismatched', '---\nname: other-name\ndescription: Broken.\n---\n\nBody.\n')
+	out := run(root, 'add', 'mismatched')
+	assert out.code != 0, out.text()
+	assert out.errors.join('\n').contains('cannot be installed'), out.text()
+	assert !os.is_dir(installed_dir(root, 'mismatched')), 'nothing may be written'
+	// The valid bundles in the same catalog still install.
+	assert run(root, 'add', 'alpha').code == 0
+}
+
+fn test_list_does_not_complain_about_the_shipped_bundles() {
+	// Every bundle this compiler ships has to pass the rules it enforces.
+	out := run(@VEXEROOT, 'list')
+	assert out.errors.len == 0, out.errors.join('\n')
 }
