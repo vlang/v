@@ -7354,6 +7354,14 @@ fn (tc &TypeChecker) array_accessor_type_contains_pointer_inner(typ Type, mut se
 
 // should_diagnose reports whether should diagnose applies in types.
 fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
+	return tc.should_diagnose_with_dependencies(id, true)
+}
+
+fn (tc &TypeChecker) should_diagnose_notice(id flat.NodeId) bool {
+	return tc.should_diagnose_with_dependencies(id, false)
+}
+
+fn (tc &TypeChecker) should_diagnose_with_dependencies(id flat.NodeId, include_dependencies bool) bool {
 	if tc.valid_diagnostic_fast {
 		return false
 	}
@@ -7383,7 +7391,17 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 	if tc.diagnostic_files.len == 0 {
 		return true
 	}
-	return tc.cur_file in tc.diagnostic_files
+	if tc.cur_file in tc.diagnostic_files {
+		return true
+	}
+	// Dependency code kept by a call from the selected files must not reach
+	// code generation with a suppressed hard error. Keep notices and warnings
+	// limited to the files the user owns, and ignore uncalled library bodies.
+	if include_dependencies && !tc.checker_fixture_mode {
+		qname := tc.current_checked_fn_qname() or { return false }
+		return qname in tc.selected_file_called_fns
+	}
+	return false
 }
 
 // shadow_check_owns_file reports whether `file` is the project's own code, and
