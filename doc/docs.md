@@ -3467,6 +3467,11 @@ intended for low-level applications like kernels and drivers.
 
 It is possible to modify function arguments by declaring them with the keyword `mut`:
 
+A method with a `mut` receiver requires a mutable value receiver even when it only
+changes private fields in another module. An immutable value parameter cannot call
+such a method: mutations would affect its copy and be lost when the function returns.
+Declare the parameter or receiver with `mut` when its changes must reach the caller.
+
 ```v
 struct User {
 	name string
