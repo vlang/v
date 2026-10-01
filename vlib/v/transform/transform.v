@@ -7186,6 +7186,27 @@ fn (t &Transformer) escape_scan_may_be_needed(body_ids []flat.NodeId) bool {
 	return false
 }
 
+// escape_call_may_return_receiver_address keeps implicit receiver addresses in both prechecks.
+fn escape_call_may_return_receiver_address(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, node flat.Node) bool {
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	callee := a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return false
+	}
+	if isnil(tc) {
+		return true
+	}
+	name := tc.resolved_call_name(id) or { return true }
+	params := tc.fn_param_types[name] or { return true }
+	if params.len == 0 || types.unalias_type(params[0]) !is types.Pointer {
+		return false
+	}
+	result_type := tc.fn_ret_types[name] or { return true }
+	return !escape_type_is_scalar_value(result_type)
+}
+
 @[direct_array_access]
 fn (t &Transformer) escape_subtree_may_need_scan(id flat.NodeId) bool {
 	idx := int(id)
@@ -7197,6 +7218,9 @@ fn (t &Transformer) escape_subtree_may_need_scan(id flat.NodeId) bool {
 		return false
 	}
 	if node.kind == .prefix && node.op == .amp {
+		return true
+	}
+	if escape_call_may_return_receiver_address(t.a, t.tc, id, node) {
 		return true
 	}
 	// Passing a value local to a void-pointer parameter implicitly takes its
