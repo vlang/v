@@ -9800,6 +9800,8 @@ struct. The method retains the visibility of its declaring V module.
 Calls see methods from directly imported modules by their full module path.
 If a V alias of that C struct declares the same method, calls on the alias use its own method.
 
+C-backed struct aliases can also initialize constants, including when compiling with MSVC.
+
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
 `unsafe { &char(cstring).vstring_with_len(len) }`.
