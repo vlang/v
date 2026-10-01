@@ -111,3 +111,35 @@ fn test_race_c_compiler_hint_names_the_missing_runtime() {
 	assert v3_race_c_compiler_hint("clang: error: unsupported option '-fsanitize=thread' for target 'x'").contains('ThreadSanitizer')
 	assert v3_race_c_compiler_hint('src.c:1:1: error: expected expression') == ''
 }
+
+fn test_windows_race_build_never_probes_bundled_tcc_implicitly() {
+	target := pref.Target{
+		os:   'windows'
+		arch: 'amd64'
+	}
+	base := V3BundledTccProbeOptions{
+		backend:     'c'
+		c_compiler:  'cc'
+		host_os:     'windows'
+		host_target: target
+		target:      target
+		bundled_tcc: os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	}
+	assert v3_should_probe_bundled_tcc(base)
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		race: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		race:       true
+		is_c_debug: true
+	})
+	// Explicit compiler requests are validated separately by the race driver.
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		race:                true
+		c_compiler:          'tcc'
+		c_compiler_explicit: true
+	})
+}

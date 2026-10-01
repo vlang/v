@@ -7834,7 +7834,8 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	// -prod needs optimizations that TCC cannot do, so TCC is never its default, not
 	// even on Windows. Probing it there would generate C for TCC, skip TCC when
 	// compiling, and then re-run the whole compilation for the platform compiler.
-	if options.is_prod {
+	// Race builds need ThreadSanitizer, including when computing Windows vtest facts.
+	if options.is_prod || options.race {
 		return false
 	}
 	// Windows uses its bundled TCC as the platform default, including modes that
@@ -7842,7 +7843,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	if options.host_os == 'windows' && options.target.os == 'windows' {
 		return true
 	}
-	return !options.is_c_debug && !options.race
+	return !options.is_c_debug
 }
 
 fn v3_bundled_tcc_available(options V3BundledTccProbeOptions) bool {
@@ -8665,7 +8666,10 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 				if base_idx >= 0 && base_idx < a.nodes.len {
 					base := a.nodes[base_idx]
 					cname := 'C.${base.value}'
-					if base.kind == .ident && cname in tc.fn_param_types && cname in tc.fn_ret_types {
+					// A local receiver can share a name with a C function. Restore
+					// only identifiers the checker resolved as that function value.
+					if base.kind == .ident && cname in tc.fn_param_types && cname in tc.fn_ret_types
+						&& (tc.resolved_fn_value_name(base_id) or { '' }) == cname {
 						params := tc.fn_param_types[cname] or { []types.Type{} }
 						if ret := tc.fn_ret_types[cname] {
 							tc.expr_type_values[base_idx] = types.FnType{
@@ -13444,6 +13448,7 @@ pub fn run(args []string) {
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
+			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -13515,6 +13520,7 @@ pub fn run(args []string) {
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
+			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -14573,22 +14579,26 @@ Please install the corresponding development package/libraries and make sure the
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		if race && target.os == 'macos' {
-			v3_race_keep_macos_debug_symbols(staged_binary, bin_file)
+		if (is_debug || race) && target.os == 'macos' {
+			v3_keep_macos_debug_symbols(staged_binary, bin_file)
 		}
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}
 		}
-		for source_flag in generated_c_flags {
-			clean := source_flag.trim_space()
-			if c_generated_native_source_context(clean, cc_dir) {
-				os.rm(clean) or {}
+		// C debug information names these exact sources, including the per-build src.c.
+		// Keep them available for the debugger instead of retaining only a renamed copy.
+		if !is_c_debug {
+			for source_flag in generated_c_flags {
+				clean := source_flag.trim_space()
+				if c_generated_native_source_context(clean, cc_dir) {
+					os.rm(clean) or {}
+				}
 			}
+			os.rm(tcc_main_file) or {}
+			os.rm(cache_full_tcc_source) or {}
+			os.rm(retained_full_c_source) or {}
+			cleanup_c_build_dir(cc_dir)
 		}
-		os.rm(tcc_main_file) or {}
-		os.rm(cache_full_tcc_source) or {}
-		os.rm(retained_full_c_source) or {}
-		cleanup_c_build_dir(cc_dir)
 		for scope_free_thread in scope_free_threads {
 			scope_free_thread.wait()
 		}
@@ -14607,8 +14617,8 @@ Please install the corresponding development package/libraries and make sure the
 			run_result := run_binary(bin_file, run_args)
 			if remove_binary_after_run {
 				os.rm(bin_file) or {}
-				if race && target.os == 'macos' {
-					v3_race_remove_macos_debug_symbols(bin_file)
+				if (is_debug || race) && target.os == 'macos' {
+					v3_remove_macos_debug_symbols(bin_file)
 				}
 			}
 			if run_result != 0 {

@@ -7062,7 +7062,9 @@ fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string
 	ptr_typ := '&${elem_typ}'
 	mut stmts := []flat.NodeId{}
 	mut heap_rhs := flat.NodeId(0)
-	if is_struct_init {
+	// A generic `T{}` with a scalar `T` is lowered to a literal like `0`, which has no
+	// address; only a value that is still a struct literal can be taken with `&`.
+	if is_struct_init && t.a.nodes[int(value)].kind == .struct_init {
 		heap_rhs = t.make_prefix(.amp, value)
 	} else {
 		tmp := t.new_temp('esc')
@@ -9355,11 +9357,15 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 				// pointer cannot alias the source stack local.
 				return []string{}
 			}
-			if !isnil(t.tc) && escape_type_is_scalar_value(t.tc.resolve_type(id)) {
+			if !isnil(t.tc) && escape_call_result_is_scalar(t.tc.resolve_type(id)) {
 				// A scalar result cannot carry an address argument through the call.
 				// Without this guard, returning `child(&node)` heap-promotes `node`
 				// even though `child` returns only an integer node id. That pattern is
 				// ubiquitous in the compiler and makes each temporary an allocation.
+				// Several scalar results are no different, nor is an Option of them:
+				// `n, err := read(mut &buf)` followed by `return n, err`, or
+				// `n := read(mut &buf)?` followed by `return n`, leaves `buf` on the
+				// stack. A Result does not: its error may hold on to `&buf`.
 				return []string{}
 			}
 			mut sources := []string{}
@@ -9411,6 +9417,32 @@ fn escape_type_is_scalar_value(typ types.Type) bool {
 		types.Alias { escape_type_is_scalar_value(typ.base_type) }
 		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum { true }
 		else { false }
+	}
+}
+
+// escape_call_result_is_scalar reports whether a call result of this type has no room for
+// an address: a scalar, a multi-return made of scalars only, or an Option of either. A
+// Result is not one, whatever it holds on success: its error can be a custom one that
+// keeps the pointer the call was given.
+fn escape_call_result_is_scalar(typ types.Type) bool {
+	match typ {
+		types.OptionType {
+			return escape_call_result_is_scalar(typ.base_type)
+		}
+		types.MultiReturn {
+			if typ.types.len == 0 {
+				return false
+			}
+			for elem in typ.types {
+				if !escape_type_is_scalar_value(elem) {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return escape_type_is_scalar_value(typ)
+		}
 	}
 }
 

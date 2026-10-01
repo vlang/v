@@ -554,9 +554,10 @@ fn is_all_tables(table map[string]ast.Value, dotted_key DottedKey) bool {
 // If the state key does not exist find_array_in_table will return an error.
 pub fn (mut p Parser) find_array_of_tables() ![]ast.Value {
 	mut t := unsafe { &p.root_map }
-	mut key := p.last_aot
-	if key.len > 1 {
-		key = DottedKey([key[0]])
+	key := if p.last_aot.len > 1 {
+		DottedKey([p.last_aot[0]])
+	} else {
+		p.last_aot
 	}
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "${key}" in map ${ptr_str(t)}')
 	unsafe {

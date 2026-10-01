@@ -13832,6 +13832,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			if p.tok == .lcbr {
 				p.next()
 				mut init_ids := []flat.NodeId{}
+				mut has_positional_error := false
 				for p.tok != .rcbr && p.tok != .eof {
 					if p.tok == .semicolon {
 						p.next()
@@ -13856,7 +13857,13 @@ fn (mut p Parser) array_literal() flat.NodeId {
 							pos:            p.span_to(fname_start)
 						})
 					} else {
+						element_start := p.span_start()
 						init_ids << p.expr(.lowest)
+						if !has_positional_error {
+							p.record_diagnostic_span('array initializer elements must use square brackets',
+								element_start, p.prev_tok_end)
+							has_positional_error = true
+						}
 					}
 					if p.tok == .comma {
 						p.next()
@@ -14141,6 +14148,7 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 	mut has_len := false
 	mut init_start := -1
 	mut init_end := -1
+	mut has_positional_error := false
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -14166,7 +14174,13 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 				pos:            p.span_to(fname_start)
 			})
 		} else {
+			element_start := p.span_start()
 			ids << p.expr(.lowest)
+			if !has_positional_error {
+				p.record_diagnostic_span('array initializer elements must use square brackets',
+					element_start, p.prev_tok_end)
+				has_positional_error = true
+			}
 		}
 		if p.tok == .comma {
 			p.next()

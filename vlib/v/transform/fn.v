@@ -4065,7 +4065,12 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		child := t.a.nodes[int(child_id)]
 		child_type := t.node_type(child_id)
 		normalized_child_type := t.normalize_type_alias(child_type)
-		explicit_mut_pointer_slot := arg_node.is_mut && normalized_child_type == t.normalize_type_alias(param_type)
+		// A value local moved to the heap is stored as its address, but it is still a
+		// value: `mut &v` names that address, as `&v` and `mut v` do, not a pointer slot.
+		heaped_value_local := child.kind == .ident && child.value in t.heaped_amp_locals
+			&& !t.has_smartcast(child.value)
+		explicit_mut_pointer_slot := arg_node.is_mut && !heaped_value_local
+			&& normalized_child_type == t.normalize_type_alias(param_type)
 		if child_type.len > 0
 			&& (normalized_child_type == t.normalize_type_alias(param_type[1..])
 				|| explicit_mut_pointer_slot) {

@@ -1,6 +1,32 @@
 module types
 
 import os
+import v.parser
+import v.pref
+
+fn test_c_struct_visibility_uses_the_current_modules_own_view() {
+	root := os.join_path(os.vtmp_dir(), 'c_struct_visibility_views_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	first := os.join_path(root, 'first.c.v')
+	second := os.join_path(root, 'second.c.v')
+	os.write_file(first, 'module first\npub struct C.ViewPoint { x int }\n')!
+	os.write_file(second, 'module second\nstruct C.ViewPoint { y int }\nstruct C.PrivatePoint { z int }\n')!
+	for paths in [[first, second], [second, first]] {
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_files(paths)
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		for module_name in ['first', 'second'] {
+			tc.cur_file = if module_name == 'first' { first } else { second }
+			tc.cur_module = module_name
+			assert tc.private_declaration('C.ViewPoint') == none
+		}
+		tc.cur_file = os.join_path(root, 'third.v')
+		tc.cur_module = 'third'
+		assert tc.private_declaration('C.PrivatePoint') != none
+	}
+}
 
 // Modules can mirror one C struct with different fields (`C.pthread_mutex_t` in `sync`
 // and in a module translated from C). A module's own code can use the fields it declares,

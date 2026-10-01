@@ -6,6 +6,11 @@ checker errors, and unsupported inline assembly (`inline_asm`) do not trigger a
 compatibility retry. They retain the original compiler's failure exit status,
 without locating, installing, or launching the compatibility compiler.
 
+Hard checker errors in dependency functions referenced by the selected source files,
+including callbacks, stored function values, and transitive calls, are reported at the
+dependency's source location before C generation. This also applies to standard-library
+and installed modules. Dependency warnings and notices remain limited to project-owned files.
+
 For a C compiler failure, V prints the saved output when available, without compiling
 again, before retrying. It is labeled `C compiler output from the default V compiler:`.
 
@@ -45,3 +50,7 @@ variables are unset, it uses `LOCALAPPDATA\v\v1-fallback`, reusing the same cach
 across invocations. Looking up this path does not create directories. If none of
 these variables is set, V reserves a private cache under the temporary directory;
 on Windows, that last-resort cache has a fresh random name.
+
+Implicit C compiler selection excludes TCC for `-race`, because TCC has no ThreadSanitizer
+runtime. Test build facts follow this rule on every host, including Windows, where race
+builds themselves are unsupported. Explicit compiler requests are checked separately.
