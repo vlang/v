@@ -2713,7 +2713,7 @@ fn (mut tc TypeChecker) record_error_with_details_at(kind TypeErrorKind, msg str
 }
 
 fn (mut tc TypeChecker) record_notice_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos) {
-	if !tc.should_diagnose(node) {
+	if !tc.should_diagnose_notice(node) {
 		return
 	}
 	if tc.notes_are_errors {
@@ -2734,7 +2734,7 @@ fn (mut tc TypeChecker) record_notice_at(kind TypeErrorKind, msg string, node fl
 }
 
 fn (mut tc TypeChecker) record_notice_with_details_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, details []string) {
-	if !tc.should_diagnose(node) {
+	if !tc.should_diagnose_notice(node) {
 		return
 	}
 	if tc.notes_are_errors {
@@ -2764,7 +2764,7 @@ fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node f
 }
 
 fn (mut tc TypeChecker) record_warning_or_error_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, as_error bool) {
-	if !tc.should_diagnose(node) {
+	if !tc.should_diagnose_notice(node) {
 		return
 	}
 	if as_error {
