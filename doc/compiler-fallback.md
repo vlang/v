@@ -6,10 +6,10 @@ checker errors, and unsupported inline assembly (`inline_asm`) do not trigger a
 compatibility retry. They retain the original compiler's failure exit status,
 without locating, installing, or launching the compatibility compiler.
 
-Hard checker errors in dependency functions called by the selected source files,
-including transitively called functions, are reported at the dependency's source
-location before C generation. This also applies to standard-library and installed
-modules. Dependency warnings and notices remain limited to project-owned files.
+Hard checker errors in dependency functions referenced by the selected source files,
+including callbacks, stored function values, and transitive calls, are reported at the
+dependency's source location before C generation. This also applies to standard-library
+and installed modules. Dependency warnings and notices remain limited to project-owned files.
 
 For a C compiler failure, V prints the saved output when available, without compiling
 again, before retrying. It is labeled `C compiler output from the default V compiler:`.

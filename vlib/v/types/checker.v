@@ -11434,10 +11434,15 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 		}
 		.call {
 			if name := tc.selected_file_call_name(node) {
-				if name !in tc.selected_file_called_fns {
-					tc.selected_file_called_fns[name] = true
-					tc.selected_file_worklist << name
-				}
+				tc.enqueue_selected_file_fn(name)
+			}
+		}
+		.ident, .selector {
+			// A callback or stored function value keeps its declaration's body
+			// just like a direct call. Resolve it with the current lexical scope
+			// so a local sharing a function or import name does not keep it.
+			if name := tc.fn_value_decl_key(node) {
+				tc.enqueue_selected_file_fn(name)
 			}
 		}
 		else {}
@@ -11445,6 +11450,13 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 
 	for i in 0 .. node.children_count {
 		tc.collect_selected_file_node_called_fns(tc.a.child(&node, i))
+	}
+}
+
+fn (mut tc TypeChecker) enqueue_selected_file_fn(name string) {
+	if name !in tc.selected_file_called_fns {
+		tc.selected_file_called_fns[name] = true
+		tc.selected_file_worklist << name
 	}
 }
 
