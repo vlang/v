@@ -5,6 +5,51 @@ import v.pref
 import v.types
 import v.workers
 
+fn test_parallel_function_chunks_use_available_items_when_jobs_exceed_items() {
+	items := [FlatFnGenItem{
+		c_name: 'first'
+		cost:   1
+	}, FlatFnGenItem{
+		c_name: 'second'
+		cost:   100
+	}, FlatFnGenItem{
+		c_name: 'third'
+		cost:   1
+	}]
+	for jobs in [items.len, items.len * flat_cgen_chunks_per_job] {
+		chunks := split_flat_cgen_items(items, jobs)
+		assert chunks.len == items.len
+		for i, chunk in chunks {
+			assert chunk.len == 1
+			assert chunk[0].c_name == items[i].c_name
+		}
+	}
+	assert split_flat_cgen_items(items, 1) == [items]
+	assert split_flat_cgen_items(items, 0).len == 0
+	assert split_flat_cgen_items([]FlatFnGenItem{}, 4).len == 0
+}
+
+fn test_parallel_function_chunks_reserve_items_after_expensive_function() {
+	items := [FlatFnGenItem{
+		c_name: 'first'
+		cost:   1
+	}, FlatFnGenItem{
+		c_name: 'expensive'
+		cost:   100
+	}, FlatFnGenItem{
+		c_name: 'third'
+		cost:   1
+	}, FlatFnGenItem{
+		c_name: 'fourth'
+		cost:   1
+	}]
+	chunks := split_flat_cgen_items(items, 3)
+	assert chunks.len == 3
+	assert chunks[0] == items[..2]
+	assert chunks[1] == items[2..3]
+	assert chunks[2] == items[3..]
+}
+
 fn parallel_worker_test_gen(scoped bool) (&FlatGen, &types.TypeChecker) {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)
