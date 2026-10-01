@@ -9,9 +9,9 @@ This includes map values, interface values, active sum variants, successful opti
 result payloads, and closure value captures. A retained array reference receives a
 separate header, so acquisition does not replace the caller's header.
 
-Capturing a mutable array parameter by value snapshots its elements for the closure.
-This also applies when the caller's array has an ordinary managed buffer. Explicit
-pointer captures preserve their pointer identity.
+With ownership checking enabled, capturing a mutable array parameter by value snapshots
+its elements for the closure. This also applies when the caller's array has an ordinary
+managed buffer. Explicit pointer captures preserve their pointer identity.
 
 Owned elements need a compatible `clone()` method when a nonempty borrow becomes owned.
 Without one, retention fails with a diagnostic at runtime. Empty borrowed views can
