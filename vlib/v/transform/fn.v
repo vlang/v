@@ -2074,12 +2074,21 @@ fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut se
 }
 
 fn (t &Transformer) call_param_type_names(params []types.Type) []string {
+	// A type name renders main-module types bare. These names are parsed again in
+	// the current module, so inside an imported generic specialization a main `Cell`
+	// must be locked to `main.Cell`, or it rebinds to the module's own `Cell`.
+	lock_main := t.cur_module !in ['', 'main', 'builtin']
 	mut names := []string{cap: params.len}
 	for param in params {
-		names << if t.memo_call_param_type_names && !isnil(t.tc) {
+		name := if t.memo_call_param_type_names && !isnil(t.tc) {
 			t.tc.type_name(param)
 		} else {
 			param.name()
+		}
+		names << if lock_main {
+			t.lock_colliding_main_generic_type_text(name, t.cur_module)
+		} else {
+			name
 		}
 	}
 	return names

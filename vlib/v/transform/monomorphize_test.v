@@ -484,6 +484,33 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	assert t.lock_colliding_main_generic_type_text('AliasContext', 'callee') == 'main.AliasContext'
 }
 
+fn test_lock_colliding_main_generic_type_text_locks_program_aliases() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Cell'] = StructInfo{}
+	t.structs['callee.Cell'] = StructInfo{
+		module: 'callee'
+	}
+	tc.type_aliases['Cells'] = '[]Cell'
+	tc.type_alias_modules['Cells'] = 'main'
+	tc.type_aliases['Ids'] = '[]int'
+	tc.type_alias_modules['Ids'] = 'main'
+	// A program alias target is resolved where the alias is parsed, so an alias of a
+	// colliding program type is locked even when it is not an active specialization type.
+	assert t.lock_colliding_main_generic_type_text('Cells', 'callee') == 'main.Cells'
+	assert t.lock_colliding_main_generic_type_text('map[string]Cells', 'callee') == 'map[string]main.Cells'
+	// Without a colliding name or target the alias keeps its bare spelling.
+	assert t.lock_colliding_main_generic_type_text('Ids', 'callee') == 'Ids'
+	tc.type_aliases['callee.Ids'] = '[]u8'
+	tc.type_alias_modules['callee.Ids'] = 'callee'
+	assert t.lock_colliding_main_generic_type_text('Ids', 'callee') == 'main.Ids'
+	// Module aliases are already qualified.
+	tc.type_aliases['other.Cells'] = '[]other.Cell'
+	tc.type_alias_modules['other.Cells'] = 'other'
+	assert t.lock_colliding_main_generic_type_text('other.Cells', 'callee') == 'other.Cells'
+}
+
 fn test_nested_generic_components_keep_caller_type_provenance() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
