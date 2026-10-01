@@ -3654,6 +3654,12 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		&& type_text_without_main_locks(actual_type) != type_text_without_main_locks(expected_type) {
 		return none
 	}
+	// A `voidptr` already is a pointer, accepted for any pointer parameter: passed to
+	// `&voidptr` (C's `void **`) it is the pointer to write through, not a value to
+	// reference (C translated by c2v: `sqlite3_prepare16(..., voidptr(&z_tail))`).
+	if actual_type == 'void' {
+		return none
+	}
 	if expected_depth == actual_depth + 1 && arg_node.kind == .ident
 		&& t.pointer_value_rvalues[arg_node.value] {
 		storage_type := t.var_type(arg_node.value)
@@ -12480,7 +12486,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_by_ref := map[string]bool{}
 	mut capture_from_context := map[string]bool{}
 	mut capture_from_heap := map[string]bool{}
-	mut capture_heap_value_storage := map[string]bool{}
+	mut capture_heap_slots := map[string]bool{}
 	mut capture_heap_snapshots := map[string]bool{}
 	mut capture_array_param_snapshots := map[string]bool{}
 	mut capture_is_ref_param := map[string]bool{}
@@ -12546,7 +12552,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if child.value in t.heaped_amp_locals && capture_type.starts_with('&') {
 					capture_type = capture_type[1..]
 					if t.is_fixed_array_type(capture_type) {
-						capture_heap_value_storage[child.value] = true
+						capture_heap_slots[child.value] = true
 						capture_from_heap[child.value] = true
 					} else {
 						capture_heap_snapshots[child.value] = true
@@ -12577,7 +12583,14 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				// value itself in the heap context and expose a pointer alias only
 				// inside the lifted body; storing `&outer_local` would dangle when a
 				// closure is returned and would make separate instances interfere.
-				context_field_types[child.value] = capture_type
+				// A fixed array is the exception: `[mut values]` shares the storage of
+				// the captured array, so writes on either side are seen by the other.
+				context_field_types[child.value] = if is_ref_capture
+					&& t.is_fixed_array_type(capture_type) {
+					'&${capture_type}'
+				} else {
+					capture_type
+				}
 				capture_by_ref[child.value] = is_ref_capture
 			}
 		} else {
@@ -12665,8 +12678,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		capture_type := capture_types[capture_name] or { continue }
 		is_ref_capture := capture_by_ref[capture_name] or { false }
 		is_context_capture := capture_from_context[capture_name] or { false }
-		is_heap_value_capture := (capture_heap_value_storage[capture_name] or { false })
-			&& capture_type.starts_with('&')
+		is_heap_slot := capture_heap_slots[capture_name] && capture_type.starts_with('&')
 		t.set_var_type(capture_name, capture_type)
 		// Captures rewritten into synthetic `&T` pointer-value locals need pointer-value
 		// lvalue/rvalue lowering. A mut capture whose original type is already a pointer
@@ -12674,13 +12686,12 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		// dereferencing its rvalue uses would corrupt `&S` -> `S` and break calls that
 		// expect the pointer (e.g. `takes_ptr(p)`), and its assignments must not become
 		// `*p = ...`.
-		// A recorded heap-value capture carries the original value's `&T` storage slot.
-		if is_ref_capture || is_context_capture || is_heap_value_capture {
+		if is_heap_slot {
+			t.heaped_amp_locals[capture_name] = true
+		}
+		if is_ref_capture || is_context_capture || is_heap_slot {
 			t.pointer_value_lvalues[capture_name] = true
 			t.pointer_value_rvalues[capture_name] = true
-		}
-		if is_heap_value_capture {
-			t.heaped_amp_locals[capture_name] = true
 		}
 		context_ident := t.make_ident(context_local)
 		t.set_node_typ(int(context_ident), '&${context_type}')
