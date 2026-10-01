@@ -10935,7 +10935,8 @@ pub fn (tc &TypeChecker) interface_implements_interface(actual_name string, expe
 // `clone() First` against `clone() Second` -- ask this question again while answering it,
 // and the name equality fast path above cannot stop that cycle because the names differ.
 // The pair is ordered: `First <: Second` and `Second <: First` are separate obligations
-// and both are asked, so each is recorded and discharged on its own.
+// and both are asked, so each is recorded and discharged on its own. As for concrete
+// types, a revisited pair is not proven, so `First` does not implement `Second`.
 fn interface_implements_interface_guarded(tc &TypeChecker, actual_name string, expected_name string, visited []string) bool {
 	actual := tc.interface_metadata_name(actual_name)
 	expected := tc.interface_metadata_name(expected_name)
@@ -10944,7 +10945,7 @@ fn interface_implements_interface_guarded(tc &TypeChecker, actual_name string, e
 	}
 	guard_key := '${actual}<:${expected}'
 	if guard_key in visited {
-		return true
+		return false
 	}
 	mut in_progress := visited.clone()
 	in_progress << guard_key
@@ -11071,17 +11072,17 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 // pairs whose proof is still in progress. A self-referential interface -- one with a
 // method whose return type is the interface itself, as in `clone() Cloner` -- makes the
 // satisfaction check re-enter with a pair it is already proving, which otherwise recurses
-// until the checker's stack is exhausted. Treating a pair that is already in progress as
-// satisfied is the standard coinductive reading of recursive structural subtyping: it
-// assumes only the obligation the enclosing frame is already proving, and any requirement
-// that genuinely fails is still reported by that frame.
+// until the checker's stack is exhausted. A pair that is already in progress is not
+// proven: a method that names the interface itself matches exactly and never gets here,
+// while assuming the pair would let any type with `clone() Self`, such as `string`,
+// implement `Cloner` through its covariant return, which cgen cannot dispatch.
 fn named_type_implements_interface_guarded(tc &TypeChecker, concrete_name string, iface_name string, visited []string) bool {
 	if tc.interface_has_no_requirements(iface_name) {
 		return true
 	}
 	guard_key := '${concrete_name}<:${iface_name}'
 	if guard_key in visited {
-		return true
+		return false
 	}
 	mut in_progress := visited.clone()
 	in_progress << guard_key
