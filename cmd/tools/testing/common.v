@@ -678,7 +678,13 @@ pub fn (mut ts TestSession) test() {
 				continue
 			}
 		}
-		os_target := file.all_before_last('_test.v').all_after_last('_')
+		// `foo_windows_test.c.v` names its OS the same way as `foo_windows_test.v`.
+		test_stem := if file.ends_with('_test.c.v') {
+			file.all_before_last('_test.c.v')
+		} else {
+			file.all_before_last('_test.v')
+		}
+		os_target := test_stem.all_after_last('_')
 		if !pref.os_is_target_of(host_os, os_target) {
 			remaining_files << dot_relative_file
 			ts.skip_files << file
