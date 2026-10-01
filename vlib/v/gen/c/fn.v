@@ -5753,9 +5753,10 @@ fn (mut g FlatGen) gen_test_main() {
 	g.tc.cur_module = 'main'
 	fn_start_pos := g.sb.len
 	if g.show_test_stats && tests.len > 0 {
+		g.emit_windows_monotonic_clock()
 		g.writeln('static double __v_test_now_ms(void) {')
 		g.writeln('#if defined(_WIN32)')
-		g.writeln('\treturn (double)GetTickCount64();')
+		g.writeln('\treturn (double)__v_windows_now_ms();')
 		g.writeln('#else')
 		g.writeln('\tstruct timespec ts;')
 		g.writeln('\tclock_gettime(CLOCK_MONOTONIC, &ts);')

@@ -88,6 +88,9 @@ Collect coverage with `v -coverage coverage_dir path/to/file_test.v`, then inspe
 `v cover coverage_dir`. Add `-no-skip-unused` when compiling to include uncalled functions
 in the report as well as executed code.
 
+On Windows, test statistics and coverage use a 64-bit monotonic clock resolved at runtime,
+so they also work with bundled TCC versions whose import libraries omit `GetTickCount64`.
+
 ## REPL tests
 
 The test runner for these is `vlib/v/slow_tests/repl/repl_test.v`.
