@@ -1,0 +1,7 @@
+fn fail() !string {
+	return error('failed')
+}
+
+fn main() {
+	fail() or { _ = error(err) }
+}

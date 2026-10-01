@@ -72,6 +72,9 @@ booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects en
 
 #### decode[T]
 
+JSON object keys are decoded to the target map key type, including signed and unsigned
+integer keys. Nested maps and maps stored in struct fields follow the same conversion.
+
 The target type keeps its declaring module. A program's own sum type named `Any`
 is distinct from `json2.Any`, including through nested dynamic arrays, fixed arrays,
 and maps such as `json2.decode[[][2]Any](text)`.

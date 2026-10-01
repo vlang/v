@@ -2713,7 +2713,7 @@ fn (mut tc TypeChecker) record_error_with_details_at(kind TypeErrorKind, msg str
 }
 
 fn (mut tc TypeChecker) record_notice_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos) {
-	if !tc.should_diagnose(node) {
+	if !tc.should_diagnose_notice(node) {
 		return
 	}
 	if tc.notes_are_errors {
@@ -2734,7 +2734,7 @@ fn (mut tc TypeChecker) record_notice_at(kind TypeErrorKind, msg string, node fl
 }
 
 fn (mut tc TypeChecker) record_notice_with_details_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, details []string) {
-	if !tc.should_diagnose(node) {
+	if !tc.should_diagnose_notice(node) {
 		return
 	}
 	if tc.notes_are_errors {
@@ -2764,7 +2764,7 @@ fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node f
 }
 
 fn (mut tc TypeChecker) record_warning_or_error_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, as_error bool) {
-	if !tc.should_diagnose(node) {
+	if !tc.should_diagnose_notice(node) {
 		return
 	}
 	if as_error {
@@ -4063,6 +4063,11 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 			}
 			.c_fn_decl {
 				c_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+				// `C.va_arg(T, ap)` has the type `T` whatever a declaration of the
+				// macro says (translated C declares `fn C.va_arg(voidptr, voidptr) voidptr`).
+				if c_name == 'C.va_arg' {
+					continue
+				}
 				tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, c_name, c_name)
 				ret_type := tc.parse_type(node.typ)
 				mut ptypes := []Type{}
@@ -6062,6 +6067,11 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	if name == '' || is_regular_v_test_file(tc.cur_file) {
 		return none
 	}
+	// A module's own C declaration is its local view of the external type.
+	// The canonical visibility entry may belong to a different module's mirror.
+	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, name) in tc.c_struct_scoped_fields {
+		return none
+	}
 	mut candidates := []string{}
 	for candidate in [name, visible_mutation_fn_lookup_name(name)] {
 		if candidate.len > 0 && candidate !in candidates {
@@ -7297,6 +7307,8 @@ fn (mut tc TypeChecker) insert_fn_param_binding(id flat.NodeId, p flat.Node) {
 		if unalias_and_unwrap_pointer_type(parsed_type) is Array {
 			tc.mark_shared_array_binding_owner(p.value, owner)
 		}
+	} else if p.typ.trim_space().trim_left('&').trim_space().starts_with('[]shared ') {
+		tc.mark_shared_array_binding_owner(p.value, owner)
 	}
 }
 
@@ -11381,14 +11393,25 @@ fn (mut tc TypeChecker) collect_selected_file_top_level_called_fns(node flat.Nod
 
 fn (mut tc TypeChecker) collect_selected_file_fn_body_called_fns(node flat.Node) {
 	tc.push_scope()
+	mut reached_params := false
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
+		if node.kind == .fn_literal && !reached_params && child.kind == .ident {
+			// Captures precede parameters. Bind them before checking the body,
+			// and keep scanning so prefix-only parameter scans see the parameters.
+			if child.value.len > 0 {
+				captured := tc.cur_scope.lookup(child.value) or { unknown_type('captured value') }
+				tc.cur_scope.insert(child.value, captured)
+			}
+			continue
+		}
 		if child.kind != .param {
 			if tc.prefix_param_scan {
 				break
 			}
 			continue
 		}
+		reached_params = true
 		if child.value.len > 0 {
 			tc.cur_scope.insert(child.value, tc.parse_type(child.typ))
 		}
@@ -11425,11 +11448,39 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 			tc.collect_selected_file_for_in_called_fns(node)
 			return
 		}
+		.fn_literal {
+			tc.collect_selected_file_fn_body_called_fns(node)
+			return
+		}
+		.lambda_expr {
+			if node.children_count == 0 {
+				return
+			}
+			tc.push_scope()
+			for i in 0 .. node.children_count - 1 {
+				param := tc.a.child_node(&node, i)
+				tc.cur_scope.insert(param.value, unknown_type('lambda parameter'))
+			}
+			tc.collect_selected_file_node_called_fns(tc.a.child(&node, node.children_count - 1))
+			tc.pop_scope()
+			return
+		}
 		.call {
 			if name := tc.selected_file_call_name(node) {
-				if name !in tc.selected_file_called_fns {
-					tc.selected_file_called_fns[name] = true
-					tc.selected_file_worklist << name
+				tc.enqueue_selected_file_fn(name)
+			}
+		}
+		.ident, .selector {
+			// A callback or stored function value keeps its declaration's body
+			// just like a direct call. Resolve it with the current lexical scope
+			// so a local sharing a function or import name does not keep it.
+			if name := tc.fn_value_decl_key(node) {
+				tc.enqueue_selected_file_fn(name)
+			} else if node.kind == .selector && node.children_count > 0
+				&& tc.fn_value_shadowed_by_value(node)
+				&& tc.selector_declared_value_type(node) == none {
+				if name := tc.selected_file_receiver_method_name(tc.a.child(&node, 0), node.value) {
+					tc.enqueue_selected_file_fn(name)
 				}
 			}
 		}
@@ -11438,6 +11489,13 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 
 	for i in 0 .. node.children_count {
 		tc.collect_selected_file_node_called_fns(tc.a.child(&node, i))
+	}
+}
+
+fn (mut tc TypeChecker) enqueue_selected_file_fn(name string) {
+	if name !in tc.selected_file_called_fns {
+		tc.selected_file_called_fns[name] = true
+		tc.selected_file_worklist << name
 	}
 }
 
@@ -11589,6 +11647,11 @@ fn (tc &TypeChecker) selected_file_call_name(node flat.Node) ?string {
 fn (tc &TypeChecker) selected_file_call_base_name(fn_node flat.Node) ?string {
 	match fn_node.kind {
 		.ident {
+			// A callable value, such as a function-typed parameter, shadows the
+			// declared or selectively imported function sharing its name.
+			if tc.bare_call_resolves_to_value(fn_node.value) {
+				return none
+			}
 			if local_name := tc.local_bare_fn_signature_key(fn_node.value) {
 				return local_name
 			}
@@ -11633,6 +11696,16 @@ fn (tc &TypeChecker) selected_file_call_base_name(fn_node flat.Node) ?string {
 	}
 
 	return none
+}
+
+// bare_call_resolves_to_value reports whether call resolution selects a binding in
+// scope for `name(...)` instead of a function declaration.
+fn (tc &TypeChecker) bare_call_resolves_to_value(name string) bool {
+	typ := tc.cur_scope.lookup(name) or { return false }
+	if _ := fn_type_from_type(typ) {
+		return true
+	}
+	return typ is Unknown || unresolved_generic_receiver_type(typ)
 }
 
 fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, method string) ?string {
@@ -17687,8 +17760,25 @@ fn (mut tc TypeChecker) check_comptime_for_source_type(id flat.NodeId, node flat
 }
 
 fn (mut tc TypeChecker) check_comptime_for_source_types_preflight() {
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	saved_scope := tc.cur_scope
+	tc.cur_scope = tc.file_scope
+	defer {
+		tc.cur_file = saved_file
+		tc.cur_module = saved_module
+		tc.cur_scope = saved_scope
+	}
 	for index in tc.preflight_nodes(.comptime_for) {
-		tc.check_comptime_for_source_type(flat.NodeId(index), tc.a.nodes[index])
+		node := tc.a.nodes[index]
+		file := tc.a.source_files[node.pos.id] or { continue }
+		tc.enter_file(file.name)
+		// Parameter and local sources need the enclosing function's lexical
+		// scope. The semantic pass checks them once that scope is available.
+		if !tc.type_name_known(node.typ) {
+			continue
+		}
+		tc.check_comptime_for_source_type(flat.NodeId(index), node)
 	}
 }
 

@@ -215,7 +215,7 @@ fn main() {
 		println("wrong return or argument conversion")
 		return
 	}
-	typed_floats := []f64{1, 2}
+	typed_floats := [f64(1), 2]
 	if typed_floats[0] != 1.0 || typed_floats[1] != 2.0 {
 		println("wrong typed array conversion")
 		return
@@ -758,10 +758,10 @@ fn main() {
 	numeric_map[1] = 2
 	numeric_map[u64(2)] = 3
 	numeric_map.delete(2)
-	typed_values := []f64{1, 2}
-	typed_nested_values := [][]f64{[1, 2]}
-	inferred_nested_values := [[]f64{1.0}, [2, 3]]
-	inferred_nested_map := {"first": []f64{1.0}, "second": [2, 3]}
+	typed_values := [f64(1), 2]
+	typed_nested_values := [[f64(1), 2]]
+	inferred_nested_values := [[f64(1.0)], [2, 3]]
+	inferred_nested_map := {"first": [f64(1.0)], "second": [2, 3]}
 	mut assigned_float_values := []f64{}
 	assigned_float_values = [1, 2]
 	mut indexed_float_values := [][]f64{len: 1}
@@ -810,12 +810,12 @@ fn main() {
 	}
 	matched_zero := matched_success or { 63 }
 	aggregate_fallback := maybe_floats(false) or { [1, 2] }
-	conditional_floats := if false { []f64{1.0} } else { [2, 3] }
+	conditional_floats := if false { [f64(1.0)] } else { [2, 3] }
 	matched_floats := match false {
-		true { []f64{1.0} }
+		true { [f64(1.0)] }
 		else { [2, 3] }
 	}
-	case_values := []f64{1.0, 2.0}
+	case_values := [f64(1.0), 2.0]
 	mut statement_case_matched := false
 	match case_values {
 		[1, 2] { statement_case_matched = true }
@@ -1247,7 +1247,7 @@ fn main() {
 	base << 3
 	view2 := base[..]
 	base.insert(0, 4)
-	values := []f64{1, 2}
+	values := [f64(1), 2]
 	ptr := &values
 	first := ptr[0][0]
 	if view1 != [1, 2] || view2 != [3] || base != [4, 3] || first != 1.0 {

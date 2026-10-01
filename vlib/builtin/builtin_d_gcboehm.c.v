@@ -107,6 +107,13 @@ $if dynamic_boehm ? {
 		}
 		$if macos {
 			#flag -DMPROTECT_VDB=1
+			// AppKit/Metal apps map 1000+ dyld images; libgc registers each
+			// image's __DATA sections as static roots, which overflows the
+			// default MAX_ROOT_SETS (2048) of the source-built gc.o used by
+			// -prod ("Too many root sets"). The prebuilt macOS libgc.a is
+			// already configured with --enable-large-config (8192), as is
+			// Homebrew's bdw-gc; match that. See #25446.
+			#flag -DLARGE_CONFIG=1
 		}
 		#flag -ldl
 		#flag -lpthread

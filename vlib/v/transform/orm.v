@@ -1634,7 +1634,7 @@ fn (mut t Transformer) sql_value_member_chain_expr(chain SqlValueMemberChain, ty
 				arg_ids << t.sql_expr_from_token(arg)
 			}
 			call := t.make_call_expr_typed(t.make_selector(value, member, ''), arg_ids, typ)
-			return t.transform_expr(call)
+			return t.sql_transform_value_call(call)
 		}
 		value_type := t.node_type(value)
 		field_type := t.lookup_struct_field_type(value_type, member) or {
@@ -1717,15 +1717,83 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 	for arg in args {
 		arg_ids << t.sql_expr_from_token(arg)
 	}
+	mut target_type := t.comptime_resolve_selective_import_type(callee_name)
+	if imported := t.resolve_imported_type_name(target_type) {
+		target_type = imported
+	}
 	if args.len == 1
-		&& (is_plain_builtin_alias_type(callee_name) || t.is_known_type_name(callee_name)) {
-		return t.transform_expr(t.make_cast(callee_name, arg_ids[0], callee_name))
+		&& (is_plain_builtin_alias_type(target_type) || t.is_known_type_name(target_type)) {
+		converted := t.transform_expr(t.make_cast(target_type, arg_ids[0], target_type))
+		if t.is_type_alias_name(target_type) {
+			// Cast lowering normalizes aliases to their representation. Retain the
+			// named type on a wrapper for a following alias method's resolution.
+			value := t.make_paren(converted)
+			t.set_node_typ(int(value), target_type)
+			return value
+		}
+		return converted
 	}
 	callee := t.sql_value_call_callee(callee_name)
 	call := t.make_call_expr_typed(callee, arg_ids, if typ != '' { typ } else { '' })
 	// Preserve the source call shape so ordinary lowering can distinguish module
 	// functions, receiver methods, and static associated functions.
-	return t.transform_expr(call)
+	return t.sql_transform_value_call(call)
+}
+
+// SQL calls are created after checking, so they have no checker-selected method.
+// Select an alias's declared or inherited method before builtin collection lowering.
+fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
+	node := t.a.nodes[int(call)]
+	mut alias_return := t.raw_call_decl_return_type(call, node) or { '' }
+	if !isnil(t.tc) {
+		if ret := t.tc.fn_ret_types[t.resolve_call_name(node)] {
+			canonical_return := t.raw_call_return_type_name(ret.name(), node)
+			if t.raw_return_type_contains_alias(canonical_return) {
+				alias_return = canonical_return
+			}
+		}
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			receiver := t.a.child(callee, 0)
+			receiver_type := t.raw_var_type_for_expr(receiver) or { t.node_type(receiver) }
+			if method := t.tc.concrete_method_signature_key(t.trim_all_pointer_type(receiver_type),
+				callee.value) {
+				if method.all_before_last('.') in t.tc.type_aliases
+					&& !t.receiver_method_name_is_open_generic(method)
+					&& !t.call_selector_base_is_namespace(receiver, callee.value, method) {
+					if t.tc.sql_orm_method_is_private(method, t.cur_file, t.cur_module) {
+						t.record_monomorph_error('method `${receiver_type}.${callee.value}` is private')
+						return t.make_int_literal(0)
+					}
+					mut receiver_arg := receiver
+					mut receiver_arg_type := t.normalize_type_alias(receiver_type)
+					params := t.call_param_types(method)
+					if params.len > 0 {
+						receiver_depth, _ := pointer_type_depth_and_base(receiver_arg_type)
+						param_depth, _ := pointer_type_depth_and_base(t.normalize_type_alias(t.semantic_type_name(params[0])))
+						// Ordinary receiver conversion handles the final value/reference layer.
+						// Remove any extra indirections first, retaining reference parameters.
+						remaining_depth := if param_depth > 0 { param_depth } else { 1 }
+						if receiver_depth > remaining_depth {
+							for _ in remaining_depth .. receiver_depth {
+								receiver_arg = t.make_prefix(.mul, receiver_arg)
+								receiver_arg_type = receiver_arg_type[1..]
+								t.set_node_typ(int(receiver_arg), receiver_arg_type)
+							}
+						}
+					}
+					args := t.transform_receiver_method_args(node, receiver_arg, method)
+					return t.make_receiver_method_call_typed(node, method, args,
+						t.receiver_method_return_type(method, node.typ))
+				}
+			}
+		}
+	}
+	result := t.transform_expr(call)
+	if alias_return.len > 0 {
+		t.set_node_typ(int(result), alias_return)
+	}
+	return result
 }
 
 fn (mut t Transformer) sql_value_call_callee(callee_name string) flat.NodeId {
@@ -1736,7 +1804,8 @@ fn (mut t Transformer) sql_value_call_callee(callee_name string) flat.NodeId {
 	}
 	mut receiver_type := t.sql_root_value_type_name(parts[0])
 	if receiver_type.len == 0 {
-		return t.sql_qualified_selector(bound_name)
+		callee := t.resolve_imported_type_name(bound_name) or { bound_name }
+		return t.sql_qualified_selector(callee)
 	}
 	mut receiver := t.make_ident(parts[0])
 	t.set_node_typ(int(receiver), receiver_type)
@@ -1957,7 +2026,16 @@ fn (mut t Transformer) sql_or_expr_from_token_for_type(token string, typ string)
 	tokens := sql_clean_tokens(token.split(' '))
 	source_tokens, fallback_tokens := sql_or_value_expr_parts(tokens) or { return none }
 	source := t.sql_expr_from_token_for_type(sql_value_token_text(source_tokens), '')
-	fallback := t.sql_expr_from_token_for_type(sql_value_token_text(fallback_tokens), typ)
+	source_type := t.raw_var_type_for_expr(source) or { t.node_type(source) }
+	// Method resolution needs the declared alias payload before ordinary or lowering
+	// normalizes its Option/Result storage to the underlying collection.
+	value_type := if t.is_optional_type_name(source_type)
+		&& t.raw_return_type_contains_alias(source_type) {
+		t.optional_base_type(source_type)
+	} else {
+		typ
+	}
+	fallback := t.sql_expr_from_token_for_type(sql_value_token_text(fallback_tokens), value_type)
 	body := t.make_block([t.make_expr_stmt(fallback)])
 	start := t.a.children.len
 	t.a.children << source
@@ -1966,9 +2044,9 @@ fn (mut t Transformer) sql_or_expr_from_token_for_type(token string, typ string)
 		kind:           .or_expr
 		children_start: start
 		children_count: 2
-		typ:            typ
+		typ:            value_type
 	})
-	t.set_node_typ(int(id), typ)
+	t.set_node_typ(int(id), value_type)
 	return id
 }
 

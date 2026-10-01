@@ -1320,7 +1320,7 @@ fn (c &VmlCompiler) menu_value(node &VmlNode, scope VmlScope) string {
 			}
 			entries << 'ui2.MenuEntry{id: if ${id}.len > 0 { ${id} } else { ${fallback_id} }, title: ${text}}'
 		}
-		return '[]ui2.MenuEntry{${entries.join(', ')}}'
+		return vml_array_literal('ui2.MenuEntry', entries)
 	}
 	if node.tag in ['Dropdown', 'Spinner'] {
 		mut entries := []string{}
@@ -1335,7 +1335,7 @@ fn (c &VmlCompiler) menu_value(node &VmlNode, scope VmlScope) string {
 			}
 			entries << 'ui2.MenuEntry{id: ${text}, title: ${text}}'
 		}
-		return '[]ui2.MenuEntry{${entries.join(', ')}}'
+		return vml_array_literal('ui2.MenuEntry', entries)
 	}
 	return '[]ui2.MenuEntry{}'
 }
@@ -1353,7 +1353,11 @@ fn (c &VmlCompiler) option_values(node &VmlNode, scope VmlScope) string {
 		}
 		values << value
 	}
-	return '[]string{${values.join(', ')}}'
+	return vml_array_literal('string', values)
+}
+
+fn vml_array_literal(elem_type string, values []string) string {
+	return if values.len == 0 { '[]${elem_type}{}' } else { '[${values.join(', ')}]' }
 }
 
 fn (mut c VmlCompiler) compile_element(node &VmlNode, suffix string, frame string, children string, properties map[string]string, scope VmlScope, default_key string) {
@@ -1623,7 +1627,7 @@ fn (mut c VmlCompiler) compile_message_box(node &VmlNode, suffix string, frame s
 	c.out.writeln('\t\thidden: ${vml_prop(properties, 'hidden', 'false')}')
 	c.out.writeln('\t\twidth: ${vml_prop(properties, 'dialog_width', 'f64(300)')}')
 	c.out.writeln('\t\theight: ${vml_prop(properties, 'dialog_height', 'f64(150)')}')
-	c.out.writeln('\t\tactions: []ui2.MessageBoxAction{${actions.join(', ')}}')
+	c.out.writeln('\t\tactions: ${vml_array_literal('ui2.MessageBoxAction', actions)}')
 	c.out.writeln('\t)')
 	c.out.writeln('\tvml_element_${suffix} := ui2.Element{')
 	c.out.writeln('\t\t...vml_message_box_${suffix}')

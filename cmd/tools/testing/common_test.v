@@ -154,3 +154,27 @@ fn test_effective_test_memory_uses_lower_cgroup_limit() {
 	assert effective_test_memory(physical_memory, cgroup_memory_limit) == cgroup_memory_limit
 	assert effective_test_memory(cgroup_memory_limit, physical_memory) == cgroup_memory_limit
 }
+
+fn test_os_suffix_selection_preserves_android_outside_termux() {
+	for suffix in ['_test.v', '_test.c.v'] {
+		file := 'fixture_android_outside_termux' + suffix
+		assert test_file_is_target_of('android', file)
+		for host in ['termux', 'linux', 'macos', 'windows'] {
+			assert !test_file_is_target_of(host, file), 'host=${host}, file=${file}'
+		}
+	}
+}
+
+fn test_os_suffix_selection_preserves_simple_and_unspecified_targets() {
+	for suffix in ['_test.v', '_test.c.v'] {
+		assert test_file_is_target_of('termux', 'fixture_termux' + suffix)
+		assert !test_file_is_target_of('android', 'fixture_termux' + suffix)
+		assert test_file_is_target_of('windows', 'fixture_windows' + suffix)
+		assert !test_file_is_target_of('linux', 'fixture_windows' + suffix)
+		assert test_file_is_target_of('linux', 'fixture_nix' + suffix)
+		assert !test_file_is_target_of('windows', 'fixture_nix' + suffix)
+		for host in ['android', 'termux', 'linux', 'macos', 'windows'] {
+			assert test_file_is_target_of(host, 'fixture' + suffix)
+		}
+	}
+}

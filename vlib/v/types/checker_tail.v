@@ -1496,9 +1496,12 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 	if tc.ident_is_mutable_lvalue(root.value) {
 		return
 	}
+	// A local shadows a function of the same name (C translated by c2v declares a
+	// local `exp` next to `fn C.exp(f64) f64`).
+	names_fn := !tc.ident_resolves_to_value(root.value) && tc.fn_value_type(root.value) != none
 	if (tc.unsafe_depth > 0 || tc.current_fn_declared_unsafe()
 		|| tc.translated_files[tc.cur_file] || tc.node_is_in_translated_file(id))
-		&& tc.const_key_for_name(root.value) == none && tc.fn_value_type(root.value) == none {
+		&& tc.const_key_for_name(root.value) == none && !names_fn {
 		return
 	}
 	if _ := tc.malformed_const_keyword_pos(root_id) {
@@ -1508,7 +1511,7 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 		tc.record_error_at(.assignment_mismatch, 'cannot modify constant `${root.value}`', root_id, tc.node_value_diagnostic_pos(root_id))
 		return
 	}
-	if tc.fn_value_type(root.value) != none {
+	if names_fn {
 		tc.record_error_at(.assignment_mismatch, 'cannot assign to function `${root.value}`', root_id, tc.node_value_diagnostic_pos(root_id))
 		return
 	}
@@ -3184,6 +3187,7 @@ fn return_numeric_alias_compatible(actual Type, expected Type) bool {
 fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return tc.type_compatible(actual, expected) || tc.zero_literal_can_be_pointer(expr_id, expected)
 		|| tc.translated_numeric_expr_compatible(expr_id, actual, expected)
+		|| tc.translated_char_pointer_expr_compatible(expr_id, actual, expected)
 		|| tc.int_literal_can_be_char(expr_id, expected)
 		|| tc.interface_expr_compatible(actual, expected)
 		|| tc.fn_voidptr_expr_compatible(actual, expected)
@@ -3209,6 +3213,10 @@ fn translated_integer_type(typ Type) bool {
 fn (tc &TypeChecker) translated_numeric_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
 	return tc.node_is_in_translated_file(id) && translated_numeric_type(actual)
 		&& translated_numeric_type(expected)
+}
+
+fn (tc &TypeChecker) translated_char_pointer_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
+	return tc.node_is_in_translated_file(id) && c_char_pointer_types_compatible(actual, expected)
 }
 
 fn (tc &TypeChecker) translated_condition_compatible(id flat.NodeId, typ Type) bool {
@@ -7346,6 +7354,14 @@ fn (tc &TypeChecker) array_accessor_type_contains_pointer_inner(typ Type, mut se
 
 // should_diagnose reports whether should diagnose applies in types.
 fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
+	return tc.should_diagnose_with_dependencies(id, true)
+}
+
+fn (tc &TypeChecker) should_diagnose_notice(id flat.NodeId) bool {
+	return tc.should_diagnose_with_dependencies(id, false)
+}
+
+fn (tc &TypeChecker) should_diagnose_with_dependencies(id flat.NodeId, include_dependencies bool) bool {
 	if tc.valid_diagnostic_fast {
 		return false
 	}
@@ -7375,7 +7391,17 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 	if tc.diagnostic_files.len == 0 {
 		return true
 	}
-	return tc.cur_file in tc.diagnostic_files
+	if tc.cur_file in tc.diagnostic_files {
+		return true
+	}
+	// Dependency code kept by a call from the selected files must not reach
+	// code generation with a suppressed hard error. Keep notices and warnings
+	// limited to the files the user owns, and ignore uncalled library bodies.
+	if include_dependencies && !tc.checker_fixture_mode {
+		qname := tc.current_checked_fn_qname() or { return false }
+		return qname in tc.selected_file_called_fns
+	}
+	return false
 }
 
 // shadow_check_owns_file reports whether `file` is the project's own code, and
@@ -13095,25 +13121,15 @@ fn (tc &TypeChecker) cache_visible_mutation_result(key u64, result bool) {
 	}
 }
 
-fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(info CallInfo, recv_id flat.NodeId) bool {
+fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(recv_id flat.NodeId) bool {
 	if tc.expr_is_shared_arg(recv_id) {
 		return false
 	}
 	if tc.expr_root_is_global_binding(recv_id) {
 		return false
 	}
-	method_module := tc.fn_type_modules[info.name] or { '' }
-	if method_module.len > 0 && method_module != tc.cur_module {
-		// Match V's private-mutability rule: an immutable binding is accepted across a
-		// module boundary only when the method cannot mutate caller-visible state.
-		decl := tc.visible_mutation_fn_decl(info.name, method_module) or { return true }
-		cache_id := visible_mutation_cache_id(decl, 0)
-		if cached := tc.cached_visible_mutation_result(cache_id) {
-			return cached
-		}
-		mut visiting := map[u64]bool{}
-		return tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting)
-	}
+	// Private fields carry state too, and mutating a value parameter's copy can
+	// lose that state. The receiver's mutability does not depend on visibility.
 	return true
 }
 
@@ -14101,7 +14117,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
 			&& mutating_receiver
 			&& (builtin_map_mutating_receiver
-				|| tc.mut_receiver_call_requires_mutable_lvalue(info, recv_id))
+				|| tc.mut_receiver_call_requires_mutable_lvalue(recv_id))
 			&& !checker_is_raw_collection_method_name(info.name, 'array.')
 			&& !tc.mut_receiver_expr_is_mutable_lvalue(recv_id) && tc.should_diagnose(id) {
 			if const_name := tc.expr_root_constant_name(recv_id) {
@@ -14855,6 +14871,16 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			0
 		})
 		target_name := tc.call_argument_target_name(node, info)
+		// IError stringification is valid in interpolation/printing, but an error
+		// constructor takes a real string and cannot embed an IError in its message.
+		if info.name in ['error', 'error_with_code'] && param_idx == 0
+			&& unalias_type(expected) is String && is_ierror_type(actual) {
+			if info.name == 'error' {
+				tc.record_warning_at(.call_arg_mismatch, '`error(err)` can be shortened to just `err`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			}
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `string` in argument 1 to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			continue
+		}
 		if expected_display := tc.bare_generic_fntype_call_param_display(info.name, param_idx) {
 			if unalias_type(actual) is FnType {
 				actual_display := call_argument_type_name(actual)
@@ -16571,6 +16597,12 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		return actual_clean.name() in ['int', 'i32']
 	}
 	if clean is Pointer {
+		// Match V1: C's character types are interchangeable behind pointers
+		// (`char *` is `&char` in V's C declarations and `&i8` or `&u8` in
+		// translated C code).
+		if c_char_pointer_types_compatible(actual, expected) {
+			return true
+		}
 		base := fn_param_unalias_type(clean.base_type)
 		if base is Char || (base is Primitive && base.name() == 'u8') {
 			return tc.c_literal_arg(arg_id)
@@ -16583,6 +16615,19 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		}
 	}
 	return false
+}
+
+// c_char_pointer_types_compatible reports whether `actual` and `expected` are
+// pointers of the same depth to C character types: `char`, `i8` or `u8`.
+fn c_char_pointer_types_compatible(actual Type, expected Type) bool {
+	actual_depth, actual_base := type_pointer_depth_and_base(actual)
+	expected_depth, expected_base := type_pointer_depth_and_base(expected)
+	return actual_depth > 0 && actual_depth == expected_depth && is_c_char_type(actual_base)
+		&& is_c_char_type(expected_base)
+}
+
+fn is_c_char_type(typ Type) bool {
+	return typ is Char || (typ is Primitive && typ.name() in ['i8', 'u8'])
 }
 
 fn (tc &TypeChecker) c_fn_value_signature_compatible(actual Type, expected Type) bool {
@@ -20171,7 +20216,8 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		if tc.branch_has_value_tail(then_id) && tc.branch_has_value_tail(else_id)
 			&& !tc.if_branch_types_compatible(then_type, else_type, tc.branch_tail_is_array_literal(then_id), tc.branch_tail_is_array_literal(else_id))
 			&& !tc.if_branch_multi_return_compatible(then_type, then_id, else_type, else_id)
-			&& !tc.translated_numeric_expr_compatible(id, then_type, else_type) {
+			&& !tc.translated_numeric_expr_compatible(id, then_type, else_type)
+			&& !tc.translated_char_pointer_expr_compatible(id, then_type, else_type) {
 			if tc.if_branch_empty_array_compatible(then_type, then_id, else_type, else_id) {
 				return
 			}
@@ -20472,7 +20518,19 @@ fn (mut tc TypeChecker) check_empty_or_value_tail(branch_id flat.NodeId) {
 			return
 		}
 	}
-	if unalias_type(tc.resolve_type(tail_id)) is Void && !tc.branch_tail_never_returns(branch_id)
+	mut tail_type := tc.resolve_type(tail_id)
+	if unalias_type(tail_type) is Void {
+		// The branch is checked by now. A memoized `void` can be from before, when
+		// an inferred generic call in the tail had no type yet
+		// (`u32(1) << at(&cols[0], 0).from`), so resolve the tail again (inside any
+		// parentheses, whose own resolution would read the memo).
+		mut value_id := tail_id
+		for tc.a.node(value_id).kind == .paren && tc.a.node(value_id).children_count > 0 {
+			value_id = tc.a.child(tc.a.node(value_id), 0)
+		}
+		tail_type = tc.resolve_type_uncached(value_id)
+	}
+	if unalias_type(tail_type) is Void && !tc.branch_tail_never_returns(branch_id)
 		&& !tc.stmt_definitely_returns(tail_id)
 		&& !tc.expr_subtree_has_undefined_variable_error(tail_id) {
 		tc.record_error_at(.if_branch_mismatch, 'the final expression in `if` or `match`, must have a value of a non-void type', tail_id, tail.pos)
