@@ -489,7 +489,7 @@ fn (mut t Transformer) transform_string_slice_or_expr(id flat.NodeId, node flat.
 		t.make_ident(end_name)], 'string')
 	then_block := t.make_block([t.make_assign(t.make_ident(val_name), slice_call)])
 	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name, 'string',
-		node.value, t.make_ierror_none()))
+		node.value, flat.empty_node))
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -559,7 +559,7 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.array_index_len_expr(info, base_expr))
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
 	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
-		result_type, node.value, t.make_ierror_none()))
+		result_type, node.value, flat.empty_node))
 	index_value0 := t.make_index(base_expr, t.make_ident(index_name), info.value_type)
 	mut then_block := flat.empty_node
 	if source_is_optional {
@@ -573,7 +573,7 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 		}
 		assign_found := t.make_assign(t.make_ident(val_name), index_value)
 		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
-		opt_err_expr := t.make_selector(t.make_ident(opt_name), 'err', 'IError')
+		opt_err_expr := t.result_error_expr(t.make_ident(opt_name))
 		opt_else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
 			result_type, node.value, opt_err_expr))
 		then_block = t.make_block([opt_decl,
@@ -588,7 +588,7 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 	}
 	mut opt_else := flat.empty_node
 	if info.base_optional {
-		opt_err := t.make_selector(t.make_ident(base_opt_name), 'err', 'IError')
+		opt_err := t.result_error_expr(t.make_ident(base_opt_name))
 		opt_else = t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
 			result_type, node.value, opt_err))
 	}
@@ -834,8 +834,13 @@ fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node f
 	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.enum_type),
 		info.enum_type)
 
-	mut else_block := t.make_block(t.lower_or_body_to_stmts(body_id, val_name, info.enum_type,
-		node.value, ''))
+	failure := if info.is_result {
+		t.make_call_typed('error', [t.make_string_literal('invalid value')], 'IError')
+	} else {
+		flat.empty_node
+	}
+	mut else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
+		info.enum_type, node.value, failure))
 	for i := members.len - 1; i >= 0; i-- {
 		cond := t.make_call_typed('string__eq', [t.make_ident(str_name),
 			t.make_string_literal(members[i].name)], 'bool')
@@ -897,18 +902,29 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 	}
 	t.pending_stmts << else_block
 
+	if info.is_result {
+		result_name := t.new_temp('enum_result')
+		t.pending_stmts << t.make_decl_assign_typed(result_name, t.make_optional_none(optional_type),
+			optional_type)
+		success := t.make_optional_some(t.make_ident(val_name), optional_type)
+		err_expr := t.make_call_typed('error', [t.make_string_literal('invalid value')], 'IError')
+		failure := t.make_optional_none_with_err(optional_type, err_expr)
+		t.pending_stmts << t.make_if(t.make_ident(ok_name),
+			t.make_block([t.make_assign(t.make_ident(result_name), success)]),
+			t.make_block([t.make_assign(t.make_ident(result_name), failure)]))
+		result := t.make_ident(result_name)
+		t.set_node_typ(int(result), optional_type)
+		return result
+	}
 	ok_field := t.make_sum_literal_field('ok', t.make_ident(ok_name), 'bool')
 	value_field := t.make_sum_literal_field('value', t.make_ident(val_name), info.enum_type)
-	err_expr := t.make_call_typed('error', [t.make_string_literal('invalid value')], 'IError')
-	err_field := t.make_sum_literal_field('err', err_expr, 'IError')
 	start := t.a.children.len
 	t.a.children << ok_field
 	t.a.children << value_field
-	t.a.children << err_field
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
 		children_start: start
-		children_count: 3
+		children_count: 2
 		value:          optional_type
 		typ:            optional_type
 	})
@@ -1017,7 +1033,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 					&& !t.generic_arg_is_unresolved(fallback_type) {
 					return t.canonical_or_expr_types('?${fallback_type}')
 				}
-				source_name := if typ.base_type is types.Void || base_name == 'Optional' {
+				source_name := if typ.base_type is types.Void || base_name == '__v_option' {
 					'?void'
 				} else {
 					'?${base_name}'
@@ -1030,7 +1046,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 					&& !t.generic_arg_is_unresolved(fallback_type) {
 					return t.canonical_or_expr_types('!${fallback_type}')
 				}
-				source_name := if typ.base_type is types.Void || base_name == 'Optional' {
+				source_name := if typ.base_type is types.Void || base_name == '__v_option' {
 					'!void'
 				} else {
 					'!${base_name}'
@@ -1045,13 +1061,13 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 		prefix := if expr_type.starts_with('!') { '!' } else { '?' }
 		expr_type = '${prefix}${fallback_type}'
 	}
-	if expr_type == 'Optional' {
+	if expr_type == '__v_option' {
 		return '?void', 'void'
 	}
-	if fallback_type == 'Optional' {
+	if fallback_type == '__v_option' {
 		return '?void', 'void'
 	}
-	if expr_type == '' || expr_type == 'Optional' {
+	if expr_type == '' || expr_type == '__v_option' {
 		if fallback_type != '' && !t.is_optional_type_name(fallback_type) {
 			expr_type = '?${fallback_type}'
 		} else {
@@ -1062,7 +1078,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 		return '${expr_type}void', 'void'
 	}
 	base_type := t.optional_base_type(expr_type)
-	if base_type == 'Optional' {
+	if base_type == '__v_option' {
 		return expr_type, 'void'
 	}
 	mut value_type := if base_type.len > 0 { base_type } else { fallback_type }
@@ -1085,7 +1101,7 @@ fn (t &Transformer) specialized_or_expr_types(expr_type string) (string, string)
 		return clean, clean
 	}
 	mut base := clean[1..]
-	if base.len == 0 || base in ['void', 'Optional'] {
+	if base.len == 0 || base in ['void', '__v_option'] {
 		return '${clean[..1]}void', 'void'
 	}
 	base = t.qualify_specialized_or_expr_value_type(base)
@@ -1170,7 +1186,7 @@ fn (mut t Transformer) thread_wait_or_expr_type(call flat.Node) ?string {
 fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 	// A bare `!` or `?` (a result/option of `void`, e.g. `fn f() !`) carries no payload.
 	// Falling through would run `optional_base_type('!')` -> `'!'`, then resolve `'!'` as
-	// the `Optional` wrapper struct and double-wrap the temporary as `Optional_Optional`.
+	// the `__v_option` wrapper struct and double-wrap the temporary as `__v_option___v_option`.
 	if expr_type == '!' || expr_type == '?' {
 		return '${expr_type}void', 'void'
 	}
@@ -1189,7 +1205,7 @@ fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 	// A bare `!`/`?` (a void Result/Option, e.g. `fn f() !`) has no payload. Its
 	// `optional_base_type` returns the marker unchanged (`base == clean_expr_type`);
 	// treat it as void so it is not re-parsed into `!void` and re-wrapped to `!!void`.
-	if base.len == 0 || base == 'void' || base == 'Optional' || base == clean_expr_type {
+	if base.len == 0 || base == 'void' || base == '__v_option' || base == clean_expr_type {
 		return '${prefix}void', 'void'
 	}
 	// Monomorphized collection arguments can reach an or-expression in their
@@ -1485,8 +1501,8 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	if clean in ['void', ''] {
 		return t.make_int_literal(0)
 	}
-	if clean in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'rune', 'char']
+	if clean in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32', 'u64',
+		'rune', 'char']
 		|| clean in t.enum_types {
 		return t.make_int_literal(0)
 	}
@@ -1537,20 +1553,12 @@ fn (mut t Transformer) make_none_return_stmt() flat.NodeId {
 	return t.make_return(t.a.add(.none_expr), t.cur_fn_ret_type)
 }
 
-// make_none_return_stmt_with_err builds make none return stmt with err data for transform.
-fn (mut t Transformer) make_none_return_stmt_with_err(err_source string) flat.NodeId {
-	if err_source == '' {
-		return t.make_none_return_stmt()
-	}
-	err_expr := t.make_selector(t.make_ident(err_source), 'err', 'IError')
-	return t.make_none_return_stmt_with_err_expr(err_expr)
-}
-
 fn (mut t Transformer) make_none_return_stmt_with_err_expr(err_expr flat.NodeId) flat.NodeId {
-	if int(err_expr) < 0 {
+	if !t.normalize_type_alias(t.cur_fn_ret_type).starts_with('!') {
 		return t.make_none_return_stmt()
 	}
-	return t.make_return(t.make_optional_none_with_err(t.cur_fn_ret_type, err_expr),
+	failure := if int(err_expr) >= 0 { err_expr } else { t.make_ierror_none() }
+	return t.make_return(t.make_optional_none_with_err(t.cur_fn_ret_type, failure),
 		t.cur_fn_ret_type)
 }
 
@@ -1584,7 +1592,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 		return t.transform_expr(expr_id)
 	}
 	is_void := value_type.len == 0 || value_type == 'void'
-		|| value_type == 'Optional' || value_type == '!' || value_type == '?'
+		|| value_type == '__v_option' || value_type == '!' || value_type == '?'
 		|| (t.is_optional_type_name(value_type) && t.optional_base_type(value_type) == 'void')
 	opt_tmp := t.new_temp('or_opt')
 	val_tmp := t.new_temp('or_val')
@@ -1765,7 +1773,7 @@ fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.No
 		t.pending_stmts << stmt
 	}
 
-	err_scope := t.enter_implicit_err_scope()
+	err_scope := t.enter_implicit_err_scope(t.node_type(new_expr).starts_with('!'))
 	new_body := t.transform_or_body_for_codegen(body_id)
 	t.leave_implicit_err_scope(err_scope)
 
@@ -2050,13 +2058,13 @@ fn (mut t Transformer) nested_optional_value_type(expr_id flat.NodeId, fallback 
 	if typ.len == 0 || typ.contains('unknown') {
 		typ = fallback
 	}
-	if typ.all_after_last('.') in ['Optional', 'Result'] {
+	if typ.all_after_last('.') in ['__v_option', 'Result'] {
 		return 'void'
 	}
 	if t.is_optional_type_name(typ) {
 		typ = t.optional_base_type(typ)
 	}
-	if typ.all_after_last('.') in ['Optional', 'Result'] {
+	if typ.all_after_last('.') in ['__v_option', 'Result'] {
 		return 'void'
 	}
 	return typ
@@ -2200,26 +2208,24 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 	return value
 }
 
-// append_implicit_err_decl binds the implicit `err` of an `or {}` block or an
-// if-guard `else` branch to `err_expr`, or to a zero `IError` when there is no
-// source error. Without `IError` (`-no-builtin`) the option/result wrappers have
-// no `err` field, so no binding is emitted.
+fn (mut t Transformer) result_error_expr(source flat.NodeId) flat.NodeId {
+	if !t.normalize_type_alias(t.node_type(source)).starts_with('!') {
+		return flat.empty_node
+	}
+	return t.make_selector(source, 'err', 'IError')
+}
+
 fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_expr flat.NodeId) {
-	if !t.has_ierror_interface() {
+	if int(err_expr) < 0 || !t.has_ierror_interface() {
 		return
 	}
-	err_value := if int(err_expr) >= 0 {
-		err_expr
-	} else {
-		t.make_struct_init('IError')
-	}
-	stmts << t.make_decl_assign_typed('err', err_value, 'IError')
+	stmts << t.make_decl_assign_typed('err', err_expr, 'IError')
 }
 
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.
 fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string, err_source string) []flat.NodeId {
 	err_expr := if err_source != '' {
-		t.make_selector(t.make_ident(err_source), 'err', 'IError')
+		t.result_error_expr(t.make_ident(err_source))
 	} else {
 		flat.empty_node
 	}
@@ -2228,7 +2234,7 @@ fn (mut t Transformer) lower_or_body_to_stmts(body_id flat.NodeId, target_name s
 
 fn (mut t Transformer) lower_or_body_to_multi_return_stmts(body_id flat.NodeId, target_name string, target_type string, field_types []types.Type, mode string, err_source string) []flat.NodeId {
 	err_expr := if err_source != '' {
-		t.make_selector(t.make_ident(err_source), 'err', 'IError')
+		t.result_error_expr(t.make_ident(err_source))
 	} else {
 		flat.empty_node
 	}
@@ -2248,7 +2254,7 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 			err_expr)
 	}
 	body := t.a.nodes[int(body_id)]
-	err_scope := t.enter_implicit_err_scope()
+	err_scope := t.enter_implicit_err_scope(int(err_expr) >= 0)
 	mut result := []flat.NodeId{}
 	t.append_implicit_err_decl(mut result, err_expr)
 	if t.stmt_tail_exits(body_id) {
@@ -2501,7 +2507,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 	// for its lowering and restored afterwards, so the previous binding (e.g. an outer
 	// `err := 1`) survives and a subsequent `${err}` is not mis-typed as `IError`.
 	// Mirrors transform_if_guard_else_block.
-	err_scope := t.enter_implicit_err_scope()
+	err_scope := t.enter_implicit_err_scope(int(err_expr) >= 0)
 	t.append_implicit_err_decl(mut result, err_expr)
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)

@@ -240,28 +240,30 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 		g.expect(.rcbr)!
 		g.skip_semicolons()
-		if g.selfhost && value_type.trim_right('*') == 'IError' && g.return_type == 'Option' {
+		if g.selfhost && value_type.trim_right('*') == 'IError' && g.return_type == '__v_result' {
 			error_result_type := if result_type != '' {
 				result_type
 			} else {
 				outer_expected_type
 			}
-			if error_result_type != '' && error_result_type != 'Option' {
-				value = '({ return (Option){.err=${value}, .state=1}; (${fastc_normalize_inferred_type(error_result_type)}){0}; })'
+			if error_result_type != '' && error_result_type !in ['Option', '__v_result'] {
+				value = '({ return (__v_result){.err=${value}, .state=1}; (${fastc_normalize_inferred_type(error_result_type)}){0}; })'
 				value_type = error_result_type
 			}
 		}
-		if g.selfhost && result_type == 'Option' && value_type !in ['', 'Option'] {
-			value = fastc_option_success_expression(value_type, value)
-			value_type = 'Option'
-		} else if g.selfhost && value_type == 'Option' && result_type !in ['', 'Option'] {
+		if g.selfhost && result_type in ['Option', '__v_result'] && value_type !in ['', 'Option',
+			'__v_result'] {
+			value = fastc_option_success_expression(result_type, value_type, value)
+			value_type = result_type
+		} else if g.selfhost && value_type in ['Option', '__v_result'] && result_type !in ['',
+			'Option', '__v_result'] {
 			for i, previous_value in values {
-				values[i] = fastc_option_success_expression(result_type, previous_value)
+				values[i] = fastc_option_success_expression(value_type, result_type, previous_value)
 			}
 			if fallback != '' {
-				fallback = fastc_option_success_expression(result_type, fallback)
+				fallback = fastc_option_success_expression(value_type, result_type, fallback)
 			}
-			result_type = 'Option'
+			result_type = value_type
 		}
 		if g.selfhost && value_type in ['', 'void'] && result_type != '' {
 			// A diverging arm (a `@[noreturn]` call such as `eprintln_exit(...)`) yields no

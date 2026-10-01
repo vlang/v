@@ -133,7 +133,7 @@ fn reflection_builtin_type_kind(name string) int {
 		'i64' { 8 }
 		'int' { 9 }
 		'isize' { 10 }
-		'u8', 'byte' { 11 }
+		'u8' { 11 }
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
@@ -164,7 +164,7 @@ fn reflection_builtin_type_id(name string) ?int {
 		'int' { 8 }
 		'i64' { 9 }
 		'isize' { 10 }
-		'u8', 'byte' { 11 }
+		'u8' { 11 }
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }

@@ -22,6 +22,9 @@ concurrency:
   group: vsl-vtl-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   vsl-compiles:
     strategy:
@@ -34,6 +37,8 @@ jobs:
       VFLAGS: -no-parallel
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Cache apt packages
         if: runner.os == 'Linux'
         uses: ./.github/actions/cache-apt-packages-action
@@ -90,6 +95,8 @@ jobs:
       TERM: xterm
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Cache apt packages
         if: runner.os == 'Linux'
         uses: ./.github/actions/cache-apt-packages-action

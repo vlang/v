@@ -32,3 +32,26 @@ fn test_external_test_tool_without_prefix_keeps_test_arguments() {
 	args := ['test', 'bug_test.v']
 	assert external_tool_runtime_args('test', []string{}, args) == args
 }
+
+fn test_race_flag_is_found_before_and_after_the_input() {
+	assert race_build_requested(['-race', 'main.v'])
+	assert race_build_requested(['main.v', '-race'])
+	assert race_build_requested(['-race', 'run', 'main.v'])
+	assert race_build_requested(['run', '-race', 'main.v'])
+	assert race_build_requested(['-race', 'test', 'dir'])
+	assert race_build_requested(['test', 'dir', '-race'])
+	assert race_build_requested(['-o', 'out', 'main.v', '-race'])
+	// `-profile` and `-prof` take an optional file, so they do not consume a following option.
+	assert race_build_requested(['-profile', '-race', 'main.v'])
+	assert race_build_requested(['main.v', '-prof', '-race'])
+	assert race_build_requested(['-profile', 'prof.txt', 'main.v', '-race'])
+}
+
+fn test_race_flag_of_a_run_program_is_not_a_compiler_option() {
+	assert !race_build_requested(['run', 'main.v', '-race'])
+	assert !race_build_requested(['crun', 'main.v', '-race'])
+	assert !race_build_requested(['script.vsh', '-race'])
+	assert !race_build_requested(['-o', '-race', 'main.v'])
+	assert !race_build_requested(['-profile', 'run', 'main.v', '-race'])
+	assert !race_build_requested(['main.v'])
+}

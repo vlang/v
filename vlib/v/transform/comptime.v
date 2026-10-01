@@ -3808,7 +3808,7 @@ fn comptime_builtin_type_idx(name string) int {
 		'int' { 8 }
 		'i64' { 9 }
 		'isize' { 10 }
-		'u8', 'byte' { 11 }
+		'u8' { 11 }
 		'u16' { 12 }
 		'u32' { 13 }
 		'u64' { 14 }
@@ -3949,8 +3949,8 @@ fn comptime_type_id_hash(key string) int {
 
 fn comptime_is_primitive_type(typ string) bool {
 	return typ in ['string', 'bool', 'rune', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize',
-		'u8', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal',
-		'voidptr', 'byteptr', 'charptr', 'nil', 'void']
+		'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
+		'byteptr', 'charptr', 'nil', 'void']
 }
 
 // comptime_strip_field_wrappers removes the `?` option, `shared`/`atomic`, and `&` reference

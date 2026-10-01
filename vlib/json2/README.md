@@ -72,6 +72,10 @@ booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects en
 
 #### decode[T]
 
+The target type keeps its declaring module. A program's own sum type named `Any`
+is distinct from `json2.Any`, including through nested dynamic arrays, fixed arrays,
+and maps such as `json2.decode[[][2]Any](text)`.
+
 ```v
 import json2
 import time

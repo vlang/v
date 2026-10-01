@@ -265,6 +265,13 @@ fn map_eq_int_8(a voidptr, b voidptr) bool {
 	return unsafe { *&u64(a) == *&u64(b) }
 }
 
+// A 128-bit key is two u64 halves, so equality is a byte compare. Reading them
+// as u64 would need an alignment guarantee the map's key storage does not give.
+@[inline]
+fn map_eq_int_16(a voidptr, b voidptr) bool {
+	return unsafe { vmemcmp(a, b, 16) == 0 }
+}
+
 // map_map_eq compares two maps for equality.
 // Returns true if both maps have the same keys and associated values.
 fn map_map_eq(a map, b map) bool {
@@ -324,6 +331,13 @@ fn map_clone_int_4(dest voidptr, pkey voidptr) {
 fn map_clone_int_8(dest voidptr, pkey voidptr) {
 	unsafe {
 		*&u64(dest) = *&u64(pkey)
+	}
+}
+
+@[inline]
+fn map_clone_int_16(dest voidptr, pkey voidptr) {
+	unsafe {
+		vmemcpy(dest, pkey, 16)
 	}
 }
 
@@ -569,6 +583,11 @@ fn (mut m map) set(key voidptr, value voidptr) {
 }
 
 fn (mut m VMapData) set(key voidptr, value voidptr) {
+	$if race ? {
+		// Like Go, every insertion is a write of the map, even when it only replaces the
+		// value of an existing key: it races with an unsynchronized `m.len`.
+		racewrite(&m.count)
+	}
 	if m.metas == unsafe { nil } {
 		// Most compiler bookkeeping maps remain empty. Allocate backing storage
 		// only on the first insertion or an explicit reservation.
@@ -727,6 +746,10 @@ fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 }
 
 fn (mut m VMapData) get_and_set(key voidptr, zero voidptr) voidptr {
+	$if race ? {
+		// Used for `m[key] += x`, `m[key]++` and the like: a write of the map, as in set().
+		racewrite(&m.count)
+	}
 	if m.metas == unsafe { nil } {
 		m.set(key, zero)
 	}
@@ -894,6 +917,10 @@ pub fn (mut m map) delete(key voidptr) {
 
 @[unsafe]
 fn (mut m VMapData) delete(key voidptr) {
+	$if race ? {
+		// Like Go, every delete is a write of the map, even of a missing key.
+		racewrite(&m.count)
+	}
 	if m.count == 0 {
 		return
 	}

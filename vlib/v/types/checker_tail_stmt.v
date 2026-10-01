@@ -1132,12 +1132,42 @@ fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
 		if tc.file_has_global_receiver(file.name) {
 			continue
 		}
+		op := if node.op == .inc { '++' } else { '--' }
+		op_pos := tc.prefix_operator_pos(id, op)
+		// Like V1, only an operator that closes a call argument or an index, as in
+		// `f(x++)` or `a[x--]`, is reported; `n := count++` is a plain post-increment.
+		source := tc.source_texts_by_file[file.name] or { '' }
+		if !postfix_operator_closes_group(source, op_pos.end) {
+			continue
+		}
 		tc.cur_file = file.name
 		tc.cur_module = tc.file_modules[file.name] or { 'main' }
-		op := if node.op == .inc { '++' } else { '--' }
-		tc.record_warning_at(.assignment_mismatch, '`${op}` operator can only be used as a statement',
-			id, tc.prefix_operator_pos(id, op))
+		// V1 reports this from the parser, where only an explicit `-W` turns the
+		// warning into an error; `-prod` alone does not.
+		tc.record_warning_or_error_at(.assignment_mismatch, '`${op}` operator can only be used as a statement',
+			id, op_pos, tc.explicit_warns_are_errors)
 	}
+}
+
+// postfix_operator_closes_group reports whether the next token after a postfix
+// `++`/`--` ending at `end` is `)` or `]`, skipping whitespace and comments as V1's
+// parser does: `f(x++ )` and `f(x++ /* c */)` close the call like `f(x++)`.
+fn postfix_operator_closes_group(source string, end int) bool {
+	if end < 0 {
+		return false
+	}
+	mut i := end
+	for i < source.len {
+		c := source[i]
+		if c in [` `, `\t`, `\n`, `\r`] {
+			i++
+		} else if c == `/` && i + 1 < source.len && source[i + 1] in [`/`, `*`] {
+			i = skip_non_code_at(source, i)
+		} else {
+			return c in [`)`, `]`]
+		}
+	}
+	return false
 }
 
 // check_if_guard validates check if guard state for types.
@@ -1480,6 +1510,11 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		}
 		for j in 0 .. n_conds {
 			cond_id := tc.a.child(branch, j)
+			// A condition that is an expression, as in `match true { a < b {} }`
+			// or `!(a < b)`, gets the checks an `if` condition gets.
+			if tc.match_condition_is_expression(cond_id) {
+				tc.check_node(cond_id)
+			}
 			tc.check_match_range_types(subject_id, subject_type, cond_id)
 			tc.check_match_condition_type(subject_type, cond_id)
 			tc.check_match_alias_condition(subject_declared_type, cond_id)
@@ -1706,6 +1741,21 @@ fn (tc &TypeChecker) match_trailing_or_parent(id flat.NodeId) ?flat.NodeId {
 		return none
 	}
 	return parent_id
+}
+
+// match_condition_is_expression reports whether the match condition `id` is an
+// expression, such as a comparison, a call or a literal. A name, qualified or
+// not, can stand for a type, and ranges, enum shorthands and `none` have checks
+// of their own. A field of an expression, as in `f(a < b).x`, is an expression.
+fn (tc &TypeChecker) match_condition_is_expression(id flat.NodeId) bool {
+	mut node := tc.a.node(id)
+	for node.kind == .selector && node.children_count > 0 {
+		node = tc.a.child_node(node, 0)
+	}
+	if node.kind in [.ident, .selector, .range, .enum_val, .none_expr] {
+		return false
+	}
+	return tc.match_type_pattern(node) == none
 }
 
 fn (mut tc TypeChecker) check_match_branch_structure(id flat.NodeId, node flat.Node) bool {
@@ -1997,6 +2047,10 @@ fn (mut tc TypeChecker) check_match_condition_type(subject_type Type, cond_id fl
 		return
 	}
 	if cond.kind == .enum_val && clean_subject is Enum {
+		enum_name := tc.resolve_enum_name(clean_subject.name) or { clean_subject.name }
+		if !tc.enum_value_matches(cond.value, enum_name) {
+			tc.record_error_at(.unknown_field, 'unknown enum field `${cond.value.all_after_last('.')}` for `${enum_name}`', cond_id, cond.pos)
+		}
 		return
 	}
 	clean_condition := unalias_type(condition_type)
@@ -6262,6 +6316,21 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, typ)
 		return
 	}
+	// `Color.nope`: the enum is a namespace below, which accepts any member, so a
+	// value the enum does not declare would otherwise pass unnoticed.
+	if base.kind == .ident && base.value.len > 0 && base.value[0].is_capital() {
+		if enum_name := tc.resolve_enum_name(base.value) {
+			if !tc.enum_has_field(enum_name, node.value)
+				&& !tc.enum_member_is_callable(enum_name, base.value, node.value) {
+				tc.record_error_at(.unknown_field, 'unknown enum field `${node.value}` for `${enum_name}`', id, tc.node_value_diagnostic_pos(id))
+				tc.register_synth_type(id, Type(Enum{
+					name:    enum_name
+					is_flag: enum_name in tc.flag_enums
+				}))
+				return
+			}
+		}
+	}
 	if base.kind == .prefix && base.op == .amp && base.children_count > 0 {
 		addressed := tc.a.child_node(&base, 0)
 		if addressed.kind == .struct_init {
@@ -6513,8 +6582,11 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	// receiver is a method value; record the concrete `Type.method` so it survives
 	// dead-code elimination (cgen emits a wrapper that calls it).
 	union_receiver := unalias_type(unwrap_pointer(base_type))
+	// Like the other `unsafe` checks, look at the enclosing blocks too: a selector
+	// can be checked again by a later pass, outside the block's `unsafe_depth`.
 	if union_receiver is Struct && union_receiver.name in tc.unions && tc.unsafe_depth == 0
-		&& !tc.translated_files[tc.cur_file] && !tc.selector_is_assignment_lhs(id) {
+		&& !tc.expr_is_inside_unsafe_block(id) && !tc.translated_files[tc.cur_file]
+		&& !tc.selector_is_assignment_lhs(id) {
 		tc.record_warning_at(.unknown_field, 'reading a union field (or its address) requires `unsafe`', id, tc.selector_field_diagnostic_pos(id, node.value))
 	}
 	clean_recv := unwrap_all_pointers(base_type)
@@ -7515,8 +7587,8 @@ fn (tc &TypeChecker) fixed_array_slice_is_view(id flat.NodeId) bool {
 	if outer.kind == .selector && outer.value in ['sort', 'sort_with_compare', 'reverse_in_place'] {
 		return true
 	}
-	if outer.kind == .call && outer.children_count > 1 && tc.a.child(&outer, 1) == current {
-		callee := tc.a.child_node(&outer, 0)
+	if outer.kind == .call && outer.children_count > 1 && tc.a.child(outer, 1) == current {
+		callee := tc.a.child_node(outer, 0)
 		return callee.kind == .ident && callee.value == 'copy'
 	}
 	return false
@@ -8295,15 +8367,17 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if typ := tc.non_file_scope_type(node.value) {
-		if typ is Unknown && typ.reason == 'invalid variable' {
-			tc.record_error_at(.unknown_ident, 'invalid variable `${node.value}`', id, tc.node_value_diagnostic_pos(id))
-			tc.register_synth_type(id, Type(void_))
-			tc.fn_context.continue_after_unknown_ident = true
+	if !tc.bare_name_is_const_owned_over_global(node.value) {
+		if typ := tc.non_file_scope_type(node.value) {
+			if typ is Unknown && typ.reason == 'invalid variable' {
+				tc.record_error_at(.unknown_ident, 'invalid variable `${node.value}`', id, tc.node_value_diagnostic_pos(id))
+				tc.register_synth_type(id, Type(void_))
+				tc.fn_context.continue_after_unknown_ident = true
+				return
+			}
+			tc.register_synth_type(id, typ)
 			return
 		}
-		tc.register_synth_type(id, typ)
-		return
 	}
 	qname := tc.qualify_name(node.value)
 	if qname != node.value {
@@ -8312,7 +8386,9 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if node.value == 'err' && tc.has_ierror_interface() {
+	// The `err` of a block that handles an error, where the check of that block
+	// kept no scope for it, as the check of an instance of a generic function.
+	if node.value == 'err' && tc.has_ierror_interface() && tc.err_block_holds(id) {
 		tc.register_synth_type(id, tc.parse_type('IError'))
 		return
 	}
@@ -8580,6 +8656,23 @@ fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
 		return none
 	}
 	return owner.scope.types[owner.index]
+}
+
+fn (tc &TypeChecker) bare_name_is_const_owned_over_global(name string) bool {
+	if name.contains('.') || name !in tc.global_names {
+		return false
+	}
+	qname := tc.qualify_name(name)
+	if qname !in tc.const_types {
+		return false
+	}
+	// A local/param (function scope, parent != nil) out-ranks both; the global is root-scope.
+	if owner := tc.cur_scope.lookup_owner(name) {
+		if owner.scope != unsafe { nil } && owner.scope.parent != unsafe { nil } {
+			return false
+		}
+	}
+	return true
 }
 
 // defer_result_index returns -1 for an unindexed `$res()` node and the non-negative
@@ -9145,6 +9238,10 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 	if base.kind == .selector && base.children_count > 0 {
 		inner := tc.a.child_node(base, 0)
 		if inner.kind == .ident {
+			if tc.ident_resolves_to_value(inner.value) || inner.value in tc.const_types
+				|| tc.qualify_name(inner.value) in tc.const_types {
+				return none
+			}
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			key := '${mod_name}.${base.value}.${node.value}'
 			if tc.fn_signature_known(key) {
@@ -9539,8 +9636,37 @@ fn (tc &TypeChecker) enum_field_name(enum_name string, field string) ?string {
 	return none
 }
 
+// enum_member_is_callable reports whether `Enum.member` names a function rather
+// than a value: a static one declared for the enum (`fn Color.first()`) or a
+// method passed as a value (`colors.map(Color.label)`).
+fn (tc &TypeChecker) enum_member_is_callable(enum_name string, base string, member string) bool {
+	if _ := tc.static_assoc_fn_key_for_base(base, member) {
+		return true
+	}
+	enum_type := Type(Enum{
+		name:    enum_name
+		is_flag: enum_name in tc.flag_enums
+	})
+	for mname in receiver_method_name_candidates(enum_type, member, tc.cur_module) {
+		if mname in tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
+}
+
 // resolve_enum_name resolves resolve enum name information for types.
 fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
+	qname := tc.qualify_name(name)
+	if qname in tc.enum_names {
+		return qname
+	}
+	// A module's enum or alias shadows a same-named program-module enum.
+	if qname != name {
+		if target := tc.resolve_enum_alias_target(qname) {
+			return target
+		}
+	}
 	if name in tc.enum_names {
 		return name
 	}
@@ -9554,10 +9680,6 @@ fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 		if shortened in tc.enum_names {
 			return shortened
 		}
-	}
-	qname := tc.qualify_name(name)
-	if qname in tc.enum_names {
-		return qname
 	}
 	if !name.contains('.') {
 		if resolved := tc.resolve_selective_import_type_symbol(name) {
@@ -9734,6 +9856,9 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		return true
 	}
 	if expected is OptionType {
+		if is_ierror_type(actual) && unalias_type(expected.base_type) is String {
+			return false
+		}
 		if actual is OptionType {
 			actual_base := option_alias_payload_type(actual.base_type)
 			expected_base := option_alias_payload_type(expected.base_type)
@@ -10090,6 +10215,11 @@ fn call_arg_numeric_promotion_index(name string) int {
 		'u32' { 13 }
 		'u64' { 14 }
 		'usize' { 15 }
+		// 128-bit ranks above the 64-bit types, so a narrower integer widens into
+		// it. Without these rows the index is -1, no widening is offered, and an
+		// expression like `wide + 1` is typed `int` and cut to 64 bits.
+		'i128' { 16 }
+		'u128' { 17 }
 		'rune' { 22 }
 		else { -1 }
 	}
@@ -10273,12 +10403,46 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	return tc.const_int_value_in_module(name, tc.cur_module, seen)
 }
 
+fn (tc &TypeChecker) const_import_alias_key(alias string, field string) (string, bool) {
+	// Code generation can evaluate a stored type after leaving its source file.
+	// Recover the import only when the alias names one module declaring the const
+	// across the program; an alias of an unrelated module elsewhere cannot conflict.
+	// Report conflicting meanings separately from the absence of an import alias.
+	mut found := ''
+	for _, info in tc.file_imports_by_file {
+		if isnil(info) {
+			continue
+		}
+		module_name := info.imports[alias] or { continue }
+		key := '${module_name}.${field}'
+		if key !in tc.const_exprs {
+			continue
+		}
+		if found.len > 0 && found != key {
+			return '', true
+		}
+		found = key
+	}
+	return found, false
+}
+
 // const_int_value_in_module supports const int value handling for a specific module.
 pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name string, seen []string) ?int {
 	if name in seen {
 		return none
 	}
 	mut candidates := []string{}
+	if name.contains('.') {
+		alias_key, ambiguous := tc.const_import_alias_key(name.all_before_last('.'),
+			name.all_after_last('.'))
+		if ambiguous {
+			return none
+		}
+		if alias_key.len > 0 {
+			// An import alias takes precedence over a module with the same name.
+			candidates << alias_key
+		}
+	}
 	candidates << name
 	if module_name != '' && module_name != 'main' && module_name != 'builtin'
 		&& !name.contains('.') {
@@ -10641,6 +10805,10 @@ fn (tc &TypeChecker) const_sizeof_type_value(type_name string) ?int {
 
 // type_implements_interface returns type implements interface data for TypeChecker.
 fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) bool {
+	return type_implements_interface_guarded(tc, actual, expected, []string{})
+}
+
+fn type_implements_interface_guarded(tc &TypeChecker, actual Type, expected Interface, visited []string) bool {
 	clean := unwrap_pointer(actual)
 	if clean is Unknown {
 		return true
@@ -10649,7 +10817,7 @@ fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) 
 		return true
 	}
 	if clean is Interface {
-		return tc.interface_implements_interface(clean.name, expected.name)
+		return interface_implements_interface_guarded(tc, clean.name, expected.name, visited)
 	}
 	if clean is Array {
 		if tc.interface_abstract_method_names(expected.name).len > 0 {
@@ -10680,7 +10848,7 @@ fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) 
 	if concrete_name.len == 0 {
 		return false
 	}
-	return tc.named_type_implements_interface(concrete_name, expected.name)
+	return named_type_implements_interface_guarded(tc, concrete_name, expected.name, visited)
 }
 
 fn (tc &TypeChecker) builtin_array_field_type(name string) ?Type {
@@ -10694,28 +10862,85 @@ fn (tc &TypeChecker) builtin_array_field_type(name string) ?Type {
 
 // interface_implements_interface supports interface implements interface handling for TypeChecker.
 pub fn (tc &TypeChecker) interface_implements_interface(actual_name string, expected_name string) bool {
+	return interface_implements_interface_guarded(tc, actual_name, expected_name, []string{})
+}
+
+// interface_implements_interface_guarded carries the same set of in-progress pairs as
+// named_type_implements_interface_guarded, for the interface-to-interface case. Two
+// distinct interfaces whose like-named methods each return their own interface type --
+// `clone() First` against `clone() Second` -- ask this question again while answering it,
+// and the name equality fast path above cannot stop that cycle because the names differ.
+// The pair is ordered: `First <: Second` and `Second <: First` are separate obligations
+// and both are asked, so each is recorded and discharged on its own.
+fn interface_implements_interface_guarded(tc &TypeChecker, actual_name string, expected_name string, visited []string) bool {
 	actual := tc.interface_metadata_name(actual_name)
 	expected := tc.interface_metadata_name(expected_name)
 	if actual == expected {
 		return true
 	}
+	guard_key := '${actual}<:${expected}'
+	if guard_key in visited {
+		return true
+	}
+	mut in_progress := visited.clone()
+	in_progress << guard_key
 	for method in tc.interface_method_names(expected) {
 		actual_key := tc.interface_method_signature_key(actual, method) or { '${actual}.${method}' }
 		expected_key := tc.interface_method_signature_key(expected, method) or {
 			'${expected}.${method}'
 		}
-		if actual_key !in tc.fn_param_types || !tc.method_signature_compatible(actual_key, expected_key) {
+		if actual_key !in tc.fn_param_types
+			|| !method_signature_compatible_guarded(tc, actual_key, expected_key, in_progress) {
 			return false
 		}
 	}
 	for field in tc.interface_field_list(expected) {
 		actual_field := tc.interface_field_type(actual, field.name) or { return false }
-		if !tc.type_compatible(actual_field, field.typ)
-			|| !tc.type_compatible(field.typ, actual_field) {
+		if !interface_field_types_compatible_guarded(tc, actual_field, field.typ, in_progress) {
 			return false
 		}
 	}
 	return true
+}
+
+// interface_field_types_compatible_guarded compares a pair of field types while an
+// interface satisfaction proof is in progress. An interface-typed field can refer back to
+// the pair being proved, and the general type_compatible path re-enters the proof through
+// its own entry points with an empty active set, dropping the guard. Interface-typed
+// fields are therefore compared directly, and everything else defers to type_compatible
+// as before.
+fn interface_field_types_compatible_guarded(tc &TypeChecker, actual Type, expected Type, visited []string) bool {
+	actual_iface := guarded_interface_name(tc, actual)
+	expected_iface := guarded_interface_name(tc, expected)
+	if actual_iface != '' && expected_iface != '' {
+		return interface_implements_interface_guarded(tc, actual_iface, expected_iface, visited)
+			&& interface_implements_interface_guarded(tc, expected_iface, actual_iface, visited)
+	}
+	if expected_iface != '' {
+		return type_implements_interface_guarded(tc, actual, Interface{
+			name: expected_iface
+		}, visited) && tc.type_compatible(expected, actual)
+	}
+	if actual_iface != '' {
+		return type_implements_interface_guarded(tc, expected, Interface{
+			name: actual_iface
+		}, visited) && tc.type_compatible(actual, expected)
+	}
+	return tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)
+}
+
+// guarded_interface_name returns the interface name a field type denotes, or an empty
+// string when the type is not an interface.
+fn guarded_interface_name(tc &TypeChecker, typ Type) string {
+	clean := unalias_type(unwrap_pointer(typ))
+	if clean is Interface {
+		return clean.name
+	}
+	metadata := tc.interface_metadata_name(clean.name())
+	if metadata in tc.interface_names {
+		return metadata
+	}
+	return ''
 }
 
 pub fn (tc &TypeChecker) interface_metadata_name(name string) string {
@@ -10775,9 +11000,27 @@ fn (tc &TypeChecker) non_interface_type_known(name string) bool {
 // named_type_implements_interface
 // supports helper handling in types.
 pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, iface_name string) bool {
+	return named_type_implements_interface_guarded(tc, concrete_name, iface_name, []string{})
+}
+
+// named_type_implements_interface_guarded carries the set of (concrete type, interface)
+// pairs whose proof is still in progress. A self-referential interface -- one with a
+// method whose return type is the interface itself, as in `clone() Cloner` -- makes the
+// satisfaction check re-enter with a pair it is already proving, which otherwise recurses
+// until the checker's stack is exhausted. Treating a pair that is already in progress as
+// satisfied is the standard coinductive reading of recursive structural subtyping: it
+// assumes only the obligation the enclosing frame is already proving, and any requirement
+// that genuinely fails is still reported by that frame.
+fn named_type_implements_interface_guarded(tc &TypeChecker, concrete_name string, iface_name string, visited []string) bool {
 	if tc.interface_has_no_requirements(iface_name) {
 		return true
 	}
+	guard_key := '${concrete_name}<:${iface_name}'
+	if guard_key in visited {
+		return true
+	}
+	mut in_progress := visited.clone()
+	in_progress << guard_key
 	// Only the abstract (declared) methods must be provided by the concrete type.
 	// Methods defined directly on the interface (default implementations) are
 	// inherited and need not be reimplemented.
@@ -10790,19 +11033,22 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 			return false
 		}
 		if info := tc.resolve_generic_struct_method(concrete_name, method) {
-			if !tc.method_call_info_signature_compatible_for_interface(info, expected_key, iface_name) {
+			if !method_call_info_signature_compatible_for_interface_guarded(tc, info, expected_key,
+				iface_name, in_progress) {
 				return false
 			}
 			continue
 		}
 		if concrete_key := tc.concrete_method_signature_key(concrete_name, method) {
-			if !tc.method_signature_compatible_for_interface(concrete_key, expected_key, iface_name) {
+			if !method_signature_compatible_for_interface_guarded(tc, concrete_key, expected_key,
+				iface_name, in_progress) {
 				return false
 			}
 			continue
 		}
 		if info := tc.resolve_generic_sum_method(concrete_name, method) {
-			if !tc.method_call_info_signature_compatible_for_interface(info, expected_key, iface_name) {
+			if !method_call_info_signature_compatible_for_interface_guarded(tc, info, expected_key,
+				iface_name, in_progress) {
 				return false
 			}
 			continue
@@ -10815,8 +11061,7 @@ pub fn (tc &TypeChecker) named_type_implements_interface(concrete_name string, i
 	}
 	for field in tc.interface_field_list(iface_name) {
 		actual_field := tc.interface_actual_field(concrete_name, field.name) or { return false }
-		if !tc.type_compatible(actual_field.typ, field.typ)
-			|| !tc.type_compatible(field.typ, actual_field.typ)
+		if !interface_field_types_compatible_guarded(tc, actual_field.typ, field.typ, in_progress)
 			|| (field.is_mut && !actual_field.is_mut) {
 			return false
 		}
@@ -11436,8 +11681,8 @@ pub fn (tc &TypeChecker) interface_accepts_implicit_str(iface_name string) bool 
 }
 
 fn implicit_str_builtin_type_names() []string {
-	return ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'f32', 'f64', 'string', 'rune']
+	return ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'u16', 'u32', 'u64',
+		'f32', 'f64', 'string', 'rune']
 }
 
 fn interface_impl_candidate_name(name string) string {
@@ -13263,6 +13508,10 @@ fn embedded_name_matches(field_name string, type_name string) bool {
 
 // method_signature_compatible supports method signature compatible handling for TypeChecker.
 fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key string) bool {
+	return method_signature_compatible_guarded(tc, actual_key, expected_key, []string{})
+}
+
+fn method_signature_compatible_guarded(tc &TypeChecker, actual_key string, expected_key string, visited []string) bool {
 	actual_params := tc.fn_param_types[actual_key] or { return false }
 	expected_params := tc.fn_param_types[expected_key] or { return false }
 	if actual_params.len != expected_params.len {
@@ -13275,13 +13524,14 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 		return false
 	}
 	for i in 1 .. actual_params.len {
-		if !tc.method_param_signature_compatible(actual_params[i], expected_params[i]) {
+		if !method_param_signature_compatible_guarded(tc, actual_params[i], expected_params[i],
+			visited) {
 			return false
 		}
 	}
 	actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 	expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
-	return tc.method_return_signature_compatible(actual_ret, expected_ret)
+	return method_return_signature_compatible_guarded(tc, actual_ret, expected_ret, visited)
 }
 
 pub fn (tc &TypeChecker) specialized_interface_method_signature(iface_name string, expected_key string) ([]Type, Type) {
@@ -13312,6 +13562,11 @@ pub fn (tc &TypeChecker) specialized_interface_method_signature(iface_name strin
 }
 
 fn (tc &TypeChecker) method_signature_compatible_for_interface(actual_key string, expected_key string, iface_name string) bool {
+	return method_signature_compatible_for_interface_guarded(tc, actual_key, expected_key,
+		iface_name, []string{})
+}
+
+fn method_signature_compatible_for_interface_guarded(tc &TypeChecker, actual_key string, expected_key string, iface_name string, visited []string) bool {
 	actual_params := tc.fn_param_types[actual_key] or { return false }
 	expected_params, expected_ret := tc.specialized_interface_method_signature(iface_name, expected_key)
 	if actual_params.len != expected_params.len {
@@ -13324,12 +13579,13 @@ fn (tc &TypeChecker) method_signature_compatible_for_interface(actual_key string
 		return false
 	}
 	for i in 1 .. actual_params.len {
-		if !tc.method_param_signature_compatible(actual_params[i], expected_params[i]) {
+		if !method_param_signature_compatible_guarded(tc, actual_params[i], expected_params[i],
+			visited) {
 			return false
 		}
 	}
 	actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
-	return tc.method_return_signature_compatible(actual_ret, expected_ret)
+	return method_return_signature_compatible_guarded(tc, actual_ret, expected_ret, visited)
 }
 
 fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expected_key string) bool {
@@ -13347,19 +13603,30 @@ fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expe
 }
 
 fn (tc &TypeChecker) method_call_info_signature_compatible_for_interface(actual CallInfo, expected_key string, iface_name string) bool {
+	return method_call_info_signature_compatible_for_interface_guarded(tc, actual, expected_key,
+		iface_name, []string{})
+}
+
+fn method_call_info_signature_compatible_for_interface_guarded(tc &TypeChecker, actual CallInfo, expected_key string, iface_name string, visited []string) bool {
 	expected_params, expected_ret := tc.specialized_interface_method_signature(iface_name, expected_key)
 	if actual.params.len != expected_params.len {
 		return false
 	}
 	for i in 1 .. actual.params.len {
-		if !tc.method_param_signature_compatible(actual.params[i], expected_params[i]) {
+		if !method_param_signature_compatible_guarded(tc, actual.params[i], expected_params[i],
+			visited) {
 			return false
 		}
 	}
-	return tc.method_return_signature_compatible(actual.return_type, expected_ret)
+	return method_return_signature_compatible_guarded(tc, actual.return_type, expected_ret,
+		visited)
 }
 
 fn (tc &TypeChecker) method_return_signature_compatible(actual Type, expected Type) bool {
+	return method_return_signature_compatible_guarded(tc, actual, expected, []string{})
+}
+
+fn method_return_signature_compatible_guarded(tc &TypeChecker, actual Type, expected Type, visited []string) bool {
 	if !tc.fn_type_callconv_compatible(actual, expected) {
 		return false
 	}
@@ -13380,17 +13647,20 @@ fn (tc &TypeChecker) method_return_signature_compatible(actual Type, expected Ty
 			return false
 		}
 		for i, typ in actual_unaliased.types {
-			if !tc.method_return_signature_compatible(typ, expected_unaliased.types[i]) {
+			if !method_return_signature_compatible_guarded(tc, typ, expected_unaliased.types[i],
+				visited) {
 				return false
 			}
 		}
 		return true
 	}
 	if actual_unaliased is OptionType && expected_unaliased is OptionType {
-		return tc.method_wrapped_return_signature_compatible(actual_unaliased.base_type, expected_unaliased.base_type)
+		return method_wrapped_return_signature_compatible_guarded(tc, actual_unaliased.base_type,
+			expected_unaliased.base_type, visited)
 	}
 	if actual_unaliased is ResultType && expected_unaliased is ResultType {
-		return tc.method_wrapped_return_signature_compatible(actual_unaliased.base_type, expected_unaliased.base_type)
+		return method_wrapped_return_signature_compatible_guarded(tc, actual_unaliased.base_type,
+			expected_unaliased.base_type, visited)
 	}
 	if actual_fn := fn_type_from_type(actual) {
 		expected_fn := fn_type_from_type(expected) or { return false }
@@ -13399,41 +13669,58 @@ fn (tc &TypeChecker) method_return_signature_compatible(actual Type, expected Ty
 			return false
 		}
 		for i, param in actual_fn.params {
-			if !tc.method_param_signature_compatible(param, expected_fn.params[i]) {
+			if !method_param_signature_compatible_guarded(tc, param, expected_fn.params[i],
+				visited) {
 				return false
 			}
 		}
-		return tc.method_return_signature_compatible(actual_fn.return_type, expected_fn.return_type)
+		return method_return_signature_compatible_guarded(tc, actual_fn.return_type, expected_fn.return_type,
+			visited)
 	}
-	return tc.method_interface_return_signature_compatible(actual_unaliased, expected_unaliased)
+	return method_interface_return_signature_compatible_guarded(tc, actual_unaliased,
+		expected_unaliased, visited)
 }
 
 fn (tc &TypeChecker) method_wrapped_return_signature_compatible(actual Type, expected Type) bool {
+	return method_wrapped_return_signature_compatible_guarded(tc, actual, expected, []string{})
+}
+
+fn method_wrapped_return_signature_compatible_guarded(tc &TypeChecker, actual Type, expected Type, visited []string) bool {
 	actual_unaliased := unalias_type(actual)
 	expected_unaliased := unalias_type(expected)
 	if actual_unaliased is MultiReturn && expected_unaliased is MultiReturn {
-		return tc.method_return_signature_compatible(actual_unaliased, expected_unaliased)
+		return method_return_signature_compatible_guarded(tc, actual_unaliased, expected_unaliased,
+			visited)
 	}
 	if actual_unaliased is FnType && expected_unaliased is FnType {
 		return Type(actual_unaliased).name() == Type(expected_unaliased).name()
 	}
-	return tc.method_interface_return_signature_compatible(actual_unaliased, expected_unaliased)
+	return method_interface_return_signature_compatible_guarded(tc, actual_unaliased,
+		expected_unaliased, visited)
 }
 
 fn (tc &TypeChecker) method_interface_return_signature_compatible(actual Type, expected Type) bool {
+	return method_interface_return_signature_compatible_guarded(tc, actual, expected, []string{})
+}
+
+fn method_interface_return_signature_compatible_guarded(tc &TypeChecker, actual Type, expected Type, visited []string) bool {
 	expected_name := expected.name()
 	if expected is Interface {
-		return tc.type_implements_interface(actual, expected)
+		return type_implements_interface_guarded(tc, actual, expected, visited)
 	}
 	if expected_name in tc.interface_names {
-		return tc.type_implements_interface(actual, Interface{
+		return type_implements_interface_guarded(tc, actual, Interface{
 			name: expected_name
-		})
+		}, visited)
 	}
 	return false
 }
 
 fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Type) bool {
+	return method_param_signature_compatible_guarded(tc, actual, expected, []string{})
+}
+
+fn method_param_signature_compatible_guarded(tc &TypeChecker, actual Type, expected Type, visited []string) bool {
 	if type_pointer_depth(actual) != type_pointer_depth(expected) {
 		return false
 	}
@@ -13443,7 +13730,7 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 	if actual_iface := tc.method_param_interface_name(actual) {
 		expected_iface := tc.method_param_interface_name(expected) or { return false }
 		return actual_iface == expected_iface
-			|| tc.interface_implements_interface(actual_iface, expected_iface)
+			|| interface_implements_interface_guarded(tc, actual_iface, expected_iface, visited)
 	}
 	if _ := tc.method_param_interface_name(expected) {
 		return false
@@ -16780,7 +17067,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			&& (!tc.parallel_check_sparse || tc.in_check_range(tidx)) {
 			typ := tc.expr_type_values[tidx]
 			if !type_contains_unknown(typ) {
-				return typ
+				return tc.widen_mixed_integer_expr_type(id, typ)
 			}
 		}
 	}
@@ -16791,7 +17078,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	}
 	mi := idx - memo.lo
 	if memo.filled[mi] != 0 {
-		return memo.types[mi]
+		return tc.widen_mixed_integer_expr_type(id, memo.types[mi])
 	}
 	typ := tc.resolve_type_uncached(id)
 	// Unknowns can be provisional (cycle guards, generic placeholders that a
@@ -16801,6 +17088,45 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		mut m := unsafe { &BodyResolveMemo(memo) }
 		m.types[mi] = typ
 		m.filled[mi] = 1
+	}
+	return tc.widen_mixed_integer_expr_type(id, typ)
+}
+
+const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32',
+	'u64', 'usize', 'rune', 'char']
+
+// widen_mixed_integer_expr_type gives an arithmetic node the 128-bit type of its
+// widest operand. The type recorded for an infix in argument position is the
+// narrower operand's, while the same expression assigned to a variable gets the
+// 128-bit type from the promotion ladder. Printing, `typeof` and interpolation all
+// read the recorded type, so they cut a mixed expression to 64 bits without this.
+fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Type {
+	name := typ.name().all_after_last('.')
+	if name !in narrow_integer_type_names {
+		return typ
+	}
+	tidx := int(id)
+	if tidx < 0 || tidx >= tc.a.nodes.len {
+		return typ
+	}
+	node := tc.a.nodes[tidx]
+	if node.kind != .infix {
+		return typ
+	}
+	if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+		return typ
+	}
+	// A shift result is as wide as its left operand: the right one is a count, so
+	// a wide count does not make `u64(4) << count` a 128-bit expression, and the
+	// generator still emits a 64-bit operation for it.
+	shift := node.op in [.left_shift, .right_shift, .right_shift_unsigned]
+	child_limit := if shift { 1 } else { node.children_count }
+	for i in 0 .. child_limit {
+		child_type := tc.resolve_type(tc.a.child(&node, i))
+		child_name := child_type.name().all_after_last('.')
+		if child_name in ['u128', 'i128'] {
+			return child_type
+		}
 	}
 	return typ
 }
@@ -17049,8 +17375,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if smart_type := tc.smartcast_type(id) {
 				return smart_type
 			}
-			if typ := tc.non_file_scope_type(node.value) {
-				return typ
+			if !tc.bare_name_is_const_owned_over_global(node.value) {
+				if typ := tc.non_file_scope_type(node.value) {
+					return typ
+				}
 			}
 			qname := tc.qualify_name(node.value)
 			if qname != node.value {
@@ -17072,9 +17400,6 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			}
 			if tc.selective_import_symbol_is_ambiguous(node.value) {
 				return unknown_type('ambiguous selective import `${node.value}`')
-			}
-			if node.value == 'err' && tc.has_ierror_interface() {
-				return tc.parse_type('IError')
 			}
 			if is_bare_generic_param(node.value) {
 				return Type(void_)
@@ -17180,6 +17505,13 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 				base_id := tc.a.child(fn_node, 0)
 				base_type := tc.selector_fn_base_type(base_id) or { tc.resolve_type(base_id) }
+				// A method call on a value whose type is not known yet has no known
+				// return type either. Falling through would type it as a free function
+				// that shares the method's name (C `write` for `res.write()` with
+				// -target-libc-headers), and that wrong type would be memoized.
+				if base_type is Unknown {
+					return unknown_type('unknown receiver type for `.${fn_node.value}()`')
+				}
 				if fn_typ := tc.selector_field_fn_type(fn_node, base_type) {
 					return fn_typ.return_type
 				}
@@ -17259,7 +17591,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 						// other array element type is not a thread and `.wait()` is
 						// unsupported, so reject it rather than mis-typing the call as the
 						// receiver array (which would emit invalid C joining non-handles).
-						elem := array_elem_type(clean_array)
+						elem := unalias_type(array_elem_type(clean_array))
 						if elem is Struct {
 							if elem.name == 'thread' {
 								return Type(void_)
@@ -18238,7 +18570,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'void*'
 	}
 	if t is None {
-		return 'Optional'
+		return '__v_option'
 	}
 	if t is String {
 		return 'string'
@@ -18302,9 +18634,9 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 				})
 			}
 			if param_type is OptionType {
-				params << tc.optional_c_type_name(param_type.base_type)
+				params << tc.optional_c_type_name(param_type)
 			} else if param_type is ResultType {
-				params << tc.optional_c_type_name(param_type.base_type)
+				params << tc.optional_c_type_name(param_type)
 			} else {
 				params << tc.c_type(param_type)
 			}
@@ -18312,10 +18644,10 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return naming.fn_ptr_encoded(ret, params)
 	}
 	if t is OptionType {
-		return 'Optional'
+		return '__v_option'
 	}
 	if t is ResultType {
-		return 'Optional'
+		return '__v_result'
 	}
 	if t is Struct {
 		if t.name == 'thread' || t.name.ends_with('.thread') || t.name.starts_with('thread ') {
@@ -18518,10 +18850,10 @@ fn (tc &TypeChecker) c_generic_struct_fixed_array_arg_name(arg string) ?string {
 
 fn (tc &TypeChecker) fixed_array_elem_c_type(t Type) string {
 	if t is OptionType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	if t is ResultType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	if t is Pointer && t.base_type is Void {
 		return 'voidptr'
@@ -18534,26 +18866,31 @@ fn (tc &TypeChecker) fn_ptr_return_c_type(t Type) string {
 		return 'void'
 	}
 	if t is OptionType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	if t is ResultType {
-		return tc.optional_c_type_name(t.base_type)
+		return tc.optional_c_type_name(t)
 	}
 	return tc.c_type(t)
 }
 
-fn (tc &TypeChecker) optional_c_type_name(base_type Type) string {
+fn (tc &TypeChecker) optional_c_type_name(typ Type) string {
+	base_type := match typ {
+		OptionType, ResultType { typ.base_type }
+		else { return tc.c_type(typ) }
+	}
+	prefix := if typ is ResultType { '__v_result' } else { '__v_option' }
 	if base_type is Void {
-		return 'Optional'
+		return prefix
 	}
 	mut inner_ct := tc.c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = naming.fn_ptr_type_name(inner_ct)
 	}
 	if inner_ct == 'int' {
-		return 'Optional'
+		return prefix
 	}
-	return 'Optional_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
+	return '${prefix}_${inner_ct.replace('*', 'ptr').replace(' ', '_')}'
 }
 
 // resolve_type_name_for_method resolves resolve type name for method information for types.
@@ -20128,4 +20465,44 @@ fn fn_type_param_head_is_name(head string, tail string) bool {
 		return false
 	}
 	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
+}
+
+fn (tc &TypeChecker) failure_has_error(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .decl_assign && node.children_count > 1 {
+		return tc.failure_has_error(tc.a.child(node, 1))
+	}
+	if node.children_count > 0
+		&& node.kind in [.match_stmt, .paren, .expr_stmt, .or_expr] {
+		return tc.failure_has_error(tc.a.child(node, 0))
+	}
+	if node.kind == .prefix && node.op == .arrow {
+		return true
+	}
+	if node.kind == .call {
+		name := tc.resolved_call_name(id) or { '' }
+		if typ := tc.fn_ret_types[name] {
+			return unalias_type(typ) is ResultType
+		}
+		if typ := tc.direct_call_return_type(*node) {
+			return unalias_type(typ) is ResultType
+		}
+	}
+	if node.kind != .infix {
+		return unalias_type(tc.resolve_type(id)) is ResultType
+	}
+	mut found := false
+	for child in tc.a.children_of(node) {
+		if !tc.or_expr_source_can_fail(child) {
+			continue
+		}
+		if !tc.failure_has_error(child) {
+			return false
+		}
+		found = true
+	}
+	return found
 }

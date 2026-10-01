@@ -205,12 +205,12 @@ rows := conn.exec('select 1')!
 
 Queries made with `exec_result()`, `exec_param_many_result()`, or
 `exec_prepared_result()` return a `pg.Result` whose `fields` array contains the
-libpq metadata for each result column:
+libpq metadata for each result column. These methods require a mutable connection:
 
 ```v oksyntax
 import db.pg
 
-fn show_columns(conn &pg.Conn) ! {
+fn show_columns(mut conn pg.Conn) ! {
 	result := conn.exec_result('select 1::int4 as id, 3.14::numeric(10, 2) as amount')!
 	for field in result.fields {
 		println('${field.name}: oid=${field.type_oid}, modifier=${field.type_modifier}')

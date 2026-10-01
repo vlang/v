@@ -16,6 +16,9 @@ concurrency:
   group: 'hub_docker_ci-${{ github.ref }}'
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   publish-new-docker-images:
     strategy:
@@ -25,16 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           repository: 'vlang/docker'
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Login to hub.docker.com
-        uses: docker/login-action@v4.6.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -53,7 +57,7 @@ jobs:
             echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         name: Build and deploy v image
         with:
           builder: gh-builder
@@ -66,7 +70,7 @@ jobs:
           ## cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
           ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
 
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         name: Build and deploy developer build
         with:
           builder: gh-builder

@@ -10,9 +10,9 @@ fn test_match_error_to_none() {
 		if r := do_a_thing(i) {
 			println(r)
 		} else {
-			match err {
+			match do_a_thing(i) {
 				none {
-					assert true
+					assert i < 0
 				}
 				else {
 					assert false

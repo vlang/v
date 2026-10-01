@@ -70,7 +70,7 @@ fn lock_codegen_counter_fn_fragment(c_code string, name string, return_type stri
 	body_start := rest.index(') {') or { return rest }
 	after_body_start := rest[body_start + 3..]
 	mut next_fn := after_body_start.len
-	for marker in ['\nvoid ', '\nint ', '\nstring ', '\nArray_', '\nOptional_'] {
+	for marker in ['\nvoid ', '\nint ', '\nstring ', '\nArray_', '\n__v_option_'] {
 		if idx := after_body_start.index(marker) {
 			if idx < next_fn {
 				next_fn = idx
@@ -178,7 +178,7 @@ fn assert_lock_expr_defer_runs_before_unlock(c_code string, name string) {
 }
 
 fn assert_lock_question_defer_runs_before_error_return(c_code string, name string) {
-	fragment := lock_codegen_counter_fn_fragment(c_code, name, 'Optional')
+	fragment := lock_codegen_counter_fn_fragment(c_code, name, '__v_result')
 	assert fragment.len > 0, c_code
 	defer_idx := fragment.index('->val = 2;') or { -1 }
 	assert defer_idx >= 0, fragment
@@ -447,13 +447,13 @@ fn main() {
 	_ := Holder{}
 }
 ')
-	assert c_code.contains('struct __shared__Optional {'), c_code
-	assert c_code.contains('\tOptional val;'), c_code
-	assert c_code.contains('struct __shared__Optional_string {'), c_code
-	assert c_code.contains('\tOptional_string val;'), c_code
-	assert c_code.contains('\t__shared__Optional* a;'), c_code
-	assert c_code.contains('\t__shared__Optional_string* b;'), c_code
-	assert !c_code.contains('struct __shared__Optional {\n\tsync__RwMutex mtx;\n\tOptional_string val;'), c_code
+	assert c_code.contains('struct __shared____v_option {'), c_code
+	assert c_code.contains('\t__v_option val;'), c_code
+	assert c_code.contains('struct __shared____v_option_string {'), c_code
+	assert c_code.contains('\t__v_option_string val;'), c_code
+	assert c_code.contains('\t__shared____v_option* a;'), c_code
+	assert c_code.contains('\t__shared____v_option_string* b;'), c_code
+	assert !c_code.contains('struct __shared____v_option {\n\tsync__RwMutex mtx;\n\t__v_option_string val;'), c_code
 }
 
 fn test_shared_wrapper_uses_gc_aware_allocator() {

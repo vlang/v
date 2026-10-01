@@ -596,8 +596,6 @@ fn (t Time) custom_format_zone_offset(token string) string {
 // - a date string in "HH:mm" format (24h) for current day
 // - a date string in "MMM D HH:mm" format (24h) for date of current year
 // - a date string formatted with format function for other dates
-@[deprecated: 'use `custom_format()` or `get_fmt_*()` instead']
-@[deprecated_after: '2026-09-30']
 pub fn (t Time) clean() string {
 	znow := now()
 	// Today
@@ -616,8 +614,6 @@ pub fn (t Time) clean() string {
 // - a date string in "hh:mm" format (12h) for current day
 // - a date string in "MMM D hh:mm" format (12h) for date of current year
 // - a date string formatted with format function for other dates
-@[deprecated: 'use `custom_format()` or `get_fmt_*()` instead']
-@[deprecated_after: '2026-09-30']
 pub fn (t Time) clean12() string {
 	znow := now()
 	// Today

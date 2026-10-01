@@ -20,12 +20,17 @@ concurrency:
   group: toml-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   toml-module-pass-external-test-suites:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Cache V toolchain
         id: cache-v
         uses: actions/cache@v6

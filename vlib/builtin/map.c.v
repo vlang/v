@@ -39,6 +39,15 @@ fn map_hash_int_8(pkey voidptr) u64 {
 	return C.wyhash64(*unsafe { &u64(pkey) }, 0)
 }
 
+fn map_hash_int_16(pkey voidptr) u64 {
+	// A 128-bit key is two u64 halves. They are copied out rather than read
+	// through the pointer, because a key in a map is only as aligned as the
+	// storage it was moved into.
+	mut halves := [2]u64{}
+	unsafe { C.memcpy(&halves[0], pkey, 16) }
+	return C.wyhash64(halves[0], halves[1])
+}
+
 fn map_enum_fn(kind int, esize int) voidptr {
 	if kind !in [1, 2, 3] {
 		panic('map_enum_fn: invalid kind')
