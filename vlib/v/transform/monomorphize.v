@@ -13588,6 +13588,9 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 			return 'main.' + clean
 		}
 	}
+	if t.main_alias_needs_lock(clean, module_name) {
+		return 'main.' + clean
+	}
 	if !(clean in t.structs || clean in t.sum_types || clean in t.enum_types) {
 		return clean
 	}
@@ -13624,6 +13627,24 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 		return 'main.' + clean
 	}
 	return clean
+}
+
+// main_alias_needs_lock reports whether a bare program alias must be spelled `main.X`
+// in `module_name`: its target is resolved where the alias is parsed, so a `Cells`
+// alias of `[]Cell` would otherwise become `[]module_name.Cell` there.
+fn (t &Transformer) main_alias_needs_lock(name string, module_name string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	alias_module := t.tc.type_alias_modules[name] or { return false }
+	if alias_module !in ['', 'main'] {
+		return false
+	}
+	target := t.tc.type_aliases[name] or { return false }
+	qname := '${module_name}.${name}'
+	return qname in t.tc.type_aliases || qname in t.structs || qname in t.sum_types
+		|| qname in t.enum_types || (target != name
+		&& t.lock_colliding_main_generic_type_text(target, module_name) != target)
 }
 
 fn (t &Transformer) type_short_name_has_non_main_owner(name string) bool {
