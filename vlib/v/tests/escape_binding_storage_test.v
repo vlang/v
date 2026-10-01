@@ -65,22 +65,27 @@ fn append_implicit_error_addresses(mut out []&IError) {
 	err := u64(201)
 	failing_retained_error('outer') or {
 		out << &err
+		assert typeof(err).name == 'IError'
 		failing_retained_error('inner') or {
 			out << &err
+		assert typeof(err).name == 'IError'
 			0
 		}
 		out << &err
+		assert typeof(err).name == 'IError'
 		0
 	}
 	if value := failing_retained_error('guard') {
 		_ = value
 	} else {
 		out << &err
+		assert typeof(err).name == 'IError'
 	}
 	value := if value := failing_retained_error('value guard') {
 		value
 	} else {
 		out << &err
+		assert typeof(err).name == 'IError'
 		u64(0)
 	}
 	assert value == 0

@@ -2222,7 +2222,11 @@ fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_exp
 		return
 	}
 	stmts << t.make_guard_value_decls('err', err_expr, 'IError')
-	t.set_var_type_binding('err', t.var_type('err'), t.raw_var_type('err'), true)
+	i := t.var_type_index('err')
+	t.var_types[i] = VarTypeBinding{
+		...t.var_types[i]
+		is_implicit_err: true
+	}
 }
 
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.
