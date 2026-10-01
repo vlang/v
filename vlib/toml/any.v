@@ -335,7 +335,7 @@ pub fn (a Any) reflect[T]() T {
 		}
 	}
 	$if T !is $struct {
-		return error('toml.decode: expected struct, found ${T.name}')
+		$compile_error('toml.Any.reflect: expects struct as T')
 	}
 	decode_struct[T](a, mut reflected)
 	return reflected
