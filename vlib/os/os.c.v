@@ -625,7 +625,7 @@ pub fn get_raw_line() string {
 		is_console := is_atty(0) > 0
 		wide_char_size := if is_console { 2 } else { 1 }
 		h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
-		if h_input == C.INVALID_HANDLE_VALUE {
+		if h_input == invalid_handle_value {
 			return ''
 		}
 		unsafe {
@@ -1208,7 +1208,7 @@ pub fn is_atty(fd int) int {
 				C.STD_OUTPUT_HANDLE
 			}
 			handle := C.GetStdHandle(handle_id)
-			if isnil(handle) || handle == C.INVALID_HANDLE_VALUE {
+			if isnil(handle) || handle == invalid_handle_value {
 				return 0
 			}
 			if !C.GetConsoleMode(handle, voidptr(&mode)) {
