@@ -410,6 +410,74 @@ fn test_scoped_checker_merge_deep_clones_diagnostic_details() {
 	}
 }
 
+fn test_parallel_interface_indexes_outlive_worker_scopes() {
+	if checker_serial_only() {
+		return
+	}
+	mut source := strings.new_builder(16_000)
+	source.writeln('module main')
+	mut expected := map[string][]string{}
+	// Exceed the parallel interface-index threshold with distinct method
+	// requirements, so each index has its own concrete implementers.
+	for i in 0 .. 16 {
+		iface := 'Contract${i}'
+		source.writeln('interface ${iface} { value_${i}() int }')
+		mut names := []string{}
+		for j in 0 .. 4 {
+			name := 'Item${i}_${j}'
+			names << name
+			source.writeln('struct ${name} {}')
+			source.writeln('fn (item ${name}) value_${i}() int { return ${j} }')
+		}
+		expected[iface] = names
+		// A same-named method with the wrong return type must stay excluded.
+		source.writeln('struct Rejected${i} {}')
+		source.writeln('fn (item Rejected${i}) value_${i}() string { return "wrong" }')
+	}
+	path := os.join_path(os.vtmp_dir(), 'v3_parallel_interface_scopes_${os.getpid()}.v')
+	os.write_file(path, source.str()) or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.prepare_interface_requirement_indexes()
+	mut names := tc.interface_names.keys()
+	names.sort()
+	assert names.len == expected.len
+	mut expected_ids := map[string]map[string]int{}
+	for iface in names {
+		assert tc.interface_impl_names(iface) == expected[iface], iface
+		expected_ids[iface] = tc.interface_type_ids(iface)
+	}
+	expected_signature := tc.interface_impl_set_signature()
+	a.ensure_workers(2)
+	defer { a.close_workers() }
+	mut retained := map[string][]string{}
+	for _ in 0 .. 4 {
+		// This call releases each worker's scratch arena before returning. Later
+		// rounds allocate another set of indexes while the first snapshot stays live.
+		assert tc.prepare_interface_impl_indexes_parallel(names)
+		for iface in names {
+			prepared := tc.pre_transform_interface_impl_names(iface) or {
+				panic('missing prepared interface index for ${iface}')
+			}
+			assert prepared == expected[iface], '${iface}: ${prepared}'
+			if iface !in retained {
+				retained[iface] = prepared
+			}
+			assert retained[iface] == expected[iface], iface
+		}
+		tc.freeze_pre_transform_interface_impl_names()
+		assert tc.interface_impl_set_signature() == expected_signature
+		for iface in names {
+			assert tc.interface_type_ids(iface) == expected_ids[iface], iface
+		}
+	}
+}
+
 fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes() {
 	mut a := flat.FlatAst.new()
 	child := a.add_val(.ident, 'child')
