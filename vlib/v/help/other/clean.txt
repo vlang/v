@@ -43,3 +43,7 @@ project on the machine, not just the ones named here.
 Source symlinks use the resolved source basename, matching a default build.
 The command exits with a failure status if an output cannot be removed, while
 continuing to clean the other supported inputs.
+
+Source basenames with leading or trailing whitespace are refused because the
+compiler may normalize their output names. Both build outputs and unrelated
+files are preserved for refused inputs.

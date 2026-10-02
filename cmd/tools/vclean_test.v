@@ -4,6 +4,28 @@ const vexe = os.quoted_path(@VEXE)
 
 const tfolder = os.join_path(os.vtmp_dir(), 'vclean_test')
 
+fn test_clean_refuses_whitespace_basename_and_preserves_unrelated_file() {
+	root := prepare_project('whitespace')!
+	os.chdir(root)!
+	source := os.join_path(root, ' foo.v')
+	os.write_file(source, 'module main\nfn main() {}\n')!
+	built := os.execute('${vexe} ${os.quoted_path(source)}')
+	assert built.exit_code == 0, built.output
+	exe := os.join_path(root, 'foo' + exe_postfix())
+	assert os.is_file(exe), built.output
+	decoy := os.join_path(root, ' foo' + exe_postfix())
+	os.write_file(decoy, 'unrelated')!
+	res := os.execute('${vexe} clean ${os.quoted_path(source)}')
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('cannot tell which executable'), res.output
+	assert os.read_file(decoy)! == 'unrelated'
+	assert os.is_file(exe)
+	trailing := os.join_path(root, 'foo .v')
+	os.write_file(trailing, 'module main\nfn main() {}\n')!
+	refused := os.execute('${vexe} clean ${os.quoted_path(trailing)}')
+	assert refused.exit_code == 1, refused.output
+}
+
 // prepare_project writes a one file project into a fresh folder under a name the
 // tests can predict the executable of.
 fn prepare_project(name string) !string {

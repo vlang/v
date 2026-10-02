@@ -36,7 +36,7 @@ fn classify(path string) InputKind {
 		return .unsupported
 	}
 	stem := os.file_name(resolved).all_before_last('.')
-	if stem == '' || stem in ['.', '..', '-'] || stem.ends_with('.c') || stem.ends_with('.js')
+	if stem == '' || stem != stem.trim_space() || stem in ['.', '..', '-'] || stem.ends_with('.c') || stem.ends_with('.js')
 		|| stem.ends_with('.wasm') {
 		return .unsupported
 	}
