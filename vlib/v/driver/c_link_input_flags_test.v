@@ -2,7 +2,147 @@ module driver
 
 import os
 import time
+import v.cmdexec
 import v.pref
+
+fn test_dependency_objects_precede_imported_libraries_in_link_command() {
+	for target_os in ['windows', 'linux', 'macos'] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:    target_os
+			c_compiler:   'gcc'
+			dependencies: ['first.o', '-L', 'library directory', '-limported', '-I', 'include.o',
+				'second.obj', '-Wl,--start-group', 'libfirst.a', '-lsecond', '-Wl,--end-group',
+				'third.c']
+		})
+		args := plan.compiler_args('output', ['main.c', 'cached.o'], ['support.o'])
+		assert args.index('support.o') < args.index('first.o')
+		assert args.index('first.o') < args.index('second.obj')
+		assert args.index('second.obj') < args.index('third.c')
+		assert args.index('third.c') < args.index('-limported')
+		assert args[args.index('-L') + 1] == 'library directory'
+		assert args[args.index('-I') + 1] == 'include.o'
+		assert args.index('-limported') < args.index('-Wl,--start-group')
+		assert args.index('-Wl,--start-group') < args.index('libfirst.a')
+		assert args.index('libfirst.a') < args.index('-lsecond')
+		assert args.index('-lsecond') < args.index('-Wl,--end-group')
+	}
+}
+
+fn test_dependency_reordering_preserves_explicit_native_source_languages() {
+	flags := ['-lfirst', '-x', 'c++', 'extensionless', '-D', 'SOURCE=operand.o', '-x', 'none',
+		'support.o', '-l', 'second', '-x', 'objective-c', 'implementation.m', '-x', 'none', 'liblast.a']
+	assert c_link_dependency_flags(flags) == [
+		'-x',
+		'c++',
+		'extensionless',
+		'-x',
+		'none',
+		'support.o',
+		'-x',
+		'objective-c',
+		'implementation.m',
+		'-x',
+		'none',
+		'-lfirst',
+		'-D',
+		'SOURCE=operand.o',
+		'-l',
+		'second',
+		'liblast.a',
+	]
+	assert c_link_dependency_flags(['-xc++', 'cpp.c', '-xnone', '-lfirst']) == [
+		'-x',
+		'c++',
+		'cpp.c',
+		'-x',
+		'none',
+		'-lfirst',
+	]
+	assert c_link_dependency_flags(['-x', 'c++', 'cpp.c', '-xnone', 'plain.c', '-lfirst']) == [
+		'-x',
+		'c++',
+		'cpp.c',
+		'-x',
+		'none',
+		'plain.c',
+		'-lfirst',
+	]
+}
+
+fn test_imported_library_resolves_symbols_from_later_native_object() {
+	compiler := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'cc' }) or {
+		return
+	}
+	archiver := os.find_abs_path_of_executable('ar') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v_imported_library_${os.getpid()}_${time.now().unix_nano()}')
+	archive_dir := os.join_path(root, 'archive')
+	consumer_dir := os.join_path(root, 'consumer')
+	os.mkdir_all(archive_dir)!
+	os.mkdir_all(consumer_dir)!
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	library_source := os.join_path(archive_dir, 'answer.c')
+	library_object := os.join_path(archive_dir, 'answer.o')
+	library := os.join_path(archive_dir, 'libv3_order.a')
+	consumer_source := os.join_path(consumer_dir, 'consumer.c')
+	consumer_object := os.join_path(consumer_dir, 'consumer.o')
+	os.write_file(library_source, 'int v3_archive_answer(void) { return 42; }\n')!
+	os.write_file(consumer_source, 'int v3_archive_answer(void);\nint v3_archive_consumer(void) { return v3_archive_answer(); }\n')!
+	for pair in [[library_source, library_object], [consumer_source, consumer_object]] {
+		compiled := cmdexec.run(compiler, ['-c', '-o', pair[1], pair[0]])
+		assert compiled.exit_code == 0, compiled.output
+	}
+	archived := cmdexec.run(archiver, ['rcs', library, library_object])
+	assert archived.exit_code == 0, archived.output
+	os.write_file(os.join_path(archive_dir, 'archive.c.v'), 'module archive\n#flag -L @DIR\n#flag -lv3_order\npub fn marker() int { return 41 }\n')!
+	os.write_file(os.join_path(consumer_dir, 'consumer.c.v'), 'module consumer\n#flag @DIR/consumer.o\nfn C.v3_archive_consumer() int\npub fn answer() int { return C.v3_archive_consumer() }\n')!
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
+	os.write_file(source, 'import archive\nimport consumer\nfn main() {\n assert archive.marker() == 41\n assert consumer.answer() == 42\n}\n')!
+	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
+		os.join_path(@VEXEROOT, 'v' + $if windows { '.exe' } $else { '' })
+	} else {
+		@VEXE
+	}
+	built := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-gc', 'none', '-cc', compiler, '-showcc',
+		'-o', output, source])
+	assert built.exit_code == 0, built.output
+	link_line := built.output.split_into_lines().filter(it.contains('-lv3_order')).last()
+	assert (link_line.index(consumer_object) or { -1 }) >= 0, link_line
+	assert (link_line.index(consumer_object) or { -1 }) < (link_line.index('-lv3_order') or { -1 }), link_line
+	ran := cmdexec.run(output, [])
+	assert ran.exit_code == 0, ran.output
+}
+
+fn test_reordered_native_sources_keep_joined_and_reset_languages() {
+	compiler := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'cc' }) or {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_link_languages_${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	cpp_source := os.join_path(root, 'template.c')
+	c_source := os.join_path(root, 'plain.c')
+	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
+	entry := $if windows { 'wmain' } $else { 'main' }
+	os.write_file(cpp_source, 'template<int N> int answer() { return N; }\nextern "C" int plain_answer(void);\nint ${entry}(void) { return answer<42>() == plain_answer() ? 0 : 1; }\n')!
+	os.write_file(c_source, 'int plain_answer(void) { _Static_assert(sizeof(int) >= 2, "int"); return 42; }\n')!
+	for flags in [['-xc++', cpp_source, '-xnone', c_source], ['-x', 'c++', cpp_source, '-xnone',
+		c_source]] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:    os.user_os()
+			c_compiler:   compiler
+			dependencies: flags
+		})
+		built := cmdexec.run(compiler, plan.compiler_args(output, [], []))
+		assert built.exit_code == 0, built.output
+		ran := cmdexec.run(output, [])
+		assert ran.exit_code == 0, ran.output
+	}
+}
 
 fn test_joined_compile_flags_are_not_native_input_files() {
 	for prefix in ['-I', '-isystem', '-iquote', '-DPLUGIN=', '-U'] {
@@ -15,6 +155,7 @@ fn test_joined_compile_flags_are_not_native_input_files() {
 			assert c_object_compile_flags([flag]) == [flag], flag
 			assert c_dylib_link_flags([flag]).len == 0, flag
 			assert tcc_native_c_source_flags([flag]).len == 0, flag
+			assert c_link_dependency_flags([flag]) == [flag], flag
 		}
 	}
 }
@@ -74,6 +215,9 @@ fn test_native_input_selection_consumes_option_operands_once() {
 		for operand in ['value.o', 'value.mm', 'folder with spaces/value.obj', '-x', ''] {
 			flags := [option, operand, 'real.o']
 			assert c_link_input_indices(flags) == [2], flags.str()
+			if option != '-x' {
+				assert c_link_dependency_flags(flags) == ['real.o', option, operand], flags.str()
+			}
 		}
 		assert c_link_input_indices([option]).len == 0, option
 	}

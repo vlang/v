@@ -3451,7 +3451,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut after_inputs := if options.is_o {
 		c_object_compile_flags(options.dependencies)
 	} else {
-		options.dependencies.clone()
+		c_link_dependency_flags(options.dependencies)
 	}
 	add_v3_default_linker_flags(mut after_inputs, options.target_os, options.is_o)
 	if !options.is_o {
