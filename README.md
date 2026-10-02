@@ -77,6 +77,9 @@ functional `git` installation.
 
 Note: On Windows, run `makev.bat` instead of `make` in CMD, or `./makev.bat` in
 PowerShell.
+To build with Visual Studio, run `makev.bat -msvc`. If the bundled TCC bootstrap cannot be
+compiled or fails while building the next compiler stage, the script retries with MSVC,
+then Clang and GCC.
 Note: On FreeBSD, OpenBSD, NetBSD, DragonFly, and Solaris, install GNU `make` and run it as
 `gmake`.
 Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
