@@ -10400,7 +10400,9 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	if !info.can_lower {
 		return t.make_empty()
 	}
-	mut receiver := t.transform_expr(info.base_id)
+	// Heap-promoted value locals already dereference when read as rvalues.
+	// Preserve their storage pointer here so the clone reads the value once.
+	mut receiver := t.transform_expr_preserving_pointer_value(t.unwrap_parens(info.base_id))
 	if info.raw_base_type.starts_with('&') {
 		receiver = t.make_prefix(.mul, receiver)
 		t.set_node_typ(int(receiver), info.base_type)
