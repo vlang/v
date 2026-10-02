@@ -12625,7 +12625,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if capture_type.len == 0 || capture_type == 'unknown' {
 					capture_type = 'int'
 				}
-				if t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]
+				// Mutable parameter captures retain the caller's array header reference.
+				if !child.is_mut && t.mut_param_values[child.value]
+					&& !t.pointer_value_rvalues[child.value]
 					&& capture_type.starts_with('&')
 					&& t.comptime_normalize_type_alias_chain(capture_type).starts_with('&[]') {
 					capture_type = capture_type[1..]
