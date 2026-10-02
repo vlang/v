@@ -18785,6 +18785,11 @@ fn (tc &TypeChecker) expr_can_be_implicit_ref_arg(expr_id flat.NodeId) bool {
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
 		return tc.expr_can_be_implicit_ref_arg(tc.a.child(node, 0))
 	}
+	if node.kind == .block && node.value == 'unsafe' {
+		// `unsafe { expr }` is the value of its expression.
+		tail_id := tc.branch_tail_expr_id(expr_id)
+		return tc.valid_node_id(tail_id) && tc.expr_can_be_implicit_ref_arg(tail_id)
+	}
 	// V materializes non-addressable value expressions into stable temporaries
 	// when they are passed to non-mut reference parameters.
 	return node.kind in [.struct_init, .assoc, .call, .or_expr, .cast_expr, .as_expr, .if_expr,

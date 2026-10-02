@@ -3197,6 +3197,13 @@ fn (mut t Transformer) collect_types() {
 					mut typ := t.normalize_type_in_module(f.typ, cur_mod)
 					if typ.len == 0 && f.children_count > 0 {
 						typ = t.normalize_type_in_module(t.node_type(t.a.child(f, 0)), cur_mod)
+						// The annotation of a call with explicit type arguments (`zeroed[Box]()`)
+						// can still name the generic parameter: the checker has inferred the type.
+						if typ.len == 0 || type_text_has_unresolved_generic_placeholder(typ) {
+							if checked := t.checked_global_type_name(f.value, cur_mod) {
+								typ = t.normalize_type_in_module(checked, cur_mod)
+							}
+						}
 					}
 					t.globals[f.value] = typ
 					if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
@@ -10958,6 +10965,7 @@ fn (t &Transformer) promoted_sizeof_value_type(node flat.Node) ?string {
 	if name !in t.heaped_amp_locals {
 		return none
 	}
+	// A local moved to the heap is stored as its address: `sizeof` measures the value.
 	storage_type := t.var_type(name)
 	if storage_type.starts_with('&') {
 		return storage_type[1..]
