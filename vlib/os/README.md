@@ -7,6 +7,11 @@ handling processes etc.
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
+### Console input
+
+On Windows, `os.input()` supports both console and redirected standard input.
+It returns an empty string when the standard input handle is invalid.
+
 ### Path helpers
 
 `os.dir()` returns everything before the last separator, matching the classic
