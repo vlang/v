@@ -7,6 +7,7 @@
 module main
 
 import mcp
+import v.astjson
 
 // ToolSpec is one tool's declaration, with everything needed to register it.
 //
@@ -91,15 +92,15 @@ pub fn register_all(mut server mcp.Server, ws &Workspace) ! {
 fn read_only_spec(name string, description string, schema string,
 	handler ToolHandler) ToolSpec {
 	return ToolSpec{
-		tool: mcp.Tool{
-			name:        name
-			title:       name
-			description: description
+		tool:    mcp.Tool{
+			name:         name
+			title:        name
+			description:  description
 			input_schema: schema
-			annotations: mcp.ToolAnnotations{
-				read_only_hint:   true
-				idempotent_hint:  true
-				open_world_hint:  false
+			annotations:  mcp.ToolAnnotations{
+				read_only_hint:  true
+				idempotent_hint: true
+				open_world_hint: false
 			}
 		}
 		handler: handler
@@ -111,12 +112,12 @@ fn read_only_spec(name string, description string, schema string,
 fn writing_spec(name string, description string, schema string,
 	handler ToolHandler) ToolSpec {
 	return ToolSpec{
-		tool: mcp.Tool{
-			name:        name
-			title:       name
-			description: description
+		tool:    mcp.Tool{
+			name:         name
+			title:        name
+			description:  description
 			input_schema: schema
-			annotations: mcp.ToolAnnotations{
+			annotations:  mcp.ToolAnnotations{
 				read_only_hint:   false
 				destructive_hint: true
 				idempotent_hint:  false
@@ -132,5 +133,55 @@ const no_args = '{"type":"object","additionalProperties":false,"properties":{}}'
 
 // one_string is the schema of a tool that takes exactly one string property.
 fn one_string(name string, description string) string {
-	return '{"type":"object","additionalProperties":false,"required":["${name}"],"properties":{"${name}":{"type":"string","description":"${description}"}}}'
+	return input_schema([name], {
+		name: SchemaProperty{
+			kind:        'string'
+			description: description
+		}
+	})
+}
+
+// SchemaProperty describes one tool argument. Array arguments contain strings.
+struct SchemaProperty {
+	kind        string
+	description string
+}
+
+// input_schema renders tool argument schemas through the JSON writer so string
+// values, including quotes and multiline descriptions, cannot break tools/list.
+fn input_schema(required []string, properties map[string]SchemaProperty) string {
+	mut w := astjson.Writer{}
+	w.begin_object()
+	w.key('type')
+	w.string('object')
+	w.key('additionalProperties')
+	w.boolean(false)
+	w.key('required')
+	w.begin_array()
+	for name in required {
+		w.array_item()
+		w.string(name)
+	}
+	w.end_array()
+	w.key('properties')
+	w.begin_object()
+	for name, property in properties {
+		w.key(name)
+		w.begin_object()
+		w.key('type')
+		w.string(property.kind)
+		w.key('description')
+		w.string(property.description)
+		if property.kind == 'array' {
+			w.key('items')
+			w.begin_object()
+			w.key('type')
+			w.string('string')
+			w.end_object()
+		}
+		w.end_object()
+	}
+	w.end_object()
+	w.end_object()
+	return w.str()
 }

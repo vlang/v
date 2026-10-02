@@ -221,13 +221,20 @@ fn spec_files() ToolSpec {
 		'List the V source files of the project, with their size and line count.
 Use it to find a file before reading or editing it, or to see the shape of a
 directory.',
-		'{"type":"object","additionalProperties":false,"properties":{' +
-		'"path":{"type":"string","description":"Directory to list, relative to the
-project root. Defaults to the whole project."},' +
-		'"include_tests":{"type":"boolean","description":"Include `_test.v` files.
-Defaults to true."},' +
-		'"limit":{"type":"integer","description":"Maximum number of files to return.
-Defaults to 500."}}}', tool_files)
+		input_schema([], {
+			'path':          SchemaProperty{
+				kind:        'string'
+				description: 'Directory to list, relative to the\nproject root. Defaults to the whole project.'
+			}
+			'include_tests': SchemaProperty{
+				kind:        'boolean'
+				description: 'Include `_test.v` files.\nDefaults to true.'
+			}
+			'limit':         SchemaProperty{
+				kind:        'integer'
+				description: 'Maximum number of files to return.\nDefaults to 500.'
+			}
+		}), tool_files)
 }
 
 // file_limit is how many files `v_files` returns before it truncates.
@@ -311,5 +318,3 @@ pub fn (ws &Workspace) resolve_arg(args &Args, key string) !string {
 	name := args.required_str(key)!
 	return ws.resolve(name)
 }
-
-

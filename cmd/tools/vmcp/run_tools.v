@@ -24,15 +24,20 @@ fn spec_run() ToolSpec {
 		'Run a V program: a file, a directory or a module name, with the same
 arguments `v run` takes. Returns the exit code and the program output. Writes
 whatever the program itself writes; it does not edit the project.',
-		'{"type":"object","additionalProperties":false,"required":["target"],' +
-		'"properties":{' +
-		'"target":{"type":"string","description":"A .v file, a directory or a module
-name."},' +
-		'"args":{"type":"array","items":{"type":"string"},"description":"Arguments
-passed to the program after `--`."},' +
-		'"flags":{"type":"array","items":{"type":"string"},"description":"Compiler
-flags, for example `[\"-g\"]`."}}}' +
-		'}', tool_run)
+		input_schema(['target'], {
+			'target': SchemaProperty{
+				kind:        'string'
+				description: 'A .v file, a directory or a module\nname.'
+			}
+			'args':   SchemaProperty{
+				kind:        'array'
+				description: 'Arguments\npassed to the program after `--`.'
+			}
+			'flags':  SchemaProperty{
+				kind:        'array'
+				description: 'Compiler\nflags, for example `["-g"]`.'
+			}
+		}), tool_run)
 }
 
 // tool_run answers `v_run`.

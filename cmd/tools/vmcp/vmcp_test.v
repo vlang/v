@@ -29,7 +29,7 @@ const sample_greet = '/// Greets the world.\nfn greet(name string) string {\n' +
 	"\treturn 'hello, " + '\${name}' + "'\n}\n\n"
 
 // sample_run is the entry point that calls it.
-const sample_run = 'fn main() {\n\tprintln(greet(\'world\'))\n\tprintln(answer)\n}\n'
+const sample_run = "fn main() {\n\tprintln(greet('world'))\n\tprintln(answer)\n}\n"
 
 // probe_path returns a path inside the fake project, creating the project
 // directory when it is not there yet. It never rewrites a file that is already
@@ -49,7 +49,7 @@ fn probe_root() !string {
 	os.mkdir_all(root)!
 	os.write_file(os.join_path(root, 'v.mod'), sample_manifest)!
 	os.write_file(os.join_path(root, 'main.v'), sample_main)!
-	return root
+	return os.real_path(root)
 }
 
 // probe_workspace returns a Workspace pointed at the fake project.
@@ -116,8 +116,7 @@ fn test_every_tool_is_named_and_described() {
 	mut names := []string{}
 	for spec in tool_specs() {
 		assert spec.tool.name != '', 'a tool has no name'
-		assert spec.tool.description.trim_space() != '',
-			'${spec.tool.name} has no description'
+		assert spec.tool.description.trim_space() != '', '${spec.tool.name} has no description'
 		assert spec.tool.input_schema != '', '${spec.tool.name} has no input schema'
 		assert !isnil(spec.handler), '${spec.tool.name} has no handler'
 		assert spec.tool.name !in names, '${spec.tool.name} is declared twice'
@@ -125,10 +124,9 @@ fn test_every_tool_is_named_and_described() {
 	}
 	// Every documented tool is present. A name here that no tool implements is a
 	// gap in the catalogue; a tool here that this list omits is a silent addition.
-	for expected in ['v_project_info', 'v_modules', 'v_files', 'v_ast', 'v_symbols',
-		'v_symbol_at', 'v_references', 'v_stdlib_doc', 'v_check', 'v_test_run',
-		'v_doctor', 'v_veb_routes', 'v_skills', 'v_run', 'v_eval', 'v_edit_replace',
-		'v_rename_symbol', 'v_format'] {
+	for expected in ['v_project_info', 'v_modules', 'v_files', 'v_ast', 'v_symbols', 'v_symbol_at',
+		'v_references', 'v_stdlib_doc', 'v_check', 'v_test_run', 'v_doctor', 'v_veb_routes', 'v_skills',
+		'v_run', 'v_eval', 'v_edit_replace', 'v_rename_symbol', 'v_format'] {
 		assert expected in names, '${expected} is missing from the catalogue'
 	}
 }
@@ -144,15 +142,14 @@ fn test_read_only_keeps_only_the_safe_tools() {
 		}
 	}
 	for name in kept {
-		assert name !in ['v_edit_replace', 'v_rename_symbol', 'v_format'],
-			'${name} writes a file and must not be registered in read-only mode'
+		assert name !in ['v_edit_replace', 'v_rename_symbol', 'v_format'], '${name} writes a file and must not be registered in read-only mode'
 	}
 	for name in ['v_edit_replace', 'v_rename_symbol', 'v_format'] {
 		assert name !in kept, '${name} is a writing tool'
 	}
 	// Every read-only tool survives.
-	for name in ['v_project_info', 'v_symbols', 'v_ast', 'v_references', 'v_check',
-		'v_skills', 'v_eval'] {
+	for name in ['v_project_info', 'v_symbols', 'v_ast', 'v_references', 'v_check', 'v_skills',
+		'v_eval'] {
 		assert name in kept, '${name} should be available in read-only mode'
 	}
 }
@@ -160,10 +157,9 @@ fn test_read_only_keeps_only_the_safe_tools() {
 fn test_project_info_reports_the_manifest() {
 	answer := call_tool('v_project_info', '{"include":"installed_modules"}')
 	assert !answer.contains('"isError"'), answer
-	assert answer.contains('"name":\t"probe"') || answer.contains('"name": "probe"'),
-		answer
+	assert answer.contains('"name":\t"probe"') || answer.contains('"name": "probe"'), answer
 	assert answer.contains('probe'), answer
-assert answer.contains('"has_v_mod"'), answer
+	assert answer.contains('"has_v_mod"'), answer
 	assert answer.contains('"read_only"'), answer
 	// The manifest is a nested object, not a string that happens to hold braces.
 	assert answer.contains('"v_mod":\t{'), answer
@@ -178,8 +174,7 @@ fn test_project_info_reports_a_project_without_a_manifest() {
 	os.write_file(os.join_path(root, 'main.v'), sample_main)!
 	ws := new_workspace(@VEXEROOT, root, false)
 	answer := mcp_text_of(tool_project_info(ws, '{}'))
-	assert answer.contains('"has_v_mod":\tfalse') || answer.contains('"has_v_mod": false'),
-		answer
+	assert answer.contains('"has_v_mod":\tfalse') || answer.contains('"has_v_mod": false'), answer
 }
 
 fn test_project_info_omits_the_optional_sections_unless_asked() {
@@ -203,8 +198,7 @@ fn test_modules_honours_the_filter() {
 
 fn test_files_lists_the_project_sources() {
 	answer := call_tool('v_files', '{}')
-	assert answer.contains('"path":\t"main.v"') || answer.contains('"path": "main.v"'),
-		answer
+	assert answer.contains('"path":\t"main.v"') || answer.contains('"path": "main.v"'), answer
 	assert answer.contains('"lines"'), answer
 	assert answer.contains('"bytes"'), answer
 	assert answer.contains('"truncated":\t0') || answer.contains('"truncated": 0'), answer
@@ -267,8 +261,7 @@ fn test_symbols_can_drop_members() {
 fn test_symbol_at_finds_a_name() {
 	answer := call_tool('v_symbol_at', '{"path":"main.v","line":8,"column":4,"name":"greet"}')
 	assert answer.contains('"found":\ttrue') || answer.contains('"found": true'), answer
-	assert answer.contains('"is_declaration":\ttrue') || answer.contains('"is_declaration": true'),
-		answer
+	assert answer.contains('"is_declaration":\ttrue') || answer.contains('"is_declaration": true'), answer
 	assert answer.contains('greet'), answer
 }
 
@@ -291,10 +284,8 @@ fn test_symbol_at_without_a_name_lists_what_is_there() {
 fn test_references_finds_the_declaration_and_the_call() {
 	answer := call_tool('v_references', '{"path":"main.v","name":"greet"}')
 	assert answer.contains('"count":\t2') || answer.contains('"count": 2'), answer
-	assert answer.contains('"is_declaration":\ttrue') || answer.contains('"is_declaration": true'),
-		answer
-	assert answer.contains('"is_declaration":\tfalse') || answer.contains('"is_declaration": false'),
-		answer
+	assert answer.contains('"is_declaration":\ttrue') || answer.contains('"is_declaration": true'), answer
+	assert answer.contains('"is_declaration":\tfalse') || answer.contains('"is_declaration": false'), answer
 }
 
 fn test_references_requires_a_name() {
@@ -476,10 +467,8 @@ fn test_a_failed_version_read_is_not_reported_as_a_version() {
 	assert compiler_version_value_for(broken) == '', broken.output
 	// The reason belongs under `error`; there must be no `value` at all, so nothing
 	// downstream can read the launch failure as a version.
-	assert !compiler_version_json_for(broken).contains('"value"'),
-		compiler_version_json_for(broken)
-	assert compiler_version_json_for(broken).contains('"error"'),
-		compiler_version_json_for(broken)
+	assert !compiler_version_json_for(broken).contains('"value"'), compiler_version_json_for(broken)
+	assert compiler_version_json_for(broken).contains('"error"'), compiler_version_json_for(broken)
 	assert !v_version_json_for(broken).contains('"value"'), v_version_json_for(broken)
 	assert v_version_json_for(broken).contains('"error"'), v_version_json_for(broken)
 }
@@ -660,12 +649,11 @@ fn test_rename_symbol_applies_when_asked() {
 fn test_rename_symbol_renames_a_shorter_name_safely() {
 	ws := probe_workspace()
 	// Two mentions on one line: writing left to right would shift the second.
-path := probe_path('twice.v')
+	path := probe_path('twice.v')
 	os.write_file(path, 'module main\n\nfn go() {\n\tprintln(alpha)\n\tprintln(alpha)\n}\n')!
 	applied := tool_rename_symbol(ws, '{"name":"alpha","new_name":"b","paths":["twice.v"],"dry_run":false}')
 	assert applied.contains('twice.v'), applied
-	assert os.read_file(path)! == 'module main\n\nfn go() {\n\tprintln(b)\n\tprintln(b)\n}\n',
-		os.read_file(path)!
+	assert os.read_file(path)! == 'module main\n\nfn go() {\n\tprintln(b)\n\tprintln(b)\n}\n', os.read_file(path)!
 }
 
 fn test_rename_symbol_rejects_a_bad_new_name() {
@@ -689,7 +677,7 @@ fn test_is_identifier_accepts_and_rejects() {
 }
 
 fn test_rename_hits_are_ordered_so_positions_stay_valid() {
-path := probe_path('order.v')
+	path := probe_path('order.v')
 	os.write_file(path, 'module main\n\nfn go() {\n\tprintln(alpha)\n\tprintln(alpha)\n}\n')!
 	hits := rename_hits(path, 'alpha')
 	assert hits.len == 2, hits.len.str()
@@ -737,7 +725,7 @@ fn test_workspace_tolerates_a_project_without_a_manifest() {
 	ws := new_workspace(@VEXEROOT, root, false)
 	assert !ws.v_modified
 	assert ws.v_mod_name == '', ws.v_mod_name
-	assert ws.project_root == root, ws.project_root
+	assert ws.project_root == os.real_path(root), ws.project_root
 }
 
 fn test_workspace_skips_the_directories_a_project_never_compiles() {
@@ -796,16 +784,15 @@ fn test_object_skips_empty_text_and_keeps_raw() {
 	assert !rendered.contains('dropped'), rendered
 	assert rendered.contains('"nested"'), rendered
 	// The raw value is JSON, not a quoted string.
-	assert rendered.contains('[\n\t\t"a", "b"\n\t]') || rendered.contains('["a", "b"]'),
-		rendered
+	assert rendered.contains('[\n\t\t"a", "b"\n\t]') || rendered.contains('["a", "b"]'), rendered
 }
 
 fn test_object_quotes_text_that_looks_like_json() {
 	// A message containing braces must stay a quoted string; only an explicit raw
 	// pair is inserted verbatim.
 	rendered := object(text_pair('message', 'a brace and a bracket'))
-	assert rendered.contains('"message":\t"a brace and a bracket"') ||
-		rendered.contains('"message": "a brace and a bracket"'), rendered
+	assert rendered.contains('"message":\t"a brace and a bracket"')
+		|| rendered.contains('"message": "a brace and a bracket"'), rendered
 }
 
 fn test_string_array_renders_an_empty_list_as_an_empty_array() {
@@ -892,10 +879,10 @@ fn test_trim_output_keeps_the_tail_and_says_so() {
 
 fn test_count_by_kind_separates_the_kinds() {
 	items := [
-		Diagnostic{kind: 'error'},
-		Diagnostic{kind: 'error'},
-		Diagnostic{kind: 'warning'},
-		Diagnostic{kind: 'notice'},
+		Diagnostic{ kind: 'error' },
+		Diagnostic{ kind: 'error' },
+		Diagnostic{ kind: 'warning' },
+		Diagnostic{ kind: 'notice' },
 	]
 	assert count_by_kind(items, 'error') == 2
 	assert count_by_kind(items, 'warning') == 1
@@ -938,5 +925,92 @@ fn test_instructions_describe_the_working_order() {
 	assert text.contains('dry run'), 'the instructions must say edits default to a dry run'
 	assert text.contains('expected_old'), 'the instructions must name the guard'
 	assert text.contains(ws.root), 'the instructions must name the workspace'
-assert text.contains('read-only'), 'the instructions must report the mode'
+	assert text.contains('read-only'), 'the instructions must report the mode'
+}
+
+struct WireTool {
+	name         string
+	input_schema map[string]json.Any @[json: inputSchema]
+}
+
+struct WireToolList {
+	tools []WireTool
+}
+
+struct WireToolListResponse {
+	id     int
+	result WireToolList
+}
+
+fn test_tools_list_wire_schemas_are_valid_in_both_modes() {
+	root := probe_root()!
+	input := os.join_path(root, 'mcp_requests.jsonl')
+	os.write_file(input, '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"${mcp.protocol_version}","capabilities":{},"clientInfo":{"name":"schema-test","version":"1"}}}\n' +
+		'{"jsonrpc":"2.0","method":"notifications/initialized"}\n' +
+		'{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n')!
+	for read_only in [false, true] {
+		mut args := ['mcp', 'serve', '--root', root]
+		if read_only { args << '--read-only' }
+		mut process := os.new_process(@VEXE)
+		process.set_args(args)
+		process.set_redirect_stdio()
+		process.set_stdin_path(input)
+		process.run()
+		output := process.stdout_slurp()
+		errors := process.stderr_slurp()
+		process.wait()
+		assert process.code == 0, errors
+		process.close()
+		mut listed := false
+		for line in output.trim_space().split_into_lines() {
+			response := json.decode[WireToolListResponse](line, strict: true)!
+			if response.id != 2 { continue }
+			listed = true
+			expected := if read_only { 15 } else { 18 }
+			assert response.result.tools.len == expected, line
+			for tool in response.result.tools {
+				schema_type := tool.input_schema['type'] or { panic('missing schema type for ${tool.name}') }
+				assert schema_type.str() == 'object', tool.name
+				assert 'properties' in tool.input_schema, tool.name
+				if read_only {
+					assert tool.name !in ['v_edit_replace', 'v_rename_symbol', 'v_format']
+				}
+			}
+		}
+		assert listed, output
+	}
+}
+
+struct SchemaDescription {
+	description string
+}
+
+struct SchemaDescriptions {
+	properties map[string]SchemaDescription
+}
+
+fn test_tool_schema_descriptions_preserve_quotes_and_newlines() {
+	ast_schema := json.decode[SchemaDescriptions](spec_ast().tool.input_schema, strict: true)!
+	assert ast_schema.properties['hide'].description.contains('["pos"]')
+	assert ast_schema.properties['hide'].description.contains('\n')
+	format_schema := json.decode[SchemaDescriptions](spec_format().tool.input_schema, strict: true)!
+	assert format_schema.properties['write'].description.contains('\nDefaults to false.')
+}
+
+fn test_workspace_checks_symlink_parents_of_new_files() {
+	$if windows {
+		return
+	}
+	ws := probe_workspace()
+	outside := os.join_path(test_root, 'outside')
+	os.mkdir_all(outside)!
+	os.symlink(outside, os.join_path(ws.root, 'escape'))!
+	assert ws.resolve('escape/new.v') == none
+	assert ws.resolve('missing/../escape/new.v') == none
+	os.symlink(os.join_path(outside, 'missing.v'), os.join_path(ws.root, 'dangling'))!
+	assert ws.resolve('dangling') == none
+	inside := ws.resolve('new_dir/new.v')!
+	assert inside == os.join_path(ws.root, 'new_dir', 'new.v')
+	os.mkdir_all(os.join_path(ws.root, 'existing'))!
+	assert ws.resolve('existing/../new.v')! == os.join_path(ws.root, 'new.v')
 }

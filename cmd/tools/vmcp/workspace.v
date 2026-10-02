@@ -120,14 +120,44 @@ pub fn (ws &Workspace) resolve(path string) !string {
 		return error('a path is required')
 	}
 	full := if os.is_abs_path(path) {
-		os.real_path(path)
+		canonical_request_path(path)!
 	} else {
-		os.real_path(os.join_path(ws.root, path))
+		canonical_request_path(os.join_path(ws.root, path))!
 	}
 	if !is_inside(ws.root, full) {
 		return error('`${path}` is outside the workspace root `${ws.root}`')
 	}
 	return full
+}
+
+// canonical_request_path resolves the existing ancestor of a possibly new file.
+// real_path alone leaves unresolved .. segments and symlink parents when the
+// final file does not exist, which is common for editing tools that create files.
+fn canonical_request_path(path string) !string {
+	mut ancestor := path
+	mut missing := []string{}
+	for !os.exists(ancestor) {
+		if os.is_link(ancestor) {
+			return error('cannot resolve dangling symlink `${ancestor}`')
+		}
+		name := os.file_name(ancestor)
+		// Backtracking through a missing directory cannot be resolved physically.
+		// Normalizing it could expose an existing symlink without checking its target.
+		if name in ['.', '..'] {
+			return error('cannot resolve path `${path}` through a missing directory')
+		}
+		parent := os.dir(ancestor)
+		if parent == ancestor {
+			return error('cannot resolve path `${path}`')
+		}
+		missing << name
+		ancestor = parent
+	}
+	mut full := os.real_path(ancestor)
+	for i := missing.len - 1; i >= 0; i-- {
+		full = os.join_path(full, missing[i])
+	}
+	return os.norm_path(full)
 }
 
 // is_inside reports whether `path` is `base` or lies below it.
@@ -170,8 +200,8 @@ pub fn (ws &Workspace) v_files(dir string) []string {
 }
 
 // ignored_dirs are the directories a V project never compiles from.
-const ignored_dirs = ['.git', '.vmodules', 'node_modules', 'target', 'bin', 'dist',
-	'.agents', '.opencode', '.claude', '.cursor']
+const ignored_dirs = ['.git', '.vmodules', 'node_modules', 'target', 'bin', 'dist', '.agents',
+	'.opencode', '.claude', '.cursor']
 
 // is_ignored reports whether a path sits in a directory no tool should read.
 fn (ws &Workspace) is_ignored(path string) bool {

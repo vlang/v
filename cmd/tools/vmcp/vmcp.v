@@ -49,7 +49,8 @@ fn main() {
 	// `v mcp ...` reaches this program as `argv = ['mcp', 'serve', ...]`, the same
 	// shape every other `cmd/tools` program sees. A leading `--` is dropped so the
 	// binary also works when run directly.
-	args := os.args[1..].filter(it != '--')
+	passed := os.args[1..].filter(it != '--')
+	args := if passed.len > 0 && passed[0] == 'mcp' { passed[1..] } else { passed }
 	if args.len == 0 || args[0] in ['-h', '--help', 'help'] {
 		print(usage)
 		exit(if args.len == 0 { 1 } else { 0 })
@@ -126,13 +127,13 @@ fn serve(args []string) {
 // `v mcp serve --instructions` prints.
 fn server_config(ws &Workspace) mcp.ServerConfig {
 	return mcp.ServerConfig{
-		name:        server_name
-		version:     server_version
-		title:       'V language server'
-		description: 'The V compiler, exposed as tools: the AST, the declarations, the
+		name:           server_name
+		version:        server_version
+		title:          'V language server'
+		description:    'The V compiler, exposed as tools: the AST, the declarations, the
 diagnostics, the standard library documentation and the bundled agent skills.'
-		website_url: 'https://vlang.io'
-		instructions: instructions(ws)
+		website_url:    'https://vlang.io'
+		instructions:   instructions(ws)
 		enable_logging: false
 	}
 }
@@ -141,8 +142,7 @@ diagnostics, the standard library documentation and the bundled agent skills.'
 // checking what an agent will be able to do.
 fn list_tools() {
 	for spec in tool_specs() {
-		println('${spec.tool.name}\t${spec.read_only()}\t${spec.tool.description.replace(
-		'\n', ' ')}')
+		println('${spec.tool.name}\t${spec.read_only()}\t${spec.tool.description.replace('\n', ' ')}')
 	}
 }
 

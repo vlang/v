@@ -23,15 +23,24 @@ fn spec_ast() ToolSpec {
 		'Return the V AST of one file as JSON, in exactly the format `v ast -p`
 prints. Use `terse` for the tree shape and `skip_defaults` to drop zero-valued
 properties; they keep the answer small enough to read in full.',
-		'{"type":"object","additionalProperties":false,"required":["path"],' +
-		'"properties":{' +
-		'"path":{"type":"string","description":"The .v or .vsh file to dump."},' +
-		'"terse":{"type":"boolean","description":"Only node kinds and the tree
-shape."},' +
-		'"skip_defaults":{"type":"boolean","description":"Drop properties holding a
-zero value."},' +
-		'"hide":{"type":"array","items":{"type":"string"},"description":"Property
-names to leave out, for example `[\"pos\"]`."}}}', tool_ast)
+		input_schema(['path'], {
+			'path':          SchemaProperty{
+				kind:        'string'
+				description: 'The .v or .vsh file to dump.'
+			}
+			'terse':         SchemaProperty{
+				kind:        'boolean'
+				description: 'Only node kinds and the tree\nshape.'
+			}
+			'skip_defaults': SchemaProperty{
+				kind:        'boolean'
+				description: 'Drop properties holding a\nzero value.'
+			}
+			'hide':          SchemaProperty{
+				kind:        'array'
+				description: 'Property\nnames to leave out, for example `["pos"]`.'
+			}
+		}), tool_ast)
 }
 
 // tool_ast answers `v_ast`.
@@ -70,13 +79,20 @@ fn spec_symbols() ToolSpec {
 		'List what a file declares: functions, methods, structs and their fields,
 enums, interfaces, sum types, constants and globals, each with its line, column
 and doc comment. Use it to understand a file without reading all of it.',
-		'{"type":"object","additionalProperties":false,"required":["path"],' +
-		'"properties":{' +
-		'"path":{"type":"string","description":"The .v or .vsh file to inspect."},' +
-		'"kind":{"type":"string","description":"Only declarations of this kind, for
-example `fn`, `struct`, `field`."},' +
-		'"include_nested":{"type":"boolean","description":"Include members such as
-fields and enum values. Defaults to true."}}}', tool_symbols)
+		input_schema(['path'], {
+			'path':           SchemaProperty{
+				kind:        'string'
+				description: 'The .v or .vsh file to inspect.'
+			}
+			'kind':           SchemaProperty{
+				kind:        'string'
+				description: 'Only declarations of this kind, for\nexample `fn`, `struct`, `field`.'
+			}
+			'include_nested': SchemaProperty{
+				kind:        'boolean'
+				description: 'Include members such as\nfields and enum values. Defaults to true.'
+			}
+		}), tool_symbols)
 }
 
 // tool_symbols answers `v_symbols`.
@@ -167,13 +183,24 @@ fn spec_symbol_at() ToolSpec {
 Returns the innermost name at that position and, when it is a declaration, the
 kind it declares and the line it starts on. `name` may be omitted to try every
 declaration and reference in the file.',
-		'{"type":"object","additionalProperties":false,"required":["path","line","column"],
-"properties":{' +
-		'"path":{"type":"string","description":"The .v or .vsh file."},' +
-		'"line":{"type":"integer","description":"1-based line number."},' +
-		'"column":{"type":"integer","description":"1-based column number."},' +
-		'"name":{"type":"string","description":"The name at the position. Omit to
-search the whole file."}}}', tool_symbol_at)
+		input_schema(['path', 'line', 'column'], {
+			'path':   SchemaProperty{
+				kind:        'string'
+				description: 'The .v or .vsh file.'
+			}
+			'line':   SchemaProperty{
+				kind:        'integer'
+				description: '1-based line number.'
+			}
+			'column': SchemaProperty{
+				kind:        'integer'
+				description: '1-based column number.'
+			}
+			'name':   SchemaProperty{
+				kind:        'string'
+				description: 'The name at the position. Omit to\nsearch the whole file.'
+			}
+		}), tool_symbol_at)
 }
 
 // tool_symbol_at answers `v_symbol_at`.
@@ -269,10 +296,16 @@ fn spec_references() ToolSpec {
 		'Find every mention of a name in a file, AST aware, so a comment or a
 string that contains the name is not reported. Each hit says whether it is the
 declaration. This is the tool to reach for before a rename.',
-		'{"type":"object","additionalProperties":false,"required":["path","name"],
-"properties":{' +
-		'"path":{"type":"string","description":"The .v or .vsh file to search."},' +
-		'"name":{"type":"string","description":"The identifier to find."}}}',
+		input_schema(['path', 'name'], {
+			'path': SchemaProperty{
+				kind:        'string'
+				description: 'The .v or .vsh file to search.'
+			}
+			'name': SchemaProperty{
+				kind:        'string'
+				description: 'The identifier to find.'
+			}
+		}),
 		tool_references)
 }
 
@@ -303,14 +336,15 @@ fn tool_references(ws &Workspace, arguments string) string {
 // spec_stdlib_doc declares `v_stdlib_doc`.
 fn spec_stdlib_doc() ToolSpec {
 	return read_only_spec('v_stdlib_doc',
-		"Look up the documentation of a standard library module or one of its
+		'Look up the documentation of a standard library module or one of its
 symbols, for example `strings` or `strings.Builder`. Use it to check a signature
-before writing a call instead of guessing.",
-		'{"type":"object","additionalProperties":false,"required":["symbol"],' +
-		'"properties":{' +
-		'"symbol":{"type":"string","description":"A module name such as `os`, or a
-symbol such as `os.read_file`."}}}' +
-		'}', tool_stdlib_doc)
+before writing a call instead of guessing.',
+		input_schema(['symbol'], {
+			'symbol': SchemaProperty{
+				kind:        'string'
+				description: 'A module name such as `os`, or a\nsymbol such as `os.read_file`.'
+			}
+		}), tool_stdlib_doc)
 }
 
 // tool_stdlib_doc answers `v_stdlib_doc`.

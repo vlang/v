@@ -7,7 +7,6 @@ module main
 import os
 import v.astjson
 
-
 // spec_check declares `v_check`.
 fn spec_check() ToolSpec {
 	return read_only_spec('v_check',
@@ -15,12 +14,16 @@ fn spec_check() ToolSpec {
 line, column, kind and message. Points at one file or one directory. This is the
 authoritative answer to "does it compile"; use it after every change instead of
 guessing. It compiles nothing and writes nothing.',
-		'{"type":"object","additionalProperties":false,"required":["path"],' +
-		'"properties":{' +
-		'"path":{"type":"string","description":"The .v file or directory to check."},' +
-		'"flags":{"type":"array","items":{"type":"string"},"description":"Extra
-compiler flags, for example `[\"-stats\"]`."}}}' +
-		'}', tool_check)
+		input_schema(['path'], {
+			'path':  SchemaProperty{
+				kind:        'string'
+				description: 'The .v file or directory to check.'
+			}
+			'flags': SchemaProperty{
+				kind:        'array'
+				description: 'Extra\ncompiler flags, for example `["-stats"]`.'
+			}
+		}), tool_check)
 }
 
 // tool_check answers `v_check`.
@@ -93,15 +96,24 @@ fn spec_test_run() ToolSpec {
 		'Run the V tests of a file or directory and report what passed, what failed
 and what the failures said. Takes the same filters as `v test`, for example a
 `VTEST_ONLY` pattern through `env`.',
-		'{"type":"object","additionalProperties":false,"properties":{' +
-		'"path":{"type":"string","description":"The test file or directory. Defaults
-to the project root."},' +
-		'"only":{"type":"string","description":"Run only tests whose name matches this
-glob, as VTEST_ONLY does."},' +
-		'"silent":{"type":"boolean","description":"Hide passing tests. Defaults to
-true."},' +
-		'"flags":{"type":"array","items":{"type":"string"},"description":"Extra
-compiler flags."}}}', tool_test_run)
+		input_schema([], {
+			'path':   SchemaProperty{
+				kind:        'string'
+				description: 'The test file or directory. Defaults\nto the project root.'
+			}
+			'only':   SchemaProperty{
+				kind:        'string'
+				description: 'Run only tests whose name matches this\nglob, as VTEST_ONLY does.'
+			}
+			'silent': SchemaProperty{
+				kind:        'boolean'
+				description: 'Hide passing tests. Defaults to\ntrue.'
+			}
+			'flags':  SchemaProperty{
+				kind:        'array'
+				description: 'Extra\ncompiler flags.'
+			}
+		}), tool_test_run)
 }
 
 // tool_test_run answers `v_test_run`.
@@ -130,4 +142,3 @@ fn tool_test_run(ws &Workspace, arguments string) string {
 	items := parse_diagnostics(run.output)
 	return check_json(ws, path, run, items)
 }
-

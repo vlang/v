@@ -59,10 +59,12 @@ fn spec_veb_routes() ToolSpec {
 		'List the routes a veb web application registers: the HTTP methods, the
 paths, and the handler each one maps to. Use it to understand a web app without
 reading every handler.',
-		'{"type":"object","additionalProperties":false,"properties":{' +
-		'"path":{"type":"string","description":"The .v file declaring the veb routes.
-Defaults to the project\'s `main.v`."}}}' +
-		'}', tool_veb_routes)
+		input_schema([], {
+			'path': SchemaProperty{
+				kind:        'string'
+				description: "The .v file declaring the veb routes.\nDefaults to the project's `main.v`."
+			}
+		}), tool_veb_routes)
 }
 
 // tool_veb_routes answers `v_veb_routes`.

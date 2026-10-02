@@ -15,23 +15,36 @@ import v.gen.v as vfmt
 // spec_edit_replace declares `v_edit_replace`.
 fn spec_edit_replace() ToolSpec {
 	return writing_spec('v_edit_replace',
-		'Replace an exact range of lines in a file. Provide `expected_old` with the
+		"Replace an exact range of lines in a file. Provide `expected_old` with the
 current text of that range: the write happens only if the file still matches it,
-so an edit never silently discards someone else\'s change. Pass an empty
-`expected_old` to insert, and omit `new_text` to delete the range.',
-		'{"type":"object","additionalProperties":false,"required":["path","start_line"],' +
-		'"properties":{' +
-		'"path":{"type":"string","description":"The file to change."},' +
-		'"start_line":{"type":"integer","description":"1-based first line of the
-range."},' +
-		'"end_line":{"type":"integer","description":"1-based last line of the range.
-Defaults to `start_line`."},' +
-		'"expected_old":{"type":"string","description":"The exact current text of
-the range, including its trailing newline. An empty string means the range must
-be empty."},' +
-		'"new_text":{"type":"string","description":"The replacement text."},' +
-		'"create_dirs":{"type":"boolean","description":"Create missing parent
-directories. Defaults to false."}}}', tool_edit_replace)
+so an edit never silently discards someone else's change. Pass an empty
+`expected_old` to insert, and omit `new_text` to delete the range.",
+		input_schema(['path', 'start_line'], {
+			'path':         SchemaProperty{
+				kind:        'string'
+				description: 'The file to change.'
+			}
+			'start_line':   SchemaProperty{
+				kind:        'integer'
+				description: '1-based first line of the\nrange.'
+			}
+			'end_line':     SchemaProperty{
+				kind:        'integer'
+				description: '1-based last line of the range.\nDefaults to `start_line`.'
+			}
+			'expected_old': SchemaProperty{
+				kind:        'string'
+				description: 'The exact current text of\nthe range, including its trailing newline. An empty string means the range must\nbe empty.'
+			}
+			'new_text':     SchemaProperty{
+				kind:        'string'
+				description: 'The replacement text.'
+			}
+			'create_dirs':  SchemaProperty{
+				kind:        'boolean'
+				description: 'Create missing parent\ndirectories. Defaults to false.'
+			}
+		}), tool_edit_replace)
 }
 
 // tool_edit_replace answers `v_edit_replace`.
@@ -132,15 +145,24 @@ fn spec_rename_symbol() ToolSpec {
 and a comment or string that happens to hold the name is left alone. Defaults to
 `dry_run: true`: the response lists the exact edits, and the same call with
 `dry_run: false` applies them.',
-		'{"type":"object","additionalProperties":false,"required":["name","new_name"],' +
-		'"properties":{' +
-		'"name":{"type":"string","description":"The current name."},' +
-		'"new_name":{"type":"string","description":"The new name. Must be a valid V
-identifier."},' +
-		'"paths":{"type":"array","items":{"type":"string"},"description":"Files to
-change. Defaults to every V file in the project."},' +
-		'"dry_run":{"type":"boolean","description":"Report the edits without writing
-them. Defaults to true."}}}', tool_rename_symbol)
+		input_schema(['name', 'new_name'], {
+			'name':     SchemaProperty{
+				kind:        'string'
+				description: 'The current name.'
+			}
+			'new_name': SchemaProperty{
+				kind:        'string'
+				description: 'The new name. Must be a valid V\nidentifier.'
+			}
+			'paths':    SchemaProperty{
+				kind:        'array'
+				description: 'Files to\nchange. Defaults to every V file in the project.'
+			}
+			'dry_run':  SchemaProperty{
+				kind:        'boolean'
+				description: 'Report the edits without writing\nthem. Defaults to true.'
+			}
+		}), tool_rename_symbol)
 }
 
 // tool_rename_symbol answers `v_rename_symbol`.
@@ -205,12 +227,16 @@ fn spec_format() ToolSpec {
 		'Format a V file with the same formatter `v fmt` uses. Defaults to
 `dry_run: true` and reports the unified-style before/after lines, so a
 reformat is reviewable before it is written.',
-		'{"type":"object","additionalProperties":false,"required":["path"],' +
-		'"properties":{' +
-		'"path":{"type":"string","description":"The .v file to format."},' +
-		'"write":{"type":"boolean","description":"Write the formatted result back.
-Defaults to false."}}}' +
-		'}', tool_format)
+		input_schema(['path'], {
+			'path':  SchemaProperty{
+				kind:        'string'
+				description: 'The .v file to format.'
+			}
+			'write': SchemaProperty{
+				kind:        'boolean'
+				description: 'Write the formatted result back.\nDefaults to false.'
+			}
+		}), tool_format)
 }
 
 // tool_format answers `v_format`.
