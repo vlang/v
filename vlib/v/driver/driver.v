@@ -610,6 +610,13 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 			i += 2
 			continue
 		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			active_language = joined_language
+			prepared << flag
+			i++
+			continue
+		}
 		if c_flag_is_object_file(clean) {
 			stats.requests++
 			adjacent_language := if !os.exists(clean) {
@@ -812,6 +819,12 @@ fn c_link_flags_use_objective_c_language(flags []string) bool {
 			i++
 			continue
 		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
+			continue
+		}
 		if c_flag_is_c_source_file(clean) || c_flag_is_existing_file(clean) {
 			if language in ['objective-c', 'objective-c++'] {
 				return true
@@ -843,6 +856,12 @@ fn c_link_flags_use_language(flags []string, include_objective_c bool) bool {
 		}
 		if c_flag_consumes_next_operand(clean) {
 			skip_operand = true
+			i++
+			continue
+		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
 			i++
 			continue
 		}
@@ -902,6 +921,10 @@ fn c_object_compile_flags(flags []string) []string {
 			i += 2
 			continue
 		}
+		if c_joined_source_language(part).len > 0 {
+			i++
+			continue
+		}
 		if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-weak_library',
 			'-force_load'] {
 			skip_link_operand = true
@@ -939,6 +962,12 @@ fn c_dylib_link_flags(flags []string) []string {
 		if clean == '-x' {
 			language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
 			i += 2
+			continue
+		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
 			continue
 		}
 		if clean in ['-l', '-L', '-F', '-framework', '-weak_framework', '-weak_library', '-Xlinker',
@@ -1113,6 +1142,12 @@ fn tcc_native_c_source_flags(flags []string) []string {
 		if clean == '-x' {
 			language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
 			i += 2
+			continue
+		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
 			continue
 		}
 		if c_flag_consumes_next_operand(clean) || clean in ['-l', '-weak_library'] {
@@ -1427,13 +1462,26 @@ fn c_flag_token_is_link_only(token string) bool {
 }
 
 fn c_flags_need_objective_c(flags []string) bool {
-	for i, flag in flags {
-		clean := flag.trim_space()
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
 		if clean in ['-fobjc-arc', '-fobjc-gc', '-ObjC']
 			|| clean.starts_with('-fobjc-')
-			|| (clean == '-x' && i + 1 < flags.len && flags[i + 1] == 'objective-c') {
+			|| c_joined_source_language(clean) in ['objective-c', 'objective-c++'] {
 			return true
 		}
+		if clean == '-x' {
+			if i + 1 < flags.len && flags[i + 1].trim_space() in ['objective-c', 'objective-c++'] {
+				return true
+			}
+			i += 2
+			continue
+		}
+		if c_flag_consumes_next_operand(clean) {
+			i += 2
+			continue
+		}
+		i++
 	}
 	return false
 }

@@ -41,8 +41,9 @@ fn c_source_language_flags(flags []string) []string {
 			i += 2
 			continue
 		}
-		if clean.starts_with('-x') && clean.len > 2 {
-			language = clean[2..]
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
 		}
 		if language in ['', 'none'] && !clean.starts_with('-') && clean.ends_with('.c') {
 			result << ['-x', 'c', flag, '-x', 'none']
@@ -52,4 +53,9 @@ fn c_source_language_flags(flags []string) []string {
 		i++
 	}
 	return result
+}
+
+// c_joined_source_language extracts the language from a joined -x selector.
+fn c_joined_source_language(flag string) string {
+	return if flag.starts_with('-x') && flag.len > 2 { flag[2..] } else { '' }
 }

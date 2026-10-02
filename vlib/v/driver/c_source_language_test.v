@@ -4,6 +4,27 @@ import os
 import time
 import v.cmdexec
 
+fn test_joined_cpp_hashflag_selects_language_and_links_runtime() {
+	compiler := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v joined cpp flag ${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'joined_cpp_flag' }\n")!
+	os.write_file(os.join_path(root, 'shim.c'), '#include <string>\nextern "C" int cpp_probe(void) { std::string value(128, \'v\'); return int(value.size()); }\n')!
+	os.write_file(os.join_path(root, 'probe.h'), 'int cpp_probe(void);\n')!
+	for form in ['-xc++', '-x c++'] {
+		for input in ['shim.c', 'shim.o'] {
+			source := os.join_path(root, 'main.c.v')
+			os.write_file(source, 'module main\n#flag ${form} "@VMODROOT/${input}" -xnone\n#include "@VMODROOT/probe.h"\nfn C.cpp_probe() int\nfn main() { assert C.cpp_probe() == 128 }\n')!
+			result := cmdexec.run(os.join_path(@VMODROOT, 'v'), ['-new-compiler', '-gc', 'none',
+				'-nocache', '-no-retry-compilation', '-cc', compiler, 'run', source])
+			assert result.exit_code == 0, '${form} ${input}: ${result.output}'
+		}
+	}
+}
+
 fn test_joined_explicit_cpp_language_compiles_c_named_source() {
 	compiler := os.find_abs_path_of_executable('clang') or {
 		os.find_abs_path_of_executable('gcc') or { return }

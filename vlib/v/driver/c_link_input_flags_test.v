@@ -219,3 +219,22 @@ fn test_c_source_language_flags_preserve_filename_case_and_explicit_languages() 
 	prepared_expected << cpp_runtime_link_flag(pref.host_target())
 	assert prepared == prepared_expected
 }
+
+fn test_joined_languages_match_separated_driver_decisions() {
+	for language in ['c', 'c++', 'objective-c', 'objective-c++', 'none'] {
+		joined := ['-x${language}', 'source.c', '-xnone', 'following.c']
+		separated := ['-x', language, 'source.c', '-x', 'none', 'following.c']
+		assert c_link_flags_use_non_c_language(joined) == c_link_flags_use_non_c_language(separated)
+		assert c_link_flags_use_cpp_language(joined) == c_link_flags_use_cpp_language(separated)
+		assert c_link_flags_use_objective_c_language(joined) == c_link_flags_use_objective_c_language(separated)
+		assert c_flags_need_objective_c(joined) == c_flags_need_objective_c(separated)
+		assert c_object_compile_flags(joined) == c_object_compile_flags(separated)
+		assert c_dylib_link_flags(joined) == c_dylib_link_flags(separated)
+		assert tcc_native_c_source_flags(joined) == tcc_native_c_source_flags(separated)
+	}
+	assert c_link_flags_use_cpp_language(['-xc++', 'source.c'])
+	assert c_link_flags_use_objective_c_language(['-xobjective-c', 'source.c'])
+	assert !c_link_flags_use_cpp_language(['-Xlinker', '-xc++', 'source.c'])
+	assert !c_flags_need_objective_c(['-Xlinker', '-xobjective-c', 'source.c'])
+	assert !c_link_flags_use_cpp_language(['-xc++', '-xnone', 'source.c'])
+}
