@@ -91,8 +91,9 @@
 //
 // A V type does not always determine the encoding: `i32` is `int32`, `sint32`, or
 // `sfixed32` depending on the schema, and only the schema knows which.
-// `ProtoScalar` names the thirteen, and a field can be annotated
-// `@[protobuf_type: 'sint32']` to say which its own type should be treated as.
+// `ProtoScalar` names the thirteen, and `scalar_by_name` resolves a name as the
+// schema spells it. A hand-written codec picks its `write_*` call to match; the
+// generator picks the same call from the field's declared type.
 //
 // `i8`, `i16`, `u8`, and `u16` have no protobuf counterpart. Widen them to a
 // 32- or 64-bit type, which costs nothing on the wire.

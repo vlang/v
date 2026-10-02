@@ -350,7 +350,7 @@ pub fn (mut p Parser) parse_message(comments []string) !Message {
 //
 // The flattening is what the generator wants: V sumtype variants carry no
 // attributes in this compiler, so a `oneof` becomes parallel optional fields
-// that share a `@[protobuf_oneof: ...]` attribute.
+// that the emitter keeps exclusive by clearing the others when one is read.
 pub fn (mut p Parser) parse_oneof(mut msg Message) !Oneof {
 	p.advance() // oneof
 	mut group := Oneof{

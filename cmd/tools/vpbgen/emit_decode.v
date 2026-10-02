@@ -70,7 +70,7 @@ pub fn emit_decode_case(mut e Emitter, f Resolved) {
 		e.wln(3, '}')
 		return
 	}
-	e.wln(4, 'protobuf.check_wire_type(${n}, wire_type, protobuf.WireType.${field_wire_name(f)})!')
+	e.wln(4, 'protobuf.check_wire_type(${n}, wire_type, protobuf.WireType.${field_wire_type(f)})!')
 	if f.kind == .text {
 		e.wln(4, 'out.${f.name} = unpacker.read_string()!')
 	} else if f.kind == .bytes {
@@ -83,17 +83,17 @@ pub fn emit_decode_case(mut e Emitter, f Resolved) {
 	e.wln(3, '}')
 }
 
-// field_wire_name returns the V spelling of the wire type a field arrives as.
+// field_wire_type returns the wire type a field arrives as.
 //
 // It keys off the field's kind rather than its scalar, because a string, a bytes
 // field, and a nested message are all length-delimited whatever their V type is,
 // and an enum is a varint because it travels as an integer. Only a genuine scalar
 // takes its wire type from the ProtoScalar.
-pub fn field_wire_name(f Resolved) string {
+pub fn field_wire_type(f Resolved) protobuf.WireType {
 	return match f.kind {
-		.text, .bytes, .message { 'length_delimited' }
-		.enum { 'varint' }
-		else { scalar_wire_name(f.scalar) }
+		.text, .bytes, .message { .length_delimited }
+		.enum { .varint }
+		else { f.scalar.wire_type() }
 	}
 }
 

@@ -286,7 +286,7 @@ pub fn emit_encode_repeated(mut e Emitter, f Resolved, value string) {
 	} else {
 		// The element's own wire type: the enclosing tag says only that the
 		// payload is a length-delimited run.
-		wire := scalar_wire_name(f.scalar)
+		wire := f.scalar.wire_type()
 		e.wln(2, 'mut payload := []u8{cap: ${value}.len * ${packed_width(f.scalar)}}')
 		e.wln(2, 'for item in ${value} {')
 		e.wln(3, packed_element_call(f.scalar, 'item'))
@@ -333,14 +333,4 @@ pub fn emit_single_encode_elem(f Resolved, n int, value string) string {
 		return 'packer.write_message(${n}, ${value}.encode()!)'
 	}
 	return emit_single_encode(f, n, value)
-}
-
-// scalar_wire_name returns the V spelling of a scalar's wire type, which the
-// generated code names directly.
-pub fn scalar_wire_name(s protobuf.ProtoScalar) string {
-	return match s {
-		.fixed32, .sfixed32, .float32 { 'fixed32' }
-		.fixed64, .sfixed64, .float64 { 'fixed64' }
-		else { 'varint' }
-	}
 }
