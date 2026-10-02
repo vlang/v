@@ -14881,6 +14881,21 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			0
 		})
 		target_name := tc.call_argument_target_name(node, info)
+		if info.name.starts_with('C.') && expected_value is ArrayFixed
+			&& (actual_value is Pointer || actual_value is Nil) {
+			// C adjusts fixed-array parameters to element pointers. The V array
+			// length does not change that ABI, but typed pointees must still match.
+			if actual_value is Nil {
+				continue
+			}
+			pointer := actual_value as Pointer
+			if fn_param_unalias_type(pointer.base_type) is Void
+				|| tc.fn_param_compatible(pointer.base_type, expected_value.elem_type) {
+				continue
+			}
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			continue
+		}
 		// IError stringification is valid in interpolation/printing, but an error
 		// constructor takes a real string and cannot embed an IError in its message.
 		if info.name in ['error', 'error_with_code'] && param_idx == 0
