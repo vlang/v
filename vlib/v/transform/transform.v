@@ -22413,6 +22413,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	result := t.a.add_node(flat.Node{
 		kind:           .selector
 		op:             sel_op
+		is_mut:         node.is_mut
 		children_start: start
 		children_count: node.children_count
 		pos:            node.pos
