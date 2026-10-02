@@ -12,6 +12,10 @@ const max_parallel_check_jobs = 26
 // Scoped workers use bounded arena batches, so let self-host checks occupy all
 // of the worker pool's cores without retaining one large arena per core.
 const max_scoped_check_jobs = 18
+// min_parallel_check_job_cost is the work, in CheckWorkItem.cost, that pays for
+// a worker of the parallel check (see parallel_check_jobs_for_cost): a program
+// of 11 small functions costs 216, one of 201 costs 4,282.
+const min_parallel_check_job_cost = 256
 // The historical 96-batch limit remains the low-memory fallback. Prealloc
 // self-host checks default to one twelfth as many batches below, amortizing
 // checker fork/promotion setup while keeping each worker's scratch bounded.
@@ -19,6 +23,11 @@ const scoped_check_worker_batches = 96
 // A serial checker owns the whole import graph instead of one worker shard, so
 // use finer arena batches to keep compiler-module checks below the memory cap.
 const scoped_check_serial_batches = 64
+// A batch forks the checker and promotes its results back, ~0.3 ms each, which
+// a few small functions do not pay back: 64 batches of a 200-function program
+// took 43 ms of a check, one batch 24 ms. A batch checks at least this many
+// nodes (item costs), a few ms of work.
+const min_scoped_check_batch_cost = 2048
 // Keep one scheduled chunk per scoped worker. Finer arena batches within each
 // chunk release transient checker allocations without retaining extra shards.
 // (Re-verified 2026-08: oversubscribe=2 costs ~3-5ms here — the extra per-chunk
@@ -691,15 +700,11 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 	if items.len == 0 {
 		return
 	}
-	n_batches := if items.len < batch_limit {
-		items.len
-	} else {
-		batch_limit
-	}
 	mut total_cost := i64(0)
 	for item in items {
 		total_cost += i64(item.cost) + 1
 	}
+	n_batches := scoped_check_batch_count(items.len, total_cost, batch_limit)
 	mut start := 0
 	mut consumed_cost := i64(0)
 	for batch_idx in 0 .. n_batches {
@@ -719,6 +724,18 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 		check_worker_scope_free(scratch_scope)
 		start = end
 	}
+}
+
+// scoped_check_batch_count splits `n_items` of `total_cost` into at most
+// `batch_limit` batches, and into fewer when a batch would check fewer nodes
+// than min_scoped_check_batch_cost.
+fn scoped_check_batch_count(n_items int, total_cost i64, batch_limit int) int {
+	mut n := int_min(n_items, batch_limit)
+	by_cost := total_cost / min_scoped_check_batch_cost
+	if by_cost < i64(n) {
+		n = int(by_cost)
+	}
+	return int_max(n, 1)
 }
 
 fn check_worker_scope_begin(enabled bool) voidptr {
@@ -826,11 +843,16 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
 	tc.check_labelled_loop_controls()
-	items := tc.collect_parallel_check_items()
+	items := tc.incremental_select(tc.collect_parallel_check_items())
 	tc.check_top_level_declarations()
 	final_file := tc.cur_file
 	final_module := tc.cur_module
-	tc.check_scoped_batches(items, scoped_check_serial_batches)
+	if tc.incremental_skipping() {
+		tc.check_incremental_items(items)
+	} else {
+		tc.check_scoped_batches(items, scoped_check_serial_batches)
+	}
+	tc.capture_items = false
 	tc.cur_file = final_file
 	tc.cur_module = final_module
 	if !tc.valid_diagnostic_fast {
@@ -987,9 +1009,28 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 // to the serial scan regardless of shard boundaries.
 fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]int, const_keys map[string][]int, mut alive []bool) {
 	n_nodes := tc.a.nodes.len
+	start := tc.prepared_names_start()
+	if start > 0 {
+		// The prepared nodes were scanned once, before the first check.
+		prepared := tc.prepared_collect
+		for key, hits in const_keys {
+			if key in prepared.named {
+				for cand_idx in hits {
+					alive[cand_idx] = true
+				}
+			}
+		}
+		for key, hits in fn_keys {
+			if key in prepared.called || key in prepared.function_named {
+				for cand_idx in hits {
+					alive[cand_idx] = true
+				}
+			}
+		}
+	}
 	pool := checker_worker_pool(tc.a)
-	if isnil(pool) || pool.size() == 0 || n_nodes < 262_144 {
-		tc.scan_unused_alive_range(fn_keys, const_keys, 0, n_nodes, mut alive)
+	if isnil(pool) || pool.size() == 0 || n_nodes - start < 262_144 {
+		tc.scan_unused_alive_range(fn_keys, const_keys, start, n_nodes, mut alive)
 		return
 	}
 	mut n_jobs := pool.size() + 1
@@ -1003,8 +1044,8 @@ fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]in
 			tc:         voidptr(tc)
 			fn_keys:    fn_keys
 			const_keys: const_keys
-			start:      n_nodes * job / n_jobs
-			end:        n_nodes * (job + 1) / n_jobs
+			start:      start + (n_nodes - start) * job / n_jobs
+			end:        start + (n_nodes - start) * (job + 1) / n_jobs
 			alive:      []bool{len: alive.len}
 		}
 	}
@@ -1056,12 +1097,21 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	// The work list only drives the dispatch below; keep it and its
 	// collection scratch out of the persistent arena.
 	items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-	items := tc.collect_parallel_check_items()
+	all_items := tc.collect_parallel_check_items()
 	check_worker_scope_leave(items_scope)
+	// What an incremental check keeps outlives the work list.
+	items := tc.incremental_select(all_items)
 	tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
 	final_file := tc.cur_file
 	final_module := tc.cur_module
-	was_parallel := tc.run_parallel_check(items)
+	mut was_parallel := false
+	if tc.incremental_skipping() {
+		tc.check_top_level_declarations()
+		tc.check_incremental_items(items)
+	} else {
+		was_parallel = tc.run_parallel_check(items, false)
+	}
+	tc.capture_items = false
 	mut tailsw := time.new_stopwatch()
 	check_worker_scope_free(items_scope)
 	// Per-function check costs only schedule the parallel batches above.
@@ -1204,6 +1254,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 	selected_files_only := tc.selected_files_only()
 	mut skip_file_semantics := false
 	mut do_signatures := all_signatures
+	mut file_values := do_values
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
 		if node.kind == .file {
@@ -1211,13 +1262,20 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 			// A signature check only reports on its own declaration.
 			do_signatures = all_signatures
 				&& (!selected_files_only || tc.diagnostic_files[node.value])
+			// So does a value check, as the bodies of the other files, which
+			// such a check leaves unchecked too.
+			file_values = do_values && (!selected_files_only || tc.diagnostic_files[node.value])
 		} else if skip_file_semantics && node.kind != .module_decl {
 			continue
+		}
+		if do_signatures && node.kind in [.fn_decl, .struct_decl, .interface_decl, .type_decl,
+			.global_decl, .const_decl] {
+			tc.check_written_generic_types(flat.NodeId(i))
 		}
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
-				if do_values {
+				if file_values {
 					tc.check_top_level_file_statements(node)
 				}
 			}
@@ -1246,7 +1304,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 					tc.check_decl_type_strings(flat.NodeId(i), node)
 					tc.check_struct_implements(flat.NodeId(i), node)
 				}
-				if do_values {
+				if file_values {
 					tc.check_struct_field_defaults(node_id, node)
 				}
 			}
@@ -1286,13 +1344,13 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 						tc.check_pascal_case_name(node_id, node.value, 'enum name', tc.declaration_keyword_name_pos(node_id, 'enum'))
 					}
 				}
-				if do_values {
+				if file_values {
 					tc.check_enum_backing_type(flat.NodeId(i), node)
 					tc.check_enum_field_values(flat.NodeId(i), node)
 				}
 			}
 			.const_decl {
-				if do_values {
+				if file_values {
 					tc.check_const_field_values(node)
 				}
 			}
@@ -1300,7 +1358,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 				if do_signatures {
 					tc.check_global_decl_semantics(flat.NodeId(i), node)
 				}
-				if do_values {
+				if file_values {
 					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file]
 						&& !tc.node_is_from_translated_file(node) {
 						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
@@ -1345,7 +1403,11 @@ fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
+// run_parallel_check checks the bodies of `items` on the worker pool, and the
+// top-level declarations along with them, unless `bodies_only`: then it leaves
+// the diagnostics in the order the bodies reported them, after those already
+// found (see complete_incremental_check).
+fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bool) bool {
 	mut ast := unsafe { tc.a }
 	pool := ensure_checker_worker_pool(mut ast)
 	// Without a pool every item is checked by the serial branch below.
@@ -1353,8 +1415,11 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
 		n_jobs = max_scoped_check_jobs
 	}
-	if items.len < min_parallel_check_items || n_jobs <= 1 {
-		tc.check_top_level_declarations()
+	n_jobs = parallel_check_jobs_for_cost(n_jobs, items)
+	if items.len < tc.parallel_check_min_items || n_jobs <= 1 {
+		if !bodies_only {
+			tc.check_top_level_declarations()
+		}
 		if tc.scope_parallel_check_workers {
 			tc.check_scoped_batches(items, scoped_check_serial_batches)
 		} else {
@@ -1367,7 +1432,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	// tc.const_types), so they must complete before any chunk is
 	// submitted; only the read-only signature checks overlap the pool.
 	tlv_sw := time.new_stopwatch()
-	tc.check_top_level_declaration_values()
+	if !bodies_only {
+		tc.check_top_level_declaration_values()
+	}
 	tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	split_sw := time.new_stopwatch()
 	mut chunk_target := n_jobs
@@ -1452,10 +1519,12 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
 		}
 	}
-	tasks << workers.Task{
-		run:        check_top_level_decl_signatures_thread
-		arg:        voidptr(tc)
-		force_sync: true
+	if !bodies_only {
+		tasks << workers.Task{
+			run:        check_top_level_decl_signatures_thread
+			arg:        voidptr(tc)
+			force_sync: true
+		}
 	}
 	check_worker_scope_leave(setup_scope)
 	rpsw2 := time.new_stopwatch()
@@ -1524,6 +1593,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
 	tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
 	check_worker_scope_free(setup_scope)
+	if bodies_only {
+		return any_started
+	}
 	sort_sw := time.new_stopwatch()
 	tc.sort_parallel_check_errors()
 	tc.timing_profile('  [ttime]   ck err sort      ${f64(sort_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -2480,6 +2552,19 @@ fn is_inline_asm_instruction_error(message string) bool {
 	return message.contains('structured `intel`') || message.contains('`raw intel` block')
 }
 
+// parallel_check_jobs_for_cost bounds `n_jobs` by the work of `items`: each
+// worker costs a copy of the checker and a merge, which a few small bodies do
+// not pay back. A program that costs less than min_parallel_check_job_cost gets
+// one job: the serial check.
+fn parallel_check_jobs_for_cost(n_jobs int, items []CheckWorkItem) int {
+	mut total_cost := i64(0)
+	for item in items {
+		total_cost += item.cost
+	}
+	by_cost := total_cost / min_parallel_check_job_cost
+	return if by_cost < i64(n_jobs) { int_max(int(by_cost), 1) } else { n_jobs }
+}
+
 fn check_job_count(n_runtime_jobs int, n_items int) int {
 	if n_runtime_jobs <= 0 || n_items <= 0 {
 		return 0
@@ -2612,6 +2697,14 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 		tc.check_range_hi = it.fn_idx
 		memo.begin(it.range_lo, it.fn_idx)
 		tc.check_fn_decl_semantics(it.fn_idx, node, it.file, it.module)
+		if tc.capture_items {
+			tc.item_marks << IncrementalItemMark{
+				fn_idx:  it.fn_idx
+				errors:  tc.errors.len
+				notices: tc.notices.len
+				pending: tc.pending_ierror_errors.len
+			}
+		}
 	}
 	memo.active = false
 	tc.check_range_lo = -1
@@ -2632,6 +2725,136 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 	}
 	tc.selected_file_called_fns[checker_qualified_fn_name(module_name, node.value)] = true
 	tc.check_fn_decl_semantics(fn_idx, node, file, module_name)
+}
+
+// check_concrete_instance_members checks a concrete clone of one of the
+// program's generic functions for what only its concrete types decide: a field,
+// a method or an operator that such a type lacks, as when `show(1)` reads
+// `x.name` or `add(1)` adds a string to `a`. Every other error and warning of the
+// clone is dropped: checked before the clone is lowered, only these are reliable
+// outside checker fixtures, where many valid generic programs would fail. `args`
+// are the types of the instance: the clone spells an alias among them by its
+// base type, and a member of the alias is none of its base (see
+// member_of_an_alias_argument).
+pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string, args []string) {
+	errors_start := tc.errors.len
+	notices_start := tc.notices.len
+	// The clone was appended after the parent index was built; without its edges
+	// every parent query of the check scans the whole tree.
+	if tc.concrete_parents_indexed == 0 {
+		tc.refresh_rewritten_parent_index(tc.a)
+	} else {
+		tc.index_rewritten_parents_after(tc.concrete_parents_indexed)
+	}
+	tc.concrete_parents_indexed = tc.a.nodes.len
+	tc.check_concrete_fn_semantics(fn_idx, file, module_name)
+	mut kept := []TypeError{}
+	for err in tc.errors[errors_start..] {
+		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
+			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node)) {
+			kept << err
+		}
+	}
+	tc.errors.trim(errors_start)
+	tc.errors << kept
+	tc.notices.trim(notices_start)
+}
+
+// member_of_an_alias_argument reports whether the member error `msg` names the
+// base type of an alias among the types `args` of an instance, and a member
+// that the alias has: `el.val.pack()` of an `Elm[Octet]`, where the clone
+// spells `Octet` as `string` and `pack` is a method of `Octet`.
+fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []string) bool {
+	type_name, member := concrete_member_error_parts(msg) or { return false }
+	for arg in args {
+		typ := unwrap_pointer(tc.parse_type(arg))
+		if typ is Alias && unalias_type(typ).name() == type_name
+			&& tc.alias_declares_method(typ, member) {
+			return true
+		}
+	}
+	return false
+}
+
+// concrete_member_error_parts returns the type and the member that the member
+// error `msg` names (see is_concrete_member_error): `string` and `pack` for
+// "unknown method or field: `string.pack`", `User` and `nme` for "type `User`
+// has no field named `nme`.".
+fn concrete_member_error_parts(msg string) ?(string, string) {
+	if msg.starts_with('unknown method or field: `') {
+		named := msg.all_after('`').all_before('`')
+		dot := named.last_index_u8(`.`)
+		if dot <= 0 || dot == named.len - 1 {
+			return none
+		}
+		return named[..dot], named[dot + 1..]
+	}
+	quoted := msg.split('`')
+	if quoted.len < 4 {
+		return none
+	}
+	return quoted[1], quoted[3]
+}
+
+// is_concrete_member_error reports whether `msg` says that a concrete type
+// lacks a field or a method. A `voidptr` receiver is a type the clone did not
+// resolve, not one the program uses.
+fn is_concrete_member_error(msg string) bool {
+	if msg.starts_with('`voidptr`') || msg.contains('`voidptr.') {
+		return false
+	}
+	return msg.contains(' has no property `') || msg.contains(' has no field named `')
+		|| msg.contains(' has no field or method `')
+		|| msg.starts_with('unknown method or field: `')
+}
+
+// is_concrete_operator_error reports whether `msg` says that a concrete type
+// lacks an operator, as `int + string` does. A `voidptr` in it is a type the
+// clone did not resolve.
+fn is_concrete_operator_error(msg string) bool {
+	if msg.contains('`voidptr`') {
+		return false
+	}
+	return msg.starts_with('operator `') || msg.starts_with('undefined operation `')
+		|| msg.starts_with('infix expr: cannot use `')
+}
+
+// operator_operands_are_plain reports whether the operator at `id` applies to
+// names, literals and fields of them: a clone types those with its concrete
+// types, where the result of a call can still have the type of the open body
+// (`1 + leaf.left.size()` in a method of a generic sum type).
+fn (tc &TypeChecker) operator_operands_are_plain(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind !in [.infix, .prefix] || node.children_count == 0 {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if !tc.operand_is_plain(tc.a.child(node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (tc &TypeChecker) operand_is_plain(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	return match node.kind {
+		.ident, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal {
+			true
+		}
+		.selector, .paren, .prefix {
+			node.children_count > 0 && tc.operand_is_plain(tc.a.child(node, 0))
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
@@ -2779,6 +3002,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		tc.check_generic_fn_literal_capture_types(node)
 		tc.check_generic_fn_chained_bare_struct_method_inference(node)
 		tc.check_generic_fn_struct_init_type_args(node)
+		tc.check_generic_fn_constraint_members(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0
@@ -2790,6 +3014,12 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	} else if has_body && generic_params.len > 0 && node.value.contains('.') && !fast_valid_build
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.check_deferred_generic_receiver_comparisons(node)
+	}
+	// A check tells what the body of a generic function does wrong without its
+	// type parameters (see check_generic_fn_body).
+	if has_body && generic_params.len > 0 && tc.check_generic_bodies && !fast_valid_build
+		&& !signature_has_bare_generic_type && tc.should_diagnose(flat.NodeId(fn_idx)) {
+		tc.check_generic_fn_body(node, fn_idx, generic_params)
 	}
 	if !fast_valid_build {
 		if has_body {
@@ -4102,6 +4332,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		decl_index_ready: tc.visible_mutation_cache.decl_index_ready
 	}
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
+	w.capture_items = tc.capture_items
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
 	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set
@@ -4391,6 +4622,23 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 }
 
 fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scoped bool) {
+	if w.item_marks.len > 0 {
+		if !isnil(tc.incremental) {
+			tc.incremental_capture(w, scoped)
+		} else if tc.capture_items {
+			// A thread of a parallel check merges the batches it checked: their
+			// marks go on, placed in its own lists, to the check that captures
+			// what each body reported.
+			for mark in w.item_marks {
+				tc.item_marks << IncrementalItemMark{
+					fn_idx:  mark.fn_idx
+					errors:  tc.errors.len + mark.errors
+					notices: tc.notices.len + mark.notices
+					pending: tc.pending_ierror_errors.len + mark.pending
+				}
+			}
+		}
+	}
 	// Scoped checkers use a private symbol interner. Translate each distinct
 	// spelling once per worker, then replay dependency edges with O(1) ids; the
 	// old per-edge name+intern path repeated the same locked hash probes across

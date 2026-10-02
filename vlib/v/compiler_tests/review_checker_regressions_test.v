@@ -589,6 +589,60 @@ fn main() {
 }
 ')
 	assert heap_method_value == '1'
+	embedded_source := 'struct Base {
+	id int
+}
+
+fn (b &Base) ref() int {
+	return b.id
+}
+
+struct Plain {
+	Base
+}
+'
+	run_bad(v3_bin, 'embedded_non_heap_pointer_receiver_method_value', embedded_source + 'fn make() fn () int {
+	p := Plain{}
+	return p.ref
+}
+
+fn main() {}
+',
+		'method `Base.ref` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `Plain` as `@[heap]`.')
+	embedded_heap_method_value := run_good(v3_bin, 'embedded_heap_pointer_receiver_method_value',
+		embedded_source + 'fn main() {
+	p := &Plain{
+		Base: Base{3}
+	}
+	callback := p.ref
+	println(callback())
+}
+')
+	assert embedded_heap_method_value == '3'
+	run_bad(v3_bin, 'ambiguous_embedded_method_value', 'struct A {}
+
+fn (a A) name() string {
+	return "a"
+}
+
+struct B {}
+
+fn (b B) name() string {
+	return "b"
+}
+
+struct Both {
+	A
+	B
+}
+
+fn main() {
+	x := Both{}
+	f := x.name
+	println(f())
+}
+',
+		'ambiguous method `name`')
 	run_bad(v3_bin, 'direct_option_alias_cast', 'type MaybeInt = ?int
 
 fn main() {

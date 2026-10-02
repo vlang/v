@@ -1305,9 +1305,8 @@ fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
 	if index_node.kind != .index || index_node.children_count < 2 || index_node.value == 'range' {
 		return ''
 	}
-	if t.index_callee_is_value_index(index_node) {
-		return ''
-	}
+	// What the brackets hold first: `xs[0]` or `xs[i + 1]` name no type, and
+	// telling a value index from a generic call resolves types.
 	mut args := []string{}
 	for i in 1 .. index_node.children_count {
 		arg := t.generic_call_type_arg_name(t.a.child(&index_node, i))
@@ -1315,6 +1314,9 @@ fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
 			return ''
 		}
 		args << arg
+	}
+	if t.index_callee_is_value_index(index_node) {
+		return ''
 	}
 	return args.join(', ')
 }
@@ -16311,7 +16313,15 @@ fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type strin
 			lookup_type = short_type
 		}
 	}
-	fields := t.embedded_fields[lookup_type] or { return none }
+	fields := t.embedded_fields[lookup_type] or {
+		// The index holds declarations; a generic instance (`Wrap[int]`) has the
+		// fields of its declaration with its type arguments.
+		if !lookup_type.contains('[') {
+			return none
+		}
+		info := t.lookup_struct_info(lookup_type) or { return none }
+		info.fields.filter(t.is_embedded_field(it))
+	}
 	clean_receiver := t.normalize_type_alias(receiver_type)
 	for field in fields {
 		// The semantic type of an embedded alias can be its underlying function
@@ -16329,8 +16339,11 @@ fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type strin
 		} else {
 			raw_field
 		}
+		// The source spelling is relative to the module of the embedding struct
+		// (`Base` in `shapes`); the semantic type is qualified (`shapes.Base`).
+		semantic_field := t.normalize_type_alias(field.typ.trim_left('&'))
 		if field.name in [raw_field, short_raw_field, clean_field, short_field]
-			&& clean_field == clean_receiver {
+			&& (clean_field == clean_receiver || semantic_field == clean_receiver) {
 			return [field]
 		}
 		if sub_path := t.embedded_receiver_path(clean_field, receiver_type) {

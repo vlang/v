@@ -6906,7 +6906,7 @@ fn (mut tc TypeChecker) check_comptime_condition_diagnostics(id flat.NodeId, nod
 		root := left.all_before('.')
 		mut has_error := false
 		root_is_generic_type := root in tc.fn_context.generic_params
-			|| tc.active_generic_param(root)
+			|| tc.active_generic_param(root) || root in tc.type_param_texts
 		left_type_name := if left.starts_with('shared ') {
 			trimmed_space(left[7..])
 		} else {
@@ -7330,6 +7330,11 @@ fn (tc &TypeChecker) comptime_type_condition_value(cond string) ?bool {
 		}
 		return tc.comptime_type_condition_value(clean[and_idx + 2..])
 	}
+	if tc.type_param_texts.len > 0 {
+		if term := comptime_in_term(clean) {
+			return tc.instance_comptime_in_value(term)
+		}
+	}
 	for op in [' !is ', ' is '] {
 		op_idx := comptime_condition_top_level_index(clean, op)
 		if op_idx >= 0 {
@@ -7394,7 +7399,7 @@ fn comptime_condition_scalar_value(raw string) ?string {
 }
 
 fn (tc &TypeChecker) comptime_type_matches(actual string, expected string) ?bool {
-	clean_actual := trimmed_space(actual)
+	clean_actual := tc.instance_type_text(trimmed_space(actual))
 	clean_expected := trimmed_space(expected)
 	if clean_actual.len == 0 || clean_expected.len == 0
 		|| (is_bare_generic_param(clean_actual) && !tc.type_name_known(clean_actual)) {
@@ -8617,6 +8622,11 @@ fn (mut tc TypeChecker) record_invalid_enum_infix(id flat.NodeId, node flat.Node
 fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 	mut current := id
 	for _ in 0 .. 32 {
+		// No block holds a function declaration. The parent of a specialized
+		// one, which nothing holds, is a scan of the whole node arena.
+		if tc.valid_node_id(current) && tc.a.node(current).kind == .fn_decl {
+			return false
+		}
 		parent_id := tc.direct_parent_id(current)
 		if !tc.valid_node_id(parent_id) {
 			return false

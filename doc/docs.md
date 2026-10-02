@@ -5284,6 +5284,11 @@ post := posts_repo.find_by_id(1)? // find_by_id[Post]
 A generic method retains its receiver type when called inside a function returning multiple
 values, including a Result tuple. The enclosing return type does not replace receiver arguments.
 This also applies when a value from a Result tuple is returned as an interface.
+An explicitly specialized generic method can also be stored as a function value when the
+method is promoted from an embedded struct; the value binds that embedded receiver.
+
+Editor hover and definition queries resolve generic type parameters within their declaration.
+A later declaration using a module type with the same name resolves to that module type.
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
@@ -5334,6 +5339,52 @@ Generic type inference also works with field initialization shorthand in nested 
 For `struct Box[T] { value T }` and `fn wrap[U](box Box[U]) Box[U]`,
 `wrap(value: 42)` infers `U` as `int`. The struct and function may use different
 parameter names or arrange those parameters in a different order.
+
+#### Constraints
+
+A type parameter can name, after it, what its type arguments must be: an interface,
+which a type argument implements; a sum type, or an alias of one, whose variants are
+the types it takes; or a struct, which takes that struct and the structs that embed it.
+A call is checked against the constraint where it is written, and in the body a value
+of the type parameter has what the constraint provides: the members of the interface
+or of the struct, or what every variant of the sum type has, operators included.
+Nested generic sums retain the variants of each concrete instance. For example,
+`Part[int] | Part[string]` accepts variants from both instances of `Part[T]`.
+Recursive sum constraints that keep growing their type arguments are rejected instead of
+silently omitting nested variants. Finite recursive instances and aliases remain valid.
+Modules referenced only by a generic constraint still count as used imports.
+Struct constraints accept finite embedding paths without a depth limit.
+
+```v
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+type Number = int | f64
+
+fn half[T Number](x T) T {
+	return x / 2
+}
+
+fn main() {
+	println(longest(User{ name: 'ana' }, User{ name: 'leonor' }).name) // leonor
+	println(half(7)) // 3
+	println(half(1.5)) // 0.75
+}
+```
+
+`longest(1, 2)` is reported at the call: `int` does not implement `Named`. And a body
+that used `a.age` would be reported too, as `Named` declares no `age`. In a branch of
+`$if T is f64 {`, `T` is `f64`, and in its `$else` the rest of the set.
 
 #### Structured generic receiver patterns
 
@@ -9745,7 +9796,7 @@ functions.
 
 // Use the system SQLite when there is one; otherwise build the amalgamation that
 // `v vlib/db/sqlite/install_thirdparty_sqlite.vsh` downloads, like `db.sqlite` does.
-$if $pkgconfig ( 'sqlite3' ) {
+$if $pkgconfig('sqlite3') {
 	#pkgconfig sqlite3
 } $else $if darwin {
 	#flag -lsqlite3

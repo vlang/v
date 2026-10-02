@@ -104,6 +104,13 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 		return ''
 	}
 	offset := line_start + q.col
+	// A question in the body of a generic function types that body first (see
+	// vls_type_generic_body); a hover, once it has found what it is about.
+	if q.method in [.completion, .signature_help] {
+		if id := tc.vls_node_around(file_id, offset) {
+			tc.vls_type_generic_body(id)
+		}
+	}
 	// Signature help is about the call the cursor is in, not a name under it.
 	if q.method == .signature_help {
 		return tc.vls_signature_help(file_id, offset)
@@ -111,7 +118,17 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 	if q.method == .completion {
 		return tc.vls_completion(file_id, offset, source)
 	}
-	target := tc.vls_target_at(file_id, offset, source) or {
+	// A name in a branch that the parse left out has a node once the file is
+	// parsed again with every branch (see vls_add_skipped_branches).
+	mut target := tc.vls_target_at(file_id, offset, source) or {
+		VlsTarget{
+			id: flat.NodeId(-1)
+		}
+	}
+	if int(target.id) < 0 && source.contains('\$if') && tc.vls_add_skipped_branches(file_id) {
+		target = tc.vls_target_at(file_id, offset, source) or { target }
+	}
+	if int(target.id) < 0 {
 		// A word of a comment or of the text of a string names no type. The
 		// cursor can be just past the word it asks about, as at the end of a
 		// line comment: the first byte of the word tells where the word is.
@@ -119,6 +136,9 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 			return ''
 		}
 		return tc.vls_answer_type_word(q, file_id, source, offset)
+	}
+	if q.method == .hover {
+		tc.vls_type_generic_body(target.id)
 	}
 	return match q.method {
 		.hover { tc.vls_hover(target) }
@@ -131,15 +151,29 @@ pub fn (mut tc TypeChecker) vls_answer(q VlsQuery) string {
 // of a field or of a parameter, a return type, a receiver's type. The parser
 // keeps those as text, without nodes of their own.
 fn (mut tc TypeChecker) vls_answer_type_word(q VlsQuery, file_id int, source string, offset int) string {
+	if q.method == .hover {
+		if id := tc.vls_node_around(file_id, offset) {
+			tc.vls_type_generic_body(id)
+		}
+	}
 	tc.vls_enter_file(file_id)
 	for word in vls_type_words_at(source, offset) {
 		match q.method {
 			.hover {
+				if text := tc.vls_type_param_hover_at(file_id, offset, word) {
+					return vls_hover_json(text, '')
+				}
+				if text := tc.vls_condition_value_hover_at(file_id, offset, source, word) {
+					return vls_hover_json(text, '')
+				}
 				if declaration := tc.vls_type_declaration(word) {
 					return vls_hover_json(declaration, '')
 				}
 			}
 			.definition {
+				if at := tc.vls_type_param_definition_at(file_id, offset, word) {
+					return tc.vls_position_text(at.file_id, at.offset, q.target)
+				}
 				if at := tc.vls_type_definition(word) {
 					return tc.vls_position_text(at.file_id, at.offset, q.target)
 				}
@@ -150,6 +184,188 @@ fn (mut tc TypeChecker) vls_answer_type_word(q VlsQuery, file_id int, source str
 		}
 	}
 	return ''
+}
+
+// vls_type_param_hover_at is the hover of the type parameter `word` written at
+// `offset` of `file_id`, where no node of its own stands for it: in
+// `[T Named]`, in a type, `[]T`, or in the condition of a `$if` (see
+// vls_type_param_hover). No node spans a signature: there, the declaration
+// that it starts.
+fn (tc &TypeChecker) vls_type_param_hover_at(file_id int, offset int, word string) ?string {
+	if id := tc.vls_node_around(file_id, offset) {
+		if text := tc.vls_type_param_hover(id, word) {
+			return text
+		}
+	}
+	decl_id := tc.vls_decl_at(file_id, offset)?
+	return tc.vls_type_param_hover(decl_id, word)
+}
+
+// vls_condition_value_hover_at is the hover of the value `word` written at
+// `offset` of `file_id` in the condition of a `$if`, which keeps it as text:
+// `c` in `$if c is $float {`, a parameter or a local of the function around
+// it, with what the `$if`s around it leave of its type parameters (see
+// vls_value_hover).
+fn (tc &TypeChecker) vls_condition_value_hover_at(file_id int, offset int, source string, word string) ?string {
+	id := tc.vls_node_around(file_id, offset)?
+	node := tc.a.node(id)
+	// Between `$if` and the `{` of its branch.
+	if node.kind != .comptime_if || offset < int(node.pos.offset) {
+		return none
+	}
+	brace := source.index_after('{', int(node.pos.offset)) or { return none }
+	if offset > brace {
+		return none
+	}
+	decl, _ := tc.vls_enclosing_decl(id)?
+	if decl.kind != .fn_decl {
+		return none
+	}
+	for i in 0 .. decl.children_count {
+		param := tc.a.child_node(&decl, i)
+		if param.kind == .param && param.value == word && param.typ.len > 0 {
+			declared := tc.parse_type(param.typ)
+			if type_contains_unknown(declared) {
+				return tc.vls_generic_value_text(id, word, param.typ)
+			}
+			return '${word} ${tc.vls_type_text(declared)}'
+		}
+	}
+	typ := tc.vls_local_named_type(decl, word)?
+	return tc.vls_value_hover(id, word, typ)
+}
+
+// vls_type_param_definition_at is where the type parameter `word` written at
+// `offset` of `file_id` is declared, where no node of its own stands for it (see
+// vls_type_param_hover_at and vls_type_param_declared_at).
+fn (tc &TypeChecker) vls_type_param_definition_at(file_id int, offset int, word string) ?VlsPos {
+	if id := tc.vls_node_around(file_id, offset) {
+		if at := tc.vls_type_param_definition(id, word) {
+			return at
+		}
+	}
+	decl_id := tc.vls_decl_at(file_id, offset)?
+	return tc.vls_type_param_declared_at(*tc.a.node(decl_id), word)
+}
+
+// vls_decl_at returns the declaration of a function or a type of `file_id`
+// whose signature or body contains `offset`.
+fn (tc &TypeChecker) vls_decl_at(file_id int, offset int) ?flat.NodeId {
+	mut best := -1
+	mut best_start := -1
+	for idx in tc.a.user_code_start .. tc.a.nodes.len {
+		node := tc.a.nodes[idx]
+		if node.pos.id != file_id
+			|| node.kind !in [.fn_decl, .struct_decl, .interface_decl, .type_decl] {
+			continue
+		}
+		start := int(node.pos.offset)
+		if start <= offset && start > best_start {
+			best = idx
+			best_start = start
+		}
+	}
+	if best < 0 || !tc.vls_decl_contains_offset(tc.a.nodes[best], offset) {
+		return none
+	}
+	return flat.NodeId(best)
+}
+
+// vls_decl_contains_offset bounds a declaration whose node only spans its name.
+// Signatures and brace-delimited bodies remain in scope; following declarations do not.
+fn (tc &TypeChecker) vls_decl_contains_offset(decl flat.Node, offset int) bool {
+	if decl.kind != .fn_decl {
+		return offset <= int(decl.pos.end)
+	}
+	source := tc.vls_source(int(decl.pos.id))
+	start := int(decl.pos.offset)
+	if start < 0 || start >= source.len {
+		return false
+	}
+	mut s := scanner.new_scanner(&pref.Preferences{}, .normal)
+	s.init(unsafe { nil }, source[start..])
+	mut parens := 0
+	mut brackets := 0
+	mut braces := 0
+	mut body_started := false
+	mut parameters_started := false
+	mut parameters_ended := false
+	mut return_function_tokens := 0
+	if decl.is_mut {
+		mut return_scanner := scanner.new_scanner(&pref.Preferences{}, .normal)
+		return_scanner.init(unsafe { nil }, decl.typ)
+		for {
+			return_token := return_scanner.scan()
+			if return_token == .eof { break }
+			if return_token == .key_fn { return_function_tokens++ }
+		}
+	}
+	for {
+		tok := s.scan()
+		if tok == .eof {
+			return offset <= source.len
+		}
+		// A return type can contain `fn`, including nested function types. Consume
+		// only the return type's tokens so a following function still ends the header.
+		is_return_function := parameters_ended && tok == .key_fn && return_function_tokens > 0
+		if is_return_function { return_function_tokens-- }
+		// A cached .vh function has only a signature, with no following body.
+		if decl.is_mut && !is_return_function && parens == 0 && brackets == 0
+			&& tok in [.semicolon, .key_fn, .key_global, .key_struct, .key_interface, .key_type,
+				.key_const, .key_enum] {
+			return offset <= start + s.pos
+		}
+		match tok {
+			.lpar {
+				if !parameters_started && brackets == 0 { parameters_started = true }
+				parens++
+			}
+			.rpar {
+				parens--
+				if parameters_started && parens == 0 { parameters_ended = true }
+			}
+			.lsbr { brackets++ }
+			.rsbr { brackets-- }
+			.lcbr {
+				if body_started || (parens == 0 && brackets == 0) {
+					body_started = true
+					braces++
+				}
+			}
+			.rcbr {
+				if body_started {
+					braces--
+					if braces == 0 { return offset < start + s.offset }
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+// vls_node_around returns the innermost node of `file_id` whose span holds
+// `offset`.
+fn (tc &TypeChecker) vls_node_around(file_id int, offset int) ?flat.NodeId {
+	mut best := -1
+	mut best_len := max_int
+	for idx in tc.a.user_code_start .. tc.a.nodes.len {
+		node := tc.a.nodes[idx]
+		if node.pos.id != file_id {
+			continue
+		}
+		start := int(node.pos.offset)
+		end := int(node.pos.end)
+		if offset < start || offset > end || end - start >= best_len {
+			continue
+		}
+		best = idx
+		best_len = end - start
+	}
+	if best < 0 {
+		return none
+	}
+	return flat.NodeId(best)
 }
 
 // vls_type_words_at returns the names a type written at `offset` may have:
