@@ -6,7 +6,7 @@ a type-safe interface for common Redis commands.
 
 ## Features
 
-- **Typed Commands**: Strings, keys, hashes, lists, sets, sorted sets, and streams
+- **Typed Commands**: Strings, keys, hashes, lists, sets, sorted sets, streams, and JSON values
 - **Pipelines and Transactions**: Batch execution, optimistic locking, and per-command results
 - **Connections**: Timeouts, TLS verification, reconnect controls, and `vlib/pool` integration
 - **RESP Protocol Support**: Full Redis Serialization Protocol implementation
@@ -100,10 +100,51 @@ part := db.getrange[string]('first', 0, 4)!
 ```
 
 `getdel` and `getex` require Redis 6.2 or later. Like `get`, they return an error for a
-missing key. `mget[T]` and `hmget[T]` return nullable entries for strings, integers, or `[]u8`.
+missing key. The deprecated `getset` and `substr` commands are also available; `getset` stores
+the new value even when it returns `NilError` for a missing previous value.
+`mget[T]` and `hmget[T]` return nullable entries for strings, integers, or `[]u8`.
 Scalar and multi-get unsigned reads preserve the full range of `u64` and `usize`.
 `GetExOptions` selects one `mode`: `.none`, `.ex`, `.px`, `.exat`, `.pxat`, or `.persist`.
 The four expiration modes require a positive `value`; `.none` and `.persist` use zero.
+
+`lcs`, `lcs_len`, and `lcs_idx` (Redis 7.0+) compare two string keys, treating missing keys as
+empty. `lcs_idx` returns `LcsResult` with inclusive byte ranges for each match in both keys.
+
+```v ignore
+db.mset({'first': 'ohmytext', 'second': 'mynewtext'})!
+common := db.lcs('first', 'second')! // 'mytext'
+result := db.lcs_idx('first', 'second', min_match_len: 4)!
+// result.length is 6; result.matches[0] covers bytes 4..7 of 'first' and 5..8 of 'second'.
+```
+
+Redis 8.4 adds `digest`, which returns a hexadecimal hash of a string value, and `delex`,
+which deletes a key only when its value or digest matches. `DelexOptions` selects one
+`condition` (`.ifeq`, `.ifne`, `.ifdeq`, or `.ifdne`) and its comparison `value`.
+
+```v ignore
+// Release a lock only if this client still owns it.
+released := db.delex('lock', condition: .ifeq, value: 'owner')!
+hash := db.digest('large')!
+deleted := db.delex('large', condition: .ifdeq, value: hash)!
+```
+
+Redis 8.8 adds `increx` and `increx_float`, which increment a counter and update its expiration
+atomically. Both return the new value and the increment actually applied. An update outside
+`lbound` or `ubound` is skipped and applies zero, unless `saturate` caps it at the bound.
+`expiration` uses the `GetExMode` values with `expiration_value`, and `enx` sets the
+expiration only when the key has none, which suits fixed-window rate limiters.
+
+```v ignore
+count, applied := db.increx('ratelimit:42', 1,
+	ubound:           100
+	expiration:       .ex
+	expiration_value: 60
+	enx:              true
+)!
+if applied == 0 {
+	println('rate limit reached at ${count}')
+}
+```
 
 Key commands include `exists`, `ttl`, `pttl`, `pexpire`, `expireat`, `pexpireat`, `persist`,
 `keys`, `scan`, `key_type`, `rename`, and `unlink`, in addition to `del` and `expire`.
@@ -119,6 +160,32 @@ db.persist('first')!
 kind := db.key_type('first')!
 db.rename('first', 'renamed')!
 db.unlink('renamed', 'second')!
+```
+
+Keys can also be renamed without replacement, copied, moved, touched, or serialized.
+`renamenx`, `copy`, and `move` return whether the operation happened. `copy` accepts
+`CopyOptions` with an optional destination `database` and `replace`. `dump` returns Redis's
+opaque serialization for `restore`; `RestoreOptions` supports `replace`, `absttl`, and either
+`idletime` or `freq`. A zero `restore` ttl creates the key without expiration.
+
+```v ignore
+db.renamenx('session', 'session:old')!
+db.copy('template', 'draft', replace: true)!
+db.move('draft', 1)!
+db.touch('session:old', 'template')!
+payload := db.dump('template')!
+db.restore('template:copy', 60000, payload)!
+```
+
+`sort[T]`, `sort_ro[T]` (Redis 7.0+), and `sort_store` sort lists, sets, and sorted sets.
+`SortOptions` supports `by` weight patterns, `offset` with `count`, `get` patterns, `desc`, and
+`alpha` for non-numeric elements. Like `mget[T]`, sort results are nullable because a `get`
+pattern can reference a missing key or hash field.
+
+```v ignore
+ids := db.sort[int]('queue')!
+names := db.sort[string]('users', by: 'weight:*', get: ['user:*->name'], count: 10)!
+stored := db.sort_store('queue', 'queue:sorted', desc: true)!
 ```
 
 `scan` and `hscan` accept `ScanOptions` with optional `match` and `count` fields. Both return
@@ -159,7 +226,7 @@ println(user_data)  // Output: {'name': 'Bob', 'age': '30'}
 ```
 
 Additional hash commands include `hdel`, `hexists`, `hkeys`, `hvals`, `hlen`, `hincrby`,
-`hincrbyfloat`, `hmget`, `hscan`, `hstrlen`, and `hsetnx`.
+`hincrbyfloat`, `hmget`, `hscan`, `hstrlen`, `hsetnx`, and the `hrandfield` family.
 
 ```v ignore
 fields := db.hmget[string]('user:1', 'name', 'missing')!
@@ -168,6 +235,30 @@ db.hincrby('user:1', 'age', 1)!
 db.hincrbyfloat('user:1', 'score', 0.5)!
 names := db.hkeys('user:1')!
 db.hdel('user:1', 'score')!
+```
+
+`hrandfield` returns one random field, or `NilError` for a missing hash. `hrandfield_count`
+and `hrandfield_withvalues` return distinct fields for a positive count and permit repeats for
+a negative count; `hrandfield_withvalues` returns `HashField` values.
+
+```v ignore
+field := db.hrandfield('user:1')!
+sample := db.hrandfield_withvalues('user:1', 2)!
+```
+
+### JSON Values
+
+`set_json[T]` stores any value supported by `json2` as JSON text, and `get_json[T]` decodes it.
+Missing keys return `NilError`; values that are not valid JSON for `T` return the decoding error.
+
+```v ignore
+struct Profile {
+	name string
+	tags []string
+}
+
+db.set_json('profile:1', Profile{ name: 'Ada', tags: ['math'] })!
+profile := db.get_json[Profile]('profile:1')!
 ```
 
 ### Pipeline Operations
