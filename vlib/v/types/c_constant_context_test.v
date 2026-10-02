@@ -49,7 +49,7 @@ fn main() {
 	assert tc.errors.len == 0, tc.errors.str()
 }
 
-fn test_windows_invalid_handle_constant_has_pointer_type() {
+fn test_windows_invalid_handle_constant_pointer_type_in_both_comparison_orders() {
 	path := os.join_path(os.vtmp_dir(), 'v3_c_pointer_constant_${os.getpid()}.c.v')
 	os.write_file(path, 'module main
 fn C.get_handle() voidptr
