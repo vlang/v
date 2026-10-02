@@ -9257,12 +9257,44 @@ fn (mut tc TypeChecker) ownership_clone_nonowned_string_call_arg(fn_name string,
 	if !tc.valid_node_id(clean_id) {
 		return false
 	}
+	if tc.ownership_clone_nonowned_string_conditional_args(fn_name, param_idx, suffix, clean_id, expected) {
+		_ = tc.ownership_consume_conditional_call_arg(fn_name, param_idx, suffix, arg_id, expected, arg_id)
+		return true
+	}
 	if tc.ownership_consume_conditional_call_arg(fn_name, param_idx, suffix, arg_id, expected, arg_id) {
 		return true
 	}
 	st.borrowed_projection_actions[int(arg_id)] = .clone_value
 	st.borrowed_projection_actions[int(clean_id)] = .clone_value
 	return true
+}
+
+fn (mut tc TypeChecker) ownership_clone_nonowned_string_conditional_args(fn_name string, param_idx int, suffix string, id flat.NodeId, expected Type) bool {
+	node := tc.a.nodes[int(id)]
+	if node.kind == .if_expr {
+		for i in 1 .. node.children_count {
+			branch_id := tc.a.child(&node, i)
+			tail_id := if tc.a.nodes[int(branch_id)].kind == .if_expr {
+				branch_id
+			} else {
+				tc.branch_tail_expr_id(branch_id)
+			}
+			if tc.valid_node_id(tail_id) && unalias_type(tc.resolve_type(tail_id)) is String {
+				_ = tc.ownership_clone_nonowned_string_call_arg(fn_name, param_idx, suffix, tail_id, expected)
+			}
+		}
+		return true
+	}
+	if node.kind == .match_stmt {
+		for i in 1 .. node.children_count {
+			tail_id := tc.branch_tail_expr_id(tc.a.child(&node, i))
+			if tc.valid_node_id(tail_id) && unalias_type(tc.resolve_type(tail_id)) is String {
+				_ = tc.ownership_clone_nonowned_string_call_arg(fn_name, param_idx, suffix, tail_id, expected)
+			}
+		}
+		return true
+	}
+	return false
 }
 
 fn (tc &TypeChecker) ownership_call_arg_reads_receiver_storage(node flat.Node, info CallInfo, arg_id flat.NodeId, expected Type) bool {

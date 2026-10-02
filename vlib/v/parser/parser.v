@@ -9254,19 +9254,33 @@ fn (mut p Parser) parenthesized_match_header_starts_block() bool {
 		return false
 	}
 	mut lookahead := p.s
-	mut depth := 1
-	for depth > 0 {
-		tok := lookahead.scan()
-		if tok == .eof {
-			return false
+	mut next := token.Token.lpar
+	// A parenthesized subject may have postfixes before the match body.
+	for (next in [.lpar, .lsbr, .dot]) {
+		if next == .dot {
+			next = lookahead.scan()
+			if next != .name && !next.is_keyword() {
+				return false
+			}
+			next = lookahead.scan()
+			continue
 		}
-		if tok == .lpar {
-			depth++
-		} else if tok == .rpar {
-			depth--
+		opening := next
+		closing := if opening == .lpar { token.Token.rpar } else { token.Token.rsbr }
+		mut depth := 1
+		for depth > 0 {
+			tok := lookahead.scan()
+			if tok == .eof {
+				return false
+			}
+			if tok == opening {
+				depth++
+			} else if tok == closing {
+				depth--
+			}
 		}
+		next = lookahead.scan()
 	}
-	mut next := lookahead.scan()
 	if next == .semicolon {
 		next = lookahead.scan()
 	}
