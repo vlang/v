@@ -2332,7 +2332,7 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 	if path.ends_with('.m') {
 		return 'objective-c'
 	}
-	if path.ends_with('.cc') || path.ends_with('.cpp') {
+	if path.ends_with('.C') || path.ends_with('.cc') || path.ends_with('.cpp') {
 		return 'c++'
 	}
 	if cache_native_input_path_needs_objective_c(path, c_flags, c99_mode, target) {
