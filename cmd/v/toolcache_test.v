@@ -11,6 +11,33 @@ import v.util
 // `v timeout <seconds> <command>` both succeeds and terminates on its own.
 const probe_tool = 'vtimeout'
 
+// tool_cache_is_fresh reports whether `entry.binary` can be executed as is, i.e. whether
+// every source file it was built from is still exactly the way it was at build time.
+fn tool_cache_is_fresh(entry ToolCacheEntry) bool {
+	return tool_cache_stale_reason(entry) == ''
+}
+
+// record_unbuildable_tool writes a failed build and its inputs for cache test fixtures.
+fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, details string) {
+	manifest := encode_unbuildable_tool_manifest(entry, dumped, started, details)
+	os.write_file(entry.unbuildable_manifest, manifest) or { return }
+	os.write_file(entry.unbuildable, details) or {}
+}
+
+// prune_stale_tool_binaries drops the cache entries of previous builds of the same tool.
+// Unlinking an executable that another process is currently running is safe on POSIX: that
+// process keeps its own already opened image.
+fn prune_stale_tool_binaries(entry ToolCacheEntry) {
+	mut build_lock := tool_cache_lock(entry) or { return }
+	if !build_lock.try_acquire() {
+		return
+	}
+	defer {
+		build_lock.release()
+	}
+	prune_stale_tool_binaries_locked(entry)
+}
+
 fn toolcache_test_dir(name string) string {
 	directory := os.join_path(os.vtmp_dir(), 'v_toolcache_test', '${name}_${os.getpid()}')
 	os.rmdir_all(directory) or {}
@@ -413,7 +440,11 @@ fn test_publishing_replaces_an_existing_binary() {
 	os.write_file(destination, 'old') or { panic(err) }
 	os.write_file(staged, 'new') or { panic(err) }
 
-	assert publish_atomically(staged, destination)
+	cache_entry := open_tool_cache_entry_dir(directory)!
+	defer {
+		cache_entry.close()
+	}
+	assert cache_entry.publish(staged, os.file_name(destination))
 	assert os.read_file(destination) or { '' } == 'new'
 	assert !os.exists(staged)
 }
