@@ -240,13 +240,22 @@ fn ownership_compiler_is_required(args []string) bool {
 	return false
 }
 
+fn ownership_compiler_bootstrap_input(args []string, vroot string) bool {
+	compiler_sources := [
+		os.real_path(os.join_path(vroot, 'cmd', 'v')),
+		os.real_path(os.join_path(vroot, 'cmd', 'v', 'v.v')),
+		os.real_path(os.join_path(vroot, 'vlib', 'v', 'v.v')),
+	]
+	return args.any(os.exists(it) && os.real_path(it) in compiler_sources)
+}
+
 // ownership_bootstrap_can_use_current_compiler distinguishes compiling in support from
 // actually checking the compiler source with an ownership mode.
-fn ownership_bootstrap_can_use_current_compiler(args []string, compiler_source string) bool {
+fn ownership_bootstrap_can_use_current_compiler(args []string, vroot string) bool {
 	if args.any(it in ['-ownership', '--ownership', '-autofree']) {
 		return false
 	}
-	return args.any(os.exists(it) && os.real_path(it) == os.real_path(compiler_source))
+	return ownership_compiler_bootstrap_input(args, vroot)
 }
 
 // launch_ownership_compiler builds and starts a V3 executable that contains the optional
@@ -264,7 +273,7 @@ fn launch_ownership_compiler(args []string) {
 	compiler_source := os.join_path(vroot, 'cmd', 'v')
 	// A regular V3 compiler is deliberately allowed to create the ownership-enabled
 	// executable. Do not recursively dispatch that bootstrap compilation to itself.
-	if ownership_bootstrap_can_use_current_compiler(args, compiler_source) {
+	if ownership_bootstrap_can_use_current_compiler(args, vroot) {
 		driver.run(args)
 		exit(0)
 	}

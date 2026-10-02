@@ -118,20 +118,56 @@ fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
 
 fn test_ownership_self_build_dispatches_analysis_modes() {
 	root := find_vroot(@FILE) or { panic('missing vroot') }
-	compiler_source := os.join_path(root, 'cmd', 'v')
-	for define_args in [
-		['-d', 'ownership'],
-		['-define', 'ownership=on'],
-		['-downership'],
-	] {
-		mut args := define_args.clone()
-		args << compiler_source
-		assert ownership_bootstrap_can_use_current_compiler(args, compiler_source)
-		for mode in ['-autofree', '-ownership', '--ownership'] {
-			assert !ownership_bootstrap_can_use_current_compiler([mode, compiler_source], compiler_source)
-			assert !ownership_bootstrap_can_use_current_compiler([mode, ...args], compiler_source)
+	for compiler_source in [os.join_path(root, 'cmd', 'v'), os.join_path(root, 'cmd', 'v', 'v.v'),
+		os.join_path(root, 'vlib', 'v', 'v.v')] {
+		for define_args in [
+			['-d', 'ownership'],
+			['-define', 'ownership=on'],
+			['-downership'],
+		] {
+			mut args := define_args.clone()
+			args << compiler_source
+			assert ownership_bootstrap_can_use_current_compiler(args, root)
+			for mode in ['-autofree', '-ownership', '--ownership'] {
+				assert !ownership_bootstrap_can_use_current_compiler([mode, compiler_source], root)
+				assert !ownership_bootstrap_can_use_current_compiler([mode, ...args], root)
+			}
 		}
 	}
+}
+
+fn test_ownership_compiler_bootstrap_recognizes_each_compiler_entry() {
+	root := find_vroot(@FILE) or { panic('missing vroot') }
+	for entry in [
+		os.join_path(root, 'cmd', 'v'),
+		os.join_path(root, 'cmd', 'v', 'v.v'),
+		os.join_path(root, 'vlib', 'v', 'v.v'),
+	] {
+		assert ownership_compiler_bootstrap_input(['-gc', 'none', '-d', 'ownership', entry],
+			root), entry
+	}
+	assert !ownership_compiler_bootstrap_input(['-d', 'ownership', os.join_path(root,
+		'vlib', 'v', 'parser', 'parser.v')], root)
+	assert !ownership_compiler_bootstrap_input(['-d', 'ownership', 'ordinary.v'], root)
+	assert ownership_compiler_bootstrap_input(['-d', 'ownership', os.join_path(root,
+		'cmd', 'v', '..', 'v', 'v.v')], root)
+
+	dir := os.join_path(os.vtmp_dir(), 'ownership_bootstrap_entries_${os.getpid()}')
+	os.mkdir_all(os.join_path(dir, 'cmd', 'v'))!
+	os.mkdir_all(os.join_path(dir, 'vlib', 'v'))!
+	defer { os.rmdir_all(dir) or {} }
+	for entry in [
+		os.join_path(dir, 'v.v'),
+		os.join_path(dir, 'cmd', 'v', 'v.v'),
+		os.join_path(dir, 'vlib', 'v', 'v.v'),
+	] {
+		os.write_file(entry, 'fn main() {}\n')!
+		assert !ownership_compiler_bootstrap_input(['-d', 'ownership', entry], root), entry
+	}
+	assert !ownership_compiler_bootstrap_input(['-d', 'ownership', os.join_path(dir,
+		'cmd', 'v')], root)
+	assert !ownership_compiler_bootstrap_input(['-d', 'ownership', os.join_path(dir,
+		'vlib', 'v')], root)
 }
 
 fn test_launcher_finds_the_source_root() {
