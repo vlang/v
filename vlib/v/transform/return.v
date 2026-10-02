@@ -366,7 +366,15 @@ fn (t &Transformer) optional_types_match(a string, b string) bool {
 	if a_base == b_base {
 		return true
 	}
-	return a_base.all_after_last('.') == b_base.all_after_last('.')
+	if isnil(t.tc) {
+		return false
+	}
+	a_type := t.tc.parse_type(a_base)
+	b_type := t.tc.parse_type(b_base)
+	if a_type is types.Unknown || b_type is types.Unknown {
+		return false
+	}
+	return t.tc.type_name(a_type) == t.tc.type_name(b_type)
 }
 
 // try_expand_return_optional_expr
