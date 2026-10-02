@@ -205,7 +205,9 @@ fn (mut d Digest) pad() {
 	// `tmp` is on the stack, so finalizing a digest does not allocate.
 	mut tmp := [chunk]u8{}
 	tmp[0] = 0x80
-	n := if int(len) % 64 < 56 { 56 - int(len) % 64 } else { 64 + 56 - int(len) % 64 }
+	// Reduce before narrowing so cumulative lengths fit on 32-bit targets.
+	remainder := int(len % u64(chunk))
+	n := if remainder < 56 { 56 - remainder } else { chunk + 56 - remainder }
 	// vbytes wraps `tmp` without copying it; slicing a fixed array would allocate.
 	d.write(unsafe { (&tmp[0]).vbytes(n) }) or { panic(err) }
 	// Length in bits.
