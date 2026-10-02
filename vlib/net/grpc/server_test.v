@@ -255,6 +255,18 @@ fn test_connect_response_metadata_roundtrip() {
 	assert resp.header.get_custom('trailer-x-tr', exact: true) or { '' } == 'hello'
 }
 
+fn test_connect_request_metadata_preserves_mixed_case_value_order() {
+	req := http.parse_request_str('POST /t.Echo/Meta HTTP/1.1\r\nContent-Type: application/proto\r\nX-In: first\r\nx-in: second\r\nX-In: third\r\nX-IN: fourth\r\nContent-Length: 4\r\n\r\nbody')!
+	metadata := request_metadata(req.header)
+	assert metadata['x-in'] == ['first', 'second', 'third', 'fourth']
+	assert 'X-In' !in metadata
+	assert 'X-IN' !in metadata
+	mut s := new_connect_test_server()
+	resp := s.handle(req)
+	assert resp.status_code == 200
+	assert (resp.header.get_custom('x-out') or { '' }) == 'first'
+}
+
 fn test_connect_error_details_serialized() {
 	mut s := new_connect_test_server()
 	resp := connect_post(mut s, '/t.Echo/Detail', 'application/proto', '')

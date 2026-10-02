@@ -109,10 +109,15 @@ For certificate handling, set `verify` to the path of a `rootca.pem` holding the
 trusted CA certificate(s) (leave it empty to use the platform trust store), and
 `cert` / `cert_key` for mutual TLS.
 
+A response's explicit `grpc-status` takes precedence over its HTTP status.
+The client maps HTTP error statuses to gRPC codes only when `grpc-status` is absent.
+
 ## Metadata
 
 Request metadata is multi-valued, mirroring gRPC's own model: a key may repeat,
-so values are ordered lists. Client defaults merge with per-call options, which
+so values are ordered lists. Incoming header names are case-insensitive; values
+under different capitalizations retain their original order. Client defaults merge
+with per-call options, which
 compose left to right:
 
 ```v ignore

@@ -154,8 +154,8 @@ pub fn (mut s ConnectServer) handle(req http.Request) http.Response {
 // metadata, preserving repeated values in order.
 fn request_metadata(h http.Header) map[string][]string {
 	mut m := map[string][]string{}
-	for k in h.keys() {
-		m[k.to_lower()] = h.custom_values(k, exact: true)
+	for k in h.unique_keys() {
+		m[k.to_lower()] = h.custom_values(k, exact: false)
 	}
 	return m
 }

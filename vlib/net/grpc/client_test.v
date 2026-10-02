@@ -78,6 +78,28 @@ fn test_client_http_error_mapping() {
 	expect_status(418, grpc_hdr({}), [], .unknown, 'HTTP 418')
 }
 
+fn test_client_explicit_grpc_status_overrides_http_mapping() {
+	h := grpc_hdr({
+		'content-type': 'application/grpc+proto'
+		'grpc-status':  '7'
+		'grpc-message': 'permission%20denied'
+	})
+	for http_status in [401, 404, 503] {
+		expect_status(http_status, h, [], .permission_denied, 'permission denied')
+	}
+	assert parse_unary_response(503, grpc_hdr(grpc_ok_hdr), encode_frame('ok'.bytes(), false))! == 'ok'.bytes()
+}
+
+fn test_client_malformed_grpc_status_does_not_use_http_mapping() {
+	for grpc_status in ['', 'abc', '99'] {
+		h := grpc_hdr({
+			'content-type': 'application/grpc+proto'
+			'grpc-status':  grpc_status
+		})
+		expect_status(503, h, [], .unknown, '')
+	}
+}
+
 fn test_client_wrong_content_type() {
 	h := grpc_hdr({
 		'content-type': 'text/html'

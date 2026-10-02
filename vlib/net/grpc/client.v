@@ -148,7 +148,8 @@ fn response_metadata(h http.Header) map[string][]string {
 // response message payload the body carried. The h2 layer merges response
 // trailers into the header set, so grpc-status is readable here either way.
 fn parse_response(status_code int, h http.Header, body []u8) ![][]u8 {
-	if status_code != 200 {
+	grpc_status := h.get_custom('grpc-status')
+	if grpc_status == none && status_code != 200 {
 		return StatusError{
 			status: Status{
 				code:    code_from_http(status_code)
@@ -165,7 +166,7 @@ fn parse_response(status_code int, h http.Header, body []u8) ![][]u8 {
 			}
 		}
 	}
-	gs := h.get_custom('grpc-status') or {
+	gs := grpc_status or {
 		return StatusError{
 			status: Status{
 				code:    .unknown
