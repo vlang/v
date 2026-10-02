@@ -655,15 +655,12 @@ const result_type_complete = 'complete'
 // result_type_of reads the top-level `resultType` of a result object.
 fn result_type_of(result_json string) string {
 	trimmed := result_json.trim_space()
-	if !trimmed.starts_with('{"resultType"') {
-		return result_type_complete
-	}
 	wrapper := json.decode[ResultTypeEnvelope](trimmed) or { return result_type_complete }
 	return wrapper.result_type
 }
 
 struct ResultTypeEnvelope {
-	result_type string @[json: resultType]
+	result_type string = result_type_complete @[json: resultType]
 }
 
 // InputRequestsEnvelope is the MRTR part of a 2026-07-28 result. The embedded

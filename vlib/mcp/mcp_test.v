@@ -202,9 +202,19 @@ fn test_client_2026_skips_the_handshake_and_injects_meta() {
 }
 
 fn test_client_2026_answers_input_required_and_retries() {
+	for result_json in [
+		'{"resultType":"input_required","inputRequests":{"ask":{"method":"elicitation/create","params":{"message":"May I?"}}},"requestState":"rs-1"}',
+		'{"inputRequests":{"ask":{"method":"elicitation/create","params":{"message":"May I?"}}},"requestState":"rs-1","resultType":"input_required"}',
+		' {\n  "inputRequests": {"ask": {"method": "elicitation/create", "params": {"message": "May I?"}}},\n  "requestState": "rs-1",\n  "resultType": "input_required"\n } ',
+	] {
+		assert_client_2026_input_retry(result_json)!
+	}
+}
+
+fn assert_client_2026_input_retry(result_json string) ! {
 	input_required := Response{
 		id:     '1'
-		result: '{"resultType":"input_required","inputRequests":{"ask":{"method":"elicitation/create","params":{"message":"May I?"}}},"requestState":"rs-1"}'
+		result: result_json
 	}.encode()
 	complete := Response{
 		id:     '1'
@@ -247,6 +257,12 @@ fn test_client_2026_answers_input_required_and_retries() {
 	assert retry.params.contains('"requestState":"rs-1"')
 	// The original request fields survive the retry.
 	assert retry.params.contains('"name":"confirm"')
+}
+
+fn test_result_type_defaults_to_complete_without_top_level_member() {
+	for result_json in ['{}', '{"content":"done"}', '{"content":{"resultType":"input_required"}}'] {
+		assert result_type_of(result_json) == result_type_complete
+	}
 }
 
 fn test_client_2026_downgrades_when_the_version_is_unsupported() {

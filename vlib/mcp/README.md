@@ -284,6 +284,8 @@ on the next round.
 On the client, register `roots_handler`, `sampling_handler` and
 `elicitation_handler` in `ClientConfig`; the client answers the embedded
 requests and retries automatically (up to 8 rounds).
+The client reads the top-level `resultType` regardless of JSON member order or
+formatting; a result without that member is treated as complete.
 
 ## Streamable HTTP details
 
