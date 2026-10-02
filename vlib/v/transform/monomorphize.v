@@ -10889,7 +10889,10 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			has_concrete_substituted_type := substituted_node_type != node.typ
 				&& decl_type_is_usable(cloned_typ) && !t.generic_arg_is_unresolved(cloned_typ)
 			rhs_node := t.a.nodes[int(children[1])]
-			rhs_raw_typ := if t.generic_type_text_contains_alias(rhs_node.typ, t.cur_module) {
+			call_alias_type := t.generic_clone_decl_alias_type(children[1])
+			rhs_raw_typ := if call_alias_type.len > 0 {
+				call_alias_type
+			} else if t.generic_type_text_contains_alias(rhs_node.typ, t.cur_module) {
 				rhs_node.typ
 			} else {
 				''
@@ -11070,6 +11073,29 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	}
 	t.generic_clone_children = t.generic_clone_children[..scratch_start]
 	return clone_id
+}
+
+// Keep a call's nominal alias when the template annotation names its storage
+// type. Concrete instance checking runs before normal declaration lowering can
+// restore that alias, including after an Option/Result call is unwrapped.
+fn (t &Transformer) generic_clone_decl_alias_type(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call {
+		return t.raw_call_decl_return_type(id, node) or { '' }
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+		return t.generic_clone_decl_alias_type(t.a.child(&node, 0))
+	}
+	if node.kind == .or_expr && node.children_count > 0 {
+		wrapped := t.generic_clone_decl_alias_type(t.a.child(&node, 0))
+		if wrapped.starts_with('?') || wrapped.starts_with('!') {
+			return wrapped[1..]
+		}
+	}
+	return ''
 }
 
 fn comptime_pointer_type_binding(cond string) ?(string, string) {

@@ -6770,6 +6770,11 @@ fn (tc &TypeChecker) generic_named_type_cast_call_type(node flat.Node) ?Type {
 	if !is_generic || target.len == 0 || base.len == 0 {
 		return none
 	}
+	// A rewritten method callee such as `Box[int].get` names a function,
+	// not the receiver type that precedes its generic argument list.
+	if find_matching_bracket(target, target.index_u8(`[`)) != target.len - 1 {
+		return none
+	}
 	qualified_base := tc.qualify_name(base)
 	if base !in tc.type_alias_generic_params && qualified_base !in tc.type_alias_generic_params
 		&& base !in tc.struct_generic_params && qualified_base !in tc.struct_generic_params
@@ -20265,6 +20270,7 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 		}
 		if clean_type is Struct {
 			return '${clean_type.name}.${fn_node.value}' in tc.fn_ret_types
+				|| (fn_node.value == 'clone' && tc.type_has_compiler_default_clone(clean_type))
 		}
 		if clean_type is Interface {
 			return '${clean_type.name}.${fn_node.value}' in tc.fn_ret_types
