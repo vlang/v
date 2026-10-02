@@ -1,14 +1,23 @@
 // Based off: https://golang.org/x/crypto/pbkdf2
 module pbkdf2
 
+import crypto.sha1
 import crypto.sha256
 import crypto.sha512
 import hash
 
 // key derives a key from the password, salt and iteration count
+// `h` selects the hash used by HMAC: a digest from `crypto.sha1`, `crypto.sha256`
+// (SHA-224, SHA-256) or `crypto.sha512` (SHA-384, SHA-512, SHA-512/224, SHA-512/256).
 // example pbkdf2.key('test'.bytes(), '123456'.bytes(), 1000, 64, sha512.new())
 pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]u8 {
 	match h {
+		sha1.Digest {
+			mut inner := sha1.new()
+			mut outer := sha1.new()
+			mut work := sha1.new()
+			return derive(mut inner, mut outer, mut work, password, salt, count, key_length)
+		}
 		sha256.Digest {
 			new_digest := if h.size() == sha256.size224 { sha256.new224 } else { sha256.new }
 			mut inner := new_digest()

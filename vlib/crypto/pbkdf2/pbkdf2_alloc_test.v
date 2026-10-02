@@ -4,6 +4,7 @@
 // much `pbkdf2.key` allocates. It used to allocate in every iteration, which
 // leaked ~6.6 MB per derivation with c = 4096.
 import crypto.pbkdf2
+import crypto.sha1
 import crypto.sha256
 import crypto.sha512
 import hash
@@ -27,6 +28,11 @@ fn rss_growth_per_call(h hash.Hash) i64 {
 		_ := pbkdf2.key(password, salt, 4096, 32, h) or { panic(err) }
 	}
 	return (rss_bytes() - before) / calls
+}
+
+fn test_sha1_does_not_allocate_per_iteration() {
+	growth := rss_growth_per_call(sha1.new())
+	assert growth < max_growth_per_call, 'RSS grew by ${growth} bytes per call'
 }
 
 fn test_sha256_does_not_allocate_per_iteration() {
