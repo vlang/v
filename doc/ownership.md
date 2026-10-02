@@ -47,6 +47,7 @@ Reassigning a borrowed view releases its loan without freeing the source bytes.
 
 Standard string methods, numeric parsers, path inspection and joining functions, and
 string-builder writes borrow string arguments that cannot escape through the return value.
+Signed numeric parsing preserves the caller's string while removing a leading sign.
 Arguments that may be returned, such as the fallback of `string.substr_or()`, transfer ownership
 instead. Use `.clone()` when the caller also needs to keep an owned fallback. User functions with
 by-value string parameters still consume owned strings. When a parameter takes ownership, a regular
