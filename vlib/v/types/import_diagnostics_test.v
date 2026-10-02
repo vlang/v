@@ -364,8 +364,10 @@ fn test_sql_expression_references_use_imports() {
 fn test_sql_expression_literals_leave_imports_unused() {
 	path := os.join_path(os.vtmp_dir(), 'v3_sql_literal_import_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
-	for expression in ["'time . now()'", "'a time . now() value'", 'other_time.now()',
-		'other.time.now()', '1 // time.now()'] {
+	for expression in ["'time . now()'", "'a time . now() value'", "'time.now()'", r"r'time . now()'",
+		r'r"time . now()"', r"'escaped \' time . now()'", r'"escaped \" time . now()"', r"r'time.now()\'",
+		'\'r"time" time . now()\'', 'other_time.now()', 'other.time.now()', '1 // time.now()',
+		'1 /* time.now() */'] {
 		os.write_file(path, 'import orm\nimport time\nfn run(db orm.Connection) {\n sql db {\n select from Foo where updated_at == ${expression}\n } or {}\n}\nfn main() {}\n')!
 		mut p := parser.Parser.new(pref.new_preferences())
 		a := p.parse_file(path)
@@ -375,5 +377,20 @@ fn test_sql_expression_literals_leave_imports_unused() {
 		tc.check_unused_import_diagnostics()
 		assert tc.notices.len == 1, tc.notices.str()
 		assert tc.notices[0].msg.contains("module 'time' is imported but never used"), tc.notices.str()
+	}
+}
+
+fn test_sql_literals_preserve_real_import_usage_after_them_and_in_interpolation() {
+	path := os.join_path(os.vtmp_dir(), 'v3_sql_literal_followed_by_import_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for expression in [r"r'ends\' + time.now().format_ss()", r"'${time.now()}'"] {
+		os.write_file(path, 'import orm\nimport time\nfn run(db orm.Connection) {\n sql db {\n select from Foo where updated_at == ${expression}\n } or {}\n}\nfn main() {}\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_unused_import_diagnostics()
+		assert tc.notices.len == 0, '${expression}: ${tc.notices}'
 	}
 }

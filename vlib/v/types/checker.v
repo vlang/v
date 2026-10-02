@@ -8,6 +8,7 @@ import v.errors as compiler_errors
 import v.flat
 import v.gen.c.naming
 import v.pref
+import v.scanner
 import v.token
 import v.util
 
@@ -6411,15 +6412,16 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			}
 		}
 		if node.kind == .sql_expr {
-			if sql_text_contains_qualified_import(node.value, import_node.typ)
-				|| sql_text_contains_qualified_import(node.value, module_path) {
+			text := tc.sql_expression_import_text(node)
+			if sql_text_contains_qualified_import(text, import_node.typ)
+				|| sql_text_contains_qualified_import(text, module_path) {
 				return true
 			}
 		}
-		if type_text_contains_qualified_import(node.typ, import_node.typ)
+		if node.kind != .sql_expr && (type_text_contains_qualified_import(node.typ, import_node.typ)
 			|| type_text_contains_qualified_import(node.value, import_node.typ)
 			|| type_text_contains_qualified_import(node.typ, module_path)
-			|| type_text_contains_qualified_import(node.value, module_path) {
+			|| type_text_contains_qualified_import(node.value, module_path)) {
 			return true
 		}
 		if selective_names.len == 0 {
@@ -6469,53 +6471,50 @@ fn (tc &TypeChecker) diagnostic_module_display_name(module_name string) string {
 	return module_name
 }
 
-// SQL stores qualified expressions as tokens separated by spaces, including the dots.
+// sql_expression_import_text keeps the original literal boundaries. SQL's serialized
+// tokens wrap raw literals in extra quotes, which cannot be lexed as ordinary source.
+fn (tc &TypeChecker) sql_expression_import_text(node flat.Node) string {
+	file := tc.a.source_files[node.pos.id] or { return node.value }
+	source := tc.source_texts_by_file[file.name] or { return node.value }
+	if node.pos.offset < 0 || node.pos.end > source.len || node.pos.end <= node.pos.offset {
+		return node.value
+	}
+	return source[node.pos.offset..node.pos.end]
+}
+
+// SQL stores its expression as text; use V tokens to distinguish qualified names
+// from raw/escaped literals and comments while retaining interpolation expressions.
 fn sql_text_contains_qualified_import(text string, alias string) bool {
-	mut i := 0
-	for i < text.len {
-		if text[i] in [`'`, `"`] {
-			quote := text[i]
-			i++
-			for i < text.len {
-				if text[i] == `\\` {
-					i += 2
-					continue
-				}
-				if text[i] == quote {
-					i++
-					break
-				}
-				i++
-			}
+	if alias == '' {
+		return false
+	}
+	mut files := token.FileSet.new()
+	mut file := files.add_file('<sql import usage>', text.len)
+	file.index_lines(text)
+	mut lexer := scanner.new_scanner(pref.new_preferences(), .normal)
+	lexer.init(file, text)
+	mut qualified := ''
+	mut after_dot := false
+	for {
+		tok := lexer.scan()
+		if tok == .eof {
+			break
+		}
+		if tok == .comment {
 			continue
 		}
-		if !is_type_symbol_byte(text[i]) {
-			i++
+		if tok == .dot && qualified.len > 0 {
+			after_dot = true
 			continue
 		}
-		mut qualified := ''
-		for {
-			start := i
-			for i < text.len && is_type_symbol_byte(text[i]) {
-				i++
-			}
-			qualified += text[start..i]
-			for i < text.len && text[i].is_space() {
-				i++
-			}
-			if i >= text.len || text[i] != `.` {
-				break
-			}
-			qualified += '.'
-			i++
-			for i < text.len && text[i].is_space() {
-				i++
-			}
-			if i >= text.len || !is_type_symbol_byte(text[i]) {
-				break
-			}
+		if tok != .name && !tok.is_keyword() {
+			qualified = ''
+			after_dot = false
+			continue
 		}
-		if alias.len > 0 && qualified.starts_with('${alias}.') {
+		qualified = if after_dot { qualified + '.' + lexer.lit } else { lexer.lit }
+		after_dot = false
+		if qualified.starts_with('${alias}.') {
 			return true
 		}
 	}
