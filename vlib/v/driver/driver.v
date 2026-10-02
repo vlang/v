@@ -20477,7 +20477,19 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			// Set when this import spells the path of an already parsed directory in a
 			// new way, so its module declarations still get checked below.
 			mut check_reused_dir := false
-			if dir_identity := parsed_dir_identities[mod_real_dir] {
+			// An external test module (`module foo_test` in `foo/`) is parsed from the
+			// same directory as the module it tests, so that directory is already
+			// recorded under the test module's identity. Reusing it below would
+			// rewrite `import foo` to `foo_test`, and the checker then rejects the
+			// import as naming the current module. Resolve the imported module on its
+			// own instead.
+			dir_identity_for_reuse := if recorded := parsed_dir_identities[mod_real_dir] {
+				if recorded == '${mod_name.all_after_last('.')}_test' { '' } else { recorded }
+			} else {
+				''
+			}
+			if dir_identity_for_reuse.len > 0 {
+				dir_identity := dir_identity_for_reuse
 				// The directory was already parsed through another spelling of its
 				// path: `mod.types` inside an installed `smilecat.mod`, and
 				// `smilecat.mod.types` from outside of it. The identity probe above
