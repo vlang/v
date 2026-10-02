@@ -17383,16 +17383,16 @@ const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u
 // 128-bit type from the promotion ladder. Printing, `typeof` and interpolation all
 // read the recorded type, so they cut a mixed expression to 64 bits without this.
 fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Type {
-	name := typ.name().all_after_last('.')
-	if name !in narrow_integer_type_names {
-		return typ
-	}
 	tidx := int(id)
 	if tidx < 0 || tidx >= tc.a.nodes.len {
 		return typ
 	}
 	node := tc.a.nodes[tidx]
 	if node.kind != .infix {
+		return typ
+	}
+	name := typ.name().all_after_last('.')
+	if name !in narrow_integer_type_names {
 		return typ
 	}
 	if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {

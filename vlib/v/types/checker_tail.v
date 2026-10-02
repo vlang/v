@@ -5277,7 +5277,9 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 	decl_id := flat.NodeId(decl.idx)
 	fn_node := tc.a.node(decl_id)
 	generic_params := tc.fn_generic_params[info.name] or {
-		tc.infer_decl_generic_param_names(fn_node)
+		tc.enclosing_generic_params_by_node[decl.idx] or {
+			tc.infer_decl_generic_param_names(fn_node)
+		}
 	}
 	if generic_params.len == 0 {
 		return none

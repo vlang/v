@@ -9640,6 +9640,9 @@ fn (mut tc TypeChecker) check_array_elements_initialized(id flat.NodeId, node fl
 }
 
 fn (tc &TypeChecker) node_is_from_translated_file(node flat.Node) bool {
+	if tc.translated_files.len == 0 {
+		return false
+	}
 	file := tc.a.source_files[node.pos.id] or { return false }
 	return tc.translated_files[file.name]
 }
