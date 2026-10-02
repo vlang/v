@@ -10,7 +10,6 @@ import os
 import flag
 import v.pref
 import v.util
-import v.vmod
 
 // vroot is the V source tree the running compiler belongs to. The launcher
 // exports VEXE; a cached copy of this tool cannot find it from its own path.
@@ -24,18 +23,6 @@ fn new_preferences() &pref.Preferences {
 	mut p := pref.new_preferences()
 	p.vroot = vroot()
 	return p
-}
-
-// module_name_of is the name a module is known by: the `name` field of its
-// v.mod, or the directory path for a module folder that carries none.
-fn module_name_of(dir string) string {
-	manifest := vmod.from_file(os.join_path_single(dir, 'v.mod')) or {
-		return dir.replace('\\', '/').replace('/', '.').trim('.')
-	}
-	if manifest.name.len > 0 {
-		return manifest.name
-	}
-	return dir.replace('\\', '/').replace('/', '.').trim('.')
 }
 
 // is_tool_module reports whether a module root holds a program to run. `main.v`
@@ -75,7 +62,7 @@ fn list_tools(p &pref.Preferences) ! {
 	mut names := []string{}
 	if project := util.nearest_vmod_root('.') {
 		if is_tool_module(project) {
-			names << module_name_of(project)
+			names << os.file_name(os.real_path(project))
 		}
 	}
 	for search_root in p.installed_module_roots() {

@@ -128,3 +128,16 @@ fn test_v_tool_short_help_explains_module_resolution() {
 	assert res.output.contains('main.v'), res.output
 	assert res.output.contains('same lookup as'), res.output
 }
+
+fn test_v_tool_lists_the_project_directory_when_manifest_name_differs() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'v.mod'), "Module { name: 'custom_name' }\n")!
+	listed := os.execute('${vexe} tool')
+	assert listed.exit_code == 0, listed.output
+	names := listed.output.trim_space().split_into_lines()
+	assert 'app' in names, listed.output
+	assert 'custom_name' !in names, listed.output
+	res := os.execute('${vexe} tool app')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'app', res.output
+}

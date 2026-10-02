@@ -45,3 +45,6 @@ for the opposite reason, because a module there is not resolvable by name and so
 could not be run by one.
 Installed tools are listed by their import path relative to the module folder,
 even without v.mod or when the manifest name differs from that path.
+
+The project entry uses its directory name, matching tool lookup even when its
+v.mod manifest declares a different name.
