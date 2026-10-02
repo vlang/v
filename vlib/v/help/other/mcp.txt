@@ -1,0 +1,34 @@
+Serve the V compiler to a coding agent over the Model Context Protocol.
+
+An agent editing V through a generic LSP, or through plain file reads, cannot
+ask the questions only the compiler can answer: what does this file declare,
+what does not compile, is this symbol the declaration or a mention, and what is
+the signature of that stdlib call. `v mcp` answers those by calling the parser,
+the checker and the formatter in process, so it is correct about code that does
+not compile yet.
+
+Usage:
+  v mcp serve [options]
+  v mcp tools
+
+  v mcp tools              List the tools and what each one answers, and exit.
+  v mcp serve              Serve over stdio, the transport editors use.
+
+Options:
+  --http <addr>    serve over Streamable HTTP instead of stdio
+  --root <dir>     resolve relative paths against <dir> (default: cwd)
+  --read-only      register no tool that writes a file
+  --instructions   print the model instructions and exit
+  -h, --help       show this help and exit
+
+The tools that write are `v_edit_replace`, `v_rename_symbol` and `v_format`. They
+report a plan rather than writing by default, and `--read-only` does not register
+them at all. `v_rename_symbol` and `v_format` are dry runs unless told otherwise,
+and `v_edit_replace` requires the caller to pass back the text it expects to
+find, so it refuses to write over a concurrent change.
+
+Only the tools that genuinely compile or run something start the compiler; the
+rest answer from the parsed source.
+
+See also `v skills`, which installs the bundled agent skills, including one for
+using this server.
