@@ -307,7 +307,11 @@ mut:
 fn inspect(values &[]Resource) int { return values[0].id }
 fn change(mut values []Resource) { values[0].value = 7 }
 fn keep(mut values []Resource) []Resource { return values }
-fn keep_reference(mut values []Resource) &[]Resource { return &values }
+// Retained references below request an owned snapshot, including managed inputs.
+fn owned_reference(values &[]Resource) &[]Resource {
+	return &[]Resource{len: values.len, init: values[index].clone()}
+}
+fn keep_reference(mut values []Resource) &[]Resource { return owned_reference(&values) }
 type ResourceArray = []Resource
 struct Stored { mut: values &ResourceArray = unsafe { nil } }
 type ResourceRef = &[]Resource
@@ -316,14 +320,16 @@ struct StoredRef { mut: values ResourceRefAlias = unsafe { nil } }
 struct StoredOption { values ?ResourceRefAlias }
 fn store_and_change(mut values []Resource, mut stored Stored) {
 	values[0].value = 9
-	stored.values = &values
+	copy := owned_reference(&values)
+	stored.values = copy
 }
 fn store_alias_and_change(mut values []Resource, mut stored StoredRef, initializer bool) {
 	values[0].value = 11
+	copy := owned_reference(&values)
 	if initializer {
-		stored = StoredRef{values: &values}
+		stored = StoredRef{values: copy}
 	} else {
-		stored.values = &values
+		stored.values = copy
 	}
 	values[0].value = 12
 }
@@ -384,7 +390,8 @@ fn stored_option_reference(present bool) StoredOption {
 	return stored
 }
 fn store_option_reference(mut values []Resource) StoredOption {
-	return StoredOption{values: ?ResourceRefAlias(&values)}
+	copy := owned_reference(&values)
+	return StoredOption{values: ?ResourceRefAlias(copy)}
 }
 fn map_literal_from_borrow(mut values []Resource) map[string][]Resource {
 	return {"hit": values}

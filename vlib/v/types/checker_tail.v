@@ -1963,15 +1963,15 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_name(name string, depth 
 			}
 		}
 		typ := unalias_type(owner.scope.types[owner.index])
-		if typ is Struct || typ is Array || typ is ArrayFixed || typ is Map {
+		if typ is Struct || typ is Array || typ is ArrayFixed || typ is Map || typ is String {
 			return root
 		}
 	}
 	return none
 }
 
-// A pointer returned through a receiver call still borrows the receiver's storage.
-// Local value storage cannot escape its ownership scope through such a call.
+// A pointer returned through a receiver call or addressed array/string range still borrows
+// its source storage. Local value storage cannot escape its ownership scope.
 fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, depth int, through_call bool, local_sources map[string]flat.NodeId) ?string {
 	$if ownership ? {
 		if depth > 64 || !tc.valid_node_id(id) {
@@ -2014,6 +2014,22 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, depth in
 			}
 			return none
 		}
+		if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+			mut child_id := tc.a.child(node, 0)
+			mut child := tc.a.node(child_id)
+			for child.kind == .paren && child.children_count == 1 {
+				child_id = tc.a.child(child, 0)
+				child = tc.a.node(child_id)
+			}
+			if child.kind == .index {
+				is_range := child.value == 'range' || (child.children_count > 1
+					&& tc.a.child_node(child, 1).kind == .range)
+				child_type := unwrap_all_pointers(tc.resolve_type(child_id))
+				if is_range && (child_type is Array || (child_type is String && child.op != .gated_index)) {
+					return tc.returned_receiver_local_storage(child_id, depth + 1, true, local_sources)
+				}
+			}
+		}
 		if node.kind == .call {
 			for source in tc.ownership_call_result_sources(id) {
 				if source.target_suffix.len == 0 {
@@ -2029,7 +2045,7 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, depth in
 			if source := local_sources[node.value] {
 				typ := unalias_type(tc.resolve_type(source))
 				if through_call && (typ is Struct || typ is Array || typ is ArrayFixed
-					|| typ is Map) {
+					|| typ is Map || typ is String) {
 					return node.value
 				}
 				return tc.returned_receiver_local_storage(source, depth + 1, through_call,
@@ -2595,7 +2611,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	$if ownership ? {
 		if tc.unsafe_depth == 0 && unalias_type(expected) is Pointer {
 			if local := tc.returned_receiver_local_storage(child_id, 0, false, map[string]flat.NodeId{}) {
-				tc.record_error_at(.return_mismatch, 'cannot return a reference to local storage `${local}` through a receiver call', child_id, tc.a.node(child_id).pos)
+				tc.record_error_at(.return_mismatch, 'cannot return a reference to local storage `${local}`', child_id, tc.a.node(child_id).pos)
 				return
 			}
 		}

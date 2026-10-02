@@ -138,6 +138,59 @@ fn test_owned_array_optional_and_borrowed_result_storage_do_not_clone_absent_err
 	}
 }
 
+fn test_owned_array_storage_preserves_explicit_array_references() {
+	$if !ownership ? {
+		return
+	}
+	for wrapper in ['&[]Res', '&[]u8'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		configure_owned_array_storage_checker(mut tc)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.set_var_type('source', wrapper)
+		source := t.make_ident('source')
+		assert t.clone_owned_array_view_for_storage(source, wrapper) == source
+		assert t.clone_owned_array_value_for_capture(source, wrapper) == source
+		assert t.pending_stmts.len == 0
+	}
+}
+
+fn test_owned_array_reference_wrappers_keep_data_borrowed() {
+	$if !ownership ? {
+		return
+	}
+	for wrapper in ['?&[]Res', '!&[]Res'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		configure_owned_array_storage_checker(mut tc)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.set_var_type('source', wrapper)
+		t.clone_owned_array_view_for_storage(t.make_ident('source'), wrapper)
+		assert t.pending_stmts.len == 2
+		branch := t.pending_stmts.last()
+		assert owned_array_storage_call_count(&a, branch, default_clone_helper_name('[]Res')) == 0
+		assert owned_array_storage_call_count(&a, branch, 'v3_heap_array') == 0
+		assert owned_array_storage_call_count(&a, branch, '__v3_clone_owned_ierror') == 0
+	}
+}
+
+fn test_owned_array_synthetic_pointer_acquisition_still_copies() {
+	$if !ownership ? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	configure_owned_array_storage_checker(mut tc)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('source', '&[]Res')
+	source := t.make_ident('source')
+	assert t.clone_owned_array_storage_value(source, '&[]Res', true) != source
+	assert t.pending_stmts.len == 2
+	branch := t.pending_stmts.last()
+	assert owned_array_storage_call_count(&a, branch, default_clone_helper_name('[]Res')) == 1
+	assert owned_array_storage_call_count(&a, branch, 'v3_heap_array') == 1
+}
+
 fn check_owned_array_result_branch(a &flat.FlatAst, branch_id flat.NodeId) {
 	branch := a.nodes[int(branch_id)]
 	assert branch.kind == .if_expr

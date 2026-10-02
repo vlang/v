@@ -16645,7 +16645,15 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				if clone_type.len == 0 {
 					clone_type = t.original_expr_type(child_id)
 				}
-				new_children << t.clone_borrowed_storage_projection(child_id, t.transform_expr_for_type(child_id, lhs_type), clone_type)
+				value := t.transform_expr_for_type(child_id, lhs_type)
+				borrow := t.a.node(t.unwrap_parens(child_id))
+				if clone_type.starts_with('&') && borrow.kind == .prefix && borrow.op == .amp {
+					// An explicit local address borrows its pointee. In particular, a
+					// callback must mutate the original mutable argument or slice view.
+					new_children << t.clone_borrowed_projection(child_id, value, clone_type)
+				} else {
+					new_children << t.clone_borrowed_storage_projection(child_id, value, clone_type)
+				}
 			}
 		}
 	}
@@ -22989,14 +22997,51 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 				return expr
 			}
 		}
-		if child.kind in [.array_init, .array_literal]
+		if (child.kind in [.array_init, .array_literal] || t.is_range_index_expr(t.unwrap_parens(child_id)))
 			&& t.normalize_type_alias(child_type).starts_with('[]') {
-			// `&[]T{...}` owns a heap-allocated array header. Allocate that header
-			// explicitly instead of taking the address of a short-lived stabilization
-			// temporary.
+			// Array literals and ranges produce fresh headers. Allocate an addressed
+			// header so it survives a return; a range still borrows its existing data.
 			value := t.transform_expr(child_id)
 			result_type := if node.typ.len > 0 { node.typ } else { '&${child_type}' }
 			return t.make_call_typed('v3_heap_array', [value], result_type)
+		}
+		if t.is_range_index_expr(t.unwrap_parens(child_id)) && t.normalize_type_alias(child_type) == 'string' {
+			// Addressed string ranges also retain a header independently of the loop
+			// or stack temporary that produced it.
+			mut value := t.transform_expr(child_id)
+			$if ownership ? {
+				range := t.a.node(t.unwrap_parens(value))
+				if range.kind == .index && range.value == 'range' && range.children_count >= 2
+					&& range.op != .gated_index {
+					base := t.a.child(range, 0)
+					base_type := t.node_type(base)
+					mut base_value := base
+					if base_type.starts_with('&') {
+						base_value = t.make_prefix(.mul, base)
+						t.set_node_typ(int(base_value), 'string')
+					}
+					base_value = t.snapshot_transformed_expr_for_reuse(base_value, 'string', 'str_view_source')
+					start_id := t.a.child(range, 1)
+					start_value := if t.a.node(start_id).kind == .empty {
+						t.make_int_literal(0)
+					} else {
+						t.snapshot_transformed_expr_for_reuse(start_id, 'int', 'str_view_start')
+					}
+					end_value := if range.children_count > 2 {
+						t.snapshot_transformed_expr_for_reuse(t.a.child(range, 2), 'int', 'str_view_end')
+					} else {
+						t.make_selector(base_value, 'len', 'int')
+					}
+					value = t.make_call_typed('string__substr_borrowed', [base_value, start_value,
+						end_value], 'string')
+				}
+			}
+			stable := t.stable_transformed_expr_for_reuse(value, child_type, 'addr')
+			addr := t.make_prefix(.amp, stable)
+			t.set_node_typ(int(addr), '&${child_type}')
+			dup := t.make_memdup_call_for_type(addr, child_type)
+			result_type := if node.typ.len > 0 { node.typ } else { '&${child_type}' }
+			return t.make_cast(result_type, dup, result_type)
 		}
 		if child.kind == .map_init && t.normalize_type_alias(child_type).starts_with('map[') {
 			// Like `&[]T{}`, `&map[K]V{}` owns a heap-allocated container header.
