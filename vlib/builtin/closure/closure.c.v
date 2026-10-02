@@ -805,7 +805,7 @@ fn closure_init_body() {
 		}
 		g_closure.closure_get_data = unsafe { ClosureGetDataFn(desc) }
 	} else {
-		g_closure.closure_get_data = g_closure.closure_ptr
+		g_closure.closure_get_data = unsafe { ClosureGetDataFn(g_closure.closure_ptr) }
 	}
 
 	// Advance allocation pointer past header

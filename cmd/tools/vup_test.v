@@ -3,6 +3,31 @@ import os
 const vexe = @VEXE
 const vroot = os.dir(vexe)
 
+fn test_vup_generates_windows_c_without_handle_type_errors() ! {
+	test_root := os.join_path(os.vtmp_dir(), 'vup_windows_handles_${os.getpid()}')
+	os.mkdir_all(test_root)!
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	// A test compiled by the compatibility compiler must still exercise the
+	// default compiler, which checks C macros as integers.
+	compiler := if os.base(vexe) == 'v1_fallback.exe' {
+		os.join_path(vroot, 'v.exe')
+	} else if os.base(vexe) == 'v1_fallback' {
+		os.join_path(vroot, 'v')
+	} else {
+		vexe
+	}
+	source := os.join_path(vroot, 'cmd', 'tools', 'vup.v')
+	for cc in ['msvc', 'gcc', 'tcc'] {
+		c_file := os.join_path(test_root, 'vup_${cc}.c')
+		// Generating C exercises the Windows checker without needing a Windows SDK.
+		result := os.execute('${os.quoted_path(compiler)} -new-compiler -g -gc none -nocache -os windows -arch amd64 -cc ${cc} -o ${os.quoted_path(c_file)} ${os.quoted_path(source)}')
+		assert result.exit_code == 0, result.output
+		assert os.is_file(c_file)
+	}
+}
+
 fn write_executable(path string, content string) ! {
 	os.write_file(path, content)!
 	os.chmod(path, 0o755)!

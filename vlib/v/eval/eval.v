@@ -6347,7 +6347,11 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		// An option is `{ bool ok; T value; }`, and a result keeps its 16 byte IError
 		// in a union with the value. A bare `?` or `!` stores an `int`.
 		elem_name := name[1..].trim_space()
-		elem := if elem_name in ['', 'void'] { TypeLayout{ size: 4, align: 4 } } else { e.sizeof_type_layout(elem_name, module_name, visited) }
+		elem := if elem_name in ['', 'void'] {
+			TypeLayout{ size: 4, align: 4 }
+		} else {
+			e.sizeof_type_layout(elem_name, module_name, visited)
+		}
 		if name[0] == `?` {
 			align := if elem.align > 1 { elem.align } else { i64(1) }
 			return TypeLayout{ size: sizeof_aligned_size(sizeof_aligned_size(1, align) + elem.size, align), align: align }

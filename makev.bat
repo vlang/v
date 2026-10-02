@@ -190,10 +190,7 @@ if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
 
 :build_fresh_v_with_tcc
-echo  ^> Compiling "%V_STAGE%" with "%V_BOOTSTRAP%"
-REM V3 supplies the absolute bundled-TCC root itself. A relative -B here would
-REM override it after V3 changes into its isolated link directory.
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_STAGE%" cmd/v
+call :build_stage_with_tcc
 set stage_error=!ERRORLEVEL!
 if !stage_error! NEQ 0 (
 	call :try_delete "%V_STAGE%"
@@ -232,9 +229,13 @@ if !ERRORLEVEL! NEQ 0 (
 	goto :msvc_strap
 )
 
-echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!gcc_exe!" -o "%V_UPDATED%" cmd/v
+call :build_stage_with_gcc
 if !ERRORLEVEL! NEQ 0 goto :compile_error
+echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!gcc_exe!" -o "%V_UPDATED%" cmd/v
+set stage_error=!ERRORLEVEL!
+call :try_delete "%V_STAGE%"
+if !stage_error! NEQ 0 goto :compile_error
 call :move_updated_to_v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
@@ -267,8 +268,7 @@ if exist "%InstallDir%/Common7/Tools/vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 echo  ^> Bootstrapping "%V_BOOTSTRAP%" before compiling "%V_EXE%" with MSVC
-set stage_vflags=
-set stage_with_clang=0
+set stage_compiler=
 REM Bootstrap order for -msvc: bundled TCC first (fastest, no external
 REM toolchain needed), then MSVC itself (already confirmed present -
 REM vsdevcmd.bat has already run above - and explicitly what -msvc asked
@@ -279,34 +279,28 @@ REM why every option here is still tried in order rather than stopping at
 REM the first choice.
 call :build_bootstrap_with_tcc
 if !ERRORLEVEL! EQU 0 (
-	set stage_vflags=-cc "!tcc_exe!"
+	set stage_compiler=tcc
 ) else (
 	call :build_bootstrap_with_msvc
 	if !ERRORLEVEL! EQU 0 (
-		set stage_vflags=-cc msvc
+		set stage_compiler=msvc
 	) else (
 		call :build_bootstrap_with_clang
 		if !ERRORLEVEL! EQU 0 (
-			set stage_vflags=-cc "!clang_exe!" -cflags "--target=!clang_target!"
-			set stage_with_clang=1
+			set stage_compiler=clang
 		) else (
 			call :build_bootstrap_with_gcc
-			if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!gcc_exe!"
+			if !ERRORLEVEL! EQU 0 set stage_compiler=gcc
 		)
 	)
 )
-if not defined stage_vflags (
+if not defined stage_compiler (
 	echo Could not build a bootstrap compiler before compiling with MSVC
 	call :try_delete "%ObjFile%"
 	goto :compile_error
 )
 
-if !stage_with_clang! EQU 1 (
-	call :build_stage_with_clang
-) else (
-	echo  ^> Compiling "%V_STAGE%" with "%V_BOOTSTRAP%"
-	"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -o "%V_STAGE%" cmd/v
-)
+call :build_stage_with_!stage_compiler!
 if !ERRORLEVEL! NEQ 0 (
 	call :try_delete "%ObjFile%"
 	call :try_delete "%V_STAGE%"
@@ -522,13 +516,51 @@ if !ERRORLEVEL! NEQ 0 (
 )
 exit /b 0
 
-:build_stage_with_clang
+:generate_stage_c
 echo  ^> Generating "%V_STAGE_C%" with "%V_BOOTSTRAP%"
-REM This C file is linked directly with MinGW Clang below, even for -msvc builds.
-REM Do not inherit a different C dialect or require an unlinked GC library.
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -gc none -g -cc "!clang_exe!" -cflags "--target=!clang_target!" -o "%V_STAGE_C%" cmd/v
+REM Older vc snapshots have broken process-spawn output pointers. Emit C without
+REM spawning a compiler, then let this batch script link the fresh stage instead.
+REM Match the stage C dialect and avoid requiring an unlinked GC library.
+"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -gc none -g !stage_vflags! -o "%V_STAGE_C%" cmd/v
 set stage_error=!ERRORLEVEL!
-if !stage_error! NEQ 0 exit /b !stage_error!
+if !stage_error! NEQ 0 call :try_delete "%V_STAGE_C%"
+exit /b !stage_error!
+
+:build_stage_with_tcc
+set stage_vflags=-cc "!tcc_exe!"
+call :generate_stage_c
+if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with TCC
+"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
+set stage_error=!ERRORLEVEL!
+call :try_delete "%V_STAGE_C%"
+exit /b !stage_error!
+
+:build_stage_with_gcc
+set stage_vflags=-cc "!gcc_exe!"
+call :generate_stage_c
+if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with GCC
+"!gcc_exe!" -std=gnu11 -municode -g -w -fwrapv -o "%V_STAGE%" "%V_STAGE_C%" -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,--stack=33554432
+set stage_error=!ERRORLEVEL!
+call :try_delete "%V_STAGE_C%"
+exit /b !stage_error!
+
+:build_stage_with_msvc
+set stage_vflags=-cc msvc
+call :generate_stage_c
+if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with MSVC
+cl /nologo /volatile:ms /bigobj /MD /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_STAGE%" "%V_STAGE_C%" kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+set stage_error=!ERRORLEVEL!
+call :try_delete "%V_STAGE_C%"
+call :try_delete "v_stage.obj"
+exit /b !stage_error!
+
+:build_stage_with_clang
+set stage_vflags=-cc "!clang_exe!" -cflags "--target=!clang_target!"
+call :generate_stage_c
+if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with Clang
 "!clang_exe!" --target=!clang_target! -std=gnu11 -municode -g -w -fwrapv -Wno-int-conversion -o "%V_STAGE%" "%V_STAGE_C%" -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,--stack=33554432
 set stage_error=!ERRORLEVEL!
@@ -606,16 +638,9 @@ REM pattern at its call sites) and check that saved variable afterward, never
 REM !ERRORLEVEL! directly after a `call :try_delete` - this always succeeds
 REM and would silently swallow a real failure otherwise.
 REM
-REM KNOWN LIMITATION: cmd/tools/makev_test.py only unit-tests this routine in
-REM isolation (BatchExecutionTests.run_try_delete) and only statically greps
-REM for %VC_BOOTSTRAP_DEFINE% in build_bootstrap_with_msvc's source text - no
-REM test drives msvc_strap/build_bootstrap_with_msvc/build_stage_with_clang
-REM through cmd.exe with a real or stubbed failing compiler, so a future edit
-REM that violates the contract above would not be caught by the test suite.
-REM Found and empirically confirmed (by deliberately reintroducing the bug
-REM and observing the full suite still pass) via an adversarial review of
-REM vlang/v#29100; left undressed for now rather than adding a harder-to-get-
-REM right execution-level test or a build-script refactor.
+REM cmd/tools/makev_test.py exercises stage generation/link failures and cleanup
+REM through cmd.exe on Windows. Compiler discovery and MSVC installation setup
+REM still require validation with real Windows toolchains.
 if not exist "%~1" exit /b 0
 del "%~1" >nul 2>&1
 if not exist "%~1" exit /b 0

@@ -2555,7 +2555,7 @@ fn (t &Transformer) map_literal_key_expr_creates_owned_value(id flat.NodeId, key
 // before the stored owner is destroyed. The checker rejects a required clone that cannot be
 // made, and the false result prevents unsafe lowering of that invalid assignment.
 fn (mut t Transformer) clone_map_assignment_rhs_if_needed(value flat.NodeId, rhs_id flat.NodeId, lhs_id flat.NodeId, value_type_name string) (flat.NodeId, bool) {
-	cloned := t.clone_borrowed_projection(rhs_id, value, value_type_name)
+	cloned := t.clone_borrowed_storage_projection(rhs_id, value, value_type_name)
 	if cloned != value {
 		return cloned, true
 	}
@@ -3525,7 +3525,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		t.pending_stmts << t.make_decl_assign_typed(key_name, key_expr, key_storage_type)
 		value_id := t.a.child(&node, i + 1)
 		mut value := t.transform_map_entry_expr_for_type(value_id, value_type)
-		value = t.clone_borrowed_projection(value_id, value, value_type)
+		value = t.clone_borrowed_storage_projection(value_id, value, value_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, value_type)
 		mut cleanup_key := false
 		mut existing_key_name := ''

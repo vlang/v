@@ -508,7 +508,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 		// One block per iteration so per-field temps get their own scope.
 		old_allow_enum_int := t.allow_comptime_enum_int_assign
 		t.allow_comptime_enum_int_assign = old_allow_enum_int || fm.is_enum
-		transformed := t.transform_stmts(cloned)
+		transformed := t.transform_scope_stmts(cloned)
 		t.allow_comptime_enum_int_assign = old_allow_enum_int
 		out << t.make_block(transformed)
 	}
@@ -522,7 +522,7 @@ fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source st
 		for sid in body_stmts {
 			cloned << t.clone_attribute_subst(sid, var_name, attr)
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }
@@ -914,7 +914,7 @@ fn (mut t Transformer) expand_comptime_for_params(var_name string, fn_name strin
 				cloned << cid
 			}
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }
@@ -1186,7 +1186,7 @@ fn (mut t Transformer) expand_comptime_for_methods(var_name string, base_type st
 				cloned << cid
 			}
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }
@@ -1290,7 +1290,9 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 	mut seen := map[string]bool{}
 	mut loaded_source_files := map[string]bool{}
 	mut line_offsets_by_file := map[string][]int{}
-	for node_id, node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This read-only scan cannot invalidate the borrowed node header.
+		node := unsafe { &t.a.nodes[node_id] }
 		if node.kind == .file {
 			module_name = ''
 			file_name = node.value
@@ -1303,7 +1305,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		if node.kind != .fn_decl || !node.value.contains('.') || node.children_count == 0 {
 			continue
 		}
-		first := t.a.child_node(&node, 0)
+		first := t.a.child_node(node, 0)
 		if first.kind != .param || first.op != .dot || first.value.len == 0
 			|| !comptime_method_receiver_matches(first.typ, requested, normalized, module_name, requested_module) {
 			continue
@@ -1316,7 +1318,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		generic_args, generic_params := t.comptime_method_receiver_generic_args(first.typ, requested, normalized)
 		mut params := []ParamMeta{}
 		for i in 1 .. node.children_count {
-			param := t.a.child_node(&node, i)
+			param := t.a.child_node(node, i)
 			if param.kind != .param {
 				if t.prefix_param_scan {
 					break
@@ -2107,7 +2109,7 @@ fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type str
 				cloned << cid
 			}
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }
@@ -2124,7 +2126,7 @@ fn (mut t Transformer) expand_comptime_for_variants(var_name string, base_type s
 				cloned << cid
 			}
 		}
-		out << t.make_block(t.transform_stmts(cloned))
+		out << t.make_block(t.transform_scope_stmts(cloned))
 	}
 	return out
 }

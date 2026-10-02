@@ -820,8 +820,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_duplicate_fn_declarations()
 	tc.install_type_cache_overlay()
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
-	tc.selected_file_called_fns = map[string]bool{}
-	tc.selected_file_worklist = []string{}
+	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
 	tc.check_c_js_generic_declarations()
 	tc.check_interface_reserved_parameter_names()
@@ -1045,8 +1044,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	// candidate, so defer the call-graph walk until after checking and only
 	// run it when there is something to filter.
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
-	tc.selected_file_called_fns = map[string]bool{}
-	tc.selected_file_worklist = []string{}
+	tc.collect_selected_file_called_fns()
 	mut cksw := time.new_stopwatch()
 	tc.check_export_attrs()
 	tc.check_c_js_generic_declarations()

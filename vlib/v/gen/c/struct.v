@@ -934,10 +934,29 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		g.write(g.scalar_zero_init(name))
 		return
 	}
+	if is_union_init && !g.static_c_initializer {
+		mut seen := map[string]bool{}
+		if g.type_contains_interface_storage(init_semantic_type, mut seen) {
+			g.gen_zeroed_union_init(node, name, lookup_name, false)
+			return
+		}
+	}
 	if !g.static_c_initializer && !g.is_interface_type_name(node.value)
 		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		g.gen_struct_init_with_fixed_array_fields(node, name, init_module)
 		return
+	}
+	// A fixed array field of an interface cannot be initialized from another array
+	// in the compound literal: it is copied into a temporary afterwards.
+	interface_fixed_fields := if !g.static_c_initializer && !is_optional_init && !is_union_init
+		&& g.is_interface_type_name(node.value) {
+		g.interface_init_fixed_array_fields(node)
+	} else {
+		[]int{}
+	}
+	interface_fixed_tmp := if interface_fixed_fields.len > 0 { g.tmp_name() } else { '' }
+	if interface_fixed_fields.len > 0 {
+		g.write('({${name} ${interface_fixed_tmp} = ')
 	}
 	g.write('(${name}){')
 	mut allowed_fields := map[string]bool{}
@@ -968,6 +987,9 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		}
 	}
 	for i in 0 .. node.children_count {
+		if i in interface_fixed_fields {
+			continue
+		}
 		field := g.a.child_node(&node, i)
 		mut promoted := PromotedStructInitField{}
 		// `EmbedType: value` sets the embedded struct field itself. Its C field name
@@ -1122,6 +1144,110 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		g.write(if g.struct_type_is_empty(lookup_name) { 'E_STRUCT' } else { '0' })
 	}
 	g.write('}')
+	if interface_fixed_fields.len > 0 {
+		g.write(';')
+		for i in interface_fixed_fields {
+			field := g.a.child_node(&node, i)
+			cfield := g.init_field_c_name(lookup_name, field.value)
+			g.write(' memcpy(${interface_fixed_tmp}.${cfield}, ')
+			g.gen_fixed_array_copy_source(g.a.child(field, 0), g.tc.parse_type(field.typ))
+			g.write(', sizeof(${interface_fixed_tmp}.${cfield}));')
+		}
+		g.write(' ${interface_fixed_tmp};})')
+	}
+}
+
+// interface_init_fixed_array_fields returns the positions of the fields of an
+// interface literal whose type is a fixed array.
+fn (g &FlatGen) interface_init_fixed_array_fields(node flat.Node) []int {
+	mut positions := []int{}
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.kind != .field_init || field.children_count == 0 || field.typ.len == 0
+			|| field.value in ['_typ', '_object', '_object_is_boxed'] {
+			continue
+		}
+		if _ := array_fixed_type(g.tc.parse_type(field.typ)) {
+			positions << i
+		}
+	}
+	return positions
+}
+
+// C union initializers can leave bytes outside the selected member unspecified.
+// Clear interface-bearing storage before writing a member, including nested unions,
+// so an inactive interface cannot inherit a valid tag from reused stack memory.
+fn (g &FlatGen) type_contains_interface_storage(typ types.Type, mut seen map[string]bool) bool {
+	clean := default_init_unalias_type(typ)
+	match clean {
+		types.Interface { return true }
+		types.Struct {
+			if clean.name in seen { return false }
+			seen[clean.name] = true
+			if fields := g.struct_fields_for_type(clean.name) {
+				for field in fields {
+					if g.type_contains_interface_storage(field.typ, mut seen) { return true }
+				}
+			}
+		}
+		types.ArrayFixed { return g.type_contains_interface_storage(clean.elem_type, mut seen) }
+		types.OptionType { return g.type_contains_interface_storage(clean.base_type, mut seen) }
+		types.ResultType { return g.type_contains_interface_storage(clean.base_type, mut seen) }
+		else {}
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_zeroed_union_init(node flat.Node, name string, lookup_name string, heap bool) {
+	tmp := g.tmp_name()
+	if heap { g.write('(${name}*)') }
+	g.write('({ ${name} ${tmp}; memset(&${tmp}, 0, sizeof(${tmp}));')
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.children_count == 0 { continue }
+		field_name := if field.value.len > 0 {
+			if !g.struct_has_direct_named_field(lookup_name, field.value) {
+				if emb := g.embedded_field_for_embed_key(lookup_name, field.value) {
+					emb.name
+				} else {
+					field.value
+				}
+			} else {
+				field.value
+			}
+		} else if sf := g.struct_field_at(lookup_name, i) {
+			sf.name
+		} else {
+			continue
+		}
+		field_type := g.struct_field_type(lookup_name, field_name) or { continue }
+		cfield := g.init_field_c_name(lookup_name, field_name)
+		value_id := g.a.child(field, 0)
+		if _ := array_fixed_type(field_type) {
+			g.write(' memcpy(${tmp}.${cfield}, ')
+			g.gen_fixed_array_copy_source(value_id, field_type)
+			g.write(', sizeof(${tmp}.${cfield}));')
+		} else {
+			g.write(' ${tmp}.${cfield} = ')
+			g.gen_struct_field_expr_for_field(value_id, lookup_name, field_name, field_type)
+			g.write(';')
+		}
+	}
+	if heap {
+		if align := g.struct_decl_alignment_for_init_names(node.value, lookup_name) {
+			align_arg := struct_decl_alignment_memdup_arg(align, name)
+			g.write(' v3_aligned_memdup(&${tmp}, sizeof(${name}), ${align_arg}); })')
+		} else {
+			mut seen := map[string]bool{}
+			if g.global_fixed_array_type_has_aligned_struct(g.tc.parse_type(lookup_name), mut seen) {
+				g.write(' v3_aligned_memdup(&${tmp}, sizeof(${name}), __alignof__(${name})); })')
+			} else {
+				g.write(' memdup(&${tmp}, sizeof(${name})); })')
+			}
+		}
+	} else {
+		g.write(' ${tmp}; })')
+	}
 }
 
 fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
@@ -1569,9 +1695,12 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		}
 	}
 	if heap {
+		mut seen := map[string]bool{}
 		if align := g.struct_decl_alignment_for_init_names(node.value, name) {
 			align_arg := struct_decl_alignment_memdup_arg(align, name)
 			g.write(' v3_aligned_memdup(&${tmp}, sizeof(${name}), ${align_arg});})')
+		} else if g.global_fixed_array_type_has_aligned_struct(g.tc.parse_type(lookup_name), mut seen) {
+			g.write(' v3_aligned_memdup(&${tmp}, sizeof(${name}), __alignof__(${name}));})')
 		} else {
 			g.write(' memdup(&${tmp}, sizeof(${name}));})')
 		}
@@ -1962,6 +2091,13 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	lookup_name := g.struct_init_fields_key(lookup_source_name, lookup_source_name)
 	is_union_init := node.value in g.tc.unions || lookup_name in g.tc.unions
+	if is_union_init {
+		mut seen := map[string]bool{}
+		if g.type_contains_interface_storage(parsed_init_type, mut seen) {
+			g.gen_zeroed_union_init(node, name, lookup_name, true)
+			return
+		}
+	}
 	if !is_sum_literal && !g.is_interface_type_name(node.value)
 		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		// Fixed-array fields can't be set in the `&(T){...}` compound literal; build
@@ -1969,12 +2105,31 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		g.gen_struct_init_with_fixed_array_fields_impl(node, name, init_module, true)
 		return
 	}
+	interface_fixed_fields := if !is_sum_literal && g.is_interface_type_name(node.value) {
+		g.interface_init_fixed_array_fields(node)
+	} else {
+		[]int{}
+	}
+	interface_fixed_tmp := if interface_fixed_fields.len > 0 { g.tmp_name() } else { '' }
+	if interface_fixed_fields.len > 0 {
+		g.write('({${name} ${interface_fixed_tmp} = (${name}){')
+	}
 	mut align_arg := ''
+	mut seen_aligned := map[string]bool{}
 	if align := g.struct_decl_alignment_for_init_names(node.value, lookup_name) {
 		align_arg = struct_decl_alignment_memdup_arg(align, name)
-		g.write('(${name}*)v3_aligned_memdup(&(${name}){')
+		if interface_fixed_fields.len == 0 {
+			g.write('(${name}*)v3_aligned_memdup(&(${name}){')
+		}
+	} else if g.global_fixed_array_type_has_aligned_struct(clean_init_type, mut seen_aligned) {
+		align_arg = '__alignof__(${name})'
+		if interface_fixed_fields.len == 0 {
+			g.write('(${name}*)v3_aligned_memdup(&(${name}){')
+		}
 	} else {
-		g.write('(${name}*)memdup(&(${name}){')
+		if interface_fixed_fields.len == 0 {
+			g.write('(${name}*)memdup(&(${name}){')
+		}
 	}
 	mut allowed_fields := map[string]bool{}
 	if fields := g.struct_fields_for_type(lookup_name) {
@@ -2005,6 +2160,10 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
+		if i in interface_fixed_fields {
+			set_fields[field.value] = true
+			continue
+		}
 		mut promoted := PromotedStructInitField{}
 		// `EmbedType: value` sets the embedded struct field itself. Its C field name
 		// comes from the embed type (`veb__Context`), not the source key, and the two
@@ -2152,7 +2311,21 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	if !has_field {
 		g.write(if g.struct_type_is_empty(lookup_name) { 'E_STRUCT' } else { '0' })
 	}
-	if align_arg.len > 0 {
+	if interface_fixed_fields.len > 0 {
+		g.write('};')
+		for i in interface_fixed_fields {
+			field := g.a.child_node(&node, i)
+			cfield := g.init_field_c_name(lookup_name, field.value)
+			g.write(' memcpy(${interface_fixed_tmp}.${cfield}, ')
+			g.gen_fixed_array_copy_source(g.a.child(field, 0), g.tc.parse_type(field.typ))
+			g.write(', sizeof(${interface_fixed_tmp}.${cfield}));')
+		}
+		if align_arg.len > 0 {
+			g.write(' (${name}*)v3_aligned_memdup(&${interface_fixed_tmp}, sizeof(${name}), ${align_arg});})')
+		} else {
+			g.write(' (${name}*)memdup(&${interface_fixed_tmp}, sizeof(${name}));})')
+		}
+	} else if align_arg.len > 0 {
 		g.write('}, sizeof(${name}), ${align_arg})')
 	} else {
 		g.write('}, sizeof(${name}))')
@@ -5851,10 +6024,13 @@ fn (mut g FlatGen) gen_heap_assoc_expr(node flat.Node) {
 			g.write(';')
 		}
 	}
+	mut seen_aligned := map[string]bool{}
 	if align := g.heap_assoc_struct_alignment(node, target_type, target_name, ct) {
 		align_ct := g.struct_decl_alignment_c_type(target_name, ct)
 		align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
 		g.write(' (${ct}*)v3_aligned_memdup(&${tmp}, sizeof(${ct}), ${align_arg});})')
+	} else if g.global_fixed_array_type_has_aligned_struct(types.unwrap_pointer(target_type), mut seen_aligned) {
+		g.write(' (${ct}*)v3_aligned_memdup(&${tmp}, sizeof(${ct}), __alignof__(${ct}));})')
 	} else {
 		g.write(' (${ct}*)memdup(&${tmp}, sizeof(${ct}));})')
 	}

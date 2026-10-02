@@ -1700,7 +1700,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	opt_ident := t.make_ident(opt_tmp)
 	ok_cond := t.make_selector(opt_ident, 'ok', 'bool')
 	value_expr := t.make_selector(t.make_ident(opt_tmp), 'value', storage_value_type)
-	then_value := t.clone_borrowed_projection(expr_id, value_expr, storage_value_type)
+	then_value := t.clone_borrowed_storage_projection(expr_id, value_expr, storage_value_type)
 	mut then_stmts := []flat.NodeId{}
 	t.drain_pending(mut then_stmts)
 	then_assign := t.make_assign(t.make_ident(val_tmp), then_value)
@@ -1792,12 +1792,14 @@ fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.No
 }
 
 fn (mut t Transformer) transform_or_body_for_codegen(body_id flat.NodeId) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer { t.restore_heaped_local_state(heaped_state) }
 	if int(body_id) < 0 || int(body_id) >= t.a.nodes.len {
 		return body_id
 	}
 	body := t.a.nodes[int(body_id)]
 	if body.kind == .block {
-		return t.make_block(t.transform_stmts(t.a.children_of(&body)))
+		return t.make_block(t.transform_scope_stmts(t.a.children_of(&body)))
 	}
 	if t.is_stmt_kind_id(int(body.kind)) {
 		return t.make_block(t.transform_stmt(body_id))
@@ -2219,7 +2221,12 @@ fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_exp
 	if int(err_expr) < 0 || !t.has_ierror_interface() {
 		return
 	}
-	stmts << t.make_decl_assign_typed('err', err_expr, 'IError')
+	stmts << t.make_guard_value_decls('err', err_expr, 'IError')
+	i := t.var_type_index('err')
+	t.var_types[i] = VarTypeBinding{
+		...t.var_types[i]
+		is_implicit_err: true
+	}
 }
 
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.

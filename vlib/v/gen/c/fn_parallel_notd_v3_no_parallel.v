@@ -2011,6 +2011,7 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 	if n_jobs <= 0 || items.len == 0 {
 		return [][]FlatFnGenItem{}
 	}
+	chunk_count := if n_jobs > items.len { items.len } else { n_jobs }
 	mut chunks := [][]FlatFnGenItem{}
 	mut total_cost := 0
 	for item in items {
@@ -2019,12 +2020,14 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 	mut current := []FlatFnGenItem{}
 	mut consumed_cost := 0
 	mut chunk_idx := 0
-	mut chunks_left := n_jobs
+	mut chunks_left := chunk_count
 	for idx, item in items {
 		remaining_items := items.len - idx
-		next_target := total_cost * (chunk_idx + 1) / n_jobs
-		if current.len > 0 && consumed_cost >= next_target && chunks_left > 1
-			&& remaining_items >= chunks_left {
+		next_target := total_cost * (chunk_idx + 1) / chunk_count
+		// Leave one item for each remaining chunk even if a costly item has
+		// pushed the cumulative target past the remaining functions.
+		if current.len > 0 && chunks_left > 1
+			&& (consumed_cost >= next_target || remaining_items == chunks_left - 1) {
 			chunks << moved_items(current)
 			current = []FlatFnGenItem{}
 			chunk_idx++
@@ -2721,6 +2724,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		is_debug:                           g.is_debug
 		race:                               g.race
 		line_directives:                    g.line_directives
+		vlines:                             g.vlines
 		uses_recover:                       g.uses_recover
 		check_overflow:                     g.check_overflow
 		force_bounds_checking:              g.force_bounds_checking

@@ -1037,7 +1037,12 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 			g.gen_ownership_drop_value(typ, expr, 0)
 		}
 		if free_pointer_storage {
-			g.writeln('free(${cname});')
+			free_fn := if g.pointer_free_needs_aligned_free(g.tc.parse_type('&${entry.type_name}')) {
+				'v3_aligned_free'
+			} else {
+				'v_free'
+			}
+			g.writeln('${free_fn}(${cname});')
 		}
 	}
 }
@@ -1055,13 +1060,15 @@ fn (g &FlatGen) ownership_destructor_method_name() string {
 	return if g.tc.autofree_mode { 'free' } else { 'drop' }
 }
 
-// ownership_free_call releases the storage of a dropped value. Ownership builds use
-// libc allocations, but the result of a discarded spawn is dropped in every build, and
-// with Boehm GC its storage comes from the GC heap: `__v_thread_free` uses `GC_FREE`
-// there and `free` otherwise.
+// ownership_free_call releases boxed storage with the allocator used to create it.
+// Detached spawn results use the thread allocator; ordinary boxes use memdup,
+// which allocates from the Boehm heap when GC is enabled.
 fn (g &FlatGen) ownership_free_call(ptr string) string {
 	if g.detached_spawn_drop {
 		return '__v_thread_free(${ptr});'
+	}
+	if 'gcboehm' in g.compile_defines {
+		return 'GC_FREE(${ptr});'
 	}
 	return 'free(${ptr});'
 }
@@ -1705,24 +1712,33 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 			g.writeln('${result}._object_is_boxed = true;')
 		} else {
 			clone_method := g.resolve_method_name(concrete, 'clone')
-			if clone_method.len > 0 {
+			has_compatible_clone := g.tc.ownership_type_has_clone_method(concrete_type)
+				|| g.tc.ownership_type_has_clone_method(types.Pointer{ base_type: concrete_type })
+			if clone_method.len > 0 && has_compatible_clone {
 				params := g.tc.fn_param_types[clone_method] or { []types.Type{} }
 				receiver := if params.len > 0 && params[0] is types.Pointer {
 					'((${concrete_ct}*)${object})'
 				} else {
 					'*((${concrete_ct}*)${object})'
 				}
-				return_type := g.tc.fn_ret_types[clone_method] or { concrete_type }
+				return_type := types.unalias_type(g.tc.fn_ret_types[clone_method] or { concrete_type })
 				if return_type is types.Pointer {
-					g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
+					g.write('${result}._object = ')
+					g.gen_ownership_ierror_clone_method_call(clone_method, receiver, params)
+					g.writeln(';')
 					// A compatible pointer-returning clone creates independent owned storage.
 					g.writeln('${result}._object_is_boxed = true;')
 				} else {
 					value := '_clone_ierror_value${tmp}'
-					g.writeln('${concrete_ct} ${value} = ${g.cname(clone_method)}(${receiver});')
+					g.write('${concrete_ct} ${value} = ')
+					g.gen_ownership_ierror_clone_method_call(clone_method, receiver, params)
+					g.writeln(';')
 					g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
 					g.writeln('${result}._object_is_boxed = true;')
 				}
+			} else if g.ownership_type_requires_destruction(concrete_type, 0) {
+				message := 'cannot retain borrowed Result error: `${concrete}` requires ownership destruction but has no compatible `clone()` method'
+				g.writeln('v_panic(${g.interface_str_lit(message)});')
 			} else {
 				g.writeln('${result}._object = memdup(${object}, sizeof(${concrete_ct}));')
 				g.writeln('${result}._object_is_boxed = true;')
@@ -1737,6 +1753,31 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 	g.indent--
 	g.writeln('}')
 	g.write('${result}; })')
+}
+
+fn (mut g FlatGen) gen_ownership_ierror_clone_method_call(method string, receiver string, params []types.Type) {
+	g.write('${g.cname(method)}(${receiver}')
+	is_variadic := (g.tc.fn_variadic[method] or { false }) || g.fn_decl_is_variadic(method,
+		method)
+	for i in 1 .. params.len {
+		param := params[i]
+		if is_variadic && i == params.len - 1 && variadic_array_is_native(param) {
+			continue
+		}
+		g.write(', ')
+		if is_variadic && i == params.len - 1 && param is types.Array {
+			c_elem := g.tc.c_type(param.elem_type)
+			g.write('new_array_from_c_array(0, 0, sizeof(${c_elem}), (${c_elem}[]){0})')
+		} else {
+			clean_param := types.unalias_type(param)
+			if clean_param is types.Pointer {
+				g.gen_default_value_addr_for_type(clean_param.base_type)
+			} else {
+				g.gen_default_value_for_type(param)
+			}
+		}
+	}
+	g.write(')')
 }
 
 fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) bool {
@@ -2890,7 +2931,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								expr_value_type = expr_type.base_type
 							}
 							base_ct := g.value_c_type(base)
-							expr_ct := g.tc.c_type(expr_value_type)
+							expr_ct := g.return_payload_compare_c_type(expr_value_type)
 							struct_init_ct := if ret_node.kind == .struct_init {
 								g.struct_init_c_type_name(ret_node.value)
 							} else {
@@ -5416,6 +5457,21 @@ fn (mut g FlatGen) gen_noreturn_default_return_stmt() {
 	g.writeln('return (${abi_ct}){0};')
 }
 
+// return_payload_compare_c_type spells a return expression's type the way
+// `value_c_type` spells the optional's payload, so the two are comparable.
+// `c_type` leaves a function type as its raw `fn_ptr:<signature>` key, which
+// never equals the registered `_fn_ptr_*` typedef name that the payload side
+// resolves to. Comparing the unresolved key made every `?Fn` return look like a
+// payload mismatch, and the mismatch path silently degrades the return to
+// `{.ok = false}` — dropping the value instead of returning it.
+fn (mut g FlatGen) return_payload_compare_c_type(t types.Type) string {
+	ct := g.tc.c_type(t)
+	if ct.starts_with('fn_ptr:') {
+		return g.resolve_fn_ptr_type(ct)
+	}
+	return ct
+}
+
 fn (mut g FlatGen) gen_default_return_stmt() {
 	if g.cur_fn_ret_is_optional {
 		ct := g.optional_type_name(g.cur_fn_ret)
@@ -5607,6 +5663,10 @@ fn (g &FlatGen) heap_local_memdup_expr(source_expr string, base_type types.Type,
 			align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
 			return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
 		}
+	}
+	mut seen := map[string]bool{}
+	if g.global_fixed_array_type_has_aligned_struct(clean_base, mut seen) {
+		return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), __alignof__(${base_ct}))'
 	}
 	return '(${base_ct}*)memdup(${src}, sizeof(${base_ct}))'
 }
@@ -5902,7 +5962,7 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			expr_value_type = expr_type.base_type
 		}
 		base_ct := g.value_c_type(base)
-		expr_ct := g.tc.c_type(expr_value_type)
+		expr_ct := g.return_payload_compare_c_type(expr_value_type)
 		struct_init_ct := if ret_node.kind == .struct_init {
 			g.struct_init_c_type_name(ret_node.value)
 		} else {
@@ -7981,6 +8041,13 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				&& !g.has_zero_sized_leading_init_slot(v_type) {
 				// An internal staging value is assigned on every path that reads it.
 				g.write('{0}')
+			} else if decl_prefix == 'static ' {
+				// The initializer of a C static is a constant expression: it cannot hold
+				// the statements of a checked operation.
+				old_static_c_initializer := g.static_c_initializer
+				g.static_c_initializer = true
+				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
+				g.static_c_initializer = old_static_c_initializer
 			} else {
 				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
 			}

@@ -46,11 +46,13 @@ fn (mut i TypeInterner) intern_locked(t Type) (TypeId, Type) {
 	return id, i.types[int(id)]
 }
 
-// probe returns the canonical copy when t is already interned, WITHOUT
-// mutating the interner or taking its lock. Callers must guarantee no
-// concurrent inserts (the parallel check-merge clone pass runs while the
-// master is joined and workers only use private interners).
+// probe returns the canonical copy when t is already interned. Readers must
+// synchronize with table growth even when they do not insert a missing type.
 fn (i &TypeInterner) probe(t Type) ?Type {
+	// The semantic lookup is read-only; only its synchronization state is mutable.
+	mut guard := unsafe { i.lock }
+	guard.lock()
+	defer { guard.unlock() }
 	mut key := semantic_type_hash(t)
 	for {
 		id := i.buckets[key] or { return none }
@@ -100,6 +102,8 @@ fn (mut i TypeInterner) reserve(headroom int) {
 	if headroom <= 0 {
 		return
 	}
+	i.lock.lock()
+	defer { i.lock.unlock() }
 	unsafe {
 		i.types.grow_cap(headroom)
 		i.names.grow_cap(headroom)

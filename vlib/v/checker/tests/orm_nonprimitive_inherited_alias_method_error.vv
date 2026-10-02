@@ -1,0 +1,39 @@
+import db.sqlite
+
+struct Account {
+	id   int @[primary; sql: serial]
+	name string
+}
+
+struct Holder {
+	name string
+}
+
+type Names = []string
+
+fn (names Names) clone() []Holder {
+	return [Holder{name: names[0]}]
+}
+
+type WrappedNames = Names
+
+fn make_wrapped_names() WrappedNames {
+	return WrappedNames(Names(['first']))
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:')!
+	returned := sql db {
+		select from Account where name == make_wrapped_names().clone()[0]
+	}!
+	names := make_wrapped_names()
+	local := sql db {
+		select from Account where name == names.clone()[0]
+	}!
+	grouped := sql db {
+		select from Account where name == (names).clone()[0]
+	}!
+	dump(returned)
+	dump(local)
+	dump(grouped)
+}

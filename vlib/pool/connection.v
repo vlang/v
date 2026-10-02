@@ -140,7 +140,7 @@ fn (mut p ConnectionPool) create_conn_with_retry() !&ConnectionPoolable {
 	max_attempts := p.config.max_retry_attempts
 	base_delay := p.config.retry_base_delay
 	max_delay := p.config.max_retry_delay
-	p.config_mutex.unlock()
+	p.config_mutex.runlock()
 
 	// Serialize connection creation
 	p.create_mutex.lock()
@@ -206,7 +206,7 @@ fn (mut p ConnectionPool) try_wakeup_waiters() {
 fn (mut p ConnectionPool) can_create() bool {
 	p.config_mutex.rlock()
 	max_conns := p.config.max_conns
-	p.config_mutex.unlock()
+	p.config_mutex.runlock()
 	return p.active_count.load() + p.creating_count.load() < max_conns && !p.is_closed.load()
 		&& p.all_conns.len < max_conns
 }
@@ -239,7 +239,7 @@ pub fn (mut p ConnectionPool) get() !&ConnectionPoolable {
 
 			p.config_mutex.rlock()
 			max_conns := p.config.max_conns
-			p.config_mutex.unlock()
+			p.config_mutex.runlock()
 
 			p.all_conns_mutex.lock()
 			if p.all_conns.len < max_conns {
@@ -270,7 +270,7 @@ pub fn (mut p ConnectionPool) get() !&ConnectionPoolable {
 		// Calculate remaining time for connection acquisition
 		p.config_mutex.rlock()
 		timeout := p.config.get_timeout
-		p.config_mutex.unlock()
+		p.config_mutex.runlock()
 		elapsed := time.utc() - start_time
 		if elapsed > timeout {
 			return error('Connection acquisition timeout')
@@ -319,7 +319,7 @@ fn (mut p ConnectionPool) try_get() ?&ConnectionPoolable {
 	p.config_mutex.rlock()
 	min_idle := p.config.min_idle_conns
 	max_lifetime := p.config.max_lifetime
-	p.config_mutex.unlock()
+	p.config_mutex.runlock()
 
 	p.idle_pool_mutex.lock()
 	defer {
@@ -410,7 +410,7 @@ pub fn (mut p ConnectionPool) put(conn &ConnectionPoolable) ! {
 		// Determine if eviction is needed
 		p.config_mutex.rlock()
 		low_eviction := p.idle_pool.len > p.config.min_idle_conns
-		p.config_mutex.unlock()
+		p.config_mutex.runlock()
 
 		// Wake any waiting clients
 		p.try_wakeup_waiters()
@@ -481,7 +481,7 @@ fn (mut p ConnectionPool) background_maintenance() {
 		} else {
 			p.config.idle_timeout / 10
 		}
-		p.config_mutex.unlock()
+		p.config_mutex.runlock()
 
 		interval := if min_interval < dynamic_interval {
 			min_interval
@@ -554,7 +554,7 @@ fn (mut p ConnectionPool) prune_connections() {
 	max_lifetime := p.config.max_lifetime
 	idle_timeout := p.config.idle_timeout
 	min_idle := p.config.min_idle_conns
-	p.config_mutex.unlock()
+	p.config_mutex.runlock()
 
 	p.idle_pool_mutex.lock()
 	// Remove stale connections
@@ -601,7 +601,7 @@ fn (mut p ConnectionPool) prune_connections() {
 	p.config_mutex.rlock()
 	current_min_idle := p.config.min_idle_conns
 	max_conns := p.config.max_conns
-	p.config_mutex.unlock()
+	p.config_mutex.runlock()
 
 	// Add new connections to the pool
 	p.idle_pool_mutex.lock()
@@ -724,9 +724,9 @@ pub fn (mut p ConnectionPool) stats() ConnectionPoolStats {
 	p.all_conns_mutex.rlock()
 	p.wait_queue_mutex.rlock()
 	defer {
-		p.wait_queue_mutex.unlock()
-		p.all_conns_mutex.unlock()
-		p.idle_pool_mutex.unlock()
+		p.wait_queue_mutex.runlock()
+		p.all_conns_mutex.runlock()
+		p.idle_pool_mutex.runlock()
 	}
 
 	return ConnectionPoolStats{

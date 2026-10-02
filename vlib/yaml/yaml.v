@@ -81,9 +81,12 @@ pub fn decode_file[T](path string) !T {
 // encode encodes the value `value` into a YAML string.
 // The generic encode/decode path uses `json2` for field parity.
 pub fn encode[T](value T) string {
-	json_text := json2.encode(value)
-	raw := json2.decode[json2.Any](json_text) or { return '' }
-	return from_json2(raw).to_yaml()
+	// JSON is a subset of YAML and `parse_text` has a fast path for it, so the JSON
+	// text is read back with the YAML parser. Routing it through `json2.Any`
+	// instead would turn every number into an `f64`, which writes integers as
+	// `8080.0` and drops precision for values above 2^53.
+	doc := parse_text(json2.encode(value)) or { return '' }
+	return doc.to_yaml()
 }
 
 // encode_file encodes `value` as YAML and writes it to `path`.
