@@ -35,7 +35,9 @@ s := 'hello'.to_owned() // s is owned
 t := 'world' // t is a normal string, no ownership tracking
 ```
 
-Ordinary string slices allocate independent storage but remain regular strings. A local
+Ordinary string slices allocate independent storage but remain regular strings. Addressed
+string ranges such as `&text[start..end]` borrow the original bytes in ownership mode and
+retain a stable slice header. The source must remain alive while the reference is used. A local
 dereference of a borrowed string or a `substr_unsafe()` result retains a view of its source;
 the source cannot be moved or reassigned while that view is live. Use `.to_owned()` or
 `.clone()` to create an owned copy. Borrowed views stored in owned aggregates or returned
@@ -105,13 +107,16 @@ fn main() {
 
 Struct fields can borrow arrays using `&[]T` in ownership mode. Initializing such a
 field with `&values` borrows the existing array instead of creating an owned copy.
+Array-slice references such as `&values[1..]` keep the original elements and a stable slice
+header. The backing value must remain alive while the reference is used. Copy the slice by
+value or use `.clone()` when independent storage is needed.
 
 Mutable receiver methods can return a reference to their receiver in ownership mode.
 The returned reference borrows the caller's value; the value must remain alive while it is used.
 
-A reference returned through a receiver call remains tied to the receiver's storage and
-cannot escape the ownership scope of a local value. Caller-backed mutable parameters and
-explicit heap-pointer receivers can return such references.
+A reference returned through a receiver call or an addressed range remains tied to its source
+storage and cannot escape the ownership scope of a local value. Caller-backed mutable parameters
+and explicit heap-pointer receivers can return such references.
 
 ### Struct ownership markers
 
