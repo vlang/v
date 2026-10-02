@@ -58,7 +58,7 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 	assert os.is_executable(binary), 'expected an executable at `${binary}`'
 	before := os.stat(binary)!
 
-	// Every rebuild prunes the earlier entries of the same tool, so a decoy shaped like the
+	// Every rebuild prunes invalid earlier entries of the same tool, so a decoy shaped like the
 	// entry of an older build, still being there afterwards, proves that the second
 	// invocation did not recompile anything.
 	decoy := os.join_path(cache, '${probe_tool}-' + 'a'.repeat(64))
@@ -450,6 +450,56 @@ fn test_pruning_collects_binaries_that_were_replaced_while_in_use() {
 	assert os.exists(entry.manifest), 'the current manifest must be kept'
 	assert !os.exists(displaced), 'a binary replaced while in use must be collected'
 	assert !os.exists(stale), 'a previous build must be collected'
+}
+
+fn test_pruning_preserves_other_fresh_keys_and_failures_until_their_inputs_change() {
+	directory := toolcache_test_dir('prune_fresh_keys')
+	defer { os.rmdir_all(directory) or {} }
+	mut dependencies := []string{}
+	mut entries := []ToolCacheEntry{}
+	for index, key in ['a', 'b', 'c'] {
+		module_dir := os.join_path(directory, 'module_${index}')
+		os.mkdir(module_dir)!
+		dependency := os.join_path(module_dir, 'source.v')
+		os.write_file(dependency, 'module module_${index}\n')!
+		dependencies << dependency
+		entry_dir := os.join_path(directory, 'vdemo-' + key.repeat(64))
+		os.mkdir(entry_dir)!
+		entry := ToolCacheEntry{
+			name:                 'vdemo'
+			dir:                  entry_dir
+			binary:               os.join_path(entry_dir, 'vdemo' + tool_exe_suffix())
+			manifest:             os.join_path(entry_dir, 'inputs')
+			unbuildable:          os.join_path(entry_dir, 'unbuildable')
+			unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		}
+		entries << entry
+		if index < 2 {
+			os.write_file(entry.binary, 'compiled tool ${index}')!
+			os.chmod(entry.binary, 0o755)!
+		} else {
+			os.write_file(entry.unbuildable, 'error: rejected source')!
+		}
+	}
+	time.sleep(1100 * time.millisecond)
+	for index, entry in entries {
+		manifest := encode_tool_cache_manifest([dependencies[index]], time.now().unix())
+		os.write_file(if index < 2 { entry.manifest } else { entry.unbuildable_manifest }, manifest)!
+	}
+
+	prune_stale_tool_binaries(entries[0])
+	assert tool_cache_is_fresh(entries[0])
+	assert tool_cache_is_fresh(entries[1]), 'building one key must preserve another usable key'
+	assert unbuildable_tool_failure(entries[2])? == 'error: rejected source'
+	prune_stale_tool_binaries(entries[1])
+	assert tool_cache_is_fresh(entries[0]), 'alternating keys must reuse both cached builds'
+
+	for index in [1, 2] {
+		os.write_file(dependencies[index], 'module module_${index}\nfn changed() {}\n')!
+	}
+	prune_stale_tool_binaries(entries[0])
+	assert !os.exists(entries[1].dir), 'a changed source must make its old binary collectible'
+	assert !os.exists(entries[2].dir), 'a changed source must make its old failure collectible'
 }
 
 fn test_tool_cache_lock_path_is_persistent_between_owners() {

@@ -958,7 +958,8 @@ fn tool_cache_lock(entry ToolCacheEntry) !filelock.FileLock {
 	return filelock.new_file(path, mode: .exclusive)
 }
 
-// prune_stale_tool_binaries drops the cache entries of previous builds of the same tool.
+// prune_stale_tool_binaries drops invalid cache entries of the same tool while retaining
+// fresh builds for other compiler flags and checkouts sharing the cache directory.
 // Unlinking an executable that another process is currently running is safe on POSIX: that
 // process keeps its own already opened image.
 fn prune_stale_tool_binaries(entry ToolCacheEntry) {
@@ -990,6 +991,24 @@ fn prune_stale_tool_binaries_locked(entry ToolCacheEntry) {
 			continue
 		}
 		path := os.join_path(directory, name)
+		if !os.is_link(path) && os.is_dir(path) {
+			other := ToolCacheEntry{
+				name:                 entry.name
+				dir:                  path
+				binary:               os.join_path(path, entry.name + tool_exe_suffix())
+				manifest:             os.join_path(path, 'inputs')
+				unbuildable:          os.join_path(path, 'unbuildable')
+				unbuildable_manifest: os.join_path(path, 'unbuildable.inputs')
+			}
+			// A different content key can still be in use by another checkout or
+			// flag combination. Its recorded inputs decide whether it is stale.
+			if tool_cache_is_fresh(other) {
+				continue
+			}
+			if _ := unbuildable_tool_failure(other) {
+				continue
+			}
+		}
 		prune_stale_tool_artifact(path)
 	}
 }
