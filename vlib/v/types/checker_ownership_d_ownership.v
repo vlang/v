@@ -819,7 +819,8 @@ fn (mut tc TypeChecker) ownership_should_defer_call_arg_aggregate_consumption(no
 	}
 	param_idx := tc.ownership_call_arg_decl_param_idx(info, child_idx)
 	type_param_idx := param_idx + tc.ownership_call_arg_shift(node, info)
-	variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx)
+	arg_id := tc.call_arg_value(tc.a.child(&node, child_idx))
+	variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx, arg_id)
 	expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
 	return expected !is Void && expected !is Pointer
 }
@@ -4371,14 +4372,15 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 	}
 	for i in 1 .. node.children_count {
 		arg_node := tc.a.child_node(&node, i)
-		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_value_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_id := tc.spread_arg_value(arg_value_id) or { arg_value_id }
 		if arg_node.kind == .field_init {
 			tc.ownership_prescan_collapsed_field_arg(node, info, arg_node, arg_id, mut owned_locals, mut local_types)
 			continue
 		}
 		param_idx := tc.ownership_call_arg_decl_param_idx(info, i)
 		type_param_idx := param_idx + arg_shift
-		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx)
+		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx, arg_value_id)
 		target_param_idx := tc.ownership_call_arg_variadic_decl_param_idx(param_idx, variadic_elem_idx)
 		target_suffix := ownership_call_arg_variadic_suffix(variadic_elem_idx)
 		expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
@@ -4636,12 +4638,12 @@ fn (tc &TypeChecker) ownership_call_arg_decl_param_idx(info CallInfo, child_idx 
 	return if info.has_receiver { child_idx } else { child_idx - 1 }
 }
 
-fn (tc &TypeChecker) ownership_call_arg_variadic_elem_idx(info CallInfo, type_param_idx int) int {
+fn (tc &TypeChecker) ownership_call_arg_variadic_elem_idx(info CallInfo, type_param_idx int, arg_id flat.NodeId) int {
 	if !info.is_variadic || info.params.len == 0 {
 		return -1
 	}
 	variadic_param_idx := info.params.len - 1
-	if type_param_idx < variadic_param_idx {
+	if type_param_idx < variadic_param_idx || tc.spread_arg_value(arg_id) != none {
 		return -1
 	}
 	return type_param_idx - variadic_param_idx
@@ -9079,14 +9081,15 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 	}
 	for i in 1 .. node.children_count {
 		arg_node := tc.a.child_node(&node, i)
-		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_value_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_id := tc.spread_arg_value(arg_value_id) or { arg_value_id }
 		if arg_node.kind == .field_init {
 			tc.ownership_after_collapsed_field_arg(node, info, arg_node, arg_id, id, call_name, mut call_borrows)
 			continue
 		}
 		param_idx := tc.ownership_call_arg_decl_param_idx(info, i)
 		type_param_idx := param_idx + tc.ownership_call_arg_shift(node, info)
-		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx)
+		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx, arg_value_id)
 		target_param_idx := tc.ownership_call_arg_variadic_decl_param_idx(param_idx, variadic_elem_idx)
 		target_suffix := ownership_call_arg_variadic_suffix(variadic_elem_idx)
 		expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
@@ -9231,7 +9234,7 @@ fn (mut tc TypeChecker) ownership_clone_nonowned_string_call_arg(fn_name string,
 		return false
 	}
 	mut st := tc.ownership_state()
-	mut param_owned := suffix == '' && '${fn_name}__param_${param_idx}' in st.ownership_fn_params
+	mut param_owned := '${fn_name}__param_${param_idx}' in st.ownership_fn_params
 	if !param_owned {
 		for desc in st.ownership_fn_param_descs[fn_name] {
 			if desc.param_idx == param_idx && desc.suffix == suffix && desc.type_name == 'string' {
@@ -10578,9 +10581,11 @@ fn (tc &TypeChecker) ownership_call_arg_for_return_param_source_info(node flat.N
 		if arg_node.kind == .field_init {
 			continue
 		}
+		arg_value_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_id := tc.spread_arg_value(arg_value_id) or { arg_value_id }
 		raw_param_idx := tc.ownership_call_arg_decl_param_idx(info, i)
 		type_param_idx := raw_param_idx + arg_shift
-		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx)
+		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx, arg_value_id)
 		target_param_idx := tc.ownership_call_arg_variadic_decl_param_idx(raw_param_idx, variadic_elem_idx)
 		if target_param_idx != param_idx {
 			continue
@@ -10589,20 +10594,20 @@ fn (tc &TypeChecker) ownership_call_arg_for_return_param_source_info(node flat.N
 		if target_suffix.len > 0 {
 			if source_suffix == target_suffix {
 				return OwnershipReturnParamArg{
-					arg_id:        tc.call_arg_value(tc.a.child(&node, i))
+					arg_id:        arg_id
 					source_suffix: ''
 				}
 			}
 			if ownership_storage_key_is_descendant(source_suffix, target_suffix) {
 				return OwnershipReturnParamArg{
-					arg_id:        tc.call_arg_value(tc.a.child(&node, i))
+					arg_id:        arg_id
 					source_suffix: source_suffix[target_suffix.len..]
 				}
 			}
 			continue
 		}
 		return OwnershipReturnParamArg{
-			arg_id:        tc.call_arg_value(tc.a.child(&node, i))
+			arg_id:        arg_id
 			source_suffix: source_suffix
 		}
 	}

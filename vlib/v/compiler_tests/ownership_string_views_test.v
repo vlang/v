@@ -172,6 +172,9 @@ fn read(value string) (int, voidptr) {
 fn read_many(values ...string) voidptr {
 	return unsafe { voidptr(values[0].str) }
 }
+fn read_spread(values ...string) (int, voidptr) {
+	return values[0].len, unsafe { voidptr(values[0].str) }
+}
 fn escape() (string, voidptr) {
 	local := "local owner".to_owned()
 	ptr := &local
@@ -190,6 +193,10 @@ fn main() {
 	assert alias == "second owner"
 	variadic_ptr := read_many(alias)
 	assert unsafe { variadic_ptr != voidptr(local.str) }
+	assert alias == "second owner"
+	spread_len, spread_ptr := read_spread(alias)
+	assert spread_len == local.len
+	assert unsafe { spread_ptr != voidptr(local.str) }
 	assert alias == "second owner"
 	conditional_len, conditional_ptr := read(if borrowed.len > 0 { borrowed } else { "empty" })
 	assert conditional_len == local.len
@@ -225,7 +232,10 @@ fn main() {
 	assert taken == "owned argument"
 	owned_len, _ := read("owned reader".to_owned())
 	assert owned_len == 12
-	_ = read_many("owned variadic".to_owned())'
+	_ = read_many("owned variadic".to_owned())
+	owned_args := ["owned argument".to_owned()]
+	array_len, _ := read_spread(...owned_args)
+	assert array_len == 14'
 	for first in [true, false] {
 		os.write_file(source, fixture.replace('OWNED_CALLS_START', if first {
 			owned_calls
@@ -284,5 +294,45 @@ fn main() {
 				assert out.output.contains('use of moved value: `owned`'), '${mode}: ${out.output}'
 			}
 		}
+	}
+}
+
+fn test_ownership_string_call_copies_preserve_owned_variadic_array_moves() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_array_call_moves_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn consume(values ...string) int { return values.len }
+fn main() {
+	owned := ["owned argument".to_owned()]
+	assert consume(...owned) == 1
+	println(owned.len)
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		assert out.exit_code != 0, '${mode}: ${out.output}'
+		assert out.output.contains('use of moved value: `owned`'), '${mode}: ${out.output}'
+	}
+}
+
+fn test_ownership_string_returns_preserve_owned_variadic_array_elements() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_array_return_moves_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn first(values ...string) string { return values[0] }
+fn consume(value string) { _ = value }
+fn main() {
+	owned := ["owned argument".to_owned()]
+	result := first(...owned)
+	consume(result)
+	println(result)
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		assert out.exit_code != 0, '${mode}: ${out.output}'
+		assert out.output.contains('use of moved value: `result`'), '${mode}: ${out.output}'
 	}
 }
