@@ -20393,6 +20393,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	// Branch hints also use .paren nodes, but their parentheses are required.
 	if condition.kind == .paren
 		&& condition.value !in ['__v3_comptime_d', '_likely_', '_unlikely_']
+		&& !tc.if_condition_starts_with_conditional(cond_id)
 		&& tc.node_source_starts_with(cond_id, '(') {
 		tc.record_warning_at(.condition_mismatch, 'unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`.', cond_id, tc.if_parenthesized_condition_pos(condition))
 	}
@@ -20736,6 +20737,23 @@ fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
 	} else {
 		tc.smartcasts.clear()
 	}
+}
+
+// The parser requires a group when an if condition starts with another if or match.
+fn (tc &TypeChecker) if_condition_starts_with_conditional(id flat.NodeId) bool {
+	mut current := id
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind in [.if_expr, .match_stmt] {
+			return true
+		}
+		if node.kind !in [.paren, .infix, .selector, .index, .call, .as_expr]
+			|| node.children_count == 0 {
+			return false
+		}
+		current = tc.a.child(node, 0)
+	}
+	return false
 }
 
 fn (tc &TypeChecker) if_parenthesized_condition_pos(condition flat.Node) token.Pos {
