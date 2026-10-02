@@ -66,7 +66,8 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericCon
 	if named is SumType {
 		mut types := []Type{}
 		mut seen := map[string]bool{}
-		tc.collect_sum_constraint_types(named, mut types, mut seen)
+		mut active := map[string]string{}
+		tc.collect_sum_constraint_types(named, mut types, mut seen, mut active)
 		return GenericConstraint{
 			name:  text
 			types: types
@@ -127,23 +128,68 @@ fn (tc &TypeChecker) is_constraint_family(constraint GenericConstraint, member T
 // collect_sum_constraint_types adds to `types` the variants of the sum type
 // `sum`, bound to its type arguments, and in place of a variant that is a sum
 // type, its variants.
-fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type, mut seen map[string]bool) {
+fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type, mut seen map[string]bool, mut active map[string]string) {
 	base := tc.sum_base_name(sum.name)
-	if seen[base] {
+	if seen[sum.name] {
 		return
 	}
-	seen[base] = true
+	previous := active[base] or { '' }
+	// A repeated base may peel a finite nested argument, such as Part[Part[int]].
+	// Growing recursive instances must stop until declaration checking reports the cycle.
+	if previous.len > 0 && !tc.sum_constraint_has_nested_instance(previous, sum.name) {
+		return
+	}
+	seen[sum.name] = true
+	active[base] = sum.name
+	defer {
+		if previous.len > 0 {
+			active[base] = previous
+		} else {
+			active.delete(base)
+		}
+	}
 	for variant in tc.sum_types[base] or { []string{} } {
 		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.name, variant))
 		inner := unalias_type(concrete)
 		if inner is SumType {
-			tc.collect_sum_constraint_types(inner, mut types, mut seen)
+			tc.collect_sum_constraint_types(inner, mut types, mut seen, mut active)
 			continue
 		}
 		if !types.any(it.name() == concrete.name()) {
 			types << concrete
 		}
 	}
+}
+
+// sum_constraint_has_nested_instance permits descending into a finite type argument,
+// including an alias of a nested instance of the same generic sum.
+fn (tc &TypeChecker) sum_constraint_has_nested_instance(parent string, nested string) bool {
+	_, args, _ := generic_type_application_parts(parent)
+	mut seen := map[string]bool{}
+	for arg in args {
+		if tc.sum_constraint_argument_contains(arg, nested, mut seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) sum_constraint_argument_contains(text string, nested string, mut seen map[string]bool) bool {
+	if seen[text] {
+		return false
+	}
+	seen[text] = true
+	typ := unalias_type(tc.parse_type(text))
+	if typ.name() == nested {
+		return true
+	}
+	_, args, _ := generic_type_application_parts(typ.name())
+	for arg in args {
+		if tc.sum_constraint_argument_contains(arg, nested, mut seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // generic_constraint_with_args resolves the constraint `text` of `decl` with its

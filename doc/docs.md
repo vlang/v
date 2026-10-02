@@ -5329,6 +5329,8 @@ the types it takes; or a struct, which takes that struct and the structs that em
 A call is checked against the constraint where it is written, and in the body a value
 of the type parameter has what the constraint provides: the members of the interface
 or of the struct, or what every variant of the sum type has, operators included.
+Nested generic sums retain the variants of each concrete instance. For example,
+`Part[int] | Part[string]` accepts variants from both instances of `Part[T]`.
 
 ```v
 interface Named {

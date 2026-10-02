@@ -1787,6 +1787,121 @@ fn main() {
 	], res.output
 }
 
+fn test_a_nested_sum_constraint_keeps_distinct_generic_instances() {
+	for name, variants in {
+		'int_first':    'Part[int] | Part[string]'
+		'string_first': 'Part[string] | Part[int]'
+	} {
+		res := check_whole('sum_instances_${name}', "module main
+
+type Part[T] = T | bool
+
+type Both = ${variants}
+
+fn accept[T Both](value T) T {
+	return value
+}
+
+fn main() {
+	println(accept(1))
+	println(accept('ok'))
+	println(accept(true))
+}
+")
+		assert res.exit_code == 0, res.output
+	}
+	res := check_whole('sum_instances_invalid', 'module main
+
+type Part[T] = T | bool
+
+type Both = Part[int] | Part[string]
+
+fn accept[T Both](value T) T {
+	return value
+}
+
+fn main() {
+	println(accept(1.5))
+}
+')
+	assert res.exit_code == 1, res.output
+	assert error_lines_from(res.output, 1) == [
+		'12:17: cannot use `f64` as `T`: it is not in its constraint `Both`',
+	], res.output
+}
+
+fn test_a_nested_sum_constraint_keeps_finite_nested_generic_instances() {
+	res := check_whole('sum_instances_finite_nested', 'module main
+
+type Part[T] = T | bool
+
+type First = Part[int]
+
+type Nested = Part[Part[int]] | Part[string]
+
+type Aliased = Part[First] | Part[string]
+
+fn accept[T Nested](value T) T {
+	return value
+}
+
+fn main() {
+	println(accept(1))
+	println(accept("ok"))
+	println(accept(true))
+	println(accept_alias(1))
+	println(accept_alias("ok"))
+	println(accept_alias(true))
+}
+
+fn accept_alias[T Aliased](value T) T {
+	return value
+}
+')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_a_generic_sum_constraint_rejects_expanding_recursive_declarations() {
+	for name, declaration in {
+		'direct': 'type Expanding[T] = T | Expanding[[]T]'
+		'mutual': 'type Expanding[T] = T | Other[[]T]\ntype Other[T] = T | Expanding[[]T]'
+	} {
+		res := check_whole('sum_instances_recursive_${name}', 'module main
+
+${declaration}
+
+fn accept[T Expanding[int]](value T) T {
+	return value
+}
+
+fn main() {
+	println(accept(1))
+}
+')
+		assert res.exit_code == 1, res.output
+		assert res.output.contains('sum type cannot hold itself')
+			|| res.output.contains('cannot be defined recursively'), res.output
+	}
+}
+
+fn test_a_generic_sum_constraint_bounds_expansion_through_a_type_argument() {
+	res := check_whole('sum_instances_argument_recursive', 'module main
+
+type Part[T] = T | bool
+
+type Expanding[T] = T | Part[Expanding[[]T]]
+
+fn accept[T Expanding[int]](value T) T {
+	return value
+}
+
+fn main() {
+	println(accept(1))
+}
+')
+	assert res.exit_code == 0, res.output
+}
+
 fn test_a_struct_constraint_takes_the_struct_and_the_structs_that_embed_it() {
 	// `[T User]` takes `User` and a struct that embeds it, at any depth, and the
 	// body has what `User` has. A struct that embeds `User` does not get its
