@@ -2332,7 +2332,7 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 	if path.ends_with('.m') {
 		return 'objective-c'
 	}
-	if path.ends_with('.cc') || path.ends_with('.cpp') {
+	if path.ends_with('.C') || path.ends_with('.cc') || path.ends_with('.cpp') {
 		return 'c++'
 	}
 	if cache_native_input_path_needs_objective_c(path, c_flags, c99_mode, target) {
@@ -16857,7 +16857,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write(g.cname('${short_mod}.${node.value}'))
 				}
-			} else if node.value == 'len' && base.kind == .ident {
+			} else if node.value == 'len' && base.kind == .ident
+				&& g.embedded_field_path_for_promoted_selector(base_type0, node.value) == none {
+				// A `len` promoted from an embedded struct takes the embedded path below.
 				base_type := g.tc.resolve_type(base_id)
 				if fixed := array_fixed_type(types.unwrap_pointer(base_type)) {
 					g.write(g.fixed_array_len_value(fixed))
@@ -24052,8 +24054,12 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 		// self-contained; allow it. Other prefixes (e.g. `&local`) would need a
 		// dropped temporary, so skip them.
 		if node.op == .amp && node.children_count > 0 {
-			child := g.a.nodes[int(g.a.child(&node, 0))]
+			child_id := g.a.child(&node, 0)
+			child := g.a.nodes[int(child_id)]
+			// A global, or a field or element of one, already has storage:
+			// `__global current = &manager` needs no temporary either.
 			return child.kind == .struct_init || child.kind == .assoc
+				|| g.global_init_operand_is_global_place(child_id)
 		}
 		return node.children_count == 1 && g.is_safe_global_init(g.a.child(&node, 0))
 	}
@@ -24061,6 +24067,28 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 	// them zero/NULL instead of emitting a reference to an undeclared symbol.
 	// Everything else, `.array_init` included, is safe.
 	return node.kind != .array_literal
+}
+
+// global_init_operand_is_global_place reports whether an operand of `&` in a global
+// initializer names a global, or a field or element of one.
+fn (g &FlatGen) global_init_operand_is_global_place(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value in g.global_types
+				|| qualify_name_in_module(g.tc.cur_module, node.value) in g.global_types
+		}
+		.selector, .index, .paren {
+			return node.children_count > 0
+				&& g.global_init_operand_is_global_place(g.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (g &FlatGen) const_get_deps(val_id flat.NodeId) []string {
@@ -25755,7 +25783,7 @@ fn (g &FlatGen) integer_overflow_helper(typ types.Type, op flat.Op) ?string {
 }
 
 fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, result_type types.Type) bool {
-	if !g.has_builtins || node.op !in [.div, .mod] {
+	if !g.has_builtins || g.static_c_initializer || node.op !in [.div, .mod] {
 		return false
 	}
 	checked_integer_bounds(result_type) or { return false }

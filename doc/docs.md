@@ -250,6 +250,7 @@ argument, e.g. `v new abc`.
     * [v fmt](#v-fmt)
     * [v env](#v-env)
     * [v shader](#v-shader)
+    * [v tool](#v-tool)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
     * [Package commands](#package-commands)
@@ -4539,6 +4540,8 @@ A type implements an interface by implementing its methods and fields.
 Equivalent fixed array lengths in method signatures may use different constant expressions.
 Callback userdata parameters may use `voidptr` or a concrete pointer type.
 An interface field's default value may be a pointer to a type that implements the interface.
+Fixed array fields are supported when converting a pointer to an interface with `I(value)`
+or `&I(value)`. Mutable fields continue to refer to the concrete object's fields.
 
 An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section
@@ -6977,6 +6980,41 @@ v shader /path/to/project/dir/or/file.v
 Currently you need to
 [include a header and declare a glue function](https://github.com/vlang/v/blob/master/examples/sokol/02_cubes_glsl/cube_glsl.v#L25-L28)
 before using the shader in your code.
+
+### v tool
+
+VPM installs modules rather than binaries, so a CLI tool written in V has to be
+run by path today: `v run ~/.vmodules/mytool`, or `v run ../mytool` for a checkout
+beside the project. Both need a path you have to know and keep correct.
+
+`v tool NAME` resolves `NAME` the way an import would, then builds and runs that module:
+
+```shell
+$ v tool greet
+hello from the tool
+```
+
+Because it reuses the compiler's own module lookup, that finds a tool installed
+with `v install` and equally a tool you have a checkout of next to the project,
+without either path being written down anywhere.
+
+With no argument, `v tool` lists the tool modules of the project and of the
+global module folders, so the names do not have to be remembered:
+
+```shell
+$ v tool
+myproject
+mytool
+```
+
+A module is a tool when its root holds a `main.v`. A library module asked for
+by name is refused rather than attempted, and a name that resolves to nothing is an
+error.
+
+Running a tool builds and starts the module, which means running code from a
+module in the module search path. That is the same trust that `v install` already
+places in a module you chose to install, but it is worth knowing before running a
+name you did not install yourself.
 
 ### Profiling
 
@@ -9712,6 +9750,13 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
+You can pass a local source file with `#flag "@VMODROOT/my_test_cshim.c"`.
+Lowercase `.c` sources compile as C; uppercase `.C`, `.cc`, and `.cpp` sources compile as C++.
+An explicit `#flag -x c` or `#flag -x c++`, including the joined forms `-xc` and `-xc++`,
+overrides the filename's language until `#flag -x none` restores inference from the filename.
+Both spellings also select the matching native compilation standard and runtime libraries,
+including when a `.o` flag compiles an adjacent source into the object cache.
+
 Native C sources and object files from `#flag` are linked before the libraries from
 all modules, including imported modules. Library flags retain their relative order.
 Explicit `-x` language settings remain attached to native inputs when they are reordered.
@@ -9889,6 +9934,11 @@ V has these types for easier interoperability with C:
 - `&&char` for C's `char**`
 
 To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
+
+Passing `unsafe { nil }` to a pointer parameter passes a null pointer, including pointers to
+handles that alias `voidptr`.
+A mutable block that yields `&T` can pass that pointer to a `mut T` parameter,
+including generic functions and functions from imported modules.
 
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 

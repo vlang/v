@@ -8041,6 +8041,13 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				&& !g.has_zero_sized_leading_init_slot(v_type) {
 				// An internal staging value is assigned on every path that reads it.
 				g.write('{0}')
+			} else if decl_prefix == 'static ' {
+				// The initializer of a C static is a constant expression: it cannot hold
+				// the statements of a checked operation.
+				old_static_c_initializer := g.static_c_initializer
+				g.static_c_initializer = true
+				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
+				g.static_c_initializer = old_static_c_initializer
 			} else {
 				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
 			}

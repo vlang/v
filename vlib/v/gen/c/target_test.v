@@ -1036,6 +1036,8 @@ fn test_cache_native_input_language_reports_source_language() {
 	assert cache_native_input_language(objc_cpp_source, []string{}, false, prefs.target) == 'objective-c++'
 	assert cache_native_input_language(objc_source, []string{}, false, prefs.target) == 'objective-c'
 	assert cache_native_input_language(cpp_source, []string{}, false, prefs.target) == 'c++'
+	assert cache_native_input_language(os.join_path(dir, 'cpp_source.C'), []string{}, false,
+		prefs.target) == 'c++'
 	assert cache_native_input_language(objc_header, []string{}, false, prefs.target) == 'objective-c'
 	assert cache_native_input_language(plain_header, []string{}, false, prefs.target) == 'c'
 	// An .mm source is Objective-C++, so the shared probe language must carry both
