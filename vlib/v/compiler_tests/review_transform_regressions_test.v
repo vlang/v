@@ -3542,6 +3542,106 @@ fn main() {
 	assert safe == '11\n22'
 }
 
+fn test_escaping_mut_method_value_of_an_embedded_struct_rejects_stack_receiver() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Counter {
+mut:
+	value int
+}
+
+fn (mut counter Counter) next() int {
+	counter.value++
+	return counter.value
+}
+
+struct Holder {
+	Counter
+}
+'
+	run_bad(v3_bin, 'embedded_mut_method_value_stack_receiver_direct', source + 'fn make() fn () int {
+	mut holder := Holder{}
+	return holder.next
+}
+
+fn main() {
+	_ = make()
+}
+', 'mutable local receiver cannot escape')
+	run_bad(v3_bin, 'embedded_mut_method_value_stack_receiver_alias', source + 'fn make() fn () int {
+	mut holder := Holder{}
+	callback := holder.next
+	return callback
+}
+
+fn main() {
+	_ = make()
+}
+', 'mutable local receiver cannot escape')
+	in_scope := run_good(v3_bin, 'embedded_mut_method_value_in_scope_borrows_receiver', source + 'fn main() {
+	mut holder := Holder{}
+	callback := holder.next
+	println(int_str(callback()))
+	println(int_str(holder.value))
+}
+')
+	assert in_scope == '1\n1'
+}
+
+fn test_method_value_of_a_struct_embedded_from_another_module_binds_the_embedded_struct() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'embedded_method_value_across_modules', {
+		'main.v':          'import shapes
+
+struct Local {
+	shapes.Plain
+}
+
+fn main() {
+	p := shapes.Plain{
+		Base: shapes.Base{
+			id: 3
+		}
+	}
+	d := p.describe
+	w := shapes.Wrap[string]{
+		Base: shapes.Base{
+			id: 4
+		}
+		item: "x"
+	}
+	wd := w.describe
+	l := Local{
+		Plain: p
+	}
+	ld := l.describe
+	println(d() + "," + wd() + "," + ld())
+}
+'
+		'shapes/shapes.v': 'module shapes
+
+pub struct Base {
+pub:
+	id int
+}
+
+pub fn (b Base) describe() string {
+	return "base " + b.id.str()
+}
+
+pub struct Plain {
+	Base
+}
+
+pub struct Wrap[T] {
+	Base
+pub:
+	item T
+}
+'
+	}, 'main.v')
+	assert out == 'base 3,base 4,base 3'
+}
+
 fn test_local_immutable_pointer_receiver_method_value_borrows_receiver() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'local_immutable_pointer_receiver_borrows', 'struct Foo {

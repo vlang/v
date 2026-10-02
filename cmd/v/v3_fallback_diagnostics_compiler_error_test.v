@@ -21,6 +21,9 @@ fn testsuite_begin() {
 		assert os.getenv('VFLAGS') == ''
 		assert os.getenv(v3_fallback_file_env) == ''
 		assert os.getenv(v3_c_error_dir_env) == ''
+		// A replay in a child of a diagnostics server is a compilation, not a
+		// server that waits for requests.
+		assert os.getenv('V_DIAGNOSTICS_SERVER') == ''
 		assert !os.exists(os.join_path(root, 'ran'))
 		assert !os.exists(os.join_path(root, 'replayed'))
 		os.write_file(os.join_path(root, 'replayed'), 'yes') or { panic(err) }
@@ -44,7 +47,7 @@ fn test_only_c_errors_launch_the_compatibility_compiler() {
 	}
 	previous := os.environ()
 	names := [compiler_error_probe_env, v3_no_fallback_env, v3_retry_env, v3_fallback_file_env,
-		v3_c_error_dir_env, 'VNORUN', 'VFLAGS', 'V_C_ERROR_BUG_REPORT_DISABLED']
+		v3_c_error_dir_env, 'VNORUN', 'VFLAGS', 'V_C_ERROR_BUG_REPORT_DISABLED', 'V_DIAGNOSTICS_SERVER']
 	defer {
 		for name in names {
 			if name in previous {
@@ -110,6 +113,8 @@ fn test_only_c_errors_launch_the_compatibility_compiler() {
 			os.unsetenv('VNORUN')
 			os.setenv('VFLAGS', 'already merged', true)
 			os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
+			// As in a child of a diagnostics server, which runs a one-shot compilation.
+			os.setenv('V_DIAGNOSTICS_SERVER', '1', true)
 			result := cmdexec.run_with_timeout(launcher, ['run', os.join_path(root, 'sample.vsh'),
 				'ci'], 15_000)
 			if payload == 'c_compilation_error' {

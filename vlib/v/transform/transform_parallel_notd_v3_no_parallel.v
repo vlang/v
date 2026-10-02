@@ -1319,6 +1319,19 @@ fn (mut t Transformer) prepare_parallel_monomorph_scan(start int, end int) bool 
 	return true
 }
 
+// Serial user builds also need to release specialization scratch between batches.
+// This path runs synchronously and never creates or dispatches a worker pool.
+fn (mut t Transformer) run_serial_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted map[string]bool, mut generated []string) bool {
+	$if linux && arm64 {
+		return false
+	}
+	if !t.scope_parallel_workers || !t.scoped_monomorphize || isnil(t.tc)
+		|| t.tc.checker_fixture_mode || specs.len == 0 {
+		return false
+	}
+	return t.run_scoped_monomorphize_specs(specs, mut emitted, mut generated)
+}
+
 fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnSpec, struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted map[string]bool, mut generated []string) bool {
 	$if linux && arm64 {
 		// Shared append-only AST regions intermittently corrupt the heap on
@@ -1765,14 +1778,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		t.global_temp_counter = w.global_temp_counter
 
 		node_shift := t.a.nodes.len - base_nodes
-		// The parent pre-registered every specialization in this batch above.
-		// The worker must still register them privately while transforming so
-		// result/error semantics resolve correctly, but those duplicate maps live
-		// in `scope` and must not escape when the other worker results are merged.
-		w.signature_maps_changed = false
-		w.fn_ret_types_log = []string{}
-		w.tc_signature_names_log = []string{}
-		w.tc.discard_transform_signature_changes()
+		// The parent pre-registered the generic signatures, but the worker can
+		// also lift function literals. Publish those additional signatures before
+		// releasing its scope; the merge skips existing entries and owns its copies.
 		t.merge_worker_used_fns(w)
 		t.merge_worker(w, []FnWorkItem{}, base_nodes, base_children, false)
 		for name in w.generic_specialization_args_log {
@@ -1805,6 +1813,11 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			t.generic_fn_spec_nodes[spec.key.clone()] = root
 			t.a.specialized_fn_nodes[int(root)] = true
 			t.mark_node_context(root, spec.decl.module, spec.decl.file)
+			// The worker's declaration index is private and dies with its scope.
+			name := t.a.node(root).value.clone()
+			t.add_call_param_types_decl_key(name, int(root), spec.decl.file, spec.decl.module)
+			t.add_call_param_types_decl_key(transform_qualified_fn_name(spec.decl.module, name),
+				int(root), spec.decl.file, spec.decl.module)
 			emitted[generic_fn_spec_key(spec.decl.key, spec.args)] = true
 			t.pending_generic_fn_spec_keys.delete(spec.key)
 		}
@@ -2012,7 +2025,9 @@ fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {
 	mut next_bound := 0
 	mut file := ''
 	mut module_name := ''
-	for idx, node in t.a.nodes {
+	for idx in 0 .. t.a.nodes.len {
+		// Workers start after this scan, so the borrowed AST node stays valid.
+		node := unsafe { &t.a.nodes[idx] }
 		for next_bound < n_jobs && bounds[next_bound] == idx {
 			files[next_bound] = file
 			modules[next_bound] = module_name
@@ -2581,7 +2596,15 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	mut n_jobs := transform_job_count(t.a.worker_pool.size() + 1, items.len, t.building_v && t.scope_parallel_workers)
 	n_jobs = clamp_transform_jobs_to_clone_budget(n_jobs, base_nodes, base_children, t.a)
 	if items.len < min_parallel_transform_items || n_jobs <= 1 {
-		t.transform_pure_items_serial(items)
+		// A single-job pool still needs bounded scratch arenas, just like an
+		// explicit -no-parallel build. Otherwise self-host transforms retain every
+		// function's temporary allocations until the entire stage finishes.
+		if t.scope_parallel_workers && t.retain_worker_results {
+			t.prepare_parallel_call_param_types()
+			t.transform_scoped_helper_batches(items, scoped_transform_batches)
+		} else {
+			t.transform_pure_items_serial(items)
+		}
 		return false
 	}
 	// Workers need declaration signatures while lowering calls. Snapshot them

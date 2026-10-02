@@ -4172,6 +4172,11 @@ fn (mut g FlatGen) emit_translation_unit_include_directives() {
 	g.writeln('#ifndef _UNICODE\n#define _UNICODE\n#endif')
 	g.writeln('#endif')
 	mut windows_header_emitted := g.emit_preinclude_directives()
+	// Match the legacy Windows header surface before gc.h can load windows.h.
+	// Optional OLE and multimedia headers conflict with NOUSER/NOMSG and raylib.
+	// Preincludes can still configure the default by defining WIN32_FULL.
+	g.writeln('#if defined(_WIN32) && !defined(WIN32_FULL) && !defined(WIN32_LEAN_AND_MEAN)')
+	g.writeln('#define WIN32_LEAN_AND_MEAN\n#endif')
 	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
 	if g.target.os == 'windows' && !windows_header_emitted {
 		// Winsock2 must precede windows.h, which otherwise includes legacy winsock.h.
@@ -14001,6 +14006,9 @@ fn (mut g FlatGen) sizeof_target(value0 string) string {
 		}
 	}
 	if value.starts_with('&') {
+		if value.trim_left('&').starts_with('[') {
+			return 'void*'
+		}
 		return '${g.sizeof_target(value[1..].trim_space())}*'
 	}
 	if value.starts_with('[]') || value == 'array' {
@@ -16057,9 +16065,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					elem_ct := g.value_c_type(channel_type.elem_type)
 					g.write('sync__Channel__push(')
 					g.gen_channel_try_receiver(lhs_id)
-					g.write(', &(${elem_ct}[]){')
-					g.gen_expr_with_expected_type(rhs_id, channel_type.elem_type)
-					g.write('})')
+					g.write(', ')
+					if fixed := array_fixed_type(channel_type.elem_type) {
+						g.gen_fixed_array_data_arg(rhs_id, fixed)
+					} else {
+						g.write('&(${elem_ct}[]){')
+						g.gen_expr_with_expected_type(rhs_id, channel_type.elem_type)
+						g.write('}')
+					}
+					g.write(')')
 					g.expected_enum = old_expected_enum
 					return
 				}
@@ -17303,6 +17317,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				literal := g.fixed_array_compound_literal_expr(g.a.child(node, 0), fixed)
 				if trimmed_space(literal).len > 0 {
 					g.write(literal)
+				} else if g.fixed_array_decay_shape_equal(cast_arg_type, types.Type(fixed), false) {
+					// Compatible fixed arrays already have the target layout. C cannot cast
+					// an array value; its consumer copies the operand into target storage.
+					g.gen_expr(cast_arg_id)
 				} else {
 					g.write('(${ct})(')
 					g.gen_expr(g.a.child(node, 0))
@@ -18771,6 +18789,10 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('typedef long long time_t;')
 		g.writeln('#endif')
 	}
+	// C23 has boolean keywords; older C2x compilers get them from stdbool.h.
+	g.writeln('#if defined(__STDC_VERSION__) && __STDC_VERSION__ > 201710L')
+	g.writeln('#include <stdbool.h>')
+	g.writeln('#endif')
 	g.writeln('#ifndef __bool_true_false_are_defined')
 	g.writeln('#ifdef _MSC_VER')
 	g.writeln('typedef unsigned char bool;')
@@ -18789,11 +18811,13 @@ fn (mut g FlatGen) preamble() {
 	g.emit_int128_preamble()
 	g.writeln('struct sync__Channel;')
 	g.writeln('typedef struct sync__Channel* chan;')
+	g.writeln('#if !defined(__STDC_VERSION__) || __STDC_VERSION__ <= 201710L')
 	g.writeln('#ifndef true')
 	g.writeln('#define true 1')
 	g.writeln('#endif')
 	g.writeln('#ifndef false')
 	g.writeln('#define false 0')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#if defined(__TINYC__) || defined(_MSC_VER)')
 	g.writeln('#define E_STRUCT_DECL unsigned char _dummy_pad')

@@ -131,6 +131,15 @@ static int v_toolcache_close_handle(void *handle) {
 	return CloseHandle((HANDLE)handle);
 }
 
+static int v_toolcache_file_is_disk(void *handle) {
+	return GetFileType((HANDLE)handle) == FILE_TYPE_DISK;
+}
+
+static int v_toolcache_read_file(void *handle, void *buffer, unsigned int size,
+	unsigned int *read) {
+	return ReadFile((HANDLE)handle, buffer, (DWORD)size, (LPDWORD)read, NULL);
+}
+
 static int v_toolcache_sid_can_write(PSID sid, PSID owner) {
 	return EqualSid(sid, owner)
 		|| IsWellKnownSid(sid, WinCreatorOwnerSid)

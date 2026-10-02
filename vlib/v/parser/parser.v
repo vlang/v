@@ -173,7 +173,10 @@ mut:
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
 pub mut:
-	a                          &flat.FlatAst = unsafe { nil }
+	a &flat.FlatAst = unsafe { nil }
+	// quick_source_sums records the quick_sum of each parsed source instead of
+	// its SHA-256 (see token.File.index_lines_with_quick_sum).
+	quick_source_sums          bool
 	parsed_v_files             int
 	parsed_v_file_paths        []string
 	parsed_v_header_files      int
@@ -454,7 +457,11 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.reserve_for_source(stable_src.len)
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, stable_src.len)
-	file.index_lines(stable_src)
+	if p.quick_source_sums {
+		file.index_lines_with_quick_sum(stable_src)
+	} else {
+		file.index_lines(stable_src)
+	}
 	p.a.source_files[p.cur_file_id] = file
 	p.s.init(file, stable_src)
 	if stable_src.contains('dynamic') && stable_src.contains('sql') {
@@ -1766,6 +1773,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.disable_fn_body = false
 	// generic params — skip
 	mut generic_params := []string{}
+	mut generic_constraints := []string{}
 	if p.tok == .lt {
 		p.record_diagnostic_span('unexpected token `<`, expecting `(`', p.tok_pos, p.tok_end)
 		for p.tok !in [.gt, .eof] {
@@ -1776,7 +1784,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		}
 	}
 	if p.tok == .lsbr {
-		generic_params = p.parse_generic_param_names()
+		generic_params, generic_constraints = p.parse_generic_params()
 	}
 	if p.pending_export.len > 0 {
 		if is_c_decl {
@@ -1877,7 +1885,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			}
 			typ:            ret_type
 			pos:            token.new_pos(p.cur_file_id, name_pos)
-			payload:        flat.node_payload(generic_params)
+			payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
 			flags:          flat.node_flags(false, is_static_type_method)
@@ -1980,7 +1988,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		value:          if p.prefs.is_fmt && is_c_decl { '${interop_prefix}:${name}' } else { name }
 		typ:            ret_type
 		pos:            token.new_pos(p.cur_file_id, name_pos)
-		payload:        flat.node_payload(generic_params)
+		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 		flags:          flat.node_flags(false, is_static_type_method)
@@ -2343,8 +2351,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	// generic params — skip
 	mut is_generic := false
 	mut generic_params := []string{}
+	mut generic_constraints := []string{}
 	if p.tok == .lsbr {
-		generic_params = p.parse_generic_param_names()
+		generic_params, generic_constraints = p.parse_generic_params()
 		is_generic = generic_params.len > 0
 	}
 	// implements clause
@@ -2374,7 +2383,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			op:      if is_pub { .arrow } else { .none }
 			value:   name
 			typ:     struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned, aligned, implements_types)
-			payload: flat.node_payload(generic_params)
+			payload: flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 			pos:     p.span_to(struct_start)
 		})
 	}
@@ -2760,7 +2769,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
 		typ:            struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned, aligned, implements_types)
-		payload:        flat.node_payload(generic_params)
+		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		pos:            p.span_to(struct_start)
 		children_start: start
 		children_count: flat.child_count(ids.len)
@@ -3256,8 +3265,9 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	name := language_prefix + p.expect_name()
 	// generic params
 	mut generic_params := []string{}
+	mut generic_constraints := []string{}
 	if p.tok == .lsbr {
-		generic_params = p.parse_generic_param_names()
+		generic_params, generic_constraints = p.parse_generic_params()
 	}
 	if p.tok == .assign {
 		p.next()
@@ -3330,7 +3340,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			kind:           .type_decl
 			op:             if is_pub { .arrow } else { .none }
 			value:          name
-			payload:        flat.node_payload(generic_params)
+			payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 			children_start: start
 			children_count: flat.child_count(variants.len)
 			pos:            p.span_to(type_start)
@@ -3350,7 +3360,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		op:      if is_pub { .arrow } else { .none }
 		value:   name
 		typ:     first_type
-		payload: flat.node_payload(generic_params)
+		payload: flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		pos:     p.span_to(type_start)
 	})
 }
@@ -3422,8 +3432,9 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	}
 	// generic params
 	mut generic_params := []string{}
+	mut generic_constraints := []string{}
 	if p.tok == .lsbr {
-		generic_params = p.parse_generic_param_names()
+		generic_params, generic_constraints = p.parse_generic_params()
 	}
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
@@ -3601,7 +3612,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 		kind:           .interface_decl
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
-		payload:        flat.node_payload(generic_params)
+		payload:        flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		children_start: start
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(interface_start)
@@ -4938,6 +4949,7 @@ fn (mut p Parser) parse_top_level_block_body() []flat.NodeId {
 fn (mut p Parser) parse_comptime_cond() string {
 	mut cond := strings.new_builder(64)
 	mut prev_tok_str := ''
+	mut prev_and_starts_type := false
 	for p.tok != .lcbr && p.tok != .eof {
 		raw_tok_str := p.comptime_cond_token_text()
 		tok_str := if raw_tok_str.starts_with('@') && !p.prefs.is_fmt {
@@ -4957,14 +4969,20 @@ fn (mut p Parser) parse_comptime_cond() string {
 		// Keep it only when formatting, as parse_attribute_comptime_cond does for `@[if flag ?]`.
 		// `in`/`!in` must stay detached from the type list too: the scanner only recognises
 		// `!in` when a space follows, so `T !in[...]` would re-scan as `!` `in` `[`.
-		needs_space := comptime_cond_needs_space(prev_tok_str, tok_str)
+		mut needs_space := comptime_cond_needs_space(prev_tok_str, tok_str)
 			|| (p.prefs.is_fmt && tok_str == '?')
 			|| (p.prefs.is_fmt && tok_str == '[' && prev_tok_str in ['in', '!in'])
+		and_starts_type := tok_str == '&&' && p.comptime_and_starts_type()
+		if p.prefs.is_fmt {
+			needs_space = comptime_cond_fmt_needs_space(prev_tok_str, tok_str, needs_space,
+				and_starts_type, prev_and_starts_type)
+		}
 		if cond.len > 0 && needs_space {
 			cond.write_string(' ')
 		}
 		cond.write_string(tok_str)
 		prev_tok_str = tok_str
+		prev_and_starts_type = and_starts_type
 		p.next()
 	}
 	return cond.str()
@@ -5300,6 +5318,50 @@ fn comptime_cond_needs_space(prev string, cur string) bool {
 		return false
 	}
 	return true
+}
+
+// comptime_cond_fmt_needs_space is the space `v fmt` writes between two pieces of
+// a `$if` condition where it differs from the text the checker reads
+// (comptime_cond_needs_space): none inside parentheses or between a name and its
+// parentheses, `!(a is T)` and `sizeof(T)`; one before an operator after a list,
+// `[f32, f64] && b`; and none around a `&&` that starts a type, `[]&&int`.
+fn comptime_cond_fmt_needs_space(prev string, cur string, default_space bool, cur_starts_type bool, prev_starts_type bool) bool {
+	if prev == '(' || cur == ')' || prev_starts_type {
+		return false
+	}
+	if cur == '(' && comptime_cond_piece_is_name(prev) {
+		return false
+	}
+	if prev == ']' {
+		if cur == '&&' {
+			return !cur_starts_type
+		}
+		return cur in ['||', '==', '!=', '<', '>', '<=', '>=', 'is', '!is', 'in', '!in']
+	}
+	return default_space
+}
+
+// comptime_cond_piece_is_name reports whether a piece of a `$if` condition is a
+// name that parentheses can follow as a call, `sizeof` or `$d`, and not a word
+// of the condition, `is` or `in`.
+fn comptime_cond_piece_is_name(piece string) bool {
+	if piece.len == 0 || piece in ['is', '!is', 'in', '!in'] {
+		return false
+	}
+	for i, c in piece {
+		if !(c.is_letter() || c == `_` || (i > 0 && (c.is_digit() || c == `.`))) {
+			return false
+		}
+	}
+	return true
+}
+
+// comptime_and_starts_type reports whether the `&&` at the current token starts
+// a type, as in `[]&&int`, rather than joining two conditions: the type follows
+// it without a space, where `a && b` has one.
+fn (p &Parser) comptime_and_starts_type() bool {
+	next := p.s.pos + 2
+	return next < p.s.src.len && !p.s.src[next].is_space()
 }
 
 fn comptime_cond_has_type_test(cond string) bool {
@@ -7149,10 +7211,31 @@ fn (mut p Parser) skip_brackets() {
 	}
 }
 
+// named_constraints returns the constraints of a list of type parameters when
+// one of them names one, and no list otherwise: the payload of a declaration
+// without constraints stays as it was.
+fn named_constraints(constraints []string) []string {
+	for constraint in constraints {
+		if constraint.len > 0 {
+			return constraints
+		}
+	}
+	return []string{}
+}
+
 fn (mut p Parser) parse_generic_param_names() []string {
+	names, _ := p.parse_generic_params()
+	return names
+}
+
+// parse_generic_params returns the names of the type parameters of `[T, U X]`,
+// and the constraint each one names: a type name, qualified by its module or
+// not, with type arguments or not; empty when it names none.
+fn (mut p Parser) parse_generic_params() ([]string, []string) {
 	mut names := []string{}
+	mut constraints := []string{}
 	if p.tok != .lsbr {
-		return names
+		return names, constraints
 	}
 	mut depth := 1
 	mut expect_name := true
@@ -7174,10 +7257,15 @@ fn (mut p Parser) parse_generic_param_names() []string {
 				p.next()
 				if p.prefs.is_fmt {
 					names << '^${p.lit}'
+					constraints << ''
 				}
 				expect_name = false
 			} else if expect_name && p.tok == .name {
 				name := p.lit
+				// What follows a name reported already is skipped, as it was
+				// before constraints: `Hashable[K]` is one error.
+				name_is_valid := name !in names && names.len < 9 && name.len == 1
+					&& !(name[0] >= `a` && name[0] <= `z`)
 				if !p.prefs.is_fmt && name in names {
 					p.record_diagnostic_span('duplicated generic parameter `${name}`', p.tok_pos,
 						p.tok_end)
@@ -7193,13 +7281,55 @@ fn (mut p Parser) parse_generic_param_names() []string {
 				}
 				names << name
 				expect_name = false
+				p.next()
+				if !name_is_valid {
+					constraints << ''
+					continue
+				}
+				constraints << p.parse_generic_constraint()
+				if p.tok != .comma && p.tok != .rsbr && p.tok != .eof {
+					p.record_diagnostic_span('unexpected token `${p.s.src[p.tok_pos..p.tok_end]}`, expecting `,` or `]`',
+						p.tok_pos, p.tok_end)
+				}
+				// The `,` or the `]` after the constraint is the loop's.
+				continue
 			} else {
 				expect_name = false
 			}
 		}
 		p.next()
 	}
-	return names
+	return names, constraints
+}
+
+// parse_generic_constraint returns the constraint written after the name of a
+// type parameter, `Named`, `mod.Named` or `Box[int]`, as it is written; '' when
+// none is.
+fn (mut p Parser) parse_generic_constraint() string {
+	if p.tok != .name {
+		return ''
+	}
+	start := p.tok_pos
+	p.next()
+	for p.tok == .dot && p.peek() == .name {
+		p.next()
+		p.next()
+	}
+	if p.tok == .lsbr {
+		mut depth := 0
+		for p.tok != .eof {
+			if p.tok == .lsbr {
+				depth++
+			} else if p.tok == .rsbr {
+				depth--
+			}
+			p.next()
+			if depth == 0 {
+				break
+			}
+		}
+	}
+	return p.s.src[start..p.prev_tok_end]
 }
 
 fn (mut p Parser) skip_parens() {
@@ -13509,6 +13639,7 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 			if p.tok == .comma {
 				p.next()
 			}
+			fname_pos := p.current_pos()
 			fname := p.expect_name_or_keyword()
 			p.check(.colon)
 			p.in_struct_init_value++
@@ -13520,6 +13651,8 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 				value:          fname
 				children_start: vstart
 				children_count: 1
+				// Editor queries need the key token; preserve ordinary diagnostic spans.
+				pos:            if p.prefs.is_fmt { fname_pos } else { p.current_pos() }
 			})
 			if p.tok == .semicolon {
 				p.next()
@@ -13546,6 +13679,7 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 		}
 		// named field: name: expr
 		if (p.tok == .name || p.tok.is_keyword()) && p.peek() == .colon {
+			fname_pos := p.current_pos()
 			fname := p.expect_name_or_keyword()
 			p.check(.colon)
 			p.in_struct_init_value++
@@ -13557,6 +13691,7 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 				value:          fname
 				children_start: vstart
 				children_count: 1
+				pos:            if p.prefs.is_fmt { fname_pos } else { p.current_pos() }
 			})
 		} else {
 			// positional value (unnamed)

@@ -4084,6 +4084,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
+		if params.len > 0 {
+			tc.check_generic_type_constraints(id, node.pos, generic_base, generic_args, TypeParamScope{})
+		}
 	}
 	if init_type_text != 'struct' && !is_anonymous_struct_name(init_type_text)
 		&& (!tc.type_name_known(init_type_text) || (init_type_text.starts_with('C.')
@@ -4189,6 +4192,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		if init_type !is Alias {
 			if inferred_type := tc.infer_generic_struct_init_type(node) {
 				tc.remember_expr_type(id, inferred_type)
+				inferred_base, inferred_args, _ := generic_type_application_parts(inferred_type.name())
+				tc.check_generic_type_constraints(id, node.pos, inferred_base, inferred_args, TypeParamScope{})
 			} else if generic_name := tc.bare_generic_decl_type_name(init_type_text) {
 				qualified := tc.qualify_name(generic_name)
 				params := tc.struct_generic_params[generic_name] or {
@@ -4343,10 +4348,11 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					decl_mod := tc.struct_modules[owner_base] or { '' }
 					same_main_module := decl_mod in ['', 'main'] && tc.cur_module in ['', 'main']
 					if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module {
-						// A `struct { ... }` literal that adopted another module's anonymous
-						// struct may only set the fields that struct declares `pub`. Its name
-						// encodes the source path, so the module identifies it instead.
-						if tc.is_synthesized_anon_struct(init_name) {
+						// Anonymous fields and aliases retain their declared field visibility.
+						// An inline parameter instead defines the fields a caller must supply.
+						// Its name encodes the source path, so the module identifies it instead.
+						if tc.is_synthesized_anon_struct(init_name)
+							&& !tc.anonymous_struct_is_inline_parameter_type(init_name) {
 							if !tc.anonymous_struct_field_is_public(init_name, field.value, decl_mod) {
 								tc.record_error_at(.unknown_field, 'cannot access private field `${field.value}` of an anonymous struct from module `${tc.diagnostic_module_display_name(decl_mod)}`', field_id, tc.struct_init_field_deprecation_pos(field))
 							}
@@ -4473,6 +4479,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					continue
 				}
 				if value_node.kind == .map_init && tc.map_literal_has_element_diagnostic(value_id) {
+					continue
+				}
+				if tc.nil_interface_field_expr_compatible(value_id, expected) {
 					continue
 				}
 				optional_pointer_nil := tc.expr_is_unsafe_nil(value_id)
@@ -4895,6 +4904,32 @@ fn struct_field_has_attr(field flat.Node, name string) bool {
 fn (tc &TypeChecker) source_struct_decl_for_name(name string) ?flat.Node {
 	id := tc.source_struct_decl_id_for_name(name)?
 	return *tc.a.node(id)
+}
+
+// anonymous_struct_is_inline_parameter_type distinguishes an inline parameter's
+// structural contract from an anonymous type declared by a struct field or alias.
+fn (tc &TypeChecker) anonymous_struct_is_inline_parameter_type(name string) bool {
+	short_name := name.all_after_last('.')
+	decl_id := tc.source_struct_decl_id_for_name(short_name) or { return false }
+	decl := tc.a.nodes[int(decl_id)]
+	for index in tc.top_level_idx {
+		fn_node := tc.a.nodes[index]
+		if fn_node.kind != .fn_decl || fn_node.pos.id != decl.pos.id {
+			continue
+		}
+		for i in 0 .. fn_node.children_count {
+			child_id := tc.a.child(&fn_node, i)
+			child := tc.a.nodes[int(child_id)]
+			// An inline type is parsed after the parameter name, before its node.
+			// Referring to an existing generated name does not declare a parameter type.
+			if child.kind == .param
+				&& child.pos.offset < decl.pos.offset && int(decl_id) < int(child_id)
+				&& child.typ.trim_left('&?!').all_after_last('.') == short_name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) source_struct_decl_id_for_name(name string) ?flat.NodeId {
@@ -6017,6 +6052,9 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 		if _ := tc.alias_method_value_decl_key(receiver, node.value) {
 			return true
 		}
+		if _ := tc.promoted_method_owner(receiver, node.value) {
+			return true
+		}
 	} else if clean is Struct {
 		sname := clean.name
 		if tc.struct_field_type(sname, node.value) != none {
@@ -6032,6 +6070,9 @@ pub fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 			return true
 		}
 		if _ := tc.resolve_generic_struct_method(sname, node.value) {
+			return true
+		}
+		if _ := tc.embedded_method_value_owner(sname, node.value) {
 			return true
 		}
 	} else if clean is Interface {
@@ -6096,7 +6137,10 @@ fn (tc &TypeChecker) method_value_has_stack_mut_receiver(id flat.NodeId) bool {
 	if type_name.len == 0 {
 		return false
 	}
-	if info := tc.resolve_generic_struct_method(type_name, node.value) {
+	// A method promoted from an embedded struct borrows a part of this storage.
+	owner := tc.promoted_method_owner(base_type, node.value) or { '' }
+	receiver_name := if owner.len > 0 { owner } else { type_name }
+	if info := tc.resolve_generic_struct_method(receiver_name, node.value) {
 		if tc.mut_receiver_methods[info.name] {
 			return true
 		}
@@ -6104,7 +6148,12 @@ fn (tc &TypeChecker) method_value_has_stack_mut_receiver(id flat.NodeId) bool {
 	if method_name := tc.c_struct_receiver_method_name(clean, node.value) {
 		return tc.mut_receiver_methods[method_name]
 	}
-	for method_name in receiver_method_name_candidates(clean, node.value, tc.cur_module) {
+	method_names := if owner.len > 0 {
+		['${owner}.${node.value}']
+	} else {
+		receiver_method_name_candidates(clean, node.value, tc.cur_module)
+	}
+	for method_name in method_names {
 		if tc.mut_receiver_methods[method_name] {
 			return true
 		}
@@ -6727,14 +6776,15 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			return
 		}
 		if selector_is_method_value && tc.struct_field_type(clean_recv.name, node.value) == none {
-			mut mkey := '${clean_recv.name}.${node.value}'
+			recv_name := tc.method_value_receiver_name(clean_recv.name, node.value)
+			mut mkey := '${recv_name}.${node.value}'
 			mut is_generic_method_value := false
 			if mkey !in tc.fn_param_types {
 				// Generic receiver methods are registered under the open key
 				// (`Box[T].method`); mark that one reachable for the wrapper, and stash
 				// the substituted signature for cgen (the open form is gone by cgen time).
-				if ci := tc.resolve_generic_struct_method(clean_recv.name, node.value) {
-					tc.generic_method_value_info['${clean_recv.name}.${node.value}'] = ci
+				if ci := tc.resolve_generic_struct_method(recv_name, node.value) {
+					tc.generic_method_value_info['${recv_name}.${node.value}'] = ci
 					mkey = ci.name
 					is_generic_method_value = true
 				}
@@ -6750,7 +6800,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				// open key (`Box[T].report`) above — so monomorphize can gate a generic method's
 				// specialization on *this* instance's method value being reachable (it shares the
 				// open key with every other instance, e.g. `Box[Pair]`).
-				concrete_mkey := '${clean_recv.name}.${node.value}'
+				concrete_mkey := '${recv_name}.${node.value}'
 				if concrete_mkey != mkey {
 					tc.method_values_by_fn[tc.fn_context.node_id] << concrete_mkey
 				}
@@ -6763,6 +6813,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		if !has_field && tc.fn_context.node_id >= 0 {
 			if mkey := tc.alias_method_value_decl_key(clean_recv, node.value) {
 				tc.method_values_by_fn[tc.fn_context.node_id] << mkey
+			} else if owner := tc.promoted_method_owner(clean_recv, node.value) {
+				tc.record_promoted_method_value(owner, node.value)
 			}
 		}
 	} else if selector_is_method_value && clean_recv is Interface {
@@ -6787,6 +6839,12 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			} else if clean_base is Struct {
 				if tc.ident_is_multi_pattern_match_subject(base_id) {
 					tc.record_error_at(.unknown_field, 'type `${clean_base.name}` has no field or method `${node.value}`', id, tc.node_value_diagnostic_pos(id))
+					tc.register_synth_type(id, Type(void_))
+					return
+				}
+				if tc.embedded_method_candidates(clean_base.name, node.value).len > 1 {
+					// Two embedded structs declare the method, as its call reports.
+					tc.record_error_at(.unknown_field, 'ambiguous method `${node.value}`', id, tc.node_value_diagnostic_pos(id))
 					tc.register_synth_type(id, Type(void_))
 					return
 				}
@@ -7270,6 +7328,13 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 		if typ := tc.struct_field_type(clean_name, node.value) {
 			return typ
 		}
+		// A method of the alias comes before the ones its struct has or promotes.
+		if alias_receiver_name.len > 0
+			&& '${alias_receiver_name}.${node.value}' in tc.fn_param_types {
+			if typ := tc.method_value_type(alias_receiver_name, node.value) {
+				return typ
+			}
+		}
 		if method_name := tc.c_struct_receiver_method_name(base_type, node.value) {
 			return tc.method_value_type(method_name.all_before_last('.'), method_name.all_after_last('.'))
 		}
@@ -7649,6 +7714,14 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		return
 	}
 	generic_base_node := tc.a.child_node(&node, 0)
+	// A generic method named on a value with its type arguments and without a
+	// call, `h.first[int]`, as `first[int]` names a function.
+	if generic_base_node.kind == .selector && !tc.ident_is_call_callee_or_generic_base(id) {
+		if method_type := tc.check_generic_method_value(id, node) {
+			tc.register_synth_type(id, method_type)
+			return
+		}
+	}
 	if name := tc.generic_call_base_name(generic_base_node) {
 		type_args := tc.generic_call_type_arg_names(node)
 		mut has_unresolved_generic := false
@@ -7666,6 +7739,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if generic_fn_type := tc.explicit_generic_fn_value_type(node) {
+		tc.check_generic_fn_value_constraints(id, node)
 		tc.register_synth_type(id, generic_fn_type)
 		return
 	}
@@ -8039,10 +8113,11 @@ fn (mut tc TypeChecker) record_valid_method_value(id flat.NodeId, node flat.Node
 		if tc.struct_field_type(clean_recv.name, node.value) != none {
 			return
 		}
-		mut mkey := '${clean_recv.name}.${node.value}'
+		recv_name := tc.method_value_receiver_name(clean_recv.name, node.value)
+		mut mkey := '${recv_name}.${node.value}'
 		mut is_generic_method_value := false
 		if mkey !in tc.fn_param_types {
-			if ci := tc.resolve_generic_struct_method(clean_recv.name, node.value) {
+			if ci := tc.resolve_generic_struct_method(recv_name, node.value) {
 				tc.generic_method_value_info[mkey] = ci
 				mkey = ci.name
 				is_generic_method_value = true
@@ -8050,7 +8125,7 @@ fn (mut tc TypeChecker) record_valid_method_value(id flat.NodeId, node flat.Node
 		}
 		if mkey in tc.fn_param_types || is_generic_method_value {
 			tc.method_values_by_fn[tc.fn_context.node_id] << mkey
-			concrete_mkey := '${clean_recv.name}.${node.value}'
+			concrete_mkey := '${recv_name}.${node.value}'
 			if concrete_mkey != mkey {
 				tc.method_values_by_fn[tc.fn_context.node_id] << concrete_mkey
 			}
@@ -8064,6 +8139,8 @@ fn (mut tc TypeChecker) record_valid_method_value(id flat.NodeId, node flat.Node
 		if !has_field {
 			if mkey := tc.alias_method_value_decl_key(clean_recv, node.value) {
 				tc.method_values_by_fn[tc.fn_context.node_id] << mkey
+			} else if owner := tc.promoted_method_owner(clean_recv, node.value) {
+				tc.record_promoted_method_value(owner, node.value)
 			}
 		}
 		return
@@ -13508,6 +13585,145 @@ fn (tc &TypeChecker) embedded_method_call_info_inner(struct_name string, method 
 	return none
 }
 
+// method_value_receiver_name is the struct that declares the method a method value
+// of `struct_name` names: that struct, or the embedded one for a promoted method.
+fn (tc &TypeChecker) method_value_receiver_name(struct_name string, method string) string {
+	if '${struct_name}.${method}' in tc.fn_param_types
+		|| tc.resolve_generic_struct_method(struct_name, method) != none {
+		return struct_name
+	}
+	return tc.embedded_method_value_owner(struct_name, method) or { struct_name }
+}
+
+// promoted_method_owner is the embedded struct that declares `method` for a receiver
+// of `receiver_type` that does not declare it: `Base` for a `Plain` that embeds it.
+// An alias that declares the method, or whose struct does, promotes none.
+fn (tc &TypeChecker) promoted_method_owner(receiver_type Type, method string) ?string {
+	receiver := unwrap_pointer(receiver_type)
+	if receiver is Alias {
+		if _ := tc.alias_method_value_decl_key(receiver, method) {
+			return none
+		}
+	}
+	clean := unalias_type(receiver)
+	if clean is Struct {
+		owner := tc.method_value_receiver_name(clean.name, method)
+		if owner != clean.name {
+			return owner
+		}
+	}
+	return none
+}
+
+// promoted_method_value_owner is promoted_method_owner for the receiver of the
+// selector `id`, a method named without a call: `Base` for `p.describe`.
+pub fn (tc &TypeChecker) promoted_method_value_owner(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	return tc.promoted_method_owner(tc.resolve_type(tc.a.child(&node, 0)), node.value)
+}
+
+// method_value_selector_type is the type of the selector `id` that names a method
+// without a call, as selector_type gives it: `fn () User` for `s.get` with
+// `s Shelf[User]`, the method of an alias before the ones of its struct.
+pub fn (tc &TypeChecker) method_value_selector_type(id flat.NodeId) ?Type {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	base_type := tc.resolve_type(tc.a.child(&node, 0))
+	receiver := unwrap_pointer(base_type)
+	if receiver is Alias && '${receiver.name}.${node.value}' in tc.fn_param_types {
+		return tc.method_value_type(receiver.name, node.value)
+	}
+	clean := unalias_and_unwrap_pointer_type(base_type)
+	if clean is Struct {
+		return tc.method_value_type(clean.name, node.value)
+	}
+	if clean is Interface {
+		return tc.method_value_type(clean.name, node.value)
+	}
+	return none
+}
+
+// alias_method_value_receiver is the alias whose own method the selector `id` names
+// without a call: `Alias` for `a.describe` with `fn (a Alias) describe()`, and none
+// when the method is the one of the aliased type.
+pub fn (tc &TypeChecker) alias_method_value_receiver(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	receiver := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	if receiver !is Alias {
+		return none
+	}
+	alias := receiver as Alias
+	key := tc.alias_method_value_decl_key(alias, node.value) or { return none }
+	if key.all_before_last('.').all_after_last('.') != alias.name.all_after_last('.') {
+		return none
+	}
+	return alias.name
+}
+
+// record_promoted_method_value records the method of the embedded struct `owner`
+// that a method value of an alias promotes, as the method values of a struct are.
+fn (mut tc TypeChecker) record_promoted_method_value(owner string, method string) {
+	mkey := '${owner}.${method}'
+	if mkey !in tc.fn_param_types {
+		ci := tc.resolve_generic_struct_method(owner, method) or { return }
+		tc.generic_method_value_info[mkey] = ci
+		tc.method_values_by_fn[tc.fn_context.node_id] << ci.name
+	}
+	tc.method_values_by_fn[tc.fn_context.node_id] << mkey
+}
+
+// embedded_method_value_owner is the embedded struct whose method a struct promotes,
+// `Base` for `Plain.describe` or `Holder[int]` for `IntHolder.get`, found as
+// embedded_method_call_info finds it. An ambiguous method has none, as its call.
+fn (tc &TypeChecker) embedded_method_value_owner(struct_name string, method string) ?string {
+	if tc.embedded_method_candidates(struct_name, method).len > 1 {
+		return none
+	}
+	mut seen := map[string]bool{}
+	return tc.embedded_method_value_owner_inner(struct_name, method, mut seen)
+}
+
+fn (tc &TypeChecker) embedded_method_value_owner_inner(struct_name string, method string, mut seen map[string]bool) ?string {
+	if seen[struct_name] {
+		return none
+	}
+	seen[struct_name] = true
+	for field in tc.struct_fields_for_type(struct_name) {
+		embedded_type := embedded_field_type(field) or { continue }
+		receiver := method_type_name(unwrap_pointer(embedded_type))
+		if receiver.len == 0 {
+			continue
+		}
+		if _ := tc.resolve_generic_struct_method(receiver, method) {
+			return receiver
+		}
+		if '${receiver}.${method}' in tc.fn_ret_types {
+			return receiver
+		}
+		if owner := tc.embedded_method_value_owner_inner(receiver, method, mut seen) {
+			return owner
+		}
+	}
+	return none
+}
+
 fn (tc &TypeChecker) struct_has_middleware_receiver(struct_name string) bool {
 	if is_middleware_type_name(struct_name) {
 		return true
@@ -15077,6 +15293,9 @@ pub fn type_text_contains_typeof(s string) bool {
 }
 
 pub fn (tc &TypeChecker) parse_type(typ string) Type {
+	if tc.type_param_texts.len > 0 {
+		return tc.parse_type_as_instance(typ)
+	}
 	// Do this before the memoization lookup. The outer alias expansion is not
 	// cached until its complete semantic type exists; caching this symbolic
 	// recursive edge would otherwise leave the shallow placeholder as the
@@ -17194,16 +17413,16 @@ const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u
 // 128-bit type from the promotion ladder. Printing, `typeof` and interpolation all
 // read the recorded type, so they cut a mixed expression to 64 bits without this.
 fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Type {
-	name := typ.name().all_after_last('.')
-	if name !in narrow_integer_type_names {
-		return typ
-	}
 	tidx := int(id)
 	if tidx < 0 || tidx >= tc.a.nodes.len {
 		return typ
 	}
 	node := tc.a.nodes[tidx]
 	if node.kind != .infix {
+		return typ
+	}
+	name := typ.name().all_after_last('.')
+	if name !in narrow_integer_type_names {
 		return typ
 	}
 	if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
@@ -17373,6 +17592,16 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		return smart_type
 	}
 	if kind_id == 14 {
+		// A generic method named with its type arguments, `h.first[int]`: the
+		// type its check gave it (see check_generic_method_value), which the
+		// resolution of an index cannot tell from an index of the method value.
+		if node.children_count > 0 && tc.a.child_node(&node, 0).kind == .selector {
+			if typ := tc.cached_expr_type(id) {
+				if typ is FnType {
+					return typ
+				}
+			}
+		}
 		return tc.resolve_index_type(node)
 	}
 	if node.kind == .infix && node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
@@ -18068,6 +18297,17 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			return inner
 		}
 		.struct_init {
+			// A literal of a generic struct without its type arguments, `Box{ item: 1 }`,
+			// has the ones that the types of its fields give it (see
+			// infer_generic_struct_init_type): the array or the selector around it asks
+			// for its type before the check of the literal records it. The inference
+			// reads the checker and parses types, as this function does.
+			if !node.value.contains('[') {
+				mut checker := unsafe { tc }
+				if inferred := checker.infer_generic_struct_init_type(node) {
+					return inferred
+				}
+			}
 			return tc.parse_type(node.value)
 		}
 		.assoc {
@@ -18459,6 +18699,78 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		})
 	}
 	return tc.resolve_index_base_type(base_type, node)
+}
+
+// check_generic_method_value returns the type of the generic method that the
+// index `node` names on a value with its type arguments and without a call,
+// `h.first[int]`: the method of those types without its receiver, which the
+// value binds, as `first[int]` is the function of those types. Its type
+// arguments are checked as those of a call are (see resolve_generic_call_info):
+// their count, those its receiver fixes, and their constraints.
+fn (mut tc TypeChecker) check_generic_method_value(id flat.NodeId, node flat.Node) ?Type {
+	selector := tc.a.child_node(&node, 0)
+	if selector.children_count == 0 || tc.generic_call_type_arg_names(node).len == 0 {
+		return none
+	}
+	// Before the dot, a module or a type names a function, not a value: a local,
+	// a constant or a global is a value.
+	receiver := tc.a.child_node(selector, 0)
+	if receiver.kind == .ident && !tc.ident_resolves_to_value(receiver.value)
+		&& (receiver.value in tc.imports || tc.type_symbol_known(receiver.value)) {
+		return none
+	}
+	info := tc.resolve_generic_call_info(id, node) or { return none }
+	if !info.has_receiver || info.params.len == 0
+		|| (tc.fn_generic_params[info.name] or { []string{} }).len == 0 {
+		return none
+	}
+	tc.check_generic_method_value_constraints(id, node, info.name)
+	// The generic method it names, for markused and the monomorphization.
+	tc.remember_resolved_call(id, info.name)
+	return Type(FnType{
+		params:      info.params[1..].clone()
+		return_type: info.return_type
+	})
+}
+
+// check_generic_method_value_constraints checks the type arguments of the
+// generic method value `node` (see check_generic_method_value) against the
+// constraints of the type parameters of the method `name`, as
+// check_generic_fn_value_constraints checks those of a function value.
+fn (mut tc TypeChecker) check_generic_method_value_constraints(id flat.NodeId, node flat.Node, name string) {
+	decl := tc.top_level_fn_decl(name) or { return }
+	params := decl.generic_params()
+	constraints := decl.generic_constraints()
+	type_args := tc.generic_call_type_arg_names(node)
+	if constraints.len != params.len || type_args.len != params.len {
+		return
+	}
+	concrete := type_args.map(tc.explicit_generic_concrete_arg_text(it))
+	for i, text in constraints {
+		if text.len == 0 {
+			continue
+		}
+		constraint := tc.generic_constraint_with_args(decl, text, params, concrete) or { continue }
+		actual := tc.parse_type(concrete[i])
+		if tc.generic_constraint_accepts(constraint, actual) {
+			continue
+		}
+		tc.record_generic_constraint_error(constraint, params[i], actual, id, tc.explicit_type_arg_pos(node,
+			i) or { node.pos })
+	}
+}
+
+// top_level_fn_decl returns the declaration of the function or method `name`.
+fn (tc &TypeChecker) top_level_fn_decl(name string) ?flat.Node {
+	short := name.all_after_last('.')
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		if node.kind == .fn_decl && node.value.all_after_last('.') == short
+			&& (node.value == name || name.ends_with('.${node.value}')) {
+			return node
+		}
+	}
+	return none
 }
 
 // explicit_generic_fn_value_type resolves `generic_fn[ConcreteType]` when the

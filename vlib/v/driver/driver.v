@@ -117,6 +117,20 @@ const scoped_serial_user_cgen_node_threshold = 2_000_000
 const scoped_large_cold_cache_node_limit = 500_000
 const v3_large_cold_cache_marker_version = 'v3-large-cold-cache-bypass-v1'
 const scoped_linux_user_job_limit = 4
+const diagnostics_server_job_limit = 8
+
+// scoped_linux_job_limit is how many jobs a compilation with scoped arenas
+// runs at once. A diagnostics server's check keeps no arena past its semantic
+// check, and the editor waits on it: it takes more of the pool (p200: 197 ->
+// 169 ms, peak memory 111 -> 135 MB).
+fn scoped_linux_job_limit(check_only bool, diagnostics_server bool) int {
+	return if check_only && diagnostics_server {
+		diagnostics_server_job_limit
+	} else {
+		scoped_linux_user_job_limit
+	}
+}
+
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
@@ -3889,7 +3903,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -4290,7 +4304,11 @@ fn prepare_v3_checker_native_inputs_thread(args &PrepareV3CheckerNativeInputsArg
 }
 
 fn ast_has_native_source_include(a &flat.FlatAst) bool {
-	for node in a.nodes {
+	return ast_has_native_source_include_from(a, 0)
+}
+
+fn ast_has_native_source_include_from(a &flat.FlatAst, first int) bool {
+	for node in a.nodes[first..] {
 		if node.kind != .directive
 			|| node.value !in ['include', 'insert', 'preinclude', 'postinclude'] {
 			continue
@@ -4306,11 +4324,16 @@ fn ast_has_native_source_include(a &flat.FlatAst) bool {
 // should_overlap_v3_native_inputs reports whether native-input resolution can
 // safely run alongside the checker's declaration pass. A `v3_no_parallel` build
 // resolves them on the main thread, before or after checking.
-fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool, scope_prealloc_stages bool) bool {
+fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool, scope_prealloc_stages bool, check_only bool) bool {
 	$if v3_no_parallel ? {
 		return false
 	}
 	if backend != 'c' || external_inputs_ready || module_cache_enabled {
+		return false
+	}
+	// Only Cgen reads native inputs the checker does not need, and a check runs
+	// no Cgen.
+	if check_only && !native_inputs_needed {
 		return false
 	}
 	return (native_inputs_needed && building_v) || (!native_inputs_needed && scope_prealloc_stages)
@@ -7375,11 +7398,21 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
+	old_constraints := node.generic_constraints()
 	mut needs_promotion := scoped_value_owned(scope, node.payload_ptr())
 		|| scoped_value_owned(scope, old_params.data)
+		|| (old_constraints.len > 0 && scoped_value_owned(scope, old_constraints.data))
 	if !needs_promotion {
 		for param in old_params {
 			if param.len > 0 && scoped_value_owned(scope, param.str) {
+				needs_promotion = true
+				break
+			}
+		}
+	}
+	if !needs_promotion {
+		for constraint in old_constraints {
+			if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
 				needs_promotion = true
 				break
 			}
@@ -7396,7 +7429,15 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 			param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		constraints << if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			constraint.clone()
+		} else {
+			constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
 }
 
 // promote_scoped_ast_nodes_flagged is the scoped-node promotion walk with an optional
@@ -7489,17 +7530,8 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_params := scoped_value_owned(scope, node.payload_ptr())
-		|| scoped_value_owned(scope, old_params.data)
-	if !needs_params {
-		for param in old_params {
-			if param.len > 0 && scoped_value_owned(scope, param.str) {
-				needs_params = true
-				break
-			}
-		}
-	}
-	if !needs_params {
+	old_constraints := node.generic_constraints()
+	if !scoped_generic_payload_owned(node, old_params, old_constraints, scope) {
 		return
 	}
 	mut params := []string{cap: old_params.len}
@@ -7510,7 +7542,15 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 			params << param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			constraints << ast.intern_text_ptr_cached(constraint, mut cache_ptrs, mut cache_vals)
+		} else {
+			constraints << constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
 }
 
 fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
@@ -7531,17 +7571,8 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_params := scoped_value_owned(scope, node.payload_ptr())
-		|| scoped_value_owned(scope, old_params.data)
-	if !needs_params {
-		for param in old_params {
-			if param.len > 0 && scoped_value_owned(scope, param.str) {
-				needs_params = true
-				break
-			}
-		}
-	}
-	if !needs_params {
+	old_constraints := node.generic_constraints()
+	if !scoped_generic_payload_owned(node, old_params, old_constraints, scope) {
 		return
 	}
 	mut params := []string{cap: old_params.len}
@@ -7553,7 +7584,37 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 			params << param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			_, canonical := ast.intern_text(constraint)
+			constraints << canonical
+		} else {
+			constraints << constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
+}
+
+// scoped_generic_payload_owned reports whether the generic params of `node`, or
+// the constraints they name, live in the scope's memory: its payload, their
+// arrays or their strings.
+fn scoped_generic_payload_owned(node &flat.Node, params []string, constraints []string, scope voidptr) bool {
+	if scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, params.data)
+		|| (constraints.len > 0 && scoped_value_owned(scope, constraints.data)) {
+		return true
+	}
+	for param in params {
+		if param.len > 0 && scoped_value_owned(scope, param.str) {
+			return true
+		}
+	}
+	for constraint in constraints {
+		if constraint.len > 0 && scoped_value_owned(scope, constraint.str) {
+			return true
+		}
+	}
+	return false
 }
 
 fn canonicalize_scoped_transform_region(mut ast flat.FlatAst, region transform.ScopedTransformRegion) {
@@ -9413,7 +9474,7 @@ fn v3_driver_option_requires_value(option string) bool {
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
 		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files', '-icon',
-		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix']
+		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix', '-memory-limit']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -9873,6 +9934,7 @@ pub fn run(args []string) {
 	mut no_skip_unused := false
 	mut is_o := false
 	mut no_memory_limit := false
+	mut memory_limit := i64(0)
 	mut parallel_transform := true
 	mut building_v := false
 	mut ownership_mode := false
@@ -10447,6 +10509,29 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-memory-limit' || args[i] == '--no-memory-limit' {
 			no_memory_limit = true
 			i++
+		} else if args[i] == '-memory-limit' || args[i] == '--memory-limit' {
+			s := args[i + 1]
+			n, m := match s[s.len - 1] {
+				`K`, `k` { s[..s.len - 1], i64(1) }
+				`M`, `m` { s[..s.len - 1], i64(1) << 10 }
+				`G`, `g` { s[..s.len - 1], i64(1) << 20 }
+				else    { s, i64(1) << 10 }
+			}
+			if n.len == 0 || !n.is_int() {
+				eprintln('invalid memory limit: ${s}')
+				exit(1)
+			}
+			memory_limit = m * strconv.parse_int(n, 10, 64) or {
+				eprintln('invalid memory limit: ${s}')
+				exit(1)
+			}
+			if memory_limit == 0 {
+				no_memory_limit = true
+			} else if memory_limit < 0 {
+				eprintln('invalid memory limit: ${s}')
+				exit(1)
+			}
+			i += 2
 		} else if args[i] == '-prealloc' {
 			// Same effect as `v -prealloc`: activate the `$if prealloc {` arena
 			// allocator branches in vlib/builtin (allocation.c.v, prealloc.c.v).
@@ -10832,7 +10917,10 @@ pub fn run(args []string) {
 		// Bound Linux pools to the configuration used for the scoped-memory path;
 		// high VJOBS values otherwise multiply both RSS and shared-cache pressure.
 		if !building_v && scope_prealloc_stages && runtime.nr_jobs() > scoped_linux_user_job_limit {
-			workers.limit_pool_size(scoped_linux_user_job_limit - 1)
+			job_limit := scoped_linux_job_limit(check_only, os.getenv('V_DIAGNOSTICS_SERVER') != '')
+			if runtime.nr_jobs() > job_limit {
+				workers.limit_pool_size(job_limit - 1)
+			}
 		}
 	}
 	if building_v || cmd_v_build {
@@ -10986,6 +11074,8 @@ pub fn run(args []string) {
 	}
 	if no_memory_limit {
 		b.disable_memory_limit()
+	} else if memory_limit != 0 {
+		b.set_memory_limit(memory_limit)
 	} else if compiler_tree_input {
 		// Compiler-module tests retain test-runner state in addition to the full
 		// compiler AST, so keep their guard separately configurable.
@@ -11507,6 +11597,11 @@ pub fn run(args []string) {
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
 	p.enable_import_diagnostics()
+	// A diagnostics server only asks of its sources whether they still hold what
+	// it read (see token.File.index_lines_with_quick_sum): builtin too.
+	if os.getenv('V_DIAGNOSTICS_SERVER') != '' {
+		p.quick_source_sums = true
+	}
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
 	}
@@ -11597,6 +11692,84 @@ pub fn run(args []string) {
 	if !had_v3_backend_define {
 		prefs.user_defines = prefs.user_defines.filter(it != 'v3_backend')
 	}
+	// A diagnostics server parses the modules builtin imports once, before its
+	// first request, when its client asks it to (see PreparedImports).
+	mut prepared_imports := PreparedImports{}
+	mut prepared_checker := ?types.TypeChecker(none)
+	mut prepared_checker_key := ''
+	if os.getenv('V_DIAGNOSTICS_SERVER') != '' && os.getenv('V_DIAGNOSTICS_PREPARE') != ''
+		&& check_only && vls_line_info == '' && !no_builtin && !minimal_literal_output
+		&& !cache_state.manager.enabled && file_list.len == 0 && !is_prof && !is_trace_calls
+		&& !prefs.building_v {
+		mut prepared_ast := p.a
+		if prepared_user_files := server_user_files(mut prepared_ast, input_file, prefs,
+			is_test_command)
+		{
+			if 'test' !in prefs.user_defines
+				&& (is_test_command || is_v3_test_file(input_file, backend, target)) {
+				prefs.user_defines << 'test'
+			}
+			prepared_ast.user_code_start = prepared_ast.nodes.len
+			prepared_imports.capturing = true
+			prepared_imports.project_root = project_root_for_files(prepared_user_files)
+			prepared_imports.is_test = prepared_user_files.any(is_v3_test_file(it, backend,
+				prefs.target))
+			prefs.is_test = prepared_imports.is_test
+			mut unscanned := ImplicitImportScan{}
+			resolve_imports(mut prepared_ast, mut p, prefs, []string{}, !current_no_parallel,
+				minimal_literal_output || no_closures, check_overflow, mut cache_state, mut
+				parse_timing, mut unscanned, mut prepared_imports)
+			prepared_imports.capturing = false
+			prepared_imports.ready = true
+			prepared_imports.user_start = prepared_ast.nodes.len
+			prepared_imports.marker_imports = marker_imports_of(prepared_ast)
+			prepared_imports.native_include = ast_has_native_source_include(prepared_ast)
+			implicit_field_scan_index_append(prepared_ast, 0, prepared_ast.user_code_start, mut
+				prepared_imports.builtin_field_index)
+			prepared_imports.scan = prepare_region_scan(prepared_ast, prepared_imports.regions,
+				prepared_imports.builtin_field_index)
+			// The declarations of builtin and of those modules, collected once too.
+			prepared_config := TypeCheckerConfig{
+				user_files:                  prepared_user_files
+				input_file:                  input_file
+				backend:                     backend
+				enable_globals:              enable_globals_compat
+				disable_explicit_mutability: disable_explicit_mutability
+				checker_fixture_mode:        is_checker_fixture
+				pool_checks_small_programs:  true
+				warns_are_errors:            effective_warns_are_errors
+				explicit_warns_are_errors:   warns_are_errors
+				notes_are_errors:            notes_are_errors
+				building_v:                  building_v
+				missing_imports:             prepared_ast.missing_imports.len
+			}
+			mut tc_to_prepare := types.TypeChecker.new(prepared_ast)
+			configure_type_checker(mut tc_to_prepare, prefs, prepared_config)
+			tc_to_prepare.verbose = prefs.verbose
+			if scope_prealloc_check && prepared_ast.missing_imports.len == 0 {
+				tc_to_prepare.enable_scoped_parallel_workers()
+			}
+			tc_to_prepare.reject_unsupported_generics = is_selfhost
+			set_diagnostic_files(mut tc_to_prepare, prepared_user_files)
+			collected := tc_to_prepare.prepare_collect(prepared_ast)
+			if collected {
+				prepared_checker = tc_to_prepare
+				prepared_checker_key = type_checker_config_key(prefs, prepared_config)
+			}
+			trace_diagnostics_server('prepared ${prepared_imports.regions.map(it.path).join(' ')}${if collected {
+				', collected'
+			} else {
+				''
+			}}')
+		}
+	}
+	// What the server parsed itself is the same for all its children: a child
+	// that answers again does not watch it.
+	server_file_ids := if os.getenv('V_DIAGNOSTICS_SERVER') != '' {
+		p.a.source_files.keys()
+	} else {
+		[]int{}
+	}
 	// A diagnostics server's child may have a question to answer instead.
 	mut served := diagserver.serve()
 	if served.question != '' {
@@ -11615,7 +11788,9 @@ pub fn run(args []string) {
 	defer {
 		a.close_workers()
 	}
-	a.user_code_start = a.nodes.len
+	if !prepared_imports.ready {
+		a.user_code_start = a.nodes.len
+	}
 	if minimal_literal_output {
 		suppress_minimal_literal_output_builtin_imports(mut a)
 	}
@@ -11667,6 +11842,9 @@ pub fn run(args []string) {
 		parse_files_dispatch_profiled(mut p, [trace_prelude], false, mut parse_timing)
 	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
+	if prepared_imports.ready && prefs.is_test != prepared_imports.is_test {
+		rerun_as_one_shot_check('a test file came or went since the preparation', served.question)
+	}
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
@@ -11685,8 +11863,16 @@ pub fn run(args []string) {
 	}
 
 	skip_closure_runtime := minimal_literal_output || no_closures
+	mut implicit_imports := ImplicitImportScan{
+		node_idx: a.user_code_start
+	}
 	if !no_builtin {
-		seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
+		implicit_imports = if prepared_imports.ready {
+			seed_implicit_imports_from(mut a, prepared_imports.user_start, prepared_imports.builtin_field_index,
+				skip_closure_runtime, check_overflow)
+		} else {
+			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
+		}
 	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
@@ -11694,7 +11880,17 @@ pub fn run(args []string) {
 	resolve_imports_started_us := b.current_step_time_us()
 	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
 	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime,
-		check_overflow, mut cache_state, mut parse_timing)
+		check_overflow, mut cache_state, mut parse_timing, mut implicit_imports, mut prepared_imports)
+	if prepared_imports.diverged != '' {
+		rerun_as_one_shot_check(prepared_imports.diverged, served.question)
+	}
+	mut logical_file_order := []int{}
+	if prepared_imports.ready {
+		logical_file_order = prepared_imports.logical_file_order(a, &cache_state) or {
+			rerun_as_one_shot_check('a parsed file has no place in the order of a one-shot check', served.question)
+			[]int{}
+		}
+	}
 	// Later stages resolve the same source paths many times, on several threads
 	// and inside disposable arenas. Resolve them once here, on the main thread and
 	// in the build's own arena, before any of those stages start.
@@ -12133,11 +12329,17 @@ pub fn run(args []string) {
 	// literals before Cgen sees the included translation unit. Resolve those rare
 	// inputs before checking so the type is available to semantic lookup.
 	mut ck_stage_sw := time.new_stopwatch()
-	native_inputs_needed := !cache_state.external_inputs_ready && ast_has_native_source_include(a)
+	native_inputs_needed := !cache_state.external_inputs_ready && if prepared_imports.ready
+		&& !prepared_imports.shifted {
+		prepared_imports.native_include
+			|| ast_has_native_source_include_from(a, prepared_imports.user_start)
+	} else {
+		ast_has_native_source_include(a)
+	}
 	// Large cache-disabled C builds still have to resolve native inputs before
 	// Cgen. When the source does not expose native typedefs to semantic collection,
 	// overlap that independent work with the checker's declaration pass.
-	native_inputs_overlap := should_overlap_v3_native_inputs(backend, cache_state.external_inputs_ready, cache_state.manager.enabled, native_inputs_needed, building_v, scope_prealloc_stages)
+	native_inputs_overlap := should_overlap_v3_native_inputs(backend, cache_state.external_inputs_ready, cache_state.manager.enabled, native_inputs_needed, building_v, scope_prealloc_stages, check_only)
 	native_inputs_done := chan bool{cap: 1}
 	native_inputs_release := chan bool{cap: 1}
 	native_inputs_args := PrepareV3CheckerNativeInputsArgs{
@@ -12177,35 +12379,35 @@ pub fn run(args []string) {
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
 	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
-	pre_tc.compiler_vroot = prefs.vroot
-	pre_tc.module_search_paths = prefs.module_search_paths.clone()
-	// Which files the shadowing check may blame. Use the same nearest-v.mod root
-	// as import resolution, so a nested entry directory still owns sibling modules.
-	pre_tc.shadow_diagnostic_root = os.real_path(project_root_for_files(user_files))
-	pre_tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
-	pre_tc.shadow_explicit_roots = shadow_explicit_roots_for(prefs, pre_tc.shadow_dependency_roots)
-	pre_tc.enable_globals = enable_globals_compat
-	pre_tc.disable_explicit_mutability = disable_explicit_mutability
-	pre_tc.checker_fixture_mode = is_checker_fixture
-	pre_tc.is_test = prefs.is_test
-	pre_tc.module_diagnostic_root = if os.is_dir(input_file) {
-		os.real_path(input_file)
-	} else {
-		os.real_path(os.dir(input_file))
+	mut program_instance_check := ProgramInstanceCheck{}
+	checker_config := TypeCheckerConfig{
+		user_files:                  user_files
+		input_file:                  input_file
+		backend:                     backend
+		enable_globals:              enable_globals_compat
+		disable_explicit_mutability: disable_explicit_mutability
+		checker_fixture_mode:        is_checker_fixture
+		pool_checks_small_programs:  served.from_server
+		warns_are_errors:            effective_warns_are_errors
+		explicit_warns_are_errors:   warns_are_errors
+		notes_are_errors:            notes_are_errors
+		building_v:                  building_v
+		missing_imports:             a.missing_imports.len
 	}
-	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
-	pre_tc.no_main = 'no_main' in prefs.user_defines
-	pre_tc.nofloat = 'nofloat' in prefs.user_defines
-	pre_tc.is_js_backend = backend == 'js'
-	pre_tc.warn_about_allocs = prefs.warn_about_allocs
-	pre_tc.warns_are_errors = effective_warns_are_errors
-	pre_tc.explicit_warns_are_errors = warns_are_errors
-	pre_tc.notes_are_errors = notes_are_errors
-	pre_tc.is_prod = prefs.is_prod
-	pre_tc.building_v_fast = building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
-	// Self-host scheduling does not prove the input is semantically valid. Keep
-	// diagnostic and expression validation enabled for compiler builds as well.
-	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
+	// A diagnostics server collected builtin and the modules it imports before
+	// its first check (TypeChecker.prepare_collect): its check continues from
+	// there when the program allows it.
+	mut continue_collect := false
+	if prepared_tc := prepared_checker {
+		if prepared_imports.ready && !prepared_imports.shifted
+			&& prepared_checker_key == type_checker_config_key(prefs, checker_config)
+			&& prepared_tc.can_continue_collect(a, logical_file_order) {
+			pre_tc = prepared_tc
+			continue_collect = true
+		}
+	}
+	configure_type_checker(mut pre_tc, prefs, checker_config)
+	pre_tc.logical_file_order = logical_file_order
 	mut used_fns := map[string]bool{}
 	mut program_used_fns := map[string]bool{}
 	mut incremental_stage_used_fns := map[string]bool{}
@@ -12219,11 +12421,18 @@ pub fn run(args []string) {
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
+		if continue_collect {
+			// The preparation had no missing import; this program may.
+			pre_tc.scope_parallel_check_workers = false
+		}
 		if scope_prealloc_check && a.missing_imports.len == 0 {
 			pre_tc.enable_scoped_parallel_workers()
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
 		mut ckpre_sw := time.new_stopwatch()
+		if continue_collect {
+			pre_tc.diagnostic_files = map[string]bool{}
+		}
 		set_diagnostic_files(mut pre_tc, user_files)
 		// The C generator has a dedicated literal-output path. The SSA/native backend
 		// still builds ordinary builtin bodies, so it needs their full dependency set.
@@ -12236,7 +12445,21 @@ pub fn run(args []string) {
 			eprintln('  [ttime]   ck trivial gate  ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		mut cvsw := time.new_stopwatch()
-		pre_tc.collect(a)
+		if continue_collect {
+			if !pre_tc.collect_continue(a) {
+				rerun_as_one_shot_check('the prepared declarations cannot be continued', served.question)
+			}
+		} else {
+			if prepared_imports.ready {
+				reason := if pc := prepared_checker {
+					pc.continue_collect_conflict(a, logical_file_order)
+				} else {
+					''
+				}
+				trace_diagnostics_server('collecting every declaration anew: ${reason}')
+			}
+			pre_tc.collect(a)
+		}
 		if native_inputs_overlap {
 			_ := <-native_inputs_done
 			// A spawned prealloc worker owns its base arena until it exits. Promote the
@@ -12291,6 +12514,10 @@ pub fn run(args []string) {
 			cvsw.restart()
 		}
 		pre_tc.diagnose_unknown_calls = true
+		// The body of a generic function whose type parameters all have a
+		// constraint is checked as the body of any other function, in a check and
+		// in a build; the others are left to their instances.
+		pre_tc.check_generic_bodies = !is_checker_fixture
 		pre_tc.prepare_threads_condition()
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 		if verbose {
@@ -12319,50 +12546,123 @@ pub fn run(args []string) {
 		} else if incremental_cache_hit {
 			pre_tc.check_semantics_selected(incremental_changed_names)
 		} else {
+			// A child that shares checks checks again only the function bodies
+			// that changed since the last check of the program (see
+			// types.start_incremental_check).
+			if served.shares_checks() && served.question == ''
+				&& pre_tc.scoped_parallel_workers_enabled()
+				&& os.getenv('V_DIAGNOSTICS_INCREMENTAL') != '0' {
+				mut own_files := []string{}
+				for file_id, file in a.source_files {
+					if file_id !in server_file_ids {
+						own_files << file.name
+					}
+				}
+				min_left_out := os.getenv_opt('V_DIAGNOSTICS_INCREMENTAL_MIN_NODES') or {
+					'${types.incremental_min_left_out}'
+				}
+				pre_tc.start_incremental_check(served.incremental_record(), own_files,
+					os.getenv('V_DIAGNOSTICS_INCREMENTAL_VERIFY') != '', min_left_out.int())
+			}
 			ck_stage_sw.restart()
 			// On very large user import graphs, serial checking uses less memory than
 			// retaining one semantic-check accumulator per worker.
-			// A query reads the checker's per-node types, which a serial check
-			// leaves in one place.
+			// A query reads the checker's per-node types: a check with scoped workers
+			// promotes those of each worker into the program's, as a serial one
+			// leaves them. A child that shares checks may answer queries later.
 			parallel_semantic_check := !current_no_parallel && a.missing_imports.len == 0
-				&& vls_line_info == '' && (building_v || !scope_prealloc_check
-				|| a.nodes.len < scoped_serial_user_check_node_threshold)
+				&& ((vls_line_info == '' && !served.shares_checks())
+					|| pre_tc.scope_parallel_check_workers)
+				&& (building_v || !scope_prealloc_check
+					|| a.nodes.len < scoped_serial_user_check_node_threshold)
 			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
 			if verbose {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
+			trace_incremental_check(mut pre_tc)
 		}
-		if vls_line_info != '' {
-			// The answer, if any, is all a query prints: the program's
-			// diagnostics are not its business, and code being written has some.
-			print_vls_answers(mut pre_tc, vls_queries)
+		// A child that shares checks answers them too: a grandchild goes on with
+		// the check, into the diagnostics, and the child prints what it printed.
+		// The rest of the check rewrites the tree the answers come from.
+		shares_checks := served.shares_checks()
+		mut waited_markused := ?&markused.PreparedMarkusedDecls(none)
+		if shares_checks {
+			// No thread of this process but the worker pools' goes into the
+			// grandchild.
+			waited_markused = prepared_markused_thread.wait()
+		}
+		if shares_checks {
+			// What the check found so far, for a client that shows it while the
+			// grandchild takes long: its unused declarations and the instances of
+			// its generic functions (see diagserver.Request.print_diagnostics).
+			found_notices := pre_tc.notices.clone()
+			found_errors := pre_tc.errors.clone()
+			served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
+				print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture,
+					fatal_errors, check_only, message_limit, skip_notices)
+				return if found_errors.len > 0 { 1 } else { 0 }
+			})
+		}
+		if (vls_line_info != '' || shares_checks)
+			&& (!shares_checks || !served.diagnose_in_grandchild()) {
+			mut code := 0
+			if vls_line_info != '' {
+				// The answer, if any, is all a query prints: the program's
+				// diagnostics are not its business, and code being written has
+				// some.
+				print_vls_answers(mut pre_tc, vls_queries, prefs)
+			} else {
+				code = served.print_diagnostics()
+			}
+			if os.getenv('V_DIAGNOSTICS_INCREMENTAL_VERIFY') != '' {
+				// What the check put back, compared with what the bodies report.
+				pre_tc.complete_incremental_check()
+				trace_incremental_check(mut pre_tc)
+			}
+			// The bodies the check left out are checked while no question comes:
+			// a question reads their types.
+			checker := pre_tc
+			served.keep_busy_with(fn [checker] () bool {
+				mut tc := checker
+				return tc.complete_incremental_check_step(incremental_completion_step)
+			})
 			// A diagnostics server's child answers the next questions from the
 			// program it checked, while the server finds the files it read
 			// unchanged.
 			if served.answers_again() {
-				if digests := v3_input_digests(a, cache_state.cached_source_digests) {
+				if digests := v3_input_digests(a, cache_state.cached_source_digests, server_file_ids) {
 					project_root := cache_state.import_resolutions.project_root
 					resolved_imports := v3_imports_to_resolve(a, cache_state.import_resolutions)
 					served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
 						return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
 					})
-					mut code := 0
 					for {
 						next := served.next_question(code) or { break }
+						if served.asks_for_diagnostics(next) {
+							code = served.print_diagnostics()
+							continue
+						}
 						queries := types.parse_vls_line_infos(next, input_file) or {
 							eprintln(err.msg())
 							code = 1
 							continue
 						}
 						code = 0
-						print_vls_answers(mut pre_tc, queries)
+						// A question reads the types of the bodies the check left out.
+						pre_tc.complete_incremental_check()
+						trace_incremental_check(mut pre_tc)
+						print_vls_answers(mut pre_tc, queries, prefs)
 					}
 				}
 			}
-			exit(0)
+			exit(code)
 		}
 		ck_stage_sw.restart()
-		mut prepared_markused := prepared_markused_thread.wait()
+		mut prepared_markused := if waited := waited_markused {
+			waited
+		} else {
+			prepared_markused_thread.wait()
+		}
 		if verbose {
 			eprintln('  [ttime]   ck mkused wait   ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
@@ -12370,8 +12670,18 @@ pub fn run(args []string) {
 		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
 			|| a.export_fn_names.len > 0)
 		// A call whose Result nothing handles loses its error: a warning, in a
-		// check, a build and a run alike.
+		// check, a build and a run alike. Those of the bodies an incremental check
+		// left out are put back.
+		unhandled_start := pre_tc.put_back_incremental_unhandled()
 		pre_tc.warn_unhandled_result_calls()
+		pre_tc.sort_incremental_unhandled(unhandled_start)
+		// For the next check of the program (see types.start_incremental_check),
+		// kept again with the errors of the instances once they are checked.
+		mut kept_incremental_record := ''
+		if shares_checks {
+			kept_incremental_record = pre_tc.incremental_record(unhandled_start)
+			served.keep_incremental_record(kept_incremental_record)
+		}
 		if verbose {
 			eprintln('  [ttime]   ck main req      ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
@@ -12472,14 +12782,33 @@ pub fn run(args []string) {
 			}
 			exit(1)
 		}
-		// A REPL check validates a declaration that only later lines will use.
-		if check_only && !is_repl {
-			// Before the monomorphization below rewrites the tree, as in a build.
-			report_unused_declarations_of_check(a, mut pre_tc, no_skip_unused, test_files,
-				input_file.ends_with('.vsh') || is_checker_fixture)
+		if !check_only && !is_checker_fixture && !prefs.building_v && pre_tc.errors.len == 0
+			&& os.getenv('V_CHECK_INSTANCES_IN_BUILD') != '0'
+			&& pre_tc.diagnosed_files_declare_generics() {
+			// A build checks each instance of the program's generics as a check
+			// does, and as V1 did: an instance that lacks a field, a method or an
+			// operator (`show(1)` reading `x.name`, `add(1)` adding a string to
+			// `a`) fails here, not in the C compiler. V_CHECK_INSTANCES_IN_BUILD=0
+			// leaves them to the C compiler.
+			// It runs beside the transform; C generation waits for it below.
+			program_instance_check = start_program_instance_check(mut a, mut pre_tc, is_checker_fixture,
+				fatal_errors, message_limit, skip_notices)
 		}
 		if check_only {
-			if pre_tc.global_names.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
+			// Before the monomorphization below rewrites the tree, as in a build. A
+			// REPL check validates a declaration that only later lines will use.
+			if !is_repl {
+				report_unused_declarations_of_check(a, mut pre_tc, no_skip_unused, test_files,
+					input_file.ends_with('.vsh') || is_checker_fixture)
+			}
+			monomorphized := check_concrete_generic_bodies_of_check(mut a, mut pre_tc)
+			if monomorphized && kept_incremental_record != '' {
+				// For the next check to put back (see
+				// types.TypeChecker.put_back_incremental_instances).
+				served.keep_incremental_record(pre_tc.incremental_instances_record(kept_incremental_record))
+			}
+			if !monomorphized && pre_tc.global_names.len > 0
+				&& os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				if check_uses_generics {
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc, check_used_fns, false)
@@ -12557,7 +12886,7 @@ pub fn run(args []string) {
 		if prepare_transform_overlap {
 			transform.materialize_inferred_anonymous_structs_before_prepare(mut a, &pre_tc)
 		}
-		prepared_transform_thread := spawn transform.prepare_selfhost_transform(a, &pre_tc, prepare_transform_overlap)
+		mut prepared_transform_thread := spawn transform.prepare_selfhost_transform(a, &pre_tc, prepare_transform_overlap)
 		// Mark used functions (dead-code elimination). This is done before transform
 		// so the transformer can skip function bodies that the C backend will prune.
 		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
@@ -13476,6 +13805,13 @@ pub fn run(args []string) {
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
+		}
+		// An instance of the program's generics that lacks a field, a method or an
+		// operator stops the build here, before C generation takes it to the C
+		// compiler (see start_program_instance_check).
+		if program_instance_check.finish() == 1 {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			exit(1)
 		}
 		// Test harness declarations must remain ahead of their function bodies, so
 		// scoped test generation stays serial instead of streaming worker batches.
@@ -17041,8 +17377,10 @@ fn vmod_subdirs(dir string) ![]string {
 
 // print_vls_answers prints the answer to each question of the mini-VLS
 // protocol: the only one alone, if there is one, and several each on a line of
-// its own after its index, empty when there is none.
-fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery) {
+// its own after its index, empty when there is none. A question about a branch
+// that the parse left out parses its file again with `prefs`.
+fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery, prefs &pref.Preferences) {
+	tc.vls_prefs = prefs
 	if queries.len == 1 {
 		answer := tc.vls_answer(queries[0])
 		if answer != '' {
@@ -17056,14 +17394,20 @@ fn print_vls_answers(mut tc types.TypeChecker, queries []types.VlsQuery) {
 }
 
 // v3_input_digests returns the SHA-256 of what this compilation read in each V
-// source, in hexadecimal and by absolute path: the files it parsed, and those
+// source, in hexadecimal and by absolute path, or the quick sum the parser took
+// of it instead: the files it parsed, but those of `skipped_ids`, and those
 // behind a module header it loaded from the cache. None when it read a file
 // twice with different contents, or read none.
-fn v3_input_digests(a &flat.FlatAst, cached_source_digests map[string]string) ?map[string]string {
+fn v3_input_digests(a &flat.FlatAst, cached_source_digests map[string]string, skipped_ids []int) ?map[string]string {
 	mut digests := map[string]string{}
-	for _, file in a.source_files {
+	for id, file in a.source_files {
+		if id in skipped_ids {
+			continue
+		}
 		mut digest := ''
-		if file.has_source_sha256() {
+		if file.has_source_quick_sum() {
+			digest = diagserver.quick_sum_digest(file.source_quick_sum(), file.size)
+		} else if file.has_source_sha256() {
 			source_digest := file.source_sha256()
 			digest = source_digest[..].hex()
 		} else if os.is_file(file.name) {
@@ -18331,11 +18675,55 @@ fn report_unused_declarations_of_check(a &flat.FlatAst, mut tc types.TypeChecker
 	tc.diagnose_unused_private_declarations(used_fns)
 }
 
+// check_concrete_generic_bodies_of_check checks each concrete instance of the
+// program's generic functions, as the monomorphization of a fixture does:
+// `show(1)` has to fail where `show` reads `x.name`, not in the C compiler. It
+// runs only when a diagnosed file declares a generic function, and reports
+// whether it monomorphized the tree.
+fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeChecker) bool {
+	if tc.errors.len > 0 || tc.checker_fixture_mode || !tc.diagnosed_files_declare_generics() {
+		return false
+	}
+	// An incremental check whose bodies checked again touch nothing generic has
+	// the instances of the check before: their errors are put back.
+	if tc.put_back_incremental_instances() {
+		trace_incremental_check(mut tc)
+		return true
+	}
+	// The program's own functions are the roots, reachable or not, as V1 checked
+	// every instance a call asks for.
+	used_fns := tc.diagnosed_fn_keys()
+	tc.refresh_direct_parent_index(a)
+	// The instances come from the types of the bodies that ask for them.
+	tc.complete_incremental_check_for_instances()
+	trace_incremental_check(mut tc)
+	tc.check_concrete_generic_bodies = true
+	tc.library_instances = 0
+	tc.library_headers = 0
+	tc.library_bodies_kept_for = ''
+	_, _ = transform.monomorphize_with_used_checked_config(mut a, tc, used_fns, false)
+	tc.check_concrete_generic_bodies = false
+	// With V_DIAGNOSTICS_INCREMENTAL_VERIFY, what was to be put back instead.
+	tc.verify_incremental_instances()
+	trace_incremental_check(mut tc)
+	if tc.library_instances > 0 {
+		trace_diagnostics_server('instances: ${tc.library_headers} of ${tc.library_instances} library instances cloned without their bodies')
+		if tc.library_bodies_kept_for != '' {
+			trace_diagnostics_server('instances: every library instance keeps its body: ${tc.library_bodies_kept_for}')
+		}
+	}
+	return true
+}
+
 // check_markused returns what markused finds used, asked for the way a build
 // of the same input asks for it.
 fn check_markused(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool, test_files []string, full_runtime bool) map[string]bool {
 	// As a build does: checking and comptime pruning add and detach nodes.
 	tc.refresh_direct_parent_index(a)
+	// The bodies an incremental check left out need no check first: what is used
+	// only through them is called or named there, which keeps it from being
+	// reported as unused whatever markused finds (see
+	// types.unused_private_declarations).
 	if no_skip_unused {
 		used, _ := markused.mark_all_used_with_generic_usage(a, tc, test_files)
 		return used
@@ -18445,6 +18833,115 @@ mut:
 	enum_fields map[string]map[string]bool
 	fn_returns  map[string]string
 	globals     map[string]string
+	// record, when set, notes the writes to this index, and the keys asked of
+	// it (see PreparedScan).
+	record &ImplicitIndexRecord = unsafe { nil }
+	// bindings_are_globals is set while the globals of a module are typed:
+	// their bindings are this index's globals.
+	bindings_are_globals bool
+}
+
+// ImplicitIndexRecord is what a scan wrote to its field index, by key, with the
+// writes themselves to repeat them, and, with `reads`, every key it asked of it.
+// A key names its map: `a:` aliases, `i:` imports, `f:` fields, `e:` enum
+// fields, `r:` function returns, `g:` globals.
+@[heap]
+struct ImplicitIndexRecord {
+mut:
+	with_reads bool
+	with_ops   bool
+	reads      map[string]bool
+	writes     map[string]bool
+	ops        []ImplicitIndexOp
+}
+
+// ImplicitIndexOp is a write of implicit_field_scan_index_append, to repeat it.
+struct ImplicitIndexOp {
+	kind        ImplicitIndexOpKind
+	key         string
+	value       string
+	fields      map[string]string
+	enum_fields map[string]bool
+}
+
+enum ImplicitIndexOpKind {
+	import_alias
+	alias
+	fields
+	enum_fields
+	fn_return
+	global
+}
+
+// read notes that a scan asked this index for `key` of the map `prefix` names,
+// when it records reads.
+fn (index &ImplicitFieldScanIndex) read(prefix string, key string) {
+	if isnil(index.record) || !index.record.with_reads {
+		return
+	}
+	mut record := unsafe { index.record }
+	record.reads[prefix + key] = true
+}
+
+// write notes a write to this index, when it records them.
+fn (index &ImplicitFieldScanIndex) write(op ImplicitIndexOp) {
+	if isnil(index.record) {
+		return
+	}
+	mut record := unsafe { index.record }
+	prefix := match op.kind {
+		.import_alias { 'i:' }
+		.alias { 'a:' }
+		.fields { 'f:' }
+		.enum_fields { 'e:' }
+		.fn_return { 'r:' }
+		.global { 'g:' }
+	}
+	record.writes[prefix + op.key] = true
+	if record.with_ops {
+		record.ops << op
+	}
+}
+
+// apply repeats the write `op` of implicit_field_scan_index_append.
+fn (mut index ImplicitFieldScanIndex) apply(op ImplicitIndexOp) {
+	match op.kind {
+		.import_alias {
+			index.imports[op.key] = true
+		}
+		.alias {
+			index.aliases[op.key] = op.value
+		}
+		.fields {
+			index.fields[op.key] = op.fields.clone()
+		}
+		.enum_fields {
+			index.enum_fields[op.key] = op.enum_fields.clone()
+		}
+		.fn_return {
+			if old := index.fn_returns[op.key] {
+				if old != op.value {
+					index.fn_returns[op.key] = ''
+				}
+			} else {
+				index.fn_returns[op.key] = op.value
+			}
+		}
+		.global {
+			index.globals[op.key] = op.value
+		}
+	}
+}
+
+fn (index &ImplicitFieldScanIndex) clone() ImplicitFieldScanIndex {
+	return ImplicitFieldScanIndex{
+		aliases:     index.aliases.clone()
+		imports:     index.imports.clone()
+		fields:      index.fields.clone()
+		enum_fields: index.enum_fields.clone()
+		fn_returns:  index.fn_returns.clone()
+		globals:     index.globals.clone()
+	}
 }
 
 struct ImplicitImportScan {
@@ -18463,22 +18960,143 @@ mut:
 	has_overflow         bool
 }
 
+// ImplicitScanFlags are what an implicit-import scan found so far.
+struct ImplicitScanFlags {
+	needs_sync       bool
+	has_sync         bool
+	needs_embed      bool
+	has_embed_import bool
+	needs_closure    bool
+	has_closure      bool
+	needs_debugger   bool
+	has_debugger     bool
+	has_overflow     bool
+}
+
+fn (scan &ImplicitImportScan) flags() ImplicitScanFlags {
+	return ImplicitScanFlags{
+		needs_sync:       scan.needs_sync
+		has_sync:         scan.has_sync
+		needs_embed:      scan.needs_embed
+		has_embed_import: scan.has_embed_import
+		needs_closure:    scan.needs_closure
+		has_closure:      scan.has_closure
+		needs_debugger:   scan.needs_debugger
+		has_debugger:     scan.has_debugger
+		has_overflow:     scan.has_overflow
+	}
+}
+
+// add_flags sets what `flags` found too: the flags of a scan only turn true.
+fn (mut scan ImplicitImportScan) add_flags(flags ImplicitScanFlags) {
+	scan.needs_sync = scan.needs_sync || flags.needs_sync
+	scan.has_sync = scan.has_sync || flags.has_sync
+	scan.needs_embed = scan.needs_embed || flags.needs_embed
+	scan.has_embed_import = scan.has_embed_import || flags.has_embed_import
+	scan.needs_closure = scan.needs_closure || flags.needs_closure
+	scan.has_closure = scan.has_closure || flags.has_closure
+	scan.needs_debugger = scan.needs_debugger || flags.needs_debugger
+	scan.has_debugger = scan.has_debugger || flags.has_debugger
+	scan.has_overflow = scan.has_overflow || flags.has_overflow
+}
+
+// PreparedScan is the implicit-import scan of the modules a diagnostics server
+// prepared, done once, as a check does it after a program that needs no closure
+// runtime yet: the flags after each module, the writes to the field index, and
+// every key read of it. A check replays it when the program's own code wrote
+// none of those keys, or needs the closure runtime already, when the scan reads
+// no index: nothing else of the program reaches that scan.
+struct PreparedScan {
+mut:
+	ready bool
+	after []ImplicitScanFlags
+	ops   []ImplicitIndexOp
+	reads map[string]bool
+}
+
+// prepare_region_scan scans `regions` of `a` for implicit imports with the field
+// index of builtin, as a check scans them after a program that needs nothing.
+fn prepare_region_scan(a &flat.FlatAst, regions []PreparedModule, builtin_index ImplicitFieldScanIndex) PreparedScan {
+	mut record := &ImplicitIndexRecord{
+		with_reads: true
+		with_ops:   true
+	}
+	mut scan := ImplicitImportScan{
+		field_index: builtin_index.clone()
+	}
+	scan.field_index.record = record
+	mut prepared := PreparedScan{
+		ready: true
+	}
+	for region in regions {
+		scan.node_idx = region.start
+		scan.field_index_node_idx = region.start
+		scan_implicit_imports(a, region.end, mut scan)
+		prepared.after << scan.flags()
+	}
+	prepared.ops = record.ops
+	prepared.reads = record.reads.clone()
+	return prepared
+}
+
+// replay_conflict returns why a check whose scan is `scan` cannot replay this
+// one, or '': it can when its program wrote no key this one read, or needs the
+// closure runtime.
+fn (prepared &PreparedScan) replay_conflict(scan &ImplicitImportScan, regions int) string {
+	if !prepared.ready || prepared.after.len != regions {
+		return 'the server did not scan them'
+	}
+	if scan.needs_closure {
+		return ''
+	}
+	if isnil(scan.field_index.record) {
+		return 'the program was scanned without a record'
+	}
+	for key, _ in scan.field_index.record.writes {
+		if key in prepared.reads {
+			return 'the program writes `${key}`'
+		}
+	}
+	return ''
+}
+
 const closure_runtime_import_alias = '__v3_builtin_closure_runtime'
 
-fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_overflow bool) {
+// seed_implicit_imports adds the imports of the compiler-provided modules that the
+// parsed code needs, and returns the scan that found them: resolve_imports
+// continues it rather than scanning the code again.
+fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_overflow bool) ImplicitImportScan {
+	return seed_implicit_imports_from(mut a, a.user_code_start, ImplicitFieldScanIndex{},
+		skip_closure_runtime, check_overflow)
+}
+
+// seed_implicit_imports_from scans the code from `scan_start`: the user's files
+// start after builtin, or after the modules a diagnostics server prepared.
+fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, builtin_field_index ImplicitFieldScanIndex, skip_closure_runtime bool, check_overflow bool) ImplicitImportScan {
 	start := a.nodes.len
 	// Builtin declares the channel ABI even when a program never uses channels.
 	// Start at user code so that declaration alone does not pull the whole sync
 	// module into every program; imported source is scanned wave by wave below.
 	mut scan := ImplicitImportScan{
-		node_idx: a.user_code_start
+		node_idx: scan_start
+	}
+	if scan_start != a.user_code_start {
+		// The field index of a program's own code holds builtin too, and not the
+		// modules prepared between the two: the server indexed builtin once.
+		scan.field_index = builtin_field_index.clone()
+		scan.field_index_node_idx = scan_start
+		// What the program writes to it decides whether a check can replay the
+		// scan of those modules (see PreparedScan).
+		scan.field_index.record = &ImplicitIndexRecord{}
 	}
 	scan_implicit_imports(a, a.nodes.len, mut scan)
 	if scan.needs_sync && !scan.has_sync {
 		a.add_node(sync_import_node())
+		scan.has_sync = true
 	}
 	if scan.needs_embed && !scan.has_embed_import {
 		a.add_node(embed_file_import_node())
+		scan.has_embed_import = true
 	}
 	// Bound method values, lambdas, and captured fn literals are materialized during
 	// transform, after import resolution. Seed the runtime only when parsed syntax can
@@ -18486,14 +19104,20 @@ fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_ov
 	// `closure`.
 	if !skip_closure_runtime && scan.needs_closure && !scan.has_closure {
 		a.add_node(closure_import_node())
+		scan.has_closure = true
 	}
 	if scan.needs_debugger && !scan.has_debugger {
 		a.add_node(debugger_import_node())
+		scan.has_debugger = true
 	}
 	if check_overflow && !scan.has_overflow {
 		a.add_node(overflow_import_node())
+		scan.has_overflow = true
 	}
 	a.intern_node_texts_from(start)
+	// The scan stops before the imports added here: the one that continues it
+	// reads them, as it reads any other import.
+	return scan
 }
 
 fn sync_import_node() flat.Node {
@@ -19169,15 +19793,25 @@ fn implicit_selector_is_interop_symbol(a &flat.FlatAst, node flat.Node) bool {
 
 fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index ImplicitFieldScanIndex) map[int]bool {
 	mut selectors := map[int]bool{}
+	// The maps and lists of one function, emptied for the next: a program has
+	// thousands of functions.
+	mut bindings := map[string]string{}
+	mut ambiguous := map[string]bool{}
+	mut local_names := map[string]bool{}
+	mut candidates := []flat.NodeId{}
+	mut declarations := []flat.NodeId{}
+	mut stack := []flat.NodeId{}
 	for fn_idx in start .. end {
 		fn_node := a.nodes[fn_idx]
 		if fn_node.kind != .fn_decl {
 			continue
 		}
-		mut bindings := map[string]string{}
-		mut ambiguous := map[string]bool{}
-		mut local_names := map[string]bool{}
-		mut body_roots := []flat.NodeId{cap: int(fn_node.children_count)}
+		bindings.clear()
+		ambiguous.clear()
+		local_names.clear()
+		candidates.clear()
+		declarations.clear()
+		stack.clear()
 		for child_idx in 0 .. fn_node.children_count {
 			child_id := a.child(&fn_node, child_idx)
 			child := a.node(child_id)
@@ -19186,15 +19820,12 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				if child.value in bindings {
 					ambiguous[child.value] = true
 				} else if child.typ.len > 0 {
-					bindings[child.value] = implicit_normalize_type(child.typ, index.aliases)
+					bindings[child.value] = implicit_normalize_type(child.typ, index)
 				}
 			} else {
-				body_roots << child_id
+				stack << child_id
 			}
 		}
-		mut candidates := []flat.NodeId{}
-		mut declarations := []flat.NodeId{}
-		mut stack := body_roots.clone()
 		for stack.len > 0 {
 			id := stack.pop()
 			if int(id) < 0 {
@@ -19244,7 +19875,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 					if typ == '' {
 						continue
 					}
-					normalized := implicit_normalize_type(typ, index.aliases)
+					normalized := implicit_normalize_type(typ, index)
 					if old := bindings[lhs.value] {
 						if old != normalized {
 							ambiguous[lhs.value] = true
@@ -19273,6 +19904,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				continue
 			}
 			if base.kind == .ident {
+				index.read('e:', base.value)
 				if enum_fields := index.enum_fields[base.value] {
 					if selector.value in enum_fields {
 						selectors[int(selector_id)] = true
@@ -19280,6 +19912,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				}
 				if !local_names[base.value] {
 					if file := a.source_files[selector.pos.id] {
+						index.read('i:', '${file.name}\n${base.value}')
 						if index.imports['${file.name}\n${base.value}'] {
 							selectors[int(selector_id)] = true
 						}
@@ -19299,11 +19932,21 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			.import_decl {
 				alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
 				if file := a.source_files[node.pos.id] {
-					index.imports['${file.name}\n${alias}'] = true
+					key := '${file.name}\n${alias}'
+					index.write(ImplicitIndexOp{
+						kind: .import_alias
+						key:  key
+					})
+					index.imports[key] = true
 				}
 			}
 			.type_decl {
 				if node.value.len > 0 && node.typ.len > 0 {
+					index.write(ImplicitIndexOp{
+						kind:  .alias
+						key:   node.value
+						value: node.typ
+					})
 					index.aliases[node.value] = node.typ
 				}
 			}
@@ -19316,6 +19959,11 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 					}
 				}
 				if declared.len > 0 {
+					index.write(ImplicitIndexOp{
+						kind:   .fields
+						key:    node.value
+						fields: declared.clone()
+					})
 					index.fields[node.value] = declared.move()
 				}
 			}
@@ -19328,6 +19976,11 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 					}
 				}
 				if declared.len > 0 {
+					index.write(ImplicitIndexOp{
+						kind:        .enum_fields
+						key:         node.value
+						enum_fields: declared.clone()
+					})
 					index.enum_fields[node.value] = declared.move()
 				}
 			}
@@ -19335,6 +19988,11 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				if node.value.len == 0 || node.typ.len == 0 {
 					continue
 				}
+				index.write(ImplicitIndexOp{
+					kind:  .fn_return
+					key:   node.value
+					value: node.typ
+				})
 				if old := index.fn_returns[node.value] {
 					if old != node.typ {
 						index.fn_returns[node.value] = ''
@@ -19360,10 +20018,19 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			typ := if field.typ.len > 0 {
 				field.typ
 			} else {
-				implicit_expr_type(a, a.child(field, 0), index.globals, index, 0)
+				implicit_expr_type(a, a.child(field, 0), index.globals, ImplicitFieldScanIndex{
+					...index
+					bindings_are_globals: true
+				}, 0)
 			}
 			if typ.len > 0 {
-				index.globals[field.value] = implicit_normalize_type(typ, index.aliases)
+				global_type := implicit_normalize_type(typ, index)
+				index.write(ImplicitIndexOp{
+					kind:  .global
+					key:   field.value
+					value: global_type
+				})
+				index.globals[field.value] = global_type
 			}
 		}
 	}
@@ -19375,16 +20042,22 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 	}
 	node := a.node(id)
 	if node.typ.len > 0 {
-		return implicit_normalize_type(node.typ, index.aliases)
+		return implicit_normalize_type(node.typ, index)
 	}
 	match node.kind {
 		.ident {
+			if index.bindings_are_globals {
+				index.read('g:', node.value)
+			}
 			if typ := bindings[node.value] {
 				return typ
 			}
+			index.read('g:', node.value)
 			if typ := index.globals[node.value] {
 				return typ
 			}
+			index.read('f:', node.value)
+			index.read('e:', node.value)
 			if node.value in index.fields || node.value in index.enum_fields {
 				return node.value
 			}
@@ -19419,7 +20092,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 			return if node.typ.len > 0 { node.typ } else { 'map[void]void' }
 		}
 		.struct_init {
-			return implicit_normalize_type(node.value, index.aliases)
+			return implicit_normalize_type(node.value, index)
 		}
 		.paren, .expr_stmt, .postfix {
 			if node.children_count == 1 {
@@ -19444,7 +20117,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 				}
 				if typ == '' {
 					typ = branch_type
-				} else if implicit_normalize_type(typ, index.aliases) != implicit_normalize_type(branch_type, index.aliases) {
+				} else if implicit_normalize_type(typ, index) != implicit_normalize_type(branch_type, index) {
 					return ''
 				}
 			}
@@ -19474,7 +20147,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 		}
 		.index {
 			if node.children_count > 0 {
-				base_type := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index.aliases)
+				base_type := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index)
 				if node.value == 'range' {
 					// A slice keeps its base type: `s[..n]` is a string, and slicing a
 					// fixed array yields a dynamic one.
@@ -19505,10 +20178,10 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 		}
 		.cast_expr, .as_expr {
 			if node.typ.len > 0 {
-				return implicit_normalize_type(node.typ, index.aliases)
+				return implicit_normalize_type(node.typ, index)
 			}
 			if node.value.len > 0 {
-				return implicit_normalize_type(node.value, index.aliases)
+				return implicit_normalize_type(node.value, index)
 			}
 		}
 		else {}
@@ -19543,9 +20216,11 @@ fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings map[string]str
 				value = a.child_node(value, 0)
 			}
 			cond := a.child_node(branch, 0)
-			if value.kind == .ident && value.value == subject.value && cond.kind == .ident
-				&& cond.value in index.fields {
-				branch_type = cond.value
+			if value.kind == .ident && value.value == subject.value && cond.kind == .ident {
+				index.read('f:', cond.value)
+				if cond.value in index.fields {
+					branch_type = cond.value
+				}
 			}
 		}
 		if branch_type == '' {
@@ -19556,7 +20231,7 @@ fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings map[string]str
 		}
 		if typ == '' {
 			typ = branch_type
-		} else if implicit_normalize_type(typ, index.aliases) != implicit_normalize_type(branch_type, index.aliases) {
+		} else if implicit_normalize_type(typ, index) != implicit_normalize_type(branch_type, index) {
 			return ''
 		}
 	}
@@ -19569,8 +20244,9 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[stri
 	}
 	callee := a.child_node(call, 0)
 	if callee.kind == .ident {
+		index.read('r:', callee.value)
 		if typ := index.fn_returns[callee.value] {
-			return implicit_normalize_type(typ, index.aliases)
+			return implicit_normalize_type(typ, index)
 		}
 		return ''
 	}
@@ -19578,7 +20254,7 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[stri
 		return ''
 	}
 	base_id := a.child(callee, 0)
-	base_type := implicit_normalize_type(implicit_expr_type(a, base_id, bindings, index, depth + 1), index.aliases)
+	base_type := implicit_normalize_type(implicit_expr_type(a, base_id, bindings, index, depth + 1), index)
 	if base_type == 'string' {
 		if callee.value == 'runes' {
 			return '[]rune'
@@ -19589,8 +20265,9 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[stri
 	}
 	if base_type.len > 0 {
 		for key in ['${base_type}.${callee.value}', '${base_type.all_after_last('.')}.${callee.value}'] {
+			index.read('r:', key)
 			if typ := index.fn_returns[key] {
-				return implicit_normalize_type(typ, index.aliases)
+				return implicit_normalize_type(typ, index)
 			}
 		}
 	}
@@ -19602,7 +20279,7 @@ fn implicit_type_has_field(raw_type string, field string, index ImplicitFieldSca
 }
 
 fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanIndex) string {
-	typ := implicit_normalize_type(raw_type, index.aliases)
+	typ := implicit_normalize_type(raw_type, index)
 	if typ == '' {
 		return ''
 	}
@@ -19627,26 +20304,30 @@ fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanInd
 			else { '' }
 		}
 	}
+	index.read('f:', typ)
 	if declared := index.fields[typ] {
 		if field_type := declared[field] {
-			return implicit_normalize_type(field_type, index.aliases)
+			return implicit_normalize_type(field_type, index)
 		}
 	}
 	return ''
 }
 
-fn implicit_normalize_type(raw string, aliases map[string]string) string {
-	mut typ := raw.trim_space()
+const implicit_type_prefixes = ['mut ', 'shared ', '&', '?', '!']
+
+fn implicit_normalize_type(raw string, index ImplicitFieldScanIndex) string {
+	mut typ := implicit_trim_space(raw)
 	for _ in 0 .. 12 {
 		mut changed := false
-		for prefix in ['mut ', 'shared ', '&', '?', '!'] {
+		for prefix in implicit_type_prefixes {
 			if typ.starts_with(prefix) {
-				typ = typ[prefix.len..].trim_space()
+				typ = implicit_trim_space(typ[prefix.len..])
 				changed = true
 			}
 		}
-		if target := aliases[typ] {
-			typ = target.trim_space()
+		index.read('a:', typ)
+		if target := index.aliases[typ] {
+			typ = implicit_trim_space(target)
 			changed = true
 		}
 		if !changed {
@@ -19656,15 +20337,25 @@ fn implicit_normalize_type(raw string, aliases map[string]string) string {
 	return typ
 }
 
+// implicit_trim_space is `text.trim_space()` without the copy of a text that
+// has no space to trim: the scans below normalize every type text they meet.
+@[inline]
+fn implicit_trim_space(text string) string {
+	if text.len > 0 && !text[0].is_space() && !text[text.len - 1].is_space() {
+		return text
+	}
+	return text.trim_space()
+}
+
 fn type_text_is_channel(typ string) bool {
-	mut clean := typ.trim_space()
+	mut clean := implicit_trim_space(typ)
 	for {
 		if clean.starts_with('&') {
-			clean = clean[1..].trim_space()
+			clean = implicit_trim_space(clean[1..])
 			continue
 		}
 		if clean.starts_with('mut ') {
-			clean = clean[4..].trim_space()
+			clean = implicit_trim_space(clean[4..])
 			continue
 		}
 		break
@@ -19673,7 +20364,7 @@ fn type_text_is_channel(typ string) bool {
 }
 
 fn type_text_is_shared(raw string) bool {
-	return raw.trim_space().starts_with('shared ')
+	return implicit_trim_space(raw).starts_with('shared ')
 }
 
 fn decl_assign_value_is_shared(value string) bool {
@@ -19685,6 +20376,366 @@ fn decl_assign_value_is_shared(value string) bool {
 struct SyntheticInsertion {
 	pos  int // original (pre-insertion) node index to insert before
 	node flat.Node
+}
+
+// SyntheticImportsAdded tells which compiler-provided modules the import
+// resolution already seeded: each is seeded once, at the first module whose
+// code needs it.
+struct SyntheticImportsAdded {
+mut:
+	sync     bool
+	embed    bool
+	closure  bool
+	debugger bool
+}
+
+// insertions_at returns the imports to splice in at `region_end` for what
+// `scan` found needed and nothing imports yet.
+fn (mut added SyntheticImportsAdded) insertions_at(scan ImplicitImportScan, region_end int, skip_closure_runtime bool) []SyntheticInsertion {
+	mut insertions := []SyntheticInsertion{}
+	if !added.sync && scan.needs_sync && !scan.has_sync {
+		insertions << SyntheticInsertion{
+			pos:  region_end
+			node: sync_import_node()
+		}
+		added.sync = true
+	}
+	if !added.embed && scan.needs_embed && !scan.has_embed_import {
+		insertions << SyntheticInsertion{
+			pos:  region_end
+			node: embed_file_import_node()
+		}
+		added.embed = true
+	}
+	if !skip_closure_runtime && !added.closure && scan.needs_closure && !scan.has_closure {
+		insertions << SyntheticInsertion{
+			pos:  region_end
+			node: closure_import_node()
+		}
+		added.closure = true
+	}
+	if !added.debugger && scan.needs_debugger && !scan.has_debugger {
+		insertions << SyntheticInsertion{
+			pos:  region_end
+			node: debugger_import_node()
+		}
+		added.debugger = true
+	}
+	return insertions
+}
+
+// logical_file_order returns the `.file` markers of the program in the order a
+// one-shot check parses them: builtin, the user's files, then each wave of
+// imported modules, the prepared ones where that check finds them. None when a
+// parsed file has no place in it.
+fn (prepared &PreparedImports) logical_file_order(a &flat.FlatAst, cache_state &V3ModuleCacheState) ?[]int {
+	mut markers := []int{cap: a.file_node_ids.len / 2}
+	for k := 0; k + 1 < a.file_node_ids.len; k += 2 {
+		markers << int(a.file_node_ids[k])
+	}
+	// A file's nodes end at the next file's marker, after the implicit imports
+	// spliced in behind it.
+	mut region_ends := map[int]int{}
+	for i, marker in markers {
+		region_ends[marker] = if i + 1 < markers.len { markers[i + 1] } else { a.nodes.len }
+	}
+	mut module_of_file := map[string]string{}
+	for identity, files in cache_state.module_sources {
+		for file in files {
+			module_of_file[file] = identity
+		}
+	}
+	mut module_markers := map[string][]int{}
+	mut first_wave := []int{}
+	for marker in markers {
+		path := a.nodes[marker].value
+		if identity := module_of_file[path] {
+			if marker >= a.user_code_start {
+				module_markers[identity] << marker
+				continue
+			}
+		}
+		// Builtin, and the user's own files after the prepared modules.
+		if marker < a.user_code_start || marker >= prepared.user_start {
+			first_wave << marker
+		}
+	}
+	mut order := first_wave.clone()
+	mut parsed := prepared.initial_parsed.clone()
+	mut current := first_wave.clone()
+	for current.len > 0 {
+		mut next := []int{}
+		for marker in current {
+			// An import spliced into the prepared modules moved their nodes.
+			imports := if prepared.shifted {
+				region_imports(a, marker, region_ends[marker])
+			} else {
+				prepared.marker_imports[marker] or {
+					region_imports(a, marker, region_ends[marker])
+				}
+			}
+			for imported in imports {
+				if imported in parsed {
+					continue
+				}
+				files := module_markers[imported] or { continue }
+				parsed[imported] = true
+				next << files
+			}
+		}
+		order << next
+		current = next.clone()
+	}
+	if order.len != markers.len {
+		return none
+	}
+	return order
+}
+
+// region_imports returns the modules that the nodes of `a` from `start` up to
+// `end`, the region of a file, import, in their order.
+fn region_imports(a &flat.FlatAst, start int, end int) []string {
+	mut imports := []string{}
+	for idx in start .. end {
+		node := a.nodes[idx]
+		if node.kind == .import_decl {
+			imports << node.value
+		}
+	}
+	return imports
+}
+
+// marker_imports_of returns the modules that each file of `a` imports, by its
+// `.file` marker (see PreparedImports.marker_imports).
+fn marker_imports_of(a &flat.FlatAst) map[int][]string {
+	mut markers := []int{cap: a.file_node_ids.len / 2}
+	for k := 0; k + 1 < a.file_node_ids.len; k += 2 {
+		markers << int(a.file_node_ids[k])
+	}
+	mut imports := map[int][]string{}
+	for i, marker in markers {
+		end := if i + 1 < markers.len { markers[i + 1] } else { a.nodes.len }
+		imports[marker] = region_imports(a, marker, end)
+	}
+	return imports
+}
+
+// server_user_files lists the input's files as a check lists them, for a
+// diagnostics server that prepares before its first check. None where the
+// check would stop on the input itself: that check then says why.
+fn server_user_files(mut a flat.FlatAst, input_file string, prefs &pref.Preferences, is_test_command bool) ?[]string {
+	if input_file.ends_with('.v') || input_file.ends_with('.vv') {
+		return expand_single_test_file_inputs(mut a, [input_file], prefs)
+	}
+	if os.is_dir(input_file) {
+		files := v3_directory_user_files(mut a, input_file, prefs, is_test_command, false) or {
+			return none
+		}
+		if files.len == 0 {
+			return none
+		}
+		return files
+	}
+	return none
+}
+
+// TypeCheckerConfig is what configures the checker of a compilation besides
+// its preferences.
+struct TypeCheckerConfig {
+	user_files                  []string
+	input_file                  string
+	backend                     string
+	enable_globals              bool
+	disable_explicit_mutability bool
+	checker_fixture_mode        bool
+	pool_checks_small_programs  bool
+	warns_are_errors            bool
+	explicit_warns_are_errors   bool
+	notes_are_errors            bool
+	building_v                  bool
+	missing_imports             int
+}
+
+fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg TypeCheckerConfig) {
+	tc.compiler_vroot = prefs.vroot
+	tc.module_search_paths = prefs.module_search_paths.clone()
+	// Which files the shadowing check may blame. Use the same nearest-v.mod root
+	// as import resolution, so a nested entry directory still owns sibling modules.
+	tc.shadow_diagnostic_root = os.real_path(project_root_for_files(cfg.user_files))
+	tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
+	tc.shadow_explicit_roots = shadow_explicit_roots_for(prefs, tc.shadow_dependency_roots)
+	tc.enable_globals = cfg.enable_globals
+	tc.disable_explicit_mutability = cfg.disable_explicit_mutability
+	tc.checker_fixture_mode = cfg.checker_fixture_mode
+	// A diagnostics server's check waits on its bodies: the pool checks a few
+	// of them sooner than one thread, as it does many (p20, 201 functions: 31 ms
+	// on one thread, 13 ms on the pool).
+	if cfg.pool_checks_small_programs {
+		tc.parallel_check_min_items = 2
+	}
+	tc.is_test = prefs.is_test
+	tc.module_diagnostic_root = if os.is_dir(cfg.input_file) {
+		os.real_path(cfg.input_file)
+	} else {
+		os.real_path(os.dir(cfg.input_file))
+	}
+	tc.autofree_mode = 'autofree' in prefs.user_defines
+	tc.no_main = 'no_main' in prefs.user_defines
+	tc.nofloat = 'nofloat' in prefs.user_defines
+	tc.is_js_backend = cfg.backend == 'js'
+	tc.warn_about_allocs = prefs.warn_about_allocs
+	tc.warns_are_errors = cfg.warns_are_errors
+	tc.explicit_warns_are_errors = cfg.explicit_warns_are_errors
+	tc.notes_are_errors = cfg.notes_are_errors
+	tc.is_prod = prefs.is_prod
+	tc.building_v_fast = cfg.building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
+	// Self-host scheduling does not prove the input is semantically valid. Keep
+	// diagnostic and expression validation enabled for compiler builds as well.
+	tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
+}
+
+// type_checker_config_key tells apart the configurations under which a
+// prepared collection of declarations would not be the one of the check.
+fn type_checker_config_key(prefs &pref.Preferences, cfg TypeCheckerConfig) string {
+	return '${prefs.vroot}\n${project_root_for_files(cfg.user_files)}\n${cfg.input_file}\n${cfg.backend}\n${cfg.enable_globals}\n${cfg.disable_explicit_mutability}\n${cfg.checker_fixture_mode}\n${cfg.warns_are_errors}\n${cfg.explicit_warns_are_errors}\n${cfg.notes_are_errors}\n${cfg.building_v}\n${prefs.is_test}\n${prefs.is_prod}\n${prefs.warn_about_allocs}\n${prefs.user_defines}'
+}
+
+// incremental_completion_step is how many of the bodies an incremental check
+// left out a child of a diagnostics server checks at a time while it waits for
+// a question (see types.complete_incremental_check_step).
+const incremental_completion_step = 32
+
+// trace_incremental_check traces what an incremental check decided since the
+// last trace (see types.start_incremental_check).
+fn trace_incremental_check(mut tc types.TypeChecker) {
+	for line in tc.take_incremental_trace() {
+		trace_diagnostics_server(line)
+	}
+}
+
+// trace_diagnostics_server tells what a diagnostics server did, when
+// V_DIAGNOSTICS_TRACE asks: on stderr, or at the end of the file it names by
+// an absolute path, which leaves the output of a check what it would be.
+fn trace_diagnostics_server(message string) {
+	trace := os.getenv('V_DIAGNOSTICS_TRACE')
+	if trace.starts_with('/') {
+		mut f := os.open_append(trace) or { return }
+		f.writeln('v-diagnostics-server: ${message}') or {}
+		f.close()
+	} else if trace != '' {
+		eprintln('v-diagnostics-server: ${message}')
+	}
+}
+
+// rerun_as_one_shot_check replaces a diagnostics server's child with the
+// one-shot check of the same command line, whose output a check that relies on
+// a preparation cannot guarantee to match. A child that was to answer
+// `question` answers it there, as `-line-info` does.
+fn rerun_as_one_shot_check(reason string, question string) {
+	trace_diagnostics_server('one-shot check: ${reason}')
+	mut args := os.args[1..].clone()
+	if question != '' && args.len > 0 {
+		// Before the input, which the command line ends with.
+		args.insert(args.len - 1, ['-line-info', question])
+	}
+	mut envs := []string{}
+	for name, value in os.environ() {
+		if name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
+			continue
+		}
+		envs << '${name}=${value}'
+	}
+	flush_stdout()
+	flush_stderr()
+	os.execve(os.executable(), args, envs) or {
+		eprintln('v-diagnostics-server: cannot run the one-shot check: ${err}')
+		exit(2)
+	}
+}
+
+// PreparedImports is what resolve_imports learned of the modules that
+// builtin imports, parsed before the user's code: a diagnostics server
+// prepares them once (capturing), and each of its checks continues from them
+// (ready). Where the program would make a one-shot check resolve one of them
+// otherwise, the check says why in `diverged`, and is run as a one-shot check.
+struct PreparedImports {
+mut:
+	capturing bool
+	ready     bool
+	diverged  string
+	shifted   bool
+	// Where the user's code starts, after the prepared modules.
+	user_start int
+	// Whether the user's files held a test when the modules were prepared.
+	is_test bool
+	// Whether the prepared code includes a C or Objective-C source.
+	native_include bool
+	// The field index of the implicit-import scan over builtin, which the scan
+	// of the user's code starts from.
+	builtin_field_index ImplicitFieldScanIndex
+	// The implicit-import scan of the prepared modules, done once.
+	scan PreparedScan
+	// The project root the user's files give, which resolves module paths.
+	project_root string
+	// The prepared modules, in the order they were parsed.
+	regions []PreparedModule
+	// The modules a one-shot check takes as parsed before its first wave.
+	initial_parsed map[string]bool
+	// The modules that each file parsed by the preparation imports, by its
+	// `.file` marker: the order of the files looks for them in every check
+	// (see logical_file_order), and their nodes do not change.
+	marker_imports                map[int][]string
+	parsed_modules                map[string]bool
+	parsed_module_identities      map[string]string
+	parsed_identity_dirs          map[string]string
+	parsed_dir_identities         map[string]string
+	checked_dir_spellings         map[string]bool
+	identity_source_paths         map[string]string
+	identity_source_dirs          map[string]string
+	forced_full_module_paths      map[string]bool
+	module_path_cache             map[string]string
+	module_identity_cache         map[string]string
+	first_collision_seed_by_short map[string]ImportCollisionSeed
+	resolved_collision_seeds      map[string]bool
+	unresolved_modules            map[string]bool
+	resolved_module_dirs          map[string]string
+}
+
+// PreparedModule is a module parsed by a preparation: the import that named it,
+// what it resolved to, and its nodes.
+struct PreparedModule {
+mut:
+	path           string
+	identity       string
+	importing_file string
+	dir            string
+	start          int
+	end            int
+}
+
+// resolution_change returns why the program checked after the preparation
+// resolves a prepared module otherwise than the preparation did, or ''.
+fn (prepared &PreparedImports) resolution_change(prefs &pref.Preferences, project_root string, forced_full_module_paths map[string]bool, parsed_module_identities map[string]string) string {
+	if project_root != prepared.project_root {
+		return 'the project root is ${project_root}, not ${prepared.project_root}'
+	}
+	mut fresh := map[string]string{}
+	for region in prepared.regions {
+		if forced_full_module_paths[region.path] != prepared.forced_full_module_paths[region.path] {
+			return 'an import collides with the prepared module ${region.path}'
+		}
+		if (parsed_module_identities[region.path] or { '' }) != (prepared.parsed_module_identities[region.path] or {
+			''
+		}) {
+			return 'the prepared module ${region.path} got another identity'
+		}
+		// A module of the project can shadow one of vlib after the preparation.
+		if resolve_project_or_pref_module_path(prefs, region.path, region.importing_file,
+			project_root, mut fresh) != region.dir {
+			return 'the prepared module ${region.path} resolves to another directory'
+		}
+	}
+	return ''
 }
 
 // insert_synthetic_imports shifts a.nodes in place with each synthetic import spliced in
@@ -20205,17 +21256,25 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 	return modules
 }
 
-fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming) bool {
+// resolve_imports parses the modules that the parsed code imports, wave by wave.
+// It continues `implicit_imports`, the scan of seed_implicit_imports.
+fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming, mut implicit_imports ImplicitImportScan, mut prepared PreparedImports) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
+	// The user's files are parsed after the modules a server prepared.
+	initial_file_nodes := selected_file_node_ids_from(mut a, initial_files, if prepared.ready {
+		prepared.user_start
+	} else {
+		a.user_code_start
+	})
 	mut parsed_identity_dirs := map[string]string{}
 	// A directory on disk is one module, however an import spells its path.
 	mut parsed_dir_identities := map[string]string{}
-	explicit_initial_imports := imports_from_files(mut a, initial_files)
-	canonicalize_colliding_initial_modules(mut a, prefs, initial_files, explicit_initial_imports)
-	seed_initial_modules(mut a, initial_files, explicit_initial_imports, mut parsed_modules,
-		mut parsed_identity_dirs, mut parsed_dir_identities)
+	explicit_initial_imports := imports_from_file_nodes(a, initial_file_nodes)
+	canonicalize_colliding_initial_module_nodes(mut a, prefs, initial_file_nodes, explicit_initial_imports)
+	seed_initial_module_nodes(a, initial_file_nodes, explicit_initial_imports, mut parsed_modules, mut
+		parsed_identity_dirs, mut parsed_dir_identities)
 	a.resolved_module_dirs = parsed_identity_dirs.clone()
 
 	// Backend modules excluded by the active configuration are never parsed: their
@@ -20240,11 +21299,18 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		}
 	}
 
+	if prepared.ready {
+		prepared.initial_parsed = parsed_modules.clone()
+	}
 	mut first_file := ''
 	if initial_files.len > 0 {
 		first_file = initial_files[0]
 	}
-	project_root := project_root_for_files(initial_files)
+	project_root := if prepared.capturing {
+		prepared.project_root
+	} else {
+		project_root_for_files(initial_files)
+	}
 	shadow_diagnostic_root := os.real_path(project_root)
 	shadow_dependency_roots := shadow_dependency_roots_for(prefs)
 	shadow_explicit_roots := shadow_explicit_roots_for(prefs, shadow_dependency_roots)
@@ -20259,6 +21325,38 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut first_collision_seed_by_short := map[string]ImportCollisionSeed{}
 	mut resolved_collision_seeds := map[string]bool{}
 	mut unresolved_modules := map[string]bool{}
+	if prepared.ready {
+		for name, _ in prepared.parsed_modules {
+			parsed_modules[name] = true
+		}
+		parsed_module_identities = prepared.parsed_module_identities.clone()
+		// The initial files seeded the directories of their own modules above;
+		// the prepared modules only add the ones they resolved.
+		for identity, dir in prepared.parsed_identity_dirs {
+			if identity !in parsed_identity_dirs {
+				parsed_identity_dirs[identity] = dir
+			}
+		}
+		for dir, identity in prepared.parsed_dir_identities {
+			if dir !in parsed_dir_identities {
+				parsed_dir_identities[dir] = identity
+			}
+		}
+		for identity, dir in prepared.resolved_module_dirs {
+			if identity !in a.resolved_module_dirs {
+				a.resolved_module_dirs[identity] = dir
+			}
+		}
+		checked_dir_spellings = prepared.checked_dir_spellings.clone()
+		identity_source_paths = prepared.identity_source_paths.clone()
+		identity_source_dirs = prepared.identity_source_dirs.clone()
+		forced_full_module_paths = prepared.forced_full_module_paths.clone()
+		module_path_cache = prepared.module_path_cache.clone()
+		module_identity_cache = prepared.module_identity_cache.clone()
+		first_collision_seed_by_short = prepared.first_collision_seed_by_short.clone()
+		resolved_collision_seeds = prepared.resolved_collision_seeds.clone()
+		unresolved_modules = prepared.unresolved_modules.clone()
+	}
 	if check_overflow {
 		// C generation names the late-injected overflow helpers by their full
 		// module path. Preserve that path even though it is the only module named
@@ -20321,7 +21419,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			// Imported code can be the first user of embed/channel/closure syntax.
 			// Seed those compiler-provided modules before the authoritative resolver
 			// scans the now-complete AST.
-			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
+			implicit_imports = seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
 		}
 	}
 
@@ -20334,14 +21432,57 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	// wave the synthetic nodes are only spliced in after every boundary has been
 	// checked, so a later module's bounded already-imported scan cannot yet see an
 	// earlier module's pending seed; the flags stand in for it.
-	mut implicit_imports := ImplicitImportScan{
-		node_idx: a.user_code_start
+	// A preparation leaves the implicit imports to the check that continues it.
+	if !prepared.capturing {
+		scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
 	}
-	scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
-	mut synthetic_sync_added := implicit_imports.has_sync
-	mut synthetic_embed_file_added := implicit_imports.has_embed_import
-	mut synthetic_closure_added := implicit_imports.has_closure
-	mut synthetic_debugger_added := implicit_imports.has_debugger
+	mut synthetic := SyntheticImportsAdded{
+		sync:     implicit_imports.has_sync
+		embed:    implicit_imports.has_embed_import
+		closure:  implicit_imports.has_closure
+		debugger: implicit_imports.has_debugger
+	}
+	if prepared.ready {
+		// The prepared modules come before the user's code, where a one-shot
+		// check parses them after it. Scan them as it does: after the user's
+		// code, one module after another, each with the imports it needs. The
+		// server scanned them once already, and that scan holds for a program
+		// that changes nothing it read (see PreparedScan).
+		scan_end := implicit_imports.node_idx
+		mut insertions := []SyntheticInsertion{}
+		conflict := prepared.scan.replay_conflict(implicit_imports, prepared.regions.len)
+		if conflict == '' {
+			trace_diagnostics_server('replaying the scan of the prepared modules')
+			incoming := implicit_imports.flags()
+			for i, region in prepared.regions {
+				implicit_imports.add_flags(prepared.scan.after[i])
+				insertions << synthetic.insertions_at(implicit_imports, region.end, skip_closure_runtime)
+			}
+			if !incoming.needs_closure {
+				for op in prepared.scan.ops {
+					implicit_imports.field_index.apply(op)
+				}
+			}
+		} else {
+			trace_diagnostics_server('scanning the prepared modules anew: ${conflict}')
+			implicit_imports.field_index.record = unsafe { nil }
+			for region in prepared.regions {
+				implicit_imports.node_idx = region.start
+				implicit_imports.field_index_node_idx = region.start
+				scan_implicit_imports(a, region.end, mut implicit_imports)
+				insertions << synthetic.insertions_at(implicit_imports, region.end, skip_closure_runtime)
+			}
+		}
+		implicit_imports.field_index.record = unsafe { nil }
+		implicit_imports.node_idx = scan_end
+		implicit_imports.field_index_node_idx = scan_end
+		// An import spliced into the prepared modules moves their nodes: the
+		// check collects the whole program anew.
+		prepared.shifted = insertions.len > 0
+		insert_synthetic_imports(mut a, insertions)
+		implicit_imports.node_idx += insertions.len
+		implicit_imports.field_index_node_idx += insertions.len
+	}
 	mut ri_collision_ns := u64(0)
 	mut ri_wave_ns := u64(0)
 	mut ri_waves := 0
@@ -20448,6 +21589,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		mut wave_files := []string{}
 		mut wave_canon := []string{}
 		mut wave_module_file_ends := []int{}
+		mut wave_modules := []PreparedModule{}
 		for wave_scan_i in 0 .. scan_ids.len {
 			node_idx = scan_ids[wave_scan_i]
 			node := a.nodes[node_idx]
@@ -20696,6 +21838,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					wave_canon << canon
 				}
 				wave_module_file_ends << wave_files.len
+				wave_modules << PreparedModule{
+					path:           mod_name
+					identity:       module_identity
+					importing_file: importing_file
+					dir:            mod_dir
+				}
 			}
 			node_idx++
 		}
@@ -20732,7 +21880,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		// module's last file, so module-path resolution uses the right context.
 		mut insertions := []SyntheticInsertion{}
 		mut module_start := 0
-		for module_file_end in wave_module_file_ends {
+		for module_idx, module_file_end in wave_module_file_ends {
 			if module_file_end == module_start {
 				continue
 			}
@@ -20741,38 +21889,16 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			} else {
 				wave_end_nodes
 			}
+			if prepared.capturing {
+				mut region := wave_modules[module_idx]
+				region.start = starts[module_start]
+				region.end = region_end
+				prepared.regions << region
+				module_start = module_file_end
+				continue
+			}
 			scan_implicit_imports(a, region_end, mut implicit_imports)
-			if !synthetic_sync_added && implicit_imports.needs_sync && !implicit_imports.has_sync {
-				insertions << SyntheticInsertion{
-					pos:  region_end
-					node: sync_import_node()
-				}
-				synthetic_sync_added = true
-			}
-			if !synthetic_embed_file_added && implicit_imports.needs_embed
-				&& !implicit_imports.has_embed_import {
-				insertions << SyntheticInsertion{
-					pos:  region_end
-					node: embed_file_import_node()
-				}
-				synthetic_embed_file_added = true
-			}
-			if !skip_closure_runtime && !synthetic_closure_added && implicit_imports.needs_closure
-				&& !implicit_imports.has_closure {
-				insertions << SyntheticInsertion{
-					pos:  region_end
-					node: closure_import_node()
-				}
-				synthetic_closure_added = true
-			}
-			if !synthetic_debugger_added && implicit_imports.needs_debugger
-				&& !implicit_imports.has_debugger {
-				insertions << SyntheticInsertion{
-					pos:  region_end
-					node: debugger_import_node()
-				}
-				synthetic_debugger_added = true
-			}
+			insertions << synthetic.insertions_at(implicit_imports, region_end, skip_closure_runtime)
 			module_start = module_file_end
 		}
 		insert_synthetic_imports(mut a, insertions)
@@ -20782,6 +21908,25 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	cache_state.import_resolutions = V3ImportResolutions{
 		project_root: project_root
 		dirs:         module_path_cache.clone()
+	}
+	if prepared.capturing {
+		prepared.parsed_modules = parsed_modules.clone()
+		prepared.parsed_module_identities = parsed_module_identities.clone()
+		prepared.parsed_identity_dirs = parsed_identity_dirs.clone()
+		prepared.parsed_dir_identities = parsed_dir_identities.clone()
+		prepared.checked_dir_spellings = checked_dir_spellings.clone()
+		prepared.identity_source_paths = identity_source_paths.clone()
+		prepared.identity_source_dirs = identity_source_dirs.clone()
+		prepared.forced_full_module_paths = forced_full_module_paths.clone()
+		prepared.module_path_cache = module_path_cache.clone()
+		prepared.module_identity_cache = module_identity_cache.clone()
+		prepared.first_collision_seed_by_short = first_collision_seed_by_short.clone()
+		prepared.resolved_collision_seeds = resolved_collision_seeds.clone()
+		prepared.unresolved_modules = unresolved_modules.clone()
+		prepared.resolved_module_dirs = a.resolved_module_dirs.clone()
+	} else if prepared.ready && prepared.diverged == '' {
+		prepared.diverged = prepared.resolution_change(prefs, project_root, forced_full_module_paths,
+			parsed_module_identities)
 	}
 	return was_parallel
 }
@@ -20850,25 +21995,54 @@ fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, de
 	}
 }
 
-// seed_initial_modules marks the modules the initial files declare as parsed,
-// except a module they also import explicitly while declaring no other module.
-// Like imports_from_files it records the paths it resolves in `a`.
-fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imports map[string]bool, mut parsed_modules map[string]bool, mut identity_dirs map[string]string, mut dir_identities map[string]string) {
+// selected_file_node_ids returns the `.file` nodes of user code that hold the
+// declarations of `files`, named as given or by their real path. Like
+// imports_from_files it records the paths it resolves in `a`.
+fn selected_file_node_ids(mut a flat.FlatAst, files []string) []int {
+	return selected_file_node_ids_from(mut a, files, a.user_code_start)
+}
+
+// selected_file_node_ids_from is selected_file_node_ids for files parsed from
+// node `first` on.
+fn selected_file_node_ids_from(mut a flat.FlatAst, files []string, first int) []int {
+	mut ids := []int{}
+	if files.len == 0 {
+		return ids
+	}
 	mut selected_files := map[string]bool{}
-	for file in initial_files {
+	for file in files {
 		selected_files[file] = true
 		selected_files[a.record_source_path(file)] = true
 	}
-	mut declared_modules := map[string]bool{}
-	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
+	// A file has two `.file` nodes; the declarations hang from the second.
+	for file_idx in first .. a.nodes.len {
+		file_node := a.nodes[file_idx]
+		if file_node.kind != .file || file_node.value.len == 0 || file_node.children_count == 0 {
 			continue
 		}
 		if !selected_files[file_node.value]
 			&& !selected_files[a.record_source_path(file_node.value)] {
 			continue
 		}
-		module_name := test_file_module_name(a, file_node)
+		ids << file_idx
+	}
+	return ids
+}
+
+// seed_initial_modules marks the modules the initial files declare as parsed,
+// except a module they also import explicitly while declaring no other module.
+// Like imports_from_files it records the paths it resolves in `a`.
+fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imports map[string]bool, mut parsed_modules map[string]bool, mut identity_dirs map[string]string, mut dir_identities map[string]string) {
+	seed_initial_module_nodes(a, selected_file_node_ids(mut a, initial_files), explicit_imports, mut
+		parsed_modules, mut identity_dirs, mut dir_identities)
+}
+
+// seed_initial_module_nodes is seed_initial_modules for the `.file` nodes of the
+// initial files.
+fn seed_initial_module_nodes(a &flat.FlatAst, initial_file_nodes []int, explicit_imports map[string]bool, mut parsed_modules map[string]bool, mut identity_dirs map[string]string, mut dir_identities map[string]string) {
+	mut declared_modules := map[string]bool{}
+	for file_idx in initial_file_nodes {
+		module_name := test_file_module_name(a, a.nodes[file_idx])
 		if module_name.len > 0 {
 			declared_modules[module_name] = true
 		}
@@ -20878,14 +22052,8 @@ fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imp
 	// project root (issue #28074), and that local module must win over the path
 	// lookup, which only ever looks for a subdirectory of the same name.
 	holds_local_submodules := declared_modules.len > 1
-	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
-			continue
-		}
-		if !selected_files[file_node.value]
-			&& !selected_files[a.record_source_path(file_node.value)] {
-			continue
-		}
+	for file_idx in initial_file_nodes {
+		file_node := a.nodes[file_idx]
 		module_name := test_file_module_name(a, file_node)
 		if module_name.len == 0 {
 			continue
@@ -20911,19 +22079,16 @@ fn seed_initial_modules(mut a flat.FlatAst, initial_files []string, explicit_imp
 // module root implies, if any. Like imports_from_files it records the paths it
 // resolves in `a`.
 fn canonicalize_colliding_initial_modules(mut a flat.FlatAst, prefs &pref.Preferences, initial_files []string, explicit_imports map[string]bool) {
-	mut selected_files := map[string]bool{}
-	for file in initial_files {
-		selected_files[file] = true
-		selected_files[a.record_source_path(file)] = true
-	}
-	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
-			continue
-		}
-		if !selected_files[file_node.value]
-			&& !selected_files[a.record_source_path(file_node.value)] {
-			continue
-		}
+	canonicalize_colliding_initial_module_nodes(mut a, prefs, selected_file_node_ids(mut a,
+		initial_files), explicit_imports)
+}
+
+// canonicalize_colliding_initial_module_nodes is
+// canonicalize_colliding_initial_modules for the `.file` nodes of the initial
+// files.
+fn canonicalize_colliding_initial_module_nodes(mut a flat.FlatAst, prefs &pref.Preferences, initial_file_nodes []int, explicit_imports map[string]bool) {
+	for file_idx in initial_file_nodes {
+		file_node := a.nodes[file_idx]
 		module_name := test_file_module_name(a, file_node)
 		if module_name.len == 0 || module_name !in explicit_imports {
 			continue
@@ -20975,20 +22140,14 @@ fn initial_module_path_identity(prefs &pref.Preferences, file string, module_nam
 // Until a.resolve_source_paths() freezes the table, it records each path it
 // resolves in `a` for later stages, so it must run on the thread that owns `a`.
 fn imports_from_files(mut a flat.FlatAst, files []string) map[string]bool {
-	mut selected_files := map[string]bool{}
-	for file in files {
-		selected_files[file] = true
-		selected_files[a.record_source_path(file)] = true
-	}
+	return imports_from_file_nodes(a, selected_file_node_ids(mut a, files))
+}
+
+// imports_from_file_nodes returns the imports of the `.file` nodes `file_nodes`.
+fn imports_from_file_nodes(a &flat.FlatAst, file_nodes []int) map[string]bool {
 	mut imports := map[string]bool{}
-	for file_idx, file_node in a.nodes {
-		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
-			continue
-		}
-		if !selected_files[file_node.value]
-			&& !selected_files[a.record_source_path(file_node.value)] {
-			continue
-		}
+	for file_idx in file_nodes {
+		file_node := a.nodes[file_idx]
 		for i in 0 .. file_node.children_count {
 			child := a.child_node(&file_node, i)
 			if child.kind == .import_decl && child.value.len > 0 {

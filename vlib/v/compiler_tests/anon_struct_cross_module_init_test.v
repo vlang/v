@@ -264,3 +264,54 @@ fn main() {
 ')
 	assert ok, output
 }
+
+fn test_anonymous_parameter_fields_are_available_among_other_parameters() {
+	ok, output := compiles('adopt_anon_multiple', 'module holder
+
+pub fn consume(n int, s struct {
+	x, y int
+}, label string) int {
+	return n + s.x + s.y + label.len
+}
+', 'module main
+
+import holder
+
+fn main() {
+	println(holder.consume(1, struct {
+		x: 2
+		y: 3
+	}, "ok"))
+}
+')
+	assert ok, output
+}
+
+fn test_a_literal_still_cannot_set_a_private_anonymous_struct_field() {
+	ok, output := compiles('private_anon_field', 'module holder
+
+pub struct Visible {
+pub:
+	cfg struct {
+		secret int
+	pub:
+		on bool
+	}
+}
+', 'module main
+
+import holder
+
+fn main() {
+	v := holder.Visible{
+		cfg: struct {
+			secret: 42
+			on: true
+		}
+	}
+	println(v.cfg.on)
+}
+')
+	assert !ok, 'a private anonymous field of another module was accepted'
+	assert output.contains('cannot access private field `secret` of an anonymous struct'), output
+}

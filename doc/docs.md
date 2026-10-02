@@ -80,6 +80,11 @@ compiler whose source lives in `vlib/v`. Every direct C build, including compile
 self-builds, is compiled in-process. The CLI remains in `cmd/v`; `test` is
 handled by the default compiler, and external tools are compiled with it first.
 
+External tools are cached under the user's V cache directory. Rebuilding a tool
+prunes stale builds while retaining fresh builds for other flags and checkouts.
+Pruning accepts only regular metadata files opened without following symbolic
+links. On Unix, it also checks ownership before reading another cache entry.
+
 The standard bootstrap does not build the sibling `v1_fallback` executable
 (`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
 sibling is missing, it reports that it is running `make v1`. That target reuses
@@ -248,6 +253,9 @@ argument, e.g. `v new abc`.
 
 * [Tools](#tools)
     * [v fmt](#v-fmt)
+    * [v mcp](#v-mcp)
+    * [v skills](#v-skills)
+
     * [v clean](#v-clean)
     * [v env](#v-env)
     * [v shader](#v-shader)
@@ -3358,6 +3366,8 @@ If you need to access embedded structs directly, use an explicit reference like 
 Optional fields keep their optional type when accessed through multiple embedded structs.
 You can unwrap them with an `if` guard, including after an earlier check against `none`.
 
+Omitted embedded structs retain their declared field defaults, including interface values.
+
 Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s
 in OOP, *NOT* base classes.
 
@@ -4246,6 +4256,9 @@ To define a new type `NewType` as an alias for `ExistingType`,
 do `type NewType = ExistingType`.<br/>
 This is a special case of a [sum type](#sum-types) declaration.
 
+Methods declared on a fixed-array alias keep that alias receiver, including methods whose names
+match builtin array methods.
+
 Numeric aliases use ordinary conversions for initialization:
 
 ```v
@@ -5064,6 +5077,9 @@ An Option stores either a value or `none`. It has no error field and cannot carr
 its failure state. A Result stores either a value or an `IError`.
 An `IError` may still be an ordinary Option payload, for example `?IError`.
 
+A function returning only `!` or `?` has no success payload. Its return type is a Result or
+Option of `void`; callers still handle errors or absence with an `or` block or propagation.
+
 With the C backend, Options store their payload inline. Wrapping a value or returning `none`
 does not allocate; the payload itself can require allocation, as with arrays or interface values.
 Results also store their payload inline, sharing storage between the value and error.
@@ -5284,6 +5300,11 @@ post := posts_repo.find_by_id(1)? // find_by_id[Post]
 A generic method retains its receiver type when called inside a function returning multiple
 values, including a Result tuple. The enclosing return type does not replace receiver arguments.
 This also applies when a value from a Result tuple is returned as an interface.
+An explicitly specialized generic method can also be stored as a function value when the
+method is promoted from an embedded struct; the value binds that embedded receiver.
+
+Editor hover and definition queries resolve generic type parameters within their declaration.
+A later declaration using a module type with the same name resolves to that module type.
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
@@ -5334,6 +5355,52 @@ Generic type inference also works with field initialization shorthand in nested 
 For `struct Box[T] { value T }` and `fn wrap[U](box Box[U]) Box[U]`,
 `wrap(value: 42)` infers `U` as `int`. The struct and function may use different
 parameter names or arrange those parameters in a different order.
+
+#### Constraints
+
+A type parameter can name, after it, what its type arguments must be: an interface,
+which a type argument implements; a sum type, or an alias of one, whose variants are
+the types it takes; or a struct, which takes that struct and the structs that embed it.
+A call is checked against the constraint where it is written, and in the body a value
+of the type parameter has what the constraint provides: the members of the interface
+or of the struct, or what every variant of the sum type has, operators included.
+Nested generic sums retain the variants of each concrete instance. For example,
+`Part[int] | Part[string]` accepts variants from both instances of `Part[T]`.
+Recursive sum constraints that keep growing their type arguments are rejected instead of
+silently omitting nested variants. Finite recursive instances and aliases remain valid.
+Modules referenced only by a generic constraint still count as used imports.
+Struct constraints accept finite embedding paths without a depth limit.
+
+```v
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+type Number = int | f64
+
+fn half[T Number](x T) T {
+	return x / 2
+}
+
+fn main() {
+	println(longest(User{ name: 'ana' }, User{ name: 'leonor' }).name) // leonor
+	println(half(7)) // 3
+	println(half(1.5)) // 0.75
+}
+```
+
+`longest(1, 2)` is reported at the call: `int` does not implement `Named`. And a body
+that used `a.age` would be reported too, as `Named` declares no `age`. In a branch of
+`$if T is f64 {`, `T` is `f64`, and in its `$else` the rest of the set.
 
 #### Structured generic receiver patterns
 
@@ -6919,6 +6986,87 @@ To disable formatting for a block of code, wrap it with `// vfmt off` and
 ... your code here ...
 ```
 
+### v mcp
+
+`v mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) server
+that gives a coding agent the V compiler's own view of a project: what the code
+declares, what does not compile, what a symbol refers to, and the bundled skills
+that describe the language.
+
+```shell
+v mcp serve                     # over stdio, which is what an MCP client launches
+v mcp serve --http 127.0.0.1:0  # over Streamable HTTP
+v mcp serve --root DIR          # resolve relative paths against DIR
+v mcp serve --read-only         # register no tool that writes a file
+v mcp tools                     # list the tools, with what each one answers
+```
+
+The server is not a separate index. It calls the V parser, checker and formatter
+in process, so it answers correctly about code that does not compile yet. Only the
+tools that genuinely compile or run something start the compiler.
+
+The tools fall into groups:
+
+- Project: `v_project_info`, `v_modules`, `v_files`.
+- Code: `v_ast`, `v_symbols`, `v_symbol_at`, `v_references`, `v_stdlib_doc`.
+- Checking: `v_check`, `v_test_run`, `v_doctor`, `v_veb_routes`, `v_skills`.
+- Running: `v_run`, `v_eval`.
+- Editing: `v_edit_replace`, `v_rename_symbol`, `v_format`.
+
+The editing tools default to reporting a plan rather than writing:
+`v_rename_symbol` and `v_format` are dry runs unless told otherwise, and
+`v_edit_replace` requires the caller to pass back the text it expects to find, so
+it refuses to write over a concurrent change. `--read-only` does not register them
+at all.
+
+Symbol renames include named struct initializer keys and preserve the `@` prefix
+on escaped method calls. Formatting refuses source with parser errors and preserves
+the original file.
+
+To use it from an MCP client, point the client at the command:
+
+```json
+{
+  "mcpServers": {
+    "v": { "command": "v", "args": ["mcp", "serve"] }
+  }
+}
+```
+
+The server also publishes its model instructions, which describe the order to call
+the tools in. Print them with `v mcp serve --instructions`.
+
+### v skills
+
+`v skills` installs the agent skills that ship with the compiler. A skill is a
+directory with a `SKILL.md` entry point, the layout coding agents already read.
+
+```shell
+v skills list                    # the bundled catalog, and where each one stands
+v skills add v-mcp               # install into .agents/skills/ of this project
+v skills add v-mcp --global      # install into ~/.agents/skills for this user
+v skills remove v-mcp            # uninstall
+v skills path v-mcp              # where a skill is installed
+```
+
+A project install is committed and shared with the team; a `--global` install
+applies to every project on the machine. Installing a skill that is already there
+is skipped rather than overwritten, so a local edit survives; `--force` restores
+the bundled copy, and `v skills list` flags an installed skill that has fallen
+behind the bundle it came from.
+
+Skill names must contain only lowercase letters, digits and single hyphens, and
+must match the bundled name. Installation stays within an immediate child of the
+skills directory, including with `--force`; bundled file paths cannot escape that
+skill and must refer to regular files. The `v-workflow` check script exits with a
+nonzero status when any compilation, formatting or vet check fails. The bundled
+`v-testing` runner uses the normal child reporter while preserving other `VFLAGS`
+options, and treats an empty test selection as a failure.
+
+The skills are read from the source tree at run time rather than embedded into the
+binary, so a skill can be reviewed and diffed in the repository and adding one
+needs no rebuild.
+
 ### v clean
 
 A V build writes its executable next to the sources it was built from, named
@@ -8106,6 +8254,7 @@ already compressed.
 `$embed_file` returns
 [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
 which could be used to obtain the file contents as `string` or `[]u8`.
+Its `.data()` method also accepts immutable values and constants, returning a byte pointer.
 
 Use the returned value: discarding `$embed_file` as a statement is an error, including
 when it is the fallback value of an unused `or` expression with nested `or` blocks.
@@ -9695,6 +9844,15 @@ f := C.name_of_the_C_function(123, c'here is some C style string', 1.23)
 dump(f)
 ```
 
+A fixed-array parameter in a `C.` declaration follows C's pointer adjustment:
+`fn C.load_matrix(values [16]f32)` accepts a matching `&f32` or `voidptr`, including
+a dynamic array's `.data`. Ordinary V fixed-array parameters still require array values.
+Typed pointers must use the C element representation. For a C `int` array declared as
+`fn C.sum(values [2]int) int`, use `i32` storage such as `values := [i32(10), 20]` and
+pass `&values[0]`; V's platform-width `int` storage is incompatible on 64-bit targets.
+Pointer constants such as `C.NULL` and `C.INVALID_HANDLE_VALUE` retain their pointer type
+in assignments and comparisons.
+
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
@@ -9732,6 +9890,11 @@ The `const_` prefix in that redeclaration may seem arbitrary, but it is importan
 to compile your code with `-cstrict` or thirdparty C static analysis tools. V currently does not
 have another way to express that this parameter is a const (this will probably change in V 1.0).
 
+The `const_` convention also applies to C callback function types and aliases. For example,
+`type NativeCallback = fn (const_buf &u8, len int) int` retains the const buffer qualifier.
+When you pass a V function by name to a `fn C.` callback parameter, V adapts its parameter
+and return types to the C ABI.
+
 For some C functions, that use variadics (`...`) as parameters, V supports a special syntax for
 the parameters - `...voidptr`, that is not available for ordinary V functions (V's variadics are
 *required* to have the same exact type). Usually those are functions of the printf/scanf family
@@ -9745,7 +9908,7 @@ functions.
 
 // Use the system SQLite when there is one; otherwise build the amalgamation that
 // `v vlib/db/sqlite/install_thirdparty_sqlite.vsh` downloads, like `db.sqlite` does.
-$if $pkgconfig ( 'sqlite3' ) {
+$if $pkgconfig('sqlite3') {
 	#pkgconfig sqlite3
 } $else $if darwin {
 	#flag -lsqlite3
@@ -9886,6 +10049,10 @@ In the console build command, you can use:
 * `-cflags` to pass custom flags to the backend C compiler (passed before other C options).
 * `-ldflags` to pass custom flags to the backend C linker (passed after every other C option).
 * For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+
+To select C23 with a compiler that supports it, use
+`v -cc gcc -cflags '-std=gnu23' program.v`. Generated C uses the standard boolean keywords
+in C23 and supplies compatibility definitions for older C dialects.
 
 You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
 and `-cflags` settings, rather than including them in the build command each time.
@@ -10229,6 +10396,11 @@ seamlessly across all platforms.
 
 However, since the Windows header libraries use extremely generic names such as `Rectangle`,
 this will cause a conflict if you wish to use C code that also has a name defined as `Rectangle`.
+
+V defaults to `WIN32_LEAN_AND_MEAN` for its built-in Windows headers, including those loaded
+through the garbage collector. This excludes optional headers such as OLE and multimedia headers.
+Include any required optional Windows headers explicitly, or use `#flag windows -DWIN32_FULL`
+to request the full Windows header surface. A configuration preinclude can also define `WIN32_FULL`.
 
 For very specific cases like this, V has `#preinclude` and `#postinclude` directives.
 

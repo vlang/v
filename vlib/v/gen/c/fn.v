@@ -3792,7 +3792,9 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 		} else {
 			params = g.interface_method_param_types(method_key) or { return false }
 			decl_key := g.interface_method_signature_key(receiver_name, method) or { method_key }
-			ret = g.tc.fn_ret_types[decl_key] or { types.Type(types.void_) }
+			// A generic interface (`Shelf[User]`) returns its type arguments where its
+			// declaration returns its parameters, as interface_method_param_types does.
+			_, ret = g.tc.specialized_interface_method_signature(receiver_name, decl_key)
 			g.add_spawn_wrapper_def('${g.interface_dispatch_signature(receiver_name, g.cname(receiver_name), method)};')
 			if !g.should_emit_interface_dispatch(receiver_name, method) {
 				g.add_spawn_wrapper_def(g.interface_dispatch_def_string(receiver_name, g.cname(receiver_name), method))
@@ -14519,11 +14521,14 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				if _ := fn_type_from(param_types[arg_idx]) {
 					if !g.is_c_extern_fn_name_arg(arg_id) {
 						if thunk := g.c_call_callback_abi_thunk(arg_id, param_types[arg_idx]) {
-							// The thunk has the `fn C.` declaration's signature, which can
-							// differ from the header prototype in qualifiers (`const char *`
-							// vs `char *`); clang 16+ rejects that as an incompatible function
-							// pointer. Let the header's parameter type apply.
-							g.write('(void*)${thunk}')
+							// Retained ABI qualifiers give the thunk its typed C signature.
+							// Otherwise the header may add qualifiers absent from `fn C.`;
+							// preserve the existing conversion through void* for that case.
+							if _ := g.tc.c_abi_fn_ptr_type_for_type_text(param_types[arg_idx].name()) {
+								g.write(thunk)
+							} else {
+								g.write('(void*)${thunk}')
+							}
 							continue
 						}
 					}

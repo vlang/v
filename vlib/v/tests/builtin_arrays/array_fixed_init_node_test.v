@@ -46,6 +46,10 @@ fn test_main() {
 	path.add(b1)
 	path.add(b2)
 
+	ptr := &path
+	assert sizeof(path) == sizeof(Path)
+	assert sizeof(path.segments) == sizeof([1024]Bezier)
+	assert sizeof(ptr) == sizeof(voidptr)
 	assert sizeof(path) == $if new_int ?&& x64 {
 		32776
 	} $else {

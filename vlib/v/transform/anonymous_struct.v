@@ -31,12 +31,14 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 	mut inferred_by_shape := map[string]string{}
 	original_node_count := t.a.nodes.len
 	for idx in 0 .. original_node_count {
+		if t.a.nodes[idx].kind != .struct_init || t.a.nodes[idx].value != 'struct'
+			|| t.a.nodes[idx].children_count == 0 {
+			continue
+		}
+		// Materialization appends nodes, so keep a copy of this candidate.
 		node := t.a.nodes[idx]
 		match node.kind {
 			.struct_init {
-				if node.value != 'struct' || node.children_count == 0 {
-					continue
-				}
 				source_file := t.a.source_files[node.pos.id] or { continue }
 				cur_file := source_file.name
 				cur_module := t.tc.file_modules[cur_file] or { '' }

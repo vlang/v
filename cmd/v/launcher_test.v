@@ -116,6 +116,24 @@ fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
 	assert !ownership_compiler_is_required(['run', 'ownership'])
 }
 
+fn test_ownership_self_build_dispatches_analysis_modes() {
+	root := find_vroot(@FILE) or { panic('missing vroot') }
+	compiler_source := os.join_path(root, 'cmd', 'v')
+	for define_args in [
+		['-d', 'ownership'],
+		['-define', 'ownership=on'],
+		['-downership'],
+	] {
+		mut args := define_args.clone()
+		args << compiler_source
+		assert ownership_bootstrap_can_use_current_compiler(args, compiler_source)
+		for mode in ['-autofree', '-ownership', '--ownership'] {
+			assert !ownership_bootstrap_can_use_current_compiler([mode, compiler_source], compiler_source)
+			assert !ownership_bootstrap_can_use_current_compiler([mode, ...args], compiler_source)
+		}
+	}
+}
+
 fn test_launcher_finds_the_source_root() {
 	root := find_vroot(@FILE) or { panic('missing vroot') }
 	assert os.is_file(os.join_path(root, 'GNUmakefile'))
@@ -151,6 +169,17 @@ fn test_launcher_finds_external_commands() {
 	test_index, test_command := find_command(['-silent', 'test', 'vlib/builtin', 'vlib/os'])
 	assert test_index == 1
 	assert test_command == 'test'
+}
+
+// The agent-facing tools take a subcommand, so `find_command` has to stop at the
+// tool name and let the tool read the rest itself.
+fn test_launcher_finds_the_agent_facing_commands() {
+	mcp_index, mcp_command := find_command(['mcp', 'serve', '--http', ':9090'])
+	assert mcp_index == 0
+	assert mcp_command == 'mcp'
+	skills_index, skills_command := find_command(['-silent', 'skills', 'add', '--all'])
+	assert skills_index == 1
+	assert skills_command == 'skills'
 }
 
 fn test_external_tool_source_prefers_an_executable_file() {

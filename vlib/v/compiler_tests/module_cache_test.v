@@ -4529,16 +4529,32 @@ pub interface JsonEncoder {
 	to_json() string
 }
 
-pub interface A {
+pub interface Alpha {
 	a() int
 }
 
-pub interface B {
+pub interface Beta {
 	b() int
 }
 
-pub interface C {
+pub interface Gamma {
 	c() int
+}
+
+pub interface Delta {
+	d() int
+}
+
+pub interface Epsilon {
+	e() int
+}
+
+pub interface Zeta {
+	f() int
+}
+
+pub interface Eta {
+	g() int
 }
 
 pub struct Null {}
@@ -4547,20 +4563,38 @@ pub fn (null Null) to_json() string {
 	_ = null
 	return "null"
 }
+
+pub fn (null Null) a() int { return 1 }
+pub fn (null Null) b() int { return 2 }
+pub fn (null Null) c() int { return 3 }
+pub fn (null Null) d() int { return 4 }
+pub fn (null Null) e() int { return 5 }
+pub fn (null Null) f() int { return 6 }
+pub fn (null Null) g() int { return 7 }
 ')
 	main_file := os.join_path(root, 'main.v')
 	write_module_cache_file(root, 'main.v', 'module main
 
 import contract
 
+fn total(a contract.Alpha, b contract.Beta, c contract.Gamma, d contract.Delta, e contract.Epsilon, f contract.Zeta, g contract.Eta) int {
+	return a.a() + b.b() + c.c() + d.d() + e.e() + f.f() + g.g()
+}
+
+fn encode(value contract.JsonEncoder) string {
+	return value.to_json()
+}
+
 fn main() {
-	println("hi")
+	value := contract.Null{}
+	println(encode(value))
+	println(total(value, value, value, value, value, value, value))
 }
 ')
 	cache_dir := os.join_path(root, 'cache')
 	output := os.join_path(root, 'app')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
-	assert run_module_cache_binary(output) == 'hi'
+	assert run_module_cache_binary(output) == 'null\n28'
 }
 
 fn test_cold_module_cache_preserves_parallel_monomorph_specs() {
