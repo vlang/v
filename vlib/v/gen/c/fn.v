@@ -14519,11 +14519,14 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				if _ := fn_type_from(param_types[arg_idx]) {
 					if !g.is_c_extern_fn_name_arg(arg_id) {
 						if thunk := g.c_call_callback_abi_thunk(arg_id, param_types[arg_idx]) {
-							// The thunk has the `fn C.` declaration's signature, which can
-							// differ from the header prototype in qualifiers (`const char *`
-							// vs `char *`); clang 16+ rejects that as an incompatible function
-							// pointer. Let the header's parameter type apply.
-							g.write('(void*)${thunk}')
+							// Retained ABI qualifiers give the thunk its typed C signature.
+							// Otherwise the header may add qualifiers absent from `fn C.`;
+							// preserve the existing conversion through void* for that case.
+							if _ := g.tc.c_abi_fn_ptr_type_for_type_text(param_types[arg_idx].name()) {
+								g.write(thunk)
+							} else {
+								g.write('(void*)${thunk}')
+							}
 							continue
 						}
 					}
