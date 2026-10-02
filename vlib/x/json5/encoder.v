@@ -39,6 +39,8 @@ fn to_any[T](value T) Any {
 	// run for it.
 	$if T is Any {
 		return value
+	} $else $if T is $option {
+		return option_to_any(value)
 	}
 	$for method in T.methods {
 		$if method.name == 'to_json5' {
@@ -63,6 +65,14 @@ fn to_any[T](value T) Any {
 	} $else {
 		return container_to_any(value)
 	}
+}
+
+// option_to_any encodes the payload with its concrete type rather than the option type.
+fn option_to_any[P](value ?P) Any {
+	if present := value {
+		return to_any[P](present)
+	}
+	return null
 }
 
 // container_to_any converts maps, arrays and structs into `Any`.

@@ -173,6 +173,9 @@ fn main() {
   and `\uNNNN`.
 
 Hexadecimal numbers and escape sequences accept both uppercase `A-F` and lowercase `a-f`.
+Escaped UTF-16 surrogate pairs decode to a single Unicode character in strings and quoted keys.
+Unpaired surrogate escapes report a parse error instead of producing invalid UTF-8.
+When encoding optional values, present values keep their payload and `none` becomes `null`.
 
 ## Errors
 Parsing, decoding and encoding report typed errors that carry a source

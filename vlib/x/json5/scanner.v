@@ -384,13 +384,32 @@ fn (mut s Scanner) scan_unicode_escape(start Pos) !rune {
 		if digits == 0 {
 			return syntax_error('empty `\\u{...}` escape', start.line, start.col)
 		}
-		if value > 0x10FFFF {
+		if value > 0x10FFFF || value >= 0xD800 && value <= 0xDFFF {
 			return syntax_error('`\\u{...}` escape is out of the unicode range', start.line,
 				start.col)
 		}
 		return rune(value)
 	}
-	return s.scan_hex_digits(4, start)!
+	first := s.scan_hex_digits(4, start)!
+	if first >= 0xD800 && first <= 0xDBFF {
+		if s.peek_code(0) != r_backslash || s.peek_code(1) != r_lower_u {
+			return syntax_error('high surrogate requires a low surrogate escape', start.line,
+				start.col)
+		}
+		s.advance()
+		s.advance()
+		second := s.scan_hex_digits(4, start)!
+		if second < 0xDC00 || second > 0xDFFF {
+			return syntax_error('high surrogate requires a low surrogate escape', start.line,
+				start.col)
+		}
+		return rune(0x10000 + (u32(first) - 0xD800) * 0x400 + u32(second) - 0xDC00)
+	}
+	if first >= 0xDC00 && first <= 0xDFFF {
+		return syntax_error('low surrogate requires a preceding high surrogate', start.line,
+			start.col)
+	}
+	return first
 }
 
 // scan_ident scans an unquoted key, or one of the keywords `true`, `false`,

@@ -16,6 +16,25 @@ fn test_parse_uppercase_hexadecimal_digits() {
 	assert parse('"\\xAB"')!.string() == '\u00AB'
 }
 
+fn test_parse_utf16_surrogate_pairs_in_strings_and_keys() {
+	for text in [r'"\uD83C\uDFBC"', r"'\ud83c\udfbc'", r'"\u{1F3BC}"'] {
+		assert parse(text)!.string() == '🎼'
+		assert parse(text)!.string().bytes() == [u8(0xf0), 0x9f, 0x8e, 0xbc]
+	}
+	assert parse(r'"a\uD83C\uDFBC\uD83D\uDE00z"')!.string() == 'a🎼😀z'
+	assert parse(r'"\uDBFF\uDFFF"')!.string() == rune(0x10ffff).str()
+	object := parse(r'{"\uD83C\uDFBC": "\uD83D\uDE00"}')!.as_map()
+	assert (object['🎼'] or { panic('missing decoded key') }).string() == '😀'
+}
+
+fn test_parse_rejects_malformed_surrogate_escapes() {
+	for text in [r'"\uD83C"', r'"\uDFBC"', r'"\uD83C\u0041"', r'"\uD83C\uD83C"', r'"\uD83Cx\uDFBC"',
+		r'"\uD83C\uDFB"', r'"\u{D83C}"'] {
+		parse(text) or { continue }
+		assert false, 'expected invalid surrogate escape to fail: ${text}'
+	}
+}
+
 fn test_parse_empty_object_and_array() {
 	obj := parse('{}')!
 	assert obj is map[string]Any

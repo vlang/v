@@ -14,6 +14,34 @@ struct Item2 {
 	flag bool
 }
 
+struct OptionalSettings {
+	present ?int
+	absent  ?int
+	label   ?string
+	item    ?Item2
+	color   ?Color
+}
+
+fn test_encode_options_preserves_present_payloads_and_none() {
+	settings := OptionalSettings{
+		present: 42
+		label:   'value'
+		item:    Item2{ flag: true }
+		color:   Color.green
+	}
+	text := json5.encode(settings)
+	decoded := json5.decode[OptionalSettings](text)!
+	assert decoded.present or { -1 } == 42
+	assert decoded.absent == none
+	assert decoded.label or { '' } == 'value'
+	assert (decoded.item or { Item2{} }).flag
+	assert decoded.color or { Color.red } == Color.green
+	zero := ?int(0)
+	missing := ?int(none)
+	assert json5.encode(zero) == '0'
+	assert json5.encode(missing) == 'null'
+}
+
 enum Color {
 	red
 	green
