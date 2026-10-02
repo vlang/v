@@ -174,11 +174,3 @@ fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
 		}
 	}
 }
-
-// replace_file_atomically moves `source` onto `destination`, replacing it if it is already
-// there. POSIX `rename(2)` is defined to do exactly that, atomically, and a process that is
-// currently executing the replaced binary keeps running from its own open image.
-fn replace_file_atomically(source string, destination string) bool {
-	os.rename(source, destination) or { return false }
-	return true
-}
