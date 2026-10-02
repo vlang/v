@@ -24670,6 +24670,16 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 			init_str = init_str[cast_prefix.len..].trim_space()
 		}
 		g.writeln('const ${ct} ${qname} = ${init_str};')
+	} else if default_init_unalias_type(v_type) is types.Struct {
+		// MSVC cannot initialize a file-scope object from a compound literal.
+		// C-backed structs may be declared in an external header, so the MSVC
+		// compatibility pass cannot discover their type from the generated C.
+		mut init_str := expr_str
+		cast_prefix := '(${ct})'
+		if init_str.starts_with('${cast_prefix}{') {
+			init_str = init_str[cast_prefix.len..]
+		}
+		g.writeln('const ${ct} ${qname} = ${init_str};')
 	} else {
 		g.writeln('const ${ct} ${qname} = ${expr_str};')
 	}
