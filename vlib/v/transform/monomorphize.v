@@ -2652,6 +2652,18 @@ fn (mut t Transformer) mark_interface_boxed_type(iface_name string, concrete_typ
 	if resolved.len > 0 && resolved != iface_name {
 		iface_names << resolved
 	}
+	// A box also reaches receiver methods inherited from embedded interfaces.
+	// Retain its concrete type there so mutable field access uses the shared object.
+	mut iface_index := 0
+	for iface_index < iface_names.len {
+		iface := iface_names[iface_index]
+		iface_index++
+		for embed in t.tc.interface_embeds[iface] or { []string{} } {
+			if embed !in iface_names {
+				iface_names << embed
+			}
+		}
+	}
 	for iface in iface_names {
 		t.mark_interface_boxed_type_key(interface_boxed_type_key(iface, concrete_type))
 		t.mark_interface_boxed_type_key(interface_boxed_type_key(iface, c_name(concrete_type)))
@@ -8086,10 +8098,24 @@ fn (mut t Transformer) infer_generic_call_args_with_explicit(decl GenericFnDecl,
 	}
 	mut inferred := map[string]string{}
 	mut explicit_idx := 0
+	mut decl_params := []string{}
 	for raw_param in decl.node.generic_params() {
 		param := generic_param_name_from_decl_param(raw_param)
-		if param.len == 0 || param in inferred
-			|| (method_param_count > 0 && param in receiver_params) {
+		if param.len > 0 {
+			decl_params << param
+		}
+	}
+	// A method on a generic receiver (`fn (b Box[T]) get()`) declares no generic
+	// params of its own: `T` is introduced by the receiver type. Its recorded
+	// specialization still reaches this seeding path as the explicit list (a
+	// receiver instantiated with an alias records its args on the call node), so
+	// bind the receiver's params in order instead of finding nothing to seed and
+	// losing the specialization.
+	if decl_params.len == 0 && method_param_count == 0 {
+		decl_params = receiver_params.clone()
+	}
+	for param in decl_params {
+		if param in inferred || (method_param_count > 0 && param in receiver_params) {
 			continue
 		}
 		if explicit_idx >= method_explicit.len {

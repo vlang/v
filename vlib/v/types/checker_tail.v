@@ -417,7 +417,9 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 	} else if normalized.starts_with('vlib/') {
 		relative = normalized['vlib/'.len..]
 	} else {
-		return false
+		// A matching directory name alone cannot establish a top-level module.
+		// An entry directory can be a sibling of imported project submodules.
+		return os.is_dir(dir)
 	}
 	return relative.all_before_last('/').contains('/')
 }
@@ -18960,6 +18962,11 @@ fn (tc &TypeChecker) expr_can_be_implicit_ref_arg(expr_id flat.NodeId) bool {
 	node := tc.a.node(expr_id)
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
 		return tc.expr_can_be_implicit_ref_arg(tc.a.child(node, 0))
+	}
+	if node.kind == .block && node.value == 'unsafe' {
+		// `unsafe { expr }` is the value of its expression.
+		tail_id := tc.branch_tail_expr_id(expr_id)
+		return tc.valid_node_id(tail_id) && tc.expr_can_be_implicit_ref_arg(tail_id)
 	}
 	// V materializes non-addressable value expressions into stable temporaries
 	// when they are passed to non-mut reference parameters.

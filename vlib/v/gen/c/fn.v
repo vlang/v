@@ -3373,6 +3373,20 @@ fn (g &FlatGen) arg_is_null_pointer_literal(arg_id flat.NodeId, arg_node flat.No
 			&& g.a.child_node(&arg_node, 0).kind == .ident && g.a.child_node(&arg_node, 0).value == 'C')
 }
 
+fn (g &FlatGen) arg_is_untyped_nil_literal(arg_id flat.NodeId) bool {
+	node := g.a.node(arg_id)
+	if node.kind == .nil_literal {
+		return true
+	}
+	if node.kind in [.expr_stmt, .paren] && node.children_count > 0 {
+		return g.arg_is_untyped_nil_literal(g.a.child(node, 0))
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return g.arg_is_untyped_nil_literal(g.a.child(node, node.children_count - 1))
+	}
+	return false
+}
+
 fn (mut g FlatGen) gen_pointer_builtin_method_call(node flat.Node, fn_node &flat.Node, base_type types.Type) bool {
 	receiver := pointer_builtin_receiver_name_for_c(base_type)
 	if receiver.len == 0 {
@@ -14624,9 +14638,14 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				&& !g.local_storage_is_pointer(arg_node.value) && !arg_is_pointer_param
 				&& !arg_is_pointer_global
 				&& !g.arg_is_pointer_const_for(arg_node, arg_type, param_types[arg_idx])
-			explicit_mut_value := arg_node.is_mut && !(arg_node.kind == .ident
-				&& (g.local_storage_is_pointer(arg_node.value)
-					|| arg_is_pointer_param || arg_is_pointer_global))
+			// A mutable block can already yield the pointer a `mut T` parameter needs.
+			pointer_block_passes_direct := arg_node.kind == .block
+				&& c_type_is_pointer_like(arg_type)
+				&& g.tc.c_type(arg_type) == g.tc.c_type(param_types[arg_idx])
+			explicit_mut_value := arg_node.is_mut && !pointer_block_passes_direct
+				&& !(arg_node.kind == .ident
+					&& (g.local_storage_is_pointer(arg_node.value)
+						|| arg_is_pointer_param || arg_is_pointer_global))
 			if g.fn_value_arg_passes_direct_to_voidptr(arg_id, arg_node, arg_type, param_types[arg_idx]) {
 				needs_addr = false
 			} else if arg_is_shared_local && !arg_param_is_shared
@@ -15748,6 +15767,7 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	// A pointer cast is a value, not caller-owned pointer storage. Materialize
 	// a temporary slot for `mut unsafe { &T(ctx) }` before passing it as T**.
 	if (arg_node.kind == .cast_expr || (arg_node.kind == .block && arg_node.value == 'unsafe'))
+		&& !(g.arg_is_untyped_nil_literal(arg_id) && !arg_node.is_mut)
 		&& g.tc.c_type(g.usable_expr_type(arg_id)) == g.tc.c_type(expected_base) {
 		ct := g.tc.c_type(expected_base)
 		g.write('&((${ct}[]){')

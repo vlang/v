@@ -16,6 +16,10 @@ with minimal overhead.
 - **Graceful Shutdown**: Clean resource termination
 - **Dynamic Configuration**: Runtime configuration updates
 
+Connections can be acquired and returned while other threads read statistics or update the
+configuration, including on Windows. Call `close()` after these threads finish to stop the
+pool's background maintenance thread.
+
 ## Basic Usage
 
 ### Creating a Pool

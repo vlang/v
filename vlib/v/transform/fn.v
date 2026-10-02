@@ -3713,6 +3713,15 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 	mut current := t.transform_expr(arg_id)
 	mut force_materialize := t.expr_is_overloaded_index_result(arg_id)
 		|| t.raw_const_type_name_for_expr(arg_id) != none
+	mut value_node := t.a.nodes[int(current)]
+	for value_node.kind == .paren && value_node.children_count == 1 {
+		value_node = t.a.child_node(&value_node, 0)
+	}
+	if value_node.kind in [.cast_expr, .as_expr] {
+		// `&T(x)` casts `x` to a pointer: the value of a cast is referenced
+		// through a temporary.
+		force_materialize = true
+	}
 	mut current_type := arg_type
 	mut current_depth := actual_depth
 	for current_depth < expected_depth {

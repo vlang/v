@@ -248,7 +248,9 @@ argument, e.g. `v new abc`.
 
 * [Tools](#tools)
     * [v fmt](#v-fmt)
+    * [v env](#v-env)
     * [v shader](#v-shader)
+    * [v tool](#v-tool)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
     * [Package commands](#package-commands)
@@ -3392,6 +3394,10 @@ the same memory location for multiple purposes.
 
 All the members of a union share the same memory location. This means that modifying one member
 automatically modifies all the rest. The largest union member defines the size of the union.
+When constructing a union that contains interface storage, V clears the entire storage before
+initializing the selected member. This also applies to interfaces inside nested union members.
+An inactive interface member with no valid type tag formats as `unknown interface value`.
+Accessing an inactive member still requires `unsafe` and does not create a valid interface value.
 
 ### Why use unions?
 
@@ -4534,6 +4540,8 @@ A type implements an interface by implementing its methods and fields.
 Equivalent fixed array lengths in method signatures may use different constant expressions.
 Callback userdata parameters may use `voidptr` or a concrete pointer type.
 An interface field's default value may be a pointer to a type that implements the interface.
+Fixed array fields are supported when converting a pointer to an interface with `I(value)`
+or `&I(value)`. Mutable fields continue to refer to the concrete object's fields.
 
 An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section
@@ -4704,6 +4712,10 @@ a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
 An immediate read-only interface method call on a smart-casted value can return
 a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
+
+Receiver methods are also available through embedded interfaces. A mutable receiver method
+updates the underlying concrete object's mutable fields, including when called through an
+interface pointer or multiple levels of interface embedding.
 
 > [!NOTE]
 > This feature is NOT a "default implementation" like in C#.
@@ -6947,6 +6959,56 @@ To disable formatting for a block of code, wrap it with `// vfmt off` and
 ... your code here ...
 ```
 
+### v env
+
+`v env` prints the environment variables that steer the V compiler and its
+tools. Every setting is reported on its own `NAME="value"` line, which makes
+the output easy to read in a script:
+
+```shell
+v env
+```
+
+```
+VEXE="/home/me/v/v"
+VROOT="/home/me/v"
+VOS="linux"
+VARCH="amd64"
+VVERSION="V 0.5.2 8e2b0f4c1a"
+VMODULES="/home/me/.vmodules"
+VTMP="/tmp/v_1000"
+VFLAGS=""
+CFLAGS=""
+LDFLAGS=""
+...
+```
+
+A variable that is not set reports the value V would use anyway, so `VMODULES`
+and `VTMP` show their default paths instead of an empty string. That makes
+`v env` the place to look when a build picks up a setting you did not expect,
+or when you want to know which folder V writes temporary files to.
+
+Ask for one setting to get just its value, with no quoting and no other lines,
+which is what a shell substitution wants:
+
+```shell
+# install a module without hardcoding where that is
+v install --path "$(v env VMODULES)"
+```
+
+Use `-json` to get the same values as a JSON object:
+
+```shell
+v env -json
+```
+
+`v env NAME` fails with an error naming the known settings if the name is not
+one of them. For a bug report, use `v doctor` instead: it also shows compiler
+versions, git state and C toolchain details.
+
+Note that `VOSARGS` replaces the whole command line of every `v` invocation, so
+exporting it in a shell makes each later `v` call ignore its own arguments.
+
 ### v shader
 
 You can use GPU shaders with V graphical apps. You write your shaders in an
@@ -6960,6 +7022,41 @@ v shader /path/to/project/dir/or/file.v
 Currently you need to
 [include a header and declare a glue function](https://github.com/vlang/v/blob/master/examples/sokol/02_cubes_glsl/cube_glsl.v#L25-L28)
 before using the shader in your code.
+
+### v tool
+
+VPM installs modules rather than binaries, so a CLI tool written in V has to be
+run by path today: `v run ~/.vmodules/mytool`, or `v run ../mytool` for a checkout
+beside the project. Both need a path you have to know and keep correct.
+
+`v tool NAME` resolves `NAME` the way an import would, then builds and runs that module:
+
+```shell
+$ v tool greet
+hello from the tool
+```
+
+Because it reuses the compiler's own module lookup, that finds a tool installed
+with `v install` and equally a tool you have a checkout of next to the project,
+without either path being written down anywhere.
+
+With no argument, `v tool` lists the tool modules of the project and of the
+global module folders, so the names do not have to be remembered:
+
+```shell
+$ v tool
+myproject
+mytool
+```
+
+A module is a tool when its root holds a `main.v`. A library module asked for
+by name is refused rather than attempted, and a name that resolves to nothing is an
+error.
+
+Running a tool builds and starts the module, which means running code from a
+module in the module search path. That is the same trust that `v install` already
+places in a module you chose to install, but it is worth knowing before running a
+name you did not install yourself.
 
 ### Profiling
 
@@ -8582,6 +8679,8 @@ println(qux)
 ## sizeof and __offsetof
 
 * `sizeof(Type)` gives the size of a type in bytes.
+* `sizeof(value)` gives the size of the value's V type, including when its storage moves to
+  the heap.
 * `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
 
 ```v
@@ -9693,6 +9792,13 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
+You can pass a local source file with `#flag "@VMODROOT/my_test_cshim.c"`.
+Lowercase `.c` sources compile as C; uppercase `.C`, `.cc`, and `.cpp` sources compile as C++.
+An explicit `#flag -x c` or `#flag -x c++`, including the joined forms `-xc` and `-xc++`,
+overrides the filename's language until `#flag -x none` restores inference from the filename.
+Both spellings also select the matching native compilation standard and runtime libraries,
+including when a `.o` flag compiles an adjacent source into the object cache.
+
 You can also use `#flag` directives, to link to static C libraries, which
 will be added last (note the .a suffix):
 ```v oksyntax
@@ -9842,6 +9948,8 @@ struct. The method retains the visibility of its declaring V module.
 Calls see methods from directly imported modules by their full module path.
 If a V alias of that C struct declares the same method, calls on the alias use its own method.
 
+C-backed struct aliases can also initialize constants, including when compiling with MSVC.
+
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
 `unsafe { &char(cstring).vstring_with_len(len) }`.
@@ -9863,6 +9971,11 @@ V has these types for easier interoperability with C:
 - `&&char` for C's `char**`
 
 To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
+
+Passing `unsafe { nil }` to a pointer parameter passes a null pointer, including pointers to
+handles that alias `voidptr`.
+A mutable block that yields `&T` can pass that pointer to a `mut T` parameter,
+including generic functions and functions from imported modules.
 
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 

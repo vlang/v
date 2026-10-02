@@ -65,7 +65,7 @@ fn windows_dangling_symlink_stat(path string) ?Stat {
 
 	mut find_data := Win32finddata{}
 	find_handle := C.FindFirstFileW(w_path, voidptr(&find_data))
-	if find_handle == C.INVALID_HANDLE_VALUE {
+	if find_handle == invalid_handle_value {
 		return none
 	}
 	defer {
