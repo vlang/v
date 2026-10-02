@@ -72,11 +72,15 @@ fn main() {
 	path := @FILE.to_owned()
 	resolved := os.real_path(path)
 	assert resolved.len > 0
+	assert os.file_ext(path) == ".v"
+	contents := os.read_file(path)!
+	assert contents.len > 0
 	assert path == @FILE
 	resource := os.resource_abs_path("not-present")
 	assert resource.len > 0
 	folder := os.join_path(os.temp_dir(), "ownership-file-borrows-" + os.getpid().str()).to_owned()
 	os.mkdir(folder) or { panic(folder + ": " + err.msg()) }
+	os.mkdir_all(folder) or { panic(folder + ": " + err.msg()) }
 	assert os.is_dir(folder)
 	_ = os.ls(folder)!
 	assert folder.len > 0
@@ -87,6 +91,8 @@ fn main() {
 	assert normalized == "child"
 	os.mkdir_all(os.join_path(folder, "parent", "child"))!
 	assert os.is_dir(os.join_path(folder, "parent", "child"))
+	os.walk(folder, fn (child string) { assert child.len > 0 })
+	assert folder.len > 0
 	os.rmdir_all(folder)!
 	println("ok")
 }

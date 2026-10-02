@@ -12360,7 +12360,8 @@ fn (tc &TypeChecker) ownership_standard_string_arg_is_borrowed(fn_name string, t
 	mut standard_module := ''
 	if fn_name in ['os.is_abs_path', 'os.is_unc_path', 'os.is_drive_rooted', 'os.is_normal_path',
 		'os.win_volume_len', 'os.exists', 'os.is_file', 'os.is_dir', 'os.is_executable', 'os.mkdir',
-		'os.read_bytes', 'os.ls', 'os.real_path', 'os.join_path', 'os.join_path_single',
+		'os.mkdir_all', 'os.file_ext', 'os.read_file', 'os.read_bytes', 'os.ls', 'os.real_path',
+		'os.walk', 'os.kind_of_existing_path', 'os.join_path', 'os.join_path_single',
 		'os.find_abs_path_of_executable', 'os.exists_in_system_path'] {
 		standard_module = 'os'
 	} else if fn_name in ['strconv.parse_uint', 'strconv.parse_int', 'strconv.common_parse_uint',
