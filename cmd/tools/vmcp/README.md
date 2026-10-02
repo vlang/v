@@ -27,5 +27,8 @@ refused before a POSIX child is started.
 `v_format` returns parser diagnostics for malformed source and leaves the file
 untouched, including when `write: true` is requested.
 
+`v_rename_symbol` includes named struct initializer and update keys, so renaming a
+field also updates values initialized with that field name.
+
 Every installed help text is listed as a readable `v://help/<topic>` resource.
 The `v://help/{topic}` template describes those same registered topics.

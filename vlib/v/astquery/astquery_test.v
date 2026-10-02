@@ -145,6 +145,43 @@ fn test_references_reports_a_method_and_its_calls() {
 	assert found.any(it.node_kind == 'selector')
 }
 
+fn test_references_reports_nested_multiline_and_assoc_initializer_keys() {
+	source := 'module main
+struct Host { hello int }
+struct Nested { hello Host }
+fn main() {
+ hello := 42
+ h := Host{
+  hello:
+   hello // hello
+ }
+ nested := Nested{
+  hello: Host{
+   hello: 42
+  }
+ }
+ copied := Host{...h, hello: 43}
+ assert h.hello == 42
+ assert nested.hello.hello == 42
+ assert copied.hello == 43
+ println("hello") // hello
+}
+'
+	a := astquery.parse(write_sample('field_initializers.v', source)!)
+	fields := a.nodes.filter(it.kind == .field_init && it.value == 'hello')
+	assert fields.len == 4
+	for field in fields {
+		assert source[field.pos.offset..field.pos.end] == 'hello'
+	}
+	found := astquery.references(a, 'hello')
+	keys := found.filter(it.node_kind == 'field_init')
+	assert keys.map(it.line) == [7, 11, 12, 15]
+	assert keys.map(it.column) == [3, 3, 4, 23]
+	assert keys.all(!it.declaration)
+	assert found.any(it.node_kind == 'ident' && it.line == 8 && it.column == 4)
+	assert !found.any(it.line == 19)
+}
+
 // A method declaration and a selector both span more source than their node
 // value names, so an occurrence derived from an offset into that value pointed
 // at the wrong bytes.

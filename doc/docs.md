@@ -6955,8 +6955,9 @@ The editing tools default to reporting a plan rather than writing:
 it refuses to write over a concurrent change. `--read-only` does not register them
 at all.
 
-Symbol renames preserve the `@` prefix on escaped method calls. Formatting refuses
-source with parser errors and preserves the original file.
+Symbol renames include named struct initializer keys and preserve the `@` prefix
+on escaped method calls. Formatting refuses source with parser errors and preserves
+the original file.
 
 To use it from an MCP client, point the client at the command:
 
