@@ -50,6 +50,7 @@ const external_commands = [
 	'list',
 	'ls',
 	'missdoc',
+	'mod',
 	'new',
 	'outdated',
 	'quest',
