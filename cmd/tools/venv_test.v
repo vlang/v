@@ -5,9 +5,9 @@ const vexe = os.quoted_path(@VEXE)
 
 // reported_settings is every name `v env` documents. The count matters as much
 // as the names: a name added without a test line here would pass unnoticed.
-const reported_settings = ['VEXE', 'VROOT', 'VOS', 'VARCH', 'VVERSION', 'VMODULES', 'VTMP',
-	'V3CACHE', 'VTOOLS_CACHE_DIR', 'VCACHE', 'VFLAGS', 'VOSARGS', 'CC', 'CFLAGS', 'LDFLAGS',
-	'VJOBS', 'VERROR_PATHS', 'VCOLORS', 'VCOVDIR', 'VSTARTUP', 'VQUIET']
+const reported_settings = ['VEXE', 'VROOT', 'VOS', 'VARCH', 'VVERSION', 'VMODULES', 'VTMP', 'V3CACHE',
+	'VTOOLS_CACHE_DIR', 'VCACHE', 'VFLAGS', 'VOSARGS', 'CC', 'CFLAGS', 'LDFLAGS', 'VJOBS',
+	'VERROR_PATHS', 'VCOLORS', 'VCOVDIR', 'VSTARTUP', 'VQUIET']
 
 // name_and_quoted_value splits one `NAME="value"` line into its two halves.
 fn name_and_quoted_value(line string) ![]string {
@@ -71,7 +71,7 @@ fn test_env_json_reports_the_same_settings_as_the_text_output() {
 		parts := name_and_quoted_value(line)!
 		name := parts[0]
 		assert name in reported, '${name} is missing from the json output'
-		assert reported[name] == parts[1].trim('"'), '${name} differs between the two outputs'
+		assert reported[name] == json2.decode[string](parts[1])!, '${name} differs between the two outputs'
 	}
 }
 
@@ -91,4 +91,34 @@ fn test_env_help_describes_the_output() {
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('Usage: v env [options] [NAME]'), res.output
 	assert res.output.contains('json'), res.output
+}
+
+fn test_env_quoted_values_round_trip_quotes_and_control_characters() {
+	tool := os.join_path(os.vtmp_dir(), 'venv_escape_test_${os.getpid()}')
+	built := os.execute('${vexe} -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(@VEXEROOT, 'cmd/tools/venv.v'))}')
+	assert built.exit_code == 0, built.output
+	defer { os.rm(tool) or {} }
+	previous := os.getenv_opt('CFLAGS')
+	defer {
+		if old := previous { os.setenv('CFLAGS', old, true) } else { os.unsetenv('CFLAGS') }
+	}
+	flags := '-DNAME="hello world"\n-DPATH=C:\\build\tsecond\rline' + u8(1).ascii_str()
+	os.setenv('CFLAGS', flags, true)
+	text := os.execute('${os.quoted_path(tool)}')
+	assert text.exit_code == 0, text.output
+	lines := text.output.trim_space().split_into_lines()
+	assert lines.len == reported_settings.len, text.output
+	mut encoded_flags := ''
+	for line in lines {
+		parts := name_and_quoted_value(line)!
+		if parts[0] == 'CFLAGS' { encoded_flags = parts[1] }
+	}
+	assert json2.decode[string](encoded_flags)! == flags
+	all := os.execute('${os.quoted_path(tool)} -json')
+	assert all.exit_code == 0, all.output
+	reported := json2.decode[map[string]string](all.output)!
+	assert reported['CFLAGS'] == flags
+	one := os.execute('${os.quoted_path(tool)} CFLAGS')
+	assert one.exit_code == 0, one.output
+	assert one.output == flags + '\n'
 }

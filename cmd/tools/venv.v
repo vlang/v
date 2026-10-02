@@ -20,109 +20,109 @@ struct EnvEntry {
 
 const settings = [
 	EnvEntry{
-		name: 'VEXE'
+		name:        'VEXE'
 		description: 'the V executable that is running'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VROOT'
+		name:        'VROOT'
 		description: 'the V source tree that VEXE belongs to'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VOS'
+		name:        'VOS'
 		description: 'the operating system V targets by default'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VARCH'
+		name:        'VARCH'
 		description: 'the architecture V targets by default'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VVERSION'
+		name:        'VVERSION'
 		description: 'the version and hash of the running compiler'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VMODULES'
+		name:        'VMODULES'
 		description: 'where vpm modules are installed and looked up'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VTMP'
+		name:        'VTMP'
 		description: 'the writable folder for temporary files'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'V3CACHE'
+		name:        'V3CACHE'
 		description: 'the base folder for the v3 module and object caches'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VTOOLS_CACHE_DIR'
+		name:        'VTOOLS_CACHE_DIR'
 		description: 'where compiled cmd/tools binaries are cached'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VCACHE'
+		name:        'VCACHE'
 		description: 'the object cache folder that `v wipe-cache` clears'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VFLAGS'
+		name:        'VFLAGS'
 		description: 'extra flags applied to every V invocation'
-		derived: false
+		derived:     false
 	},
 	EnvEntry{
-		name: 'VOSARGS'
+		name:        'VOSARGS'
 		description: 'replaces the whole command line of every V invocation'
-		derived: false
+		derived:     false
 	},
 	EnvEntry{
-		name: 'CC'
+		name:        'CC'
 		description: 'the C compiler, instead of the one V picks'
-		derived: false
+		derived:     false
 	},
 	EnvEntry{
-		name: 'CFLAGS'
+		name:        'CFLAGS'
 		description: 'extra flags for the C compiler'
-		derived: false
+		derived:     false
 	},
 	EnvEntry{
-		name: 'LDFLAGS'
+		name:        'LDFLAGS'
 		description: 'extra flags for the C linker'
-		derived: false
+		derived:     false
 	},
 	EnvEntry{
-		name: 'VJOBS'
+		name:        'VJOBS'
 		description: 'how many parallel jobs V runs'
-		derived: true
+		derived:     true
 	},
 	EnvEntry{
-		name: 'VERROR_PATHS'
+		name:        'VERROR_PATHS'
 		description: 'set to `absolute` to keep full paths in error messages'
-		derived: false
+		derived:     false
 	},
 	EnvEntry{
-		name: 'VCOLORS'
+		name:        'VCOLORS'
 		description: 'set to `always` or `never` to control colored output'
-		derived: false
+		derived:     false
 	},
 	EnvEntry{
-		name: 'VCOVDIR'
+		name:        'VCOVDIR'
 		description: 'the folder coverage reports are written to'
-		derived: false
+		derived:     false
 	},
 	EnvEntry{
-		name: 'VSTARTUP'
+		name:        'VSTARTUP'
 		description: 'a file the REPL runs at startup'
-		derived: false
+		derived:     false
 	},
 	EnvEntry{
-		name: 'VQUIET'
+		name:        'VQUIET'
 		description: 'set to any value to silence the REPL'
-		derived: false
+		derived:     false
 	},
 ]
 
@@ -214,7 +214,7 @@ fn print_one(name string) {
 
 fn print_all() {
 	for entry in settings {
-		println('${entry.name}="${value(entry)}"')
+		println('${entry.name}=${json2.encode(value(entry))}')
 	}
 }
 
