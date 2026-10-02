@@ -10397,6 +10397,11 @@ seamlessly across all platforms.
 However, since the Windows header libraries use extremely generic names such as `Rectangle`,
 this will cause a conflict if you wish to use C code that also has a name defined as `Rectangle`.
 
+V defaults to `WIN32_LEAN_AND_MEAN` for its built-in Windows headers, including those loaded
+through the garbage collector. This excludes optional headers such as OLE and multimedia headers.
+Include any required optional Windows headers explicitly, or use `#flag windows -DWIN32_FULL`
+to request the full Windows header surface. A configuration preinclude can also define `WIN32_FULL`.
+
 For very specific cases like this, V has `#preinclude` and `#postinclude` directives.
 
 These directives allow things to be configured *before* V adds in its built in libraries,

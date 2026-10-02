@@ -4172,6 +4172,11 @@ fn (mut g FlatGen) emit_translation_unit_include_directives() {
 	g.writeln('#ifndef _UNICODE\n#define _UNICODE\n#endif')
 	g.writeln('#endif')
 	mut windows_header_emitted := g.emit_preinclude_directives()
+	// Match the legacy Windows header surface before gc.h can load windows.h.
+	// Optional OLE and multimedia headers conflict with NOUSER/NOMSG and raylib.
+	// Preincludes can still configure the default by defining WIN32_FULL.
+	g.writeln('#if defined(_WIN32) && !defined(WIN32_FULL) && !defined(WIN32_LEAN_AND_MEAN)')
+	g.writeln('#define WIN32_LEAN_AND_MEAN\n#endif')
 	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
 	if g.target.os == 'windows' && !windows_header_emitted {
 		// Winsock2 must precede windows.h, which otherwise includes legacy winsock.h.
