@@ -72,6 +72,9 @@ and `@[skip]` ignores the field. Fields missing from the document keep their def
 values. A `from_toml(toml.Any)` or `to_toml() string` method on `T` replaces the
 generic conversion.
 
+Partial tables preserve the existing defaults inside a present optional struct.
+When that optional field is `none`, a table initializes it from the struct's own defaults.
+
 TOML has no struct embedding, so the fields of an embedded struct are read from and
 written to the same table as the fields of the embedding struct. When decoding, a
 table named after the embedded struct (e.g. `[Db]`) is accepted too and takes

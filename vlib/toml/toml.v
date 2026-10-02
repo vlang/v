@@ -199,7 +199,7 @@ fn decode_option[T](mut val ?T, value Any) {
 	} $else $if T is $enum {
 		val = unsafe { T(value.int()) }
 	} $else $if T is $struct {
-		mut inner := T{}
+		mut inner := val or { T{} }
 		decode_struct(value, mut inner)
 		val = inner
 	}

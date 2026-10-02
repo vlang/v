@@ -9,6 +9,17 @@ struct Nested {
 	n int
 }
 
+struct DefaultNested {
+	count int = 11
+	text  string
+}
+
+struct DefaultNestedOptions {
+	plain    DefaultNested  = DefaultNested{42, 'initial'}
+	optional ?DefaultNested = DefaultNested{42, 'initial'}
+	empty    ?DefaultNested
+}
+
 struct Optionals {
 	a      ?int
 	b      ?string
@@ -98,4 +109,29 @@ fn test_encode_decode_option_round_trip() {
 fn test_decode_option_rejects_out_of_range() {
 	o := toml.decode[Optionals]('n = 99999') or { panic(err) }
 	assert (o.n or { u16(7) }) == u16(7)
+}
+
+fn test_decode_optional_struct_keeps_initialized_defaults() {
+	o := toml.decode[DefaultNestedOptions]('[plain]\ntext = "changed"\n[optional]\ntext = "changed"\n[empty]\ntext = "new"')!
+	optional := o.optional or { panic('expected optional struct') }
+	assert optional.count == 42
+	assert optional.text == 'changed'
+	assert optional == o.plain
+	empty := o.empty or { panic('expected newly initialized struct') }
+	assert empty.count == 11
+	assert empty.text == 'new'
+}
+
+fn test_decode_optional_struct_empty_and_missing_tables_keep_defaults() {
+	for input in ['', '[plain]\n[optional]'] {
+		o := toml.decode[DefaultNestedOptions](input)!
+		optional := o.optional or { panic('expected initialized struct') }
+		assert optional.count == 42
+		assert optional.text == 'initial'
+		assert optional == o.plain
+		assert o.empty == none
+	}
+	updated := toml.decode[DefaultNestedOptions]('[optional]\ncount = 0')!
+	assert (updated.optional or { panic('expected updated struct') }).count == 0
+	assert (updated.optional or { panic('expected updated struct') }).text == 'initial'
 }
