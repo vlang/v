@@ -2680,7 +2680,9 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_ret_type = tc.parse_type(checked_return_type)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.fn_context.node_id = fn_idx
-	if !fast_valid_build {
+	// Full expression validation queries local declarations even when self-host
+	// scheduling is enabled. Index them once instead of scanning the body per use.
+	if !fast_valid_build || !tc.valid_resolution_fast {
 		tc.index_local_decl_rhs(flat.NodeId(fn_idx))
 	}
 	tc.fn_context.concrete_generic_receiver_specialization =

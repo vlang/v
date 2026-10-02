@@ -11526,6 +11526,18 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 		.call {
 			if name := tc.selected_file_call_name(node) {
 				tc.enqueue_selected_file_fn(name)
+				callee := tc.a.child_node(&node, 0)
+				if callee.kind in [.ident, .selector] && tc.fn_signature_known(name) {
+					// A resolved callee already keeps its declaration. Visit its receiver
+					// and the arguments without resolving the callee again as a fn value.
+					for i in 0 .. callee.children_count {
+						tc.collect_selected_file_node_called_fns(tc.a.child(callee, i))
+					}
+					for i in 1 .. node.children_count {
+						tc.collect_selected_file_node_called_fns(tc.a.child(&node, i))
+					}
+					return
+				}
 			}
 		}
 		.ident, .selector {
