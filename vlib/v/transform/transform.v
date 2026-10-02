@@ -27299,6 +27299,9 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	old_module := t.cur_module
 	old_file := t.cur_file
 	limit := t.a.nodes.len
+	// Each function gets its own visitation epoch without allocating another map.
+	mut visited := []u32{len: limit}
+	mut epoch := u32(0)
 	for i in 0 .. limit {
 		node := t.a.nodes[i]
 		if node.kind != .fn_decl
@@ -27311,30 +27314,40 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 		if !t.should_transform_fn(node) {
 			continue
 		}
-		mut seen := map[int]bool{}
+		epoch++
 		for child_id in t.a.children_of(&node) {
-			t.lower_remaining_match_subtree(child_id, mut seen)
+			t.lower_remaining_match_subtree(child_id, mut visited, epoch)
 		}
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
 }
 
-fn (mut t Transformer) lower_remaining_match_subtree(id flat.NodeId, mut seen map[int]bool) {
+fn (mut t Transformer) lower_remaining_match_subtree(id flat.NodeId, mut visited []u32, epoch u32) {
 	idx := int(id)
-	if idx < 0 || idx >= t.a.nodes.len || seen[idx] {
+	if idx < 0 || idx >= t.a.nodes.len {
 		return
 	}
-	seen[idx] = true
+	if idx >= visited.len {
+		// Lowering can append nodes that were not present when this pass started.
+		visited << []u32{len: t.a.nodes.len - visited.len}
+	}
+	if visited[idx] == epoch {
+		return
+	}
+	visited[idx] = epoch
 	mut node := t.a.nodes[idx]
 	if node.kind == .match_stmt {
 		lowered := t.lower_one_match(node)
 		t.set_node(idx, t.a.nodes[int(lowered)])
 		node = t.a.nodes[idx]
 	}
+	if node.children_count == 0 {
+		return
+	}
 	children := t.a.children_of(&node).clone()
 	for child_id in children {
-		t.lower_remaining_match_subtree(child_id, mut seen)
+		t.lower_remaining_match_subtree(child_id, mut visited, epoch)
 	}
 }
 

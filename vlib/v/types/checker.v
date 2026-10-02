@@ -2338,8 +2338,9 @@ fn (mut tc TypeChecker) cache_fn_generic_params(a &flat.FlatAst) {
 			continue
 		}
 		params := tc.infer_decl_generic_param_names(node)
+		// Keep non-generic declarations too, so call validation can reuse the miss.
+		tc.enclosing_generic_params_by_node[idx] = params
 		if params.len > 0 {
-			tc.enclosing_generic_params_by_node[idx] = params
 			tc.fill_enclosing_generic_param_mask(previous_top_level_idx + 1, idx + 1, params)
 		}
 		previous_top_level_idx = idx
@@ -6073,6 +6074,12 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, name) in tc.c_struct_scoped_fields {
 		return none
 	}
+	if visibility := tc.declaration_visibility[name] {
+		if declaration_visibility_is_private(visibility, tc.cur_module) {
+			return visibility
+		}
+		return none
+	}
 	mut candidates := []string{}
 	for candidate in [name, visible_mutation_fn_lookup_name(name)] {
 		if candidate.len > 0 && candidate !in candidates {
@@ -6094,13 +6101,18 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	}
 	for candidate in candidates {
 		visibility := tc.declaration_visibility[candidate] or { continue }
-		same_main_module := visibility.module_name in ['', 'main'] && tc.cur_module in ['', 'main']
-		if !visibility.is_pub && visibility.module_name != tc.cur_module && !same_main_module {
+		if declaration_visibility_is_private(visibility, tc.cur_module) {
 			return visibility
 		}
 		return none
 	}
 	return none
+}
+
+@[inline]
+fn declaration_visibility_is_private(visibility DeclarationVisibility, current_module string) bool {
+	same_main_module := visibility.module_name in ['', 'main'] && current_module in ['', 'main']
+	return !visibility.is_pub && visibility.module_name != current_module && !same_main_module
 }
 
 fn (mut tc TypeChecker) check_selective_const_imports(node flat.Node, module_path string) {

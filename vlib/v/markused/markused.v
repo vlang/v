@@ -5347,8 +5347,10 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 				ident_types[int(id)] = typ
 			}
 		}
-		c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
-			mut ident_types, false)
+		if child.children_count > 0 {
+			c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
+				mut ident_types, false)
+		}
 	}
 }
 
