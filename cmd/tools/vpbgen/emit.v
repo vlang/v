@@ -137,10 +137,12 @@ pub fn field_declaration(f Resolved) string {
 	return '${label}${f.proto_type} ${f.name} = ${f.number}'
 }
 
-// declared_type returns the V type a field is declared as, making a field in a
-// `oneof` optional so the group can be expressed as mutually exclusive values.
+// declared_type returns the V type a field is declared as. A field with explicit
+// presence is declared optional, so that a set default is still distinguishable
+// from an absent field. That covers a proto3 `optional` field as well as a
+// `oneof` member; a plain singular field keeps its bare type.
 pub fn declared_type(f Resolved) string {
-	if f.oneof != '' {
+	if f.has_explicit_presence() {
 		return '?${f.v_type}'
 	}
 	return f.v_type
@@ -152,7 +154,9 @@ pub fn emit_message_encode(mut e Emitter, m ResolvedMessage) {
 	e.wln(0, '//')
 	e.wln(0, '// A proto3 field holding its default is not written: on the wire an absent')
 	e.wln(0, '// field and a field set to its default are the same thing, so encoding a')
-	e.wln(0, '// zero value produces no bytes for it.')
+	e.wln(0, '// zero value produces no bytes for it. A field declared `optional`, or')
+	e.wln(0, '// holding a member of a `oneof`, is the exception: it records presence,')
+	e.wln(0, '// so it is written even at its default.')
 	e.wln(0, 'pub fn (msg ${m.v_name}) encode() ![]u8 {')
 	e.wln(1, 'mut p := protobuf.new_packer(protobuf.EncodeOpts{})')
 	if m.fields.len == 0 {
@@ -183,9 +187,11 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 		emit_encode_repeated(mut e, f, value)
 		return
 	}
-	if f.oneof != '' {
-		// A oneof member is written whenever it holds a value, including one
-		// holding the default, because presence is the whole point of the group.
+	if f.has_explicit_presence() {
+		// A field with explicit presence is written whenever it holds a value,
+		// including one holding the default, because the difference between "set
+		// to the default" and "never set" is the whole point of declaring the
+		// presence in the first place.
 		e.wln(1, 'if inner := ${value} {')
 		line := emit_single_encode(f, n, 'inner')
 		if line != '' {

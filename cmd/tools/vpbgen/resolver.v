@@ -63,6 +63,20 @@ pub fn (r &Resolved) is_repeated() bool {
 	return r.label == .repeated
 }
 
+// has_explicit_presence reports whether the field records whether it was set,
+// rather than only what it holds.
+//
+// Two things in the schema mean yes. A proto3 `optional` field does: the spec
+// models it as a synthetic one-member `oneof`, so `false` and `""` are
+// distinguishable from never having been sent. A member of a real `oneof` does,
+// because the group's whole purpose is to record which member was chosen.
+//
+// Neither is true of a plain singular field, where an absent field and a field
+// holding its default are the same thing on the wire.
+pub fn (r &Resolved) has_explicit_presence() bool {
+	return r.label == .optional || r.oneof != ''
+}
+
 // is_packed reports whether a repeated field uses the packed encoding, which the
 // spec makes the default for every repeated numeric type and which no
 // length-delimited element type has.

@@ -294,7 +294,9 @@ assert back.status == .active
 assert back.ratio == 0.5
 assert back.delta == -7
 assert back.id == 99
-assert back.flag
+// demo.proto declares `optional bool flag`, so it carries presence and is an
+// option rather than a bare bool.
+assert back.flag or { false }
 }
 
 // A gap in an enum's numbering has to survive: `.retired` is 7, and a generated
@@ -768,6 +770,100 @@ fn test_a_group_with_nothing_set_stays_empty() ! {
 	assert back.number == none
 	assert back.text == none
 	assert back.payload == none
+}
+"
+
+fn test_optional_field_is_declared_with_presence() {
+	out := generate(fixture('presence.proto'), 'presence')!
+	// proto3 `optional` records presence, so it has to be an option in V. A plain
+	// `bool` cannot tell `false` from never-sent.
+	assert out.contains('flag ?bool @[protobuf: 1]')
+	assert out.contains('note ?string @[protobuf: 2]')
+	assert out.contains('count ?i32 @[protobuf: 3]')
+	assert out.contains('ratio ?f64 @[protobuf: 4]')
+}
+
+fn test_singular_field_keeps_implicit_presence() {
+	out := generate(fixture('presence.proto'), 'presence')!
+	// The control: a field with no `optional` keeps its bare type, so declaring
+	// presence everywhere cannot silently pass this test.
+	assert out.contains('bare_flag bool @[protobuf: 5]')
+	assert out.contains('bare_note string @[protobuf: 6]')
+	assert !out.contains('bare_flag ?bool')
+}
+
+fn test_optional_field_is_written_at_its_default() {
+	out := generate(fixture('presence.proto'), 'presence')!
+	// An absent field and a field set to its default are the same on the wire,
+	// which is exactly what `optional` overrides: a set `false` has to be
+	// written or it cannot be told from never-sent.
+	assert out.contains('if inner := msg.flag {')
+	assert out.contains('if inner := msg.note {')
+	assert out.contains('if inner := msg.count {')
+	assert out.contains('if inner := msg.ratio {')
+}
+
+fn test_optional_presence_round_trips() ! {
+	res := generate_res(fixture('presence.proto'), 'presence')!
+	dir := write_roundtrip('presence', res)
+	run_module_test(dir, 'round_trip_test.v', presence_test_source)!
+}
+
+fn test_optional_output_compiles() ! {
+	out := generate(fixture('presence.proto'), 'presence')!
+	compile_generated('presence', [out])!
+}
+
+// A set default has to survive a round trip, and an absent field has to come
+// back as absent rather than as a set zero.
+const presence_test_source = "module presence
+
+fn test_a_set_false_survives() ! {
+	back := decode_reading(Reading{
+	flag: false
+	}.encode()!)!
+	assert back.flag != none
+	assert back.flag or { true } == false
+}
+
+fn test_a_set_empty_string_survives() ! {
+	back := decode_reading(Reading{
+	note: ''
+	}.encode()!)!
+	assert back.note != none
+	assert back.note or { 'x' } == ''
+}
+
+fn test_a_set_zero_survives() ! {
+	back := decode_reading(Reading{
+	count: 0
+	}.encode()!)!
+	assert back.count != none
+	assert back.count or { 7 } == 0
+}
+
+fn test_a_set_zero_float_survives() ! {
+	back := decode_reading(Reading{
+	ratio: 0.0
+	}.encode()!)!
+	assert back.ratio != none
+	assert back.ratio or { 1.0 } == 0.0
+}
+
+fn test_an_absent_field_stays_absent() ! {
+	back := decode_reading([]u8{})!
+	assert back.flag == none
+	assert back.note == none
+	assert back.count == none
+	assert back.ratio == none
+}
+
+fn test_a_singular_field_keeps_implicit_presence() ! {
+	// The control: a field declared without `optional` is never set explicitly,
+	// so it decodes to its default whether or not it was sent.
+	back := decode_reading([]u8{})!
+	assert back.bare_flag == false
+	assert back.bare_note == ''
 }
 "
 
