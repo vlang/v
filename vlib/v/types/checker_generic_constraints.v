@@ -20,10 +20,17 @@ struct GenericConstraint {
 	// The types of a set, when it names no interface: an interface among them
 	// stands for the types that implement it.
 	types []Type
+	// A reachable parameter-dependency cycle that nests an argument in a constructor.
+	expanding_sum bool
 	// `[T User]`: the struct among the types that stands for itself and the
 	// structs that embed it, which get its fields and methods but not its
 	// operators.
 	family_struct string
+}
+
+struct SumConstraintStep {
+	sum_name string
+	variant  string
 }
 
 // generic_constraint_type resolves the constraint `text` of a type parameter
@@ -67,10 +74,13 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericCon
 		mut types := []Type{}
 		mut seen := map[string]bool{}
 		mut active := map[string]string{}
-		tc.collect_sum_constraint_types(named, mut types, mut seen, mut active)
+		mut path := []SumConstraintStep{}
+		expanding := tc.collect_sum_constraint_types(named, mut types, mut seen, mut active,
+			mut path)
 		return GenericConstraint{
-			name:  text
-			types: types
+			name:          text
+			types:         types
+			expanding_sum: expanding
 		}
 	}
 	return GenericConstraint{
@@ -82,13 +92,20 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericCon
 
 // struct_embeds reports whether the struct `name` embeds the struct `base`,
 // itself or in a struct it embeds.
-fn (tc &TypeChecker) struct_embeds(name string, base string, depth int) bool {
-	if depth > 16 {
-		return false
-	}
-	for embedded in tc.struct_embed_receiver_names(name) {
-		if embedded == base || tc.struct_embeds(embedded, base, depth + 1) {
-			return true
+fn (tc &TypeChecker) struct_embeds(name string, base string) bool {
+	mut pending := [name]
+	mut seen := map[string]bool{}
+	for pending.len > 0 {
+		current := pending.pop()
+		if seen[current] {
+			continue
+		}
+		seen[current] = true
+		for embedded in tc.struct_embed_receiver_names(current) {
+			if embedded == base {
+				return true
+			}
+			pending << embedded
 		}
 	}
 	return false
@@ -107,7 +124,7 @@ fn (tc &TypeChecker) constraint_family_holds(constraint GenericConstraint, membe
 	}
 	if tc.is_family_struct(constraint, member) {
 		clean := unwrap_pointer(actual)
-		return clean is Struct && tc.struct_embeds(clean.name, member.name(), 0)
+		return clean is Struct && tc.struct_embeds(clean.name, member.name())
 	}
 	return false
 }
@@ -128,16 +145,17 @@ fn (tc &TypeChecker) is_constraint_family(constraint GenericConstraint, member T
 // collect_sum_constraint_types adds to `types` the variants of the sum type
 // `sum`, bound to its type arguments, and in place of a variant that is a sum
 // type, its variants.
-fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type, mut seen map[string]bool, mut active map[string]string) {
+fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type, mut seen map[string]bool, mut active map[string]string, mut path []SumConstraintStep) bool {
 	base := tc.sum_base_name(sum.name)
 	if seen[sum.name] {
-		return
+		return false
 	}
 	previous := active[base] or { '' }
 	// A repeated base may peel a finite nested argument, such as Part[Part[int]].
-	// Growing recursive instances must stop until declaration checking reports the cycle.
-	if previous.len > 0 && !tc.sum_constraint_has_nested_instance(previous, sum.name) {
-		return
+	// Report this bound to declaration checking rather than silently accepting a partial set.
+	if previous.len > 0 && !tc.sum_constraint_has_nested_instance(previous, sum.name)
+		&& tc.sum_constraint_cycle_expands(base, path) {
+		return true
 	}
 	seen[sum.name] = true
 	active[base] = sum.name
@@ -148,17 +166,106 @@ fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type,
 			active.delete(base)
 		}
 	}
+	mut expanding := false
 	for variant in tc.sum_types[base] or { []string{} } {
 		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.name, variant))
 		inner := unalias_type(concrete)
 		if inner is SumType {
-			tc.collect_sum_constraint_types(inner, mut types, mut seen, mut active)
+			path << SumConstraintStep{ sum_name: sum.name, variant: variant }
+			if tc.collect_sum_constraint_types(inner, mut types, mut seen, mut active,
+				mut path) {
+				expanding = true
+			}
+			path.pop()
 			continue
 		}
 		if !types.any(it.name() == concrete.name()) {
 			types << concrete
 		}
 	}
+	return expanding
+}
+
+// sum_constraint_cycle_expands replays a reachable cycle with symbolic arguments.
+// A dependency cycle through a type constructor grows without a fixed point;
+// permutations and replacement by constant arguments do not.
+fn (tc &TypeChecker) sum_constraint_cycle_expands(base string, path []SumConstraintStep) bool {
+	params := tc.sum_params_for_base(base)
+	if params.len == 0 {
+		return false
+	}
+	mut symbols := []string{cap: params.len}
+	for i in 0 .. params.len {
+		symbols << tc.qualify_name('__v_constraint_argument_${i}__')
+	}
+	for start, step in path {
+		if tc.sum_base_name(step.sum_name) != base {
+			continue
+		}
+		mut instance := '${base}[${symbols.join(', ')}]'
+		mut complete := true
+		for next in path[start..] {
+			if tc.sum_base_name(instance) != tc.sum_base_name(next.sum_name) {
+				complete = false
+				break
+			}
+			variant := unalias_type(tc.parse_type(tc.concrete_sum_variant_name(instance,
+				next.variant)))
+			if variant is SumType {
+				instance = variant.name
+			} else {
+				complete = false
+				break
+			}
+		}
+		if !complete {
+			continue
+		}
+		cycle_base, args, ok := generic_type_application_parts(instance)
+		if !ok || tc.sum_base_name(cycle_base) != base || args.len != symbols.len {
+			continue
+		}
+		if sum_constraint_arguments_expand(args, symbols) {
+			return true
+		}
+	}
+	return false
+}
+
+fn sum_constraint_arguments_expand(args []string, symbols []string) bool {
+	mut edges := [][]int{len: symbols.len, init: []int{len: symbols.len}}
+	for i, arg in args {
+		for j, symbol in symbols {
+			if type_text_contains_symbol(arg, symbol) {
+				edges[i][j] = if arg.trim_space() == symbol { 1 } else { 2 }
+			}
+		}
+	}
+	for i in 0 .. symbols.len {
+		for j in 0 .. symbols.len {
+			if edges[i][j] != 2 {
+				continue
+			}
+			mut pending := [j]
+			mut seen := []bool{len: symbols.len}
+			for pending.len > 0 {
+				current := pending.pop()
+				if current == i {
+					return true
+				}
+				if seen[current] {
+					continue
+				}
+				seen[current] = true
+				for next in 0 .. symbols.len {
+					if edges[current][next] > 0 {
+						pending << next
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 // sum_constraint_has_nested_instance permits descending into a finite type argument,
@@ -210,6 +317,11 @@ fn (tc &TypeChecker) generic_constraint_with_args(decl flat.Node, text string, n
 
 // generic_constraint_accepts reports whether `actual` satisfies `constraint`.
 fn (tc &TypeChecker) generic_constraint_accepts(constraint GenericConstraint, actual Type) bool {
+	// The declaration already reports an unsupported recursive set; avoid misleading
+	// argument errors based on the partial set collected before its recursion bound.
+	if constraint.expanding_sum {
+		return true
+	}
 	if constraint.is_interface {
 		return tc.type_implements_interface(actual, constraint.iface)
 	}
@@ -341,6 +453,13 @@ fn (mut tc TypeChecker) check_generic_constraint_decls(node_id flat.NodeId, node
 		if !tc.type_name_known_in_scope(text.all_before('['), file.name, decl_module) {
 			tc.record_error_at(.unknown_type, 'unknown type `${text}`', node_id, pos)
 			continue
+		}
+		if constraint := tc.generic_constraint(node, text) {
+			if constraint.expanding_sum {
+				tc.record_error_at(.unknown_type, 'constraint `${text}` cannot expand a recursive sum type',
+					node_id, pos)
+				continue
+			}
 		}
 		// `[U Tree[int]]` writes `Tree[int]`, which is checked as written anywhere.
 		if text.contains('[') && pos.end - pos.offset == text.len {

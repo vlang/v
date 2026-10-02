@@ -6621,6 +6621,17 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			|| type_text_contains_qualified_import(node.value, module_path)) {
 			return true
 		}
+		for constraint in node.generic_constraints() {
+			if type_text_contains_qualified_import(constraint, import_node.typ)
+				|| type_text_contains_qualified_import(constraint, module_path) {
+				return true
+			}
+			for name in selective_names {
+				if type_text_contains_symbol(constraint, name) {
+					return true
+				}
+			}
+		}
 		if selective_names.len == 0 {
 			continue
 		}
