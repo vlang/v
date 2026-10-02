@@ -209,7 +209,8 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 			}
 		}
 		if base_type is types.Pointer {
-			if _ := array_fixed_type(base_type.base_type) {
+			_, fixed_is_ptr, _ := fixed_array_index_info(base_type)
+			if fixed_is_ptr {
 				g.write('(*')
 				g.gen_expr(base_id)
 				g.write(')[')

@@ -76,8 +76,12 @@ fn fixed_array_index_info(t types.Type) (bool, bool, types.ArrayFixed) {
 		return true, false, fixed
 	}
 	if t is types.Pointer {
-		if fixed := array_fixed_type(t.base_type) {
-			return true, true, fixed
+		base := t.base_type
+		// Pointer indexing follows the checker, which unwraps one pointee alias.
+		// Further aliases index the pointer itself before indexing the array value.
+		inner := if base is types.Alias { base.base_type } else { base }
+		if inner is types.ArrayFixed {
+			return true, true, inner
 		}
 	}
 	return false, false, types.ArrayFixed{}
@@ -1996,7 +2000,8 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			ptr_type := base_type
 			mut expected_type := ptr_type.base_type
 			mut fixed_len := ''
-			if fixed := array_fixed_type(ptr_type.base_type) {
+			_, fixed_is_ptr, fixed := fixed_array_index_info(base_type)
+			if fixed_is_ptr {
 				expected_type = fixed.elem_type
 			}
 			rhs_id := g.a.child(&node, 1)
@@ -2015,7 +2020,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				g.writeln('; }')
 				return
 			}
-			if fixed := array_fixed_type(ptr_type.base_type) {
+			if fixed_is_ptr {
 				g.write('(*')
 				g.gen_expr(base_id)
 				g.write(')')

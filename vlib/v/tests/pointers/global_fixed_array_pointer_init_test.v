@@ -260,6 +260,12 @@ fn test_global_fixed_array_pointers_are_initialized() {
 		assert global_filled_array[3] == 7
 		assert global_filled_chained_alias_array[0][0] == 8
 		assert global_filled_chained_alias_array[0][3] == 8
+		global_chained_alias_array[0][3] = 29
+		global_chained_alias_array[0][3] += 2
+		assert global_chained_alias_array[0][3] == 31
+		global_filled_chained_alias_array[0][0] = 35
+		global_filled_chained_alias_array[0][0] += 2
+		assert global_filled_chained_alias_array[0][0] == 37
 		assert global_nested_filled_alias_array[0][0] == 11
 		assert global_nested_filled_alias_array[1][2] == 11
 		assert global_alias_call_array[0][0] == 40
