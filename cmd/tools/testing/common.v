@@ -9,6 +9,8 @@ import benchmark
 import sync
 import sync.pool
 import v.pref
+import v.scanner
+import v.token
 import v.util.vtest
 import v.util.vflags
 import runtime
@@ -1081,6 +1083,51 @@ pub fn vlib_should_be_present(parent_dir string) {
 	}
 }
 
+fn build_source_is_program(source string) bool {
+	mut files := token.FileSet.new()
+	file := files.add_file('build-source.v', source.len)
+	mut lexer := scanner.new_scanner(pref.new_preferences(), .normal)
+	lexer.init(file, source)
+	mut kind := lexer.scan()
+	if kind == .hash && lexer.lit.starts_with('!') {
+		kind = lexer.scan()
+	}
+	for {
+		if kind == .semicolon {
+			kind = lexer.scan()
+			continue
+		}
+		if kind in [.attribute, .lsbr] {
+			mut depth := 1
+			for depth > 0 {
+				kind = lexer.scan()
+				if kind == .eof {
+					return true
+				} else if kind in [.attribute, .lsbr] {
+					depth++
+				} else if kind == .rsbr {
+					depth--
+				}
+			}
+			kind = lexer.scan()
+			continue
+		}
+		break
+	}
+	if kind != .key_module {
+		// Files without a module declaration are implicit main programs.
+		return true
+	}
+	kind = lexer.scan()
+	if kind != .name && !kind.is_keyword() {
+		// Let the compiler report malformed declarations instead of hiding them.
+		return true
+	}
+	name := lexer.lit
+	return lexer.scan() != .dot && name in ['main', 'no_main']
+}
+
+// prepare_test_session discovers standalone programs, preserving configured folder exclusions.
 pub fn prepare_test_session(zargs string, folder string, oskipped []string, main_label string) TestSession {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
@@ -1115,13 +1162,11 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 			}
 		}
 		c := os.read_file(fnormalised) or { panic(err) }
-		start := c#[0..header_bytes_to_search_for_module_main]
-		if start.contains('module ') {
-			modname := start.all_after('module ').all_before('\n')
-			if modname !in ['main', 'no_main'] {
-				skipped << fnormalised.replace(nparent_dir + '/', '')
-				continue next_file
-			}
+		// Scan past the complete comment header; library declarations can occur
+		// well beyond the first few hundred bytes of an example support file.
+		if !build_source_is_program(c) {
+			skipped << fnormalised.replace(nparent_dir + '/', '')
+			continue next_file
 		}
 		for skip_prefix in oskipped {
 			skip_folder := skip_prefix + '/'

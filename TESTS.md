@@ -139,6 +139,10 @@ the `vlib/v/tests/known_errors/testdata/` folder.
 * `v build-examples`
 * `v build-vbinaries`
 
+`v build-examples` discovers files with a `main`, `no_main`, or implicit main module,
+and builds configured projects as folders. Library modules are checked when the programs
+that import them compile.
+
 ## Formatting tests
 
 `cmd/tools/vfmt_test.v` checks the formatter command, while
