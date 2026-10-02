@@ -3594,6 +3594,21 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node, module_n
 		.struct_decl, .type_decl, .interface_decl, .enum_decl {
 			name := qualify_decl_name_in_module(node.value, module_name)
 			tc.declaration_visibility[name] = visibility
+			if node.kind == .interface_decl {
+				for i in 0 .. node.children_count {
+					field := tc.a.child_node(&node, i)
+					if field.kind == .interface_field && field.op == .dot {
+						// Abstract methods belong to the interface contract. Record their
+						// qualified names so lookup cannot select an unrelated private method
+						// on a concrete type with the same short name in another module.
+						tc.declaration_visibility['${name}.${field.value}'] = DeclarationVisibility{
+							module_name: module_name
+							kind:        .fn_decl
+							is_pub:      true
+						}
+					}
+				}
+			}
 		}
 		.const_decl {
 			for i in 0 .. node.children_count {
@@ -6073,13 +6088,22 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, name) in tc.c_struct_scoped_fields {
 		return none
 	}
+	mut declaration_name := name
+	if name.contains('.') {
+		receiver_name := visible_mutation_fn_lookup_name(name).all_before_last('.')
+		if receiver_name in tc.interface_names {
+			// Inherited methods use the base interface's declaration for access checks.
+			declaration_name = tc.interface_method_signature_key(receiver_name,
+				name.all_after_last('.')) or { name }
+		}
+	}
 	mut candidates := []string{}
-	for candidate in [name, visible_mutation_fn_lookup_name(name)] {
+	for candidate in [declaration_name, visible_mutation_fn_lookup_name(declaration_name)] {
 		if candidate.len > 0 && candidate !in candidates {
 			candidates << candidate
 		}
 	}
-	mut shortened := name
+	mut shortened := declaration_name
 	for shortened.contains('.') {
 		tail := shortened.all_after('.')
 		if !tail.contains('.') {
