@@ -8920,9 +8920,11 @@ fn (tc &TypeChecker) expr_is_standalone_statement(id flat.NodeId) bool {
 	mut current := id
 	for _ in 0 .. 32 {
 		mut parent_id := flat.empty_node
-		for i, candidate in tc.a.nodes {
+		for i in 0 .. tc.a.nodes.len {
+			// Generated-node parent lookup only reads the AST while this borrow is live.
+			candidate := unsafe { &tc.a.nodes[i] }
 			if candidate.kind in [.paren, .expr_stmt] && candidate.children_count == 1
-				&& tc.a.child(&candidate, 0) == current {
+				&& tc.a.child(candidate, 0) == current {
 				parent_id = flat.NodeId(i)
 				break
 			}
@@ -10728,9 +10730,11 @@ fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.No
 			}
 		}
 	}
-	for parent_idx, candidate in tc.a.nodes {
+	for parent_idx in 0 .. tc.a.nodes.len {
+		// The fallback only reads node headers while looking up parent edges.
+		candidate := unsafe { &tc.a.nodes[parent_idx] }
 		for i in 0 .. candidate.children_count {
-			if tc.a.child(&candidate, i) == id {
+			if tc.a.child(candidate, i) == id {
 				if !isnil(tc.type_cache) {
 					mut cache := tc.type_cache
 					cache.generated_parent_entries[idx] = flat.NodeId(parent_idx)
@@ -10743,12 +10747,14 @@ fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.No
 }
 
 fn (tc &TypeChecker) enclosing_infix_type_for_or_expr(id flat.NodeId) ?Type {
-	for idx, candidate in tc.a.nodes {
+	for idx in 0 .. tc.a.nodes.len {
+		// The borrow ends before resolving the matching parent expression's type.
+		candidate := unsafe { &tc.a.nodes[idx] }
 		if candidate.kind != .infix {
 			continue
 		}
 		for i in 0 .. candidate.children_count {
-			if tc.a.child(&candidate, i) == id {
+			if tc.a.child(candidate, i) == id {
 				return tc.resolve_type(flat.NodeId(idx))
 			}
 		}

@@ -15,6 +15,10 @@ fn (mut _ Transformer) prepare_parallel_monomorph_scan(_ int, _ int) bool {
 	return false
 }
 
+fn (mut _ Transformer) run_serial_scoped_monomorphize_specs(_ []PendingGenericFnSpec, mut _ map[string]bool, mut _ []string) bool {
+	return false
+}
+
 fn (mut _ Transformer) run_parallel_monomorphize_specs(_ []PendingGenericFnSpec, _ map[string]GenericStructDecl, _ map[string]GenericSumDecl, mut _ map[string]bool, mut _ []string) bool {
 	return false
 }

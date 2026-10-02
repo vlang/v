@@ -574,6 +574,60 @@ fn test_generated_parent_lookup_revalidates_cached_edges() {
 	assert tc.direct_parent_id(flat.empty_node) == flat.empty_node
 }
 
+fn test_generated_parent_fallback_does_not_allocate_per_ast_node() {
+	$if gcboehm ? {
+		mut a := flat.FlatAst.new()
+		for _ in 0 .. 8192 {
+			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: 'int' })
+		}
+		mut tc := TypeChecker.new(&a)
+		tc.build_direct_parent_index(&a)
+		generated := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: 'int' })
+		before := gc_heap_usage().total_bytes
+		for _ in 0 .. 16 {
+			assert tc.direct_parent_id(generated) == flat.empty_node
+			assert tc.enclosing_infix_type_for_or_expr(generated) == none
+			assert !tc.expr_is_standalone_statement(generated)
+		}
+		allocated := gc_heap_usage().total_bytes - before
+		assert allocated < 1024 * 1024, 'parent fallbacks allocated ${allocated} bytes'
+		first_children := a.begin_children()
+		a.add_child(generated)
+		a.add_child(flat.NodeId(0))
+		first := a.add_node(flat.Node{
+			kind:           .infix
+			op:             .plus
+			typ:            'int'
+			children_start: first_children
+			children_count: 2
+		})
+		second_children := a.begin_children()
+		a.add_child(generated)
+		second := a.add_node(flat.Node{
+			kind:           .paren
+			children_start: second_children
+			children_count: 1
+		})
+		assert tc.direct_parent_id(generated) == first
+		infix_type := tc.enclosing_infix_type_for_or_expr(generated) or {
+			assert false, 'missing generated infix parent type'
+			return
+		}
+		assert infix_type == Type(int_)
+		a.nodes[int(first)].children_count = 0
+		assert tc.direct_parent_id(generated) == second
+		assert tc.enclosing_infix_type_for_or_expr(generated) == none
+		statement_children := a.begin_children()
+		a.add_child(second)
+		a.add_node(flat.Node{
+			kind:           .expr_stmt
+			children_start: statement_children
+			children_count: 1
+		})
+		assert tc.expr_is_standalone_statement(generated)
+	}
+}
+
 fn test_generated_fn_params_update_method_suffix_index() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -714,4 +768,66 @@ fn assert_preflight_error_keeps_function_semantics(name string, source string, i
 fn test_preflight_errors_do_not_skip_function_semantics() {
 	assert_preflight_error_keeps_function_semantics('collection_error', 'type Recursive = []Recursive\n\nfn main() {\n\tunknown_call()\n}\n', 'recursive declarations of aliases', true)
 	assert_preflight_error_keeps_function_semantics('for_in_const_conflict', 'const item = 1\n\nfn report_other_error() {\n\tunknown_call()\n}\n\nfn main() {\n\tfor item in [1, 2] {}\n}\n', 'duplicate of a const name `item`', false)
+}
+
+fn test_disabled_resolution_views_reuse_warm_composite_type_parse_cache() {
+	$if gcboehm ? {
+		for fast_recent in [false, true] {
+			a := flat.FlatAst.new()
+			mut tc := TypeChecker.new(&a)
+			tc.type_cache.parse_enabled = true
+			tc.fast_parse_recent = fast_recent
+			tc.disable_resolution_type_view_cache()
+			tc.cur_file = 'items.v'
+			tc.cur_module = 'items'
+			tc.fn_context.generic_params = ['T']
+			tc.resolution_type_mode = true
+			tc.structs['items.Item'] = []StructField{}
+			assert tc.parse_resolution_type('[]Item').name() == '[]items.Item'
+			before := gc_heap_usage().total_bytes
+			for _ in 0 .. 128 {
+				assert tc.parse_resolution_type('[]Item').name() == '[]items.Item'
+			}
+			allocated := gc_heap_usage().total_bytes - before
+			assert allocated < 1024 * 1024, 'warm resolution calls allocated ${allocated} bytes'
+			assert isnil(tc.resolution_type_views)
+		}
+	}
+}
+
+fn test_disabled_resolution_views_keep_file_context_and_recursive_aliases() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.type_cache.parse_enabled = true
+	tc.disable_resolution_type_view_cache()
+	tc.cur_module = 'main'
+	tc.cur_file = 'one.v'
+	tc.structs['one.Item'] = []StructField{}
+	tc.structs['two.Item'] = []StructField{}
+	tc.register_file_import('dep', 'one')
+	assert tc.parse_resolution_type('[]dep.Item').name() == '[]one.Item'
+	tc.cur_file = 'two.v'
+	tc.register_file_import('dep', 'two')
+	assert tc.parse_resolution_type('[]dep.Item').name() == '[]two.Item'
+	tc.fn_context.generic_params = ['Item']
+	tc.resolution_type_mode = true
+	assert tc.parse_resolution_type('[]dep.Item').name() == '[]two.Item'
+	tc.cur_file = 'one.v'
+	assert tc.parse_resolution_type('[]dep.Item').name() == '[]one.Item'
+	assert tc.cur_module == 'main'
+	assert tc.fn_context.generic_params == ['Item']
+	assert tc.resolution_type_mode
+
+	tc.type_aliases['Handlers'] = 'map[string]fn (Handlers) int'
+	warm := tc.parse_resolution_type('Handlers')
+	assert warm is Alias
+	assert (warm as Alias).base_type is Map
+	// A recursive edge must remain symbolic even after the complete alias was cached.
+	tc.type_cache.alias_parse_stack << 'Handlers'
+	recursive := tc.parse_resolution_type('Handlers')
+	tc.type_cache.alias_parse_stack.delete_last()
+	assert recursive is Alias
+	assert (recursive as Alias).base_type is Unknown
+	assert tc.parse_resolution_type('Handlers') == Type(warm)
+	assert isnil(tc.resolution_type_views)
 }

@@ -7712,7 +7712,7 @@ fn (mut tc TypeChecker) check_local_binding_global_shadowing(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
 		return
 	}
-	binding := tc.a.nodes[int(id)]
+	binding := tc.a.node(id)
 	if binding.kind !in [.ident, .param] || binding.value.len == 0 || binding.value == '_' {
 		return
 	}
@@ -7733,9 +7733,9 @@ fn (mut tc TypeChecker) check_decl_lhs_global_shadowing(node flat.Node) {
 
 // check_generic_fn_body_global_shadowing inspects source bindings in an open
 // generic body without type-checking expressions that need concrete types.
-fn (mut tc TypeChecker) check_generic_fn_body_global_shadowing(node flat.Node) {
+fn (mut tc TypeChecker) check_generic_fn_body_global_shadowing(node &flat.Node) {
 	for i in 0 .. node.children_count {
-		child_id := tc.a.child(&node, i)
+		child_id := tc.a.child(node, i)
 		if tc.a.node(child_id).kind != .param {
 			tc.check_generic_body_node_global_shadowing(child_id)
 		}
@@ -7758,7 +7758,7 @@ pub fn (mut tc TypeChecker) check_specialized_fn_global_shadowing() {
 		if fn_idx >= 0 && fn_idx < tc.a.nodes.len && tc.a.nodes[fn_idx].kind == .fn_decl {
 			tc.cur_file = tc.a.specialized_fn_files[fn_idx] or { old_file }
 			tc.cur_module = tc.a.specialized_fn_modules[fn_idx] or { old_module }
-			tc.check_generic_fn_body_global_shadowing(tc.a.nodes[fn_idx])
+			tc.check_generic_fn_body_global_shadowing(tc.a.node(flat.NodeId(fn_idx)))
 		}
 	}
 	tc.cur_file = old_file
@@ -7769,11 +7769,12 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 	if !tc.valid_node_id(id) {
 		return
 	}
-	node := tc.a.nodes[int(id)]
+	// The shadowing scan records diagnostics without growing the AST.
+	node := tc.a.node(id)
 	match node.kind {
 		.if_expr {
 			if node.children_count > 0 {
-				condition := tc.a.child_node(&node, 0)
+				condition := tc.a.child_node(node, 0)
 				if condition.kind == .decl_assign {
 					for lhs_id in tc.if_guard_lhs_ids(condition) {
 						tc.check_local_binding_global_shadowing(lhs_id)
@@ -7782,21 +7783,21 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 			}
 		}
 		.decl_assign {
-			tc.check_decl_lhs_global_shadowing(node)
+			tc.check_decl_lhs_global_shadowing(*node)
 		}
 		.for_in_stmt {
 			if node.children_count >= 2 {
-				tc.check_local_binding_global_shadowing(tc.a.child(&node, 0))
-				tc.check_local_binding_global_shadowing(tc.a.child(&node, 1))
+				tc.check_local_binding_global_shadowing(tc.a.child(node, 0))
+				tc.check_local_binding_global_shadowing(tc.a.child(node, 1))
 			}
 		}
 		.select_branch {
 			if node.value == 'recv' && node.children_count > 0 {
-				tc.check_local_binding_global_shadowing(tc.a.child(&node, 0))
+				tc.check_local_binding_global_shadowing(tc.a.child(node, 0))
 			}
 		}
 		.comptime_for {
-			tc.check_comptime_for_global_shadowing(id, node)
+			tc.check_comptime_for_global_shadowing(id, *node)
 		}
 		.comptime_if {
 			take_then := tc.comptime_type_condition_value(node.value) or {
@@ -7807,14 +7808,14 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 					&& !comptime_cond_has_type_test(node.value)
 					&& !comptime_cond_has_type_metadata(node.value) {
 					for i in 0 .. node.children_count {
-						tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+						tc.check_generic_body_node_global_shadowing(tc.a.child(node, i))
 					}
 				}
 				return
 			}
 			branch_index := if take_then { 0 } else { 1 }
 			if branch_index < node.children_count {
-				tc.check_generic_body_node_global_shadowing(tc.a.child(&node, branch_index))
+				tc.check_generic_body_node_global_shadowing(tc.a.child(node, branch_index))
 			}
 			return
 		}
@@ -7824,14 +7825,14 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 		.lambda_expr {
 			if node.children_count > 1 {
 				for i in 0 .. node.children_count - 1 {
-					tc.check_local_binding_global_shadowing(tc.a.child(&node, i))
+					tc.check_local_binding_global_shadowing(tc.a.child(node, i))
 				}
 			}
 		}
 		else {}
 	}
 	for i in 0 .. node.children_count {
-		tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+		tc.check_generic_body_node_global_shadowing(tc.a.child(node, i))
 	}
 }
 
