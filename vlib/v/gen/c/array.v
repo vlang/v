@@ -21,14 +21,9 @@ fn array_like_type(t types.Type) ?types.Array {
 
 // array_fixed_type supports array fixed type handling for c.
 fn array_fixed_type(t types.Type) ?types.ArrayFixed {
-	if t is types.ArrayFixed {
-		return t
-	}
-	if t is types.Alias {
-		base := t.base_type
-		if base is types.ArrayFixed {
-			return base
-		}
+	clean := cgen_unalias_type(t)
+	if clean is types.ArrayFixed {
+		return clean
 	}
 	return none
 }
@@ -1309,6 +1304,10 @@ fn (g &FlatGen) map_index_value_is_rvalue(id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) gen_index_overload_call(node flat.Node, base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
+	fixed_return := array_fixed_type(info.return_type) != none
+	if fixed_return {
+		g.write('(')
+	}
 	g.write(g.cname(info.name))
 	g.write('(')
 	g.gen_index_overload_receiver_arg(base_id, base_type, info)
@@ -1317,6 +1316,9 @@ fn (mut g FlatGen) gen_index_overload_call(node flat.Node, base_id flat.NodeId, 
 		g.gen_index_overload_index_arg(node, info.params[1])
 	}
 	g.write(')')
+	if fixed_return {
+		g.write(').ret_arr')
+	}
 }
 
 fn (mut g FlatGen) gen_index_overload_set(node flat.Node, lhs flat.Node, base_id flat.NodeId, base_type types.Type, info types.CallInfo) {

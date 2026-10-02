@@ -14001,6 +14001,9 @@ fn (mut g FlatGen) sizeof_target(value0 string) string {
 		}
 	}
 	if value.starts_with('&') {
+		if value.trim_left('&').starts_with('[') {
+			return 'void*'
+		}
 		return '${g.sizeof_target(value[1..].trim_space())}*'
 	}
 	if value.starts_with('[]') || value == 'array' {
@@ -16057,9 +16060,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					elem_ct := g.value_c_type(channel_type.elem_type)
 					g.write('sync__Channel__push(')
 					g.gen_channel_try_receiver(lhs_id)
-					g.write(', &(${elem_ct}[]){')
-					g.gen_expr_with_expected_type(rhs_id, channel_type.elem_type)
-					g.write('})')
+					g.write(', ')
+					if fixed := array_fixed_type(channel_type.elem_type) {
+						g.gen_fixed_array_data_arg(rhs_id, fixed)
+					} else {
+						g.write('&(${elem_ct}[]){')
+						g.gen_expr_with_expected_type(rhs_id, channel_type.elem_type)
+						g.write('}')
+					}
+					g.write(')')
 					g.expected_enum = old_expected_enum
 					return
 				}
@@ -17303,6 +17312,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				literal := g.fixed_array_compound_literal_expr(g.a.child(node, 0), fixed)
 				if trimmed_space(literal).len > 0 {
 					g.write(literal)
+				} else if g.fixed_array_decay_shape_equal(cast_arg_type, types.Type(fixed), false) {
+					// Compatible fixed arrays already have the target layout. C cannot cast
+					// an array value; its consumer copies the operand into target storage.
+					g.gen_expr(cast_arg_id)
 				} else {
 					g.write('(${ct})(')
 					g.gen_expr(g.a.child(node, 0))

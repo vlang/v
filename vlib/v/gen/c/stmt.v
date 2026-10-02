@@ -2210,9 +2210,14 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		tmp := g.tmp_name()
 		temps << tmp
 		if select_case.is_push {
-			g.write('${ct} ${tmp} = ')
-			g.gen_expr_with_expected_type(select_case.value_id, elem_type)
-			g.writeln(';')
+			if fixed := array_fixed_type(elem_type) {
+				g.writeln('${ct} ${tmp};')
+				g.gen_fixed_array_copy_from_node(tmp, select_case.value_id, fixed)
+			} else {
+				g.write('${ct} ${tmp} = ')
+				g.gen_expr_with_expected_type(select_case.value_id, elem_type)
+				g.writeln(';')
+			}
 		} else {
 			g.writeln('${ct} ${tmp} = (${ct}){0};')
 		}
@@ -2291,17 +2296,27 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 				g.write_line_directive(lhs)
 				if select_case.is_decl {
 					ct := g.value_c_type(elem_types[i])
-					g.write('${ct} ')
-					if lhs.kind == .ident {
-						g.write(g.local_decl_cname(lhs.value))
+					if lhs.kind == .ident && array_fixed_type(elem_types[i]) != none {
+						lhs_name := g.local_decl_cname(lhs.value)
+						g.writeln('${ct} ${lhs_name};')
+						g.writeln('memmove(${lhs_name}, ${temps[i]}, sizeof(${ct}));')
 					} else {
-						gen_expr_lvalue(mut g, select_case.lhs_id)
+						g.write('${ct} ')
+						if lhs.kind == .ident {
+							g.write(g.local_decl_cname(lhs.value))
+						} else {
+							gen_expr_lvalue(mut g, select_case.lhs_id)
+						}
+						g.writeln(' = ${temps[i]};')
 					}
-					g.writeln(' = ${temps[i]};')
 					if lhs.kind == .ident {
 						owner := g.tc.cur_scope.insert_with_owner(lhs.value, elem_types[i])
 						g.track_local_pointer_storage_decl(lhs, owner, elem_types[i], ct)
 					}
+				} else if array_fixed_type(elem_types[i]) != none {
+					g.write('memmove(')
+					gen_expr_lvalue(mut g, select_case.lhs_id)
+					g.writeln(', ${temps[i]}, sizeof(${g.value_c_type(elem_types[i])}));')
 				} else {
 					gen_expr_lvalue(mut g, select_case.lhs_id)
 					g.write(' = ')
