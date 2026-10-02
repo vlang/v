@@ -17155,7 +17155,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 							g.write(', ')
 							g.gen_expr(g.a.child(node, 1))
 							g.write('))')
-						} else if base_type is types.String {
+						} else if default_init_unalias_type(base_type) is types.String {
 							// Parenthesize the base: a smartcast sum variant yields a deref
 							// like `*v._string`, and `*v._string.str[i]` would bind as
 							// `*(v._string.str[i])`. `(*v._string).str[i]` is what we want.
