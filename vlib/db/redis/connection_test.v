@@ -189,6 +189,59 @@ fn test_authentication_credentials_survive_reconnect() {
 	db.reset()!
 }
 
+fn test_named_nopass_user_authentication_survives_reconnect() {
+	user := 'v-nopass-${rand.ulid()}'
+	mut admin := connect(password: os.getenv('VREDIS_PASSWORD'))!
+	defer {
+		admin.acl_deluser(user) or {}
+		admin.close() or {}
+	}
+	admin.acl_setuser(user, 'on', 'nopass', '~*', '+@all')!
+	mut db := connect(username: user, auto_reconnect: true)!
+	defer { db.close() or {} }
+	assert db.acl_whoami()! == user
+	db.reconnect()!
+	assert db.acl_whoami()! == user
+	db.close()!
+	assert db.ping()! == 'PONG'
+	assert db.acl_whoami()! == user
+}
+
+fn test_hello_authentication_credentials_survive_reconnect() {
+	for password in ['pw-${rand.ulid()}', ''] {
+		user := 'v-hello-${rand.ulid()}'
+		mut admin := connect(password: os.getenv('VREDIS_PASSWORD'))!
+		defer {
+			admin.acl_deluser(user) or {}
+			admin.close() or {}
+		}
+		admin.acl_setuser(user, 'on', if password == '' { 'nopass' } else { '>${password}' },
+			'~*', '+@all')!
+		for version in [2, 3] {
+			mut db := connect(password: os.getenv('VREDIS_PASSWORD'), auto_reconnect: true)!
+			defer { db.close() or {} }
+			db.hello(version, 'SETNAME', 'AUTH', 'auth', user, password, 'SETNAME', 'AUTH')!
+			assert db.config.username == user
+			assert db.config.password == password
+			assert db.acl_whoami()! == user
+			db.reconnect()!
+			assert db.acl_whoami()! == user
+			db.close()!
+			assert db.ping()! == 'PONG'
+			assert db.acl_whoami()! == user
+			mut rejected := false
+			db.hello(version, 'AUTH', 'v-missing-${rand.ulid()}', 'wrong-password') or {
+				rejected = true
+				assert err is CommandError
+			}
+			assert rejected
+			assert db.config.username == user
+			assert db.config.password == password
+			assert db.acl_whoami()! == user
+		}
+	}
+}
+
 fn test_metrics_and_trace_count_pipeline_replies() {
 	traces := chan CommandTrace{cap: 4}
 	mut db := connect(
@@ -217,43 +270,47 @@ fn test_metrics_and_trace_count_pipeline_replies() {
 	assert statistics.duration >= 0
 }
 
-fn resp2_password_fallback_server(mut listener net.TcpListener, password string) {
+fn resp2_auth_fallback_server(mut listener net.TcpListener, username string, password string) {
 	mut socket := listener.accept() or { panic(err) }
 	socket.set_read_timeout(2 * time.second)
 	socket.set_write_timeout(2 * time.second)
 	mut server := DB{ version: 2, conn: socket }
 	defer { server.close() or {} }
 	hello := string_values(server.read_response() or { panic(err) }, 'hello') or { panic(err) }
-	assert hello == ['HELLO', '3', 'AUTH', 'default', password]
+	assert hello == ['HELLO', '3', 'AUTH', if username == '' { 'default' } else { username }, password]
 	server.write_data("-ERR unknown command 'HELLO'\r\n".bytes()) or { panic(err) }
 	auth := string_values(server.read_response() or { panic(err) }, 'auth') or { panic(err) }
 	// Redis before ACL support accepts AUTH password, without an explicit username.
-	assert auth == ['AUTH', password]
+	if username == '' || username == 'default' {
+		assert auth == ['AUTH', password]
+	} else {
+		assert auth == ['AUTH', username, password]
+	}
 	server.write_data('+OK\r\n'.bytes()) or { panic(err) }
 	ping := string_values(server.read_response() or { panic(err) }, 'ping') or { panic(err) }
 	assert ping == ['PING']
 	server.write_data('+PONG\r\n'.bytes()) or { panic(err) }
 }
 
-fn test_resp2_fallback_preserves_password_only_authentication() {
-	for username in ['default', ''] {
+fn test_resp2_fallback_preserves_authentication() {
+	for config in [Config{ password: 'fallback-password' },
+		Config{ username: '', password: 'fallback-password' }, Config{ username: 'app' }] {
 		mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 		listener.set_accept_timeout(2 * time.second)
 		defer { listener.close() or {} }
 		port := listener.addr()!.port()!
-		password := 'fallback-password'
-		worker := spawn resp2_password_fallback_server(mut listener, password)
+		worker := spawn resp2_auth_fallback_server(mut listener, config.username, config.password)
 		mut db := connect(
 			host:          '127.0.0.1'
 			port:          port
-			username:      username
-			password:      password
+			username:      config.username
+			password:      config.password
 			read_timeout:  2 * time.second
 			write_timeout: 2 * time.second
 		)!
 		defer { db.close() or {} }
 		assert db.version == 2
-		assert db.config.username == 'default'
+		assert db.config.username == if config.username == '' { 'default' } else { config.username }
 		assert db.ping()! == 'PONG'
 		worker.wait()
 	}

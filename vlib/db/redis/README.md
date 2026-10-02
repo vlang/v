@@ -328,7 +328,7 @@ retain their Redis side effects and permission checks.
 and `client_reply('SKIP')` send without reading a reply. Use a dedicated connection, send any
 suppressed commands through its transport, and restore replies with `client_reply('ON')`
 before calling other wrappers. `quit` closes the connection; `shutdown` accepts clean EOF
-as success and propagates server errors and timeouts.
+before a response prefix as success and propagates incomplete replies, server errors, and timeouts.
 
 ### Custom Commands
 ```v ignore
@@ -392,6 +392,9 @@ Blocking Redis operations still need a sufficiently long client read timeout.
 
 Authentication supports `username` (default: `'default'`) and `password`; `database` selects
 a logical database during connection. `select_db` changes it and retains it across reconnects.
+Named ACL users authenticate even with an empty password, including Redis users with `nopass`.
+Successful `auth_user` and `hello` calls with `AUTH` save their credentials for reconnects;
+failed authentication leaves the saved credentials unchanged.
 `keep_alive` enables TCP keepalive.
 
 TLS configuration includes `tls_validate`, `tls_ca`, `tls_cert`, `tls_key`, `tls_server_name`,

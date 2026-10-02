@@ -294,7 +294,8 @@ fn shutdown_peer(mut connection net.TcpConn, response string, delay time.Duratio
 }
 
 fn test_shutdown_distinguishes_clean_close_error_and_timeout() {
-	for response in ['', '-ERR shutdown denied\r\n', ':1\r\n', 'timeout'] {
+	for response in ['', '-ERR shutdown denied\r\n', ':1\r\n', 'timeout', '-ERR shutdown denied',
+		'-', '+', ':', '$', '*1\r\n', '*1\r\n-ERR denied'] {
 		mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 		mut client := net.dial_tcp(listener.addr()!.str())!
 		client.set_read_timeout(if response == 'timeout' {
@@ -311,7 +312,7 @@ fn test_shutdown_distinguishes_clean_close_error_and_timeout() {
 		mut failed := false
 		db.shutdown('NOSAVE') or {
 			failed = true
-			if response == 'timeout' {
+			if response == 'timeout' || !response.ends_with('\r\n') || response == '*1\r\n' {
 				assert err is redis.ConnectionError
 				assert db.closed
 			} else if response == ':1\r\n' {

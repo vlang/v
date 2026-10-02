@@ -155,6 +155,7 @@ pub fn (mut db DB) client_no_touch(enabled bool) !string {
 }
 
 // hello negotiates a RESP version with optional AUTH or SETNAME arguments.
+// Successful AUTH credentials are restored when reconnecting.
 pub fn (mut db DB) hello(version int, options ...string) !RedisValue {
 	if version !in [2, 3] {
 		return CommandError{ message: '`hello()`: version must be 2 or 3' }
@@ -174,6 +175,20 @@ pub fn (mut db DB) hello(version int, options ...string) !RedisValue {
 		return err
 	}
 	db.version = version
+	mut index := 0
+	for index < options.len {
+		match options[index].to_upper() {
+			'AUTH' {
+				if index + 2 < options.len {
+					db.config.username = options[index + 1]
+					db.config.password = options[index + 2]
+				}
+				index += 3
+			}
+			'SETNAME' { index += 2 }
+			else { index++ }
+		}
+	}
 	return resp
 }
 
@@ -409,7 +424,7 @@ pub fn (mut db DB) quit() !string {
 }
 
 // shutdown stops Redis using optional SAVE, NOSAVE, NOW, FORCE, or ABORT arguments.
-// A clean connection close confirms shutdown; server errors and transport timeouts are propagated.
+// A clean close before any response prefix confirms shutdown; incomplete replies are errors.
 pub fn (mut db DB) shutdown(options ...string) ! {
 	if db.pipeline_mode || db.transaction_mode {
 		return CommandError{ message: '`shutdown()`: server shutdown cannot be queued' }
@@ -421,11 +436,15 @@ pub fn (mut db DB) shutdown(options ...string) ! {
 		db.close_uncertain_server_transport(err)
 		return err
 	}
-	response := db.read_response() or {
+	prefix := db.read_response_prefix() or {
 		if err is ConnectionError && err.eof {
 			db.close()!
 			return
 		}
+		db.close_uncertain_server_transport(err)
+		return err
+	}
+	response := db.read_response_payload(prefix, false) or {
 		db.close_uncertain_server_transport(err)
 		return err
 	}

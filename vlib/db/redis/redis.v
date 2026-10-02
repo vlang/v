@@ -172,7 +172,8 @@ pub fn connect(config Config) !DB {
 fn (mut db DB) negotiate() ! {
 	db.version = 3
 	mut hello := ['HELLO', '3']
-	if db.config.password != '' {
+	authenticate := db.config.password != '' || db.config.username !in ['', 'default']
+	if authenticate {
 		hello << ['AUTH', if db.config.username == '' { 'default' } else { db.config.username },
 			db.config.password]
 	}
@@ -184,7 +185,7 @@ fn (mut db DB) negotiate() ! {
 				return AuthError{ message: err.msg() }
 			}
 			db.version = 2
-			if db.config.password != '' {
+			if authenticate {
 				if db.config.username == '' || db.config.username == 'default' {
 					db.auth(db.config.password)!
 				} else {
@@ -1032,6 +1033,11 @@ fn (mut db DB) read_response() !RedisValue {
 }
 
 fn (mut db DB) read_response_value(allow_error bool) !RedisValue {
+	prefix := db.read_response_prefix()!
+	return db.read_response_payload(prefix, allow_error)
+}
+
+fn (mut db DB) read_response_prefix() !u8 {
 	db.resp_buf.clear()
 	unsafe { db.resp_buf.grow_len(1) }
 	// Read the first non-empty, non-CR/LF prefix byte. Some transports or
@@ -1087,7 +1093,11 @@ fn (mut db DB) read_response_value(allow_error bool) !RedisValue {
 		continue
 	}
 
-	match db.resp_buf[0] {
+	return db.resp_buf[0]
+}
+
+fn (mut db DB) read_response_payload(prefix u8, allow_error bool) !RedisValue {
+	match prefix {
 		`+` { // Simple string
 			return db.read_response_simple_string()!
 		}
