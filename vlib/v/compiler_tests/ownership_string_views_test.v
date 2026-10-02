@@ -336,3 +336,87 @@ fn main() {
 		assert out.output.contains('use of moved value: `result`'), '${mode}: ${out.output}'
 	}
 }
+
+fn test_ownership_dereferenced_pointer_calls_retain_string_owner_loans() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_pointer_call_view_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	for expression in ['*pointer(&original)', '*forward(pointer(&original))'] {
+		for action, diagnostic in {
+			'original = "replacement".to_owned()': 'cannot assign to `original` because it is borrowed'
+			'consume(original)':                   'cannot move `original` because it is borrowed'
+		} {
+			os.write_file(source, 'fn pointer(value &string) &string { return value }
+fn forward(value &string) &string { return value }
+fn consume(value string) { _ = value }
+fn main() {
+	mut original := "owned text".to_owned()
+	view := ${expression}
+	${action}
+	assert view == "owned text"
+}
+')!
+			for mode in ['-no-parallel', ''] {
+				out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+				assert out.exit_code != 0, out.output
+				assert out.output.contains(diagnostic), out.output
+			}
+		}
+	}
+}
+
+fn test_ownership_user_substr_unsafe_method_retains_its_owned_return() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_user_substr_unsafe_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'struct Source {}
+fn (source Source) substr_unsafe() string { return "independent".to_owned() }
+fn consume(value string) { _ = value }
+fn main() {
+	result := Source{}.substr_unsafe()
+	consume(result)
+	println(result)
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		assert out.exit_code != 0, out.output
+		assert out.output.contains('use of moved value: `result`'), out.output
+	}
+}
+
+fn test_ownership_cloned_returned_fallback_detaches_source_loan() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_returned_fallback_loan_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	for last_use in ['assert result == "all"', 'consume(result)\n\tprintln(result)'] {
+		os.write_file(source, 'fn consume(value string) { _ = value }
+fn main() {
+	mut original := "fallback".to_owned()
+	mut result := "".to_owned()
+	{
+		view := original.substr_unsafe(1, 4)
+		result = "abc".substr_or(0, 4, view)
+		assert view == "all"
+		assert unsafe { result.str != view.str }
+	}
+	original = "replacement".to_owned()
+	${last_use}
+}
+')!
+		for mode in ['-no-parallel', ''] {
+			command := if last_use.starts_with('consume') { '-check' } else { '-cc clang run' }
+			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} ${command} ${os.quoted_path(source)}')
+			assert !out.output.contains('cannot assign to `original`'), out.output
+			if last_use.starts_with('consume') {
+				assert out.exit_code != 0, out.output
+				assert out.output.contains('use of moved value: `result`'), out.output
+			} else {
+				assert out.exit_code == 0, out.output
+			}
+		}
+	}
+}

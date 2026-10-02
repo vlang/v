@@ -1992,7 +1992,7 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, visited 
 		mut ancestors := visited.clone()
 		ancestors << id
 		node := tc.a.node(id)
-		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+		if node.kind in [.paren, .cast_expr, .as_expr, .expr_stmt] && node.children_count > 0 {
 			return tc.returned_receiver_local_storage(tc.a.child(node, 0), ancestors,
 				through_call, local_sources)
 		}
@@ -2035,6 +2035,11 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, visited 
 				child_id = tc.a.child(child, 0)
 				child = tc.a.node(child_id)
 			}
+			if child.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init] {
+				if local := tc.returned_receiver_local_storage_in_value(child_id, ancestors, local_sources) {
+					return local
+				}
+			}
 			if child.kind == .index {
 				is_range := child.value == 'range' || (child.children_count > 1
 					&& tc.a.child_node(child, 1).kind == .range)
@@ -2052,15 +2057,33 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, visited 
 			}
 			return none
 		}
-		if node.kind == .call {
-			for source in tc.ownership_call_result_sources(id) {
-				if source.target_suffix.len == 0 {
+		if node.kind in [.call, .selector, .index] {
+			mut sources := tc.ownership_call_result_sources(id)
+			if projection := tc.ownership_call_projection(id) {
+				if projection.suffix.len > 0 {
+					sources = tc.ownership_call_result_projection_sources(projection.call_id, projection.suffix)
+				}
+			}
+			for source in sources {
+				projected_type := tc.returned_receiver_projection_type(tc.resolve_type(id), source.target_suffix) or {
+					if tc.returned_receiver_call_source_borrows_storage(id, source.arg_id) {
+						if local := tc.returned_receiver_local_storage_source(source.arg_id, source.source_suffix, ancestors, local_sources) {
+							return local
+						}
+					} else if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
+						return local
+					}
+					continue
+				}
+				if projected_type is Pointer {
 					if local := tc.returned_receiver_local_storage_source(source.arg_id, source.source_suffix, ancestors, local_sources) {
 						return local
 					}
 				}
 			}
-			return none
+			if node.kind == .call {
+				return none
+			}
 		}
 		if node.kind == .ident {
 			if !through_call || unalias_type(tc.resolve_type(id)) is Pointer {
@@ -2143,11 +2166,89 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_source(id flat.NodeId, s
 		if tc.ownership_borrowed_alias_source(name, false) != none {
 			return tc.returned_receiver_local_storage_name(name)
 		}
-		projected_type := tc.returned_receiver_projection_type(tc.resolve_type(id), suffix) or { return none }
+		projected_type := tc.returned_receiver_projection_type(tc.resolve_type(id), suffix) or {
+			return tc.returned_receiver_local_storage_name(name)
+		}
 		if projected_type is Pointer {
 			return none
 		}
 		return tc.returned_receiver_local_storage_name(name)
+	}
+	return none
+}
+
+// Owning parameters transfer payloads; borrowed parameters may retain the argument's storage.
+fn (mut tc TypeChecker) returned_receiver_call_source_borrows_storage(id flat.NodeId, arg_id flat.NodeId) bool {
+	$if ownership ? {
+		node := tc.a.node(id)
+		info := tc.resolve_call_info(id, node) or { return true }
+		for i, param in info.params {
+			if source_id := tc.ownership_call_arg_for_return_param_info(node, info, i) {
+				if source_id == arg_id {
+					return tc.ownership_call_param_is_mut(info.name, i)
+						|| unalias_type(param) is Pointer
+				}
+			}
+		}
+	}
+	return true
+}
+
+// Returned wrappers and aggregates can contain the same borrowed pointers as a direct return.
+fn (mut tc TypeChecker) returned_receiver_local_storage_in_projection(id flat.NodeId, suffix string, visited []flat.NodeId, local_sources map[string]flat.NodeId) ?string {
+	$if ownership ? {
+		if suffix.len == 0 {
+			return tc.returned_receiver_local_storage_in_value(id, visited, local_sources)
+		}
+		if !tc.valid_node_id(id) || id in visited {
+			return none
+		}
+		if projected := tc.ownership_aggregate_projection_expr(id, suffix) {
+			return tc.returned_receiver_local_storage_in_value(projected, visited, local_sources)
+		}
+		mut ancestors := visited.clone()
+		ancestors << id
+		node := tc.a.node(id)
+		if node.kind == .ident {
+			if source := local_sources[node.value] {
+				return tc.returned_receiver_local_storage_in_projection(source, suffix, ancestors, local_sources)
+			}
+			for source in tc.visible_fn_local_binding_rhs_before(VisibleMutationFnDecl{ idx: tc.fn_context.node_id, mod: tc.cur_module }, node.value, id) {
+				if local := tc.returned_receiver_local_storage_in_projection(source, suffix, ancestors, local_sources) {
+					return local
+				}
+			}
+		}
+		if node.kind == .call {
+			for source in tc.ownership_call_result_projection_sources(id, suffix) {
+				projected_type := tc.returned_receiver_projection_type(tc.resolve_type(id), suffix + source.target_suffix) or {
+					if tc.returned_receiver_call_source_borrows_storage(id, source.arg_id) {
+						if local := tc.returned_receiver_local_storage_source(source.arg_id, source.source_suffix, ancestors, local_sources) {
+							return local
+						}
+					} else if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
+						return local
+					}
+					continue
+				}
+				if projected_type is Pointer {
+					if local := tc.returned_receiver_local_storage_source(source.arg_id, source.source_suffix, ancestors, local_sources) {
+						return local
+					}
+				} else if source.target_suffix.len == 0 {
+					if local := tc.returned_receiver_local_storage_in_projection(source.arg_id, source.source_suffix, ancestors, local_sources) {
+						return local
+					}
+				} else if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
+					return local
+				}
+			}
+		}
+		if projected_type := tc.returned_receiver_projection_type(tc.resolve_type(id), suffix) {
+			if projected_type is Pointer {
+				return tc.returned_receiver_local_storage_source(id, suffix, visited, local_sources)
+			}
+		}
 	}
 	return none
 }
@@ -2172,7 +2273,11 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 		mut ancestors := visited.clone()
 		ancestors << id
 		node := tc.a.node(id)
-		if node.kind in [.paren, .cast_expr, .expr_stmt, .field_init] && node.children_count > 0 {
+		if node.kind in [.paren, .cast_expr, .as_expr, .expr_stmt, .field_init] && node.children_count > 0 {
+			return tc.returned_receiver_local_storage_in_value(tc.a.child(node, 0), ancestors, local_sources)
+		}
+		if node.kind == .postfix && node.op == .not && typ is ArrayFixed
+			&& node.children_count == 1 {
 			return tc.returned_receiver_local_storage_in_value(tc.a.child(node, 0), ancestors, local_sources)
 		}
 		if node.kind in [.block, .match_branch] {
@@ -2196,6 +2301,18 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 			}
 			return tc.returned_receiver_local_storage_in_value(tc.a.child(node, node.children_count - 1), ancestors, branch_sources)
 		}
+		if node.kind == .assoc && typ is Struct && node.children_count > 0 {
+			for field in tc.struct_fields_for_type(typ.name) {
+				if field_id := tc.ownership_aggregate_field_expr(id, field.name) {
+					if local := tc.returned_receiver_local_storage_in_value(field_id, ancestors, local_sources) {
+						return local
+					}
+				} else if local := tc.returned_receiver_local_storage_in_projection(tc.a.child(node, 0), '.' + field.name, ancestors, local_sources) {
+					return local
+				}
+			}
+			return none
+		}
 		if node.kind in [.if_expr, .match_stmt, .struct_init, .assoc, .array_literal, .array_init,
 			.map_init, .or_expr] {
 			start := if node.kind in [.if_expr, .match_stmt] { 1 } else { 0 }
@@ -2207,7 +2324,22 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 		}
 		if node.kind == .call {
 			for source in tc.ownership_call_result_sources(id) {
-				projected_type := tc.returned_receiver_projection_type(typ, source.target_suffix) or { continue }
+				projected_type := tc.returned_receiver_projection_type(typ, source.target_suffix) or {
+					// A boxed interface or sum may hide the concrete payload field. Its recorded
+					// return alias still needs to outlive the caller's local storage.
+					if tc.returned_receiver_call_source_borrows_storage(id, source.arg_id) {
+						if local := tc.returned_receiver_local_storage_source(source.arg_id, source.source_suffix, ancestors, local_sources) {
+							return local
+						}
+					} else {
+						// Owning value arguments transfer their payload rather than borrowing
+						// the argument's stack slot. Inspect only references within that value.
+						if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
+							return local
+						}
+					}
+					continue
+				}
 				if projected_type is Pointer {
 					if local := tc.returned_receiver_local_storage_source(source.arg_id, source.source_suffix, ancestors, local_sources) {
 						return local
@@ -2235,7 +2367,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 			for name, borrows in tc.ownership_state().borrowed_vars {
 				for borrow in borrows {
 					if borrow.borrower == node.value || ownership_storage_key_is_descendant(borrow.borrower, node.value) {
-						projected_type := tc.returned_receiver_projection_type(typ, borrow.borrower[node.value.len..]) or { continue }
+						projected_type := tc.returned_receiver_projection_type(typ, borrow.borrower[node.value.len..]) or {
+							if local := tc.returned_receiver_local_storage_name(name) {
+								return local
+							}
+							continue
+						}
 						if projected_type is Pointer {
 							if local := tc.returned_receiver_local_storage_name(name) {
 								return local
@@ -2267,6 +2404,16 @@ fn (tc &TypeChecker) returned_receiver_projection_type(typ Type, suffix string) 
 			base := unwrap_all_pointers(clean)
 			if base is Struct {
 				field_type := tc.struct_field_type(base.name, field) or { return none }
+				return tc.returned_receiver_projection_type(field_type, rest)
+			}
+			if base is Interface {
+				field_type := tc.interface_field_type(base.name, field) or { return none }
+				return tc.returned_receiver_projection_type(field_type, rest)
+			}
+			if base is SumType {
+				field_type := tc.sum_shared_field_type(base, field) or {
+					tc.sum_unique_variant_field_type(base, field) or { return none }
+				}
 				return tc.returned_receiver_projection_type(field_type, rest)
 			}
 			return none

@@ -51,6 +51,7 @@ Arguments that may be returned, such as the fallback of `string.substr_or()`, tr
 instead. Use `.clone()` when the caller also needs to keep an owned fallback. User functions with
 by-value string parameters still consume owned strings. When a parameter takes ownership, a regular
 string or borrowed view passed to it is copied for the callee, leaving the caller's value available.
+Returned copies remain owned; use `.clone()` when retaining another copy.
 
 ## Move semantics
 
@@ -122,7 +123,8 @@ A reference returned through a receiver call or an addressed range remains tied 
 storage and cannot escape the ownership scope of a local value. Caller-backed mutable parameters
 and explicit heap-pointer receivers can return such references. The check follows nested return
 aliases to their source regardless of call depth; unresolved alias cycles are rejected.
-The same rule applies to references returned inside options, results, arrays, or struct fields.
+The same rule applies to references returned inside options, results, arrays, struct fields,
+interfaces, or sum-type payloads.
 
 ### Struct ownership markers
 
