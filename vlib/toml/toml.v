@@ -204,12 +204,27 @@ fn decode_narrow_int_array[T](values []Any) []T {
 	return arr
 }
 
+// enum_payload_int returns the number stored in `value` when `value` is a TOML
+// integer, and none otherwise. `Any.int()` coerces booleans and floats and
+// folds every other value to 0, so using it here would turn a mismatched
+// element into an arbitrary enum member instead of skipping it.
+fn enum_payload_int(value Any) ?int {
+	return match value {
+		int { int(value) }
+		i64 { int(i64(value)) }
+		else { none }
+	}
+}
+
 // decode_enum_array decodes `values` into a `[]T` of enums. Enum values are
-// stored as their number in TOML, like they are for a plain enum field.
+// stored as their number in TOML, like they are for a plain enum field. An
+// element that is not an integer does not fit the element type and is skipped.
 fn decode_enum_array[T](values []Any) []T {
 	mut arr := []T{cap: values.len}
 	for value in values {
-		arr << unsafe { T(value.int()) }
+		if n := enum_payload_int(value) {
+			arr << unsafe { T(n) }
+		}
 	}
 	return arr
 }
@@ -318,7 +333,11 @@ fn decode_map[K, T](current map[K]T, values map[string]Any) map[K]T {
 		} $else $if T is Any {
 			decoded[key] = value
 		} $else $if T is $enum {
-			decoded[key] = unsafe { T(value.int()) }
+			// A value that is not an integer does not fit the element type, so the
+			// key is left out rather than folded into an arbitrary enum member.
+			if n := enum_payload_int(value) {
+				decoded[key] = unsafe { T(n) }
+			}
 		} $else $if T is $map {
 			if value is map[string]Any {
 				mut item := decode_map(T{}, value)

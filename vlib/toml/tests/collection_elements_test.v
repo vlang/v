@@ -69,6 +69,44 @@ fn test_decode_enum_in_map() {
 	}
 }
 
+// A non-integer does not fit an enum element. `Any.int()` coerces booleans and
+// floats and folds every other value to 0, so before this guard these elements
+// were read as `worker` or `executive` instead of being skipped.
+fn test_decode_enum_in_array_skips_mismatched() {
+	c := toml.decode[Collections]('titles = [0, "skip", true, 1, 1.5, { x = 1 }, [1], 0]') or {
+		panic(err)
+	}
+	assert c.titles == [JobTitle.worker, JobTitle.executive, JobTitle.worker]
+}
+
+fn test_decode_enum_in_map_skips_mismatched() {
+	c := toml.decode[Collections]('[by_title]
+zero = 0
+one = 1
+text = "skip"
+flag = true
+fraction = 1.5
+table = { x = 1 }
+list = [1]
+') or {
+		panic(err)
+	}
+	assert c.by_title == {
+		'zero': JobTitle.worker
+		'one':  JobTitle.executive
+	}
+}
+
+fn test_decode_enum_map_with_all_mismatched_values_is_empty() {
+	c := toml.decode[Collections]('[by_title]
+text = "skip"
+flag = true
+') or {
+		panic(err)
+	}
+	assert c.by_title.len == 0
+}
+
 fn test_decode_maps_in_array() {
 	c := toml.decode[Collections](toml_text) or { panic(err) }
 	assert c.tables == [
