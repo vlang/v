@@ -345,7 +345,8 @@ result := sql db {
 
 Dynamic ORM blocks can build `WHERE` and `SET` data conditionally. Commas between
 emitted dynamic `where` items are joined with `AND`; use `&&` and `||` inside an
-item for explicit boolean conditions.
+item for explicit boolean conditions. Values may use indexed struct fields, such as
+`name == members[0].name` or `id == members_by_name['Alice'].id`.
 
 The formatter preserves conditions, commas and comments in query-data blocks,
 including standalone `sql { ... }` declaration assignments while editing.
