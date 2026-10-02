@@ -768,21 +768,82 @@ pub fn (mut c Client) listen[P](filter P) !SubscriptionFilter {
 	if !c.is_stateless_2026() {
 		return error('mcp.Client.listen: subscriptions/listen requires the 2026-07-28 protocol')
 	}
-	request := new_request(c.next_request_id(), 'subscriptions/listen', filter)
-	response := c.send_request(request)!
-	if response.error.code != 0 {
-		return response.error.err()
-	}
-	for notification in c.notifications {
-		if notification.method != 'notifications/subscriptions/acknowledged' {
+	c.ensure_initialized()!
+	request := c.inject_stateless_meta(new_request(c.next_request_id(), 'subscriptions/listen',
+		filter))
+	c.transport.send(request.encode())!
+	return c.wait_for_listen_ack(request.id)
+}
+
+// wait_for_listen_ack receives until the server acknowledges a
+// `subscriptions/listen` request. A live stdio subscription stays open and
+// never answers the request itself, so the acknowledgment notification is the
+// success signal there; over HTTP the stream is finite, and the closing
+// SubscriptionsListenResult is consumed before returning.
+fn (mut c Client) wait_for_listen_ack(request_id string) !SubscriptionFilter {
+	wait_for_result := c.transport is HttpTransport
+	mut acknowledged := SubscriptionFilter{}
+	mut got_ack := false
+	for {
+		raw_message := c.transport.receive() or {
+			if got_ack {
+				// A finite HTTP stream may legitimately end right after the
+				// acknowledgment.
+				return acknowledged
+			}
+			return err
+		}
+		envelope := decode_envelope(raw_message)!
+		if envelope.method.len != 0 {
+			just_acknowledged := envelope.method == listen_acknowledged_method && !got_ack
+			if just_acknowledged {
+				ack := json.decode[ListenAcknowledgement](envelope.params.trim_space()) or {
+					return error('mcp.Client.listen: malformed subscription acknowledgment')
+				}
+				acknowledged = ack.notifications
+				got_ack = true
+			}
+			if is_notification_id(envelope.id) {
+				c.notifications << Notification{
+					method: envelope.method
+					params: envelope.params
+				}
+			} else {
+				c.server_requests << Request{
+					id:     envelope.id
+					method: envelope.method
+					params: envelope.params
+				}
+			}
+			if just_acknowledged && !wait_for_result {
+				return acknowledged
+			}
 			continue
 		}
-		acknowledged := json.decode[ListenAcknowledgement](notification.params.trim_space()) or {
-			return SubscriptionFilter{}
+		response := Response{
+			id:     envelope.id
+			result: envelope.result
+			error:  envelope.error
 		}
-		return acknowledged.notifications
+		if response.id == request_id {
+			if response.error.code != 0 {
+				return response.error.err()
+			}
+			if got_ack {
+				return acknowledged
+			}
+			// The closing result arrived before the acknowledgment; keep
+			// waiting for the acknowledgment.
+			continue
+		}
+		if !got_ack && is_notification_id(response.id) && response.error.code != 0 {
+			// A transport level rejection, such as an HTTP 406, is reported
+			// under a null id.
+			return response.error.err()
+		}
+		c.pending_responses[response.id] = response
 	}
-	return error('mcp.Client.listen: server did not acknowledge the subscription')
+	return error('mcp.Client.listen: response loop exited unexpectedly')
 }
 
 // ListenAcknowledgement is the first message of a 2026-07-28 subscription
@@ -926,13 +987,20 @@ fn new_http_transport(url string, config ClientConfig) !HttpTransport {
 fn (mut transport HttpTransport) send(message string) ! {
 	mut header := transport.header
 	header.set(.content_type, default_content_type)
-	header.set(.accept, streamable_http_accept)
+	method := transport.request_method(message)
+	if method == 'subscriptions/listen' {
+		// An HTTP listen stream is only served as a finite SSE response; the
+		// stateless server gate rejects a JSON capable Accept for it.
+		header.set(.accept, event_stream_content_type)
+	} else {
+		header.set(.accept, streamable_http_accept)
+	}
 	if transport.stateless_2026 {
 		// The 2026-07-28 headers mirror the body, so a mismatch is impossible
 		// by construction. The version comes from the `_meta` the client just
 		// injected rather than from a field that could drift.
 		header.set_custom(mcp_protocol_version_header, transport.request_version(message)) or {}
-		header.set_custom(mcp_method_header, transport.request_method(message)) or {}
+		header.set_custom(mcp_method_header, method) or {}
 		name := transport.request_target(message)
 		if name != '' {
 			header.set_custom(mcp_name_header, name) or {}

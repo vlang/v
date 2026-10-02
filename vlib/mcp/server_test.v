@@ -1632,6 +1632,51 @@ fn test_http_listen_requires_sse_acceptance() {
 	server.close()
 }
 
+struct MetaMergeProbe {
+	result_type string @[json: resultType]
+	meta        string @[json: '_meta'; raw]
+}
+
+fn test_with_result_meta_member_merges_into_an_existing_meta_object() {
+	merged := with_result_meta_member('{"resultType":"complete","_meta":{"${meta_subscription_id_key}":"7"}}',
+		meta_server_info_key, '{"name":"srv","version":"1.0"}')
+	probe := json.decode[MetaMergeProbe](merged)!
+	assert probe.result_type == 'complete'
+	assert probe.meta.contains('"${meta_subscription_id_key}":"7"')
+	assert probe.meta.contains('"${meta_server_info_key}":{"name":"srv","version":"1.0"}')
+
+	created := with_result_meta_member('{"resultType":"complete"}', meta_server_info_key,
+		'{"name":"srv","version":"1.0"}')
+	created_probe := json.decode[MetaMergeProbe](created)!
+	assert created_probe.result_type == 'complete'
+	assert created_probe.meta.contains('"${meta_server_info_key}"')
+}
+
+fn test_http_listen_client_server_round_trip() {
+	mut server, url := spawn_stateless_server()!
+	mut client := connect_2026(url, ClientConfig{
+		client_info: Implementation{
+			name:    'listen-round-trip'
+			version: '0.1.0'
+		}
+	})!
+
+	filter := client.listen(SubscriptionListenParams{
+		notifications: SubscriptionFilter{
+			tools_list_changed:   true
+			prompts_list_changed: true
+		}
+	})!
+
+	// The server honors only what it can produce: a tool is registered, but
+	// no prompts are.
+	assert filter.tools_list_changed
+	assert !filter.prompts_list_changed
+
+	client.close()
+	server.close()
+}
+
 // mrtr_tool asks for an elicitation the first time and uses the answer on the
 // retry, which is the take-or-require pattern.
 fn mrtr_tool(ctx Context, _ string) !ToolResult {

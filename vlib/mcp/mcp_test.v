@@ -343,6 +343,36 @@ fn test_client_listen_returns_the_acknowledged_subset() {
 	assert subscription_id_of(notifications[0]) or { '' } == '7'
 }
 
+fn test_client_listen_returns_on_the_acknowledgment_without_a_response() {
+	// A live stdio subscription never answers the listen request: the
+	// acknowledged notification alone must unblock `listen`, and nothing past
+	// it may be consumed.
+	mut transport := &MockTransport{
+		incoming: [
+			discover_response_json(),
+			build_notification_message('notifications/subscriptions/acknowledged',
+				'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":"2"}}'),
+		]
+	}
+	mut client := new_client(transport, ClientConfig{
+		stateless_2026:   true
+		protocol_version: protocol_version_2026_07_28
+	})
+
+	filter := client.listen(SubscriptionListenParams{
+		notifications: SubscriptionFilter{
+			tools_list_changed: true
+		}
+	})!
+
+	assert filter.tools_list_changed
+	assert transport.incoming.len == 0
+	// The acknowledgment is delivered like any other notification.
+	notifications := client.take_notifications()
+	assert notifications.len == 1
+	assert subscription_id_of(notifications[0]) or { '' } == '2'
+}
+
 fn test_client_listen_requires_the_2026_protocol() {
 	mut transport := &MockTransport{}
 	mut client := new_client(transport, ClientConfig{})

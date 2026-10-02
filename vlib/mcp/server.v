@@ -2652,14 +2652,26 @@ fn with_result_meta_member(result_json string, key string, value_json string) st
 	mut fields := []string{}
 	mut meta_fields := []string{}
 	if span := find_top_level_object_member(body, '_meta') {
-		fields << body[..span.key_start].trim_space()
+		// JsonSpan.key_start is just past the key, so step back over it to
+		// exclude the existing `"_meta"` member from the kept fields.
+		key_begin := span.key_start - json.encode('_meta').len
+		before := body[..key_begin].trim_space().trim_right(',')
+		if before.len != 0 {
+			fields << before
+		}
 		inner := body[span.obj_start + 1..span.obj_end].trim_space()
 		if inner.len != 0 {
 			meta_fields << inner
 		}
-		fields << body[span.obj_end + 1..].trim_space()
+		after := body[span.obj_end + 1..].trim_space().trim_left(',')
+		if after.len != 0 {
+			fields << after
+		}
 	} else {
-		fields << body.trim_space()
+		trimmed := body.trim_space()
+		if trimmed.len != 0 {
+			fields << trimmed
+		}
 	}
 	meta_fields << member
 	fields << '"_meta":{${meta_fields.join(',')}}'
@@ -2695,7 +2707,8 @@ pub:
 }
 
 // SubscriptionListenParams is the payload of a `subscriptions/listen` request.
-struct SubscriptionListenParams {
+pub struct SubscriptionListenParams {
+pub mut:
 	notifications SubscriptionFilter
 }
 
