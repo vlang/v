@@ -6,6 +6,8 @@ module main
 import os
 import flag
 import v.pref
+import v.scanner
+import v.token
 import v.util
 import v.vmod
 
@@ -106,21 +108,34 @@ fn v_files_in(dir string) ![]string {
 // that occur in the tree are `import a`, `import a.b`, `import a as b` and
 // `import a { x }`; the path is always the token right after `import`.
 fn imports_in_file(path string) ![]string {
+	source := os.read_file(path)!
+	mut files := token.FileSet.new()
+	mut file := files.add_file(path, source.len)
+	file.index_lines(source)
+	mut s := scanner.new_scanner(pref.new_preferences(), .normal)
+	s.init(file, source)
 	mut result := []string{}
-	for line in os.read_lines(path)! {
-		mut rest := line.trim_space()
-		if rest.starts_with('pub ') {
-			rest = rest[4..].trim_space()
-		}
-		if !rest.starts_with('import ') {
+	mut kind := s.scan()
+	for kind != .eof {
+		if kind != .key_import {
+			kind = s.scan()
 			continue
 		}
-		rest = rest[7..].trim_space()
-		// Cut at the first space: both `as b` and `{ x, y }` follow the path.
-		module_path := if space := rest.index(' ') { rest[..space] } else { rest }
-		if module_path.len > 0 {
-			result << module_path
+		kind = s.scan()
+		if kind != .name {
+			continue
 		}
+		mut module_path := s.lit
+		kind = s.scan()
+		for kind == .dot {
+			kind = s.scan()
+			if kind != .name {
+				break
+			}
+			module_path += '.' + s.lit
+			kind = s.scan()
+		}
+		result << module_path
 	}
 	return result
 }

@@ -45,3 +45,5 @@ current directory or one of its parents.
 Dependency names are the paths written in imports, including standard library
 modules and submodules without their own v.mod. A dependency manifest name does
 not replace the import name used in the reported chain.
+
+Imports are read as V tokens, so tabs and comments between tokens are accepted.

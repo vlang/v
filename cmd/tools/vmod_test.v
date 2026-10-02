@@ -140,3 +140,22 @@ fn test_v_mod_why_resolves_dependencies_from_bare_submodules() {
 	assert inner.exit_code == 0, inner.output
 	assert inner.output.trim_space().split_into_lines() == ['app', 'lib.inner'], inner.output
 }
+
+fn test_v_mod_why_reads_tab_separated_import_tokens() {
+	for import_line in ['import\tos', 'import\tos as local_os', 'import\tos { getwd }'] {
+		prepare_fixture()!
+		call := if import_line.contains('local_os') {
+			'local_os.getwd()'
+		} else if import_line.contains('{') {
+			'getwd()'
+		} else {
+			'os.getwd()'
+		}
+		write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n${import_line}\nfn main() { println(${call}) }\n')!
+		checked := os.execute('${vexe} -check .')
+		assert checked.exit_code == 0, checked.output
+		res := mod_why('os')
+		assert res.exit_code == 0, res.output
+		assert res.output.trim_space().split_into_lines() == ['app', 'os'], res.output
+	}
+}
