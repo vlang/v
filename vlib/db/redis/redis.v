@@ -5,7 +5,6 @@ module redis
 import math.big
 import net
 import net.ssl
-import strings
 
 // RESP3 wrapper types
 pub struct RedisBlobError {
@@ -214,175 +213,56 @@ pub fn (mut db DB) reset() ! {
 
 // del deletes a `key`
 pub fn (mut db DB) del(key string) !i64 {
-	// *2\r\n$3\r\nDEL\r\n$6\r\ncounter\r\n
-	// send cmd
-	db.cmd_buf.clear()
-	db.cmd_buf << '*2\r\n$3\r\nDEL\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	if db.pipeline_mode {
-		db.pipeline_buffer << db.cmd_buf
-		db.pipeline_cmd_count++
-	} else {
-		db.write_data(db.cmd_buf)!
-
-		// read resp
-		return db.read_response()! as i64
-	}
-	return 0
+	return db.execute_i64(['DEL', key])
 }
 
-// set stores a `key`-value` pair in Redis. Supported value types: number, string, []u8
+// set stores a key-value pair in Redis. Supported value types: integer, string, []u8.
 pub fn (mut db DB) set[T](key string, value T) !string {
-	// *3\r\n$3\r\nSET\r\n$4\r\nname\r\n$5\r\nVlang\r\n
-	db.cmd_buf.clear()
-	db.cmd_buf << '*3\r\n$3\r\nSET\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	$if T is $int {
-		val_str := value.str()
-		db.cmd_buf << '\$${val_str.len}\r\n${val_str}'.bytes()
-	} $else $if T is string {
-		db.cmd_buf << '\$${value.len}\r\n${value}'.bytes()
-	} $else $if T is []u8 {
-		db.cmd_buf << '\$${value.len}\r\n'.bytes()
-		db.cmd_buf << value
-	} $else {
-		return error('`set()`: unsupported value type. Allowed: number, string, []u8')
-	}
-	db.cmd_buf << '\r\n'.bytes()
-	if db.pipeline_mode {
-		db.pipeline_buffer << db.cmd_buf
-		db.pipeline_cmd_count++
-	} else {
-		db.write_data(db.cmd_buf)!
-		return db.read_response()! as string
-	}
-	return ''
+	return db.execute_string(['SET', key, value_string(value, 'set')!])
 }
 
-// get retrieves the value of a `key`. Supported return types: string, int, []u8
+// get retrieves the value of a key. Supported return types: string, integer, []u8.
 pub fn (mut db DB) get[T](key string) !T {
-	// *2\r\n$3\r\nGET\r\n$4\r\nname\r\n
-	// send cmd
-	db.cmd_buf.clear()
-	db.cmd_buf << '*2\r\n$3\r\nGET\r\n$${key.len}\r\n${key}\r\n'.bytes()
+	validate_bulk_type[T]('get')!
+	resp := db.cmd('GET', key)!
 	if db.pipeline_mode {
-		db.pipeline_buffer << db.cmd_buf
-		db.pipeline_cmd_count++
-	} else {
-		db.write_data(db.cmd_buf)!
-		resp := db.read_response()!
-		match resp {
-			[]u8 {
-				$if T is string {
-					return resp.bytestr()
-				} $else $if T is $int {
-					return T(resp.bytestr().i64())
-				} $else $if T is []u8 {
-					return resp
-				}
-			}
-			RedisNull {
-				return error('`get()`: key ${key} not found')
-			}
-			else {
-				return error('`get()`: unexpected response type')
-			}
-		}
-
-		return error('`get()`: unsupported data type')
+		return T{}
 	}
-	return T{}
+	if resp is RedisNull {
+		return error('`get()`: key ${key} not found')
+	}
+	return bulk_value[T](resp, 'get')
 }
 
 // incr increments the integer value of a `key` by 1
 pub fn (mut db DB) incr(key string) !i64 {
-	// *2\r\n$4\r\nINCR\r\n$6\r\ncounter\r\n
-	// send cmd
-	db.cmd_buf.clear()
-	db.cmd_buf << '*2\r\n$4\r\nINCR\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	if db.pipeline_mode {
-		db.pipeline_buffer << db.cmd_buf
-		db.pipeline_cmd_count++
-	} else {
-		db.write_data(db.cmd_buf)!
-
-		// read resp
-		return db.read_response()! as i64
-	}
-	return 0
+	return db.execute_i64(['INCR', key])
 }
 
 // decr decrements the integer value of a `key` by 1
 pub fn (mut db DB) decr(key string) !i64 {
-	// *2\r\n$4\r\nDECR\r\n$6\r\ncounter\r\n
-	// send cmd
-	db.cmd_buf.clear()
-	db.cmd_buf << '*2\r\n$4\r\nDECR\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	if db.pipeline_mode {
-		db.pipeline_buffer << db.cmd_buf
-		db.pipeline_cmd_count++
-	} else {
-		db.write_data(db.cmd_buf)!
-
-		// read resp
-		return db.read_response()! as i64
-	}
-	return 0
+	return db.execute_i64(['DECR', key])
 }
 
-// hset sets multiple `key`-`value` pairs in a hash. Supported value types: string, int, []u8
+// hset sets multiple fields in a hash. Supported value types: string, integer, []u8.
 pub fn (mut db DB) hset[T](key string, m map[string]T) !int {
-	// HSET user:1 name "John" age 30
-	// *6\r\n$4\r\nHSET\r\n$6\r\nuser:1\r\n$4\r\nname\r\n$4\r\nJohn\r\n$3\r\nage\r\n$2\r\n30\r\n
-	db.cmd_buf.clear()
-	db.cmd_buf << '*${2 + m.len * 2}\r\n$4\r\nHSET\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	for k, v in m {
-		db.cmd_buf << '\$${k.len}\r\n${k}\r\n'.bytes()
-		$if T is string {
-			db.cmd_buf << '\$${v.len}\r\n${v}\r\n'.bytes()
-		} $else $if T is $int {
-			v_str := v.str()
-			db.cmd_buf << '\$${v_str.len}\r\n${v_str}\r\n'.bytes()
-		} $else $if T is []u8 {
-			// Write bulk string header correctly (no stray '$' after the length)
-			db.cmd_buf << '\$${v.len}\r\n'.bytes()
-			db.cmd_buf << v
-			db.cmd_buf << '\r\n'.bytes()
-		} $else {
-			return error('`hset()`: unsupported value type. Allowed: number, string, []u8')
-		}
+	validate_bulk_type[T]('hset')!
+	mut args := ['HSET', key]
+	for field, value in m {
+		args << field
+		args << value_string(value, 'hset')!
 	}
-	if db.pipeline_mode {
-		db.pipeline_buffer << db.cmd_buf
-		db.pipeline_cmd_count++
-	} else {
-		db.write_data(db.cmd_buf)!
-		return int(db.read_response()! as i64)
-	}
-	return 0
+	return int(db.execute_i64(args)!)
 }
 
-// hget retrieves the value of a hash field. Supported return types: string, int, []u8
+// hget retrieves a hash field. Supported return types: string, integer, []u8.
 pub fn (mut db DB) hget[T](key string, m_key string) !T {
-	// HGET user:1 name
-	// *3\r\n$4\r\nHGET\r\n$6\r\nuser:1\r\n$4\r\nname\r\n
-	db.cmd_buf.clear()
-	db.cmd_buf << '*3\r\n$4\r\nHGET\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	db.cmd_buf << '\$${m_key.len}\r\n${m_key}\r\n'.bytes()
+	validate_bulk_type[T]('hget')!
+	resp := db.cmd('HGET', key, m_key)!
 	if db.pipeline_mode {
-		db.pipeline_buffer << db.cmd_buf
-		db.pipeline_cmd_count++
-	} else {
-		db.write_data(db.cmd_buf)!
-		resp := db.read_response()! as []u8
-		$if T is string {
-			return resp.bytestr()
-		} $else $if T is $int {
-			return resp.bytestr().i64()
-		} $else $if T is []u8 {
-			return resp
-		}
-		return error('`hget()`: unsupported return type. Allowed: number, string, []u8')
+		return T{}
 	}
-	return T{}
+	return bulk_value[T](resp, 'hget')
 }
 
 // hgetall retrieves all fields and values of a hash. Supported value types: string, int, []u8
@@ -392,14 +272,8 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 	$if T !is string && T !is $int && T !is []u8 {
 		return error('`hgetall()`: unsupported value type. Allowed: number, string, []u8')
 	}
-	db.cmd_buf.clear()
-	db.cmd_buf << '*2\r\n$7\r\nHGETALL\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	if db.pipeline_mode {
-		db.pipeline_buffer << db.cmd_buf
-		db.pipeline_cmd_count++
-	} else {
-		db.write_data(db.cmd_buf)!
-		resp := db.read_response()!
+	resp := db.cmd('HGETALL', key)!
+	if !db.pipeline_mode {
 
 		// normalize result into map[string]T regardless of RESP2 array, RESP3 map,
 		// or RedisMap interleaved pairs.
@@ -653,30 +527,17 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 
 // expire sets a `key`'s time to live in `seconds`
 pub fn (mut db DB) expire(key string, seconds int) !bool {
-	// *3\r\n$6\r\nEXPIRE\r\n$6\r\ncounter\r\n$3\r\n600\r\n
-	// send cmd
-	seconds_str := seconds.str()
-	db.cmd_buf.clear()
-	db.cmd_buf << '*3\r\n$6\r\nEXPIRE\r\n$${key.len}\r\n${key}\r\n'.bytes()
-	db.cmd_buf << '\$${seconds_str.len}\r\n${seconds_str}\r\n'.bytes()
+	resp := db.cmd('EXPIRE', key, seconds.str())!
 	if db.pipeline_mode {
-		db.pipeline_buffer << db.cmd_buf
-		db.pipeline_cmd_count++
-	} else {
-		db.write_data(db.cmd_buf)!
-
-		// read resp
-		rv := db.read_response()!
-
-		// normalize to boolean result as before
-		match rv {
-			i64 { return rv != 0 }
-			[]u8 { return rv.bytestr().i64() != 0 }
-			string { return rv.i64() != 0 }
-			else { return error('`expire()`: unexpected response type: ${rv.type_name()}') }
-		}
+		return false
 	}
-	return false
+	// Normalize the response for servers that encode integer replies as strings.
+	match resp {
+		i64 { return resp != 0 }
+		[]u8 { return resp.bytestr().i64() != 0 }
+		string { return resp.i64() != 0 }
+		else { return error('`expire()`: unexpected response type: ${resp.type_name()}') }
+	}
 }
 
 // read_response_bulk_string handles Redis bulk string responses (format: $<length>\r\n<data>\r\n)
@@ -1123,7 +984,7 @@ fn (mut db DB) read_response() !RedisValue {
 		ch := db.resp_buf[0]
 		if ch == `+` || ch == `-` || ch == `:` || ch == `$` || ch == `*` || ch == `#` || ch == `,`
 			|| ch == `(` || ch == `!` || ch == `=` || ch == `%` || ch == `~` || ch == `>`
-			|| ch == `|` {
+			|| ch == `|` || ch == `_` {
 			break
 		}
 		// Give up after bounded attempts and return diagnostics.
@@ -1168,6 +1029,13 @@ fn (mut db DB) read_response() !RedisValue {
 			return db.read_response_array()!
 		}
 		// RESP3-only frames (enabled when db.version >= 3)
+		`_` { // Null
+			if db.version < 3 {
+				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+			}
+			db.read_exact_payload(0)!
+			return RedisNull{}
+		}
 		`#` { // Boolean
 			if db.version < 3 {
 				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
@@ -1241,22 +1109,28 @@ fn (mut db DB) read_response() !RedisValue {
 	return error('`read_response()`: unreachable code')
 }
 
-// cmd sends a custom command to Redis server
-// for example: db.cmd('SET', 'key', 'value')!
+// write_resp_array serializes command arguments as binary-safe RESP bulk strings.
+fn (mut db DB) write_resp_array(args []string) {
+	db.cmd_buf.clear()
+	db.cmd_buf << '*${args.len}\r\n'.bytes()
+	for arg in args {
+		db.cmd_buf << '\$${arg.len}\r\n'.bytes()
+		db.cmd_buf << arg.bytes()
+		db.cmd_buf << '\r\n'.bytes()
+	}
+}
+
+// cmd sends a custom command to Redis server.
+// For example: db.cmd('SET', 'key', 'value')!
 pub fn (mut db DB) cmd(cmd ...string) !RedisValue {
-	mut sb := strings.new_builder(cmd.len * 20)
-	sb.write_string('*${cmd.len}\r\n') // Command array header
-	for arg in cmd {
-		sb.write_string('\$${arg.len}\r\n${arg}\r\n')
-	}
+	db.write_resp_array(cmd)
 	if db.pipeline_mode {
-		db.pipeline_buffer << unsafe { sb.reuse_as_plain_u8_array() }
+		db.pipeline_buffer << db.cmd_buf
 		db.pipeline_cmd_count++
-	} else {
-		db.write_data(unsafe { sb.reuse_as_plain_u8_array() })!
-		return db.read_response()!
+		return RedisNull{}
 	}
-	return RedisNull{}
+	db.write_data(db.cmd_buf)!
+	return db.read_response()!
 }
 
 // pipeline_start start a new pipeline
