@@ -277,7 +277,7 @@ fn test_2026_listen_acknowledgement_is_tagged_with_subscription_id() {
 	assert ack.params.contains('"toolsListChanged":true')
 	assert !ack.params.contains('"promptsListChanged"')
 	// `_meta` binds the stream to the listen request id.
-	assert ack.params.contains('"${meta_subscription_id_key}":"7"')
+	assert ack.params.contains('"${meta_subscription_id_key}":7')
 	assert subscription_id_of(ack) or { '' } == '7'
 
 	// A fanned-out change rides the same stream with the same subscription id.
@@ -288,7 +288,7 @@ fn test_2026_listen_acknowledgement_is_tagged_with_subscription_id() {
 	assert events.len == 1
 	changed := decode_notification(events[0]) or { panic(err) }
 	assert changed.method == 'notifications/tools/list_changed'
-	assert changed.params.contains('"${meta_subscription_id_key}":"7"')
+	assert changed.params.contains('"${meta_subscription_id_key}":7')
 }
 
 fn test_2026_listen_result_shape() {
@@ -297,7 +297,7 @@ fn test_2026_listen_result_shape() {
 	// The schema requires both members on a SubscriptionsListenResult.
 	assert body.contains('"resultType":"complete"')
 	assert body.contains('"_meta"')
-	assert body.contains('"${meta_subscription_id_key}":"7"')
+	assert body.contains('"${meta_subscription_id_key}":7')
 }
 
 fn test_2026_input_required_result_shape() {

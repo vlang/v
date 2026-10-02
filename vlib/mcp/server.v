@@ -2763,9 +2763,10 @@ fn encode_subscription_filter(filter SubscriptionFilter) string {
 
 // tag_subscription_params injects the reserved subscriptionId `_meta` key that
 // every notification on a listen stream must carry. `params_json` MUST be a
-// JSON object; anything else is wrapped rather than mangled.
+// JSON object; anything else is wrapped rather than mangled. `subscription_id`
+// is the raw JSON request ID, including its numeric or string type.
 fn tag_subscription_params(params_json string, subscription_id string) string {
-	meta := '"_meta":{"${meta_subscription_id_key}":${json.encode(subscription_id)}}'
+	meta := '"_meta":{"${meta_subscription_id_key}":${subscription_id}}'
 	trimmed := params_json.trim_space()
 	if trimmed.len < 2 || trimmed[0] != `{` || trimmed[trimmed.len - 1] != `}` {
 		return '{${meta}}'
@@ -2779,9 +2780,9 @@ fn tag_subscription_params(params_json string, subscription_id string) string {
 
 // encode_listen_acknowledged renders the mandatory first message of a
 // subscription stream: the notification types the server honors, tagged with
-// the subscription id.
+// the raw JSON subscription id.
 fn encode_listen_acknowledged(filter SubscriptionFilter, subscription_id string) string {
-	id_meta := '"_meta":{"${meta_subscription_id_key}":${json.encode(subscription_id)}}'
+	id_meta := '"_meta":{"${meta_subscription_id_key}":${subscription_id}}'
 	params := '{"notifications":${encode_subscription_filter(filter)},${id_meta}}'
 	return build_notification_message(listen_acknowledged_method, params)
 }
@@ -2790,10 +2791,9 @@ fn encode_listen_acknowledged(filter SubscriptionFilter, subscription_id string)
 // listen stream: an empty result object carrying the subscription id.
 // encode_listen_result renders the SubscriptionsListenResult that closes a
 // listen stream. The schema requires both `resultType` and a `_meta` carrying
-// the subscription id, so both are always present.
+// the raw JSON subscription id, so both are always present.
 fn encode_listen_result(subscription_id string) string {
-	id := json.encode(subscription_id)
-	return '{"resultType":"complete","_meta":{"${meta_subscription_id_key}":${id}}}'
+	return '{"resultType":"complete","_meta":{"${meta_subscription_id_key}":${subscription_id}}}'
 }
 
 // handle_subscriptions_listen opens a 2026-07-28 subscription stream. stdio

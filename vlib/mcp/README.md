@@ -215,6 +215,10 @@ If the server rejects the revision with -32022, the client reads
 `client.listen` opens a subscription and returns the subset the server agreed
 to honor; the notifications themselves arrive in `client.take_notifications()`,
 each tagged with `_meta["io.modelcontextprotocol/subscriptionId"]`.
+Subscription metadata preserves the originating request ID's JSON type and value:
+numeric `7` and string `"7"` identify different streams. Acknowledgment matching
+keeps that distinction. `subscription_id_of` returns decoded string IDs and
+numeric IDs as text for display.
 The call returns when its matching acknowledgment arrives, without waiting for
 the live stdio subscription to close. Notifications read while awaiting later
 responses remain available through `take_notifications`. HTTP listen requests
