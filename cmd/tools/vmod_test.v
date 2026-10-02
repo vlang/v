@@ -159,3 +159,26 @@ fn test_v_mod_why_reads_tab_separated_import_tokens() {
 		assert res.output.trim_space().split_into_lines() == ['app', 'os'], res.output
 	}
 }
+
+fn test_v_mod_why_reads_keyword_root_imports() {
+	prepare_fixture()!
+	write_module('type', 'module type\npub fn value() string { return "keyword" }\n')!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport type as tp\nfn main() { println(tp.value()) }\n')!
+	checked := os.execute('${vexe} -check .')
+	assert checked.exit_code == 0, checked.output
+	res := mod_why('type')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['app', 'type'], res.output
+}
+
+fn test_v_mod_why_reads_keyword_submodule_imports() {
+	prepare_fixture()!
+	write_module('pkg', 'module pkg\n')!
+	write_file(os.join_path(tfolder, 'pkg', 'type', 'type.v'), 'module type\npub fn value() string { return "keyword" }\n')!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport pkg.type as tp\nfn main() { println(tp.value()) }\n')!
+	checked := os.execute('${vexe} -check .')
+	assert checked.exit_code == 0, checked.output
+	res := mod_why('pkg.type')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['app', 'pkg.type'], res.output
+}

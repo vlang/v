@@ -47,3 +47,5 @@ modules and submodules without their own v.mod. A dependency manifest name does
 not replace the import name used in the reported chain.
 
 Imports are read as V tokens, so tabs and comments between tokens are accepted.
+Module path segments can also be V keywords, as in `import type as tp` or
+`import pkg.type as tp`, using the same names accepted by the compiler.

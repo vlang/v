@@ -104,6 +104,14 @@ fn v_files_in(dir string) ![]string {
 	return files
 }
 
+// module_path_segment follows the parser's name-or-keyword module segments.
+fn module_path_segment(kind token.Token, literal string) ?string {
+	if literal.starts_with('@') || (kind != .name && !kind.is_keyword()) {
+		return none
+	}
+	return if literal.len > 0 { literal } else { kind.str() }
+}
+
 // imports_in_file returns the module paths a source file imports. The four forms
 // that occur in the tree are `import a`, `import a.b`, `import a as b` and
 // `import a { x }`; the path is always the token right after `import`.
@@ -122,17 +130,12 @@ fn imports_in_file(path string) ![]string {
 			continue
 		}
 		kind = s.scan()
-		if kind != .name {
-			continue
-		}
-		mut module_path := s.lit
+		mut module_path := module_path_segment(kind, s.lit) or { continue }
 		kind = s.scan()
 		for kind == .dot {
 			kind = s.scan()
-			if kind != .name {
-				break
-			}
-			module_path += '.' + s.lit
+			segment := module_path_segment(kind, s.lit) or { break }
+			module_path += '.' + segment
 			kind = s.scan()
 		}
 		result << module_path
