@@ -170,7 +170,7 @@ fn (mut p Process) win_spawn_process() int {
 		stdin_handle := C.CreateFileW(stdin_path_wide, C.GENERIC_READ,
 			C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE, voidptr(&sa),
 			C.OPEN_EXISTING, C.FILE_ATTRIBUTE_NORMAL, 0)
-		if stdin_handle == C.INVALID_HANDLE_VALUE {
+		if stdin_handle == invalid_handle_value {
 			failed_cfn_report_error(false, 'CreateFileW stdin')
 		}
 		wdata.child_stdin_read = &u32(stdin_handle)
@@ -279,7 +279,7 @@ fn (mut p Process) win_spawn_process() int {
 		0, C.TRUE, creation_flags, if env_block.len > 0 {
 			env_block.data
 		} else {
-			0
+			voidptr(0)
 		}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
 	failed_cfn_report_error(create_process_ok, 'CreateProcess `${p.filename}`')
 	if p.use_stdio_ctl {
@@ -417,8 +417,9 @@ fn (mut p Process) win_is_pending(idx int) bool {
 	if rhandle == 0 {
 		return false
 	}
-	mut bytes_avail := C.DWORD(0)
-	if C.PeekNamedPipe(rhandle, 0, 0, 0, &bytes_avail, 0) {
+	mut bytes_avail := int(0)
+	if C.PeekNamedPipe(rhandle, unsafe { nil }, int(0), unsafe { nil }, voidptr(&bytes_avail),
+		unsafe { nil }) {
 		return bytes_avail > 0
 	}
 	return false

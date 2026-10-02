@@ -1139,6 +1139,11 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 			&& t.expr_or_selector_base_has_smartcast(t.a.child(&original_base, 0))) {
 		// Keep the containing object's projection when calling through an interface field.
 		t.retype_interface_receiver(base, interface_receiver_type)
+	} else if t.selector_reads_interface_field(original_base) {
+		// A field read through an interface value was lowered to the field of the
+		// object that the value holds: the receiver is that field, not the copy of it
+		// in the interface value.
+		t.retype_interface_receiver(base, interface_receiver_type)
 	} else if original_base.kind == .selector && original_base.children_count > 0
 		&& t.a.child_node(&original_base, 0).kind == .ident {
 		original_ident := t.a.child_node(&original_base, 0)
@@ -1199,6 +1204,22 @@ fn (t &Transformer) specialized_interface_method_call_return_type(_id flat.NodeI
 		return none
 	}
 	return ret_name
+}
+
+// selector_reads_interface_field reports whether node selects a field that an
+// interface declares from a value of that interface.
+fn (t &Transformer) selector_reads_interface_field(node flat.Node) bool {
+	if node.kind != .selector || node.children_count == 0 || node.value in ['_typ', '_object'] {
+		return false
+	}
+	iface_name := t.resolve_interface_type_name(t.node_type(t.a.child(&node, 0)))
+	if iface_name.len == 0 {
+		return false
+	}
+	if _ := t.interface_field_type_name(iface_name, node.value) {
+		return true
+	}
+	return false
 }
 
 fn (t &Transformer) interface_receiver_has_variant_projection(id flat.NodeId) bool {

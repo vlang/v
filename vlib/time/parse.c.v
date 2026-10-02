@@ -290,7 +290,7 @@ pub fn parse_rfc3339(s string) !Time {
 		].bytestr()}"')
 	} else {
 		if s[s.len - 1] in [u8(`Z`), `z`] {
-			return new(Time{
+			return new_checked(Time{
 				year:       year
 				month:      month
 				day:        day
@@ -313,7 +313,7 @@ pub fn parse_rfc3339(s string) !Time {
 
 			// Check if it is UTC time
 			if unsafe { vmemcmp(s.str + s.len - 5, c'00:00', 5) == 0 } {
-				return new(Time{
+				return new_checked(Time{
 					year:       year
 					month:      month
 					day:        day
@@ -346,7 +346,7 @@ pub fn parse_rfc3339(s string) !Time {
 				offset_in_minutes *= -1
 			}
 
-			wall_time := new(Time{
+			wall_time := new_checked(Time{
 				year:       year
 				month:      month
 				day:        day
@@ -355,7 +355,7 @@ pub fn parse_rfc3339(s string) !Time {
 				second:     second_
 				nanosecond: nanosecond_
 				is_local:   false
-			})
+			})!
 
 			return fixed_offset_time(wall_time, offset_in_minutes * seconds_per_minute)
 		}
@@ -424,14 +424,14 @@ pub fn parse(s string) !Time {
 	if isecond > 59 || isecond < 0 {
 		return error_invalid_time(8, 'seconds must be between 0 and 60')
 	}
-	res := new(Time{
+	res := new_checked(Time{
 		year:   iyear
 		month:  imonth
 		day:    iday
 		hour:   ihour
 		minute: iminute
 		second: isecond
-	})
+	})!
 	return res
 }
 
@@ -496,7 +496,7 @@ pub fn parse_iso8601(s string) !Time {
 		hour_, minute_, second_, _, nanosecond_, unix_offset, is_local_time =
 			parse_iso8601_time(parts[1])!
 	}
-	t := new(
+	t := new_checked(
 		year:       year
 		month:      month
 		day:        day
@@ -504,7 +504,7 @@ pub fn parse_iso8601(s string) !Time {
 		minute:     minute_
 		second:     second_
 		nanosecond: nanosecond_
-	)
+	)!
 	if is_local_time {
 		return t // Time already local time
 	}

@@ -2933,7 +2933,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								expr_value_type = expr_type.base_type
 							}
 							base_ct := g.value_c_type(base)
-							expr_ct := g.tc.c_type(expr_value_type)
+							expr_ct := g.return_payload_compare_c_type(expr_value_type)
 							struct_init_ct := if ret_node.kind == .struct_init {
 								g.struct_init_c_type_name(ret_node.value)
 							} else {
@@ -5459,6 +5459,21 @@ fn (mut g FlatGen) gen_noreturn_default_return_stmt() {
 	g.writeln('return (${abi_ct}){0};')
 }
 
+// return_payload_compare_c_type spells a return expression's type the way
+// `value_c_type` spells the optional's payload, so the two are comparable.
+// `c_type` leaves a function type as its raw `fn_ptr:<signature>` key, which
+// never equals the registered `_fn_ptr_*` typedef name that the payload side
+// resolves to. Comparing the unresolved key made every `?Fn` return look like a
+// payload mismatch, and the mismatch path silently degrades the return to
+// `{.ok = false}` — dropping the value instead of returning it.
+fn (mut g FlatGen) return_payload_compare_c_type(t types.Type) string {
+	ct := g.tc.c_type(t)
+	if ct.starts_with('fn_ptr:') {
+		return g.resolve_fn_ptr_type(ct)
+	}
+	return ct
+}
+
 fn (mut g FlatGen) gen_default_return_stmt() {
 	if g.cur_fn_ret_is_optional {
 		ct := g.optional_type_name(g.cur_fn_ret)
@@ -5949,7 +5964,7 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			expr_value_type = expr_type.base_type
 		}
 		base_ct := g.value_c_type(base)
-		expr_ct := g.tc.c_type(expr_value_type)
+		expr_ct := g.return_payload_compare_c_type(expr_value_type)
 		struct_init_ct := if ret_node.kind == .struct_init {
 			g.struct_init_c_type_name(ret_node.value)
 		} else {
@@ -8028,6 +8043,13 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				&& !g.has_zero_sized_leading_init_slot(v_type) {
 				// An internal staging value is assigned on every path that reads it.
 				g.write('{0}')
+			} else if decl_prefix == 'static ' {
+				// The initializer of a C static is a constant expression: it cannot hold
+				// the statements of a checked operation.
+				old_static_c_initializer := g.static_c_initializer
+				g.static_c_initializer = true
+				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
+				g.static_c_initializer = old_static_c_initializer
 			} else {
 				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
 			}

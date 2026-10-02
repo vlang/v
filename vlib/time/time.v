@@ -94,14 +94,14 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-fn normalize_new_time(t Time) Time {
+fn check_new_time(t Time) ! {
 	month := if t.month == 0 { 1 } else { t.month }
 	day := if t.day == 0 { 1 } else { t.day }
 	if t.year < -9999 || t.year > 9999 {
-		panic('invalid time: year must be between -9999 and 9999')
+		return error('invalid time: year must be between -9999 and 9999')
 	}
 	if month < 1 || month > 12 {
-		panic('invalid time: month must be between 1 and 12')
+		return error('invalid time: month must be between 1 and 12')
 	}
 	max_day := month_days[month - 1] + if month == 2 && is_leap_year(t.year) {
 		1
@@ -109,25 +109,37 @@ fn normalize_new_time(t Time) Time {
 		0
 	}
 	if day < 1 || day > max_day {
-		panic('invalid time: day must be between 1 and ${max_day} for year ${t.year}, month ${month}')
+		return error('invalid time: day must be between 1 and ${max_day} for year ${t.year}, month ${month}')
 	}
 	if t.hour < 0 || t.hour > 23 {
-		panic('invalid time: hour must be between 0 and 23')
+		return error('invalid time: hour must be between 0 and 23')
 	}
 	if t.minute < 0 || t.minute > 59 {
-		panic('invalid time: minute must be between 0 and 59')
+		return error('invalid time: minute must be between 0 and 59')
 	}
 	if t.second < 0 || t.second > 59 {
-		panic('invalid time: second must be between 0 and 59')
+		return error('invalid time: second must be between 0 and 59')
 	}
 	if t.nanosecond < 0 || t.nanosecond >= 1_000_000_000 {
-		panic('invalid time: nanosecond must be between 0 and 999999999')
+		return error('invalid time: nanosecond must be between 0 and 999999999')
 	}
+}
+
+fn normalize_new_time(t Time) Time {
+	check_new_time(t) or { panic(err.msg()) }
 	return Time{
 		...t
-		month: month
-		day:   day
+		month: if t.month == 0 { 1 } else { t.month }
+		day:   if t.day == 0 { 1 } else { t.day }
 	}
+}
+
+// new_checked is like `new`, but returns an error instead of panicking when
+// the fields do not form a valid date and time. The parse functions use it so
+// that malformed input, such as February 30th, is reported to the caller.
+fn new_checked(t Time) !Time {
+	check_new_time(t)!
+	return Time.new(t)
 }
 
 // Time.new returns a time struct with the calculated Unix time.

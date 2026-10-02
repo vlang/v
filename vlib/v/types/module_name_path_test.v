@@ -32,6 +32,25 @@ fn test_current_file_path_not_matching_module_keeps_conflict() {
 	assert !mismatched_module.current_file_uses_nested_module_path()
 }
 
+fn test_unknown_module_source_root_allows_matching_local_name() {
+	root := os.join_path(os.vtmp_dir(), 'v3_unknown_module_root_${os.getpid()}')
+	path := os.join_path(root, 'service', 'job_api', 'task', 'task.v')
+	os.mkdir_all(os.dir(path))!
+	os.mkdir_all(os.join_path(root, 'main'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(path, 'module task\nfn make() int {\n\ttask := 1\n\treturn task\n}\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.module_diagnostic_root = os.join_path(root, 'main')
+	tc.collect(a)
+	tc.check_semantics_opt(false)
+	assert tc.current_file_module_source_root() == none
+	assert tc.current_file_uses_nested_module_path()
+	assert tc.errors.len == 0, tc.errors.str()
+}
+
 fn test_base_url_source_root_decides_module_nesting() {
 	root := os.join_path(os.vtmp_dir(), 'v3_module_base_url_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'src', 'bar', 'foo'))!
