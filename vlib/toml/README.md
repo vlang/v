@@ -78,6 +78,14 @@ table named after the embedded struct (e.g. `[Db]`) is accepted too and takes
 precedence. Embedded `toml.Date`, `toml.Time` and `toml.DateTime` are scalars, stored
 under their type name (e.g. `Date = 2026-09-30`).
 
+Array elements and map values may be scalars, enums, structs, arrays or maps, at any
+nesting depth, so `[]JobTitle`, `map[string][]int` and `[][]map[string]Item` all decode.
+An element that does not fit the element type, such as a number where a struct is
+expected, is skipped. An enum element must be an integer, so a string, boolean,
+float, array or table in an enum position is skipped rather than coerced; a
+plain enum *field* still follows `Any.int()`, which reads a non-numeric value as
+0.
+
 ```v
 import toml
 
