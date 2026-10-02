@@ -115,7 +115,8 @@ The driver monitors compiler memory throughout the build. Ordinary builds stop a
 compiler-tree and self-host builds stop at 9984 MiB, leaving extra sampling headroom below a
 10 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
-current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
+current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit or 
+`-memory-limit` to set your own.
 Native compiler and `v self` builds use `-prealloc` when their target and selected C compiler
 support it, enabling the disposable stage arenas that keep compiler self-hosting within that
 ceiling.
