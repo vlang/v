@@ -660,3 +660,438 @@ fn test_fuzz_random_binary_small() {
 
 	db.close()!
 }
+
+fn connect_command_test(version int) !redis.DB {
+	mut db := redis.connect(password: os.getenv('VREDIS_PASSWORD'))!
+	if version == 2 {
+		db.cmd('HELLO', '2')!
+		db.version = 2
+	}
+	assert db.version == version
+	return db
+}
+
+fn cleanup_command_test(mut db redis.DB, keys []string) {
+	mut args := ['DEL']
+	args << keys
+	db.cmd(...args) or {}
+	db.close() or {}
+}
+
+fn assert_command_value[T](value ?T, expected T) {
+	actual := value or { panic('missing expected Redis value') }
+	assert actual == expected
+}
+
+fn assert_command_missing_string(value ?string) {
+	if _ := value {
+		assert false, 'expected a missing Redis value'
+	}
+}
+
+fn assert_command_missing_int(value ?int) {
+	if _ := value {
+		assert false, 'expected a missing Redis value'
+	}
+}
+
+fn assert_command_missing_bytes(value ?[]u8) {
+	if _ := value {
+		assert false, 'expected a missing Redis value'
+	}
+}
+
+fn test_multi_key_values() ! {
+	for version in [3, 2] {
+		mut db := connect_command_test(version)!
+		prefix := 'v:redis:commands:${rand.uuid_v4()}'
+		keys := ['${prefix}:empty', '${prefix}:missing', '${prefix}:text', '${prefix}:binary',
+			'${prefix}:integer', '${prefix}:new']
+		defer { cleanup_command_test(mut db, keys) }
+
+		assert db.mset({
+			keys[0]: ''
+			keys[2]: 'hello'
+		})! == 'OK'
+		values := db.mget[string](keys[0], keys[1], keys[2], keys[2])!
+		assert values.len == 4
+		assert_command_value(values[0], '')
+		assert_command_missing_string(values[1])
+		assert_command_value(values[2], 'hello')
+		assert_command_value(values[3], 'hello')
+
+		binary := [u8(0), `\r`, `\n`, 255, `x`]
+		assert db.mset({
+			keys[3]: binary
+		})! == 'OK'
+		binary_values := db.mget[[]u8](keys[3], keys[0], keys[1])!
+		assert_command_value(binary_values[0], binary)
+		assert_command_value(binary_values[1], []u8{})
+		assert_command_missing_bytes(binary_values[2])
+		assert db.mset({
+			keys[4]: i64(123)
+		})! == 'OK'
+		integer_values := db.mget[int](keys[4], keys[1])!
+		assert_command_value(integer_values[0], 123)
+		assert_command_missing_int(integer_values[1])
+		assert db.mset({
+			keys[4]: ~u64(0)
+		})! == 'OK'
+		unsigned_values := db.mget[u64](keys[4])!
+		assert_command_value(unsigned_values[0], ~u64(0))
+		assert db.get[u64](keys[4])! == ~u64(0)
+
+		assert !db.msetnx({
+			keys[2]: 'replacement'
+			keys[5]: 'new'
+		})!
+		assert db.get[string](keys[2])! == 'hello'
+		assert db.exists(keys[5])! == 0
+		assert db.msetnx({
+			keys[5]: 'new'
+		})!
+		assert db.get[string](keys[5])! == 'new'
+	}
+}
+
+fn test_string_commands() ! {
+	for version in [3, 2] {
+		mut db := connect_command_test(version)!
+		prefix := 'v:redis:commands:${rand.uuid_v4()}'
+		keys := ['${prefix}:value', '${prefix}:seconds', '${prefix}:milliseconds', '${prefix}:missing']
+		defer { cleanup_command_test(mut db, keys) }
+
+		assert db.setnx(keys[0], 'hello')!
+		assert !db.setnx(keys[0], 'replacement')!
+		assert db.append(keys[0], ' world')! == 11
+		assert db.strlen(keys[0])! == 11
+		assert db.getrange[string](keys[0], 0, 4)! == 'hello'
+		assert db.getrange[[]u8](keys[0], -5, -1)! == 'world'.bytes()
+		assert db.getrange[string](keys[3], 0, -1)! == ''
+		assert db.strlen(keys[3])! == 0
+		assert db.setrange(keys[0], 6, 'V')! == 11
+		assert db.get[string](keys[0])! == 'hello Vorld'
+
+		binary := [u8(0), `\r`, `\n`, 255]
+		assert db.setrange(keys[0], 0, binary)! == 11
+		assert db.getrange[[]u8](keys[0], 0, 3)! == binary
+		assert db.append(keys[0], binary)! == 15
+		assert db.getrange[[]u8](keys[0], -4, -1)! == binary
+		assert db.setrange(keys[3], 3, 'a')! == 4
+		assert db.get[[]u8](keys[3])! == [u8(0), 0, 0, `a`]
+		assert db.append(keys[3], 123)! == 7
+		assert db.getrange[int](keys[3], -3, -1)! == 123
+
+		assert db.setex(keys[1], 120, 'seconds')! == 'OK'
+		assert db.ttl(keys[1])! in 1 .. 121
+		assert db.psetex(keys[2], 120000, binary)! == 'OK'
+		assert db.pttl(keys[2])! in 1 .. 120001
+		assert db.getex[[]u8](keys[2])! == binary
+		assert db.getex[[]u8](keys[2], mode: .persist)! == binary
+		assert db.ttl(keys[2])! == -1
+		assert db.getex[[]u8](keys[2], mode: .ex, value: 120)! == binary
+		assert db.ttl(keys[2])! in 1 .. 121
+		assert db.getex[[]u8](keys[2], mode: .px, value: 120000)! == binary
+		assert db.pttl(keys[2])! in 1 .. 120001
+		assert db.getex[[]u8](keys[2], mode: .exat, value: time.now().unix() + 120)! == binary
+		assert db.ttl(keys[2])! in 1 .. 121
+		assert db.getex[[]u8](keys[2], mode: .pxat, value: time.now().unix_milli() + 120000)! == binary
+		assert db.pttl(keys[2])! in 1 .. 120001
+		assert db.getdel[string](keys[1])! == 'seconds'
+		assert db.exists(keys[1])! == 0
+		if _ := db.getdel[string](keys[1]) {
+			assert false, 'getdel must reject a missing key'
+		} else {
+			assert err.msg().contains('not found')
+		}
+		if _ := db.getex[string](keys[1]) {
+			assert false, 'getex must reject a missing key'
+		} else {
+			assert err.msg().contains('not found')
+		}
+		if _ := db.setrange(keys[0], -1, 'a') {
+			assert false, 'setrange must propagate Redis errors'
+		} else {
+			assert err.msg().len > 0
+		}
+		assert db.ping()! == 'PONG'
+	}
+}
+
+fn test_key_and_counter_commands() ! {
+	for version in [3, 2] {
+		mut db := connect_command_test(version)!
+		prefix := 'v:redis:commands:${rand.uuid_v4()}'
+		keys := ['${prefix}:integer', '${prefix}:float', '${prefix}:missing', '${prefix}:renamed']
+		defer { cleanup_command_test(mut db, keys) }
+
+		assert db.incrby(keys[0], 5)! == 5
+		assert db.incrby(keys[0], -2)! == 3
+		assert db.decrby(keys[0], 10)! == -7
+		assert db.incrbyfloat(keys[1], 1.25)! == 1.25
+		assert db.incrbyfloat(keys[1], -0.5)! == 0.75
+		assert db.exists(keys[0], keys[1], keys[2], keys[0])! == 3
+		assert db.key_type(keys[0])! == 'string'
+		assert db.key_type(keys[2])! == 'none'
+		assert db.ttl(keys[0])! == -1
+		assert db.pttl(keys[0])! == -1
+		assert db.ttl(keys[2])! == -2
+		assert db.pttl(keys[2])! == -2
+		assert !db.pexpire(keys[2], 120000)!
+		assert !db.persist(keys[0])!
+		assert db.pexpire(keys[0], 120000)!
+		assert db.pttl(keys[0])! in 1 .. 120001
+		assert db.persist(keys[0])!
+		assert db.ttl(keys[0])! == -1
+		assert db.expireat(keys[0], time.now().unix() + 120)!
+		assert db.ttl(keys[0])! in 1 .. 121
+		assert db.pexpireat(keys[0], time.now().unix_milli() + 120000)!
+		assert db.pttl(keys[0])! in 1 .. 120001
+		assert db.rename(keys[0], keys[3])! == 'OK'
+		assert db.get[int](keys[3])! == -7
+		assert db.exists(keys[0])! == 0
+		assert db.pexpire(keys[3], 0)!
+		assert db.exists(keys[3])! == 0
+		assert db.unlink(keys[1], keys[2])! == 1
+		if _ := db.incrby(keys[2], 1) {
+			// A missing counter is created by INCRBY.
+			assert db.get[int](keys[2])! == 1
+		} else {
+			assert false, err.msg()
+		}
+		assert db.set(keys[2], 'not an integer')! == 'OK'
+		if _ := db.incrby(keys[2], 1) {
+			assert false, 'incrby must propagate Redis errors'
+		} else {
+			assert err.msg().len > 0
+		}
+		assert db.ping()! == 'PONG'
+	}
+}
+
+fn test_hash_commands() ! {
+	for version in [3, 2] {
+		mut db := connect_command_test(version)!
+		prefix := 'v:redis:commands:${rand.uuid_v4()}'
+		keys := ['${prefix}:hash', '${prefix}:missing']
+		defer { cleanup_command_test(mut db, keys) }
+		binary := [u8(0), `\r`, `\n`, 255]
+
+		assert db.hset(keys[0], {
+			'empty':  []u8{}
+			'binary': binary
+		})! == 2
+		assert db.key_type(keys[0])! == 'hash'
+		assert db.hexists(keys[0], 'empty')!
+		assert !db.hexists(keys[0], 'missing')!
+		assert db.hlen(keys[0])! == 2
+		assert db.hlen(keys[1])! == 0
+		assert db.hstrlen(keys[0], 'binary')! == binary.len
+		assert db.hstrlen(keys[0], 'empty')! == 0
+		assert db.hstrlen(keys[0], 'missing')! == 0
+		mut fields := db.hkeys(keys[0])!
+		fields.sort()
+		assert fields == ['binary', 'empty']
+		mut values := db.hvals(keys[0])!
+		values.sort()
+		mut expected_values := ['', binary.bytestr()]
+		expected_values.sort()
+		assert values == expected_values
+		string_values := db.hmget[string](keys[0], 'binary', 'missing', 'empty', 'binary')!
+		assert string_values.len == 4
+		assert_command_value(string_values[0], binary.bytestr())
+		assert_command_missing_string(string_values[1])
+		assert_command_value(string_values[2], '')
+		assert_command_value(string_values[3], binary.bytestr())
+		binary_values := db.hmget[[]u8](keys[0], 'empty', 'binary', 'missing')!
+		assert_command_value(binary_values[0], []u8{})
+		assert_command_value(binary_values[1], binary)
+		assert_command_missing_bytes(binary_values[2])
+		assert !db.hsetnx(keys[0], 'empty', 'replacement')!
+		assert db.hsetnx(keys[0], 'integer', 2)!
+		assert db.hincrby(keys[0], 'integer', 3)! == 5
+		assert db.hincrby(keys[0], 'integer', -1)! == 4
+		integer_values := db.hmget[int](keys[0], 'integer', 'missing')!
+		assert integer_values.len == 2
+		assert_command_value(integer_values[0], 4)
+		assert_command_missing_int(integer_values[1])
+		assert db.hset(keys[0], {
+			'unsigned': ~u64(0)
+		})! == 1
+		unsigned_values := db.hmget[u64](keys[0], 'unsigned')!
+		assert unsigned_values.len == 1
+		assert_command_value(unsigned_values[0], ~u64(0))
+		assert db.hdel(keys[0], 'unsigned')! == 1
+		assert db.hincrbyfloat(keys[0], 'float', 1.25)! == 1.25
+		assert db.hincrbyfloat(keys[0], 'float', -0.5)! == 0.75
+		assert db.hdel(keys[0], 'integer', 'float', 'missing')! == 2
+		assert db.hlen(keys[0])! == 2
+		assert db.hkeys(keys[1])! == []string{}
+		assert db.hvals(keys[1])! == []string{}
+		missing_values := db.hmget[string](keys[1], 'missing')!
+		assert missing_values.len == 1
+		assert_command_missing_string(missing_values[0])
+		assert db.set(keys[1], 'string')! == 'OK'
+		if _ := db.hlen(keys[1]) {
+			assert false, 'hash commands must propagate WRONGTYPE errors'
+		} else {
+			assert err.msg().contains('WRONGTYPE')
+		}
+		assert db.ping()! == 'PONG'
+	}
+}
+
+fn test_scan_commands() ! {
+	for version in [3, 2] {
+		mut db := connect_command_test(version)!
+		prefix := 'v:redis:commands:${rand.uuid_v4()}'
+		keys := ['${prefix}:a', '${prefix}:b', '${prefix}:c', '${prefix}:hash']
+		defer { cleanup_command_test(mut db, keys) }
+		assert db.mset({
+			keys[0]: 'a'
+			keys[1]: 'b'
+			keys[2]: 'c'
+		})! == 'OK'
+		mut listed_keys := db.keys('${prefix}:?')!
+		listed_keys.sort()
+		assert listed_keys == keys[..3]
+		mut cursor := '0'
+		mut scanned_keys := map[string]bool{}
+		for {
+			next, batch := db.scan(cursor, match: '${prefix}:?', count: 1)!
+			for key in batch {
+				scanned_keys[key] = true
+			}
+			cursor = next
+			if cursor == '0' {
+				break
+			}
+		}
+		assert scanned_keys.len == 3
+		for key in keys[..3] {
+			assert scanned_keys[key]
+		}
+
+		assert db.hset(keys[3], {
+			'':    'empty field'
+			'a:1': 'first'
+			'a:2': 'second'
+			'b:1': 'other'
+		})! == 4
+		cursor = '0'
+		mut scanned_fields := map[string]string{}
+		for {
+			next, batch := db.hscan(keys[3], cursor, match: 'a:*', count: 1)!
+			assert batch.len % 2 == 0
+			for i := 0; i < batch.len; i += 2 {
+				scanned_fields[batch[i]] = batch[i + 1]
+			}
+			cursor = next
+			if cursor == '0' {
+				break
+			}
+		}
+		assert scanned_fields == {
+			'a:1': 'first'
+			'a:2': 'second'
+		}
+		cursor = '0'
+		mut empty_fields := map[string]string{}
+		for {
+			next, batch := db.hscan(keys[3], cursor, match: '', count: 1)!
+			assert batch.len % 2 == 0
+			for i := 0; i < batch.len; i += 2 {
+				empty_fields[batch[i]] = batch[i + 1]
+			}
+			cursor = next
+			if cursor == '0' {
+				break
+			}
+		}
+		assert empty_fields == {
+			'': 'empty field'
+		}
+	}
+}
+
+fn test_command_pipeline_placeholders_and_order() ! {
+	for version in [3, 2] {
+		mut db := connect_command_test(version)!
+		prefix := 'v:redis:commands:${rand.uuid_v4()}'
+		keys := ['${prefix}:value', '${prefix}:integer', '${prefix}:float', '${prefix}:hash']
+		defer { cleanup_command_test(mut db, keys) }
+		db.pipeline_start()
+		assert db.mset({
+			keys[0]: 'value'
+		})! == ''
+		assert db.mget[string](keys[0])!.len == 0
+		assert !db.setnx(keys[0], 'replacement')!
+		assert db.incrby(keys[1], 5)! == 0
+		assert db.incrbyfloat(keys[2], 1.25)! == 0.0
+		assert db.ttl(keys[0])! == 0
+		assert db.hset(keys[3], {
+			'field': 'hash value'
+		})! == 0
+		assert db.hmget[string](keys[3], 'field')!.len == 0
+		assert db.hkeys(keys[3])! == []string{}
+		assert db.hincrbyfloat(keys[3], 'float', 0.5)! == 0.0
+		assert db.append(keys[0], '!')! == 0
+		assert db.getrange[string](keys[0], 0, -1)! == ''
+		cursor, scanned_keys := db.scan('0', match: '${prefix}:*')!
+		assert cursor == ''
+		assert scanned_keys == []string{}
+		assert db.getdel[string](keys[0])! == ''
+
+		count := db.pipeline_cmd_count
+		buffer_len := db.pipeline_buffer.len
+		if _ := db.mget[bool](keys[0]) {
+			assert false, 'unsupported MGET types must not be queued'
+		} else {
+			assert err.msg().contains('unsupported')
+		}
+		if _ := db.mset({
+			keys[0]: true
+		}) {
+			assert false, 'unsupported MSET types must not be queued'
+		} else {
+			assert err.msg().contains('unsupported')
+		}
+		for options in [redis.GetExOptions{ mode: .ex }, redis.GetExOptions{ value: 1 },
+			redis.GetExOptions{ mode: .persist, value: 1 }] {
+			if _ := db.getex[string](keys[0], options) {
+				assert false, 'invalid GETEX options must not be queued'
+			} else {
+				assert err.msg().contains('expiration')
+			}
+		}
+		if _, _ := db.scan('0', count: -1) {
+			assert false, 'invalid SCAN options must not be queued'
+		} else {
+			assert err.msg().contains('count')
+		}
+		assert db.pipeline_cmd_count == count
+		assert db.pipeline_buffer.len == buffer_len
+
+		responses := db.pipeline_execute()!
+		assert responses.len == 14
+		assert responses[0] as string == 'OK'
+		mget_response := responses[1] as []redis.RedisValue
+		assert (mget_response[0] as []u8).bytestr() == 'value'
+		assert responses[2] as i64 == 0
+		assert responses[3] as i64 == 5
+		assert (responses[4] as []u8).bytestr().f64() == 1.25
+		assert responses[5] as i64 == -1
+		assert responses[6] as i64 == 1
+		hmget_response := responses[7] as []redis.RedisValue
+		assert (hmget_response[0] as []u8).bytestr() == 'hash value'
+		hkeys_response := responses[8] as []redis.RedisValue
+		assert (hkeys_response[0] as []u8).bytestr() == 'field'
+		assert (responses[9] as []u8).bytestr().f64() == 0.5
+		assert responses[10] as i64 == 6
+		assert (responses[11] as []u8).bytestr() == 'value!'
+		assert (responses[12] as []redis.RedisValue).len == 2
+		assert (responses[13] as []u8).bytestr() == 'value!'
+		assert db.exists(keys[0])! == 0
+		assert db.ping()! == 'PONG'
+	}
+}
