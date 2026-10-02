@@ -10489,13 +10489,9 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		return t.make_compiler_default_map_clone_value(source, clean, !t.expr_can_take_address(source))
 	}
 	if allow_method && !isnil(t.tc) && t.tc.ownership_type_has_clone_method(t.tc.parse_type(clean)) {
-		if !isnil(t.tc) && clean.contains('[') && clean.ends_with(']') {
-			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
-				call := t.make_method_call(source, 'clone', []flat.NodeId{})
-				t.set_node_typ(int(call), clean)
-				return call
-			}
-		}
+		// A private helper can become reachable after generic specialization has
+		// already materialized its field's clone method. Use that resolved method
+		// before synthesizing a selector that the initial call scan cannot visit.
 		method_name := t.resolve_receiver_method_name(source, 'clone')
 		if method_name.len > 0 {
 			params := t.call_param_types(method_name)
@@ -10505,6 +10501,13 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 			}
 			t.mark_fn_used_name(method_name)
 			return t.make_call_typed(method_name, [receiver], t.receiver_method_return_type(method_name, clean))
+		}
+		if clean.contains('[') && clean.ends_with(']') {
+			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
+				call := t.make_method_call(source, 'clone', []flat.NodeId{})
+				t.set_node_typ(int(call), clean)
+				return call
+			}
 		}
 	}
 	if isnil(t.tc) || (!t.tc.named_type_implements_marker(clean, 'IClone')
