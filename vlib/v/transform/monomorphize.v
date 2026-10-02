@@ -7909,10 +7909,24 @@ fn (mut t Transformer) infer_generic_call_args_with_explicit(decl GenericFnDecl,
 	}
 	mut inferred := map[string]string{}
 	mut explicit_idx := 0
+	mut decl_params := []string{}
 	for raw_param in decl.node.generic_params() {
 		param := generic_param_name_from_decl_param(raw_param)
-		if param.len == 0 || param in inferred
-			|| (method_param_count > 0 && param in receiver_params) {
+		if param.len > 0 {
+			decl_params << param
+		}
+	}
+	// A method on a generic receiver (`fn (b Box[T]) get()`) declares no generic
+	// params of its own: `T` is introduced by the receiver type. Its recorded
+	// specialization still reaches this seeding path as the explicit list (a
+	// receiver instantiated with an alias records its args on the call node), so
+	// bind the receiver's params in order instead of finding nothing to seed and
+	// losing the specialization.
+	if decl_params.len == 0 && method_param_count == 0 {
+		decl_params = receiver_params.clone()
+	}
+	for param in decl_params {
+		if param in inferred || (method_param_count > 0 && param in receiver_params) {
 			continue
 		}
 		if explicit_idx >= method_explicit.len {
