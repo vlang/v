@@ -911,6 +911,32 @@ fn test_check_module_name_reports_the_option() {
 	assert module_name_error('kv', res) == ''
 }
 
+fn test_resolver_rejects_a_duplicate_field_number() {
+	res := resolve_files([fixture_file('duplicate_number.proto')!], 'dup')!
+	assert res.errors.len > 0, 'a repeated field number must be reported'
+	assert res.errors.join_lines().contains('which field `first` already uses')
+}
+
+fn test_resolver_rejects_a_field_number_out_of_range() {
+	// Zero can never be produced, and a number past 2^29-1 does not fit the tag,
+	// where the top three bits carry the wire type.
+	res := resolve_files([fixture_file('bad_number.proto')!], 'bad')!
+	assert res.errors.len == 2
+	assert res.errors.join_lines().contains('outside the legal range 1 to 536870911')
+}
+
+fn test_resolver_rejects_a_duplicate_field_name() {
+	res := resolve_files([fixture_file('duplicate_name.proto')!], 'dupn')!
+	assert res.errors.len > 0
+	assert res.errors.join_lines().contains('both would be declared as')
+}
+
+// fixture_file parses one fixture and fails the test if it does not parse.
+fn fixture_file(name string) !File {
+	mut f := parse_file(fixture(name))!
+	return f
+}
+
 fn test_is_well_known() {
 	assert is_well_known('google/protobuf/timestamp.proto')
 	assert !is_well_known('kv.proto')

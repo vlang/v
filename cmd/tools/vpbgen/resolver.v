@@ -406,6 +406,7 @@ fn resolve_message(mut res ResolvedFile, idx &TypeIndex, parent_qualified string
 		}
 		out.fields << r
 	}
+	check_field_declarations(mut res, qualified, out.fields)
 	// Every member of a `oneof` learns the whole membership of its group, because
 	// the exclusivity is the reader's job and only a member knows the others.
 	for i, f in out.fields {
@@ -433,6 +434,39 @@ fn resolve_message(mut res ResolvedFile, idx &TypeIndex, parent_qualified string
 	}
 	for e in m.enums {
 		res.enums << resolve_enum(idx, qualified + '.' + e.name, e)
+	}
+}
+
+// check_field_declarations reports the ways a message's field list can be
+// invalid in ways that would otherwise reach the output as broken V.
+//
+// Each of these was silently accepted before: two fields on one number emit two
+// identical `match` arms, a name repeated emits two struct fields with one name,
+// and a number outside the legal range either cannot be written or overflows the
+// three bits the wire format keeps for the wire type. protoc refuses all of them,
+// and a codec that quietly disagreed with the producer would be worse than a
+// refusal, so they are reported here.
+fn check_field_declarations(mut res ResolvedFile, qualified string, fields []Resolved) {
+	mut by_number := map[int]string{}
+	mut by_name := map[string]bool{}
+	for f in fields {
+		if f.number < protobuf.min_field_number || f.number > protobuf.max_field_number {
+			res.errors << 'pbgen: ${qualified}.${f.name} has field number ${f.number}, which is outside the legal range ${protobuf.min_field_number} to ${protobuf.max_field_number}'
+			continue
+		}
+		if f.number in by_number {
+			res.errors << 'pbgen: ${qualified}.${f.name} uses field number ${f.number}, which field `${by_number[f.number]}` already uses'
+			continue
+		}
+		by_number[f.number] = f.name
+		// The V name has to be unique, since that is what the struct declares, and
+		// `f.name` is already the V name: the resolver applies the keyword suffix
+		// that could otherwise make two proto names collide.
+		if by_name[f.name] {
+			res.errors << 'pbgen: ${qualified}.${f.name} collides with another field of the same message, so both would be declared as `${f.name}`'
+			continue
+		}
+		by_name[f.name] = true
 	}
 }
 
