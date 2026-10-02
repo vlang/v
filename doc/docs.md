@@ -9850,6 +9850,11 @@ overrides the filename's language until `#flag -x none` restores inference from 
 Both spellings also select the matching native compilation standard and runtime libraries,
 including when a `.o` flag compiles an adjacent source into the object cache.
 
+Native C sources and object files from `#flag` are linked before the libraries from
+all modules, including imported modules. Library flags retain their relative order.
+Explicit `-x` language settings remain attached to native inputs when they are reordered.
+The final language setting also applies to sources passed later through `-ldflags`.
+
 You can also use `#flag` directives, to link to static C libraries, which
 will be added last (note the .a suffix):
 ```v oksyntax
