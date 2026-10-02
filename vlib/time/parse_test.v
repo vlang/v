@@ -421,3 +421,52 @@ fn test_parse_format() {
 
 	assert false, '> failing for datetime: ${s}, the datetime string should not have passed the format "YYYY-M-D H:m:s"'
 }
+
+fn test_parse_rejects_feb_30() {
+	time.parse('2024-02-30 10:00:00') or {
+		assert err.msg().contains('day must be between 1 and 29')
+		return
+	}
+	assert false, 'February 30th should not parse'
+}
+
+fn test_parse_rejects_feb_29_in_non_leap_year() {
+	time.parse('2023-02-29 10:00:00') or {
+		assert err.msg().contains('day must be between 1 and 28')
+		return
+	}
+	assert false, 'February 29th 2023 should not parse'
+}
+
+fn test_parse_rejects_april_31() {
+	time.parse('2024-04-31 10:00:00') or {
+		assert err.msg().contains('day must be between 1 and 30')
+		return
+	}
+	assert false, 'April 31st should not parse'
+}
+
+fn test_parse_rfc3339_rejects_day_past_end_of_month() {
+	time.parse_rfc3339('2024-02-30T10:00:00Z') or { return }
+	assert false, 'February 30th should not parse'
+}
+
+fn test_parse_rfc3339_rejects_april_31_with_offset() {
+	time.parse_rfc3339('2024-04-31T10:00:00+01:00') or { return }
+	assert false, 'April 31st should not parse'
+}
+
+fn test_parse_iso8601_rejects_day_past_end_of_month() {
+	time.parse_iso8601('2024-02-30T10:00:00Z') or { return }
+	assert false, 'February 30th should not parse'
+}
+
+fn test_parse_rfc2822_rejects_day_past_end_of_month() {
+	time.parse_rfc2822('Thu, 30 Feb 2024 10:00:00 +0100') or { return }
+	assert false, 'February 30th should not parse'
+}
+
+fn test_parse_accepts_last_day_of_month() {
+	assert time.parse('2024-02-29 10:00:00')!.day == 29
+	assert time.parse_rfc3339('2024-04-30T10:00:00Z')!.day == 30
+}

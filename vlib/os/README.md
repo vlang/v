@@ -7,6 +7,11 @@ handling processes etc.
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
+### Console input
+
+On Windows, `os.input()` supports both console and redirected standard input.
+It returns an empty string when the standard input handle is invalid.
+
 ### Path helpers
 
 `os.dir()` returns everything before the last separator, matching the classic
@@ -43,6 +48,9 @@ Each step is guaranteed to make progress: trailing separators name the same
 directory, so they are ignored, and `os.parent_dir('/a/b/')` is `/a` rather than
 `/a/b`. A separator is any byte the platform accepts as one, so a Windows path
 may mix `/` and `\` and the last separator of either kind decides the parent.
+
+On Windows, `os.uname()` leaves `release` and `version` empty if the `ver` command
+fails or does not report a numeric version. Localized version labels are accepted.
 
 ### Running commands
 

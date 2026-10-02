@@ -2512,6 +2512,18 @@ fn (mut t Transformer) mark_interface_boxed_type(iface_name string, concrete_typ
 	if resolved.len > 0 && resolved != iface_name {
 		iface_names << resolved
 	}
+	// A box also reaches receiver methods inherited from embedded interfaces.
+	// Retain its concrete type there so mutable field access uses the shared object.
+	mut iface_index := 0
+	for iface_index < iface_names.len {
+		iface := iface_names[iface_index]
+		iface_index++
+		for embed in t.tc.interface_embeds[iface] or { []string{} } {
+			if embed !in iface_names {
+				iface_names << embed
+			}
+		}
+	}
 	for iface in iface_names {
 		t.mark_interface_boxed_type_key(interface_boxed_type_key(iface, concrete_type))
 		t.mark_interface_boxed_type_key(interface_boxed_type_key(iface, c_name(concrete_type)))
@@ -4073,6 +4085,10 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, speci
 	if t.memo_node_types {
 		t.begin_node_type_memo(specialization_nodes_start, t.a.nodes.len - 1)
 	}
+	clone_name := t.a.nodes[int(clone_id)].value
+	t.add_call_param_types_decl_key(clone_name, int(clone_id), file_name, module_name)
+	t.add_call_param_types_decl_key(transform_qualified_fn_name(module_name, clone_name),
+		int(clone_id), file_name, module_name)
 	t.transform_fn_body(int(clone_id))
 	t.end_node_type_memo()
 	t.node_type_memo = old_node_type_memo
@@ -7893,10 +7909,24 @@ fn (mut t Transformer) infer_generic_call_args_with_explicit(decl GenericFnDecl,
 	}
 	mut inferred := map[string]string{}
 	mut explicit_idx := 0
+	mut decl_params := []string{}
 	for raw_param in decl.node.generic_params() {
 		param := generic_param_name_from_decl_param(raw_param)
-		if param.len == 0 || param in inferred
-			|| (method_param_count > 0 && param in receiver_params) {
+		if param.len > 0 {
+			decl_params << param
+		}
+	}
+	// A method on a generic receiver (`fn (b Box[T]) get()`) declares no generic
+	// params of its own: `T` is introduced by the receiver type. Its recorded
+	// specialization still reaches this seeding path as the explicit list (a
+	// receiver instantiated with an alias records its args on the call node), so
+	// bind the receiver's params in order instead of finding nothing to seed and
+	// losing the specialization.
+	if decl_params.len == 0 && method_param_count == 0 {
+		decl_params = receiver_params.clone()
+	}
+	for param in decl_params {
+		if param in inferred || (method_param_count > 0 && param in receiver_params) {
 			continue
 		}
 		if explicit_idx >= method_explicit.len {
@@ -9108,11 +9138,26 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		if array_type := t.array_call_type_name(id, node) {
 			return array_type
 		}
+		// A checked call can carry its base type after lowering. Preserve the
+		// declaration's alias identity when inferring a generic argument.
+		if !isnil(t.tc) {
+			if name := t.tc.resolved_call_name(id) {
+				if ret := t.tc.fn_ret_types[name] {
+					ret_name := t.semantic_type_name(ret)
+					decl_module := t.tc.fn_type_modules[name] or { t.cur_module }
+					if !t.generic_arg_is_unresolved(ret_name)
+						&& t.generic_type_text_contains_alias(ret_name, decl_module) {
+						return t.generic_inference_argument_type(ret_name, decl_module)
+					}
+				}
+			}
+		}
 		// A call already rewritten to a concrete generic specialization carries its
 		// authoritative return type on the node. Re-inferring that rewritten callee as
 		// though it were the open generic can mistake the specialization name for T.
 		if generic_inference_arg_type_usable(node.typ) {
-			concrete_node_type := t.normalize_type_alias(node.typ)
+			concrete_node_type := t.generic_inference_argument_type(node.typ,
+				t.node_module_or(int(id), t.cur_module))
 			if !t.generic_arg_is_unresolved(concrete_node_type) {
 				return concrete_node_type
 			}

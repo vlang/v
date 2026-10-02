@@ -9,6 +9,11 @@ V's `time` module, provides utilities for working with time and dates:
 - stop watches for accurately measuring time durations
 - sleeping for a period of time
 
+`time.ticks()` returns milliseconds since the UNIX epoch on Unix platforms. On Windows it
+returns a 64-bit count of milliseconds since system startup, which does not wrap after
+49.7 days. The Windows counter is resolved at runtime so it also works with bundled TCC
+versions whose import library does not list `GetTickCount64`.
+
 ## Examples
 
 You can see the current time. [See](https://play.vlang.io/?query=c121a6dda7):

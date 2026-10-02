@@ -405,6 +405,7 @@ mut:
 	coverage_build_options         string
 	race                           bool
 	line_directives                bool
+	vlines                         bool
 	line_directive_paths           map[string]string
 	line_directive_fn_start        int
 	coverage_files                 map[string]&CoverageInfo
@@ -2331,7 +2332,7 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 	if path.ends_with('.m') {
 		return 'objective-c'
 	}
-	if path.ends_with('.cc') || path.ends_with('.cpp') {
+	if path.ends_with('.C') || path.ends_with('.cc') || path.ends_with('.cpp') {
 		return 'c++'
 	}
 	if cache_native_input_path_needs_objective_c(path, c_flags, c99_mode, target) {
@@ -12859,7 +12860,8 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_addr(id flat.NodeId, expected ty
 	}
 	target_alias := target_type as types.Alias
 	base_type := target_alias.base_type
-	if base_type is types.Pointer {
+	// `&U8(-1)`, with an alias of an integer type, is a pointer cast like `&u8(-1)`.
+	if base_type is types.Pointer || cgen_unalias_type(base_type).is_integer() {
 		return false
 	}
 	target_ct := g.value_c_type(base_type)
@@ -12897,7 +12899,7 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected ty
 	}
 	target_alias := target_base as types.Alias
 	base_type := target_alias.base_type
-	if base_type is types.Pointer {
+	if base_type is types.Pointer || cgen_unalias_type(base_type).is_integer() {
 		return false
 	}
 	child_id := g.a.child(node, 0)
@@ -13907,13 +13909,22 @@ fn (g &FlatGen) c_typedef_cast_call_name(node flat.Node) string {
 }
 
 // context_wants_pointer_to_fn reports whether the expression being generated is
-// consumed as a pointer to a function rather than as a callable value.
+// consumed as a pointer to a function rather than as a callable value. A pointer
+// to a pointer (`&voidptr`, C's `void **`, as in `__atomic_store_n(&s.f, f, 0)`)
+// is one too: a function itself cannot be one.
 fn (g &FlatGen) context_wants_pointer_to_fn() bool {
 	expected := cgen_unalias_type(g.expected_expr_type)
 	if expected is types.Pointer {
-		return cgen_unalias_type(expected.base_type) is types.FnType
+		base_type := cgen_unalias_type(expected.base_type)
+		return base_type is types.FnType || base_type is types.Pointer
 	}
 	return false
+}
+
+// context_wants_callable reports whether the expression being generated is
+// consumed as a function value (a field, parameter or variable of a function type).
+fn (g &FlatGen) context_wants_callable() bool {
+	return cgen_unalias_type(g.expected_expr_type) is types.FnType
 }
 
 // gen_expr_with_possible_enum_type emits expr with possible enum type output for c.
@@ -16198,6 +16209,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				types.Type(types.void_)
 			}
 			if node.op == .amp && fn_value_type is types.FnType {
+				operand_id, operand := g.unwrapped_fn_value_operand(child_id, child)
 				// A function value is already a C pointer, so `&` on one is a no-op
 				// wherever the context wants a callable: `Holder{ f: &local }` has to
 				// store the function, not the address of a stack slot that dies with
@@ -16205,12 +16217,18 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// - `ref := &f`, read back through `*ref` - needs the address, and
 				// dropping it there leaves the dereference reading code as data.
 				if g.context_wants_pointer_to_fn() {
-					if child.kind == .index {
+					// A bound method value (`obj.method`) is a selector without storage: it
+					// keeps the materialized copy below.
+					field_or_element := operand.kind == .index
+						|| (operand.kind == .selector && !g.tc.expr_is_method_value(operand_id))
+					if field_or_element || (g.expr_is_in_translated_file(id)
+						&& g.fn_value_operand_has_storage(operand_id, operand)) {
 						// Mutable for-in lowering takes the address of the current array
-						// element. Keep that address tied to the element so writes through
-						// the binding update the array rather than a heap-copied callback.
+						// element. Keep that address tied to the element (or field) so
+						// writes through it update it rather than a heap-copied callback.
+						// In translated C, `&` on a variable is its address, as in V1.
 						g.write('&')
-						gen_expr_lvalue(mut g, child_id)
+						gen_expr_lvalue(mut g, operand_id)
 						return
 					}
 					mut fn_ct := g.tc.c_type(fn_value_type)
@@ -16221,6 +16239,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('({ ${fn_ct} ${tmp} = ')
 					g.gen_expr(child_id)
 					g.write('; (${fn_ct}*)memdup(&${tmp}, sizeof(${fn_ct})); })')
+					return
+				}
+				// In translated C, where no callable is expected, `&` on a function
+				// variable (a local, parameter, global, field or element) is the
+				// variable's address, as in V1: C translated by c2v stores a callback
+				// through it with `c2v_assign_voidptr(&voidptr(&x), f)`.
+				if g.expr_is_in_translated_file(id) && !g.context_wants_callable()
+					&& g.fn_value_operand_has_storage(operand_id, operand) {
+					g.write('&')
+					gen_expr_lvalue(mut g, operand_id)
 					return
 				}
 				g.gen_expr(child_id)
@@ -16358,7 +16386,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(', sizeof(${ct}))')
 					return
 				}
-				if target_type is types.Alias && target_type.base_type !is types.Pointer {
+				// `&SS('hi')` (an alias of a value type) points to a copy of the value.
+				// `&U8(-1)` (an alias of an integer type) is a pointer cast, as `&u8(-1)` is.
+				if target_type is types.Alias && target_type.base_type !is types.Pointer
+					&& !cgen_unalias_type(target_type.base_type).is_integer() {
 					base_ct := g.value_c_type(target_type.base_type)
 					value_expr := g.expr_to_string(g.a.child(&child, 0))
 					source_expr := '(${base_ct}[]){${value_expr}}[0]'
@@ -16826,14 +16857,17 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write(g.cname('${short_mod}.${node.value}'))
 				}
-			} else if node.value == 'len' && base.kind == .ident {
+			} else if node.value == 'len' && base.kind == .ident
+				&& g.embedded_field_path_for_promoted_selector(base_type0, node.value) == none {
+				// A `len` promoted from an embedded struct takes the embedded path below.
 				base_type := g.tc.resolve_type(base_id)
 				if fixed := array_fixed_type(types.unwrap_pointer(base_type)) {
 					g.write(g.fixed_array_len_value(fixed))
 				} else {
 					raw_type := g.tc.cur_scope.lookup(base.value) or { base_type }
 					g.gen_expr(base_id)
-					if raw_type is types.Pointer {
+					// The declared type can be an alias of a pointer (`type P = &T`).
+					if cgen_unalias_type(raw_type) is types.Pointer {
 						g.write('->len')
 					} else {
 						g.write('.len')
@@ -21718,13 +21752,12 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	g.writeln('#endif')
 	// tcc has no `__atomic_thread_fence` builtin. On the architectures where
 	// thirdparty/stdatomic/nix/atomic.S provides `_V_atomic_thread_fence`, route to
-	// that shim; on x86_64 Unix TCC's <stdatomic.h> already declares
-	// `atomic_thread_fence` and maps `__atomic_thread_fence` to it. Redeclaring the
-	// mapped name with `int` conflicts with TCC's `memory_order` enum parameter.
+	// that shim. x86_64 Linux uses V's separately named fence too, so linking the
+	// runtime's atomic helpers cannot introduce a duplicate fence definition.
 	// clang/gcc keep the builtin.
 	g.writeln('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
 	g.writeln('/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
-	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv))')
+	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(__linux__)))')
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
@@ -23829,6 +23862,19 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 		return false
 	}
 	node := g.a.nodes[int(val_id)]
+	if node.kind == .array_literal {
+		// `__global a = [x, y]` is a self-contained `new_array_from_c_array(...)`.
+		tmp_sb := g.sb
+		tmp_line_start := g.line_start
+		g.sb = strings.new_builder(64)
+		g.line_start = true
+		g.gen_array_literal_value(node, typ.elem_type)
+		expr_str := g.sb.str()
+		g.sb = tmp_sb
+		g.line_start = tmp_line_start
+		g.queue_runtime_init('\t${target} = ${expr_str};')
+		return true
+	}
 	if node.kind != .array_init {
 		if node.kind != .call || node.children_count == 0 {
 			return false
@@ -24008,8 +24054,12 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 		// self-contained; allow it. Other prefixes (e.g. `&local`) would need a
 		// dropped temporary, so skip them.
 		if node.op == .amp && node.children_count > 0 {
-			child := g.a.nodes[int(g.a.child(&node, 0))]
+			child_id := g.a.child(&node, 0)
+			child := g.a.nodes[int(child_id)]
+			// A global, or a field or element of one, already has storage:
+			// `__global current = &manager` needs no temporary either.
 			return child.kind == .struct_init || child.kind == .assoc
+				|| g.global_init_operand_is_global_place(child_id)
 		}
 		return node.children_count == 1 && g.is_safe_global_init(g.a.child(&node, 0))
 	}
@@ -24017,6 +24067,28 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 	// them zero/NULL instead of emitting a reference to an undeclared symbol.
 	// Everything else, `.array_init` included, is safe.
 	return node.kind != .array_literal
+}
+
+// global_init_operand_is_global_place reports whether an operand of `&` in a global
+// initializer names a global, or a field or element of one.
+fn (g &FlatGen) global_init_operand_is_global_place(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value in g.global_types
+				|| qualify_name_in_module(g.tc.cur_module, node.value) in g.global_types
+		}
+		.selector, .index, .paren {
+			return node.children_count > 0
+				&& g.global_init_operand_is_global_place(g.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (g &FlatGen) const_get_deps(val_id flat.NodeId) []string {
@@ -24624,6 +24696,16 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		cast_prefix := '(${c_elem}${dims})'
 		if init_str.starts_with(cast_prefix) {
 			init_str = init_str[cast_prefix.len..].trim_space()
+		}
+		g.writeln('const ${ct} ${qname} = ${init_str};')
+	} else if default_init_unalias_type(v_type) is types.Struct {
+		// MSVC cannot initialize a file-scope object from a compound literal.
+		// C-backed structs may be declared in an external header, so the MSVC
+		// compatibility pass cannot discover their type from the generated C.
+		mut init_str := expr_str
+		cast_prefix := '(${ct})'
+		if init_str.starts_with('${cast_prefix}{') {
+			init_str = init_str[cast_prefix.len..]
 		}
 		g.writeln('const ${ct} ${qname} = ${init_str};')
 	} else {
@@ -25701,7 +25783,7 @@ fn (g &FlatGen) integer_overflow_helper(typ types.Type, op flat.Op) ?string {
 }
 
 fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, result_type types.Type) bool {
-	if !g.has_builtins || node.op !in [.div, .mod] {
+	if !g.has_builtins || g.static_c_initializer || node.op !in [.div, .mod] {
 		return false
 	}
 	checked_integer_bounds(result_type) or { return false }
@@ -25799,8 +25881,33 @@ fn (g &FlatGen) translated_comparison_integer_sign(typ types.Type) int {
 	return if g.translated_comparison_integer_is_unsigned(typ) { 1 } else { -1 }
 }
 
-fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+// translated_comparison_operand_type is the type of a comparison operand in C
+// translated to V: a rune literal stands for a C character constant, an `int`
+// (`c > `,`` with `c` holding EOF, -1, is false).
+fn (g &FlatGen) translated_comparison_operand_type(id flat.NodeId, typ types.Type) types.Type {
+	mut node := g.a.nodes[int(id)]
+	for node.kind == .paren && node.children_count > 0 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	if node.kind == .char_literal && !node.value.starts_with('c:')
+		&& unsigned_shift_unalias_type(typ) is types.Rune {
+		return types.Type(types.i32_)
+	}
+	return typ
+}
+
+fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_operand_type types.Type, rhs_operand_type types.Type, op flat.Op) bool {
 	translated := g.expr_is_in_translated_file(lhs_id)
+	lhs_type := if translated {
+		g.translated_comparison_operand_type(lhs_id, lhs_operand_type)
+	} else {
+		lhs_operand_type
+	}
+	rhs_type := if translated {
+		g.translated_comparison_operand_type(rhs_id, rhs_operand_type)
+	} else {
+		rhs_operand_type
+	}
 	lhs_sign := if translated {
 		g.translated_comparison_integer_sign(lhs_type)
 	} else {

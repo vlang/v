@@ -235,7 +235,12 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
+ifdef MAC
+# Stream guards for stale snapshots directly to the compiler, keeping one v.c.
+	bash "$(VROOT)/cmd/tools/macos_vc_compat.sh" "$(VC)/$(VCFILE)" $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+else
 	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) $(BOOTSTRAP_VC_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+endif
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif

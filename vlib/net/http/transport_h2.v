@@ -192,8 +192,8 @@ fn h2_dial_probe_ssl(req &Request, host string, port int) !H2ProbeResult {
 // ever dialing at all: see h2_dial_probe_vschannel). Falls back to
 // h2_use_h1_pool_or_dial's existing pooled-or-dial-fresh path, which is
 // itself platform-aware via tls_fresh_round_trip (native Windows dials
-// through vschannel_fresh_round_trip there, never silently switching TLS
-// backends).
+// through vschannel_fresh_round_trip there, with a net.ssl retry only for
+// SEC_E_INVALID_TOKEN before request bytes are sent).
 fn (mut t Transport) h2_fallback_h1(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
 	return t.h2_use_h1_pool_or_dial(req, key, raw, method, host, port, path, data, header)
 }

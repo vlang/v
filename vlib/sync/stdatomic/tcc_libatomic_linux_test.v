@@ -9,6 +9,7 @@ module main
 import sync.stdatomic
 
 fn main() {
+	C.atomic_thread_fence(C.memory_order_seq_cst)
 	mut a := stdatomic.new_atomic(i64(0))
 	a.store(1)
 	println(a.load())
@@ -33,21 +34,24 @@ fn test_tcc_can_link_sync_stdatomic_programs_on_linux() {
 	}
 	vcache := os.join_path(workdir, 'vcache')
 	os.mkdir_all(vcache) or { panic(err) }
-	src := os.join_path(workdir, 'main.v')
+	src := os.join_path(workdir, 'main.c.v')
 	out := os.join_path(workdir, 'main')
 	os.write_file(src, stdatomic_program) or { panic(err) }
 
-	compile_cmd := 'env VCACHE=${os.quoted_path(vcache)} ${os.quoted_path(vexe)} -nocache -cc tcc -no-retry-compilation -showcc -o ${os.quoted_path(out)} ${os.quoted_path(src)}'
-	compile_res := os.execute(compile_cmd)
-	if compile_res.exit_code != 0 {
-		panic('tcc compilation of a sync.stdatomic program failed (fallback to another compiler is disabled):\ncmd: ${compile_cmd}\noutput:\n${compile_res.output}')
-	}
-	assert !compile_res.output.contains('falling back to cc')
-	$if !musl ? {
-		assert !compile_res.output.contains('libatomic.a')
-	}
+	for gc_mode in ['none', 'boehm'] {
+		prealloc_flag := if gc_mode == 'none' { '-prealloc' } else { '' }
+		compile_cmd := 'env VCACHE=${os.quoted_path(vcache)} ${os.quoted_path(vexe)} -nocache -gc ${gc_mode} ${prealloc_flag} -cc tcc -no-retry-compilation -showcc -o ${os.quoted_path(out)} ${os.quoted_path(src)}'
+		compile_res := os.execute(compile_cmd)
+		if compile_res.exit_code != 0 {
+			panic('tcc compilation of a sync.stdatomic program failed (fallback to another compiler is disabled):\ncmd: ${compile_cmd}\noutput:\n${compile_res.output}')
+		}
+		assert !compile_res.output.contains('implicit tcc could not be used')
+		$if !musl ? {
+			assert !compile_res.output.contains('libatomic.a')
+		}
 
-	run_res := os.execute(os.quoted_path(out))
-	assert run_res.exit_code == 0
-	assert run_res.output.trim_space() == '1\n2\n2\n5'
+		run_res := os.execute(os.quoted_path(out))
+		assert run_res.exit_code == 0
+		assert run_res.output.trim_space() == '1\n2\n2\n5'
+	}
 }

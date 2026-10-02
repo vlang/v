@@ -117,6 +117,12 @@ fn find_cfile_size(fp &C.FILE) !int {
 		C.rewind(fp)
 		return 0
 	}
+	// Directories and other non-regular files can make ftell() return LONG_MAX with glibc.
+	// With 64-bit `int` (v3), the old truncation guard below no longer rejects that,
+	// and `read_file` would try to allocate `LONG_MAX + 1` bytes, which overflows.
+	if raw_fsize > i64(max_int) - 1 {
+		return error('file size ${raw_fsize} is too large to be read into memory')
+	}
 	len := int(raw_fsize)
 	// For files > 2GB, C.ftell can return values that, when cast to `int`, can result in values below 0.
 	if i64(len) < raw_fsize {
@@ -619,7 +625,7 @@ pub fn get_raw_line() string {
 		is_console := is_atty(0) > 0
 		wide_char_size := if is_console { 2 } else { 1 }
 		h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
-		if h_input == C.INVALID_HANDLE_VALUE {
+		if h_input == invalid_handle_value {
 			return ''
 		}
 		unsafe {
@@ -1202,7 +1208,7 @@ pub fn is_atty(fd int) int {
 				C.STD_OUTPUT_HANDLE
 			}
 			handle := C.GetStdHandle(handle_id)
-			if isnil(handle) || handle == C.INVALID_HANDLE_VALUE {
+			if isnil(handle) || handle == invalid_handle_value {
 				return 0
 			}
 			if !C.GetConsoleMode(handle, voidptr(&mode)) {

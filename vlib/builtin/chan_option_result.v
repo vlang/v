@@ -43,8 +43,12 @@ pub fn (err IError) str() string {
 	if err is None__ {
 		return 'none'
 	}
-	if err == none {
-		return 'nil'
+	// V3 compares an empty interface with `none`. The compatibility compiler,
+	// which still checks some legacy fixtures against this vlib, rejects that.
+	$if v3_backend ? {
+		if err == none {
+			return 'nil'
+		}
 	}
 	c := err.code()
 	if c > 0 {
