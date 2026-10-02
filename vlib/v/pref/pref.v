@@ -250,7 +250,7 @@ pub fn option_may_consume_value(option string) bool {
 		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
 		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend', '-compile-backend',
 		'--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix',
-		'-cmain', '-line-info']
+		'-cmain', '-line-info', '-memory-limit', '--memory-limit']
 }
 
 fn two_digits(value int) string {

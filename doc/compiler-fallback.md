@@ -69,3 +69,10 @@ on Windows, that last-resort cache has a fresh random name.
 Implicit C compiler selection excludes TCC for `-race`, because TCC has no ThreadSanitizer
 runtime. Test build facts follow this rule on every host, including Windows, where race
 builds themselves are unsupported. Explicit compiler requests are checked separately.
+
+User builds have a default memory safety limit of 10176 MiB. Set `-memory-limit <size>`
+(or `--memory-limit <size>`) before the source or subcommand to choose another limit.
+Unsuffixed values and `M`/`m` values use MiB; `K`/`k` use KiB and `G`/`g` use GiB.
+The value must be a nonnegative integer whose converted KiB value fits in a signed 64-bit
+integer. Missing, empty, malformed, negative, and overflowing values produce a CLI error.
+An explicit zero disables the limit, as does `-no-memory-limit`.
