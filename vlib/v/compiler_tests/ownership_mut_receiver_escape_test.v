@@ -8,6 +8,7 @@ fn test_ownership_mut_receiver_reference_cannot_escape_local_storage() {
 	for expression in ['builder.set(42)', 'builder.set(41).set(42)', 'reference',
 		'if *drops == 0 { builder.set(42) } else { builder.set(41) }',
 		'match *drops { 0 { builder.set(42) } else { builder.set(41) } }', 'unsafe { builder.set(42) }',
+		'unsafe { { mut scoped := Builder{drops: drops}; scoped.set(42) } }',
 		'unsafe { if *drops == 0 { builder.set(42) } else { builder.set(41) } }',
 		'if *drops == 0 { mut scoped := Builder{drops: drops}; scoped.set(42) } else { builder.set(41) }'] {
 		binding := if expression == 'reference' { '\treference := builder.set(42)\n' } else { '' }

@@ -9093,6 +9093,9 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		if tc.ownership_standard_string_arg_is_borrowed(call_name, expected) {
 			continue
 		}
+		if tc.ownership_clone_nonowned_string_call_arg(call_name, target_param_idx, target_suffix, arg_id, expected) {
+			continue
+		}
 		if tc.ownership_mark_array_insert_prepend_arg(node, call_name, param_idx, arg_id, id) {
 			_ = tc.ownership_borrowed_projection_action(arg_id, arg_id)
 			continue
@@ -9218,6 +9221,48 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 	for name in call_borrows {
 		tc.ownership_release_borrow(name, call_name)
 	}
+}
+
+// A by-value String parameter can become owning through another call site. Give that
+// callee independent storage when this call passes a regular string or a borrowed view.
+// The caller keeps its non-owning value, while an existing owner keeps its move semantics.
+fn (mut tc TypeChecker) ownership_clone_nonowned_string_call_arg(fn_name string, param_idx int, suffix string, arg_id flat.NodeId, expected Type) bool {
+	if unalias_type(expected) !is String {
+		return false
+	}
+	mut st := tc.ownership_state()
+	mut param_owned := suffix == '' && '${fn_name}__param_${param_idx}' in st.ownership_fn_params
+	if !param_owned {
+		for desc in st.ownership_fn_param_descs[fn_name] {
+			if desc.param_idx == param_idx && desc.suffix == suffix && desc.type_name == 'string' {
+				param_owned = true
+				break
+			}
+		}
+	}
+	if !param_owned {
+		return false
+	}
+	arg_name := tc.ownership_expr_ident_name(arg_id)
+	if arg_name.len > 0 {
+		if _ := tc.ownership_moved_conflict(arg_name) {
+			return false
+		}
+	}
+	if (arg_name.len > 0 && arg_name in st.owned_vars)
+		|| tc.ownership_expr_creates_owned_value(arg_id) {
+		return false
+	}
+	clean_id := tc.ownership_unwrap_expr(arg_id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	if tc.ownership_consume_conditional_call_arg(fn_name, param_idx, suffix, arg_id, expected, arg_id) {
+		return true
+	}
+	st.borrowed_projection_actions[int(arg_id)] = .clone_value
+	st.borrowed_projection_actions[int(clean_id)] = .clone_value
+	return true
 }
 
 fn (tc &TypeChecker) ownership_call_arg_reads_receiver_storage(node flat.Node, info CallInfo, arg_id flat.NodeId, expected Type) bool {
@@ -12278,7 +12323,7 @@ fn (tc &TypeChecker) ownership_standard_string_arg_is_borrowed(fn_name string, t
 	mut standard_module := ''
 	if fn_name in ['os.is_abs_path', 'os.is_unc_path', 'os.is_drive_rooted', 'os.is_normal_path',
 		'os.win_volume_len', 'os.exists', 'os.is_file', 'os.is_dir', 'os.is_executable', 'os.mkdir',
-		'os.read_bytes', 'os.ls', 'os.join_path', 'os.join_path_single',
+		'os.read_bytes', 'os.ls', 'os.real_path', 'os.join_path', 'os.join_path_single',
 		'os.find_abs_path_of_executable', 'os.exists_in_system_path'] {
 		standard_module = 'os'
 	} else if fn_name in ['strconv.parse_uint', 'strconv.parse_int', 'strconv.common_parse_uint',

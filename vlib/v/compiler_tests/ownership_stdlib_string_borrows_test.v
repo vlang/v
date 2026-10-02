@@ -69,6 +69,12 @@ fn test_ownership_file_operations_borrow_their_path_arguments() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'import os
 fn main() {
+	path := @FILE.to_owned()
+	resolved := os.real_path(path)
+	assert resolved.len > 0
+	assert path == @FILE
+	resource := os.resource_abs_path("not-present")
+	assert resource.len > 0
 	folder := os.join_path(os.temp_dir(), "ownership-file-borrows-" + os.getpid().str()).to_owned()
 	os.mkdir(folder) or { panic(folder + ": " + err.msg()) }
 	assert os.is_dir(folder)

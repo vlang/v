@@ -159,3 +159,121 @@ fn main() {
 		}
 	}
 }
+
+fn test_ownership_string_views_are_copied_at_owning_call_boundaries() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_view_mixed_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	fixture := 'fn identity(value string) string { return value }
+fn read(value string) (int, voidptr) {
+	return value.len, unsafe { voidptr(value.str) }
+}
+fn read_many(values ...string) voidptr {
+	return unsafe { voidptr(values[0].str) }
+}
+fn escape() (string, voidptr) {
+	local := "local owner".to_owned()
+	ptr := &local
+	return identity(*ptr), unsafe { voidptr(local.str) }
+}
+fn main() {
+	OWNED_CALLS_START
+	local := "second owner".to_owned()
+	ptr := &local
+	borrowed := *ptr
+	alias := borrowed
+	view_len, read_ptr := read(alias)
+	assert view_len == local.len
+	assert unsafe { read_ptr != voidptr(local.str) }
+	assert borrowed == "second owner"
+	assert alias == "second owner"
+	variadic_ptr := read_many(alias)
+	assert unsafe { variadic_ptr != voidptr(local.str) }
+	assert alias == "second owner"
+	conditional_len, conditional_ptr := read(if borrowed.len > 0 { borrowed } else { "empty" })
+	assert conditional_len == local.len
+	assert unsafe { conditional_ptr != voidptr(local.str) }
+	assert borrowed == "second owner"
+	view := identity(*ptr)
+	assert unsafe { view.str != local.str }
+	assert view == "second owner"
+	assert local == "second owner"
+	escaped, original := escape()
+	assert escaped == "local owner"
+	assert unsafe { voidptr(escaped.str) != original }
+	literal_len, _ := read("literal")
+	assert literal_len == 7
+	slice := local[..3]
+	slice_len, slice_ptr := read(slice)
+	assert slice_len == 3
+	assert unsafe { slice_ptr != voidptr(slice.str) }
+	assert slice == "sec"
+	assert local == "second owner"
+	OWNED_CALLS_END
+	println("ok")
+}
+'
+	owned_calls := 'taken := identity("owned argument".to_owned())
+	assert taken == "owned argument"
+	owned_len, _ := read("owned reader".to_owned())
+	assert owned_len == 12
+	_ = read_many("owned variadic".to_owned())'
+	for first in [true, false] {
+		os.write_file(source, fixture.replace('OWNED_CALLS_START', if first {
+			owned_calls
+		} else {
+			''
+		}).replace('OWNED_CALLS_END', if first { '' } else { owned_calls }))!
+		for mode in ['-no-parallel', ''] {
+			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+			assert out.exit_code == 0, '${mode}: ${out.output}'
+			assert out.output.trim_space() == 'ok', out.output
+		}
+	}
+}
+
+fn test_ownership_string_view_results_from_owning_calls_are_owned() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_view_result_moves_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn identity(value string) string { return value }
+fn consume(value string) { _ = value }
+fn main() {
+	owned := identity("owned argument".to_owned())
+	assert owned.len > 0
+	original := "borrowed argument".to_owned()
+	ptr := &original
+	result := identity(*ptr)
+	consume(result)
+	println(result)
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		assert out.exit_code != 0, '${mode}: ${out.output}'
+		assert out.output.contains('use of moved value: `result`'), '${mode}: ${out.output}'
+	}
+}
+
+fn test_ownership_string_call_copies_preserve_owned_argument_moves() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_call_copy_moves_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	for next in ['consume(owned)', 'consume(if owned.len > 0 { owned } else { "fallback" })'] {
+		os.write_file(source, 'fn consume(value string) { _ = value }
+fn main() {
+	owned := "owned argument".to_owned()
+	consume(owned)
+	${next}
+}
+')!
+		for mode in ['-no-parallel', ''] {
+			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+			assert out.exit_code != 0, '${mode}: ${out.output}'
+			assert out.output.contains('use of moved value: `owned`'), '${mode}: ${out.output}'
+		}
+	}
+}

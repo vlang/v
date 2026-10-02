@@ -7673,7 +7673,7 @@ pub fn (mut tc TypeChecker) annotate_types() {
 pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 	tc.extend_node_caches(tc.a.nodes.len)
 	tc.cur_module = ''
-	for node in tc.a.nodes {
+	for idx, node in tc.a.nodes {
 		if node.kind == .file {
 			tc.enter_file(node.value)
 		} else if node.kind == .module_decl {
@@ -7682,7 +7682,7 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 			if !tc.should_annotate_fn(node, used_fns) {
 				continue
 			}
-			tc.annotate_fn_node(node)
+			tc.annotate_fn_node(flat.NodeId(idx), node)
 		}
 	}
 }
@@ -7713,7 +7713,7 @@ pub fn (mut tc TypeChecker) annotate_types_with_used_missing_calls(used_fns map[
 			if idx >= source_node_count {
 				generated_fns++
 			}
-			tc.annotate_fn_node(node)
+			tc.annotate_fn_node(flat.NodeId(idx), node)
 		}
 	}
 	tc.timing_profile('  [ttime]   annotate candidates ${candidate_fns}, selected ${annotated_fns}, generated ${generated_fns}')
@@ -7745,9 +7745,13 @@ fn (tc &TypeChecker) fn_contains_unresolved_call(root flat.Node, mut pending []f
 // annotate_fn_node records contextual types for one function body. The caller
 // owns the function's node range, allowing independent bodies to run in
 // parallel without sharing lexical state.
-fn (mut tc TypeChecker) annotate_fn_node(node flat.Node) {
+fn (mut tc TypeChecker) annotate_fn_node(id flat.NodeId, node flat.Node) {
 	saved_fn_context := tc.fn_context
 	tc.fn_context = new_function_check_context()
+	// Lowered bodies still need their source parameter metadata during annotation.
+	tc.fn_context.node_id = int(id)
+	tc.fn_context.concrete_generic_receiver_specialization =
+		fn_value_is_concrete_generic_receiver_specialization(node.value)
 	tc.fn_context.generic_params = tc.infer_decl_generic_param_names(node)
 	tc.fn_context.return_type = tc.parse_type(node.typ)
 	tc.cur_scope = tc.file_scope

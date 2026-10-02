@@ -1989,6 +1989,9 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, depth in
 			} else {
 				0
 			}
+			if int(node.children_count) <= body_start {
+				return none
+			}
 			for i in body_start .. int(node.children_count) - 1 {
 				statement := tc.a.child_node(node, i)
 				if statement.kind in [.decl_assign, .assign] && statement.children_count == 2 {
@@ -1999,7 +2002,7 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, depth in
 					}
 				}
 			}
-			return tc.returned_receiver_local_storage(tc.branch_tail_expr_id(id), depth + 1,
+			return tc.returned_receiver_local_storage(tc.a.child(node, node.children_count - 1), depth + 1,
 				through_call, branch_sources)
 		}
 		if node.kind in [.if_expr, .match_stmt] {

@@ -43,7 +43,8 @@ by value are copied so they can outlive the source.
 
 Standard string methods, numeric parsers, path inspection and joining functions, and
 string-builder writes borrow their string arguments. User functions with by-value string
-parameters still consume owned strings.
+parameters still consume owned strings. When a parameter takes ownership, a regular string or
+borrowed view passed to it is copied for the callee, leaving the caller's value available.
 
 ## Move semantics
 
