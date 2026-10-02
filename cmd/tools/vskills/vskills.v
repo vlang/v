@@ -19,7 +19,7 @@ import v.skills
 
 const usage = 'Usage: v skills list [--global]\n' +
 	'       v skills add <name> [--global] [--force] [--dry-run]\n' +
-	'       v skills remove <name> [--global]\n' +
+	'       v skills remove <name> [--global] [--dry-run]\n' +
 	'       v skills path <name> [--global]\n' +
 	'\n' +
 	'Options:\n' +
@@ -55,14 +55,17 @@ pub fn (o Output) text() string {
 
 // fn main runs the command line and prints what the subcommand reported.
 fn main() {
-	args := os.args[1..].filter(it != '--')
+	passed := os.args[1..].filter(it != '--')
+	args := if passed.len > 0 && passed[0] == 'skills' { passed[1..] } else { passed }
 	if args.len == 0 || args[0] in ['-h', '--help', 'help'] {
 		print(usage)
 		exit(if args.len == 0 { 1 } else { 0 })
 	}
-	vroot := find_vroot(os.executable()) or {
-		eprintln('v skills: could not find the V source tree from `${os.executable()}`')
-		exit(1)
+	vroot := find_vroot(os.getenv_opt('VEXE') or { os.executable() }) or {
+		find_vroot(@VEXE) or {
+			eprintln('v skills: could not find the V source tree from `${os.executable()}`')
+			exit(1)
+		}
 	}
 	out := run_at(vroot, os.getwd(), args)
 	for line in out.lines {
@@ -200,8 +203,7 @@ fn list(vroot string, opts Options) Output {
 		for relative in skill.files {
 			out.lines << '	${relative}'
 		}
-		out.lines << '	status: ${marker(skill.name, in_project, in_global, stale,
-			global_stale)}'
+		out.lines << '	status: ${marker(skill.name, in_project, in_global, stale, global_stale)}'
 	}
 	out.lines << ''
 	out.lines << 'project: ${project_dir}${exists_mark(project_dir)}'
@@ -265,7 +267,7 @@ fn add(vroot string, opts Options) Output {
 			continue
 		}
 		result := skills.install(skill, dir, skills.InstallOptions{
-			force:  opts.force
+			force:   opts.force
 			dry_run: opts.dry_run
 		}) or {
 			out.errors << 'v skills: could not install `${name}`: ${err.msg()}'
@@ -305,6 +307,25 @@ fn remove(opts Options) Output {
 	mut out := Output{}
 	mut failed := false
 	for name in opts.names {
+		if opts.dry_run {
+			skills.validate_name(name) or {
+				out.errors << 'v skills: could not remove `${name}`: ${err.msg()}'
+				failed = true
+				continue
+			}
+			dest := os.join_path_single(dir, name)
+			if os.is_link(dest) || (os.is_dir(dest) && os.dir(os.real_path(dest)) != os.real_path(dir)) {
+				out.errors << 'v skills: refusing skill path outside its immediate install directory: `${dest}`'
+				failed = true
+				continue
+			}
+			out.lines << if os.is_dir(dest) {
+				'${name}: would remove ${dest}'
+			} else {
+				'${name}: not installed in ${dir}'
+			}
+			continue
+		}
 		result := skills.remove(dir, name) or {
 			out.errors << 'v skills: could not remove `${name}`: ${err.msg()}'
 			failed = true
@@ -312,10 +333,6 @@ fn remove(opts Options) Output {
 		}
 		if !result.removed {
 			out.lines << '${name}: not installed in ${dir}'
-			continue
-		}
-		if opts.dry_run {
-			out.lines << '${name}: would remove ${result.path}'
 			continue
 		}
 		out.lines << '${name}: removed ${result.path}'

@@ -64,11 +64,15 @@ fn tool_ast(ws &Workspace, arguments string) string {
 	w.number(rendered.len)
 	w.key('truncated')
 	w.boolean(rendered.len > ast_byte_limit)
-	w.key_raw('ast', if rendered.len > ast_byte_limit {
-		rendered[ast_byte_limit..].all_before_last('\n')
+	if rendered.len > ast_byte_limit {
+		w.key_raw('ast', 'null')
+		w.key('limit')
+		w.number(ast_byte_limit)
+		w.key('hint')
+		w.string('Use terse, skip_defaults or hide to reduce the tree, or request v_symbols.')
 	} else {
-		rendered
-	})
+		w.key_raw('ast', rendered)
+	}
 	w.end_object()
 	return w.str()
 }

@@ -116,8 +116,7 @@ fn test_add_installs_a_skill_into_the_project() {
 	root := project()
 	out := run(root, 'add', 'alpha')
 	assert out.code == 0, out.text()
-	assert os.read_file(entry_of(root, 'alpha'))!.contains('# alpha'),
-		'the entry file was not copied'
+	assert os.read_file(entry_of(root, 'alpha'))!.contains('# alpha'), 'the entry file was not copied'
 	extra := os.join_path(installed_dir(root, 'alpha'), 'references/note.md')
 	assert os.is_file(extra), 'a nested file was not copied'
 }
@@ -128,8 +127,7 @@ fn test_add_reports_a_second_install_instead_of_overwriting() {
 	os.write_file(entry_of(root, 'alpha'), 'edited locally\n')!
 	out := run(root, 'add', 'alpha')
 	assert out.lines.join('\n').contains('already installed'), out.text()
-	assert os.read_file(entry_of(root, 'alpha'))! == 'edited locally\n',
-		'a plain add overwrote a local edit'
+	assert os.read_file(entry_of(root, 'alpha'))! == 'edited locally\n', 'a plain add overwrote a local edit'
 }
 
 fn test_add_force_overwrites_a_local_edit() {
@@ -139,8 +137,7 @@ fn test_add_force_overwrites_a_local_edit() {
 	out := run(root, 'add', 'alpha', '--force')
 	assert out.code == 0, out.text()
 	assert out.lines.join('\n').contains('reinstalled'), out.text()
-	assert os.read_file(entry_of(root, 'alpha'))!.contains('# alpha'),
-		'a forced add did not overwrite'
+	assert os.read_file(entry_of(root, 'alpha'))!.contains('# alpha'), 'a forced add did not overwrite'
 }
 
 fn test_add_dry_run_writes_nothing() {
@@ -222,6 +219,64 @@ fn test_remove_needs_a_name() {
 	out := run(root, 'remove')
 	assert out.code != 0, out.text()
 	assert out.errors.join('\n').contains('name a skill'), out.text()
+}
+
+fn test_remove_dry_run_preserves_the_directory_and_all_contents() {
+	root := project()
+	assert run(root, 'add', 'alpha').code == 0
+	entry := os.read_file(entry_of(root, 'alpha'))!
+	reference := os.join_path(installed_dir(root, 'alpha'), 'references', 'note.md')
+	before := os.read_file(reference)!
+	out := run(root, 'remove', 'alpha', '--dry-run')
+	assert out.code == 0, out.text()
+	assert out.text().contains('would remove'), out.text()
+	assert os.read_file(entry_of(root, 'alpha'))! == entry
+	assert os.read_file(reference)! == before
+	assert run(root, 'remove', '../../victim', '--dry-run').code == 1
+}
+
+fn test_cached_skills_launcher_lists_and_safely_removes_custom_skills() {
+	root := project()
+	cache := os.join_path(test_root, 'tool-cache')
+	previous_cache := os.getenv_opt('VTOOLS_CACHE_DIR')
+	previous_dir := os.getwd()
+	defer {
+		os.chdir(previous_dir) or { panic(err) }
+		if value := previous_cache {
+			os.setenv('VTOOLS_CACHE_DIR', value, true)
+		} else {
+			os.unsetenv('VTOOLS_CACHE_DIR')
+		}
+	}
+	os.setenv('VTOOLS_CACHE_DIR', cache, true)
+	os.chdir(root)!
+	custom := installed_dir(root, 'custom')
+	os.mkdir_all(os.join_path(custom, 'references'))!
+	os.write_file(os.join_path(custom, 'SKILL.md'), 'custom entry')!
+	os.write_file(os.join_path(custom, 'references', 'keep.txt'), 'keep')!
+	victim := os.join_path(root, 'victim')
+	os.mkdir_all(victim)!
+	os.write_file(os.join_path(victim, 'keep.txt'), 'unrelated')!
+	vexe := os.quoted_path(@VEXE)
+	listed := os.execute('${vexe} skills list')
+	assert listed.exit_code == 0, listed.output
+	assert listed.output.contains('v-mcp'), listed.output
+	assert os.is_dir(cache)
+	preview := os.execute('${vexe} skills remove custom --dry-run')
+	assert preview.exit_code == 0, preview.output
+	assert preview.output.contains('would remove'), preview.output
+	assert os.read_file(os.join_path(custom, 'SKILL.md'))! == 'custom entry'
+	assert os.read_file(os.join_path(custom, 'references', 'keep.txt'))! == 'keep'
+	for name in ['..', '../../victim'] {
+		bad := os.execute('${vexe} skills remove ${os.quoted_path(name)}')
+		assert bad.exit_code == 1, bad.output
+		assert os.read_file(os.join_path(victim, 'keep.txt'))! == 'unrelated'
+		assert os.is_dir(custom)
+	}
+	removed := os.execute('${vexe} skills remove custom')
+	assert removed.exit_code == 0, removed.output
+	assert !os.exists(custom)
+	assert os.read_file(os.join_path(victim, 'keep.txt'))! == 'unrelated'
 }
 
 fn test_list_reports_a_skill_whose_install_is_out_of_date() {

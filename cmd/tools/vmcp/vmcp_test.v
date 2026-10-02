@@ -1014,3 +1014,62 @@ fn test_workspace_checks_symlink_parents_of_new_files() {
 	os.mkdir_all(os.join_path(ws.root, 'existing'))!
 	assert ws.resolve('existing/../new.v')! == os.join_path(ws.root, 'new.v')
 }
+
+struct WireContent {
+	text string
+}
+
+struct WireCallResult {
+	content  []WireContent
+	is_error bool @[json: isError]
+}
+
+struct WireCallResponse {
+	id     int
+	result WireCallResult
+}
+
+fn test_oversized_ast_wire_result_is_bounded_valid_json_in_both_modes() {
+	root := probe_root()!
+	large := 'x'.repeat(ast_byte_limit + 1)
+	os.write_file(os.join_path(root, 'large.v'), "module main\nconst large = '${large}'\n")!
+	input := os.join_path(root, 'large_ast_requests.jsonl')
+	os.write_file(input, '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"${mcp.protocol_version}","capabilities":{},"clientInfo":{"name":"large-ast-test","version":"1"}}}\n' +
+		'{"jsonrpc":"2.0","method":"notifications/initialized"}\n' +
+		'{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n' +
+		'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"v_ast","arguments":{"path":"large.v"}}}\n')!
+	for read_only in [false, true] {
+		mut args := ['mcp', 'serve', '--root', root]
+		if read_only { args << '--read-only' }
+		mut process := os.new_process(@VEXE)
+		process.set_args(args)
+		process.set_redirect_stdio()
+		process.set_stdin_path(input)
+		process.run()
+		output := process.stdout_slurp()
+		errors := process.stderr_slurp()
+		process.wait()
+		assert process.code == 0, errors
+		process.close()
+		mut received := false
+		for line in output.trim_space().split_into_lines() {
+			response := json.decode[WireCallResponse](line, strict: true)!
+			if response.id != 3 { continue }
+			received = true
+			assert !response.result.is_error, line
+			assert response.result.content.len == 1, line
+			content := response.result.content[0].text
+			parsed := json.decode[map[string]json.Any](content, strict: true)!
+			truncated := parsed['truncated'] or { panic('missing truncated') }
+			bytes := parsed['bytes'] or { panic('missing bytes') }
+			ast := parsed['ast'] or { panic('missing ast') }
+			limit := parsed['limit'] or { panic('missing limit') }
+			assert content.len < ast_byte_limit
+			assert truncated.bool()
+			assert bytes.int() > ast_byte_limit
+			assert ast.str() == 'null'
+			assert limit.int() == ast_byte_limit
+		}
+		assert received, output
+	}
+}

@@ -10,3 +10,7 @@ decoded as a complete JSON response in both writable and read-only modes.
 Paths stay inside the selected workspace even when an editing request creates a
 new file. Existing symlink parents are resolved before the boundary is checked;
 dangling symlinks are refused.
+
+AST renderings over 400,000 bytes return `ast: null`, the original byte count,
+`truncated: true`, the limit and reduction hints. Incomplete JSON trees are never
+returned; smaller trees keep their normal AST object.

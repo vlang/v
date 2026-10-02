@@ -89,7 +89,7 @@ pub struct RemoveResult {
 pub:
 	skill string
 	// path is the removed directory.
-	path string
+	path    string
 	removed bool
 }
 
@@ -404,14 +404,22 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 }
 
 // remove deletes an installed skill directory. It reports `removed: false` when
-// nothing was installed under that name.
+// nothing was installed under that name. Names follow validate_name; symlinks
+// and targets outside the immediate install directory are refused.
 pub fn remove(dir string, name string) !RemoveResult {
+	validate_name(name)!
 	dest := os.join_path_single(dir, name)
+	if os.is_link(dest) {
+		return error('refusing to remove a symlink skill directory `${dest}`')
+	}
 	if !os.is_dir(dest) {
 		return RemoveResult{
 			skill: name
 			path:  dest
 		}
+	}
+	if os.dir(os.real_path(dest)) != os.real_path(dir) {
+		return error('skill `${name}` is outside its immediate install directory')
 	}
 	os.rmdir_all(dest)!
 	return RemoveResult{

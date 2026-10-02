@@ -44,8 +44,7 @@ fn test_catalog_reads_front_matter_and_nested_files() {
 	assert bundles[1].name == 'beta'
 	assert bundles[0].description == 'Test the alpha skill.'
 	// The paths inside a bundle are repository-relative, so they always use `/`.
-	assert bundles[0].files == ['SKILL.md', 'references/notes.md'],
-		bundles[0].files.join(', ')
+	assert bundles[0].files == ['SKILL.md', 'references/notes.md'], bundles[0].files.join(', ')
 }
 
 fn test_catalog_skips_a_directory_without_an_entry_file() {
@@ -131,7 +130,7 @@ fn test_install_skips_an_existing_skill_unless_forced() {
 	assert skipped.written.len == 0
 	assert os.read_file(entry)! == 'local edit\n'
 	// `force` restores the bundled content.
-	forced := skills.install(skill, dir, skills.InstallOptions{force: true})!
+	forced := skills.install(skill, dir, skills.InstallOptions{ force: true })!
 	assert !forced.skipped
 	assert os.read_file(entry)! != 'local edit\n'
 }
@@ -140,7 +139,7 @@ fn test_install_dry_run_writes_nothing() {
 	vroot := fixture_root(['alpha'])!
 	dir := scratch_dir('dry')!
 	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
-	result := skills.install(skill, dir, skills.InstallOptions{dry_run: true})!
+	result := skills.install(skill, dir, skills.InstallOptions{ dry_run: true })!
 	assert result.dry_run
 	assert result.written.len == 2
 	assert skills.installed(dir).len == 0
@@ -151,7 +150,7 @@ fn test_dry_run_reports_a_skip_for_an_installed_skill() {
 	dir := scratch_dir('dry_skip')!
 	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
 	skills.install(skill, dir, skills.InstallOptions{})!
-	result := skills.install(skill, dir, skills.InstallOptions{dry_run: true})!
+	result := skills.install(skill, dir, skills.InstallOptions{ dry_run: true })!
 	assert result.skipped
 }
 
@@ -164,6 +163,29 @@ fn test_remove_reports_whether_anything_was_there() {
 	assert result.removed
 	assert skills.installed(dir).len == 0
 	assert !skills.remove(dir, 'alpha')!.removed
+}
+
+fn test_remove_rejects_traversal_names_and_preserves_other_directories() {
+	root := fixture_root(['alpha'])!
+	dir := skills.target_dir(.project_root, root)
+	skill := skills.find(root, 'alpha') or { panic('missing alpha') }
+	skills.install(skill, dir, skills.InstallOptions{})!
+	victim := os.join_path(root, 'victim')
+	os.mkdir_all(victim)!
+	marker := os.join_path(victim, 'keep.txt')
+	os.write_file(marker, 'unrelated')!
+	for name in ['', '..', '../..', '../../victim', 'alpha/../../victim', 'a\\..\\victim'] {
+		assert skills.remove(dir, name) == none, name
+		assert os.read_file(marker)! == 'unrelated'
+		assert os.is_file(os.join_path(dir, 'alpha', skills.entry_file))
+	}
+	$if !windows {
+		link := os.join_path(dir, 'linked')
+		os.symlink(victim, link)!
+		assert skills.remove(dir, 'linked') == none
+		assert os.read_file(marker)! == 'unrelated'
+		assert os.is_link(link)
+	}
 }
 
 fn test_installed_ignores_entries_without_an_entry_file() {
@@ -213,8 +235,7 @@ fn test_list_files_puts_the_entry_file_first_and_sorts_the_rest() {
 	os.write_file(os.join_path(dir, 'zeta.md'), 'z')!
 	os.write_file(os.join_path(dir, 'alpha.md'), 'a')!
 	os.write_file(os.join_path(dir, 'scripts', 'run.sh'), 's')!
-	assert skills.list_files(dir) == ['SKILL.md', 'alpha.md', 'scripts/run.sh', 'zeta.md'],
-		skills.list_files(dir).join(', ')
+	assert skills.list_files(dir) == ['SKILL.md', 'alpha.md', 'scripts/run.sh', 'zeta.md'], skills.list_files(dir).join(', ')
 	assert skills.list_files(os.join_path(test_root, 'unlisted')).len == 0
 }
 
@@ -347,8 +368,7 @@ fn test_invalid_bundled_reports_what_is_wrong_with_each_one() {
 	problems := skills.invalid_bundled(vroot)
 	assert problems.len == 2, problems.join('\n')
 	joined := problems.join('\n')
-	assert joined.contains('bad-name: ') && joined.contains('other'),
-		'the mismatch should be reported, got: ' + joined
+	assert joined.contains('bad-name: ') && joined.contains('other'), 'the mismatch should be reported, got: ' + joined
 	assert joined.contains('thin: '), joined
 	// The valid bundle is not reported.
 	assert !joined.contains('good'), joined
@@ -428,8 +448,7 @@ fn test_every_bundled_reference_file_is_still_checked_by_check_md() {
 		if trimmed == '' || trimmed.starts_with('#') {
 			continue
 		}
-		assert !trimmed.contains('references'),
-			'the exemption must stay narrow; `references/` should still be checked: ${trimmed}'
+		assert !trimmed.contains('references'), 'the exemption must stay narrow; `references/` should still be checked: ${trimmed}'
 	}
 }
 
