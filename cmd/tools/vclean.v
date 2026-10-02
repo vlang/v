@@ -31,10 +31,11 @@ fn classify(path string) InputKind {
 	if os.is_dir(path) {
 		return .directory
 	}
-	if !path.ends_with('.v') {
+	resolved := os.real_path(path)
+	if !resolved.ends_with('.v') {
 		return .unsupported
 	}
-	stem := os.file_name(path).all_before_last('.')
+	stem := os.file_name(resolved).all_before_last('.')
 	if stem == '' || stem in ['.', '..', '-'] || stem.ends_with('.c') || stem.ends_with('.js')
 		|| stem.ends_with('.wasm') {
 		return .unsupported
@@ -55,7 +56,8 @@ fn bin_file_for(path string) string {
 		real := os.real_path(path)
 		os.join_path_single(real, os.file_name(real))
 	} else {
-		os.join_path_single(os.dir(os.real_path(path)), os.file_name(path).all_before_last('.'))
+		real := os.real_path(path)
+		os.join_path_single(os.dir(real), os.file_name(real).all_before_last('.'))
 	}
 	if os.user_os() == 'windows' && !base.ends_with('.exe') {
 		return base + '.exe'
@@ -71,8 +73,8 @@ fn classify_all(paths []string) []Input {
 	mut inputs := []Input{}
 	for path in targets {
 		inputs << Input{
-			path: path
-			kind: classify(path)
+			path:     path
+			kind:     classify(path)
 			bin_file: bin_file_for(path)
 		}
 	}
@@ -105,23 +107,24 @@ fn report_nothing(inputs []Input) {
 
 // remove_one deletes the executable of `input`. Only a regular file is removed,
 // and only the name the compiler itself would have written.
-fn remove_one(input Input, dry_run bool, verbose bool) {
+fn remove_one(input Input, dry_run bool, verbose bool) bool {
 	if input.kind == .unsupported || !os.is_file(input.bin_file) {
-		return
+		return true
 	}
 	if dry_run || verbose {
 		println('rm ${input.bin_file}')
 	}
 	if dry_run {
-		return
+		return true
 	}
 	os.rm(input.bin_file) or {
 		eprintln('v clean: cannot remove `${input.bin_file}`: ${err.msg()}')
-		return
+		return false
 	}
 	if !verbose {
 		println('removed `${input.bin_file}`')
 	}
+	return true
 }
 
 fn main() {
@@ -141,12 +144,14 @@ fn main() {
 		exit(1)
 	}
 	inputs := classify_all(paths)
-	refused := report_refused(inputs)
+	mut failed := report_refused(inputs)
 	report_nothing(inputs)
 	for input in inputs {
-		remove_one(input, dry_run, verbose)
+		if !remove_one(input, dry_run, verbose) {
+			failed = true
+		}
 	}
-	if refused {
+	if failed {
 		exit(1)
 	}
 }

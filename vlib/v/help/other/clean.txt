@@ -40,3 +40,6 @@ The other paths in the same invocation are still cleaned.
 This does not touch the build cache. `v wipe-cache` clears the build cache and
 the temporary folder instead; it is a separate command because it affects every
 project on the machine, not just the ones named here.
+Source symlinks use the resolved source basename, matching a default build.
+The command exits with a failure status if an output cannot be removed, while
+continuing to clean the other supported inputs.

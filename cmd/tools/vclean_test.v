@@ -11,7 +11,7 @@ fn prepare_project(name string) !string {
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
 	os.write_file(os.join_path(root, 'main.v'), "module main\n\nfn main() {\n\tprintln('hello')\n}\n")!
-	return root
+	return os.real_path(root)
 }
 
 // exe_postfix is what the compiler appends to an output name on this platform.
@@ -115,4 +115,48 @@ fn test_clean_help_describes_the_flags() {
 	assert res.output.contains('Usage: v clean [options] [PATH...]'), res.output
 	assert res.output.contains('dry-run'), res.output
 	assert res.output.contains('verbose'), res.output
+}
+
+fn test_clean_symlink_source_preserves_the_alias_named_file() {
+	$if windows {
+		return
+	}
+	root := prepare_project('symlink')!
+	os.chdir(root)!
+	os.symlink('main.v', 'alias.v')!
+	os.write_file('alias', 'unrelated file')!
+	built := os.execute('${vexe} alias.v')
+	assert built.exit_code == 0, built.output
+	assert os.is_file('main'), 'the compiler must use the resolved source basename'
+	res := os.execute('${vexe} clean alias.v')
+	assert res.exit_code == 0, res.output
+	assert !os.exists('main')
+	assert os.read_file('alias')! == 'unrelated file'
+	assert os.is_link('alias.v')
+}
+
+fn test_clean_reports_failed_removal_and_continues_other_inputs() {
+	$if windows {
+		return
+	}
+	root := prepare_project('permission_failure')!
+	build(root)!
+	exe := default_exe(root)
+	os.chmod(root, 0o555)!
+	defer { os.chmod(root, 0o755) or {} }
+	// Root and some filesystem configurations ignore directory mode bits.
+	probe := os.join_path(root, 'permission_probe')
+	mut permissions_enforced := false
+	os.write_file(probe, '') or { permissions_enforced = true }
+	if !permissions_enforced {
+		os.rm(probe) or {}
+		return
+	}
+	other := prepare_project('permission_other')!
+	build(other)!
+	res := os.execute('${vexe} clean ${os.quoted_path(root)} ${os.quoted_path(other)}')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('cannot remove'), res.output
+	assert os.is_file(exe)
+	assert !os.exists(default_exe(other))
 }
