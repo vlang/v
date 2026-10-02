@@ -2,6 +2,7 @@ import crypto.sha512
 import crypto.sha256
 import crypto.pbkdf2
 import encoding.hex
+import hash
 
 struct TestCaseData {
 	name       string
@@ -155,5 +156,100 @@ fn test_sha512_256() {
 		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length,
 			sha512.new512_256())!
 		assert key.hex() == c.sha512_256, 'failed c=${c.count} dkLen=${c.key_length}'
+	}
+}
+
+// Every digest that `pbkdf2.key` supports.
+const variants = ['sha224', 'sha256', 'sha384', 'sha512', 'sha512_224', 'sha512_256']
+
+fn new_hash(name string) hash.Hash {
+	match name {
+		'sha224' { return sha256.new224() }
+		'sha256' { return sha256.new() }
+		'sha384' { return sha512.new384() }
+		'sha512' { return sha512.new() }
+		'sha512_224' { return sha512.new512_224() }
+		'sha512_256' { return sha512.new512_256() }
+		else { panic('unknown hash ${name}') }
+	}
+}
+
+fn hash_sum(name string, data []u8) []u8 {
+	return match name {
+		'sha224' { sha256.sum224(data) }
+		'sha256' { sha256.sum256(data) }
+		'sha384' { sha512.sum384(data) }
+		'sha512' { sha512.sum512(data) }
+		'sha512_224' { sha512.sum512_224(data) }
+		'sha512_256' { sha512.sum512_256(data) }
+		else { panic('unknown hash ${name}') }
+	}
+}
+
+fn block_size_of(name string) int {
+	return if name in ['sha224', 'sha256'] { sha256.block_size } else { sha512.block_size }
+}
+
+// naive_hmac is a direct transcription of RFC 2104, used as a reference.
+fn naive_hmac(name string, key []u8, data []u8) []u8 {
+	block_size := block_size_of(name)
+	mut k := if key.len > block_size { hash_sum(name, key) } else { key.clone() }
+	for k.len < block_size {
+		k << 0
+	}
+	mut inner := []u8{}
+	mut outer := []u8{}
+	for b in k {
+		inner << (b ^ 0x36)
+		outer << (b ^ 0x5c)
+	}
+	inner << data
+	outer << hash_sum(name, inner)
+	return hash_sum(name, outer)
+}
+
+// naive_pbkdf2 is a direct transcription of RFC 8018, section 5.2, used as a reference.
+fn naive_pbkdf2(name string, password []u8, salt []u8, count int, key_length int) []u8 {
+	mut dk := []u8{}
+	for i := 1; dk.len < key_length; i++ {
+		mut msg := salt.clone()
+		msg << [u8(i >> 24), u8(i >> 16), u8(i >> 8), u8(i)]
+		mut u := naive_hmac(name, password, msg)
+		mut t := u.clone()
+		for _ in 1 .. count {
+			u = naive_hmac(name, password, u)
+			for j in 0 .. t.len {
+				t[j] ^= u[j]
+			}
+		}
+		dk << t
+	}
+	return dk[..key_length]
+}
+
+fn test_matches_naive_reference() {
+	salt := 'NaCl, and some more salt'.bytes()
+	for name in variants {
+		block_size := block_size_of(name)
+		for count in [1, 2, 3, 100, 4096] {
+			// passwords shorter than, equal to and longer than the block size
+			mut password_lengths := [0, 7, block_size, block_size + 1, 2 * block_size + 3]
+			mut key_lengths := [1, 20, 32, 33, 64, 100]
+			if count == 4096 {
+				// keep the test fast without -prod; 33 bytes needs two blocks for every
+				// digest except sha384 and sha512
+				password_lengths = [7, block_size, block_size + 1]
+				key_lengths = [33]
+			}
+			for password_length in password_lengths {
+				password := []u8{len: password_length, init: u8(index * 13 + 5)}
+				// a shorter key is a prefix of a longer one
+				expected := naive_pbkdf2(name, password, salt, count, key_lengths.last())
+				for key_length in key_lengths {
+					got := pbkdf2.key(password, salt, count, key_length, new_hash(name))!
+					assert got == expected[..key_length], '${name} password.len=${password_length} c=${count} dkLen=${key_length}'
+				}
+			}
+		}
 	}
 }
