@@ -118,11 +118,11 @@ fn v3_race_c_compiler_hint(output string) string {
 	return ''
 }
 
-// v3_race_keep_macos_debug_symbols keeps the DWARF line tables of a macOS race build next
+// v3_keep_macos_debug_symbols keeps the DWARF line tables of a macOS debug build next
 // to the final binary. On macOS they stay in the object files, and `clang -g` writes a
 // `.dSYM` bundle beside its temporary output only when it compiles and links in one step.
-// Without them the TSan symbolizer (atos) prints `<null>` instead of V file:line positions.
-fn v3_race_keep_macos_debug_symbols(staged_binary string, bin_file string) {
+// Without them debuggers and the TSan symbolizer (atos) cannot recover file:line positions.
+fn v3_keep_macos_debug_symbols(staged_binary string, bin_file string) {
 	target_dsym := bin_file + '.dSYM'
 	os.rmdir_all(target_dsym) or {}
 	staged_dsym := staged_binary + '.dSYM'
@@ -134,8 +134,8 @@ fn v3_race_keep_macos_debug_symbols(staged_binary string, bin_file string) {
 	os.execute('${os.quoted_path(dsymutil)} ${os.quoted_path(bin_file)} -o ${os.quoted_path(target_dsym)}')
 }
 
-// v3_race_remove_macos_debug_symbols removes the debug symbols of a macOS race binary that
+// v3_remove_macos_debug_symbols removes the debug symbols of a macOS debug binary that
 // `v run` deletes after running it.
-fn v3_race_remove_macos_debug_symbols(bin_file string) {
+fn v3_remove_macos_debug_symbols(bin_file string) {
 	os.rmdir_all(bin_file + '.dSYM') or {}
 }

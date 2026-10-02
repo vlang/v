@@ -249,6 +249,10 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	if !link_atomic_s {
 		return ''
 	}
+	if target_os == 'linux' && prefs.target.arch == 'amd64' {
+		// Keep V's fence distinct from the atomic helpers supplied by libtcc1.a.
+		return os.join_path(prefs.vroot, 'vlib', 'sync', 'stdatomic', 'atomic_fence_amd64.S')
+	}
 	atomic_s := os.join_path(prefs.vroot, 'thirdparty', 'stdatomic', 'nix', 'atomic.S')
 	return atomic_s
 }
@@ -554,7 +558,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		if c_link_flags_use_objective_c_language(passthrough) {
 			add_c_language_runtime_link_flags(mut passthrough, flags, 'objective-c', target)
 		}
-		return passthrough
+		return c_source_language_flags(passthrough)
 	}
 	mut common_compile_flags := optimization_flags.clone()
 	common_compile_flags << c_object_compile_support_flags(flags)
@@ -578,7 +582,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 			stats.content_key_hits = plan.requests - plan.direct_objects
 			stats.dependency_manifest_hits = plan.requests - plan.direct_objects
 			stats.dependency_files = plan.dependency_files
-			return plan.flags
+			return c_source_language_flags(plan.flags)
 		}
 	}
 	mut prepared := []string{}
@@ -604,6 +608,13 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 				prepared << flags[i + 1]
 			}
 			i += 2
+			continue
+		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			active_language = joined_language
+			prepared << flag
+			i++
 			continue
 		}
 		if c_flag_is_object_file(clean) {
@@ -650,13 +661,13 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		write_c_link_plan(plan_path, prepared, stats) or {}
 		stats.link_plan_signature = modulecache.file_signature(plan_path)
 	}
-	return prepared
+	return c_source_language_flags(prepared)
 }
 
 fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v4', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v5', os.getwd(), flags.join('\x00'),
 		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
 		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
@@ -671,7 +682,7 @@ fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagP
 fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	content := os.read_file(plan_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v4' {
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v5' {
 		return none
 	}
 	mut plan := CLinkPlan{}
@@ -735,7 +746,7 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
 	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
-	out.writeln('format=v3-c-link-plan-v4')
+	out.writeln('format=v3-c-link-plan-v5')
 	out.writeln('requests=${stats.requests}')
 	out.writeln('direct_objects=${stats.direct_objects}')
 	out.writeln('dependency_files=${stats.dependency_files}')
@@ -808,6 +819,12 @@ fn c_link_flags_use_objective_c_language(flags []string) bool {
 			i++
 			continue
 		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
+			continue
+		}
 		if c_flag_is_c_source_file(clean) || c_flag_is_existing_file(clean) {
 			if language in ['objective-c', 'objective-c++'] {
 				return true
@@ -842,12 +859,18 @@ fn c_link_flags_use_language(flags []string, include_objective_c bool) bool {
 			i++
 			continue
 		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
+			continue
+		}
 		if c_flag_is_c_source_file(clean) {
 			if language in ['c++', 'objective-c++']
 				|| (include_objective_c && language == 'objective-c') {
 				return true
 			}
-			if language in ['', 'none'] && (clean.ends_with('.cc') || clean.ends_with('.cpp')
+			if language in ['', 'none'] && (clean.ends_with('.C') || clean.ends_with('.cc') || clean.ends_with('.cpp')
 				|| clean.ends_with('.mm')
 				|| (include_objective_c && clean.ends_with('.m'))) {
 				return true
@@ -898,6 +921,10 @@ fn c_object_compile_flags(flags []string) []string {
 			i += 2
 			continue
 		}
+		if c_joined_source_language(part).len > 0 {
+			i++
+			continue
+		}
 		if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-weak_library',
 			'-force_load'] {
 			skip_link_operand = true
@@ -935,6 +962,12 @@ fn c_dylib_link_flags(flags []string) []string {
 		if clean == '-x' {
 			language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
 			i += 2
+			continue
+		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
 			continue
 		}
 		if clean in ['-l', '-L', '-F', '-framework', '-weak_framework', '-weak_library', '-Xlinker',
@@ -1109,6 +1142,12 @@ fn tcc_native_c_source_flags(flags []string) []string {
 		if clean == '-x' {
 			language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
 			i += 2
+			continue
+		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
 			continue
 		}
 		if c_flag_consumes_next_operand(clean) || clean in ['-l', '-weak_library'] {
@@ -1423,13 +1462,26 @@ fn c_flag_token_is_link_only(token string) bool {
 }
 
 fn c_flags_need_objective_c(flags []string) bool {
-	for i, flag in flags {
-		clean := flag.trim_space()
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
 		if clean in ['-fobjc-arc', '-fobjc-gc', '-ObjC']
 			|| clean.starts_with('-fobjc-')
-			|| (clean == '-x' && i + 1 < flags.len && flags[i + 1] == 'objective-c') {
+			|| c_joined_source_language(clean) in ['objective-c', 'objective-c++'] {
 			return true
 		}
+		if clean == '-x' {
+			if i + 1 < flags.len && flags[i + 1].trim_space() in ['objective-c', 'objective-c++'] {
+				return true
+			}
+			i += 2
+			continue
+		}
+		if c_flag_consumes_next_operand(clean) {
+			i += 2
+			continue
+		}
+		i++
 	}
 	return false
 }
@@ -1466,8 +1518,11 @@ fn c_source_language(source_file string, source_language string) string {
 	if source_file.ends_with('.m') {
 		return 'objective-c'
 	}
-	if source_file.ends_with('.cc') || source_file.ends_with('.cpp') {
+	if source_file.ends_with('.C') || source_file.ends_with('.cc') || source_file.ends_with('.cpp') {
 		return 'c++'
+	}
+	if source_file.ends_with('.c') {
+		return 'c'
 	}
 	return ''
 }
@@ -1806,7 +1861,7 @@ fn c_flag_is_object_file(flag string) bool {
 }
 
 fn c_flag_is_c_source_file(flag string) bool {
-	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.cc')
+	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.C') || flag.ends_with('.cc')
 		|| flag.ends_with('.cpp') || flag.ends_with('.m') || flag.ends_with('.mm'))
 }
 
@@ -2123,8 +2178,7 @@ fn executable_path_for_run(path string) string {
 }
 
 fn input_implies_building_v(input_file string) bool {
-	normalized := input_file.replace('\\', '/').trim_right('/')
-	if normalized.all_after_last('/') == 'v.v' {
+	if input_is_cmd_v(input_file) || input_is_v3_compiler_entry(input_file) {
 		return true
 	}
 	if os.is_dir(input_file) {
@@ -3190,6 +3244,74 @@ fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 		}
 	}
 	return flags
+}
+
+// v3_tcc_macos_framework_flags replaces the `-framework` link flags that TCC
+// does not support with the file ld would link for them: the SDK's `.tbd` stub,
+// or the framework binary found through `-F` or in /Library/Frameworks. It drops
+// the `-F` search paths, which TCC rejects. A framework that cannot be resolved,
+// and `-weak_framework`, are kept, so TCC still reports them and an implicit TCC
+// build falls back to the platform C compiler as before.
+fn v3_tcc_macos_framework_flags(flags []string, target_os string, macos_sdk_root string) []string {
+	if target_os != 'macos' || !flags.any(it.trim_space() == '-framework'
+		|| it.trim_space().starts_with('-F')) {
+		return flags
+	}
+	mut search_dirs := []string{}
+	for i, flag in flags {
+		clean := flag.trim_space()
+		if clean == '-F' && i + 1 < flags.len {
+			search_dirs << flags[i + 1].trim_space()
+		} else if clean.starts_with('-F') && clean.len > 2 {
+			search_dirs << clean[2..]
+		}
+	}
+	if macos_sdk_root != '' {
+		search_dirs << os.join_path(macos_sdk_root, 'System', 'Library', 'Frameworks')
+	}
+	search_dirs << '/Library/Frameworks'
+	mut result := []string{cap: flags.len}
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
+		if clean == '-F' {
+			i += 2
+			continue
+		}
+		if clean.starts_with('-F') && clean.len > 2 {
+			i++
+			continue
+		}
+		if clean == '-framework' && i + 1 < flags.len {
+			link_file := v3_macos_framework_link_file(flags[i + 1].trim_space(), search_dirs)
+			if link_file != '' {
+				result << link_file
+			} else {
+				result << [flags[i], flags[i + 1]]
+			}
+			i += 2
+			continue
+		}
+		result << flags[i]
+		i++
+	}
+	return result
+}
+
+fn v3_macos_framework_link_file(name string, search_dirs []string) string {
+	if name == '' {
+		return ''
+	}
+	for dir in search_dirs {
+		framework_dir := os.join_path(dir, '${name}.framework')
+		for candidate in [os.join_path(framework_dir, '${name}.tbd'),
+			os.join_path(framework_dir, name)] {
+			if os.is_file(candidate) {
+				return candidate
+			}
+		}
+	}
+	return ''
 }
 
 fn macos_sdk_root() string {
@@ -7766,7 +7888,8 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	// -prod needs optimizations that TCC cannot do, so TCC is never its default, not
 	// even on Windows. Probing it there would generate C for TCC, skip TCC when
 	// compiling, and then re-run the whole compilation for the platform compiler.
-	if options.is_prod {
+	// Race builds need ThreadSanitizer, including when computing Windows vtest facts.
+	if options.is_prod || options.race {
 		return false
 	}
 	// Windows uses its bundled TCC as the platform default, including modes that
@@ -7774,7 +7897,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 	if options.host_os == 'windows' && options.target.os == 'windows' {
 		return true
 	}
-	return !options.is_c_debug && !options.race
+	return !options.is_c_debug
 }
 
 fn v3_bundled_tcc_available(options V3BundledTccProbeOptions) bool {
@@ -8597,7 +8720,10 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 				if base_idx >= 0 && base_idx < a.nodes.len {
 					base := a.nodes[base_idx]
 					cname := 'C.${base.value}'
-					if base.kind == .ident && cname in tc.fn_param_types && cname in tc.fn_ret_types {
+					// A local receiver can share a name with a C function. Restore
+					// only identifiers the checker resolved as that function value.
+					if base.kind == .ident && cname in tc.fn_param_types && cname in tc.fn_ret_types
+						&& (tc.resolved_fn_value_name(base_id) or { '' }) == cname {
 						params := tc.fn_param_types[cname] or { []types.Type{} }
 						if ret := tc.fn_ret_types[cname] {
 							tc.expr_type_values[base_idx] = types.FnType{
@@ -12077,11 +12203,8 @@ pub fn run(args []string) {
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
 	pre_tc.building_v_fast = building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
-	// Missing imports are rare error paths and need the authoritative serial
-	// diagnostic pass, even for an otherwise-fast parallel self-host build.
-	pre_tc.valid_diagnostic_fast = building_v && a.missing_imports.len == 0
-		&& os.getenv('V3_NO_VALID_DIAGNOSTIC_FAST') == ''
-	pre_tc.valid_resolution_fast = building_v && os.getenv('V3_NO_VALID_RESOLUTION_FAST') == ''
+	// Self-host scheduling does not prove the input is semantically valid. Keep
+	// diagnostic and expression validation enabled for compiler builds as well.
 	pre_tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
 	mut used_fns := map[string]bool{}
 	mut program_used_fns := map[string]bool{}
@@ -13376,6 +13499,7 @@ pub fn run(args []string) {
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
+			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -13447,6 +13571,7 @@ pub fn run(args []string) {
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
 			g.set_race(race)
+			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -13646,6 +13771,14 @@ pub fn run(args []string) {
 		}
 		resolved_c_flags = v3_shared_object_compile_flags(resolved_c_flags, prefs.normalized_target_os(),
 			is_shared, is_liveshared)
+		if !c_only && !is_o {
+			if missing_gc := v3_missing_bundled_gc_library(resolved_c_flags, prefs.vroot) {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				eprintln(v3_missing_gc_library_message(missing_gc))
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+		}
 		flag_plan_sdk_root := if effective_tcc && prefs.normalized_target_os() == 'macos' {
 			macos_sdk_root_cache.get()
 		} else {
@@ -14209,6 +14342,8 @@ pub fn run(args []string) {
 				// executable is never reused across a change of the link flags.
 				tcc_args << link_ld_flags
 			}
+			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
+				tcc_sdk_root)
 			program_source_identity := '${prefix_source_identity}\n${modulecache.file_signature(tcc_main_file)}\n${if cached_program_body_source.len > 0 {
 				modulecache.file_signature(cached_program_body_source)
 			} else {
@@ -14302,6 +14437,8 @@ pub fn run(args []string) {
 			if !is_o {
 				tcc_args << link_ld_flags
 			}
+			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
+				tcc_sdk_root)
 			if verbose || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
@@ -14501,22 +14638,26 @@ Please install the corresponding development package/libraries and make sure the
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		if race && target.os == 'macos' {
-			v3_race_keep_macos_debug_symbols(staged_binary, bin_file)
+		if (is_debug || race) && target.os == 'macos' {
+			v3_keep_macos_debug_symbols(staged_binary, bin_file)
 		}
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}
 		}
-		for source_flag in generated_c_flags {
-			clean := source_flag.trim_space()
-			if c_generated_native_source_context(clean, cc_dir) {
-				os.rm(clean) or {}
+		// C debug information names these exact sources, including the per-build src.c.
+		// Keep them available for the debugger instead of retaining only a renamed copy.
+		if !is_c_debug {
+			for source_flag in generated_c_flags {
+				clean := source_flag.trim_space()
+				if c_generated_native_source_context(clean, cc_dir) {
+					os.rm(clean) or {}
+				}
 			}
+			os.rm(tcc_main_file) or {}
+			os.rm(cache_full_tcc_source) or {}
+			os.rm(retained_full_c_source) or {}
+			cleanup_c_build_dir(cc_dir)
 		}
-		os.rm(tcc_main_file) or {}
-		os.rm(cache_full_tcc_source) or {}
-		os.rm(retained_full_c_source) or {}
-		cleanup_c_build_dir(cc_dir)
 		for scope_free_thread in scope_free_threads {
 			scope_free_thread.wait()
 		}
@@ -14535,8 +14676,8 @@ Please install the corresponding development package/libraries and make sure the
 			run_result := run_binary(bin_file, run_args)
 			if remove_binary_after_run {
 				os.rm(bin_file) or {}
-				if race && target.os == 'macos' {
-					v3_race_remove_macos_debug_symbols(bin_file)
+				if (is_debug || race) && target.os == 'macos' {
+					v3_remove_macos_debug_symbols(bin_file)
 				}
 			}
 			if run_result != 0 {
@@ -20383,7 +20524,19 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			// Set when this import spells the path of an already parsed directory in a
 			// new way, so its module declarations still get checked below.
 			mut check_reused_dir := false
-			if dir_identity := parsed_dir_identities[mod_real_dir] {
+			// An external test module (`module foo_test` in `foo/`) is parsed from the
+			// same directory as the module it tests, so that directory is already
+			// recorded under the test module's identity. Reusing it below would
+			// rewrite `import foo` to `foo_test`, and the checker then rejects the
+			// import as naming the current module. Resolve the imported module on its
+			// own instead.
+			dir_identity_for_reuse := if recorded := parsed_dir_identities[mod_real_dir] {
+				if recorded == '${mod_name.all_after_last('.')}_test' { '' } else { recorded }
+			} else {
+				''
+			}
+			if dir_identity_for_reuse.len > 0 {
+				dir_identity := dir_identity_for_reuse
 				// The directory was already parsed through another spelling of its
 				// path: `mod.types` inside an installed `smilecat.mod`, and
 				// `smilecat.mod.types` from outside of it. The identity probe above

@@ -1,3 +1,4 @@
+import os
 import v.vmod
 
 const quote = '\x22'
@@ -47,6 +48,81 @@ fn test_invalid_start() {
 fn test_base_url() {
 	content := vmod.decode("Module {\n\tname: 'V'\n\tbase_url: 'source'\n}")!
 	assert content.base_url == 'source'
+}
+
+fn test_legacy_dependencies() {
+	for name in ['ui', "'ui'", '"ui"'] {
+		for version in ['0.1', '1', '0.1.2', "'0.1'", '"0.1"', "'^0.1.2'"] {
+			for separator in [':', ': ', ' : ', '\n:\n'] {
+				for trailing_comma in ['', ','] {
+					source := "Module {\n name: 'x'\n dependencies: [${name}${separator}${version}${trailing_comma}]\n base_url: 'src'\n}"
+					content := vmod.decode(source)!
+					assert content.name == 'x'
+					assert content.base_url == 'src'
+					assert content.dependencies == ['ui'], source
+				}
+			}
+		}
+	}
+}
+
+fn test_compact_legacy_dependencies() {
+	content := vmod.decode("Module{name:'x'\n dependencies:[ui:0.1,'gg':'0.2.0']\n base_url:'src'}")!
+	assert content.name == 'x'
+	assert content.base_url == 'src'
+	assert content.dependencies == ['ui', 'gg']
+}
+
+fn test_dependency_names() {
+	for dependencies in ['[]', '[ui]', '[ui,]', "['ui']", '["ui"]'] {
+		content := vmod.decode('Module { dependencies: ${dependencies} }')!
+		assert content.dependencies == if dependencies == '[]' { []string{} } else { ['ui'] }
+	}
+	content := vmod.decode("Module {
+		name: 'x'
+		dependencies: [
+			ui: 0.1,
+			'gg': '0.2.0',
+			nedpals.args: 0.3.0,
+			lib2,
+			'other',
+		]
+		license: 'MIT'
+		subdirs: ['internal']
+	}")!
+	assert content.dependencies == ['ui', 'gg', 'nedpals.args', 'lib2', 'other']
+	assert content.license == 'MIT'
+	assert content.unknown['subdirs'] == ['internal']
+	assert vmod.decode(vmod.encode(content))!.dependencies == content.dependencies
+}
+
+fn test_legacy_dependencies_from_file() {
+	test_dir := os.join_path(os.vtmp_dir(), '${@FN}_${os.getpid()}')
+	os.mkdir_all(test_dir)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	path := os.join_path(test_dir, 'v.mod')
+	os.write_file(path, "Module{\n\tname: 'x'\n\tdependencies: [\n\t\tui: 0.1,\n\t]\n}\n")!
+	content := vmod.from_file(path)!
+	assert content.name == 'x'
+	assert content.dependencies == ['ui']
+	assert content.source_root(test_dir) == test_dir
+}
+
+fn test_invalid_dependencies() {
+	for dependencies in ['[ui:]', '[ui:,]', "['ui':]", '[ui: 0.1 gg: 0.2]', '[ui: : 0.1]', '[ui: []]',
+		'[ui: {}]', '[0.1]', "['ui' 'gg']", '[ui: 0.1', '[ui:'] {
+		vmod.decode('Module { dependencies: ${dependencies} }') or { continue }
+		assert false, dependencies
+	}
+}
+
+fn test_unknown_arrays_require_strings() {
+	for values in ['[ui]', '[ui: 0.1]', "['ui': '0.1']", '[0.1]'] {
+		vmod.decode('Module { subdirs: ${values} }') or { continue }
+		assert false, values
+	}
 }
 
 fn test_invalid_end() {

@@ -97,6 +97,64 @@ fn test_explicit_unused_import_keeps_source_diagnostics() {
 	assert tc.notices.any(it.msg.contains("module 'os' is imported but never used")), tc.notices.str()
 }
 
+fn test_sql_table_references_use_imports() {
+	path := os.join_path(os.vtmp_dir(), 'v3_sql_table_import_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for import_path in ['schema_base', 'model.schema_base', 'model.schema_base as schema'] {
+		qualifier := if import_path.ends_with(' as schema') { 'schema' } else { 'schema_base' }
+		for statement in ['create table ${qualifier}.BaseRegion', 'drop table ${qualifier}.BaseRegion',
+			'select from ${qualifier}.BaseRegion',
+			'create table LocalRegion\ncreate table ${qualifier}.BaseRegion'] {
+			os.write_file(path, 'import orm\nimport ${import_path}\nfn run(db orm.Connection) {\n sql db {\n ${statement}\n } or {}\n}\nfn main() {}\n')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_file(path)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			tc.check_unused_import_diagnostics()
+			assert tc.errors.len == 0, tc.errors.str()
+			assert tc.notices.len == 0, '${import_path}: ${statement}: ${tc.notices}'
+		}
+	}
+}
+
+fn test_sql_table_references_leave_unrelated_imports_unused() {
+	path := os.join_path(os.vtmp_dir(), 'v3_sql_unused_table_import_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for table_name in ['BaseRegion', 'other.BaseRegion', 'other_schema_base.BaseRegion'] {
+		os.write_file(path, 'import orm\nimport schema_base\nfn run(db orm.Connection) {\n sql db {\n create table ${table_name}\n } or {}\n}\nfn main() {}\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_unused_import_diagnostics()
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.notices.len == 1, tc.notices.str()
+		assert tc.notices[0].msg.contains("module 'schema_base' is imported but never used"), tc.notices.str()
+	}
+}
+
+fn test_sql_table_import_usage_is_scoped_to_its_file() {
+	root := os.join_path(os.vtmp_dir(), 'v3_sql_import_files_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	unused_path := os.join_path(root, 'unused.v')
+	used_path := os.join_path(root, 'used.v')
+	os.write_file(unused_path, 'import schema_base\nfn main() {}\n')!
+	os.write_file(used_path, 'import orm\nimport schema_base\nfn run(db orm.Connection) {\n sql db {\n create table schema_base.BaseRegion\n } or {}\n}\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([unused_path, used_path])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_unused_import_diagnostics()
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.notices.len == 1, tc.notices.str()
+	assert tc.notices[0].file == unused_path
+	assert tc.notices[0].msg.contains("module 'schema_base' is imported but never used"), tc.notices.str()
+}
+
 fn unused_import_diagnostics(warns_are_errors bool, explicit_warns_are_errors bool) TypeChecker {
 	path := os.join_path(os.vtmp_dir(), 'v3_unused_import_prod_${os.getpid()}.v')
 	os.write_file(path, 'import os\n') or { panic(err) }
@@ -270,4 +328,69 @@ fn test_nested_vlib_project_manifest_defines_module_identity() {
 	assert tc.current_file_module_source_root() or { '' } == os.real_path(project)
 	assert !tc.current_file_uses_nested_module_path()
 	assert tc.current_file_module_path_identity() or { '' } == 'mod1'
+}
+
+fn test_sql_expression_references_use_imports() {
+	path := os.join_path(os.vtmp_dir(), 'v3_sql_expression_import_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for import_path in ['time', 'time as clock', 'app.time as clock', 'strings', 'strings as clock'] {
+		qualifier := if import_path.ends_with(' as clock') {
+			'clock'
+		} else {
+			import_path
+		}
+		expression := if import_path.starts_with('strings') {
+			"${qualifier}.trim_space('  x  ')"
+		} else {
+			'${qualifier}.now().format_ss()'
+		}
+		for statement in [
+			'update Foo set updated_at = ${expression} where id == 1',
+			'select from Foo where updated_at == ${expression}',
+			'dynamic select from Foo where { updated_at == ${expression} }',
+		] {
+			os.write_file(path, 'import orm\nimport ${import_path}\nfn run(db orm.Connection) {\n sql db {\n ${statement}\n } or {}\n}\nfn main() {}\n')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_file(path)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			tc.check_unused_import_diagnostics()
+			assert tc.notices.len == 0, '${import_path}: ${statement}: ${tc.notices}'
+		}
+	}
+}
+
+fn test_sql_expression_literals_leave_imports_unused() {
+	path := os.join_path(os.vtmp_dir(), 'v3_sql_literal_import_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for expression in ["'time . now()'", "'a time . now() value'", "'time.now()'", r"r'time . now()'",
+		r'r"time . now()"', r"'escaped \' time . now()'", r'"escaped \" time . now()"', r"r'time.now()\'",
+		'\'r"time" time . now()\'', 'other_time.now()', 'other.time.now()', '1 // time.now()',
+		'1 /* time.now() */'] {
+		os.write_file(path, 'import orm\nimport time\nfn run(db orm.Connection) {\n sql db {\n select from Foo where updated_at == ${expression}\n } or {}\n}\nfn main() {}\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_unused_import_diagnostics()
+		assert tc.notices.len == 1, tc.notices.str()
+		assert tc.notices[0].msg.contains("module 'time' is imported but never used"), tc.notices.str()
+	}
+}
+
+fn test_sql_literals_preserve_real_import_usage_after_them_and_in_interpolation() {
+	path := os.join_path(os.vtmp_dir(), 'v3_sql_literal_followed_by_import_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for expression in [r"r'ends\' + time.now().format_ss()", r"'${time.now()}'"] {
+		os.write_file(path, 'import orm\nimport time\nfn run(db orm.Connection) {\n sql db {\n select from Foo where updated_at == ${expression}\n } or {}\n}\nfn main() {}\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_unused_import_diagnostics()
+		assert tc.notices.len == 0, '${expression}: ${tc.notices}'
+	}
 }

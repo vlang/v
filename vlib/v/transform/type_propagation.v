@@ -780,6 +780,13 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 		// supply the method's function type instead.
 		return ''
 	}
+	// An interface declares the types of its fields: do not guess them from the name.
+	iface_name := t.resolve_interface_type_name(lookup_type)
+	if iface_name.len > 0 {
+		if ftyp := t.interface_field_type_name(iface_name, field_name) {
+			return ftyp
+		}
+	}
 	if ftyp := t.lookup_unique_field_type(field_name) {
 		return ftyp
 	}
@@ -1094,6 +1101,24 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 		info:       info
 		owner_type: owner_type
 	}
+}
+
+// checked_global_type_name returns the type that the checker inferred for a global
+// declared with an initializer.
+fn (t &Transformer) checked_global_type_name(name string, mod string) ?string {
+	if isnil(t.tc) || isnil(t.tc.file_scope) {
+		return none
+	}
+	qname := if mod.len > 0 && mod != 'main' && mod != 'builtin' { '${mod}.${name}' } else { name }
+	typ := t.tc.file_scope.lookup(qname) or { return none }
+	if typ is types.Unknown || typ is types.Void {
+		return none
+	}
+	text := typ.name()
+	if text.len == 0 || type_text_has_unresolved_generic_placeholder(text) {
+		return none
+	}
+	return text
 }
 
 // lookup_unique_field_type resolves lookup unique field type information for transform.

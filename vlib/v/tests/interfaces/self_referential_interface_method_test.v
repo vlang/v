@@ -175,6 +175,42 @@ fn main() {
 	assert result.output.contains("doesn't implement method `tag`"), result.output
 }
 
+// A pair that is still being proved must not count as proven: otherwise any type with
+// `clone() Self`, such as `string`, implements `Cloner` through a covariant return, and
+// same-shaped interfaces implement each other, none of which cgen can dispatch.
+fn test_self_referential_interface_cycle_is_not_assumed() {
+	tmp := os.join_path(os.temp_dir(), 'self_referential_interface_cycle_${os.getpid()}')
+	os.mkdir_all(tmp)!
+	defer {
+		os.rmdir_all(tmp) or {}
+	}
+	source := os.join_path(tmp, 'main.v')
+	os.write_file(source, "interface Cloner {
+	clone() Cloner
+}
+
+interface OtherCloner {
+	clone() OtherCloner
+}
+
+struct Leaf {}
+
+fn (l Leaf) clone() Cloner {
+	return Leaf{}
+}
+
+fn main() {
+	c := Cloner(Leaf{})
+	println(OtherCloner(c))
+	println(Cloner('abc'))
+}
+")!
+	output := os.join_path(tmp, 'main.c')
+	result := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('incorrectly implements method `clone` of interface `Cloner`'), result.output
+}
+
 // The recursion happened while the checker built its interface implementation
 // index, so these declarations alone are enough to exercise it: the file does
 // not compile at all unless the cycle terminates. The shapes below reach the

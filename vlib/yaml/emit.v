@@ -10,11 +10,32 @@ fn write_spaces(mut sb strings.Builder, n int) {
 }
 
 // emit_yaml_any streams `value` into `sb` as block-style YAML.
+// emit_yaml_any writes `value` at the given indentation.
 fn emit_yaml_any(mut sb strings.Builder, value Any, indent int) {
 	match value {
 		map[string]Any { emit_yaml_map(mut sb, value, indent) }
 		[]Any { emit_yaml_array(mut sb, value, indent) }
 		else { emit_yaml_scalar(mut sb, value) }
+	}
+}
+
+// collection_is_empty reports whether `value` is an empty map or an empty array.
+fn collection_is_empty(value Any) bool {
+	return match value {
+		map[string]Any { value.len == 0 }
+		[]Any { value.len == 0 }
+		else { false }
+	}
+}
+
+// write_collection_break writes what follows the `:` or `-` of a nested
+// collection. An empty collection is written inline, as `a: []`, because a bare
+// `[]` on the next line is not a valid mapping entry.
+fn write_collection_break(mut sb strings.Builder, value Any) {
+	if collection_is_empty(value) {
+		sb.write_u8(` `)
+	} else {
+		sb.write_u8(`\n`)
 	}
 }
 
@@ -37,7 +58,7 @@ fn emit_yaml_map(mut sb strings.Builder, value map[string]Any, indent int) {
 		match item {
 			map[string]Any, []Any {
 				sb.write_u8(`:`)
-				sb.write_u8(`\n`)
+				write_collection_break(mut sb, item)
 				emit_yaml_any(mut sb, item, indent + 2)
 			}
 			else {
@@ -66,7 +87,7 @@ fn emit_yaml_array(mut sb strings.Builder, value []Any, indent int) {
 		match item {
 			map[string]Any, []Any {
 				sb.write_u8(`-`)
-				sb.write_u8(`\n`)
+				write_collection_break(mut sb, item)
 				emit_yaml_any(mut sb, item, indent + 2)
 			}
 			else {

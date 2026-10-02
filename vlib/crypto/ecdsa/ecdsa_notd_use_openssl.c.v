@@ -438,7 +438,7 @@ fn C.mbedtls_ctr_drbg_init(ctx &C.mbedtls_ctr_drbg_context)
 
 fn C.mbedtls_ctr_drbg_free(ctx &C.mbedtls_ctr_drbg_context)
 
-fn C.mbedtls_ctr_drbg_seed(ctx &C.mbedtls_ctr_drbg_context, f_entropy fn (voidptr, &u8, usize), p_entropy voidptr, custom &u8, len usize) int
+fn C.mbedtls_ctr_drbg_seed(ctx &C.mbedtls_ctr_drbg_context, f_entropy fn (voidptr, &u8, usize) int, p_entropy voidptr, custom &u8, len usize) int
 
 fn C.mbedtls_ctr_drbg_random(p_rng voidptr, output &u8, output_len usize) int
 
@@ -446,4 +446,4 @@ fn C.mbedtls_entropy_init(ctx &C.mbedtls_entropy_context)
 
 fn C.mbedtls_entropy_free(ctx &C.mbedtls_entropy_context)
 
-fn C.mbedtls_entropy_func(data voidptr, output &u8, len usize)
+fn C.mbedtls_entropy_func(data voidptr, output &u8, len usize) int

@@ -18,7 +18,14 @@ const line_directive_scan_limit = 32
 // constructs that read memory without the C compiler loading it do load it.
 pub fn (mut g FlatGen) set_race(enabled bool) {
 	g.race = enabled
-	g.line_directives = enabled
+	g.line_directives = enabled || g.vlines
+}
+
+// set_vlines maps generated C back to V sources for `-g`, while `-cg` keeps C positions.
+// Race builds always need V positions, regardless of the selected debug flag.
+pub fn (mut g FlatGen) set_vlines(enabled bool) {
+	g.vlines = enabled
+	g.line_directives = enabled || g.race
 }
 
 // write_fn_line_directive points the C declaration of a V function to its source line.

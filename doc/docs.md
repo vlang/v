@@ -250,7 +250,9 @@ argument, e.g. `v new abc`.
     * [v fmt](#v-fmt)
     * [v mcp](#v-mcp)
     * [v skills](#v-skills)
+    * [v env](#v-env)
     * [v shader](#v-shader)
+    * [v tool](#v-tool)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
     * [Package commands](#package-commands)
@@ -1205,6 +1207,10 @@ The user can explicitly specify the type for the first element: `[u8(16), 32, 64
 V arrays are homogeneous (all elements must have the same type).
 This means that code like `[1, 'a']` will not compile.
 
+Array elements must be written inside square brackets. Braces accept named initializer
+parameters only; `[]int{1, 2, 3}` and `[3]int{1, 2, 3}` are syntax errors.
+Use `[1, 2, 3]` for a dynamic array or `[1, 2, 3]!` for a fixed array instead.
+
 The above syntax is fine for a small number of known elements but for very large or empty
 arrays there is a second initialization syntax:
 
@@ -1662,6 +1668,35 @@ anums := fnums[..] // same as `anums := fnums[0..fnums.len]`
 println(anums) // => [1, 10, 100]
 println(typeof(anums).name) // => []int
 ```
+
+Whole fixed size arrays and their ranges can be passed to mutable array parameters.
+These arguments borrow the original elements, so writes through either the array parameter
+or another alias are immediately visible through both. Returned or stored views keep sharing
+those elements. Local storage is moved to the heap before references to it are formed, so
+retained views remain valid after the local goes out of scope. A callee can also retain a
+reference to the separately allocated array header. Growing or reassigning that header follows
+the usual array slice rules and leaves the original fixed array's size unchanged.
+Immutable array-reference parameters, including each variadic argument, also borrow the
+original elements. These rules also apply to array-reference parameters declared through aliases.
+Fixed array values introduced by guards, multi-declarations, loop bindings, or select receives
+also receive durable storage when passed to a retaining array-reference parameter.
+Indexed fixed elements of dynamic arrays retain their original backing buffer, including through
+managed slice aliases, so retained headers preserve writes and remain valid after owner cleanup.
+The same rule applies to fixed elements obtained through `first()` or `last()`.
+Fixed values read from maps, including inline fields, are copied into independent durable storage.
+Mutable iteration over those fixed elements preserves the same backing lifetime.
+Pointer fields and indexed pointers retain the original fixed-array roots recorded by their owners.
+Borrowing does not clone elements or require a `clone()` method.
+Explicitly destroying owned source elements invalidates views of those elements, as with other
+borrowed slices.
+With ownership checking enabled, returning or storing a view copies its buffer to independent
+storage. Owned elements are cloned so the retained value has independent owners. Retained array
+references, including those stored inside options, receive a separate header, so other aliases
+in the callee still share the original elements.
+An operation that detaches a borrowed buffer also clones its owned elements. Such elements
+need a compatible `clone()` method or `IClone` support. Retaining or detaching a nonempty
+uncloneable borrowed buffer panics; borrowing it or changing its elements in place is allowed.
+An empty view can grow without cloning any source elements.
 
 Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array. The exception is a slice that is written to:
@@ -3361,6 +3396,10 @@ the same memory location for multiple purposes.
 
 All the members of a union share the same memory location. This means that modifying one member
 automatically modifies all the rest. The largest union member defines the size of the union.
+When constructing a union that contains interface storage, V clears the entire storage before
+initializing the selected member. This also applies to interfaces inside nested union members.
+An inactive interface member with no valid type tag formats as `unknown interface value`.
+Accessing an inactive member still requires `unsafe` and does not create a valid interface value.
 
 ### Why use unions?
 
@@ -3464,6 +3503,11 @@ intended for low-level applications like kernels and drivers.
 ### Mutable arguments
 
 It is possible to modify function arguments by declaring them with the keyword `mut`:
+
+A method with a `mut` receiver requires a mutable value receiver even when it only
+changes private fields in another module. An immutable value parameter cannot call
+such a method: mutations would affect its copy and be lost when the function returns.
+Declare the parameter or receiver with `mut` when its changes must reach the caller.
 
 ```v
 struct User {
@@ -4498,6 +4542,8 @@ A type implements an interface by implementing its methods and fields.
 Equivalent fixed array lengths in method signatures may use different constant expressions.
 Callback userdata parameters may use `voidptr` or a concrete pointer type.
 An interface field's default value may be a pointer to a type that implements the interface.
+Fixed array fields are supported when converting a pointer to an interface with `I(value)`
+or `&I(value)`. Mutable fields continue to refer to the concrete object's fields.
 
 An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section
@@ -4612,6 +4658,10 @@ fn get_component[T](entity Entity) !T {
 
 If you want to return the smart-casted pointer itself, use `!&T` as the return type instead.
 
+Appending a smart-casted value to an array of its original interface type preserves the
+complete interface value. Both `animals << animal` and `animals << Animal(animal)` retain
+the underlying type and allow interface method calls on the appended element.
+
 ```v
 // interface-example.4
 interface IFoo {
@@ -4664,6 +4714,10 @@ a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
 An immediate read-only interface method call on a smart-casted value can return
 a scalar, including `char`, `rune`, `isize`, `usize`, or an enum.
+
+Receiver methods are also available through embedded interfaces. A mutable receiver method
+updates the underlying concrete object's mutable fields, including when called through an
+interface pointer or multiple levels of interface embedding.
 
 > [!NOTE]
 > This feature is NOT a "default implementation" like in C#.
@@ -6374,6 +6428,13 @@ Here `a` is stored on the stack since its address never leaves the function `f()
 However a reference to `b` is part of `e` which is returned. Also a reference to
 `c` is returned. For this reason `b` and `c` will be heap allocated.
 
+Heap allocation preserves value reads in declaration initializers. An initializer reads
+the bindings that are visible before the new declaration is installed.
+Leaving a nested scope restores the storage and type metadata of outer heap-backed bindings.
+
+Moving a local to the heap preserves its source-level type. For example, `typeof(c).name`
+still reports `MyStruct`; the pointer used to store the local does not change type reflection.
+
 Things become less obvious when a reference to an object is passed as a function argument:
 
 ```v
@@ -6927,6 +6988,56 @@ The skills are read from the source tree at run time rather than embedded into t
 binary, so a skill can be reviewed and diffed in the repository and adding one
 needs no rebuild.
 
+### v env
+
+`v env` prints the environment variables that steer the V compiler and its
+tools. Every setting is reported on its own `NAME="value"` line, which makes
+the output easy to read in a script:
+
+```shell
+v env
+```
+
+```
+VEXE="/home/me/v/v"
+VROOT="/home/me/v"
+VOS="linux"
+VARCH="amd64"
+VVERSION="V 0.5.2 8e2b0f4c1a"
+VMODULES="/home/me/.vmodules"
+VTMP="/tmp/v_1000"
+VFLAGS=""
+CFLAGS=""
+LDFLAGS=""
+...
+```
+
+A variable that is not set reports the value V would use anyway, so `VMODULES`
+and `VTMP` show their default paths instead of an empty string. That makes
+`v env` the place to look when a build picks up a setting you did not expect,
+or when you want to know which folder V writes temporary files to.
+
+Ask for one setting to get just its value, with no quoting and no other lines,
+which is what a shell substitution wants:
+
+```shell
+# install a module without hardcoding where that is
+v install --path "$(v env VMODULES)"
+```
+
+Use `-json` to get the same values as a JSON object:
+
+```shell
+v env -json
+```
+
+`v env NAME` fails with an error naming the known settings if the name is not
+one of them. For a bug report, use `v doctor` instead: it also shows compiler
+versions, git state and C toolchain details.
+
+Note that `VOSARGS` replaces the whole command line of every `v` invocation, so
+exporting it in a shell makes each later `v` call ignore its own arguments.
+
 ### v shader
 
 You can use GPU shaders with V graphical apps. You write your shaders in an
@@ -6940,6 +7051,41 @@ v shader /path/to/project/dir/or/file.v
 Currently you need to
 [include a header and declare a glue function](https://github.com/vlang/v/blob/master/examples/sokol/02_cubes_glsl/cube_glsl.v#L25-L28)
 before using the shader in your code.
+
+### v tool
+
+VPM installs modules rather than binaries, so a CLI tool written in V has to be
+run by path today: `v run ~/.vmodules/mytool`, or `v run ../mytool` for a checkout
+beside the project. Both need a path you have to know and keep correct.
+
+`v tool NAME` resolves `NAME` the way an import would, then builds and runs that module:
+
+```shell
+$ v tool greet
+hello from the tool
+```
+
+Because it reuses the compiler's own module lookup, that finds a tool installed
+with `v install` and equally a tool you have a checkout of next to the project,
+without either path being written down anywhere.
+
+With no argument, `v tool` lists the tool modules of the project and of the
+global module folders, so the names do not have to be remembered:
+
+```shell
+$ v tool
+myproject
+mytool
+```
+
+A module is a tool when its root holds a `main.v`. A library module asked for
+by name is refused rather than attempted, and a name that resolves to nothing is an
+error.
+
+Running a tool builds and starts the module, which means running code from a
+module in the module search path. That is the same trust that `v install` already
+places in a module you chose to install, but it is worth knowing before running a
+name you did not install yourself.
 
 ### Profiling
 
@@ -7161,6 +7307,11 @@ Package are up to date.
 
    `base_url` is optional. When set, V resolves the package sources relative to
    that folder, next to the `v.mod` file.
+
+   Prefer a string list for `dependencies`, such as `['ui', 'nedpals.args']`.
+   Legacy entries such as `[ui: 0.1]`, `['ui': '0.1']`, and `[ui]` are also
+   accepted for compatibility. Only the dependency names are retained; legacy
+   version values are ignored.
 
    Minimal file structure:
    ```
@@ -7934,6 +8085,10 @@ already compressed.
 [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
 which could be used to obtain the file contents as `string` or `[]u8`.
 
+Use the returned value: discarding `$embed_file` as a statement is an error, including
+when it is the fallback value of an unused `or` expression with nested `or` blocks.
+Passing it as a call argument consumes the value, even when the call has an `or` block.
+
 #### `$tmpl` for embedding and parsing V template files
 
 V has a simple template language for text and html templates, and they can easily
@@ -8553,6 +8708,8 @@ println(qux)
 ## sizeof and __offsetof
 
 * `sizeof(Type)` gives the size of a type in bytes.
+* `sizeof(value)` gives the size of the value's V type, including when its storage moves to
+  the heap.
 * `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
 
 ```v
@@ -9370,20 +9527,24 @@ library, e.g.:
 To debug issues in the generated binary (flag: `-b c`), you can pass these flags:
 
 - `-g` - produces a less optimized executable with more debug information in it.
-  V will enforce line numbers from the .v files in the stacktraces, that the
-  executable will produce on panic. It is usually better to pass -g, unless
+  Generated C uses `#line` directives so debuggers and panic stacktraces resolve
+  positions to the original .v files. It is usually better to pass -g, unless
   you are writing low-level code, in which case use the next option `-cg`.
 - `-cg` - produces a less optimized executable with more debug information in it.
   The executable will use C source line numbers in this case. It is frequently
   used in combination with `-keepc`, so that you can inspect the generated
   C program in case of panic, or so that your debugger (`gdb`, `lldb` etc.)
-  can show you the generated C source code.
+  can show you the generated C source code. The C backend retains its per-build
+  `.<executable>.v3cc.*` directory beside the executable so the source paths in
+  the debug information remain available. You can remove this directory after debugging.
 - `-showcc` - prints the C command that is used to build the program.
 - `-show-c-output` - prints the output, that your C compiler produced
   while compiling your program.
 - `-keepc` - do not delete the generated C source code file after a successful
   compilation. Also keep using the same file path, so it is more stable,
   and easier to keep opened in an editor/IDE.
+
+On macOS, debug builds keep their `.dSYM` bundle beside the final executable.
 
 For best debugging experience if you are writing a low-level wrapper for an existing
 C library, you can pass several of these flags at the same time:
@@ -9660,6 +9821,13 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
+You can pass a local source file with `#flag "@VMODROOT/my_test_cshim.c"`.
+Lowercase `.c` sources compile as C; uppercase `.C`, `.cc`, and `.cpp` sources compile as C++.
+An explicit `#flag -x c` or `#flag -x c++`, including the joined forms `-xc` and `-xc++`,
+overrides the filename's language until `#flag -x none` restores inference from the filename.
+Both spellings also select the matching native compilation standard and runtime libraries,
+including when a `.o` flag compiles an adjacent source into the object cache.
+
 You can also use `#flag` directives, to link to static C libraries, which
 will be added last (note the .a suffix):
 ```v oksyntax
@@ -9809,6 +9977,8 @@ struct. The method retains the visibility of its declaring V module.
 Calls see methods from directly imported modules by their full module path.
 If a V alias of that C struct declares the same method, calls on the alias use its own method.
 
+C-backed struct aliases can also initialize constants, including when compiling with MSVC.
+
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
 `unsafe { &char(cstring).vstring_with_len(len) }`.
@@ -9830,6 +10000,11 @@ V has these types for easier interoperability with C:
 - `&&char` for C's `char**`
 
 To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
+
+Passing `unsafe { nil }` to a pointer parameter passes a null pointer, including pointers to
+handles that alias `voidptr`.
+A mutable block that yields `&T` can pass that pointer to a `mut T` parameter,
+including generic functions and functions from imported modules.
 
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 
@@ -9940,6 +10115,9 @@ is `DLL_PROCESS_DETACH`.
 Files marked `@[translated]` retain C storage rules: global declarations and writes through
 pointers do not require additional flags or `unsafe` blocks. These rules apply only to those files.
 Pointer-returning calls can also receive field assignments.
+Pointers to `char`, `i8`, and `u8` of the same pointer depth are interchangeable in translated
+assignments, returns, function arguments, and other typed values. Ordinary V files retain their
+pointer type checks; calls to C functions also accept these character pointers.
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars

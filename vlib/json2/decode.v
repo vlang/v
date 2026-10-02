@@ -1458,7 +1458,7 @@ fn (mut decoder Decoder) decode_array_element[E](initial E) !E {
 	return element
 }
 
-fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
+fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 	$if V is $interface {
 		decoder.skip_current_value()
 		return
@@ -1491,6 +1491,21 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 					decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
 				}
 
+				mut key := K{}
+				$if K is string {
+					key = K(key_str)
+				} $else $if K is rune {
+					key = K(key_str.int())
+				} $else $if K is u8 || K is u16 || K is u32 || K is u64 || K is usize {
+					key = K(key_str.u64())
+				} $else $if K is i64 || K is isize {
+					key = K(key_str.i64())
+				} $else $if K is $int {
+					key = K(key_str.int())
+				} $else {
+					key = K(key_str)
+				}
+
 				decoder.current_node = decoder.current_node.next
 
 				value_info := decoder.current_node.value
@@ -1500,12 +1515,12 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 				}
 
 				$if V is $option {
-					// An option value (`map[string]?int`): `null` is `none`.
+					// An option map value: `null` is `none`.
 					if decoder.current_node.value.value_kind == .null {
-						val[key_str] = V(none)
+						val[key] = V(none)
 						decoder.current_node = decoder.current_node.next
 					} else {
-						val[key_str] = decoder.decode_option_payload(V(none))!
+						val[key] = decoder.decode_option_payload(V(none))!
 					}
 					continue
 				}
@@ -1517,33 +1532,11 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 					decoder.decode_value(mut map_value)!
 				}
 
-				$if V is $alias && V.unaliased_typ is $map {
-					// A map alias value (`type Props = map[string]int`).
-					val[key_str] = map_value.move()
-				} $else $if K is string {
-					$if V is $map {
-						val[key_str] = map_value.move()
-					} $else {
-						val[key_str] = map_value
-					}
-				} $else $if K is rune {
-					$if V is $map {
-						val[rune(key_str.int())] = map_value.move()
-					} $else {
-						val[rune(key_str.int())] = map_value
-					}
-				} $else $if K is $int {
-					$if V is $map {
-						val[K(key_str.int())] = map_value.move()
-					} $else {
-						val[K(key_str.int())] = map_value
-					}
+				// Map alias values (`type Props = map[string]int`) also need to move.
+				$if V is $map || ( V is $alias && V.unaliased_typ is $map ) {
+					val[key] = map_value.move()
 				} $else {
-					$if V is $map {
-						val[key_str] = map_value.move()
-					} $else {
-						val[key_str] = map_value
-					}
+					val[key] = map_value
 				}
 			}
 		} else if map_info.value_kind == .null && !decoder.strict {

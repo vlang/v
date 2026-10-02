@@ -27,6 +27,24 @@ const csrf_config_origin = csrf.CsrfConfig{
 // 			Test CSRF functions
 // =====================================
 
+type RawHtml = string
+
+fn untrusted_html() RawHtml {
+	return '<script>alert(1)</script>'
+}
+
+fn test_token_input_rendering() {
+	ctx := csrf.CsrfContext{
+		config:     csrf.CsrfConfig{ token_name: 'csrf_token' }
+		csrf_token: 'test-token'
+	}
+	expected := '<input type="hidden" name="csrf_token" value="test-token">'
+	assert '${ctx.csrf_token_input()}' == expected
+	assert veb.filter_html(ctx.csrf_token_input()) == expected
+	assert veb.filter_html(veb.raw(expected)) == expected
+	assert veb.filter_html(untrusted_html()) == '&lt;script&gt;alert(1)&lt;/script&gt;'
+}
+
 fn test_set_token() {
 	mut ctx := veb.Context{}
 
@@ -193,6 +211,12 @@ fn (app &App) index(mut ctx Context) veb.Result {
 </form>')
 }
 
+fn (app &App) template(mut ctx Context) veb.Result {
+	ctx.config = *csrf_config
+	ctx.set_csrf_token(mut ctx)
+	return $veb.html('templates/csrf.html')
+}
+
 @[post]
 fn (app &App) auth(mut ctx Context) veb.Result {
 	return ctx.ok('authenticated')
@@ -231,6 +255,18 @@ fn test_run_app_in_background() {
 	spawn exit_after_timeout(mut app, exit_after_time)
 	spawn veb.run_at[App, Context](mut app, port: sport, family: .ip)
 	_ := <-app.started
+}
+
+fn test_token_input_template() {
+	res := http.get('http://${localserver}/template') or { panic(err) }
+	assert res.status() == .ok
+	assert res.body.starts_with('<form>\n<input type="hidden"'), res.body
+	assert res.body.ends_with('>\n</form>\n'), res.body
+	mut doc := html.parse(res.body)
+	inputs := doc.get_tags_by_attribute_value('type', 'hidden')
+	assert inputs.len == 1
+	assert inputs[0].attributes['name'] == csrf_config.token_name
+	assert inputs[0].attributes['value'].len > 0
 }
 
 fn test_token_input() {

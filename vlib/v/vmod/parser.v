@@ -16,6 +16,7 @@ enum TokenKind {
 	eof
 	str
 	ident
+	number
 	unknown
 }
 
@@ -102,11 +103,20 @@ fn (mut s Scanner) create_string(q u8) string {
 
 fn (mut s Scanner) create_ident() string {
 	mut text := ''
-	for s.pos < s.text.len && is_name_alpha(s.text[s.pos]) {
+	for s.pos < s.text.len && (is_name_alpha(s.text[s.pos]) || s.text[s.pos].is_digit()
+		|| s.text[s.pos] == `.`) {
 		text += s.text[s.pos].ascii_str()
 		s.pos++
 	}
 	return text
+}
+
+fn (mut s Scanner) create_number() string {
+	start := s.pos
+	for s.pos < s.text.len && (s.text[s.pos].is_digit() || s.text[s.pos] == `.`) {
+		s.pos++
+	}
+	return s.text[start..s.pos]
 }
 
 fn (s &Scanner) peek_char(c u8) bool {
@@ -127,17 +137,19 @@ fn (mut s Scanner) scan_all() {
 			name := s.create_ident()
 			if name == 'Module' {
 				s.tokenize(.module_keyword, name)
-				s.pos++
 				continue
 			} else if s.pos < s.text.len && s.text[s.pos] == `:` {
 				s.tokenize(.field_key, name + ':')
-				s.pos += 2
+				s.pos++
 				continue
 			} else {
 				s.tokenize(.ident, name)
-				s.pos++
 				continue
 			}
+		}
+		if c.is_digit() {
+			s.tokenize(.number, s.create_number())
+			continue
 		}
 		if c in [`'`, `\"`] && !s.peek_char(`\\`) {
 			s.pos++
@@ -161,7 +173,7 @@ fn (mut s Scanner) scan_all() {
 	s.tokenize(.eof, 'eof')
 }
 
-fn get_array_content(tokens []Token, st_idx int) !([]string, int) {
+fn get_array_content(tokens []Token, st_idx int, allow_legacy_dependencies bool) !([]string, int) {
 	mut vals := []string{}
 	mut idx := st_idx
 	if tokens[idx].typ != .labr {
@@ -171,12 +183,31 @@ fn get_array_content(tokens []Token, st_idx int) !([]string, int) {
 	for {
 		tok := tokens[idx]
 		match tok.typ {
-			.str {
-				vals << tok.val
-				if tokens[idx + 1].typ !in [.comma, .rabr] {
-					return error('${err_label} invalid separator "${tokens[idx + 1].val}", at line ${tok.line}')
+			.str, .ident, .field_key {
+				if tok.typ != .str && !allow_legacy_dependencies {
+					return error('${err_label} invalid token "${tok.val}", at line ${tok.line}')
 				}
-				idx += if tokens[idx + 1].typ == .comma { 2 } else { 1 }
+				mut value := tok.val
+				idx++
+				if allow_legacy_dependencies && (tok.typ == .field_key || tokens[idx].typ == .colon) {
+					if tok.typ == .field_key {
+						value = value.trim_right(':')
+					} else {
+						idx++
+					}
+					// Manifest.dependencies stores names only, so ignore legacy version values.
+					if tokens[idx].typ !in [.str, .number] {
+						return error('${err_label} invalid token "${tokens[idx].val}", at line ${tokens[idx].line}')
+					}
+					idx++
+				}
+				vals << value
+				if tokens[idx].typ !in [.comma, .rabr] {
+					return error('${err_label} invalid separator "${tokens[idx].val}", at line ${tok.line}')
+				}
+				if tokens[idx].typ == .comma {
+					idx++
+				}
 			}
 			.rabr {
 				idx++
@@ -246,14 +277,14 @@ fn (mut p Parser) parse() !Manifest {
 						mn.author = field_value
 					}
 					'dependencies' {
-						deps, idx := get_array_content(tokens, i + 1)!
+						deps, idx := get_array_content(tokens, i + 1, true)!
 						mn.dependencies = deps
 						i = idx
 						continue
 					}
 					else {
 						if tokens[i + 1].typ == .labr {
-							vals, idx := get_array_content(tokens, i + 1)!
+							vals, idx := get_array_content(tokens, i + 1, false)!
 							mn.unknown[field_name] = vals
 							i = idx
 							continue

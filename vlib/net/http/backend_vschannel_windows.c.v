@@ -48,30 +48,31 @@ fn vschannel_h1_do(req &Request, port int, method Method, host_name string, path
 	mut ctx := C.new_tls_context()
 	C.vschannel_use_tls12_client_protocol()
 	C.vschannel_init(&ctx, C.BOOL(if req.validate { 1 } else { 0 }))
-	mut buff := unsafe { &char(malloc_noscan(C.vsc_init_resp_buff_size)) }
-	addr := host_name
-	sdata := req.build_request_headers_with(method, host_name, port, 443, path, data, header)!
-	$if trace_http_request ? {
-		eprintln('> ${sdata}')
+	if C.vschannel_h2_connect(&ctx, port, host_name.to_wide()) != 0 {
+		err_code := C.vschannel_last_error(&ctx)
+		C.vschannel_cleanup(&ctx)
+		if err_code != 0 {
+			return vschannel_handshake_error(err_code)
+		}
+		return error('http: vschannel connect failed')
 	}
-	length := C.request(&ctx, port, addr.to_wide(), sdata.str, sdata.len, &buff, vschannel_realloc)
-	err_code := C.vschannel_last_error(&ctx)
-	C.vschannel_cleanup(&ctx)
-	return req.vschannel_finish_response(unsafe { &u8(buff) }, length, err_code)!
+	return req.vschannel_h1_on_open(&ctx, method, host_name, port, path, data, header)!
 }
 
 // vschannel_h1_on_open runs the one-shot HTTP/1.1 request over a connection that
 // vschannel_h2_connect() already opened, used as the fallback when the server
 // did not negotiate `h2`. It consumes (and cleans up) `ctx`.
 fn (req &Request) vschannel_h1_on_open(ctx &C.TlsContext, method Method, host_name string, port int, path string, data string, header Header) !Response {
-	mut buff := unsafe { &char(malloc_noscan(C.vsc_init_resp_buff_size)) }
+	defer {
+		C.vschannel_cleanup(ctx)
+	}
 	sdata := req.build_request_headers_with(method, host_name, port, 443, path, data, header)!
+	mut buff := unsafe { &char(malloc_noscan(C.vsc_init_resp_buff_size)) }
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}
 	length := C.vschannel_request_on_open(ctx, sdata.str, sdata.len, &buff, vschannel_realloc)
 	err_code := C.vschannel_last_error(ctx)
-	C.vschannel_cleanup(ctx)
 	return req.vschannel_finish_response(unsafe { &u8(buff) }, length, err_code)!
 }
 

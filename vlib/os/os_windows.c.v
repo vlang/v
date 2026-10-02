@@ -273,7 +273,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 		C.FindClose(h_find_files)
 	}
 
-	if h_find_files == C.INVALID_HANDLE_VALUE {
+	if h_find_files == invalid_handle_value {
 		return error('os.glob(): Could not get a file handle: ' +
 			get_error_msg(int(C.GetLastError())))
 	}
@@ -342,6 +342,7 @@ pub fn utime(path string, actime i64, modtime i64) ! {
 	}
 }
 
+// ls returns the names of the files and directories in path.
 pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')
@@ -363,7 +364,7 @@ pub fn ls(path string) ![]string {
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
 	// Handle cases where files cannot be opened. for example:"System Volume Information"
-	if h_find_files == C.INVALID_HANDLE_VALUE {
+	if h_find_files == invalid_handle_value {
 		return error('ls(): Could not get a file handle: ' + get_error_msg(int(C.GetLastError())))
 	}
 	first_filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
@@ -725,14 +726,18 @@ pub fn uname() Uname {
 	// ToDO: environment variables have low reliability; check for another quick way
 	machine :=
 		getenv('PROCESSOR_ARCHITECTURE') // * note: 'AMD64' == 'x86_64' (not standardized, but 'x86_64' use is more common; but, python == 'AMD64')
-	version_info := execute('cmd /d/c ver').output
-	version_n := (version_info.split(' '))[3].replace(']', '').trim_space()
+	version_info := execute('cmd /d/c ver')
+	release, version := if version_info.exit_code == 0 {
+		windows_version_parts(version_info.output)
+	} else {
+		'', ''
+	}
 	return Uname{
 		sysname:  'Windows_NT' // as of 2022-12, WinOS has only two possible kernels ~ 'Windows_NT' or 'Windows_9x'
 		nodename: nodename
 		machine:  machine.trim_space()
-		release:  (version_n.split('.'))[0..2].join('.').trim_space() // Major.minor-only == "primary"/release version
-		version:  (version_n.split('.'))[2].trim_space()
+		release:  release // Major.minor-only == "primary"/release version
+		version:  version
 	}
 }
 

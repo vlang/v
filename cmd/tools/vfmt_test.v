@@ -254,6 +254,56 @@ fn test_fmt_preserves_signature_and_comptime_semantic_errors() {
 	}
 }
 
+fn test_fmt_preserves_dynamic_query_data_blocks() {
+	for options in ['', '-no-migrate-json2'] {
+		for prefix in ['', 'sql '] {
+			block := '${prefix}{
+		name == req_name,
+		if req_status == 1 {
+			status == req_status
+		},
+		// Keep commas and conditions inside the query-data block.
+		email == req_email
+	}'
+			source := 'fn main() {
+	up_expr := ${block}
+	_ := up_expr
+}
+'
+			res, formatted := run_vfmt_write('dynamic_query_data', source, options)
+			assert res.exit_code == 0, res.output
+			assert formatted.contains('up_expr := ${block}'), formatted
+			second, twice := run_vfmt_write('dynamic_query_data_twice', formatted, options)
+			assert second.exit_code == 0, second.output
+			assert twice == formatted
+		}
+		res, formatted := run_vfmt_write('empty_query_data', 'fn main() { up_expr := sql { }; _ := up_expr }\n', options)
+		assert res.exit_code == 0, res.output
+		assert formatted.contains('up_expr := sql { }'), formatted
+		second, twice := run_vfmt_write('empty_query_data_twice', formatted, options)
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_preserves_sql_identifiers_in_control_headers_and_branches() {
+	for source in [
+		'fn f(sql bool) { if sql {}; for sql {}; match sql { else {} } }\n',
+		'fn f(value int, sql int) { match value { sql {} else {} } }\n',
+	] {
+		res, formatted := run_vfmt_write('sql_identifier', source, '')
+		assert res.exit_code == 0, res.output
+		second, twice := run_vfmt_write('sql_identifier_twice', formatted, '')
+		assert second.exit_code == 0, second.output
+		assert twice == formatted
+		for fragment in ['if sql', 'for sql', 'match sql'] {
+			if source.contains(fragment) {
+				assert formatted.contains(fragment), formatted
+			}
+		}
+	}
+}
+
 fn test_fmt_preserves_deep_assignment_expressions() {
 	mut expression := '1'
 	for _ in 0 .. 101 {

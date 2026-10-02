@@ -552,6 +552,14 @@ fn test_heap_local_memdup_expr_uses_aligned_memdup_for_aligned_structs() {
 		name: 'Plain'
 	})
 	assert g.heap_local_memdup_expr('p', plain_type, 'Plain', true) == '(Plain*)memdup(p, sizeof(Plain))'
+	tc.structs['Holder'] = [types.StructField{
+		name: 'values'
+		typ:  types.Type(types.ArrayFixed{ elem_type: aligned_type, len: 2 })
+	}]
+	holder_type := types.Type(types.Struct{ name: 'Holder' })
+	assert g.heap_local_memdup_expr('h', holder_type, 'Holder', false) == '(Holder*)v3_aligned_memdup(&h, sizeof(Holder), __alignof__(Holder))'
+	assert g.pointer_free_needs_aligned_free(types.Type(types.Pointer{ base_type: holder_type }))
+	assert !g.pointer_free_needs_aligned_free(types.Type(types.Pointer{ base_type: plain_type }))
 }
 
 fn test_heap_local_address_expr_copies_pointer_local_slot() {

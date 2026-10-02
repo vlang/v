@@ -61,4 +61,4 @@ jobs:
         run: VJOBS=1 ./v doc -m -f html -unsafe-run-examples -time vlib/
       - name: Deploy docs to vercel
         if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
-        run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/ || true
+        run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/

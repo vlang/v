@@ -51,3 +51,30 @@ fn test_union_str_with_valid_interface_member_still_works() {
 	}
 	assert x.str().contains('a: Any(Thing{})')
 }
+
+union BadStorage {
+	bad   Bad
+	bytes [sizeof(Bad)]u8
+}
+
+fn test_union_short_member_initialization_clears_interface_tag_storage() {
+	for i in 0 .. 100 {
+		value := BadStorage{ bad: bad_from_float(f64(i + 1)) }
+		bytes := unsafe { value.bytes }
+		for index in sizeof(f64) .. bytes.len {
+			assert bytes[index] == 0
+		}
+	}
+	heap := &Bad{ f: 4.0 }
+	assert heap.str().contains('a: unknown interface value')
+}
+
+union FixedBad {
+	bytes [4]u8
+	value Any
+}
+
+fn test_interface_bearing_union_fixed_array_member_initialization() {
+	value := FixedBad{ bytes: [u8(1), 2, 3, 4]! }
+	assert unsafe { value.bytes } == [u8(1), 2, 3, 4]!
+}

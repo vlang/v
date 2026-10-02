@@ -138,7 +138,7 @@ fn test_link_plan_tracks_objects_not_object_named_option_operands() {
 	// A file used only as an option operand must not become a required object.
 	os.rm(operand)!
 	assert valid_c_link_plan(manifest, mut read_stats) != none
-	os.write_file(manifest, payload.replace('v3-c-link-plan-v4', 'v3-c-link-plan-v3'))!
+	os.write_file(manifest, payload.replace('v3-c-link-plan-v5', 'v3-c-link-plan-v4'))!
 	assert valid_c_link_plan(manifest, mut read_stats) == none
 	os.write_file(manifest, payload)!
 	os.rm(object)!
@@ -183,4 +183,58 @@ fn test_link_preparation_preserves_option_pairs_beside_real_objects() {
 	plan := valid_c_link_plan(manifest, mut stats) or { panic('invalid mixed-input manifest') }
 	assert plan.flags == flags
 	assert plan.requests == 1
+}
+
+fn test_c_source_language_flags_preserve_filename_case_and_explicit_languages() {
+	flags := ['long C source/my_test_cshim.c', 'native.o', 'cpp_source.C', 'source.cpp']
+	expected := ['-x', 'c', flags[0], '-x', 'none', 'native.o', 'cpp_source.C', 'source.cpp']
+	assert c_source_language_flags(flags) == expected
+	assert c_source_language_flags(expected) == expected
+	for option in c_link_operand_options() {
+		assert c_source_language_flags([option, 'operand.c']) == [option, 'operand.c']
+	}
+	for language in ['c', 'c++', 'objective-c', 'objective-c++'] {
+		explicit := ['-x', language, 'source.c', 'source.C']
+		assert c_source_language_flags(explicit) == explicit
+		joined := ['-x${language}', 'source.c', 'source.C']
+		assert c_source_language_flags(joined) == joined
+	}
+	assert c_source_language_flags(['-xc++', 'cpp.c', '-xnone', 'plain.c']) == ['-xc++', 'cpp.c',
+		'-xnone', '-x', 'c', 'plain.c', '-x', 'none']
+	assert c_source_language_flags(['-Xlinker', '-xc++', 'plain.c']) == ['-Xlinker', '-xc++', '-x',
+		'c', 'plain.c', '-x', 'none']
+	assert c_source_language_flags(['-x', 'none', 'source.c']) == ['-x', 'none', '-x', 'c', 'source.c',
+		'-x', 'none']
+	assert c_source_language('source.c', '') == 'c'
+	assert c_source_language('source.C', '') == 'c++'
+	assert c_source_language('source.c', 'c++') == 'c++'
+	assert c_source_language('source.C', 'c') == 'c'
+	assert c_flag_is_c_source_file('source.C')
+	assert c_link_flags_use_cpp_language(['source.C'])
+	assert !c_link_flags_use_cpp_language(['-x', 'c', 'source.C'])
+	mut stats := CObjectCacheStats{}
+	prepared := prepare_c_flags_for_link(flags.filter(it != 'native.o'), [], [], [], false, false, '', [],
+		pref.host_target(), 'missing-compiler', false, '', mut stats)!
+	mut prepared_expected := expected.filter(it != 'native.o')
+	prepared_expected << cpp_runtime_link_flag(pref.host_target())
+	assert prepared == prepared_expected
+}
+
+fn test_joined_languages_match_separated_driver_decisions() {
+	for language in ['c', 'c++', 'objective-c', 'objective-c++', 'none'] {
+		joined := ['-x${language}', 'source.c', '-xnone', 'following.c']
+		separated := ['-x', language, 'source.c', '-x', 'none', 'following.c']
+		assert c_link_flags_use_non_c_language(joined) == c_link_flags_use_non_c_language(separated)
+		assert c_link_flags_use_cpp_language(joined) == c_link_flags_use_cpp_language(separated)
+		assert c_link_flags_use_objective_c_language(joined) == c_link_flags_use_objective_c_language(separated)
+		assert c_flags_need_objective_c(joined) == c_flags_need_objective_c(separated)
+		assert c_object_compile_flags(joined) == c_object_compile_flags(separated)
+		assert c_dylib_link_flags(joined) == c_dylib_link_flags(separated)
+		assert tcc_native_c_source_flags(joined) == tcc_native_c_source_flags(separated)
+	}
+	assert c_link_flags_use_cpp_language(['-xc++', 'source.c'])
+	assert c_link_flags_use_objective_c_language(['-xobjective-c', 'source.c'])
+	assert !c_link_flags_use_cpp_language(['-Xlinker', '-xc++', 'source.c'])
+	assert !c_flags_need_objective_c(['-Xlinker', '-xobjective-c', 'source.c'])
+	assert !c_link_flags_use_cpp_language(['-xc++', '-xnone', 'source.c'])
 }

@@ -123,7 +123,7 @@ fn (mut t Transformer) transformed_direct_optional_forward_return(value_id flat.
 	if !t.optional_types_match(qualified_ret, expr_type) {
 		return none
 	}
-	value := t.transform_optional_wrapper_expr(value_id)
+	value := t.clone_borrowed_storage_projection(value_id, t.transform_optional_wrapper_expr(value_id), qualified_ret)
 	t.set_node_typ(int(value), qualified_ret)
 	ret := t.make_return(value, qualified_ret)
 	t.set_node_value(int(ret), '${transformed_direct_optional_forward_value_prefix}${int(source_return_id)}')
@@ -343,7 +343,7 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 	if !t.optional_types_match(ret_type, expr_type) {
 		return none
 	}
-	mut new_expr := t.transform_optional_wrapper_expr(child_id)
+	mut new_expr := t.clone_borrowed_storage_projection(child_id, t.transform_optional_wrapper_expr(child_id), ret_type)
 	t.set_node_typ(int(new_expr), ret_type)
 	if skipped_propagation {
 		// Keep CGen's positional ownership records aligned after removing the or-expression.
@@ -389,7 +389,7 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	}
 	ret_type := t.qualify_optional_type(t.cur_fn_ret_type)
 	expr_type := t.qualify_optional_type(expr_type0)
-	new_expr := t.transform_optional_wrapper_expr(child_id)
+	new_expr := t.clone_borrowed_storage_projection(child_id, t.transform_optional_wrapper_expr(child_id), expr_type)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	tmp_name := t.new_temp('return_opt')
@@ -878,6 +878,10 @@ fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type t
 // return_block_from_branch builds a block that keeps leading statements
 // (transformed) and turns the tail expression of the branch into a `return`.
 fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ string, extra_return_vals []flat.NodeId, source_return_id flat.NodeId) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	branch := t.a.nodes[int(branch_id)]
 	if branch.kind == .return_stmt {
 		mut all := []flat.NodeId{}
@@ -983,6 +987,17 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 	if expanded := t.build_return_map_index_if_guard_chain(if_node, ret_typ, extra_return_vals, source_return_id) {
 		return expanded
 	}
+	// Other guards are lowered as in statement position, so a binding whose address
+	// escapes gets heap storage and an indexing or receiving guard keeps its own check.
+	tail := GuardReturnTail{
+		active:            true
+		ret_typ:           ret_typ
+		extra_return_vals: extra_return_vals
+		source_return_id:  source_return_id
+	}
+	if expanded := t.try_expand_if_guard_with_tail(if_node, tail) {
+		return t.make_block(expanded)
+	}
 	cond_id := t.a.child(&if_node, 0)
 	cond_smartcasts := t.extract_all_is_exprs(cond_id)
 	else_smartcasts := t.extract_else_branch_smartcasts(cond_id)
@@ -1061,17 +1076,21 @@ fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, 
 	found_cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
 
 	saved_var_types := t.var_types.clone()
+	saved_heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(saved_heaped_state)
+	}
 	mut then_children := []flat.NodeId{}
 	if lhs.value != '_' {
 		ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name), '&${info.value_type}'))
-		then_children << t.make_decl_assign_typed(lhs.value, ptr_value, info.value_type)
-		t.set_var_type(lhs.value, info.value_type)
+		then_children << t.make_guard_value_decls(lhs.value, ptr_value, info.value_type)
 	}
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.return_block_from_branch(then_id, ret_typ, extra_return_vals, source_return_id)
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
+	t.restore_heaped_local_state(saved_heaped_state)
 
 	mut else_block := flat.empty_node
 	if if_node.children_count >= 3 {
@@ -1196,6 +1215,10 @@ fn (t &Transformer) match_branch_tuple_parts(branch flat.Node, body_start_idx in
 
 // match_branch_return_block supports match branch return block handling for Transformer.
 fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_idx int, ret_typ string, source_return_id flat.NodeId) flat.NodeId {
+	heaped_state := t.save_heaped_local_state()
+	defer {
+		t.restore_heaped_local_state(heaped_state)
+	}
 	mut body_ids := []flat.NodeId{}
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)

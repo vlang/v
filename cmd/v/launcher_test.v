@@ -294,13 +294,16 @@ fn test_v1_fallback_cache_without_a_home_is_private() {
 	previous_cache := os.getenv_opt('V1_FALLBACK_CACHE_DIR')
 	previous_xdg := os.getenv_opt('XDG_CACHE_HOME')
 	previous_home := os.getenv_opt('HOME')
+	previous_local_app_data := os.getenv_opt('LOCALAPPDATA')
 	os.unsetenv('V1_FALLBACK_CACHE_DIR')
 	os.unsetenv('XDG_CACHE_HOME')
 	os.unsetenv('HOME')
+	os.unsetenv('LOCALAPPDATA')
 	defer {
 		restore_environment('V1_FALLBACK_CACHE_DIR', previous_cache)
 		restore_environment('XDG_CACHE_HOME', previous_xdg)
 		restore_environment('HOME', previous_home)
+		restore_environment('LOCALAPPDATA', previous_local_app_data)
 	}
 	first := v1_fallback_cache_parent()!
 	second := v1_fallback_cache_parent()!
@@ -323,6 +326,44 @@ fn test_v1_fallback_cache_without_a_home_is_private() {
 		attributes := os.lstat(first)!
 		assert attributes.uid == u32(os.geteuid())
 		assert attributes.get_mode().bitmask() == 0o700
+	}
+}
+
+fn test_v1_fallback_windows_cache_reuses_local_app_data() {
+	$if windows {
+		base := os.join_path(os.vtmp_dir(), 'v1_fallback_local_app_data_${os.getpid()}')
+		previous_cache := os.getenv_opt('V1_FALLBACK_CACHE_DIR')
+		previous_xdg := os.getenv_opt('XDG_CACHE_HOME')
+		previous_home := os.getenv_opt('HOME')
+		previous_local_app_data := os.getenv_opt('LOCALAPPDATA')
+		os.unsetenv('V1_FALLBACK_CACHE_DIR')
+		os.unsetenv('XDG_CACHE_HOME')
+		os.unsetenv('HOME')
+		os.setenv('LOCALAPPDATA', base, true)
+		defer {
+			restore_environment('V1_FALLBACK_CACHE_DIR', previous_cache)
+			restore_environment('XDG_CACHE_HOME', previous_xdg)
+			restore_environment('HOME', previous_home)
+			restore_environment('LOCALAPPDATA', previous_local_app_data)
+			os.rmdir_all(base) or {}
+		}
+		first := v1_fallback_cache_parent()!
+		second := v1_fallback_cache_parent()!
+		assert first == os.abs_path(os.join_path(base, 'v', 'v1-fallback'))
+		assert second == first
+		assert !os.exists(base)
+		launcher := v1_fallback_cached_launcher(first)
+		os.mkdir_all(os.dir(launcher))!
+		os.write_file(launcher, 'cached fallback')!
+		assert os.read_file(v1_fallback_cached_launcher(v1_fallback_cache_parent()!))! == 'cached fallback'
+		os.setenv('HOME', os.join_path(base, 'home'), true)
+		assert v1_fallback_cache_parent()! == os.abs_path(os.join_path(base, 'home', '.cache',
+			'v', 'v1-fallback'))
+		os.setenv('XDG_CACHE_HOME', os.join_path(base, 'xdg'), true)
+		assert v1_fallback_cache_parent()! == os.abs_path(os.join_path(base, 'xdg', 'v',
+			'v1-fallback'))
+		os.setenv('V1_FALLBACK_CACHE_DIR', os.join_path(base, 'configured'), true)
+		assert v1_fallback_cache_parent()! == os.abs_path(os.join_path(base, 'configured'))
 	}
 }
 

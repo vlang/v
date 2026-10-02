@@ -101,14 +101,16 @@ fn (mut g FlatGen) emit_coverage_support() {
 	g.write_coverage_metadata()
 	counter_count := if g.coverage_counter_count > 0 { g.coverage_counter_count } else { 1 }
 	compile_tag := '${os.getpid()}_${time.now().unix_micro()}'
+	g.emit_windows_monotonic_clock()
 	g.writeln('static unsigned long long _v3_cov[${counter_count}];')
 	g.writeln('static void v3_write_coverage_stats(void) {')
 	g.writeln('\tchar cov_filename[4096];')
 	g.writeln('\tlong long cov_secs = 0;')
 	g.writeln('\tlong cov_nsecs = 0;')
 	g.writeln('#if defined(_WIN32)')
-	g.writeln('\tcov_secs = (long long)(GetTickCount64() / 1000);')
-	g.writeln('\tcov_nsecs = (long)((GetTickCount64() % 1000) * 1000000);')
+	g.writeln('\tunsigned long long cov_ms = __v_windows_now_ms();')
+	g.writeln('\tcov_secs = (long long)(cov_ms / 1000);')
+	g.writeln('\tcov_nsecs = (long)((cov_ms % 1000) * 1000000);')
 	g.writeln('#else')
 	g.writeln('\tstruct timespec cov_ts;')
 	g.writeln('\tclock_gettime(CLOCK_MONOTONIC, &cov_ts);')
@@ -129,4 +131,21 @@ fn (mut g FlatGen) emit_coverage_support() {
 	g.writeln('\tfclose(cov_file);')
 	g.writeln('}')
 	g.writeln('')
+}
+
+fn (mut g FlatGen) emit_windows_monotonic_clock() {
+	g.writeln('#if defined(_WIN32) && !defined(__V_WINDOWS_MONOTONIC_CLOCK)')
+	g.writeln('#define __V_WINDOWS_MONOTONIC_CLOCK')
+	g.writeln('static unsigned long long __v_windows_now_ms(void) {')
+	// Resolve dynamically because bundled TCC lacks the GetTickCount64 import.
+	g.writeln('\ttypedef ULONGLONG (WINAPI *tick_count_fn)(void);')
+	g.writeln('\ttick_count_fn ticks = (tick_count_fn)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetTickCount64");')
+	g.writeln('\tif (ticks != NULL) return (unsigned long long)ticks();')
+	g.writeln('\tLARGE_INTEGER counter, frequency;')
+	g.writeln('\tif (QueryPerformanceFrequency(&frequency) && frequency.QuadPart > 0 && QueryPerformanceCounter(&counter)) {')
+	g.writeln('\t\treturn (unsigned long long)((counter.QuadPart / frequency.QuadPart) * 1000) + (unsigned long long)(((counter.QuadPart % frequency.QuadPart) * 1000) / frequency.QuadPart);')
+	g.writeln('\t}')
+	g.writeln('\treturn (unsigned long long)GetTickCount();')
+	g.writeln('}')
+	g.writeln('#endif')
 }
