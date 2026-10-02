@@ -52,16 +52,23 @@ fn c_link_dependency_flags(flags []string) []string {
 		if clean.len > 0 && !clean.starts_with('-')
 			&& (c_flag_is_object_file(clean) || c_flag_is_c_source_file(clean)
 				|| language !in ['', 'none']) {
-			if language !in ['', 'none'] {
+			if language != '' {
 				inputs << ['-x', language, flag, '-x', 'none']
 			} else {
 				inputs << flag
 			}
+		} else if clean.len > 0 && !clean.starts_with('-') && language == 'none' {
+			// Retained archives also need an explicit reset of ambient CFLAGS.
+			remaining << ['-x', 'none', flag]
 		} else {
 			remaining << flag
 		}
 		i++
 	}
 	inputs << remaining
+	// Later linker inputs inherit the final explicit language, including resets.
+	if language != '' {
+		inputs << ['-x', language]
+	}
 	return inputs
 }

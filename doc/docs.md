@@ -9714,6 +9714,8 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 
 Native C sources and object files from `#flag` are linked before the libraries from
 all modules, including imported modules. Library flags retain their relative order.
+Explicit `-x` language settings remain attached to native inputs when they are reordered.
+The final language setting also applies to sources passed later through `-ldflags`.
 
 You can also use `#flag` directives, to link to static C libraries, which
 will be added last (note the .a suffix):

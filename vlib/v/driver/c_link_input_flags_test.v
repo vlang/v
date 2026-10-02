@@ -37,7 +37,11 @@ fn test_dependency_reordering_preserves_explicit_native_source_languages() {
 		'extensionless',
 		'-x',
 		'none',
+		'-x',
+		'none',
 		'support.o',
+		'-x',
+		'none',
 		'-x',
 		'objective-c',
 		'implementation.m',
@@ -48,7 +52,11 @@ fn test_dependency_reordering_preserves_explicit_native_source_languages() {
 		'SOURCE=operand.o',
 		'-l',
 		'second',
+		'-x',
+		'none',
 		'liblast.a',
+		'-x',
+		'none',
 	]
 	assert c_link_dependency_flags(['-xc++', 'cpp.c', '-xnone', '-lfirst']) == [
 		'-x',
@@ -57,6 +65,8 @@ fn test_dependency_reordering_preserves_explicit_native_source_languages() {
 		'-x',
 		'none',
 		'-lfirst',
+		'-x',
+		'none',
 	]
 	assert c_link_dependency_flags(['-x', 'c++', 'cpp.c', '-xnone', 'plain.c', '-lfirst']) == [
 		'-x',
@@ -64,8 +74,14 @@ fn test_dependency_reordering_preserves_explicit_native_source_languages() {
 		'cpp.c',
 		'-x',
 		'none',
+		'-x',
+		'none',
 		'plain.c',
+		'-x',
+		'none',
 		'-lfirst',
+		'-x',
+		'none',
 	]
 }
 
@@ -129,15 +145,95 @@ fn test_reordered_native_sources_keep_joined_and_reset_languages() {
 	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
 	entry := $if windows { 'wmain' } $else { 'main' }
 	os.write_file(cpp_source, 'template<int N> int answer() { return N; }\nextern "C" int plain_answer(void);\nint ${entry}(void) { return answer<42>() == plain_answer() ? 0 : 1; }\n')!
-	os.write_file(c_source, 'int plain_answer(void) { _Static_assert(sizeof(int) >= 2, "int"); return 42; }\n')!
-	for flags in [['-xc++', cpp_source, '-xnone', c_source], ['-x', 'c++', cpp_source, '-xnone',
-		c_source]] {
+	os.write_file(c_source, 'int class(void) { return 42; }\nint plain_answer(void) { return class(); }\n')!
+	for options in [
+		V3CCompilerFlagOptions{
+			dependencies: ['-xc++', cpp_source, '-xnone', c_source]
+		},
+		V3CCompilerFlagOptions{
+			dependencies: ['-x', 'c++', cpp_source, '-xnone', c_source]
+		},
+		V3CCompilerFlagOptions{
+			dependencies:  ['-xc++']
+			link_ld_flags: [cpp_source, '-xnone', c_source]
+		},
+		V3CCompilerFlagOptions{
+			dependencies:  ['-x', 'c++']
+			link_ld_flags: [cpp_source, '-x', 'none', c_source]
+		},
+		V3CCompilerFlagOptions{
+			dependencies:  ['-xc++', cpp_source, '-xnone']
+			link_ld_flags: [c_source]
+		},
+		V3CCompilerFlagOptions{
+			dependencies:  ['-xc++', cpp_source]
+			link_ld_flags: ['-x', 'none', c_source]
+		},
+		V3CCompilerFlagOptions{
+			dependencies:  ['-xc++', cpp_source, '-x', 'c']
+			link_ld_flags: [c_source]
+		},
+		V3CCompilerFlagOptions{
+			environment_c_flags: ['-xc++']
+			dependencies:        ['-xnone', c_source, '-xc++', cpp_source, '-xnone']
+		},
+	] {
 		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-			target_os:    os.user_os()
-			c_compiler:   compiler
-			dependencies: flags
+			...options
+			target_os:  os.user_os()
+			c_compiler: compiler
 		})
 		built := cmdexec.run(compiler, plan.compiler_args(output, [], []))
+		assert built.exit_code == 0, built.output
+		ran := cmdexec.run(output, [])
+		assert ran.exit_code == 0, ran.output
+	}
+	if archiver := os.find_abs_path_of_executable('ar') {
+		object := os.join_path(root, 'plain.o')
+		library := os.join_path(root, 'libplain.a')
+		compiled := cmdexec.run(compiler, ['-c', '-o', object, c_source])
+		assert compiled.exit_code == 0, compiled.output
+		archived := cmdexec.run(archiver, ['rcs', library, object])
+		assert archived.exit_code == 0, archived.output
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			target_os:           os.user_os()
+			c_compiler:          compiler
+			environment_c_flags: ['-xc++']
+			dependencies:        ['-xnone', library]
+		})
+		built := cmdexec.run(compiler, plan.compiler_args(output, [cpp_source], []))
+		assert built.exit_code == 0, built.output
+		ran := cmdexec.run(output, [])
+		assert ran.exit_code == 0, ran.output
+	}
+}
+
+fn test_trailing_native_language_reaches_sources_passed_through_ldflags() {
+	compiler := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'cc' }) or {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_trailing_language_${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	source := os.join_path(root, 'main.v')
+	cpp_source := os.join_path(root, 'template.c')
+	c_source := os.join_path(root, 'plain.c')
+	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
+	os.write_file(source, 'fn main() {}\n')!
+	os.write_file(cpp_source, 'template<int N> int answer() { return N; }\nextern "C" int template_answer(void) { return answer<42>(); }\n')!
+	os.write_file(c_source, 'int class(void) { return 42; }\n')!
+	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
+		os.join_path(@VEXEROOT, 'v' + $if windows { '.exe' } $else { '' })
+	} else {
+		@VEXE
+	}
+	for flags in [['-x c++', cpp_source], ['-xc++', cpp_source], ['-x c++ -x none', c_source],
+		['-xc++ -xnone', c_source]] {
+		built := cmdexec.run(vexe, ['-new-compiler', '-no-std', '-nocache', '-gc', 'none', '-cc',
+			compiler, '-cflags', flags[0], '-ldflags', os.quoted_path(flags[1]), '-o', output,
+			source])
 		assert built.exit_code == 0, built.output
 		ran := cmdexec.run(output, [])
 		assert ran.exit_code == 0, ran.output
