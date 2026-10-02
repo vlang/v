@@ -18,6 +18,8 @@ Other less frequently used commands supported by V include:
 
   check-md         Check that V examples in markdown files are formatted and can compile.
 
+  clean            Remove the executables that a default V build leaves behind.
+
   doctor           Display some useful info about your system to help reporting bugs.
 
   env               Print the environment variables that steer the V compiler
