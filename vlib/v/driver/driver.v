@@ -3889,7 +3889,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: KiB)\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -9873,6 +9873,7 @@ pub fn run(args []string) {
 	mut no_skip_unused := false
 	mut is_o := false
 	mut no_memory_limit := false
+	mut memory_limit := i64(0)
 	mut parallel_transform := true
 	mut building_v := false
 	mut ownership_mode := false
@@ -10447,6 +10448,17 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-memory-limit' || args[i] == '--no-memory-limit' {
 			no_memory_limit = true
 			i++
+		} else if args[i] == '-memory-limit' || args[i] == '--memory-limit' {
+			s := args[i + 1]
+			n, m := match s[s.len - 1] {
+				`K`, `k` { s[..s.len - 1], i64(1) }
+				`M`, `m` { s[..s.len - 1], i64(1) << 10 }
+				`G`, `g` { s[..s.len - 1], i64(1) << 20 }
+				else { s, i64(1) << 10 }
+			}
+			memory_limit = m * strconv.parse_int(n, 10, 64) or { panic(err) }
+			if memory_limit == 0 { no_memory_limit = true }
+			i += 2
 		} else if args[i] == '-prealloc' {
 			// Same effect as `v -prealloc`: activate the `$if prealloc {` arena
 			// allocator branches in vlib/builtin (allocation.c.v, prealloc.c.v).
@@ -10986,6 +10998,8 @@ pub fn run(args []string) {
 	}
 	if no_memory_limit {
 		b.disable_memory_limit()
+	} else if memory_limit != 0 {
+		b.set_memory_limit(memory_limit)
 	} else if compiler_tree_input {
 		// Compiler-module tests retain test-runner state in addition to the full
 		// compiler AST, so keep their guard separately configurable.
