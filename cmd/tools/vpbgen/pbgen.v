@@ -31,6 +31,13 @@ fn main() {
 		}
 		exit(1)
 	}
+	// Checked before `-check` reports success, because `-check` exists to answer
+	// "will this generate something usable", and a name that cannot be used is
+	// not usable.
+	check_module_name(res.module, res) or {
+		eprintln(err.msg())
+		exit(1)
+	}
 	if opts.verbose {
 		report(res)
 	}

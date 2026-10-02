@@ -14,20 +14,20 @@ pub fn emit_message_decode(mut e Emitter, m ResolvedMessage) {
 	e.wln(0, '// rather than a field from the future.')
 	e.wln(0, 'pub fn ${fn_name}(data []u8) !${m.v_name} {')
 	e.wln(1, 'mut out := ${m.v_name}{}')
-	e.wln(1, 'mut u := protobuf.new_unpacker(data, protobuf.DecodeOpts{})')
+	e.wln(1, 'mut unpacker := protobuf.new_unpacker(data, protobuf.DecodeOpts{})')
 	if m.fields.len == 0 {
-		e.wln(1, '_ = &u')
+		e.wln(1, '_ = &unpacker')
 		e.wln(1, '_ = &out')
 	} else {
-		e.wln(1, 'for !u.eof() {')
-		e.wln(2, 'number, wire_type := u.read_tag()!')
+		e.wln(1, 'for !unpacker.eof() {')
+		e.wln(2, 'number, wire_type := unpacker.read_tag()!')
 		e.wln(2, 'match number {')
 		for f in m.fields {
 			emit_decode_case(mut e, f)
 		}
 		e.wln(3, 'else {')
 		e.wln(4, '// an unknown field, or one this build does not know')
-		e.wln(4, 'u.skip_field(number, wire_type)!')
+		e.wln(4, 'unpacker.skip_field(number, wire_type)!')
 		e.wln(3, '}')
 		e.wln(2, '}')
 		e.wln(1, '}')
@@ -54,7 +54,7 @@ pub fn emit_decode_case(mut e Emitter, f Resolved) {
 		e.wln(4, 'out.${other} = none')
 	}
 	if f.kind == .map {
-		e.wln(4, 'out.${f.name} = decode_map_${f.name}(mut u, ${n}, wire_type)!')
+		e.wln(4, 'out.${f.name} = decode_map_${f.name}(mut unpacker, ${n}, wire_type)!')
 		e.wln(3, '}')
 		return
 	}
@@ -65,20 +65,20 @@ pub fn emit_decode_case(mut e Emitter, f Resolved) {
 	}
 	if f.kind == .message {
 		e.wln(4, 'protobuf.check_wire_type(${n}, wire_type, protobuf.WireType.length_delimited)!')
-		e.wln(4, 'payload := u.read_len_delimited()!')
+		e.wln(4, 'payload := unpacker.read_len_delimited()!')
 		e.wln(4, 'out.${f.name} = decode_${snake_case(f.elem_type)}(payload)!')
 		e.wln(3, '}')
 		return
 	}
 	e.wln(4, 'protobuf.check_wire_type(${n}, wire_type, protobuf.WireType.${field_wire_name(f)})!')
 	if f.kind == .text {
-		e.wln(4, 'out.${f.name} = u.read_string()!')
+		e.wln(4, 'out.${f.name} = unpacker.read_string()!')
 	} else if f.kind == .bytes {
-		e.wln(4, 'out.${f.name} = u.read_bytes()!')
+		e.wln(4, 'out.${f.name} = unpacker.read_bytes()!')
 	} else if f.kind == .enum {
-		e.wln(4, 'out.${f.name} = unsafe { ${f.elem_type}(u.read_enum()!) }')
+		e.wln(4, 'out.${f.name} = unsafe { ${f.elem_type}(unpacker.read_enum()!) }')
 	} else {
-		e.wln(4, 'out.${f.name} = ${scalar_reader(f.scalar, 'u')}!')
+		e.wln(4, 'out.${f.name} = ${scalar_reader(f.scalar, 'unpacker')}!')
 	}
 	e.wln(3, '}')
 }
@@ -129,7 +129,7 @@ pub fn scalar_reader(s protobuf.ProtoScalar, reader string) string {
 // older producer unreadable.
 pub fn emit_decode_repeated(mut e Emitter, f Resolved, n int) {
 	e.wln(4, 'if wire_type == .length_delimited && ${f.kind_supports_packed()} {')
-	e.wln(5, 'payload := u.read_len_delimited()!')
+	e.wln(5, 'payload := unpacker.read_len_delimited()!')
 	e.wln(5, 'mut sub := protobuf.new_unpacker(payload, protobuf.DecodeOpts{})')
 	e.wln(5, 'for !sub.eof() {')
 	packed_line := emit_decode_elem(f, 'sub')
@@ -138,7 +138,7 @@ pub fn emit_decode_repeated(mut e Emitter, f Resolved, n int) {
 	}
 	e.wln(5, '}')
 	e.wln(4, '} else {')
-	plain_line := emit_decode_elem(f, 'u')
+	plain_line := emit_decode_elem(f, 'unpacker')
 	if plain_line != '' {
 		e.wln(5, plain_line)
 	}
@@ -196,11 +196,14 @@ pub fn emit_map_encode(mut e Emitter, f Resolved) {
 	e.wln(0, '// The entries are sorted by key. V map iteration order is undefined, so')
 	e.wln(0, '// without the sort the same map would encode to different bytes on')
 	e.wln(0, '// different runs, which breaks any comparison taken over the output.')
-	e.wln(0, 'pub fn emit_map_${f.name}(mut p protobuf.Packer, field_number int, value ${f.v_type}) ! {')
-	e.wln(1, 'mut keys := value.keys()')
+	e.wln(0, 'pub fn emit_map_${f.name}(mut packer protobuf.Packer, field_number int, map_data ${f.v_type}) ! {')
+	// The map is held in a local named `map_data` rather than `value`, because
+	// `value` is a builtin type: a local of that name shadows it, and the checker
+	// rejects the assignment that follows.
+	e.wln(1, 'mut keys := map_data.keys()')
 	e.wln(1, 'keys.sort()')
 	e.wln(1, 'for entry_key in keys {')
-	e.wln(2, 'entry_value := value[entry_key]')
+	e.wln(2, 'entry_value := map_data[entry_key]')
 	e.wln(2, 'mut entry := protobuf.new_packer(protobuf.EncodeOpts{})')
 	// The key's and the value's types are checked separately: a map<string, int32>
 	// needs a length test for the key and a zero test for the value, and reading
@@ -217,7 +220,7 @@ pub fn emit_map_encode(mut e Emitter, f Resolved) {
 		e.wln(3, value_line)
 	}
 	e.wln(2, '}')
-	e.wln(2, 'p.write_message(field_number, entry.bytes())')
+	e.wln(2, 'packer.write_message(field_number, entry.bytes())')
 	e.wln(1, '}')
 	e.wln(0, '}')
 	e.w('')
@@ -329,7 +332,7 @@ pub fn emit_map_decode(mut e Emitter, f Resolved) {
 	// tag ahead of it, so the loop peeks for one and hands it back when it
 	// belongs to a different field. That is what lets a map be followed by
 	// another field in the same message.
-	e.wln(0, 'pub fn decode_map_${f.name}(mut u protobuf.Unpacker, field_number int, wire_type protobuf.WireType) !${f.v_type} {')
+	e.wln(0, 'pub fn decode_map_${f.name}(mut unpacker protobuf.Unpacker, field_number int, wire_type protobuf.WireType) !${f.v_type} {')
 	e.wln(1, 'protobuf.check_wire_type(field_number, wire_type, protobuf.WireType.length_delimited)!')
 	e.wln(1, 'mut out := ${f.v_type}{}')
 	e.wln(1, '// The outer loop runs once per entry the wire carries for this field. The')
@@ -339,23 +342,23 @@ pub fn emit_map_decode(mut e Emitter, f Resolved) {
 	e.wln(1, 'mut first := true')
 	e.wln(1, 'for {')
 	e.wln(2, 'if !first {')
-	e.wln(3, 'if u.eof() {')
+	e.wln(3, 'if unpacker.eof() {')
 	e.wln(4, 'break')
 	e.wln(3, '}')
-	e.wln(3, 'at := u.offset()')
-	e.wln(3, 'number, entry_wire := u.read_tag()!')
+	e.wln(3, 'at := unpacker.offset()')
+	e.wln(3, 'number, entry_wire := unpacker.read_tag()!')
 	e.wln(3, 'if number != field_number {')
 	e.wln(4, '// a different field starts here, so hand the tag back')
-	e.wln(4, 'u.seek(at)')
+	e.wln(4, 'unpacker.seek(at)')
 	e.wln(4, 'break')
 	e.wln(3, '}')
 	e.wln(3, 'protobuf.check_wire_type(field_number, entry_wire, protobuf.WireType.length_delimited)!')
 	e.wln(2, '}')
 	e.wln(2, 'first = false')
-	e.wln(2, 'if u.eof() {')
+	e.wln(2, 'if unpacker.eof() {')
 	e.wln(3, 'break')
 	e.wln(2, '}')
-	e.wln(2, 'mut sub := u.sub()!')
+	e.wln(2, 'mut sub := unpacker.sub()!')
 	// The locals are named `entry_key` and `entry_value` rather than `key` and
 	// `value`: `value` is a builtin type, and a local of that name shadows it,
 	// which the checker rejects on assignment.

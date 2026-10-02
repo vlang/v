@@ -79,19 +79,19 @@ fn test_generated_encode_skips_defaults() {
 	// proto3 omits a field at its default, which is the rule a hand-written
 	// encoder most often gets wrong.
 	assert out.contains('if msg.key.len > 0 {')
-	assert out.contains('p.write_string(1, msg.key)!')
+	assert out.contains('packer.write_string(1, msg.key)!')
 	assert out.contains('if msg.found {')
-	assert out.contains('p.write_bool(2, msg.found)')
+	assert out.contains('packer.write_bool(2, msg.found)')
 	// a bytes field is present when it has bytes
 	assert out.contains('if msg.value.len > 0 {')
-	assert out.contains('p.write_bytes(1, msg.value)')
+	assert out.contains('packer.write_bytes(1, msg.value)')
 }
 
 fn test_generated_decode_skips_unknown_fields() {
 	out := generate(fixture('kv.proto'), 'kv')!
 	// The forward-compatibility requirement has to be visible in the output, not
 	// just the library.
-	assert out.contains('u.skip_field(number, wire_type)!')
+	assert out.contains('unpacker.skip_field(number, wire_type)!')
 }
 
 fn test_generated_decode_checks_wire_type() {
@@ -112,7 +112,7 @@ fn test_generated_enum_spells_out_every_value() {
 
 fn test_generated_repeated_numeric_is_packed() {
 	out := generate(fixture('demo.proto'), 'demo')!
-	assert out.contains('p.write_packed_payload(')
+	assert out.contains('packer.write_packed_payload(')
 	assert out.contains('protobuf.put_varint(mut payload, protobuf.int32_varint(item))')
 }
 
@@ -122,21 +122,21 @@ fn test_generated_repeated_string_is_not_packed() {
 	// A repeated string has no packed form, so each element carries its own
 	// tag.
 	assert out.contains('for item in msg.tags {')
-	assert out.contains('p.write_string(4, item)!')
+	assert out.contains('packer.write_string(4, item)!')
 }
 
 fn test_generated_nested_message_round_trips() {
 	out := generate(fixture('nested.proto'), 'demo')!
 	// A nested message is written whenever the field is, even when all of its
 	// own fields hold defaults.
-	assert out.contains('p.write_message(1, msg.inner.encode()!)')
+	assert out.contains('packer.write_message(1, msg.inner.encode()!)')
 	assert out.contains('out.inner = decode_inner(payload)!')
 }
 
 fn test_generated_map_is_an_entry_message() {
 	out := generate(fixture('demo.proto'), 'demo')!
 	// A map is a repeated Entry message with key = 1 and value = 2.
-	assert out.contains('p.write_message(field_number, entry.bytes())')
+	assert out.contains('packer.write_message(field_number, entry.bytes())')
 	assert out.contains('keys.sort()')
 }
 
@@ -866,6 +866,50 @@ fn test_a_singular_field_keeps_implicit_presence() ! {
 	assert back.bare_note == ''
 }
 "
+
+fn test_a_module_named_after_a_local_is_rejected() {
+	res := generate_res(fixture('kv.proto'), 'kv')!
+	// `out`, `packer`, and `sub` are locals the emitter writes. A module with one
+	// of those names does not compile, and V's diagnostic points at the local, so
+	// the message has to name `-m` as the thing to change.
+	for name in ['out', 'packer', 'unpacker', 'sub', 'entry'] {
+		conflict := module_name_conflict(name, res)
+		assert conflict.contains('local called'), 'name ${name} was accepted'
+	}
+}
+
+fn test_a_module_named_after_the_runtime_is_rejected() {
+	res := generate_res(fixture('kv.proto'), 'kv')!
+	// A module called `protobuf` cannot import `encoding.protobuf` at all.
+	assert module_name_conflict('protobuf', res).contains('encoding.protobuf')
+}
+
+fn test_a_module_named_after_a_declared_type_is_rejected() {
+	res := generate_res(fixture('kv.proto'), 'kv')!
+	// The schema declares GetRequest, so a module of that name would be a second
+	// definition of the same thing.
+	assert module_name_conflict('GetRequest', res).contains('message')
+}
+
+fn test_an_ordinary_module_name_is_accepted() {
+	res := generate_res(fixture('kv.proto'), 'kv')!
+	// The control: the names a real project uses must all pass, or the check is
+	// just refusing things.
+	for name in ['kv', 'thing', 'p', 'u', 'myapp', 'v1'] {
+		assert module_name_conflict(name, res) == '', 'name ${name} was rejected'
+	}
+}
+
+fn test_check_module_name_reports_the_option() {
+	res := generate_res(fixture('kv.proto'), 'kv')!
+	check_module_name('kv', res)!
+	// The message has to point at the flag, because the module name is a property
+	// of the schema and the reader has no other way to change it.
+	msg := module_name_error('out', res)
+	assert msg.contains('`-m`')
+	assert msg.contains('out')
+	assert module_name_error('kv', res) == ''
+}
 
 fn test_is_well_known() {
 	assert is_well_known('google/protobuf/timestamp.proto')

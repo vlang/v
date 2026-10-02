@@ -9,7 +9,7 @@ import encoding.protobuf
 // reflection API would be less code here and less code in the output, but the
 // generated source is the artefact a reader actually debugs, and a stack trace
 // through `encode_field` tells them nothing about which field was wrong while
-// `p.write_int32(7, msg.written)` does. It also keeps the generator out of the
+// `packer.write_int32(7, msg.written)` does. It also keeps the generator out of the
 // compiler's comptime reflection, which in this compiler version only resolves
 // one hop from a concrete type.
 //
@@ -158,14 +158,14 @@ pub fn emit_message_encode(mut e Emitter, m ResolvedMessage) {
 	e.wln(0, '// holding a member of a `oneof`, is the exception: it records presence,')
 	e.wln(0, '// so it is written even at its default.')
 	e.wln(0, 'pub fn (msg ${m.v_name}) encode() ![]u8 {')
-	e.wln(1, 'mut p := protobuf.new_packer(protobuf.EncodeOpts{})')
+	e.wln(1, 'mut packer := protobuf.new_packer(protobuf.EncodeOpts{})')
 	if m.fields.len == 0 {
-		e.wln(1, '_ = &p')
+		e.wln(1, '_ = &packer')
 	}
 	for f in m.fields {
 		emit_encode_field(mut e, f)
 	}
-	e.wln(1, 'return p.bytes()')
+	e.wln(1, 'return packer.bytes()')
 	e.wln(0, '}')
 	e.w('')
 }
@@ -177,7 +177,7 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 	match f.kind {
 		.map {
 			e.wln(1, 'if ${value}.len > 0 {')
-			e.wln(2, 'emit_map_${f.name}(mut p, ${n}, ${value})!')
+			e.wln(2, 'emit_map_${f.name}(mut packer, ${n}, ${value})!')
 			e.wln(1, '}')
 			return
 		}
@@ -204,7 +204,7 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 	if f.kind == .message {
 		// A nested message is present whenever the field is, even when all of
 		// its own fields hold defaults, so it is written unconditionally.
-		e.wln(1, 'p.write_message(${n}, ${value}.encode()!)')
+		e.wln(1, 'packer.write_message(${n}, ${value}.encode()!)')
 		return
 	}
 	e.wln(1, 'if ${emit_default_test(f, value)} {')
@@ -239,25 +239,25 @@ pub fn emit_default_test(f Resolved, value string) string {
 // field's value, or an empty string when the kind has no such statement.
 pub fn emit_single_encode(f Resolved, n int, value string) string {
 	match f.kind {
-		.text { return 'p.write_string(${n}, ${value})!' }
-		.bytes { return 'p.write_bytes(${n}, ${value})' }
-		.message { return 'p.write_message(${n}, ${value}.encode()!)' }
-		.enum { return 'p.write_enum(${n}, int(${value}))' }
+		.text { return 'packer.write_string(${n}, ${value})!' }
+		.bytes { return 'packer.write_bytes(${n}, ${value})' }
+		.message { return 'packer.write_message(${n}, ${value}.encode()!)' }
+		.enum { return 'packer.write_enum(${n}, int(${value}))' }
 		.scalar {
 			return match f.scalar {
-				.boolean { 'p.write_bool(${n}, ${value})' }
-				.int32 { 'p.write_int32(${n}, ${value})' }
-				.int64 { 'p.write_int64(${n}, ${value})' }
-				.uint32 { 'p.write_uint32(${n}, ${value})' }
-				.uint64 { 'p.write_uint64(${n}, ${value})' }
-				.sint32 { 'p.write_sint32(${n}, ${value})' }
-				.sint64 { 'p.write_sint64(${n}, ${value})' }
-				.fixed32 { 'p.write_fixed32(${n}, ${value})' }
-				.sfixed32 { 'p.write_sfixed32(${n}, ${value})' }
-				.fixed64 { 'p.write_fixed64(${n}, ${value})' }
-				.sfixed64 { 'p.write_sfixed64(${n}, ${value})' }
-				.float32 { 'p.write_float(${n}, ${value})' }
-				.float64 { 'p.write_double(${n}, ${value})' }
+				.boolean { 'packer.write_bool(${n}, ${value})' }
+				.int32 { 'packer.write_int32(${n}, ${value})' }
+				.int64 { 'packer.write_int64(${n}, ${value})' }
+				.uint32 { 'packer.write_uint32(${n}, ${value})' }
+				.uint64 { 'packer.write_uint64(${n}, ${value})' }
+				.sint32 { 'packer.write_sint32(${n}, ${value})' }
+				.sint64 { 'packer.write_sint64(${n}, ${value})' }
+				.fixed32 { 'packer.write_fixed32(${n}, ${value})' }
+				.sfixed32 { 'packer.write_sfixed32(${n}, ${value})' }
+				.fixed64 { 'packer.write_fixed64(${n}, ${value})' }
+				.sfixed64 { 'packer.write_sfixed64(${n}, ${value})' }
+				.float32 { 'packer.write_float(${n}, ${value})' }
+				.float64 { 'packer.write_double(${n}, ${value})' }
 			}
 		}
 		else { return '' }
@@ -291,7 +291,7 @@ pub fn emit_encode_repeated(mut e Emitter, f Resolved, value string) {
 		e.wln(2, 'for item in ${value} {')
 		e.wln(3, packed_element_call(f.scalar, 'item'))
 		e.wln(2, '}')
-		e.wln(2, 'p.write_packed_payload(${n}, protobuf.WireType.${wire}, payload)')
+		e.wln(2, 'packer.write_packed_payload(${n}, protobuf.WireType.${wire}, payload)')
 	}
 	e.wln(1, '}')
 }
@@ -330,7 +330,7 @@ pub fn packed_element_call(s protobuf.ProtoScalar, value string) string {
 // repeated field, where a message element is encoded by its own codec.
 pub fn emit_single_encode_elem(f Resolved, n int, value string) string {
 	if f.kind == .message {
-		return 'p.write_message(${n}, ${value}.encode()!)'
+		return 'packer.write_message(${n}, ${value}.encode()!)'
 	}
 	return emit_single_encode(f, n, value)
 }
