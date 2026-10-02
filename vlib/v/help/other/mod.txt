@@ -1,0 +1,53 @@
+Answer questions about the modules a project depends on.
+
+A V project declares its dependencies by hand in the `dependencies` field of
+its v.mod, and the compiler resolves imports against the module search path:
+the project folder, `vlib`, and the global module folders. Nothing records
+which of those a build actually reaches, so it is easy to end up with a module
+in v.mod that no longer has anything to do with the code.
+
+Usage:
+  v mod why MODULE
+
+Prints the chain of imports that brings MODULE into the build, one module per
+line, starting at the project itself:
+
+  $ v mod why lib.http
+  app
+  app.net
+  lib
+  lib.http
+
+A module that is installed but that nothing imports says so, which is the case
+worth acting on:
+
+  $ v mod why oldlib
+  (main module does not need module `oldlib`)
+
+A module that cannot be found in the module search path at all is an error:
+
+  $ v mod why nosuchmodule
+  v mod: no module named `nosuchmodule` could be found in the module
+  search path. `v install nosuchmodule` may be needed first.
+
+For a bug report, or for the whole compiler environment rather than just this
+project's modules, use `v doctor`. To install or remove a module, use `v
+install` and `v remove`.
+
+Note that `v mod why` reads the imports from the source files of the project
+and of every module it reaches, rather than from the compiler's own resolved
+build list. That is what makes it work without a build, but it also means a
+file that a build constraint excludes can still contribute an import edge. In
+practice that can only add a path to a chain, never remove a real one.
+
+This subcommand must run inside a project folder: it needs a v.mod in the
+current directory or one of its parents.
+Dependency names are the paths written in imports, including standard library
+modules and submodules without their own v.mod. A dependency manifest name does
+not replace the import name used in the reported chain.
+
+Imports are read as V declarations, so tabs and comments between tokens are
+accepted, while fields named `import` do not create dependency edges. Both
+branches of a top-level `$if` contribute their declared imports.
+Module path segments can also be V keywords, as in `import type as tp` or
+`import pkg.type as tp`, using the same names accepted by the compiler.

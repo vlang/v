@@ -23,6 +23,10 @@ Other less frequently used commands supported by V include:
   env               Print the environment variables that steer the V compiler
                    and its tools, with the value V would use for each.
 
+  mod               Answer questions about the modules a project depends on.
+                   `v mod why MODULE` prints the chain of imports that brings
+                   MODULE into the build.
+
   setup-freetype   Setup thirdparty freetype on Windows.
 
   share            Send your code to the V Playground

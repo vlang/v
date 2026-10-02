@@ -142,6 +142,7 @@ const auto_complete_commands = [
 	'build',
 	'build-module',
 	'missdoc',
+	'mod',
 ]
 // Entries in the flag arrays below should be entered as is:
 // * Short flags, e.g.: "-v", should be entered: '-v'
