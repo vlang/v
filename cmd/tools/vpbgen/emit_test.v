@@ -696,6 +696,81 @@ assert back.from_two.y == ''
 }
 "
 
+fn test_oneof_reading_a_member_clears_the_others() {
+	out := generate(fixture('oneof.proto'), 'choice')!
+	// The spec says the last member on the wire wins, so reading one has to clear
+	// the rest. The members are parallel optionals, so nothing else in the
+	// generated code knows they are exclusive.
+	// Every member is cleared by the arm of every other member, which is what the
+	// four `= none` lines in the generated arms are.
+	for member in ['number', 'text', 'payload', 'none_of_it'] {
+		assert out.contains('out.${member} = none')
+	}
+}
+
+fn test_oneof_exclusivity_round_trips() ! {
+	res := generate_res(fixture('oneof.proto'), 'choice')!
+	dir := write_roundtrip('oneof', res)
+	run_module_test(dir, 'round_trip_test.v', oneof_test_source)!
+}
+
+fn test_oneof_output_compiles() ! {
+	out := generate(fixture('oneof.proto'), 'choice')!
+	compile_generated('oneof', [out])!
+}
+
+// A payload with two members of one group on the wire has to decode to the later
+// one only. Encoding such a payload needs the low-level API, since a well-formed
+// `Envelope` cannot have two members set at once.
+const oneof_test_source = "module choice
+
+import encoding.protobuf
+
+fn test_a_single_member_survives() ! {
+	back := decode_envelope(Envelope{
+number: 7
+}.encode()!)!
+	assert back.number or { 0 } == 7
+	assert back.text == none
+}
+
+fn test_the_last_member_on_the_wire_wins() ! {
+	mut p := protobuf.new_packer(protobuf.EncodeOpts{})
+	p.write_int32(1, 7)
+	p.write_string(2, 'later')
+	back := decode_envelope(p.bytes())!
+	assert back.text or { '' } == 'later'
+	assert back.number == none
+}
+
+fn test_members_arrive_in_any_order() ! {
+	mut p := protobuf.new_packer(protobuf.EncodeOpts{})
+	p.write_string(2, 'first')
+	p.write_int32(1, 7)
+	back := decode_envelope(p.bytes())!
+	assert back.number or { 0 } == 7
+	assert back.text == none
+}
+
+fn test_a_message_member_also_clears_the_scalars() ! {
+	back := decode_envelope(Envelope{
+payload: Payload{
+x: 3
+}
+}.encode()!)!
+	assert back.payload or { Payload{} }.x == 3
+	assert back.number == none
+	assert back.text == none
+}
+
+fn test_a_group_with_nothing_set_stays_empty() ! {
+	back := decode_envelope([]u8{})!
+	assert back.number == none
+	assert back.text == none
+	assert back.payload == none
+}
+"
+
 fn test_is_well_known() {
 	assert is_well_known('google/protobuf/timestamp.proto')
 	assert !is_well_known('kv.proto')

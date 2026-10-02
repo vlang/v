@@ -42,6 +42,10 @@ pub mut:
 	// group is declared optional, since a `oneof` is represented as parallel
 	// optional fields sharing a group name.
 	oneof string
+	// oneof_members lists every field of `oneof`, this one included. A reader
+	// needs it because the members are parallel optionals, and only the reader
+	// can enforce that exactly one of them is set.
+	oneof_members []string
 	// name is the V field name, with a keyword collision suffixed.
 	name string
 	// comments is the doc comment the schema attached above the field.
@@ -388,6 +392,14 @@ fn resolve_message(mut res ResolvedFile, idx &TypeIndex, parent_qualified string
 		}
 		out.fields << r
 	}
+	// Every member of a `oneof` learns the whole membership of its group, because
+	// the exclusivity is the reader's job and only a member knows the others.
+	for i, f in out.fields {
+		if f.oneof == '' {
+			continue
+		}
+		out.fields[i].oneof_members = members_of(out.fields, f.oneof)
+	}
 	// The declared name is `Outer.Inner`, with no package in front of it: the
 	// parent chain already says everything about where it sits.
 	out.proto_name = m.name
@@ -408,6 +420,20 @@ fn resolve_message(mut res ResolvedFile, idx &TypeIndex, parent_qualified string
 	for e in m.enums {
 		res.enums << resolve_enum(idx, qualified + '.' + e.name, e)
 	}
+}
+
+// members_of returns the names of every field in group `group`.
+//
+// It is keyed off the group name rather than being computed once, because the
+// members are resolved one at a time and any of them may be the first resolved.
+fn members_of(fields []Resolved, group string) []string {
+	mut out := []string{}
+	for f in fields {
+		if f.oneof == group {
+			out << f.name
+		}
+	}
+	return out
 }
 
 // flatten_name flattens a dotted proto name into a PascalCase V name, so

@@ -41,6 +41,18 @@ pub fn emit_message_decode(mut e Emitter, m ResolvedMessage) {
 pub fn emit_decode_case(mut e Emitter, f Resolved) {
 	n := f.number
 	e.wln(3, '${n} {')
+	// Reading a member of a `oneof` clears the others first. The spec says the
+	// last member on the wire wins, so a payload carrying two members of one
+	// group must not decode to both of them set.
+	//
+	// This is why the members are parallel optionals at all: nothing else in the
+	// generated code knows which fields belong to the same group.
+	for other in f.oneof_members {
+		if other == f.name {
+			continue
+		}
+		e.wln(4, 'out.${other} = none')
+	}
 	if f.kind == .map {
 		e.wln(4, 'out.${f.name} = decode_map_${f.name}(mut u, ${n}, wire_type)!')
 		e.wln(3, '}')
