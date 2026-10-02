@@ -2313,17 +2313,20 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 						owner := g.tc.cur_scope.insert_with_owner(lhs.value, elem_types[i])
 						g.track_local_pointer_storage_decl(lhs, owner, elem_types[i], ct)
 					}
-				} else if array_fixed_type(elem_types[i]) != none {
-					g.write('memmove(')
-					gen_expr_lvalue(mut g, select_case.lhs_id)
-					g.writeln(', ${temps[i]}, sizeof(${g.value_c_type(elem_types[i])}));')
 				} else {
-					gen_expr_lvalue(mut g, select_case.lhs_id)
-					g.write(' = ')
 					lhs_type := g.usable_expr_type(select_case.lhs_id)
 					expected := g.assign_rhs_expected_type(select_case.lhs_id, lhs_type)
-					g.gen_select_receive_value(temps[i], elem_types[i], expected)
-					g.writeln(';')
+					if array_fixed_type(expected) != none
+						&& g.fixed_array_decay_shape_equal(elem_types[i], expected, false) {
+						g.write('memmove(')
+						gen_expr_lvalue(mut g, select_case.lhs_id)
+						g.writeln(', ${temps[i]}, sizeof(${g.value_c_type(expected)}));')
+					} else {
+						gen_expr_lvalue(mut g, select_case.lhs_id)
+						g.write(' = ')
+						g.gen_select_receive_value(temps[i], elem_types[i], expected)
+						g.writeln(';')
+					}
 				}
 			}
 		}
