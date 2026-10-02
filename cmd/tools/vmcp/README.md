@@ -14,3 +14,7 @@ dangling symlinks are refused.
 AST renderings over 400,000 bytes return `ast: null`, the original byte count,
 `truncated: true`, the limit and reduction hints. Incomplete JSON trees are never
 returned; smaller trees keep their normal AST object.
+
+Compiler flags for `v_run`, `v_check` and `v_test_run` are placed before the
+command and target. Program arguments keep their original boundaries, including
+spaces, empty strings and shell punctuation; they are passed directly to the child.

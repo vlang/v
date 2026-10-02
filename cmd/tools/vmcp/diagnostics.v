@@ -190,7 +190,7 @@ pub fn (r CompilerRun) started() bool {
 	return r.launch_error == ''
 }
 
-// run_compiler runs the workspace compiler with `args` in the project root.
+// run_compiler runs the workspace compiler with `args`.
 //
 // `args` is a real argument array, and `os.exec` starts the process with it
 // rather than with a command string, so an argument carrying a space arrives as
@@ -208,7 +208,7 @@ pub fn run_compiler(ws &Workspace, args []string) CompilerRun {
 		exit_code:    result.exit_code
 		output:       result.output
 		command:      compiler_command_line(ws.compiler, args)
-		launch_error: if launch_failure(trimmed) { trimmed } else { '' }
+		launch_error: if result.exit_code != 0 && launch_failure(trimmed) { trimmed } else { '' }
 	}
 }
 
@@ -226,10 +226,10 @@ fn compiler_command_line(compiler string, args []string) string {
 	return parts.join(' ')
 }
 
-// launch_failure returns `output` when it is one of `os.execute`'s own messages
+// launch_failure returns `output` when it is one of `os.exec`'s own messages
 // about not starting the process, and an empty string otherwise.
 //
-// `os.execute` reports a failed launch in its `output` field rather than through
+// `os.exec` reports a failed launch in its `output` field rather than through
 // a flag, so the messages are matched by their shape: a real compiler always
 // speaks in diagnostics of the form `path:line:column: kind: message`.
 fn launch_failure(output string) bool {

@@ -8,7 +8,7 @@ module main
 import v.astjson
 
 // run_timeout_ms is the documentation of the ceiling these tools impose. Neither
-// is enforced by the tool itself: `os.execute` waits for the child, and a build
+// is enforced by the tool itself: `os.exec` waits for the child, and a build
 // that takes minutes is legitimate for a large project. The value is reported so
 // an agent knows the wait is unbounded by design.
 const run_timeout_note = 'the child is waited on, so a build may take minutes'
@@ -30,7 +30,7 @@ whatever the program itself writes; it does not edit the project.',
 			}
 			'args':   SchemaProperty{
 				kind:        'array'
-				description: 'Arguments\npassed to the program after `--`.'
+				description: 'Arguments\npassed to the program after the target.'
 			}
 			'flags':  SchemaProperty{
 				kind:        'array'
@@ -62,7 +62,6 @@ fn run_arguments(flags []string, target string, program_args []string) []string 
 	argv << flags
 	argv << ['run', target]
 	if program_args.len > 0 {
-		argv << '--'
 		argv << program_args
 	}
 	return argv

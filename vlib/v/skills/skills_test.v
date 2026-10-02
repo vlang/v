@@ -197,6 +197,7 @@ fn test_remove_rejects_traversal_names_and_preserves_other_directories() {
 fn test_forced_install_refuses_a_symlink_target_and_preserves_it() {
 	root := fixture_root(['alpha'])!
 	dir := skills.target_dir(.project_root, root)
+	os.mkdir_all(dir)!
 	skill := skills.find(root, 'alpha') or { panic('missing alpha') }
 	victim := os.join_path(root, 'victim')
 	os.mkdir_all(victim)!
@@ -210,8 +211,10 @@ fn test_forced_install_refuses_a_symlink_target_and_preserves_it() {
 			assert skills.install(skill, dir, opts) == none, 'a link must not be installed over'
 			assert os.read_file(marker)! == 'unrelated', 'the victim lost a file'
 			assert os.is_link(link), 'the link itself must survive'
-			assert os.read_dir(victim)!.len == 1, 'the victim directory lost entries'
+			entries := os.ls(victim)!
+			assert entries.len == 1, 'the victim directory lost entries'
 		}
+		os.rm(link)!
 	}
 	// An ordinary directory still installs, so the guard is not just refusing
 	// every name that exists.

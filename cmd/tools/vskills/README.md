@@ -8,3 +8,6 @@ directory and every file. The same preview option works with `--global`.
 Removal accepts one lowercase skill name made of letters, digits and hyphens.
 Path traversal and symlink skill directories are refused; removal targets must
 remain immediate children of the selected skills directory.
+
+Installation also refuses an existing symlink destination, including with
+`--force` and `--dry-run`, and preserves the linked directory and its contents.

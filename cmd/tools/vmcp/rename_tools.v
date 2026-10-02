@@ -38,7 +38,13 @@ fn (ws &Workspace) rename_targets(requested []string) ![]string {
 // after it, so applying them in this order keeps the recorded columns valid.
 fn rename_hits(file string, name string) []RenameHit {
 	mut hits := []RenameHit{}
+	mut seen := map[string]bool{}
 	for occ in astquery.references(astquery.parse(file), name) {
+		key := '${occ.line}:${occ.column}'
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
 		hits << RenameHit{
 			line:   occ.line
 			column: occ.column
@@ -95,7 +101,7 @@ fn apply_rename(file string, hits []RenameHit, name string, new_name string) !st
 			return error('column ${hit.column} on line ${hit.line} no longer holds the old name')
 		}
 		there := out[hit.line - 1][start..end]
-		if there != name {
+		if hit.length != name.len || there != name {
 			return error('column ${hit.column} on line ${hit.line} holds `${there}`, not `${name}`')
 		}
 		out[hit.line - 1] = out[hit.line - 1][..start] + new_name + out[hit.line - 1][end..]

@@ -15,6 +15,7 @@ import os
 import v.flat
 import v.parser
 import v.pref
+import v.scanner
 import v.token
 
 // max_doc_gap is how far above a declaration a comment may sit and still be read
@@ -368,7 +369,9 @@ pub fn references(a &flat.FlatAst, name string) []Occurrence {
 fn collect_references(a &flat.FlatAst, node &flat.Node, name string, mut cache map[int]string) []Occurrence {
 	mut out := []Occurrence{}
 	if mentions(node, name) {
-		out << occurrence(a, node, name, mut cache)
+		if at := occurrence(a, node, name, mut cache) {
+			out << at
+		}
 	}
 	for child in a.children_of(node) {
 		out << collect_references(a, a.node(child), name, mut cache)
@@ -404,16 +407,15 @@ const literal_kinds = [flat.NodeKind.string_literal, .char_literal, .string_inte
 // so a value offset walked into the signature; a selector spans `receiver.name`
 // while its value reads only `name`, so the offset stayed on the receiver. Both
 // landed the write on unrelated bytes.
-fn occurrence(a &flat.FlatAst, node &flat.Node, name string, mut cache map[int]string) Occurrence {
+fn occurrence(a &flat.FlatAst, node &flat.Node, name string, mut cache map[int]string) ?Occurrence {
 	found := name_offset(source_text(a, int(node.pos.id), mut cache), node, name)
-	pos := if found >= 0 {
-		token.Pos{
-			offset: i32(found)
-			end:    i32(found + name.len)
-			id:     node.pos.id
-		}
-	} else {
-		node.pos
+	if found < 0 {
+		return none
+	}
+	pos := token.Pos{
+		offset: i32(found)
+		end:    i32(found + name.len)
+		id:     node.pos.id
 	}
 	file, line, column := span_of(a, pos)
 	return Occurrence{
@@ -430,16 +432,17 @@ fn occurrence(a &flat.FlatAst, node &flat.Node, name string, mut cache map[int]s
 
 // source_text returns the text of the file `id` names, or an empty string.
 //
-// The flat AST keeps offsets and a digest but not the characters, so a span that
-// has to land on a real character means reading the file. Results are cached by
-// file id because the walk asks once per node.
+// Formatter parses retain the source text measured by the parser. Otherwise read
+// the file. Results are cached by file id because the walk asks once per node.
 fn source_text(a &flat.FlatAst, id int, mut cache map[int]string) string {
 	if id in cache {
 		return cache[id]
 	}
-	mut text := ''
-	if file := a.source_files[id] {
-		text = os.read_file(file.name) or { '' }
+	mut text := a.formatter_file_sources[id] or { '' }
+	if text.len == 0 {
+		if file := a.source_files[id] {
+			text = os.read_file(file.name) or { '' }
+		}
 	}
 	cache[id] = text
 	return text
@@ -449,18 +452,35 @@ fn source_text(a &flat.FlatAst, id int, mut cache map[int]string) string {
 // or -1 when the name is not there.
 //
 // The node's own range is the only frame that can be trusted, because it is what
-// the parser measured from the file.
+// the parser measured from the file. A selector's name follows its receiver;
+// matching complete tokens avoids selecting a substring of the receiver's name.
 fn name_offset(source string, node &flat.Node, name string) int {
 	start := int(node.pos.offset)
 	end := int(node.pos.end)
-	if source.len == 0 || start < 0 || end <= start || end > source.len {
+	if source.len == 0 || start < 0 || start >= source.len || name.len == 0 {
 		return -1
 	}
-	at := source[start..end].index(name) or { -1 }
-	if at < 0 {
-		return -1
+	limit := if end > start {
+		int_min(end, source.len)
+	} else {
+		int_min(start + name.len, source.len)
 	}
-	return start + at
+	mut s := scanner.new_scanner(&pref.Preferences{}, .normal)
+	s.init(unsafe { nil }, source[start..limit])
+	mut found := -1
+	for {
+		tok := s.scan()
+		if tok == .eof {
+			break
+		}
+		if (tok == .name || tok.is_keyword()) && s.lit == name {
+			found = start + s.pos
+			if node.kind != .selector {
+				break
+			}
+		}
+	}
+	return found
 }
 
 // declares reports whether `node` is where `name` is declared.

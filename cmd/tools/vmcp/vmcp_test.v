@@ -1087,13 +1087,12 @@ fn test_run_puts_flags_before_the_subcommand_and_target() {
 	assert argv.last() == 'main.v', 'the target must not be followed by a flag: ${argv}'
 	assert argv.index('-d') < argv.index('run'), 'a flag landed after the subcommand: ${argv}'
 
-	// Program arguments stay after the target, behind `--`.
+	// Program arguments stay after the target; V forwards these tokens verbatim.
 	with_args := run_arguments(['-stats'], 'main.v', ['one argument', 'second'])
-	assert with_args == ['-stats', 'run', 'main.v', '--', 'one argument', 'second'],
-		'${with_args}'
+	assert with_args == ['-stats', 'run', 'main.v', 'one argument', 'second'], '${with_args}'
 	// `one argument` is one element, not three.
 	assert with_args[with_args.len - 2] == 'one argument', '${with_args}'
-	assert with_args.index('--') > with_args.index('main.v'), '${with_args}'
+	assert '--' !in with_args, '${with_args}'
 
 	assert run_arguments([], 'main.v', []) == ['run', 'main.v'], 'the empty case'
 }
@@ -1104,14 +1103,13 @@ fn test_run_puts_flags_before_the_subcommand_and_target() {
 // Building a command string and handing it to a shell split `["one argument",
 // "second"]` into `one`, `argument`, `second`.
 fn test_the_compiler_command_line_reports_every_argument() {
-	line := compiler_command_line('/v/v.exe', ['-d', 'proof=present', 'run', 'my prog.v',
-		'one argument'])
+	line := compiler_command_line('/v/v.exe', ['-d', 'proof=present', 'run', 'my prog.v', 'one argument'])
 	for expected in ['-d', 'proof=present', 'run', 'my prog.v', 'one argument'] {
 		assert line.contains(expected), 'the command line lost ${expected}: ${line}'
 	}
 	// The rendered line is only for reading, but it still has to quote the values
 	// that a shell would otherwise split.
-	assert line.contains('one argument'), "an argument with a space must stay quoted: ${line}"
+	assert line.contains('one argument'), 'an argument with a space must stay quoted: ${line}'
 }
 
 // The rename must refuse a span that no longer holds the old name.
