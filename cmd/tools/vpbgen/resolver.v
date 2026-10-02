@@ -126,6 +126,11 @@ pub mut:
 	// name. A name claimed once keeps it; a name claimed twice is ambiguous and
 	// has to be qualified, or two declarations would collide.
 	claimed map[string]int
+	// counted is the set of qualified names already counted in `claimed`. It is
+	// separate from `messages` and `enums` because those are filled in before
+	// any claim is counted: testing membership there made every claim return
+	// early, so nothing was ever counted and no name was ever qualified.
+	counted map[string]bool
 }
 
 // new_index returns an empty index.
@@ -134,14 +139,20 @@ pub fn new_index() TypeIndex {
 		enums:    map[string]bool{}
 		messages: map[string]bool{}
 		claimed:  map[string]int{}
+		counted:  map[string]bool{}
 	}
 }
 
 // claim records that `qualified` wants the V name `plain`.
+//
+// A qualified name is counted once, so the same declaration reaching this twice
+// (an import reachable by more than one path) does not make a unique name look
+// ambiguous.
 fn (mut idx TypeIndex) claim(qualified string, plain string) {
-	if idx.messages[qualified] || idx.enums[qualified] {
+	if idx.counted[qualified] {
 		return
 	}
+	idx.counted[qualified] = true
 	idx.claimed[plain]++
 }
 

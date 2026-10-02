@@ -29,9 +29,18 @@ fn generate_grpc(path string, module_name string) !string {
 }
 
 // generate_res is the parse-and-resolve step both generators share.
+//
+// Imports are followed, because a schema that imports another declares fields of
+// the imported types and resolving it without them reports every such field as
+// an unknown type. The tool does this through `load_schemas`; the tests call the
+// same path so they exercise it too.
 fn generate_res(path string, module_name string) !ResolvedFile {
-	mut f := parse_file(path)!
-	res := resolve_files([f], module_name)!
+	opts := PbgenOptions{
+		module_name: module_name
+		inputs:      [path]
+	}
+	files := load_schemas(opts)!
+	res := resolve_files(files, module_name)!
 	if res.errors.len > 0 {
 		return error(res.errors.join_lines())
 	}
@@ -208,31 +217,31 @@ fn test_generated_nested_output_compiles() {
 fn test_generated_round_trips_scalars() ! {
 	res := generate_res(fixture('demo.proto'), 'demo')!
 	dir := write_roundtrip('scalars', res)
-	run_module_test(dir, 'round_trip_test.v', scalars_test_source)
+	run_module_test(dir, 'round_trip_test.v', scalars_test_source)!
 }
 
 fn test_generated_round_trips_repeated() ! {
 	res := generate_res(fixture('demo.proto'), 'demo')!
 	dir := write_roundtrip('repeated', res)
-	run_module_test(dir, 'round_trip_test.v', repeated_test_source)
+	run_module_test(dir, 'round_trip_test.v', repeated_test_source)!
 }
 
 fn test_generated_round_trips_map() ! {
 	res := generate_res(fixture('demo.proto'), 'demo')!
 	dir := write_roundtrip('map', res)
-	run_module_test(dir, 'round_trip_test.v', map_test_source)
+	run_module_test(dir, 'round_trip_test.v', map_test_source)!
 }
 
 fn test_generated_round_trips_nested_message() ! {
 	res := generate_res(fixture('nested.proto'), 'demo')!
 	dir := write_roundtrip('nested', res)
-	run_module_test(dir, 'round_trip_test.v', nested_test_source)
+	run_module_test(dir, 'round_trip_test.v', nested_test_source)!
 }
 
 fn test_generated_skips_unknown_field_and_rejects_wrong_wire_type() ! {
 	res := generate_res(fixture('demo.proto'), 'demo')!
 	dir := write_roundtrip('unknown', res)
-	run_module_test(dir, 'round_trip_test.v', unknown_field_test_source)
+	run_module_test(dir, 'round_trip_test.v', unknown_field_test_source)!
 }
 
 // write_roundtrip writes the codec for `res` plus `test_name` into a directory of
@@ -347,19 +356,19 @@ assert back.tags == ['after']
 }
 "
 
-const nested_test_source = "module demo
+const nested_test_source = 'module demo
 
+// nested.proto declares `Outer` holding an `Inner`, so the message encoded here
+// is `Outer` rather than the `Demo` of demo.proto.
 fn test_round_trip_nested_message() ! {
-back := decode_demo(Demo{
+back := decode_outer(Outer{
 inner: Inner{
-x:     42
-label: 'hi'
+x: 42
 }
 }.encode()!)!
 assert back.inner.x == 42
-assert back.inner.label == 'hi'
 }
-"
+'
 
 const unknown_field_test_source = "module demo
 
@@ -603,6 +612,89 @@ fn test_write_generated_replaces_its_own_output() {
 	write_generated(target, 'new')!
 	assert os.read_file(target)! == 'new'
 }
+
+fn test_colliding_names_are_qualified() {
+	out := generate(fixture('ambiguous_b.proto'), 'amb')!
+	// Two declarations wanting one V name is the only case worth prefixing: the
+	// output declared `Item` and `decode_item` twice and would not compile.
+	assert out.contains('pub struct OneItem {')
+	assert out.contains('pub struct TwoItem {')
+	assert out.contains('pub fn decode_one_item(data []u8) !OneItem {')
+	assert out.contains('pub fn decode_two_item(data []u8) !TwoItem {')
+	// A collision is counted per name, so both the struct and the enum of a
+	// clashing pair are qualified.
+	assert out.contains('pub enum OneKind {')
+	assert out.contains('pub enum TwoKind {')
+	// Every declaration appears exactly once.
+	assert out.count('pub struct OneItem {') == 1
+	assert out.count('pub struct TwoItem {') == 1
+}
+
+fn test_a_field_referring_to_a_qualified_type_uses_that_name() {
+	out := generate(fixture('ambiguous_b.proto'), 'amb')!
+	// The reference has to follow the declaration it points at, in the struct, on
+	// the wire, and in the decode arm.
+	assert out.contains('from_one OneItem @[protobuf: 1]')
+	assert out.contains('from_two TwoItem @[protobuf: 2]')
+	assert out.contains('out.from_one = decode_one_item(payload)!')
+	assert out.contains('out.from_two = decode_two_item(payload)!')
+}
+
+fn test_a_unique_name_is_not_qualified() {
+	out := generate(fixture('ambiguous_b.proto'), 'amb')!
+	// Qualifying every name would make a schema where nothing collides read worse
+	// for no benefit: `Unique` stays `Unique`.
+	assert out.contains('pub struct Unique {')
+	assert !out.contains('pub struct TwoUnique {')
+	assert out.contains('unique Unique @[protobuf: 3]')
+}
+
+fn test_colliding_names_output_compiles() ! {
+	out := generate(fixture('ambiguous_b.proto'), 'amb')!
+	compile_generated('ambiguous', [out])!
+}
+
+fn test_colliding_names_round_trip() ! {
+	res := generate_res(fixture('ambiguous_b.proto'), 'amb')!
+	dir := write_roundtrip('ambiguous', res)
+	run_module_test(dir, 'round_trip_test.v', ambiguous_test_source)!
+}
+
+// Two same-named messages from different packages have to survive a round trip
+// as themselves, which is what proves the qualification is not only in the
+// declarations but in the field types as well.
+
+const ambiguous_test_source = "module amb
+
+fn test_qualified_names_round_trip() ! {
+mut m := Holder{
+from_one: OneItem{
+x: 1
+}
+from_two: TwoItem{
+y: 'two'
+}
+unique: Unique{
+flag: true
+}
+}
+back := decode_holder(m.encode()!)!
+assert back.from_one.x == 1
+assert back.from_two.y == 'two'
+assert back.unique.flag
+}
+
+fn test_the_two_items_do_not_cross() ! {
+mut m := Holder{
+from_one: OneItem{
+x: 7
+}
+}
+back := decode_holder(m.encode()!)!
+assert back.from_one.x == 7
+assert back.from_two.y == ''
+}
+"
 
 fn test_is_well_known() {
 	assert is_well_known('google/protobuf/timestamp.proto')
