@@ -4,6 +4,27 @@ import os
 import v.flat
 import v.types
 
+fn test_owned_array_storage_void_wrappers_preserve_the_source() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.optional_base_type('!') == 'void'
+	assert t.optional_base_type('?') == 'void'
+	assert t.optional_base_type('![]int') == '[]int'
+	assert t.optional_base_type('?[]int') == '[]int'
+	for wrapper in ['!', '?', '!void', '?void'] {
+		t.set_var_type('source', wrapper)
+		source := t.make_ident('source')
+		nodes_before := a.nodes.len
+		for clone_owned_value in [false, true] {
+			// Bare markers must unwrap to void so the storage scan terminates.
+			assert t.clone_owned_array_storage_value(source, wrapper, clone_owned_value) == source
+			assert a.nodes.len == nodes_before
+			assert t.pending_stmts.len == 0
+		}
+	}
+}
+
 fn test_owned_array_storage_with_ownership_checker_api() {
 	$if ownership ? {
 		return
@@ -188,4 +209,57 @@ fn owned_array_storage_ok_branches(a &flat.FlatAst, id flat.NodeId) []flat.NodeI
 		branches << owned_array_storage_ok_branches(a, a.child(&node, i))
 	}
 	return branches
+}
+
+fn test_owned_sum_reassignment_keeps_declared_storage_under_smartcast() {
+	$if !ownership ? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(tc.a)
+	tc.structs['First'] = [types.StructField{
+		name: 'text'
+		typ:  types.Type(types.string_)
+	}]
+	tc.structs['Second'] = tc.structs['First']
+	tc.sum_types['Value'] = ['First', 'Second']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['Value'] = ['First', 'Second']
+	t.set_var_type('value', 'Value')
+	t.set_var_type('replacement', 'Value')
+	t.push_smartcast('value', 'First', 'Value')
+	assignment := t.make_assign(t.make_ident('value'), t.make_ident('replacement'))
+	statements := t.transform_stmt(assignment)
+	assert statements.len > 0
+	mut saw_replacement := false
+	for statement in statements {
+		node := a.nodes[int(statement)]
+		if node.kind == .decl_assign && node.children_count == 2 {
+			binding := a.child_node(&node, 0)
+			if binding.value.starts_with('__drop_assign') {
+				assert node.typ == 'Value', node.typ
+				saw_replacement = true
+			}
+		}
+	}
+	assert saw_replacement
+}
+
+fn test_blank_assignment_has_no_previous_owner_to_drop() {
+	$if !ownership ? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	configure_owned_array_storage_checker(mut tc)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	// Earlier discard expressions can leave an inferred type for this spelling.
+	t.set_var_type('_', 'Res')
+	t.set_var_type('items', '[]int')
+	assignment := t.make_assign(t.make_ident('_'), t.make_ident('items'))
+	statements := t.transform_stmt(assignment)
+	assert statements.len == 1
+	assert a.nodes[int(statements[0])].kind == .assign
+	assert owned_array_storage_call_count(&a, statements[0], 'drop_owned') == 0
 }

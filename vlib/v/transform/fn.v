@@ -1153,7 +1153,7 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 	if int(id) < 0 {
 		return ''
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	match node.kind {
 		.ident {
 			// Map type arguments are represented by a synthetic `Map_key_value`
@@ -1188,7 +1188,7 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if node.children_count == 0 {
 				return node.value
 			}
-			base := t.generic_call_type_arg_name(t.a.child(&node, 0))
+			base := t.generic_call_type_arg_name(t.a.child(node, 0))
 			if base.len == 0 {
 				return node.value
 			}
@@ -1198,13 +1198,13 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if node.children_count < 2 || node.value == 'range' {
 				return ''
 			}
-			base := t.generic_call_type_arg_name(t.a.child(&node, 0))
+			base := t.generic_call_type_arg_name(t.a.child(node, 0))
 			if base.len == 0 {
 				return ''
 			}
 			mut args := []string{}
 			for i in 1 .. node.children_count {
-				arg := t.generic_call_type_arg_name(t.a.child(&node, i))
+				arg := t.generic_call_type_arg_name(t.a.child(node, i))
 				if arg.len == 0 {
 					return ''
 				}
@@ -1242,7 +1242,7 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if node.children_count == 0 {
 				return ''
 			}
-			child := t.generic_call_type_arg_name(t.a.child(&node, 0))
+			child := t.generic_call_type_arg_name(t.a.child(node, 0))
 			if child.len == 0 {
 				return ''
 			}
@@ -1271,7 +1271,7 @@ fn (t &Transformer) node_enclosing_generic_params(id flat.NodeId) []string {
 		if parent_id < 0 || parent_id == cursor || parent_id >= t.a.nodes.len {
 			return []string{}
 		}
-		parent := t.a.nodes[parent_id]
+		parent := t.a.node(flat.NodeId(parent_id))
 		if parent.kind in [.fn_decl, .struct_decl, .type_decl, .interface_decl, .c_fn_decl] {
 			return parent.generic_params()
 		}
@@ -1305,9 +1305,8 @@ fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
 	if index_node.kind != .index || index_node.children_count < 2 || index_node.value == 'range' {
 		return ''
 	}
-	if t.index_callee_is_value_index(index_node) {
-		return ''
-	}
+	// What the brackets hold first: `xs[0]` or `xs[i + 1]` name no type, and
+	// telling a value index from a generic call resolves types.
 	mut args := []string{}
 	for i in 1 .. index_node.children_count {
 		arg := t.generic_call_type_arg_name(t.a.child(&index_node, i))
@@ -1315,6 +1314,9 @@ fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
 			return ''
 		}
 		args << arg
+	}
+	if t.index_callee_is_value_index(index_node) {
+		return ''
 	}
 	return args.join(', ')
 }
@@ -3147,6 +3149,8 @@ fn (mut t Transformer) ensure_private_call_param_types_decl_cache() {
 	if t.call_param_types_decl_shared {
 		t.call_param_types_decl_cache = t.call_param_types_decl_cache.clone()
 		t.call_param_types_decl_misses = t.call_param_types_decl_misses.clone()
+		// Specializations add scope-owned names to this index as well as the cache.
+		t.call_param_types_decl_index = t.call_param_types_decl_index.clone()
 		t.call_param_types_decl_shared = false
 	}
 }
@@ -3200,6 +3204,7 @@ fn (mut t Transformer) ensure_call_param_types_decl_index() {
 	if t.call_param_types_index_ready {
 		return
 	}
+	t.ensure_private_call_param_types_decl_cache()
 	t.call_param_types_decl_index.clear()
 	if !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
 		t.call_param_types_decl_index.reserve(u32(t.tc.top_level_idx.len * 3))
@@ -3210,7 +3215,8 @@ fn (mut t Transformer) ensure_call_param_types_decl_index() {
 		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
 	if use_top_level_index {
 		for i in t.tc.top_level_idx {
-			node := t.a.nodes[i]
+			// Context indexes can change here, but the AST arena cannot.
+			node := unsafe { &t.a.nodes[i] }
 			if node.kind == .file {
 				file_name = node.value
 				module_name = t.tc.file_modules[file_name] or { '' }
@@ -3232,7 +3238,9 @@ fn (mut t Transformer) ensure_call_param_types_decl_index() {
 		t.call_param_types_index_ready = true
 		return
 	}
-	for i, node in t.a.nodes {
+	for i in 0 .. t.a.nodes.len {
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[i] }
 		if node.kind == .file {
 			file_name = node.value
 			module_name = t.tc.file_modules[file_name] or { '' }
@@ -7507,7 +7515,9 @@ fn (t &Transformer) stringify_type_at_circular_limit(typ string) bool {
 
 fn (mut t Transformer) rebuild_struct_autostr_recurse_index() {
 	mut allow_nodes := map[int]bool{}
-	for node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[node_id] }
 		if node.kind != .directive || !node.value.starts_with('@attributes:') {
 			continue
 		}
@@ -7525,7 +7535,9 @@ fn (mut t Transformer) rebuild_struct_autostr_recurse_index() {
 	}
 	mut recurse_types := map[string]bool{}
 	mut cur_module := ''
-	for idx, node in t.a.nodes {
+	for idx in 0 .. t.a.nodes.len {
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[idx] }
 		if node.kind == .module_decl {
 			cur_module = node.value
 			continue
@@ -8311,6 +8323,9 @@ fn generic_specialized_type_matches_flat_name(flat_name string, base string, arg
 	if flat_name == '' || base == '' || args.len == 0 {
 		return false
 	}
+	if !generic_specialized_type_base_may_match(flat_name, base) {
+		return false
+	}
 	mut candidates := []string{}
 	source_name := generic_specialized_source_type_name_for_base(base, args)
 	add_generic_specialized_type_candidate(mut candidates, source_name)
@@ -8333,6 +8348,44 @@ fn generic_specialized_type_matches_flat_name(flat_name string, base string, arg
 		add_generic_specialized_type_candidate(mut candidates, c_name('${module_name}.${short_base}_${suffix}'))
 	}
 	return flat_name in candidates
+}
+
+fn generic_specialized_type_base_may_match(flat_name string, base string) bool {
+	// Complex naming cases still use the complete codec below. Ordinary type
+	// bases keep their prefix in source, C, and decoded C spellings.
+	if base.starts_with('C.') || flat_name.starts_with('__v3_internal_symbol_') {
+		return true
+	}
+	for ch in base {
+		if !((ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `0` && ch <= `9`) || ch == `.`) {
+			return true
+		}
+	}
+	mut prefix := base
+	for _ in 0 .. 2 {
+		mut offset := 0
+		mut matches := true
+		for ch in prefix {
+			if ch == `.` && offset + 1 < flat_name.len && flat_name[offset] == `_`
+				&& flat_name[offset + 1] == `_` {
+				offset += 2
+			} else if offset < flat_name.len && flat_name[offset] == ch {
+				offset++
+			} else {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+		if !prefix.starts_with('main.') {
+			return false
+		}
+		prefix = short_name_view(prefix)
+	}
+	return false
 }
 
 fn add_generic_specialized_type_candidate(mut candidates []string, candidate string) {
@@ -12988,7 +13041,9 @@ fn (t &Transformer) fn_literal_name_exists(name string) bool {
 	if !isnil(t.tc) {
 		return t.tc.has_fn_decl_short_name(name) || name in t.tc.fn_ret_types
 	}
-	for node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[node_id] }
 		if node.kind == .fn_decl && (node.value == name || node.value.all_after_last('.') == name) {
 			return true
 		}
@@ -16314,7 +16369,15 @@ fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type strin
 			lookup_type = short_type
 		}
 	}
-	fields := t.embedded_fields[lookup_type] or { return none }
+	fields := t.embedded_fields[lookup_type] or {
+		// The index holds declarations; a generic instance (`Wrap[int]`) has the
+		// fields of its declaration with its type arguments.
+		if !lookup_type.contains('[') {
+			return none
+		}
+		info := t.lookup_struct_info(lookup_type) or { return none }
+		info.fields.filter(t.is_embedded_field(it))
+	}
 	clean_receiver := t.normalize_type_alias(receiver_type)
 	for field in fields {
 		// The semantic type of an embedded alias can be its underlying function
@@ -16332,8 +16395,11 @@ fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type strin
 		} else {
 			raw_field
 		}
+		// The source spelling is relative to the module of the embedding struct
+		// (`Base` in `shapes`); the semantic type is qualified (`shapes.Base`).
+		semantic_field := t.normalize_type_alias(field.typ.trim_left('&'))
 		if field.name in [raw_field, short_raw_field, clean_field, short_field]
-			&& clean_field == clean_receiver {
+			&& (clean_field == clean_receiver || semantic_field == clean_receiver) {
 			return [field]
 		}
 		if sub_path := t.embedded_receiver_path(clean_field, receiver_type) {
@@ -17174,7 +17240,7 @@ fn (mut t Transformer) transform_receiver_method_args(node flat.Node, base_id fl
 fn (t &Transformer) expr_root_ident_name(id flat.NodeId) string {
 	mut cur := id
 	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
-		node := t.a.nodes[int(cur)]
+		node := t.a.node(cur)
 		match node.kind {
 			.ident {
 				return node.value
@@ -17183,7 +17249,7 @@ fn (t &Transformer) expr_root_ident_name(id flat.NodeId) string {
 				if node.children_count == 0 {
 					return ''
 				}
-				cur = t.a.child(&node, 0)
+				cur = t.a.child(node, 0)
 			}
 			else {
 				return ''
@@ -17576,12 +17642,12 @@ fn (t &Transformer) expr_uses_ident(id flat.NodeId, name string) bool {
 	if int(id) < 0 {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .ident && node.value == name {
 		return true
 	}
 	for i in 0 .. node.children_count {
-		if t.expr_uses_ident(t.a.child(&node, i), name) {
+		if t.expr_uses_ident(t.a.child(node, i), name) {
 			return true
 		}
 	}

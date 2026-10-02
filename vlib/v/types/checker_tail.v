@@ -4419,6 +4419,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		tc.check_c_callback_abi_args(id, node, info)
 		tc.invalidate_smartcasts_after_call(node, info)
 		tc.check_os_file_raw_io_call(id, node, info)
+		tc.check_generic_call_constraints(id, node, info)
 		tc.check_instantiated_generic_as_casts(node, info)
 		tc.check_instantiated_generic_noinit_structs(id, node, info)
 		tc.check_instantiated_generic_ordering_ops(node, info)
@@ -5104,6 +5105,11 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		if type_contains_unknown(receiver_type) {
 			receiver_unresolved = true
 		} else {
+			// A method promoted from an embedded struct takes the type arguments of
+			// that struct: `h.own()` on a struct that embeds `Holder[int]`.
+			if owner := tc.promoted_method_owner(receiver_type, callee.value) {
+				receiver_type = tc.parse_type(owner)
+			}
 			tc.infer_generic_type_text_from_type(param_texts[0], receiver_type, generic_params, mut inferred)
 			tc.infer_generic_type_value_from_type(param_texts[0], receiver_type, generic_params, mut inferred_types)
 		}
@@ -5136,6 +5142,25 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		tc.infer_generic_type_text_from_type(param_texts[param_idx], actual, generic_params, mut inferred)
 		tc.infer_generic_type_value_from_type(param_texts[param_idx], actual, generic_params, mut inferred_types)
 	}
+	// A type parameter that only the constraint of another one names, `T` of
+	// `[C Container[T], T Named]`, from the type bound to that one, as in a call
+	// of a function (see generic_compile_error_instantiation).
+	if generic_params.any(it !in inferred) {
+		decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
+		if decl := tc.visible_mutation_fn_decl(info.name, decl_module) {
+			tc.infer_type_params_from_constraints(tc.a.node(flat.NodeId(decl.idx)), mut inferred)
+		}
+	}
+	// The type parameters of the function being checked are bound. So are those
+	// that a check of its body gives the types of their constraints (see
+	// check_generic_fn_body_as): the type there may still name one of them, as
+	// `Comparable[U]` names `U`, and it is `U`'s, as in a call of a function.
+	mut bound := tc.fn_context.generic_params.clone()
+	for name, _ in tc.type_param_texts {
+		if name !in bound {
+			bound << name
+		}
+	}
 	mut missing := ''
 	for param in generic_params {
 		arg := inferred[param] or {
@@ -5146,7 +5171,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 			missing = param
 			break
 		}
-		if tc.type_text_has_unbound_generic_placeholder(arg, tc.fn_context.generic_params) {
+		if tc.type_text_has_unbound_generic_placeholder(arg, bound) {
 			missing = param
 			break
 		}
@@ -5252,7 +5277,9 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 	decl_id := flat.NodeId(decl.idx)
 	fn_node := tc.a.node(decl_id)
 	generic_params := tc.fn_generic_params[info.name] or {
-		tc.infer_decl_generic_param_names(fn_node)
+		tc.enclosing_generic_params_by_node[decl.idx] or {
+			tc.infer_decl_generic_param_names(fn_node)
+		}
 	}
 	if generic_params.len == 0 {
 		return none
@@ -5312,6 +5339,9 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		source_param_index++
 	}
 	if concrete_args.len == 0 {
+		// A type parameter that only the constraint of another one names, `T` of
+		// `[C Container[T], T Named]`, from the type bound to that one.
+		tc.infer_type_params_from_constraints(*fn_node, mut inferred)
 		for param in generic_params {
 			arg := inferred[param] or { return none }
 			concrete_args << arg
@@ -6378,23 +6408,29 @@ fn (tc &TypeChecker) type_contains_open_generic_placeholder(typ Type) bool {
 }
 
 fn (tc &TypeChecker) explicit_generic_args_diagnostic_pos(id flat.NodeId) token.Pos {
-	node := tc.a.node(id)
-	file := tc.a.source_files[node.pos.id] or { return node.pos }
-	source := tc.source_texts_by_file[file.name] or { return node.pos }
-	if node.pos.offset < 0 || node.pos.offset >= source.len {
-		return node.pos
+	return tc.explicit_generic_args_pos_from(tc.a.node(id).pos)
+}
+
+// explicit_generic_args_pos_from is where the first `[...]` after `pos` on its
+// line is: the explicit type arguments of the call or callee at `pos`, or `pos`
+// without them.
+fn (tc &TypeChecker) explicit_generic_args_pos_from(pos token.Pos) token.Pos {
+	file := tc.a.source_files[pos.id] or { return pos }
+	source := tc.source_texts_by_file[file.name] or { return pos }
+	if pos.offset < 0 || pos.offset >= source.len {
+		return pos
 	}
-	line_end := source.index_after('\n', node.pos.offset) or { source.len }
-	open_relative := source[node.pos.offset..line_end].index_u8(`[`)
+	line_end := source.index_after('\n', pos.offset) or { source.len }
+	open_relative := source[pos.offset..line_end].index_u8(`[`)
 	if open_relative < 0 {
-		return node.pos
+		return pos
 	}
-	open := node.pos.offset + open_relative
+	open := pos.offset + open_relative
 	close_relative := source[open..line_end].index_u8(`]`)
 	if close_relative < 0 {
-		return node.pos
+		return pos
 	}
-	return token.new_span(node.pos.id, open, open + close_relative + 1)
+	return token.new_span(pos.id, open, open + close_relative + 1)
 }
 
 // call_generic_args_have_placeholders reports whether the call carries explicit
@@ -7676,7 +7712,7 @@ fn (mut tc TypeChecker) check_local_binding_global_shadowing(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
 		return
 	}
-	binding := tc.a.nodes[int(id)]
+	binding := tc.a.node(id)
 	if binding.kind !in [.ident, .param] || binding.value.len == 0 || binding.value == '_' {
 		return
 	}
@@ -7697,9 +7733,9 @@ fn (mut tc TypeChecker) check_decl_lhs_global_shadowing(node flat.Node) {
 
 // check_generic_fn_body_global_shadowing inspects source bindings in an open
 // generic body without type-checking expressions that need concrete types.
-fn (mut tc TypeChecker) check_generic_fn_body_global_shadowing(node flat.Node) {
+fn (mut tc TypeChecker) check_generic_fn_body_global_shadowing(node &flat.Node) {
 	for i in 0 .. node.children_count {
-		child_id := tc.a.child(&node, i)
+		child_id := tc.a.child(node, i)
 		if tc.a.node(child_id).kind != .param {
 			tc.check_generic_body_node_global_shadowing(child_id)
 		}
@@ -7722,7 +7758,7 @@ pub fn (mut tc TypeChecker) check_specialized_fn_global_shadowing() {
 		if fn_idx >= 0 && fn_idx < tc.a.nodes.len && tc.a.nodes[fn_idx].kind == .fn_decl {
 			tc.cur_file = tc.a.specialized_fn_files[fn_idx] or { old_file }
 			tc.cur_module = tc.a.specialized_fn_modules[fn_idx] or { old_module }
-			tc.check_generic_fn_body_global_shadowing(tc.a.nodes[fn_idx])
+			tc.check_generic_fn_body_global_shadowing(tc.a.node(flat.NodeId(fn_idx)))
 		}
 	}
 	tc.cur_file = old_file
@@ -7733,11 +7769,12 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 	if !tc.valid_node_id(id) {
 		return
 	}
-	node := tc.a.nodes[int(id)]
+	// The shadowing scan records diagnostics without growing the AST.
+	node := tc.a.node(id)
 	match node.kind {
 		.if_expr {
 			if node.children_count > 0 {
-				condition := tc.a.child_node(&node, 0)
+				condition := tc.a.child_node(node, 0)
 				if condition.kind == .decl_assign {
 					for lhs_id in tc.if_guard_lhs_ids(condition) {
 						tc.check_local_binding_global_shadowing(lhs_id)
@@ -7746,21 +7783,21 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 			}
 		}
 		.decl_assign {
-			tc.check_decl_lhs_global_shadowing(node)
+			tc.check_decl_lhs_global_shadowing(*node)
 		}
 		.for_in_stmt {
 			if node.children_count >= 2 {
-				tc.check_local_binding_global_shadowing(tc.a.child(&node, 0))
-				tc.check_local_binding_global_shadowing(tc.a.child(&node, 1))
+				tc.check_local_binding_global_shadowing(tc.a.child(node, 0))
+				tc.check_local_binding_global_shadowing(tc.a.child(node, 1))
 			}
 		}
 		.select_branch {
 			if node.value == 'recv' && node.children_count > 0 {
-				tc.check_local_binding_global_shadowing(tc.a.child(&node, 0))
+				tc.check_local_binding_global_shadowing(tc.a.child(node, 0))
 			}
 		}
 		.comptime_for {
-			tc.check_comptime_for_global_shadowing(id, node)
+			tc.check_comptime_for_global_shadowing(id, *node)
 		}
 		.comptime_if {
 			take_then := tc.comptime_type_condition_value(node.value) or {
@@ -7771,14 +7808,14 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 					&& !comptime_cond_has_type_test(node.value)
 					&& !comptime_cond_has_type_metadata(node.value) {
 					for i in 0 .. node.children_count {
-						tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+						tc.check_generic_body_node_global_shadowing(tc.a.child(node, i))
 					}
 				}
 				return
 			}
 			branch_index := if take_then { 0 } else { 1 }
 			if branch_index < node.children_count {
-				tc.check_generic_body_node_global_shadowing(tc.a.child(&node, branch_index))
+				tc.check_generic_body_node_global_shadowing(tc.a.child(node, branch_index))
 			}
 			return
 		}
@@ -7788,14 +7825,14 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 		.lambda_expr {
 			if node.children_count > 1 {
 				for i in 0 .. node.children_count - 1 {
-					tc.check_local_binding_global_shadowing(tc.a.child(&node, i))
+					tc.check_local_binding_global_shadowing(tc.a.child(node, i))
 				}
 			}
 		}
 		else {}
 	}
 	for i in 0 .. node.children_count {
-		tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+		tc.check_generic_body_node_global_shadowing(tc.a.child(node, i))
 	}
 }
 
@@ -7842,23 +7879,70 @@ fn source_line_has_multiple_module_imports(raw_line string) bool {
 fn (mut tc TypeChecker) index_multiple_module_import_lines(a &flat.FlatAst) {
 	tc.multiple_module_import_lines = map[u64]bool{}
 	tc.source_texts_by_file = map[string]string{}
+	tc.import_line_indexed_files = map[int]bool{}
+	tc.index_module_import_lines_of_new_files(a)
+}
+
+// index_module_import_lines_of_new_files indexes the files the checker has
+// not indexed yet.
+fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) {
 	for file_id, file in a.source_files {
+		if tc.import_line_indexed_files[file_id] {
+			continue
+		}
+		tc.import_line_indexed_files[file_id] = true
 		source := os.read_file(file.name) or { continue }
 		tc.source_texts_by_file[file.name] = source
-		mut line_number := 1
-		mut line_start := 0
-		for line_start <= source.len {
-			line_end := source.index_after('\n', line_start) or { source.len }
-			if source_line_has_multiple_module_imports(source[line_start..line_end]) {
-				tc.multiple_module_import_lines[multiple_module_import_line_key(file_id, line_number)] = true
-			}
-			if line_end >= source.len {
-				break
-			}
-			line_start = line_end + 1
-			line_number++
+		for line in module_import_lines(source) {
+			tc.multiple_module_import_lines[multiple_module_import_line_key(file_id, line)] = true
 		}
 	}
+}
+
+// module_import_lines returns the numbers of the lines of `source` that
+// source_line_has_multiple_module_imports holds. Only a line that starts with
+// `import ` can, so it looks at the lines where that word starts, not at each
+// line of the file.
+@[direct_array_access]
+fn module_import_lines(source string) []int {
+	mut lines := []int{}
+	mut line_number := 1
+	mut line_start := 0
+	// Every newline before `counted` is in `line_number` already.
+	mut counted := 0
+	mut from := 0
+	for {
+		at := source.index_after_('import ', from)
+		if at < 0 {
+			break
+		}
+		for counted < at {
+			if source[counted] == `\n` {
+				line_number++
+				line_start = counted + 1
+			}
+			counted++
+		}
+		mut indented := true
+		for i in line_start .. at {
+			if source[i] != ` ` && source[i] != `\t` {
+				indented = false
+				break
+			}
+		}
+		if indented {
+			line_end := source.index_after_('\n', at)
+			if source_line_has_multiple_module_imports(source[line_start..if line_end < 0 {
+				source.len
+			} else {
+				line_end
+			}]) {
+				lines << line_number
+			}
+		}
+		from = at + 1
+	}
+	return lines
 }
 
 fn (tc &TypeChecker) node_is_on_multiple_module_import_line(id flat.NodeId) bool {
@@ -9589,7 +9673,8 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 				if tc.explicit_generic_arg_count_mismatch(receiver_info.name, method_type_args, id) {
 					return receiver_info
 				}
-				return tc.specialize_explicit_generic_receiver_call(receiver_info, method_type_args)
+				return tc.specialize_explicit_generic_receiver_call(receiver_info, tc.explicit_receiver_type_args(receiver_info,
+					base_type, method_type_args, id))
 			}
 			// Generic methods promoted from an embedded non-generic receiver keep
 			// the declaring receiver in the function table. Resolve that promoted
@@ -9598,7 +9683,10 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 				if tc.explicit_generic_arg_count_mismatch(embedded_info.name, type_args, id) {
 					return embedded_info
 				}
-				if info := tc.explicit_generic_call_info(embedded_info.name, true, type_args) {
+				// The embedded receiver fixes the type parameters the method repeats
+				// from it.
+				checked_args := tc.explicit_receiver_type_args(embedded_info, base_type, type_args, id)
+				if info := tc.explicit_generic_call_info(embedded_info.name, true, checked_args) {
 					return info
 				}
 				return embedded_info
@@ -9746,6 +9834,99 @@ fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo,
 		params:      params
 		return_type: tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 	}
+}
+
+// explicit_receiver_type_args returns the explicit type arguments `type_args` of
+// a call of the method `info`, with each type parameter that the method repeats
+// from its receiver (`own[T]` of `fn (b Box[T]) own[T]() T`) set to the type its
+// receiver fixes, and records an error where the call gave another:
+// `b.own[string]()` for a `Box[int]`. `info` is the method as its receiver
+// specializes it, and `receiver` the type the call calls it on, which embeds
+// that receiver when the method is promoted.
+fn (mut tc TypeChecker) explicit_receiver_type_args(info CallInfo, receiver Type, type_args []string, id flat.NodeId) []string {
+	method_params := tc.fn_generic_params[info.name] or { return type_args }
+	if method_params.len != type_args.len || !info.has_receiver || info.params.len == 0 {
+		return type_args
+	}
+	// The receiver as the call spells it (an alias like `IntBox` included), and
+	// the generic struct it is.
+	method_receiver := unwrap_pointer(info.params[0])
+	receiver_struct := unalias_type(method_receiver)
+	_, receiver_args, receiver_is_generic := generic_type_application_parts(receiver_struct.name())
+	if !receiver_is_generic {
+		return type_args
+	}
+	method := info.name.all_after_last('.')
+	mut pattern := info.name.all_before_last('.')
+	_, _, pattern_is_generic := generic_type_application_parts(pattern)
+	if !pattern_is_generic {
+		texts := tc.fn_param_type_texts[info.name] or { return type_args }
+		if texts.len == 0 {
+			return type_args
+		}
+		pattern = comptime_static_unwrap_type_text(texts[0]).trim_left('&').trim_space()
+	}
+	receiver_params, concrete_args := tc.generic_method_receiver_pattern_args('${pattern}.${method}',
+		receiver_args) or { return type_args }
+	mut checked := type_args.clone()
+	for i, param in method_params {
+		at := receiver_params.index(param)
+		if at < 0 {
+			continue
+		}
+		expected := tc.parse_type(tc.explicit_generic_concrete_arg_text(concrete_args[at]))
+		given := tc.parse_type(tc.explicit_generic_concrete_arg_text(type_args[i]))
+		checked[i] = concrete_args[at]
+		if expected.name() == given.name() || !tc.should_diagnose(id) {
+			continue
+		}
+		call_receiver := unalias_type(unwrap_pointer(receiver))
+		receiver_text := if call_receiver.name() != receiver_struct.name() {
+			'${method_receiver.name()}` (embedded in `${call_receiver.name()}`)'
+		} else {
+			'${method_receiver.name()}`'
+		}
+		tc.record_error_at(.call_arg_mismatch, receiver_type_arg_mismatch_message(method, param, receiver_text,
+			expected.name(), given.name()), id, tc.explicit_generic_args_call_pos(id))
+	}
+	return checked
+}
+
+// receiver_type_arg_mismatch_message says that the method `method` takes the type
+// parameter `param` from its receiver, `receiver_text` (its closing backquote
+// and what follows it), which makes it `expected`, and not `given`.
+fn receiver_type_arg_mismatch_message(method string, param string, receiver_text string, expected string, given string) string {
+	return '`${method}` takes `${param}` from its receiver `${receiver_text}: `${param}` is `${expected}`, not `${given}`'
+}
+
+// explicit_generic_args_call_pos is where the explicit type arguments of the
+// call `id` are: `[string]` of `b.own[string]()`.
+fn (tc &TypeChecker) explicit_generic_args_call_pos(id flat.NodeId) token.Pos {
+	call := tc.a.node(id)
+	callee_id := if call.children_count > 0 { tc.a.child(call, 0) } else { id }
+	return tc.explicit_generic_args_diagnostic_pos(callee_id)
+}
+
+// report_receiver_type_arg_mismatch records that the call at `call_pos` of the
+// file `file`, of the method `method` on a receiver `receiver`, gives its type
+// parameter `param`, which the method repeats from its receiver, the type
+// `given` where the receiver makes it `expected` (see
+// explicit_receiver_type_args): the monomorphization finds it in the concrete
+// instances of a generic function. Only in a file that the check diagnoses, and
+// once for a place, as each instance and each pass over it finds it again.
+pub fn (mut tc TypeChecker) report_receiver_type_arg_mismatch(file string, call_pos token.Pos, method string, param string, receiver string, expected string, given string) {
+	if file !in tc.diagnostic_files {
+		return
+	}
+	pos := tc.explicit_generic_args_pos_from(call_pos)
+	msg := receiver_type_arg_mismatch_message(method, param, '${receiver}`', expected, given)
+	if tc.errors.any(it.pos == pos && it.msg == msg) {
+		return
+	}
+	saved_file := tc.cur_file
+	tc.cur_file = file
+	tc.errors << tc.make_type_error_at(.call_arg_mismatch, msg, flat.NodeId(-1), pos)
+	tc.cur_file = saved_file
 }
 
 // explicit_generic_receiver_method_args accepts both `value.method[U]()` and
@@ -19103,11 +19284,21 @@ fn (tc &TypeChecker) method_value_type(receiver_name string, method string) ?Typ
 	if method_name !in tc.fn_ret_types && method_name !in tc.fn_param_types {
 		// A concrete generic receiver (`Box[int]`) has its methods registered under the
 		// open key (`Box[T].method`); resolve and substitute so a method *value* on a
-		// generic struct is typed instead of reported as an unknown field.
-		ci := tc.resolve_generic_struct_method(receiver_name, method) or { return none }
-		signature = ci.name
-		ret_type = ci.return_type
-		params = ci.params.clone()
+		// generic struct is typed instead of reported as an unknown field. A generic
+		// interface (`Shelf[User]`) and a method promoted from an embedded struct
+		// resolve as their calls do.
+		if ci := tc.resolve_generic_struct_method(receiver_name, method) {
+			signature = ci.name
+			ret_type = ci.return_type
+			params = ci.params.clone()
+		} else if ci := tc.interface_receiver_method_call_info(receiver_name, method) {
+			signature = tc.interface_method_signature_key(receiver_name, method) or { ci.name }
+			ret_type = ci.return_type
+			params = ci.params.clone()
+		} else {
+			owner := tc.embedded_method_value_owner(receiver_name, method) or { return none }
+			return tc.method_value_type(owner, method)
+		}
 	}
 	mut bound_params := []Type{}
 	mut bound_params_mut := []bool{}
@@ -19158,12 +19349,19 @@ fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeI
 		return
 	}
 	mut method_names := receiver_method_name_candidates(clean, node.value, tc.cur_module)
+	// A method promoted from an embedded struct takes as its receiver a part of the
+	// struct stored here, so `@[heap]` belongs to this struct.
+	mut storage_name := ''
 	if imported := tc.c_struct_receiver_method_name(base_type, node.value) {
 		method_names = [imported]
+	} else if owner := tc.promoted_method_owner(base_type, node.value) {
+		method_names = ['${owner}.${node.value}']
+		storage_name = clean.name().all_after_last('.')
 	}
 	for method_name in method_names {
 		params := tc.fn_param_types[method_name] or { continue }
 		struct_name := method_name.all_before_last('.').all_after_last('.')
+		heap_name := if storage_name.len > 0 { storage_name } else { struct_name }
 		if params.len == 0 || unalias_type(params[0]) !is Pointer {
 			continue
 		}
@@ -19173,7 +19371,7 @@ fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeI
 		if tc.mut_receiver_methods[method_name] {
 			continue
 		}
-		tc.record_error_at(.assignment_mismatch, 'method `${struct_name}.${node.value}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `${struct_name}` as `@[heap]`.', id, node.pos)
+		tc.record_error_at(.assignment_mismatch, 'method `${struct_name}.${node.value}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `${heap_name}` as `@[heap]`.', id, node.pos)
 		return
 	}
 }

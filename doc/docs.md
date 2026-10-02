@@ -253,10 +253,13 @@ argument, e.g. `v new abc`.
 
 * [Tools](#tools)
     * [v fmt](#v-fmt)
+    * [v clean](#v-clean)
     * [v env](#v-env)
     * [v shader](#v-shader)
+    * [v tool](#v-tool)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
+    * [v mod why](#v-mod-why)
     * [Package commands](#package-commands)
     * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
@@ -5071,6 +5074,9 @@ An Option stores either a value or `none`. It has no error field and cannot carr
 its failure state. A Result stores either a value or an `IError`.
 An `IError` may still be an ordinary Option payload, for example `?IError`.
 
+A function returning only `!` or `?` has no success payload. Its return type is a Result or
+Option of `void`; callers still handle errors or absence with an `or` block or propagation.
+
 With the C backend, Options store their payload inline. Wrapping a value or returning `none`
 does not allocate; the payload itself can require allocation, as with arrays or interface values.
 Results also store their payload inline, sharing storage between the value and error.
@@ -5291,6 +5297,11 @@ post := posts_repo.find_by_id(1)? // find_by_id[Post]
 A generic method retains its receiver type when called inside a function returning multiple
 values, including a Result tuple. The enclosing return type does not replace receiver arguments.
 This also applies when a value from a Result tuple is returned as an interface.
+An explicitly specialized generic method can also be stored as a function value when the
+method is promoted from an embedded struct; the value binds that embedded receiver.
+
+Editor hover and definition queries resolve generic type parameters within their declaration.
+A later declaration using a module type with the same name resolves to that module type.
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
@@ -5341,6 +5352,52 @@ Generic type inference also works with field initialization shorthand in nested 
 For `struct Box[T] { value T }` and `fn wrap[U](box Box[U]) Box[U]`,
 `wrap(value: 42)` infers `U` as `int`. The struct and function may use different
 parameter names or arrange those parameters in a different order.
+
+#### Constraints
+
+A type parameter can name, after it, what its type arguments must be: an interface,
+which a type argument implements; a sum type, or an alias of one, whose variants are
+the types it takes; or a struct, which takes that struct and the structs that embed it.
+A call is checked against the constraint where it is written, and in the body a value
+of the type parameter has what the constraint provides: the members of the interface
+or of the struct, or what every variant of the sum type has, operators included.
+Nested generic sums retain the variants of each concrete instance. For example,
+`Part[int] | Part[string]` accepts variants from both instances of `Part[T]`.
+Recursive sum constraints that keep growing their type arguments are rejected instead of
+silently omitting nested variants. Finite recursive instances and aliases remain valid.
+Modules referenced only by a generic constraint still count as used imports.
+Struct constraints accept finite embedding paths without a depth limit.
+
+```v
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+type Number = int | f64
+
+fn half[T Number](x T) T {
+	return x / 2
+}
+
+fn main() {
+	println(longest(User{ name: 'ana' }, User{ name: 'leonor' }).name) // leonor
+	println(half(7)) // 3
+	println(half(1.5)) // 0.75
+}
+```
+
+`longest(1, 2)` is reported at the call: `int` does not implement `Named`. And a body
+that used `a.age` would be reported too, as `Named` declares no `age`. In a branch of
+`$if T is f64 {`, `T` is `f64`, and in its `$else` the rest of the set.
 
 #### Structured generic receiver patterns
 
@@ -6926,6 +6983,51 @@ To disable formatting for a block of code, wrap it with `// vfmt off` and
 ... your code here ...
 ```
 
+### v clean
+
+A V build writes its executable next to the sources it was built from, named
+after them. That is convenient for `v run file.v` and awkward for a project you
+have been building in place, because the binaries pile up beside the code and
+nothing else in the toolchain tracks them.
+
+`v clean` removes the executables a default build would produce for the paths
+you name:
+
+```shell
+v clean                 # the current directory
+v clean ./cmd/mytool    # one project folder
+v clean hello.v         # one source file
+```
+
+For a directory the executable is named after the directory, and for a `.v`
+file after the file, which is exactly what the compiler does, so `v clean .`
+after a `v .` build removes the binary that build left:
+
+```shell
+$ v clean .
+removed `/home/me/mytool/mytool`
+```
+
+Anything else in the directory is left alone. `v clean` removes the one name
+the compiler itself would have written and nothing more, so a stray executable
+or a source file survives it.
+
+Use `-n` to see what it would do first, and `-x` to have it print each removal
+as a command:
+
+```shell
+$ v clean -n .
+rm /home/me/mytool/mytool
+```
+
+A path whose executable name cannot be worked out with certainty is refused
+instead of guessed, and the command exits 1, which matters because this command
+deletes files.
+
+`v clean` does not touch the build cache. That is `v wipe-cache`, kept separate
+because it affects every project on the machine rather than the ones named
+here.
+
 ### v env
 
 `v env` prints the environment variables that steer the V compiler and its
@@ -6989,6 +7091,41 @@ v shader /path/to/project/dir/or/file.v
 Currently you need to
 [include a header and declare a glue function](https://github.com/vlang/v/blob/master/examples/sokol/02_cubes_glsl/cube_glsl.v#L25-L28)
 before using the shader in your code.
+
+### v tool
+
+VPM installs modules rather than binaries, so a CLI tool written in V has to be
+run by path today: `v run ~/.vmodules/mytool`, or `v run ../mytool` for a checkout
+beside the project. Both need a path you have to know and keep correct.
+
+`v tool NAME` resolves `NAME` the way an import would, then builds and runs that module:
+
+```shell
+$ v tool greet
+hello from the tool
+```
+
+Because it reuses the compiler's own module lookup, that finds a tool installed
+with `v install` and equally a tool you have a checkout of next to the project,
+without either path being written down anywhere.
+
+With no argument, `v tool` lists the tool modules of the project and of the
+global module folders, so the names do not have to be remembered:
+
+```shell
+$ v tool
+myproject
+mytool
+```
+
+A module is a tool when its root holds a `main.v`. A library module asked for
+by name is refused rather than attempted, and a name that resolves to nothing is an
+error.
+
+Running a tool builds and starts the module, which means running code from a
+module in the module search path. That is the same trust that `v install` already
+places in a module you chose to install, but it is worth knowing before running a
+name you did not install yourself.
 
 ### Profiling
 
@@ -7068,6 +7205,52 @@ has to normalize a name. A package may contain only nested modules, so append
 the nested module path when needed (for example, `import my_mod.json`). If you
 publish a package, prefer a `name` in `v.mod` that is already a valid import
 path.
+
+### v mod why
+
+A V project declares its dependencies by hand in the `dependencies` field of its
+`v.mod`, and the compiler resolves imports against the module search path: the
+project folder, `vlib`, and the global module folders. Nothing records which of
+those a build actually reaches, so a `v.mod` quietly collects modules that no
+longer have anything to do with the code.
+
+`v mod why` answers that question. It prints the chain of imports that brings a
+module into the build, one module per line, starting at the project itself:
+
+```shell
+$ v mod why lib.http
+app
+app.net
+lib
+lib.http
+```
+
+Read from the bottom up, that chain says: the project imports `app.net`, which
+imports `lib`, which imports `lib.http`. So if you want to know what breaks when
+`lib.http` changes, you can see exactly what pulls it in.
+
+The case worth acting on is a module that is installed but that nothing imports,
+which `v mod why` words differently, the same way `go mod why` does:
+
+```shell
+$ v mod why oldlib
+(main module does not need module `oldlib`)
+```
+
+A module that cannot be found in the module search path at all is an error, and
+points at `v install`.
+
+`v mod why` has to run inside a project folder, since it needs a `v.mod` in the
+current directory or one of its parents. For the whole compiler environment
+rather than just this project's modules, use `v doctor`. To install or remove a
+module, use `v install` and `v remove`.
+
+One limitation worth stating: `v mod why` reads the imports from the source
+files of the project and of every module it reaches, rather than from the
+compiler's own resolved build list. That is what lets it work without a build,
+but it also means a file that a build constraint excludes can still contribute an
+import edge. In practice that can only add a path to a chain, never remove a
+real one.
 
 ### Package commands
 
@@ -9641,7 +9824,7 @@ functions.
 
 // Use the system SQLite when there is one; otherwise build the amalgamation that
 // `v vlib/db/sqlite/install_thirdparty_sqlite.vsh` downloads, like `db.sqlite` does.
-$if $pkgconfig ( 'sqlite3' ) {
+$if $pkgconfig('sqlite3') {
 	#pkgconfig sqlite3
 } $else $if darwin {
 	#flag -lsqlite3
@@ -9739,6 +9922,18 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
+You can pass a local source file with `#flag "@VMODROOT/my_test_cshim.c"`.
+Lowercase `.c` sources compile as C; uppercase `.C`, `.cc`, and `.cpp` sources compile as C++.
+An explicit `#flag -x c` or `#flag -x c++`, including the joined forms `-xc` and `-xc++`,
+overrides the filename's language until `#flag -x none` restores inference from the filename.
+Both spellings also select the matching native compilation standard and runtime libraries,
+including when a `.o` flag compiles an adjacent source into the object cache.
+
+Native C sources and object files from `#flag` are linked before the libraries from
+all modules, including imported modules. Library flags retain their relative order.
+Explicit `-x` language settings remain attached to native inputs when they are reordered.
+The final language setting also applies to sources passed later through `-ldflags`.
+
 You can also use `#flag` directives, to link to static C libraries, which
 will be added last (note the .a suffix):
 ```v oksyntax
@@ -9770,6 +9965,10 @@ In the console build command, you can use:
 * `-cflags` to pass custom flags to the backend C compiler (passed before other C options).
 * `-ldflags` to pass custom flags to the backend C linker (passed after every other C option).
 * For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+
+To select C23 with a compiler that supports it, use
+`v -cc gcc -cflags '-std=gnu23' program.v`. Generated C uses the standard boolean keywords
+in C23 and supplies compatibility definitions for older C dialects.
 
 You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
 and `-cflags` settings, rather than including them in the build command each time.

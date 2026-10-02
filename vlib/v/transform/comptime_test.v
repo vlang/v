@@ -612,20 +612,262 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	assert 'builtin_value' !in bare_metas
 }
 
+fn add_comptime_test_method(mut a flat.FlatAst, receiver string, name string, return_type string, param_type string) flat.NodeId {
+	receiver_id := a.add_node(flat.Node{
+		kind:  .param
+		op:    .dot
+		value: 'self'
+		typ:   receiver
+	})
+	param_id := if param_type.len > 0 {
+		a.add_node(flat.Node{ kind: .param, value: 'value', typ: param_type })
+	} else {
+		flat.NodeId(-1)
+	}
+	children_start := a.children.len
+	a.children << receiver_id
+	if int(param_id) >= 0 {
+		a.children << param_id
+	}
+	return a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          '${receiver}.${name}'
+		typ:            return_type
+		children_start: i32(children_start)
+		children_count: if int(param_id) >= 0 { 2 } else { 1 }
+	})
+}
+
+fn test_comptime_method_metadata_keeps_resolved_module_and_file_context() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'first')
+	add_comptime_test_method(mut a, 'App', 'show', 'int', '')
+	add_comptime_test_method(mut a, 'Alias', 'extra', 'int', '')
+	a.add_val(.module_decl, 'second')
+	add_comptime_test_method(mut a, 'App', 'show', 'string', '')
+	add_comptime_test_method(mut a, 'Alias', 'extra', 'string', '')
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['first.App'] = []types.StructField{}
+	tc.structs['second.App'] = []types.StructField{}
+	tc.type_aliases['first.Alias'] = 'first.App'
+	tc.type_aliases['second.Alias'] = 'second.App'
+	tc.file_imports[file_import_key('first.v', 'dep')] = 'first'
+	tc.file_imports[file_import_key('second.v', 'dep')] = 'second'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for module_name in ['first', 'second', 'first'] {
+		t.cur_module = module_name
+		for name in ['App', 'Alias', '${module_name}.App'] {
+			methods := t.comptime_method_metas(name)
+			assert methods.len == if name == 'Alias' { 2 } else { 1 }
+			assert methods[0].module_name == module_name
+			assert methods[0].return_type == if module_name == 'first' { 'int' } else { 'string' }
+			if name == 'Alias' {
+				assert methods[1].name == 'extra'
+				assert methods[1].module_name == module_name
+			}
+		}
+	}
+	t.cur_module = 'main'
+	for module_name in ['first', 'second', 'first'] {
+		t.cur_file = '${module_name}.v'
+		methods := t.comptime_method_metas('dep.App')
+		assert methods.len == 1
+		assert methods[0].module_name == module_name
+	}
+}
+
+fn test_comptime_method_metadata_keeps_generic_receiver_specializations() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	add_comptime_test_method(mut a, 'Box[T]', 'replace', 'T', 'T')
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['Box'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	for typ in ['int', 'string', 'int'] {
+		for name in ['Box[${typ}]', 'Box_${typ}'] {
+			methods := t.comptime_method_metas(name)
+			assert methods.len == 1
+			assert methods[0].return_type == typ
+			assert methods[0].params.len == 1
+			assert methods[0].params[0].typ == typ
+		}
+	}
+}
+
+fn test_comptime_method_metadata_keeps_specialization_main_type_provenance() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	add_comptime_test_method(mut a, 'App', 'show', 'int', '')
+	a.add_val(.module_decl, 'reflection')
+	add_comptime_test_method(mut a, 'App', 'show', 'string', '')
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['App'] = []types.StructField{}
+	tc.structs['reflection.App'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'reflection'
+	for main_type in [false, true, false] {
+		t.active_specialization_main_types['App'] = main_type
+		methods := t.comptime_method_metas('App')
+		assert methods.len == 1
+		assert methods[0].module_name == if main_type { 'main' } else { 'reflection' }
+		assert methods[0].return_type == if main_type { 'int' } else { 'string' }
+	}
+}
+
+fn test_comptime_method_metadata_keeps_module_sensitive_generic_arguments() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	add_comptime_test_method(mut a, 'Box[T]', 'replace', 'T', 'T')
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['first.A'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for module_name in ['first', 'second', 'first'] {
+		t.cur_module = module_name
+		methods := t.comptime_method_metas('main.Box[A]')
+		assert methods.len == 1
+		assert methods[0].return_type == if module_name == 'first' { 'A' } else { 'T' }
+		assert methods[0].params[0].typ == methods[0].return_type
+	}
+}
+
+fn test_comptime_method_metadata_observes_appended_methods_and_attributes() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	method_id := add_comptime_test_method(mut a, 'App', 'first', 'int', '')
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	initial := t.comptime_method_metas('App')
+	assert initial.len == 1
+	assert initial[0].attrs.len == 0
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(method_id)}'
+		typ:     '1,2,3,0'
+		payload: flat.node_payload(["route: '/first'", 'priority: 2', 'enabled: true', 'inline'])
+	})
+	attributed := t.comptime_method_metas('App')
+	assert attributed.len == 1
+	assert attributed[0].attrs == ["route: '/first'", 'priority: 2', 'enabled: true', 'inline']
+	assert attributed[0].attributes == [
+		AttributeMeta{ name: 'route', arg: '/first', has_arg: true, kind: 1 },
+		AttributeMeta{ name: 'priority', arg: '2', has_arg: true, kind: 2 },
+		AttributeMeta{ name: 'enabled', arg: 'true', has_arg: true, kind: 3 },
+		AttributeMeta{ name: 'inline', kind: 0 },
+	]
+	add_comptime_test_method(mut a, 'App', 'second', 'string', '')
+	expanded := t.comptime_method_metas('App')
+	assert expanded.len == 2
+	assert expanded[0].name == 'first'
+	assert expanded[0].attrs == attributed[0].attrs
+	assert expanded[1].name == 'second'
+	assert expanded[1].return_type == 'string'
+	assert expanded[1].attrs.len == 0
+}
+
+fn test_comptime_method_metadata_observes_erased_generic_methods() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	template_id := add_comptime_test_method(mut a, 'Box[T]', 'replace', 'T', 'T')
+	add_comptime_test_method(mut a, 'Box[int]', 'keep', 'bool', '')
+	clone_id := add_comptime_test_method(mut a, 'Box[int]', 'replace', 'int', 'int')
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(template_id)}'
+		payload: flat.node_payload(['generic'])
+	})
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(clone_id)}'
+		payload: flat.node_payload(['concrete'])
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['Box'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	initial := t.comptime_method_metas('Box[int]')
+	assert initial.map(it.name) == ['replace', 'keep']
+	assert initial[0].receiver == 'Box[T]'
+	assert initial[0].attrs == ['generic']
+	decl := GenericFnDecl{
+		id:     template_id
+		node:   a.nodes[int(template_id)]
+		file:   'main.v'
+		module: 'main'
+		key:    'Box.replace'
+	}
+	node_count := a.nodes.len
+	t.erase_generic_fn_decls({
+		decl.key: decl
+	})
+	assert a.nodes.len == node_count
+	assert a.node(template_id).kind == .empty
+	after := t.comptime_method_metas('Box[int]')
+	assert after.map(it.name) == ['keep', 'replace']
+	assert after[1].receiver == 'Box[int]'
+	assert after[1].return_type == 'int'
+	assert after[1].params.len == 1
+	assert after[1].params[0].typ == 'int'
+	assert after[1].attrs == ['concrete']
+}
+
 fn test_comptime_method_scan_does_not_allocate_per_ast_node() {
 	$if gcboehm ? {
 		mut a := flat.FlatAst.new()
+		a.add_val(.module_decl, 'main')
+		method_id := add_comptime_test_method(mut a, 'App', 'show', 'int', 'string')
 		for _ in 0 .. 8192 {
 			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: 'int' })
 		}
+		a.add_node(flat.Node{
+			kind:    .directive
+			value:   '@attributes:${int(method_id)}'
+			typ:     '1'
+			payload: flat.node_payload(["route: '/show'"])
+		})
 		mut tc := types.TypeChecker.new(&a)
-		t := new_transformer(mut a, &tc, map[string]bool{})
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
 		before := gc_heap_usage().total_bytes
 		for _ in 0 .. 16 {
 			assert t.comptime_method_metas('int').len == 0
+			methods := t.comptime_method_metas('App')
+			assert methods.len == 1
+			assert methods[0].attrs == ["route: '/show'"]
+			assert methods[0].attributes[0].arg == '/show'
 		}
 		allocated := gc_heap_usage().total_bytes - before
-		// Empty method scans need only small metadata containers, independent of AST size.
+		// Method and attribute lookups allocate metadata independently of unrelated AST nodes.
 		assert allocated < 1024 * 1024, 'method scans allocated ${allocated} bytes'
+	}
+}
+
+fn test_comptime_method_metadata_reuses_repeated_receiver_lookups() {
+	$if gcboehm ? {
+		mut a := flat.FlatAst.new()
+		a.add_val(.module_decl, 'main')
+		for i in 0 .. 128 {
+			method_id := add_comptime_test_method(mut a, 'App', 'method_${i}', 'string', 'int')
+			a.add_node(flat.Node{
+				kind:    .directive
+				value:   '@attributes:${int(method_id)}'
+				typ:     '1'
+				payload: flat.node_payload(["route: '/show'"])
+			})
+		}
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		assert t.comptime_method_metas('App').len == 128
+		before := gc_heap_usage().total_bytes
+		for _ in 0 .. 64 {
+			methods := t.comptime_method_metas('App')
+			assert methods.len == 128
+			assert methods[127].params[0].typ == 'int'
+			assert methods[127].attributes[0].arg == '/show'
+		}
+		allocated := gc_heap_usage().total_bytes - before
+		assert allocated < 1024 * 1024, 'repeated method lookups allocated ${allocated} bytes'
 	}
 }

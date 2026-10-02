@@ -79,6 +79,69 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_keeps_the_spacing_of_compile_time_conditions() {
+	// `v fmt` wrote `[f32, f64]&& b`, `!( a is f64 )`, `sizeof ( A )` and `[]&& int`.
+	source := "module main\n\nfn f[A, B](a A, b B) {\n\t\$if a in [f32, f64] && b !is f32 {\n\t\tprintln(1)\n\t}\n\t\$if !(a is f64) {\n\t\tprintln(2)\n\t}\n\t\$if A is []&&int {\n\t\tprintln(3)\n\t}\n\t\$if A in [f32, f64] || A is int {\n\t\tprintln(4)\n\t}\n\t\$if sizeof(A) == 8 {\n\t\tprintln(5)\n\t}\n\t\$if (a is int) || (a is f64) {\n\t\tprintln(6)\n\t}\n\t\$if A.name == 'f64' {\n\t\tprintln(7)\n\t}\n\t\$if linux && !debug {\n\t\tprintln(8)\n\t}\n\t\$if my_flag ? {\n\t\tprintln(9)\n\t}\n\t\$if a is \$int {\n\t\tprintln(10)\n\t}\n\t\$if A !in [i8, i16] && A is \$int {\n\t\tprintln(11)\n\t}\n\t\$if a is ?int {\n\t\tprintln(12)\n\t}\n\t\$if \$d('mode', 1) == 2 {\n\t\tprintln(13)\n\t}\n\t\$if !(A in [f32, f64]) && (B is int || B is i64) {\n\t\tprintln(14)\n\t}\n\t\$if A is [3]&&int {\n\t\tprintln(15)\n\t}\n}\n\nfn main() {\n\tf(1, 2)\n}\n"
+	assert vfmt('comptime_condition_spacing', source) == source
+}
+
+fn test_formatter_keeps_generic_constraints() {
+	// `v fmt` used to delete them: `fn longest[T Named]` became `fn longest[T]`.
+	source := 'module m
+
+interface Named {
+	name string
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn longest[T Named](a T, b T) T {
+	return a
+}
+
+fn (b Box[T]) label() string {
+	return b.item.name
+}
+
+fn pair[K, V mod.Named](k K, v V) string {
+	return v.name
+}
+
+struct Host {}
+
+fn (h Host) longest[T Named](a T, b T) T {
+	return a
+}
+
+fn (b Box[T]) map[U Named](f fn (T) U) U {
+	return f(b.item)
+}
+
+fn (h &Host) pair[K, V mod.Named](k K, v V) string {
+	return v.name
+}
+
+pub fn (mut h Host) double[T Number](x T) T {
+	return x
+}
+
+interface Shelf[T Named] {
+	items []T
+}
+
+type Picker[T Named] = fn (T) bool
+
+pub type Number = int | i64 | f64
+
+fn double[T Number](x T) T {
+	return x
+}
+'
+	assert vfmt('generic_constraints', source) == source
+}
+
 fn test_formatter_preserves_contextually_invalid_method_and_range_syntax() {
 	for source in [
 		'struct Example {}\n\nfn (value Example) Foo.bar() {}\n',

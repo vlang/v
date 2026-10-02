@@ -1390,6 +1390,13 @@ fn markused_clone_string_map(src map[string]string) map[string]string {
 	return src.clone()
 }
 
+fn markused_decl_type_snapshot(src map[string]string, lhs_count int) map[string]string {
+	if lhs_count == 1 {
+		return src
+	}
+	return src.clone()
+}
+
 // enqueue_initializer_calls supports enqueue initializer calls handling for markused.
 fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
 	mut cur_module := ''
@@ -4869,6 +4876,16 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 						qname := qualify_fn(cur_module, base.value)
 						calls << if c.is_known_fn_name(qname) { qname } else { base.value }
 						uses_generics = true
+					} else if base.kind == .selector {
+						// A generic method named on a value with its type arguments,
+						// `h.first[int]`: the method the check resolved it to (see
+						// types.TypeChecker.check_generic_method_value).
+						if name := c.tc.resolved_call_name(child_id) {
+							if (c.tc.fn_generic_params[name] or { []string{} }).len > 0 {
+								calls << name
+								uses_generics = true
+							}
+						}
 					}
 				}
 				c.collect_index_operator_method(child_id, '[]', cur_module, imports, local_values, local_types, mut calls)
@@ -5276,17 +5293,21 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 			continue
 		}
 		if child.kind == .decl_assign {
-			pre_types := type_names.clone()
 			lhs_count := markused_assign_lhs_count(child)
+			// A single binding reads the prior types before updating its name. Multiple
+			// bindings need a snapshot so earlier writes cannot affect later RHS types.
+			pre_types := markused_decl_type_snapshot(type_names, lhs_count)
 			rhs_count := int(child.children_count) - lhs_count
 			for j in 0 .. rhs_count {
 				rhs_idx := if j < lhs_count { j * 2 + 1 } else { lhs_count + j }
 				rhs_id := c.a.child(child, rhs_idx)
 				if int(rhs_id) >= 0 {
-					mut rhs_types := pre_types.clone()
-					c.infer_local_type_bindings(c.a.node(rhs_id), cur_module, imports, names,
-						mut rhs_types, mut ident_types, false)
 					rhs := c.a.node(rhs_id)
+					if rhs.children_count > 0 {
+						mut rhs_types := pre_types.clone()
+						c.infer_local_type_bindings(rhs, cur_module, imports, names,
+							mut rhs_types, mut ident_types, false)
+					}
 					if rhs.kind == .ident {
 						if typ := pre_types[rhs.value] {
 							ident_types[int(rhs_id)] = typ
@@ -5336,8 +5357,10 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 				ident_types[int(id)] = typ
 			}
 		}
-		c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
-			mut ident_types, false)
+		if child.children_count > 0 {
+			c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
+				mut ident_types, false)
+		}
 	}
 }
 

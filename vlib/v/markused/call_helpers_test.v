@@ -1117,6 +1117,80 @@ fn test_generic_factory_multi_return_decl_uses_component_type() {
 		map[string]string{}).calls
 }
 
+fn test_local_type_inference_preserves_leaf_rhs_and_closure_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'A' })
+	copy_lhs := a.add_val(.ident, 'copy')
+	copy_rhs := a.add_val(.ident, 'item')
+	copy_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [copy_lhs, copy_rhs])
+	closure_param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'B' })
+	closure_use := a.add_val(.ident, 'item')
+	closure_body := call_helper_node(mut a, flat.Node{ kind: .block }, [closure_use])
+	closure := call_helper_node(mut a, flat.Node{ kind: .fn_literal }, [closure_param, closure_body])
+	callback_lhs := a.add_val(.ident, 'callback')
+	callback_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [
+		callback_lhs,
+		closure,
+	])
+	outer_use := a.add_val(.ident, 'item')
+	copy_use := a.add_val(.ident, 'copy')
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [copy_decl, callback_decl, outer_use,
+		copy_use])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_item' }, [
+		param,
+		body,
+	])
+	collector := CallCollector{ a: &a, tc: &tc }
+	_, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
+		map[string]string{})
+	assert local_types['item'] == 'A'
+	assert local_types['copy'] == 'A'
+	assert ident_types[int(copy_rhs)] == 'A'
+	assert ident_types[int(closure_use)] == 'B'
+	assert ident_types[int(outer_use)] == 'A'
+	assert ident_types[int(copy_use)] == 'A'
+}
+
+fn test_local_type_inference_preserves_simultaneous_shadowed_bindings() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	first_param := a.add_node(flat.Node{ kind: .param, value: 'first', typ: 'A' })
+	second_param := a.add_node(flat.Node{ kind: .param, value: 'second', typ: 'B' })
+	first_lhs := a.add_val(.ident, 'first')
+	first_rhs := a.add_val(.ident, 'second')
+	second_lhs := a.add_val(.ident, 'second')
+	second_rhs := a.add_val(.ident, 'first')
+	decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign, value: '2' }, [
+		first_lhs,
+		first_rhs,
+		second_lhs,
+		second_rhs,
+	])
+	inner_first := a.add_val(.ident, 'first')
+	inner_second := a.add_val(.ident, 'second')
+	inner := call_helper_node(mut a, flat.Node{ kind: .block }, [decl, inner_first, inner_second])
+	outer_first := a.add_val(.ident, 'first')
+	outer_second := a.add_val(.ident, 'second')
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [inner, outer_first, outer_second])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'swap_item_types' }, [
+		first_param,
+		second_param,
+		body,
+	])
+	collector := CallCollector{ a: &a, tc: &tc }
+	_, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
+		map[string]string{})
+	assert local_types['first'] == 'A'
+	assert local_types['second'] == 'B'
+	assert ident_types[int(first_rhs)] == 'B'
+	assert ident_types[int(second_rhs)] == 'A'
+	assert ident_types[int(inner_first)] == 'B'
+	assert ident_types[int(inner_second)] == 'A'
+	assert ident_types[int(outer_first)] == 'A'
+	assert ident_types[int(outer_second)] == 'B'
+}
+
 fn test_nested_local_type_does_not_replace_outer_binding() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -250,6 +250,21 @@ fn windows_binary_file_identity(path string) ?string {
 	return '${information.volume_serial_number}:${index}:${creation}:${size}'
 }
 
+// publish_atomically moves `staged` over `destination` in a single step, so that a
+// concurrently running V process either sees the previous file or the new one, but never
+// a half written one, and never has the executable it is starting truncated underneath it.
+// `destination` regularly already exists: a tool whose own sources and compiler are
+// unchanged keeps its cache key, so a rebuild triggered by an imported vlib module lands
+// in the very same slot. Replacing it is what `replace_file_atomically` is for; a plain
+// `os.rename` would fail there on Windows.
+fn publish_atomically(staged string, destination string) bool {
+	if !replace_file_atomically(staged, destination) {
+		os.rm(staged) or {}
+		return false
+	}
+	return true
+}
+
 // replace_file_atomically moves `source` onto `destination`, replacing it if it is already
 // there. A tool that only imports a vlib module which changed keeps its cache key, so a
 // rebuild lands on the very same destination and has to be able to overwrite it.
@@ -261,7 +276,7 @@ fn replace_file_atomically(source string, destination string) bool {
 	// replacement above fails whenever another `v` is using the cached tool. Renaming the
 	// old binary out of the way *is* permitted in that state, and is what makes a
 	// self-replacing cache possible at all. The displaced file stays locked until that
-	// process exits, so it is left for `prune_stale_tool_binaries` to collect later.
+	// process exits, so it is left for `prune_stale_tool_binaries_locked` to collect later.
 	displaced := '${destination}${tool_cache_replaced_marker}${os.getpid()}'
 	os.rm(displaced) or {}
 	os.rename(destination, displaced) or { return false }

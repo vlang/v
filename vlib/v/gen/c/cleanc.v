@@ -2332,7 +2332,7 @@ pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool,
 	if path.ends_with('.m') {
 		return 'objective-c'
 	}
-	if path.ends_with('.cc') || path.ends_with('.cpp') {
+	if path.ends_with('.C') || path.ends_with('.cc') || path.ends_with('.cpp') {
 		return 'c++'
 	}
 	if cache_native_input_path_needs_objective_c(path, c_flags, c99_mode, target) {
@@ -18784,6 +18784,10 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('typedef long long time_t;')
 		g.writeln('#endif')
 	}
+	// C23 has boolean keywords; older C2x compilers get them from stdbool.h.
+	g.writeln('#if defined(__STDC_VERSION__) && __STDC_VERSION__ > 201710L')
+	g.writeln('#include <stdbool.h>')
+	g.writeln('#endif')
 	g.writeln('#ifndef __bool_true_false_are_defined')
 	g.writeln('#ifdef _MSC_VER')
 	g.writeln('typedef unsigned char bool;')
@@ -18802,11 +18806,13 @@ fn (mut g FlatGen) preamble() {
 	g.emit_int128_preamble()
 	g.writeln('struct sync__Channel;')
 	g.writeln('typedef struct sync__Channel* chan;')
+	g.writeln('#if !defined(__STDC_VERSION__) || __STDC_VERSION__ <= 201710L')
 	g.writeln('#ifndef true')
 	g.writeln('#define true 1')
 	g.writeln('#endif')
 	g.writeln('#ifndef false')
 	g.writeln('#define false 0')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#if defined(__TINYC__) || defined(_MSC_VER)')
 	g.writeln('#define E_STRUCT_DECL unsigned char _dummy_pad')

@@ -6,7 +6,16 @@ import os
 import time
 
 pub const jsonrpc_version = '2.0'
+// protocol_version is the revision a server speaks by default. It stays on
+// 2025-11-25 so clients that never negotiate keep the current wire behaviour.
 pub const protocol_version = '2025-11-25'
+// protocol_version_2025_11_25 and protocol_version_2026_07_28 name the
+// revisions a server can speak; latest_protocol_version is the newest one.
+// The 2025-11-25 constant aliases protocol_version so the default and the
+// named revision can never drift apart.
+pub const protocol_version_2025_11_25 = protocol_version
+pub const protocol_version_2026_07_28 = '2026-07-28'
+pub const latest_protocol_version = protocol_version_2026_07_28
 pub const parse_error = ResponseError{
 	code:    -32700
 	message: 'Invalid JSON.'
@@ -38,6 +47,18 @@ pub const resource_not_found = ResponseError{
 pub const url_elicitation_required = ResponseError{
 	code:    -32042
 	message: 'URL mode elicitation required.'
+}
+pub const header_mismatch = ResponseError{
+	code:    -32020
+	message: 'Header mismatch.'
+}
+pub const missing_required_client_capability = ResponseError{
+	code:    -32021
+	message: 'Missing required client capability.'
+}
+pub const unsupported_protocol_version = ResponseError{
+	code:    -32022
+	message: 'Unsupported protocol version.'
 }
 
 const default_content_type = 'application/json'
@@ -332,7 +353,33 @@ pub mut:
 	}
 	capabilities     string = '{}'
 	headers          map[string]string
+	// stateless_2026 selects the sessionless 2026-07-28 client: no initialize
+	// handshake, every request carries its version in `_meta`, and the HTTP
+	// transport adds the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name`
+	// headers. It is also implied by asking for the 2026-07-28 revision.
+	stateless_2026 bool
+	// supported_versions is the fallback order used when a 2026-07-28 server
+	// rejects the requested revision with UnsupportedProtocolVersionError.
+	supported_versions []string = [protocol_version_2025_11_25, protocol_version_2026_07_28]
+	// log_level, when set, is sent as the reserved `_meta` logLevel key of
+	// every 2026-07-28 request, which is what opts that request into log
+	// notifications.
+	log_level string
+	// roots_handler answers a `roots/list` request embedded in a 2026-07-28
+	// MRTR result. It returns the raw JSON of a ListRootsResult.
+	roots_handler ?fn () string
+	// sampling_handler answers a `sampling/createMessage` request embedded in a
+	// 2026-07-28 MRTR result. It takes the raw params and returns the raw JSON
+	// of a CreateMessageResult.
+	sampling_handler ?fn (string) string
+	// elicitation_handler answers an `elicitation/create` request embedded in a
+	// 2026-07-28 MRTR result. It takes the raw params and returns the raw JSON
+	// of an ElicitResult.
+	elicitation_handler ?fn (string) string
 }
+
+// max_mrtr_rounds bounds the automatic MRTR retry loop of a 2026-07-28 client.
+const max_mrtr_rounds = 8
 
 pub struct Client {
 mut:
@@ -372,6 +419,24 @@ pub fn connect_stdio(command string, args []string, config ClientConfig) !Client
 	return new_client(transport, config)
 }
 
+// connect_2026 creates a sessionless 2026-07-28 client for a streamable HTTP
+// endpoint. It never runs the initialize handshake.
+pub fn connect_2026(url string, config ClientConfig) !Client {
+	mut config_2026 := config
+	config_2026.stateless_2026 = true
+	config_2026.protocol_version = protocol_version_2026_07_28
+	return connect_http(url, config_2026)
+}
+
+// is_stateless_2026 reports whether this client speaks the sessionless
+// 2026-07-28 protocol rather than the 2025-11-25 handshake.
+pub fn (c &Client) is_stateless_2026() bool {
+	if c.config.stateless_2026 {
+		return true
+	}
+	return normalize_protocol_version(c.config.protocol_version) == protocol_version_2026_07_28
+}
+
 // initialize starts the MCP initialization handshake using the client's config.
 pub fn (mut c Client) initialize() !InitializeResult {
 	return c.initialize_with_raw(c.config.capabilities, c.config.client_info)
@@ -388,8 +453,36 @@ pub fn (mut c Client) send_request(request Request) !Response {
 		return error('mcp.Client.initialize must be used for the MCP handshake')
 	}
 	c.ensure_initialized()!
-	c.transport.send(request.encode())!
-	return c.wait_for_response(request.id)
+	mut current := request
+	mut round := 0
+	mut downgraded := false
+	for {
+		if c.is_stateless_2026() {
+			current = c.inject_stateless_meta(current)
+		}
+		c.transport.send(current.encode())!
+		response := c.wait_for_response(current.id)!
+		if !c.is_stateless_2026() {
+			return response
+		}
+		// A server that does not speak the requested revision names the ones it
+		// does; fall back to the first and retry the request exactly once.
+		if response.error.code == -32022 && !downgraded {
+			if c.downgrade_to_supported(response) {
+				downgraded = true
+				continue
+			}
+		}
+		retry := c.build_input_retry(request, response)!
+		if retry.method.len == 0 {
+			return response
+		}
+		current = retry
+		if round >= max_mrtr_rounds {
+			return error('mcp.Client: gave up after ${max_mrtr_rounds} input rounds')
+		}
+		round++
+	}
 }
 
 // request_message sends a method call and returns the raw MCP response.
@@ -450,6 +543,13 @@ fn (mut c Client) initialize_with_raw(capabilities string, client_info Implement
 	}
 	c.config.capabilities = normalize_capabilities(capabilities)
 	c.config.client_info = normalize_client_info(client_info)
+	if c.is_stateless_2026() {
+		// 2026-07-28 has no handshake: `server/discover` is how a client learns
+		// what the server speaks, and the InitializeResult is synthesized from
+		// it so callers of `initialize()` keep working.
+		c.config.protocol_version = protocol_version_2026_07_28
+		return c.discover_as_initialize()
+	}
 	params := InitializeParams{
 		protocol_version: normalize_protocol_version(c.config.protocol_version)
 		capabilities:     c.config.capabilities
@@ -469,10 +569,338 @@ fn (mut c Client) initialize_with_raw(capabilities string, client_info Implement
 	return result
 }
 
+// discover_as_initialize asks `server/discover` and maps its answer onto an
+// InitializeResult, which is all a 2026-07-28 client can know before its first
+// real request.
+fn (mut c Client) discover_as_initialize() !InitializeResult {
+	request := c.inject_stateless_meta(new_request(c.next_request_id(), 'server/discover', empty))
+	c.transport.send(request.encode())!
+	response := c.wait_for_response(request.id)!
+	if response.error.code == unsupported_protocol_version.code && c.downgrade_to_supported(response) {
+		// The server does not speak 2026-07-28. Fall back to the revision it
+		// named, which means going through the real handshake.
+		return c.initialize_with_raw(c.config.capabilities, c.config.client_info)
+	}
+	discovery := response.decode_result[DiscoverResult]()!
+	c.initialized = true
+	c.init_result = InitializeResult{
+		protocol_version: protocol_version_2026_07_28
+		capabilities:     discovery.capabilities
+		server_info:      Implementation{
+			name:    'mcp-server'
+			version: latest_protocol_version
+		}
+		instructions:     discovery.instructions
+	}
+	return c.init_result
+}
+
 fn (mut c Client) ensure_initialized() ! {
 	if !c.initialized {
 		c.initialize()!
 	}
+}
+
+// inject_stateless_meta stamps a 2026-07-28 request with the reserved `_meta`
+// keys. Every such request MUST declare its protocol version this way; the
+// client info and the optional log level travel with it.
+fn (mut c Client) inject_stateless_meta(request Request) Request {
+	version := json.encode(normalize_protocol_version(c.config.protocol_version))
+	info := json.encode(c.config.client_info)
+	capabilities := normalize_capabilities(c.config.capabilities)
+	mut fields := [
+		'"io.modelcontextprotocol/protocolVersion":${version}',
+		'"io.modelcontextprotocol/clientInfo":${info}',
+		'"io.modelcontextprotocol/clientCapabilities":${capabilities}',
+	]
+	if c.config.log_level.trim_space() != '' {
+		fields << '"io.modelcontextprotocol/logLevel":${json.encode(c.config.log_level.trim_space())}'
+	}
+	return Request{
+		jsonrpc: request.jsonrpc
+		id:      request.id
+		method:  request.method
+		params:  merge_params(request.params, '"_meta":{${fields.join(',')}}')
+	}
+}
+
+// merge_params splices a set of `"key":value` members into a request's params
+// object. The extras are members, never a nested object, so a caller can merge
+// several at once without producing invalid JSON.
+fn merge_params(params_json string, extra_members string) string {
+	trimmed := params_json.trim_space()
+	mut parts := []string{}
+	if trimmed.len >= 2 && trimmed[0] == `{` && trimmed[trimmed.len - 1] == `}` {
+		inner := trimmed[1..trimmed.len - 1].trim_space()
+		if inner.len != 0 {
+			parts << inner
+		}
+	}
+	if extra_members.trim_space().len != 0 {
+		parts << extra_members.trim_space()
+	}
+	if parts.len == 0 {
+		return '{}'
+	}
+	return '{${parts.join(',')}}'
+}
+
+// ResultTypeInputRequired marks a 2026-07-28 result that needs client input.
+const result_type_input_required = 'input_required'
+
+// ResultTypeComplete marks a finished 2026-07-28 result. A result without a
+// `resultType` is treated as complete, as the spec requires.
+const result_type_complete = 'complete'
+
+// result_type_of reads the top-level `resultType` of a result object.
+fn result_type_of(result_json string) string {
+	trimmed := result_json.trim_space()
+	wrapper := json.decode[ResultTypeEnvelope](trimmed) or { return result_type_complete }
+	return wrapper.result_type
+}
+
+struct ResultTypeEnvelope {
+	result_type string = result_type_complete @[json: resultType]
+}
+
+// InputRequestsEnvelope is the MRTR part of a 2026-07-28 result. The embedded
+// requests are arbitrary JSON objects, so they are captured dynamically and
+// re-encoded verbatim.
+struct InputRequestsEnvelope {
+	input_requests map[string]json.Any @[json: inputRequests]
+	request_state  string              @[json: requestState]
+}
+
+// build_input_retry answers a MRTR result by running the registered handlers
+// for every embedded request and rebuilding the original request with
+// `params.inputResponses`. An empty method means the result needs no input, so
+// the caller stops the retry loop.
+fn (mut c Client) build_input_retry(original Request, response Response) !Request {
+	if response.error.code != 0 || response.result.len == 0 {
+		return Request{}
+	}
+	if result_type_of(response.result) != result_type_input_required {
+		return Request{}
+	}
+	wrapper := json.decode[InputRequestsEnvelope](response.result.trim_space()) or {
+		return Request{}
+	}
+	mut responses := []string{}
+	for key, raw in wrapper.input_requests {
+		answer := c.answer_input_request(json.encode(raw)) or {
+			return error('mcp.Client: no handler registered for the embedded request `${key}`')
+		}
+		responses << '${json.encode(key)}:${answer}'
+	}
+	if responses.len == 0 {
+		return error('mcp.Client: input_required result without inputRequests')
+	}
+	mut extra_fields := ['"inputResponses":{${responses.join(',')}}']
+	if wrapper.request_state != '' {
+		extra_fields << '"requestState":${json.encode(wrapper.request_state)}'
+	}
+	return Request{
+		id:     original.id
+		method: original.method
+		params: merge_params(original.params, extra_fields.join(','))
+	}
+}
+
+// answer_input_request dispatches one embedded MRTR request object to the
+// handler registered for its method.
+fn (c &Client) answer_input_request(request_json string) ?string {
+	trimmed := request_json.trim_space()
+	envelope := json.decode[EmbeddedRequest](trimmed) or { return none }
+	return match envelope.method {
+		'roots/list' {
+			handler := c.config.roots_handler or { return none }
+			handler()
+		}
+		'sampling/createMessage' {
+			handler := c.config.sampling_handler or { return none }
+			handler(envelope.params)
+		}
+		'elicitation/create' {
+			handler := c.config.elicitation_handler or { return none }
+			handler(envelope.params)
+		}
+		else { none }
+	}
+}
+
+// EmbeddedRequest is one request object embedded in an MRTR result. It keeps
+// the 2025 method names and shapes but is never sent as a JSON-RPC request.
+struct EmbeddedRequest {
+	method string
+	params string @[raw]
+}
+
+// downgrade_to_supported switches the client to the first revision the server
+// named in an UnsupportedProtocolVersionError payload.
+fn (mut c Client) downgrade_to_supported(response Response) bool {
+	payload := json.decode[UnsupportedVersionEnvelope](response.error.data.trim_space()) or {
+		return false
+	}
+	for candidate in payload.supported {
+		trimmed := candidate.trim_space()
+		if trimmed != '' && trimmed != normalize_protocol_version(c.config.protocol_version) {
+			c.config.protocol_version = trimmed
+			c.config.stateless_2026 = trimmed == protocol_version_2026_07_28
+			// Falling back to a revision with a handshake means starting over.
+			c.initialized = false
+			return true
+		}
+	}
+	return false
+}
+
+// UnsupportedVersionEnvelope is the data payload of
+// UnsupportedProtocolVersionError.
+struct UnsupportedVersionEnvelope {
+	supported []string
+	requested string
+}
+
+// listen subscribes to notifications and returns the subset the server
+// acknowledged. A 2026-07-28 client only: the notifications themselves are
+// queued for `take_notifications`, tagged with the subscription id. It returns
+// after the matching acknowledgment without waiting for a live stdio subscription to end.
+pub fn (mut c Client) listen[P](filter P) !SubscriptionFilter {
+	if !c.is_stateless_2026() {
+		return error('mcp.Client.listen: subscriptions/listen requires the 2026-07-28 protocol')
+	}
+	c.ensure_initialized()!
+	if !c.is_stateless_2026() {
+		return error('mcp.Client.listen: subscriptions/listen requires the 2026-07-28 protocol')
+	}
+	request := c.inject_stateless_meta(new_request(c.next_request_id(), 'subscriptions/listen',
+		filter))
+	c.transport.send(request.encode())!
+	return c.wait_for_listen_ack(request.id)
+}
+
+// wait_for_listen_ack receives until the server acknowledges a
+// `subscriptions/listen` request. A live stdio subscription stays open and
+// never answers the request itself, so the acknowledgment notification is the
+// success signal there; over HTTP the stream is finite, and the closing
+// SubscriptionsListenResult is consumed before returning.
+fn (mut c Client) wait_for_listen_ack(request_id string) !SubscriptionFilter {
+	wait_for_result := c.transport is HttpTransport
+	expected_subscription_id := if request_id.starts_with('"') {
+		json.encode(json.decode[string](request_id)!)
+	} else {
+		request_id
+	}
+	mut acknowledged := SubscriptionFilter{}
+	mut got_ack := false
+	for {
+		raw_message := c.transport.receive() or {
+			if got_ack {
+				// A finite HTTP stream may legitimately end right after the
+				// acknowledgment.
+				return acknowledged
+			}
+			return err
+		}
+		envelope := decode_envelope(raw_message)!
+		if envelope.method.len != 0 {
+			just_acknowledged := is_notification_id(envelope.id)
+				&& envelope.method == listen_acknowledged_method && !got_ack
+				&& (subscription_request_id_of(Notification{
+					method: envelope.method
+					params: envelope.params
+				}) or { '' }) == expected_subscription_id
+			if just_acknowledged {
+				ack := json.decode[ListenAcknowledgement](envelope.params.trim_space()) or {
+					return error('mcp.Client.listen: malformed subscription acknowledgment')
+				}
+				acknowledged = ack.notifications
+				got_ack = true
+			}
+			if is_notification_id(envelope.id) {
+				c.notifications << Notification{
+					method: envelope.method
+					params: envelope.params
+				}
+			} else {
+				c.server_requests << Request{
+					id:     envelope.id
+					method: envelope.method
+					params: envelope.params
+				}
+			}
+			if just_acknowledged && !wait_for_result {
+				return acknowledged
+			}
+			continue
+		}
+		response := Response{
+			id:     envelope.id
+			result: envelope.result
+			error:  envelope.error
+		}
+		if response.id == request_id {
+			if response.error.code != 0 {
+				return response.error.err()
+			}
+			if got_ack {
+				return acknowledged
+			}
+			// The closing result arrived before the acknowledgment; keep
+			// waiting for the acknowledgment.
+			continue
+		}
+		if !got_ack && is_notification_id(response.id) && response.error.code != 0 {
+			// A transport level rejection, such as an HTTP 406, is reported
+			// under a null id.
+			return response.error.err()
+		}
+		c.pending_responses[response.id] = response
+	}
+	return error('mcp.Client.listen: response loop exited unexpectedly')
+}
+
+// ListenAcknowledgement is the first message of a 2026-07-28 subscription
+// stream: the notification types the server honors.
+struct ListenAcknowledgement {
+	notifications SubscriptionFilter
+}
+
+// subscription_id_of returns the reserved subscriptionId `_meta` value of a
+// notification that arrived on a listen stream. String IDs are decoded, and
+// numeric IDs are returned as text for display.
+pub fn subscription_id_of(notification Notification) ?string {
+	request_id := subscription_request_id_of(notification) or { return none }
+	if request_id.starts_with('"') {
+		return json.decode[string](request_id) or { return none }
+	}
+	return request_id
+}
+
+// subscription_request_id_of preserves the JSON type for acknowledgment
+// matching, normalizing string escapes while keeping numeric tokens intact.
+fn subscription_request_id_of(notification Notification) ?string {
+	wrapper := json.decode[SubscriptionIdEnvelope](notification.params.trim_space()) or {
+		return none
+	}
+	raw_id := wrapper.meta.subscription_id.trim_space()
+	if raw_id.len == 0 {
+		return none
+	}
+	id := json.decode[json.Any](raw_id) or { return none }
+	return match id {
+		string { json.encode(id) }
+		i64, u64, f64 { raw_id }
+		else { none }
+	}
+}
+
+struct SubscriptionIdEnvelope {
+	meta SubscriptionIdMeta @[json: '_meta']
+}
+
+struct SubscriptionIdMeta {
+	subscription_id string @[json: 'io.modelcontextprotocol/subscriptionId'; raw]
 }
 
 fn (mut c Client) next_request_id() int {
@@ -538,13 +966,29 @@ struct FrameExtraction {
 	remaining string
 }
 
+// DiscoverResult is what `server/discover` answers with: the revisions the
+// server speaks and the capabilities it offers.
+pub struct DiscoverResult {
+pub:
+	supported_versions []string @[json: supportedVersions]
+	capabilities       string   @[raw]
+	instructions       string
+	ttl_ms             int    @[json: ttlMs]
+	cache_scope        string @[json: cacheScope]
+	result_type        string @[json: resultType]
+}
+
 struct HttpTransport {
 mut:
 	url              string
 	header           http.Header
 	session_id       string
 	protocol_version string
-	pending          []string
+	// stateless_2026 switches the transport to the sessionless 2026-07-28
+	// request shape: the per-request `Mcp-Method` / `Mcp-Name` headers and no
+	// MCP-Session-Id.
+	stateless_2026 bool
+	pending        []string
 }
 
 fn new_http_transport(url string, config ClientConfig) !HttpTransport {
@@ -559,21 +1003,45 @@ fn new_http_transport(url string, config ClientConfig) !HttpTransport {
 	if config.headers.len != 0 {
 		header.add_custom_map(config.headers)!
 	}
+	mut stateless_2026 := config.stateless_2026
+	if normalize_protocol_version(config.protocol_version) == protocol_version_2026_07_28 {
+		stateless_2026 = true
+	}
 	return HttpTransport{
-		url:    url
-		header: header
+		url:            url
+		header:         header
+		stateless_2026: stateless_2026
 	}
 }
 
 fn (mut transport HttpTransport) send(message string) ! {
 	mut header := transport.header
 	header.set(.content_type, default_content_type)
-	header.set(.accept, streamable_http_accept)
-	if transport.session_id != '' {
-		header.set_custom(mcp_session_id_header, transport.session_id)!
+	method := transport.request_method(message)
+	if method == 'subscriptions/listen' {
+		// An HTTP listen stream is only served as a finite SSE response; the
+		// stateless server gate rejects a JSON capable Accept for it.
+		header.set(.accept, event_stream_content_type)
+	} else {
+		header.set(.accept, streamable_http_accept)
 	}
-	if transport.protocol_version != '' {
-		header.set_custom(mcp_protocol_version_header, transport.protocol_version)!
+	if transport.stateless_2026 {
+		// The 2026-07-28 headers mirror the body, so a mismatch is impossible
+		// by construction. The version comes from the `_meta` the client just
+		// injected rather than from a field that could drift.
+		header.set_custom(mcp_protocol_version_header, transport.request_version(message)) or {}
+		header.set_custom(mcp_method_header, method) or {}
+		name := transport.request_target(message)
+		if name != '' {
+			header.set_custom(mcp_name_header, name) or {}
+		}
+	} else {
+		if transport.session_id != '' {
+			header.set_custom(mcp_session_id_header, transport.session_id)!
+		}
+		if transport.protocol_version != '' {
+			header.set_custom(mcp_protocol_version_header, transport.protocol_version)!
+		}
 	}
 	response := http.fetch(
 		method: .post
@@ -597,6 +1065,33 @@ fn (mut transport HttpTransport) send(message string) ! {
 	if response.status_code >= 400 {
 		return error('mcp.http: server returned HTTP ${response.status_code} without an MCP payload')
 	}
+}
+
+// request_version reads the 2026-07-28 protocol version a message declares in
+// its `_meta`.
+fn (transport &HttpTransport) request_version(message string) string {
+	envelope := decode_envelope(message) or { return '' }
+	return extract_stateless_meta(envelope.params).protocol_version
+}
+
+// request_method reads the JSON-RPC method a message carries.
+fn (transport &HttpTransport) request_method(message string) string {
+	envelope := decode_envelope(message) or { return '' }
+	return envelope.method
+}
+
+// request_target reads the tool, resource or prompt a 2026-07-28 message
+// addresses, or an empty string when the method addresses none.
+fn (transport &HttpTransport) request_target(message string) string {
+	envelope := decode_envelope(message) or { return '' }
+	field := method_target_field(envelope.method)
+	if field == '' {
+		return ''
+	}
+	target := decode_optional_params[NamedTargetParams](envelope.params) or {
+		NamedTargetParams{}
+	}
+	return if field == 'uri' { target.uri } else { target.name }
 }
 
 fn read_negotiated_version(body string) string {

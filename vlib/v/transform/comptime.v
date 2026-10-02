@@ -77,6 +77,12 @@ struct MethodMeta {
 	attributes  []AttributeMeta
 }
 
+struct ComptimeMethodDecl {
+	id          int
+	module_name string
+	file_name   string
+}
+
 struct ParamMeta {
 	name        string
 	typ         string
@@ -527,12 +533,14 @@ fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source st
 	return out
 }
 
-fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId) []AttributeMeta {
+fn (mut t Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId) []AttributeMeta {
 	raw_name := t.comptime_reflection_source(source, loop_id)
 	name := t.comptime_resolve_selective_import_reflection_source(raw_name)
 	lookup_name := if name.starts_with('main.') { name['main.'.len..] } else { name }
 	mut module_name := ''
-	for idx, node in t.a.nodes {
+	for idx in 0 .. t.a.nodes.len {
+		// This read-only scan keeps the borrowed AST node valid.
+		node := unsafe { &t.a.nodes[idx] }
 		if node.kind == .file {
 			module_name = ''
 			continue
@@ -561,17 +569,20 @@ fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId)
 fn (t &Transformer) comptime_reflection_source(source string, loop_id flat.NodeId) string {
 	clean := source.trim_space()
 	rhs_id := t.comptime_reflection_local_rhs(loop_id, clean) or { return clean }
-	rhs := t.a.nodes[int(rhs_id)]
+	// This helper only reads AST nodes while the borrow is live.
+	rhs := unsafe { &t.a.nodes[int(rhs_id)] }
 	if rhs.kind == .ident {
 		return rhs.value
 	}
 	if rhs.kind == .selector && rhs.children_count > 0 {
-		base := t.a.child_node(&rhs, 0)
+		base := t.a.child_node(rhs, 0)
 		if base.kind == .ident {
 			return '${base.value}.${rhs.value}'
 		}
 		mut found := ''
-		for candidate in t.a.nodes {
+		for candidate_id in 0 .. t.a.nodes.len {
+			// This read-only scan keeps the borrowed AST node valid.
+			candidate := unsafe { &t.a.nodes[candidate_id] }
 			if candidate.kind == .fn_decl && candidate.value.contains('.')
 				&& candidate.value.all_after_last('.') == rhs.value {
 				if found != '' {
@@ -591,7 +602,9 @@ fn (t &Transformer) comptime_reflection_local_rhs(loop_id flat.NodeId, name stri
 	if int(loop_id) < 0 || int(loop_id) >= t.a.nodes.len {
 		return none
 	}
-	for idx, node in t.a.nodes {
+	for idx in 0 .. t.a.nodes.len {
+		// This read-only scan keeps the borrowed AST node valid.
+		node := unsafe { &t.a.nodes[idx] }
 		if node.kind != .fn_decl || (t.cur_fn_name.len > 0 && node.value != t.cur_fn_name) {
 			continue
 		}
@@ -633,9 +646,10 @@ fn (t &Transformer) comptime_reflection_node_path(id flat.NodeId, target flat.No
 	if id == target {
 		return true
 	}
-	node := t.a.nodes[int(id)]
+	// This helper only reads AST nodes while the borrow is live.
+	node := unsafe { &t.a.nodes[int(id)] }
 	for i in 0 .. node.children_count {
-		if t.comptime_reflection_node_path(t.a.child(&node, i), target, mut path) {
+		if t.comptime_reflection_node_path(t.a.child(node, i), target, mut path) {
 			return true
 		}
 	}
@@ -647,38 +661,79 @@ fn (t &Transformer) comptime_reflection_decl_rhs(id flat.NodeId, name string) ?f
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	// This helper only reads AST nodes while the borrow is live.
+	node := unsafe { &t.a.nodes[int(id)] }
 	if node.kind != .decl_assign || node.children_count < 2 {
 		return none
 	}
 	for i := 0; i + 1 < int(node.children_count); i += 2 {
-		lhs := t.a.child_node(&node, i)
+		lhs := t.a.child_node(node, i)
 		if lhs.kind == .ident && lhs.value == name {
-			return t.a.child(&node, i + 1)
+			return t.a.child(node, i + 1)
 		}
 	}
 	return none
 }
 
-fn (t &Transformer) comptime_node_raw_attributes(node_id int) []string {
+fn (mut t Transformer) comptime_node_raw_attributes(node_id int) []string {
 	return t.comptime_node_raw_attribute_data(node_id).attrs
 }
 
-fn (t &Transformer) comptime_node_raw_attribute_data(node_id int) RawAttributeData {
-	marker := '@attributes:${node_id}'
-	for node in t.a.nodes {
-		if node.kind == .directive && node.value == marker {
-			return RawAttributeData{
-				attrs: node.generic_params().clone()
-				kinds: if node.typ.len > 0 {
-					node.typ.split(',').map(it.int())
-				} else {
-					[]int{}
+// Reflection indexes store node ids, so AST growth cannot invalidate their entries.
+// Each worker owns its indexes and metadata; scoped workers must not retain another
+// worker's scratch allocations. Generic signatures are finalized before body
+// reflection, and source attribute directives are immutable during lowering.
+fn (mut t Transformer) ensure_comptime_method_index() {
+	if t.comptime_method_index_nodes > t.a.nodes.len {
+		t.comptime_method_decls.clear()
+		t.comptime_raw_attribute_nodes.clear()
+		t.comptime_method_metas_cache.clear()
+		t.comptime_method_index_nodes = 0
+		t.comptime_method_index_module = ''
+		t.comptime_method_index_file = ''
+	}
+	mut changed := false
+	for node_id in t.comptime_method_index_nodes .. t.a.nodes.len {
+		// Index construction only reads the AST and cannot invalidate this borrow.
+		node := unsafe { &t.a.nodes[node_id] }
+		if node.kind == .file {
+			t.comptime_method_index_module = ''
+			t.comptime_method_index_file = node.value
+		} else if node.kind == .module_decl {
+			t.comptime_method_index_module = node.value
+		} else if node.kind == .directive && node.value.starts_with('@attributes:') {
+			target := node.value['@attributes:'.len..].int()
+			if node.value == '@attributes:${target}' && target !in t.comptime_raw_attribute_nodes {
+				t.comptime_raw_attribute_nodes[target] = node_id
+				changed = true
+			}
+		} else if node.kind == .fn_decl && node.value.contains('.') && node.children_count > 0 {
+			first := t.a.child_node(node, 0)
+			if first.kind == .param && first.op == .dot && first.value.len > 0 {
+				receiver := comptime_method_receiver_name(first.typ, t.comptime_method_index_module)
+				t.comptime_method_decls[receiver] << ComptimeMethodDecl{
+					id:          node_id
+					module_name: t.comptime_method_index_module
+					file_name:   t.comptime_method_index_file
 				}
+				changed = true
 			}
 		}
 	}
-	return RawAttributeData{}
+	t.comptime_method_index_nodes = t.a.nodes.len
+	if changed {
+		t.comptime_method_metas_cache.clear()
+	}
+}
+
+fn (mut t Transformer) comptime_node_raw_attribute_data(node_id int) RawAttributeData {
+	t.ensure_comptime_method_index()
+	attribute_id := t.comptime_raw_attribute_nodes[node_id] or { return RawAttributeData{} }
+	node := t.a.node(flat.NodeId(attribute_id))
+	return RawAttributeData{
+		attrs: node.generic_params().clone()
+		kinds: if node.typ.len > 0 { node.typ.split(',').map(it.int()) } else { []int{} }
+	}
 }
 
 fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []AttributeMeta {
@@ -738,7 +793,7 @@ fn comptime_attr_is_string_literal(raw string) bool {
 		|| (raw.len >= 3 && raw[0] == `r` && raw[1] in [`'`, `"`] && raw[raw.len - 1] == raw[1])
 }
 
-fn (t &Transformer) comptime_node_attribute_metas(node_id int) []AttributeMeta {
+fn (mut t Transformer) comptime_node_attribute_metas(node_id int) []AttributeMeta {
 	data := t.comptime_node_raw_attribute_data(node_id)
 	return comptime_attribute_metas_from_raw(data.attrs, data.kinds)
 }
@@ -928,7 +983,9 @@ fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
 	mut module_name := ''
 	mut file_name := ''
 	mut signature_fallback := []ParamMeta{}
-	for node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This read-only scan keeps the borrowed AST node valid.
+		node := unsafe { &t.a.nodes[node_id] }
 		if node.kind == .file {
 			module_name = ''
 			file_name = node.value
@@ -950,7 +1007,7 @@ fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
 			|| (module_name == t.cur_module && node.value == wanted)
 		mut params := []ParamMeta{}
 		for i in 0 .. node.children_count {
-			param := t.a.child_node(&node, i)
+			param := t.a.child_node(node, i)
 			if param.kind != .param {
 				if t.prefix_param_scan {
 					break
@@ -1078,26 +1135,26 @@ fn (t &Transformer) typeof_arg_is_param_typ(id flat.NodeId, var_name string) boo
 	if int(id) < 0 {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind != .typeof_expr || node.children_count == 0 {
 		return false
 	}
-	return t.param_typ_expr_references(t.a.child(&node, 0), var_name)
+	return t.param_typ_expr_references(t.a.child(node, 0), var_name)
 }
 
 fn (t &Transformer) param_typ_expr_references(id flat.NodeId, var_name string) bool {
 	if int(id) < 0 {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .selector && node.value == 'typ' && node.children_count > 0 {
-		base := t.a.child_node(&node, 0)
+		base := t.a.child_node(node, 0)
 		if base.kind == .ident && base.value == var_name {
 			return true
 		}
 	}
 	for i in 0 .. node.children_count {
-		if t.param_typ_expr_references(t.a.child(&node, i), var_name) {
+		if t.param_typ_expr_references(t.a.child(node, i), var_name) {
 			return true
 		}
 	}
@@ -1280,34 +1337,33 @@ fn (t &Transformer) comptime_method_source_type(raw string) string {
 	return raw
 }
 
-fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
+fn (mut t Transformer) comptime_method_metas(base_type string) []MethodMeta {
 	requested := t.comptime_method_source_type(base_type)
 	normalized := t.comptime_normalize_type_alias_chain(requested)
 	requested_module := t.comptime_method_requested_module(requested)
-	mut module_name := ''
-	mut file_name := ''
-	mut methods := []MethodMeta{}
+	t.ensure_comptime_method_index()
+	cache_key := '${t.cur_module}|${requested_module}|${requested}|${normalized}'
+	if cached := t.comptime_method_metas_cache[cache_key] {
+		return cached
+	}
+	mut decls := []ComptimeMethodDecl{}
+	requested_receiver := comptime_method_receiver_name(requested, requested_module)
+	normalized_receiver := comptime_method_receiver_name(normalized, requested_module)
+	decls << t.comptime_method_decls[requested_receiver] or { []ComptimeMethodDecl{} }
+	if normalized_receiver != requested_receiver {
+		decls << t.comptime_method_decls[normalized_receiver] or { []ComptimeMethodDecl{} }
+		// Alias and base methods retain their original declaration order.
+		decls.sort(a.id < b.id)
+	}
+	mut methods := []MethodMeta{cap: decls.len}
 	mut seen := map[string]bool{}
-	mut loaded_source_files := map[string]bool{}
-	mut line_offsets_by_file := map[string][]int{}
-	for node_id in 0 .. t.a.nodes.len {
-		// This read-only scan cannot invalidate the borrowed node header.
-		node := unsafe { &t.a.nodes[node_id] }
-		if node.kind == .file {
-			module_name = ''
-			file_name = node.value
-			continue
-		}
-		if node.kind == .module_decl {
-			module_name = node.value
-			continue
-		}
+	for decl in decls {
+		node := t.a.node(flat.NodeId(decl.id))
 		if node.kind != .fn_decl || !node.value.contains('.') || node.children_count == 0 {
 			continue
 		}
 		first := t.a.child_node(node, 0)
-		if first.kind != .param || first.op != .dot || first.value.len == 0
-			|| !comptime_method_receiver_matches(first.typ, requested, normalized, module_name, requested_module) {
+		if first.kind != .param || first.op != .dot || first.value.len == 0 {
 			continue
 		}
 		name := node.value.all_after_last('.')
@@ -1328,7 +1384,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			params << ParamMeta{
 				name:        param.value
 				typ:         substitute_generic_type_text_with_params(param.typ, generic_args, generic_params)
-				module_name: module_name
+				module_name: decl.module_name
 			}
 		}
 		return_type := substitute_generic_type_text_with_params(if node.typ.len > 0 {
@@ -1336,16 +1392,15 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		} else {
 			'void'
 		}, generic_args, generic_params)
-		raw_attr_data := t.comptime_node_raw_attribute_data(node_id)
-		if file_name !in loaded_source_files {
-			loaded_source_files[file_name] = true
-			line_offsets_by_file[file_name] = comptime_source_line_offsets(file_name)
+		raw_attr_data := t.comptime_node_raw_attribute_data(decl.id)
+		if decl.file_name !in t.comptime_method_line_offsets {
+			t.comptime_method_line_offsets[decl.file_name] = comptime_source_line_offsets(decl.file_name)
 		}
 		methods << MethodMeta{
 			name:        name
 			receiver:    first.typ
-			module_name: module_name
-			location:    comptime_source_location(file_name, node.pos.offset, line_offsets_by_file[file_name])
+			module_name: decl.module_name
+			location:    comptime_source_location(decl.file_name, node.pos.offset, t.comptime_method_line_offsets[decl.file_name])
 			return_type: return_type
 			is_pub:      node.op == .arrow
 			params:      params
@@ -1353,6 +1408,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			attributes:  comptime_attribute_metas_from_raw(raw_attr_data.attrs, raw_attr_data.kinds)
 		}
 	}
+	t.comptime_method_metas_cache[cache_key] = methods
 	return methods
 }
 
@@ -1690,12 +1746,12 @@ fn (t &Transformer) method_if_condition_value(id flat.NodeId, var_name string, m
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		return t.method_if_condition_value(t.a.child(&node, 0), var_name, method)
+		return t.method_if_condition_value(t.a.child(node, 0), var_name, method)
 	}
 	if node.kind == .prefix && node.op == .not && node.children_count > 0 {
-		value := t.method_if_condition_value(t.a.child(&node, 0), var_name, method) or {
+		value := t.method_if_condition_value(t.a.child(node, 0), var_name, method) or {
 			return none
 		}
 		return !value
@@ -1704,26 +1760,26 @@ fn (t &Transformer) method_if_condition_value(id flat.NodeId, var_name string, m
 		return none
 	}
 	if node.op == .logical_and {
-		left := t.method_if_condition_value(t.a.child(&node, 0), var_name, method) or {
+		left := t.method_if_condition_value(t.a.child(node, 0), var_name, method) or {
 			return none
 		}
 		if !left {
 			return false
 		}
-		return t.method_if_condition_value(t.a.child(&node, 1), var_name, method)
+		return t.method_if_condition_value(t.a.child(node, 1), var_name, method)
 	}
 	if node.op == .logical_or {
-		left := t.method_if_condition_value(t.a.child(&node, 0), var_name, method) or {
+		left := t.method_if_condition_value(t.a.child(node, 0), var_name, method) or {
 			return none
 		}
 		if left {
 			return true
 		}
-		return t.method_if_condition_value(t.a.child(&node, 1), var_name, method)
+		return t.method_if_condition_value(t.a.child(node, 1), var_name, method)
 	}
 	if node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
-		if left := t.method_const_int_value(t.a.child(&node, 0), var_name, method) {
-			if right := t.method_const_int_value(t.a.child(&node, 1), var_name, method) {
+		if left := t.method_const_int_value(t.a.child(node, 0), var_name, method) {
+			if right := t.method_const_int_value(t.a.child(node, 1), var_name, method) {
 				return match node.op {
 					.eq { left == right }
 					.ne { left != right }
@@ -1739,8 +1795,8 @@ fn (t &Transformer) method_if_condition_value(id flat.NodeId, var_name string, m
 	if node.op !in [.eq, .ne] {
 		return none
 	}
-	left := t.method_const_string_value(t.a.child(&node, 0), var_name, method) or { return none }
-	right := t.method_const_string_value(t.a.child(&node, 1), var_name, method) or { return none }
+	left := t.method_const_string_value(t.a.child(node, 0), var_name, method) or { return none }
+	right := t.method_const_string_value(t.a.child(node, 1), var_name, method) or { return none }
 	return if node.op == .eq { left == right } else { left != right }
 }
 
@@ -1748,9 +1804,9 @@ fn (t &Transformer) method_const_int_value(id flat.NodeId, var_name string, meth
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		return t.method_const_int_value(t.a.child(&node, 0), var_name, method)
+		return t.method_const_int_value(t.a.child(node, 0), var_name, method)
 	}
 	if node.kind == .int_literal {
 		return node.value.int()
@@ -1758,7 +1814,7 @@ fn (t &Transformer) method_const_int_value(id flat.NodeId, var_name string, meth
 	if node.kind != .selector || node.value != 'len' || node.children_count == 0 {
 		return none
 	}
-	params := t.a.child_node(&node, 0)
+	params := t.a.child_node(node, 0)
 	if params.kind != .selector || params.value !in ['args', 'params'] || params.children_count == 0 {
 		return none
 	}
@@ -1773,15 +1829,15 @@ fn (t &Transformer) method_const_string_value(id flat.NodeId, var_name string, m
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		return t.method_const_string_value(t.a.child(&node, 0), var_name, method)
+		return t.method_const_string_value(t.a.child(node, 0), var_name, method)
 	}
 	if node.kind == .string_literal {
 		return node.value
 	}
 	if node.kind == .selector && node.value == 'name' && node.children_count > 0 {
-		base := t.a.child_node(&node, 0)
+		base := t.a.child_node(node, 0)
 		if base.kind == .ident && base.value == var_name {
 			return method.name
 		}
@@ -1830,15 +1886,15 @@ fn (t &Transformer) comptime_method_param_index(id flat.NodeId, var_name string)
 	if int(id) < 0 {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .paren && node.children_count > 0 {
-		return t.comptime_method_param_index(t.a.child(&node, 0), var_name)
+		return t.comptime_method_param_index(t.a.child(node, 0), var_name)
 	}
 	if node.kind != .index || node.value == 'range' || node.children_count < 2 {
 		return none
 	}
-	base := t.a.child_node(&node, 0)
-	index := t.a.child_node(&node, 1)
+	base := t.a.child_node(node, 0)
+	index := t.a.child_node(node, 1)
 	if base.kind != .selector || base.value !in ['args', 'params'] || base.children_count == 0
 		|| index.kind != .int_literal
 		|| !t.comptime_method_param_owner_matches(t.a.child(base, 0), var_name) {
@@ -1851,9 +1907,9 @@ fn (t &Transformer) comptime_method_param_owner_matches(id flat.NodeId, var_name
 	if int(id) < 0 {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .paren && node.children_count > 0 {
-		return t.comptime_method_param_owner_matches(t.a.child(&node, 0), var_name)
+		return t.comptime_method_param_owner_matches(t.a.child(node, 0), var_name)
 	}
 	return node.kind == .ident && node.value == var_name
 }
@@ -1862,12 +1918,12 @@ fn (t &Transformer) comptime_method_name_expr_matches(id flat.NodeId, var_name s
 	if int(id) < 0 {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .ident {
 		return node.value == var_name
 	}
 	if node.kind == .selector && node.value == 'name' && node.children_count > 0 {
-		base := t.a.child_node(&node, 0)
+		base := t.a.child_node(node, 0)
 		return base.kind == .ident && base.value == var_name
 	}
 	return false
@@ -2205,7 +2261,9 @@ fn (t &Transformer) comptime_local_sum_variants(name string) ?[]string {
 		return none
 	}
 	mut module_name := ''
-	for node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This read-only scan keeps the borrowed AST node valid.
+		node := unsafe { &t.a.nodes[node_id] }
 		if node.kind == .file {
 			module_name = ''
 			continue
@@ -2220,7 +2278,7 @@ fn (t &Transformer) comptime_local_sum_variants(name string) ?[]string {
 		}
 		mut variants := []string{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
-			variant := t.a.child_node(&node, i)
+			variant := t.a.child_node(node, i)
 			variants << t.normalize_sum_variant_type(variant.value, module_name, node.generic_params())
 		}
 		return variants
@@ -2285,7 +2343,8 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 		if kind != .enum_decl {
 			continue
 		}
-		node := t.a.nodes[idx]
+		// This helper only reads AST nodes while the borrow is live.
+		node := unsafe { &t.a.nodes[idx] }
 		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 			'${cur_mod}.${node.value}'
 		} else {
@@ -2298,7 +2357,7 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 		mut fields := []EnumDeclFieldValue{}
 		mut field_exprs := map[string]flat.NodeId{}
 		for i in 0 .. node.children_count {
-			f := t.a.child_node(&node, i)
+			f := t.a.child_node(node, i)
 			if f.kind != .enum_field {
 				continue
 			}
@@ -2834,14 +2893,15 @@ fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.
 		mut found_offset := -1
 		mut next_name := ''
 		for candidate_id in t.local_decl_nodes_by_name[source_name] {
-			candidate := t.a.nodes[candidate_id]
+			// This helper only reads AST nodes while the borrow is live.
+			candidate := unsafe { &t.a.nodes[candidate_id] }
 			if candidate.kind != .decl_assign || candidate.children_count < 2
 				|| !candidate.pos.is_valid() || candidate.pos.id != call.pos.id
 				|| candidate.pos.offset >= call.pos.offset || candidate.pos.offset <= found_offset {
 				continue
 			}
-			lhs := t.a.child_node(&candidate, 0)
-			rhs := t.a.child_node(&candidate, 1)
+			lhs := t.a.child_node(candidate, 0)
+			rhs := t.a.child_node(candidate, 1)
 			if lhs.kind == .ident && lhs.value == source_name && rhs.kind == .ident {
 				found_offset = candidate.pos.offset
 				next_name = rhs.value
@@ -2854,15 +2914,17 @@ fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.
 	}
 	if t.source_parent_ids.len > 0 {
 		for candidate_id in t.if_expr_nodes_by_file[call.pos.id] {
-			if t.comptime_option_guard_unwraps(t.a.nodes[candidate_id], source_name, call) {
+			if t.comptime_option_guard_unwraps(unsafe { &t.a.nodes[candidate_id] }, source_name, &call) {
 				return fm.comptime_typ[1..].trim_space()
 			}
 		}
 	} else {
 		// Hand-built transform tests may invoke this helper without prepare(), so
 		// retain the complete scan when the immutable source indexes are unavailable.
-		for candidate in t.a.nodes {
-			if t.comptime_option_guard_unwraps(candidate, source_name, call) {
+		for candidate_id in 0 .. t.a.nodes.len {
+			// This read-only scan keeps the borrowed AST node valid.
+			candidate := unsafe { &t.a.nodes[candidate_id] }
+			if t.comptime_option_guard_unwraps(candidate, source_name, &call) {
 				return fm.comptime_typ[1..].trim_space()
 			}
 		}
@@ -2870,16 +2932,16 @@ fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.
 	return none
 }
 
-fn (t &Transformer) comptime_option_guard_unwraps(candidate flat.Node, source_name string, call flat.Node) bool {
+fn (t &Transformer) comptime_option_guard_unwraps(candidate &flat.Node, source_name string, call &flat.Node) bool {
 	if candidate.kind != .if_expr || candidate.children_count < 2 {
 		return false
 	}
-	body := t.a.child_node(&candidate, 1)
+	body := t.a.child_node(candidate, 1)
 	if !body.pos.is_valid() || body.pos.id != call.pos.id || call.pos.offset < body.pos.offset
 		|| call.pos.offset > body.pos.end {
 		return false
 	}
-	condition := t.a.child_node(&candidate, 0)
+	condition := t.a.child_node(candidate, 0)
 	if condition.kind != .infix || condition.op != .ne || condition.children_count < 2 {
 		return false
 	}
@@ -2920,29 +2982,34 @@ fn (mut t Transformer) prepare_comptime_reflected_for_roles() {
 	}
 	t.comptime_reflected_for_ready = true
 	mut reflected_locals := map[string]bool{}
-	for node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This read-only scan keeps the borrowed AST node valid.
+		node := unsafe { &t.a.nodes[node_id] }
 		if node.kind != .decl_assign || node.children_count < 2 {
 			continue
 		}
-		lhs := t.a.child_node(&node, 0)
+		lhs := t.a.child_node(node, 0)
 		if lhs.kind == .ident && lhs.value.len > 0
-			&& t.subtree_has_comptime_field_selector(t.a.child(&node, 1)) {
+			&& t.subtree_has_comptime_field_selector(t.a.child(node, 1)) {
 			reflected_locals[lhs.value] = true
 		}
 	}
 	mut roles := map[string]u8{}
-	for node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This read-only scan keeps the borrowed AST node valid.
+		node := unsafe { &t.a.nodes[node_id] }
 		if node.kind != .for_in_stmt || node.children_count < 3 {
 			continue
 		}
-		container_id := t.a.child(&node, 2)
-		container := t.a.nodes[int(container_id)]
+		container_id := t.a.child(node, 2)
+		// This helper only reads AST nodes while the borrow is live.
+		container := unsafe { &t.a.nodes[int(container_id)] }
 		if !t.subtree_has_comptime_field_selector(container_id) && !(container.kind == .ident
 			&& reflected_locals[container.value]) {
 			continue
 		}
-		key := t.a.child_node(&node, 0)
-		value := t.a.child_node(&node, 1)
+		key := t.a.child_node(node, 0)
+		value := t.a.child_node(node, 1)
 		has_index := value.kind == .ident && value.value.len > 0
 		if key.kind == .ident && key.value.len > 0 && key.value !in roles {
 			roles[key.value] = if has_index { u8(1) } else { u8(3) }
@@ -2961,22 +3028,25 @@ fn (t &Transformer) comptime_for_container_uses_reflected_field(container_id fla
 	if int(container_id) < 0 || int(container_id) >= t.a.nodes.len {
 		return false
 	}
-	container := t.a.nodes[int(container_id)]
+	// This helper only reads AST nodes while the borrow is live.
+	container := unsafe { &t.a.nodes[int(container_id)] }
 	if container.kind != .ident || container.value.len == 0 {
 		return false
 	}
 	// A common reflection pattern first saves `value := object.$(field.name)`
 	// and then iterates `value`. Find that source declaration in the template;
 	// its cloned concrete declaration no longer contains the `$` selector.
-	for candidate in t.a.nodes {
+	for candidate_id in 0 .. t.a.nodes.len {
+		// This read-only scan keeps the borrowed AST node valid.
+		candidate := unsafe { &t.a.nodes[candidate_id] }
 		if candidate.kind != .decl_assign || candidate.children_count < 2 {
 			continue
 		}
-		lhs := t.a.child_node(&candidate, 0)
+		lhs := t.a.child_node(candidate, 0)
 		if lhs.kind != .ident || lhs.value != container.value {
 			continue
 		}
-		if t.subtree_has_comptime_field_selector(t.a.child(&candidate, 1)) {
+		if t.subtree_has_comptime_field_selector(t.a.child(candidate, 1)) {
 			return true
 		}
 	}
@@ -2987,12 +3057,13 @@ fn (t &Transformer) subtree_has_comptime_field_selector(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	// This helper only reads AST nodes while the borrow is live.
+	node := unsafe { &t.a.nodes[int(id)] }
 	if node.kind == .selector && node.value == '\$' {
 		return true
 	}
 	for i in 0 .. node.children_count {
-		if t.subtree_has_comptime_field_selector(t.a.child(&node, i)) {
+		if t.subtree_has_comptime_field_selector(t.a.child(node, i)) {
 			return true
 		}
 	}
@@ -3208,11 +3279,11 @@ fn (t &Transformer) typeof_arg_variant_member(id flat.NodeId, var_name string) ?
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind != .typeof_expr || node.children_count == 0 {
 		return none
 	}
-	return t.variant_type_member(t.a.child(&node, 0), var_name, false)
+	return t.variant_type_member(t.a.child(node, 0), var_name, false)
 }
 
 // variant_type_member returns `typ` for `v.typ` and `unaliased_typ` for
@@ -3222,13 +3293,13 @@ fn (t &Transformer) variant_type_member(id flat.NodeId, var_name string, allow_p
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
-	mut sel := t.a.nodes[int(id)]
+	mut sel := t.a.node(id)
 	if sel.kind != .selector || sel.children_count == 0 {
 		return none
 	}
 	member := sel.value
 	if member == 'unaliased_typ' {
-		sel = t.a.child_node(&sel, 0)
+		sel = t.a.child_node(sel, 0)
 		if sel.kind != .selector || sel.children_count == 0 {
 			return none
 		}
@@ -3238,7 +3309,7 @@ fn (t &Transformer) variant_type_member(id flat.NodeId, var_name string, allow_p
 	if sel.value != 'typ' {
 		return none
 	}
-	base := t.a.child_node(&sel, 0)
+	base := t.a.child_node(sel, 0)
 	if (allow_pruned && base.kind == .empty) || (base.kind == .ident && base.value == var_name) {
 		return member
 	}
@@ -3390,7 +3461,7 @@ fn (t &Transformer) subtree_has_unsupported_comptime(id flat.NodeId, var_name st
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	// ORM (`sql db { select ... }`) mixes comptime field names with a query DSL.
 	if node.kind in [.sql_expr, .select_stmt] {
 		return true
@@ -3401,10 +3472,10 @@ fn (t &Transformer) subtree_has_unsupported_comptime(id flat.NodeId, var_name st
 	// A `field.member` / `field.$(...)` selector is a supported comptime access: check its other
 	// children but not the base loop-var ident (which is not a bare use).
 	if node.kind == .selector && node.children_count > 0 {
-		base := t.a.child_node(&node, 0)
+		base := t.a.child_node(node, 0)
 		if base.kind == .ident && base.value == var_name {
 			for i in 1 .. node.children_count {
-				if t.subtree_has_unsupported_comptime(t.a.child(&node, i), var_name, reject_typeof) {
+				if t.subtree_has_unsupported_comptime(t.a.child(node, i), var_name, reject_typeof) {
 					return true
 				}
 			}
@@ -3412,7 +3483,7 @@ fn (t &Transformer) subtree_has_unsupported_comptime(id flat.NodeId, var_name st
 		}
 	}
 	for i in 0 .. node.children_count {
-		if t.subtree_has_unsupported_comptime(t.a.child(&node, i), var_name, reject_typeof) {
+		if t.subtree_has_unsupported_comptime(t.a.child(node, i), var_name, reject_typeof) {
 			return true
 		}
 	}
@@ -3423,12 +3494,12 @@ fn (t &Transformer) subtree_references_var(id flat.NodeId, var_name string) bool
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .ident && node.value == var_name {
 		return true
 	}
 	for i in 0 .. node.children_count {
-		if t.subtree_references_var(t.a.child(&node, i), var_name) {
+		if t.subtree_references_var(t.a.child(node, i), var_name) {
 			return true
 		}
 	}
@@ -3439,12 +3510,12 @@ fn (t &Transformer) subtree_has_unsupported_late_generic(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .call && node.value == comptime_unsupported_late_generic_call {
 		return true
 	}
 	for i in 0 .. node.children_count {
-		if t.subtree_has_unsupported_late_generic(t.a.child(&node, i)) {
+		if t.subtree_has_unsupported_late_generic(t.a.child(node, i)) {
 			return true
 		}
 	}
@@ -3649,7 +3720,9 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 	// keyed by source declarations, so recover the generic declaration prefix.
 	mut cur_mod := ''
 	mut cur_file_id := 0
-	for node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This read-only scan keeps the borrowed AST node valid.
+		node := unsafe { &t.a.nodes[node_id] }
 		if node.pos.id > 0 && node.pos.id != cur_file_id {
 			cur_file_id = node.pos.id
 			cur_mod = 'main'
@@ -4330,11 +4403,11 @@ fn (t &Transformer) direct_reflected_field_attrs_selector(id flat.NodeId, var_na
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind != .selector || node.value != 'attrs' || node.children_count == 0 {
 		return false
 	}
-	base := t.a.child_node(&node, 0)
+	base := t.a.child_node(node, 0)
 	return base.kind == .ident && base.value == var_name
 }
 
@@ -4352,9 +4425,9 @@ fn (t &Transformer) comptime_field_attrs_condition(id flat.NodeId, var_name stri
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .prefix && node.op == .not && node.children_count == 1 {
-		value := t.comptime_field_attrs_condition(t.a.child(&node, 0), var_name, fm) or {
+		value := t.comptime_field_attrs_condition(t.a.child(node, 0), var_name, fm) or {
 			return none
 		}
 		return !value
@@ -4362,7 +4435,7 @@ fn (t &Transformer) comptime_field_attrs_condition(id flat.NodeId, var_name stri
 	if node.kind != .call || node.children_count != 2 {
 		return none
 	}
-	callee := t.a.child_node(&node, 0)
+	callee := t.a.child_node(node, 0)
 	if callee.kind != .selector || callee.value != 'contains' || callee.children_count == 0 {
 		return none
 	}
@@ -4371,7 +4444,7 @@ fn (t &Transformer) comptime_field_attrs_condition(id flat.NodeId, var_name stri
 		return none
 	}
 	base := t.a.child_node(attrs, 0)
-	needle := t.a.child_node(&node, 1)
+	needle := t.a.child_node(node, 1)
 	if base.kind != .ident || base.value != var_name || needle.kind != .string_literal {
 		return none
 	}
@@ -4385,27 +4458,27 @@ fn (t &Transformer) direct_reflected_field_selector(id flat.NodeId, var_name str
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .paren && node.children_count == 1 {
-		return t.direct_reflected_field_selector(t.a.child(&node, 0), var_name)
+		return t.direct_reflected_field_selector(t.a.child(node, 0), var_name)
 	}
 	return node.kind == .selector && node.value == '\$' && node.children_count >= 2
-		&& t.dollar_selector_names_var(t.a.child(&node, 1), var_name)
+		&& t.dollar_selector_names_var(t.a.child(node, 1), var_name)
 }
 
 fn (t &Transformer) subtree_has_reflected_typeof_idx(id flat.NodeId, var_name string) bool {
 	if int(id) < 0 {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind == .selector && node.value == 'idx' && node.children_count > 0 {
-		base := t.a.child_node(&node, 0)
-		if base.kind == .typeof_expr && t.subtree_references_var(t.a.child(&node, 0), var_name) {
+		base := t.a.child_node(node, 0)
+		if base.kind == .typeof_expr && t.subtree_references_var(t.a.child(node, 0), var_name) {
 			return true
 		}
 	}
 	for i in 0 .. node.children_count {
-		if t.subtree_has_reflected_typeof_idx(t.a.child(&node, i), var_name) {
+		if t.subtree_has_reflected_typeof_idx(t.a.child(node, i), var_name) {
 			return true
 		}
 	}
@@ -4471,11 +4544,11 @@ fn (t &Transformer) typeof_arg_is_var(id flat.NodeId, var_name string) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind != .typeof_expr || node.children_count == 0 {
 		return false
 	}
-	arg := t.a.child_node(&node, 0)
+	arg := t.a.child_node(node, 0)
 	return arg.kind == .ident && arg.value == var_name
 }
 
@@ -4483,11 +4556,11 @@ fn (t &Transformer) typeof_arg_is_field_typ(id flat.NodeId, var_name string) boo
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	if node.kind != .typeof_expr || node.children_count == 0 {
 		return false
 	}
-	arg := t.a.child_node(&node, 0)
+	arg := t.a.child_node(node, 0)
 	if arg.kind != .selector || arg.value != 'typ' || arg.children_count == 0 {
 		return false
 	}
@@ -4502,11 +4575,11 @@ fn (t &Transformer) dollar_selector_names_var(name_id flat.NodeId, var_name stri
 	if int(name_id) < 0 {
 		return false
 	}
-	name_expr := t.a.nodes[int(name_id)]
+	name_expr := t.a.node(name_id)
 	if name_expr.kind != .selector || name_expr.value != 'name' || name_expr.children_count == 0 {
 		return false
 	}
-	base := t.a.child_node(&name_expr, 0)
+	base := t.a.child_node(name_expr, 0)
 	return base.kind == .ident && base.value == var_name
 }
 

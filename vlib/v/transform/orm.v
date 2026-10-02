@@ -2159,7 +2159,7 @@ fn (t &Transformer) sql_transform_field_column_name(table SqlTransformTableInfo,
 	return t.sql_table_column_name(field_name, meta)
 }
 
-fn (t &Transformer) sql_runtime_table_name(table_name string) string {
+fn (mut t Transformer) sql_runtime_table_name(table_name string) string {
 	for attr in t.sql_table_attributes(table_name) {
 		if attr.name == 'table' && attr.has_arg {
 			return trim_attr_arg_text(attr.arg)
@@ -3033,7 +3033,7 @@ fn sql_where_scope_for_stmt(stmt SqlTransformStmt, qualify bool) SqlTransformWhe
 	}
 }
 
-fn (t &Transformer) sql_resolve_where_field(scope SqlTransformWhereScope, raw_field string) ?SqlTransformResolvedWhereField {
+fn (mut t Transformer) sql_resolve_where_field(scope SqlTransformWhereScope, raw_field string) ?SqlTransformResolvedWhereField {
 	mut table := scope.table
 	mut field_name := raw_field
 	if qualifier, field := sql_qualified_field_token(raw_field) {
@@ -3500,14 +3500,16 @@ fn (t &Transformer) sql_struct_info_fields(info StructInfo) []types.StructField 
 	return fields
 }
 
-fn (t &Transformer) sql_table_attributes(table string) []AttributeMeta {
+fn (mut t Transformer) sql_table_attributes(table string) []AttributeMeta {
 	base := sql_table_base_name(t.sql_resolved_table_name(table))
 	if base.contains('.') {
 		module_name := base.all_before_last('.')
 		struct_name := base.all_after_last('.')
 		return t.sql_table_attributes_for_decl(module_name, struct_name)
 	}
-	for idx, node in t.a.nodes {
+	for idx in 0 .. t.a.nodes.len {
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[idx] }
 		if node.kind == .struct_decl && node.value == base {
 			return t.sql_decl_attribute_metas(idx, node)
 		}
@@ -3515,11 +3517,12 @@ fn (t &Transformer) sql_table_attributes(table string) []AttributeMeta {
 	return []AttributeMeta{}
 }
 
-fn (t &Transformer) sql_table_attributes_for_decl(module_name string, struct_name string) []AttributeMeta {
+fn (mut t Transformer) sql_table_attributes_for_decl(module_name string, struct_name string) []AttributeMeta {
 	mut cur_module := ''
 	if !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
 		for idx in t.tc.top_level_idx {
-			node := t.a.nodes[idx]
+			// Context indexes can change here, but the AST arena cannot.
+			node := unsafe { &t.a.nodes[idx] }
 			match node.kind {
 				.file {
 					cur_module = t.tc.file_modules[node.value] or { '' }
@@ -3537,7 +3540,9 @@ fn (t &Transformer) sql_table_attributes_for_decl(module_name string, struct_nam
 		}
 		return []AttributeMeta{}
 	}
-	for idx, node in t.a.nodes {
+	for idx in 0 .. t.a.nodes.len {
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[idx] }
 		match node.kind {
 			.file {
 				if !isnil(t.tc) {
@@ -3560,7 +3565,7 @@ fn (t &Transformer) sql_table_attributes_for_decl(module_name string, struct_nam
 	return []AttributeMeta{}
 }
 
-fn (t &Transformer) sql_decl_attribute_metas(node_id int, node flat.Node) []AttributeMeta {
+fn (mut t Transformer) sql_decl_attribute_metas(node_id int, node &flat.Node) []AttributeMeta {
 	attrs := t.comptime_node_attribute_metas(node_id)
 	if attrs.len > 0 {
 		return attrs
@@ -3576,7 +3581,7 @@ fn (t &Transformer) sql_decl_attribute_metas(node_id int, node flat.Node) []Attr
 	target := marker.value['@attributes:'.len..].int()
 	mut targets_decl := target == node_id
 	for i in 0 .. node.children_count {
-		if int(t.a.child(&node, i)) == target {
+		if int(t.a.child(node, i)) == target {
 			targets_decl = true
 			break
 		}

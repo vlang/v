@@ -30,7 +30,7 @@ const tool_cache_dir_env = 'VTOOLS_CACHE_DIR'
 const tool_cache_verbose_env = 'VTOOLS_CACHE_VERBOSE'
 const tool_cache_field_separator = '\x1f'
 // marks a cached binary that had to be renamed out of the way instead of being overwritten,
-// because Windows was still executing it; `prune_stale_tool_binaries` collects these later
+// because Windows was still executing it; `prune_stale_tool_binaries_locked` collects these later
 const tool_cache_replaced_marker = '.replaced.'
 const tool_cache_stage_prefix = '.v-toolcache-stage-'
 
@@ -299,12 +299,6 @@ fn tool_cache_entry(vexe string, vroot string, tool_name string, tool_source str
 		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
 		build_args:           build_args.clone()
 	}
-}
-
-// tool_cache_is_fresh reports whether `entry.binary` can be executed as is, i.e. whether
-// every source file it was built from is still exactly the way it was at build time.
-fn tool_cache_is_fresh(entry ToolCacheEntry) bool {
-	return tool_cache_stale_reason(entry) == ''
 }
 
 // tool_cache_stale_reason returns an empty string when the cached binary is still usable,
@@ -790,9 +784,9 @@ fn failure_module_manifest_inputs(entry ToolCacheEntry, source_files []string, m
 	return result
 }
 
-// record_unbuildable_tool remembers a failed build together with the inputs that caused it,
-// so that the failing compilation is not repeated on every invocation, while fixing any of
-// those inputs still makes it be retried.
+// encode_unbuildable_tool_manifest records the inputs that caused a failed build, so that
+// the failing compilation is not repeated on every invocation, while fixing any of those
+// inputs still makes it be retried.
 fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started i64, details string) string {
 	source_files := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
 	mut manifest := encode_tool_cache_manifest(source_files, started)
@@ -862,14 +856,8 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 	return manifest
 }
 
-fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, details string) {
-	manifest := encode_unbuildable_tool_manifest(entry, dumped, started, details)
-	os.write_file(entry.unbuildable_manifest, manifest) or { return }
-	os.write_file(entry.unbuildable, details) or {}
-}
-
 // encode_tool_cache_manifest turns the `-dump-files` source closure into the manifest that
-// `tool_cache_is_fresh` revalidates. Besides the files themselves it records the directories
+// `tool_cache_stale_reason` revalidates. Besides the files themselves it records the directories
 // that contain them, so that a source file added to an imported module is detected too.
 fn encode_tool_cache_manifest(source_files []string, started i64) string {
 	mut lines := []string{}
@@ -906,21 +894,6 @@ fn encode_tool_cache_manifest(source_files []string, started i64) string {
 		lines << 'e${tool_cache_field_separator}${path}${tool_cache_field_separator}${boundary_marker_stamp(path)}'
 	}
 	return lines.join('\n') + '\n'
-}
-
-// publish_atomically moves `staged` over `destination` in a single step, so that a
-// concurrently running V process either sees the previous file or the new one, but never
-// a half written one, and never has the executable it is starting truncated underneath it.
-// `destination` regularly already exists: a tool whose own sources and compiler are
-// unchanged keeps its cache key, so a rebuild triggered by an imported vlib module lands
-// in the very same slot. Replacing it is what `replace_file_atomically` is for; a plain
-// `os.rename` would fail there on Windows.
-fn publish_atomically(staged string, destination string) bool {
-	if !replace_file_atomically(staged, destination) {
-		os.rm(staged) or {}
-		return false
-	}
-	return true
 }
 
 // is_cache_artifact_of reports whether `name` is the entry directory of a cache entry of
@@ -963,21 +936,10 @@ fn tool_cache_lock(entry ToolCacheEntry) !filelock.FileLock {
 	return filelock.new_file(path, mode: .exclusive)
 }
 
-// prune_stale_tool_binaries drops invalid cache entries of the same tool while retaining
-// fresh builds for other compiler flags and checkouts sharing the cache directory.
-// Unlinking an executable that another process is currently running is safe on POSIX: that
-// process keeps its own already opened image.
-fn prune_stale_tool_binaries(entry ToolCacheEntry) {
-	mut build_lock := tool_cache_lock(entry) or { return }
-	if !build_lock.try_acquire() {
-		return
-	}
-	defer {
-		build_lock.release()
-	}
-	prune_stale_tool_binaries_locked(entry)
-}
-
+// prune_stale_tool_binaries_locked drops invalid cache entries of the same tool while its
+// build lock is held, retaining fresh builds for other compiler flags and checkouts sharing
+// the cache directory. Unlinking a running executable is safe on POSIX: the process keeps its
+// own already opened image.
 fn prune_stale_tool_binaries_locked(entry ToolCacheEntry) {
 	// A binary that Windows would not let us overwrite while it was still being executed was
 	// renamed aside instead. Open the entry without following links and enumerate/remove its

@@ -1062,9 +1062,11 @@ fn (g &FlatGen) ownership_destructor_method_name() string {
 }
 
 // ownership_free_call releases boxed storage with the allocator used to create it.
-// Detached spawn results use the thread allocator; ordinary boxes use memdup,
-// which allocates from the Boehm heap when GC is enabled.
+// memdup uses the prealloc arena even for boxes inside detached spawn results.
 fn (g &FlatGen) ownership_free_call(ptr string) string {
+	if 'prealloc' in g.compile_defines {
+		return 'v_free(${ptr});'
+	}
 	if g.detached_spawn_drop {
 		return '__v_thread_free(${ptr});'
 	}

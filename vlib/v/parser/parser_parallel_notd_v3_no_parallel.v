@@ -185,6 +185,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		mut w := Parser.new(p.prefs)
 		w.parse_batch_paths = paths.clone()
 		w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
+		w.quick_source_sums = p.quick_source_sums
 		mut chunk_bytes := i64(0)
 		for i in bounds[ci + 1] .. bounds[ci + 2] {
 			chunk_bytes += sizes[i]
@@ -1006,9 +1007,20 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 				canonical_params << canonical
 				params_hit = params_hit && item_hit
 			}
+			constraints := node.generic_constraints()
+			mut canonical_constraints := []string{cap: constraints.len}
+			for item in constraints {
+				if item.len == 0 {
+					canonical_constraints << ''
+					continue
+				}
+				canonical, item_hit := p.a.probe_text_ptr_cached(item, mut value_cache.ptrs, mut value_cache.values)
+				canonical_constraints << canonical
+				params_hit = params_hit && item_hit
+			}
 			if params_hit {
 				// The rebuilt array persists: pool-thread arenas outlive the merge.
-				node.set_generic_params(canonical_params)
+				node.set_generic_params_and_constraints(canonical_params, canonical_constraints)
 			} else {
 				all_hit = false
 			}
@@ -1043,6 +1055,9 @@ fn clone_parser_source_file(file &token.File) &token.File {
 	mut stored_file := file_set.add_file(file.name.clone(), file.size)
 	if file.has_source_sha256() {
 		stored_file.set_source_sha256(file.source_sha256())
+	}
+	if file.has_source_quick_sum() {
+		stored_file.set_source_quick_sum(file.source_quick_sum())
 	}
 	for line in 2 .. file.line_count() + 1 {
 		stored_file.add_line(file.line_start(line))

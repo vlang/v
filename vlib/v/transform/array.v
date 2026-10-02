@@ -3541,13 +3541,18 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	elem_var_type := if mapper_takes_elem_address { '&${elem_type}' } else { elem_type }
 	old_elem := t.var_type(elem_name)
 	t.set_var_type(elem_name, elem_var_type)
-	checker_result_elem_type := t.checker_expr_type_name(map_expr_id) or { '' }
+	// What a lambda maps an element to is the type of its body: the type of the
+	// lambda itself is its function type, `fn (User) string`, which the checker
+	// can have for it, as when a local function before it names a parameter as
+	// the lambda does.
+	mapped_value_id := if map_expr.kind == .lambda_expr { map_source_id } else { map_expr_id }
+	checker_result_elem_type := t.checker_expr_type_name(mapped_value_id) or { '' }
 	checker_result_elem_type_is_usable := decl_type_is_usable(checker_result_elem_type)
 		&& checker_result_elem_type != 'void'
 	mut result_elem_type := if checker_result_elem_type_is_usable {
 		checker_result_elem_type
 	} else {
-		t.node_type(map_expr_id)
+		t.node_type(mapped_value_id)
 	}
 	mut direct_selector_type := ''
 	mut mapped_source_node := t.a.nodes[int(mapped_source)]

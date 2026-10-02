@@ -218,6 +218,10 @@ is:open is:issue label:Bug label:"OS: Windows" label:"Status: Confirmed"
 This filter will return all open issues with the labels `Bug`, `OS: Windows`,
 and `Status: Confirmed`.
 
+The `vlib modules CI` workflow tests `v doc` and generates the standard module documentation.
+On master pushes, it also publishes the generated site to <https://modules.vlang.io/>.
+A failed deployment fails the workflow, so a green run confirms that publishing succeeded too.
+
 ## Using Github's hub CLI tool
 
 You can download the `hub` tool from https://hub.github.com/ . Using

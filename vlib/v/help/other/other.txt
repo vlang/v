@@ -18,14 +18,23 @@ Other less frequently used commands supported by V include:
 
   check-md         Check that V examples in markdown files are formatted and can compile.
 
+  clean            Remove the executables that a default V build leaves behind.
+
   doctor           Display some useful info about your system to help reporting bugs.
 
   env               Print the environment variables that steer the V compiler
                    and its tools, with the value V would use for each.
 
+  mod               Answer questions about the modules a project depends on.
+                   `v mod why MODULE` prints the chain of imports that brings
+                   MODULE into the build.
+
   setup-freetype   Setup thirdparty freetype on Windows.
 
   share            Send your code to the V Playground
+
+  tool              Run a tool module by name. `v tool` with no argument lists
+                   the tool modules of the project and the global module folders.
 
   translate        Translate C code to V.
 

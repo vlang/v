@@ -154,6 +154,9 @@ fn v3_diagnostics_output(vexe string, args []string) string {
 	mut environment := os.environ()
 	environment.delete(v3_fallback_file_env)
 	environment.delete(v3_c_error_dir_env)
+	// In a child of a diagnostics server, the replay is a compilation too, not
+	// a server that waits for requests from no one.
+	environment.delete('V_DIAGNOSTICS_SERVER')
 	environment[v3_no_fallback_env] = '1'
 	environment[v3_retry_env] = '1'
 	environment['VFLAGS'] = ''

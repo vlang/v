@@ -33,6 +33,7 @@ const external_commands = [
 	'build-vbinaries',
 	'bump',
 	'check-md',
+	'clean',
 	'complete',
 	'compress',
 	'cover',
@@ -50,6 +51,7 @@ const external_commands = [
 	'list',
 	'ls',
 	'missdoc',
+	'mod',
 	'new',
 	'outdated',
 	'quest',
@@ -76,6 +78,7 @@ const external_commands = [
 	'test-self',
 	'time',
 	'timeout',
+	'tool',
 	'tracev',
 	'translate',
 	'unlink',
@@ -237,6 +240,15 @@ fn ownership_compiler_is_required(args []string) bool {
 	return false
 }
 
+// ownership_bootstrap_can_use_current_compiler distinguishes compiling in support from
+// actually checking the compiler source with an ownership mode.
+fn ownership_bootstrap_can_use_current_compiler(args []string, compiler_source string) bool {
+	if args.any(it in ['-ownership', '--ownership', '-autofree']) {
+		return false
+	}
+	return args.any(os.exists(it) && os.real_path(it) == os.real_path(compiler_source))
+}
+
 // launch_ownership_compiler builds and starts a V3 executable that contains the optional
 // ownership checker. The regular compiler stays small and preserves normal value semantics;
 // only explicit ownership/autofree compilations pay for the additional checker.
@@ -252,7 +264,7 @@ fn launch_ownership_compiler(args []string) {
 	compiler_source := os.join_path(vroot, 'cmd', 'v')
 	// A regular V3 compiler is deliberately allowed to create the ownership-enabled
 	// executable. Do not recursively dispatch that bootstrap compilation to itself.
-	if args.any(os.exists(it) && os.real_path(it) == os.real_path(compiler_source)) {
+	if ownership_bootstrap_can_use_current_compiler(args, compiler_source) {
 		driver.run(args)
 		exit(0)
 	}

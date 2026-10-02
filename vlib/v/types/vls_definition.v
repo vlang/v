@@ -65,6 +65,9 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 			if at := tc.vls_global_definition(node.value) {
 				return at
 			}
+			if at := tc.vls_type_param_definition(id, node.value) {
+				return at
+			}
 			if at := tc.vls_type_definition(node.value) {
 				return at
 			}
@@ -85,6 +88,9 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 			return tc.vls_enum_value_definition(vls_unwrap_type(typ), node.value)
 		}
 		.cast_expr, .struct_init, .is_expr, .as_expr {
+			if at := tc.vls_type_param_definition(id, node.value) {
+				return at
+			}
 			return tc.vls_type_definition(node.value)
 		}
 		.param, .enum_field, .field_decl, .fn_decl, .const_field, .interface_field {
@@ -159,19 +165,11 @@ fn (tc &TypeChecker) vls_function_definition(resolved string) ?VlsPos {
 		return VlsPos{int(decl.pos.id), int(decl.pos.offset)}
 	}
 	interface_name := resolved.all_before_last('.')
-	method := resolved.all_after_last('.')
 	if interface_name == resolved {
 		return none
 	}
-	index := tc.first_type_declaration_ids[interface_name] or { return none }
-	decl := tc.a.nodes[index]
-	for i in 0 .. decl.children_count {
-		member := tc.a.child_node(&decl, i)
-		if member.kind == .interface_field && member.value == method {
-			return VlsPos{int(member.pos.id), int(member.pos.offset)}
-		}
-	}
-	return none
+	member := tc.vls_interface_member(interface_name, resolved.all_after_last('.'))?
+	return VlsPos{int(member.pos.id), int(member.pos.offset)}
 }
 
 fn (tc &TypeChecker) vls_const_definition(name string) ?VlsPos {
@@ -202,6 +200,112 @@ fn (tc &TypeChecker) vls_global_definition(name string) ?VlsPos {
 		}
 	}
 	return none
+}
+
+// vls_type_param_definition is where `word` is declared when it names a type
+// parameter of the declaration around the node `id` (see
+// vls_type_param_declared_at): a type parameter hides a type of its name.
+fn (tc &TypeChecker) vls_type_param_definition(id flat.NodeId, word string) ?VlsPos {
+	decl, _ := tc.vls_enclosing_decl(id)?
+	return tc.vls_type_param_declared_at(decl, word)
+}
+
+// vls_type_param_declared_at is where the declaration `decl` declares its type
+// parameter `word`: its name in the list after the name of the declaration, `T`
+// of `fn take[T Named](x T) T` or of `struct Box[T Named]`, or in the type of the
+// receiver of a method, `T` of `fn (b Box[T]) get() T`. A type written among the
+// parameters, `(x Box[T])`, is a use of it.
+fn (tc &TypeChecker) vls_type_param_declared_at(decl flat.Node, word string) ?VlsPos {
+	if word !in tc.type_param_scope(decl).names {
+		return none
+	}
+	file_id := int(decl.pos.id)
+	source := tc.vls_source(file_id)
+	decl_start := int(decl.pos.offset)
+	if decl_start < 0 || decl_start > source.len {
+		return none
+	}
+	mut start := decl_start
+	for start > 0 && source[start - 1] != `\n` {
+		start--
+	}
+	// What comes before the parameters, or the body: the receiver, the name
+	// and its list. A type alias has its node after its `=`.
+	mut end := if decl.kind == .type_decl {
+		decl_start
+	} else {
+		source.index_after('{', decl_start) or { source.len }
+	}
+	if decl.kind == .fn_decl {
+		name := vls_declared_fn_name(decl.value)
+		mut from := start
+		for {
+			at := source.index_after(name, from) or { break }
+			if at >= end {
+				break
+			}
+			after := at + name.len
+			if (at == 0 || !vls_is_name_byte(source[at - 1])) && after < source.len
+				&& source[after] in [`[`, `(`] {
+				end = source.index_after('(', after) or { end }
+				break
+			}
+			from = at + 1
+		}
+	}
+	mut found := -1
+	mut i := start
+	for i < end {
+		if source[i] != `[` {
+			i++
+			continue
+		}
+		mut depth := 0
+		mut part_start := i + 1
+		mut j := i
+		for j < end {
+			c := source[j]
+			if c == `[` {
+				depth++
+			} else if c == `]` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			} else if c == `,` && depth == 1 {
+				if at := vls_part_starting_with(source, part_start, j, word) {
+					found = at
+				}
+				part_start = j + 1
+			}
+			j++
+		}
+		if j < end {
+			if at := vls_part_starting_with(source, part_start, j, word) {
+				found = at
+			}
+		}
+		i = j + 1
+	}
+	if found < 0 {
+		return none
+	}
+	return VlsPos{file_id, found}
+}
+
+// vls_part_starting_with returns where `word` starts the part of `source` from
+// `from` to `to`, a type parameter with its constraint, `T Named`.
+fn vls_part_starting_with(source string, from int, to int, word string) ?int {
+	mut at := from
+	for at < to && source[at] in [` `, `\t`, `\n`, `\r`] {
+		at++
+	}
+	end := at + word.len
+	if end > to || !vls_holds_at(source, at, word) || (end < source.len
+		&& vls_is_name_byte(source[end])) {
+		return none
+	}
+	return at
 }
 
 // vls_type_definition is where the type `name` is declared: the name after
@@ -249,8 +353,8 @@ fn (tc &TypeChecker) vls_selector_definition(node flat.Node) ?VlsPos {
 	if at := tc.vls_field_definition(type_name, node.value) {
 		return at
 	}
-	// A method named without a call.
-	return tc.vls_function_definition('${type_name}.${node.value}')
+	// A method named without a call, as a call of it.
+	return tc.vls_function_definition(tc.vls_method_target(receiver_id, node.value)?)
 }
 
 // vls_module_member_definition is where `module.member` is declared: a const,

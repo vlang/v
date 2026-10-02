@@ -1,0 +1,40 @@
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+struct Admin {
+	User
+	level int
+}
+
+type Number = int | f64
+
+struct Box[T Named] {
+	item T
+}
+
+fn longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+fn half[T Number](x T) T {
+	return x / 2
+}
+
+fn greet[T User](x T) string {
+	return x.name
+}
+
+fn main() {
+	println(longest(1, 2))
+	println(longest[int](1, 2))
+	println(half('a'))
+	println(greet(Admin{}))
+	println(greet(1))
+	b := Box[int]{}
+	println(b)
+}
