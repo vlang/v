@@ -5064,6 +5064,9 @@ An Option stores either a value or `none`. It has no error field and cannot carr
 its failure state. A Result stores either a value or an `IError`.
 An `IError` may still be an ordinary Option payload, for example `?IError`.
 
+A function returning only `!` or `?` has no success payload. Its return type is a Result or
+Option of `void`; callers still handle errors or absence with an `or` block or propagation.
+
 With the C backend, Options store their payload inline. Wrapping a value or returning `none`
 does not allocate; the payload itself can require allocation, as with arrays or interface values.
 Results also store their payload inline, sharing storage between the value and error.
