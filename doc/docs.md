@@ -6995,7 +6995,9 @@ Skill names must contain only lowercase letters, digits and single hyphens, and
 must match the bundled name. Installation stays within an immediate child of the
 skills directory, including with `--force`; bundled file paths cannot escape that
 skill and must refer to regular files. The `v-workflow` check script exits with a
-nonzero status when any compilation, formatting or vet check fails.
+nonzero status when any compilation, formatting or vet check fails. The bundled
+`v-testing` runner uses the normal child reporter while preserving other `VFLAGS`
+options, and treats an empty test selection as a failure.
 
 The skills are read from the source tree at run time rather than embedded into the
 binary, so a skill can be reviewed and diffed in the repository and adding one

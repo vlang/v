@@ -27,7 +27,7 @@ builtin.
 | Test a result | `assert f() == none` — it fails with the error text |
 | A temporary file | `os.join_path(os.vtmp_dir(), 'name_${stamp}')` |
 | Cleanup | `defer { os.rm(path) or {} }` |
-| Only some files | `VTEST_ONLY='*http*' v test dir/` |
+| Only some files | `VTEST_ONLY='http' v test dir/` |
 | Only some functions | `VTEST_ONLY_FN='test_login' v test dir/` |
 | Hide passing tests | `v -silent test dir/` |
 | Timings | `v -stats test dir/` |
@@ -93,15 +93,23 @@ if cfg := read_config(x) {
 The full suite is slow. Filter it rather than paying for all of it:
 
 ```bash
-VTEST_ONLY='*http*' v test dir/        # only files whose path matches
+VTEST_ONLY='http' v test dir/          # only files whose path contains http
 VTEST_ONLY_FN='test_login' v test dir/ # only functions matching
 v -silent test dir/                    # hide passing tests
 v -stats test dir/                     # add timings
 ```
 
-Both filters accept a comma-separated list. If a filter matches nothing, the run
-reports zero tests and exits successfully — see `references/TROUBLESHOOTING.md`,
-because a suite that silently tests nothing is the failure mode to watch for.
+Both filters accept a comma-separated list. File filters use path fragments;
+function filters use glob patterns. If a filter matches nothing, the raw runner
+reports zero tests and exits successfully. The wrapper uses the normal reporter
+for its child runs and preserves other `VFLAGS` options. It reports an empty
+selection as a failure, including when no filter is set:
+
+```bash
+v run scripts/run-tests.vsh dir/ --file http --fn 'test_login*'
+```
+
+See `references/TROUBLESHOOTING.md` for other causes of tests not running.
 
 ## Fixtures
 

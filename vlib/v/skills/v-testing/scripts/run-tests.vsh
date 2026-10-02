@@ -1,4 +1,5 @@
 #!/usr/bin/env -S v run
+
 // run-tests.vsh runs a V test suite with a filter, which is what makes a full
 // suite workable: run one test while working, run everything before finishing.
 //
@@ -13,6 +14,7 @@
 // a passing run otherwise look the same.
 
 import os
+import term
 
 fn main() {
 	args := os.args[1..]
@@ -49,6 +51,10 @@ fn main() {
 		}
 		i++
 	}
+	if targets.len == 0 {
+		eprintln('run-tests.vsh: at least one test path is required')
+		exit(2)
+	}
 	mut missing := 0
 	for target in targets {
 		if !os.exists(target) {
@@ -58,6 +64,12 @@ fn main() {
 	}
 	if missing > 0 {
 		exit(2)
+	}
+	// The first reporter selector wins. VFLAGS precedes command-line options,
+	// so prefix it while retaining the user's other compiler flags.
+	restore_runner := set_env('VFLAGS', '-test-runner normal ' + os.getenv('VFLAGS'))
+	defer {
+		restore_runner()
 	}
 	// The filters go into the environment because the test runner reads them there,
 	// not on its command line.
@@ -83,6 +95,12 @@ fn main() {
 			eprint(result.output)
 			continue
 		}
+		if selected_no_tests(result.output) {
+			failed++
+			eprintln('run-tests.vsh: no tests selected for ${target}')
+			eprint(result.output)
+			continue
+		}
 		println('run-tests.vsh: ok ${target}')
 	}
 	if failed > 0 {
@@ -90,6 +108,18 @@ fn main() {
 		exit(1)
 	}
 	println('run-tests.vsh: all targets passed')
+}
+
+// selected_no_tests checks the runner's final summary, not earlier test output.
+fn selected_no_tests(output string) bool {
+	prefix := 'Summary for all V _test.v files: '
+	mut summary := ''
+	for line in term.strip_ansi(output).split_into_lines() {
+		if line.starts_with(prefix) {
+			summary = line[prefix.len..]
+		}
+	}
+	return summary.starts_with('0 total.')
 }
 
 // value_at returns `args[i]`, or exits when the option has no value.
