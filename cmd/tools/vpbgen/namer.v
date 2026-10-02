@@ -147,16 +147,44 @@ pub fn safe_field_name(name string) string {
 // safe_type_name returns a V type name for a proto message or enum called
 // `name`, with a keyword collision handled the same way as a field.
 pub fn safe_type_name(name string) string {
-	if is_v_keyword(name) {
-		return '${name}_'
+	// The pascal_case form is checked, not the proto name: a type name is
+	// capitalised, so a lowercase keyword like `type` cannot collide and must
+	// not be escaped into `Type_`. Only a capitalised V keyword is a real
+	// collision, and there is no reason for a schema to contain one.
+	// The local is not named `pascal`: that is a C++ keyword, and the identifier
+	// reaches the generated C verbatim.
+	out := pascal_case(name)
+	if is_v_keyword(out) {
+		return '${out}_'
 	}
-	return pascal_case(name)
+	return out
 }
 
 // method_name returns the V function name for a message's codec, e.g.
 // `GetRequest` gives `get_request`.
 pub fn method_name(name string) string {
 	return snake_case(name)
+}
+
+// zero_value returns an expression for the zero value of a V type, in the form
+// that can be assigned to a `mut` local.
+//
+// This cannot be `T{}` for a scalar. V parses `i32{}` as a composite literal
+// for an unknown type and reports `undefined variable: i32`, so a generated
+// scalar local has to be initialised through a conversion. A composite type
+// keeps its literal form, which is what `string{}` and `map[K]V{}` need.
+pub fn zero_value(v_type string) string {
+	return match v_type {
+		'i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
+		'usize', 'rune' {
+			'${v_type}(0)'
+		}
+		'f32' { 'f32(0)' }
+		'f64' { 'f64(0)' }
+		'bool' { 'false' }
+		'string' { "''" }
+		else { '${v_type}{}' }
+	}
 }
 
 // join_package flattens a dotted proto package into the prefix a flattened V

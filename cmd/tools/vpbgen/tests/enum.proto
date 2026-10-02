@@ -1,0 +1,16 @@
+// A schema with a single enum, for checking the generated enum on its own.
+
+syntax = "proto3";
+
+package demo;
+
+enum Status {
+  status_unspecified = 0;
+  active = 1;
+  suspended = 2;
+  retired = 7;
+}
+
+message Holder {
+  Status status = 1;
+}

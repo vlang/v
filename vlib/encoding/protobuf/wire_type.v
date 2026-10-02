@@ -37,3 +37,17 @@ pub fn wire_type_valid(n int) bool {
 pub fn is_packable(wt WireType) bool {
 	return wt != .length_delimited
 }
+
+// check_wire_type returns a WireTypeMismatchError unless `got` is the wire type
+// a field declared to use `want` would arrive as.
+//
+// A generated codec calls this once per field, so a producer that sends the
+// wrong wire type is reported against the field number instead of having its
+// bytes reinterpreted into a plausible-looking wrong value. A repeated numeric
+// field is the one case where a mismatch is not an error, since it may arrive
+// packed; the generated decoder checks that case itself.
+pub fn check_wire_type(field_number int, got WireType, want WireType) ! {
+	if got != want {
+		return wire_type_mismatch(field_number, want, got)
+	}
+}

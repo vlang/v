@@ -99,10 +99,17 @@ pub mut:
 	name          string
 	request_type  string
 	response_type string
-	client_stream bool
-	server_stream bool
-	comments      []string
-	pos           Pos
+	// request_v_type and response_v_type are the resolved V types of the two
+	// message names. They are filled in by the resolver rather than derived at
+	// emit time, because the name an rpc writes can be qualified by its package
+	// or ambiguous against another declaration, and only the resolver knows
+	// which.
+	request_v_type  string
+	response_v_type string
+	client_stream   bool
+	server_stream   bool
+	comments        []string
+	pos             Pos
 }
 
 // Service is a service declaration.
