@@ -1089,11 +1089,9 @@ fn build_source_is_program(source string) bool {
 	mut lexer := scanner.new_scanner(pref.new_preferences(), .normal)
 	lexer.init(file, source)
 	mut kind := lexer.scan()
-	if kind == .hash && lexer.lit.starts_with('!') {
-		kind = lexer.scan()
-	}
 	for {
-		if kind == .semicolon {
+		if kind in [.semicolon, .hash] {
+			// A hash token contains the complete directive line, including shebangs.
 			kind = lexer.scan()
 			continue
 		}

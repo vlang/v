@@ -38,6 +38,24 @@ fn test_build_discovery_recognizes_modules_after_complete_comment_headers() {
 	assert build_source_is_program('module {'), 'malformed sources must reach the compiler'
 }
 
+fn test_build_discovery_recognizes_modules_after_directive_prefixes() {
+	for prefix in [
+		'#flag -lm\n',
+		'#include <stdio.h>\n',
+		'#define VALUE 1\n',
+		'#define COMMENT "module helper"\n',
+		'#include "module main.h"\n',
+		'#flag -lm\n#define COMMENT "module main"\n#include <stdio.h>\n',
+		'#!/usr/bin/env v\n#flag -lm\n@[has_globals]\n',
+	] {
+		assert build_source_is_program(prefix + 'fn main() {}'), prefix
+		assert build_source_is_program(prefix + 'module main\nfn main() {}'), prefix
+		assert build_source_is_program(prefix + 'module no_main\n'), prefix
+		assert !build_source_is_program(prefix + 'module helper\n'), prefix
+		assert build_source_is_program(prefix + 'module {'), 'malformed sources must reach the compiler'
+	}
+}
+
 fn test_prepare_build_session_keeps_grpc_programs_and_project_folder_selection() {
 	root := os.dir(pref.vexe_path())
 	project := os.real_path(os.join_path(root, 'examples', 'viewer')).replace('\\', '/')
