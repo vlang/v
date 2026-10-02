@@ -127,8 +127,10 @@ pub fn (mut ed EmbedFileData) data() &u8 {
 		return ed.uncompressed
 	}
 	if ed.uncompressed == unsafe { nil } && ed.compressed != unsafe { nil } {
-		decoder := g_embed_file_decoders.decoders[ed.compression_type] or {
-			panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
+		decoder := unsafe {
+			&g_embed_file_decoders.decoders[ed.compression_type] or {
+				panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
+			}
 		}
 		compressed := unsafe { ed.compressed.vbytes(ed.compressed_len) }
 		decompressed := decoder.decompress(compressed) or {

@@ -6,6 +6,7 @@ import v.gen.c.naming
 
 enum OwnershipBorrowedProjectionAction {
 	not_borrowed
+	string_view
 	clone_value
 	reject_copy
 }
@@ -4381,6 +4382,9 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 		target_param_idx := tc.ownership_call_arg_variadic_decl_param_idx(param_idx, variadic_elem_idx)
 		target_suffix := ownership_call_arg_variadic_suffix(variadic_elem_idx)
 		expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
+		if tc.ownership_standard_string_arg_is_borrowed(info.name, expected) {
+			continue
+		}
 		if expected !is Void && expected !is Pointer
 			&& tc.ownership_expr_borrows_storage(arg_id) {
 			continue
@@ -6956,6 +6960,10 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	// A read from retained storage either becomes an independent clone or is rejected.
 	// Never let an uncloneable borrowed read fall through to move bookkeeping.
 	match tc.ownership_borrowed_projection_action(rhs_id, assign_id) {
+		.string_view {
+			tc.ownership_mark_string_view(lhs_name, rhs_id, assign_id)
+			return
+		}
 		.clone_value {
 			tc.ownership_mark_owned(lhs_name, tc.resolve_type(rhs_id), assign_id)
 			return
@@ -8178,7 +8186,12 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 	if tc.ownership_mark_aggregate_literal_storage(target_name, id, pos, clear_unowned) {
 		return true
 	}
+	tc.ownership_clone_escaping_string_view(expr_id)
 	match tc.ownership_borrowed_projection_action(expr_id, pos) {
+		.string_view {
+			tc.ownership_mark_string_view(target_name, expr_id, pos)
+			return false
+		}
 		.clone_value {
 			tc.ownership_mark_owned(target_name, tc.resolve_type(id), pos)
 			return true
@@ -8391,6 +8404,10 @@ fn (mut tc TypeChecker) ownership_collect_expr_result(lhs_name string, expr_id f
 		return false
 	}
 	match tc.ownership_borrowed_projection_action(expr_id, pos) {
+		.string_view {
+			tc.ownership_mark_string_view(lhs_name, expr_id, pos)
+			return false
+		}
 		.clone_value {
 			tc.ownership_mark_owned(lhs_name, tc.resolve_type(id), pos)
 			return true
@@ -9073,6 +9090,9 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		target_param_idx := tc.ownership_call_arg_variadic_decl_param_idx(param_idx, variadic_elem_idx)
 		target_suffix := ownership_call_arg_variadic_suffix(variadic_elem_idx)
 		expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
+		if tc.ownership_standard_string_arg_is_borrowed(call_name, expected) {
+			continue
+		}
 		if tc.ownership_mark_array_insert_prepend_arg(node, call_name, param_idx, arg_id, id) {
 			_ = tc.ownership_borrowed_projection_action(arg_id, arg_id)
 			continue
@@ -9373,9 +9393,20 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 	}
 	for i in 0 .. node.children_count {
 		expr_id := tc.a.child(&node, i)
+		tc.ownership_clone_escaping_string_view(expr_id)
 		// Return lowering also consumes the checker decision for borrowed projections.
 		// Record it here before ownership bookkeeping examines the retained source.
-		_ = tc.ownership_borrowed_projection_action(expr_id, expr_id)
+		projection_action := tc.ownership_borrowed_projection_action(expr_id, expr_id)
+		if projection_action == .string_view {
+			continue
+		}
+		if projection_action == .clone_value && tc.ownership_expr_is_string_view(expr_id) {
+			st.mark_fn_return_owned(st.cur_fn)
+			for slot_idx in tc.ownership_return_slot_indices(expr_id, i, '') {
+				tc.ownership_add_fn_return_slot(st.cur_fn, slot_idx)
+			}
+			continue
+		}
 		name := if tc.ownership_method_value_clones_receiver(expr_id) {
 			''
 		} else {
@@ -9875,6 +9906,10 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_source_expr(target_name
 	if !tc.valid_node_id(id) {
 		return false
 	}
+	if tc.ownership_borrowed_projection_action(expr_id, pos) == .string_view {
+		tc.ownership_mark_string_view(target_name, expr_id, pos)
+		return false
+	}
 	source_name := tc.ownership_expr_ident_name(id)
 	if source_name.len > 0 {
 		if info := tc.ownership_state().moved_vars[source_name] {
@@ -10369,6 +10404,10 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param(lhs_name string, call_i
 		return false
 	}
 	arg_id := tc.ownership_call_arg_for_return_param(call_id, node, param_idx) or { return false }
+	if tc.ownership_borrowed_projection_action(arg_id, pos) == .string_view {
+		tc.ownership_mark_string_view(lhs_name, arg_id, pos)
+		return true
+	}
 	arg_name := tc.ownership_expr_ident_name(arg_id)
 	if arg_name.len == 0 {
 		return tc.ownership_mark_storage_from_expr(lhs_name, arg_id, tc.resolve_type(arg_id), pos)
@@ -11252,10 +11291,11 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 }
 
 // ownership_borrowed_projection_action records how a read from retained storage is handled.
-// Cloneable values are marked for lowering; uncloneable values are rejected and never fall
-// through to move bookkeeping.
+// String slices and local string views remain non-owning. Other cloneable values are marked
+// for lowering; uncloneable values are rejected and never fall through to move bookkeeping.
 fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos flat.NodeId) OwnershipBorrowedProjectionAction {
-	if !tc.ownership_expr_borrows_storage(id) {
+	is_string_view := tc.ownership_expr_is_string_view(id)
+	if !is_string_view && !tc.ownership_expr_borrows_storage(id) {
 		return .not_borrowed
 	}
 	clean_id := tc.ownership_unwrap_expr(id)
@@ -11271,7 +11311,9 @@ fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos
 	}
 	typ := tc.resolve_type(clean_id)
 	mut action := OwnershipBorrowedProjectionAction.clone_value
-	if bad_type := tc.ownership_default_clone_missing_method(typ) {
+	if is_string_view {
+		action = .string_view
+	} else if bad_type := tc.ownership_default_clone_missing_method(typ) {
 		tc.record_error(.assignment_mismatch, 'cannot copy borrowed `${typ.name()}` value: `${bad_type}` requires ownership destruction but has no compatible `clone()` method; implement `IClone` or use a pointer', pos)
 		action = .reject_copy
 	}
@@ -11280,6 +11322,116 @@ fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos
 		st.borrowed_projection_actions[int(clean_id)] = action
 	}
 	return action
+}
+
+// Ordinary string slices allocate through string.substr; unlike aggregate slices, they do
+// not require an additional ownership clone. Dereferences and substr_unsafe retain a view
+// into another string. Neither creates an owned string until explicitly copied.
+fn (mut tc TypeChecker) ownership_expr_is_string_view(id flat.NodeId) bool {
+	mut visited := map[int]bool{}
+	return tc.ownership_string_view_source_id(id, mut visited) != flat.empty_node
+}
+
+fn (mut tc TypeChecker) ownership_string_view_source_id(id flat.NodeId, mut visited map[int]bool) flat.NodeId {
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) || visited[int(clean_id)]
+		|| unalias_type(tc.resolve_type(clean_id)) !is String {
+		return flat.empty_node
+	}
+	visited[int(clean_id)] = true
+	node := tc.a.nodes[int(clean_id)]
+	if node.kind == .block && node.value == 'unsafe' {
+		return tc.ownership_string_view_source_id(tc.branch_tail_expr_id(clean_id), mut visited)
+	}
+	if node.kind == .ident && tc.ownership != unsafe { nil }
+		&& node.value !in tc.ownership.owned_vars {
+		for borrows in tc.ownership.borrowed_vars.values() {
+			if borrows.any(it.borrower == node.value) {
+				return clean_id
+			}
+		}
+	}
+	if (node.kind == .index && node.value == 'range')
+		|| (node.kind == .prefix && node.op == .mul && node.children_count > 0) {
+		return clean_id
+	}
+	if node.kind == .call && node.children_count > 0 {
+		fn_node := tc.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.value == 'substr_unsafe'
+			&& tc.ownership_fn_declared_in_builtin('string.substr_unsafe') {
+			return clean_id
+		}
+		if tc.ownership_expr_is_to_owned_call(clean_id)
+			|| tc.ownership_expr_is_owned_clone_call(clean_id)
+			|| tc.ownership_expr_is_ownership_call(clean_id) {
+			return flat.empty_node
+		}
+		for source in tc.ownership_call_result_sources(clean_id) {
+			if source.source_suffix != '' || source.target_suffix != '' {
+				continue
+			}
+			view_id := tc.ownership_string_view_source_id(source.arg_id, mut visited)
+			if view_id != flat.empty_node {
+				return view_id
+			}
+		}
+	}
+	return flat.empty_node
+}
+
+// ownership_mark_string_view retains a borrowed string's relation to its source owner.
+// A normal range slice instead has its own allocation and does not borrow the source.
+fn (mut tc TypeChecker) ownership_mark_string_view(target string, id flat.NodeId, pos flat.NodeId) {
+	mut st := tc.ownership_state()
+	st.owned_vars.delete(target)
+	st.owned_var_types.delete(target)
+	mut visited := map[int]bool{}
+	clean_id := tc.ownership_string_view_source_id(id, mut visited)
+	if clean_id == flat.empty_node {
+		return
+	}
+	node := tc.a.nodes[int(clean_id)]
+	if node.kind == .ident {
+		_ = tc.ownership_alias_borrower(target, node.value, pos)
+		return
+	}
+	if node.kind == .index {
+		return
+	}
+	source_id := if node.kind == .call {
+		tc.a.child(tc.a.child_node(&node, 0), 0)
+	} else {
+		tc.a.child(&node, 0)
+	}
+	if tc.ownership_alias_borrower(target, tc.ownership_expr_ident_name(source_id), pos) {
+		return
+	}
+	name := tc.ownership_borrowed_name(source_id)
+	if name.len > 0 {
+		tc.ownership_add_borrow(name, target, pos, false)
+	} else if node.kind == .call {
+		source_name := tc.ownership_expr_ident_name(source_id)
+		if source_name.len > 0 {
+			tc.ownership_add_borrow(source_name, target, pos, false)
+		}
+	}
+}
+
+// A borrowed string stored in an aggregate or returned by value must retain the existing
+// independent-clone behavior. Range slices already have an independent allocation.
+fn (mut tc TypeChecker) ownership_clone_escaping_string_view(id flat.NodeId) {
+	mut visited := map[int]bool{}
+	view_id := tc.ownership_string_view_source_id(id, mut visited)
+	if view_id == flat.empty_node {
+		return
+	}
+	clean_id := tc.ownership_unwrap_expr(id)
+	if tc.a.nodes[int(view_id)].kind == .index {
+		return
+	}
+	mut st := tc.ownership_state()
+	st.borrowed_projection_actions[int(id)] = .clone_value
+	st.borrowed_projection_actions[int(clean_id)] = .clone_value
 }
 
 // ownership_expr_borrows_storage reports whether `id` reads storage another value keeps
@@ -12111,4 +12263,37 @@ fn (tc &TypeChecker) ownership_fn_declared_in_builtin(fn_name string) bool {
 		|| normalized.contains('/vlib/builtin/')
 		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
 			&& normalized.all_after_last('/').starts_with('builtin_'))
+}
+
+// These standard-library APIs inspect or copy string contents without taking their buffers.
+// Keep their existing value-shaped signatures compatible with ownership callers. User
+// functions and ownership-aware aggregate arguments retain their normal move semantics.
+fn (tc &TypeChecker) ownership_standard_string_arg_is_borrowed(fn_name string, typ Type) bool {
+	if unalias_type(typ) !is String {
+		return false
+	}
+	if fn_name.starts_with('string.') && tc.ownership_fn_declared_in_builtin(fn_name) {
+		return true
+	}
+	mut standard_module := ''
+	if fn_name in ['os.is_abs_path', 'os.is_unc_path', 'os.is_drive_rooted', 'os.is_normal_path',
+		'os.win_volume_len', 'os.exists', 'os.is_file', 'os.is_dir', 'os.is_executable', 'os.mkdir',
+		'os.read_bytes', 'os.ls', 'os.join_path', 'os.join_path_single',
+		'os.find_abs_path_of_executable', 'os.exists_in_system_path'] {
+		standard_module = 'os'
+	} else if fn_name in ['strconv.parse_uint', 'strconv.parse_int', 'strconv.common_parse_uint',
+		'strconv.common_parse_uint2', 'strconv.common_parse_int', 'strconv.atoi', 'strconv.atol'] {
+		standard_module = 'strconv'
+	} else if fn_name in ['strings.Builder.write_string', 'strings.Builder.write_string2'] {
+		standard_module = 'strings'
+	}
+	if standard_module == '' {
+		return false
+	}
+	file := tc.fn_type_files[fn_name] or { return false }
+	normalized := file.replace('\\', '/')
+	return normalized.starts_with('vlib/${standard_module}/')
+		|| normalized.contains('/vlib/${standard_module}/')
+		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
+			&& normalized.all_after_last('/').starts_with('${standard_module}_'))
 }

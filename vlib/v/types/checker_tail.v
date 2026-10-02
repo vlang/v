@@ -1928,6 +1928,131 @@ fn (tc &TypeChecker) option_marker_payload_pos(node flat.Node) token.Pos {
 	return node.pos
 }
 
+fn (tc &TypeChecker) current_fn_can_return_borrowed_mut_receiver(name string) bool {
+	$if ownership ? {
+		// The receiver borrows caller-owned storage; ownership return-alias analysis
+		// keeps that relationship when the method returns its implicit reference.
+		if !tc.current_fn_param_is_mut_receiver(name) {
+			return false
+		}
+		owner := tc.fn_context.mut_param_owners[name] or { return false }
+		return tc.cur_scope.nearest_binding_owned_by(name, owner)
+	} $else {
+		return false
+	}
+}
+
+fn (mut tc TypeChecker) returned_receiver_local_storage_name(name string, depth int) ?string {
+	$if ownership ? {
+		if depth > 64 {
+			return none
+		}
+		if source := tc.ownership_borrowed_alias_source(name, false) {
+			if source != name {
+				return tc.returned_receiver_local_storage_name(source, depth + 1)
+			}
+		}
+		root := name.all_before('.').all_before('[')
+		owner := tc.cur_scope.lookup_owner(root) or { return none }
+		if tc.binding_owner_is_global(owner) {
+			return none
+		}
+		if param_owner := tc.fn_context.mut_param_owners[root] {
+			if tc.cur_scope.nearest_binding_owned_by(root, param_owner) {
+				return none
+			}
+		}
+		typ := unalias_type(owner.scope.types[owner.index])
+		if typ is Struct || typ is Array || typ is ArrayFixed || typ is Map {
+			return root
+		}
+	}
+	return none
+}
+
+// A pointer returned through a receiver call still borrows the receiver's storage.
+// Local value storage cannot escape its ownership scope through such a call.
+fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, depth int, through_call bool, local_sources map[string]flat.NodeId) ?string {
+	$if ownership ? {
+		if depth > 64 || !tc.valid_node_id(id) {
+			return none
+		}
+		node := tc.a.node(id)
+		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+			return tc.returned_receiver_local_storage(tc.a.child(node, 0), depth + 1,
+				through_call, local_sources)
+		}
+		if node.kind in [.block, .match_branch] {
+			mut branch_sources := local_sources.clone()
+			body_start := if node.kind == .match_branch && node.value != 'else' {
+				node.value.int()
+			} else {
+				0
+			}
+			for i in body_start .. int(node.children_count) - 1 {
+				statement := tc.a.child_node(node, i)
+				if statement.kind in [.decl_assign, .assign] && statement.children_count == 2 {
+					lhs := tc.a.child_node(statement, 0)
+					if lhs.kind == .ident && (statement.kind == .decl_assign
+						|| lhs.value in branch_sources) {
+						branch_sources[lhs.value] = tc.a.child(statement, 1)
+					}
+				}
+			}
+			return tc.returned_receiver_local_storage(tc.branch_tail_expr_id(id), depth + 1,
+				through_call, branch_sources)
+		}
+		if node.kind in [.if_expr, .match_stmt] {
+			for i in 1 .. node.children_count {
+				if local := tc.returned_receiver_local_storage(tc.a.child(node, i), depth + 1,
+					through_call, local_sources) {
+					return local
+				}
+			}
+			return none
+		}
+		if node.kind == .call {
+			for source in tc.ownership_call_result_sources(id) {
+				if source.target_suffix.len == 0 {
+					if local := tc.returned_receiver_local_storage(source.arg_id, depth + 1,
+						true, local_sources) {
+						return local
+					}
+				}
+			}
+			return none
+		}
+		if node.kind == .ident {
+			if source := local_sources[node.value] {
+				typ := unalias_type(tc.resolve_type(source))
+				if through_call && (typ is Struct || typ is Array || typ is ArrayFixed
+					|| typ is Map) {
+					return node.value
+				}
+				return tc.returned_receiver_local_storage(source, depth + 1, through_call,
+					local_sources)
+			}
+			if !through_call && tc.ownership_borrowed_alias_source(node.value, false) == none {
+				return none
+			}
+			return tc.returned_receiver_local_storage_name(node.value, depth + 1)
+		}
+		if through_call && node.kind in [.selector, .index] && node.children_count > 0 {
+			if unalias_type(tc.resolve_type(id)) is Pointer {
+				return none
+			}
+			return tc.returned_receiver_local_storage(tc.a.child(node, 0), depth + 1,
+				through_call, local_sources)
+		}
+		if through_call && node.kind == .prefix && node.op in [.amp, .mul]
+			&& node.children_count > 0 {
+			return tc.returned_receiver_local_storage(tc.a.child(node, 0), depth + 1,
+				through_call, local_sources)
+		}
+	}
+	return none
+}
+
 // check_return validates check return state for types.
 @[direct_array_access]
 fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
@@ -2137,7 +2262,8 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		}
 		if child.kind == .ident && tc.unsafe_depth == 0 && unalias_type(expected) is Pointer
 			&& child.value in tc.fn_context.mut_param_base_types
-			&& !tc.current_fn_param_is_explicit_mut_pointer(child.value) {
+			&& !tc.current_fn_param_is_explicit_mut_pointer(child.value)
+			&& !tc.current_fn_can_return_borrowed_mut_receiver(child.value) {
 			base_type := tc.fn_context.mut_param_base_types[child.value] or { Type(void_) }
 			clean_base := unalias_type(unwrap_pointer(base_type))
 			if clean_base is Struct && !tc.type_has_declaration_attribute(clean_base, 'heap') {
@@ -2464,6 +2590,12 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		return
 	}
 	$if ownership ? {
+		if tc.unsafe_depth == 0 && unalias_type(expected) is Pointer {
+			if local := tc.returned_receiver_local_storage(child_id, 0, false, map[string]flat.NodeId{}) {
+				tc.record_error_at(.return_mismatch, 'cannot return a reference to local storage `${local}` through a receiver call', child_id, tc.a.node(child_id).pos)
+				return
+			}
+		}
 		tc.ownership_after_return(id, node)
 	}
 }

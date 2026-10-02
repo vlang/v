@@ -13656,6 +13656,14 @@ fn (mut tc TypeChecker) check_struct_implements(node_id flat.NodeId, node flat.N
 		if is_generic && (lookup in tc.interface_names || qualified in tc.interface_names) {
 			continue
 		}
+		$if ownership ? {
+			// Ownership markers carry checker metadata without an interface declaration.
+			// A declared type with the same name still follows normal implements checking.
+			if !is_generic && lookup in ['Owned', 'Copy', 'Drop']
+				&& !tc.is_known_type_text(lookup) {
+				continue
+			}
+		}
 		tc.record_error_at(.assignment_mismatch, '`${type_name}` is not an interface type', node_id, diagnostic_pos)
 	}
 }

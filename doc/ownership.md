@@ -26,14 +26,24 @@ Ownership mode defines the target-visible custom option `ownership`. Code can us
 
 ## Creating owned values
 
-Call `.to_owned()` on a string to create an owned copy. Only strings created with
-`.to_owned()` participate in ownership tracking — regular string literals and primitive
-types (int, f64, bool, ...) are unaffected.
+Call `.to_owned()` on a string to create an owned copy. Copies made with `.clone()` also
+participate in ownership tracking. Regular string literals and primitive types
+(int, f64, bool, ...) are unaffected.
 
 ```v okfmt
 s := 'hello'.to_owned() // s is owned
 t := 'world' // t is a normal string, no ownership tracking
 ```
+
+Ordinary string slices allocate independent storage but remain regular strings. A local
+dereference of a borrowed string or a `substr_unsafe()` result retains a view of its source;
+the source cannot be moved or reassigned while that view is live. Use `.to_owned()` or
+`.clone()` to create an owned copy. Borrowed views stored in owned aggregates or returned
+by value are copied so they can outlive the source.
+
+Standard string methods, numeric parsers, path inspection and joining functions, and
+string-builder writes borrow their string arguments. User functions with by-value string
+parameters still consume owned strings.
 
 ## Move semantics
 
@@ -91,6 +101,23 @@ fn main() {
 	println(s) // ok — s was borrowed, not moved
 }
 ```
+
+Struct fields can borrow arrays using `&[]T` in ownership mode. Initializing such a
+field with `&values` borrows the existing array instead of creating an owned copy.
+
+Mutable receiver methods can return a reference to their receiver in ownership mode.
+The returned reference borrows the caller's value; the value must remain alive while it is used.
+
+A reference returned through a receiver call remains tied to the receiver's storage and
+cannot escape the ownership scope of a local value. Caller-backed mutable parameters and
+explicit heap-pointer receivers can return such references.
+
+### Struct ownership markers
+
+The `Owned`, `Copy`, and `Drop` markers can appear in a struct's `implements` list in
+ownership mode without declaring interfaces for them. `Owned` enables move tracking,
+`Copy` enables copying, and `Drop` enables destruction with a custom `drop()` method.
+Declared types with these names still follow the usual interface checks.
 
 ### Explicit lifetimes
 

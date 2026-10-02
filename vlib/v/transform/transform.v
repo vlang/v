@@ -22656,7 +22656,7 @@ fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.No
 		return lowered
 	}
 	expr_id := t.a.child(&node, 0)
-	if addr := t.transform_map_index_address_or_nil(node, expr_id, false) {
+	if addr := t.transform_map_index_address_or_expr(node, expr_id, false) {
 		return addr
 	}
 	if node.value == '?' && t.expr_has_option_unwrap_smartcast(expr_id) {
@@ -22706,8 +22706,8 @@ fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.No
 	return t.lower_or_expr_to_temp(id, node)
 }
 
-fn (mut t Transformer) transform_map_index_address_or_nil(node flat.Node, expr_id flat.NodeId, allow_bare_index bool) ?flat.NodeId {
-	if node.children_count < 2 || !t.or_body_is_nil(t.a.child(&node, 1)) || int(expr_id) < 0 {
+fn (mut t Transformer) transform_map_index_address_or_expr(node flat.Node, expr_id flat.NodeId, allow_bare_index bool) ?flat.NodeId {
+	if node.children_count < 2 || int(expr_id) < 0 {
 		return none
 	}
 	source := t.a.nodes[int(expr_id)]
@@ -22718,12 +22718,50 @@ fn (mut t Transformer) transform_map_index_address_or_nil(node flat.Node, expr_i
 		return none
 	}
 	info := t.map_index_info(index_id) or { return none }
+	if t.map_value_type_is_optional(info.value_type)
+		&& !t.or_body_is_nil(t.a.child(&node, 1)) {
+		return none
+	}
 	map_expr := t.stable_expr_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
-	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(info.key_id, info.key_type), info.key_storage_type)
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
+	mut prelude := []flat.NodeId{}
+	t.drain_pending(mut prelude)
+	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
 	ptr := t.make_map_get_check_expr(map_expr, info.base_type, key_name)
 	target_type := if node.typ.starts_with('&') { node.typ } else { '&${info.value_type}' }
-	return t.make_cast(target_type, ptr, target_type)
+	if t.or_body_is_nil(t.a.child(&node, 1)) {
+		t.pending_stmts = outer_pending
+		t.pending_stmts << prelude
+		return t.make_cast(target_type, ptr, target_type)
+	}
+	// Keep the map slot's address: lowering the index as a value first would
+	// return a pointer to a copy, and transforming it twice loses its temporaries.
+	ptr_name := t.new_temp('map_ptr')
+	value_name := t.new_temp('map_addr')
+	prelude << t.make_decl_assign_typed(ptr_name, ptr, 'voidptr')
+	if !isnil(t.tc) && t.map_key_expr_creates_owned_value(info.key_id, info.key_type)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(info.key_type)) {
+		prelude << t.make_expr_stmt(t.make_call_typed('drop_owned', [t.make_ident(key_name)],
+			'void'))
+	}
+	prelude << t.make_staging_value_decl(value_name, target_type)
+	condition := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	found := t.make_cast(target_type, t.make_ident(ptr_name), target_type)
+	found_block := t.make_block([t.make_assign(t.make_ident(value_name), found)])
+	failure := if node.value == '!' {
+		t.make_call_typed('error', [t.make_string_literal('map key does not exist')], 'IError')
+	} else {
+		flat.empty_node
+	}
+	missing_block := t.make_block(t.lower_map_or_body_to_stmts(t.a.child(&node, 1),
+		value_name, target_type, node.value, failure))
+	t.pending_stmts = outer_pending
+	t.pending_stmts << prelude
+	t.pending_stmts << t.make_if(condition, found_block, missing_block)
+	return t.make_ident(value_name)
 }
 
 fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node flat.Node) ?flat.NodeId {
@@ -22909,7 +22947,7 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .or_expr && child.children_count > 0 {
-			if addr := t.transform_map_index_address_or_nil(child, t.a.child(&child, 0), true) {
+			if addr := t.transform_map_index_address_or_expr(child, t.a.child(&child, 0), true) {
 				return addr
 			}
 		}

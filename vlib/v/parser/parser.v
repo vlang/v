@@ -8624,9 +8624,10 @@ fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
 		core_id = p.a.child(&p.a.nodes[int(core_id)], 0)
 	}
 	rhs := p.a.nodes[int(core_id)]
-	// Only field selectors have wrapper recovery through parentheses here.
+	// Field selectors and optional dereferences retain their guard shape through parentheses.
+	parenthesized_guard := rhs.kind == .selector || (rhs.kind == .prefix && rhs.op == .mul)
 	if rhs.kind !in [.call, .index, .prefix, .selector, .ident]
-		|| (parenthesized && rhs.kind != .selector) {
+		|| (parenthesized && !parenthesized_guard) {
 		mut start := assign_end
 		mut end := p.a.nodes[int(rhs_id)].pos.end
 		source := p.s.src
@@ -16166,9 +16167,11 @@ fn (mut p Parser) parse_type_name() string {
 	// pointer &T
 	if p.tok == .amp {
 		p.next()
-		if p.parsing_struct_field_type && p.tok == .lsbr && p.peek() == .rsbr && !p.prefs.is_fmt {
-			p.record_diagnostic_span('V arrays are already references behind the scenes,\nthere is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).\nIf you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
-				p.tok_pos, p.tok_end)
+		$if !ownership ? {
+			if p.parsing_struct_field_type && p.tok == .lsbr && p.peek() == .rsbr && !p.prefs.is_fmt {
+				p.record_diagnostic_span('V arrays are already references behind the scenes,\nthere is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).\nIf you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
+					p.tok_pos, p.tok_end)
+			}
 		}
 		return '&' + p.parse_type_name()
 	}
