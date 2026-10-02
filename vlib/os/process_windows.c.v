@@ -170,7 +170,7 @@ fn (mut p Process) win_spawn_process() int {
 		stdin_handle := C.CreateFileW(stdin_path_wide, C.GENERIC_READ,
 			C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE, voidptr(&sa),
 			C.OPEN_EXISTING, C.FILE_ATTRIBUTE_NORMAL, 0)
-		if stdin_handle == C.INVALID_HANDLE_VALUE {
+		if stdin_handle == invalid_handle_value {
 			failed_cfn_report_error(false, 'CreateFileW stdin')
 		}
 		wdata.child_stdin_read = &u32(stdin_handle)
