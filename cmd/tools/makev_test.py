@@ -1,8 +1,8 @@
 """Check Windows bootstrap contracts without requiring a working V compiler.
 
 Run with: python cmd/tools/makev_test.py
-On Windows, also exercise the real batch subroutines, stubbing only calls to V
-and the installation delay. File replacement uses real temporary files.
+On Windows, also exercise the real batch subroutines with compiler calls and
+installation delays stubbed. File replacement uses real temporary files.
 """
 
 import os
@@ -51,6 +51,12 @@ class BootstrapConfigurationTests(unittest.TestCase):
         ]
         self.assertEqual(len(commands), 1)
         self.assertIn("%VC_BOOTSTRAP_DEFINE%", commands[0])
+
+    def test_msvc_fallbacks_build_the_next_stage(self):
+        attempts = re.findall(
+            r"call :build_msvc_stage (tcc|msvc|clang|gcc)\b", routine("msvc_strap")
+        )
+        self.assertEqual(attempts, ["tcc", "msvc", "clang", "gcc"])
 
     def test_clang_generation_matches_the_stage_compiler(self):
         commands = routine("build_stage_with_clang").splitlines()
@@ -102,11 +108,15 @@ class BootstrapConfigurationTests(unittest.TestCase):
             ("build_fresh_v_with_tcc", "tcc"),
             ("clang_strap", "clang"),
             ("gcc_strap", "gcc"),
-            ("msvc_strap", "!stage_compiler!"),
+            ("msvc_strap", "tcc"),
         ):
             with self.subTest(label=label):
                 body = routine(label)
-                self.assertIn("call :build_stage_with_" + stage, body)
+                if label == "msvc_strap":
+                    self.assertIn("call :build_msvc_stage " + stage, body)
+                    self.assertIn("call :build_stage_with_%~1", routine("build_msvc_stage"))
+                else:
+                    self.assertIn("call :build_stage_with_" + stage, body)
                 self.assertIn('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS%', body)
                 self.assertNotIn('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS%', body)
 
@@ -132,6 +142,223 @@ class BootstrapConfigurationTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "requires the Windows cmd.exe interpreter")
 class BatchExecutionTests(unittest.TestCase):
+    def run_msvc_bootstrap(self, workdir, bootstrap_statuses=None, generate_statuses=None,
+                           link_statuses=None, final_status=0):
+        bootstrap_statuses = bootstrap_statuses or {}
+        generate_statuses = generate_statuses or {}
+        link_statuses = link_statuses or {}
+        msvc = routine("msvc_strap")
+        # MSVC discovery and vsdevcmd.bat setup are outside the fallback contract.
+        msvc = ":msvc_strap\n" + msvc[msvc.index("set ObjFile=.v.c.obj"):]
+        labels = [
+            "build_msvc_stage", "generate_stage_c", "build_stage_with_tcc",
+            "build_stage_with_msvc", "build_stage_with_clang", "build_stage_with_gcc",
+            "try_delete", "compile_error", "error",
+        ]
+        body = "\n".join([msvc] + [routine(label) for label in labels])
+        lines = body.splitlines()
+        replacements = {"generate": 0, "link": 0, "final": 0}
+        for index, line in enumerate(lines):
+            command = line.lstrip()
+            if command.startswith('"%V_BOOTSTRAP%" '):
+                lines[index] = command.replace('"%V_BOOTSTRAP%"', "call :stub_generate", 1)
+                replacements["generate"] += 1
+            elif command.startswith('"%V_STAGE%" '):
+                lines[index] = "call :stub_final"
+                replacements["final"] += 1
+            elif command.startswith("ping 192.0.2.1 "):
+                lines[index] = "rem No cleanup delay in tests"
+            else:
+                for compiler in ("tcc", "msvc", "clang", "gcc"):
+                    prefix = "cl " if compiler == "msvc" else '"!' + compiler + '_exe!" '
+                    if command.startswith(prefix):
+                        lines[index] = "call :stub_link " + compiler
+                        replacements["link"] += 1
+        self.assertEqual(replacements, {"generate": 1, "link": 4, "final": 1})
+        body = "\n".join(lines)
+        calls = workdir / "bootstrap calls.txt"
+        stubs = []
+        for compiler in ("tcc", "msvc", "clang", "gcc"):
+            expected_cc = "msvc" if compiler == "msvc" else str(workdir / (compiler + ".exe"))
+            stubs.extend([
+                ":build_bootstrap_with_" + compiler,
+                'set "test_compiler=' + compiler + '"',
+                'set "test_expected_cc=' + expected_cc + '"',
+                '>>"%test_calls%" echo bootstrap ' + compiler,
+                '>"%V_BOOTSTRAP%" echo bootstrap compiler',
+                "exit /b " + str(bootstrap_statuses.get(compiler, 0)),
+            ])
+        stubs.extend([
+            ":stub_generate",
+            '>>"%test_calls%" echo generate !test_compiler!',
+            'set "test_stage_cc="',
+            'set "test_stage_output="',
+            ":stub_generate_args",
+            'if "%~1" == "" goto :stub_generate_ready',
+            'if "%~1" == "-cc" set "test_stage_cc=%~2"',
+            'if "%~1" == "-o" set "test_stage_output=%~2"',
+            "shift",
+            "goto :stub_generate_args",
+            ":stub_generate_ready",
+            'if not "!test_stage_cc!" == "!test_expected_cc!" exit /b 99',
+            'if not "!test_stage_output!" == "%V_STAGE_C%" exit /b 98',
+            '>"%V_STAGE_C%" echo partial stage C',
+        ])
+        for compiler in ("tcc", "msvc", "clang", "gcc"):
+            stubs.append(
+                'if "!test_compiler!" == "' + compiler + '" exit /b '
+                + str(generate_statuses.get(compiler, 0))
+            )
+        stubs.extend([
+            "exit /b 99",
+            ":stub_link",
+            '>>"%test_calls%" echo link %~1',
+            'if not "%~1" == "!test_compiler!" exit /b 97',
+            'if not exist "%V_STAGE_C%" exit /b 96',
+            '>"%V_STAGE%" echo partial stage compiler',
+        ])
+        for compiler in ("tcc", "msvc", "clang", "gcc"):
+            stubs.append(
+                'if "!test_compiler!" == "' + compiler + '" exit /b '
+                + str(link_statuses.get(compiler, 0))
+            )
+        stubs.extend([
+            "exit /b 99",
+            ":stub_final",
+            '>>"%test_calls%" echo final msvc',
+            'if not exist "%V_STAGE%" exit /b 95',
+            '>"%V_UPDATED%" echo updated compiler',
+            "exit /b " + str(final_status),
+            ":move_updated_to_v",
+            '>>"%test_calls%" echo install',
+            "exit /b 0",
+            ":success",
+            "exit /b 0",
+        ])
+        script = "\n".join([
+            "@echo off",
+            "setlocal EnableExtensions EnableDelayedExpansion",
+            'set "test_calls=' + str(calls) + '"',
+            'set "V_EXE=' + str(workdir / "v.exe") + '"',
+            'set "V_UPDATED=' + str(workdir / "v_up.exe") + '"',
+            'set "V_BOOTSTRAP=' + str(workdir / "v_win_bootstrap.exe") + '"',
+            'set "V_STAGE=' + str(workdir / "v_stage.exe") + '"',
+            'set "V_STAGE_C=' + str(workdir / "v_stage.c") + '"',
+            'set "tcc_exe=' + str(workdir / "tcc.exe") + '"',
+            'set "clang_exe=' + str(workdir / "clang.exe") + '"',
+            'set "gcc_exe=' + str(workdir / "gcc.exe") + '"',
+            'set "clang_target=x86_64-w64-mingw32"',
+            "call :msvc_strap",
+            "exit /b !ERRORLEVEL!",
+            body,
+            "\n".join(stubs),
+        ])
+        harness = workdir / "msvc bootstrap harness.bat"
+        harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+        result = subprocess.run(
+            [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+            cwd=workdir, capture_output=True, text=True, errors="replace",
+            timeout=15, check=False,
+        )
+        return result, calls.read_text(encoding="utf-8").splitlines()
+
+    def test_msvc_stops_after_the_first_working_bootstrap(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            result, calls = self.run_msvc_bootstrap(Path(directory))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(calls, [
+                "bootstrap tcc", "generate tcc", "link tcc", "final msvc", "install",
+            ])
+
+    def test_msvc_retries_after_bootstrap_compile_generation_or_link_failure(self):
+        for bootstrap_statuses, generate_statuses, link_statuses, first_calls in (
+            ({"tcc": 47}, {}, {}, ["bootstrap tcc"]),
+            ({}, {"tcc": 47}, {}, ["bootstrap tcc", "generate tcc"]),
+            ({}, {}, {"tcc": 47}, ["bootstrap tcc", "generate tcc", "link tcc"]),
+        ):
+            with self.subTest(
+                bootstrap=bootstrap_statuses, generate=generate_statuses, link=link_statuses
+            ), tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+                result, calls = self.run_msvc_bootstrap(
+                    Path(directory), bootstrap_statuses, generate_statuses, link_statuses
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(calls, first_calls + [
+                    "bootstrap msvc", "generate msvc", "link msvc", "final msvc", "install",
+                ])
+
+    def test_msvc_retries_with_clang_after_two_generation_failures(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            result, calls = self.run_msvc_bootstrap(
+                Path(directory), generate_statuses={"tcc": 47, "msvc": 48}
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(calls, [
+                "bootstrap tcc", "generate tcc", "bootstrap msvc", "generate msvc",
+                "bootstrap clang", "generate clang", "link clang", "final msvc", "install",
+            ])
+
+    def test_msvc_retries_with_gcc_after_clang_generation_or_link_failure(self):
+        for generate_status, link_status in ((49, 0), (0, 49)):
+            with self.subTest(
+                generate=generate_status, link=link_status
+            ), tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+                result, calls = self.run_msvc_bootstrap(
+                    Path(directory),
+                    bootstrap_statuses={"msvc": 48},
+                    generate_statuses={"tcc": 47, "clang": generate_status},
+                    link_statuses={"clang": link_status},
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                expected = [
+                    "bootstrap tcc", "generate tcc", "bootstrap msvc",
+                    "bootstrap clang", "generate clang",
+                ]
+                if generate_status == 0:
+                    expected.append("link clang")
+                self.assertEqual(calls, expected + [
+                    "bootstrap gcc", "generate gcc", "link gcc", "final msvc", "install",
+                ])
+
+    def test_msvc_exhausted_fallback_preserves_the_existing_compiler(self):
+        failures = {"tcc": 47, "msvc": 48, "clang": 49, "gcc": 50}
+        for phase in ("bootstrap", "generate", "link"):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory(
+                prefix="makev tests "
+            ) as directory:
+                workdir = Path(directory)
+                (workdir / "v.exe").write_text("working compiler", encoding="utf-8")
+                result, calls = self.run_msvc_bootstrap(
+                    workdir,
+                    bootstrap_statuses=failures if phase == "bootstrap" else {},
+                    generate_statuses=failures if phase == "generate" else {},
+                    link_statuses=failures if phase == "link" else {},
+                )
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                expected = []
+                for compiler in failures:
+                    expected.append("bootstrap " + compiler)
+                    if phase != "bootstrap":
+                        expected.append("generate " + compiler)
+                    if phase == "link":
+                        expected.append("link " + compiler)
+                self.assertEqual(calls, expected)
+                self.assertEqual((workdir / "v.exe").read_text(), "working compiler")
+                self.assertFalse((workdir / "v_stage.exe").exists())
+                self.assertFalse((workdir / "v_stage.c").exists())
+
+    def test_msvc_final_failure_is_not_masked_by_cleanup(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            (workdir / "v.exe").write_text("working compiler", encoding="utf-8")
+            result, calls = self.run_msvc_bootstrap(workdir, final_status=51)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(calls, [
+                "bootstrap tcc", "generate tcc", "link tcc", "final msvc",
+            ])
+            self.assertEqual((workdir / "v.exe").read_text(), "working compiler")
+            self.assertFalse((workdir / "v_stage.exe").exists())
+
     def run_stage(self, compiler, workdir, generate_status=0, link_status=0, final_status=0):
         labels = ["generate_stage_c", "build_stage_with_" + compiler, "try_delete"]
         if compiler == "tcc":

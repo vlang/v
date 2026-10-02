@@ -1,0 +1,14 @@
+# `v skills` bundles are agent assets, not repository prose.
+#
+# The one rule that cannot hold for them is the 100 character limit on ordinary
+# lines. The Agent Skills spec allows a skill `description` of up to 1024
+# characters, and that field is the entire triggering mechanism: it is the only
+# part an agent reads before it decides whether to load the skill. Capping it at
+# 100 characters would make a skill almost impossible to route to, which is the
+# one thing the format exists to do well.
+#
+# Only the entry files are exempted. Everything under `references/` is still
+# checked normally, and `skills_test.v` enforces what is lost here: body lines
+# stay under 100 characters, fences stay balanced, and any `v` fence is marked
+# `v ignore` so it is never handed to the compiler as a runnable example.
+*/SKILL.md

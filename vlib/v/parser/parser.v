@@ -13639,6 +13639,7 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 			if p.tok == .comma {
 				p.next()
 			}
+			fname_pos := p.current_pos()
 			fname := p.expect_name_or_keyword()
 			p.check(.colon)
 			p.in_struct_init_value++
@@ -13650,6 +13651,8 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 				value:          fname
 				children_start: vstart
 				children_count: 1
+				// Editor queries need the key token; preserve ordinary diagnostic spans.
+				pos:            if p.prefs.is_fmt { fname_pos } else { p.current_pos() }
 			})
 			if p.tok == .semicolon {
 				p.next()
@@ -13676,6 +13679,7 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 		}
 		// named field: name: expr
 		if (p.tok == .name || p.tok.is_keyword()) && p.peek() == .colon {
+			fname_pos := p.current_pos()
 			fname := p.expect_name_or_keyword()
 			p.check(.colon)
 			p.in_struct_init_value++
@@ -13687,6 +13691,7 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 				value:          fname
 				children_start: vstart
 				children_count: 1
+				pos:            if p.prefs.is_fmt { fname_pos } else { p.current_pos() }
 			})
 		} else {
 			// positional value (unnamed)

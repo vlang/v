@@ -3,6 +3,25 @@ module parser
 import os
 import v.pref
 
+fn test_formatter_named_struct_fields_span_their_key_tokens() {
+	path := os.join_path(os.vtmp_dir(), 'formatter_struct_field_spans_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	source := 'struct Host { hello int }\nfn main() { h := Host{hello: 42}; _ := Host{...h, hello: 43} }\n'
+	os.write_file(path, source)!
+	for is_fmt in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.is_fmt = is_fmt
+		mut p := Parser.new(prefs)
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		fields := a.nodes.filter(it.kind == .field_init && it.value == 'hello')
+		assert fields.len == 2
+		for field in fields {
+			assert source[field.pos.offset..field.pos.end] == if is_fmt { 'hello' } else { '}' }
+		}
+	}
+}
+
 fn test_formatter_preserves_syntax_without_semantic_diagnostics() {
 	path := os.join_path(os.vtmp_dir(), 'formatter_semantics_${os.getpid()}.v')
 	defer { os.rm(path) or {} }

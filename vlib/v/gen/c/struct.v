@@ -3162,8 +3162,6 @@ fn (mut g FlatGen) fixed_array_elem_needs_default_init(elem_type types.Type) boo
 // literal would set any field that C's `{0}` would not: a field with an explicit
 // default (`x int = 5`), an omitted dynamic array/map, or a by-value struct field
 // whose own type needs those defaults.
-// Returns false for structs with interface-typed field defaults, since the
-// codegen default path cannot box those values.
 fn (mut g FlatGen) struct_needs_default_init(type_name string) bool {
 	mut visited := map[string]bool{}
 	return g.struct_needs_default_init_inner(type_name, mut visited)
@@ -3177,25 +3175,13 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited
 	mut found := false
 	if source := g.struct_default_decl_source(type_name) {
 		info := source.info
-		old_ctx := g.enter_struct_default_source(source)
 		for i in 0 .. info.node.children_count {
 			field := g.a.child_node(&info.node, i)
 			if field.kind != .field_decl || field.children_count == 0 {
 				continue
 			}
-			ftyp := g.struct_default_field_type_for_source(source, field)
-			clean_ftyp := default_init_unalias_type(ftyp)
-			// Interface defaults still require conversion metadata that is not
-			// available in this late fallback. Sum defaults are supported by
-			// gen_struct_field_expr_for_field and must keep the enclosing struct's
-			// default initialization active.
-			if clean_ftyp is types.Interface {
-				g.restore_struct_default_context(old_ctx)
-				return false
-			}
 			found = true
 		}
-		g.restore_struct_default_context(old_ctx)
 	}
 	fields := g.struct_fields_for_type(type_name) or { return found }
 	for field in fields {

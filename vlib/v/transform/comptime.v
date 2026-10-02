@@ -3197,8 +3197,14 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			return t.make_sum_literal(target_sum, item.typ, children[0])
 		}
 	}
+	mut call_node := node
+	if node.kind == .call && smartcast_name != '' && !t.call_has_source_generic_args(node) {
+		// The checker can leave an inferred generic argument from the sum alias.
+		// Each reflected variant needs inference from its narrowed argument instead.
+		call_node.value = ''
+	}
 	retargeted_call_type := if node.kind == .call && smartcast_name != '' {
-		t.retarget_cloned_generic_call(node, mut children, t.active_specialization_args, return_context)
+		t.retarget_cloned_generic_call(call_node, mut children, t.active_specialization_args, return_context)
 	} else {
 		''
 	}
@@ -3245,6 +3251,8 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		pos:            node.pos
 		value:          if node.kind == .is_expr && node.value == var_name {
 			item.typ
+		} else if node.kind == .call && retargeted_call_type.len > 0 {
+			''
 		} else {
 			node.value
 		}
