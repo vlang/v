@@ -80,7 +80,10 @@ fn test_scan_escape_sequences() {
 		'\\v':        '\v'
 		'\\0':        '\x00'
 		'\\x41':      'A'
+		'\\xAB':      '\u00AB'
 		'\\u0041':    'A'
+		'\\uABCD':    '\uABCD'
+		'\\u{ABCD}':  '\uABCD'
 		'\\u{1F600}': '\U0001F600'
 		'\\q':        'q'
 	}
@@ -107,7 +110,8 @@ fn test_scan_unterminated_string() {
 }
 
 fn test_scan_numbers() {
-	cases := ['0', '-1', '+1', '.5', '5.', '1.5', '1e3', '1E+3', '1e-3', '0x1f', '0XFF']
+	cases := ['0', '-1', '+1', '.5', '5.', '1.5', '1e3', '1E+3', '1e-3', '0x1f', '0XFF', '0xAB',
+		'0XCD', '+0xAD', '-0xBC']
 	for source in cases {
 		mut s := new_scanner(source)
 		tok := s.next()!

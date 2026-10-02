@@ -9,6 +9,13 @@ fn test_parse_scalars() {
 	assert parse('  42  ')!.int() == 42
 }
 
+fn test_parse_uppercase_hexadecimal_digits() {
+	assert parse('0xABCD')!.int() == 0xabcd
+	assert parse('-0XAB')!.int() == -171
+	assert parse('"\\uABCD"')!.string() == '\uABCD'
+	assert parse('"\\xAB"')!.string() == '\u00AB'
+}
+
 fn test_parse_empty_object_and_array() {
 	obj := parse('{}')!
 	assert obj is map[string]Any

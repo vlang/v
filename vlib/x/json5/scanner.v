@@ -166,7 +166,7 @@ fn is_digit(code int) bool {
 // is_hex_digit reports whether `code` is an ASCII hexadecimal digit.
 fn is_hex_digit(code int) bool {
 	return (code >= r_zero && code <= r_nine) || (code >= r_lower_a && code <= r_lower_f)
-		|| (code >= r_upper_e && code <= r_upper_f)
+		|| (code >= r_upper_a && code <= r_upper_f)
 }
 
 // hex_digit_value returns the numeric value of an ASCII hexadecimal digit.

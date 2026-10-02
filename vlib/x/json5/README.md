@@ -172,6 +172,8 @@ fn main() {
 - JSON5 escape sequences in strings, including `\'`, `\"`, `\v`, `\0`, `\xNN`
   and `\uNNNN`.
 
+Hexadecimal numbers and escape sequences accept both uppercase `A-F` and lowercase `a-f`.
+
 ## Errors
 Parsing, decoding and encoding report typed errors that carry a source
 position:
