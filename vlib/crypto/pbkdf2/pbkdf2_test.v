@@ -95,3 +95,65 @@ fn test_sha512() {
 		assert key == expected_result, 'failed ${c.name}'
 	}
 }
+
+struct TruncatedSha512Case {
+	password   string
+	salt       string
+	count      int
+	key_length int
+	sha512_224 string
+	sha512_256 string
+}
+
+// The expected values were generated with Python's `hashlib.pbkdf2_hmac`
+// (OpenSSL), with the digest names 'sha512_224' and 'sha512_256'.
+const truncated_sha512_cases = [
+	TruncatedSha512Case{
+		password:   'password'
+		salt:       'salt'
+		count:      1
+		key_length: 20
+		sha512_224: 'b34ab626276a61ce19d2ecb4c7e15f8198a2989a'
+		sha512_256: '4b6a63117d3ec0032624616082c1c1912f56fa5f'
+	},
+	TruncatedSha512Case{
+		password:   'password'
+		salt:       'salt'
+		count:      2
+		key_length: 20
+		sha512_224: 'b8878ac5e4509c165c1b508961fa3c3afcef3f37'
+		sha512_256: 'fcfd108c99cc888ec0af9f184885aff5f02d19a9'
+	},
+	TruncatedSha512Case{
+		password:   'password'
+		salt:       'salt'
+		count:      4096
+		key_length: 20
+		sha512_224: 'ed54af699cc307e08965098bda5ff4e41ea1931f'
+		sha512_256: 'f2fbe5f8ec3618bb145279a8c6a8dfa476c282a3'
+	},
+	TruncatedSha512Case{
+		password:   'passwordPASSWORDpassword'
+		salt:       'saltSALTsaltSALTsaltSALTsaltSALTsalt'
+		count:      4096
+		key_length: 64
+		sha512_224: '573df96762ea7da4f71231859ca282ef482764ad9671c5275c3272fe6ae94d285a5709d1080fd6d8b88b696e3072f0e1a2a378a98592dd26df77e3557c168019'
+		sha512_256: '31cf94e3d8e36aa18d40ad92654ab80f500ed7fb575a2215547db6f82dd227ed0f41215e8f9bb97641a2d8156b7b7c16a669a0475d609314d0fa8cc2ace4ec66'
+	},
+]
+
+fn test_sha512_224() {
+	for c in truncated_sha512_cases {
+		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length,
+			sha512.new512_224())!
+		assert key.hex() == c.sha512_224, 'failed c=${c.count} dkLen=${c.key_length}'
+	}
+}
+
+fn test_sha512_256() {
+	for c in truncated_sha512_cases {
+		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length,
+			sha512.new512_256())!
+		assert key.hex() == c.sha512_256, 'failed c=${c.count} dkLen=${c.key_length}'
+	}
+}

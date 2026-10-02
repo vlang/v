@@ -27,10 +27,11 @@ pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]
 		sha512.Digest {
 			block_size = h.block_size()
 			size = h.size()
-			if size == sha512.size384 {
-				fun = sha512.sum384
-			} else {
-				fun = sha512.sum512
+			fun = match size {
+				sha512.size384 { sha512.sum384 }
+				sha512.size256 { sha512.sum512_256 }
+				sha512.size224 { sha512.sum512_224 }
+				else { sha512.sum512 }
 			}
 		}
 		else {
