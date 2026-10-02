@@ -39,7 +39,7 @@ const usage_lines = [
 	'The generator writes explicit calls into the Packer and Unpacker of'
 	'`encoding.protobuf` rather than reflecting over a struct at run time. The'
 	'generated file is the artefact a reader debugs, and a frame in a call such as'
-	'`p.write_int32(7, msg.written)` names the field, where a frame inside a'
+	'`packer.write_int32(7, msg.written)` names the field, where a frame inside a'
 	'generic encoder does not.'
 	''
 	'Options:'

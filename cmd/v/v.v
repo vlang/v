@@ -55,6 +55,7 @@ const external_commands = [
 	'mod',
 	'new',
 	'outdated',
+	'pbgen',
 	'quest',
 	'reduce',
 	'remove',
