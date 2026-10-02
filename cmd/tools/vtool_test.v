@@ -3,7 +3,7 @@ import os
 const vexe = os.quoted_path(@VEXE)
 
 const tfolder = os.join_path(os.vtmp_dir(), 'vtool_test')
-const vmodules = os.join_path(tfolder, 'vmodules')
+const vmodules = os.join_path(tfolder, '.vmodules')
 
 // write_file creates `path` and its parent folders.
 fn write_file(path string, content string) ! {
@@ -18,7 +18,7 @@ fn write_module(parent string, name string, with_main bool) !string {
 	if with_main {
 		write_file(os.join_path_single(root, 'main.v'), "module main\n\nfn main() {\n\tprintln('${name} ran')\n}\n")!
 	} else {
-		write_file(os.join_path_single(root, 'lib.v'), "module ${name}\n\npub fn f() int {\n\treturn 1\n}\n")!
+		write_file(os.join_path_single(root, 'lib.v'), 'module ${name}\n\npub fn f() int {\n\treturn 1\n}\n')!
 	}
 	return root
 }
@@ -103,4 +103,28 @@ fn test_v_tool_help_explains_the_rule() {
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('Usage: v tool [options] [NAME]'), res.output
 	assert res.output.contains('main.v'), res.output
+}
+
+fn test_v_tool_lists_runnable_import_names_without_manifests() {
+	prepare_fixture()!
+	write_file(os.join_path(vmodules, 'bare', 'main.v'), "module main\nfn main() { println('bare ran') }\n")!
+	write_file(os.join_path(vmodules, 'gtool', 'v.mod'), "Module { name: 'different_manifest_name' }\n")!
+	listed := os.execute('${vexe} tool')
+	assert listed.exit_code == 0, listed.output
+	names := listed.output.trim_space().split_into_lines()
+	assert 'bare' in names, listed.output
+	assert 'gtool' in names, listed.output
+	assert 'different_manifest_name' !in names, listed.output
+	for name in ['bare', 'gtool'] {
+		res := os.execute('${vexe} tool ${name}')
+		assert res.exit_code == 0, res.output
+		assert res.output.contains('${name} ran'), res.output
+	}
+}
+
+fn test_v_tool_short_help_explains_module_resolution() {
+	res := os.execute('${vexe} tool -h')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('main.v'), res.output
+	assert res.output.contains('same lookup as'), res.output
 }

@@ -56,7 +56,7 @@ fn tool_modules(search_root string) ![]string {
 	for entry in os.ls(search_root)! {
 		joined := os.join_path_single(search_root, entry)
 		if os.is_dir(joined) && is_tool_module(joined) {
-			names << module_name_of(joined)
+			names << entry
 		}
 	}
 	names.sort()
@@ -137,10 +137,15 @@ fn main() {
 	fp.version('0.0.1')
 	fp.description('Run a tool module by name.')
 	fp.arguments_description('[NAME]')
+	show_help := fp.bool('help', `h`, false, 'Show this help.')
 	rest := fp.finalize() or {
 		eprintln('v tool: ${err.msg()}')
 		print_help(fp)
 		exit(1)
+	}
+	if show_help {
+		print_help(fp)
+		return
 	}
 	p := new_preferences()
 	if rest.len == 0 {

@@ -43,3 +43,5 @@ every module from a project to the filesystem root would report far more than
 belongs in a list. Nested module folders, such as one under `cmd/`, are left out
 for the opposite reason, because a module there is not resolvable by name and so
 could not be run by one.
+Installed tools are listed by their import path relative to the module folder,
+even without v.mod or when the manifest name differs from that path.
