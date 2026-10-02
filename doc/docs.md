@@ -6955,6 +6955,9 @@ The editing tools default to reporting a plan rather than writing:
 it refuses to write over a concurrent change. `--read-only` does not register them
 at all.
 
+Symbol renames preserve the `@` prefix on escaped method calls. Formatting refuses
+source with parser errors and preserves the original file.
+
 To use it from an MCP client, point the client at the command:
 
 ```json
@@ -6986,6 +6989,12 @@ applies to every project on the machine. Installing a skill that is already ther
 is skipped rather than overwritten, so a local edit survives; `--force` restores
 the bundled copy, and `v skills list` flags an installed skill that has fallen
 behind the bundle it came from.
+
+Skill names must contain only lowercase letters, digits and single hyphens, and
+must match the bundled name. Installation stays within an immediate child of the
+skills directory, including with `--force`; bundled file paths cannot escape that
+skill and must refer to regular files. The `v-workflow` check script exits with a
+nonzero status when any compilation, formatting or vet check fails.
 
 The skills are read from the source tree at run time rather than embedded into the
 binary, so a skill can be reviewed and diffed in the repository and adding one

@@ -454,6 +454,7 @@ fn source_text(a &flat.FlatAst, id int, mut cache map[int]string) string {
 // The node's own range is the only frame that can be trusted, because it is what
 // the parser measured from the file. A selector's name follows its receiver;
 // matching complete tokens avoids selecting a substring of the receiver's name.
+// Escaped names retain their `@` in scanner literals; the edit starts after it.
 fn name_offset(source string, node &flat.Node, name string) int {
 	start := int(node.pos.offset)
 	end := int(node.pos.end)
@@ -473,8 +474,9 @@ fn name_offset(source string, node &flat.Node, name string) int {
 		if tok == .eof {
 			break
 		}
-		if (tok == .name || tok.is_keyword()) && s.lit == name {
-			found = start + s.pos
+		escaped := s.lit.starts_with('@') && s.lit[1..] == name
+		if (tok == .name || tok.is_keyword()) && (s.lit == name || escaped) {
+			found = start + s.pos + if escaped { 1 } else { 0 }
 			if node.kind != .selector {
 				break
 			}

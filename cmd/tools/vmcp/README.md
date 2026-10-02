@@ -18,3 +18,14 @@ returned; smaller trees keep their normal AST object.
 Compiler flags for `v_run`, `v_check` and `v_test_run` are placed before the
 command and target. Program arguments keep their original boundaries, including
 spaces, empty strings and shell punctuation; they are passed directly to the child.
+Compiler children use the selected workspace as their working directory, so
+relative paths in compiler flags and program file accesses are resolved there.
+Their stdin is the null device: interactive reads receive EOF. Launch failures
+return an error without terminating the server, and inaccessible workspaces are
+refused before a POSIX child is started.
+
+`v_format` returns parser diagnostics for malformed source and leaves the file
+untouched, including when `write: true` is requested.
+
+Every installed help text is listed as a readable `v://help/<topic>` resource.
+The `v://help/{topic}` template describes those same registered topics.

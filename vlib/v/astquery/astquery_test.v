@@ -165,8 +165,7 @@ fn test_occurrences_for_methods_and_selectors_point_at_the_name() {
 		line := lines[occ.line - 1]
 		start := occ.column - 1
 		assert start >= 0 && start + occ.end_column - occ.column <= line.len, occ.str()
-		assert line[start..occ.end_column - 1] == 'hello',
-			'line ${occ.line} column ${occ.column} is not the name: `hello` expected, got `${line[start..occ.end_column - 1]}` in `${line}`'
+		assert line[start..occ.end_column - 1] == 'hello', 'line ${occ.line} column ${occ.column} is not the name: `hello` expected, got `${line[start..occ.end_column - 1]}` in `${line}`'
 	}
 }
 
@@ -181,13 +180,27 @@ fn test_a_selector_occurrence_does_not_start_on_its_receiver() {
 			continue
 		}
 		start := occ.column - 1
-		assert lines[occ.line - 1][start..start + 'hello'.len] == 'hello',
-			'the selector span starts on `${lines[occ.line - 1][start..start + 'hello'.len]}`'
+		assert lines[occ.line - 1][start..start + 'hello'.len] == 'hello', 'the selector span starts on `${lines[occ.line - 1][start..start + 'hello'.len]}`'
+	}
+}
+
+fn test_escaped_method_occurrences_point_after_the_escape_prefix() {
+	source := 'module main\nstruct Host {}\nfn (h Host) hello() int { return 42 }\nfn main() {\n h := Host{}\n println(h.@hello())\n}\n'
+	path := write_sample('escaped_method.v', source)!
+	found := astquery.references(astquery.parse(path), 'hello')
+	assert found.len == 2, found.str()
+	lines := source.split_into_lines()
+	for occ in found {
+		line := lines[occ.line - 1]
+		assert line[occ.column - 1..occ.end_column - 1] == 'hello'
+		if !occ.declaration {
+			assert line[occ.column - 2] == `@`
+		}
 	}
 }
 
 fn test_references_ignores_names_only_present_in_text() {
-	source := 'module m\n\nfn go() {\n\t// point is only mentioned here\n\ts := \'point\'\n\tprintln(s)\n}\n'
+	source := "module m\n\nfn go() {\n\t// point is only mentioned here\n\ts := 'point'\n\tprintln(s)\n}\n"
 	a := astquery.parse(write_sample('text.v', source)!)
 	// `point` appears in a comment and in a string literal, neither of which is
 	// an AST mention of an identifier.

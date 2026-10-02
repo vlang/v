@@ -192,30 +192,80 @@ pub fn (r CompilerRun) started() bool {
 
 // run_compiler runs the workspace compiler with `args`.
 //
-// `args` is a real argument array, and `os.exec` starts the process with it
+// `args` is a real argument array, and `os.Process` starts the process with it
 // rather than with a command string, so an argument carrying a space arrives as
 // one argument instead of being split by a shell. That also means callers pass
 // raw paths and raw flags: quoting here would double-quote them.
 //
 // The environment is left alone so the compiler sees the same flags, module
-// search path and environment the user's shell would give it.
+// search path and environment the user's shell would give it. Only the child
+// changes its working directory, so relative flags and program file accesses
+// use the workspace without changing the MCP server's own directory.
 pub fn run_compiler(ws &Workspace, args []string) CompilerRun {
-	mut argv := [ws.compiler]
-	argv << args
-	result := os.exec(argv)
-	trimmed := result.output.trim_space()
+	command := compiler_command_line(ws.compiler, args)
+	executable := os.find_abs_path_of_executable(ws.compiler) or {
+		return CompilerRun{
+			exit_code:    -1
+			command:      command
+			launch_error: err.msg()
+		}
+	}
+	if !os.is_executable(executable) {
+		return CompilerRun{
+			exit_code:    -1
+			command:      command
+			launch_error: '`${ws.compiler}` is not executable'
+		}
+	}
+	if !os.is_dir(ws.root) {
+		return CompilerRun{
+			exit_code:    -1
+			command:      command
+			launch_error: 'workspace `${ws.root}` is not a directory'
+		}
+	}
+	$if !windows {
+		if !os.is_executable(ws.root) {
+			return CompilerRun{
+				exit_code:    -1
+				command:      command
+				launch_error: 'workspace `${ws.root}` is not searchable'
+			}
+		}
+	}
+	$if windows {
+		result := run_compiler_windows(executable, args, ws.root)
+		return CompilerRun{
+			exit_code:    result.exit_code
+			output:       result.output
+			command:      command
+			launch_error: result.launch_error
+		}
+	}
+	mut process := os.new_process(executable)
+	process.set_args(args)
+	process.set_work_folder(ws.root)
+	process.set_redirect_stdio_merged()
+	// MCP owns stdin. Programs receive EOF instead of an unwritten input pipe.
+	process.set_stdin_path(os.path_devnull)
+	process.run()
+	output := process.stdout_slurp()
+	process.wait()
+	exit_code := process.code
+	process.close()
+	trimmed := output.trim_space()
 	return CompilerRun{
-		exit_code:    result.exit_code
-		output:       result.output
-		command:      compiler_command_line(ws.compiler, args)
-		launch_error: if result.exit_code != 0 && launch_failure(trimmed) { trimmed } else { '' }
+		exit_code:    exit_code
+		output:       output
+		command:      command
+		launch_error: if exit_code != 0 && launch_failure(trimmed) { trimmed } else { '' }
 	}
 }
 
 // compiler_command_line renders `compiler` and `args` as a command a person can
 // read, and copy and paste into a shell.
 //
-// It is for reporting only: nothing is run through it. `os.exec` takes the
+// It is for reporting only: nothing is run through it. `os.Process` takes the
 // array directly, so a value that needed quoting here still reaches the compiler
 // as exactly one argument.
 fn compiler_command_line(compiler string, args []string) string {
@@ -226,11 +276,10 @@ fn compiler_command_line(compiler string, args []string) string {
 	return parts.join(' ')
 }
 
-// launch_failure returns `output` when it is one of `os.exec`'s own messages
-// about not starting the process, and an empty string otherwise.
+// launch_failure reports whether output is a process-launch failure message.
 //
-// `os.exec` reports a failed launch in its `output` field rather than through
-// a flag, so the messages are matched by their shape: a real compiler always
+// Process launch failures can arrive on stderr rather than through a flag,
+// so the messages are matched by their shape: a real compiler always
 // speaks in diagnostics of the form `path:line:column: kind: message`.
 fn launch_failure(output string) bool {
 	if output == '' {
@@ -239,7 +288,8 @@ fn launch_failure(output string) bool {
 	if parse_diagnostic_line(output) != none {
 		return false
 	}
-	return output.starts_with('exec failed (')
+	return output.starts_with('os: failed to execute "')
+		|| output.starts_with('exec failed (')
 		|| output.starts_with('exec requires at least one argument')
 		|| output.starts_with('exec("') && output.ends_with('") failed')
 }

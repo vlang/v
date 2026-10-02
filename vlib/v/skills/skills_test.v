@@ -145,6 +145,83 @@ fn test_install_dry_run_writes_nothing() {
 	assert skills.installed(dir).len == 0
 }
 
+fn test_find_rejects_names_that_resolve_to_a_bundle_through_traversal() {
+	vroot := fixture_root(['alpha'])!
+	for name in ['../skills/alpha', './alpha', os.join_path(skills.bundled_root(vroot), 'alpha')] {
+		assert skills.find(vroot, name) == none, name
+	}
+	assert skills.find(vroot, 'alpha') != none
+}
+
+fn test_install_rejects_traversal_and_mismatched_names_without_writing() {
+	vroot := fixture_root(['alpha'])!
+	dir := skills.target_dir(.project_root, vroot)
+	alpha := skills.find(vroot, 'alpha') or { panic('missing alpha') }
+	victim := os.join_path(vroot, 'victim', 'alpha')
+	os.mkdir_all(victim)!
+	marker := os.join_path(victim, 'keep.txt')
+	os.write_file(marker, 'unrelated')!
+	for name in ['', '..', '../../victim/alpha', 'a\\..\\alpha', 'beta'] {
+		skill := skills.Skill{
+			...alpha
+			name: name
+		}
+		for opts in [skills.InstallOptions{}, skills.InstallOptions{ force: true },
+			skills.InstallOptions{ force: true, dry_run: true }] {
+			assert skills.install(skill, dir, opts) == none, name
+			assert os.read_file(marker)! == 'unrelated'
+			assert !os.exists(dir)
+		}
+	}
+	skills.install(alpha, dir, skills.InstallOptions{})!
+	assert os.is_file(os.join_path(dir, 'alpha', skills.entry_file))
+}
+
+fn test_install_validates_all_file_paths_before_replacing_an_installation() {
+	vroot := fixture_root(['alpha'])!
+	dir := skills.target_dir(.project_root, vroot)
+	alpha := skills.find(vroot, 'alpha') or { panic('missing alpha') }
+	skills.install(alpha, dir, skills.InstallOptions{})!
+	entry := os.join_path(dir, 'alpha', skills.entry_file)
+	os.write_file(entry, 'local edit')!
+	outside := os.join_path(vroot, 'outside.txt')
+	os.write_file(outside, 'unrelated')!
+	for relative in ['../../outside.txt', 'references/../../outside.txt', outside, '..\\outside.txt',
+		'C:/outside.txt'] {
+		skill := skills.Skill{
+			...alpha
+			files: [skills.entry_file, relative]
+		}
+		for opts in [skills.InstallOptions{ force: true },
+			skills.InstallOptions{ force: true, dry_run: true }] {
+			assert skills.install(skill, dir, opts) == none, relative
+			assert os.read_file(entry)! == 'local edit'
+			assert os.read_file(outside)! == 'unrelated'
+		}
+	}
+	$if !windows {
+		link := os.join_path(alpha.directory, 'outside.txt')
+		os.symlink(outside, link)!
+		skill := skills.Skill{
+			...alpha
+			files: [skills.entry_file, 'outside.txt']
+		}
+		assert skills.install(skill, dir, skills.InstallOptions{ force: true }) == none
+		assert os.read_file(entry)! == 'local edit'
+		assert os.read_file(outside)! == 'unrelated'
+		fifo := os.join_path(alpha.directory, 'input.fifo')
+		created := os.exec(['mkfifo', fifo])
+		assert created.exit_code == 0, created.output
+		assert os.stat(fifo)!.get_filetype() == .fifo
+		pipe_skill := skills.Skill{
+			...alpha
+			files: [skills.entry_file, 'input.fifo']
+		}
+		assert skills.install(pipe_skill, dir, skills.InstallOptions{ force: true }) == none
+		assert os.read_file(entry)! == 'local edit'
+	}
+}
+
 fn test_dry_run_reports_a_skip_for_an_installed_skill() {
 	vroot := fixture_root(['alpha'])!
 	dir := scratch_dir('dry_skip')!

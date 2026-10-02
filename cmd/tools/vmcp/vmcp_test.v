@@ -579,6 +579,26 @@ fn test_format_reports_a_missing_file() {
 	assert answer.contains('"error"'), answer
 }
 
+fn test_format_refuses_parser_errors_without_changing_source() {
+	ws := probe_workspace()
+	path := probe_path('broken.v')
+	before := 'module main\nfn main() {\n\tx :=\n}\n'
+	os.write_file(path, before)!
+	for write in [false, true] {
+		answer := tool_format(ws, '{"path":"broken.v","write":${write}}')
+		parsed := json.decode[map[string]json.Any](answer, strict: true)!
+		assert parsed['error']!.str() == 'the file contains parser errors', answer
+		diagnostics := parsed['diagnostics']!.as_array()
+		assert diagnostics.len > 0, answer
+		diagnostic := diagnostics[0].as_map()
+		assert diagnostic['path']!.str() == 'broken.v', answer
+		assert diagnostic['line']!.int() > 0, answer
+		assert diagnostic['message']!.str() != '', answer
+		assert 'after' !in parsed, answer
+		assert os.read_file(path)! == before, 'parser recovery must not replace the source'
+	}
+}
+
 fn test_edit_replace_rewrites_a_range() {
 	ws := probe_workspace()
 	path := probe_path('edit.v')

@@ -1,4 +1,5 @@
 #!/usr/bin/env -S v run
+
 // check.vsh runs the V gate on one or more paths: does it type-check, is it
 // formatted, and does vet complain. It is the loop from the skill, in one command.
 //
@@ -41,9 +42,9 @@ fn main() {
 			missing++
 			continue
 		}
-		run_step('type-check', target, check_command(target, shared))
-		run_step('formatted', target, fmt_command(target))
-		run_step('vet', target, vet_command(target))
+		failures += run_step('type-check', target, check_command(target, shared))
+		failures += run_step('formatted', target, fmt_command(target))
+		failures += run_step('vet', target, vet_command(target))
 	}
 	if missing > 0 {
 		eprintln('check.vsh: ${missing} path(s) did not exist')
@@ -81,15 +82,16 @@ fn vet_command(target string) string {
 
 // run_step runs one check and reports it, counting a failure rather than exiting
 // so that one bad path does not hide the state of the others.
-fn run_step(label string, target string, cmd string) {
+fn run_step(label string, target string, cmd string) int {
 	result := os.execute(cmd)
 	if result.exit_code == 0 {
 		println('  ok       ${label}: ${target}')
-		return
+		return 0
 	}
 	eprintln('  FAILED   ${label}: ${target}')
 	// The compiler's own output is the reason, so pass it through rather than
 	// summarising it away.
 	eprint(result.output)
 	eprintln('  command: ${cmd}')
+	return 1
 }

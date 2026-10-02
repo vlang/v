@@ -9,8 +9,9 @@ module main
 
 import os
 import v.astjson
-import v.astquery
 import v.gen.v as vfmt
+import v.parser
+import v.pref
 
 // spec_edit_replace declares `v_edit_replace`.
 fn spec_edit_replace() ToolSpec {
@@ -247,7 +248,31 @@ fn tool_format(ws &Workspace, arguments string) string {
 		return error_json('`${path}` is not a file')
 	}
 	before := os.read_file(path) or { return error_json(err.msg()) }
-	after := vfmt.format(astquery.parse(path))
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
+	prefs.is_fmt = true
+	prefs.preserve_comptime_conditionals = true
+	prefs.supports_inline_asm = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(path)
+	mut errors := []Diagnostic{}
+	for diagnostic in p.diagnostics {
+		if diagnostic.severity !in ['', 'error:'] {
+			continue
+		}
+		errors << Diagnostic{
+			path:    ws.relative(diagnostic.file)
+			line:    diagnostic.line
+			column:  diagnostic.column
+			kind:    'error'
+			message: diagnostic.message
+		}
+	}
+	if errors.len > 0 {
+		return object(text_pair('error', 'the file contains parser errors'),
+			raw_pair('diagnostics', diagnostics_json(errors)))
+	}
+	after := vfmt.format(a)
 	changed := before != after
 	if changed && args.boolean('write', false) {
 		os.write_file(path, after) or { return error_json(err.msg()) }

@@ -162,13 +162,14 @@ pub fn invalid_bundled(vroot string) []string {
 	return out
 }
 
-// find returns the bundled skill called `name`.
+// find returns the bundled skill called `name`, or none for an invalid name.
 pub fn find(vroot string, name string) ?Skill {
 	return load(bundled_root(vroot), name)
 }
 
 // load reads one skill directory from `root`.
 fn load(root string, name string) ?Skill {
+	validate_name(name) or { return none }
 	directory := os.join_path_single(root, name)
 	entry := os.join_path_single(directory, entry_file)
 	if !os.is_file(entry) {
@@ -362,6 +363,9 @@ pub fn target_dir(scope Scope, base string) string {
 //
 // The bundle is validated first, so a skill whose front matter does not satisfy
 // the spec is refused here rather than copied somewhere an agent will read it.
+// Its name must match the bundle and its destination must be an immediate child
+// of the install directory. File paths must stay within that skill and its bundle
+// and refer to regular files.
 //
 // Without `force`, an already installed skill is skipped and reported as such
 // rather than overwritten: an agent must not silently discard local edits to a
@@ -372,10 +376,39 @@ pub fn target_dir(scope Scope, base string) string {
 // list and delete the *target's* contents rather than the link. That is how an
 // install turns into an unrelated directory wipe.
 pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
-	validate_bundle(skill.directory)!
+	validate_name(skill.name)!
+	bundle_name := validate_bundle(skill.directory)!
+	if bundle_name != skill.name {
+		return error('skill name `${skill.name}` does not match the bundle name `${bundle_name}`')
+	}
 	dest := os.join_path_single(dir, skill.name)
 	if os.is_link(dest) {
 		return error('refusing to install over a symlink skill directory `${dest}`')
+	}
+	install_dir := os.real_path(os.abs_path(dir))
+	resolved_dest := if os.exists(dest) {
+		os.real_path(os.abs_path(dest))
+	} else {
+		os.join_path_single(install_dir, skill.name)
+	}
+	if os.dir(resolved_dest) != install_dir {
+		return error('skill `${skill.name}` is outside its immediate install directory')
+	}
+	bundle_dir := os.real_path(os.abs_path(skill.directory))
+	// Validate every file before replacing an existing installation.
+	for relative in skill.files {
+		if os.is_abs_path(relative) || relative.contains('\\') || relative.contains(':')
+			|| relative.split('/').any(it in ['', '.', '..']) {
+			return error('invalid skill file path `${relative}`')
+		}
+		source := os.real_path(os.join_path(skill.directory, relative))
+		if !source.starts_with(bundle_dir + os.path_separator) {
+			return error('skill file `${relative}` is outside its bundle or is not a regular file')
+		}
+		info := os.stat(source)!
+		if info.get_filetype() != .regular {
+			return error('skill file `${relative}` is not a regular file')
+		}
 	}
 	already_installed := os.is_dir(dest)
 	if already_installed && !opts.force {

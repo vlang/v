@@ -49,8 +49,18 @@ fn register_resources(mut server mcp.Server, ws &Workspace) ! {
 		mime_type:   'text/plain'
 	}, version_resource_handler())!
 
-	register_text_resource(mut server, 'v://help/default', 'v_help_default', 'v help',
-		'The top level V command line help.', os.join_path(help_root(ws), 'default.txt'))!
+	mut help_paths := os.walk_ext(help_root(ws), '.txt')
+	help_paths.sort()
+	for path in help_paths {
+		topic := os.file_name(path).all_before_last('.txt')
+		register_text_resource(mut server, 'v://help/${topic}', 'v_help_${topic}',
+			if topic == 'default' { 'v help' } else { 'v help ${topic}' },
+			if topic == 'default' {
+				'The top level V command line help.'
+			} else {
+				'The V command line help for `${topic}`.'
+			}, path)!
+	}
 	register_text_resource(mut server, 'v://docs/language', 'v_language_reference',
 		'V language reference', 'The V language specification, the document the language rules come from.',
 		os.join_path(docs_root(ws), 'docs.md'))!
@@ -59,7 +69,7 @@ fn register_resources(mut server mcp.Server, ws &Workspace) ! {
 		uri_template: 'v://help/{topic}'
 		name:         'v_help_topic'
 		title:        'v help topic'
-		description:  'Any `v help <topic>` page, for example `v://help/test`.'
+		description:  'An installed help topic from `resources/list`, for example `v://help/test`.'
 		mime_type:    'text/plain'
 	})!
 }
