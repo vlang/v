@@ -155,3 +155,184 @@ fn test_close_delegates_to_the_transport() {
 
 	assert transport.closed
 }
+
+fn discover_response_json() string {
+	return new_response(1, DiscoverResult{
+		supported_versions: [protocol_version_2025_11_25, protocol_version_2026_07_28]
+		capabilities:       '{"tools":{}}'
+	}, ResponseError{}).encode()
+}
+
+fn test_client_2026_skips_the_handshake_and_injects_meta() {
+	mut transport := &MockTransport{
+		incoming: [
+			discover_response_json(),
+			new_response(2, map[string]string{
+				'ok': 'yes'
+			}, ResponseError{}).encode(),
+		]
+	}
+	mut client := new_client(transport, ClientConfig{
+		stateless_2026:   true
+		protocol_version: protocol_version_2026_07_28
+		log_level:        'debug'
+		client_info:      Implementation{
+			name:    'c'
+			version: '1'
+		}
+	})
+
+	result := client.initialize()!
+	assert result.protocol_version == protocol_version_2026_07_28
+	// The only message on the wire is `server/discover`: no initialize, and no
+	// `notifications/initialized`.
+	assert transport.sent.len == 1
+	discover := decode_request(transport.sent[0])!
+	assert discover.method == 'server/discover'
+	assert discover.params.contains('io.modelcontextprotocol/protocolVersion')
+	assert discover.params.contains('io.modelcontextprotocol/clientInfo')
+	assert discover.params.contains('io.modelcontextprotocol/logLevel')
+
+	reply := client.request_message('tools/list', empty)!
+	assert reply.error.code == 0
+	list := decode_request(transport.sent[1])!
+	assert list.method == 'tools/list'
+	// Every request re-declares the revision, as the spec requires.
+	assert list.params.contains('io.modelcontextprotocol/protocolVersion')
+}
+
+fn test_client_2026_answers_input_required_and_retries() {
+	input_required := Response{
+		id:     '1'
+		result: '{"resultType":"input_required","inputRequests":{"ask":{"method":"elicitation/create","params":{"message":"May I?"}}},"requestState":"rs-1"}'
+	}.encode()
+	complete := Response{
+		id:     '1'
+		result: '{"content":"done","isError":false,"resultType":"complete"}'
+	}.encode()
+	mut transport := &MockTransport{
+		incoming: [
+			// `request_message` allocates the caller's id first, so the lazy
+			// discover probe is the one that answers with id 2.
+			Response{
+				id:     '2'
+				result: '{"supportedVersions":["2026-07-28"],"capabilities":"{}"}'
+			}.encode(),
+			input_required,
+			complete,
+		]
+	}
+	mut client := new_client(transport, ClientConfig{
+		stateless_2026:      true
+		protocol_version:    protocol_version_2026_07_28
+		elicitation_handler: fn (_ string) string {
+			return '{"action":"accept","content":{}}'
+		}
+	})
+
+	reply := client.request_message('tools/call', ToolCallParams{
+		name:      'confirm'
+		arguments: '{}'
+	})!
+	assert reply.error.code == 0
+	assert reply.result.contains('"resultType":"complete"')
+	// discover, the first attempt, then the automatic retry.
+	assert transport.sent.len == 3
+	retry := decode_request(transport.sent[2])!
+	assert retry.method == 'tools/call'
+	assert retry.params.contains('"inputResponses"')
+	assert retry.params.contains('"ask"')
+	assert retry.params.contains('"action":"accept"')
+	// The opaque state the server sent is echoed back.
+	assert retry.params.contains('"requestState":"rs-1"')
+	// The original request fields survive the retry.
+	assert retry.params.contains('"name":"confirm"')
+}
+
+fn test_client_2026_downgrades_when_the_version_is_unsupported() {
+	unsupported := Response{
+		id:    '1'
+		error: ResponseError{
+			code:    unsupported_protocol_version.code
+			message: unsupported_protocol_version.message
+			data:    '{"supported":["2025-11-25"],"requested":"2026-07-28"}'
+		}
+	}.encode()
+	mut transport := &MockTransport{
+		incoming: [
+			unsupported,
+			new_response(2, InitializeResult{
+				protocol_version: protocol_version
+				capabilities:     '{}'
+				server_info:      Implementation{
+					name:    'legacy-server'
+					version: '1'
+				}
+			}, ResponseError{}).encode(),
+			new_response(3, map[string]string{
+				'ok': 'yes'
+			}, ResponseError{}).encode(),
+		]
+	}
+	mut client := new_client(transport, ClientConfig{
+		stateless_2026:   true
+		protocol_version: protocol_version_2026_07_28
+	})
+
+	result := client.initialize()!
+	// The client fell back to the revision the server named and ran the
+	// 2025-11-25 handshake instead.
+	assert result.protocol_version == protocol_version
+	assert result.server_info.name == 'legacy-server'
+	discover := decode_request(transport.sent[0])!
+	assert discover.method == 'server/discover'
+	handshake := decode_request(transport.sent[1])!
+	assert handshake.method == 'initialize'
+	assert handshake.decode_params[InitializeParams]()!.protocol_version == protocol_version
+}
+
+fn test_client_listen_returns_the_acknowledged_subset() {
+	acknowledged := build_notification_message('notifications/subscriptions/acknowledged',
+		'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":"7"}}')
+	mut transport := &MockTransport{
+		incoming: [
+			discover_response_json(),
+			acknowledged,
+			Response{
+				id:     '2'
+				result: '{"_meta":{"io.modelcontextprotocol/subscriptionId":"7"}}'
+			}.encode(),
+		]
+	}
+	mut client := new_client(transport, ClientConfig{
+		stateless_2026:   true
+		protocol_version: protocol_version_2026_07_28
+	})
+
+	filter := client.listen(SubscriptionListenParams{
+		notifications: SubscriptionFilter{
+			tools_list_changed:     true
+			prompts_list_changed:   true
+			resources_list_changed: true
+		}
+	})!
+	// The server acknowledged only what it honors.
+	assert filter.tools_list_changed
+	assert !filter.prompts_list_changed
+	assert !filter.resources_list_changed
+
+	// The notification is delivered, tagged with the subscription id.
+	notifications := client.take_notifications()
+	assert notifications.len == 1
+	assert subscription_id_of(notifications[0]) or { '' } == '7'
+}
+
+fn test_client_listen_requires_the_2026_protocol() {
+	mut transport := &MockTransport{}
+	mut client := new_client(transport, ClientConfig{})
+	client.listen(SubscriptionFilter{}) or {
+		assert err.msg().contains('2026-07-28')
+		return
+	}
+	assert false
+}

@@ -1,33 +1,53 @@
 # `mcp`
 
 Native [Model Context Protocol][spec] implementation for V — both client and
-server, full coverage of the **2025-11-25** revision of the spec.
+server, covering two revisions of the spec:
 
-[spec]: https://modelcontextprotocol.io/specification/2025-11-25
+- **2025-11-25** — the stateful revision, and still the default: the
+  `initialize` handshake plus `MCP-Session-Id` sessions.
+- **2026-07-28** — the sessionless revision: no handshake, no session id, and
+  every request declares its own revision, client info and capabilities.
+
+Both are supported at once. A server speaks 2025-11-25 by default and switches
+per request based on the version the client declares; a client picks the mode
+explicitly. The wire shapes never mix: a request answered under 2025-11-25
+carries no 2026-only fields, and vice versa.
+
+[spec-2025]: https://modelcontextprotocol.io/specification/2025-11-25
+[spec-2026]: https://modelcontextprotocol.io/specification/2026-07-28
+[spec]: https://modelcontextprotocol.io/specification/2026-07-28
 
 ## Capabilities
 
-| Feature                                                | Status |
-| ------------------------------------------------------ | :----: |
-| JSON-RPC 2.0 base protocol                             | ✅     |
-| stdio transport (newline-delimited)                    | ✅     |
-| Streamable HTTP transport (POST + GET, SSE, sessions)  | ✅     |
-| `Origin` header validation (DNS rebinding protection)  | ✅     |
-| `MCP-Session-Id` and `MCP-Protocol-Version` headers    | ✅     |
-| `Last-Event-ID` resumption                             | ✅     |
-| Tools (with `annotations`)                             | ✅     |
-| Resources, resource templates, `subscribe`/`updated`   | ✅     |
-| Prompts                                                | ✅     |
-| `completion/complete`                                  | ✅     |
-| `logging/setLevel` + `notifications/message`           | ✅     |
-| `notifications/progress` + cooperative cancellation    | ✅     |
-| `*/list_changed` notifications (auto on `add_*`)       | ✅     |
-| Server-initiated `roots/list`, `sampling/createMessage`, `elicitation/create` | ✅     |
-| `Icon`, `BaseMetadata` (title), `Annotations` on tools/resources/prompts | ✅     |
-| `Tool.execution.taskSupport` advertisement                | ✅     |
-| Content helpers (`text`, `image`, `audio`, embedded resource, resource link) | ✅     |
-| Tasks utility (`tasks/*`)                                 | ⏳ deferred (experimental) |
-| OAuth Authorization                                       | ⏳ deferred (`SHOULD`)     |
+| Feature                                                          | Status             |
+| ---------------------------------------------------------------- | :----------------: |
+| JSON-RPC 2.0 base protocol                                       | ✅                 |
+| stdio transport (newline-delimited)                              | ✅                 |
+| Streamable HTTP transport (POST + GET, SSE, sessions)            | ✅                 |
+| `Origin` header validation (DNS rebinding protection)            | ✅                 |
+| `MCP-Session-Id` and `MCP-Protocol-Version` headers              | ✅ 2025-11-25      |
+| `Last-Event-ID` resumption                                       | ✅ 2025-11-25      |
+| Tools (with `annotations`)                                       | ✅                 |
+| Resources, resource templates                                    | ✅                 |
+| `resources/subscribe` / `unsubscribe` / `resources/updated`      | ✅ 2025-11-25      |
+| Prompts                                                          | ✅                 |
+| `completion/complete`                                            | ✅                 |
+| `logging/setLevel` + `notifications/message`                     | ✅ 2025-11-25      |
+| `notifications/progress` + cooperative cancellation              | ✅                 |
+| `*/list_changed` notifications (auto on `add_*`)                 | ✅                 |
+| Server-initiated `roots/list`, `sampling/createMessage`, `elicitation/create` | ✅ 2025-11-25 |
+| `Icon`, `BaseMetadata` (title), `Annotations`                    | ✅                 |
+| `Tool.execution.taskSupport` advertisement                       | ✅                 |
+| Content helpers (`text`, `image`, `audio`, embedded, link)       | ✅                 |
+| `server/discover`                                                | ✅ 2026-07-28      |
+| Stateless operation (no handshake, per-request `_meta`)          | ✅ 2026-07-28      |
+| `subscriptions/listen`                                           | ✅ 2026-07-28      |
+| Multi Round-Trip Requests (MRTR, `resultType: input_required`)   | ✅ 2026-07-28      |
+| `resultType` on every result                                     | ✅ 2026-07-28      |
+| CacheableResult `ttlMs` / `cacheScope`                           | ✅ 2026-07-28      |
+| `Mcp-Method` / `Mcp-Name` request headers                        | ✅ 2026-07-28      |
+| Tasks utility (`tasks/*`)                                       | ⏳ deferred (experimental) |
+| OAuth Authorization                                              | ⏳ deferred (`SHOULD`)     |
 
 A comprehensive demo server lives at
 [`examples/mcp/server.v`](../../examples/mcp/server.v).
@@ -91,7 +111,8 @@ elicited := server.elicit(session_id, mcp.ElicitParams{}, 60 * time.second)!
 ```
 
 These block until the client returns the matching JSON-RPC response (or until
-the timeout fires).
+the timeout fires). They are a 2025-11-25 facility; under 2026-07-28 a server
+cannot originate requests at all and uses MRTR instead — see below.
 
 ## Content blocks
 
@@ -116,7 +137,157 @@ resource_link := mcp.resource_link_content(mcp.Resource{
 Each helper returns a JSON string conforming to the spec's `ContentBlock`
 union (`type: "text" | "image" | "audio" | "resource" | "resource_link"`).
 
+## 2026-07-28 stateless mode
+
+Under 2026-07-28 there is no session and no handshake. Every request carries
+its own protocol state in `params._meta`. The first two are **required** by
+the schema — a request missing either is rejected as a malformed request
+(`-32600`):
+
+- `io.modelcontextprotocol/protocolVersion` — the revision, required
+- `io.modelcontextprotocol/clientCapabilities` — what the client can do, required
+- `io.modelcontextprotocol/clientInfo` — who is calling
+- `io.modelcontextprotocol/logLevel` — opts the request into log notifications
+
+Every 2026-07-28 result also identifies its server in
+`_meta["io.modelcontextprotocol/serverInfo"]`. With the handshake gone, that
+`_meta` is the only place a client can learn who answered — which is why
+`server/discover` needs no separate identity field.
+
+### Server
+
+`ServerConfig.supported_versions` lists the revisions a server speaks (default:
+both). The preferred `protocol_version` must be in that list. A request that
+names a supported revision in `_meta` is dispatched sessionlessly, and the
+revision it named decides its wire shape — so one server can serve both kinds
+of client at once.
+
+```v oksyntax
+import mcp
+
+mut server := mcp.new_server(
+	name:               'dual-stack'
+	version:            '1.0.0'
+	supported_versions: ['2025-11-25', '2026-07-28']
+	cache_ttl_ms:       300_000
+	cache_scope:        'private'
+)
+```
+
+`server/discover` tells a client what the server speaks, and is callable before
+anything else:
+
+```json
+{"supportedVersions":["2025-11-25","2026-07-28"],"capabilities":{...}}
+```
+
+Over HTTP, a 2026-07-28 POST must also carry `MCP-Protocol-Version` (equal to
+the `_meta` value) plus `Mcp-Method`, and `Mcp-Name` for the methods that
+address a named tool, resource or prompt. A mismatch is a `HeaderMismatchError`
+(-32020); an unknown revision is an `UnsupportedProtocolVersionError` (-32022)
+whose `data` names the versions the server does speak. No `MCP-Session-Id` is
+ever issued or expected.
+
+### Client
+
+`mcp.connect_2026` builds a client that skips the handshake entirely. Every
+request it sends carries the `_meta` block and, over HTTP, the matching
+headers:
+
+```v oksyntax
+import mcp
+
+mut client := mcp.connect_2026('http://localhost:8000/mcp', mcp.ClientConfig{
+	elicitation_handler: fn (_ string) string {
+		return '{"action":"accept","content":{"ok":true}}'
+	}
+})!
+tools := client.request[mcp.ListToolsResult, mcp.ListToolsResult]('tools/list', mcp.empty)
+client.close()
+```
+
+If the server rejects the revision with -32022, the client reads
+`data.supported`, switches to the first revision listed and retries once — the
+2025-11-25 handshake runs normally from there.
+
+### Listening for notifications
+
+`client.listen` opens a subscription and returns the subset the server agreed
+to honor; the notifications themselves arrive in `client.take_notifications()`,
+each tagged with `_meta["io.modelcontextprotocol/subscriptionId"]`.
+
+```v oksyntax
+import mcp
+
+filter := client.listen(mcp.SubscriptionListenParams{
+	notifications: mcp.SubscriptionFilter{
+		tools_list_changed: true
+		resource_uris:      ['res://config']
+	}
+})!
+if filter.tools_list_changed {
+	for notification in client.take_notifications() {
+		if mcp.subscription_id_of(notification) or { '' } == '7' {
+			println(notification.method)
+		}
+	}
+}
+```
+
+**Transport caveat.** `net.http` is strictly request→response, so a
+`subscriptions/listen` over HTTP is a *finite* SSE stream: it carries the
+`acknowledged` notification followed by a `SubscriptionsListenResult`, and the
+subscription does not outlive the response — clients re-listen when they need
+live updates. On stdio the subscription is genuinely long-lived: it shares the
+single stdout channel, notifications are pushed as they happen, and the server
+terminates the stream with `notifications/cancelled` when the transport closes.
+
+## Multi Round-Trip Requests (MRTR)
+
+2026-07-28 removes server-initiated requests. Instead of calling the client
+mid-flight, a handler returns an intermediate result asking for input, and the
+client retries the *original* request with the answers attached. Handlers use a
+take-or-require pattern: try to read the answer, and if it is not there yet,
+ask for it.
+
+```v oksyntax
+import mcp
+
+server.add_tool(mcp.Tool{ name: 'delete_project' }, fn (ctx mcp.Context, _ string) !mcp.ToolResult {
+	// First pass: no answer yet, so ask.
+	if answer := ctx.take_elicit_result('name') {
+		return mcp.tool_text_result('deleted ${answer.content}')
+	}
+	// `content` is the raw JSON the client returned.
+	return ctx.require_elicit('name', mcp.ElicitParams{
+		message:          'Which project should I delete?'
+		requested_schema: mcp.ElicitSchema{
+			properties: '{"name":{"type":"string"}}'
+			required:   ['name']
+		}
+	})
+})!
+```
+
+The first call answers with `resultType: "input_required"` and an
+`inputRequests` map naming what it needs. The client fills in
+`params.inputResponses` and resends, and the handler is invoked again from the
+top — so the `take_*` branch now wins and the tool finishes with
+`resultType: "complete"`.
+
+The typed readers are `take_elicit_result`, `take_roots_result` and
+`take_sampling_result`; the asking counterparts are `require_elicit`,
+`require_roots` and `require_sampling`. `ctx.request_state` carries the opaque
+`requestState` token the server sent, and a `require_*` helper echoes it back
+on the next round.
+
+On the client, register `roots_handler`, `sampling_handler` and
+`elicitation_handler` in `ClientConfig`; the client answers the embedded
+requests and retries automatically (up to 8 rounds).
+
 ## Streamable HTTP details
+
+2025-11-25 transport behaviour:
 
 - POST: returns JSON by default. Returns SSE if the client sends
   `Accept: text/event-stream` only.
@@ -125,13 +296,20 @@ union (`type: "text" | "image" | "audio" | "resource" | "resource_link"`).
 - 403 on disallowed `Origin`, 400 on unsupported `MCP-Protocol-Version`,
   406 when `Accept` lists neither `application/json` nor `text/event-stream`.
 
+2026-07-28 stateless requests additionally require `Mcp-Method` (and
+`Mcp-Name` where it applies) on every POST, and never receive an
+`MCP-Session-Id`.
+
 ## Tests
 
 ```
 v test vlib/mcp
 ```
 
-`spec_compliance_test.v` cross-checks wire shapes against the
-[official schema][schema]. Add a case there whenever a payload field changes.
+`spec_compliance_test.v` and `spec_compliance_2026_test.v` cross-check wire
+shapes against the [official 2025-11-25 schema][schema-2025] and
+[2026-07-28 schema][schema-2026]. Add a case there whenever a payload field
+changes.
 
-[schema]: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.json
+[schema-2025]: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-11-25/schema.json
+[schema-2026]: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2026-07-28/schema.json
