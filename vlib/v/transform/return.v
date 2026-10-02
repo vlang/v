@@ -357,7 +357,7 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 	return result
 }
 
-fn (t &Transformer) optional_types_match(a string, b string) bool {
+fn (mut t Transformer) optional_types_match(a string, b string) bool {
 	if !t.is_optional_type_name(a) || !t.is_optional_type_name(b) || a[0] != b[0] {
 		return false
 	}
@@ -369,8 +369,14 @@ fn (t &Transformer) optional_types_match(a string, b string) bool {
 	if isnil(t.tc) {
 		return false
 	}
+	old_tc_file := t.tc.cur_file
+	old_tc_module := t.tc.cur_module
+	t.tc.cur_file = t.cur_file
+	t.tc.cur_module = t.cur_module
 	a_type := t.tc.parse_type(a_base)
 	b_type := t.tc.parse_type(b_base)
+	t.tc.cur_file = old_tc_file
+	t.tc.cur_module = old_tc_module
 	if a_type is types.Unknown || b_type is types.Unknown {
 		return false
 	}
