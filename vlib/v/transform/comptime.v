@@ -1290,7 +1290,9 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 	mut seen := map[string]bool{}
 	mut loaded_source_files := map[string]bool{}
 	mut line_offsets_by_file := map[string][]int{}
-	for node_id, node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This read-only scan cannot invalidate the borrowed node header.
+		node := unsafe { &t.a.nodes[node_id] }
 		if node.kind == .file {
 			module_name = ''
 			file_name = node.value
@@ -1303,7 +1305,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		if node.kind != .fn_decl || !node.value.contains('.') || node.children_count == 0 {
 			continue
 		}
-		first := t.a.child_node(&node, 0)
+		first := t.a.child_node(node, 0)
 		if first.kind != .param || first.op != .dot || first.value.len == 0
 			|| !comptime_method_receiver_matches(first.typ, requested, normalized, module_name, requested_module) {
 			continue
@@ -1316,7 +1318,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		generic_args, generic_params := t.comptime_method_receiver_generic_args(first.typ, requested, normalized)
 		mut params := []ParamMeta{}
 		for i in 1 .. node.children_count {
-			param := t.a.child_node(&node, i)
+			param := t.a.child_node(node, i)
 			if param.kind != .param {
 				if t.prefix_param_scan {
 					break
