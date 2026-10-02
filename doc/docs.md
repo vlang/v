@@ -8544,6 +8544,8 @@ println(qux)
 ## sizeof and __offsetof
 
 * `sizeof(Type)` gives the size of a type in bytes.
+* `sizeof(value)` gives the size of the value's V type, including when its storage moves to
+  the heap.
 * `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
 
 ```v
