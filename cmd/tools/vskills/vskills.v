@@ -18,18 +18,23 @@ import os
 import v.skills
 
 const usage = 'Usage: v skills list [--global]\n' +
-	'       v skills add <name> [--global] [--force] [--dry-run]\n' +
-	'       v skills remove <name> [--global] [--dry-run]\n' +
-	'       v skills path <name> [--global]\n' +
-	'\n' +
-	'Options:\n' +
-	'  --global      use ~/.agents/skills instead of the project directory\n' +
-	'  --force       overwrite an already installed skill of the same name\n' +
-	'  --dry-run     report what would happen without writing anything\n' +
-	'  -h, --help    show this help and exit\n' +
-	'\n' +
-	'Skills are installed into .agents/skills/<name>/, which the coding agents\n' +
-	'read from a project, or ~/.agents/skills/<name>/ with --global.\n'
+   	'       v skills add <name> [--global] [--force] [--dry-run]\n' +
+   	'       v skills remove <name> [--global] [--dry-run]\n' +
+   	'       v skills update [<name>...] [--global] [--force] [--dry-run]\n' +
+   	'       v skills path <name> [--global]\n' +
+   	'\n' +
+   	'Options:\n' +
+   	'  --global      use ~/.agents/skills instead of the project directory\n' +
+   	'  --force       overwrite an already installed skill of the same name\n' +
+   	'  --dry-run     report what would happen without writing anything\n' +
+   	'  -h, --help    show this help and exit\n' +
+   	'\n' +
+   	'Skills are installed into .agents/skills/<name>/, which the coding agents\n' +
+   	'read from a project, or ~/.agents/skills/<name>/ with --global.\n' +
+   	'\n' +
+   	'`update` refreshes the skills whose bundled copy has changed since they\n' +
+   	'were installed. It does not touch a skill whose files were edited here:\n' +
+   	'those are reported and need --force.\n'
 
 // Output is what one run reported.
 //
@@ -111,6 +116,9 @@ fn run_at(vroot string, base string, args []string) Output {
 		}
 		'remove' {
 			return remove(opts)
+		}
+		'update' {
+			return update(vroot, opts)
 		}
 		'path' {
 			return path_of(vroot, opts)
@@ -293,6 +301,125 @@ fn report_add(result skills.InstallResult, force bool) string {
 	}
 	verb := if force { 'reinstalled' } else { 'installed' }
 	return '${result.skill}: ${verb} ${result.written.len} file(s) at ${result.path}'
+}
+
+// HeldSkill is a skill `update` did not refresh, with the state that stopped it.
+struct HeldSkill {
+	name  string
+	state skills.OriginState
+}
+
+// update refreshes installed skills whose bundle has changed.
+//
+// It acts on the `stale` state and nothing else. A skill whose files no longer
+// match what was installed was edited here, and overwriting that is what
+// `--force` is for; a skill with no record at all is treated the same way, so an
+// installation from before provenance existed is not overwritten on a guess.
+//
+// Naming a skill limits the update to it. Naming none updates every installed
+// skill in the chosen scope.
+fn update(vroot string, opts Options) Output {
+	dir := target(opts)
+	installed := skills.installed(dir)
+	if opts.names.len == 0 {
+		if installed.len == 0 {
+			return Output{
+				errors: ['v skills: nothing is installed in ${dir}']
+				code:   1
+			}
+		}
+	} else {
+		for name in opts.names {
+			if name !in installed {
+				return Output{
+					errors: ['v skills: `${name}` is not installed in ${dir}; run `v skills list`']
+					code:   1
+				}
+			}
+		}
+	}
+	mut out := Output{}
+	mut failed := false
+	mut refreshed := 0
+	mut held_back := []HeldSkill{}
+	mut overwritten := []string{}
+	for name in installed {
+		if opts.names.len > 0 && name !in opts.names {
+			continue
+		}
+		state := skills.origin_state(vroot, dir, name)
+		if state == .current {
+			continue
+		}
+		// `unknown` is a skill with no record of what was installed, so `--force`
+		// covers it the same way it covers a local edit: from here the two are not
+		// distinguishable, and `--force` is how the user says yes either way.
+		local_changes := state == .modified || state == .unknown
+		if local_changes && !opts.force {
+			held_back << HeldSkill{
+				name:  name
+				state: state
+			}
+			continue
+		}
+		skill := skills.find(vroot, name) or {
+			held_back << HeldSkill{
+				name:  name
+				state: .unknown
+			}
+			continue
+		}
+		// Refreshing `stale` cannot lose anything, because what is on disk is what
+		// was installed. Refreshing the other two discards local work, which is why
+		// it needs `--force`.
+		result := skills.install(skill, dir, skills.InstallOptions{
+			force:   true
+			dry_run: opts.dry_run
+		}) or {
+			out.errors << 'v skills: could not update `${name}`: ${err.msg()}'
+			failed = true
+			continue
+		}
+		verb := if opts.dry_run {
+			'would update'
+		} else if local_changes {
+			'overwrote local changes in'
+		} else {
+			'updated'
+		}
+		out.lines << '${name}: ${verb} ${result.written.len} file(s) at ${result.path}'
+		if local_changes {
+			overwritten << name
+		}
+		refreshed++
+	}
+	if refreshed == 0 && held_back.len == 0 {
+		out.lines << 'every installed skill already matches its bundle'
+	}
+	// The two states are reported apart: one means the files here differ from the
+	// installed copy, the other means nothing recorded what the installed copy was,
+	// and the reader has to know which before deciding to pass `--force`.
+	for held in held_back {
+		reason := if held.state == .modified {
+			'was edited since it was installed'
+		} else {
+			'has no record of what was installed'
+		}
+		out.errors << 'v skills: `${held.name}` ${reason}, so it was not updated; ' +
+			'pass --force to overwrite it with the bundled copy'
+		failed = true
+	}
+	// Overwriting local work on request is what `--force` means, so it is not a
+	// failure and does not change the exit code. The caution still goes to
+	// standard error: the discarded files are gone from here.
+	if overwritten.len > 0 && !opts.dry_run {
+		out.errors << 'v skills: --force overwrote local changes in ' +
+			overwritten.join(', ') + '; they are not recoverable from here'
+	}
+	if failed {
+		out.code = 1
+	}
+	return out
 }
 
 // remove uninstalls one or more skills.

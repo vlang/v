@@ -1,4 +1,4 @@
-List, install and remove the agent skills bundled with this compiler.
+List, install, update and remove the agent skills bundled with this compiler.
 
 V bundles skills that describe the language rules, the build and test loop and
 the tools, in the layout coding agents already read. `v skills` installs them
@@ -8,12 +8,14 @@ Usage:
   v skills list [--global]
   v skills add <name> [--global] [--force] [--dry-run]
   v skills remove <name> [--global] [--dry-run]
+  v skills update [<name>...] [--global] [--force] [--dry-run]
   v skills path <name> [--global]
 
   v skills list              Show the bundled catalog and what is installed.
   v skills add v-mcp         Install one skill into this project.
   v skills add v-mcp --global  Install it for every project of this user.
   v skills remove v-mcp      Remove it from this project.
+  v skills update            Refresh the installed skills that fell behind.
   v skills path v-mcp        Print where a skill is installed.
 
 Options:
@@ -28,6 +30,14 @@ from a project, or `~/.agents/skills/<name>/` with `--global`.
 Installing over an existing skill is skipped rather than overwritten, so a local
 edit survives; `--force` restores the bundled copy, and `list` flags a skill
 whose installed copy has fallen behind its bundle.
+
+`update` refreshes the skills whose installed copy is still the one that was
+installed but whose bundle has since changed. It records what it installs in
+`origin.json` beside the skills, which is how it tells that case apart from a
+skill whose files were edited here. Those are reported and left alone, because
+refreshing them would discard the edit; `--force` overwrites them. Naming a
+skill limits the update to it, and naming none updates every installed skill in
+the chosen scope.
 
 `list` reports a bundled skill that fails validation with the reason, rather than
 letting the catalog skip it silently.
