@@ -1,5 +1,8 @@
 module mcp
 
+import os
+import time
+
 struct MockTransport {
 mut:
 	incoming []string
@@ -309,14 +312,14 @@ fn test_client_2026_downgrades_when_the_version_is_unsupported() {
 
 fn test_client_listen_returns_the_acknowledged_subset() {
 	acknowledged := build_notification_message('notifications/subscriptions/acknowledged',
-		'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":"7"}}')
+		'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":"2"}}')
 	mut transport := &MockTransport{
 		incoming: [
 			discover_response_json(),
 			acknowledged,
 			Response{
 				id:     '2'
-				result: '{"_meta":{"io.modelcontextprotocol/subscriptionId":"7"}}'
+				result: '{"_meta":{"io.modelcontextprotocol/subscriptionId":"2"}}'
 			}.encode(),
 		]
 	}
@@ -340,7 +343,7 @@ fn test_client_listen_returns_the_acknowledged_subset() {
 	// The notification is delivered, tagged with the subscription id.
 	notifications := client.take_notifications()
 	assert notifications.len == 1
-	assert subscription_id_of(notifications[0]) or { '' } == '7'
+	assert subscription_id_of(notifications[0]) or { '' } == '2'
 }
 
 fn test_client_listen_returns_on_the_acknowledgment_without_a_response() {
@@ -381,4 +384,133 @@ fn test_client_listen_requires_the_2026_protocol() {
 		return
 	}
 	assert false
+}
+
+fn test_client_listen_returns_on_its_ack_without_a_final_response() {
+	mut transport := &MockTransport{
+		incoming: [discover_response_json(),
+			encode_listen_acknowledged(SubscriptionFilter{ prompts_list_changed: true }, '99'),
+			new_notification('notifications/tools/list_changed', empty_object).encode(),
+			new_request(77, 'roots/list', empty_object).encode(),
+			encode_listen_acknowledged(SubscriptionFilter{ tools_list_changed: true }, '2')]
+	}
+	mut client := new_client(transport, ClientConfig{
+		protocol_version: protocol_version_2026_07_28
+	})
+	filter := client.listen(SubscriptionListenParams{
+		notifications: SubscriptionFilter{ tools_list_changed: true }
+	})!
+	assert filter.tools_list_changed
+	assert !filter.prompts_list_changed
+	assert transport.incoming.len == 0
+	assert client.take_notifications().len == 3
+	assert client.take_requests()[0].id == '77'
+	assert decode_request(transport.sent[1])!.id == '2'
+	transport.incoming << new_response(3, empty_object, ResponseError{}).encode()
+	assert client.request_message('tools/list', empty_object)!.error.code == 0
+}
+
+fn test_client_listen_reports_a_response_error_before_acknowledgment() {
+	mut transport := &MockTransport{
+		incoming: [discover_response_json(), new_response(2, empty, invalid_params).encode()]
+	}
+	mut client := new_client(transport, ClientConfig{
+		protocol_version: protocol_version_2026_07_28
+	})
+	client.listen(SubscriptionListenParams{}) or {
+		assert err.code() == invalid_params.code
+		return
+	}
+	assert false, 'expected listen error'
+}
+
+fn test_client_listen_matches_a_numeric_subscription_id() {
+	mut transport := &MockTransport{
+		incoming: [discover_response_json(), build_notification_message(listen_acknowledged_method,
+			'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":2}}')]
+	}
+	mut client := new_client(transport, ClientConfig{
+		protocol_version: protocol_version_2026_07_28
+	})
+	assert client.listen(SubscriptionListenParams{
+		notifications: SubscriptionFilter{ tools_list_changed: true }
+	})!.tools_list_changed
+}
+
+fn test_client_listen_rechecks_protocol_after_discovery_downgrade() {
+	mut transport := &MockTransport{
+		incoming: [Response{
+			id:    '1'
+			error: ResponseError{
+				code: unsupported_protocol_version.code
+				data: '{"supported":["2025-11-25"],"requested":"2026-07-28"}'
+			}
+		}.encode(), new_response(2, InitializeResult{ protocol_version: protocol_version },
+			ResponseError{}).encode()]
+	}
+	mut client := new_client(transport, ClientConfig{
+		protocol_version: protocol_version_2026_07_28
+	})
+	client.listen(SubscriptionListenParams{}) or {
+		assert err.msg().contains('requires the 2026-07-28 protocol')
+		assert transport.sent.len == 3
+		assert !transport.sent.any(it.contains('subscriptions/listen'))
+		return
+	}
+	assert false, 'expected protocol error after discovery downgrade'
+}
+
+fn test_external_stdio_client_returns_after_acknowledgment() {
+	root := os.join_path(os.vtmp_dir(), 'mcp_listen_consumer_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	server := os.join_path(root, 'server' + $if windows { '.exe' } $else { '' })
+	consumer := os.join_path(root, 'consumer' + $if windows { '.exe' } $else { '' })
+	for source, binary in {
+		'listen_server.v':   server
+		'listen_consumer.v': consumer
+	} {
+		path := os.join_path(@VEXEROOT, 'vlib/mcp/testdata', source)
+		built := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(binary)} ${os.quoted_path(path)}')
+		assert built.exit_code == 0, built.output
+	}
+	mut process := os.new_process(consumer)
+	process.set_args([server])
+	process.set_redirect_stdio()
+	process.run()
+	deadline := time.now().add(30 * time.second)
+	mut timed_out := false
+	for process.is_alive() {
+		if time.now() > deadline {
+			timed_out = true
+			process.signal_kill()
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	code := process.code
+	process.close()
+	assert !timed_out, 'stdio listen did not return after acknowledgment: ${output}'
+	assert code == 0, output
+}
+
+fn test_subscription_id_accepts_strings_and_numbers_only() {
+	for id, expected in {
+		'"2"':              '2'
+		'2':                '2'
+		'"listen\\u002d2"': 'listen-2'
+	} {
+		notification := Notification{
+			params: '{"_meta":{"io.modelcontextprotocol/subscriptionId":${id}}}'
+		}
+		assert subscription_id_of(notification) or { '' } == expected
+	}
+	for id in ['null', 'true', '{}', '[]'] {
+		notification := Notification{
+			params: '{"_meta":{"io.modelcontextprotocol/subscriptionId":${id}}}'
+		}
+		assert subscription_id_of(notification) == none
+	}
 }

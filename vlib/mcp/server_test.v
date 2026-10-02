@@ -1837,3 +1837,43 @@ fn test_stateless_request_requires_client_capabilities_in_meta() {
 	}.encode(), stdio_session_id, .stdio)!
 	assert decode_response(ok.response)!.error.code == 0
 }
+
+fn test_result_meta_merge_preserves_other_members() {
+	for input in [
+		'{"_meta":{"subscriptionId":"2"},"resultType":"complete","count":1e2}',
+		'{"resultType":"complete", "_meta" : {"subscriptionId":"2"}, "count":1e2}',
+		'{"resultType":"complete","count":1e2,"_meta":{"subscriptionId":"2"}}',
+		'{"_meta":{"subscriptionId":"2"}}',
+		'{}',
+		'{"text":"_meta", "nested":{"_meta":{"ignored":true}}}',
+	] {
+		merged := with_result_meta_member(input, 'serverInfo', '{"name":"server","version":"1"}')
+		object := json.decode[map[string]json.Any](merged)!
+		meta := object['_meta'] or { panic('missing metadata') }
+		info := meta.as_map()['serverInfo'] or { panic('missing server info') }
+		assert (info.as_map()['name'] or { panic('missing server name') }).str() == 'server'
+		if input.contains('subscriptionId') {
+			assert (meta.as_map()['subscriptionId'] or { panic('missing subscription id') }).str() == '2'
+		}
+		if input.contains('resultType') {
+			assert (object['resultType'] or { panic('missing result type') }).str() == 'complete'
+			assert merged.contains('"count":1e2')
+		}
+	}
+}
+
+fn test_http_client_and_server_listen_round_trip() {
+	mut server, url := spawn_stateless_server()!
+	defer { server.close() }
+	mut client := connect_2026(url, ClientConfig{})!
+	defer { client.close() }
+	assert client.initialize()!.protocol_version == protocol_version_2026_07_28
+	filter := client.listen(SubscriptionListenParams{
+		notifications: SubscriptionFilter{ tools_list_changed: true }
+	})!
+	assert filter.tools_list_changed
+	notifications := client.take_notifications()
+	assert notifications.len == 1
+	assert subscription_id_of(notifications[0]) or { '' } == '2'
+	assert client.request_message('tools/list', empty_object)!.error.code == 0
+}

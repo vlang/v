@@ -763,12 +763,16 @@ struct UnsupportedVersionEnvelope {
 
 // listen subscribes to notifications and returns the subset the server
 // acknowledged. A 2026-07-28 client only: the notifications themselves are
-// delivered into `take_notifications`, tagged with the subscription id.
+// queued for `take_notifications`, tagged with the subscription id. It returns
+// after the matching acknowledgment without waiting for a live stdio subscription to end.
 pub fn (mut c Client) listen[P](filter P) !SubscriptionFilter {
 	if !c.is_stateless_2026() {
 		return error('mcp.Client.listen: subscriptions/listen requires the 2026-07-28 protocol')
 	}
 	c.ensure_initialized()!
+	if !c.is_stateless_2026() {
+		return error('mcp.Client.listen: subscriptions/listen requires the 2026-07-28 protocol')
+	}
 	request := c.inject_stateless_meta(new_request(c.next_request_id(), 'subscriptions/listen',
 		filter))
 	c.transport.send(request.encode())!
@@ -795,7 +799,12 @@ fn (mut c Client) wait_for_listen_ack(request_id string) !SubscriptionFilter {
 		}
 		envelope := decode_envelope(raw_message)!
 		if envelope.method.len != 0 {
-			just_acknowledged := envelope.method == listen_acknowledged_method && !got_ack
+			just_acknowledged := is_notification_id(envelope.id)
+				&& envelope.method == listen_acknowledged_method && !got_ack
+				&& (subscription_id_of(Notification{
+					method: envelope.method
+					params: envelope.params
+				}) or { '' }) == request_id
 			if just_acknowledged {
 				ack := json.decode[ListenAcknowledgement](envelope.params.trim_space()) or {
 					return error('mcp.Client.listen: malformed subscription acknowledgment')
@@ -858,11 +867,16 @@ pub fn subscription_id_of(notification Notification) ?string {
 	wrapper := json.decode[SubscriptionIdEnvelope](notification.params.trim_space()) or {
 		return none
 	}
-	trimmed := wrapper.meta.subscription_id.trim_space()
-	if trimmed.len == 0 {
+	raw_id := wrapper.meta.subscription_id.trim_space()
+	if raw_id.len == 0 {
 		return none
 	}
-	return trimmed
+	id := json.decode[json.Any](raw_id) or { return none }
+	return match id {
+		string { id }
+		i64, u64, f64 { raw_id }
+		else { none }
+	}
 }
 
 struct SubscriptionIdEnvelope {
@@ -870,7 +884,7 @@ struct SubscriptionIdEnvelope {
 }
 
 struct SubscriptionIdMeta {
-	subscription_id string @[json: 'io.modelcontextprotocol/subscriptionId']
+	subscription_id string @[json: 'io.modelcontextprotocol/subscriptionId'; raw]
 }
 
 fn (mut c Client) next_request_id() int {
