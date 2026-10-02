@@ -50,6 +50,12 @@ fn tool_modules(search_root string) ![]string {
 	return names
 }
 
+// resolves_to_tool checks that a listed name resolves to the intended tool root.
+fn resolves_to_tool(p &pref.Preferences, name string, root string) bool {
+	resolved := p.get_module_path(name, os.getwd() + os.path_separator + '.')
+	return resolved != '' && os.real_path(resolved) == os.real_path(root)
+}
+
 // list_tools prints the tool modules that can be named from here: the project
 // itself, and the ones in the global module folders. It deliberately does not
 // walk up from the project the way module resolution does. Resolution is
@@ -61,13 +67,14 @@ fn tool_modules(search_root string) ![]string {
 fn list_tools(p &pref.Preferences) ! {
 	mut names := []string{}
 	if project := util.nearest_vmod_root('.') {
-		if is_tool_module(project) {
-			names << os.file_name(os.real_path(project))
+		name := os.file_name(os.real_path(project))
+		if is_tool_module(project) && resolves_to_tool(p, name, project) {
+			names << name
 		}
 	}
 	for search_root in p.installed_module_roots() {
 		for name in tool_modules(search_root)! {
-			if name !in names {
+			if name !in names && resolves_to_tool(p, name, os.join_path_single(search_root, name)) {
 				names << name
 			}
 		}

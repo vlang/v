@@ -46,5 +46,8 @@ could not be run by one.
 Installed tools are listed by their import path relative to the module folder,
 even without v.mod or when the manifest name differs from that path.
 
-The project entry uses its directory name, matching tool lookup even when its
-v.mod manifest declares a different name.
+The project entry uses its directory name when lookup resolves it to that
+project, even when v.mod declares a different name. Every listed name must
+resolve to its intended tool directory. A literal dot in a directory name is
+interpreted as a module separator, so an unresolvable entry is omitted; that
+project can still be run by path with `v run .`.

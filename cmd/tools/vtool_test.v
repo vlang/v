@@ -141,3 +141,45 @@ fn test_v_tool_lists_the_project_directory_when_manifest_name_differs() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'app', res.output
 }
+
+fn test_v_tool_omits_dotted_project_names_that_do_not_resolve_to_the_project() {
+	prepare_fixture()!
+	project := write_module(tfolder, 'my.project', true)!
+	os.chdir(project)!
+	checked := os.execute('${vexe} -check .')
+	assert checked.exit_code == 0, checked.output
+	for has_decoy in [false, true] {
+		if has_decoy {
+			write_file(os.join_path(project, 'my', 'project', 'main.v'),
+				"module main\nfn main() { println('decoy ran') }\n")!
+		}
+		listed := os.execute('${vexe} tool')
+		assert listed.exit_code == 0, listed.output
+		names := listed.output.trim_space().split_into_lines()
+		assert 'my.project' !in names, listed.output
+		assert 'gtool' in names, listed.output
+	}
+}
+
+fn test_v_tool_preserves_resolvable_space_project_names() {
+	prepare_fixture()!
+	project := write_module(tfolder, 'my project', true)!
+	os.chdir(project)!
+	listed := os.execute('${vexe} tool')
+	assert listed.exit_code == 0, listed.output
+	assert 'my project' in listed.output.trim_space().split_into_lines(), listed.output
+	res := os.execute('${vexe} tool ${os.quoted_path('my project')}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'my project ran', res.output
+}
+
+fn test_v_tool_omits_unresolvable_dotted_installed_directory_names() {
+	prepare_fixture()!
+	write_module(vmodules, 'dotted.tool', true)!
+	listed := os.execute('${vexe} tool')
+	assert listed.exit_code == 0, listed.output
+	names := listed.output.trim_space().split_into_lines()
+	assert 'dotted.tool' !in names, listed.output
+	assert 'app' in names, listed.output
+	assert 'gtool' in names, listed.output
+}
