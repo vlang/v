@@ -15258,11 +15258,20 @@ fn (tc &TypeChecker) collapsed_field_expr_compatible(id flat.NodeId, actual Type
 	// to the sum), letting an invalid assignment reach C generation. Keep only the
 	// directional check plus the targeted callback/pointer/voidptr exceptions.
 	return tc.expr_compatible(id, actual, expected)
+		|| tc.nil_interface_field_expr_compatible(id, expected)
 		|| tc.pointer_value_compatible(actual, expected)
 		|| tc.method_value_matches_voidptr_callback(id, actual, expected)
 		|| tc.fn_callback_adapter_compatible(actual, expected)
 		|| voidptr_arg_compatible(expected, actual)
 		|| (fn_param_is_voidptr_type(expected) && tc.expr_can_take_address(id))
+}
+
+fn (tc &TypeChecker) nil_interface_field_expr_compatible(id flat.NodeId, expected Type) bool {
+	// Interface fields can be explicitly zeroed with unsafe nil, unlike ordinary
+	// non-pointer fields. A voidptr value still needs to implement the interface.
+	return unalias_type(expected) is Interface
+		&& (tc.expr_is_unsafe_nil(id)
+			|| (tc.expr_tail_is_nil(id) && tc.expr_is_inside_unsafe_block(id)))
 }
 
 fn (tc &TypeChecker) call_is_direct_spawn_child(id flat.NodeId) bool {

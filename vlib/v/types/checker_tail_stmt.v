@@ -4476,6 +4476,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				if value_node.kind == .map_init && tc.map_literal_has_element_diagnostic(value_id) {
 					continue
 				}
+				if tc.nil_interface_field_expr_compatible(value_id, expected) {
+					continue
+				}
 				optional_pointer_nil := tc.expr_is_unsafe_nil(value_id)
 					&& clean_expected is OptionType
 					&& unalias_type(clean_expected.base_type) is Pointer
