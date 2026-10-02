@@ -1,3 +1,4 @@
+import crypto.sha1
 import crypto.sha512
 import crypto.sha256
 import crypto.pbkdf2
@@ -97,6 +98,30 @@ fn test_sha512() {
 	}
 }
 
+struct Sha1Case {
+	password   string
+	salt       string
+	count      int
+	key_length int
+	expected   string
+}
+
+// The PBKDF2-HMAC-SHA1 test vectors of RFC 6070, without the one that takes 16777216 iterations.
+const sha1_cases = [
+	Sha1Case{'password', 'salt', 1, 20, '0c60c80f961f0e71f3a9b524af6012062fe037a6'},
+	Sha1Case{'password', 'salt', 2, 20, 'ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957'},
+	Sha1Case{'password', 'salt', 4096, 20, '4b007901b765489abead49d926f721d065a429c1'},
+	Sha1Case{'passwordPASSWORDpassword', 'saltSALTsaltSALTsaltSALTsaltSALTsalt', 4096, 25, '3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038'},
+	Sha1Case{'pass\0word', 'sa\0lt', 4096, 16, '56fa6aa75548099dcc37d7f03425e0c3'},
+]
+
+fn test_sha1() {
+	for c in sha1_cases {
+		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length, sha1.new())!
+		assert key.hex() == c.expected, 'failed c=${c.count} dkLen=${c.key_length}'
+	}
+}
+
 struct TruncatedSha512Case {
 	password   string
 	salt       string
@@ -160,10 +185,11 @@ fn test_sha512_256() {
 }
 
 // Every digest that `pbkdf2.key` supports.
-const variants = ['sha224', 'sha256', 'sha384', 'sha512', 'sha512_224', 'sha512_256']
+const variants = ['sha1', 'sha224', 'sha256', 'sha384', 'sha512', 'sha512_224', 'sha512_256']
 
 fn new_hash(name string) hash.Hash {
 	match name {
+		'sha1' { return sha1.new() }
 		'sha224' { return sha256.new224() }
 		'sha256' { return sha256.new() }
 		'sha384' { return sha512.new384() }
@@ -176,6 +202,7 @@ fn new_hash(name string) hash.Hash {
 
 fn hash_sum(name string, data []u8) []u8 {
 	return match name {
+		'sha1' { sha1.sum(data) }
 		'sha224' { sha256.sum224(data) }
 		'sha256' { sha256.sum256(data) }
 		'sha384' { sha512.sum384(data) }
@@ -187,7 +214,7 @@ fn hash_sum(name string, data []u8) []u8 {
 }
 
 fn block_size_of(name string) int {
-	return if name in ['sha224', 'sha256'] { sha256.block_size } else { sha512.block_size }
+	return if name in ['sha1', 'sha224', 'sha256'] { sha256.block_size } else { sha512.block_size }
 }
 
 // naive_hmac is a direct transcription of RFC 2104, used as a reference.

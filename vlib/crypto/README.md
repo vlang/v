@@ -22,7 +22,7 @@ system's cryptographically secure random source and can return an error. The sep
 
 ### Streamed SHA checksums
 
-SHA-2 digests accept a stream through repeated `write()` calls. The total stream
+SHA-1 and SHA-2 digests accept a stream through repeated `write()` calls. The total stream
 can exceed 2 GiB on 32-bit targets; each individual input buffer must fit in an array.
 Call `sum([])` to obtain the current checksum while preserving the digest for further writes.
 

@@ -47,11 +47,13 @@
 module scram
 
 import crypto.hmac
+import crypto.pbkdf2
 import crypto.rand
 import crypto.sha1
 import crypto.sha256
 import crypto.sha512
 import encoding.base64
+import hash
 
 // default_min_iterations is the smallest PBKDF2 iteration count a client
 // accepts from a server unless `ClientConfig.min_iterations` says otherwise.
@@ -173,21 +175,15 @@ fn (m Mechanism) hmac(key []u8, data []u8) []u8 {
 
 // hi is the `Hi(str, salt, i)` of RFC 5802 §2.2: PBKDF2 (RFC 2898) with HMAC
 // as the pseudorandom function and an output length equal to the digest size.
-// Because exactly one block is requested, the block index is the constant
-// `INT(1)` and no outer loop over blocks is needed.
+// `crypto.pbkdf2` keys the HMAC once and does not allocate per iteration.
 fn (m Mechanism) hi(password []u8, salt []u8, iterations int) []u8 {
-	mut block := []u8{cap: salt.len + 4}
-	block << salt
-	block << [u8(0), 0, 0, 1]
-	mut u := m.hmac(password, block)
-	mut result := u.clone()
-	for _ in 1 .. iterations {
-		u = m.hmac(password, u)
-		for i in 0 .. result.len {
-			result[i] ^= u[i]
-		}
+	h := match m {
+		.sha1 { hash.Hash(sha1.new()) }
+		.sha256 { hash.Hash(sha256.new()) }
+		.sha512 { hash.Hash(sha512.new()) }
 	}
-	return result
+	// pbkdf2.key only fails for a digest it does not support
+	return pbkdf2.key(password, salt, iterations, m.size(), h) or { panic(err) }
 }
 
 // Credentials is what a SCRAM server stores for one user. It is derived from
