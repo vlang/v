@@ -182,3 +182,32 @@ fn test_v_mod_why_reads_keyword_submodule_imports() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split_into_lines() == ['app', 'pkg.type'], res.output
 }
+
+fn test_v_mod_why_ignores_fields_named_import() {
+	for declaration in ['struct Example { import string }', 'struct Example {\n\timport string\n}'] {
+		prepare_fixture()!
+		write_module('string', 'module string\npub fn value() int { return 1 }\n')!
+		write_file(os.join_path(tfolder, 'app', 'main.v'), "module main\n${declaration}\nfn main() { println(Example{ import: 'value' }) }\n")!
+		checked := os.execute('${vexe} -check .')
+		assert checked.exit_code == 0, checked.output
+		res := mod_why('string')
+		assert res.exit_code == 0, res.output
+		assert res.output.trim_space() == '(main module does not need module `string`)', res.output
+	}
+}
+
+fn test_v_mod_why_preserves_imports_in_comptime_declaration_branches() {
+	prepare_fixture()!
+	write_module('string', 'module string\npub fn value() int { return 1 }\n')!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n\$if true {\n\timport lib\n\tstruct Example { import string }\n} \$else {\n\timport orphan\n}\nfn main() { println(lib.hello()) }\n')!
+	checked := os.execute('${vexe} -check .')
+	assert checked.exit_code == 0, checked.output
+	for dependency in ['lib', 'orphan'] {
+		res := mod_why(dependency)
+		assert res.exit_code == 0, res.output
+		assert res.output.trim_space().split_into_lines() == ['app', dependency], res.output
+	}
+	unused := mod_why('string')
+	assert unused.exit_code == 0, unused.output
+	assert unused.output.trim_space() == '(main module does not need module `string`)', unused.output
+}

@@ -5,9 +5,8 @@ module main
 
 import os
 import flag
+import v.parser
 import v.pref
-import v.scanner
-import v.token
 import v.util
 import v.vmod
 
@@ -104,41 +103,26 @@ fn v_files_in(dir string) ![]string {
 	return files
 }
 
-// module_path_segment follows the parser's name-or-keyword module segments.
-fn module_path_segment(kind token.Token, literal string) ?string {
-	if literal.starts_with('@') || (kind != .name && !kind.is_keyword()) {
-		return none
-	}
-	return if literal.len > 0 { literal } else { kind.str() }
-}
-
-// imports_in_file returns the module paths a source file imports. The four forms
-// that occur in the tree are `import a`, `import a.b`, `import a as b` and
-// `import a { x }`; the path is always the token right after `import`.
+// imports_in_file returns declared import paths, including both comptime branches.
 fn imports_in_file(path string) ![]string {
-	source := os.read_file(path)!
-	mut files := token.FileSet.new()
-	mut file := files.add_file(path, source.len)
-	file.index_lines(source)
-	mut s := scanner.new_scanner(pref.new_preferences(), .normal)
-	s.init(file, source)
+	mut prefs := pref.new_preferences()
+	// Preserve source declarations without lowering scripts or selecting a target.
+	prefs.is_fmt = true
+	prefs.preserve_comptime_conditionals = true
+	prefs.supports_inline_asm = true
+	prefs.enable_globals = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(path)
+	for diagnostic in p.diagnostics {
+		if diagnostic.message.starts_with('error reading source:') {
+			return error(diagnostic.message)
+		}
+	}
 	mut result := []string{}
-	mut kind := s.scan()
-	for kind != .eof {
-		if kind != .key_import {
-			kind = s.scan()
-			continue
+	for node in a.nodes {
+		if node.kind == .import_decl {
+			result << node.value
 		}
-		kind = s.scan()
-		mut module_path := module_path_segment(kind, s.lit) or { continue }
-		kind = s.scan()
-		for kind == .dot {
-			kind = s.scan()
-			segment := module_path_segment(kind, s.lit) or { break }
-			module_path += '.' + segment
-			kind = s.scan()
-		}
-		result << module_path
 	}
 	return result
 }

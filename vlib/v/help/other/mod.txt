@@ -46,6 +46,8 @@ Dependency names are the paths written in imports, including standard library
 modules and submodules without their own v.mod. A dependency manifest name does
 not replace the import name used in the reported chain.
 
-Imports are read as V tokens, so tabs and comments between tokens are accepted.
+Imports are read as V declarations, so tabs and comments between tokens are
+accepted, while fields named `import` do not create dependency edges. Both
+branches of a top-level `$if` contribute their declared imports.
 Module path segments can also be V keywords, as in `import type as tp` or
 `import pkg.type as tp`, using the same names accepted by the compiler.
