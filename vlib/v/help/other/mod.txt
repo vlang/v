@@ -42,3 +42,6 @@ practice that can only add a path to a chain, never remove a real one.
 
 This subcommand must run inside a project folder: it needs a v.mod in the
 current directory or one of its parents.
+Dependency names are the paths written in imports, including standard library
+modules and submodules without their own v.mod. A dependency manifest name does
+not replace the import name used in the reported chain.

@@ -26,10 +26,10 @@ fn prepare_fixture() ! {
 	// `app` imports `lib`, which imports `deeper`, so the chain is three deep.
 	// `lib` also uses the `as` and `{ }` import forms.
 	write_file(os.join_path(tfolder, 'app', 'v.mod'), "Module {\n\tname: 'app'\n}\n")!
-	write_file(os.join_path(tfolder, 'app', 'main.v'), "module main\n\nimport lib\n\nfn main() {\n\tprintln(lib.hello())\n}\n")!
-	write_module('lib', "module lib\n\nimport deeper as d\nimport os { getwd }\n\npub fn hello() string {\n\t_ := getwd()\n\treturn d.value()\n}\n")!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n\nimport lib\n\nfn main() {\n\tprintln(lib.hello())\n}\n')!
+	write_module('lib', 'module lib\n\nimport deeper as d\nimport os { getwd }\n\npub fn hello() string {\n\t_ := getwd()\n\treturn d.value()\n}\n')!
 	write_module('deeper', "module deeper\n\npub fn value() string {\n\treturn 'deep'\n}\n")!
-	write_module('orphan', "module orphan\n\npub fn unused() int {\n\treturn 1\n}\n")!
+	write_module('orphan', 'module orphan\n\npub fn unused() int {\n\treturn 1\n}\n')!
 	os.chdir(os.join_path(tfolder, 'app'))!
 }
 
@@ -111,4 +111,32 @@ fn test_v_mod_help_lists_the_subcommands() {
 
 fn testsuite_end() {
 	os.rmdir_all(tfolder) or {}
+}
+
+fn test_v_mod_why_preserves_standard_library_import_names() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport os\nfn main() { println(os.getwd()) }\n')!
+	res := mod_why('os')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['app', 'os'], res.output
+}
+
+fn test_v_mod_why_preserves_import_names_when_manifest_names_differ() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'lib', 'v.mod'), "Module { name: 'different_manifest_name' }\n")!
+	res := mod_why('deeper')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['app', 'lib', 'deeper'], res.output
+}
+
+fn test_v_mod_why_resolves_dependencies_from_bare_submodules() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport lib.inner\nfn main() { println(inner.value()) }\n')!
+	write_file(os.join_path(tfolder, 'lib', 'inner', 'inner.v'), 'module inner\nimport deeper\npub fn value() string { return deeper.value() }\n')!
+	res := mod_why('deeper')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['app', 'lib.inner', 'deeper'], res.output
+	inner := mod_why('lib.inner')
+	assert inner.exit_code == 0, inner.output
+	assert inner.output.trim_space().split_into_lines() == ['app', 'lib.inner'], inner.output
 }

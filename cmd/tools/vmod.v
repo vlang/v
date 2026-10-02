@@ -12,7 +12,7 @@ import v.vmod
 // Graph is the import graph between modules, keyed by module name.
 struct Graph {
 mut:
-	// roots maps a module name to the directory holding its v.mod.
+	// roots maps an import name to its resolved directory, with or without v.mod.
 	roots map[string]string
 	// edges maps a module name to the modules its sources import, in the order
 	// they were first seen and without repeats.
@@ -130,11 +130,13 @@ fn imports_in_file(path string) ![]string {
 fn build_graph(project string) !&Graph {
 	p := new_preferences(project)
 	mut g := &Graph{
-		roots: map[string]string{}
-		edges: map[string][]string{}
+		roots:    map[string]string{}
+		edges:    map[string][]string{}
 		entry_of: map[string]string{}
 	}
-	mut queue := [module_name_of(project)]
+	root_name := module_name_of(project)
+	g.record(root_name, project, os.join_path_single(project, 'v.mod'))
+	mut queue := [root_name]
 	mut seen := map[string]bool{}
 	for queue.len > 0 {
 		name := queue.pop()
@@ -142,11 +144,7 @@ fn build_graph(project string) !&Graph {
 			continue
 		}
 		seen[name] = true
-		root := if name == module_name_of(project) {
-			project
-		} else {
-			p.get_module_path(name, os.join_path_single(project, 'v.mod'))
-		}
+		root := g.roots[name] or { continue }
 		if root == '' || !os.is_dir(root) {
 			continue
 		}
@@ -161,7 +159,8 @@ fn build_graph(project string) !&Graph {
 				if target == '' {
 					continue
 				}
-				target_name := module_name_of(target)
+				target_name := module_path
+				g.record(target_name, target, file)
 				g.link(name, target_name)
 				if target_name !in seen {
 					queue << target_name
@@ -179,7 +178,9 @@ fn chain_to(g &Graph, root string, target string) []string {
 		return [root]
 	}
 	mut queue := [[root]]
-	mut seen := map[string]bool{root: true}
+	mut seen := map[string]bool{
+		root: true
+	}
 	for queue.len > 0 {
 		path := queue.pop()
 		last := path[path.len - 1]
