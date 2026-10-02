@@ -16505,6 +16505,12 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	if base_type.len == 0 {
 		return true
 	}
+	// Heap promotion can replace a fixed-array alias with its storage type.
+	// Keep the checker-selected alias method when its value layout still matches.
+	if t.is_fixed_array_type(base_type)
+		&& t.normalize_type_alias(receiver_name) == base_type {
+		return true
+	}
 	if base_type.starts_with('[]') || base_type.starts_with('map[') {
 		method := method_name.all_after_last('.')
 		if method_name in t.receiver_method_candidates(base_type, method) {
