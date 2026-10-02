@@ -558,7 +558,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		if c_link_flags_use_objective_c_language(passthrough) {
 			add_c_language_runtime_link_flags(mut passthrough, flags, 'objective-c', target)
 		}
-		return passthrough
+		return c_source_language_flags(passthrough)
 	}
 	mut common_compile_flags := optimization_flags.clone()
 	common_compile_flags << c_object_compile_support_flags(flags)
@@ -582,7 +582,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 			stats.content_key_hits = plan.requests - plan.direct_objects
 			stats.dependency_manifest_hits = plan.requests - plan.direct_objects
 			stats.dependency_files = plan.dependency_files
-			return plan.flags
+			return c_source_language_flags(plan.flags)
 		}
 	}
 	mut prepared := []string{}
@@ -608,6 +608,13 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 				prepared << flags[i + 1]
 			}
 			i += 2
+			continue
+		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			active_language = joined_language
+			prepared << flag
+			i++
 			continue
 		}
 		if c_flag_is_object_file(clean) {
@@ -654,13 +661,13 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		write_c_link_plan(plan_path, prepared, stats) or {}
 		stats.link_plan_signature = modulecache.file_signature(plan_path)
 	}
-	return prepared
+	return c_source_language_flags(prepared)
 }
 
 fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v4', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v5', os.getwd(), flags.join('\x00'),
 		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
 		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
@@ -675,7 +682,7 @@ fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagP
 fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	content := os.read_file(plan_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v4' {
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v5' {
 		return none
 	}
 	mut plan := CLinkPlan{}
@@ -739,7 +746,7 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
 	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
-	out.writeln('format=v3-c-link-plan-v4')
+	out.writeln('format=v3-c-link-plan-v5')
 	out.writeln('requests=${stats.requests}')
 	out.writeln('direct_objects=${stats.direct_objects}')
 	out.writeln('dependency_files=${stats.dependency_files}')
@@ -812,6 +819,12 @@ fn c_link_flags_use_objective_c_language(flags []string) bool {
 			i++
 			continue
 		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
+			continue
+		}
 		if c_flag_is_c_source_file(clean) || c_flag_is_existing_file(clean) {
 			if language in ['objective-c', 'objective-c++'] {
 				return true
@@ -846,12 +859,18 @@ fn c_link_flags_use_language(flags []string, include_objective_c bool) bool {
 			i++
 			continue
 		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
+			continue
+		}
 		if c_flag_is_c_source_file(clean) {
 			if language in ['c++', 'objective-c++']
 				|| (include_objective_c && language == 'objective-c') {
 				return true
 			}
-			if language in ['', 'none'] && (clean.ends_with('.cc') || clean.ends_with('.cpp')
+			if language in ['', 'none'] && (clean.ends_with('.C') || clean.ends_with('.cc') || clean.ends_with('.cpp')
 				|| clean.ends_with('.mm')
 				|| (include_objective_c && clean.ends_with('.m'))) {
 				return true
@@ -902,6 +921,10 @@ fn c_object_compile_flags(flags []string) []string {
 			i += 2
 			continue
 		}
+		if c_joined_source_language(part).len > 0 {
+			i++
+			continue
+		}
 		if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-weak_library',
 			'-force_load'] {
 			skip_link_operand = true
@@ -939,6 +962,12 @@ fn c_dylib_link_flags(flags []string) []string {
 		if clean == '-x' {
 			language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
 			i += 2
+			continue
+		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
 			continue
 		}
 		if clean in ['-l', '-L', '-F', '-framework', '-weak_framework', '-weak_library', '-Xlinker',
@@ -1113,6 +1142,12 @@ fn tcc_native_c_source_flags(flags []string) []string {
 		if clean == '-x' {
 			language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
 			i += 2
+			continue
+		}
+		joined_language := c_joined_source_language(clean)
+		if joined_language.len > 0 {
+			language = joined_language
+			i++
 			continue
 		}
 		if c_flag_consumes_next_operand(clean) || clean in ['-l', '-weak_library'] {
@@ -1427,13 +1462,26 @@ fn c_flag_token_is_link_only(token string) bool {
 }
 
 fn c_flags_need_objective_c(flags []string) bool {
-	for i, flag in flags {
-		clean := flag.trim_space()
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
 		if clean in ['-fobjc-arc', '-fobjc-gc', '-ObjC']
 			|| clean.starts_with('-fobjc-')
-			|| (clean == '-x' && i + 1 < flags.len && flags[i + 1] == 'objective-c') {
+			|| c_joined_source_language(clean) in ['objective-c', 'objective-c++'] {
 			return true
 		}
+		if clean == '-x' {
+			if i + 1 < flags.len && flags[i + 1].trim_space() in ['objective-c', 'objective-c++'] {
+				return true
+			}
+			i += 2
+			continue
+		}
+		if c_flag_consumes_next_operand(clean) {
+			i += 2
+			continue
+		}
+		i++
 	}
 	return false
 }
@@ -1470,8 +1518,11 @@ fn c_source_language(source_file string, source_language string) string {
 	if source_file.ends_with('.m') {
 		return 'objective-c'
 	}
-	if source_file.ends_with('.cc') || source_file.ends_with('.cpp') {
+	if source_file.ends_with('.C') || source_file.ends_with('.cc') || source_file.ends_with('.cpp') {
 		return 'c++'
+	}
+	if source_file.ends_with('.c') {
+		return 'c'
 	}
 	return ''
 }
@@ -1810,7 +1861,7 @@ fn c_flag_is_object_file(flag string) bool {
 }
 
 fn c_flag_is_c_source_file(flag string) bool {
-	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.cc')
+	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.C') || flag.ends_with('.cc')
 		|| flag.ends_with('.cpp') || flag.ends_with('.m') || flag.ends_with('.mm'))
 }
 
@@ -13720,6 +13771,14 @@ pub fn run(args []string) {
 		}
 		resolved_c_flags = v3_shared_object_compile_flags(resolved_c_flags, prefs.normalized_target_os(),
 			is_shared, is_liveshared)
+		if !c_only && !is_o {
+			if missing_gc := v3_missing_bundled_gc_library(resolved_c_flags, prefs.vroot) {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				eprintln(v3_missing_gc_library_message(missing_gc))
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+		}
 		flag_plan_sdk_root := if effective_tcc && prefs.normalized_target_os() == 'macos' {
 			macos_sdk_root_cache.get()
 		} else {
@@ -20465,7 +20524,19 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			// Set when this import spells the path of an already parsed directory in a
 			// new way, so its module declarations still get checked below.
 			mut check_reused_dir := false
-			if dir_identity := parsed_dir_identities[mod_real_dir] {
+			// An external test module (`module foo_test` in `foo/`) is parsed from the
+			// same directory as the module it tests, so that directory is already
+			// recorded under the test module's identity. Reusing it below would
+			// rewrite `import foo` to `foo_test`, and the checker then rejects the
+			// import as naming the current module. Resolve the imported module on its
+			// own instead.
+			dir_identity_for_reuse := if recorded := parsed_dir_identities[mod_real_dir] {
+				if recorded == '${mod_name.all_after_last('.')}_test' { '' } else { recorded }
+			} else {
+				''
+			}
+			if dir_identity_for_reuse.len > 0 {
+				dir_identity := dir_identity_for_reuse
 				// The directory was already parsed through another spelling of its
 				// path: `mod.types` inside an installed `smilecat.mod`, and
 				// `smilecat.mod.types` from outside of it. The identity probe above

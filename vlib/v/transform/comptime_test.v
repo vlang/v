@@ -611,3 +611,21 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	assert 'main_value' in bare_metas
 	assert 'builtin_value' !in bare_metas
 }
+
+fn test_comptime_method_scan_does_not_allocate_per_ast_node() {
+	$if gcboehm ? {
+		mut a := flat.FlatAst.new()
+		for _ in 0 .. 8192 {
+			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: 'int' })
+		}
+		mut tc := types.TypeChecker.new(&a)
+		t := new_transformer(mut a, &tc, map[string]bool{})
+		before := gc_heap_usage().total_bytes
+		for _ in 0 .. 16 {
+			assert t.comptime_method_metas('int').len == 0
+		}
+		allocated := gc_heap_usage().total_bytes - before
+		// Empty method scans need only small metadata containers, independent of AST size.
+		assert allocated < 1024 * 1024, 'method scans allocated ${allocated} bytes'
+	}
+}

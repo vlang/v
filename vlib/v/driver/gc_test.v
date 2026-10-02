@@ -1,6 +1,36 @@
 module driver
 
+import os
 import v.pref
+
+fn test_missing_bundled_gc_library_checks_only_link_inputs() {
+	root := os.join_path(os.vtmp_dir(), 'v_missing_gc_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'thirdparty', 'tcc', 'lib'))!
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	for name in ['libgc.a', 'libgc.dylib'] {
+		path := os.join_path(root, 'thirdparty', 'tcc', 'lib', name)
+		assert v3_missing_bundled_gc_library([path], root) or { '' } == path
+		for option in ['-I', '-L', '-include', '-o', '-x'] {
+			assert v3_missing_bundled_gc_library([option, path], root) == none
+		}
+		assert v3_missing_bundled_gc_library(['-I${path}'], root) == none
+		os.write_file(path, 'existing library')!
+		assert v3_missing_bundled_gc_library([path], root) == none
+	}
+	assert v3_missing_bundled_gc_library([os.join_path(root, 'other', 'libgc.a')], root) == none
+	assert v3_missing_bundled_gc_library(['-lgc'], root) == none
+	assert v3_missing_c_library_name("ld: library 'gc' not found") or { '' } == 'gc'
+	assert v3_missing_c_library_name('ld: library not found for -lgc') or { '' } == 'gc'
+	message := v3_missing_gc_library_message('missing libgc.a')
+	assert message.contains('Boehm GC library `missing libgc.a` was not found.')
+	assert message.contains('-d use_bundled_libgc')
+	assert message.contains('-gc none')
+	os.rmdir_all(os.join_path(root, 'thirdparty'))!
+	missing := os.join_path(root, 'thirdparty', 'tcc', 'lib', 'libgc.a')
+	assert v3_missing_bundled_gc_library([missing], root) or { '' } == missing
+}
 
 fn test_v3_gc_mode_defines() {
 	cases := {

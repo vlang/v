@@ -69,3 +69,29 @@ fn test_pointer_cast_mut_argument_materializes_pointer_slot() {
 	assert output.starts_with('&((CallbackContext*[]){'), output
 	assert output.ends_with('})[0]'), output
 }
+
+fn test_untyped_null_argument_does_not_materialize_pointer_slot() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	void_pointer := types.Type(types.Pointer{ base_type: types.Type(types.void_) })
+	slot := types.Type(types.Pointer{ base_type: void_pointer })
+	nil_id := a.add_node(flat.Node{ kind: .nil_literal })
+	tc.register_synth_type(nil_id, void_pointer)
+	start := a.children.len
+	a.children << nil_id
+	argument := a.add_node(flat.Node{
+		kind:           .block
+		value:          'unsafe'
+		children_start: i32(start)
+		children_count: 1
+	})
+	tc.register_synth_type(argument, void_pointer)
+	assert !g.gen_mut_pointer_slot_arg(argument, a.nodes[int(argument)], slot)
+	assert g.sb.len == 0
+	mutable_argument := flat.Node{ ...a.nodes[int(argument)], is_mut: true }
+	assert g.gen_mut_pointer_slot_arg(argument, mutable_argument, slot)
+	assert g.sb.str().starts_with('&((void*[]){')
+}

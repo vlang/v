@@ -15,6 +15,35 @@ const default_list_page_size = 50
 const completion_values_limit = 100
 const stdio_session_id = 'stdio'
 const event_log_capacity = 1024
+// default_supported_versions are the protocol revisions a server speaks when
+// `ServerConfig.supported_versions` is left empty.
+const default_supported_versions = [protocol_version_2025_11_25, protocol_version_2026_07_28]
+// Request headers introduced by 2026-07-28. A Streamable HTTP POST MUST carry
+// `Mcp-Method` (the JSON-RPC method) and, for the methods that address a named
+// tool, resource or prompt, `Mcp-Name`.
+const mcp_method_header = 'Mcp-Method'
+const mcp_name_header = 'Mcp-Name'
+// Reserved `_meta` keys carrying the per-request protocol state in 2026-07-28.
+// `MetaPayload` decodes them with tags spelled out literally, because a struct
+// tag cannot reference a constant.
+const meta_protocol_version_key = 'io.modelcontextprotocol/protocolVersion'
+const meta_client_info_key = 'io.modelcontextprotocol/clientInfo'
+const meta_client_capabilities_key = 'io.modelcontextprotocol/clientCapabilities'
+const meta_log_level_key = 'io.modelcontextprotocol/logLevel'
+// stateless_cacheable_methods are the methods whose results are CacheableResult
+// in 2026-07-28 and therefore carry `ttlMs` and `cacheScope`.
+const stateless_cacheable_methods = ['tools/list', 'prompts/list', 'resources/list', 'resources/read',
+	'resources/templates/list']
+// stateless_removed_methods are the methods that no longer exist in
+// 2026-07-28. A request declaring that revision gets `method_not_found`.
+const stateless_removed_methods = ['ping', 'logging/setLevel', 'resources/subscribe',
+	'resources/unsubscribe', 'initialize', 'notifications/initialized']
+// Reserved `_meta` key binding a notification to the listen request that asked
+// for it, and naming the subscription on the stream.
+const meta_subscription_id_key = 'io.modelcontextprotocol/subscriptionId'
+const listen_acknowledged_method = 'notifications/subscriptions/acknowledged'
+// Reserved `_meta` key naming the server behind a 2026-07-28 result.
+const meta_server_info_key = 'io.modelcontextprotocol/serverInfo'
 
 // SessionTransport identifies how an MCP session is connected.
 pub enum SessionTransport {
@@ -74,8 +103,150 @@ pub:
 	client_info         Implementation @[json: clientInfo]
 	client_capabilities string         @[json: clientCapabilities; raw]
 	progress_token      string         @[json: progressToken; raw]
+	// input_responses carries the `params.inputResponses` of a 2026-07-28 MRTR
+	// retry: the key a `require_*` helper asked for, mapped to the raw JSON
+	// result the client returned. Empty on the first attempt.
+	input_responses map[string]string
+	// request_state echoes the opaque `params.requestState` of the retry so a
+	// handler can hand it straight back to the client.
+	request_state string
 mut:
 	server &Server = unsafe { nil } @[skip]
+}
+
+// InputRequired is the sentinel a 2026-07-28 handler returns to ask the client
+// for input instead of returning a result. It is not a wire error: on the
+// 2026-07-28 path the dispatcher turns it into a successful InputRequiredResult
+// and re-invokes the handler when the client retries the original request.
+pub struct InputRequired {
+pub:
+	// input_requests maps a caller-chosen key to a full JSON-RPC request object
+	// (method plus params) that the client must answer. At least one of
+	// `input_requests` or `request_state` is set.
+	input_requests map[string]string
+	// request_state is an opaque token echoed back by the client on retry.
+	request_state string
+}
+
+fn (err InputRequired) msg() string {
+	return 'mcp: the client must supply the requested input before this request can complete'
+}
+
+fn (err InputRequired) code() int {
+	return 0
+}
+
+// encode_input_required_result renders the 2026-07-28 MRTR result that asks the
+// client for input.
+fn encode_input_required_result(input InputRequired) string {
+	mut fields := ['"resultType":"input_required"']
+	if input.input_requests.len != 0 {
+		mut entries := []string{}
+		for key, request in input.input_requests {
+			entries << '${json.encode(key)}:${request}'
+		}
+		fields << '"inputRequests":{${entries.join(',')}}'
+	}
+	if input.request_state != '' {
+		fields << '"requestState":${json.encode(input.request_state)}'
+	}
+	return '{${fields.join(',')}}'
+}
+
+// take_input_response returns the raw JSON result the client supplied for
+// `key`, or none when this request has not been retried with that answer yet.
+pub fn (ctx Context) take_input_response(key string) ?string {
+	value := ctx.input_responses[key] or { return none }
+	trimmed := value.trim_space()
+	if trimmed.len == 0 {
+		return none
+	}
+	return trimmed
+}
+
+// take_elicit_result returns the elicitation answer the client supplied for
+// `key`, if this request already carries one.
+pub fn (ctx Context) take_elicit_result(key string) ?ElicitResult {
+	raw := ctx.take_input_response(key) or { return none }
+	return json.decode[ElicitResult](raw) or { none }
+}
+
+// take_roots_result returns the roots answer the client supplied for `key`, if
+// this request already carries one.
+pub fn (ctx Context) take_roots_result(key string) ?ListRootsResult {
+	raw := ctx.take_input_response(key) or { return none }
+	return json.decode[ListRootsResult](raw) or { none }
+}
+
+// take_sampling_result returns the sampling answer the client supplied for
+// `key`, if this request already carries one.
+pub fn (ctx Context) take_sampling_result(key string) ?CreateMessageResult {
+	raw := ctx.take_input_response(key) or { return none }
+	return json.decode[CreateMessageResult](raw) or { none }
+}
+
+// require_elicit signals that this request cannot finish without an
+// elicitation answer. The dispatcher turns it into an InputRequiredResult and
+// re-invokes the handler when the client retries, so a handler pairs it with
+// `take_elicit_result` for the take-or-require pattern.
+pub fn (ctx Context) require_elicit(key string, params ElicitParams) InputRequired {
+	return ctx.require_input(key, 'elicitation/create', encode_elicit_params(params))
+}
+
+// require_roots signals that this request cannot finish without the client's
+// roots. Pair it with `take_roots_result`.
+pub fn (ctx Context) require_roots(key string) InputRequired {
+	return ctx.require_input(key, 'roots/list', '{}')
+}
+
+// require_sampling signals that this request cannot finish without a sampling
+// answer. Pair it with `take_sampling_result`.
+pub fn (ctx Context) require_sampling(key string, params CreateMessageParams) InputRequired {
+	return ctx.require_input(key, 'sampling/createMessage', json.encode(params))
+}
+
+// require_input builds the InputRequired sentinel for one embedded request
+// object, echoing any `requestState` the client already sent.
+pub fn (ctx Context) require_input(key string, method string, params_json string) InputRequired {
+	return InputRequired{
+		input_requests: {
+			key: '{"method":${json.encode(method)},"params":${params_json}}'
+		}
+		request_state:  ctx.request_state
+	}
+}
+
+// RawJson captures an arbitrary JSON value verbatim.
+// RetryParams are the 2026-07-28 MRTR fields a client adds when it retries the
+// original request. The answers are arbitrary JSON objects, so they are
+// captured dynamically and re-encoded verbatim.
+struct RetryParams {
+	input_responses map[string]json.Any @[json: inputResponses]
+	request_state   string              @[json: requestState]
+}
+
+// extract_input_responses decodes `params.inputResponses` of an MRTR retry.
+fn extract_input_responses(params string) map[string]string {
+	mut responses := map[string]string{}
+	trimmed := params.trim_space()
+	if trimmed.len == 0 || trimmed == null.str() {
+		return responses
+	}
+	wrapper := json.decode[RetryParams](trimmed) or { return responses }
+	for key, value in wrapper.input_responses {
+		responses[key] = json.encode(value)
+	}
+	return responses
+}
+
+// extract_request_state decodes `params.requestState` of an MRTR retry.
+fn extract_request_state(params string) string {
+	trimmed := params.trim_space()
+	if trimmed.len == 0 || trimmed == null.str() {
+		return ''
+	}
+	wrapper := json.decode[RetryParams](trimmed) or { return '' }
+	return wrapper.request_state
 }
 
 // is_cancelled reports whether the client has sent `notifications/cancelled`
@@ -262,9 +433,20 @@ pub:
 	website_url      string
 	icons            []Icon
 	protocol_version string = protocol_version
-	capabilities     string
-	instructions     string
-	http_path        string = default_http_path
+	// supported_versions lists every protocol revision the server can speak.
+	// When empty it defaults to `default_supported_versions`. The preferred
+	// `protocol_version` must be part of this list, otherwise `new_server`
+	// panics.
+	supported_versions []string
+	// cache_ttl_ms is the `ttlMs` a `server/discover` result advertises on
+	// sessions negotiated to 2026-07-28.
+	cache_ttl_ms int = 300_000
+	// cache_scope is the `cacheScope` a `server/discover` result advertises on
+	// sessions negotiated to 2026-07-28.
+	cache_scope  string = 'private'
+	capabilities string
+	instructions string
+	http_path    string = default_http_path
 	// enable_logging declares the `logging` capability and lets clients call
 	// `logging/setLevel`. Disabled by default — turn on when the server emits
 	// `notifications/message` payloads.
@@ -422,11 +604,20 @@ mut:
 	// monotonically increasing, so we silently drop any non-increasing call
 	// rather than send an out-of-order notification on the wire.
 	progress_seen map[string]f64
+	// ephemeral marks the synthetic per-request session of the 2026-07-28
+	// stateless path. It is never handed to a client and never outlives the
+	// request that created it.
+	ephemeral bool
 }
 
 struct ServerState {
 mut:
 	sessions map[string]Session
+	// listen_subscriptions holds the live 2026-07-28 `subscriptions/listen`
+	// registrations, keyed by the JSON-RPC id of the listen request. HTTP
+	// registrations are finite and never stored here; only stdio ones, which
+	// live on the shared stdout channel, are.
+	listen_subscriptions map[string]ListenSubscription
 	// response_signals carries one semaphore per in-flight server-initiated
 	// request, keyed by `pending_signal_key(session_id, request_id)`.
 	// `wait_for_response` blocks on it (with a deadline) and
@@ -441,19 +632,65 @@ fn pending_signal_key(session_id string, request_id string) string {
 }
 
 struct DispatchResult {
+mut:
 	has_response bool
 	response     string
 	session_id   string
+	// events carries the request-scoped notifications of a 2026-07-28
+	// stateless request. They are drained before the ephemeral session is
+	// dropped and are only put on the wire when the client accepted SSE.
+	events []LoggedEvent
+	// open_events carries notification bodies that must precede the response on
+	// a finite response stream, such as the acknowledgement of an HTTP
+	// `subscriptions/listen`.
+	open_events []string
 }
 
 struct HandledRequest {
+mut:
 	response   Response
 	session_id string
+	// no_response marks a request that deliberately answers nothing on the
+	// wire, such as a stdio `subscriptions/listen` whose stream stays open.
+	no_response bool
+	// open_events carries notification bodies to put on a finite response
+	// stream ahead of the response itself, such as the mandatory
+	// acknowledgement of an HTTP `subscriptions/listen`.
+	open_events []string
 }
 
 struct ProtocolError {
 	response_error ResponseError
 	request_id     string
+}
+
+// RequestScope is the per-request state a handler resolves against. On the
+// 2025-11-25 stateful path `session` is the stored session looked up by
+// `session_id` and shared across requests. On the 2026-07-28 stateless path it
+// is a synthetic session that is created and dropped inside a single request,
+// and `stateless` switches the handlers to sessionless semantics.
+struct RequestScope {
+mut:
+	session_id string
+	transport  SessionTransport
+	session    ?Session
+	stateless  bool
+	// rejected carries an error that must be answered before dispatching, such
+	// as an unsupported `_meta` protocol version. A zero code means "no
+	// rejection".
+	rejected ResponseError
+}
+
+// is_2026 reports whether the request runs the 2026-07-28 stateless rules:
+// sessionless dispatch plus the wire fields that only exist in that revision.
+// A request that declares another supported revision through `_meta` is
+// dispatched sessionlessly too, but keeps that revision's wire behaviour.
+fn (scope RequestScope) is_2026() bool {
+	if !scope.stateless {
+		return false
+	}
+	session := scope.session or { return false }
+	return session.protocol_version == protocol_version_2026_07_28
 }
 
 fn (err ProtocolError) msg() string {
@@ -514,6 +751,9 @@ pub struct Server {
 mut:
 	server_info           Implementation
 	protocol_version      string
+	supported_versions    []string
+	cache_ttl_ms          int
+	cache_scope           string
 	capabilities_override string
 	instructions          string
 	http_path             string
@@ -534,9 +774,17 @@ mut:
 
 // new_server constructs a new MCP server.
 pub fn new_server(config ServerConfig) Server {
+	preferred_version := normalize_protocol_version(config.protocol_version)
+	supported_versions := normalize_supported_versions(config.supported_versions)
+	if preferred_version !in supported_versions {
+		panic('mcp.new_server: protocol_version `${preferred_version}` is not listed in supported_versions (${supported_versions})')
+	}
 	return Server{
 		server_info:           normalize_server_info(config)
-		protocol_version:      normalize_protocol_version(config.protocol_version)
+		protocol_version:      preferred_version
+		supported_versions:    supported_versions
+		cache_ttl_ms:          config.cache_ttl_ms
+		cache_scope:           config.cache_scope
 		capabilities_override: config.capabilities.trim_space()
 		instructions:          config.instructions
 		http_path:             normalize_http_path(config.http_path)
@@ -547,7 +795,10 @@ pub fn new_server(config ServerConfig) Server {
 		resource_templates:    map[string]ResourceTemplate{}
 		prompts:               map[string]RegisteredPrompt{}
 		completions:           map[string]RegisteredCompletion{}
-		state:                 ServerState{}
+		state:                 ServerState{
+			sessions:             map[string]Session{}
+			listen_subscriptions: map[string]ListenSubscription{}
+		}
 	}
 }
 
@@ -675,8 +926,10 @@ pub fn (mut s Server) notify_prompts_list_changed() {
 }
 
 // notify_log emits a `notifications/message` payload at `level` filtered per
-// session by the most recent `logging/setLevel` call. `data_json` MUST be a
-// valid JSON value (object preferred per spec). `logger` is optional.
+// session by the most recent `logging/setLevel` call, or - for the 2026-07-28
+// stateless sessions - by the `logLevel` the request asked for in its `_meta`.
+// A stateless request that did not ask for logs gets none. `data_json` MUST be
+// a valid JSON value (object preferred per spec). `logger` is optional.
 pub fn (mut s Server) notify_log(level LogLevel, logger string, data_json string) {
 	if !s.enable_logging {
 		return
@@ -693,6 +946,11 @@ pub fn (mut s Server) notify_log(level LogLevel, logger string, data_json string
 		for id in s.state.sessions.keys() {
 			mut session := s.state.sessions[id]
 			if !session.initialized {
+				continue
+			}
+			if session.ephemeral && !session.log_level_set {
+				// 2026-07-28 delivers logs only to the requests that asked for
+				// them, and there is no default level to fall back on.
 				continue
 			}
 			if session.log_level_set && int(level) < int(session.log_level) {
@@ -879,6 +1137,9 @@ pub fn (mut s Server) notify_resource_updated(uri string) {
 			s.state.sessions[id] = session
 		}
 	}
+	// In 2026-07-28 the opted-in resource subscriptions replace
+	// `resources/subscribe`, so a live listen stream carries this too.
+	s.fan_out_listen_notification('notifications/resources/updated', params, uri)
 }
 
 fn (mut s Server) subscribe(session_id string, uri string) {
@@ -918,10 +1179,18 @@ fn (mut s Server) broadcast_notification(method string, params_json string) {
 			if !session.initialized {
 				continue
 			}
+			// A 2026-07-28 stateless session only carries the notifications of
+			// its own request, never a server-wide broadcast.
+			if session.ephemeral {
+				continue
+			}
 			session.notification_queue << message
 			s.state.sessions[id] = session
 		}
 	}
+	// Live 2026-07-28 listen subscriptions get the same notification, tagged
+	// per subscription and filtered by what they opted into.
+	s.fan_out_listen_notification(method, params_json, '')
 }
 
 fn (mut s Server) drain_session_notifications(session_id string) []string {
@@ -980,11 +1249,14 @@ fn (s &Server) replay_events_after(session_id string, last_event_id int) []Logge
 }
 
 // serve_stdio starts serving MCP messages over stdio using newline framing.
-// MCP 2025-11-25 mandates that stdio messages are delimited by newlines and
-// MUST NOT contain embedded newlines. We bypass libc stdio buffering on the
-// way in (raw `read()` on fd 0) and flush stdout after every frame on the way
-// out, so peers behind a pipe see responses immediately and the server
-// reacts to each line as soon as it arrives.
+// The newline framing of stdio messages is unchanged by 2026-07-28 - that
+// revision removes sessions, not the transport - so the same rule still holds:
+// messages are delimited by newlines and MUST NOT contain embedded newlines. We
+// bypass libc stdio buffering on the way in (raw `read()` on fd 0) and flush
+// stdout after every frame on the way out, so peers behind a pipe see responses
+// immediately and the server reacts to each line as soon as it arrives. This is
+// also the only transport that can push notifications for a live
+// `subscriptions/listen` stream.
 pub fn (mut s Server) serve_stdio() ! {
 	mut stdout := os.stdout()
 	mut source := StdinReader{}
@@ -1359,17 +1631,27 @@ fn (mut s Server) serve_stdio_transport(mut reader io.Reader, mut writer io.Writ
 		mut chunk := []u8{len: 4096}
 		bytes_read := reader.read(mut chunk) or {
 			if err is os.Eof {
-				return
+				return s.finish_stdio_stream(mut writer)
 			}
 			if err is io.Eof {
-				return
+				return s.finish_stdio_stream(mut writer)
 			}
 			return err
 		}
 		if bytes_read == 0 {
-			return
+			return s.finish_stdio_stream(mut writer)
 		}
 		buffer += chunk[..bytes_read].bytestr()
+	}
+}
+
+// finish_stdio_stream closes the transport and terminates any listen stream
+// still open on it. A 2026-07-28 listen stream has no SubscriptionsListenResult
+// to send at this point - the channel itself is gone - so the spec's
+// `notifications/cancelled` is what the client sees.
+fn (mut s Server) finish_stdio_stream(mut writer io.Writer) ! {
+	for message in s.terminate_listen_subscriptions() {
+		writer.write(encode_stdio_message(message).bytes())!
 	}
 }
 
@@ -1388,10 +1670,135 @@ fn (mut s Server) dispatch_message(raw string, session_id string, transport Sess
 	return s.dispatch_envelope(envelope, session_id, transport)
 }
 
+// resolve_scope decides whether a request runs on the 2025-11-25 stateful path
+// or the 2026-07-28 stateless one. 2026-07-28 declares the protocol version in
+// `params._meta` on every request, so the `_meta` value alone is authoritative
+// for the stdio transport and is cross-checked against the
+// `MCP-Protocol-Version` header by the HTTP layer.
+fn (mut s Server) resolve_scope(envelope MessageEnvelope, session_id string, transport SessionTransport) RequestScope {
+	mut scope := RequestScope{
+		session_id: session_id
+		transport:  transport
+	}
+	meta := extract_stateless_meta(envelope.params)
+	requested := meta.protocol_version
+	if requested == '' {
+		scope.session = s.session_for_request(session_id, transport)
+		return scope
+	}
+	if requested !in s.supported_versions {
+		scope.rejected = s.unsupported_version_error(requested)
+		return scope
+	}
+	if requested != protocol_version_2026_07_28 {
+		// Only 2026-07-28 defines the reserved `_meta` namespace, so any other
+		// known revision keeps using the stateful session when there is one.
+		if existing := s.session_for_request(session_id, transport) {
+			scope.session = existing
+			return scope
+		}
+		// A request that names a revision but has no session is still
+		// sessionless; it simply keeps that revision's wire behaviour, which
+		// `scope.is_2026()` reads off the synthetic session.
+		return s.stateless_scope(mut scope, s.create_ephemeral_session(meta, transport))
+	}
+	if err := check_request_meta(meta) {
+		scope.rejected = err
+		return scope
+	}
+	return s.stateless_scope(mut scope, s.create_ephemeral_session(meta, transport))
+}
+
+// check_request_meta enforces the 2026-07-28 `RequestMetaObject` requirements:
+// the reserved `_meta` must name both the protocol version and the client's
+// capabilities. A missing key makes the request malformed rather than a
+// header/body contradiction, so it is an invalid_request.
+fn check_request_meta(meta StatelessMeta) ?ResponseError {
+	if meta.protocol_version == '' {
+		return ResponseError{
+			code:    invalid_request.code
+			message: 'A 2026-07-28 request must set `_meta.${meta_protocol_version_key}`.'
+		}
+	}
+	if meta.client_capabilities == '' {
+		return ResponseError{
+			code:    invalid_request.code
+			message: 'A 2026-07-28 request must set `_meta.${meta_client_capabilities_key}`.'
+		}
+	}
+	return none
+}
+
+// stateless_scope points a scope at a synthetic per-request session.
+fn (s &Server) stateless_scope(mut scope RequestScope, ephemeral Session) RequestScope {
+	scope.session_id = ephemeral.id
+	scope.session = ephemeral
+	scope.stateless = true
+	return scope
+}
+
+// release_scope drops the synthetic session of a stateless request. The
+// 2025-11-25 path never owns its session here and is left untouched.
+fn (mut s Server) release_scope(scope RequestScope) {
+	if scope.stateless {
+		s.delete_session(scope.session_id)
+	}
+}
+
+// unsupported_version_error renders the 2026-07-28
+// UnsupportedProtocolVersionError payload.
+fn (s &Server) unsupported_version_error(requested string) ResponseError {
+	return ResponseError{
+		code:    unsupported_protocol_version.code
+		message: unsupported_protocol_version.message
+		data:    '{"supported":${json.encode(s.supported_versions)},"requested":${json.encode(requested)}}'
+	}
+}
+
+// create_ephemeral_session builds the per-request session of the 2026-07-28
+// stateless path: no handshake ran, so the lifecycle gates are already
+// satisfied and every piece of state comes from the request's `_meta`. It is
+// stored only for the duration of the request so that the request-scoped
+// notifier APIs (`notify_log`, `notify_progress_for`) can reach the response
+// stream, and `release_scope` drops it before the request completes.
+fn (mut s Server) create_ephemeral_session(meta StatelessMeta, transport SessionTransport) Session {
+	mut session := Session{
+		id:                  'stateless-${rand.uuid_v7()}'
+		transport:           transport
+		protocol_version:    meta.protocol_version
+		client_info:         normalize_client_info(decode_client_info(meta.client_info))
+		client_capabilities: normalize_capabilities(meta.client_capabilities)
+		initialize_complete: true
+		initialized:         true
+		ephemeral:           true
+		notification_queue:  []string{}
+		pending_responses:   map[string]Response{}
+		progress_seen:       map[string]f64{}
+	}
+	// 2026-07-28 has no `logging/setLevel`; the log level of a request is the
+	// one its `_meta` asked for, and without it no log is delivered at all.
+	if level := parse_log_level(meta.log_level) {
+		session.log_level = level
+		session.log_level_set = true
+	}
+	s.store_session(session)
+	return session
+}
+
 fn (mut s Server) dispatch_envelope(envelope MessageEnvelope, session_id string, transport SessionTransport) !DispatchResult {
+	scope := s.resolve_scope(envelope, session_id, transport)
+	defer {
+		s.release_scope(scope)
+	}
+	if scope.rejected.code != 0 {
+		return DispatchResult{
+			has_response: true
+			response:     error_response_for(envelope.id, scope.rejected).encode()
+		}
+	}
 	if envelope.method.len == 0 {
 		if !is_notification_id(envelope.id) {
-			s.deliver_response(session_id, Response{
+			s.deliver_response(scope.session_id, Response{
 				id:     envelope.id
 				result: envelope.result
 				error:  envelope.error
@@ -1403,7 +1810,7 @@ fn (mut s Server) dispatch_envelope(envelope MessageEnvelope, session_id string,
 		s.handle_notification(Notification{
 			method: envelope.method
 			params: envelope.params
-		}, session_id, transport)!
+		}, scope)!
 		return DispatchResult{}
 	}
 	req := Request{
@@ -1411,41 +1818,85 @@ fn (mut s Server) dispatch_envelope(envelope MessageEnvelope, session_id string,
 		method: envelope.method
 		params: envelope.params
 	}
-	handled := s.handle_request(req, session_id, transport)
-	return DispatchResult{
-		has_response: true
-		response:     handled.response.encode()
-		session_id:   handled.session_id
+	mut handled := s.handle_request(req, scope)
+	if handled.no_response {
+		// A stdio `subscriptions/listen` keeps its stream open: the
+		// acknowledgement is queued on the shared outbox instead.
+		return DispatchResult{}
 	}
+	mut response := handled.response
+	if scope.is_2026() {
+		response = s.apply_stateless_result_fields(req, response)
+	}
+	mut result := DispatchResult{
+		has_response: true
+		response:     response.encode()
+		session_id:   handled.session_id
+		open_events:  handled.open_events
+	}
+	if scope.stateless {
+		// Drain before the deferred release drops the ephemeral session; the
+		// HTTP layer only writes these onto the wire for an SSE-accepted POST.
+		result.events = s.drain_to_event_log(scope.session_id)
+	}
+	return result
 }
 
-fn (mut s Server) handle_request(req Request, session_id string, transport SessionTransport) HandledRequest {
+fn (mut s Server) handle_request(req Request, scope RequestScope) HandledRequest {
 	defer {
-		s.clear_cancelled(session_id, req.id)
+		s.clear_cancelled(scope.session_id, req.id)
 	}
-	return s.handle_request_impl(req, session_id, transport) or {
+	return s.handle_request_impl(req, scope) or {
+		if scope.is_2026() && err is InputRequired {
+			// 2026-07-28 replaces server-initiated requests with a result that
+			// asks for input, so this is a success, not a failure.
+			return HandledRequest{
+				response: response_with_json(req.id, encode_input_required_result(err))
+			}
+		}
+		// On 2025-11-25 a handler cannot ask the client for input through the
+		// result, so it stays an internal error.
 		return HandledRequest{
 			response: error_response_for(req.id, err)
 		}
 	}
 }
 
-fn (mut s Server) handle_request_impl(req Request, session_id string, transport SessionTransport) !HandledRequest {
+fn (mut s Server) handle_request_impl(req Request, scope RequestScope) !HandledRequest {
+	if scope.is_2026() && req.method in stateless_removed_methods {
+		// 2026-07-28 dropped the handshake and the session-bound methods.
+		return ProtocolError{
+			response_error: method_not_found
+			request_id:     req.id
+		}
+	}
 	if req.method == 'ping' {
 		return HandledRequest{
 			response: response_with_json(req.id, empty_object.str())
 		}
 	}
 	if req.method == 'initialize' {
-		return s.handle_initialize(req, session_id, transport)
+		return s.handle_initialize(req, scope.session_id, scope.transport)
 	}
-	session := s.session_for_request(session_id, transport) or {
+	if scope.is_2026() && req.method == 'subscriptions/listen' {
+		return s.handle_subscriptions_listen(req, scope)
+	}
+	if req.method == 'server/discover' {
+		// `server/discover` is callable before `initialize`, so it bypasses the
+		// initialized gate and tolerates a missing session, exactly like `ping`.
+		mut version := s.protocol_version
+		if session := scope.session {
+			version = session.protocol_version
+		}
+		return s.discover_response(req, version)
+	}
+	session := scope.session or {
 		return ProtocolError{
 			response_error: server_not_initialized
 			request_id:     req.id
 		}
 	}
-	if !session.initialize_complete || !session.initialized {
+	if !scope.stateless && (!session.initialize_complete || !session.initialized) {
 		return ProtocolError{
 			response_error: server_not_initialized
 			request_id:     req.id
@@ -1469,13 +1920,13 @@ fn (mut s Server) handle_request_impl(req Request, session_id string, transport 
 			return s.handle_resource_templates_list(req)
 		}
 		'resources/subscribe' {
-			return s.handle_resources_subscribe(req, session_id)
+			return s.handle_resources_subscribe(req, scope.session_id)
 		}
 		'resources/unsubscribe' {
-			return s.handle_resources_unsubscribe(req, session_id)
+			return s.handle_resources_unsubscribe(req, scope.session_id)
 		}
 		'logging/setLevel' {
-			return s.handle_logging_set_level(req, session_id)
+			return s.handle_logging_set_level(req, scope.session_id)
 		}
 		'completion/complete' {
 			return s.handle_completion_complete(req, ctx)
@@ -1510,15 +1961,17 @@ fn (mut s Server) handle_initialize(req Request, session_id string, transport Se
 		}
 	}
 	// Per MCP lifecycle: server replies with the protocol version it supports;
-	// the client decides whether to proceed or disconnect on a mismatch.
-	session.protocol_version = s.protocol_version
+	// the client decides whether to proceed or disconnect on a mismatch. The
+	// session itself runs on the version the client asked for when the server
+	// supports it, and on the server preference otherwise.
+	session.protocol_version = s.negotiated_protocol_version(params.protocol_version)
 	session.client_info = normalize_client_info(params.client_info)
 	session.client_capabilities = normalize_capabilities(params.capabilities)
 	session.initialize_complete = true
 	session.initialized = false
 	s.store_session(session)
 	result := InitializeResult{
-		protocol_version: session.protocol_version
+		protocol_version: s.protocol_version
 		capabilities:     s.capabilities_json()
 		server_info:      s.server_info
 		instructions:     s.instructions
@@ -1568,6 +2021,12 @@ fn (mut s Server) handle_tools_call(req Request, ctx Context) !HandledRequest {
 			return err
 		}
 		if err is ResponseError {
+			return err
+		}
+		if err is InputRequired {
+			// 2026-07-28 asks the client for input through the result, so the
+			// sentinel must reach the dispatcher instead of being reported as a
+			// tool failure.
 			return err
 		}
 		return HandledRequest{
@@ -1840,10 +2299,16 @@ fn (mut s Server) handle_prompts_get(req Request, ctx Context) !HandledRequest {
 	}
 }
 
-fn (mut s Server) handle_notification(notification Notification, session_id string, transport SessionTransport) ! {
+fn (mut s Server) handle_notification(notification Notification, scope RequestScope) ! {
+	if scope.is_2026() && notification.method in stateless_removed_methods {
+		// 2026-07-28 dropped the handshake, so there is nothing to confirm.
+		return ProtocolError{
+			response_error: method_not_found
+		}
+	}
 	match notification.method {
 		'notifications/initialized' {
-			mut session := s.session_for_request(session_id, transport) or {
+			mut session := scope.session or {
 				return ProtocolError{
 					response_error: server_not_initialized
 				}
@@ -1858,7 +2323,7 @@ fn (mut s Server) handle_notification(notification Notification, session_id stri
 		}
 		'notifications/cancelled' {
 			params := notification.decode_params[CancelledParams]() or { return }
-			s.mark_cancelled(session_id, params.request_id)
+			s.mark_cancelled(scope.session_id, params.request_id)
 		}
 		else {}
 	}
@@ -1963,6 +2428,511 @@ fn (s &Server) capabilities_json() string {
 		parts << '"completions":{}'
 	}
 	return '{${parts.join(',')}}'
+}
+
+// encode_discover_result renders a `server/discover` result. The CacheableResult
+// fields (`resultType`, `ttlMs`, `cacheScope`) only exist in 2026-07-28, so
+// they are emitted for sessions negotiated to that revision and omitted
+// otherwise.
+fn encode_discover_result(
+	capabilities string,
+	versions []string,
+	instructions string,
+	version string,
+	ttl_ms int,
+	cache_scope string
+) string {
+	mut encoded_versions := []string{}
+	for supported in versions {
+		encoded_versions << json.encode(supported)
+	}
+	mut fields := [
+		'"supportedVersions":[${encoded_versions.join(',')}]',
+		'"capabilities":${normalize_capabilities(capabilities)}',
+	]
+	if instructions != '' {
+		fields << '"instructions":${json.encode(instructions)}'
+	}
+	if version == protocol_version_2026_07_28 {
+		fields << '"resultType":"complete"'
+		fields << '"ttlMs":${ttl_ms.str()}'
+		fields << '"cacheScope":${json.encode(cache_scope)}'
+	}
+	return '{${fields.join(',')}}'
+}
+
+// apply_stateless_result_fields returns `response` with the top-level fields
+// every 2026-07-28 stateless result must carry: `resultType` on every result,
+// plus `ttlMs` and `cacheScope` on the CacheableResult methods. Injecting here
+// rather than in each encoder keeps the 2025-11-25 results untouched by
+// construction - the function is only reached when `scope.is_2026()` holds.
+// A result that already declares its own `resultType` keeps it: that is the
+// MRTR `input_required` result and the listen result.
+fn (s &Server) apply_stateless_result_fields(req Request, response Response) Response {
+	if response.error.code != 0 || response.result.len == 0 {
+		return response
+	}
+	mut result := response.result
+	body := json_object_body(result) or { return response }
+	if !has_top_level_result_type(result) {
+		mut fields := ['"resultType":"complete"']
+		if req.method in stateless_cacheable_methods {
+			fields << '"ttlMs":${s.cache_ttl_ms.str()}'
+			fields << '"cacheScope":${json.encode(s.cache_scope)}'
+		}
+		result = '{${fields.join(',')},${body}}'
+	}
+	// 2026-07-28 removed the handshake, so the result `_meta` is the only place
+	// a client can learn which server answered it.
+	result = with_result_meta_member(result, meta_server_info_key, s.server_info_json())
+	return Response{
+		jsonrpc: response.jsonrpc
+		id:      response.id
+		result:  result
+		error:   response.error
+	}
+}
+
+// server_info_json renders the `Implementation` that identifies the server in a
+// 2026-07-28 result `_meta`. The schema requires `name` and `version`.
+fn (s &Server) server_info_json() string {
+	name := json.encode(s.server_info.name)
+	version := json.encode(s.server_info.version)
+	return '{"name":${name},"version":${version}}'
+}
+
+// JSON byte values, spelled numerically so the scanners below stay readable
+// without escape sequences.
+const json_colon = u8(0x3a)
+const json_quote = u8(0x22)
+const json_backslash = u8(0x5c)
+const json_open_brace = u8(0x7b)
+const json_close_brace = u8(0x7d)
+const json_open_bracket = u8(0x5b)
+const json_close_bracket = u8(0x5d)
+const json_space = u8(0x20)
+const json_tab = u8(0x09)
+const json_newline = u8(0x0a)
+const json_carriage_return = u8(0x0d)
+
+// JsonSpan locates one member of a JSON object body.
+struct JsonSpan {
+	// key_start is the index just past the member's key, where `:` follows.
+	key_start int
+	// obj_start is the index of the `{` opening the member's object value.
+	obj_start int
+	// obj_end is the index of the `}` closing it.
+	obj_end int
+}
+
+// json_object_body returns the body of a JSON object string, or none when the
+// value is not an object.
+fn json_object_body(value string) ?string {
+	trimmed := value.trim_space()
+	if trimmed.len < 2 || trimmed[0] != json_open_brace
+		|| trimmed[trimmed.len - 1] != json_close_brace {
+		return none
+	}
+	return trimmed[1..trimmed.len - 1]
+}
+
+// skip_json_space returns the first index at or after `from` that is not JSON
+// whitespace.
+fn skip_json_space(body string, from int) int {
+	mut i := from
+	for i < body.len {
+		ch := body[i]
+		if ch != json_space && ch != json_tab && ch != json_newline
+			&& ch != json_carriage_return {
+			return i
+		}
+		i++
+	}
+	return i
+}
+
+// find_top_level_key locates a member key at the top level of a JSON object
+// body, ignoring keys nested inside other values or inside strings. It returns
+// the index just past the key, or -1 when the key is absent. It only has to
+// find `_meta` and `resultType`, both of which this module writes itself.
+fn find_top_level_key(body string, key string) int {
+	quoted := json.encode(key)
+	mut depth := 0
+	mut in_string := false
+	mut escaped := false
+	for i := 0; i < body.len; i++ {
+		ch := body[i]
+		if in_string {
+			if escaped {
+				escaped = false
+			} else if ch == json_backslash {
+				escaped = true
+			} else if ch == json_quote {
+				in_string = false
+			}
+			continue
+		}
+		if ch == json_quote {
+			if depth == 0 && body[i..].starts_with(quoted) {
+				return i + quoted.len
+			}
+			in_string = true
+			continue
+		}
+		if ch == json_open_brace || ch == json_open_bracket {
+			depth++
+		} else if ch == json_close_brace || ch == json_close_bracket {
+			depth--
+		}
+	}
+	return -1
+}
+
+// find_top_level_object_member locates a member whose value is an object.
+fn find_top_level_object_member(body string, key string) ?JsonSpan {
+	key_end := find_top_level_key(body, key)
+	if key_end < 0 {
+		return none
+	}
+	return object_member_span(body, key_end)
+}
+
+// object_member_span finishes the scan started just past a member's key: it
+// expects a colon followed by an object value and reports where that value is.
+fn object_member_span(body string, key_end int) ?JsonSpan {
+	mut i := skip_json_space(body, key_end)
+	if i >= body.len || body[i] != json_colon {
+		return none
+	}
+	i = skip_json_space(body, i + 1)
+	if i >= body.len || body[i] != json_open_brace {
+		return none
+	}
+	mut depth := 0
+	mut in_string := false
+	mut escaped := false
+	for j := i; j < body.len; j++ {
+		ch := body[j]
+		if in_string {
+			if escaped {
+				escaped = false
+			} else if ch == json_backslash {
+				escaped = true
+			} else if ch == json_quote {
+				in_string = false
+			}
+			continue
+		}
+		if ch == json_quote {
+			in_string = true
+			continue
+		}
+		if ch == json_open_brace {
+			depth++
+		} else if ch == json_close_brace {
+			depth--
+			if depth == 0 {
+				return JsonSpan{
+					key_start: key_end
+					obj_start: i
+					obj_end:   j
+				}
+			}
+		}
+	}
+	return none
+}
+
+// with_result_meta_member adds a `"key":value` member to a result's `_meta`,
+// creating the object when the result has none and merging into it when it
+// already has one, so a reserved key is never duplicated.
+fn with_result_meta_member(result_json string, key string, value_json string) string {
+	body := json_object_body(result_json) or { return result_json }
+	member := '${json.encode(key)}:${value_json}'
+	mut fields := []string{}
+	mut meta_fields := []string{}
+	if span := find_top_level_object_member(body, '_meta') {
+		// JsonSpan.key_start is just past the key, so step back over it to
+		// exclude the existing `"_meta"` member from the kept fields.
+		key_begin := span.key_start - json.encode('_meta').len
+		before := body[..key_begin].trim_space().trim_right(',')
+		if before.len != 0 {
+			fields << before
+		}
+		inner := body[span.obj_start + 1..span.obj_end].trim_space()
+		if inner.len != 0 {
+			meta_fields << inner
+		}
+		after := body[span.obj_end + 1..].trim_space().trim_left(',')
+		if after.len != 0 {
+			fields << after
+		}
+	} else {
+		trimmed := body.trim_space()
+		if trimmed.len != 0 {
+			fields << trimmed
+		}
+	}
+	meta_fields << member
+	fields << '"_meta":{${meta_fields.join(',')}}'
+	return '{${fields.join(',')}}'
+}
+
+// has_top_level_result_type reports whether a result already declares its own
+// `resultType`, as the MRTR `input_required` and listen results do.
+fn has_top_level_result_type(result_json string) bool {
+	body := json_object_body(result_json) or { return false }
+	return find_top_level_key(body, 'resultType') >= 0
+}
+
+// discover_response answers `server/discover` for the protocol revision in
+// effect on this request.
+fn (s &Server) discover_response(req Request, version string) HandledRequest {
+	result_json := encode_discover_result(s.capabilities_json(), s.supported_versions,
+		s.instructions, version, s.cache_ttl_ms, s.cache_scope)
+	return HandledRequest{
+		response: response_with_json(req.id, result_json)
+	}
+}
+
+// SubscriptionFilter is the set of notifications a `subscriptions/listen`
+// request opts into. Every field is opt-in: the server MUST NOT send a type
+// that was not asked for.
+pub struct SubscriptionFilter {
+pub:
+	tools_list_changed     bool     @[json: toolsListChanged]
+	prompts_list_changed   bool     @[json: promptsListChanged]
+	resources_list_changed bool     @[json: resourcesListChanged]
+	resource_uris          []string @[json: resourceSubscriptions]
+}
+
+// SubscriptionListenParams is the payload of a `subscriptions/listen` request.
+pub struct SubscriptionListenParams {
+pub mut:
+	notifications SubscriptionFilter
+}
+
+// ListenSubscription is one live 2026-07-28 registration: what the client asked
+// for, and the subset the server agreed to send.
+struct ListenSubscription {
+mut:
+	id      string
+	filter  SubscriptionFilter
+	honored SubscriptionFilter
+}
+
+// is_empty reports whether a filter asks for nothing at all.
+fn (f SubscriptionFilter) is_empty() bool {
+	return !f.tools_list_changed && !f.prompts_list_changed
+		&& !f.resources_list_changed && f.resource_uris.len == 0
+}
+
+// wants reports whether a notification kind belongs on this subscription's
+// stream. `uri` is only meaningful for `notifications/resources/updated`.
+fn (f SubscriptionFilter) wants(method string, uri string) bool {
+	return match method {
+		'notifications/tools/list_changed' { f.tools_list_changed }
+		'notifications/prompts/list_changed' { f.prompts_list_changed }
+		'notifications/resources/list_changed' { f.resources_list_changed }
+		'notifications/resources/updated' { uri in f.resource_uris }
+		else { false }
+	}
+}
+
+// encode_subscription_filter renders a filter, emitting only the opted-in
+// types.
+fn encode_subscription_filter(filter SubscriptionFilter) string {
+	mut fields := []string{}
+	if filter.tools_list_changed {
+		fields << '"toolsListChanged":true'
+	}
+	if filter.prompts_list_changed {
+		fields << '"promptsListChanged":true'
+	}
+	if filter.resources_list_changed {
+		fields << '"resourcesListChanged":true'
+	}
+	if filter.resource_uris.len != 0 {
+		fields << '"resourceSubscriptions":${json.encode(filter.resource_uris)}'
+	}
+	if fields.len == 0 {
+		return '{}'
+	}
+	return '{${fields.join(',')}}'
+}
+
+// tag_subscription_params injects the reserved subscriptionId `_meta` key that
+// every notification on a listen stream must carry. `params_json` MUST be a
+// JSON object; anything else is wrapped rather than mangled.
+fn tag_subscription_params(params_json string, subscription_id string) string {
+	meta := '"_meta":{"${meta_subscription_id_key}":${json.encode(subscription_id)}}'
+	trimmed := params_json.trim_space()
+	if trimmed.len < 2 || trimmed[0] != `{` || trimmed[trimmed.len - 1] != `}` {
+		return '{${meta}}'
+	}
+	inner := trimmed[1..trimmed.len - 1].trim_space()
+	if inner.len == 0 {
+		return '{${meta}}'
+	}
+	return '{${inner},${meta}}'
+}
+
+// encode_listen_acknowledged renders the mandatory first message of a
+// subscription stream: the notification types the server honors, tagged with
+// the subscription id.
+fn encode_listen_acknowledged(filter SubscriptionFilter, subscription_id string) string {
+	id_meta := '"_meta":{"${meta_subscription_id_key}":${json.encode(subscription_id)}}'
+	params := '{"notifications":${encode_subscription_filter(filter)},${id_meta}}'
+	return build_notification_message(listen_acknowledged_method, params)
+}
+
+// encode_listen_result renders the SubscriptionsListenResult that closes a
+// listen stream: an empty result object carrying the subscription id.
+// encode_listen_result renders the SubscriptionsListenResult that closes a
+// listen stream. The schema requires both `resultType` and a `_meta` carrying
+// the subscription id, so both are always present.
+fn encode_listen_result(subscription_id string) string {
+	id := json.encode(subscription_id)
+	return '{"resultType":"complete","_meta":{"${meta_subscription_id_key}":${id}}}'
+}
+
+// handle_subscriptions_listen opens a 2026-07-28 subscription stream. stdio
+// keeps the stream open on the shared stdout channel and answers the listen
+// request with nothing; HTTP cannot hold a request open, so its stream is
+// finite: the acknowledgement and the closing SubscriptionsListenResult are
+// the whole response and the subscription does not outlive it.
+fn (mut s Server) handle_subscriptions_listen(req Request, scope RequestScope) !HandledRequest {
+	params := decode_optional_params[SubscriptionListenParams](req.params) or {
+		return ProtocolError{
+			response_error: invalid_params
+			request_id:     req.id
+		}
+	}
+	filter := params.notifications
+	if filter.is_empty() {
+		// Nothing was opted into, so there is no stream to open.
+		return ProtocolError{
+			response_error: invalid_params
+			request_id:     req.id
+		}
+	}
+	// The acknowledgement names only what this server can actually produce: a
+	// list-changed kind with nothing in the registry is omitted, as the schema
+	// specifies. Resource URIs are dynamic, so those are honored as requested.
+	honored := s.honored_subscription_filter(filter)
+	if scope.transport == .http {
+		return HandledRequest{
+			response:    response_with_json(req.id, encode_listen_result(req.id))
+			open_events: [encode_listen_acknowledged(honored, req.id)]
+		}
+	}
+	s.ensure_session(stdio_session_id, .stdio)
+	s.register_listen_subscription(req.id, filter, honored)
+	s.queue_stdio_notification(encode_listen_acknowledged(honored, req.id))
+	return HandledRequest{
+		no_response: true
+	}
+}
+
+// honored_subscription_filter intersects a requested filter with what this
+// server can actually notify about. A list-changed kind whose registry is
+// empty is dropped, because the acknowledgement is specified to name the
+// subset the server agreed to honor.
+fn (s &Server) honored_subscription_filter(filter SubscriptionFilter) SubscriptionFilter {
+	return SubscriptionFilter{
+		tools_list_changed:     filter.tools_list_changed && s.tool_names.len != 0
+		prompts_list_changed:   filter.prompts_list_changed && s.prompt_names.len != 0
+		resources_list_changed: filter.resources_list_changed
+			&& (s.resource_uris.len != 0 || s.resource_template_ids.len != 0)
+		resource_uris:          filter.resource_uris.clone()
+	}
+}
+
+// register_listen_subscription records a live stdio listen registration.
+fn (mut s Server) register_listen_subscription(id string, filter SubscriptionFilter, honored SubscriptionFilter) {
+	lock s.state {
+		s.state.listen_subscriptions[id] = ListenSubscription{
+			id:      id
+			filter:  filter
+			honored: honored
+		}
+	}
+}
+
+// queue_stdio_notification appends a notification to the shared stdio outbox,
+// which `serve_stdio_transport` drains after every dispatch.
+fn (mut s Server) queue_stdio_notification(message string) {
+	lock s.state {
+		if stdio_session_id !in s.state.sessions {
+			return
+		}
+		mut session := s.state.sessions[stdio_session_id]
+		session.notification_queue << message
+		s.state.sessions[stdio_session_id] = session
+	}
+}
+
+// fan_out_listen_notification pushes a notification to every live listen
+// subscription that asked for it, tagged with that subscription's id. It only
+// reaches subscriptions that opted in, and never carries a request-scoped
+// notification (progress, log message) which belongs to a single request.
+fn (mut s Server) fan_out_listen_notification(method string, params_json string, uri string) {
+	lock s.state {
+		if s.state.listen_subscriptions.len == 0 || stdio_session_id !in s.state.sessions {
+			return
+		}
+		mut messages := []string{}
+		for _, subscription in s.state.listen_subscriptions {
+			if !subscription.honored.wants(method, uri) {
+				continue
+			}
+			messages << build_notification_message(method,
+				tag_subscription_params(params_json, subscription.id))
+		}
+		if messages.len == 0 {
+			return
+		}
+		mut session := s.state.sessions[stdio_session_id]
+		session.notification_queue << messages
+		s.state.sessions[stdio_session_id] = session
+	}
+}
+
+// terminate_listen_subscriptions drops every live listen registration and
+// returns the `notifications/cancelled` bodies the transport should write to
+// close their streams. This is the only server-initiated use of
+// `notifications/cancelled` on stdio.
+fn (mut s Server) terminate_listen_subscriptions() []string {
+	lock s.state {
+		mut messages := []string{}
+		for id, _ in s.state.listen_subscriptions {
+			messages << build_notification_message('notifications/cancelled',
+				'{"requestId":${id}}')
+		}
+		s.state.listen_subscriptions.clear()
+		return messages
+	}
+}
+
+// negotiated_protocol_version picks the revision a session runs on: the version
+// the client asked for when the server supports it, the server preference
+// otherwise.
+fn (s &Server) negotiated_protocol_version(requested string) string {
+	trimmed := requested.trim_space()
+	if trimmed != '' && trimmed in s.supported_versions {
+		return trimmed
+	}
+	return s.protocol_version
+}
+
+// negotiated_version_for returns the revision in effect for a request: the
+// session's negotiated one, or the server preference when the request arrives
+// before a session exists.
+fn (s &Server) negotiated_version_for(session_id string, transport SessionTransport) string {
+	if session := s.session_for_request(session_id, transport) {
+		return session.protocol_version
+	}
+	return s.protocol_version
 }
 
 fn (mut s Server) ensure_session_for_initialize(session_id string, transport SessionTransport) Session {
@@ -2074,6 +3044,8 @@ fn (s &Server) context_from_session(req Request, session Session) Context {
 		client_info:         session.client_info
 		client_capabilities: session.client_capabilities
 		progress_token:      extract_progress_token(req.params)
+		input_responses:     extract_input_responses(req.params)
+		request_state:       extract_request_state(req.params)
 		server:              unsafe { s }
 	}
 }
@@ -2088,6 +3060,12 @@ pub:
 pub struct MetaPayload {
 pub:
 	progress_token string @[json: progressToken; raw]
+	// The reserved 2026-07-28 keys. The scalar fields decode to plain values;
+	// the object fields stay raw so they can be re-used verbatim.
+	protocol_version    string @[json: 'io.modelcontextprotocol/protocolVersion']
+	client_info         string @[json: 'io.modelcontextprotocol/clientInfo'; raw]
+	client_capabilities string @[json: 'io.modelcontextprotocol/clientCapabilities'; raw]
+	log_level           string @[json: 'io.modelcontextprotocol/logLevel']
 }
 
 fn extract_progress_token(params string) string {
@@ -2097,6 +3075,45 @@ fn extract_progress_token(params string) string {
 	}
 	wrapper := json.decode[MetaParams](trimmed) or { return '' }
 	return wrapper.meta.progress_token.trim_space()
+}
+
+// StatelessMeta carries the reserved 2026-07-28 `_meta` keys of a single
+// request. There is no session to hold this state, so it travels with the
+// request itself.
+struct StatelessMeta {
+	protocol_version    string
+	client_info         string
+	client_capabilities string
+	log_level           string
+}
+
+// extract_stateless_meta decodes the reserved `_meta` keys of a request. A
+// malformed or absent `_meta` simply yields empty fields, matching the tolerant
+// behaviour of `extract_progress_token`.
+fn extract_stateless_meta(params string) StatelessMeta {
+	trimmed := params.trim_space()
+	if trimmed.len == 0 || trimmed == null.str() {
+		return StatelessMeta{}
+	}
+	wrapper := json.decode[MetaParams](trimmed) or { return StatelessMeta{} }
+	meta := wrapper.meta
+	return StatelessMeta{
+		protocol_version:    meta.protocol_version.trim_space()
+		client_info:         meta.client_info.trim_space()
+		client_capabilities: meta.client_capabilities.trim_space()
+		log_level:           meta.log_level.trim_space()
+	}
+}
+
+// decode_client_info parses the raw `_meta` clientInfo object. Anything that
+// does not decode leaves the field empty, which `normalize_client_info` then
+// fills with the defaults.
+fn decode_client_info(raw string) Implementation {
+	trimmed := raw.trim_space()
+	if trimmed.len == 0 || trimmed == null.str() {
+		return Implementation{}
+	}
+	return json.decode[Implementation](trimmed) or { Implementation{} }
 }
 
 fn decode_optional_params[T](raw string) !T {
@@ -2176,6 +3193,23 @@ fn normalize_http_path(path string) string {
 		return default_http_path
 	}
 	return if trimmed.starts_with('/') { trimmed } else { '/' + trimmed }
+}
+
+// normalize_supported_versions trims, drops blanks and de-duplicates the
+// configured revisions, falling back to `default_supported_versions` when the
+// list is left empty.
+fn normalize_supported_versions(versions []string) []string {
+	mut result := []string{}
+	for version in versions {
+		trimmed := version.trim_space()
+		if trimmed != '' && trimmed !in result {
+			result << trimmed
+		}
+	}
+	if result.len == 0 {
+		return default_supported_versions.clone()
+	}
+	return result
 }
 
 fn error_response_for(request_id string, err IError) Response {
@@ -2289,13 +3323,18 @@ fn is_loopback_origin(origin string) bool {
 }
 
 // supports_protocol_version applies spec rules: missing header defaults to
-// 2025-03-26 (back-compat), otherwise the value MUST match the negotiated one.
-fn (s &Server) supports_protocol_version(value string, has_session bool) bool {
+// 2025-03-26 (back-compat), otherwise the value MUST match the version
+// negotiated for the session, or the server preference when there is no
+// session yet.
+fn (s &Server) supports_protocol_version(value string, session_id string) bool {
+	has_session := session_id != ''
+	negotiated := s.negotiated_version_for(session_id, .http)
 	if value == '' {
-		return !has_session || s.protocol_version == default_protocol_version
-			|| s.protocol_version == protocol_version
+		return !has_session || negotiated == default_protocol_version
+			|| negotiated == protocol_version_2025_11_25
+			|| negotiated == protocol_version_2026_07_28
 	}
-	return value == s.protocol_version
+	return value == negotiated
 }
 
 fn json_http_response(status http.Status, body string, content_type string) http.Response {
@@ -2395,7 +3434,22 @@ fn (mut s Server) handle_http_request(req http.Request) http.Response {
 	}
 
 	protocol_value := req.header.get_custom(mcp_protocol_version_header) or { '' }
-	if !s.supports_protocol_version(protocol_value, session_id != '') {
+	// 2026-07-28 declares the protocol version per request in `params._meta`,
+	// so peek at the body first. The peek never fails a request: a body that
+	// does not decode simply leaves the 2025-11-25 path below to report it.
+	peeked, decoded := peek_envelope(req.data)
+	declared := if decoded {
+		extract_stateless_meta(peeked.params).protocol_version
+	} else {
+		''
+	}
+	if is_stateless_request(protocol_value, declared) {
+		if !decoded {
+			return error_http_response(.bad_request, header_mismatch_error('Cannot read the reserved `_meta` keys from a malformed request body.'))
+		}
+		return s.handle_http_stateless(req, peeked, parse_accept(req.header))
+	}
+	if !s.supports_protocol_version(protocol_value, session_id) {
 		return error_http_response(.bad_request, ResponseError{
 			code:    invalid_request.code
 			message: 'Unsupported MCP-Protocol-Version `${protocol_value}`.'
@@ -2452,4 +3506,141 @@ fn session_for_drain(request_session string, dispatch_session string) string {
 		return request_session
 	}
 	return dispatch_session
+}
+
+// peek_envelope decodes the request body without reporting failures, so the
+// 2026-07-28 branch can be selected before the stateful path runs its own
+// validation.
+fn peek_envelope(data string) (MessageEnvelope, bool) {
+	trimmed := data.trim_space()
+	if trimmed.len == 0 || trimmed[0] == `[` {
+		return MessageEnvelope{}, false
+	}
+	envelope := decode_envelope(trimmed) or { return MessageEnvelope{}, false }
+	return envelope, true
+}
+
+// is_stateless_request reports whether a Streamable HTTP POST must take the
+// 2026-07-28 sessionless path: the header declares 2026-07-28, the `_meta`
+// does, or both agree on some other version whose support is then decided by
+// the stateless checks themselves.
+fn is_stateless_request(header_version string, meta_version string) bool {
+	if header_version == protocol_version_2026_07_28
+		|| meta_version == protocol_version_2026_07_28 {
+		return true
+	}
+	return meta_version != '' && meta_version == header_version
+}
+
+fn header_mismatch_error(message string) ResponseError {
+	return ResponseError{
+		code:    header_mismatch.code
+		message: message
+	}
+}
+
+// handle_http_stateless serves a 2026-07-28 request. No session is required or
+// created, and no `MCP-Session-Id` is handed back.
+fn (mut s Server) handle_http_stateless(req http.Request, envelope MessageEnvelope, accept AcceptModes) http.Response {
+	meta := extract_stateless_meta(envelope.params)
+	header_version := req.header.get_custom(mcp_protocol_version_header) or { '' }
+	if header_version == '' || meta.protocol_version == ''
+		|| header_version != meta.protocol_version {
+		return error_http_response(.bad_request, header_mismatch_error('`${mcp_protocol_version_header}` and `_meta` ${meta_protocol_version_key} must both be present and equal.'))
+	}
+	if meta.protocol_version !in s.supported_versions {
+		return error_http_response(.bad_request, s.unsupported_version_error(meta.protocol_version))
+	}
+	if err := check_request_meta(meta) {
+		return error_http_response(.bad_request, err)
+	}
+	if mismatch := validate_stateless_headers(req, envelope) {
+		return error_http_response(.bad_request, mismatch)
+	}
+	if envelope.method == 'subscriptions/listen' && !(accept.sse && !accept.json) {
+		// An HTTP listen stream only exists as a finite SSE response.
+		return error_http_response(.not_acceptable, ResponseError{
+			code:    invalid_request.code
+			message: 'subscriptions/listen requires Accept: text/event-stream.'
+		})
+	}
+	if !accept.json && !accept.sse {
+		return error_http_response(.not_acceptable, ResponseError{
+			code:    invalid_request.code
+			message: 'Accept must include application/json or text/event-stream.'
+		})
+	}
+	dispatch_result := s.dispatch_envelope(envelope, '', .http) or {
+		return error_http_response(.bad_request, normalize_response_error(err))
+	}
+	if !dispatch_result.has_response {
+		return json_http_response(.accepted, '', '')
+	}
+	mut body := dispatch_result.response
+	mut content_type := default_content_type
+	if accept.sse && !accept.json {
+		// The notifications of this request ride the same stream as its
+		// response; there is no session left to buffer them for later.
+		mut chunks := []string{cap: dispatch_result.events.len +
+			dispatch_result.open_events.len + 1}
+		for event in dispatch_result.events {
+			chunks << build_sse_event(event)
+		}
+		for event in dispatch_result.open_events {
+			chunks << build_sse_response(event)
+		}
+		chunks << build_sse_response(dispatch_result.response)
+		body = chunks.join('')
+		content_type = event_stream_content_type
+	}
+	return json_http_response(.ok, body, content_type)
+}
+
+// NamedTargetParams reads the tool/resource/prompt identifier of a request
+// whose `Mcp-Name` header must agree with the body.
+struct NamedTargetParams {
+	name string
+	uri  string
+}
+
+// method_target_field names the params field holding the tool, resource or
+// prompt a method addresses, or an empty string when the method addresses none.
+fn method_target_field(method string) string {
+	return match method {
+		'tools/call' { 'name' }
+		'resources/read' { 'uri' }
+		'prompts/get' { 'name' }
+		else { '' }
+	}
+}
+
+// validate_stateless_headers enforces the 2026-07-28 `Mcp-Method` / `Mcp-Name`
+// request headers against the JSON-RPC body.
+fn validate_stateless_headers(req http.Request, envelope MessageEnvelope) ?ResponseError {
+	method := (req.header.get_custom(mcp_method_header) or { '' }).trim_space()
+	if method == '' {
+		return header_mismatch_error('Missing the `${mcp_method_header}` header.')
+	}
+	if method != envelope.method {
+		return header_mismatch_error('`${mcp_method_header}` contradicts the request body.')
+	}
+	name := (req.header.get_custom(mcp_name_header) or { '' }).trim_space()
+	field := method_target_field(envelope.method)
+	if field == '' {
+		if name != '' {
+			return header_mismatch_error('`${mcp_name_header}` does not apply to `${envelope.method}`.')
+		}
+		return none
+	}
+	if name == '' {
+		return header_mismatch_error('`${mcp_name_header}` is required for `${envelope.method}`.')
+	}
+	target := decode_optional_params[NamedTargetParams](envelope.params) or {
+		NamedTargetParams{}
+	}
+	body_name := if field == 'uri' { target.uri } else { target.name }
+	if name != body_name {
+		return header_mismatch_error('`${mcp_name_header}` contradicts the request body.')
+	}
+	return none
 }

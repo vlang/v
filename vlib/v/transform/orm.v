@@ -1077,7 +1077,7 @@ fn (mut t Transformer) sql_dynamic_value_expr(tokens []string, typ string) flat.
 	if clean.len == 1 {
 		return t.sql_expr_from_token_for_type(clean[0], typ)
 	}
-	return t.sql_expr_from_token_for_type(clean.join(''), typ)
+	return t.sql_expr_from_token_for_type(sql_value_token_text(clean), typ)
 }
 
 fn (t &Transformer) sql_dynamic_value_type(tokens []string) string {

@@ -63,7 +63,12 @@ fn test_install_from_git_url() {
 	assert res.output.contains('Installed `webview`'), res.output
 }
 
-fn test_install_from_git_url_uses_registered_package_name() {
+fn test_install_from_git_url_uses_registered_package_name() ! {
+	// The registry-name test may already have installed the same module.
+	module_path := os.join_path(test_path, 'nedpals', 'args')
+	if os.is_dir(module_path) {
+		os.rmdir_all(module_path)!
+	}
 	mut res := cmd_ok(@LOCATION, '${vexe} install https://github.com/nedpals/v-args')
 	assert res.output.contains('Installing `nedpals.args`'), res.output
 	assert res.output.contains('Installed `nedpals.args`'), res.output

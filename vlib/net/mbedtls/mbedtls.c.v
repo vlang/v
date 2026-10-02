@@ -229,13 +229,13 @@ fn C.mbedtls_pk_parse_key(&C.mbedtls_pk_context, &u8, usize, &u8, usize, fn (voi
 fn C.mbedtls_pk_parse_keyfile(&C.mbedtls_pk_context, &char, &char, fn (voidptr, &u8, usize) int, voidptr) i32
 
 fn C.mbedtls_ctr_drbg_init(&C.mbedtls_ctr_drbg_context)
-fn C.mbedtls_ctr_drbg_seed(&C.mbedtls_ctr_drbg_context, fn (voidptr, &u8, usize), voidptr, &u8, usize) i32
+fn C.mbedtls_ctr_drbg_seed(&C.mbedtls_ctr_drbg_context, fn (voidptr, &u8, usize) int, voidptr, &u8, usize) i32
 fn C.mbedtls_ctr_drbg_free(&C.mbedtls_ctr_drbg_context)
 fn C.mbedtls_ctr_drbg_random(voidptr, &u8, usize) i32
 
 fn C.mbedtls_entropy_init(&C.mbedtls_entropy_context)
 fn C.mbedtls_entropy_free(&C.mbedtls_entropy_context)
-fn C.mbedtls_entropy_func(voidptr, &u8, usize)
+fn C.mbedtls_entropy_func(voidptr, &u8, usize) int
 
 fn C.mbedtls_x509_crt_init(&C.mbedtls_x509_crt)
 fn C.mbedtls_x509_crt_free(&C.mbedtls_x509_crt)
