@@ -9941,6 +9941,10 @@ In the console build command, you can use:
 * `-ldflags` to pass custom flags to the backend C linker (passed after every other C option).
 * For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
+To select C23 with a compiler that supports it, use
+`v -cc gcc -cflags '-std=gnu23' program.v`. Generated C uses the standard boolean keywords
+in C23 and supplies compatibility definitions for older C dialects.
+
 You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
 and `-cflags` settings, rather than including them in the build command each time.
 
