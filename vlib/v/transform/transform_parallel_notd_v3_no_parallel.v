@@ -2596,7 +2596,15 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	mut n_jobs := transform_job_count(t.a.worker_pool.size() + 1, items.len, t.building_v && t.scope_parallel_workers)
 	n_jobs = clamp_transform_jobs_to_clone_budget(n_jobs, base_nodes, base_children, t.a)
 	if items.len < min_parallel_transform_items || n_jobs <= 1 {
-		t.transform_pure_items_serial(items)
+		// A single-job pool still needs bounded scratch arenas, just like an
+		// explicit -no-parallel build. Otherwise self-host transforms retain every
+		// function's temporary allocations until the entire stage finishes.
+		if t.scope_parallel_workers && t.retain_worker_results {
+			t.prepare_parallel_call_param_types()
+			t.transform_scoped_helper_batches(items, scoped_transform_batches)
+		} else {
+			t.transform_pure_items_serial(items)
+		}
 		return false
 	}
 	// Workers need declaration signatures while lowering calls. Snapshot them

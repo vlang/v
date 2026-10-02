@@ -4566,6 +4566,13 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		// underlying scalar conversion.
 		return
 	}
+	if clean_actual is Struct && clean_actual.name in tc.c_typedef_structs
+		&& (tc.structs[clean_actual.name] or { []StructField{} }).len == 0
+		&& (infix_power_type_is_numeric(clean_target) || clean_target is Rune) {
+		// Empty C typedef declarations can describe scalars such as wchar_t. Their
+		// headers define the representation, so let C validate numeric conversions.
+		return
+	}
 	if clean_actual is ArrayFixed && clean_target is Pointer && tc.unsafe_depth == 0
 		&& !tc.node_is_in_translated_file(id) {
 		tc.record_warning_at(.assignment_mismatch, 'cannot cast a fixed array (use e.g. `&arr[0]` instead)', id, node.pos)

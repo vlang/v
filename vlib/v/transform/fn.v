@@ -5222,7 +5222,8 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 		t.wrap_sum_value(arg_id, expected_elem)
 	} else if t.resolve_interface_type_name(expected_elem).len > 0 {
 		t.transform_expr_for_type(arg_id, expected_elem)
-	} else if escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
+	} else if !variadic_elem_is_voidptr(elem_type)
+		&& escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
 		// Reference elements need the same fixed-array view and address conversions
 		// as an ordinary reference parameter before they are packed into the tail.
 		t.transform_call_arg_for_param(arg_id, expected_elem)
@@ -12677,7 +12678,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if capture_type.len == 0 || capture_type == 'unknown' {
 					capture_type = 'int'
 				}
-				if t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]
+				// Mutable parameter captures retain the caller's array header reference.
+				if !child.is_mut && t.mut_param_values[child.value]
+					&& !t.pointer_value_rvalues[child.value]
 					&& capture_type.starts_with('&')
 					&& t.comptime_normalize_type_alias_chain(capture_type).starts_with('&[]') {
 					capture_type = capture_type[1..]
@@ -16566,6 +16569,12 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	}
 	base_type = t.normalize_type_alias(base_type)
 	if base_type.len == 0 {
+		return true
+	}
+	// Heap promotion can replace a fixed-array alias with its storage type.
+	// Keep the checker-selected alias method when its value layout still matches.
+	if t.is_fixed_array_type(base_type)
+		&& t.normalize_type_alias(receiver_name) == base_type {
 		return true
 	}
 	if base_type.starts_with('[]') || base_type.starts_with('map[') {

@@ -5,11 +5,38 @@ module main
 
 import os
 import time
+import v.cmdexec
 import v.util
 
 // `vtimeout` is used as the probe tool: it is small enough to compile quickly, and
 // `v timeout <seconds> <command>` both succeeds and terminates on its own.
 const probe_tool = 'vtimeout'
+const toolcache_prune_probe_env = 'VTEST_TOOLCACHE_PRUNE_PROBE'
+
+// Reuse the test executable for a bounded pruning probe. Reading a planted FIFO used to
+// block indefinitely while holding the tool's lock, so run that work in a child process.
+fn testsuite_begin() {
+	if directory := os.getenv_opt(toolcache_prune_probe_env) {
+		prune_stale_tool_binaries(ToolCacheEntry{
+			name: 'vdemo'
+			dir:  os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+		})
+		exit(0)
+	}
+}
+
+fn toolcache_prune_probe(directory string) os.Result {
+	previous := os.getenv_opt(toolcache_prune_probe_env)
+	os.setenv(toolcache_prune_probe_env, directory, true)
+	defer {
+		if value := previous {
+			os.setenv(toolcache_prune_probe_env, value, true)
+		} else {
+			os.unsetenv(toolcache_prune_probe_env)
+		}
+	}
+	return cmdexec.run_with_timeout(os.executable(), [], 5000)
+}
 
 // tool_cache_is_fresh reports whether `entry.binary` can be executed as is, i.e. whether
 // every source file it was built from is still exactly the way it was at build time.
@@ -85,7 +112,7 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 	assert os.is_executable(binary), 'expected an executable at `${binary}`'
 	before := os.stat(binary)!
 
-	// Every rebuild prunes the earlier entries of the same tool, so a decoy shaped like the
+	// Every rebuild prunes invalid earlier entries of the same tool, so a decoy shaped like the
 	// entry of an older build, still being there afterwards, proves that the second
 	// invocation did not recompile anything.
 	decoy := os.join_path(cache, '${probe_tool}-' + 'a'.repeat(64))
@@ -483,6 +510,56 @@ fn test_pruning_collects_binaries_that_were_replaced_while_in_use() {
 	assert !os.exists(stale), 'a previous build must be collected'
 }
 
+fn test_pruning_preserves_other_fresh_keys_and_failures_until_their_inputs_change() {
+	directory := toolcache_test_dir('prune_fresh_keys')
+	defer { os.rmdir_all(directory) or {} }
+	mut dependencies := []string{}
+	mut entries := []ToolCacheEntry{}
+	for index, key in ['a', 'b', 'c'] {
+		module_dir := os.join_path(directory, 'module_${index}')
+		os.mkdir(module_dir)!
+		dependency := os.join_path(module_dir, 'source.v')
+		os.write_file(dependency, 'module module_${index}\n')!
+		dependencies << dependency
+		entry_dir := os.join_path(directory, 'vdemo-' + key.repeat(64))
+		os.mkdir(entry_dir)!
+		entry := ToolCacheEntry{
+			name:                 'vdemo'
+			dir:                  entry_dir
+			binary:               os.join_path(entry_dir, 'vdemo' + tool_exe_suffix())
+			manifest:             os.join_path(entry_dir, 'inputs')
+			unbuildable:          os.join_path(entry_dir, 'unbuildable')
+			unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		}
+		entries << entry
+		if index < 2 {
+			os.write_file(entry.binary, 'compiled tool ${index}')!
+			os.chmod(entry.binary, 0o755)!
+		} else {
+			os.write_file(entry.unbuildable, 'error: rejected source')!
+		}
+	}
+	time.sleep(1100 * time.millisecond)
+	for index, entry in entries {
+		manifest := encode_tool_cache_manifest([dependencies[index]], time.now().unix())
+		os.write_file(if index < 2 { entry.manifest } else { entry.unbuildable_manifest }, manifest)!
+	}
+
+	prune_stale_tool_binaries(entries[0])
+	assert tool_cache_is_fresh(entries[0])
+	assert tool_cache_is_fresh(entries[1]), 'building one key must preserve another usable key'
+	assert unbuildable_tool_failure(entries[2])? == 'error: rejected source'
+	prune_stale_tool_binaries(entries[1])
+	assert tool_cache_is_fresh(entries[0]), 'alternating keys must reuse both cached builds'
+
+	for index in [1, 2] {
+		os.write_file(dependencies[index], 'module module_${index}\nfn changed() {}\n')!
+	}
+	prune_stale_tool_binaries(entries[0])
+	assert !os.exists(entries[1].dir), 'a changed source must make its old binary collectible'
+	assert !os.exists(entries[2].dir), 'a changed source must make its old failure collectible'
+}
+
 fn test_tool_cache_lock_path_is_persistent_between_owners() {
 	directory := toolcache_test_dir('persistent_lock')
 	defer {
@@ -562,6 +639,106 @@ fn test_pruning_unlinks_stale_symlinks_without_touching_their_targets() {
 
 	assert !os.is_link(stale_link), 'the stale cache symlink must be unlinked'
 	assert os.read_file(payload)! == 'safe', 'the symlink target must not be traversed'
+}
+
+fn test_pruning_rejects_fifo_metadata_without_blocking() {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('prune_fifo_metadata')
+	defer { os.rmdir_all(directory) or {} }
+	os.mkdir(os.join_path(directory, 'vdemo-' + 'a'.repeat(64)))!
+	manifest := '${tool_cache_manifest_version}\nstarted${tool_cache_field_separator}${time.now().unix()}\n'
+	mut siblings := []string{}
+	for index, metadata in ['inputs', 'unbuildable', 'unbuildable.inputs'] {
+		sibling := os.join_path(directory, 'vdemo-' + ['b', 'c', 'd'][index].repeat(64))
+		os.mkdir(sibling)!
+		siblings << sibling
+		if metadata == 'inputs' {
+			binary := os.join_path(sibling, 'vdemo')
+			os.write_file(binary, 'compiled tool')!
+			os.chmod(binary, 0o755)!
+		} else {
+			os.write_file(os.join_path(sibling, 'unbuildable'), 'source error')!
+			os.write_file(os.join_path(sibling, 'unbuildable.inputs'), manifest)!
+			os.rm(os.join_path(sibling, metadata))!
+		}
+		fifo := cmdexec.run('mkfifo', [os.join_path(sibling, metadata)])
+		assert fifo.exit_code == 0, fifo.output
+	}
+
+	result := toolcache_prune_probe(directory)
+	assert result.exit_code == 0, 'pruning FIFO metadata must return promptly: ${result.output}'
+	for sibling in siblings {
+		assert !os.exists(sibling), 'unsafe metadata cannot preserve `${sibling}`'
+	}
+}
+
+fn test_pruning_does_not_follow_metadata_symlinks() {
+	directory := toolcache_test_dir('prune_metadata_links')
+	defer { os.rmdir_all(directory) or {} }
+	os.mkdir(os.join_path(directory, 'vdemo-' + 'a'.repeat(64)))!
+	manifest := '${tool_cache_manifest_version}\nstarted${tool_cache_field_separator}${time.now().unix()}\n'
+	target := os.join_path(directory, 'outside-metadata')
+	os.write_file(target, manifest)!
+	mut siblings := []string{}
+	for index, metadata in ['inputs', 'unbuildable', 'unbuildable.inputs'] {
+		sibling := os.join_path(directory, 'vdemo-' + ['b', 'c', 'd'][index].repeat(64))
+		os.mkdir(sibling)!
+		siblings << sibling
+		if metadata == 'inputs' {
+			binary := os.join_path(sibling, 'vdemo' + tool_exe_suffix())
+			os.write_file(binary, 'compiled tool')!
+			os.chmod(binary, 0o755)!
+		} else {
+			os.write_file(os.join_path(sibling, 'unbuildable'), 'source error')!
+			os.write_file(os.join_path(sibling, 'unbuildable.inputs'), manifest)!
+			os.rm(os.join_path(sibling, metadata))!
+		}
+		os.symlink(target, os.join_path(sibling, metadata)) or {
+			eprintln('> skipping metadata symlink test: ${err}')
+			return
+		}
+	}
+
+	result := toolcache_prune_probe(directory)
+	assert result.exit_code == 0, result.output
+	for sibling in siblings {
+		assert !os.exists(sibling), 'metadata links must not make `${sibling}` fresh'
+	}
+	assert os.read_file(target)! == manifest, 'the metadata link target must remain untouched'
+}
+
+fn test_pruning_skips_foreign_entries_and_rejects_foreign_metadata() {
+	$if windows {
+		return
+	}
+	if os.getuid() != 0 {
+		eprintln('> skipping foreign-owner pruning test: changing ownership requires root')
+		return
+	}
+	directory := toolcache_test_dir('prune_foreign_metadata')
+	defer { os.rmdir_all(directory) or {} }
+	os.mkdir(os.join_path(directory, 'vdemo-' + 'a'.repeat(64)))!
+	foreign_entry := os.join_path(directory, 'vdemo-' + 'b'.repeat(64))
+	os.mkdir(foreign_entry)!
+	foreign_fifo := cmdexec.run('mkfifo', [os.join_path(foreign_entry, 'unbuildable')])
+	assert foreign_fifo.exit_code == 0, foreign_fifo.output
+	original_mode := os.stat(foreign_entry)!.mode
+	os.chown(foreign_entry, 1, -1)!
+	owned_entry := os.join_path(directory, 'vdemo-' + 'c'.repeat(64))
+	os.mkdir(owned_entry)!
+	manifest := '${tool_cache_manifest_version}\nstarted${tool_cache_field_separator}${time.now().unix()}\n'
+	os.write_file(os.join_path(owned_entry, 'unbuildable.inputs'), manifest)!
+	details := os.join_path(owned_entry, 'unbuildable')
+	os.write_file(details, 'source error')!
+	os.chown(details, 1, -1)!
+
+	result := toolcache_prune_probe(directory)
+	assert result.exit_code == 0, 'foreign entries must be skipped before reading: ${result.output}'
+	assert os.is_dir(foreign_entry), 'another account owns the entry and its cleanup'
+	assert os.stat(foreign_entry)!.mode == original_mode, 'ownership checks must precede chmod'
+	assert !os.exists(owned_entry), 'foreign metadata must not preserve a cached failure'
 }
 
 // The current entry path is predictable from the tool inputs. A shared cache must reject a
@@ -657,6 +834,25 @@ fn test_pinned_stale_pruning_cannot_be_redirected() {
 	assert os.read_file(must_survive)! == 'safe', 'recursive pruning must not follow a replacement symlink'
 	cleaned_dir := if pathname_was_replaced { original_dir } else { stale_dir }
 	assert os.ls(cleaned_dir)! == []
+}
+
+fn test_pinned_metadata_read_cannot_be_redirected() {
+	directory := toolcache_test_dir('pinned_metadata')
+	defer { os.rmdir_all(directory) or {} }
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(entry_dir)!
+	os.write_file(os.join_path(entry_dir, 'inputs'), 'original manifest')!
+	cache_entry := open_tool_cache_entry_dir(entry_dir)!
+	defer { cache_entry.close() }
+	original_dir := entry_dir + '.original'
+	mut pathname_was_replaced := true
+	os.rename(entry_dir, original_dir) or { pathname_was_replaced = false }
+	if pathname_was_replaced {
+		os.mkdir(entry_dir)!
+		os.write_file(os.join_path(entry_dir, 'inputs'), 'replacement manifest')!
+	}
+	assert cache_entry.read_metadata('inputs')? == 'original manifest'
+	assert cache_entry.read_metadata('missing') == none
 }
 
 fn test_staging_directory_is_on_the_cache_filesystem() {
