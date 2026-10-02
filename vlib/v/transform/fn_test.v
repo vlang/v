@@ -604,6 +604,29 @@ fn test_flattened_generic_receiver_short_variants() {
 	]
 }
 
+fn test_generic_specialized_type_matching_preserves_name_spellings() {
+	for spelling in ['Box[int]', 'Box_int'] {
+		assert generic_specialized_type_matches_flat_name(spelling, 'Box', ['int'])
+	}
+	for spelling in ['Box[time.Time]', 'Box_time__Time', 'Box_time.Time'] {
+		assert generic_specialized_type_matches_flat_name(spelling, 'Box', ['time.Time'])
+	}
+	for spelling in ['pkg.Box[int]', 'pkg__Box_int'] {
+		assert generic_specialized_type_matches_flat_name(spelling, 'pkg.Box', ['int'])
+	}
+	for spelling in ['Box[int]', 'Box_int', 'main.Box_v_int', 'main__Box_v_int'] {
+		assert generic_specialized_type_matches_flat_name(spelling, 'main.Box', ['int'])
+	}
+	for base in ['Box_Name', 'pkg.Box__Name', 'C.Box', '__v3_internal_symbol_Box'] {
+		assert generic_specialized_type_matches_flat_name('${base}[int]', base, ['int'])
+		assert generic_specialized_type_matches_flat_name(c_name('${base}[int]'), base, ['int'])
+		assert generic_specialized_type_matches_flat_name(c_name('${base}[int]').replace('__', '.'), base, ['int'])
+	}
+	assert !generic_specialized_type_matches_flat_name('Other_time__Time', 'Box', ['time.Time'])
+	assert !generic_specialized_type_matches_flat_name('pkg__Other_int', 'pkg.Box', ['int'])
+	assert !generic_specialized_type_matches_flat_name('Box_string', 'Box', ['int'])
+}
+
 fn test_receiver_method_guard_accepts_short_name_for_qualified_type() {
 	t := Transformer{}
 	assert t.receiver_method_matches_type_name('Thing.str', 'pkg.Thing')

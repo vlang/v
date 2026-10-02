@@ -1046,6 +1046,7 @@ mut:
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
 	fn_context               FunctionCheckContext
+	selective_import_index   &SelectiveImportIndex    = &SelectiveImportIndex{}
 	type_cache               &TypeCache               = unsafe { nil }
 	pre_transform_type_cache &TypeCache               = unsafe { nil }
 	resolution_type_views    &ResolutionTypeViewCache = unsafe { nil }
@@ -1698,6 +1699,8 @@ pub fn (tc &TypeChecker) discard_type_cache_overlay_after_forks() {
 // checkers use this so the lazily-built lookup indexes and memoizations work
 // per worker instead of falling back to their uncached full scans.
 pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
+	// The import index can hold keys allocated in the same disposable stage arena.
+	tc.selective_import_index = &SelectiveImportIndex{}
 	if isnil(tc.type_interner) {
 		tc.type_interner = new_type_interner()
 	}
@@ -1756,6 +1759,7 @@ pub fn (mut tc TypeChecker) reset_type_interners() {
 // parallel-cgen workers start with every type memoized by the check/transform
 // phases instead of re-deriving them from a cold cache.
 pub fn (mut tc TypeChecker) set_fresh_type_cache_based_on(src &TypeChecker, parse_enabled bool) {
+	tc.selective_import_index = &SelectiveImportIndex{}
 	base := if isnil(src.type_cache) {
 		&TypeCache(unsafe { nil })
 	} else if !isnil(src.type_cache.base) {
@@ -5858,6 +5862,16 @@ pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 		}
 	}
 	if isnil(tc.resolution_type_views) {
+		if !isnil(tc.type_cache) && tc.type_cache.parse_enabled
+			&& tc.type_cache.alias_parse_stack.len == 0 {
+			// The uncached view below parses with no module or generic parameters.
+			// Reuse that exact parse entry before allocating another checker view.
+			mut cache := tc.type_cache
+			if cached := parse_type_cache_get_mode(mut cache, tc.cur_file, '', qualified, []string{}, false, tc.fast_parse_recent) {
+				cache.parse_hits++
+				return cached
+			}
+		}
 		mut direct_view := tc.fork_type_parse_view(tc.cur_file, '')
 		direct_view.resolution_type_mode = false
 		return direct_view.parse_type(qualified)
@@ -6926,6 +6940,37 @@ mut:
 	seen_len int             = -1
 }
 
+// Index source keys, not resolved declarations: signature availability and
+// module context can change during generic specialization.
+struct SelectiveImportIndex {
+mut:
+	keys_by_name map[string][]string
+	seen_len     int = -1
+}
+
+fn (tc &TypeChecker) selective_import_fallback_keys(name string) []string {
+	mut index := tc.selective_import_index
+	if isnil(index) {
+		// Lightweight checker views without caches retain the same lookup rules.
+		mut keys := []string{}
+		suffix := '\n${name}'
+		for key, _ in tc.file_selective_imports {
+			if key.ends_with(suffix) {
+				keys << key
+			}
+		}
+		return keys
+	}
+	if index.seen_len != tc.file_selective_imports.len {
+		index.keys_by_name.clear()
+		for key, _ in tc.file_selective_imports {
+			index.keys_by_name[key.all_after_last('\n')] << key
+		}
+		index.seen_len = tc.file_selective_imports.len
+	}
+	return index.keys_by_name[name] or { []string{} }
+}
+
 fn (tc &TypeChecker) current_file_import_info() &FileImportInfo {
 	mut cache := tc.import_info_cache
 	if isnil(cache) {
@@ -6961,14 +7006,13 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 			return tc.vsh_os_fn_symbol(name)
 		}
 		mut resolved := ''
-		suffix := '\n${name}'
-		for key, fallback_candidates in tc.file_selective_imports {
-			if !key.ends_with(suffix) {
-				continue
-			}
+		for key in tc.selective_import_fallback_keys(name) {
 			if tc.file_modules[key.all_before_last('\n')] != tc.cur_module {
 				continue
 			}
+			// Only matching imports need candidate values; copying every array here
+			// accumulates allocations while resolving generic bodies.
+			fallback_candidates := tc.file_selective_imports[key] or { []string{} }
 			for candidate in fallback_candidates {
 				if !tc.fn_signature_known(candidate) && candidate !in tc.fn_ret_types && candidate !in tc.fn_param_types {
 					continue
@@ -6997,14 +7041,11 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 // when every source file that selects the name agrees on the same declaration.
 pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 	mut resolved := ''
-	suffix := '\n${name}'
-	for key, candidates in tc.file_selective_imports {
-		if !key.ends_with(suffix) {
-			continue
-		}
+	for key in tc.selective_import_fallback_keys(name) {
 		if tc.file_modules[key.all_before_last('\n')] != tc.cur_module {
 			continue
 		}
+		candidates := tc.file_selective_imports[key] or { []string{} }
 		for candidate in candidates {
 			if !tc.fn_signature_known(candidate) && candidate !in tc.fn_ret_types && candidate !in tc.fn_param_types {
 				continue
