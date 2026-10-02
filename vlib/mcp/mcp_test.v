@@ -312,14 +312,14 @@ fn test_client_2026_downgrades_when_the_version_is_unsupported() {
 
 fn test_client_listen_returns_the_acknowledged_subset() {
 	acknowledged := build_notification_message('notifications/subscriptions/acknowledged',
-		'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":"2"}}')
+		'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":2}}')
 	mut transport := &MockTransport{
 		incoming: [
 			discover_response_json(),
 			acknowledged,
 			Response{
 				id:     '2'
-				result: '{"_meta":{"io.modelcontextprotocol/subscriptionId":"2"}}'
+				result: '{"_meta":{"io.modelcontextprotocol/subscriptionId":2}}'
 			}.encode(),
 		]
 	}
@@ -354,7 +354,7 @@ fn test_client_listen_returns_on_the_acknowledgment_without_a_response() {
 		incoming: [
 			discover_response_json(),
 			build_notification_message('notifications/subscriptions/acknowledged',
-				'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":"2"}}'),
+				'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":2}}'),
 		]
 	}
 	mut client := new_client(transport, ClientConfig{
@@ -435,6 +435,55 @@ fn test_client_listen_matches_a_numeric_subscription_id() {
 	assert client.listen(SubscriptionListenParams{
 		notifications: SubscriptionFilter{ tools_list_changed: true }
 	})!.tools_list_changed
+}
+
+fn test_client_listen_distinguishes_numeric_and_string_subscription_ids() {
+	mut transport := &MockTransport{
+		incoming: [discover_response_json(), build_notification_message(listen_acknowledged_method,
+			'{"notifications":{"promptsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":"2"}}'),
+			build_notification_message(listen_acknowledged_method,
+				'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":2}}')]
+	}
+	mut client := new_client(transport, ClientConfig{
+		protocol_version: protocol_version_2026_07_28
+	})
+	filter := client.listen(SubscriptionListenParams{
+		notifications: SubscriptionFilter{ tools_list_changed: true }
+	})!
+	assert filter.tools_list_changed
+	assert !filter.prompts_list_changed
+	assert transport.incoming.len == 0
+	assert client.take_notifications().len == 2
+	assert decode_request(transport.sent[1])!.id == '2'
+}
+
+fn test_client_listen_matches_typed_string_and_large_integer_ids() {
+	for request_id, acknowledged_id in {
+		'"2"':               '"2"'
+		'"listen-2"':        '"listen\\u002d2"'
+		'"listen\\u002d3"':  '"listen-3"'
+		'"listen-\\"\\\\2"': '"listen-\\u0022\\u005c2"'
+		'""':                '""'
+		'9007199254740993':  '9007199254740993'
+	} {
+		unrelated_id := if request_id.starts_with('"') { '2' } else { '"9007199254740993"' }
+		mut transport := &MockTransport{
+			incoming: [
+				build_notification_message(listen_acknowledged_method,
+					'{"notifications":{"promptsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":${unrelated_id}}}'),
+				build_notification_message(listen_acknowledged_method,
+					'{"notifications":{"promptsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":9007199254740992}}'),
+				build_notification_message(listen_acknowledged_method,
+					'{"notifications":{"toolsListChanged":true},"_meta":{"io.modelcontextprotocol/subscriptionId":${acknowledged_id}}}'),
+			]
+		}
+		mut client := new_client(transport, ClientConfig{})
+		filter := client.wait_for_listen_ack(request_id)!
+		assert filter.tools_list_changed
+		assert !filter.prompts_list_changed
+		assert transport.incoming.len == 0
+		assert client.take_notifications().len == 3
+	}
 }
 
 fn test_client_listen_rechecks_protocol_after_discovery_downgrade() {

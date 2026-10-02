@@ -786,6 +786,11 @@ pub fn (mut c Client) listen[P](filter P) !SubscriptionFilter {
 // SubscriptionsListenResult is consumed before returning.
 fn (mut c Client) wait_for_listen_ack(request_id string) !SubscriptionFilter {
 	wait_for_result := c.transport is HttpTransport
+	expected_subscription_id := if request_id.starts_with('"') {
+		json.encode(json.decode[string](request_id)!)
+	} else {
+		request_id
+	}
 	mut acknowledged := SubscriptionFilter{}
 	mut got_ack := false
 	for {
@@ -801,10 +806,10 @@ fn (mut c Client) wait_for_listen_ack(request_id string) !SubscriptionFilter {
 		if envelope.method.len != 0 {
 			just_acknowledged := is_notification_id(envelope.id)
 				&& envelope.method == listen_acknowledged_method && !got_ack
-				&& (subscription_id_of(Notification{
+				&& (subscription_request_id_of(Notification{
 					method: envelope.method
 					params: envelope.params
-				}) or { '' }) == request_id
+				}) or { '' }) == expected_subscription_id
 			if just_acknowledged {
 				ack := json.decode[ListenAcknowledgement](envelope.params.trim_space()) or {
 					return error('mcp.Client.listen: malformed subscription acknowledgment')
@@ -862,8 +867,19 @@ struct ListenAcknowledgement {
 }
 
 // subscription_id_of returns the reserved subscriptionId `_meta` value of a
-// notification that arrived on a listen stream.
+// notification that arrived on a listen stream. String IDs are decoded, and
+// numeric IDs are returned as text for display.
 pub fn subscription_id_of(notification Notification) ?string {
+	request_id := subscription_request_id_of(notification) or { return none }
+	if request_id.starts_with('"') {
+		return json.decode[string](request_id) or { return none }
+	}
+	return request_id
+}
+
+// subscription_request_id_of preserves the JSON type for acknowledgment
+// matching, normalizing string escapes while keeping numeric tokens intact.
+fn subscription_request_id_of(notification Notification) ?string {
 	wrapper := json.decode[SubscriptionIdEnvelope](notification.params.trim_space()) or {
 		return none
 	}
@@ -873,7 +889,7 @@ pub fn subscription_id_of(notification Notification) ?string {
 	}
 	id := json.decode[json.Any](raw_id) or { return none }
 	return match id {
-		string { id }
+		string { json.encode(id) }
 		i64, u64, f64 { raw_id }
 		else { none }
 	}

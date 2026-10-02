@@ -1500,6 +1500,10 @@ fn listen_request(id int, tools_changed bool, prompts_changed bool, resources_ch
 	}.encode()
 }
 
+fn subscription_id_json(params string) !string {
+	return json.decode[SubscriptionIdEnvelope](params)!.meta.subscription_id
+}
+
 fn noop_tool_handler(_ Context, _ string) !ToolResult {
 	return tool_text_result('ok')
 }
@@ -1544,7 +1548,7 @@ fn test_stdio_listen_acknowledges_then_pushes_tagged_notifications() {
 	assert ack.params.contains('"resourceSubscriptions":["resource://note"]')
 	// A type that was not opted into is never acknowledged.
 	assert !ack.params.contains('"promptsListChanged"')
-	assert subscription_id_of(ack) or { '' } == '7'
+	assert subscription_id_json(ack.params)! == '7'
 
 	// An opted-in change arrives, tagged with the subscription id.
 	server.add_tool(Tool{ name: 'whisper' }, noop_tool_handler)!
@@ -1552,7 +1556,7 @@ fn test_stdio_listen_acknowledges_then_pushes_tagged_notifications() {
 	assert events.len == 1
 	changed := decode_notification(events[0])!
 	assert changed.method == 'notifications/tools/list_changed'
-	assert subscription_id_of(changed) or { '' } == '7'
+	assert subscription_id_json(changed.params)! == '7'
 
 	// A type the subscription did not opt into never reaches its stream.
 	server.add_prompt(Prompt{ name: 'review' }, noop_prompt_handler)!
@@ -1567,7 +1571,52 @@ fn test_stdio_listen_acknowledges_then_pushes_tagged_notifications() {
 	updated := decode_notification(events[0])!
 	assert updated.method == 'notifications/resources/updated'
 	assert updated.params.contains('"uri":"resource://note"')
-	assert subscription_id_of(updated) or { '' } == '7'
+	assert subscription_id_json(updated.params)! == '7'
+}
+
+fn test_stdio_listen_preserves_distinct_request_id_types() {
+	mut server := new_server(name: 'typed-listen-server', version: '1.0.0')
+	server.add_tool(Tool{ name: 'shout' }, noop_tool_handler)!
+	request := decode_request(listen_request(7, true, false, false, []))!
+	raw_ids := ['7', '"7"', '9007199254740993', '""', r'"quote\" slash\\ snowman\u2603"']
+	for raw_id in raw_ids {
+		dispatch := server.dispatch_message(Request{
+			id:     raw_id
+			method: request.method
+			params: request.params
+		}.encode(), stdio_session_id, .stdio)!
+		assert !dispatch.has_response
+		acknowledgements := server.drain_session_notifications(stdio_session_id)
+		assert acknowledgements.len == 1
+		ack := decode_notification(acknowledgements[0])!
+		assert ack.method == listen_acknowledged_method
+		assert subscription_id_json(ack.params)! == raw_id
+	}
+
+	server.add_tool(Tool{ name: 'whisper' }, noop_tool_handler)!
+	events := server.drain_session_notifications(stdio_session_id)
+	assert events.len == raw_ids.len
+	mut event_ids := []string{}
+	for event in events {
+		notification := decode_notification(event)!
+		assert notification.method == 'notifications/tools/list_changed'
+		event_ids << subscription_id_json(notification.params)!
+	}
+	for raw_id in raw_ids {
+		assert event_ids.filter(it == raw_id).len == 1
+	}
+
+	cancellations := server.terminate_listen_subscriptions()
+	assert cancellations.len == raw_ids.len
+	mut cancelled_ids := []string{}
+	for cancellation in cancellations {
+		notification := decode_notification(cancellation)!
+		assert notification.method == 'notifications/cancelled'
+		cancelled_ids << notification.decode_params[CancelledParams]()!.request_id
+	}
+	for raw_id in raw_ids {
+		assert cancelled_ids.filter(it == raw_id).len == 1
+	}
 }
 
 fn test_stdio_listen_terminates_with_notifications_cancelled() {
@@ -1600,22 +1649,35 @@ fn test_http_listen_returns_a_finite_sse_stream() {
 
 	mut header := stateless_http_header('subscriptions/listen', '')
 	header.set(.accept, 'text/event-stream')
-	response := http.fetch(
-		method: .post
-		url:    url
-		data:   listen_request(11, true, false, false, [])
-		header: header
-	)!
-	assert response.status_code == 200
-	assert response.header.get(.content_type)?.starts_with(event_stream_content_type)
-	// The acknowledgement comes first, then the closing result.
-	ack_at := response.body.index('notifications/subscriptions/acknowledged') or { -1 }
-	result_at := response.body.index('subscriptionId":"11"') or { -1 }
-	assert ack_at >= 0
-	assert result_at > ack_at
-	assert response.body.contains('"toolsListChanged":true')
-	// A finite subscription is not kept after the response.
-	assert response.header.get_custom(mcp_session_id_header) or { '' } == ''
+	request := decode_request(listen_request(11, true, false, false, []))!
+	for raw_id in ['11', '"11"', '9007199254740993', '""', r'"quote\" slash\\ snowman\u2603"'] {
+		response := http.fetch(
+			method: .post
+			url:    url
+			data:   Request{
+				id:     raw_id
+				method: request.method
+				params: request.params
+			}.encode()
+			header: header
+		)!
+		assert response.status_code == 200
+		assert response.header.get(.content_type)?.starts_with(event_stream_content_type)
+		// The acknowledgement comes first, then the closing result.
+		messages := parse_sse_messages(response.body)!
+		assert messages.len == 2
+		ack := decode_notification(messages[0])!
+		assert ack.method == listen_acknowledged_method
+		assert ack.params.contains('"toolsListChanged":true')
+		assert subscription_id_json(ack.params)! == raw_id
+		closing := decode_response(messages[1])!
+		assert closing.id == raw_id
+		assert closing.error.code == 0
+		assert closing.decode_result[MetaMergeProbe]()!.result_type == 'complete'
+		assert subscription_id_json(closing.result)! == raw_id
+		// A finite subscription is not kept after the response.
+		assert response.header.get_custom(mcp_session_id_header) or { '' } == ''
+	}
 
 	server.close()
 }
