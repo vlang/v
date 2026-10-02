@@ -103,3 +103,50 @@ fn main() {
 		assert out.output.trim_space() == 'ok', out.output
 	}
 }
+
+fn test_ownership_returned_string_fallback_moves_owned_argument() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_fallback_move_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {
+	fallback := "fallback".to_owned()
+	result := "abc".substr_or(0, 4, fallback)
+	println(result)
+	println(fallback)
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+		assert out.exit_code != 0, out.output
+		assert out.output.contains('use of moved value: `fallback`'), out.output
+	}
+}
+
+fn test_ownership_returned_string_fallback_copies_nonowning_arguments() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_fallback_copy_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {
+	fallback := "fallback".to_owned()
+	result := "abc".substr_or(0, 4, fallback.clone())
+	assert result == fallback
+	assert voidptr(result.str) != voidptr(fallback.str)
+	assert "abc".substr_or(0, 2, fallback.clone()) == "ab"
+	view := fallback.substr_unsafe(1, 4)
+	copied := "abc".substr_or(0, 4, view)
+	assert copied == "all"
+	assert voidptr(copied.str) != voidptr(view.str)
+	assert view == "all"
+	literal := "abc".substr_or(0, 4, "literal")
+	assert literal == "literal"
+	println("ok")
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		assert out.exit_code == 0, '${mode}: ${out.output}'
+		assert out.output.trim_space() == 'ok', out.output
+	}
+}

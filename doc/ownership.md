@@ -38,15 +38,19 @@ t := 'world' // t is a normal string, no ownership tracking
 Ordinary string slices allocate independent storage but remain regular strings. Addressed
 string ranges such as `&text[start..end]` borrow the original bytes in ownership mode and
 retain a stable slice header. The source must remain alive while the reference is used. A local
-dereference of a borrowed string or a `substr_unsafe()` result retains a view of its source;
+dereference of a borrowed string or a builtin `string.substr_unsafe()` result retains a view
+of its source, including dereferences of pointer-returning calls;
 the source cannot be moved or reassigned while that view is live. Use `.to_owned()` or
 `.clone()` to create an owned copy. Borrowed views stored in owned aggregates or returned
 by value are copied so they can outlive the source.
+Reassigning a borrowed view releases its loan without freeing the source bytes.
 
 Standard string methods, numeric parsers, path inspection and joining functions, and
-string-builder writes borrow their string arguments. User functions with by-value string
-parameters still consume owned strings. When a parameter takes ownership, a regular string or
-borrowed view passed to it is copied for the callee, leaving the caller's value available.
+string-builder writes borrow string arguments that cannot escape through the return value.
+Arguments that may be returned, such as the fallback of `string.substr_or()`, transfer ownership
+instead. Use `.clone()` when the caller also needs to keep an owned fallback. User functions with
+by-value string parameters still consume owned strings. When a parameter takes ownership, a regular
+string or borrowed view passed to it is copied for the callee, leaving the caller's value available.
 
 ## Move semantics
 
@@ -116,7 +120,9 @@ The returned reference borrows the caller's value; the value must remain alive w
 
 A reference returned through a receiver call or an addressed range remains tied to its source
 storage and cannot escape the ownership scope of a local value. Caller-backed mutable parameters
-and explicit heap-pointer receivers can return such references.
+and explicit heap-pointer receivers can return such references. The check follows nested return
+aliases to their source regardless of call depth; unresolved alias cycles are rejected.
+The same rule applies to references returned inside options, results, arrays, or struct fields.
 
 ### Struct ownership markers
 

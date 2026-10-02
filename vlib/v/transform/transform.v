@@ -23036,7 +23036,9 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 						end_value], 'string')
 				}
 			}
-			stable := t.stable_transformed_expr_for_reuse(value, child_type, 'addr')
+			// A stable range still produces a fresh header. Materialize its string
+			// type before taking its address, including ranges lowered by cgen.
+			stable := t.snapshot_transformed_expr_for_reuse(value, child_type, 'addr')
 			addr := t.make_prefix(.amp, stable)
 			t.set_node_typ(int(addr), '&${child_type}')
 			dup := t.make_memdup_call_for_type(addr, child_type)

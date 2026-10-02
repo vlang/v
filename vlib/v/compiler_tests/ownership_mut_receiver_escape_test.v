@@ -116,3 +116,34 @@ fn main() {
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
 }
+
+fn test_ownership_deep_return_aliases_keep_local_storage_checks() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_deep_return_alias_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	mut expression := 'builder.set(42)'
+	for _ in 0 .. 80 {
+		expression = 'identity(${expression})'
+	}
+	for binding in ['mut builder := Builder{}', 'mut builder := &Builder{}'] {
+		os.write_file(source, 'struct Builder { mut: value int }
+fn (mut builder Builder) set(value int) &Builder { builder.value = value; return builder }
+fn identity(builder &Builder) &Builder { return builder }
+fn reference() &Builder {
+	${binding}
+	return ${expression}
+}
+fn main() { assert reference().value == 42 }
+')!
+		for mode in ['-no-parallel', ''] {
+			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+			if binding.contains('&Builder') {
+				assert out.exit_code == 0, out.output
+			} else {
+				assert out.exit_code != 0, out.output
+				assert out.output.contains('cannot return a reference to local storage `builder`'), out.output
+			}
+		}
+	}
+}

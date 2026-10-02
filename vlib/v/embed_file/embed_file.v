@@ -122,16 +122,17 @@ pub fn (original &EmbedFileData) to_bytes() []u8 {
 	}
 }
 
+// data returns the embedded bytes, decompressing or loading them if needed.
 pub fn (mut ed EmbedFileData) data() &u8 {
 	if ed.uncompressed != unsafe { nil } {
 		return ed.uncompressed
 	}
 	if ed.uncompressed == unsafe { nil } && ed.compressed != unsafe { nil } {
-		decoder := unsafe {
-			&g_embed_file_decoders.decoders[ed.compression_type] or {
-				panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
-			}
+		if ed.compression_type !in g_embed_file_decoders.decoders {
+			panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
 		}
+		// The core module must also compile before address-or lowering is bootstrapped.
+		decoder := unsafe { &g_embed_file_decoders.decoders[ed.compression_type] }
 		compressed := unsafe { ed.compressed.vbytes(ed.compressed_len) }
 		decompressed := decoder.decompress(compressed) or {
 			panic('EmbedFileData error: decompression of "${ed.path}" failed: ${err}')
