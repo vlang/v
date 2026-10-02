@@ -14890,7 +14890,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			pointer := actual_value as Pointer
 			if fn_param_unalias_type(pointer.base_type) is Void
-				|| tc.fn_param_compatible(pointer.base_type, expected_value.elem_type) {
+				|| tc.c_type(pointer.base_type) == tc.c_type(c_fixed_array_pointee_storage_type(expected_value.elem_type)) {
 				continue
 			}
 			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
@@ -16609,6 +16609,36 @@ fn free_array_arg_compatible(name string, param_idx int, expected Type, actual T
 		clean = clean.base_type
 	}
 	return clean is Array
+}
+
+// A pointer passed to a C fixed-array parameter uses its existing storage; it
+// cannot use the scalar conversions at a C call boundary. C `int` elements need
+// 32-bit storage even when V's platform `int` is wider.
+fn c_fixed_array_pointee_storage_type(typ Type) Type {
+	clean := fn_param_unalias_type(typ)
+	if fn_param_is_platform_int(clean) {
+		return Type(i32_)
+	}
+	return match clean {
+		Pointer {
+			Type(Pointer{ base_type: c_fixed_array_pointee_storage_type(clean.base_type) })
+		}
+		ArrayFixed {
+			Type(ArrayFixed{
+				elem_type: c_fixed_array_pointee_storage_type(clean.elem_type)
+				len:       clean.len
+				len_expr:  clean.len_expr
+			})
+		}
+		FnType {
+			Type(FnType{
+				params:      clean.params.map(c_fixed_array_pointee_storage_type(it))
+				params_mut:  clean.params_mut
+				return_type: c_fixed_array_pointee_storage_type(clean.return_type)
+			})
+		}
+		else { clean }
+	}
 }
 
 fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expected Type, actual Type) bool {

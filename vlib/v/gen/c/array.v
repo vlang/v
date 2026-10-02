@@ -421,6 +421,13 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		g.write(').data')
 		return
 	}
+	actual := cgen_unalias_type(g.usable_expr_type(id))
+	if actual is types.Pointer && fn_type_from(actual.base_type) != none {
+		// C array parameters decay to pointers. Preserve a callback slot's
+		// address by supplying its pointer context instead of the array type.
+		g.gen_expr_with_expected_type(id, actual)
+		return
+	}
 	g.gen_expr(id)
 }
 
