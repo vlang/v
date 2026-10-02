@@ -4,6 +4,27 @@ import os
 import v.flat
 import v.types
 
+fn test_owned_array_storage_void_wrappers_preserve_the_source() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.optional_base_type('!') == 'void'
+	assert t.optional_base_type('?') == 'void'
+	assert t.optional_base_type('![]int') == '[]int'
+	assert t.optional_base_type('?[]int') == '[]int'
+	for wrapper in ['!', '?', '!void', '?void'] {
+		t.set_var_type('source', wrapper)
+		source := t.make_ident('source')
+		nodes_before := a.nodes.len
+		for clone_owned_value in [false, true] {
+			// Bare markers must unwrap to void so the storage scan terminates.
+			assert t.clone_owned_array_storage_value(source, wrapper, clone_owned_value) == source
+			assert a.nodes.len == nodes_before
+			assert t.pending_stmts.len == 0
+		}
+	}
+}
+
 fn test_owned_array_storage_with_ownership_checker_api() {
 	$if ownership ? {
 		return
