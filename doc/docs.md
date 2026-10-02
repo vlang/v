@@ -3355,6 +3355,8 @@ If you need to access embedded structs directly, use an explicit reference like 
 Optional fields keep their optional type when accessed through multiple embedded structs.
 You can unwrap them with an `if` guard, including after an earlier check against `none`.
 
+Omitted embedded structs retain their declared field defaults, including interface values.
+
 Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s
 in OOP, *NOT* base classes.
 
@@ -4242,6 +4244,9 @@ transitively by other modules several times, in the reverse order of the init ca
 To define a new type `NewType` as an alias for `ExistingType`,
 do `type NewType = ExistingType`.<br/>
 This is a special case of a [sum type](#sum-types) declaration.
+
+Methods declared on a fixed-array alias keep that alias receiver, including methods whose names
+match builtin array methods.
 
 Numeric aliases use ordinary conversions for initialization:
 
@@ -7977,6 +7982,7 @@ already compressed.
 `$embed_file` returns
 [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
 which could be used to obtain the file contents as `string` or `[]u8`.
+Its `.data()` method also accepts immutable values and constants, returning a byte pointer.
 
 Use the returned value: discarding `$embed_file` as a statement is an error, including
 when it is the fallback value of an unused `or` expression with nested `or` blocks.
@@ -9566,6 +9572,12 @@ f := C.name_of_the_C_function(123, c'here is some C style string', 1.23)
 dump(f)
 ```
 
+A fixed-array parameter in a `C.` declaration follows C's pointer adjustment:
+`fn C.load_matrix(values [16]f32)` accepts a matching `&f32` or `voidptr`, including
+a dynamic array's `.data`. Ordinary V fixed-array parameters still require array values.
+Pointer constants such as `C.NULL` and `C.INVALID_HANDLE_VALUE` retain their pointer type
+in assignments and comparisons.
+
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
@@ -9602,6 +9614,11 @@ Note also the second parameter `const char *format`, which was redeclared as `co
 The `const_` prefix in that redeclaration may seem arbitrary, but it is important, if you want
 to compile your code with `-cstrict` or thirdparty C static analysis tools. V currently does not
 have another way to express that this parameter is a const (this will probably change in V 1.0).
+
+The `const_` convention also applies to C callback function types and aliases. For example,
+`type NativeCallback = fn (const_buf &u8, len int) int` retains the const buffer qualifier.
+When you pass a V function by name to a `fn C.` callback parameter, V adapts its parameter
+and return types to the C ABI.
 
 For some C functions, that use variadics (`...`) as parameters, V supports a special syntax for
 the parameters - `...voidptr`, that is not available for ordinary V functions (V's variadics are
