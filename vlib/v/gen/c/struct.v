@@ -2105,16 +2105,31 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		g.gen_struct_init_with_fixed_array_fields_impl(node, name, init_module, true)
 		return
 	}
+	interface_fixed_fields := if !is_sum_literal && g.is_interface_type_name(node.value) {
+		g.interface_init_fixed_array_fields(node)
+	} else {
+		[]int{}
+	}
+	interface_fixed_tmp := if interface_fixed_fields.len > 0 { g.tmp_name() } else { '' }
+	if interface_fixed_fields.len > 0 {
+		g.write('({${name} ${interface_fixed_tmp} = (${name}){')
+	}
 	mut align_arg := ''
 	mut seen_aligned := map[string]bool{}
 	if align := g.struct_decl_alignment_for_init_names(node.value, lookup_name) {
 		align_arg = struct_decl_alignment_memdup_arg(align, name)
-		g.write('(${name}*)v3_aligned_memdup(&(${name}){')
+		if interface_fixed_fields.len == 0 {
+			g.write('(${name}*)v3_aligned_memdup(&(${name}){')
+		}
 	} else if g.global_fixed_array_type_has_aligned_struct(clean_init_type, mut seen_aligned) {
 		align_arg = '__alignof__(${name})'
-		g.write('(${name}*)v3_aligned_memdup(&(${name}){')
+		if interface_fixed_fields.len == 0 {
+			g.write('(${name}*)v3_aligned_memdup(&(${name}){')
+		}
 	} else {
-		g.write('(${name}*)memdup(&(${name}){')
+		if interface_fixed_fields.len == 0 {
+			g.write('(${name}*)memdup(&(${name}){')
+		}
 	}
 	mut allowed_fields := map[string]bool{}
 	if fields := g.struct_fields_for_type(lookup_name) {
@@ -2145,6 +2160,10 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
+		if i in interface_fixed_fields {
+			set_fields[field.value] = true
+			continue
+		}
 		mut promoted := PromotedStructInitField{}
 		// `EmbedType: value` sets the embedded struct field itself. Its C field name
 		// comes from the embed type (`veb__Context`), not the source key, and the two
@@ -2292,7 +2311,21 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	if !has_field {
 		g.write(if g.struct_type_is_empty(lookup_name) { 'E_STRUCT' } else { '0' })
 	}
-	if align_arg.len > 0 {
+	if interface_fixed_fields.len > 0 {
+		g.write('};')
+		for i in interface_fixed_fields {
+			field := g.a.child_node(&node, i)
+			cfield := g.init_field_c_name(lookup_name, field.value)
+			g.write(' memcpy(${interface_fixed_tmp}.${cfield}, ')
+			g.gen_fixed_array_copy_source(g.a.child(field, 0), g.tc.parse_type(field.typ))
+			g.write(', sizeof(${interface_fixed_tmp}.${cfield}));')
+		}
+		if align_arg.len > 0 {
+			g.write(' (${name}*)v3_aligned_memdup(&${interface_fixed_tmp}, sizeof(${name}), ${align_arg});})')
+		} else {
+			g.write(' (${name}*)memdup(&${interface_fixed_tmp}, sizeof(${name}));})')
+		}
+	} else if align_arg.len > 0 {
 		g.write('}, sizeof(${name}), ${align_arg})')
 	} else {
 		g.write('}, sizeof(${name}))')

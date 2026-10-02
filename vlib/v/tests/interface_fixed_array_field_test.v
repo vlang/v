@@ -35,3 +35,15 @@ fn test_interface_with_fixed_array_field_from_value() {
 	assert fx.sum() == 4.5
 	assert fx.samples[1] == 3.0
 }
+
+fn test_interface_fixed_array_field_from_pointer_cast() {
+	mut l := &FixedLowpass{}
+	l.samples[1] = 2.0
+	l.param = 0.5
+	mut fx := &FixedSamples(l)
+	assert fx.samples[1] == 2.0
+	assert fx.sum() == 2.5
+	fx.samples[1] = 4.0
+	assert l.samples[1] == 4.0
+	assert fx.sum() == 4.5
+}
