@@ -34,13 +34,13 @@ fn value_string[T](value T, command string) !string {
 	} $else $if T is []u8 {
 		return value.bytestr()
 	} $else {
-		return error('`${command}()`: unsupported value type. Allowed: number, string, []u8')
+		return CommandError{ message: '`${command}()`: unsupported value type. Allowed: number, string, []u8' }
 	}
 }
 
 fn validate_bulk_type[T](command string) ! {
 	$if T !is string && T !is $int && T !is []u8 {
-		return error('`${command}()`: unsupported return type. Allowed: number, string, []u8')
+		return CommandError{ message: '`${command}()`: unsupported return type. Allowed: number, string, []u8' }
 	}
 }
 
@@ -59,8 +59,8 @@ fn bulk_value[T](resp RedisValue, command string) !T {
 	data := match resp {
 		[]u8 { resp.bytestr() }
 		string { resp }
-		RedisNull { return error('`${command}()`: value not found') }
-		else { return error('`${command}()`: unexpected response type') }
+		RedisNull { return NilError{ message: '`${command}()`: value not found' } }
+		else { return ProtocolError{ message: '`${command}()`: unexpected response type' } }
 	}
 	$if T is string {
 		return data
@@ -71,14 +71,14 @@ fn bulk_value[T](resp RedisValue, command string) !T {
 	} $else $if T is []u8 {
 		return data.bytes()
 	} $else {
-		return error('`${command}()`: unsupported return type')
+		return CommandError{ message: '`${command}()`: unsupported return type' }
 	}
 }
 
 fn array_value(resp RedisValue, command string) ![]RedisValue {
 	match resp {
 		[]RedisValue { return resp }
-		else { return error('`${command}()`: unexpected response type') }
+		else { return ProtocolError{ message: '`${command}()`: unexpected response type' } }
 	}
 }
 
@@ -106,18 +106,20 @@ fn nullable_values[T](resp RedisValue, command string) ![]?T {
 
 fn (mut db DB) execute_i64(args []string) !i64 {
 	resp := db.cmd(...args)!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return 0
 	}
 	match resp {
 		i64 { return resp }
-		else { return error('`${args[0].to_lower()}()`: unexpected response type') }
+		else {
+			return ProtocolError{ message: '`${args[0].to_lower()}()`: unexpected response type' }
+		}
 	}
 }
 
 fn (mut db DB) execute_string(args []string) !string {
 	resp := db.cmd(...args)!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return ''
 	}
 	return bulk_value[string](resp, args[0].to_lower())
@@ -125,7 +127,7 @@ fn (mut db DB) execute_string(args []string) !string {
 
 fn (mut db DB) execute_strings(args []string) ![]string {
 	resp := db.cmd(...args)!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return []string{}
 	}
 	return string_values(resp, args[0].to_lower())
@@ -134,7 +136,7 @@ fn (mut db DB) execute_strings(args []string) ![]string {
 fn (mut db DB) execute_bulk[T](args []string) !T {
 	validate_bulk_type[T](args[0].to_lower())!
 	resp := db.cmd(...args)!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return T{}
 	}
 	return bulk_value[T](resp, args[0].to_lower())
@@ -143,7 +145,7 @@ fn (mut db DB) execute_bulk[T](args []string) !T {
 fn (mut db DB) execute_nullable[T](args []string) ![]?T {
 	validate_bulk_type[T](args[0].to_lower())!
 	resp := db.cmd(...args)!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return []?T{}
 	}
 	return nullable_values[T](resp, args[0].to_lower())
@@ -151,7 +153,7 @@ fn (mut db DB) execute_nullable[T](args []string) ![]?T {
 
 fn (mut db DB) execute_f64(args []string) !f64 {
 	resp := db.cmd(...args)!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return 0.0
 	}
 	match resp {
@@ -162,7 +164,7 @@ fn (mut db DB) execute_f64(args []string) !f64 {
 
 fn multi_set_args[T](command string, values map[string]T) ![]string {
 	$if T !is string && T !is $int && T !is []u8 {
-		return error('`${command.to_lower()}()`: unsupported value type. Allowed: number, string, []u8')
+		return CommandError{ message: '`${command.to_lower()}()`: unsupported value type. Allowed: number, string, []u8' }
 	}
 	mut args := [command]
 	for key, value in values {
@@ -174,7 +176,7 @@ fn multi_set_args[T](command string, values map[string]T) ![]string {
 
 fn scan_args(args []string, options ScanOptions) ![]string {
 	if options.count < 0 {
-		return error('`${args[0].to_lower()}()`: count must not be negative')
+		return CommandError{ message: '`${args[0].to_lower()}()`: count must not be negative' }
 	}
 	mut result := args.clone()
 	if pattern := options.match {
@@ -190,13 +192,13 @@ fn scan_args(args []string, options ScanOptions) ![]string {
 
 fn (mut db DB) execute_scan(args []string) !(string, []string) {
 	resp := db.cmd(...args)!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return '', []string{}
 	}
 	command := args[0].to_lower()
 	values := array_value(resp, command)!
 	if values.len != 2 {
-		return error('`${command}()`: invalid scan response')
+		return ProtocolError{ message: '`${command}()`: invalid scan response' }
 	}
 	return bulk_value[string](values[0], command)!, string_values(values[1], command)!
 }
@@ -246,7 +248,7 @@ pub fn (mut db DB) getex[T](key string, options GetExOptions) !T {
 	match options.mode {
 		.none, .persist {
 			if options.value != 0 {
-				return error('`getex()`: expiration value requires a timed mode')
+				return CommandError{ message: '`getex()`: expiration value requires a timed mode' }
 			}
 			if options.mode == .persist {
 				args << 'PERSIST'
@@ -254,7 +256,7 @@ pub fn (mut db DB) getex[T](key string, options GetExOptions) !T {
 		}
 		.ex, .px, .exat, .pxat {
 			if options.value <= 0 {
-				return error('`getex()`: expiration value must be positive')
+				return CommandError{ message: '`getex()`: expiration value must be positive' }
 			}
 			args << options.mode.str().to_upper()
 			args << options.value.str()
