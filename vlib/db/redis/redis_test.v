@@ -5,6 +5,8 @@ import rand
 import time
 
 const redis_password = os.getenv('VREDIS_PASSWORD')
+// Keep destructive fixture cleanup away from other Redis test files.
+const redis_test_database = 15
 
 // Keys and channel names used by the tests
 const k_int = 'k:int'
@@ -19,7 +21,7 @@ const r_k_pubch = 'r:k:pubch'
 fn publish_after_delay() {
 	// small delay to ensure subscriber is ready
 	time.sleep(50 * time.millisecond)
-	mut conn := redis.connect() or {
+	mut conn := redis.connect(password: redis_password, database: redis_test_database) or {
 		eprintln('publish_after_delay: connect failed: ${err}')
 		return
 	}
@@ -33,14 +35,14 @@ fn publish_after_delay() {
 
 // Basic functionality smoke test (fast)
 fn test_redis_basic() {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
 	// Basic health check
 	assert db.ping()! == 'PONG'
 
 	// delete all keys first
-	db.cmd('FLUSHALL')!
+	db.cmd('FLUSHDB')!
 
 	// test set[T]
 	assert db.set('int', 123)! == 'OK'
@@ -91,7 +93,7 @@ fn test_redis_basic() {
 
 // A concise pipeline test that exercises correctness but remains fast
 fn test_pipeline_small() {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
 	assert db.ping()! == 'PONG'
@@ -99,7 +101,7 @@ fn test_pipeline_small() {
 	// start pipleline mode
 	db.pipeline_start()
 	// small pipeline of a few commands
-	db.cmd('FLUSHALL') or { eprintln('FLUSHALL failed (pipeline): ${err}') }
+	db.cmd('FLUSHDB') or { eprintln('FLUSHDB failed (pipeline): ${err}') }
 	db.set(k_int, 1) or { eprintln('SET k_int failed (pipeline): ${err}') }
 	db.set(k_string, 'p') or { eprintln('SET k_string failed (pipeline): ${err}') }
 	db.get[i64](k_int) or { eprintln('GET k_int failed (pipeline): ${err}') }
@@ -156,11 +158,11 @@ fn test_pipeline_small() {
 
 // Another small pipeline sequence test (fast)
 fn test_pipeline_sequence() {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
 	// keep operations minimal and deterministic
-	db.cmd('FLUSHALL') or { eprintln('FLUSHALL failed: ${err}') }
+	db.cmd('FLUSHDB') or { eprintln('FLUSHDB failed: ${err}') }
 	assert db.set(k_counter, '0')! == 'OK'
 
 	// restart pipeline again
@@ -206,7 +208,7 @@ fn test_pipeline_sequence() {
 
 // Quick RESP3 ping and tiny roundtrip
 fn test_resp3_ping() {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
 	// Basic ping and quick SET/GET roundtrip
@@ -232,7 +234,7 @@ fn test_resp3_ping() {
 
 // Quick RESP3 HGETALL shape check (fast)
 fn test_resp3_hgetall_fast() {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
 	db.cmd('DEL', r_k_map)!
@@ -272,7 +274,7 @@ fn test_resp3_hgetall_fast() {
 
 // Quick RESP3 SMEMBERS shape check (fast)
 fn test_resp3_smembers_fast() {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 	db.cmd('DEL', r_k_set) or { eprintln('DEL r_k_set failed: ${err}') }
 	db.cmd('SADD', r_k_set, 'one', 'two') or { eprintln('SADD r_k_set failed: ${err}') }
@@ -316,7 +318,7 @@ fn test_resp3_smembers_fast() {
 
 // Very small pub/sub smoke test (fast)
 fn test_resp3_pubsub_fast() {
-	mut sub := redis.connect(password: redis_password)!
+	mut sub := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { sub.close() or {} }
 	if sub.version != 3 {
 		return
@@ -331,11 +333,11 @@ fn test_resp3_pubsub_fast() {
 
 // Large binary bulk string roundtrip (~200 KiB)
 fn test_large_binary_bulk_string() ! {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
 	// ensure clean DB
-	db.cmd('FLUSHALL')!
+	db.cmd('FLUSHDB')!
 
 	// Create a large binary payload (~200 KB) with a repeating pattern,
 	// including zero bytes and CRLF sequences to exercise edge cases.
@@ -368,11 +370,11 @@ fn test_large_binary_bulk_string() ! {
 
 // Very large payload (~1.2 MiB) roundtrip
 fn test_very_large_payload() ! {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
 	// ensure clean DB
-	db.cmd('FLUSHALL')!
+	db.cmd('FLUSHDB')!
 
 	// Build a very large payload (> 1 MiB). Use ~1.2 MiB to be safely above 1 MiB.
 	size := 1_200_000
@@ -394,11 +396,11 @@ fn test_very_large_payload() ! {
 
 // Many pipeline commands to exercise batching behavior
 fn test_many_pipeline_commands() ! {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
 	// ensure clean DB
-	db.cmd('FLUSHALL')!
+	db.cmd('FLUSHDB')!
 
 	// We'll queue a moderate but substantial number of commands in pipeline to test behavior.
 	// Keep it reasonable for CI runtime; 300 pairs (SET, GET) should exercise pipeline thoroughly.
@@ -441,10 +443,10 @@ fn test_many_pipeline_commands() ! {
 
 // Larger randomized binary payloads (many iterations)
 fn test_fuzz_random_binary_many() ! {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
-	db.cmd('FLUSHALL')!
+	db.cmd('FLUSHDB')!
 
 	// LCG PRNG seed using process id
 	mut x := u64(os.getpid())
@@ -471,10 +473,10 @@ fn test_fuzz_random_binary_many() ! {
 // Randomized tests that ensure CRLF sequences embedded at random locations,
 // including chunk boundaries, are handled correctly.
 fn test_fuzz_crlf_random_positions() ! {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
-	db.cmd('FLUSHALL')!
+	db.cmd('FLUSHDB')!
 
 	seed := u64(os.getpid())
 	mut x := seed
@@ -507,11 +509,11 @@ fn test_fuzz_crlf_random_positions() ! {
 
 // CRLF crossing a read-chunk boundary
 fn test_crlf_at_chunk_boundary() {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
 	// ensure clean DB
-	db.cmd('FLUSHALL')!
+	db.cmd('FLUSHDB')!
 
 	// The driver's read buffer reads in 4096-byte chunks. Create a payload where CRLF
 	// crosses the 4096-byte boundary: place '\r' at index 4095 and '\n' at 4096.
@@ -535,10 +537,10 @@ fn test_crlf_at_chunk_boundary() {
 
 // Small randomized binary payloads (many repetitions).
 fn test_fuzz_random_binary_small() {
-	mut db := redis.connect(password: redis_password)!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	defer { db.close() or {} }
 
-	db.cmd('FLUSHALL')!
+	db.cmd('FLUSHDB')!
 
 	// Simple LCG PRNG seeded from process id
 	seed := u64(os.getpid())
@@ -662,7 +664,7 @@ fn test_fuzz_random_binary_small() {
 }
 
 fn connect_command_test(version int) !redis.DB {
-	mut db := redis.connect(password: os.getenv('VREDIS_PASSWORD'))!
+	mut db := redis.connect(password: redis_password, database: redis_test_database)!
 	if version == 2 {
 		db.cmd('HELLO', '2')!
 		db.version = 2

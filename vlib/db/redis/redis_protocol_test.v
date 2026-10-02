@@ -60,3 +60,29 @@ fn test_resp2_null_bulk_string_and_resp3_null_rejection() {
 	}
 	assert false, 'RESP3 null frame was accepted in RESP2 mode'
 }
+
+fn protocol_send_fragmented_empty_suffix(mut server net.TcpConn) {
+	defer { server.close() or {} }
+	// Give the reader time to consume the first terminator byte on its own.
+	time.sleep(100 * time.millisecond)
+	server.write_string('\n+PONG\r\n') or { panic(err) }
+}
+
+fn test_empty_bulk_string_accepts_fragmented_terminator() {
+	for version in [2, 3] {
+		mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+		defer { listener.close() or {} }
+		address := listener.addr()!
+		mut client := net.dial_tcp(address.str())!
+		client.set_read_timeout(2 * time.second)
+		mut server := listener.accept()!
+		server.set_write_timeout(2 * time.second)
+		server.write_string('$0\r\n\r')!
+		writer := spawn protocol_send_fragmented_empty_suffix(mut server)
+		mut db := DB{ version: version, conn: client }
+		defer { db.close() or {} }
+		assert db.read_response()! as []u8 == []u8{}
+		assert db.read_response()! as string == 'PONG'
+		writer.wait()
+	}
+}
