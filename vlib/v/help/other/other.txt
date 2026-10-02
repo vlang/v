@@ -20,6 +20,9 @@ Other less frequently used commands supported by V include:
 
   doctor           Display some useful info about your system to help reporting bugs.
 
+  env               Print the environment variables that steer the V compiler
+                   and its tools, with the value V would use for each.
+
   setup-freetype   Setup thirdparty freetype on Windows.
 
   share            Send your code to the V Playground

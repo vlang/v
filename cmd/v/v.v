@@ -40,6 +40,7 @@ const external_commands = [
 	'doc',
 	'doctor',
 	'download',
+	'env',
 	'fmt',
 	'git-fmt-hook',
 	'gret',
