@@ -248,11 +248,13 @@ argument, e.g. `v new abc`.
 
 * [Tools](#tools)
     * [v fmt](#v-fmt)
+    * [v clean](#v-clean)
     * [v env](#v-env)
     * [v shader](#v-shader)
     * [v tool](#v-tool)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
+    * [v mod why](#v-mod-why)
     * [Package commands](#package-commands)
     * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
@@ -5282,6 +5284,11 @@ post := posts_repo.find_by_id(1)? // find_by_id[Post]
 A generic method retains its receiver type when called inside a function returning multiple
 values, including a Result tuple. The enclosing return type does not replace receiver arguments.
 This also applies when a value from a Result tuple is returned as an interface.
+An explicitly specialized generic method can also be stored as a function value when the
+method is promoted from an embedded struct; the value binds that embedded receiver.
+
+Editor hover and definition queries resolve generic type parameters within their declaration.
+A later declaration using a module type with the same name resolves to that module type.
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
@@ -5343,6 +5350,10 @@ of the type parameter has what the constraint provides: the members of the inter
 or of the struct, or what every variant of the sum type has, operators included.
 Nested generic sums retain the variants of each concrete instance. For example,
 `Part[int] | Part[string]` accepts variants from both instances of `Part[T]`.
+Recursive sum constraints that keep growing their type arguments are rejected instead of
+silently omitting nested variants. Finite recursive instances and aliases remain valid.
+Modules referenced only by a generic constraint still count as used imports.
+Struct constraints accept finite embedding paths without a depth limit.
 
 ```v
 interface Named {
@@ -6959,6 +6970,51 @@ To disable formatting for a block of code, wrap it with `// vfmt off` and
 ... your code here ...
 ```
 
+### v clean
+
+A V build writes its executable next to the sources it was built from, named
+after them. That is convenient for `v run file.v` and awkward for a project you
+have been building in place, because the binaries pile up beside the code and
+nothing else in the toolchain tracks them.
+
+`v clean` removes the executables a default build would produce for the paths
+you name:
+
+```shell
+v clean                 # the current directory
+v clean ./cmd/mytool    # one project folder
+v clean hello.v         # one source file
+```
+
+For a directory the executable is named after the directory, and for a `.v`
+file after the file, which is exactly what the compiler does, so `v clean .`
+after a `v .` build removes the binary that build left:
+
+```shell
+$ v clean .
+removed `/home/me/mytool/mytool`
+```
+
+Anything else in the directory is left alone. `v clean` removes the one name
+the compiler itself would have written and nothing more, so a stray executable
+or a source file survives it.
+
+Use `-n` to see what it would do first, and `-x` to have it print each removal
+as a command:
+
+```shell
+$ v clean -n .
+rm /home/me/mytool/mytool
+```
+
+A path whose executable name cannot be worked out with certainty is refused
+instead of guessed, and the command exits 1, which matters because this command
+deletes files.
+
+`v clean` does not touch the build cache. That is `v wipe-cache`, kept separate
+because it affects every project on the machine rather than the ones named
+here.
+
 ### v env
 
 `v env` prints the environment variables that steer the V compiler and its
@@ -7136,6 +7192,52 @@ has to normalize a name. A package may contain only nested modules, so append
 the nested module path when needed (for example, `import my_mod.json`). If you
 publish a package, prefer a `name` in `v.mod` that is already a valid import
 path.
+
+### v mod why
+
+A V project declares its dependencies by hand in the `dependencies` field of its
+`v.mod`, and the compiler resolves imports against the module search path: the
+project folder, `vlib`, and the global module folders. Nothing records which of
+those a build actually reaches, so a `v.mod` quietly collects modules that no
+longer have anything to do with the code.
+
+`v mod why` answers that question. It prints the chain of imports that brings a
+module into the build, one module per line, starting at the project itself:
+
+```shell
+$ v mod why lib.http
+app
+app.net
+lib
+lib.http
+```
+
+Read from the bottom up, that chain says: the project imports `app.net`, which
+imports `lib`, which imports `lib.http`. So if you want to know what breaks when
+`lib.http` changes, you can see exactly what pulls it in.
+
+The case worth acting on is a module that is installed but that nothing imports,
+which `v mod why` words differently, the same way `go mod why` does:
+
+```shell
+$ v mod why oldlib
+(main module does not need module `oldlib`)
+```
+
+A module that cannot be found in the module search path at all is an error, and
+points at `v install`.
+
+`v mod why` has to run inside a project folder, since it needs a `v.mod` in the
+current directory or one of its parents. For the whole compiler environment
+rather than just this project's modules, use `v doctor`. To install or remove a
+module, use `v install` and `v remove`.
+
+One limitation worth stating: `v mod why` reads the imports from the source
+files of the project and of every module it reaches, rather than from the
+compiler's own resolved build list. That is what lets it work without a build,
+but it also means a file that a build constraint excludes can still contribute an
+import edge. In practice that can only add a path to a chain, never remove a
+real one.
 
 ### Package commands
 
@@ -9694,7 +9796,7 @@ functions.
 
 // Use the system SQLite when there is one; otherwise build the amalgamation that
 // `v vlib/db/sqlite/install_thirdparty_sqlite.vsh` downloads, like `db.sqlite` does.
-$if $pkgconfig ( 'sqlite3' ) {
+$if $pkgconfig('sqlite3') {
 	#pkgconfig sqlite3
 } $else $if darwin {
 	#flag -lsqlite3
@@ -9798,6 +9900,11 @@ An explicit `#flag -x c` or `#flag -x c++`, including the joined forms `-xc` and
 overrides the filename's language until `#flag -x none` restores inference from the filename.
 Both spellings also select the matching native compilation standard and runtime libraries,
 including when a `.o` flag compiles an adjacent source into the object cache.
+
+Native C sources and object files from `#flag` are linked before the libraries from
+all modules, including imported modules. Library flags retain their relative order.
+Explicit `-x` language settings remain attached to native inputs when they are reordered.
+The final language setting also applies to sources passed later through `-ldflags`.
 
 You can also use `#flag` directives, to link to static C libraries, which
 will be added last (note the .a suffix):

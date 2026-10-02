@@ -1884,7 +1884,7 @@ fn main() {
 	}
 }
 
-fn test_a_generic_sum_constraint_bounds_expansion_through_a_type_argument() {
+fn test_a_generic_sum_constraint_rejects_growing_expansion_through_a_type_argument() {
 	res := check_whole('sum_instances_argument_recursive', 'module main
 
 type Part[T] = T | bool
@@ -1899,7 +1899,8 @@ fn main() {
 	println(accept(1))
 }
 ')
-	assert res.exit_code == 0, res.output
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('constraint `Expanding[int]` cannot expand a recursive sum type'), res.output
 }
 
 fn test_a_struct_constraint_takes_the_struct_and_the_structs_that_embed_it() {

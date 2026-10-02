@@ -197,7 +197,7 @@ fn (tc &TypeChecker) vls_type_param_hover_at(file_id int, offset int, word strin
 			return text
 		}
 	}
-	decl_id := tc.vls_decl_before(file_id, offset)?
+	decl_id := tc.vls_decl_at(file_id, offset)?
 	return tc.vls_type_param_hover(decl_id, word)
 }
 
@@ -244,13 +244,13 @@ fn (tc &TypeChecker) vls_type_param_definition_at(file_id int, offset int, word 
 			return at
 		}
 	}
-	decl_id := tc.vls_decl_before(file_id, offset)?
+	decl_id := tc.vls_decl_at(file_id, offset)?
 	return tc.vls_type_param_declared_at(*tc.a.node(decl_id), word)
 }
 
-// vls_decl_before returns the last declaration of a function or a type of
-// `file_id` that starts before `offset`.
-fn (tc &TypeChecker) vls_decl_before(file_id int, offset int) ?flat.NodeId {
+// vls_decl_at returns the declaration of a function or a type of `file_id`
+// whose signature or body contains `offset`.
+fn (tc &TypeChecker) vls_decl_at(file_id int, offset int) ?flat.NodeId {
 	mut best := -1
 	mut best_start := -1
 	for idx in tc.a.user_code_start .. tc.a.nodes.len {
@@ -265,10 +265,83 @@ fn (tc &TypeChecker) vls_decl_before(file_id int, offset int) ?flat.NodeId {
 			best_start = start
 		}
 	}
-	if best < 0 {
+	if best < 0 || !tc.vls_decl_contains_offset(tc.a.nodes[best], offset) {
 		return none
 	}
 	return flat.NodeId(best)
+}
+
+// vls_decl_contains_offset bounds a declaration whose node only spans its name.
+// Signatures and brace-delimited bodies remain in scope; following declarations do not.
+fn (tc &TypeChecker) vls_decl_contains_offset(decl flat.Node, offset int) bool {
+	if decl.kind != .fn_decl {
+		return offset <= int(decl.pos.end)
+	}
+	source := tc.vls_source(int(decl.pos.id))
+	start := int(decl.pos.offset)
+	if start < 0 || start >= source.len {
+		return false
+	}
+	mut s := scanner.new_scanner(&pref.Preferences{}, .normal)
+	s.init(unsafe { nil }, source[start..])
+	mut parens := 0
+	mut brackets := 0
+	mut braces := 0
+	mut body_started := false
+	mut parameters_started := false
+	mut parameters_ended := false
+	mut return_function_tokens := 0
+	if decl.is_mut {
+		mut return_scanner := scanner.new_scanner(&pref.Preferences{}, .normal)
+		return_scanner.init(unsafe { nil }, decl.typ)
+		for {
+			return_token := return_scanner.scan()
+			if return_token == .eof { break }
+			if return_token == .key_fn { return_function_tokens++ }
+		}
+	}
+	for {
+		tok := s.scan()
+		if tok == .eof {
+			return offset <= source.len
+		}
+		// A return type can contain `fn`, including nested function types. Consume
+		// only the return type's tokens so a following function still ends the header.
+		is_return_function := parameters_ended && tok == .key_fn && return_function_tokens > 0
+		if is_return_function { return_function_tokens-- }
+		// A cached .vh function has only a signature, with no following body.
+		if decl.is_mut && !is_return_function && parens == 0 && brackets == 0
+			&& tok in [.semicolon, .key_fn, .key_global, .key_struct, .key_interface, .key_type,
+				.key_const, .key_enum] {
+			return offset <= start + s.pos
+		}
+		match tok {
+			.lpar {
+				if !parameters_started && brackets == 0 { parameters_started = true }
+				parens++
+			}
+			.rpar {
+				parens--
+				if parameters_started && parens == 0 { parameters_ended = true }
+			}
+			.lsbr { brackets++ }
+			.rsbr { brackets-- }
+			.lcbr {
+				if body_started || (parens == 0 && brackets == 0) {
+					body_started = true
+					braces++
+				}
+			}
+			.rcbr {
+				if body_started {
+					braces--
+					if braces == 0 { return offset < start + s.offset }
+				}
+			}
+			else {}
+		}
+	}
+	return false
 }
 
 // vls_node_around returns the innermost node of `file_id` whose span holds

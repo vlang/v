@@ -556,10 +556,28 @@ fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.Node
 		|| t.type_arg_text_has_enclosing_generic_param(id, receiver_type) {
 		return none
 	}
-	decl := t.generic_method_decl_of(receiver_type, selector.value, decls) or { return none }
+	mut decl_key := ''
+	for candidate in generic_call_name_spellings(method_key) {
+		key := generic_fn_decl_base_value(candidate)
+		if key in decls {
+			decl_key = key
+			break
+		}
+	}
+	if decl_key == '' {
+		decl_key = t.generic_resolved_call_decl_key(method_key, *selector, node, module_name,
+			decls) or { return none }
+	}
+	decl := decls[decl_key] or { return none }
 	param_names := t.generic_fn_param_names(decl.node, decl.module)
 	receiver_params := t.generic_receiver_param_names(decl)
-	fixed := t.receiver_fixed_type_args(decl, receiver_type)
+	declaring_receiver := t.generic_method_value_declaring_receiver(receiver_type, decl,
+		module_name) or { GenericMethodValueReceiver{ typ: receiver_type } }
+	mut fixed := t.receiver_fixed_type_args(decl, declaring_receiver.typ)
+	if decl.node.children_count > 0 {
+		receiver_param := t.a.child_node(&decl.node, 0)
+		t.infer_generic_receiver_suffix_args(receiver_param.typ, declaring_receiver.typ, mut fixed)
+	}
 	explicit := normalize_generic_args(split_generic_args(type_arg_text), module_name)
 	own := param_names.filter(it !in receiver_params)
 	mut args := []string{cap: param_names.len}
@@ -585,6 +603,47 @@ fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.Node
 		return none
 	}
 	return decl, scoped
+}
+
+struct GenericMethodValueReceiver {
+	typ  string
+	path []FieldInfo
+}
+
+// generic_method_value_declaring_receiver follows concrete embedded fields
+// so a generic wrapper retains the declaring receiver's substituted arguments.
+fn (t &Transformer) generic_method_value_declaring_receiver(receiver_type string, decl GenericFnDecl, module_name string) ?GenericMethodValueReceiver {
+	mut pending := [receiver_type]
+	mut paths := [][]FieldInfo{}
+	paths << []FieldInfo{}
+	mut seen := map[string]bool{}
+	for pending.len > 0 {
+		current := pending.pop().trim_space().trim_left('&')
+		path := paths.pop()
+		if current in seen {
+			continue
+		}
+		seen[current] = true
+		if t.generic_receiver_decl_matches_type(current, decl, module_name) {
+			return GenericMethodValueReceiver{ typ: current, path: path }
+		}
+		info := t.lookup_struct_info(current) or { continue }
+		for field in info.fields.reverse() {
+			if t.is_embedded_field(field) {
+				field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+				base, _, is_generic := generic_app_parts(field_type)
+				pending << if is_generic {
+					t.normalize_type_in_module(base, info.module) + field_type[base.len..]
+				} else {
+					t.normalize_type_in_module(field_type, info.module)
+				}
+				mut field_path := path.clone()
+				field_path << field
+				paths << field_path
+			}
+		}
+	}
+	return none
 }
 
 // generic_method_decl_of returns the generic method `method` of the type
@@ -618,6 +677,21 @@ fn (mut t Transformer) bind_explicit_generic_method_value(id flat.NodeId, node f
 	decl, args := t.explicit_generic_method_value_specialization(id, node, module_name, decls) or {
 		return none
 	}
+	selector := *t.a.child_node(&node, 0)
+	mut receiver := t.a.child(&selector, 0)
+	base_type := t.generic_call_arg_type_for_inference(receiver)
+	if declaring_receiver := t.generic_method_value_declaring_receiver(base_type, decl, module_name) {
+		mut is_pointer := base_type.starts_with('&')
+		for field in declaring_receiver.path {
+			field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+			receiver = t.make_selector_op(receiver, field.name, field_type, if is_pointer {
+				.arrow
+			} else {
+				.dot
+			})
+			is_pointer = field_type.starts_with('&')
+		}
+	}
 	concrete_args := t.canonical_generic_specialization_args(args)
 	mut asked := false
 	if !t.generic_specialization_registered(decl, concrete_args) {
@@ -627,7 +701,6 @@ fn (mut t Transformer) bind_explicit_generic_method_value(id flat.NodeId, node f
 	spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)
 	t.record_generic_specialization_args_for_names([spec_name, c_name(spec_name)], concrete_args)
-	selector := t.a.child_node(&node, 0)
 	// The type of the value: the instance without its receiver, which it binds.
 	params := t.tc.fn_param_types[spec_name] or {
 		t.tc.fn_param_types[spec_value] or { []types.Type{} }
@@ -643,7 +716,7 @@ fn (mut t Transformer) bind_explicit_generic_method_value(id flat.NodeId, node f
 		t.tc.expr_type(id) or { types.Type(types.void_) }
 	}
 	start := t.a.children.len
-	t.a.children << t.a.child(selector, 0)
+	t.a.children << receiver
 	t.set_node(int(id), flat.Node{
 		kind:           .selector
 		op:             selector.op
