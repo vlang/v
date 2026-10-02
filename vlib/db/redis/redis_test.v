@@ -740,6 +740,13 @@ fn test_multi_key_values() ! {
 		unsigned_values := db.mget[u64](keys[4])!
 		assert_command_value(unsigned_values[0], ~u64(0))
 		assert db.get[u64](keys[4])! == ~u64(0)
+		assert db.mset({
+			keys[4]: ~usize(0)
+		})! == 'OK'
+		usize_values := db.mget[usize](keys[4])!
+		assert usize_values.len == 1
+		assert_command_value(usize_values[0], ~usize(0))
+		assert db.get[usize](keys[4])! == ~usize(0)
 
 		assert !db.msetnx({
 			keys[2]: 'replacement'
@@ -921,6 +928,14 @@ fn test_hash_commands() ! {
 		unsigned_values := db.hmget[u64](keys[0], 'unsigned')!
 		assert unsigned_values.len == 1
 		assert_command_value(unsigned_values[0], ~u64(0))
+		assert db.hget[u64](keys[0], 'unsigned')! == ~u64(0)
+		assert db.hset(keys[0], {
+			'unsigned': ~usize(0)
+		})! == 0
+		usize_values := db.hmget[usize](keys[0], 'unsigned')!
+		assert usize_values.len == 1
+		assert_command_value(usize_values[0], ~usize(0))
+		assert db.hget[usize](keys[0], 'unsigned')! == ~usize(0)
 		assert db.hdel(keys[0], 'unsigned')! == 1
 		assert db.hincrbyfloat(keys[0], 'float', 1.25)! == 1.25
 		assert db.hincrbyfloat(keys[0], 'float', -0.5)! == 0.75

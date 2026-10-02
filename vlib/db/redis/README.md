@@ -100,6 +100,7 @@ part := db.getrange[string]('first', 0, 4)!
 
 `getdel` and `getex` require Redis 6.2 or later. Like `get`, they return an error for a
 missing key. `mget[T]` and `hmget[T]` return nullable entries for strings, integers, or `[]u8`.
+Unsigned reads, including `u64` and `usize`, preserve the full range of the requested type.
 `GetExOptions` selects one `mode`: `.none`, `.ex`, `.px`, `.exat`, `.pxat`, or `.persist`.
 The four expiration modes require a positive `value`; `.none` and `.persist` use zero.
 
