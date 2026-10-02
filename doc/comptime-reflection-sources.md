@@ -8,3 +8,7 @@ function scope and type are available.
 Importing a module with an unused generic reflection function does not resolve its
 parameter as a type in another imported module. Named types used as reflection sources
 are checked in the source file's own module, including before function body checking.
+
+Repeated method reflection loops in generic specializations borrow AST node headers during
+metadata lookup. Empty method scans allocate only their metadata containers instead of a
+node copy for every scanned AST entry.
