@@ -145,6 +145,47 @@ fn test_references_reports_a_method_and_its_calls() {
 	assert found.any(it.node_kind == 'selector')
 }
 
+// A method declaration and a selector both span more source than their node
+// value names, so an occurrence derived from an offset into that value pointed
+// at the wrong bytes.
+//
+// The reviewer's reproduction: renaming `hello` to `greet` on
+// `fn (h Host) hello() int` plus a `h.hello()` call reported success and wrote
+// `fn (h Host) hellogreett` and `greetlo()`. The declaration span already starts
+// at the name, so the `Host.` prefix length shifted the edit into the signature;
+// the selector span starts at its receiver while its value holds only the method
+// name, so the edit landed on the receiver.
+fn test_occurrences_for_methods_and_selectors_point_at_the_name() {
+	source := 'module main\n\nstruct Host {\n}\n\nfn (h Host) hello() int {\n\treturn 42\n}\n\nfn main() {\n\th := Host{}\n\tprintln(h.hello())\n}\n'
+	path := write_sample('method.v', source)!
+	found := astquery.references(astquery.parse(path), 'hello')
+	assert found.len == 2, found.len.str()
+	lines := source.split_into_lines()
+	for occ in found {
+		line := lines[occ.line - 1]
+		start := occ.column - 1
+		assert start >= 0 && start + occ.end_column - occ.column <= line.len, occ.str()
+		assert line[start..occ.end_column - 1] == 'hello',
+			'line ${occ.line} column ${occ.column} is not the name: `hello` expected, got `${line[start..occ.end_column - 1]}` in `${line}`'
+	}
+}
+
+// The declaration and the call are separate nodes with different spans, so both
+// have to resolve; the bug made one of them land on the receiver.
+fn test_a_selector_occurrence_does_not_start_on_its_receiver() {
+	source := 'module main\n\nstruct Host {\n}\n\nfn (h Host) hello() int {\n\treturn 42\n}\n\nfn main() {\n\th := Host{}\n\tprintln(h.hello())\n}\n'
+	path := write_sample('selector.v', source)!
+	lines := source.split_into_lines()
+	for occ in astquery.references(astquery.parse(path), 'hello') {
+		if occ.node_kind != 'selector' {
+			continue
+		}
+		start := occ.column - 1
+		assert lines[occ.line - 1][start..start + 'hello'.len] == 'hello',
+			'the selector span starts on `${lines[occ.line - 1][start..start + 'hello'.len]}`'
+	}
+}
+
 fn test_references_ignores_names_only_present_in_text() {
 	source := 'module m\n\nfn go() {\n\t// point is only mentioned here\n\ts := \'point\'\n\tprintln(s)\n}\n'
 	a := astquery.parse(write_sample('text.v', source)!)

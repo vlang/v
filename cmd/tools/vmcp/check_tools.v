@@ -33,10 +33,10 @@ fn tool_check(ws &Workspace, arguments string) string {
 	if !os.exists(path) {
 		return error_json('`${path}` does not exist')
 	}
-	mut compiler_args := ['-check', os.quoted_path(path)]
-	for flag in args.list('flags') {
-		compiler_args << flag
-	}
+	// Flags go before the subcommand, as `v` documents, and are handed over raw
+	// because `run_compiler` owns the quoting.
+	mut compiler_args := args.list('flags')
+	compiler_args << ['-check', path]
 	run := run_compiler(ws, compiler_args)
 	items := parse_diagnostics(run.output)
 	return check_json(ws, path, run, items)
@@ -120,10 +120,8 @@ and what the failures said. Takes the same filters as `v test`, for example a
 fn tool_test_run(ws &Workspace, arguments string) string {
 	args := decode_args(arguments)
 	path := ws.resolve_or_root(args.text('path', '')) or { return error_json(err.msg()) }
-	mut compiler_args := ['-silent', 'test', os.quoted_path(path)]
-	for flag in args.list('flags') {
-		compiler_args << flag
-	}
+	mut compiler_args := args.list('flags')
+	compiler_args << ['-silent', 'test', path]
 	// `VTEST_ONLY` is read by the test runner itself, not by the compiler, so it
 	// has to reach the child through the environment.
 	//

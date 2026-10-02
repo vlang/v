@@ -366,9 +366,17 @@ pub fn target_dir(scope Scope, base string) string {
 // Without `force`, an already installed skill is skipped and reported as such
 // rather than overwritten: an agent must not silently discard local edits to a
 // checked-in skill. `dry_run` computes the same result without writing.
+//
+// A symlink sitting where the skill would go is refused. `os.is_dir` and
+// `os.rmdir_all` both follow their argument, so `--force` over a link would
+// list and delete the *target's* contents rather than the link. That is how an
+// install turns into an unrelated directory wipe.
 pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 	validate_bundle(skill.directory)!
 	dest := os.join_path_single(dir, skill.name)
+	if os.is_link(dest) {
+		return error('refusing to install over a symlink skill directory `${dest}`')
+	}
 	already_installed := os.is_dir(dest)
 	if already_installed && !opts.force {
 		return InstallResult{

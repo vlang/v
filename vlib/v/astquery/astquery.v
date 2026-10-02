@@ -11,6 +11,7 @@
 // `visibility_markers` for the second. Read the source for those.
 module astquery
 
+import os
 import v.flat
 import v.parser
 import v.pref
@@ -356,20 +357,21 @@ pub fn references(a &flat.FlatAst, name string) []Occurrence {
 	if name == '' {
 		return out
 	}
+	mut cache := map[int]string{}
 	for file_id in file_nodes(a) {
-		out << collect_references(a, a.node(file_id), name)
+		out << collect_references(a, a.node(file_id), name, mut cache)
 	}
 	return out
 }
 
 // collect_references walks one subtree looking for `name`.
-fn collect_references(a &flat.FlatAst, node &flat.Node, name string) []Occurrence {
+fn collect_references(a &flat.FlatAst, node &flat.Node, name string, mut cache map[int]string) []Occurrence {
 	mut out := []Occurrence{}
 	if mentions(node, name) {
-		out << occurrence(a, node, name)
+		out << occurrence(a, node, name, mut cache)
 	}
 	for child in a.children_of(node) {
-		out << collect_references(a, a.node(child), name)
+		out << collect_references(a, a.node(child), name, mut cache)
 	}
 	return out
 }
@@ -395,26 +397,70 @@ const literal_kinds = [flat.NodeKind.string_literal, .char_literal, .string_inte
 
 // occurrence builds an Occurrence for one node, marking the declaration itself
 // when the node is where `name` is declared.
-fn occurrence(a &flat.FlatAst, node &flat.Node, name string) Occurrence {
-	file, line, mut column := span_of(a, node.pos)
-	mut end_column := column + name.len
-	// The column has to point at the name itself, not at the start of a wider
-	// expression such as a `Point.area` declaration.
-	offset := node.value.index(name) or { 0 }
-	if offset > 0 {
-		column += offset
-		end_column = column + name.len
+//
+// The span has to point at the name itself, and an offset into `node.value`
+// cannot find it: the node's source range and its value text start in different
+// places. A method declaration spans the name while its value reads `Type.name`,
+// so a value offset walked into the signature; a selector spans `receiver.name`
+// while its value reads only `name`, so the offset stayed on the receiver. Both
+// landed the write on unrelated bytes.
+fn occurrence(a &flat.FlatAst, node &flat.Node, name string, mut cache map[int]string) Occurrence {
+	found := name_offset(source_text(a, int(node.pos.id), mut cache), node, name)
+	pos := if found >= 0 {
+		token.Pos{
+			offset: i32(found)
+			end:    i32(found + name.len)
+			id:     node.pos.id
+		}
+	} else {
+		node.pos
 	}
+	file, line, column := span_of(a, pos)
 	return Occurrence{
 		name:        name
 		node_kind:   '${node.kind}'
 		file:        file
 		line:        line
 		column:      column
-		end_column:  end_column
+		end_column:  column + name.len
 		declaration: declares(node, name)
 		type_name:   node.typ
 	}
+}
+
+// source_text returns the text of the file `id` names, or an empty string.
+//
+// The flat AST keeps offsets and a digest but not the characters, so a span that
+// has to land on a real character means reading the file. Results are cached by
+// file id because the walk asks once per node.
+fn source_text(a &flat.FlatAst, id int, mut cache map[int]string) string {
+	if id in cache {
+		return cache[id]
+	}
+	mut text := ''
+	if file := a.source_files[id] {
+		text = os.read_file(file.name) or { '' }
+	}
+	cache[id] = text
+	return text
+}
+
+// name_offset returns the byte offset of `name` inside the range `node` spans,
+// or -1 when the name is not there.
+//
+// The node's own range is the only frame that can be trusted, because it is what
+// the parser measured from the file.
+fn name_offset(source string, node &flat.Node, name string) int {
+	start := int(node.pos.offset)
+	end := int(node.pos.end)
+	if source.len == 0 || start < 0 || end <= start || end > source.len {
+		return -1
+	}
+	at := source[start..end].index(name) or { -1 }
+	if at < 0 {
+		return -1
+	}
+	return start + at
 }
 
 // declares reports whether `node` is where `name` is declared.

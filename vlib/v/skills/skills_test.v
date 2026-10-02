@@ -188,6 +188,37 @@ fn test_remove_rejects_traversal_names_and_preserves_other_directories() {
 	}
 }
 
+// `--force` over a symlink used to delete the *target's* contents.
+//
+// `os.is_dir` follows a link and `os.rmdir_all` follows its own argument, so
+// `os.rmdir_all(dest)` on a link lists and removes what the link points at. The
+// install reported success, then failed partway with "Not a directory", by which
+// point the unrelated directory was already empty.
+fn test_forced_install_refuses_a_symlink_target_and_preserves_it() {
+	root := fixture_root(['alpha'])!
+	dir := skills.target_dir(.project_root, root)
+	skill := skills.find(root, 'alpha') or { panic('missing alpha') }
+	victim := os.join_path(root, 'victim')
+	os.mkdir_all(victim)!
+	marker := os.join_path(victim, 'keep.txt')
+	os.write_file(marker, 'unrelated')!
+	$if !windows {
+		link := os.join_path(dir, 'alpha')
+		os.symlink(victim, link)!
+		for opts in [skills.InstallOptions{ force: true },
+			skills.InstallOptions{ force: true, dry_run: true }] {
+			assert skills.install(skill, dir, opts) == none, 'a link must not be installed over'
+			assert os.read_file(marker)! == 'unrelated', 'the victim lost a file'
+			assert os.is_link(link), 'the link itself must survive'
+			assert os.read_dir(victim)!.len == 1, 'the victim directory lost entries'
+		}
+	}
+	// An ordinary directory still installs, so the guard is not just refusing
+	// every name that exists.
+	skills.install(skill, dir, skills.InstallOptions{ force: true })!
+	assert os.is_file(os.join_path(dir, 'alpha', skills.entry_file))
+}
+
 fn test_installed_ignores_entries_without_an_entry_file() {
 	dir := scratch_dir('installed')!
 	os.mkdir_all(os.join_path(dir, 'not_a_skill'))!

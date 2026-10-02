@@ -192,18 +192,38 @@ pub fn (r CompilerRun) started() bool {
 
 // run_compiler runs the workspace compiler with `args` in the project root.
 //
+// `args` is a real argument array, and `os.exec` starts the process with it
+// rather than with a command string, so an argument carrying a space arrives as
+// one argument instead of being split by a shell. That also means callers pass
+// raw paths and raw flags: quoting here would double-quote them.
+//
 // The environment is left alone so the compiler sees the same flags, module
 // search path and environment the user's shell would give it.
 pub fn run_compiler(ws &Workspace, args []string) CompilerRun {
-	command := '${os.quoted_path(ws.compiler)} ${args.join(' ')}'
-	result := os.execute(command)
+	mut argv := [ws.compiler]
+	argv << args
+	result := os.exec(argv)
 	trimmed := result.output.trim_space()
 	return CompilerRun{
 		exit_code:    result.exit_code
 		output:       result.output
-		command:      command
+		command:      compiler_command_line(ws.compiler, args)
 		launch_error: if launch_failure(trimmed) { trimmed } else { '' }
 	}
+}
+
+// compiler_command_line renders `compiler` and `args` as a command a person can
+// read, and copy and paste into a shell.
+//
+// It is for reporting only: nothing is run through it. `os.exec` takes the
+// array directly, so a value that needed quoting here still reaches the compiler
+// as exactly one argument.
+fn compiler_command_line(compiler string, args []string) string {
+	mut parts := [os.quoted_path(compiler)]
+	for arg in args {
+		parts << os.quoted_path(arg)
+	}
+	return parts.join(' ')
 }
 
 // launch_failure returns `output` when it is one of `os.execute`'s own messages

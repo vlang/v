@@ -197,7 +197,7 @@ fn tool_rename_symbol(ws &Workspace, arguments string) string {
 		}
 		changed++
 		total += hits.len
-		w.array_raw(rename_file_json(ws, file, hits, new_name, dry_run))
+		w.array_raw(rename_file_json(ws, file, hits, old_name, new_name, dry_run))
 	}
 	w.end_array()
 	w.key('files_changed')

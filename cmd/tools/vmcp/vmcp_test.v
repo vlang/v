@@ -695,7 +695,7 @@ fn test_apply_rename_refuses_when_a_position_no_longer_fits() {
 			column: 1
 			length: 3
 		},
-	], 'x') or { return }
+	], 'module', 'x') or { return }
 	assert false, 'a position past the end of the file must fail: ${err}'
 }
 
@@ -1072,4 +1072,66 @@ fn test_oversized_ast_wire_result_is_bounded_valid_json_in_both_modes() {
 		}
 		assert received, output
 	}
+}
+
+// A flag placed after the source file is handed to the program instead of the
+// compiler, so `v_run` compiled a different program than the caller asked for.
+//
+// The reviewer's probe: `flags: ["-d", "proof=present"]` against a file printing
+// `$d('proof', 'missing')` printed `missing`, while the same flag before `run`
+// printed `present`.
+fn test_run_puts_flags_before_the_subcommand_and_target() {
+	argv := run_arguments(['-d', 'proof=present'], 'main.v', [])
+	assert argv == ['-d', 'proof=present', 'run', 'main.v'], '${argv}'
+	// No flag may sit after the target, which is where the program would take it.
+	assert argv.last() == 'main.v', 'the target must not be followed by a flag: ${argv}'
+	assert argv.index('-d') < argv.index('run'), 'a flag landed after the subcommand: ${argv}'
+
+	// Program arguments stay after the target, behind `--`.
+	with_args := run_arguments(['-stats'], 'main.v', ['one argument', 'second'])
+	assert with_args == ['-stats', 'run', 'main.v', '--', 'one argument', 'second'],
+		'${with_args}'
+	// `one argument` is one element, not three.
+	assert with_args[with_args.len - 2] == 'one argument', '${with_args}'
+	assert with_args.index('--') > with_args.index('main.v'), '${with_args}'
+
+	assert run_arguments([], 'main.v', []) == ['run', 'main.v'], 'the empty case'
+}
+
+// `run_compiler` starts the compiler with an argument array, so a client value
+// carrying a space is one argument rather than two.
+//
+// Building a command string and handing it to a shell split `["one argument",
+// "second"]` into `one`, `argument`, `second`.
+fn test_the_compiler_command_line_reports_every_argument() {
+	line := compiler_command_line('/v/v.exe', ['-d', 'proof=present', 'run', 'my prog.v',
+		'one argument'])
+	for expected in ['-d', 'proof=present', 'run', 'my prog.v', 'one argument'] {
+		assert line.contains(expected), 'the command line lost ${expected}: ${line}'
+	}
+	// The rendered line is only for reading, but it still has to quote the values
+	// that a shell would otherwise split.
+	assert line.contains('one argument'), "an argument with a space must stay quoted: ${line}"
+}
+
+// The rename must refuse a span that no longer holds the old name.
+//
+// A column that drifts off the name used to be bounds-checked and then written
+// anyway, so a method rename turned `fn (h Host) hello()` into
+// `fn (h Host) hellogreett`. The text at the span is now checked, so a wrong span
+// is a refusal instead of a corrupted file.
+fn test_apply_rename_refuses_a_span_that_does_not_hold_the_old_name() {
+	path := probe_path('drift.v')
+	os.write_file(path, 'module main\n\nfn keep() {}\n')!
+	before := os.read_file(path) or { panic('no file') }
+	err := apply_rename(path, [
+		RenameHit{
+			line:   3
+			column: 4
+			length: 5
+		},
+	], 'hello', 'greet') or { return }
+	assert false, 'a span holding the wrong text must be refused: ${err}'
+	// The file is untouched, which is the point of refusing.
+	assert os.read_file(path)! == before, 'a refused rename must not write'
 }

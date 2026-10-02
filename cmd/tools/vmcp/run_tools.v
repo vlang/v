@@ -5,7 +5,6 @@
 // running code is what can have effects the agent cannot see.
 module main
 
-import os
 import v.astjson
 
 // run_timeout_ms is the documentation of the ceiling these tools impose. Neither
@@ -45,16 +44,28 @@ fn tool_run(ws &Workspace, arguments string) string {
 	args := decode_args(arguments)
 	target := args.required_str('target') or { return error_json(err.msg()) }
 	resolved := ws.resolve(target) or { return error_json(err.msg()) }
-	mut compiler_args := ['run', os.quoted_path(resolved)]
-	for flag in args.list('flags') {
-		compiler_args << flag
-	}
-	program_args := args.list('args')
+	// Flags go before the subcommand. Anything after the source file is handed to
+	// the program as its own arguments, so `v run prog.v -d proof=present` would
+	// compile `prog.v` with no define at all and pass `-d proof=present` to the
+	// program instead, silently running different code from the one requested.
+	return run_json(ws, resolved, run_arguments(args.list('flags'), resolved,
+		args.list('args')))
+}
+
+// run_arguments builds the `v` argument list for `v_run`.
+//
+// The order is the whole point: V reads its flags before the subcommand, and
+// everything after the source file is the program's own. Splitting this out lets
+// the ordering be asserted without starting a compiler.
+fn run_arguments(flags []string, target string, program_args []string) []string {
+	mut argv := []string{}
+	argv << flags
+	argv << ['run', target]
 	if program_args.len > 0 {
-		compiler_args << '--'
-		compiler_args << program_args
+		argv << '--'
+		argv << program_args
 	}
-	return run_json(ws, resolved, compiler_args)
+	return argv
 }
 
 // spec_eval declares `v_eval`.

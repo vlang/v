@@ -78,7 +78,11 @@ fn comes_last(a RenameHit, b RenameHit) bool {
 // A hit that no longer fits its line is a hard failure rather than a silent skip:
 // the file changed between the plan and the write, and writing half of the rename
 // would leave the project in a state neither the caller nor the compiler expects.
-fn apply_rename(file string, hits []RenameHit, new_name string) !string {
+//
+// The text at the span must still be `name`. Without that check a column that
+// drifted off the name writes over whatever happens to be there, which is how a
+// method rename turned `fn (h Host) hello()` into `fn (h Host) hellogreett`.
+fn apply_rename(file string, hits []RenameHit, name string, new_name string) !string {
 	lines := os.read_file(file) or { return error('could not read the file') }.split_into_lines()
 	mut out := lines.clone()
 	for hit in hits {
@@ -90,6 +94,10 @@ fn apply_rename(file string, hits []RenameHit, new_name string) !string {
 		if start < 0 || end > out[hit.line - 1].len {
 			return error('column ${hit.column} on line ${hit.line} no longer holds the old name')
 		}
+		there := out[hit.line - 1][start..end]
+		if there != name {
+			return error('column ${hit.column} on line ${hit.line} holds `${there}`, not `${name}`')
+		}
 		out[hit.line - 1] = out[hit.line - 1][..start] + new_name + out[hit.line - 1][end..]
 	}
 	return join_lines(out)
@@ -97,12 +105,12 @@ fn apply_rename(file string, hits []RenameHit, new_name string) !string {
 
 // rename_file_json applies the rename to one file, or reports the plan when
 // `dry_run` is set.
-fn rename_file_json(ws &Workspace, file string, hits []RenameHit, new_name string,
-	dry_run bool) string {
+fn rename_file_json(ws &Workspace, file string, hits []RenameHit, name string,
+	new_name string, dry_run bool) string {
 	result := if dry_run {
 		os.read_file(file) or { return error_json(err.msg()) }
 	} else {
-		apply_rename(file, hits, new_name) or {
+		apply_rename(file, hits, name, new_name) or {
 			return error_json(err.msg())
 		}
 	}
