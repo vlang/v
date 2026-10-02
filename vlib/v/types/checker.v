@@ -6411,12 +6411,9 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			}
 		}
 		if node.kind == .sql_expr {
-			// SQL qualifiers are stored as separate tokens, e.g. `schema . Region`.
-			for table_name in sql_orm_table_names(node.value.split(' ')) {
-				if type_text_contains_qualified_import(table_name, import_node.typ)
-					|| type_text_contains_qualified_import(table_name, module_path) {
-					return true
-				}
+			if sql_text_contains_qualified_import(node.value, import_node.typ)
+				|| sql_text_contains_qualified_import(node.value, module_path) {
+				return true
 			}
 		}
 		if type_text_contains_qualified_import(node.typ, import_node.typ)
@@ -6470,6 +6467,59 @@ fn (tc &TypeChecker) diagnostic_module_display_name(module_name string) string {
 		}
 	}
 	return module_name
+}
+
+// SQL stores qualified expressions as tokens separated by spaces, including the dots.
+fn sql_text_contains_qualified_import(text string, alias string) bool {
+	mut i := 0
+	for i < text.len {
+		if text[i] in [`'`, `"`] {
+			quote := text[i]
+			i++
+			for i < text.len {
+				if text[i] == `\\` {
+					i += 2
+					continue
+				}
+				if text[i] == quote {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if !is_type_symbol_byte(text[i]) {
+			i++
+			continue
+		}
+		mut qualified := ''
+		for {
+			start := i
+			for i < text.len && is_type_symbol_byte(text[i]) {
+				i++
+			}
+			qualified += text[start..i]
+			for i < text.len && text[i].is_space() {
+				i++
+			}
+			if i >= text.len || text[i] != `.` {
+				break
+			}
+			qualified += '.'
+			i++
+			for i < text.len && text[i].is_space() {
+				i++
+			}
+			if i >= text.len || !is_type_symbol_byte(text[i]) {
+				break
+			}
+		}
+		if alias.len > 0 && qualified.starts_with('${alias}.') {
+			return true
+		}
+	}
+	return false
 }
 
 fn type_text_contains_qualified_import(text string, alias string) bool {

@@ -343,6 +343,9 @@ result := sql db {
 }!
 ```
 
+Modules referenced in SQL table names or value expressions count as used imports.
+For example, `time.now()` inside an ORM `update` statement uses `import time`.
+
 Dynamic ORM blocks can build `WHERE` and `SET` data conditionally. Commas between
 emitted dynamic `where` items are joined with `AND`; use `&&` and `||` inside an
 item for explicit boolean conditions.

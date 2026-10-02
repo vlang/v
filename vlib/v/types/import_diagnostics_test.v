@@ -329,3 +329,51 @@ fn test_nested_vlib_project_manifest_defines_module_identity() {
 	assert !tc.current_file_uses_nested_module_path()
 	assert tc.current_file_module_path_identity() or { '' } == 'mod1'
 }
+
+fn test_sql_expression_references_use_imports() {
+	path := os.join_path(os.vtmp_dir(), 'v3_sql_expression_import_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for import_path in ['time', 'time as clock', 'app.time as clock', 'strings', 'strings as clock'] {
+		qualifier := if import_path.ends_with(' as clock') {
+			'clock'
+		} else {
+			import_path
+		}
+		expression := if import_path.starts_with('strings') {
+			"${qualifier}.trim_space('  x  ')"
+		} else {
+			'${qualifier}.now().format_ss()'
+		}
+		for statement in [
+			'update Foo set updated_at = ${expression} where id == 1',
+			'select from Foo where updated_at == ${expression}',
+			'dynamic select from Foo where { updated_at == ${expression} }',
+		] {
+			os.write_file(path, 'import orm\nimport ${import_path}\nfn run(db orm.Connection) {\n sql db {\n ${statement}\n } or {}\n}\nfn main() {}\n')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_file(path)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			tc.check_unused_import_diagnostics()
+			assert tc.notices.len == 0, '${import_path}: ${statement}: ${tc.notices}'
+		}
+	}
+}
+
+fn test_sql_expression_literals_leave_imports_unused() {
+	path := os.join_path(os.vtmp_dir(), 'v3_sql_literal_import_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for expression in ["'time . now()'", "'a time . now() value'", 'other_time.now()',
+		'other.time.now()', '1 // time.now()'] {
+		os.write_file(path, 'import orm\nimport time\nfn run(db orm.Connection) {\n sql db {\n select from Foo where updated_at == ${expression}\n } or {}\n}\nfn main() {}\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_unused_import_diagnostics()
+		assert tc.notices.len == 1, tc.notices.str()
+		assert tc.notices[0].msg.contains("module 'time' is imported but never used"), tc.notices.str()
+	}
+}
