@@ -41,6 +41,9 @@ fn c_source_language_flags(flags []string) []string {
 			i += 2
 			continue
 		}
+		if clean.starts_with('-x') && clean.len > 2 {
+			language = clean[2..]
+		}
 		if language in ['', 'none'] && !clean.starts_with('-') && clean.ends_with('.c') {
 			result << ['-x', 'c', flag, '-x', 'none']
 		} else {

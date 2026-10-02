@@ -4,6 +4,25 @@ import os
 import time
 import v.cmdexec
 
+fn test_joined_explicit_cpp_language_compiles_c_named_source() {
+	compiler := os.find_abs_path_of_executable('clang') or {
+		os.find_abs_path_of_executable('gcc') or { return }
+	}
+	root := os.join_path(os.vtmp_dir(), 'v joined source language ${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	source := os.join_path(root, 'template.c')
+	os.write_file(source, 'template<typename T> T identity(T value) { return value; }\nint main() { return identity(0); }\n')!
+	for flags in [['-xc++', source], ['-x', 'c++', source]] {
+		mut args := ['-fsyntax-only']
+		args << c_source_language_flags(flags)
+		result := cmdexec.run(compiler, args)
+		assert result.exit_code == 0, result.output
+	}
+}
+
 fn test_flag_c_sources_keep_c_language_beside_cpp_sources() {
 	compiler := os.find_abs_path_of_executable('gcc') or {
 		os.find_abs_path_of_executable('clang') or { return }

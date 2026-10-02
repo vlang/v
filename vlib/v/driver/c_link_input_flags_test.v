@@ -193,10 +193,16 @@ fn test_c_source_language_flags_preserve_filename_case_and_explicit_languages() 
 	for option in c_link_operand_options() {
 		assert c_source_language_flags([option, 'operand.c']) == [option, 'operand.c']
 	}
-	for language in ['c', 'c++', 'objective-c'] {
+	for language in ['c', 'c++', 'objective-c', 'objective-c++'] {
 		explicit := ['-x', language, 'source.c', 'source.C']
 		assert c_source_language_flags(explicit) == explicit
+		joined := ['-x${language}', 'source.c', 'source.C']
+		assert c_source_language_flags(joined) == joined
 	}
+	assert c_source_language_flags(['-xc++', 'cpp.c', '-xnone', 'plain.c']) == ['-xc++', 'cpp.c',
+		'-xnone', '-x', 'c', 'plain.c', '-x', 'none']
+	assert c_source_language_flags(['-Xlinker', '-xc++', 'plain.c']) == ['-Xlinker', '-xc++', '-x',
+		'c', 'plain.c', '-x', 'none']
 	assert c_source_language_flags(['-x', 'none', 'source.c']) == ['-x', 'none', '-x', 'c', 'source.c',
 		'-x', 'none']
 	assert c_source_language('source.c', '') == 'c'
