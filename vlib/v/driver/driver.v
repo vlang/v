@@ -10167,9 +10167,7 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-ownership' || args[i] == '--ownership' {
 			// The ownership checker itself is compiled into v3 via `-d ownership`.
-			// The main V launcher pairs this flag with a target `-d ownership`, which
-			// intentionally exposes `ownership` to target `$if` blocks and selects target
-			// `_d_ownership.v` files. This flag enables the ownership analysis itself.
+			// The final mode also selects ownership-specific target branches and files.
 			ownership_mode = true
 			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
@@ -10780,6 +10778,9 @@ pub fn run(args []string) {
 	if ownership_mode && backend != 'fastc' && !ownership_checker_compiled() {
 		eprintln('ownership support is not compiled into this v3 executable')
 		exit(1)
+	}
+	if ownership_mode {
+		record_user_define(mut user_defines, mut compile_values, 'ownership')
 	}
 	if backend !in ['c', 'fastc', 'arm64', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
