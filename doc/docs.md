@@ -9826,6 +9826,9 @@ V has these types for easier interoperability with C:
 
 To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
+Passing `unsafe { nil }` to a pointer parameter passes a null pointer, including pointers to
+handles that alias `voidptr`.
+
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 
 [an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.c.v)

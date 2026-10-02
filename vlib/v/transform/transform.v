@@ -15497,6 +15497,7 @@ fn (mut t Transformer) transform_block_expr_for_type_in_own_scope(id flat.NodeId
 				})
 				new_block := t.make_block(new_children)
 				t.set_node_value(int(new_block), node.value)
+				t.a.nodes[int(new_block)].is_mut = node.is_mut
 				t.set_node_typ(int(new_block), target_type)
 				return new_block
 			}
@@ -15553,6 +15554,7 @@ fn (mut t Transformer) transform_block_expr_for_type_in_own_scope(id flat.NodeId
 	}
 	new_block := t.make_block(new_children)
 	t.set_node_value(int(new_block), node.value)
+	t.a.nodes[int(new_block)].is_mut = node.is_mut
 	block_typ := t.stmt_value_type(new_block)
 	t.set_node_typ(int(new_block), if block_typ.len > 0 { block_typ } else { node.typ })
 	return new_block
@@ -19317,6 +19319,7 @@ fn (mut t Transformer) transform_block_expr_in_own_scope(id flat.NodeId, node fl
 		t.make_block(new_children)
 	}
 	t.set_node_value(int(new_block), node.value)
+	t.a.nodes[int(new_block)].is_mut = node.is_mut
 	mut block_typ := t.checker_expr_type_name(id) or { '' }
 	if !decl_type_is_usable(block_typ) && node.children_count > 0 {
 		last_id := t.a.child(&node, node.children_count - 1)
