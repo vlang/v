@@ -5214,7 +5214,8 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 		t.wrap_sum_value(arg_id, expected_elem)
 	} else if t.resolve_interface_type_name(expected_elem).len > 0 {
 		t.transform_expr_for_type(arg_id, expected_elem)
-	} else if escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
+	} else if !variadic_elem_is_voidptr(elem_type)
+		&& escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
 		// Reference elements need the same fixed-array view and address conversions
 		// as an ordinary reference parameter before they are packed into the tail.
 		t.transform_call_arg_for_param(arg_id, expected_elem)
