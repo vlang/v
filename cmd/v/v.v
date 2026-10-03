@@ -1234,7 +1234,7 @@ fn find_make() ?string {
 // v1_fallback_make_hint says where to get make on this platform.
 fn v1_fallback_make_hint() string {
 	$if windows {
-		return 'On Windows, GNU make comes from MSYS2 as `mingw32-make`; install MSYS2 and put its usr/bin directory on PATH.'
+		return 'On Windows, install GNU make in MSYS2 (`make` or `mingw32-make`) and put its tools, including `sh`, on PATH.'
 	}
 	return 'Install make.'
 }
