@@ -133,6 +133,37 @@ fn test_comptime_if_attr_not_in_method_attrs() {
 	assert not_inline == ['item', 'helper']
 }
 
+fn test_comptime_if_method_attrs_contains() {
+	mut inline := []string{}
+	mut not_inline := []string{}
+	$for method in Routes.methods {
+		$if method.attrs.contains('inline') {
+			inline << method.name
+		}
+		$if !method.attrs.contains('inline') {
+			not_inline << method.name
+		}
+	}
+	assert inline == ['list']
+	assert not_inline == ['item', 'helper']
+}
+
+// An index past the last attribute reads as '', like a missing param name.
+fn test_comptime_if_method_attrs_index() {
+	mut first_get := []string{}
+	mut at_most_two := []string{}
+	$for method in Routes.methods {
+		$if method.attrs[0] == 'GET /users/:id' {
+			first_get << method.name
+		}
+		$if method.attrs[0] != '' && method.attrs[2] == '' {
+			at_most_two << method.name
+		}
+	}
+	assert first_get == ['item']
+	assert at_most_two == ['list', 'item']
+}
+
 // ── allocation: none per pass ───────────────────────────────────────────────
 
 fn count_for_in() int {

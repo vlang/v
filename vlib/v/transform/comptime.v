@@ -2108,6 +2108,7 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 	result = comptime_cond_replace_unquoted(result, '${var_name}.args.len', method.params.len.str())
 	result = comptime_cond_replace_unquoted(result, '${var_name}.params.len', method.params.len.str())
 	// `$if method.attrs.len > 0`, `$if 'GET /x' in method.attrs`
+	result = subst_method_attrs_access_cond(result, var_name, method)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.attrs.len', method.attrs.len.str())
 	if result.contains('${var_name}.attrs') {
 		attrs := method.attrs.map(comptime_cond_string_literal(comptime_attr_display(it)))
@@ -2153,6 +2154,95 @@ fn (t &Transformer) comptime_method_type_text(method MethodMeta) string {
 
 fn (t &Transformer) comptime_method_type_id(method MethodMeta) int {
 	return t.comptime_field_type_id(t.comptime_method_type_text(method), '')
+}
+
+// subst_method_attrs_access_cond materializes `method.attrs[i]` (the attribute, or '' past the
+// last one, like a missing param name) and `method.attrs.contains(x)` (as `x in [...]`) in
+// serialized `$if` guards; left as they are, neither could be evaluated.
+fn subst_method_attrs_access_cond(cond string, var_name string, method MethodMeta) string {
+	prefix := '${var_name}.attrs'
+	if !cond.contains(prefix) {
+		return cond
+	}
+	mut result := cond
+	mut offset := 0
+	for offset < result.len {
+		if result[offset] == `'` || result[offset] == `"` {
+			offset = comptime_cond_skip_string(result, offset)
+			continue
+		}
+		if !result[offset..].starts_with(prefix)
+			|| (offset > 0 && comptime_cond_name_char(result[offset - 1])) {
+			offset++
+			continue
+		}
+		start := offset
+		mut pos := start + prefix.len
+		if pos < result.len && result[pos] == `[` {
+			rel_end := result[pos + 1..].index_u8(`]`)
+			if rel_end < 0 {
+				break
+			}
+			index_text := result[pos + 1..pos + 1 + rel_end].trim_space()
+			end := pos + 1 + rel_end + 1
+			if !comptime_is_int(index_text) || index_text.starts_with('-') {
+				offset = end
+				continue
+			}
+			index := index_text.int()
+			mut replacement := if index < method.attrs.len {
+				comptime_cond_string_literal(comptime_attr_display(method.attrs[index]))
+			} else {
+				"''"
+			}
+			// the guard is serialized as `method.attrs[0]== 'x'`; comparisons need ` == `
+			if end < result.len && result[end] != ` ` {
+				replacement += ' '
+			}
+			result = result[..start] + replacement + result[end..]
+			offset = start + replacement.len
+			continue
+		}
+		if !result[pos..].starts_with('.contains')
+			|| (pos + 9 < result.len && comptime_cond_name_char(result[pos + 9])) {
+			offset = pos
+			continue
+		}
+		pos += '.contains'.len
+		for pos < result.len && result[pos] == ` ` {
+			pos++
+		}
+		if pos >= result.len || result[pos] != `(` {
+			offset = pos
+			continue
+		}
+		// the argument runs to the matching `)`; parens inside strings do not count
+		arg_start := pos + 1
+		mut depth := 1
+		pos = arg_start
+		for pos < result.len && depth > 0 {
+			ch := result[pos]
+			if ch == `'` || ch == `"` {
+				pos = comptime_cond_skip_string(result, pos)
+				continue
+			}
+			if ch == `(` {
+				depth++
+			} else if ch == `)` {
+				depth--
+			}
+			pos++
+		}
+		if depth != 0 {
+			break
+		}
+		arg := comptime_condition_strip_outer_parens(result[arg_start..pos - 1].trim_space())
+		attrs := method.attrs.map(comptime_cond_string_literal(comptime_attr_display(it)))
+		replacement := '(${arg} in [${attrs.join(', ')}])'
+		result = result[..start] + replacement + result[pos..]
+		offset = start + replacement.len
+	}
+	return result
 }
 
 // subst_method_param_cond materializes indexed FunctionParam members in serialized `$if` guards.
