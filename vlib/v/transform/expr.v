@@ -4375,14 +4375,9 @@ fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 				|| t.is_stable_expr_for_reuse(t.a.children[node.children_start])
 		}
 		.struct_init {
-			mut stable := true
-			for i in 0 .. node.children_count {
-				if !t.is_stable_expr_for_reuse(t.a.child(&node, i)) {
-					stable = false
-					break
-				}
-			}
-			stable
+			// Default fields can allocate maps/arrays or call functions. Reusing
+			// the literal must evaluate those defaults once and provide storage.
+			false
 		}
 		.cast_expr {
 			node.children_count == 0
