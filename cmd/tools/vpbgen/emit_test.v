@@ -1220,6 +1220,55 @@ fn test_the_reader_accepts_packed_whatever_the_schema_says() {
 	assert out.count('if wire_type == .length_delimited && false {') == 2
 }
 
+fn test_the_readme_shows_what_the_generator_emits() {
+	// The README quotes generated code. A quote that has drifted from the emitter
+	// is worse than no quote, and nothing else would catch it, so the lines the
+	// README shows are checked against the output of the very fixture it uses.
+	out := generate(fixture('kv.proto'), 'kv')!
+	readme := os.read_file(module_readme()) or { panic(err.msg()) }
+	for line in [
+		'pub struct GetRequest {',
+		'key string @[protobuf: 1]',
+		'pub fn (msg GetRequest) encode() ![]u8 {',
+		'return msg.encode_with(protobuf.EncodeOpts{})',
+		'pub fn (msg GetRequest) encode_with(opts protobuf.EncodeOpts) ![]u8 {',
+		'mut packer := protobuf.new_packer(opts)',
+		'if opts.emit_defaults || msg.key.len > 0 {',
+		'pub fn decode_get_request(data []u8) !GetRequest {',
+		'mut unpacker := protobuf.new_unpacker(data, protobuf.DecodeOpts{})',
+		'protobuf.check_wire_type(1, wire_type, protobuf.WireType.length_delimited)!',
+		'unpacker.skip_field(number, wire_type)!',
+	] {
+		assert out.contains(line), 'the generator no longer emits `${line}`'
+		assert readme.contains(line), 'the README no longer shows `${line}`'
+	}
+}
+
+fn test_the_tool_readme_shows_the_real_interface() {
+	res := generate_res(fixture('kv.proto'), 'kv')!
+	out := emit_grpc(res)
+	readme := os.read_file(tool_readme()) or { panic(err.msg()) }
+	for line in [
+		'get(req GetRequest) !GetResponse',
+		'put(req PutRequest) !PutResponse',
+		'scan(req GetRequest) ![]GetResponse',
+		'put_many(reqs []PutRequest) !PutManyResponse',
+	] {
+		assert out.contains(line), 'the generator no longer emits `${line}`'
+		assert readme.contains(line), 'the tool README no longer shows `${line}`'
+	}
+}
+
+// module_readme is encoding.protobuf's README.
+fn module_readme() string {
+	return os.join_path(os.dir(vexe), 'vlib', 'encoding', 'protobuf', 'README.md')
+}
+
+// tool_readme is this tool's README.
+fn tool_readme() string {
+	return os.join_path(os.dir(vexe), 'cmd', 'tools', 'vpbgen', 'README.md')
+}
+
 fn test_is_well_known() {
 	assert is_well_known('google/protobuf/timestamp.proto')
 	assert !is_well_known('kv.proto')
