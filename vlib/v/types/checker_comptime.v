@@ -300,23 +300,21 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				tc.record_error_at(.call_arg_mismatch, 'to auto-expand `[]string` arguments in comptime method calls, use `...${tc.source_text_for_node(arg_id)}`', arg_id, tc.a.node(arg_id).pos)
 				return
 			}
-			if arg_index < method.param_is_mut.len && method.param_is_mut[arg_index]
-				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len
-				&& method.param_types[arg_index].starts_with('&') {
-				expected_name := '&${method.param_types[arg_index]}'
-				arg := tc.a.node(arg_id)
-				actual_name := if arg.kind == .ident
-					&& arg.value in tc.fn_context.mut_param_base_types
-					&& !tc.current_fn_param_is_explicit_mut_pointer(arg.value) {
-					base_type := tc.fn_context.mut_param_base_types[arg.value] or { actual }
-					'&${base_type.name()}'
-				} else if arg.kind == .ident {
-					(tc.cur_scope.lookup(arg.value) or { actual }).name()
-				} else {
-					actual.name()
+			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
+				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len {
+				expected := tc.comptime_static_method_param_type(receiver_name, method,
+					arg_index)
+				if tc.mut_pointer_slot_arg_rejected(arg_id, expected) {
+					param_name := if arg_index < method.param_names.len {
+						method.param_names[arg_index]
+					} else {
+						''
+					}
+					msg := tc.mut_pointer_slot_arg_error_msg('method', '${receiver_name}.${method.name}',
+						param_name, arg_index + 1, expected, arg_id)
+					tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.a.node(arg_id).pos)
+					return
 				}
-				tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_name}` as `${expected_name}` in argument ${arg_index + 1} to `${receiver_name}.${method.name}`', arg_id, tc.a.node(arg_id).pos)
-				return
 			}
 		}
 		if method.return_type.len > 0 && method.return_type != 'void' {
@@ -331,6 +329,17 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 	if return_type != '' {
 		tc.remember_expr_type(id, tc.parse_type(return_type))
 	}
+}
+
+// comptime_static_method_param_type returns the checked type of a parameter of a
+// method iterated by `$for method in T.methods`.
+fn (tc &TypeChecker) comptime_static_method_param_type(receiver_name string, method ComptimeStaticValueCase, arg_index int) Type {
+	// The checked signature also lists the receiver, as its first parameter.
+	params := tc.fn_param_types['${receiver_name}.${method.name}'] or { []Type{} }
+	if params.len == method.param_types.len + 1 {
+		return params[arg_index + 1]
+	}
+	return tc.parse_type(method.param_types[arg_index])
 }
 
 fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.NodeId, node flat.Node, info CallInfo, var_name string, loop_kind string) {
