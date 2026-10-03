@@ -18,23 +18,23 @@ import os
 import v.skills
 
 const usage = 'Usage: v skills list [--global]\n' +
-   	'       v skills add <name> [--global] [--force] [--dry-run]\n' +
-   	'       v skills remove <name> [--global] [--dry-run]\n' +
-   	'       v skills update [<name>...] [--global] [--force] [--dry-run]\n' +
-   	'       v skills path <name> [--global]\n' +
-   	'\n' +
-   	'Options:\n' +
-   	'  --global      use ~/.agents/skills instead of the project directory\n' +
-   	'  --force       overwrite an already installed skill of the same name\n' +
-   	'  --dry-run     report what would happen without writing anything\n' +
-   	'  -h, --help    show this help and exit\n' +
-   	'\n' +
-   	'Skills are installed into .agents/skills/<name>/, which the coding agents\n' +
-   	'read from a project, or ~/.agents/skills/<name>/ with --global.\n' +
-   	'\n' +
-   	'`update` refreshes the skills whose bundled copy has changed since they\n' +
-   	'were installed. It does not touch a skill whose files were edited here:\n' +
-   	'those are reported and need --force.\n'
+	'       v skills add <name> [--global] [--force] [--dry-run]\n' +
+	'       v skills remove <name> [--global] [--dry-run]\n' +
+	'       v skills update [<name>...] [--global] [--force] [--dry-run]\n' +
+	'       v skills path <name> [--global]\n' +
+	'\n' +
+	'Options:\n' +
+	'  --global      use ~/.agents/skills instead of the project directory\n' +
+	'  --force       overwrite an already installed skill of the same name\n' +
+	'  --dry-run     report what would happen without writing anything\n' +
+	'  -h, --help    show this help and exit\n' +
+	'\n' +
+	'Skills are installed into .agents/skills/<name>/, which the coding agents\n' +
+	'read from a project, or ~/.agents/skills/<name>/ with --global.\n' +
+	'\n' +
+	'`update` refreshes the skills whose bundled copy has changed since they\n' +
+	'were installed. It does not touch a skill whose files were edited here:\n' +
+	'those are reported and need --force.\n'
 
 // Output is what one run reported.
 //
@@ -403,7 +403,7 @@ fn update(vroot string, opts Options) Output {
 		reason := if held.state == .modified {
 			'was edited since it was installed'
 		} else {
-			'has no record of what was installed'
+			'has no record of what was installed, or its current files cannot be verified'
 		}
 		out.errors << 'v skills: `${held.name}` ${reason}, so it was not updated; ' +
 			'pass --force to overwrite it with the bundled copy'

@@ -475,10 +475,10 @@ fn test_content_digest_covers_the_names_and_not_their_order() {
 	vroot := fixture_root(['alpha'])!
 	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
 	files := skills.list_files(skill.directory)
-	direct := skills.content_digest(skill.directory, files)
-	assert skills.content_digest(skill.directory, files.clone().reverse()) == direct
+	direct := skills.content_digest(skill.directory, files)!
+	assert skills.content_digest(skill.directory, files.clone().reverse())! == direct
 	// A different file under the same bytes is a different installation.
-	assert skills.content_digest(skill.directory, files[1..]) != direct
+	assert skills.content_digest(skill.directory, files[1..])! != direct
 	// Content is part of it too, and where the file sits is not: the same name
 	// with the same bytes digests the same in any directory.
 	first := os.join_path(os.join_path(test_root, 'digest'), 'first')
@@ -487,15 +487,16 @@ fn test_content_digest_covers_the_names_and_not_their_order() {
 	os.mkdir_all(second)!
 	os.write_file(os.join_path_single(first, 'one.md'), 'body\n')!
 	os.write_file(os.join_path_single(second, 'one.md'), 'body\n')!
-	assert skills.content_digest(first, ['one.md']) ==
-		skills.content_digest(second, ['one.md'])
+	assert skills.content_digest(first, ['one.md'])! ==
+		skills.content_digest(second, ['one.md'])!
 	os.write_file(os.join_path_single(second, 'one.md'), 'other body\n')!
-	assert skills.content_digest(first, ['one.md']) !=
-		skills.content_digest(second, ['one.md'])
+	assert skills.content_digest(first, ['one.md'])! !=
+		skills.content_digest(second, ['one.md'])!
 	// A rename under the same bytes is a different installation, which is what
 	// makes a renamed file read as a local change rather than as untouched.
-	assert skills.content_digest(first, ['one.md']) !=
-		skills.content_digest(second, ['renamed.md'])
+	os.mv(os.join_path_single(second, 'one.md'), os.join_path_single(second, 'renamed.md'))!
+	assert skills.content_digest(first, ['one.md'])! !=
+		skills.content_digest(second, ['renamed.md'])!
 }
 
 fn test_target_dir_selects_the_project_or_the_home_directory() {
@@ -755,3 +756,80 @@ fn split_front_matter(content string) ([]string, string) {
 
 // max_line_length is the limit `v check-md` puts on an ordinary markdown line.
 const max_line_length = 100
+
+fn test_install_refuses_symlink_provenance_before_changing_content() {
+	$if windows {
+		return
+	}
+	vroot := fixture_root(['alpha'])!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	dir := scratch_dir('origin_link')!
+	outside := os.join_path(test_root, 'outside.txt')
+	os.write_file(outside, 'keep outside content')!
+	origin := os.join_path(dir, skills.origin_file)
+	os.symlink(outside, origin)!
+	skills.install(skill, dir, skills.InstallOptions{}) or {
+		assert err.msg().contains('symlink provenance')
+		assert os.read_file(outside)! == 'keep outside content'
+		assert !os.exists(os.join_path(dir, 'alpha'))
+		return
+	}
+	assert false, 'installation followed the provenance link'
+}
+
+fn test_forget_origin_refuses_a_symlink_provenance_rewrite() {
+	$if windows {
+		return
+	}
+	vroot := fixture_root(['alpha', 'beta'])!
+	dir := scratch_dir('forget_origin_link')!
+	for name in ['alpha', 'beta'] {
+		skill := skills.find(vroot, name) or { panic('missing bundle') }
+		skills.install(skill, dir, skills.InstallOptions{})!
+	}
+	origin := os.join_path(dir, skills.origin_file)
+	content := os.read_file(origin)!
+	outside := os.join_path(test_root, 'outside-origin.json')
+	os.write_file(outside, content)!
+	os.rm(origin)!
+	os.symlink(outside, origin)!
+	skills.forget_origin(dir, 'alpha')
+	assert os.read_file(outside)! == content
+	assert os.is_link(origin)
+}
+
+fn test_install_refuses_nonregular_provenance_before_changing_content() {
+	vroot := fixture_root(['alpha'])!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	dir := scratch_dir('origin_directory')!
+	os.mkdir(os.join_path(dir, skills.origin_file))!
+	skills.install(skill, dir, skills.InstallOptions{}) or {
+		assert err.msg().contains('not a regular file')
+		assert !os.exists(os.join_path(dir, 'alpha'))
+		return
+	}
+	assert false, 'installation accepted a directory as its provenance file'
+}
+
+fn test_unreadable_local_edit_cannot_be_classified_as_stale() {
+	$if windows {
+		return
+	}
+	$if !windows {
+		if os.getuid() == 0 { return }
+	}
+	vroot := fixture_root(['alpha'])!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	supplementary := os.join_path(skill.directory, 'references', 'notes.md')
+	os.write_file(supplementary, '')!
+	dir := scratch_dir('unreadable_edit')!
+	skills.install(skill, dir, skills.InstallOptions{})!
+	installed := os.join_path(dir, 'alpha', 'references', 'notes.md')
+	os.write_file(installed, 'local work')!
+	os.chmod(installed, 0o000)!
+	defer { os.chmod(installed, 0o600) or {} }
+	os.write_file(supplementary, 'new bundle')!
+	assert skills.origin_state(vroot, dir, 'alpha') == .unknown
+	skills.content_digest(os.join_path(dir, 'alpha'), skill.files) or { return }
+	assert false, 'unreadable file was hashed as empty'
+}

@@ -15,7 +15,7 @@ Usage:
   v skills add v-mcp         Install one skill into this project.
   v skills add v-mcp --global  Install it for every project of this user.
   v skills remove v-mcp      Remove it from this project.
-  v skills update            Refresh the installed skills that fell behind.
+  v skills update            Refresh unchanged installations from newer bundles.
   v skills path v-mcp        Print where a skill is installed.
 
 Options:
@@ -43,3 +43,7 @@ the chosen scope.
 letting the catalog skip it silently.
 
 See also `v mcp`, which serves the compiler to an agent as tools.
+
+`update` leaves locally modified or unrecorded installations unchanged unless
+`--force` is passed. Unreadable files cannot prove an installation is unchanged
+and are held back too. Provenance must be a regular file; symlinks are refused.

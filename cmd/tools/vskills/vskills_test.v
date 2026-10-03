@@ -454,3 +454,26 @@ fn test_list_does_not_complain_about_the_shipped_bundles() {
 	out := run(@VEXEROOT, 'list')
 	assert out.errors.len == 0, out.errors.join('\n')
 }
+
+fn test_update_holds_back_an_unreadable_local_edit() {
+	$if windows {
+		return
+	}
+	$if !windows {
+		if os.getuid() == 0 { return }
+	}
+	root := project()
+	source := os.join_path(skills.bundled_root(root), 'alpha', 'references', 'note.md')
+	os.write_file(source, '')!
+	assert run(root, 'add', 'alpha').code == 0
+	installed := os.join_path(skills.target_dir(.project_root, root), 'alpha', 'references', 'note.md')
+	os.write_file(installed, 'local work')!
+	os.chmod(installed, 0o000)!
+	defer { os.chmod(installed, 0o600) or {} }
+	rebundle(root, 'alpha')
+	out := run(root, 'update')
+	assert out.code != 0, out.text()
+	assert out.errors.join('\n').contains('not updated'), out.text()
+	os.chmod(installed, 0o600)!
+	assert os.read_file(installed)! == 'local work'
+}
