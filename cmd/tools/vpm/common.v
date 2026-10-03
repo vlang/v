@@ -421,7 +421,14 @@ fn is_manifestless_registered_checkout(module_path string, module_name string, v
 	return normalize_mod_path(remote_owner) == normalize_mod_path(parts[0])
 }
 
-fn get_path_of_existing_module(mod_name string) ?string {
+// candidate_module_path derives where a module lives, without reporting anything.
+// It returns the de-URL'd name alongside the path, because the name is what a user
+// recognises and callers report it when the module turns out not to be there.
+//
+// Callers that treat a missing module as information rather than a failure (a
+// graph walk asks about every dependency of every module it visits) use this
+// directly instead of get_path_of_existing_module.
+fn candidate_module_path(mod_name string) (string, string, bool) {
 	// When given a URL, also try the publisher/name layout used by
 	// registered-name installations (e.g. `<vmodules>/spytheman/vtray` for
 	// `https://github.com/spytheman/vtray`), in addition to the bare name.
@@ -430,15 +437,22 @@ fn get_path_of_existing_module(mod_name string) ?string {
 	if is_url {
 		publisher, name := get_ident_from_url(mod_name) or { '', '' }
 		if publisher != '' && name != '' {
-			if path := get_path_of_existing_url_module(settings.vmodules_path, publisher, name) {
-				verbose_println_more(@FILE_LINE, @FN, 'mod_name: ${mod_name}, found path: ${path}')
-				return path
+			if path := get_path_of_existing_url_module(settings.vmodules_path, publisher,
+				name) {
+				return mod_name, path, true
 			}
 		}
 	}
 	name := get_name_from_url(mod_name) or { mod_name }
 	rel_path := normalize_mod_path(name.replace('.', os.path_separator))
-	path := os.real_path(os.join_path(settings.vmodules_path, rel_path))
+	return name, os.real_path(os.join_path(settings.vmodules_path, rel_path)), true
+}
+
+fn get_path_of_existing_module(mod_name string) ?string {
+	name, path, ok := candidate_module_path(mod_name)
+	if !ok {
+		return none
+	}
 	if !os.exists(path) {
 		vpm_error('failed to find `${name}` at `${path}`.')
 		return none
