@@ -1,0 +1,37 @@
+Run a V file as a script, without giving up the language.
+
+A file ending in `.vsh` is parsed in script mode. It is still V, compiled the
+same way, and it can use every module V has; two rules are what make it read
+like a shell script.
+
+Usage:
+  v script.vsh                run the script
+  v build script.vsh          compile it to an executable, without running it
+  v -skip-running script.vsh  the same thing
+
+  `import os` is added for you when the script does not import `os` itself, so
+  the usual `os.` prefix is optional:
+
+    println('hello')
+    content := read_file('data.txt') or { panic(err) }
+
+  That lookup reaches the public functions of `os` only, and a local or
+  parameter of the same name shadows it. Neither rule applies to a `.v` file.
+
+  A script follows the normal executable-cache contract: it is rebuilt only
+  when its source changed, and the binary is kept between runs.
+
+  A script with no extension runs too, when it starts with a shebang:
+
+    #!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp
+
+  `tmp` is the prefix of the built executable, kept as `tmp.<filename>`
+  beside the script, and that name is overwritten if it already exists. Add
+  `run` after the prefix to rebuild every time instead of caching. For systems
+  whose `/usr/bin/env` has no `-S` option, use cmd/tools/vrun.
+
+  See also `v help build`, and `v help ast` for the AST of a script.
+
+Options:
+  -h, --help    Display this help and exit
+  --version     Output version information and exit
