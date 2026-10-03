@@ -446,6 +446,44 @@ fn test_comptime_condition_ignores_brackets_and_operators_in_string_literals() {
 	}
 }
 
+fn test_comptime_condition_string_literal_members() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	members := {
+		"'name'.len":                    '4'
+		"'name'.starts_with ( 'na' )":   'true'
+		"('name'.ends_with ( 'x' ))":    'false'
+		"'a)b'.contains ( ')' )":        'true'
+		'"it\'s".contains ( "\'" )':     'true'
+		"'name'.contains ( 'a' + 'b' )": ''
+		"'name'.to_upper ( )":           ''
+		"'name'.to_upper ( ).len":       ''
+		"'name'.starts_with ( prefix )": ''
+		"name.starts_with ( 'na' )":     ''
+	}
+	for expr, want in members {
+		got := comptime_cond_string_member(expr) or { '' }
+		assert got == want, expr
+	}
+	conds := {
+		"!'name'.starts_with ( 'x' ) && 'name'.len == 4": true
+		"'name'.len > 4 || 'name'.ends_with ( 'me' )":    true
+		"'name'.len in [3, 5]":                           false
+	}
+	for cond, want in conds {
+		got := t.eval_field_cond(cond) or {
+			assert false, 'condition `${cond}` should be decidable'
+			return
+		}
+		assert got == want, cond
+	}
+	if _ := t.eval_field_cond("'name'.to_upper ( ).len > 3") {
+		assert false, 'a call on a call result should stay undecided'
+	}
+}
+
 fn test_mangled_generic_struct_field_metadata_resolves_declaration() {
 	mut a := flat.FlatAst.new()
 	a.add_val(.module_decl, 'sample')

@@ -5201,7 +5201,8 @@ fn (t &Transformer) comptime_if_source_cond(pos token.Pos) ?(string, token.Pos) 
 }
 
 // eval_field_cond evaluates a fully-substituted comptime condition (`is`/`!is`, `in`/`!in`,
-// `==`/`!=`, `&&`/`||`/`!`, bare bool). Returns none when it cannot be decided statically.
+// `==`/`!=`, integer ordering, `&&`/`||`/`!`, bare bool, and the string literal members of
+// comptime_cond_string_member). Returns none when it cannot be decided statically.
 fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 	clean := comptime_condition_strip_outer_parens(cond.trim_space())
 	if clean == 'true' {
@@ -5240,8 +5241,8 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 		if op_idx := comptime_top_index(clean, op) {
 			// String operands may be quoted on one side (`'txt'` from a substituted `field.name`)
 			// and bare on the other (`txt` as captured in the condition); compare unquoted.
-			left := comptime_unquote(clean[..op_idx].trim_space())
-			right := comptime_unquote(clean[op_idx + op.len..].trim_space())
+			left := comptime_cond_operand(clean[..op_idx])
+			right := comptime_cond_operand(clean[op_idx + op.len..])
 			eq := left == right
 			return if op == ' == ' { eq } else { !eq }
 		}
@@ -5256,7 +5257,7 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 				&& clean[after] != `(` {
 				continue
 			}
-			needle := comptime_unquote(clean[..op_idx].trim_space())
+			needle := comptime_cond_operand(clean[..op_idx])
 			list := clean[after..].trim_space()
 			mut found := false
 			if needle.ends_with('.typ') || needle.ends_with('.unaliased_typ') {
@@ -5278,8 +5279,8 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 	// Integer ordering (e.g. `field.indirections < 2`); longer operators first.
 	for op in [' <= ', ' >= ', ' < ', ' > '] {
 		if op_idx := comptime_top_index(clean, op) {
-			left := clean[..op_idx].trim_space()
-			right := clean[op_idx + op.len..].trim_space()
+			left := comptime_cond_operand(clean[..op_idx])
+			right := comptime_cond_operand(clean[op_idx + op.len..])
 			if !comptime_is_int(left) || !comptime_is_int(right) {
 				return none
 			}
@@ -5293,11 +5294,65 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 			}
 		}
 	}
+	if value := comptime_cond_string_member(clean) {
+		return match value {
+			'true' { true }
+			'false' { false }
+			else { none }
+		}
+	}
 	if clean.starts_with('!') {
 		inner := t.eval_field_cond(clean[1..]) or { return none }
 		return !inner
 	}
 	return none
+}
+
+// comptime_cond_operand returns a comparison operand as the text to compare: a string
+// literal without its quotes, the value of a string literal member (see
+// comptime_cond_string_member), or the operand itself.
+fn comptime_cond_operand(operand string) string {
+	clean := operand.trim_space()
+	if value := comptime_cond_string_member(clean) {
+		return value
+	}
+	return comptime_unquote(clean)
+}
+
+// comptime_cond_string_member evaluates `.len` of a string literal, or a `starts_with`,
+// `ends_with` or `contains` call on one with a string literal argument, which is what
+// `field.name.starts_with('id')` becomes after the substitution:
+// `'name'.starts_with ( 'id' )`. The result is condition text: a number, `true` or `false`.
+fn comptime_cond_string_member(expr string) ?string {
+	clean := comptime_condition_strip_outer_parens(expr.trim_space())
+	if clean.len < 2 || clean[0] !in [`'`, `"`] {
+		return none
+	}
+	receiver_end := comptime_cond_skip_string(clean, 0)
+	if receiver_end >= clean.len || clean[receiver_end] != `.` {
+		return none
+	}
+	receiver := comptime_unquote(clean[..receiver_end])
+	member := clean[receiver_end + 1..].trim_space()
+	if member == 'len' {
+		return receiver.len.str()
+	}
+	paren := member.index_u8(`(`)
+	if paren < 0 || comptime_condition_matching_paren(member, paren) != member.len - 1 {
+		return none
+	}
+	arg := member[paren + 1..member.len - 1].trim_space()
+	if arg.len < 2 || arg[0] !in [`'`, `"`] || comptime_cond_skip_string(arg, 0) != arg.len {
+		return none
+	}
+	value := comptime_unquote(arg)
+	result := match member[..paren].trim_space() {
+		'starts_with' { receiver.starts_with(value) }
+		'ends_with' { receiver.ends_with(value) }
+		'contains' { receiver.contains(value) }
+		else { return none }
+	}
+	return result.str()
 }
 
 fn comptime_list_contains(list_text string, needle string) bool {
