@@ -2732,6 +2732,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 	// `$if`/`$else $if` referencing the loop variable (`value.name`, `value.value`): evaluate now
 	// and keep the taken branch, mirroring the field-loop path so the guard is not left as an
 	// unsupported `comptime_if` for the C backend.
+	mut value := node.value
 	if node.kind == .comptime_if && comptime_cond_references_ident(node.value, var_name) {
 		cond := t.subst_value_cond(node.value, var_name, item.name, item.value)
 		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
@@ -2746,6 +2747,8 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 			}
 			t.reject_unevaluated_comptime_if(id, node, cond)
 		}
+		// A nested `$for` decides the rest, with this loop's variable already substituted.
+		value = cond
 	}
 	child_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
@@ -2763,7 +2766,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 		kind:           node.kind
 		op:             node.op
 		pos:            node.pos
-		value:          node.value
+		value:          value
 		typ:            node.typ
 		is_mut:         node.is_mut
 		flags:          node.flags & flat.node_flag_freed_assignment
@@ -3201,6 +3204,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			return t.make_int_literal(item.typ_id)
 		}
 	}
+	mut comptime_cond := ''
 	if node.kind == .comptime_if && (comptime_cond_references_ident(node.value, var_name)
 		|| (smartcast_name != '' && comptime_cond_references_ident(node.value, smartcast_name))) {
 		mut cond := t.subst_variant_cond(node.value, var_name, item)
@@ -3219,6 +3223,8 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			}
 			t.reject_unevaluated_comptime_if(id, node, cond)
 		}
+		// A nested `$for` decides the rest, with this loop's variable already substituted.
+		comptime_cond = cond
 	}
 	mut branch_smartcast := ''
 	if node.kind == .if_expr && node.children_count >= 2 {
@@ -3311,6 +3317,8 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			item.typ
 		} else if node.kind == .call && retargeted_call_type.len > 0 {
 			''
+		} else if comptime_cond.len > 0 {
+			comptime_cond
 		} else {
 			node.value
 		}
@@ -4849,8 +4857,8 @@ fn (mut t Transformer) make_string_array_literal(values []string) flat.NodeId {
 // string for a `$for value in Enum.values` iteration, so `eval_field_cond` can fold it.
 fn (t &Transformer) subst_value_cond(cond string, var_name string, name string, value i64) string {
 	mut c := cond
-	c = c.replace('${var_name}.value', value.str())
-	c = c.replace('${var_name}.name', "'${name}'")
+	c = comptime_cond_replace_unquoted(c, '${var_name}.value', value.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.name', "'${name}'")
 	return c
 }
 
