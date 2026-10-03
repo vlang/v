@@ -7411,6 +7411,10 @@ fn (tc &TypeChecker) should_diagnose_with_dependencies(id flat.NodeId, include_d
 	if tc.valid_diagnostic_fast {
 		return false
 	}
+	// Deferred diagnostic passes may visit metadata retained for another target.
+	if tc.cross_target_prefs != unsafe { nil } && tc.node_in_inactive_cross_comptime_branch(id) {
+		return false
+	}
 	if int(id) < 0 || int(id) < tc.a.user_code_start {
 		return false
 	}

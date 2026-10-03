@@ -6744,9 +6744,8 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 		}
 	}
 	take_then := tc.comptime_type_condition_value(node.value) or {
-		// Portable output (`-os cross`) keeps every branch of a target-dependent
-		// `$if` for the C preprocessor to choose between, so all of them have to be
-		// checked here: no later stage selects one.
+		// Keep the existing all-branches check when a preserved platform
+		// condition cannot be resolved (for example, without target preferences).
 		if comptime_cond_has_target_flag(node.value) {
 			tc.comptime_static_depth++
 			for i in 0 .. node.children_count {
@@ -6757,6 +6756,13 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 		return
 	}
 	branch_index := if take_then { 0 } else { 1 }
+	if tc.cross_target_prefs != unsafe { nil } && comptime_cond_has_target_flag(node.value) {
+		for i in 0 .. node.children_count {
+			if i != branch_index {
+				tc.resolve_cross_comptime_branch(tc.a.child(&node, i))
+			}
+		}
+	}
 	if branch_index >= node.children_count {
 		return
 	}
@@ -6767,6 +6773,60 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 	tc.check_branch_node(tc.a.child(&node, branch_index), !tc.is_statement_node(id)
 		&& tc.expression_node_used_as_value(id))
 	tc.comptime_static_depth--
+}
+
+// resolve_cross_comptime_branch retains the types and method-value dependencies
+// needed to emit a preserved branch, without validating it against this target.
+fn (mut tc TypeChecker) resolve_cross_comptime_branch(id flat.NodeId) {
+	saved_context := clone_function_check_context(tc.fn_context)
+	saved_smartcasts := clone_smartcasts(tc.smartcasts)
+	saved_diagnostic_fast := tc.valid_diagnostic_fast
+	saved_resolution_fast := tc.valid_resolution_fast
+	saved_suppress_dump := tc.suppress_dump_output
+	error_count := tc.errors.len
+	notice_count := tc.notices.len
+	pending_count := tc.pending_ierror_errors.len
+	tc.valid_diagnostic_fast = true
+	tc.valid_resolution_fast = true
+	tc.suppress_dump_output = true
+	tc.comptime_static_depth++
+	$if ownership ? {
+		tc.ownership_begin_suppressed_checks()
+	}
+	tc.check_branch_node(id, false)
+	$if ownership ? {
+		tc.ownership_end_suppressed_checks()
+	}
+	tc.comptime_static_depth--
+	tc.fn_context = saved_context
+	tc.smartcasts = saved_smartcasts
+	tc.valid_diagnostic_fast = saved_diagnostic_fast
+	tc.valid_resolution_fast = saved_resolution_fast
+	tc.suppress_dump_output = saved_suppress_dump
+	// Some declaration and compile-time errors bypass should_diagnose.
+	tc.errors.trim(error_count)
+	tc.notices.trim(notice_count)
+	tc.pending_ierror_errors.trim(pending_count)
+}
+
+fn (tc &TypeChecker) node_in_inactive_cross_comptime_branch(id flat.NodeId) bool {
+	mut child_id := id
+	mut parent_id := tc.direct_parent_id(child_id)
+	for tc.valid_node_id(parent_id) && parent_id != child_id {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .comptime_if && comptime_cond_has_target_flag(parent.value) {
+			if take_then := tc.comptime_type_condition_value(parent.value) {
+				branch_index := if take_then { 0 } else { 1 }
+				if branch_index >= parent.children_count
+					|| tc.a.child(parent, branch_index) != child_id {
+					return true
+				}
+			}
+		}
+		child_id = parent_id
+		parent_id = tc.direct_parent_id(child_id)
+	}
+	return false
 }
 
 // comptime_cond_has_target_flag reports whether a condition names a flag decided
@@ -7320,6 +7380,12 @@ fn (tc &TypeChecker) comptime_type_condition_value(cond string) ?bool {
 	}
 	if clean == 'false' {
 		return false
+	}
+	// Portable C retains platform branches, but the parser loads declarations
+	// for one target. Validate that target's branch without discarding the
+	// other branches from the AST that the C preprocessor will select later.
+	if tc.cross_target_prefs != unsafe { nil } && pref.comptime_flag_is_target_dependent(clean) {
+		return pref.comptime_flag_value(tc.cross_target_prefs, clean)
 	}
 	or_idx := comptime_condition_top_level_index(clean, '||')
 	if or_idx >= 0 {
