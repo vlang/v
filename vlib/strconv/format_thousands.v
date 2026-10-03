@@ -16,6 +16,15 @@ pub:
 
 pub type SeparatorOptions = string | Separator
 
+// Numeric is the constraint on `format_thousands`'s type parameter: every
+// built-in integer type (`i8` through `u64`, plus `isize`/`usize`) and both
+// float types (`f32`, `f64`). It isn't `pub`: callers never need to name it
+// themselves, since every built-in numeric type already satisfies it. If a
+// future function here needs the same constraint, reuse this type instead
+// of re-listing the variants, so the accepted set only has to change in one
+// place.
+type Numeric = int | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64 | isize | usize | f32 | f64
+
 // is_all_digits reports whether every byte in `s` is an ASCII digit (`0`-`9`).
 // An empty string reports `true` (vacuously), matching how `insert_thousands_sep`
 // already treats `''` as nothing to group.
@@ -135,11 +144,13 @@ fn expand_exponent(s string) string {
 // digits before the input decimal point and does not parse or round the value.
 //
 // Example:
-// assert strconv.add_thousands_sep('1234567', Separator{}) == '1 234 567'
-// assert strconv.add_thousands_sep('-1234567.89', Separator{
-// 	integer: ',',
-// 	decimal: ',',
+// ```v
+// assert strconv.add_thousands_sep('1234567', strconv.Separator{}) == '1 234 567'
+// assert strconv.add_thousands_sep('-1234567.89', strconv.Separator{
+// 	integer: ','
+// 	decimal: ','
 // }) == '-1,234,567,89'
+// ```
 pub fn add_thousands_sep(s string, sep SeparatorOptions) string {
 	if s == '' {
 		return s
@@ -195,21 +206,20 @@ pub fn add_thousands_sep(s string, sep SeparatorOptions) string {
 // format_thousands returns the base-10 representation of `number`, inserting
 // a thousands separator every three digits. With a `Separator`, its `integer`
 // and `decimal` fields configure the output; a string uses that string for
-// grouping and `.` as the decimal separator. It accepts all built-in signed
-// and unsigned integer types, `isize`, `usize`, `f32`, and `f64`.
+// grouping and `.` as the decimal separator. `T` must satisfy `Numeric`
+// (every built-in integer type plus `f32`/`f64`); the compiler rejects any
+// other type at the call site.
 //
 // Example:
-// assert strconv.format_thousands(1234567, Separator{}) == '1 234 567'
-// assert strconv.format_thousands(-1234567, Separator{integer: ','}) == '-1,234,567'
-// assert strconv.format_thousands(1234567.89, Separator{
-// 	integer: '.',
-// 	decimal: ',',
+// ```v
+// assert strconv.format_thousands(1234567, strconv.Separator{}) == '1 234 567'
+// assert strconv.format_thousands(-1234567, strconv.Separator{ integer: ',' }) == '-1,234,567'
+// assert strconv.format_thousands(1234567.89, strconv.Separator{
+// 	integer: '.'
+// 	decimal: ','
 // }) == '1.234.567,89'
-pub fn format_thousands[T](number T, sep SeparatorOptions) string {
-	$if T !in [int, i8, i16, i32, i64, u8, u16, u32, u64, isize, usize, f32, f64] {
-		$compile_error('format_thousands() expects a numeric type')
-	}
-
+// ```
+pub fn format_thousands[T Numeric](number T, sep SeparatorOptions) string {
 	separator := match sep {
 		string {
 			Separator{
