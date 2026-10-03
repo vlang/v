@@ -14643,11 +14643,12 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				&& !g.local_storage_is_pointer(arg_node.value) && !arg_is_pointer_param
 				&& !arg_is_pointer_global
 				&& !g.arg_is_pointer_const_for(arg_node, arg_type, param_types[arg_idx])
-			// A mutable block can already yield the pointer a `mut T` parameter needs.
-			pointer_block_passes_direct := arg_node.kind == .block
+			// A mutable block or reference field can already yield the pointer a `mut T`
+			// parameter needs, e.g. `mut app.sessions` for a `&Sessions` field.
+			pointer_arg_passes_direct := arg_node.kind in [.block, .selector, .index, .paren]
 				&& c_type_is_pointer_like(arg_type)
 				&& g.tc.c_type(arg_type) == g.tc.c_type(param_types[arg_idx])
-			explicit_mut_value := arg_node.is_mut && !pointer_block_passes_direct
+			explicit_mut_value := arg_node.is_mut && !pointer_arg_passes_direct
 				&& !(arg_node.kind == .ident
 					&& (g.local_storage_is_pointer(arg_node.value)
 						|| arg_is_pointer_param || arg_is_pointer_global))

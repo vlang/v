@@ -8,10 +8,10 @@ const test_module_path = os.join_path(os.vtmp_dir(), 'test_vdbg_input')
 const bar = term.yellow('-'.repeat(107))
 const be_verbose = os.getenv('GITHUB_JOB') != '' || os.getenv('VERBOSE') != ''
 
-const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+const expect_exe = os.find_abs_path_of_executable('expect') or {
 	eprintln('skipping test, since expect is missing')
 	exit(0)
-})
+}
 
 fn testsuite_begin() {
 	os.chdir(@VEXEROOT) or {}
@@ -56,7 +56,7 @@ fn test_debugger() {
 		}
 
 		verbose_options := if be_verbose { '-d' } else { '' }
-		expect_cmd := '${expect_exe} ${verbose_options} -c "cd ${expect_tests_path}" ${os.quoted_path(efile)} ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}'
+		expect_cmd := '${os.quoted_path(expect_exe)} ${verbose_options} -c "cd ${expect_tests_path}" ${os.quoted_path(efile)} ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}'
 		if be_verbose {
 			gprintln(term.cyan(expect_cmd))
 		}

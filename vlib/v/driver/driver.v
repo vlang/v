@@ -8321,7 +8321,8 @@ fn v3_test_build_facts(target pref.Target, ccompiler string, is_prod bool) []str
 	return facts.keys()
 }
 
-fn v3_test_process_running(process_name string) bool {
+// v3_test_process_running reports whether a process line of `ps ax` contains all `patterns`.
+fn v3_test_process_running(patterns []string) bool {
 	$if windows {
 		return false
 	} $else {
@@ -8329,7 +8330,12 @@ fn v3_test_process_running(process_name string) bool {
 		if result.exit_code != 0 {
 			return false
 		}
-		return result.output.split_into_lines().any(it.contains(process_name))
+		for line in result.output.split_into_lines() {
+			if patterns.all(line.contains(it)) {
+				return true
+			}
+		}
+		return false
 	}
 }
 
@@ -8458,13 +8464,15 @@ fn v3_test_build_defines(expression string, user_defines []string) []string {
 		defines['sanitized_job'] = true
 	}
 	process_defines := {
-		'started_mysqld':   'mysqld'
-		'started_postgres': 'postgres'
-		'started_mssql':    'sqlservr'
-		'started_redis':    'redis-server'
+		'started_mysqld':   ['mysqld']
+		'started_postgres': ['postgres']
+		'started_mssql':    ['sqlservr']
+		// The db.redis tests connect to the default port; redis-server shows its
+		// listening address in its process title, e.g. `redis-server *:6379`.
+		'started_redis':    ['redis-server', ':6379']
 	}
-	for define, process_name in process_defines {
-		if expression.contains('${define}?') && v3_test_process_running(process_name) {
+	for define, process_patterns in process_defines {
+		if expression.contains('${define}?') && v3_test_process_running(process_patterns) {
 			defines[define] = true
 		}
 	}
