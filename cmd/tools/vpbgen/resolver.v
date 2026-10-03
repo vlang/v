@@ -56,6 +56,10 @@ pub mut:
 	map_key_type   string
 	map_value_kind FieldKind
 	map_value_type string
+	// packed_option is the raw `[packed = ...]` value, empty when the schema said
+	// nothing. `is_packed` reads it rather than a resolved bool, because the
+	// three-way answer (absent, true, false) is what decides the default.
+	packed_option string
 }
 
 // is_repeated reports whether the field is a list.
@@ -80,11 +84,19 @@ pub fn (r &Resolved) has_explicit_presence() bool {
 // is_packed reports whether a repeated field uses the packed encoding, which the
 // spec makes the default for every repeated numeric type and which no
 // length-delimited element type has.
+//
+// `[packed = false]` turns it off for a numeric field. Both forms are legal on
+// the wire, so a reader has to accept either, which is why the decoder already
+// does; honouring the option only keeps the bytes matching what the schema asked
+// for.
 pub fn (r &Resolved) is_packed() bool {
 	if r.label != .repeated {
 		return false
 	}
-	return r.kind == .scalar || r.kind == .enum
+	if r.kind != .scalar && r.kind != .enum {
+		return false
+	}
+	return r.packed_option != 'false'
 }
 
 // ResolvedEnum is an enum with its final V name.
@@ -405,6 +417,7 @@ fn resolve_message(mut res ResolvedFile, idx &TypeIndex, parent_qualified string
 		if r.v_type == '' {
 			continue
 		}
+		check_packed_option(mut res, qualified, r)
 		out.fields << r
 	}
 	check_field_declarations(mut res, qualified, out.fields)
@@ -435,6 +448,28 @@ fn resolve_message(mut res ResolvedFile, idx &TypeIndex, parent_qualified string
 	}
 	for e in m.enums {
 		res.enums << resolve_enum(idx, qualified + '.' + e.name, e)
+	}
+}
+
+// check_packed_option reports a `packed = true` on a field that cannot be packed.
+//
+// Only numeric and enum elements have a packed form; a string, a bytes field, and
+// a message are length-delimited already. protoc refuses the combination rather
+// than ignoring it, and silently accepting it here would mean the schema said one
+// thing and the codec did another.
+//
+// `packed = false` is not an error on any field: on a non-numeric field it is
+// redundant, and the schema is allowed to be explicit about something the default
+// already does.
+fn check_packed_option(mut res ResolvedFile, qualified string, f Resolved) {
+	if f.packed_option != 'true' {
+		return
+	}
+	if f.label == .repeated && f.kind != .scalar && f.kind != .enum {
+		res.errors << 'pbgen: ${qualified}.${f.name} asks for the packed form, but a `${f.proto_type}` field has no packed form'
+	}
+	if f.label != .repeated && f.kind != .map {
+		res.errors << 'pbgen: ${qualified}.${f.name} asks for the packed form, but only a repeated field can be packed'
 	}
 }
 
@@ -520,13 +555,16 @@ pub fn flatten_name(qualified string, name string) string {
 // resolve_field resolves one field's declared type to a V type.
 fn resolve_field(mut res ResolvedFile, idx &TypeIndex, parent_qualified string, f Field) Resolved {
 	mut out := Resolved{
-		name:       safe_field_name(f.name)
-		kind:       f.kind
-		number:     f.number
-		proto_type: f.type_name
-		label:      f.label
-		oneof:      f.oneof
-		comments:   f.comments
+		name:          safe_field_name(f.name)
+		kind:          f.kind
+		number:        f.number
+		proto_type:    f.type_name
+		label:         f.label
+		oneof:         f.oneof
+		// An empty `packed_option` means the schema said nothing, which is not the
+		// same as `false`: the spec defaults a repeated numeric field to packed.
+		packed_option: f.packed_option
+		comments:      f.comments
 	}
 	if f.kind == .map {
 		return resolve_map(mut res, idx, parent_qualified, f)

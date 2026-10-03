@@ -444,7 +444,9 @@ pub fn (mut p Parser) parse_map_field(comments []string) !Field {
 	p.expect('=')!
 	f.number = p.expect_number('a field number')!
 	f.type_name = 'map'
-	p.skip_field_options()!
+	// A map field carries no `packed`: it is a repeated Entry message, which has
+	// a length-delimited element and so has nothing to pack.
+	p.parse_field_options()!
 	p.expect(';')!
 	return f
 }
@@ -487,7 +489,7 @@ pub fn (mut p Parser) parse_field(comments []string, oneof_group string) !Field 
 	p.expect('=')!
 	f.number = p.expect_number('a field number')!
 	f.kind = classify_type(f.type_name)
-	p.skip_field_options()!
+	f.packed_option = p.parse_field_options()!
 	p.expect(';')!
 	return f
 }
@@ -501,15 +503,54 @@ pub fn (mut p Parser) parse_type_name() !string {
 	return p.parse_dotted_name()!
 }
 
-// skip_field_options consumes a trailing `[ ... ]` field option list.
+// parse_field_options consumes a trailing `[ ... ]` field option list and
+// returns what the generator acts on.
 //
-// The options are parsed and discarded: the generator emits the encodings the
-// spec already defaults to, and honouring `[packed = false]` or a custom option
-// would need a per-field option model the emitted code has nowhere to carry.
-pub fn (mut p Parser) skip_field_options() ! {
-	if p.is_cur('[') {
-		p.skip_balanced('[', ']')!
+// Only `packed` is read. The rest are skipped correctly so a schema using them
+// parses, and discarding them is safe because none of them change the bytes: a
+// `deprecated` or `json_name` option describes the schema rather than its
+// encoding.
+fn (mut p Parser) parse_field_options() !string {
+	if !p.is_cur('[') {
+		return ''
 	}
+	p.advance() // [
+	mut packed := ''
+	for p.cur.text != ']' {
+		name := p.parse_option_name()!
+		if p.is_cur('=') {
+			p.advance()
+		}
+		mut value := p.cur.text
+		if value == 'true' || value == 'false' {
+			p.advance()
+		} else {
+			// A value the generator has no opinion about, such as
+			// `[default = 5]` or an aggregate, is skipped rather than guessed at.
+			p.skip_option_value()!
+		}
+		if name == 'packed' {
+			packed = value
+		}
+		if p.is_cur(',') {
+			p.advance()
+		}
+	}
+	p.expect(']')!
+	return packed
+}
+
+// skip_option_value consumes an option value the generator does not interpret.
+fn (mut p Parser) skip_option_value() ! {
+	if p.is_cur('{') {
+		p.skip_balanced('{', '}')!
+		return
+	}
+	if p.cur.kind == .str || p.cur.kind == .number {
+		p.advance()
+		return
+	}
+	p.parse_dotted_name()!
 }
 
 // classify_type decides how a declared type name is written, based on the
@@ -574,7 +615,7 @@ pub fn (mut p Parser) parse_enum(comments []string) !EnumDecl {
 			// A negative value is legal and the lexer keeps the sign.
 			number = p.expect_number('an enum value')!
 		}
-		p.skip_field_options()!
+		p.parse_field_options()!
 		p.expect(';')!
 		e.values << EnumValue{
 			name:     name

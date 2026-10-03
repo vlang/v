@@ -1106,6 +1106,120 @@ fn test_options_reach_a_map_entry() ! {
 }
 "
 
+fn test_packed_false_is_honoured() {
+	out := generate(fixture('packed.proto'), 'packed')!
+	// A field that says `packed = false` writes one tag per element instead of a
+	// single length-delimited run. The option used to be discarded.
+	assert out.contains('for item in msg.stated_unpacked {')
+	assert !out.contains('mut payload := []u8{cap: msg.stated_unpacked.len')
+}
+
+fn test_packed_true_and_absent_both_pack() {
+	out := generate(fixture('packed.proto'), 'packed')!
+	// `packed = true` states the default, and no option at all is the default too,
+	// so both come out packed. Getting that wrong would change the bytes for every
+	// schema that says nothing.
+	assert out.contains('mut payload := []u8{cap: msg.stated_packed.len')
+	assert out.contains('mut payload := []u8{cap: msg.silent.len')
+}
+
+fn test_packed_false_on_a_string_is_not_an_error() {
+	// A repeated string has no packed form, so the option is redundant rather
+	// than wrong. The schema is allowed to be explicit about the default.
+	res := resolve_files([fixture_file('packed.proto')!], 'packed')!
+	assert res.errors.len == 0, res.errors.join_lines()
+}
+
+fn test_packed_true_on_a_string_is_refused() {
+	res := resolve_files([fixture_file('bad_packed.proto')!], 'badpack')!
+	assert res.errors.len == 1
+	assert res.errors[0].contains('has no packed form')
+}
+
+fn test_both_packed_forms_decode() ! {
+	// The reader has to accept either form whatever the producer chose, which is
+	// the whole reason it checks the wire type at runtime rather than trusting the
+	// schema.
+	res := generate_res(fixture('packed.proto'), 'packed')!
+	dir := write_roundtrip('packed', res)
+	run_module_test(dir, 'round_trip_test.v', packed_test_source)!
+}
+
+// Both packed and unpacked forms have to come back, and the two producers of them
+// have to agree with each other.
+const packed_test_source = "module packed
+
+import encoding.protobuf
+
+fn test_the_producer_and_reader_agree() ! {
+mut m := Explicit{
+stated_packed:   [1, 2]
+	stated_unpacked: [3, 4]
+	silent:         [5, 6]
+	tags:           ['a']
+}
+back := decode_explicit(m.encode()!)!
+	assert back.stated_packed == [1, 2]
+	assert back.stated_unpacked == [3, 4]
+	assert back.silent == [5, 6]
+	assert back.tags == ['a']
+}
+
+// The two forms are genuinely different bytes, which is why honouring the option
+// matters. Two elements are needed: with one, an unpacked run and a packed run
+// can come to the same length by coincidence.
+fn test_the_two_forms_differ_on_the_wire() ! {
+	as_packed := Explicit{
+		stated_packed: [1, 2]
+	}.encode()!
+	as_unpacked := Explicit{
+		stated_unpacked: [1, 2]
+	}.encode()!
+	assert as_packed != as_unpacked
+	// Both still hold the same values, so the difference is the form and not the
+	// data.
+	assert decode_explicit(as_packed)!.stated_packed == [1, 2]
+	assert decode_explicit(as_unpacked)!.stated_unpacked == [1, 2]
+}
+
+// A producer on the other side of the schema may use either form for a field this
+// build packs, so the reader has to take both.
+fn test_an_unpacked_run_from_another_producer_is_accepted() ! {
+	mut p := protobuf.new_packer(protobuf.EncodeOpts{})
+	for v in [7, 8, 9] {
+		p.write_int32(3, v)
+	}
+	back := decode_explicit(p.bytes())!
+	assert back.silent == [7, 8, 9]
+}
+
+// And the other way round: this build does not pack the field, and a producer
+// that did still has to be readable.
+fn test_a_packed_run_from_another_producer_is_accepted() ! {
+	mut payload := []u8{}
+	protobuf.put_varint(mut payload, protobuf.int32_varint(4))
+	protobuf.put_varint(mut payload, protobuf.int32_varint(5))
+	mut p := protobuf.new_packer(protobuf.EncodeOpts{})
+	p.write_packed_payload(2, protobuf.WireType.varint, payload)
+	back := decode_explicit(p.bytes())!
+	assert back.stated_unpacked == [4, 5]
+}
+"
+
+fn test_the_reader_accepts_packed_whatever_the_schema_says() {
+	// The reader must not follow the producer's choice. `[packed = false]` says
+	// what this build writes; it is not part of the wire format, so a peer that
+	// ignores it must still be readable. Asking `is_packed` here made the decoder
+	// refuse a packed run for a field it had declared unpacked.
+	out := generate(fixture('packed.proto'), 'packed')!
+	// packed.proto has three repeated numeric fields and two repeated
+	// non-numeric ones. All three numeric arms must test `true`, so each can read
+	// either form; the two that cannot be packed must still test `false`, or a
+	// length-delimited element would be misread as a packed run.
+	assert out.count('if wire_type == .length_delimited && true {') == 3
+	assert out.count('if wire_type == .length_delimited && false {') == 2
+}
+
 fn test_is_well_known() {
 	assert is_well_known('google/protobuf/timestamp.proto')
 	assert !is_well_known('kv.proto')

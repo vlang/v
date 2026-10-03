@@ -149,8 +149,19 @@ pub fn emit_decode_repeated(mut e Emitter, f Resolved, n int) {
 // type means "packed run" rather than "one element". Only a repeated numeric
 // field can be packed; a repeated string, bytes, or message arrives
 // length-delimited as a single element and must be read that way.
+//
+// This asks whether the field *can* be packed, not whether this build packs it.
+// The two are separate decisions: `[packed = false]` says what this producer
+// emits, while a reader has to take a packed run from any producer, since the
+// option is a hint about the writer and not part of the wire format. Asking
+// `is_packed` here made the reader refuse exactly the payload a peer that ignored
+// the option would send.
 pub fn (f Resolved) kind_supports_packed() string {
-	return if f.is_packed() { 'true' } else { 'false' }
+	return if f.label == .repeated && (f.kind == .scalar || f.kind == .enum) {
+		'true'
+	} else {
+		'false'
+	}
 }
 
 // emit_decode_elem returns the statement that appends one element to the field

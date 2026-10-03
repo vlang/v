@@ -46,6 +46,10 @@ pub mut:
 	value_type string
 	// oneof is the name of the `oneof` this field belongs to, or empty.
 	oneof string
+	// packed_option is what `[packed = ...]` asked for, or an empty string when
+	// the schema said nothing. The spec's default for a repeated numeric field is
+	// packed, so an absent option is not the same as `false`.
+	packed_option string
 	// comments is the doc comment attached above the field, without its `//`.
 	comments []string
 	pos      Pos
