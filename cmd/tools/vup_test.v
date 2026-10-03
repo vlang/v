@@ -1,7 +1,100 @@
 import os
+import v.skills
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
+
+// skills_fixture builds a fake V checkout holding `bundled` skill bundles, plus
+// an install directory to install them into. It returns the checkout, the
+// install directory, and the root holding both, which the caller removes.
+fn skills_fixture(bundled []string) ! (string, string, string) {
+	root := os.join_path(os.vtmp_dir(), 'vup_skills_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'vroot', 'vlib', 'v', 'skills'))!
+	fake_vroot := os.join_path(root, 'vroot')
+	for name in bundled {
+		dir := os.join_path(fake_vroot, 'vlib', 'v', 'skills', name)
+		os.mkdir_all(os.join_path(dir, 'references'))!
+		os.write_file(os.join_path_single(dir, skills.entry_file),
+			'---\nname: ${name}\ndescription: Test the ${name} skill.\n---\n\n# ${name}\n')!
+		os.write_file(os.join_path(dir, 'references', 'note.md'), 'note\n')!
+	}
+	install_dir := os.join_path(root, 'installed')
+	os.mkdir_all(install_dir)!
+	return fake_vroot, install_dir, root
+}
+
+// install copies the bundled `name` into `dir` through the real installer, so
+// the test exercises the provenance that `v skills add` would leave behind.
+fn install(fake_vroot string, dir string, name string) ! {
+	skill := skills.find(fake_vroot, name) or {
+		panic('no bundled skill called ${name}')
+	}
+	skills.install(skill, dir, skills.InstallOptions{})!
+}
+
+// rebundle rewrites the bundled `SKILL.md` of `name`, leaving the installation
+// behind it.
+fn rebundle(fake_vroot string, name string) ! {
+	os.write_file(os.join_path_single(os.join_path(fake_vroot, 'vlib', 'v', 'skills', name),
+		skills.entry_file),
+		'---\nname: ${name}\ndescription: Test the ${name} skill.\n---\n\n# ${name}\n\nNew body.\n')!
+}
+
+fn test_refresh_candidates_splits_refreshable_from_held_back() ! {
+	fake_vroot, dir, root := skills_fixture(['alpha', 'beta', 'gamma'])!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	install(fake_vroot, dir, 'alpha')!
+	install(fake_vroot, dir, 'beta')!
+	install(fake_vroot, dir, 'gamma')!
+	rebundle(fake_vroot, 'alpha')!
+	rebundle(fake_vroot, 'beta')!
+	// A skill edited after it was installed cannot be refreshed without
+	// discarding the edit, so it belongs with the ones that are held back.
+	os.write_file(os.join_path(os.join_path_single(dir, 'beta'), skills.entry_file), 'edited\n')!
+
+	refreshable, held_back := skills.refresh_candidates(fake_vroot, dir)
+	assert refreshable == ['alpha'], refreshable.str()
+	assert held_back == ['beta'], held_back.str()
+	assert skills.origin_state(fake_vroot, dir, 'gamma') == .current
+}
+
+fn test_refresh_candidates_is_empty_when_everything_matches() ! {
+	fake_vroot, dir, root := skills_fixture(['alpha'])!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	install(fake_vroot, dir, 'alpha')!
+	refreshable, held_back := skills.refresh_candidates(fake_vroot, dir)
+	assert refreshable.len == 0, refreshable.str()
+	assert held_back.len == 0, held_back.str()
+}
+
+fn test_refresh_candidates_is_empty_for_an_empty_directory() ! {
+	_, dir, root := skills_fixture([])!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	refreshable, held_back := skills.refresh_candidates(os.join_path(root, 'vroot'), dir)
+	assert refreshable.len == 0, refreshable.str()
+	assert held_back.len == 0, held_back.str()
+}
+
+fn test_refresh_candidates_holds_back_an_install_with_no_record() ! {
+	fake_vroot, dir, root := skills_fixture(['alpha'])!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	install(fake_vroot, dir, 'alpha')!
+	// An installation from before the record existed: nothing proves the files
+	// are the ones that were installed, so it is not refreshable.
+	os.rm(os.join_path_single(dir, skills.origin_file))!
+	refreshable, held_back := skills.refresh_candidates(fake_vroot, dir)
+	assert refreshable.len == 0, refreshable.str()
+	assert held_back == ['alpha'], held_back.str()
+}
 
 fn test_vup_generates_windows_c_without_handle_type_errors() ! {
 	test_root := os.join_path(os.vtmp_dir(), 'vup_windows_handles_${os.getpid()}')

@@ -714,6 +714,33 @@ pub fn origin_state(vroot string, dir string, name string) OriginState {
 	return OriginState.modified
 }
 
+// refresh_candidates returns the skills installed in `dir` that no longer match
+// their bundle, split by whether refreshing them is safe.
+//
+// `refreshable` holds the `stale` ones: their files are still the ones that were
+// installed, so copying the newer bundle over them cannot lose anything.
+// `held_back` holds the `modified` and `unknown` ones, where refreshing would
+// discard a local edit, or where nothing records what was installed. Both are
+// the caller's to decide about, which is why they are not returned as one list.
+//
+// A skill that is `current` appears in neither.
+pub fn refresh_candidates(vroot string, dir string) ([]string, []string) {
+	mut refreshable := []string{}
+	mut held_back := []string{}
+	for name in installed(dir) {
+		match origin_state(vroot, dir, name) {
+			.current {}
+			.stale {
+				refreshable << name
+			}
+			else {
+				held_back << name
+			}
+		}
+	}
+	return refreshable, held_back
+}
+
 // differs reports whether any of `files` has different content in the two
 // directories, or is missing from `current`.
 fn differs(bundled string, current string, files []string) bool {

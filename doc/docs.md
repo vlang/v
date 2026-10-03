@@ -55,6 +55,14 @@ by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
 
+`v up` reports the agent skills that the new revision left behind, since a new
+revision may ship updated copies of them. It writes nothing: the skills belong to
+the user, and updating the compiler is not consent to overwrite them. Pass
+`-skills` to refresh the ones that were not edited locally, or run
+`v skills update` to choose which ones. Skills with local changes, and skills
+installed before V recorded what it installed, are reported either way and left
+alone; see `v skills update` below.
+
 ## Project-local compiler versions with `.vvmrc`
 
 If a project contains a `.vvmrc` file, commands like `v run .`, `v run file.v`,

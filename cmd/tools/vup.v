@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.skills
 import v.util.version
 import v.util.recompilation
 
@@ -18,18 +19,20 @@ struct App {
 
 	skip_v_self  bool // do not run `v self`, effectively enforcing the running of `make` or `makev.bat`
 	skip_current bool // skip the current hash check, enabling easier testing on the same commit, without using docker etc
+	update_skills bool // refresh the skills that fell behind, instead of only reporting them
 }
 
 const args = arguments()
 
 fn new_app() App {
 	return App{
-		is_verbose:   '-v' in args
-		is_prod:      '-prod' in args
-		vexe:         vexe
-		vroot:        vroot
-		skip_v_self:  '-skip_v_self' in args
-		skip_current: '-skip_current' in args
+		is_verbose:     '-v' in args
+		is_prod:        '-prod' in args
+		vexe:           vexe
+		vroot:          vroot
+		skip_v_self:    '-skip_v_self' in args
+		skip_current:   '-skip_current' in args
+		update_skills:  '-skills' in args
 	}
 }
 
@@ -60,6 +63,7 @@ fn main() {
 			}
 		}
 		app.show_current_v_version()
+		app.report_skills()
 		return
 	}
 	if os.user_os() == 'windows' {
@@ -77,6 +81,44 @@ fn main() {
 		exit(1)
 	}
 	app.show_current_v_version()
+	app.report_skills()
+}
+
+// report_skills tells the user about the skills that the pull left behind, and
+// refreshes them when `-skills` was passed.
+//
+// It says nothing when every installed skill already matches its bundle, so a
+// `v up` that changed no skills reads the same as it always did. Without
+// `-skills` it writes nothing at all: the skills belong to the user, and
+// updating the compiler is not consent to overwrite what they wrote.
+//
+// The skills installed for the whole machine are the ones that matter here, so
+// this looks at the home directory rather than at the checkout it chdir'd into.
+fn (app App) report_skills() {
+	dir := skills.target_dir(.home_dir, app.vroot)
+	refreshable, held_back := skills.refresh_candidates(app.vroot, dir)
+	if app.update_skills {
+		if refreshable.len > 0 {
+			// Handled by `v skills`, which owns the rule for what may be
+			// overwritten, so the rule is stated and tested in one place.
+			//
+			// Its exit code is deliberately dropped: it reports a non-zero status
+			// when it holds a skill back, which is expected here and is not a
+			// failure of the compiler update that just succeeded.
+			os.exec([app.current_vexe_path(), 'skills', 'update', '--global'])
+		}
+		return
+	}
+	if refreshable.len == 0 && held_back.len == 0 {
+		return
+	}
+	if refreshable.len > 0 {
+		println('> skills: can be refreshed: ${refreshable.join(', ')}')
+		println('> skills: run `v up -skills` or `v skills update` to refresh them')
+	}
+	if held_back.len > 0 {
+		println('> skills: left alone because they have local changes: ${held_back.join(', ')}')
+	}
 }
 
 fn (app App) vprintln(s string) {
