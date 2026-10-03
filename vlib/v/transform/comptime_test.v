@@ -484,6 +484,33 @@ fn test_comptime_condition_string_literal_members() {
 	}
 }
 
+fn test_comptime_condition_does_not_compare_expressions_as_text() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	for cond in ["'name'.to_upper ( ) == 'NAME'", "'name'[0] != `n`", "'n' == 'name'.trim ( 'e' )",
+		"'name'.split ( 'a' ) in ['n']", "'name'.index ( 'a' ) < 2"] {
+		if value := t.eval_field_cond(cond) {
+			assert false, 'condition `${cond}` should stay undecided, got ${value}'
+		}
+	}
+	conds := {
+		"('name') == 'name'":            true
+		'2 != 3':                        true
+		'.plain == .string':             false
+		"'x' == x":                      true
+		"`n` == `n` && 'name'.len == 4": true
+	}
+	for cond, want in conds {
+		got := t.eval_field_cond(cond) or {
+			assert false, 'condition `${cond}` should be decidable'
+			return
+		}
+		assert got == want, cond
+	}
+}
+
 fn test_mangled_generic_struct_field_metadata_resolves_declaration() {
 	mut a := flat.FlatAst.new()
 	a.add_val(.module_decl, 'sample')

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/comptime_if_expr_operand_err.vv:13:7: error: cannot evaluate `$if` condition `method.name.to_upper() == 'LIST'` at compile time
+   11 |             hits << 'len'
+   12 |         }
+   13 |         $if method.name.to_upper() == 'LIST' {
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   14 |             hits << 'upper'
+   15 |         }
+vlib/v/checker/tests/comptime_if_expr_operand_err.vv:16:7: error: cannot evaluate `$if` condition `method.name[0] != `x`` at compile time
+   14 |             hits << 'upper'
+   15 |         }
+   16 |         $if method.name[0] != `x` {
+      |             ~~~~~~~~~~~~~~~~~~~~~
+   17 |             hits << 'index'
+   18 |         }

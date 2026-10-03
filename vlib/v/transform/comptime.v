@@ -5241,8 +5241,8 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 		if op_idx := comptime_top_index(clean, op) {
 			// String operands may be quoted on one side (`'txt'` from a substituted `field.name`)
 			// and bare on the other (`txt` as captured in the condition); compare unquoted.
-			left := comptime_cond_operand(clean[..op_idx])
-			right := comptime_cond_operand(clean[op_idx + op.len..])
+			left := comptime_cond_operand(clean[..op_idx]) or { return none }
+			right := comptime_cond_operand(clean[op_idx + op.len..]) or { return none }
 			eq := left == right
 			return if op == ' == ' { eq } else { !eq }
 		}
@@ -5257,20 +5257,21 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 				&& clean[after] != `(` {
 				continue
 			}
-			needle := comptime_cond_operand(clean[..op_idx])
+			needle_text := clean[..op_idx].trim_space()
 			list := clean[after..].trim_space()
 			mut found := false
-			if needle.ends_with('.typ') || needle.ends_with('.unaliased_typ') {
+			if needle_text.ends_with('.typ') || needle_text.ends_with('.unaliased_typ') {
 				if !list.starts_with('[') || !list.ends_with(']') {
 					return none
 				}
 				for expected in split_generic_args(list[1..list.len - 1]) {
-					if t.comptime_type_matches(needle, expected) or { false } {
+					if t.comptime_type_matches(needle_text, expected) or { false } {
 						found = true
 						break
 					}
 				}
 			} else {
+				needle := comptime_cond_operand(needle_text) or { return none }
 				found = comptime_list_contains(list, needle)
 			}
 			return if op == ' in' { found } else { !found }
@@ -5279,8 +5280,8 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 	// Integer ordering (e.g. `field.indirections < 2`); longer operators first.
 	for op in [' <= ', ' >= ', ' < ', ' > '] {
 		if op_idx := comptime_top_index(clean, op) {
-			left := comptime_cond_operand(clean[..op_idx])
-			right := comptime_cond_operand(clean[op_idx + op.len..])
+			left := comptime_cond_operand(clean[..op_idx]) or { return none }
+			right := comptime_cond_operand(clean[op_idx + op.len..]) or { return none }
 			if !comptime_is_int(left) || !comptime_is_int(right) {
 				return none
 			}
@@ -5310,13 +5311,24 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 
 // comptime_cond_operand returns a comparison operand as the text to compare: a string
 // literal without its quotes, the value of a string literal member (see
-// comptime_cond_string_member), or the operand itself.
-fn comptime_cond_operand(operand string) string {
-	clean := operand.trim_space()
+// comptime_cond_string_member), or a plain operand (a number, name or enum value) as it
+// is. Any other expression, such as `'name'.to_upper()` or `'name'[0]`, is not its own
+// value, so it cannot be compared as text: none.
+fn comptime_cond_operand(operand string) ?string {
+	clean := comptime_condition_strip_outer_parens(operand.trim_space())
 	if value := comptime_cond_string_member(clean) {
 		return value
 	}
-	return comptime_unquote(clean)
+	if clean.len > 0 && clean[0] in [`'`, `"`, `\``] {
+		if comptime_cond_skip_string(clean, 0) != clean.len {
+			return none
+		}
+		return comptime_unquote(clean)
+	}
+	if clean.contains_any('\'"`([') {
+		return none
+	}
+	return clean
 }
 
 // comptime_cond_string_member evaluates `.len` of a string literal, or a `starts_with`,

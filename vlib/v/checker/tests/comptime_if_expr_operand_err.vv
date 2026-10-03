@@ -1,0 +1,21 @@
+struct Routes {}
+
+fn (r Routes) list() int {
+	return 1
+}
+
+fn main() {
+	mut hits := []string{}
+	$for method in Routes.methods {
+		$if method.name.len == 4 && method.name.starts_with('l') {
+			hits << 'len'
+		}
+		$if method.name.to_upper() == 'LIST' {
+			hits << 'upper'
+		}
+		$if method.name[0] != `x` {
+			hits << 'index'
+		}
+	}
+	println(hits)
+}
