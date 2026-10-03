@@ -21,11 +21,12 @@ Options:
   --instructions   print the model instructions and exit
   -h, --help       show this help and exit
 
-The tools that write are `v_edit_replace`, `v_rename_symbol` and `v_format`. They
-report a plan rather than writing by default, and `--read-only` does not register
-them at all. `v_rename_symbol` and `v_format` are dry runs unless told otherwise,
-and `v_edit_replace` requires the caller to pass back the text it expects to
-find, so it refuses to write over a concurrent change.
+The tools that write are `v_edit_replace`, `v_rename_symbol` and `v_format`, and
+`--read-only` registers none of them. `v_rename_symbol` and `v_format` report a
+plan and write nothing unless the call says otherwise: `dry_run: false` for the
+rename, `write: true` for the format. `v_edit_replace` has no preview mode: it
+writes as soon as the range matches the `expected_old` text it was given, so
+passing that text approves the edit instead of previewing it.
 
 Only the tools that genuinely compile or run something start the compiler; the
 rest answer from the parsed source.
