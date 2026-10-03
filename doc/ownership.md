@@ -127,6 +127,11 @@ aliases to their source regardless of call depth; unresolved alias cycles are re
 The same rule applies to references returned inside options, results, arrays, struct fields,
 interfaces, or sum-type payloads.
 
+Addressed string ranges such as `&text[1..]` borrow their source's bytes. String literals
+and existing storage can supply those bytes, but a temporary string such as
+`&'abc'.repeat(n)[1..]` has no retained owner and is rejected. Assign the string to a variable
+before taking the range's address, and keep that variable alive while the reference is used.
+
 ### Struct ownership markers
 
 The `Owned`, `Copy`, and `Drop` markers can appear in a struct's `implements` list in

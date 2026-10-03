@@ -10892,6 +10892,69 @@ fn (tc &TypeChecker) ownership_call_name_in_module(id flat.NodeId, module_name s
 	return ''
 }
 
+// Addressed ranges only own their header, so their bytes need a retained source owner.
+fn (mut tc TypeChecker) check_ownership_addressed_string_range(id flat.NodeId, child_id flat.NodeId) {
+	if tc.ownership == unsafe { nil } {
+		return
+	}
+	range_id := tc.ownership_unwrap_expr(child_id)
+	if !tc.valid_node_id(range_id) {
+		return
+	}
+	range := tc.a.node(range_id)
+	if range.kind != .index || range.value != 'range' || range.children_count == 0
+		|| range.op == .gated_index {
+		return
+	}
+	base_id := tc.a.child(range, 0)
+	if tc.ownership_string_range_source_is_temporary(base_id) {
+		tc.record_error_at(.assignment_mismatch, 'cannot take an addressed string range from a temporary value; assign the source to a variable first', id, tc.a.node(base_id).pos)
+	}
+}
+
+fn (mut tc TypeChecker) ownership_string_range_source_is_temporary(id flat.NodeId) bool {
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.node(clean_id)
+	if node.kind == .string_literal || unalias_type(tc.resolve_type(clean_id)) is Pointer {
+		return false
+	}
+	if tc.expr_can_take_address(clean_id) {
+		match node.kind {
+			.array_literal, .array_init {
+				return true
+			}
+			.selector, .index, .or_expr, .postfix {
+				return tc.ownership_string_range_source_is_temporary(tc.a.child(node, 0))
+			}
+			.block {
+				return tc.ownership_string_range_source_is_temporary(tc.a.child(node, node.children_count - 1))
+			}
+			else {
+				return false
+			}
+		}
+	}
+	if node.kind in [.cast_expr, .as_expr] && node.children_count > 0 {
+		return tc.ownership_string_range_source_is_temporary(tc.a.child(node, 0))
+	}
+	if node.kind == .call && node.children_count > 0 {
+		fn_node := tc.a.child_node(node, 0)
+		if fn_node.kind == .selector && fn_node.value == 'substr_unsafe'
+			&& fn_node.children_count > 0 {
+			if info := tc.resolve_call_info(clean_id, *node) {
+				if info.name == 'string.substr_unsafe'
+					&& tc.ownership_fn_declared_in_builtin(info.name) {
+					return tc.ownership_string_range_source_is_temporary(tc.a.child(fn_node, 0))
+				}
+			}
+		}
+	}
+	return true
+}
+
 fn (tc &TypeChecker) ownership_unwrap_expr(id flat.NodeId) flat.NodeId {
 	mut cur := id
 	for tc.valid_node_id(cur) {

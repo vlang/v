@@ -105,3 +105,90 @@ fn main() {
 		}
 	}
 }
+
+fn test_ownership_addressed_string_ranges_reject_temporary_sources() {
+	root := os.join_path(os.vtmp_dir(), 'addressed_string_range_temporary_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	for expression in [
+		'&"abc".repeat(3)[1..]',
+		'&("abc".repeat(3)[1..])',
+		'&("abc".to_owned())[1..]',
+		'&("abc".clone())[1..]',
+		'&make_text()[1..]',
+		'&("prefix" + make_text())[1..]',
+		'&"text: \${make_text()}"[1..]',
+		'&"abc".repeat(3).substr_unsafe(0, 6)[1..]',
+		'&(if true { make_text() } else { "literal" })[1..]',
+		'&(Text(make_text()))[1..]',
+		'&(maybe_text() or { "literal" })[1..]',
+		'&make_holder().text[1..]',
+		'&make_array()[0][1..]',
+		'&([make_text()])[0][1..]',
+		'&([make_text()]!)[0][1..]',
+		'&(Holder{text: make_text()}).text[1..]',
+		'&"abc".repeat(3)[1..][1..]',
+	] {
+		os.write_file(source, 'type Text = string
+struct Holder { text string }
+fn make_text() string { return "abcabcabc".to_owned() }
+fn maybe_text() ?string { return make_text() }
+fn make_holder() Holder { return Holder{text: make_text()} }
+fn make_array() []string { return [make_text()] }
+fn escaped() &string {
+	return ${expression}
+}
+fn main() {
+	for _ in 0 .. 3 {
+		view := ${expression}
+		println(*view)
+	}
+}
+')!
+		for mode in ['-no-parallel', ''] {
+			// Rejection cases cannot own their backing allocation, so they are never run.
+			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
+			assert out.exit_code != 0, '${expression}: ${out.output}'
+			assert out.output.contains('cannot take an addressed string range from a temporary value'), '${expression}: ${out.output}'
+		}
+	}
+}
+
+fn test_ownership_addressed_string_ranges_keep_retained_sources() {
+	root := os.join_path(os.vtmp_dir(), 'addressed_string_range_retained_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'type Text = string
+struct Holder { text string }
+fn reference(text &string) &string { return text }
+fn caller(text &string) &string { return &(*reference(text))[1..] }
+fn literal() &string { return &"abcdef"[1..] }
+fn main() {
+	copied := "abc".repeat(3)[1..]
+	assert copied == "bcabcabc"
+	owner := "abcdef".to_owned()
+	view := &owner[1..]
+	assert *view == "bcdef"
+	assert unsafe { view.str == owner.str + 1 }
+	assert *caller(&owner) == "bcdef"
+	assert *literal() == "bcdef"
+	borrowed := &owner.substr_unsafe(0, 4)[1..]
+	assert *borrowed == "bcd"
+	assert unsafe { borrowed.str == owner.str + 1 }
+	aliased := Text("abcdef".to_owned())
+	assert *(&aliased[1..]) == "bcdef"
+	holder := Holder{text: "abcdef".to_owned()}
+	assert *(&holder.text[1..]) == "bcdef"
+	texts := ["abcdef".to_owned()]
+	assert *(&texts[0][1..]) == "bcdef"
+	assert *(&(Text("abcdef"))[1..]) == "bcdef"
+	assert owner == "abcdef"
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} run ${os.quoted_path(source)}')
+		assert out.exit_code == 0, '${mode}: ${out.output}'
+	}
+}
