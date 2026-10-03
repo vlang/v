@@ -28,7 +28,7 @@ fn test_skip_unused_prunes_unused_generic_fn_instantiations() {
 		'}',
 	].join('\n')
 	os.write_file(source_path, source) or { panic(err) }
-	res := os.execute('${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}')
+	res := os.exec([vexe, '-o', '-', source_path])
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
@@ -64,7 +64,7 @@ fn test_skip_unused_keeps_generic_offsetof_struct_instantiations() {
 	].join('\n')
 	os.write_file(source_path, source) or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([vexe, '-o', binary_path, source_path])
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
@@ -115,7 +115,7 @@ fn test_skip_unused_does_not_emit_impl_methods_for_interface_extensions() {
 		'}',
 	].join('\n')
 	os.write_file(source_path, source) or { panic(err) }
-	res := os.execute('${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}')
+	res := os.exec([vexe, '-o', '-', source_path])
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
@@ -125,9 +125,9 @@ fn test_skip_unused_does_not_emit_impl_methods_for_interface_extensions() {
 	assert res.output.contains('equal('), res.output
 	binary_path := os.join_path(tmp_dir, 'interface_extension_collision')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([vexe, '-o', binary_path, source_path])
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(binary_path))
+	run := os.exec([binary_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
 }
@@ -159,7 +159,7 @@ fn test_skip_unused_keeps_json2_embedded_struct_decode_helpers() {
 		'}',
 	].join('\n')
 	os.write_file(source_path, source) or { panic(err) }
-	res := os.execute('${os.quoted_path(vexe)} -w -o - ${os.quoted_path(source_path)}')
+	res := os.exec([vexe, '-w', '-o', '-', source_path])
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
@@ -174,9 +174,9 @@ fn test_skip_unused_keeps_json2_embedded_struct_decode_helpers() {
 		panic(err)
 	}
 	build :=
-		os.execute('${os.quoted_path(vexe)} -w -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([vexe, '-w', '-o', binary_path, source_path])
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(binary_path))
+	run := os.exec([binary_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'x 2024', run.output
 }
@@ -226,7 +226,7 @@ fn test_skip_unused_marks_dependencies_inside_generic_anon_fns() {
 	].join('\n')
 	os.write_file(source_path, source) or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(vexe)} -d no_backtrace -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([vexe, '-d', 'no_backtrace', '-o', binary_path, source_path])
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
@@ -286,7 +286,7 @@ fn test_skip_unused_keeps_generic_next_for_for_in_when_direct_calls_use_other_ty
 	].join('\n')
 	os.write_file(source_path, source) or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([vexe, '-o', binary_path, source_path])
 	if res.exit_code != 0 {
 		panic(res.output)
 	}

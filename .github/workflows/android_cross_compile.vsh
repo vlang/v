@@ -54,7 +54,8 @@ fn main() {
 
 			// x.v -> x.c
 			v_compile_cmd := '${vexe} -o ${c_file} -os android -arch ${v_arch} -gc none ${v_example}'
-			vres := os.execute(v_compile_cmd)
+			vres := os.exec([vexe, '-o', c_file, '-os', 'android', '-arch', '${v_arch}', '-gc',
+				'none', '${v_example}'])
 			if vres.exit_code != 0 {
 				panic('"${v_compile_cmd}" failed: ${vres.output}')
 			}
@@ -62,7 +63,7 @@ fn main() {
 
 			// x.c -> x.o
 			compile_cmd := '${compiler_api} ${cflags.join(' ')} -c ${c_file} -o ${o_file}'
-			cres := os.execute(compile_cmd)
+			cres := os.exec([compiler_api, ...cflags, '-c', c_file, '-o', o_file])
 			if cres.exit_code != 0 {
 				panic('"${compile_cmd}" failed: ${cres.output}')
 			}

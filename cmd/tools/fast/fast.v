@@ -50,7 +50,7 @@ fn elog(msg string) {
 
 fn lexec(cmd string) string {
 	elog('  lexec: ${cmd}')
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	if res.exit_code != 0 {
 		elog('  lexec FAILED, exit_code: ${res.exit_code}, output:\n${res.output}')
 	}

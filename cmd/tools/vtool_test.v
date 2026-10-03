@@ -46,7 +46,7 @@ fn testsuite_end() {
 // runs, which is what a developer with a checkout next to the project wants.
 fn test_v_tool_runs_a_module_by_name() {
 	prepare_fixture()!
-	res := os.execute('${vexe} tool greet')
+	res := os.exec([@VEXE, 'tool', 'greet'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('greet ran'), res.output
 }
@@ -55,7 +55,7 @@ fn test_v_tool_runs_a_module_by_name() {
 // case, which is where most tools live once someone has used `v install`.
 fn test_v_tool_runs_a_module_from_the_global_module_folder() {
 	prepare_fixture()!
-	res := os.execute('${vexe} tool gtool')
+	res := os.exec([@VEXE, 'tool', 'gtool'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('gtool ran'), res.output
 }
@@ -64,7 +64,7 @@ fn test_v_tool_runs_a_module_from_the_global_module_folder() {
 // what makes the command discoverable without knowing a module name in advance.
 fn test_v_tool_lists_the_tool_modules() {
 	prepare_fixture()!
-	res := os.execute('${vexe} tool')
+	res := os.exec([@VEXE, 'tool'])
 	assert res.exit_code == 0, res.output
 	names := res.output.trim_space().split_into_lines()
 	assert 'app' in names, res.output
@@ -78,7 +78,7 @@ fn test_v_tool_lists_the_tool_modules() {
 // the listing, so `v tool` is not a list of every installed module.
 fn test_v_tool_leaves_out_modules_without_a_program() {
 	prepare_fixture()!
-	res := os.execute('${vexe} tool')
+	res := os.exec([@VEXE, 'tool'])
 	assert !res.output.contains('glib'), res.output
 	assert !res.output.contains('libmod'), res.output
 }
@@ -86,20 +86,20 @@ fn test_v_tool_leaves_out_modules_without_a_program() {
 // test_v_tool_refuses_a_module_with_no_program covers asking to run a library.
 fn test_v_tool_refuses_a_module_with_no_program() {
 	prepare_fixture()!
-	res := os.execute('${vexe} tool libmod')
+	res := os.exec([@VEXE, 'tool', 'libmod'])
 	assert res.exit_code == 1
 	assert res.output.contains('holds no program to run'), res.output
 }
 
 fn test_v_tool_reports_an_unknown_module() {
 	prepare_fixture()!
-	res := os.execute('${vexe} tool nosuchtool')
+	res := os.exec([@VEXE, 'tool', 'nosuchtool'])
 	assert res.exit_code == 1
 	assert res.output.contains('no module named `nosuchtool`'), res.output
 }
 
 fn test_v_tool_help_explains_the_rule() {
-	res := os.execute('${vexe} tool --help')
+	res := os.exec([@VEXE, 'tool', '--help'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('Usage: v tool [options] [NAME]'), res.output
 	assert res.output.contains('main.v'), res.output
@@ -109,21 +109,21 @@ fn test_v_tool_lists_runnable_import_names_without_manifests() {
 	prepare_fixture()!
 	write_file(os.join_path(vmodules, 'bare', 'main.v'), "module main\nfn main() { println('bare ran') }\n")!
 	write_file(os.join_path(vmodules, 'gtool', 'v.mod'), "Module { name: 'different_manifest_name' }\n")!
-	listed := os.execute('${vexe} tool')
+	listed := os.exec([@VEXE, 'tool'])
 	assert listed.exit_code == 0, listed.output
 	names := listed.output.trim_space().split_into_lines()
 	assert 'bare' in names, listed.output
 	assert 'gtool' in names, listed.output
 	assert 'different_manifest_name' !in names, listed.output
 	for name in ['bare', 'gtool'] {
-		res := os.execute('${vexe} tool ${name}')
+		res := os.exec([@VEXE, 'tool', '${name}'])
 		assert res.exit_code == 0, res.output
 		assert res.output.contains('${name} ran'), res.output
 	}
 }
 
 fn test_v_tool_short_help_explains_module_resolution() {
-	res := os.execute('${vexe} tool -h')
+	res := os.exec([@VEXE, 'tool', '-h'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('main.v'), res.output
 	assert res.output.contains('same lookup as'), res.output
@@ -132,12 +132,12 @@ fn test_v_tool_short_help_explains_module_resolution() {
 fn test_v_tool_lists_the_project_directory_when_manifest_name_differs() {
 	prepare_fixture()!
 	write_file(os.join_path(tfolder, 'app', 'v.mod'), "Module { name: 'custom_name' }\n")!
-	listed := os.execute('${vexe} tool')
+	listed := os.exec([@VEXE, 'tool'])
 	assert listed.exit_code == 0, listed.output
 	names := listed.output.trim_space().split_into_lines()
 	assert 'app' in names, listed.output
 	assert 'custom_name' !in names, listed.output
-	res := os.execute('${vexe} tool app')
+	res := os.exec([@VEXE, 'tool', 'app'])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'app', res.output
 }
@@ -146,14 +146,14 @@ fn test_v_tool_omits_dotted_project_names_that_do_not_resolve_to_the_project() {
 	prepare_fixture()!
 	project := write_module(tfolder, 'my.project', true)!
 	os.chdir(project)!
-	checked := os.execute('${vexe} -check .')
+	checked := os.exec([@VEXE, '-check', '.'])
 	assert checked.exit_code == 0, checked.output
 	for has_decoy in [false, true] {
 		if has_decoy {
 			write_file(os.join_path(project, 'my', 'project', 'main.v'),
 				"module main\nfn main() { println('decoy ran') }\n")!
 		}
-		listed := os.execute('${vexe} tool')
+		listed := os.exec([@VEXE, 'tool'])
 		assert listed.exit_code == 0, listed.output
 		names := listed.output.trim_space().split_into_lines()
 		assert 'my.project' !in names, listed.output
@@ -165,10 +165,10 @@ fn test_v_tool_preserves_resolvable_space_project_names() {
 	prepare_fixture()!
 	project := write_module(tfolder, 'my project', true)!
 	os.chdir(project)!
-	listed := os.execute('${vexe} tool')
+	listed := os.exec([@VEXE, 'tool'])
 	assert listed.exit_code == 0, listed.output
 	assert 'my project' in listed.output.trim_space().split_into_lines(), listed.output
-	res := os.execute('${vexe} tool ${os.quoted_path('my project')}')
+	res := os.exec([@VEXE, 'tool', 'my project'])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'my project ran', res.output
 }
@@ -176,7 +176,7 @@ fn test_v_tool_preserves_resolvable_space_project_names() {
 fn test_v_tool_omits_unresolvable_dotted_installed_directory_names() {
 	prepare_fixture()!
 	write_module(vmodules, 'dotted.tool', true)!
-	listed := os.execute('${vexe} tool')
+	listed := os.exec([@VEXE, 'tool'])
 	assert listed.exit_code == 0, listed.output
 	names := listed.output.trim_space().split_into_lines()
 	assert 'dotted.tool' !in names, listed.output

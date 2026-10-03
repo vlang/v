@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn test_array_filter_uses_specialized_generic_call_return_type() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_array_filter_specialized_generic_return_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src_path := '${v3_bin}_program.v'
@@ -49,9 +50,9 @@ fn main() {
 		panic(err)
 	}
 	bin_path := '${v3_bin}.bin'
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '21'
 }

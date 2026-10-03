@@ -100,7 +100,7 @@ fn build_gc_abort_child(dir string) ?string {
 	$if windows {
 		exe += '.exe'
 	}
-	build := os.execute('${os.quoted_path(vexe)} -gc boehm_leak -o ${os.quoted_path(exe)} ${os.quoted_path(source)}')
+	build := os.exec([vexe, '-gc', 'boehm_leak', '-o', exe, source])
 	if build.exit_code != 0 && build.output.contains('libgc') {
 		eprintln('skipping: no Boehm GC library available\n${build.output}')
 		return none

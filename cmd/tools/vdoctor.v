@@ -35,7 +35,7 @@ fn (mut a App) collect_info() {
 		arch_details << 'little endian'
 	}
 	if os_kind == 'macos' {
-		arch_details << a.cmd(command: 'sysctl -n machdep.cpu.brand_string')
+		arch_details << a.cmd(command: ['sysctl', '-n', 'machdep.cpu.brand_string'])
 	}
 	if os_kind == 'linux' {
 		mut cpu_details := ''
@@ -52,13 +52,13 @@ fn (mut a App) collect_info() {
 	}
 	if os_kind == 'windows' {
 		arch_details << a.cmd(
-			command: 'wmic cpu get name /format:table'
+			command: ['wmic', 'cpu', 'get', 'name', '/format:table']
 			line:    2
 		)
 	}
 
 	mut os_details := ''
-	wsl_check := a.cmd(command: 'cat /proc/sys/kernel/osrelease')
+	wsl_check := a.cmd(command: ['cat', '/proc/sys/kernel/osrelease'])
 	if os_kind == 'linux' {
 		os_details = a.get_linux_os_name()
 		if a.cpu_info('flags').contains('hypervisor') {
@@ -77,18 +77,18 @@ fn (mut a App) collect_info() {
 		}
 		// From https://unix.stackexchange.com/a/14346
 		awk_cmd := '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?'
-		if a.cmd(command: awk_cmd) == '0' {
+		if a.cmd(command: ['sh', '-c', awk_cmd]) == '0' {
 			os_details += ' (chroot)'
 		}
 	} else if os_kind == 'macos' {
 		mut details := []string{}
-		details << a.cmd(command: 'sw_vers -productName')
-		details << a.cmd(command: 'sw_vers -productVersion')
-		details << a.cmd(command: 'sw_vers -buildVersion')
+		details << a.cmd(command: ['sw_vers', '-productName'])
+		details << a.cmd(command: ['sw_vers', '-productVersion'])
+		details << a.cmd(command: ['sw_vers', '-buildVersion'])
 		os_details = details.join(', ')
 	} else if os_kind == 'windows' {
 		wmic_info := a.cmd(
-			command: 'wmic os get * /format:value'
+			command: ['wmic', 'os', 'get', '*', '/format:value']
 			line:    -1
 		)
 		p := a.parse(wmic_info, '=')
@@ -128,25 +128,25 @@ fn (mut a App) collect_info() {
 	a.line_env('CFLAGS')
 	a.line_env('LDFLAGS')
 
-	a.line('Git version', a.cmd(command: 'git --version'))
+	a.line('Git version', a.cmd(command: ['git', '--version']))
 	a.line('V git status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
 	a.line('', '')
-	a.line('cc version', a.cmd(command: 'cc --version'))
+	a.line('cc version', a.cmd(command: ['cc', '--version']))
 	if os_kind == 'openbsd' {
-		a.line('gcc version', a.cmd(command: 'egcc --version'))
+		a.line('gcc version', a.cmd(command: ['egcc', '--version']))
 	} else {
-		a.line('gcc version', a.cmd(command: 'gcc --version'))
+		a.line('gcc version', a.cmd(command: ['gcc', '--version']))
 	}
-	a.line('clang version', a.cmd(command: 'clang --version'))
+	a.line('clang version', a.cmd(command: ['clang', '--version']))
 	if os_kind == 'windows' {
 		// Check for MSVC on windows
-		a.line('msvc version', a.cmd(command: 'cl'))
+		a.line('msvc version', a.cmd(command: ['cl']))
 	}
 	a.report_tcc_version('thirdparty/tcc')
-	a.line('emcc version', a.cmd(command: 'emcc --version'))
+	a.line('emcc version', a.cmd(command: ['emcc', '--version']))
 	if os_kind != 'openbsd' && os_kind != 'freebsd' {
-		a.line('glibc version', a.cmd(command: 'ldd --version'))
+		a.line('glibc version', a.cmd(command: ['ldd', '--version']))
 	} else {
 		a.line('glibc version', 'N/A')
 	}
@@ -154,11 +154,11 @@ fn (mut a App) collect_info() {
 
 struct CmdConfig {
 	line    int
-	command string
+	command []string
 }
 
 fn (mut a App) cmd(c CmdConfig) string {
-	x := os.execute(c.command)
+	x := os.exec(c.command)
 	os_kind := os.user_os()
 	if x.exit_code < 0 || x.exit_code == 127 || (os_kind == 'windows' && x.exit_code == 1) {
 		return 'N/A'
@@ -216,11 +216,11 @@ fn (mut a App) get_linux_os_name() string {
 			}
 		}
 	}
-	if !a.cmd(command: 'type lsb_release').starts_with('Error') {
-		return a.cmd(command: 'lsb_release -d -s')
+	if os.exists_in_system_path('lsb_release') {
+		return a.cmd(command: ['lsb_release', '-d', '-s'])
 	}
 	if os.is_file('/proc/version') {
-		return a.cmd(command: 'cat /proc/version')
+		return a.cmd(command: ['cat', '/proc/version'])
 	}
 	ouname := os.uname()
 	return '${ouname.release}, ${ouname.version}'
@@ -230,7 +230,7 @@ fn (mut a App) cpu_info(key string) string {
 	if a.cached_cpuinfo.len > 0 {
 		return a.cached_cpuinfo[key]
 	}
-	info := os.execute('cat /proc/cpuinfo')
+	info := os.exec(['cat', '/proc/cpuinfo'])
 	if info.exit_code != 0 {
 		return '`cat /proc/cpuinfo` could not run'
 	}
@@ -240,16 +240,20 @@ fn (mut a App) cpu_info(key string) string {
 
 fn (mut a App) git_info() string {
 	// Check if in a Git repository
-	x := os.execute('git rev-parse --is-inside-work-tree')
+	x := os.exec(['git', 'rev-parse', '--is-inside-work-tree'])
 	if x.exit_code != 0 || x.output.trim_space() != 'true' {
 		return 'N/A'
 	}
-	mut out := a.cmd(command: 'git -C . describe --abbrev=8 --dirty --always --tags').trim_space()
-	os.execute('git -C . remote add V_REPO https://github.com/vlang/v') // ignore failure (i.e. remote exists)
+	mut out := a.cmd(
+		command: ['git', '-C', '.', 'describe', '--abbrev=8', '--dirty', '--always', '--tags']
+	).trim_space()
+	os.exec(['git', '-C', '.', 'remote', 'add', 'V_REPO', 'https://github.com/vlang/v']) // ignore failure (i.e. remote exists)
 	if '-skip-github' !in os.args {
-		os.execute('${os.quoted_path(a.vexe)} timeout 5.1 "git -C . fetch V_REPO"') // usually takes ~0.6s; 5 seconds should be enough for even the slowest networks
+		os.exec([a.vexe, 'timeout', '5.1', 'git -C . fetch V_REPO']) // usually takes ~0.6s; 5 seconds should be enough for even the slowest networks
 	}
-	commit_count := a.cmd(command: 'git rev-list @{0}...V_REPO/master --right-only --count').int()
+	commit_count := a.cmd(
+		command: ['git', 'rev-list', '@{0}...V_REPO/master', '--right-only', '--count']
+	).int()
 	if commit_count > 0 {
 		out += ' (${commit_count} commit(s) behind V master)'
 	}
@@ -258,7 +262,7 @@ fn (mut a App) git_info() string {
 
 fn (mut a App) report_tcc_version(tccfolder string) {
 	cmd := os.join_path(tccfolder, 'tcc.exe') + ' -v'
-	x := os.execute(cmd)
+	x := os.exec(os.split_args(cmd) or { panic(err) })
 	if x.exit_code == 0 {
 		a.line('tcc version', '${x.output.trim_space()}')
 	} else {
@@ -268,10 +272,11 @@ fn (mut a App) report_tcc_version(tccfolder string) {
 		a.line('tcc git status', 'N/A')
 	} else {
 		tcc_branch_name := a.cmd(
-			command: 'git -C ${os.quoted_path(tccfolder)} rev-parse --abbrev-ref HEAD'
+			command: ['git', '-C', tccfolder, 'rev-parse', '--abbrev-ref', 'HEAD']
 		)
 		tcc_commit := a.cmd(
-			command: 'git -C ${os.quoted_path(tccfolder)} describe --abbrev=8 --dirty --always --tags'
+			command: ['git', '-C', tccfolder, 'describe', '--abbrev=8', '--dirty', '--always',
+				'--tags']
 		)
 		a.line('tcc git status', '${tcc_branch_name} ${tcc_commit}')
 	}

@@ -61,7 +61,7 @@ fn test_all() {
 		exit(0)
 	}
 
-	res_valgrind := os.execute('valgrind --version')
+	res_valgrind := os.exec(['valgrind', '--version'])
 	if res_valgrind.exit_code != 0 {
 		eprintln('This test needs `valgrind` to be installed.')
 		exit(0)
@@ -104,7 +104,7 @@ fn test_all() {
 		full_path_to_source_file := os.join_path(vroot, test)
 		compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_filename)} -cg -cflags ' + ' "-w" -experimental -autofree ${os.quoted_path(full_path_to_source_file)}'
 		vprintln('compile cmd: ${bold(compile_cmd)}')
-		res := os.execute(compile_cmd)
+		res := os.exec(os.split_args(compile_cmd) or { panic(err) })
 		if res.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('file: ${test} could not be compiled.'))
@@ -121,7 +121,7 @@ fn test_all() {
 		}
 		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full ${os.quoted_path(exe_filename)}'
 		vprintln('valgrind cmd: ${bold(valgrind_cmd)}')
-		valgrind_res := os.execute(valgrind_cmd)
+		valgrind_res := os.exec(['valgrind', '--error-exitcode=1', '--leak-check=full', exe_filename])
 		if valgrind_res.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('failed valgrind check for ${bold(test)}'))

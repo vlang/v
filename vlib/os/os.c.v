@@ -439,6 +439,7 @@ fn vpclose(f voidptr) int {
 }
 
 // system works like `exec`, but only returns a return code.
+@[deprecated: 'use os.system_args with an argument array; command strings can allow shell injection']
 pub fn system(cmd string) int {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 	// TODO: remove panic

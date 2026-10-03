@@ -88,7 +88,7 @@ fn main() {
 			cmd += ' -stats'
 		}
 		cmd += ' -silent test ' + os.quoted_path(target)
-		result := os.execute(cmd)
+		result := os.exec(os.split_args(cmd) or { panic(err) })
 		if result.exit_code != 0 {
 			failed++
 			eprintln('run-tests.vsh: FAILED ${target}')

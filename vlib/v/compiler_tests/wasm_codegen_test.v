@@ -15,7 +15,7 @@ fn testsuite_begin() {
 fn v3_binary() string {
 	v3_bin := os.join_path(os.vtmp_dir(), 'v3_wasm_codegen_test')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -26,7 +26,7 @@ fn compile_to_wasm(v3_bin string, src string, name string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	os.rm(out_path) or {}
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_path)} ${os.quoted_path(src_path)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', out_path, src_path])
 	assert res.exit_code == 0, res.output
 	assert os.exists(out_path), 'missing wasm output for ${name}'
 	return out_path
@@ -58,7 +58,7 @@ fn last_line(out string) string {
 }
 
 fn run_node(node string, runner string, wasm string) os.Result {
-	return os.execute('${os.quoted_path(node)} --no-warnings ${os.quoted_path(runner)} ${os.quoted_path(wasm)}')
+	return os.exec(['${node}', '--no-warnings', '${runner}', '${wasm}'])
 }
 
 // run_wasi_expect runs a WASI module and asserts its trailing output lines.
@@ -222,9 +222,9 @@ fn test_wasm_string_literal_escapes_not_double_decoded() {
 	os.write_file(src_path, src) or { panic(err) }
 	c_bin := os.join_path(os.vtmp_dir(), 'wasm_esc_c')
 	cres :=
-		os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(c_bin)} ${os.quoted_path(src_path)}')
+		os.exec([v3_bin, '-b', 'c', '-o', c_bin, src_path])
 	assert cres.exit_code == 0, cres.output
-	cout := os.execute(os.quoted_path(c_bin))
+	cout := os.exec([c_bin])
 	assert cout.exit_code == 0, cout.output
 
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_esc')
@@ -261,7 +261,7 @@ fn test_wasm_imported_module_numeric_call() {
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	// No fallback warnings: the imported module calls must resolve.
@@ -300,7 +300,7 @@ fn test_wasm_module_scoped_globals() {
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 
@@ -345,7 +345,7 @@ fn test_wasm_imported_module_alias_call() {
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
@@ -409,7 +409,7 @@ fn test_wasm_import_aliases_are_file_scoped() {
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
@@ -487,7 +487,7 @@ fn test_wasm_output_path_is_exact() {
 	os.rm(out_path) or {}
 	os.rm(out_path + '.wasm') or {}
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_path)} ${os.quoted_path(src_path)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', out_path, src_path])
 	assert res.exit_code == 0, res.output
 	assert os.exists(out_path), 'expected exact output ${out_path}'
 	assert !os.exists(out_path + '.wasm'), 'unexpected ${out_path}.wasm'
@@ -522,7 +522,7 @@ fn test_wasm_nested_module_import_call() {
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
@@ -589,7 +589,7 @@ fn test_wasm_nested_imported_modules() {
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
@@ -610,7 +610,7 @@ fn test_wasm_main_dir_matching_import_name() {
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(main_v)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	run_wasi_expect(out_wasm, ['42'])
@@ -690,7 +690,7 @@ fn test_wasm_imported_module_init() {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir, 'main.v'))}')
+	res := os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', os.join_path(dir, 'main.v')])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	run_wasi_expect(out_wasm, ['moda init', 'main', '42'])
@@ -717,7 +717,7 @@ fn test_wasm_init_only_imported_module() {
 	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
 		"module moda\n\nfn init() {\n\tprintln('moda init')\n}\n") or { panic(err) }
 	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir, 'main.v'))}')
+	res := os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', os.join_path(dir, 'main.v')])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	run_wasi_expect(out_wasm, ['moda init', 'main'])
@@ -741,7 +741,7 @@ fn test_wasm_init_dependency_order() {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir, 'main.v'))}')
+	res := os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', os.join_path(dir, 'main.v')])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	run_wasi_expect(out_wasm, ['b init', 'a init', 'main', '5'])
@@ -762,7 +762,7 @@ fn test_wasm_imported_module_const() {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir, 'main.v'))}')
+	res := os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', os.join_path(dir, 'main.v')])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported'), res.output
@@ -785,7 +785,7 @@ fn res_contains_unsupported(v3_bin string, src string) bool {
 	out := os.join_path(os.vtmp_dir(), 'wasm_labeled_warn.wasm')
 	os.write_file(src_path, src) or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out)} ${os.quoted_path(src_path)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', '${out}', src_path])
 	return res.output.contains('unsupported statement: label_stmt')
 }
 

@@ -22,15 +22,18 @@ fn test_ordinary_v_v_file_has_the_same_checker_errors_as_app_v() {
 	os.write_file(v_file, source)!
 	compiler := os.quoted_path(@VEXE)
 	for mode in ['-check', '-o ${os.quoted_path(os.join_path(dir, 'invalid'))}'] {
-		app := os.execute('${compiler} -new-compiler -nocache -nocolor ${mode} ${os.quoted_path(app_file)}')
-		v := os.execute('${compiler} -new-compiler -nocache -nocolor ${mode} ${os.quoted_path(v_file)}')
+		app := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor',
+			...(os.split_args(mode) or { panic(err) }), app_file])
+		v := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor',
+			...(os.split_args(mode) or { panic(err) }), v_file])
 		assert app.exit_code != 0, app.output
 		assert v.exit_code != 0, v.output
 		assert app.output.contains('field `name` of struct `Foo` is immutable'), app.output
 		assert app.output.contains('`f` is immutable'), app.output
 		assert app.output.replace(os.real_path(app_file), '<input>') == v.output.replace(os.real_path(v_file),
 			'<input>'), v.output
-		forced := os.execute('${compiler} -new-compiler -nocache -nocolor -building-v ${mode} ${os.quoted_path(v_file)}')
+		forced := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', '-building-v',
+			...(os.split_args(mode) or { panic(err) }), v_file])
 		assert forced.exit_code != 0, forced.output
 		assert forced.output.contains('field `name` of struct `Foo` is immutable'), forced.output
 		assert forced.output.contains('`f` is immutable'), forced.output
@@ -47,7 +50,8 @@ fn test_cmd_v_build_reports_errors_from_an_isolated_source_file() {
 	compiler_source := os.join_path(@VEXEROOT, 'cmd', 'v')
 	compiler := os.quoted_path(@VEXE)
 	for mode in ['-check', '-o ${os.quoted_path(os.join_path(dir, 'invalid_compiler'))}'] {
-		result := os.execute('${compiler} -new-compiler -nocache -nocolor ${mode} -file-list ${os.quoted_path(probe)} ${os.quoted_path(compiler_source)}')
+		result := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor',
+			...(os.split_args(mode) or { panic(err) }), '-file-list', '${probe}', compiler_source])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('`zz_probe` is immutable'), result.output
 		assert result.output.contains('cannot assign to `zz_probe`: expected `string`, not `int literal`'), result.output

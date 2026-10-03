@@ -44,9 +44,9 @@ fn test_failed_assert_in_after_each_leaves_no_panic_frames() {
 	src := os.join_path(dir, 'hook_test.v')
 	os.write_file(src, hook_test_source)!
 	exe := os.join_path(dir, 'hook_test')
-	compile := os.execute('${os.quoted_path(vexe)} -b c -o ${os.quoted_path(exe)} ${os.quoted_path(src)}')
+	compile := os.exec([vexe, '-b', 'c', '-o', exe, '${src}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(exe))
+	run := os.exec([exe])
 	assert run.exit_code == 1, run.output
 	assert run.output.contains('after_each fails'), run.output
 	assert run.output.contains('cleanup'), run.output

@@ -404,13 +404,13 @@ fn is_manifestless_registered_checkout(module_path string, module_name string, v
 	}
 	remote := match vcs {
 		.git {
-			result := os.execute_opt('git -C ${os.quoted_path(module_path)} remote get-url origin') or {
+			result := os.exec_opt(['git', '-C', module_path, 'remote', 'get-url', 'origin']) or {
 				return false
 			}
 			result.output.trim_space()
 		}
 		.hg {
-			result := os.execute_opt('hg -R ${os.quoted_path(module_path)} paths default') or {
+			result := os.exec_opt(['hg', '-R', module_path, 'paths', 'default']) or {
 				return false
 			}
 			result.output.trim_space()

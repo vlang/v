@@ -10,7 +10,8 @@ fn vml_codegen_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_vml_codegen_test_${pid}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${vml_codegen_vexe} -gc none -path "${vml_codegen_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${vml_codegen_v3_src}')
+	build := os.exec([vml_codegen_vexe, '-gc', 'none', '-path',
+		'${vml_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${vml_codegen_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -119,10 +120,11 @@ fn main() {
 	main_path := os.join_path(root, 'main.v')
 	os.write_file(main_path, source) or { panic(err) }
 	bin := os.join_path(root, 'vml_codegen')
-	compile := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
+	compile := os.exec([v3_bin, '-nocache', '-path', '${root}' + '|' + '${vml_codegen_vlib_dir}',
+		'-b', 'c', '-o', bin, main_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '9 a:0 7 select:7\n9 progressbar\nslider 12.5:0.0:100.0 select:4\nswitch false select:5\ncombobox Home choose:Work\ncheckbox 2.0:4.0 select:app.selected', run.output
 	os.write_file(os.join_path(root, 'review.vml'), 'Screen {
@@ -159,9 +161,10 @@ fn main() {
 	os.write_file(review_path, "module main\n\nimport ui2\n\nstruct App {\n\titems []int\n\tcount int\n\tready bool\n\tenabled bool\npub mut:\n\tselected int\n}\n\npub fn (mut app App) select(value int) {\n\tapp.selected = value\n}\n\npub fn (app &App) display_name() string {\n\treturn 'display:\${app.count}'\n}\n\npub fn (app &App) content_width() int {\n\treturn 88\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$vml('review.vml')\n}\n\nfn main() {\n\tapp := App{items: [10], count: 2, ready: true}\n\troot := build(&app)\n\tprintln(root.children[4].frame.width.str() + ' ' + root.box.bg.str() + ' ' + root.children[1].frame.width.str() + ' ' + root.children[3].frame.width.str() + ' ' + root.children[3].action_id + ' ' + root.children[4].text + ' ' + root.children[5].text + ' ' + root.children[6].text + ' ' + root.children[7].text + ' ' + root.children[8].action_id + ' ' + root.children[9].frame.width.str() + ':' + root.children[9].box.bg.str() + ' ' + root.children[10].text + ' ' + root.children[11].text + ' ' + root.children[12].text + ' ' + root.children[13].text + ' ' + root.children[14].action_id + ' ' + root.children[15].text + ' ' + root.children[16].text)\n}\n") or {
 		panic(err)
 	}
-	review_compile := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${review_path}')
+	review_compile := os.exec([v3_bin, '-nocache', '-path',
+		'${root}' + '|' + '${vml_codegen_vlib_dir}', '-b', 'c', '-o', bin, review_path])
 	assert review_compile.exit_code == 0, review_compile.output
-	review_run := os.execute(bin)
+	review_run := os.exec([bin])
 	assert review_run.exit_code == 0, review_run.output
 	assert review_run.output.trim_space() == '50.0 16711680 123.0 77.0 select:1 3 3 count:2 display:2 select:1 88.0:65280 3 12 4 3 select:-1 false true', review_run.output
 	os.write_file(os.join_path(root, 'events.vml'), 'Screen {
@@ -172,9 +175,10 @@ fn main() {
 	os.write_file(events_path, "module main\n\nimport ui2\n\nstruct App {}\n\npub fn (mut app App) choose(value string) {\n\t_ = app\n\t_ = value\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$vml('events.vml')\n}\n\nfn main() {\n\tapp := App{}\n\troot := build(&app)\n\tprintln(root.children[0].action_id + ':' + root.children[0].emit_change.str() + ' ' + root.children[1].action_id + ':' + root.children[1].emit_change.str())\n}\n") or {
 		panic(err)
 	}
-	events_compile := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${events_path}')
+	events_compile := os.exec([v3_bin, '-nocache', '-path',
+		'${root}' + '|' + '${vml_codegen_vlib_dir}', '-b', 'c', '-o', bin, events_path])
 	assert events_compile.exit_code == 0, events_compile.output
-	events_run := os.execute(bin)
+	events_run := os.exec([bin])
 	assert events_run.exit_code == 0, events_run.output
 	assert events_run.output.trim_space() == 'choose:Typed:true choose:Notes:true', events_run.output
 	os.write_file(os.join_path(root, 'nested.vml'), 'Screen {
@@ -192,9 +196,10 @@ fn main() {
 	os.write_file(nested_path, "module main\n\nimport ui2\n\nstruct Row {\n\tid int\n\tvalues []int\n}\n\nstruct App {\n\trows []Row\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$vml('nested.vml')\n}\n\nfn main() {\n\tapp := App{rows: [Row{id: 10, values: [1]}, Row{id: 20, values: [1]}]}\n\troot := build(&app)\n\tprintln(root.children[0].key + ' ' + root.children[1].key)\n}\n") or {
 		panic(err)
 	}
-	nested_compile := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${nested_path}')
+	nested_compile := os.exec([v3_bin, '-nocache', '-path',
+		'${root}' + '|' + '${vml_codegen_vlib_dir}', '-b', 'c', '-o', bin, nested_path])
 	assert nested_compile.exit_code == 0, nested_compile.output
-	nested_run := os.execute(bin)
+	nested_run := os.exec([bin])
 	assert nested_run.exit_code == 0, nested_run.output
 	assert nested_run.output.trim_space() == '10:1 20:1', nested_run.output
 	os.write_file(os.join_path(root, 'geometry_color.vml'), 'Screen {
@@ -205,9 +210,10 @@ fn main() {
 	os.write_file(geometry_color_path, "module main\n\nimport ui2\n\nstruct App {}\n\npub fn (app &App) theme_color() string {\n\treturn '#112233'\n}\n\npub fn (app &App) numeric_color() u32 {\n\treturn u32(0x445566)\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$vml('geometry_color.vml')\n}\n\nfn main() {\n\tapp := App{}\n\troot := build(&app)\n\tprintln(root.children[0].frame.width.str() + ':' + root.children[0].frame.height.str() + ':' + root.children[0].box.bg.str() + ' ' + root.children[1].box.bg.str())\n}\n") or {
 		panic(err)
 	}
-	geometry_color_compile := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${geometry_color_path}')
+	geometry_color_compile := os.exec([v3_bin, '-nocache', '-path',
+		'${root}' + '|' + '${vml_codegen_vlib_dir}', '-b', 'c', '-o', bin, geometry_color_path])
 	assert geometry_color_compile.exit_code == 0, geometry_color_compile.output
-	geometry_color_run := os.execute(bin)
+	geometry_color_run := os.exec([bin])
 	assert geometry_color_run.exit_code == 0, geometry_color_run.output
 	assert geometry_color_run.output.trim_space() == '100.0:100.0:1122867 4478310', geometry_color_run.output
 	os.write_file(os.join_path(root, 'custom.vml'), 'Screen {
@@ -221,9 +227,10 @@ fn main() {
 	os.write_file(custom_path, "module main\n\nimport ui2\n\nstruct Item {\n\tname string\n}\n\nstruct App {\n\titem Item\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$vml('custom.vml')\n}\n\nfn main() {\n\tapp := App{item: Item{name: 'chosen'}}\n\troot := build(&app)\n\tprintln(root.children[0].text + ' ' + root.children[1].frame.width.str())\n}\n") or {
 		panic(err)
 	}
-	custom_compile := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${custom_path}')
+	custom_compile := os.exec([v3_bin, '-nocache', '-path',
+		'${root}' + '|' + '${vml_codegen_vlib_dir}', '-b', 'c', '-o', bin, custom_path])
 	assert custom_compile.exit_code == 0, custom_compile.output
-	custom_run := os.execute(bin)
+	custom_run := os.exec([bin])
 	assert custom_run.exit_code == 0, custom_run.output
 	assert custom_run.output.trim_space() == 'chosen 0.5', custom_run.output
 	os.write_file(os.join_path(root, 'expressions.vml'), r'Screen {
@@ -243,21 +250,25 @@ fn main() {
 	os.write_file(expressions_path, "module main\n\nimport ui2\n\nstruct Item {\n\tvalue int\n\tcolor string\n}\n\nstruct App {\n\tvalues []int\n\titems []Item\n}\n\nfn (app &App) label(value string) string {\n\t_ = app\n\treturn value\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$vml('expressions.vml')\n}\n\nfn main() {\n\tapp := App{values: [10], items: [Item{value: 1, color: '#112233'}]}\n\troot := build(&app)\n\tprintln(root.children[0].text + ' ' + root.children[1].box.bg.str() + ' ' + root.children[2].text)\n}\n") or {
 		panic(err)
 	}
-	expressions_compile := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${expressions_path}')
+	expressions_compile := os.exec([v3_bin, '-nocache', '-path',
+		'${root}' + '|' + '${vml_codegen_vlib_dir}', '-b', 'c', '-o', bin, expressions_path])
 	assert expressions_compile.exit_code == 0, expressions_compile.output
-	expressions_run := os.execute(bin)
+	expressions_run := os.exec([bin])
 	assert expressions_run.exit_code == 0, expressions_run.output
 	assert expressions_run.output.trim_space() == '9 1122867 }', expressions_run.output
 	os.write_file(os.join_path(root, 'form.vml'), 'Screen { MessageBox { Button { on_tap: app.missing() } } }') or { panic(err) }
-	invalid := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
+	invalid := os.exec([v3_bin, '-nocache', '-path', '${root}' + '|' + '${vml_codegen_vlib_dir}',
+		'-b', 'c', '-o', bin, main_path])
 	assert invalid.exit_code != 0, invalid.output
 	assert invalid.output.contains('missing'), invalid.output
 	os.write_file(os.join_path(root, 'form.vml'), 'Screen { Button { MenuItem { on_tap: app.missing() } } }') or { panic(err) }
-	invalid_menu := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
+	invalid_menu := os.exec([v3_bin, '-nocache', '-path', '${root}' + '|' + '${vml_codegen_vlib_dir}',
+		'-b', 'c', '-o', bin, main_path])
 	assert invalid_menu.exit_code != 0, invalid_menu.output
 	assert invalid_menu.output.contains('missing'), invalid_menu.output
 	os.write_file(os.join_path(root, 'form.vml'), 'Screen { Button { on_tap: app.private_action() } }') or { panic(err) }
-	invalid_private := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
+	invalid_private := os.exec([v3_bin, '-nocache', '-path',
+		'${root}' + '|' + '${vml_codegen_vlib_dir}', '-b', 'c', '-o', bin, main_path])
 	assert invalid_private.exit_code != 0, invalid_private.output
 	assert invalid_private.output.contains('must be public'), invalid_private.output
 	os.write_file(os.join_path(root, 'single_quotes.vml'), 'Screen { Label { text: \'It\\\'s "ready"\' tooltip: \'line one\\nline two\' } Label { text: "\${app.label(\'}\')}" } }') or {
@@ -267,9 +278,10 @@ fn main() {
 	os.write_file(single_quotes_path, "module main\n\nimport ui2\n\nstruct App {}\n\npub fn (app &App) label(value string) string {\n\t_ = app\n\treturn value\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$vml('single_quotes.vml')\n}\n\nfn main() {\n\tapp := App{}\n\troot := build(&app)\n\tprintln(root.children[0].text + ':' + root.children[0].tooltip + ':' + root.children[1].text)\n}\n") or {
 		panic(err)
 	}
-	single_quotes_compile := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${single_quotes_path}')
+	single_quotes_compile := os.exec([v3_bin, '-nocache', '-path',
+		'${root}' + '|' + '${vml_codegen_vlib_dir}', '-b', 'c', '-o', bin, single_quotes_path])
 	assert single_quotes_compile.exit_code == 0, single_quotes_compile.output
-	single_quotes_run := os.execute(bin)
+	single_quotes_run := os.exec([bin])
 	assert single_quotes_run.exit_code == 0, single_quotes_run.output
 	assert single_quotes_run.output == 'It\'s "ready":line one\nline two:}\n', single_quotes_run.output
 }

@@ -70,7 +70,7 @@ fn test_escaped_and_plain_enum_members_have_distinct_match_coverage() {
 	path := os.join_path(os.vtmp_dir(), 'v3_distinct_enum_coverage_${os.getpid()}.v')
 	os.write_file(path, 'enum Choice { none @none }\nfn f(e Choice) int { match e { .@none { return 1 } } }\nfn main() {}\n')!
 	defer { os.rm(path) or {} }
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, '-new-compiler', '-check', path])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('missing return'), result.output
 }
@@ -89,7 +89,7 @@ fn test_escaped_enum_members_keep_distinct_match_coverage() {
 	defer { os.rm(path) or {} }
 	for condition in ['.@none', 'Kind.@none'] {
 		os.write_file(path, 'enum Kind { none = 2 @none = 4 }\nfn score(value Kind) int { match value { ${condition} { return 4 } } }\nfn main() { println(score(.none)) }\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('missing return'), result.output
 	}
@@ -99,7 +99,7 @@ fn test_non_keyword_enum_member_cannot_be_escaped() {
 	path := os.join_path(os.vtmp_dir(), 'v3_invalid_enum_escape_${os.getpid()}.v')
 	os.write_file(path, 'enum Kind { left struct }\nfn main() { _ := Kind.@left }\n')!
 	defer { os.rm(path) or {} }
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, '-check', path])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('only escape keyword enum members'), result.output
 }
@@ -109,7 +109,7 @@ fn test_native_backend_preserves_escaped_enum_declaration() {
 		path := os.join_path(os.vtmp_dir(), 'v3_native_escaped_enum_${os.getpid()}.v')
 		defer { os.rm(path) or {} }
 		os.write_file(path, 'enum Kind { @none = -10 struct }\nenum Distinct { none = 2 @none = 4 }\nfn main() { assert int(Kind.@none) == -10; assert int(Kind.none) == -10; assert int(Kind.@struct) == -9; value := Kind.none; assert value == .none; assert int(Distinct.none) == 2; assert int(Distinct.@none) == 4 }\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -b arm64 -gc none run ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-b', 'arm64', '-gc', 'none', 'run', path])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -172,7 +172,7 @@ fn test_native_backend_evaluates_escaped_enum_initializer_references() {
 		path := os.join_path(os.vtmp_dir(), 'v3_native_escaped_enum_initializer_${os.getpid()}.v')
 		defer { os.rm(path) or {} }
 		os.write_file(path, 'enum Kind { struct = 4 next = int(Kind.@struct) + 6 @none = 11 reverse = int(Kind.none) + 2 type = 17 @type = 23 plain_exact = int(Kind.type) + 3 escaped_exact = int(Kind.@type) + 3 }\nfn main() { assert int(Kind.next) == 10; assert int(Kind.reverse) == 13; assert int(Kind.plain_exact) == 20; assert int(Kind.escaped_exact) == 26; value := Kind.next; assert value.str() == "next" }\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -b arm64 -gc none run ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-b', 'arm64', '-gc', 'none', 'run', path])
 		assert result.exit_code == 0, result.output
 	}
 }

@@ -10,7 +10,9 @@ fn local_fixed_array_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_local_zero_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${local_fixed_array_vexe} -gc none -path "${local_fixed_array_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${local_fixed_array_v3_src}')
+		os.exec([local_fixed_array_vexe, '-gc', 'none', '-path',
+			'${local_fixed_array_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${local_fixed_array_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -47,9 +49,9 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_local_zero_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '12'
 	generated := os.read_file(bin + '.c') or { panic(err) }
@@ -90,7 +92,7 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_struct_field_${os.getpid()}')
-	compile := os.execute('${v3_bin} -nocache ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot assign to field `arr`: expected `Arr`, not `&Arr`'), compile.output
 

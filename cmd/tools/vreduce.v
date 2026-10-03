@@ -104,7 +104,7 @@ fn string_reproduces(file_content string, pattern string, command string, file_p
 	os.write_file(file_path, file_content) or { panic(err) }
 	mut output := ''
 	if timeout == 0 {
-		res := os.execute(command)
+		res := os.exec(os.split_args(command) or { panic(err) })
 		output = res.output
 	} else {
 		split := command.split(' ')
@@ -446,7 +446,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 }
 
 fn vfmt_file(rpdc_file_path string) {
-	os.execute('${os.quoted_path(@VEXE)} fmt -w ${rpdc_file_path}')
+	os.exec([@VEXE, 'fmt', '-w', rpdc_file_path])
 	final_content := os.read_file(rpdc_file_path) or { panic(err) }
 	show_code_stats(final_content, label: 'Code size after formatting')
 }

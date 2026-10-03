@@ -17,7 +17,7 @@ fn cross_generate_with(flags string, name string, source string) string {
 	src := os.join_path(dir, 'm.v')
 	os.write_file(src, source) or { panic(err) }
 	out := os.join_path(dir, 'out.c')
-	res := os.execute('${os.quoted_path(vexe)} ${flags} -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+	res := os.exec([vexe, ...(os.split_args(flags) or { panic(err) }), '-o', '${out}', '${src}'])
 	assert res.exit_code == 0, res.output
 	return os.read_file(out) or { panic(err) }
 }
@@ -56,7 +56,8 @@ fn test_cross_output_keeps_checker_errors_for_the_selected_target() {
 	os.write_file(src, 'fn main() {\n\t\$if windows {\n\t\tmissing_windows_value()\n\t} \$else {\n\t\tmissing_posix_value()\n\t}\n}\n')!
 	for target in ['linux', 'windows'] {
 		out := os.join_path(dir, '${target}.c')
-		result := os.execute('${os.quoted_path(vexe)} -no-retry-compilation -building-v -cross -os ${target} -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+		result := os.exec([vexe, '-no-retry-compilation', '-building-v', '-cross', '-os', '${target}',
+			'-o', '${out}', '${src}'])
 		assert result.exit_code != 0, result.output
 		selected := if target == 'windows' {
 			'missing_windows_value'

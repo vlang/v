@@ -38,9 +38,10 @@ fn test_owned_array_storage_with_ownership_checker_api() {
 	}
 	binary := os.join_path(dir, 'owned_array_storage_api')
 	compiler_source := os.join_path(@VEXEROOT, 'cmd', 'v')
-	build := os.execute('${os.quoted_path(@VEXE)} -new-compiler -d ownership -building-v -o ${os.quoted_path(binary)} -file-list ${os.quoted_path(os.real_path(@FILE))} ${os.quoted_path(compiler_source)}')
+	build := os.exec([@VEXE, '-new-compiler', '-d', 'ownership', '-building-v', '-o', binary,
+		'-file-list', os.real_path(@FILE), compiler_source])
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(binary))
+	run := os.exec([binary])
 	assert run.exit_code == 0, run.output
 }
 

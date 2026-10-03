@@ -126,7 +126,8 @@ const cases = [
 
 fn build_v3() string {
 	if !os.is_executable(unhandled_v3_bin) {
-		res := os.execute('${os.quoted_path(vexe)} -gc none -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(unhandled_v3_bin)} ${os.quoted_path(v3_src)}')
+		res := os.exec([vexe, '-gc', 'none', '-path', '${'${vlib_dir}|@vlib|@vmodules'}', '-o',
+			unhandled_v3_bin, '${v3_src}'])
 		assert res.exit_code == 0, res.output
 	}
 	return unhandled_v3_bin
@@ -166,7 +167,8 @@ fn write_program(name string, source string) string {
 // build_output builds the program in `dir`, as `v run` does before running it:
 // a check alone prints no warning when there is no error.
 fn build_output(v3 string, dir string) string {
-	return os.execute('${os.quoted_path(v3)} -nocache -gc none -nocolor -o ${os.quoted_path(os.join_path(dir, 'prog'))} ${os.quoted_path(os.join_path(dir, 'main.v'))}').output
+	return os.exec(['${v3}', '-nocache', '-gc', 'none', '-nocolor', '-o', os.join_path(dir, 'prog'),
+		os.join_path(dir, 'main.v')]).output
 }
 
 // diagnostics_at returns the diagnostics reported on `line` of main.v.
@@ -242,7 +244,7 @@ fn test_v_run_warns_and_runs_the_program() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	res := os.execute('${os.quoted_path(v3)} -nocache -gc none run ${os.quoted_path(os.join_path(dir, 'main.v'))}')
+	res := os.exec(['${v3}', '-nocache', '-gc', 'none', 'run', os.join_path(dir, 'main.v')])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('warning: fails() returns `!int`, ${either_hint}'), res.output
 	assert res.output.contains('after the call'), res.output
@@ -255,7 +257,7 @@ fn test_the_warning_is_an_error_with_w() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	res := os.execute('${os.quoted_path(v3)} -nocache -W -check -nocolor ${os.quoted_path(os.join_path(dir, 'main.v'))}')
+	res := os.exec(['${v3}', '-nocache', '-W', '-check', '-nocolor', os.join_path(dir, 'main.v')])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('error: fails() returns `!int`, ${either_hint}'), res.output
 }

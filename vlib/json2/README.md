@@ -73,8 +73,10 @@ booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects en
 #### decode[T]
 
 JSON object keys are decoded to the target map key type, including signed and unsigned
-integer keys and enum member names. Unknown enum names return a decoding error.
-Nested maps and maps stored in struct fields follow the same conversion.
+integer keys. Nested maps and maps stored in struct fields follow the same conversion.
+Enum map keys, including enum type aliases, use member names as written by `encode`.
+Member `@[json: ...]` attributes do not rename map keys. Unknown member names return
+a decoding error.
 Flag-enum keys, including aliases, also accept their encoded form, such as
 `Permission{.read | .write}` or `Permission{}` for zero, so maps with flag keys
 round-trip through JSON.

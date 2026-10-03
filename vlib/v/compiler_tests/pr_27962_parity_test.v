@@ -9,7 +9,8 @@ const pr_27962_v3_src = os.join_path(pr_27962_v3_dir, 'v.v')
 fn pr_27962_build_v3(root string) string {
 	v3_bin := os.join_path(root, 'v3')
 	build :=
-		os.execute('${os.quoted_path(pr_27962_vexe)} -gc none -prealloc -path "${pr_27962_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(pr_27962_v3_src)}')
+		os.exec([pr_27962_vexe, '-gc', 'none', '-prealloc', '-path',
+			'${pr_27962_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${pr_27962_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -24,9 +25,9 @@ fn pr_27962_compile_and_run(v3_bin string, root string, name string, source stri
 	source_path := pr_27962_write_source(root, name, source)
 	binary_path := os.join_path(root, name)
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} -silent -nocache -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-silent', '-nocache', '-o', binary_path, source_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(binary_path))
+	run := os.exec([binary_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -35,7 +36,8 @@ fn pr_27962_generate_c(v3_bin string, root string, name string, source string, f
 	source_path := pr_27962_write_source(root, name, source)
 	c_path := os.join_path(root, '${name}.c')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} -silent -nocache ${flags} -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-silent', '-nocache', ...(os.split_args(flags) or { panic(err) }), '-o',
+			c_path, source_path])
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }

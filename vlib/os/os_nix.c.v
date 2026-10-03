@@ -349,7 +349,12 @@ pub fn mkdir(path string, params MkdirParams) ! {
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
+@[deprecated: 'use os.exec with an argument array; command strings can allow shell injection']
 pub fn execute(cmd string) Result {
+	return execute_shell(cmd)
+}
+
+fn execute_shell(cmd string) Result {
 	mut pid := 0
 	mut read_fd := -1
 	v_os_execute_lock()
@@ -435,9 +440,10 @@ pub fn exec(args []string) Result {
 // On Windows raw_execute starts the specified command, waits for it to complete, and returns its output.
 // It's marked as `unsafe` to help emphasize the problems that may arise by allowing, for example,
 // user provided escape sequences.
+@[deprecated: 'use os.exec with an argument array; command strings can allow shell injection']
 @[unsafe]
 pub fn raw_execute(cmd string) Result {
-	return execute(cmd)
+	return execute_shell(cmd)
 }
 
 // symlink creates a symbolic link named link_name, which points to target.

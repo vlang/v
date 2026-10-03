@@ -17,7 +17,7 @@ fn test_fmt_keeps_invalid_assert_source_unchanged() {
 	original := "fn main() {\n\tassert false 'bye'\n}\n"
 	os.write_file(source_path, original)!
 
-	res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(source_path)}')
+	res := os.exec([vexe, 'fmt', '-w', source_path])
 
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('unexpected string `bye`, expecting `,`'), res.output
@@ -38,16 +38,16 @@ fn test_fmt_preferences_respect_vflags() {
 	}
 
 	os.unsetenv('VFLAGS')
-	warmup_res := os.execute('${os.quoted_path(vexe)} fmt -help')
+	warmup_res := os.exec([vexe, 'fmt', '-help'])
 	assert warmup_res.exit_code == 0, warmup_res.output
-	c_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
+	c_res := os.exec([vexe, 'fmt', source_path])
 	assert c_res.exit_code == 0, c_res.output
 	assert c_res.output.contains("x := c'abc'"), c_res.output
 	assert !c_res.output.contains("x := 'abc'.str"), c_res.output
 	special_js_path := os.join_path(vfmt_test_tdir, 'v', 'gen', 'js', 'tests', 'js.v')
 	os.mkdir_all(os.dir(special_js_path))!
 	os.write_file(special_js_path, "fn main() {\n\tx := 'abc'.str\n}\n")!
-	special_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(special_js_path)}')
+	special_res := os.exec([vexe, 'fmt', special_js_path])
 	assert special_res.exit_code == 0, special_res.output
 	assert special_res.output.contains("x := 'abc'.str"), special_res.output
 	assert !special_res.output.contains("x := c'abc'"), special_res.output
@@ -55,7 +55,7 @@ fn test_fmt_preferences_respect_vflags() {
 	for backend_flag in ['-b', '-backend'] {
 		for backend in ['js', 'js_node', 'js_browser', 'js_freestanding'] {
 			os.setenv('VFLAGS', '${backend_flag} ${backend}', true)
-			res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
+			res := os.exec([vexe, 'fmt', source_path])
 			assert res.exit_code == 0, '${backend_flag} ${backend}: ${res.output}'
 			assert res.output.contains("x := 'abc'.str"), '${backend_flag} ${backend}: ${res.output}'
 			assert !res.output.contains("x := c'abc'"), '${backend_flag} ${backend}: ${res.output}'
@@ -63,20 +63,20 @@ fn test_fmt_preferences_respect_vflags() {
 	}
 	for backend in ['native', 'go', 'arm64', 'eval'] {
 		os.unsetenv('VFLAGS')
-		res := os.execute('${os.quoted_path(vexe)} -b ${backend} fmt ${os.quoted_path(source_path)}')
+		res := os.exec([vexe, '-b', '${backend}', 'fmt', source_path])
 		assert res.exit_code == 0, '${backend}: ${res.output}'
 		assert res.output.contains("x := c'abc'"), '${backend}: ${res.output}'
 	}
 
 	for backend_flag in ['-b', '-backend'] {
 		os.setenv('VFLAGS', '${backend_flag} jss', true)
-		vflags_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
+		vflags_res := os.exec([vexe, 'fmt', source_path])
 		assert vflags_res.exit_code != 0, '${backend_flag} jss: ${vflags_res.output}'
 		assert vflags_res.output.contains('Unknown V backend: jss'), vflags_res.output
 
 		os.unsetenv('VFLAGS')
 		cli_res :=
-			os.execute('${os.quoted_path(vexe)} fmt ${backend_flag} jss ${os.quoted_path(source_path)}')
+			os.exec([vexe, 'fmt', '${backend_flag}', 'jss', source_path])
 		assert cli_res.exit_code != 0, '${backend_flag} jss: ${cli_res.output}'
 		assert cli_res.output.contains('Unknown V backend: jss'), cli_res.output
 	}
@@ -106,14 +106,14 @@ fn test_fmt_joined_backend_options() {
 						'fmt'
 					}
 				}
-				res := os.execute('${os.quoted_path(vexe)} ${args} ${os.quoted_path(source_path)}')
+				res := os.exec([vexe, ...(os.split_args(args) or { panic(err) }), source_path])
 				assert res.exit_code == 0, '${placement} ${option}: ${res.output}'
 				expected := if backend.starts_with('js') { "x := 'abc'.str" } else { "x := c'abc'" }
 				assert res.output.contains(expected), '${placement} ${option}: ${res.output}'
 			}
 		}
 		os.unsetenv('VFLAGS')
-		invalid := os.execute('${os.quoted_path(vexe)} ${flag}=jss fmt ${os.quoted_path(source_path)}')
+		invalid := os.exec([vexe, '${flag}' + '=jss', 'fmt', source_path])
 		assert invalid.exit_code != 0, invalid.output
 		assert invalid.output.contains('Unknown V backend: jss'), invalid.output
 	}
@@ -142,7 +142,7 @@ fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
 	] {
 		path := os.join_path(vfmt_test_tdir, 'semantic_editing_buffer.v')
 		os.write_file(path, source)!
-		res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(path)}')
+		res := os.exec([vexe, 'fmt', path])
 		assert res.exit_code == 0, res.output
 	}
 }
@@ -415,7 +415,7 @@ fn test_fmt_uses_v3_formatter() {
 	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter.v')
 	os.write_file(source_path, 'fn main(){println("v3")}\n')!
 
-	res := os.execute('${os.quoted_path(vexe)} fmt -verbose ${os.quoted_path(source_path)}')
+	res := os.exec([vexe, 'fmt', '-verbose', source_path])
 
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
@@ -427,13 +427,13 @@ fn test_fmt_checks_accept_legacy_formatted_source() {
 	source := '// Header\n\nmodule main\n'
 	os.write_file(source_path, source)!
 
-	format_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
+	format_res := os.exec([vexe, 'fmt', source_path])
 	assert format_res.exit_code == 0, format_res.output
 	assert format_res.output == source, format_res.output
 
 	for check_args in ['-verify -inprocess', '-verify', '-c'] {
 		res :=
-			os.execute('${os.quoted_path(vexe)} fmt ${check_args} ${os.quoted_path(source_path)}')
+			os.exec([vexe, 'fmt', ...(os.split_args(check_args) or { panic(err) }), source_path])
 		assert res.exit_code == 0, '${check_args}: ${res.output}'
 		assert os.read_file(source_path)! == source
 	}
@@ -446,7 +446,7 @@ fn test_fmt_checks_accept_legacy_source_when_v3_parsing_fails() {
 
 	for check_args in ['-verify -inprocess', '-verify', '-c'] {
 		res :=
-			os.execute('${os.quoted_path(vexe)} fmt ${check_args} ${os.quoted_path(source_path)}')
+			os.exec([vexe, 'fmt', ...(os.split_args(check_args) or { panic(err) }), source_path])
 		assert res.exit_code == 0, '${check_args}: ${res.output}'
 		assert os.read_file(source_path)! == source
 	}
@@ -457,14 +457,14 @@ fn test_fmt_checks_continue_after_legacy_parse_errors() {
 	later_path := os.join_path(vfmt_test_tdir, 'later_unformatted.v')
 	os.write_file(v3_path, 'struct Owned implements IClone{\n\tvalue string\n}\n')!
 	os.write_file(later_path, 'fn later(){println(1)}\n')!
-	files := '${os.quoted_path(v3_path)} ${os.quoted_path(later_path)}'
+	files := [v3_path, later_path]
 
-	check_res := os.execute('${os.quoted_path(vexe)} fmt -c ${files}')
+	check_res := os.exec([vexe, 'fmt', '-c', ...files])
 	assert check_res.exit_code == 2, check_res.output
 	assert check_res.output.contains('v3_only_unformatted.v'), check_res.output
 	assert check_res.output.contains('later_unformatted.v'), check_res.output
 
-	noerror_res := os.execute('${os.quoted_path(vexe)} fmt -c -noerror ${files}')
+	noerror_res := os.exec([vexe, 'fmt', '-c', '-noerror', ...files])
 	assert noerror_res.exit_code == 0, noerror_res.output
 	assert noerror_res.output.contains('v3_only_unformatted.v'), noerror_res.output
 	assert noerror_res.output.contains('later_unformatted.v'), noerror_res.output
@@ -474,7 +474,7 @@ fn test_fmt_debug_reports_v3_node_kinds() {
 	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter_debug.v')
 	os.write_file(source_path, 'fn main() { println(1) }\n')!
 
-	res := os.execute('${os.quoted_path(vexe)} fmt -debug ${os.quoted_path(source_path)}')
+	res := os.exec([vexe, 'fmt', '-debug', source_path])
 
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('stmt fn_decl'), res.output
@@ -485,7 +485,8 @@ fn run_vfmt_write(name string, source string, extra_args string) (os.Result, str
 	source_path := os.join_path(vfmt_test_tdir, '${name}.v')
 	os.write_file(source_path, source) or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(vexe)} fmt -w -verbose ${extra_args} ${os.quoted_path(source_path)}')
+		os.exec([vexe, 'fmt', '-w', '-verbose', ...(os.split_args(extra_args) or { panic(err) }),
+			source_path])
 	formatted := os.read_file(source_path) or { panic(err) }
 	return res, formatted
 }
@@ -1241,7 +1242,7 @@ fn test_fmt_json_decode_migration_runs_and_skips_option_targets_with_v3() {
 	assert res.exit_code == 0, res.output
 	assert migrated.contains('json2.decode[[]Foo]('), migrated
 	assert migrated.contains('json2.decode[map[string]Foo]('), migrated
-	run_res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(os.join_path(vfmt_test_tdir, 'json_decode_targets.v'))}')
+	run_res := os.exec([vexe, 'run', os.join_path(vfmt_test_tdir, 'json_decode_targets.v')])
 	assert run_res.exit_code == 0, run_res.output
 	assert run_res.output.trim_space() == '1 2', run_res.output
 	// V does not accept `?Foo` as a type argument, so `json.decode(?Foo, s)` has no
@@ -1266,7 +1267,7 @@ fn test_fmt_json_decode_migration_of_value_targets_with_v3() {
 	assert migrated.contains('json2.decode[map[string]int]('), migrated
 	assert migrated.contains('json2.decode[[]Foo]('), migrated
 	assert migrated.contains('json2.decode[Foo]('), migrated
-	run_res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(os.join_path(vfmt_test_tdir, 'json_decode_value_targets.v'))}')
+	run_res := os.exec([vexe, 'run', os.join_path(vfmt_test_tdir, 'json_decode_value_targets.v')])
 	assert run_res.exit_code == 0, run_res.output
 	assert run_res.output.trim_space() == '1 2 3', run_res.output
 	// A target with a non-empty initializer names no type to spell back.
@@ -1348,7 +1349,15 @@ fn test_fmt_stdin_keeps_the_callers_project_json_module_with_v3() {
 	// working directory, which has its own `json` module here.
 	old_wd := os.getwd()
 	os.chdir(project_dir)!
-	res := os.execute('${os.quoted_path(vexe)} fmt < ${os.quoted_path(source_path)}')
+	mut input_process := os.new_process(vexe)
+	input_process.set_args(['fmt'])
+	input_process.set_redirect_stdio_merged()
+	input_process.set_stdin_path(source_path)
+	input_process.run()
+	input_output := input_process.stdout_slurp()
+	input_process.wait()
+	res := os.Result{ exit_code: input_process.code, output: input_output }
+	input_process.close()
 	os.chdir(old_wd)!
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('import json\n'), res.output
@@ -1376,12 +1385,12 @@ fn test_fmt_json_lookup_with_path_flag_follows_the_compiler_with_v3() {
 	old_vmodules := os.getenv('VMODULES')
 	os.setenv('VMODULES', vmodules, true)
 	os.setenv('VFLAGS', '-path @vlib', true)
-	app_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(app_file)}')
-	project_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(project_file)}')
+	app_res := os.exec([vexe, 'fmt', '-w', app_file])
+	project_res := os.exec([vexe, 'fmt', '-w', project_file])
 	os.unsetenv('VFLAGS')
 	app_copy := os.join_path(root, 'app', 'copy.v')
 	os.write_file(app_copy, source)!
-	with_vmodules_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(app_copy)}')
+	with_vmodules_res := os.exec([vexe, 'fmt', '${app_copy}'])
 	for name, value in {
 		'VFLAGS':   old_vflags
 		'VMODULES': old_vmodules
@@ -1409,7 +1418,7 @@ fn test_fmt_json_lookup_with_path_flag_follows_the_compiler_with_v3() {
 	outer_file := os.join_path(outer, 'app', 'src', 'main.v')
 	os.write_file(outer_file, source)!
 	os.setenv('VFLAGS', '-path @vlib', true)
-	outer_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(outer_file)}')
+	outer_res := os.exec([vexe, 'fmt', outer_file])
 	if old_vflags == '' {
 		os.unsetenv('VFLAGS')
 	} else {
@@ -1433,7 +1442,7 @@ fn test_own() {
 	for name in ['own_json_test.v', 'own_json_consumer.v'] {
 		source_path := os.join_path(project_dir, name)
 		os.write_file(source_path, source)!
-		res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(source_path)}')
+		res := os.exec([vexe, 'fmt', '-w', source_path])
 		assert res.exit_code == 0, res.output
 		assert os.read_file(source_path)! == source
 	}
@@ -1649,14 +1658,14 @@ fn test_fmt_preserves_js_string_prefixes_with_v3() {
 	source := "fn f() {\n\ts := js'hello V'\n\tp := 'abc'.str\n\tassert s == js'hello V'\n\tassert p == 'abc'\n}\n"
 	os.write_file(source_path, source)!
 
-	res := os.execute('${os.quoted_path(vexe)} fmt -w -verbose ${os.quoted_path(source_path)}')
+	res := os.exec([vexe, 'fmt', '-w', '-verbose', source_path])
 	formatted := os.read_file(source_path)!
 	assert res.exit_code == 0, res.output
 	assert formatted.contains("s := js'hello V'"), formatted
 	assert formatted.contains("s == js'hello V'"), formatted
 	assert formatted.contains("p := 'abc'.str"), formatted
 
-	second_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(source_path)}')
+	second_res := os.exec([vexe, 'fmt', '-w', source_path])
 	assert second_res.exit_code == 0, second_res.output
 	assert os.read_file(source_path)! == formatted
 }

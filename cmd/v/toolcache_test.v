@@ -100,7 +100,7 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 	}
 	command := '${os.quoted_path(vexe)} timeout 60 ${os.quoted_path(vexe)} version'
 
-	first := os.execute(command)
+	first := os.exec([vexe, 'timeout', '60', vexe, 'version'])
 	assert first.exit_code == 0, first.output
 	entries := cached_entry_dirs(cache, probe_tool)
 	assert entries.len == 1, 'expected a single cached `${probe_tool}`, got ${entries}'
@@ -128,7 +128,7 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 	reason := tool_cache_stale_reason(probe)
 	assert reason == '', 'the just built tool is already considered stale: ${reason}'
 
-	second := os.execute(command)
+	second := os.exec([vexe, 'timeout', '60', vexe, 'version'])
 	assert second.exit_code == 0, second.output
 	assert os.exists(decoy), 'the tool was recompiled although none of its inputs changed'
 	after := os.stat(binary)!
@@ -901,7 +901,7 @@ fn test_an_embedded_asset_is_recorded_and_invalidates_the_cache() {
 	dumped := os.join_path(directory, 'sources.txt')
 	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
 	build :=
-		os.execute('${os.quoted_path(vexe)} -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+		os.exec([vexe, '-dump-files', '${dumped}', '-o', binary, source])
 	assert build.exit_code == 0, build.output
 
 	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
@@ -980,7 +980,7 @@ fn test_a_native_input_is_recorded_and_invalidates_the_cache() {
 	dumped := os.join_path(directory, 'sources.txt')
 	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
 	build :=
-		os.execute('${os.quoted_path(vexe)} -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+		os.exec([vexe, '-dump-files', '${dumped}', '-o', binary, source])
 	assert build.exit_code == 0, build.output
 
 	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
@@ -1131,7 +1131,7 @@ fn test_a_cached_tool_keeps_its_own_executable_name() {
 	defer {
 		os.unsetenv(tool_cache_dir_env)
 	}
-	run := os.execute('${os.quoted_path(vexe)} timeout 60 ${os.quoted_path(vexe)} version')
+	run := os.exec([vexe, 'timeout', '60', vexe, 'version'])
 	assert run.exit_code == 0, run.output
 
 	entries := cached_entry_dirs(cache, probe_tool)
@@ -1587,7 +1587,7 @@ fn test_a_missing_embedded_asset_is_recorded_and_invalidates_the_cache() {
 	dumped := os.join_path(directory, 'sources.txt')
 	binary := os.join_path(directory, 'vdemo')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -prod -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+		os.exec([vexe, '-prod', '-dump-files', '${dumped}', '-o', binary, source])
 	assert build.exit_code == 0, build.output
 
 	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')

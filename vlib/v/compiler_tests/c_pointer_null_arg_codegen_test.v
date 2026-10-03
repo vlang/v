@@ -10,7 +10,9 @@ fn c_pointer_null_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_pointer_null_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${c_pointer_null_vexe} -gc none -path "${c_pointer_null_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${c_pointer_null_v3_src}')
+		os.exec([c_pointer_null_vexe, '-gc', 'none', '-path',
+			'${c_pointer_null_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${c_pointer_null_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -38,7 +40,7 @@ fn test_nil_for_c_pointer_to_pointer_arg_emits_null() {
 	v3_bin := c_pointer_null_build_v3()
 	src := c_pointer_null_write_source()
 	c_path := src + '.c'
-	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(c_path) or { panic(err) }

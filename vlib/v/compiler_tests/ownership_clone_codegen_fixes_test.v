@@ -10,7 +10,8 @@ fn occf_build_v3(tag string) string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_${tag}_${pid}')
 	build :=
-		os.execute('${occf_vexe} -gc none -d ownership -path "${occf_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${occf_v3_src}')
+		os.exec([occf_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${occf_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, occf_v3_src])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -25,9 +26,9 @@ fn occf_compile_and_run(v3_bin string, tag string, source string) {
 		os.rm(out + '.c') or {}
 	}
 	os.write_file(src, source) or { panic(err) }
-	compile := os.execute('${v3_bin} ${src} -d ownership -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 }
 

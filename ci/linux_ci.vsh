@@ -1,24 +1,24 @@
-import common { Task, exec }
+import common { Task, exec_args }
 import crypto.sha256
 import os
 
 // Shared tasks/helpers
 fn all_code_is_formatted() {
 	if common.is_github_job {
-		exec('v -silent test-cleancode')
+		exec_args(['v', '-silent', 'test-cleancode'])
 	} else {
-		exec('v -progress test-cleancode')
+		exec_args(['v', '-progress', 'test-cleancode'])
 	}
 }
 
 fn verify_v_test_works() {
-	exec('echo \$VFLAGS')
-	exec('v cmd/tools/test_if_v_test_system_works.v')
-	exec('./cmd/tools/test_if_v_test_system_works')
+	println(os.getenv('VFLAGS'))
+	exec_args(['v', 'cmd/tools/test_if_v_test_system_works.v'])
+	exec_args(['./cmd/tools/test_if_v_test_system_works'])
 }
 
 fn test_pure_v_math_module() {
-	exec('v -exclude @vlib/math/*.c.v test vlib/math/')
+	exec_args(['v', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
 }
 
 fn self_tests() {
@@ -26,9 +26,9 @@ fn self_tests() {
 	// installation, so `test-self vlib` would resolve `vlib` under *its* VROOT and
 	// test the release's own standard library instead of this repository's.
 	if common.is_github_job {
-		exec('v -W -silent test-self vlib')
+		exec_args(['v', '-W', '-silent', 'test-self', 'vlib'])
 	} else {
-		exec('v -progress test-self vlib')
+		exec_args(['v', '-progress', 'test-self', 'vlib'])
 	}
 }
 
@@ -36,52 +36,59 @@ fn build_examples() {
 	if common.is_github_job {
 		// The exhaustive CI matrix includes a few deliberately large examples.
 		// Keep the user-facing V3 memory guard while allowing CI to validate them.
-		exec('v -no-memory-limit -W build-examples')
+		exec_args(['v', '-no-memory-limit', '-W', 'build-examples'])
 	} else {
-		exec('v -progress build-examples')
+		exec_args(['v', '-progress', 'build-examples'])
 	}
 }
 
 fn v_doctor() {
-	exec('v doctor')
+	exec_args(['v', 'doctor'])
 }
 
 fn build_v_with_prealloc() {
-	exec('v -cg -cstrict -o vstrict1 cmd/v')
+	exec_args(['v', '-cg', '-cstrict', '-o', 'vstrict1', 'cmd/v'])
 	// -prealloc uses _Thread_local for g_memory_block; bundled tcc does not support it.
 	prealloc_cc_flag := if os.getenv('VFLAGS').contains('-cc tcc') { ' -cc cc' } else { '' }
-	exec('./vstrict1${prealloc_cc_flag} -o vprealloc -prealloc cmd/v')
-	exec('./vprealloc run examples/hello_world.v')
-	exec('./vprealloc -o v3 cmd/v')
-	exec('./v3 -o v4 cmd/v')
-	exec('./v4 -d debug_malloc -d debug_realloc -o vdebug1 cmd/v')
+	exec_args(['./vstrict1', ...(os.split_args(prealloc_cc_flag) or { panic(err) }), '-o', 'vprealloc',
+		'-prealloc', 'cmd/v'])
+	exec_args(['./vprealloc', 'run', 'examples/hello_world.v'])
+	exec_args(['./vprealloc', '-o', 'v3', 'cmd/v'])
+	exec_args(['./v3', '-o', 'v4', 'cmd/v'])
+	exec_args(['./v4', '-d', 'debug_malloc', '-d', 'debug_realloc', '-o', 'vdebug1', 'cmd/v'])
 }
 
 // TCC job tasks
 fn install_dependencies_for_examples_and_tools_tcc() {
 	if common.is_github_job {
-		exec('.github/workflows/disable_azure_mirror.sh')
+		exec_args(['.github/workflows/disable_azure_mirror.sh'])
 	}
-	exec('v retry -- sudo apt update')
-	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev libx11-xcb-dev')
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libssl-dev', 'sqlite3',
+		'libsqlite3-dev', 'valgrind'])
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
+		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev', 'libegl-dev',
+		'libx11-xcb-dev'])
 	// Wayland development libraries for sokol Wayland support
-	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev')
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libwayland-dev',
+		'libxkbcommon-dev', 'libwayland-egl1-mesa', 'libxkbcommon-x11-dev'])
 	// The following is needed for examples/wkhtmltopdf.v
-	exec('v retry -- sudo apt install --quiet -y xfonts-75dpi xfonts-base expect')
-	exec('v retry -- wget --quiet https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb')
-	exec('v retry -- sudo dpkg -i wkhtmltox_0.12.6.1-2.jammy_amd64.deb')
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'xfonts-75dpi',
+		'xfonts-base', 'expect'])
+	exec_args(['v', 'retry', '--', 'wget', '--quiet',
+		'https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb'])
+	exec_args(['v', 'retry', '--', 'sudo', 'dpkg', '-i', 'wkhtmltox_0.12.6.1-2.jammy_amd64.deb'])
 }
 
 fn test_v_to_c_tcc() {
-	exec('thirdparty/tcc/tcc.exe -version')
-	exec('v -cg -o vtcc cmd/v') // ensure vtcc can build itself twice
+	exec_args(['thirdparty/tcc/tcc.exe', '-version'])
+	exec_args(['v', '-cg', '-o', 'vtcc', 'cmd/v']) // ensure vtcc can build itself twice
 }
 
 fn v_self_compilation_tcc() {
-	exec('v -o v2 cmd/v')
-	exec('./v2 -o v3 cmd/v')
-	exec('./v3 -o v4 cmd/v')
+	exec_args(['v', '-o', 'v2', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', 'cmd/v'])
+	exec_args(['./v3', '-o', 'v4', 'cmd/v'])
 }
 
 fn v_doctor_tcc() {
@@ -97,7 +104,7 @@ fn test_pure_v_math_module_tcc() {
 }
 
 fn self_tests_tcc() {
-	exec('v -keepc -cc tcc -g self')
+	exec_args(['v', '-keepc', '-cc', 'tcc', '-g', 'self'])
 	self_tests()
 }
 
@@ -106,36 +113,40 @@ fn build_examples_tcc() {
 }
 
 fn run_submodule_example_tcc() {
-	exec('v -W run examples/submodule')
+	exec_args(['v', '-W', 'run', 'examples/submodule'])
 }
 
 fn build_tools_tcc() {
 	if common.is_github_job {
-		exec('v -N -W build-tools')
+		exec_args(['v', '-N', '-W', 'build-tools'])
 	} else {
-		exec('v -progress -N -W build-tools')
+		exec_args(['v', '-progress', '-N', '-W', 'build-tools'])
 	}
 }
 
 fn build_vbinaries_tcc() {
-	exec('v -N -W build-vbinaries')
+	exec_args(['v', '-N', '-W', 'build-vbinaries'])
 }
 
 fn build_benches_tcc() {
-	exec('v should-compile-all vlib/v/tests/bench/')
+	exec_args(['v', 'should-compile-all', 'vlib/v/tests/bench/'])
 }
 
 fn run_vsh_script_tcc() {
-	exec('v run examples/v_script.vsh')
+	exec_args(['v', 'run', 'examples/v_script.vsh'])
 }
 
 fn test_v_tutorials_tcc() {
-	exec('v tutorials/building_a_simple_web_blog_with_veb/code/blog')
+	exec_args(['v', 'tutorials/building_a_simple_web_blog_with_veb/code/blog'])
 }
 
 fn build_fast_tcc() {
-	exec('cd cmd/tools/fast && v -o fast .')
-	exec('cd cmd/tools/fast && ./fast help')
+	os.chdir('cmd/tools/fast') or { panic(err) }
+	exec_args(['v', '-o', 'fast', '.'])
+	os.chdir('../../..') or { panic(err) }
+	os.chdir('cmd/tools/fast') or { panic(err) }
+	exec_args(['./fast', 'help'])
+	os.chdir('../../..') or { panic(err) }
 }
 
 fn v_self_compilation_usecache_tcc() {
@@ -143,39 +154,39 @@ fn v_self_compilation_usecache_tcc() {
 		eprintln('> ${@LOCATION} use `-d enable_usecache_test` in VFLAGS to enable this task')
 		return
 	}
-	exec('v wipe-cache')
-	exec('v -usecache examples/hello_world.v')
-	exec('./examples/hello_world')
+	exec_args(['v', 'wipe-cache'])
+	exec_args(['v', '-usecache', 'examples/hello_world.v'])
+	exec_args(['./examples/hello_world'])
 
-	exec('v wipe-cache')
-	exec('v -o v2 -usecache cmd/v')
-	exec('./v2 -o v3 -usecache cmd/v')
-	exec('./v3 version')
+	exec_args(['v', 'wipe-cache'])
+	exec_args(['v', '-o', 'v2', '-usecache', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	exec_args(['./v3', 'version'])
 
-	exec('v wipe-cache')
-	exec('./v3 -o tetris -usecache examples/tetris/tetris.v')
-	exec('rm -f ./examples/hello_world v2 v3 tetris')
+	exec_args(['v', 'wipe-cache'])
+	exec_args(['./v3', '-o', 'tetris', '-usecache', 'examples/tetris/tetris.v'])
+	exec_args(['rm', '-f', './examples/hello_world', 'v2', 'v3', 'tetris'])
 }
 
 fn test_password_input_tcc() {
-	exec('v test examples/password/')
+	exec_args(['v', 'test', 'examples/password/'])
 }
 
 fn test_readline_tcc() {
-	exec('v test examples/readline/')
+	exec_args(['v', 'test', 'examples/readline/'])
 }
 
 fn test_leak_detector_tcc() {
-	exec('v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.vv')
-	exec('./testcase_leak 2>leaks.txt')
-	exec('grep "Found 1 leaked object" leaks.txt')
-	exec('grep -P ", sz=\\s?1000," leaks.txt')
+	exec_args(['v', '-gc', 'boehm_leak', '-o', 'testcase_leak', 'vlib/v/tests/testcase_leak.vv'])
+	exec_args(['sh', '-c', './testcase_leak 2>leaks.txt'])
+	exec_args(['grep', 'Found 1 leaked object', 'leaks.txt'])
+	exec_args(['grep', '-P', ', sz=\\s?1000,', 'leaks.txt'])
 }
 
 fn test_leak_detector_not_active_tcc() {
-	exec('v -o testcase_leak vlib/v/tests/testcase_leak.vv')
-	exec('./testcase_leak 2>leaks.txt')
-	exec('[ "$(stat -c %s leaks.txt)" = "0" ]')
+	exec_args(['v', '-o', 'testcase_leak', 'vlib/v/tests/testcase_leak.vv'])
+	exec_args(['sh', '-c', './testcase_leak 2>leaks.txt'])
+	exec_args(['[', '\$(stat -c %s leaks.txt)', '=', '0', ']'])
 }
 
 // GCC job tasks
@@ -185,35 +196,42 @@ fn all_code_is_formatted_gcc() {
 
 fn install_dependencies_for_examples_and_tools_gcc() {
 	if common.is_github_job {
-		exec('.github/workflows/disable_azure_mirror.sh')
+		exec_args(['.github/workflows/disable_azure_mirror.sh'])
 	}
-	exec('v retry -- sudo apt update')
-	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'postgresql', 'libpq-dev',
+		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind'])
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
+		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev'])
 	// Wayland development libraries for sokol Wayland support
-	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
-	exec('v retry -- sudo apt install --quiet -y libx11-dev libx11-xcb-dev libgl1-mesa-dri xauth xvfb')
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libwayland-dev',
+		'libxkbcommon-dev', 'libwayland-egl1-mesa', 'libxkbcommon-x11-dev', 'wayland-protocols',
+		'libegl-dev'])
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libx11-dev',
+		'libx11-xcb-dev', 'libgl1-mesa-dri', 'xauth', 'xvfb'])
 }
 
 fn recompile_v_with_cstrict_gcc() {
-	exec('v -cc gcc -cg -cstrict -o vstrict cmd/v')
+	exec_args(['v', '-cc', 'gcc', '-cg', '-cstrict', '-o', 'vstrict', 'cmd/v'])
 }
 
 fn valgrind_v_c_gcc() {
-	exec('valgrind --error-exitcode=1 v -o v.c cmd/v')
+	exec_args(['valgrind', '--error-exitcode=1', 'v', '-o', 'v.c', 'cmd/v'])
 }
 
 fn run_sanitizers_gcc() {
-	exec('v -o v2 cmd/v -cflags -fsanitize=thread')
-	exec('v -o v3 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"')
-	exec('UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v')
-	exec('UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v')
+	exec_args(['v', '-o', 'v2', 'cmd/v', '-cflags', '-fsanitize=thread'])
+	exec_args(['v', '-o', 'v3', 'cmd/v', '-cflags', '-fsanitize=undefined -fno-sanitize=alignment'])
+	exec_args(['env', 'UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1', './v2', '-o', 'v.c',
+		'cmd/v'])
+	exec_args(['env', 'UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1', './v3', '-o', 'v.c',
+		'cmd/v'])
 }
 
 fn v_self_compilation_gcc() {
-	exec('v -o v2 cmd/v')
-	exec('./v2 -o v3 cmd/v')
-	exec('./v3 -o v4 cmd/v')
+	exec_args(['v', '-o', 'v2', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', 'cmd/v'])
+	exec_args(['./v3', '-o', 'v4', 'cmd/v'])
 }
 
 fn v_self_compilation_usecache_gcc() {
@@ -221,18 +239,18 @@ fn v_self_compilation_usecache_gcc() {
 		eprintln('> ${@LOCATION} use `-d enable_usecache_test` in VFLAGS to enable this task')
 		return
 	}
-	exec('v wipe-cache')
-	exec('v -usecache examples/hello_world.v')
-	exec('examples/hello_world')
+	exec_args(['v', 'wipe-cache'])
+	exec_args(['v', '-usecache', 'examples/hello_world.v'])
+	exec_args(['examples/hello_world'])
 
-	exec('v wipe-cache')
-	exec('v -o v2 -usecache cmd/v')
-	exec('./v2 -o v3 -usecache cmd/v')
-	exec('./v3 version')
+	exec_args(['v', 'wipe-cache'])
+	exec_args(['v', '-o', 'v2', '-usecache', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	exec_args(['./v3', 'version'])
 
-	exec('v wipe-cache')
-	exec('./v3 -o tetris -usecache examples/tetris/tetris.v')
-	exec('rm -f ./examples/hello_world v2 v3 tetris')
+	exec_args(['v', 'wipe-cache'])
+	exec_args(['./v3', '-o', 'tetris', '-usecache', 'examples/tetris/tetris.v'])
+	exec_args(['rm', '-f', './examples/hello_world', 'v2', 'v3', 'tetris'])
 }
 
 fn verify_v_test_works_gcc() {
@@ -248,12 +266,13 @@ fn self_tests_gcc() {
 }
 
 fn self_tests_prod_gcc() {
-	exec('v -o vprod -prod cmd/v')
-	exec('./vprod -silent test-self vlib')
+	exec_args(['v', '-o', 'vprod', '-prod', 'cmd/v'])
+	exec_args(['./vprod', '-silent', 'test-self', 'vlib'])
 }
 
 fn self_tests_cstrict_gcc() {
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc gcc -cstrict -silent test-self vlib')
+	exec_args(['env', 'VTEST_JUST_ESSENTIAL=1', 'V_CI_CSTRICT=1', 'v', '-cc', 'gcc', '-cstrict',
+		'-silent', 'test-self', 'vlib'])
 }
 
 fn skip_ownership_autofree_test() bool {
@@ -273,8 +292,8 @@ fn build_tetris_autofree_gcc() {
 		report_skipped_ownership_autofree_test()
 		return
 	}
-	exec('v -autofree -o tetris examples/tetris/tetris.v')
-	exec('rm -f tetris')
+	exec_args(['v', '-autofree', '-o', 'tetris', 'examples/tetris/tetris.v'])
+	exec_args(['rm', '-f', 'tetris'])
 }
 
 fn build_blog_autofree_gcc() {
@@ -282,8 +301,8 @@ fn build_blog_autofree_gcc() {
 		report_skipped_ownership_autofree_test()
 		return
 	}
-	exec('v -autofree -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
-	exec('rm -f blog')
+	exec_args(['v', '-autofree', '-o', 'blog', 'tutorials/building_a_simple_web_blog_with_veb/code/blog'])
+	exec_args(['rm', '-f', 'blog'])
 }
 
 fn build_option_test_autofree_gcc() {
@@ -291,34 +310,34 @@ fn build_option_test_autofree_gcc() {
 		report_skipped_ownership_autofree_test()
 		return
 	}
-	exec('v -autofree vlib/v/tests/options/option_test.c.v')
+	exec_args(['v', '-autofree', 'vlib/v/tests/options/option_test.c.v'])
 }
 
 fn v_self_compilation_parallel_cc_gcc() {
-	exec('v -o v2 -parallel-cc cmd/v')
-	exec('rm -f v2')
+	exec_args(['v', '-o', 'v2', '-parallel-cc', 'cmd/v'])
+	exec_args(['rm', '-f', 'v2'])
 }
 
 fn build_modules_gcc() {
-	exec('v build-module vlib/os')
-	exec('v build-module vlib/builtin')
-	exec('v build-module vlib/strconv')
-	exec('v build-module vlib/time')
-	exec('v build-module vlib/term')
-	exec('v build-module vlib/math')
-	exec('v build-module vlib/strings')
-	exec('v build-module vlib/v/token')
-	exec('v build-module vlib/v/parser')
-	exec('v build-module vlib/v/gen/c')
-	exec('v build-module vlib/os/cmdline')
+	exec_args(['v', 'build-module', 'vlib/os'])
+	exec_args(['v', 'build-module', 'vlib/builtin'])
+	exec_args(['v', 'build-module', 'vlib/strconv'])
+	exec_args(['v', 'build-module', 'vlib/time'])
+	exec_args(['v', 'build-module', 'vlib/term'])
+	exec_args(['v', 'build-module', 'vlib/math'])
+	exec_args(['v', 'build-module', 'vlib/strings'])
+	exec_args(['v', 'build-module', 'vlib/v/token'])
+	exec_args(['v', 'build-module', 'vlib/v/parser'])
+	exec_args(['v', 'build-module', 'vlib/v/gen/c'])
+	exec_args(['v', 'build-module', 'vlib/os/cmdline'])
 }
 
 fn compile_vdoctor_prod_gcc() {
-	exec('v -showcc -cc gcc -prod cmd/tools/vdoctor.v')
+	exec_args(['v', '-showcc', '-cc', 'gcc', '-prod', 'cmd/tools/vdoctor.v'])
 }
 
 fn compile_vup_prod_gcc() {
-	exec('v -showcc -cc gcc -prod cmd/tools/vup.v')
+	exec_args(['v', '-showcc', '-cc', 'gcc', '-prod', 'cmd/tools/vup.v'])
 }
 
 // Clang job tasks
@@ -328,34 +347,38 @@ fn all_code_is_formatted_clang() {
 
 fn install_dependencies_for_examples_and_tools_clang() {
 	if common.is_github_job {
-		exec('.github/workflows/disable_azure_mirror.sh')
+		exec_args(['.github/workflows/disable_azure_mirror.sh'])
 	}
-	exec('v retry -- sudo apt update')
-	exec('v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'postgresql', 'libpq-dev',
+		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind'])
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
+		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev'])
 	// Wayland development libraries for sokol Wayland support
-	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
-	exec('v retry -- sudo apt install --quiet -y clang libx11-xcb-dev')
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libwayland-dev',
+		'libxkbcommon-dev', 'libwayland-egl1-mesa', 'libxkbcommon-x11-dev', 'wayland-protocols',
+		'libegl-dev'])
+	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'clang', 'libx11-xcb-dev'])
 }
 
 fn recompile_v_with_cstrict_clang() {
-	exec('v -cc clang -cg -cstrict -o vstrict cmd/v')
-	exec('rm -f vstrict')
+	exec_args(['v', '-cc', 'clang', '-cg', '-cstrict', '-o', 'vstrict', 'cmd/v'])
+	exec_args(['rm', '-f', 'vstrict'])
 }
 
 fn valgrind_clang() {
-	exec('valgrind --error-exitcode=1 v -o v.c cmd/v')
-	exec('rm -f v.c')
+	exec_args(['valgrind', '--error-exitcode=1', 'v', '-o', 'v.c', 'cmd/v'])
+	exec_args(['rm', '-f', 'v.c'])
 }
 
 fn run_sanitizers_clang() {
-	exec('.github/workflows/run_sanitizers.sh')
+	exec_args(['.github/workflows/run_sanitizers.sh'])
 }
 
 fn v_self_compilation_clang() {
-	exec('v -o v2 cmd/v')
-	exec('./v2 -o v3 cmd/v')
-	exec('./v3 -o v4 cmd/v')
+	exec_args(['v', '-o', 'v2', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', 'cmd/v'])
+	exec_args(['./v3', '-o', 'v4', 'cmd/v'])
 }
 
 fn v_self_compilation_usecache_clang() {
@@ -363,18 +386,18 @@ fn v_self_compilation_usecache_clang() {
 		eprintln('> ${@LOCATION} use `-d enable_usecache_test` in VFLAGS to enable this task')
 		return
 	}
-	exec('v wipe-cache')
-	exec('v -usecache examples/hello_world.v')
-	exec('./examples/hello_world')
+	exec_args(['v', 'wipe-cache'])
+	exec_args(['v', '-usecache', 'examples/hello_world.v'])
+	exec_args(['./examples/hello_world'])
 
-	exec('v wipe-cache')
-	exec('v -o v2 -usecache cmd/v')
-	exec('./v2 -o v3 -usecache cmd/v')
-	exec('./v3 version')
+	exec_args(['v', 'wipe-cache'])
+	exec_args(['v', '-o', 'v2', '-usecache', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	exec_args(['./v3', 'version'])
 
-	exec('v wipe-cache')
-	exec('./v3 -o tetris -usecache examples/tetris/tetris.v')
-	exec('rm -f ./examples/hello_world v2 v3 tetris')
+	exec_args(['v', 'wipe-cache'])
+	exec_args(['./v3', '-o', 'tetris', '-usecache', 'examples/tetris/tetris.v'])
+	exec_args(['rm', '-f', './examples/hello_world', 'v2', 'v3', 'tetris'])
 }
 
 fn verify_v_test_works_clang() {
@@ -390,12 +413,13 @@ fn self_tests_clang() {
 }
 
 fn self_tests_vprod_clang() {
-	exec('v -o vprod -prod cmd/v')
-	exec('./vprod -silent test-self vlib')
+	exec_args(['v', '-o', 'vprod', '-prod', 'cmd/v'])
+	exec_args(['./vprod', '-silent', 'test-self', 'vlib'])
 }
 
 fn self_tests_cstrict_clang() {
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict -silent test-self vlib')
+	exec_args(['env', 'VTEST_JUST_ESSENTIAL=1', 'V_CI_CSTRICT=1', './vprod', '-cstrict', '-silent',
+		'test-self', 'vlib'])
 }
 
 fn build_examples_clang() {
@@ -407,26 +431,26 @@ fn build_examples_autofree_clang() {
 		report_skipped_ownership_autofree_test()
 		return
 	}
-	exec('v -N -W -autofree -experimental -o tetris examples/tetris/tetris.v')
-	exec('rm -f tetris')
+	exec_args(['v', '-N', '-W', '-autofree', '-experimental', '-o', 'tetris', 'examples/tetris/tetris.v'])
+	exec_args(['rm', '-f', 'tetris'])
 }
 
 fn build_modules_clang() {
-	exec('v build-module vlib/os')
-	exec('v build-module vlib/builtin')
-	exec('v build-module vlib/strconv')
-	exec('v build-module vlib/time')
-	exec('v build-module vlib/term')
-	exec('v build-module vlib/math')
-	exec('v build-module vlib/strings')
-	exec('v build-module vlib/v/token')
-	exec('v build-module vlib/v/parser')
-	exec('v build-module vlib/v/gen/c')
-	exec('v build-module vlib/os/cmdline')
+	exec_args(['v', 'build-module', 'vlib/os'])
+	exec_args(['v', 'build-module', 'vlib/builtin'])
+	exec_args(['v', 'build-module', 'vlib/strconv'])
+	exec_args(['v', 'build-module', 'vlib/time'])
+	exec_args(['v', 'build-module', 'vlib/term'])
+	exec_args(['v', 'build-module', 'vlib/math'])
+	exec_args(['v', 'build-module', 'vlib/strings'])
+	exec_args(['v', 'build-module', 'vlib/v/token'])
+	exec_args(['v', 'build-module', 'vlib/v/parser'])
+	exec_args(['v', 'build-module', 'vlib/v/gen/c'])
+	exec_args(['v', 'build-module', 'vlib/os/cmdline'])
 }
 
 fn test_inline_assembly() {
-	exec('v test vlib/v/slow_tests/assembly')
+	exec_args(['v', 'test', 'vlib/v/slow_tests/assembly'])
 }
 
 // Keep this list in the same order as the active tasks in
@@ -594,7 +618,7 @@ fn run_ci_tasks(reset bool) ! {
 			os.setenv('GITHUB_JOB', 'clang-linux', true)
 		}
 		eprintln('CI task ${i + 1}/${ci_tasks.len}: ${task_name}')
-		exec('v run ci/linux_ci.vsh ${task_name}')
+		exec_args(['v', 'run', 'ci/linux_ci.vsh', '${task_name}'])
 	}
 	os.rmdir_all(progress_dir)!
 	os.rm(progress_path)!

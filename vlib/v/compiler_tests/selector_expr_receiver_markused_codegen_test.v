@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_selector_expr_receiver_markused_${os.getpid()}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -35,7 +36,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_selector_expr_receiver_markused_input_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -44,7 +45,7 @@ fn main() {
 	assert generated.contains('string__to_upper'), generated
 	assert generated.contains('rune__to_upper'), generated
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -72,7 +73,7 @@ for i := 0; i < 1; i++ {
 
 	bin := os.join_path(os.temp_dir(),
 		'v3_top_level_selector_expr_receiver_markused_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -80,7 +81,7 @@ for i := 0; i < 1; i++ {
 	assert generated.contains('string__trim_space'), generated
 	assert generated.contains('string__to_upper'), generated
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -106,7 +107,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_result_selector_expr_receiver_markused_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -114,7 +115,7 @@ fn main() {
 	assert generated.contains('string__trim_space'), generated
 	assert generated.contains('string__to_upper'), generated
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }

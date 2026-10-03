@@ -11,7 +11,8 @@ fn top_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_operator_param_capture_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${top_vexe} -gc none -path "${top_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${top_v3_src}')
+		os.exec([top_vexe, '-gc', 'none', '-path', '${top_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${top_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,10 +34,10 @@ fn test_operator_body_template_captures_function_valued_parameter() {
 	source := "module main\n\nfn render(s string) string {\n\treturn 'TOP:' + s\n}\n\nstruct R {\n\trow string\n}\n\nfn (r R) + (render fn (string) string) string {\n\treturn ('<' + \$tmpl('row.txt') + '>').replace('\\n', '')\n}\n\nfn main() {\n\tr := R{\n\t\trow: 'abc'\n\t}\n\tcb := fn (s string) string {\n\t\treturn 'LOCAL:' + s\n\t}\n\tprintln(r + cb)\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_operator_param_capture_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	// The template called the captured operator parameter (LOCAL:), not the top-level render.
 	assert run.output.trim_space() == '<LOCAL:abc>', run.output

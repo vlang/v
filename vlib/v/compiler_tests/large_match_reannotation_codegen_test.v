@@ -20,7 +20,8 @@ fn test_large_match_reannotation_does_not_overflow() {
 		os.rm(out + '.c') or {}
 	}
 	build :=
-		os.execute('${lmr_vexe} -gc none -d ownership -path "${lmr_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${lmr_v3_src}')
+		os.exec([lmr_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${lmr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${lmr_v3_src}'])
 	assert build.exit_code == 0, build.output
 	mut branches := []string{cap: 1800}
 	for i in 0 .. 1800 {
@@ -44,8 +45,8 @@ fn main() {
 }
 '
 	os.write_file(src, source) or { panic(err) }
-	compile := os.execute('${v3_bin} ${src} -d ownership -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 }

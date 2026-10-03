@@ -36,7 +36,7 @@ fn main() {
 	defer {
 		os.rm(source_path) or {}
 	}
-	res := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(source_path)}')
+	res := os.exec([@VEXE, 'run', source_path])
 	assert res.exit_code != 0, 'expected `${expr}` to fail'
 	assert res.output.contains(expected), 'expected `${expected}` in `${res.output}`'
 }

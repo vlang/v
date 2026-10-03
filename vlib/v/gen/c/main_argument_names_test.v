@@ -29,9 +29,10 @@ return "\${argc}:\${argv}"
 		os.write_file(path, source)!
 		for flags in ['', '-no-parallel -nocache'] {
 			executable := os.join_path(root, 'program_${index}')
-			build := os.execute('${os.quoted_path(@VEXE)} ${flags} -gc none -o ${os.quoted_path(executable)} ${os.quoted_path(path)}')
+			build := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-gc', 'none',
+				'-o', executable, path])
 			assert build.exit_code == 0, build.output
-			run := os.execute('${os.quoted_path(executable)} first second')
+			run := os.exec([executable, 'first', 'second'])
 			assert run.exit_code == 0, run.output
 		}
 	}

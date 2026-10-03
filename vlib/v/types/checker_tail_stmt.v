@@ -15250,6 +15250,16 @@ fn (mut tc TypeChecker) invalidate_smartcasts_for_write_key(key string) {
 	}
 }
 
+// store_c_name records `c_name`, naming.c_name(name) computed elsewhere, the way
+// cached_c_name would, and returns it.
+fn (tc &TypeChecker) store_c_name(name string, c_name string) string {
+	if !isnil(tc.type_cache) {
+		mut cache := unsafe { tc.type_cache }
+		cache.c_name_entries[name] = c_name
+	}
+	return c_name
+}
+
 // cached_c_name memoizes naming.c_name results in the type cache (falling
 // back to the frozen base cache read-only, like every other entry kind).
 // c_name is pure and called on hot resolution paths in every phase.

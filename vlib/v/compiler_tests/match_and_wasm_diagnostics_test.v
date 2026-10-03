@@ -12,7 +12,7 @@ fn build_diagnostic_v3() string {
 		return diagnostic_v3_bin
 	}
 	build :=
-		os.execute('${os.quoted_path(diagnostic_vexe)} -gc none -o ${os.quoted_path(diagnostic_v3_bin)} ${os.quoted_path(diagnostic_v3_src)}')
+		os.exec([diagnostic_vexe, '-gc', 'none', '-o', diagnostic_v3_bin, '${diagnostic_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return diagnostic_v3_bin
 }
@@ -24,7 +24,7 @@ fn test_undefined_sumtype_match_variant_stops_before_codegen() {
 	os.write_file(source_path,
 		"type Value = int | string\n\nfn main() {\n\tvalue := Value(1)\n\tprintln(match value {\n\t\tNil { 'nil' }\n\t\telse { 'other' }\n\t})\n}\n")!
 	result :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache -b c -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-nocache', '-b', 'c', '-o', output_path, source_path])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('`Value` has no variant `Nil`'), result.output
 	assert !result.output.contains('C compilation failed'), result.output
@@ -38,7 +38,7 @@ fn test_wasm_unsupported_aggregate_reports_source_error() {
 	os.write_file(source_path,
 		'fn main() {\n\tmut values := map[string]int{}\n\tvalues["one"] = 1\n}\n')!
 	result :=
-		os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-b', 'wasm', '-o', output_path, source_path])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('v3_wasm_dynamic_map_${os.getpid()}.v:1:4:'), result.output
 	assert result.output.contains('the V wasm backend does not support type `map[string]int` yet'), result.output

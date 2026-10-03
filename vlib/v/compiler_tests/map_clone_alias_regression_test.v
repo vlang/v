@@ -12,7 +12,8 @@ fn test_map_clone_entry_exception_preserves_alias_diagnostics() {
 	compiler := os.join_path(root, 'v3')
 	compiler_source := os.join_path(v_dir, 'v.v')
 	vexe := @VEXE
-	build := os.execute('"${vexe}" -gc none -path "${vlib_dir}|@vlib|@vmodules" -o "${compiler}" "${compiler_source}"')
+	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', compiler,
+		compiler_source])
 	assert build.exit_code == 0, build.output
 
 	header := 'struct Row {
@@ -85,7 +86,7 @@ fn main() {
 		path := os.join_path(root, '${name}.v')
 		os.write_file(path, source) or { panic(err) }
 		output := os.join_path(root, name)
-		result := os.execute('"${compiler}" -nocache -b c -o "${output}" "${path}"')
+		result := os.exec([compiler, '-nocache', '-b', 'c', '-o', output, path])
 		assert result.exit_code != 0, '${name} unexpectedly compiled'
 		assert result.output.contains('aliases mutable data from an immutable value'), '${name}: ${result.output}'
 		if name == 'nested' {

@@ -383,7 +383,13 @@ fn (mut task TaskDescription) execute() {
 		return
 	}
 	cli_cmd := task.get_cli_cmd()
-	res := os.execute(cli_cmd)
+	program := task.path
+	mut command := [task.vexe, ...(os.split_args(task.voptions) or { panic(err) }), program]
+	if task.evars != '' {
+		command.prepend(os.split_args(task.evars) or { panic(err) })
+		command.prepend('env')
+	}
+	res := os.exec(command)
 	expected_out_path := task.path.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd

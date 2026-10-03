@@ -27,7 +27,8 @@ fn testsuite_begin() {
 	os.mkdir_all(copy_ownership_tmp_dir) or { panic(err) }
 	cmd_v := os.join_path(copy_ownership_vroot, 'cmd', 'v')
 	vlib := os.join_path(copy_ownership_vroot, 'vlib')
-	build := os.execute('${os.quoted_path(copy_ownership_vexe)} -gc none -d ownership -path "${vlib}|@vlib|@vmodules" -o ${os.quoted_path(copy_ownership_v3)} ${os.quoted_path(cmd_v)}')
+	build := os.exec([copy_ownership_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+		'${vlib}' + '|@vlib|@vmodules', '-o', '${copy_ownership_v3}', '${cmd_v}'])
 	assert build.exit_code == 0, build.output
 }
 
@@ -39,13 +40,14 @@ fn copy_ownership_compile(name string, src string) os.Result {
 	path := os.join_path(copy_ownership_tmp_dir, '${name}.v')
 	os.write_file(path, src) or { panic(err) }
 	out := os.join_path(copy_ownership_tmp_dir, name)
-	return os.execute('${os.quoted_path(copy_ownership_v3)} -ownership -d ownership -no-parallel -o ${os.quoted_path(out)} ${os.quoted_path(path)}')
+	return os.exec(['${copy_ownership_v3}', '-ownership', '-d', 'ownership', '-no-parallel', '-o',
+		'${out}', path])
 }
 
 fn copy_ownership_run(name string, src string) string {
 	build := copy_ownership_compile(name, src)
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(os.join_path(copy_ownership_tmp_dir, name)))
+	run := os.exec([os.join_path(copy_ownership_tmp_dir, name)])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -287,7 +289,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	output := os.execute('${os.quoted_path(copy_ownership_vexe)} run ${os.quoted_path(path)}')
+	output := os.exec([copy_ownership_vexe, 'run', path])
 	assert output.exit_code == 0, output.output
 	assert output.output.trim_space() == 'ok'
 }
@@ -484,7 +486,8 @@ fn main() {
 	nested_literal_scope()
 }
 ')!
-	build := os.execute('${os.quoted_path(copy_ownership_v3)} -ownership -d ownership -no-parallel -os windows -o ${os.quoted_path(cpath)} ${os.quoted_path(path)}')
+	build := os.exec(['${copy_ownership_v3}', '-ownership', '-d', 'ownership', '-no-parallel',
+		'-os', 'windows', '-o', cpath, path])
 	assert build.exit_code == 0, build.output
 	generated := os.read_file(cpath)!
 	growth := generated.all_after('void grow(Array* values) {').all_before('\n}')

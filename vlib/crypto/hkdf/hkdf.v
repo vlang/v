@@ -10,6 +10,7 @@
 // Based off:   https://github.com/golang/go/tree/master/src/crypto/hkdf
 module hkdf
 
+import crypto.hmac
 import crypto.sha1
 import crypto.sha256
 import crypto.sha512
@@ -109,18 +110,18 @@ enum Step {
 }
 
 // prekeyed_hmac computes HKDF-Extract(`key`, `data`) or HKDF-Expand(`key`, `data`,
-// `key_length`) when `h` is a SHA-1 or SHA-2 digest, and returns none for any
-// other hash, which then takes the generic path.
+// `key_length`) with `hmac.Hmac` when `h` is a SHA-1 or SHA-2 digest, and returns
+// none for any other hash, which then takes the generic path.
 fn prekeyed_hmac(h hash.Hash, step Step, key []u8, data []u8, key_length int) ?[]u8 {
 	match h {
 		sha1.Digest {
-			mut inner, mut outer, mut work := sha1.new(), sha1.new(), sha1.new()
-			return hmac_step(mut inner, mut outer, mut work, step, key, data, key_length)
+			mut mac := hmac.new_hmac(sha1.new, key)
+			return hmac_step(mut mac, step, data, key_length)
 		}
 		sha256.Digest {
 			new_digest := if h.size() == sha256.size224 { sha256.new224 } else { sha256.new }
-			mut inner, mut outer, mut work := new_digest(), new_digest(), new_digest()
-			return hmac_step(mut inner, mut outer, mut work, step, key, data, key_length)
+			mut mac := hmac.new_hmac(new_digest, key)
+			return hmac_step(mut mac, step, data, key_length)
 		}
 		sha512.Digest {
 			new_digest := match h.size() {
@@ -129,8 +130,8 @@ fn prekeyed_hmac(h hash.Hash, step Step, key []u8, data []u8, key_length int) ?[
 				sha512.size224 { sha512.new512_224 }
 				else { sha512.new }
 			}
-			mut inner, mut outer, mut work := new_digest(), new_digest(), new_digest()
-			return hmac_step(mut inner, mut outer, mut work, step, key, data, key_length)
+			mut mac := hmac.new_hmac(new_digest, key)
+			return hmac_step(mut mac, step, data, key_length)
 		}
 		else {
 			return none
@@ -138,42 +139,16 @@ fn prekeyed_hmac(h hash.Hash, step Step, key []u8, data []u8, key_length int) ?[
 	}
 }
 
-// hmac_step computes one HKDF step for a digest type D that has `copy_from` and
-// `checksum_into`. `inner`, `outer` and `work` must be fresh digests of the same
-// kind. The HMAC key is processed once: `inner` and `outer` keep the states after
-// absorbing `key ^ ipad` and `key ^ opad`, and every HMAC computation restarts
-// `work` from them, writing into preallocated buffers.
-@[direct_array_access]
-fn hmac_step[D](mut inner D, mut outer D, mut work D, step Step, key []u8, data []u8, key_length int) []u8 {
-	hash_length := work.size()
-	block_size := work.block_size()
-	// HMAC key, padded with zeros to the block size (RFC 2104). Keys longer
-	// than the block size are hashed first.
-	mut pad := []u8{len: block_size}
-	if key.len > block_size {
-		work.write(key) or { panic(err) }
-		work.checksum_into(mut pad)
-	} else {
-		copy(mut pad, key)
-	}
-	for i in 0 .. block_size {
-		pad[i] ^= 0x36
-	}
-	inner.write(pad) or { panic(err) }
-	for i in 0 .. block_size {
-		pad[i] ^= 0x36 ^ 0x5c
-	}
-	outer.write(pad) or { panic(err) }
-	for i in 0 .. block_size {
-		pad[i] = 0
-	}
-
+// hmac_step computes one HKDF step with `mac`, which is keyed with the salt for
+// `.extract` and with the pseudorandom key for `.expand`. `hmac.Hmac` processes
+// the key once, so the expand loop does not allocate.
+fn hmac_step[D](mut mac hmac.Hmac[D], step Step, data []u8, key_length int) []u8 {
+	hash_length := mac.size()
 	if step == .extract {
 		// PRK = HMAC(salt, IKM)
 		mut prk := []u8{len: hash_length}
-		work.copy_from(inner)
-		work.write(data) or { panic(err) }
-		finish_hmac(mut work, outer, mut prk)
+		mac.write(data) or { panic(err) }
+		mac.sum_into(mut prk)
 		return prk
 	}
 	mut out := []u8{len: key_length}
@@ -182,26 +157,15 @@ fn hmac_step[D](mut inner D, mut outer D, mut work D, step Step, key []u8, data 
 	for offset := 0; offset < key_length; offset += hash_length {
 		// T(i) = HMAC(PRK, T(i-1) || info || i), where T(0) is empty
 		counter[0]++
-		work.copy_from(inner)
 		if offset > 0 {
-			work.write(t) or { panic(err) }
+			mac.write(t) or { panic(err) }
 		}
-		work.write(data) or { panic(err) }
-		work.write(counter) or { panic(err) }
-		finish_hmac(mut work, outer, mut t)
+		mac.write(data) or { panic(err) }
+		mac.write(counter) or { panic(err) }
+		mac.sum_into(mut t)
 		copy(mut out[offset..], t)
 	}
 	return out
-}
-
-// finish_hmac completes an HMAC whose message was written to `work`, which
-// started from the inner state, and writes it to `out`. `out` also holds the
-// inner hash in between, since `write` consumes it before it is overwritten.
-fn finish_hmac[D](mut work D, outer D, mut out []u8) {
-	work.checksum_into(mut out)
-	work.copy_from(outer)
-	work.write(out) or { panic(err) }
-	work.checksum_into(mut out)
 }
 
 fn hmac_sum[H](h fn () H, key []u8, data []u8) []u8 {

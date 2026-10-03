@@ -14881,7 +14881,7 @@ pub fn run(args []string) {
 					}
 				}
 				$if windows {
-					exit(os.system(v3_exec_command(os.executable(), regeneration_args)))
+					exit(os.system_args([os.executable(), ...regeneration_args]))
 				}
 				os.execvp(os.executable(), regeneration_args) or {
 					eprintln('failed to restart monolithic C compilation: ${err.msg()}')
@@ -15596,7 +15596,7 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	$if windows {
 		// `_execvp` would exit this process with status 0 before the retried
 		// build finishes, so forward the retried build's status instead.
-		exit(os.system(v3_exec_command(executable, restart_args)))
+		exit(os.system_args([executable, ...restart_args]))
 	}
 	os.execvp(executable, restart_args) or {
 		eprintln('failed to restart the build after discarding stale cache entries: ${err.msg()}')
@@ -16741,22 +16741,13 @@ fn restart_v3_with_args(extra_args []string) {
 		// Windows has no exec either: `_execvp` would start the child and then
 		// exit this process with status 0, dropping the restarted build's
 		// result on the floor.
-		exit(os.system(v3_exec_command(executable, args)))
+		exit(os.system_args([executable, ...args]))
 	} $else {
 		os.execvp(executable, args) or {
 			eprintln('failed to restart ${executable}: ${err.msg()}')
 			exit(1)
 		}
 	}
-}
-
-// v3_exec_command renders an argv for a shell, for the platforms that cannot exec.
-fn v3_exec_command(executable string, args []string) string {
-	mut command := [os.quoted_path(executable)]
-	for arg in args {
-		command << os.quoted_path(arg)
-	}
-	return command.join(' ')
 }
 
 fn cache_external_input_owner_modules(state &V3ModuleCacheState, a &flat.FlatAst, unscoped_inputs map[string][]string, static_inputs map[string][]string, user_files []string, c_flags []string, ccompiler string, target pref.Target) (map[string]bool, bool) {
@@ -20785,6 +20776,7 @@ fn (prepared &PreparedImports) resolution_change(prefs &pref.Preferences, projec
 // length and only its stored NodeIds shift. insertions must be sorted ascending
 // by pos (equal positions keep insertion order); the boundary loop produces them
 // in strictly increasing region order.
+@[direct_array_access]
 fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion) {
 	if insertions.len == 0 {
 		return
@@ -20812,8 +20804,12 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 		end = insertion.pos
 	}
 	for i in 0 .. a.nodes.len {
+		// Only directives need a look at their text; leave the other nodes in place.
+		if a.nodes[i].kind != .directive {
+			continue
+		}
 		mut node := a.nodes[i]
-		if node.kind == .directive && node.value.starts_with('@attributes:') {
+		if node.value.starts_with('@attributes:') {
 			target_idx := node.value['@attributes:'.len..].int()
 			if target_idx >= 0 && target_idx < old_len {
 				node.value = '@attributes:${target_idx + synthetic_index_shift(insertions, target_idx)}'
@@ -20824,11 +20820,21 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 	for i, idx in a.file_node_ids {
 		a.file_node_ids[i] = idx + synthetic_index_shift(insertions, idx)
 	}
+	// The insertions are in position order: an id before the first one keeps its
+	// place, and one at or after the last moves past all of them.
+	first_pos := insertions[0].pos
+	last_pos := insertions[insertions.len - 1].pos
 	for k in 0 .. a.children.len {
 		cid := int(a.children[k])
-		if cid >= 0 {
-			a.children[k] = flat.NodeId(cid + synthetic_index_shift(insertions, cid))
+		if cid < 0 || cid < first_pos {
+			continue
 		}
+		shift := if cid >= last_pos {
+			insertions.len
+		} else {
+			synthetic_index_shift(insertions, cid)
+		}
+		a.children[k] = flat.NodeId(cid + shift)
 	}
 	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
 }

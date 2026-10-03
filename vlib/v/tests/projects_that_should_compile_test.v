@@ -48,7 +48,7 @@ fn setup_module_resolution_workdir_fixture() string {
 
 fn vrun_ok(options string, path string) string {
 	cmd := '${os.quoted_path(@VEXE)} ${options} ${os.quoted_path(path)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, ...(os.split_args(options) or { panic(err) }), path])
 	if res.exit_code != 0 {
 		eprintln('> failing vrun cmd: ${cmd}')
 		eprintln('> output:\n${res.output}')
@@ -82,7 +82,7 @@ fn test_running_subdir_project_with_parent_vmod_works() {
 		os.chdir(old_dir) or {}
 	}
 	os.chdir(root)!
-	res := os.execute('${os.quoted_path(@VEXE)} run hexagonal')
+	res := os.exec([@VEXE, 'run', 'hexagonal'])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'built'
 }
@@ -107,7 +107,7 @@ fn test_running_module_with_same_module_subdirs_setting_works() {
 		os.chdir(old_dir) or {}
 	}
 	os.chdir(root)!
-	res := os.execute('${os.quoted_path(@VEXE)} run app/main.v')
+	res := os.exec([@VEXE, 'run', 'app/main.v'])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '42'
 }
@@ -167,7 +167,7 @@ pub fn (mut app App) ci_runs(mut ctx Context) veb.Result {
 		os.chdir(old_dir) or {}
 	}
 	os.chdir(root)!
-	res := os.execute('${os.quoted_path(@VEXE)} .')
+	res := os.exec([@VEXE, '.'])
 	assert res.exit_code == 0, res.output
 }
 
@@ -350,7 +350,7 @@ fn test_implicit_err_is_undefined_with_no_builtin() {
 		os.rm(output_path) or {}
 	}
 	res :=
-		os.execute('${os.quoted_path(@VEXE)} -new-compiler -gc none -no-builtin -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+		os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-no-builtin', '-o', output_path, source_path])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('undefined ident: `err`'), res.output
 }

@@ -10,7 +10,9 @@ fn fixed_array_global_for_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_global_for_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${fixed_array_global_for_vexe} -gc none -path "${fixed_array_global_for_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${fixed_array_global_for_v3_src}')
+		os.exec([fixed_array_global_for_vexe, '-gc', 'none', '-path',
+			'${fixed_array_global_for_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${fixed_array_global_for_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -37,9 +39,9 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_global_for_${os.getpid()}')
-	compile := os.execute('${v3_bin} -enable-globals ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '21', run.output
 
@@ -79,9 +81,9 @@ pub fn sum() int {
 	}
 	bin := os.join_path(root, 'app')
 	compile :=
-		os.execute('${v3_bin} -enable-globals ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+		os.exec([v3_bin, '-enable-globals', os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5', run.output
 

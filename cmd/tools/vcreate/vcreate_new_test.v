@@ -34,7 +34,10 @@ fn test_new_with_no_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_project'
 	cmd := '${expect_exe} ${os.join_path(expect_tests_path, 'new_with_no_arg.expect')} ${vroot} ${project_name}'
-	os.execute_opt(cmd) or {
+	os.exec_opt([os.find_abs_path_of_executable('expect') or {
+		eprintln('skipping test, since expect is missing')
+		exit(0)
+	}, os.join_path(expect_tests_path, 'new_with_no_arg.expect'), vroot, '${project_name}']) or {
 		dump(cmd)
 		assert false, err.msg()
 	}
@@ -53,7 +56,10 @@ fn test_new_with_name_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_other_project'
 	cmd := '${expect_exe} ${os.join_path(expect_tests_path, 'new_with_name_arg.expect')} ${vroot} ${project_name}'
-	os.execute_opt(cmd) or {
+	os.exec_opt([os.find_abs_path_of_executable('expect') or {
+		eprintln('skipping test, since expect is missing')
+		exit(0)
+	}, os.join_path(expect_tests_path, 'new_with_name_arg.expect'), vroot, '${project_name}']) or {
 		dump(cmd)
 		assert false, err.msg()
 	}
@@ -73,7 +79,8 @@ fn test_new_with_model_arg_input() {
 	project_name := 'my_lib'
 	model := '--lib'
 	cmd := '${expect_exe} ${os.join_path(expect_tests_path, 'new_with_model_arg.expect')} ${vroot} ${model} ${project_name}'
-	os.execute_opt(cmd) or {
+	os.exec_opt([expect_exe, os.join_path(expect_tests_path, 'new_with_model_arg.expect'), vroot,
+		'${model}', '${project_name}']) or {
 		dump(cmd)
 		assert false, err.msg()
 	}

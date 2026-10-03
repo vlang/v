@@ -10,7 +10,9 @@ fn orm_join_sql_attr_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_join_sql_attr_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${orm_join_sql_attr_vexe} -gc none -path "${orm_join_sql_attr_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${orm_join_sql_attr_v3_src}')
+		os.exec([orm_join_sql_attr_vexe, '-gc', 'none', '-path',
+			'${orm_join_sql_attr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${orm_join_sql_attr_v3_src}'])
 	assert build.exit_code == 0, build.output
 	assert os.exists(v3_bin), build.output
 	return v3_bin
@@ -26,9 +28,9 @@ fn orm_join_sql_attr_run(v3_bin string, name string, src string) string {
 	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(root, 'program')
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -43,7 +45,7 @@ fn orm_join_sql_attr_compile(v3_bin string, name string, src string) os.Result {
 	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(root, 'program')
-	return os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	return os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 }
 
 fn orm_join_sql_attr_write_project_file(root string, rel string, src string) {
@@ -62,9 +64,9 @@ fn orm_join_sql_attr_run_project(v3_bin string, name string, files map[string]st
 	}
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}_program_${os.getpid()}')
 	os.rm(bin_path) or {}
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

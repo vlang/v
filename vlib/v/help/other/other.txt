@@ -25,11 +25,19 @@ Other less frequently used commands supported by V include:
   env               Print the environment variables that steer the V compiler
                    and its tools, with the value V would use for each.
 
+  mcp               Serve the V compiler to a coding agent over the Model Context
+                   Protocol, as tools that answer from the compiler's own parser.
+                   `v mcp tools` lists them without starting the server.
+
   mod               Answer questions about the modules a project depends on.
                    `v mod why MODULE` prints the chain of imports that brings
                    MODULE into the build.
 
   setup-freetype   Setup thirdparty freetype on Windows.
+
+  skills            List, install and remove the agent skills bundled with this
+                   compiler. `v skills list` reports which are installed for this
+                   project or for the current user.
 
   share            Send your code to the V Playground
 

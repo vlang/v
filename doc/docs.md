@@ -6339,7 +6339,7 @@ file.
 import os
 
 fn test_subtest() {
-	res := os.execute('${os.quoted_path(@VEXE)} other_test.v')
+	res := os.exec([@VEXE, 'other_test.v'])
 	assert res.exit_code == 1
 	assert res.output.contains('other_test.v does not exist')
 }

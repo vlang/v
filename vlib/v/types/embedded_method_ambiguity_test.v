@@ -30,7 +30,7 @@ fn check_embedded_method_program(name string, body string) os.Result {
 		os.rmdir_all(root) or {}
 	}
 	os.write_file(os.join_path(root, 'main.v'), embedded_method_source + body) or { panic(err) }
-	return os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	return os.exec([@VEXE, '-check', root])
 }
 
 // A method that two embedded structs both have is ambiguous, also when the

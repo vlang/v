@@ -16,6 +16,6 @@ import gg as _
 
 fn main() {}
 ') or { panic(err) }
-	res := os.execute('${issue_27584_vexe} -os linux -check ${os.quoted_path(source_path)}')
+	res := os.exec([@VEXE, '-os', 'linux', '-check', source_path])
 	assert res.exit_code == 0, res.output
 }

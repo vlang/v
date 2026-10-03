@@ -15,7 +15,8 @@ fn test_optional_field_payload_can_be_borrowed() {
 		os.rm(out + '.c') or {}
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(src, "struct Holder {
 	value ?string
@@ -37,8 +38,8 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -b c -o ${out} ${src}')
+	compile := os.exec([v3_bin, '-b', 'c', '-o', '${out}', '${src}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 }
