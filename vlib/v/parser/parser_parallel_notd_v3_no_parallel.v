@@ -998,6 +998,13 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 	}
 	mut value_cache := new_parse_merge_text_cache()
 	mut type_cache := new_parse_merge_text_cache()
+	defer {
+		// Only the buffers are owned here; their strings borrow the master AST.
+		unsafe {
+			free(value_cache)
+			free(type_cache)
+		}
+	}
 	for k in 0 .. w.a.nodes.len {
 		mut node := w.a.nodes[k]
 		if node.children_count != 0 {

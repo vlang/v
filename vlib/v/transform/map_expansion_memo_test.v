@@ -82,3 +82,28 @@ fn test_empty_disabled_function_map_skips_call_and_operator_resolution() {
 	assert t.disabled_struct_operator_zero_value_expansion_estimate(flat.NodeId(-1),
 		flat.Node{ kind: .infix, children_count: 2, op: .plus }) == 0
 }
+
+fn test_expansion_memo_setting_is_shared_by_compilation_workers() {
+	previous := os.getenv('V3_NO_NODE_TYPE_MEMO')
+	os.setenv('V3_NO_NODE_TYPE_MEMO', '1', true)
+	defer {
+		if previous == '' {
+			os.unsetenv('V3_NO_NODE_TYPE_MEMO')
+		} else {
+			os.setenv('V3_NO_NODE_TYPE_MEMO', previous, true)
+		}
+	}
+	mut a := flat.FlatAst.new()
+	a.add_node(flat.Node{ kind: .int_literal, value: '0' })
+	mut tc := types.TypeChecker.new(&a)
+	mut disabled := new_transformer(mut a, &tc, map[string]bool{})
+	os.unsetenv('V3_NO_NODE_TYPE_MEMO')
+	worker := disabled.fork_scan_worker(&tc)
+	assert !worker.memo_expansion_node_types
+	assert disabled.fn_span_map_expansion_estimate(0, 1) == 0
+	assert isnil(disabled.expansion_node_type_memo)
+	mut enabled := new_transformer(mut a, &tc, map[string]bool{})
+	assert enabled.memo_expansion_node_types
+	assert enabled.fn_span_map_expansion_estimate(0, 1) == 0
+	assert !isnil(enabled.expansion_node_type_memo)
+}

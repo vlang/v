@@ -1,6 +1,5 @@
 module transform
 
-import os
 import v.flat
 import v.types
 
@@ -1413,7 +1412,7 @@ fn (mut t Transformer) forwarded_return_conversion_expansion_estimate(actual_typ
 // lowering can substitute a constant identifier with a large initializer
 // outside that range.
 fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
-	if os.getenv('V3_NO_NODE_TYPE_MEMO') != '' {
+	if !t.memo_expansion_node_types {
 		return t.fn_span_map_expansion_estimate_uncached(lo, hi)
 	}
 	// This analysis keeps bindings, smartcasts and the AST fixed. Reuse scratch

@@ -506,18 +506,19 @@ mut:
 	// such writes stayed in the discarded clone) or deferred until after join
 	// (master, defer_oor_writes — matching the old path where the master's
 	// writes landed on the shared AST).
-	base_write_intercept     bool
-	defer_oor_writes         bool
-	shared_base_nodes        int = -1
-	shared_base_children     int = -1
-	item_range_lo            int = -1
-	item_range_hi            int = -1
-	item_escape_scan_known   bool
-	item_escape_scan_needed  bool
-	memo_node_types          bool
-	node_type_memo           &NodeTypeMemo = unsafe { nil }
-	expansion_node_type_memo &NodeTypeMemo = unsafe { nil }
-	deferred_base_writes     []DeferredBaseWrite
+	base_write_intercept      bool
+	defer_oor_writes          bool
+	shared_base_nodes         int = -1
+	shared_base_children      int = -1
+	item_range_lo             int = -1
+	item_range_hi             int = -1
+	item_escape_scan_known    bool
+	item_escape_scan_needed   bool
+	memo_node_types           bool
+	memo_expansion_node_types bool
+	node_type_memo            &NodeTypeMemo = unsafe { nil }
+	expansion_node_type_memo  &NodeTypeMemo = unsafe { nil }
+	deferred_base_writes      []DeferredBaseWrite
 	// Prealloc self-host builds put helper-thread scratch allocations in
 	// disposable arenas. The worker's surviving AST strings are cloned by the
 	// master before that arena is released.
@@ -1236,7 +1237,7 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) {
 	t.skip_generics = skip_generics
 	t.building_v = building_v
-	t.memo_node_types = building_v && os.getenv('V3_NO_NODE_TYPE_MEMO') == ''
+	t.memo_node_types = building_v && t.memo_expansion_node_types
 	t.fast_escape_precheck = building_v && os.getenv('V3_NO_ESCAPE_PRECHECK') == ''
 	t.ordinary_escape_precheck = !building_v && os.getenv('V3_NO_ESCAPE_PRECHECK') == ''
 	t.inplace_child_rewrites = building_v && os.getenv('V3_NO_INPLACE_TRANSFORM_CHILDREN') == ''
@@ -1865,6 +1866,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 	return Transformer{
 		a:                           a
 		tc:                          unsafe { tc }
+		memo_expansion_node_types:   os.getenv('V3_NO_NODE_TYPE_MEMO') == ''
 		has_spawn_expr:              tc.threads_condition_value()
 		used_fns:                    used_fns.clone()
 		interface_box_param_cache:   &BoolLookupCache{
@@ -4600,6 +4602,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		skip_generics:                       t.skip_generics
 		building_v:                          t.building_v
 		memo_node_types:                     t.memo_node_types
+		memo_expansion_node_types:           t.memo_expansion_node_types
 		stringify_depth_cap:                 t.stringify_depth_cap
 		struct_autostr_recurse_types:        t.struct_autostr_recurse_types
 		has_spawn_expr:                      t.has_spawn_expr

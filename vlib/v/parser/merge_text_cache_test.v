@@ -40,5 +40,13 @@ fn test_merge_text_probes_preserve_canonical_storage_across_independent_passes()
 		assert hit
 		assert value == ''
 		assert a.text_values.len == 3
+		unsafe {
+			// The cache buffers own none of the canonical AST strings.
+			free(values)
+			free(types)
+		}
+		assert a.text(flat.TextId(1)) == 'alpha'
+		assert a.text(flat.TextId(2)) == 'bravo'
+		assert a.text(flat.TextId(3)) == 'cider'
 	}
 }
