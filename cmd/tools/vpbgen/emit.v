@@ -148,7 +148,12 @@ pub fn declared_type(f Resolved) string {
 	return f.v_type
 }
 
-// emit_message_encode writes `func (msg T) encode() ![]u8`.
+// emit_message_encode writes `encode` and `encode_with` for one message.
+//
+// The two exist because the rule that decides whether a field at its default is
+// written belongs to the caller, not to the Packer: a proto3 producer omits it,
+// and a proto2-style producer keeps explicit presence. `encode` is the proto3
+// case, and `encode_with` is the one that can be asked for the other.
 pub fn emit_message_encode(mut e Emitter, m ResolvedMessage) {
 	e.wln(0, '// encode serializes `msg` to the proto3 wire format.')
 	e.wln(0, '//')
@@ -157,8 +162,19 @@ pub fn emit_message_encode(mut e Emitter, m ResolvedMessage) {
 	e.wln(0, '// zero value produces no bytes for it. A field declared `optional`, or')
 	e.wln(0, '// holding a member of a `oneof`, is the exception: it records presence,')
 	e.wln(0, '// so it is written even at its default.')
+	e.wln(0, '//')
+	e.wln(0, '// Use encode_with when the peer expects explicit presence instead.')
 	e.wln(0, 'pub fn (msg ${m.v_name}) encode() ![]u8 {')
-	e.wln(1, 'mut packer := protobuf.new_packer(protobuf.EncodeOpts{})')
+	e.wln(1, 'return msg.encode_with(protobuf.EncodeOpts{})')
+	e.wln(0, '}')
+	e.w('')
+	e.wln(0, '// encode_with serializes `msg` with `opts`.')
+	e.wln(0, '//')
+	e.wln(0, '// `opts.emit_defaults` writes a field that holds its default instead of')
+	e.wln(0, '// leaving it off the wire, which is what a consumer expecting explicit')
+	e.wln(0, '// presence needs. The options also reach nested messages and map entries.')
+	e.wln(0, 'pub fn (msg ${m.v_name}) encode_with(opts protobuf.EncodeOpts) ![]u8 {')
+	e.wln(1, 'mut packer := protobuf.new_packer(opts)')
 	if m.fields.len == 0 {
 		e.wln(1, '_ = &packer')
 	}
@@ -176,8 +192,10 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 	value := 'msg.${f.name}'
 	match f.kind {
 		.map {
+			// An empty map writes nothing either way, so the options only matter
+			// for the entries that are written.
 			e.wln(1, 'if ${value}.len > 0 {')
-			e.wln(2, 'emit_map_${f.name}(mut packer, ${n}, ${value})!')
+			e.wln(2, 'emit_map_${f.name}(mut packer, ${n}, ${value}, opts)!')
 			e.wln(1, '}')
 			return
 		}
@@ -191,7 +209,8 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 		// A field with explicit presence is written whenever it holds a value,
 		// including one holding the default, because the difference between "set
 		// to the default" and "never set" is the whole point of declaring the
-		// presence in the first place.
+		// presence in the first place. `emit_defaults` changes nothing here: this
+		// field already writes its default whenever it is set.
 		e.wln(1, 'if inner := ${value} {')
 		line := emit_single_encode(f, n, 'inner')
 		if line != '' {
@@ -200,11 +219,12 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 		e.wln(1, '}')
 		return
 	}
-	// proto3 implicit presence: skip a field at its default.
+	// proto3 implicit presence: skip a field at its default, unless the caller
+	// asked for the fields that hold one to be written anyway.
 	if f.kind == .message {
 		// A nested message is present whenever the field is, even when all of
 		// its own fields hold defaults, so it is written unconditionally.
-		e.wln(1, 'packer.write_message(${n}, ${value}.encode()!)')
+		e.wln(1, 'packer.write_message(${n}, ${value}.encode_with(opts)!)')
 		return
 	}
 	e.wln(1, 'if ${emit_default_test(f, value)} {')
@@ -219,7 +239,16 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 // present. A `bytes` field is present when it has bytes rather than when the
 // slice is non-nil, since a zero-length slice written as empty and one that was
 // never set are the same message.
+//
+// `opts.emit_defaults` is ORed into the condition rather than branching the whole
+// function, so a caller that never sets it pays one test per field and a caller
+// that does gets every field written.
 pub fn emit_default_test(f Resolved, value string) string {
+	return 'opts.emit_defaults || ${default_test(f, value)}'
+}
+
+// default_test returns the bare presence condition, without the option.
+fn default_test(f Resolved, value string) string {
 	return match f.kind {
 		.text { '${value}.len > 0' }
 		.bytes { '${value}.len > 0' }
@@ -241,7 +270,7 @@ pub fn emit_single_encode(f Resolved, n int, value string) string {
 	match f.kind {
 		.text { return 'packer.write_string(${n}, ${value})!' }
 		.bytes { return 'packer.write_bytes(${n}, ${value})' }
-		.message { return 'packer.write_message(${n}, ${value}.encode()!)' }
+		.message { return 'packer.write_message(${n}, ${value}.encode_with(opts)!)' }
 		.enum { return 'packer.write_enum(${n}, int(${value}))' }
 		.scalar {
 			return match f.scalar {
@@ -330,7 +359,7 @@ pub fn packed_element_call(s protobuf.ProtoScalar, value string) string {
 // repeated field, where a message element is encoded by its own codec.
 pub fn emit_single_encode_elem(f Resolved, n int, value string) string {
 	if f.kind == .message {
-		return 'packer.write_message(${n}, ${value}.encode()!)'
+		return 'packer.write_message(${n}, ${value}.encode_with(opts)!)'
 	}
 	return emit_single_encode(f, n, value)
 }

@@ -196,7 +196,9 @@ pub fn emit_map_encode(mut e Emitter, f Resolved) {
 	e.wln(0, '// The entries are sorted by key. V map iteration order is undefined, so')
 	e.wln(0, '// without the sort the same map would encode to different bytes on')
 	e.wln(0, '// different runs, which breaks any comparison taken over the output.')
-	e.wln(0, 'pub fn emit_map_${f.name}(mut packer protobuf.Packer, field_number int, map_data ${f.v_type}) ! {')
+	e.wln(0, '// The options reach the entry packer so that a string key or a message value')
+	e.wln(0, '// is held to the same rules as a field of the enclosing message.')
+	e.wln(0, 'pub fn emit_map_${f.name}(mut packer protobuf.Packer, field_number int, map_data ${f.v_type}, opts protobuf.EncodeOpts) ! {')
 	// The map is held in a local named `map_data` rather than `value`, because
 	// `value` is a builtin type: a local of that name shadows it, and the checker
 	// rejects the assignment that follows.
@@ -204,17 +206,20 @@ pub fn emit_map_encode(mut e Emitter, f Resolved) {
 	e.wln(1, 'keys.sort()')
 	e.wln(1, 'for entry_key in keys {')
 	e.wln(2, 'entry_value := map_data[entry_key]')
-	e.wln(2, 'mut entry := protobuf.new_packer(protobuf.EncodeOpts{})')
+	e.wln(2, 'mut entry := protobuf.new_packer(opts)')
 	// The key's and the value's types are checked separately: a map<string, int32>
 	// needs a length test for the key and a zero test for the value, and reading
 	// both off the key type wrote the wrong test for one of them.
-	e.wln(2, 'if ${is_map_default(f, f.map_key_type, 'entry_key')} {')
+	//
+	// `emit_defaults` applies to an entry's members the same way it applies to a
+	// field: without it, a member holding its default is left out of the entry.
+	e.wln(2, 'if opts.emit_defaults || ${is_map_default(f, f.map_key_type, 'entry_key')} {')
 	key_line := emit_map_part_write(f, 'entry', 'entry_key', 1)
 	if key_line != '' {
 		e.wln(3, key_line)
 	}
 	e.wln(2, '}')
-	e.wln(2, 'if ${is_map_default(f, f.map_value_type, 'entry_value')} {')
+	e.wln(2, 'if opts.emit_defaults || ${is_map_default(f, f.map_value_type, 'entry_value')} {')
 	value_line := emit_map_part_write(f, 'entry', 'entry_value', 2)
 	if value_line != '' {
 		e.wln(3, value_line)

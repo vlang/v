@@ -78,12 +78,12 @@ fn test_generated_encode_skips_defaults() {
 	out := generate(fixture('kv.proto'), 'kv')!
 	// proto3 omits a field at its default, which is the rule a hand-written
 	// encoder most often gets wrong.
-	assert out.contains('if msg.key.len > 0 {')
+	assert out.contains('if opts.emit_defaults || msg.key.len > 0 {')
 	assert out.contains('packer.write_string(1, msg.key)!')
-	assert out.contains('if msg.found {')
+	assert out.contains('if opts.emit_defaults || msg.found {')
 	assert out.contains('packer.write_bool(2, msg.found)')
 	// a bytes field is present when it has bytes
-	assert out.contains('if msg.value.len > 0 {')
+	assert out.contains('if opts.emit_defaults || msg.value.len > 0 {')
 	assert out.contains('packer.write_bytes(1, msg.value)')
 }
 
@@ -129,7 +129,7 @@ fn test_generated_nested_message_round_trips() {
 	out := generate(fixture('nested.proto'), 'demo')!
 	// A nested message is written whenever the field is, even when all of its
 	// own fields hold defaults.
-	assert out.contains('packer.write_message(1, msg.inner.encode()!)')
+	assert out.contains('packer.write_message(1, msg.inner.encode_with(opts)!)')
 	assert out.contains('out.inner = decode_inner(payload)!')
 }
 
@@ -171,12 +171,16 @@ fn test_generated_grpc_interface_is_transport_free() {
 	assert !out.contains('mut ctx')
 }
 
-fn test_generated_output_compiles() {
-	// The real test: the generated source is compiled. An emitter can produce
-	// plausible-looking text that does not parse, and only the compiler says so.
-	out := generate(fixture('kv.proto'), 'kv')!
-	compile_generated('kv_codec', [out])!
-}
+// The generated source is compiled here, not merely inspected: an emitter can
+// produce plausible-looking text that does not parse, and only the compiler says
+// so.
+//
+// There is no separate "does kv compile" or "does demo compile" case. Each of
+// those fixtures is compiled by a round-trip test already, which compiles the
+// same output and then runs it, so a second build of the same source would prove
+// nothing and cost a nested compiler invocation. What the compile-only cases below
+// add is the *file layout*: one file holding both halves, and two files in one
+// directory, neither of which a round trip can express.
 
 fn test_generated_grpc_output_compiles() {
 	// The service half names the message types, so the two halves are written
@@ -196,18 +200,6 @@ fn test_standalone_grpc_output_compiles() {
 	codec := generate(fixture('kv.proto'), 'kv')!
 	grpc := generate_grpc(fixture('kv.proto'), 'kv')!
 	compile_generated('kv_split', [codec, grpc])!
-}
-
-fn test_generated_demo_output_compiles() {
-	// The shapes that are easiest to get wrong: a nested message, a packed
-	// repeated field, a map, an enum, and every scalar width.
-	out := generate(fixture('demo.proto'), 'demo')!
-	compile_generated('demo_codec', [out])!
-}
-
-fn test_generated_nested_output_compiles() {
-	out := generate(fixture('nested.proto'), 'demo')!
-	compile_generated('nested_codec', [out])!
 }
 
 // The round-trip tests below encode with the generated code and decode with it
@@ -261,17 +253,39 @@ fn write_roundtrip(name string, res &ResolvedFile) string {
 
 // run_module_test compiles and runs a test file sitting next to generated code,
 // failing the test with the runner's own output if it does not pass.
+//
+// The executable is looked for before it is run. Without that, a build that
+// produced nothing reported as "The system cannot find the path specified", which
+// reads like a missing directory rather than a build that had already failed.
 fn run_module_test(dir string, test_name string, source string) ! {
 	os.write_file(os.join_path(dir, test_name), source) or { return error(err.msg()) }
 	tcc := os.join_path(os.dir(vexe), 'thirdparty', 'tcc', 'tcc.exe')
-	build := os.execute('${os.quoted_path(vexe)} -cc ${os.quoted_path(tcc)} -o ${os.quoted_path(os.join_path(dir, 'rt'))} ${os.quoted_path(os.join_path(dir, test_name))}')
+	out := os.join_path(dir, 'rt')
+	build := os.execute('${os.quoted_path(vexe)} -cc ${os.quoted_path(tcc)} -o ${os.quoted_path(out)} ${os.quoted_path(os.join_path(dir, test_name))}')
 	if build.exit_code != 0 {
-		return error('the round-trip test does not compile:\\n${build.output}')
+		return error('the round-trip test does not compile:\n${build.output}')
 	}
-	run := os.execute(os.quoted_path(os.join_path(dir, 'rt')))
+	exe := built_exe(dir, 'rt') or {
+		return error('the round-trip test compiled to nothing in ${dir}:\n${build.output}')
+	}
+	run := os.execute(os.quoted_path(exe))
 	if run.exit_code != 0 {
-		return error('the round-trip test failed:\\n${run.output}')
+		return error('the round-trip test failed:\n${run.output}')
 	}
+}
+
+// built_exe returns the executable a build with `-o <dir>/<base>` produced.
+//
+// The suffix is platform-specific and `os` keeps its list of them private, so
+// this asks the filesystem rather than predicting the name.
+fn built_exe(dir string, base string) ?string {
+	for candidate in [base, base + '.exe', base + '.com', base + '.bat'] {
+		path := os.join_path(dir, candidate)
+		if os.exists(path) {
+			return path
+		}
+	}
+	return none
 }
 
 // The test sources are written as constants rather than kept as fixture files so
@@ -436,8 +450,8 @@ fn test_generated_map_default_checks_use_each_type() {
 	// `counts` is a map<string, int32>: the key needs a length test and the
 	// value a zero test. Reading both off the key type produced
 	// `!entry_key.len == 0`, which is true for every non-empty string.
-	assert out.contains('if entry_key.len > 0 {')
-	assert out.contains('if entry_value != 0 {')
+	assert out.contains('if opts.emit_defaults || entry_key.len > 0 {')
+	assert out.contains('if opts.emit_defaults || entry_value != 0 {')
 	assert !out.contains('!entry_key.len')
 }
 
@@ -962,6 +976,135 @@ fn test_single_capital_name_only_matches_one_capital_letter() {
 	assert !single_capital_name('M1')
 	assert !single_capital_name('')
 }
+
+fn test_encode_delegates_to_encode_with() {
+	out := generate(fixture('kv.proto'), 'kv')!
+	// One body, two entry points. `encode` is the proto3 case and must not carry
+	// its own copy of the field logic, or the two could drift.
+	assert out.contains('pub fn (msg GetRequest) encode() ![]u8 {')
+	assert out.contains('return msg.encode_with(protobuf.EncodeOpts{})')
+	assert out.contains('pub fn (msg GetRequest) encode_with(opts protobuf.EncodeOpts) ![]u8 {')
+}
+
+fn test_emit_defaults_reaches_the_field_guards() {
+	out := generate(fixture('demo.proto'), 'demo')!
+	// The flag is public API and nothing read it, because the generated code
+	// always passed a zero EncodeOpts. It is now ORed into each presence test.
+	assert out.contains('if opts.emit_defaults || msg.delta != 0 {')
+	assert out.contains('if opts.emit_defaults || msg.ratio != 0.0 {')
+	assert !out.contains('if msg.delta != 0 {')
+}
+
+fn test_emit_defaults_does_not_change_explicit_presence() {
+	out := generate(fixture('presence.proto'), 'presence')!
+	// demo.proto and presence.proto both carry `optional bool flag`. That field
+	// already writes its default whenever it is set, so `emit_defaults` has
+	// nothing to add: adding it would mean a field sent twice in two ways.
+	assert out.contains('if inner := msg.flag {')
+	assert !out.contains('opts.emit_defaults || inner')
+}
+
+fn test_options_reach_nested_messages_and_map_entries() {
+	out := generate(fixture('demo.proto'), 'demo')!
+	// A nested message and a map entry each build their own Packer. Options that
+	// stopped at the outer message would make validate_utf8 and emit_defaults
+	// depend on how deep the field happened to be.
+	assert out.contains('msg.inner.encode_with(opts)!')
+	assert out.contains('emit_map_counts(mut packer, 5, msg.counts, opts)!')
+	assert out.contains('map_data map[string]i32, opts protobuf.EncodeOpts)')
+	assert out.contains('mut entry := protobuf.new_packer(opts)')
+}
+
+fn test_emit_defaults_round_trips() ! {
+	res := generate_res(fixture('demo.proto'), 'demo')!
+	dir := write_roundtrip('emit_defaults', res)
+	run_module_test(dir, 'round_trip_test.v', emit_defaults_test_source)!
+}
+
+// `emit_defaults` is the flag that makes a codec keep explicit presence: a field
+// holding its default goes on the wire instead of being left off.
+//
+// The messages here are `Inner` and not `Demo`, because `Demo` holds a nested
+// message that is written whenever the field is, whichever way the defaults go.
+// That would have made every assertion in this file measure the nested field.
+const emit_defaults_test_source = "module demo
+
+import encoding.protobuf
+
+fn test_encode_omits_defaults_by_default() ! {
+	assert Inner{
+		x:     0
+		label: '',
+	}.encode()! == []u8{}
+}
+
+fn test_emit_defaults_writes_them() ! {
+	data := Inner{
+		x:     0
+		label: '',
+	}.encode_with(protobuf.EncodeOpts{
+		emit_defaults: true
+	})!
+	assert data.len > 0, 'nothing was written, so the flag is unreachable'
+}
+
+fn test_emit_defaults_survives_a_round_trip() ! {
+	back := decode_inner(Inner{
+		x:     0
+		label: 'set'
+	}.encode_with(protobuf.EncodeOpts{
+		emit_defaults: true
+	})!)!
+	assert back.x == 0
+	assert back.label == 'set'
+}
+
+// Without the flag the same message omits `x` entirely, which is the proto3 rule
+// the default has to keep.
+fn test_the_default_still_omits() ! {
+	mut back := decode_inner(Inner{
+		x: 7
+	}.encode()!)!
+	assert back.x == 7
+	back = decode_inner(Inner{
+		x: 0
+	}.encode()!)!
+	assert back.x == 0
+}
+
+// The options have to reach a nested message, or a deep field is held to
+// different rules than a shallow one.
+fn test_options_reach_a_nested_message() ! {
+	m := Demo{
+		inner: Inner{
+			x:     0
+			label: '',
+		}
+	}
+	without := m.encode()!
+	with_defaults := m.encode_with(protobuf.EncodeOpts{
+		emit_defaults: true
+	})!
+	assert with_defaults.len > without.len
+}
+
+fn test_options_reach_a_map_entry() ! {
+	// Both members hold their default, so the entry's own bytes are what the flag
+	// decides. The entry is written either way: the map holds one pair, and a
+	// repeated field of messages writes each of its elements whatever that message
+	// contains. Without the flag the entry comes out empty.
+	mut m := Demo{}
+	m.counts[''] = 0
+	with_defaults := m.encode_with(protobuf.EncodeOpts{
+		emit_defaults: true
+	})!
+	plain := m.encode()!
+	assert with_defaults.len > plain.len
+	back := decode_demo(with_defaults)!
+	assert back.counts.len == 1
+	assert back.counts[''] == 0
+}
+"
 
 fn test_is_well_known() {
 	assert is_well_known('google/protobuf/timestamp.proto')
