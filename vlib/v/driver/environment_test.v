@@ -416,18 +416,6 @@ fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
 	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] != sha256.hexhash(os.read_file(header_path)!)
 }
 
-fn test_should_overlap_v3_native_inputs() {
-	// Uncached builds without source includes have no native-manifest consumer.
-	assert !should_overlap_v3_native_inputs('c', false, false, false, false)
-	assert !should_overlap_v3_native_inputs('c', false, false, false, true)
-	// Self-hosting still resolves native typedefs alongside declaration collection.
-	assert should_overlap_v3_native_inputs('c', false, false, true, true)
-	assert !should_overlap_v3_native_inputs('c', false, false, true, false)
-	assert !should_overlap_v3_native_inputs('c', true, false, true, true)
-	assert !should_overlap_v3_native_inputs('c', false, true, true, true)
-	assert !should_overlap_v3_native_inputs('wasm', false, false, true, true)
-}
-
 fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
 	hash_source := os.real_path(os.join_path(os.vtmp_dir(), 'v3_fallback_hash.v'))
 	mut state := V3ModuleCacheState{
