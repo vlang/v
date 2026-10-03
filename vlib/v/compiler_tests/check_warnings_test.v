@@ -114,7 +114,7 @@ fn check_output(name string, source string) os.Result {
 	defer {
 		os.rmdir_all(os.dir(path)) or {}
 	}
-	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
+	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
 }
 
 // check_and_build_notices returns the notices of a check and of a build of the same program.
@@ -123,10 +123,11 @@ fn check_and_build_notices(name string, source string) ([]string, []string) {
 	defer {
 		os.rmdir_all(os.dir(path)) or {}
 	}
-	check := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
+	check := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
 	assert check.exit_code == 0, check.output
 	exe := path.all_before_last('.v')
-	build := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -gc none -nocolor -o ${os.quoted_path(exe)} ${os.quoted_path(path)}')
+	build := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', '-nocolor', '-o', exe,
+		path])
 	assert build.exit_code == 0, build.output
 	return notice_lines(check.output), notice_lines(build.output)
 }
@@ -140,7 +141,7 @@ fn check_library_output(name string, source string) os.Result {
 		os.rmdir_all(os.dir(dir)) or {}
 	}
 	os.write_file(os.join_path(dir, '${name}.v'), source) or { panic(err) }
-	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -shared -check -nocolor ${os.quoted_path(dir)}')
+	return os.exec([@VEXE, '-new-compiler', '-shared', '-check', '-nocolor', dir])
 }
 
 fn notice_lines(output string) []string {

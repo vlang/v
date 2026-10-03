@@ -51,13 +51,13 @@ fn test_out_path() {
 	// Instead just generate documentation in the v source dir.
 	if os.getenv('CI') == 'true' {
 		default_output_path := os.join_path(vroot, 'vlib', small_pure_v_vlib_module, '_docs')
-		os.execute_opt('${vexe} doc -f html -m vlib/${small_pure_v_vlib_module}')!
+		os.exec_opt([vexe_path, 'doc', '-f', 'html', '-m', 'vlib/' + '${small_pure_v_vlib_module}'])!
 		final_html_path := os.join_path(default_output_path, '${small_pure_v_vlib_module}.html')
 		assert os.exists(final_html_path), final_html_path
 
 		// Custom out path (no `_docs` subdir).
 		out_dir := os.join_path(vroot, 'vlib', small_pure_v_vlib_module, 'docs')
-		os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${small_pure_v_vlib_module}')!
+		os.exec_opt([vexe_path, 'doc', '-f', 'html', '-m', '-o', out_dir, small_pure_v_vlib_module])!
 		out_html_path := os.join_path(out_dir, '${small_pure_v_vlib_module}.html')
 		assert os.exists(out_html_path), out_html_path
 		os.rmdir_all(out_dir) or {}
@@ -81,7 +81,7 @@ fn test_out_path() {
 	os.cp_all(mod_path, test_mod_path, true) or {}
 
 	// Relative input with default output path.
-	os.execute_opt('${vexe} doc -f html -m ${small_pure_v_vlib_module}')!
+	os.exec_opt([vexe_path, 'doc', '-f', 'html', '-m', small_pure_v_vlib_module])!
 	output_path := os.join_path(test_mod_path, '_docs', '${small_pure_v_vlib_module}.html')
 	assert os.exists(output_path), output_path
 
@@ -90,7 +90,7 @@ fn test_out_path() {
 	defer {
 		os.rmdir_all(out_dir) or {}
 	}
-	os.execute_opt('${vexe} doc -f html -m -o ${out_dir} ${small_pure_v_vlib_module}')!
+	os.exec_opt([vexe_path, 'doc', '-f', 'html', '-m', '-o', out_dir, small_pure_v_vlib_module])!
 	html_path := os.join_path(out_dir, '${small_pure_v_vlib_module}.html')
 	assert os.exists(html_path), html_path
 }
@@ -124,7 +124,7 @@ fn check_output(cmd string, out_path string, opts CheckOutputParams) int {
 	mut fails := 0
 	os.setenv('VDOC_SORT', opts.should_sort.str(), true)
 	expected := os.read_file(out_path) or { panic(err) }.replace('\r\n', '\n').trim_space()
-	res := os.execute_opt(cmd) or { panic(err) }
+	res := os.exec_opt(os.split_args(cmd) or { panic(err) }) or { panic(err) }
 	found := res.output.replace('\r\n', '\n').trim_space()
 	if expected != found {
 		print_compare(expected, found)

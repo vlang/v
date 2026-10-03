@@ -249,8 +249,9 @@ fn (tc &TypeChecker) vls_type_param_definition_at(file_id int, offset int, word 
 }
 
 // vls_decl_at returns the declaration of a function or a type of `file_id`
-// whose signature or body contains `offset`.
+// whose receiver, signature or body contains `offset`.
 fn (tc &TypeChecker) vls_decl_at(file_id int, offset int) ?flat.NodeId {
+	source := tc.vls_source(file_id)
 	mut best := -1
 	mut best_start := -1
 	for idx in tc.a.user_code_start .. tc.a.nodes.len {
@@ -259,7 +260,7 @@ fn (tc &TypeChecker) vls_decl_at(file_id int, offset int) ?flat.NodeId {
 			|| node.kind !in [.fn_decl, .struct_decl, .interface_decl, .type_decl] {
 			continue
 		}
-		start := int(node.pos.offset)
+		start := vls_decl_start(source, node)
 		if start <= offset && start > best_start {
 			best = idx
 			best_start = start
@@ -269,6 +270,37 @@ fn (tc &TypeChecker) vls_decl_at(file_id int, offset int) ?flat.NodeId {
 		return none
 	}
 	return flat.NodeId(best)
+}
+
+// vls_decl_start is where the declaration `node` of `source` starts: the
+// receiver of a method, `(b Box[T])` of `fn (b Box[T]) get() T`, which declares
+// type parameters of the method too, or else its node, at its name.
+fn vls_decl_start(source string, node flat.Node) int {
+	name := int(node.pos.offset)
+	if node.kind != .fn_decl || name <= 0 || name > source.len {
+		return name
+	}
+	mut i := name - 1
+	for i >= 0 && source[i] in [` `, `\t`, `\r`, `\n`] {
+		i--
+	}
+	// Only the `)` of a receiver comes right before the name of a function.
+	if i < 0 || source[i] != `)` {
+		return name
+	}
+	mut depth := 0
+	for i >= 0 {
+		if source[i] == `)` {
+			depth++
+		} else if source[i] == `(` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+		i--
+	}
+	return name
 }
 
 // vls_decl_contains_offset bounds a declaration whose node only spans its name.

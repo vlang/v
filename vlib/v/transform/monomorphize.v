@@ -5934,7 +5934,11 @@ fn (mut t Transformer) infer_generic_field_init_type_arg(param_type string, fiel
 	if field.kind != .field_init || field.value.len == 0 || field.children_count == 0 {
 		return
 	}
-	param_base, param_args, is_generic_struct := generic_app_parts(param_type.trim_space())
+	mut struct_param_type := t.normalize_type_alias_chain(param_type.trim_space())
+	if struct_param_type.starts_with('&') {
+		struct_param_type = struct_param_type[1..].trim_space()
+	}
+	param_base, param_args, is_generic_struct := generic_app_parts(struct_param_type)
 	if !is_generic_struct || param_args.len == 0 {
 		return
 	}
@@ -8488,7 +8492,14 @@ fn (mut t Transformer) infer_generic_short_struct_init_args(param_type string, a
 	if t.a.nodes[int(arg_id)].kind != .field_init {
 		return
 	}
-	param_base, param_args, is_generic_struct := generic_app_parts(param_type.trim_space())
+	mut struct_param_type := t.normalize_type_alias_chain(param_type.trim_space())
+	if struct_param_type.starts_with('&') {
+		if struct_param_type[1..].starts_with('&') {
+			return
+		}
+		struct_param_type = struct_param_type[1..]
+	}
+	param_base, param_args, is_generic_struct := generic_app_parts(struct_param_type)
 	if !is_generic_struct || param_args.len == 0 {
 		return
 	}
@@ -10925,7 +10936,10 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			has_concrete_substituted_type := substituted_node_type != node.typ
 				&& decl_type_is_usable(cloned_typ) && !t.generic_arg_is_unresolved(cloned_typ)
 			rhs_node := t.a.nodes[int(children[1])]
-			rhs_raw_typ := if t.generic_type_text_contains_alias(rhs_node.typ, t.cur_module) {
+			call_alias_type := t.generic_clone_decl_alias_type(children[1])
+			rhs_raw_typ := if call_alias_type.len > 0 {
+				call_alias_type
+			} else if t.generic_type_text_contains_alias(rhs_node.typ, t.cur_module) {
 				rhs_node.typ
 			} else {
 				''
@@ -11106,6 +11120,29 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	}
 	t.generic_clone_children = t.generic_clone_children[..scratch_start]
 	return clone_id
+}
+
+// Keep a call's nominal alias when the template annotation names its storage
+// type. Concrete instance checking runs before normal declaration lowering can
+// restore that alias, including after an Option/Result call is unwrapped.
+fn (t &Transformer) generic_clone_decl_alias_type(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call {
+		return t.raw_call_decl_return_type(id, node) or { '' }
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+		return t.generic_clone_decl_alias_type(t.a.child(&node, 0))
+	}
+	if node.kind == .or_expr && node.children_count > 0 {
+		wrapped := t.generic_clone_decl_alias_type(t.a.child(&node, 0))
+		if wrapped.starts_with('?') || wrapped.starts_with('!') {
+			return wrapped[1..]
+		}
+	}
+	return ''
 }
 
 fn comptime_pointer_type_binding(cond string) ?(string, string) {

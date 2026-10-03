@@ -30,10 +30,12 @@ fn test_streaming_r8_zero_buffer_stays_black_on_gl_backend() {
 	exe_path := os.join_path(temp_dir, 'issue10989_repro')
 	// Force the GL backend so this exercises the packed texture upload path from issue #10989.
 	compile_cmd := '${os.quoted_path(vexe)} -d gg_record -d darwin_sokol_glcore33 -o ${os.quoted_path(exe_path)} ${os.quoted_path(sample_path)}'
-	compile_res := os.execute(compile_cmd)
+	compile_res := os.exec([vexe, '-d', 'gg_record', '-d', 'darwin_sokol_glcore33', '-o', exe_path,
+		sample_path])
 	assert compile_res.exit_code == 0, compile_res.output
 	run_cmd := 'VGG_STOP_AT_FRAME=2 VGG_SCREENSHOT_FRAMES=2 VGG_SCREENSHOT_FOLDER=${os.quoted_path(temp_dir)} ${os.quoted_path(exe_path)}'
-	run_res := os.execute(run_cmd)
+	run_res := os.exec(['env', 'VGG_STOP_AT_FRAME=2', 'VGG_SCREENSHOT_FRAMES=2',
+		'VGG_SCREENSHOT_FOLDER=' + '${temp_dir}', exe_path])
 	if run_res.exit_code != 0 {
 		if run_res.output.contains('glpixelformat') || run_res.exit_code == 134 {
 			// OpenGL context creation failed (e.g. headless CI runners without GPU).

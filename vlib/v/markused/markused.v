@@ -3697,7 +3697,8 @@ fn (c &CallCollector) type_text_uses_generics(typ string, cur_module string, imp
 }
 
 fn (c &CallCollector) type_text_uses_generics_depth(typ string, cur_module string, imports map[string]string, depth int) bool {
-	if typ.len == 0 || depth > 8 {
+	// A valid alias chain cannot visit more declarations than these tables contain.
+	if typ.len == 0 || depth > c.tc.type_aliases.len + c.selective_alias_targets.len {
 		return false
 	}
 	for i, ch in typ {

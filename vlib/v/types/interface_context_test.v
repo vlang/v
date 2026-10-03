@@ -26,7 +26,7 @@ fn (mut w Widget) change() { w.id = 42 }
 		path := os.join_path(root, 'invalid_${i}.v')
 		os.write_file(path, prefix + 'fn main() { ${body} }
 ')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		// A narrowed struct reference reaches the mutable receiver check directly.
 		mut_receiver_error := body.contains('Widget(l).change()')

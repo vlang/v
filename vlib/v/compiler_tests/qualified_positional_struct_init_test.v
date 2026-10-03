@@ -15,7 +15,8 @@ fn write_project_file(root string, rel string, src string) {
 fn test_qualified_positional_struct_init_keeps_later_imported_fn() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_qualified_positional_struct_init_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_qualified_positional_struct_init_project')
@@ -54,12 +55,12 @@ pub:
 
 	bin := os.join_path(os.temp_dir(), 'v3_qualified_positional_struct_init_bin')
 	main_path := os.join_path(root, 'main.v')
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${bin}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('unknown function `m.after`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('(geom__Color){'), c_code
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }

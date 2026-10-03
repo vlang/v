@@ -166,10 +166,11 @@ fn win32_public_run_no_opt_clipboard_child() ! {
 	old_vflags := os.getenv('VFLAGS')
 	os.setenv('VFLAGS', '', true)
 	compile_result :=
-		os.execute('${os.quoted_path(@VEXE)} -no-retry-compilation -cc ${os.quoted_path(child_compiler)} -gc none -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+		os.exec([@VEXE, '-no-retry-compilation', '-cc', child_compiler, '-gc', 'none', '-o',
+			output_path, source_path])
 	os.setenv('VFLAGS', old_vflags, true)
 	assert compile_result.exit_code == 0, 'no-opt child compile failed with ${child_compiler}:\n${compile_result.output}'
-	run_result := os.execute(os.quoted_path(output_path))
+	run_result := os.exec([output_path])
 	assert run_result.exit_code == 0, 'no-opt child failed:\n${run_result.output}'
 	assert run_result.output.trim_space() == 'CCOMPILER=${parent_compiler}'
 }

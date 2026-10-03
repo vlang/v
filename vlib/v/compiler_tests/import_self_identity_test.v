@@ -16,7 +16,7 @@ fn test_nested_project_manifest_precedes_enclosing_search_path() {
 		for alias in ['', ' as other'] {
 			name := if alias == '' { 'foo' } else { 'other' }
 			os.write_file(source, 'module foo\nimport net.foo${alias}\npub fn answer() int { return ${name}.value() }\n')!
-			result := os.execute('${os.quoted_path(@VEXE)} -path ${os.quoted_path(search_path)} -shared -check ${os.quoted_path(source)}')
+			result := os.exec([@VEXE, '-path', search_path, '-shared', '-check', source])
 			if alias == '' {
 				assert result.exit_code != 0, result.output
 				assert result.output.contains('same name'), result.output
@@ -41,7 +41,7 @@ fn test_initial_module_can_import_a_distinct_same_basename_module() {
 		name := if alias == '' { 'html' } else { 'other' }
 		os.write_file(source, 'module html\nimport net.html${alias}\npub fn answer() int { return ${name}.value() }\n')!
 		search_path := '${root}|@vlib|@vmodules'
-		result := os.execute('${os.quoted_path(@VEXE)} -path ${os.quoted_path(search_path)} -shared -check ${os.quoted_path(source)}')
+		result := os.exec([@VEXE, '-path', search_path, '-shared', '-check', source])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -56,7 +56,7 @@ fn test_initial_module_identity_does_not_suppress_an_aliased_dependency() {
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'project' }")!
 	os.write_file(source, 'module html\nimport net.html as other\npub fn answer() int { return other.value() }\n')!
 	os.write_file(dependency, 'module html\npub fn value() int { return 42 }\n')!
-	result := os.execute('${os.quoted_path(@VEXE)} -shared -check ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-shared', '-check', source])
 	assert result.exit_code == 0, result.output
 }
 
@@ -74,7 +74,7 @@ fn test_global_import_does_not_take_the_identity_of_a_manifestless_ancestor() {
 	os.write_file(dependency, 'module layers\npub fn value() int { return 42 }\n')!
 	os.write_file(sibling, 'module layers\npub fn value() int { return 99 }\n')!
 	search_path := '${global_root}|@vlib|@vmodules'
-	result := os.execute('${os.quoted_path(@VEXE)} -path ${os.quoted_path(search_path)} -shared -check ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-path', search_path, '-shared', '-check', source])
 	assert result.exit_code == 0, result.output
 }
 
@@ -86,7 +86,7 @@ fn test_resolved_ancestor_import_still_rejects_self_import() {
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'layers', 'layer.v'), 'module layers\n')!
 	os.write_file(source, 'module layers\nimport identity_project.layers as own\npub fn value() int { return 42 }\n')!
-	result := os.execute('${os.quoted_path(@VEXE)} -shared -check ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-shared', '-check', source])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot import `identity_project.layers` into a module with the same name'), result.output
 }
@@ -100,6 +100,6 @@ fn test_module_main_test_can_import_the_module_of_its_directory() {
 	os.write_file(source, 'module mymod\npub fn value() int { return 42 }\n')!
 	os.write_file(test_file, 'module main\nimport mymod\nfn test_value() { assert mymod.value() == 42 }\n')!
 	search_path := '${root}|@vlib|@vmodules'
-	result := os.execute('${os.quoted_path(@VEXE)} -path ${os.quoted_path(search_path)} -check ${os.quoted_path(test_file)}')
+	result := os.exec([@VEXE, '-path', search_path, '-check', test_file])
 	assert result.exit_code == 0, result.output
 }

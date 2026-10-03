@@ -10,7 +10,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_struct_redeclaration_${os.getpid()}_${rand.ulid()}')
 	build :=
-		os.execute('${vexe} -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -23,14 +24,14 @@ fn run_v3_source(v3_bin string, name string, src string) os.Result {
 	out := unique_temp_path(name)
 	src_path := out + '.v'
 	os.write_file(src_path, src) or { panic(err) }
-	return os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	return os.exec([v3_bin, src_path, '-b', 'c', '-o', '${out}'])
 }
 
 fn run_v3_source_cgen(v3_bin string, name string, src string) os.Result {
 	out := unique_temp_path(name) + '.c'
 	src_path := unique_temp_path(name) + '.v'
 	os.write_file(src_path, src) or { panic(err) }
-	return os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	return os.exec([v3_bin, src_path, '-b', 'c', '-o', '${out}'])
 }
 
 fn run_v3_project(v3_bin string, name string, files map[string]string) os.Result {
@@ -42,7 +43,7 @@ fn run_v3_project(v3_bin string, name string, files map[string]string) os.Result
 		os.write_file(path, src) or { panic(err) }
 	}
 	out := unique_temp_path(name)
-	return os.execute('${v3_bin} ${root} -b c -o ${out}')
+	return os.exec([v3_bin, root, '-b', 'c', '-o', '${out}'])
 }
 
 fn test_c_struct_redeclaration_checks_field_signature() {

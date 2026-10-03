@@ -483,8 +483,8 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 		}
 
 		if (flags & tfkc_args_are_xy_values) > 0 {
-			component.matrix[4] = arg1
-			component.matrix[5] = arg2
+			component.matrix[4] = f32(arg1)
+			component.matrix[5] = f32(arg2)
 		} else {
 			component.dest_point_index = arg1
 			component.src_point_index = arg2
@@ -712,10 +712,10 @@ fn (mut tf TTF_File) read_head_table() {
 	tf.units_per_em = tf.get_u16()
 	tf.created = tf.get_date()
 	tf.modified = tf.get_date()
-	tf.x_min = tf.get_i16()
-	tf.y_min = tf.get_i16()
-	tf.x_max = tf.get_i16()
-	tf.y_max = tf.get_i16()
+	tf.x_min = f32(tf.get_i16())
+	tf.y_min = f32(tf.get_i16())
+	tf.x_max = f32(tf.get_i16())
+	tf.y_max = f32(tf.get_i16())
 	tf.mac_style = tf.get_u16()
 	tf.lowest_rec_ppem = tf.get_u16()
 	tf.font_direction_hint = tf.get_i16()

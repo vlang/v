@@ -22,7 +22,7 @@ fn main() {
 }
 ")!
 	result :=
-		os.execute('${os.quoted_path(v3)} -silent -no-memory-limit run ${os.quoted_path(source)}')
+		os.exec(['${v3}', '-silent', '-no-memory-limit', 'run', source])
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'ok', result.output
 }
@@ -37,7 +37,7 @@ fn test_assert_infix_runtime_values_codegen() {
 }
 ')!
 	result :=
-		os.execute('${os.quoted_path(v3)} -silent -no-memory-limit run ${os.quoted_path(source)}')
+		os.exec(['${v3}', '-silent', '-no-memory-limit', 'run', source])
 	assert result.exit_code != 0
 	assert result.output.contains('V panic: Assertion failed...'), result.output
 	assert result.output.contains('left value: 5 * 5'), result.output

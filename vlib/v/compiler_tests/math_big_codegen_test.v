@@ -16,7 +16,8 @@ fn math_big_codegen_build_v3() string {
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
-	build := os.execute('${math_big_codegen_vexe} -gc none -path "${math_big_codegen_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${math_big_codegen_v_src}')
+	build := os.exec([math_big_codegen_vexe, '-gc', 'none', '-path',
+		'${math_big_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${math_big_codegen_v_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -34,7 +35,8 @@ fn test_math_big_mont_even_mask_bits_receiver_codegen() {
 	os.write_file(source, "module main\n\nimport math.big\n\nfn main() {\n\tbase := big.integer_from_int(3)\n\texponent := big.integer_from_string('18446744073709551617') or { panic(err) }\n\tmodulus := big.integer_from_int(6)\n\t_ = base.big_mod_pow(exponent, modulus) or { panic(err) }\n}\n") or { panic(err) }
 
 	c_path := os.join_path(root, 'main.c')
-	compile := os.execute('${v3_bin} -nocache -path "${math_big_codegen_vlib_dir}|@vlib|@vmodules" ${source} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, '-nocache', '-path',
+		'${math_big_codegen_vlib_dir}' + '|@vlib|@vmodules', source, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(c_path) or { panic(err) }
 	assert generated.contains('big__Integer__mont_even'), generated

@@ -250,7 +250,7 @@ pub fn option_may_consume_value(option string) bool {
 		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
 		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend', '-compile-backend',
 		'--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix',
-		'-cmain', '-line-info']
+		'-cmain', '-line-info', '-memory-limit', '--memory-limit']
 }
 
 fn two_digits(value int) string {
@@ -1200,7 +1200,7 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 	}
 	quoted_ccompiler := os.quoted_path(ccompiler)
 	for version_flag in ['--version', '-v'] {
-		res := os.execute('${quoted_ccompiler} ${version_flag} 2>&1')
+		res := os.exec([ccompiler, '${version_flag}'])
 		output := res.output.to_lower_ascii()
 		if output.contains('tiny c compiler') || output.contains('tinycc')
 			|| output.contains('\ntcc') || output.starts_with('tcc')

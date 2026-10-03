@@ -43,7 +43,7 @@ fn test_c_abi_prelude_matches_host_headers() {
 	if host_os == 'macos' {
 		mut sdk_root := os.getenv('SDKROOT')
 		if !os.is_dir(sdk_root) {
-			result := os.execute('xcrun --show-sdk-path')
+			result := os.exec(['xcrun', '--show-sdk-path'])
 			if result.exit_code == 0 {
 				sdk_root = result.output.trim_space()
 			}
@@ -54,9 +54,9 @@ fn test_c_abi_prelude_matches_host_headers() {
 		}
 	}
 	args << ['-w', '-o', exe_path, source_path, '-lpthread', '-lm']
-	compile := os.execute('${tcc} ${args.join(' ')}')
+	compile := os.exec([tcc, ...args])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(exe_path)
+	run := os.exec([exe_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }

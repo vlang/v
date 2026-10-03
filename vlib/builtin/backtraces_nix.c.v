@@ -1,5 +1,46 @@
 module builtin
 
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
+
+fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
+
+// backtrace_exec_capture avoids a shell while keeping builtin independent of os.
+fn backtrace_exec_capture(args []string) (string, int) {
+	mut cargs := []&char{cap: args.len + 1}
+	for arg in args {
+		cargs << &char(arg.str)
+	}
+	// The C argument vector must end with a null pointer.
+	cargs << &char(unsafe { nil })
+	mut pid := 0
+	mut fd := 0
+	if C.v_os_exec_capture_start(cargs.data, &pid, &fd) != 0 {
+		return '', -1
+	}
+	mut output := ''
+	mut buf := [4096]u8{}
+	for {
+		n := C.read(fd, &buf[0], usize(buf.len))
+		if n > 0 {
+			// read returned n initialized bytes in the stack buffer.
+			output += unsafe { tos(&buf[0], int(n)) }
+		} else if n == 0 || C.errno != C.EINTR {
+			break
+		}
+	}
+	C.close(fd)
+	mut status := 0
+	for C.waitpid(pid, &status, 0) == -1 {
+		if C.errno != C.EINTR {
+			return output, -1
+		}
+	}
+	return output, status
+}
+
 // print_backtrace_skipping_top_frames prints the backtrace skipping N top frames.
 pub fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 	$if no_backtrace ? {
@@ -101,39 +142,34 @@ fn bsd_backtrace_resolve_atos(buffer &voidptr, nr_frames int) []string {
 			return []string{}
 		}
 		// Build single atos command with all addresses for efficiency:
-		mut cmd := 'atos --fullPath -o "' + exe_name + '" -l ' + ptr_str(base_addr)
+		mut args := ['atos', '--fullPath', '-o', exe_name, '-l', ptr_str(base_addr)]
 		for i in 0 .. nr_frames {
-			cmd += ' ' + ptr_str(unsafe { buffer[i] })
+			args << ptr_str(unsafe { buffer[i] })
 		}
-		f := C.popen(&char(cmd.str), c'r')
-		if f == unsafe { nil } {
+		output, status := backtrace_exec_capture(args)
+		if status != 0 {
 			return []string{}
 		}
-		buf := [4096]u8{}
 		mut lines := []string{cap: nr_frames}
-		unsafe {
-			bp := &u8(&buf[0])
-			for C.fgets(&char(bp), 4096, f) != 0 {
-				line := tos(bp, vstrlen(bp)).trim_chars(' \t\n\r', .trim_both)
-				// atos output format: `func_name (in binary) (file.v:42)`
-				// Extract the last parenthesized (file:line) part:
-				paren_pos := line.index_last_('(')
-				if paren_pos >= 0 {
-					file_part := line[paren_pos + 1..]
-					end_paren := file_part.index_last_(')')
-					if end_paren >= 0 {
-						file_line := file_part[..end_paren]
-						if file_line.contains(':') && !file_line.starts_with('in ')
-							&& !file_line.contains('.tmp.c:') {
-							lines << file_line
-							continue
-						}
+		for output_line in output.split_into_lines() {
+			line := output_line.trim_chars(' \t\n\r', .trim_both)
+			// atos output format: `func_name (in binary) (file.v:42)`
+			// Extract the last parenthesized (file:line) part:
+			paren_pos := line.index_last_('(')
+			if paren_pos >= 0 {
+				file_part := line[paren_pos + 1..]
+				end_paren := file_part.index_last_(')')
+				if end_paren >= 0 {
+					file_line := file_part[..end_paren]
+					if file_line.contains(':') && !file_line.starts_with('in ')
+						&& !file_line.contains('.tmp.c:') {
+						lines << file_line
+						continue
 					}
 				}
-				lines << ''
 			}
+			lines << ''
 		}
-		C.pclose(f)
 		return lines
 	}
 	return []string{}
@@ -212,27 +248,13 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 						current_executable_name)
 					addr := sframe.all_after('[').all_before(']')
 					beforeaddr := sframe.all_before('[')
-					cmd := 'addr2line -e ' + backtrace_shell_quote(addr2line_executable) + ' ' +
-						backtrace_shell_quote(addr)
-					// taken from os, to avoid depending on the os module inside builtin.v
-					f := C.popen(&char(cmd.str), c'r')
-					if f == unsafe { nil } {
+					text, status := backtrace_exec_capture(['addr2line', '-e', addr2line_executable,
+						addr])
+					if status != 0 {
 						eprintln(sframe)
 						continue
 					}
-					buf := [1000]u8{}
-					mut output := ''
-					unsafe {
-						bp := &u8(&buf[0])
-						for C.fgets(&char(bp), 1000, f) != 0 {
-							output += tos(bp, vstrlen(bp))
-						}
-					}
-					output = output.trim_chars(' \t\n', .trim_both) + ':'
-					if C.pclose(f) != 0 {
-						eprintln(sframe)
-						continue
-					}
+					mut output := text.trim_chars(' \t\n', .trim_both) + ':'
 					if output in ['??:0:', '??:?:'] {
 						output = ''
 					}

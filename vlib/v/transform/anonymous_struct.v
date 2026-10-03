@@ -30,7 +30,24 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 	mut materialized := false
 	mut inferred_by_shape := map[string]string{}
 	original_node_count := t.a.nodes.len
-	for idx in 0 .. original_node_count {
+	// Find the candidates on the pool; the loop below still checks each one.
+	mut candidate_flags := []u8{len: original_node_count}
+	use_flags := scan_anonymous_struct_init_flags_parallel(t.a, original_node_count, mut
+		candidate_flags)
+	mut idx := -1
+	for {
+		idx++
+		if use_flags && idx < original_node_count {
+			found := unsafe { &u8(C.memchr(&u8(candidate_flags.data) + idx, 1, usize(original_node_count - idx))) }
+			idx = if isnil(found) {
+				original_node_count
+			} else {
+				int(unsafe { found - &u8(candidate_flags.data) })
+			}
+		}
+		if idx >= original_node_count {
+			break
+		}
 		if t.a.nodes[idx].kind != .struct_init || t.a.nodes[idx].value != 'struct'
 			|| t.a.nodes[idx].children_count == 0 {
 			continue

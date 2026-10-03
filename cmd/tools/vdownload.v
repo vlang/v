@@ -121,7 +121,7 @@ fn main() {
 		if ctx.should_run {
 			run_cmd := '${os.quoted_path(vexe)} run ${os.quoted_path(fpath)}'
 			log.info(' Executing: ${run_cmd}')
-			os.system(run_cmd)
+			os.system_args([vexe, 'run', fpath])
 		}
 		if ctx.delete_after_run {
 			log.info(' Removing: ${fpath}')

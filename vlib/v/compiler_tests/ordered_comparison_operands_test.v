@@ -344,7 +344,8 @@ fn build_v3() string {
 		return ordered_v3_bin
 	}
 	build :=
-		os.execute('${os.quoted_path(vexe)} -gc none -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(ordered_v3_bin)} ${os.quoted_path(v3_src)}')
+		os.exec([vexe, '-gc', 'none', '-path', '${'${vlib_dir}|@vlib|@vmodules'}', '-o',
+			ordered_v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return ordered_v3_bin
 }
@@ -371,7 +372,7 @@ fn check_errors(name string, src string) []ErrorAt {
 fn check_file_errors(path string) []ErrorAt {
 	v3_bin := build_v3()
 	result :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache -check -nocolor -checker-fixture ${os.quoted_path(path)}')
+		os.exec([v3_bin, '-nocache', '-check', '-nocolor', '-checker-fixture', path])
 	mut errors := []ErrorAt{}
 	for line in result.output.split_into_lines() {
 		if !line.contains(': error: ') {
@@ -402,10 +403,10 @@ fn run_good(name string, src string) string {
 		os.rm(out) or {}
 	}
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache ${os.quoted_path(good_src)} -b c -o ${os.quoted_path(out)}')
+		os.exec([v3_bin, '-nocache', '${good_src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.execute(os.quoted_path(out))
+	run := os.exec([out])
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
@@ -1015,9 +1016,9 @@ fn test_ordered_comparisons_in_templates() {
 	}
 	good_bin := os.join_path(dir, 'good')
 	compile :=
-		os.execute('${os.quoted_path(build_v3())} -nocache ${os.quoted_path(good_src)} -b c -o ${os.quoted_path(good_bin)}')
+		os.exec(['${build_v3()}', '-nocache', '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(good_bin))
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == [
 		'positive',

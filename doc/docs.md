@@ -80,6 +80,11 @@ compiler whose source lives in `vlib/v`. Every direct C build, including compile
 self-builds, is compiled in-process. The CLI remains in `cmd/v`; `test` is
 handled by the default compiler, and external tools are compiled with it first.
 
+External tools are cached under the user's V cache directory. Rebuilding a tool
+prunes stale builds while retaining fresh builds for other flags and checkouts.
+Pruning accepts only regular metadata files opened without following symbolic
+links. On Unix, it also checks ownership before reading another cache entry.
+
 The standard bootstrap does not build the sibling `v1_fallback` executable
 (`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
 sibling is missing, it reports that it is running `make v1`. That target reuses
@@ -2075,6 +2080,8 @@ if a < b {
 `if` statements are pretty straightforward and similar to most other languages.
 Unlike other C-like languages,
 there are no parentheses surrounding the condition and the braces are always required.
+When the condition starts with another `if` or a `match` expression, parentheses are required
+around the condition, for example `if (if enabled { true } else { false }) { ... }`.
 
 #### `If` expressions
 Unlike C, V does not have a ternary operator, that would allow you to do: `x = c ? 1 : 2` .
@@ -3361,6 +3368,8 @@ If you need to access embedded structs directly, use an explicit reference like 
 Optional fields keep their optional type when accessed through multiple embedded structs.
 You can unwrap them with an `if` guard, including after an earlier check against `none`.
 
+Omitted embedded structs retain their declared field defaults, including interface values.
+
 Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s
 in OOP, *NOT* base classes.
 
@@ -4248,6 +4257,9 @@ transitively by other modules several times, in the reverse order of the init ca
 To define a new type `NewType` as an alias for `ExistingType`,
 do `type NewType = ExistingType`.<br/>
 This is a special case of a [sum type](#sum-types) declaration.
+
+Methods declared on a fixed-array alias keep that alias receiver, including methods whose names
+match builtin array methods.
 
 Numeric aliases use ordinary conversions for initialization:
 
@@ -5251,6 +5263,9 @@ Generic types brought into scope by a selective import retain their declaring mo
 passed to generic functions and methods in other modules.
 
 Methods called on a generic factory result retain their dependencies in the compiled program.
+
+Returning a generic struct as a generic interface retains its concrete methods, including when
+an interface type argument is itself a generic interface.
 
 ```v wip
 
@@ -6326,7 +6341,7 @@ file.
 import os
 
 fn test_subtest() {
-	res := os.execute('${os.quoted_path(@VEXE)} other_test.v')
+	res := os.exec([@VEXE, 'other_test.v'])
 	assert res.exit_code == 1
 	assert res.output.contains('other_test.v does not exist')
 }
@@ -7037,6 +7052,7 @@ v skills add v-mcp               # install into .agents/skills/ of this project
 v skills add v-mcp --global      # install into ~/.agents/skills for this user
 v skills remove v-mcp            # uninstall
 v skills path v-mcp              # where a skill is installed
+v skills update                  # refresh unchanged installs from newer bundles
 ```
 
 A project install is committed and shared with the team; a `--global` install
@@ -7044,6 +7060,13 @@ applies to every project on the machine. Installing a skill that is already ther
 is skipped rather than overwritten, so a local edit survives; `--force` restores
 the bundled copy, and `v skills list` flags an installed skill that has fallen
 behind the bundle it came from.
+
+`v skills update` uses the recorded installation digest to refresh unchanged skills
+from newer bundles. Locally edited or unrecorded installations are held back unless
+`--force` is passed; unreadable files are treated as unknown and held back too.
+Use `--dry-run` to preview updates. The provenance file `origin.json` must be a regular
+file: installation refuses symlinks and other file types before replacing skill content.
+`v.skills.content_digest` returns an error if any requested file cannot be read.
 
 Skill names must contain only lowercase letters, digits and single hyphens, and
 must match the bundled name. Installation stays within an immediate child of the
@@ -7956,6 +7979,10 @@ fn main() {
 You can iterate over struct fields using `.fields`, it also works with generic types
 (e.g. `T.fields`) and generic arguments (e.g. `param.fields` where `fn gen[T](param T) {`).
 
+Each field's `.attrs` is an array of strings. Inside the reflection loop, you can use
+`for attr in field.attrs` or `for index, attr in field.attrs` to process these strings at runtime,
+including calls such as `attr.split_any(':')`. The index has type `int`.
+
 ```v
 struct User {
 	name string
@@ -8082,6 +8109,9 @@ fn main() {
 #### <h4 id="comptime-method-params">.params</h4>
 
 You can retrieve information about struct method params.
+
+Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
+Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.
 
 ```v
 struct Test {
@@ -8244,6 +8274,7 @@ already compressed.
 `$embed_file` returns
 [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
 which could be used to obtain the file contents as `string` or `[]u8`.
+Its `.data()` method also accepts immutable values and constants, returning a byte pointer.
 
 Use the returned value: discarding `$embed_file` as a statement is an error, including
 when it is the fallback value of an unused `or` expression with nested `or` blocks.
@@ -9833,6 +9864,15 @@ f := C.name_of_the_C_function(123, c'here is some C style string', 1.23)
 dump(f)
 ```
 
+A fixed-array parameter in a `C.` declaration follows C's pointer adjustment:
+`fn C.load_matrix(values [16]f32)` accepts a matching `&f32` or `voidptr`, including
+a dynamic array's `.data`. Ordinary V fixed-array parameters still require array values.
+Typed pointers must use the C element representation. For a C `int` array declared as
+`fn C.sum(values [2]int) int`, use `i32` storage such as `values := [i32(10), 20]` and
+pass `&values[0]`; V's platform-width `int` storage is incompatible on 64-bit targets.
+Pointer constants such as `C.NULL` and `C.INVALID_HANDLE_VALUE` retain their pointer type
+in assignments and comparisons.
+
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
@@ -9869,6 +9909,11 @@ Note also the second parameter `const char *format`, which was redeclared as `co
 The `const_` prefix in that redeclaration may seem arbitrary, but it is important, if you want
 to compile your code with `-cstrict` or thirdparty C static analysis tools. V currently does not
 have another way to express that this parameter is a const (this will probably change in V 1.0).
+
+The `const_` convention also applies to C callback function types and aliases. For example,
+`type NativeCallback = fn (const_buf &u8, len int) int` retains the const buffer qualifier.
+When you pass a V function by name to a `fn C.` callback parameter, V adapts its parameter
+and return types to the C ABI.
 
 For some C functions, that use variadics (`...`) as parameters, V supports a special syntax for
 the parameters - `...voidptr`, that is not available for ordinary V functions (V's variadics are
@@ -10371,6 +10416,11 @@ seamlessly across all platforms.
 
 However, since the Windows header libraries use extremely generic names such as `Rectangle`,
 this will cause a conflict if you wish to use C code that also has a name defined as `Rectangle`.
+
+V defaults to `WIN32_LEAN_AND_MEAN` for its built-in Windows headers, including those loaded
+through the garbage collector. This excludes optional headers such as OLE and multimedia headers.
+Include any required optional Windows headers explicitly, or use `#flag windows -DWIN32_FULL`
+to request the full Windows header surface. A configuration preinclude can also define `WIN32_FULL`.
 
 For very specific cases like this, V has `#preinclude` and `#postinclude` directives.
 

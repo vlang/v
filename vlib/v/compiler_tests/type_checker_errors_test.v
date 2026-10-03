@@ -26,7 +26,8 @@ fn build_v3() string {
 		return type_checker_v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${type_checker_v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o',
+			type_checker_v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return type_checker_v3_bin
 }
@@ -55,7 +56,8 @@ fn run_bad_with_flags(v3_bin string, name string, src string, expected string, f
 	bad_src := out + '.v'
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := out
-	result := os.execute('${v3_bin} -nocache ${bad_src} ${flags} -b c -o ${bad_bin}')
+	result := os.exec([v3_bin, '-nocache', '${bad_src}', ...(os.split_args(flags) or { panic(err) }),
+		'-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected compile failure, got success: ${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in ${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: C compilation failed: ${result.output}'
@@ -67,10 +69,11 @@ fn run_good(v3_bin string, name string, src string) string {
 	good_src := out + '.v'
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := out
-	compile := os.execute('${v3_bin} -nocache -enable-globals ${good_src} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, '-nocache', '-enable-globals', '${good_src}', '-b', 'c', '-o',
+		good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
@@ -79,10 +82,10 @@ fn run_runtime_bad(v3_bin string, name string, src string, expected string) {
 	out := unique_temp_path(name)
 	src_path := out + '.v'
 	os.write_file(src_path, src) or { panic(err) }
-	compile := os.execute('${v3_bin} -nocache ${src_path} -b c -o ${out}')
+	compile := os.exec([v3_bin, '-nocache', src_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code != 0, '${name}: expected runtime failure, got success: ${run.output}'
 	assert run.output.contains(expected), '${name}: expected `${expected}` in ${run.output}'
 }
@@ -111,7 +114,7 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, input st
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	bad_bin := unique_temp_path(name)
-	result := os.execute('${v3_bin} -nocache ${input_path} -b c -o ${bad_bin}')
+	result := os.exec([v3_bin, '-nocache', input_path, '-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected compile failure, got success: ${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in ${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: C compilation failed: ${result.output}'
@@ -129,10 +132,10 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := unique_temp_path(name)
-	compile := os.execute('${v3_bin} -nocache -enable-globals ${input_path} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, '-nocache', '-enable-globals', input_path, '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
@@ -150,7 +153,7 @@ fn gen_c_project(v3_bin string, name string, files map[string]string, input stri
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	c_out := unique_temp_path(name) + '.c'
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} ${input_path} -o ${c_out}')
+	compile := os.exec([v3_bin, input_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_out)
 	return os.read_file(c_out) or { panic(err) }
@@ -177,7 +180,7 @@ fn test_parallel_checker_preserves_diagnostic_order() {
 			os.unsetenv('VJOBS')
 		}
 	}
-	result := os.execute('${v3_bin} -nocache ${src_path} -b c -o ${out}')
+	result := os.exec([v3_bin, '-nocache', src_path, '-b', 'c', '-o', '${out}'])
 	assert result.exit_code != 0, result.output
 	first := error_index(result.output, 'undefined ident: `missing_0`')
 	second := error_index(result.output, 'undefined ident: `missing_1`')
@@ -494,7 +497,7 @@ fn test_vv_input_with_comma_in_decl_assign_is_rejected_without_overwrite() {
 		os.rm(source_path) or {}
 		os.rm(default_output) or {}
 	}
-	result := os.execute('${v3_bin} -nocache ${source_path}')
+	result := os.exec([v3_bin, '-nocache', source_path])
 	assert result.exit_code != 0, 'expected compile failure, got success: ${result.output}'
 	assert result.output.contains('unexpected `,` in expression, use `;` or a new line to separate statements'), result.output
 
@@ -1212,6 +1215,8 @@ fn test_return_if_tuple_tail_multi_return_is_rejected() {
 fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_non_variadic_array_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points []Point) int {\n\treturn points.len\n}\n\nfn main() {\n\t_ := total(x: 1, y: 2)\n}\n', 'cannot use `key: value` arguments as `[]Point`')
+	run_bad(v3_bin, 'bad_nested_pointer_struct_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\nfn read_box[T](b &&Box[T]) T {\n\treturn b.v\n}\n\nfn main() {\n\t_ := read_box(v: 7)\n}\n', 'cannot use `key: value` arguments as `&&Box[int]` in call to `read_box`')
+	run_bad(v3_bin, 'bad_nested_pointer_struct_alias_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\ntype BoxRef = &&Box[int]\n\nfn read_box_alias(b BoxRef) {}\n\nfn main() {\n\tread_box_alias(v: 7)\n}\n', 'cannot use `key: value` arguments as `BoxRef` in call to `read_box_alias`')
 	variadic_struct := run_good(v3_bin, 'good_variadic_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n')
 	assert variadic_struct == '7'
 	run_bad_project(v3_bin, 'bad_module_type_does_not_bind_main_type', {
@@ -1448,7 +1453,7 @@ fn main() {
 	interface_src_path := interface_out + '.v'
 	os.write_file(interface_src_path, interface_src) or { panic(err) }
 	interface_result :=
-		os.execute('${v3_bin} -nocache ${interface_src_path} -b c -o ${interface_out}')
+		os.exec([v3_bin, '-nocache', interface_src_path, '-b', 'c', '-o', '${interface_out}'])
 	assert interface_result.exit_code != 0, interface_result.output
 	assert interface_result.output.contains(':14:14: error: cannot instantiate interface `Runnable`'), interface_result.output
 

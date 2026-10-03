@@ -15,13 +15,14 @@ fn test_libbacktrace_callback_codegen_matches_header() {
 	}
 
 	v3_bin := os.join_path(temp_dir, 'v3')
-	build := os.execute('${os.quoted_path(@VEXE)} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(v3_dir, 'v.v'))}')
+	build := os.exec([@VEXE, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o',
+		v3_bin, os.join_path(v3_dir, 'v.v')])
 	assert build.exit_code == 0, build.output
 
 	source := os.join_path(temp_dir, 'main.v')
 	os.write_file(source, "fn main() {\n\tpanic('boom')\n}\n") or { panic(err) }
 	c_path := os.join_path(temp_dir, 'main.c')
-	generate := os.execute('${os.quoted_path(v3_bin)} -d use_libbacktrace -b c -o ${os.quoted_path(c_path)} ${os.quoted_path(source)}')
+	generate := os.exec([v3_bin, '-d', 'use_libbacktrace', '-b', 'c', '-o', c_path, source])
 	assert generate.exit_code == 0, generate.output
 
 	c_source := os.read_file(c_path) or { panic(err) }
@@ -31,13 +32,14 @@ fn test_libbacktrace_callback_codegen_matches_header() {
 	assert c_source.contains('backtrace_create_state(filename, 1, bt_error_handler_callback_adapter_'), c_source
 
 	cc := os.find_abs_path_of_executable('cc') or { return }
-	cc_version := os.execute('${os.quoted_path(cc)} --version').output.to_lower_ascii()
+	cc_version := os.exec([cc, '--version']).output.to_lower_ascii()
 	pointer_warning := if cc_version.contains('clang') {
 		'incompatible-function-pointer-types'
 	} else {
 		'incompatible-pointer-types'
 	}
 	include_dir := os.join_path(vroot, 'thirdparty', 'libbacktrace')
-	check := os.execute('${os.quoted_path(cc)} -Werror=${pointer_warning} -fsyntax-only -I${os.quoted_path(include_dir)} ${os.quoted_path(c_path)}')
+	check := os.exec([cc, '-Werror=' + '${pointer_warning}', '-fsyntax-only', '-I' + '${include_dir}',
+		c_path])
 	assert check.exit_code == 0, check.output
 }

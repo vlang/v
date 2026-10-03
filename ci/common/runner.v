@@ -7,7 +7,25 @@ import term
 import time
 
 // exec is a helper function, to execute commands and exit early, if they fail.
+@[deprecated: 'use exec_args with an argument array to avoid shell injection']
 pub fn exec(command string) {
+	exec_args(os.split_args(command) or { panic(err) })
+}
+
+// exec_args runs literal arguments with the V compiler from this checkout.
+pub fn exec_args(arguments []string) {
+	mut argv := arguments.clone()
+	mut program_index := 0
+	for program_index < argv.len && is_env_assignment(argv[program_index]) {
+		program_index++
+	}
+	if program_index < argv.len && argv[program_index] == 'v' {
+		argv[program_index] = os.getenv_opt('V_CI_VEXE') or { os.join_path_single(@VEXEROOT, 'v') }
+	}
+	if program_index > 0 {
+		argv.prepend('env')
+	}
+	command := argv.map(os.quoted_path(it)).join(' ')
 	cmd := resolve_v_command(command)
 	progress_dir := ci_task_progress_dir()
 	previous_resume_dir := os.getenv_opt('VTEST_RESUME_DIR')
@@ -25,7 +43,7 @@ pub fn exec(command string) {
 		}
 	}
 	log.info('cmd: ${cmd}')
-	result := os.system(cmd)
+	result := os.system_args(argv)
 	if result != 0 {
 		exit(result)
 	}
@@ -133,7 +151,10 @@ pub fn run(all_tasks map[string]Task) {
 			cmd := '${self_command} ${tname}'
 			log.info('Start ${term.colorize(term.yellow, t.label)}, cmd: `${cmd}`')
 			start := time.now()
-			result := os.system(cmd)
+			result := os.system_args([
+				...(os.split_args(self_command) or { panic(err) }),
+				tname,
+			])
 			dt := time.now() - start
 			if result != 0 {
 				log.error('FAILED ${term.colorize(term.red, t.label)} in ${dt.milliseconds()} ms, cmd: `${cmd}`')

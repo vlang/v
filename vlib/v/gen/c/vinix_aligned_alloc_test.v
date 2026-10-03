@@ -11,7 +11,8 @@ fn test_vinix_c_does_not_call_aligned_alloc() {
 	src := os.join_path(dir, 'main.v')
 	out := os.join_path(dir, 'main.c')
 	os.write_file(src, 'fn main() {\n\tprintln(1)\n}\n')!
-	result := os.execute('${os.quoted_path(@VEXE)} -os vinix -gc none -manualfree -target-libc-headers -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+	result := os.exec([@VEXE, '-os', 'vinix', '-gc', 'none', '-manualfree', '-target-libc-headers',
+		'-o', '${out}', '${src}'])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(out)!
 	assert !generated.contains('aligned_alloc('), 'the Vinix C calls aligned_alloc()'

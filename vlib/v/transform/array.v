@@ -1968,6 +1968,12 @@ fn (mut t Transformer) clone_borrowed_storage_projection(source_id flat.NodeId, 
 	if cloned != value {
 		return cloned
 	}
+	source := t.a.node(t.unwrap_parens(source_id))
+	if source.kind == .prefix && source.op == .amp
+		&& t.comptime_normalize_type_alias_chain(typ).starts_with('&') {
+		return t.clone_owned_array_storage_value_with_pointer_borrow(value, typ,
+			t.array_storage_source_is_mut_param(source_id), true)
+	}
 	return t.clone_owned_array_storage_value(value, typ, t.array_storage_source_is_mut_param(source_id))
 }
 
@@ -2034,13 +2040,16 @@ fn (mut t Transformer) array_storage_source_is_mut_param(source_id flat.NodeId) 
 }
 
 // clone_owned_array_view_for_storage turns an owned-element borrow into an independent
-// value at a storage/return boundary. A pointer escape gets a separate heap header,
-// so retaining it does not detach the caller's still-shared argument header.
+// value at a storage/return boundary. Explicit references preserve the storage
+// they borrow instead of acquiring an independent owner.
 fn (mut t Transformer) clone_owned_array_view_for_storage(value flat.NodeId, typ string) flat.NodeId {
 	return t.clone_owned_array_storage_value(value, typ, false)
 }
 
 fn (mut t Transformer) clone_owned_array_value_for_capture(value flat.NodeId, typ string) flat.NodeId {
+	if t.comptime_normalize_type_alias_chain(typ).starts_with('&') {
+		return value
+	}
 	return t.clone_owned_array_storage_value(value, typ, true)
 }
 
@@ -2064,10 +2073,20 @@ fn (mut t Transformer) mark_owned_array_storage_value(value flat.NodeId, typ str
 }
 
 fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ string, clone_owned_value bool) flat.NodeId {
+	return t.clone_owned_array_storage_value_with_pointer_borrow(value, typ, clone_owned_value, false)
+}
+
+fn (mut t Transformer) clone_owned_array_storage_value_with_pointer_borrow(value flat.NodeId, typ string, clone_owned_value bool, preserve_managed_pointer bool) flat.NodeId {
 	if t.is_owned_array_storage_value(value) {
 		return value
 	}
 	resolved_type := t.comptime_normalize_type_alias_chain(typ)
+	if resolved_type.starts_with('&') && !clone_owned_value {
+		// Pointer values borrow their pointee. A retained slice reference must keep
+		// writing through to its owner. Synthetic pointer headers for mutable
+		// array arguments can still require acquisition of their borrowed storage.
+		return value
+	}
 	mut storage_type := resolved_type
 	for t.is_optional_type_name(storage_type) {
 		storage_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(storage_type))
@@ -2096,7 +2115,8 @@ fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ st
 		payload_type := t.optional_base_type(resolved_type)
 		payload := t.make_selector(bound, 'value', payload_type)
 		pending_start := t.pending_stmts.len
-		owned_payload := t.clone_owned_array_storage_value(payload, payload_type, clone_owned_value)
+		owned_payload := t.clone_owned_array_storage_value_with_pointer_borrow(payload, payload_type,
+			clone_owned_value, preserve_managed_pointer)
 		mut body := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		body << t.make_assign_without_ownership_drop(payload, owned_payload)
@@ -2115,7 +2135,9 @@ fn (mut t Transformer) clone_owned_array_storage_value(value flat.NodeId, typ st
 		return if clone_owned_value { t.mark_owned_array_storage_value(bound, typ) } else { bound }
 	}
 	array_value := t.array_lvalue_value(bound, resolved_type)
-	is_slice := if clone_owned_value {
+	// An explicit address of a mutable managed array parameter points at the
+	// caller's real header. Only synthetic slice headers need independent storage.
+	is_slice := if clone_owned_value && !(preserve_managed_pointer && resolved_type.starts_with('&')) {
 		t.make_bool_literal(true)
 	} else {
 		t.mark_fn_used('array.is_slice_view')
@@ -2428,7 +2450,12 @@ fn (t &Transformer) clean_array_append_lhs_type(typ string) string {
 // `type Ptrs = &[]&int`) to the type they both name.
 fn (t &Transformer) normalize_type_alias_chain(typ string) string {
 	mut current := typ
-	for _ in 0 .. 16 {
+	mut seen := map[string]bool{}
+	for {
+		if current in seen {
+			break
+		}
+		seen[current] = true
 		next := t.normalize_type_alias(current)
 		if next == current {
 			break
@@ -2497,7 +2524,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	raw_value_id := t.a.child(&node, 1)
 	value_node := t.a.nodes[int(raw_value_id)]
 	short_struct_value := if value_node.kind == .field_init {
-		t.transform_trailing_field_init_struct_arg(node, 1, elem_type)
+		t.transform_trailing_field_init_struct_arg(node, 1, elem_type, elem_type)
 	} else {
 		?flat.NodeId(none)
 	}
@@ -2582,7 +2609,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	raw_value_id := t.a.child(&node, 2)
 	value_node := t.a.nodes[int(raw_value_id)]
 	short_struct_value := if value_node.kind == .field_init {
-		t.transform_trailing_field_init_struct_arg(node, 2, elem_type)
+		t.transform_trailing_field_init_struct_arg(node, 2, elem_type, elem_type)
 	} else {
 		?flat.NodeId(none)
 	}

@@ -19,7 +19,7 @@ fn test_prealloc_tls_global_has_cplusplus_thread_local_branch() {
 	os.write_file(source_path, 'fn main() {}\n')!
 
 	emit_cmd := '${test_vexe} -message-limit 199 -gc none -prealloc -o ${os.quoted_path(generated_c_path)} ${os.quoted_path(source_path)}'
-	emit_result := os.execute(emit_cmd)
+	emit_result := os.exec([@VEXE, '-message-limit', '199', '-gc', 'none', '-prealloc', '-o', generated_c_path, source_path])
 	assert emit_result.exit_code == 0, '${emit_cmd}\n${emit_result.output}'
 	generated := os.read_file(generated_c_path)!
 	assert generated.contains('#elif defined(__cplusplus)\nthread_local VMemoryBlock* g_memory_block; // global 6'), generated
@@ -99,10 +99,10 @@ int main(void) {
 		'${test_vexe} -message-limit 199 -cc ${cc} -gc none -prealloc -no-skip-unused -is_o -o ${os.quoted_path(b_c)} ${os.quoted_path(b_v)}',
 		'${cc} -o ${os.quoted_path(prog)} ${os.quoted_path(a_c)} ${os.quoted_path(b_c)} ${os.quoted_path(host_c)} -lm',
 	] {
-		res := os.execute(cmd)
+		res := os.exec(os.split_args(cmd) or { panic(err) })
 		assert res.exit_code == 0, '${cmd}\n${res.output}'
 	}
-	res := os.execute(os.quoted_path(prog))
+	res := os.exec([prog])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '1 2'
 }

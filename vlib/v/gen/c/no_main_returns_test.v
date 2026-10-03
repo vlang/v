@@ -16,14 +16,15 @@ fn main() {
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
 		object := os.join_path(root, 'main.o')
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -gc none -d no_main -o ${os.quoted_path(object)} ${os.quoted_path(source)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-gc', 'none', '-d',
+			'no_main', '-o', '${object}', source])
 		assert result.exit_code == 0, result.output
 		assert os.exists(object)
 	}
 	executable := os.join_path(root, 'program')
-	result := os.execute('${os.quoted_path(@VEXE)} -gc none -o ${os.quoted_path(executable)} ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-gc', 'none', '-o', executable, source])
 	assert result.exit_code == 0, result.output
-	run := os.execute(os.quoted_path(executable))
+	run := os.exec([executable])
 	assert run.exit_code == 0, run.output
 	assert run.output == ''
 }

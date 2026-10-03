@@ -98,6 +98,7 @@ pub fn z_of_new_point(z i32) i32 {
 	return point.z
 }
 ')!
-	result := os.execute('VMODULES=${os.quoted_path(root)} ${os.quoted_path(@VEXE)} -new-compiler test ${os.quoted_path(os.join_path(root, 'outer', 'outer_test.v'))}')
+	result := os.exec(['env', 'VMODULES=' + '${root}', @VEXE, '-new-compiler', 'test',
+		os.join_path(root, 'outer', 'outer_test.v')])
 	assert result.exit_code == 0, result.output
 }

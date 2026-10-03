@@ -107,11 +107,15 @@ pub fn losing_body() {}
 		}
 		assert serial_names == case_expected, '${serial_names}'
 		assert serial.selected_file_worklist.len == 0
-		for _ in 0 .. 3 {
+		for attempt in 0 .. 4 {
 			mut parallel := TypeChecker.new(a)
 			parallel.diagnostic_files[main] = true
 			parallel.collect(a)
 			parallel.errors = serial.errors.clone()
+			if attempt % 2 == 0 {
+				// Exercise the disposable walker used by scoped compiler checks too.
+				parallel.set_fresh_type_cache_based_on(serial, false)
+			}
 			parallel.building_v_fast = true
 			parallel.scope_parallel_check_workers = true
 			before := pool.tasks_run()

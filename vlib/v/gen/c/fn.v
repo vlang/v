@@ -5109,6 +5109,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.tc.cur_file
 	}
 	g.cur_fn_assert_continues = g.tc.declaration_has_attribute(node_id, 'assert_continues')
+	g.cur_fn_manualfree = node.skip_ownership_drops()
+		|| g.tc.declaration_has_attribute(node_id, 'manualfree')
 	g.begin_usable_expr_type_memo()
 	g.known_expr_type_id = -1
 	g.ownership_return_index = 0
@@ -14533,11 +14535,14 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				if _ := fn_type_from(param_types[arg_idx]) {
 					if !g.is_c_extern_fn_name_arg(arg_id) {
 						if thunk := g.c_call_callback_abi_thunk(arg_id, param_types[arg_idx]) {
-							// The thunk has the `fn C.` declaration's signature, which can
-							// differ from the header prototype in qualifiers (`const char *`
-							// vs `char *`); clang 16+ rejects that as an incompatible function
-							// pointer. Let the header's parameter type apply.
-							g.write('(void*)${thunk}')
+							// Retained ABI qualifiers give the thunk its typed C signature.
+							// Otherwise the header may add qualifiers absent from `fn C.`;
+							// preserve the existing conversion through void* for that case.
+							if _ := g.tc.c_abi_fn_ptr_type_for_type_text(param_types[arg_idx].name()) {
+								g.write(thunk)
+							} else {
+								g.write('(void*)${thunk}')
+							}
 							continue
 						}
 					}
@@ -15722,6 +15727,10 @@ fn (g &FlatGen) addressed_byvalue_arg(arg_node flat.Node) ?flat.NodeId {
 }
 
 fn (mut g FlatGen) gen_addressed_byvalue_arg(arg_node flat.Node, expected types.Type) bool {
+	if types.unalias_type(expected) is types.Pointer {
+		// A pointer alias must remain an address argument here.
+		return false
+	}
 	child_id := g.addressed_byvalue_arg(arg_node) or { return false }
 	child := g.a.nodes[int(child_id)]
 	if child.kind == .struct_init {
@@ -16275,9 +16284,25 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 	use_idx := !isnil(g.tc) && g.tc.top_level_idx.len > 0
 	idx_count := if use_idx { g.tc.top_level_idx.len } else { 0 }
 	tail_start := if use_idx { g.tc.top_level_idx_nodes_len } else { 0 }
-	total := idx_count + (g.a.nodes.len - tail_start)
+	// The collect scan recorded every node of the kinds handled below, in AST
+	// order. When it ran, walk its entries for the tail instead of every
+	// transform-appended node.
+	tail_from_index := g.type_metadata_nodes_ready && g.top_level_node_ids.len > 0
+	tail_ids := if tail_from_index {
+		g.top_level_node_ids[first_node_id_at_or_after(g.top_level_node_ids, tail_start)..]
+	} else {
+		[]i32{}
+	}
+	tail_count := if tail_from_index { tail_ids.len } else { g.a.nodes.len - tail_start }
+	total := idx_count + tail_count
 	for k in 0 .. total {
-		i := if k < idx_count { g.tc.top_level_idx[k] } else { tail_start + (k - idx_count) }
+		i := if k < idx_count {
+			g.tc.top_level_idx[k]
+		} else if tail_from_index {
+			int(tail_ids[k - idx_count])
+		} else {
+			tail_start + (k - idx_count)
+		}
 		node := g.a.nodes[i]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
@@ -16362,6 +16387,22 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 	if names.len > 0 {
 		g.writeln('')
 	}
+}
+
+// first_node_id_at_or_after returns the position of the first id >= `start` in
+// the ascending `ids`, or ids.len.
+fn first_node_id_at_or_after(ids []i32, start int) int {
+	mut lo := 0
+	mut hi := ids.len
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if int(ids[mid]) < start {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
 }
 
 fn c_extern_decl_specificity(a &flat.FlatAst, node flat.Node) int {

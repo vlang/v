@@ -11,9 +11,9 @@ fn executable_cleanup_compile_and_run(v3_bin string, root string, name string, s
 	source_path := os.join_path(root, '${name}${suffix}')
 	output_path := os.join_path(root, name)
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-nocache', '-o', output_path, source_path])
 	assert compile.exit_code == 0, compile.output
-	return os.execute(os.quoted_path(output_path)), generated_c
+	return os.exec([output_path]), generated_c
 }
 
 fn executable_cleanup_generate_c(v3_bin string, root string, name string, suffix string,
@@ -22,7 +22,8 @@ fn executable_cleanup_generate_c(v3_bin string, root string, name string, suffix
 	c_path := os.join_path(root, '${name}.c')
 	os.write_file(source_path, source) or { panic(err) }
 	generate :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache ${flags} -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-nocache', ...(os.split_args(flags) or { panic(err) }), '-o', c_path,
+			source_path])
 	assert generate.exit_code == 0, generate.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -43,7 +44,7 @@ fn test_executable_mains_invoke_module_cleanup() {
 		os.rmdir_all(root) or {}
 	}
 	build :=
-		os.execute('${os.quoted_path(executable_cleanup_vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(executable_cleanup_v3_src)}')
+		os.exec([executable_cleanup_vexe, '-gc', 'none', '-o', v3_bin, executable_cleanup_v3_src])
 	assert build.exit_code == 0, build.output
 
 	main_run, main_c := executable_cleanup_compile_and_run(v3_bin, root, 'user_main', '.v', "fn init() {
@@ -144,7 +145,7 @@ pub fn answer() int {
 }
 ")!
 	generate_no_main :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(no_main_c_path)} ${os.quoted_path(no_main_source)}')
+		os.exec([v3_bin, '-nocache', '-o', no_main_c_path, no_main_source])
 	assert generate_no_main.exit_code == 0, generate_no_main.output
 	no_main_c := os.read_file(no_main_c_path)!
 	assert no_main_c.contains('static void _vno_main_init_caller(void) {'), no_main_c
@@ -172,7 +173,7 @@ pub fn start() int {
 }
 ")!
 	generate_direct :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(direct_export_c_path)} ${os.quoted_path(direct_export_source)}')
+		os.exec([v3_bin, '-nocache', '-o', direct_export_c_path, direct_export_source])
 	assert generate_direct.exit_code == 0, generate_direct.output
 	direct_export_c := os.read_file(direct_export_c_path)!
 	assert direct_export_c.contains('int start(void) {'), direct_export_c

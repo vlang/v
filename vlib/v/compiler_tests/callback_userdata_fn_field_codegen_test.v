@@ -19,7 +19,8 @@ fn callback_build_v3_with_flags(name string, flags string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_callback_userdata_test_${name}_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${callback_vexe} ${flags} -gc none -path "${callback_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${callback_v3_src}')
+		os.exec([callback_vexe, ...(os.split_args(flags) or { panic(err) }), '-gc', 'none', '-path',
+			'${callback_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${callback_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -32,7 +33,7 @@ fn callback_write_source(name string, source string) string {
 
 fn callback_compile(v3_bin string, source string, name string) os.Result {
 	out := os.join_path(os.temp_dir(), 'v3_callback_userdata_${name}_${os.getpid()}')
-	return os.execute('${v3_bin} ${source} -b c -o ${out}')
+	return os.exec([v3_bin, source, '-b', 'c', '-o', '${out}'])
 }
 
 fn callback_write_project_file(root string, rel string, source string) string {
@@ -85,9 +86,9 @@ fn main() {
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_callback_bound_method_autofree_${os.getpid()}')
-	compile := os.execute('${v3_bin} -autofree ${source} -b c -o ${out}')
+	compile := os.exec([v3_bin, '-autofree', source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '73'
 	generated := os.read_file(out + '.c') or { panic(err) }
@@ -210,9 +211,9 @@ fn main() {
 }
 ')
 	good_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_good_${os.getpid()}')
-	good_compile := os.execute('${v3_bin} -enable-globals ${good_src} -b c -o ${good_out}')
+	good_compile := os.exec([v3_bin, '-enable-globals', '${good_src}', '-b', 'c', '-o', '${good_out}'])
 	assert good_compile.exit_code == 0, good_compile.output
-	run := os.execute(good_out)
+	run := os.exec([good_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '82'
 	generated := os.read_file(good_out + '.c') or { panic(err) }
@@ -245,9 +246,10 @@ fn main() {
 
 	autofree_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_autofree_${os.getpid()}')
 	autofree_compile :=
-		os.execute('${v3_bin} -enable-globals -autofree ${good_src} -b c -o ${autofree_out}')
+		os.exec([v3_bin, '-enable-globals', '-autofree', '${good_src}', '-b', 'c', '-o',
+			'${autofree_out}'])
 	assert autofree_compile.exit_code == 0, autofree_compile.output
-	autofree_run := os.execute(autofree_out)
+	autofree_run := os.exec([autofree_out])
 	assert autofree_run.exit_code == 0, autofree_run.output
 	assert autofree_run.output.trim_space() == '82'
 	autofree_c := os.read_file(autofree_out + '.c') or { panic(err) }
@@ -377,9 +379,9 @@ fn main() {
 }
 ')
 	homonym_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_homonym_out_${os.getpid()}')
-	homonym_compile := os.execute('${v3_bin} ${homonym_main} -b c -o ${homonym_out}')
+	homonym_compile := os.exec([v3_bin, '${homonym_main}', '-b', 'c', '-o', '${homonym_out}'])
 	assert homonym_compile.exit_code == 0, homonym_compile.output
-	homonym_run := os.execute(homonym_out)
+	homonym_run := os.exec([homonym_out])
 	assert homonym_run.exit_code == 0, homonym_run.output
 	assert homonym_run.output.trim_space() == '100'
 	homonym_c := os.read_file(homonym_out + '.c') or { panic(err) }
@@ -412,9 +414,9 @@ fn main() {
 }
 ')
 	c_fn_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_c_fn_${os.getpid()}')
-	c_fn_compile := os.execute('${v3_bin} ${c_fn_src} -b c -o ${c_fn_out}')
+	c_fn_compile := os.exec([v3_bin, '${c_fn_src}', '-b', 'c', '-o', '${c_fn_out}'])
 	assert c_fn_compile.exit_code == 0, c_fn_compile.output
-	c_fn_run := os.execute(c_fn_out)
+	c_fn_run := os.exec([c_fn_out])
 	assert c_fn_run.exit_code == 0, c_fn_run.output
 	assert c_fn_run.output.trim_space() == '3'
 	c_fn_c := os.read_file(c_fn_out + '.c') or { panic(err) }
@@ -489,9 +491,9 @@ fn erased(e voidptr, data voidptr) {
 ')
 	parallel_src := callback_write_source('parallel', src.str())
 	parallel_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_parallel_${os.getpid()}')
-	parallel_compile := os.execute('${v3_bin} ${parallel_src} -b c -o ${parallel_out}')
+	parallel_compile := os.exec([v3_bin, '${parallel_src}', '-b', 'c', '-o', '${parallel_out}'])
 	assert parallel_compile.exit_code == 0, parallel_compile.output
-	parallel_run := os.execute(parallel_out)
+	parallel_run := os.exec([parallel_out])
 	assert parallel_run.exit_code == 0, parallel_run.output
 	assert parallel_run.output.trim_space() == '1100'
 	parallel_c := os.read_file(parallel_out + '.c') or { panic(err) }

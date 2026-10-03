@@ -222,7 +222,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 }
 
 fn (upd VlsUpdater) print_new_vls_version(new_vls_exec_path string) {
-	exec_version := os.execute('${new_vls_exec_path} --version')
+	exec_version := os.exec([new_vls_exec_path, '--version'])
 	if exec_version.exit_code == 0 {
 		upd.log('VLS was updated to version: ${exec_version.output.all_after('vls version ').trim_space()}')
 	}
@@ -247,14 +247,15 @@ fn (upd VlsUpdater) compile_from_source() ! {
 	if !os.exists(vls_src_folder) {
 		upd.log('Cloning VLS repo...')
 		clone_result :=
-			os.execute('${os.quoted_path(vexe)} retry -- ${os.quoted_path(git)} clone --filter=blob:none https://github.com/vlang/vls ${os.quoted_path(vls_src_folder)}')
+			os.exec([vexe, 'retry', '--', '${git}', 'clone', '--filter=blob:none',
+				'https://github.com/vlang/vls', '${vls_src_folder}'])
 		if clone_result.exit_code != 0 {
 			return error('Failed to build VLS from source. Reason: ${clone_result.output}')
 		}
 	} else {
 		upd.log('Updating VLS repo...')
 		pull_result :=
-			os.execute('${os.quoted_path(vexe)} retry -- ${os.quoted_path(git)} -C ${os.quoted_path(vls_src_folder)} pull')
+			os.exec([vexe, 'retry', '--', '${git}', '-C', '${vls_src_folder}', 'pull'])
 		if !upd.is_force && pull_result.output.trim_space() == 'Already up to date.'
 			&& os.is_executable(exec_path) {
 			upd.log('VLS was already updated to its latest version.')
@@ -277,7 +278,8 @@ fn (upd VlsUpdater) compile_from_source() ! {
 	}
 
 	os.mkdir_all(os.dir(exec_path))!
-	compile_result := os.execute('${os.quoted_path(vexe)} -cc ${possible_compilers[selected_compiler_idx]} -o ${os.quoted_path(exec_path)} ${os.quoted_path(vls_src_folder)}')
+	compile_result := os.exec([vexe, '-cc', '${possible_compilers[selected_compiler_idx]}', '-o',
+		exec_path, '${vls_src_folder}'])
 	if compile_result.exit_code != 0 {
 		return error('Cannot compile VLS from source: ${compile_result.output}')
 	}
@@ -471,7 +473,7 @@ fn (upd VlsUpdater) run(fp flag.FlagParser) ! {
 			}
 		}
 	} else if upd.pass_to_ls {
-		exit(os.system('${upd.ls_path} ${upd.args.join(' ')}'))
+		exit(os.system_args([upd.ls_path, ...upd.args]))
 	} else if upd.is_help {
 		println(fp.usage())
 		exit(0)

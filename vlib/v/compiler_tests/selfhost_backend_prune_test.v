@@ -9,7 +9,7 @@ fn build_selfhost_prune_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_selfhost_backend_prune_boot_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${os.quoted_path(vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -20,7 +20,8 @@ fn selfhost_to_c(v3_bin string, name string, flags string) string {
 	os.rm(out_bin) or {}
 	os.rm(out_c) or {}
 	cmd := '${os.quoted_path(v3_bin)} --no-parallel -nocache -no-memory-limit -selfhost -b c ${flags} -o ${os.quoted_path(out_c)} ${os.quoted_path(v3_src)}'
-	res := os.execute(cmd)
+	res := os.exec([v3_bin, '--no-parallel', '-nocache', '-no-memory-limit', '-selfhost', '-b',
+		'c', ...(os.split_args(flags) or { panic(err) }), '-o', '${out_c}', '${v3_src}'])
 	assert res.exit_code == 0, res.output
 	assert os.exists(out_c), 'missing generated C output ${out_c}'
 	return os.read_file(out_c) or { panic(err) }

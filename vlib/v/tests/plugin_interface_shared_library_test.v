@@ -75,7 +75,7 @@ fn test_interface_from_shared_library_can_call_methods() {
 }
 
 fn run_cmd(cmd string) !os.Result {
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	if res.exit_code != 0 {
 		return error('command failed:\n${cmd}\n${res.output}')
 	}

@@ -274,7 +274,8 @@ fn test_goto_definition() {
 
 	for tc in test_cases {
 		cmd := '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${test_file}:${tc.line}:gd^${tc.col}" ${os.quoted_path(test_file)}'
-		res := os.execute(cmd)
+		res := os.exec([@VEXE, '-w', '-check', '-json-errors', '-nocolor', '-vls-mode', '-line-info',
+			'${test_file}' + ':' + '${tc.line}' + ':gd^' + '${tc.col}', test_file])
 
 		if res.exit_code < 0 {
 			println('${term.red('FAIL')} ${tc.name}: Command failed to execute')

@@ -218,7 +218,14 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	cmd_wide_ptr := cmd.to_wide()
 	to_be_freed << cmd_wide_ptr
-	C.ExpandEnvironmentStringsW(cmd_wide_ptr, voidptr(&wdata.command_line[0]), 32768)
+	if p.expand_environment {
+		C.ExpandEnvironmentStringsW(cmd_wide_ptr, voidptr(&wdata.command_line[0]), 32768)
+	}
+	command_line_ptr := if p.expand_environment {
+		voidptr(&wdata.command_line[0])
+	} else {
+		voidptr(cmd_wide_ptr)
+	}
 
 	mut creation_flags := if p.create_no_window {
 		int(C.CREATE_NO_WINDOW)
@@ -275,7 +282,7 @@ fn (mut p Process) win_spawn_process() int {
 		}
 	}
 
-	create_process_ok := C.CreateProcessW(application_name_ptr, voidptr(&wdata.command_line[0]), 0,
+	create_process_ok := C.CreateProcessW(application_name_ptr, command_line_ptr, 0,
 		0, C.TRUE, creation_flags, if env_block.len > 0 {
 			env_block.data
 		} else {

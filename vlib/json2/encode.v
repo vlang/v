@@ -866,6 +866,24 @@ fn (mut encoder Encoder) encode_embedded_struct_field_key(mut used_keys []string
 	return encoder.encode_object_key(is_first, json_key)
 }
 
+// encode_struct_field writes a struct field with its key, unless the field is skipped or
+// left out as empty, and returns the new `is_first`. It is specialized per field type, so
+// all structs share it and each struct only pays for one call per field. `other_keys` are
+// the keys of the outer struct for an embedded struct field, else the keys used before.
+fn (mut encoder Encoder) encode_struct_field[F](val F, field_info EncoderFieldInfo, is_first bool, mut used_keys []string, other_keys []string, prefix string, embedded bool) bool {
+	if !struct_field_should_encode(field_info, val) {
+		return is_first
+	}
+	new_is_first := if embedded {
+		encoder.encode_embedded_struct_field_key(mut used_keys, other_keys, prefix, field_info,
+			is_first)
+	} else {
+		encoder.encode_struct_field_key(mut used_keys, other_keys, prefix, field_info, is_first)
+	}
+	encoder.encode_struct_field_value(val)
+	return new_is_first
+}
+
 @[unsafe]
 fn (mut encoder Encoder) encode_struct_with_embeds[T](val T) {
 	encoder.output << `{`
@@ -892,28 +910,15 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 	$for field in T.fields {
 		$if !field.is_embed {
 			if !field.attrs.contains('skip') {
-				field_info := field_info_cache.field_infos[i]
-				mut write_field := true
-
 				$if field.typ is $shared {
 					shared field_value := unsafe { val.$(field.name) }
 					rlock field_value {
-						write_field = struct_field_should_encode(field_info, field_value)
-
-						if write_field {
-							is_first = encoder.encode_struct_field_key(mut used_keys,
-								old_used_keys, prefix, field_info, is_first)
-							encoder.encode_struct_field_value(field_value)
-						}
+						is_first = encoder.encode_struct_field(field_value, field_info_cache.field_infos[i],
+							is_first, mut used_keys, old_used_keys, prefix, false)
 					}
 				} $else {
-					write_field = struct_field_should_encode(field_info, val.$(field.name))
-
-					if write_field {
-						is_first = encoder.encode_struct_field_key(mut used_keys, old_used_keys,
-							prefix, field_info, is_first)
-						encoder.encode_struct_field_value(val.$(field.name))
-					}
+					is_first = encoder.encode_struct_field(val.$(field.name), field_info_cache.field_infos[i],
+						is_first, mut used_keys, old_used_keys, prefix, false)
 				}
 			}
 		}
@@ -970,25 +975,15 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 			}
 		} $else {
 			if !field.attrs.contains('skip') {
-				field_info := field_info_cache.field_infos[i]
-				mut write_field := true
 				$if field.typ is $shared {
 					shared field_value := unsafe { val.$(field.name) }
 					rlock field_value {
-						write_field = struct_field_should_encode(field_info, field_value)
-						if write_field {
-							is_first = encoder.encode_embedded_struct_field_key(mut used_keys,
-								reserved_keys, prefix, field_info, is_first)
-							encoder.encode_struct_field_value(field_value)
-						}
+						is_first = encoder.encode_struct_field(field_value, field_info_cache.field_infos[i],
+							is_first, mut used_keys, reserved_keys, prefix, true)
 					}
 				} $else {
-					write_field = struct_field_should_encode(field_info, val.$(field.name))
-					if write_field {
-						is_first = encoder.encode_embedded_struct_field_key(mut used_keys,
-							reserved_keys, prefix, field_info, is_first)
-						encoder.encode_struct_field_value(val.$(field.name))
-					}
+					is_first = encoder.encode_struct_field(val.$(field.name), field_info_cache.field_infos[i],
+						is_first, mut used_keys, reserved_keys, prefix, true)
 				}
 			}
 		}

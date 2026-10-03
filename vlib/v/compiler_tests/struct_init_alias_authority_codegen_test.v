@@ -10,7 +10,8 @@ fn struct_alias_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_struct_alias_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${struct_alias_vexe} -gc none -path "${struct_alias_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${struct_alias_v3_src}')
+		os.exec([struct_alias_vexe, '-gc', 'none', '-path',
+			'${struct_alias_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${struct_alias_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -165,9 +166,9 @@ fn test_struct_init_uses_local_alias_authority_before_short_name_fallback() {
 	v3_bin := struct_alias_build_v3()
 	root := struct_alias_write_project()
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '65544'
 	generated := os.read_file(bin + '.c') or { panic(err) }

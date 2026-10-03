@@ -4,7 +4,7 @@ module main
 
 import os
 import rand
-import test_utils { cmd_ok }
+import test_utils { cmd_ok_args }
 
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_outdated_test_${rand.ulid()}')
 
@@ -24,11 +24,11 @@ fn testsuite_end() {
 }
 
 fn test_is_outdated_git_module() {
-	cmd_ok(@LOCATION, 'git clone https://github.com/vlang/libsodium.git')
+	cmd_ok_args(@LOCATION, ['git', 'clone', 'https://github.com/vlang/libsodium.git'])
 	assert !is_outdated('libsodium')
-	cmd_ok(@LOCATION, 'git -C libsodium reset --hard HEAD~')
+	cmd_ok_args(@LOCATION, ['git', '-C', 'libsodium', 'reset', '--hard', 'HEAD~'])
 	assert is_outdated('libsodium')
-	cmd_ok(@LOCATION, 'git -C libsodium pull')
+	cmd_ok_args(@LOCATION, ['git', '-C', 'libsodium', 'pull'])
 	assert !is_outdated('libsodium')
 }
 
@@ -40,25 +40,26 @@ fn test_is_outdated_hg_module() {
 		eprintln('skipping test, since `hg` is not executable.')
 		return
 	}
-	cmd_ok(@LOCATION, 'hg clone https://www.mercurial-scm.org/repo/hello')
+	cmd_ok_args(@LOCATION, ['hg', 'clone', 'https://www.mercurial-scm.org/repo/hello'])
 	assert !is_outdated('hello')
-	cmd_ok(@LOCATION, 'hg --config extensions.strip= -R hello strip -r tip')
+	cmd_ok_args(@LOCATION, ['hg', '--config', 'extensions.strip=', '-R', 'hello', 'strip', '-r',
+		'tip'])
 	assert is_outdated('hello')
-	cmd_ok(@LOCATION, 'hg -R hello pull')
+	cmd_ok_args(@LOCATION, ['hg', '-R', 'hello', 'pull'])
 	assert !is_outdated('hello')
 }
 
 fn test_outdated() {
 	for m in ['pcre', 'libsodium', 'https://github.com/spytheman/vtray', 'nedpals.args'] {
-		cmd_ok(@LOCATION, '${vexe} install ${m}')
+		cmd_ok_args(@LOCATION, [vexe, 'install', '${m}'])
 	}
 	// "Outdate" previously installed. Leave out `libsodium`.
 	for m in ['pcre', os.join_path('spytheman', 'vtray'), os.join_path('nedpals', 'args')] {
-		cmd_ok(@LOCATION, 'git -C ${m} fetch --all')
-		cmd_ok(@LOCATION, 'git -C ${m} reset --hard HEAD~')
+		cmd_ok_args(@LOCATION, ['git', '-C', '${m}', 'fetch', '--all'])
+		cmd_ok_args(@LOCATION, ['git', '-C', '${m}', 'reset', '--hard', 'HEAD~'])
 		assert is_outdated(m)
 	}
-	res := cmd_ok(@LOCATION, '${vexe} outdated')
+	res := cmd_ok_args(@LOCATION, [vexe, 'outdated'])
 	output := res.output.all_after('Outdated modules:')
 	assert output.len > 0, output
 	assert output.contains('pcre'), output

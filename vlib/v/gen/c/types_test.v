@@ -6,6 +6,37 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_fixed_array_alias_chains_and_pointer_sizes_use_array_typedefs() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	fixed := types.Type(types.ArrayFixed{
+		elem_type: types.Type(types.u8_)
+		len:       3
+	})
+	alias := types.Type(types.Alias{
+		name:      'Bytes'
+		base_type: fixed
+	})
+	chain := types.Type(types.Alias{
+		name:      'BytesAlias'
+		base_type: alias
+	})
+	assert array_fixed_type(chain) != none
+	pointer := types.Type(types.Pointer{
+		base_type: chain
+	})
+	assert g.value_c_type(pointer) == 'Array_fixed_u8_3*'
+	assert g.value_sizeof_target(pointer) == 'Array_fixed_u8_3*'
+	assert g.value_c_type(types.Type(types.Pointer{
+		base_type: pointer
+	})) == 'Array_fixed_u8_3**'
+	assert g.sizeof_target('&[3]u8') == 'void*'
+	assert g.sizeof_target('&u8[3]') == 'u8*[3]'
+}
+
 fn test_type_references_thread_through_containers() {
 	thread_type := types.Type(types.Struct{
 		name: 'thread'
@@ -449,7 +480,7 @@ fn main() {}
 		'main':          true
 		'Used__autostr': true
 	}, &tc, true)
-	assert c_source.contains('string Used__autostr(Used it)'), c_source
+	assert c_source.contains('string Used__autostr(main__Used it)'), c_source
 	assert !c_source.contains('Unused__autostr'), c_source
 }
 

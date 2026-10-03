@@ -4913,11 +4913,29 @@ fn (mut e Eval) maybe_call_builtin(module_name string, fn_name string, args []Va
 
 fn (mut e Eval) maybe_call_os_builtin(fn_name string, args []Value) !MaybeValue {
 	match fn_name {
+		'exec' {
+			if args.len == 0 || args[0] !is ArrayValue {
+				return error('v.eval: os.exec expects an argument array')
+			}
+			array := args[0] as ArrayValue
+			mut command := []string{cap: array.values.len}
+			for value in array.values {
+				command << e.value_string(value)
+			}
+			return MaybeValue{
+				found: true
+				value: os_result_value(os.exec(command))
+			}
+		}
 		'execute' {
 			cmd := e.expect_string_arg(args, 0)!
 			return MaybeValue{
 				found: true
-				value: os_result_value(os.execute(cmd))
+				value: os_result_value(os.exec(if os.user_os() == 'windows' {
+					['cmd.exe', '/d', '/s', '/c', cmd]
+				} else {
+					['sh', '-c', cmd]
+				}))
 			}
 		}
 		'user_os' {

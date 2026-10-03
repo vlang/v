@@ -19,7 +19,9 @@ fn mut_param_receiver_build_v3() string {
 	if os.exists(v3_bin) {
 		return v3_bin
 	}
-	build := os.execute('${os.quoted_path(mut_param_receiver_vexe)} -gc none -path "${mut_param_receiver_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(mut_param_receiver_v3_src)}')
+	build := os.exec([mut_param_receiver_vexe, '-gc', 'none', '-path',
+		'${mut_param_receiver_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		'${mut_param_receiver_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -116,10 +118,10 @@ fn main() {
 }
 ") or { panic(err) }
 	out := os.join_path(dir, 'mut_param_receiver')
-	compile := os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(out)} ${os.quoted_path(dir)}')
+	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(os.quoted_path(out))
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'use\nuse\nok', run.output
 }

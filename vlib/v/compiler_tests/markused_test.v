@@ -363,7 +363,8 @@ fn main() {
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -591,9 +592,9 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	compiled := os.execute('${v3_bin} -o ${bin} ${source}')
+	compiled := os.exec([v3_bin, '-o', bin, source])
 	assert compiled.exit_code == 0, compiled.output
-	ran := os.execute(bin)
+	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
 	assert ran.output.trim_space() == 'ok', ran.output
 	os.write_file(source, '
@@ -613,9 +614,9 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	defaults_compiled := os.execute('${v3_bin} -o ${bin} ${source}')
+	defaults_compiled := os.exec([v3_bin, '-o', bin, source])
 	assert defaults_compiled.exit_code == 0, defaults_compiled.output
-	defaults_ran := os.execute(bin)
+	defaults_ran := os.exec([bin])
 	assert defaults_ran.exit_code == 0, defaults_ran.output
 	assert defaults_ran.output.trim_space() == 'ok', defaults_ran.output
 }
@@ -893,9 +894,9 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-		compiled := os.execute('${v3_bin} -gc none -o ${bin} ${source}')
+		compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
 		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
-		ran := os.execute(bin)
+		ran := os.exec([bin])
 		assert ran.exit_code == 0, ran.output
 		assert ran.output.trim_space() == 'ok', ran.output
 	}
@@ -919,9 +920,9 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	compiled := os.execute('${v3_bin} -gc none -o ${bin} ${source}')
+	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
 	assert compiled.exit_code == 0, compiled.output
-	ran := os.execute(bin)
+	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
 	assert ran.output.trim_space() == 'ok', ran.output
 }
@@ -972,9 +973,9 @@ pub struct Mixed[T] { pub: inner T local Inner }
 module leaf
 pub fn make() int { return 9 }
 ') or { panic(err) }
-	compiled := os.execute('${v3_bin} -gc none -o ${bin} ${root}')
+	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, root])
 	assert compiled.exit_code == 0, compiled.output
-	ran := os.execute(bin)
+	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
 	assert ran.output.trim_space() == 'ok', ran.output
 }
@@ -1100,9 +1101,9 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	compiled := os.execute('${v3_bin} -gc none -o ${bin} ${source}')
+	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
 	assert compiled.exit_code == 0, compiled.output
-	ran := os.execute(bin)
+	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
 	assert ran.output.trim_space() == 'ok', ran.output
 }
@@ -1145,9 +1146,9 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-		compiled := os.execute('${v3_bin} -gc none -o ${bin} ${source}')
+		compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
 		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
-		ran := os.execute(bin)
+		ran := os.exec([bin])
 		assert ran.exit_code == 0, ran.output
 		assert ran.output.trim_space() == 'ok', ran.output
 	}
@@ -2120,9 +2121,9 @@ println(f() + 1)
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42'
 	c_code := os.read_file(bin + '.c') or { panic(err) }
@@ -2630,7 +2631,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -2652,7 +2653,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -2680,7 +2681,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -2695,7 +2696,7 @@ fn main() {
 	println(true)
 }
 ') or { panic(err) }
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -2716,10 +2717,10 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '-5\n-300\n-70000\n-5000000000\n42', run.output
 }
@@ -2740,7 +2741,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -2761,6 +2762,6 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }

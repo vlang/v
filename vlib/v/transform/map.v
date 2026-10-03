@@ -2264,14 +2264,21 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	then_block := if source_is_optional {
 		opt_name := t.new_temp('map_opt')
 		opt_decl := t.make_decl_assign_typed(opt_name, ptr_value, info.value_type)
+		mut ok_stmts := []flat.NodeId{}
 		opt_value := t.make_selector(t.make_ident(opt_name), 'value', source_value_type)
-		found_value := if wrap_found_value {
-			t.make_optional_some(opt_value, result_type)
+		acquired_value := if !move_found_value {
+			t.clone_borrowed_projection(expr_id, opt_value, source_value_type)
 		} else {
 			opt_value
 		}
+		t.drain_pending(mut ok_stmts)
+		found_value := if wrap_found_value {
+			t.make_optional_some(acquired_value, result_type)
+		} else {
+			acquired_value
+		}
 		assign_found := t.make_assign(t.make_ident(val_name), found_value)
-		mut ok_stmts := [assign_found]
+		ok_stmts << assign_found
 		if move_found_value {
 			ok_stmts << t.make_clear_map_ptr_value(ptr_name, info.value_type)
 		}
@@ -2287,12 +2294,19 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 		opt_else_block := t.make_block(opt_else_stmts)
 		t.make_block([opt_decl, t.make_if(ok_cond, t.make_block(ok_stmts), opt_else_block)])
 	} else {
-		found_value := if wrap_found_value {
-			t.make_optional_some(ptr_value, result_type)
+		mut found_stmts := []flat.NodeId{}
+		acquired_value := if !move_found_value {
+			t.clone_borrowed_projection(expr_id, ptr_value, info.value_type)
 		} else {
 			ptr_value
 		}
-		mut found_stmts := [t.make_assign(t.make_ident(val_name), found_value)]
+		t.drain_pending(mut found_stmts)
+		found_value := if wrap_found_value {
+			t.make_optional_some(acquired_value, result_type)
+		} else {
+			acquired_value
+		}
+		found_stmts << t.make_assign(t.make_ident(val_name), found_value)
 		if move_found_value {
 			found_stmts << t.make_clear_map_ptr_value(ptr_name, info.value_type)
 		}

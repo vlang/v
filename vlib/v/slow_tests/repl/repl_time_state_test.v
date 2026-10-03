@@ -65,7 +65,7 @@ fn test_repl_bypasses_local_cmd_exe_on_windows() {
 		panic(err)
 	}
 	build_fake_cmd :=
-		os.execute('${os.quoted_path(vexec)} -o ${os.quoted_path(fake_cmd_exe)} ${os.quoted_path(fake_cmd_source)}')
+		os.exec([vexec, '-o', fake_cmd_exe, fake_cmd_source])
 	assert build_fake_cmd.exit_code == 0, build_fake_cmd.output
 	original_vexe := os.getenv('VEXE')
 	os.setenv('VEXE', vexec, true)

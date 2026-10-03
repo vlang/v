@@ -26,14 +26,35 @@ Ownership mode defines the target-visible custom option `ownership`. Code can us
 
 ## Creating owned values
 
-Call `.to_owned()` on a string to create an owned copy. Only strings created with
-`.to_owned()` participate in ownership tracking — regular string literals and primitive
-types (int, f64, bool, ...) are unaffected.
+Call `.to_owned()` on a string to create an owned copy. Copies made with `.clone()` also
+participate in ownership tracking. Regular string literals and primitive types
+(int, f64, bool, ...) are unaffected.
 
 ```v okfmt
 s := 'hello'.to_owned() // s is owned
 t := 'world' // t is a normal string, no ownership tracking
 ```
+
+Ordinary string slices allocate independent storage and are owned in ownership mode. Assigning,
+passing, or returning a slice transfers its ownership, and its buffer is freed when the owner
+leaves scope. The source remains usable. Addressed string ranges such as `&text[start..end]`
+borrow the original bytes in ownership mode and retain a stable slice header. The source must
+remain alive while the reference is used. A local dereference of a borrowed string or a builtin
+`string.substr_unsafe()` result retains a view of its source, including dereferences of
+pointer-returning calls; the source cannot be moved or reassigned while that view is live.
+Use `.to_owned()` or
+`.clone()` to create an owned copy. Borrowed views stored in owned aggregates or returned
+by value are copied so they can outlive the source.
+Reassigning a borrowed view releases its loan without freeing the source bytes.
+
+Standard string methods, numeric parsers, path inspection and joining functions, and
+string-builder writes borrow string arguments that cannot escape through the return value.
+Signed numeric parsing preserves the caller's string while removing a leading sign.
+Arguments that may be returned, such as the fallback of `string.substr_or()`, transfer ownership
+instead. Use `.clone()` when the caller also needs to keep an owned fallback. User functions with
+by-value string parameters still consume owned strings. When a parameter takes ownership, a regular
+string or borrowed view passed to it is copied for the callee, leaving the caller's value available.
+Returned copies remain owned; use `.clone()` when retaining another copy.
 
 ## Move semantics
 
@@ -78,6 +99,9 @@ println(s) // ok
 
 ## Borrowing
 
+Replacing an owned value evaluates its replacement before destroying the previous value.
+This also applies when the local value has been moved to heap storage.
+
 Pass `&variable` to borrow without moving. The original stays usable:
 
 ```v okfmt
@@ -91,6 +115,38 @@ fn main() {
 	println(s) // ok — s was borrowed, not moved
 }
 ```
+
+Struct fields can borrow arrays using `&[]T` in ownership mode. Initializing such a
+field with `&values` borrows the existing array instead of creating an owned copy.
+Array-slice references such as `&values[1..]` keep the original elements and a stable slice
+header. The backing value must remain alive while the reference is used. Copy the slice by
+value or use `.clone()` when independent storage is needed.
+
+Passing a fixed-array value to an `&[]T` parameter creates a separate dynamic array with
+durable element ownership. The original fixed-array storage does not escape. References
+inside the copied elements still borrow their original owners and cannot outlive them.
+
+Mutable receiver methods can return a reference to their receiver in ownership mode.
+The returned reference borrows the caller's value; the value must remain alive while it is used.
+
+A reference returned through a receiver call or an addressed range remains tied to its source
+storage and cannot escape the ownership scope of a local value. Caller-backed mutable parameters
+and explicit heap-pointer receivers can return such references. The check follows nested return
+aliases to their source regardless of call depth; unresolved alias cycles are rejected.
+The same rule applies to references returned inside options, results, arrays, struct fields,
+interfaces, or sum-type payloads.
+
+Addressed string ranges such as `&text[1..]` borrow their source's bytes. String literals
+and existing storage can supply those bytes, but a temporary string such as
+`&'abc'.repeat(n)[1..]` has no retained owner and is rejected. Assign the string to a variable
+before taking the range's address, and keep that variable alive while the reference is used.
+
+### Struct ownership markers
+
+The `Owned`, `Copy`, and `Drop` markers can appear in a struct's `implements` list in
+ownership mode without declaring interfaces for them. `Owned` enables move tracking,
+`Copy` enables copying, and `Drop` enables destruction with a custom `drop()` method.
+Declared types with these names still follow the usual interface checks.
 
 ### Explicit lifetimes
 

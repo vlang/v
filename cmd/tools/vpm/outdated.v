@@ -54,7 +54,7 @@ fn is_outdated(path string) bool {
 	for step in args.outdated {
 		cmd := [vcs.str(), args.path, os.quoted_path(path), step].join(' ')
 		vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
-		res := os.execute(cmd)
+		res := os.exec([vcs.str(), args.path, path, ...(os.split_args(step) or { panic(err) })])
 		vpm_log(@FILE_LINE, @FN, 'output: ${res.output}')
 		if res.exit_code != 0 {
 			return false

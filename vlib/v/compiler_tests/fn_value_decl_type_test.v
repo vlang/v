@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fn_value_decl_type_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -18,10 +19,10 @@ fn run_good(v3_bin string, name string, src string) string {
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
@@ -30,7 +31,7 @@ fn run_bad(v3_bin string, name string, src string) string {
 	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: reached C compiler: ${compile.output}'
 	return compile.output
@@ -41,7 +42,7 @@ fn gen_c(v3_bin string, name string, src string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C file ${c_path}'
 	return os.read_file(c_path) or { panic(err) }
@@ -69,10 +70,10 @@ fn run_project_good(v3_bin string, name string, files map[string]string) string 
 	root := write_project(name, files)
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
@@ -81,7 +82,7 @@ fn run_project_bad(v3_bin string, name string, files map[string]string) string {
 	root := write_project(name, files)
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: reached C compiler: ${compile.output}'
 	return compile.output
@@ -92,7 +93,7 @@ fn gen_project_c(v3_bin string, name string, files map[string]string) string {
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
 	main_path := os.join_path(root, 'main.v')
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C file ${c_path}'
 	return os.read_file(c_path) or { panic(err) }

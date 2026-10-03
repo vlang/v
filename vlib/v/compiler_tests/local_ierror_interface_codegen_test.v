@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_local_ierror_interface_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -91,7 +92,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_local_ierror_interface_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -106,7 +107,7 @@ fn main() {
 	assert !c_code.contains('string pkg__show_ref(IError* err)'), c_code
 	assert c_code.contains('typedef struct __v_result_IError {'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'local\nlocal-ref\nbuiltin'
 }

@@ -86,30 +86,32 @@ fn write_program(tmp_dir string, name string, source string) string {
 
 fn run_program_with_gc(tmp_dir string, name string, source string, mode string) os.Result {
 	source_path := write_program(tmp_dir, '${name}_${mode}', source)
-	return os.execute('${os.quoted_path(vexe)} -gc ${mode} run ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-gc', ...(os.split_args(mode) or { panic(err) }), 'run', source_path])
 }
 
 fn compile_program_with_gc(tmp_dir string, name string, source string, mode string) os.Result {
 	source_path := write_program(tmp_dir, '${name}_${mode}', source)
 	binary_path := os.join_path(tmp_dir, '${name}_${mode}')
-	return os.execute('${os.quoted_path(vexe)} -gc ${mode} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-gc', ...(os.split_args(mode) or { panic(err) }), '-o', binary_path,
+		source_path])
 }
 
 fn compile_freestanding_object(tmp_dir string, name string, source string) os.Result {
 	source_path := write_program(tmp_dir, name, source)
 	object_path := os.join_path(tmp_dir, '${name}.o')
-	return os.execute('${os.quoted_path(vexe)} -gc none -freestanding -no-std -is_o -o ${os.quoted_path(object_path)} ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-gc', 'none', '-freestanding', '-no-std', '-is_o', '-o', object_path,
+		source_path])
 }
 
 fn run_program_with_track_heap(tmp_dir string, name string, source string) os.Result {
 	source_path := write_program(tmp_dir, name, source)
-	return os.execute('${os.quoted_path(vexe)} -gc none -d track_heap run ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-gc', 'none', '-d', 'track_heap', 'run', source_path])
 }
 
 fn c_output_for_program(tmp_dir string, name string, source string) os.Result {
 	source_path := write_program(tmp_dir, name, source)
 	// These assertions verify the legacy C backend's ownership cleanup shape.
-	return os.execute('${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-o', '-', source_path])
 }
 
 fn assert_boehm_leak_compile_or_missing_lib(tmp_dir string, name string, source string) {
@@ -671,7 +673,7 @@ fn lazy_concurrent_lifetime_init_source() string {
 
 fn assert_misuse_program_passes(tmp_dir string, name string, source string) {
 	source_path := write_program(tmp_dir, name, source)
-	res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(source_path)}')
+	res := os.exec([vexe, 'run', source_path])
 	assert res.exit_code == 0, res.output
 }
 

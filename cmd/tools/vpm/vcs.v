@@ -26,9 +26,9 @@ const vcs_info = init_vcs_info() or {
 }
 
 fn init_vcs_info() !map[VCS]VCSInfo {
-	git_installed_raw_ver := parse_git_version(os.execute_opt('git --version')!.output) or { '' }
+	git_installed_raw_ver := parse_git_version(os.exec_opt(['git', '--version'])!.output) or { '' }
 	git_installed_ver := semver.from(git_installed_raw_ver)!
-	git_submod_filter_ver := semver.from('2.36.0')!
+	git_shallow_submod_ver := semver.from('2.36.0')!
 	mut git_install_args := ['clone', '--recursive']
 	if os.user_os() != 'windows' {
 		// The variation of environment factors on windows is too high;
@@ -36,10 +36,10 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 		// but can sometimes cause failures on windows for yet unknown reasons,
 		// see https://discord.com/channels/592103645835821068/665558664949530644/1345422482974310440
 		// for more details, about why this is now allowed only on != windows platforms.
-		git_install_args << '--filter=blob:none'
-		if git_installed_ver >= git_submod_filter_ver {
+		// Keep module blobs in the initial pack. Partial clones need another network
+		// fetch during checkout, which can stall installations such as `v install ui2`.
+		if git_installed_ver >= git_shallow_submod_ver {
 			git_install_args << '--shallow-submodules'
-			git_install_args << '--also-filter-submodules'
 		}
 	}
 	return {

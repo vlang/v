@@ -331,6 +331,174 @@ fn test_out_of_date_ignores_a_skill_that_is_not_bundled_anymore() {
 	assert skills.out_of_date(vroot, dir).len == 0
 }
 
+fn test_origin_state_is_current_after_an_install() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('origin_current')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{})!
+	assert skills.origin_state(vroot, dir, 'alpha') == .current
+}
+
+fn test_origin_state_is_stale_when_only_the_bundle_moved_on() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('origin_stale')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{})!
+	os.write_file(os.join_path_single(skill.directory, 'SKILL.md'),
+		'---\nname: alpha\ndescription: Test the alpha skill.\n---\n\n# alpha\n\nA newer body.\n')!
+	// The installed copy is untouched, so refreshing it cannot lose anything.
+	assert skills.origin_state(vroot, dir, 'alpha') == .stale
+	// The older content comparison calls this the same thing it calls a local
+	// edit, which is the distinction `origin_state` exists to make.
+	assert skills.out_of_date(vroot, dir) == ['alpha']
+}
+
+fn test_origin_state_is_modified_when_the_installed_copy_is_edited() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('origin_modified')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{})!
+	os.write_file(os.join_path(os.join_path_single(dir, 'alpha'), 'SKILL.md'), 'edited here\n')!
+	assert skills.origin_state(vroot, dir, 'alpha') == .modified
+}
+
+fn test_origin_state_is_unknown_without_a_record() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('origin_unknown')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{})!
+	// An installation from before the record existed: the files are there, but
+	// nothing says what was installed, so `current` cannot be claimed.
+	os.rm(os.join_path_single(dir, skills.origin_file))!
+	assert skills.origin_state(vroot, dir, 'alpha') == .unknown
+}
+
+fn test_origin_state_is_current_for_a_skill_that_is_no_longer_bundled() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('origin_dropped')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{})!
+	os.rmdir_all(os.join_path(vroot, 'vlib', 'v', 'skills', 'alpha'))!
+	// There is no newer copy to move to, so this is not work waiting to be done.
+	assert skills.origin_state(vroot, dir, 'alpha') == .current
+}
+
+fn test_the_origin_file_is_neither_a_skill_nor_part_of_one() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('origin_invisible')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{})!
+	// The record sits beside the skills rather than inside one, so it is not
+	// listed as a skill and is never compared as skill content.
+	assert os.is_file(os.join_path_single(dir, skills.origin_file))
+	assert skills.installed(dir) == ['alpha']
+	assert skills.out_of_date(vroot, dir).len == 0
+	assert skills.origin_state(vroot, dir, 'alpha') == .current
+}
+
+fn test_installing_one_skill_keeps_the_record_of_another() {
+	vroot := fixture_root(['alpha', 'beta'])!
+	dir := scratch_dir('origin_siblings')!
+	alpha := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	beta := skills.find(vroot, 'beta') or { panic('beta is missing') }
+	skills.install(alpha, dir, skills.InstallOptions{})!
+	skills.install(beta, dir, skills.InstallOptions{})!
+	// A record that was rewritten rather than merged would leave alpha with no
+	// entry at all, which reads as `unknown` rather than `current`.
+	assert skills.origin_state(vroot, dir, 'alpha') == .current
+	assert skills.origin_state(vroot, dir, 'beta') == .current
+}
+
+fn test_a_dry_run_records_nothing() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('origin_dry')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	result := skills.install(skill, dir, skills.InstallOptions{
+		dry_run: true
+	})!
+	assert result.dry_run
+	assert !os.exists(os.join_path_single(dir, skills.origin_file))
+	assert skills.installed(dir).len == 0
+}
+
+fn test_forget_origin_drops_the_record_and_leaves_the_files() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('origin_forget')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{})!
+	assert skills.origin_state(vroot, dir, 'alpha') == .current
+	skills.forget_origin(dir, 'alpha')
+	assert skills.origin_state(vroot, dir, 'alpha') == .unknown
+	// Only the record is gone.
+	assert skills.installed(dir) == ['alpha']
+	assert skills.out_of_date(vroot, dir).len == 0
+}
+
+fn test_forget_origin_ignores_a_skill_that_has_no_record() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('origin_forget_absent')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{})!
+	skills.forget_origin(dir, 'beta')
+	assert skills.origin_state(vroot, dir, 'alpha') == .current
+}
+
+fn test_remove_forgets_the_record_it_left_behind() {
+	vroot := fixture_root(['alpha', 'beta'])!
+	dir := scratch_dir('origin_removed')!
+	alpha := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	beta := skills.find(vroot, 'beta') or { panic('beta is missing') }
+	skills.install(alpha, dir, skills.InstallOptions{})!
+	skills.install(beta, dir, skills.InstallOptions{})!
+	skills.remove(dir, 'alpha')!
+	assert skills.installed(dir) == ['beta']
+	// Removing one skill keeps the record the other one needs.
+	assert skills.origin_state(vroot, dir, 'beta') == .current
+	assert os.is_file(os.join_path_single(dir, skills.origin_file))
+	// Put alpha's files back by hand, so the state that comes out is decided by
+	// the record rather than by an install writing a fresh one. Identical content
+	// under a surviving record would read as `current`, which would be a claim
+	// about an installation that no longer exists.
+	for relative in skills.list_files(alpha.directory) {
+		target := os.join_path(os.join_path_single(dir, 'alpha'), relative)
+		os.mkdir_all(os.dir(target))!
+		os.write_file(target, os.read_file(os.join_path(alpha.directory, relative))!)!
+	}
+	assert skills.origin_state(vroot, dir, 'alpha') == .unknown
+	// With the last skill gone the record goes too, rather than sitting there
+	// empty in a directory that holds no skills.
+	skills.remove(dir, 'beta')!
+	assert !os.exists(os.join_path_single(dir, skills.origin_file))
+}
+
+fn test_content_digest_covers_the_names_and_not_their_order() {
+	vroot := fixture_root(['alpha'])!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	files := skills.list_files(skill.directory)
+	direct := skills.content_digest(skill.directory, files)!
+	assert skills.content_digest(skill.directory, files.clone().reverse())! == direct
+	// A different file under the same bytes is a different installation.
+	assert skills.content_digest(skill.directory, files[1..])! != direct
+	// Content is part of it too, and where the file sits is not: the same name
+	// with the same bytes digests the same in any directory.
+	first := os.join_path(os.join_path(test_root, 'digest'), 'first')
+	second := os.join_path(os.join_path(test_root, 'digest'), 'second')
+	os.mkdir_all(first)!
+	os.mkdir_all(second)!
+	os.write_file(os.join_path_single(first, 'one.md'), 'body\n')!
+	os.write_file(os.join_path_single(second, 'one.md'), 'body\n')!
+	assert skills.content_digest(first, ['one.md'])! ==
+		skills.content_digest(second, ['one.md'])!
+	os.write_file(os.join_path_single(second, 'one.md'), 'other body\n')!
+	assert skills.content_digest(first, ['one.md'])! !=
+		skills.content_digest(second, ['one.md'])!
+	// A rename under the same bytes is a different installation, which is what
+	// makes a renamed file read as a local change rather than as untouched.
+	os.mv(os.join_path_single(second, 'one.md'), os.join_path_single(second, 'renamed.md'))!
+	assert skills.content_digest(first, ['one.md'])! !=
+		skills.content_digest(second, ['renamed.md'])!
+}
+
 fn test_target_dir_selects_the_project_or_the_home_directory() {
 	project := os.join_path(test_root, 'proj')
 	assert skills.target_dir(.project_root, project) ==
@@ -588,3 +756,80 @@ fn split_front_matter(content string) ([]string, string) {
 
 // max_line_length is the limit `v check-md` puts on an ordinary markdown line.
 const max_line_length = 100
+
+fn test_install_refuses_symlink_provenance_before_changing_content() {
+	$if windows {
+		return
+	}
+	vroot := fixture_root(['alpha'])!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	dir := scratch_dir('origin_link')!
+	outside := os.join_path(test_root, 'outside.txt')
+	os.write_file(outside, 'keep outside content')!
+	origin := os.join_path(dir, skills.origin_file)
+	os.symlink(outside, origin)!
+	skills.install(skill, dir, skills.InstallOptions{}) or {
+		assert err.msg().contains('symlink provenance')
+		assert os.read_file(outside)! == 'keep outside content'
+		assert !os.exists(os.join_path(dir, 'alpha'))
+		return
+	}
+	assert false, 'installation followed the provenance link'
+}
+
+fn test_forget_origin_refuses_a_symlink_provenance_rewrite() {
+	$if windows {
+		return
+	}
+	vroot := fixture_root(['alpha', 'beta'])!
+	dir := scratch_dir('forget_origin_link')!
+	for name in ['alpha', 'beta'] {
+		skill := skills.find(vroot, name) or { panic('missing bundle') }
+		skills.install(skill, dir, skills.InstallOptions{})!
+	}
+	origin := os.join_path(dir, skills.origin_file)
+	content := os.read_file(origin)!
+	outside := os.join_path(test_root, 'outside-origin.json')
+	os.write_file(outside, content)!
+	os.rm(origin)!
+	os.symlink(outside, origin)!
+	skills.forget_origin(dir, 'alpha')
+	assert os.read_file(outside)! == content
+	assert os.is_link(origin)
+}
+
+fn test_install_refuses_nonregular_provenance_before_changing_content() {
+	vroot := fixture_root(['alpha'])!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	dir := scratch_dir('origin_directory')!
+	os.mkdir(os.join_path(dir, skills.origin_file))!
+	skills.install(skill, dir, skills.InstallOptions{}) or {
+		assert err.msg().contains('not a regular file')
+		assert !os.exists(os.join_path(dir, 'alpha'))
+		return
+	}
+	assert false, 'installation accepted a directory as its provenance file'
+}
+
+fn test_unreadable_local_edit_cannot_be_classified_as_stale() {
+	$if windows {
+		return
+	}
+	$if !windows {
+		if os.getuid() == 0 { return }
+	}
+	vroot := fixture_root(['alpha'])!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	supplementary := os.join_path(skill.directory, 'references', 'notes.md')
+	os.write_file(supplementary, '')!
+	dir := scratch_dir('unreadable_edit')!
+	skills.install(skill, dir, skills.InstallOptions{})!
+	installed := os.join_path(dir, 'alpha', 'references', 'notes.md')
+	os.write_file(installed, 'local work')!
+	os.chmod(installed, 0o000)!
+	defer { os.chmod(installed, 0o600) or {} }
+	os.write_file(supplementary, 'new bundle')!
+	assert skills.origin_state(vroot, dir, 'alpha') == .unknown
+	skills.content_digest(os.join_path(dir, 'alpha'), skill.files) or { return }
+	assert false, 'unreadable file was hashed as empty'
+}

@@ -30,7 +30,7 @@ fn check_private_receiver(name string, source string, run bool) os.Result {
 	file := os.join_path(base, 'main.v')
 	os.write_file(file, 'import counter\n' + source) or { panic(err) }
 	mode := if run { 'run' } else { '-check' }
-	return os.execute('${os.quoted_path(@VEXE)} -new-compiler ${mode} ${os.quoted_path(file)}')
+	return os.exec([@VEXE, '-new-compiler', ...(os.split_args(mode) or { panic(err) }), file])
 }
 
 fn test_private_mut_method_rejects_immutable_local() {

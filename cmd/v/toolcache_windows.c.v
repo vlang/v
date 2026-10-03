@@ -18,6 +18,10 @@ fn C.v_toolcache_get_file_information(handle voidptr, information voidptr) int
 
 fn C.v_toolcache_close_handle(handle voidptr) int
 
+fn C.v_toolcache_file_is_disk(handle voidptr) int
+
+fn C.v_toolcache_read_file(handle voidptr, buffer voidptr, size u32, read &u32) int
+
 fn C.v_toolcache_root_is_private(const_path &u16) int
 
 struct WindowsToolCacheFileInformation {
@@ -96,6 +100,42 @@ fn (entry ToolCacheEntryDir) publish(source string, name string) bool {
 
 fn (entry ToolCacheEntryDir) remove(name string) {
 	os.rm(os.join_path(entry.path, name)) or {}
+}
+
+// read_metadata pins the child file, rejects reparse points and directories, and reads from
+// that handle. The entry's handle prevents its parent pathname from being replaced.
+fn (entry ToolCacheEntryDir) read_metadata(name string) ?string {
+	w_path := os.join_path(entry.path, name).replace('/', '\\').to_wide()
+	defer {
+		unsafe { free(voidptr(w_path)) }
+	}
+	handle := C.v_toolcache_create_file_w(w_path, u32(0x80000000), toolcache_windows_file_share_read_write,
+		toolcache_windows_open_existing, toolcache_windows_file_attribute_normal | toolcache_windows_file_flag_open_reparse_point)
+	if handle == voidptr(-1) {
+		return none
+	}
+	defer {
+		C.v_toolcache_close_handle(handle)
+	}
+	mut information := WindowsToolCacheFileInformation{}
+	if C.v_toolcache_get_file_information(handle, voidptr(&information)) == 0
+		|| information.file_attributes & toolcache_windows_file_attribute_directory != 0
+		|| information.file_attributes & toolcache_windows_file_attribute_reparse_point != 0
+		|| C.v_toolcache_file_is_disk(handle) == 0 {
+		return none
+	}
+	mut chunks := []string{}
+	mut buffer := []u8{len: 4096}
+	for {
+		mut count := u32(0)
+		if C.v_toolcache_read_file(handle, buffer.data, u32(buffer.len), &count) == 0 {
+			return none
+		}
+		if count == 0 {
+			return chunks.join('')
+		}
+		chunks << buffer[..int(count)].bytestr()
+	}
 }
 
 // ensure_tool_cache_lock_file creates the persistent file used to serialize every cache key

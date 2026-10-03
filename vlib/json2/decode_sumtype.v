@@ -24,7 +24,7 @@ fn option_payload_tag[P](_ ?P) string {
 }
 
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
-	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
+	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
 		resolved_sumtype := initialized_sumtype
 		// `is` does not tell an alias variant from its base type (`MyString | string`
 		// matches both), so prefer the variant with the exact type name.
@@ -47,8 +47,8 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 					decoder.decode_value(mut val)!
 					return T(val)
 				} $else {
-					if decoder.current_node.value.value_kind == .null {
-						decoder.current_node = decoder.current_node.next
+					if decoder.current_value().value_kind == .null {
+						decoder.current_idx++
 						return resolved_sumtype
 					} else {
 						// The payload of an option variant, like in the removed `json` module.
@@ -64,13 +64,16 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 	return initialized_sumtype // suppress compiler error
 }
 
-fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &DecodeNode[ValueInfo]) bool {
-	if current_node == unsafe { nil } {
+// check_element_type_valid reports whether the value at `value_idx` in values_info
+// has the shape of `element`.
+fn (mut decoder Decoder) check_element_type_valid[T](element T, value_idx int) bool {
+	if !decoder.has_value(value_idx) {
 		$if element is $array || element is $map {
 			return false
 		}
 		return true
 	}
+	value_kind := decoder.values_info[value_idx].value_kind
 
 	$if element is $sumtype { // this will always match the first sumtype array/map
 		return true
@@ -78,13 +81,13 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &De
 	$if element is $option {
 		// A `none` element is `null`, or `{}` as the removed module wrote it; a set one
 		// has the shape of its payload.
-		if current_node.value.value_kind == .null || decoder.is_empty_object(current_node) {
+		if value_kind == .null || decoder.is_empty_object(value_idx) {
 			return true
 		}
-		return decoder.check_option_element_valid(element, current_node)
+		return decoder.check_option_element_valid(element, value_idx)
 	}
 
-	match current_node.value.value_kind {
+	match value_kind {
 		.string {
 			$if element is string {
 				return true
@@ -121,18 +124,15 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &De
 		}
 		.array {
 			$if element is $array {
-				return decoder.check_array_type_valid(element, current_node.next)
+				return decoder.check_array_type_valid(element, value_idx + 1)
 			}
 		}
 		.object {
 			$if element is $map {
-				if current_node.next != unsafe { nil } {
-					return decoder.check_map_type_valid(element, current_node.next.next)
-				} else {
-					return decoder.check_map_type_valid(element, unsafe { nil })
-				}
+				// The first value of the object, after its first key.
+				return decoder.check_map_type_valid(element, value_idx + 2)
 			} $else $if element is $struct {
-				return decoder.check_struct_type_valid(element, current_node)
+				return decoder.check_struct_type_valid(element, value_idx)
 			}
 		}
 	}
@@ -140,35 +140,37 @@ fn (mut decoder Decoder) check_element_type_valid[T](element T, current_node &De
 	return false
 }
 
-fn (mut decoder Decoder) check_option_element_valid[P](_ ?P, current_node &DecodeNode[ValueInfo]) bool {
-	return decoder.check_element_type_valid(P{}, current_node)
+fn (mut decoder Decoder) check_option_element_valid[P](_ ?P, value_idx int) bool {
+	return decoder.check_element_type_valid(P{}, value_idx)
 }
 
-// is_empty_object reports whether `node` is an object without members (`{}`).
-fn (decoder &Decoder) is_empty_object(node &DecodeNode[ValueInfo]) bool {
-	if node.value.value_kind != .object {
+// is_empty_object reports whether the value at `value_idx` is an object without
+// members (`{}`).
+fn (decoder &Decoder) is_empty_object(value_idx int) bool {
+	value_info := decoder.values_info[value_idx]
+	if value_info.value_kind != .object {
 		return false
 	}
-	end := node.value.position + node.value.length
-	return node.next == unsafe { nil } || node.next.value.position >= end
+	end := value_info.position + value_info.length
+	return !decoder.has_value(value_idx + 1) || decoder.values_info[value_idx + 1].position >= end
 }
 
 fn get_array_element_type[T](_arr []T) T {
 	return T{}
 }
 
-fn (mut decoder Decoder) check_array_type_valid[T](arr []T, current_node &DecodeNode[ValueInfo]) bool {
+fn (mut decoder Decoder) check_array_type_valid[T](arr []T, value_idx int) bool {
 	element := get_array_element_type(arr)
-	return decoder.check_element_type_valid(element, current_node)
+	return decoder.check_element_type_valid(element, value_idx)
 }
 
 fn (mut decoder Decoder) get_array_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
+	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $array {
 					return decoder.check_element_type_valid(initialized_sumtype,
-						decoder.current_node)
+						decoder.current_idx)
 				}
 			}
 		}
@@ -180,27 +182,24 @@ fn get_map_element_type[U, V](_m map[U]V) V {
 	return V{}
 }
 
-fn (mut decoder Decoder) check_map_type_valid[T](m T, current_node &DecodeNode[ValueInfo]) bool {
+fn (mut decoder Decoder) check_map_type_valid[T](m T, value_idx int) bool {
 	element := get_map_element_type(m)
-	return decoder.check_element_type_valid(element, current_node)
+	return decoder.check_element_type_valid(element, value_idx)
 }
 
 fn (mut decoder Decoder) check_map_empty_valid[T](m T) bool {
 	element := get_map_element_type(m)
-	return decoder.check_element_type_valid(element, current_node)
+	return decoder.check_element_type_valid(element, no_value_idx)
 }
 
 fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool {
-	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
+	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $map {
 					val := $zero(v.typ)
-					if decoder.current_node.next != unsafe { nil } {
-						return decoder.check_map_type_valid(val, decoder.current_node.next.next)
-					} else {
-						return decoder.check_map_type_valid(val, unsafe { nil })
-					}
+					// The first value of the object, after its first key.
+					return decoder.check_map_type_valid(val, decoder.current_idx + 2)
 				}
 			}
 		}
@@ -208,42 +207,46 @@ fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool 
 	return false
 }
 
-@[markused]
-fn (mut decoder Decoder) get_sumtype_type_field_node(current_node &DecodeNode[ValueInfo]) &DecodeNode[ValueInfo] {
-	if current_node == unsafe { nil } || current_node.value.value_kind != .object {
-		return unsafe { nil }
+// get_sumtype_type_field_idx returns the index in values_info of the value of the
+// `_type` key of the object at `value_idx`, or no_value_idx without such a key.
+@[direct_array_access; markused]
+fn (mut decoder Decoder) get_sumtype_type_field_idx(value_idx int) int {
+	if !decoder.has_value(value_idx) || decoder.values_info[value_idx].value_kind != .object {
+		return no_value_idx
 	}
 	// Look at the object's own keys only: a nested value (such as a field holding
 	// another sum type, which is encoded before the outer `_type`) can have a
 	// `_type` of its own.
-	object_end := current_node.value.position + current_node.value.length
-	mut key_node := current_node.next
-	for key_node != unsafe { nil } && key_node.value.position < object_end {
-		value_node := key_node.next
-		if value_node == unsafe { nil } {
+	object_info := decoder.values_info[value_idx]
+	object_end := object_info.position + object_info.length
+	values_len := decoder.values_info.len
+	mut key_idx := value_idx + 1
+	for key_idx < values_len && decoder.values_info[key_idx].position < object_end {
+		key_value_idx := key_idx + 1
+		if key_value_idx >= values_len {
 			break
 		}
 		// A key spelled with escapes (`"_\u0074ype"`) is `_type` after unescaping.
-		if decoder.json_key_matches(key_node.value, '_type') or { false } {
-			return value_node
+		if decoder.json_key_matches(decoder.values_info[key_idx], '_type') or { false } {
+			return key_value_idx
 		}
 		// Skip the value, with everything nested in it.
-		value_end := value_node.value.position + value_node.value.length
-		mut next_node := value_node.next
-		for next_node != unsafe { nil } && next_node.value.position < value_end {
-			next_node = next_node.next
+		value_info := decoder.values_info[key_value_idx]
+		value_end := value_info.position + value_info.length
+		key_idx = key_value_idx + 1
+		for key_idx < values_len && decoder.values_info[key_idx].position < value_end {
+			key_idx++
 		}
-		key_node = next_node
 	}
-	return unsafe { nil }
+	return no_value_idx
 }
 
 @[markused]
-fn (mut decoder Decoder) sumtype_type_field_matches(type_field_node &DecodeNode[ValueInfo], expected string) bool {
-	if type_field_node == unsafe { nil } {
+fn (mut decoder Decoder) sumtype_type_field_matches(type_field_idx int, expected string) bool {
+	if !decoder.has_value(type_field_idx) {
 		return false
 	}
-	value_info := type_field_node.value
+	value_info := decoder.values_info[type_field_idx]
 	if value_info.value_kind != .string {
 		return false
 	}
@@ -256,16 +259,16 @@ fn (mut decoder Decoder) sumtype_type_field_matches(type_field_node &DecodeNode[
 	return body == expected
 }
 
-fn (mut decoder Decoder) check_sumtype_type_valid[T](value T, current_node &DecodeNode[ValueInfo]) bool {
-	type_field_node := decoder.get_sumtype_type_field_node(current_node)
+fn (mut decoder Decoder) check_sumtype_type_valid[T](value T, value_idx int) bool {
+	type_field_idx := decoder.get_sumtype_type_field_idx(value_idx)
 	// An alias of a struct is tagged with its own name, or with the struct's name.
-	return decoder.sumtype_type_field_matches(type_field_node,
+	return decoder.sumtype_type_field_matches(type_field_idx,
 		sumtype_variant_name(typeof(value).name))
-		|| decoder.sumtype_type_field_matches(type_field_node, struct_variant_tag[T]())
+		|| decoder.sumtype_type_field_matches(type_field_idx, struct_variant_tag[T]())
 }
 
-fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node &DecodeNode[ValueInfo]) bool {
-	return decoder.check_sumtype_type_valid(s, current_node)
+fn (mut decoder Decoder) check_struct_type_valid[T](s T, value_idx int) bool {
+	return decoder.check_sumtype_type_valid(s, value_idx)
 }
 
 // resolve_sumtype_from_type_field selects the struct (or time.Time) variant named by
@@ -273,8 +276,8 @@ fn (mut decoder Decoder) check_struct_type_valid[T](s T, current_node &DecodeNod
 // building a variant runs its field defaults, which may have side effects, so only
 // the selected variant may be built.
 fn (mut decoder Decoder) resolve_sumtype_from_type_field[T](mut val T) !bool {
-	type_field_node := decoder.get_sumtype_type_field_node(decoder.current_node)
-	if type_field_node == unsafe { nil } {
+	type_field_idx := decoder.get_sumtype_type_field_idx(decoder.current_idx)
+	if type_field_idx == no_value_idx {
 		return false
 	}
 	mut has_discriminated_variant := false
@@ -295,7 +298,7 @@ fn (mut decoder Decoder) resolve_sumtype_from_type_field[T](mut val T) !bool {
 					} else {
 						sumtype_variant_name(typeof(v.typ).name.trim_left('?'))
 					}
-					if decoder.sumtype_type_field_matches(type_field_node, name) {
+					if decoder.sumtype_type_field_matches(type_field_idx, name) {
 						val = T(v)
 						return true
 					}
@@ -307,7 +310,7 @@ fn (mut decoder Decoder) resolve_sumtype_from_type_field[T](mut val T) !bool {
 				} else {
 					sumtype_variant_name(typeof(v.typ).name)
 				}
-				if decoder.sumtype_type_field_matches(type_field_node, name) {
+				if decoder.sumtype_type_field_matches(type_field_idx, name) {
 					val = T(v)
 					return true
 				}
@@ -452,7 +455,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 		// If there is only one struct variant and no explicit `_type` key,
 		// the object shape is already unambiguous.
 		if struct_variant_count == 1
-			&& decoder.get_sumtype_type_field_node(decoder.current_node) == unsafe { nil } {
+			&& decoder.get_sumtype_type_field_idx(decoder.current_idx) == no_value_idx {
 			$for v in T.variants {
 				$if v.typ is $struct {
 					val = T(v)
@@ -508,7 +511,7 @@ fn option_payload_fit[P](_ ?P, kind ValueKind) int {
 }
 
 fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
-	value_info := decoder.current_node.value
+	value_info := decoder.current_value()
 
 	decoder.init_sumtype_by_value_kind(mut val, value_info)!
 

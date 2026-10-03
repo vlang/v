@@ -26,7 +26,8 @@ fn read_c_output_fifo(path string, result chan string) {
 fn test_c_output_path_only_writes_c_file() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_output_only_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	c_out := os.join_path(os.temp_dir(), 'v3_output_only.c')
@@ -39,7 +40,7 @@ fn test_c_output_path_only_writes_c_file() {
 	// Its pointer-to-integer field assignment used to be lowered as a managed
 	// closure temporary, making this cgen path crash intermittently.
 	for _ in 0 .. 16 {
-		compile = os.execute('${v3_bin} -gc none -o ${c_out} ${hello_src}')
+		compile = os.exec([v3_bin, '-gc', 'none', '-o', '${c_out}', '${hello_src}'])
 		assert compile.exit_code == 0, compile.output
 	}
 	assert os.exists(c_out)
@@ -50,7 +51,7 @@ fn test_c_output_path_only_writes_c_file() {
 	// A C-only build is silent, so the pipeline has to be observed with `-v`: it
 	// must reach cgen and stop there, without handing anything to a C compiler.
 	os.rm(c_out) or {}
-	verbose_compile := os.execute('${v3_bin} -v -gc none -o ${c_out} ${hello_src}')
+	verbose_compile := os.exec([v3_bin, '-v', '-gc', 'none', '-o', '${c_out}', '${hello_src}'])
 	assert verbose_compile.exit_code == 0, verbose_compile.output
 	assert os.exists(c_out)
 	assert !os.exists(bin_out)
@@ -64,11 +65,11 @@ fn test_c_output_path_only_writes_c_file() {
 		defer {
 			os.rm(fifo_out) or {}
 		}
-		mkfifo := os.execute('mkfifo ${os.quoted_path(fifo_out)}')
+		mkfifo := os.exec(['mkfifo', '${fifo_out}'])
 		assert mkfifo.exit_code == 0, mkfifo.output
 		fifo_result := chan string{cap: 1}
 		reader := spawn read_c_output_fifo(fifo_out, fifo_result)
-		fifo_compile := os.execute('${v3_bin} -gc none -o ${os.quoted_path(fifo_out)} ${hello_src}')
+		fifo_compile := os.exec([v3_bin, '-gc', 'none', '-o', '${fifo_out}', '${hello_src}'])
 		fifo_source := <-fifo_result
 		reader.wait()
 		assert fifo_compile.exit_code == 0, fifo_compile.output

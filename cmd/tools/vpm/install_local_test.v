@@ -3,7 +3,7 @@ module main
 import os
 import rand
 import v.vmod
-import test_utils { cmd_fail, cmd_ok }
+import test_utils { cmd_fail_args, cmd_ok_args }
 
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_local_test_${rand.ulid()}')
 
@@ -79,7 +79,7 @@ fn test_install_from_local_git_repository_variants() {
 		if c.workdir != '' {
 			os.chdir(c.workdir) or { panic(err) }
 		}
-		res := cmd_ok(@LOCATION, cmd)
+		res := cmd_ok_args(@LOCATION, [vexe, 'install', '${c.args}'])
 		if c.workdir != '' {
 			os.chdir(old_dir) or {}
 		}
@@ -108,7 +108,7 @@ fn test_update_and_remove_with_capitalized_ident() {
 	os.write_file(os.join_path(installed_path, 'v.mod'),
 		"Module{\n\tname: 'Frothy7650.chalk'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
 	// Remove with the original (capitalized) ident must succeed and clean up the author dir.
-	res := cmd_ok(@LOCATION, '${vexe} remove Frothy7650.chalk')
+	res := cmd_ok_args(@LOCATION, [vexe, 'remove', 'Frothy7650.chalk'])
 	assert !res.output.contains('failed to find'), res.output
 	assert !os.exists(installed_path)
 	assert !os.exists(publisher_dir)
@@ -123,7 +123,7 @@ fn test_install_warns_about_normalized_module_name() {
 	repo_path := os.join_path(test_path, 'hyphenated_repo')
 	create_local_git_module(repo_path, 'my-mod')
 
-	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	res := cmd_ok_args(@LOCATION, [vexe, 'install', repo_path])
 	assert res.output.contains('`my-mod` is not a valid V import path, it was installed as `my_mod`.'), res.output
 	assert res.output.contains('Use `my_mod` as the normalized import prefix'), res.output
 	assert os.exists(os.join_path(vmodules_path, 'my_mod', 'v.mod'))
@@ -135,7 +135,7 @@ fn test_install_maps_manifest_dots_to_import_directories() {
 	repo_path := os.join_path(test_path, 'dotted_repo')
 	create_local_git_module(repo_path, 'Foo.bar.baz')
 
-	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	res := cmd_ok_args(@LOCATION, [vexe, 'install', repo_path])
 	assert res.output.contains('`Foo.bar.baz` is not a valid V import path, it was installed as `foo.bar.baz`.'), res.output
 
 	assert res.output.contains('Use `foo.bar.baz` as the normalized import prefix'), res.output
@@ -149,7 +149,7 @@ fn test_install_warns_when_repeated_dots_are_collapsed() {
 	repo_path := os.join_path(test_path, 'repeated_dots_repo')
 	create_local_git_module(repo_path, 'foo..bar')
 
-	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	res := cmd_ok_args(@LOCATION, [vexe, 'install', repo_path])
 	assert res.output.contains('`foo..bar` is not a valid V import path, it was installed as `foo.bar`.'), res.output
 
 	assert os.exists(os.join_path(vmodules_path, 'foo', 'bar', 'v.mod'))
@@ -172,7 +172,7 @@ fn test_dotted_install_does_not_nest_inside_existing_module() {
 	repo_path := os.join_path(test_path, 'nested_dotted_repo')
 	create_local_git_module(repo_path, 'foo.bar')
 
-	res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	res := cmd_fail_args(@LOCATION, [vexe, 'install', repo_path])
 	assert res.output.contains('refusing to install `foo.bar` inside existing module'), res.output
 	assert !os.exists(os.join_path(vmodules_path, 'foo', 'bar'))
 }
@@ -184,13 +184,13 @@ fn test_dotted_install_does_not_nest_inside_git_worktree() {
 	create_local_git_module(source_repo_path, 'foo')
 	worktree_path := os.join_path(vmodules_path, 'foo')
 	os.mkdir_all(vmodules_path) or { panic(err) }
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(source_repo_path)} worktree add -b vpm-test ${os.quoted_path(worktree_path)}')
+	cmd_ok_args(@LOCATION, ['git', '-C', source_repo_path, 'worktree', 'add', '-b', 'vpm-test',
+		worktree_path])
 	assert os.is_file(os.join_path(worktree_path, '.git'))
 	nested_repo_path := os.join_path(test_path, 'worktree_ancestor_nested')
 	create_local_git_module(nested_repo_path, 'foo.bar')
 
-	res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(nested_repo_path)}')
+	res := cmd_fail_args(@LOCATION, [vexe, 'install', nested_repo_path])
 	assert res.output.contains('refusing to install `foo.bar` inside existing module'), res.output
 	assert !os.exists(os.join_path(worktree_path, 'bar'))
 }
@@ -200,11 +200,11 @@ fn test_root_install_does_not_replace_existing_module_namespace() {
 	test_utils.set_test_env(vmodules_path)
 	nested_repo_path := os.join_path(test_path, 'existing_namespace_nested_repo')
 	create_local_git_module(nested_repo_path, 'foo.bar')
-	cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(nested_repo_path)}')
+	cmd_ok_args(@LOCATION, [vexe, 'install', nested_repo_path])
 	root_repo_path := os.join_path(test_path, 'existing_namespace_root_repo')
 	create_local_git_module(root_repo_path, 'foo')
 
-	res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(root_repo_path)}')
+	res := cmd_fail_args(@LOCATION, [vexe, 'install', root_repo_path])
 	assert res.output.contains('refusing to install `foo`: destination'), res.output
 	assert os.exists(os.join_path(vmodules_path, 'foo', 'bar', 'v.mod'))
 	entries := os.ls(os.join_path(vmodules_path, 'foo')) or { panic(err) }
@@ -218,7 +218,7 @@ fn test_direct_install_rejects_different_repository_at_same_path() {
 	second_repo_path := os.join_path(test_path, 'repository_collision_second')
 	create_local_git_module(first_repo_path, 'foo.bar')
 	create_local_git_module(second_repo_path, 'foo.bar')
-	cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(first_repo_path)}')
+	cmd_ok_args(@LOCATION, [vexe, 'install', first_repo_path])
 	installed_path := os.join_path(vmodules_path, 'foo', 'bar')
 	mut registered_mod := Module{
 		name:         'foo.bar'
@@ -229,10 +229,10 @@ fn test_direct_install_rejects_different_repository_at_same_path() {
 	registered_mod.get_installed()
 	assert !registered_mod.is_installed
 
-	res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(second_repo_path)}')
+	res := cmd_fail_args(@LOCATION, [vexe, 'install', second_repo_path])
 	assert res.output.contains('refusing to install `foo.bar`: destination'), res.output
 	remote :=
-		cmd_ok(@LOCATION, 'git -C ${os.quoted_path(installed_path)} remote get-url origin').output.trim_space()
+		cmd_ok_args(@LOCATION, ['git', '-C', installed_path, 'remote', 'get-url', 'origin']).output.trim_space()
 	assert os.real_path(remote) == os.real_path(first_repo_path)
 }
 
@@ -256,7 +256,7 @@ fn test_dotted_install_does_not_follow_linked_namespace() {
 		nested_repo_path := os.join_path(test_path, 'linked_namespace_nested_repo')
 		create_local_git_module(nested_repo_path, 'foo.bar')
 
-		res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(nested_repo_path)}')
+		res := cmd_fail_args(@LOCATION, [vexe, 'install', nested_repo_path])
 		assert res.output.contains('refusing to install `foo.bar` outside the V modules directory'), res.output
 
 		assert !os.exists(os.join_path(linked_repo_path, 'bar'))
@@ -273,7 +273,7 @@ fn test_dotted_install_rejects_linked_namespace_inside_vmodules() {
 		repo_path := os.join_path(test_path, 'internal_linked_namespace_repo')
 		create_local_git_module(repo_path, 'foo.bar')
 
-		res := cmd_fail(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+		res := cmd_fail_args(@LOCATION, [vexe, 'install', repo_path])
 		assert res.output.contains('refusing to install `foo.bar` inside a symlinked module namespace'), res.output
 
 		assert !os.exists(os.join_path(real_namespace, 'bar'))
@@ -285,9 +285,9 @@ fn test_remove_prunes_deep_empty_module_namespaces() {
 	test_utils.set_test_env(vmodules_path)
 	repo_path := os.join_path(test_path, 'remove_namespaces_repo')
 	create_local_git_module(repo_path, 'foo.bar.baz')
-	cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	cmd_ok_args(@LOCATION, [vexe, 'install', repo_path])
 
-	cmd_ok(@LOCATION, '${vexe} remove foo.bar.baz')
+	cmd_ok_args(@LOCATION, [vexe, 'remove', 'foo.bar.baz'])
 	assert !os.exists(os.join_path(vmodules_path, 'foo'))
 }
 
@@ -322,9 +322,9 @@ fn test_installed_module_discovery_ignores_unrelated_vcs_directories() {
 	vmodules_path := os.join_path(test_path, 'vmodules_unrelated_repository')
 	unrelated_path := os.join_path(vmodules_path, 'cache', 'unrelated')
 	os.mkdir_all(unrelated_path) or { panic(err) }
-	cmd_ok(@LOCATION, 'git init ${os.quoted_path(unrelated_path)}')
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(unrelated_path)} remote add origin https://github.com/other/repository')
+	cmd_ok_args(@LOCATION, ['git', 'init', unrelated_path])
+	cmd_ok_args(@LOCATION, ['git', '-C', unrelated_path, 'remote', 'add', 'origin',
+		'https://github.com/other/repository'])
 	assert 'cache.unrelated' !in get_installed_modules_in(vmodules_path)
 }
 
@@ -332,9 +332,9 @@ fn test_installed_module_discovery_preserves_manifestless_registered_checkout() 
 	vmodules_path := os.join_path(test_path, 'vmodules_manifestless_registered')
 	module_path := os.join_path(vmodules_path, 'spytheman', 'regex')
 	os.mkdir_all(module_path) or { panic(err) }
-	cmd_ok(@LOCATION, 'git init ${os.quoted_path(module_path)}')
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(module_path)} remote add origin https://github.com/spytheman/v-regex')
+	cmd_ok_args(@LOCATION, ['git', 'init', module_path])
+	cmd_ok_args(@LOCATION, ['git', '-C', module_path, 'remote', 'add', 'origin',
+		'https://github.com/spytheman/v-regex'])
 	assert 'spytheman.regex' in get_installed_modules_in(vmodules_path)
 }
 
@@ -390,7 +390,7 @@ fn test_install_does_not_warn_about_valid_module_name() {
 	repo_path := os.join_path(test_path, 'valid_name_repo')
 	create_local_git_module(repo_path, 'my_mod')
 
-	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	res := cmd_ok_args(@LOCATION, [vexe, 'install', repo_path])
 	assert !res.output.contains('is not a valid V import path'), res.output
 }
 
@@ -419,11 +419,11 @@ fn test_local_remove_refuses_a_module_vpm_did_not_install() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	plain := cmd_fail(@LOCATION, '${vexe} remove --local mymod')
+	plain := cmd_fail_args(@LOCATION, [vexe, 'remove', '--local', 'mymod'])
 	assert plain.output.contains('refusing to remove `mymod`'), plain.output
 	assert os.is_file(os.join_path(handwritten, 'mymod.v'))
 
-	checkout := cmd_fail(@LOCATION, '${vexe} remove --local vendored')
+	checkout := cmd_fail_args(@LOCATION, [vexe, 'remove', '--local', 'vendored'])
 	assert checkout.output.contains('refusing to remove `vendored`'), checkout.output
 	assert os.is_file(os.join_path(vendored, 'v.mod'))
 	assert os.is_dir(os.join_path(vendored, '.git'))
@@ -450,7 +450,7 @@ fn test_local_remove_deletes_what_vpm_installed() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	cmd_ok(@LOCATION, '${vexe} remove --local local_pkg')
+	cmd_ok_args(@LOCATION, [vexe, 'remove', '--local', 'local_pkg'])
 	assert !os.exists(installed)
 	assert os.is_file(os.join_path(project_dir, 'v.mod'))
 	assert !is_recorded_local_install(installed)
@@ -542,7 +542,7 @@ fn test_a_moved_project_keeps_its_local_installs() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	cmd_ok(@LOCATION, '${vexe} remove --local moved_pkg')
+	cmd_ok_args(@LOCATION, [vexe, 'remove', '--local', 'moved_pkg'])
 	assert !os.exists(relocated)
 }
 
@@ -579,7 +579,7 @@ fn test_a_case_only_project_rename_keeps_its_local_installs() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	cmd_ok(@LOCATION, '${vexe} remove --local case_pkg')
+	cmd_ok_args(@LOCATION, [vexe, 'remove', '--local', 'case_pkg'])
 	assert !os.exists(relocated)
 }
 
@@ -623,7 +623,7 @@ fn test_discovery_in_a_copied_project_does_not_take_the_record() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	res := cmd_fail(@LOCATION, '${vexe} remove --local copied_project_pkg')
+	res := cmd_fail_args(@LOCATION, [vexe, 'remove', '--local', 'copied_project_pkg'])
 	assert res.output.contains('refusing to remove `copied_project_pkg`'), res.output
 	assert os.is_dir(installed)
 }
@@ -759,7 +759,7 @@ fn test_a_reused_path_does_not_inherit_a_local_install() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	res := cmd_fail(@LOCATION, '${vexe} remove --local reused_pkg')
+	res := cmd_fail_args(@LOCATION, [vexe, 'remove', '--local', 'reused_pkg'])
 	assert res.output.contains('refusing to remove `reused_pkg`'), res.output
 	assert os.is_file(os.join_path(installed, 'reused_pkg.v'))
 }
@@ -782,13 +782,13 @@ fn test_local_list_and_update_skip_modules_vpm_did_not_install() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	listed := cmd_ok(@LOCATION, '${vexe} list --local')
+	listed := cmd_ok_args(@LOCATION, [vexe, 'list', '--local'])
 	assert !listed.output.contains('vendored'), listed.output
 
-	updated := cmd_ok(@LOCATION, '${vexe} update --local')
+	updated := cmd_ok_args(@LOCATION, [vexe, 'update', '--local'])
 	assert !updated.output.contains('vendored'), updated.output
 
-	by_name := cmd_fail(@LOCATION, '${vexe} update --local vendored')
+	by_name := cmd_fail_args(@LOCATION, [vexe, 'update', '--local', 'vendored'])
 	assert by_name.output.contains('refusing to update `vendored`'), by_name.output
 	assert os.is_file(os.join_path(vendored, 'v.mod'))
 }
@@ -814,17 +814,17 @@ fn test_adopting_a_legacy_local_install_makes_it_managed() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	refused := cmd_fail(@LOCATION, '${vexe} remove --local legacy_pkg')
+	refused := cmd_fail_args(@LOCATION, [vexe, 'remove', '--local', 'legacy_pkg'])
 	assert refused.output.contains('refusing to remove `legacy_pkg`'), refused.output
 	assert os.is_dir(legacy)
 
-	adopted := cmd_ok(@LOCATION, '${vexe} install --local --adopt legacy_pkg')
+	adopted := cmd_ok_args(@LOCATION, [vexe, 'install', '--local', '--adopt', 'legacy_pkg'])
 	assert adopted.output.contains('Adopted `legacy_pkg`'), adopted.output
 	assert is_recorded_local_install(legacy)
 
-	listed := cmd_ok(@LOCATION, '${vexe} list --local')
+	listed := cmd_ok_args(@LOCATION, [vexe, 'list', '--local'])
 	assert listed.output.contains('legacy_pkg'), listed.output
-	cmd_ok(@LOCATION, '${vexe} remove --local legacy_pkg')
+	cmd_ok_args(@LOCATION, [vexe, 'remove', '--local', 'legacy_pkg'])
 	assert !os.exists(legacy)
 }
 
@@ -839,20 +839,21 @@ fn test_adoption_refuses_a_git_worktree_without_dirtying_it() {
 	source_repo := os.join_path(test_path, 'adopt_worktree_source')
 	create_local_git_module(source_repo, 'worktree_pkg')
 	worktree := os.join_path(project_dir, 'worktree_pkg')
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(source_repo)} worktree add -b vpm-adopt-worktree ${os.quoted_path(worktree)}')
+	cmd_ok_args(@LOCATION, ['git', '-C', source_repo, 'worktree', 'add', '-b', 'vpm-adopt-worktree',
+		'${worktree}'])
 	assert os.is_file(os.join_path(worktree, '.git'))
-	assert cmd_ok(@LOCATION, 'git -C ${os.quoted_path(worktree)} status --porcelain').output.trim_space() == ''
+	assert cmd_ok_args(@LOCATION, ['git', '-C', '${worktree}', 'status', '--porcelain']).output.trim_space() == ''
 
 	old_dir := os.getwd()
 	os.chdir(project_dir) or { panic(err) }
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	adopted := cmd_fail(@LOCATION, '${vexe} install --local --adopt worktree_pkg')
+	adopted := cmd_fail_args(@LOCATION, [vexe, 'install', '--local', '--adopt', 'worktree_pkg'])
 	assert adopted.output.contains('is a Git worktree or submodule'), adopted.output
 	assert !is_recorded_local_install(worktree)
 	assert !os.exists(os.join_path(worktree, '.${local_install_token_name}'))
-	assert cmd_ok(@LOCATION, 'git -C ${os.quoted_path(worktree)} status --porcelain').output.trim_space() == ''
+	assert cmd_ok_args(@LOCATION, ['git', '-C', '${worktree}', 'status', '--porcelain']).output.trim_space() == ''
 }
 
 fn test_adoption_refuses_symlinked_vcs_metadata() {
@@ -884,7 +885,7 @@ fn test_adoption_refuses_symlinked_vcs_metadata() {
 		module_name := '${vcs_name}_linked_metadata_pkg'
 		module_dir := os.join_path(project_dir, module_name)
 		external_metadata := os.join_path(test_path, '${module_name}_external_metadata')
-		adopted := cmd_fail(@LOCATION, '${vexe} install --local --adopt ${module_name}')
+		adopted := cmd_fail_args(@LOCATION, [vexe, 'install', '--local', '--adopt', module_name])
 		assert adopted.output.contains('has symlinked `.${vcs_name}` metadata'), adopted.output
 		assert !is_recorded_local_install(module_dir)
 		assert !os.exists(os.join_path(external_metadata, local_install_token_name))
@@ -915,14 +916,14 @@ fn test_a_symlink_out_of_the_project_is_neither_adopted_nor_removed() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	adopt := cmd_fail(@LOCATION, '${vexe} install --local --adopt external_pkg')
+	adopt := cmd_fail_args(@LOCATION, [vexe, 'install', '--local', '--adopt', 'external_pkg'])
 	assert adopt.output.contains('refusing to adopt `external_pkg`'), adopt.output
 	assert !is_recorded_local_install(external)
 
 	// Even a checkout VPM installed for some other project stays out of reach
 	// through a link into it.
 	record_local_install(external) or { panic(err) }
-	removal := cmd_fail(@LOCATION, '${vexe} remove --local external_pkg')
+	removal := cmd_fail_args(@LOCATION, [vexe, 'remove', '--local', 'external_pkg'])
 	assert removal.output.contains('refusing to remove `external_pkg`'), removal.output
 	assert os.is_dir(external)
 	assert os.is_file(os.join_path(external, 'v.mod'))
@@ -946,14 +947,14 @@ fn test_adoption_refuses_what_vpm_could_not_have_installed() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	plain := cmd_fail(@LOCATION, '${vexe} install --local --adopt own_mod')
+	plain := cmd_fail_args(@LOCATION, [vexe, 'install', '--local', '--adopt', 'own_mod'])
 	assert plain.output.contains('refusing to adopt `own_mod`'), plain.output
 	assert !is_recorded_local_install(own_source)
 
-	missing := cmd_fail(@LOCATION, '${vexe} install --local --adopt nothing_here')
+	missing := cmd_fail_args(@LOCATION, [vexe, 'install', '--local', '--adopt', 'nothing_here'])
 	assert missing.output.contains('failed to find `nothing_here`'), missing.output
 
-	global := os.execute('${vexe} install --adopt own_mod')
+	global := os.exec([vexe, 'install', '--adopt', 'own_mod'])
 	assert global.exit_code == 2, global.output
 	assert global.output.contains('`--adopt` is only meaningful together with `--local`'), global.output
 }
@@ -1006,10 +1007,10 @@ fn create_local_git_module(repo_path string, module_name string) {
 	os.mkdir_all(repo_path) or { panic(err) }
 	os.write_file(os.join_path(repo_path, 'v.mod'),
 		"Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
-	cmd_ok(@LOCATION, 'git init ${os.quoted_path(repo_path)}')
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} add v.mod')
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "initial commit"')
+	cmd_ok_args(@LOCATION, ['git', 'init', repo_path])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'add', 'v.mod'])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, '-c', 'user.email=ci@vlang.io', '-c',
+		'user.name=V CI', 'commit', '-m', 'initial commit'])
 }
 
 fn file_url(path string) string {

@@ -12,7 +12,9 @@ fn for_multi_init_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${for_multi_init_vexe} -gc none -path "${for_multi_init_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${for_multi_init_v3_src}')
+		os.exec([for_multi_init_vexe, '-gc', 'none', '-path',
+			'${for_multi_init_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${for_multi_init_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -23,7 +25,7 @@ fn for_multi_init_run_bad(v3_bin string, name string, source string, expected st
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	result := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	result := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains(expected), result.output
 	assert !result.output.contains('C compilation failed'), result.output
@@ -34,7 +36,7 @@ fn for_multi_init_gen_c(v3_bin string, name string, source string) string {
 	os.write_file(src, source) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}.c')
 	os.rm(c_path) or {}
-	result := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	result := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
 	assert result.exit_code == 0, result.output
 	assert os.exists(c_path), result.output
 	return os.read_file(c_path) or { panic(err) }
@@ -95,11 +97,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_input_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -134,11 +136,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_unsigned_inclusive_bound_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -187,11 +189,11 @@ fn test_unsigned_inclusive_for_mutable_bound_keeps_post_semantics() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_unsigned_mutable_bound_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -239,11 +241,11 @@ fn test_labeled_c_style_for_multi_init_flow_targets_named_loop() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_labeled_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '0:0;0:1;0:2;2:0;'
 }
@@ -285,11 +287,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_labeled_continue_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -331,11 +333,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_outer_labeled_continue_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -380,11 +382,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_pair_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -417,11 +419,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_pair_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -461,11 +463,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_match_continue_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -504,11 +506,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_select_continue_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -644,11 +646,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_selector_lhs_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }

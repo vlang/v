@@ -1549,6 +1549,17 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			break
 		}
 		if arg_node.kind == .field_init {
+			if variadic_idx >= 0 && param_idx == variadic_idx {
+				variadic_type := params[variadic_idx]
+				if variadic_type is types.Array {
+					elem_type := t.semantic_type_name(variadic_type.elem_type)
+					if t.normalize_type_alias_chain(elem_type).starts_with('&') {
+						new_children << t.pack_variadic_args(node, i, variadic_type.elem_type)
+						variadic_tail_supplied = true
+						break
+					}
+				}
+			}
 			// Trailing `key: value` args against the variadic `...Struct` slot
 			// (surfacing as `[]Struct`) desugar to one element of the elem
 			// struct type; a non-variadic `[]Struct` param must not collapse.
@@ -2286,15 +2297,17 @@ fn (mut t Transformer) try_lower_join_path_call(id flat.NodeId, node flat.Node) 
 // transform_params_struct_call_arg transforms transform params struct call arg data for transform.
 fn (mut t Transformer) transform_params_struct_call_arg(node flat.Node, field_start int, param_type string) ?flat.NodeId {
 	struct_type := t.params_struct_type_name(param_type) or { return none }
-	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type)
+	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type, param_type)
 }
 
 fn (mut t Transformer) transform_struct_call_arg(node flat.Node, field_start int, param_type string) ?flat.NodeId {
-	struct_type := t.struct_arg_type_name(param_type) or { return none }
-	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type)
+	struct_type := t.struct_arg_type_name(param_type) or {
+		return none
+	}
+	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type, param_type)
 }
 
-fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, field_start int, struct_type string) ?flat.NodeId {
+fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, field_start int, struct_type string, target_type string) ?flat.NodeId {
 	mut field_ids := []flat.NodeId{}
 	for i in field_start .. node.children_count {
 		field_id := t.a.child(&node, i)
@@ -2307,6 +2320,15 @@ fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, 
 	if field_ids.len == 0 {
 		return none
 	}
+	normalized_target := t.normalize_type_alias_chain(target_type.trim_space())
+	if normalized_target.starts_with('&&') {
+		return none
+	}
+	literal_type := if normalized_target.starts_with('&') {
+		t.normalize_type_alias(normalized_target[1..])
+	} else {
+		struct_type
+	}
 	start := t.a.children.len
 	for field_id in field_ids {
 		t.a.children << field_id
@@ -2315,9 +2337,13 @@ fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, 
 		kind:           .struct_init
 		children_start: start
 		children_count: flat.child_count(field_ids.len)
-		value:          struct_type
-		typ:            struct_type
+		value:          literal_type
+		typ:            literal_type
 	})
+	if normalized_target.starts_with('&') {
+		amp_id := t.make_prefix(.amp, struct_id)
+		return t.transform_amp_struct_init_for_type(amp_id, t.a.nodes[int(amp_id)], normalized_target)
+	}
 	return t.transform_struct_fields(struct_id, t.a.nodes[int(struct_id)])
 }
 
@@ -2325,7 +2351,10 @@ fn (t &Transformer) struct_arg_type_name(param_type string) ?string {
 	if param_type == '' {
 		return none
 	}
-	mut typ := param_type
+	mut typ := t.normalize_type_alias_chain(param_type.trim_space())
+	if typ.starts_with('&') {
+		typ = typ[1..]
+	}
 	if typ.starts_with('&') {
 		return none
 	}
@@ -3163,11 +3192,10 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		return none
 	}
 	t.ensure_call_param_types_decl_index()
-	decl := t.call_param_types_decl_index[call_name] or {
-		t.ensure_private_call_param_types_decl_cache()
-		t.call_param_types_decl_misses[call_name] = true
-		return none
-	}
+	// An unindexed name costs the same single lookup as a recorded miss, so
+	// do not record it: on a worker that would detach the shared prepared
+	// cache, misses and index (one full map clone per helper batch).
+	decl := t.call_param_types_decl_index[call_name] or { return none }
 	if params := t.call_param_types_decl_cache[decl.idx] {
 		return params
 	}
@@ -5131,20 +5159,22 @@ fn (t &Transformer) const_expr_for_name_in_context(name string, module_name stri
 fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_type types.Type) flat.NodeId {
 	expected_enum := t.semantic_type_name(elem_type)
 	array_type := '[]${expected_enum}'
-	if named_arg := t.transform_variadic_struct_fields(node, first_arg, elem_type) {
-		if t.in_const_init {
-			return t.make_array_literal_typed([named_arg], array_type)
+	if t.next_non_field_init_arg(node, first_arg) == node.children_count {
+		if named_arg := t.transform_variadic_struct_fields(node, first_arg, elem_type) {
+			if t.in_const_init {
+				return t.make_array_literal_typed([named_arg], array_type)
+			}
+			tmp_name := t.new_temp('varargs')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(expected_enum, t.make_int_literal(0), t.make_int_literal(1)), array_type)
+			value_name := t.new_temp('vararg')
+			t.pending_stmts << t.make_decl_assign_typed(value_name, named_arg, expected_enum)
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('array_push', [
+				t.make_prefix(.amp, t.make_ident(tmp_name)),
+				t.make_prefix(.amp, t.make_ident(value_name)),
+			], 'void'))
+			t.set_var_type(tmp_name, array_type)
+			return t.make_ident(tmp_name)
 		}
-		tmp_name := t.new_temp('varargs')
-		t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(expected_enum, t.make_int_literal(0), t.make_int_literal(1)), array_type)
-		value_name := t.new_temp('vararg')
-		t.pending_stmts << t.make_decl_assign_typed(value_name, named_arg, expected_enum)
-		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('array_push', [
-			t.make_prefix(.amp, t.make_ident(tmp_name)),
-			t.make_prefix(.amp, t.make_ident(value_name)),
-		], 'void'))
-		t.set_var_type(tmp_name, array_type)
-		return t.make_ident(tmp_name)
 	}
 	if t.in_const_init {
 		mut values := []flat.NodeId{cap: int(node.children_count) - first_arg}
@@ -5222,7 +5252,8 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 		t.wrap_sum_value(arg_id, expected_elem)
 	} else if t.resolve_interface_type_name(expected_elem).len > 0 {
 		t.transform_expr_for_type(arg_id, expected_elem)
-	} else if escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
+	} else if !variadic_elem_is_voidptr(elem_type)
+		&& escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
 		// Reference elements need the same fixed-array view and address conversions
 		// as an ordinary reference parameter before they are packed into the tail.
 		t.transform_call_arg_for_param(arg_id, expected_elem)
@@ -5311,37 +5342,9 @@ fn (mut t Transformer) transform_variadic_struct_fields(node flat.Node, field_st
 	if field_start >= node.children_count {
 		return none
 	}
-	if elem_type !is types.Struct {
-		return none
-	}
-	first := t.a.child_node(&node, field_start)
-	if first.kind != .field_init {
-		return none
-	}
-	mut field_ids := []flat.NodeId{}
-	for i in field_start .. node.children_count {
-		field_id := t.a.child(&node, i)
-		field := t.a.nodes[int(field_id)]
-		if field.kind != .field_init {
-			break
-		}
-		field_ids << field_id
-	}
-	if field_ids.len == 0 {
-		return none
-	}
-	start := t.a.children.len
-	for field_id in field_ids {
-		t.a.children << field_id
-	}
-	struct_id := t.a.add_node(flat.Node{
-		kind:           .struct_init
-		children_start: start
-		children_count: flat.child_count(field_ids.len)
-		value:          t.semantic_type_name(elem_type)
-		typ:            t.semantic_type_name(elem_type)
-	})
-	return t.transform_struct_fields(struct_id, t.a.nodes[int(struct_id)])
+	target_type := t.semantic_type_name(elem_type)
+	struct_type := t.struct_arg_type_name(target_type) or { return none }
+	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type, target_type)
 }
 
 // make_array_literal_typed builds make array literal typed data for transform.
@@ -10451,7 +10454,9 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	if !info.can_lower {
 		return t.make_empty()
 	}
-	mut receiver := t.transform_expr(info.base_id)
+	// Heap-promoted value locals already dereference when read as rvalues.
+	// Preserve their storage pointer here so the clone reads the value once.
+	mut receiver := t.transform_expr_preserving_pointer_value(t.unwrap_parens(info.base_id))
 	if info.raw_base_type.starts_with('&') {
 		receiver = t.make_prefix(.mul, receiver)
 		t.set_node_typ(int(receiver), info.base_type)
@@ -10540,13 +10545,9 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		return t.make_compiler_default_map_clone_value(source, clean, !t.expr_can_take_address(source))
 	}
 	if allow_method && !isnil(t.tc) && t.tc.ownership_type_has_clone_method(t.tc.parse_type(clean)) {
-		if !isnil(t.tc) && clean.contains('[') && clean.ends_with(']') {
-			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
-				call := t.make_method_call(source, 'clone', []flat.NodeId{})
-				t.set_node_typ(int(call), clean)
-				return call
-			}
-		}
+		// A private helper can become reachable after generic specialization has
+		// already materialized its field's clone method. Use that resolved method
+		// before synthesizing a selector that the initial call scan cannot visit.
 		method_name := t.resolve_receiver_method_name(source, 'clone')
 		if method_name.len > 0 {
 			params := t.call_param_types(method_name)
@@ -10556,6 +10557,13 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 			}
 			t.mark_fn_used_name(method_name)
 			return t.make_call_typed(method_name, [receiver], t.receiver_method_return_type(method_name, clean))
+		}
+		if clean.contains('[') && clean.ends_with(']') {
+			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
+				call := t.make_method_call(source, 'clone', []flat.NodeId{})
+				t.set_node_typ(int(call), clean)
+				return call
+			}
 		}
 	}
 	if isnil(t.tc) || (!t.tc.named_type_implements_marker(clean, 'IClone')
@@ -12677,7 +12685,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if capture_type.len == 0 || capture_type == 'unknown' {
 					capture_type = 'int'
 				}
-				if t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]
+				// Mutable parameter captures retain the caller's array header reference.
+				if !child.is_mut && t.mut_param_values[child.value]
+					&& !t.pointer_value_rvalues[child.value]
 					&& capture_type.starts_with('&')
 					&& t.comptime_normalize_type_alias_chain(capture_type).starts_with('&[]') {
 					capture_type = capture_type[1..]
@@ -16550,6 +16560,12 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	}
 	base_type = t.normalize_type_alias(base_type)
 	if base_type.len == 0 {
+		return true
+	}
+	// Heap promotion can replace a fixed-array alias with its storage type.
+	// Keep the checker-selected alias method when its value layout still matches.
+	if t.is_fixed_array_type(base_type)
+		&& t.normalize_type_alias(receiver_name) == base_type {
 		return true
 	}
 	if base_type.starts_with('[]') || base_type.starts_with('map[') {

@@ -73,12 +73,12 @@ fn test_out_files() {
 		//
 		compile_cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
 		sw_compile := time.new_stopwatch()
-		compilation := os.execute(compile_cmd)
+		compilation := os.exec([vexe, ...(os.split_args(alloptions) or { panic(err) }), path])
 		compile_ms := sw_compile.elapsed().milliseconds()
 		ensure_compilation_succeeded(compilation, compile_cmd)
 		//
 		sw_run := time.new_stopwatch()
-		res := os.execute(os.quoted_path(pexe))
+		res := os.exec([pexe])
 		run_ms := sw_run.elapsed().milliseconds()
 		//
 		if res.exit_code < 0 {
@@ -164,7 +164,7 @@ fn test_c_must_have_files() {
 		mut description := mj('v', alloptions, relpath) + ' matches ${mm(must_have_relpath)} '
 		cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
 		sw_compile := time.new_stopwatch()
-		compilation := os.execute(cmd)
+		compilation := os.exec([vexe, ...(os.split_args(alloptions) or { panic(err) }), path])
 		compile_ms := sw_compile.elapsed().milliseconds()
 		ensure_compilation_succeeded(compilation, cmd)
 		uses_v3 := generated_c_uses_v3_codegen(compilation.output)
@@ -229,7 +229,7 @@ fn test_fontstash_boehm_prealloc_copy_uses_atomic_allocator() {
 	file_options := get_file_options(path)
 	alloptions := '-o - ${file_options.vflags}'
 	cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, ...(os.split_args(alloptions) or { panic(err) }), path])
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !generated_c_uses_v3_codegen(compilation.output)
 	allocator_call := 'GC_MALLOC_ATOMIC('
@@ -258,7 +258,7 @@ fn test_map_guard_without_observed_error_does_not_allocate_error() {
 	os.chdir(vroot) or {}
 	path := os.join_path(testdata_folder, 'if_guard_map_missing_key_cleanup.vv')
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', path])
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		return
@@ -284,7 +284,7 @@ fn test_addressable_map_fallback_does_not_allocate_carrier() {
 	os.chdir(vroot) or {}
 	path := os.join_path(testdata_folder, 'map_value_lookup_lazy_default.vv')
 	cmd := '${os.quoted_path(vexe)} -old-compiler -o - ${os.quoted_path(path)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-old-compiler', '-o', '-', path])
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !generated_c_uses_v3_codegen(compilation.output)
 	// The lookup goes through a generated helper rather than a `({ ... })`
@@ -301,7 +301,7 @@ fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	os.chdir(vroot) or {}
 	path := os.join_path(testdata_folder, 'or_block_err_var_collision.vv')
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', path])
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !compilation.output.contains('IError err = err.err;')
 	if generated_c_uses_v3_codegen(compilation.output) {
@@ -351,7 +351,7 @@ fn test_main_error_propagation_panic_branches_do_not_fall_through() {
 		"\t\tprintln('option deferred')", '\t}', '\treturn fail_option()', '}', '', 'fn main() {',
 		'\tif arguments().len > 1000 {', '\t\tdefer_option()?', '\t}', '\tdefer_result()!', '}'].join('\n') + '\n')!
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', source_path])
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		main_body := compilation.output.all_after('int main(int argc, char** argv) {').all_before('u8* malloc_noscan')
@@ -384,7 +384,7 @@ fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	path := os.join_path(vroot, 'vlib/v/tests/interface_array_concat_from_another_module/main_test.v')
 	symbol := '__v_array_to_interface_array__Array_interface_array_concat_from_another_module__mod__Value__to__Array_interface_array_concat_from_another_module__mod__Value'
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', path])
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !compilation.output.contains(symbol)
 }
@@ -393,7 +393,7 @@ fn test_comptime_for_empty_attrs_does_not_emit_new_array_calls() {
 	os.chdir(vroot) or {}
 	path := os.join_path(testdata_folder, 'comptime_for_empty_attrs_inline_init.vv')
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', path])
 	ensure_compilation_succeeded(compilation, cmd)
 	// regression for https://github.com/vlang/v/issues/27274
 	assert !compilation.output.contains('.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0)')
@@ -420,7 +420,7 @@ fn test_array_push_no_bounds_checking_keeps_max_len_panics() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -prod -no-bounds-checking -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-prod', '-no-bounds-checking', '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		assert compilation.output.contains('void array__push(array* a, void* val) {')
@@ -445,7 +445,7 @@ fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -o - -os windows -sharedlive ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', '-os', 'windows', '-sharedlive', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')
 	for normalized.contains('  ') {
@@ -463,7 +463,7 @@ fn test_windows_sharedlive_explicit_string_format_scalar_reference_uses_pointee(
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -o - -os windows -sharedlive ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', '-os', 'windows', '-sharedlive', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		assert compilation.output.contains('= *__str_fmt_ptr_')
@@ -482,7 +482,7 @@ fn test_simple_string_interpolation_does_not_emit_str_intp_runtime() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		return
@@ -499,7 +499,7 @@ fn test_auto_str_float_array_still_emits_str_intp_runtime() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		return
@@ -536,7 +536,7 @@ fn main() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -o - -os windows -cc ${cc} ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', '-os', 'windows', '-cc', cc, test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		assert compilation.output.contains('thirdparty/stdatomic/win/atomic.h')
@@ -566,7 +566,7 @@ fn main() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -old-compiler -o - -os windows ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-old-compiler', '-o', '-', '-os', 'windows', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	assert compilation.output.contains('#define C__DWORD DWORD')
 	assert compilation.output.contains('C__DWORD tmp = ((C__DWORD)(0));')
@@ -602,7 +602,7 @@ fn main() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -o - -os windows -cc ${cc} -prod ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', '-os', 'windows', '-cc', cc, '-prod', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !compilation.output.contains('GC_remove_roots(')
 }
@@ -629,7 +629,7 @@ fn test_no_main_exports_initialize_windows_runtime() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -o - -os windows ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', '-os', 'windows', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	generated_c_lines := compilation.output.split_into_lines()
 	uses_v3 := generated_c_uses_v3_codegen(compilation.output)
@@ -677,7 +677,7 @@ fn test_coverage_output_checks_counter_file_open() {
 	}
 	coverage_dir := os.join_path(os.vtmp_dir(), 'coutput_coverage')
 	cmd := '${os.quoted_path(vexe)} -o - -coverage ${os.quoted_path(coverage_dir)} ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', '-coverage', coverage_dir, test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		assert compilation.output.contains('FILE* cov_file = fopen(cov_filename, "wb+");')
@@ -718,7 +718,7 @@ fn main() {
 }
 ")!
 	cmd := '${os.quoted_path(vexe)} -old-compiler -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-old-compiler', '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	assert compilation.output.contains('static int c_header_decl(const char *input)')
 	assert !compilation.output.contains('extern int c_header_decl(')
@@ -747,7 +747,7 @@ fn main() {
 ')!
 	executable := os.join_path(test_source, 'inserted_header_test')
 	cmd := '${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(executable)} ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-old-compiler', '-o', executable, test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 }
 
@@ -790,7 +790,7 @@ pub fn call() {
 		os.chdir(old_wd) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -shared -o - coutput_sdl'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-shared', '-o', '-', 'coutput_sdl'])
 	ensure_compilation_succeeded(compilation, cmd)
 	// V3 leaves headers to the C compiler instead of scanning and inlining them.
 	assert compilation.output.contains('#include "${header_include_path}"')
@@ -811,7 +811,7 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -o - -os windows -shared -gc boehm ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', '-os', 'windows', '-shared', '-gc', 'boehm', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		assert compilation.output.contains('void _vinit_caller(void) {')
@@ -856,7 +856,7 @@ fn test_boehm_gc_header_precedes_imported_module_spawn_wrappers() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -os linux -gc boehm -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-os', 'linux', '-gc', 'boehm', '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	gc_include_pos := compilation.output.index('#include <gc/gc.h>') or { -1 }
 	pthread_create_pos := compilation.output.index('pthread_create(&thread_') or { -1 }
@@ -893,7 +893,7 @@ fn test_array_sort_with_compare_uses_stable_sort_adapters() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')
 	for normalized.contains('  ') {
@@ -933,9 +933,9 @@ fn test_array_sort_expression_key_avoids_sanitized_name_collisions() {
 		'\titems.sort(a.foo_bar < b.foo_bar)', '\treturn items[0].label', '}'].join('\n') + '\n')!
 	pexe := os.join_path(test_dir, 'sort_expr_collision')
 	cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(pexe)} ${os.quoted_path(test_dir)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', pexe, test_dir])
 	ensure_compilation_succeeded(compilation, cmd)
-	res := os.execute(os.quoted_path(pexe))
+	res := os.exec([pexe])
 	assert res.exit_code == 0
 	assert res.output.trim_space().replace('\r\n', '\n') == 'nested-ok\nflat-ok'
 }
@@ -999,8 +999,8 @@ fn test_auxiliary_c_symbols_use_stable_type_hashes() {
 	os.write_file(path_b, source)!
 	cmd_a := '${os.quoted_path(vexe)} -prod -gc boehm_full_opt -o - ${os.quoted_path(path_a)}'
 	cmd_b := '${os.quoted_path(vexe)} -prod -gc boehm_full_opt -o - ${os.quoted_path(path_b)}'
-	compilation_a := os.execute(cmd_a)
-	compilation_b := os.execute(cmd_b)
+	compilation_a := os.exec([vexe, '-prod', '-gc', 'boehm_full_opt', '-o', '-', path_a])
+	compilation_b := os.exec([vexe, '-prod', '-gc', 'boehm_full_opt', '-o', '-', path_b])
 	ensure_compilation_succeeded(compilation_a, cmd_a)
 	ensure_compilation_succeeded(compilation_b, cmd_b)
 	compare_a := generated_c_symbols_with_prefix(compilation_a.output, 'compare_')
@@ -1038,7 +1038,7 @@ fn test_boehm_scope_pin_does_not_walk_array_elements() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -old-compiler -prod -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-old-compiler', '-prod', '-gc', 'boehm_full_opt', '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !generated_c_uses_v3_codegen(compilation.output)
 	helper_signature := '_Array_main__Item(Array_main__Item* it, voidptr* out, int idx) {'
@@ -1062,7 +1062,7 @@ fn test_veb_implicit_ctx_alias_uses_user_context_name() {
 		os.rm(test_source) or {}
 	}
 	cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-gc', 'boehm_full_opt', '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, cmd)
 	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')
 	for normalized.contains('  ') {
@@ -1097,9 +1097,9 @@ fn test_veb_implicit_ctx_alias_on_context_receiver_tmpl_not_found() {
 	}
 	test_exe := os.join_path(test_dir, 'app')
 	compile_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o ${os.quoted_path(test_exe)} ${os.quoted_path(test_source)}'
-	ensure_compilation_succeeded(os.execute(compile_cmd), compile_cmd)
+	ensure_compilation_succeeded(os.exec([vexe, '-gc', 'boehm_full_opt', '-o', test_exe, test_source]), compile_cmd)
 	c_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(c_cmd)
+	compilation := os.exec([vexe, '-gc', 'boehm_full_opt', '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, c_cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		not_found_start := 'veb__Result Context__not_found(Context* c) {'
@@ -1185,9 +1185,9 @@ fn test_veb_template_scope_gc_pin_does_not_escape_loop_var() {
 	}
 	test_exe := os.join_path(test_dir, 'app')
 	compile_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o ${os.quoted_path(test_exe)} ${os.quoted_path(test_source)}'
-	ensure_compilation_succeeded(os.execute(compile_cmd), compile_cmd)
+	ensure_compilation_succeeded(os.exec([vexe, '-gc', 'boehm_full_opt', '-o', test_exe, test_source]), compile_cmd)
 	c_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
-	compilation := os.execute(c_cmd)
+	compilation := os.exec([vexe, '-gc', 'boehm_full_opt', '-o', '-', test_source])
 	ensure_compilation_succeeded(compilation, c_cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
 		index_start := 'veb__Result App__index(App* app, Context* ctx) {'

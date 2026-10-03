@@ -24,7 +24,7 @@ fn test_noreturn_attr_generation_does_not_depend_on_stdnoreturn_h() {
 	].join('\n')
 	os.write_file(source_path, source)!
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-o', '-', source_path])
 	assert compilation.exit_code == 0
 	generated_c := compilation.output.replace('\r\n', '\n')
 	assert generated_c.contains('#if !defined(VNORETURN)')

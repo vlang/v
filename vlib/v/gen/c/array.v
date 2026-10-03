@@ -21,14 +21,9 @@ fn array_like_type(t types.Type) ?types.Array {
 
 // array_fixed_type supports array fixed type handling for c.
 fn array_fixed_type(t types.Type) ?types.ArrayFixed {
-	if t is types.ArrayFixed {
-		return t
-	}
-	if t is types.Alias {
-		base := t.base_type
-		if base is types.ArrayFixed {
-			return base
-		}
+	clean := cgen_unalias_type(t)
+	if clean is types.ArrayFixed {
+		return clean
 	}
 	return none
 }
@@ -81,8 +76,12 @@ fn fixed_array_index_info(t types.Type) (bool, bool, types.ArrayFixed) {
 		return true, false, fixed
 	}
 	if t is types.Pointer {
-		if fixed := array_fixed_type(t.base_type) {
-			return true, true, fixed
+		base := t.base_type
+		// Pointer indexing follows the checker, which unwraps one pointee alias.
+		// Further aliases index the pointer itself before indexing the array value.
+		inner := if base is types.Alias { base.base_type } else { base }
+		if inner is types.ArrayFixed {
+			return true, true, inner
 		}
 	}
 	return false, false, types.ArrayFixed{}
@@ -420,6 +419,13 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		g.write('(${elem_ct}*)(')
 		g.gen_expr(id)
 		g.write(').data')
+		return
+	}
+	actual := cgen_unalias_type(g.usable_expr_type(id))
+	if actual is types.Pointer && fn_type_from(actual.base_type) != none {
+		// C array parameters decay to pointers. Preserve a callback slot's
+		// address by supplying its pointer context instead of the array type.
+		g.gen_expr_with_expected_type(id, actual)
 		return
 	}
 	g.gen_expr(id)
@@ -1309,6 +1315,10 @@ fn (g &FlatGen) map_index_value_is_rvalue(id flat.NodeId) bool {
 }
 
 fn (mut g FlatGen) gen_index_overload_call(node flat.Node, base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
+	fixed_return := array_fixed_type(info.return_type) != none
+	if fixed_return {
+		g.write('(')
+	}
 	g.write(g.cname(info.name))
 	g.write('(')
 	g.gen_index_overload_receiver_arg(base_id, base_type, info)
@@ -1317,6 +1327,9 @@ fn (mut g FlatGen) gen_index_overload_call(node flat.Node, base_id flat.NodeId, 
 		g.gen_index_overload_index_arg(node, info.params[1])
 	}
 	g.write(')')
+	if fixed_return {
+		g.write(').ret_arr')
+	}
 }
 
 fn (mut g FlatGen) gen_index_overload_set(node flat.Node, lhs flat.Node, base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
@@ -1994,7 +2007,8 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			ptr_type := base_type
 			mut expected_type := ptr_type.base_type
 			mut fixed_len := ''
-			if fixed := array_fixed_type(ptr_type.base_type) {
+			_, fixed_is_ptr, fixed := fixed_array_index_info(base_type)
+			if fixed_is_ptr {
 				expected_type = fixed.elem_type
 			}
 			rhs_id := g.a.child(&node, 1)
@@ -2013,7 +2027,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				g.writeln('; }')
 				return
 			}
-			if fixed := array_fixed_type(ptr_type.base_type) {
+			if fixed_is_ptr {
 				g.write('(*')
 				g.gen_expr(base_id)
 				g.write(')')

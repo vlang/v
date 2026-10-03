@@ -13,14 +13,14 @@ fn olog(msg string) {
 
 fn vversion() string {
 	vexe := os.getenv('VEXE')
-	return os.execute('${os.quoted_path(vexe)} version').output.trim_space()
+	return os.exec([vexe, 'version']).output.trim_space()
 }
 
 // get output from `v doctor`
 fn get_vdoctor_output(is_verbose bool) string {
 	vexe := os.getenv('VEXE')
 	verbose_flag := if is_verbose { '-v' } else { '' }
-	result := os.execute('${os.quoted_path(vexe)} ${verbose_flag} doctor')
+	result := os.exec([vexe, ...(os.split_args(verbose_flag) or { panic(err) }), 'doctor'])
 	if result.exit_code != 0 {
 		elog('> unable to get `v doctor` output: ${result.output}')
 		return ''
@@ -31,7 +31,7 @@ fn get_vdoctor_output(is_verbose bool) string {
 fn runv(label string, user_cmd string) os.Result {
 	mut result := os.Result{}
 	elog('> ${label} using: ${term.ecolorize(term.magenta, user_cmd)}')
-	result = os.execute(user_cmd)
+	result = os.exec(os.split_args(user_cmd) or { panic(err) })
 	print(result.output)
 	return result
 }

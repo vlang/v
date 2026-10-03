@@ -11,7 +11,8 @@ fn dls_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_decl_lhs_shadow_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${dls_vexe} -gc none -path "${dls_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${dls_v3_src}')
+		os.exec([dls_vexe, '-gc', 'none', '-path', '${dls_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${dls_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -32,10 +33,10 @@ fn test_template_decl_lhs_not_captured_during_its_own_rhs() {
 	source := "module main\n\nfn render(s string) string {\n\treturn 'TOP:' + s\n}\n\nfn build(row string) string {\n\trender := ('<' + \$tmpl('row.txt') + '>').replace('\\n', '')\n\treturn render\n}\n\nfn main() {\n\tprintln(build('abc'))\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_decl_lhs_shadow_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	// The template called the top-level `render` (TOP:), not the local being declared.
 	assert run.output.trim_space() == '<TOP:abc>', run.output

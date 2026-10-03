@@ -283,8 +283,21 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		arg:        unsafe { voidptr(&args[0]) }
 		force_sync: true
 	}
+	// The chunks share what each sibling file adds to the sizeof declaration
+	// tables. The table grows in the chunks' arenas, so drop it with the pool.
+	sizeof_shared := TranslatedSizeofShared.new()
+	p.translated_sizeof_shared = sizeof_shared
+	p.translated_sizeof_worker = 0
+	for ci in 0 .. thread_count {
+		parser_workers[ci].translated_sizeof_shared = sizeof_shared
+		parser_workers[ci].translated_sizeof_worker = ci + 1
+	}
 	ppsw2 := time.new_stopwatch()
 	any_started := p.a.worker_pool.run(tasks)
+	p.translated_sizeof_shared = unsafe { nil }
+	for ci in 0 .. thread_count {
+		parser_workers[ci].translated_sizeof_shared = unsafe { nil }
+	}
 	p.timing_profile('  [ttime]   pp parse pool    ${f64(ppsw2.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	// A template can allocate extra source IDs inside any chunk. Rebase later
 	// chunks in input order so those IDs remain identical to serial parsing
@@ -1133,8 +1146,25 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 	for ci in 0 .. thread_count {
 		p.a.intern_node_texts_at(margs[ci].miss_nodes)
 		p.merge_parsed_worker_bookkeeping(mut *parser_workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2], args[ci + 1].scope, node_offsets[ci], margs[ci].pending_files, margs[ci].has_scope)
-		parser_worker_scope_free(args[ci + 1].scope)
 	}
+	// Unmapping the worker arenas is most of the merge when done in a row; the
+	// pool releases them side by side.
+	mut free_tasks := []workers.Task{cap: thread_count}
+	for ci in 0 .. thread_count {
+		if args[ci + 1].scope != unsafe { nil } {
+			free_tasks << workers.Task{
+				run:        parser_worker_scope_free_thread
+				arg:        args[ci + 1].scope
+				force_sync: free_tasks.len == 0
+			}
+		}
+	}
+	p.a.worker_pool.run(free_tasks)
+}
+
+fn parser_worker_scope_free_thread(scope voidptr) voidptr {
+	parser_worker_scope_free(scope)
+	return unsafe { nil }
 }
 
 fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_start int, chunk_end int, worker_scope voidptr) {

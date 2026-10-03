@@ -69,7 +69,7 @@ fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
 	// v.v guards against being built with a garbage collector (see the `$if gcboehm`
 	// `$compile_error` blocks at its top), so this sub-build must pass `-gc none`.
-	build := os.execute('${custom_str_vexe} -gc none -o ${v3_bin} ${custom_str_v3_src}')
+	build := os.exec([custom_str_vexe, '-gc', 'none', '-o', v3_bin, '${custom_str_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -467,7 +467,7 @@ fn test_imported_enum_print_compile_keeps_str_method() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_print_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -485,7 +485,7 @@ fn test_imported_operator_compile_keeps_operator_methods() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_operator_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -504,7 +504,7 @@ fn test_optional_struct_zero_compile_keeps_imported_default_helper() {
 	}
 	os.write_file(os.join_path(root, 'defaults/defaults.v'), imported_struct_default_module_source()) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_struct_default_or_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -523,7 +523,7 @@ fn test_imported_optional_enum_interpolation_compile_keeps_str_method() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_optional_enum_interp_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -546,6 +546,6 @@ pub enum Color {
 }
 ') or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_direct_autostr_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }

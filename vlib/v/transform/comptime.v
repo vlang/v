@@ -420,7 +420,18 @@ fn comptime_param_scan_thread(arg voidptr) voidptr {
 
 fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 	mut typ := raw.trim_space()
+	if typ.len == 0 {
+		return typ
+	}
+	// Most names are not aliases. Settle that before allocating the cycle set or
+	// another trimmed copy.
+	normalized := t.normalize_type_alias(typ)
+	if trimmed_text_equals(normalized, typ) {
+		return typ
+	}
 	mut seen := map[string]bool{}
+	seen[typ] = true
+	typ = normalized.trim_space()
 	for typ.len > 0 && typ !in seen {
 		seen[typ] = true
 		next := t.normalize_type_alias(typ).trim_space()
@@ -430,6 +441,34 @@ fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 		typ = next
 	}
 	return typ
+}
+
+// trimmed_text_equals reports whether `s.trim_space() == want` without
+// allocating the trimmed copy.
+fn trimmed_text_equals(s string, want string) bool {
+	mut lo := 0
+	mut hi := s.len
+	for lo < hi && is_trim_space_byte(s[lo]) {
+		lo++
+	}
+	for hi > lo && is_trim_space_byte(s[hi - 1]) {
+		hi--
+	}
+	if hi - lo != want.len {
+		return false
+	}
+	for i in 0 .. want.len {
+		if s[lo + i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// is_trim_space_byte matches the bytes String.trim_space removes.
+@[inline]
+fn is_trim_space_byte(c u8) bool {
+	return c == ` ` || c == `\n` || c == `\t` || c == `\v` || c == `\f` || c == `\r`
 }
 
 // comptime_typeof_unaliased_type removes only aliases at the root of a reflected type.
@@ -3197,8 +3236,14 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			return t.make_sum_literal(target_sum, item.typ, children[0])
 		}
 	}
+	mut call_node := node
+	if node.kind == .call && smartcast_name != '' && !t.call_has_source_generic_args(node) {
+		// The checker can leave an inferred generic argument from the sum alias.
+		// Each reflected variant needs inference from its narrowed argument instead.
+		call_node.value = ''
+	}
 	retargeted_call_type := if node.kind == .call && smartcast_name != '' {
-		t.retarget_cloned_generic_call(node, mut children, t.active_specialization_args, return_context)
+		t.retarget_cloned_generic_call(call_node, mut children, t.active_specialization_args, return_context)
 	} else {
 		''
 	}
@@ -3245,6 +3290,8 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		pos:            node.pos
 		value:          if node.kind == .is_expr && node.value == var_name {
 			item.typ
+		} else if node.kind == .call && retargeted_call_type.len > 0 {
+			''
 		} else {
 			node.value
 		}

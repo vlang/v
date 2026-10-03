@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_mut_param_array_clone_test_${os.getpid()}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -36,12 +37,12 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_mut_param_array_clone_input_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('cannot assign `&[]int` to `[]int`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -63,7 +64,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_mut_array_param_bad_assign_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot assign'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output

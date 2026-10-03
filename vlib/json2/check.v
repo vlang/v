@@ -27,67 +27,32 @@ fn (mut checker Decoder) check_json_format() ! {
 
 	start_idx_position := checker.checker_idx
 
-	mut actual_value_info_pointer := unsafe { &ValueInfo(nil) }
+	// The values nested in this one are added after it, while it is checked.
+	value_idx := checker.values_len
 
 	match checker.json[checker.checker_idx] {
 		`"` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .string
-			})
-
-			actual_value_info_pointer = checker.values_info.last()
-
+			checker.add_value(.string)
 			checker.check_string()!
 		}
 		`-`, `0`...`9` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .number
-			})
-
-			actual_value_info_pointer = checker.values_info.last()
-
+			checker.add_value(.number)
 			checker.check_number()!
 		}
 		`t`, `f` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .boolean
-			})
-
-			actual_value_info_pointer = checker.values_info.last()
-
+			checker.add_value(.boolean)
 			checker.check_boolean()!
 		}
 		`n` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .null
-			})
-
-			actual_value_info_pointer = checker.values_info.last()
-
+			checker.add_value(.null)
 			checker.check_null()!
 		}
 		`[` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .array
-			})
-
-			actual_value_info_pointer = checker.values_info.last()
-
+			checker.add_value(.array)
 			checker.check_array()!
 		}
 		`{` {
-			checker.values_info.push(ValueInfo{
-				position:   checker.checker_idx
-				value_kind: .object
-			})
-
-			actual_value_info_pointer = checker.values_info.last()
-
+			checker.add_value(.object)
 			checker.check_object()!
 		}
 		else {
@@ -95,13 +60,13 @@ fn (mut checker Decoder) check_json_format() ! {
 		}
 	}
 
-	actual_value_info_pointer.length = checker.checker_idx + 1 - start_idx_position
+	checker.values_info[value_idx].length = checker.checker_idx + 1 - start_idx_position
 
 	checker.increment('') or { return }
 	checker.skip_whitespace('') or { return }
 
 	if checker.json[checker.checker_idx] !in [`,`, `:`, `}`, `]`] {
-		checker.checker_error('invalid value. Unexpected character after ${actual_value_info_pointer.value_kind} end')!
+		checker.checker_error('invalid value. Unexpected character after ${checker.values_info[value_idx].value_kind} end')!
 	}
 }
 

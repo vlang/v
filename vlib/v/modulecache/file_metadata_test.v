@@ -92,7 +92,8 @@ int main(void) {
 '
 			os.write_file(source_path, source) or { panic(err) }
 			result :=
-				os.execute('${os.quoted_path(cc)} -D_DEFAULT_SOURCE -std=c99 -fsyntax-only -Werror=incompatible-pointer-types ${os.quoted_path(source_path)}')
+				os.exec([cc, '-D_DEFAULT_SOURCE', '-std=c99', '-fsyntax-only',
+					'-Werror=incompatible-pointer-types', source_path])
 			assert result.exit_code == 0, result.output
 		}
 	}

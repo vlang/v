@@ -1,7 +1,9 @@
+import crypto.sha1
 import crypto.sha512
 import crypto.sha256
 import crypto.pbkdf2
 import encoding.hex
+import hash
 
 struct TestCaseData {
 	name       string
@@ -93,5 +95,188 @@ fn test_sha512() {
 		expected_result := hex.decode(c.sha512)!
 		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length, sha512.new())!
 		assert key == expected_result, 'failed ${c.name}'
+	}
+}
+
+struct Sha1Case {
+	password   string
+	salt       string
+	count      int
+	key_length int
+	expected   string
+}
+
+// The PBKDF2-HMAC-SHA1 test vectors of RFC 6070, without the one that takes 16777216 iterations.
+const sha1_cases = [
+	Sha1Case{'password', 'salt', 1, 20, '0c60c80f961f0e71f3a9b524af6012062fe037a6'},
+	Sha1Case{'password', 'salt', 2, 20, 'ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957'},
+	Sha1Case{'password', 'salt', 4096, 20, '4b007901b765489abead49d926f721d065a429c1'},
+	Sha1Case{'passwordPASSWORDpassword', 'saltSALTsaltSALTsaltSALTsaltSALTsalt', 4096, 25, '3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038'},
+	Sha1Case{'pass\0word', 'sa\0lt', 4096, 16, '56fa6aa75548099dcc37d7f03425e0c3'},
+]
+
+fn test_sha1() {
+	for c in sha1_cases {
+		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length, sha1.new())!
+		assert key.hex() == c.expected, 'failed c=${c.count} dkLen=${c.key_length}'
+	}
+}
+
+struct TruncatedSha512Case {
+	password   string
+	salt       string
+	count      int
+	key_length int
+	sha512_224 string
+	sha512_256 string
+}
+
+// The expected values were generated with Python's `hashlib.pbkdf2_hmac`
+// (OpenSSL), with the digest names 'sha512_224' and 'sha512_256'.
+const truncated_sha512_cases = [
+	TruncatedSha512Case{
+		password:   'password'
+		salt:       'salt'
+		count:      1
+		key_length: 20
+		sha512_224: 'b34ab626276a61ce19d2ecb4c7e15f8198a2989a'
+		sha512_256: '4b6a63117d3ec0032624616082c1c1912f56fa5f'
+	},
+	TruncatedSha512Case{
+		password:   'password'
+		salt:       'salt'
+		count:      2
+		key_length: 20
+		sha512_224: 'b8878ac5e4509c165c1b508961fa3c3afcef3f37'
+		sha512_256: 'fcfd108c99cc888ec0af9f184885aff5f02d19a9'
+	},
+	TruncatedSha512Case{
+		password:   'password'
+		salt:       'salt'
+		count:      4096
+		key_length: 20
+		sha512_224: 'ed54af699cc307e08965098bda5ff4e41ea1931f'
+		sha512_256: 'f2fbe5f8ec3618bb145279a8c6a8dfa476c282a3'
+	},
+	TruncatedSha512Case{
+		password:   'passwordPASSWORDpassword'
+		salt:       'saltSALTsaltSALTsaltSALTsaltSALTsalt'
+		count:      4096
+		key_length: 64
+		sha512_224: '573df96762ea7da4f71231859ca282ef482764ad9671c5275c3272fe6ae94d285a5709d1080fd6d8b88b696e3072f0e1a2a378a98592dd26df77e3557c168019'
+		sha512_256: '31cf94e3d8e36aa18d40ad92654ab80f500ed7fb575a2215547db6f82dd227ed0f41215e8f9bb97641a2d8156b7b7c16a669a0475d609314d0fa8cc2ace4ec66'
+	},
+]
+
+fn test_sha512_224() {
+	for c in truncated_sha512_cases {
+		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length,
+			sha512.new512_224())!
+		assert key.hex() == c.sha512_224, 'failed c=${c.count} dkLen=${c.key_length}'
+	}
+}
+
+fn test_sha512_256() {
+	for c in truncated_sha512_cases {
+		key := pbkdf2.key(c.password.bytes(), c.salt.bytes(), c.count, c.key_length,
+			sha512.new512_256())!
+		assert key.hex() == c.sha512_256, 'failed c=${c.count} dkLen=${c.key_length}'
+	}
+}
+
+// Every digest that `pbkdf2.key` supports.
+const variants = ['sha1', 'sha224', 'sha256', 'sha384', 'sha512', 'sha512_224', 'sha512_256']
+
+fn new_hash(name string) hash.Hash {
+	match name {
+		'sha1' { return sha1.new() }
+		'sha224' { return sha256.new224() }
+		'sha256' { return sha256.new() }
+		'sha384' { return sha512.new384() }
+		'sha512' { return sha512.new() }
+		'sha512_224' { return sha512.new512_224() }
+		'sha512_256' { return sha512.new512_256() }
+		else { panic('unknown hash ${name}') }
+	}
+}
+
+fn hash_sum(name string, data []u8) []u8 {
+	return match name {
+		'sha1' { sha1.sum(data) }
+		'sha224' { sha256.sum224(data) }
+		'sha256' { sha256.sum256(data) }
+		'sha384' { sha512.sum384(data) }
+		'sha512' { sha512.sum512(data) }
+		'sha512_224' { sha512.sum512_224(data) }
+		'sha512_256' { sha512.sum512_256(data) }
+		else { panic('unknown hash ${name}') }
+	}
+}
+
+fn block_size_of(name string) int {
+	return if name in ['sha1', 'sha224', 'sha256'] { sha256.block_size } else { sha512.block_size }
+}
+
+// naive_hmac is a direct transcription of RFC 2104, used as a reference.
+fn naive_hmac(name string, key []u8, data []u8) []u8 {
+	block_size := block_size_of(name)
+	mut k := if key.len > block_size { hash_sum(name, key) } else { key.clone() }
+	for k.len < block_size {
+		k << 0
+	}
+	mut inner := []u8{}
+	mut outer := []u8{}
+	for b in k {
+		inner << (b ^ 0x36)
+		outer << (b ^ 0x5c)
+	}
+	inner << data
+	outer << hash_sum(name, inner)
+	return hash_sum(name, outer)
+}
+
+// naive_pbkdf2 is a direct transcription of RFC 8018, section 5.2, used as a reference.
+fn naive_pbkdf2(name string, password []u8, salt []u8, count int, key_length int) []u8 {
+	mut dk := []u8{}
+	for i := 1; dk.len < key_length; i++ {
+		mut msg := salt.clone()
+		msg << [u8(i >> 24), u8(i >> 16), u8(i >> 8), u8(i)]
+		mut u := naive_hmac(name, password, msg)
+		mut t := u.clone()
+		for _ in 1 .. count {
+			u = naive_hmac(name, password, u)
+			for j in 0 .. t.len {
+				t[j] ^= u[j]
+			}
+		}
+		dk << t
+	}
+	return dk[..key_length]
+}
+
+fn test_matches_naive_reference() {
+	salt := 'NaCl, and some more salt'.bytes()
+	for name in variants {
+		block_size := block_size_of(name)
+		for count in [1, 2, 3, 100, 4096] {
+			// passwords shorter than, equal to and longer than the block size
+			mut password_lengths := [0, 7, block_size, block_size + 1, 2 * block_size + 3]
+			mut key_lengths := [1, 20, 32, 33, 64, 100]
+			if count == 4096 {
+				// keep the test fast without -prod; 33 bytes needs two blocks for every
+				// digest except sha384 and sha512
+				password_lengths = [7, block_size, block_size + 1]
+				key_lengths = [33]
+			}
+			for password_length in password_lengths {
+				password := []u8{len: password_length, init: u8(index * 13 + 5)}
+				// a shorter key is a prefix of a longer one
+				expected := naive_pbkdf2(name, password, salt, count, key_lengths.last())
+				for key_length in key_lengths {
+					got := pbkdf2.key(password, salt, count, key_length, new_hash(name))!
+					assert got == expected[..key_length], '${name} password.len=${password_length} c=${count} dkLen=${key_length}'
+				}
+			}
+		}
 	}
 }

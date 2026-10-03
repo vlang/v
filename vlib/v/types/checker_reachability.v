@@ -8,7 +8,7 @@ const min_parallel_selected_fn_cost = 4096
 const max_selected_fn_batch_bodies = 256
 const max_selected_fn_batch_cost = 8192
 
-struct SelectedFnScanArgs {
+struct SelectedFnFrontierScanArgs {
 	master   voidptr
 	frontier voidptr
 	start    int
@@ -17,13 +17,13 @@ mut:
 	names []string
 }
 
-struct SelectedFnWorkerArgs {
+struct SelectedFnFrontierWorkerArgs {
 	batches voidptr
 	queue   chan int
 }
 
-fn selected_fn_scan_batch(arg voidptr) {
-	mut args := unsafe { &SelectedFnScanArgs(arg) }
+fn selected_fn_frontier_scan_batch(arg voidptr) {
+	mut args := unsafe { &SelectedFnFrontierScanArgs(arg) }
 	master := unsafe { &TypeChecker(args.master) }
 	frontier := unsafe { &[]SelectedFnDecl(args.frontier) }
 	scratch := check_worker_scope_begin(true)
@@ -53,12 +53,12 @@ fn selected_fn_scan_batch(arg voidptr) {
 	return
 }
 
-fn selected_fn_scan_thread(arg voidptr) voidptr {
-	args := unsafe { &SelectedFnWorkerArgs(arg) }
-	batches := unsafe { &[]SelectedFnScanArgs(args.batches) }
+fn selected_fn_frontier_scan_thread(arg voidptr) voidptr {
+	args := unsafe { &SelectedFnFrontierWorkerArgs(arg) }
+	batches := unsafe { &[]SelectedFnFrontierScanArgs(args.batches) }
 	for {
 		i := <-args.queue or { break }
-		selected_fn_scan_batch(unsafe { voidptr(&batches[i]) })
+		selected_fn_frontier_scan_batch(unsafe { voidptr(&batches[i]) })
 	}
 	return unsafe { nil }
 }
@@ -87,7 +87,7 @@ fn (mut tc TypeChecker) collect_selected_file_frontier_parallel(frontier []Selec
 	jobs := int_min(pool.size() + 1, max_scoped_check_jobs)
 	batch_cost := int_min(max_selected_fn_batch_cost,
 		int_max(int(total_cost / (jobs * 2)), min_parallel_selected_fn_cost / 2))
-	mut args := []SelectedFnScanArgs{cap: frontier.len}
+	mut args := []SelectedFnFrontierScanArgs{cap: frontier.len}
 	mut start := 0
 	for start < frontier.len {
 		mut end := start
@@ -99,7 +99,7 @@ fn (mut tc TypeChecker) collect_selected_file_frontier_parallel(frontier []Selec
 				break
 			}
 		}
-		args << SelectedFnScanArgs{
+		args << SelectedFnFrontierScanArgs{
 			master:   voidptr(tc)
 			frontier: unsafe { voidptr(&frontier) }
 			start:    start
@@ -113,15 +113,15 @@ fn (mut tc TypeChecker) collect_selected_file_frontier_parallel(frontier []Selec
 	}
 	queue.close()
 	n_jobs := int_min(jobs, args.len)
-	mut worker_args := []SelectedFnWorkerArgs{cap: n_jobs}
+	mut worker_args := []SelectedFnFrontierWorkerArgs{cap: n_jobs}
 	mut tasks := []workers.Task{cap: n_jobs}
 	for i in 0 .. n_jobs {
-		worker_args << SelectedFnWorkerArgs{
+		worker_args << SelectedFnFrontierWorkerArgs{
 			batches: unsafe { voidptr(&args) }
 			queue:   queue
 		}
 		tasks << workers.Task{
-			run:        selected_fn_scan_thread
+			run:        selected_fn_frontier_scan_thread
 			arg:        unsafe { voidptr(&worker_args[i]) }
 			force_sync: i == 0
 		}

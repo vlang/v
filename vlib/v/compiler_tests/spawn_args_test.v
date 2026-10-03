@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_args_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -19,7 +20,7 @@ fn gen_c(v3_bin string, name string, src string) string {
 	os.write_file(src_file, src) or { panic(err) }
 	c_out := os.join_path(os.temp_dir(), '${name}.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} ${src_file} -o ${c_out}')
+	compile := os.exec([v3_bin, src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_out) or { '' }
 }

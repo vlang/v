@@ -73,12 +73,12 @@ fn (mut t Transformer) enum_from_string_member_value(info EnumFromStringInfo, me
 	return t.make_int_literal_typed(member.value.str(), info.enum_type)
 }
 
-// optional_base_type returns the payload type, including void for a bare option/result marker.
+// optional_base_type returns the payload type, including void for a bare ? or !.
 fn (t &Transformer) optional_base_type(typ string) string {
-	if typ.len > 0 && (typ[0] == `?` || typ[0] == `!`) {
-		if typ.len == 1 {
-			return 'void'
-		}
+	if typ == '?' || typ == '!' {
+		return 'void'
+	}
+	if typ.len > 1 && (typ[0] == `?` || typ[0] == `!`) {
 		return typ[1..]
 	}
 	return typ
@@ -1188,7 +1188,7 @@ fn (mut t Transformer) thread_wait_or_expr_type(call flat.Node) ?string {
 
 fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 	// A bare `!` or `?` (a result/option of `void`, e.g. `fn f() !`) carries no payload.
-	// Canonicalize it before resolving the wrapper type for the temporary.
+	// Canonicalize the wrapper spelling before normalizing its payload.
 	if expr_type == '!' || expr_type == '?' {
 		return '${expr_type}void', 'void'
 	}
@@ -1204,7 +1204,8 @@ fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 	}
 	prefix := clean_expr_type[..1]
 	mut base := t.optional_base_type(clean_expr_type)
-	// A void Result/Option has no payload to parse or wrap again.
+	// A void Result/Option has no payload. Avoid normalizing its wrapper struct
+	// as a value type and adding another wrapper around it.
 	if base.len == 0 || base == 'void' || base == '__v_option' || base == clean_expr_type {
 		return '${prefix}void', 'void'
 	}

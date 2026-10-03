@@ -31,7 +31,8 @@ pub fn bounds() Element {
 		panic(err)
 	}
 	bin := os.join_path(root, 'bin')
-	result := os.execute('${os.quoted_path(@VEXE)} -nocache -gc none -path "@vlib|${module_dir}" -o ${os.quoted_path(bin)} ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-nocache', '-gc', 'none', '-path', '@vlib|' + '${module_dir}', '-o',
+		bin, source])
 	assert result.exit_code != 0
 	assert result.output.contains('<veb-template>:'), result.output
 	assert result.output.contains('called from'), result.output

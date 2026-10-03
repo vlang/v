@@ -11,7 +11,8 @@ fn run_assert_failure_source_with_flags(name string, src string, flags string) o
 	os.mkdir_all(tmp) or { panic(err) }
 	source := os.join_path(tmp, name)
 	os.write_file(source, src) or { panic(err) }
-	return os.execute('${os.quoted_path(@VEXE)} -no-memory-limit ${flags} run ${os.quoted_path(source)}')
+	return os.exec([@VEXE, '-no-memory-limit', ...(os.split_args(flags) or { panic(err) }), 'run',
+		source])
 }
 
 // test_failed_assert_reports_operand_values checks the report of a failed assert

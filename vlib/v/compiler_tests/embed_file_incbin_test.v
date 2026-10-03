@@ -44,9 +44,10 @@ fn expected_output() string {
 fn build_and_run(name string, flags string) (os.Result, string) {
 	exe := os.join_path(incbin_workspace, name)
 	main_file := os.join_path(incbin_workspace, 'main.v')
-	build := os.execute('${os.quoted_path(incbin_vexe)} -prod -showcc ${flags} -o ${os.quoted_path(exe)} ${os.quoted_path(main_file)}')
+	build := os.exec([incbin_vexe, '-prod', '-showcc', ...(os.split_args(flags) or { panic(err) }),
+		'-o', exe, main_file])
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(exe))
+	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	return build, run.output.trim_space()
 }
@@ -75,7 +76,7 @@ fn test_the_array_form_is_kept_with_no_incbin() {
 fn test_generated_c_output_spells_the_bytes_out() {
 	out_c := os.join_path(incbin_workspace, 'out.c')
 	main_file := os.join_path(incbin_workspace, 'main.v')
-	res := os.execute('${os.quoted_path(incbin_vexe)} -prod -o ${os.quoted_path(out_c)} ${os.quoted_path(main_file)}')
+	res := os.exec([incbin_vexe, '-prod', '-o', '${out_c}', main_file])
 	assert res.exit_code == 0, res.output
 	source := os.read_file(out_c) or { panic(err) }
 	assert source.contains('static const unsigned char _v_embed_blob_')

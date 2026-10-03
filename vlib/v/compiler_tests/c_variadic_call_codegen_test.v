@@ -10,7 +10,8 @@ fn c_variadic_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_variadic_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${c_variadic_vexe} -gc none -path "${c_variadic_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${c_variadic_v3_src}')
+		os.exec([c_variadic_vexe, '-gc', 'none', '-path',
+			'${c_variadic_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${c_variadic_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -68,9 +69,9 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_c_variadic_${os.getpid()}')
-	compile := os.execute('${v3_bin} -enable-globals ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.contains('plain'), run.output
 	assert run.output.contains('name=ok count=7'), run.output
@@ -114,9 +115,9 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_c_variadic_alias_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '2', run.output
 

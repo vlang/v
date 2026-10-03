@@ -49,7 +49,7 @@ fn test_new_generic_solver_does_not_regress_silently() {
 fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_summary string,
 	expected_summsvc string, expected_failures []string) {
 	log.info('>>> running ${term.colorize(term.magenta, test_cmd)} ...')
-	res := os.execute(test_cmd)
+	res := os.exec(os.split_args(test_cmd) or { panic(err) })
 	log.info('>>> done running ${test_cmd} ; exit_code: ${res.exit_code}')
 
 	res_lines := res.output.split_into_lines()

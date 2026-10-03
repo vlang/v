@@ -16,7 +16,8 @@ fn build_v3_inline_asm() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${inline_asm_vexe} -gc none -path "${inline_asm_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${inline_asm_v3_source}')
+		os.exec([inline_asm_vexe, '-gc', 'none', '-path',
+			'${inline_asm_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, inline_asm_v3_source])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -218,7 +219,7 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	c_path := '${inline_asm_tmp_path('program')}.c'
 	bin_path := inline_asm_tmp_path('program')
 	os.write_file(source_path, source) or { panic(err) }
-	generate := os.execute('${v3_bin} -enable-globals -cc clang -o ${c_path} ${source_path}')
+	generate := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', c_path, source_path])
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
@@ -245,9 +246,9 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 		assert c_source.contains('".byte 0x27, 0x35, 0x0f, 0x48\\n\\t"'), c_source
 		assert !c_source.contains('.byte \\\$0x27'), c_source
 	}
-	compile := os.execute('${v3_bin} -enable-globals -cc clang -o ${bin_path} ${source_path}')
+	compile := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', bin_path, source_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	$if arm64 {
 		assert run.output.trim_space() == '8\n10\n6\n7\n65\n25\n100'
@@ -269,7 +270,8 @@ fn test_i386_inline_asm_reaches_c_lowering() {
 ') or {
 		panic(err)
 	}
-	generate := os.execute('${v3_bin} -os linux -arch i386 -cc clang -o ${c_path} ${source_path}')
+	generate := os.exec([v3_bin, '-os', 'linux', '-arch', 'i386', '-cc', 'clang', '-o', c_path,
+		source_path])
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
@@ -293,7 +295,8 @@ fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
 ') or {
 		panic(err)
 	}
-	generate := os.execute('${v3_bin} -os linux -arch amd64 -cc clang -o ${c_path} ${source_path}')
+	generate := os.exec([v3_bin, '-os', 'linux', '-arch', 'amd64', '-cc', 'clang', '-o', c_path,
+		source_path])
 	assert generate.exit_code == 0, generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('"mov %%fs:(%[value]), %[value]\\n\\t"'), c_source
@@ -518,7 +521,8 @@ fn generate_inline_asm_c_for_arch(name string, source string, arch string) (os.R
 	source_path := '${inline_asm_tmp_path(name)}.v'
 	c_path := '${inline_asm_tmp_path(name)}.c'
 	os.write_file(source_path, source) or { panic(err) }
-	result := os.execute('${v3_bin} -os linux -arch ${arch} -cc clang -o ${c_path} ${source_path}')
+	result := os.exec([v3_bin, '-os', 'linux', '-arch', '${arch}', '-cc', 'clang', '-o', c_path,
+		source_path])
 	c_source := os.read_file(c_path) or { '' }
 	return result, c_source
 }

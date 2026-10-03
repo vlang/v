@@ -31,7 +31,7 @@ fn compiles(name string, mod_source string, main_source string) (bool, string) {
 	// fallback, which would otherwise answer for it: every compile error stages a
 	// retry, and the fallback's own diagnostics are what the assertions would end
 	// up reading.
-	res := os.execute('${os.quoted_path(vexe)} -new-compiler -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+	res := os.exec([vexe, '-new-compiler', '-o', '${out}', '${src}'])
 	return res.exit_code == 0, res.output
 }
 
@@ -52,7 +52,7 @@ fn naming_generated_types_is_rejected(mod_source string, reader_source string) (
 	src := os.join_path(dir, 'm.v')
 	os.write_file(src, reader_source) or { panic(err) }
 	c_out := os.join_path(dir, 'm.c')
-	gen := os.execute('${os.quoted_path(vexe)} -new-compiler -o ${os.quoted_path(c_out)} ${os.quoted_path(src)}')
+	gen := os.exec([vexe, '-new-compiler', '-o', '${c_out}', '${src}'])
 	if gen.exit_code != 0 {
 		return 0, ['generating C for the reader failed: ${gen.output}']
 	}
@@ -78,7 +78,7 @@ fn naming_generated_types_is_rejected(mod_source string, reader_source string) (
 		attempt := 'module main\n\nimport holder\n\nfn main() {\n\ts := ' + generated +
 			'{}\n\tprintln(s)\n}\n'
 		os.write_file(src, attempt) or { panic(err) }
-		res := os.execute('${os.quoted_path(vexe)} -new-compiler -o ${os.quoted_path(exe)} ${os.quoted_path(src)}')
+		res := os.exec([vexe, '-new-compiler', '-o', exe, '${src}'])
 		if res.exit_code == 0 || !res.output.contains('declared as private to module `holder`') {
 			accepted << '${generated}: ${res.output}'
 		}
@@ -263,4 +263,55 @@ fn main() {
 }
 ')
 	assert ok, output
+}
+
+fn test_anonymous_parameter_fields_are_available_among_other_parameters() {
+	ok, output := compiles('adopt_anon_multiple', 'module holder
+
+pub fn consume(n int, s struct {
+	x, y int
+}, label string) int {
+	return n + s.x + s.y + label.len
+}
+', 'module main
+
+import holder
+
+fn main() {
+	println(holder.consume(1, struct {
+		x: 2
+		y: 3
+	}, "ok"))
+}
+')
+	assert ok, output
+}
+
+fn test_a_literal_still_cannot_set_a_private_anonymous_struct_field() {
+	ok, output := compiles('private_anon_field', 'module holder
+
+pub struct Visible {
+pub:
+	cfg struct {
+		secret int
+	pub:
+		on bool
+	}
+}
+', 'module main
+
+import holder
+
+fn main() {
+	v := holder.Visible{
+		cfg: struct {
+			secret: 42
+			on: true
+		}
+	}
+	println(v.cfg.on)
+}
+')
+	assert !ok, 'a private anonymous field of another module was accepted'
+	assert output.contains('cannot access private field `secret` of an anonymous struct'), output
 }

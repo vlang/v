@@ -11,7 +11,7 @@ const compiler_src = os.join_path(compiler_dir, 'v.v')
 
 fn run(cmd string) os.Result {
 	println('> ${cmd}')
-	return os.execute(cmd)
+	return os.exec(os.split_args(cmd) or { panic(err) })
 }
 
 fn build_compiler() string {
@@ -41,7 +41,8 @@ fn run_stdout(cmd string) string {
 	stdout_path := '${os.temp_dir()}/v_compiler_c_test_stdout'
 	os.rm(stdout_path) or {}
 	println('> ${cmd}')
-	code := os.system('${cmd} > ${os.quoted_path(stdout_path)}')
+	code := os.system_args(['sh', '-c', 'output=\$1; shift; "\$@" > "\$output"', 'v', stdout_path,
+		...(os.split_args(cmd) or { panic(err) })])
 	if code != 0 {
 		eprintln('FAIL: command failed (exit ${code})')
 		exit(code)

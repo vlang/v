@@ -74,6 +74,34 @@ fn (entry ToolCacheEntryDir) remove(name string) {
 	C.unlinkat(entry.fd, &char(name.str), 0)
 }
 
+// read_metadata opens a child without following links or blocking on FIFOs. The descriptor
+// must name an owned regular file before any bytes are read, and remains pinned during reading.
+fn (entry ToolCacheEntryDir) read_metadata(name string) ?string {
+	fd := C.openat(entry.fd, &char(name.str), C.O_RDONLY | C.O_NOFOLLOW | C.O_NONBLOCK, 0)
+	if fd < 0 {
+		return none
+	}
+	defer {
+		C.close(fd)
+	}
+	mut information := C.stat{}
+	if C.fstat(fd, &information) != 0 || u32(information.st_uid) != os.getuid()
+		|| information.st_mode & C.S_IFMT != C.S_IFREG {
+		return none
+	}
+	mut chunks := []string{}
+	for {
+		chunk, count := os.fd_read(fd, 4096)
+		if count < 0 {
+			return none
+		}
+		if count == 0 {
+			return chunks.join('')
+		}
+		chunks << chunk
+	}
+}
+
 // ensure_tool_cache_lock_file creates the persistent inode used to serialize every cache key
 // for one tool. It is intentionally never unlinked: releasing a lock while removing its
 // pathname can split waiters across two independently locked inodes.

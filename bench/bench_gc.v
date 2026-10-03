@@ -240,7 +240,7 @@ fn run_comparison() {
 		out := if gc_mode == 'boehm' { tmp_boehm } else { tmp_vgc }
 		print('compiling with -gc ${gc_mode}...')
 		flush_stdout()
-		r := os.execute('${v_exe} -gc ${gc_mode} -prod -o ${out} ${src}')
+		r := os.exec([v_exe, '-gc', '${gc_mode}', '-prod', '-o', '${out}', '${src}'])
 		if r.exit_code != 0 {
 			eprintln(' FAILED')
 			eprintln(r.output)
@@ -257,7 +257,7 @@ fn run_comparison() {
 		gc_name := if i == 0 { 'boehm' } else { 'vgc' }
 		print('running ${gc_name}...')
 		flush_stdout()
-		r := os.execute('${bin} --run-workload')
+		r := os.exec([bin, '--run-workload'])
 		if r.exit_code != 0 {
 			eprintln(' FAILED')
 			eprintln(r.output)

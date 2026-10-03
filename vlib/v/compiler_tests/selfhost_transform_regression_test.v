@@ -19,7 +19,9 @@ fn selfhost_regression_build_v3() string {
 	if os.exists(v3_bin) {
 		return v3_bin
 	}
-	build := os.execute('${selfhost_regression_vexe} -gc none -path "${selfhost_regression_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${selfhost_regression_v3_src}')
+	build := os.exec([selfhost_regression_vexe, '-gc', 'none', '-path',
+		'${selfhost_regression_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		'${selfhost_regression_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -29,10 +31,10 @@ fn selfhost_regression_run(name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_selfhost_regression_${name}.v')
 	bin := os.join_path(os.temp_dir(), 'v3_selfhost_regression_${name}')
 	os.write_file(src, source) or { panic(err) }
-	compile := os.execute('${v3_bin} -nocache -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-nocache', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -531,10 +533,10 @@ fn main() {
 }
 ') or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_selfhost_regression_static_assoc_bin_${os.getpid()}')
-	compile := os.execute('${v3_bin} -nocache -b c -o ${bin} ${main_path}')
+	compile := os.exec([v3_bin, '-nocache', '-b', 'c', '-o', bin, main_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['3-6', '7-14']
 }

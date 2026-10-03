@@ -236,11 +236,12 @@ fn sql_alias_visibility_wrapped_result(name string, is_public bool, expression s
 	}
 	executable := os.join_path(dir, 'main.exe')
 	flags := if check_only { '-check' } else { '' }
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler ${flags} -o ${os.quoted_path(executable)} ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-new-compiler', ...(os.split_args(flags) or { panic(err) }), '-o',
+		executable, source])
 	if result.exit_code != 0 || check_only {
 		return result
 	}
-	return os.execute(os.quoted_path(executable))
+	return os.exec([executable])
 }
 
 fn test_public_inherited_alias_methods_work_in_imported_sql_values() {

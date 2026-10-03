@@ -7,7 +7,7 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_veb_ctx_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -57,7 +57,7 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	c_out := os.join_path(os.temp_dir(), 'v3_veb_ctx.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${c_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	// No-arg reflected delegation forwards the enclosing ctx in the ctx slot.
@@ -106,7 +106,7 @@ fn main() {
 		panic(err)
 	}
 	bin_out := os.join_path(root, 'app')
-	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -149,7 +149,7 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_unnamed_route')
 	os.rm(bin_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -192,7 +192,7 @@ fn main() {}
 "
 	os.write_file(os.join_path(root, 'main.v'), main_src) or { panic(err) }
 	out := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} -no-memory-limit ${os.join_path(root, 'main.v')} -o ${out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', os.join_path(root, 'main.v'), '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -233,7 +233,7 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	c_out := os.join_path(os.temp_dir(), 'v3_veb_complete_context_receiver.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${c_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	assert c_code.contains('Context__before_request(user_context)'), c_code
@@ -242,7 +242,7 @@ fn main() {
 	assert !c_code.contains('v_struct'), c_code
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_complete_context_receiver')
 	os.rm(bin_out) or {}
-	native_compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${bin_out}')
+	native_compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', bin_out])
 	assert native_compile.exit_code == 0, native_compile.output
 }
 
@@ -291,9 +291,9 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_reflected_implicit_ctx')
 	os.rm(bin_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'first:second', run.output
 }
@@ -346,9 +346,9 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_no_spread')
 	os.rm(bin_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['index called', 'explicit called'], run.output
 }
@@ -399,9 +399,9 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg')
 	os.rm(bin_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'interface called', run.output
 }
@@ -443,7 +443,7 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	c_out := os.join_path(os.temp_dir(), 'v3_veb_embedded_base_ctx.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${c_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	assert c_code.contains('App__index(app, &ctx->veb__Context)'), c_code
@@ -487,7 +487,7 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	c_out := os.join_path(os.temp_dir(), 'v3_veb_custom_context_generic_method.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${c_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	assert c_code.contains('veb__Context_SomeData__json(&ctx->veb__Context, payload)'), c_code

@@ -146,7 +146,7 @@ fn listening_process_ids(port int) []int {
 		return []int{}
 	} $else {
 		// `lsof` exits with status 1 when no process is listening, which is expected.
-		result := os.execute('lsof -tiTCP:${port} -sTCP:LISTEN')
+		result := os.exec(['lsof', '-tiTCP:' + '${port}', '-sTCP:LISTEN'])
 		return listening_process_ids_from_lsof_output(result.output)
 	}
 }
@@ -163,7 +163,7 @@ fn prompt_to_kill_processes_listening_on_port(port int) {
 	}
 	for pid in pids {
 		// PIDs are parsed as integers from lsof output, so this command has no user-provided shell input.
-		os.execute('kill -TERM ${pid}')
+		os.exec(['kill', '-TERM', '${pid}'])
 	}
 	// Give gracefully terminated servers a moment to release the listener before binding ours.
 	for _ in 0 .. 10 {
