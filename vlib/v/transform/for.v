@@ -1483,6 +1483,7 @@ fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post fl
 	}
 	return t.a.add_node(flat.Node{
 		kind:           .for_stmt
+		value:          if src.kind == .for_in_stmt { skip_scope_drops_block_value } else { '' }
 		op:             src.op
 		children_start: start
 		children_count: flat.child_count(3 + body.len)

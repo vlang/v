@@ -6,6 +6,7 @@ import v.gen.c.naming
 
 enum OwnershipBorrowedProjectionAction {
 	not_borrowed
+	owned_value
 	string_view
 	clone_value
 	reject_copy
@@ -1214,6 +1215,12 @@ fn (tc &TypeChecker) ownership_drop_target_for_direct_type_name(type_name string
 fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_wrapper bool) ?OwnershipDropTarget {
 	if typ is Alias {
 		return tc.ownership_drop_target_for_resolved_type(typ.base_type, optional_wrapper)
+	}
+	if typ is String {
+		return OwnershipDropTarget{
+			type_name:        typ.name()
+			optional_wrapper: optional_wrapper
+		}
 	}
 	if typ is OptionType {
 		return OwnershipDropTarget{
@@ -4256,6 +4263,33 @@ fn (mut tc TypeChecker) ownership_prescan_expr_for_owned_calls(id flat.NodeId, m
 		.call {
 			return tc.ownership_prescan_call_for_owned_calls(id, node, mut owned_locals, mut local_types)
 		}
+		.index {
+			for i in 0 .. node.children_count {
+				tc.ownership_prescan_node_for_owned_calls(tc.a.child(&node, i), mut owned_locals, mut local_types)
+			}
+			if node.value != 'range' || node.children_count == 0
+				|| tc.ownership_string_range_is_borrowed(id) {
+				return false
+			}
+			mut base_id := tc.ownership_unwrap_expr(tc.a.child(&node, 0))
+			base := tc.a.node(base_id)
+			if base.kind == .prefix && base.op == .mul && base.children_count > 0 {
+				base_id = tc.ownership_unwrap_expr(tc.a.child(base, 0))
+			}
+			base_name := tc.ownership_expr_ident_name(base_id)
+			mut base_type := local_types[base_name] or { tc.resolve_type(base_id) }
+			if !tc.ownership_type_is_string(base_type) {
+				for name, typ in local_types {
+					if ownership_storage_key_is_descendant(base_name, name) {
+						if projected := tc.returned_receiver_projection_type(unwrap_all_pointers(typ), base_name[name.len..]) {
+							base_type = projected
+							break
+						}
+					}
+				}
+			}
+			return tc.ownership_type_is_string(base_type)
+		}
 		.if_expr {
 			return tc.ownership_prescan_if_expr_for_owned_calls(node, mut owned_locals, mut local_types)
 		}
@@ -4976,6 +5010,9 @@ fn (mut tc TypeChecker) ownership_begin_fn(node flat.Node) {
 		}
 		key := '${fn_name}__param_${i}'
 		child_type := tc.parse_type(child.typ)
+		if tc.ownership_standard_string_arg_is_borrowed(fn_name, i, child_type) {
+			continue
+		}
 		if !tc.autofree_mode
 			&& (key in st.ownership_fn_params || tc.ownership_type_is_owned(child_type)) {
 			tc.ownership_mark_owned(child.value, child_type, tc.a.child(&node, i))
@@ -7144,7 +7181,7 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 			tc.ownership_mark_string_view(lhs_name, rhs_id, assign_id)
 			return
 		}
-		.clone_value {
+		.clone_value, .owned_value {
 			tc.ownership_mark_owned(lhs_name, tc.resolve_type(rhs_id), assign_id)
 			return
 		}
@@ -8372,7 +8409,7 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 			tc.ownership_mark_string_view(target_name, expr_id, pos)
 			return false
 		}
-		.clone_value {
+		.clone_value, .owned_value {
 			tc.ownership_mark_owned(target_name, tc.resolve_type(id), pos)
 			return true
 		}
@@ -8588,7 +8625,7 @@ fn (mut tc TypeChecker) ownership_collect_expr_result(lhs_name string, expr_id f
 			tc.ownership_mark_string_view(lhs_name, expr_id, pos)
 			return false
 		}
-		.clone_value {
+		.clone_value, .owned_value {
 			tc.ownership_mark_owned(lhs_name, tc.resolve_type(id), pos)
 			return true
 		}
@@ -9670,7 +9707,8 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 		if projection_action == .string_view {
 			continue
 		}
-		if projection_action == .clone_value && is_string_view {
+		if projection_action == .owned_value
+			|| (projection_action == .clone_value && is_string_view) {
 			st.mark_fn_return_owned(st.cur_fn)
 			for slot_idx in tc.ownership_return_slot_indices(expr_id, i, '') {
 				tc.ownership_add_fn_return_slot(st.cur_fn, slot_idx)
@@ -11000,7 +11038,8 @@ fn (mut tc TypeChecker) ownership_expr_is_owned_clone_call(id flat.NodeId) bool 
 // ownership_expr_creates_owned_value reports whether evaluating an expression creates a
 // fresh owner rather than merely naming ownership-bearing storage.
 pub fn (tc &TypeChecker) ownership_expr_creates_owned_value(id flat.NodeId) bool {
-	if tc.ownership_expr_is_to_owned_call(id) || tc.ownership_expr_is_ownership_call(id) {
+	if tc.ownership_expr_is_to_owned_call(id) || tc.ownership_expr_is_ownership_call(id)
+		|| tc.ownership_expr_is_owned_string_range(id) {
 		return true
 	}
 	call_id := tc.ownership_unwrap_expr(id)
@@ -11370,6 +11409,9 @@ fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, t
 	if !tc.valid_node_id(source_id) {
 		return false
 	}
+	if tc.ownership_expr_is_owned_string_range(source_id) {
+		return false
+	}
 	node := tc.a.nodes[int(source_id)]
 	if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
 		return tc.ownership_expr_moves_named_storage(tc.a.child(&node, 0), target)
@@ -11679,8 +11721,8 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 }
 
 // ownership_borrowed_projection_action records how a read from retained storage is handled.
-// String slices and local string views remain non-owning. Other cloneable values are marked
-// for lowering; uncloneable values are rejected and never fall through to move bookkeeping.
+// Allocating string ranges retain ownership; local string views remain non-owning. Other
+// cloneable values are marked for lowering; uncloneable values never fall through to moves.
 fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos flat.NodeId) OwnershipBorrowedProjectionAction {
 	clean_id := tc.ownership_unwrap_expr(id)
 	mut st := tc.ownership_state()
@@ -11692,6 +11734,11 @@ fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos
 			st.borrowed_projection_actions[int(id)] = action
 			return action
 		}
+	}
+	if tc.ownership_expr_is_owned_string_range(clean_id) {
+		st.borrowed_projection_actions[int(id)] = .owned_value
+		st.borrowed_projection_actions[int(clean_id)] = .owned_value
+		return .owned_value
 	}
 	is_string_view := tc.ownership_expr_is_string_view(id)
 	if !is_string_view && !tc.ownership_expr_borrows_storage(id) {
@@ -11740,7 +11787,8 @@ fn (mut tc TypeChecker) ownership_string_view_source_id(id flat.NodeId, mut visi
 			}
 		}
 	}
-	if (node.kind == .index && node.value == 'range')
+	if (node.kind == .index && node.value == 'range'
+		&& tc.ownership_string_range_is_borrowed(clean_id))
 		|| (node.kind == .prefix && node.op == .mul && node.children_count > 0) {
 		return clean_id
 	}
@@ -11772,6 +11820,37 @@ fn (mut tc TypeChecker) ownership_string_view_source_id(id flat.NodeId, mut visi
 		}
 	}
 	return flat.empty_node
+}
+
+// Only a non-gated range directly beneath `&` is lowered through substr_borrowed.
+fn (tc &TypeChecker) ownership_string_range_is_borrowed(id flat.NodeId) bool {
+	mut current := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(current) || tc.a.node(current).op == .gated_index {
+		return false
+	}
+	for {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) || parent_id == current {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .paren {
+			current = parent_id
+			continue
+		}
+		return parent.kind == .prefix && parent.op == .amp
+	}
+}
+
+fn (tc &TypeChecker) ownership_expr_is_owned_string_range(id flat.NodeId) bool {
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.node(clean_id)
+	return node.kind == .index && node.value == 'range'
+		&& unalias_type(tc.resolve_type(clean_id)) is String
+		&& !tc.ownership_string_range_is_borrowed(clean_id)
 }
 
 // ownership_mark_string_view retains a borrowed string's relation to its source owner.
@@ -11883,6 +11962,9 @@ fn (tc &TypeChecker) ownership_expr_borrows_storage(id flat.NodeId) bool {
 	}
 	clean_id := tc.ownership_unwrap_expr(id)
 	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	if tc.ownership_expr_is_owned_string_range(clean_id) {
 		return false
 	}
 	node := tc.a.nodes[int(clean_id)]
@@ -12706,7 +12788,7 @@ fn (tc &TypeChecker) ownership_fn_declared_in_builtin(fn_name string) bool {
 }
 
 fn (tc &TypeChecker) ownership_builtin_string_arg_escapes(fn_name string, param_idx int, typ Type) bool {
-	return unalias_type(typ) is String && fn_name.starts_with('string.')
+	return param_idx > 0 && unalias_type(typ) is String && fn_name.starts_with('string.')
 		&& tc.ownership_fn_declared_in_builtin(fn_name)
 		&& tc.ownership_call_returns_param(fn_name, param_idx)
 }
@@ -12720,7 +12802,8 @@ fn (tc &TypeChecker) ownership_standard_string_arg_is_borrowed(fn_name string, p
 	}
 	if fn_name.starts_with('string.') && tc.ownership_fn_declared_in_builtin(fn_name) {
 		// Returned arguments transfer their buffers, as in `substr_or`'s fallback.
-		return !tc.ownership_call_returns_param(fn_name, param_idx)
+		// The receiver remains borrowed even when a method returns a view into it.
+		return param_idx == 0 || !tc.ownership_call_returns_param(fn_name, param_idx)
 	}
 	mut standard_module := ''
 	if fn_name in ['os.is_abs_path', 'os.is_unc_path', 'os.is_drive_rooted', 'os.is_normal_path',

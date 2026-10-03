@@ -35,12 +35,14 @@ s := 'hello'.to_owned() // s is owned
 t := 'world' // t is a normal string, no ownership tracking
 ```
 
-Ordinary string slices allocate independent storage but remain regular strings. Addressed
-string ranges such as `&text[start..end]` borrow the original bytes in ownership mode and
-retain a stable slice header. The source must remain alive while the reference is used. A local
-dereference of a borrowed string or a builtin `string.substr_unsafe()` result retains a view
-of its source, including dereferences of pointer-returning calls;
-the source cannot be moved or reassigned while that view is live. Use `.to_owned()` or
+Ordinary string slices allocate independent storage and are owned in ownership mode. Assigning,
+passing, or returning a slice transfers its ownership, and its buffer is freed when the owner
+leaves scope. The source remains usable. Addressed string ranges such as `&text[start..end]`
+borrow the original bytes in ownership mode and retain a stable slice header. The source must
+remain alive while the reference is used. A local dereference of a borrowed string or a builtin
+`string.substr_unsafe()` result retains a view of its source, including dereferences of
+pointer-returning calls; the source cannot be moved or reassigned while that view is live.
+Use `.to_owned()` or
 `.clone()` to create an owned copy. Borrowed views stored in owned aggregates or returned
 by value are copied so they can outlive the source.
 Reassigning a borrowed view releases its loan without freeing the source bytes.

@@ -8,7 +8,7 @@ fn test_ownership_string_views_do_not_create_implicit_owners() {
 	os.write_file(source, 'import os
 import encoding.utf8
 
-fn read_view(value string) int {
+fn read_view(value &string) int {
 	return value.len
 }
 
@@ -51,32 +51,32 @@ fn escaped_unsafe_view() (string, voidptr) {
 fn main() {
 	text := "prefix/filename".to_owned()
 	mut view := text[7..]
-	assert read_view(view) == 8
-	assert utf8.validate_str(view)
+	assert read_view(&view) == 8
+	assert utf8.validate_str(view.clone())
 	assert view.to_owned() == "filename"
 	view = view[..4]
-	assert read_view(view) == 4
+	assert read_view(&view) == 4
 	assert view == "file"
 	assert text == "prefix/filename"
 	path := path_view(&text)
 	assert path == text
 	assert unsafe { path.str != text.str }
-	assert read_view(path) == text.len
+	assert read_view(&path) == text.len
 	ptr := &text
 	normalized := normalize_view(*ptr)
-	assert read_view(normalized) == text.len
+	assert read_view(&normalized) == text.len
 	assert normalized == text
 	dereferenced := *ptr
 	assert unsafe { dereferenced.str == text.str }
-	assert read_view(dereferenced) == text.len
+	assert read_view(&dereferenced) == text.len
 	assert dereferenced == text
 	unsafe_view := unsafe { text.substr_unsafe(7, text.len) }
 	assert unsafe { unsafe_view.str == text.str + 7 }
-	assert read_view(unsafe_view) == 8
+	assert read_view(&unsafe_view) == 8
 	assert unsafe_view == "filename"
 	independent := independent_copy(ptr)
 	assert unsafe { independent.str != text.str }
-	assert read_view(independent) == text.len
+	assert read_view(&independent) == text.len
 	assert text == "prefix/filename"
 	stored := Holder{name: *ptr}
 	assert unsafe { stored.name.str != text.str }
@@ -94,7 +94,7 @@ fn main() {
 	assert unsafe { voidptr(escaped_unsafe.str) != unsafe_source_ptr }
 	owner := "independent".to_owned()
 	independent_slice := owner[..3]
-	assert read_view(owner) == 11
+	assert read_view(&owner) == 11
 	assert independent_slice == "ind"
 	assert os.join_path(view, "child") == "file/child"
 	assert view == "file"
@@ -219,7 +219,7 @@ fn main() {
 	literal_len, _ := read("literal")
 	assert literal_len == 7
 	slice := local[..3]
-	slice_len, slice_ptr := read(slice)
+	slice_len, slice_ptr := read(slice.clone())
 	assert slice_len == 3
 	assert unsafe { slice_ptr != voidptr(slice.str) }
 	assert slice == "sec"
