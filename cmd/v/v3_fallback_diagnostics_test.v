@@ -11,6 +11,17 @@ fn test_v1_fallback_failure_message_separates_the_v3_reason() {
 		'`make v1` failed with exit code 2.'
 }
 
+fn test_v1_fallback_make_hint_names_the_make_this_platform_has() {
+	hint := v1_fallback_make_hint()
+	// A stock Windows install has no `make` at all, so advice to "install make"
+	// is not actionable there; MSYS2's `mingw32-make` is what it can use.
+	$if windows {
+		assert hint.contains('mingw32-make'), hint
+	} $else {
+		assert hint == 'Install make.', hint
+	}
+}
+
 fn test_v3_c_error_diagnostics_preserves_the_original_output() {
 	root := os.join_path(os.vtmp_dir(), 'v3_c_error_diagnostics_${os.getpid()}')
 	os.rmdir_all(root) or {}
