@@ -23396,6 +23396,10 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 			clean_field_type := default_init_unalias_type(field_type)
 			if clean_field_type is types.Struct && !clean_field_type.name.starts_with('C.') && g.struct_needs_default_init(clean_field_type.name) {
 				g.queue_global_struct_field_defaults(field_target, clean_field_type.name, init_module, mut visited)
+			} else if clean_field_type is types.Map || clean_field_type is types.Array
+				|| clean_field_type is types.Channel {
+				// A zeroed map/array/channel is not a usable empty value; build one.
+				g.queue_runtime_init_for_module('\t${field_target} = ${g.default_value_to_string(field_type)};', init_module)
 			}
 			continue
 		}
