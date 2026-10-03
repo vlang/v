@@ -18061,6 +18061,9 @@ struct ComptimeStaticValueCase {
 	param_names   []string
 	param_types   []string
 	param_is_mut  []bool
+	// param_is_mut_ref marks `mut x &T` params (an explicit mutable reference). A plain
+	// `mut x T` param is recorded as `&T` too, so the type text cannot tell them apart.
+	param_is_mut_ref []bool
 }
 
 struct ComptimeStaticValueCases {
@@ -18680,12 +18683,14 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 				mut param_names := []string{}
 				mut param_types := []string{}
 				mut param_is_mut := []bool{}
+				mut param_is_mut_ref := []bool{}
 				for i in 1 .. candidate.children_count {
 					param := tc.a.child_node(&candidate, i)
 					if param.kind == .param {
 						param_names << param.value
 						param_types << subst_generic_text(param.typ, generic_args, generic_params)
 						param_is_mut << param.is_mut
+						param_is_mut_ref << (param.is_mut && param.op == .amp)
 					}
 				}
 				return_type := subst_generic_text(if candidate.typ.len > 0 {
@@ -18694,15 +18699,16 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 					'void'
 				}, generic_args, generic_params)
 				cases << ComptimeStaticValueCase{
-					name:         name
-					location:     comptime_static_source_location(file_name, candidate.pos.offset, line_offsets_by_file[file_name])
-					typ:          comptime_static_method_type_text(param_types, return_type)
-					return_type:  return_type
-					is_pub:       candidate.op == .arrow
-					has_is_pub:   true
-					param_names:  param_names
-					param_types:  param_types
-					param_is_mut: param_is_mut
+					name:             name
+					location:         comptime_static_source_location(file_name, candidate.pos.offset, line_offsets_by_file[file_name])
+					typ:              comptime_static_method_type_text(param_types, return_type)
+					return_type:      return_type
+					is_pub:           candidate.op == .arrow
+					has_is_pub:       true
+					param_names:      param_names
+					param_types:      param_types
+					param_is_mut:     param_is_mut
+					param_is_mut_ref: param_is_mut_ref
 				}
 			}
 		}
