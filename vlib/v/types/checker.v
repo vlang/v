@@ -736,6 +736,7 @@ pub mut:
 	a                                &flat.FlatAst = unsafe { nil }
 	compiler_vroot                   string
 	module_search_paths              []string
+	fs_memo                          &CheckerFsMemo = unsafe { nil } // see check_import_diagnostics
 	verbose                          bool
 	raw_type_equality                bool
 	fast_parse_recent                bool
@@ -921,6 +922,10 @@ pub mut:
 	checking_nodes                          []bool
 	parallel_check_sparse                   bool
 	scope_parallel_check_workers            bool
+	// A pool worker's batch arena, kept between its batches and rewound for the
+	// next one (see check_scoped_batches); nil unless the worker opted in.
+	reuse_check_batch_scope bool
+	check_batch_scope       voidptr
 	// Node id range [check_range_lo, check_range_hi] of the fn item currently
 	// being checked. Fn subtrees are disjoint contiguous ranges (each fn_decl at
 	// index i owns (prev_top_level_idx, i]), so while parallel_check_sparse is
@@ -1892,7 +1897,7 @@ fn new_zeroed_name_cache(n int) []&CachedName {
 }
 
 fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
-	tc.direct_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
+	tc.direct_parent_ids = flat.empty_node_ids(a.nodes.len)
 	tc.rewritten_parent_ids = []flat.NodeId{}
 	tc.value_used_nodes = []bool{len: a.nodes.len}
 	tc.fn_check_costs = if tc.building_v_fast { []i32{len: a.nodes.len} } else { []i32{} }
@@ -2101,7 +2106,7 @@ pub fn (mut tc TypeChecker) invalidate_direct_parent_index() {
 pub fn (mut tc TypeChecker) refresh_rewritten_parent_index(a &flat.FlatAst) {
 	// Lexical smartcasts deliberately apply only to parsed source nodes, so keep
 	// direct_parent_ids at its original length and index appended nodes separately.
-	tc.rewritten_parent_ids = []flat.NodeId{len: a.nodes.len, init: flat.empty_node}
+	tc.rewritten_parent_ids = flat.empty_node_ids(a.nodes.len)
 	for parent_idx, node in a.nodes {
 		for child_idx in 0 .. node.children_count {
 			idx := int(a.child(&node, child_idx))
@@ -4083,20 +4088,28 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
-				qname := tc.qualify_fn_name(node.value)
-				lowered_qname := if fast_pass2_registration {
-					tc.cached_c_name(qname)
+				names_ready := pi < pass2_preps.len && pass2_preps[pi].prepared
+					&& pass2_preps[pi].names_ready
+				qname := if names_ready {
+					pass2_preps[pi].qname
 				} else {
-					''
+					tc.qualify_fn_name(node.value)
 				}
-				lowered_source_name := if fast_pass2_registration {
-					if node.value == qname {
-						lowered_qname
-					} else {
-						tc.cached_c_name(node.value)
-					}
-				} else {
+				lowered_qname := if !fast_pass2_registration {
 					''
+				} else if names_ready {
+					tc.store_c_name(qname, pass2_preps[pi].lowered_qname)
+				} else {
+					tc.cached_c_name(qname)
+				}
+				lowered_source_name := if !fast_pass2_registration {
+					''
+				} else if node.value == qname {
+					lowered_qname
+				} else if names_ready {
+					tc.store_c_name(node.value, pass2_preps[pi].lowered_source_name)
+				} else {
+					tc.cached_c_name(node.value)
 				}
 				// A parsed source body supersedes a matching declaration imported from
 				// a cached header. Pass 1 sees all bodyless declarations first, so clear
@@ -6165,6 +6178,12 @@ fn removed_json_module_message(file string) string {
 }
 
 fn (mut tc TypeChecker) check_import_diagnostics() {
+	// The module identity of each file asks the file system the same questions
+	// about the same few directories; remember the answers for this pass.
+	tc.fs_memo = &CheckerFsMemo{}
+	defer {
+		tc.fs_memo = unsafe { nil }
+	}
 	mut first_imports := map[string]token.Pos{}
 	mut declaration_seen_in_file := false
 	mut module_path_identity := ''
@@ -6227,13 +6246,13 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		// Self-import diagnostics only apply to imports written by the user.
 		if has_source && node.value != tc.cur_module && !module_path_identity_checked {
 			module_path_identity = tc.current_file_module_path_identity() or { '' }
-			module_directory = os.real_path(os.dir(tc.current_file_module_source_path()))
+			module_directory = tc.memo_real_path(os.dir(tc.current_file_module_source_path()))
 			module_path_identity_checked = true
 		}
 		resolved_directory := tc.a.resolved_module_dirs[node.value] or { module_directory }
 		if has_source && (node.value == tc.cur_module
 			|| (node.value == module_path_identity
-				&& os.real_path(resolved_directory) == module_directory)) {
+				&& tc.memo_real_path(resolved_directory) == module_directory)) {
 			tc.record_error_at(.duplicate_decl, 'cannot import `${module_path}` into a module with the same name', flat.NodeId(idx), tc.import_module_path_pos(node))
 		}
 		if has_source && node.typ == tc.cur_module && !tc.current_file_uses_nested_module_path() {
@@ -6415,12 +6434,14 @@ fn (mut tc TypeChecker) check_selective_type_imports(node flat.Node, module_path
 	}
 }
 
+struct UnusedImportCandidate {
+	idx         int
+	file        string
+	module_name string
+}
+
 fn (mut tc TypeChecker) check_unused_import_diagnostics() {
-	// import_is_used looks at the nodes of the import's own file. Listing each
-	// file's nodes once, on the first import that needs it, saves a walk of the
-	// whole program for every import.
-	mut nodes_by_file := map[int][]int{}
-	mut nodes_listed := false
+	mut candidates := []UnusedImportCandidate{}
 	for idx in tc.top_level_idx {
 		node := tc.a.nodes[idx]
 		if node.kind == .file {
@@ -6438,12 +6459,25 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 			|| node.typ == '_' {
 			continue
 		}
-		if !nodes_listed {
-			for node_idx, file_node in tc.a.nodes {
-				nodes_by_file[file_node.pos.id] << node_idx
-			}
-			nodes_listed = true
+		candidates << UnusedImportCandidate{
+			idx:         idx
+			file:        tc.cur_file
+			module_name: tc.cur_module
 		}
+	}
+	if candidates.len == 0 {
+		return
+	}
+	final_file := tc.cur_file
+	final_module := tc.cur_module
+	// import_is_used looks at the nodes of the import's own file. One walk lists
+	// the nodes of just the files with an import to check.
+	nodes_by_file := tc.nodes_of_files(candidates.map(tc.a.nodes[it.idx].pos.id))
+	for candidate in candidates {
+		idx := candidate.idx
+		node := tc.a.nodes[idx]
+		tc.cur_file = candidate.file
+		tc.cur_module = candidate.module_name
 		if tc.import_is_used(flat.NodeId(idx), node, nodes_by_file[node.pos.id] or { []int{} }) {
 			continue
 		}
@@ -6461,6 +6495,36 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 		}
 		tc.record_unused_import_warning(flat.NodeId(idx), node)
 	}
+	tc.cur_file = final_file
+	tc.cur_module = final_module
+}
+
+// nodes_of_files lists, in order, the indices of the nodes in each of `file_ids`.
+fn (tc &TypeChecker) nodes_of_files(file_ids []int) map[int][]int {
+	mut max_id := -1
+	for id in file_ids {
+		max_id = int_max(max_id, id)
+	}
+	mut slots := []int{len: max_id + 1, init: -1}
+	mut ids := []int{}
+	for id in file_ids {
+		if id >= 0 && slots[id] < 0 {
+			slots[id] = ids.len
+			ids << id
+		}
+	}
+	mut lists := [][]int{len: ids.len}
+	for node_idx in 0 .. tc.a.nodes.len {
+		id := tc.a.nodes[node_idx].pos.id
+		if id >= 0 && id <= max_id && slots[id] >= 0 {
+			lists[slots[id]] << node_idx
+		}
+	}
+	mut nodes_by_file := map[int][]int{}
+	for i, id in ids {
+		nodes_by_file[id] = lists[i]
+	}
+	return nodes_by_file
 }
 
 fn (mut tc TypeChecker) record_unused_import_warning(id flat.NodeId, node flat.Node) {
@@ -11749,7 +11813,10 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns() {
 	}
 	scope := check_worker_scope_begin(true)
 	mut walker := tc.fork_for_parallel_check()
-	walker.collect_selected_file_called_fns_walk()
+	mut body_scopes := []voidptr{}
+	if !walker.collect_selected_file_called_fns_walk_parallel(tc, mut body_scopes) {
+		walker.collect_selected_file_called_fns_walk()
+	}
 	check_worker_scope_leave(scope)
 	mut called := map[string]bool{}
 	called.reserve(u32(walker.selected_file_called_fns.len))
@@ -11757,16 +11824,28 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns() {
 		called[name.clone()] = true
 	}
 	tc.selected_file_called_fns = called.move()
+	free_check_worker_scopes(checker_worker_pool(tc.a), body_scopes)
 	check_worker_scope_free(scope)
 }
 
 fn (mut tc TypeChecker) collect_selected_file_called_fns_walk() {
-	tc.selected_file_called_fns = map[string]bool{}
-	tc.selected_file_worklist = []string{}
 	saved_file := tc.cur_file
 	saved_module := tc.cur_module
 	saved_scope := tc.cur_scope
 	saved_scope_pool_index := tc.scope_pool_index
+	tc.collect_selected_file_root_called_fns()
+	tc.collect_selected_file_called_fns_transitively()
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
+	tc.cur_scope = saved_scope
+	tc.scope_pool_index = saved_scope_pool_index
+}
+
+// collect_selected_file_root_called_fns seeds the called set and the worklist
+// from the top-level code and the functions of the selected files.
+fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
+	tc.selected_file_called_fns = map[string]bool{}
+	tc.selected_file_worklist = []string{}
 	tc.cur_file = ''
 	tc.cur_module = ''
 	tc.cur_scope = tc.file_scope
@@ -11791,11 +11870,6 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_walk() {
 			else {}
 		}
 	}
-	tc.collect_selected_file_called_fns_transitively()
-	tc.cur_file = saved_file
-	tc.cur_module = saved_module
-	tc.cur_scope = saved_scope
-	tc.scope_pool_index = saved_scope_pool_index
 }
 
 // SelectedFnDecl locates the first fn_decl node for a qualified name, with the
@@ -11811,6 +11885,24 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 	// worklist of newly discovered called names. The former fixpoint re-scanned
 	// every node per round; this walks each reachable body exactly once (the
 	// first declaration wins for duplicate names, matching the old scan order).
+	decls := tc.selected_file_fn_decls()
+	tc.cur_scope = tc.file_scope
+	mut visited := map[string]bool{}
+	for tc.selected_file_worklist.len > 0 {
+		name := tc.selected_file_worklist.pop()
+		if name in visited {
+			continue
+		}
+		visited[name] = true
+		decl := decls[name] or { continue }
+		tc.cur_file = decl.file
+		tc.cur_module = decl.mod
+		tc.collect_selected_file_fn_body_called_fns(tc.a.nodes[decl.idx])
+	}
+}
+
+// selected_file_fn_decls indexes the first user-code fn_decl per qualified name.
+fn (tc &TypeChecker) selected_file_fn_decls() map[string]SelectedFnDecl {
 	mut decls := map[string]SelectedFnDecl{}
 	mut cur_file := ''
 	mut cur_module := ''
@@ -11840,19 +11932,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_transitively() {
 			else {}
 		}
 	}
-	tc.cur_scope = tc.file_scope
-	mut visited := map[string]bool{}
-	for tc.selected_file_worklist.len > 0 {
-		name := tc.selected_file_worklist.pop()
-		if name in visited {
-			continue
-		}
-		visited[name] = true
-		decl := decls[name] or { continue }
-		tc.cur_file = decl.file
-		tc.cur_module = decl.mod
-		tc.collect_selected_file_fn_body_called_fns(tc.a.nodes[decl.idx])
-	}
+	return decls
 }
 
 fn (mut tc TypeChecker) collect_selected_file_top_level_called_fns(node flat.Node) {
@@ -15455,7 +15535,8 @@ fn v_int_literal_value(s string) ?int {
 	if s == '' {
 		return none
 	}
-	t := s.replace('_', '')
+	// Most literals have no separators; skip the copy `replace` makes even then.
+	t := if s.contains_u8(`_`) { s.replace('_', '') } else { s }
 	if t.len == 0 {
 		return none
 	}

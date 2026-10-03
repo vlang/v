@@ -20785,6 +20785,7 @@ fn (prepared &PreparedImports) resolution_change(prefs &pref.Preferences, projec
 // length and only its stored NodeIds shift. insertions must be sorted ascending
 // by pos (equal positions keep insertion order); the boundary loop produces them
 // in strictly increasing region order.
+@[direct_array_access]
 fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion) {
 	if insertions.len == 0 {
 		return
@@ -20812,8 +20813,12 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 		end = insertion.pos
 	}
 	for i in 0 .. a.nodes.len {
+		// Only directives need a look at their text; leave the other nodes in place.
+		if a.nodes[i].kind != .directive {
+			continue
+		}
 		mut node := a.nodes[i]
-		if node.kind == .directive && node.value.starts_with('@attributes:') {
+		if node.value.starts_with('@attributes:') {
 			target_idx := node.value['@attributes:'.len..].int()
 			if target_idx >= 0 && target_idx < old_len {
 				node.value = '@attributes:${target_idx + synthetic_index_shift(insertions, target_idx)}'
@@ -20824,11 +20829,21 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 	for i, idx in a.file_node_ids {
 		a.file_node_ids[i] = idx + synthetic_index_shift(insertions, idx)
 	}
+	// The insertions are in position order: an id before the first one keeps its
+	// place, and one at or after the last moves past all of them.
+	first_pos := insertions[0].pos
+	last_pos := insertions[insertions.len - 1].pos
 	for k in 0 .. a.children.len {
 		cid := int(a.children[k])
-		if cid >= 0 {
-			a.children[k] = flat.NodeId(cid + synthetic_index_shift(insertions, cid))
+		if cid < 0 || cid < first_pos {
+			continue
 		}
+		shift := if cid >= last_pos {
+			insertions.len
+		} else {
+			synthetic_index_shift(insertions, cid)
+		}
+		a.children[k] = flat.NodeId(cid + shift)
 	}
 	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
 }
