@@ -55,10 +55,33 @@ fails or does not report a numeric version. Localized version labels are accepte
 ### Running commands
 
 Use `os.exec(['program', 'arg 1', 'arg 2'])` when the command and its arguments
-are already separate values. It runs the program directly and does not invoke a
-shell, so spaces and shell metacharacters inside arguments are passed literally.
+are separate values. It runs the program directly without invoking a shell, so
+spaces and shell metacharacters inside arguments are passed literally. Pass raw
+arguments without `os.quoted_path()` or shell escaping.
 
-Use `os.execute('command string')` only when shell syntax is intended.
+`os.exec_opt(args)` returns an error on failure. `os.exec_or_panic(args)` and
+`os.exec_or_exit(args)` report failures by panicking or exiting. Use
+`os.system_args(args)` to inherit standard streams and return only the exit code.
+`os.util.exec_with_timeout(args, milliseconds)` returns `none` when the timeout
+elapses; it does not terminate the child process.
+
+For configuration values such as a tool name followed by options,
+`os.split_args(text)!` parses quoting into literal arguments without shell expansion.
+Keep data such as paths and URLs as separate array elements rather than interpolating
+it into the configuration string.
+
+The string APIs `os.execute`, `os.raw_execute`, `os.system`, `os.execute_opt`,
+`os.execute_or_panic`, `os.execute_or_exit`, and `os.util.execute_with_timeout` are
+deprecated because command strings can allow shell injection. Streaming shell commands
+through `os.start_new_command` or `os.Command.start` is also deprecated; use
+`os.start_new_command_args(args)` instead. It returns a `CommandArgs` stream with
+`read_line()`, `eof`, `close()`, and `exit_code`. For more control, use
+`os.new_process(program)` and `process.set_args(args)`.
+
+When shell syntax is required, invoke the shell explicitly with an argument array.
+A shell still interprets its script as code: use a fixed script with positional
+arguments for data, and never interpolate untrusted values into the script.
+On Windows, shell builtins and batch scripts likewise require an explicit shell.
 
 ---
 
