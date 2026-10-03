@@ -1495,7 +1495,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 				$if K is string {
 					key = K(key_str)
 				} $else $if K.unaliased_typ is $enum {
-					decoder.decode_enum(mut key)!
+					decoder.decode_enum_map_key(mut key, key_str)!
 				} $else $if K is rune {
 					key = K(key_str.int())
 				} $else $if K is u8 || K is u16 || K is u32 || K is u64 || K is usize {
@@ -1549,6 +1549,18 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 			decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
 		}
 	}
+}
+
+// decode_enum_map_key matches the member names written by the map encoder.
+// JSON attributes only rename scalar enum values, not map keys.
+fn (mut decoder Decoder) decode_enum_map_key[T](mut val T, key string) ! {
+	$for value in T.values {
+		if value.name == key {
+			val = value.value
+			return
+		}
+	}
+	decoder.decode_error('String value: `${key}` does not match any field in enum: ${typeof(val).name}')!
 }
 
 fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
