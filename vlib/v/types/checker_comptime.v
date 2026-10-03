@@ -300,7 +300,10 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				tc.record_error_at(.call_arg_mismatch, 'to auto-expand `[]string` arguments in comptime method calls, use `...${tc.source_text_for_node(arg_id)}`', arg_id, tc.a.node(arg_id).pos)
 				return
 			}
-			if arg_index < method.param_is_mut.len && method.param_is_mut[arg_index]
+			// `mut arg` into a `mut x &T` param would pass `&&T`. A plain `mut x T` param
+			// takes `mut arg` like any call does, including when `arg` is itself a `mut`
+			// param being forwarded.
+			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
 				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len
 				&& method.param_types[arg_index].starts_with('&') {
 				expected_name := '&${method.param_types[arg_index]}'
