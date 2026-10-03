@@ -1533,7 +1533,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 				}
 
 				// Map alias values (`type Props = map[string]int`) also need to move.
-				$if V is $map || ( V is $alias && V.unaliased_typ is $map ) {
+				$if V is $map || (V is $alias && V.unaliased_typ is $map) {
 					val[key] = map_value.move()
 				} $else {
 					val[key] = map_value

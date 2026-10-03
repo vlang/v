@@ -36,7 +36,7 @@ fn test_a_method_with_its_own_type_parameter_through_an_embed() {
 		Holder: Holder[string]{
 			item: 'ana'
 		}
-		label: 'l'
+		label:  'l'
 	}
 	assert n.own() == 'ana'
 	assert n.own().len == 3

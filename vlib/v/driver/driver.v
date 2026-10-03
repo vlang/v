@@ -10526,7 +10526,7 @@ pub fn run(args []string) {
 				`K`, `k` { s[..s.len - 1], i64(1) }
 				`M`, `m` { s[..s.len - 1], i64(1) << 10 }
 				`G`, `g` { s[..s.len - 1], i64(1) << 20 }
-				else    { s, i64(1) << 10 }
+				else { s, i64(1) << 10 }
 			}
 			if n.len == 0 || !n.is_int() {
 				eprintln('invalid memory limit: ${s}')

@@ -5262,6 +5262,9 @@ passed to generic functions and methods in other modules.
 
 Methods called on a generic factory result retain their dependencies in the compiled program.
 
+Returning a generic struct as a generic interface retains its concrete methods, including when
+an interface type argument is itself a generic interface.
+
 ```v wip
 
 struct Repo[T] {
@@ -7966,6 +7969,10 @@ fn main() {
 You can iterate over struct fields using `.fields`, it also works with generic types
 (e.g. `T.fields`) and generic arguments (e.g. `param.fields` where `fn gen[T](param T) {`).
 
+Each field's `.attrs` is an array of strings. Inside the reflection loop, you can use
+`for attr in field.attrs` or `for index, attr in field.attrs` to process these strings at runtime,
+including calls such as `attr.split_any(':')`. The index has type `int`.
+
 ```v
 struct User {
 	name string
@@ -8092,6 +8099,9 @@ fn main() {
 #### <h4 id="comptime-method-params">.params</h4>
 
 You can retrieve information about struct method params.
+
+Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
+Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.
 
 ```v
 struct Test {

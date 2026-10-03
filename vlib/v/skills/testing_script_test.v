@@ -63,8 +63,12 @@ fn test_testing_script_rejects_empty_real_runner_selections() {
 			code:     1
 		},
 		TestingScriptCase{ name: 'no_target', args: ['--fn', 'test_codex_one'], code: 2 },
-		TestingScriptCase{ name: 'dump_match', args: [suite, '--file', 'alpha_test'], expected: ['one',
-			'two'], reporter: 'dump' },
+		TestingScriptCase{
+			name:     'dump_match'
+			args:     [suite, '--file', 'alpha_test']
+			expected: ['one', 'two']
+			reporter: 'dump'
+		},
 		TestingScriptCase{ name: 'dump_empty', args: [suite, '--fn', '__codex_missing*'], code: 1, reporter: 'dump' },
 		TestingScriptCase{ name: 'teamcity_match', args: [suite, '--fn', 'test_codex_one'], expected: ['one'], reporter: 'teamcity' },
 		TestingScriptCase{ name: 'teamcity_empty', args: [suite, '--file', '__codex_missing*'], code: 1, reporter: 'teamcity' },
