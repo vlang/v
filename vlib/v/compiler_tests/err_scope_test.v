@@ -58,6 +58,10 @@ const cases = [
 	Case{'map_guard_else', '', "m := {'a': 1}\n\tif v := m['b'] {\n\t\tprintln(v)\n\t} else {\n\t\tprintln(«err»)\n\t}", false},
 	Case{'array_guard_else', '', 'a := [1]\n\tif v := a[3] {\n\t\tprintln(v)\n\t} else {\n\t\tprintln(«err»)\n\t}', false},
 	Case{'chan_guard_else', '', 'ch := chan int{cap: 1}\n\tch.close()\n\tif v := <-ch {\n\t\tprintln(v)\n\t} else {\n\t\tprintln(«err»)\n\t}', true},
+	// a call through a fn-typed value named like a function (`open`, `read`)
+	Case{'fn_value_param_or', 'fn call(open fn () !int) !int {\n\tx := open() or { return «err» }\n\treturn x\n}\n', 'println(call(fails) or { 0 })', true},
+	Case{'fn_value_local_or', '', 'read := fails\n\tx := read() or {\n\t\tprintln(«err»)\n\t\t0\n\t}\n\tprintln(x)', true},
+	Case{'option_fn_value_param_or', 'fn call(open fn () ?int) ?int {\n\tx := open() or {\n\t\tprintln(«err»)\n\t\treturn none\n\t}\n\treturn x\n}\n', 'println(call(maybe) or { 0 })', false},
 	// something the program declares with that name
 	Case{'local_named_err', '', 'err := 5\n\tprintln(«err»)', true},
 	Case{'param_named_err', 'fn show(err string) {\n\tprintln(«err»)\n}\n', "show('a')", true},
