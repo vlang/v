@@ -2,6 +2,16 @@ struct ApiSuccessResponse[T] {
 	data T
 }
 
+type ApiSuccessResponseRef = &ApiSuccessResponse[int]
+type ApiSuccessResponseRef2 = ApiSuccessResponseRef
+type ApiSuccessResponseRef3 = ApiSuccessResponseRef2
+type ApiSuccessResponseRef4 = ApiSuccessResponseRef3
+type ApiSuccessResponseRef5 = ApiSuccessResponseRef4
+type ApiSuccessResponseRef6 = ApiSuccessResponseRef5
+type ApiSuccessResponseRef7 = ApiSuccessResponseRef6
+type ApiSuccessResponseRef8 = ApiSuccessResponseRef7
+type ApiSuccessResponseRef9 = ApiSuccessResponseRef8
+
 fn json_success[U](input ApiSuccessResponse[U]) ApiSuccessResponse[U] {
 	return input
 }
@@ -36,9 +46,37 @@ fn take_ptr[U](input &ApiSuccessResponse[U]) &ApiSuccessResponse[U] {
 	return input
 }
 
+fn read_ptr[U](input &ApiSuccessResponse[U]) U {
+	return input.data
+}
+
+fn read_alias_ptr(input ApiSuccessResponseRef9) int {
+	return input.data
+}
+
+fn first_pointer_variadic[T](items ...&ApiSuccessResponse[T]) T {
+	return items[0].data
+}
+
+fn first_int_pointer_variadic(items ...&ApiSuccessResponse[int]) int {
+	return items[0].data
+}
+
+fn second_pointer_variadic[T](items ...&ApiSuccessResponse[T]) T {
+	return items[1].data
+}
+
 fn test_generic_method_infers_from_nested_call_field_init_pointer_param() {
 	ctx := FieldInitContext{}
 	assert ctx.json(take_ptr(data: 42)) == 'ok'
+	assert read_ptr(data: 42) == 42
+	retained := take_ptr(data: 42)
+	assert retained.data == 42
+	assert read_alias_ptr(data: 43) == 43
+	assert first_pointer_variadic(data: 45) == 45
+	assert first_int_pointer_variadic(data: 46) == 46
+	second := &ApiSuccessResponse[int]{ data: 47 }
+	assert second_pointer_variadic(data: 45, second) == 47
 }
 
 struct WrappedResponse[T] {

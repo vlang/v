@@ -2450,7 +2450,12 @@ fn (t &Transformer) clean_array_append_lhs_type(typ string) string {
 // `type Ptrs = &[]&int`) to the type they both name.
 fn (t &Transformer) normalize_type_alias_chain(typ string) string {
 	mut current := typ
-	for _ in 0 .. 16 {
+	mut seen := map[string]bool{}
+	for {
+		if current in seen {
+			break
+		}
+		seen[current] = true
 		next := t.normalize_type_alias(current)
 		if next == current {
 			break
@@ -2519,7 +2524,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	raw_value_id := t.a.child(&node, 1)
 	value_node := t.a.nodes[int(raw_value_id)]
 	short_struct_value := if value_node.kind == .field_init {
-		t.transform_trailing_field_init_struct_arg(node, 1, elem_type)
+		t.transform_trailing_field_init_struct_arg(node, 1, elem_type, elem_type)
 	} else {
 		?flat.NodeId(none)
 	}
@@ -2604,7 +2609,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	raw_value_id := t.a.child(&node, 2)
 	value_node := t.a.nodes[int(raw_value_id)]
 	short_struct_value := if value_node.kind == .field_init {
-		t.transform_trailing_field_init_struct_arg(node, 2, elem_type)
+		t.transform_trailing_field_init_struct_arg(node, 2, elem_type, elem_type)
 	} else {
 		?flat.NodeId(none)
 	}

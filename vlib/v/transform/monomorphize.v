@@ -5929,7 +5929,11 @@ fn (mut t Transformer) infer_generic_field_init_type_arg(param_type string, fiel
 	if field.kind != .field_init || field.value.len == 0 || field.children_count == 0 {
 		return
 	}
-	param_base, param_args, is_generic_struct := generic_app_parts(param_type.trim_space())
+	mut struct_param_type := t.normalize_type_alias_chain(param_type.trim_space())
+	if struct_param_type.starts_with('&') {
+		struct_param_type = struct_param_type[1..].trim_space()
+	}
+	param_base, param_args, is_generic_struct := generic_app_parts(struct_param_type)
 	if !is_generic_struct || param_args.len == 0 {
 		return
 	}
@@ -8483,7 +8487,14 @@ fn (mut t Transformer) infer_generic_short_struct_init_args(param_type string, a
 	if t.a.nodes[int(arg_id)].kind != .field_init {
 		return
 	}
-	param_base, param_args, is_generic_struct := generic_app_parts(param_type.trim_space())
+	mut struct_param_type := t.normalize_type_alias_chain(param_type.trim_space())
+	if struct_param_type.starts_with('&') {
+		if struct_param_type[1..].starts_with('&') {
+			return
+		}
+		struct_param_type = struct_param_type[1..]
+	}
+	param_base, param_args, is_generic_struct := generic_app_parts(struct_param_type)
 	if !is_generic_struct || param_args.len == 0 {
 		return
 	}

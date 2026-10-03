@@ -1215,6 +1215,8 @@ fn test_return_if_tuple_tail_multi_return_is_rejected() {
 fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_non_variadic_array_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points []Point) int {\n\treturn points.len\n}\n\nfn main() {\n\t_ := total(x: 1, y: 2)\n}\n', 'cannot use `key: value` arguments as `[]Point`')
+	run_bad(v3_bin, 'bad_nested_pointer_struct_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\nfn read_box[T](b &&Box[T]) T {\n\treturn b.v\n}\n\nfn main() {\n\t_ := read_box(v: 7)\n}\n', 'cannot use `key: value` arguments as `&&Box[int]` in call to `read_box`')
+	run_bad(v3_bin, 'bad_nested_pointer_struct_alias_field_args', 'struct Box[T] {\n\tmut:\n\t\tv T\n}\n\ntype BoxRef = &&Box[int]\n\nfn read_box_alias(b BoxRef) {}\n\nfn main() {\n\tread_box_alias(v: 7)\n}\n', 'cannot use `key: value` arguments as `BoxRef` in call to `read_box_alias`')
 	variadic_struct := run_good(v3_bin, 'good_variadic_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n')
 	assert variadic_struct == '7'
 	run_bad_project(v3_bin, 'bad_module_type_does_not_bind_main_type', {
