@@ -1153,3 +1153,26 @@ fn test_apply_rename_refuses_a_span_that_does_not_hold_the_old_name() {
 	// The file is untouched, which is the point of refusing.
 	assert os.read_file(path)! == before, 'a refused rename must not write'
 }
+
+// SchemaArguments is the part of a tool's input schema that says which arguments
+// are mandatory.
+struct SchemaArguments {
+	properties map[string]SchemaProperty
+	required   []string
+}
+
+fn test_a_tool_only_requires_arguments_it_declares_as_properties() {
+	for spec in tool_specs() {
+		schema := json.decode[SchemaArguments](spec.tool.input_schema, strict: true)!
+		mut named := []string{}
+		for name in schema.required {
+			// A `required` entry naming something the schema never declares is one
+			// no client can satisfy: it would send that field and still be told the
+			// argument is missing.
+			assert name in schema.properties,
+				'${spec.tool.name}: required names `${name}`, which is not one of its properties'
+			assert name !in named, '${spec.tool.name}: `${name}` is required twice'
+			named << name
+		}
+	}
+}
