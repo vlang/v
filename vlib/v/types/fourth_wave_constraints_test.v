@@ -14,7 +14,8 @@ fn fourth_constraint_program_with_module(name string, source string, flags strin
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'fourth_constraints' }\n") or { panic(err) }
 	os.write_file(os.join_path(root, 'limits', 'limits.v'), dependency) or { panic(err) }
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
-	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${flags} ${os.quoted_path(root)}')
+	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor',
+		...(os.split_args(flags) or { panic(err) }), root])
 }
 
 fn test_fourth_constraints_count_imported_constraint_types_as_used() {

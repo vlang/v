@@ -19,7 +19,7 @@ fn main() {
 	println(sizeof(![2]Pair) > sizeof([2]Pair))
 }
 ')!
-	res := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(source)}')
+	res := os.exec([@VEXE, 'run', source])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'true\ntrue\ntrue'
 }

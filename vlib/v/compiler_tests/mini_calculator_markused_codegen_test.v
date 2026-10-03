@@ -13,7 +13,8 @@ fn mini_calc_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${mini_calc_vexe} -gc none -path "${mini_calc_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${mini_calc_v3_src}')
+		os.exec([mini_calc_vexe, '-gc', 'none', '-path', '${mini_calc_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${mini_calc_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,9 +34,9 @@ fn mini_calc_compile_run(v3_bin string, name string, files map[string]string, ma
 	}
 	main_path := os.join_path(root, main_file)
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${bin}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	return run.output.trim_space(), generated
@@ -50,7 +51,7 @@ fn mini_calc_compile_bad(v3_bin string, name string, files map[string]string, ma
 	}
 	main_path := os.join_path(root, main_file)
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${bin}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	return compile.output
 }
@@ -292,9 +293,9 @@ fn test_mini_calculator_recursive_descent_compiles_and_runs() {
 	v3_bin := mini_calc_build_v3()
 	example := os.join_path(mini_calc_repo_root, 'examples', 'mini_calculator_recursive_descent.v')
 	bin := os.join_path(os.temp_dir(), 'v3_mini_calculator_recursive_descent_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${example} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${example}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute("printf '2 * (5-1)\\nexit\\n' | ${bin}")
+	run := os.exec(['sh', '-c', 'printf \'2 * (5-1)\\nexit\\n\' | "\${1}"', 'v', '${bin}'])
 	assert run.exit_code == 0, run.output
 	assert run.output.contains('8'), run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }

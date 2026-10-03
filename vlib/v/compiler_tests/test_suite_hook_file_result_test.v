@@ -21,7 +21,7 @@ fn run_v_test(source string, name string) (string, int) {
 	// `VTEST_HIDE_OK=0` keeps the passing lines visible, so a file reported as `OK` is
 	// distinguishable from a file that was not reported at all.
 	os.setenv('VTEST_HIDE_OK', '0', true)
-	result := os.execute('${os.quoted_path(suite_hook_vexe)} test ${os.quoted_path(path)}')
+	result := os.exec([suite_hook_vexe, 'test', path])
 	return result.output, result.exit_code
 }
 

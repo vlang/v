@@ -131,7 +131,7 @@ fn v3_keep_macos_debug_symbols(staged_binary string, bin_file string) {
 		return
 	}
 	dsymutil := os.find_abs_path_of_executable('dsymutil') or { return }
-	os.execute('${os.quoted_path(dsymutil)} ${os.quoted_path(bin_file)} -o ${os.quoted_path(target_dsym)}')
+	os.exec(['${dsymutil}', bin_file, '-o', '${target_dsym}'])
 }
 
 // v3_remove_macos_debug_symbols removes the debug symbols of a macOS debug binary that

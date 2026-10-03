@@ -2,6 +2,7 @@
 module main
 
 import os
+import v.cmdexec
 import v.compiler_tests.method_form
 
 // A check checks the body of a generic function whose type parameters all have
@@ -32,7 +33,7 @@ fn check_form(name string, source string) []string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(@VEXE)} -new-compiler -check -nocolor .')
+	res := cmdexec.run_in(@VEXE, ['-new-compiler', '-check', '-nocolor', '.'], dir)
 	return res.output.split_into_lines().filter(it.starts_with('main.v:')
 		&& (it.contains(': error: ') || it.contains(': warning: ')))
 }
@@ -49,7 +50,7 @@ fn build_form(name string, source string) []string {
 	dir := os.join_path(work_dir, name)
 	os.mkdir_all(dir) or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(@VEXE)} -new-compiler -nocolor -o prog .')
+	res := cmdexec.run_in(@VEXE, ['-new-compiler', '-nocolor', '-o', 'prog', '.'], dir)
 	return res.output.split_into_lines().filter(it.starts_with('main.v:')
 		&& it.contains(': error: '))
 }

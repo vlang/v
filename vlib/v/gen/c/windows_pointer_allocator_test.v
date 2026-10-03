@@ -46,7 +46,8 @@ fn main() {
 	release_c(foreign)
 }
 ')!
-	generated_result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -os windows -gc none -manualfree -o ${os.quoted_path(c_source)} ${os.quoted_path(source)}')
+	generated_result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', 'windows', '-gc', 'none',
+		'-manualfree', '-o', c_source, source])
 	assert generated_result.exit_code == 0, generated_result.output
 	generated := os.read_file(c_source)!
 	allocate := allocator_test_c_function(generated, 'u8* v_malloc(ptrdiff_t n) {')
@@ -135,12 +136,12 @@ int main(int argc, char** argv) {
 	return 0;
 }
 ')!
-	build := os.execute('${os.quoted_path(cc)} -std=gnu11 ${os.quoted_path(mock_source)} -o ${os.quoted_path(mock_binary)}')
+	build := os.exec([cc, '-std=gnu11', mock_source, '-o', mock_binary])
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(mock_binary))
+	run := os.exec([mock_binary])
 	assert run.exit_code == 0, run.output
 	for arguments in ['wrong-c-free', 'wrong-v-free extra'] {
-		crossed := os.execute('${os.quoted_path(mock_binary)} ${arguments}')
+		crossed := os.exec([mock_binary, '${arguments}'])
 		assert crossed.exit_code != 0, 'the allocator mock accepted crossed allocation families'
 	}
 }

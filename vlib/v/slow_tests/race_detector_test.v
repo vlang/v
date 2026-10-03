@@ -557,12 +557,12 @@ fn thread_sanitizer_runs() bool {
 	probe_exe := os.join_path(tdir, 'tsan_probe')
 	os.write_file(probe_c, 'int main(void) { return 0; }\n') or { return false }
 	cc := race_c_compiler()
-	compiled := os.execute('${os.quoted_path(cc)} -fsanitize=thread ${os.quoted_path(probe_c)} -o ${os.quoted_path(probe_exe)}')
+	compiled := os.exec([cc, '-fsanitize=thread', '${probe_c}', '-o', probe_exe])
 	if compiled.exit_code != 0 {
 		eprintln('skipping: `${cc} -fsanitize=thread` does not work here:\n${compiled.output}')
 		return false
 	}
-	ran := os.execute(os.quoted_path(probe_exe))
+	ran := os.exec([probe_exe])
 	if ran.exit_code != 0 {
 		eprintln('skipping: ThreadSanitizer programs do not run here:\n${ran.output}')
 		return false
@@ -574,7 +574,7 @@ fn build_race_program(name string, source string, flags ...string) string {
 	source_path := os.join_path(tdir, '${name}.v')
 	exe_path := os.join_path(tdir, name)
 	os.write_file(source_path, source) or { panic(err) }
-	res := os.execute('${vexe} -race ${flags.join(' ')} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+	res := os.exec([@VEXE, '-race', ...flags, '-o', exe_path, source_path])
 	assert res.exit_code == 0, res.output
 	return exe_path
 }
@@ -584,7 +584,7 @@ fn test_race_detector() {
 		return
 	}
 	racy := build_race_program('racy', racy_source)
-	racy_run := os.execute(os.quoted_path(racy))
+	racy_run := os.exec([racy])
 	assert racy_run.exit_code == 66, racy_run.output
 	assert racy_run.output.contains('WARNING: ThreadSanitizer: data race'), racy_run.output
 	// The unsynchronized increments can lose updates, so only check that both threads ended.
@@ -596,17 +596,17 @@ fn test_race_detector() {
 	}
 
 	// VRACE passes options to the race detector, like GORACE does for Go.
-	vrace_run := os.execute('VRACE="exitcode=7" ${os.quoted_path(racy)}')
+	vrace_run := os.exec(['env', 'VRACE=exitcode=7', '${racy}'])
 	assert vrace_run.exit_code == 7, vrace_run.output
 
 	// The race runtime support is compiled on its own, and must build in strict C99 mode too.
 	racy_c99 := build_race_program('racy_c99', racy_source, '-c99')
-	racy_c99_run := os.execute('VRACE="exitcode=7" ${os.quoted_path(racy_c99)}')
+	racy_c99_run := os.exec(['env', 'VRACE=exitcode=7', '${racy_c99}'])
 	assert racy_c99_run.exit_code == 7, racy_c99_run.output
 	assert racy_c99_run.output.contains('WARNING: ThreadSanitizer: data race'), racy_c99_run.output
 
 	synchronized := build_race_program('synchronized', synchronized_source)
-	synchronized_run := os.execute(os.quoted_path(synchronized))
+	synchronized_run := os.exec([synchronized])
 	assert synchronized_run.exit_code == 0, synchronized_run.output
 	assert !synchronized_run.output.contains('ThreadSanitizer'), synchronized_run.output
 	assert synchronized_run.output.contains('total: 4950 vals: 400 shared: 2'), synchronized_run.output
@@ -616,7 +616,7 @@ fn test_race_detector() {
 fn test_race_rejects_a_garbage_collector() {
 	source_path := os.join_path(tdir, 'gc.v')
 	os.write_file(source_path, 'fn main() {}\n')!
-	res := os.execute('${vexe} -race -gc boehm -o ${os.quoted_path(os.join_path(tdir, 'gc'))} ${os.quoted_path(source_path)}')
+	res := os.exec([@VEXE, '-race', '-gc', 'boehm', '-o', os.join_path(tdir, 'gc'), source_path])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('`-race` cannot be combined with `-gc boehm`'), res.output
 }
@@ -626,7 +626,7 @@ fn test_race_map_value_update_is_a_write() {
 		return
 	}
 	exe := build_race_program('map_value_update', map_value_update_source)
-	res := os.execute('VRACE="exitcode=7" ${os.quoted_path(exe)}')
+	res := os.exec(['env', 'VRACE=exitcode=7', exe])
 	assert res.exit_code == 7, res.output
 	assert res.output.contains('WARNING: ThreadSanitizer: data race'), res.output
 }
@@ -635,10 +635,10 @@ fn test_race_rejects_the_arena_allocator_and_a_plain_race_define() {
 	source_path := os.join_path(tdir, 'plain.v')
 	os.write_file(source_path, 'fn main() {}\n')!
 	out := os.quoted_path(os.join_path(tdir, 'plain'))
-	prealloc := os.execute('${vexe} -race -prealloc -o ${out} ${os.quoted_path(source_path)}')
+	prealloc := os.exec([@VEXE, '-race', '-prealloc', '-o', os.join_path(tdir, 'plain'), source_path])
 	assert prealloc.exit_code != 0, prealloc.output
 	assert prealloc.output.contains('`-race` cannot be combined with `-prealloc`'), prealloc.output
-	define := os.execute('${vexe} -d race -o ${out} ${os.quoted_path(source_path)}')
+	define := os.exec([@VEXE, '-d', 'race', '-o', os.join_path(tdir, 'plain'), source_path])
 	assert define.exit_code != 0, define.output
 	assert define.output.contains('`-d race` is reserved for race builds'), define.output
 	assert !define.output.contains('retrying with'), define.output
@@ -655,7 +655,7 @@ fn test_race_blank_reads_are_reads() {
 			flags << '-prod'
 		}
 		exe := build_race_program('blank_read_${read}', blank_read_source, ...flags)
-		res := os.execute('VRACE="exitcode=7" ${os.quoted_path(exe)}')
+		res := os.exec(['env', 'VRACE=exitcode=7', exe])
 		assert res.exit_code == 7, '${read}: ${res.output}'
 		assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${read}: ${res.output}'
 	}
@@ -666,7 +666,7 @@ fn test_race_file_line_read_happens_after_the_write() {
 		return
 	}
 	exe := build_race_program('file_line', file_line_source)
-	res := os.execute(os.quoted_path(exe))
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('read 6 42'), res.output
@@ -677,7 +677,7 @@ fn test_race_every_release_happens_before_the_acquire() {
 		return
 	}
 	exe := build_race_program('release_merge', release_merge_source)
-	res := os.execute(os.quoted_path(exe))
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('wg 6'), res.output
@@ -689,7 +689,7 @@ fn test_race_failed_file_read_does_not_synchronize() {
 		return
 	}
 	exe := build_race_program('failed_read', failed_read_source)
-	res := os.execute('VRACE="exitcode=7" ${os.quoted_path(exe)}')
+	res := os.exec(['env', 'VRACE=exitcode=7', exe])
 	assert res.output.contains('read failed'), res.output
 	assert res.exit_code == 7, res.output
 	assert res.output.contains('WARNING: ThreadSanitizer: data race'), res.output
@@ -700,7 +700,7 @@ fn test_race_compiler_builds_keep_the_c_allocator() {
 		return
 	}
 	exe := build_race_program('allocator', allocator_source, '-building-v')
-	res := os.execute(os.quoted_path(exe))
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('allocator: c 3'), res.output
 }
@@ -710,7 +710,7 @@ fn test_race_command_output_eof_happens_after_the_write() {
 		return
 	}
 	exe := build_race_program('command_eof', command_eof_source)
-	res := os.execute(os.quoted_path(exe))
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('eof true 0 x 42'), res.output
@@ -721,12 +721,12 @@ fn test_race_select_of_closed_channels_happens_after_the_close() {
 		return
 	}
 	exe := build_race_program('select_closed', select_closed_source)
-	res := os.execute(os.quoted_path(exe))
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('select -2 x 42'), res.output
 	racy := build_race_program('select_closed_racy', select_closed_source, '-d', 'write_after_close')
-	racy_res := os.execute('VRACE="exitcode=7" ${os.quoted_path(racy)}')
+	racy_res := os.exec(['env', 'VRACE=exitcode=7', '${racy}'])
 	assert racy_res.exit_code == 7, racy_res.output
 	assert racy_res.output.contains('WARNING: ThreadSanitizer: data race'), racy_res.output
 }
@@ -738,7 +738,8 @@ fn test_race_stdout_write_happens_before_reading_the_output() {
 	exe := build_race_program('stdout_write', stdout_write_source)
 	out := os.join_path(tdir, 'stdout_write.out')
 	err := os.join_path(tdir, 'stdout_write.err')
-	res := os.execute('RACE_STDOUT_FILE=${os.quoted_path(out)} ${os.quoted_path(exe)} > ${os.quoted_path(out)} 2> ${os.quoted_path(err)}')
+	res := os.exec(['sh', '-c', 'RACE_STDOUT_FILE="\${1}" "\${2}" > "\${3}" 2> "\${4}"', 'v', '${out}',
+		'${exe}', '${out}', '${err}'])
 	stderr := os.read_file(err) or { '' }
 	assert res.exit_code == 0, stderr
 	assert !stderr.contains('ThreadSanitizer'), stderr
@@ -751,12 +752,12 @@ fn test_race_channel_values_are_the_caller_memory() {
 	}
 	for mode in ['pop', 'try_pop', 'push', 'select'] {
 		exe := build_race_program('channel_value_${mode}', channel_value_source, '-d', 'mode=${mode}')
-		res := os.execute('VRACE="exitcode=7" ${os.quoted_path(exe)}')
+		res := os.exec(['env', 'VRACE=exitcode=7', exe])
 		assert res.exit_code == 7, '${mode}: ${res.output}'
 		assert res.output.contains('WARNING: ThreadSanitizer: data race'), '${mode}: ${res.output}'
 	}
 	exe := build_race_program('channel_value_handoff', channel_value_source, '-d', 'mode=handoff')
-	res := os.execute(os.quoted_path(exe))
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('handoff 1 2'), res.output
@@ -770,12 +771,14 @@ fn test_race_stdin_read_happens_after_the_write() {
 	input := os.join_path(tdir, 'stdin_read.in')
 	other := os.join_path(tdir, 'stdin_read.other')
 	os.write_file(input, '')!
-	res := os.execute('RACE_WRITE_FILE=${os.quoted_path(input)} ${exe} < ${os.quoted_path(input)}')
+	res := os.exec(['sh', '-c', 'RACE_WRITE_FILE="\${1}" "\${2}" < "\${3}"', 'v', '${input}',
+		'${build_race_program('stdin_read', stdin_read_source)}', '${input}'])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('char 33 x 42'), res.output
 	os.write_file(other, '')!
-	eof := os.execute('RACE_WRITE_FILE=${os.quoted_path(other)} ${exe} < /dev/null')
+	eof := os.exec(['sh', '-c', 'RACE_WRITE_FILE="\${1}" "\${2}" < /dev/null', 'v', '${other}',
+		'${build_race_program('stdin_read', stdin_read_source)}'])
 	assert eof.exit_code == 0, eof.output
 	assert !eof.output.contains('ThreadSanitizer'), eof.output
 	assert eof.output.contains('char -1 x 42'), eof.output
@@ -786,7 +789,7 @@ fn test_race_close_error_is_published_with_the_close() {
 		return
 	}
 	exe := build_race_program('close_error', close_error_source)
-	res := os.execute(os.quoted_path(exe))
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('received: custom close error'), res.output

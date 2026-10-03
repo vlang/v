@@ -240,7 +240,7 @@ fn is_commit_hash(s string) bool {
 // ref_resolvable reports whether `git_ref` names a commit in this checkout. An import
 // against an unresolvable claimed ref must fail rather than silently accept every row.
 fn ref_resolvable(git_ref string) bool {
-	return os.execute('git -C ${os.quoted_path(vdir)} rev-parse --verify --quiet ${os.quoted_path('${git_ref}^{commit}')}').exit_code == 0
+	return os.exec(['git', '-C', vdir, 'rev-parse', '--verify', '--quiet', '${'${git_ref}^{commit}'}']).exit_code == 0
 }
 
 // commit_off_history reports whether `commit` is *proven* not to belong to `git_ref`'s
@@ -251,13 +251,13 @@ fn ref_resolvable(git_ref string) bool {
 // over-rejected. `commit` has already been resolved in the local checkout by the caller.
 fn commit_off_history(commit string, git_ref string) bool {
 	res :=
-		os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor ${os.quoted_path(commit)} ${os.quoted_path(git_ref)}')
+		os.exec(['git', '-C', vdir, 'merge-base', '--is-ancestor', '${commit}', '${git_ref}'])
 	return res.exit_code == 1
 }
 
 fn resolve_commit(raw string) ?(string, time.Time) {
 	res :=
-		os.execute("git -C ${os.quoted_path(vdir)} log -n1 --pretty=format:'%H %ct' ${os.quoted_path(raw)}")
+		os.exec(['git', '-C', vdir, 'log', '-n1', '--pretty=format:%H %ct', '${raw}'])
 	if res.exit_code == 0 {
 		parts := res.output.trim_space().split(' ')
 		if parts.len == 2 && parts[0].len >= 8 {

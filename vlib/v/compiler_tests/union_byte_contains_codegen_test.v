@@ -8,7 +8,7 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_union_byte_contains_codegen_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0
 	return v3_bin
 }
@@ -18,11 +18,11 @@ fn run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0
 	assert !compile.output.contains('C compilation failed')
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0
 	return run.output.trim_space()
 }

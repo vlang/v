@@ -39,7 +39,7 @@ pub fn check_module_is_installed(modulename string, is_verbose bool, need_update
 			if is_verbose {
 				eprintln('check_module_is_installed: updating with ${update_cmd} ...')
 			}
-			update_res := os.execute(update_cmd)
+			update_res := os.exec([vexe, 'update', modulename])
 			if update_res.exit_code < 0 {
 				return error('can not start ${update_cmd}, error: ${update_res.output}')
 			}
@@ -59,7 +59,7 @@ and the existing module `${modulename}` may still work.')
 	if is_verbose {
 		eprintln('check_module_is_installed: cloning from ${murl} ...')
 	}
-	cloning_res := os.execute('${os.quoted_path(vexe)} retry -- git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
+	cloning_res := os.exec([vexe, 'retry', '--', 'git', 'clone', '${murl}', mpath])
 	if cloning_res.exit_code != 0 {
 		return error_with_code('cloning failed, details: ${cloning_res.output}', cloning_res.exit_code)
 	}

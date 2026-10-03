@@ -195,7 +195,7 @@ fn main() {
 				os.rm(output_path) or {}
 			}
 			command := '${os.quoted_path(@VEXE)} -gc none ${defines} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-			result := os.execute(command)
+			result := os.exec([@VEXE, '-gc', 'none', '${defines}', '-o', output_path, source_path])
 			assert result.exit_code == 0, '${variant} AppKit readback link failed:\n${result.output}'
 		}
 	}

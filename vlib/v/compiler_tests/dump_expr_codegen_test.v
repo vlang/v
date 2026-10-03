@@ -13,7 +13,8 @@ fn dump_expr_build_v3() string {
 	}
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${dump_expr_vexe} -gc none -prealloc -path "${dump_expr_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${dump_expr_v3_src}')
+		os.exec([dump_expr_vexe, '-gc', 'none', '-prealloc', '-path',
+			'${dump_expr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${dump_expr_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -54,7 +55,7 @@ fn test_dump_expr_is_transparent_for_c_oracle_output() {
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_${os.getpid()}')
-	compile := os.execute('${v3_bin} -no-parallel -nocache -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	mut process := os.new_process(bin)
 	process.set_redirect_stdio()
@@ -92,7 +93,7 @@ fn test_dump_expr_writes_to_stderr() {
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_stderr_${os.getpid()}')
-	compile := os.execute('${v3_bin} -no-parallel -nocache -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 
 	mut process := os.new_process(bin)
@@ -130,7 +131,8 @@ fn test_dump_expr_respects_nop_dump_and_preserves_evaluation() {
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_nop_dump_${os.getpid()}')
-	compile := os.execute('${v3_bin} -no-parallel -nocache -d nop_dump -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-d', 'nop_dump', '-b', 'c', '-o',
+		bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 
 	mut process := os.new_process(bin)
@@ -168,7 +170,7 @@ fn test_dump_expr_preserves_pointer_values() {
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_pointer_${os.getpid()}')
-	compile := os.execute('${v3_bin} -no-parallel -nocache -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 
 	mut process := os.new_process(bin)

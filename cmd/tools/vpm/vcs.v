@@ -26,7 +26,7 @@ const vcs_info = init_vcs_info() or {
 }
 
 fn init_vcs_info() !map[VCS]VCSInfo {
-	git_installed_raw_ver := parse_git_version(os.execute_opt('git --version')!.output) or { '' }
+	git_installed_raw_ver := parse_git_version(os.exec_opt(['git', '--version'])!.output) or { '' }
 	git_installed_ver := semver.from(git_installed_raw_ver)!
 	git_submod_filter_ver := semver.from('2.36.0')!
 	mut git_install_args := ['clone', '--recursive']

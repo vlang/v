@@ -8,15 +8,15 @@ const cleanup_tmp = '-no-cleanup' !in os.args
 const fetch_remote = '-no-fetch' !in os.args
 
 fn gbranch() string {
-	return os.execute(r'git branch --list|grep ^\*').output.trim_left('* ').trim_space()
+	return os.exec(['sh', '-c', 'git branch --list|grep ^\\*']).output.trim_left('* ').trim_space()
 }
 
 fn gcommit() string {
-	return os.execute(r'git rev-parse --short=7 HEAD').output.trim_left('* ').trim_space()
+	return os.exec(['git', 'rev-parse', '--short=7', 'HEAD']).output.trim_left('* ').trim_space()
 }
 
 fn r(cmd string) {
-	res := os.system(cmd)
+	res := os.system_args(os.split_args(cmd) or { panic(err) })
 	if res != 0 {
 		eprintln('> failed running: `${cmd}`')
 		exit(1)
@@ -100,10 +100,10 @@ fn main() {
 
 	if fetch_remote {
 		// make sure to always compare against the main V repo's master branch by default:
-		os.execute('git -C . remote add V_REPO https://github.com/vlang/v.git')
-		os.execute('git -C . fetch V_REPO')
-		os.execute('git branch -D v_repo_master')
-		os.execute('git branch -f --track v_repo_master V_REPO/master')
+		os.exec(['git', '-C', '.', 'remote', 'add', 'V_REPO', 'https://github.com/vlang/v.git'])
+		os.exec(['git', '-C', '.', 'fetch', 'V_REPO'])
+		os.exec(['git', 'branch', '-D', 'v_repo_master'])
+		os.exec(['git', 'branch', '-f', '--track', 'v_repo_master', 'V_REPO/master'])
 	}
 
 	r('git checkout v_repo_master')

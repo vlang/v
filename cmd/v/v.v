@@ -1187,7 +1187,7 @@ fn v1_fallback_has_moved_modules(root string) bool {
 }
 
 fn v1_fallback_has_expected_version(executable string) bool {
-	result := os.execute('${os.quoted_path(executable)} version')
+	result := os.exec([executable, 'version'])
 	return result.exit_code == 0 && result.output.starts_with('V ${v_version} ')
 }
 

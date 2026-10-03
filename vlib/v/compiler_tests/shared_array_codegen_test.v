@@ -10,7 +10,8 @@ fn shared_array_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_shared_array_codegen_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${shared_array_vexe} -gc none -path "${shared_array_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${shared_array_v3_src}')
+		os.exec([shared_array_vexe, '-gc', 'none', '-path',
+			'${shared_array_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${shared_array_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -21,10 +22,10 @@ fn shared_array_run_good(v3_bin string, name string, source string) string {
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -44,10 +45,10 @@ fn shared_array_run_project(v3_bin string, name string, files map[string]string,
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_bin_${os.getpid()}')
 	input_path := os.join_path(root, input)
-	compile := os.execute('${v3_bin} ${input_path} -b c -o ${bin}')
+	compile := os.exec([v3_bin, input_path, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

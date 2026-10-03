@@ -23,13 +23,14 @@ fn history_ref_for_head() string {
 	// `merge-base --is-ancestor HEAD HEAD` trivially succeeds and would claim `HEAD`.
 	default_ref := resolve_history_ref('')
 	if default_ref != 'HEAD'
-		&& os.execute('git -C ${os.quoted_path(vdir)} merge-base --is-ancestor HEAD ${os.quoted_path(default_ref)}').exit_code == 0 {
+		&& os.exec(['git', '-C', vdir, 'merge-base', '--is-ancestor', 'HEAD', '${default_ref}']).exit_code == 0 {
 		return default_ref
 	}
 	// otherwise pick a remote/local branch that contains the commit
 	for pattern in ['refs/remotes', 'refs/heads'] {
 		res :=
-			os.execute('git -C ${os.quoted_path(vdir)} for-each-ref --contains HEAD --format=${os.quoted_path('%(refname)')} ${pattern}')
+			os.exec(['git', '-C', vdir, 'for-each-ref', '--contains', 'HEAD',
+				'--format=' + '%(refname)', '${pattern}'])
 		if res.exit_code == 0 {
 			for line in res.output.split_into_lines() {
 				r := line.trim_space()
@@ -137,7 +138,7 @@ fn build_vprod(dir string, args []string) ! {
 		// every measurement time an instant crash instead of a real compile.
 		elog('  building vprod (-prod) in ${dir} ...')
 	}
-	res := os.execute(build_cmd)
+	res := os.exec(os.split_args(build_cmd) or { panic(err) })
 	if res.exit_code != 0 {
 		return error('vprod build failed (exit ${res.exit_code}) in ${dir}:\n${res.output}')
 	}
@@ -176,7 +177,7 @@ fn run_measurements(dir string, commit string, message string, date time.Time, a
 	// before timing anything. A broken build (e.g. it crashes at startup) must
 	// fail the commit, not record a ~2ms "instant crash" as a great result.
 	os.rm('v.c') or {}
-	probe := os.execute(self_c_cmd)
+	probe := os.exec(os.split_args(self_c_cmd) or { panic(err) })
 	if probe.exit_code != 0 || !os.exists('v.c') || os.file_size('v.c') < 100_000 {
 		return error('self-compile probe failed in ${dir} (exit ${probe.exit_code}); skipping commit')
 	}
@@ -244,9 +245,9 @@ fn build_v3_stage_compiler(dir string, date time.Time, args []string) !string {
 	stage_v := os.join_path(dir, exe_name('fastv3'))
 	os.rm(stage_v) or {}
 	prod := if args.contains('-noprod') { '' } else { '-prod' }
-	cmd := '${os.quoted_path(vprod)} -gc none ${prod} -d skip_fastc -o ${os.quoted_path(stage_v)} vlib/v/v.v'
 	elog('  building standalone v3 self-compiler ...')
-	res := os.execute(cmd)
+	res := os.exec(['${vprod}', '-gc', 'none', ...(os.split_args(prod) or { panic(err) }), '-d',
+		'skip_fastc', '-o', '${stage_v}', 'vlib/v/v.v'])
 	if res.exit_code != 0 || !os.is_executable(stage_v) {
 		return error('standalone v3 build failed (exit ${res.exit_code}) in ${dir}:\n${res.output}')
 	}
@@ -313,7 +314,9 @@ fn peak_rss_kb(cmd string) int {
 	defer {
 		os.rm(tmp) or {}
 	}
-	if os.system('/usr/bin/time ${time_flag} ${cmd} > /dev/null 2>${os.quoted_path(tmp)}') != 0 {
+	if os.system_args(['sh', '-c',
+		'time_flag=\$1; output=\$2; shift 2; /usr/bin/time "\$time_flag" "\$@" > /dev/null 2>"\$output"',
+		'v', time_flag, tmp, ...(os.split_args(cmd) or { panic(err) })]) != 0 {
 		return -1 // the measured command failed; reject this sample
 	}
 	out := os.read_file(tmp) or { return -1 }
@@ -340,7 +343,7 @@ fn peak_rss_kb(cmd string) int {
 fn measure(cmd string, description string) !int {
 	elog('  Measuring ${description}, warmups: ${warmup_samples}, samples: ${max_samples}, discard: ${discard_highest_samples}')
 	for _ in 0 .. warmup_samples {
-		res := os.execute(cmd)
+		res := os.exec(os.split_args(cmd) or { panic(err) })
 		if res.exit_code != 0 {
 			return error('warmup failed (exit ${res.exit_code}): `${cmd}`\n${res.output}')
 		}
@@ -348,7 +351,7 @@ fn measure(cmd string, description string) !int {
 	mut runs := []int{}
 	for r in 0 .. max_samples {
 		sw := time.new_stopwatch()
-		res := os.execute(cmd)
+		res := os.exec(os.split_args(cmd) or { panic(err) })
 		sample := int(sw.elapsed().milliseconds())
 		if res.exit_code != 0 {
 			return error('command failed (exit ${res.exit_code}): `${cmd}`\n${res.output}')
@@ -416,7 +419,7 @@ fn measure_steps_one_sample(vprod string, stage_v string) !StageMeasurements {
 	} else {
 		'${os.quoted_path(stage_v)} -selfhost -no-memory-limit -show-timings -stats -o v.c vlib/v/v.v'
 	}
-	resp := os.execute(cmd)
+	resp := os.exec(os.split_args(cmd) or { panic(err) })
 	if resp.exit_code != 0 {
 		return error('stage-timing run failed (exit ${resp.exit_code}): `${cmd}`\n${resp.output}')
 	}

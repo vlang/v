@@ -104,7 +104,7 @@ fn run_tool(p &pref.Preferences, name string) ! {
 		exit(1)
 	}
 	vexe := os.real_path(os.getenv_opt('VEXE') or { os.executable() })
-	exit(os.system('${os.quoted_path(vexe)} run ${os.quoted_path(root)}'))
+	exit(os.system_args([vexe, 'run', root]))
 }
 
 fn print_help(fp &flag.FlagParser) {

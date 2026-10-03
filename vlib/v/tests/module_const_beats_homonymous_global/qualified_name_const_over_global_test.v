@@ -66,7 +66,7 @@ fn test_qualified_name_resolves_to_const() {
 	defer {
 		os.rmdir_all(workspace) or {}
 	}
-	res := os.execute('${os.quoted_path(@VEXE)} -enable-globals run ${os.quoted_path(workspace)}')
+	res := os.exec([@VEXE, '-enable-globals', 'run', '${workspace}'])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '99', res.output
 }
@@ -78,7 +78,7 @@ fn test_qualified_name_is_not_the_foreign_global() {
 	defer {
 		os.rmdir_all(workspace) or {}
 	}
-	res := os.execute('${os.quoted_path(@VEXE)} -enable-globals -check ${os.quoted_path(workspace)}')
+	res := os.exec([@VEXE, '-enable-globals', '-check', '${workspace}'])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('cannot use `&api.ConstType` as `&api.GlobalType` in argument 1'), res.output
 }

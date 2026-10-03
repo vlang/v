@@ -63,7 +63,7 @@ fn compile_project_with_path(project_dir string, modules_dir string, module_path
 	} else {
 		''
 	}
-	return os.execute('${os.quoted_path(vexe)} -enable-globals${path_option} -o ${os.quoted_path(out)} ${os.quoted_path(project_dir)}')
+	return os.exec([vexe, '-enable-globals' + '${path_option}', '-o', '${out}', project_dir])
 }
 
 fn compile_app_with_path(modules_dir string, module_path string) os.Result {
@@ -140,7 +140,7 @@ fn test_check_mode_selected_specialized_comptime_branch_reports_shadow() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
 	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
-	res := os.execute('${os.quoted_path(vexe)} -check -enable-globals ${os.quoted_path(app_dir)}')
+	res := os.exec([vexe, '-check', '-enable-globals', app_dir])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
@@ -154,7 +154,9 @@ fn test_selected_specialized_shadow_clears_macos_fallback() {
 	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
 	fallback_file := os.join_path(tmp_root, 'fallback')
 	out := os.join_path(tmp_root, 'fallback_app')
-	res := os.execute('V_C_ERROR_BUG_REPORT_DISABLED=1 V_MACOS_V3_NO_FALLBACK= V_MACOS_V3_FALLBACK_FILE=${os.quoted_path(fallback_file)} ${os.quoted_path(vexe)} -enable-globals -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	res := os.exec(['env', 'V_C_ERROR_BUG_REPORT_DISABLED=1', 'V_MACOS_V3_NO_FALLBACK=',
+		'V_MACOS_V3_FALLBACK_FILE=' + '${fallback_file}', vexe, '-enable-globals', '-o', '${out}',
+		app_dir])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 	assert !os.exists(fallback_file), 'authoritative shadow errors must disable the compatibility fallback'
@@ -174,7 +176,7 @@ fn test_cross_target_mixed_unselected_specialization_does_not_report_shadow() {
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
 	write_file(os.join_path(app_dir, 'main.v'), "@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[string]('ok'))\n}\n")
 	out := os.join_path(tmp_root, 'app.c')
-	res := os.execute('${os.quoted_path(vexe)} -os cross -enable-globals -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	res := os.exec([vexe, '-os', 'cross', '-enable-globals', '-o', '${out}', app_dir])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('variable `counter` shadows a global variable'), res.output
 }
@@ -184,7 +186,7 @@ fn test_cross_target_mixed_selected_specialization_reports_shadow() {
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
 	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
 	out := os.join_path(tmp_root, 'app.c')
-	res := os.execute('${os.quoted_path(vexe)} -os cross -enable-globals -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	res := os.exec([vexe, '-os', 'cross', '-enable-globals', '-o', '${out}', app_dir])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
@@ -194,7 +196,7 @@ fn test_cross_target_mixed_unselected_metadata_condition_does_not_report_shadow(
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
 	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T.indirections != 0 {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
 	out := os.join_path(tmp_root, 'app.c')
-	res := os.execute('${os.quoted_path(vexe)} -os cross -enable-globals -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	res := os.exec([vexe, '-os', 'cross', '-enable-globals', '-o', '${out}', app_dir])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('variable `counter` shadows a global variable'), res.output
 }
@@ -204,7 +206,7 @@ fn test_cross_target_mixed_selected_metadata_condition_reports_shadow() {
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
 	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T.indirections != 0 {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tvalue := 1\n\tprintln(get[&int](&value))\n}\n')
 	out := os.join_path(tmp_root, 'app.c')
-	res := os.execute('${os.quoted_path(vexe)} -os cross -enable-globals -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	res := os.exec([vexe, '-os', 'cross', '-enable-globals', '-o', '${out}', app_dir])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
@@ -333,20 +335,23 @@ fn test_warm_owned_module_cache_reports_new_global_shadow() {
 	write_file(os.join_path(app_dir, 'main.v'), 'module main\n\nimport helpers\n\nfn main() {\n\tprintln(helpers.helper())\n}\n')
 	cache_dir := os.join_path(tmp_root, 'cache')
 	first_output := os.join_path(tmp_root, 'first')
-	first := os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(vexe)} -prod -gc none -enable-globals -o ${os.quoted_path(first_output)} ${os.quoted_path(app_dir)}')
+	first := os.exec(['env', 'V3CACHE=' + '${cache_dir}', vexe, '-prod', '-gc', 'none',
+		'-enable-globals', '-o', first_output, app_dir])
 	assert first.exit_code == 0, first.output
 	cache_headers := os.walk_ext(cache_dir, '.vh')
 	assert cache_headers.any(os.file_name(it).starts_with('helpers_')), '${first.output}\ncache headers: ${cache_headers}'
 	write_file(os.join_path(app_dir, 'main.v'), 'module main\n\nimport helpers\n\nfn main() {\n\tprintln(helpers.helper() + 1)\n}\n')
 	warm_output := os.join_path(tmp_root, 'warm')
-	warm := os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(vexe)} -prod -gc none -enable-globals -o ${os.quoted_path(warm_output)} ${os.quoted_path(app_dir)}')
+	warm := os.exec(['env', 'V3CACHE=' + '${cache_dir}', vexe, '-prod', '-gc', 'none', '-enable-globals',
+		'-o', warm_output, app_dir])
 	assert warm.exit_code == 0, warm.output
-	warm_run := os.execute(os.quoted_path(warm_output))
+	warm_run := os.exec([warm_output])
 	assert warm_run.exit_code == 0, warm_run.output
 	assert warm_run.output.trim_space() == '8', warm_run.output
 	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nimport helpers\n\n__global (\n\tcounter int\n)\n\nfn main() {\n\tprintln(helpers.helper())\n}\n')
 	second_output := os.join_path(tmp_root, 'second')
-	second := os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(vexe)} -prod -gc none -enable-globals -o ${os.quoted_path(second_output)} ${os.quoted_path(app_dir)}')
+	second := os.exec(['env', 'V3CACHE=' + '${cache_dir}', vexe, '-prod', '-gc', 'none',
+		'-enable-globals', '-o', second_output, app_dir])
 	assert second.exit_code != 0, second.output
 	assert second.output.contains(os.join_path('helpers', 'helpers.v')), second.output
 	assert second.output.contains('variable `counter` shadows a global variable'), second.output

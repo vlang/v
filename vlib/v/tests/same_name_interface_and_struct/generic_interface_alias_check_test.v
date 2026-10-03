@@ -9,7 +9,7 @@ const generic_interface_alias_project = os.join_path(os.dir(@FILE), 'generic_int
 // type-checked: generating code for generic interfaces from other modules is a
 // separate problem.
 fn test_generic_interface_through_alias_named_like_a_loaded_struct_checks_cleanly() {
-	res := os.execute('${vexe} -check ${os.quoted_path(generic_interface_alias_project)}')
+	res := os.exec([@VEXE, '-check', '${generic_interface_alias_project}'])
 	assert res.exit_code == 0, res.output
 }
 
@@ -19,6 +19,6 @@ const generic_interface_alias_cross_file_project = os.join_path(os.dir(@FILE), '
 // `csv` to the generic interface's module, while the calling file binds `csv` to
 // `encoding.csv`.
 fn test_generic_interface_alias_is_resolved_in_the_declaring_file() {
-	res := os.execute('${vexe} -check ${os.quoted_path(generic_interface_alias_cross_file_project)}')
+	res := os.exec([@VEXE, '-check', generic_interface_alias_cross_file_project])
 	assert res.exit_code == 0, res.output
 }

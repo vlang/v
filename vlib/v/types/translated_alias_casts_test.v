@@ -16,7 +16,7 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('cannot cast'), result.output
 		assert result.output.contains('to `uintptr_t`'), result.output
@@ -40,7 +40,7 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('casting numbers to enums'), result.output
 		assert result.output.contains('cannot cast to bool'), result.output
@@ -62,7 +62,7 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('cannot take the address of debug_info(0)'), result.output
 	}

@@ -38,7 +38,7 @@ fn main() {
 		compiler_exit_code := compiler.code
 		compiler.close()
 		assert compiler_exit_code == 0, compiler_output
-		run := os.execute(os.quoted_path(output))
+		run := os.exec([output])
 		assert run.exit_code == 0, run.output
 	}
 }

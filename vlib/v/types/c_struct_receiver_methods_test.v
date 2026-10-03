@@ -17,7 +17,7 @@ pub fn (c C.Counter) hex() string { return "value" }
 import bridge
 fn main() { value := bridge.make(); ptr := &value; println(ptr.hex()) }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-check', root])
 	assert result.exit_code != 0, result.output
 }
 
@@ -46,7 +46,7 @@ ${visibility}fn (mut c C.Iterator) next() ?int {
 }
 ')!
 		for flags in ['-W', '-W -no-parallel'] {
-			result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 			if visibility.len > 0 {
 				assert result.exit_code == 0, result.output
 			} else {
@@ -80,12 +80,12 @@ pub fn (c C.Counter) @select[T](marker T) int { return c.value }
 	] {
 		os.write_file(path, 'module main\nimport provider\nimport extensions as ext\nfn main() { ${body} }\n')!
 		for flags in ['-W', '-W -no-parallel', '-prod'] {
-			result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 			assert result.exit_code == 0, result.output
 		}
 	}
 	os.write_file(path, 'module main\nimport provider\nimport extensions as ext\nfn main() { _ = provider.make_holder() }\n')!
-	unused := os.execute('${os.quoted_path(@VEXE)} -W -check ${os.quoted_path(root)}')
+	unused := os.exec([@VEXE, '-W', '-check', root])
 	assert unused.exit_code != 0, unused.output
 	assert unused.output.contains('imported but never used'), unused.output
 }
@@ -149,7 +149,7 @@ fn (c C.Counter) private_read() int { return 2 }
 import left
 fn main() { println(left.make_holder().value.private_read()) }
 ')!
-	private_result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	private_result := os.exec([@VEXE, '-check', root])
 	assert private_result.exit_code != 0, private_result.output
 	assert private_result.output.contains('is private'), private_result.output
 	os.write_file(os.join_path(root, 'right', 'right.c.v'), 'module right
@@ -163,7 +163,7 @@ import left
 import right
 fn main() { right.used(); println(left.make_holder().value.read()) }
 ')!
-	ambiguous := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	ambiguous := os.exec([@VEXE, '-check', root])
 	assert ambiguous.exit_code != 0, ambiguous.output
 	assert ambiguous.output.contains('ambiguous method'), ambiguous.output
 	for public_module in ['left', 'right'] {
@@ -172,29 +172,29 @@ fn main() { right.used(); println(left.make_holder().value.read()) }
 			os.write_file(os.join_path(root, method_module, 'choice.c.v'), 'module ${method_module}\n${visibility}fn (c C.Counter) choice() int { return 42 }\n')!
 		}
 		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport right\nfn main() { right.used(); println(left.make_holder().value.choice()) }\n')!
-		public_choice := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		public_choice := os.exec([@VEXE, '-check', root])
 		assert public_choice.exit_code == 0, public_choice.output
 	}
 	os.write_file(os.join_path(root, 'facade', 'facade.v'), 'module facade\nimport right\npub fn used() { right.used() }\n')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport facade\nfn main() { facade.used(); println(left.make_holder().value.read()) }\n')!
-	visible := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	visible := os.exec([@VEXE, '-check', root])
 	assert visible.exit_code == 0, visible.output
 	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport facade\nfn main() { facade.used(); println(left.make_holder().value.secret_read()) }\n')!
-	hidden := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	hidden := os.exec([@VEXE, '-check', root])
 	assert hidden.exit_code != 0, hidden.output
 	assert hidden.output.contains('unknown function') || hidden.output.contains('unknown method'), hidden.output
 	os.write_file(os.join_path(root, 'foo', 'foo.c.v'), 'module foo\npub struct C.Counter { value int }\npub fn (c C.Counter) hidden_by_path() int { return 5 }\npub fn used() {}\n')!
 	os.write_file(os.join_path(root, 'bar', 'foo', 'foo.v'), 'module foo\npub fn used() {}\n')!
 	os.write_file(os.join_path(root, 'facade', 'facade.v'), 'module facade\nimport foo\npub fn used() { foo.used() }\n')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport facade\nimport bar.foo\nfn main() { facade.used(); foo.used(); println(left.make_holder().value.hidden_by_path()) }\n')!
-	hidden_by_path := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	hidden_by_path := os.exec([@VEXE, '-check', root])
 	assert hidden_by_path.exit_code != 0, hidden_by_path.output
 	assert hidden_by_path.output.contains('unknown function') || hidden_by_path.output.contains('unknown method'), hidden_by_path.output
 	for visibility in ['pub ', ''] {
 		os.write_file(os.join_path(root, 'left', 'escaped.c.v'), 'module left\npub fn (c C.Counter) @union() int { return 7 }\n')!
 		os.write_file(os.join_path(root, 'right', 'escaped.c.v'), 'module right\n${visibility}fn (c C.Counter) @union() int { return 8 }\n')!
 		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport right\nfn main() { right.used(); println(left.make_holder().value.@union()) }\n')!
-		escaped := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		escaped := os.exec([@VEXE, '-check', root])
 		if visibility.len > 0 {
 			assert escaped.exit_code != 0, escaped.output
 			assert escaped.output.contains('ambiguous method'), escaped.output
@@ -208,7 +208,7 @@ fn test_static_interop_generic_is_not_a_receiver_method() {
 	path := os.join_path(os.vtmp_dir(), 'v3_static_interop_generic_${os.getpid()}.v')
 	os.write_file(path, 'struct JS.DOMQuad {}\nfn JS.DOMQuad.fromQuad[T](other JS.DOMQuad) T\nfn main() {}\n')!
 	defer { os.rm(path) or {} }
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, '-check', path])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('JS functions cannot be declared as generic'), result.output
 }
@@ -231,7 +231,7 @@ pub fn (c C.Counter) free() {}
 	}
 	for method in ['str', 'clone', 'free'] {
 		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport right\nfn main() { _ := right.make_holder(); left.make_holder().value.${method}() }\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, '-check', root])
 		assert result.exit_code != 0, '${method}: ${result.output}'
 		assert result.output.contains('ambiguous method'), result.output
 	}
@@ -258,7 +258,7 @@ pub fn (c C.Counter) generic_read[T](marker T) int { return c.value }
 		'fn main() { value := bridge.make_holder().value; cb := value.generic_read; println(cb(1)) }':                         'as a generic function value'
 	} {
 		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport bridge\n${source}\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains(expected), result.output
 	}
@@ -276,7 +276,7 @@ pub fn make_alias() CounterAlias { return CounterAlias{} }
 fn (c CounterAlias) private_read() int { return c.value }
 ')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport bridge\nfn main() { value := bridge.make_alias(); cb := value.private_read; println(cb()) }\n')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.count('is private') == 1, result.output
 }
@@ -308,7 +308,8 @@ pub fn (c ${receiver}) hex${signature} string { return "pointer" }
 			for body in bodies {
 				os.write_file(os.join_path(root, 'main.v'), 'module main\nimport left\nimport right\nfn main() { right.used(); value := left.make(); ptr := &value; ${body} }\n')!
 				for flags in ['', '-no-parallel'] {
-					result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+					result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check',
+						root])
 					if pointer {
 						assert result.exit_code == 0, result.output
 					} else {
@@ -338,7 +339,8 @@ ${visibility}fn (mut b C.Buffer) []= (index int, value int) { b.value = value - 
 		for body in ['println(value[0])', 'value[0] = 7', 'value[0] += 3'] {
 			os.write_file(os.join_path(root, 'main.v'), 'module main\nimport provider\nimport left as extension\nfn main() { mut value := provider.make(); ${body} }\n')!
 			for flags in ['-W', '-W -no-parallel'] {
-				result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+				result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check',
+					root])
 				if visibility.len > 0 {
 					assert result.exit_code == 0, result.output
 				} else {
@@ -358,7 +360,7 @@ pub struct C.Buffer { mut: value int }
 ${visibility}fn (mut b C.Buffer) []= (index int, value int) { b.value = value - index }
 ')!
 		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport provider\nimport left\nimport right\nfn main() { mut value := provider.make(); value[0] += 3 }\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -W -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, '-W', '-check', root])
 		if visibility.len > 0 {
 			assert result.exit_code == 0, result.output
 		} else {
@@ -375,7 +377,7 @@ pub fn (mut b C.Buffer) []= (index int, value int) { b.value = value - index }
 	}
 	for body in ['println(value[0])', 'value[0] = 7', 'value[0] += 3'] {
 		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport provider\nimport left\nimport right\nfn main() { left.used(); right.used(); mut value := provider.make(); ${body} }\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, '-check', root])
 		assert result.exit_code != 0, result.output
 	}
 }
@@ -393,7 +395,7 @@ fn test_local_c_hex_pointer_fallbacks_keep_receiver_eligibility() {
 				'unsafe { callback := ptr.hex; println(callback()) }'
 			}
 			os.write_file(path, 'struct C.Counter { value int }\nfn (c ${receiver}) hex${signature} string { return "counter" }\nfn main() { value := C.Counter{}; ptr := &value; ${body} }\n')!
-			result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+			result := os.exec([@VEXE, '-check', path])
 			if pointer {
 				assert result.exit_code == 0, result.output
 			} else {

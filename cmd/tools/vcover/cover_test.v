@@ -127,5 +127,5 @@ fn test_simple() {
 
 fn execute(cmd string) os.Result {
 	eprintln('Executing: ${cmd}')
-	return os.execute(cmd)
+	return os.exec(os.split_args(cmd) or { panic(err) })
 }

@@ -31,7 +31,7 @@ fn test_windows_tcc_output_uses_exact_dword_pointer_types() {
 	probe_executable_path := os.join_path(root, 'winapi_output_types.exe')
 	os.write_file(source_path, "fn main() {\n\tprintln('winapi output types')\n}\n")!
 	generate_result :=
-		os.execute('${os.quoted_path(@VEXE)} -cc tcc -gc none -d v2_native_windows_pe_minimal -o ${os.quoted_path(generated_c_path)} ${os.quoted_path(source_path)}')
+		os.exec([@VEXE, '-cc', 'tcc', '-gc', 'none', '-d', 'v2_native_windows_pe_minimal', '-o', generated_c_path, source_path])
 	assert generate_result.exit_code == 0, generate_result.output
 
 	generated_c := os.read_file(generated_c_path)!.replace('\r\n', '\n')
@@ -47,10 +47,10 @@ fn test_windows_tcc_output_uses_exact_dword_pointer_types() {
 	tcc_path := os.join_path(os.dir(@VEXE), 'thirdparty', 'tcc', 'tcc.exe')
 	assert os.is_file(tcc_path), 'missing bundled TinyCC: ${tcc_path}'
 	compile_result :=
-		os.execute('${os.quoted_path(tcc_path)} -B${os.quoted_path(os.dir(tcc_path))} -Werror -o ${os.quoted_path(probe_executable_path)} ${os.quoted_path(probe_source_path)}')
+		os.exec([tcc_path, '-B' + '${os.dir(tcc_path)}', '-Werror', '-o', probe_executable_path, probe_source_path])
 	assert compile_result.exit_code == 0, compile_result.output
 	assert console_type == 'C__DWORD', console_type
 	assert file_type == 'C__DWORD', file_type
-	run_result := os.execute(os.quoted_path(probe_executable_path))
+	run_result := os.exec([probe_executable_path])
 	assert run_result.exit_code == 0, run_result.output
 }

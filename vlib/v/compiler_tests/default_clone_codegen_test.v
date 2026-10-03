@@ -18,7 +18,8 @@ fn test_compiler_default_clone_uses_the_aggregate_type() {
 		os.rm(out + '.c') or {}
 	}
 	build :=
-		os.execute('${default_clone_vexe} -gc none -d ownership -path "${default_clone_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${default_clone_v3_src}')
+		os.exec([default_clone_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${default_clone_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${default_clone_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(src, 'module main
 
@@ -38,11 +39,11 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} ${src} -d ownership -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert !c_source.contains('string__clone(item)'), c_source
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 }
 
@@ -61,7 +62,8 @@ fn test_compiler_default_clone_inside_generic_fn() {
 		os.rm(out + '.c') or {}
 	}
 	build :=
-		os.execute('${default_clone_vexe} -gc none -d ownership -path "${default_clone_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${default_clone_v3_src}')
+		os.exec([default_clone_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${default_clone_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${default_clone_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(src, 'module main
 
@@ -82,8 +84,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} ${src} -d ownership -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 }

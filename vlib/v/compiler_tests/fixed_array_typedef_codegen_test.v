@@ -10,7 +10,8 @@ fn fixed_array_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_typedef_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${fixed_array_vexe} -gc none -path "${fixed_array_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${fixed_array_v3_src}')
+		os.exec([fixed_array_vexe, '-gc', 'none', '-path',
+			'${fixed_array_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${fixed_array_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -60,7 +61,7 @@ fn main() {
 }
 ')
 	run_bin := os.join_path(run_root, 'out')
-	run_compile := os.execute('${v3_bin} ${run_root} -b c -o ${run_bin}')
+	run_compile := os.exec([v3_bin, run_root, '-b', 'c', '-o', run_bin])
 	assert run_compile.exit_code == 0, run_compile.output
 	run_c := os.read_file(run_bin + '.c') or { panic(err) }
 	assert !run_c.contains('[max_items]'), run_c
@@ -68,7 +69,7 @@ fn main() {
 	assert !run_c.contains('[cols]'), run_c
 	assert run_c.contains('images[8]'), run_c
 	assert run_c.contains('cells[6][16]'), run_c
-	run := os.execute(run_bin)
+	run := os.exec([run_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '8'
 
@@ -102,7 +103,7 @@ fn main() {
 }
 ')
 	shape_c_path := os.join_path(shape_root, 'out.c')
-	shape_compile := os.execute('${v3_bin} ${shape_root} -b c -o ${shape_c_path}')
+	shape_compile := os.exec([v3_bin, shape_root, '-b', 'c', '-o', shape_c_path])
 	assert shape_compile.exit_code == 0, shape_compile.output
 	shape_c := os.read_file(shape_c_path) or { panic(err) }
 	assert !shape_c.contains('[max_items]'), shape_c
@@ -151,9 +152,9 @@ fn main() {
 }
 ')
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '11', run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
@@ -189,9 +190,9 @@ fn main() {
 }
 ')
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '7', run.output
 }
@@ -225,9 +226,9 @@ fn main() {
 }
 ')
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().int() > 0, run.output
 }
@@ -261,9 +262,9 @@ fn main() {
 }
 ')
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '17', run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
@@ -298,9 +299,9 @@ fn main() {
 }
 ')
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'one', run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
@@ -331,11 +332,11 @@ fn main() {
 }
 ')
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('Array_fixed_fixture__Combiner_2[2]'), generated
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().int() > 0, run.output
 }
@@ -363,12 +364,12 @@ fn main() {
 }
 ')
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} -b c -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('(Array_fixed_fixture__Mode_2*)'), generated
 	assert !generated.contains('Array_fixed_int_2'), generated
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().int() > 0, run.output
 }
@@ -396,12 +397,12 @@ fn main() {
 }
 ')
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} -b c -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('typedef _v_ret_Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
 	assert !generated.contains('Array_fixed_int_2'), generated
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().int() > 0, run.output
 }
@@ -485,11 +486,11 @@ fn main() {
 ') or { panic(err) }
 	exe_suffix := $if windows { '.exe' } $else { '' }
 	bin := os.join_path(root, 'out${exe_suffix}')
-	compile := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(bin)} ${os.quoted_path(root)}')
+	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert !generated.contains('Array_fixed_int_2'), generated
-	run := os.execute(os.quoted_path(bin))
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }
 
@@ -550,12 +551,12 @@ fn main() {
 	}
 	exe_suffix := $if windows { '.exe' } $else { '' }
 	bin := os.join_path(root, 'out${exe_suffix}')
-	compile := os.execute('${os.quoted_path(v3_bin)} -b c -o ${os.quoted_path(bin)} ${os.quoted_path(root)}')
+	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert !generated.contains('Array_fixed_int_2'), generated
 	assert generated.contains('Array_fixed_fixture__Mode_2 (*_fn_ptr_'), generated
-	run := os.execute(os.quoted_path(bin))
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }
 
@@ -584,9 +585,9 @@ fn main() {
 pub const max_name_size = 16
 ') or { panic(err) }
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '256', run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
@@ -606,7 +607,7 @@ fn second_size() int {
 }
 ') or { panic(err) }
 	ambiguous_bin := os.join_path(root, 'ambiguous')
-	ambiguous := os.execute('${v3_bin} -b c -o ${ambiguous_bin} ${root}')
+	ambiguous := os.exec([v3_bin, '-b', 'c', '-o', ambiguous_bin, root])
 	assert ambiguous.exit_code != 0, ambiguous.output
 	assert ambiguous.output.contains('non-constant array bound `fx.max_name_size`'), ambiguous.output
 }

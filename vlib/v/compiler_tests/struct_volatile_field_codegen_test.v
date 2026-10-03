@@ -10,7 +10,9 @@ fn volatile_field_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_volatile_field_codegen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${volatile_field_vexe} -gc none -path "${volatile_field_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${volatile_field_v3_src}')
+		os.exec([volatile_field_vexe, '-gc', 'none', '-path',
+			'${volatile_field_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${volatile_field_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -23,7 +25,7 @@ fn volatile_field_generate_c(v3_bin string, source string) string {
 		os.rm(src) or {}
 		os.rm(c_path) or {}
 	}
-	generate := os.execute('${v3_bin} -o ${c_path} ${src}')
+	generate := os.exec([v3_bin, '-o', c_path, '${src}'])
 	assert generate.exit_code == 0, generate.output
 	return os.read_file(c_path) or { panic(err) }
 }

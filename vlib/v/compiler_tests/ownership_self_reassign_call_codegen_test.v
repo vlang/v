@@ -19,7 +19,8 @@ fn self_reassign_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_self_reassign_call_codegen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -28,10 +29,10 @@ fn self_reassign_run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

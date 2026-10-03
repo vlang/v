@@ -5,7 +5,7 @@ import os
 fn show_release_tag_for(now string) string {
 	script_path := os.join_path(os.dir(@FILE), 'workflows', 'show_manual_release_cmd.vsh')
 	cmd := 'V_RELEASE_TAG_NOW="${now}" ${os.quoted_path(@VEXE)} run ${os.quoted_path(script_path)}'
-	res := os.execute(cmd)
+	res := os.exec(['env', 'V_RELEASE_TAG_NOW=' + '${now}', @VEXE, 'run', script_path])
 	assert res.exit_code == 0, res.output
 	for line in res.output.split_into_lines() {
 		if line.contains('current release_tag: ') {

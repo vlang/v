@@ -33,7 +33,7 @@ fn test_main() {
 	mut total_errors := 0
 
 	for t in test_data {
-		res := os.execute(t.cmd)
+		res := os.exec(os.split_args(t.cmd) or { panic(err) })
 		if res.exit_code < 0 {
 			println('fail execute ${t.cmd}')
 			panic(res.output)

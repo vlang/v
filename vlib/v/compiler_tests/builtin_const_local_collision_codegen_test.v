@@ -10,7 +10,9 @@ fn builtin_const_collision_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_builtin_const_collision_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${builtin_const_collision_vexe} -gc none -path "${builtin_const_collision_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${builtin_const_collision_v3_src}')
+		os.exec([builtin_const_collision_vexe, '-gc', 'none', '-path',
+			'${builtin_const_collision_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${builtin_const_collision_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -42,11 +44,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_builtin_const_collision_input_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} -W ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-W', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 

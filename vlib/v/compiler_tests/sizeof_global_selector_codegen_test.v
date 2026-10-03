@@ -10,7 +10,8 @@ fn sizeof_global_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_sizeof_global_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${sizeof_global_vexe} -gc none -path "${sizeof_global_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${sizeof_global_v3_src}')
+		os.exec([sizeof_global_vexe, '-gc', 'none', '-path',
+			'${sizeof_global_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${sizeof_global_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -87,7 +88,7 @@ fn test_sizeof_selector_qualifies_global_without_rewriting_locals_or_types() {
 	v3_bin := sizeof_global_build_v3()
 	root := sizeof_global_write_project()
 	c_path := os.join_path(root, 'out.c')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(c_path) or { panic(err) }

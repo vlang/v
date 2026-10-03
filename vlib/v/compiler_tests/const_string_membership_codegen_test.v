@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3_const_string_membership() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_const_string_membership_codegen_test_${os.getpid()}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -22,10 +23,10 @@ fn test_const_string_array_membership_compiles_on_c_backend() {
 		panic(err)
 	}
 	bin_path := os.join_path(os.temp_dir(), 'v3_const_string_membership_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true\nfalse'
 }

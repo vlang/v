@@ -21,7 +21,7 @@ fn test_array_initializer_rejects_positional_elements_in_compiler_and_formatter(
 			assert p.diagnostics.len == 1, p.diagnostics.str()
 			assert p.diagnostics[0].message == 'array initializer elements must use square brackets'
 		}
-		result := os.execute('${os.quoted_path(@VEXE)} fmt -w ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, 'fmt', '-w', path])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('array initializer elements must use square brackets'), result.output
 		assert os.read_file(path)! == source

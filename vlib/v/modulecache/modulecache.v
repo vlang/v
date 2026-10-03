@@ -384,7 +384,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	mut packages := pkgconfig_names.keys()
 	packages.sort()
 	for name in packages {
-		available := os.execute('pkg-config --exists ${name}').exit_code == 0
+		available := os.exec(['pkg-config', '--exists', '${name}']).exit_code == 0
 		validation << 'pkg=${name}\t${if available { 1 } else { 0 }}'
 		hash = hash_bytes(hash, [u8(0xfd)])
 		hash = hash_bytes(hash, name.bytes())
@@ -750,7 +750,7 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			if parts.len != 2 || parts[0].len == 0 {
 				return none
 			}
-			available := os.execute('pkg-config --exists ${parts[0]}').exit_code == 0
+			available := os.exec(['pkg-config', '--exists', '${parts[0]}']).exit_code == 0
 			if parts[1] != '${if available {
 				1
 			} else {

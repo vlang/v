@@ -18,7 +18,9 @@ fn test_concrete_pointer_forwarded_to_interface_pointer_is_boxed_once() {
 		os.rm(output + '.c') or {}
 	}
 	build :=
-		os.execute('${interface_pointer_forward_vexe} -gc none -d ownership -path "${interface_pointer_forward_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${interface_pointer_forward_v3_src}')
+		os.exec([interface_pointer_forward_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${interface_pointer_forward_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${interface_pointer_forward_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.rmdir_all(project) or {}
 	os.mkdir_all(os.join_path(project, 'matcher')) or { panic(err) }
@@ -70,9 +72,10 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -ownership -d ownership -nocache -no-parallel -o ${output} ${os.join_path(project, 'main.v')}')
+	compile := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel', '-o',
+		output, os.join_path(project, 'main.v')])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(output)
+	run := os.exec([output])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }

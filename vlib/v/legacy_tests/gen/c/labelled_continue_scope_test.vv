@@ -67,7 +67,7 @@ fn braced_function_window(text string, marker string) string {
 fn generate_c(path string, extra_flags string) string {
 	os.chdir(vroot) or {}
 	cmd := '${os.quoted_path(vexe)} -gc none ${extra_flags} -o - ${os.quoted_path(path)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-gc', 'none', ...(os.split_args(extra_flags) or { panic(err) }), '-o', '-', path])
 	assert compilation.exit_code == 0, '${cmd}\n${compilation.output}'
 	return compilation.output.replace('\r\n', '\n')
 }

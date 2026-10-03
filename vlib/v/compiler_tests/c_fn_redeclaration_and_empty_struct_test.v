@@ -10,7 +10,8 @@ const c_fn_redecl_v3_src = os.join_path(c_fn_redecl_v3_dir, 'v.v')
 fn build_c_fn_redecl_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_fn_redecl_${os.getpid()}_${rand.ulid()}')
 	result :=
-		os.execute('${os.quoted_path(c_fn_redecl_v3_vexe)} -gc none -path "${c_fn_redecl_v3_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(c_fn_redecl_v3_src)}')
+		os.exec([c_fn_redecl_v3_vexe, '-gc', 'none', '-path',
+			'${c_fn_redecl_v3_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${c_fn_redecl_v3_src}'])
 	assert result.exit_code == 0, result.output
 	return v3_bin
 }
@@ -45,7 +46,7 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 		os.rm(conflict_out + '.c') or {}
 	}
 	result :=
-		os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(root)} -b c -o ${os.quoted_path(conflict_out)}')
+		os.exec([v3_bin, '-no-memory-limit', root, '-b', 'c', '-o', '${conflict_out}'])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('C function `C.getpid` was already declared with a different signature'), result.output
 	assert result.output.contains('C function `C.variadic_probe` was already declared with a different signature'), result.output
@@ -70,7 +71,7 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 		os.rm(compatible_out + '.c') or {}
 	}
 	compatible_result :=
-		os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(compatible_root)} -b c -o ${os.quoted_path(compatible_out)}')
+		os.exec([v3_bin, '-no-memory-limit', compatible_root, '-b', 'c', '-o', '${compatible_out}'])
 	assert compatible_result.exit_code == 0, compatible_result.output
 	compatible_c := os.read_file(compatible_out + '.c')!
 	fcntl_calls := compatible_c.split_into_lines().filter(it.contains('fcntl(-1'))
@@ -85,7 +86,7 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 		os.rmdir_all(empty_root) or {}
 	}
 	empty_result :=
-		os.execute('${os.quoted_path(v3_bin)} -no-memory-limit -enable-globals ${os.quoted_path(empty_root)} -b c -o ${os.quoted_path(c_path)}')
+		os.exec([v3_bin, '-no-memory-limit', '-enable-globals', empty_root, '-b', 'c', '-o', c_path])
 	assert empty_result.exit_code == 0, empty_result.output
 	generated := os.read_file(c_path)!
 	assert !generated.contains('Empty){}'), generated

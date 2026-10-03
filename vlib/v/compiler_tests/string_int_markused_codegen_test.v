@@ -10,7 +10,8 @@ fn string_int_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_string_int_markused_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${string_int_vexe} -gc none -path "${string_int_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${string_int_v3_src}')
+		os.exec([string_int_vexe, '-gc', 'none', '-path',
+			'${string_int_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${string_int_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -49,10 +50,10 @@ use_local_receiver()
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_string_int_markused_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42\n42', run.output
 
@@ -74,10 +75,10 @@ println(n)
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_string_int_or_root_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '10', run.output
 
@@ -103,9 +104,9 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_explicit_main_ignores_top_level_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'entry', run.output
 

@@ -10,7 +10,8 @@ fn x11_alias_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_x11_alias_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${x11_alias_vexe} -gc none -path "${x11_alias_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${x11_alias_v3_src}')
+		os.exec([x11_alias_vexe, '-gc', 'none', '-path', '${x11_alias_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${x11_alias_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -91,7 +92,7 @@ fn test_c_typedef_aliases_are_preserved_for_x11_abi_shapes() {
 	v3_bin := x11_alias_build_v3()
 	root := x11_alias_write_project()
 	c_path := os.join_path(root, 'out.c')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(c_path) or { panic(err) }

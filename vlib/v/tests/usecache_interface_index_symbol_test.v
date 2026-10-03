@@ -22,10 +22,10 @@ fn build_and_run_with_usecache(name string, source string) string {
 	binary_path := os.join_path(tmp_dir, name)
 	os.write_file(source_path, source) or { panic(err) }
 	build :=
-		os.execute('${os.quoted_path(vexe)} -usecache -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([vexe, '-usecache', '-o', binary_path, source_path])
 	assert build.exit_code == 0, build.output
 	assert os.is_file(binary_path)
-	run := os.execute(os.quoted_path(binary_path))
+	run := os.exec([binary_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

@@ -18,7 +18,7 @@ fn choose(value ?Choice) int {
 fn main() { println(choose(.first)) }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('is handled more than once'), result.output
 	}
