@@ -572,6 +572,9 @@ mut:
 	// Allocations lowering adds that the source does not show, for
 	// -warn-about-allocs; see warn_alloc.
 	alloc_warnings []AllocWarning
+	// `$if`s in `$for` bodies whose conditions cannot be decided; see
+	// reject_unevaluated_comptime_if.
+	unevaluated_comptime_ifs []UnevaluatedComptimeIf
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -1204,6 +1207,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 		}
 	}
 	t.report_alloc_warnings()
+	t.report_unevaluated_comptime_ifs()
 	return t.used_fns, t.monomorph_errors, synthesized_helpers
 }
 
@@ -1315,6 +1319,7 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	t.used_fns_log_active = used_log_was_active
 	t.release_finished_scratch()
 	t.report_alloc_warnings()
+	t.report_unevaluated_comptime_ifs()
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
 }
 
@@ -1800,6 +1805,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.release_monomorph_worker_scopes()
 	}
 	t.report_alloc_warnings()
+	t.report_unevaluated_comptime_ifs()
 	return t.used_fns, t.monomorph_errors, final_specs
 }
 
@@ -4245,6 +4251,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.monomorph_errors = []string{}
 	w.monomorph_error_seen = map[string]bool{}
 	w.alloc_warnings = []AllocWarning{}
+	w.unevaluated_comptime_ifs = []UnevaluatedComptimeIf{}
 	// Fields added after the fork/merge machinery was first written. They are
 	// mutated during body transforms (or lazily built), so each worker needs
 	// private backing storage — a plain struct copy would share the master's.
@@ -5152,6 +5159,16 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 				flat.NodeId(int(warning.node) + int(node_shift))
 			} else {
 				warning.node
+			}
+		}
+	}
+	for item in w.unevaluated_comptime_ifs {
+		t.unevaluated_comptime_ifs << UnevaluatedComptimeIf{
+			...item
+			node: if int(item.node) >= base_nodes {
+				flat.NodeId(int(item.node) + int(node_shift))
+			} else {
+				item.node
 			}
 		}
 	}

@@ -4,6 +4,7 @@ import os
 import strconv
 import strings
 import v.flat
+import v.token
 import v.types
 import v.util
 import v.workers
@@ -879,15 +880,17 @@ fn (mut t Transformer) clone_attribute_subst_scoped(id flat.NodeId, var_name str
 	if node.kind == .comptime_if {
 		cond := t.subst_attribute_cond(node.value, var_name, attr)
 		if comptime_cond_references_ident(node.value, var_name)
-			&& !comptime_cond_has_loop_member_ref(cond, var_name)
 			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
-			if taken := t.eval_field_cond(cond) {
-				branch_idx := if taken { 0 } else { 1 }
-				if branch_idx >= int(node.children_count) {
-					return t.make_block([]flat.NodeId{})
+			if !comptime_cond_has_loop_member_ref(cond, var_name) {
+				if taken := t.eval_field_cond(cond) {
+					branch_idx := if taken { 0 } else { 1 }
+					if branch_idx >= int(node.children_count) {
+						return t.make_block([]flat.NodeId{})
+					}
+					return t.clone_attribute_subst_scoped(t.a.child(&node, branch_idx), var_name, attr, inner_vars)
 				}
-				return t.clone_attribute_subst_scoped(t.a.child(&node, branch_idx), var_name, attr, inner_vars)
 			}
+			t.reject_unevaluated_comptime_if(id, node, cond)
 		}
 		return t.clone_attribute_subst_children_with_value(node, var_name, attr, inner_vars, cond)
 	}
@@ -1155,15 +1158,17 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 		cond = comptime_cond_replace_unquoted(cond, ' is &void', ' is voidptr')
 		cond = comptime_cond_replace_unquoted(cond, ' !is &void', ' !is voidptr')
 		if comptime_cond_references_ident(node.value, var_name)
-			&& !comptime_cond_has_loop_member_ref(cond, var_name)
 			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
-			if taken := t.eval_field_cond(cond) {
-				branch_idx := if taken { 0 } else { 1 }
-				if branch_idx >= int(node.children_count) {
-					return none
+			if !comptime_cond_has_loop_member_ref(cond, var_name) {
+				if taken := t.eval_field_cond(cond) {
+					branch_idx := if taken { 0 } else { 1 }
+					if branch_idx >= int(node.children_count) {
+						return none
+					}
+					return t.clone_param_subst_scoped(t.a.child(&node, branch_idx), var_name, param, inner_vars)
 				}
-				return t.clone_param_subst_scoped(t.a.child(&node, branch_idx), var_name, param, inner_vars)
 			}
+			t.reject_unevaluated_comptime_if(id, node, cond)
 		}
 		return t.clone_param_subst_children_with_value(node, var_name, param, inner_vars, cond)
 	}
@@ -1750,15 +1755,17 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 	if node.kind == .comptime_if {
 		cond := t.subst_method_cond(node.value, var_name, method)
 		if comptime_cond_references_ident(node.value, var_name)
-			&& !comptime_cond_has_loop_member_ref(cond, var_name)
 			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
-			if taken := t.eval_field_cond(cond) {
-				branch_idx := if taken { 0 } else { 1 }
-				if branch_idx >= int(node.children_count) {
-					return none
+			if !comptime_cond_has_loop_member_ref(cond, var_name) {
+				if taken := t.eval_field_cond(cond) {
+					branch_idx := if taken { 0 } else { 1 }
+					if branch_idx >= int(node.children_count) {
+						return none
+					}
+					return t.clone_method_subst_scoped(t.a.child(&node, branch_idx), var_name, method, inner_vars)
 				}
-				return t.clone_method_subst_scoped(t.a.child(&node, branch_idx), var_name, method, inner_vars)
 			}
+			t.reject_unevaluated_comptime_if(id, node, cond)
 		}
 		return t.clone_method_subst_children_with_value(node, var_name, method, inner_vars, cond)
 	}
@@ -2691,6 +2698,10 @@ fn enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) 
 // clone_value_subst clones a `$for value in Enum.values` body, substituting `value.name`,
 // `value.value`, `value.attrs`, and a bare `value` (an `EnumData` literal).
 fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item EnumValueMeta) ?flat.NodeId {
+	return t.clone_value_subst_scoped(id, var_name, item, []string{})
+}
+
+fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string, item EnumValueMeta, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
@@ -2723,20 +2734,24 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 	// unsupported `comptime_if` for the C backend.
 	if node.kind == .comptime_if && comptime_cond_references_ident(node.value, var_name) {
 		cond := t.subst_value_cond(node.value, var_name, item.name, item.value)
-		if !comptime_cond_has_loop_member_ref(cond, var_name) {
-			if taken := t.eval_field_cond(cond) {
-				branch_idx := if taken { 0 } else { 1 }
-				if branch_idx >= int(node.children_count) {
-					return none
+		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
+			if !comptime_cond_has_loop_member_ref(cond, var_name) {
+				if taken := t.eval_field_cond(cond) {
+					branch_idx := if taken { 0 } else { 1 }
+					if branch_idx >= int(node.children_count) {
+						return none
+					}
+					return t.clone_value_subst_scoped(t.a.child(&node, branch_idx), var_name, item, inner_vars)
 				}
-				return t.clone_value_subst(t.a.child(&node, branch_idx), var_name, item)
 			}
+			t.reject_unevaluated_comptime_if(id, node, cond)
 		}
 	}
+	child_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
-		if c := t.clone_value_subst(child_id, var_name, item) {
+		if c := t.clone_value_subst_scoped(child_id, var_name, item, child_vars) {
 			children << c
 		}
 	}
@@ -3118,10 +3133,10 @@ fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId 
 // variable its dual meaning: a VariantData value in ordinary expressions and a concrete type in
 // `is`/`$if`/`typeof(variant.typ)` compile-time positions.
 fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item VariantMeta) ?flat.NodeId {
-	return t.clone_variant_subst_with_smartcast(id, var_name, item, '', '')
+	return t.clone_variant_subst_with_smartcast(id, var_name, item, '', '', []string{})
 }
 
-fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_name string, item VariantMeta, smartcast_name string, return_context string) ?flat.NodeId {
+fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_name string, item VariantMeta, smartcast_name string, return_context string, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
@@ -3192,14 +3207,17 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		if smartcast_name != '' {
 			cond = comptime_cond_replace_bare_ident(cond, smartcast_name, item.typ)
 		}
-		if !comptime_cond_has_loop_member_ref(cond, var_name) {
-			if taken := t.eval_field_cond(cond) {
-				branch_idx := if taken { 0 } else { 1 }
-				if branch_idx >= int(node.children_count) {
-					return none
+		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
+			if !comptime_cond_has_loop_member_ref(cond, var_name) {
+				if taken := t.eval_field_cond(cond) {
+					branch_idx := if taken { 0 } else { 1 }
+					if branch_idx >= int(node.children_count) {
+						return none
+					}
+					return t.clone_variant_subst_with_smartcast(t.a.child(&node, branch_idx), var_name, item, smartcast_name, return_context, inner_vars)
 				}
-				return t.clone_variant_subst_with_smartcast(t.a.child(&node, branch_idx), var_name, item, smartcast_name, return_context)
 			}
+			t.reject_unevaluated_comptime_if(id, node, cond)
 		}
 	}
 	mut branch_smartcast := ''
@@ -3213,6 +3231,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		}
 	}
 	argument_types := t.generic_clone_call_param_types(node, t.active_specialization_args, return_context)
+	child_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_smartcast := if i == 1 && branch_smartcast.len > 0 {
@@ -3220,7 +3239,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		} else {
 			smartcast_name
 		}
-		if child := t.clone_variant_subst_with_smartcast(t.a.child(&node, i), var_name, item, child_smartcast, t.generic_clone_child_return_context(node, i, return_context, argument_types)) {
+		if child := t.clone_variant_subst_with_smartcast(t.a.child(&node, i), var_name, item, child_smartcast, t.generic_clone_child_return_context(node, i, return_context, argument_types), child_vars) {
 			children << child
 		}
 	}
@@ -4408,16 +4427,20 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	if node.kind == .comptime_if {
 		substituted := t.subst_field_cond(node.value, var_name, fm)
 		cond := t.subst_reflected_field_selector_cond(node.value, substituted, var_name, fm)
-		if (comptime_cond_references_ident(node.value, var_name)
-			|| cond != node.value || comptime_cond_is_static_literal_expr(cond))
-			&& !comptime_cond_has_loop_member_ref(cond, var_name)
-			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
-			if taken := t.eval_field_cond(cond) {
-				branch_idx := if taken { 0 } else { 1 }
-				if branch_idx >= int(node.children_count) {
-					return none
+		references_var := comptime_cond_references_ident(node.value, var_name)
+		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
+			if (references_var || cond != node.value || comptime_cond_is_static_literal_expr(cond))
+				&& !comptime_cond_has_loop_member_ref(cond, var_name) {
+				if taken := t.eval_field_cond(cond) {
+					branch_idx := if taken { 0 } else { 1 }
+					if branch_idx >= int(node.children_count) {
+						return none
+					}
+					return t.clone_field_subst_scoped(t.a.child(&node, branch_idx), var_name, fm, inner_vars)
 				}
-				return t.clone_field_subst_scoped(t.a.child(&node, branch_idx), var_name, fm, inner_vars)
+			}
+			if references_var {
+				t.reject_unevaluated_comptime_if(id, node, cond)
 			}
 		}
 		return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, cond)
@@ -5061,6 +5084,120 @@ fn comptime_cond_is_static_literal_expr(cond string) bool {
 fn comptime_cond_is_quoted_literal(value string) bool {
 	clean := value.trim_space()
 	return clean.len >= 2 && clean[0] in [`'`, `"`, `\``] && clean[clean.len - 1] == clean[0]
+}
+
+// UnevaluatedComptimeIf is a `$if` in a `$for` body that names the loop variable, but
+// whose condition is still undecided once the loop variable is substituted.
+struct UnevaluatedComptimeIf {
+	node flat.NodeId
+	pos  token.Pos
+}
+
+// reject_unevaluated_comptime_if records the `$if` `node` (`id`), which names a `$for`
+// loop variable, when its substituted condition `cond` cannot be decided. Code generation
+// would otherwise drop it as if it were false. Workers keep their own records; the
+// transform reports them once they are merged, see report_unevaluated_comptime_ifs.
+fn (mut t Transformer) reject_unevaluated_comptime_if(id flat.NodeId, node flat.Node, cond string) {
+	// A generic template is expanded again for each specialization, once its type
+	// parameters are known. Portable output (`-os cross`) keeps target conditions for
+	// the C preprocessor.
+	if t.cur_fn_is_generic || comptime_cond_has_target_flag(cond) {
+		return
+	}
+	// The forms that the statement transform still folds after the substitution.
+	if _ := t.comptime_type_condition_value(cond) {
+		return
+	}
+	t.unevaluated_comptime_ifs << UnevaluatedComptimeIf{
+		node: id
+		pos:  node.pos
+	}
+}
+
+// report_unevaluated_comptime_ifs passes what reject_unevaluated_comptime_if recorded to
+// the checker as errors, once per `$if`. Called on the main thread.
+fn (mut t Transformer) report_unevaluated_comptime_ifs() {
+	// Workers and loop iterations meet them in any order; report in source order.
+	t.unevaluated_comptime_ifs.sort_with_compare(compare_unevaluated_comptime_ifs)
+	mut reported := map[string]bool{}
+	for item in t.unevaluated_comptime_ifs {
+		key := '${item.pos.id}:${item.pos.offset}'
+		if reported[key] {
+			continue
+		}
+		reported[key] = true
+		mut cond := if int(item.node) >= 0 && int(item.node) < t.a.nodes.len {
+			t.a.nodes[int(item.node)].value
+		} else {
+			''
+		}
+		mut pos := item.pos
+		if source_cond, source_pos := t.comptime_if_source_cond(item.pos) {
+			cond = source_cond
+			pos = source_pos
+		}
+		t.tc.record_transform_error(item.node, pos, 'cannot evaluate `\$if` condition `${cond}` at compile time')
+	}
+	t.unevaluated_comptime_ifs.clear()
+}
+
+fn compare_unevaluated_comptime_ifs(a &UnevaluatedComptimeIf, b &UnevaluatedComptimeIf) int {
+	if a.pos.id != b.pos.id {
+		return if a.pos.id < b.pos.id { -1 } else { 1 }
+	}
+	if a.pos.offset != b.pos.offset {
+		return if a.pos.offset < b.pos.offset { -1 } else { 1 }
+	}
+	return 0
+}
+
+// comptime_if_source_cond returns the condition of the `$if` at `pos` as it is written in
+// the source (on one line), and the span that it covers there. The stored condition is
+// normalized and, inside a `$for` body, already substituted.
+fn (t &Transformer) comptime_if_source_cond(pos token.Pos) ?(string, token.Pos) {
+	file := t.a.source_files[pos.id] or { return none }
+	source := os.read_file(file.name) or { return none }
+	mut i := int(pos.offset)
+	if i < 0 || i >= source.len || source[i] != `$` {
+		return none
+	}
+	i++
+	for i < source.len && source[i].is_space() {
+		i++
+	}
+	if !source[i..].starts_with('if') {
+		return none
+	}
+	i += 2
+	for i < source.len && source[i].is_space() {
+		i++
+	}
+	start := i
+	mut depth := 0
+	for i < source.len {
+		ch := source[i]
+		if ch in [`'`, `"`, `\``] {
+			i = comptime_cond_skip_string(source, i)
+			continue
+		}
+		if ch in [`(`, `[`] {
+			depth++
+		} else if ch in [`)`, `]`] {
+			depth--
+		} else if ch == `{` && depth <= 0 {
+			break
+		}
+		i++
+	}
+	end := start + source[start..int_min(i, source.len)].trim_right(' \t\r\n').len
+	if end <= start || i >= source.len {
+		return none
+	}
+	mut text := source[start..end]
+	if text.contains('\n') {
+		text = text.fields().join(' ')
+	}
+	return text, token.new_span(int(pos.id), start, end)
 }
 
 // eval_field_cond evaluates a fully-substituted comptime condition (`is`/`!is`, `in`/`!in`,
