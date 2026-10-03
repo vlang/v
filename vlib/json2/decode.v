@@ -1458,6 +1458,49 @@ fn (mut decoder Decoder) decode_array_element[E](initial E) !E {
 	return element
 }
 
+// decode_enum_map_key accepts member names and the map encoder's flag-enum syntax.
+fn (mut decoder Decoder) decode_enum_map_key[K](key_str string) !K {
+	$for member in K.values {
+		if key_str == member.name {
+			return K(member.value)
+		}
+	}
+	zero := unsafe { K(0) }
+	zero_str := '${zero}'
+	// Flag enums, including aliases, stringify zero as `Enum{}`. Use the same
+	// type prefix as the map encoder instead of assuming the alias's name.
+	if zero_str.ends_with('{}') {
+		prefix := zero_str[..zero_str.len - 1]
+		if key_str.starts_with(prefix) && key_str.ends_with('}') {
+			flags := key_str[prefix.len..key_str.len - 1].trim_space()
+			if flags == '' {
+				return zero
+			}
+			mut bits := u64(0)
+			mut valid := true
+			for flag in flags.split('|') {
+				name := flag.trim_space()
+				mut matched := false
+				$for member in K.values {
+					if name == '.${member.name}' {
+						bits |= u64(member.value)
+						matched = true
+					}
+				}
+				if !matched {
+					valid = false
+					break
+				}
+			}
+			if valid {
+				return unsafe { K(bits) }
+			}
+		}
+	}
+	decoder.decode_error('String map key: `${key_str}` does not match any field in enum: ${K.name}')!
+	return zero
+}
+
 fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 	$if V is $interface {
 		decoder.skip_current_value()
@@ -1495,24 +1538,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 				$if K is string {
 					key = K(key_str)
 				} $else $if K.unaliased_typ is $enum {
-					mut matched := false
-					$for member in K.values {
-						if key_str == member.name {
-							key = member.value
-							matched = true
-						}
-					}
-					if !matched {
-						$for attr in K.attributes {
-							if attr.name == 'flag' {
-								key = decoder.decode_flag_enum_map_key[K](key_str)!
-								matched = true
-							}
-						}
-					}
-					if !matched {
-						decoder.decode_error('String map key: `${key_str}` does not match any field in enum: ${K.name}')!
-					}
+					key = decoder.decode_enum_map_key[K](key_str)!
 				} $else $if K is rune {
 					key = K(key_str.int())
 				} $else $if K is u8 || K is u16 || K is u32 || K is u64 || K is usize {
@@ -1566,32 +1592,6 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 			decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
 		}
 	}
-}
-
-// decode_flag_enum_map_key accepts the representation emitted by flag enum interpolation.
-fn (mut decoder Decoder) decode_flag_enum_map_key[K](text string) !K {
-	prefix := '${K{}}'.all_before('{') + '{'
-	if !text.starts_with(prefix) || !text.ends_with('}') {
-		decoder.decode_error('String map key: `${text}` does not match any field in enum: ${K.name}')!
-	}
-	mut bits := u64(0)
-	fields := text[prefix.len..text.len - 1]
-	if fields != '' {
-		for field in fields.split(' | ') {
-			mut matched := false
-			$for member in K.values {
-				if field == '.' + member.name {
-					bits |= u64(member.value)
-					matched = true
-				}
-			}
-			if !matched {
-				decoder.decode_error('String map key: `${text}` does not match any field in enum: ${K.name}')!
-			}
-		}
-	}
-	// Only declared flag bits, or the valid zero flag value, can reach this cast.
-	return unsafe { K(bits) }
 }
 
 fn (mut decoder Decoder) decode_enum[T](mut val T) ! {

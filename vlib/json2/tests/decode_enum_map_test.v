@@ -11,6 +11,7 @@ type AliasMapKey = MapKey
 enum Permission {
 	read
 	write
+	execute
 }
 
 type AliasPermission = Permission
@@ -71,9 +72,46 @@ fn test_alias_flag_enum_map_keys_round_trip() {
 
 fn test_flag_enum_map_keys_reject_invalid_values() {
 	for key in ['Permission{.missing}', 'Permission{.read | .missing}', 'Other{.read}',
-		'Permission{.read', 'Permission{read}'] {
-		if _ := json2.decode[map[Permission]int]('{"${key}":7}') {
-			assert false, 'invalid flag key was accepted: ${key}'
+		'Permission{.read', 'Permission{read}', 'Permission{.read | }'] {
+		json2.decode[map[Permission]int]('{"${key}":7}') or {
+			assert err.msg().contains(key)
+			continue
 		}
+		assert false, 'invalid flag key was accepted: ${key}'
 	}
+}
+
+fn test_flag_enum_map_single_keys_round_trip() {
+	original := {
+		Permission.read:  7
+		Permission.write: 11
+	}
+	decoded := json2.decode[map[Permission]int](json2.encode(original))!
+	assert decoded == original
+}
+
+fn test_flag_enum_map_combined_keys_round_trip() {
+	original := {
+		Permission.read | Permission.write:   13
+		Permission.read | Permission.execute: 17
+	}
+	decoded := json2.decode[map[Permission]int](json2.encode(original))!
+	assert decoded == original
+}
+
+fn test_flag_enum_map_zero_key_round_trip() {
+	original := {
+		unsafe { Permission(0) }: 19
+	}
+	decoded := json2.decode[map[Permission]int](json2.encode(original))!
+	assert decoded == original
+}
+
+fn test_flag_enum_map_alias_keys_round_trip() {
+	original := {
+		AliasPermission(Permission.read | Permission.write): 23
+		unsafe { AliasPermission(0) }:                         29
+	}
+	decoded := json2.decode[map[AliasPermission]int](json2.encode(original))!
+	assert decoded == original
 }

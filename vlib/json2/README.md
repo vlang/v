@@ -75,8 +75,9 @@ booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects en
 JSON object keys are decoded to the target map key type, including signed and unsigned
 integer keys and enum member names. Unknown enum names return a decoding error.
 Nested maps and maps stored in struct fields follow the same conversion.
-Flag-enum keys also accept their encoded form, such as `Permission{.read | .write}`
-or `Permission{}` for zero, so maps with flag keys round-trip through JSON.
+Flag-enum keys, including aliases, also accept their encoded form, such as
+`Permission{.read | .write}` or `Permission{}` for zero, so maps with flag keys
+round-trip through JSON.
 
 The target type keeps its declaring module. A program's own sum type named `Any`
 is distinct from `json2.Any`, including through nested dynamic arrays, fixed arrays,
