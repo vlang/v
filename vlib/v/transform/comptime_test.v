@@ -420,6 +420,32 @@ fn test_comptime_condition_distinguishes_pointer_depth_from_logical_and() {
 	assert pointer_and_true
 }
 
+fn test_comptime_condition_ignores_brackets_and_operators_in_string_literals() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	assert comptime_condition_strip_outer_parens("('a)b' == 'a)b')") == "'a)b' == 'a)b'"
+	assert comptime_condition_top_level_index("'a(b' == 'x'", ' == ') == 5
+	assert comptime_condition_top_level_index("'x || y' == 'x'", '||') == -1
+	conds := {
+		"('a)b' == 'a)b')":       true
+		"'a(b' == 'a(b'":         true
+		"'x || y' == 'x'":        false
+		"'a,b' in ['a,b', 'c']":  true
+		"'a' in ['a,b', 'c']":    false
+		"'c' !in ['a,b', 'c']":   false
+		"('a]' == 'a]') && true": true
+	}
+	for cond, want in conds {
+		got := t.eval_field_cond(cond) or {
+			assert false, 'condition `${cond}` should be decidable'
+			return
+		}
+		assert got == want, cond
+	}
+}
+
 fn test_mangled_generic_struct_field_metadata_resolves_declaration() {
 	mut a := flat.FlatAst.new()
 	a.add_val(.module_decl, 'sample')

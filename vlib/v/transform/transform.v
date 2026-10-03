@@ -19084,8 +19084,12 @@ fn comptime_cond_has_target_flag(cond string) bool {
 fn comptime_condition_matching_paren(s string, start int) int {
 	mut paren_depth := 0
 	mut bracket_depth := 0
-	for i in start .. s.len {
+	for i := start; i < s.len; i++ {
 		match s[i] {
+			`'`, `"`, `\`` {
+				// A bracket inside a literal (`'a)b'`) is text, not structure.
+				i = comptime_cond_skip_string(s, i) - 1
+			}
 			`(` {
 				paren_depth++
 			}
@@ -19127,6 +19131,12 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 	mut bracket_depth := 0
 	for i := 0; i <= s.len - needle.len; i++ {
 		match s[i] {
+			`'`, `"`, `\`` {
+				// Brackets and operators inside a literal (`'a)b'`, `'x || y'`) are
+				// text, not structure.
+				i = comptime_cond_skip_string(s, i) - 1
+				continue
+			}
 			`(` {
 				paren_depth++
 			}

@@ -5168,11 +5168,18 @@ fn comptime_list_contains(list_text string, needle string) bool {
 	if !clean.starts_with('[') || !clean.ends_with(']') {
 		return false
 	}
-	inner := clean[1..clean.len - 1]
-	for part in inner.split(',') {
+	mut rest := clean[1..clean.len - 1]
+	for {
+		// Split on top-level commas only; a literal can contain one (`'a,b'`).
+		comma := comptime_condition_top_level_index(rest, ',')
+		part := if comma >= 0 { rest[..comma] } else { rest }
 		if comptime_unquote(part.trim_space()) == needle {
 			return true
 		}
+		if comma < 0 {
+			return false
+		}
+		rest = rest[comma + 1..]
 	}
 	return false
 }
