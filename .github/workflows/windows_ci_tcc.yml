@@ -399,12 +399,12 @@ jobs:
             -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
-            -ExpectedWin32BackendSha256 '8c915ec5bd9b116d98b8711bbd46f3afd5d6761800d7f91fed0deef6ac26cbaf' `
+            -ExpectedWin32BackendSha256 '1f2bfbd43b20b6d33896fb1c517673b4041d5408f15cde6d014bd2b98ddedc9e' `
             -ExpectedWin32ServiceBackendSha256 'faaf67be3e0381ea8a0e7a753b477b7965dde6e655f83f220eca036da19c5df6' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
-            -ExpectedGreenSurfaceSha256 '0ea0c7c0fb681cd1c6e6b61a5785cb57739b92c641eba55aab3d63174d0a6b45' `
-            -ExpectedRunnerSha256 '2f6dacfb03eef7841983cff39a44cbcbe76550c3401cbaf2baaefe14186d7a11'
+            -ExpectedGreenSurfaceSha256 '7703f28d10cb60e000a016e4dbd4a2ec85d7501e54c2fdcff07933368e89231d' `
+            -ExpectedRunnerSha256 'adaab1bcabdce34ae6f9b103d770c6fab0b6a63870a90829e56b245e2b245835'
       - name: Win32 W5 raw-input A0 preflight
         shell: pwsh
         run: |
@@ -440,7 +440,7 @@ jobs:
             -ExpectedPublicRoutingSurfaceSha256 'a4a03215a80f94584f7c9c11f0e58ecdc80175e959b6d3a9145d36606e0cbcd6' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDispatchSha256 '7ef6c7cbd34511d6c19c1a3a269b46876db791b9412bb88e3a8d4dcd543bfd4e' `
-            -ExpectedWin32BackendSha256 '8c915ec5bd9b116d98b8711bbd46f3afd5d6761800d7f91fed0deef6ac26cbaf' `
+            -ExpectedWin32BackendSha256 '1f2bfbd43b20b6d33896fb1c517673b4041d5408f15cde6d014bd2b98ddedc9e' `
             -ExpectedWin32BackendHelpersSha256 '2265a247f626621d69e823c09a79a5611dd187880120ba493636e73858c74a4d' `
             -ExpectedWin32ServiceBackendSha256 'faaf67be3e0381ea8a0e7a753b477b7965dde6e655f83f220eca036da19c5df6' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
