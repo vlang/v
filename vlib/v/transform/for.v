@@ -400,6 +400,8 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		iter_type[1..]
 	} else if iter_type.starts_with('&[') && t.is_fixed_array_type(iter_type[1..]) {
 		iter_type[1..]
+	} else if iter_type == '&string' {
+		'string'
 	} else {
 		iter_type
 	}
@@ -1253,6 +1255,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.set_node_typ(int(container), container_type[1..])
 		actual_iter_type = container_type[1..]
 	}
+	if container_type == '&string' {
+		container = t.make_prefix(.mul, container)
+		t.set_node_typ(int(container), 'string')
+		actual_iter_type = 'string'
+	}
 	mut elem_type := t.infer_for_in_elem_type(actual_iter_type, node)
 	if elem_type.len == 0 {
 		return [id]
@@ -1476,6 +1483,7 @@ fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post fl
 	}
 	return t.a.add_node(flat.Node{
 		kind:           .for_stmt
+		value:          if src.kind == .for_in_stmt { skip_scope_drops_block_value } else { '' }
 		op:             src.op
 		children_start: start
 		children_count: flat.child_count(3 + body.len)
@@ -1570,7 +1578,7 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 
 fn for_iter_type_is_container(iter_type string) bool {
 	clean := iter_type.trim_space()
-	return clean == 'string' || clean.starts_with('[]') || clean.starts_with('&[')
+	return clean in ['string', '&string'] || clean.starts_with('[]') || clean.starts_with('&[')
 		|| clean.starts_with('...') || clean.starts_with('map[') || clean.starts_with('&map[')
 		|| clean.starts_with('[')
 }

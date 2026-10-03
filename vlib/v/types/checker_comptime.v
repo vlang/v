@@ -3732,6 +3732,11 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, Type(void_))
 		return
 	}
+	$if ownership ? {
+		if node.op == .amp && child_type is String {
+			tc.check_ownership_addressed_string_range(id, child_id)
+		}
+	}
 	if node.op == .amp && tc.node_source_starts_with(id, '&') && tc.unsafe_depth == 0
 		&& !tc.expr_is_inside_unsafe_block(id) && !tc.node_is_c_source(id) {
 		if fixed_array_id := tc.fixed_array_reference_ident(child_id) {

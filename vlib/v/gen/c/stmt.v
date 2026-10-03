@@ -1012,6 +1012,9 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
 }
 
 fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
+	if g.cur_fn_manualfree {
+		return
+	}
 	for entry in entries {
 		cname := g.local_cname(entry.name)
 		typ := g.tc.parse_type(entry.type_name)

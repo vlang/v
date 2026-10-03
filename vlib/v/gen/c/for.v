@@ -207,7 +207,8 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.indent--
 	g.writeln('}')
 	if wrap_init {
-		if !node.skip_ownership_drops() {
+		// A lowered for-in has a synthetic initializer, with no checker scope-drop slot.
+		if !node.skip_ownership_drops() && node.value != skip_scope_drops_block_value {
 			g.gen_scope_ownership_drops()
 		}
 		g.indent--
