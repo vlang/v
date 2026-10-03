@@ -480,7 +480,7 @@ fn main() {}
 		'main':          true
 		'Used__autostr': true
 	}, &tc, true)
-	assert c_source.contains('string Used__autostr(Used it)'), c_source
+	assert c_source.contains('string Used__autostr(main__Used it)'), c_source
 	assert !c_source.contains('Unused__autostr'), c_source
 }
 

@@ -161,8 +161,8 @@ fn test_backed_enum_map_key_uses_backing_storage_size() {
 	assert c_source.contains('new_map(sizeof(u64), sizeof(int), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
 	assert c_source.contains('u64 __map_key_'), 'backed enum map key temp does not use backing storage'
 	assert !c_source.contains('Wide __map_key_'), 'backed enum map key temp still uses enum typedef storage'
-	assert !c_source.contains('new_map(sizeof(Wide)'), 'backed enum map allocation still uses enum typedef size'
-	assert !c_source.contains('&(Wide[]){'), 'backed enum map compound key literal still uses enum typedef storage'
+	assert !c_source.contains('new_map(sizeof(main__Wide)'), 'backed enum map allocation still uses enum typedef size'
+	assert !c_source.contains('&(main__Wide[]){'), 'backed enum map compound key literal still uses enum typedef storage'
 }
 
 fn test_pointer_channel_try_call_derefs_receiver() {
