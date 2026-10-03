@@ -11253,12 +11253,21 @@ fn (mut t Transformer) transform_debugger_stmt(node flat.Node) flat.NodeId {
 		if contexts.len == 0 {
 			continue
 		}
-		value := t.apply_smartcast_contexts(t.make_ident(name), t.var_type(name), contexts)
+		last := contexts.last()
+		mut value := t.apply_smartcast_contexts(t.make_ident(name), t.var_type(name), contexts)
 		mut value_type := t.node_type(value)
 		if value_type.len == 0 {
-			value_type = t.smartcast_target_type(contexts.last())
+			value_type = t.smartcast_target_type(last)
 		}
-		mut display_type := contexts.last().display_type
+		// Interface smartcasts to structs select the boxed object by pointer to avoid
+		// copies; the debugger shows the value type that the source code sees.
+		if value_type.starts_with('&') && !last.variant_name.starts_with('&')
+			&& t.is_interface_type_name(last.sum_type_name) {
+			value = t.make_prefix(.mul, value)
+			value_type = value_type[1..]
+			t.set_node_typ(int(value), value_type)
+		}
+		mut display_type := last.display_type
 		if display_type.len == 0 {
 			display_type = value_type
 		}
