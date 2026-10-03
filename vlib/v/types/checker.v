@@ -18974,9 +18974,21 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			return
 		}
 		tc.push_scope()
-		loop_var_type := unknown_type('runtime loop variable in static comptime body')
-		tc.insert_loop_var(tc.a.child(&node, 0), loop_var_type)
-		tc.insert_loop_var(tc.a.child(&node, 1), loop_var_type)
+		key_id := tc.a.child(&node, 0)
+		val_id := tc.a.child(&node, 1)
+		mut key_type := unknown_type('runtime loop variable in static comptime body')
+		mut value_type := key_type
+		// Metadata collections such as field.attrs have a known element type even
+		// before the enclosing reflection loop is unrolled against a concrete type.
+		if container_type := tc.comptime_static_metadata_expr_type(tc.a.child(&node, 2), var_name, loop_kind) {
+			clean := unalias_type(unwrap_pointer(container_type))
+			if clean is Array {
+				value_type = clean.elem_type
+				key_type = if int(val_id) >= 0 { Type(int_) } else { value_type }
+			}
+		}
+		tc.insert_loop_var(key_id, key_type)
+		tc.insert_loop_var(val_id, value_type)
 		for i in header .. node.children_count {
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
 		}

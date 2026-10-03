@@ -27466,7 +27466,7 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	mut visited := []u32{len: limit}
 	mut epoch := u32(0)
 	for i in 0 .. limit {
-		if t.a.nodes[i].kind !in [.fn_decl] {
+		if t.a.nodes[i].kind != .fn_decl {
 			continue
 		}
 		// Only candidate nodes need copies before AST rewriting.

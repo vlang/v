@@ -1783,6 +1783,13 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		// releasing its scope; the merge skips existing entries and owns its copies.
 		t.merge_worker_used_fns(w)
 		t.merge_worker(w, []FnWorkItem{}, base_nodes, base_children, false)
+		// Interface conversions discovered in this batch drive method specialization
+		// in later rounds. Own their keys before releasing the worker's arena.
+		for key, boxed in w.interface_boxed_types {
+			if boxed && key !in t.interface_boxed_types {
+				t.interface_boxed_types[key.clone()] = true
+			}
+		}
 		for name in w.generic_specialization_args_log {
 			spec_args := w.generic_specialization_args[name] or { continue }
 			if name !in t.generic_specialization_args {
