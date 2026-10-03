@@ -189,7 +189,9 @@ fn test_the_cache_key_covers_vflags() {
 // fresh_cache_fixture builds a cache entry whose recorded inputs are all still valid.
 fn fresh_cache_fixture(name string) (ToolCacheEntry, string) {
 	directory := toolcache_test_dir(name)
-	binary := os.join_path(directory, 'vdemo-0123456789')
+	// A cached tool is named like the tool plus the platform suffix, because that
+	// is what `os.is_executable` accepts on this platform.
+	binary := os.join_path(directory, 'vdemo-0123456789' + tool_exe_suffix())
 	os.write_file(binary, 'a pretend compiled tool') or { panic(err) }
 	os.chmod(binary, 0o755) or { panic(err) }
 	module_dir := os.join_path(directory, 'demomod')
@@ -791,7 +793,10 @@ fn test_pinned_entry_publication_cannot_be_redirected() {
 	outside := os.join_path(directory, 'outside')
 	os.mkdir(outside)!
 	if pathname_was_replaced {
-		os.symlink(outside, entry_dir)!
+		os.symlink(outside, entry_dir) or {
+			eprintln('> skipping ${@FN}: ${err}')
+			return
+		}
 	}
 	staged := os.join_path(directory, 'staged-inputs')
 	os.write_file(staged, 'the manifest')!
@@ -827,7 +832,10 @@ fn test_pinned_stale_pruning_cannot_be_redirected() {
 	must_survive := os.join_path(outside, 'must-survive')
 	os.write_file(must_survive, 'safe')!
 	if pathname_was_replaced {
-		os.symlink(outside, stale_dir)!
+		os.symlink(outside, stale_dir) or {
+			eprintln('> skipping ${@FN}: ${err}')
+			return
+		}
 	}
 
 	stale_entry.remove_all_contents()
@@ -899,7 +907,7 @@ fn test_an_embedded_asset_is_recorded_and_invalidates_the_cache() {
 	os.write_file(source, "module main\n\nconst asset = \$embed_file('asset.txt')\n\nfn main() {\n\tprintln(asset.len)\n}\n")!
 
 	dumped := os.join_path(directory, 'sources.txt')
-	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64) + tool_exe_suffix())
 	build :=
 		os.exec([vexe, '-dump-files', '${dumped}', '-o', binary, source])
 	assert build.exit_code == 0, build.output
@@ -978,7 +986,7 @@ fn test_a_native_input_is_recorded_and_invalidates_the_cache() {
 	os.write_file(source, 'module main\n\n#flag -I@VMODROOT\n#flag @VMODROOT/helper.c\n#include "helper.h"\n\nfn C.native_double(int) int\n\nfn main() {\n\tprintln(C.native_double(21))\n}\n')!
 
 	dumped := os.join_path(directory, 'sources.txt')
-	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64) + tool_exe_suffix())
 	build :=
 		os.exec([vexe, '-dump-files', '${dumped}', '-o', binary, source])
 	assert build.exit_code == 0, build.output
@@ -1585,7 +1593,7 @@ fn test_a_missing_embedded_asset_is_recorded_and_invalidates_the_cache() {
 	assert !os.exists(asset), 'the asset must be absent for this build'
 
 	dumped := os.join_path(directory, 'sources.txt')
-	binary := os.join_path(directory, 'vdemo')
+	binary := os.join_path(directory, 'vdemo' + tool_exe_suffix())
 	build :=
 		os.exec([vexe, '-prod', '-dump-files', '${dumped}', '-o', binary, source])
 	assert build.exit_code == 0, build.output
