@@ -1,6 +1,6 @@
 ---
 name: v-concurrency
-description: V's concurrency primitives - spawn, the sync module (channels, Mutex, RwMutex, WaitGroup, Once, Pool, select), and parallel.amap for parallel map and run. Use when writing code with goroutines, threads, channels, locks, shared mutable state, a WaitGroup, or a race, and when reviewing V code that touches them. Covers how to wait for spawned work and why a detached spawn is a bug. Does not cover the mutability rules a lock protects (see v-lang), the build and test loop (see v-workflow), or web servers (see v-veb).
+description: V's concurrency primitives - spawn, the sync module (channels, Mutex, RwMutex, WaitGroup, Once, Pool, select), and parallel.amap for parallel map and run. Use when writing code with goroutines, threads, channels, locks, shared mutable state, a WaitGroup, or a race, and when reviewing V code that touches them. Covers how to wait for spawned work and why a detached spawn is a bug. Does not cover the mutability rules a lock protects (see v-lang), the build and test loop (see v-workflow), or web servers (see v-veb), scripting a task in V (see v-scripts), or the wider command surface (see v-tools).
 license: MIT
 ---
 
