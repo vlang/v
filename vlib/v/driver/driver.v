@@ -6156,6 +6156,16 @@ fn v3_external_cache_path(key string, prefix string) ?V3ExternalCachePath {
 	}
 }
 
+// compare_v3_external_native_roots orders native roots by module, then by their
+// position. A named comparator keeps restore_v3_cache_external_inputs free of
+// function literals, which the transformer lowers serially.
+fn compare_v3_external_native_roots(a &V3ExternalNativeRoot, b &V3ExternalNativeRoot) int {
+	if a.module_name != b.module_name {
+		return a.module_name.compare(b.module_name)
+	}
+	return a.index - b.index
+}
+
 fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []string, user_c_flags []string, ccompiler string, target pref.Target, incremental_declaration_signature string) bool {
 	base_input := v3_cgen_cache_input(state, user_files, user_c_flags)
 	prefixes := ['external:', 'external-sha256:', 'external-meta:', 'external-root:',
@@ -6239,12 +6249,7 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 			index:       index
 		}
 	}
-	root_records.sort_with_compare(fn (a &V3ExternalNativeRoot, b &V3ExternalNativeRoot) int {
-		if a.module_name != b.module_name {
-			return a.module_name.compare(b.module_name)
-		}
-		return a.index - b.index
-	})
+	root_records.sort_with_compare(compare_v3_external_native_roots)
 	mut native_roots := map[string][]string{}
 	for record in root_records {
 		mut roots := native_roots[record.module_name]
@@ -12595,13 +12600,8 @@ pub fn run(args []string) {
 			// What the check found so far, for a client that shows it while the
 			// grandchild takes long: its unused declarations and the instances of
 			// its generic functions (see diagserver.Request.print_diagnostics).
-			found_notices := pre_tc.notices.clone()
-			found_errors := pre_tc.errors.clone()
-			served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
-				print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture,
-					fatal_errors, check_only, message_limit, skip_notices)
-				return if found_errors.len > 0 { 1 } else { 0 }
-			})
+			serve_partial_type_diagnostics(mut served, a, pre_tc.notices.clone(), pre_tc.errors.clone(),
+				is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
 		}
 		if (vls_line_info != '' || shares_checks)
 			&& (!shares_checks || !served.diagnose_in_grandchild()) {
@@ -12621,11 +12621,7 @@ pub fn run(args []string) {
 			}
 			// The bodies the check left out are checked while no question comes:
 			// a question reads their types.
-			checker := pre_tc
-			served.keep_busy_with(fn [checker] () bool {
-				mut tc := checker
-				return tc.complete_incremental_check_step(incremental_completion_step)
-			})
+			serve_incremental_check_steps(mut served, pre_tc)
 			// A diagnostics server's child answers the next questions from the
 			// program it checked, while the server finds the files it read
 			// unchanged.
@@ -12633,9 +12629,7 @@ pub fn run(args []string) {
 				if digests := v3_input_digests(a, cache_state.cached_source_digests, server_file_ids) {
 					project_root := cache_state.import_resolutions.project_root
 					resolved_imports := v3_imports_to_resolve(a, cache_state.import_resolutions)
-					served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
-						return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
-					})
+					serve_unchanged_imports(mut served, digests, prefs, project_root, resolved_imports)
 					for {
 						next := served.next_question(code) or { break }
 						if served.asks_for_diagnostics(next) {
@@ -17886,6 +17880,37 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
+// The diagnostics server callbacks live outside `run`: a function literal makes
+// the transformer lower its whole enclosing function serially, before the
+// parallel workers start, and `run` is the largest function of the compiler.
+
+// serve_partial_type_diagnostics prints what the check found so far for a
+// client that shows it while the grandchild takes long.
+fn serve_partial_type_diagnostics(mut served diagserver.Request, a &flat.FlatAst, found_notices []types.TypeError, found_errors []types.TypeError, is_checker_fixture bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
+	served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
+		print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture, fatal_errors,
+			check_only, message_limit, skip_notices)
+		return if found_errors.len > 0 { 1 } else { 0 }
+	})
+}
+
+// serve_incremental_check_steps checks the bodies the check left out while no
+// question comes: a question reads their types.
+fn serve_incremental_check_steps(mut served diagserver.Request, checker types.TypeChecker) {
+	served.keep_busy_with(fn [checker] () bool {
+		mut tc := checker
+		return tc.complete_incremental_check_step(incremental_completion_step)
+	})
+}
+
+// serve_unchanged_imports keeps the checked program while its inputs and
+// imports resolve as before.
+fn serve_unchanged_imports(mut served diagserver.Request, digests map[string]string, prefs &pref.Preferences, project_root string, resolved_imports []V3ImportResolution) {
+	served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
+		return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
+	})
+}
+
 fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
 	if !check_only {
 		mut first_unused := -1

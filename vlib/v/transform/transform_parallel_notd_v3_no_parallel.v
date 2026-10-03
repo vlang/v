@@ -38,6 +38,15 @@ const max_parallel_monomorph_jobs = 18
 const scoped_transform_batches = 16
 const scoped_selfhost_transform_batches = 4
 const scoped_transform_max_batch_items = 2048
+// Shared-base helpers rewind one scratch arena per batch, so the transform peak
+// holds every helper's largest batch at once. Large chunks use more, smaller
+// batches; each batch stays big enough that its fork and publication are cheap.
+const shared_helper_transform_batches = 64
+const shared_helper_min_batch_cost = 2048
+// The caller transforms the first chunk itself and also publishes each of its
+// batches into the master state, which made it the last chunk to finish. Give it
+// a smaller share of the work than every helper.
+const shared_master_chunk_share_percent = 85
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_node_threshold = 1_000_000
 // Every non-empty batch uses the memory-bounded scoped path; see
@@ -397,6 +406,16 @@ fn transform_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+// shared_helper_batch_count picks the scratch batch count for one helper chunk.
+fn shared_helper_batch_count(items []FnWorkItem) int {
+	mut total := i64(0)
+	for item in items {
+		total += i64(item.cost) + 1
+	}
+	by_cost := int(total / shared_helper_min_batch_cost)
+	return int_max(scoped_transform_batches, int_min(shared_helper_transform_batches, by_cost))
+}
+
 // shared_chunk_thread runs one shared-base worker's chunk. No clone, no
 // chain: every worker was fully built by the master before spawning.
 fn shared_chunk_thread(arg voidptr) voidptr {
@@ -405,7 +424,7 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 	items := unsafe { &[]FnWorkItem(a.items_ptr) }
 	mut csw := time.new_stopwatch()
 	if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
-		w.transform_scoped_helper_batches(*items, scoped_transform_batches)
+		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items))
 	} else {
 		w.transform_pure_items_serial(*items)
 	}
@@ -638,8 +657,9 @@ fn literal_decl_scan_thread(arg voidptr) voidptr {
 		unsafe {
 			flags[i - a.base] = flag
 		}
-		mut may_escape := (node.kind == .prefix && node.op == .amp)
-			|| escape_call_may_return_receiver_address(a.a, a.tc, flat.NodeId(i), *node)
+		// Receiver-address calls are left to the serial precheck, which can tell
+		// a local receiver from a `mut` parameter of the enclosing function.
+		mut may_escape := node.kind == .prefix && node.op == .amp
 		if !may_escape && node.kind == .call && node.children_count > 1 {
 			name := a.tc.resolved_call_name(flat.NodeId(i)) or {
 				unsafe {
@@ -2926,7 +2946,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	if chunk_target > bounded_items.len {
 		chunk_target = bounded_items.len
 	}
-	mut chunks := split_work_items(bounded_items, chunk_target)
+	mut chunks := split_work_items_with_first_share(bounded_items, chunk_target, shared_master_chunk_share_percent)
 	chunk_count := chunks.len
 	thread_count := chunk_count - 1
 	// Pool.run queues asynchronous work before running synchronous tasks. Give

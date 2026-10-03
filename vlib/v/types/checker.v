@@ -11737,6 +11737,30 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns() {
 	if tc.diagnostic_files.len == 0 {
 		return
 	}
+	// The walk binds scopes and resolves names in every reachable body; for a
+	// compiler build that is the whole program. All of that is scratch, so a
+	// scoped check runs it on a disposable fork and keeps only the reached names.
+	// Forks read the type cache through the overlay the scoped checks install.
+	if !tc.scope_parallel_check_workers || isnil(tc.type_cache) || isnil(tc.type_cache.base) {
+		tc.collect_selected_file_called_fns_walk()
+		return
+	}
+	scope := check_worker_scope_begin(true)
+	mut walker := tc.fork_for_parallel_check()
+	walker.collect_selected_file_called_fns_walk()
+	check_worker_scope_leave(scope)
+	mut called := map[string]bool{}
+	called.reserve(u32(walker.selected_file_called_fns.len))
+	for name, _ in walker.selected_file_called_fns {
+		called[name.clone()] = true
+	}
+	tc.selected_file_called_fns = called.move()
+	check_worker_scope_free(scope)
+}
+
+fn (mut tc TypeChecker) collect_selected_file_called_fns_walk() {
+	tc.selected_file_called_fns = map[string]bool{}
+	tc.selected_file_worklist = []string{}
 	saved_file := tc.cur_file
 	saved_module := tc.cur_module
 	saved_scope := tc.cur_scope

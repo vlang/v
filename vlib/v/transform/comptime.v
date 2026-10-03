@@ -420,7 +420,18 @@ fn comptime_param_scan_thread(arg voidptr) voidptr {
 
 fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 	mut typ := raw.trim_space()
+	if typ.len == 0 {
+		return typ
+	}
+	// Most names are not aliases. Settle that before allocating the cycle set or
+	// another trimmed copy.
+	normalized := t.normalize_type_alias(typ)
+	if trimmed_text_equals(normalized, typ) {
+		return typ
+	}
 	mut seen := map[string]bool{}
+	seen[typ] = true
+	typ = normalized.trim_space()
 	for typ.len > 0 && typ !in seen {
 		seen[typ] = true
 		next := t.normalize_type_alias(typ).trim_space()
@@ -430,6 +441,34 @@ fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 		typ = next
 	}
 	return typ
+}
+
+// trimmed_text_equals reports whether `s.trim_space() == want` without
+// allocating the trimmed copy.
+fn trimmed_text_equals(s string, want string) bool {
+	mut lo := 0
+	mut hi := s.len
+	for lo < hi && is_trim_space_byte(s[lo]) {
+		lo++
+	}
+	for hi > lo && is_trim_space_byte(s[hi - 1]) {
+		hi--
+	}
+	if hi - lo != want.len {
+		return false
+	}
+	for i in 0 .. want.len {
+		if s[lo + i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// is_trim_space_byte matches the bytes String.trim_space removes.
+@[inline]
+fn is_trim_space_byte(c u8) bool {
+	return c == ` ` || c == `\n` || c == `\t` || c == `\v` || c == `\f` || c == `\r`
 }
 
 // comptime_typeof_unaliased_type removes only aliases at the root of a reflected type.
