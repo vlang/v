@@ -1494,6 +1494,17 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 				mut key := K{}
 				$if K is string {
 					key = K(key_str)
+				} $else $if K.unaliased_typ is $enum {
+					mut matched := false
+					$for member in K.values {
+						if key_str == member.name {
+							key = member.value
+							matched = true
+						}
+					}
+					if !matched {
+						decoder.decode_error('String map key: `${key_str}` does not match any field in enum: ${K.name}')!
+					}
 				} $else $if K is rune {
 					key = K(key_str.int())
 				} $else $if K is u8 || K is u16 || K is u32 || K is u64 || K is usize {

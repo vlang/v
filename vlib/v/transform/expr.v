@@ -4376,6 +4376,16 @@ fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 		}
 		.struct_init {
 			mut stable := true
+			if info := t.lookup_struct_info(node.value) {
+				for field in info.fields {
+					if t.is_fixed_array_type(t.normalize_type_alias(field.typ)) {
+						// Fixed-array initialization can emit a C statement expression.
+						// Its result and fields need storage before taking their address.
+						stable = false
+						break
+					}
+				}
+			}
 			for i in 0 .. node.children_count {
 				if !t.is_stable_expr_for_reuse(t.a.child(&node, i)) {
 					stable = false
