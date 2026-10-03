@@ -234,6 +234,12 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return none
 	}
 	node := t.a.nodes[int(id)]
+	if !target_is_ptr && node.kind == .paren && node.children_count == 1
+		&& t.expr_is_bare_nil(id) {
+		// Keep the interface target on a wrapped nil instead of boxing its voidptr
+		// type. Lower the inner block normally so its statements still run.
+		return t.transform_expr_for_type(t.a.child(&node, 0), target_type)
+	}
 	// Only pointer casts already have the expected representation. A value cast
 	// such as Iface(ptr) still needs the pointer-target conversion below.
 	if target_is_ptr && node.kind == .cast_expr && node.value.starts_with('&')

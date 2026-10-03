@@ -38,6 +38,15 @@ const max_parallel_monomorph_jobs = 18
 const scoped_transform_batches = 16
 const scoped_selfhost_transform_batches = 4
 const scoped_transform_max_batch_items = 2048
+// Shared-base helpers rewind one scratch arena per batch, so the transform peak
+// holds every helper's largest batch at once. Large chunks use more, smaller
+// batches; each batch stays big enough that its fork and publication are cheap.
+const shared_helper_transform_batches = 64
+const shared_helper_min_batch_cost = 2048
+// The caller transforms the first chunk itself and also publishes each of its
+// batches into the master state, which made it the last chunk to finish. Give it
+// a smaller share of the work than every helper.
+const shared_master_chunk_share_percent = 85
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_node_threshold = 1_000_000
 // Every non-empty batch uses the memory-bounded scoped path; see
@@ -397,6 +406,16 @@ fn transform_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+// shared_helper_batch_count picks the scratch batch count for one helper chunk.
+fn shared_helper_batch_count(items []FnWorkItem) int {
+	mut total := i64(0)
+	for item in items {
+		total += i64(item.cost) + 1
+	}
+	by_cost := int(total / shared_helper_min_batch_cost)
+	return int_max(scoped_transform_batches, int_min(shared_helper_transform_batches, by_cost))
+}
+
 // shared_chunk_thread runs one shared-base worker's chunk. No clone, no
 // chain: every worker was fully built by the master before spawning.
 fn shared_chunk_thread(arg voidptr) voidptr {
@@ -405,7 +424,7 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 	items := unsafe { &[]FnWorkItem(a.items_ptr) }
 	mut csw := time.new_stopwatch()
 	if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
-		w.transform_scoped_helper_batches(*items, scoped_transform_batches)
+		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items))
 	} else {
 		w.transform_pure_items_serial(*items)
 	}
@@ -638,8 +657,9 @@ fn literal_decl_scan_thread(arg voidptr) voidptr {
 		unsafe {
 			flags[i - a.base] = flag
 		}
-		mut may_escape := (node.kind == .prefix && node.op == .amp)
-			|| escape_call_may_return_receiver_address(a.a, a.tc, flat.NodeId(i), *node)
+		// Receiver-address calls are left to the serial precheck, which can tell
+		// a local receiver from a `mut` parameter of the enclosing function.
+		mut may_escape := node.kind == .prefix && node.op == .amp
 		if !may_escape && node.kind == .call && node.children_count > 1 {
 			name := a.tc.resolved_call_name(flat.NodeId(i)) or {
 				unsafe {
@@ -691,6 +711,63 @@ fn top_level_kind_scan_thread(arg voidptr) voidptr {
 		}
 	}
 	return unsafe { nil }
+}
+
+struct AnonymousStructInitScanArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	start int
+	end   int
+	flags voidptr // &u8 base of the per-node flag array
+}
+
+// anonymous_struct_init_scan_thread flags the anonymous struct literals in its
+// range. It only reads nodes and writes its own flag bytes.
+fn anonymous_struct_init_scan_thread(arg voidptr) voidptr {
+	a := unsafe { &AnonymousStructInitScanArgs(arg) }
+	flags := unsafe { &u8(a.flags) }
+	for i in a.start .. a.end {
+		node := unsafe { &a.a.nodes[i] }
+		if node.kind == .struct_init && node.children_count > 0 && node.value == 'struct' {
+			unsafe {
+				flags[i] = 1
+			}
+		}
+	}
+	return unsafe { nil }
+}
+
+// scan_anonymous_struct_init_flags_parallel sets flags[i] for every anonymous
+// struct literal below `limit`. It returns false when no pool can run the scan.
+fn scan_anonymous_struct_init_flags_parallel(a &flat.FlatAst, limit int, mut flags []u8) bool {
+	if isnil(a.worker_pool) || limit < 65536 || limit > a.nodes.len || flags.len < limit {
+		return false
+	}
+	n_jobs := a.worker_pool.size() + 1
+	chunk := (limit + n_jobs - 1) / n_jobs
+	mut args := []AnonymousStructInitScanArgs{cap: n_jobs}
+	for ji in 0 .. n_jobs {
+		start := ji * chunk
+		end := if start + chunk > limit { limit } else { start + chunk }
+		if start >= end {
+			break
+		}
+		args << AnonymousStructInitScanArgs{
+			a:     a
+			start: start
+			end:   end
+			flags: flags.data
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for ji in 0 .. args.len {
+		tasks << workers.Task{
+			run:        anonymous_struct_init_scan_thread
+			arg:        unsafe { voidptr(&args[ji]) }
+			force_sync: ji == 0
+		}
+	}
+	a.worker_pool.run(tasks)
+	return true
 }
 
 // scan_literal_decl_flags_parallel fills the sparse literal/declaration flags
@@ -1319,6 +1396,19 @@ fn (mut t Transformer) prepare_parallel_monomorph_scan(start int, end int) bool 
 	return true
 }
 
+// Serial user builds also need to release specialization scratch between batches.
+// This path runs synchronously and never creates or dispatches a worker pool.
+fn (mut t Transformer) run_serial_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted map[string]bool, mut generated []string) bool {
+	$if linux && arm64 {
+		return false
+	}
+	if !t.scope_parallel_workers || !t.scoped_monomorphize || isnil(t.tc)
+		|| t.tc.checker_fixture_mode || specs.len == 0 {
+		return false
+	}
+	return t.run_scoped_monomorphize_specs(specs, mut emitted, mut generated)
+}
+
 fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnSpec, struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted map[string]bool, mut generated []string) bool {
 	$if linux && arm64 {
 		// Shared append-only AST regions intermittently corrupt the heap on
@@ -1765,16 +1855,18 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		t.global_temp_counter = w.global_temp_counter
 
 		node_shift := t.a.nodes.len - base_nodes
-		// The parent pre-registered every specialization in this batch above.
-		// The worker must still register them privately while transforming so
-		// result/error semantics resolve correctly, but those duplicate maps live
-		// in `scope` and must not escape when the other worker results are merged.
-		w.signature_maps_changed = false
-		w.fn_ret_types_log = []string{}
-		w.tc_signature_names_log = []string{}
-		w.tc.discard_transform_signature_changes()
+		// The parent pre-registered the generic signatures, but the worker can
+		// also lift function literals. Publish those additional signatures before
+		// releasing its scope; the merge skips existing entries and owns its copies.
 		t.merge_worker_used_fns(w)
 		t.merge_worker(w, []FnWorkItem{}, base_nodes, base_children, false)
+		// Interface conversions discovered in this batch drive method specialization
+		// in later rounds. Own their keys before releasing the worker's arena.
+		for key, boxed in w.interface_boxed_types {
+			if boxed && key !in t.interface_boxed_types {
+				t.interface_boxed_types[key.clone()] = true
+			}
+		}
 		for name in w.generic_specialization_args_log {
 			spec_args := w.generic_specialization_args[name] or { continue }
 			if name !in t.generic_specialization_args {
@@ -1805,6 +1897,11 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			t.generic_fn_spec_nodes[spec.key.clone()] = root
 			t.a.specialized_fn_nodes[int(root)] = true
 			t.mark_node_context(root, spec.decl.module, spec.decl.file)
+			// The worker's declaration index is private and dies with its scope.
+			name := t.a.node(root).value.clone()
+			t.add_call_param_types_decl_key(name, int(root), spec.decl.file, spec.decl.module)
+			t.add_call_param_types_decl_key(transform_qualified_fn_name(spec.decl.module, name),
+				int(root), spec.decl.file, spec.decl.module)
 			emitted[generic_fn_spec_key(spec.decl.key, spec.args)] = true
 			t.pending_generic_fn_spec_keys.delete(spec.key)
 		}
@@ -2012,7 +2109,9 @@ fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {
 	mut next_bound := 0
 	mut file := ''
 	mut module_name := ''
-	for idx, node in t.a.nodes {
+	for idx in 0 .. t.a.nodes.len {
+		// Workers start after this scan, so the borrowed AST node stays valid.
+		node := unsafe { &t.a.nodes[idx] }
 		for next_bound < n_jobs && bounds[next_bound] == idx {
 			files[next_bound] = file
 			modules[next_bound] = module_name
@@ -2581,7 +2680,15 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	mut n_jobs := transform_job_count(t.a.worker_pool.size() + 1, items.len, t.building_v && t.scope_parallel_workers)
 	n_jobs = clamp_transform_jobs_to_clone_budget(n_jobs, base_nodes, base_children, t.a)
 	if items.len < min_parallel_transform_items || n_jobs <= 1 {
-		t.transform_pure_items_serial(items)
+		// A single-job pool still needs bounded scratch arenas, just like an
+		// explicit -no-parallel build. Otherwise self-host transforms retain every
+		// function's temporary allocations until the entire stage finishes.
+		if t.scope_parallel_workers && t.retain_worker_results {
+			t.prepare_parallel_call_param_types()
+			t.transform_scoped_helper_batches(items, scoped_transform_batches)
+		} else {
+			t.transform_pure_items_serial(items)
+		}
 		return false
 	}
 	// Workers need declaration signatures while lowering calls. Snapshot them
@@ -2903,7 +3010,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	if chunk_target > bounded_items.len {
 		chunk_target = bounded_items.len
 	}
-	mut chunks := split_work_items(bounded_items, chunk_target)
+	mut chunks := split_work_items_with_first_share(bounded_items, chunk_target, shared_master_chunk_share_percent)
 	chunk_count := chunks.len
 	thread_count := chunk_count - 1
 	// Pool.run queues asynchronous work before running synchronous tasks. Give

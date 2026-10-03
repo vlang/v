@@ -10,6 +10,11 @@
 // Based off:   https://github.com/golang/go/tree/master/src/crypto/hkdf
 module hkdf
 
+import crypto.sha1
+import crypto.sha256
+import crypto.sha512
+import hash
+
 // extract generates a pseudorandom key for use with `expand` from an input
 // secret and an optional independent salt.
 //
@@ -18,10 +23,13 @@ module hkdf
 // including the generation of multiple keys, should use `key` instead.
 pub fn extract[H](h fn () H, secret []u8, salt []u8) ![]u8 {
 	check_fips140_only(h, secret)!
-	mut hash := h()
-	mut xkey := salt.clone()
-	if xkey.len == 0 {
-		xkey = []u8{len: hash.size()}
+	mut digest := h()
+	// RFC 5869: if the salt is not provided, it is set to HashLen zeros
+	xkey := if salt.len == 0 { []u8{len: digest.size()} } else { salt }
+	$if H is hash.Hash {
+		if prk := prekeyed_hmac(digest, .extract, xkey, secret, 0) {
+			return prk
+		}
 	}
 	return hmac_sum(h, xkey, secret)
 }
@@ -35,18 +43,23 @@ pub fn extract[H](h fn () H, secret []u8, salt []u8) ![]u8 {
 // 3.3. Most common scenarios will want to use `key` instead.
 pub fn expand[H](h fn () H, pseudorandom_key []u8, info string, key_length int) ![]u8 {
 	check_fips140_only(h, pseudorandom_key)!
-	mut hash := h()
+	mut digest := h()
 	if key_length < 0 {
 		return error('hkdf: requested key length must be non-negative')
 	}
-	limit := hash.size() * 255
+	limit := digest.size() * 255
 	if key_length > limit {
 		return error('hkdf: requested key length too large')
+	}
+	info_bytes := info.bytes()
+	$if H is hash.Hash {
+		if out := prekeyed_hmac(digest, .expand, pseudorandom_key, info_bytes, key_length) {
+			return out
+		}
 	}
 	mut out := []u8{cap: key_length}
 	mut counter := u8(0)
 	mut buf := []u8{}
-	info_bytes := info.bytes()
 	for out.len < key_length {
 		counter++
 		if counter == 0 {
@@ -75,8 +88,8 @@ pub fn key[H](h fn () H, secret []u8, salt []u8, info string, key_length int) ![
 	if key_length < 0 {
 		return error('hkdf: requested key length must be non-negative')
 	}
-	mut hash := h()
-	limit := hash.size() * 255
+	mut digest := h()
+	limit := digest.size() * 255
 	if key_length > limit {
 		return error('hkdf: requested key length too large')
 	}
@@ -89,9 +102,111 @@ fn check_fips140_only[H](_h fn () H, _key []u8) ! {
 	return
 }
 
+// Step selects which HKDF step `prekeyed_hmac` computes.
+enum Step {
+	extract
+	expand
+}
+
+// prekeyed_hmac computes HKDF-Extract(`key`, `data`) or HKDF-Expand(`key`, `data`,
+// `key_length`) when `h` is a SHA-1 or SHA-2 digest, and returns none for any
+// other hash, which then takes the generic path.
+fn prekeyed_hmac(h hash.Hash, step Step, key []u8, data []u8, key_length int) ?[]u8 {
+	match h {
+		sha1.Digest {
+			mut inner, mut outer, mut work := sha1.new(), sha1.new(), sha1.new()
+			return hmac_step(mut inner, mut outer, mut work, step, key, data, key_length)
+		}
+		sha256.Digest {
+			new_digest := if h.size() == sha256.size224 { sha256.new224 } else { sha256.new }
+			mut inner, mut outer, mut work := new_digest(), new_digest(), new_digest()
+			return hmac_step(mut inner, mut outer, mut work, step, key, data, key_length)
+		}
+		sha512.Digest {
+			new_digest := match h.size() {
+				sha512.size384 { sha512.new384 }
+				sha512.size256 { sha512.new512_256 }
+				sha512.size224 { sha512.new512_224 }
+				else { sha512.new }
+			}
+			mut inner, mut outer, mut work := new_digest(), new_digest(), new_digest()
+			return hmac_step(mut inner, mut outer, mut work, step, key, data, key_length)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+// hmac_step computes one HKDF step for a digest type D that has `copy_from` and
+// `checksum_into`. `inner`, `outer` and `work` must be fresh digests of the same
+// kind. The HMAC key is processed once: `inner` and `outer` keep the states after
+// absorbing `key ^ ipad` and `key ^ opad`, and every HMAC computation restarts
+// `work` from them, writing into preallocated buffers.
+@[direct_array_access]
+fn hmac_step[D](mut inner D, mut outer D, mut work D, step Step, key []u8, data []u8, key_length int) []u8 {
+	hash_length := work.size()
+	block_size := work.block_size()
+	// HMAC key, padded with zeros to the block size (RFC 2104). Keys longer
+	// than the block size are hashed first.
+	mut pad := []u8{len: block_size}
+	if key.len > block_size {
+		work.write(key) or { panic(err) }
+		work.checksum_into(mut pad)
+	} else {
+		copy(mut pad, key)
+	}
+	for i in 0 .. block_size {
+		pad[i] ^= 0x36
+	}
+	inner.write(pad) or { panic(err) }
+	for i in 0 .. block_size {
+		pad[i] ^= 0x36 ^ 0x5c
+	}
+	outer.write(pad) or { panic(err) }
+	for i in 0 .. block_size {
+		pad[i] = 0
+	}
+
+	if step == .extract {
+		// PRK = HMAC(salt, IKM)
+		mut prk := []u8{len: hash_length}
+		work.copy_from(inner)
+		work.write(data) or { panic(err) }
+		finish_hmac(mut work, outer, mut prk)
+		return prk
+	}
+	mut out := []u8{len: key_length}
+	mut t := []u8{len: hash_length}
+	mut counter := []u8{len: 1}
+	for offset := 0; offset < key_length; offset += hash_length {
+		// T(i) = HMAC(PRK, T(i-1) || info || i), where T(0) is empty
+		counter[0]++
+		work.copy_from(inner)
+		if offset > 0 {
+			work.write(t) or { panic(err) }
+		}
+		work.write(data) or { panic(err) }
+		work.write(counter) or { panic(err) }
+		finish_hmac(mut work, outer, mut t)
+		copy(mut out[offset..], t)
+	}
+	return out
+}
+
+// finish_hmac completes an HMAC whose message was written to `work`, which
+// started from the inner state, and writes it to `out`. `out` also holds the
+// inner hash in between, since `write` consumes it before it is overwritten.
+fn finish_hmac[D](mut work D, outer D, mut out []u8) {
+	work.checksum_into(mut out)
+	work.copy_from(outer)
+	work.write(out) or { panic(err) }
+	work.checksum_into(mut out)
+}
+
 fn hmac_sum[H](h fn () H, key []u8, data []u8) []u8 {
-	mut hash := h()
-	block_size := hash.block_size()
+	mut digest := h()
+	block_size := digest.block_size()
 	mut b_key := if key.len <= block_size { key.clone() } else { hash_sum(h, key) }
 	if b_key.len > block_size {
 		b_key = b_key[..block_size].clone()
@@ -109,7 +224,7 @@ fn hmac_sum[H](h fn () H, key []u8, data []u8) []u8 {
 }
 
 fn hash_sum[H](h fn () H, data []u8) []u8 {
-	mut hash := h()
-	hash.write(data) or { panic(err) }
-	return hash.sum([]u8{})
+	mut digest := h()
+	digest.write(data) or { panic(err) }
+	return digest.sum([]u8{})
 }

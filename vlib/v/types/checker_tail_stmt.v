@@ -4358,10 +4358,11 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					decl_mod := tc.struct_modules[owner_base] or { '' }
 					same_main_module := decl_mod in ['', 'main'] && tc.cur_module in ['', 'main']
 					if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module {
-						// A `struct { ... }` literal that adopted another module's anonymous
-						// struct may only set the fields that struct declares `pub`. Its name
-						// encodes the source path, so the module identifies it instead.
-						if tc.is_synthesized_anon_struct(init_name) {
+						// Anonymous fields and aliases retain their declared field visibility.
+						// An inline parameter instead defines the fields a caller must supply.
+						// Its name encodes the source path, so the module identifies it instead.
+						if tc.is_synthesized_anon_struct(init_name)
+							&& !tc.anonymous_struct_is_inline_parameter_type(init_name) {
 							if !tc.anonymous_struct_field_is_public(init_name, field.value, decl_mod) {
 								tc.record_error_at(.unknown_field, 'cannot access private field `${field.value}` of an anonymous struct from module `${tc.diagnostic_module_display_name(decl_mod)}`', field_id, tc.struct_init_field_deprecation_pos(field))
 							}
@@ -4488,6 +4489,9 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					continue
 				}
 				if value_node.kind == .map_init && tc.map_literal_has_element_diagnostic(value_id) {
+					continue
+				}
+				if tc.nil_interface_field_expr_compatible(value_id, expected) {
 					continue
 				}
 				optional_pointer_nil := tc.expr_is_unsafe_nil(value_id)
@@ -4910,6 +4914,32 @@ fn struct_field_has_attr(field flat.Node, name string) bool {
 fn (tc &TypeChecker) source_struct_decl_for_name(name string) ?flat.Node {
 	id := tc.source_struct_decl_id_for_name(name)?
 	return *tc.a.node(id)
+}
+
+// anonymous_struct_is_inline_parameter_type distinguishes an inline parameter's
+// structural contract from an anonymous type declared by a struct field or alias.
+fn (tc &TypeChecker) anonymous_struct_is_inline_parameter_type(name string) bool {
+	short_name := name.all_after_last('.')
+	decl_id := tc.source_struct_decl_id_for_name(short_name) or { return false }
+	decl := tc.a.nodes[int(decl_id)]
+	for index in tc.top_level_idx {
+		fn_node := tc.a.nodes[index]
+		if fn_node.kind != .fn_decl || fn_node.pos.id != decl.pos.id {
+			continue
+		}
+		for i in 0 .. fn_node.children_count {
+			child_id := tc.a.child(&fn_node, i)
+			child := tc.a.nodes[int(child_id)]
+			// An inline type is parsed after the parameter name, before its node.
+			// Referring to an existing generated name does not declare a parameter type.
+			if child.kind == .param
+				&& child.pos.offset < decl.pos.offset && int(decl_id) < int(child_id)
+				&& child.typ.trim_left('&?!').all_after_last('.') == short_name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) source_struct_decl_id_for_name(name string) ?flat.NodeId {
@@ -8088,7 +8118,7 @@ fn (mut tc TypeChecker) record_valid_method_value(id flat.NodeId, node flat.Node
 		|| tc.fn_context.node_id < 0 {
 		return
 	}
-	clean_recv := unwrap_pointer(base_type)
+	clean_recv := unwrap_all_pointers(base_type)
 	if clean_recv is Struct {
 		if tc.struct_field_type(clean_recv.name, node.value) != none {
 			return

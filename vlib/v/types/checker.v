@@ -959,6 +959,7 @@ pub mut:
 	explicit_warns_are_errors     bool
 	notes_are_errors              bool
 	is_prod                       bool
+	cross_target_prefs            &pref.Preferences = unsafe { nil }
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
 	shadow_diagnostic_root        string
@@ -1046,6 +1047,7 @@ mut:
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
 	fn_context               FunctionCheckContext
+	selective_import_index   &SelectiveImportIndex    = &SelectiveImportIndex{}
 	type_cache               &TypeCache               = unsafe { nil }
 	pre_transform_type_cache &TypeCache               = unsafe { nil }
 	resolution_type_views    &ResolutionTypeViewCache = unsafe { nil }
@@ -1285,6 +1287,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		valid_diagnostic_fast:                 tc.valid_diagnostic_fast
 		valid_resolution_fast:                 tc.valid_resolution_fast
 		is_js_backend:                         tc.is_js_backend
+		cross_target_prefs:                    tc.cross_target_prefs
 		enable_globals:                        tc.enable_globals
 		disable_explicit_mutability:           tc.disable_explicit_mutability
 		fn_ret_types:                          tc.fn_ret_types
@@ -1698,6 +1701,8 @@ pub fn (tc &TypeChecker) discard_type_cache_overlay_after_forks() {
 // checkers use this so the lazily-built lookup indexes and memoizations work
 // per worker instead of falling back to their uncached full scans.
 pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
+	// The import index can hold keys allocated in the same disposable stage arena.
+	tc.selective_import_index = &SelectiveImportIndex{}
 	if isnil(tc.type_interner) {
 		tc.type_interner = new_type_interner()
 	}
@@ -1756,6 +1761,7 @@ pub fn (mut tc TypeChecker) reset_type_interners() {
 // parallel-cgen workers start with every type memoized by the check/transform
 // phases instead of re-deriving them from a cold cache.
 pub fn (mut tc TypeChecker) set_fresh_type_cache_based_on(src &TypeChecker, parse_enabled bool) {
+	tc.selective_import_index = &SelectiveImportIndex{}
 	base := if isnil(src.type_cache) {
 		&TypeCache(unsafe { nil })
 	} else if !isnil(src.type_cache.base) {
@@ -3728,6 +3734,21 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node, module_n
 		.struct_decl, .type_decl, .interface_decl, .enum_decl {
 			name := qualify_decl_name_in_module(node.value, module_name)
 			tc.declaration_visibility[name] = visibility
+			if node.kind == .interface_decl {
+				for i in 0 .. node.children_count {
+					field := tc.a.child_node(&node, i)
+					if field.kind == .interface_field && field.op == .dot {
+						// Abstract methods belong to the interface contract. Record their
+						// qualified names so lookup cannot select an unrelated private method
+						// on a concrete type with the same short name in another module.
+						tc.declaration_visibility['${name}.${field.value}'] = DeclarationVisibility{
+							module_name: module_name
+							kind:        .fn_decl
+							is_pub:      true
+						}
+					}
+				}
+			}
 		}
 		.const_decl {
 			for i in 0 .. node.children_count {
@@ -5858,6 +5879,16 @@ pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 		}
 	}
 	if isnil(tc.resolution_type_views) {
+		if !isnil(tc.type_cache) && tc.type_cache.parse_enabled
+			&& tc.type_cache.alias_parse_stack.len == 0 {
+			// The uncached view below parses with no module or generic parameters.
+			// Reuse that exact parse entry before allocating another checker view.
+			mut cache := tc.type_cache
+			if cached := parse_type_cache_get_mode(mut cache, tc.cur_file, '', qualified, []string{}, false, tc.fast_parse_recent) {
+				cache.parse_hits++
+				return cached
+			}
+		}
 		mut direct_view := tc.fork_type_parse_view(tc.cur_file, '')
 		direct_view.resolution_type_mode = false
 		return direct_view.parse_type(qualified)
@@ -6271,19 +6302,28 @@ fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
 	if name.starts_with('C.') && c_struct_module_key(tc.cur_module, name) in tc.c_struct_scoped_fields {
 		return none
 	}
-	if visibility := tc.declaration_visibility[name] {
+	mut declaration_name := name
+	if name.contains('.') {
+		receiver_name := visible_mutation_fn_lookup_name(name).all_before_last('.')
+		if receiver_name in tc.interface_names {
+			// Inherited methods use the base interface's declaration for access checks.
+			declaration_name = tc.interface_method_signature_key(receiver_name,
+				name.all_after_last('.')) or { name }
+		}
+	}
+	if visibility := tc.declaration_visibility[declaration_name] {
 		if declaration_visibility_is_private(visibility, tc.cur_module) {
 			return visibility
 		}
 		return none
 	}
 	mut candidates := []string{}
-	for candidate in [name, visible_mutation_fn_lookup_name(name)] {
+	for candidate in [declaration_name, visible_mutation_fn_lookup_name(declaration_name)] {
 		if candidate.len > 0 && candidate !in candidates {
 			candidates << candidate
 		}
 	}
-	mut shortened := name
+	mut shortened := declaration_name
 	for shortened.contains('.') {
 		tail := shortened.all_after('.')
 		if !tail.contains('.') {
@@ -6926,6 +6966,37 @@ mut:
 	seen_len int             = -1
 }
 
+// Index source keys, not resolved declarations: signature availability and
+// module context can change during generic specialization.
+struct SelectiveImportIndex {
+mut:
+	keys_by_name map[string][]string
+	seen_len     int = -1
+}
+
+fn (tc &TypeChecker) selective_import_fallback_keys(name string) []string {
+	mut index := tc.selective_import_index
+	if isnil(index) {
+		// Lightweight checker views without caches retain the same lookup rules.
+		mut keys := []string{}
+		suffix := '\n${name}'
+		for key, _ in tc.file_selective_imports {
+			if key.ends_with(suffix) {
+				keys << key
+			}
+		}
+		return keys
+	}
+	if index.seen_len != tc.file_selective_imports.len {
+		index.keys_by_name.clear()
+		for key, _ in tc.file_selective_imports {
+			index.keys_by_name[key.all_after_last('\n')] << key
+		}
+		index.seen_len = tc.file_selective_imports.len
+	}
+	return index.keys_by_name[name] or { []string{} }
+}
+
 fn (tc &TypeChecker) current_file_import_info() &FileImportInfo {
 	mut cache := tc.import_info_cache
 	if isnil(cache) {
@@ -6961,14 +7032,13 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 			return tc.vsh_os_fn_symbol(name)
 		}
 		mut resolved := ''
-		suffix := '\n${name}'
-		for key, fallback_candidates in tc.file_selective_imports {
-			if !key.ends_with(suffix) {
-				continue
-			}
+		for key in tc.selective_import_fallback_keys(name) {
 			if tc.file_modules[key.all_before_last('\n')] != tc.cur_module {
 				continue
 			}
+			// Only matching imports need candidate values; copying every array here
+			// accumulates allocations while resolving generic bodies.
+			fallback_candidates := tc.file_selective_imports[key] or { []string{} }
 			for candidate in fallback_candidates {
 				if !tc.fn_signature_known(candidate) && candidate !in tc.fn_ret_types && candidate !in tc.fn_param_types {
 					continue
@@ -6997,14 +7067,11 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 // when every source file that selects the name agrees on the same declaration.
 pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 	mut resolved := ''
-	suffix := '\n${name}'
-	for key, candidates in tc.file_selective_imports {
-		if !key.ends_with(suffix) {
-			continue
-		}
+	for key in tc.selective_import_fallback_keys(name) {
 		if tc.file_modules[key.all_before_last('\n')] != tc.cur_module {
 			continue
 		}
+		candidates := tc.file_selective_imports[key] or { []string{} }
 		for candidate in candidates {
 			if !tc.fn_signature_known(candidate) && candidate !in tc.fn_ret_types && candidate !in tc.fn_param_types {
 				continue
@@ -11676,6 +11743,30 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns() {
 	if tc.diagnostic_files.len == 0 {
 		return
 	}
+	// The walk binds scopes and resolves names in every reachable body; for a
+	// compiler build that is the whole program. All of that is scratch, so a
+	// scoped check runs it on a disposable fork and keeps only the reached names.
+	// Forks read the type cache through the overlay the scoped checks install.
+	if !tc.scope_parallel_check_workers || isnil(tc.type_cache) || isnil(tc.type_cache.base) {
+		tc.collect_selected_file_called_fns_walk()
+		return
+	}
+	scope := check_worker_scope_begin(true)
+	mut walker := tc.fork_for_parallel_check()
+	walker.collect_selected_file_called_fns_walk()
+	check_worker_scope_leave(scope)
+	mut called := map[string]bool{}
+	called.reserve(u32(walker.selected_file_called_fns.len))
+	for name, _ in walker.selected_file_called_fns {
+		called[name.clone()] = true
+	}
+	tc.selected_file_called_fns = called.move()
+	check_worker_scope_free(scope)
+}
+
+fn (mut tc TypeChecker) collect_selected_file_called_fns_walk() {
+	tc.selected_file_called_fns = map[string]bool{}
+	tc.selected_file_worklist = []string{}
 	saved_file := tc.cur_file
 	saved_module := tc.cur_module
 	saved_scope := tc.cur_scope
@@ -18921,9 +19012,21 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			return
 		}
 		tc.push_scope()
-		loop_var_type := unknown_type('runtime loop variable in static comptime body')
-		tc.insert_loop_var(tc.a.child(&node, 0), loop_var_type)
-		tc.insert_loop_var(tc.a.child(&node, 1), loop_var_type)
+		key_id := tc.a.child(&node, 0)
+		val_id := tc.a.child(&node, 1)
+		mut key_type := unknown_type('runtime loop variable in static comptime body')
+		mut value_type := key_type
+		// Metadata collections such as field.attrs have a known element type even
+		// before the enclosing reflection loop is unrolled against a concrete type.
+		if container_type := tc.comptime_static_metadata_expr_type(tc.a.child(&node, 2), var_name, loop_kind) {
+			clean := unalias_type(unwrap_pointer(container_type))
+			if clean is Array {
+				value_type = clean.elem_type
+				key_type = if int(val_id) >= 0 { Type(int_) } else { value_type }
+			}
+		}
+		tc.insert_loop_var(key_id, key_type)
+		tc.insert_loop_var(val_id, value_type)
 		for i in header .. node.children_count {
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
 		}

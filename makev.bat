@@ -268,7 +268,6 @@ if exist "%InstallDir%/Common7/Tools/vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 echo  ^> Bootstrapping "%V_BOOTSTRAP%" before compiling "%V_EXE%" with MSVC
-set stage_compiler=
 REM Bootstrap order for -msvc: bundled TCC first (fastest, no external
 REM toolchain needed), then MSVC itself (already confirmed present -
 REM vsdevcmd.bat has already run above - and explicitly what -msvc asked
@@ -277,31 +276,14 @@ REM fail to compile vc/v_win.c on its own (e.g. a stale snapshot only some
 REM toolchains can parse - see vlang/v#29025 and vlang/tccbin#96), which is
 REM why every option here is still tried in order rather than stopping at
 REM the first choice.
-call :build_bootstrap_with_tcc
-if !ERRORLEVEL! EQU 0 (
-	set stage_compiler=tcc
-) else (
-	call :build_bootstrap_with_msvc
-	if !ERRORLEVEL! EQU 0 (
-		set stage_compiler=msvc
-	) else (
-		call :build_bootstrap_with_clang
-		if !ERRORLEVEL! EQU 0 (
-			set stage_compiler=clang
-		) else (
-			call :build_bootstrap_with_gcc
-			if !ERRORLEVEL! EQU 0 set stage_compiler=gcc
-		)
-	)
-)
-if not defined stage_compiler (
-	echo Could not build a bootstrap compiler before compiling with MSVC
-	call :try_delete "%ObjFile%"
-	goto :compile_error
-)
-
-call :build_stage_with_!stage_compiler!
+REM A bootstrap can also compile successfully but fail at runtime, for example
+REM while setting up process pipes. Accept it only after it builds the stage.
+call :build_msvc_stage tcc
+if !ERRORLEVEL! NEQ 0 call :build_msvc_stage msvc
+if !ERRORLEVEL! NEQ 0 call :build_msvc_stage clang
+if !ERRORLEVEL! NEQ 0 call :build_msvc_stage gcc
 if !ERRORLEVEL! NEQ 0 (
+	echo Could not build a working bootstrap compiler before compiling with MSVC
 	call :try_delete "%ObjFile%"
 	call :try_delete "%V_STAGE%"
 	goto :compile_error
@@ -470,6 +452,14 @@ echo Cloning vc...
 echo  ^> Cloning from remote !vc_url!
 git clone --filter=blob:none --quiet "%vc_url%"
 exit /b !ERRORLEVEL!
+
+:build_msvc_stage
+call :build_bootstrap_with_%~1
+if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+call :build_stage_with_%~1
+set stage_error=!ERRORLEVEL!
+if !stage_error! NEQ 0 call :try_delete "%V_STAGE%"
+exit /b !stage_error!
 
 :build_bootstrap_with_tcc
 if not exist "!tcc_exe!" (

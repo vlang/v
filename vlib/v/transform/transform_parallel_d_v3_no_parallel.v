@@ -11,7 +11,15 @@ fn scan_top_level_kind_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8, _ bool
 	return false
 }
 
+fn scan_anonymous_struct_init_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8) bool {
+	return false
+}
+
 fn (mut _ Transformer) prepare_parallel_monomorph_scan(_ int, _ int) bool {
+	return false
+}
+
+fn (mut _ Transformer) run_serial_scoped_monomorphize_specs(_ []PendingGenericFnSpec, mut _ map[string]bool, mut _ []string) bool {
 	return false
 }
 

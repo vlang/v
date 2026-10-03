@@ -3903,7 +3903,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -6156,6 +6156,16 @@ fn v3_external_cache_path(key string, prefix string) ?V3ExternalCachePath {
 	}
 }
 
+// compare_v3_external_native_roots orders native roots by module, then by their
+// position. A named comparator keeps restore_v3_cache_external_inputs free of
+// function literals, which the transformer lowers serially.
+fn compare_v3_external_native_roots(a &V3ExternalNativeRoot, b &V3ExternalNativeRoot) int {
+	if a.module_name != b.module_name {
+		return a.module_name.compare(b.module_name)
+	}
+	return a.index - b.index
+}
+
 fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []string, user_c_flags []string, ccompiler string, target pref.Target, incremental_declaration_signature string) bool {
 	base_input := v3_cgen_cache_input(state, user_files, user_c_flags)
 	prefixes := ['external:', 'external-sha256:', 'external-meta:', 'external-root:',
@@ -6239,12 +6249,7 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 			index:       index
 		}
 	}
-	root_records.sort_with_compare(fn (a &V3ExternalNativeRoot, b &V3ExternalNativeRoot) int {
-		if a.module_name != b.module_name {
-			return a.module_name.compare(b.module_name)
-		}
-		return a.index - b.index
-	})
+	root_records.sort_with_compare(compare_v3_external_native_roots)
 	mut native_roots := map[string][]string{}
 	for record in root_records {
 		mut roots := native_roots[record.module_name]
@@ -7489,12 +7494,18 @@ fn release_transform_helper_scopes(mut a flat.FlatAst, scopes []voidptr) {
 	mut flags := []u8{len: a.nodes.len}
 	if transform.scan_scoped_text_flags_parallel_multi(a, scopes, mut flags) {
 		mut canon_cache := flat.TextProbeCache{}
-		for idx, flag in flags {
-			if flag != 0 {
-				for scope in scopes {
-					canonicalize_scoped_node_cached(mut a, idx, scope, mut canon_cache.ptrs, mut canon_cache.values)
-				}
+		// Only a few thousand nodes are flagged; jump between them.
+		mut idx := 0
+		for idx < flags.len {
+			found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, usize(flags.len - idx))) }
+			if isnil(found) {
+				break
 			}
+			idx = int(unsafe { found - &u8(flags.data) })
+			for scope in scopes {
+				canonicalize_scoped_node_cached(mut a, idx, scope, mut canon_cache.ptrs, mut canon_cache.values)
+			}
+			idx++
 		}
 	} else {
 		for idx in 0 .. a.nodes.len {
@@ -9474,7 +9485,7 @@ fn v3_driver_option_requires_value(option string) bool {
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
 		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files', '-icon',
-		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix']
+		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix', '-memory-limit']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -9934,6 +9945,7 @@ pub fn run(args []string) {
 	mut no_skip_unused := false
 	mut is_o := false
 	mut no_memory_limit := false
+	mut memory_limit := i64(0)
 	mut parallel_transform := true
 	mut building_v := false
 	mut ownership_mode := false
@@ -10506,6 +10518,29 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-memory-limit' || args[i] == '--no-memory-limit' {
 			no_memory_limit = true
 			i++
+		} else if args[i] == '-memory-limit' || args[i] == '--memory-limit' {
+			s := args[i + 1]
+			n, m := match s[s.len - 1] {
+				`K`, `k` { s[..s.len - 1], i64(1) }
+				`M`, `m` { s[..s.len - 1], i64(1) << 10 }
+				`G`, `g` { s[..s.len - 1], i64(1) << 20 }
+				else { s, i64(1) << 10 }
+			}
+			if n.len == 0 || !n.is_int() {
+				eprintln('invalid memory limit: ${s}')
+				exit(1)
+			}
+			memory_limit = m * strconv.parse_int(n, 10, 64) or {
+				eprintln('invalid memory limit: ${s}')
+				exit(1)
+			}
+			if memory_limit == 0 {
+				no_memory_limit = true
+			} else if memory_limit < 0 {
+				eprintln('invalid memory limit: ${s}')
+				exit(1)
+			}
+			i += 2
 		} else if args[i] == '-prealloc' {
 			// Same effect as `v -prealloc`: activate the `$if prealloc {` arena
 			// allocator branches in vlib/builtin (allocation.c.v, prealloc.c.v).
@@ -11051,6 +11086,8 @@ pub fn run(args []string) {
 	}
 	if no_memory_limit {
 		b.disable_memory_limit()
+	} else if memory_limit != 0 {
+		b.set_memory_limit(memory_limit)
 	} else if compiler_tree_input {
 		// Compiler-module tests retain test-runner state in addition to the full
 		// compiler AST, so keep their guard separately configurable.
@@ -12570,13 +12607,8 @@ pub fn run(args []string) {
 			// What the check found so far, for a client that shows it while the
 			// grandchild takes long: its unused declarations and the instances of
 			// its generic functions (see diagserver.Request.print_diagnostics).
-			found_notices := pre_tc.notices.clone()
-			found_errors := pre_tc.errors.clone()
-			served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
-				print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture,
-					fatal_errors, check_only, message_limit, skip_notices)
-				return if found_errors.len > 0 { 1 } else { 0 }
-			})
+			serve_partial_type_diagnostics(mut served, a, pre_tc.notices.clone(), pre_tc.errors.clone(),
+				is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
 		}
 		if (vls_line_info != '' || shares_checks)
 			&& (!shares_checks || !served.diagnose_in_grandchild()) {
@@ -12596,11 +12628,7 @@ pub fn run(args []string) {
 			}
 			// The bodies the check left out are checked while no question comes:
 			// a question reads their types.
-			checker := pre_tc
-			served.keep_busy_with(fn [checker] () bool {
-				mut tc := checker
-				return tc.complete_incremental_check_step(incremental_completion_step)
-			})
+			serve_incremental_check_steps(mut served, pre_tc)
 			// A diagnostics server's child answers the next questions from the
 			// program it checked, while the server finds the files it read
 			// unchanged.
@@ -12608,9 +12636,7 @@ pub fn run(args []string) {
 				if digests := v3_input_digests(a, cache_state.cached_source_digests, server_file_ids) {
 					project_root := cache_state.import_resolutions.project_root
 					resolved_imports := v3_imports_to_resolve(a, cache_state.import_resolutions)
-					served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
-						return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
-					})
+					serve_unchanged_imports(mut served, digests, prefs, project_root, resolved_imports)
 					for {
 						next := served.next_question(code) or { break }
 						if served.asks_for_diagnostics(next) {
@@ -12861,7 +12887,7 @@ pub fn run(args []string) {
 		if prepare_transform_overlap {
 			transform.materialize_inferred_anonymous_structs_before_prepare(mut a, &pre_tc)
 		}
-		prepared_transform_thread := spawn transform.prepare_selfhost_transform(a, &pre_tc, prepare_transform_overlap)
+		mut prepared_transform_thread := spawn transform.prepare_selfhost_transform(a, &pre_tc, prepare_transform_overlap)
 		// Mark used functions (dead-code elimination). This is done before transform
 		// so the transformer can skip function bodies that the C backend will prune.
 		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
@@ -13090,7 +13116,14 @@ pub fn run(args []string) {
 			transform_scope := prealloc_scope_begin_for_v3()
 			mut scoped_owned_base_nodes := []int{}
 			mut retained_transform_regions := []transform.ScopedTransformRegion{}
+			// Without retained worker regions, this self-host path keeps the whole
+			// transform arena alive for cgen (see retain_transform_scope below).
+			retain_scope_without_regions := building_v && current_parallel_transform
+				&& backend == 'c' && !cache_state.manager.enabled
+				&& (cmd_v_build || input_is_v3_compiler_entry(input_file)
+					|| os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != '')
 			if prepare_transform_overlap {
+				prepared_transform.set_keeps_scope_without_regions(retain_scope_without_regions)
 				transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_prepared_selfhost_owned(mut prepared_transform, mut a, &pre_tc, used_fns, transform_scope)
 				retained_transform_prepare_scope = prepared_transform.take_scope()
 				retained_transform_prescan_scopes = prepared_transform.take_prescan_scopes()
@@ -13119,10 +13152,8 @@ pub fn run(args []string) {
 				retained_transform_prepare_scope = unsafe { nil }
 				retained_transform_prescan_scopes = []voidptr{}
 			}
-			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
-				&& !cache_state.manager.enabled && retained_transform_regions.len == 0
-				&& (cmd_v_build || input_is_v3_compiler_entry(input_file)
-					|| os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != '')
+			retain_transform_scope := retain_scope_without_regions
+				&& retained_transform_regions.len == 0
 			if retain_transform_scope {
 				// Cgen is the only remaining semantic consumer in this no-cache self-host
 				// path. Keep the typed transform arena alive through it instead of cloning
@@ -17861,6 +17892,37 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
+// The diagnostics server callbacks live outside `run`: a function literal makes
+// the transformer lower its whole enclosing function serially, before the
+// parallel workers start, and `run` is the largest function of the compiler.
+
+// serve_partial_type_diagnostics prints what the check found so far for a
+// client that shows it while the grandchild takes long.
+fn serve_partial_type_diagnostics(mut served diagserver.Request, a &flat.FlatAst, found_notices []types.TypeError, found_errors []types.TypeError, is_checker_fixture bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
+	served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
+		print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture, fatal_errors,
+			check_only, message_limit, skip_notices)
+		return if found_errors.len > 0 { 1 } else { 0 }
+	})
+}
+
+// serve_incremental_check_steps checks the bodies the check left out while no
+// question comes: a question reads their types.
+fn serve_incremental_check_steps(mut served diagserver.Request, checker types.TypeChecker) {
+	served.keep_busy_with(fn [checker] () bool {
+		mut tc := checker
+		return tc.complete_incremental_check_step(incremental_completion_step)
+	})
+}
+
+// serve_unchanged_imports keeps the checked program while its inputs and
+// imports resolve as before.
+fn serve_unchanged_imports(mut served diagserver.Request, digests map[string]string, prefs &pref.Preferences, project_root string, resolved_imports []V3ImportResolution) {
+	served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
+		return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
+	})
+}
+
 fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
 	if !check_only {
 		mut first_unused := -1
@@ -20564,6 +20626,7 @@ fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg
 	tc.notes_are_errors = cfg.notes_are_errors
 	tc.is_prod = prefs.is_prod
 	tc.building_v_fast = cfg.building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
+	tc.cross_target_prefs = if prefs.output_cross_c { prefs } else { unsafe { nil } }
 	// Self-host scheduling does not prove the input is semantically valid. Keep
 	// diagnostic and expression validation enabled for compiler builds as well.
 	tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
@@ -20572,7 +20635,7 @@ fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg
 // type_checker_config_key tells apart the configurations under which a
 // prepared collection of declarations would not be the one of the check.
 fn type_checker_config_key(prefs &pref.Preferences, cfg TypeCheckerConfig) string {
-	return '${prefs.vroot}\n${project_root_for_files(cfg.user_files)}\n${cfg.input_file}\n${cfg.backend}\n${cfg.enable_globals}\n${cfg.disable_explicit_mutability}\n${cfg.checker_fixture_mode}\n${cfg.warns_are_errors}\n${cfg.explicit_warns_are_errors}\n${cfg.notes_are_errors}\n${cfg.building_v}\n${prefs.is_test}\n${prefs.is_prod}\n${prefs.warn_about_allocs}\n${prefs.user_defines}'
+	return '${prefs.vroot}\n${project_root_for_files(cfg.user_files)}\n${cfg.input_file}\n${cfg.backend}\n${cfg.enable_globals}\n${cfg.disable_explicit_mutability}\n${cfg.checker_fixture_mode}\n${cfg.warns_are_errors}\n${cfg.explicit_warns_are_errors}\n${cfg.notes_are_errors}\n${cfg.building_v}\n${prefs.is_test}\n${prefs.is_prod}\n${prefs.warn_about_allocs}\n${prefs.user_defines}\n${prefs.output_cross_c}'
 }
 
 // incremental_completion_step is how many of the bodies an incremental check

@@ -3,7 +3,6 @@ module openssl
 import io
 import net
 import time
-import os
 
 // SSLConn is the current connection
 pub struct SSLConn {
@@ -171,19 +170,67 @@ fn (mut s SSLConn) init() ! {
 	if s.sslctx == 0 {
 		return error('net.openssl Could not get ssl context')
 	}
+	mut initialized := false
+	defer {
+		if !initialized {
+			if s.ssl != unsafe { nil } {
+				C.SSL_free(voidptr(s.ssl))
+				s.ssl = unsafe { nil }
+			}
+			C.SSL_CTX_free(s.sslctx)
+			s.sslctx = unsafe { nil }
+		}
+	}
 
 	if s.config.validate {
 		C.SSL_CTX_set_verify(s.sslctx, C.SSL_VERIFY_PEER, unsafe { nil })
 		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
 		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_COMPRESSION)
+		res := if s.config.verify == '' {
+			C.SSL_CTX_set_default_verify_paths(s.sslctx)
+		} else if s.config.in_memory_verification {
+			C.v_net_openssl_SSL_CTX_load_verify_memory(s.sslctx, s.config.verify.str,
+				usize(s.config.verify.len))
+		} else {
+			C.SSL_CTX_load_verify_locations(s.sslctx, &char(s.config.verify.str), unsafe { nil })
+		}
+		if res != 1 {
+			return error('net.openssl SSLConn.init, could not load root CA')
+		}
+	}
+
+	// SSL_new copies the context's credentials, so configure client authentication first.
+	if s.config.cert != '' || s.config.cert_key != '' {
+		if s.config.cert == '' || s.config.cert_key == '' {
+			return error('net.openssl SSLConn.init, client certificate and private key are both required')
+		}
+		certificate_result := if s.config.in_memory_verification {
+			C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(s.sslctx, s.config.cert.str,
+				usize(s.config.cert.len))
+		} else {
+			C.SSL_CTX_use_certificate_chain_file(s.sslctx, &char(s.config.cert.str))
+		}
+		if certificate_result != 1 {
+			return error('net.openssl SSLConn.init, could not load client certificate')
+		}
+		key_result := if s.config.in_memory_verification {
+			C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(s.sslctx, s.config.cert_key.str,
+				usize(s.config.cert_key.len))
+		} else {
+			C.SSL_CTX_use_PrivateKey_file(s.sslctx, &char(s.config.cert_key.str), C.SSL_FILETYPE_PEM)
+		}
+		if key_result != 1 {
+			return error('net.openssl SSLConn.init, could not load client private key')
+		}
+		if C.SSL_CTX_check_private_key(s.sslctx) != 1 {
+			return error('net.openssl SSLConn.init, client certificate and private key do not match')
+		}
 	}
 
 	s.ssl = unsafe { &C.SSL(C.SSL_new(s.sslctx)) }
 	if s.ssl == 0 {
 		return error('net.openssl Could not create OpenSSL instance')
 	}
-
-	mut res := 0
 
 	// Advertise ALPN protocols (e.g. ['h2', 'http/1.1']) when requested.
 	// OpenSSL expects the length-prefixed wire format: each protocol is a
@@ -205,56 +252,13 @@ fn (mut s SSLConn) init() ! {
 	}
 
 	if s.config.validate {
-		mut verify := s.config.verify
-		mut cert := s.config.cert
-		mut cert_key := s.config.cert_key
-		if s.config.in_memory_verification {
-			now := time.now().unix().str()
-			verify = os.temp_dir() + '/v_verify' + now
-			cert = os.temp_dir() + '/v_cert' + now
-			cert_key = os.temp_dir() + '/v_cert_key' + now
-			if s.config.verify != '' {
-				os.write_file(verify, s.config.verify)!
-			}
-			if s.config.cert != '' {
-				os.write_file(cert, s.config.cert)!
-			}
-			if s.config.cert_key != '' {
-				os.write_file(cert_key, s.config.cert_key)!
-			}
-		}
-		if s.config.verify != '' {
-			res = C.SSL_CTX_load_verify_locations(voidptr(s.sslctx), &char(verify.str), 0)
-			if s.config.validate && res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed')
-			}
-		} else {
-			res = C.SSL_CTX_set_default_verify_paths(s.sslctx)
-			if res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed')
-			}
-		}
-		if s.config.cert != '' {
-			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),
-				C.SSL_FILETYPE_PEM)
-			if s.config.validate && res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_use_certificate_file failed, res: ${res}')
-			}
-		}
-		if s.config.cert_key != '' {
-			res = C.SSL_CTX_use_PrivateKey_file(voidptr(s.sslctx), &char(cert_key.str),
-				C.SSL_FILETYPE_PEM)
-			if s.config.validate && res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_use_PrivateKey_file failed, res: ${res}')
-			}
-		}
-
 		preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
-		res = C.SSL_set_cipher_list(voidptr(s.ssl), &char(preferred_ciphers.str))
-		if s.config.validate && res != 1 {
+		res := C.SSL_set_cipher_list(voidptr(s.ssl), &char(preferred_ciphers.str))
+		if res != 1 {
 			println('net.openssl: set cipher failed')
 		}
 	}
+	initialized = true
 }
 
 // connect to server using OpenSSL.

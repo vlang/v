@@ -7928,6 +7928,10 @@ fn (tc &TypeChecker) should_diagnose_with_dependencies(id flat.NodeId, include_d
 	if tc.valid_diagnostic_fast {
 		return false
 	}
+	// Deferred diagnostic passes may visit metadata retained for another target.
+	if tc.cross_target_prefs != unsafe { nil } && tc.node_in_inactive_cross_comptime_branch(id) {
+		return false
+	}
 	if int(id) < 0 || int(id) < tc.a.user_code_start {
 		return false
 	}
@@ -8229,7 +8233,7 @@ fn (mut tc TypeChecker) check_local_binding_global_shadowing(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
 		return
 	}
-	binding := tc.a.nodes[int(id)]
+	binding := tc.a.node(id)
 	if binding.kind !in [.ident, .param] || binding.value.len == 0 || binding.value == '_' {
 		return
 	}
@@ -8250,9 +8254,9 @@ fn (mut tc TypeChecker) check_decl_lhs_global_shadowing(node flat.Node) {
 
 // check_generic_fn_body_global_shadowing inspects source bindings in an open
 // generic body without type-checking expressions that need concrete types.
-fn (mut tc TypeChecker) check_generic_fn_body_global_shadowing(node flat.Node) {
+fn (mut tc TypeChecker) check_generic_fn_body_global_shadowing(node &flat.Node) {
 	for i in 0 .. node.children_count {
-		child_id := tc.a.child(&node, i)
+		child_id := tc.a.child(node, i)
 		if tc.a.node(child_id).kind != .param {
 			tc.check_generic_body_node_global_shadowing(child_id)
 		}
@@ -8275,7 +8279,7 @@ pub fn (mut tc TypeChecker) check_specialized_fn_global_shadowing() {
 		if fn_idx >= 0 && fn_idx < tc.a.nodes.len && tc.a.nodes[fn_idx].kind == .fn_decl {
 			tc.cur_file = tc.a.specialized_fn_files[fn_idx] or { old_file }
 			tc.cur_module = tc.a.specialized_fn_modules[fn_idx] or { old_module }
-			tc.check_generic_fn_body_global_shadowing(tc.a.nodes[fn_idx])
+			tc.check_generic_fn_body_global_shadowing(tc.a.node(flat.NodeId(fn_idx)))
 		}
 	}
 	tc.cur_file = old_file
@@ -8286,11 +8290,12 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 	if !tc.valid_node_id(id) {
 		return
 	}
-	node := tc.a.nodes[int(id)]
+	// The shadowing scan records diagnostics without growing the AST.
+	node := tc.a.node(id)
 	match node.kind {
 		.if_expr {
 			if node.children_count > 0 {
-				condition := tc.a.child_node(&node, 0)
+				condition := tc.a.child_node(node, 0)
 				if condition.kind == .decl_assign {
 					for lhs_id in tc.if_guard_lhs_ids(condition) {
 						tc.check_local_binding_global_shadowing(lhs_id)
@@ -8299,21 +8304,21 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 			}
 		}
 		.decl_assign {
-			tc.check_decl_lhs_global_shadowing(node)
+			tc.check_decl_lhs_global_shadowing(*node)
 		}
 		.for_in_stmt {
 			if node.children_count >= 2 {
-				tc.check_local_binding_global_shadowing(tc.a.child(&node, 0))
-				tc.check_local_binding_global_shadowing(tc.a.child(&node, 1))
+				tc.check_local_binding_global_shadowing(tc.a.child(node, 0))
+				tc.check_local_binding_global_shadowing(tc.a.child(node, 1))
 			}
 		}
 		.select_branch {
 			if node.value == 'recv' && node.children_count > 0 {
-				tc.check_local_binding_global_shadowing(tc.a.child(&node, 0))
+				tc.check_local_binding_global_shadowing(tc.a.child(node, 0))
 			}
 		}
 		.comptime_for {
-			tc.check_comptime_for_global_shadowing(id, node)
+			tc.check_comptime_for_global_shadowing(id, *node)
 		}
 		.comptime_if {
 			take_then := tc.comptime_type_condition_value(node.value) or {
@@ -8324,14 +8329,14 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 					&& !comptime_cond_has_type_test(node.value)
 					&& !comptime_cond_has_type_metadata(node.value) {
 					for i in 0 .. node.children_count {
-						tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+						tc.check_generic_body_node_global_shadowing(tc.a.child(node, i))
 					}
 				}
 				return
 			}
 			branch_index := if take_then { 0 } else { 1 }
 			if branch_index < node.children_count {
-				tc.check_generic_body_node_global_shadowing(tc.a.child(&node, branch_index))
+				tc.check_generic_body_node_global_shadowing(tc.a.child(node, branch_index))
 			}
 			return
 		}
@@ -8341,14 +8346,14 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 		.lambda_expr {
 			if node.children_count > 1 {
 				for i in 0 .. node.children_count - 1 {
-					tc.check_local_binding_global_shadowing(tc.a.child(&node, i))
+					tc.check_local_binding_global_shadowing(tc.a.child(node, i))
 				}
 			}
 		}
 		else {}
 	}
 	for i in 0 .. node.children_count {
-		tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+		tc.check_generic_body_node_global_shadowing(tc.a.child(node, i))
 	}
 }
 
@@ -15578,6 +15583,21 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			0
 		})
 		target_name := tc.call_argument_target_name(node, info)
+		if info.name.starts_with('C.') && expected_value is ArrayFixed
+			&& (actual_value is Pointer || actual_value is Nil) {
+			// C adjusts fixed-array parameters to element pointers. The V array
+			// length does not change that ABI, but typed pointees must still match.
+			if actual_value is Nil {
+				continue
+			}
+			pointer := actual_value as Pointer
+			if fn_param_unalias_type(pointer.base_type) is Void
+				|| tc.c_type(pointer.base_type) == tc.c_type(c_fixed_array_pointee_storage_type(expected_value.elem_type)) {
+				continue
+			}
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			continue
+		}
 		// IError stringification is valid in interpolation/printing, but an error
 		// constructor takes a real string and cannot embed an IError in its message.
 		if info.name in ['error', 'error_with_code'] && param_idx == 0
@@ -15940,11 +15960,20 @@ fn (tc &TypeChecker) collapsed_field_expr_compatible(id flat.NodeId, actual Type
 	// to the sum), letting an invalid assignment reach C generation. Keep only the
 	// directional check plus the targeted callback/pointer/voidptr exceptions.
 	return tc.expr_compatible(id, actual, expected)
+		|| tc.nil_interface_field_expr_compatible(id, expected)
 		|| tc.pointer_value_compatible(actual, expected)
 		|| tc.method_value_matches_voidptr_callback(id, actual, expected)
 		|| tc.fn_callback_adapter_compatible(actual, expected)
 		|| voidptr_arg_compatible(expected, actual)
 		|| (fn_param_is_voidptr_type(expected) && tc.expr_can_take_address(id))
+}
+
+fn (tc &TypeChecker) nil_interface_field_expr_compatible(id flat.NodeId, expected Type) bool {
+	// Interface fields can be explicitly zeroed with unsafe nil, unlike ordinary
+	// non-pointer fields. A voidptr value still needs to implement the interface.
+	return unalias_type(expected) is Interface
+		&& (tc.expr_is_unsafe_nil(id)
+			|| (tc.expr_tail_is_nil(id) && tc.expr_is_inside_unsafe_block(id)))
 }
 
 fn (tc &TypeChecker) call_is_direct_spawn_child(id flat.NodeId) bool {
@@ -17282,6 +17311,36 @@ fn free_array_arg_compatible(name string, param_idx int, expected Type, actual T
 		clean = clean.base_type
 	}
 	return clean is Array
+}
+
+// A pointer passed to a C fixed-array parameter uses its existing storage; it
+// cannot use the scalar conversions at a C call boundary. C `int` elements need
+// 32-bit storage even when V's platform `int` is wider.
+fn c_fixed_array_pointee_storage_type(typ Type) Type {
+	clean := fn_param_unalias_type(typ)
+	if fn_param_is_platform_int(clean) {
+		return Type(i32_)
+	}
+	return match clean {
+		Pointer {
+			Type(Pointer{ base_type: c_fixed_array_pointee_storage_type(clean.base_type) })
+		}
+		ArrayFixed {
+			Type(ArrayFixed{
+				elem_type: c_fixed_array_pointee_storage_type(clean.elem_type)
+				len:       clean.len
+				len_expr:  clean.len_expr
+			})
+		}
+		FnType {
+			Type(FnType{
+				params:      clean.params.map(c_fixed_array_pointee_storage_type(it))
+				params_mut:  clean.params_mut
+				return_type: c_fixed_array_pointee_storage_type(clean.return_type)
+			})
+		}
+		else { clean }
+	}
 }
 
 fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expected Type, actual Type) bool {

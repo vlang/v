@@ -380,6 +380,21 @@ fn embed_blob_symbol(payload string) string {
 	return content_symbol_suffix(payload)
 }
 
+// embed_payload_node_indexes lists the `$embed_file` payload nodes in AST order.
+fn (g &FlatGen) embed_payload_node_indexes() []i32 {
+	if g.embed_payload_nodes_ready {
+		return g.embed_payload_node_ids
+	}
+	mut ids := []i32{}
+	for i in 0 .. g.a.nodes.len {
+		node := unsafe { &g.a.nodes[i] }
+		if node.kind == .string_literal && node.is_embed_payload() {
+			ids << i32(i)
+		}
+	}
+	return ids
+}
+
 // gen_embed_file_blobs defines the file scope arrays that hold the `$embed_file`
 // payloads too long to write as string literals. They are emitted with the rest
 // of the declaration prefix, ahead of every function that can name one.
@@ -395,7 +410,7 @@ fn embed_blob_symbol(payload string) string {
 fn (mut g FlatGen) gen_embed_file_blobs() {
 	mut defined := 0
 	mut seen := map[string]bool{}
-	for i in 0 .. g.a.nodes.len {
+	for i in g.embed_payload_node_indexes() {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind != .string_literal || !node.is_embed_payload() {
 			continue
@@ -436,13 +451,20 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 	}
 }
 
-// for_each_embed_blob_chunked calls `each` with the node index and payload of
-// every embedded file that had to be split. Both the declarations and the
-// `_vinit` lines are derived from the AST this way, so the parallel tail worker,
-// which generates `_vinit` from its own FlatGen, arrives at the same list.
-fn (mut g FlatGen) for_each_embed_blob_chunked(each fn (mut FlatGen, string, string)) {
+// EmbedBlobChunked is an embedded file whose payload had to be split.
+struct EmbedBlobChunked {
+	sym     string
+	payload string
+}
+
+// chunked_embed_blobs lists every embedded file that had to be split. Both the
+// declarations and the `_vinit` lines are derived from the AST this way, so the
+// parallel tail worker, which generates `_vinit` from its own FlatGen, arrives
+// at the same list.
+fn (mut g FlatGen) chunked_embed_blobs() []EmbedBlobChunked {
+	mut blobs := []EmbedBlobChunked{}
 	mut seen := map[string]bool{}
-	for i in 0 .. g.a.nodes.len {
+	for i in g.embed_payload_node_indexes() {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind != .string_literal || !node.is_embed_payload() {
 			continue
@@ -458,13 +480,17 @@ fn (mut g FlatGen) for_each_embed_blob_chunked(each fn (mut FlatGen, string, str
 		if g.embed_payload_uses_incbin(sym) {
 			continue
 		}
-		each(mut g, sym, node.value)
+		blobs << EmbedBlobChunked{
+			sym:     sym
+			payload: node.value
+		}
 	}
+	return blobs
 }
 
 // has_chunked_embed_blobs reports whether `_vinit` has any payload to join.
 fn (mut g FlatGen) has_chunked_embed_blobs() bool {
-	for i in 0 .. g.a.nodes.len {
+	for i in g.embed_payload_node_indexes() {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind == .string_literal && node.is_embed_payload()
 			&& node.value.len > c_max_object_size
@@ -545,9 +571,9 @@ fn (mut g FlatGen) embed_payload_uses_incbin(sym string) bool {
 // gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
 // right before it so that the definition lands in the same translation unit.
 fn (mut g FlatGen) gen_embed_blob_joined() {
-	g.for_each_embed_blob_chunked(fn (mut g FlatGen, sym string, payload string) {
-		g.writeln('u8* _v_embed_joined_${sym} = NULL;')
-	})
+	for blob in g.chunked_embed_blobs() {
+		g.writeln('u8* _v_embed_joined_${blob.sym} = NULL;')
+	}
 }
 
 // gen_embed_blob_joins writes the _vinit lines that put each split payload back
@@ -555,11 +581,11 @@ fn (mut g FlatGen) gen_embed_blob_joined() {
 fn (mut g FlatGen) gen_embed_blob_joins() {
 	chunk_ct := g.cname('embed_file.EmbedFileChunk')
 	join_fn := g.cname('embed_file.join_chunks')
-	g.for_each_embed_blob_chunked(fn [chunk_ct, join_fn] (mut g FlatGen, sym string, payload string) {
-		g.write('\t_v_embed_joined_${sym} = ${join_fn}((${chunk_ct}*)_v_embed_blob_${sym}, ')
-		g.sb.write_decimal(i64(payload.len))
+	for blob in g.chunked_embed_blobs() {
+		g.write('\t_v_embed_joined_${blob.sym} = ${join_fn}((${chunk_ct}*)_v_embed_blob_${blob.sym}, ')
+		g.sb.write_decimal(i64(blob.payload.len))
 		g.writeln(');')
-	})
+	}
 }
 
 // write_embed_blob_chunks emits `payload` as byte objects of an acceptable size,
@@ -3162,8 +3188,6 @@ fn (mut g FlatGen) fixed_array_elem_needs_default_init(elem_type types.Type) boo
 // literal would set any field that C's `{0}` would not: a field with an explicit
 // default (`x int = 5`), an omitted dynamic array/map, or a by-value struct field
 // whose own type needs those defaults.
-// Returns false for structs with interface-typed field defaults, since the
-// codegen default path cannot box those values.
 fn (mut g FlatGen) struct_needs_default_init(type_name string) bool {
 	mut visited := map[string]bool{}
 	return g.struct_needs_default_init_inner(type_name, mut visited)
@@ -3177,25 +3201,13 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited
 	mut found := false
 	if source := g.struct_default_decl_source(type_name) {
 		info := source.info
-		old_ctx := g.enter_struct_default_source(source)
 		for i in 0 .. info.node.children_count {
 			field := g.a.child_node(&info.node, i)
 			if field.kind != .field_decl || field.children_count == 0 {
 				continue
 			}
-			ftyp := g.struct_default_field_type_for_source(source, field)
-			clean_ftyp := default_init_unalias_type(ftyp)
-			// Interface defaults still require conversion metadata that is not
-			// available in this late fallback. Sum defaults are supported by
-			// gen_struct_field_expr_for_field and must keep the enclosing struct's
-			// default initialization active.
-			if clean_ftyp is types.Interface {
-				g.restore_struct_default_context(old_ctx)
-				return false
-			}
 			found = true
 		}
-		g.restore_struct_default_context(old_ctx)
 	}
 	fields := g.struct_fields_for_type(type_name) or { return found }
 	for field in fields {
@@ -4037,6 +4049,12 @@ fn (mut g FlatGen) register_shared_type_name(inner string, module_name string) {
 }
 
 fn (mut g FlatGen) collect_generic_shared_type_names(info StructDeclInfo) {
+	// Registration below depends only on field type texts, not on the generic
+	// arguments: a declaration without shared fields registers nothing for any
+	// application, so skip the scan over every checked struct.
+	if !struct_decl_has_shared_fields(g.a, info.node) {
+		return
+	}
 	for type_name, _ in g.tc.structs {
 		base, args, ok := g.shared_generic_app_parts(type_name)
 		if !ok || !shared_generic_base_matches_decl(base, info) {
@@ -4044,6 +4062,22 @@ fn (mut g FlatGen) collect_generic_shared_type_names(info StructDeclInfo) {
 		}
 		g.collect_shared_type_names_from_info(info, args)
 	}
+}
+
+fn struct_decl_has_shared_fields(a &flat.FlatAst, node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		if _ := shared_array_inner_type_text(field.typ) {
+			return true
+		}
+		if _ := shared_inner_type_text(field.typ) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args []string) {

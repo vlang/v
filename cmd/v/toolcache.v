@@ -317,6 +317,11 @@ fn recorded_inputs_changed(manifest_path string) string {
 	manifest := os.read_file(manifest_path) or {
 		return 'the recorded inputs at `${manifest_path}` are missing'
 	}
+	return recorded_input_contents_changed(manifest, manifest_path)
+}
+
+// recorded_input_contents_changed also validates manifests read through a pinned directory.
+fn recorded_input_contents_changed(manifest string, manifest_path string) string {
 	lines := manifest.split_into_lines()
 	if lines.len < 2 || lines[0] != tool_cache_manifest_version
 		|| !lines[1].starts_with('started${tool_cache_field_separator}') {
@@ -931,8 +936,10 @@ fn tool_cache_lock(entry ToolCacheEntry) !filelock.FileLock {
 	return filelock.new_file(path, mode: .exclusive)
 }
 
-// prune_stale_tool_binaries_locked drops previous builds of the same tool while its build
-// lock is held. Unlinking a running executable is safe on POSIX: the process keeps its image.
+// prune_stale_tool_binaries_locked drops invalid cache entries of the same tool while its
+// build lock is held, retaining fresh builds for other compiler flags and checkouts sharing
+// the cache directory. Unlinking a running executable is safe on POSIX: the process keeps its
+// own already opened image.
 fn prune_stale_tool_binaries_locked(entry ToolCacheEntry) {
 	// A binary that Windows would not let us overwrite while it was still being executed was
 	// renamed aside instead. Open the entry without following links and enumerate/remove its
@@ -951,8 +958,48 @@ fn prune_stale_tool_binaries_locked(entry ToolCacheEntry) {
 			continue
 		}
 		path := os.join_path(directory, name)
+		if !os.is_link(path) && os.is_dir(path) {
+			// Check ownership and pin the sibling before reading its metadata. A FIFO or
+			// symlink planted as a manifest must not block pruning while the lock is held.
+			other_dir := open_tool_cache_entry_dir(path) or { continue }
+			other := ToolCacheEntry{
+				name:                 entry.name
+				dir:                  path
+				binary:               os.join_path(path, entry.name + tool_exe_suffix())
+				manifest:             os.join_path(path, 'inputs')
+				unbuildable:          os.join_path(path, 'unbuildable')
+				unbuildable_manifest: os.join_path(path, 'unbuildable.inputs')
+			}
+			// A different content key can still be in use by another checkout or
+			// flag combination. Its recorded inputs decide whether it is stale.
+			if other_dir.has_fresh_build(other) {
+				other_dir.close()
+				continue
+			}
+			other_dir.remove_all_contents()
+			other_dir.close()
+			os.rmdir(path) or {}
+			continue
+		}
 		prune_stale_tool_artifact(path)
 	}
+}
+
+// has_fresh_build reads only regular metadata files from the pinned, owned entry.
+fn (cache_entry ToolCacheEntryDir) has_fresh_build(entry ToolCacheEntry) bool {
+	if os.is_executable(entry.binary) {
+		if manifest := cache_entry.read_metadata('inputs') {
+			if recorded_input_contents_changed(manifest, entry.manifest) == '' {
+				return true
+			}
+		}
+	}
+	if _ := cache_entry.read_metadata('unbuildable') {
+		if manifest := cache_entry.read_metadata('unbuildable.inputs') {
+			return recorded_input_contents_changed(manifest, entry.unbuildable_manifest) == ''
+		}
+	}
+	return false
 }
 
 fn prune_stale_tool_artifact(path string) {

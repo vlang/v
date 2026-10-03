@@ -207,6 +207,17 @@ fn test_launcher_finds_external_commands() {
 	assert test_command == 'test'
 }
 
+// The agent-facing tools take a subcommand, so `find_command` has to stop at the
+// tool name and let the tool read the rest itself.
+fn test_launcher_finds_the_agent_facing_commands() {
+	mcp_index, mcp_command := find_command(['mcp', 'serve', '--http', ':9090'])
+	assert mcp_index == 0
+	assert mcp_command == 'mcp'
+	skills_index, skills_command := find_command(['-silent', 'skills', 'add', '--all'])
+	assert skills_index == 1
+	assert skills_command == 'skills'
+}
+
 fn test_external_tool_source_prefers_an_executable_file() {
 	root := os.join_path(os.vtmp_dir(), 'external_tool_source_${os.getpid()}')
 	os.rmdir_all(root) or {}

@@ -14,7 +14,7 @@ pub fn append(buf BufferPtr, byte u8) {
 	if buf.len < buf.cap {
 		unsafe {
 			buf.data[buf.len] = byte
+			buf.len++
 		}
-		buf.len++
 	}
 }

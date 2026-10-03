@@ -25,7 +25,7 @@ fn (mut model Model) run() {
 fn dispatch[T](mut model T) {
 	$for method in T.methods {
 		if method.name == 'run' {
-			$if method.typ is fn ( ) {
+			$if method.typ is fn() {
 				model.$method()
 				return
 			}

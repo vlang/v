@@ -215,10 +215,11 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			if i < t.ignored_comptime_for_nodes.len && t.ignored_comptime_for_nodes[i] {
 				continue
 			}
-			node := t.a.nodes[i]
-			if node.kind != .index {
+			if t.a.nodes[i].kind != .index {
 				continue
 			}
+			// Specialization can append nodes; copy only candidate headers.
+			node := t.a.nodes[i]
 			// Synthetic nodes without source context are handled by the pass that
 			// created them. Guessing their module here can request a duplicate
 			// specialization with unqualified type arguments.
@@ -308,10 +309,14 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			} else {
 				scan_start + (scan_idx - rescan.len)
 			}
-			node := t.a.nodes[i]
 			if i < t.ignored_comptime_for_nodes.len && t.ignored_comptime_for_nodes[i] {
 				continue
 			}
+			if t.a.nodes[i].kind !in [.index, .call, .index_assign] {
+				continue
+			}
+			// Helpers can rewrite or append nodes, so candidate headers stay owned.
+			node := t.a.nodes[i]
 			// Cgen still emits source bodies and field defaults that markused can prove
 			// unreachable. Their concrete generic function values must nevertheless name
 			// valid specializations so the generated translation unit compiles.
@@ -965,6 +970,11 @@ fn (mut t Transformer) drain_pending_generic_fn_specs(struct_decls map[string]Ge
 			}
 			pending << spec
 		}
+		if !t.parallel_monomorphize
+			&& t.run_serial_scoped_monomorphize_specs(pending, mut emitted, mut generated) {
+			changed = true
+			continue
+		}
 		if t.parallel_monomorphize
 			&& t.run_parallel_monomorphize_specs(pending, struct_decls, sum_decls, mut emitted, mut generated) {
 			changed = true
@@ -1095,6 +1105,10 @@ fn (mut t Transformer) erase_consts_initialized_by_erased_templates(decls map[st
 	}
 	mut cur_module := ''
 	for i in 0 .. t.a.nodes.len {
+		if t.a.nodes[i].kind !in [.file, .module_decl, .const_decl] {
+			continue
+		}
+		// Only candidate nodes need copies before AST rewriting.
 		node := t.a.nodes[i]
 		match node.kind {
 			.file {
@@ -2925,12 +2939,12 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 	mut cur_file := ''
 	mut cur_module := ''
 	for i in 0 .. t.a.nodes.len {
-		// Only these kinds matter: copy just their nodes out of the arena.
 		kind := t.a.nodes[i].kind
 		if kind != .file && kind != .module_decl && kind != .struct_decl {
 			continue
 		}
-		node := t.a.nodes[i]
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[i] }
 		match node.kind {
 			.file {
 				cur_file = node.value
@@ -2947,7 +2961,7 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 				key := generic_struct_decl_key(node.value, module_name)
 				decls[key] = GenericStructDecl{
 					id:     flat.NodeId(i)
-					node:   node
+					node:   *node
 					file:   cur_file
 					module: module_name
 					key:    key
@@ -2977,7 +2991,8 @@ fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 		if kind != .file && kind != .module_decl && kind != .type_decl {
 			continue
 		}
-		node := t.a.nodes[i]
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[i] }
 		match node.kind {
 			.file {
 				cur_file = node.value
@@ -2999,7 +3014,7 @@ fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 				key := generic_type_decl_key(node.value, module_name)
 				decls[key] = GenericSumDecl{
 					id:     flat.NodeId(i)
-					node:   node
+					node:   *node
 					file:   cur_file
 					module: module_name
 					key:    key
@@ -3861,7 +3876,8 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 		if kind != .file && kind != .module_decl && kind != .fn_decl {
 			continue
 		}
-		node := t.a.nodes[i]
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[i] }
 		match node.kind {
 			.file {
 				cur_file = node.value
@@ -3872,13 +3888,13 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 			}
 			.fn_decl {
 				fn_module := t.node_module_or(i, cur_module)
-				if !t.fn_decl_has_unresolved_generics(node, fn_module) {
+				if !t.fn_decl_has_unresolved_generics(*node, fn_module) {
 					continue
 				}
-				key := t.generic_fn_decl_key(node, fn_module)
+				key := t.generic_fn_decl_key(*node, fn_module)
 				decls[key] = GenericFnDecl{
 					id:     flat.NodeId(i)
-					node:   node
+					node:   *node
 					file:   cur_file
 					module: fn_module
 					key:    key
@@ -3906,7 +3922,8 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 		if kind != .module_decl && kind != .fn_decl {
 			continue
 		}
-		node := t.a.nodes[i]
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[i] }
 		match node.kind {
 			.module_decl {
 				t.cur_module = node.value
@@ -3916,7 +3933,7 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 					continue
 				}
 				t.cur_module = t.node_module_or(i, t.cur_module)
-				if !t.should_transform_fn(node) {
+				if !t.should_transform_fn(*node) {
 					t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
 				}
 			}
@@ -3944,7 +3961,8 @@ fn (mut t Transformer) ensure_node_module_map() {
 	mut cur_module := ''
 	mut cur_file := ''
 	for i := t.node_module_map_nodes; i < t.a.nodes.len; i++ {
-		node := t.a.nodes[i]
+		// Context indexes can change here, but the AST arena cannot.
+		node := unsafe { &t.a.nodes[i] }
 		match node.kind {
 			.file {
 				cur_file = node.value
@@ -4082,7 +4100,8 @@ fn (mut t Transformer) mark_node_context(id flat.NodeId, module_name string, fil
 		if idx < t.node_file_map_cache.len {
 			t.node_file_map_cache[idx] = file_id
 		}
-		node := t.a.nodes[idx]
+		// Context indexes can change here, but the AST arena cannot.
+		node := unsafe { &t.a.nodes[idx] }
 		start := node.children_start
 		end := start + int(node.children_count)
 		if start < 0 || end > t.a.children.len {
@@ -4103,9 +4122,9 @@ fn (mut t Transformer) collect_node_subtree_ids(id flat.NodeId, mut nodes map[in
 		return
 	}
 	nodes[int(id)] = true
-	node := t.a.nodes[int(id)]
+	node := t.a.node(id)
 	for i in 0 .. node.children_count {
-		t.collect_node_subtree_ids(t.a.child(&node, i), mut nodes)
+		t.collect_node_subtree_ids(t.a.child(node, i), mut nodes)
 	}
 }
 
@@ -4119,7 +4138,7 @@ fn (mut t Transformer) collect_node_subtree_flags(id flat.NodeId, mut nodes []bo
 			continue
 		}
 		nodes[idx] = true
-		node := t.a.nodes[idx]
+		node := t.a.node(flat.NodeId(idx))
 		start := node.children_start
 		end := start + int(node.children_count)
 		if start < 0 || end > t.a.children.len {
@@ -4544,11 +4563,12 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, cand
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
-	node := t.a.nodes[int(id)]
+	// This traversal queues signatures and updates caches without growing the AST.
+	node := t.a.node(id)
 	if node.kind in [.block, .for_stmt, .for_in_stmt, .select_branch] {
 		saved_vars := t.var_types.clone()
 		for i in 0 .. node.children_count {
-			t.collect_generated_fn_body_call_names(t.a.child(&node, i), candidate_names,
+			t.collect_generated_fn_body_call_names(t.a.child(node, i), candidate_names,
 				filter_candidates, mut names, mut seen)
 		}
 		t.restore_var_types(saved_vars)
@@ -4556,19 +4576,19 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, cand
 	}
 	if node.kind == .decl_assign {
 		for i in 1 .. node.children_count {
-			t.collect_generated_fn_body_call_names(t.a.child(&node, i), candidate_names, filter_candidates, mut names, mut seen)
+			t.collect_generated_fn_body_call_names(t.a.child(node, i), candidate_names, filter_candidates, mut names, mut seen)
 		}
-		t.seed_generated_decl_assign_binding(node)
+		t.seed_generated_decl_assign_binding(*node)
 		return
 	}
 	if node.kind == .call {
-		call_name := t.generated_call_name_for_used(id, node)
+		call_name := t.generated_call_name_for_used(id, *node)
 		if call_name.len > 0 {
 			t.push_generated_used_name(call_name, candidate_names, filter_candidates, mut names, mut seen)
 		}
 		if t.defer_nested_generic_emissions {
 			decls := t.cached_generic_fn_decls()
-			if decl_key, args := t.cached_generic_call_specialization(id, node, t.cur_module, decls) {
+			if decl_key, args := t.cached_generic_call_specialization(id, *node, t.cur_module, decls) {
 				if decl := decls[decl_key] {
 					concrete_args := t.canonical_generic_specialization_args(args)
 					if !t.generic_specialization_in_progress(decl, concrete_args) {
@@ -4578,12 +4598,12 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, cand
 			}
 		}
 	} else if node.kind in [.ident, .selector, .cast_expr, .paren, .expr_stmt] {
-		if fn_value_name := t.generated_fn_value_name_for_used(id, node) {
+		if fn_value_name := t.generated_fn_value_name_for_used(id, *node) {
 			t.push_generated_used_name(fn_value_name, candidate_names, filter_candidates, mut names, mut seen)
 		}
 	}
 	for i in 0 .. node.children_count {
-		t.collect_generated_fn_body_call_names(t.a.child(&node, i), candidate_names, filter_candidates, mut names, mut seen)
+		t.collect_generated_fn_body_call_names(t.a.child(node, i), candidate_names, filter_candidates, mut names, mut seen)
 	}
 }
 
@@ -5281,6 +5301,10 @@ fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl
 fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 	mut changed := false
 	for i in 0 .. t.a.nodes.len {
+		if t.a.nodes[i].kind !in [.call, .or_expr, .decl_assign] {
+			continue
+		}
+		// Only candidate nodes need copies before AST rewriting.
 		node := t.a.nodes[i]
 		if node.kind == .call {
 			if concrete_type := t.concrete_fn_alias_call_return_type(i, node) {
@@ -6504,8 +6528,12 @@ fn (mut t Transformer) erase_generic_fn_decls(decls map[string]GenericFnDecl) {
 			t.clear_typechecker_node_cache(idx)
 		}
 	}
-	if !isnil(t.tc) && decls.len > 0 {
-		t.tc.rebuild_fn_param_suffix_index()
+	if decls.len > 0 {
+		// Erasure changes indexed declarations without changing the AST length.
+		t.comptime_method_metas_cache.clear()
+		if !isnil(t.tc) {
+			t.tc.rebuild_fn_param_suffix_index()
+		}
 	}
 }
 
@@ -9707,7 +9735,7 @@ fn (t &Transformer) local_decl_type_before(name string, before flat.NodeId) ?str
 	}
 	mut start := 0
 	for i := limit - 1; i >= 0; i-- {
-		node := t.a.nodes[i]
+		node := t.a.node(flat.NodeId(i))
 		if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
 			start = i
 			break
@@ -9715,11 +9743,11 @@ fn (t &Transformer) local_decl_type_before(name string, before flat.NodeId) ?str
 		if node.kind != .decl_assign || node.children_count < 2 {
 			continue
 		}
-		lhs_id := t.a.child(&node, 0)
+		lhs_id := t.a.child(node, 0)
 		if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
 			continue
 		}
-		lhs := t.a.nodes[int(lhs_id)]
+		lhs := t.a.node(lhs_id)
 		if lhs.kind != .ident || lhs.value != name {
 			continue
 		}
@@ -9737,26 +9765,26 @@ fn (t &Transformer) local_decl_type_at(name string, idx int) ?string {
 	if idx < 0 || idx >= t.a.nodes.len {
 		return none
 	}
-	node := t.a.nodes[idx]
+	node := t.a.node(flat.NodeId(idx))
 	if node.kind != .decl_assign || node.children_count < 2 {
 		return none
 	}
-	lhs_id := t.a.child(&node, 0)
+	lhs_id := t.a.child(node, 0)
 	if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
 		return none
 	}
-	lhs := t.a.nodes[int(lhs_id)]
+	lhs := t.a.node(lhs_id)
 	if lhs.kind != .ident || lhs.value != name {
 		return none
 	}
-	rhs_id := t.a.child(&node, 1)
-	rhs := t.a.nodes[int(rhs_id)]
+	rhs_id := t.a.child(node, 1)
+	rhs := t.a.node(rhs_id)
 	if rhs.kind == .call {
-		mut raw_type := t.raw_call_decl_return_type(rhs_id, rhs) or { '' }
+		mut raw_type := t.raw_call_decl_return_type(rhs_id, *rhs) or { '' }
 		if raw_type.len == 0 && rhs.children_count > 0 {
-			callee := t.a.child_node(&rhs, 0)
+			callee := t.a.child_node(rhs, 0)
 			if callee.kind == .ident {
-				raw_type = t.raw_return_type_for_fn_name(callee.value, rhs) or { '' }
+				raw_type = t.raw_return_type_for_fn_name(callee.value, *rhs) or { '' }
 			}
 		}
 		if raw_type.len > 0 {
@@ -9795,7 +9823,7 @@ fn (t &Transformer) local_decl_type_before_by_pos(name string, before flat.NodeI
 	if int(before) < 0 || int(before) >= t.a.nodes.len {
 		return none
 	}
-	before_node := t.a.nodes[int(before)]
+	before_node := t.a.node(before)
 	if !before_node.pos.is_valid() {
 		return none
 	}
@@ -9807,16 +9835,16 @@ fn (t &Transformer) local_decl_type_before_by_pos(name string, before flat.NodeI
 		0
 	}
 	for i in t.local_decl_nodes_by_name[name] {
-		node := t.a.nodes[i]
+		node := t.a.node(flat.NodeId(i))
 		if i < start || !node.pos.is_valid() || node.pos.id != before_node.pos.id
 			|| node.pos.offset < start_pos || node.pos.offset >= before_node.pos.offset {
 			continue
 		}
-		lhs_id := t.a.child(&node, 0)
+		lhs_id := t.a.child(node, 0)
 		if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
 			continue
 		}
-		lhs := t.a.nodes[int(lhs_id)]
+		lhs := t.a.node(lhs_id)
 		if lhs.kind != .ident || lhs.value != name {
 			continue
 		}
@@ -9866,7 +9894,9 @@ fn (t &Transformer) local_decl_type_before_pos(name string, before flat.Node) ?s
 			fn_start = offsets[low - 1]
 		}
 	} else {
-		for node in t.a.nodes {
+		for node_id in 0 .. t.a.nodes.len {
+			// This scan does not modify the AST arena.
+			node := unsafe { &t.a.nodes[node_id] }
 			if node.kind == .fn_decl && node.pos.id == before.pos.id
 				&& node.pos.offset > fn_start && node.pos.offset < before.pos.offset {
 				fn_start = node.pos.offset
@@ -9876,13 +9906,14 @@ fn (t &Transformer) local_decl_type_before_pos(name string, before flat.Node) ?s
 	mut best := ''
 	mut best_offset := -1
 	for idx in t.local_decl_nodes_by_name[name] {
-		node := t.a.nodes[idx]
+		// Context indexes can change here, but the AST arena cannot.
+		node := unsafe { &t.a.nodes[idx] }
 		if node.pos.id != before.pos.id || node.pos.offset <= fn_start
 			|| node.pos.offset >= before.pos.offset
 			|| node.pos.offset <= best_offset {
 			continue
 		}
-		lhs_id := t.a.child(&node, 0)
+		lhs_id := t.a.child(node, 0)
 		if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
 			continue
 		}
@@ -9911,7 +9942,7 @@ fn (t &Transformer) local_decl_type_before_pos(name string, before flat.Node) ?s
 		if best_offset == node.pos.offset {
 			continue
 		}
-		rhs_id := t.a.child(&node, 1)
+		rhs_id := t.a.child(node, 1)
 		rhs_typ := t.node_type(rhs_id)
 		if rhs_typ.len > 0 && !t.generic_arg_is_unresolved(rhs_typ) && decl_type_is_usable(rhs_typ) {
 			best = rhs_typ
@@ -14795,7 +14826,9 @@ fn is_type_identifier_byte(ch u8) bool {
 }
 
 fn (t &Transformer) source_composite_type_from_c_name(encoded string) ?string {
-	for node in t.a.nodes {
+	for node_id in 0 .. t.a.nodes.len {
+		// This scan does not modify the AST arena.
+		node := unsafe { &t.a.nodes[node_id] }
 		if source := source_composite_type_candidate(encoded, node.typ) {
 			return source
 		}

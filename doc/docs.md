@@ -80,6 +80,11 @@ compiler whose source lives in `vlib/v`. Every direct C build, including compile
 self-builds, is compiled in-process. The CLI remains in `cmd/v`; `test` is
 handled by the default compiler, and external tools are compiled with it first.
 
+External tools are cached under the user's V cache directory. Rebuilding a tool
+prunes stale builds while retaining fresh builds for other flags and checkouts.
+Pruning accepts only regular metadata files opened without following symbolic
+links. On Unix, it also checks ownership before reading another cache entry.
+
 The standard bootstrap does not build the sibling `v1_fallback` executable
 (`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
 sibling is missing, it reports that it is running `make v1`. That target reuses
@@ -248,6 +253,9 @@ argument, e.g. `v new abc`.
 
 * [Tools](#tools)
     * [v fmt](#v-fmt)
+    * [v mcp](#v-mcp)
+    * [v skills](#v-skills)
+
     * [v clean](#v-clean)
     * [v env](#v-env)
     * [v shader](#v-shader)
@@ -3360,6 +3368,8 @@ If you need to access embedded structs directly, use an explicit reference like 
 Optional fields keep their optional type when accessed through multiple embedded structs.
 You can unwrap them with an `if` guard, including after an earlier check against `none`.
 
+Omitted embedded structs retain their declared field defaults, including interface values.
+
 Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s
 in OOP, *NOT* base classes.
 
@@ -4247,6 +4257,9 @@ transitively by other modules several times, in the reverse order of the init ca
 To define a new type `NewType` as an alias for `ExistingType`,
 do `type NewType = ExistingType`.<br/>
 This is a special case of a [sum type](#sum-types) declaration.
+
+Methods declared on a fixed-array alias keep that alias receiver, including methods whose names
+match builtin array methods.
 
 Numeric aliases use ordinary conversions for initialization:
 
@@ -5250,6 +5263,9 @@ Generic types brought into scope by a selective import retain their declaring mo
 passed to generic functions and methods in other modules.
 
 Methods called on a generic factory result retain their dependencies in the compiled program.
+
+Returning a generic struct as a generic interface retains its concrete methods, including when
+an interface type argument is itself a generic interface.
 
 ```v wip
 
@@ -6975,6 +6991,87 @@ To disable formatting for a block of code, wrap it with `// vfmt off` and
 ... your code here ...
 ```
 
+### v mcp
+
+`v mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) server
+that gives a coding agent the V compiler's own view of a project: what the code
+declares, what does not compile, what a symbol refers to, and the bundled skills
+that describe the language.
+
+```shell
+v mcp serve                     # over stdio, which is what an MCP client launches
+v mcp serve --http 127.0.0.1:0  # over Streamable HTTP
+v mcp serve --root DIR          # resolve relative paths against DIR
+v mcp serve --read-only         # register no tool that writes a file
+v mcp tools                     # list the tools, with what each one answers
+```
+
+The server is not a separate index. It calls the V parser, checker and formatter
+in process, so it answers correctly about code that does not compile yet. Only the
+tools that genuinely compile or run something start the compiler.
+
+The tools fall into groups:
+
+- Project: `v_project_info`, `v_modules`, `v_files`.
+- Code: `v_ast`, `v_symbols`, `v_symbol_at`, `v_references`, `v_stdlib_doc`.
+- Checking: `v_check`, `v_test_run`, `v_doctor`, `v_veb_routes`, `v_skills`.
+- Running: `v_run`, `v_eval`.
+- Editing: `v_edit_replace`, `v_rename_symbol`, `v_format`.
+
+The editing tools default to reporting a plan rather than writing:
+`v_rename_symbol` and `v_format` are dry runs unless told otherwise, and
+`v_edit_replace` requires the caller to pass back the text it expects to find, so
+it refuses to write over a concurrent change. `--read-only` does not register them
+at all.
+
+Symbol renames include named struct initializer keys and preserve the `@` prefix
+on escaped method calls. Formatting refuses source with parser errors and preserves
+the original file.
+
+To use it from an MCP client, point the client at the command:
+
+```json
+{
+  "mcpServers": {
+    "v": { "command": "v", "args": ["mcp", "serve"] }
+  }
+}
+```
+
+The server also publishes its model instructions, which describe the order to call
+the tools in. Print them with `v mcp serve --instructions`.
+
+### v skills
+
+`v skills` installs the agent skills that ship with the compiler. A skill is a
+directory with a `SKILL.md` entry point, the layout coding agents already read.
+
+```shell
+v skills list                    # the bundled catalog, and where each one stands
+v skills add v-mcp               # install into .agents/skills/ of this project
+v skills add v-mcp --global      # install into ~/.agents/skills for this user
+v skills remove v-mcp            # uninstall
+v skills path v-mcp              # where a skill is installed
+```
+
+A project install is committed and shared with the team; a `--global` install
+applies to every project on the machine. Installing a skill that is already there
+is skipped rather than overwritten, so a local edit survives; `--force` restores
+the bundled copy, and `v skills list` flags an installed skill that has fallen
+behind the bundle it came from.
+
+Skill names must contain only lowercase letters, digits and single hyphens, and
+must match the bundled name. Installation stays within an immediate child of the
+skills directory, including with `--force`; bundled file paths cannot escape that
+skill and must refer to regular files. The `v-workflow` check script exits with a
+nonzero status when any compilation, formatting or vet check fails. The bundled
+`v-testing` runner uses the normal child reporter while preserving other `VFLAGS`
+options, and treats an empty test selection as a failure.
+
+The skills are read from the source tree at run time rather than embedded into the
+binary, so a skill can be reviewed and diffed in the repository and adding one
+needs no rebuild.
+
 ### v clean
 
 A V build writes its executable next to the sources it was built from, named
@@ -7874,6 +7971,10 @@ fn main() {
 You can iterate over struct fields using `.fields`, it also works with generic types
 (e.g. `T.fields`) and generic arguments (e.g. `param.fields` where `fn gen[T](param T) {`).
 
+Each field's `.attrs` is an array of strings. Inside the reflection loop, you can use
+`for attr in field.attrs` or `for index, attr in field.attrs` to process these strings at runtime,
+including calls such as `attr.split_any(':')`. The index has type `int`.
+
 ```v
 struct User {
 	name string
@@ -8000,6 +8101,9 @@ fn main() {
 #### <h4 id="comptime-method-params">.params</h4>
 
 You can retrieve information about struct method params.
+
+Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
+Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.
 
 ```v
 struct Test {
@@ -8162,6 +8266,7 @@ already compressed.
 `$embed_file` returns
 [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
 which could be used to obtain the file contents as `string` or `[]u8`.
+Its `.data()` method also accepts immutable values and constants, returning a byte pointer.
 
 Use the returned value: discarding `$embed_file` as a statement is an error, including
 when it is the fallback value of an unused `or` expression with nested `or` blocks.
@@ -9751,6 +9856,15 @@ f := C.name_of_the_C_function(123, c'here is some C style string', 1.23)
 dump(f)
 ```
 
+A fixed-array parameter in a `C.` declaration follows C's pointer adjustment:
+`fn C.load_matrix(values [16]f32)` accepts a matching `&f32` or `voidptr`, including
+a dynamic array's `.data`. Ordinary V fixed-array parameters still require array values.
+Typed pointers must use the C element representation. For a C `int` array declared as
+`fn C.sum(values [2]int) int`, use `i32` storage such as `values := [i32(10), 20]` and
+pass `&values[0]`; V's platform-width `int` storage is incompatible on 64-bit targets.
+Pointer constants such as `C.NULL` and `C.INVALID_HANDLE_VALUE` retain their pointer type
+in assignments and comparisons.
+
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
@@ -9787,6 +9901,11 @@ Note also the second parameter `const char *format`, which was redeclared as `co
 The `const_` prefix in that redeclaration may seem arbitrary, but it is important, if you want
 to compile your code with `-cstrict` or thirdparty C static analysis tools. V currently does not
 have another way to express that this parameter is a const (this will probably change in V 1.0).
+
+The `const_` convention also applies to C callback function types and aliases. For example,
+`type NativeCallback = fn (const_buf &u8, len int) int` retains the const buffer qualifier.
+When you pass a V function by name to a `fn C.` callback parameter, V adapts its parameter
+and return types to the C ABI.
 
 For some C functions, that use variadics (`...`) as parameters, V supports a special syntax for
 the parameters - `...voidptr`, that is not available for ordinary V functions (V's variadics are
@@ -9942,6 +10061,10 @@ In the console build command, you can use:
 * `-cflags` to pass custom flags to the backend C compiler (passed before other C options).
 * `-ldflags` to pass custom flags to the backend C linker (passed after every other C option).
 * For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+
+To select C23 with a compiler that supports it, use
+`v -cc gcc -cflags '-std=gnu23' program.v`. Generated C uses the standard boolean keywords
+in C23 and supplies compatibility definitions for older C dialects.
 
 You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
 and `-cflags` settings, rather than including them in the build command each time.
@@ -10285,6 +10408,11 @@ seamlessly across all platforms.
 
 However, since the Windows header libraries use extremely generic names such as `Rectangle`,
 this will cause a conflict if you wish to use C code that also has a name defined as `Rectangle`.
+
+V defaults to `WIN32_LEAN_AND_MEAN` for its built-in Windows headers, including those loaded
+through the garbage collector. This excludes optional headers such as OLE and multimedia headers.
+Include any required optional Windows headers explicitly, or use `#flag windows -DWIN32_FULL`
+to request the full Windows header surface. A configuration preinclude can also define `WIN32_FULL`.
 
 For very specific cases like this, V has `#preinclude` and `#postinclude` directives.
 

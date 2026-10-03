@@ -122,11 +122,13 @@ pub fn (original &EmbedFileData) to_bytes() []u8 {
 	}
 }
 
-// data returns the embedded bytes, decompressing or loading them if needed.
-pub fn (mut ed EmbedFileData) data() &u8 {
-	if ed.uncompressed != unsafe { nil } {
-		return ed.uncompressed
+// data returns the embedded bytes, loading or decompressing them on the first call if needed.
+pub fn (original &EmbedFileData) data() &u8 {
+	if original.uncompressed != unsafe { nil } {
+		return original.uncompressed
 	}
+	// Reading bytes may populate the private cache, as in to_string and to_bytes.
+	mut ed := unsafe { &EmbedFileData(original) }
 	if ed.uncompressed == unsafe { nil } && ed.compressed != unsafe { nil } {
 		if ed.compression_type !in g_embed_file_decoders.decoders {
 			panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')

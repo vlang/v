@@ -365,6 +365,8 @@ mut:
 	top_level_node_ids             []i32
 	ast_string_literals            []string
 	ast_string_literals_ready      bool
+	embed_payload_node_ids         []i32 // `$embed_file` payload nodes, in AST order
+	embed_payload_nodes_ready      bool
 	fn_segs                        []string
 	fn_seg_chunk_indexes           []int
 	parallel_chunk_wrapper_defs    []ParallelChunkWrapperDefs
@@ -3446,6 +3448,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.type_metadata_nodes_ready = false
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
+	g.embed_payload_node_ids = []i32{}
+	g.embed_payload_nodes_ready = false
 	g.direct_array_access = false
 	g.unsafe_depth = 0
 	g.fn_segs = []string{}
@@ -4172,6 +4176,11 @@ fn (mut g FlatGen) emit_translation_unit_include_directives() {
 	g.writeln('#ifndef _UNICODE\n#define _UNICODE\n#endif')
 	g.writeln('#endif')
 	mut windows_header_emitted := g.emit_preinclude_directives()
+	// Match the legacy Windows header surface before gc.h can load windows.h.
+	// Optional OLE and multimedia headers conflict with NOUSER/NOMSG and raylib.
+	// Preincludes can still configure the default by defining WIN32_FULL.
+	g.writeln('#if defined(_WIN32) && !defined(WIN32_FULL) && !defined(WIN32_LEAN_AND_MEAN)')
+	g.writeln('#define WIN32_LEAN_AND_MEAN\n#endif')
 	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
 	if g.target.os == 'windows' && !windows_header_emitted {
 		// Winsock2 must precede windows.h, which otherwise includes legacy winsock.h.
@@ -4367,19 +4376,22 @@ fn (mut g FlatGen) gen_vcleanup() {
 // global initializers keep normal module ordering because they can themselves
 // depend on runtime constants.
 fn (mut g FlatGen) emit_const_referenced_global_defaults(mut emitted_runtime []bool) {
+	if g.const_runtime_inits.len == 0 {
+		return
+	}
+	// Search all runtime constant initializers at once. A C name cannot contain a
+	// newline, so no pattern below can match across two initializers.
+	const_inits := g.const_runtime_inits.join('\n')
 	for qname in g.global_init_order {
 		if qname in g.global_inits {
 			continue
 		}
 		cname := g.global_c_name(qname)
-		mut is_referenced := false
-		for init in g.const_runtime_inits {
-			if init.contains('${cname}.') || init.contains('${cname}[') || init.contains('&${cname}') || init.contains('(${cname}') {
-				is_referenced = true
-				break
-			}
+		if !const_inits.contains(cname) {
+			continue
 		}
-		if !is_referenced {
+		if !const_inits.contains('${cname}.') && !const_inits.contains('${cname}[')
+			&& !const_inits.contains('&${cname}') && !const_inits.contains('(${cname}') {
 			continue
 		}
 		for i, init in g.runtime_inits {
@@ -4728,6 +4740,12 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 @[direct_array_access]
 fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	profile := !isnil(g.tc) && g.tc.verbose
+	// Per-declaration clock reads add up over every function; keep that
+	// breakdown for explicit -d v3_ttime builds.
+	mut fn_profile := false
+	$if v3_ttime ? {
+		fn_profile = profile
+	}
 	mut presw := time.new_stopwatch()
 	g.unused_param_seen = &UnusedParamSeen{}
 	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics && g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
@@ -4807,7 +4825,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			continue
 		}
 		if kind_id == 61 {
-			ci_t0 := if profile { time.sys_mono_now() } else { u64(0) }
+			ci_t0 := if fn_profile { time.sys_mono_now() } else { u64(0) }
 			mut prep := CollectGenFnPrep{}
 			if has_parallel_fn_preps {
 				prep = fn_preps[top_level_pos]
@@ -4816,14 +4834,14 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				if g.incremental_fn_names.len == 0 {
 					g.preseed_unused_fn_ptr_param_types(node, cur_module, cur_file)
 				}
-				if profile {
+				if fn_profile {
 					ci_fn_ns += time.sys_mono_now() - ci_t0
 				}
 				continue
 			}
 			full_name := qualify_name_in_module(cur_module, node.value)
 			g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
-			ci_p0 := if profile { time.sys_mono_now() } else { u64(0) }
+			ci_p0 := if fn_profile { time.sys_mono_now() } else { u64(0) }
 			if !has_parallel_fn_preps {
 				prep = g.compute_collect_gen_fn_prep(node, cur_module, cur_file)
 			}
@@ -4835,7 +4853,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			g.tc.cur_module = cur_module
 			// Register callback typedefs from the completed declaration tables in
 			// preseed_fn_signature_fn_ptr_types, after enum backing types are known.
-			if profile {
+			if fn_profile {
 				ci_ptypes_ns += time.sys_mono_now() - ci_p0
 			}
 			if shared_params.len > 0 {
@@ -4854,9 +4872,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				nonshared_fn_file_ranks << c_backend_fn_file_rank(cur_file)
 				nonshared_fn_node_indexes << node_idx
 			}
-			ci_r0 := if profile { time.sys_mono_now() } else { u64(0) }
+			ci_r0 := if fn_profile { time.sys_mono_now() } else { u64(0) }
 			return_type := prep.return_type
-			if profile {
+			if fn_profile {
 				ci_ret_ns += time.sys_mono_now() - ci_r0
 			}
 			if defer_fn_signature_registrations {
@@ -4871,7 +4889,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			} else {
 				g.register_fn_decl_signature_type(node.value, full_name, ptypes, shared_params, decl_is_variadic, first_param_is_mut, return_type)
 			}
-			if profile {
+			if fn_profile {
 				ci_reg_ns += time.sys_mono_now() - ci_r0
 			}
 			// Module-level `init()` functions run once at startup. Collect their C
@@ -4891,7 +4909,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				}
 				g.module_cleanup_fn_modules[cleanup_cname] = cur_module
 			}
-			if profile {
+			if fn_profile {
 				ci_fn_ns += time.sys_mono_now() - ci_t0
 			}
 			continue
@@ -5132,7 +5150,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		ci_reg_ms := f64(ci_reg_ns) / 1e6
 		ci_ret_ms := f64(ci_ret_ns) / 1e6
 		ci_ptypes_ms := f64(ci_ptypes_ns) / 1e6
-		g.timing_profile('  [ttime]   ci fns ${ci_fn_ms:7.2f} ms of ${ci_total_ms:7.2f} ms (ptypes ${ci_ptypes_ms:.2f}, ret ${ci_ret_ms:.2f}, ret+reg ${ci_reg_ms:.2f}), const order ${ccio_ms:7.2f} ms')
+		if fn_profile {
+			g.timing_profile('  [ttime]   ci fns ${ci_fn_ms:7.2f} ms of ${ci_total_ms:7.2f} ms (ptypes ${ci_ptypes_ms:.2f}, ret ${ci_ret_ms:.2f}, ret+reg ${ci_reg_ms:.2f}), const order ${ccio_ms:7.2f} ms')
+		} else {
+			g.timing_profile('  [ttime]   ci fns total ${ci_total_ms:7.2f} ms, const order ${ccio_ms:7.2f} ms')
+		}
 	}
 }
 
@@ -5175,12 +5197,17 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 	g.ast_string_literals = []string{cap: 4096}
 	g.top_level_node_ids = []i32{cap: 4096}
 	g.type_metadata_node_ids = []i32{cap: 4096}
+	g.embed_payload_node_ids = []i32{}
 	for node_idx, node in g.a.nodes {
 		if is_type_metadata_node(&node, mut cache) {
 			g.type_metadata_node_ids << node_idx
 		}
-		if node.kind == .string_literal && !node.is_embed_payload() {
-			g.ast_string_literals << node.value
+		if node.kind == .string_literal {
+			if node.is_embed_payload() {
+				g.embed_payload_node_ids << node_idx
+			} else {
+				g.ast_string_literals << node.value
+			}
 		}
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
 			.global_decl, .const_decl, .enum_decl, .interface_decl, .import_decl, .directive] {
@@ -5214,6 +5241,7 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 		}
 	}
 	g.type_metadata_nodes_ready = true
+	g.embed_payload_nodes_ready = true
 	return counts
 }
 
@@ -14001,6 +14029,9 @@ fn (mut g FlatGen) sizeof_target(value0 string) string {
 		}
 	}
 	if value.starts_with('&') {
+		if value.trim_left('&').starts_with('[') {
+			return 'void*'
+		}
 		return '${g.sizeof_target(value[1..].trim_space())}*'
 	}
 	if value.starts_with('[]') || value == 'array' {
@@ -16057,9 +16088,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					elem_ct := g.value_c_type(channel_type.elem_type)
 					g.write('sync__Channel__push(')
 					g.gen_channel_try_receiver(lhs_id)
-					g.write(', &(${elem_ct}[]){')
-					g.gen_expr_with_expected_type(rhs_id, channel_type.elem_type)
-					g.write('})')
+					g.write(', ')
+					if fixed := array_fixed_type(channel_type.elem_type) {
+						g.gen_fixed_array_data_arg(rhs_id, fixed)
+					} else {
+						g.write('&(${elem_ct}[]){')
+						g.gen_expr_with_expected_type(rhs_id, channel_type.elem_type)
+						g.write('}')
+					}
+					g.write(')')
 					g.expected_enum = old_expected_enum
 					return
 				}
@@ -17303,6 +17340,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				literal := g.fixed_array_compound_literal_expr(g.a.child(node, 0), fixed)
 				if trimmed_space(literal).len > 0 {
 					g.write(literal)
+				} else if g.fixed_array_decay_shape_equal(cast_arg_type, types.Type(fixed), false) {
+					// Compatible fixed arrays already have the target layout. C cannot cast
+					// an array value; its consumer copies the operand into target storage.
+					g.gen_expr(cast_arg_id)
 				} else {
 					g.write('(${ct})(')
 					g.gen_expr(g.a.child(node, 0))
@@ -18771,6 +18812,10 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('typedef long long time_t;')
 		g.writeln('#endif')
 	}
+	// C23 has boolean keywords; older C2x compilers get them from stdbool.h.
+	g.writeln('#if defined(__STDC_VERSION__) && __STDC_VERSION__ > 201710L')
+	g.writeln('#include <stdbool.h>')
+	g.writeln('#endif')
 	g.writeln('#ifndef __bool_true_false_are_defined')
 	g.writeln('#ifdef _MSC_VER')
 	g.writeln('typedef unsigned char bool;')
@@ -18789,11 +18834,13 @@ fn (mut g FlatGen) preamble() {
 	g.emit_int128_preamble()
 	g.writeln('struct sync__Channel;')
 	g.writeln('typedef struct sync__Channel* chan;')
+	g.writeln('#if !defined(__STDC_VERSION__) || __STDC_VERSION__ <= 201710L')
 	g.writeln('#ifndef true')
 	g.writeln('#define true 1')
 	g.writeln('#endif')
 	g.writeln('#ifndef false')
 	g.writeln('#define false 0')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#if defined(__TINYC__) || defined(_MSC_VER)')
 	g.writeln('#define E_STRUCT_DECL unsigned char _dummy_pad')

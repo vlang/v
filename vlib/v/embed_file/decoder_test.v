@@ -11,7 +11,7 @@ fn test_registered_decoder_data_is_materialized_and_cached() {
 	register_decoder(compression_type, XorDecoder{})
 	defer { g_embed_file_decoders.decoders.delete(compression_type) }
 	compressed := [u8(0), 17, 128, 255]
-	mut file := EmbedFileData{
+	file := EmbedFileData{
 		compression_type: compression_type
 		compressed:       &compressed[0]
 		compressed_len:   compressed.len
