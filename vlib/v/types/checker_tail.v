@@ -7,6 +7,7 @@ import v.flat
 import v.token
 import v.util
 import v.vmod
+import v.workers
 
 // last_index_between returns the last occurrence of needle that starts at or
 // after lo and ends at or before end, scanning by index: a substr copy of the
@@ -387,6 +388,65 @@ fn (tc &TypeChecker) current_file_module_source_path() string {
 	return tc.cur_file
 }
 
+// CheckerFsMemo holds file system answers while a pass asks them for every file.
+// They do not change during a compilation.
+@[heap]
+struct CheckerFsMemo {
+mut:
+	real_paths   map[string]string
+	vmod_roots   map[string]string // by source directory
+	source_roots map[string]string // by v.mod root, '' without a manifest
+}
+
+// memo_real_path is os.real_path, remembered while tc.fs_memo is set.
+fn (tc &TypeChecker) memo_real_path(path string) string {
+	if isnil(tc.fs_memo) {
+		return os.real_path(path)
+	}
+	mut memo := unsafe { tc.fs_memo }
+	if real := memo.real_paths[path] {
+		return real
+	}
+	real := os.real_path(path)
+	memo.real_paths[path] = real
+	return real
+}
+
+// memo_vmod_root_for_file is checker_vmod_root_for_file, remembered per directory
+// while tc.fs_memo is set.
+fn (tc &TypeChecker) memo_vmod_root_for_file(file string) string {
+	if isnil(tc.fs_memo) || file == '' {
+		return checker_vmod_root_for_file(file)
+	}
+	mut memo := unsafe { tc.fs_memo }
+	dir := os.dir(file)
+	if root := memo.vmod_roots[dir] {
+		return root
+	}
+	root := checker_vmod_root_for_file(file)
+	memo.vmod_roots[dir] = root
+	return root
+}
+
+// manifest_source_root returns the real source root that the v.mod in
+// `vmod_root` declares, or '' without one.
+fn (tc &TypeChecker) manifest_source_root(vmod_root string) string {
+	if !isnil(tc.fs_memo) {
+		if root := tc.fs_memo.source_roots[vmod_root] {
+			return root
+		}
+	}
+	mut source_root := ''
+	if manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) {
+		source_root = os.real_path(manifest.source_root(vmod_root)).replace('\\', '/').trim_right('/')
+	}
+	if !isnil(tc.fs_memo) {
+		mut memo := unsafe { tc.fs_memo }
+		memo.source_roots[vmod_root] = source_root
+	}
+	return source_root
+}
+
 fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 	normalized := tc.current_file_module_source_path().replace('\\', '/')
 	dir := normalized.all_before_last('/')
@@ -425,7 +485,7 @@ fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 }
 
 fn (tc &TypeChecker) current_file_module_path_identity() ?string {
-	directory := os.real_path(os.dir(tc.current_file_module_source_path())).replace('\\', '/').trim_right('/')
+	directory := tc.memo_real_path(os.dir(tc.current_file_module_source_path())).replace('\\', '/').trim_right('/')
 	source_root := tc.current_file_module_source_root() or { return none }
 	if source_root == '' || !directory.starts_with(source_root + '/') {
 		return none
@@ -440,14 +500,11 @@ fn (tc &TypeChecker) current_file_module_path_identity() ?string {
 
 fn (tc &TypeChecker) current_file_module_source_root() ?string {
 	source_file := tc.current_file_module_source_path()
-	directory := os.real_path(os.dir(source_file)).replace('\\', '/').trim_right('/')
-	vmod_root := checker_vmod_root_for_file(source_file)
-	mut source_root := ''
-	if manifest := vmod.from_file(os.join_path(vmod_root, 'v.mod')) {
-		source_root = os.real_path(manifest.source_root(vmod_root)).replace('\\', '/').trim_right('/')
-	}
+	directory := tc.memo_real_path(os.dir(source_file)).replace('\\', '/').trim_right('/')
+	vmod_root := tc.memo_vmod_root_for_file(source_file)
+	source_root := tc.manifest_source_root(vmod_root)
 	for root in tc.module_search_paths {
-		search_root := os.real_path(root).replace('\\', '/').trim_right('/')
+		search_root := tc.memo_real_path(root).replace('\\', '/').trim_right('/')
 		if search_root.len > 0 && directory.starts_with(search_root + '/') {
 			if source_root.starts_with(search_root + '/') && directory.starts_with(source_root + '/') {
 				return source_root
@@ -456,7 +513,7 @@ fn (tc &TypeChecker) current_file_module_source_root() ?string {
 		}
 	}
 	if tc.compiler_vroot.len > 0 {
-		vlib_root := os.real_path(os.join_path(tc.compiler_vroot, 'vlib')).replace('\\', '/').trim_right('/')
+		vlib_root := tc.memo_real_path(os.join_path(tc.compiler_vroot, 'vlib')).replace('\\', '/').trim_right('/')
 		if directory.starts_with(vlib_root + '/') {
 			if source_root.starts_with(vlib_root + '/') && directory.starts_with(source_root + '/') {
 				return source_root
@@ -7890,17 +7947,86 @@ fn (mut tc TypeChecker) index_multiple_module_import_lines(a &flat.FlatAst) {
 // index_module_import_lines_of_new_files indexes the files the checker has
 // not indexed yet.
 fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) {
+	mut scans := []ImportLineScan{}
 	for file_id, file in a.source_files {
 		if tc.import_line_indexed_files[file_id] {
 			continue
 		}
 		tc.import_line_indexed_files[file_id] = true
-		source := os.read_file(file.name) or { continue }
-		tc.source_texts_by_file[file.name] = source
-		for line in module_import_lines(source) {
-			tc.multiple_module_import_lines[multiple_module_import_line_key(file_id, line)] = true
+		scans << ImportLineScan{
+			file_id: file_id
+			name:    file.name
 		}
 	}
+	// Reading and scanning one file does not depend on the others. The pool's
+	// threads keep what they allocate, so the texts outlive the batch.
+	pool := checker_worker_pool(a)
+	if !isnil(pool) && pool.size() > 0 && scans.len > 1 {
+		queue := chan int{cap: scans.len}
+		for i in 0 .. scans.len {
+			queue <- i
+		}
+		queue.close()
+		n_jobs := int_min(pool.size() + 1, scans.len)
+		args := ImportLineScanArgs{
+			scans: unsafe { voidptr(&scans) }
+			queue: queue
+		}
+		mut tasks := []workers.Task{cap: n_jobs}
+		for job in 0 .. n_jobs {
+			tasks << workers.Task{
+				run:        import_line_scan_thread
+				arg:        unsafe { voidptr(&args) }
+				force_sync: job == 0
+			}
+		}
+		pool.run(tasks)
+	} else {
+		for mut scan in scans {
+			scan.run()
+		}
+	}
+	for scan in scans {
+		if !scan.read {
+			continue
+		}
+		tc.source_texts_by_file[scan.name] = scan.source
+		for line in scan.lines {
+			tc.multiple_module_import_lines[multiple_module_import_line_key(scan.file_id, line)] = true
+		}
+	}
+}
+
+// ImportLineScan is the source text of one file and the lines of it that
+// module_import_lines reports.
+struct ImportLineScan {
+	file_id int
+	name    string
+mut:
+	read   bool
+	source string
+	lines  []int
+}
+
+fn (mut scan ImportLineScan) run() {
+	scan.source = os.read_file(scan.name) or { return }
+	scan.read = true
+	scan.lines = module_import_lines(scan.source)
+}
+
+struct ImportLineScanArgs {
+	scans voidptr // &[]ImportLineScan
+	queue chan int
+}
+
+fn import_line_scan_thread(arg voidptr) voidptr {
+	args := unsafe { &ImportLineScanArgs(arg) }
+	mut scans := unsafe { &[]ImportLineScan(args.scans) }
+	for {
+		i := <-args.queue or { break }
+		unsafe { scans[i].run() }
+	}
+	return unsafe { nil }
 }
 
 // module_import_lines returns the numbers of the lines of `source` that

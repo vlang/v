@@ -376,7 +376,7 @@ fn (mut tc TypeChecker) extend_collect_node_caches(n int) {
 fn (mut tc TypeChecker) extend_direct_parent_index(a &flat.FlatAst, start int) {
 	grow := a.nodes.len - tc.direct_parent_ids.len
 	if grow > 0 {
-		tc.direct_parent_ids << []flat.NodeId{len: grow, init: flat.empty_node}
+		tc.direct_parent_ids << flat.empty_node_ids(grow)
 		tc.value_used_nodes << []bool{len: grow}
 	}
 	chunk := tc.fill_direct_parent_edges_range(a, start, a.nodes.len)

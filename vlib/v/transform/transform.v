@@ -18806,7 +18806,9 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 }
 
 fn (mut t Transformer) build_source_parent_index() {
-	t.source_parent_ids = []i32{len: t.a.nodes.len, init: -1}
+	t.source_parent_ids = []i32{len: t.a.nodes.len}
+	// -1 in every slot, in one memset rather than one store per node.
+	unsafe { C.memset(t.source_parent_ids.data, 0xff, usize(t.source_parent_ids.len) * sizeof(i32)) }
 	mut decls := map[string][]int{}
 	mut fn_offsets := map[int][]int{}
 	mut if_exprs := map[int][]int{}
