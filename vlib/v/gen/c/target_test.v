@@ -1396,3 +1396,77 @@ fn test_native_flag_inputs_ignore_options_and_missing_paths() {
 
 	assert cache_native_flag_input_files(a, '', prefs.target) == []
 }
+
+fn test_c_flag_start_markers_are_stripped() {
+	target := pref.host_target()
+	args, at_start := c_flag_args_with_start_marker('-lraylib@START_LIBS', '', '', target, map[string]string{})
+	assert args == ['-lraylib']
+	assert at_start
+	plain_args, plain_at_start := c_flag_args_with_start_marker('-lraylib', '', '', target, map[string]string{})
+	assert plain_args == ['-lraylib']
+	assert !plain_at_start
+	commented_args, commented_at_start := c_flag_args_with_start_marker('-lraylib ## not @START_LIBS',
+		'', '', target, map[string]string{})
+	assert commented_args == ['-lraylib']
+	assert !commented_at_start
+	assert c_flag_args('-DFIRST@START_DEFINES', '', '', target) == ['-DFIRST']
+	assert c_flag_args('-I/opt/include@START_OTHERS', '', '', target) == ['-I/opt/include']
+	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_start_marker_path_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	assert c_flag_args('@DIR/lib/libraylib.a@START_LIBS', '', os.join_path(dir, 'main.v'), target) == [
+		os.join_path(os.real_path(dir), 'lib', 'libraylib.a'),
+	]
+}
+
+// `-lraylib@START_LIBS` must be searched before the libraries of every module,
+// including vlib's `-luser32`; mingw otherwise resolves `CloseWindow` from user32
+// first and then reports a duplicate definition from raylib's rcore.o.
+fn test_c_flag_start_markers_move_flags_before_module_flags() {
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -lraylib@START_LIBS\n#flag -lglfw@START_LIBS\n',
+		'#flag -luser32\n', ['-lraylib', '-lglfw', '-luser32', '-lwinmm'])
+}
+
+// A marked directive promotes an identical unmarked one, whichever comes first,
+// so an application can move a library that a wrapper module already links.
+fn test_c_flag_start_markers_promote_unmarked_duplicates() {
+	expected := ['-lraylib', '-lglfw', '-luser32', '-lwinmm']
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -lraylib\n#flag -lraylib@START_LIBS\n#flag -lglfw@START_LIBS\n',
+		'#flag -luser32\n', expected)
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -lraylib@START_LIBS\n#flag -lraylib\n#flag -lglfw@START_LIBS\n',
+		'#flag -luser32\n', expected)
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -lraylib@START_LIBS\n#flag -lglfw@START_LIBS\n',
+		'#flag -lraylib\n#flag -luser32\n', expected)
+	// Without a marker, the first occurrence still decides the position: main is
+	// parsed first here, so `-luser32` stays with the main module flags.
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -luser32\n', '#flag -luser32\n', [
+		'-lwinmm',
+		'-luser32',
+	])
+}
+
+fn assert_c_flag_directive_order(main_flags string, sys_flags string, expected []string) {
+	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_start_markers_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'sys')) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	main_source := os.join_path(dir, 'main.v')
+	sys_source := os.join_path(dir, 'sys', 'sys.v')
+	os.write_file(main_source, 'module main\n${main_flags}') or { panic(err) }
+	os.write_file(sys_source, 'module sys\n${sys_flags}') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_files([main_source, sys_source])
+	assert cache_directive_flags(a, '', prefs.target, map[string]string{}) == expected
+	mut g := FlatGen.new()
+	g.a = a
+	g.target = prefs.target
+	g.collect_c_flags_from_directives()
+	assert g.c_flags() == expected
+}
