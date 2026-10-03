@@ -57,7 +57,7 @@ if !shift_counter! LSS 1 (
 		if not ["%~2"] == [""] set subcmd=%~2& shift& set /a shift_counter+=1
 	)
 	for %%z in (build clean cleanall check help latest_tcc rebuild) do (
-		if "%~1" == "%%z" set target=%1& shift& set /a shift_counter+=1& goto :verifyopt
+		if "%~1" == "%%z" set target=%~1& shift& set /a shift_counter+=1& goto :verifyopt
 	)
 )
 
@@ -124,6 +124,7 @@ goto :build
 :latest_tcc
 call :download_tcc
 if !ERRORLEVEL! NEQ 0 goto :error
+echo  ^> TCC is up to date.
 exit /b 0
 
 :help

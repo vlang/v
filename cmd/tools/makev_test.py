@@ -139,6 +139,12 @@ class BootstrapConfigurationTests(unittest.TestCase):
                     routine(label),
                 )
 
+    def test_targets_are_selected_without_their_quotes(self):
+        # `v up` runs `os.exec(['makev.bat', 'latest_tcc'])`, and `os.exec`
+        # quotes every argument on Windows, so `%1` is `"latest_tcc"` there.
+        self.assertIn("set target=%~1&", routine("verifyopt"))
+        self.assertNotIn("set target=%1&", SOURCE)
+
 
 @unittest.skipUnless(os.name == "nt", "requires the Windows cmd.exe interpreter")
 class BatchExecutionTests(unittest.TestCase):
@@ -607,6 +613,50 @@ class BatchExecutionTests(unittest.TestCase):
                 result = self.run_try_delete(workdir, target)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue(target.exists())
+
+    def run_option_parser(self, workdir, arguments):
+        targets = ("build", "clean", "cleanall", "check", "help", "latest_tcc", "rebuild")
+        script = "\n".join([
+            "@echo off",
+            "setlocal EnableExtensions EnableDelayedExpansion",
+            "set /a shift_counter=0",
+            "set /a flag_local=0",
+            "set compiler=",
+            "set subcmd=",
+            "set target=build",
+            routine("verifyopt"),
+            routine("init"),
+            *(
+                ":" + target + "\necho target=" + target + " compiler=!compiler!\nexit /b 0"
+                for target in targets
+            ),
+        ])
+        harness = workdir / "makev harness.bat"
+        harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+        comspec = os.environ.get("ComSpec", "cmd.exe")
+        # Pass a raw command line, so quoted arguments reach the batch file
+        # exactly as `os.exec` sends them.
+        return subprocess.run(
+            '"' + comspec + '" /d /c ""' + str(harness) + '" ' + arguments + '"',
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+
+    def test_quoted_arguments_select_their_target(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            for arguments, expected in (
+                ("latest_tcc", "target=latest_tcc compiler="),
+                ('"latest_tcc"', "target=latest_tcc compiler="),
+                ('"build" "-msvc"', "target=build compiler=msvc"),
+            ):
+                with self.subTest(arguments=arguments):
+                    result = self.run_option_parser(Path(directory), arguments)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(result.stdout.strip(), expected)
 
 
 if __name__ == "__main__":
