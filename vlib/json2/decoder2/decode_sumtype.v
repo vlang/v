@@ -56,47 +56,47 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 				return
 			} $else $if v.typ is $struct {
 				// find "_type" field in json object
-				mut type_field_node := decoder.current_node.next
+				// type_field_idx is the index in values_info of the value of the `_type`
+				// key, or -1 without such a key.
+				mut type_field_idx := -1
+				mut key_idx := decoder.current_idx + 1
 				map_position := value_info.position
 				map_end := map_position + value_info.length
 
 				type_field := '_type'
 
-				for {
-					if type_field_node == unsafe { nil } {
-						break
-					}
-
-					key_info := type_field_node.value
+				for key_idx < decoder.values_info.len {
+					key_info := decoder.values_info[key_idx]
 
 					if key_info.position >= map_end {
-						type_field_node = unsafe { nil }
 						break
 					}
 
-					mut value_node := type_field_node.next
-					if value_node == unsafe { nil } {
-						type_field_node = unsafe { nil }
+					value_idx := key_idx + 1
+					if value_idx >= decoder.values_info.len {
 						break
 					}
 
 					if decoder.decode_string(key_info)! == type_field {
 						// find type field
-						type_field_node = value_node
+						type_field_idx = value_idx
 						break
 					}
 
-					value_end := value_node.value.position + value_node.value.length
-					type_field_node = value_node.next
-					for type_field_node != unsafe { nil }
-						&& type_field_node.value.position < value_end {
-						type_field_node = type_field_node.next
+					// Skip the value, with everything nested in it.
+					key_value_info := decoder.values_info[value_idx]
+					value_end := key_value_info.position + key_value_info.length
+					key_idx = value_idx + 1
+					for key_idx < decoder.values_info.len
+						&& decoder.values_info[key_idx].position < value_end {
+						key_idx++
 					}
 				}
 
-				if type_field_node != unsafe { nil } {
-					if type_field_node.value.value_kind == .string_ {
-						decoded_type := decoder.decode_string(type_field_node.value)!
+				if type_field_idx != -1 {
+					type_field_info := decoder.values_info[type_field_idx]
+					if type_field_info.value_kind == .string_ {
+						decoded_type := decoder.decode_string(type_field_info)!
 						$for v in T.variants {
 							variant_name := sumtype_variant_name(typeof(v.typ).name)
 							if decoded_type == variant_name {
@@ -120,7 +120,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 }
 
 fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
-	value_info := decoder.current_node.value
+	value_info := decoder.values_info[decoder.current_idx]
 
 	decoder.init_sumtype_by_value_kind(mut val, value_info)!
 
