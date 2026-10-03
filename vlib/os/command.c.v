@@ -125,7 +125,7 @@ pub:
 	path string
 }
 
-// read_line returns the next output line without its newline, setting eof at the end.
+// read_line waits for the next output line without its newline, setting eof when the pipe closes.
 @[manualfree]
 pub fn (mut c CommandArgs) read_line() string {
 	for {
@@ -134,7 +134,18 @@ pub fn (mut c CommandArgs) read_line() string {
 			c.pending = c.pending[newline + 1..]
 			return line
 		}
-		chunk := c.process._read_from(.stdout)
+		mut chunk := ''
+		$if windows {
+			wdata := unsafe { &WProcess(c.process.wdata) }
+			mut buf := [4096]u8{}
+			mut bytes_read := u32(0)
+			// ReadFile waits for data or a closed pipe; an empty PeekNamedPipe is not EOF.
+			if C.ReadFile(wdata.child_stdout_read, &buf[0], u32(buf.len), voidptr(&bytes_read), 0) {
+				chunk = decode_windows_captured_output(buf[..int(bytes_read)].bytestr())
+			}
+		} $else {
+			chunk = c.process._read_from(.stdout)
+		}
 		if chunk.len == 0 {
 			c.eof = true
 			line := c.pending

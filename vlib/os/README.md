@@ -75,8 +75,9 @@ The string APIs `os.execute`, `os.raw_execute`, `os.system`, `os.execute_opt`,
 deprecated because command strings can allow shell injection. Streaming shell commands
 through `os.start_new_command` or `os.Command.start` is also deprecated; use
 `os.start_new_command_args(args)` instead. It returns a `CommandArgs` stream with
-`read_line()`, `eof`, `close()`, and `exit_code`. For more control, use
-`os.new_process(program)` and `process.set_args(args)`.
+`read_line()`, `eof`, `close()`, and `exit_code`. `read_line()` waits for a complete
+line or the end of the output pipe, including when the child pauses between writes.
+For more control, use `os.new_process(program)` and `process.set_args(args)`.
 
 When shell syntax is required, invoke the shell explicitly with an argument array.
 A shell still interprets its script as code: use a fixed script with positional

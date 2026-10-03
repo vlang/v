@@ -62,3 +62,43 @@ fn test_start_new_command_args_streams_literal_arguments() {
 	}
 	assert false
 }
+
+fn test_start_new_command_args_waits_for_delayed_output() {
+	root := os.join_path(os.vtmp_dir(), 'exec delayed writer ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'delayed.v')
+	binary := os.join_path(root, if os.user_os() == 'windows' { 'delayed.exe' } else { 'delayed' })
+	os.write_file(source, '
+import time
+
+fn main() {
+	unbuffer_stdout()
+	time.sleep(100 * time.millisecond)
+	println("first")
+	time.sleep(100 * time.millisecond)
+	print("sec")
+	time.sleep(100 * time.millisecond)
+	println("ond")
+	time.sleep(100 * time.millisecond)
+	println("")
+	time.sleep(100 * time.millisecond)
+	print("last")
+	exit(23)
+}
+')!
+	build := os.exec([@VEXE, '-o', binary, source])
+	assert build.exit_code == 0, build.output
+	mut command := os.start_new_command_args([binary])!
+	assert command.read_line().trim_right('\r') == 'first'
+	assert !command.eof
+	assert command.read_line().trim_right('\r') == 'second'
+	assert !command.eof
+	assert command.read_line().trim_right('\r') == ''
+	assert !command.eof
+	assert command.read_line() == 'last'
+	assert command.eof
+	assert command.read_line() == ''
+	command.close()!
+	assert command.exit_code == 23
+}
