@@ -127,16 +127,21 @@ fn transport_error(err IError, deadline_hit bool) StatusError {
 
 // response_metadata collects response headers/trailers, minus the gRPC control
 // headers the client consumes itself, so callers see only application metadata.
+// Keys are lowercased and case-insensitive, matching ServerContext.
 fn response_metadata(h http.Header) map[string][]string {
 	skip := ['grpc-status', 'grpc-message', 'content-type', 'te']
 	mut m := map[string][]string{}
-	for k in h.keys() {
+	// unique_keys() drops repeats that differ only in capitalization, and the
+	// exact:false read then gathers every spelling for that one field. Without
+	// it a response carrying both `X-Trace` and `x-trace` produced two entries,
+	// each holding both values, and a lookup by lowercase name found nothing.
+	for k in h.unique_keys() {
 		if k.to_lower() in skip {
 			continue
 		}
 		vals := h.custom_values(k, exact: false)
 		if vals.len > 0 {
-			m[k] = vals
+			m[k.to_lower()] = vals
 		}
 	}
 	return m
