@@ -305,19 +305,14 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				expected := tc.comptime_static_method_param_type(receiver_name, method,
 					arg_index)
 				if tc.mut_pointer_slot_arg_rejected(arg_id, expected) {
-					expected_name := '&${method.param_types[arg_index]}'
-					arg := tc.a.node(arg_id)
-					actual_name := if arg.kind == .ident
-						&& arg.value in tc.fn_context.mut_param_base_types
-						&& !tc.current_fn_param_is_explicit_mut_pointer(arg.value) {
-						base_type := tc.fn_context.mut_param_base_types[arg.value] or { actual }
-						'&${base_type.name()}'
-					} else if arg.kind == .ident {
-						(tc.cur_scope.lookup(arg.value) or { actual }).name()
+					param_name := if arg_index < method.param_names.len {
+						method.param_names[arg_index]
 					} else {
-						actual.name()
+						''
 					}
-					tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_name}` as `${expected_name}` in argument ${arg_index + 1} to `${receiver_name}.${method.name}`', arg_id, tc.a.node(arg_id).pos)
+					msg := tc.mut_pointer_slot_arg_error_msg('method', '${receiver_name}.${method.name}',
+						param_name, arg_index + 1, expected, arg_id)
+					tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.a.node(arg_id).pos)
 					return
 				}
 			}

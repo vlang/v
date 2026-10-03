@@ -1,4 +1,4 @@
-vlib/v/checker/tests/fn_call_mut_arg_mismatch_err.vv:15:10: error: cannot use `Expr1` as `&&Expr1` in argument 1 to `foo`
+vlib/v/checker/tests/fn_call_mut_arg_mismatch_err.vv:15:10: error: function `foo` parameter `expr` is `mut expr &Expr1`, a mutable reference to a `&Expr1`: pass `mut` of a `&Expr1` variable (e.g. `mut p := &expr`, then `mut p`), or declare it `mut expr Expr1`
    13 |         name: '123'
    14 |     }
    15 |     foo(mut expr)
