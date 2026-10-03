@@ -403,6 +403,9 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 	if node.kind == .paren && node.children_count > 0 {
 		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name, loop_kind)
 	}
+	if node.kind == .index && node.value == 'range' && node.children_count > 0 {
+		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name, loop_kind)
+	}
 	if node.kind == .ident && node.value == var_name {
 		return tc.parse_type(comptime_static_metadata_type_name(loop_kind))
 	}

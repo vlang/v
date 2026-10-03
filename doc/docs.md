@@ -8100,6 +8100,9 @@ fn main() {
 
 You can retrieve information about struct method params.
 
+Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
+Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.
+
 ```v
 struct Test {
 }
