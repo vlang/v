@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.skills
 import v.util.version
 import v.util.recompilation
 
@@ -18,18 +19,20 @@ struct App {
 
 	skip_v_self  bool // do not run `v self`, effectively enforcing the running of `make` or `makev.bat`
 	skip_current bool // skip the current hash check, enabling easier testing on the same commit, without using docker etc
+	update_skills bool // refresh the skills that fell behind, instead of only reporting them
 }
 
 const args = arguments()
 
 fn new_app() App {
 	return App{
-		is_verbose:   '-v' in args
-		is_prod:      '-prod' in args
-		vexe:         vexe
-		vroot:        vroot
-		skip_v_self:  '-skip_v_self' in args
-		skip_current: '-skip_current' in args
+		is_verbose:     '-v' in args
+		is_prod:        '-prod' in args
+		vexe:           vexe
+		vroot:          vroot
+		skip_v_self:    '-skip_v_self' in args
+		skip_current:   '-skip_current' in args
+		update_skills:  '-skills' in args
 	}
 }
 
@@ -60,6 +63,7 @@ fn main() {
 			}
 		}
 		app.show_current_v_version()
+		app.report_skills()
 		return
 	}
 	if os.user_os() == 'windows' {
@@ -77,6 +81,92 @@ fn main() {
 		exit(1)
 	}
 	app.show_current_v_version()
+	app.report_skills()
+}
+
+// skills_refresh_hint is what the report tells the user to run.
+//
+// `--global` is not optional wording: the report reads the skills installed for
+// the whole machine, while `v skills update` defaults to the project directory.
+// Without the flag a user following the hint from a project would refresh a
+// different installation than the one that was just reported.
+fn skills_refresh_hint() string {
+	return '`v up -skills` or `v skills update --global`'
+}
+
+// skills_lines is what the report says about the installed skills.
+//
+// Held-back skills are named whether or not anything can be refreshed, so an
+// installation holding only skills this update must not touch is still
+// reported rather than passing in silence.
+fn skills_lines(refreshable []string, held_back []string) []string {
+	mut lines := []string{}
+	if refreshable.len > 0 {
+		lines << '> skills: can be refreshed: ${refreshable.join(', ')}'
+		lines << '> skills: run ${skills_refresh_hint()} to refresh them'
+	}
+	if held_back.len > 0 {
+		lines << '> skills: left alone because they have local changes: ${held_back.join(', ')}'
+	}
+	return lines
+}
+
+// report_skills tells the user about the skills that the pull left behind, and
+// refreshes them when `-skills` was passed.
+//
+// It says nothing when every installed skill already matches its bundle, so a
+// `v up` that changed no skills reads the same as it always did. Without
+// `-skills` it writes nothing at all: the skills belong to the user, and
+// updating the compiler is not consent to overwrite what they wrote.
+//
+// The skills installed for the whole machine are the ones that matter here, so
+// this looks at the home directory rather than at the checkout it chdir'd into.
+fn (app App) report_skills() {
+	dir := skills.target_dir(.home_dir, app.vroot)
+	refreshable, held_back := skills.refresh_candidates(app.vroot, dir)
+	if refreshable.len == 0 && held_back.len == 0 {
+		return
+	}
+	if app.update_skills {
+		if refreshable.len > 0 {
+			app.refresh_skills()
+			// `v skills` has already named every skill it refreshed and every one
+			// it held back, so saying it again here would only repeat it.
+			return
+		}
+		// Nothing to refresh, so `v skills` was not run, and the held-back skills
+		// have to be named from here or not at all.
+		for line in skills_lines(refreshable, held_back) {
+			println(line)
+		}
+		return
+	}
+	for line in skills_lines(refreshable, held_back) {
+		println(line)
+	}
+}
+
+// refresh_skills hands the refresh to `v skills`, which owns the rule for what
+// may be overwritten, so the rule is stated and tested in one place.
+//
+// The child's output is forwarded rather than captured and dropped: a refusal
+// the user cannot see is the same as one that did not happen.
+//
+// Its exit code is deliberately ignored. It reports a non-zero status exactly
+// when it holds a skill back, which is expected here and is not a failure of the
+// compiler update that just succeeded.
+fn (app App) refresh_skills() {
+	refresh := os.exec([app.current_vexe_path(), 'skills', 'update', '--global'])
+	report := refresh.output.trim_space()
+	if report == '' {
+		// No output means the child never ran, which is the one case where the
+		// skills it would have refreshed are not accounted for anywhere.
+		eprintln('> skills: could not refresh them; run `v skills update --global`')
+		return
+	}
+	for line in report.split_into_lines() {
+		println(line)
+	}
 }
 
 fn (app App) vprintln(s string) {
