@@ -6,6 +6,8 @@ import v.gen.c.naming
 
 enum OwnershipBorrowedProjectionAction {
 	not_borrowed
+	owned_value
+	string_view
 	clone_value
 	reject_copy
 }
@@ -203,6 +205,7 @@ mut:
 	ownership_fns                    map[string]bool
 	ownership_fn_params              map[string]bool
 	ownership_fn_returns_param       map[string][]int
+	ownership_fn_array_headers       map[string][]int
 	ownership_fn_return_params       map[string][]OwnershipReturnParamSlot
 	ownership_fn_return_slots        map[string][]int
 	ownership_fn_return_descs        map[string][]OwnershipReturnDescendant
@@ -296,6 +299,7 @@ fn new_ownership_state() &OwnershipState {
 		ownership_fns:                    map[string]bool{}
 		ownership_fn_params:              map[string]bool{}
 		ownership_fn_returns_param:       map[string][]int{}
+		ownership_fn_array_headers:       map[string][]int{}
 		ownership_fn_return_params:       map[string][]OwnershipReturnParamSlot{}
 		ownership_fn_return_slots:        map[string][]int{}
 		ownership_fn_return_descs:        map[string][]OwnershipReturnDescendant{}
@@ -408,6 +412,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		ownership_fns:                    src.ownership_fns.clone()
 		ownership_fn_params:              src.ownership_fn_params.clone()
 		ownership_fn_returns_param:       ownership_clone_int_lists(src.ownership_fn_returns_param)
+		ownership_fn_array_headers:       ownership_clone_int_lists(src.ownership_fn_array_headers)
 		ownership_fn_return_params:       ownership_clone_return_param_slots(src.ownership_fn_return_params)
 		ownership_fn_return_slots:        ownership_clone_int_lists(src.ownership_fn_return_slots)
 		ownership_fn_return_descs:        ownership_clone_return_descs(src.ownership_fn_return_descs)
@@ -665,6 +670,7 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	ownership_merge_bool_map(mut dst.ownership_fns, src.ownership_fns)
 	ownership_merge_bool_map(mut dst.ownership_fn_params, src.ownership_fn_params)
 	ownership_merge_int_lists(mut dst.ownership_fn_returns_param, src.ownership_fn_returns_param)
+	ownership_merge_int_lists(mut dst.ownership_fn_array_headers, src.ownership_fn_array_headers)
 	ownership_merge_return_param_slots(mut dst.ownership_fn_return_params, src.ownership_fn_return_params)
 	ownership_merge_int_lists(mut dst.ownership_fn_return_slots, src.ownership_fn_return_slots)
 	ownership_merge_return_descs(mut dst.ownership_fn_return_descs, src.ownership_fn_return_descs)
@@ -818,7 +824,8 @@ fn (mut tc TypeChecker) ownership_should_defer_call_arg_aggregate_consumption(no
 	}
 	param_idx := tc.ownership_call_arg_decl_param_idx(info, child_idx)
 	type_param_idx := param_idx + tc.ownership_call_arg_shift(node, info)
-	variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx)
+	arg_id := tc.call_arg_value(tc.a.child(&node, child_idx))
+	variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx, arg_id)
 	expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
 	return expected !is Void && expected !is Pointer
 }
@@ -1208,6 +1215,12 @@ fn (tc &TypeChecker) ownership_drop_target_for_direct_type_name(type_name string
 fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_wrapper bool) ?OwnershipDropTarget {
 	if typ is Alias {
 		return tc.ownership_drop_target_for_resolved_type(typ.base_type, optional_wrapper)
+	}
+	if typ is String {
+		return OwnershipDropTarget{
+			type_name:        typ.name()
+			optional_wrapper: optional_wrapper
+		}
 	}
 	if typ is OptionType {
 		return OwnershipDropTarget{
@@ -2475,6 +2488,7 @@ fn (mut tc TypeChecker) ownership_return_prescan_fn_state_count(name string) int
 	st := tc.ownership_state()
 	mut n := if name in st.ownership_fns { 1 } else { 0 }
 	n += (st.ownership_fn_returns_param[name] or { []int{} }).len
+	n += (st.ownership_fn_array_headers[name] or { []int{} }).len
 	n += (st.ownership_fn_return_params[name] or { []OwnershipReturnParamSlot{} }).len
 	n += (st.ownership_fn_return_slots[name] or { []int{} }).len
 	n += (st.ownership_fn_return_descs[name] or { []OwnershipReturnDescendant{} }).len
@@ -2520,8 +2534,56 @@ fn (mut tc TypeChecker) ownership_prescan_fn_return_node(fn_name string, fn_node
 			break
 		}
 	}
+	mut array_headers_only := true
+	for i in 0 .. fn_node.children_count {
+		child := tc.a.child_node(&fn_node, i)
+		if child.kind != .param
+			&& !tc.ownership_return_node_uses_only_array_param_headers(*child, fn_name, param_names, local_types) {
+			array_headers_only = false
+			break
+		}
+	}
+	if array_headers_only {
+		for param_idx in st.ownership_fn_returns_param[fn_name] {
+			tc.ownership_add_fn_return_array_header(fn_name, param_idx)
+		}
+	}
 	st.cur_fn = saved_cur_fn
 	st.ownership_fn_value_vars = saved_fn_value_vars.clone()
+}
+
+// Only direct parameter-header returns guarantee that a synthetic slice argument
+// is acquired on every path. Any other return keeps conservative source loans.
+fn (mut tc TypeChecker) ownership_return_node_uses_only_array_param_headers(node flat.Node, fn_name string, param_names []string, local_types map[string]Type) bool {
+	if node.kind in [.fn_literal, .lambda_expr, .defer_stmt] {
+		return true
+	}
+	if node.kind == .return_stmt {
+		for i in 0 .. node.children_count {
+			expr_id := tc.ownership_unwrap_expr(tc.a.child(&node, i))
+			expr := tc.a.node(expr_id)
+			if expr.kind != .prefix || expr.op != .amp || expr.children_count != 1 {
+				return false
+			}
+			child := tc.a.node(tc.ownership_unwrap_expr(tc.a.child(expr, 0)))
+			if child.kind != .ident || child.value !in param_names {
+				return false
+			}
+			param_idx := param_names.index(child.value)
+			param_type := local_types[child.value] or { return false }
+			if !tc.ownership_call_param_is_mut(fn_name, param_idx)
+				|| unalias_type(unwrap_pointer(param_type)) !is Array {
+				return false
+			}
+		}
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if !tc.ownership_return_node_uses_only_array_param_headers(*tc.a.child_node(&node, i), fn_name, param_names, local_types) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut tc TypeChecker) ownership_prescan_returned_fn_literal(fn_name string, id flat.NodeId, node flat.Node) {
@@ -2890,6 +2952,14 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 		return false
 	}
 	node := tc.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		child_id := tc.ownership_unwrap_expr(tc.a.child(&node, 0))
+		if tc.valid_node_id(child_id)
+			&& tc.a.nodes[int(child_id)].kind in [.struct_init, .array_literal, .array_init, .map_init] {
+			// Heap storage for the aggregate header does not extend its fields' loans.
+			return tc.ownership_prescan_return_aggregate_literal_descendants(fn_name, slot_idx, base_suffix, child_id, param_names, mut owned_locals, mut local_types)
+		}
+	}
 	match node.kind {
 		.array_literal {
 			mut marked := false
@@ -2897,7 +2967,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 				elem_id := tc.a.child(&node, i)
 				suffix := '${base_suffix}[${i}]'
 				if tc.ownership_prescan_return_aggregate_literal_descendants(fn_name, slot_idx, suffix, elem_id, param_names, mut owned_locals, mut local_types)
-					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, elem_id, param_names)
+					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, elem_id, param_names, local_types)
 					|| tc.ownership_prescan_add_return_descendant_from_expr(fn_name, slot_idx, suffix, elem_id, mut owned_locals, mut local_types) {
 					marked = true
 				}
@@ -2915,7 +2985,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 						init_id := tc.a.child(&child, 0)
 						suffix := '${base_suffix}[*]'
 						if tc.ownership_prescan_return_aggregate_literal_descendants(fn_name, slot_idx, suffix, init_id, param_names, mut owned_locals, mut local_types)
-							|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, init_id, param_names)
+							|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, init_id, param_names, local_types)
 							|| tc.ownership_prescan_add_return_descendant_from_expr(fn_name, slot_idx, suffix, init_id, mut owned_locals, mut local_types) {
 							marked = true
 						}
@@ -2924,7 +2994,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 				}
 				suffix := '${base_suffix}[${elem_idx}]'
 				if tc.ownership_prescan_return_aggregate_literal_descendants(fn_name, slot_idx, suffix, child_id, param_names, mut owned_locals, mut local_types)
-					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, child_id, param_names)
+					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, child_id, param_names, local_types)
 					|| tc.ownership_prescan_add_return_descendant_from_expr(fn_name, slot_idx, suffix, child_id, mut owned_locals, mut local_types) {
 					marked = true
 				}
@@ -2938,7 +3008,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 				key_id := tc.a.child(&node, i)
 				key_suffix := ownership_map_key_storage_suffix(base_suffix)
 				if tc.ownership_prescan_return_aggregate_literal_descendants(fn_name, slot_idx, key_suffix, key_id, param_names, mut owned_locals, mut local_types)
-					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, key_suffix, key_id, param_names)
+					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, key_suffix, key_id, param_names, local_types)
 					|| tc.ownership_prescan_add_return_descendant_from_expr(fn_name, slot_idx, key_suffix, key_id, mut owned_locals, mut local_types) {
 					marked = true
 				} else {
@@ -2962,7 +3032,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 				value_id := tc.a.child(&node, i + 1)
 				suffix := '${base_suffix}[${key_part}]'
 				if tc.ownership_prescan_return_aggregate_literal_descendants(fn_name, slot_idx, suffix, value_id, param_names, mut owned_locals, mut local_types)
-					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, value_id, param_names)
+					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, value_id, param_names, local_types)
 					|| tc.ownership_prescan_add_return_descendant_from_expr(fn_name, slot_idx, suffix, value_id, mut owned_locals, mut local_types) {
 					marked = true
 				}
@@ -2994,7 +3064,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 				value_id := tc.a.child(field, 0)
 				suffix := '${base_suffix}.${field_name}'
 				if tc.ownership_prescan_return_aggregate_literal_descendants(fn_name, slot_idx, suffix, value_id, param_names, mut owned_locals, mut local_types)
-					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, value_id, param_names)
+					|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, value_id, param_names, local_types)
 					|| tc.ownership_prescan_add_return_descendant_from_expr(fn_name, slot_idx, suffix, value_id, mut owned_locals, mut local_types) {
 					marked = true
 				}
@@ -3010,7 +3080,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 						default_id := tc.a.child(field, 0)
 						suffix := '${base_suffix}.${field.value}'
 						if tc.ownership_prescan_return_aggregate_literal_descendants(fn_name, slot_idx, suffix, default_id, param_names, mut owned_locals, mut local_types)
-							|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, default_id, param_names)
+							|| tc.ownership_prescan_add_return_param_descendant_from_expr(fn_name, slot_idx, suffix, default_id, param_names, local_types)
 							|| tc.ownership_prescan_add_return_descendant_from_expr(fn_name, slot_idx, suffix, default_id, mut owned_locals, mut local_types) {
 							marked = true
 						}
@@ -3044,13 +3114,63 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_owned_descendants_from_expr
 	return marked
 }
 
-fn (mut tc TypeChecker) ownership_prescan_add_return_param_descendant_from_expr(fn_name string, slot_idx int, target_suffix string, expr_id flat.NodeId, param_names []string) bool {
+fn (mut tc TypeChecker) ownership_prescan_add_return_param_descendant_from_expr(fn_name string, slot_idx int, target_suffix string, expr_id flat.NodeId, param_names []string, local_types map[string]Type) bool {
 	if fn_name == '' || slot_idx < 0 || target_suffix == '' {
 		return false
 	}
 	source_name := tc.ownership_expr_ident_name(expr_id)
 	if source_name.len == 0 {
-		return false
+		call_id := tc.ownership_unwrap_expr(expr_id)
+		if !tc.valid_node_id(call_id) {
+			return false
+		}
+		node := tc.a.nodes[int(call_id)]
+		if node.kind != .call {
+			return false
+		}
+		info := tc.ownership_prescan_call_info(node, local_types) or { return false }
+		mut descs := (tc.ownership_state().ownership_fn_return_param_descs[info.name] or {
+			[]OwnershipReturnParamDescendant{}
+		}).clone()
+		param_slots := tc.ownership_state().ownership_fn_return_params[info.name] or {
+			[]OwnershipReturnParamSlot{}
+		}
+		for param_slot in param_slots {
+			descs << OwnershipReturnParamDescendant{
+				param_idx: param_slot.param_idx
+				slot_idx:  param_slot.slot_idx
+				via:       [info.name]
+			}
+		}
+		if param_slots.len == 0 {
+			for param_idx in tc.ownership_state().ownership_fn_returns_param[info.name] {
+				descs << OwnershipReturnParamDescendant{
+					param_idx: param_idx
+					via:       [info.name]
+				}
+			}
+		}
+		is_multi_return := tc.fn_ret_types[info.name] is MultiReturn
+		mut marked := false
+		for desc in descs {
+			slot_suffix := if is_multi_return { '[${desc.slot_idx}]' } else { '' }
+			cycle := fn_name in desc.via
+			// Embed the callee's result aliases beneath this aggregate field or element.
+			// Recursive wrappers retain the container loan without growing its path.
+			if tc.ownership_prescan_add_return_param_descendant_from_call_arg(fn_name, node, info,
+				OwnershipReturnParamDescendant{
+					...desc
+					target_suffix:    if cycle {
+						target_suffix
+					} else {
+						target_suffix + slot_suffix + desc.target_suffix
+					}
+					source_is_prefix: desc.source_is_prefix || cycle
+				}, slot_idx, param_names) {
+				marked = true
+			}
+		}
+		return marked
 	}
 	for pi, pname in param_names {
 		if source_name == pname {
@@ -3282,6 +3402,30 @@ fn (mut tc TypeChecker) ownership_prescan_return_param_sources(fn_name string, e
 		return
 	}
 	node := tc.a.nodes[int(call_id)]
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		mut child_id := tc.ownership_unwrap_expr(tc.a.child(&node, 0))
+		if !tc.valid_node_id(child_id) {
+			return
+		}
+		child := tc.a.node(child_id)
+		if child.kind == .index && (child.value == 'range' || (child.children_count > 1
+			&& tc.a.child_node(child, 1).kind == .range)) {
+			child_id = tc.ownership_unwrap_expr(tc.a.child(child, 0))
+		}
+		if tc.valid_node_id(child_id) && tc.a.node(child_id).kind == .ident {
+			child_name := tc.a.node(child_id).value
+			for pi, pname in param_names {
+				if child_name == pname && tc.ownership_call_param_is_mut(fn_name, pi) {
+					param_type := local_types[pname] or { Type(void_) }
+					if unalias_type(unwrap_pointer(param_type)) is Array {
+						tc.ownership_add_fn_return_param(fn_name, pi)
+						tc.ownership_add_fn_return_param_slot(fn_name, pi, slot_idx)
+					}
+				}
+			}
+		}
+		return
+	}
 	if node.kind in [.if_expr, .match_stmt, .or_expr] {
 		tc.ownership_prescan_conditional_return_param_sources(fn_name, call_id, slot_idx, param_names, local_types)
 		return
@@ -3372,6 +3516,9 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_param_from_call_arg(fn_name
 	arg_id := tc.ownership_call_arg_for_return_param_info(node, info, callee_param_idx) or {
 		return
 	}
+	if tc.ownership_call_returns_detached_array_header(info.name, callee_param_idx, arg_id) {
+		return
+	}
 	arg_name := tc.ownership_expr_ident_name(arg_id)
 	if arg_name.len == 0 {
 		return
@@ -3384,11 +3531,11 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_param_from_call_arg(fn_name
 	}
 }
 
-fn (mut tc TypeChecker) ownership_prescan_add_return_param_descendant_from_call_arg(fn_name string, node flat.Node, info CallInfo, callee_desc OwnershipReturnParamDescendant, slot_idx int, param_names []string) {
-	source := tc.ownership_call_arg_for_return_param_source_info(node, info, callee_desc.param_idx, callee_desc.source_suffix) or { return }
+fn (mut tc TypeChecker) ownership_prescan_add_return_param_descendant_from_call_arg(fn_name string, node flat.Node, info CallInfo, callee_desc OwnershipReturnParamDescendant, slot_idx int, param_names []string) bool {
+	source := tc.ownership_call_arg_for_return_param_source_info(node, info, callee_desc.param_idx, callee_desc.source_suffix) or { return false }
 	arg_name := tc.ownership_expr_ident_name(source.arg_id)
 	if arg_name.len == 0 {
-		return
+		return false
 	}
 	for pi, pname in param_names {
 		if arg_name == pname {
@@ -3396,7 +3543,7 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_param_descendant_from_call_
 			tc.ownership_add_fn_return_param_descendant(fn_name, pi, slot_idx, source.source_suffix,
 				callee_desc.target_suffix, callee_desc.source_is_prefix, ownership_return_param_via(callee_desc.via,
 					fn_name))
-			return
+			return true
 		}
 		if ownership_storage_key_is_descendant(arg_name, pname) {
 			source_suffix, source_is_prefix, via := ownership_return_param_call_source(fn_name,
@@ -3404,9 +3551,10 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_param_descendant_from_call_
 				callee_desc.via)
 			tc.ownership_add_fn_return_param_descendant(fn_name, pi, slot_idx, source_suffix, callee_desc.target_suffix,
 				source_is_prefix, via)
-			return
+			return true
 		}
 	}
+	return false
 }
 
 fn (mut tc TypeChecker) ownership_prescan_return_call_name(expr_id flat.NodeId, local_types map[string]Type) string {
@@ -3444,6 +3592,34 @@ fn (mut tc TypeChecker) ownership_add_fn_return_param(fn_name string, param_idx 
 		params << param_idx
 		st.ownership_fn_returns_param[fn_name] = params
 	}
+}
+
+fn (mut tc TypeChecker) ownership_add_fn_return_array_header(fn_name string, param_idx int) {
+	mut st := tc.ownership_state()
+	mut params := st.ownership_fn_array_headers[fn_name] or { []int{} }
+	if param_idx !in params {
+		params << param_idx
+		st.ownership_fn_array_headers[fn_name] = params
+	}
+}
+
+// A returned mutable parameter header borrows a managed caller array. Range and
+// fixed-array arguments instead produce synthetic slice headers whose return
+// lowering acquires independent storage, so their source owner is not retained.
+fn (mut tc TypeChecker) ownership_call_returns_detached_array_header(fn_name string, param_idx int, arg_id flat.NodeId) bool {
+	if param_idx !in tc.ownership_state().ownership_fn_array_headers[fn_name] {
+		return false
+	}
+	clean_id := tc.ownership_unwrap_expr(arg_id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.node(clean_id)
+	if node.kind == .index && (node.value == 'range' || (node.children_count > 1
+		&& tc.a.child_node(node, 1).kind == .range)) {
+		return true
+	}
+	return unalias_type(unwrap_pointer(tc.resolve_type(clean_id))) is ArrayFixed
 }
 
 fn (mut tc TypeChecker) ownership_add_fn_return_param_slot(fn_name string, param_idx int, slot_idx int) {
@@ -4087,6 +4263,33 @@ fn (mut tc TypeChecker) ownership_prescan_expr_for_owned_calls(id flat.NodeId, m
 		.call {
 			return tc.ownership_prescan_call_for_owned_calls(id, node, mut owned_locals, mut local_types)
 		}
+		.index {
+			for i in 0 .. node.children_count {
+				tc.ownership_prescan_node_for_owned_calls(tc.a.child(&node, i), mut owned_locals, mut local_types)
+			}
+			if node.value != 'range' || node.children_count == 0
+				|| tc.ownership_string_range_is_borrowed(id) {
+				return false
+			}
+			mut base_id := tc.ownership_unwrap_expr(tc.a.child(&node, 0))
+			base := tc.a.node(base_id)
+			if base.kind == .prefix && base.op == .mul && base.children_count > 0 {
+				base_id = tc.ownership_unwrap_expr(tc.a.child(base, 0))
+			}
+			base_name := tc.ownership_expr_ident_name(base_id)
+			mut base_type := local_types[base_name] or { tc.resolve_type(base_id) }
+			if !tc.ownership_type_is_string(base_type) {
+				for name, typ in local_types {
+					if ownership_storage_key_is_descendant(base_name, name) {
+						if projected := tc.returned_receiver_projection_type(unwrap_all_pointers(typ), base_name[name.len..]) {
+							base_type = projected
+							break
+						}
+					}
+				}
+			}
+			return tc.ownership_type_is_string(base_type)
+		}
 		.if_expr {
 			return tc.ownership_prescan_if_expr_for_owned_calls(node, mut owned_locals, mut local_types)
 		}
@@ -4370,17 +4573,25 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 	}
 	for i in 1 .. node.children_count {
 		arg_node := tc.a.child_node(&node, i)
-		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_value_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_id := tc.spread_arg_value(arg_value_id) or { arg_value_id }
 		if arg_node.kind == .field_init {
 			tc.ownership_prescan_collapsed_field_arg(node, info, arg_node, arg_id, mut owned_locals, mut local_types)
 			continue
 		}
 		param_idx := tc.ownership_call_arg_decl_param_idx(info, i)
 		type_param_idx := param_idx + arg_shift
-		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx)
+		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx, arg_value_id)
 		target_param_idx := tc.ownership_call_arg_variadic_decl_param_idx(param_idx, variadic_elem_idx)
 		target_suffix := ownership_call_arg_variadic_suffix(variadic_elem_idx)
 		expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
+		if tc.ownership_standard_string_arg_is_borrowed(info.name, param_idx, expected) {
+			continue
+		}
+		if tc.ownership_builtin_string_arg_escapes(info.name, param_idx, expected) {
+			// The return can take this buffer even when every caller supplies a view or literal.
+			tc.ownership_mark_fn_param_owned(info.name, param_idx)
+		}
 		if expected !is Void && expected !is Pointer
 			&& tc.ownership_expr_borrows_storage(arg_id) {
 			continue
@@ -4632,12 +4843,12 @@ fn (tc &TypeChecker) ownership_call_arg_decl_param_idx(info CallInfo, child_idx 
 	return if info.has_receiver { child_idx } else { child_idx - 1 }
 }
 
-fn (tc &TypeChecker) ownership_call_arg_variadic_elem_idx(info CallInfo, type_param_idx int) int {
+fn (tc &TypeChecker) ownership_call_arg_variadic_elem_idx(info CallInfo, type_param_idx int, arg_id flat.NodeId) int {
 	if !info.is_variadic || info.params.len == 0 {
 		return -1
 	}
 	variadic_param_idx := info.params.len - 1
-	if type_param_idx < variadic_param_idx {
+	if type_param_idx < variadic_param_idx || tc.spread_arg_value(arg_id) != none {
 		return -1
 	}
 	return type_param_idx - variadic_param_idx
@@ -4799,6 +5010,9 @@ fn (mut tc TypeChecker) ownership_begin_fn(node flat.Node) {
 		}
 		key := '${fn_name}__param_${i}'
 		child_type := tc.parse_type(child.typ)
+		if tc.ownership_standard_string_arg_is_borrowed(fn_name, i, child_type) {
+			continue
+		}
 		if !tc.autofree_mode
 			&& (key in st.ownership_fn_params || tc.ownership_type_is_owned(child_type)) {
 			tc.ownership_mark_owned(child.value, child_type, tc.a.child(&node, i))
@@ -6763,6 +6977,13 @@ fn (mut tc TypeChecker) ownership_after_assign(lhs_id flat.NodeId, rhs_id flat.N
 	// storage now belongs to the move destination. Record the assignment for
 	// lowering before `ownership_assign_to_name` installs the new value.
 	if !tc.ownership_storage_participates(lhs_name) {
+		// A borrowed string header does not own its previous backing storage. Preserve
+		// that fact before assignment releases the old binding's source loan.
+		if unalias_type(lhs_type) is String {
+			if _ := tc.ownership_borrowed_alias_source(lhs_name, false) {
+				tc.ownership_state().skip_drop_before_assign[int(assign_id)] = true
+			}
+		}
 		if moved := tc.ownership_moved_conflict(lhs_name) {
 			// Dynamic indexes collapse to `[*]`, so equal ownership names do not prove that
 			// the assignment targets the slot that was moved and cleared. Dropping a cleared
@@ -6956,7 +7177,11 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	// A read from retained storage either becomes an independent clone or is rejected.
 	// Never let an uncloneable borrowed read fall through to move bookkeeping.
 	match tc.ownership_borrowed_projection_action(rhs_id, assign_id) {
-		.clone_value {
+		.string_view {
+			tc.ownership_mark_string_view(lhs_name, rhs_id, assign_id)
+			return
+		}
+		.clone_value, .owned_value {
 			tc.ownership_mark_owned(lhs_name, tc.resolve_type(rhs_id), assign_id)
 			return
 		}
@@ -8178,8 +8403,13 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 	if tc.ownership_mark_aggregate_literal_storage(target_name, id, pos, clear_unowned) {
 		return true
 	}
+	tc.ownership_clone_escaping_string_view(expr_id)
 	match tc.ownership_borrowed_projection_action(expr_id, pos) {
-		.clone_value {
+		.string_view {
+			tc.ownership_mark_string_view(target_name, expr_id, pos)
+			return false
+		}
+		.clone_value, .owned_value {
 			tc.ownership_mark_owned(target_name, tc.resolve_type(id), pos)
 			return true
 		}
@@ -8391,7 +8621,11 @@ fn (mut tc TypeChecker) ownership_collect_expr_result(lhs_name string, expr_id f
 		return false
 	}
 	match tc.ownership_borrowed_projection_action(expr_id, pos) {
-		.clone_value {
+		.string_view {
+			tc.ownership_mark_string_view(lhs_name, expr_id, pos)
+			return false
+		}
+		.clone_value, .owned_value {
 			tc.ownership_mark_owned(lhs_name, tc.resolve_type(id), pos)
 			return true
 		}
@@ -9062,17 +9296,24 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 	}
 	for i in 1 .. node.children_count {
 		arg_node := tc.a.child_node(&node, i)
-		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_value_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_id := tc.spread_arg_value(arg_value_id) or { arg_value_id }
 		if arg_node.kind == .field_init {
 			tc.ownership_after_collapsed_field_arg(node, info, arg_node, arg_id, id, call_name, mut call_borrows)
 			continue
 		}
 		param_idx := tc.ownership_call_arg_decl_param_idx(info, i)
 		type_param_idx := param_idx + tc.ownership_call_arg_shift(node, info)
-		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx)
+		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx, arg_value_id)
 		target_param_idx := tc.ownership_call_arg_variadic_decl_param_idx(param_idx, variadic_elem_idx)
 		target_suffix := ownership_call_arg_variadic_suffix(variadic_elem_idx)
 		expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
+		if tc.ownership_standard_string_arg_is_borrowed(call_name, param_idx, expected) {
+			continue
+		}
+		if tc.ownership_clone_nonowned_string_call_arg(call_name, target_param_idx, target_suffix, arg_id, expected) {
+			continue
+		}
 		if tc.ownership_mark_array_insert_prepend_arg(node, call_name, param_idx, arg_id, id) {
 			_ = tc.ownership_borrowed_projection_action(arg_id, arg_id)
 			continue
@@ -9177,7 +9418,11 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 					tc.ownership_add_fn_param_descendant(call_name, target_param_idx, target_name, descendant_type_name)
 					st.owned_vars.delete(source_name)
 					st.owned_var_types.delete(source_name)
-					st.moved_vars.delete(source_name)
+					// Keep the exact transferred element available to return summaries.
+					st.moved_vars[source_name] = MovedVar{
+						...st.moved_vars[arg_name]
+						type_name: descendant_type_name
+					}
 				}
 			}
 		} else {
@@ -9198,6 +9443,81 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 	for name in call_borrows {
 		tc.ownership_release_borrow(name, call_name)
 	}
+}
+
+// A by-value String parameter can become owning through another call site. Give that
+// callee independent storage when this call passes a regular string or a borrowed view.
+// The caller keeps its non-owning value, while an existing owner keeps its move semantics.
+fn (mut tc TypeChecker) ownership_clone_nonowned_string_call_arg(fn_name string, param_idx int, suffix string, arg_id flat.NodeId, expected Type) bool {
+	if unalias_type(expected) !is String {
+		return false
+	}
+	mut st := tc.ownership_state()
+	mut param_owned := '${fn_name}__param_${param_idx}' in st.ownership_fn_params
+		|| tc.ownership_builtin_string_arg_escapes(fn_name, param_idx, expected)
+	if !param_owned {
+		for desc in st.ownership_fn_param_descs[fn_name] {
+			if desc.param_idx == param_idx && desc.suffix == suffix && desc.type_name == 'string' {
+				param_owned = true
+				break
+			}
+		}
+	}
+	if !param_owned {
+		return false
+	}
+	arg_name := tc.ownership_expr_ident_name(arg_id)
+	if arg_name.len > 0 {
+		if _ := tc.ownership_moved_conflict(arg_name) {
+			return false
+		}
+	}
+	if (arg_name.len > 0 && arg_name in st.owned_vars)
+		|| tc.ownership_expr_creates_owned_value(arg_id) {
+		return false
+	}
+	clean_id := tc.ownership_unwrap_expr(arg_id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	if tc.ownership_clone_nonowned_string_conditional_args(fn_name, param_idx, suffix, clean_id, expected) {
+		_ = tc.ownership_consume_conditional_call_arg(fn_name, param_idx, suffix, arg_id, expected, arg_id)
+		return true
+	}
+	if tc.ownership_consume_conditional_call_arg(fn_name, param_idx, suffix, arg_id, expected, arg_id) {
+		return true
+	}
+	st.borrowed_projection_actions[int(arg_id)] = .clone_value
+	st.borrowed_projection_actions[int(clean_id)] = .clone_value
+	return true
+}
+
+fn (mut tc TypeChecker) ownership_clone_nonowned_string_conditional_args(fn_name string, param_idx int, suffix string, id flat.NodeId, expected Type) bool {
+	node := tc.a.nodes[int(id)]
+	if node.kind == .if_expr {
+		for i in 1 .. node.children_count {
+			branch_id := tc.a.child(&node, i)
+			tail_id := if tc.a.nodes[int(branch_id)].kind == .if_expr {
+				branch_id
+			} else {
+				tc.branch_tail_expr_id(branch_id)
+			}
+			if tc.valid_node_id(tail_id) && unalias_type(tc.resolve_type(tail_id)) is String {
+				_ = tc.ownership_clone_nonowned_string_call_arg(fn_name, param_idx, suffix, tail_id, expected)
+			}
+		}
+		return true
+	}
+	if node.kind == .match_stmt {
+		for i in 1 .. node.children_count {
+			tail_id := tc.branch_tail_expr_id(tc.a.child(&node, i))
+			if tc.valid_node_id(tail_id) && unalias_type(tc.resolve_type(tail_id)) is String {
+				_ = tc.ownership_clone_nonowned_string_call_arg(fn_name, param_idx, suffix, tail_id, expected)
+			}
+		}
+		return true
+	}
+	return false
 }
 
 fn (tc &TypeChecker) ownership_call_arg_reads_receiver_storage(node flat.Node, info CallInfo, arg_id flat.NodeId, expected Type) bool {
@@ -9373,9 +9693,28 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 	}
 	for i in 0 .. node.children_count {
 		expr_id := tc.a.child(&node, i)
+		if tc.unsafe_depth == 0 {
+			if local := tc.returned_receiver_local_storage_in_value(expr_id, []flat.NodeId{}, map[string]flat.NodeId{}) {
+				tc.record_error_at(.return_mismatch, 'cannot return a reference to local storage `${local}`', expr_id, tc.a.node(expr_id).pos)
+				return
+			}
+		}
+		is_string_view := tc.ownership_expr_is_string_view(expr_id)
+		tc.ownership_clone_escaping_string_view(expr_id)
 		// Return lowering also consumes the checker decision for borrowed projections.
 		// Record it here before ownership bookkeeping examines the retained source.
-		_ = tc.ownership_borrowed_projection_action(expr_id, expr_id)
+		projection_action := tc.ownership_borrowed_projection_action(expr_id, expr_id)
+		if projection_action == .string_view {
+			continue
+		}
+		if projection_action == .owned_value
+			|| (projection_action == .clone_value && is_string_view) {
+			st.mark_fn_return_owned(st.cur_fn)
+			for slot_idx in tc.ownership_return_slot_indices(expr_id, i, '') {
+				tc.ownership_add_fn_return_slot(st.cur_fn, slot_idx)
+			}
+			continue
+		}
 		name := if tc.ownership_method_value_clones_receiver(expr_id) {
 			''
 		} else {
@@ -9798,6 +10137,9 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_descendant(target_name 
 	source_suffix := source.source_suffix
 	arg_name := tc.ownership_expr_ident_name(arg_id)
 	if source_suffix.len == 0 {
+		if tc.ownership_mark_cloned_return_source(target_name, arg_id, pos) {
+			return true
+		}
 		if arg_name.len == 0 {
 			return tc.ownership_mark_storage_from_expr(target_name, arg_id, tc.resolve_type(arg_id), pos)
 		}
@@ -9873,6 +10215,13 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_source_expr(target_name
 	}
 	id := tc.ownership_unwrap_expr(expr_id)
 	if !tc.valid_node_id(id) {
+		return false
+	}
+	if tc.ownership_mark_cloned_return_source(target_name, expr_id, pos) {
+		return true
+	}
+	if tc.ownership_borrowed_projection_action(expr_id, pos) == .string_view {
+		tc.ownership_mark_string_view(target_name, expr_id, pos)
 		return false
 	}
 	source_name := tc.ownership_expr_ident_name(id)
@@ -10348,6 +10697,9 @@ fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, 
 	return_param_idxs := tc.ownership_state().ownership_fn_returns_param[call_name] or { []int{} }
 	for param_idx in return_param_idxs {
 		arg_id := tc.ownership_call_arg_for_return_param_info(node, info, param_idx) or { continue }
+		if tc.ownership_call_returns_detached_array_header(call_name, param_idx, arg_id) {
+			continue
+		}
 		mut borrow_name := tc.ownership_borrowed_name(arg_id)
 		if borrow_name.len == 0 {
 			borrow_name = tc.ownership_expr_ident_name(arg_id)
@@ -10364,11 +10716,31 @@ fn (mut tc TypeChecker) ownership_mark_borrow_from_call_return(lhs_name string, 
 	return false
 }
 
+// An argument copied for an owning call transfers that independent copy through its return.
+fn (mut tc TypeChecker) ownership_mark_cloned_return_source(target string, id flat.NodeId, pos flat.NodeId) bool {
+	if !tc.ownership_expr_is_borrowed_projection(id) {
+		return false
+	}
+	typ := tc.resolve_type(id)
+	if !tc.ownership_type_requires_destruction(typ) {
+		return false
+	}
+	tc.ownership_mark_owned(target, typ, pos)
+	return true
+}
+
 fn (mut tc TypeChecker) ownership_mark_from_return_param(lhs_name string, call_id flat.NodeId, node flat.Node, fn_name string, param_idx int, pos flat.NodeId) bool {
 	if param_idx < 0 {
 		return false
 	}
 	arg_id := tc.ownership_call_arg_for_return_param(call_id, node, param_idx) or { return false }
+	if tc.ownership_mark_cloned_return_source(lhs_name, arg_id, pos) {
+		return true
+	}
+	if tc.ownership_borrowed_projection_action(arg_id, pos) == .string_view {
+		tc.ownership_mark_string_view(lhs_name, arg_id, pos)
+		return true
+	}
 	arg_name := tc.ownership_expr_ident_name(arg_id)
 	if arg_name.len == 0 {
 		return tc.ownership_mark_storage_from_expr(lhs_name, arg_id, tc.resolve_type(arg_id), pos)
@@ -10462,9 +10834,11 @@ fn (tc &TypeChecker) ownership_call_arg_for_return_param_source_info(node flat.N
 		if arg_node.kind == .field_init {
 			continue
 		}
+		arg_value_id := tc.call_arg_value(tc.a.child(&node, i))
+		arg_id := tc.spread_arg_value(arg_value_id) or { arg_value_id }
 		raw_param_idx := tc.ownership_call_arg_decl_param_idx(info, i)
 		type_param_idx := raw_param_idx + arg_shift
-		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx)
+		variadic_elem_idx := tc.ownership_call_arg_variadic_elem_idx(info, type_param_idx, arg_value_id)
 		target_param_idx := tc.ownership_call_arg_variadic_decl_param_idx(raw_param_idx, variadic_elem_idx)
 		if target_param_idx != param_idx {
 			continue
@@ -10473,20 +10847,20 @@ fn (tc &TypeChecker) ownership_call_arg_for_return_param_source_info(node flat.N
 		if target_suffix.len > 0 {
 			if source_suffix == target_suffix {
 				return OwnershipReturnParamArg{
-					arg_id:        tc.call_arg_value(tc.a.child(&node, i))
+					arg_id:        arg_id
 					source_suffix: ''
 				}
 			}
 			if ownership_storage_key_is_descendant(source_suffix, target_suffix) {
 				return OwnershipReturnParamArg{
-					arg_id:        tc.call_arg_value(tc.a.child(&node, i))
+					arg_id:        arg_id
 					source_suffix: source_suffix[target_suffix.len..]
 				}
 			}
 			continue
 		}
 		return OwnershipReturnParamArg{
-			arg_id:        tc.call_arg_value(tc.a.child(&node, i))
+			arg_id:        arg_id
 			source_suffix: source_suffix
 		}
 	}
@@ -10556,6 +10930,69 @@ fn (tc &TypeChecker) ownership_call_name_in_module(id flat.NodeId, module_name s
 	return ''
 }
 
+// Addressed ranges only own their header, so their bytes need a retained source owner.
+fn (mut tc TypeChecker) check_ownership_addressed_string_range(id flat.NodeId, child_id flat.NodeId) {
+	if tc.ownership == unsafe { nil } {
+		return
+	}
+	range_id := tc.ownership_unwrap_expr(child_id)
+	if !tc.valid_node_id(range_id) {
+		return
+	}
+	range := tc.a.node(range_id)
+	if range.kind != .index || range.value != 'range' || range.children_count == 0
+		|| range.op == .gated_index {
+		return
+	}
+	base_id := tc.a.child(range, 0)
+	if tc.ownership_string_range_source_is_temporary(base_id) {
+		tc.record_error_at(.assignment_mismatch, 'cannot take an addressed string range from a temporary value; assign the source to a variable first', id, tc.a.node(base_id).pos)
+	}
+}
+
+fn (mut tc TypeChecker) ownership_string_range_source_is_temporary(id flat.NodeId) bool {
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.node(clean_id)
+	if node.kind == .string_literal || unalias_type(tc.resolve_type(clean_id)) is Pointer {
+		return false
+	}
+	if tc.expr_can_take_address(clean_id) {
+		match node.kind {
+			.array_literal, .array_init {
+				return true
+			}
+			.selector, .index, .or_expr, .postfix {
+				return tc.ownership_string_range_source_is_temporary(tc.a.child(node, 0))
+			}
+			.block {
+				return tc.ownership_string_range_source_is_temporary(tc.a.child(node, node.children_count - 1))
+			}
+			else {
+				return false
+			}
+		}
+	}
+	if node.kind in [.cast_expr, .as_expr] && node.children_count > 0 {
+		return tc.ownership_string_range_source_is_temporary(tc.a.child(node, 0))
+	}
+	if node.kind == .call && node.children_count > 0 {
+		fn_node := tc.a.child_node(node, 0)
+		if fn_node.kind == .selector && fn_node.value == 'substr_unsafe'
+			&& fn_node.children_count > 0 {
+			if info := tc.resolve_call_info(clean_id, *node) {
+				if info.name == 'string.substr_unsafe'
+					&& tc.ownership_fn_declared_in_builtin(info.name) {
+					return tc.ownership_string_range_source_is_temporary(tc.a.child(fn_node, 0))
+				}
+			}
+		}
+	}
+	return true
+}
+
 fn (tc &TypeChecker) ownership_unwrap_expr(id flat.NodeId) flat.NodeId {
 	mut cur := id
 	for tc.valid_node_id(cur) {
@@ -10601,7 +11038,8 @@ fn (mut tc TypeChecker) ownership_expr_is_owned_clone_call(id flat.NodeId) bool 
 // ownership_expr_creates_owned_value reports whether evaluating an expression creates a
 // fresh owner rather than merely naming ownership-bearing storage.
 pub fn (tc &TypeChecker) ownership_expr_creates_owned_value(id flat.NodeId) bool {
-	if tc.ownership_expr_is_to_owned_call(id) || tc.ownership_expr_is_ownership_call(id) {
+	if tc.ownership_expr_is_to_owned_call(id) || tc.ownership_expr_is_ownership_call(id)
+		|| tc.ownership_expr_is_owned_string_range(id) {
 		return true
 	}
 	call_id := tc.ownership_unwrap_expr(id)
@@ -10719,6 +11157,9 @@ pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []Owne
 	mut result := []OwnershipCallResultSource{}
 	for param_idx in tc.ownership_state().ownership_fn_returns_param[call_name] {
 		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, param_idx) {
+			if tc.ownership_call_returns_detached_array_header(call_name, param_idx, arg_id) {
+				continue
+			}
 			candidate := OwnershipCallResultSource{
 				arg_id: arg_id
 			}
@@ -10729,6 +11170,9 @@ pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []Owne
 	}
 	for slot in tc.ownership_state().ownership_fn_return_params[call_name] {
 		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, slot.param_idx) {
+			if tc.ownership_call_returns_detached_array_header(call_name, slot.param_idx, arg_id) {
+				continue
+			}
 			candidate := OwnershipCallResultSource{
 				arg_id:        arg_id
 				target_suffix: if is_multi_return { '[${slot.slot_idx}]' } else { '' }
@@ -10749,6 +11193,28 @@ pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []Owne
 		}
 		if candidate !in result {
 			result << candidate
+		}
+	}
+	return result
+}
+
+// Compose an aggregate result projection with its argument-to-result aliases.
+fn (mut tc TypeChecker) ownership_call_result_projection_sources(id flat.NodeId, suffix string) []OwnershipCallResultSource {
+	mut result := []OwnershipCallResultSource{}
+	for source in tc.ownership_call_result_sources(id) {
+		if ownership_storage_suffix_contains(source.target_suffix, suffix) {
+			result << OwnershipCallResultSource{
+				arg_id:           source.arg_id
+				source_suffix:    source.source_suffix + suffix[source.target_suffix.len..]
+				source_is_prefix: source.source_is_prefix
+			}
+		} else if ownership_storage_suffix_contains(suffix, source.target_suffix) {
+			result << OwnershipCallResultSource{
+				arg_id:           source.arg_id
+				source_suffix:    source.source_suffix
+				target_suffix:    source.target_suffix[suffix.len..]
+				source_is_prefix: source.source_is_prefix
+			}
 		}
 	}
 	return result
@@ -10943,6 +11409,9 @@ fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, t
 	if !tc.valid_node_id(source_id) {
 		return false
 	}
+	if tc.ownership_expr_is_owned_string_range(source_id) {
+		return false
+	}
 	node := tc.a.nodes[int(source_id)]
 	if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
 		return tc.ownership_expr_moves_named_storage(tc.a.child(&node, 0), target)
@@ -11062,8 +11531,8 @@ fn (tc &TypeChecker) ownership_call_receiver_id(node flat.Node) ?flat.NodeId {
 fn (tc &TypeChecker) ownership_call_name(id flat.NodeId) string {
 	call_id := tc.ownership_unwrap_expr(id)
 	idx := int(call_id)
-	if idx >= 0 && idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-		return tc.resolved_call_names[idx].value
+	if name := tc.cached_resolved_call(call_id) {
+		return name
 	}
 	if !tc.valid_node_id(call_id) {
 		return ''
@@ -11252,12 +11721,9 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 }
 
 // ownership_borrowed_projection_action records how a read from retained storage is handled.
-// Cloneable values are marked for lowering; uncloneable values are rejected and never fall
-// through to move bookkeeping.
+// Allocating string ranges retain ownership; local string views remain non-owning. Other
+// cloneable values are marked for lowering; uncloneable values never fall through to moves.
 fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos flat.NodeId) OwnershipBorrowedProjectionAction {
-	if !tc.ownership_expr_borrows_storage(id) {
-		return .not_borrowed
-	}
 	clean_id := tc.ownership_unwrap_expr(id)
 	mut st := tc.ownership_state()
 	if action := st.borrowed_projection_actions[int(id)] {
@@ -11269,9 +11735,20 @@ fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos
 			return action
 		}
 	}
+	if tc.ownership_expr_is_owned_string_range(clean_id) {
+		st.borrowed_projection_actions[int(id)] = .owned_value
+		st.borrowed_projection_actions[int(clean_id)] = .owned_value
+		return .owned_value
+	}
+	is_string_view := tc.ownership_expr_is_string_view(id)
+	if !is_string_view && !tc.ownership_expr_borrows_storage(id) {
+		return .not_borrowed
+	}
 	typ := tc.resolve_type(clean_id)
 	mut action := OwnershipBorrowedProjectionAction.clone_value
-	if bad_type := tc.ownership_default_clone_missing_method(typ) {
+	if is_string_view {
+		action = .string_view
+	} else if bad_type := tc.ownership_default_clone_missing_method(typ) {
 		tc.record_error(.assignment_mismatch, 'cannot copy borrowed `${typ.name()}` value: `${bad_type}` requires ownership destruction but has no compatible `clone()` method; implement `IClone` or use a pointer', pos)
 		action = .reject_copy
 	}
@@ -11280,6 +11757,200 @@ fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos
 		st.borrowed_projection_actions[int(clean_id)] = action
 	}
 	return action
+}
+
+// Ordinary string slices allocate through string.substr; unlike aggregate slices, they do
+// not require an additional ownership clone. Dereferences and substr_unsafe retain a view
+// into another string. Neither creates an owned string until explicitly copied.
+fn (mut tc TypeChecker) ownership_expr_is_string_view(id flat.NodeId) bool {
+	mut visited := map[int]bool{}
+	return tc.ownership_string_view_source_id(id, mut visited) != flat.empty_node
+}
+
+fn (mut tc TypeChecker) ownership_string_view_source_id(id flat.NodeId, mut visited map[int]bool) flat.NodeId {
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) || visited[int(clean_id)]
+		|| tc.ownership_expr_is_borrowed_projection(clean_id)
+		|| unalias_type(tc.resolve_type(clean_id)) !is String {
+		return flat.empty_node
+	}
+	visited[int(clean_id)] = true
+	node := tc.a.nodes[int(clean_id)]
+	if node.kind == .block && node.value == 'unsafe' {
+		return tc.ownership_string_view_source_id(tc.branch_tail_expr_id(clean_id), mut visited)
+	}
+	if node.kind == .ident && tc.ownership != unsafe { nil }
+		&& node.value !in tc.ownership.owned_vars {
+		for borrows in tc.ownership.borrowed_vars.values() {
+			if borrows.any(it.borrower == node.value) {
+				return clean_id
+			}
+		}
+	}
+	if (node.kind == .index && node.value == 'range'
+		&& tc.ownership_string_range_is_borrowed(clean_id))
+		|| (node.kind == .prefix && node.op == .mul && node.children_count > 0) {
+		return clean_id
+	}
+	if node.kind == .call && node.children_count > 0 {
+		fn_node := tc.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.value == 'substr_unsafe'
+			&& fn_node.children_count > 0
+			&& unalias_type(unwrap_all_pointers(tc.resolve_type(tc.a.child(fn_node, 0)))) is String {
+			if info := tc.resolve_call_info(clean_id, node) {
+				if info.name == 'string.substr_unsafe'
+					&& tc.ownership_fn_declared_in_builtin(info.name) {
+					return clean_id
+				}
+			}
+		}
+		if tc.ownership_expr_is_to_owned_call(clean_id)
+			|| tc.ownership_expr_is_owned_clone_call(clean_id)
+			|| tc.ownership_expr_is_ownership_call(clean_id) {
+			return flat.empty_node
+		}
+		for source in tc.ownership_call_result_sources(clean_id) {
+			if source.source_suffix != '' || source.target_suffix != '' {
+				continue
+			}
+			view_id := tc.ownership_string_view_source_id(source.arg_id, mut visited)
+			if view_id != flat.empty_node {
+				return view_id
+			}
+		}
+	}
+	return flat.empty_node
+}
+
+// Only a non-gated range directly beneath `&` is lowered through substr_borrowed.
+fn (tc &TypeChecker) ownership_string_range_is_borrowed(id flat.NodeId) bool {
+	mut current := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(current) || tc.a.node(current).op == .gated_index {
+		return false
+	}
+	for {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) || parent_id == current {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .paren {
+			current = parent_id
+			continue
+		}
+		return parent.kind == .prefix && parent.op == .amp
+	}
+}
+
+fn (tc &TypeChecker) ownership_expr_is_owned_string_range(id flat.NodeId) bool {
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.node(clean_id)
+	return node.kind == .index && node.value == 'range'
+		&& unalias_type(tc.resolve_type(clean_id)) is String
+		&& !tc.ownership_string_range_is_borrowed(clean_id)
+}
+
+// ownership_mark_string_view retains a borrowed string's relation to its source owner.
+// A normal range slice instead has its own allocation and does not borrow the source.
+fn (mut tc TypeChecker) ownership_mark_string_view(target string, id flat.NodeId, pos flat.NodeId) {
+	mut st := tc.ownership_state()
+	st.owned_vars.delete(target)
+	st.owned_var_types.delete(target)
+	mut visited := map[int]bool{}
+	clean_id := tc.ownership_string_view_source_id(id, mut visited)
+	if clean_id == flat.empty_node {
+		return
+	}
+	node := tc.a.nodes[int(clean_id)]
+	if node.kind == .ident {
+		_ = tc.ownership_alias_borrower(target, node.value, pos)
+		return
+	}
+	if node.kind == .index {
+		return
+	}
+	source_id := if node.kind == .call {
+		tc.a.child(tc.a.child_node(&node, 0), 0)
+	} else {
+		tc.a.child(&node, 0)
+	}
+	mut source_visited := map[string]bool{}
+	tc.ownership_mark_string_view_source(target, source_id, '', pos, mut source_visited)
+}
+
+// Follow returned-pointer aliases before retaining a string view's source loan.
+fn (mut tc TypeChecker) ownership_mark_string_view_source(target string, source_id flat.NodeId, suffix string, pos flat.NodeId, mut visited map[string]bool) {
+	clean_id := tc.ownership_unwrap_expr(source_id)
+	key := '${int(clean_id)}:${suffix}'
+	if !tc.valid_node_id(clean_id) || visited[key]
+		|| tc.ownership_expr_is_borrowed_projection(clean_id) {
+		return
+	}
+	visited[key] = true
+	if suffix.len > 0 {
+		if projected := tc.ownership_aggregate_projection_expr(clean_id, suffix) {
+			tc.ownership_mark_string_view_source(target, projected, '', pos, mut visited)
+			return
+		}
+	}
+	source_name := tc.ownership_expr_ident_name(clean_id)
+	if source_name.len > 0 && tc.ownership_alias_borrower(target, source_name + suffix, pos) {
+		return
+	}
+	name := tc.ownership_borrowed_name(clean_id)
+	if name.len > 0 && suffix.len == 0 {
+		tc.ownership_add_borrow(name, target, pos, false)
+		return
+	}
+	node := tc.a.node(clean_id)
+	if node.kind == .call {
+		for source in tc.ownership_call_result_projection_sources(clean_id, suffix) {
+			if source.target_suffix.len == 0 {
+				tc.ownership_mark_string_view_source(target, source.arg_id, source.source_suffix, pos, mut visited)
+			}
+		}
+		return
+	}
+	if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count > 0 {
+		tc.ownership_mark_string_view_source(target, tc.a.child(node, 0), suffix, pos, mut visited)
+		return
+	}
+	if node.kind in [.if_expr, .match_stmt, .or_expr] {
+		start := if node.kind == .or_expr { 0 } else { 1 }
+		for i in start .. int(node.children_count) {
+			child_id := tc.a.child(node, i)
+			branch_id := if node.kind == .or_expr && i == 0 {
+				child_id
+			} else {
+				tc.branch_tail_expr_id(child_id)
+			}
+			tc.ownership_mark_string_view_source(target, branch_id, suffix, pos, mut visited)
+		}
+		return
+	}
+	if source_name.len > 0 {
+		tc.ownership_add_borrow(source_name + suffix, target, pos, false)
+	}
+}
+
+// A borrowed string stored in an aggregate or returned by value must retain the existing
+// independent-clone behavior. Range slices already have an independent allocation.
+fn (mut tc TypeChecker) ownership_clone_escaping_string_view(id flat.NodeId) {
+	mut visited := map[int]bool{}
+	view_id := tc.ownership_string_view_source_id(id, mut visited)
+	if view_id == flat.empty_node {
+		return
+	}
+	clean_id := tc.ownership_unwrap_expr(id)
+	if tc.a.nodes[int(view_id)].kind == .index {
+		return
+	}
+	mut st := tc.ownership_state()
+	st.borrowed_projection_actions[int(id)] = .clone_value
+	st.borrowed_projection_actions[int(clean_id)] = .clone_value
 }
 
 // ownership_expr_borrows_storage reports whether `id` reads storage another value keeps
@@ -11291,6 +11962,9 @@ fn (tc &TypeChecker) ownership_expr_borrows_storage(id flat.NodeId) bool {
 	}
 	clean_id := tc.ownership_unwrap_expr(id)
 	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	if tc.ownership_expr_is_owned_string_range(clean_id) {
 		return false
 	}
 	node := tc.a.nodes[int(clean_id)]
@@ -11477,9 +12151,9 @@ pub fn (tc &TypeChecker) ownership_guard_read_moves_value(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil } && tc.ownership.guard_move_reads[int(id)]
 }
 
-// ownership_assignment_reinitializes_moved_value reports whether the assignment
-// writes a fresh value into storage whose previous value has already been moved.
-// The transformer uses this to avoid dropping storage now owned by the move target.
+// ownership_assignment_reinitializes_moved_value reports whether the previous value
+// was moved or is a borrowed string header. The transformer uses this to avoid
+// dropping storage owned by another value when the assignment replaces the binding.
 pub fn (tc &TypeChecker) ownership_assignment_reinitializes_moved_value(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil }
 		&& tc.ownership.skip_drop_before_assign[int(id)]
@@ -12111,4 +12785,46 @@ fn (tc &TypeChecker) ownership_fn_declared_in_builtin(fn_name string) bool {
 		|| normalized.contains('/vlib/builtin/')
 		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
 			&& normalized.all_after_last('/').starts_with('builtin_'))
+}
+
+fn (tc &TypeChecker) ownership_builtin_string_arg_escapes(fn_name string, param_idx int, typ Type) bool {
+	return param_idx > 0 && unalias_type(typ) is String && fn_name.starts_with('string.')
+		&& tc.ownership_fn_declared_in_builtin(fn_name)
+		&& tc.ownership_call_returns_param(fn_name, param_idx)
+}
+
+// These standard-library APIs inspect or copy string contents without taking their buffers.
+// Keep their existing value-shaped signatures compatible with ownership callers. User
+// functions and ownership-aware aggregate arguments retain their normal move semantics.
+fn (tc &TypeChecker) ownership_standard_string_arg_is_borrowed(fn_name string, param_idx int, typ Type) bool {
+	if unalias_type(typ) !is String {
+		return false
+	}
+	if fn_name.starts_with('string.') && tc.ownership_fn_declared_in_builtin(fn_name) {
+		// Returned arguments transfer their buffers, as in `substr_or`'s fallback.
+		// The receiver remains borrowed even when a method returns a view into it.
+		return param_idx == 0 || !tc.ownership_call_returns_param(fn_name, param_idx)
+	}
+	mut standard_module := ''
+	if fn_name in ['os.is_abs_path', 'os.is_unc_path', 'os.is_drive_rooted', 'os.is_normal_path',
+		'os.win_volume_len', 'os.exists', 'os.is_file', 'os.is_dir', 'os.is_executable', 'os.mkdir',
+		'os.mkdir_all', 'os.file_ext', 'os.read_file', 'os.read_bytes', 'os.ls', 'os.real_path',
+		'os.walk', 'os.kind_of_existing_path', 'os.join_path', 'os.join_path_single',
+		'os.find_abs_path_of_executable', 'os.exists_in_system_path'] {
+		standard_module = 'os'
+	} else if fn_name in ['strconv.parse_uint', 'strconv.parse_int', 'strconv.common_parse_uint',
+		'strconv.common_parse_uint2', 'strconv.common_parse_int', 'strconv.atoi', 'strconv.atol'] {
+		standard_module = 'strconv'
+	} else if fn_name in ['strings.Builder.write_string', 'strings.Builder.write_string2'] {
+		standard_module = 'strings'
+	}
+	if standard_module == '' {
+		return false
+	}
+	file := tc.fn_type_files[fn_name] or { return false }
+	normalized := file.replace('\\', '/')
+	return normalized.starts_with('vlib/${standard_module}/')
+		|| normalized.contains('/vlib/${standard_module}/')
+		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
+			&& normalized.all_after_last('/').starts_with('${standard_module}_'))
 }

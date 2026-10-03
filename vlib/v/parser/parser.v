@@ -8630,9 +8630,10 @@ fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
 		core_id = p.a.child(&p.a.nodes[int(core_id)], 0)
 	}
 	rhs := p.a.nodes[int(core_id)]
-	// Only field selectors have wrapper recovery through parentheses here.
+	// Field selectors and optional dereferences retain their guard shape through parentheses.
+	parenthesized_guard := rhs.kind == .selector || (rhs.kind == .prefix && rhs.op == .mul)
 	if rhs.kind !in [.call, .index, .prefix, .selector, .ident]
-		|| (parenthesized && rhs.kind != .selector) {
+		|| (parenthesized && !parenthesized_guard) {
 		mut start := assign_end
 		mut end := p.a.nodes[int(rhs_id)].pos.end
 		source := p.s.src
@@ -9259,19 +9260,33 @@ fn (mut p Parser) parenthesized_match_header_starts_block() bool {
 		return false
 	}
 	mut lookahead := p.s
-	mut depth := 1
-	for depth > 0 {
-		tok := lookahead.scan()
-		if tok == .eof {
-			return false
+	mut next := token.Token.lpar
+	// A parenthesized subject may have postfixes before the match body.
+	for (next in [.lpar, .lsbr, .dot]) {
+		if next == .dot {
+			next = lookahead.scan()
+			if next != .name && !next.is_keyword() {
+				return false
+			}
+			next = lookahead.scan()
+			continue
 		}
-		if tok == .lpar {
-			depth++
-		} else if tok == .rpar {
-			depth--
+		opening := next
+		closing := if opening == .lpar { token.Token.rpar } else { token.Token.rsbr }
+		mut depth := 1
+		for depth > 0 {
+			tok := lookahead.scan()
+			if tok == .eof {
+				return false
+			}
+			if tok == opening {
+				depth++
+			} else if tok == closing {
+				depth--
+			}
 		}
+		next = lookahead.scan()
 	}
-	mut next := lookahead.scan()
 	if next == .semicolon {
 		next = lookahead.scan()
 	}
@@ -16315,9 +16330,11 @@ fn (mut p Parser) parse_type_name() string {
 	// pointer &T
 	if p.tok == .amp {
 		p.next()
-		if p.parsing_struct_field_type && p.tok == .lsbr && p.peek() == .rsbr && !p.prefs.is_fmt {
-			p.record_diagnostic_span('V arrays are already references behind the scenes,\nthere is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).\nIf you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
-				p.tok_pos, p.tok_end)
+		$if !ownership ? {
+			if p.parsing_struct_field_type && p.tok == .lsbr && p.peek() == .rsbr && !p.prefs.is_fmt {
+				p.record_diagnostic_span('V arrays are already references behind the scenes,\nthere is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).\nIf you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
+					p.tok_pos, p.tok_end)
+			}
 		}
 		return '&' + p.parse_type_name()
 	}

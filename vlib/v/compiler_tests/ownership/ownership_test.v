@@ -1475,7 +1475,8 @@ fn pass(s string) string {
 	assert fail_param_expr_arg.exit_code != 0
 	assert fail_param_expr_arg.output.contains('use of moved value: `x`'), fail_param_expr_arg.output
 
-	ok_param_literal_after_owned_call := run_ownership_check(v3_bin, 'return_param_literal_after_owned_call', "
+	// Owning calls copy literals, so their returned copies keep move tracking.
+	fail_param_literal_after_owned_call := run_ownership_check(v3_bin, 'return_param_literal_after_owned_call', "
 fn main() {
 	owned := 'hello'.to_owned()
 	x := pass(owned)
@@ -1490,7 +1491,26 @@ fn pass(s string) string {
 	return s
 }
 	")
-	assert ok_param_literal_after_owned_call.exit_code == 0, ok_param_literal_after_owned_call.output
+	assert fail_param_literal_after_owned_call.exit_code != 0
+	assert fail_param_literal_after_owned_call.output.contains('use of moved value: `y`'), fail_param_literal_after_owned_call.output
+
+	ok_cloned_param_literal_after_owned_call := run_ownership_check(v3_bin, 'cloned_return_param_literal_after_owned_call', "
+fn main() {
+	owned := 'hello'.to_owned()
+	x := pass(owned)
+	println(x)
+	y := pass('literal')
+	z := y.clone()
+	assert z == y
+	assert unsafe { z.str != y.str }
+	println(y)
+}
+
+fn pass(s string) string {
+	return s
+}
+	")
+	assert ok_cloned_param_literal_after_owned_call.exit_code == 0, ok_cloned_param_literal_after_owned_call.output
 
 	ok_nested_fn_literal_return := run_ownership_check(v3_bin, 'nested_fn_literal_return_ignored', "
 fn run(f fn () string) {

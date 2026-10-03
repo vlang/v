@@ -5102,6 +5102,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.tc.cur_file
 	}
 	g.cur_fn_assert_continues = g.tc.declaration_has_attribute(node_id, 'assert_continues')
+	g.cur_fn_manualfree = node.skip_ownership_drops()
+		|| g.tc.declaration_has_attribute(node_id, 'manualfree')
 	g.begin_usable_expr_type_memo()
 	g.known_expr_type_id = -1
 	g.ownership_return_index = 0
