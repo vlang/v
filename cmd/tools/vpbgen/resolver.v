@@ -211,6 +211,7 @@ pub fn resolve_files(files []File, module_name string) !ResolvedFile {
 	for f in files {
 		resolve_file(mut res, &idx, f)
 	}
+	check_type_names(mut res)
 	if res.module == '' && files.len > 0 {
 		res.module = default_module_name(files[0])
 	}
@@ -467,6 +468,25 @@ fn check_field_declarations(mut res ResolvedFile, qualified string, fields []Res
 			continue
 		}
 		by_name[f.name] = true
+	}
+}
+
+// check_type_names reports declared types whose V name V will not accept.
+//
+// A one-letter capital name is reserved for generic template types. V says so
+// when the declaration is an enum, but accepts it for a struct and then lowers
+// the type's uses to `int`, so the generated file compiles on its own and fails
+// at the first call with a diagnostic about a C conversion.
+fn check_type_names(mut res ResolvedFile) {
+	for m in res.messages {
+		if single_capital_name(m.v_name) {
+			res.errors << 'pbgen: message `${m.proto_name}` becomes the type `${m.v_name}`, and a single letter capital name is reserved for generic template types. Rename it in the schema.'
+		}
+	}
+	for en in res.enums {
+		if single_capital_name(en.v_name) {
+			res.errors << 'pbgen: enum `${en.proto_name}` becomes the type `${en.v_name}`, and a single letter capital name is reserved for generic template types. Rename it in the schema.'
+		}
 	}
 }
 

@@ -160,6 +160,20 @@ pub fn safe_type_name(name string) string {
 	return out
 }
 
+// single_capital_name reports whether `name` is one capital letter.
+//
+// V reserves those for generic template types. It says so plainly for an enum,
+// but a struct declaration with one of these names is accepted and the returned
+// type is then lowered to C as `int`, so the first call that uses it fails with
+// `cannot convert 'struct mod__M' to 'int'` and a diagnostic naming neither the
+// type nor the rule.
+//
+// A schema is free to call a message `M`, so the generator reports it rather
+// than emitting code that cannot be called.
+pub fn single_capital_name(name string) bool {
+	return name.len == 1 && name[0] >= `A` && name[0] <= `Z`
+}
+
 // method_name returns the V function name for a message's codec, e.g.
 // `GetRequest` gives `get_request`.
 pub fn method_name(name string) string {

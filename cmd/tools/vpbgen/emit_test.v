@@ -544,7 +544,7 @@ fn test_resolver_rejects_an_unknown_type() {
 	// something plausible, and that is exactly the failure to refuse.
 	f := parse_text('bad.proto', 'syntax = "proto3";
 package demo;
-message M { Missing other = 1; }
+message Demo { Missing other = 1; }
 ')!
 	res := resolve_files([f], 'demo')!
 	assert res.errors.len == 1
@@ -554,7 +554,7 @@ message M { Missing other = 1; }
 fn test_resolver_rejects_a_reserved_field_number() {
 	f := parse_text('bad.proto', 'syntax = "proto3";
 package demo;
-message M { reserved 2; string a = 2; }
+message Demo { reserved 2; string a = 2; }
 ')!
 	res := resolve_files([f], 'demo')!
 	assert res.errors.len == 1
@@ -566,7 +566,7 @@ fn test_resolver_rejects_a_bad_map_key() {
 	// not allow one.
 	f := parse_text('bad.proto', 'syntax = "proto3";
 package demo;
-message M { map<double, int32> m = 1; }
+message Demo { map<double, int32> m = 1; }
 ')!
 	res := resolve_files([f], 'demo')!
 	assert res.errors.len == 1
@@ -576,7 +576,7 @@ message M { map<double, int32> m = 1; }
 fn test_resolver_rejects_proto2_syntax() {
 	f := parse_text('old.proto', 'syntax = "proto2";
 package demo;
-message M { required string a = 1; }
+message Demo { required string a = 1; }
 ') or { return } // parse may already have failed
 	res := resolve_files([f], 'demo')!
 	assert res.errors.len > 0
@@ -584,7 +584,7 @@ message M { required string a = 1; }
 
 fn test_parse_reports_unknown_syntax() {
 	if f := parse_text('x.proto', 'syntax = "proto2";
-message M {}
+message Demo {}
 ') {
 		// parse_text itself refuses, so reaching here means it did not.
 		res := resolve_files([f], 'x')!
@@ -935,6 +935,32 @@ fn test_resolver_rejects_a_duplicate_field_name() {
 fn fixture_file(name string) !File {
 	mut f := parse_file(fixture(name))!
 	return f
+}
+
+fn test_resolver_rejects_a_single_letter_capital_type() {
+	// V reserves `M`, `N`, and the rest of those for generic template types. It
+	// says so for an enum and accepts one for a struct, so the generated file
+	// would compile alone and then fail at the first call.
+	res := resolve_files([fixture_file('single_letter.proto')!], 'single')!
+	assert res.errors.len == 2, 'both the message and the enum must be reported'
+	assert res.errors.join_lines().contains('reserved for generic template types')
+}
+
+fn test_resolver_accepts_a_spelled_out_type_name() {
+	// The control: a two-letter or longer name is fine, so the check is not just
+	// refusing anything short.
+	res := resolve_files([fixture_file('spelled_out.proto')!], 'spelled')!
+	assert res.errors.len == 0, res.errors.join_lines()
+}
+
+fn test_single_capital_name_only_matches_one_capital_letter() {
+	assert single_capital_name('M')
+	assert single_capital_name('Z')
+	// Two letters, a lowercase letter, and a digit are all fine.
+	assert !single_capital_name('MM')
+	assert !single_capital_name('m')
+	assert !single_capital_name('M1')
+	assert !single_capital_name('')
 }
 
 fn test_is_well_known() {
