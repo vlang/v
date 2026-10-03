@@ -1503,6 +1503,14 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 						}
 					}
 					if !matched {
+						$for attr in K.attributes {
+							if attr.name == 'flag' {
+								key = decoder.decode_flag_enum_map_key[K](key_str)!
+								matched = true
+							}
+						}
+					}
+					if !matched {
 						decoder.decode_error('String map key: `${key_str}` does not match any field in enum: ${K.name}')!
 					}
 				} $else $if K is rune {
@@ -1558,6 +1566,32 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 			decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
 		}
 	}
+}
+
+// decode_flag_enum_map_key accepts the representation emitted by flag enum interpolation.
+fn (mut decoder Decoder) decode_flag_enum_map_key[K](text string) !K {
+	prefix := '${K{}}'.all_before('{') + '{'
+	if !text.starts_with(prefix) || !text.ends_with('}') {
+		decoder.decode_error('String map key: `${text}` does not match any field in enum: ${K.name}')!
+	}
+	mut bits := u64(0)
+	fields := text[prefix.len..text.len - 1]
+	if fields != '' {
+		for field in fields.split(' | ') {
+			mut matched := false
+			$for member in K.values {
+				if field == '.' + member.name {
+					bits |= u64(member.value)
+					matched = true
+				}
+			}
+			if !matched {
+				decoder.decode_error('String map key: `${text}` does not match any field in enum: ${K.name}')!
+			}
+		}
+	}
+	// Only declared flag bits, or the valid zero flag value, can reach this cast.
+	return unsafe { K(bits) }
 }
 
 fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
