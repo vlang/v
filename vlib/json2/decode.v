@@ -38,6 +38,7 @@ struct DecoderFieldInfo {
 
 @[markused]
 struct StructFieldInfo {
+	name          string // name is the V name of the field, for error messages.
 	json_name_ptr voidptr
 	json_name_len int
 	is_skip       bool
@@ -67,6 +68,7 @@ fn struct_field_info(field_name string, attrs []string) StructFieldInfo {
 		}
 	}
 	return StructFieldInfo{
+		name:          field_name
 		json_name_ptr: voidptr(json_name_str)
 		json_name_len: json_name_len
 		is_skip:       attrs.contains('skip') || is_json_skip
@@ -550,131 +552,15 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 						seen_required << prefix + field.name
 					}
 
-					if field_info.is_raw {
-						$if field.unaliased_typ is $enum {
-							decoder.decode_error('`raw` attribute cannot be used with enum fields')!
-						} $else $if field.typ is ?string {
-							position := decoder.current_node.value.position
-							end := position + decoder.current_node.value.length
-
-							new_val.$(field.name) = decoder.json[position..end]
-							decoder.current_node = decoder.current_node.next
-
-							for {
-								if decoder.current_node == unsafe { nil }
-									|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
-									break
-								}
-								decoder.current_node = decoder.current_node.next
-							}
-						} $else $if field.typ is string {
-							position := decoder.current_node.value.position
-							end := position + decoder.current_node.value.length
-
-							new_val.$(field.name) = decoder.json[position..end]
-							decoder.current_node = decoder.current_node.next
-
-							for {
-								if decoder.current_node == unsafe { nil }
-									|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
-									break
-								}
-								decoder.current_node = decoder.current_node.next
-							}
-						} $else {
-							decoder.decode_error('`raw` attribute can only be used with string fields')!
-						}
-					} else {
-						// A `@[required]` field needs a value: `null` is rejected like in the removed
-						// `json` module, before the value decoders treat it leniently.
-						$if field.typ is $option {
-						} $else {
-							if field_info.is_required
-								&& decoder.current_node.value.value_kind == .null {
-								decoder.decode_error('required field `${field.name}` cannot be null')!
-							}
-						}
-						$if field.is_shared {
-							decoder.decode_error('shared fields cannot be decoded')!
-						} $else $if field.typ is $option {
-							if decoder.current_node.value.value_kind == .null {
-								new_val.$(field.name) = none
-
-								if decoder.current_node != unsafe { nil } {
-									decoder.current_node = decoder.current_node.next
-								}
-							} else {
-								$if field.indirections == 1 {
-									mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
-									decoder.decode_value(mut decoded_ptr)!
-									new_val.$(field.name) = decoded_ptr
-								} $else $if field.indirections > 1 {
-									new_val.$(field.name) = decoder.decode_new_pointer($zero(field.typ.payload_type))!
-								} $else $if field.typ is ?rune {
-									// The generic payload of `?rune` does not keep its `rune` type.
-									mut unwrapped_rune := rune(0)
-									decoder.decode_value(mut unwrapped_rune)!
-									new_val.$(field.name) = unwrapped_rune
-								} $else {
-									mut unwrapped_val := $zero(field.typ.payload_type)
-									decoder.decode_value(mut unwrapped_val)!
-									$if unwrapped_val is $map {
-										new_val.$(field.name) = unwrapped_val.move()
-									} $else {
-										new_val.$(field.name) = unwrapped_val
-									}
-								}
-							}
-						} $else $if field.unaliased_typ is $array_dynamic {
-							if decoder.current_node.value.value_kind == .null
-								&& !field_info.is_required {
-								new_val.$(field.name).clear()
-								decoder.skip_current_value()
-							} else {
-								new_val.$(field.name).clear()
-								decoder.decode_array(mut new_val.$(field.name))!
-							}
-						} $else $if field.unaliased_typ is $map {
-							if decoder.current_node.value.value_kind == .null
-								&& !field_info.is_required {
-								new_val.$(field.name).clear()
-								decoder.skip_current_value()
-							} else {
-								decoder.decode_map(mut new_val.$(field.name))!
-							}
-						} $else $if field.unaliased_typ is string {
-							value_info := decoder.current_node.value
-							if value_info.value_kind == .object || value_info.value_kind == .array {
-								new_val.$(field.name) = decoder.json[value_info.position..value_info.position + value_info.length]
-								decoder.skip_current_value()
-							} else if value_info.value_kind == .null && !field_info.is_required {
-								new_val.$(field.name) = ''
-								decoder.skip_current_value()
-							} else {
-								decoder.decode_value(mut new_val.$(field.name))!
-							}
-						} $else $if field.indirections == 1 {
-							if decoder.current_node.value.value_kind == .null {
-								new_val.$(field.name) = unsafe { nil }
-
-								if decoder.current_node != unsafe { nil } {
-									decoder.current_node = decoder.current_node.next
-								}
-							} else {
-								mut decoded_ptr := create_decoded_ptr(new_val.$(field.name))
-								decoder.decode_value(mut decoded_ptr)!
-								new_val.$(field.name) = decoded_ptr
-							}
-						} $else $if field.indirections > 1 {
-							if decoder.current_node.value.value_kind == .null {
-								new_val.$(field.name) = unsafe { nil }
-								decoder.current_node = decoder.current_node.next
-							} else {
-								new_val.$(field.name) = decoder.decode_new_pointer(new_val.$(field.name))!
-							}
-						} $else {
-							decoder.decode_value(mut new_val.$(field.name))!
-						}
+					$if field.is_shared {
+						decoder.reject_shared_struct_field(field_info.is_raw, field_info.is_required,
+							field.name)!
+					} $else $if field.typ is ?rune {
+						decoder.decode_option_rune_struct_field(&new_val.$(field.name),
+							field_info.is_raw)!
+					} $else {
+						decoder.decode_struct_field(&new_val.$(field.name), field_info.is_raw,
+							field_info.is_required, field.name)!
 					}
 					return StructKeyDecodeResult[T]{
 						matched: true
@@ -737,6 +623,267 @@ fn check_required_struct_fields[T](mut decoder Decoder, val T, seen_required []s
 		}
 		i++
 	}
+}
+
+// decode_struct_with_embeds decodes a JSON object into a struct with embedded structs,
+// whose fields can also be matched through those embeds.
+@[manualfree]
+fn (mut decoder Decoder) decode_struct_with_embeds[T](mut val T, struct_info ValueInfo) ! {
+	struct_end := struct_info.position + struct_info.length
+	decoder.current_node = decoder.current_node.next
+	mut seen_required := []string{}
+
+	// json object loop
+	for {
+		if decoder.current_node == unsafe { nil } {
+			break
+		}
+
+		key_info := decoder.current_node.value
+
+		if key_info.position >= struct_end {
+			break
+		}
+
+		decode_result := decode_struct_key(mut decoder, val, key_info, '', mut seen_required)!
+		if decode_result.matched {
+			val = decode_result.value
+		} else {
+			// The key doesn't match any field in the struct, skip the entire value
+			// including all nested objects/arrays.
+			decoder.current_node = decoder.current_node.next
+			decoder.skip_current_value()
+		}
+	}
+
+	check_required_struct_fields(mut decoder, val, seen_required, '')!
+}
+
+// decode_struct_fields decodes a JSON object into a struct without embedded structs.
+// Everything that does not depend on the field types is done by non-generic helpers, and
+// the field values by decode_struct_field, which is specialized per field type and shared
+// by all structs. That keeps the code generated for each struct small.
+@[manualfree]
+fn (mut decoder Decoder) decode_struct_fields[T](mut val T, struct_info ValueInfo) ! {
+	struct_end := struct_info.position + struct_info.length
+	field_info_cache := unsafe { decoder.cached_struct_field_infos[T]() }
+	mut decoded_mask := u64(0)
+	mut decoded_fields := []bool{}
+	if field_info_cache.field_infos.len > 64 {
+		decoded_fields = []bool{len: field_info_cache.field_infos.len}
+	}
+	decoder.current_node = decoder.current_node.next
+
+	// json object loop
+	for {
+		field_idx := decoder.next_struct_field_idx(field_info_cache.field_infos, struct_end)!
+		if field_idx == struct_key_object_end {
+			break
+		}
+		if field_idx == struct_key_no_field {
+			continue
+		}
+		decoded_mask = mark_struct_field_decoded(decoded_mask, mut decoded_fields, field_idx)
+		field_info := field_info_cache.field_infos[field_idx]
+		if field_info.is_skip {
+			// Preserve the existing decode behavior for `skip`+`required`.
+			if decoder.current_node != unsafe { nil } {
+				decoder.current_node = decoder.current_node.next
+			}
+			continue
+		}
+		mut i := 0
+		$for field in T.fields {
+			if field.attrs.contains('skip') {
+				// Handled above, without decoding (or even compiling a decoder for) its type.
+			} else if i == field_idx {
+				$if field.is_shared {
+					decoder.reject_shared_struct_field(field_info.is_raw, field_info.is_required,
+						field.name)!
+				} $else $if field.typ is ?rune {
+					decoder.decode_option_rune_struct_field(&val.$(field.name), field_info.is_raw)!
+				} $else {
+					decoder.decode_struct_field(&val.$(field.name), field_info.is_raw,
+						field_info.is_required, field.name)!
+				}
+			}
+			i++
+		}
+	}
+
+	decoder.check_required_struct_fields_decoded(field_info_cache.field_infos, decoded_mask,
+		decoded_fields)!
+}
+
+const struct_key_no_field = -1
+const struct_key_object_end = -2
+
+// next_struct_field_idx reads the next key of the JSON object that ends at `struct_end`,
+// and returns the index of the struct field that it names, with the decoder at the field
+// value. A key that names no field is skipped with its value, and gives
+// `struct_key_no_field`. The end of the object gives `struct_key_object_end`.
+@[manualfree]
+fn (mut decoder Decoder) next_struct_field_idx(field_infos []StructFieldInfo, struct_end int) !int {
+	if decoder.current_node == unsafe { nil } {
+		return struct_key_object_end
+	}
+
+	key_info := decoder.current_node.value
+
+	if key_info.position >= struct_end {
+		return struct_key_object_end
+	}
+
+	mut key_ptr := unsafe { voidptr(decoder.json.str + key_info.position + 1) }
+	mut key_len := key_info.length - 2
+	mut unescaped_key := ''
+	if decoder.key_has_escape(key_info) {
+		unescaped_key = decoder.decode_string_value(key_info)!
+		key_ptr = voidptr(unescaped_key.str)
+		key_len = unescaped_key.len
+	}
+
+	field_idx := decoder.find_struct_field(field_infos, key_ptr, key_len)
+	// value node
+	decoder.current_node = decoder.current_node.next
+	if field_idx < 0 {
+		// The key doesn't match any field in the struct, skip the entire value
+		// including all nested objects/arrays.
+		decoder.skip_current_value()
+		return struct_key_no_field
+	}
+	return field_idx
+}
+
+// check_required_struct_fields_decoded reports a required field that got no value.
+fn (mut decoder Decoder) check_required_struct_fields_decoded(field_infos []StructFieldInfo, decoded_mask u64, decoded_fields []bool) ! {
+	for field_idx, field_info in field_infos {
+		if field_info.is_required
+			&& !struct_field_is_decoded(decoded_mask, decoded_fields, field_idx) {
+			decoder.decode_error('missing required field `${field_info.name}`')!
+		}
+	}
+}
+
+// decode_struct_field decodes the current JSON value into the struct field at `field`.
+// `field_name` is the V name of the field, for error messages.
+@[manualfree]
+fn (mut decoder Decoder) decode_struct_field[F](field &F, is_raw bool, is_required bool, field_name string) ! {
+	if is_raw {
+		$if F.unaliased_typ is $enum {
+			decoder.decode_error('`raw` attribute cannot be used with enum fields')!
+		} $else $if F is ?string || F is string {
+			unsafe {
+				*field = decoder.decode_raw_value()
+			}
+		} $else {
+			decoder.decode_error('`raw` attribute can only be used with string fields')!
+		}
+		return
+	}
+	value_kind := decoder.current_node.value.value_kind
+	$if F is $option {
+		if value_kind == .null {
+			unsafe {
+				*field = none
+			}
+			decoder.current_node = decoder.current_node.next
+		} else {
+			unsafe {
+				*field = decoder.decode_option_payload(F(none))!
+			}
+		}
+	} $else {
+		if value_kind == .null {
+			// A `@[required]` field needs a value: `null` is rejected like in the removed
+			// `json` module, before the value decoders treat it leniently.
+			if is_required {
+				decoder.decode_error('required field `${field_name}` cannot be null')!
+			}
+			$if F.unaliased_typ is $array_dynamic || F.unaliased_typ is $map {
+				mut target := unsafe { field }
+				target.clear()
+				decoder.skip_current_value()
+				return
+			} $else $if F.unaliased_typ is string {
+				unsafe {
+					*field = F('')
+				}
+				decoder.skip_current_value()
+				return
+			} $else $if F.indirections != 0 {
+				unsafe {
+					*field = nil
+				}
+				decoder.current_node = decoder.current_node.next
+				return
+			}
+		}
+		$if F.indirections == 1 {
+			mut decoded_ptr := create_decoded_ptr(*field)
+			decoder.decode_value(mut decoded_ptr)!
+			unsafe {
+				*field = decoded_ptr
+			}
+		} $else $if F.indirections > 1 {
+			unsafe {
+				*field = decoder.decode_new_pointer(*field)!
+			}
+		} $else {
+			mut target := unsafe { field }
+			decoder.decode_value(mut target)!
+		}
+	}
+}
+
+// decode_option_rune_struct_field decodes a `?rune` struct field. The payload of a generic
+// `?rune` does not keep its `rune` type, so decode_struct_field would decode a number.
+fn (mut decoder Decoder) decode_option_rune_struct_field(field &?rune, is_raw bool) ! {
+	if is_raw {
+		decoder.decode_error('`raw` attribute can only be used with string fields')!
+	}
+	if decoder.current_node.value.value_kind == .null {
+		unsafe {
+			*field = none
+		}
+		decoder.current_node = decoder.current_node.next
+		return
+	}
+	mut unwrapped_rune := rune(0)
+	decoder.decode_value(mut unwrapped_rune)!
+	unsafe {
+		*field = unwrapped_rune
+	}
+}
+
+// reject_shared_struct_field reports the error for a value of a `shared` struct field,
+// which cannot be decoded.
+fn (mut decoder Decoder) reject_shared_struct_field(is_raw bool, is_required bool, field_name string) ! {
+	if is_raw {
+		decoder.decode_error('`raw` attribute can only be used with string fields')!
+	}
+	if is_required && decoder.current_node.value.value_kind == .null {
+		decoder.decode_error('required field `${field_name}` cannot be null')!
+	}
+	decoder.decode_error('shared fields cannot be decoded')!
+}
+
+// decode_raw_value returns the JSON text of the current value, for a `@[raw]` field, and
+// moves past it.
+fn (mut decoder Decoder) decode_raw_value() string {
+	position := decoder.current_node.value.position
+	end := position + decoder.current_node.value.length
+	raw := decoder.json[position..end]
+	decoder.current_node = decoder.current_node.next
+
+	for {
+		if decoder.current_node == unsafe { nil }
+			|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
+			break
+		}
+		decoder.current_node = decoder.current_node.next
+	}
+	return raw
 }
 
 // decode_value decodes a value from the JSON nodes.
@@ -897,263 +1044,16 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			struct_info := decoder.current_node.value
 
 			if struct_info.value_kind == .object {
-				struct_position := struct_info.position
-				struct_end := struct_position + struct_info.length
-				mut has_embeds := false
+				// Only a struct with an embedded struct needs its keys matched through its
+				// embeds too. Deciding that at compile time keeps the larger embed path out
+				// of the code generated for every other struct.
 				$for field in T.fields {
 					$if field.is_embed {
-						has_embeds = true
+						decoder.decode_struct_with_embeds(mut val, struct_info)!
+						return
 					}
 				}
-				decoder.current_node = decoder.current_node.next
-				if has_embeds {
-					mut seen_required := []string{}
-
-					// json object loop
-					for {
-						if decoder.current_node == unsafe { nil } {
-							break
-						}
-
-						key_info := decoder.current_node.value
-
-						if key_info.position >= struct_end {
-							break
-						}
-
-						decode_result := decode_struct_key(mut decoder, val, key_info, '', mut
-							seen_required)!
-						if decode_result.matched {
-							val = decode_result.value
-						} else {
-							// The key doesn't match any field in the struct, skip the entire value
-							// including all nested objects/arrays.
-							decoder.current_node = decoder.current_node.next
-							decoder.skip_current_value()
-						}
-					}
-
-					check_required_struct_fields(mut decoder, val, seen_required, '')!
-				} else {
-					field_info_cache := unsafe { decoder.cached_struct_field_infos[T]() }
-					mut decoded_mask := u64(0)
-					mut decoded_fields := []bool{}
-					if field_info_cache.field_infos.len > 64 {
-						decoded_fields = []bool{len: field_info_cache.field_infos.len}
-					}
-
-					mut field_idx := 0
-					// json object loop
-					for {
-						if decoder.current_node == unsafe { nil } {
-							break
-						}
-
-						key_info := decoder.current_node.value
-
-						if key_info.position >= struct_end {
-							break
-						}
-
-						mut key_ptr := unsafe { voidptr(decoder.json.str + key_info.position + 1) }
-						mut key_len := key_info.length - 2
-						mut unescaped_key := ''
-						if decoder.key_has_escape(key_info) {
-							unescaped_key = decoder.decode_string_value(key_info)!
-							key_ptr = voidptr(unescaped_key.str)
-							key_len = unescaped_key.len
-						}
-
-						matched_field_idx := decoder.find_struct_field(field_info_cache.field_infos,
-							key_ptr, key_len)
-						mut matched := false
-						field_idx = 0
-						$for field in T.fields {
-							if field.attrs.contains('skip') {
-								if !matched && field_idx == matched_field_idx {
-									decoder.current_node = decoder.current_node.next
-									decoded_mask = mark_struct_field_decoded(decoded_mask, mut
-										decoded_fields, field_idx)
-									if decoder.current_node != unsafe { nil } {
-										decoder.current_node = decoder.current_node.next
-									}
-									matched = true
-								}
-							} else if !matched && field_idx == matched_field_idx {
-								field_info := field_info_cache.field_infos[field_idx]
-								// value node
-								decoder.current_node = decoder.current_node.next
-
-								if field_info.is_skip {
-									// Preserve the existing inline decode behavior for `skip`+`required`.
-									decoded_mask = mark_struct_field_decoded(decoded_mask, mut
-										decoded_fields, field_idx)
-									if decoder.current_node != unsafe { nil } {
-										decoder.current_node = decoder.current_node.next
-									}
-								} else if field_info.is_raw {
-									$if field.unaliased_typ is $enum {
-										// workaround to avoid the error: enums can only be assigned `int` values
-										decoder.decode_error('`raw` attribute cannot be used with enum fields')!
-									} $else $if field.typ is ?string {
-										position := decoder.current_node.value.position
-										end := position + decoder.current_node.value.length
-
-										val.$(field.name) = decoder.json[position..end]
-										decoder.current_node = decoder.current_node.next
-
-										for {
-											if decoder.current_node == unsafe { nil }
-												|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
-												break
-											}
-											decoder.current_node = decoder.current_node.next
-										}
-									} $else $if field.typ is string {
-										position := decoder.current_node.value.position
-										end := position + decoder.current_node.value.length
-
-										val.$(field.name) = decoder.json[position..end]
-										decoder.current_node = decoder.current_node.next
-
-										for {
-											if decoder.current_node == unsafe { nil }
-												|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
-												break
-											}
-											decoder.current_node = decoder.current_node.next
-										}
-									} $else {
-										decoder.decode_error('`raw` attribute can only be used with string fields')!
-									}
-								} else {
-									// A `@[required]` field needs a value: `null` is rejected like in the removed
-									// `json` module, before the value decoders treat it leniently.
-									$if field.typ is $option {
-									} $else {
-										if field_info.is_required
-											&& decoder.current_node.value.value_kind == .null {
-											decoder.decode_error('required field `${field.name}` cannot be null')!
-										}
-									}
-									$if field.is_shared {
-										decoder.decode_error('shared fields cannot be decoded')!
-									} $else $if field.typ is $option {
-										if decoder.current_node.value.value_kind == .null {
-											val.$(field.name) = none
-
-											if decoder.current_node != unsafe { nil } {
-												decoder.current_node = decoder.current_node.next
-											}
-										} else {
-											$if field.indirections == 1 {
-												mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
-												decoder.decode_value(mut decoded_ptr)!
-												val.$(field.name) = decoded_ptr
-											} $else $if field.indirections > 1 {
-												val.$(field.name) = decoder.decode_new_pointer($zero(field.typ.payload_type))!
-											} $else $if field.typ is ?rune {
-												// The generic payload of `?rune` does not keep its `rune` type.
-												mut unwrapped_rune := rune(0)
-												decoder.decode_value(mut unwrapped_rune)!
-												val.$(field.name) = unwrapped_rune
-											} $else {
-												mut unwrapped_val := $zero(field.typ.payload_type)
-												decoder.decode_value(mut unwrapped_val)!
-												$if unwrapped_val is $map {
-													val.$(field.name) = unwrapped_val.move()
-												} $else {
-													val.$(field.name) = unwrapped_val
-												}
-											}
-										}
-									} $else $if field.unaliased_typ is $array_dynamic {
-										if decoder.current_node.value.value_kind == .null
-											&& !field_info.is_required {
-											val.$(field.name).clear()
-											decoder.skip_current_value()
-										} else {
-											val.$(field.name).clear()
-											decoder.decode_array(mut val.$(field.name))!
-										}
-									} $else $if field.unaliased_typ is $map {
-										if decoder.current_node.value.value_kind == .null
-											&& !field_info.is_required {
-											val.$(field.name).clear()
-											decoder.skip_current_value()
-										} else {
-											decoder.decode_map(mut val.$(field.name))!
-										}
-									} $else $if field.unaliased_typ is string {
-										value_info := decoder.current_node.value
-										if value_info.value_kind == .object
-											|| value_info.value_kind == .array {
-											val.$(field.name) = decoder.json[value_info.position..value_info.position + value_info.length]
-											decoder.skip_current_value()
-										} else if value_info.value_kind == .null
-											&& !field_info.is_required {
-											val.$(field.name) = ''
-											decoder.skip_current_value()
-										} else {
-											mut decoded_field_value := val.$(field.name)
-											decoder.decode_value(mut decoded_field_value)!
-											val.$(field.name) = decoded_field_value
-										}
-									} $else $if field.indirections == 1 {
-										if decoder.current_node.value.value_kind == .null {
-											val.$(field.name) = unsafe { nil }
-
-											if decoder.current_node != unsafe { nil } {
-												decoder.current_node = decoder.current_node.next
-											}
-										} else {
-											mut decoded_ptr := create_decoded_ptr(val.$(field.name))
-											decoder.decode_value(mut decoded_ptr)!
-											val.$(field.name) = decoded_ptr
-										}
-									} $else $if field.indirections > 1 {
-										if decoder.current_node.value.value_kind == .null {
-											val.$(field.name) = unsafe { nil }
-											decoder.current_node = decoder.current_node.next
-										} else {
-											val.$(field.name) = decoder.decode_new_pointer(val.$(field.name))!
-										}
-									} $else {
-										mut decoded_field_value := val.$(field.name)
-										decoder.decode_value(mut decoded_field_value)!
-										$if field.unaliased_typ is $map {
-											val.$(field.name) = decoded_field_value.move()
-										} $else {
-											val.$(field.name) = decoded_field_value
-										}
-									}
-								}
-
-								decoded_mask = mark_struct_field_decoded(decoded_mask, mut
-									decoded_fields, field_idx)
-								matched = true
-							}
-							field_idx++
-						}
-						if !matched {
-							// The key doesn't match any field in the struct, skip the entire value
-							// including all nested objects/arrays.
-							decoder.current_node = decoder.current_node.next
-							decoder.skip_current_value()
-						}
-					}
-
-					// check if all required fields are present
-					field_idx = 0
-					$for field in T.fields {
-						field_info := field_info_cache.field_infos[field_idx]
-						if field_info.is_required
-							&& !struct_field_is_decoded(decoded_mask, decoded_fields, field_idx) {
-							decoder.decode_error('missing required field `${field.name}`')!
-						}
-						field_idx++
-					}
-				}
+				decoder.decode_struct_fields(mut val, struct_info)!
 			} else if struct_info.value_kind == .null && !decoder.strict
 				&& decoder.current_node != decoder.values_info.head {
 				// Outside of strict mode a nested `null` is the struct with its default
@@ -1494,6 +1394,8 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 				mut key := K{}
 				$if K is string {
 					key = K(key_str)
+				} $else $if K.unaliased_typ is $enum {
+					decoder.decode_enum_map_key(mut key, key_str)!
 				} $else $if K is rune {
 					key = K(key_str.int())
 				} $else $if K is u8 || K is u16 || K is u32 || K is u64 || K is usize {
@@ -1533,7 +1435,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 				}
 
 				// Map alias values (`type Props = map[string]int`) also need to move.
-				$if V is $map || ( V is $alias && V.unaliased_typ is $map ) {
+				$if V is $map || (V is $alias && V.unaliased_typ is $map) {
 					val[key] = map_value.move()
 				} $else {
 					val[key] = map_value
@@ -1547,6 +1449,18 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 			decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
 		}
 	}
+}
+
+// decode_enum_map_key matches the member names written by the map encoder.
+// JSON attributes only rename scalar enum values, not map keys.
+fn (mut decoder Decoder) decode_enum_map_key[T](mut val T, key string) ! {
+	$for value in T.values {
+		if value.name == key {
+			val = value.value
+			return
+		}
+	}
+	decoder.decode_error('String value: `${key}` does not match any field in enum: ${typeof(val).name}')!
 }
 
 fn (mut decoder Decoder) decode_enum[T](mut val T) ! {

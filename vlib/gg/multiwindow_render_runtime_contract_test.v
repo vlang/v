@@ -1201,10 +1201,11 @@ fn render_runtime_compile_program(source string, output string, enabled bool) {
 fn render_runtime_execute_child(command string, enabled bool) os.Result {
 	$if linux_wayland_session ? {
 		if !enabled {
-			return os.execute('env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE ${command}')
+			return os.exec(['env', '-u', 'DISPLAY', '-u', 'WAYLAND_DISPLAY', '-u', 'XDG_SESSION_TYPE',
+				...(os.split_args(command) or { panic(err) })])
 		}
 	}
-	return os.execute(command)
+	return os.exec(os.split_args(command) or { panic(err) })
 }
 
 fn render_runtime_child_flags(enabled bool) string {

@@ -120,7 +120,8 @@ fn main() {
 '
 	os.write_file(main_path, source) or { panic(err) }
 	out_path := os.join_path(root, 'out.c')
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -gc none -nocache -warn-about-allocs -o ${os.quoted_path(out_path)} ${os.quoted_path(main_path)}')
+	result := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-nocache', '-warn-about-allocs',
+		'-o', out_path, main_path])
 	assert result.exit_code == 0, result.output
 	moved := 'allocation (local moved to the heap: its address escapes)'
 	on_heap := ['result_on_heap', 'forwarded_result_on_heap', 'pair_on_heap', 'on_heap']

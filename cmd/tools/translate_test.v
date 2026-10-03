@@ -48,7 +48,7 @@ fn compile_fake_c2v(vmodules_dir string) ! {
 			'\t}', '}'].join('\n') +
 			'\n'
 	os.write_file(fake_c2v_path, fake_c2v_source)!
-	res := os.execute('${qvexe} -o ${os.quoted_path(c2v_bin)} ${os.quoted_path(fake_c2v_path)}')
+	res := os.exec([@VEXE, '-o', c2v_bin, fake_c2v_path])
 	assert res.exit_code == 0, res.output
 }
 

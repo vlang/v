@@ -20,11 +20,13 @@ pub:
 // eval_text evaluates `code` and captures whatever it printed.
 pub fn eval_text(ws &Workspace, code string) EvalResult {
 	mut e := eval.create()
-	e.run_text(code) or { return EvalResult{
-		ok:     false
-		stdout: e.stdout()
-		err:    err.msg()
-	} }
+	e.run_text(code) or {
+		return EvalResult{
+			ok:     false
+			stdout: e.stdout()
+			err:    err.msg()
+		}
+	}
 	return EvalResult{
 		ok:     true
 		stdout: e.stdout()

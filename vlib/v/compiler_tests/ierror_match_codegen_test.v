@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn test_ierror_concrete_match_uses_type_ids() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_${os.getpid()}')
@@ -136,7 +137,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -146,7 +147,7 @@ fn main() {
 	assert !c_code.contains('err == myerrs__FirstError'), c_code
 	assert !c_code.contains('err == myerrs__SecondError'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -154,7 +155,8 @@ fn main() {
 fn test_ierror_patterns_resolve_nested_alias_and_selective_imports() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_ierror_alias_match_codegen_${os.getpid()}')
@@ -258,11 +260,11 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_alias_match_codegen_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -270,7 +272,8 @@ fn main() {
 fn test_selective_imported_error_pattern_prefers_scoped_error() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_ierror_selective_error_pattern_${os.getpid()}')
@@ -330,11 +333,11 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_selective_error_pattern_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -342,7 +345,8 @@ fn main() {
 fn test_scoped_error_pattern_does_not_fallback_to_builtin_error() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_ierror_scoped_error_no_fallback_${os.getpid()}')
@@ -377,7 +381,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_scoped_error_no_fallback_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('fake.Error') || compile.output.contains('Error'), compile.output
 	assert compile.output.contains('IError') || compile.output.contains('cannot return'), compile.output
@@ -387,7 +391,8 @@ fn main() {
 fn test_local_error_pattern_does_not_fallback_to_builtin_error() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_ierror_local_error_no_fallback_${os.getpid()}')
@@ -408,7 +413,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_local_error_no_fallback_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('Error') && compile.output.contains('IError'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -417,7 +422,8 @@ fn main() {
 fn test_msg_only_struct_is_not_ierror_pattern() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_ierror_not_error_${os.getpid()}')
@@ -462,7 +468,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_not_error_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('noterrs.NotError') && compile.output.contains('IError'), compile.output
 
@@ -472,7 +478,8 @@ fn main() {
 fn test_module_local_error_embeds_are_not_ierror_patterns() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_pattern_${os.getpid()}')
@@ -542,7 +549,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_pattern_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('fake.FalseError') && compile.output.contains('IError'), compile.output
 
@@ -554,7 +561,8 @@ fn main() {
 fn test_module_local_error_embeds_are_not_boxed_as_ierror() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_match_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_${os.getpid()}')
@@ -615,7 +623,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_fake_error_box_input')
-	compile := os.execute('${v3_bin} ${mod_src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${mod_src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot use `&fakebox.FalseError` as type `!int`'), compile.output
 	assert compile.output.contains('fakebox.FalseError')

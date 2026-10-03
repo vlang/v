@@ -1200,7 +1200,7 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 	}
 	quoted_ccompiler := os.quoted_path(ccompiler)
 	for version_flag in ['--version', '-v'] {
-		res := os.execute('${quoted_ccompiler} ${version_flag} 2>&1')
+		res := os.exec([ccompiler, '${version_flag}'])
 		output := res.output.to_lower_ascii()
 		if output.contains('tiny c compiler') || output.contains('tinycc')
 			|| output.contains('\ntcc') || output.starts_with('tcc')

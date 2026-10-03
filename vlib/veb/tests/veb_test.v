@@ -29,7 +29,7 @@ fn testsuite_begin() {
 fn test_simple_veb_app_can_be_compiled() {
 	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
 	did_server_compile :=
-		os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/veb/tests/veb_test_server.v')
+		os.system_args([vexe, '-o', serverexe, 'vlib/veb/tests/veb_test_server.v'])
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
 }
@@ -47,9 +47,9 @@ fn test_a_simple_veb_app_runs_in_the_background() {
 		eprintln('running:\n${server_exec_cmd}')
 	}
 	$if windows {
-		spawn os.system(server_exec_cmd)
+		spawn os.system_args([serverexe, '${sport}', '${exit_after_time}', '${suffix}'])
 	} $else {
-		res := os.system(server_exec_cmd)
+		res := os.system_args([serverexe, '${sport}', '${exit_after_time}', '${suffix}'])
 		assert res == 0
 	}
 	$if macos {

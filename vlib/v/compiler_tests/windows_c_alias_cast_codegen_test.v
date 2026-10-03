@@ -14,12 +14,14 @@ fn test_windows_c_alias_cast_generates_a_c_cast() {
 		os.rmdir_all(root) or {}
 	}
 	v3_bin := os.join_path(root, 'v3')
-	build := os.execute('${os.quoted_path(windows_c_alias_vexe)} -gc none -path "${windows_c_alias_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(windows_c_alias_v3_src)}')
+	build := os.exec([windows_c_alias_vexe, '-gc', 'none', '-path',
+		'${windows_c_alias_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${windows_c_alias_v3_src}'])
 	assert build.exit_code == 0, build.output
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, "import os\nimport v.build_constraint\n\nfn main() {\n\t_ := os.stat('.') or { return }\n\tenvironment := build_constraint.new_environment(['windows'], [])\n\t_ := environment.eval('windows') or { false }\n}\n")!
 	c_path := os.join_path(root, 'main.c')
-	generate := os.execute('${os.quoted_path(v3_bin)} -silent -no-parallel -os windows -cc tcc -gc none -o ${os.quoted_path(c_path)} ${os.quoted_path(source)}')
+	generate := os.exec([v3_bin, '-silent', '-no-parallel', '-os', 'windows', '-cc', 'tcc', '-gc',
+		'none', '-o', c_path, source])
 	assert generate.exit_code == 0, generate.output
 	c_source := os.read_file(c_path)!
 	assert c_source.contains('int wmain(int argc, wchar_t** argv) {'), c_source

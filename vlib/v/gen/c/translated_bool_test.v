@@ -61,8 +61,8 @@ fn test_translated_bool_conversions_with_unsigned_char_storage() {
 	source := os.join_path(dir, 'main.c')
 	binary := os.join_path(dir, 'main')
 	os.write_file(source, g.sb.str())!
-	build := os.execute('${os.quoted_path(cc)} -std=gnu11 ${os.quoted_path(source)} -o ${os.quoted_path(binary)}')
+	build := os.exec([cc, '-std=gnu11', source, '-o', binary])
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(binary))
+	run := os.exec([binary])
 	assert run.exit_code == 0, 'exit ${run.exit_code}: ${run.output}'
 }

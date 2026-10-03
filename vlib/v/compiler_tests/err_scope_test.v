@@ -66,7 +66,8 @@ const cases = [
 
 fn build_v3() string {
 	if !os.is_executable(err_scope_v3_bin) {
-		res := os.execute('${os.quoted_path(vexe)} -gc none -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(err_scope_v3_bin)} ${os.quoted_path(v3_src)}')
+		res := os.exec([vexe, '-gc', 'none', '-path', '${'${vlib_dir}|@vlib|@vmodules'}', '-o',
+			err_scope_v3_bin, '${v3_src}'])
 		assert res.exit_code == 0, res.output
 	}
 	return err_scope_v3_bin
@@ -103,7 +104,8 @@ fn check_output(v3 string, c Case) string {
 		os.rmdir_all(dir) or {}
 	}
 	os.write_file(os.join_path(dir, 'main.v'), program(c)) or { panic(err) }
-	return os.execute('${os.quoted_path(v3)} -nocache -gc none -nocolor -check ${os.quoted_path(os.join_path(dir, 'main.v'))}').output
+	return os.exec(['${v3}', '-nocache', '-gc', 'none', '-nocolor', '-check',
+		os.join_path(dir, 'main.v')]).output
 }
 
 fn test_err_exists_only_where_an_error_is_handled() {
@@ -135,7 +137,8 @@ fn build_output(v3 string, name string, source string) string {
 		os.rmdir_all(dir) or {}
 	}
 	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-	return os.execute('${os.quoted_path(v3)} -nocache -gc none -nocolor -o ${os.quoted_path(os.join_path(dir, 'main'))} ${os.quoted_path(os.join_path(dir, 'main.v'))}').output
+	return os.exec(['${v3}', '-nocache', '-gc', 'none', '-nocolor', '-o', os.join_path(dir, 'main'),
+		os.join_path(dir, 'main.v')]).output
 }
 
 const generic_or_block = "module main

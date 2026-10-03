@@ -3970,6 +3970,8 @@ fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 
 fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type string, seen []string) ?flat.NodeId {
 	info := t.lookup_struct_info(struct_type) or { return none }
+	lhs_value := t.struct_equality_operand(lhs, struct_type, 'struct_eq_lhs')
+	rhs_value := t.struct_equality_operand(rhs, struct_type, 'struct_eq_rhs')
 	mut next_seen := seen.clone()
 	next_seen << struct_type
 	mut eq := flat.empty_node
@@ -3977,8 +3979,8 @@ fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs 
 		field_type := t.lookup_struct_field_type(struct_type, field.name) or {
 			if field.typ.len > 0 { field.typ } else { field.raw_typ }
 		}
-		lhs_field := t.make_selector(lhs, field.name, field_type)
-		rhs_field := t.make_selector(rhs, field.name, field_type)
+		lhs_field := t.make_selector(lhs_value, field.name, field_type)
+		rhs_field := t.make_selector(rhs_value, field.name, field_type)
 		field_eq := if t.membership_type_is_pointer(field_type) {
 			t.make_infix(.eq, lhs_field, rhs_field)
 		} else {
@@ -3990,6 +3992,17 @@ fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs 
 		return t.make_bool_literal(true)
 	}
 	return eq
+}
+
+// struct_equality_operand gives field comparisons stable storage, including
+// implicit map/array defaults that are absent from a struct literal's children.
+fn (mut t Transformer) struct_equality_operand(expr flat.NodeId, typ string, prefix string) flat.NodeId {
+	if t.expr_can_take_address(expr) || !t.compiler_default_clone_type_needs_work(typ) {
+		return t.stable_transformed_expr_for_reuse(expr, typ, prefix)
+	}
+	tmp_name := t.new_temp(prefix)
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, typ)
+	return t.make_ident(tmp_name)
 }
 
 fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, interface_type string, seen []string) flat.NodeId {

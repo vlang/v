@@ -9,20 +9,20 @@ fn test_clean_refuses_whitespace_basename_and_preserves_unrelated_file() {
 	os.chdir(root)!
 	source := os.join_path(root, ' foo.v')
 	os.write_file(source, 'module main\nfn main() {}\n')!
-	built := os.execute('${vexe} ${os.quoted_path(source)}')
+	built := os.exec([@VEXE, source])
 	assert built.exit_code == 0, built.output
 	exe := os.join_path(root, 'foo' + exe_postfix())
 	assert os.is_file(exe), built.output
 	decoy := os.join_path(root, ' foo' + exe_postfix())
 	os.write_file(decoy, 'unrelated')!
-	res := os.execute('${vexe} clean ${os.quoted_path(source)}')
+	res := os.exec([@VEXE, 'clean', source])
 	assert res.exit_code == 1, res.output
 	assert res.output.contains('cannot tell which executable'), res.output
 	assert os.read_file(decoy)! == 'unrelated'
 	assert os.is_file(exe)
 	trailing := os.join_path(root, 'foo .v')
 	os.write_file(trailing, 'module main\nfn main() {}\n')!
-	refused := os.execute('${vexe} clean ${os.quoted_path(trailing)}')
+	refused := os.exec([@VEXE, 'clean', '${trailing}'])
 	assert refused.exit_code == 1, refused.output
 }
 
@@ -51,7 +51,7 @@ fn default_exe(root string) string {
 // the tests assert against is the compiler's own and not a copy of it.
 fn build(root string) ! {
 	os.chdir(root)!
-	res := os.execute('${vexe} .')
+	res := os.exec([@VEXE, '.'])
 	assert res.exit_code == 0, res.output
 }
 
@@ -63,7 +63,7 @@ fn test_clean_removes_what_the_compiler_wrote() {
 	build(root)!
 	exe := default_exe(root)
 	assert os.is_file(exe), 'the compiler did not produce ${exe}'
-	res := os.execute('${vexe} clean .')
+	res := os.exec([@VEXE, 'clean', '.'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('removed'), res.output
 	assert !os.exists(exe), '${exe} is still there'
@@ -77,11 +77,11 @@ fn test_clean_accepts_a_single_source_file() {
 	build(root)!
 	// A second entry point beside the first, so a named file has its own output.
 	os.write_file(os.join_path(root, 'tool.v'), "module main\n\nfn main() {\n\tprintln('tool')\n}\n")!
-	res := os.execute('${vexe} tool.v')
+	res := os.exec([@VEXE, 'tool.v'])
 	assert res.exit_code == 0, res.output
 	exe := os.join_path_single(root, 'tool' + exe_postfix())
 	assert os.is_file(exe), 'the compiler did not produce ${exe}'
-	out := os.execute('${vexe} clean tool.v')
+	out := os.exec([@VEXE, 'clean', 'tool.v'])
 	assert out.exit_code == 0, out.output
 	assert !os.exists(exe), '${exe} is still there'
 }
@@ -90,7 +90,7 @@ fn test_clean_dry_run_changes_nothing() {
 	root := prepare_project('dryrun')!
 	build(root)!
 	exe := default_exe(root)
-	res := os.execute('${vexe} clean -n .')
+	res := os.exec([@VEXE, 'clean', '-n', '.'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('rm ${exe}'), res.output
 	assert os.is_file(exe), '-n must not remove anything'
@@ -105,7 +105,7 @@ fn test_clean_leaves_unrelated_files_alone() {
 	os.write_file(decoy, 'not a build output')!
 	notes := os.join_path(root, 'notes.txt')
 	os.write_file(notes, 'notes')!
-	res := os.execute('${vexe} clean .')
+	res := os.exec([@VEXE, 'clean', '.'])
 	assert res.exit_code == 0, res.output
 	assert os.is_file(decoy), 'a file that is not the build output must survive'
 	assert os.is_file(notes), 'an unrelated file must survive'
@@ -117,7 +117,7 @@ fn test_clean_refuses_an_input_it_cannot_name() {
 	root := prepare_project('refused')!
 	os.write_file(os.join_path(root, 'notes.txt'), 'notes')!
 	os.chdir(root)!
-	res := os.execute('${vexe} clean notes.txt')
+	res := os.exec([@VEXE, 'clean', 'notes.txt'])
 	assert res.exit_code == 1
 	assert res.output.contains('cannot tell which executable'), res.output
 	assert os.is_file(os.join_path(root, 'notes.txt'))
@@ -126,13 +126,13 @@ fn test_clean_refuses_an_input_it_cannot_name() {
 fn test_clean_reports_nothing_to_clean_for_an_unbuilt_project() {
 	root := prepare_project('unbuilt')!
 	os.chdir(root)!
-	res := os.execute('${vexe} clean .')
+	res := os.exec([@VEXE, 'clean', '.'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('nothing to clean for `.`'), res.output
 }
 
 fn test_clean_help_describes_the_flags() {
-	res := os.execute('${vexe} clean --help')
+	res := os.exec([@VEXE, 'clean', '--help'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('Usage: v clean [options] [PATH...]'), res.output
 	assert res.output.contains('dry-run'), res.output
@@ -147,10 +147,10 @@ fn test_clean_symlink_source_preserves_the_alias_named_file() {
 	os.chdir(root)!
 	os.symlink('main.v', 'alias.v')!
 	os.write_file('alias', 'unrelated file')!
-	built := os.execute('${vexe} alias.v')
+	built := os.exec([@VEXE, 'alias.v'])
 	assert built.exit_code == 0, built.output
 	assert os.is_file('main'), 'the compiler must use the resolved source basename'
-	res := os.execute('${vexe} clean alias.v')
+	res := os.exec([@VEXE, 'clean', 'alias.v'])
 	assert res.exit_code == 0, res.output
 	assert !os.exists('main')
 	assert os.read_file('alias')! == 'unrelated file'
@@ -176,7 +176,7 @@ fn test_clean_reports_failed_removal_and_continues_other_inputs() {
 	}
 	other := prepare_project('permission_other')!
 	build(other)!
-	res := os.execute('${vexe} clean ${os.quoted_path(root)} ${os.quoted_path(other)}')
+	res := os.exec([@VEXE, 'clean', root, '${other}'])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('cannot remove'), res.output
 	assert os.is_file(exe)

@@ -20,7 +20,7 @@ fn test_dbg_compiles_with_reserved_function_argument_name() {
 		os.rm(exe_path) or {}
 	}
 	cmd := '${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, '-o', exe_path, source_path])
 	if res.exit_code != 0 {
 		eprintln('> failed command: ${cmd}')
 		eprintln(res.output)
@@ -42,7 +42,7 @@ fn test_dbg_compiles_as_first_script_statement() {
 		os.rm(exe_path) or {}
 	}
 	cmd := '${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, '-o', exe_path, source_path])
 	if res.exit_code != 0 {
 		eprintln('> failed command: ${cmd}')
 		eprintln(res.output)
@@ -66,7 +66,7 @@ fn test_dbg_compiles_in_first_script_comptime_if_branch() {
 		os.rm(exe_path) or {}
 	}
 	cmd := '${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, '-o', exe_path, source_path])
 	if res.exit_code != 0 {
 		eprintln('> failed command: ${cmd}')
 		eprintln(res.output)
@@ -93,7 +93,7 @@ fn test_dbg_compiles_in_first_script_comptime_match_branch() {
 		os.rm(exe_path) or {}
 	}
 	cmd := '${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, '-o', exe_path, source_path])
 	if res.exit_code != 0 {
 		eprintln('> failed command: ${cmd}')
 		eprintln(res.output)
@@ -139,7 +139,7 @@ fn test_dbg_compiles_after_hash_in_first_script_comptime_branches() {
 			os.rm(exe_path) or {}
 		}
 		cmd := '${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
-		res := os.execute(cmd)
+		res := os.exec([@VEXE, '-o', exe_path, source_path])
 		if res.exit_code != 0 {
 			eprintln('> failed command: ${cmd}')
 			eprintln(res.output)
@@ -167,7 +167,7 @@ fn test_dbg_compiles_in_global_anon_fn_initializer() {
 		os.rm(exe_path) or {}
 	}
 	cmd := '${os.quoted_path(@VEXE)} -enable-globals -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, '-enable-globals', '-o', exe_path, source_path])
 	if res.exit_code != 0 {
 		eprintln('> failed command: ${cmd}')
 		eprintln(res.output)

@@ -308,7 +308,7 @@ fn (mut gen_vc GenVC) command_execute(cmd string, dry bool) string {
 		return gen_vc.command_execute_dry(cmd)
 	}
 	gen_vc.logger.info('cmd: ${cmd}')
-	r := os.execute(cmd)
+	r := os.exec(os.split_args(cmd) or { panic(err) })
 	if r.exit_code < 0 {
 		gen_vc.logger.error('${err_msg_cmd_x}: "${cmd}" could not start.')
 		gen_vc.logger.error(r.output)

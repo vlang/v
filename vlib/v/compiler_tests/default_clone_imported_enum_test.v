@@ -83,8 +83,9 @@ fn main() {
 	assert event.result == ResultAlias(Result(enum_mod.Result.failed))
 }
 ') or { panic(err) }
-	compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -path "${root}|@vlib|@vmodules" -o ${os.quoted_path(output_path)} ${os.quoted_path(main_path)}')
+	compile := os.exec([@VEXE, '-new-compiler', '-path', '${root}' + '|@vlib|@vmodules', '-o',
+		output_path, main_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(output_path))
+	run := os.exec([output_path])
 	assert run.exit_code == 0, run.output
 }

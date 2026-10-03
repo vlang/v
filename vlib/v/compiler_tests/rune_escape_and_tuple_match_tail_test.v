@@ -20,7 +20,8 @@ const match_tail_v3_src = os.join_path(match_tail_v3_dir, 'v.v')
 fn match_tail_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_match_tail_compiler_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${match_tail_vexe} -gc none -path "${match_tail_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${match_tail_v3_src}')
+	build := os.exec([match_tail_vexe, '-gc', 'none', '-path',
+		'${match_tail_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${match_tail_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -31,11 +32,11 @@ fn match_tail_build_and_run(v3_bin string, root string, source string) os.Result
 	main_v := os.join_path(root, 'main.v')
 	os.write_file(main_v, source) or { panic(err) }
 	exe := os.join_path(root, 'prog')
-	compile := os.execute('${v3_bin} -nocache ${main_v} -b c -o ${exe}')
+	compile := os.exec([v3_bin, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
 	if compile.exit_code != 0 {
 		return compile
 	}
-	return os.execute(exe)
+	return os.exec([exe])
 }
 
 fn test_runes_spelled_as_escapes_are_distinct_match_cases() {

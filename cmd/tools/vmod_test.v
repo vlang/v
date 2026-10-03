@@ -34,7 +34,7 @@ fn prepare_fixture() ! {
 }
 
 fn mod_why(name string) os.Result {
-	return os.execute('${vexe} mod why ${name}')
+	return os.exec([@VEXE, 'mod', 'why', '${name}'])
 }
 
 // test_v_mod_why_prints_the_import_chain is the whole point of the command: the
@@ -91,20 +91,20 @@ fn test_v_mod_why_separates_unused_from_missing() {
 fn test_v_mod_why_needs_a_project() {
 	os.chdir(os.vtmp_dir())!
 	os.rmdir_all(os.join_path(tfolder, 'app')) or {}
-	res := os.execute('${vexe} mod why os')
+	res := os.exec([@VEXE, 'mod', 'why', 'os'])
 	assert res.exit_code == 1
 	assert res.output.contains('no v.mod found'), res.output
 }
 
 fn test_v_mod_rejects_an_unknown_subcommand() {
 	prepare_fixture()!
-	res := os.execute('${vexe} mod nosuchsubcommand')
+	res := os.exec([@VEXE, 'mod', 'nosuchsubcommand'])
 	assert res.exit_code == 1
 	assert res.output.contains('unknown subcommand `nosuchsubcommand`.'), res.output
 }
 
 fn test_v_mod_help_lists_the_subcommands() {
-	res := os.execute('${vexe} mod')
+	res := os.exec([@VEXE, 'mod'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('why MODULE'), res.output
 }
@@ -152,7 +152,7 @@ fn test_v_mod_why_reads_tab_separated_import_tokens() {
 			'os.getwd()'
 		}
 		write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n${import_line}\nfn main() { println(${call}) }\n')!
-		checked := os.execute('${vexe} -check .')
+		checked := os.exec([@VEXE, '-check', '.'])
 		assert checked.exit_code == 0, checked.output
 		res := mod_why('os')
 		assert res.exit_code == 0, res.output
@@ -164,7 +164,7 @@ fn test_v_mod_why_reads_keyword_root_imports() {
 	prepare_fixture()!
 	write_module('type', 'module type\npub fn value() string { return "keyword" }\n')!
 	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport type as tp\nfn main() { println(tp.value()) }\n')!
-	checked := os.execute('${vexe} -check .')
+	checked := os.exec([@VEXE, '-check', '.'])
 	assert checked.exit_code == 0, checked.output
 	res := mod_why('type')
 	assert res.exit_code == 0, res.output
@@ -176,7 +176,7 @@ fn test_v_mod_why_reads_keyword_submodule_imports() {
 	write_module('pkg', 'module pkg\n')!
 	write_file(os.join_path(tfolder, 'pkg', 'type', 'type.v'), 'module type\npub fn value() string { return "keyword" }\n')!
 	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport pkg.type as tp\nfn main() { println(tp.value()) }\n')!
-	checked := os.execute('${vexe} -check .')
+	checked := os.exec([@VEXE, '-check', '.'])
 	assert checked.exit_code == 0, checked.output
 	res := mod_why('pkg.type')
 	assert res.exit_code == 0, res.output
@@ -188,7 +188,7 @@ fn test_v_mod_why_ignores_fields_named_import() {
 		prepare_fixture()!
 		write_module('string', 'module string\npub fn value() int { return 1 }\n')!
 		write_file(os.join_path(tfolder, 'app', 'main.v'), "module main\n${declaration}\nfn main() { println(Example{ import: 'value' }) }\n")!
-		checked := os.execute('${vexe} -check .')
+		checked := os.exec([@VEXE, '-check', '.'])
 		assert checked.exit_code == 0, checked.output
 		res := mod_why('string')
 		assert res.exit_code == 0, res.output
@@ -200,7 +200,7 @@ fn test_v_mod_why_preserves_imports_in_comptime_declaration_branches() {
 	prepare_fixture()!
 	write_module('string', 'module string\npub fn value() int { return 1 }\n')!
 	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n\$if true {\n\timport lib\n\tstruct Example { import string }\n} \$else {\n\timport orphan\n}\nfn main() { println(lib.hello()) }\n')!
-	checked := os.execute('${vexe} -check .')
+	checked := os.exec([@VEXE, '-check', '.'])
 	assert checked.exit_code == 0, checked.output
 	for dependency in ['lib', 'orphan'] {
 		res := mod_why(dependency)

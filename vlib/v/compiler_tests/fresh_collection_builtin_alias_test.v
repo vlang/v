@@ -15,7 +15,8 @@ const fresh_builtin_v3_src = os.join_path(fresh_builtin_v3_dir, 'v.v')
 fn fresh_builtin_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fresh_builtin_compiler_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${fresh_builtin_vexe} -gc none -path "${fresh_builtin_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${fresh_builtin_v3_src}')
+	build := os.exec([fresh_builtin_vexe, '-gc', 'none', '-path',
+		'${fresh_builtin_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${fresh_builtin_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -26,11 +27,11 @@ fn fresh_builtin_compile(v3_bin string, root string, source string) os.Result {
 	main_v := os.join_path(root, 'main.v')
 	os.write_file(main_v, source) or { panic(err) }
 	exe := os.join_path(root, 'prog')
-	compile := os.execute('${v3_bin} -nocache ${main_v} -b c -o ${exe}')
+	compile := os.exec([v3_bin, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
 	if compile.exit_code != 0 {
 		return compile
 	}
-	return os.execute(exe)
+	return os.exec([exe])
 }
 
 fn test_an_array_built_by_a_builtin_is_not_an_alias_of_its_source() {

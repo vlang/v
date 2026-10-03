@@ -11,7 +11,8 @@ fn capfn_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_fn_literal_capture_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${capfn_vexe} -gc none -path "${capfn_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${capfn_v3_src}')
+		os.exec([capfn_vexe, '-gc', 'none', '-path', '${capfn_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${capfn_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,10 +34,10 @@ fn test_tmpl_iife_captures_fn_literal_capture() {
 	source := "module main\n\nfn render(s string) string {\n\treturn 'TOP:' + s\n}\n\nfn build(arg string) string {\n\trender := fn (s string) string {\n\t\treturn 'LOCAL:' + s\n\t}\n\tf := fn [render] (row string) string {\n\t\treturn '[' + \$tmpl('row.html') + ']'\n\t}\n\treturn f(arg).replace('\\n', '')\n}\n\nfn main() {\n\tprintln(build('abc'))\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_fn_literal_capture_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '[LOCAL:abc]', run.output
 }

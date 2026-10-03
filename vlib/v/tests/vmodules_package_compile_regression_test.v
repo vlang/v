@@ -74,7 +74,7 @@ fn test_issue_20147_vmodules_package_tests_compile() {
 		issue_20147_restore_env('VMODULES', old_vmodules, had_vmodules)
 		os.rmdir_all(issue_20147_workspace()) or {}
 	}
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} test .')
+	res := os.exec([issue_20147_vexe, 'test', '.'])
 	assert res.exit_code == 0, res.output
 }
 
@@ -138,16 +138,16 @@ fn test_issue_27391_symlinked_namespaced_vmodules_import_compiles() {
 		os.rmdir_all(issue_27391_workspace()) or {}
 	}
 	main_file := os.join_path(issue_27391_workspace(), 'app', 'main.v')
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	res := os.exec([issue_20147_vexe, 'run', main_file])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'luuid-ok\nluuid-ok', res.output
 	app_dir := os.join_path(issue_27391_workspace(), 'app')
-	dir_res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(app_dir)}')
+	dir_res := os.exec([issue_20147_vexe, 'run', app_dir])
 	assert dir_res.exit_code == 0, dir_res.output
 	assert dir_res.output.trim_space() == 'luuid-ok\nluuid-ok', dir_res.output
 	old_wd := os.getwd()
 	os.chdir(app_dir) or { panic(err) }
-	dot_res := os.execute('${os.quoted_path(issue_20147_vexe)} run .')
+	dot_res := os.exec([issue_20147_vexe, 'run', '.'])
 	os.chdir(old_wd) or { panic(err) }
 	assert dot_res.exit_code == 0, dot_res.output
 	assert dot_res.output.trim_space() == 'luuid-ok\nluuid-ok', dot_res.output
@@ -197,7 +197,7 @@ fn issue_28810_run(api_contents string, app_files map[string]string) os.Result {
 		os.rmdir_all(issue_28810_workspace()) or {}
 	}
 	main_file := os.join_path(issue_28810_workspace(), 'app', 'main.v')
-	return os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	return os.exec([issue_20147_vexe, 'run', main_file])
 }
 
 fn test_issue_28810_namespaced_module_keeps_one_identity_beside_colliding_submodule() {
@@ -288,7 +288,7 @@ fn test_issue_28810_symlinked_module_dir_still_checks_module_declarations() {
 	}
 	// `bar` is the parsed `foo` directory under another name, but its files
 	// declare `module foo`, so importing it as `bar` must still be rejected.
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	res := os.exec([issue_20147_vexe, 'run', main_file])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('bad module definition'), res.output
 	assert res.output.contains('imports module "bar"'), res.output
@@ -331,19 +331,19 @@ fn issue_27281_assert_boundary_marker_stops_parent_vmod(case_name string, marker
 		os.rmdir_all(workspace) or {}
 	}
 	main_file := os.real_path(os.join_path(workspace, 'parent', 'repo', 'main.v'))
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	res := os.exec([issue_20147_vexe, 'run', main_file])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'boundary-ok', res.output
 	repo_dir := os.real_path(os.join_path(workspace, 'parent', 'repo'))
-	dir_res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(repo_dir)}')
+	dir_res := os.exec([issue_20147_vexe, 'run', repo_dir])
 	assert dir_res.exit_code == 0, dir_res.output
 	assert dir_res.output.trim_space() == 'boundary-ok', dir_res.output
-	test_res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(repo_dir)}')
+	test_res := os.exec([issue_20147_vexe, 'test', repo_dir])
 	assert test_res.exit_code == 0, test_res.output
 	old_wd := os.getwd()
 	os.chdir(repo_dir) or { panic(err) }
-	dot_run_res := os.execute('${os.quoted_path(issue_20147_vexe)} run .')
-	dot_test_res := os.execute('${os.quoted_path(issue_20147_vexe)} test .')
+	dot_run_res := os.exec([issue_20147_vexe, 'run', '.'])
+	dot_test_res := os.exec([issue_20147_vexe, 'test', '.'])
 	os.chdir(old_wd) or { panic(err) }
 	assert dot_run_res.exit_code == 0, dot_run_res.output
 	assert dot_run_res.output.trim_space() == 'boundary-ok', dot_run_res.output
@@ -389,7 +389,7 @@ fn test_issue_27281_boundary_rejects_unrelated_parent_module() {
 		['module foo', '', "pub fn value() string { return 'unrelated-parent' }"].join_lines() +
 			'\n')
 	main_file := os.join_path(repo, 'main.v')
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	res := os.exec([issue_20147_vexe, 'run', main_file])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('cannot import module "foo" (not found)'), res.output
 }
@@ -414,13 +414,13 @@ fn test_issue_27281_test_lookup_rejects_sibling_above_boundary() {
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'),
 
 		['module bar', '', 'pub const present = true'].join_lines() + '\n')
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
+	res := os.exec([issue_20147_vexe, 'test', foo_dir])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('cannot import module "bar" (not found)'), res.output
 	explicit_lookup := '@vlib|${project}'
 	explicit_test_file := os.join_path(foo_dir, 'foo_test.v')
 	explicit_res :=
-		os.execute('${os.quoted_path(issue_20147_vexe)} -path ${os.quoted_path(explicit_lookup)} -check ${os.quoted_path(explicit_test_file)}')
+		os.exec([issue_20147_vexe, '-path', '${explicit_lookup}', '-check', explicit_test_file])
 	assert explicit_res.exit_code == 0, explicit_res.output
 }
 
@@ -442,7 +442,7 @@ fn test_issue_27281_external_only_test_directory_keeps_module_prefix() {
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'),
 		['module bar', '', 'pub fn module_name() string {', '\treturn @MOD', '}'].join_lines() +
 			'\n')
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
+	res := os.exec([issue_20147_vexe, 'test', foo_dir])
 	assert res.exit_code == 0, res.output
 }
 
@@ -476,19 +476,19 @@ fn test_issue_27281_temp_project_allows_uppercase_base_url() {
 		os.rmdir_all(issue_27281_base_url_workspace()) or {}
 	}
 	main_file := os.real_path(os.join_path(issue_27281_base_url_workspace(), 'Source', 'main.v'))
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	res := os.exec([issue_20147_vexe, 'run', main_file])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'base-url-ok', res.output
 	source_dir := os.real_path(os.join_path(issue_27281_base_url_workspace(), 'Source'))
-	dir_res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(source_dir)}')
+	dir_res := os.exec([issue_20147_vexe, 'run', source_dir])
 	assert dir_res.exit_code == 0, dir_res.output
 	assert dir_res.output.trim_space() == 'base-url-ok', dir_res.output
-	test_res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(source_dir)}')
+	test_res := os.exec([issue_20147_vexe, 'test', source_dir])
 	assert test_res.exit_code == 0, test_res.output
 	old_wd := os.getwd()
 	os.chdir(source_dir) or { panic(err) }
-	dot_run_res := os.execute('${os.quoted_path(issue_20147_vexe)} run .')
-	dot_test_res := os.execute('${os.quoted_path(issue_20147_vexe)} test .')
+	dot_run_res := os.exec([issue_20147_vexe, 'run', '.'])
+	dot_test_res := os.exec([issue_20147_vexe, 'test', '.'])
 	os.chdir(old_wd) or { panic(err) }
 	assert dot_run_res.exit_code == 0, dot_run_res.output
 	assert dot_run_res.output.trim_space() == 'base-url-ok', dot_run_res.output
@@ -518,7 +518,7 @@ fn test_issue_27281_temp_project_allows_session_shaped_entry_folder() {
 	issue_20147_write_file(os.join_path(workspace, 'dep', 'v.mod'), dep_vmod)
 	issue_20147_write_file(os.join_path(cmd_dir, 'main.v'), main_source)
 	issue_20147_write_file(os.join_path(module_dir, 'mymod.v'), module_source)
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(cmd_dir)}')
+	res := os.exec([issue_20147_vexe, 'run', cmd_dir])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'uppercase-entry-ok', res.output
 }
@@ -549,7 +549,7 @@ fn test_issue_27281_marker_bounded_module_directory_keeps_prefix() {
 	issue_20147_write_file(os.join_path(foo_dir, 'foo_test.v'), foo_test_source)
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
 	issue_20147_write_file(os.join_path(ancestor_bar_dir, 'bar.v'), bar_source)
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
+	res := os.exec([issue_20147_vexe, 'test', foo_dir])
 	assert res.exit_code == 0, res.output
 	project_link := os.join_path(workspace, 'project_link')
 	os.symlink(project_dir, project_link) or {
@@ -561,7 +561,7 @@ fn test_issue_27281_marker_bounded_module_directory_keeps_prefix() {
 	}
 	linked_foo_dir := os.join_path(project_link, 'foo')
 	link_res :=
-		os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(linked_foo_dir)}')
+		os.exec([issue_20147_vexe, 'test', linked_foo_dir])
 	assert link_res.exit_code == 0, link_res.output
 }
 
@@ -591,10 +591,10 @@ fn test_issue_27281_marker_bounded_external_test_file_keeps_prefix() {
 	foo_test_file := os.join_path(foo_dir, 'foo_test.c.v')
 	issue_20147_write_file(foo_test_file, foo_test_source)
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
-	dir_res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_dir)}')
+	dir_res := os.exec([issue_20147_vexe, 'test', foo_dir])
 	assert dir_res.exit_code == 0, dir_res.output
 	file_res :=
-		os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(foo_test_file)}')
+		os.exec([issue_20147_vexe, 'test', foo_test_file])
 	assert file_res.exit_code == 0, file_res.output
 }
 
@@ -620,7 +620,7 @@ fn test_issue_27281_marker_bounded_directory_ignores_inactive_module_sources() {
 	issue_20147_write_file(os.join_path(foo_dir, 'foo.js.v'), inactive_source)
 	issue_20147_write_file(os.join_path(foo_dir, 'foo_test.v'), 'module foo\n')
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(foo_dir)}')
+	res := os.exec([issue_20147_vexe, 'run', foo_dir])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'bar', res.output
 }
@@ -654,7 +654,7 @@ fn test_issue_27281_marker_bounded_symlinked_module_root_keeps_logical_name() {
 		}
 	}
 	res :=
-		os.execute('${os.quoted_path(issue_20147_vexe)} -shared -check ${os.quoted_path(logical_foo_dir)}')
+		os.exec([issue_20147_vexe, '-shared', '-check', logical_foo_dir])
 	assert res.exit_code == 0, res.output
 }
 
@@ -678,7 +678,7 @@ fn test_issue_27281_marker_bounded_bare_keyword_module_keeps_prefix() {
 	issue_20147_write_file(os.join_path(project_dir, '.v.mod.stop'), '')
 	issue_20147_write_file(os.join_path(type_dir, 'type_test.v'), type_test_source)
 	issue_20147_write_file(os.join_path(bar_dir, 'bar.v'), bar_source)
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(type_dir)}')
+	res := os.exec([issue_20147_vexe, 'test', type_dir])
 	assert res.exit_code == 0, res.output
 }
 
@@ -700,6 +700,6 @@ fn test_issue_27281_bare_keyword_module_names_resolve() {
 	main_file := os.join_path(project_dir, 'main.v')
 	issue_20147_write_file(main_file,
 		'module main\nimport type.bar\nimport type\nfn main() { assert type.value() == 1; assert bar.value() == 2 }\n')
-	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	res := os.exec([issue_20147_vexe, 'run', main_file])
 	assert res.exit_code == 0, res.output
 }

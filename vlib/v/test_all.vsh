@@ -567,7 +567,7 @@ fn section(step int, title string) {
 
 fn run(cmd string) {
 	println('> ${cmd}')
-	code := os.system(cmd)
+	code := os.system_args(os.split_args(cmd) or { panic(err) })
 	if code != 0 {
 		exit(code)
 	}
@@ -577,7 +577,8 @@ fn run_output(cfg Config, cmd string) string {
 	stdout_path := temp_path(cfg, 'stdout')
 	cleanup_files([stdout_path])
 	println('> ${cmd}')
-	code := os.system('${cmd} > ${q(stdout_path)}')
+	code := os.system_args(['sh', '-c', 'output=\$1; shift; "\$@" > "\$output"', 'v', stdout_path,
+		...(os.split_args(cmd) or { panic(err) })])
 	if code != 0 {
 		exit(code)
 	}
@@ -698,7 +699,7 @@ fn run_unlocked_example(cfg Config, v3_bin string, example_case ExampleCase, ind
 		compile_cmd += ' ' + quote_args(example_case.compile_flags)
 	}
 	compile_cmd += ' ${q(src)} -b c -o ${q(bin)}'
-	compile := os.execute(compile_cmd)
+	compile := os.exec(os.split_args(compile_cmd) or { panic(err) })
 	if compile.exit_code != 0 {
 		cleanup_files([bin, bin + '.c', stdin_path])
 		print_command_failure('compile ${example_case.path}', compile_cmd, compile.output)
@@ -722,7 +723,7 @@ fn run_unlocked_example(cfg Config, v3_bin string, example_case ExampleCase, ind
 		}
 		run_cmd += ' < ${q(stdin_path)}'
 	}
-	run_result := os.execute(run_cmd)
+	run_result := os.exec(os.split_args(run_cmd) or { panic(err) })
 	if run_result.exit_code != 0 {
 		cleanup_files([bin, bin + '.c', stdin_path])
 		print_command_failure('run ${example_case.path}', run_cmd, run_result.output)
@@ -788,7 +789,7 @@ fn self_check_gui_smoke_timeout_status() {
 }
 
 fn shell_command_exists(name string) bool {
-	return os.execute('command -v ${q(name)} >/dev/null 2>&1').exit_code == 0
+	return os.exists_in_system_path(name)
 }
 
 fn run_process_with_timeout(command string, args []string, seconds int) ProcessRunResult {

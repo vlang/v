@@ -40,7 +40,7 @@ fn test_wasm_when_decompiled_must_have() {
 		file_options := get_file_options(vv_file)
 		cmd := '${os.quoted_path(vexe)} -b wasm ${file_options.vflags} -o ${os.quoted_path(full_wasm_path)} ${os.quoted_path(full_vv_path)}'
 		// println(cmd)
-		res_wasm := os.execute(cmd)
+		res_wasm := os.exec([vexe, '-b', 'wasm', ...(os.split_args(file_options.vflags) or { panic(err) }), '-o', full_wasm_path, full_vv_path])
 		if res_wasm.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail(cmd))
@@ -51,7 +51,7 @@ fn test_wasm_when_decompiled_must_have() {
 
 		cmd_decompile := '${os.quoted_path(decompiler)} ${os.quoted_path(full_wasm_path)} --output=${os.quoted_path(full_dcmp_path)}'
 		// println(cmd_decompile)
-		res_dcmp := os.execute(cmd_decompile)
+		res_dcmp := os.exec([decompiler, full_wasm_path, '--output=' + '${full_dcmp_path}'])
 		if res_dcmp.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail(cmd_decompile))

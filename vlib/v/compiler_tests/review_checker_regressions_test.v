@@ -12,7 +12,8 @@ fn build_v3_review_checker() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -21,7 +22,7 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	result := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
@@ -31,10 +32,10 @@ fn run_good(v3_bin string, name string, src string) string {
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} -enable-globals ${good_src} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, '-enable-globals', '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -53,9 +54,9 @@ fn run_good_project(v3_bin string, name string, files map[string]string) string 
 		os.write_file(path, source) or { panic(err) }
 	}
 	bin_path := os.join_path(root, 'program')
-	compile := os.execute('${v3_bin} -nocache -b c -o ${bin_path} ${os.join_path(root, 'main.v')}')
+	compile := os.exec([v3_bin, '-nocache', '-b', 'c', '-o', bin_path, os.join_path(root, 'main.v')])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -64,10 +65,10 @@ fn run_runtime_bad(v3_bin string, name string, src string) string {
 	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(bad_bin)
+	run := os.exec([bad_bin])
 	assert run.exit_code != 0, '${name}: expected runtime failure, got success\n${run.output}'
 	return run.output.trim_space()
 }

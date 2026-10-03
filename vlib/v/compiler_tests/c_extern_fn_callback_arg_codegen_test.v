@@ -10,7 +10,8 @@ fn extern_cb_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_extern_callback_arg_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${extern_cb_vexe} -gc none -path "${extern_cb_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${extern_cb_v3_src}')
+		os.exec([extern_cb_vexe, '-gc', 'none', '-path', '${extern_cb_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${extern_cb_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -99,7 +100,7 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 		os.rm(c_path) or {}
 		os.rm(exe) or {}
 	}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(c_path) or { panic(err) }
@@ -131,9 +132,9 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	// to the C-ABI adapter instead of directly to its V-ABI `__anon_fn` target.
 	assert compact.contains('closure__closure_create_with_data(__anon_fn_0_callback_adapter_'), c_code
 
-	build_program := os.execute('${v3_bin} -o ${exe} ${src}')
+	build_program := os.exec([v3_bin, '-o', exe, '${src}'])
 	assert build_program.exit_code == 0, build_program.output
-	run := os.execute(exe)
+	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['8', '8', '8', '8', '3', '3', '2', '9']
 }

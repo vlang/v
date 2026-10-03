@@ -330,8 +330,7 @@ fn local_git_changes_reason(path string) string {
 	if !os.exists(os.join_path(path, '.git')) {
 		return ''
 	}
-	quoted := os.quoted_path(path)
-	status := os.execute_opt('git -C ${quoted} status --porcelain') or {
+	status := os.exec_opt(['git', '-C', path, 'status', '--porcelain']) or {
 		return 'failed to run `git status`: ${err.msg()}'
 	}
 	if status.output.trim_space() != '' {
@@ -344,7 +343,8 @@ fn local_git_changes_reason(path string) string {
 	// which leaves HEAD detached at a tag without creating a remote tracking
 	// branch, so HEAD would otherwise appear as unpushed even on a pristine
 	// clone.
-	unpushed := os.execute_opt('git -C ${quoted} rev-list HEAD --branches --not --remotes --tags') or {
+	unpushed := os.exec_opt(['git', '-C', path, 'rev-list', 'HEAD', '--branches', '--not', '--remotes',
+		'--tags']) or {
 		return 'failed to run `git rev-list`: ${err.msg()}'
 	}
 	if unpushed.output.trim_space() != '' {

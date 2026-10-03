@@ -23,7 +23,8 @@ fn main() { item := Record{}; ${body}; ordinary() }
 ')!
 			for flags in ['', '-W'] {
 				mode := if flags == '' { '-o ${os.quoted_path(path + '.c')}' } else { '-check' }
-				result := os.execute('${os.quoted_path(@VEXE)} ${flags} ${mode} ${os.quoted_path(path)}')
+				result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }),
+					...(os.split_args(mode) or { panic(err) }), path])
 				assert result.exit_code == if flags == '' { 0 } else { 1 }, result.output
 				assert result.output.count('return value must be used') == 1, result.output
 				kind := if body.contains('item.') { 'method' } else { 'function' }
@@ -40,10 +41,10 @@ fn main() {
  ordinary()
 }
 ')!
-		used := os.execute('${os.quoted_path(@VEXE)} -W -check ${os.quoted_path(path)}')
+		used := os.exec([@VEXE, '-W', '-check', path])
 		assert used.exit_code == 0, used.output
 		os.write_file(path, '${prefix}module main\nfn main() { 1 + 2 }\n')!
-		unused := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+		unused := os.exec([@VEXE, '-check', path])
 		if translated {
 			assert unused.exit_code == 0, unused.output
 			assert !unused.output.contains('evaluated but not used'), unused.output

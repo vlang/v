@@ -551,7 +551,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		}
 	}
 
-	$if windows || ( linux && !sokol_wayland ?) {
+	$if windows || (linux && !sokol_wayland ?) {
 		if e.typ == .key_down && e.key_code in [.backspace, .delete, .enter, .tab] {
 			// with Win32 and X11, sokol does not send .char events for some keys;
 			// we will emulate them for consistency here:

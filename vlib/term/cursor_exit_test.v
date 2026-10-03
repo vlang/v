@@ -9,11 +9,11 @@ fn test_show_cursor_on_exit_preserves_exit_status_and_signal_handlers() {
 	defer {
 		os.rm(binary) or {}
 	}
-	compiled := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(binary)} ${os.quoted_path(fixture)}')
+	compiled := os.exec([@VEXE, '-o', binary, '${fixture}'])
 	assert compiled.exit_code == 0, compiled.output
 	for mode in ['normal', 'exit', 'default-int', 'default-term', 'handler-int', 'handler-term',
 		'ignore'] {
-		result := os.execute('${os.quoted_path(binary)} ${mode}')
+		result := os.exec([binary, ...(os.split_args(mode) or { panic(err) })])
 		if mode in ['normal', 'exit', 'ignore'] {
 			assert result.exit_code == if mode == 'exit' { 7 } else { 0 }, result.output
 			assert result.output == '\x1b[?25l\x1b[?25h', result.output

@@ -45,6 +45,7 @@ fn main() {
 				cmd.line = cmd.v3_line
 			}
 			cmd.line = cmd.line.replace_once(vexe, '${vexe} ${strict_flags}')
+			if cmd.arguments.len > 0 { cmd.arguments << requested_args }
 		}
 		commands << cmd
 	}
@@ -80,6 +81,7 @@ enum RunCommandKind {
 struct Command {
 mut:
 	line          string
+	arguments     []string
 	label         string // when set, the label will be printed *before* cmd.line is executed
 	ecode         int
 	okmsg         string
@@ -196,11 +198,15 @@ fn get_all_commands() []Command {
 			}
 		}
 		res << Command{
-			line:  '${vexe} -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
-			okmsg: 'V prints the generated source code to stdout with `-o -` .'
+			line:      '${vexe} -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
+			arguments: ['sh', '-c',
+				'"\$@" -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null',
+				'v', vexe_path]
+			okmsg:     'V prints the generated source code to stdout with `-o -` .'
 		}
 		res << Command{
 			line:          '${vexe} run examples/v_script.vsh > /dev/null'
+			arguments:     ['sh', '-c', '"\$@" run examples/v_script.vsh > /dev/null', 'v', vexe_path]
 			okmsg:         'V can run the .VSH script file examples/v_script.vsh'
 			v3_compatible: false
 		}
@@ -382,10 +388,13 @@ fn get_all_commands() []Command {
 	}
 	$if macos || linux {
 		res << Command{
-			line:   '${vexe} -o v.c cmd/v && cc -Werror -std=c99 v.c -lpthread -lm && rm -rf a.out'
-			label:  'v.c should be buildable with no warnings...'
-			okmsg:  'v.c can be compiled without warnings. This is good :)'
-			rmfile: 'v.c'
+			line:      '${vexe} -o v.c cmd/v && cc -Werror -std=c99 v.c -lpthread -lm && rm -rf a.out'
+			arguments: ['sh', '-c',
+				'"\$@" -o v.c cmd/v && cc -Werror -std=c99 v.c -lpthread -lm && rm -rf a.out',
+				'v', vexe_path]
+			label:     'v.c should be buildable with no warnings...'
+			okmsg:     'v.c can be compiled without warnings. This is good :)'
+			rmfile:    'v.c'
 		}
 	}
 	$if linux || macos {
@@ -403,6 +412,9 @@ fn get_all_commands() []Command {
 	$if linux {
 		res << Command{
 			line:          '${vexe} vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load'
+			arguments:     ['sh', '-c',
+				'"\$@" vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load',
+				'v', vexe_path]
 			okmsg:         'STBI load does not leak with GC on, when loading images multiple times (use < 10MB)'
 			runcmd:        .execute
 			contains:      'logo.png 1000 times.'
@@ -447,12 +459,17 @@ fn (mut cmd Command) run() ? {
 		}
 	}
 	sw := time.new_stopwatch()
+	arguments := if cmd.arguments.len > 0 {
+		cmd.arguments
+	} else {
+		os.split_args(cmd.line) or { panic(err) }
+	}
 	if cmd.runcmd == .system {
-		cmd.ecode = os.system(cmd.line)
+		cmd.ecode = os.system_args(arguments)
 		cmd.output = ''
 	}
 	if cmd.runcmd == .execute {
-		res := os.execute(cmd.line)
+		res := os.exec(arguments)
 		cmd.ecode = res.exit_code
 		cmd.output = res.output
 	}

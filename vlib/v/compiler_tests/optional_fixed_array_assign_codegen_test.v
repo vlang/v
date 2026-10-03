@@ -10,7 +10,8 @@ fn test_assign_fixed_array_call_to_option_field() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_assign_test_${pid}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_assign_input_${pid}.v')
@@ -32,7 +33,7 @@ fn main() {
 ')!
 
 	bin := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_assign_input_${pid}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -40,7 +41,7 @@ fn main() {
 	assert c_code.contains('foo.data = ({ __v_option_'), c_code
 	assert c_code.contains('memcpy(') && c_code.contains('.value, (make()).ret_arr'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }
 
@@ -48,7 +49,8 @@ fn test_indexed_optional_fixed_array_assignment_keeps_the_option_wrapper() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_index_assign_test_${pid}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_index_assign_input_${pid}.v')
@@ -82,11 +84,11 @@ fn main() {
 ')!
 
 	bin := os.join_path(os.temp_dir(), 'v3_optional_fixed_array_index_assign_input_${pid}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }
@@ -95,7 +97,8 @@ fn test_optional_map_index_comparison_preserves_evaluation_order() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_map_index_compare_test_${pid}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_optional_map_index_compare_input_${pid}.v')
@@ -123,7 +126,7 @@ fn main() {
 ')!
 
 	bin := os.join_path(os.temp_dir(), 'v3_optional_map_index_compare_input_${pid}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	c_code := os.read_file(bin + '.c')!
@@ -131,7 +134,7 @@ fn main() {
 	key_pos := c_code.index('string __map_key_') or { panic('missing map key temporary') }
 	assert map_pos < key_pos, c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }
@@ -140,7 +143,8 @@ fn test_smartcasted_optional_array_index_keeps_the_wrapper() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_smartcasted_optional_array_index_test_${pid}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_smartcasted_optional_array_index_input_${pid}.v')
@@ -158,11 +162,11 @@ fn main() {
 ')!
 
 	bin := os.join_path(os.temp_dir(), 'v3_smartcasted_optional_array_index_input_${pid}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }
@@ -171,7 +175,8 @@ fn test_nested_smartcasts_keep_optional_array_indexes_wrapped() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_nested_smartcasted_optional_array_index_test_${pid}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_nested_smartcasted_optional_array_index_input_${pid}.v')
@@ -194,11 +199,11 @@ fn main() {
 ')!
 
 	bin := os.join_path(os.temp_dir(), 'v3_nested_smartcasted_optional_array_index_input_${pid}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }

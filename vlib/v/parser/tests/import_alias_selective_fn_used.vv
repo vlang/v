@@ -1,3 +1,3 @@
-import os as vos { execute }
+import os as vos { exec }
 
-execute('ls')
+exec(['ls'])

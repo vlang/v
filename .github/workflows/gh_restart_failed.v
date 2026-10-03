@@ -173,7 +173,7 @@ fn execute_with_progress(cmd string) os.Result {
 			time.sleep(100 * time.millisecond)
 		}
 	}(cmd, start, mut &stop)
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	elapsed := time.since(start).seconds()
 	stop = true
 	time.sleep(100 * time.millisecond)

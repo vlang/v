@@ -74,7 +74,7 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 		os.write_file(vsource_path, source) or { continue }
 		vd.vprintln('>>> vd.example_oks: ${vd.example_oks:5} | vd.example_failures: ${vd.example_failures:5} | examples.len: ${examples.len} | source.len: ${source.len:5} | dn.name: ${dn.name}')
 		cmd := '${os.quoted_path(vexe)} ${voptions} ${os.quoted_path(vsource_path)}'
-		res := os.execute(cmd)
+		res := os.exec([vexe, ...(os.split_args(voptions) or { panic(err) }), vsource_path])
 		if res.exit_code != 0 {
 			eprintln('${dn_to_location(dn)}:${term.ecolorize(term.red, 'error in documentation example')}')
 			eprintln('          cmd: ${cmd}')

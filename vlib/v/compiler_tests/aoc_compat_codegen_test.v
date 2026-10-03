@@ -20,7 +20,8 @@ fn aoc_compat_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${aoc_compat_vexe} -gc none -path "${aoc_compat_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${aoc_compat_v3_src}')
+		os.exec([aoc_compat_vexe, '-gc', 'none', '-path',
+			'${aoc_compat_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${aoc_compat_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -30,10 +31,10 @@ fn aoc_compat_run(name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_aoc_compat_${name}.v')
 	bin := os.join_path(os.temp_dir(), 'v3_aoc_compat_${name}')
 	os.write_file(src, source) or { panic(err) }
-	compile := os.execute('${v3_bin} -nocache -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-nocache', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

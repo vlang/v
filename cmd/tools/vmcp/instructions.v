@@ -62,14 +62,20 @@ fn workspace_note(ws &Workspace) string {
 	mut note := '## This workspace\n' +
 		'\n' +
 		'- root: `' + ws.root + '`\n' +
-		'- v.mod: ' + if ws.v_modified { '`' + ws.relative(ws.v_mod_file) +
-			'` (' + ws.v_mod_name + ')' } else { 'none found' } + '\n' +
+		'- v.mod: ' + if ws.v_modified {
+		'`' + ws.relative(ws.v_mod_file) +
+			'` (' + ws.v_mod_name + ')'
+	} else {
+		'none found'
+	} + '\n' +
 		'- compiler: `' + ws.compiler + '`\n'
-	note += '- read-only: ' + if ws.read_only { 'yes, no tool may write a file' } else {
+	note += '- read-only: ' + if ws.read_only {
+		'yes, no tool may write a file'
+	} else {
 		'no'
 	} + '\n'
 	if ws.is_v_checkout {
-		note += '\nThis is the V compiler\'s own source tree. Changes here affect the\n' +
+		note += "\nThis is the V compiler's own source tree. Changes here affect the\n" +
 			'compiler: rebuild with `./v self` after touching `vlib/v/` or `cmd/v/`.\n'
 	}
 	return note

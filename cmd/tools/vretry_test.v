@@ -18,7 +18,7 @@ fn run(cmd string) os.Result {
 	defer {
 		log.info('>>> finished cmd: ${cmd}')
 	}
-	return os.execute(cmd)
+	return os.exec(os.split_args(cmd) or { panic(err) })
 }
 
 fn test_retry() {

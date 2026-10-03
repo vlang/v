@@ -16,7 +16,8 @@ fn main() {
 	path := os.real_path(source).replace('\\', '/').replace('"', '\\"')
 	for flags in ['-g', '-g -no-parallel', '-cg', ''] {
 		output := os.join_path(root, 'main.c')
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler ${flags} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		result := os.exec([@VEXE, '-new-compiler', ...(os.split_args(flags) or { panic(err) }),
+			'-o', output, source])
 		assert result.exit_code == 0, result.output
 		generated := os.read_file(output)!
 		if flags.starts_with('-g') {
@@ -39,7 +40,8 @@ fn test_c_debug_build_keeps_the_source_named_by_debug_information() {
 	$if windows {
 		executable += '.exe'
 	}
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -cg -gc none -nocache -o ${os.quoted_path(executable)} ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-new-compiler', '-cg', '-gc', 'none', '-nocache', '-o', executable,
+		source])
 	assert result.exit_code == 0, result.output
 	// The driver names the retained directory after the final executable file.
 	dir_prefix := '.${os.base(executable)}.v3cc.'
@@ -48,7 +50,7 @@ fn test_c_debug_build_keeps_the_source_named_by_debug_information() {
 	generated := os.read_file(os.join_path(root, dirs[0], 'src.c'))!
 	assert generated.contains('debug source')
 	assert !generated.contains('#line ')
-	run := os.execute(os.quoted_path(executable))
+	run := os.exec([executable])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'debug source'
 }
@@ -74,11 +76,12 @@ fn main() {
 ')!
 	for flags in ['-g', '-cg'] {
 		executable := os.join_path(root, 'program_${flags.all_after('-')}')
-		build := os.execute('${os.quoted_path(@VEXE)} -new-compiler ${flags} -gc none -nocache -cc ${os.quoted_path(clang)} -o ${os.quoted_path(executable)} ${os.quoted_path(source)}')
+		build := os.exec([@VEXE, '-new-compiler', ...(os.split_args(flags) or { panic(err) }),
+			'-gc', 'none', '-nocache', '-cc', '${clang}', '-o', executable, source])
 		assert build.exit_code == 0, build.output
 		bundle := executable + '.dSYM'
 		assert os.is_dir(bundle), 'missing debug symbols beside ${executable}'
-		symbols := os.execute('${os.quoted_path(dwarfdump)} --debug-info --name=debug_position ${os.quoted_path(bundle)}')
+		symbols := os.exec(['${dwarfdump}', '--debug-info', '--name=debug_position', '${bundle}'])
 		assert symbols.exit_code == 0, symbols.output
 		if flags == '-g' {
 			assert symbols.output.contains(os.real_path(source)), symbols.output

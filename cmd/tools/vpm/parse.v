@@ -320,13 +320,13 @@ fn (m Module) existing_checkout_matches_source() bool {
 	vcs := m.vcs or { settings.vcs }
 	existing_url := match vcs {
 		.git {
-			result := os.execute_opt('git -C ${os.quoted_path(m.install_path)} remote get-url origin') or {
+			result := os.exec_opt(['git', '-C', m.install_path, 'remote', 'get-url', 'origin']) or {
 				return false
 			}
 			result.output.trim_space()
 		}
 		.hg {
-			result := os.execute_opt('hg -R ${os.quoted_path(m.install_path)} paths default') or {
+			result := os.exec_opt(['hg', '-R', m.install_path, 'paths', 'default']) or {
 				return false
 			}
 			result.output.trim_space()

@@ -33,7 +33,7 @@ fn main() {
 		for query in ['hv^', 'gd^'] {
 			spec := os.quoted_path('${position}${query}${column + 1}')
 			command := '${vexe} -check -vls-mode -line-info ${spec}'
-			result := os.execute('${command} ${source_path}')
+			result := os.exec([...(os.split_args(command) or { panic(err) }), path])
 			assert result.exit_code == 0, result.output
 			expected := if query == 'hv^' { 'err string' } else { ':${declaration}:1' }
 			assert result.output.contains(expected), result.output

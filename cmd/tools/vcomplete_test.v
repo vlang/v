@@ -202,7 +202,7 @@ fn run_individual_test(case CompleteTestCase) ! {
 			normalized_complete = normalized_complete.replace('/', '\\')
 		}
 		complete_command += ' ${normalized_complete}'
-		res := os.execute('${complete_command}')
+		res := os.exec([...(os.split_args(complete_command) or { panic(err) })])
 		mut lines := res.output.split('\n')
 		for mut line in lines {
 			if case.shell == .powershell {

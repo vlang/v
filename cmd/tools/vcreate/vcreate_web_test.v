@@ -33,6 +33,6 @@ fn test_web_template_uses_veb() {
 	template_html := os.read_file(os.join_path(project_path, 'templates', 'index.html'))!
 	assert template_html.contains('veb starter')
 	os.chdir(project_path)!
-	res := os.execute('${os.quoted_path(@VEXE)} .')
+	res := os.exec([@VEXE, '.'])
 	assert res.exit_code == 0, res.output
 }

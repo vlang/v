@@ -12,13 +12,14 @@ fn passed(msg string) {
 
 fn vcheck(vfile string) {
 	run_check := 'v -user_mod_path . -freestanding run '
-	if 0 == os.system('${run_check} ${vfile}/${vfile}.v') {
+	if 0 == os.system_args([...(os.split_args(run_check) or { panic(err) }),
+		'${vfile}' + '/' + '${vfile}' + '.v']) {
 		passed(run_check)
 	} else {
 		failed(run_check)
 	}
-	os.system('ls -lh ${vfile}/${vfile}')
-	os.system('rm -f ${vfile}/${vfile}')
+	os.system_args(['ls', '-lh', '${vfile}' + '/' + '${vfile}'])
+	os.system_args(['rm', '-f', '${vfile}' + '/' + '${vfile}'])
 }
 
 fn main() {

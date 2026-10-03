@@ -175,7 +175,7 @@ fn setup_cycles_environment() {
 fn run_in_background(cmd string) {
 	log.warn('running in background: ${cmd} ...')
 	spawn fn (cmd string) {
-		res := os.execute(cmd)
+		res := os.exec(os.split_args(cmd) or { panic(err) })
 		log.warn('Background cmd ended. res.exit_code: ${res.exit_code} | res.output.len: ${res.output.len}')
 		if res.exit_code != 0 {
 			eprintln('----------------------- background command failed: --------------------------')
@@ -189,7 +189,7 @@ fn run_in_background(cmd string) {
 }
 
 fn must_exec_cmd(cmd string) {
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	if res.exit_code == 0 {
 		return
 	}
@@ -201,7 +201,8 @@ fn test_live_program_can_be_compiled() {
 	compile_cmd := '${os.quoted_path(vexe)} -cg -keepc -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(main_source_file)}'
 	log.info('Compiling with compile_cmd:')
 	eprintln('> ${compile_cmd}')
-	compile_res := os.system(compile_cmd)
+	compile_res := os.system_args([vexe, '-cg', '-keepc', '-nocolor', '-live', '-o', genexe_file,
+		main_source_file])
 	log.info('> DONE')
 	assert compile_res == 0
 	run_in_background('${os.quoted_path(genexe_file)}')

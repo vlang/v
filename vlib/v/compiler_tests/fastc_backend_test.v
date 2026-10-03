@@ -1,6 +1,8 @@
 // vtest build: false
 
 import os
+import strings
+import time
 import v.cmdexec
 
 const fastc_backend_v3_dir = os.dir(os.dir(@FILE))
@@ -337,7 +339,7 @@ fn main() {
 	stdout_c := os.join_path(root, 'stdout.c')
 	stdout_diagnostics := os.join_path(root, 'stdout.stderr')
 	stdout_result :=
-		os.execute('${os.quoted_path(v3_bin)} -b fastc -o - ${os.quoted_path(valid_source)} > ${os.quoted_path(stdout_c)} 2> ${os.quoted_path(stdout_diagnostics)}')
+		fastc_capture_files([v3_bin, '-b', 'fastc', '-o', '-', valid_source], stdout_c, stdout_diagnostics, map[string]string{})
 	assert stdout_result.exit_code == 0, stdout_result.output
 	stdout_source := os.read_file(stdout_c) or { panic(err) }
 	assert stdout_source.contains('V_FASTC_PRINT_SELECT')
@@ -356,7 +358,7 @@ fn main() {
 	cross_stdout_c := os.join_path(root, 'cross_stdout.c')
 	cross_stdout_diagnostics := os.join_path(root, 'cross_stdout.stderr')
 	cross_stdout_result :=
-		os.execute('${os.quoted_path(v3_bin)} -b fastc -os ${cross_target_os} -o - ${os.quoted_path(valid_source)} > ${os.quoted_path(cross_stdout_c)} 2> ${os.quoted_path(cross_stdout_diagnostics)}')
+		fastc_capture_files([v3_bin, '-b', 'fastc', '-os', cross_target_os, '-o', '-', valid_source], cross_stdout_c, cross_stdout_diagnostics, map[string]string{})
 	assert cross_stdout_result.exit_code == 0, cross_stdout_result.output
 	cross_stdout_source := os.read_file(cross_stdout_c) or { panic(err) }
 	assert cross_stdout_source.contains('V_FASTC_PRINT_SELECT')
@@ -760,4 +762,44 @@ fn main() {
 		assert result.exit_code != 0
 		assert result.output.contains(invocation.expected), result.output
 	}
+}
+
+// Drain both pipes while the child runs, so a full stderr pipe cannot block stdout.
+fn fastc_capture_files(arguments []string, stdout_file string, stderr_file string, variables map[string]string) os.Result {
+	mut process := os.new_process(arguments[0])
+	process.set_args(arguments[1..])
+	if variables.len > 0 {
+		mut environment := os.environ()
+		for key, value in variables { environment[key] = value }
+		process.set_environment(environment)
+	}
+	process.set_redirect_stdio()
+	process.set_stdin_path(if os.user_os() == 'windows' { 'NUL' } else { '/dev/null' })
+	process.run()
+	mut stdout := strings.new_builder(1024)
+	mut stderr := strings.new_builder(1024)
+	for process.is_alive() {
+		out := process.stdout_read()
+		err := process.stderr_read()
+		stdout.write_string(out)
+		stderr.write_string(err)
+		if out.len == 0 && err.len == 0 { time.sleep(time.millisecond) }
+	}
+	stdout.write_string(process.stdout_slurp())
+	stderr.write_string(process.stderr_slurp())
+	process.wait()
+	stdout_text := stdout.str()
+	stderr_text := stderr.str()
+	os.write_file(stdout_file, stdout_text) or { panic(err) }
+	if stderr_file != '' { os.write_file(stderr_file, stderr_text) or { panic(err) } }
+	result := os.Result{
+		exit_code: process.code
+		output:    if stderr_file == '' {
+			stderr_text
+		} else {
+			process.err
+		}
+	}
+	process.close()
+	return result
 }

@@ -17,7 +17,7 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('cannot reference fixed array'), result.output
 		assert result.output.contains('cannot be assigned outside'), result.output
@@ -36,7 +36,7 @@ fn main() {
 	_ = pointer
 }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot reference fixed array'), result.output
 }
@@ -54,7 +54,8 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-enable-globals',
+			'-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('cannot reference fixed array'), result.output
 	}
@@ -74,7 +75,7 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code == 0, result.output
 	}
 }

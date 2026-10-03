@@ -23,13 +23,13 @@ fn resolve_history_ref(user_branch string) string {
 	if user_branch != '' {
 		return user_branch
 	}
-	gitc := 'git -C ${os.quoted_path(vdir)}'
-	origin := os.execute('${gitc} symbolic-ref --quiet --short refs/remotes/origin/HEAD')
+	origin := os.exec(['git', '-C', vdir, 'symbolic-ref', '--quiet', '--short',
+		'refs/remotes/origin/HEAD'])
 	if origin.exit_code == 0 && origin.output.trim_space() != '' {
 		return origin.output.trim_space()
 	}
 	for cand in ['master', 'main'] {
-		if os.execute('${gitc} rev-parse --verify --quiet ${cand}').exit_code == 0 {
+		if os.exec(['git', '-C', vdir, 'rev-parse', '--verify', '--quiet', '${cand}']).exit_code == 0 {
 			return cand
 		}
 	}
@@ -69,7 +69,8 @@ fn cmd_run(args []string) ! {
 		// benchmark the N most recent first-parent commits (newest last, so they
 		// are stored oldest-first)
 		res :=
-			os.execute('git -C ${os.quoted_path(vdir)} log ${os.quoted_path(ref)} --first-parent -n ${latest} --pretty=format:%H')
+			os.exec(['git', '-C', vdir, 'log', '${ref}', '--first-parent', '-n', '${latest}',
+				'--pretty=format:%H'])
 		if res.exit_code != 0 {
 			return error('could not read history from `${ref}`: ${res.output.trim_space()}')
 		}
@@ -85,8 +86,8 @@ fn cmd_run(args []string) ! {
 		// every Nth sample. The `T00:00:00` form has no space, so it stays shell-safe.
 		from := '${year}-01-01T00:00:00'
 		to := '${year + 1}-01-01T00:00:00'
-		log_cmd := 'git -C ${os.quoted_path(vdir)} log ${os.quoted_path(ref)} --first-parent --reverse --since=${from} --until=${to} --pretty=format:%H'
-		res := os.execute(log_cmd)
+		res := os.exec(['git', '-C', vdir, 'log', '${ref}', '--first-parent', '--reverse',
+			'--since=' + '${from}', '--until=' + '${to}', '--pretty=format:%H'])
 		if res.exit_code != 0 {
 			return error('could not read history from `${ref}`: ${res.output.trim_space()}')
 		}
@@ -223,7 +224,7 @@ fn cmd_remeasure(args []string) ! {
 		// rev-parse still echoes the input token before its fatal diagnostic, so
 		// check the exit code explicitly and fall back to the short hash only on a
 		// genuine resolution failure (e.g. a shallow clone).
-		rp := os.execute('git -C ${os.quoted_path(vdir)} rev-parse ${os.quoted_path(short)}')
+		rp := os.exec(['git', '-C', vdir, 'rev-parse', '${short}'])
 		full := if rp.exit_code == 0 { rp.output.trim_space() } else { short }
 		elog('[${idx + 1:2}/${rows.len}] ${short} ${r.commit_date.format()} ${r.message}')
 		mut b := benchmark_commit(full, short, r.message, r.commit_date, args) or {
@@ -443,8 +444,7 @@ fn build_with_oldv(commit string, args []string) !string {
 	elog('  oldv: building V @ ${short_hash(commit)} (cc=${cc}) ...')
 	// `v run cmd/tools/oldv.v <commit>` clones v+vc into <cache>/oldv on first
 	// use, then checks out and bootstraps the requested commit.
-	cmd := '${os.quoted_path(vexe())} run ${os.quoted_path(oldv_src)} --cc ${cc} ${os.quoted_path(commit)}'
-	code := os.system(cmd)
+	code := os.system_args([vexe(), 'run', '${oldv_src}', '--cc', cc, '${commit}'])
 	if code != 0 || !os.is_executable(built_v) {
 		return error('oldv could not build ${short_hash(commit)} (expected ${built_v})')
 	}

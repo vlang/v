@@ -132,7 +132,7 @@ mut:
 
 fn (opt Options) verbose_execute(cmd string) os.Result {
 	opt.verbose_eprintln('Running `${cmd}`')
-	return os.execute(cmd)
+	return os.exec(os.split_args(cmd) or { panic(err) })
 }
 
 fn (opt Options) verbose_eprintln(msg string) {

@@ -12,7 +12,8 @@ fn string_interp_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -20,7 +21,7 @@ fn string_interp_build_v3() string {
 fn compile_v3_input(v3_bin string, name string, source string, bin string) os.Result {
 	src := os.join_path(os.temp_dir(), '${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
-	return os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	return os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 }
 
 fn test_typed_string_interpolation_stringifies_maps_arrays_and_generic_indexes() {
@@ -70,7 +71,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_string_interpolation_stringify_positive', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -106,7 +107,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_string_interp_method_markused', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '{"begin":7}'
 }
@@ -132,7 +133,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_string_interp_str_helper', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'wrapped'
 }
@@ -193,7 +194,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_defer_generic_string_interp', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	expected := "body-box
 box box:7
@@ -229,7 +230,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_string_alias_plus_positive', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -253,7 +254,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_primitive_alias_chain_str', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'x\n7\ntrue'
 }
@@ -291,7 +292,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_generic_fn_alias_custom_str', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -377,7 +378,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_string_join_order_${os.getpid()}')
 	compile := compile_v3_input(v3_bin, 'v3_string_join_order', src, bin)
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }

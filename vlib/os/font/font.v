@@ -153,7 +153,7 @@ pub fn default() string {
 		unsafe { font_locations.free() }
 		unsafe { xml_files.free() }
 	}
-	mut fm := os.execute("fc-match --format='%{file}\n' -s")
+	mut fm := os.exec(['fc-match', '--format=%{file}\n', '-s'])
 	if fm.exit_code == 0 {
 		fc_match_font_path := find_fc_match_font(fm.output)
 		if fc_match_font_path != '' {

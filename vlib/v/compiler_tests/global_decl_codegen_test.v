@@ -10,7 +10,8 @@ fn global_decl_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_global_decl_codegen_test')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${global_decl_vexe} -gc none -path "${global_decl_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${global_decl_v3_src}')
+		os.exec([global_decl_vexe, '-gc', 'none', '-path',
+			'${global_decl_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${global_decl_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -19,10 +20,10 @@ fn global_decl_run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} -enable-globals ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -31,7 +32,7 @@ fn global_decl_generate_c(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.write_file(src, source) or { panic(err) }
-	generate := os.execute('${v3_bin} -enable-globals -cc clang -o ${c_path} ${src}')
+	generate := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', c_path, '${src}'])
 	assert generate.exit_code == 0, generate.output
 	return os.read_file(c_path) or { panic(err) }
 }

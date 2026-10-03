@@ -170,7 +170,7 @@ fn main() {
 }
 ")!
 	output := os.join_path(tmp, 'main.c')
-	result := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-o', output, source])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains("doesn't implement method `tag`"), result.output
 }
@@ -206,7 +206,7 @@ fn main() {
 }
 ")!
 	output := os.join_path(tmp, 'main.c')
-	result := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-o', output, source])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('incorrectly implements method `clone` of interface `Cloner`'), result.output
 }

@@ -23,7 +23,8 @@ fn test_arc_clone_shares_payload_and_drops_it_once() {
 		os.rm(nonownership_out + '.c') or {}
 	}
 	build :=
-		os.execute('${arc_codegen_vexe} -gc none -d ownership -path "${arc_codegen_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${arc_codegen_v3_src}')
+		os.exec([arc_codegen_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${arc_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${arc_codegen_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(src, 'module main
 
@@ -226,12 +227,12 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} ${src} -d ownership -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert c_source.contains('arc__Arc_')
 	assert c_source.contains('__clone')
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split_into_lines()
 	assert lines.count(it == 'make factory') == 1, run.output
@@ -254,7 +255,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	nonownership_compile := os.execute('${v3_bin} ${nonownership_src} -b c -o ${nonownership_out}')
+	nonownership_compile := os.exec([v3_bin, '${nonownership_src}', '-b', 'c', '-o',
+		'${nonownership_out}'])
 	assert nonownership_compile.exit_code != 0, nonownership_compile.output
 	assert nonownership_compile.output.contains('sync.arc requires ownership mode (`-d ownership`) so Arc handles are released at scope exit'), nonownership_compile.output
 }

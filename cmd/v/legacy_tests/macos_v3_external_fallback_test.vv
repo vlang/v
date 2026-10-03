@@ -79,7 +79,7 @@ fn test_macos_v3_uses_external_v1_fallback_after_c_compilation_error() {
 		})
 		assert result.exit_code == 0, result.output
 		assert os.is_executable(output)
-		run := os.execute(os.quoted_path(output))
+		run := os.exec([output])
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == '10', run.output
 

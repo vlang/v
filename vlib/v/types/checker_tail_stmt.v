@@ -3650,6 +3650,11 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 			if branch.kind != .match_branch {
 				continue
 			}
+			// A branch that leaves the expression has no value to constrain. Its
+			// return payload is checked against the enclosing function separately.
+			if tc.branch_tail_never_returns(branch_id) {
+				continue
+			}
 			tail := tc.branch_tail_expr_id(branch_id)
 			if !tc.valid_node_id(tail) {
 				return false
@@ -3684,9 +3689,11 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		if !tc.branch_failure_literal_matches_context(then_tail, expected) {
 			return false
 		}
-		then_actual := tc.resolve_expr(then_tail, expected)
-		if !tc.if_branch_type_compatible_with_context(then_actual, then_tail, expected) {
-			return false
+		if !tc.branch_tail_never_returns(tc.a.child(&node, 1)) {
+			then_actual := tc.resolve_expr(then_tail, expected)
+			if !tc.if_branch_type_compatible_with_context(then_actual, then_tail, expected) {
+				return false
+			}
 		}
 		else_id := tc.a.child(&node, 2)
 		if !tc.valid_node_id(else_id) {
@@ -3698,6 +3705,9 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 		else_tail := tc.branch_tail_expr_id(else_id)
 		if !tc.valid_node_id(else_tail) {
 			return false
+		}
+		if tc.branch_tail_never_returns(else_id) {
+			return true
 		}
 		if !tc.branch_failure_literal_matches_context(else_tail, expected) {
 			return false
@@ -8108,7 +8118,7 @@ fn (mut tc TypeChecker) record_valid_method_value(id flat.NodeId, node flat.Node
 		|| tc.fn_context.node_id < 0 {
 		return
 	}
-	clean_recv := unwrap_pointer(base_type)
+	clean_recv := unwrap_all_pointers(base_type)
 	if clean_recv is Struct {
 		if tc.struct_field_type(clean_recv.name, node.value) != none {
 			return
@@ -15248,6 +15258,16 @@ fn (mut tc TypeChecker) invalidate_smartcasts_for_write_key(key string) {
 			tc.smartcasts.delete(child_key)
 		}
 	}
+}
+
+// store_c_name records `c_name`, naming.c_name(name) computed elsewhere, the way
+// cached_c_name would, and returns it.
+fn (tc &TypeChecker) store_c_name(name string, c_name string) string {
+	if !isnil(tc.type_cache) {
+		mut cache := unsafe { tc.type_cache }
+		cache.c_name_entries[name] = c_name
+	}
+	return c_name
 }
 
 // cached_c_name memoizes naming.c_name results in the type cache (falling

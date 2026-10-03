@@ -23,7 +23,8 @@ fn build_v3_or_review() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${or_review_vexe} -gc none -path "${or_review_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${or_review_v3_src}')
+		os.exec([or_review_vexe, '-gc', 'none', '-path', '${or_review_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${or_review_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,7 +34,7 @@ fn or_review_gen_c(v3_bin string, name string, src string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C'
 	return os.read_file(c_path) or { panic(err) }
@@ -43,9 +44,9 @@ fn or_review_run(v3_bin string, name string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -53,7 +54,7 @@ fn or_review_run(v3_bin string, name string, src string) string {
 fn or_review_compile_bad(v3_bin string, name string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
-	compile := os.execute('${v3_bin} ${src_path} -b c')
+	compile := os.exec([v3_bin, src_path, '-b', 'c'])
 	assert compile.exit_code != 0, '${name}: invalid source compiled successfully'
 	return compile.output
 }

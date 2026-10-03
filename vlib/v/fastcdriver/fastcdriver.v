@@ -170,12 +170,12 @@ fn parse_self_arguments(args []string, command_index int) (int, []string, string
 
 fn run_self_compiler(compiler string, compile_args []string, output string, source string) {
 	mut command := []string{cap: compile_args.len + 4}
-	command << os.quoted_path(compiler)
+	command << compiler
 	for arg in compile_args {
-		command << os.quoted_path(arg)
+		command << arg
 	}
-	command << ['-o', os.quoted_path(output), os.quoted_path(source)]
-	result := os.execute(command.join(' '))
+	command << ['-o', output, source]
+	result := os.exec(command)
 	if result.exit_code != 0 {
 		fail(result.output)
 	}

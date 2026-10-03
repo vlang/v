@@ -1926,7 +1926,7 @@ fn main() {
 			interrupted_run.close()
 			assert false, 'interrupted run did not start: ${run_error}'
 		}
-		interrupt := os.execute('kill -INT -${interrupted_run.pid}')
+		interrupt := os.exec(['kill', '-INT', '-' + '${interrupted_run.pid}'])
 		if interrupt.exit_code != 0 {
 			interrupted_run.signal_pgkill()
 			interrupted_run.wait()

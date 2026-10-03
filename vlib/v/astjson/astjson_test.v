@@ -15,7 +15,7 @@ fn write_fixture(source string) !string {
 }
 
 // hello_world is the fixture every AST test renders.
-const hello_world = 'import os\n\n// hello world\nfn main() {\n\tprintln(\'hello world\')\n}\n'
+const hello_world = "import os\n\n// hello world\nfn main() {\n\tprintln('hello world')\n}\n"
 
 fn dump_of(path string, opts astjson.Options) string {
 	return astjson.dump(astjson.parse(path), opts)
@@ -63,7 +63,7 @@ fn test_a_comment_keeps_its_whole_text_and_position() {
 }
 
 fn test_terse_keeps_only_kinds_and_the_tree_shape() {
-	out := dump_of(write_fixture(hello_world)!, astjson.Options{terse: true})
+	out := dump_of(write_fixture(hello_world)!, astjson.Options{ terse: true })
 	assert out.contains('"kind":\t"file"')
 	assert out.contains('"children":\t[{')
 	// `value`, `type`, `op`, `is_mut`, `pos` and `comments` are all details.
@@ -73,7 +73,7 @@ fn test_terse_keeps_only_kinds_and_the_tree_shape() {
 }
 
 fn test_skip_defaults_drops_zero_valued_properties() {
-	out := dump_of(write_fixture(hello_world)!, astjson.Options{skip_defaults: true})
+	out := dump_of(write_fixture(hello_world)!, astjson.Options{ skip_defaults: true })
 	// Every node's `type` is `""` and its `op` is `.none` on this fixture.
 	assert !out.contains('"type":\t""')
 	assert !out.contains('"op":\t"none"')
@@ -82,8 +82,9 @@ fn test_skip_defaults_drops_zero_valued_properties() {
 }
 
 fn test_hidden_names_remove_a_property() {
-	out := dump_of(write_fixture(hello_world)!, astjson.Options{hidden: ['pos',
-		'value']})
+	out := dump_of(write_fixture(hello_world)!, astjson.Options{
+		hidden: ['pos', 'value']
+	})
 	assert !out.contains('"pos"')
 	assert !out.contains('"value"')
 	assert out.contains('"kind"')
@@ -91,16 +92,16 @@ fn test_hidden_names_remove_a_property() {
 
 fn test_show_combines_the_three_filters() {
 	// Terse keeps `kind` but drops every other detail key.
-	assert astjson.Options{terse: true}.show('kind', false)
-	assert !astjson.Options{terse: true}.show('value', false)
+	assert astjson.Options{ terse: true }.show('kind', false)
+	assert !astjson.Options{ terse: true }.show('value', false)
 	// Terse keeps the structural keys.
-	assert astjson.Options{terse: true}.show('files', false)
-	assert astjson.Options{terse: true}.show('children', false)
+	assert astjson.Options{ terse: true }.show('files', false)
+	assert astjson.Options{ terse: true }.show('children', false)
 	// An explicit hidden name wins over terse.
-	assert !astjson.Options{hidden: ['kind']}.show('kind', false)
+	assert !astjson.Options{ hidden: ['kind'] }.show('kind', false)
 	// `skip_defaults` drops a property only when it holds a zero value.
-	assert astjson.Options{skip_defaults: true}.show('value', false)
-	assert !astjson.Options{skip_defaults: true}.show('value', true)
+	assert astjson.Options{ skip_defaults: true }.show('value', false)
+	assert !astjson.Options{ skip_defaults: true }.show('value', true)
 	// Plain options keep everything.
 	assert astjson.Options{}.show('value', true)
 }

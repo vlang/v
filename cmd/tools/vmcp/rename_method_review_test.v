@@ -27,7 +27,8 @@ fn test_method_rename_preserves_the_signature_and_receiver_and_compiles() {
 	assert after.contains('println(greet.greet())'), after
 	assert after.contains('bound := greet.greet'), after
 	assert after.contains("println('hello') // hello"), after
-	checked := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -no-retry-compilation -check ${os.quoted_path(path)}')
+	checked := os.exec([@VEXE, '-new-compiler', '-no-memory-limit', '-no-retry-compilation', '-check',
+		path])
 	assert checked.exit_code == 0, checked.output
 }
 
@@ -61,6 +62,7 @@ fn test_method_rename_preserves_receiver_identifiers_containing_the_method_name(
 	assert after.contains('println(myhello.greet())'), after
 	assert after.contains('bound := myhello.greet'), after
 	assert after.contains("println('hello') // hello"), after
-	checked := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -no-retry-compilation -check ${os.quoted_path(path)}')
+	checked := os.exec([@VEXE, '-new-compiler', '-no-memory-limit', '-no-retry-compilation', '-check',
+		path])
 	assert checked.exit_code == 0, checked.output
 }

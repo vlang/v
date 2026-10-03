@@ -10,7 +10,7 @@ pub type TypeId = u32
 @[heap]
 struct TypeInterner {
 mut:
-	lock    &sync.Mutex = unsafe { nil }
+	lock    &sync.RwMutex = unsafe { nil }
 	types   []Type
 	names   []string
 	buckets map[u64]TypeId
@@ -18,13 +18,13 @@ mut:
 
 fn new_type_interner() &TypeInterner {
 	return &TypeInterner{
-		lock:    sync.new_mutex()
+		lock:    sync.new_rwmutex()
 		buckets: map[u64]TypeId{}
 	}
 }
 
-fn (mut i TypeInterner) intern_locked(t Type) (TypeId, Type) {
-	mut key := semantic_type_hash(t)
+fn (mut i TypeInterner) intern_locked(t Type, hash u64) (TypeId, Type) {
+	mut key := hash
 	for {
 		if id := i.buckets[key] {
 			if int(id) < 0 || int(id) >= i.types.len {
@@ -50,16 +50,22 @@ fn (mut i TypeInterner) intern_locked(t Type) (TypeId, Type) {
 // synchronize with table growth even when they do not insert a missing type.
 fn (i &TypeInterner) probe(t Type) ?Type {
 	// The semantic lookup is read-only; only its synchronization state is mutable.
+	// Probes share a read lock, and interned types never change, so the hash
+	// and the comparisons run outside it: parallel probes do not queue.
 	mut guard := unsafe { i.lock }
-	guard.lock()
-	defer { guard.unlock() }
 	mut key := semantic_type_hash(t)
 	for {
-		id := i.buckets[key] or { return none }
+		guard.rlock()
+		id := i.buckets[key] or {
+			guard.runlock()
+			return none
+		}
 		if int(id) < 0 || int(id) >= i.types.len {
+			guard.runlock()
 			return none
 		}
 		candidate := i.types[int(id)]
+		guard.runlock()
 		if semantic_types_equal(candidate, t) {
 			return candidate
 		}
@@ -83,11 +89,12 @@ fn (mut i TypeInterner) name(id TypeId) string {
 }
 
 fn (mut i TypeInterner) canonicalize(t Type) (TypeId, Type) {
+	hash := semantic_type_hash(t)
 	i.lock.lock()
 	defer {
 		i.lock.unlock()
 	}
-	return i.intern_locked(t)
+	return i.intern_locked(t, hash)
 }
 
 fn (mut i TypeInterner) len() int {

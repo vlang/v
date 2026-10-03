@@ -18,7 +18,9 @@ fn test_optional_guard_clears_only_moved_source_wrapper() {
 		os.rm(output + '.c') or {}
 	}
 	build :=
-		os.execute('${optional_guard_move_vexe} -gc none -d ownership -path "${optional_guard_move_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${optional_guard_move_v3_src}')
+		os.exec([optional_guard_move_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${optional_guard_move_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${optional_guard_move_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(source, "interface Drop {
 mut:
@@ -101,9 +103,10 @@ fn main() {
 		panic(err)
 	}
 	compile :=
-		os.execute('${v3_bin} -ownership -d ownership -nocache -no-parallel -o ${output} ${source}')
+		os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel', '-o', output,
+			source])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(output)
+	run := os.exec([output])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }

@@ -61,21 +61,21 @@ fn main() {
 			panic('can not compile ${oldvexe}')
 		}
 	}
-	os.execute('git checkout master')
-	os.execute('git bisect reset')
-	os.execute('git checkout ${context.new_commit}')
-	os.execute('git bisect start')
-	os.execute('git bisect new')
-	os.execute('git checkout ${context.old_commit}')
-	os.execute('git bisect old')
+	os.exec(['git', 'checkout', 'master'])
+	os.exec(['git', 'bisect', 'reset'])
+	os.exec(['git', 'checkout', '${context.new_commit}'])
+	os.exec(['git', 'bisect', 'start'])
+	os.exec(['git', 'bisect', 'new'])
+	os.exec(['git', 'checkout', '${context.old_commit}'])
+	os.exec(['git', 'bisect', 'old'])
 	println(term.colorize(term.bright_yellow, term.header('', '-')))
 	execute('git bisect run ${os.quoted_path(oldvexe)} --bisect -c "${context.command}"')
 	println(term.colorize(term.bright_yellow, term.header('', '-')))
-	os.execute('git bisect reset')
-	os.execute('git checkout master')
+	os.exec(['git', 'bisect', 'reset'])
+	os.exec(['git', 'checkout', 'master'])
 }
 
 fn execute(cmd string) int {
 	eprintln('### ${cmd}')
-	return os.system(cmd)
+	return os.system_args(os.split_args(cmd) or { panic(err) })
 }

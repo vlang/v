@@ -292,7 +292,7 @@ fn main() {
 }
 ") or { return none }
 	out := os.join_path(dir, 'prog.c')
-	res := os.execute('${os.quoted_path(vexe)} ${extra} -os cross -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+	res := os.exec([vexe, '${extra}', '-os', 'cross', '-o', '${out}', '${src}'])
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
@@ -468,13 +468,13 @@ fn test_cross_snapshot_runs_under_prealloc() {
 		os.rmdir_all(dir) or {}
 	}
 	exe := os.join_path(dir, 'prog')
-	build := os.execute('${os.quoted_path(cc)} -std=gnu11 -w -o ${os.quoted_path(exe)} ${os.quoted_path(out)} -lm -lpthread')
+	build := os.exec([cc, '-std=gnu11', '-w', '-o', exe, '${out}', '-lm', '-lpthread'])
 	assert build.exit_code == 0, build.output
 	os.rm(os.join_path(dir, 'payload.bin')) or {
 		assert false, err.msg()
 		return
 	}
-	res := os.execute(os.quoted_path(exe))
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == checksum(payload)
 }
@@ -491,7 +491,7 @@ fn test_cross_snapshot_runs_without_the_embedded_file() {
 		payload := payload_of(size)
 		dir, out := cross_compile_probe(payload) or { return }
 		exe := os.join_path(dir, 'prog')
-		build := os.execute('${os.quoted_path(cc)} -std=gnu11 -w -o ${os.quoted_path(exe)} ${os.quoted_path(out)} -lm -lpthread')
+		build := os.exec([cc, '-std=gnu11', '-w', '-o', exe, '${out}', '-lm', '-lpthread'])
 		assert build.exit_code == 0, build.output
 		// Stand in for "compiled on another machine": the file the snapshot was
 		// generated from is gone by the time the program runs.
@@ -499,7 +499,7 @@ fn test_cross_snapshot_runs_without_the_embedded_file() {
 			assert false, err.msg()
 			return
 		}
-		res := os.execute(os.quoted_path(exe))
+		res := os.exec([exe])
 		assert res.exit_code == 0, res.output
 		assert res.output.trim_space() == checksum(payload)
 		os.rmdir_all(dir) or {}

@@ -33,7 +33,7 @@ println('@VEXE: ${vexe}')
 println(os.args)
 ")!
 	os.chmod(rnd_vsh_script_path, 0o700)!
-	res := os.execute('${os.quoted_path(rnd_vsh_script_path)} abc 123 -option')
+	res := os.exec([rnd_vsh_script_path, 'abc', '123', '-option'])
 	assert res.exit_code == 0
 	lines := res.output.split_into_lines()
 	dump(lines)
@@ -74,7 +74,7 @@ fn main() {
 	os.write_file(existing_path, 'hello')!
 	os.chmod(rnd_vsh_script_path, 0o700)!
 	res :=
-		os.execute('${os.quoted_path(rnd_vsh_script_path)} --path ${os.quoted_path(existing_path)}')
+		os.exec([rnd_vsh_script_path, '--path', existing_path])
 	assert res.exit_code == 0
 	assert res.output.trim_space() == 'File path: ${existing_path}'
 	os.rm(rnd_vsh_script_path)!

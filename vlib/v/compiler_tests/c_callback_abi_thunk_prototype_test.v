@@ -42,7 +42,7 @@ fn test_c_callback_abi_thunk_defers_to_the_header_prototype() {
 		os.rmdir_all(os.dir(src)) or {}
 	}
 	c_file := os.join_path(os.dir(src), 'main.c')
-	gen := os.execute('${os.quoted_path(thunk_vexe)} -o ${os.quoted_path(c_file)} ${os.quoted_path(src)}')
+	gen := os.exec([thunk_vexe, '-o', c_file, '${src}'])
 	assert gen.exit_code == 0, gen.output
 	c_source := os.read_file(c_file) or { panic(err) }
 	// The ABI thunk converts V's `int` result to C `int`; it is passed as `void*`
@@ -51,7 +51,7 @@ fn test_c_callback_abi_thunk_defers_to_the_header_prototype() {
 	// clang 16+ rejects mismatched function pointers by default on Linux.
 	if os.exists_in_system_path('clang') {
 		exe := os.join_path(os.dir(src), 'main_clang')
-		run := os.execute('${os.quoted_path(thunk_vexe)} -cc clang -o ${os.quoted_path(exe)} run ${os.quoted_path(src)}')
+		run := os.exec([thunk_vexe, '-cc', 'clang', '-o', exe, 'run', '${src}'])
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == '5'
 	}

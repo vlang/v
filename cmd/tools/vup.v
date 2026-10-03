@@ -114,7 +114,11 @@ fn (app App) update_tcc() bool {
 		make_sure_cmd_is_available(get_tcc_make_cmd_name())
 	}
 	println('> updating TCC ...')
-	result := os.execute(command)
+	result := os.exec(if os.user_os() == 'windows' && command == 'makev.bat' {
+		['cmd.exe', '/d', '/c', 'makev.bat']
+	} else {
+		os.split_args(command) or { panic(err) }
+	})
 	if result.exit_code != 0 {
 		eprintln('> `${command}` failed:')
 		eprintln(result.output)
@@ -145,7 +149,8 @@ fn (app App) recompile_v() bool {
 	// `os.system` does preserve redirected stdout and stderr through `_wsystem`.
 	mut self_exit_code := -1
 	$if windows {
-		self_exit_code = os.system(vself)
+		self_exit_code = os.system_args([vexe_path, ...(os.split_args(opts) or { panic(err) }),
+			'self'])
 	} $else {
 		mut self_process := os.new_process(vexe_path)
 		self_process.set_args(if app.is_prod { ['-prod', 'self'] } else { ['self'] })
@@ -171,7 +176,7 @@ fn (app App) recompile_vup() bool {
 	// `-gc none` matches how `util.launch_tool` builds vup, so this self-rebuild
 	// after a successful update does not overwrite the GC-free executable with a
 	// libgc-linked one (which could fail to start in the dynamic loader). See #27148.
-	vup_result := os.execute('${os.quoted_path(vexe_path)} -g -gc none cmd/tools/vup.v')
+	vup_result := os.exec([vexe_path, '-g', '-gc', 'none', 'cmd/tools/vup.v'])
 	if vup_result.exit_code != 0 {
 		eprintln('> Failed recompiling vup.v .')
 		eprintln(vup_result.output)
@@ -183,7 +188,11 @@ fn (app App) recompile_vup() bool {
 fn (app App) make(_vself string) bool {
 	println('> running make ...')
 	make := get_make_cmd_name()
-	make_result := os.execute(make)
+	make_result := os.exec(if os.user_os() == 'windows' {
+		['cmd.exe', '/d', '/c', 'makev.bat']
+	} else {
+		[make]
+	})
 	if make_result.exit_code != 0 {
 		eprintln('> ${make} failed:')
 		eprintln('> make output:')
@@ -201,12 +210,12 @@ fn (app App) show_current_v_version() {
 		println('Current V version: unavailable (`${vexe_path}` is missing).')
 		return
 	}
-	vout := os.execute('${os.quoted_path(vexe_path)} version')
+	vout := os.exec([vexe_path, 'version'])
 	if vout.exit_code >= 0 {
 		mut vversion := vout.output.trim_space()
 		if vout.exit_code == 0 {
 			latest_v_commit := vversion.split(' ').last().all_after('.')
-			latest_v_commit_time := os.execute('git show -s --format=%ci ${latest_v_commit}')
+			latest_v_commit_time := os.exec(['git', 'show', '-s', '--format=%ci', '${latest_v_commit}'])
 			if latest_v_commit_time.exit_code == 0 {
 				vversion += ', timestamp: ' + latest_v_commit_time.output.trim_space()
 			}
@@ -220,7 +229,7 @@ fn (app App) current_v_hash() ?string {
 	if !os.exists(vexe_path) {
 		return none
 	}
-	vout := os.execute('${os.quoted_path(vexe_path)} version')
+	vout := os.exec([vexe_path, 'version'])
 	if vout.exit_code != 0 {
 		return none
 	}
@@ -292,11 +301,11 @@ fn (app App) backup(file string) {
 
 fn (app App) git_command(command string) {
 	println('> git_command: ${command}')
-	git_result := os.execute(command)
+	git_result := os.exec(os.split_args(command) or { panic(err) })
 	if git_result.exit_code < 0 {
 		app.install_git()
 		// Try it again with (maybe) git installed
-		os.execute_or_exit(command)
+		os.exec_or_exit(os.split_args(command) or { panic(err) })
 	}
 	if git_result.exit_code != 0 {
 		eprintln('Failed git command: ${command}')
@@ -314,12 +323,14 @@ fn (app App) install_git() {
 	println('Downloading git 32 bit for Windows, please wait.')
 	// We'll use 32 bit because maybe someone out there is using 32-bit windows
 	res_download :=
-		os.execute('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "${os.getwd()}/git32.exe"')
+		os.exec(['bitsadmin.exe', '/transfer', 'vgit',
+			'https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe',
+			'${os.getwd()}' + '/git32.exe'])
 	if res_download.exit_code != 0 {
 		eprintln('Unable to install git automatically: please install git manually')
 		panic(res_download.output)
 	}
-	res_git32 := os.execute(os.quoted_path(os.join_path_single(os.getwd(), 'git32.exe')))
+	res_git32 := os.exec([os.join_path_single(os.getwd(), 'git32.exe')])
 	if res_git32.exit_code != 0 {
 		eprintln('Unable to install git automatically: please install git manually')
 		panic(res_git32.output)

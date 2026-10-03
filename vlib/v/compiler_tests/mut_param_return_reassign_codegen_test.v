@@ -18,7 +18,9 @@ fn test_reassign_from_mut_parameter_return_does_not_drop_aliased_storage() {
 		os.rm(output + '.c') or {}
 	}
 	build :=
-		os.execute('${mut_param_return_reassign_vexe} -gc none -d ownership -path "${mut_param_return_reassign_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${mut_param_return_reassign_v3_src}')
+		os.exec([mut_param_return_reassign_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${mut_param_return_reassign_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${mut_param_return_reassign_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(source, "struct Owned implements IClone {
 mut:
@@ -52,11 +54,12 @@ fn main() {
 		panic(err)
 	}
 	compile :=
-		os.execute('${v3_bin} -ownership -d ownership -nocache -no-parallel ${source} -b c -keepc -o ${output}')
+		os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel', source, '-b',
+			'c', '-keepc', '-o', output])
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(output + '.c') or { panic(err) }
 	assert !c_source.contains('main__Owned __drop_assign'), c_source
-	run := os.execute(output)
+	run := os.exec([output])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }

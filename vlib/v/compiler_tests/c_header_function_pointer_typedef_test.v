@@ -29,7 +29,7 @@ fn test_included_header_function_pointer_typedef_is_not_redeclared_as_a_struct()
 		panic(err)
 	}
 	out := os.join_path(root, 'out.c')
-	result := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out)} ${os.quoted_path(source)}')
+	result := os.exec([vexe, '-o', '${out}', source])
 	assert result.exit_code == 0, result.output
 	c_code := os.read_file(out) or { panic(err) }
 	for name in ['ProbeSingleLineFn', 'ProbeWrappedFn'] {

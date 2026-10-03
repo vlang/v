@@ -3163,11 +3163,10 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		return none
 	}
 	t.ensure_call_param_types_decl_index()
-	decl := t.call_param_types_decl_index[call_name] or {
-		t.ensure_private_call_param_types_decl_cache()
-		t.call_param_types_decl_misses[call_name] = true
-		return none
-	}
+	// An unindexed name costs the same single lookup as a recorded miss, so
+	// do not record it: on a worker that would detach the shared prepared
+	// cache, misses and index (one full map clone per helper batch).
+	decl := t.call_param_types_decl_index[call_name] or { return none }
 	if params := t.call_param_types_decl_cache[decl.idx] {
 		return params
 	}
@@ -10452,7 +10451,9 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	if !info.can_lower {
 		return t.make_empty()
 	}
-	mut receiver := t.transform_expr(info.base_id)
+	// Heap-promoted value locals already dereference when read as rvalues.
+	// Preserve their storage pointer here so the clone reads the value once.
+	mut receiver := t.transform_expr_preserving_pointer_value(t.unwrap_parens(info.base_id))
 	if info.raw_base_type.starts_with('&') {
 		receiver = t.make_prefix(.mul, receiver)
 		t.set_node_typ(int(receiver), info.base_type)
@@ -10541,13 +10542,9 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		return t.make_compiler_default_map_clone_value(source, clean, !t.expr_can_take_address(source))
 	}
 	if allow_method && !isnil(t.tc) && t.tc.ownership_type_has_clone_method(t.tc.parse_type(clean)) {
-		if !isnil(t.tc) && clean.contains('[') && clean.ends_with(']') {
-			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
-				call := t.make_method_call(source, 'clone', []flat.NodeId{})
-				t.set_node_typ(int(call), clean)
-				return call
-			}
-		}
+		// A private helper can become reachable after generic specialization has
+		// already materialized its field's clone method. Use that resolved method
+		// before synthesizing a selector that the initial call scan cannot visit.
 		method_name := t.resolve_receiver_method_name(source, 'clone')
 		if method_name.len > 0 {
 			params := t.call_param_types(method_name)
@@ -10557,6 +10554,13 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 			}
 			t.mark_fn_used_name(method_name)
 			return t.make_call_typed(method_name, [receiver], t.receiver_method_return_type(method_name, clean))
+		}
+		if clean.contains('[') && clean.ends_with(']') {
+			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
+				call := t.make_method_call(source, 'clone', []flat.NodeId{})
+				t.set_node_typ(int(call), clean)
+				return call
+			}
 		}
 	}
 	if isnil(t.tc) || (!t.tc.named_type_implements_marker(clean, 'IClone')

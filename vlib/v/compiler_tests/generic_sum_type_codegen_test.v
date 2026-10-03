@@ -12,7 +12,9 @@ fn generic_sum_type_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${generic_sum_type_vexe} -gc none -no-parallel -path "${generic_sum_type_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_sum_type_v3_src}')
+		os.exec([generic_sum_type_vexe, '-gc', 'none', '-no-parallel', '-path',
+			'${generic_sum_type_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${generic_sum_type_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -25,11 +27,11 @@ fn generic_sum_type_compile_run_source(name string, source string) string {
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_${name}_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 
@@ -112,11 +114,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_input_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 
@@ -291,11 +293,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_bare_match_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42\n0'
 
@@ -341,11 +343,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_return_ctor_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 
@@ -377,7 +379,7 @@ fn main() {}
 
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_negative_${os.getpid()}')
 	os.rm(bin) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot use `Node[string]` as type `Tree[int]`')
 		|| compile.output.contains('cannot return') || compile.output.contains('incompatible'), compile.output
@@ -408,7 +410,7 @@ fn main() {
 
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_unknown_is_${os.getpid()}')
 	os.rm(bin) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('`Missing` is not a variant of sum type `Value`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -488,7 +490,7 @@ fn main() {}
 
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_qualified_negative_${os.getpid()}')
 	os.rm(bin) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('Node[right.Foo]'), compile.output
 	assert compile.output.contains('Tree[left.Foo]'), compile.output
@@ -549,7 +551,7 @@ fn main() {}
 	bin := os.join_path(os.temp_dir(),
 		'v3_generic_sum_type_qualified_variant_negative_${os.getpid()}')
 	os.rm(bin) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('right.Node[left.Foo]'), compile.output
 	assert compile.output.contains('Tree[left.Foo]'), compile.output
@@ -619,7 +621,7 @@ fn main() {}
 	bin := os.join_path(os.temp_dir(),
 		'v3_generic_sum_type_qualified_bare_variant_negative_${os.getpid()}')
 	os.rm(bin) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('right.Node'), compile.output
 	assert compile.output.contains('right.Empty'), compile.output
@@ -668,7 +670,7 @@ fn main() {}
 	c_out := os.join_path(os.temp_dir(),
 		'v3_generic_sum_type_declared_qualified_bare_${os.getpid()}.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${c_out}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('tcc.exe'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -717,11 +719,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_distinct_tags_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -780,11 +782,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_param_variant_bin_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'int\nerr\n7'
 
@@ -902,11 +904,11 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_caller_scope_bin_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 

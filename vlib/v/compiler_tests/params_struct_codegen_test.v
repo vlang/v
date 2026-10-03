@@ -17,7 +17,8 @@ fn build_v3() string {
 		return params_struct_v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${params_struct_v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o',
+			params_struct_v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return params_struct_v3_bin
 }
@@ -27,11 +28,11 @@ fn run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed')
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0
 	return run.output.trim_space()
 }
@@ -135,9 +136,9 @@ fn test_params_fields_belong_to_params_struct() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_params_field_owner')
-	compile := os.execute('${v3_bin} ${os.join_path(project_dir, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(project_dir, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'entry:node:3'
 }
