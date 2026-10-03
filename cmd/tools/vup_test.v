@@ -3,6 +3,16 @@ import os
 const vexe = @VEXE
 const vroot = os.dir(vexe)
 
+fn test_makev_accepts_quoted_targets() {
+	$if !windows {
+		return
+	}
+	// os.exec quotes each argument; the batch target must not retain those quotes.
+	result := os.exec([os.join_path(vroot, 'makev.bat'), 'help'])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('makev.bat [target]'), result.output
+}
+
 fn test_vup_generates_windows_c_without_handle_type_errors() ! {
 	test_root := os.join_path(os.vtmp_dir(), 'vup_windows_handles_${os.getpid()}')
 	os.mkdir_all(test_root)!
