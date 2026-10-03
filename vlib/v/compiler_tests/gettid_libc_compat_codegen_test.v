@@ -12,7 +12,8 @@ fn gettid_compat_build_v3() string {
 	// -prealloc enables the parallel declaration worker that must emit the helper
 	// before function bodies can call it.
 	build :=
-		os.execute('${gettid_compat_vexe} -prealloc -path "${gettid_compat_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${gettid_compat_v3_src}')
+		os.exec([gettid_compat_vexe, '-prealloc', '-path',
+			'${gettid_compat_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${gettid_compat_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -36,7 +37,7 @@ fn main() {
 	}
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
@@ -52,7 +53,7 @@ fn main() {
 	assert !generated.contains('#include <sys/syscall.h>'), generated
 	assert !generated.contains('__NR_gettid'), generated
 	assert !generated.contains('u32 gettid(void);'), generated
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().len > 0, run.output
 }
@@ -79,14 +80,14 @@ fn main() {
 	}
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('i32 syscall(i32 number, ...);'), generated
 	assert generated.contains('static inline u32 v3_gettid(void)'), generated
 	assert generated.contains('syscall(SYS_gettid)'), generated
 	assert !generated.contains('long syscall(long number, ...);'), generated
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().len > 0, run.output
 }

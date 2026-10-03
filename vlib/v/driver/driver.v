@@ -14881,7 +14881,7 @@ pub fn run(args []string) {
 					}
 				}
 				$if windows {
-					exit(os.system(v3_exec_command(os.executable(), regeneration_args)))
+					exit(os.system_args([os.executable(), ...regeneration_args]))
 				}
 				os.execvp(os.executable(), regeneration_args) or {
 					eprintln('failed to restart monolithic C compilation: ${err.msg()}')
@@ -15596,7 +15596,7 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	$if windows {
 		// `_execvp` would exit this process with status 0 before the retried
 		// build finishes, so forward the retried build's status instead.
-		exit(os.system(v3_exec_command(executable, restart_args)))
+		exit(os.system_args([executable, ...restart_args]))
 	}
 	os.execvp(executable, restart_args) or {
 		eprintln('failed to restart the build after discarding stale cache entries: ${err.msg()}')
@@ -16741,22 +16741,13 @@ fn restart_v3_with_args(extra_args []string) {
 		// Windows has no exec either: `_execvp` would start the child and then
 		// exit this process with status 0, dropping the restarted build's
 		// result on the floor.
-		exit(os.system(v3_exec_command(executable, args)))
+		exit(os.system_args([executable, ...args]))
 	} $else {
 		os.execvp(executable, args) or {
 			eprintln('failed to restart ${executable}: ${err.msg()}')
 			exit(1)
 		}
 	}
-}
-
-// v3_exec_command renders an argv for a shell, for the platforms that cannot exec.
-fn v3_exec_command(executable string, args []string) string {
-	mut command := [os.quoted_path(executable)]
-	for arg in args {
-		command << os.quoted_path(arg)
-	}
-	return command.join(' ')
 }
 
 fn cache_external_input_owner_modules(state &V3ModuleCacheState, a &flat.FlatAst, unscoped_inputs map[string][]string, static_inputs map[string][]string, user_files []string, c_flags []string, ccompiler string, target pref.Target) (map[string]bool, bool) {

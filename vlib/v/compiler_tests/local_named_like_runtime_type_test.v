@@ -17,7 +17,8 @@ const local_shadow_v3_src = os.join_path(local_shadow_v3_dir, 'v.v')
 fn local_shadow_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_local_shadow_compiler_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${local_shadow_vexe} -gc none -path "${local_shadow_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${local_shadow_v3_src}')
+	build := os.exec([local_shadow_vexe, '-gc', 'none', '-path',
+		'${local_shadow_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${local_shadow_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -28,11 +29,11 @@ fn local_shadow_build_and_run(v3_bin string, root string, source string) os.Resu
 	main_v := os.join_path(root, 'main.v')
 	os.write_file(main_v, source) or { panic(err) }
 	exe := os.join_path(root, 'prog')
-	compile := os.execute('${v3_bin} -nocache ${main_v} -b c -o ${exe}')
+	compile := os.exec([v3_bin, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
 	if compile.exit_code != 0 {
 		return compile
 	}
-	return os.execute(exe)
+	return os.exec([exe])
 }
 
 fn test_a_local_named_like_a_runtime_type_does_not_hide_it() {
@@ -317,7 +318,7 @@ fn main() {
 		panic(err)
 	}
 	object_path := os.join_path(root, 'answer.o')
-	compile := os.execute('${v3_bin} -nocache -cc cc -o ${object_path} ${main_v}')
+	compile := os.exec([v3_bin, '-nocache', '-cc', 'cc', '-o', object_path, '${main_v}'])
 	assert compile.exit_code == 0, compile.output
 	assert os.is_file(object_path)
 }

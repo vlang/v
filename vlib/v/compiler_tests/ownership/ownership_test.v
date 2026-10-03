@@ -19,7 +19,8 @@ fn ownership_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${ownership_vexe} -gc none -d ownership -path "${ownership_vlib_dir}" -o ${v3_bin} ${ownership_v3_src}')
+		os.exec([ownership_vexe, '-gc', 'none', '-d', 'ownership', '-path', ownership_vlib_dir,
+			'-o', v3_bin, '${ownership_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(cache_path, v3_bin) or {}
 	return v3_bin
@@ -32,7 +33,7 @@ fn run_ownership_check(v3_bin string, name string, code string) os.Result {
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_autofree_check(v3_bin string, name string, code string) os.Result {
@@ -42,7 +43,7 @@ fn run_autofree_check(v3_bin string, name string, code string) os.Result {
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -autofree -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-autofree', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result {
@@ -52,7 +53,7 @@ fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out.c')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result {
@@ -62,7 +63,7 @@ fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result 
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out.c')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -autofree -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-autofree', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
@@ -76,7 +77,7 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, main_code) or { panic(err) }
 	os.write_file(mod_src, module_code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn test_ownership_flag_does_not_define_target_ownership() {
@@ -3280,7 +3281,7 @@ fn main() {
 ')
 	assert distinct_field_moves.exit_code == 0, distinct_field_moves.output
 	distinct_field_binary := os.join_path(os.temp_dir(), 'v3_ownership_branch_distinct_field_moves_${os.getpid()}', 'out')
-	distinct_field_run := os.execute(distinct_field_binary)
+	distinct_field_run := os.exec([distinct_field_binary])
 	assert distinct_field_run.exit_code == 0, distinct_field_run.output
 	dropped_ids := distinct_field_run.output.fields()
 	assert '2' in dropped_ids, distinct_field_run.output

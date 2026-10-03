@@ -48,7 +48,7 @@ def normalize: sorted_walk(if type == "array" then sort else . end);
 normalize'
 
 fn run(args []string) !string {
-	res := os.execute(args.join(' '))
+	res := os.exec(args)
 	if res.exit_code != 0 {
 		return error('${args[0]} failed with return code ${res.exit_code}.\n${res.output}')
 	}
@@ -157,11 +157,11 @@ fn test_toml_lang_tomltest() {
 
 			os.write_file(bs_toml_json_path, bs_json)!
 
-			v_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"', v_toml_json_path]) or {
+			v_normalized_json := run([jq, '-S', '-f', jq_normalize_path, v_toml_json_path]) or {
 				contents := os.read_file(v_toml_json_path)!
 				panic(err.msg() + '\n${contents}')
 			}
-			bs_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"', bs_toml_json_path]) or {
+			bs_normalized_json := run([jq, '-S', '-f', jq_normalize_path, bs_toml_json_path]) or {
 				contents := os.read_file(v_toml_json_path)!
 				panic(err.msg() + '\n${contents}')
 			}

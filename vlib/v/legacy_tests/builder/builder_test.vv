@@ -16,7 +16,7 @@ fn testsuite_end() {
 }
 
 fn run_v_ok(command string) string {
-	res := os.execute(command)
+	res := os.exec(os.split_args(command) or { panic(err) })
 	if res.exit_code != 0 {
 		eprintln('> failing cmd: ${command}')
 		eprintln('> output:\n${res.output}')
@@ -38,18 +38,18 @@ fn test_conditional_executable_removal() {
 	dump(original_file_list_)
 	assert executable !in original_file_list_
 
-	assert os.execute('${os.quoted_path(vexe)} run .').output.trim_space() == 'Hello World!'
+	assert os.exec([vexe, 'run', '.']).output.trim_space() == 'Hello World!'
 	after_run_file_list := os.ls(test_path)!.filter(os.exists(it))
 	dump(after_run_file_list)
 	assert executable !in after_run_file_list
 
-	assert os.execute('${os.quoted_path(vexe)} .').exit_code == 0
-	assert os.execute('./${executable}').output.trim_space() == 'Hello World!'
+	assert os.exec([vexe, '.']).exit_code == 0
+	assert os.exec(['./' + '${executable}']).output.trim_space() == 'Hello World!'
 	after_compilation__ := os.ls(test_path)!
 	dump(after_compilation__)
 	assert executable in after_compilation__
 
-	assert os.execute('${os.quoted_path(vexe)} run .').output.trim_space() == 'Hello World!'
+	assert os.exec([vexe, 'run', '.']).output.trim_space() == 'Hello World!'
 	after_second_run___ := os.ls(test_path)!
 	dump(after_second_run___)
 	assert executable in after_second_run___
@@ -69,11 +69,11 @@ fn test_run_from_workdir_with_spaces() {
 		"println('Hello from a spaced script path')\n")!
 	os.chdir(project_dir)!
 
-	run_file_res := os.execute('${os.quoted_path(vexe)} run Test.vsh')
+	run_file_res := os.exec([vexe, 'run', 'Test.vsh'])
 	assert run_file_res.exit_code == 0, run_file_res.output
 	assert run_file_res.output.trim_space() == 'Hello from a spaced script path'
 
-	run_dir_res := os.execute('${os.quoted_path(vexe)} run .')
+	run_dir_res := os.exec([vexe, 'run', '.'])
 	assert run_dir_res.exit_code == 0, run_dir_res.output
 	assert run_dir_res.output.trim_space() == 'Hello from a spaced path'
 }
@@ -91,7 +91,7 @@ fn test_existing_vsh_executable_uses_cache_until_source_is_newer() {
 	os.chdir(project_dir)!
 
 	cmd := '${os.quoted_path(vexe)} script.vsh'
-	first_res := os.execute(cmd)
+	first_res := os.exec([vexe, 'script.vsh'])
 	assert first_res.exit_code == 0, first_res.output
 	assert first_res.output.trim_space() == 'Hello from cached vsh'
 
@@ -101,7 +101,7 @@ fn test_existing_vsh_executable_uses_cache_until_source_is_newer() {
 	}
 	assert os.is_file(executable)
 
-	warm_cache_res := os.execute(cmd)
+	warm_cache_res := os.exec([vexe, 'script.vsh'])
 	assert warm_cache_res.exit_code == 0, warm_cache_res.output
 	assert warm_cache_res.output.trim_space() == 'Hello from cached vsh'
 
@@ -111,10 +111,10 @@ fn test_existing_vsh_executable_uses_cache_until_source_is_newer() {
 }
 ")!
 	replacement_res :=
-		os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(executable)} ${os.quoted_path(replacement_source)}')
+		os.exec([vexe, '-old-compiler', '-o', executable, replacement_source])
 	assert replacement_res.exit_code == 0, replacement_res.output
-	assert os.execute(os.quoted_path(executable)).output.trim_space() == 'foreign executable'
-	rebound_cache_res := os.execute(cmd)
+	assert os.exec([executable]).output.trim_space() == 'foreign executable'
+	rebound_cache_res := os.exec([vexe, 'script.vsh'])
 	assert rebound_cache_res.exit_code == 0, rebound_cache_res.output
 	assert rebound_cache_res.output.trim_space() == 'Hello from cached vsh'
 
@@ -125,14 +125,14 @@ fn test_existing_vsh_executable_uses_cache_until_source_is_newer() {
 	os.utime(script_path, cache_stamp - 1, cache_stamp - 1)!
 	assert os.file_last_mod_unix(script_path) < cache_stamp
 
-	cached_res := os.execute(cmd)
+	cached_res := os.exec([vexe, 'script.vsh'])
 	assert cached_res.exit_code == 0, cached_res.output
 	assert cached_res.output.trim_space() == 'Hello from cached vsh'
 
 	os.utime(script_path, cache_stamp + 60, cache_stamp + 60)!
 	assert os.file_last_mod_unix(script_path) > cache_stamp
 
-	rebuilt_res := os.execute(cmd)
+	rebuilt_res := os.exec([vexe, 'script.vsh'])
 	assert rebuilt_res.exit_code == 0, rebuilt_res.output
 	assert rebuilt_res.output.trim_space() == 'Hello from rebuilt vsh'
 }
@@ -169,11 +169,11 @@ pub struct BS{}
 	assert executable !in original_file_list_
 
 	cmd := '${os.quoted_path(vexe)} -o ${executable} filelist/main.v -file-list "filelist/part_a.v,filelist/part_b.v,"'
-	os.execute(cmd)
+	os.exec([vexe, '-o', executable, 'filelist/main.v', '-file-list', 'filelist/part_a.v,filelist/part_b.v,'])
 	after_compile_file_list := os.ls(test_path)!.filter(os.exists(it))
 	dump(after_compile_file_list)
 	assert executable in after_compile_file_list
-	assert os.execute('./${executable}').output.trim_space() == 'AS{}=>BS{}'
+	assert os.exec(['./' + '${executable}']).output.trim_space() == 'AS{}=>BS{}'
 }
 
 fn test_run_custom_base_url_uses_project_root_lookup() {
@@ -223,7 +223,7 @@ fn test_empty_local_dir_does_not_shadow_vlib_module() {
 		"module main\n\nimport os\n\nfn main() {\n\tprintln(os.is_dir('.'))\n}\n")!
 	os.chdir(project_dir)!
 
-	res := os.execute('${os.quoted_path(vexe)} run main.v')
+	res := os.exec([vexe, 'run', 'main.v'])
 
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'true'
@@ -263,7 +263,7 @@ pub struct Client {}
 ')!
 	os.chdir(project_dir)!
 
-	res := os.execute('${os.quoted_path(vexe)} -check main_test.v')
+	res := os.exec([vexe, '-check', 'main_test.v'])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('cannot register struct')
 }
@@ -289,8 +289,8 @@ struct Context {}
 ')!
 	}
 
-	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
-		'fixture_test.v'))}')
+	res := os.exec([vexe, '-old-compiler', '-check', '${os.join_path(workspace,
+		'fixture_test.v')}'])
 	assert res.exit_code == 0, res.output
 }
 
@@ -313,8 +313,8 @@ fn helper() int {
 }
 ')!
 
-	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
-		'fixture_test.v'))}')
+	res := os.exec([vexe, '-old-compiler', '-check', '${os.join_path(workspace,
+		'fixture_test.v')}'])
 	assert res.exit_code == 0, res.output
 }
 
@@ -340,8 +340,8 @@ fn helper() int {
 }
 ')!
 
-	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
-		'fixture_test.v'))}')
+	res := os.exec([vexe, '-old-compiler', '-check', '${os.join_path(workspace,
+		'fixture_test.v')}'])
 	assert res.exit_code == 0, res.output
 }
 
@@ -379,7 +379,7 @@ fn main() {
 ')!
 	os.chdir(project_dir)!
 
-	res := os.execute('${os.quoted_path(vexe)} -check main.v')
+	res := os.exec([vexe, '-check', 'main.v'])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('bad module definition'), res.output
 	assert res.output.contains('imports module "bar"'), res.output
@@ -427,7 +427,7 @@ fn main() {
 ')!
 
 	main_path := os.join_path(project_dir, 'main.v')
-	res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(main_path)}')
+	res := os.exec([vexe, 'run', main_path])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '3'
 }
@@ -443,7 +443,7 @@ fn test_removed_src_layout_error_mentions_vmod_subdirs() {
 		'fn main() {\n\tprintln("Hello from src")\n}\n')!
 	os.chdir(project_dir)!
 
-	res := os.execute('${os.quoted_path(vexe)} run .')
+	res := os.exec([vexe, 'run', '.'])
 	normalized_output := res.output.replace('\r\n', '\n')
 
 	assert res.exit_code != 0
@@ -483,7 +483,7 @@ fn test_missing_library_is_reported_without_compiler_bug_hint() {
 	src_file := os.join_path('missing_library', 'main.v')
 	os.write_file(src_file, '#flag -l${lib_name}\nfn main() {}\n')!
 
-	res := os.execute('${os.quoted_path(vexe)} -old-compiler ${os.quoted_path(src_file)}')
+	res := os.exec([vexe, '-old-compiler', src_file])
 	normalized_output := res.output.replace('\r\n', '\n')
 
 	assert res.exit_code != 0
@@ -537,7 +537,7 @@ fn test_message_limit_notices_do_not_fail_build() {
 	os.write_file(src_file, lines.join('\n') + '\n')!
 
 	res :=
-		os.execute('${os.quoted_path(vexe)} -stats -message-limit 5 -o ${os.quoted_path(exe_file)} ${os.quoted_path(src_file)}')
+		os.exec([vexe, '-stats', '-message-limit', '5', '-o', exe_file, src_file])
 	normalized_output := res.output.replace('\r\n', '\n')
 
 	assert res.exit_code == 0, normalized_output
@@ -571,7 +571,7 @@ fn test_run_with_obscure_source_filenames() {
 		out_file := os.join_path(obscure_dir, 'obscure_output_${idx}')
 		display_name := file_name.replace('\n', '\\n')
 		res :=
-			os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out_file)} run ${os.quoted_path(src_file)}')
+			os.exec([vexe, '-o', out_file, 'run', src_file])
 		assert res.exit_code == 0, '${display_name}: ${res.output}'
 		assert res.output.trim_space() == 'hi', '${display_name}: ${res.output}'
 		assert os.read_file(src_file)! == source
@@ -614,7 +614,7 @@ fn test_vlib_import_does_not_match_user_project_dir() {
 		'import v.ast\n\nfn test_vast_table_loads() {\n\t_ := ast.new_table()\n}\n')!
 	os.chdir(project_dir)!
 
-	res := os.execute('${os.quoted_path(vexe)} -check src/app/app_test.v')
+	res := os.exec([vexe, '-check', 'src/app/app_test.v'])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('bad module definition'), res.output
 }
@@ -647,7 +647,7 @@ fn test_vendored_sibling_modules_with_own_vmod_resolve_each_other() {
 		'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.hello())\n}\n')!
 	os.chdir(project_dir)!
 
-	res := os.execute('${os.quoted_path(vexe)} -check .')
+	res := os.exec([vexe, '-check', '.'])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('not found'), res.output
 }
@@ -675,7 +675,7 @@ fn test_vendored_modules_dir_with_own_vmod_still_resolves() {
 		'module main\n\nimport vendored\n\nfn main() {\n\tprintln(vendored.hello())\n}\n')!
 	os.chdir(project_dir)!
 
-	res := os.execute('${os.quoted_path(vexe)} -check .')
+	res := os.exec([vexe, '-check', '.'])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('not found'), res.output
 }

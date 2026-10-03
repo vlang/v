@@ -17,7 +17,7 @@ fn check(yes bool) {
 }
 fn main() { check(true) }
 ')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('error:'), result.output
 	}

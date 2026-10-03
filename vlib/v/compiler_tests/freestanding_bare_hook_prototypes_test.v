@@ -26,7 +26,8 @@ fn main() {
 		panic(err)
 	}
 	c_file := os.join_path(root, 'main.c')
-	res := os.execute('${os.quoted_path(bare_hook_vexe)} -gc none -freestanding -no-std -os linux -o ${os.quoted_path(c_file)} ${os.quoted_path(src)}')
+	res := os.exec([bare_hook_vexe, '-gc', 'none', '-freestanding', '-no-std', '-os', 'linux',
+		'-o', c_file, '${src}'])
 	assert res.exit_code == 0, res.output
 	c_source := os.read_file(c_file) or { panic(err) }
 	for hook, prototype in {
@@ -56,7 +57,7 @@ fn test_hosted_output_does_not_declare_bare_hooks() {
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, 'fn main() {\n\teprintln("hosted")\n}\n') or { panic(err) }
 	c_file := os.join_path(root, 'main.c')
-	res := os.execute('${os.quoted_path(bare_hook_vexe)} -o ${os.quoted_path(c_file)} ${os.quoted_path(src)}')
+	res := os.exec([bare_hook_vexe, '-o', c_file, '${src}'])
 	assert res.exit_code == 0, res.output
 	c_source := os.read_file(c_file) or { panic(err) }
 	assert !c_source.contains('bare_eprint')

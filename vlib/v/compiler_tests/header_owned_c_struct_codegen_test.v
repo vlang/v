@@ -15,7 +15,8 @@ fn header_owned_build_v3() string {
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
-	build := os.execute('${os.quoted_path(header_owned_vexe)} -gc none -path "${header_owned_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(header_owned_v3_src)}')
+	build := os.exec([header_owned_vexe, '-gc', 'none', '-path',
+		'${header_owned_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${header_owned_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -85,9 +86,10 @@ fn main() {
 }
 ')!
 	out := os.join_path(root, 'out')
-	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.exec([v3_bin, '--no-parallel', os.join_path(root, 'main.v'), '-b', 'c', '-o',
+		'${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(out))
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42', run.output
 	generated := os.read_file(out + '.c')!
@@ -130,9 +132,10 @@ fn main() {
 ')!
 	v3_bin := header_owned_build_v3()
 	out := os.join_path(root, 'out')
-	compile := os.execute('${os.quoted_path(v3_bin)} --no-parallel ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	compile := os.exec([v3_bin, '--no-parallel', os.join_path(root, 'main.v'), '-b', 'c', '-o',
+		'${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(out))
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42', run.output
 	generated := os.read_file(out + '.c')!
@@ -169,9 +172,10 @@ fn main() {
 ')!
 		v3_bin := header_owned_build_v3()
 		out := os.join_path(root, 'out')
-		compile := os.execute('${os.quoted_path(v3_bin)} -new-compiler -nocache --no-parallel -cc clang ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+		compile := os.exec([v3_bin, '-new-compiler', '-nocache', '--no-parallel', '-cc', 'clang',
+			os.join_path(root, 'main.v'), '-b', 'c', '-o', '${out}'])
 		assert compile.exit_code == 0, compile.output
-		run := os.execute(os.quoted_path(out))
+		run := os.exec([out])
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == '42', run.output
 	}

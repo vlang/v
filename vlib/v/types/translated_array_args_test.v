@@ -9,7 +9,7 @@ fn test_translated_array_decay_does_not_leak_into_regular_calls() {
 	os.write_file(os.join_path(root, 'translated.v'), '@[translated]\nmodule main\nfn pointer_arg(values &int) {}\n')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main\nfn main() { values := [1, 2]!; pointer_arg(values); pointer := unsafe { &values[0] }; _ = pointer == values }\n')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('cannot use `[2]int` as `&int`'), result.output
 		assert result.output.contains('infix expr:'), result.output
@@ -43,7 +43,7 @@ fn main() {
 	_ = pointer == [1, 2]!
 }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot use `[2]string` as `&int`'), result.output
 	assert result.output.contains('cannot use `[]int` as `&int`'), result.output

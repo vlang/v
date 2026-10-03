@@ -21,7 +21,7 @@ fn main() {
 	println(mem.bench())
 }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, 'run', root])
 	assert result.exit_code == 0, result.output
 	// builtin malloc would have returned a heap address, not the size.
 	assert result.output.trim_space().ends_with('64'), result.output

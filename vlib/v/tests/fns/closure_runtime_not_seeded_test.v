@@ -11,7 +11,7 @@ fn generated_c(name string, source string) string {
 	path := os.join_path(root, '${name}.v')
 	c_path := os.join_path(root, '${name}.c')
 	os.write_file(path, source) or { panic(err) }
-	res := os.execute('${vexe} -o ${os.quoted_path(c_path)} ${os.quoted_path(path)}')
+	res := os.exec([@VEXE, '-o', c_path, path])
 	assert res.exit_code == 0, res.output
 	return os.read_file(c_path) or { panic(err) }
 }

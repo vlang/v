@@ -229,5 +229,5 @@ fn open_in_editor(app &App) {
 
 	// Try to open in VS Code with line number
 	cmd := 'code -g "${alloc.file}:${alloc.line}"'
-	os.execute(cmd)
+	os.exec(['code', '-g', '${alloc.file}' + ':' + '${alloc.line}'])
 }

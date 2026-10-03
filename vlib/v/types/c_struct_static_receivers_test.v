@@ -24,7 +24,7 @@ pub fn C.Counter.read(c C.Counter) int
 fn main() { value := ${initializer}; println(C.Counter.read(value)) }
 ')!
 		for flags in ['', '-no-parallel'] {
-			result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 			assert result.exit_code == 0, result.output
 		}
 		for body in ['println(value.read())', 'callback := value.read; println(callback())'] {
@@ -32,7 +32,8 @@ fn main() { value := ${initializer}; println(C.Counter.read(value)) }
 fn main() { value := ${initializer}; ${body} }
 ')!
 			for flags in ['', '-no-parallel'] {
-				result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+				result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check',
+					root])
 				assert result.exit_code != 0, '${imported}: ${body}: ${result.output}'
 				assert result.output.contains('unknown function')
 					|| result.output.contains('unknown method')
@@ -77,7 +78,7 @@ fn main() {
 }
 ')!
 		for flags in ['', '-no-parallel'] {
-			result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 			assert result.exit_code == 0, result.output
 		}
 	}

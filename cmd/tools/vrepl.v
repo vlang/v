@@ -155,7 +155,11 @@ fn run_shell(command string) {
 
 		os.chdir(dir) or { eprintln('`${command}` failed, err: ${err}') }
 	} else {
-		os.system(command)
+		os.system_args(if os.user_os() == 'windows' {
+			['cmd.exe', '/d', '/s', '/c', command]
+		} else {
+			['sh', '-c', command]
+		})
 	}
 }
 
@@ -1205,11 +1209,7 @@ fn execute_repl_v_command(v_path string, args []string) !os.Result {
 			output:    stdout_output + stderr_output
 		}
 	} $else {
-		mut cmd := os.quoted_path(v_path)
-		for arg in args {
-			cmd += ' ' + os.quoted_path(arg)
-		}
-		return os.execute(cmd)
+		return os.exec([v_path, ...args])
 	}
 }
 

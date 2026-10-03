@@ -49,7 +49,7 @@ fn test_debugger() {
 
 		compile_sw := time.new_stopwatch()
 		comp_res :=
-			os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}')
+			os.system_args([vexe, '-o', output_file, vfile])
 		cdur_ms := compile_sw.elapsed().milliseconds()
 		if be_verbose {
 			gprintln('>>>>>>>>>>> compilation took ${cdur_ms} ms, comp_res: ${comp_res}')
@@ -63,9 +63,11 @@ fn test_debugger() {
 		sw := time.new_stopwatch()
 		mut res := 0
 		if be_verbose {
-			res = os.system(expect_cmd)
+			res = os.system_args([expect_exe, ...(os.split_args(verbose_options) or { panic(err) }),
+				'-c', 'cd ' + '${expect_tests_path}', efile, output_file, vfile])
 		} else {
-			result := os.execute(expect_cmd)
+			result := os.exec([expect_exe, ...(os.split_args(verbose_options) or { panic(err) }),
+				'-c', 'cd ' + '${expect_tests_path}', efile, output_file, vfile])
 			res = result.exit_code
 			if res != 0 {
 				eprintln(result.output)

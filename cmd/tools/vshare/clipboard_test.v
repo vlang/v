@@ -39,11 +39,19 @@ fn test_copy_to_clipboard_with_commands_uses_the_first_working_command() {
 	assert copy_to_clipboard_with_commands('https://play.vlang.io/p/test', [
 		ClipboardCommand{
 			executable: 'missing-clipboard-command'
-			command:    'missing-clipboard-command < @FILE@'
+			args:       []string{}
 		},
 		ClipboardCommand{
-			executable: fake_clipboard_executable_name()
-			command:    fake_clipboard_command()
+			executable: if os.user_os() == 'windows' {
+				'cmd.exe'
+			} else {
+				fake_clipboard_executable_name()
+			}
+			args:       if os.user_os() == 'windows' {
+				['/d', '/c', fake_clipboard_executable_name()]
+			} else {
+				[]string{}
+			}
 		},
 	])
 	output := os.read_file(output_path)!
@@ -52,10 +60,6 @@ fn test_copy_to_clipboard_with_commands_uses_the_first_working_command() {
 	} $else {
 		assert output == 'https://play.vlang.io/p/test'
 	}
-}
-
-fn fake_clipboard_command() string {
-	return '${fake_clipboard_executable_name()} < @FILE@'
 }
 
 fn fake_clipboard_executable_name() string {

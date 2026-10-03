@@ -21,7 +21,8 @@ fn tmp_precedence_path(name string) string {
 fn build_v3_precedence() string {
 	v3_bin := tmp_precedence_path('compiler')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -32,10 +33,10 @@ fn eval_int(v3_bin string, name string, expr string) string {
 	bin_path := tmp_precedence_path('${name}_bin')
 	os.write_file(src_path, src) or { panic(err) }
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${expr}\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${expr}\n${compile.output}'
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${expr}\n${run.output}'
 	return run.output.trim_space()
 }

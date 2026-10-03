@@ -21,7 +21,9 @@ fn build_v3_array_accessor_borrow() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${os.quoted_path(array_accessor_borrow_vexe)} -gc none -path "${array_accessor_borrow_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(array_accessor_borrow_v3_src)}')
+		os.exec([array_accessor_borrow_vexe, '-gc', 'none', '-path',
+			'${array_accessor_borrow_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			array_accessor_borrow_v3_src])
 	assert build.exit_code == 0, build.output
 	os.setenv(cache_key, v3_bin, true)
 	return v3_bin
@@ -43,9 +45,9 @@ fn run_v3_array_accessor_borrow_program(v3_bin string, name string, src string) 
 	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
 	os.write_file(src_path, src) or { panic(err) }
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert_clean_borrow_build(compile)
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -59,9 +61,9 @@ fn run_v3_array_accessor_borrow_module(name string, module_src string, main_src 
 	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
 	v3_bin := build_v3_array_accessor_borrow()
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(proj_dir)} -b c -o ${os.quoted_path(bin_path)}')
+		os.exec([v3_bin, proj_dir, '-b', 'c', '-o', bin_path])
 	assert_clean_borrow_build(compile)
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -101,7 +103,9 @@ fn build_v3_array_accessor_borrow_ownership() ?string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${os.quoted_path(array_accessor_borrow_vexe)} -gc none -d ownership -path "${array_accessor_borrow_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(array_accessor_borrow_v3_src)}')
+		os.exec([array_accessor_borrow_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${array_accessor_borrow_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			array_accessor_borrow_v3_src])
 	if build.output.contains('ownership support is not compiled into this v3 executable') {
 		// The bootstrap compiler running this test lacks the ownership checker, so it
 		// cannot build an ownership-enabled v. Skip rather than fail on such a host.
@@ -116,7 +120,8 @@ fn compile_v3_ownership_program(v3_bin string, name string, src string, extra_ar
 	src_path := '${tmp_array_accessor_borrow_path(name)}.v'
 	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
 	os.write_file(src_path, src) or { panic(err) }
-	return os.execute('${os.quoted_path(v3_bin)} -ownership -d ownership -no-parallel ${extra_args} -o ${os.quoted_path(bin_path)} ${os.quoted_path(src_path)}')
+	return os.exec([v3_bin, '-ownership', '-d', 'ownership', '-no-parallel',
+		...(os.split_args(extra_args) or { panic(err) }), '-o', bin_path, src_path])
 }
 
 fn compile_v3_uncloneable_array_ownership_program(v3_bin string, name string, src string, extra_args string) os.Result {
@@ -135,7 +140,7 @@ fn test_owned_first_last_receiver_evaluated_once() {
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('unsupported node kind'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_eval_once_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	// size == 9 (last element), make_entries() invoked once (not twice).
 	assert run.output.trim_space() == '9:1', run.output
@@ -152,7 +157,7 @@ fn test_owned_parenthesized_field_borrow() {
 	assert !compile.output.contains('unsupported node kind'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_paren_borrow_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '0', run.output
 }
@@ -176,7 +181,7 @@ fn test_owned_method_value_with_clone_runs() {
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('unsupported node kind'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_method_value_clone_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'bb', run.output
 }
@@ -201,7 +206,7 @@ fn test_owned_escaping_field_string_clone_borrows() {
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_escaping_field_string_clone_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'hello', run.output
 }
@@ -217,7 +222,7 @@ fn test_owned_intermediate_field_chain_borrows() {
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_intermediate_chain_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5', run.output
 }
@@ -231,7 +236,7 @@ fn test_owned_field_comparison_borrows() {
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_field_comparison_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
 }
@@ -257,7 +262,7 @@ fn main() {
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_field_membership_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
 }
@@ -310,7 +315,7 @@ fn test_owned_field_scalar_index_borrows() {
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_field_scalar_index_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '104', run.output
 }
@@ -373,7 +378,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_string_concat_consumer_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'hello!', run.output
 }
@@ -398,7 +403,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_string_interp_consumer_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '<hello>', run.output
 }
@@ -424,7 +429,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_formatted_string_interp_consumer_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'hello', run.output
 
@@ -444,7 +449,7 @@ fn main() {
 	assert siblings.exit_code == 0, siblings.output
 	assert !siblings.output.contains('cannot return an independent array element'), siblings.output
 	siblings_bin_path := tmp_array_accessor_borrow_path('owned_formatted_string_interp_sibling_bin')
-	siblings_run := os.execute(os.quoted_path(siblings_bin_path))
+	siblings_run := os.exec([siblings_bin_path])
 	assert siblings_run.exit_code == 0, siblings_run.output
 	assert siblings_run.output == 'hello  1\n', siblings_run.output
 }
@@ -638,7 +643,7 @@ fn main() {
 ", '')
 	assert safe.exit_code == 0, safe.output
 	safe_bin_path := tmp_array_accessor_borrow_path('owned_string_interp_plain_part_bin')
-	safe_run := os.execute(os.quoted_path(safe_bin_path))
+	safe_run := os.exec([safe_bin_path])
 	assert safe_run.exit_code == 0, safe_run.output
 	assert safe_run.output.trim_space() == 'hello0', safe_run.output
 }
@@ -712,7 +717,7 @@ fn main() {
 	assert builtin.exit_code == 0, builtin.output
 	assert !builtin.output.contains('cannot return an independent array element'), builtin.output
 	builtin_bin_path := tmp_array_accessor_borrow_path('owned_builtin_infix_sibling_bin')
-	builtin_run := os.execute(os.quoted_path(builtin_bin_path))
+	builtin_run := os.exec([builtin_bin_path])
 	assert builtin_run.exit_code == 0, builtin_run.output
 	assert builtin_run.output.trim_space() == 'true', builtin_run.output
 
@@ -1155,7 +1160,7 @@ fn main() {
 ", '')
 	assert compile.exit_code == 0, compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_scalar_aggregate_stable_field_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5', run.output
 }
@@ -1207,7 +1212,7 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('cannot return an independent array element'), compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_scalar_stable_aggregate_argument_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '15', run.output
 }
@@ -1328,7 +1333,7 @@ fn main() {
 ", '')
 	assert safe.exit_code == 0, safe.output
 	safe_bin_path := tmp_array_accessor_borrow_path('owned_match_branch_condition_stable_bin')
-	safe_run := os.execute(os.quoted_path(safe_bin_path))
+	safe_run := os.exec([safe_bin_path])
 	assert safe_run.exit_code == 0, safe_run.output
 	assert safe_run.output.trim_space() == '5', safe_run.output
 }
@@ -1434,7 +1439,7 @@ fn main() {
 ", '')
 	assert safe.exit_code == 0, safe.output
 	safe_bin_path := tmp_array_accessor_borrow_path('owned_scalar_default_clone_method_value_sibling_bin')
-	safe_run := os.execute(os.quoted_path(safe_bin_path))
+	safe_run := os.exec([safe_bin_path])
 	assert safe_run.exit_code == 0, safe_run.output
 	assert safe_run.output.trim_space() == '5', safe_run.output
 }
@@ -1456,7 +1461,7 @@ fn main() {
 ", '')
 	assert compile.exit_code == 0, compile.output
 	bin_path := tmp_array_accessor_borrow_path('owned_field_stable_array_membership_bin')
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
 }

@@ -18,7 +18,8 @@ fn test_compiler_default_clone_rebuilds_sum_payload() {
 		os.rm(output + '.c') or {}
 	}
 	build :=
-		os.execute('${sum_clone_vexe} -gc none -d ownership -path "${sum_clone_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${sum_clone_v3_src}')
+		os.exec([sum_clone_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${sum_clone_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${sum_clone_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(source, "struct Payload implements IClone {
 mut:
@@ -111,9 +112,10 @@ fn main() {
 		panic(err)
 	}
 	compile :=
-		os.execute('${v3_bin} -ownership -d ownership -nocache -no-parallel -o ${output} ${source}')
+		os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel', '-o', output,
+			source])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(output)
+	run := os.exec([output])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }

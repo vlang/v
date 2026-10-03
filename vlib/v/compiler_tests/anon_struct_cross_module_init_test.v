@@ -31,7 +31,7 @@ fn compiles(name string, mod_source string, main_source string) (bool, string) {
 	// fallback, which would otherwise answer for it: every compile error stages a
 	// retry, and the fallback's own diagnostics are what the assertions would end
 	// up reading.
-	res := os.execute('${os.quoted_path(vexe)} -new-compiler -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+	res := os.exec([vexe, '-new-compiler', '-o', '${out}', '${src}'])
 	return res.exit_code == 0, res.output
 }
 
@@ -52,7 +52,7 @@ fn naming_generated_types_is_rejected(mod_source string, reader_source string) (
 	src := os.join_path(dir, 'm.v')
 	os.write_file(src, reader_source) or { panic(err) }
 	c_out := os.join_path(dir, 'm.c')
-	gen := os.execute('${os.quoted_path(vexe)} -new-compiler -o ${os.quoted_path(c_out)} ${os.quoted_path(src)}')
+	gen := os.exec([vexe, '-new-compiler', '-o', '${c_out}', '${src}'])
 	if gen.exit_code != 0 {
 		return 0, ['generating C for the reader failed: ${gen.output}']
 	}
@@ -78,7 +78,7 @@ fn naming_generated_types_is_rejected(mod_source string, reader_source string) (
 		attempt := 'module main\n\nimport holder\n\nfn main() {\n\ts := ' + generated +
 			'{}\n\tprintln(s)\n}\n'
 		os.write_file(src, attempt) or { panic(err) }
-		res := os.execute('${os.quoted_path(vexe)} -new-compiler -o ${os.quoted_path(exe)} ${os.quoted_path(src)}')
+		res := os.exec([vexe, '-new-compiler', '-o', exe, '${src}'])
 		if res.exit_code == 0 || !res.output.contains('declared as private to module `holder`') {
 			accepted << '${generated}: ${res.output}'
 		}

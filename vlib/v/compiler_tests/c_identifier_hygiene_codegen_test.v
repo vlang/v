@@ -11,7 +11,8 @@ fn test_c_identifier_hygiene_for_escaped_names_unix_and_main_const() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_input_${pid}.v')
@@ -114,7 +115,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_input_${pid}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
@@ -140,7 +141,7 @@ fn main() {
 	assert c_code.contains('#define main__block_size'), c_code
 	assert c_code.contains('.block_size = main__block_size'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '124\n3\n5\n15'
 
@@ -155,7 +156,7 @@ fn main() {
 	}
 	csym_c := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_csym_${pid}.c')
 	os.rm(csym_c) or {}
-	csym_compile := os.execute('${v3_bin} ${csym_src} -b c -o ${csym_c}')
+	csym_compile := os.exec([v3_bin, '${csym_src}', '-b', 'c', '-o', '${csym_c}'])
 	assert csym_compile.exit_code == 0, csym_compile.output
 	csym_code := os.read_file(csym_c) or { panic(err) }
 	assert csym_code.contains('unix(10)'), csym_code
@@ -174,14 +175,14 @@ fn main() {
 			panic(err)
 		}
 		objc_bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}')
-		objc_compile := os.execute('${v3_bin} ${objc_v} -b c -o ${objc_bin}')
+		objc_compile := os.exec([v3_bin, '${objc_v}', '-b', 'c', '-o', objc_bin])
 		assert objc_compile.exit_code == 0, objc_compile.output
 		objc_code := os.read_file(objc_bin + '.c') or { panic(err) }
 		type_pos := objc_code.index('struct main__V3PointUnique {') or { -1 }
 		assert type_pos >= 0, objc_code
 		// Objective-C source bodies are compiled in a separate native unit.
 		assert !objc_code.contains('int v3_point_sum(main__V3PointUnique p) {'), objc_code
-		objc_run := os.execute(objc_bin)
+		objc_run := os.exec([objc_bin])
 		assert objc_run.exit_code == 0, objc_run.output
 		assert objc_run.output.trim_space() == '9'
 	}

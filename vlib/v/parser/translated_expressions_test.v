@@ -66,7 +66,7 @@ const LaterRegs = [3, 12, 13]!
 		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
 	}
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -128,7 +128,8 @@ $if linux {
 			}
 		}
 		out := os.join_path(root, '${target}.c')
-		result := os.execute('${os.quoted_path(@VEXE)} -enable-globals -gc none -cross -os ${target} -o ${os.quoted_path(out)} ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-enable-globals', '-gc', 'none', '-cross', '-os', '${target}',
+			'-o', '${out}', path])
 		assert result.exit_code == 0, result.output
 		c_code := os.read_file(out)!
 		selected := if target == 'linux' { 'Linux' } else { 'Other' }
@@ -140,7 +141,7 @@ $if linux {
 		assert c_code.contains('sizeof(u8)')
 		assert c_code.contains('sizeof(u16)')
 	}
-	result := os.execute('${os.quoted_path(@VEXE)} -enable-globals -gc none -os cross run ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, '-enable-globals', '-gc', 'none', '-os', 'cross', 'run', path])
 	assert result.exit_code == 0, result.output
 }
 
@@ -184,7 +185,8 @@ $if feature ? {
 		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
 	}
 	for flags in ['', '-d feature', '-no-parallel', '-no-parallel -d feature'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals run ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-enable-globals',
+			'run', root])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -235,7 +237,7 @@ const Disabled [2]int
 		assert sizes[i].children_count == 1
 	}
 	assert sizes[10].children_count == 0
-	single := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(main_file)}')
+	single := os.exec([@VEXE, 'run', main_file])
 	assert single.exit_code == 0, single.output
 	os.write_file(main_file, source)!
 	os.write_file(os.join_path(root, 'z.c.v'), '@[translated]\nmodule main\n' + declarations)!
@@ -243,7 +245,7 @@ const Disabled [2]int
 		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
 	}
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', root])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -256,7 +258,7 @@ fn test_translated_sizeof_ignores_excluded_sibling_files() {
 	os.write_file(os.join_path(root, 'item_notd_feature.v'), '@[translated]\nmodule main\ntype Item = int\n')!
 	os.write_file(os.join_path(root, 'item_d_feature.v'), '@[translated]\nmodule main\nconst Item = [3, 4]!\n')!
 	for flags in ['', '-d feature'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', root])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -269,7 +271,7 @@ fn test_translated_sizeof_ignores_unparsed_siblings() {
 	os.write_file(main_file, '@[translated]\nmodule main\ntype Item = int\nfn main() { assert sizeof(Item) == sizeof(int) }\n')!
 	os.write_file(os.join_path(root, 'unused.v'), '@[translated]\nmodule main\nconst Item = [3, 4]!\n')!
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(main_file)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', main_file])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -304,7 +306,7 @@ $if feature ? {
 }
 ')!
 	for flags in ['', '-d feature', '-no-parallel', '-no-parallel -d feature'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(main_file)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', main_file])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -379,7 +381,7 @@ $match @FILE {
 	}
 	assert !p.translated_sizeof_const_names[p.translated_sizeof_declaration_key('Item')]
 	assert p.translated_sizeof_const_names[p.translated_sizeof_declaration_key('OtherRegs')]
-	single := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(main_file)}')
+	single := os.exec([@VEXE, 'run', main_file])
 	assert single.exit_code == 0, single.output
 	os.write_file(main_file, source)!
 	later_file := os.join_path(root, 'z.v')
@@ -389,7 +391,7 @@ $match @FILE {
 		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
 	}
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', root])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -445,7 +447,8 @@ $if enabled {
 		os.write_file(main_file, if later { source } else { contents })!
 		os.write_file(later_file, if later { contents } else { 'module main\n' })!
 		for flags in ['', '-no-parallel'] {
-			result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals run ${os.quoted_path(root)}')
+			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-enable-globals',
+				'run', root])
 			assert result.exit_code == 0, result.output
 		}
 	}
@@ -507,7 +510,8 @@ fn main() {
 	assert sizes[0].children_count == 0
 	assert sizes[2].value == 'foo.Count'
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals run ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-enable-globals',
+			'run', root])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -542,7 +546,7 @@ struct c_box[T] { value T }
 	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
 	assert sizes.len == 8
 	assert sizes.all(it.children_count == 0)
-	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(main_file)}')
+	result := os.exec([@VEXE, 'run', main_file])
 	assert result.exit_code == 0, result.output
 	os.write_file(main_file, use_types)!
 	os.write_file(os.join_path(root, 'z.v'), '@[translated]\nmodule main\n' + definitions)!
@@ -550,7 +554,7 @@ struct c_box[T] { value T }
 		os.write_file(os.join_path(root, name), 'module main\n//' + ' '.repeat(70000) + '\n')!
 	}
 	for flags in ['', '-no-parallel'] {
-		batch := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		batch := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', root])
 		assert batch.exit_code == 0, batch.output
 	}
 }
@@ -602,7 +606,7 @@ fn other() {
 	assert sizes[2].value.contains('c_union@local@')
 	assert sizes[3].children_count == 1
 	assert sizes[5].children_count == 1
-	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, 'run', path])
 	assert result.exit_code == 0, result.output
 }
 
@@ -659,7 +663,7 @@ const Item = [1, 2]!
 type Item = int
 ')!
 	for flags in ['', '-d feature', '-no-parallel', '-no-parallel -d feature'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', path])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -688,7 +692,7 @@ $if ${condition} {
 }
 ')!
 		for flags in ['', '-no-parallel'] {
-			result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(path)}')
+			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', path])
 			assert result.exit_code == 0, result.output
 		}
 	}
@@ -701,7 +705,7 @@ $if sizeof(int) == 0 {
  const Regs = [1, 2]!
 }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, 'run', path])
 	assert result.exit_code == 0, result.output
 }
 
@@ -739,7 +743,7 @@ fn main() {
 
 ')!
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', root])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -789,7 +793,7 @@ fn main() {
 			''
 		})!
 		for flags in ['', '-no-parallel'] {
-			result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', root])
 			assert result.exit_code == 0, result.output
 		}
 	}
@@ -821,7 +825,7 @@ fn main() {
 $if ${condition} { ${then_decl} } $else { ${else_decl} }
 ')!
 			for flags in ['', '-no-parallel'] {
-				result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(path)}')
+				result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', path])
 				assert result.exit_code == 0, result.output
 			}
 		}
@@ -865,13 +869,13 @@ fn main() {
 			os.write_file(path, source + declarations)!
 			os.write_file(later, 'module main\n')!
 			for flags in ['', '-no-parallel'] {
-				result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+				result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', root])
 				assert result.exit_code == 0, result.output
 			}
 			os.write_file(path, source)!
 			os.write_file(later, '@[translated]\nmodule main\n' + declarations)!
 			for flags in ['', '-no-parallel'] {
-				result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(root)}')
+				result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', root])
 				assert result.exit_code == 0, result.output
 			}
 		}
@@ -903,7 +907,7 @@ fn main() {
 $if ${condition} { ${then_decl} } $else { ${else_decl} }
 ')!
 		for flags in ['', '-no-parallel'] {
-			result := os.execute('${os.quoted_path(@VEXE)} ${flags} run ${os.quoted_path(path)}')
+			result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), 'run', path])
 			assert result.exit_code == 0, result.output
 		}
 	}
@@ -931,7 +935,8 @@ fn main() {
 $if ${condition} { ${then_decl} } $else { ${else_decl} }
 ')!
 			for flags in ['', '-no-parallel'] {
-				result := os.execute('${os.quoted_path(@VEXE)} ${flags} -enable-globals run ${os.quoted_path(path)}')
+				result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-enable-globals',
+					'run', path])
 				assert result.exit_code == 0, result.output
 			}
 		}

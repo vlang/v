@@ -22,7 +22,8 @@ fn test_optional_field_runtime_default_is_none_cross_module() {
 		os.rmdir_all(root) or {}
 	}
 	build :=
-		os.execute('${opt_default_vexe} -gc none -d ownership -path "${opt_default_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${opt_default_v3_src}')
+		os.exec([opt_default_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${opt_default_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${opt_default_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'v3optdefault' }\n") or {
@@ -63,8 +64,9 @@ fn main() {
 		panic(err)
 	}
 
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -d ownership -b c -o ${out}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-d', 'ownership', '-b', 'c', '-o',
+		'${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 }

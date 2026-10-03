@@ -14,7 +14,9 @@ fn typed_receiver_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_typed_receiver_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${typed_receiver_vexe} -gc none -path "${typed_receiver_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${typed_receiver_v3_src}')
+		os.exec([typed_receiver_vexe, '-gc', 'none', '-path',
+			'${typed_receiver_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${typed_receiver_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -286,9 +288,9 @@ fn test_markused_roots_exact_typed_const_receiver_method() {
 	v3_bin := typed_receiver_build_v3()
 	main_path := typed_receiver_write_project()
 	out := os.join_path(os.temp_dir(), 'v3_markused_typed_receiver_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${out}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '22'
 	generated := os.read_file(out + '.c') or { panic(err) }

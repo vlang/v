@@ -17,7 +17,9 @@ fn test_each_unresolved_module_import_is_reported() {
 		os.rm(output + '.c') or {}
 	}
 	build :=
-		os.execute('${missing_import_vexe} -gc none -path "${missing_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${missing_import_v3_src}')
+		os.exec([missing_import_vexe, '-gc', 'none', '-path',
+			'${missing_import_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${missing_import_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	os.mkdir_all(root) or { panic(err) }
@@ -47,7 +49,8 @@ fn helper() {}
 	}
 
 	for flags in ['-no-parallel', '-building-v'] {
-		result := os.execute('${v3_bin} -nocache ${flags} -o ${output} ${root}')
+		result := os.exec([v3_bin, '-nocache', ...(os.split_args(flags) or { panic(err) }), '-o',
+			output, root])
 		assert result.exit_code != 0, result.output
 		for unresolved in [module_name, empty_module_name] {
 			message := 'cannot import module "${unresolved}" (not found)'
@@ -73,7 +76,9 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		os.rm(output + '.c') or {}
 	}
 	build :=
-		os.execute('${missing_import_vexe} -gc none -path "${missing_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${missing_import_v3_src}')
+		os.exec([missing_import_vexe, '-gc', 'none', '-path',
+			'${missing_import_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${missing_import_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	hint := 'the virtual `modules/` directory is no longer searched for modules.'
@@ -83,7 +88,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	plain_root := os.join_path(root, 'plain project')
 	write_modules_layout_module(plain_root, os.join_path('modules', 'helper'), 'helper')
 	write_modules_layout_main(plain_root, 'helper')
-	plain := os.execute('${v3_bin} -nocache -o ${output} ${os.quoted_path(os.join_path(plain_root, 'main.v'))}')
+	plain := os.exec([v3_bin, '-nocache', '-o', output, os.join_path(plain_root, 'main.v')])
 	assert plain.exit_code != 0, plain.output
 	assert plain.output.contains('cannot import module "helper" (not found)'), plain.output
 	assert plain.output.contains(hint), plain.output
@@ -101,7 +106,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		panic(err)
 	}
 	write_modules_layout_main(os.join_path(nested_root, 'src'), 'helper')
-	nested := os.execute('${v3_bin} -nocache -o ${output} ${nested_root}/src/main.v')
+	nested := os.exec([v3_bin, '-nocache', '-o', output, '${nested_root}' + '/src/main.v'])
 	assert nested.exit_code != 0, nested.output
 	assert nested.output.contains('cannot import module "helper" (not found)'), nested.output
 	assert nested.output.contains(hint), nested.output
@@ -116,7 +121,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	write_modules_layout_module(dotted_root, os.join_path('modules', 'gpu', 'agx', 'fw'),
 		'fw')
 	write_modules_layout_main(dotted_root, 'gpu.agx.fw')
-	dotted := os.execute('${v3_bin} -nocache -o ${output} ${dotted_root}/main.v')
+	dotted := os.exec([v3_bin, '-nocache', '-o', output, '${dotted_root}' + '/main.v'])
 	assert dotted.exit_code != 0, dotted.output
 	assert dotted.output.contains('cannot import module "gpu.agx.fw" (not found)'), dotted.output
 	dotted_real := os.real_path(dotted_root)
@@ -131,7 +136,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		'fw')
 	write_modules_layout_module(taken_root, os.join_path('gpu', 'other'), 'other')
 	write_modules_layout_main(taken_root, 'gpu.agx.fw')
-	taken := os.execute('${v3_bin} -nocache -o ${output} ${taken_root}/main.v')
+	taken := os.exec([v3_bin, '-nocache', '-o', output, '${taken_root}' + '/main.v'])
 	assert taken.exit_code != 0, taken.output
 	taken_real := os.real_path(taken_root)
 	taken_source := os.join_path(taken_real, 'modules', 'gpu', 'agx', 'fw')
@@ -151,7 +156,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		panic(err)
 	}
 	write_modules_layout_main(occupied_root, 'gpu.agx.fw')
-	occupied := os.execute('${v3_bin} -nocache -o ${output} ${occupied_root}/main.v')
+	occupied := os.exec([v3_bin, '-nocache', '-o', output, '${occupied_root}' + '/main.v'])
 	assert occupied.exit_code != 0, occupied.output
 	occupied_real := os.real_path(occupied_root)
 	occupied_source := os.join_path(occupied_real, 'modules', 'gpu', 'agx', 'fw')
@@ -167,7 +172,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	blocked_real_pre := os.join_path(blocked_root, 'helper')
 	os.write_file(blocked_real_pre, 'not a module\n') or { panic(err) }
 	write_modules_layout_main(blocked_root, 'helper')
-	blocked := os.execute('${v3_bin} -nocache -o ${output} ${blocked_root}/main.v')
+	blocked := os.exec([v3_bin, '-nocache', '-o', output, '${blocked_root}' + '/main.v'])
 	assert blocked.exit_code != 0, blocked.output
 	assert blocked.output.contains(hint), blocked.output
 	blocked_real := os.real_path(blocked_root)
@@ -182,7 +187,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		'fw')
 	os.write_file(os.join_path(blocked_dotted_root, 'gpu'), 'not a module\n') or { panic(err) }
 	write_modules_layout_main(blocked_dotted_root, 'gpu.agx.fw')
-	blocked_dotted := os.execute('${v3_bin} -nocache -o ${output} ${blocked_dotted_root}/main.v')
+	blocked_dotted := os.exec([v3_bin, '-nocache', '-o', output, '${blocked_dotted_root}' + '/main.v'])
 	assert blocked_dotted.exit_code != 0, blocked_dotted.output
 	assert blocked_dotted.output.contains(hint), blocked_dotted.output
 	blocked_dotted_real := os.real_path(blocked_dotted_root)
@@ -198,7 +203,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		panic(err)
 	}
 	write_modules_layout_main(disabled_root, 'disabled_helper')
-	disabled := os.execute('${v3_bin} -nocache -o ${output} ${disabled_root}/main.v')
+	disabled := os.exec([v3_bin, '-nocache', '-o', output, '${disabled_root}' + '/main.v'])
 	assert disabled.exit_code != 0, disabled.output
 	assert disabled.output.contains('cannot import module "disabled_helper" (not found)'), disabled.output
 	assert !disabled.output.contains(hint), disabled.output
@@ -214,7 +219,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		panic(err)
 	}
 	write_modules_layout_main(foreign_app, 'stranger')
-	foreign := os.execute('${v3_bin} -nocache -o ${output} ${foreign_app}/main.v')
+	foreign := os.exec([v3_bin, '-nocache', '-o', output, '${foreign_app}' + '/main.v'])
 	assert foreign.exit_code != 0, foreign.output
 	assert foreign.output.contains('cannot import module "stranger" (not found)'), foreign.output
 	assert !foreign.output.contains(hint), foreign.output
@@ -229,11 +234,11 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	boundary_project := os.join_path(boundary_parent, 'project')
 	write_modules_layout_main(boundary_project, 'helper')
 	boundary_main := os.join_path(boundary_project, 'main.v')
-	before_boundary := os.execute('${v3_bin} -nocache -o ${output} ${os.quoted_path(boundary_main)}')
+	before_boundary := os.exec([v3_bin, '-nocache', '-o', output, '${boundary_main}'])
 	assert before_boundary.exit_code != 0, before_boundary.output
 	assert before_boundary.output.contains(hint), before_boundary.output
 	os.write_file(os.join_path(boundary_project, '.v.mod.stop'), '') or { panic(err) }
-	within_boundary := os.execute('${v3_bin} -nocache -o ${output} ${os.quoted_path(boundary_main)}')
+	within_boundary := os.exec([v3_bin, '-nocache', '-o', output, '${boundary_main}'])
 	assert within_boundary.exit_code != 0, within_boundary.output
 	assert within_boundary.output.contains('cannot import module "helper" (not found)'), within_boundary.output
 	assert !within_boundary.output.contains(hint), within_boundary.output
@@ -250,7 +255,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		return
 	}
 	write_modules_layout_main(linked_source_root, 'helper')
-	linked_source := os.execute('${v3_bin} -nocache -o ${output} ${linked_source_root}/main.v')
+	linked_source := os.exec([v3_bin, '-nocache', '-o', output, '${linked_source_root}' + '/main.v'])
 	assert linked_source.exit_code != 0, linked_source.output
 	assert linked_source.output.contains(hint), linked_source.output
 	linked_source_real := os.real_path(linked_source_root)
@@ -268,7 +273,8 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		panic(err)
 	}
 	write_modules_layout_main(linked_namespace_root, 'gpu.agx.fw')
-	linked_namespace := os.execute('${v3_bin} -nocache -o ${output} ${linked_namespace_root}/main.v')
+	linked_namespace := os.exec([v3_bin, '-nocache', '-o', output,
+		'${linked_namespace_root}' + '/main.v'])
 	assert linked_namespace.exit_code != 0, linked_namespace.output
 	assert linked_namespace.output.contains(hint), linked_namespace.output
 	linked_namespace_real := os.real_path(linked_namespace_root)
@@ -289,7 +295,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 		return
 	}
 	write_modules_layout_main(linked_root, 'gpu.agx.fw')
-	linked := os.execute('${v3_bin} -nocache -o ${output} ${linked_root}/main.v')
+	linked := os.exec([v3_bin, '-nocache', '-o', output, '${linked_root}' + '/main.v'])
 	assert linked.exit_code != 0, linked.output
 	assert linked.output.contains(hint), linked.output
 	linked_real := os.real_path(linked_root)
@@ -342,7 +348,9 @@ fn test_eager_import_resolution_matches_authoritative_resolution() {
 		os.rm(output + '.c') or {}
 	}
 	build :=
-		os.execute('${missing_import_vexe} -gc none -path "${missing_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${missing_import_v3_src}')
+		os.exec([missing_import_vexe, '-gc', 'none', '-path',
+			'${missing_import_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${missing_import_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	precedence_root := os.join_path(root, 'precedence')
@@ -367,9 +375,9 @@ fn main() {
 		panic(err)
 	}
 	precedence_build :=
-		os.execute('${v3_bin} -nocache -building-v -o ${output} ${precedence_root}/main.v')
+		os.exec([v3_bin, '-nocache', '-building-v', '-o', output, '${precedence_root}' + '/main.v'])
 	assert precedence_build.exit_code == 0, precedence_build.output
-	precedence_run := os.execute(output)
+	precedence_run := os.exec([output])
 	assert precedence_run.exit_code == 0, precedence_run.output
 	assert precedence_run.output.trim_space() == 'local arrays', precedence_run.output
 
@@ -402,9 +410,10 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	string_build := os.execute('${v3_bin} -nocache -building-v -o ${output} ${string_root}/main.v')
+	string_build := os.exec([v3_bin, '-nocache', '-building-v', '-o', output,
+		'${string_root}' + '/main.v'])
 	assert string_build.exit_code == 0, string_build.output
-	string_run := os.execute(output)
+	string_run := os.exec([output])
 	assert string_run.exit_code == 0, string_run.output
 	assert string_run.output.trim_space() == 'before\nimport eager_string_literal_trap\nafter', string_run.output
 
@@ -454,9 +463,9 @@ fn main() {
 		panic(err)
 	}
 	collision_build :=
-		os.execute('${v3_bin} -nocache -building-v -o ${output} ${collision_root}/main.v')
+		os.exec([v3_bin, '-nocache', '-building-v', '-o', output, '${collision_root}' + '/main.v'])
 	assert collision_build.exit_code == 0, collision_build.output
-	collision_run := os.execute(output)
+	collision_run := os.exec([output])
 	assert collision_run.exit_code == 0, collision_run.output
 	assert collision_run.output.trim_space() == 'plain bar\ndotted bar', collision_run.output
 
@@ -503,9 +512,10 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	alias_build := os.execute('${v3_bin} -nocache -building-v -o ${output} ${alias_root}/main.v')
+	alias_build := os.exec([v3_bin, '-nocache', '-building-v', '-o', output,
+		'${alias_root}' + '/main.v'])
 	assert alias_build.exit_code == 0, alias_build.output
-	alias_run := os.execute(output)
+	alias_run := os.exec([output])
 	assert alias_run.exit_code == 0, alias_run.output
 	assert alias_run.output.trim_space() == '42', alias_run.output
 
@@ -566,9 +576,10 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	dotted_build := os.execute('${v3_bin} -nocache -building-v -o ${output} ${dotted_root}/main.v')
+	dotted_build := os.exec([v3_bin, '-nocache', '-building-v', '-o', output,
+		'${dotted_root}' + '/main.v'])
 	assert dotted_build.exit_code == 0, dotted_build.output
-	dotted_run := os.execute(output)
+	dotted_run := os.exec([output])
 	assert dotted_run.exit_code == 0, dotted_run.output
 	assert dotted_run.output.trim_space() == 'a.bar\nb.bar', dotted_run.output
 }

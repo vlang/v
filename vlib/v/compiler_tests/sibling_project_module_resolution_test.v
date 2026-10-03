@@ -15,7 +15,8 @@ const sibling_module_v3_src = os.join_path(sibling_module_v3_dir, 'v.v')
 fn sibling_module_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_sibling_module_compiler_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${sibling_module_vexe} -gc none -path "${sibling_module_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${sibling_module_v3_src}')
+	build := os.exec([sibling_module_vexe, '-gc', 'none', '-path',
+		'${sibling_module_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, sibling_module_v3_src])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -66,9 +67,10 @@ fn main() {
 	empty_modules := os.join_path(root, 'emptymodules')
 	os.mkdir_all(os.join_path(empty_modules, 'neighbourlib')) or { panic(err) }
 	exe := os.join_path(root, 'app_prog')
-	compile := os.execute('${v3_bin} -nocache -path "${empty_modules}|@vlib|@vmodules" ${importer_dir} -b c -o ${exe}')
+	compile := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules',
+		importer_dir, '-b', 'c', '-o', exe])
 	assert compile.exit_code == 0, compile.output
-	res := os.execute(exe)
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'from neighbourlib', res.output
 }
@@ -99,9 +101,9 @@ fn main() {
 }
 ') or { panic(err) }
 	exe := os.join_path(root, 'deep_prog')
-	compile := os.execute('${v3_bin} -nocache ${deep_dir} -b c -o ${exe}')
+	compile := os.exec([v3_bin, '-nocache', deep_dir, '-b', 'c', '-o', exe])
 	assert compile.exit_code == 0, compile.output
-	res := os.execute(exe)
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'from neighbourlib', res.output
 }
@@ -146,9 +148,10 @@ fn main() {
 	empty_modules := os.join_path(root, 'emptymodules')
 	os.mkdir_all(empty_modules) or { panic(err) }
 	exe := os.join_path(root, 'dotted_prog')
-	compile := os.execute('${v3_bin} -nocache -path "${empty_modules}|@vlib|@vmodules" ${importer_dir} -b c -o ${exe}')
+	compile := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules',
+		importer_dir, '-b', 'c', '-o', exe])
 	assert compile.exit_code == 0, compile.output
-	res := os.execute(exe)
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'from the submodule', res.output
 }
@@ -205,9 +208,10 @@ fn main() {
 	empty_modules := os.join_path(root, 'emptymodules')
 	os.mkdir_all(empty_modules) or { panic(err) }
 	exe := os.join_path(root, 'own_prog')
-	compile := os.execute('${v3_bin} -nocache -path "${empty_modules}|@vlib|@vmodules" ${src_dir} -b c -o ${exe}')
+	compile := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules', src_dir,
+		'-b', 'c', '-o', exe])
 	assert compile.exit_code == 0, compile.output
-	res := os.execute(exe)
+	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'the project own copy', res.output
 }
@@ -273,9 +277,10 @@ pub fn value() string {
 	return bar.value()
 }
 ') or { panic(err) }
-	bare := os.execute('${v3_bin} -nocache -path "${empty_modules}|@vlib|@vmodules" ${project_dir} -b c -o ${exe}')
+	bare := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules', project_dir,
+		'-b', 'c', '-o', exe])
 	assert bare.exit_code == 0, bare.output
-	bare_run := os.execute(exe)
+	bare_run := os.exec([exe])
 	assert bare_run.exit_code == 0, bare_run.output
 	assert bare_run.output.trim_space() == 'from the neighbour project', bare_run.output
 
@@ -288,9 +293,10 @@ pub fn value() string {
 	return bar.value()
 }
 ') or { panic(err) }
-	dotted := os.execute('${v3_bin} -nocache -path "${empty_modules}|@vlib|@vmodules" ${project_dir} -b c -o ${exe}')
+	dotted := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules',
+		project_dir, '-b', 'c', '-o', exe])
 	assert dotted.exit_code == 0, dotted.output
-	dotted_run := os.execute(exe)
+	dotted_run := os.exec([exe])
 	assert dotted_run.exit_code == 0, dotted_run.output
 	assert dotted_run.output.trim_space() == 'from the modules directory', dotted_run.output
 }

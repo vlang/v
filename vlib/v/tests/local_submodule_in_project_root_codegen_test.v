@@ -46,7 +46,7 @@ fn compile_project(target string) os.Result {
 		os.rmdir_all(basepath) or {}
 		os.rm(out_name) or {}
 	}
-	return os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out_name)} ${os.quoted_path(target)}')
+	return os.exec([vexe, '-o', '${out_name}', '${target}'])
 }
 
 fn test_root_submodule_with_enum_compiles_from_project_dir() {

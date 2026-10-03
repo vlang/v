@@ -10,7 +10,8 @@ fn voidptr_arg_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${voidptr_arg_vexe} -gc none -path "${voidptr_arg_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${voidptr_arg_v3_src}')
+		os.exec([voidptr_arg_vexe, '-gc', 'none', '-path',
+			'${voidptr_arg_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${voidptr_arg_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -67,9 +68,9 @@ fn main() {
 
 	v3_bin := voidptr_arg_build_v3()
 	out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${source_path} -b c -o ${out}')
+	compile := os.exec([v3_bin, source_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['1', '9', '9',
 		'9', '9']

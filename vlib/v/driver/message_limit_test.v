@@ -17,7 +17,7 @@ fn message_limit_fixture(name string) string {
 fn test_errors_are_capped_at_twenty_by_default() {
 	root := message_limit_fixture('message_limit_default')
 	defer { os.rmdir_all(root) or {} }
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.count(' error: ') == 20, result.output
 	assert result.output.contains('... and 5 more errors'), result.output
@@ -26,7 +26,7 @@ fn test_errors_are_capped_at_twenty_by_default() {
 fn test_message_limit_can_show_more_than_twenty_errors() {
 	root := message_limit_fixture('message_limit_raised')
 	defer { os.rmdir_all(root) or {} }
-	result := os.execute('${os.quoted_path(@VEXE)} -message-limit 100 -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-message-limit', '100', '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.count(' error: ') == 25, result.output
 }
@@ -34,7 +34,7 @@ fn test_message_limit_can_show_more_than_twenty_errors() {
 fn test_message_limit_still_lowers_the_count() {
 	root := message_limit_fixture('message_limit_lowered')
 	defer { os.rmdir_all(root) or {} }
-	result := os.execute('${os.quoted_path(@VEXE)} -message-limit 3 -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-message-limit', '3', '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.count(' error: ') == 3, result.output
 }

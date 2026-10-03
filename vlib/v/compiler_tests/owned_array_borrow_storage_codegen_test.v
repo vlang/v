@@ -27,7 +27,8 @@ fn testsuite_begin() {
 	os.mkdir_all(borrow_storage_tmp_dir) or { panic(err) }
 	cmd_v := os.join_path(borrow_storage_vroot, 'cmd', 'v')
 	vlib := os.join_path(borrow_storage_vroot, 'vlib')
-	build := os.execute('${os.quoted_path(borrow_storage_vexe)} -gc none -d ownership -path "${vlib}|@vlib|@vmodules" -o ${os.quoted_path(borrow_storage_v3)} ${os.quoted_path(cmd_v)}')
+	build := os.exec([borrow_storage_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+		'${vlib}' + '|@vlib|@vmodules', '-o', '${borrow_storage_v3}', '${cmd_v}'])
 	assert build.exit_code == 0, build.output
 }
 
@@ -43,13 +44,14 @@ fn borrow_storage_compile_with_flags(name string, src string, flags string) os.R
 	path := os.join_path(borrow_storage_tmp_dir, '${name}.v')
 	os.write_file(path, src) or { panic(err) }
 	out := os.join_path(borrow_storage_tmp_dir, name)
-	return os.execute('${os.quoted_path(borrow_storage_v3)} -ownership -d ownership -no-parallel ${flags} -o ${os.quoted_path(out)} ${os.quoted_path(path)}')
+	return os.exec(['${borrow_storage_v3}', '-ownership', '-d', 'ownership', '-no-parallel',
+		...(os.split_args(flags) or { panic(err) }), '-o', '${out}', path])
 }
 
 fn borrow_storage_run(name string, src string) string {
 	build := borrow_storage_compile(name, src)
 	assert build.exit_code == 0, '${name}: ${build.output}'
-	run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+	run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 	assert run.exit_code == 0, '${name}: ${run.output}'
 	return run.output.trim_space()
 }
@@ -69,7 +71,7 @@ fn main() {
 		name := 'sum_box_allocator_${i}'
 		build := borrow_storage_compile_with_flags(name, src, flags)
 		assert build.exit_code == 0, '${name}: ${build.output}'
-		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 		assert run.exit_code == 0, '${name}: ${run.output}'
 		assert run.output.trim_space() == 'drop 1\ndrop 2'
 	}
@@ -256,7 +258,7 @@ fn main() {
 			case_name := '${name}_${borrowed}'
 			build := borrow_storage_compile(case_name, input)
 			assert build.exit_code == 0, build.output
-			run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, case_name)))
+			run := os.exec([os.join_path(borrow_storage_tmp_dir, case_name)])
 			if !borrowed && operation in ['values << Handle{2}', 'values.ensure_cap(values.cap + 1)'] {
 				// Mutating an unsliced owner does not require independent element owners.
 				assert run.exit_code == 0, run.output
@@ -844,7 +846,7 @@ fn main() {
 				continue
 			}
 			assert build.exit_code == 0, build.output
-			run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+			run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 			assert run.exit_code != 0, run.output
 			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
 		}
@@ -865,7 +867,7 @@ fn main() {
 '
 		build := borrow_storage_compile(name, source)
 		assert build.exit_code == 0, build.output
-		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 		assert run.exit_code != 0, run.output
 		assert run.output.contains('array.delete: index out of range'), run.output
 	}
@@ -905,7 +907,7 @@ fn main() {
 		name := 'owned_trim_bounds_${i}'
 		build := borrow_storage_compile_with_flags(name, source, flags)
 		assert build.exit_code == 0, '${name}: ${build.output}'
-		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 		assert run.exit_code == 0, '${name}: ${run.output}'
 		assert run.output.trim_space() == 'ok'
 	}
@@ -1008,7 +1010,7 @@ fn main() {
 '
 				build := borrow_storage_compile(name, source)
 				assert build.exit_code == 0, '${name}: ${build.output}'
-				run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+				run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 				assert run.exit_code != 0, '${name}: ${run.output}'
 				assert !run.output.contains('unexpected clone'), '${name}: ${run.output}'
 				expected := if overflow {

@@ -33,7 +33,7 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('expected `int`, not `Code`'), result.output
 		assert result.output.contains('expected `int`, not `bool`'), result.output
@@ -55,7 +55,7 @@ fn test_translated_bitwise_operators_still_require_integral_operands() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.v'), '@[translated]\nmodule main\nfn main() { _ = 3 ^ 1.5 }\n')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('right type of `^` cannot be non-integer'), result.output
 }
@@ -65,7 +65,7 @@ fn test_translated_arithmetic_preserves_division_by_zero_error() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.v'), '@[translated]\nmodule main\nfn main() { _ = 3 / 0 }\n')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('division by zero'), result.output
 }
@@ -84,7 +84,7 @@ fn main() {
 	_ = !values
 }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('expected `[]int`, not `[]bool`'), result.output
 	assert result.output.contains('non-bool type `[]int`'), result.output

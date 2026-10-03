@@ -11,7 +11,8 @@ fn vhd_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_veb_html_dynamic_path_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vhd_vexe} -gc none -path "${vhd_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${vhd_v3_src}')
+		os.exec([vhd_vexe, '-gc', 'none', '-path', '${vhd_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${vhd_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -38,7 +39,7 @@ fn test_veb_html_dynamic_path_is_rejected_not_handler_template() {
 	os.write_file(os.join_path(root, 'dyn.v'), vhd_app_source('\$veb.html(name)')) or { panic(err) }
 	dyn_c := os.join_path(root, 'dyn.c')
 	os.rm(dyn_c) or {}
-	dyn := os.execute('${v3_bin} -no-memory-limit ${os.join_path(root, 'dyn.v')} -o ${dyn_c}')
+	dyn := os.exec([v3_bin, '-no-memory-limit', os.join_path(root, 'dyn.v'), '-o', '${dyn_c}'])
 	assert dyn.exit_code != 0, 'a non-compile-time `\$veb.html(path)` must be rejected, got:\n${dyn.output}'
 	dyn_code := os.read_file(dyn_c) or { '' }
 	assert !dyn_code.contains('HANDLER_TEMPLATE'), 'dynamic path must not resolve to the handler template'
@@ -47,7 +48,7 @@ fn test_veb_html_dynamic_path_is_rejected_not_handler_template() {
 	os.write_file(os.join_path(root, 'noarg.v'), vhd_app_source('\$veb.html()')) or { panic(err) }
 	noarg_c := os.join_path(root, 'noarg.c')
 	os.rm(noarg_c) or {}
-	noarg := os.execute('${v3_bin} -no-memory-limit ${os.join_path(root, 'noarg.v')} -o ${noarg_c}')
+	noarg := os.exec([v3_bin, '-no-memory-limit', os.join_path(root, 'noarg.v'), '-o', '${noarg_c}'])
 	assert noarg.exit_code == 0, noarg.output
 	noarg_code := os.read_file(noarg_c) or { '' }
 	assert noarg_code.contains('HANDLER_TEMPLATE'), 'the no-arg form should render the handler template'

@@ -1134,7 +1134,7 @@ fn test_exec_with_args() {
 		os.rm(output_arg + '.c') or {}
 	}
 	compile_result :=
-		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(source_path)}')
+		os.exec([@VEXE, '-o', output_arg, source_path])
 	assert compile_result.exit_code == 0, compile_result.output
 
 	result := os.exec([exe_path, 'one two', 'semi;colon'])
@@ -1278,9 +1278,10 @@ fn move_across_partitions_using_function(f fn (src string, dst string, opts os.M
 	├── mountpoint
 	└── original.txt
 	*/
-	os.system('${bindfs} --no-allow-other ${cfolder} ${mfolder}')
+	os.system_args([bindfs, '--no-allow-other', cfolder, mfolder])
 	defer {
-		os.system('sync; umount ${mfolder}')
+		os.system_args(['sync'])
+		os.system_args(['umount', mfolder])
 	}
 	// os.system('tree ${pfolder}')
 	/*

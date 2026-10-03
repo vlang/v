@@ -81,12 +81,12 @@ fn thread_sanitizer_runs() bool {
 	probe_exe := os.join_path(tdir, 'tsan_probe')
 	os.write_file(probe_c, 'int main(void) { return 0; }\n') or { return false }
 	cc := race_c_compiler()
-	compiled := os.execute('${os.quoted_path(cc)} -fsanitize=thread ${os.quoted_path(probe_c)} -o ${os.quoted_path(probe_exe)}')
+	compiled := os.exec([cc, '-fsanitize=thread', '${probe_c}', '-o', probe_exe])
 	if compiled.exit_code != 0 {
 		eprintln('skipping: `${cc} -fsanitize=thread` does not work here:\n${compiled.output}')
 		return false
 	}
-	ran := os.execute(os.quoted_path(probe_exe))
+	ran := os.exec([probe_exe])
 	if ran.exit_code != 0 {
 		eprintln('skipping: ThreadSanitizer programs do not run here:\n${ran.output}')
 		return false
@@ -250,7 +250,7 @@ fn merge_runs(previous []TestResult, current []TestResult) []TestResult {
 
 // c_compiler_is_gcc reports whether a C compiler command is gcc (`cc` often is).
 fn c_compiler_is_gcc(cc string) bool {
-	version := os.execute('${os.quoted_path(cc)} --version').output
+	version := os.exec([cc, '--version']).output
 	return version.contains('Free Software Foundation') && !version.contains('clang')
 }
 
@@ -270,7 +270,7 @@ fn test_go_race_suite() {
 	for program in selected_programs() {
 		name := os.file_name(program).all_before_last('.v')
 		exe := os.join_path(tdir, name)
-		build := os.execute('${vexe} -race -o ${os.quoted_path(exe)} ${os.quoted_path(program)}')
+		build := os.exec([@VEXE, '-race', '-o', exe, '${program}'])
 		if build.exit_code != 0 {
 			problems << '${name}.v does not compile with -race:\n${build.output}'
 			continue
@@ -279,7 +279,8 @@ fn test_go_race_suite() {
 		fns := program_test_fns(source)
 		mut results := []TestResult{}
 		for attempt in 1 .. max_runs + 1 {
-			run := os.execute('VRACE="${vrace_options}" ${os.quoted_path(exe)}')
+			run := os.exec(['env', 'VRACE=' + ...(os.split_args(vrace_options) or { panic(err) }),
+				exe])
 			run_results, done := parse_output(run.output, os.file_name(program), fns, attempt)
 			if !done {
 				problems << '${name}.v did not run to completion (exit code ${run.exit_code}):\n${run.output#[-3000..]}'

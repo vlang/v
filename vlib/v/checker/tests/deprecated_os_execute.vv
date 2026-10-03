@@ -1,0 +1,15 @@
+import os
+import os.util
+
+fn main() {
+	_ = os.exec(['echo', 'hello'])
+	_ = os.execute('echo hello')
+	_ = os.system('echo hello')
+	_ = os.execute_or_panic('echo hello')
+	_ = os.execute_or_exit('echo hello')
+	_ = os.execute_opt('echo hello') or { os.Result{} }
+	_ = util.execute_with_timeout('echo hello', 1000) or { os.Result{} }
+	_ = unsafe { os.raw_execute('echo hello') }
+	mut command := os.start_new_command('echo hello') or { return }
+	command.start() or {}
+}

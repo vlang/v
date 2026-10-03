@@ -82,7 +82,8 @@ fn compile_lib(mut r live.LiveReloadInfo) ?string {
 	cmd := '${os.quoted_path(r.vexe)} ${r.vopts} -o ${os.quoted_path(new_lib_path_with_extension)} ${os.quoted_path(r.original)}'
 	elog(r, '>       compilation cmd: ${cmd}')
 	cwatch := time.new_stopwatch()
-	recompilation_result := os.execute(cmd)
+	recompilation_result := os.exec([r.vexe, ...(os.split_args(r.vopts) or { panic(err) }), '-o',
+		new_lib_path_with_extension, '${r.original}'])
 	elog(r, 'compilation took: ${cwatch.elapsed().milliseconds()}ms')
 	if recompilation_result.exit_code != 0 {
 		eprintln('recompilation error:')

@@ -81,7 +81,7 @@ pub fn shared() int {
 		os.rmdir_all(workspace) or {}
 	}
 	c_path := os.join_path(workspace, 'out.c')
-	gen := os.execute('${os.quoted_path(@VEXE)} -enable-globals -o ${os.quoted_path(c_path)} ${os.quoted_path(workspace)}')
+	gen := os.exec([@VEXE, '-enable-globals', '-o', c_path, '${workspace}'])
 	assert gen.exit_code == 0, gen.output
 	c := os.read_file(c_path) or { panic(err) }
 	assert c.contains('api__ConstType__shared(consumer__default_logger)'), c
@@ -115,7 +115,7 @@ pub fn (g &GlobalType) only_global() int {
 	defer {
 		os.rmdir_all(workspace) or {}
 	}
-	res := os.execute('${os.quoted_path(@VEXE)} -enable-globals -check ${os.quoted_path(workspace)}')
+	res := os.exec([@VEXE, '-enable-globals', '-check', '${workspace}'])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('unknown method or field: `ConstType.only_global`'), res.output
 	assert !res.output.contains('api__GlobalType__only_global('), res.output

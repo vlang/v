@@ -10,7 +10,9 @@ const borrowed_projection_fixture_dir = os.join_path(borrowed_projection_tests_d
 fn build_borrowed_projection_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_borrowed_projection_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${borrowed_projection_vexe} -nocache -gc none -d ownership -path "${borrowed_projection_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${borrowed_projection_v3_src}')
+	build := os.exec([borrowed_projection_vexe, '-nocache', '-gc', 'none', '-d', 'ownership', '-path',
+		'${borrowed_projection_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		'${borrowed_projection_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -22,7 +24,8 @@ fn run_borrowed_projection_source(v3_bin string, name string, source_text string
 	}
 	os.write_file(source, source_text) or { panic(err) }
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
+		out := os.exec([v3_bin, '-nocache', '-ownership', '-d', 'ownership',
+			...(os.split_args(mode) or { panic(err) }), 'run', source])
 		assert out.exit_code == 0, '${name} (${mode}): ${out.output}'
 	}
 }
@@ -54,7 +57,8 @@ fn run_imported_const_projection_is_cloned(v3_bin string) {
 	os.cp(os.join_path(fixtures, 'cachemod.v.txt'), os.join_path(project, 'cachemod', 'cachemod.v')) or { panic(err) }
 	os.cp(os.join_path(fixtures, 'main.v.txt'), os.join_path(project, 'main.v')) or { panic(err) }
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${os.join_path(project, 'main.v')}')
+		out := os.exec([v3_bin, '-nocache', '-ownership', '-d', 'ownership',
+			...(os.split_args(mode) or { panic(err) }), 'run', os.join_path(project, 'main.v')])
 		assert out.exit_code == 0, out.output
 		assert out.output.count('clone') == 1, out.output
 	}

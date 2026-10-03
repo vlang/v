@@ -9,7 +9,7 @@ const testdata_file = os.join_path(vroot, 'vlib/v/gen/c/testdata/no_builtin_no_p
 fn test_no_builtin_no_preludes_types_are_lowered_to_c() {
 	os.chdir(vroot) or {}
 	cmd := '${os.quoted_path(vexe)} -no-builtin -no-preludes -enable-globals -gc none -no-skip-unused -o - ${os.quoted_path(testdata_file)}'
-	compilation := os.execute(cmd)
+	compilation := os.exec([vexe, '-no-builtin', '-no-preludes', '-enable-globals', '-gc', 'none', '-no-skip-unused', '-o', '-', testdata_file])
 	assert compilation.exit_code == 0
 	generated_c := compilation.output.replace('\r\n', '\n')
 	assert !generated_c.contains('typedef array Array_charptr;')

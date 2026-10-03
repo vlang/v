@@ -17,7 +17,7 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('field `count`'), result.output
 		assert result.output.contains('is immutable'), result.output
@@ -30,7 +30,7 @@ fn test_translated_arrays_still_reject_negative_indexes() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.v'), '@[translated]\nmodule main\nfn main() { values := [3, 5]!; println(values[-1]) }\n')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('negative index `-1`'), result.output
 }
@@ -53,7 +53,7 @@ fn main() {
 }
 ')!
 	for flags in ['', '-no-parallel -nocache'] {
-		result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check', root])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('shadows a global variable'), result.output
 		assert result.output.contains('aliases mutable data from an immutable value'), result.output

@@ -11,7 +11,8 @@ fn test_dynamic_array_data_passes_its_buffer_to_pointer_param() {
 	}
 	exe_suffix := $if windows { '.exe' } $else { '' }
 	v3_bin := os.join_path(root, 'v3${exe_suffix}')
-	build := os.execute('${os.quoted_path(vexe)} -gc none -path "${vlib}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_source)}')
+	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib}' + '|@vlib|@vmodules', '-o', v3_bin,
+		v3_source])
 	assert build.exit_code == 0, build.output
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'module main
@@ -68,8 +69,8 @@ fn main() {
 }
 ') or { panic(err) }
 	bin := os.join_path(root, 'out${exe_suffix}')
-	compile := os.execute('${os.quoted_path(v3_bin)} -gc none -o ${os.quoted_path(bin)} ${os.quoted_path(source)}')
+	compile := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(bin))
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }

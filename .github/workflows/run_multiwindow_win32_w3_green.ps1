@@ -51,14 +51,14 @@ $surface = @(
     }
     [pscustomobject]@{
         Path = 'vlib/gg/multiwindow_win32_public_services_contract_windows_test.v'
-        Hash = 'd08eafb919ae97b185fc480c22f6d990973396152e9a0b3a01035c3e9a30275c'
+        Hash = 'c42841ea38453a4e9041c940b73e4621ee093f82338da47adb936a094b2b09a2'
     }
     [pscustomobject]@{
         Path = 'vlib/x/multiwindow/event_sequence_exhaustion_test.v'
         Hash = 'caa2c020d0d5ea50a57e8949af7f7353e82c18949edbfe226c0855f5c1bd4533'
     }
 )
-$knownCompositeSha256 = '8af83e2cde13c81ea42ccd5b4f628a9236da1eb98f2ac7bffef1aba986788281'
+$knownCompositeSha256 = '1567c7a3a81d6a7cfe14ec231fd1f138e2fb7b116a3a944a30acd51c93f40e69'
 
 function Get-W3TextSha256 {
     param(

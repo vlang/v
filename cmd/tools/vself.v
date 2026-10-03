@@ -422,7 +422,7 @@ fn pgo_compiler_kind(args []string) string {
 	cc_file_name := os.file_name(ccompiler)
 	if cc_file_name.contains('clang') || cc_file_name.contains('gcc')
 		|| cc_file_name.contains('g++') || ccompiler == 'cc' {
-		cc_ver := os.execute('${os.quoted_path(ccompiler)} --version').output
+		cc_ver := os.exec([ccompiler, '--version']).output
 		if cc_ver.contains('clang') {
 			_ := find_llvm_profdata() or { return '' }
 			return 'clang'
@@ -446,7 +446,7 @@ fn find_llvm_profdata() !string {
 		return profdata
 	}
 	$if macos {
-		xcrun_result := os.execute('xcrun --find llvm-profdata')
+		xcrun_result := os.exec(['xcrun', '--find', 'llvm-profdata'])
 		if xcrun_result.exit_code == 0 {
 			xcrun_path := xcrun_result.output.trim_space()
 			if xcrun_path != '' && os.exists(xcrun_path) {
@@ -512,7 +512,7 @@ fn compose_v_cmd(vexe string, args []string, source string) string {
 }
 
 fn run_cmd(cmd string) ! {
-	result := os.execute(cmd)
+	result := os.exec(os.split_args(cmd) or { panic(err) })
 	if result.exit_code != 0 {
 		return error(result.output)
 	}
@@ -522,7 +522,7 @@ fn run_cmd(cmd string) ! {
 }
 
 fn try_compile(cmd string) bool {
-	result := os.execute(cmd)
+	result := os.exec(os.split_args(cmd) or { panic(err) })
 	if result.exit_code != 0 {
 		return false
 	}
@@ -665,10 +665,14 @@ fn list_folder(short_v_name string, bmessage string, message string) {
 	if bmessage != '' {
 		println(bmessage)
 	}
+	entries := os.ls('.') or { []string{} }
+	matching := entries.filter(it.starts_with(short_v_name))
 	if os.user_os() == 'windows' {
-		os.system('dir ${short_v_name}*.exe')
-	} else {
-		os.system('ls -lartd ${short_v_name}*')
+		for entry in matching.filter(it.ends_with('.exe')) {
+			println(entry)
+		}
+	} else if matching.len > 0 {
+		os.system_args(['ls', '-lartd', ...matching])
 	}
 	println(message)
 }

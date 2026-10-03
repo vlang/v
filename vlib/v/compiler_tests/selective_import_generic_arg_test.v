@@ -11,7 +11,8 @@ fn selective_arg_v3_bin() string {
 	if os.exists(bin) {
 		return bin
 	}
-	build := os.execute('${selective_arg_vexe} -gc none -path "${selective_arg_vlib_dir}|@vlib|@vmodules" -o ${bin} ${selective_arg_v3_src}')
+	build := os.exec([selective_arg_vexe, '-gc', 'none', '-path',
+		'${selective_arg_vlib_dir}' + '|@vlib|@vmodules', '-o', bin, '${selective_arg_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return bin
 }
@@ -83,10 +84,10 @@ fn main() {
 }
 ") or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -138,10 +139,10 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'bbb.Token'
 }
@@ -185,10 +186,10 @@ fn main() {
 }
 ") or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '7'
 }
@@ -243,10 +244,10 @@ fn main() {
 		panic(err)
 	}
 	out := os.join_path(dir, 'app')
-	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'from_a from_a [from_a] from_b [from_b]', run.output
 }
@@ -318,10 +319,10 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '7\n-1', run.output
 }
@@ -376,10 +377,10 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5\n5', run.output
 }
@@ -425,10 +426,10 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5', run.output
 }
@@ -472,10 +473,10 @@ fn main() {
 }
 ') or { panic(err) }
 	out := os.join_path(dir, 'app')
-	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	compile := os.exec([v3_bin, '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5', run.output
 }

@@ -41,7 +41,9 @@ fn test_tcc_can_link_sync_stdatomic_programs_on_linux() {
 	for gc_mode in ['none', 'boehm'] {
 		prealloc_flag := if gc_mode == 'none' { '-prealloc' } else { '' }
 		compile_cmd := 'env VCACHE=${os.quoted_path(vcache)} ${os.quoted_path(vexe)} -nocache -gc ${gc_mode} ${prealloc_flag} -cc tcc -no-retry-compilation -showcc -o ${os.quoted_path(out)} ${os.quoted_path(src)}'
-		compile_res := os.execute(compile_cmd)
+		compile_res := os.exec(['env', 'VCACHE=' + '${vcache}', vexe, '-nocache', '-gc', '${gc_mode}',
+			...(os.split_args(prealloc_flag) or { panic(err) }), '-cc', 'tcc', '-no-retry-compilation',
+			'-showcc', '-o', '${out}', '${src}'])
 		if compile_res.exit_code != 0 {
 			panic('tcc compilation of a sync.stdatomic program failed (fallback to another compiler is disabled):\ncmd: ${compile_cmd}\noutput:\n${compile_res.output}')
 		}
@@ -50,7 +52,7 @@ fn test_tcc_can_link_sync_stdatomic_programs_on_linux() {
 			assert !compile_res.output.contains('libatomic.a')
 		}
 
-		run_res := os.execute(os.quoted_path(out))
+		run_res := os.exec([out])
 		assert run_res.exit_code == 0
 		assert run_res.output.trim_space() == '1\n2\n2\n5'
 	}

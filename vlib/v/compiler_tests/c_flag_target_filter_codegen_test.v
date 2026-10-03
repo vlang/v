@@ -25,7 +25,8 @@ fn test_c_flag_target_filter_keeps_host_linux_and_drops_wasm() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_flag_target_filter_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_c_flag_target_filter_input_${pid}.v')
@@ -36,7 +37,7 @@ fn test_c_flag_target_filter_keeps_host_linux_and_drops_wasm() {
 	bin := os.join_path(os.temp_dir(), 'v3_c_flag_target_filter_input_${pid}')
 	os.rm(bin) or {}
 	os.rmdir_all(bin) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('-ldl'), compile.output
 	assert !compile.output.contains('termux'), compile.output
@@ -48,7 +49,7 @@ fn test_c_flag_target_filter_keeps_host_linux_and_drops_wasm() {
 	assert !compile.output.contains('wasm32_emscripten'), compile.output
 	assert !compile.output.contains('--embed-file'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'flag-filter-ok'
 }
@@ -61,7 +62,8 @@ fn test_c_flag_target_filter_drops_termux_off_termux() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c_flag_termux_filter_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_c_flag_termux_filter_input_${pid}.v')
@@ -72,11 +74,11 @@ fn test_c_flag_target_filter_drops_termux_off_termux() {
 	bin := os.join_path(os.temp_dir(), 'v3_c_flag_termux_filter_input_${pid}')
 	os.rm(bin) or {}
 	os.rmdir_all(bin) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('termux_should_not_leak_to_linker'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'termux-filter-ok'
 }
@@ -89,7 +91,8 @@ fn test_objective_c_flags_are_applied_to_standalone_build() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_objective_c_flag_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}.v')
@@ -100,7 +103,7 @@ fn test_objective_c_flags_are_applied_to_standalone_build() {
 	bin := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}')
 	os.rm(bin) or {}
 	os.rmdir_all(bin) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -showcc -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-showcc', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	cc_lines := compile.output.split_into_lines().filter(it.contains('  > '))
 	assert cc_lines.len == 1, compile.output
@@ -109,7 +112,7 @@ fn test_objective_c_flags_are_applied_to_standalone_build() {
 	assert cc_line.contains('-x objective-c'), cc_line
 	assert !compile.output.contains('C dylib cache'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'objc-flag-ok'
 }
@@ -127,7 +130,8 @@ fn test_direct_objective_c_source_flag_skips_tcc() {
 	}
 	v3_bin := os.join_path(root, 'v3_direct_objective_c_driver')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(os.join_path(root, 'shim.m'), '@interface V3DirectObjectiveC
 + (int)answer;
@@ -154,10 +158,10 @@ fn main() {
 		panic(err)
 	}
 	output := os.join_path(root, 'direct_objective_c_source')
-	compile := os.execute('${v3_bin} -nocache -o ${output} ${source}')
+	compile := os.exec([v3_bin, '-nocache', '-o', output, source])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('tcc.exe'), compile.output
-	run := os.execute(output)
+	run := os.exec([output])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '69'
 }

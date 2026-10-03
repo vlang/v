@@ -178,3 +178,8 @@ fn test_os_suffix_selection_preserves_simple_and_unspecified_targets() {
 		}
 	}
 }
+
+fn test_build_v_args_failed_accepts_literal_arguments() {
+	assert !build_v_args_failed([@VEXE, 'version'])
+	assert build_v_args_failed([]string{})
+}

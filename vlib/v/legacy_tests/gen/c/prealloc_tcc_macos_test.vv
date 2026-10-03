@@ -22,9 +22,9 @@ fn test_bare_main_uses_tcc_without_debug_flags() {
 	}
 	// A non-default message limit keeps this regression on the V1 C generator used by cmd/v.
 	compile_cmd := '${os.quoted_path(@VEXE)} -message-limit 199 -cc ${os.quoted_path(tcc)} -no-retry-compilation -nocache -o ${os.quoted_path(executable_path)} ${os.quoted_path(source_path)}'
-	compile_result := os.execute(compile_cmd)
+	compile_result := os.exec([@VEXE, '-message-limit', '199', '-cc', tcc, '-no-retry-compilation', '-nocache', '-o', executable_path, source_path])
 	assert compile_result.exit_code == 0, '${compile_cmd}\n${compile_result.output}'
-	run_result := os.execute(os.quoted_path(executable_path))
+	run_result := os.exec([executable_path])
 	assert run_result.exit_code == 0, run_result.output
 }
 
@@ -67,9 +67,9 @@ fn main() {
 	}
 	// A non-default message limit keeps this regression on the V1 C generator used by cmd/v.
 	compile_cmd := '${os.quoted_path(@VEXE)} -message-limit 199 -cc ${os.quoted_path(tcc)} -gc none -prealloc -no-retry-compilation -nocache -o ${os.quoted_path(executable_path)} ${os.quoted_path(source_path)}'
-	compile_result := os.execute(compile_cmd)
+	compile_result := os.exec([@VEXE, '-message-limit', '199', '-cc', tcc, '-gc', 'none', '-prealloc', '-no-retry-compilation', '-nocache', '-o', executable_path, source_path])
 	assert compile_result.exit_code == 0, '${compile_cmd}\n${compile_result.output}'
-	run_result := os.execute(os.quoted_path(executable_path))
+	run_result := os.exec([executable_path])
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output.trim_space() == '20', run_result.output
 }
@@ -84,9 +84,9 @@ fn test_prealloc_parallel_cc_shares_tls_declaration() {
 	executable_path := os.join_path(test_dir, 'prealloc_parallel')
 	os.write_file(source_path, 'fn main() { println(42) }\n')!
 	compile_cmd := '${os.quoted_path(@VEXE)} -message-limit 199 -gc none -prealloc -parallel-cc -o ${os.quoted_path(executable_path)} ${os.quoted_path(source_path)}'
-	compile_result := os.execute(compile_cmd)
+	compile_result := os.exec([@VEXE, '-message-limit', '199', '-gc', 'none', '-prealloc', '-parallel-cc', '-o', executable_path, source_path])
 	assert compile_result.exit_code == 0, '${compile_cmd}\n${compile_result.output}'
-	run_result := os.execute(os.quoted_path(executable_path))
+	run_result := os.exec([executable_path])
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output.trim_space() == '42', run_result.output
 }
