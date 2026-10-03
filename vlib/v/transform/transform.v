@@ -396,6 +396,8 @@ mut:
 	// escape_fixed_array_struct_cache memoizes, per struct type, whether its inline
 	// storage holds a fixed array. The escape precheck asks for every reference argument.
 	escape_fixed_array_struct_cache map[string]bool
+	// skip_owned_base_nodes_without_regions: see PreparedSelfhostTransform.keeps_scope_without_regions.
+	skip_owned_base_nodes_without_regions bool
 	// heaped_amp_locals records which of those sources were actually moved to the heap, so
 	// the `p := &v` alias emits `p = v` (the heap pointer) instead of a fresh memdup copy.
 	heaped_amp_locals map[string]bool
@@ -1015,6 +1017,16 @@ mut:
 	transformer Transformer
 	scope       voidptr
 	ready       bool
+	// keeps_scope_without_regions is set when the caller keeps the whole transform
+	// arena alive unless workers retained separate regions. The list of
+	// scope-owned base nodes is then only needed when such regions exist.
+	keeps_scope_without_regions bool
+}
+
+// set_keeps_scope_without_regions tells the transform that the caller keeps its
+// arena when no worker regions are retained (see keeps_scope_without_regions).
+pub fn (mut p PreparedSelfhostTransform) set_keeps_scope_without_regions(keeps bool) {
+	p.keeps_scope_without_regions = keeps
 }
 
 // add_prescan_scope records a helper-index arena returned by a pre-scan thread.
@@ -1084,6 +1096,7 @@ pub fn transform_prepared_selfhost_owned(mut prepared PreparedSelfhostTransform,
 		// indexes before workers consume that changed AST.
 		t.prepare_with_pre_scans()
 	}
+	t.skip_owned_base_nodes_without_regions = prepared.keeps_scope_without_regions
 	augmented, was_parallel, errors, owned_base_nodes, retained_regions := transform_after_prepare(mut t, mut a, used_fns, true, true)
 	prepared.ready = false
 	return augmented, was_parallel, errors, owned_base_nodes, retained_regions
@@ -1288,7 +1301,12 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	t.apply_ignored_comptime_for_nodes()
 	t.retain_current_worker_scope_all()
 	t.timing_profile('  [ttime] sum_eq+tail        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	owned_base_nodes := t.scoped_owned_base_node_ids()
+	owned_base_nodes := if t.skip_owned_base_nodes_without_regions
+		&& t.retained_worker_regions.len == 0 {
+		[]int{}
+	} else {
+		t.scoped_owned_base_node_ids()
+	}
 	// The per-item resolve memo was allocated inside this stage's disposable
 	// arena; drop the master checker's pointer before the driver releases it.
 	if !isnil(t.tc) {
@@ -2503,19 +2521,32 @@ fn (mut t Transformer) ignore_comptime_for_subtree(id flat.NodeId) {
 }
 
 fn (mut t Transformer) apply_ignored_comptime_for_nodes() {
-	for idx, ignored in t.ignored_comptime_for_nodes {
-		if !ignored || idx >= t.a.nodes.len {
-			continue
+	// The flags cover the whole AST but only a few are set; jump between them.
+	flags := t.ignored_comptime_for_nodes
+	mut idx := 0
+	for idx < flags.len {
+		found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, usize(flags.len - idx))) }
+		if isnil(found) {
+			break
 		}
-		old := t.a.nodes[idx]
-		t.invalidate_node_type_memo(idx)
-		t.a.nodes[idx] = flat.Node{
-			kind: .empty
-			pos:  old.pos
+		idx = int(unsafe { found - &u8(flags.data) })
+		if idx >= t.a.nodes.len {
+			break
 		}
-		t.clear_typechecker_node_cache(idx)
+		t.clear_ignored_comptime_for_node(idx)
+		idx++
 	}
 	t.ignored_comptime_for_nodes = []bool{}
+}
+
+fn (mut t Transformer) clear_ignored_comptime_for_node(idx int) {
+	old := t.a.nodes[idx]
+	t.invalidate_node_type_memo(idx)
+	t.a.nodes[idx] = flat.Node{
+		kind: .empty
+		pos:  old.pos
+	}
+	t.clear_typechecker_node_cache(idx)
 }
 
 @[inline]
@@ -3786,6 +3817,12 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 	mut lit_ms := f64(0)
 	mut est_ms := f64(0)
 	sc_profile := !isnil(t.tc) && t.tc.verbose
+	// The per-function estimate timer runs for every closure-free function; keep
+	// it for explicit -d v3_ttime builds.
+	mut est_profile := false
+	$if v3_ttime ? {
+		est_profile = sc_profile
+	}
 	mut scsw := time.new_stopwatch()
 	for i in tl {
 		range_lo := prev_tl_any + 1
@@ -3845,7 +3882,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				// append into fixed .nogrow regions. Generic transform workers have
 				// private growable ASTs, as do self-host transforms. Avoid rescanning
 				// those functions to estimate capacity they do not use.
-				if sc_profile {
+				if est_profile {
 					scsw.restart()
 				}
 				mut str_est := 0
@@ -3864,7 +3901,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				} else {
 					0
 				}
-				if sc_profile {
+				if est_profile {
 					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 				}
 				if t.skip_generics

@@ -7494,12 +7494,18 @@ fn release_transform_helper_scopes(mut a flat.FlatAst, scopes []voidptr) {
 	mut flags := []u8{len: a.nodes.len}
 	if transform.scan_scoped_text_flags_parallel_multi(a, scopes, mut flags) {
 		mut canon_cache := flat.TextProbeCache{}
-		for idx, flag in flags {
-			if flag != 0 {
-				for scope in scopes {
-					canonicalize_scoped_node_cached(mut a, idx, scope, mut canon_cache.ptrs, mut canon_cache.values)
-				}
+		// Only a few thousand nodes are flagged; jump between them.
+		mut idx := 0
+		for idx < flags.len {
+			found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, usize(flags.len - idx))) }
+			if isnil(found) {
+				break
 			}
+			idx = int(unsafe { found - &u8(flags.data) })
+			for scope in scopes {
+				canonicalize_scoped_node_cached(mut a, idx, scope, mut canon_cache.ptrs, mut canon_cache.values)
+			}
+			idx++
 		}
 	} else {
 		for idx in 0 .. a.nodes.len {
@@ -13109,7 +13115,14 @@ pub fn run(args []string) {
 			transform_scope := prealloc_scope_begin_for_v3()
 			mut scoped_owned_base_nodes := []int{}
 			mut retained_transform_regions := []transform.ScopedTransformRegion{}
+			// Without retained worker regions, this self-host path keeps the whole
+			// transform arena alive for cgen (see retain_transform_scope below).
+			retain_scope_without_regions := building_v && current_parallel_transform
+				&& backend == 'c' && !cache_state.manager.enabled
+				&& (cmd_v_build || input_is_v3_compiler_entry(input_file)
+					|| os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != '')
 			if prepare_transform_overlap {
+				prepared_transform.set_keeps_scope_without_regions(retain_scope_without_regions)
 				transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_prepared_selfhost_owned(mut prepared_transform, mut a, &pre_tc, used_fns, transform_scope)
 				retained_transform_prepare_scope = prepared_transform.take_scope()
 				retained_transform_prescan_scopes = prepared_transform.take_prescan_scopes()
@@ -13138,10 +13151,8 @@ pub fn run(args []string) {
 				retained_transform_prepare_scope = unsafe { nil }
 				retained_transform_prescan_scopes = []voidptr{}
 			}
-			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
-				&& !cache_state.manager.enabled && retained_transform_regions.len == 0
-				&& (cmd_v_build || input_is_v3_compiler_entry(input_file)
-					|| os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != '')
+			retain_transform_scope := retain_scope_without_regions
+				&& retained_transform_regions.len == 0
 			if retain_transform_scope {
 				// Cgen is the only remaining semantic consumer in this no-cache self-host
 				// path. Keep the typed transform arena alive through it instead of cloning

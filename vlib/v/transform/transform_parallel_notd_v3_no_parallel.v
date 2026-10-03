@@ -713,6 +713,63 @@ fn top_level_kind_scan_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+struct AnonymousStructInitScanArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	start int
+	end   int
+	flags voidptr // &u8 base of the per-node flag array
+}
+
+// anonymous_struct_init_scan_thread flags the anonymous struct literals in its
+// range. It only reads nodes and writes its own flag bytes.
+fn anonymous_struct_init_scan_thread(arg voidptr) voidptr {
+	a := unsafe { &AnonymousStructInitScanArgs(arg) }
+	flags := unsafe { &u8(a.flags) }
+	for i in a.start .. a.end {
+		node := unsafe { &a.a.nodes[i] }
+		if node.kind == .struct_init && node.children_count > 0 && node.value == 'struct' {
+			unsafe {
+				flags[i] = 1
+			}
+		}
+	}
+	return unsafe { nil }
+}
+
+// scan_anonymous_struct_init_flags_parallel sets flags[i] for every anonymous
+// struct literal below `limit`. It returns false when no pool can run the scan.
+fn scan_anonymous_struct_init_flags_parallel(a &flat.FlatAst, limit int, mut flags []u8) bool {
+	if isnil(a.worker_pool) || limit < 65536 || limit > a.nodes.len || flags.len < limit {
+		return false
+	}
+	n_jobs := a.worker_pool.size() + 1
+	chunk := (limit + n_jobs - 1) / n_jobs
+	mut args := []AnonymousStructInitScanArgs{cap: n_jobs}
+	for ji in 0 .. n_jobs {
+		start := ji * chunk
+		end := if start + chunk > limit { limit } else { start + chunk }
+		if start >= end {
+			break
+		}
+		args << AnonymousStructInitScanArgs{
+			a:     a
+			start: start
+			end:   end
+			flags: flags.data
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for ji in 0 .. args.len {
+		tasks << workers.Task{
+			run:        anonymous_struct_init_scan_thread
+			arg:        unsafe { voidptr(&args[ji]) }
+			force_sync: ji == 0
+		}
+	}
+	a.worker_pool.run(tasks)
+	return true
+}
+
 // scan_literal_decl_flags_parallel fills the sparse literal/declaration flags
 // used by collect_literal_fn_decls. The master can then word-scan the compact
 // byte array instead of streaming every full AST node header.
