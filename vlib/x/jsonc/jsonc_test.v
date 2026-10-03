@@ -134,6 +134,60 @@ fn test_errors_from_the_decoder_carry_the_json5_prefix() {
 	assert false, 'expected a type error, got ${server.port}'
 }
 
+// ch returns `code` as a one-character string, so a test can name a code point
+// without depending on how the source file encodes it.
+fn ch(code int) string {
+	return rune(code).str()
+}
+
+fn test_public_api_rejects_incomplete_numbers() {
+	// Through the public entry points, not only the internal pass.
+	for bad in ['1.e2', '-5.E+2', '01', '00.5', '1.', '1e', '00'] {
+		assert !is_valid('{"a": ' + bad + '}'), 'expected `${bad}` to be refused'
+	}
+	// And the valid spellings stay valid.
+	for good in ['0', '0.5', '1e2', '-0', '0e0', '10', '1.5e-3'] {
+		assert is_valid('{"a": ' + good + '}'), 'expected `${good}` to be accepted'
+	}
+}
+
+fn test_public_api_rejects_json5_only_whitespace() {
+	for code in [0x0B, 0x0C, 0xA0, 0x202F, 0x205F] {
+		assert !is_valid('{"a"' + ch(code) + ': 1}'), 'expected U+${code:04X} to be refused'
+	}
+	// The same characters are fine where they are not between tokens.
+	assert is_valid(ch(0xFEFF) + '{"a": 1}')
+	assert is_valid('{/*' + ch(0xA0) + '*/"a": 1}')
+	assert is_valid('{"a": "' + ch(0xA0) + '"}')
+}
+
+fn test_trailing_comma_option_relaxes_nothing_else() {
+	// Allowing a trailing comma must not open any of the other rules.
+	opts := ParseOpts{
+		allow_trailing_comma: true
+	}
+	for bad in ['{"a": 1.e2,}', '{"a": 01,}', '{a: 1,}', '{"a": 0x10,}', '{"a": NaN,}', '{"a": 1e,}'] {
+		assert !is_valid_opts(bad, opts), 'expected `${bad}` to be refused'
+	}
+	// And a non-RFC space is still refused with the option on.
+	assert !is_valid_opts('{"a"' + ch(0xA0) + ': 1,}', opts)
+	// Only the comma itself is accepted.
+	assert is_valid_opts('{"a": [1, 2,],}', opts)
+}
+
+fn test_public_api_byte_range_is_a_usable_slice() {
+	// The advertised range has to be safe to slice the original text with, which
+	// means it must not end inside a multibyte character.
+	text := '{é:1}'
+	if v := violation(text) {
+		assert v.pos.offset == 1
+		assert v.pos.end_offset == 3
+		assert text[v.pos.offset..v.pos.end_offset] == 'é'
+		return
+	}
+	assert false, 'expected an unquoted multibyte key to be reported'
+}
+
 fn test_violation_reports_a_valid_document_as_clean() {
 	assert violation('{"a": 1 /* c */}') == none
 	assert violation_opts('{"a": 1,}', ParseOpts{

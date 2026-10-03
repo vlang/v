@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module jsonc
 
+import encoding.utf8
+
 // ASCII code points the lexical pass compares against. They are compared as
 // `int`, because V promotes a `rune` comparison to a string comparison, which
 // is both slower and wrong for code points above 0x7F.
@@ -38,6 +40,13 @@ const r_bom = 0xFEFF
 // RFC 8259 restricts unescaped characters inside a string to everything above
 // U+001F; the remaining codes are the control characters it forbids.
 const r_max_control = 0x1F
+
+// The characters the shared JSON5 scanner treats as whitespace but RFC 8259 does
+// not allow between tokens. Its `is_whitespace` accepts all of these, so they
+// are removed before the token pass can see them.
+const r_vt = 0x0B
+const r_ff = 0x0C
+const r_nbsp = 0xA0
 
 // Pos is a location in the source text. Unlike the position carried by a
 // syntax error from the underlying JSON5 parser, it also knows the byte range
@@ -103,6 +112,37 @@ fn rune_bytes(r rune) int {
 // is_digit reports whether `code` is an ASCII decimal digit.
 fn is_digit(code int) bool {
 	return code >= r_zero && code <= r_nine
+}
+
+// is_digit_byte reports whether `b` is an ASCII decimal digit. It is the same
+// test as is_digit for the single bytes a number literal is walked through.
+fn is_digit_byte(b u8) bool {
+	return b >= r_zero && b <= r_nine
+}
+
+// is_nonzero_digit_byte reports whether `b` is an ASCII decimal digit other than
+// `0`, which is what the first digit of a multi-digit integer must be.
+fn is_nonzero_digit_byte(b u8) bool {
+	return b > r_zero && b <= r_nine
+}
+
+// is_rfc_whitespace reports whether `code` is one of the four characters RFC 8259
+// allows between tokens.
+fn is_rfc_whitespace(code int) bool {
+	return code == 0x20 || code == 0x09 || code == 0x0A || code == 0x0D
+}
+
+// is_json5_whitespace reports whether `code` is whitespace that the shared JSON5
+// scanner skips but that RFC 8259 does not allow between tokens.
+//
+// A leading byte order mark is not reported: `new_cursor` steps over it before
+// the walk starts, so only an interior one reaches this test.
+fn is_json5_whitespace(code int) bool {
+	if is_rfc_whitespace(code) {
+		return false
+	}
+	return code == r_vt || code == r_ff || code == r_nbsp || code == r_bom
+		|| (code > 0x2000 && utf8.is_space(rune(code)))
 }
 
 // is_hex_digit reports whether `code` is an ASCII hexadecimal digit.

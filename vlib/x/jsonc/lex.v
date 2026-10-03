@@ -133,6 +133,12 @@ fn lex(text string) LexResult {
 			lex_string(mut c, code, mut res)
 			continue
 		}
+		// The token pass never sees whitespace, because the shared scanner skips
+		// it as trivia, so the raw walk is the only place the dialect's narrower
+		// set can be enforced.
+		if is_json5_whitespace(code) {
+			res.record('U+${code:04X} is not whitespace between JSON tokens', c.pos())
+		}
 		c.next()
 	}
 	return res

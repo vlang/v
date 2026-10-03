@@ -109,6 +109,46 @@ fn test_lex_stops_at_unterminated_string() {
 	assert first_violation('{"a": 1') == ''
 }
 
+// ch returns `code` as a one-character string, so a test can name a code point
+// without depending on how the source file encodes it.
+fn ch(code int) string {
+	return rune(code).str()
+}
+
+fn test_lex_accepts_rfc_whitespace() {
+	assert first_violation('{"a"' + ch(0x20) + ':' + ch(0x09) + '1' + ch(0x0A) +
+		'}') == ''
+	// An empty document is only whitespace, and it is the parser that refuses it.
+	assert first_violation(ch(0x20) + ch(0x0A) + ch(0x0D) + ch(0x09)) == ''
+}
+
+fn test_lex_rejects_json5_only_whitespace() {
+	// The shared scanner skips all of these as trivia, so the token pass never
+	// sees them and the raw walk is the only place they can be caught. Vertical
+	// tab and form feed are the ASCII pair and U+00A0 is named in the shared
+	// `is_whitespace`; the rest are Unicode spaces above U+2000.
+	for code in [0x0B, 0x0C, 0xA0, 0x2028, 0x2029, 0x202F, 0x205F] {
+		assert first_violation('{"a"' + ch(code) + ': 1}').contains('not whitespace between JSON tokens')
+	}
+}
+
+fn test_lex_rejects_an_interior_byte_order_mark() {
+	// The documented exception is a leading mark, which new_cursor steps over.
+	assert first_violation(ch(0xFEFF) + '{"a": 1}') == ''
+	assert first_violation('{"a"' + ch(0xFEFF) + ': 1}').contains('U+FEFF')
+	assert first_violation('{"a": 1' + ch(0xFEFF) + '}').contains('U+FEFF')
+}
+
+fn test_lex_allows_json5_whitespace_inside_comments_and_strings() {
+	// Inside a comment the text is opaque, and inside a string the string rules
+	// decide, so none of these is a whitespace question.
+	for code in [0x0B, 0x0C, 0xA0, 0x3000] {
+		assert first_violation('{/*' + ch(code) + '*/"a": 1}') == ''
+		assert first_violation('{//' + ch(code) + '\n"a": 1}') == ''
+	}
+	assert first_violation('{"a": "' + ch(0xA0) + '"}') == ''
+}
+
 fn test_strip_comments_replaces_with_spaces() {
 	// The expectations are stated as properties rather than as counted runs of
 	// spaces, so the test does not depend on how wide the comment was.

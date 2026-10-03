@@ -27,6 +27,11 @@ fn test_validate_accepts_json_numbers() {
 	assert violation_in('{"a": 1.5}') == nil
 	assert violation_in('{"a": -1.5e-3}') == nil
 	assert violation_in('{"a": 1E+10}') == nil
+	assert violation_in('{"a": 0.5}') == nil
+	assert violation_in('{"a": 0e0}') == nil
+	assert violation_in('{"a": 1e2}') == nil
+	assert violation_in('{"a": -0}') == nil
+	assert violation_in('{"a": 10}') == nil
 	assert violation_in('{"a": 0.0}') == nil
 	assert violation_in('[1, 2, 3]') == nil
 }
@@ -53,13 +58,33 @@ fn test_validate_rejects_json5_numbers() {
 	assert violation_in('{"a": 0x10}').message.contains('hexadecimal')
 	assert violation_in('{"a": 0X10}').message.contains('hexadecimal')
 	assert violation_in('{"a": .5}').message.contains('leading dot')
-	assert violation_in('{"a": 5.}').message.contains('trailing dot')
 	assert violation_in('{"a": +1}').message.contains('leading `+`')
 	assert violation_in('{"a": +0x10}').message.contains('leading `+`')
 	// A `-` is legal in JSON, so a negative keeps only the form that is not.
 	assert violation_in('{"a": -0x10}').message.contains('hexadecimal')
 	assert violation_in('{"a": -.5}').message.contains('leading dot')
-	assert violation_in('{"a": -5.}').message.contains('trailing dot')
+}
+
+fn test_validate_rejects_incomplete_number_grammar() {
+	// RFC 8259 wants a digit after a decimal point and after the `e`, and it does
+	// not allow a leading zero. Testing only the last character of the literal
+	// misses all of these, because the shared scanner hands every one of them
+	// over as a number token.
+	assert violation_in('{"a": 5.}').message.contains('no digit after the decimal point')
+	assert violation_in('{"a": 1.}').message.contains('no digit after the decimal point')
+	assert violation_in('{"a": 1.e2}').message.contains('no digit after the decimal point')
+	assert violation_in('{"a": -5.E+2}').message.contains('no digit after the decimal point')
+	// `1e` and `1e+` are not here on purpose: the shared scanner refuses them
+	// itself, so no number token is ever produced and `validate` returns nil.
+	// Through parse_text they are reported by the JSON5 parser, which is covered
+	// in jsonc_test.v.
+	assert violation_in('{"a": 01}').message.contains('leading zero')
+	assert violation_in('{"a": 00.5}').message.contains('leading zero')
+	assert violation_in('{"a": -01}').message.contains('leading zero')
+	assert violation_in('{"a": 00}').message.contains('leading zero')
+	// Inside an array too, where a number is a value rather than a key.
+	assert violation_in('[1.e2]').message.contains('no digit after the decimal point')
+	assert violation_in('[01]').message.contains('leading zero')
 }
 
 fn test_validate_rejects_infinity_and_nan() {
@@ -130,6 +155,37 @@ fn test_validate_positions_account_for_a_byte_order_mark() {
 	assert v.pos.col == 7
 	// Three bytes of mark, then `{"a": ` puts the literal at byte 9.
 	assert v.pos.offset == 9
+}
+
+fn test_validate_byte_range_covers_the_whole_token() {
+	// The range is the token's own source text, so an editor can underline it
+	// and a caller can slice the original bytes out of the file.
+	mut v := violation_in('{abc: 1}')
+	assert v.pos.offset == 1
+	assert v.pos.end_offset == 4
+	v = violation_in('{"a": 0x10}')
+	assert v.pos.offset == 6
+	assert v.pos.end_offset == 10
+	v = violation_in('{"a": 1,}')
+	assert v.pos.offset == 7
+	assert v.pos.end_offset == 8
+}
+
+fn test_validate_byte_range_covers_a_multibyte_token() {
+	// `é` is two bytes, so a range advanced one byte at a time would end inside
+	// it and hand back an invalid UTF-8 fragment.
+	mut v := violation_in('{é:1}')
+	assert v.message.contains('not quoted')
+	assert v.pos.offset == 1
+	assert v.pos.end_offset == 3
+	// The bytes in that range are the character and nothing else.
+	assert '{é:1}'[v.pos.offset..v.pos.end_offset] == 'é'
+	assert '{é:1}'[v.pos.offset..v.pos.end_offset].bytes() == [195, 169]
+	// A longer multibyte key is covered whole as well.
+	v = violation_in('{aéb: 1}')
+	assert v.pos.offset == 1
+	assert v.pos.end_offset == 5
+	assert '{aéb: 1}'[v.pos.offset..v.pos.end_offset] == 'aéb'
 }
 
 fn test_validate_positions_count_runes_not_bytes() {

@@ -108,7 +108,9 @@ construct is refused even when the target struct has a field for it.
 
 ## Positions
 Every dialect violation carries a line, a column, and the byte range the
-offending text occupies, so an editor can underline exactly it.
+offending text occupies, so an editor can underline exactly it. The range is the
+whole offending token and always falls on UTF-8 character boundaries, so slicing
+the original text with it is safe.
 
 The byte range is reachable through `violation`, whose payload is a `ParseError`.
 It is a separate entry point from `parse_text` on purpose: a function returning
@@ -170,6 +172,7 @@ Accepted, because they are JSONC:
 - `//` line comments and `/* */` block comments;
 - a leading byte order mark;
 - every escape in RFC 8259, including `\uXXXX`;
+- the four characters RFC 8259 allows between tokens: space, tab, CR and LF;
 - a trailing comma, when `allow_trailing_comma` is set.
 
 Refused, because they are JSON5 extensions rather than JSONC:
@@ -182,13 +185,28 @@ Refused, because they are JSON5 extensions rather than JSONC:
 | trailing comma, by default | `[1, 2,]` |
 | hexadecimal integer | `0x10` |
 | leading dot | `.5` |
-| trailing dot | `5.` |
+| no digit after a decimal point | `1.`, `1.e2` |
 | leading `+` | `+1` |
+| leading zero | `01`, `00.5` |
 | `Infinity` and `NaN` | `Infinity` |
 | `\'`, `\"`, `\v`, `\0`, `\xNN` | `"\v"` |
 | ES6 `\u{...}` escape | `"\u{1F600}"` |
 | escaped line break | `"a\<newline>b"` |
 | unescaped control character | a raw newline inside a string |
+
+Refused, because RFC 8259 does not allow them between tokens even though the
+JSON5 scanner skips them as whitespace:
+
+| Construct | Example |
+| --- | --- |
+| vertical tab, form feed | `U+000B`, `U+000C` |
+| no-break space | `U+00A0` |
+| Unicode space above U+2000 | `U+202F`, `U+205F`, `U+2028` |
+| an interior byte order mark | `{"a": 1<FEFF>}` |
+
+A byte order mark is accepted only at the very start of the document. These
+characters remain legal inside a comment, which is opaque, and inside a string,
+where the string rules decide.
 
 ## Errors
 Two kinds of problem are reported, and they are told apart by their prefix.
