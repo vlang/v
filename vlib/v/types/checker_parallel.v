@@ -327,7 +327,7 @@ const collect_declaration_index_tasks = 6
 struct Pass2FnPrep {
 mut:
 	prepared            bool
-	ret_type            Type = Type(void_)
+	ret_type            Type = builtin_void_type
 	ptypes              []Type
 	param_texts         []string
 	shared_params       []bool
@@ -1540,6 +1540,8 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
 	// Promote scope-resident cache payloads across the pool while every
 	// worker scope is still alive; only unknown-type interning stays serial.
+	// All checking has joined and sparse-cache promotion has finished. The
+	// master interner stays frozen until these clone tasks have also joined.
 	par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
 	mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
 	mut mg_clone_ns := u64(0)
@@ -2691,18 +2693,25 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 		tc.body_resolve_memo = &BodyResolveMemo{}
 	}
 	mut memo := tc.body_resolve_memo
-	for it in items {
-		node := tc.a.nodes[it.fn_idx]
-		tc.check_range_lo = it.range_lo
-		tc.check_range_hi = it.fn_idx
-		memo.begin(it.range_lo, it.fn_idx)
-		tc.check_fn_decl_semantics(it.fn_idx, node, it.file, it.module)
-		if tc.capture_items {
-			tc.item_marks << IncrementalItemMark{
-				fn_idx:  it.fn_idx
-				errors:  tc.errors.len
-				notices: tc.notices.len
-				pending: tc.pending_ierror_errors.len
+	if items.len > 0 {
+		// This context stays in the batch's arena. Direct/concrete checks and
+		// checker forks receive fresh contexts instead of inheriting its storage.
+		mut reusable_context := new_function_check_context()
+		for it in items {
+			node := tc.a.nodes[it.fn_idx]
+			tc.check_range_lo = it.range_lo
+			tc.check_range_hi = it.fn_idx
+			memo.begin(it.range_lo, it.fn_idx)
+			tc.check_fn_decl_semantics_with_context(it.fn_idx, node, it.file, it.module,
+				mut reusable_context)
+			reusable_context.reset_for_sibling_check()
+			if tc.capture_items {
+				tc.item_marks << IncrementalItemMark{
+					fn_idx:  it.fn_idx
+					errors:  tc.errors.len
+					notices: tc.notices.len
+					pending: tc.pending_ierror_errors.len
+				}
 			}
 		}
 	}
@@ -2858,9 +2867,18 @@ fn (tc &TypeChecker) operand_is_plain(id flat.NodeId) bool {
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
-	fast_valid_build := tc.building_v_fast
+	mut context := new_function_check_context()
+	tc.check_fn_decl_semantics_with_context(fn_idx, node, file, module_name, mut context)
+}
+
+fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node flat.Node, file string, module_name string, mut context FunctionCheckContext) {
 	saved_fn_context := tc.fn_context
-	tc.fn_context = new_function_check_context()
+	tc.fn_context = context
+	defer {
+		context = tc.fn_context
+		tc.fn_context = saved_fn_context
+	}
+	fast_valid_build := tc.building_v_fast
 	inferred_generic_params := tc.infer_decl_generic_param_names(node)
 	is_concrete_generic_receiver := node.value.contains('.')
 		&& node.value.all_before_last('.').contains('[') && inferred_generic_params.len == 0
@@ -2881,7 +2899,6 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 				receiver_pos.end - 1))
 			tc.record_error_at(.duplicate_decl, 'cannot use global variable name `${receiver.value}` as receiver',
 				receiver_id, pos)
-			tc.fn_context = saved_fn_context
 			return
 		}
 	}
@@ -2889,7 +2906,6 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		if visibility := tc.declaration_visibility['builtin.${node.value}'] {
 			if visibility.is_pub {
 				tc.record_error_at(.duplicate_decl, 'cannot redefine builtin public function `${node.value}`', flat.NodeId(fn_idx), tc.fn_declaration_diagnostic_pos(node))
-				tc.fn_context = saved_fn_context
 				return
 			}
 		}
@@ -3057,7 +3073,6 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	$if ownership ? {
 		tc.ownership_end_fn()
 	}
-	tc.fn_context = saved_fn_context
 }
 
 fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id flat.NodeId) {
@@ -4496,13 +4511,14 @@ fn promote_cached_name_value(name &CachedName, mut cache CheckNamePromotionCache
 
 // Source payloads stay alive and immutable for the entire promotion pass. Raw
 // identities are safe within that pass; never retain this cache across arena frees.
-fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePromotionCache, promote_missing bool) ?Type {
+// frozen_interner is reserved for the parallel clone phase after checking joins.
+fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePromotionCache, promote_missing bool, frozen_interner bool) ?Type {
 	w0, w1, raw_slot := type_value_words(&typ)
 	slot := raw_slot & (cache.set.len - 1)
 	if cache.set[slot] && cache.w0[slot] == w0 && cache.w1[slot] == w1 {
 		return cache.values[slot]
 	}
-	canonical := tc.probe_intern_type(typ) or {
+	canonical := tc.probe_check_type_promotion(typ, frozen_interner) or {
 		if !promote_missing {
 			return none
 		}
@@ -4513,6 +4529,17 @@ fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePr
 	cache.values[slot] = canonical
 	cache.set[slot] = true
 	return canonical
+}
+
+@[inline]
+fn (tc &TypeChecker) probe_check_type_promotion(typ Type, frozen_interner bool) ?Type {
+	if frozen_interner {
+		if isnil(tc.type_interner) {
+			return none
+		}
+		return tc.type_interner.probe_frozen(typ)
+	}
+	return tc.probe_intern_type(typ)
 }
 
 // check_clone_chunk_thread promotes one chunk's node-cache payloads out of
@@ -4532,7 +4559,7 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false) {
+				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false, true) {
 					tc.expr_type_values[idx] = canonical
 				} else {
 					a.miss << idx
@@ -4546,7 +4573,7 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 	mut cache := CheckTypePromotionCache{}
 	for idx in indexes {
-		tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true) or {
+		tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true, false) or {
 			tc.promote_check_type(tc.expr_type_values[idx])
 		}
 	}
@@ -4576,7 +4603,7 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true) or {
+				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true, false) or {
 					tc.promote_check_type(tc.expr_type_values[idx])
 				}
 			}

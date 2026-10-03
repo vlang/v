@@ -1146,6 +1146,7 @@ fn (mut t Transformer) erase_consts_initialized_by_erased_templates(decls map[st
 	}
 }
 
+@[direct_array_access]
 fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]GenericFnDecl {
 	mut decls := map[string]GenericFnDecl{}
 	mut cur_file := ''
@@ -3906,6 +3907,7 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	return decls
 }
 
+@[direct_array_access]
 fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl) []bool {
 	mut nodes := []bool{len: t.a.nodes.len}
 	mut stack := []flat.NodeId{cap: 256}
@@ -3944,6 +3946,7 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 	return nodes
 }
 
+@[direct_array_access]
 fn (mut t Transformer) ensure_node_module_map() {
 	if t.node_context_read_only {
 		return
@@ -4037,7 +4040,7 @@ fn (mut t Transformer) node_context_text_id(value string) u16 {
 }
 
 // node_context_text resolves an interned declaration-context spelling.
-@[inline]
+@[direct_array_access; inline]
 fn (t &Transformer) node_context_text(id u16) string {
 	idx := int(id) - 1
 	if idx < 0 || idx >= t.node_context_texts.len {
@@ -4046,6 +4049,7 @@ fn (t &Transformer) node_context_text(id u16) string {
 	return t.node_context_texts[idx]
 }
 
+@[direct_array_access]
 fn (t &Transformer) node_file_or(idx int, fallback string) string {
 	if idx >= 0 && idx < t.node_file_map_cache.len {
 		file_id := t.node_file_map_cache[idx]
@@ -4056,6 +4060,7 @@ fn (t &Transformer) node_file_or(idx int, fallback string) string {
 	return fallback
 }
 
+@[direct_array_access]
 fn (t &Transformer) node_module_or(idx int, fallback string) string {
 	if idx >= 0 && idx < t.node_module_map_cache.len {
 		module_id := t.node_module_map_cache[idx]

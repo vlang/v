@@ -53,6 +53,12 @@ fn (i &TypeInterner) probe(t Type) ?Type {
 	mut guard := unsafe { i.lock }
 	guard.lock()
 	defer { guard.unlock() }
+	return i.probe_frozen(t)
+}
+
+// probe_frozen requires an immutable table and immutable semantic payloads
+// until every reader joins. Normal callers must use the synchronized probe.
+fn (i &TypeInterner) probe_frozen(t Type) ?Type {
 	mut key := semantic_type_hash(t)
 	for {
 		id := i.buckets[key] or { return none }

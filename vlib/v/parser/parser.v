@@ -14927,6 +14927,12 @@ fn (mut p Parser) translated_sizeof_name_is_type(name string) bool {
 }
 
 fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
+	// Ordinary V reserves these type names, so they cannot select a const operand.
+	// Avoid indexing every sibling file for common calls such as sizeof(int).
+	if !p.is_translated && name in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16',
+		'u32', 'u64', 'f32', 'f64', 'string', 'rune', 'usize', 'isize', 'voidptr'] {
+		return false
+	}
 	if p.resolve_local_type_name(name) != name {
 		return false
 	}

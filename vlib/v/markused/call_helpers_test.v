@@ -1971,3 +1971,189 @@ fn test_factory_local_inference_preserves_range_integer_types() {
 	}
 	assert mismatches.len == 0, mismatches.str()
 }
+
+fn test_rhs_closure_type_bindings_restore_after_map_growth() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	outer_param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'A' })
+	mut closure_children := []flat.NodeId{}
+	closure_children << a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'B' })
+	// Force the shared local-type table to grow while analyzing the RHS.
+	for i in 0 .. 128 {
+		closure_children << a.add_node(flat.Node{
+			kind:  .param
+			value: 'inner_${i}'
+			typ:   'B'
+		})
+	}
+	inner_item := a.add_val(.ident, 'item')
+	inner_last := a.add_val(.ident, 'inner_127')
+	closure_children << call_helper_node(mut a, flat.Node{ kind: .block }, [
+		inner_item,
+		inner_last,
+	])
+	closure := call_helper_node(mut a, flat.Node{ kind: .fn_literal }, closure_children)
+	callback_lhs := a.add_val(.ident, 'callback')
+	callback_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [
+		callback_lhs,
+		closure,
+	])
+	copy_lhs := a.add_val(.ident, 'copy')
+	copy_rhs := a.add_val(.ident, 'item')
+	copy_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [copy_lhs, copy_rhs])
+	outer_item := a.add_val(.ident, 'item')
+	outer_last := a.add_val(.ident, 'inner_127')
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [callback_decl, copy_decl, outer_item,
+		outer_last])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_item' }, [
+		outer_param,
+		body,
+	])
+	collector := CallCollector{ a: &a, tc: &tc }
+	_, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
+		map[string]string{})
+	assert local_types['item'] == 'A'
+	assert local_types['copy'] == 'A'
+	assert 'inner_127' !in local_types
+	assert ident_types[int(inner_item)] == 'B'
+	assert ident_types[int(inner_last)] == 'B'
+	assert ident_types[int(copy_rhs)] == 'A'
+	assert ident_types[int(outer_item)] == 'A'
+	assert int(outer_last) !in ident_types
+}
+
+fn test_initializer_without_local_bindings_keeps_calls_refs_and_generics() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	tc.fn_generic_params['factory'] = ['T']
+	tc.fn_ret_types['factory'] = types.Type(types.int_)
+	callee := a.add_val(.ident, 'factory')
+	arg := a.add_val(.ident, 'payload')
+	call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, arg])
+	tc.sparse_resolved_call_names[int(call)] = 'factory'
+	field := call_helper_node(mut a, flat.Node{ kind: .field_decl, value: 'value' }, [call])
+	collector := CallCollector{
+		a:              &a
+		tc:             &tc
+		fn_decls:       {
+			'factory': FnDeclInfo{ node_id: field }
+		}
+		fn_suffixes:    {
+			'factory': true
+		}
+		const_decls:    {
+			'payload': ConstDeclInfo{ expr_id: arg }
+		}
+		const_suffixes: {
+			'payload': true
+		}
+	}
+	names, has_binders := markused_local_value_names(&a, a.node(field))
+	assert names.len == 0 && !has_binders
+	_, type_names, ident_types, visible := collector.local_value_info_with_visibility(a.node(field), 'main', map[string]string{})
+	assert type_names.len == 0 && ident_types.len == 0 && visible.len == 0
+	mut calls := []string{}
+	assert collector.collect_calls_with_generic_usage(a.node(field), 'main', map[string]string{}, '', '', mut calls)
+	assert calls == ['factory', 'factory']
+	mut refs := []string{}
+	collector.collect_initializer_refs(a.node(field), 'main', map[string]string{}, mut refs)
+	assert refs == ['payload']
+}
+
+fn test_local_analysis_keeps_for_in_bindings_when_name_scan_is_empty() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	value := a.add_val(.ident, 'value')
+	tc.sparse_expr_type_values[int(value)] = types.Type(types.Struct{ name: 'Payload' })
+	container := a.add_val(.ident, 'items')
+	use_value := a.add_val(.ident, 'value')
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [use_value])
+	loop := call_helper_node(mut a, flat.Node{ kind: .for_in_stmt, value: '0' }, [
+		value,
+		flat.empty_node,
+		container,
+		body,
+	])
+	outer := call_helper_node(mut a, flat.Node{ kind: .block }, [loop])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_values' }, [outer])
+	collector := CallCollector{ a: &a, tc: &tc }
+	names, has_binders := markused_local_value_names(&a, a.node(fn_id))
+	assert names.len == 0 && has_binders
+	_, type_names, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
+	assert type_names.len == 0
+	assert ident_types[int(use_value)] == 'Payload'
+}
+
+fn test_reused_local_visibility_keeps_shadowed_callback_and_constant_edges() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	before := a.add_val(.ident, 'callback')
+	before_const := a.add_val(.ident, 'answer')
+	lhs := a.add_val(.ident, 'callback')
+	rhs := a.add_val(.int_literal, '1')
+	decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [lhs, rhs])
+	inner := a.add_val(.ident, 'callback')
+	const_lhs := a.add_val(.ident, 'answer')
+	const_rhs := a.add_val(.int_literal, '2')
+	const_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [const_lhs, const_rhs])
+	inner_const := a.add_val(.ident, 'answer')
+	block := call_helper_node(mut a, flat.Node{ kind: .block }, [decl, inner, const_decl, inner_const])
+	lambda_param := a.add_node(flat.Node{ kind: .ident, value: 'callback', typ: 'int' })
+	lambda_use := a.add_val(.ident, 'callback')
+	lambda_body := call_helper_node(mut a, flat.Node{ kind: .block }, [lambda_use])
+	lambda := call_helper_node(mut a, flat.Node{ kind: .lambda_expr }, [lambda_param, lambda_body])
+	after := a.add_val(.ident, 'callback')
+	after_const := a.add_val(.ident, 'answer')
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [before, before_const, block, lambda,
+		after, after_const])
+	fn_id := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'use_callbacks' }, [body])
+	collector := CallCollector{
+		a:               &a
+		tc:              &tc
+		fn_decls:        {
+			'callback': FnDeclInfo{ node_id: fn_id }
+		}
+		fn_suffixes:     {
+			'callback': true
+		}
+		const_decls:     {
+			'answer': ConstDeclInfo{ expr_id: const_rhs }
+		}
+		const_suffixes:  {
+			'answer': true
+		}
+		import_contexts: [map[string]string{}]
+	}
+	names, _, _, visible := collector.local_value_info_with_visibility(a.node(fn_id), 'main', map[string]string{})
+	assert collector.local_values_need_visibility(names, 'main', map[string]string{})
+	assert int(inner) in visible && int(inner_const) in visible && int(lambda_use) in visible
+	assert int(before) !in visible && int(before_const) !in visible
+	assert int(after) !in visible && int(after_const) !in visible
+	result := collector.collect_body(a.node(fn_id), 'main', map[string]string{})
+	// Preserve the prior path, which separately recomputed visibility after
+	// inference. The lambda's parameter declarator is also visited by the
+	// fallback function-value walk before that binding applies to its body.
+	old_names, old_types, old_ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
+	old_visible := markused_visible_local_idents(&a, a.node(fn_id), old_names)
+	assert visible == old_visible
+	control := CallCollector{
+		...collector
+		local_ident_visibility:     old_visible
+		local_ident_types:          old_ident_types
+		has_local_ident_visibility: true
+	}
+	mut old_calls := []string{}
+	control.collect_calls_with_locals(a.node(fn_id), 'main', map[string]string{}, '', '', old_names, old_types, old_visible, mut old_calls)
+	assert result.calls == old_calls
+	assert result.calls == ['callback', 'callback', 'callback']
+	mut param_calls := []string{}
+	control.collect_fn_value_ident(lambda_param, 'callback', 'main', map[string]string{}, false, mut param_calls)
+	assert param_calls == ['callback']
+	assert result.refs == ['answer']
+	assert !result.uses_generics
+	mut refs := []string{}
+	collector.collect_initializer_refs(a.node(fn_id), 'main', map[string]string{}, mut refs)
+	assert refs == result.refs
+}

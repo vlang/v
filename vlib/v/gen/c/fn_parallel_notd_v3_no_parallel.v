@@ -11,6 +11,8 @@ import v.util
 import v.workers
 
 const max_flat_cgen_jobs = 18
+const max_small_flat_cgen_jobs = 10
+const large_flat_cgen_graph_items = 2048
 const max_flat_cgen_select_jobs = 15
 const min_flat_cgen_parallel_items = 128
 // Bound each worker's retained scratch while generating compiler-sized ASTs.
@@ -718,10 +720,8 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		|| g.a.nodes.len < 65_536 || os.getenv('V3_NO_PAR_CGEN_INFO_SCAN') != '' {
 		return g.scan_collect_gen_info_serial()
 	}
-	mut n_jobs := g.a.worker_pool.size() + 1
-	if n_jobs > max_flat_cgen_jobs {
-		n_jobs = max_flat_cgen_jobs
-	}
+	n_jobs := flat_cgen_job_count(g.a.worker_pool.size() + 1, g.a.nodes.len,
+		g.flat_cgen_job_limit())
 	mut args := []CollectGenInfoScanArgs{cap: n_jobs}
 	mut tasks := []workers.Task{cap: n_jobs}
 	for job in 0 .. n_jobs {
@@ -865,10 +865,8 @@ fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool, w
 		|| node_ids.len < 2048 || os.getenv('V3_NO_PAR_CGEN_INFO_FNS') != '' {
 		return []CollectGenFnPrep{}
 	}
-	mut n_jobs := g.a.worker_pool.size() + 1
-	if n_jobs > max_flat_cgen_jobs {
-		n_jobs = max_flat_cgen_jobs
-	}
+	n_jobs := flat_cgen_job_count(g.a.worker_pool.size() + 1, node_ids.len,
+		g.flat_cgen_job_limit())
 	mut preps := []CollectGenFnPrep{len: node_ids.len}
 	mut context_files := []string{len: n_jobs}
 	mut context_modules := []string{len: n_jobs}
@@ -967,7 +965,7 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 		return
 	}
 	available_jobs := g.a.worker_pool.size() + 1 - if reserve_worker { 1 } else { 0 }
-	n_jobs := flat_cgen_job_count(available_jobs, g.fn_gen_items.len)
+	n_jobs := flat_cgen_job_count(available_jobs, g.fn_gen_items.len, g.flat_cgen_job_limit())
 	fused := g.prep_costs_pending
 	mut prep_g := unsafe { nil }
 	if fused {
@@ -1747,7 +1745,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	// discovered by body workers, so emit those on the master after they merge.
 	parallel_type_decls := available_jobs > 2 && g.scope_parallel_workers
 		&& !g.program_body_only && g.incremental_fn_names.len == 0 && !g.target_libc_headers
-	n_jobs := flat_cgen_job_count(available_jobs, n_items)
+	n_jobs := flat_cgen_job_count(available_jobs, n_items, g.flat_cgen_job_limit())
 	if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 		if g.scope_parallel_workers {
 			if n_items < min_flat_cgen_parallel_items {
@@ -1991,14 +1989,24 @@ fn (mut g FlatGen) freeze_parallel_lookup_caches() {
 	}
 }
 
-// flat_cgen_job_count supports flat cgen job count handling for c.
-fn flat_cgen_job_count(n_runtime_jobs int, n_items int) int {
+// flat_cgen_job_limit avoids multiplying worker-local caches for small graphs.
+// Keep the wider dispatch for compiler builds and larger reachable programs.
+fn (g &FlatGen) flat_cgen_job_limit() int {
+	if isnil(g.tc) || g.tc.building_v_fast || isnil(g.used_fns)
+		|| g.used_fns.len >= large_flat_cgen_graph_items {
+		return max_flat_cgen_jobs
+	}
+	return max_small_flat_cgen_jobs
+}
+
+// flat_cgen_job_count bounds dispatch by the runtime, available work, and graph limit.
+fn flat_cgen_job_count(n_runtime_jobs int, n_items int, job_limit int) int {
 	if n_runtime_jobs <= 0 || n_items <= 0 {
 		return 0
 	}
 	mut n_jobs := n_runtime_jobs
-	if n_jobs > max_flat_cgen_jobs {
-		n_jobs = max_flat_cgen_jobs
+	if n_jobs > job_limit {
+		n_jobs = job_limit
 	}
 	if n_jobs > n_items {
 		n_jobs = n_items
@@ -2945,7 +2953,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 			g.param_types_cache.clone()
 		}
 		interface_receiver_cache:           &StringLookupCache{}
-		normalize_call_cache:               &StringLookupCache{}
+		normalize_call_cache:               &ContextStringLookupCache{}
 		flattened_generic_name_cache:       &StringLookupCache{}
 		generic_struct_context_ct_cache:    &StringLookupCache{}
 		struct_cname_cache:                 &StringLookupCache{}

@@ -4321,22 +4321,17 @@ fn ast_has_native_source_include_from(a &flat.FlatAst, first int) bool {
 	return false
 }
 
-// should_overlap_v3_native_inputs reports whether native-input resolution can
+// should_overlap_v3_native_inputs reports whether native typedef resolution can
 // safely run alongside the checker's declaration pass. A `v3_no_parallel` build
-// resolves them on the main thread, before or after checking.
-fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool, scope_prealloc_stages bool, check_only bool) bool {
+// resolves them on the main thread before checking.
+fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, module_cache_enabled bool, native_inputs_needed bool, building_v bool) bool {
 	$if v3_no_parallel ? {
 		return false
 	}
 	if backend != 'c' || external_inputs_ready || module_cache_enabled {
 		return false
 	}
-	// Only Cgen reads native inputs the checker does not need, and a check runs
-	// no Cgen.
-	if check_only && !native_inputs_needed {
-		return false
-	}
-	return (native_inputs_needed && building_v) || (!native_inputs_needed && scope_prealloc_stages)
+	return native_inputs_needed && building_v
 }
 
 fn native_source_typedefs(path string) map[string]bool {
@@ -8695,20 +8690,20 @@ fn ast_contains_sql_expr(a &flat.FlatAst) bool {
 }
 
 fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst, used_fns map[string]bool) {
+	void_type := types.builtin_type_value('void')
 	for tc.expr_type_values.len < a.nodes.len {
-		tc.expr_type_values << types.Type(types.void_)
+		tc.expr_type_values << void_type
 		tc.expr_type_set << false
 	}
+	// Signature arrays and payloads stay immutable throughout this restoration.
+	mut fn_value_types := map[string]types.Type{}
 	for idx, name in tc.sparse_resolved_fn_values {
 		if idx < 0 || idx >= a.nodes.len {
 			continue
 		}
 		params := tc.fn_param_types[name] or { continue }
 		ret := tc.fn_ret_types[name] or { continue }
-		tc.expr_type_values[idx] = types.FnType{
-			params:      params
-			return_type: ret
-		}
+		tc.expr_type_values[idx] = restored_fn_value_type(name, params, ret, mut fn_value_types)
 		tc.expr_type_set[idx] = true
 	}
 	mut cur_module := ''
@@ -8765,10 +8760,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						if name.len > 0 {
 							params := tc.fn_param_types[name] or { []types.Type{} }
 							if ret := tc.fn_ret_types[name] {
-								tc.expr_type_values[callee_idx] = types.FnType{
-									params:      params
-									return_type: ret
-								}
+								tc.expr_type_values[callee_idx] = restored_fn_value_type(name, params, ret, mut fn_value_types)
 								tc.expr_type_set[callee_idx] = true
 							}
 						}
@@ -8787,10 +8779,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						&& (tc.resolved_fn_value_name(base_id) or { '' }) == cname {
 						params := tc.fn_param_types[cname] or { []types.Type{} }
 						if ret := tc.fn_ret_types[cname] {
-							tc.expr_type_values[base_idx] = types.FnType{
-								params:      params
-								return_type: ret
-							}
+							tc.expr_type_values[base_idx] = restored_fn_value_type(cname, params, ret, mut fn_value_types)
 							tc.expr_type_set[base_idx] = true
 						}
 					}
@@ -8804,6 +8793,18 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 			}
 		}
 	}
+}
+
+fn restored_fn_value_type(name string, params []types.Type, ret types.Type, mut fn_value_types map[string]types.Type) types.Type {
+	if cached := fn_value_types[name] {
+		return cached
+	}
+	typ := types.Type(types.FnType{
+		params:      params
+		return_type: ret
+	})
+	fn_value_types[name] = typ
+	return typ
 }
 
 fn record_compile_value(mut values map[string]string, define string) {
@@ -10515,7 +10516,7 @@ pub fn run(args []string) {
 				`K`, `k` { s[..s.len - 1], i64(1) }
 				`M`, `m` { s[..s.len - 1], i64(1) << 10 }
 				`G`, `g` { s[..s.len - 1], i64(1) << 20 }
-				else    { s, i64(1) << 10 }
+				else { s, i64(1) << 10 }
 			}
 			if n.len == 0 || !n.is_int() {
 				eprintln('invalid memory limit: ${s}')
@@ -12336,10 +12337,9 @@ pub fn run(args []string) {
 	} else {
 		ast_has_native_source_include(a)
 	}
-	// Large cache-disabled C builds still have to resolve native inputs before
-	// Cgen. When the source does not expose native typedefs to semantic collection,
-	// overlap that independent work with the checker's declaration pass.
-	native_inputs_overlap := should_overlap_v3_native_inputs(backend, cache_state.external_inputs_ready, cache_state.manager.enabled, native_inputs_needed, building_v, scope_prealloc_stages, check_only)
+	// Self-hosting can resolve the native typedef inputs alongside declaration
+	// collection. Uncached builds without source includes need no native manifest.
+	native_inputs_overlap := should_overlap_v3_native_inputs(backend, cache_state.external_inputs_ready, cache_state.manager.enabled, native_inputs_needed, building_v)
 	native_inputs_done := chan bool{cap: 1}
 	native_inputs_release := chan bool{cap: 1}
 	native_inputs_args := PrepareV3CheckerNativeInputsArgs{
@@ -13025,18 +13025,11 @@ pub fn run(args []string) {
 		if os.getenv('V3_NO_TRUST_CHECKED_TYPES').len == 0 {
 			pre_tc.trust_checked_expr_types = true
 		}
-		// Cache-disabled builds still need the same resolved native-input snapshot as
-		// cached builds before transformation or C generation can fail. If resolution is
-		// incomplete, leave the manifest without its completeness marker so the stable
-		// retry prints the fallback notice but does not submit an unverified report.
-		if backend == 'c' && !cache_state.external_inputs_ready {
-			if cache_state.manager.enabled {
-				_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, c_compiler, scope_prealloc_stages)
-			} else {
-				// Cache ownership and native declaration extraction have no consumer on
-				// an uncached build. Keep only the manifest needed by Cgen and fallback.
-				prepare_v3_checker_native_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, c_compiler, scope_prealloc_stages)
-			}
+		// Cache dependency tracking consumes the resolved native-input snapshot.
+		// Uncached Cgen emits includes directly, and fallback reports contain only
+		// metadata, so neither needs a header traversal or compiler-macro probe.
+		if backend == 'c' && cache_state.manager.enabled && !cache_state.external_inputs_ready {
+			_ = prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files, cache_c_flags, c_compiler, scope_prealloc_stages)
 		}
 		if backend == 'c' && cache_state.external_inputs_ready {
 			fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)

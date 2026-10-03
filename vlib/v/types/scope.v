@@ -124,6 +124,34 @@ pub fn (mut s Scope) reset(parent &Scope) {
 	}
 }
 
+// contains reports whether this scope or a parent has a binding for `name`,
+// without copying its type or constructing a binding owner.
+pub fn (s &Scope) contains(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	$if !ownership ? {
+		bit := scope_name_bit(name)
+		// Only the local pointer is reassigned; the scopes remain read-only.
+		mut scope := unsafe { &Scope(s) }
+		for scope != unsafe { nil } {
+			if scope.name_mask & bit != 0 {
+				if _ := scope.own_binding_index(name) {
+					return true
+				}
+			}
+			scope = scope.parent
+		}
+		return false
+	}
+	for i := s.names.len - 1; i >= 0; i-- {
+		if s.names[i] == name {
+			return true
+		}
+	}
+	return s.parent != unsafe { nil } && s.parent.contains(name)
+}
+
 // lookup returns the nearest visible type binding for `name`.
 pub fn (s &Scope) lookup(name string) ?Type {
 	if name.len == 0 {

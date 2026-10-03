@@ -5,6 +5,29 @@ import v.pref
 import v.types
 import v.workers
 
+fn test_parallel_cgen_job_limit_preserves_large_graph_and_compiler_dispatch() {
+	mut g, mut tc := parallel_worker_test_gen(true)
+	mut used := {
+		'main': true
+	}
+	g.used_fns = &used
+	assert g.flat_cgen_job_limit() == max_small_flat_cgen_jobs
+	// An explicit smaller runtime pool and a short work list remain authoritative.
+	assert flat_cgen_job_count(4, 100, g.flat_cgen_job_limit()) == 4
+	assert flat_cgen_job_count(100, 3, g.flat_cgen_job_limit()) == 3
+	assert flat_cgen_job_count(0, 100, g.flat_cgen_job_limit()) == 0
+	assert flat_cgen_job_count(100, 0, g.flat_cgen_job_limit()) == 0
+	assert flat_cgen_job_count(100, 100, g.flat_cgen_job_limit()) == max_small_flat_cgen_jobs
+	tc.building_v_fast = true
+	assert g.flat_cgen_job_limit() == max_flat_cgen_jobs
+	tc.building_v_fast = false
+	for i in 1 .. large_flat_cgen_graph_items {
+		used['fn_' + i.str()] = true
+	}
+	assert g.flat_cgen_job_limit() == max_flat_cgen_jobs
+	assert flat_cgen_job_count(100, 100, g.flat_cgen_job_limit()) == max_flat_cgen_jobs
+}
+
 fn test_parallel_function_chunks_use_available_items_when_jobs_exceed_items() {
 	items := [FlatFnGenItem{
 		c_name: 'first'

@@ -30,6 +30,8 @@ const c_common_c_attributes = ['alias', 'aligned', 'always_inline', 'cold', 'con
 	'visibility', 'warn_unused_result', 'weak']
 const c_has_attribute_predicate = '__has_attribute'
 const c_has_attribute_override_key = '@function:__has_attribute'
+const usable_expr_type_memo_slots = 1024
+const usable_expr_type_memo_mask = usable_expr_type_memo_slots - 1
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -316,14 +318,18 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 	}
 	if isnil(g.usable_expr_type_memo) {
 		g.usable_expr_type_memo = &UsableExprTypeMemo{
-			ids:    []int{len: 16384, init: -1}
-			gens:   []u32{len: 16384}
-			values: unsafe { []types.Type{len: 16384} }
+			// Generation zero marks unused slots, including the slot for node zero.
+			ids:    []int{len: usable_expr_type_memo_slots}
+			gens:   []u32{len: usable_expr_type_memo_slots}
+			values: unsafe { []types.Type{len: usable_expr_type_memo_slots} }
 		}
 	}
 	mut memo := g.usable_expr_type_memo
 	memo.generation++
 	if memo.generation == 0 {
+		for i in 0 .. memo.gens.len {
+			memo.gens[i] = 0
+		}
 		memo.generation = 1
 	}
 	memo.active = true
@@ -684,7 +690,7 @@ mut:
 	array_method_cache              map[string]string
 	param_types_cache               map[string][]types.Type // (name|fallback) -> resolved param types
 	interface_receiver_cache        &StringLookupCache        = unsafe { nil }
-	normalize_call_cache            &StringLookupCache        = unsafe { nil }
+	normalize_call_cache            &ContextStringLookupCache = unsafe { nil }
 	flattened_generic_name_cache    &StringLookupCache        = unsafe { nil }
 	generic_struct_context_ct_cache &StringLookupCache        = unsafe { nil }
 	struct_cname_cache              &StringLookupCache        = unsafe { nil }
@@ -1442,7 +1448,7 @@ pub fn FlatGen.new() FlatGen {
 		array_method_cache:                 map[string]string{}
 		param_types_cache:                  map[string][]types.Type{}
 		interface_receiver_cache:           &StringLookupCache{}
-		normalize_call_cache:               &StringLookupCache{}
+		normalize_call_cache:               &ContextStringLookupCache{}
 		flattened_generic_name_cache:       &StringLookupCache{}
 		generic_struct_context_ct_cache:    &StringLookupCache{}
 		struct_cname_cache:                 &StringLookupCache{}
@@ -1980,10 +1986,22 @@ struct CCachePlacedInclude {
 fn c_cache_external_input_node_order(a &flat.FlatAst) []i32 {
 	mut preincludes := []CCachePlacedInclude{}
 	mut postincludes := []CCachePlacedInclude{}
-	mut normal := []i32{cap: a.nodes.len}
+	mut normal := []i32{}
 	mut file_node := -1
 	mut module_node := -1
 	for node_id, node in a.nodes {
+		// Expressions only contribute dependencies through lowered embed_file values.
+		match node.kind {
+			.file, .module_decl, .directive {}
+			.struct_init {
+				if node.value != 'embed_file.EmbedFileData' {
+					continue
+				}
+			}
+			else {
+				continue
+			}
+		}
 		if node.kind == .file {
 			file_node = node_id
 			module_node = -1
@@ -3626,7 +3644,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.array_method_cache.clear()
 	g.param_types_cache.clear()
 	g.interface_receiver_cache = &StringLookupCache{}
-	g.normalize_call_cache = &StringLookupCache{}
+	g.normalize_call_cache = &ContextStringLookupCache{}
 	g.flattened_generic_name_cache = &StringLookupCache{}
 	g.generic_struct_context_ct_cache = &StringLookupCache{}
 	g.struct_cname_cache = &StringLookupCache{}
@@ -4624,7 +4642,7 @@ fn (g &FlatGen) new_collect_gen_info_view() FlatGen {
 	view.c_name_cache = &CNameCache{}
 	view.param_types_cache = map[string][]types.Type{}
 	view.interface_receiver_cache = &StringLookupCache{}
-	view.normalize_call_cache = &StringLookupCache{}
+	view.normalize_call_cache = &ContextStringLookupCache{}
 	view.flattened_generic_name_cache = &StringLookupCache{}
 	view.generic_struct_context_ct_cache = &StringLookupCache{}
 	view.struct_cname_cache = &StringLookupCache{}
@@ -5175,8 +5193,10 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 	g.ast_string_literals = []string{cap: 4096}
 	g.top_level_node_ids = []i32{cap: 4096}
 	g.type_metadata_node_ids = []i32{cap: 4096}
-	for node_idx, node in g.a.nodes {
-		if is_type_metadata_node(&node, mut cache) {
+	for node_idx in 0 .. g.a.nodes.len {
+		// Collection only reads the AST; no helper can reallocate these slots.
+		node := unsafe { &g.a.nodes[node_idx] }
+		if is_type_metadata_node(node, mut cache) {
 			g.type_metadata_node_ids << node_idx
 		}
 		if node.kind == .string_literal && !node.is_embed_payload() {
@@ -15722,7 +15742,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	node := unsafe { &g.a.nodes[int(id)] }
 	match node.kind {
 		.int_literal {
-			v := node.value.replace('_', '')
+			v := if node.value.contains_u8(`_`) { node.value.replace('_', '') } else { node.value }
 			if parts := int128_literal_parts(v) {
 				// Wider than 64 bits: emit the halves, because a C decimal constant
 				// that large is silently reduced to its low 64 bits.
@@ -15736,7 +15756,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.float_literal {
-			g.write(node.value.replace('_', ''))
+			if node.value.contains_u8(`_`) {
+				g.write(node.value.replace('_', ''))
+			} else {
+				g.write(node.value)
+			}
 		}
 		.bool_literal {
 			g.write(node.value)
@@ -17225,7 +17249,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
 			cast_arg := g.a.nodes[int(cast_arg_id)]
-			if g.gen_int128_cast(node, target_type, g.a.child(node, 0)) {
+			if g.gen_int128_cast(target_type, g.a.child(node, 0)) {
 				return
 			}
 			if shared_alias_ptr := g.shared_alias_pointer_type_from_text(target_text) {
@@ -26061,7 +26085,8 @@ fn (mut g FlatGen) write(s string) {
 		}
 		return
 	}
-	g.sb.write_string(s)
+	// Append bytes directly instead of copying another string header into the builder.
+	unsafe { g.sb.write_ptr(s.str, s.len) }
 	g.line_start = s[s.len - 1] == `\n`
 }
 
@@ -26071,15 +26096,16 @@ fn (mut g FlatGen) writeln(s string) {
 		if g.line_start {
 			g.write_indent()
 		}
-		g.sb.write_string(s)
+		// The source string remains alive throughout this synchronous copy.
+		unsafe { g.sb.write_ptr(s.str, s.len) }
 	}
-	g.sb.write_string('\n')
+	g.sb.write_u8(`\n`)
 	g.line_start = true
 }
 
 @[inline]
 fn (mut g FlatGen) write_indent() {
 	for _ in 0 .. g.indent {
-		g.sb.write_string('\t')
+		g.sb.write_u8(`\t`)
 	}
 }

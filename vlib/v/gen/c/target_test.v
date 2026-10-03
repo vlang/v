@@ -2,6 +2,7 @@ module c
 
 import crypto.sha256
 import os
+import v.flat
 import v.parser
 import v.pref
 
@@ -869,6 +870,55 @@ fn test_cache_input_scan_orders_pre_and_postincludes_like_cgen() {
 	]
 	assert os.real_path(pre_header) in inputs['__v3_c_flags__']
 	assert os.real_path(post_header) !in inputs['__v3_c_flags__']
+}
+
+fn test_cache_input_scan_tracks_embeds_among_unrelated_expressions() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_cache_embed_context_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	embedded_file := os.join_path(dir, 'payload.txt')
+	header := os.join_path(dir, 'dependency.h')
+	os.write_file(embedded_file, 'embedded payload')!
+	os.write_file(header, '/* dependency */')!
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, os.join_path(dir, 'first.v'))
+	a.add_val(.module_decl, 'first')
+	for _ in 0 .. 128 {
+		a.add_val(.ident, 'unrelated')
+		a.add_val(.struct_init, 'Unrelated')
+	}
+	path_id := a.add_val(.string_literal, embedded_file)
+	field_id := a.add_node(flat.Node{
+		kind:           .field_init
+		value:          'apath'
+		children_start: i32(a.children.len)
+		children_count: 1
+	})
+	a.children << path_id
+	a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          'embed_file.EmbedFileData'
+		children_start: i32(a.children.len)
+		children_count: 1
+	})
+	a.children << field_id
+	a.add_val(.file, os.join_path(dir, 'second.v'))
+	a.add_val(.module_decl, 'second')
+	a.add_node(flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	})
+	inputs, _, _, _, _, _, _, digests, has_untracked := cache_external_input_snapshot_with_resolved_flags(&a, '', {
+		'first':  true
+		'second': true
+	}, [], pref.host_target(), map[string]bool{}, map[string]string{}, true)
+	assert !has_untracked
+	assert inputs['first'] == [os.real_path(embedded_file)]
+	assert inputs['second'] == [os.real_path(header)]
+	assert digests[os.real_path(embedded_file)] == sha256.hexhash('embedded payload')
 }
 
 fn test_cache_input_scan_excludes_objective_cpp_sources_from_native_roots() {
