@@ -147,7 +147,9 @@ fn test_windows_makev_keeps_the_v3_tcc_root_absolute() {
 	source := os.read_file(os.join_path(root, 'makev.bat'))!
 	assert source.contains('set tcc_dir=%~dp0thirdparty\\tcc')
 	assert source.contains('set tcc_exe=%tcc_dir%\\tcc.exe')
-	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_STAGE%" cmd/v')
+	// The bootstrap compiler emits the stage C, which this script then links.
+	// The absolute tcc path reaches it through `!stage_vflags!`, asserted below.
+	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -gc none -g !stage_vflags! -o "%V_STAGE_C%" cmd/v')
 	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
 	assert source.contains('set stage_vflags=-cc "!tcc_exe!"')
 	assert !source.contains('-cflags -Bthirdparty/tcc')
@@ -333,7 +335,10 @@ fn test_v1_fallback_cache_without_a_home_is_private() {
 		assert first != second
 		assert os.is_dir(first)
 		assert os.is_dir(second)
-		windows_source := os.read_file(os.join_path(find_vroot(@FILE)!, 'cmd', 'v', 'v1_fallback_cache_windows.c.v'))!
+		// `find_vroot` returns an Option, and `!` cannot unwrap one.
+		vroot := find_vroot(@FILE) or { panic('missing vroot') }
+		windows_source := os.read_file(os.join_path(vroot, 'cmd', 'v',
+			'v1_fallback_cache_windows.c.v'))!
 		assert windows_source.contains('rand.bytes(16)')
 		assert windows_source.contains('os.mkdir(candidate, mode: 0o700)')
 	} $else {
