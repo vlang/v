@@ -106,9 +106,10 @@ pub fn emit_message_struct(mut e Emitter, m ResolvedMessage) {
 	}
 	e.wln(0, '// ${m.v_name} is the generated form of the proto3 message `${m.doc_name}`.')
 	e.wln(0, '//')
-	e.wln(0, "// The @[protobuf: n] attributes record each field's wire number. They are")
-	e.wln(0, '// what a reader checks a payload against, so they are written literally')
-	e.wln(0, '// rather than inferred from declaration order.')
+	e.wln(0, "// Each field's number is written into every call its codec makes, as the")
+	e.wln(0, '// literal `1` in `packer.write_string(1, msg.key)`. It is not inferred from')
+	e.wln(0, '// the order of the fields here, because a schema is free to number them')
+	e.wln(0, '// out of order and to leave gaps.')
 	if m.fields.len == 0 {
 		e.wln(0, 'pub struct ${m.v_name} {}')
 		e.w('')
@@ -121,7 +122,7 @@ pub fn emit_message_struct(mut e Emitter, m ResolvedMessage) {
 			e.wln(2, '// ${line}')
 		}
 		e.wln(2, '// ${f.name} is `${field_declaration(f)}`.')
-		e.wln(2, '${f.name} ${declared_type(f)} @[protobuf: ${f.number}]')
+		e.wln(2, '${f.name} ${declared_type(f)}')
 	}
 	e.wln(0, '}')
 	e.w('')

@@ -32,7 +32,7 @@ For a message, one struct, an `encode`, an `encode_with`, and a `decode_*`:
 pub struct GetRequest {
 pub mut:
 	// key is `string key = 1`.
-	key string @[protobuf: 1]
+	key string
 }
 
 // encode serializes `msg` to the proto3 wire format. ...
@@ -70,9 +70,15 @@ pub fn decode_get_request(data []u8) !GetRequest {
 }
 ```
 
-The `@[protobuf: n]` attribute records the field number. Nothing reads it: it is
-there for a reader of the generated file, and the generated code writes the number
-literally in every call.
+Each field's number appears literally in every call its codec makes — the `1` in
+`packer.write_string(1, msg.key)` — and in the doc comment above the field. It is
+not inferred from the order of the fields, because a schema is free to number them
+out of order and to leave gaps.
+
+The struct carries no attribute for the number. An earlier version emitted
+`@[protobuf: n]` and nothing read it; `encoding.cbor` reads its own attributes at
+run time, so the shape looked right while being inert. An attribute that looks
+load-bearing and is not is worse for a reader of the generated file than none.
 
 Three naming rules are worth knowing, because they are what makes the generated
 names predictable:

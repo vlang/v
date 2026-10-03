@@ -65,12 +65,23 @@ fn test_generated_codec_has_a_header() {
 	assert out.contains('import encoding.protobuf')
 }
 
-fn test_generated_struct_carries_field_numbers() {
+fn test_field_numbers_are_written_as_literals() {
 	out := generate(fixture('kv.proto'), 'kv')!
-	// The field number is the wire identity, so it is written on the field
-	// rather than left to be inferred.
-	assert out.contains('@[protobuf: 1]')
-	assert out.contains('@[protobuf: 2]')
+	// The number is the wire identity, so it goes into every call the codec makes.
+	// The struct carries no attribute for it: nothing read one, and an attribute
+	// that looks load-bearing while nothing consults it is a trap for anyone who
+	// hand-edits the generated file.
+	assert out.contains('packer.write_string(1, msg.key)!')
+	assert out.contains('packer.write_bytes(1, msg.value)')
+	assert !out.contains('@[protobuf')
+}
+
+fn test_generated_struct_carries_no_unread_attribute() {
+	out := generate(fixture('kv.proto'), 'kv')!
+	// The doc comment above each field still records the schema's own spelling,
+	// so the number is not lost from the declaration.
+	assert out.contains('// key is `string key = 1`.')
+	assert out.contains('key string')
 	assert out.contains('pub struct GetResponse {')
 }
 
@@ -650,8 +661,8 @@ fn test_a_field_referring_to_a_qualified_type_uses_that_name() {
 	out := generate(fixture('ambiguous_b.proto'), 'amb')!
 	// The reference has to follow the declaration it points at, in the struct, on
 	// the wire, and in the decode arm.
-	assert out.contains('from_one OneItem @[protobuf: 1]')
-	assert out.contains('from_two TwoItem @[protobuf: 2]')
+	assert out.contains('from_one OneItem')
+	assert out.contains('from_two TwoItem')
 	assert out.contains('out.from_one = decode_one_item(payload)!')
 	assert out.contains('out.from_two = decode_two_item(payload)!')
 }
@@ -662,7 +673,7 @@ fn test_a_unique_name_is_not_qualified() {
 	// for no benefit: `Unique` stays `Unique`.
 	assert out.contains('pub struct Unique {')
 	assert !out.contains('pub struct TwoUnique {')
-	assert out.contains('unique Unique @[protobuf: 3]')
+	assert out.contains('unique Unique')
 }
 
 fn test_colliding_names_output_compiles() ! {
@@ -791,18 +802,18 @@ fn test_optional_field_is_declared_with_presence() {
 	out := generate(fixture('presence.proto'), 'presence')!
 	// proto3 `optional` records presence, so it has to be an option in V. A plain
 	// `bool` cannot tell `false` from never-sent.
-	assert out.contains('flag ?bool @[protobuf: 1]')
-	assert out.contains('note ?string @[protobuf: 2]')
-	assert out.contains('count ?i32 @[protobuf: 3]')
-	assert out.contains('ratio ?f64 @[protobuf: 4]')
+	assert out.contains('flag ?bool')
+	assert out.contains('note ?string')
+	assert out.contains('count ?i32')
+	assert out.contains('ratio ?f64')
 }
 
 fn test_singular_field_keeps_implicit_presence() {
 	out := generate(fixture('presence.proto'), 'presence')!
 	// The control: a field with no `optional` keeps its bare type, so declaring
 	// presence everywhere cannot silently pass this test.
-	assert out.contains('bare_flag bool @[protobuf: 5]')
-	assert out.contains('bare_note string @[protobuf: 6]')
+	assert out.contains('bare_flag bool')
+	assert out.contains('bare_note string')
 	assert !out.contains('bare_flag ?bool')
 }
 
@@ -1228,7 +1239,7 @@ fn test_the_readme_shows_what_the_generator_emits() {
 	readme := os.read_file(module_readme()) or { panic(err.msg()) }
 	for line in [
 		'pub struct GetRequest {',
-		'key string @[protobuf: 1]',
+		'key string',
 		'pub fn (msg GetRequest) encode() ![]u8 {',
 		'return msg.encode_with(protobuf.EncodeOpts{})',
 		'pub fn (msg GetRequest) encode_with(opts protobuf.EncodeOpts) ![]u8 {',
