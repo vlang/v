@@ -77,6 +77,9 @@ integer keys. Nested maps and maps stored in struct fields follow the same conve
 Enum map keys, including enum type aliases, use member names as written by `encode`.
 Member `@[json: ...]` attributes do not rename map keys. Unknown member names return
 a decoding error.
+Flag-enum keys, including aliases, also accept their encoded form, such as
+`Permission{.read | .write}` or `Permission{}` for zero, so maps with flag keys
+round-trip through JSON.
 
 The target type keeps its declaring module. A program's own sum type named `Any`
 is distinct from `json2.Any`, including through nested dynamic arrays, fixed arrays,

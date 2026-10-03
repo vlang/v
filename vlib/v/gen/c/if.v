@@ -516,21 +516,15 @@ fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 				if g.if_expr_tail_has_no_value(inner_id) {
 					g.gen_node(child_id)
 				} else {
-					g.write('_ifexpr = ')
-					g.gen_expr(inner_id)
-					g.writeln(';')
+					g.gen_if_expr_tail_assignment(inner_id, ret_type)
 				}
 			} else if child.kind == .if_expr {
-				g.write('_ifexpr = ')
-				g.gen_if_expr(child)
-				g.writeln(';')
+				g.gen_if_expr_tail_assignment(child_id, ret_type)
 			} else if g.is_expr_kind(child.kind) {
 				if g.if_expr_tail_has_no_value(child_id) {
 					g.gen_node(child_id)
 				} else {
-					g.write('_ifexpr = ')
-					g.gen_expr(child_id)
-					g.writeln(';')
+					g.gen_if_expr_tail_assignment(child_id, ret_type)
 				}
 			} else {
 				g.gen_node(child_id)
@@ -541,6 +535,18 @@ fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 	}
 	g.gen_scope_ownership_drops()
 	g.leave_conditional_branch()
+}
+
+fn (mut g FlatGen) gen_if_expr_tail_assignment(value_id flat.NodeId, ret_type types.Type) {
+	if array_fixed_type(ret_type) != none {
+		g.write('memmove(_ifexpr.ret_arr, ')
+		g.gen_fixed_array_copy_source(value_id, ret_type)
+		g.writeln(', sizeof(_ifexpr.ret_arr));')
+		return
+	}
+	g.write('_ifexpr = ')
+	g.gen_expr(value_id)
+	g.writeln(';')
 }
 
 fn (mut g FlatGen) if_expr_tail_has_no_value(id flat.NodeId) bool {
@@ -802,8 +808,17 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 		g.if_expr_type(&node)
 	}
 	then_block := g.a.child_node(&node, 1)
-	ct := g.value_c_type(ret_type)
-	g.writeln('({${ct} _ifexpr;')
+	fixed := array_fixed_type(ret_type)
+	ct := if fixed_type := fixed {
+		'struct { ${g.fixed_array_c_type(fixed_type)} ret_arr; }'
+	} else {
+		g.value_c_type(ret_type)
+	}
+	if fixed != none {
+		g.writeln('({${ct} _ifexpr = {0};')
+	} else {
+		g.writeln('({${ct} _ifexpr;')
+	}
 	g.write('if (')
 	g.gen_expr(g.a.child(&node, 0))
 	g.writeln(') {')
@@ -819,9 +834,22 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 			g.writeln('}')
 		}
 	} else {
-		g.writeln('{ _ifexpr = (${ct}){0}; }')
+		g.gen_if_expr_default(ret_type)
 	}
 	g.write('_ifexpr;})')
+	if fixed != none {
+		// Return the wrapper by value so its array survives until the enclosing
+		// expression copies it, including when the selected branch uses locals.
+		g.write('.ret_arr')
+	}
+}
+
+fn (mut g FlatGen) gen_if_expr_default(ret_type types.Type) {
+	if array_fixed_type(ret_type) != none {
+		g.writeln('{}')
+	} else {
+		g.writeln('{ _ifexpr = (${g.value_c_type(ret_type)}){0}; }')
+	}
 }
 
 // gen_if_expr_else_if emits if expr else if output for c. The `else if` chain is
@@ -849,7 +877,7 @@ fn (mut g FlatGen) gen_if_expr_else_if(node flat.Node, ret_type types.Type) {
 			}
 			return
 		}
-		g.writeln('{ _ifexpr = (${g.value_c_type(ret_type)}){0}; }')
+		g.gen_if_expr_default(ret_type)
 		return
 	}
 }
