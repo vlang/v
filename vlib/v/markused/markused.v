@@ -4627,6 +4627,10 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			stack << child_id
 		}
 	}
+	mut no_ctor_literals := []flat.NodeId{}
+	if literal_id := c.array_literal_without_ctor(node, cur_module) {
+		no_ctor_literals << literal_id
+	}
 	for stack.len > 0 {
 		raw_child_id := stack.pop()
 		collect_initializer_ref := collect_initializer_refs && int(raw_child_id) >= 0
@@ -4636,6 +4640,11 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			flat.NodeId(-int(raw_child_id) - 1)
 		}
 		child := &c.a.nodes[int(child_id)]
+		if child.kind in [.postfix, .in_expr] {
+			if literal_id := c.array_literal_without_ctor(child, cur_module) {
+				no_ctor_literals << literal_id
+			}
+		}
 		if detect_generics && !uses_generics && c.node_uses_generics(child, cur_module, imports) {
 			uses_generics = true
 		}
@@ -4950,6 +4959,18 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			}
 			.array_init {
 				c.collect_array_default_calls(child, cur_module, imports, mut calls)
+			}
+			.array_literal {
+				// Cgen lowers a runtime array literal to one of these constructors after
+				// markused, so the literal has no call edge of its own. Literal-output
+				// programs skip the runtime seeds, yet still reach such literals in
+				// builtin (the Linux backtrace runs `addr2line` with an argument array).
+				if child.children_count > 0 && child_id !in no_ctor_literals {
+					calls << 'new_array_from_c_array'
+					if child.children_count == 1 {
+						calls << 'new_array_from_c_array_noscan'
+					}
+				}
 			}
 			else {}
 		}
@@ -8939,6 +8960,35 @@ fn (c &CallCollector) collect_value_struct_default_calls(typ types.Type, cur_mod
 	}
 	calls << expanded_marker
 	c.collect_struct_default_calls_from_info_guarded(info, struct_name, map[string]bool{}, mut active_defaults, mut calls)
+}
+
+// array_literal_without_ctor returns the array literal operand of `node` that cgen
+// emits as C data or comparisons, without a runtime array constructor: `[..]!`,
+// `x in [..]`, and constant tables that are stored as fixed C arrays.
+fn (c &CallCollector) array_literal_without_ctor(node &flat.Node, cur_module string) ?flat.NodeId {
+	operand := match node.kind {
+		.postfix {
+			if node.op == .not { 0 } else { -1 }
+		}
+		.in_expr {
+			1
+		}
+		.const_field {
+			typ := c.tc.const_types[qualify_fn(cur_module, node.value)] or { return none }
+			if typ is types.ArrayFixed { 0 } else { -1 }
+		}
+		else {
+			-1
+		}
+	}
+	if operand < 0 || operand >= int(node.children_count) {
+		return none
+	}
+	id := c.a.child(node, operand)
+	if int(id) < 0 || c.a.node(id).kind != .array_literal {
+		return none
+	}
+	return id
 }
 
 fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
