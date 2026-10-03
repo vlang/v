@@ -9480,12 +9480,34 @@ fn expand_v3_exclude_patterns(patterns []string, vroot string) []string {
 	return expanded
 }
 
+// parse_memory_limit converts a nonnegative limit, defaulting to MiB, to KiB.
+fn parse_memory_limit(value string) !i64 {
+	if value.len == 0 {
+		return error('expected a nonnegative integer with an optional K, M, or G suffix')
+	}
+	number, multiplier := match value[value.len - 1] {
+		`K`, `k` { value[..value.len - 1], i64(1) }
+		`M`, `m` { value[..value.len - 1], i64(1) << 10 }
+		`G`, `g` { value[..value.len - 1], i64(1) << 20 }
+		else { value, i64(1) << 10 }
+	}
+	if number.len == 0 || !number.bytes().all(it >= `0` && it <= `9`) {
+		return error('expected a nonnegative integer with an optional K, M, or G suffix')
+	}
+	limit := strconv.parse_int(number, 10, 64) or { return error('memory limit is too large') }
+	if limit > max_i64 / multiplier {
+		return error('memory limit is too large')
+	}
+	return limit * multiplier
+}
+
 fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
 		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files', '-icon',
-		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix', '-memory-limit']
+		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix', '-memory-limit',
+		'--memory-limit']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -10519,26 +10541,12 @@ pub fn run(args []string) {
 			no_memory_limit = true
 			i++
 		} else if args[i] == '-memory-limit' || args[i] == '--memory-limit' {
-			s := args[i + 1]
-			n, m := match s[s.len - 1] {
-				`K`, `k` { s[..s.len - 1], i64(1) }
-				`M`, `m` { s[..s.len - 1], i64(1) << 10 }
-				`G`, `g` { s[..s.len - 1], i64(1) << 20 }
-				else { s, i64(1) << 10 }
-			}
-			if n.len == 0 || !n.is_int() {
-				eprintln('invalid memory limit: ${s}')
-				exit(1)
-			}
-			memory_limit = m * strconv.parse_int(n, 10, 64) or {
-				eprintln('invalid memory limit: ${s}')
+			memory_limit = parse_memory_limit(args[i + 1]) or {
+				eprintln('invalid value for `${args[i]}`: ${err.msg()}')
 				exit(1)
 			}
 			if memory_limit == 0 {
 				no_memory_limit = true
-			} else if memory_limit < 0 {
-				eprintln('invalid memory limit: ${s}')
-				exit(1)
 			}
 			i += 2
 		} else if args[i] == '-prealloc' {
