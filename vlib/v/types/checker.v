@@ -959,6 +959,7 @@ pub mut:
 	explicit_warns_are_errors     bool
 	notes_are_errors              bool
 	is_prod                       bool
+	cross_target_prefs            &pref.Preferences = unsafe { nil }
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
 	shadow_diagnostic_root        string
@@ -1286,6 +1287,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		valid_diagnostic_fast:                 tc.valid_diagnostic_fast
 		valid_resolution_fast:                 tc.valid_resolution_fast
 		is_js_backend:                         tc.is_js_backend
+		cross_target_prefs:                    tc.cross_target_prefs
 		enable_globals:                        tc.enable_globals
 		disable_explicit_mutability:           tc.disable_explicit_mutability
 		fn_ret_types:                          tc.fn_ret_types

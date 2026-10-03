@@ -8108,7 +8108,7 @@ fn (mut tc TypeChecker) record_valid_method_value(id flat.NodeId, node flat.Node
 		|| tc.fn_context.node_id < 0 {
 		return
 	}
-	clean_recv := unwrap_pointer(base_type)
+	clean_recv := unwrap_all_pointers(base_type)
 	if clean_recv is Struct {
 		if tc.struct_field_type(clean_recv.name, node.value) != none {
 			return

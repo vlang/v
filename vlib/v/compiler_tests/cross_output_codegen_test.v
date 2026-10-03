@@ -1,4 +1,5 @@
 import os
+import v.cmdexec
 
 const vexe = @VEXE
 
@@ -34,6 +35,185 @@ fn test_cross_output_resolves_top_level_declarations_for_the_host() {
 		assert c_code.contains('marker_nix'), 'the host branch is missing'
 		assert !c_code.contains('marker_windows'), 'the branch not taken leaked into the output'
 	}
+}
+
+fn test_cross_output_validates_calls_against_the_selected_target_declarations() {
+	source := 'module main\n\n\$if windows {\n\tfn windows_value() int { return 7 }\n} \$else {\n\tfn posix_value() int { return 42 }\n}\n\nfn main() {\n\t\$if windows {\n\t\tprintln(windows_value())\n\t} \$else {\n\t\tprintln(posix_value())\n\t}\n}\n'
+	for flags in ['-no-retry-compilation -cross -os linux',
+		'-no-retry-compilation -cross -os windows -cc msvc'] {
+		c_code := cross_generate_with(flags, 'selected_calls', source)
+		assert c_code.contains('windows_value('), 'the preserved Windows branch is missing'
+		assert c_code.contains('posix_value('), 'the preserved POSIX branch is missing'
+		assert c_code.contains('#if defined(_WIN32)'), 'the preserved calls are not guarded'
+	}
+}
+
+fn test_cross_output_keeps_checker_errors_for_the_selected_target() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_cross_diagnostics_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	src := os.join_path(dir, 'm.v')
+	os.write_file(src, 'fn main() {\n\t\$if windows {\n\t\tmissing_windows_value()\n\t} \$else {\n\t\tmissing_posix_value()\n\t}\n}\n')!
+	for target in ['linux', 'windows'] {
+		out := os.join_path(dir, '${target}.c')
+		result := os.execute('${os.quoted_path(vexe)} -no-retry-compilation -building-v -cross -os ${target} -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+		assert result.exit_code != 0, result.output
+		selected := if target == 'windows' {
+			'missing_windows_value'
+		} else {
+			'missing_posix_value'
+		}
+		inactive := if target == 'windows' {
+			'missing_posix_value'
+		} else {
+			'missing_windows_value'
+		}
+		assert result.output.contains('unknown function: ${selected}'), result.output
+		assert !result.output.contains('unknown function: ${inactive}'), result.output
+	}
+}
+
+fn test_cross_output_compiles_generic_method_values_in_preserved_branches() {
+	// Generate for a different compiler so the runtime branch is inactive while
+	// V checks the source, then compile and execute that branch as portable C.
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	// os.exec reports incompatible binaries as failures on Windows too.
+	use_tcc := os.user_os() != 'macos' && os.is_file(bundled_tcc)
+		&& os.is_executable(bundled_tcc)
+		&& os.exec([bundled_tcc, '-v']).exit_code == 0
+	cc := if use_tcc {
+		bundled_tcc
+	} else {
+		system_cc := os.find_abs_path_of_executable('cc') or {
+			eprintln('skipping portable C method-value runtime test: no usable native C compiler (cc not found)')
+			return
+		}
+		probe := os.exec([system_cc, '--version'])
+		if probe.exit_code != 0 {
+			eprintln('skipping portable C method-value runtime test: cc --version failed (exit ${probe.exit_code})\n${probe.output}')
+			return
+		}
+		system_cc
+	}
+	generation_cc := if use_tcc { 'gcc' } else { 'tcc' }
+	runtime_condition := if use_tcc { 'tinyc' } else { '!tinyc' }
+	source := '
+struct Box[T] {
+	item T
+}
+
+fn (b Box[T]) get() T {
+	return b.item
+}
+
+struct Helper {}
+
+fn (h Helper) first[T](items []T) T {
+	return items[0]
+}
+
+fn read_value[T](item T) T {
+	\$if ${runtime_condition} {
+		b := Box[T]{item: item}
+		get := b.get
+		return get()
+	} \$else {
+		return item
+	}
+}
+
+fn main() {
+	\$if ${runtime_condition} {
+		b := Box[int]{item: 42}
+		get := b.get
+		println(get())
+		pointer := &Box[u32]{item: 43}
+		pp := &pointer
+		get_pp := pp.get
+		println(get_pp())
+	} \$else {
+		println("wrong then branch")
+	}
+	\$if !(${runtime_condition}) {
+		println("wrong else branch")
+	} \$else {
+		b := Box[string]{item: "portable"}
+		get := b.get
+		println(get())
+		pointer := &Box[u64]{item: 44}
+		pp := &pointer
+		ppp := &pp
+		get_ppp := ppp.get
+		println(get_ppp())
+		\$if ${runtime_condition} {
+			h := Helper{}
+			first := h.first[int]
+			println(first([7, 8]))
+		}
+	}
+	println(read_value("generic"))
+}
+'
+	c_code := cross_generate_with('-no-retry-compilation -cross -cc ${generation_cc} -gc none',
+		'method_values', source)
+	dir := os.join_path(os.vtmp_dir(), 'v3_cross_method_values_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	c_path := os.join_path(dir, 'out.c')
+	os.write_file(c_path, c_code)!
+	exe := os.join_path(dir, 'out' + $if windows { '.exe' } $else { '' })
+	mut args := ['-w', '-o', exe, c_path]
+	$if windows {
+		args << ['-municode', '-lws2_32', '-lole32', '-ldbghelp']
+	} $else {
+		if use_tcc {
+			tcc_lib := os.join_path(os.dir(bundled_tcc), 'lib')
+			tcc_nested := os.join_path_single(tcc_lib, 'tcc')
+			tcc_base := if os.is_dir(tcc_nested) { tcc_nested } else { tcc_lib }
+			args << ['-B${tcc_base}', '-I${os.join_path_single(tcc_base, 'include')}', '-L${tcc_lib}']
+		}
+		args << ['-lm', '-lpthread']
+	}
+	compiled := cmdexec.run(cc, args)
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(exe, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.replace('\r\n', '\n').trim_space() == '42\n43\nportable\n44\n7\ngeneric', run.output
+}
+
+fn test_cross_output_suppresses_inactive_deferred_warnings() {
+	source := '
+fn fallible() !int {
+	return 42
+}
+
+fn main() {
+	\$if tinyc {
+		fallible()
+	} \$else {
+		println(fallible() or { 0 })
+	}
+}
+'
+	c_code := cross_generate_with('-no-retry-compilation -W -cross -cc gcc -gc none',
+		'inactive_diagnostics', source)
+	assert c_code.contains('fallible(')
+	dir := os.join_path(os.vtmp_dir(), 'v3_cross_active_warning_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	src := os.join_path(dir, 'm.v')
+	os.write_file(src, source)!
+	active := cmdexec.run(vexe, ['-no-retry-compilation', '-W', '-cross', '-cc', 'tcc', '-gc',
+		'none', '-o', os.join_path(dir, 'out.c'), src])
+	assert active.exit_code != 0, active.output
+	assert active.output.contains('fallible() returns `!int`'), active.output
+}
+
+fn test_cross_output_allows_unavailable_types_in_preserved_branches() {
+	source := 'fn main() {\n\t\$if tinyc {\n\t\tvalue := MissingTargetType{}\n\t\tprintln(value)\n\t} \$else {\n\t\tprintln("ok")\n\t}\n}\n'
+	c_code := cross_generate_with('-no-retry-compilation -W -cross -cc gcc -gc none',
+		'inactive_types', source)
+	assert c_code.contains('MissingTargetType')
 }
 
 fn test_cross_output_keeps_directives_of_every_branch_behind_guards() {

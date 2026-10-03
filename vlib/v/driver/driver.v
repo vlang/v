@@ -20625,6 +20625,7 @@ fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg
 	tc.notes_are_errors = cfg.notes_are_errors
 	tc.is_prod = prefs.is_prod
 	tc.building_v_fast = cfg.building_v && os.getenv('V3_NO_BUILDING_V_FAST_CHECK') == ''
+	tc.cross_target_prefs = if prefs.output_cross_c { prefs } else { unsafe { nil } }
 	// Self-host scheduling does not prove the input is semantically valid. Keep
 	// diagnostic and expression validation enabled for compiler builds as well.
 	tc.suppress_dump_output = 'nop_dump' in prefs.user_defines
@@ -20633,7 +20634,7 @@ fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg
 // type_checker_config_key tells apart the configurations under which a
 // prepared collection of declarations would not be the one of the check.
 fn type_checker_config_key(prefs &pref.Preferences, cfg TypeCheckerConfig) string {
-	return '${prefs.vroot}\n${project_root_for_files(cfg.user_files)}\n${cfg.input_file}\n${cfg.backend}\n${cfg.enable_globals}\n${cfg.disable_explicit_mutability}\n${cfg.checker_fixture_mode}\n${cfg.warns_are_errors}\n${cfg.explicit_warns_are_errors}\n${cfg.notes_are_errors}\n${cfg.building_v}\n${prefs.is_test}\n${prefs.is_prod}\n${prefs.warn_about_allocs}\n${prefs.user_defines}'
+	return '${prefs.vroot}\n${project_root_for_files(cfg.user_files)}\n${cfg.input_file}\n${cfg.backend}\n${cfg.enable_globals}\n${cfg.disable_explicit_mutability}\n${cfg.checker_fixture_mode}\n${cfg.warns_are_errors}\n${cfg.explicit_warns_are_errors}\n${cfg.notes_are_errors}\n${cfg.building_v}\n${prefs.is_test}\n${prefs.is_prod}\n${prefs.warn_about_allocs}\n${prefs.user_defines}\n${prefs.output_cross_c}'
 }
 
 // incremental_completion_step is how many of the bodies an incremental check
