@@ -5403,10 +5403,7 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 fn (mut g FlatGen) collect_c_flags_from_directives() {
 	mut cur_file := ''
 	mut cur_module := ''
-	mut seen_groups := map[string]bool{}
-	mut start_groups := [][]string{}
-	mut module_groups := [][]string{}
-	mut main_groups := [][]string{}
+	mut groups := []CFlagDirectiveGroup{}
 	for node_idx in g.top_level_nodes() {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
@@ -5436,39 +5433,59 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 		} else {
 			continue
 		}
-		key := flags.join('\x00')
-		if flags.len == 0 || key in seen_groups {
+		if flags.len > 0 {
+			groups << CFlagDirectiveGroup{
+				flags:    flags
+				at_start: at_start
+				in_main:  cur_module in ['', 'main']
+			}
+		}
+	}
+	g.c_flags << ordered_c_flag_directive_groups(groups)
+}
+
+struct CFlagDirectiveGroup {
+	flags    []string
+	at_start bool
+	in_main  bool
+}
+
+// ordered_c_flag_directive_groups puts the groups of `@START_LIBS` style directives
+// first, then the groups of imported modules, then those of the main module. Each
+// group is kept once: a marked occurrence wins over an unmarked one wherever it is
+// declared, otherwise the first occurrence decides the position.
+fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
+	mut result := []string{}
+	mut seen := map[string]bool{}
+	for group in groups {
+		key := group.flags.join('\x00')
+		if group.at_start && key !in seen {
+			seen[key] = true
+			result << group.flags
+		}
+	}
+	mut main_flags := []string{}
+	for group in groups {
+		key := group.flags.join('\x00')
+		if key in seen {
 			continue
 		}
-		seen_groups[key] = true
-		if at_start {
-			start_groups << flags
-		} else if cur_module in ['', 'main'] {
-			main_groups << flags
+		seen[key] = true
+		if group.in_main {
+			main_flags << group.flags
 		} else {
-			module_groups << flags
+			result << group.flags
 		}
 	}
-	for flags in start_groups {
-		g.c_flags << flags
-	}
-	for flags in module_groups {
-		g.c_flags << flags
-	}
-	for flags in main_groups {
-		g.c_flags << flags
-	}
+	result << main_flags
+	return result
 }
 
 // cache_directive_flags resolves source C flags that affect early C cache keys.
 pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
-	mut result := []string{}
-	mut seen_groups := map[string]bool{}
+	mut groups := []CFlagDirectiveGroup{}
 	mut cur_file := ''
 	mut cur_module := ''
-	mut start_groups := [][]string{}
-	mut module_groups := [][]string{}
-	mut main_groups := [][]string{}
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
@@ -5492,28 +5509,15 @@ pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, 
 		} else {
 			continue
 		}
-		key := flags.join('\x00')
-		if flags.len > 0 && key !in seen_groups {
-			seen_groups[key] = true
-			if at_start {
-				start_groups << flags
-			} else if cur_module in ['', 'main'] {
-				main_groups << flags
-			} else {
-				module_groups << flags
+		if flags.len > 0 {
+			groups << CFlagDirectiveGroup{
+				flags:    flags
+				at_start: at_start
+				in_main:  cur_module in ['', 'main']
 			}
 		}
 	}
-	for flags in start_groups {
-		result << flags
-	}
-	for flags in module_groups {
-		result << flags
-	}
-	for flags in main_groups {
-		result << flags
-	}
-	return result
+	return ordered_c_flag_directive_groups(groups)
 }
 
 // c_source_file_is_in_vlib reports whether a source file belongs to the compiler's

@@ -1426,6 +1426,29 @@ fn test_c_flag_start_markers_are_stripped() {
 // including vlib's `-luser32`; mingw otherwise resolves `CloseWindow` from user32
 // first and then reports a duplicate definition from raylib's rcore.o.
 fn test_c_flag_start_markers_move_flags_before_module_flags() {
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -lraylib@START_LIBS\n#flag -lglfw@START_LIBS\n',
+		'#flag -luser32\n', ['-lraylib', '-lglfw', '-luser32', '-lwinmm'])
+}
+
+// A marked directive promotes an identical unmarked one, whichever comes first,
+// so an application can move a library that a wrapper module already links.
+fn test_c_flag_start_markers_promote_unmarked_duplicates() {
+	expected := ['-lraylib', '-lglfw', '-luser32', '-lwinmm']
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -lraylib\n#flag -lraylib@START_LIBS\n#flag -lglfw@START_LIBS\n',
+		'#flag -luser32\n', expected)
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -lraylib@START_LIBS\n#flag -lraylib\n#flag -lglfw@START_LIBS\n',
+		'#flag -luser32\n', expected)
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -lraylib@START_LIBS\n#flag -lglfw@START_LIBS\n',
+		'#flag -lraylib\n#flag -luser32\n', expected)
+	// Without a marker, the first occurrence still decides the position: main is
+	// parsed first here, so `-luser32` stays with the main module flags.
+	assert_c_flag_directive_order('#flag -lwinmm\n#flag -luser32\n', '#flag -luser32\n', [
+		'-lwinmm',
+		'-luser32',
+	])
+}
+
+fn assert_c_flag_directive_order(main_flags string, sys_flags string, expected []string) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_start_markers_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(os.join_path(dir, 'sys')) or { panic(err) }
@@ -1434,15 +1457,12 @@ fn test_c_flag_start_markers_move_flags_before_module_flags() {
 	}
 	main_source := os.join_path(dir, 'main.v')
 	sys_source := os.join_path(dir, 'sys', 'sys.v')
-	os.write_file(main_source, 'module main\n#flag -lwinmm\n#flag -lraylib@START_LIBS\n#flag -lglfw@START_LIBS\n') or {
-		panic(err)
-	}
-	os.write_file(sys_source, 'module sys\n#flag -luser32\n') or { panic(err) }
+	os.write_file(main_source, 'module main\n${main_flags}') or { panic(err) }
+	os.write_file(sys_source, 'module sys\n${sys_flags}') or { panic(err) }
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_files([main_source, sys_source])
-	expected := ['-lraylib', '-lglfw', '-luser32', '-lwinmm']
 	assert cache_directive_flags(a, '', prefs.target, map[string]string{}) == expected
 	mut g := FlatGen.new()
 	g.a = a
