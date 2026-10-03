@@ -5690,7 +5690,10 @@ fn test_json2_reflected_fields_keep_independent_decoder_specializations() {
 	compile := os.execute('${v3_bin} -nocache ${src_file} -b c -o ${c_file}')
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_file) or { '' }
-	assert c_code.contains('json2__Decoder_Result__decode_value(decoder, &decoded_field_value)'), c_code
+	// Each field is decoded by the helper specialized for its own type.
+	assert c_code.contains('json2__Decoder_string__decode_struct_field(decoder, &val->lang'), c_code
+	assert c_code.contains('json2__Decoder_Result__decode_struct_field(decoder, &val->result'), c_code
+	assert c_code.contains('json2__Decoder_Result__decode_value(decoder, target)'), c_code
 }
 
 fn test_json2_reflected_main_type_does_not_use_imported_homonym() {
@@ -5844,7 +5847,9 @@ fn test_parallel_json2_exact_callee_does_not_rebind_main_type_to_imported_homony
 	c_source := gen_c_from_project(v3_bin, 'parallel_json2_exact_callee_homonym', {
 		'v.mod':             "Module { name: 'parallel_json2_exact_callee_homonym' }\n"
 		'discord/discord.v': 'module discord\n\npub struct Discord {\npub:\n\tname string\n}\n'
-		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Discord {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tvalue := json2.decode[Discord](r\'{"value":42}\')!\n\tprintln(value.value)\n}\n'
+		// json2 only decodes a struct key by key through `decode_struct_key` when the
+		// struct embeds another one.
+		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Base {\n\tid int\n}\n\nstruct Discord {\n\tBase\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tvalue := json2.decode[Discord](r\'{"value":42}\')!\n\tprintln(value.value)\n}\n'
 	}, 'main.v')
 	assert c_source.contains('decode_struct_key_T_Discord(')
 	assert !c_source.contains('decode_struct_key_T_discord__Discord(')
