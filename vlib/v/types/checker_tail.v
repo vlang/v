@@ -14811,6 +14811,10 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		param_idx := tc.collapsed_call_arg_param_idx(node, info)
 		if param_idx >= 0 && param_idx < info.params.len {
 			if target := tc.collapsed_call_arg_type(node, info) {
+				if call_arg_has_multiple_pointer_layers(target) {
+					tc.record_error_at(.call_arg_mismatch, 'cannot use `key: value` arguments as `${info.params[param_idx].name()}` in call to `${tc.call_display_name(node)}`', id, node.pos)
+					return
+				}
 				clean_target := unalias_and_unwrap_pointer_type(target)
 				if clean_target is Interface {
 					first_field_node := tc.a.child_node(&node, first_field_arg_idx)
@@ -17850,23 +17854,58 @@ fn field_init_struct_param_name(info CallInfo, param_idx int) ?string {
 		return none
 	}
 	mut typ := info.params[param_idx]
-	for _ in 0 .. 8 {
-		if typ is Pointer {
-			typ = typ.base_type
-		} else if typ is OptionType {
-			typ = typ.base_type
-		} else if typ is ResultType {
-			typ = typ.base_type
-		} else if typ is Alias {
-			typ = typ.base_type
-		} else {
-			break
+	mut seen_aliases := map[string]bool{}
+	for {
+		match typ {
+			Pointer, OptionType, ResultType {
+				typ = typ.base_type
+			}
+			Alias {
+				if typ.name in seen_aliases {
+					return none
+				}
+				seen_aliases[typ.name] = true
+				typ = typ.base_type
+			}
+			else {
+				break
+			}
 		}
 	}
 	if typ is Struct && typ.name.len > 0 {
 		return typ.name
 	}
 	return none
+}
+
+fn call_arg_has_multiple_pointer_layers(target Type) bool {
+	mut typ := target
+	mut pointer_count := 0
+	mut seen_aliases := map[string]bool{}
+	for {
+		match typ {
+			Alias {
+				if typ.name in seen_aliases {
+					return false
+				}
+				seen_aliases[typ.name] = true
+				typ = typ.base_type
+			}
+			Pointer {
+				pointer_count++
+				if pointer_count > 1 {
+					return true
+				}
+				typ = typ.base_type
+			}
+			OptionType, ResultType {
+				typ = typ.base_type
+			}
+			else {
+				return false
+			}
+		}
+	}
 }
 
 // field_init_struct_field_type substitutes the struct declaration's parameters

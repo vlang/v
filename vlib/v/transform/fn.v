@@ -1549,6 +1549,17 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			break
 		}
 		if arg_node.kind == .field_init {
+			if variadic_idx >= 0 && param_idx == variadic_idx {
+				variadic_type := params[variadic_idx]
+				if variadic_type is types.Array {
+					elem_type := t.semantic_type_name(variadic_type.elem_type)
+					if t.normalize_type_alias_chain(elem_type).starts_with('&') {
+						new_children << t.pack_variadic_args(node, i, variadic_type.elem_type)
+						variadic_tail_supplied = true
+						break
+					}
+				}
+			}
 			// Trailing `key: value` args against the variadic `...Struct` slot
 			// (surfacing as `[]Struct`) desugar to one element of the elem
 			// struct type; a non-variadic `[]Struct` param must not collapse.
@@ -2286,15 +2297,17 @@ fn (mut t Transformer) try_lower_join_path_call(id flat.NodeId, node flat.Node) 
 // transform_params_struct_call_arg transforms transform params struct call arg data for transform.
 fn (mut t Transformer) transform_params_struct_call_arg(node flat.Node, field_start int, param_type string) ?flat.NodeId {
 	struct_type := t.params_struct_type_name(param_type) or { return none }
-	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type)
+	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type, param_type)
 }
 
 fn (mut t Transformer) transform_struct_call_arg(node flat.Node, field_start int, param_type string) ?flat.NodeId {
-	struct_type := t.struct_arg_type_name(param_type) or { return none }
-	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type)
+	struct_type := t.struct_arg_type_name(param_type) or {
+		return none
+	}
+	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type, param_type)
 }
 
-fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, field_start int, struct_type string) ?flat.NodeId {
+fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, field_start int, struct_type string, target_type string) ?flat.NodeId {
 	mut field_ids := []flat.NodeId{}
 	for i in field_start .. node.children_count {
 		field_id := t.a.child(&node, i)
@@ -2307,6 +2320,15 @@ fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, 
 	if field_ids.len == 0 {
 		return none
 	}
+	normalized_target := t.normalize_type_alias_chain(target_type.trim_space())
+	if normalized_target.starts_with('&&') {
+		return none
+	}
+	literal_type := if normalized_target.starts_with('&') {
+		t.normalize_type_alias(normalized_target[1..])
+	} else {
+		struct_type
+	}
 	start := t.a.children.len
 	for field_id in field_ids {
 		t.a.children << field_id
@@ -2315,9 +2337,13 @@ fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, 
 		kind:           .struct_init
 		children_start: start
 		children_count: flat.child_count(field_ids.len)
-		value:          struct_type
-		typ:            struct_type
+		value:          literal_type
+		typ:            literal_type
 	})
+	if normalized_target.starts_with('&') {
+		amp_id := t.make_prefix(.amp, struct_id)
+		return t.transform_amp_struct_init_for_type(amp_id, t.a.nodes[int(amp_id)], normalized_target)
+	}
 	return t.transform_struct_fields(struct_id, t.a.nodes[int(struct_id)])
 }
 
@@ -2325,7 +2351,10 @@ fn (t &Transformer) struct_arg_type_name(param_type string) ?string {
 	if param_type == '' {
 		return none
 	}
-	mut typ := param_type
+	mut typ := t.normalize_type_alias_chain(param_type.trim_space())
+	if typ.starts_with('&') {
+		typ = typ[1..]
+	}
 	if typ.starts_with('&') {
 		return none
 	}
@@ -5130,20 +5159,22 @@ fn (t &Transformer) const_expr_for_name_in_context(name string, module_name stri
 fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_type types.Type) flat.NodeId {
 	expected_enum := t.semantic_type_name(elem_type)
 	array_type := '[]${expected_enum}'
-	if named_arg := t.transform_variadic_struct_fields(node, first_arg, elem_type) {
-		if t.in_const_init {
-			return t.make_array_literal_typed([named_arg], array_type)
+	if t.next_non_field_init_arg(node, first_arg) == node.children_count {
+		if named_arg := t.transform_variadic_struct_fields(node, first_arg, elem_type) {
+			if t.in_const_init {
+				return t.make_array_literal_typed([named_arg], array_type)
+			}
+			tmp_name := t.new_temp('varargs')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(expected_enum, t.make_int_literal(0), t.make_int_literal(1)), array_type)
+			value_name := t.new_temp('vararg')
+			t.pending_stmts << t.make_decl_assign_typed(value_name, named_arg, expected_enum)
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('array_push', [
+				t.make_prefix(.amp, t.make_ident(tmp_name)),
+				t.make_prefix(.amp, t.make_ident(value_name)),
+			], 'void'))
+			t.set_var_type(tmp_name, array_type)
+			return t.make_ident(tmp_name)
 		}
-		tmp_name := t.new_temp('varargs')
-		t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(expected_enum, t.make_int_literal(0), t.make_int_literal(1)), array_type)
-		value_name := t.new_temp('vararg')
-		t.pending_stmts << t.make_decl_assign_typed(value_name, named_arg, expected_enum)
-		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('array_push', [
-			t.make_prefix(.amp, t.make_ident(tmp_name)),
-			t.make_prefix(.amp, t.make_ident(value_name)),
-		], 'void'))
-		t.set_var_type(tmp_name, array_type)
-		return t.make_ident(tmp_name)
 	}
 	if t.in_const_init {
 		mut values := []flat.NodeId{cap: int(node.children_count) - first_arg}
@@ -5311,37 +5342,9 @@ fn (mut t Transformer) transform_variadic_struct_fields(node flat.Node, field_st
 	if field_start >= node.children_count {
 		return none
 	}
-	if elem_type !is types.Struct {
-		return none
-	}
-	first := t.a.child_node(&node, field_start)
-	if first.kind != .field_init {
-		return none
-	}
-	mut field_ids := []flat.NodeId{}
-	for i in field_start .. node.children_count {
-		field_id := t.a.child(&node, i)
-		field := t.a.nodes[int(field_id)]
-		if field.kind != .field_init {
-			break
-		}
-		field_ids << field_id
-	}
-	if field_ids.len == 0 {
-		return none
-	}
-	start := t.a.children.len
-	for field_id in field_ids {
-		t.a.children << field_id
-	}
-	struct_id := t.a.add_node(flat.Node{
-		kind:           .struct_init
-		children_start: start
-		children_count: flat.child_count(field_ids.len)
-		value:          t.semantic_type_name(elem_type)
-		typ:            t.semantic_type_name(elem_type)
-	})
-	return t.transform_struct_fields(struct_id, t.a.nodes[int(struct_id)])
+	target_type := t.semantic_type_name(elem_type)
+	struct_type := t.struct_arg_type_name(target_type) or { return none }
+	return t.transform_trailing_field_init_struct_arg(node, field_start, struct_type, target_type)
 }
 
 // make_array_literal_typed builds make array literal typed data for transform.
