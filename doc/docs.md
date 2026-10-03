@@ -59,9 +59,13 @@ This also refreshes the bundled TCC binaries used for fast C compilation.
 revision may ship updated copies of them. It writes nothing: the skills belong to
 the user, and updating the compiler is not consent to overwrite them. Pass
 `-skills` to refresh the ones that were not edited locally, or run
-`v skills update` to choose which ones. Skills with local changes, and skills
-installed before V recorded what it installed, are reported either way and left
-alone; see `v skills update` below.
+`v skills update --global` to choose which ones.
+
+The report is about the skills installed for the whole machine, so
+`v skills update` needs `--global` to act on them; on its own it defaults to the
+project directory, which is a different installation. Skills with local changes,
+and skills installed before V recorded what it installed, are reported either way
+and left alone; see `v skills update` below.
 
 ## Project-local compiler versions with `.vvmrc`
 
