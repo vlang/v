@@ -10,7 +10,9 @@ fn enum_from_arity_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_enum_from_arity_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${enum_from_arity_vexe} -gc none -path "${enum_from_arity_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${enum_from_arity_v3_src}')
+		os.exec([enum_from_arity_vexe, '-gc', 'none', '-path',
+			'${enum_from_arity_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${enum_from_arity_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -19,7 +21,7 @@ fn enum_from_arity_run_bad(v3_bin string, name string, source string, expected s
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -29,9 +31,9 @@ fn enum_from_arity_run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

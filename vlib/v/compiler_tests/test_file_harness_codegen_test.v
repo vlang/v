@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3_with(name string, flags string) string {
 	v3_bin := os.join_path(os.temp_dir(), name)
 	build :=
-		os.execute('${vexe} -gc none ${flags} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', ...(os.split_args(flags) or { panic(err) }), '-path',
+			'${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -43,7 +44,8 @@ fn gen_c_flags(v3_bin string, name string, suffix string, src string, flags stri
 	src_path := write_source(name, suffix, src)
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), src_path, '-b', 'c',
+		'-o', c_path])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C file ${c_path}'
 	return os.read_file(c_path) or { panic(err) }
@@ -56,16 +58,17 @@ fn compile_and_run(v3_bin string, name string, suffix string, src string) os.Res
 fn compile_and_run_flags(v3_bin string, name string, suffix string, src string, flags string) os.Result {
 	src_path := write_source(name, suffix, src)
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), src_path, '-b', 'c',
+		'-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains("undefined reference to `main'"), compile.output
-	return os.execute(bin_path)
+	return os.exec([bin_path])
 }
 
 fn compile_and_run_with_stats(v3_bin string, name string, suffix string, src string) os.Result {
 	src_path := write_source(name, suffix, src)
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
-	return os.execute('${v3_bin} -stats ${src_path} -b c -o ${bin_path}')
+	return os.exec([v3_bin, '-stats', src_path, '-b', 'c', '-o', bin_path])
 }
 
 fn test_v3_test_file_harness_formats_propagation_paths_safely() {
@@ -231,9 +234,9 @@ fn compile_project_and_run(v3_bin string, name string, files map[string]string) 
 
 fn compile_project_root_and_run(v3_bin string, name string, root string) (os.Result, string) {
 	bin_path := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	return run, c_code
 }
@@ -247,7 +250,8 @@ fn compile_expect_failure_flags(v3_bin string, name string, suffix string, src s
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
 	c_path := bin_path + '.c'
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), src_path, '-b', 'c',
+		'-o', bin_path])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !os.exists(c_path), '${name}: generated C despite harness input failure'
 	return compile

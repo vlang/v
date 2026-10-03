@@ -22,14 +22,14 @@ struct TccHistoryFixture {
 }
 
 fn run_checked(command string) string {
-	result := os.execute(command)
+	result := os.exec(os.split_args(command) or { panic(err) })
 	assert result.exit_code == 0, 'command failed (${result.exit_code}):\n${command}\n${result.output}'
 	return result.output
 }
 
 fn git_current_branch(repository string) string {
 	command := 'git -C ${os.quoted_path(repository)} symbolic-ref --quiet --short HEAD'
-	result := os.execute(command)
+	result := os.exec(['git', '-C', '${repository}', 'symbolic-ref', '--quiet', '--short', 'HEAD'])
 	assert result.exit_code == 0 || result.exit_code == 1, 'command failed (${result.exit_code}):\n${command}\n${result.output}'
 
 	if result.exit_code == 1 {
@@ -277,7 +277,10 @@ fi
 	git_spec := '${git_wrapper}${git_options}'
 	path := '${poison_bin}:/usr/bin:/bin'
 	result :=
-		os.execute('cd ${os.quoted_path(root)} && PATH=${os.quoted_path(path)} ${os.quoted_path(real_make)} --no-print-directory latest_tcc_source VROOT=. TCCOS=linux TCCARCH=amd64 TCC_COMMIT=${tinycc_sha} TCC_REPO=${os.quoted_path('file://${tinycc_source}')} GIT=${os.quoted_path(git_spec)} 2>&1')
+		os.exec(['sh', '-c',
+			'cd "\${1}" && PATH="\${2}" "\${3}" --no-print-directory latest_tcc_source VROOT=. TCCOS=linux TCCARCH=amd64 TCC_COMMIT="\${4}" TCC_REPO="\${5}" GIT="\${6}" 2>&1',
+			'v', '${root}', '${path}', '${real_make}', '${tinycc_sha}', '${'file://${tinycc_source}'}',
+			'${git_spec}'])
 	assert result.exit_code == 0, result.output
 	assert !os.exists(bare_git_trace), result.output
 	configured_sysinclude_paths := (os.read_file(os.join_path(root, 'tinycc',
@@ -298,7 +301,7 @@ fi
 	assert rsync_lines[3].contains('thirdparty/tcc.original/lib/build'), rsync_lines.str()
 	assert rsync_lines[4].contains('thirdparty/tcc.original/README.md'), rsync_lines.str()
 	assert rsync_lines[5].ends_with('/build.sh'), rsync_lines.str()
-	assert os.execute('${os.quoted_path(os.join_path(tcc_dir, 'tcc.exe'))} --version').output.trim_space() == 'source-test-tcc'
+	assert os.exec([os.join_path(tcc_dir, 'tcc.exe'), '--version']).output.trim_space() == 'source-test-tcc'
 	staged_source_workflow := os.join_path(root, 'tinycc', 'thirdparty', 'tcc', '.github',
 		'workflows', 'preserve.yml')
 	staged_source_workflow_contents := os.read_file(staged_source_workflow) or { panic(err) }
@@ -562,7 +565,10 @@ fn assert_fixture_bundle_is_vroot_cwd_sensitive(fixture TccHistoryFixture) {
 	source_path := os.join_path(fixture.tmp_dir, 'wrong-cwd-probe.c')
 	executable_path := os.join_path(fixture.tmp_dir, 'wrong-cwd-probe')
 	os.write_file(source_path, 'int main(void) { return 0; }\n') or { panic(err) }
-	result := os.execute('cd ${os.quoted_path(fixture.tcc_dir)} && ./tcc.exe -I${os.quoted_path(os.join_path(vroot, 'thirdparty', 'libgc', 'include'))} -DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_BUILTIN_ATOMIC=1 -o ${os.quoted_path(executable_path)} ${os.quoted_path(source_path)} ${os.quoted_path(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))} -ldl -lpthread 2>&1')
+	result := os.exec(['sh', '-c',
+		'cd "\${1}" && ./tcc.exe -I"\${2}" -DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_BUILTIN_ATOMIC=1 -o "\${3}" "\${4}" "\${5}" -ldl -lpthread 2>&1',
+		'v', '${fixture.tcc_dir}', '${os.join_path(vroot, 'thirdparty', 'libgc', 'include')}',
+		'${executable_path}', '${source_path}', '${os.join_path(fixture.tcc_dir, 'lib', 'libgc.a')}'])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('thirdparty/tcc/lib/tcc/include/stddef.h is unavailable'), result.output
 
@@ -597,7 +603,8 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	}
 
 	fresh_result :=
-		os.execute('export C_INCLUDE_PATH=/poison-c-include CPATH=/poison-cpath; ${fixture.fresh_cmd} 2>&1')
+		os.exec(['env', 'C_INCLUDE_PATH=/poison-c-include', 'CPATH=/poison-cpath',
+			...(os.split_args(fixture.fresh_cmd) or { panic(err) })])
 	assert fresh_result.exit_code == 0, fresh_result.output
 	assert fresh_result.output.contains('is not host-compatible'), fresh_result.output
 	assert fresh_result.output.contains('TCC search directories:'), fresh_result.output
@@ -607,18 +614,18 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	assert_historical_fallback(fixture)
 	assert_fixture_bundle_is_vroot_cwd_sensitive(fixture)
 
-	still_broken_result := os.execute('${fixture.latest_cmd} 2>&1')
+	still_broken_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
 	assert still_broken_result.exit_code == 0, still_broken_result.output
 	assert still_broken_result.output.contains('is not host-compatible'), still_broken_result.output
 	assert_historical_fallback(fixture)
 
 	compatible_head_sha := push_compatible_head(mut fixture)
-	fixed_result := os.execute('${fixture.latest_cmd} 2>&1')
+	fixed_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
 	assert fixed_result.exit_code == 0, fixed_result.output
 	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == compatible_head_sha
 	assert os.read_file(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))! == 'compatible-libgc-v2\n'
-	assert os.execute('${os.quoted_path(os.join_path(fixture.tcc_dir, 'tcc.exe'))} --version').output.trim_space() == 'compatible-tcc-v2'
+	assert os.exec([os.join_path(fixture.tcc_dir, 'tcc.exe'), '--version']).output.trim_space() == 'compatible-tcc-v2'
 	assert !os.exists(compatible_marker_dir(fixture))
 	assert_clean_checkout(fixture.tcc_dir)
 	assert os.ls(fixture.tmp_dir)! == []
@@ -631,7 +638,7 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} commit --quiet -m user-local')
 	local_sha :=
 		run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space()
-	local_result := os.execute('${fixture.latest_cmd} 2>&1')
+	local_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
 	assert local_result.exit_code != 0, local_result.output
 	assert local_result.output.contains('Refusing to overwrite local TCC commits'), local_result.output
 
@@ -651,11 +658,11 @@ fn test_linux_tcc_accepts_compatible_bundle_without_usr_local_include() {
 
 	compatible_head_sha := push_compatible_head_without_local_include(mut fixture)
 	search_result :=
-		os.execute('${os.quoted_path(os.join_path(fixture.source, 'tcc.exe'))} -print-search-dirs 2>&1')
+		os.exec([os.join_path(fixture.source, 'tcc.exe'), '-print-search-dirs'])
 	assert search_result.exit_code == 0, search_result.output
 	assert !search_result.output.split_into_lines().contains('  /usr/local/include'), search_result.output
 
-	fresh_result := os.execute('${fixture.fresh_cmd} 2>&1')
+	fresh_result := os.exec(os.split_args(fixture.fresh_cmd) or { panic(err) })
 	assert fresh_result.exit_code == 0, fresh_result.output
 	assert !fresh_result.output.contains('is not host-compatible'), fresh_result.output
 	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
@@ -675,13 +682,17 @@ fn test_linux_tcc_preserves_git_command_options() {
 	}
 
 	git_with_options := os.quoted_path('git -c protocol.file.allow=always')
-	fresh_result := os.execute('${fixture.fresh_cmd} GIT=${git_with_options} 2>&1')
+	fresh_result := os.exec([...(os.split_args(fixture.fresh_cmd) or { panic(err) }),
+		'GIT=' + 'git -c protocol.file.allow=always'])
 	assert fresh_result.exit_code == 0, fresh_result.output
 	assert fresh_result.output.contains('Using newest host-compatible TCC commit ${fixture.compatible_sha}'), fresh_result.output
 
 	assert_historical_fallback(fixture)
 
-	latest_result := os.execute('${fixture.latest_cmd} GIT=${git_with_options} 2>&1')
+	latest_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'GIT=' + 'git -c protocol.file.allow=always',
+	])
 	assert latest_result.exit_code == 0, latest_result.output
 	assert latest_result.output.contains('Using newest host-compatible TCC commit ${fixture.compatible_sha}'), latest_result.output
 
@@ -690,7 +701,8 @@ fn test_linux_tcc_preserves_git_command_options() {
 	git_with_multiple_options :=
 		os.quoted_path('  git   -c protocol.file.allow=always   -c advice.detachedHead=false  ')
 	multiple_options_result :=
-		os.execute('${fixture.latest_cmd} GIT=${git_with_multiple_options} 2>&1')
+		os.exec([...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+			'GIT=' + '  git   -c protocol.file.allow=always   -c advice.detachedHead=false  '])
 	assert multiple_options_result.exit_code == 0, multiple_options_result.output
 	assert multiple_options_result.output.contains('Using newest host-compatible TCC commit ${fixture.compatible_sha}'), multiple_options_result.output
 
@@ -700,7 +712,10 @@ fn test_linux_tcc_preserves_git_command_options() {
 	wrapper_log := os.join_path(fixture.root, 'git-wrapper.log')
 	write_executable(wrapper_path,
 		'#!/bin/sh\nprintf "%s\\n" "\$*" >> ${os.quoted_path(wrapper_log)}\nexec git "\$@"\n')
-	wrapper_result := os.execute('${fixture.latest_cmd} GIT=${os.quoted_path(wrapper_path)} 2>&1')
+	wrapper_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'GIT=' + '${wrapper_path}',
+	])
 	assert wrapper_result.exit_code == 0, wrapper_result.output
 	assert wrapper_result.output.contains('Using newest host-compatible TCC commit ${fixture.compatible_sha}'), wrapper_result.output
 	assert os.read_file(wrapper_log)!.contains('ls-remote')
@@ -738,17 +753,26 @@ exec ${os.quoted_path(real_git)} "\$@"
 ')
 	legacy_git_arg := os.quoted_path(legacy_git)
 
-	detached_result := os.execute('${fixture.latest_cmd} GIT=${legacy_git_arg} 2>&1')
+	detached_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'GIT=' + '${legacy_git}',
+	])
 	assert detached_result.exit_code == 0, detached_result.output
 	assert_historical_fallback(fixture)
 
 	compatible_head_sha := push_compatible_head(mut fixture)
-	repair_result := os.execute('${fixture.latest_cmd} GIT=${legacy_git_arg} 2>&1')
+	repair_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'GIT=' + '${legacy_git}',
+	])
 	assert repair_result.exit_code == 0, repair_result.output
 	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == compatible_head_sha
 
-	branch_result := os.execute('${fixture.latest_cmd} GIT=${legacy_git_arg} 2>&1')
+	branch_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'GIT=' + '${legacy_git}',
+	])
 	assert branch_result.exit_code == 0, branch_result.output
 	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
 	assert_clean_checkout(fixture.tcc_dir)
@@ -775,7 +799,9 @@ fn test_linux_tcc_does_not_evaluate_git_command_during_make_parsing() {
 	]
 	for git_spec in git_specs {
 		result :=
-			os.execute('cd ${os.quoted_path(root)} && make --no-print-directory -n -f ${os.quoted_path(makefile_path)} fresh_tcc VROOT=${os.quoted_path(root)} TCCOS=linux TCCARCH=amd64 GIT=${os.quoted_path(git_spec)} 2>&1')
+			os.exec(['sh', '-c',
+				'cd "\${1}" && make --no-print-directory -n -f "\${2}" fresh_tcc VROOT="\${3}" TCCOS=linux TCCARCH=amd64 GIT="\${4}" 2>&1',
+				'v', '${root}', '${makefile_path}', '${root}', '${git_spec}'])
 		assert result.exit_code == 0, result.output
 		assert !os.exists(shell_sentinel)
 		assert !os.exists(make_sentinel)
@@ -795,7 +821,9 @@ fn test_linux_tcc_git_detection_does_not_depend_on_shell_export() {
 	write_executable(make_43_shell, '#!/bin/sh\nunset GIT GIT_PROGRAM\nexec /bin/sh "\$@"\n')
 	missing_git := 'v-missing-git-${rand.ulid()}'
 	result :=
-		os.execute('make --no-print-directory -pn -f ${os.quoted_path(makefile_path)} latest_tcc VROOT=${os.quoted_path(root)} TCCOS=linux TCCARCH=amd64 GIT=${os.quoted_path(missing_git)} SHELL=${os.quoted_path(make_43_shell)} 2>&1')
+		os.exec(['make', '--no-print-directory', '-pn', '-f', makefile_path, 'latest_tcc',
+			'VROOT=' + '${root}', 'TCCOS=linux', 'TCCARCH=amd64', 'GIT=' + '${missing_git}',
+			'SHELL=' + '${make_43_shell}'])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains("select_linux_tcc.sh' latest"), result.output
 
@@ -830,14 +858,18 @@ fn test_linux_missing_or_unsafe_git_preserves_existing_vc() {
 	]
 	for git_spec in git_specs {
 		result :=
-			os.execute('cd ${os.quoted_path(root)} && make --no-print-directory -f ${os.quoted_path(makefile_path)} latest_vc VROOT=${os.quoted_path(root)} GIT_ARGV_RUNNER=${os.quoted_path(git_argv_path)} TCCOS=linux GIT=${os.quoted_path(git_spec)} 2>&1')
+			os.exec(['sh', '-c',
+				'cd "\${1}" && make --no-print-directory -f "\${2}" latest_vc VROOT="\${3}" GIT_ARGV_RUNNER="\${4}" TCCOS=linux GIT="\${5}" 2>&1',
+				'v', '${root}', '${makefile_path}', '${root}', '${git_argv_path}', '${git_spec}'])
 		assert result.exit_code == 0, '${git_spec}:\n${result.output}'
 		assert result.output.contains('using existing ./vc/v.c'), result.output
 		assert os.read_file(vc_file)! == '/* preserve manual vc */\n'
 		assert !os.exists(sentinel)
 
 		fresh_result :=
-			os.execute('cd ${os.quoted_path(root)} && make --no-print-directory -f ${os.quoted_path(makefile_path)} fresh_vc VROOT=${os.quoted_path(root)} GIT_ARGV_RUNNER=${os.quoted_path(git_argv_path)} TCCOS=linux GIT=${os.quoted_path(git_spec)} 2>&1')
+			os.exec(['sh', '-c',
+				'cd "\${1}" && make --no-print-directory -f "\${2}" fresh_vc VROOT="\${3}" GIT_ARGV_RUNNER="\${4}" TCCOS=linux GIT="\${5}" 2>&1',
+				'v', '${root}', '${makefile_path}', '${root}', '${git_argv_path}', '${git_spec}'])
 		assert fresh_result.exit_code != 0, '${git_spec}:\n${fresh_result.output}'
 		assert os.read_file(vc_file)! == '/* preserve manual vc */\n'
 		assert !os.exists(sentinel)
@@ -865,17 +897,26 @@ fn test_linux_missing_or_unsafe_git_preserves_existing_vc() {
 	]
 	os.rmdir_all(vc_dir) or { panic(err) }
 	bootstrap_result :=
-		os.execute('cd ${os.quoted_path(root)} && make --no-print-directory -f ${os.quoted_path(makefile_path)} latest_vc VROOT=${os.quoted_path(root)} GIT_ARGV_RUNNER=${os.quoted_path(git_argv_path)} VCREPO=${os.quoted_path(remote)} TCCOS=linux GIT=${os.quoted_path(git_path)} 2>&1')
+		os.exec(['sh', '-c',
+			'cd "\${1}" && make --no-print-directory -f "\${2}" latest_vc VROOT="\${3}" GIT_ARGV_RUNNER="\${4}" VCREPO="\${5}" TCCOS=linux GIT="\${6}" 2>&1',
+			'v', '${root}', '${makefile_path}', '${root}', '${git_argv_path}', '${remote}',
+			'${git_path}'])
 	assert bootstrap_result.exit_code == 0, bootstrap_result.output
 	assert os.read_file(vc_file)! == '/* cloned vc */\n'
 
 	for git_spec in valid_git_specs {
 		result :=
-			os.execute('cd ${os.quoted_path(root)} && make --no-print-directory -f ${os.quoted_path(makefile_path)} fresh_vc VROOT=${os.quoted_path(root)} GIT_ARGV_RUNNER=${os.quoted_path(git_argv_path)} VCREPO=${os.quoted_path(remote)} TCCOS=linux GIT=${os.quoted_path(git_spec)} 2>&1')
+			os.exec(['sh', '-c',
+				'cd "\${1}" && make --no-print-directory -f "\${2}" fresh_vc VROOT="\${3}" GIT_ARGV_RUNNER="\${4}" VCREPO="\${5}" TCCOS=linux GIT="\${6}" 2>&1',
+				'v', '${root}', '${makefile_path}', '${root}', '${git_argv_path}', '${remote}',
+				'${git_spec}'])
 		assert result.exit_code == 0, '${git_spec}:\n${result.output}'
 		assert os.read_file(vc_file)! == '/* cloned vc */\n'
 		latest_result :=
-			os.execute('cd ${os.quoted_path(root)} && make --no-print-directory -f ${os.quoted_path(makefile_path)} latest_vc VROOT=${os.quoted_path(root)} GIT_ARGV_RUNNER=${os.quoted_path(git_argv_path)} VCREPO=${os.quoted_path(remote)} TCCOS=linux GIT=${os.quoted_path(git_spec)} 2>&1')
+			os.exec(['sh', '-c',
+				'cd "\${1}" && make --no-print-directory -f "\${2}" latest_vc VROOT="\${3}" GIT_ARGV_RUNNER="\${4}" VCREPO="\${5}" TCCOS=linux GIT="\${6}" 2>&1',
+				'v', '${root}', '${makefile_path}', '${root}', '${git_argv_path}', '${remote}',
+				'${git_spec}'])
 		assert latest_result.exit_code == 0, '${git_spec}:\n${latest_result.output}'
 		assert os.read_file(vc_file)! == '/* cloned vc */\n'
 	}
@@ -906,14 +947,16 @@ fn test_linux_tcc_rejects_unsafe_git_command_data() {
 	]
 	selector_args := '${os.quoted_path(selector_path)} fresh ${os.quoted_path(os.join_path(root, 'thirdparty', 'tcc'))} unused amd64 ${os.quoted_path(root)}'
 	for git_spec in unsafe_git_specs {
-		result := os.execute('GIT=${os.quoted_path(git_spec)} bash ${selector_args} 2>&1')
+		result := os.exec(['env', 'GIT=' + '${git_spec}', 'bash',
+			...(os.split_args(selector_args) or { panic(err) })])
 		assert result.exit_code == 2, '${git_spec}:\n${result.output}'
 		assert result.output.contains('the Git command contains unsupported characters'), result.output
 		assert !os.exists(sentinel)
 	}
 
 	missing_git := 'v-missing-git-${rand.ulid()}'
-	missing_result := os.execute('GIT=${os.quoted_path(missing_git)} bash ${selector_args} 2>&1')
+	missing_result := os.exec(['env', 'GIT=' + '${missing_git}', 'bash',
+		...(os.split_args(selector_args) or { panic(err) })])
 	assert missing_result.exit_code == 2, missing_result.output
 	assert missing_result.output.contains('the Git executable was not found: ${missing_git}'), missing_result.output
 }
@@ -934,7 +977,10 @@ fn test_linux_tcc_missing_git_preserves_latest_and_fails_fresh() {
 	metadata_before := os.read_file(metadata_path)!
 	missing_git := 'v-missing-git-${rand.ulid()}'
 
-	latest_result := os.execute('${fixture.latest_cmd} GIT=${os.quoted_path(missing_git)} 2>&1')
+	latest_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'GIT=' + '${missing_git}',
+	])
 	assert latest_result.exit_code == 0, latest_result.output
 	assert latest_result.output.contains('the Git executable was not found: ${missing_git}; skipping the Linux TCC refresh.'), latest_result.output
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == head_before
@@ -942,25 +988,28 @@ fn test_linux_tcc_missing_git_preserves_latest_and_fails_fresh() {
 	assert_historical_fallback(fixture)
 
 	explicit_latest_result :=
-		os.execute('${fixture.latest_cmd} GIT=${os.quoted_path(missing_git)} VFLAGS="-cc tcc" 2>&1')
+		os.exec([...(os.split_args(fixture.latest_cmd) or { panic(err) }), 'GIT=' + '${missing_git}',
+			'VFLAGS=-cc tcc'])
 	assert explicit_latest_result.exit_code == 0, explicit_latest_result.output
 	assert explicit_latest_result.output.contains('preserving the existing host-compatible TCC bundle'), explicit_latest_result.output
 	assert_historical_fallback(fixture)
 
-	fresh_result := os.execute('${fixture.fresh_cmd} GIT=${os.quoted_path(missing_git)} 2>&1')
+	fresh_result := os.exec([...(os.split_args(fixture.fresh_cmd) or { panic(err) }),
+		'GIT=' + '${missing_git}'])
 	assert fresh_result.exit_code != 0, fresh_result.output
 	assert fresh_result.output.contains('the Git executable was not found: ${missing_git}'), fresh_result.output
 	assert !os.exists(fixture.tcc_dir)
 
 	empty_latest_result :=
-		os.execute('${fixture.latest_cmd} GIT=${os.quoted_path(missing_git)} 2>&1')
+		os.exec([...(os.split_args(fixture.latest_cmd) or { panic(err) }), 'GIT=' + '${missing_git}'])
 	assert empty_latest_result.exit_code == 0, empty_latest_result.output
 	assert empty_latest_result.output.contains('skipping the Linux TCC refresh'), empty_latest_result.output
 	assert !os.exists(fixture.tcc_dir)
 	assert os.ls(fixture.tmp_dir)! == []
 
 	explicit_empty_result :=
-		os.execute('${fixture.latest_cmd} GIT=${os.quoted_path(missing_git)} VFLAGS="-cc=tcc" 2>&1')
+		os.exec([...(os.split_args(fixture.latest_cmd) or { panic(err) }), 'GIT=' + '${missing_git}',
+			'VFLAGS=-cc=tcc'])
 	assert explicit_empty_result.exit_code != 0, explicit_empty_result.output
 	assert explicit_empty_result.output.contains("existing TCC bundle failed its host-compatibility probe; explicit '-cc tcc' cannot continue"), explicit_empty_result.output
 	assert !os.exists(fixture.tcc_dir)
@@ -971,14 +1020,15 @@ fn test_linux_tcc_missing_git_preserves_latest_and_fails_fresh() {
 	}
 	os.symlink('/bin/false', os.join_path(fixture.tcc_dir, 'tcc.exe')) or { panic(err) }
 	broken_tcc_result :=
-		os.execute('${fixture.latest_cmd} GIT=${os.quoted_path(missing_git)} VFLAGS="-cc tcc" 2>&1')
+		os.exec([...(os.split_args(fixture.latest_cmd) or { panic(err) }), 'GIT=' + '${missing_git}',
+			'VFLAGS=-cc tcc'])
 	assert broken_tcc_result.exit_code != 0, broken_tcc_result.output
 	assert broken_tcc_result.output.contains('existing TCC bundle failed its host-compatibility probe'), broken_tcc_result.output
 	assert os.is_link(os.join_path(fixture.tcc_dir, 'tcc.exe'))
 	assert os.ls(fixture.tmp_dir)! == []
 
 	source_cmd := fixture.latest_cmd.replace_once(' latest_tcc ', ' latest_tcc_source ')
-	missing_source_result := os.execute('${source_cmd} GIT=${os.quoted_path(missing_git)} 2>&1')
+	missing_source_result := os.exec([source_cmd, 'GIT=' + '${missing_git}'])
 	assert missing_source_result.exit_code != 0, missing_source_result.output
 	assert missing_source_result.output.contains('the Git executable was not found: ${missing_git}'), missing_source_result.output
 	assert os.is_link(os.join_path(fixture.tcc_dir, 'tcc.exe'))
@@ -987,14 +1037,14 @@ fn test_linux_tcc_missing_git_preserves_latest_and_fails_fresh() {
 	source_sentinel := os.join_path(fixture.root, 'source-sentinel')
 	hostile_source_git := 'git; touch ${source_sentinel} #'
 	hostile_source_result :=
-		os.execute('${source_cmd} GIT=${os.quoted_path(hostile_source_git)} 2>&1')
+		os.exec([source_cmd, 'GIT=' + '${hostile_source_git}'])
 	assert hostile_source_result.exit_code != 0, hostile_source_result.output
 	assert hostile_source_result.output.contains('the Git command contains unsupported characters'), hostile_source_result.output
 	assert !os.exists(source_sentinel)
 	assert os.is_link(os.join_path(fixture.tcc_dir, 'tcc.exe'))
 	assert os.read_file(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))! == 'broken-libgc\n'
 
-	source_result := os.execute('${source_cmd} 2>&1')
+	source_result := os.exec([source_cmd])
 	assert source_result.exit_code != 0, source_result.output
 	assert source_result.output.contains('No upstream TinyCC build script is available'), source_result.output
 	assert_historical_fallback(fixture)
@@ -1009,7 +1059,7 @@ fn test_linux_tcc_explicit_request_does_not_hide_missing_compatible_history() {
 		os.rmdir_all(fixture.root) or {}
 	}
 
-	result := os.execute('${fixture.fresh_cmd} VFLAGS="-cc tcc" 2>&1')
+	result := os.exec([...(os.split_args(fixture.fresh_cmd) or { panic(err) }), 'VFLAGS=-cc tcc'])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('No host-compatible TCC commit was found'), result.output
 	assert result.output.contains("explicit '-cc tcc' cannot continue"), result.output
@@ -1026,7 +1076,7 @@ fn test_linux_tcc_without_explicit_request_uses_system_fallback() {
 		os.rmdir_all(fixture.root) or {}
 	}
 
-	result := os.execute('${fixture.fresh_cmd} 2>&1')
+	result := os.exec(os.split_args(fixture.fresh_cmd) or { panic(err) })
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('using the system compiler'), result.output
 	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-unknown-unknown'
@@ -1037,7 +1087,7 @@ fn test_linux_tcc_without_explicit_request_uses_system_fallback() {
 	assert os.ls(fixture.tmp_dir)! == []
 
 	compatible_head_sha := push_compatible_head(mut fixture)
-	refresh_result := os.execute('${fixture.latest_cmd} 2>&1')
+	refresh_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
 	assert refresh_result.exit_code == 0, refresh_result.output
 	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == compatible_head_sha
@@ -1055,13 +1105,13 @@ fn test_linux_tcc_retries_an_initially_missing_native_branch() {
 	}
 	run_checked('git -C ${os.quoted_path(fixture.source)} push --quiet ${os.quoted_path(fixture.remote)} :refs/heads/thirdparty-linux-amd64')
 
-	fresh_result := os.execute('${fixture.fresh_cmd} 2>&1')
+	fresh_result := os.exec(os.split_args(fixture.fresh_cmd) or { panic(err) })
 	assert fresh_result.exit_code == 0, fresh_result.output
 	assert fresh_result.output.contains('using the system compiler'), fresh_result.output
 	metadata_path := os.join_path(compatible_marker_dir(fixture), 'metadata')
 	assert os.read_file(metadata_path)! == 'tccos=linux\ntccarch=amd64\nabi=glibc\nbranch=thirdparty-linux-amd64\nremote_head_sha=unavailable\nmode=system\n'
 
-	still_missing_result := os.execute('${fixture.latest_cmd} 2>&1')
+	still_missing_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
 	assert still_missing_result.exit_code == 0, still_missing_result.output
 	assert still_missing_result.output.contains('continuing with the system compiler'), still_missing_result.output
 
@@ -1069,7 +1119,7 @@ fn test_linux_tcc_retries_an_initially_missing_native_branch() {
 	assert_clean_checkout(fixture.tcc_dir)
 
 	compatible_head_sha := push_compatible_head(mut fixture)
-	repaired_result := os.execute('${fixture.latest_cmd} 2>&1')
+	repaired_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
 	assert repaired_result.exit_code == 0, repaired_result.output
 	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == compatible_head_sha
@@ -1095,7 +1145,7 @@ fn test_latest_tcc_refuses_local_commits_in_system_fallback() {
 	local_sha :=
 		run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space()
 
-	result := os.execute('${fixture.latest_cmd} 2>&1')
+	result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('while it contains local commits'), result.output
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == local_sha
@@ -1116,19 +1166,22 @@ fn test_latest_tcc_refuses_dirty_or_mismatched_detached_checkout() {
 
 	local_file := os.join_path(fixture.tcc_dir, 'user-local.txt')
 	os.write_file(local_file, 'preserve me\n') or { panic(err) }
-	dirty_result := os.execute('${fixture.latest_cmd} 2>&1')
+	dirty_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
 	assert dirty_result.exit_code != 0, dirty_result.output
 	assert dirty_result.output.contains('Refusing to refresh a dirty TCC checkout'), dirty_result.output
 	assert os.read_file(local_file)! == 'preserve me\n'
 	os.rm(local_file)!
 
-	mismatch_result := os.execute('${fixture.latest_cmd} TCCARCH=arm64 2>&1')
+	mismatch_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'TCCARCH=arm64',
+	])
 	assert mismatch_result.exit_code != 0, mismatch_result.output
 	assert mismatch_result.output.contains('Refusing to refresh detached TCC without an exact'), mismatch_result.output
 
 	assert_historical_fallback(fixture)
 	run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} checkout --quiet -b user-preserved-branch')
-	wrong_branch_result := os.execute('${fixture.latest_cmd} 2>&1')
+	wrong_branch_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
 	assert wrong_branch_result.exit_code != 0, wrong_branch_result.output
 	assert wrong_branch_result.output.contains('Refusing to refresh TCC branch user-preserved-branch'), wrong_branch_result.output
 
@@ -1145,7 +1198,8 @@ fn test_linuxmusl_native_bundle_stays_on_its_own_clean_branch() {
 		os.rmdir_all(fixture.root) or {}
 	}
 
-	result := os.execute('${fixture.fresh_cmd} TCCOS=linuxmusl TCCARCH=amd64 2>&1')
+	result := os.exec([...(os.split_args(fixture.fresh_cmd) or { panic(err) }), 'TCCOS=linuxmusl',
+		'TCCARCH=amd64'])
 	assert result.exit_code == 0, result.output
 	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linuxmusl-amd64'
 	assert os.read_file(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))! == 'musl-libgc\n'
@@ -1157,7 +1211,7 @@ fn test_linuxmusl_native_bundle_stays_on_its_own_clean_branch() {
 fn execute_tcc_gc_probe_without_vflags(command string) os.Result {
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')
-	result := os.execute(command)
+	result := os.exec(os.split_args(command) or { panic(err) })
 	if vflags := old_vflags {
 		os.setenv('VFLAGS', vflags, true)
 	} else {
@@ -1173,13 +1227,13 @@ fn test_linux_glibc_bundled_tcc_links_and_runs_boehm_gc() {
 	$if !amd64 {
 		return
 	}
-	if os.execute('ldd --version 2>&1').output.to_lower().contains('musl') {
+	if os.exec(['ldd', '--version']).output.to_lower().contains('musl') {
 		return
 	}
 	tcc_dir := os.join_path(@VEXEROOT, 'thirdparty', 'tcc')
 	tcc_path := os.join_path(tcc_dir, 'tcc.exe')
 	if !os.is_executable(tcc_path)
-		|| os.execute('${os.quoted_path(tcc_path)} --version').exit_code != 0 {
+		|| os.exec([tcc_path, '--version']).exit_code != 0 {
 		return
 	}
 	// The hermetic repositories prove history selection with executable fixtures.
@@ -1210,7 +1264,7 @@ fn test_linux_glibc_bundled_tcc_links_and_runs_boehm_gc() {
 	assert build_result.exit_code == 0, build_result.output
 	assert build_result.output.contains('thirdparty/tcc/lib/libgc.a'), build_result.output
 	assert !build_result.output.contains('sigsetjmp'), build_result.output
-	run_result := os.execute(os.quoted_path(executable_path))
+	run_result := os.exec([executable_path])
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output.trim_space() == 'historical-tcc-gc-ok'
 }

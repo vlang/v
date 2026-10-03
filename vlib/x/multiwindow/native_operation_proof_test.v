@@ -516,7 +516,8 @@ fn test_native_primitive_darwin_generated_c_has_no_linux_egl_boundary() {
 		os.rm(output) or {}
 	}
 	command := '${os.quoted_path(@VEXE)} -os macos -b c -d x_multiwindow_render -o ${os.quoted_path(output)} ${os.quoted_path(fixture)}'
-	result := os.execute(command)
+	result := os.exec([@VEXE, '-os', 'macos', '-b', 'c', '-d', 'x_multiwindow_render', '-o', output,
+		'${fixture}'])
 	assert result.exit_code == 0, 'Darwin native primitive generated-C gate failed\ncommand: ${command}\noutput:\n${result.output}'
 	generated := os.read_file(output) or { panic(err) }
 	// Sokol's platform-neutral header contains dormant EGL declarations even in a

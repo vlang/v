@@ -12,7 +12,7 @@ fn test_ctemp_hoisting_preserves_vline_directive_spaces() {
 	os.write_file(source_path,
 		'interface Value {}\n\nstruct Item {}\n\nfn get_value() Value {\n\treturn Item{}\n}\n\nfn main() {\n\titem := get_value() as Item\n\tprintln(item)\n}\n')!
 	cmd := '${os.quoted_path(ctempvars_line_info_vexe)} -g -gc boehm -o - ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([ctempvars_line_info_vexe, '-g', '-gc', 'boehm', '-o', '-', source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	for line in res.output.replace('\r\n', '\n').split_into_lines() {
 		trimmed := line.trim_space()
@@ -32,7 +32,7 @@ fn test_array_push_result_keeps_vline_directive_on_own_line() {
 	os.write_file(source_path,
 		'fn parse() !int {\n\treturn 1\n}\n\nfn parse_all() ![]int {\n\tmut parsed := []int{}\n\tparsed << parse()!\n\treturn parsed\n}\n\nfn main() {\n\tassert parse_all()! == [1]\n}\n')!
 	cmd := '${os.quoted_path(ctempvars_line_info_vexe)} -g -o - ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([ctempvars_line_info_vexe, '-g', '-o', '-', source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	assert !res.output.contains('{#line'), res.output
 }

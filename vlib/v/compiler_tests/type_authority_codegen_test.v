@@ -10,7 +10,9 @@ fn type_authority_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_type_authority_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${type_authority_vexe} -gc none -path "${type_authority_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${type_authority_v3_src}')
+		os.exec([type_authority_vexe, '-gc', 'none', '-path',
+			'${type_authority_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${type_authority_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -121,9 +123,9 @@ fn test_imported_type_authority_for_if_expr_and_fixed_array_index() {
 	v3_bin := type_authority_build_v3()
 	root := type_authority_write_project()
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '39'
 

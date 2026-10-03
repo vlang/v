@@ -15,7 +15,7 @@ fn choose(p Params) int {
 }
 fn main() { println(choose(Params{})) }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, '-check', path])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('handled more than once'), result.output
 }
@@ -35,6 +35,6 @@ fn choose(value Choice, lookup map[int]Entry) int {
  }
 }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, '-check', path])
 	assert result.exit_code == 0, result.output
 }

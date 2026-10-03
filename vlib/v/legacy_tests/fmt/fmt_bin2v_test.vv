@@ -54,7 +54,7 @@ fn write_bin2v_keep_content() ! {
 	os.rm(b2v_keep_path) or {}
 	cmd := '${os.quoted_path(vexe)} bin2v -w ${os.quoted_path(b2v_keep_path)} ${os.quoted_path(img0)} ${os.quoted_path(img1)}'
 	eprintln('> running: ${cmd}')
-	res := os.execute(cmd)
+	res := os.exec([vexe, 'bin2v', '-w', b2v_keep_path, '${img0}', '${img1}'])
 	if res.exit_code != 0 {
 		return error_with_code(res.output.trim_space(), res.exit_code)
 	}

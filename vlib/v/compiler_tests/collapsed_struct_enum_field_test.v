@@ -89,7 +89,8 @@ fn main() {
 }
 ') or { panic(err) }
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(@VEXE)} -gc none ${flags} run ${os.quoted_path(main_path)}')
+		result := os.exec([@VEXE, '-gc', 'none', ...(os.split_args(flags) or { panic(err) }), 'run',
+			main_path])
 		assert result.exit_code == 0, 'flags=${flags}: ${result.output}'
 	}
 }
@@ -108,7 +109,8 @@ fn main() {
 }
 ') or { panic(err) }
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(@VEXE)} -gc none ${flags} -check ${os.quoted_path(main_path)}')
+		result := os.exec([@VEXE, '-gc', 'none', ...(os.split_args(flags) or { panic(err) }), '-check',
+			main_path])
 		assert result.exit_code != 0, '${name}, flags=${flags}: invalid enum field was accepted'
 		output := result.output.replace('${os.file_name(root)}.ui2.', 'ui2.')
 		assert output.contains(diagnostic), '${name}, flags=${flags}: ${result.output}'

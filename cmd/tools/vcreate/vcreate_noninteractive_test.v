@@ -22,7 +22,7 @@ fn test_new_non_interactive_uses_defaults() {
 	}
 	name := 'my_ni_project'
 	// `< /dev/null` guarantees a non-terminal stdin that returns EOF immediately.
-	res := os.execute('${os.quoted_path(vexe)} new ${name} < /dev/null')
+	res := os.exec(['sh', '-c', '"\${1}" new "\${2}" < /dev/null', 'v', '${vexe}', '${name}'])
 	assert res.exit_code == 0, res.output
 	mod := vmod.from_file(os.join_path(tdir, name, 'v.mod')) or {
 		assert false, err.str()

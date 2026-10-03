@@ -3,6 +3,7 @@ module parser
 import os
 import strconv
 import strings
+import sync
 import v.cmdexec
 import v.flat
 import v.pref
@@ -132,6 +133,11 @@ mut:
 	translated_sizeof_const_names     map[string]bool
 	translated_sizeof_global_names    map[string]bool
 	translated_sizeof_scanned_modules map[string]bool
+	// The sibling-file declarations the workers of one parse batch share (see
+	// scan_translated_sizeof_declarations), and this worker's place among them.
+	translated_sizeof_shared          &TranslatedSizeofShared = unsafe { nil }
+	translated_sizeof_worker          int
+	translated_sizeof_branch_evals    int
 	local_binding_undos               []string
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -464,7 +470,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	}
 	p.a.source_files[p.cur_file_id] = file
 	p.s.init(file, stable_src)
-	if stable_src.contains('dynamic') && stable_src.contains('sql') {
+	if source_may_have_dynamic_sql(stable_src) {
 		p.collect_sql_query_data_aliases()
 	}
 	p.next()
@@ -8624,9 +8630,10 @@ fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
 		core_id = p.a.child(&p.a.nodes[int(core_id)], 0)
 	}
 	rhs := p.a.nodes[int(core_id)]
-	// Only field selectors have wrapper recovery through parentheses here.
+	// Field selectors and optional dereferences retain their guard shape through parentheses.
+	parenthesized_guard := rhs.kind == .selector || (rhs.kind == .prefix && rhs.op == .mul)
 	if rhs.kind !in [.call, .index, .prefix, .selector, .ident]
-		|| (parenthesized && rhs.kind != .selector) {
+		|| (parenthesized && !parenthesized_guard) {
 		mut start := assign_end
 		mut end := p.a.nodes[int(rhs_id)].pos.end
 		source := p.s.src
@@ -9253,19 +9260,33 @@ fn (mut p Parser) parenthesized_match_header_starts_block() bool {
 		return false
 	}
 	mut lookahead := p.s
-	mut depth := 1
-	for depth > 0 {
-		tok := lookahead.scan()
-		if tok == .eof {
-			return false
+	mut next := token.Token.lpar
+	// A parenthesized subject may have postfixes before the match body.
+	for (next in [.lpar, .lsbr, .dot]) {
+		if next == .dot {
+			next = lookahead.scan()
+			if next != .name && !next.is_keyword() {
+				return false
+			}
+			next = lookahead.scan()
+			continue
 		}
-		if tok == .lpar {
-			depth++
-		} else if tok == .rpar {
-			depth--
+		opening := next
+		closing := if opening == .lpar { token.Token.rpar } else { token.Token.rsbr }
+		mut depth := 1
+		for depth > 0 {
+			tok := lookahead.scan()
+			if tok == .eof {
+				return false
+			}
+			if tok == opening {
+				depth++
+			} else if tok == closing {
+				depth--
+			}
 		}
+		next = lookahead.scan()
 	}
-	mut next := lookahead.scan()
 	if next == .semicolon {
 		next = lookahead.scan()
 	}
@@ -9858,6 +9879,37 @@ fn (p &Parser) lhs_is_dynamic_sql_expr_alias(lhs flat.NodeId) bool {
 	}
 	node := p.a.nodes[int(lhs)]
 	return node.kind == .ident && node.value in p.sql_query_data_aliases
+}
+
+// source_may_have_dynamic_sql reports whether `src` can hold a `dynamic` query,
+// which collect_sql_query_data_aliases looks for by scanning the whole file. Such
+// a query is the word `dynamic` inside a block after the word `sql`. Words in
+// comments and strings count as well, so it can answer yes without a query, but
+// never no with one.
+fn source_may_have_dynamic_sql(src string) bool {
+	sql_at := source_word_index(src, 'sql', 0)
+	return sql_at >= 0 && source_word_index(src, 'dynamic', sql_at + 1) >= 0
+}
+
+// source_word_index returns the first index from `start` where `word` can be a
+// whole token: no letter or `_` right before it (a digit can end a number), and
+// no identifier byte right after it. It returns -1 without one.
+fn source_word_index(src string, word string, start int) int {
+	mut from := start
+	for {
+		at := src.index_after_(word, from)
+		if at < 0 {
+			return -1
+		}
+		end := at + word.len
+		starts_token := at == 0 || !(src[at - 1].is_letter() || src[at - 1] == `_`)
+		ends_token := end >= src.len || !(src[end].is_alnum() || src[end] == `_`)
+		if starts_token && ends_token {
+			return at
+		}
+		from = at + 1
+	}
+	return -1
 }
 
 fn (mut p Parser) collect_sql_query_data_aliases() {
@@ -14967,14 +15019,118 @@ fn (mut p Parser) scan_translated_sizeof_declarations() {
 	mut paths := p.parsed_v_file_paths.clone()
 	paths << p.parse_batch_paths
 	mut scanned := map[string]bool{}
+	mut siblings := []string{}
 	for path in paths {
 		if path == p.cur_file || os.dir(path) != os.dir(p.cur_file) || scanned[path] {
 			continue
 		}
 		scanned[path] = true
-		source := os.read_file(path) or { continue }
-		p.scan_translated_sizeof_source(source)
+		siblings << path
 	}
+	// The tables are unions, so the order of the files does not matter. Workers
+	// that index the same directory start at different files and take over the
+	// ones the others already published.
+	first := if siblings.len > 0 { p.translated_sizeof_worker % siblings.len } else { 0 }
+	for k in 0 .. siblings.len {
+		p.scan_translated_sizeof_sibling(siblings[(first + k) % siblings.len])
+	}
+}
+
+// TranslatedSizeofShared holds, for the workers of one parse batch, the names
+// each sibling file adds to the sizeof declaration tables. Indexing a directory
+// reads and scans all of its files; shared, the workers that need the same
+// directory split that work instead of each doing all of it.
+@[heap]
+pub struct TranslatedSizeofShared {
+mut:
+	mu    &sync.Mutex = sync.new_mutex()
+	files map[string]&TranslatedSizeofFile
+}
+
+// TranslatedSizeofFile is what one file adds to the tables; `ready` once known.
+@[heap]
+struct TranslatedSizeofFile {
+mut:
+	ready   bool
+	types   []string
+	consts  []string
+	globals []string
+}
+
+pub fn TranslatedSizeofShared.new() &TranslatedSizeofShared {
+	return &TranslatedSizeofShared{}
+}
+
+fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
+	if isnil(p.translated_sizeof_shared) {
+		source := os.read_file(path) or { return }
+		p.scan_translated_sizeof_source(source)
+		return
+	}
+	mut shared_files := p.translated_sizeof_shared
+	file_key := '${path}\x00${p.cur_module}'
+	shared_files.mu.lock()
+	if entry := shared_files.files[file_key] {
+		if entry.ready {
+			shared_files.mu.unlock()
+			for key in entry.types {
+				p.translated_sizeof_type_names[key] = true
+			}
+			for key in entry.consts {
+				p.translated_sizeof_const_names[key] = true
+			}
+			for key in entry.globals {
+				p.translated_sizeof_global_names[key] = true
+			}
+			return
+		}
+		// Another worker scans it right now, or its result depended on that
+		// worker's comptime state: scan it here as well.
+		shared_files.mu.unlock()
+		source := os.read_file(path) or { return }
+		p.scan_translated_sizeof_source(source)
+		return
+	}
+	mut entry := &TranslatedSizeofFile{}
+	shared_files.files[file_key] = entry
+	shared_files.mu.unlock()
+	source := os.read_file(path) or { return }
+	// Scan into empty tables to learn what this file adds, then merge.
+	types := p.translated_sizeof_type_names.move()
+	consts := p.translated_sizeof_const_names.move()
+	globals := p.translated_sizeof_global_names.move()
+	evals := p.translated_sizeof_branch_evals
+	p.scan_translated_sizeof_source(source)
+	if p.translated_sizeof_branch_evals != evals {
+		// Branches can read declarations from earlier siblings. Discard this
+		// context-free scan and repeat it with the accumulated tables visible.
+		p.translated_sizeof_type_names = types
+		p.translated_sizeof_const_names = consts
+		p.translated_sizeof_global_names = globals
+		p.scan_translated_sizeof_source(source)
+		return
+	}
+	file_types := p.translated_sizeof_type_names.keys()
+	file_consts := p.translated_sizeof_const_names.keys()
+	file_globals := p.translated_sizeof_global_names.keys()
+	p.translated_sizeof_type_names = types
+	p.translated_sizeof_const_names = consts
+	p.translated_sizeof_global_names = globals
+	for key in file_types {
+		p.translated_sizeof_type_names[key] = true
+	}
+	for key in file_consts {
+		p.translated_sizeof_const_names[key] = true
+	}
+	for key in file_globals {
+		p.translated_sizeof_global_names[key] = true
+	}
+	shared_files.mu.lock()
+	entry.types = file_types
+	entry.consts = file_consts
+	entry.globals = file_globals
+	entry.ready = true
+	shared_files.mu.unlock()
 }
 
 fn (mut p Parser) scan_translated_sizeof_source(source string) {
@@ -15018,6 +15174,7 @@ fn (mut p Parser) scan_translated_sizeof_range(source string, tokens []InlineAsm
 			}
 			if close < end && i + 1 < close && tokens[i + 1].kind == .key_if {
 				condition := source[tokens[i + 1].end..tokens[close].pos]
+				p.translated_sizeof_branch_evals++
 				skip_decl = skip_decl || !p.eval_attribute_comptime_cond(condition)
 			}
 			i = close + 1
@@ -15116,6 +15273,7 @@ fn (mut p Parser) scan_translated_sizeof_values(tokens []InlineAsmScanToken, sta
 }
 
 fn (mut p Parser) scan_translated_sizeof_comptime_if(source string, tokens []InlineAsmScanToken, start int, end int, inspect bool) int {
+	p.translated_sizeof_branch_evals++
 	open := inline_asm_comptime_open_brace(tokens, start + 2, end)
 	if open >= end { return end }
 	close := inline_asm_matching_close_brace(tokens, open, end)
@@ -15172,6 +15330,7 @@ fn translated_sizeof_pseudo_needs_source_context(t InlineAsmScanToken) bool {
 }
 
 fn (mut p Parser) scan_translated_sizeof_comptime_match(source string, tokens []InlineAsmScanToken, start int, end int) int {
+	p.translated_sizeof_branch_evals++
 	open := inline_asm_comptime_open_brace(tokens, start + 2, end)
 	if open >= end || start + 2 >= open { return end }
 	close := inline_asm_matching_close_brace(tokens, open, end)
@@ -16171,9 +16330,11 @@ fn (mut p Parser) parse_type_name() string {
 	// pointer &T
 	if p.tok == .amp {
 		p.next()
-		if p.parsing_struct_field_type && p.tok == .lsbr && p.peek() == .rsbr && !p.prefs.is_fmt {
-			p.record_diagnostic_span('V arrays are already references behind the scenes,\nthere is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).\nIf you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
-				p.tok_pos, p.tok_end)
+		$if !ownership ? {
+			if p.parsing_struct_field_type && p.tok == .lsbr && p.peek() == .rsbr && !p.prefs.is_fmt {
+				p.record_diagnostic_span('V arrays are already references behind the scenes,\nthere is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).\nIf you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
+					p.tok_pos, p.tok_end)
+			}
 		}
 		return '&' + p.parse_type_name()
 	}

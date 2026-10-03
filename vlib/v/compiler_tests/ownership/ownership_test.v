@@ -19,7 +19,8 @@ fn ownership_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${ownership_vexe} -gc none -d ownership -path "${ownership_vlib_dir}" -o ${v3_bin} ${ownership_v3_src}')
+		os.exec([ownership_vexe, '-gc', 'none', '-d', 'ownership', '-path', ownership_vlib_dir,
+			'-o', v3_bin, '${ownership_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(cache_path, v3_bin) or {}
 	return v3_bin
@@ -32,7 +33,7 @@ fn run_ownership_check(v3_bin string, name string, code string) os.Result {
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_autofree_check(v3_bin string, name string, code string) os.Result {
@@ -42,7 +43,7 @@ fn run_autofree_check(v3_bin string, name string, code string) os.Result {
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -autofree -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-autofree', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result {
@@ -52,7 +53,7 @@ fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out.c')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result {
@@ -62,7 +63,7 @@ fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result 
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out.c')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -autofree -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-autofree', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
@@ -76,7 +77,7 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, main_code) or { panic(err) }
 	os.write_file(mod_src, module_code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn test_ownership_flag_does_not_define_target_ownership() {
@@ -1474,7 +1475,8 @@ fn pass(s string) string {
 	assert fail_param_expr_arg.exit_code != 0
 	assert fail_param_expr_arg.output.contains('use of moved value: `x`'), fail_param_expr_arg.output
 
-	ok_param_literal_after_owned_call := run_ownership_check(v3_bin, 'return_param_literal_after_owned_call', "
+	// Owning calls copy literals, so their returned copies keep move tracking.
+	fail_param_literal_after_owned_call := run_ownership_check(v3_bin, 'return_param_literal_after_owned_call', "
 fn main() {
 	owned := 'hello'.to_owned()
 	x := pass(owned)
@@ -1489,7 +1491,26 @@ fn pass(s string) string {
 	return s
 }
 	")
-	assert ok_param_literal_after_owned_call.exit_code == 0, ok_param_literal_after_owned_call.output
+	assert fail_param_literal_after_owned_call.exit_code != 0
+	assert fail_param_literal_after_owned_call.output.contains('use of moved value: `y`'), fail_param_literal_after_owned_call.output
+
+	ok_cloned_param_literal_after_owned_call := run_ownership_check(v3_bin, 'cloned_return_param_literal_after_owned_call', "
+fn main() {
+	owned := 'hello'.to_owned()
+	x := pass(owned)
+	println(x)
+	y := pass('literal')
+	z := y.clone()
+	assert z == y
+	assert unsafe { z.str != y.str }
+	println(y)
+}
+
+fn pass(s string) string {
+	return s
+}
+	")
+	assert ok_cloned_param_literal_after_owned_call.exit_code == 0, ok_cloned_param_literal_after_owned_call.output
 
 	ok_nested_fn_literal_return := run_ownership_check(v3_bin, 'nested_fn_literal_return_ignored', "
 fn run(f fn () string) {
@@ -3280,7 +3301,7 @@ fn main() {
 ')
 	assert distinct_field_moves.exit_code == 0, distinct_field_moves.output
 	distinct_field_binary := os.join_path(os.temp_dir(), 'v3_ownership_branch_distinct_field_moves_${os.getpid()}', 'out')
-	distinct_field_run := os.execute(distinct_field_binary)
+	distinct_field_run := os.exec([distinct_field_binary])
 	assert distinct_field_run.exit_code == 0, distinct_field_run.output
 	dropped_ids := distinct_field_run.output.fields()
 	assert '2' in dropped_ids, distinct_field_run.output

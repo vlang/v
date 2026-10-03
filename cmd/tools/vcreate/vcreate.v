@@ -286,7 +286,7 @@ indent_style = tab
 fn (c &Create) create_git_repo(dir string) {
 	// Initialize git and add a .gitignore file.
 	if !os.is_dir('${dir}/.git') {
-		res := os.execute('git init ${dir}')
+		res := os.exec(['git', 'init', dir])
 		if res.exit_code != 0 {
 			eprintln('')
 			cerror('unable to initialize a git repository')

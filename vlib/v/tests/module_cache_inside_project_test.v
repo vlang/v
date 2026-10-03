@@ -58,7 +58,8 @@ fn module_cache_is_usable() bool {
 fn build(dir string, name string, flags string) {
 	src := os.quoted_path(os.join_path(dir, '${name}.v'))
 	exe := os.quoted_path(os.join_path(dir, '${name}.exe'))
-	res := os.execute('${os.quoted_path(@VEXE)} -cc cc ${flags} -o ${exe} ${src}')
+	res := os.exec([@VEXE, '-cc', 'cc', ...(os.split_args(flags) or { panic(err) }), '-o',
+		os.join_path(dir, '${name}.exe'), os.join_path(dir, '${name}.v')])
 	if res.exit_code != 0 {
 		eprintln(res.output)
 	}
@@ -66,7 +67,7 @@ fn build(dir string, name string, flags string) {
 }
 
 fn run_built(dir string, name string) string {
-	res := os.execute(os.quoted_path(os.join_path(dir, '${name}.exe')))
+	res := os.exec([os.join_path(dir, '${name}.exe')])
 	assert res.exit_code == 0
 	return res.output.trim_space()
 }

@@ -18,7 +18,7 @@ pub fn nested(values []int) []int { foo := Passthrough{}; return foo.borrow(valu
 	os.write_file(os.join_path(root, 'main.v'), 'import nested.foo
 fn main() { original := [1, 2]; mut alias := foo.nested(original); alias[0] = 9 }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(root)}')
+	result := os.exec([@VEXE, '-new-compiler', '-check', root])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('immutable'), result.output
 }
@@ -78,7 +78,7 @@ fn nested(values []int, helper MapperOrInt) []int { ${body} }
 fn main() { original := [1, 2]; mut alias := nested(original, MapperOrInt(MapperA(passthrough))); alias[0] = 9 }
 ')!
 		defer { os.rm(path) or {} }
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-new-compiler', '-check', path])
 		assert result.exit_code != 0, 'case ${index}: ${result.output}'
 		assert result.output.contains('immutable'), 'case ${index}: ${result.output}'
 	}
@@ -96,6 +96,6 @@ fn nested(values []int) []int {
 fn main() { original := [1, 2]; mut fresh := nested(original); fresh[0] = 9 }
 ')!
 	defer { os.rm(path) or {} }
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -check ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, '-new-compiler', '-check', path])
 	assert result.exit_code == 0, result.output
 }

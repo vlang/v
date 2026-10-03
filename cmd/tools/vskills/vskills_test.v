@@ -258,22 +258,22 @@ fn test_cached_skills_launcher_lists_and_safely_removes_custom_skills() {
 	os.mkdir_all(victim)!
 	os.write_file(os.join_path(victim, 'keep.txt'), 'unrelated')!
 	vexe := os.quoted_path(@VEXE)
-	listed := os.execute('${vexe} skills list')
+	listed := os.exec([@VEXE, 'skills', 'list'])
 	assert listed.exit_code == 0, listed.output
 	assert listed.output.contains('v-mcp'), listed.output
 	assert os.is_dir(cache)
-	preview := os.execute('${vexe} skills remove custom --dry-run')
+	preview := os.exec([@VEXE, 'skills', 'remove', 'custom', '--dry-run'])
 	assert preview.exit_code == 0, preview.output
 	assert preview.output.contains('would remove'), preview.output
 	assert os.read_file(os.join_path(custom, 'SKILL.md'))! == 'custom entry'
 	assert os.read_file(os.join_path(custom, 'references', 'keep.txt'))! == 'keep'
 	for name in ['..', '../../victim'] {
-		bad := os.execute('${vexe} skills remove ${os.quoted_path(name)}')
+		bad := os.exec([@VEXE, 'skills', 'remove', '${name}'])
 		assert bad.exit_code == 1, bad.output
 		assert os.read_file(os.join_path(victim, 'keep.txt'))! == 'unrelated'
 		assert os.is_dir(custom)
 	}
-	removed := os.execute('${vexe} skills remove custom')
+	removed := os.exec([@VEXE, 'skills', 'remove', 'custom'])
 	assert removed.exit_code == 0, removed.output
 	assert !os.exists(custom)
 	assert os.read_file(os.join_path(victim, 'keep.txt'))! == 'unrelated'

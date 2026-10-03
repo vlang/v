@@ -48,9 +48,7 @@ fn (mut tc TypeChecker) vls_inlay_hints(file_id int, source string) string {
 			else {}
 		}
 	}
-	hints.sort_with_compare(fn (a &VlsInlayHint, b &VlsInlayHint) int {
-		return a.offset - b.offset
-	})
+	hints.sort_with_compare(compare_vls_inlay_hint_offsets)
 	mut seen := map[string]bool{}
 	mut sb := strings.new_builder(hints.len * 64 + 32)
 	sb.write_string('{"inlay_hints":[')
@@ -68,6 +66,12 @@ fn (mut tc TypeChecker) vls_inlay_hints(file_id int, source string) string {
 	}
 	sb.write_string(']}')
 	return sb.str()
+}
+
+// compare_vls_inlay_hint_offsets orders hints by source offset. A named comparator
+// keeps vls_inlay_hints free of function literals, which transform lowers serially.
+fn compare_vls_inlay_hint_offsets(a &VlsInlayHint, b &VlsInlayHint) int {
+	return a.offset - b.offset
 }
 
 // vls_decl_assign_hints shows the type of each variable `x := ...` declares,

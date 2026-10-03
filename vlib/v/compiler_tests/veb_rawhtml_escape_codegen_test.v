@@ -11,7 +11,8 @@ fn rawesc_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_rawhtml_escape_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${rawesc_vexe} -gc none -path "${rawesc_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${rawesc_v3_src}')
+		os.exec([rawesc_vexe, '-gc', 'none', '-path', '${rawesc_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${rawesc_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,10 +34,10 @@ fn test_filter_html_only_trusts_veb_rawhtml() {
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_rawhtml_escape_bin_${pid}')
 	compile :=
-		os.execute('${v3_bin} -no-memory-limit ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+		os.exec([v3_bin, '-no-memory-limit', os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split('\n')
 	assert lines.len == 3, run.output

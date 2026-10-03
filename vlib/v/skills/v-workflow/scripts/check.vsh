@@ -83,7 +83,7 @@ fn vet_command(target string) string {
 // run_step runs one check and reports it, counting a failure rather than exiting
 // so that one bad path does not hide the state of the others.
 fn run_step(label string, target string, cmd string) int {
-	result := os.execute(cmd)
+	result := os.exec(os.split_args(cmd) or { panic(err) })
 	if result.exit_code == 0 {
 		println('  ok       ${label}: ${target}')
 		return 0

@@ -22,7 +22,8 @@ fn test_vup_generates_windows_c_without_handle_type_errors() ! {
 	for cc in ['msvc', 'gcc', 'tcc'] {
 		c_file := os.join_path(test_root, 'vup_${cc}.c')
 		// Generating C exercises the Windows checker without needing a Windows SDK.
-		result := os.execute('${os.quoted_path(compiler)} -new-compiler -g -gc none -nocache -os windows -arch amd64 -cc ${cc} -o ${os.quoted_path(c_file)} ${os.quoted_path(source)}')
+		result := os.exec([compiler, '-new-compiler', '-g', '-gc', 'none', '-nocache', '-os', 'windows',
+			'-arch', 'amd64', '-cc', cc, '-o', c_file, source])
 		assert result.exit_code == 0, result.output
 		assert os.is_file(c_file)
 	}
@@ -45,7 +46,7 @@ fn test_vup_checks_primary_compiler_when_built_by_v1_fallback() ! {
 	}
 
 	tool := os.join_path(test_root, 'vup')
-	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))}')
+	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
 	assert build.exit_code == 0, build.output
 
 	git_refs := os.join_path(test_root, '.git', 'refs', 'heads')
@@ -63,7 +64,8 @@ fn test_vup_checks_primary_compiler_when_built_by_v1_fallback() ! {
 	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\nexit 0\n')!
 
 	path := '${bin_dir}:${os.getenv('PATH')}'
-	result := os.execute('PATH=${os.quoted_path(path)} VEXE=${os.quoted_path(os.join_path(test_root, 'v1_fallback'))} ${os.quoted_path(tool)}')
+	result := os.exec(['env', 'PATH=' + '${path}',
+		'VEXE=' + '${os.join_path(test_root, 'v1_fallback')}', '${tool}'])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('V is already updated.'), result.output
 	compiler_calls := os.read_file(log_file)!
@@ -89,7 +91,7 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 	test_source := os.join_path(test_root, 'vup.v')
 	os.write_file(test_source, vup_source.replace('@VCURRENTHASH', "'abcdef0'"))!
 	tool := os.join_path(test_root, 'vup')
-	build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tool)} ${os.quoted_path(test_source)}')
+	build := os.exec([vexe, '-o', '${tool}', test_source])
 	assert build.exit_code == 0, build.output
 
 	git_refs := os.join_path(test_root, '.git', 'refs', 'heads')
@@ -108,7 +110,8 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 
 	path := '${bin_dir}:${os.getenv('PATH')}'
 	primary_vexe := os.join_path(os.real_path(test_root), 'v')
-	result := os.execute('PATH=${os.quoted_path(path)} VEXE=${os.quoted_path(os.join_path(test_root, 'v1_fallback'))} ${os.quoted_path(tool)}')
+	result := os.exec(['env', 'PATH=' + '${path}',
+		'VEXE=' + '${os.join_path(test_root, 'v1_fallback')}', '${tool}'])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('`${primary_vexe}` is missing, trying `make` to restore it...'), result.output
 	make_calls := os.read_file(make_log)!

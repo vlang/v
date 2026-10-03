@@ -10,7 +10,9 @@ fn pointer_voidptr_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_pointer_voidptr_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${pointer_voidptr_vexe} -gc none -path "${pointer_voidptr_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${pointer_voidptr_v3_src}')
+		os.exec([pointer_voidptr_vexe, '-gc', 'none', '-path',
+			'${pointer_voidptr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${pointer_voidptr_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -19,9 +21,9 @@ fn pointer_voidptr_run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -30,7 +32,7 @@ fn pointer_voidptr_gen_c(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.c')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -39,7 +41,7 @@ fn pointer_voidptr_run_bad(v3_bin string, name string, source string, expected s
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -226,9 +228,9 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} ${source} -b c -o ${bin}')
+	compile := os.exec([v3_bin, source, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '17'
 }
@@ -258,9 +260,9 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} ${source} -b c -o ${bin}')
+	compile := os.exec([v3_bin, source, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '19'
 }

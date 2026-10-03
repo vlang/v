@@ -151,8 +151,8 @@ pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
 	return common_parse_uint(s, _base, _bit_size, true, true)
 }
 
-// common_parse_int is called by parse int and allows the parsing
-// to stop on non or invalid digit characters and return with an error
+// common_parse_int parses a signed integer, optionally stopping at invalid digits.
+// It borrows the input string and reports syntax or range errors when requested.
 @[direct_array_access]
 pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !i64 {
 	if _s == '' {
@@ -163,19 +163,31 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	if bit_size == 0 {
 		bit_size = int_size
 	}
-	mut s := _s
+	mut s := ''
+	$if ownership ? {
+		// Replacing the sign-trimmed local must not destroy the caller's input.
+		s = _s.clone()
+	} $else {
+		s = _s
+	}
 	// Pick off leading sign.
 	mut neg := false
 	if s[0] == `+` {
-		// s = s[1..]
-		unsafe {
-			s = tos(s.str + 1, s.len - 1)
+		$if ownership ? {
+			s = s.substr_unsafe(1, s.len).clone()
+		} $else {
+			unsafe {
+				s = tos(s.str + 1, s.len - 1)
+			}
 		}
 	} else if s[0] == `-` {
 		neg = true
-		// s = s[1..]
-		unsafe {
-			s = tos(s.str + 1, s.len - 1)
+		$if ownership ? {
+			s = s.substr_unsafe(1, s.len).clone()
+		} $else {
+			unsafe {
+				s = tos(s.str + 1, s.len - 1)
+			}
 		}
 	}
 

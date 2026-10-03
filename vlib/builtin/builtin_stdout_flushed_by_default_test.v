@@ -36,7 +36,8 @@ fn redirected_stdout_bytes(snippet string) ![]u8 {
 		os.rm(output_path) or {}
 	}
 	cmd := '${os.quoted_path(@VEXE)} run ${os.quoted_path(source_path)} > ${os.quoted_path(output_path)}'
-	res := os.execute(cmd)
+	res := os.exec(['sh', '-c', '"\${1}" run "\${2}" > "\${3}"', 'v', '${@VEXE}', '${source_path}',
+		'${output_path}'])
 	assert res.exit_code == 0, 'command failed: ${cmd}\noutput:\n${res.output}'
 	return os.read_bytes(output_path)!
 }

@@ -4,7 +4,7 @@ import io
 import orm
 import time
 
-$if $pkgconfig ( 'libpq' ) {
+$if $pkgconfig('libpq') {
 	#pkgconfig --cflags --libs libpq
 } $else {
 	$if msvc {

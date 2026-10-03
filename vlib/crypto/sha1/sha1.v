@@ -8,8 +8,6 @@
 // Last commit: https://github.com/golang/go/commit/3ce865d7a0b88714cc433454ae2370a105210c01
 module sha1
 
-import encoding.binary
-
 // The size of a SHA-1 checksum in bytes.
 pub const size = 20
 // The blocksize of SHA-1 in bytes.
@@ -68,6 +66,15 @@ fn (d &Digest) clone() &Digest {
 	}
 }
 
+// copy_from overwrites the state of `d` with the state of `src`, without allocating.
+// Afterwards `d` continues from the data that was written to `src` so far.
+pub fn (mut d Digest) copy_from(src &Digest) {
+	copy(mut d.h, src.h)
+	copy(mut d.x, src.x[..src.nx])
+	d.nx = src.nx
+	d.len = src.len
+}
+
 // new returns a new Digest (implementing hash.Hash) computing the SHA1 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
@@ -124,28 +131,47 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 }
 
 // checksum returns the current byte checksum of the `Digest`,
-@[direct_array_access]
 fn (mut d Digest) checksum() []u8 {
+	mut digest := []u8{len: size}
+	d.checksum_into(mut digest)
+	return digest
+}
+
+// checksum_into finalizes `d` and writes its checksum into the first `size`
+// bytes of `out`, without allocating. It panics if `out` is shorter than `size`.
+// Like `sum`, it consumes the state of `d`: call `reset()` or `copy_from()`
+// before writing to `d` again.
+@[direct_array_access]
+pub fn (mut d Digest) checksum_into(mut out []u8) {
+	if out.len < size {
+		panic('sha1: checksum_into: `out` must be at least ${size} bytes long')
+	}
+	d.pad()
+	for i in 0 .. size {
+		out[i] = u8(d.h[i >> 2] >> (24 - 8 * (i & 3)))
+	}
+}
+
+// pad writes the final padding and the message length to `d`, so that `d.h`
+// holds the final hash value.
+@[direct_array_access]
+fn (mut d Digest) pad() {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.
-	mut tmp := []u8{len: (64)}
+	// `tmp` is on the stack, so finalizing a digest does not allocate.
+	mut tmp := [chunk]u8{}
 	tmp[0] = 0x80
-	if int(len) % 64 < 56 {
-		d.write(tmp[..56 - int(len) % 64]) or { panic(err) }
-	} else {
-		d.write(tmp[..64 + 56 - int(len) % 64]) or { panic(err) }
-	}
+	// Reduce before narrowing so cumulative lengths fit on 32-bit targets.
+	remainder := int(len % u64(chunk))
+	n := if remainder < 56 { 56 - remainder } else { chunk + 56 - remainder }
+	// vbytes wraps `tmp` without copying it; slicing a fixed array would allocate.
+	d.write(unsafe { (&tmp[0]).vbytes(n) }) or { panic(err) }
 	// Length in bits.
 	len <<= 3
-	binary.big_endian_put_u64(mut tmp, len)
-	d.write(tmp[..8]) or { panic(err) }
-	mut digest := []u8{len: size}
-	binary.big_endian_put_u32(mut digest, d.h[0])
-	binary.big_endian_put_u32(mut digest[4..], d.h[1])
-	binary.big_endian_put_u32(mut digest[8..], d.h[2])
-	binary.big_endian_put_u32(mut digest[12..], d.h[3])
-	binary.big_endian_put_u32(mut digest[16..], d.h[4])
-	return digest
+	for i in 0 .. 8 {
+		tmp[i] = u8(len >> (56 - 8 * i))
+	}
+	d.write(unsafe { (&tmp[0]).vbytes(8) }) or { panic(err) }
 }
 
 // sum returns the SHA-1 checksum of the bytes passed in `data`.

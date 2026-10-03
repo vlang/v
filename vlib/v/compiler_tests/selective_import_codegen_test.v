@@ -22,7 +22,9 @@ fn selective_import_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${selective_import_vexe} -gc none -path "${selective_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${selective_import_v3_src}')
+		os.exec([selective_import_vexe, '-gc', 'none', '-path',
+			'${selective_import_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${selective_import_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -76,9 +78,9 @@ fn selective_import_compile_run_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_run_root(v3_bin string, root string) (string, string) {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	return run.output.trim_space(), generated
@@ -96,7 +98,7 @@ fn selective_import_compile_bad_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_bad_root(v3_bin string, name string, root string) string {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), compile.output
 	return compile.output

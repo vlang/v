@@ -36,7 +36,7 @@ fn test_stmt_separator() ! {
 	compile_cmd := '${os.quoted_path(vexe)} -cg -b c -o ${os.quoted_path(c_file)} ${os.quoted_path(v_file)}'
 	eprintln('> compile_cmd: ${compile_cmd}')
 	time.sleep(1000 * time.millisecond) // improve chances of working on windows
-	compile_res := os.system(compile_cmd)
+	compile_res := os.system_args([vexe, '-cg', '-b', 'c', '-o', c_file, v_file])
 	assert compile_res == 0
 
 	content := os.read_file(c_file)!

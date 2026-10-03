@@ -22,7 +22,7 @@ fn main() {
 
 // before_accept_loop builds draw.js before the server starts and registers the static assets.
 pub fn (mut app App) before_accept_loop() {
-	os.execute_or_panic('${vexe} -b js_browser draw.js.v')
+	os.exec_or_panic([os.getenv_opt('VEXE') or { @VEXE }, '-b', 'js_browser', 'draw.js.v'])
 	app.serve_static('/draw.js', 'draw.js') or { panic(err) }
 	app.serve_static('/index.html', 'index.html') or { panic(err) }
 }

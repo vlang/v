@@ -5,10 +5,17 @@ import os
 
 // exec_with_progress checkpoints a successful command and its output files when
 // invoked by the aggregate CI runner. Missing or changed outputs force a rerun.
+@[deprecated: 'use exec_args_with_progress with an argument array to avoid shell injection']
 pub fn exec_with_progress(command string, outputs []string) {
+	exec_args_with_progress(os.split_args(command) or { panic(err) }, outputs)
+}
+
+// exec_args_with_progress checkpoints a successful program and its output files.
+pub fn exec_args_with_progress(args []string, outputs []string) {
+	command := args.map(os.quoted_path(it)).join(' ')
 	dir := ci_task_progress_dir()
 	if dir == '' {
-		exec(command)
+		exec_args(args)
 		return
 	}
 	path := os.join_path(dir, 'command-${sha256.hexhash(command)}.ok')
@@ -24,7 +31,7 @@ pub fn exec_with_progress(command string, outputs []string) {
 	if os.exists(path) {
 		os.rm(path) or { panic(err) }
 	}
-	exec(command)
+	exec_args(args)
 	contents := command_progress_contents(command, outputs) or { panic(err) }
 	os.mkdir_all(dir) or { panic(err) }
 	tmp_dir := '${path}.${os.getpid()}.tmp'

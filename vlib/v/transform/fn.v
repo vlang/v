@@ -3163,11 +3163,10 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		return none
 	}
 	t.ensure_call_param_types_decl_index()
-	decl := t.call_param_types_decl_index[call_name] or {
-		t.ensure_private_call_param_types_decl_cache()
-		t.call_param_types_decl_misses[call_name] = true
-		return none
-	}
+	// An unindexed name costs the same single lookup as a recorded miss, so
+	// do not record it: on a worker that would detach the shared prepared
+	// cache, misses and index (one full map clone per helper batch).
+	decl := t.call_param_types_decl_index[call_name] or { return none }
 	if params := t.call_param_types_decl_cache[decl.idx] {
 		return params
 	}
@@ -5222,7 +5221,8 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 		t.wrap_sum_value(arg_id, expected_elem)
 	} else if t.resolve_interface_type_name(expected_elem).len > 0 {
 		t.transform_expr_for_type(arg_id, expected_elem)
-	} else if escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
+	} else if !variadic_elem_is_voidptr(elem_type)
+		&& escape_type_is_pointer(fixed_array_reference_param_payload(elem_type)) {
 		// Reference elements need the same fixed-array view and address conversions
 		// as an ordinary reference parameter before they are packed into the tail.
 		t.transform_call_arg_for_param(arg_id, expected_elem)
@@ -10451,7 +10451,9 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	if !info.can_lower {
 		return t.make_empty()
 	}
-	mut receiver := t.transform_expr(info.base_id)
+	// Heap-promoted value locals already dereference when read as rvalues.
+	// Preserve their storage pointer here so the clone reads the value once.
+	mut receiver := t.transform_expr_preserving_pointer_value(t.unwrap_parens(info.base_id))
 	if info.raw_base_type.starts_with('&') {
 		receiver = t.make_prefix(.mul, receiver)
 		t.set_node_typ(int(receiver), info.base_type)
@@ -10540,13 +10542,9 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		return t.make_compiler_default_map_clone_value(source, clean, !t.expr_can_take_address(source))
 	}
 	if allow_method && !isnil(t.tc) && t.tc.ownership_type_has_clone_method(t.tc.parse_type(clean)) {
-		if !isnil(t.tc) && clean.contains('[') && clean.ends_with(']') {
-			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
-				call := t.make_method_call(source, 'clone', []flat.NodeId{})
-				t.set_node_typ(int(call), clean)
-				return call
-			}
-		}
+		// A private helper can become reachable after generic specialization has
+		// already materialized its field's clone method. Use that resolved method
+		// before synthesizing a selector that the initial call scan cannot visit.
 		method_name := t.resolve_receiver_method_name(source, 'clone')
 		if method_name.len > 0 {
 			params := t.call_param_types(method_name)
@@ -10556,6 +10554,13 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 			}
 			t.mark_fn_used_name(method_name)
 			return t.make_call_typed(method_name, [receiver], t.receiver_method_return_type(method_name, clean))
+		}
+		if clean.contains('[') && clean.ends_with(']') {
+			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
+				call := t.make_method_call(source, 'clone', []flat.NodeId{})
+				t.set_node_typ(int(call), clean)
+				return call
+			}
 		}
 	}
 	if isnil(t.tc) || (!t.tc.named_type_implements_marker(clean, 'IClone')
@@ -12677,7 +12682,9 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if capture_type.len == 0 || capture_type == 'unknown' {
 					capture_type = 'int'
 				}
-				if t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]
+				// Mutable parameter captures retain the caller's array header reference.
+				if !child.is_mut && t.mut_param_values[child.value]
+					&& !t.pointer_value_rvalues[child.value]
 					&& capture_type.starts_with('&')
 					&& t.comptime_normalize_type_alias_chain(capture_type).starts_with('&[]') {
 					capture_type = capture_type[1..]
@@ -16566,6 +16573,12 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	}
 	base_type = t.normalize_type_alias(base_type)
 	if base_type.len == 0 {
+		return true
+	}
+	// Heap promotion can replace a fixed-array alias with its storage type.
+	// Keep the checker-selected alias method when its value layout still matches.
+	if t.is_fixed_array_type(base_type)
+		&& t.normalize_type_alias(receiver_name) == base_type {
 		return true
 	}
 	if base_type.starts_with('[]') || base_type.starts_with('map[') {

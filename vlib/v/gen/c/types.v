@@ -164,6 +164,9 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		return g.optional_type_name(clean_type)
 	}
 	if clean_type is types.Pointer {
+		if _ := array_fixed_type(types.unwrap_all_pointers(clean_type.base_type)) {
+			return g.value_c_type(clean_type.base_type) + '*'
+		}
 		if clean_type.base_type is types.OptionType || clean_type.base_type is types.ResultType {
 			return g.optional_type_name(clean_type.base_type) + '*'
 		}

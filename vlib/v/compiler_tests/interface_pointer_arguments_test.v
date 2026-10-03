@@ -13,7 +13,9 @@ fn test_interface_pointer_arguments_preserve_value_and_storage_types() {
 	}
 	v3_bin := os.join_path(work_dir, 'v3')
 	// Invoke the new compiler directly so a fallback cannot hide these regressions.
-	build := os.execute('"${interface_pointer_args_vexe}" -gc none -d ownership -path "${interface_pointer_args_vlib_dir}|@vlib|@vmodules" -o "${v3_bin}" "${interface_pointer_args_v_src}"')
+	build := os.exec([interface_pointer_args_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+		'${interface_pointer_args_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		'${interface_pointer_args_v_src}'])
 	assert build.exit_code == 0, build.output
 
 	// #28734: a value cast passed to &Iface must not gain an extra address-of.
@@ -184,9 +186,10 @@ fn interface_pointer_args_run(v3_bin string, work_dir string, name string, sourc
 	main_file := os.join_path(project, 'main.v')
 	os.write_file(main_file, source) or { panic(err) }
 	output := os.join_path(project, 'program')
-	compile := os.execute('"${v3_bin}" -ownership -d ownership -nocache -no-parallel -o "${output}" "${main_file}"')
+	compile := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel', '-o',
+		output, main_file])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
-	run := os.execute('"${output}"')
+	run := os.exec([output])
 	assert run.exit_code == 0, '${name}: ${run.output}'
 	assert run.output.trim_space() == 'ok', '${name}: ${run.output}'
 }

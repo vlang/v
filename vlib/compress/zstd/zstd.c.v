@@ -468,7 +468,7 @@ pub fn new_cctx(params CompressParams) !&CCtx {
 	}
 	mut cctx := &CCtx{ctx}
 	cctx.set(.compression_level, params.compression_level)!
-	$if !( tinyc && windows ) {
+	$if !(tinyc && windows) {
 		// TODO: tinyc on windows doesn't support multiple thread
 		cctx.set(.nb_workers, params.nb_threads)!
 	}

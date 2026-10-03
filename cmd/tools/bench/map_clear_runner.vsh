@@ -15,9 +15,9 @@ os.chdir(os.dir(@VEXE))!
 vcmd := 'v ${flags} cmd/tools/bench/map_clear.v'
 
 println('>> start: ${start} | end: ${end} | step: ${step} | workdir: "${os.getwd()}" | flags: "${flags}" | vcmd: "${vcmd}"')
-assert os.system(vcmd) == 0
+assert os.system_args(['v', ...(os.split_args(flags) or { panic(err) }), 'cmd/tools/bench/map_clear.v']) == 0
 
 println('running...')
 for i := start; i <= end; i += step {
-	os.system('/usr/bin/time -f ${time_fmt} cmd/tools/bench/map_clear ${i}') == 0
+	os.system_args(['/usr/bin/time', '-f', '${time_fmt}', 'cmd/tools/bench/map_clear', '${i}']) == 0
 }

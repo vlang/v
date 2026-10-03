@@ -19,7 +19,8 @@ fn const_cb_build_v3_with_flags(name string, flags string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_const_callback_test_${name}_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${const_cb_vexe} ${flags} -gc none -path "${const_cb_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${const_cb_v3_src}')
+		os.exec([const_cb_vexe, ...(os.split_args(flags) or { panic(err) }), '-gc', 'none', '-path',
+			'${const_cb_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${const_cb_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -140,9 +141,9 @@ fn main() {
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_const_callback_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '633'
 	generated := os.read_file(out + '.c') or { panic(err) }
@@ -214,9 +215,9 @@ fn main() {
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_const_callback_heap_positional_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '55'
 	generated := os.read_file(out + '.c') or { panic(err) }
@@ -269,9 +270,9 @@ fn main() {
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_const_callback_late_alias_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '22'
 	generated := os.read_file(out + '.c') or { panic(err) }
@@ -352,9 +353,9 @@ fn main() {
 ')
 	path := const_cb_write_project(src.str())
 	out := os.join_path(os.temp_dir(), 'v3_const_callback_parallel_out_${os.getpid()}')
-	compile := os.execute('VJOBS=2 ${v3_bin} ${path} -b c -o ${out}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '7'
 	generated := os.read_file(out + '.c') or { panic(err) }

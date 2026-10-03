@@ -26,51 +26,6 @@ fn arg_needs_no_quoting(arg string) bool {
 	return true
 }
 
-// quote_arg spells one argument of a vector-form command so that the shell hands the
-// command the single argument it already is. `v retry -- git clone URL DEST` arrives
-// as four arguments, whatever quoting the caller's own shell removed, and is run
-// through a shell again, so joining them with spaces would split a DEST like
-// `C:\Users\Jane Doe\.vmodules\markdown` back into two arguments.
-fn quote_arg(arg string) string {
-	if arg_needs_no_quoting(arg) {
-		return arg
-	}
-	$if windows {
-		return windows_quote_arg(arg)
-	} $else {
-		return "'" + arg.replace("'", "'\\''") + "'"
-	}
-}
-
-$if windows {
-	// windows_quote_arg applies the backslash-and-quote rules Windows uses when it
-	// rebuilds argv from a command line. Wrapping in quotes is not enough on its own: a
-	// trailing backslash would escape the closing quote, so `C:\work space\` has to come
-	// out as `"C:\work space\\"` or it swallows the argument after it. This is the same
-	// escaping `os.Process` does in vlib/os/process_windows.c.v.
-	fn windows_quote_arg(arg string) string {
-		mut out := '"'
-		mut pending_backslashes := 0
-		for c in arg {
-			if c == `\\` {
-				pending_backslashes++
-				continue
-			}
-			if c == `"` {
-				// Each backslash run before a quote is doubled, and the quote escaped.
-				out += '\\'.repeat(pending_backslashes * 2 + 1) + '"'
-				pending_backslashes = 0
-				continue
-			}
-			out += '\\'.repeat(pending_backslashes) + c.ascii_str()
-			pending_backslashes = 0
-		}
-		// The run that ends the argument is doubled, so none of it escapes the closing quote.
-		out += '\\'.repeat(pending_backslashes * 2) + '"'
-		return out
-	}
-}
-
 // seconds_to_duration converts a fractional number of seconds, as given on the
 // command line, to a Duration. The scaling is done in floating point so that a
 // value like `--delay 0.5` keeps its sub-second part.
@@ -103,18 +58,9 @@ fn main() {
 		eprintln('error: ${err}')
 		exit(1)
 	}
-	// Two call forms reach here. `v retry -- git clone URL DEST` passes the command as a
-	// vector: the arguments arrive already split, whatever quoting the caller's own shell
-	// removed, so each has to be quoted again before the shell that runs them sees it.
-	// `v retry 'sudo apt update'` passes the command as shell syntax in a single argument,
-	// which has to go through untouched - quoting that would ask the shell for a program
-	// whose name contains spaces.
-	cmd := if fp.idx_dashdash >= 0 {
-		command_args.map(quote_arg(it)).join(' ')
-	} else {
-		command_args.join(' ')
-	}
-	// dump(cmd)
+	// Vector-form commands retain their literal arguments. The string form explicitly
+	// requests shell syntax and is passed to the selected shell unchanged.
+	cmd := command_args.join(' ')
 
 	spawn fn (context Context) {
 		time.sleep(context.timeout)
@@ -124,7 +70,13 @@ fn main() {
 
 	mut res := 0
 	for i in 0 .. context.retries {
-		res = os.system(cmd)
+		res = os.system_args(if fp.idx_dashdash >= 0 {
+			command_args
+		} else if os.user_os() == 'windows' {
+			['cmd.exe', '/d', '/s', '/c', cmd]
+		} else {
+			['sh', '-c', cmd]
+		})
 		if res == 0 {
 			break
 		}

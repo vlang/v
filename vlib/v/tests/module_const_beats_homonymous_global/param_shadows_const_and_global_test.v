@@ -71,7 +71,7 @@ fn test_param_and_local_win_over_const_and_global() {
 	defer {
 		os.rmdir_all(workspace) or {}
 	}
-	res := os.execute('${os.quoted_path(@VEXE)} -enable-globals -check ${os.quoted_path(workspace)}')
+	res := os.exec([@VEXE, '-enable-globals', '-check', '${workspace}'])
 	assert res.output.contains('variable `default_logger` shadows a global variable'), res.output
 	assert !res.output.contains('ConstType'), res.output
 	assert !res.output.contains('cannot use'), res.output

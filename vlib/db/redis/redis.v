@@ -2,9 +2,11 @@
 
 module redis
 
+import io
 import math.big
 import net
 import net.ssl
+import time
 
 // RESP3 wrapper types
 pub struct RedisBlobError {
@@ -67,144 +69,234 @@ pub mut:
 	tls      bool
 
 	// Pre-allocated buffers to reduce memory allocations
-	cmd_buf            []u8 // Buffer for building commands
-	resp_buf           []u8 // Buffer for reading responses
-	pipeline_mode      bool
-	pipeline_buffer    []u8
-	pipeline_cmd_count int
+	cmd_buf              []u8 // Buffer for building commands
+	resp_buf             []u8 // Buffer for reading responses
+	transaction_mode     bool
+	buffered_transaction bool
+	watched              bool
+	closed               bool
+	config               Config
+	metrics              Metrics
+	pipeline_mode        bool
+	pipeline_buffer      []u8
+	pipeline_cmd_count   int
 }
 
-// Configuration options for Redis connection
+// Config controls connection, authentication, timeouts, and TLS settings.
 @[params]
 pub struct Config {
 pub mut:
-	host     string = '127.0.0.1' // Redis server host
-	port     u16    = 6379      // Redis server port
-	password string // Redis server password (optional)
-	tls      bool   // Enable TLS/SSL connection
-	version  int @[deprecated] // ignored - RESP version auto handled in connect
+	host            string = '127.0.0.1'
+	port            u16    = 6379
+	username        string = 'default'
+	password        string
+	database        int
+	tls             bool
+	tls_validate    bool
+	tls_ca          string
+	tls_cert        string
+	tls_key         string
+	tls_server_name string
+	tls_in_memory   bool
+	connect_timeout time.Duration = 5 * time.second
+	read_timeout    time.Duration = 30 * time.second
+	write_timeout   time.Duration = 30 * time.second
+	keep_alive      bool
+	auto_reconnect  bool
+	max_retries     int
+	retry_delay     time.Duration = 100 * time.millisecond
+	trace_hook      ?fn (CommandTrace)
+	version         int @[deprecated]
 }
 
-fn resp2_auth(password string, mut db DB) ! {
-	db.version = 2
-	if password.len > 0 {
-		db.auth(password)!
-	}
-}
-
-// connect establishes a connection to a Redis server
+// connect establishes a connection and negotiates RESP3, with RESP2 fallback.
 pub fn connect(config Config) !DB {
+	if config.database < 0 || config.max_retries < 0 || config.retry_delay < 0 {
+		return ConnectionError{ message: 'invalid database or retry configuration' }
+	}
 	mut db := DB{
 		tls:      config.tls
+		config:   config
 		cmd_buf:  []u8{cap: cmd_buf_pre_allocate_len}
 		resp_buf: []u8{cap: resp_buf_pre_allocate_len}
 	}
-
+	db.conn = dial_connection(config)!
+	db.conn.set_read_timeout(config.read_timeout)
+	db.conn.set_write_timeout(config.write_timeout)
+	if config.keep_alive {
+		db.conn.sock.set_option_bool(.keep_alive, true) or {
+			db.conn.close() or {}
+			return ConnectionError{ message: err.msg() }
+		}
+	}
 	if config.tls {
-		mut ssl_conn := ssl.new_ssl_conn(ssl.SSLConnectConfig{ validate: false })!
-		ssl_conn.dial(config.host, int(config.port))!
-		db.ssl_conn = ssl_conn
-	} else {
-		db.conn = net.dial_tcp('${config.host}:${config.port}')!
+		if config.connect_timeout > 0 { db.conn.set_read_timeout(config.connect_timeout) }
+		// mbedtls uses a blocking BIO during its handshake; command I/O is nonblocking below.
+		net.set_blocking(db.conn.sock.handle, true) or {
+			db.close() or {}
+			return ConnectionError{ message: err.msg() }
+		}
+		db.conn.is_blocking = true
+		mut secure := ssl.new_ssl_conn(ssl.SSLConnectConfig{
+			validate:               config.tls_validate
+			verify:                 config.tls_ca
+			cert:                   config.tls_cert
+			cert_key:               config.tls_key
+			in_memory_verification: config.tls_in_memory
+		}) or {
+			db.conn.close() or {}
+			return ConnectionError{ message: err.msg() }
+		}
+		hostname := if config.tls_server_name == '' { config.host } else { config.tls_server_name }
+		secure.connect(mut db.conn, hostname) or {
+			secure.close() or {}
+			db.conn.close() or {}
+			return ConnectionError{ message: err.msg() }
+		}
+		secure.set_read_timeout(config.read_timeout)
+		db.ssl_conn = secure
+		db.conn.set_read_timeout(config.read_timeout)
+		net.set_blocking(db.conn.sock.handle, false) or {
+			db.close() or {}
+			return ConnectionError{ message: err.msg() }
+		}
+		db.conn.is_blocking = false
 	}
-
-	// Always attempt HELLO during connect() to negotiate RESP3 (and include AUTH
-	// subcommand when a password is provided). If HELLO fails or the server
-	// doesn't support it, fall back to RESP2 and perform AUTH via the AUTH
-	// command (if a password was given).
-
-	// default version 3
-	db.version = 3
-
-	// build HELLO 3 command; include AUTH subcommand when password present
-	db.cmd_buf.clear()
-	if config.password.len > 0 {
-		// *4\r\n$5\r\nHELLO\r\n$1\r\n3\r\n$4\r\nAUTH\r\n$<pwlen>\r\n<pw>\r\n
-		db.cmd_buf << '*4\r\n$5\r\nHELLO\r\n$1\r\n3\r\n$4\r\nAUTH\r\n$${config.password.len}\r\n${config.password}\r\n'.bytes()
-	} else {
-		// *2\r\n$5\r\nHELLO\r\n$1\r\n3\r\n
-		db.cmd_buf << '*2\r\n$5\r\nHELLO\r\n$1\r\n3\r\n'.bytes()
+	db.negotiate() or {
+		db.close() or {}
+		return err
 	}
-
-	// send HELLO and attempt to read response. If any step fails, fallback to RESP2 + AUTH.
-	db.write_data(db.cmd_buf) or {
-		// write failed (connection error?) — fallback to RESP2 and perform AUTH if needed
-		resp2_auth(config.password, mut db)!
-		return db
-	}
-
-	// Try to read and consume HELLO response. If HELLO fails (unknown command / error),
-	// treat as not-supported and fall back to RESP2 + AUTH.
-	db.read_response() or {
-		resp2_auth(config.password, mut db)!
-		return db
-	}
-
 	return db
+}
+
+fn (mut db DB) negotiate() ! {
+	db.version = 3
+	mut hello := ['HELLO', '3']
+	authenticate := db.config.password != '' || db.config.username !in ['', 'default']
+	if authenticate {
+		hello << ['AUTH', if db.config.username == '' { 'default' } else { db.config.username },
+			db.config.password]
+	}
+	db.write_resp_array(hello)
+	db.write_data(db.cmd_buf)!
+	db.read_response() or {
+		if err is CommandError {
+			if err.msg().starts_with('WRONGPASS') || err.msg().starts_with('NOAUTH') {
+				return AuthError{ message: err.msg() }
+			}
+			db.version = 2
+			if authenticate {
+				if db.config.username == '' || db.config.username == 'default' {
+					db.auth(db.config.password)!
+				} else {
+					db.auth_user(db.config.username, db.config.password)!
+				}
+			}
+		} else {
+			return err
+		}
+	}
+	if db.config.database != 0 {
+		db.select_db(db.config.database)!
+	}
 }
 
 // close terminates the connection to Redis server
 pub fn (mut db DB) close() ! {
-	if db.tls {
-		db.ssl_conn.close()!
-	} else {
-		db.conn.close()!
+	if db.closed { return }
+	db.closed = true
+	mut failure := ''
+	if db.tls && unsafe { db.ssl_conn != nil } {
+		db.ssl_conn.close() or { failure = err.msg() }
 	}
+	if unsafe { db.conn != nil } {
+		db.conn.close() or { if failure == '' { failure = err.msg() } }
+	}
+	if failure != '' { return ConnectionError{ message: failure } }
 }
 
-// Helper methods for TLS abstraction
 fn (mut db DB) write_data(data []u8) ! {
+	if db.closed { return ConnectionError{ message: 'connection is closed' } }
 	if db.tls {
-		db.ssl_conn.write(data)!
+		db.ssl_conn.set_read_timeout(db.config.write_timeout)
+		db.ssl_conn.write(data) or { return ConnectionError{ message: err.msg() } }
 	} else {
-		db.conn.write(data)!
+		db.conn.write(data) or { return ConnectionError{ message: err.msg() } }
 	}
 }
 
 fn (mut db DB) read_data(mut buf []u8) !int {
+	if db.closed { return ConnectionError{ message: 'connection is closed' } }
 	if db.tls {
-		return db.ssl_conn.read(mut buf)
-	} else {
-		return db.conn.read(mut buf)
+		db.ssl_conn.set_read_timeout(db.config.read_timeout)
+		return db.ssl_conn.read(mut buf) or { return ConnectionError{ message: err.msg(), eof: err is io.Eof } }
 	}
+	return db.conn.read(mut buf) or { return ConnectionError{ message: err.msg(), eof: err is io.Eof } }
 }
 
 fn (mut db DB) read_ptr_data(ptr &u8, len int) !int {
+	if db.closed { return ConnectionError{ message: 'connection is closed' } }
 	if db.tls {
-		return db.ssl_conn.socket_read_into_ptr(ptr, len)!
-	} else {
-		return db.conn.read_ptr(ptr, len)!
+		db.ssl_conn.set_read_timeout(db.config.read_timeout)
+		return db.ssl_conn.socket_read_into_ptr(ptr, len) or { return ConnectionError{ message: err.msg(), eof: err is io.Eof } }
 	}
+	return db.conn.read_ptr(ptr, len) or { return ConnectionError{ message: err.msg(), eof: err is io.Eof } }
 }
 
 // auth sends an AUTH command to the server with the given password.
 pub fn (mut db DB) auth(password string) ! {
-	resp := db.cmd('AUTH', password)!
-	match resp {
-		string {
-			if resp != 'OK' {
-				return error('Authentication failed: ${resp}')
-			}
-		}
-		else {
-			return error('Authentication failed: unexpected response type')
-		}
+	db.auth_user('', password)!
+}
+
+// auth_user authenticates a Redis ACL user, or the default user when username is empty.
+pub fn (mut db DB) auth_user(username string, password string) ! {
+	if db.pipeline_mode || db.transaction_mode || db.watched {
+		return AuthError{ message: 'authentication requires an idle connection' }
 	}
+	mut args := ['AUTH']
+	if username != '' { args << username }
+	args << password
+	resp := db.cmd(...args) or {
+		if err is CommandError { return AuthError{ message: err.msg() } }
+		return err
+	}
+	if resp !is string || (resp as string) != 'OK' {
+		return AuthError{ message: 'unexpected authentication response' }
+	}
+	db.config.username = if username == '' { 'default' } else { username }
+	db.config.password = password
 }
 
 // ping sends a PING command to verify server responsiveness
 pub fn (mut db DB) ping() !string {
-	return db.cmd('PING')! as string
+	return db.execute_string(['PING'])
 }
 
 // validate checks whether the Redis connection is still responsive.
 pub fn (mut db DB) validate() !bool {
-	return db.ping()! == 'PONG'
+	if db.pipeline_mode || db.transaction_mode { return false }
+	response := db.ping() or {
+		if !db.config.auto_reconnect || db.watched { return err }
+		db.reconnect()!
+		return db.ping()! == 'PONG'
+	}
+	return response == 'PONG'
 }
 
-// reset clears any queued pipeline state before the connection is reused.
+// reset discards transactions, removes WATCH state, and clears queued commands before pool reuse.
 pub fn (mut db DB) reset() ! {
+	if db.transaction_mode && !db.buffered_transaction {
+		db.pipeline_mode = false
+		db.discard()!
+	}
+	if db.watched {
+		db.pipeline_mode = false
+		db.transaction_mode = false
+		db.unwatch()!
+	}
 	db.pipeline_mode = false
+	db.transaction_mode = false
+	db.buffered_transaction = false
 	db.pipeline_cmd_count = 0
 	db.cmd_buf.clear()
 	db.resp_buf.clear()
@@ -225,11 +317,11 @@ pub fn (mut db DB) set[T](key string, value T) !string {
 pub fn (mut db DB) get[T](key string) !T {
 	validate_bulk_type[T]('get')!
 	resp := db.cmd('GET', key)!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return T{}
 	}
 	if resp is RedisNull {
-		return error('`get()`: key ${key} not found')
+		return NilError{ message: '`get()`: key ${key} not found' }
 	}
 	return bulk_value[T](resp, 'get')
 }
@@ -259,7 +351,7 @@ pub fn (mut db DB) hset[T](key string, m map[string]T) !int {
 pub fn (mut db DB) hget[T](key string, m_key string) !T {
 	validate_bulk_type[T]('hget')!
 	resp := db.cmd('HGET', key, m_key)!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return T{}
 	}
 	return bulk_value[T](resp, 'hget')
@@ -270,10 +362,10 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 	// HGETALL user:1
 	// *2\r\n$7\r\nHGETALL\r\n$6\r\nuser:1\r\n
 	$if T !is string && T !is $int && T !is []u8 {
-		return error('`hgetall()`: unsupported value type. Allowed: number, string, []u8')
+		return CommandError{ message: '`hgetall()`: unsupported value type. Allowed: number, string, []u8' }
 	}
 	resp := db.cmd('HGETALL', key)!
-	if !db.pipeline_mode {
+	if !db.pipeline_mode && !db.transaction_mode {
 
 		// normalize result into map[string]T regardless of RESP2 array, RESP3 map,
 		// or RedisMap interleaved pairs.
@@ -282,7 +374,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 			match resp {
 				[]RedisValue {
 					if resp.len % 2 != 0 {
-						return error('`hgetall()`: invalid HGETALL response format')
+						return CommandError{ message: '`hgetall()`: invalid HGETALL response format' }
 					}
 					for i in 0 .. resp.len / 2 {
 						// keys and values expected as bulk strings for RESP2
@@ -293,7 +385,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
 							else {
-								return error('`hgetall()`: unexpected key type: ${key_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected key type: ${key_val.type_name()}' }
 							}
 						}
 
@@ -303,7 +395,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { val_val }
 							i64 { val_val.str() }
 							else {
-								return error('`hgetall()`: unexpected value type: ${val_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected value type: ${val_val.type_name()}' }
 							}
 						}
 
@@ -318,7 +410,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { v }
 							i64 { v.str() }
 							else {
-								return error('`hgetall()`: unexpected value type in map: ${v.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected value type in map: ${v.type_name()}' }
 							}
 						}
 
@@ -329,7 +421,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 				RedisMap {
 					pairs := resp.pairs
 					if pairs.len % 2 != 0 {
-						return error('`hgetall()`: invalid RedisMap response format')
+						return CommandError{ message: '`hgetall()`: invalid RedisMap response format' }
 					}
 					for i := 0; i < pairs.len; i += 2 {
 						key_val := pairs[i]
@@ -338,7 +430,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
 							else {
-								return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}' }
 							}
 						}
 
@@ -347,7 +439,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { val_val }
 							i64 { val_val.str() }
 							else {
-								return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}' }
 							}
 						}
 
@@ -356,7 +448,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 					return result
 				}
 				else {
-					return error('`hgetall()`: unsupported response type: ${resp.type_name()}')
+					return CommandError{ message: '`hgetall()`: unsupported response type: ${resp.type_name()}' }
 				}
 			}
 		} $else $if T is $int {
@@ -364,7 +456,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 			match resp {
 				[]RedisValue {
 					if resp.len % 2 != 0 {
-						return error('`hgetall()`: invalid HGETALL response format')
+						return CommandError{ message: '`hgetall()`: invalid HGETALL response format' }
 					}
 					for i in 0 .. resp.len / 2 {
 						key_val := resp[2 * i]
@@ -373,7 +465,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
 							else {
-								return error('`hgetall()`: unexpected key type: ${key_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected key type: ${key_val.type_name()}' }
 							}
 						}
 
@@ -382,7 +474,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { val_val.i64() }
 							i64 { val_val }
 							else {
-								return error('`hgetall()`: unexpected value type: ${val_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected value type: ${val_val.type_name()}' }
 							}
 						}
 
@@ -397,7 +489,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { v.i64() }
 							i64 { v }
 							else {
-								return error('`hgetall()`: unexpected value type in map: ${v.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected value type in map: ${v.type_name()}' }
 							}
 						}
 
@@ -408,7 +500,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 				RedisMap {
 					pairs := resp.pairs
 					if pairs.len % 2 != 0 {
-						return error('`hgetall()`: invalid RedisMap response format')
+						return CommandError{ message: '`hgetall()`: invalid RedisMap response format' }
 					}
 					for i := 0; i < pairs.len; i += 2 {
 						key_val := pairs[i]
@@ -417,7 +509,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
 							else {
-								return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}' }
 							}
 						}
 
@@ -426,7 +518,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { val_val.i64() }
 							i64 { val_val }
 							else {
-								return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}' }
 							}
 						}
 
@@ -435,7 +527,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 					return result
 				}
 				else {
-					return error('`hgetall()`: unsupported response type: ${resp.type_name()}')
+					return CommandError{ message: '`hgetall()`: unsupported response type: ${resp.type_name()}' }
 				}
 			}
 		} $else $if T is []u8 {
@@ -443,7 +535,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 			match resp {
 				[]RedisValue {
 					if resp.len % 2 != 0 {
-						return error('`hgetall()`: invalid HGETALL response format')
+						return CommandError{ message: '`hgetall()`: invalid HGETALL response format' }
 					}
 					for i in 0 .. resp.len / 2 {
 						key_val := resp[2 * i]
@@ -452,7 +544,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
 							else {
-								return error('`hgetall()`: unexpected key type: ${key_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected key type: ${key_val.type_name()}' }
 							}
 						}
 
@@ -461,7 +553,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { val_val.bytes() }
 							i64 { val_val.str().bytes() }
 							else {
-								return error('`hgetall()`: unexpected value type: ${val_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected value type: ${val_val.type_name()}' }
 							}
 						}
 
@@ -476,7 +568,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { v.bytes() }
 							i64 { v.str().bytes() }
 							else {
-								return error('`hgetall()`: unexpected value type in map: ${v.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected value type in map: ${v.type_name()}' }
 							}
 						}
 
@@ -487,7 +579,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 				RedisMap {
 					pairs := resp.pairs
 					if pairs.len % 2 != 0 {
-						return error('`hgetall()`: invalid RedisMap response format')
+						return CommandError{ message: '`hgetall()`: invalid RedisMap response format' }
 					}
 					for i := 0; i < pairs.len; i += 2 {
 						key_val := pairs[i]
@@ -496,7 +588,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							[]u8 { key_val.bytestr() }
 							string { key_val }
 							else {
-								return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}' }
 							}
 						}
 
@@ -505,7 +597,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { val_val.bytes() }
 							i64 { val_val.str().bytes() }
 							else {
-								return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}')
+								return CommandError{ message: '`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}' }
 							}
 						}
 
@@ -514,12 +606,12 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 					return result
 				}
 				else {
-					return error('`hgetall()`: unsupported response type: ${resp.type_name()}')
+					return CommandError{ message: '`hgetall()`: unsupported response type: ${resp.type_name()}' }
 				}
 			}
 		} $else {
 			// should not happen due to compile-time check above
-			return error('`hgetall()`: unsupported value type ${T.type_name()}')
+			return CommandError{ message: '`hgetall()`: unsupported value type ${T.type_name()}' }
 		}
 	}
 	return map[string]T{}
@@ -528,7 +620,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 // expire sets a `key`'s time to live in `seconds`
 pub fn (mut db DB) expire(key string, seconds int) !bool {
 	resp := db.cmd('EXPIRE', key, seconds.str())!
-	if db.pipeline_mode {
+	if db.pipeline_mode || db.transaction_mode {
 		return false
 	}
 	// Normalize the response for servers that encode integer replies as strings.
@@ -536,7 +628,9 @@ pub fn (mut db DB) expire(key string, seconds int) !bool {
 		i64 { return resp != 0 }
 		[]u8 { return resp.bytestr().i64() != 0 }
 		string { return resp.i64() != 0 }
-		else { return error('`expire()`: unexpected response type: ${resp.type_name()}') }
+		else {
+			return ProtocolError{ message: '`expire()`: unexpected response type: ${resp.type_name()}' }
+		}
 	}
 }
 
@@ -548,10 +642,10 @@ fn (mut db DB) read_response_bulk_string() !RedisValue {
 	db.resp_buf.clear()
 	for {
 		bytes_read := db.read_data(mut chunk) or {
-			return error('`read_response_bulk_string()`: connection error ${err}')
+			return ConnectionError{ message: '`read_response_bulk_string()`: connection error ${err}' }
 		}
 		if bytes_read == 0 {
-			return error('`read_response_bulk_string()`: connection closed prematurely')
+			return ConnectionError{ message: '`read_response_bulk_string()`: connection closed prematurely' }
 		}
 		db.resp_buf << chunk[0]
 
@@ -559,12 +653,12 @@ fn (mut db DB) read_response_bulk_string() !RedisValue {
 			break
 		}
 		if (chunk[0] < `0` || chunk[0] > `9`) && chunk[0] != `\r` && chunk[0] != `-` {
-			return error('`read_response_bulk_string()`: invalid bulk string header')
+			return ProtocolError{ message: '`read_response_bulk_string()`: invalid bulk string header' }
 		}
 	}
 
 	if db.resp_buf.len < 2 {
-		return error('`read_response_bulk_string()`: bulk string header too short')
+		return ProtocolError{ message: '`read_response_bulk_string()`: bulk string header too short' }
 	}
 
 	data_length = db.resp_buf[0..db.resp_buf.len - 2].bytestr().i64()
@@ -574,27 +668,6 @@ fn (mut db DB) read_response_bulk_string() !RedisValue {
 		return RedisNull{}
 	}
 
-	// If zero-length payload, read exactly the 2-byte terminator CRLF reliably
-	if data_length == 0 {
-		mut term := [2]u8{}
-		n := db.read_ptr_data(&term[0], 2)! // read remaining terminator bytes
-		match n {
-			0, 1 {
-				return error('`read_response_bulk_string()`: incomplete terminator for empty string')
-			}
-			else {
-				if n > 2 {
-					return error('`read_response_bulk_string()`: should never get here - more than 2 bytes read?!?')
-				}
-			}
-		}
-
-		if term[0] != `\r` || term[1] != `\n` {
-			return error('invalid terminator for empty string')
-		}
-		return []u8{}
-	}
-
 	// Read payload of exactly data_length bytes
 	mut data_buf := []u8{len: int(data_length)}
 	mut total_read := 0
@@ -602,7 +675,7 @@ fn (mut db DB) read_response_bulk_string() !RedisValue {
 		mut ptr := unsafe { &data_buf[total_read] }
 		n := db.read_ptr_data(ptr, data_buf.len - total_read)!
 		if n == 0 && total_read < data_buf.len {
-			return error('`read_response_bulk_string()`: incomplete data: read ${total_read} / ${data_buf.len} bytes')
+			return ProtocolError{ message: '`read_response_bulk_string()`: incomplete data: read ${total_read} / ${data_buf.len} bytes' }
 		}
 		total_read += n
 	}
@@ -614,12 +687,12 @@ fn (mut db DB) read_response_bulk_string() !RedisValue {
 		mut ptr := unsafe { &term[term_read] }
 		n := db.read_ptr_data(ptr, 2 - term_read)!
 		if n == 0 && term_read < 2 {
-			return error('`read_response_bulk_string()`: incomplete terminator after payload')
+			return ProtocolError{ message: '`read_response_bulk_string()`: incomplete terminator after payload' }
 		}
 		term_read += n
 	}
 	if term[0] != `\r` || term[1] != `\n` {
-		return error('`read_response_bulk_string()`: invalid data terminator')
+		return ProtocolError{ message: '`read_response_bulk_string()`: invalid data terminator' }
 	}
 
 	return data_buf
@@ -631,10 +704,10 @@ fn (mut db DB) read_header() !string {
 	db.resp_buf.clear()
 	for {
 		bytes_read := db.read_data(mut chunk) or {
-			return error('`read_header()`: connection error ${err}')
+			return ConnectionError{ message: '`read_header()`: connection error ${err}' }
 		}
 		if bytes_read == 0 {
-			return error('`read_header()`: connection closed prematurely')
+			return ConnectionError{ message: '`read_header()`: connection closed prematurely' }
 		}
 		db.resp_buf << chunk[0]
 		if chunk[0] == `\n` {
@@ -642,7 +715,7 @@ fn (mut db DB) read_header() !string {
 		}
 	}
 	if db.resp_buf.len < 2 {
-		return error('`read_header()`: header too short')
+		return ProtocolError{ message: '`read_header()`: header too short' }
 	}
 	return db.resp_buf[0..db.resp_buf.len - 2].bytestr()
 }
@@ -650,7 +723,7 @@ fn (mut db DB) read_header() !string {
 // read_exact_payload reads exactly n bytes + trailing CRLF and return the data bytes (without CRLF)
 fn (mut db DB) read_exact_payload(n int) ![]u8 {
 	if n < 0 {
-		return error('invalid payload length ${n}')
+		return ProtocolError{ message: 'invalid payload length ${n}' }
 	}
 	mut data_buf := []u8{len: n + 2}
 	mut total_read := 0
@@ -663,12 +736,12 @@ fn (mut db DB) read_exact_payload(n int) ![]u8 {
 		total_read += bytes_read
 
 		if bytes_read == 0 && total_read < data_buf.len {
-			return error('`read_exact_payload()`: incomplete data: read ${total_read} / ${data_buf.len} bytes')
+			return ProtocolError{ message: '`read_exact_payload()`: incomplete data: read ${total_read} / ${data_buf.len} bytes' }
 		}
 	}
 	// must ending with CRLF
 	if data_buf[n] != `\r` || data_buf[n + 1] != `\n` {
-		return error('`read_exact_payload()`: invalid data terminator')
+		return ProtocolError{ message: '`read_exact_payload()`: invalid data terminator' }
 	}
 	return data_buf[0..n].clone()
 }
@@ -682,7 +755,7 @@ fn (mut db DB) read_resp3_boolean_payload() !bool {
 	if s == 'f' {
 		return false
 	}
-	return error('`read_resp3_boolean_payload()`: invalid boolean: ${s}')
+	return ProtocolError{ message: '`read_resp3_boolean_payload()`: invalid boolean: ${s}' }
 }
 
 // read_resp3_double_payload handles RESP3 double (,<double>)
@@ -760,8 +833,8 @@ fn (mut db DB) read_resp3_map_payload() !RedisValue {
 	}
 	mut pairs := []RedisValue{cap: int(count) * 2}
 	for _ in 0 .. count {
-		key := db.read_response()!
-		val := db.read_response()!
+		key := db.read_response_value(true)!
+		val := db.read_response_value(true)!
 		pairs << key
 		pairs << val
 	}
@@ -802,8 +875,8 @@ fn (mut db DB) read_resp3_attr_payload() !RedisValue {
 	}
 	mut kv := map[string]RedisValue{}
 	for _ in 0 .. count {
-		k := db.read_response()!
-		v := db.read_response()!
+		k := db.read_response_value(true)!
+		v := db.read_response_value(true)!
 		match k {
 			[]u8 {
 				kv[k.bytestr()] = v
@@ -812,7 +885,7 @@ fn (mut db DB) read_resp3_attr_payload() !RedisValue {
 				kv[k] = v
 			}
 			else {
-				return error('`read_resp3_attr_payload()`: attribute key is not a string-like type')
+				return ProtocolError{ message: '`read_resp3_attr_payload()`: attribute key is not a string-like type' }
 			}
 		}
 	}
@@ -830,7 +903,7 @@ fn (mut db DB) read_resp3_set_payload() !RedisSet {
 	}
 	mut elems := []RedisValue{cap: int(count)}
 	for _ in 0 .. count {
-		elems << db.read_response()!
+		elems << db.read_response_value(true)!
 	}
 	return RedisSet{
 		elements: elems
@@ -848,7 +921,7 @@ fn (mut db DB) read_resp3_push_payload() !RedisPush {
 	}
 	mut elems := []RedisValue{cap: int(count)}
 	for _ in 0 .. count {
-		elems << db.read_response()!
+		elems << db.read_response_value(true)!
 	}
 	return RedisPush{
 		elements: elems
@@ -875,7 +948,7 @@ fn (mut db DB) read_response_i64() !i64 {
 			}
 		}
 		if bytes_read == 0 {
-			return error('`read_response_i64()`: incomplete data: read ${total_read} bytes')
+			return ProtocolError{ message: '`read_response_i64()`: incomplete data: read ${total_read} bytes' }
 		}
 	}
 	ret_val := db.resp_buf[0..total_read - 2].bytestr().i64()
@@ -902,7 +975,7 @@ fn (mut db DB) read_response_simple_string() !string {
 			}
 		}
 		if bytes_read == 0 {
-			return error('`read_response_simple_string()`: incomplete data: read ${total_read} bytes')
+			return ProtocolError{ message: '`read_response_simple_string()`: incomplete data: read ${total_read} bytes' }
 		}
 	}
 	return db.resp_buf[0..total_read - 2].bytestr()
@@ -916,10 +989,10 @@ fn (mut db DB) read_response_array() !RedisValue {
 	db.resp_buf.clear()
 	for {
 		bytes_read := db.read_data(mut chunk) or {
-			return error('`read_response_array()`: connection error: ${err}')
+			return ConnectionError{ message: '`read_response_array()`: connection error: ${err}' }
 		}
 		if bytes_read == 0 {
-			return error('`read_response_array()`: connection closed prematurely')
+			return ConnectionError{ message: '`read_response_array()`: connection closed prematurely' }
 		}
 		db.resp_buf << chunk[0]
 
@@ -927,12 +1000,12 @@ fn (mut db DB) read_response_array() !RedisValue {
 			break
 		}
 		if (chunk[0] < `0` || chunk[0] > `9`) && chunk[0] != `\r` && chunk[0] != `-` {
-			return error('`read_response_array()`: invalid array header')
+			return ProtocolError{ message: '`read_response_array()`: invalid array header' }
 		}
 	}
 
 	if db.resp_buf.len < 2 {
-		return error('`read_response_array()`: array header too short')
+		return ProtocolError{ message: '`read_response_array()`: array header too short' }
 	}
 
 	array_len = db.resp_buf[0..db.resp_buf.len - 2].bytestr().i64() // 排除\r\n
@@ -946,8 +1019,8 @@ fn (mut db DB) read_response_array() !RedisValue {
 
 	mut elements := []RedisValue{cap: int(array_len)}
 	for _ in 0 .. array_len {
-		element := db.read_response() or {
-			return error('`read_response_array()`: failed to read array element: ${err}')
+		element := db.read_response_value(true) or {
+			return err
 		}
 		elements << element
 	}
@@ -956,6 +1029,15 @@ fn (mut db DB) read_response_array() !RedisValue {
 
 // read_response handles all types of Redis responses (RESP2 + RESP3 when enabled)
 fn (mut db DB) read_response() !RedisValue {
+	return db.read_response_value(false)
+}
+
+fn (mut db DB) read_response_value(allow_error bool) !RedisValue {
+	prefix := db.read_response_prefix()!
+	return db.read_response_payload(prefix, allow_error)
+}
+
+fn (mut db DB) read_response_prefix() !u8 {
 	db.resp_buf.clear()
 	unsafe { db.resp_buf.grow_len(1) }
 	// Read the first non-empty, non-CR/LF prefix byte. Some transports or
@@ -964,7 +1046,7 @@ fn (mut db DB) read_response() !RedisValue {
 	for {
 		read_len := db.read_data(mut db.resp_buf)!
 		if read_len != 1 {
-			return error('`read_response()`: empty response from server')
+			return ConnectionError{ message: '`read_response()`: empty response from server', eof: true }
 		}
 		// Skip stray CR and LF bytes that may precede the real response prefix.
 		if db.resp_buf[0] == `\r` || db.resp_buf[0] == `\n` {
@@ -997,13 +1079,13 @@ fn (mut db DB) read_response() !RedisValue {
 			for i in 0 .. db.resp_buf.len {
 				hex += '${int(db.resp_buf[i]):02x} '
 			}
-			return error('`read_response()`: unknown response prefix byte=${prefix_val} data_hex="${hex}" data_str="${db.resp_buf.bytestr()}"')
+			return ProtocolError{ message: '`read_response()`: unknown response prefix byte=${prefix_val} data_hex="${hex}" data_str="${db.resp_buf.bytestr()}"' }
 		}
 		// Read and discard one more byte from the socket and treat it as the new candidate.
 		mut tmp := []u8{len: 1}
 		n := db.read_data(mut tmp) or { 0 }
 		if n == 0 {
-			return error('`read_response()`: incomplete data during resynchronization')
+			return ProtocolError{ message: '`read_response()`: incomplete data during resynchronization' }
 		}
 		db.resp_buf[0] = tmp[0]
 		// skip CRLF if encountered but still count the attempt (we consumed a byte)
@@ -1011,13 +1093,18 @@ fn (mut db DB) read_response() !RedisValue {
 		continue
 	}
 
-	match db.resp_buf[0] {
+	return db.resp_buf[0]
+}
+
+fn (mut db DB) read_response_payload(prefix u8, allow_error bool) !RedisValue {
+	match prefix {
 		`+` { // Simple string
 			return db.read_response_simple_string()!
 		}
 		`-` { // Error message
 			msg := db.read_response_simple_string()!
-			return error(msg)
+			if allow_error { return RedisBlobError{ data: msg.bytes() } }
+			return CommandError{ message: msg }
 		}
 		`:` { // Integer
 			return db.read_response_i64()!
@@ -1031,62 +1118,62 @@ fn (mut db DB) read_response() !RedisValue {
 		// RESP3-only frames (enabled when db.version >= 3)
 		`_` { // Null
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			db.read_exact_payload(0)!
 			return RedisNull{}
 		}
 		`#` { // Boolean
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			return RedisValue(db.read_resp3_boolean_payload()!)
 		}
 		`,` { // Double
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			return RedisValue(db.read_resp3_double_payload()!)
 		}
 		`(` { // Big number
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			return RedisValue(db.read_resp3_bignum_payload()!)
 		}
 		`!` { // Blob error
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			return db.read_resp3_blob_error_payload()!
 		}
 		`=` { // Verbatim string
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			return db.read_resp3_verbatim_payload()!
 		}
 		`%` { // Map
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			return db.read_resp3_map_payload()!
 		}
 		`~` { // Set
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			return RedisValue(db.read_resp3_set_payload()!)
 		}
 		`>` { // Push
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			return RedisValue(db.read_resp3_push_payload()!)
 		}
 		`|` { // Attr (map-like)
 			if db.version < 3 {
-				return error('`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}')
+				return ProtocolError{ message: '`read_response()`: unknown response prefix: ${db.resp_buf.bytestr()}' }
 			}
 			// Attributes are parsed like maps; reuse map parsing (attrs preserved as map[string]RedisValue)
 			return db.read_resp3_map_payload()!
@@ -1102,11 +1189,11 @@ fn (mut db DB) read_response() !RedisValue {
 			for i in 0 .. db.resp_buf.len {
 				hex += '${int(db.resp_buf[i]):02x} '
 			}
-			return error('`read_response()`: unknown response prefix byte=${prefix_val} data_hex="${hex}" data_str="${db.resp_buf.bytestr()}"')
+			return ProtocolError{ message: '`read_response()`: unknown response prefix byte=${prefix_val} data_hex="${hex}" data_str="${db.resp_buf.bytestr()}"' }
 		}
 	}
 
-	return error('`read_response()`: unreachable code')
+	return ProtocolError{ message: '`read_response()`: unreachable code' }
 }
 
 // write_resp_array serializes command arguments as binary-safe RESP bulk strings.
@@ -1123,42 +1210,84 @@ fn (mut db DB) write_resp_array(args []string) {
 // cmd sends a custom command to Redis server.
 // For example: db.cmd('SET', 'key', 'value')!
 pub fn (mut db DB) cmd(cmd ...string) !RedisValue {
+	if cmd.len == 0 { return CommandError{ message: 'command must not be empty' } }
 	db.write_resp_array(cmd)
 	if db.pipeline_mode {
 		db.pipeline_buffer << db.cmd_buf
 		db.pipeline_cmd_count++
 		return RedisNull{}
 	}
-	db.write_data(db.cmd_buf)!
-	return db.read_response()!
+	started := time.now()
+	if db.closed && db.config.auto_reconnect && !db.transaction_mode && !db.watched {
+		db.reconnect()!
+		db.write_resp_array(cmd)
+	}
+	mut attempts := 0
+	for {
+		db.write_data(db.cmd_buf) or {
+			sent := if db.tls { db.ssl_conn.last_write_sent } else { db.conn.last_write_sent }
+			if db.config.auto_reconnect && !db.transaction_mode && !db.watched && sent == 0 && attempts < db.config.max_retries {
+				attempts++
+				time.sleep(db.config.retry_delay)
+				db.reconnect()!
+				db.write_resp_array(cmd)
+				continue
+			}
+			db.record_command(cmd[0], started, true)
+			db.close() or {}
+			return err
+		}
+		break
+	}
+	resp := db.read_response() or {
+		db.record_command(cmd[0], started, true)
+		if err is ConnectionError || err is ProtocolError { db.close() or {} }
+		return err
+	}
+	if resp is RedisBlobError {
+		db.record_command(cmd[0], started, true)
+		return CommandError{ message: resp.data.bytestr() }
+	}
+	db.record_command(cmd[0], started, false)
+	return resp
 }
 
-// pipeline_start start a new pipeline
+// pipeline_start starts a buffered command pipeline.
 pub fn (mut db DB) pipeline_start() {
 	db.pipeline_mode = true
 	db.pipeline_cmd_count = 0
 	db.pipeline_buffer.clear()
 }
 
-// pipeline_execute executes the cmds in pipeline at once and retrieves all responses
+// pipeline_execute sends queued commands and retrieves all replies, including command error values.
 pub fn (mut db DB) pipeline_execute() ![]RedisValue {
 	if !db.pipeline_mode {
-		return error('`pipeline_execute()`: pipeline not started')
+		return CommandError{ message: '`pipeline_execute()`: pipeline not started' }
 	}
 	defer {
 		db.pipeline_mode = false
+		db.pipeline_cmd_count = 0
+		db.pipeline_buffer.clear()
 	}
 	if db.pipeline_buffer.len == 0 {
 		return []RedisValue{}
 	}
 
-	db.write_data(db.pipeline_buffer)!
+	started := time.now()
+	db.write_data(db.pipeline_buffer) or {
+		db.close() or {}
+		return err
+	}
 
 	mut results := []RedisValue{cap: db.pipeline_cmd_count}
 	for _ in 0 .. db.pipeline_cmd_count {
-		results << db.read_response()!
+		results << db.read_response_value(true) or {
+			db.close() or {}
+			return err
+		}
 	}
 
+	db.record_pipeline(results, started)
 	// reset to non-pipeline mode
 	db.pipeline_mode = false
 	db.pipeline_cmd_count = 0

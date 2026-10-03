@@ -20,9 +20,9 @@ fn testsuite_end() {
 }
 
 fn test_remove() {
-	os.execute_or_exit('${vexe} install https://github.com/hungrybluedev/xlsx')
+	os.exec_or_exit([@VEXE, 'install', 'https://github.com/hungrybluedev/xlsx'])
 	mod_path := os.join_path(test_path, 'xlsx')
 	assert os.is_dir(mod_path)
-	res := os.execute('${vexe} remove xlsx')
+	res := os.exec([@VEXE, 'remove', 'xlsx'])
 	assert !os.exists(mod_path)
 }

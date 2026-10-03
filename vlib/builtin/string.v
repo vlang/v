@@ -1282,6 +1282,22 @@ pub fn (s string) substr(start int, _end int) string {
 	return res
 }
 
+// substr_borrowed supplies the checked, non-owning view used by addressed ranges.
+fn (s string) substr_borrowed(start int, _end int) string {
+	end := if _end == max_i64 || _end == max_i32 { s.len } else { _end }
+	$if !no_bounds_checking {
+		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
+			panic('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
+				') out of bounds (len=' + impl_i64_to_string(s.len) + ') s=' + s)
+		}
+	}
+	return string{
+		str:    unsafe { s.str + start }
+		len:    end - start
+		is_lit: 1
+	}
+}
+
 // substr_unsafe works like substr(), but doesn't copy (allocate) the substring
 @[direct_array_access]
 pub fn (s string) substr_unsafe(start int, _end int) string {

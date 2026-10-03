@@ -170,14 +170,11 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		mut apaths := map[string]bool{}
 		// The next command will make V parse the program, and print all .v files,
 		// needed for its compilation, without actually compiling it.
-		copts := context.opts.join(' ')
-		cmd := '"${context.vexe}" -silent -print-watched-files ${copts}'
-		// context.elog('> cmd: ${cmd}')
 		mut paths := []string{}
 		if context.add_files.len > 0 && context.add_files[0] != '' {
 			paths << context.add_files
 		}
-		vfiles := os.execute(cmd)
+		vfiles := os.exec([context.vexe, '-silent', '-print-watched-files', ...context.opts])
 		if vfiles.exit_code == 0 {
 			paths_trimmed := vfiles.output.trim_space()
 			reported_used_files := paths_trimmed.split_any('\n')
@@ -331,14 +328,22 @@ fn (mut context Context) restore_terminal() {
 fn (mut context Context) run_before_cmd() {
 	if context.cmd_before_run != '' {
 		context.elog('> run_before_cmd: "${context.cmd_before_run}"')
-		os.system(context.cmd_before_run)
+		os.system_args(if os.user_os() == 'windows' {
+			['cmd.exe', '/d', '/s', '/c', context.cmd_before_run]
+		} else {
+			['sh', '-c', context.cmd_before_run]
+		})
 	}
 }
 
 fn (mut context Context) run_after_cmd() {
 	if context.cmd_after_run != '' {
 		context.elog('> run_after_cmd: "${context.cmd_after_run}"')
-		os.system(context.cmd_after_run)
+		os.system_args(if os.user_os() == 'windows' {
+			['cmd.exe', '/d', '/s', '/c', context.cmd_after_run]
+		} else {
+			['sh', '-c', context.cmd_after_run]
+		})
 	}
 }
 

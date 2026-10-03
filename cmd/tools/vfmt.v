@@ -137,7 +137,7 @@ fn main() {
 	mut cli_args_no_files := []string{}
 	for idx, a in os.args {
 		if idx == 0 {
-			cli_args_no_files << os.quoted_path(a)
+			cli_args_no_files << a
 			continue
 		}
 		if a !in files {
@@ -159,10 +159,10 @@ fn main() {
 			continue
 		}
 		mut worker_command_array := cli_args_no_files.clone()
-		worker_command_array << ['-worker', util.quote_path(fpath)]
+		worker_command_array << ['-worker', fpath]
 		worker_cmd := worker_command_array.join(' ')
 		foptions.vlog('vfmt worker_cmd: ${worker_cmd}')
-		worker_result := os.execute(worker_cmd)
+		worker_result := os.exec(worker_command_array)
 		// Guard against a possibly crashing worker process.
 		if worker_result.exit_code != 0 {
 			eprintln(worker_result.output)

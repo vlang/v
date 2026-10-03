@@ -11,7 +11,8 @@ fn mdg_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_multi_decl_guard_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${mdg_vexe} -gc none -path "${mdg_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${mdg_v3_src}')
+		os.exec([mdg_vexe, '-gc', 'none', '-path', '${mdg_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${mdg_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -35,10 +36,10 @@ fn test_template_multi_decl_guard_declares_all_lhs_names() {
 	source := "module main\n\nfn pair() ?(string, string) {\n\treturn 'A', 'B'\n}\n\nfn build() string {\n\treturn ('[' + \$tmpl('t.html') + ']').replace('\\n', '')\n}\n\nfn main() {\n\tprintln(build())\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_multi_decl_guard_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	// Both guard bindings printed inside the branch; neither was captured as an outer variable.
 	assert run.output.trim_space() == '[AB]', run.output

@@ -62,7 +62,7 @@ fn main() {
 fn (ctx Context) write_file_or_print(file string, check bool) {
 	if check {
 		compiler := os.getenv_opt('VEXE') or { 'v' }
-		result := os.execute('${os.quoted_path(compiler)} -check ${os.quoted_path(file)}')
+		result := os.exec([compiler, '-check', file])
 		if result.exit_code != 0 {
 			eprint(result.output)
 			exit(result.exit_code)
@@ -89,7 +89,7 @@ fn (ctx Context) watch_for_changes(file string) {
 			if ctx.is_compile {
 				compiler := os.getenv_opt('VEXE') or { 'v' }
 				file_name := file[..file.len - os.file_ext(file).len]
-				os.system('${os.quoted_path(compiler)} -o ${os.quoted_path(file_name + '.c')} ${os.quoted_path(file)}')
+				os.system_args([compiler, '-o', '${file_name + '.c'}', file])
 			}
 		}
 		timestamp = new_timestamp

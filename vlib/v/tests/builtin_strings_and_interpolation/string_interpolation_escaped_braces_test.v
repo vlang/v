@@ -24,6 +24,6 @@ fn test_decoded_dollar_escape_stays_literal_in_nested_string() {
  assert '${'\u0024{x}'}' == r'${x}'
  assert '${'\044{x}'}' == r'${x}'
 }")!
-	result := os.execute('${os.quoted_path(@VEXE)} -no-retry-compilation -gc none run ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', 'run', path])
 	assert result.exit_code == 0, result.output
 }

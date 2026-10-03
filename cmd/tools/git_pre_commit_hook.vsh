@@ -30,7 +30,8 @@ import term
 fn main() {
 	// This hook cares only about the changed V files, that will be committed, as reported by git itself:
 	changed :=
-		os.execute('git diff --cached --name-only --diff-filter=ACMR -- "*.v" "*.vsh" "*.vv"')
+		os.exec(['git', 'diff', '--cached', '--name-only', '--diff-filter=ACMR', '--', '*.v', '*.vsh',
+			'*.vv'])
 
 	all_changed_vfiles := changed.output.trim_space().split('\n')
 	// _input.vv files are NOT formatted on purpose.
@@ -48,9 +49,10 @@ fn main() {
 		eprintln('>>> 0 changed V files, that may need formatting found.')
 		exit(0)
 	}
-	configured_stop_committing := os.execute('git config --bool hooks.stopCommitOfNonVfmtedVFiles')
+	configured_stop_committing := os.exec(['git', 'config', '--bool',
+		'hooks.stopCommitOfNonVfmtedVFiles'])
 	if configured_stop_committing.output.trim_space().bool() {
-		verify_result := os.execute('${os.quoted_path(@VEXE)} fmt -verify ${vfiles.join(' ')}')
+		verify_result := os.exec([@VEXE, 'fmt', '-verify', ...vfiles])
 		if verify_result.exit_code != 0 {
 			eprintln(verify_result.output)
 		}
@@ -62,8 +64,7 @@ fn main() {
 			eprintln('    ${term.bold('${vfile}')}')
 		}
 		// vfmt on
-		all_vfiles_on_a_line := vfiles.map(os.quoted_path(it)).join(' ')
-		os.system('${os.quoted_path(@VEXE)} fmt -w ${all_vfiles_on_a_line}')
-		os.system('git add ${all_vfiles_on_a_line}')
+		os.system_args([@VEXE, 'fmt', '-w', ...vfiles])
+		os.system_args(['git', 'add', ...vfiles])
 	}
 }

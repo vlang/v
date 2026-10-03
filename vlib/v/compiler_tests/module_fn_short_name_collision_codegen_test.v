@@ -10,7 +10,9 @@ fn module_fn_collision_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_module_fn_collision_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${module_fn_collision_vexe} -gc none -path "${module_fn_collision_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${module_fn_collision_v3_src}')
+		os.exec([module_fn_collision_vexe, '-gc', 'none', '-path',
+			'${module_fn_collision_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			module_fn_collision_v3_src])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -162,11 +164,11 @@ fn test_imported_module_fn_short_name_does_not_pollute_builtin_return_type() {
 	out := os.join_path(os.temp_dir(), 'v3_module_fn_collision_out_${os.getpid()}')
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
-	compile := os.execute('${v3_bin} -nocache ${main_path} -b c -o ${out}')
+	compile := os.exec([v3_bin, '-nocache', main_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 

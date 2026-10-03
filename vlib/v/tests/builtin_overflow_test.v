@@ -45,12 +45,12 @@ fn test_out_files() {
 		//
 		compile_cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
 		sw_compile := time.new_stopwatch()
-		compilation := os.execute(compile_cmd)
+		compilation := os.exec([vexe, ...(os.split_args(alloptions) or { panic(err) }), path])
 		compile_ms := sw_compile.elapsed().milliseconds()
 		ensure_compilation_succeeded(compilation, compile_cmd)
 		//
 		sw_run := time.new_stopwatch()
-		res := os.execute(os.quoted_path(pexe))
+		res := os.exec([pexe])
 		run_ms := sw_run.elapsed().milliseconds()
 		//
 		if res.exit_code < 0 {

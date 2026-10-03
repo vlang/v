@@ -52,6 +52,11 @@ unsigned char func_name(int * p, index int);
 fn C.func_name(p &int, index i32) u8
 ```
 
+For a C output parameter, pass the address of the variable or struct field that C should update.
+A cast such as `voidptr(&handle)` preserves that address when passed to a C `void **`
+parameter declared as `&voidptr` in V. Writes by C update the original caller storage,
+including fields in heap allocated structs.
+
 
 ## Representing compound types in C and V:
 A V struct is the same as a C struct, with the same field names and

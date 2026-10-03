@@ -4,6 +4,7 @@ import os
 import runtime
 import time
 import v.flat
+import v.gen.c.naming
 import v.token
 import v.workers
 
@@ -235,7 +236,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 	// sparse fn-value store is cleared here, on the collecting thread.
 	tc.reset_sparse_fn_values()
 	tc.init_direct_parent_index(a)
-	parent_jobs := int_min(8, pool.size() + 1)
+	parent_jobs := int_min(16, pool.size() + 1)
 	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
 	mut start := 0
 	for job in 0 .. parent_jobs {
@@ -335,6 +336,11 @@ mut:
 	is_c_variadic       bool
 	has_mut_receiver    bool
 	has_forwardable_ctx bool
+	// The names pass 2 registers the function under, when names_ready.
+	names_ready         bool
+	qname               string
+	lowered_qname       string
+	lowered_source_name string
 }
 
 // compute_pass2_fn_prep performs the context-dependent but table-write-free
@@ -419,7 +425,17 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 				tc.cur_module = node.value
 			}
 			.fn_decl {
-				preps[pi] = tc.compute_pass2_fn_prep(node)
+				mut prep := tc.compute_pass2_fn_prep(node)
+				// cached_c_name stores exactly naming.c_name; pass 2 only records it.
+				prep.qname = tc.qualify_fn_name(node.value)
+				prep.lowered_qname = naming.c_name(prep.qname)
+				prep.lowered_source_name = if node.value == prep.qname {
+					prep.lowered_qname
+				} else {
+					naming.c_name(node.value)
+				}
+				prep.names_ready = true
+				preps[pi] = prep
 			}
 			else {}
 		}
@@ -668,6 +684,7 @@ fn check_chunk_thread(arg voidptr) voidptr {
 	} else {
 		scoped_check_worker_batches / 12
 	}
+	w.reuse_check_batch_scope = a.scope_enabled
 	if a.dynamic_items != unsafe { nil } {
 		chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
 		dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
@@ -686,6 +703,9 @@ fn check_chunk_thread(arg voidptr) voidptr {
 	} else {
 		w.check_fn_items_serial(*items)
 	}
+	check_worker_scope_free(w.check_batch_scope)
+	w.check_batch_scope = unsafe { nil }
+	w.reuse_check_batch_scope = false
 	check_worker_scope_leave(a.scope)
 	item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
 	w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
@@ -715,15 +735,46 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 			consumed_cost += i64(items[end].cost) + 1
 			end++
 		}
-		scratch_scope := check_worker_scope_begin(true)
+		scratch_scope := tc.begin_check_batch_scope()
 		mut batch := tc.fork_for_parallel_check()
 		batch.check_fn_items_serial(items[start..end])
 		check_worker_scope_leave(scratch_scope)
 		tc.clone_parallel_worker_node_caches(items[start..end])
 		tc.merge_parallel_check_worker_scoped(batch, true)
-		check_worker_scope_free(scratch_scope)
+		tc.end_check_batch_scope(scratch_scope)
 		start = end
 	}
+}
+
+// check_batch_arena_keep_bytes bounds how much of a worker's batch arena stays
+// mapped between its batches (see prealloc_scope_reenter).
+const check_batch_arena_keep_bytes = isize(8) * 1024 * 1024
+
+// begin_check_batch_scope starts the arena of one check batch. A worker that
+// reuses its batch arena rewinds the previous batch's one: unmapping and
+// faulting in the arena again for every batch is slower than reusing it.
+fn (mut tc TypeChecker) begin_check_batch_scope() voidptr {
+	$if prealloc {
+		if tc.reuse_check_batch_scope && tc.check_batch_scope != unsafe { nil } {
+			scope := tc.check_batch_scope
+			tc.check_batch_scope = unsafe { nil }
+			if unsafe { prealloc_scope_reenter(scope, check_batch_arena_keep_bytes) } {
+				return scope
+			}
+			check_worker_scope_free(scope)
+		}
+	}
+	return check_worker_scope_begin(true)
+}
+
+// end_check_batch_scope releases a batch arena once its results are merged, or
+// keeps it for the worker's next batch.
+fn (mut tc TypeChecker) end_check_batch_scope(scope voidptr) {
+	if tc.reuse_check_batch_scope && scope != unsafe { nil } {
+		tc.check_batch_scope = scope
+		return
+	}
+	check_worker_scope_free(scope)
 }
 
 // scoped_check_batch_count splits `n_items` of `total_cost` into at most
@@ -761,6 +812,31 @@ fn check_worker_scope_free(scope voidptr) {
 			unsafe { prealloc_scope_free_after(scope) }
 		}
 	}
+}
+
+// free_check_worker_scopes releases `scopes`; with a pool, side by side, since
+// unmapping them one after another takes a while.
+fn free_check_worker_scopes(pool &workers.Pool, scopes []voidptr) {
+	if scopes.len < 2 || isnil(pool) || pool.size() == 0 {
+		for scope in scopes {
+			check_worker_scope_free(scope)
+		}
+		return
+	}
+	mut tasks := []workers.Task{cap: scopes.len}
+	for scope in scopes {
+		tasks << workers.Task{
+			run:        check_worker_scope_free_thread
+			arg:        scope
+			force_sync: tasks.len == 0
+		}
+	}
+	pool.run(tasks)
+}
+
+fn check_worker_scope_free_thread(scope voidptr) voidptr {
+	check_worker_scope_free(scope)
+	return unsafe { nil }
 }
 
 // checker_serial_only reports whether v3 was built with the internal
@@ -1085,7 +1161,9 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	// candidate, so defer the call-graph walk until after checking and only
 	// run it when there is something to filter.
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
+	mut selsw := time.new_stopwatch()
 	tc.collect_selected_file_called_fns()
+	tc.timing_profile('  [ttime]   ck called fns    ${f64(selsw.elapsed().microseconds()) / 1000.0:7.2f} ms (${tc.selected_file_called_fns.len})')
 	mut cksw := time.new_stopwatch()
 	tc.check_export_attrs()
 	tc.check_c_js_generic_declarations()
@@ -1511,6 +1589,18 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 	// value checks already ran before any chunk was created.
 	tc.parallel_check_sparse = true
 	mut tasks := []workers.Task{cap: chunk_count + 1}
+	// Synchronous tasks run on the master in order. With dynamic dispatch its body
+	// chunks are checked by a fork pulling from the shared queue, so run the
+	// signature checks first: the helpers then take over the bodies the master
+	// would otherwise still be checking when they run out of work.
+	signatures_first := dynamic_dispatch && !bodies_only
+	if signatures_first {
+		tasks << workers.Task{
+			run:        check_top_level_decl_signatures_thread
+			arg:        voidptr(tc)
+			force_sync: true
+		}
+	}
 	for ci in 0 .. chunk_count {
 		helper_idx := ci - 1
 		tasks << workers.Task{
@@ -1519,7 +1609,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 			force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
 		}
 	}
-	if !bodies_only {
+	if !bodies_only && !signatures_first {
 		tasks << workers.Task{
 			run:        check_top_level_decl_signatures_thread
 			arg:        voidptr(tc)
@@ -4876,4 +4966,156 @@ fn (tc &TypeChecker) tail_decl_ids_for(start int, end int) ([]i32, bool) {
 		return []i32{}, false
 	}
 	return cache.tail_decl_ids, true
+}
+
+// SelectedFnScanArgs is one pool task of collect_selected_file_called_fns_walk_parallel.
+struct SelectedFnScanArgs {
+	worker       voidptr // &TypeChecker fork used only by this task
+	decls        voidptr // &[]SelectedFnDecl
+	decl_index   voidptr // &SelectedFnDeclIndex
+	lists        voidptr // &[][]string, the called names per declaration
+	callee_decls voidptr // &[][]int, the index in `decls` of each called name, or -1
+	queue        chan int
+	chunk        int
+mut:
+	scope voidptr
+}
+
+const selected_fn_scan_chunk = 64
+
+// SelectedFnDeclIndex maps a function name to its index in the scanned declarations.
+struct SelectedFnDeclIndex {
+mut:
+	names map[string]int
+}
+
+fn selected_fn_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &SelectedFnScanArgs(arg) }
+	a.scope = check_worker_scope_begin(true)
+	mut w := unsafe { &TypeChecker(a.worker) }
+	decls := unsafe { &[]SelectedFnDecl(a.decls) }
+	decl_index := unsafe { &SelectedFnDeclIndex(a.decl_index) }
+	mut lists := unsafe { &[][]string(a.lists) }
+	mut callee_decls := unsafe { &[][]int(a.callee_decls) }
+	w.cur_scope = w.file_scope
+	for {
+		start := <-a.queue or { break }
+		end := int_min(start + a.chunk, decls.len)
+		for i in start .. end {
+			decl := unsafe { decls[i] }
+			w.cur_file = decl.file
+			w.cur_module = decl.mod
+			w.selected_file_called_fns = map[string]bool{}
+			w.selected_file_worklist = []string{}
+			w.collect_selected_file_fn_body_called_fns(w.a.nodes[decl.idx])
+			// The worklist holds each name the body reaches once, in discovery order.
+			mut callees := []int{cap: w.selected_file_worklist.len}
+			for name in w.selected_file_worklist {
+				di := decl_index.names[name] or { -1 }
+				callees << di
+			}
+			unsafe {
+				lists[i] = w.selected_file_worklist
+				callee_decls[i] = callees
+			}
+		}
+	}
+	check_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+// collect_selected_file_called_fns_walk_parallel computes the same called set as
+// collect_selected_file_called_fns_walk. Scanning a body depends only on its
+// declaration's file and module, so the pool scans every candidate body once,
+// each task on its own fork of `master`, and the walk then follows those lists.
+// The arenas backing the lists are appended to `body_scopes` for the caller to
+// free once it no longer needs the names. It returns false without a pool.
+fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &TypeChecker, mut body_scopes []voidptr) bool {
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 {
+		return false
+	}
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	saved_scope := tc.cur_scope
+	saved_scope_pool_index := tc.scope_pool_index
+	tc.collect_selected_file_root_called_fns()
+	decls := tc.selected_file_fn_decls()
+	mut decl_list := []SelectedFnDecl{cap: decls.len}
+	mut decl_index := SelectedFnDeclIndex{}
+	decl_index.names.reserve(u32(decls.len))
+	for name, decl in decls {
+		decl_index.names[name] = decl_list.len
+		decl_list << decl
+	}
+	mut lists := [][]string{len: decl_list.len}
+	mut callee_decls := [][]int{len: decl_list.len}
+	chunk := selected_fn_scan_chunk
+	n_chunks := (decl_list.len + chunk - 1) / chunk
+	n_jobs := int_max(1, int_min(pool.size() + 1, n_chunks))
+	queue := chan int{cap: int_max(1, n_chunks)}
+	for start := 0; start < decl_list.len; start += chunk {
+		queue <- start
+	}
+	queue.close()
+	mut args := []SelectedFnScanArgs{cap: n_jobs}
+	for _ in 0 .. n_jobs {
+		args << SelectedFnScanArgs{
+			worker:       voidptr(master.fork_for_parallel_check())
+			decls:        unsafe { voidptr(&decl_list) }
+			decl_index:   unsafe { voidptr(&decl_index) }
+			lists:        unsafe { voidptr(&lists) }
+			callee_decls: unsafe { voidptr(&callee_decls) }
+			queue:        queue
+			chunk:        chunk
+		}
+	}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for job in 0 .. n_jobs {
+		tasks << workers.Task{
+			run:        selected_fn_scan_thread
+			arg:        unsafe { voidptr(&args[job]) }
+			force_sync: job == 0
+		}
+	}
+	pool.run(tasks)
+	for arg in args {
+		if arg.scope != unsafe { nil } {
+			body_scopes << arg.scope
+		}
+	}
+	// Follow the lists from the roots by declaration index, then add the names
+	// each reached body calls: the set a walk by name builds, in another order.
+	mut reached := []bool{len: decl_list.len}
+	mut stack := []int{cap: 1024}
+	for name in tc.selected_file_worklist {
+		if di := decl_index.names[name] {
+			stack << di
+		}
+	}
+	tc.selected_file_worklist.clear()
+	for stack.len > 0 {
+		di := stack.pop()
+		if reached[di] {
+			continue
+		}
+		reached[di] = true
+		for callee in callee_decls[di] {
+			if callee >= 0 && !reached[callee] {
+				stack << callee
+			}
+		}
+	}
+	for di, is_reached in reached {
+		if is_reached {
+			for name in lists[di] {
+				tc.selected_file_called_fns[name] = true
+			}
+		}
+	}
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
+	tc.cur_scope = saved_scope
+	tc.scope_pool_index = saved_scope_pool_index
+	return true
 }

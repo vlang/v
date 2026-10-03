@@ -1,5 +1,7 @@
 // vtest build: !(os_id_ubuntu? && musl?) && !sanitized_job?
 import os
+import strings
+import time
 
 const vexe = @VEXE
 const gcc_path = os.find_abs_path_of_executable('gcc') or { '' }
@@ -54,7 +56,8 @@ struct CmdOutput {
 
 fn run(fpath string, compiler_opts string, label string) CmdOutput {
 	cmd := '${os.quoted_path(vexe)} -new-compiler ${compiler_opts} -no-skip-unused -trace-calls run ${os.quoted_path(fpath)}'
-	res := os.execute(cmd)
+	res := os.exec([vexe, '-new-compiler', compiler_opts, '-no-skip-unused', '-trace-calls', 'run',
+		fpath])
 	if res.exit_code != 0 {
 		eprintln('> ${label} compilation output:\n${res.output}')
 		assert res.exit_code == 0, 'compilation of ${fpath} failed'
@@ -109,9 +112,10 @@ fn test_new_compiler_trace_calls_preserves_output_and_stack_base() {
 fn main() { visit(2) println("traced output") }
 ')!
 	for flags in ['', '-no-parallel', '-prod', '-profile ${os.quoted_path(profile_file)}'] {
-		build := os.execute('${os.quoted_path(vexe)} -new-compiler ${flags} -trace-calls -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+		build := os.exec([vexe, '-new-compiler', ...(os.split_args(flags) or { panic(err) }),
+			'-trace-calls', '-o', binary, source])
 		assert build.exit_code == 0, build.output
-		result := os.execute('${os.quoted_path(binary)} > ${os.quoted_path(stdout_file)} 2> ${os.quoted_path(stderr_file)}')
+		result := trace_capture_files([binary], stdout_file, stderr_file, map[string]string{})
 		assert result.exit_code == 0, result.output
 		assert os.read_file(stdout_file)!.trim_space() == 'traced output'
 		trace := os.read_file(stderr_file)!
@@ -142,20 +146,21 @@ fn main() { visit(2) println("traced output") }
 		}
 	}
 	assert os.read_file(profile_file)!.contains('visit')
-	plain := os.execute('${os.quoted_path(vexe)} -new-compiler run ${os.quoted_path(source)}')
+	plain := os.exec([vexe, '-new-compiler', 'run', source])
 	assert plain.exit_code == 0, plain.output
 	assert plain.output.trim_space() == 'traced output'
 }
 
 fn test_trace_fns_requires_an_argument() {
-	result := os.execute('${os.quoted_path(vexe)} -new-compiler -trace-calls -trace-fns')
+	result := os.exec([vexe, '-new-compiler', '-trace-calls', '-trace-fns'])
 	assert result.exit_code != 0
 	assert result.output.contains('option `-trace-fns` requires a value')
 }
 
 fn test_trace_calls_rejects_unsupported_backends() {
 	for backend in ['arm64', 'wasm', 'eval', 'fastc'] {
-		result := os.execute('${os.quoted_path(vexe)} -new-compiler -b ${backend} -trace-calls examples/hello_world.v')
+		result := os.exec([vexe, '-new-compiler', '-b', '${backend}', '-trace-calls',
+			'examples/hello_world.v'])
 		assert result.exit_code != 0
 		assert result.output.contains('option `-trace-calls` is only supported by the C backend')
 	}
@@ -171,9 +176,50 @@ fn test_trace_calls_preserves_implicit_embed_imports() {
 	os.write_file(os.join_path(dir, 'message.txt'), 'embedded output')!
 	os.write_file(source, 'fn main() { println(\$embed_file("message.txt").to_string()) }')!
 	for flags in ['', '-no-parallel'] {
-		result := os.execute('${os.quoted_path(vexe)} -new-compiler ${flags} -trace-calls -trace-fns main.main run ${os.quoted_path(source)}')
+		result := os.exec([vexe, '-new-compiler', ...(os.split_args(flags) or { panic(err) }),
+			'-trace-calls', '-trace-fns', 'main.main', 'run', source])
 		assert result.exit_code == 0, result.output
 		assert result.output.contains('main main.main/0')
 		assert result.output.contains('embedded output')
 	}
+}
+
+// Drain both pipes while the child runs, so a full stderr pipe cannot block stdout.
+fn trace_capture_files(arguments []string, stdout_file string, stderr_file string, variables map[string]string) os.Result {
+	mut process := os.new_process(arguments[0])
+	process.set_args(arguments[1..])
+	if variables.len > 0 {
+		mut environment := os.environ()
+		for key, value in variables { environment[key] = value }
+		process.set_environment(environment)
+	}
+	process.set_redirect_stdio()
+	process.set_stdin_path(if os.user_os() == 'windows' { 'NUL' } else { '/dev/null' })
+	process.run()
+	mut stdout := strings.new_builder(1024)
+	mut stderr := strings.new_builder(1024)
+	for process.is_alive() {
+		out := process.stdout_read()
+		err := process.stderr_read()
+		stdout.write_string(out)
+		stderr.write_string(err)
+		if out.len == 0 && err.len == 0 { time.sleep(time.millisecond) }
+	}
+	stdout.write_string(process.stdout_slurp())
+	stderr.write_string(process.stderr_slurp())
+	process.wait()
+	stdout_text := stdout.str()
+	stderr_text := stderr.str()
+	os.write_file(stdout_file, stdout_text) or { panic(err) }
+	if stderr_file != '' { os.write_file(stderr_file, stderr_text) or { panic(err) } }
+	result := os.Result{
+		exit_code: process.code
+		output:    if stderr_file == '' {
+			stderr_text
+		} else {
+			process.err
+		}
+	}
+	process.close()
+	return result
 }

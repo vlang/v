@@ -26,7 +26,7 @@ fn check_program(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
+	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
 }
 
 // error_lines returns `line:col: message` for every error of a check output.
@@ -160,7 +160,8 @@ fn check_with_modules_env(name string, env string, files map[string]string, modu
 		}
 	}
 	trace := os.join_path(dir, 'trace.txt')
-	res := os.execute('${env} VMODULES=${os.quoted_path(modules_dir)} V_DIAGNOSTICS_TRACE=${os.quoted_path(trace)} ${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(os.join_path(program, 'main.v'))}')
+	res := os.exec(['${env}', 'VMODULES=' + '${modules_dir}', 'V_DIAGNOSTICS_TRACE=' + '${trace}',
+		@VEXE, '-new-compiler', '-check', '-nocolor', os.join_path(program, 'main.v')])
 	prefix := 'v-diagnostics-server: instances: '
 	lines := (os.read_file(trace) or { '' }).split_into_lines().filter(it.starts_with(prefix)).map(it[prefix.len..])
 	return LibraryCheck{
@@ -313,7 +314,8 @@ fn build_program(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	return os.execute('V_MACOS_V3_NO_FALLBACK=1 ${os.quoted_path(@VEXE)} -new-compiler -nocolor -o ${os.quoted_path(os.join_path(dir, 'main'))} ${os.quoted_path(path)}')
+	return os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler', '-nocolor', '-o',
+		os.join_path(dir, 'main'), path])
 }
 
 // A build reports the errors of an instance where a check does, as V1 did: the
