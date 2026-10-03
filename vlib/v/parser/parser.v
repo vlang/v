@@ -15086,6 +15086,15 @@ fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
 	globals := p.translated_sizeof_global_names.move()
 	evals := p.translated_sizeof_branch_evals
 	p.scan_translated_sizeof_source(source)
+	if p.translated_sizeof_branch_evals != evals {
+		// Branches can read declarations from earlier siblings. Discard this
+		// context-free scan and repeat it with the accumulated tables visible.
+		p.translated_sizeof_type_names = types
+		p.translated_sizeof_const_names = consts
+		p.translated_sizeof_global_names = globals
+		p.scan_translated_sizeof_source(source)
+		return
+	}
 	file_types := p.translated_sizeof_type_names.keys()
 	file_consts := p.translated_sizeof_const_names.keys()
 	file_globals := p.translated_sizeof_global_names.keys()
@@ -15100,11 +15109,6 @@ fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
 	}
 	for key in file_globals {
 		p.translated_sizeof_global_names[key] = true
-	}
-	// A comptime branch or `@[if]` is decided with this worker's state; such a
-	// file's names stay private to it.
-	if p.translated_sizeof_branch_evals != evals {
-		return
 	}
 	shared_files.mu.lock()
 	entry.types = file_types

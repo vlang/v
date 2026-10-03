@@ -937,3 +937,25 @@ $if ${condition} { ${then_decl} } $else { ${else_decl} }
 		}
 	}
 }
+
+fn test_shared_sizeof_scan_preserves_deferred_sibling_constant_context() {
+	root := os.join_path(os.vtmp_dir(), 'translated_sizeof_shared_context_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'sibling.v')
+	os.write_file(path, 'module main\n$if enabled {\n const Choice = [2]u64{}\n} $else {\n type Choice = u8\n}\n')!
+	shared := TranslatedSizeofShared.new()
+	for share in [false, true, true] {
+		mut p := Parser.new(pref.new_preferences())
+		p.cur_module = 'main'
+		if share { p.translated_sizeof_shared = shared }
+		enabled_key := p.translated_sizeof_declaration_key('enabled')
+		p.translated_sizeof_const_names[enabled_key] = true
+		assert p.comptime_value('enabled') == none
+		p.scan_translated_sizeof_sibling(path)
+		choice_key := p.translated_sizeof_declaration_key('Choice')
+		assert p.translated_sizeof_const_names[enabled_key]
+		assert p.translated_sizeof_const_names[choice_key]
+		assert p.translated_sizeof_type_names[choice_key]
+	}
+}
