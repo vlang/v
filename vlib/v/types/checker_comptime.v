@@ -1558,11 +1558,18 @@ fn comptime_static_list_contains(list_text string, needle string) bool {
 	if !clean.starts_with('[') || !clean.ends_with(']') {
 		return false
 	}
-	inner := clean[1..clean.len - 1]
-	for part in inner.split(',') {
+	mut rest := clean[1..clean.len - 1]
+	for {
+		// Split on top-level commas only; a literal can contain one (`'a,b'`).
+		comma := comptime_condition_top_level_index(rest, ',')
+		part := if comma >= 0 { rest[..comma] } else { rest }
 		if comptime_static_unquote(trimmed_space(part)) == needle {
 			return true
 		}
+		if comma < 0 {
+			return false
+		}
+		rest = rest[comma + 1..]
 	}
 	return false
 }
@@ -7601,8 +7608,12 @@ pub fn (mut tc TypeChecker) type_text_implements_interface(actual_text string, i
 fn comptime_condition_matching_paren(s string, start int) int {
 	mut paren_depth := 0
 	mut bracket_depth := 0
-	for i in start .. s.len {
+	for i := start; i < s.len; i++ {
 		match s[i] {
+			`'`, `"`, `\`` {
+				// A bracket inside a literal (`'a)b'`) is text, not structure.
+				i = comptime_cond_skip_string(s, i) - 1
+			}
 			`(` {
 				paren_depth++
 			}
@@ -7644,6 +7655,12 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 	mut bracket_depth := 0
 	for i := 0; i <= s.len - needle.len; i++ {
 		match s[i] {
+			`'`, `"`, `\`` {
+				// Brackets and operators inside a literal (`'a)b'`, `'x || y'`) are
+				// text, not structure.
+				i = comptime_cond_skip_string(s, i) - 1
+				continue
+			}
 			`(` {
 				paren_depth++
 			}
