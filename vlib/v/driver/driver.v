@@ -6156,6 +6156,16 @@ fn v3_external_cache_path(key string, prefix string) ?V3ExternalCachePath {
 	}
 }
 
+// compare_v3_external_native_roots orders native roots by module, then by their
+// position. A named comparator keeps restore_v3_cache_external_inputs free of
+// function literals, which the transformer lowers serially.
+fn compare_v3_external_native_roots(a &V3ExternalNativeRoot, b &V3ExternalNativeRoot) int {
+	if a.module_name != b.module_name {
+		return a.module_name.compare(b.module_name)
+	}
+	return a.index - b.index
+}
+
 fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []string, user_c_flags []string, ccompiler string, target pref.Target, incremental_declaration_signature string) bool {
 	base_input := v3_cgen_cache_input(state, user_files, user_c_flags)
 	prefixes := ['external:', 'external-sha256:', 'external-meta:', 'external-root:',
@@ -6239,12 +6249,7 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 			index:       index
 		}
 	}
-	root_records.sort_with_compare(fn (a &V3ExternalNativeRoot, b &V3ExternalNativeRoot) int {
-		if a.module_name != b.module_name {
-			return a.module_name.compare(b.module_name)
-		}
-		return a.index - b.index
-	})
+	root_records.sort_with_compare(compare_v3_external_native_roots)
 	mut native_roots := map[string][]string{}
 	for record in root_records {
 		mut roots := native_roots[record.module_name]
@@ -7489,12 +7494,18 @@ fn release_transform_helper_scopes(mut a flat.FlatAst, scopes []voidptr) {
 	mut flags := []u8{len: a.nodes.len}
 	if transform.scan_scoped_text_flags_parallel_multi(a, scopes, mut flags) {
 		mut canon_cache := flat.TextProbeCache{}
-		for idx, flag in flags {
-			if flag != 0 {
-				for scope in scopes {
-					canonicalize_scoped_node_cached(mut a, idx, scope, mut canon_cache.ptrs, mut canon_cache.values)
-				}
+		// Only a few thousand nodes are flagged; jump between them.
+		mut idx := 0
+		for idx < flags.len {
+			found := unsafe { &u8(C.memchr(&u8(flags.data) + idx, 1, usize(flags.len - idx))) }
+			if isnil(found) {
+				break
 			}
+			idx = int(unsafe { found - &u8(flags.data) })
+			for scope in scopes {
+				canonicalize_scoped_node_cached(mut a, idx, scope, mut canon_cache.ptrs, mut canon_cache.values)
+			}
+			idx++
 		}
 	} else {
 		for idx in 0 .. a.nodes.len {
@@ -12595,13 +12606,8 @@ pub fn run(args []string) {
 			// What the check found so far, for a client that shows it while the
 			// grandchild takes long: its unused declarations and the instances of
 			// its generic functions (see diagserver.Request.print_diagnostics).
-			found_notices := pre_tc.notices.clone()
-			found_errors := pre_tc.errors.clone()
-			served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
-				print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture,
-					fatal_errors, check_only, message_limit, skip_notices)
-				return if found_errors.len > 0 { 1 } else { 0 }
-			})
+			serve_partial_type_diagnostics(mut served, a, pre_tc.notices.clone(), pre_tc.errors.clone(),
+				is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
 		}
 		if (vls_line_info != '' || shares_checks)
 			&& (!shares_checks || !served.diagnose_in_grandchild()) {
@@ -12621,11 +12627,7 @@ pub fn run(args []string) {
 			}
 			// The bodies the check left out are checked while no question comes:
 			// a question reads their types.
-			checker := pre_tc
-			served.keep_busy_with(fn [checker] () bool {
-				mut tc := checker
-				return tc.complete_incremental_check_step(incremental_completion_step)
-			})
+			serve_incremental_check_steps(mut served, pre_tc)
 			// A diagnostics server's child answers the next questions from the
 			// program it checked, while the server finds the files it read
 			// unchanged.
@@ -12633,9 +12635,7 @@ pub fn run(args []string) {
 				if digests := v3_input_digests(a, cache_state.cached_source_digests, server_file_ids) {
 					project_root := cache_state.import_resolutions.project_root
 					resolved_imports := v3_imports_to_resolve(a, cache_state.import_resolutions)
-					served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
-						return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
-					})
+					serve_unchanged_imports(mut served, digests, prefs, project_root, resolved_imports)
 					for {
 						next := served.next_question(code) or { break }
 						if served.asks_for_diagnostics(next) {
@@ -13115,7 +13115,14 @@ pub fn run(args []string) {
 			transform_scope := prealloc_scope_begin_for_v3()
 			mut scoped_owned_base_nodes := []int{}
 			mut retained_transform_regions := []transform.ScopedTransformRegion{}
+			// Without retained worker regions, this self-host path keeps the whole
+			// transform arena alive for cgen (see retain_transform_scope below).
+			retain_scope_without_regions := building_v && current_parallel_transform
+				&& backend == 'c' && !cache_state.manager.enabled
+				&& (cmd_v_build || input_is_v3_compiler_entry(input_file)
+					|| os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != '')
 			if prepare_transform_overlap {
+				prepared_transform.set_keeps_scope_without_regions(retain_scope_without_regions)
 				transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_prepared_selfhost_owned(mut prepared_transform, mut a, &pre_tc, used_fns, transform_scope)
 				retained_transform_prepare_scope = prepared_transform.take_scope()
 				retained_transform_prescan_scopes = prepared_transform.take_prescan_scopes()
@@ -13144,10 +13151,8 @@ pub fn run(args []string) {
 				retained_transform_prepare_scope = unsafe { nil }
 				retained_transform_prescan_scopes = []voidptr{}
 			}
-			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
-				&& !cache_state.manager.enabled && retained_transform_regions.len == 0
-				&& (cmd_v_build || input_is_v3_compiler_entry(input_file)
-					|| os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != '')
+			retain_transform_scope := retain_scope_without_regions
+				&& retained_transform_regions.len == 0
 			if retain_transform_scope {
 				// Cgen is the only remaining semantic consumer in this no-cache self-host
 				// path. Keep the typed transform arena alive through it instead of cloning
@@ -17886,6 +17891,37 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
+// The diagnostics server callbacks live outside `run`: a function literal makes
+// the transformer lower its whole enclosing function serially, before the
+// parallel workers start, and `run` is the largest function of the compiler.
+
+// serve_partial_type_diagnostics prints what the check found so far for a
+// client that shows it while the grandchild takes long.
+fn serve_partial_type_diagnostics(mut served diagserver.Request, a &flat.FlatAst, found_notices []types.TypeError, found_errors []types.TypeError, is_checker_fixture bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
+	served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
+		print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture, fatal_errors,
+			check_only, message_limit, skip_notices)
+		return if found_errors.len > 0 { 1 } else { 0 }
+	})
+}
+
+// serve_incremental_check_steps checks the bodies the check left out while no
+// question comes: a question reads their types.
+fn serve_incremental_check_steps(mut served diagserver.Request, checker types.TypeChecker) {
+	served.keep_busy_with(fn [checker] () bool {
+		mut tc := checker
+		return tc.complete_incremental_check_step(incremental_completion_step)
+	})
+}
+
+// serve_unchanged_imports keeps the checked program while its inputs and
+// imports resolve as before.
+fn serve_unchanged_imports(mut served diagserver.Request, digests map[string]string, prefs &pref.Preferences, project_root string, resolved_imports []V3ImportResolution) {
+	served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
+		return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
+	})
+}
+
 fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
 	if !check_only {
 		mut first_unused := -1

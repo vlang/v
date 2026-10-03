@@ -68,9 +68,11 @@ mut:
 	top_level_pos     int
 	string_pos        int
 	type_metadata_pos int
+	embed_pos         int
 	top_levels_ptr    voidptr
 	strings_ptr       voidptr
 	type_metadata_ptr voidptr
+	embed_ptr         voidptr
 	type_text_cache   &TypeMetadataTextCache = unsafe { nil }
 }
 
@@ -162,8 +164,12 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 		if is_type_metadata_node(&node, mut a.type_text_cache) {
 			a.type_metadata_pos++
 		}
-		if node.kind == .string_literal && !node.is_embed_payload() {
-			a.string_pos++
+		if node.kind == .string_literal {
+			if node.is_embed_payload() {
+				a.embed_pos++
+			} else {
+				a.string_pos++
+			}
 		}
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
 			.global_decl, .const_decl, .enum_decl, .interface_decl, .import_decl, .directive] {
@@ -206,9 +212,11 @@ fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
 	mut top_levels := unsafe { &[]i32(a.top_levels_ptr) }
 	mut literals := unsafe { &[]string(a.strings_ptr) }
 	mut type_metadata := unsafe { &[]i32(a.type_metadata_ptr) }
+	mut embeds := unsafe { &[]i32(a.embed_ptr) }
 	mut top_level_pos := a.top_level_pos
 	mut string_pos := a.string_pos
 	mut type_metadata_pos := a.type_metadata_pos
+	mut embed_pos := a.embed_pos
 	for node_idx in a.start .. a.end {
 		node := g.a.nodes[node_idx]
 		if is_type_metadata_node(&node, mut a.type_text_cache) {
@@ -217,11 +225,18 @@ fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
 			}
 			type_metadata_pos++
 		}
-		if node.kind == .string_literal && !node.is_embed_payload() {
-			unsafe {
-				literals[string_pos] = node.value
+		if node.kind == .string_literal {
+			if node.is_embed_payload() {
+				unsafe {
+					embeds[embed_pos] = node_idx
+				}
+				embed_pos++
+			} else {
+				unsafe {
+					literals[string_pos] = node.value
+				}
+				string_pos++
 			}
-			string_pos++
 		}
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
 			.global_decl, .const_decl, .enum_decl, .interface_decl, .import_decl, .directive] {
@@ -744,6 +759,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	mut top_level_count := 0
 	mut string_count := 0
 	mut type_metadata_count := 0
+	mut embed_count := 0
 	for mut arg in args {
 		counts.fn_count += arg.counts.fn_count
 		counts.struct_count += arg.counts.struct_count
@@ -755,20 +771,25 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		counted_top_levels := arg.top_level_pos
 		counted_strings := arg.string_pos
 		counted_type_metadata := arg.type_metadata_pos
+		counted_embeds := arg.embed_pos
 		arg.top_level_pos = top_level_count
 		arg.string_pos = string_count
 		arg.type_metadata_pos = type_metadata_count
+		arg.embed_pos = embed_count
 		top_level_count += counted_top_levels
 		string_count += counted_strings
 		type_metadata_count += counted_type_metadata
+		embed_count += counted_embeds
 	}
 	g.top_level_node_ids = []i32{len: top_level_count}
 	g.ast_string_literals = []string{len: string_count}
 	g.type_metadata_node_ids = []i32{len: type_metadata_count}
+	g.embed_payload_node_ids = []i32{len: embed_count}
 	for mut arg in args {
 		arg.top_levels_ptr = unsafe { voidptr(&g.top_level_node_ids) }
 		arg.strings_ptr = unsafe { voidptr(&g.ast_string_literals) }
 		arg.type_metadata_ptr = unsafe { voidptr(&g.type_metadata_node_ids) }
+		arg.embed_ptr = unsafe { voidptr(&g.embed_payload_node_ids) }
 	}
 	tasks.clear()
 	for job in 0 .. n_jobs {
@@ -780,6 +801,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	}
 	g.a.worker_pool.run(tasks)
 	g.type_metadata_nodes_ready = true
+	g.embed_payload_nodes_ready = true
 	return counts
 }
 
@@ -2713,6 +2735,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		top_level_node_ids:                 g.top_level_node_ids
 		type_metadata_node_ids:             g.type_metadata_node_ids
 		type_metadata_nodes_ready:          g.type_metadata_nodes_ready
+		embed_payload_node_ids:             g.embed_payload_node_ids
+		embed_payload_nodes_ready:          g.embed_payload_nodes_ready
 		test_files:                         if result_only {
 			g.test_files
 		} else {

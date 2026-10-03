@@ -721,6 +721,12 @@ pub fn (mut tc TypeChecker) put_back_incremental_unhandled() int {
 	return start
 }
 
+// compare_type_errors_by_node orders diagnostics by their node. Named comparators
+// keep these functions free of function literals, which transform lowers serially.
+fn compare_type_errors_by_node(a &TypeError, b &TypeError) int {
+	return int(a.node) - int(b.node)
+}
+
 // sort_incremental_unhandled orders the warnings about unhandled Results from
 // `start` on as warn_unhandled_result_calls finds them, by their calls: those
 // put back come first.
@@ -729,9 +735,7 @@ pub fn (mut tc TypeChecker) sort_incremental_unhandled(start int) {
 		return
 	}
 	mut warnings := tc.notices[start..].clone()
-	warnings.sort_with_compare(fn (a &TypeError, b &TypeError) int {
-		return int(a.node) - int(b.node)
-	})
+	warnings.sort_with_compare(compare_type_errors_by_node)
 	tc.notices.trim(start)
 	tc.notices << warnings
 }
@@ -1109,6 +1113,16 @@ fn incremental_verify_line(list int, err TypeError) string {
 	return '${list} ${int(err.node)} ${err.pos.offset}-${err.pos.end} ${err.severity} ${err.msg} ${err.details}'
 }
 
+// IncrementalFnOrder pairs a checked body with its declaration node, for sorting.
+struct IncrementalFnOrder {
+	fn_idx int
+	index  int
+}
+
+fn compare_incremental_fn_order(a &IncrementalFnOrder, b &IncrementalFnOrder) int {
+	return a.fn_idx - b.fn_idx
+}
+
 // incremental_record returns what the check found in each body, for the next
 // incremental check of the program, or '' when it noted nothing (see
 // incremental_select). `unhandled_start` is where the warnings of
@@ -1119,10 +1133,18 @@ pub fn (tc &TypeChecker) incremental_record(unhandled_start int) string {
 	}
 	state := tc.incremental
 	// The bodies by their nodes, to find the one around a node.
-	mut by_node := []int{len: state.functions.len, init: index}
-	by_node.sort_with_compare(fn [state] (a &int, b &int) int {
-		return state.functions[*a].item.fn_idx - state.functions[*b].item.fn_idx
-	})
+	mut order := []IncrementalFnOrder{cap: state.functions.len}
+	for i, f in state.functions {
+		order << IncrementalFnOrder{
+			fn_idx: f.item.fn_idx
+			index:  i
+		}
+	}
+	order.sort_with_compare(compare_incremental_fn_order)
+	mut by_node := []int{cap: order.len}
+	for entry in order {
+		by_node << entry.index
+	}
 	mut unhandled := map[int][]TypeError{}
 	for notice in tc.notices[int_min(unhandled_start, tc.notices.len)..] {
 		i := state.function_around(by_node, int(notice.node))

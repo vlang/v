@@ -3163,11 +3163,10 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		return none
 	}
 	t.ensure_call_param_types_decl_index()
-	decl := t.call_param_types_decl_index[call_name] or {
-		t.ensure_private_call_param_types_decl_cache()
-		t.call_param_types_decl_misses[call_name] = true
-		return none
-	}
+	// An unindexed name costs the same single lookup as a recorded miss, so
+	// do not record it: on a worker that would detach the shared prepared
+	// cache, misses and index (one full map clone per helper batch).
+	decl := t.call_param_types_decl_index[call_name] or { return none }
 	if params := t.call_param_types_decl_cache[decl.idx] {
 		return params
 	}

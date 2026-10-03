@@ -1085,7 +1085,9 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	// candidate, so defer the call-graph walk until after checking and only
 	// run it when there is something to filter.
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
+	mut selsw := time.new_stopwatch()
 	tc.collect_selected_file_called_fns()
+	tc.timing_profile('  [ttime]   ck called fns    ${f64(selsw.elapsed().microseconds()) / 1000.0:7.2f} ms (${tc.selected_file_called_fns.len})')
 	mut cksw := time.new_stopwatch()
 	tc.check_export_attrs()
 	tc.check_c_js_generic_declarations()

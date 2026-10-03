@@ -16266,9 +16266,25 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 	use_idx := !isnil(g.tc) && g.tc.top_level_idx.len > 0
 	idx_count := if use_idx { g.tc.top_level_idx.len } else { 0 }
 	tail_start := if use_idx { g.tc.top_level_idx_nodes_len } else { 0 }
-	total := idx_count + (g.a.nodes.len - tail_start)
+	// The collect scan recorded every node of the kinds handled below, in AST
+	// order. When it ran, walk its entries for the tail instead of every
+	// transform-appended node.
+	tail_from_index := g.type_metadata_nodes_ready && g.top_level_node_ids.len > 0
+	tail_ids := if tail_from_index {
+		g.top_level_node_ids[first_node_id_at_or_after(g.top_level_node_ids, tail_start)..]
+	} else {
+		[]i32{}
+	}
+	tail_count := if tail_from_index { tail_ids.len } else { g.a.nodes.len - tail_start }
+	total := idx_count + tail_count
 	for k in 0 .. total {
-		i := if k < idx_count { g.tc.top_level_idx[k] } else { tail_start + (k - idx_count) }
+		i := if k < idx_count {
+			g.tc.top_level_idx[k]
+		} else if tail_from_index {
+			int(tail_ids[k - idx_count])
+		} else {
+			tail_start + (k - idx_count)
+		}
 		node := g.a.nodes[i]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
@@ -16353,6 +16369,22 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 	if names.len > 0 {
 		g.writeln('')
 	}
+}
+
+// first_node_id_at_or_after returns the position of the first id >= `start` in
+// the ascending `ids`, or ids.len.
+fn first_node_id_at_or_after(ids []i32, start int) int {
+	mut lo := 0
+	mut hi := ids.len
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if int(ids[mid]) < start {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
 }
 
 fn c_extern_decl_specificity(a &flat.FlatAst, node flat.Node) int {
