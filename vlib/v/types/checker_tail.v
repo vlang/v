@@ -1996,6 +1996,10 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, visited 
 			return tc.returned_receiver_local_storage(tc.a.child(node, 0), ancestors,
 				through_call, local_sources)
 		}
+		if node.kind == .postfix && node.op == .not && node.children_count == 1
+			&& tc.a.child_node(node, 0).kind == .array_literal {
+			return tc.returned_receiver_local_storage_in_value(tc.a.child(node, 0), ancestors, local_sources)
+		}
 		if node.kind in [.block, .match_branch] {
 			mut branch_sources := local_sources.clone()
 			body_start := if node.kind == .match_branch && node.value != 'else' {
@@ -2065,6 +2069,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, visited 
 				}
 			}
 			for source in sources {
+				if tc.returned_receiver_call_source_materializes_storage(id, source.arg_id) {
+					if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
+						return local
+					}
+					continue
+				}
 				projected_type := tc.returned_receiver_projection_type(tc.resolve_type(id), source.target_suffix) or {
 					if tc.returned_receiver_call_source_borrows_storage(id, source.arg_id) {
 						if local := tc.returned_receiver_local_storage_source(source.arg_id, source.source_suffix, ancestors, local_sources) {
@@ -2177,6 +2187,27 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_source(id flat.NodeId, s
 	return none
 }
 
+// Fixed-array values passed as dynamic-array references acquire separate heap storage.
+// References inside the copied elements still need to outlive the return.
+fn (mut tc TypeChecker) returned_receiver_call_source_materializes_storage(id flat.NodeId, arg_id flat.NodeId) bool {
+	$if ownership ? {
+		if unalias_type(tc.resolve_type(arg_id)) !is ArrayFixed {
+			return false
+		}
+		node := tc.a.node(id)
+		info := tc.resolve_call_info(id, node) or { return false }
+		for i, param in info.params {
+			if source_id := tc.ownership_call_arg_for_return_param_info(node, info, i) {
+				if source_id == arg_id {
+					clean := unalias_type(param)
+					return clean is Pointer && unalias_type(clean.base_type) is Array
+				}
+			}
+		}
+	}
+	return false
+}
+
 // Owning parameters transfer payloads; borrowed parameters may retain the argument's storage.
 fn (mut tc TypeChecker) returned_receiver_call_source_borrows_storage(id flat.NodeId, arg_id flat.NodeId) bool {
 	$if ownership ? {
@@ -2221,6 +2252,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_projection(id flat.No
 		}
 		if node.kind == .call {
 			for source in tc.ownership_call_result_projection_sources(id, suffix) {
+				if tc.returned_receiver_call_source_materializes_storage(id, source.arg_id) {
+					if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
+						return local
+					}
+					continue
+				}
 				projected_type := tc.returned_receiver_projection_type(tc.resolve_type(id), suffix + source.target_suffix) or {
 					if tc.returned_receiver_call_source_borrows_storage(id, source.arg_id) {
 						if local := tc.returned_receiver_local_storage_source(source.arg_id, source.source_suffix, ancestors, local_sources) {
@@ -2267,13 +2304,19 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 				unalias_type((typ as ResultType).base_type)
 			}
 		}
-		if typ is Pointer {
+		node := tc.a.node(id)
+		// An expected reference type can annotate an implicitly boxed literal.
+		// Its storage is new, but references within its elements still borrow.
+		if typ is Pointer && node.kind !in [.struct_init, .assoc, .array_literal, .array_init,
+			.map_init] {
 			return tc.returned_receiver_local_storage(id, visited, false, local_sources)
 		}
 		mut ancestors := visited.clone()
 		ancestors << id
-		node := tc.a.node(id)
 		if node.kind in [.paren, .cast_expr, .as_expr, .expr_stmt, .field_init] && node.children_count > 0 {
+			return tc.returned_receiver_local_storage_in_value(tc.a.child(node, 0), ancestors, local_sources)
+		}
+		if node.kind in [.selector, .index] && node.children_count > 0 {
 			return tc.returned_receiver_local_storage_in_value(tc.a.child(node, 0), ancestors, local_sources)
 		}
 		if node.kind == .postfix && node.op == .not && typ is ArrayFixed
@@ -2324,6 +2367,12 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 		}
 		if node.kind == .call {
 			for source in tc.ownership_call_result_sources(id) {
+				if tc.returned_receiver_call_source_materializes_storage(id, source.arg_id) {
+					if local := tc.returned_receiver_local_storage_in_value(source.arg_id, ancestors, local_sources) {
+						return local
+					}
+					continue
+				}
 				projected_type := tc.returned_receiver_projection_type(typ, source.target_suffix) or {
 					// A boxed interface or sum may hide the concrete payload field. Its recorded
 					// return alias still needs to outlive the caller's local storage.
@@ -16151,7 +16200,9 @@ fn (tc &TypeChecker) call_argument_target_name(node flat.Node, info CallInfo) st
 			if callee.kind == .selector && callee.children_count > 0 {
 				receiver_id := tc.a.child(callee, 0)
 				receiver := tc.a.node(receiver_id)
-				if receiver.kind == .ident && tc.binding_is_strings_builder(receiver.value) {
+				// A method declared on an alias keeps that nominal owner after specialization.
+				if (receiver.kind == .ident && tc.binding_is_strings_builder(receiver.value))
+					|| info.name.all_before_last('.') in tc.type_aliases {
 					return info.name.replace('fn(', 'fn (')
 				}
 				receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))

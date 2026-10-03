@@ -99,6 +99,9 @@ println(s) // ok
 
 ## Borrowing
 
+Replacing an owned value evaluates its replacement before destroying the previous value.
+This also applies when the local value has been moved to heap storage.
+
 Pass `&variable` to borrow without moving. The original stays usable:
 
 ```v okfmt
@@ -118,6 +121,10 @@ field with `&values` borrows the existing array instead of creating an owned cop
 Array-slice references such as `&values[1..]` keep the original elements and a stable slice
 header. The backing value must remain alive while the reference is used. Copy the slice by
 value or use `.clone()` when independent storage is needed.
+
+Passing a fixed-array value to an `&[]T` parameter creates a separate dynamic array with
+durable element ownership. The original fixed-array storage does not escape. References
+inside the copied elements still borrow their original owners and cannot outlive them.
 
 Mutable receiver methods can return a reference to their receiver in ownership mode.
 The returned reference borrows the caller's value; the value must remain alive while it is used.

@@ -42,6 +42,9 @@ fn test_ownership_wrapped_receiver_references_cannot_escape_local_storage() {
 		WrappedReceiverReturnCase{'&Builder', 'identity_holder(holder).target', 'holder := Holder{target: builder.set(42)}'},
 		WrappedReceiverReturnCase{'Outer', 'Outer{...make_outer(mut builder), value: 1}', ''},
 		WrappedReceiverReturnCase{'&Holder', 'make_heap_holder(mut builder)', ''},
+		WrappedReceiverReturnCase{'&[]&Builder', 'retain_references([builder.set(42)]!)', ''},
+		WrappedReceiverReturnCase{'&[]&Builder', 'retain_references(references)', 'references := [builder.set(42)]!'},
+		WrappedReceiverReturnCase{'&[]&Builder', 'retain_references(references["row"])', 'references := {"row": [builder.set(42)]!}'},
 	]
 	for case in cases {
 		call := if case.typ == '(int, &Builder)' {
@@ -69,6 +72,7 @@ fn make_heap_holder(mut builder Builder) &Holder { return &Holder{target: builde
 fn identity_holder(holder Holder) Holder { return holder }
 fn optional_reference(builder &Builder) ?&Builder { return builder }
 fn result_reference(builder &Builder) !&Builder { return builder }
+fn retain_references(references &[]&Builder) &[]&Builder { return references }
 fn escaped(drops &int) ${case.typ} {
 	mut builder := Builder{drops: drops}
 	${case.binding}

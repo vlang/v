@@ -13418,6 +13418,11 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		if i % 2 == 0 {
+			lhs := t.a.nodes[int(child_id)]
+			if node.op == .assign && lhs.kind == .ident && t.heaped_amp_locals[lhs.value] {
+				new_children << t.make_prefix(.mul, t.make_ident(lhs.value))
+				continue
+			}
 			preserves_smartcast := node.op == .assign && i + 1 < node.children_count
 				&& t.assignment_preserves_smartcast(child_id, t.a.child(&node, i + 1))
 			new_children << if node.op == .assign && !preserves_smartcast {
@@ -13515,6 +13520,12 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		}
 		if lhs_type_name.len == 0 {
 			lhs_type_name = t.original_expr_type(t.a.child(&node, 0))
+		}
+		// Heap promotion changes the local's type to a pointer, but assignment
+		// still replaces its owned value through that pointer.
+		if lhs_node.kind == .ident && t.heaped_amp_locals[lhs_node.value]
+			&& lhs_type_name.starts_with('&') {
+			lhs_type_name = lhs_type_name[1..]
 		}
 		lhs_type := t.tc.parse_type(lhs_type_name)
 		// V1 autofree leaves aggregate field/index replacement shallow. In particular,
@@ -15320,11 +15331,8 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 		return none
 	}
 	if lhs.value in t.heaped_amp_locals {
-		new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
-		value := t.transform_expr_for_type(rhs_id, lhs_value_type_raw)
-		return [
-			t.make_assign(new_lhs, t.clone_borrowed_assignment_value(rhs_id, value, lhs_value_type_raw)),
-		]
+		// The regular path handles value coercion and dropping the previous owner.
+		return none
 	}
 	rhs_node := t.a.nodes[int(rhs_id)]
 	if rhs_node.kind == .prefix && rhs_node.op == .amp {

@@ -170,12 +170,6 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	} $else {
 		s = _s
 	}
-	defer {
-		$if ownership ? {
-			// Only this independent working copy is released on success or failure.
-			unsafe { s.free() }
-		}
-	}
 	// Pick off leading sign.
 	mut neg := false
 	if s[0] == `+` {
