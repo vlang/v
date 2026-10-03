@@ -20237,6 +20237,14 @@ fn (tc &TypeChecker) direct_call_return_type(node flat.Node) ?Type {
 		return none
 	}
 	if fn_node.kind == .ident {
+		// A local binding (a fn-typed parameter or variable) shadows a function
+		// of the same name, such as `open` or `read`.
+		if local_type := tc.cur_scope.lookup(fn_node.value) {
+			if fn_type := fn_type_from_type(local_type) {
+				return fn_type.return_type
+			}
+			return none
+		}
 		if local_name := tc.local_bare_fn_key(fn_node.value) {
 			if typ := tc.fn_ret_types[local_name] {
 				return typ
