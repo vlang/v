@@ -254,7 +254,7 @@ fn stdlib_doc_json(ws &Workspace, symbol string) string {
 		w.key('found')
 		w.boolean(false)
 		w.key('hint')
-		w.string('`${member}` is not documented in `${name}`; call it without a member to list the module\'s documented symbols')
+		w.string("`${member}` is not documented in `${name}`; call it without a member to list the module's documented symbols")
 		w.end_object()
 		return w.str()
 	}

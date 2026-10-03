@@ -445,7 +445,7 @@ fn test_pool_concurrent_errors_return_one_error_and_drain_accepted_jobs() {
 fn test_pool_close_drains_many_accepted_jobs_while_finishing() {
 	mut jobs := 12
 	mut workers := 3
-	$if windows && ( tinyc || gcc ) {
+	$if windows && (tinyc || gcc) {
 		jobs = 6
 		workers = 2
 	}

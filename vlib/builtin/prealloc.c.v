@@ -30,7 +30,7 @@ fn C.madvise(addr voidptr, length usize, advice int) int
 // No surviving value may depend on the contents of this range.
 @[unsafe]
 pub fn prealloc_discard_pages(start voidptr, size usize) {
-	$if prealloc && !freestanding && !vinix && ( macos || linux ) {
+	$if prealloc && !freestanding && !vinix && (macos || linux) {
 		if size < 65_536 || start == unsafe { nil } {
 			return
 		}
