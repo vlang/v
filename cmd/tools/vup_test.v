@@ -355,3 +355,62 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 	assert make_calls.trim_space().split_into_lines() == [tcc_make_call, 'make:'], make_calls
 	assert !os.exists(fallback_log), os.read_file(fallback_log) or { '' }
 }
+
+fn test_vup_help_lists_the_flags_without_touching_anything() ! {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'vup_help_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	os.mkdir_all(test_root)!
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+
+	tool := os.join_path(test_root, 'vup')
+	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
+	assert build.exit_code == 0, build.output
+
+	// Logging stand-ins for the commands a real update reaches for.
+	bin_dir := os.join_path(test_root, 'bin')
+	os.mkdir_all(bin_dir)!
+	git_log := os.join_path(test_root, 'git.log')
+	make_log := os.join_path(test_root, 'make.log')
+	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\nprintf "git %s\\n" "\$*" >> ${os.quoted_path(git_log)}\nexit 0\n')!
+	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nprintf "make %s\\n" "\$*" >> ${os.quoted_path(make_log)}\nexit 0\n')!
+
+	// A PATH holding only those: were `-h` to reach either, its log would exist.
+	result := os.exec(['env', 'PATH=' + bin_dir, '${tool}', '-h'])
+	assert result.exit_code == 0, result.output
+	// Every flag the tool reads is named, which is how `-skip_v_self` and
+	// `-skip_current` stop being invisible.
+	for flag in ['-v', '-prod', '-skills', '-skip_v_self', '-skip_current', '--help'] {
+		assert result.output.contains(flag), '${flag} missing from:\n${result.output}'
+	}
+	assert !os.exists(git_log), os.read_file(git_log) or { '' }
+	assert !os.exists(make_log), os.read_file(make_log) or { '' }
+}
+
+fn test_vup_help_survives_a_vexe_that_cannot_be_started() ! {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'vup_help_vexe_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	os.mkdir_all(test_root)!
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+
+	tool := os.join_path(test_root, 'vup')
+	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
+	assert build.exit_code == 0, build.output
+
+	// `VEXE` may legitimately be set, so a stale one must not turn `-h` into a
+	// failure: help has to work even when the compiler a delegated lookup would
+	// spawn is not there.
+	result := os.exec(['env', 'VEXE=' + os.join_path(test_root, 'does-not-exist'),
+		'${tool}', '-h'])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('Usage: v up'), result.output
+}

@@ -24,6 +24,28 @@ struct App {
 
 const args = arguments()
 
+// usage lists what `v up` accepts, for `-h`.
+//
+// Kept here rather than delegated to `v help up`, so that asking how to use the
+// command does not depend on being able to start the main compiler: `v up` reads
+// `VEXE`, which is allowed to be set, and a stale one must not turn `-h` into a
+// failure. `v help up` remains the place with the prose.
+const usage = 'Usage: v up [options]\n' +
+	'\n' +
+	'Options:\n' +
+	'  -v             Print more details about the update.\n' +
+	'  -prod          Compile the updated V with the -prod flag.\n' +
+	'  -skills        Refresh the installed agent skills that fell behind.\n' +
+	'  -skip_v_self   Rebuild with make or makev.bat instead of `v self`.\n' +
+	'  -skip_current  Recompile even when the checkout is already at the revision.\n' +
+	'  -h, --help     Show this help and exit.\n' +
+	'\n' +
+	'See `v help up` for what an update does.\n'
+
+fn wants_help() bool {
+	return '-h' in args || '--help' in args || 'help' in args
+}
+
 fn new_app() App {
 	return App{
 		is_verbose:    '-v' in args
@@ -37,6 +59,12 @@ fn new_app() App {
 }
 
 fn main() {
+	if wants_help() {
+		// Checked before anything else, because asking how to use the command
+		// must not update the compiler.
+		println(usage.trim_space())
+		exit(0)
+	}
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
 	os.chdir(app.vroot)!
