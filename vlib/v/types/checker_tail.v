@@ -13524,6 +13524,34 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_compatible(actual Type, expected Type)
 	return false
 }
 
+// mut_pointer_slot_arg_type returns the checked type of a `mut arg` argument.
+fn (tc &TypeChecker) mut_pointer_slot_arg_type(arg_id flat.NodeId) Type {
+	arg := tc.a.node(arg_id)
+	if arg.kind == .ident {
+		return tc.cur_scope.lookup(arg.value) or { tc.resolve_type(arg_id) }
+	}
+	return tc.resolve_type(arg_id)
+}
+
+// mut_pointer_slot_arg_rejected reports whether `mut arg` cannot supply the `&T`
+// variable that an explicit `mut param &T` parameter expects.
+fn (tc &TypeChecker) mut_pointer_slot_arg_rejected(arg_id flat.NodeId, expected Type) bool {
+	actual := tc.mut_pointer_slot_arg_type(arg_id)
+	arg := tc.a.node(arg_id)
+	if arg.kind == .ident && !tc.current_fn_param_is_explicit_mut_pointer(arg.value) {
+		if base := tc.fn_context.mut_param_base_types[arg.value] {
+			// A `mut arg T` parameter is a `&T` internally, but it is not a `&T`
+			// variable that the callee could reassign.
+			actual_depth, _ := type_pointer_depth_and_base(actual)
+			base_depth, _ := type_pointer_depth_and_base(base)
+			if actual_depth > base_depth {
+				return true
+			}
+		}
+	}
+	return !tc.mut_pointer_slot_arg_compatible(actual, expected)
+}
+
 fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type string, field_name string, decl_mod string) ?bool {
 	type_name := visible_mutation_receiver_type_name(receiver_type)
 	short_name := type_name.all_after_last('.')
