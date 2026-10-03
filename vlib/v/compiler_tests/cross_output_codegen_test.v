@@ -424,6 +424,17 @@ fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
 	assert fallback.contains('#else\n#include <poll.h>'), 'musl and the other targets lost <poll.h>: ${fallback}'
 }
 
+fn test_glibc_hello_world_declares_the_array_constructors_it_calls() {
+	// A literal-output program skips markused's runtime seeds, while the glibc
+	// backtrace it reaches through `panic` passes an argument array to `addr2line`.
+	c_code := cross_generate_with('-os linux -glibc', 'glibc_hello', "fn main() {\n\tprintln('Hello World!')\n}\n")
+	for ctor in ['new_array_from_c_array', 'new_array_from_c_array_noscan'] {
+		if c_code.contains('(${ctor}(') {
+			assert c_code.contains('\narray ${ctor}('), '`${ctor}` is called but never declared'
+		}
+	}
+}
+
 fn test_cross_windows_output_guards_the_msvc_only_headers() {
 	// `vc/v_win.c` is generated with `-cross -os windows -cc msvc` and then built
 	// by makev.bat with the bundled TinyCC, which ships neither <intrin.h> nor
