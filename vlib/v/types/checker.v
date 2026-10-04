@@ -2960,6 +2960,22 @@ pub fn (mut tc TypeChecker) record_transform_alloc_warning(id flat.NodeId, pos t
 	tc.fn_context.node_id = saved_fn_node
 }
 
+// record_transform_error reports an error that the transform finds after checking,
+// such as a `$if` in a `$for` body whose condition cannot be decided. It is not
+// limited to the project's own files: the transform only lowers code the program
+// uses, and leaving it out would compile a library wrong.
+pub fn (mut tc TypeChecker) record_transform_error(id flat.NodeId, pos token.Pos, msg string) {
+	if tc.errors.any(it.msg == msg && it.pos == pos) {
+		return
+	}
+	saved_file := tc.cur_file
+	if file := tc.a.source_files[pos.id] {
+		tc.cur_file = file.name
+	}
+	tc.record_error_unfiltered_at(.compile_error, msg, id, pos)
+	tc.cur_file = saved_file
+}
+
 fn (mut tc TypeChecker) warn_alloc_at(description string, id flat.NodeId, pos token.Pos) {
 	mut current := id
 	mut direct_child := flat.empty_node
@@ -18167,6 +18183,8 @@ struct ComptimeStaticValueCase {
 	param_names   []string
 	param_types   []string
 	param_is_mut  []bool
+	// param_is_mut_ref marks explicit `mut param &T` parameters.
+	param_is_mut_ref []bool
 }
 
 struct ComptimeStaticValueCases {
@@ -18786,12 +18804,15 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 				mut param_names := []string{}
 				mut param_types := []string{}
 				mut param_is_mut := []bool{}
+				mut param_is_mut_ref := []bool{}
 				for i in 1 .. candidate.children_count {
 					param := tc.a.child_node(&candidate, i)
 					if param.kind == .param {
 						param_names << param.value
 						param_types << subst_generic_text(param.typ, generic_args, generic_params)
 						param_is_mut << param.is_mut
+						param_is_mut_ref << (param.is_mut && param.op == .amp
+							&& param.typ.starts_with('&'))
 					}
 				}
 				return_type := subst_generic_text(if candidate.typ.len > 0 {
@@ -18800,15 +18821,16 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 					'void'
 				}, generic_args, generic_params)
 				cases << ComptimeStaticValueCase{
-					name:         name
-					location:     comptime_static_source_location(file_name, candidate.pos.offset, line_offsets_by_file[file_name])
-					typ:          comptime_static_method_type_text(param_types, return_type)
-					return_type:  return_type
-					is_pub:       candidate.op == .arrow
-					has_is_pub:   true
-					param_names:  param_names
-					param_types:  param_types
-					param_is_mut: param_is_mut
+					name:             name
+					location:         comptime_static_source_location(file_name, candidate.pos.offset, line_offsets_by_file[file_name])
+					typ:              comptime_static_method_type_text(param_types, return_type)
+					return_type:      return_type
+					is_pub:           candidate.op == .arrow
+					has_is_pub:       true
+					param_names:      param_names
+					param_types:      param_types
+					param_is_mut:     param_is_mut
+					param_is_mut_ref: param_is_mut_ref
 				}
 			}
 		}

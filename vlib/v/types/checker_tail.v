@@ -13539,6 +13539,113 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_compatible(actual Type, expected Type)
 	return false
 }
 
+// mut_pointer_slot_arg_source_type returns the type that `arg` has in the source,
+// e.g. `T` for a `mut arg T` parameter of the current function, which is a `&T`
+// internally.
+fn (tc &TypeChecker) mut_pointer_slot_arg_source_type(arg_id flat.NodeId) Type {
+	return tc.implicit_mut_param_base_type(arg_id) or { tc.mut_pointer_slot_arg_type(arg_id) }
+}
+
+// implicit_mut_param_base_type returns `T`, when `arg` is a `mut arg T` parameter
+// of the current function (not an explicit `mut arg &T` one).
+fn (tc &TypeChecker) implicit_mut_param_base_type(arg_id flat.NodeId) ?Type {
+	arg := tc.a.node(arg_id)
+	if arg.kind != .ident || !tc.mut_param_binding_matches_lvalue(arg.value)
+		|| tc.current_fn_param_is_explicit_mut_pointer(arg.value) {
+		return none
+	}
+	return tc.fn_context.mut_param_base_types[arg.value] or { return none }
+}
+
+// mut_pointer_slot_arg_type returns the checked type of a `mut arg` argument.
+fn (tc &TypeChecker) mut_pointer_slot_arg_type(arg_id flat.NodeId) Type {
+	arg := tc.a.node(arg_id)
+	if arg.kind == .ident {
+		return tc.cur_scope.lookup(arg.value) or { tc.resolve_type(arg_id) }
+	}
+	return tc.resolve_type(arg_id)
+}
+
+// mut_pointer_slot_arg_rejected reports whether `mut arg` cannot supply the `&T`
+// variable that an explicit `mut param &T` parameter expects.
+fn (tc &TypeChecker) mut_pointer_slot_arg_rejected(arg_id flat.NodeId, expected Type) bool {
+	if base := tc.implicit_mut_param_base_type(arg_id) {
+		// A `mut arg T` parameter is a `&T` internally, but it is not a `&T`
+		// variable that the callee could reassign. Its binding has type `T`, so
+		// this cannot be left to the type comparison below.
+		if expected is Pointer && unalias_type(base) !is Pointer {
+			return true
+		}
+	}
+	return !tc.mut_pointer_slot_arg_compatible(tc.mut_pointer_slot_arg_type(arg_id), expected)
+}
+
+// mut_pointer_slot_arg_needs_ref reports whether `mut arg` is rejected by an
+// explicit `mut param &T` parameter, while `mut p` with `mut p := &arg` is not.
+fn (tc &TypeChecker) mut_pointer_slot_arg_needs_ref(arg_id flat.NodeId, expected Type) bool {
+	if !tc.mut_pointer_slot_arg_rejected(arg_id, expected) {
+		return false
+	}
+	ref := Type(Pointer{
+		base_type: tc.mut_pointer_slot_arg_source_type(arg_id)
+	})
+	return tc.mut_pointer_slot_arg_compatible(ref, expected)
+}
+
+// mut_pointer_slot_arg_error_msg returns the error for an argument that the explicit
+// `mut param &T` parameter rejects. When `&arg` would fit, it explains which call
+// or declaration compiles, instead of showing the internal `&&T` slot type.
+fn (tc &TypeChecker) mut_pointer_slot_arg_error_msg(call_kind string, target string, param_name string, argument_number int, expected Type, arg_id flat.NodeId) string {
+	ref_type := call_argument_type_name(expected)
+	if !tc.mut_pointer_slot_arg_needs_ref(arg_id, expected) {
+		actual := tc.mut_pointer_slot_arg_source_type(arg_id)
+		return 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${ref_type}` in argument ${argument_number} to `${target}`'
+	}
+	value_type := if expected is Pointer {
+		call_argument_type_name(expected.base_type)
+	} else {
+		ref_type
+	}
+	has_name := param_name.len > 0 && param_name != '_'
+	param_label := if has_name { '`${param_name}`' } else { '${argument_number}' }
+	param_decl := if has_name { 'mut ${param_name}' } else { 'mut' }
+	arg_text := tc.source_text_for_node(arg_id)
+	// `&arr[i]` and `&m[key]` need `unsafe`, and `&arg` of an immutable `arg`
+	// is not mutable, so the example only fits mutable variables and fields.
+	example := if tc.a.node(arg_id).kind in [.ident, .selector]
+		&& tc.expr_root_is_mutable_lvalue(arg_id) {
+		ref_name := if arg_text == 'p' { 'ref' } else { 'p' }
+		' (e.g. `mut ${ref_name} := &${arg_text}`, then `mut ${ref_name}`)'
+	} else {
+		''
+	}
+	return '${call_kind} `${target.all_after_last('.')}` parameter ${param_label} is `${param_decl} ${ref_type}`, a mutable reference to a `${ref_type}`: pass `mut` of a `${ref_type}` variable${example}, or declare it `${param_decl} ${value_type}`'
+}
+
+// record_mut_pointer_slot_arg_error reports an argument that cannot be passed to
+// the explicit `mut param &T` parameter at `param_idx`.
+fn (mut tc TypeChecker) record_mut_pointer_slot_arg_error(node flat.Node, info CallInfo, param_idx int, arg_id flat.NodeId, expected Type) {
+	callee := tc.a.child_node(&node, 0)
+	mut call_kind := if info.has_receiver || callee.kind == .selector {
+		'method'
+	} else {
+		'function'
+	}
+	if !info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
+		base := tc.a.child_node(callee, 0)
+		// `mod.fn(...)` is a selector too, but it does not call a method.
+		if base.kind == .ident && !tc.ident_resolves_to_value(base.value)
+			&& tc.resolve_import_alias(base.value) != none {
+			call_kind = 'function'
+		}
+	}
+	param_name := tc.source_call_param_name(info.name, param_idx) or { '' }
+	argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
+	msg := tc.mut_pointer_slot_arg_error_msg(call_kind, tc.call_argument_target_name(node, info),
+		param_name, argument_number, expected, arg_id)
+	tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.call_argument_diagnostic_pos(arg_id))
+}
+
 fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type string, field_name string, decl_mod string) ?bool {
 	type_name := visible_mutation_receiver_type_name(receiver_type)
 	short_name := type_name.all_after_last('.')
@@ -15542,6 +15649,18 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				}
 			}
 		}
+		requires_mut_pointer_slot := tc.call_param_requires_mut_pointer_slot(info, param_idx)
+		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg
+			&& !tc.disable_explicit_mutability && requires_mut_pointer_slot
+			&& tc.mut_pointer_slot_arg_needs_ref(arg_id, expected) {
+			// `mut arg` would be rejected below as well, so explain what the
+			// parameter needs instead.
+			if has_dsl_scope {
+				tc.pop_scope()
+			}
+			tc.record_mut_pointer_slot_arg_error(node, info, param_idx, arg_id, expected)
+			continue
+		}
 		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg
 			&& !tc.disable_explicit_mutability {
 			param_label := if param_name := tc.source_call_param_name(info.name, param_idx) {
@@ -15595,36 +15714,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.record_error_at(.call_arg_mismatch, 'cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ${mut_arg_node.value}{....}`', arg_id, mut_arg_node.pos)
 			continue
 		}
-		requires_mut_pointer_slot := tc.call_param_requires_mut_pointer_slot(info, param_idx)
-		if requires_mut_pointer_slot && mut_arg_node.is_mut {
-			actual_mut_type := if mut_arg_node.kind == .ident {
-				tc.cur_scope.lookup(mut_arg_node.value) or { tc.resolve_type(arg_id) }
-			} else {
-				tc.resolve_type(arg_id)
+		if requires_mut_pointer_slot && mut_arg_node.is_mut
+			&& tc.mut_pointer_slot_arg_rejected(arg_id, expected) {
+			if has_dsl_scope {
+				tc.pop_scope()
 			}
-			actual_mut_depth, _ := type_pointer_depth_and_base(actual_mut_type)
-			mut_param_base := tc.fn_context.mut_param_base_types[mut_arg_node.value] or {
-				builtin_void_type
-			}
-			mut_param_base_depth, _ := type_pointer_depth_and_base(mut_param_base)
-			arg_is_implicit_mut_param := mut_arg_node.kind == .ident
-				&& mut_arg_node.value in tc.fn_context.mut_param_base_types
-				&& !tc.current_fn_param_is_explicit_mut_pointer(mut_arg_node.value)
-			is_implicit_mut_param_pointer := arg_is_implicit_mut_param
-				&& actual_mut_depth > mut_param_base_depth
-			if is_implicit_mut_param_pointer
-				|| !tc.mut_pointer_slot_arg_compatible(actual_mut_type, expected) {
-				argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
-				actual_display := if arg_is_implicit_mut_param {
-					'&${mut_param_base.name()}'
-				} else {
-					tc.diagnostic_expr_type_name(arg_id, actual_mut_type)
-				}
-				expected_display := '&${call_argument_type_name(expected)}'
-				target_name := tc.call_argument_target_name(node, info)
-				tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
-				continue
-			}
+			tc.record_mut_pointer_slot_arg_error(node, info, param_idx, arg_id, expected)
+			continue
 		}
 		if requires_mut_pointer_slot {
 			actual_slot := fn_param_unalias_type(tc.resolve_type(arg_id))
