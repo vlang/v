@@ -43,7 +43,23 @@ fn (set ComparatorSet) satisfies(ver Version) bool {
 			return false
 		}
 	}
+	// The grammar excludes a prerelease unless this set names one on the same
+	// `[major, minor, patch]`. Without that, `^1.0.0` would admit `1.0.0-alpha`
+	// and a resolver could never tell a pre-release from the release it precedes.
+	if ver.prerelease.len > 0 && !set.admits_prerelease(ver) {
+		return false
+	}
 	return true
+}
+
+fn (set ComparatorSet) admits_prerelease(ver Version) bool {
+	for comp in set.comparators {
+		if comp.ver.prerelease.len > 0 && comp.ver.major == ver.major && comp.ver.minor == ver.minor
+			&& comp.ver.patch == ver.patch {
+			return true
+		}
+	}
+	return false
 }
 
 fn (c Comparator) satisfies(ver Version) bool {
