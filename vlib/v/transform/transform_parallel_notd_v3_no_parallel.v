@@ -2385,6 +2385,9 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	for warning in batch.alloc_warnings {
 		t.alloc_warnings << warning
 	}
+	for item in batch.unevaluated_comptime_ifs {
+		t.unevaluated_comptime_ifs << item
+	}
 	deferred_start := t.deferred_base_writes.len
 	for write in batch.deferred_base_writes {
 		t.deferred_base_writes << write

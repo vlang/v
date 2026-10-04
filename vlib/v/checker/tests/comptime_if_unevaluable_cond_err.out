@@ -1,0 +1,14 @@
+vlib/v/checker/tests/comptime_if_unevaluable_cond_err.vv:22:7: error: cannot evaluate `$if` condition `method.name.to_upper().len > 3` at compile time; use a runtime `if` instead
+   20 |             hits << method.name
+   21 |         }
+   22 |         $if method.name.to_upper().len > 3 {
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   23 |             hits << method.name
+   24 |         }
+vlib/v/checker/tests/comptime_if_unevaluable_cond_err.vv:29:15: error: cannot evaluate `$if` condition `field.name == 'email' || field.attrs.len > 0` at compile time; use a runtime `if` instead
+   27 |         $if field.name == 'name' {
+   28 |             hits << field.name
+   29 |         } $else $if field.name == 'email' ||
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~
+   30 |             field.attrs.len > 0 {
+   31 |             hits << field.name

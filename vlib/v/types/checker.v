@@ -2905,6 +2905,22 @@ pub fn (mut tc TypeChecker) record_transform_alloc_warning(id flat.NodeId, pos t
 	tc.fn_context.node_id = saved_fn_node
 }
 
+// record_transform_error reports an error that the transform finds after checking,
+// such as a `$if` in a `$for` body whose condition cannot be decided. It is not
+// limited to the project's own files: the transform only lowers code the program
+// uses, and leaving it out would compile a library wrong.
+pub fn (mut tc TypeChecker) record_transform_error(id flat.NodeId, pos token.Pos, msg string) {
+	if tc.errors.any(it.msg == msg && it.pos == pos) {
+		return
+	}
+	saved_file := tc.cur_file
+	if file := tc.a.source_files[pos.id] {
+		tc.cur_file = file.name
+	}
+	tc.record_error_unfiltered_at(.compile_error, msg, id, pos)
+	tc.cur_file = saved_file
+}
+
 fn (mut tc TypeChecker) warn_alloc_at(description string, id flat.NodeId, pos token.Pos) {
 	mut current := id
 	mut direct_child := flat.empty_node
