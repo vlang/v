@@ -24,6 +24,7 @@ import v.token as compiler_token
 import v.transform
 import v.types
 import v.util
+import v.util.vtest
 import v.workers
 import v.build_constraint
 import v.vmod
@@ -8321,22 +8322,42 @@ fn v3_test_build_facts(target pref.Target, ccompiler string, is_prod bool) []str
 	return facts.keys()
 }
 
-// v3_test_process_running reports whether a process line of `ps ax` contains all `patterns`.
-fn v3_test_process_running(patterns []string) bool {
+// v3_test_process_lines returns the lines of `ps ax`; none where it can not be run.
+fn v3_test_process_lines() []string {
 	$if windows {
-		return false
+		return []string{}
 	} $else {
 		result := cmdexec.run('ps', ['ax'])
 		if result.exit_code != 0 {
-			return false
+			return []string{}
 		}
-		for line in result.output.split_into_lines() {
-			if patterns.all(line.contains(it)) {
-				return true
-			}
-		}
-		return false
+		return result.output.split_into_lines()
 	}
+}
+
+// v3_test_process_line_is_server reports whether `process_line`, a line of `ps ax`,
+// is the server that the `started_*` build define `define` stands for.
+fn v3_test_process_line_is_server(define string, process_line string) bool {
+	return match define {
+		'started_mysqld' { process_line.contains('mysqld') }
+		'started_postgres' { process_line.contains('postgres') }
+		'started_mssql' { process_line.contains('sqlservr') }
+		// The db.redis tests connect to the default port, so a redis-server
+		// that shows another port does not count.
+		'started_redis' { vtest.is_default_port_redis_server(process_line) }
+		else { false }
+	}
+}
+
+// v3_test_process_running reports whether `ps ax` shows the server of the
+// `started_*` build define `define`.
+fn v3_test_process_running(define string) bool {
+	for process_line in v3_test_process_lines() {
+		if v3_test_process_line_is_server(define, process_line) {
+			return true
+		}
+	}
+	return false
 }
 
 fn v3_test_command_succeeds(command string, args []string) bool {
@@ -8463,16 +8484,8 @@ fn v3_test_build_defines(expression string, user_defines []string) []string {
 	if github_job.starts_with('sanitize-') {
 		defines['sanitized_job'] = true
 	}
-	process_defines := {
-		'started_mysqld':   ['mysqld']
-		'started_postgres': ['postgres']
-		'started_mssql':    ['sqlservr']
-		// The db.redis tests connect to the default port; redis-server shows its
-		// listening address in its process title, e.g. `redis-server *:6379`.
-		'started_redis':    ['redis-server', ':6379']
-	}
-	for define, process_patterns in process_defines {
-		if expression.contains('${define}?') && v3_test_process_running(process_patterns) {
+	for define in ['started_mysqld', 'started_postgres', 'started_mssql', 'started_redis'] {
+		if expression.contains('${define}?') && v3_test_process_running(define) {
 			defines[define] = true
 		}
 	}

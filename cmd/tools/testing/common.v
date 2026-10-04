@@ -1405,16 +1405,15 @@ pub const is_started_mssql = find_started_process('sqlservr') or { '' }
 // is_started_redis is true, when the test runner determines that there is a running redis server
 // on the default port 6379, which the db.redis tests connect to. A redis-server, that another tool
 // started on a different port, can not serve them.
-pub const is_started_redis = find_started_redis_on_default_port() or { '' }
+pub const is_started_redis = find_started_redis_on_default_port(all_processes) or { '' }
 
-fn find_started_redis_on_default_port() !string {
-	for line in all_processes {
-		// redis-server shows its listening address in its process title, e.g. `redis-server *:6379`
-		if line.contains('redis-server') && line.contains(':6379') {
+fn find_started_redis_on_default_port(process_lines []string) !string {
+	for line in process_lines {
+		if vtest.is_default_port_redis_server(line) {
 			return line
 		}
 	}
-	return error('could not find a redis-server process, listening on port 6379')
+	return error('could not find a redis-server process, that serves the default port 6379')
 }
 
 pub fn (mut ts TestSession) setup_build_environment() {
