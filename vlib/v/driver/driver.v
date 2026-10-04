@@ -7553,26 +7553,8 @@ fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string,
 	return !v3_test_matches_build_constraint(input_file, target, ccompiler, is_prod, user_defines)
 }
 
-fn v3_cache_compiler_signature(vroot string) string {
-	dir := os.join_path(vroot, 'vlib', 'v')
-	if !os.is_dir(dir) {
-		return ''
-	}
-	mut files := []string{}
-	for file in os.walk_ext(dir, '.v') {
-		normalized := file.replace('\\', '/')
-		if normalized.contains('/tests/') {
-			continue
-		}
-		files << file
-	}
-	files << os.walk_ext(dir, '.h')
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_source_signatures')
-	return modulecache.cached_source_signature(cache_dir, os.real_path(vroot), files)
-}
-
-// v3_cache_compiler_executable_identity prevents an old compiler from populating the module
-// cache under the source signature of a newer compiler that has not been rebuilt yet.
+// v3_cache_compiler_executable_identity identifies the code that generates cached artifacts.
+// Editing unbuilt compiler sources does not change that code; rebuilding the executable does.
 fn v3_cache_compiler_executable_identity(vexe string) string {
 	path := os.real_path(vexe)
 	return '${path}\t${v3_cache_file_identity(path)}'
@@ -10573,11 +10555,6 @@ pub fn run(args []string) {
 		&& 'track_heap' !in prefs.user_defines
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
-	compiler_signature := if cache_candidate_enabled {
-		v3_cache_compiler_signature(prefs.vroot)
-	} else {
-		''
-	}
 	compiler_executable_identity := if cache_candidate_enabled {
 		v3_cache_compiler_executable_identity(prefs.vexe)
 	} else {
@@ -10586,7 +10563,6 @@ pub fn run(args []string) {
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
 	reusable_c_output := keep_c || backend_explicit || dump_c_flags.len > 0
 	cache_salt := [
-		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
 		'ccompiler=${prefs.ccompiler}',
 		'vexe=${compiler_executable_identity}',
