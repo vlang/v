@@ -17816,6 +17816,7 @@ fn native_build_input_paths(a &flat.FlatAst, prefs &pref.Preferences, user_c_fla
 		os.write_file(probe, '') or { return []string{} }
 		roots << probe
 	}
+	real_probe := if probe != '' { os.real_path(probe) } else { '' }
 	defer {
 		if probe != '' { os.rm(probe) or {} }
 	}
@@ -17829,7 +17830,10 @@ fn native_build_input_paths(a &flat.FlatAst, prefs &pref.Preferences, user_c_fla
 		args << ['-x', language]
 		dependencies := c_object_dependencies(c_compiler, args, root)
 		for path in dependencies.files {
-			if path != probe { paths[path] = true }
+			// The compiler reports resolved paths, such as macOS `/private/tmp` for
+			// `/tmp`. Compare and store them like the resolved directive roots.
+			real_path := os.real_path(path)
+			if real_path != real_probe { paths[real_path] = true }
 		}
 	}
 	mut result := paths.keys()
