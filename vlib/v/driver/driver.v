@@ -7581,29 +7581,28 @@ fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string,
 	return !v3_test_matches_build_constraint(input_file, target, ccompiler, is_prod, user_defines)
 }
 
-fn v3_cache_compiler_signature(vroot string) string {
-	dir := os.join_path(vroot, 'vlib', 'v')
-	if !os.is_dir(dir) {
-		return ''
-	}
-	mut files := []string{}
-	for file in os.walk_ext(dir, '.v') {
-		normalized := file.replace('\\', '/')
-		if normalized.contains('/tests/') {
-			continue
-		}
-		files << file
-	}
-	files << os.walk_ext(dir, '.h')
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_source_signatures')
-	return modulecache.cached_source_signature(cache_dir, os.real_path(vroot), files)
-}
-
-// v3_cache_compiler_executable_identity prevents an old compiler from populating the module
-// cache under the source signature of a newer compiler that has not been rebuilt yet.
+// v3_cache_compiler_executable_identity identifies the code that generates cached artifacts.
+// Editing unbuilt compiler sources does not change that code; rebuilding the executable does.
+// The exceptions are files that a development build reads at run time, see
+// v3_cache_compiler_runtime_inputs_identity.
 fn v3_cache_compiler_executable_identity(vexe string) string {
 	path := os.real_path(vexe)
 	return '${path}\t${v3_cache_file_identity(path)}'
+}
+
+// v3_cache_compiler_runtime_inputs lists the `$embed_file` targets of the C backend, which
+// copies them into the generated C code. Outside of -prod, the compiler executable keeps only
+// their paths and reads the files at run time.
+const v3_cache_compiler_runtime_inputs = ['manual_stdlib_c_headers.h', 'int128_helpers.h',
+	'int128_string.h']
+
+// v3_cache_compiler_runtime_inputs_identity identifies the files in
+// v3_cache_compiler_runtime_inputs, under the compiler source tree `root`, so that editing
+// them invalidates cached artifacts without rebuilding the compiler executable.
+fn v3_cache_compiler_runtime_inputs_identity(root string) string {
+	dir := os.join_path(root, 'vlib', 'v', 'gen', 'c')
+	return v3_cache_compiler_runtime_inputs.map(v3_cache_file_identity(os.join_path(dir,
+		it))).join('\t')
 }
 
 fn restored_fn_c_name(name string) string {
@@ -10610,23 +10609,24 @@ pub fn run(args []string) {
 		&& 'track_heap' !in prefs.user_defines
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
-	compiler_signature := if cache_candidate_enabled {
-		v3_cache_compiler_signature(prefs.vroot)
+	compiler_executable_identity := if cache_candidate_enabled {
+		v3_cache_compiler_executable_identity(prefs.vexe)
 	} else {
 		''
 	}
-	compiler_executable_identity := if cache_candidate_enabled {
-		v3_cache_compiler_executable_identity(prefs.vexe)
+	// `$embed_file` paths are relative to the compiler sources that this executable was built from.
+	compiler_runtime_inputs_identity := if cache_candidate_enabled {
+		v3_cache_compiler_runtime_inputs_identity(@VMODROOT)
 	} else {
 		''
 	}
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
 	reusable_c_output := keep_c || backend_explicit || dump_c_flags.len > 0
 	cache_salt := [
-		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
 		'ccompiler=${prefs.ccompiler}',
 		'vexe=${compiler_executable_identity}',
+		'compiler_runtime_inputs=${compiler_runtime_inputs_identity}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
