@@ -52,6 +52,44 @@ may mix `/` and `\` and the last separator of either kind decides the parent.
 On Windows, `os.uname()` leaves `release` and `version` empty if the `ver` command
 fails or does not report a numeric version. Localized version labels are accepted.
 
+### Walking a tree
+
+`os.walk()` reports files only, and `os.walk_with_context()` reports directories
+too but cannot skip them, so neither lets you say "do not descend into this one",
+and a large tree has to be read in full. `os.walk_dir()` reports every entry,
+directories included, and lets the callback prune:
+
+```v ignore
+os.walk_dir('/srv/app', fn (path string, entry os.WalkDirEntry) os.WalkDirAction {
+	if err := entry.err {
+		eprintln('skipping ${path}: ${err}')
+		return .proceed
+	}
+	if entry.is_dir && entry.name in ['.git', 'node_modules', 'target'] {
+		return .skip_dir // the directory is reported, its contents are never read
+	}
+	if !entry.is_dir && entry.name.ends_with('.v') {
+		println(path)
+	}
+	return .proceed
+}) or { panic(err) }
+```
+
+Returning `.stop` ends the walk where it stands. Entries are visited in lexical
+order and the root is reported first. Symlinks are reported but never followed,
+a symlinked root included; pass `os.real_path(root)` to walk what it points to.
+
+`entry.err` is set in two cases. An entry that cannot be stat'ed, such as a
+missing root, arrives with `is_dir` left false, so a callback cannot accidentally
+descend into something unreadable. A directory that cannot be listed is reported
+a second time, with `entry.err` set and `is_dir` still true; returning `.stop`
+from that report ends the walk, anything else moves on to its next sibling.
+
+To accumulate state across calls, pass a method of a `mut` local, as in
+`os.walk_dir(root, c.visit)`, or capture a reference (`mut c := &Counter{}`): a
+closure that captures `[mut n]` only updates its own copy, see
+[Closures](https://github.com/vlang/v/blob/master/doc/docs.md#closures).
+
 ### Running commands
 
 Use `os.exec(['program', 'arg 1', 'arg 2'])` when the command and its arguments

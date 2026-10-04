@@ -873,6 +873,129 @@ pub fn walk(path string, f fn (string)) {
 	}
 }
 
+// WalkDirAction tells walk_dir what to do after its callback returns.
+pub enum WalkDirAction {
+	proceed  // carry on with the next entry
+	skip_dir // do not descend into the directory that was just reported
+	stop     // end the walk
+}
+
+// WalkDirEntry describes one entry visited by walk_dir.
+pub struct WalkDirEntry {
+pub:
+	name   string // the entry's base name, without any directory part
+	is_dir bool   // true for a directory; symlinks are reported, never followed
+	typ    FileType
+	err    ?IError // why the entry could not be read or listed; none when it could
+}
+
+// WalkDirFn is the callback type for walk_dir.
+// `entry.err` is set in two cases, so a callback should look at it before relying
+// on the other fields:
+// - an entry that cannot be stat'ed is reported once, with `is_dir` and `typ` left
+//   at their zero values, so it is never descended into;
+// - a directory that was reported normally but then cannot be listed is reported
+//   a second time, with `err` set and `is_dir` and `typ` still describing the
+//   directory. Returning `.stop` from that second report ends the walk; anything
+//   else carries on with the directory's next sibling.
+pub type WalkDirFn = fn (path string, entry WalkDirEntry) WalkDirAction
+
+// walk_dir traverses the directory tree rooted at `root` and calls `cb` for
+// every entry, directories included, in lexical order. It is the counterpart of
+// Go's filepath.WalkDir.
+//
+// Returning `.skip_dir` leaves the directory that was just reported unread,
+// which is what makes pruning a large tree possible; on a non-directory it has no
+// effect. Returning `.stop` ends the walk immediately, and walk_dir then returns
+// no error. An entry that cannot be read, or a directory that cannot be listed,
+// is reported through `entry.err` (see WalkDirFn) rather than aborting the walk,
+// and walk_dir itself only fails when `root` is empty; a missing `root` is
+// reported to the callback.
+//
+// Symlinks are reported but never followed, and that includes a symlinked `root`;
+// pass `os.real_path(root)` to walk the directory it points to.
+//
+// Like walk, walk_dir iterates rather than recurses, so tree depth costs no stack.
+//
+// Example:
+// ```v
+// os.walk_dir('/srv/app', fn (path string, entry os.WalkDirEntry) os.WalkDirAction {
+//     if err := entry.err {
+//         eprintln('skipping ${path}: ${err}')
+//         return .proceed
+//     }
+//     if entry.is_dir && entry.name == '.git' {
+//         return .skip_dir
+//     }
+//     println(path)
+//     return .proceed
+// }) or { panic(err) }
+// ```
+pub fn walk_dir(root string, cb WalkDirFn) ! {
+	if root == '' {
+		return error('os: walk_dir needs a non-empty root path')
+	}
+	mut pending := []string{cap: 64}
+	pending << norm_path(root)
+	for pending.len > 0 {
+		cpath := pending.pop()
+		// Filled through locals and handed over in a single struct literal, so
+		// that the public fields can stay read-only for callers.
+		mut typ := FileType.unknown
+		mut is_dir := false
+		mut entry_err := ?IError(none)
+		if attr := lstat(cpath) {
+			typ = attr.get_filetype()
+			$if windows {
+				// lstat follows reparse points there and never reports a link, so a
+				// directory symlink or junction would otherwise be descended into.
+				if kind_of_existing_path(cpath).is_link {
+					typ = .symbolic_link
+				}
+			}
+			is_dir = typ == .directory
+		} else {
+			// The entry could not be read, so is_dir stays false and a directory
+			// is not descended into.
+			entry_err = err
+		}
+		entry := WalkDirEntry{
+			name:   file_name(cpath)
+			typ:    typ
+			is_dir: is_dir
+			err:    entry_err
+		}
+		// Whether to descend into cpath, which a .skip_dir reply can veto.
+		mut descend := true
+		match cb(cpath, entry) {
+			.stop {
+				return
+			}
+			.skip_dir {
+				descend = false
+			}
+			.proceed {}
+		}
+		if !descend || !entry.is_dir {
+			continue
+		}
+		mut children := ls(cpath) or {
+			// The directory could not be listed. Like Go's WalkDir, it is reported a
+			// second time, as the directory it is, with the listing failure attached.
+			if cb(cpath, WalkDirEntry{ ...entry, err: err }) == .stop {
+				return
+			}
+			continue
+		}
+		// Sorted so the visit order is lexical rather than whatever order the
+		// filesystem happened to hand back.
+		children.sort()
+		for i := children.len - 1; i >= 0; i-- {
+			pending << join_path_single(cpath, children[i])
+		}
+	}
+}
+
 // FnWalkContextCB is used to define the callback functions, passed to os.walk_context.
 pub type FnWalkContextCB = fn (voidptr, string)
 
