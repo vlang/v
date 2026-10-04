@@ -8934,6 +8934,7 @@ fn v3_parallel_transform_allowed(parallel_transform bool, no_parallel bool) bool
 @[markused]
 pub fn run(args []string) {
 	apply_v3_default_diagnostic_color()
+	compiler_errors.set_json_output(false)
 	if args.len == 0 {
 		eprintln(cli_usage())
 		exit(1)
@@ -9463,6 +9464,10 @@ pub fn run(args []string) {
 		} else if args[i] in ['-color', '-nocolor'] {
 			apply_v3_diagnostic_color_option(args[i])
 			i++
+		} else if args[i] == '-json-errors' {
+			// Prints each diagnostic as a line of JSON, for the tools that read them.
+			compiler_errors.set_json_output(true)
+			i++
 		} else if args[i] == '-apk' {
 			// Accepted V1 compatibility switches. V3 always emits direct C,
 			// applies ownership cleanup, and forwards C failures.
@@ -9624,6 +9629,10 @@ pub fn run(args []string) {
 			}
 			i++
 		}
+	}
+	if compiler_errors.json_output() {
+		// The details of a diagnostic are text, whatever `-color` asked for.
+		ansi.set_colors_enabled(false)
 	}
 	mut vls_queries := if vls_line_info != '' {
 		types.parse_vls_line_infos(vls_line_info, input_file) or {
@@ -11054,13 +11063,23 @@ pub fn run(args []string) {
 					} else {
 						'error:'
 					}
-					eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
 					printed_parser_diagnostic = true
-					print_type_diagnostic_details(diagnostic.details)
-					if diagnostic.detail_pos.is_valid() {
-						eprintln('Details: ')
-						eprintln(compiler_errors.formatted_parser_diagnostic('details:',
-							diagnostic.detail_message, a, diagnostic.detail_pos))
+					if compiler_errors.json_output() {
+						mut details := diagnostic.details.clone()
+						if diagnostic.detail_pos.is_valid() {
+							details << compiler_errors.formatted_parser_diagnostic('details:',
+								diagnostic.detail_message, a, diagnostic.detail_pos)
+						}
+						eprintln(compiler_errors.json_parser_diagnostic(severity, diagnostic.message,
+							details, a, diagnostic.pos))
+					} else {
+						eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
+						print_type_diagnostic_details(diagnostic.details)
+						if diagnostic.detail_pos.is_valid() {
+							eprintln('Details: ')
+							eprintln(compiler_errors.formatted_parser_diagnostic('details:',
+								diagnostic.detail_message, a, diagnostic.detail_pos))
+						}
 					}
 					if fatal_errors && severity == 'error:' {
 						break
@@ -11073,7 +11092,12 @@ pub fn run(args []string) {
 					} else {
 						'error:'
 					}
-					eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
+					if compiler_errors.json_output() {
+						eprintln(compiler_errors.json_located_message(severity, diagnostic.message,
+							diagnostic.details, diagnostic.file, diagnostic.line, diagnostic.column))
+					} else {
+						eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
+					}
 					printed_parser_diagnostic = true
 					if fatal_errors && severity == 'error:' {
 						break
@@ -12382,6 +12406,12 @@ pub fn run(args []string) {
 			pre_tc.refresh_rewritten_parent_index(a)
 		}
 		if transform_errors.len > 0 {
+			if compiler_errors.json_output() {
+				for message in transform_errors {
+					eprintln(compiler_errors.json_message('error:', message, []string{}))
+				}
+				exit(1)
+			}
 			eprintln('type checker found ${transform_errors.len} error(s):')
 			for message in transform_errors {
 				eprintln(message)
@@ -12601,6 +12631,12 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if monomorph_errors.len > 0 {
+			if compiler_errors.json_output() {
+				for message in monomorph_errors {
+					eprintln(compiler_errors.json_message('error:', message, []string{}))
+				}
+				exit(1)
+			}
 			eprintln('type checker found ${monomorph_errors.len} error(s):')
 			for message in monomorph_errors {
 				eprintln(message)
@@ -16655,8 +16691,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			}
 			err := type_errors[first_unused]
 			severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-			eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
-			print_type_diagnostic_details(err.details)
+			print_type_diagnostic(a, severity, err)
 			return
 		}
 	}
@@ -16675,8 +16710,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			continue
 		}
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
-		eprintln(compiler_errors.formatted_error(severity, notice.msg, a, notice.node, notice.pos))
-		print_type_diagnostic_details(notice.details)
+		print_type_diagnostic(a, severity, notice)
 		printed_diagnostics++
 	}
 	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a, type_errors))
@@ -16691,9 +16725,11 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			ordered_errors << err
 		}
 	}
+	// A tool reading `-json-errors` gets every error: the note about the ones left out
+	// is text for a reader.
 	default_max_errors := if fatal_errors {
 		if ordered_errors.len > 0 { 1 } else { 0 }
-	} else if all_errors || ordered_errors.len < 20 {
+	} else if all_errors || ordered_errors.len < 20 || compiler_errors.json_output() {
 		ordered_errors.len
 	} else {
 		20
@@ -16710,8 +16746,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	for ei in 0 .. max_errors {
 		err := ordered_errors[ei]
 		severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-		eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
-		print_type_diagnostic_details(err.details)
+		print_type_diagnostic(a, severity, err)
 	}
 	if message_limit < 0 && !fatal_errors && !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
@@ -16911,6 +16946,18 @@ fn type_diagnostic_call_uses_struct_receiver(a &flat.FlatAst, call_id flat.NodeI
 fn is_bare_generic_fntype_decl_error(err types.TypeError) bool {
 	return err.msg.starts_with('generic function `')
 		&& err.msg.contains(' in fn declaration must specify the generic type names')
+}
+
+// print_type_diagnostic prints one diagnostic of the checker: a line of JSON with
+// `-json-errors`, else the message with its source excerpt and details.
+fn print_type_diagnostic(a &flat.FlatAst, severity string, diagnostic types.TypeError) {
+	if compiler_errors.json_output() {
+		eprintln(compiler_errors.json_error(severity, diagnostic.msg, diagnostic.details, a,
+			diagnostic.node, diagnostic.pos))
+		return
+	}
+	eprintln(compiler_errors.formatted_error(severity, diagnostic.msg, a, diagnostic.node, diagnostic.pos))
+	print_type_diagnostic_details(diagnostic.details)
 }
 
 fn print_type_diagnostic_details(details []string) {
@@ -20515,6 +20562,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						// V1 compatibility compiler, which would repeat it against its own
 						// source tree.
 						clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
+						if compiler_errors.json_output() {
+							eprintln(compiler_errors.json_error('error:', message, []string{}, a,
+								flat.NodeId(node_idx), a.nodes[node_idx].pos))
+							exit(1)
+						}
 						eprintln('error: ${message}')
 						formatted := compiler_errors.formatted_error('error:', message, a, flat.NodeId(node_idx), a.nodes[node_idx].pos)
 						context := formatted.all_after_first('\n')

@@ -53,14 +53,7 @@ pub fn formatted_parser_diagnostic(kind string, message string, a &flat.FlatAst,
 
 fn append_template_call_stack(result string, kind string, a &flat.FlatAst, pos token.Pos) string {
 	mut output := result
-	mut current := pos
-	mut visited := map[int]bool{}
-	for {
-		if current.id in visited {
-			break
-		}
-		visited[current.id] = true
-		call_pos := a.template_call_sites[current.id] or { break }
+	for call_pos in template_call_positions(a, pos) {
 		if call_file := a.source_files[call_pos.id] {
 			position := call_file.position(call_pos)
 			path := relative_error_path(call_file.name)
@@ -71,9 +64,26 @@ fn append_template_call_stack(result string, kind string, a &flat.FlatAst, pos t
 				output += '\n${context}'
 			}
 		}
-		current = call_pos
 	}
 	return output
+}
+
+// template_call_positions lists the `$tmpl` calls that included the template of pos,
+// innermost first.
+fn template_call_positions(a &flat.FlatAst, pos token.Pos) []token.Pos {
+	mut positions := []token.Pos{}
+	mut current := pos
+	mut visited := map[int]bool{}
+	for {
+		if current.id in visited {
+			break
+		}
+		visited[current.id] = true
+		call_pos := a.template_call_sites[current.id] or { break }
+		positions << call_pos
+		current = call_pos
+	}
+	return positions
 }
 
 // formatted_source_error renders a diagnostic with v1-compatible colors for a source byte span.
