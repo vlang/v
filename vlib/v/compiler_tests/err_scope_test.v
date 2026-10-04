@@ -63,6 +63,7 @@ const cases = [
 	Case{'fn_value_local_or', '', 'read := fails\n\tx := read() or {\n\t\tprintln(«err»)\n\t\t0\n\t}\n\tprintln(x)', true},
 	Case{'option_fn_value_param_or', 'fn call(open fn () ?int) ?int {\n\tx := open() or {\n\t\tprintln(«err»)\n\t\treturn none\n\t}\n\treturn x\n}\n', 'println(call(maybe) or { 0 })', false},
 	Case{'closure_calls_fn_shadowed_outside', '', 'fails := maybe\n\tf := fn () {\n\t\tx := fails() or {\n\t\t\tprintln(«err»)\n\t\t\t0\n\t\t}\n\t\tprintln(x)\n\t}\n\tf()\n\t_ = fails', true},
+	Case{'closure_lambda_calls_fn_shadowed_outside', '', 'fails := maybe\n\tf := fn () {\n\t\tr := [1].map(|x| fails() or {\n\t\t\tprintln(«err»)\n\t\t\tx\n\t\t})\n\t\tprintln(r)\n\t}\n\tf()\n\t_ = fails', true},
 	// something the program declares with that name
 	Case{'local_named_err', '', 'err := 5\n\tprintln(«err»)', true},
 	Case{'param_named_err', 'fn show(err string) {\n\tprintln(«err»)\n}\n', "show('a')", true},
