@@ -152,6 +152,91 @@ fn test_locked_install_reuses_the_recorded_revision() {
 	assert installed_head != new_head
 }
 
+// Case: with a warm module store, a later `v install` keeps the installed
+// checkout and the lock entry at the recorded revision, instead of updating
+// the module past the lock.
+fn test_warm_store_install_honors_the_locked_revision() {
+	repo_path := os.join_path(test_path, 'warm_dep_repo')
+	head := create_local_git_module(repo_path, 'warm_pkg')
+	project_dir := os.join_path(test_path, 'warm_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	dep := repo_path.replace('\\', '/')
+	write_project_vmod(project_dir, [dep])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_warm'))
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
+
+	new_head := advance_local_git_module(repo_path)
+	assert new_head != head
+
+	// The second install runs against the SAME module store: the module is
+	// already installed, and the lock must hold it at the recorded revision
+	// instead of letting it drift to the new HEAD.
+	res := cmd_ok_args(@LOCATION, [v_exe, 'install'])
+	assert !res.output.contains('Updating module'), res.output
+	installed_head := git_head(os.join_path(test_path, 'vmodules_warm', 'warm_pkg'))
+	assert installed_head == head
+	lf := read_lockfile(project_dir) or { panic(err) }
+	entry := lf.modules[dep] or { panic('no lock entry for `${dep}` in ${lf.modules.keys()}') }
+	assert entry.revision == head
+}
+
+// Case: an installed checkout that drifted from the locked revision is put
+// back on the lock by a later `v install`.
+fn test_install_restores_a_drifted_checkout_to_the_locked_revision() {
+	repo_path := os.join_path(test_path, 'drift_dep_repo')
+	head := create_local_git_module(repo_path, 'drift_pkg')
+	project_dir := os.join_path(test_path, 'drift_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	dep := repo_path.replace('\\', '/')
+	write_project_vmod(project_dir, [dep])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_drift'))
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
+
+	// Move the installed checkout past the locked revision, the way a plain
+	// `git pull` in the module store would.
+	installed_path := os.join_path(test_path, 'vmodules_drift', 'drift_pkg')
+	new_head := advance_local_git_module(repo_path)
+	assert new_head != head
+	cmd_ok_args(@LOCATION, ['git', '-C', installed_path, 'pull', '--quiet'])
+	assert git_head(installed_path) == new_head
+
+	res := cmd_ok_args(@LOCATION, [v_exe, 'install'])
+	assert res.output.contains('Restoring `drift_pkg` to the locked revision'), res.output
+	assert git_head(installed_path) == head
+	lf := read_lockfile(project_dir) or { panic(err) }
+	entry := lf.modules[dep] or { panic('no lock entry for `${dep}` in ${lf.modules.keys()}') }
+	assert entry.revision == head
+}
+
+// Case: `--locked` is an error for a plain global install, which has no
+// project lockfile to check against.
+fn test_locked_flag_fails_for_a_global_install() {
+	repo_path := os.join_path(test_path, 'locked_global_repo')
+	create_local_git_module(repo_path, 'locked_global_pkg')
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_locked_global'))
+	run_dir := os.join_path(test_path, 'locked_global_run_dir')
+	os.mkdir_all(run_dir) or { panic(err) }
+	old_dir := os.getwd()
+	os.chdir(run_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	res := cmd_fail_args(@LOCATION, [v_exe, 'install', '--locked', repo_path])
+	assert res.output.contains('--locked'), res.output
+}
+
 // Case: a locked revision that the clone source no longer holds fails the
 // install, instead of silently installing whatever HEAD a fresh clone sits on.
 fn test_locked_install_fails_when_the_recorded_revision_is_unreachable() {

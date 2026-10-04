@@ -18,6 +18,12 @@ fn vpm_install(query []string) {
 		vpm_adopt(query)
 		return
 	}
+	if settings.is_locked && query.len != 0 && !settings.is_local {
+		vpm_error('`--locked` applies to installing the dependencies of a project (a directory with a `v.mod`); a plain `v install <module>` installs globally and has no lockfile to check against.',
+			details: 'Run without `--locked`, or run `v install --locked` inside the project directory.'
+		)
+		exit(1)
+	}
 
 	mut selector := new_install_server_selector()
 	dep_strings := if query.len == 0 {
@@ -177,8 +183,28 @@ fn (m Module) install(mut scope LockScope) InstallResult {
 		exit(1)
 	}
 	if m.is_installed {
-		// Case: installed, but not an explicit version. Update instead of continuing the installation.
+		// Case: installed, but not an explicit version. Update instead of continuing the installation,
+		// unless the lockfile of the project in scope records the module: installs honor
+		// the locked revision, and moving it forward is what `v update` is for.
 		if m.version == '' && m.installed_version == '' {
+			if entry := scope.entry_for(m.requested) {
+				installed_revision := head_revision(m.install_path)
+				if installed_revision == entry.revision {
+					verbose_println('`${m.name}` is already installed at the locked revision `${entry.revision}`.')
+					return .skipped
+				}
+				// The installed checkout drifted from the locked revision: put the
+				// project back on the lock. The local-changes guard above already
+				// refused checkouts holding work that would be lost.
+				println('Restoring `${m.name}` to the locked revision `${entry.revision}` ...')
+				(m.vcs or { settings.vcs }).checkout(m.install_path, entry.revision) or {
+					vpm_error('failed to restore `${m.name}` to the locked revision `${entry.revision}` in `${m.install_path_fmted}`.',
+						details: err.msg()
+					)
+					return .failed
+				}
+				return .skipped
+			}
 			if m.is_external && m.url.starts_with('http://') {
 				vpm_update([
 					m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator, '.'),
