@@ -109,7 +109,7 @@ fn skills_lines(refreshable []string, held_back []string) []string {
 	}
 	if held_back.len > 0 {
 		lines << '> skills: left alone because they were edited locally or have no install record: ${held_back.join(', ')}'
-		lines << '> skills: run `v skills update --global` to see why; add `--force` to overwrite them'
+		lines << '> skills: run `v skills update --global --dry-run` to see why, or `v skills update --global --force` to overwrite them'
 	}
 	return lines
 }

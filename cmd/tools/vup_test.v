@@ -7,7 +7,7 @@ const vroot = os.dir(vexe)
 // held_back_line and held_back_hint are what `v up` says about the skills it
 // leaves alone, whether they were edited or have no install record.
 const held_back_line = '> skills: left alone because they were edited locally or have no install record: '
-const held_back_hint = '> skills: run `v skills update --global` to see why; add `--force` to overwrite them'
+const held_back_hint = '> skills: run `v skills update --global --dry-run` to see why, or `v skills update --global --force` to overwrite them'
 
 // skills_fixture builds a fake V checkout holding `bundled` skill bundles, plus
 // an install directory to install them into. It returns the checkout, the
