@@ -72,20 +72,46 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 		vpm_error(err.msg())
 		return &UpdateResult{}
 	}
-	args := vcs_info[vcs].args
-	cmd := [vcs.str(), args.path, os.quoted_path(install_path), args.update].join(' ')
-	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
 	println('Updating module `${name}` in `${fmt_mod_path(install_path)}`...')
-	res := os.exec_opt([vcs.str(), args.path, install_path,
-		...(os.split_args(args.update) or { panic(err) })]) or {
-		vpm_error('failed to update module `${name}` in `${install_path}`.', details: err.msg())
-		return &UpdateResult{}
-	}
-	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output.trim_space()}')
-	if res.output.contains('Already up to date.') {
-		println('Skipped module `${ident}`. Already up to date.')
+	if vcs == .git && head_is_detached(install_path) {
+		// A checkout that is not on a branch cannot be pulled. vpm itself leaves
+		// checkouts detached when it installs a locked revision or a tag, so
+		// fetch and move HEAD to the default branch of the origin instead.
+		os.exec_opt(['git', '-C', install_path, 'fetch', 'origin']) or {
+			vpm_error('failed to fetch the origin of module `${name}` in `${install_path}`.',
+				details: err.msg()
+			)
+			return &UpdateResult{}
+		}
+		old_revision := head_revision(install_path)
+		os.exec_opt(['git', '-C', install_path, 'checkout', '--quiet', 'origin/HEAD']) or {
+			vpm_error('failed to checkout the default branch of the origin of module `${name}` in `${install_path}`.',
+				details: err.msg()
+			)
+			return &UpdateResult{}
+		}
+		if head_revision(install_path) == old_revision {
+			println('Skipped module `${ident}`. Already up to date.')
+		} else {
+			println('Updated module `${ident}`.')
+		}
 	} else {
-		println('Updated module `${ident}`.')
+		args := vcs_info[vcs].args
+		cmd := [vcs.str(), args.path, os.quoted_path(install_path), args.update].join(' ')
+		vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
+		res := os.exec_opt([vcs.str(), args.path, install_path,
+			...(os.split_args(args.update) or { panic(err) })]) or {
+			vpm_error('failed to update module `${name}` in `${install_path}`.',
+				details: err.msg()
+			)
+			return &UpdateResult{}
+		}
+		vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output.trim_space()}')
+		if res.output.contains('Already up to date.') {
+			println('Skipped module `${ident}`. Already up to date.')
+		} else {
+			println('Updated module `${ident}`.')
+		}
 	}
 	// Don't bail if the download count increment has failed.
 	increment_module_download_count(name, '') or { vpm_error(err.msg(), verbose: true) }

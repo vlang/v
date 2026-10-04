@@ -148,6 +148,14 @@ fn head_commit_unix_ts(dir string) i64 {
 	return res.output.trim_space().i64()
 }
 
+// head_is_detached reports whether the git checkout in `dir` is not on a
+// branch, e.g. after it was checked out at a locked revision, or cloned at a
+// tag. A detached HEAD cannot be pulled; it has to be moved by hand.
+fn head_is_detached(dir string) bool {
+	os.exec_opt(['git', '-C', dir, 'symbolic-ref', '-q', 'HEAD']) or { return true }
+	return false
+}
+
 // checkout switches the git checkout in `dir` to the revision `rev`, e.g. the
 // full SHA recorded for a module in the lockfile of a project. `hg` checkouts
 // are left untouched, since a lockfile records git revisions only. A failed

@@ -141,6 +141,12 @@ fn project_lockfile_dir() string {
 fn (mut scope LockScope) begin() {
 	dir := project_lockfile_dir()
 	if dir == '' {
+		if settings.is_locked {
+			vpm_error('`--locked` applies to installing the dependencies of a project (a directory with a `v.mod`), but there is no project in scope.',
+				details: 'Run `v install --locked` inside the project directory.'
+			)
+			exit(1)
+		}
 		verbose_println('No project v.mod in scope; not recording a lockfile.')
 		return
 	}
