@@ -222,6 +222,14 @@ The `vlib modules CI` workflow tests `v doc` and generates the standard module d
 On master pushes, it also publishes the generated site to <https://modules.vlang.io/>.
 A failed deployment fails the workflow, so a green run confirms that publishing succeeded too.
 
+The `docs.vlang.io deploy` workflow builds the language documentation site from this checkout's
+`doc/docs.md`. It validates generation on pull requests that change documentation, V sources,
+build files, or the workflow. On master, documentation changes and a daily scheduled run publish
+the site to <https://docs.vlang.io/>; `workflow_dispatch` can also retry a deployment manually.
+The generator is pinned to a revision of `vlang/docs` and adapted by
+`.github/docs_site_generator.patch`. When updating that revision, check that the patch still
+applies and generation succeeds. Pull request builds only validate generation.
+
 ## Using Github's hub CLI tool
 
 You can download the `hub` tool from https://hub.github.com/ . Using
