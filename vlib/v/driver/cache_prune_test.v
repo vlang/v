@@ -45,6 +45,60 @@ fn test_module_cache_compiler_identity_changes_without_file_metadata() {
 	assert old_identity != new_identity
 }
 
+// A development compiler reads its embedded C headers at run time, so editing one
+// must change the cache identity without a rebuild.
+fn test_module_cache_compiler_runtime_inputs_identity_changes_when_a_header_changes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_runtime_inputs_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	dir := os.join_path(root, 'vlib', 'v', 'gen', 'c')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for name in v3_cache_compiler_runtime_inputs {
+		path := os.join_path(dir, name)
+		os.write_file(path, 'old header')!
+		// Keep a coarse file system clock from giving the rewrite the same time stamp.
+		os.utime(path, 1_000_000_000, 1_000_000_000)!
+	}
+	for name in v3_cache_compiler_runtime_inputs {
+		old_identity := v3_cache_compiler_runtime_inputs_identity(root)
+		// Same size, different bytes.
+		os.write_file(os.join_path(dir, name), 'new header')!
+		new_identity := v3_cache_compiler_runtime_inputs_identity(root)
+		assert old_identity != new_identity, name
+	}
+}
+
+// Every `$embed_file` of the compiler is read at run time by a development build,
+// so it must be part of the cache identity.
+fn test_module_cache_compiler_runtime_inputs_cover_compiler_embedded_files() {
+	vlib_v := os.join_path(@VMODROOT, 'vlib', 'v')
+	gen_c := os.real_path(os.join_path(vlib_v, 'gen', 'c'))
+	mut embedded := map[string]bool{}
+	for file in os.walk_ext(vlib_v, '.v') {
+		normalized := file.replace('\\', '/')
+		if file.ends_with('_test.v') || normalized.contains('/tests/')
+			|| normalized.contains('/testdata/') {
+			continue
+		}
+		for line in os.read_lines(file)! {
+			code := line.all_before('//')
+			if !code.contains('\$embed_file(') {
+				continue
+			}
+			argument := code.all_after('\$embed_file(').trim_space()
+			assert argument.len > 1, '${file}: ${line}'
+			name := argument[1..].all_before(argument[0..1])
+			target := os.real_path(os.join_path(os.dir(file), name))
+			assert os.dir(target) == gen_c, '${file}: ${line}'
+			assert os.file_name(target) in v3_cache_compiler_runtime_inputs, '${file}: ${line}'
+			embedded[os.file_name(target)] = true
+		}
+	}
+	assert embedded.len == v3_cache_compiler_runtime_inputs.len
+}
+
 fn test_large_cold_cache_restarts_without_cache() {
 	limit := scoped_large_cold_cache_node_limit
 	assert should_restart_v3_large_cold_cache(true, true, limit, false, false, false)

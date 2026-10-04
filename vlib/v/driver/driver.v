@@ -7555,9 +7555,26 @@ fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string,
 
 // v3_cache_compiler_executable_identity identifies the code that generates cached artifacts.
 // Editing unbuilt compiler sources does not change that code; rebuilding the executable does.
+// The exceptions are files that a development build reads at run time, see
+// v3_cache_compiler_runtime_inputs_identity.
 fn v3_cache_compiler_executable_identity(vexe string) string {
 	path := os.real_path(vexe)
 	return '${path}\t${v3_cache_file_identity(path)}'
+}
+
+// v3_cache_compiler_runtime_inputs lists the `$embed_file` targets of the C backend, which
+// copies them into the generated C code. Outside of -prod, the compiler executable keeps only
+// their paths and reads the files at run time.
+const v3_cache_compiler_runtime_inputs = ['manual_stdlib_c_headers.h', 'int128_helpers.h',
+	'int128_string.h']
+
+// v3_cache_compiler_runtime_inputs_identity identifies the files in
+// v3_cache_compiler_runtime_inputs, under the compiler source tree `root`, so that editing
+// them invalidates cached artifacts without rebuilding the compiler executable.
+fn v3_cache_compiler_runtime_inputs_identity(root string) string {
+	dir := os.join_path(root, 'vlib', 'v', 'gen', 'c')
+	return v3_cache_compiler_runtime_inputs.map(v3_cache_file_identity(os.join_path(dir,
+		it))).join('\t')
 }
 
 fn restored_fn_c_name(name string) string {
@@ -10560,12 +10577,19 @@ pub fn run(args []string) {
 	} else {
 		''
 	}
+	// `$embed_file` paths are relative to the compiler sources that this executable was built from.
+	compiler_runtime_inputs_identity := if cache_candidate_enabled {
+		v3_cache_compiler_runtime_inputs_identity(@VMODROOT)
+	} else {
+		''
+	}
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
 	reusable_c_output := keep_c || backend_explicit || dump_c_flags.len > 0
 	cache_salt := [
 		'cc=${cc_identity}',
 		'ccompiler=${prefs.ccompiler}',
 		'vexe=${compiler_executable_identity}',
+		'compiler_runtime_inputs=${compiler_runtime_inputs_identity}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
