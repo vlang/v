@@ -86,6 +86,39 @@ On Windows, shell builtins and batch scripts likewise require an explicit shell.
 
 ---
 
+### Error codes
+
+The `IError` returned by the failing `os.*` functions carries a message produced by the
+platform's `strerror()`/`FormatMessage()`, so the message text is not the same on every
+system. Check the error with a predicate instead:
+
+```v
+import os
+
+path := 'no_such_file.txt'
+if st := os.stat(path) {
+	println('${path} has ${st.size} bytes')
+} else {
+	if os.is_not_exist(err) {
+		println('${path} does not exist')
+	}
+}
+```
+
+`os.is_not_exist`, `os.is_exist` and `os.is_permission_denied` accept every code the
+platform may use for that condition. Checking the error is also what avoids the extra
+`os.exists()` call that would otherwise be a time-of-check/time-of-use race.
+
+On POSIX systems, the `os.*` functions report a C `errno` value. On Windows, the functions
+built on the C runtime (for example `os.stat`, `os.rm`, `os.read_file`, `os.open`,
+`os.create`, `os.write_file`, `os.chdir`, `os.truncate` and `os.rename`) report a C `errno`
+value too, while the ones built on the Win32 API (`os.mkdir`, `os.rmdir`, `os.ls`,
+`os.symlink` and `os.link`) report a Win32 error code. The `os.error_code_*` constants
+hold one of these codes for a condition, so prefer the predicates over comparing
+`err.code()` with them.
+
+---
+
 ### Security advice related to TOCTOU attacks
 
 A few `os` module functions can lead to the **TOCTOU** vulnerability if used incorrectly.

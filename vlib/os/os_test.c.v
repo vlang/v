@@ -798,8 +798,10 @@ fn test_rmdir_not_exist() ! {
 	dir := 'non_existing_dir'
 	assert !os.exists(dir)
 	os.rmdir(dir) or {
-		// 0x00000002 is both ENOENT in POSIX and ERROR_FILE_NOT_FOUND in Win32 API
-		assert err.code() == 0x00000002
+		// ENOENT on POSIX and ERROR_FILE_NOT_FOUND on Windows have the same
+		// value, which is why one constant covers both.
+		assert err.code() == os.error_code_noent
+		assert os.is_not_exist(err)
 	}
 	assert !os.exists(dir)
 }
