@@ -79,20 +79,24 @@ fn vup_report_fixture() !(string, string, string, string) {
 
 	bin_dir := os.join_path(root, 'bin')
 	os.mkdir_all(bin_dir)!
-	write_executable(os.join_path(bin_dir, 'git'),
-		'#!/bin/sh\nif [ "\$1" = "pull" ]; then\n  echo "Already up to date."\nfi\nexit 0\n')!
-	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 0\n')!
+	// Every stand-in records its call in `calls.log`, so a test can tell that an
+	// update never started.
+	log_call := 'printf "%s %s\\n" "\${0##*/}" "\$*" >> ' +
+		os.quoted_path(os.join_path(root, 'calls.log')) + '\n'
+	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' + log_call +
+		'if [ "\$1" = "pull" ]; then\n  echo "Already up to date."\nfi\nexit 0\n')!
+	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\n' + log_call + 'exit 0\n')!
 	// The BSDs and Solaris refresh TCC with `gmake`, which has to be found on PATH.
-	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\nexit 0\n')!
+	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\n' + log_call + 'exit 0\n')!
 	// `v up -skills` reaches the refresh through the compiler, so the stub answers
 	// it and records the call. The log is how a swallowed call would show up, and
 	// the exit status is non-zero because it held a skill back, which must not make
 	// the compiler update fail.
-	write_executable(os.join_path(root, 'v'),
-		'#!/bin/sh\nif [ "\$1" = "skills" ]; then\n  printf "skills %s\\n" "\$*" >> ' +
-			os.quoted_path(os.join_path(root, 'skills.log')) +
-			'\n  echo "alpha: updated 2 file(s)"\n  echo "beta was edited" >&2\n  exit 1\nfi\n' +
-			'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' + log_call +
+		'if [ "\$1" = "skills" ]; then\n  printf "skills %s\\n" "\$*" >> ' +
+		os.quoted_path(os.join_path(root, 'skills.log')) +
+		'\n  echo "alpha: updated 2 file(s)"\n  echo "beta was edited" >&2\n  exit 1\nfi\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
 
 	tool := os.join_path(root, 'vup')
 	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
@@ -360,57 +364,65 @@ fn test_vup_help_lists_the_flags_without_touching_anything() ! {
 	$if windows {
 		return
 	}
-	test_root := os.join_path(os.vtmp_dir(), 'vup_help_${os.getpid()}')
-	os.rmdir_all(test_root) or {}
-	os.mkdir_all(test_root)!
+	root, home, tool, bin_dir := vup_report_fixture()!
 	defer {
-		os.rmdir_all(test_root) or {}
+		os.rmdir_all(root) or {}
 	}
-
-	tool := os.join_path(test_root, 'vup')
-	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
-	assert build.exit_code == 0, build.output
-
-	// Logging stand-ins for the commands a real update reaches for.
-	bin_dir := os.join_path(test_root, 'bin')
-	os.mkdir_all(bin_dir)!
-	git_log := os.join_path(test_root, 'git.log')
-	make_log := os.join_path(test_root, 'make.log')
-	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\nprintf "git %s\\n" "\$*" >> ${os.quoted_path(git_log)}\nexit 0\n')!
-	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nprintf "make %s\\n" "\$*" >> ${os.quoted_path(make_log)}\nexit 0\n')!
-
-	// A PATH holding only those: were `-h` to reach either, its log would exist.
-	result := os.exec(['env', 'PATH=' + bin_dir, '${tool}', '-h'])
-	assert result.exit_code == 0, result.output
-	// Every flag the tool reads is named, which is how `-skip_v_self` and
-	// `-skip_current` stop being invisible.
-	for flag in ['-v', '-prod', '-skills', '-skip_v_self', '-skip_current', '--help'] {
-		assert result.output.contains(flag), '${flag} missing from:\n${result.output}'
+	calls_log := os.join_path(root, 'calls.log')
+	// `up` is how the launcher passes the command name along with the options.
+	for help in [['-h'], ['-help'], ['--help'], ['help'], ['up', '-h']] {
+		result := run_vup(root, home, tool, bin_dir, ...help)!
+		assert result.exit_code == 0, '${help}: ${result.output}'
+		// Every flag the tool reads is named, which is how `-skip_v_self` and
+		// `-skip_current` stop being invisible.
+		for flag in ['-v', '-prod', '-skills', '-skip_v_self', '-skip_current', '-h, -help, --help'] {
+			assert result.output.contains(flag), '${help}: ${flag} missing from:\n${result.output}'
+		}
+		// Asking how to use the command must not run it.
+		assert !os.exists(calls_log), '${help}: ' + (os.read_file(calls_log) or { '' })
 	}
-	assert !os.exists(git_log), os.read_file(git_log) or { '' }
-	assert !os.exists(make_log), os.read_file(make_log) or { '' }
 }
 
 fn test_vup_help_survives_a_vexe_that_cannot_be_started() ! {
 	$if windows {
 		return
 	}
-	test_root := os.join_path(os.vtmp_dir(), 'vup_help_vexe_${os.getpid()}')
-	os.rmdir_all(test_root) or {}
-	os.mkdir_all(test_root)!
+	root, home, tool, bin_dir := vup_report_fixture()!
 	defer {
-		os.rmdir_all(test_root) or {}
+		os.rmdir_all(root) or {}
 	}
-
-	tool := os.join_path(test_root, 'vup')
-	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
-	assert build.exit_code == 0, build.output
-
+	calls_log := os.join_path(root, 'calls.log')
 	// `VEXE` may legitimately be set, so a stale one must not turn `-h` into a
 	// failure: help has to work even when the compiler a delegated lookup would
 	// spawn is not there.
-	result := os.exec(['env', 'VEXE=' + os.join_path(test_root, 'does-not-exist'),
-		'${tool}', '-h'])
+	result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}',
+		'VEXE=' + os.join_path(root, 'does-not-exist'), tool, '-h'])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('Usage: v up'), result.output
+	assert !os.exists(calls_log), os.read_file(calls_log) or { '' }
+}
+
+fn test_vup_rejects_unknown_options_before_updating() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	calls_log := os.join_path(root, 'calls.log')
+	for unknown in ['--hlep', '-x', 'down'] {
+		result := run_vup(root, home, tool, bin_dir, 'up', '-v', unknown)!
+		assert result.exit_code == 1, '${unknown}: ${result.output}'
+		assert result.output.contains('v up: unknown option: ${unknown}'), result.output
+		assert result.output.contains('Usage: v up'), result.output
+		// A mistyped flag must not pull and rebuild the compiler.
+		assert !os.exists(calls_log), '${unknown}: ' + (os.read_file(calls_log) or { '' })
+	}
+	// The command name and the known options still reach the update, which also
+	// shows that the stand-ins would have logged one.
+	result := run_vup(root, home, tool, bin_dir, 'up', '-v')!
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('V is already updated.'), result.output
+	assert os.read_file(calls_log)!.contains('git pull'), result.output
 }
