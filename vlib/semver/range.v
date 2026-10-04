@@ -318,9 +318,9 @@ fn expand_hyphen(raw_range string) ?ComparatorSet {
 
 // expand_xrange builds `1.2.x`, `1.x`, `1`, `*` and their zero-major forms.
 //
-// The ceiling sits at the component after the wildcard, which on a zero major is
-// not the major: `0.x` stops at 1.0.0 and `0.1.x` stops at 0.2.0. Returning only
-// the floor there is what made every zero-major x-range unbounded.
+// The ceiling raises the component before the wildcard, on a zero major too:
+// `0.x` stops at 1.0.0 and `0.1.x` stops at 0.2.0. Returning only the floor there
+// is what made every zero-major x-range unbounded.
 fn expand_xrange(raw_range string) ?ComparatorSet {
 	min_ver := parse_xrange(raw_range) or { return none }
 	wildcard := first_wildcard_index(raw_range)
@@ -330,21 +330,11 @@ fn expand_xrange(raw_range string) ?ComparatorSet {
 			return ComparatorSet{[Comparator{Version{}, Operator.ge}]}
 		}
 		1 {
-			upper := if min_ver.major == 0 {
-				Version{1, 0, 0, '', ''}
-			} else {
-				Version{min_ver.major + 1, 0, 0, '', ''}
-			}
+			upper := Version{min_ver.major + 1, 0, 0, '', ''}
 			return make_comparator_set_ge_lt(min_ver, upper)
 		}
 		2 {
-			upper := if min_ver.major > 0 {
-				Version{min_ver.major, min_ver.minor + 1, 0, '', ''}
-			} else if min_ver.minor > 0 {
-				Version{0, min_ver.minor + 1, 0, '', ''}
-			} else {
-				Version{0, 1, 0, '', ''}
-			}
+			upper := Version{min_ver.major, min_ver.minor + 1, 0, '', ''}
 			return make_comparator_set_ge_lt(min_ver, upper)
 		}
 		else {
