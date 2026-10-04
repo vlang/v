@@ -3,11 +3,12 @@ module main
 
 import os
 import rand
-import test_utils { cmd_fail, cmd_ok }
+import test_utils { cmd_fail_args, cmd_ok_args }
 
 // The tests in this file are fully offline: they build local git repositories
 // under `test_path` and install from those, never touching the network.
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_lockfile_test_${rand.ulid()}')
+const v_exe = os.getenv('VEXE')
 
 fn testsuite_begin() {
 	test_utils.set_test_env(test_path)
@@ -23,10 +24,11 @@ fn create_local_git_module(repo_path string, module_name string) string {
 	os.mkdir_all(repo_path) or { panic(err) }
 	os.write_file(os.join_path(repo_path, 'v.mod'),
 		"Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
-	cmd_ok(@LOCATION, 'git init -b main ${os.quoted_path(repo_path)}')
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} add v.mod')
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "initial commit"')
+	cmd_ok_args(@LOCATION, ['git', 'init', '-b', 'main', repo_path])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'add', 'v.mod'])
+	cmd_ok_args(@LOCATION,
+		['git', '-C', repo_path, '-c', 'user.email=ci@vlang.io', '-c', 'user.name=V CI', 'commit',
+			'-m', 'initial commit'])
 	return git_head(repo_path)
 }
 
@@ -34,15 +36,16 @@ fn create_local_git_module(repo_path string, module_name string) string {
 // `repo_path` and returns the sha of its new HEAD.
 fn advance_local_git_module(repo_path string) string {
 	os.write_file(os.join_path(repo_path, 'feature.v'), 'module feature\n') or { panic(err) }
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} add feature.v')
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "advance head"')
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'add', 'feature.v'])
+	cmd_ok_args(@LOCATION,
+		['git', '-C', repo_path, '-c', 'user.email=ci@vlang.io', '-c', 'user.name=V CI', 'commit',
+			'-m', 'advance head'])
 	return git_head(repo_path)
 }
 
 // git_head returns the sha of the current HEAD of the git repository at `repo_path`.
 fn git_head(repo_path string) string {
-	return cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} rev-parse HEAD').output.trim_space()
+	return cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'rev-parse', 'HEAD']).output.trim_space()
 }
 
 // write_project_vmod writes the v.mod of a test project that depends on `deps`.
@@ -70,7 +73,7 @@ fn test_install_records_resolved_revisions_in_the_lockfile() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	res := cmd_ok(@LOCATION, '${vexe} install')
+	res := cmd_ok_args(@LOCATION, [v_exe, 'install'])
 	assert res.output.contains('Installed `recorded_pkg`'), res.output
 
 	lf := read_lockfile(project_dir) or { panic(err) }
@@ -104,11 +107,11 @@ fn test_install_merges_with_existing_lockfile_entries() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	cmd_ok(@LOCATION, '${vexe} install')
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
 
 	write_project_vmod(project_dir, [first_dep, second_dep])
 	test_utils.set_test_env(os.join_path(test_path, 'vmodules_merge_second'))
-	cmd_ok(@LOCATION, '${vexe} install')
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
 
 	lf := read_lockfile(project_dir) or { panic(err) }
 	assert lf.modules.len == 2
@@ -134,7 +137,7 @@ fn test_locked_install_reuses_the_recorded_revision() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	cmd_ok(@LOCATION, '${vexe} install')
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
 
 	new_head := advance_local_git_module(repo_path)
 	assert new_head != head
@@ -142,7 +145,7 @@ fn test_locked_install_reuses_the_recorded_revision() {
 	// The second install runs against a fresh module store, so the module has
 	// to be cloned again: from the locked revision, not from the new HEAD.
 	test_utils.set_test_env(os.join_path(test_path, 'vmodules_locked_second'))
-	res := cmd_ok(@LOCATION, '${vexe} install')
+	res := cmd_ok_args(@LOCATION, [v_exe, 'install'])
 	assert res.output.contains('Installing `locked_pkg`'), res.output
 	installed_head := git_head(os.join_path(test_path, 'vmodules_locked_second', 'locked_pkg'))
 	assert installed_head == head
@@ -169,21 +172,22 @@ fn test_locked_install_fails_when_the_recorded_revision_is_unreachable() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	cmd_ok(@LOCATION, '${vexe} install')
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
 
 	// Replace the history of the source repository, and purge the objects of
 	// the old one: clones of a local repository share its whole object store,
 	// so the recorded revision has to be garbage-collected before a fresh
 	// clone can no longer provide it.
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} checkout --orphan freshroot')
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'checkout', '--orphan', 'freshroot'])
 	os.write_file(os.join_path(repo_path, 'fresh.v'), 'module fresh\n') or { panic(err) }
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} add -A')
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "fresh history"')
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} branch -D main')
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} branch -M main')
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} reflog expire --expire=now --all')
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} gc --prune=now --quiet')
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'add', '-A'])
+	cmd_ok_args(@LOCATION,
+		['git', '-C', repo_path, '-c', 'user.email=ci@vlang.io', '-c', 'user.name=V CI', 'commit',
+			'-m', 'fresh history'])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'branch', '-D', 'main'])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'branch', '-M', 'main'])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'reflog', 'expire', '--expire=now', '--all'])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'gc', '--prune=now', '--quiet'])
 	new_head := git_head(repo_path)
 	assert new_head != head
 
@@ -193,13 +197,13 @@ fn test_locked_install_fails_when_the_recorded_revision_is_unreachable() {
 	// store/VTMP, so the leftover tmp clone of a failed run cannot collide
 	// with the next one (Windows cannot remove the read-only git objects).
 	test_utils.set_test_env(os.join_path(test_path, 'vu2'))
-	res := cmd_fail(@LOCATION, '${vexe} install')
+	res := cmd_fail_args(@LOCATION, [v_exe, 'install'])
 	assert res.output.contains('failed to install'), res.output
 	test_utils.set_test_env(os.join_path(test_path, 'vu3'))
-	res_verbose := cmd_fail(@LOCATION, '${vexe} install -v')
+	res_verbose := cmd_fail_args(@LOCATION, [v_exe, 'install', '-v'])
 	assert res_verbose.output.contains('failed to checkout'), res_verbose.output
 	test_utils.set_test_env(os.join_path(test_path, 'vu4'))
-	res_locked := cmd_fail(@LOCATION, '${vexe} install --locked')
+	res_locked := cmd_fail_args(@LOCATION, [v_exe, 'install', '--locked'])
 	assert res_locked.output.contains('failed to install'), res_locked.output
 }
 
@@ -219,11 +223,11 @@ fn test_locked_install_fails_when_the_dependency_changed() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	cmd_ok(@LOCATION, '${vexe} install')
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
 
 	// The project now asks for a tag, while the lockfile records the plain path.
 	write_project_vmod(project_dir, ['${dep}@v1.0.0'])
-	res := cmd_fail(@LOCATION, '${vexe} install --locked')
+	res := cmd_fail_args(@LOCATION, [v_exe, 'install', '--locked'])
 	assert res.output.contains('--locked'), res.output
 	assert res.output.contains('records `${dep}` for it'), res.output
 }
@@ -243,7 +247,7 @@ fn test_locked_install_fails_without_a_lockfile() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	res := cmd_fail(@LOCATION, '${vexe} install --locked')
+	res := cmd_fail_args(@LOCATION, [v_exe, 'install', '--locked'])
 	assert res.output.contains('`--locked` requires a lockfile'), res.output
 }
 
@@ -263,7 +267,7 @@ fn test_local_install_locks_at_the_project_root() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	res := cmd_ok(@LOCATION, '${vexe} install --local ${os.quoted_path(repo_path)}')
+	res := cmd_ok_args(@LOCATION, [v_exe, 'install', '--local', repo_path])
 	assert res.output.contains('Installed `local_locked_pkg`'), res.output
 	assert os.is_file(os.join_path(project_dir, 'local_locked_pkg', 'v.mod'))
 
@@ -287,7 +291,7 @@ fn test_global_install_does_not_create_a_lockfile() {
 	run_dir := os.join_path(test_path, 'unlocked_run_dir')
 	os.mkdir_all(run_dir) or { panic(err) }
 	os.chdir(run_dir) or { panic(err) }
-	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	res := cmd_ok_args(@LOCATION, [v_exe, 'install', repo_path])
 	assert res.output.contains('Installed `unlocked_pkg`'), res.output
 	assert !os.exists(os.join_path(run_dir, lockfile_name)), 'no lockfile is recorded for a plain install'
 	assert !os.exists(os.join_path(test_path, lockfile_name))
@@ -308,11 +312,11 @@ fn test_update_refreshes_the_lock_entry() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	cmd_ok(@LOCATION, '${vexe} install')
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
 
 	new_head := advance_local_git_module(repo_path)
 	assert new_head != head
-	cmd_ok(@LOCATION, '${vexe} update updated_pkg')
+	cmd_ok_args(@LOCATION, [v_exe, 'update', 'updated_pkg'])
 
 	lf := read_lockfile(project_dir) or { panic(err) }
 	entry := lf.modules[dep] or { panic('no lock entry for `${dep}` in ${lf.modules.keys()}') }
@@ -342,7 +346,7 @@ fn test_remove_drops_the_lock_entry() {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	cmd_ok(@LOCATION, '${vexe} install')
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
 
 	lf := read_lockfile(project_dir) or { panic(err) }
 	assert lf.modules.len == 2

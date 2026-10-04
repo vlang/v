@@ -126,7 +126,7 @@ fn head_revision(dir string) string {
 	if head_vcs != .git {
 		return ''
 	}
-	res := os.execute_opt('git -C ${os.quoted_path(dir)} rev-parse HEAD') or { return '' }
+	res := os.exec_opt(['git', '-C', dir, 'rev-parse', 'HEAD']) or { return '' }
 	if res.exit_code != 0 {
 		return ''
 	}
@@ -141,7 +141,7 @@ fn head_commit_unix_ts(dir string) i64 {
 	if head_vcs != .git {
 		return 0
 	}
-	res := os.execute_opt('git -C ${os.quoted_path(dir)} log -1 --format=%ct') or { return 0 }
+	res := os.exec_opt(['git', '-C', dir, 'log', '-1', '--format=%ct']) or { return 0 }
 	if res.exit_code != 0 {
 		return 0
 	}
@@ -160,9 +160,9 @@ fn (vcs VCS) checkout(dir string, rev string) ! {
 	if rev == '' || rev.starts_with('-') || rev.contains_any(' \0\r\n') {
 		return error('refusing to checkout the invalid revision `${rev}`.')
 	}
-	cmd := 'git -C ${os.quoted_path(dir)} checkout ${rev}'
-	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
-	res := os.execute_opt(cmd) or {
+	args := ['git', '-C', dir, 'checkout', rev]
+	vpm_log(@FILE_LINE, @FN, 'cmd: ${args}')
+	res := os.exec_opt(args) or {
 		return error('failed to checkout `${rev}` in `${fmt_mod_path(dir)}`: ${err.msg()}')
 	}
 	if res.exit_code != 0 {
@@ -176,13 +176,13 @@ fn checkout_origin_url(dir string) string {
 	existing_vcs := vcs_used_in_dir(dir) or { return '' }
 	match existing_vcs {
 		.git {
-			res := os.execute_opt('git -C ${os.quoted_path(dir)} remote get-url origin') or {
+			res := os.exec_opt(['git', '-C', dir, 'remote', 'get-url', 'origin']) or {
 				return ''
 			}
 			return res.output.trim_space()
 		}
 		.hg {
-			res := os.execute_opt('hg -R ${os.quoted_path(dir)} paths default') or { return '' }
+			res := os.exec_opt(['hg', '-R', dir, 'paths', 'default']) or { return '' }
 			return res.output.trim_space()
 		}
 	}
