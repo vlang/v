@@ -247,6 +247,86 @@ fn test_generated_skips_unknown_field_and_rejects_wrong_wire_type() ! {
 	run_module_test(dir, 'round_trip_test.v', unknown_field_test_source)!
 }
 
+// The presence guards are asserted on the generated text above. This asserts the
+// same rule on the bytes, for kv.proto's own messages and every scalar shape it
+// uses, because a guard that is emitted can still be emitted wrong -- `>!= 0`
+// is truthy for an empty string, and it would pass every check on the text.
+fn test_generated_kv_encode_omits_proto3_defaults() ! {
+	res := generate_res(fixture('kv.proto'), 'kv')!
+	dir := write_roundtrip('kvdefaults', res)
+	run_module_test(dir, 'round_trip_test.v', kv_defaults_test_source)!
+}
+
+const kv_defaults_test_source = "module kv
+
+// Each of these messages holds nothing but proto3 defaults, so proto3 says the
+// encoding is empty: an absent field and a field explicitly set to the default
+// are the same thing on the wire.
+fn test_a_string_at_its_default_is_not_written() ! {
+	assert GetRequest{
+		key: ''
+	}.encode()! == []u8{}
+}
+
+fn test_bytes_at_their_default_is_not_written() ! {
+	assert GetResponse{
+		value: []u8{}
+		found: false
+	}.encode()! == []u8{}
+}
+
+fn test_a_bool_at_false_is_not_written() ! {
+	assert PutResponse{
+		replaced: false
+	}.encode()! == []u8{}
+}
+
+fn test_an_int_at_zero_is_not_written() ! {
+	assert PutManyResponse{
+		written: 0
+	}.encode()! == []u8{}
+}
+
+// The other half of the rule: a field that is *not* at its default is written,
+// with its own tag. A guard that dropped everything would satisfy the four tests
+// above, so the positive case is what makes them mean anything.
+fn test_a_set_field_is_written_under_its_own_tag() ! {
+	// field 1, wire type 2 (length-delimited), length 3, then 'k' 'e' 'y'
+	assert GetRequest{
+		key: 'key'
+	}.encode()! == [u8(0x0a), 0x03, 0x6b, 0x65, 0x79]
+}
+
+fn test_a_set_bool_is_written_as_its_own_tag() ! {
+	// `replaced` is field 1 of PutResponse, so field 1, wire type 0 (varint),
+	// value 1.
+	assert PutResponse{
+		replaced: true
+	}.encode()! == [u8(0x08), 0x01]
+}
+
+// A message mixing a default and a set field writes only the set one, which is
+// the case a per-field guard gets wrong by being applied to the whole message.
+fn test_only_the_non_default_field_is_written() ! {
+	assert GetResponse{
+		value: []u8{}
+		found: true
+	}.encode()! == [u8(0x10), 0x01]
+}
+
+// And the defaults still read back as defaults, so omitting them lost nothing.
+fn test_omitted_fields_read_back_as_their_defaults() ! {
+	back := decode_get_request(GetRequest{
+		key: ''
+	}.encode()!)!
+	assert back.key == ''
+	back_response := decode_put_many_response(PutManyResponse{
+		written: 0
+	}.encode()!)!
+	assert back_response.written == 0
+}
+"
+
 // write_roundtrip writes the codec for `res` plus `test_name` into a directory of
 // its own, and returns that directory.
 //
