@@ -7465,7 +7465,7 @@ When `v install` resolves the dependencies of a project, i.e. when it runs
 without packages in a folder holding a `v.mod`, or with `--local`, it records
 what it installed in a `v.mod.lock` file next to that `v.mod`. Commit that file,
 so that everyone working on the project, and its CI, builds against the same
-sources. A plain `v install [package]` outside of a project records nothing.
+sources. A plain `v install [package]` installs globally, and records nothing.
 For each dependency, the lockfile records:
 
 - `requested`: the dependency string as written in `v.mod`, e.g. `vsl@v0.1.50`
@@ -7477,8 +7477,8 @@ For each dependency, the lockfile records:
 Without a lock entry, `v install` updates an already installed dependency to its
 latest revision. With one, it installs the locked revision instead, and puts an
 installed checkout that moved away from it back on the lock, fetching the
-revision first when needed. A dependency whose string or source in `v.mod` no
-longer matches its entry is resolved anew, and its entry is replaced.
+revision first when needed. A dependency whose string in `v.mod`, or whose
+source, no longer matches its entry is resolved anew, and its entry is replaced.
 `v install --locked` fails instead of resolving anything anew, e.g. to check in
 CI that the lockfile is complete and up to date.
 
