@@ -8074,9 +8074,9 @@ fn (mut p Parser) report_fn_decl_inside_fn(start int, end int) {
 }
 
 // method_decl_follows reports whether the `fn (` at the current token starts a
-// method declaration, `fn (r T) name(` or `fn (r T) name[U](`, rather than an
-// anonymous function like `fn (x int) int {`, `fn (x int) Box[int] {` or
-// `fn (x int) thread (int, int) {`.
+// method declaration, `fn (r T) name(`, `fn (r T) name[U](` or `fn (r T) + (`,
+// rather than an anonymous function like `fn (x int) int {`,
+// `fn (x int) Box[int] {` or `fn (x int) thread (int, int) {`.
 fn (mut p Parser) method_decl_follows() bool {
 	if p.peek() != .lpar {
 		return false
@@ -8087,9 +8087,14 @@ fn (mut p Parser) method_decl_follows() bool {
 	if first in [.rpar, .lpar] || !scan_past_closing(mut lookahead, .lpar, .rpar) {
 		return false
 	}
+	name := lookahead.scan()
+	// No return type starts with an operator, so `fn (a T) + (` is an operator overload.
+	if name.is_overloadable() {
+		return lookahead.scan() == .lpar
+	}
 	// `thread` is the one type name that takes a parenthesized operand, so it is
 	// an anonymous function's return type there, not a method name.
-	if lookahead.scan() != .name || lookahead.lit == 'thread' {
+	if name != .name || lookahead.lit == 'thread' {
 		return false
 	}
 	mut next := lookahead.scan()
@@ -9390,19 +9395,9 @@ fn (mut p Parser) parenthesized_match_header_starts_block() bool {
 			next = lookahead.scan()
 			continue
 		}
-		opening := next
-		closing := if opening == .lpar { token.Token.rpar } else { token.Token.rsbr }
-		mut depth := 1
-		for depth > 0 {
-			tok := lookahead.scan()
-			if tok == .eof {
-				return false
-			}
-			if tok == opening {
-				depth++
-			} else if tok == closing {
-				depth--
-			}
+		closing := if next == .lpar { token.Token.rpar } else { token.Token.rsbr }
+		if !scan_past_closing(mut lookahead, next, closing) {
+			return false
 		}
 		next = lookahead.scan()
 	}

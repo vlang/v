@@ -74,3 +74,30 @@ pub fn third() int {
 		assert diagnostics[0].line == 9
 	}
 }
+
+fn test_operator_overload_after_a_missing_brace_is_reported_once() {
+	src := 'struct V2 {
+	x int
+}
+
+fn helper(x int) int {
+	if x > 0 {
+		return x
+	return 0
+}
+
+fn (a V2) + (b V2) V2 {
+	return V2{a.x + b.x}
+}
+
+fn main() {
+	println(helper(3))
+}
+'
+	for is_fmt in [false, true] {
+		diagnostics := parse_diagnostics('op_${is_fmt}', src, is_fmt)
+		assert diagnostics.len == 1, 'is_fmt: ${is_fmt}, ${diagnostics}'
+		assert diagnostics[0].message == 'unexpected function declaration, expecting `}` to close function `helper`'
+		assert diagnostics[0].line == 11
+	}
+}
