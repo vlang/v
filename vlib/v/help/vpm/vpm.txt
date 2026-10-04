@@ -19,3 +19,5 @@ Package Management Utilities:
   update    Updates each PACKAGE.
 
   upgrade   Upgrade all outdated modules.
+
+  why       Explain why a module is in a project's dependency graph.

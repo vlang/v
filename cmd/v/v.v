@@ -91,6 +91,7 @@ const external_commands = [
 	'vlib-docs',
 	'watch',
 	'where',
+	'why',
 	'wipe-cache',
 ]
 
@@ -367,7 +368,7 @@ fn run_external_tool(args []string, command_index int, command string) {
 			'vcreate'
 		}
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade' {
+		'upgrade', 'why' {
 			'vpm'
 		}
 		'vlib-docs' {
