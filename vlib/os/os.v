@@ -873,6 +873,123 @@ pub fn walk(path string, f fn (string)) {
 	}
 }
 
+// WalkDirAction tells walk_dir what to do after its callback returns.
+pub enum WalkDirAction {
+	proceed  // carry on with the next entry
+	skip_dir // do not descend into the directory that was just reported
+	stop     // end the walk
+}
+
+// WalkDirEntry describes one entry visited by walk_dir.
+pub struct WalkDirEntry {
+pub:
+	name   string // the entry's base name, without any directory part
+	is_dir bool   // true for a directory; symlinks are reported, never followed
+	typ    FileType
+	err    ?string // why the entry could not be read; none when it could
+}
+
+// WalkDirFn is the callback type for walk_dir.
+// When an entry cannot be read, `entry.err` says why and `is_dir` and `typ` are
+// left at their zero values, so a callback should look at `entry.err` before
+// relying on them.
+pub type WalkDirFn = fn (path string, entry WalkDirEntry) WalkDirAction
+
+// walk_dir traverses the directory tree rooted at `root` and calls `cb` for
+// every entry, directories included, in lexical order. It is the counterpart of
+// Go's filepath.WalkDir.
+//
+// Returning `.skip_dir` leaves the directory that was just reported unread,
+// which is what makes pruning a large tree possible; on a non-directory it has no
+// effect. Returning `.stop` ends the walk immediately, and walk_dir then returns
+// no error. An entry that cannot be read is reported through `entry.err` rather
+// than aborting the walk, and walk_dir itself only fails when `root` is empty.
+//
+// The error travels as a message inside the entry rather than as an IError
+// argument, because the compiler cannot currently pass the builtin IError through
+// a fn type declared in a vlib module: cgen emits the module-prefixed
+// `os__IError`, which is not a type it ever defines, and tcc rejects the result
+// with "invalid type".
+//
+// Like walk, walk_dir iterates rather than recurses, so tree depth costs no stack.
+//
+// Example:
+// ```v
+// os.walk_dir('/srv/app', fn (path string, entry os.WalkDirEntry) os.WalkDirAction {
+//     if entry.err != none {
+//         eprintln('skipping ${path}: ${entry.err!}')
+//         return .proceed
+//     }
+//     if entry.is_dir && entry.name == '.git' {
+//         return .skip_dir
+//     }
+//     println(path)
+//     return .proceed
+// }) or { panic(err) }
+// ```
+pub fn walk_dir(root string, cb WalkDirFn) ! {
+	if root == '' {
+		return error('os: walk_dir needs a non-empty root path')
+	}
+	mut pending := []string{cap: 64}
+	pending << norm_path(root)
+	for pending.len > 0 {
+		cpath := pending.pop()
+		// Filled through locals and handed over in a single struct literal, so
+		// that the public fields can stay read-only for callers.
+		mut typ := FileType.unknown
+		mut is_dir := false
+		mut entry_err := ?string(none)
+		if attr := lstat(cpath) {
+			typ = attr.get_filetype()
+			is_dir = typ == .directory
+		} else {
+			// The entry could not be read, so is_dir stays false and a directory
+			// is not descended into.
+			entry_err = err.msg()
+		}
+		entry := WalkDirEntry{
+			name:   file_name(cpath)
+			typ:    typ
+			is_dir: is_dir
+			err:    entry_err
+		}
+		// Whether to descend into cpath, which a .skip_dir reply can veto.
+		mut descend := true
+		match cb(cpath, entry) {
+			.stop {
+				return
+			}
+			.skip_dir {
+				descend = false
+			}
+			.proceed {}
+		}
+		if !descend || !entry.is_dir {
+			continue
+		}
+		mut children := ls(cpath) or {
+			// The directory itself could not be listed, which is reported the same
+			// way as an entry that cannot be stat'ed. The original entry is passed
+			// back with the listing failure attached, so the callback sees one
+			// report per path.
+			cb(cpath, WalkDirEntry{
+				name:   entry.name
+				typ:    entry.typ
+				is_dir: entry.is_dir
+				err:    err.msg()
+			})
+			continue
+		}
+		// Sorted so the visit order is lexical rather than whatever order the
+		// filesystem happened to hand back.
+		children.sort()
+		for i := children.len - 1; i >= 0; i-- {
+			pending << join_path_single(cpath, children[i])
+		}
+	}
+}
+
 // FnWalkContextCB is used to define the callback functions, passed to os.walk_context.
 pub type FnWalkContextCB = fn (voidptr, string)
 

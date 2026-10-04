@@ -52,6 +52,73 @@ may mix `/` and `\` and the last separator of either kind decides the parent.
 On Windows, `os.uname()` leaves `release` and `version` empty if the `ver` command
 fails or does not report a numeric version. Localized version labels are accepted.
 
+### Walking a tree
+
+`os.walk()` reports files only. It never tells you about a directory, so there is
+no way to say "do not descend into this one", and a large tree has to be read in
+full. `os.walk_dir()` reports every entry, directories included, and lets the
+callback prune:
+
+```v ignore
+os.walk_dir('/srv/app', fn (path string, entry os.WalkDirEntry) os.WalkDirAction {
+	if entry.err != none {
+		eprintln('skipping ${path}: ${entry.err!}')
+		return .proceed
+	}
+	if entry.is_dir && entry.name in ['.git', 'node_modules', 'target'] {
+		return .skip_dir // the directory is reported, its contents are never read
+	}
+	if !entry.is_dir && entry.name.ends_with('.v') {
+		println(path)
+	}
+	return .proceed
+}) or { panic(err) }
+```
+
+Returning `.stop` ends the walk where it stands. Entries are visited in lexical
+order, the root is reported first, symlinks are reported but never followed, and
+an entry that cannot be read arrives with `entry.err` set and `is_dir` left false,
+so a callback cannot accidentally descend into something unreadable.
+
+Note that the error travels as a message inside the entry rather than as an
+`IError` argument, because the compiler cannot currently pass the builtin `IError`
+through a `fn` type declared in a vlib module.
+
+**Accumulating state needs a `mut` parameter.** A closure that inherits a mutable
+variable, and a method value taken from a mutable local, both run but discard
+their writes:
+
+```v ignore
+mut n := 0
+os.walk_dir(root, fn [mut n] (path string, entry os.WalkDirEntry) os.WalkDirAction {
+	n++ // n is still 0 after the walk
+	return .proceed
+})
+```
+
+Put the state in a struct and pass it as a `mut` parameter instead, which does
+accumulate:
+
+```v ignore
+struct Counter {
+mut:
+	files int
+}
+
+fn (mut c Counter) visit(_ string, entry os.WalkDirEntry) os.WalkDirAction {
+	if entry.err == none && !entry.is_dir {
+		c.files++
+	}
+	return .proceed
+}
+
+fn count(root string) int {
+	mut c := Counter{}
+	os.walk_dir(root, c.visit) or { panic(err) }
+	return c.files
+}
+```
+
 ### Running commands
 
 Use `os.exec(['program', 'arg 1', 'arg 2'])` when the command and its arguments
