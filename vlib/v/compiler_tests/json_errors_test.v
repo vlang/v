@@ -120,6 +120,40 @@ fn test_json_errors_of_a_build_are_only_json() {
 	diagnostics := decode_diagnostics(res.output)
 	assert diagnostics.map(it.severity) == ['warning', 'error'], res.output
 	assert !os.exists(os.join_path(dir, 'main_bin'))
+	assert !os.exists(os.join_path(dir, 'main_bin.exe'))
+}
+
+// An error found while generic functions are specialized, after the checker, is a
+// diagnostic without a position.
+fn test_json_errors_reports_errors_of_the_monomorphization() {
+	dir := write_project('monomorph', {
+		'main.v': 'fn add[T](a T, b T) T {
+	return a.plus(b, 1)
+}
+
+struct N {
+	v int
+}
+
+fn (n N) plus(o N) N {
+	return N{n.v + o.v}
+}
+
+fn main() {
+	println(add(N{1}, N{2}))
+}
+'
+	})
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	res := run_in(dir, ['-json-errors', '-o', 'main_bin', 'main.v'])
+	assert res.exit_code == 1, res.output
+	diagnostics := decode_diagnostics(res.output)
+	assert diagnostics.len == 1, res.output
+	assert diagnostics[0].file == ''
+	assert diagnostics[0].severity == 'error'
+	assert diagnostics[0].message == 'argument count mismatch for `a.plus`: expected 1, got 2'
 }
 
 fn test_json_errors_keeps_the_exit_code_of_a_program_with_warnings_only() {

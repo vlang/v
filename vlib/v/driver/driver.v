@@ -12385,6 +12385,12 @@ pub fn run(args []string) {
 			pre_tc.refresh_rewritten_parent_index(a)
 		}
 		if transform_errors.len > 0 {
+			if compiler_errors.json_output() {
+				for message in transform_errors {
+					eprintln(compiler_errors.json_message('error:', message, []string{}))
+				}
+				exit(1)
+			}
 			eprintln('type checker found ${transform_errors.len} error(s):')
 			for message in transform_errors {
 				eprintln(message)
@@ -12604,6 +12610,12 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if monomorph_errors.len > 0 {
+			if compiler_errors.json_output() {
+				for message in monomorph_errors {
+					eprintln(compiler_errors.json_message('error:', message, []string{}))
+				}
+				exit(1)
+			}
 			eprintln('type checker found ${monomorph_errors.len} error(s):')
 			for message in monomorph_errors {
 				eprintln(message)
