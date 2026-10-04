@@ -2,6 +2,7 @@
 // per line, for the tools that read them instead of a person.
 import os
 import json2
+import encoding.utf8
 
 struct CallSite {
 	file string
@@ -204,6 +205,30 @@ fn main() {
 	quoted := diagnostics.filter(it.line == 14 && it.col == 10)
 	assert quoted.len == 1, res.output
 	assert quoted[0].end_col == 29
+}
+
+// The scanner quotes the bytes it cannot read. Bytes that are not UTF-8 would make a
+// strict JSON reader reject the line, so they are reported as U+FFFD.
+fn test_json_errors_of_a_malformed_source_file_are_valid_utf8() {
+	dir := write_project('malformed', {
+		'lone_byte.v': 'module main\n\nfn main() {\n\t\xff\n}\n'
+		'cut_off.v':   'module main\n\nfn main() {\n\tx\xe2\x82 := 2\n}\n'
+	})
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	for file in ['lone_byte.v', 'cut_off.v'] {
+		res := run_in(dir, ['-check', '-json-errors', file])
+		assert res.exit_code == 1, res.output
+		assert utf8.validate_str(res.output), res.output.bytes().hex()
+		assert res.output.contains('\\ufffd'), res.output
+		diagnostics := decode_diagnostics(res.output)
+		invalid := diagnostics.filter(it.message.starts_with('invalid character `'))
+		assert invalid.len == 1, res.output
+		assert invalid[0].file == file
+		assert invalid[0].line == 4
+		assert invalid[0].message.contains('\ufffd'), res.output
+	}
 }
 
 // Every error is printed: the text form stops after 20 of them with a note for the
