@@ -101,19 +101,45 @@ fn write_json_location(mut out strings.Builder, path string, line int, column in
 }
 
 // write_json_message writes the members that every diagnostic has. A kind is the label of
-// the text form: `error:`, `warning:` or `notice:`.
+// the text form, like `error:`, `warning:`, `notice:` or `builder error:`. `severity` is
+// always `error`, `warning` or `notice`; a label that says more than that is kept as `label`.
 fn write_json_message(mut out strings.Builder, kind string, message string, details []string) {
-	out.write_string('"severity":"${json_escape(kind.trim_right(':'))}","message":"${json_escape(message)}"')
+	label := kind.trim_right(':')
+	severity := match label {
+		'warning' { 'warning' }
+		'notice' { 'notice' }
+		else { 'error' }
+	}
+	out.write_string('"severity":"${severity}"')
+	if label != severity {
+		out.write_string(',"label":"${json_escape(label)}"')
+	}
+	out.write_string(',"message":"${json_escape(message)}"')
 	if details.len > 0 {
 		out.write_string(',"details":"${json_escape(details.join('\n'))}"')
 	}
 }
 
-// json_escape escapes text for a JSON string. Bytes that are not ASCII pass through, so
-// UTF-8 source text stays readable.
+// json_escape escapes text for a JSON string. Valid UTF-8 sequences pass through, so
+// source text stays readable; a byte that is not part of one becomes U+FFFD, since a JSON
+// text must be valid UTF-8.
 fn json_escape(text string) string {
 	mut out := strings.new_builder(text.len + 8)
-	for c in text {
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if c >= 0x80 {
+			sequence_len := valid_utf8_sequence_len(text, i)
+			if sequence_len > 0 {
+				out.write_string(text[i..i + sequence_len])
+				i += sequence_len
+			} else {
+				out.write_string('\\ufffd')
+				i++
+			}
+			continue
+		}
+		i++
 		match c {
 			`"` {
 				out.write_string('\\"')

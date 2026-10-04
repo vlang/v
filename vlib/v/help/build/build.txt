@@ -307,9 +307,11 @@ NB: the build flags are shared with the run command too:
     other tools that read them, instead of the text with a source excerpt. For example:
       {"file":"a.v","line":3,"col":7,"end_line":3,"end_col":14,"severity":"error","message":"..."}
     The lines and the columns start at 1, a column counts bytes, and the end is the position
-    after the reported span. A diagnostic can also have `details`, and `called_from` for an
-    error inside a template. The exit code does not change. Combine it with -check to get
-    the diagnostics without building the program.
+    after the reported span. The severity is `error`, `warning` or `notice`. A diagnostic can
+    also have `details`, `label` for the label of the text form when it says more than the
+    severity (like `builder error`), and `called_from` for an error inside a template. The
+    exit code does not change. Combine it with -check to get the diagnostics without building
+    the program.
 
   -show-timings
     Print a summary about how long each compiler stage took, for example:

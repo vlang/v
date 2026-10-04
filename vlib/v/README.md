@@ -89,6 +89,7 @@ as one JSON object per line on stderr, instead of the text with a source excerpt
 | `line`, `col` | Where the reported span starts. Both start at 1; a column counts bytes. |
 | `end_line`, `end_col` | The position after the last byte of the span. |
 | `severity` | `error`, `warning` or `notice`. |
+| `label` | Only when the text form uses another label than the severity, like `builder error`, `cgen error` or `conflicting declaration`. |
 | `message` | The message of the text form. |
 | `details` | Only when there are any: the text printed after `Details:`. |
 | `called_from` | Only for a template: the `$tmpl` calls that included it, innermost first, each with `file`, `line` and `col`. |

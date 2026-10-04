@@ -2,6 +2,7 @@
 // per line, for the tools that read them instead of a person.
 import os
 import json2
+import encoding.utf8
 
 struct CallSite {
 	file string
@@ -16,6 +17,7 @@ struct Diagnostic {
 	end_line    int
 	end_col     int
 	severity    string
+	label       string
 	message     string
 	details     string
 	called_from []CallSite
@@ -66,6 +68,8 @@ fn decode_diagnostics(output string) []Diagnostic {
 	mut diagnostics := []Diagnostic{}
 	for line in output.split_into_lines() {
 		assert line.starts_with('{') && line.ends_with('}'), output
+		// json2 accepts invalid UTF-8, which a JSON text must not have.
+		assert utf8.validate_str(line), output
 		diagnostics << json2.decode[Diagnostic](line) or { panic('${err}: ${line}') }
 	}
 	return diagnostics
@@ -204,6 +208,54 @@ fn main() {
 	quoted := diagnostics.filter(it.line == 14 && it.col == 10)
 	assert quoted.len == 1, res.output
 	assert quoted[0].end_col == 29
+}
+
+// A byte of the source that is not valid UTF-8 is quoted as U+FFFD, so that each line
+// stays valid JSON.
+fn test_json_errors_of_invalid_utf8_source_are_valid_json() {
+	dir := write_project('badutf', {
+		'main.v': 'fn main() {\n    \xff\n}\n'
+	})
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	assert os.read_bytes(os.join_path(dir, 'main.v'))!.contains(0xff)
+	res := run_in(dir, ['-check', '-json-errors', 'main.v'])
+	assert res.exit_code == 1, res.output
+	diagnostics := decode_diagnostics(res.output)
+	invalid := diagnostics.filter(it.message.starts_with('invalid character'))
+	assert invalid.len == 1, res.output
+	assert invalid[0].line == 2
+	assert invalid[0].message.contains('\ufffd'), res.output
+}
+
+// The severity is `error`, `warning` or `notice`; the label of the text form is kept
+// when it says more.
+fn test_json_errors_severity_of_builder_errors() {
+	dir := write_project('builder', {
+		'missing.v':   'import nonexistent_mod_xyz\n\nfn main() {\n\tnonexistent_mod_xyz.f()\n}\n'
+		'duplicate.v': 'fn f() {}\n\nfn f() {}\n\nfn main() {\n\tf()\n}\n'
+	})
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	missing := run_in(dir, ['-check', '-json-errors', 'missing.v'])
+	assert missing.exit_code == 1, missing.output
+	import_errors := decode_diagnostics(missing.output)
+	assert import_errors.len == 1, missing.output
+	assert import_errors[0].file == 'missing.v'
+	assert import_errors[0].line == 1
+	assert import_errors[0].severity == 'error'
+	assert import_errors[0].label == 'builder error'
+	assert import_errors[0].message == 'cannot import module "nonexistent_mod_xyz" (not found)'
+	duplicate := run_in(dir, ['-check', '-json-errors', 'duplicate.v'])
+	assert duplicate.exit_code == 1, duplicate.output
+	redefinitions := decode_diagnostics(duplicate.output)
+	assert redefinitions.map(it.severity) == ['error', 'error', 'error'], duplicate.output
+	assert redefinitions.map(it.label) == ['builder error', 'conflicting declaration',
+		'conflicting declaration'], duplicate.output
+	assert redefinitions[0].message == 'redefinition of function `f`'
+	assert redefinitions[1..].map(it.line) == [1, 3], duplicate.output
 }
 
 // Every error is printed: the text form stops after 20 of them with a note for the

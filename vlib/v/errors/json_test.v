@@ -17,9 +17,26 @@ fn test_json_escape_keeps_a_diagnostic_on_one_line() {
 	assert json_escape('üñí') == 'üñí'
 }
 
+fn test_json_escape_replaces_invalid_utf8() {
+	// JSON text must be valid UTF-8, so a byte that starts no valid sequence becomes U+FFFD.
+	assert json_escape('a\xffb') == 'a\\ufffdb'
+	assert json_escape('\xc3') == '\\ufffd'
+	assert json_escape('\xc0\xaf') == '\\ufffd\\ufffd'
+	assert json_escape('\xed\xa0\x80') == '\\ufffd\\ufffd\\ufffd'
+	assert json_escape('ü\x80ñ') == 'ü\\ufffdñ'
+	assert json_escape('\xf0\x9f\x98\x80') == '\xf0\x9f\x98\x80'
+}
+
 fn test_json_message_has_no_position() {
 	assert json_message('error:', 'no `main` function', []string{}) == '{"severity":"error","message":"no `main` function"}'
 	assert json_message('warning:', 'first', ['a "detail"', 'second line']) == '{"severity":"warning","message":"first","details":"a \\"detail\\"\\nsecond line"}'
+}
+
+fn test_json_severity_is_error_warning_or_notice() {
+	assert json_message('builder error:', 'cannot import module', []string{}) == '{"severity":"error","label":"builder error","message":"cannot import module"}'
+	assert json_message('cgen error:', 'void', []string{}) == '{"severity":"error","label":"cgen error","message":"void"}'
+	assert json_message('conflicting declaration:', 'f', []string{}) == '{"severity":"error","label":"conflicting declaration","message":"f"}'
+	assert json_message('notice:', 'n', []string{}) == '{"severity":"notice","message":"n"}'
 }
 
 fn test_json_located_message_spans_the_reported_column() {
