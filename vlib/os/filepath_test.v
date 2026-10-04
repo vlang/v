@@ -306,3 +306,108 @@ fn test_parent_dir_walk_terminates() {
 		}
 	}
 }
+
+// path_rel_parity_cases are the shapes whose results were taken from Go's
+// path/filepath.Rel and checked value by value, not from reading its source.
+// Expected values are built from path_separator so the same table holds on both
+// platforms.
+fn path_rel_parity_cases() [][]string {
+	sep := path_separator
+	return [
+		['a', 'a', '.']
+		['a/b', 'a/b', '.']
+		['/a/b', '/a/c', '..${sep}c']
+		['a/b', 'a/c', '..${sep}c']
+		['a/b/c', 'a', '..${sep}..']
+		['a', 'a/b/c', 'b${sep}c']
+		['/', '/a', 'a']
+		['/a', '/', '..']
+		['a/b', 'a', '..']
+		['a', 'a/b', 'b']
+		['a/b/', 'a/b', '.']
+		['a/b', 'a/b/', '.']
+		['a/b', 'a/b/.', '.']
+		['./a/b', 'a/c', '..${sep}c']
+		['a/./b', 'a/c', '..${sep}c']
+		['a/../a/b', 'a/c', '..${sep}c']
+		['a/b/../c', 'c', '..${sep}..${sep}c']
+		['', '', '.']
+		['', 'a', 'a']
+		['a', '', '..']
+		['.', 'a', 'a']
+		['a', '.', '..']
+		['a/b', './c', '..${sep}..${sep}c']
+		['/a/b/c', '/a', '..${sep}..']
+		['/a/b', '/a/b/c', 'c']
+		['a/b/c/d', 'a/e', '..${sep}..${sep}..${sep}e']
+		['a/b/c', 'a/b/c', '.']
+		// these normalize rather than fail
+		['a/b/../..', 'c', 'c']
+		['a/..', 'b', 'b']
+		['..', '..', '.']
+		['../a', '../b', '..${sep}b']
+		// ".." in the target is fine; it is only the base that cannot start with it
+		['a', '../b', '..${sep}..${sep}b'],
+	]
+}
+
+fn test_path_rel() {
+	for c in path_rel_parity_cases() {
+		got := path_rel(c[0], c[1]) or {
+			assert false, 'path_rel(${c[0]}, ${c[1]}) failed with ${err.msg()}'
+			return
+		}
+		assert got == c[2], 'path_rel(${c[0]}, ${c[1]}) = "${got}", want "${c[2]}"'
+	}
+}
+
+fn test_path_rel_errors() {
+	// One path absolute and the other not, or the base itself below the working
+	// directory, so no relative path can express the target.
+	failing := [
+		['/a', 'b']
+		['a', '/b']
+		['..', 'a']
+		['../a', 'b']
+		['../..', 'a']
+		['../a', 'a'],
+	]
+	for c in failing {
+		mut failed := false
+		path_rel(c[0], c[1]) or {
+			failed = true
+		}
+		assert failed, 'path_rel(${c[0]}, ${c[1]}) should have failed'
+	}
+}
+
+fn test_path_rel_rejects_different_windows_volumes() {
+	$if windows {
+		mut failed := false
+		path_rel(r'C:\a\b', r'D:\a\c') or {
+			failed = true
+		}
+		assert failed, 'path_rel across two volumes should have failed'
+	}
+}
+
+// A relative path that resolves back to the target is the whole point of the
+// function, so check that property rather than only the string it returns.
+fn test_path_rel_result_resolves_to_target() {
+	sep := path_separator
+	pairs := [
+		['/a/b/c', '/a/d/e']
+		['/a/b', '/a/b/c/d']
+		['/x', '/y/z']
+		['p/q', 'p/r/s'],
+	]
+	for p in pairs {
+		rel := path_rel(p[0], p[1]) or { panic(err) }
+		joined := if is_abs_path(rel) {
+			rel
+		} else {
+			norm_path(p[0] + sep + rel)
+		}
+		assert joined == norm_path(p[1]), 'from ${p[0]} via "${rel}" got "${joined}", want "${norm_path(p[1])}"'
+	}
+}

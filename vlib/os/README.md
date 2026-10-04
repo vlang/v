@@ -49,6 +49,27 @@ directory, so they are ignored, and `os.parent_dir('/a/b/')` is `/a` rather than
 `/a/b`. A separator is any byte the platform accepts as one, so a Windows path
 may mix `/` and `\` and the last separator of either kind decides the parent.
 
+`os.path_rel()` goes the other way: given a base and a target, it returns the
+path that leads from one to the other. It is the function to reach for instead of
+stripping a common prefix by hand, which gets the number of `..` wrong as soon as
+the two paths share no prefix at all:
+
+```v ignore
+rel := os.path_rel('/srv/app', '/srv/app/static/main.css') or { panic(err) } // 'static\main.css'
+rel := os.path_rel('/srv/app/logs', '/srv/app/static') or { panic(err) }     // '..\static'
+```
+
+Both paths are normalized first, so `.` comes back for two spellings of the same
+path, and `..` is collapsed before anything is compared. The separator in the
+result is the platform's. Two cases have no answer and return an error rather
+than a misleading path: when one path is absolute and the other is not, and when
+the base path's *first* component is `..`, because going up would need more levels
+than the path has. A `..` in the target is fine, so
+`os.path_rel('/srv/app', '/srv/other')` is `..\other`.
+
+On Windows the two paths must also be on the same volume, since `C:\a` cannot be
+reached from `D:\b` by changing directory.
+
 On Windows, `os.uname()` leaves `release` and `version` empty if the `ver` command
 fails or does not report a numeric version. Localized version labels are accepted.
 

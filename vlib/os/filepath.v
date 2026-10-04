@@ -125,6 +125,76 @@ pub fn norm_path(path string) string {
 	return res
 }
 
+// path_rel returns a path which, resolved against basepath, reaches targpath.
+// It follows the same rules as Go's path/filepath.Rel: both paths are normalized
+// first, `.` is returned when they name the same path, and an error is returned
+// when targpath cannot be expressed relative to basepath. That happens when one
+// path is absolute and the other is not, when the two paths are on different
+// Windows volumes, or when basepath's first component is `..`.
+//
+// Example:
+// ```v
+// assert os.path_rel('/a/b', '/a/b/c')! == 'c'
+// assert os.path_rel('/a/b', '/a/c')! == '..\\c'
+// ```
+pub fn path_rel(basepath string, targpath string) !string {
+	base := norm_path(basepath)
+	targ := norm_path(targpath)
+	if path_rel_same_word(base, targ) {
+		return dot_str
+	}
+	if is_abs_path(base) != is_abs_path(targ) {
+		return error('path_rel: cannot make "${targpath}" relative to "${basepath}"')
+	}
+	$if windows {
+		if !path_rel_same_word(windows_volume(base), windows_volume(targ)) {
+			return error('path_rel: cannot make "${targpath}" relative to "${basepath}"')
+		}
+	}
+	sep := path_separator
+	base_elems := path_rel_components(base, sep)
+	targ_elems := path_rel_components(targ, sep)
+	// The number of leading components the two paths share.
+	mut common := 0
+	for common < base_elems.len && common < targ_elems.len
+		&& path_rel_same_word(base_elems[common], targ_elems[common]) {
+		common++
+	}
+	// Going up from a base which is itself below the working directory would
+	// need more `..` than the path has levels, so it cannot be expressed.
+	if common < base_elems.len && base_elems[common] == dot_dot {
+		return error('path_rel: cannot make "${targpath}" relative to "${basepath}"')
+	}
+	mut ret := []string{cap: base_elems.len - common + targ_elems.len - common}
+	for _ in common .. base_elems.len {
+		ret << dot_dot
+	}
+	ret << targ_elems[common..]
+	if ret.len == 0 {
+		return dot_str
+	}
+	return ret.join(sep)
+}
+
+// path_rel_components splits an already normalized path into the components
+// below its root, so that a root of `/` or `C:` is left out. A path naming only
+// the current directory has no components at all.
+fn path_rel_components(norm string, sep string) []string {
+	if norm == dot_str || norm == empty_str {
+		return []string{}
+	}
+	return norm.split(sep).filter(it != empty_str)
+}
+
+// path_rel_same_word compares two path components the way the host filesystem
+// would, which is case-insensitively on Windows and exactly elsewhere.
+fn path_rel_same_word(a string, b string) bool {
+	$if windows {
+		return a.to_lower_ascii() == b.to_lower_ascii()
+	}
+	return a == b
+}
+
 // existing_path returns the existing part of the given `path`.
 // An error is returned if there is no existing part of the given `path`.
 pub fn existing_path(path string) !string {
