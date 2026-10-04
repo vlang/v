@@ -53,14 +53,31 @@ fn test_compiler_option_is_told_apart_from_a_program_argument() {
 	assert compiler_option_requested(['-json-errors', 'run', 'main.v'], '-json-errors')
 	assert !compiler_option_requested(['run', 'main.v', '-json-errors'], '-json-errors')
 	assert !compiler_option_requested(['-o', '-json-errors', 'main.v'], '-json-errors')
-	// A script of `-raw-vsh-tmp-prefix` and a source from stdin that is run take the
-	// arguments after them too.
+	assert !compiler_option_requested(['-json-errors', 'main.v'], '-race')
+}
+
+// The driver also runs a script without the `.vsh` extension and a program read from stdin.
+fn test_compiler_option_stops_at_a_raw_script_and_at_a_run_stdin_input() {
 	assert !compiler_option_requested(['-raw-vsh-tmp-prefix', 'tmp', 'script', '-json-errors'],
 		'-json-errors')
 	assert !compiler_option_requested(['run', '-', '-json-errors'], '-json-errors')
-	assert compiler_option_requested(['-', '-json-errors'], '-json-errors')
+	assert !compiler_option_requested(['crun', '-', '-json-errors'], '-json-errors')
+	assert !race_build_requested(['-raw-vsh-tmp-prefix', 'tmp', 'script', '-race'])
+	assert !race_build_requested(['run', '-', '-race'])
+	// Before the input they are compiler options.
+	assert compiler_option_requested(['-json-errors', '-raw-vsh-tmp-prefix', 'tmp', 'script'],
+		'-json-errors')
+	assert compiler_option_requested(['-raw-vsh-tmp-prefix', 'tmp', '-json-errors', 'script'],
+		'-json-errors')
 	assert compiler_option_requested(['-json-errors', 'run', '-'], '-json-errors')
-	assert !compiler_option_requested(['-json-errors', 'main.v'], '-race')
+	assert compiler_option_requested(['run', '-json-errors', '-'], '-json-errors')
+	// A stdin program that is built, not run, takes compiler options after it too.
+	assert compiler_option_requested(['-', '-json-errors'], '-json-errors')
+	// `-` after `-o` is the output, not the input.
+	assert compiler_option_requested(['-o', '-', 'main.v', '-json-errors'], '-json-errors')
+	// The prefix only makes a script of the input that follows it.
+	assert compiler_option_requested(['script', '-raw-vsh-tmp-prefix', 'tmp', '-json-errors'],
+		'-json-errors')
 }
 
 fn test_race_flag_of_a_run_program_is_not_a_compiler_option() {

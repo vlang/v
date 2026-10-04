@@ -189,7 +189,9 @@ fn race_build_requested(args []string) bool {
 
 // compiler_option_requested reports whether `option` is one of the compiler options, and not
 // an argument of the program that `v run` starts. Like the driver, it reads compiler options
-// after the input too, except when the input is run: then they belong to the program.
+// after the input too, except when the input is run: then they belong to the program. The
+// driver runs the input of `run` and `crun`, a `.vsh` script, and the input that follows
+// `-raw-vsh-tmp-prefix`; `-` is the input that reads the program from stdin.
 fn compiler_option_requested(args []string, option string) bool {
 	mut option_value_follows := false
 	mut runs_input := false
@@ -206,25 +208,14 @@ fn compiler_option_requested(args []string, option string) bool {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
 			continue
 		}
-		if arg == '-raw-vsh-tmp-prefix' {
-			// The input is run as a script, whatever its extension.
+		if arg == '-raw-vsh-tmp-prefix' && !input_seen {
 			runs_input = true
-			option_value_follows = true
-			continue
 		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
 			option_value_follows = true
 			continue
 		}
-		if arg == '-' && !input_seen {
-			// The source is read from stdin.
-			if runs_input {
-				return false
-			}
-			input_seen = true
-			continue
-		}
-		if arg.starts_with('-') {
+		if arg.starts_with('-') && arg != '-' {
 			continue
 		}
 		if !input_seen && arg in ['run', 'crun'] {

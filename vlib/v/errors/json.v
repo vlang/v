@@ -120,9 +120,9 @@ fn write_json_message(mut out strings.Builder, kind string, message string, deta
 	}
 }
 
-// json_escape escapes text for a JSON string. Valid UTF-8 sequences pass through, so
-// source text stays readable; a byte that is not part of one becomes U+FFFD, since a JSON
-// text must be valid UTF-8.
+// json_escape escapes text for a JSON string. Valid UTF-8 passes through, so source text
+// stays readable. A byte that is not part of a valid sequence, as in a message quoting a
+// malformed source file, becomes U+FFFD: a strict reader rejects the whole line otherwise.
 fn json_escape(text string) string {
 	mut out := strings.new_builder(text.len + 8)
 	mut i := 0
@@ -130,16 +130,15 @@ fn json_escape(text string) string {
 		c := text[i]
 		if c >= 0x80 {
 			sequence_len := valid_utf8_sequence_len(text, i)
-			if sequence_len > 0 {
-				out.write_string(text[i..i + sequence_len])
-				i += sequence_len
-			} else {
+			if sequence_len == 0 {
 				out.write_string('\\ufffd')
 				i++
+				continue
 			}
+			out.write_string(text[i..i + sequence_len])
+			i += sequence_len
 			continue
 		}
-		i++
 		match c {
 			`"` {
 				out.write_string('\\"')
@@ -166,6 +165,7 @@ fn json_escape(text string) string {
 				}
 			}
 		}
+		i++
 	}
 	return out.str()
 }

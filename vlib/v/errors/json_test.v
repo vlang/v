@@ -15,16 +15,23 @@ fn test_json_escape_keeps_a_diagnostic_on_one_line() {
 	assert json_escape('line\nbreak\r\tand tab') == 'line\\nbreak\\r\\tand tab'
 	assert json_escape('\x01\x1b[31m') == '\\u0001\\u001b[31m'
 	assert json_escape('üñí') == 'üñí'
+	assert json_escape('€ and 😀') == '€ and 😀'
 }
 
+// A message can quote a malformed source file. Each byte outside a valid UTF-8 sequence
+// becomes U+FFFD, so that a strict JSON reader still accepts the line.
 fn test_json_escape_replaces_invalid_utf8() {
-	// JSON text must be valid UTF-8, so a byte that starts no valid sequence becomes U+FFFD.
-	assert json_escape('a\xffb') == 'a\\ufffdb'
-	assert json_escape('\xc3') == '\\ufffd'
+	assert json_escape('invalid character `\xff`') == 'invalid character `\\ufffd`'
+	// A lone continuation byte, and a sequence cut off by the end of the text.
+	assert json_escape('a\x80b') == 'a\\ufffdb'
+	assert json_escape('x\xe2\x82') == 'x\\ufffd\\ufffd'
+	// A cut off sequence does not swallow the ASCII after it.
+	assert json_escape('\xc3"') == '\\ufffd\\"'
+	// Overlong and surrogate encodings are not UTF-8.
 	assert json_escape('\xc0\xaf') == '\\ufffd\\ufffd'
 	assert json_escape('\xed\xa0\x80') == '\\ufffd\\ufffd\\ufffd'
-	assert json_escape('ü\x80ñ') == 'ü\\ufffdñ'
-	assert json_escape('\xf0\x9f\x98\x80') == '\xf0\x9f\x98\x80'
+	// Valid text around an invalid byte is kept.
+	assert json_escape('ü\xffñ') == 'ü\\ufffdñ'
 }
 
 fn test_json_message_has_no_position() {
