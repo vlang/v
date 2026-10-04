@@ -206,8 +206,22 @@ fn compiler_option_requested(args []string, option string) bool {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
 			continue
 		}
+		if arg == '-raw-vsh-tmp-prefix' {
+			// The input is run as a script, whatever its extension.
+			runs_input = true
+			option_value_follows = true
+			continue
+		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
 			option_value_follows = true
+			continue
+		}
+		if arg == '-' && !input_seen {
+			// The source is read from stdin.
+			if runs_input {
+				return false
+			}
+			input_seen = true
 			continue
 		}
 		if arg.starts_with('-') {

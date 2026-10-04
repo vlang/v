@@ -53,6 +53,13 @@ fn test_compiler_option_is_told_apart_from_a_program_argument() {
 	assert compiler_option_requested(['-json-errors', 'run', 'main.v'], '-json-errors')
 	assert !compiler_option_requested(['run', 'main.v', '-json-errors'], '-json-errors')
 	assert !compiler_option_requested(['-o', '-json-errors', 'main.v'], '-json-errors')
+	// A script of `-raw-vsh-tmp-prefix` and a source from stdin that is run take the
+	// arguments after them too.
+	assert !compiler_option_requested(['-raw-vsh-tmp-prefix', 'tmp', 'script', '-json-errors'],
+		'-json-errors')
+	assert !compiler_option_requested(['run', '-', '-json-errors'], '-json-errors')
+	assert compiler_option_requested(['-', '-json-errors'], '-json-errors')
+	assert compiler_option_requested(['-json-errors', 'run', '-'], '-json-errors')
 	assert !compiler_option_requested(['-json-errors', 'main.v'], '-race')
 }
 
