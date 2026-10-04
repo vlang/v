@@ -10068,10 +10068,11 @@ will be added last (note the .a suffix):
 ```v oksyntax
 #flag /path/to/ffi.a
 ```
-If you need to reverse the order (prepend the static library in the libs section of the
+If you need to reverse the order (prepend the library in the libs section of the
 C compilation line, before other libs), use:
 ```v oksyntax
 #flag /path/to/ffi.a@START_LIBS
+#flag -lffi@START_LIBS
 ```
 
 You can (optionally) use different flags for different targets.

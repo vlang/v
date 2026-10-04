@@ -5403,8 +5403,7 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 fn (mut g FlatGen) collect_c_flags_from_directives() {
 	mut cur_file := ''
 	mut cur_module := ''
-	mut seen_groups := map[string]bool{}
-	mut main_groups := [][]string{}
+	mut groups := []CFlagDirectiveGroup{}
 	for node_idx in g.top_level_nodes() {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
@@ -5422,38 +5421,72 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			continue
 		}
 		if node.value == 'flag' {
-			g.note_c_flag_directive(cur_module, cur_file, node.typ)
+			flag, _ := c_flag_strip_start_markers(node.typ)
+			g.note_c_flag_directive(cur_module, cur_file, flag)
 		}
-		flags := if node.value == 'flag' {
-			c_flag_args_with_values(node.typ, g.compiler_vroot, cur_file, g.target, g.compile_values)
+		mut flags := []string{}
+		mut at_start := false
+		if node.value == 'flag' {
+			flags, at_start = c_flag_args_with_start_marker(node.typ, g.compiler_vroot, cur_file,
+				g.target, g.compile_values)
 		} else if node.value == 'pkgconfig' {
-			c_pkgconfig_flags(node.typ)
+			flags = c_pkgconfig_flags(node.typ)
 		} else {
 			continue
 		}
-		key := flags.join('\x00')
-		if flags.len == 0 || key in seen_groups {
+		if flags.len > 0 {
+			groups << CFlagDirectiveGroup{
+				flags:    flags
+				at_start: at_start
+				in_main:  cur_module in ['', 'main']
+			}
+		}
+	}
+	g.c_flags << ordered_c_flag_directive_groups(groups)
+}
+
+struct CFlagDirectiveGroup {
+	flags    []string
+	at_start bool
+	in_main  bool
+}
+
+// ordered_c_flag_directive_groups puts the groups of `@START_LIBS` style directives
+// first, in declaration order, then the groups of imported modules, then those of
+// the main module. Each group is kept once: a marked occurrence wins over an unmarked
+// one wherever it is declared, otherwise the first occurrence decides the position.
+fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
+	mut result := []string{}
+	mut seen := map[string]bool{}
+	for group in groups {
+		key := group.flags.join('\x00')
+		if group.at_start && key !in seen {
+			seen[key] = true
+			result << group.flags
+		}
+	}
+	mut main_flags := []string{}
+	for group in groups {
+		key := group.flags.join('\x00')
+		if key in seen {
 			continue
 		}
-		seen_groups[key] = true
-		if cur_module in ['', 'main'] {
-			main_groups << flags
+		seen[key] = true
+		if group.in_main {
+			main_flags << group.flags
 		} else {
-			g.c_flags << flags
+			result << group.flags
 		}
 	}
-	for flags in main_groups {
-		g.c_flags << flags
-	}
+	result << main_flags
+	return result
 }
 
 // cache_directive_flags resolves source C flags that affect early C cache keys.
 pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
-	mut result := []string{}
-	mut seen_groups := map[string]bool{}
+	mut groups := []CFlagDirectiveGroup{}
 	mut cur_file := ''
 	mut cur_module := ''
-	mut main_groups := [][]string{}
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
@@ -5467,27 +5500,25 @@ pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, 
 		if node.kind != .directive || node.typ.len == 0 {
 			continue
 		}
-		flags := if node.value == 'flag' {
-			c_flag_args_with_values(node.typ, vroot, cur_file, target, compile_values)
+		mut flags := []string{}
+		mut at_start := false
+		if node.value == 'flag' {
+			flags, at_start = c_flag_args_with_start_marker(node.typ, vroot, cur_file, target,
+				compile_values)
 		} else if node.value == 'pkgconfig' {
-			c_pkgconfig_flags(node.typ)
+			flags = c_pkgconfig_flags(node.typ)
 		} else {
 			continue
 		}
-		key := flags.join('\x00')
-		if flags.len > 0 && key !in seen_groups {
-			seen_groups[key] = true
-			if cur_module in ['', 'main'] {
-				main_groups << flags
-			} else {
-				result << flags
+		if flags.len > 0 {
+			groups << CFlagDirectiveGroup{
+				flags:    flags
+				at_start: at_start
+				in_main:  cur_module in ['', 'main']
 			}
 		}
 	}
-	for flags in main_groups {
-		result << flags
-	}
-	return result
+	return ordered_c_flag_directive_groups(groups)
 }
 
 // c_source_file_is_in_vlib reports whether a source file belongs to the compiler's
@@ -10905,22 +10936,50 @@ fn c_flag_args(raw string, vroot string, source_file string, target pref.Target)
 }
 
 fn c_flag_args_with_values(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) []string {
-	target_arg := c_directive_arg_for_target(raw.trim_space(), target) or { return []string{} }
-	without_comment := c_flag_strip_hash_comment(target_arg)
+	args, _ := c_flag_args_with_start_marker(raw, vroot, source_file, target, compile_values)
+	return args
+}
+
+// c_flag_start_markers move a `#flag` before the flags of every module, so that
+// `#flag -lraylib@START_LIBS` is searched before system libraries like user32 and
+// winmm, which define symbols with the same names (`CloseWindow`, `PlaySound`).
+const c_flag_start_markers = ['@START_LIBS', '@START_DEFINES', '@START_OTHERS']
+
+// c_flag_strip_start_markers removes the start markers from a `#flag`, and reports
+// whether it had one.
+fn c_flag_strip_start_markers(flag string) (string, bool) {
+	mut result := flag
+	mut at_start := false
+	for marker in c_flag_start_markers {
+		if result.contains(marker) {
+			result = result.replace(marker, '')
+			at_start = true
+		}
+	}
+	return result, at_start
+}
+
+// c_flag_args_with_start_marker resolves a `#flag` directive without its start
+// markers, and reports whether it had one.
+fn c_flag_args_with_start_marker(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) ([]string, bool) {
+	target_arg := c_directive_arg_for_target(raw.trim_space(), target) or {
+		return []string{}, false
+	}
+	without_comment, at_start := c_flag_strip_start_markers(c_flag_strip_hash_comment(target_arg))
 	defaults_expanded := c_expand_default_define_macros(without_comment, compile_values) or {
-		return []string{}
+		return []string{}, false
 	}
 	environment_expanded := if defaults_expanded.contains('\$env(') {
-		util.resolve_env_value(defaults_expanded, true) or { return []string{} }
+		util.resolve_env_value(defaults_expanded, true) or { return []string{}, false }
 	} else {
 		defaults_expanded
 	}
 	clean := c_expand_existing_path_macros(environment_expanded, vroot, source_file) or {
-		return []string{}
+		return []string{}, false
 	}
-	args := cmdexec.split_args(clean) or { return []string{} }
+	args := cmdexec.split_args(clean) or { return []string{}, false }
 	if args.len == 0 {
-		return []string{}
+		return []string{}, false
 	}
 	base_dir := if source_file.len > 0 { os.dir(source_file) } else { '' }
 	mut resolved := []string{cap: args.len}
@@ -10938,7 +10997,7 @@ fn c_flag_args_with_values(raw string, vroot string, source_file string, target 
 		}
 		resolve_next_path = c_flag_takes_path_operand(arg)
 	}
-	return resolved
+	return resolved, at_start
 }
 
 // c_expand_default_define_macros resolves `$d(name, fallback)` inside a C flag.
