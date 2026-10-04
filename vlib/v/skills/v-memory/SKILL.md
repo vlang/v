@@ -1,6 +1,6 @@
 ---
 name: v-memory
-description: V's memory model - GC modes (-gc boehm, -gc none, -prealloc), the optional -ownership checking that catches use-after-move, what unsafe unlocks, and the C interop rules. Use when choosing a GC mode, when a program leaks or grows without bound, when deciding whether unsafe is worth it, when passing a V pointer to C, or when a move or borrow error appears. Does not cover general language rules (see v-lang), data structure choice (see v-lang's structs and maps section), or profiling (see v-workflow).
+description: V's memory model - GC modes (-gc boehm, -gc none, -prealloc), the optional -ownership checking that catches use-after-move, what unsafe unlocks, and the C interop rules. Use when choosing a GC mode, when a program leaks or grows without bound, when deciding whether unsafe is worth it, when passing a V pointer to C, or when a move or borrow error appears. Does not cover general language rules (see v-lang), data structure choice (see v-lang's structs and maps section), profiling (see v-workflow), scripting a task in V (see v-scripts), or the wider command surface (see v-tools).
 license: MIT
 ---
 
