@@ -16,14 +16,11 @@ pub:
 
 pub type SeparatorOptions = string | Separator
 
-// Numeric is the constraint on `format_thousands`'s type parameter: every
-// built-in integer type (`i8` through `u64`, plus `isize`/`usize`) and both
-// float types (`f32`, `f64`). It isn't `pub`: callers never need to name it
-// themselves, since every built-in numeric type already satisfies it. If a
-// future function here needs the same constraint, reuse this type instead
-// of re-listing the variants, so the accepted set only has to change in one
-// place.
-type Numeric = int | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64 | isize | usize | f32 | f64
+// Numeric is the set of built-in numeric types accepted by `format_thousands`:
+// `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`,
+// `f32` and `f64`. Generic code that forwards a `T` to it can use
+// `[T strconv.Numeric]` as its constraint.
+pub type Numeric = int | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64 | isize | usize | f32 | f64
 
 // is_all_digits reports whether every byte in `s` is an ASCII digit (`0`-`9`).
 // An empty string reports `true` (vacuously), matching how `insert_thousands_sep`
@@ -206,9 +203,9 @@ pub fn add_thousands_sep(s string, sep SeparatorOptions) string {
 // format_thousands returns the base-10 representation of `number`, inserting
 // a thousands separator every three digits. With a `Separator`, its `integer`
 // and `decimal` fields configure the output; a string uses that string for
-// grouping and `.` as the decimal separator. `T` must satisfy `Numeric`
-// (every built-in integer type plus `f32`/`f64`); the compiler rejects any
-// other type at the call site.
+// grouping and `.` as the decimal separator. `T` must be one of the types in
+// `Numeric`; the compiler rejects any other type at the call site, including
+// aliases such as `type MyInt = int`, which must be cast to their base type.
 //
 // Example:
 // ```v
