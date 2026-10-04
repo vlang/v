@@ -1,0 +1,7 @@
+vlib/v/parser/tests/extra_closing_brace_after_main_err.vv:13:1: error: invalid expression: unexpected token `}`
+   11 |     println(res)
+   12 |     return res
+   13 | }
+      | ^
+   14 | 
+   15 | fn other() int {
