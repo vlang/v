@@ -67,6 +67,9 @@ const invalid_versions_to_test = [
 	'1.2.3.4',
 	'1.2.3-alpha@',
 	'1.2.3+meta%',
+	'1..2',
+	'1.2.',
+	'.1.2',
 ]
 const invalid_ranges_to_test = [
 	'^a',

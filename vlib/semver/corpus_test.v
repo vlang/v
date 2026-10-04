@@ -115,6 +115,9 @@ const conforming = [
 	Case{'3.5.0', '^1||^3', true, ''},
 	Case{'2.0.0', '^1||^3', false, ''},
 	Case{'1.5.0', '>=1.0.0 <2.0.0 || >=3.0.0', true, 'arms of unequal length'},
+	Case{'5.0.0', '^1.0.0 ||', true, 'node-semver: an empty arm is the empty range, *'},
+	Case{'5.0.0', '|| ^1.0.0', true, ''},
+	Case{'1.2.3', '||', true, ''},
 	// primitive comparators
 	Case{'1.5.0', '>=1.0.0 <2.0.0', true, ''},
 	Case{'2.0.0', '>=1.0.0 <2.0.0', false, ''},
@@ -187,6 +190,8 @@ const rejected = [
 	Case{'1.0.0', 'a.x', false, ''},
 	Case{'1.0.0', 'not-a-range', false, ''},
 	Case{'1.0.0', '1.2.3 - ', false, 'the grammar needs a partial on both sides'},
+	Case{'1.2.5', '1.2-beta', false, 'a prerelease needs all three components'},
+	Case{'2.5.0', '1.2.3 - 2-beta', false, ''},
 	Case{'1.2.3', '1.2.3', true, 'sanity: a valid range in this table still matches'},
 ]
 
@@ -219,14 +224,16 @@ fn test_corpus_rejects_out_of_grammar_ranges() {
 
 // Version.satisfies answers with a bool and has no way to report a range it could
 // not read, so a malformed constraint and a genuine miss look identical to the
-// caller. No legitimate range is known to hit this any more: the range that used to,
-// `>=1.0.0 <2.0.0 <=3.0.0`, is accepted now. What remains is that the limitation
-// itself is a property of the signature, so it is pinned here.
+// caller. That still bites ranges node-semver accepts but this module cannot read,
+// such as a space between an operator and its version (`>= 1.0.0`); the limitation
+// is a property of the signature, so it is pinned here.
 fn test_an_unreadable_range_is_reported_as_no_match() {
 	// each of these is outside the grammar, and each reports the same way
-	for bad in ['>=', '>=1.0.0 <', 'not-a-range', '^a', '1.2.3 - ', '^1.0.0 ||'] {
+	for bad in ['>=', '>=1.0.0 <', 'not-a-range', '^a', '1.2.3 - '] {
 		assert satisfies('1.2.3', bad) == false, bad
 	}
+	// node-semver reads this as `>=1.0.0`, so true; here it is unreadable, so false
+	assert satisfies('1.5.0', '>= 1.0.0') == false
 	// and a well formed range beside them still answers
 	assert satisfies('1.2.3', '>=1.0.0 <2.0.0')
 }

@@ -66,9 +66,9 @@ fn parse_range(input string) !Range {
 	for raw_comp_set in input.split(comparator_set_sep) {
 		comp_set := raw_comp_set.trim_space()
 		if comp_set.len == 0 {
-			return &InvalidComparatorFormatError{
-				msg: 'Invalid comparator set "${raw_comp_set}"'
-			}
+			// `range ::= ... | ''`: an empty arm is the empty range, which is `*`
+			comparator_sets << ComparatorSet{[Comparator{Version{}, Operator.ge}]}
+			continue
 		}
 		if can_expand(comp_set) {
 			s := expand_comparator_set(comp_set) or {
@@ -164,6 +164,11 @@ fn numeric_core(s string) string {
 	return s.all_before('-').all_before('+')
 }
 
+// has_prerelease reports whether a version-shaped string carries a prerelease tag.
+fn has_prerelease(s string) bool {
+	return s.all_before('+').contains('-')
+}
+
 // parts_of splits a version-shaped string into its dotted components, without
 // completing a short one.
 fn parts_of(s string) []string {
@@ -202,7 +207,7 @@ fn has_real_component(s string, index int) bool {
 // than three components. The grammar treats a short version as an x-range, so `1.2`
 // means `1.2.x` rather than the exact pin `=1.2.0`.
 fn is_bare_partial_version(input string) bool {
-	if input.len == 0 || input.contains(comparator_sep) {
+	if input.len == 0 || input.contains(comparator_sep) || has_prerelease(input) {
 		return false
 	}
 	// An operator means this is a comparator rather than a bare version.
@@ -218,6 +223,9 @@ fn is_bare_partial_version(input string) bool {
 
 // is_major_only reports a bare major version such as the `2` in `1.2.3 - 2`.
 fn is_major_only(s string) bool {
+	if has_prerelease(s) {
+		return false
+	}
 	parts := parts_of(s)
 	return parts.len == 1 && is_valid_number(parts[0])
 }
