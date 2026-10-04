@@ -5421,7 +5421,8 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			continue
 		}
 		if node.value == 'flag' {
-			g.note_c_flag_directive(cur_module, cur_file, node.typ)
+			flag, _ := c_flag_strip_start_markers(node.typ)
+			g.note_c_flag_directive(cur_module, cur_file, flag)
 		}
 		mut flags := []string{}
 		mut at_start := false
@@ -5451,9 +5452,9 @@ struct CFlagDirectiveGroup {
 }
 
 // ordered_c_flag_directive_groups puts the groups of `@START_LIBS` style directives
-// first, then the groups of imported modules, then those of the main module. Each
-// group is kept once: a marked occurrence wins over an unmarked one wherever it is
-// declared, otherwise the first occurrence decides the position.
+// first, in declaration order, then the groups of imported modules, then those of
+// the main module. Each group is kept once: a marked occurrence wins over an unmarked
+// one wherever it is declared, otherwise the first occurrence decides the position.
 fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
 	mut result := []string{}
 	mut seen := map[string]bool{}
@@ -10944,20 +10945,27 @@ fn c_flag_args_with_values(raw string, vroot string, source_file string, target 
 // winmm, which define symbols with the same names (`CloseWindow`, `PlaySound`).
 const c_flag_start_markers = ['@START_LIBS', '@START_DEFINES', '@START_OTHERS']
 
+// c_flag_strip_start_markers removes the start markers from a `#flag`, and reports
+// whether it had one.
+fn c_flag_strip_start_markers(flag string) (string, bool) {
+	mut result := flag
+	mut at_start := false
+	for marker in c_flag_start_markers {
+		if result.contains(marker) {
+			result = result.replace(marker, '')
+			at_start = true
+		}
+	}
+	return result, at_start
+}
+
 // c_flag_args_with_start_marker resolves a `#flag` directive without its start
 // markers, and reports whether it had one.
 fn c_flag_args_with_start_marker(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) ([]string, bool) {
 	target_arg := c_directive_arg_for_target(raw.trim_space(), target) or {
 		return []string{}, false
 	}
-	mut without_comment := c_flag_strip_hash_comment(target_arg)
-	mut at_start := false
-	for marker in c_flag_start_markers {
-		if without_comment.contains(marker) {
-			without_comment = without_comment.replace(marker, '')
-			at_start = true
-		}
-	}
+	without_comment, at_start := c_flag_strip_start_markers(c_flag_strip_hash_comment(target_arg))
 	defaults_expanded := c_expand_default_define_macros(without_comment, compile_values) or {
 		return []string{}, false
 	}

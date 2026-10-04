@@ -1418,7 +1418,7 @@ fn test_c_flag_start_markers_are_stripped() {
 		os.rmdir_all(dir) or {}
 	}
 	assert c_flag_args('@DIR/lib/libraylib.a@START_LIBS', '', os.join_path(dir, 'main.v'), target) == [
-		os.join_path(os.real_path(dir), 'lib', 'libraylib.a'),
+		'${os.real_path(dir)}/lib/libraylib.a',
 	]
 }
 
@@ -1446,6 +1446,27 @@ fn test_c_flag_start_markers_promote_unmarked_duplicates() {
 		'-lwinmm',
 		'-luser32',
 	])
+}
+
+// A start marker must not hide a linked object file, which ships no header, so its
+// `fn C.` declarations still need their generated prototypes.
+fn test_c_flag_start_markers_keep_linked_object_files() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_start_marker_object_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'main.v')
+	os.write_file(source, 'module main\n#flag @VMODROOT/helper.o@START_LIBS\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	mut g := FlatGen.new()
+	g.a = p.parse_files([source])
+	g.target = prefs.target
+	g.collect_c_flags_from_directives()
+	assert g.files_linking_c_sources[source]
 }
 
 fn assert_c_flag_directive_order(main_flags string, sys_flags string, expected []string) {
