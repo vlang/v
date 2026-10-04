@@ -40,9 +40,7 @@ pub fn emit_service(mut e Emitter, res &ResolvedFile, svc Service) {
 	}
 	v_name := safe_type_name(svc.name)
 	prefix := snake_case(svc.name)
-	for line in svc.comments {
-		e.wln(0, '// ${line}')
-	}
+	emit_comment(mut e, 0, svc.comments)
 	e.wln(0, '// ${prefix}_service_path is the fully qualified service name a gRPC client')
 	e.wln(0, '// addresses this service by. It is a path, not a network address.')
 	e.wln(0, "pub const ${prefix}_service_path = '/${qualified}'")
@@ -63,9 +61,7 @@ pub fn emit_service(mut e Emitter, res &ResolvedFile, svc Service) {
 	e.wln(0, "// registers a service is the caller's to write.")
 	e.wln(0, 'pub interface ${v_name} {')
 	for r in svc.rpcs {
-		for line in r.comments {
-			e.wln(1, '// ${line}')
-		}
+		emit_comment(mut e, 1, r.comments)
 		e.wln(1, '// ${r.name} is `${r.request_type}` -> `${r.response_type}`${streaming_note(r)}.')
 		e.wln(1, rpc_signature(r))
 	}

@@ -22,24 +22,30 @@ packer.write_int32(7, msg.written)
 
 A frame in that call names the field. A frame inside a generic encoder does not,
 and the generated file is the artefact a reader debugs when a payload does not
-arrive. The reflection API that would have been smaller is not available: V3
-cannot express the generic decode a schema needs, since an explicit type argument
-on a call whose type parameter comes from a field rather than from a generic
-reaches `__v_comptime_unsupported_late_generic_call`.
+arrive.
 
 ## What it generates
 
-For each message: a struct, an `encode`, an `encode_with`, and a `decode_<name>`.
-For each service, with `-grpc`: a path constant per method, a service path, and a
-handler interface.
+For each message: a struct, an `encode`, an `encode_with`, a `decode_<name>`, and
+a `decode_<name>_with` that takes `protobuf.DecodeOpts`. For each service, with
+`-grpc`: a path constant per method, a service path, and a handler interface.
 
-The names follow three rules, so a reader can predict them:
+The names follow a few rules, so a reader can predict them:
 
 - A message keeps its proto name. `GetRequest` in package `kv` becomes
-  `GetRequest`. Only a name two declarations both want is qualified.
-- A nested message flattens its chain: `Outer.Inner` becomes `OuterInner`.
+  `GetRequest`, and a nested `Outer.Inner` becomes `Inner`. Only a name two
+  declarations both want is qualified with its package and enclosing messages,
+  as `OuterInner`.
+- A field and an enum value become snake_case, since V refuses an uppercase
+  letter in either: `userName` becomes `user_name` and `COLOR_RED` becomes
+  `color_red`. A V keyword gets a trailing `_`, as `type_`.
 - A one-letter capital name is refused, because V reserves those for generic
   template types.
+
+A message field is declared `?T`, since a message field has presence in proto3,
+and `?&T` when it makes its message recursive, which is the only form of a
+recursive struct V accepts. An enum with `option allow_alias = true` is marked
+`@[_allow_multiple_values]`.
 
 `encoding.protobuf`'s README documents the generated shape in full.
 
@@ -107,9 +113,18 @@ nothing downstream would catch it.
 - groups, the deprecated construct the spec kept for compatibility
 - `extend`
 - two fields on one number, a repeated field name, a field number outside
-  1 to 536870911
+  1 to 536870911, a field on a reserved number or name
 - `packed = true` on a field with no packed form
+- an enum whose first value is not zero, or with two values on one number and no
+  `option allow_alias = true`
+- names that are distinct in the schema but meet in V: two fields or two enum
+  values with one snake_case form, two types with one V name, or two messages
+  whose generated functions would share a name (`Foo` and `FooWith` both want
+  `decode_foo_with`)
 - a one-letter capital type name
+
+`-check` runs every one of these checks, so a schema it accepts generates code
+that compiles.
 
 ## Not honoured
 
@@ -122,6 +137,9 @@ does not fail to parse. None of them change the bytes: `deprecated` and
 `v test cmd/tools/vpbgen/`
 
 The tests compile the generated output and then round-trip it: scalars, packed and
-unpacked repeated fields, a map followed by another field, a nested message, a
-`oneof` carrying two members, an unknown field, and a wrong wire type. Compiling
-proves the text parses; the round trip proves it agrees with the wire format.
+unpacked repeated fields, maps keyed by every kind of scalar and holding messages,
+enums and bytes, map entries that are not adjacent, nested and recursive
+messages, the depth limit, a `oneof` carrying two members, an unknown field, and
+wrong wire types. Compiling proves the text parses; the round trip proves it
+agrees with the wire format, and fixed byte vectors check it against the
+reference implementation.

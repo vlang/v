@@ -46,16 +46,31 @@ pub mut:
 	// needs it because the members are parallel optionals, and only the reader
 	// can enforce that exactly one of them is set.
 	oneof_members []string
-	// name is the V field name, with a keyword collision suffixed.
+	// name is the V field name: the schema's name in snake_case, with a keyword
+	// collision suffixed.
 	name string
+	// proto_name is the field's name as the schema spells it, for the doc comment
+	// and for diagnostics.
+	proto_name string
 	// comments is the doc comment the schema attached above the field.
 	comments []string
 	// map_key_type, map_value_kind, and map_value_type describe a map field's
-	// value, which is written into the Entry message exactly as a field of that
-	// type would be. They are empty for every other kind.
+	// key and value, which are written into the Entry message exactly as a field
+	// of that type would be. They are empty for every other kind.
 	map_key_type   string
 	map_value_kind FieldKind
 	map_value_type string
+	// map_key_kind is `.text` for a string key and `.scalar` for every other one,
+	// and map_key_scalar is the key's ProtoScalar when it is a scalar. The scalar
+	// comes from the schema's key type and not from the V type, because `i32`
+	// stands for `int32`, `sint32`, and `sfixed32`, which are three encodings.
+	map_key_kind   FieldKind
+	map_key_scalar protobuf.ProtoScalar
+	// indirect marks a singular message field whose type contains, directly or
+	// through other singular message fields, the message the field is in. V
+	// accepts such a recursive struct only through an optional pointer, so the
+	// field is declared `?&T` rather than `?T`.
+	indirect bool
 	// packed_option is the raw `[packed = ...]` value, empty when the schema said
 	// nothing. `is_packed` reads it rather than a resolved bool, because the
 	// three-way answer (absent, true, false) is what decides the default.
@@ -70,15 +85,22 @@ pub fn (r &Resolved) is_repeated() bool {
 // has_explicit_presence reports whether the field records whether it was set,
 // rather than only what it holds.
 //
-// Two things in the schema mean yes. A proto3 `optional` field does: the spec
+// Three things in the schema mean yes. A proto3 `optional` field does: the spec
 // models it as a synthetic one-member `oneof`, so `false` and `""` are
 // distinguishable from never having been sent. A member of a real `oneof` does,
-// because the group's whole purpose is to record which member was chosen.
+// because the group's whole purpose is to record which member was chosen. And a
+// singular message field always does: an empty nested message is still a
+// field on the wire, so a peer can tell one that was set to `{}` from one that
+// was never set.
 //
-// Neither is true of a plain singular field, where an absent field and a field
-// holding its default are the same thing on the wire.
+// None of these is true of a plain singular scalar, where an absent field and a
+// field holding its default are the same thing on the wire, nor of a repeated
+// field or a map, where an empty list is an absent one.
 pub fn (r &Resolved) has_explicit_presence() bool {
-	return r.label == .optional || r.oneof != ''
+	if r.label == .repeated {
+		return false
+	}
+	return r.label == .optional || r.oneof != '' || r.kind == .message
 }
 
 // is_packed reports whether a repeated field uses the packed encoding, which the
@@ -104,8 +126,12 @@ pub struct ResolvedEnum {
 pub mut:
 	v_name     string
 	proto_name string
-	values     []EnumValue
-	comments   []string
+	// values carry their V names: snake_case, with a keyword suffixed.
+	values []EnumValue
+	// allow_alias is set when two values share a number, which the schema has
+	// to permit with `option allow_alias = true` and V with an attribute.
+	allow_alias bool
+	comments    []string
 }
 
 // ResolvedMessage is a message with its final V name and resolved fields.
@@ -224,6 +250,8 @@ pub fn resolve_files(files []File, module_name string) !ResolvedFile {
 		resolve_file(mut res, &idx, f)
 	}
 	check_type_names(mut res)
+	mark_recursive_fields(mut res)
+	check_function_names(mut res)
 	if res.module == '' && files.len > 0 {
 		res.module = default_module_name(files[0])
 	}
@@ -327,7 +355,7 @@ fn resolve_file(mut res ResolvedFile, idx &TypeIndex, f File) {
 	// name `demo..Inner`.
 	for e in f.enums {
 		qualified := if f.package == '' { e.name } else { '${f.package}.${e.name}' }
-		res.enums << resolve_enum(idx, qualified, e)
+		res.enums << resolve_enum(mut res, idx, qualified, e)
 	}
 	for m in f.messages {
 		resolve_message(mut res, idx, f.package, m)
@@ -367,21 +395,44 @@ fn resolve_service(mut res ResolvedFile, idx &TypeIndex, package string, s Servi
 	return out
 }
 
-// resolve_enum gives an enum its V name and copies its values.
-fn resolve_enum(idx &TypeIndex, qualified string, e EnumDecl) ResolvedEnum {
+// resolve_enum gives an enum its V name and its values their V names.
+fn resolve_enum(mut res ResolvedFile, idx &TypeIndex, qualified string, e EnumDecl) ResolvedEnum {
 	mut out := ResolvedEnum{
 		v_name:     idx.v_name_of(qualified)
 		proto_name: e.name
-		values:     e.values
+		values:     e.values.clone()
 		comments:   e.comments
 	}
-	// An enum value is a V enum value name, so a proto value that collides with
-	// a V keyword has to be suffixed. proto3 already reserves a `_UNSPECIFIED`
-	// style name for the zero value, which is not a collision, but a schema is
-	// free to name it `type`.
-	for i, v in out.values {
-		if is_v_keyword(v.name) {
-			out.values[i].name = '${v.name}_'
+	if e.values.len == 0 {
+		res.errors << 'pbgen: enum `${qualified}` has no values, and proto3 requires at least the zero value'
+		return out
+	}
+	// proto3 makes the first value the default, and the default of an enum is
+	// zero: a field that was never sent decodes to it.
+	if e.values[0].number != 0 {
+		res.errors << 'pbgen: enum `${qualified}` starts with `${e.values[0].name} = ${e.values[0].number}`, and proto3 requires the first value to be zero'
+	}
+	// An enum value is a V enum field, and V refuses an uppercase letter there,
+	// so the conventional `COLOR_RED` becomes `color_red`. A value that then
+	// collides with a V keyword is suffixed: a schema is free to name one `type`.
+	mut by_name := map[string]string{}
+	mut by_number := map[int]string{}
+	for i, v in e.values {
+		name := safe_field_name(snake_case(v.name))
+		if name in by_name {
+			res.errors << 'pbgen: enum `${qualified}` values `${by_name[name]}` and `${v.name}` would both be declared as `${name}`'
+		}
+		by_name[name] = v.name
+		out.values[i].name = name
+		// Two values on one number is an alias. protoc refuses it unless the
+		// schema allows it, and V refuses it unless the enum is marked.
+		if v.number in by_number {
+			if !e.allow_alias {
+				res.errors << 'pbgen: enum `${qualified}` values `${by_number[v.number]}` and `${v.name}` share the number ${v.number}, which needs `option allow_alias = true;`'
+			}
+			out.allow_alias = true
+		} else {
+			by_number[v.number] = v.name
 		}
 	}
 	return out
@@ -404,11 +455,13 @@ fn resolve_message(mut res ResolvedFile, idx &TypeIndex, parent_qualified string
 	}
 	// A reserved field number or name is a schema error the generator can see,
 	// so it is reported rather than emitted: protoc refuses these too.
-	reserved := m.reserved_numbers
 	reserved_names := m.reserved_names
 	for f in m.fields {
-		if f.number in reserved {
-			res.errors << 'pbgen: ${qualified}.${f.name} uses field number ${f.number}, which the schema reserves'
+		for r in m.reserved_ranges {
+			if r.contains(f.number) {
+				res.errors << 'pbgen: ${qualified}.${f.name} uses field number ${f.number}, which the schema reserves'
+				break
+			}
 		}
 		if f.name in reserved_names {
 			res.errors << 'pbgen: ${qualified}.${f.name} uses a name the schema reserves'
@@ -447,7 +500,7 @@ fn resolve_message(mut res ResolvedFile, idx &TypeIndex, parent_qualified string
 		resolve_message(mut res, idx, qualified, nested)
 	}
 	for e in m.enums {
-		res.enums << resolve_enum(idx, qualified + '.' + e.name, e)
+		res.enums << resolve_enum(mut res, idx, qualified + '.' + e.name, e)
 	}
 }
 
@@ -466,10 +519,10 @@ fn check_packed_option(mut res ResolvedFile, qualified string, f Resolved) {
 		return
 	}
 	if f.label == .repeated && f.kind != .scalar && f.kind != .enum {
-		res.errors << 'pbgen: ${qualified}.${f.name} asks for the packed form, but a `${f.proto_type}` field has no packed form'
+		res.errors << 'pbgen: ${qualified}.${f.proto_name} asks for the packed form, but a `${f.proto_type}` field has no packed form'
 	}
 	if f.label != .repeated && f.kind != .map {
-		res.errors << 'pbgen: ${qualified}.${f.name} asks for the packed form, but only a repeated field can be packed'
+		res.errors << 'pbgen: ${qualified}.${f.proto_name} asks for the packed form, but only a repeated field can be packed'
 	}
 }
 
@@ -484,25 +537,26 @@ fn check_packed_option(mut res ResolvedFile, qualified string, f Resolved) {
 // refusal, so they are reported here.
 fn check_field_declarations(mut res ResolvedFile, qualified string, fields []Resolved) {
 	mut by_number := map[int]string{}
-	mut by_name := map[string]bool{}
+	mut by_name := map[string]string{}
 	for f in fields {
 		if f.number < protobuf.min_field_number || f.number > protobuf.max_field_number {
-			res.errors << 'pbgen: ${qualified}.${f.name} has field number ${f.number}, which is outside the legal range ${protobuf.min_field_number} to ${protobuf.max_field_number}'
+			res.errors << 'pbgen: ${qualified}.${f.proto_name} has field number ${f.number}, which is outside the legal range ${protobuf.min_field_number} to ${protobuf.max_field_number}'
 			continue
 		}
 		if f.number in by_number {
-			res.errors << 'pbgen: ${qualified}.${f.name} uses field number ${f.number}, which field `${by_number[f.number]}` already uses'
+			res.errors << 'pbgen: ${qualified}.${f.proto_name} uses field number ${f.number}, which field `${by_number[f.number]}` already uses'
 			continue
 		}
-		by_number[f.number] = f.name
+		by_number[f.number] = f.proto_name
 		// The V name has to be unique, since that is what the struct declares, and
-		// `f.name` is already the V name: the resolver applies the keyword suffix
-		// that could otherwise make two proto names collide.
-		if by_name[f.name] {
-			res.errors << 'pbgen: ${qualified}.${f.name} collides with another field of the same message, so both would be declared as `${f.name}`'
+		// `f.name` is already the V name: the resolver applies the snake_case and
+		// the keyword suffix that can make two proto names collide, as `userName`
+		// and `user_name` do.
+		if f.name in by_name {
+			res.errors << 'pbgen: ${qualified}.${f.proto_name} collides with field `${by_name[f.name]}` of the same message, so both would be declared as `${f.name}`'
 			continue
 		}
-		by_name[f.name] = true
+		by_name[f.name] = f.proto_name
 	}
 }
 
@@ -512,15 +566,118 @@ fn check_field_declarations(mut res ResolvedFile, qualified string, fields []Res
 // when the declaration is an enum, but accepts it for a struct and then lowers
 // the type's uses to `int`, so the generated file compiles on its own and fails
 // at the first call with a diagnostic about a C conversion.
+//
+// Two declarations that end up with one V name are reported too. The index
+// qualifies a name two declarations want, but `get_request` and `GetRequest` in
+// one package still flatten to the same qualified name.
 fn check_type_names(mut res ResolvedFile) {
+	mut seen := map[string]string{}
 	for m in res.messages {
 		if single_capital_name(m.v_name) {
 			res.errors << 'pbgen: message `${m.proto_name}` becomes the type `${m.v_name}`, and a single letter capital name is reserved for generic template types. Rename it in the schema.'
 		}
+		if m.v_name in seen {
+			res.errors << 'pbgen: message `${m.qualified}` and ${seen[m.v_name]} would both be declared as the type `${m.v_name}`'
+		}
+		seen[m.v_name] = 'message `${m.qualified}`'
 	}
 	for en in res.enums {
 		if single_capital_name(en.v_name) {
 			res.errors << 'pbgen: enum `${en.proto_name}` becomes the type `${en.v_name}`, and a single letter capital name is reserved for generic template types. Rename it in the schema.'
+		}
+		if en.v_name in seen {
+			res.errors << 'pbgen: enum `${en.proto_name}` and ${seen[en.v_name]} would both be declared as the type `${en.v_name}`'
+		}
+		seen[en.v_name] = 'enum `${en.proto_name}`'
+	}
+}
+
+// mark_recursive_fields marks every singular message field that makes its
+// message recursive, so the emitter declares it `?&T`.
+//
+// A message may contain itself, as `message Node { Node child = 1; }` does, or
+// reach itself through others. V refuses a struct that contains itself by value,
+// even through an option, and accepts one only through an optional pointer. A
+// repeated field and a map are not edges here: a V array or map holds its
+// elements on the heap, so `[]Node` inside `Node` is fine as it is.
+//
+// Only the fields on a cycle become pointers. Every other message field keeps
+// its value type, which is what a reader of the generated struct expects.
+fn mark_recursive_fields(mut res ResolvedFile) {
+	mut edges := map[string][]string{}
+	for m in res.messages {
+		mut targets := []string{}
+		for f in m.fields {
+			if f.kind == .message && f.label != .repeated {
+				targets << f.elem_type
+			}
+		}
+		edges[m.v_name] = targets
+	}
+	for mut m in res.messages {
+		for mut f in m.fields {
+			if f.kind == .message && f.label != .repeated {
+				f.indirect = reaches(edges, f.elem_type, m.v_name)
+			}
+		}
+	}
+}
+
+// reaches reports whether message `from` contains message `to`, itself included,
+// following `edges`.
+fn reaches(edges map[string][]string, from string, to string) bool {
+	mut seen := map[string]bool{}
+	mut stack := [from]
+	for stack.len > 0 {
+		cur := stack.pop()
+		if cur == to {
+			return true
+		}
+		if seen[cur] {
+			continue
+		}
+		seen[cur] = true
+		for next in edges[cur] {
+			stack << next
+		}
+	}
+	return false
+}
+
+// check_function_names reports two declarations that would generate the same
+// function.
+//
+// The codec declares its functions at module level, named after the message
+// and, for a map, the field. Names that are distinct in the schema can still
+// meet there: message `FooWith` and the `_with` decoder of message `Foo` are
+// both `decode_foo_with`. V reports that as a redefinition in a file nobody
+// wrote, so it is reported here against the schema instead.
+fn check_function_names(mut res ResolvedFile) {
+	// owner maps a function name to the message that wants it, and owner_type to
+	// that message's V type. Two messages of one V type are already reported by
+	// check_type_names, so their functions are not reported a second time.
+	mut owner := map[string]string{}
+	mut owner_type := map[string]string{}
+	mut reported := map[string]bool{}
+	for m in res.messages {
+		mut wanted := [decode_fn_name(m.v_name), decode_with_fn_name(m.v_name), read_fn_name(m.v_name)]
+		for f in m.fields {
+			if f.kind == .map {
+				wanted << map_encode_fn_name(m.v_name, f.name)
+				wanted << map_entry_read_fn_name(m.v_name, f.name)
+			}
+		}
+		for name in wanted {
+			if name in owner && owner[name] != m.qualified {
+				pair := '${owner[name]} ${m.qualified}'
+				if owner_type[name] != m.v_name && !reported[pair] {
+					res.errors << 'pbgen: message `${m.qualified}` and message `${owner[name]}` would both generate the function `${name}`. Rename one of them in the schema.'
+					reported[pair] = true
+				}
+				continue
+			}
+			owner[name] = m.qualified
+			owner_type[name] = m.v_name
 		}
 	}
 }
@@ -555,7 +712,8 @@ pub fn flatten_name(qualified string, name string) string {
 // resolve_field resolves one field's declared type to a V type.
 fn resolve_field(mut res ResolvedFile, idx &TypeIndex, parent_qualified string, f Field) Resolved {
 	mut out := Resolved{
-		name:          safe_field_name(f.name)
+		name:          safe_field_name(snake_case(f.name))
+		proto_name:    f.name
 		kind:          f.kind
 		number:        f.number
 		proto_type:    f.type_name
@@ -620,9 +778,10 @@ fn resolve_field(mut res ResolvedFile, idx &TypeIndex, parent_qualified string, 
 fn resolve_map(mut res ResolvedFile, idx &TypeIndex, parent_qualified string, f Field) Resolved {
 	mut out := Resolved{
 		kind:       .map
-		name:       safe_field_name(f.name)
+		name:       safe_field_name(snake_case(f.name))
+		proto_name: f.name
 		number:     f.number
-		proto_type: f.type_name
+		proto_type: 'map<${f.key_type}, ${f.value_type}>'
 		label:      .repeated
 		comments:   f.comments
 	}
@@ -630,6 +789,14 @@ fn resolve_map(mut res ResolvedFile, idx &TypeIndex, parent_qualified string, f 
 	if key_type == '' {
 		res.errors << 'pbgen: ${parent_qualified}.${f.name} has map key type `${f.key_type}`, which is not a protobuf map key'
 		return Resolved{}
+	}
+	if f.key_type == 'string' {
+		out.map_key_kind = .text
+	} else {
+		out.map_key_kind = .scalar
+		// v_type_for_map_key accepted the name, so it is one of the integral
+		// scalars or `bool`.
+		out.map_key_scalar = protobuf.scalar_by_name(f.key_type) or { protobuf.ProtoScalar.int32 }
 	}
 	mut value_type := ''
 	mut value_kind := classify_type(f.value_type)

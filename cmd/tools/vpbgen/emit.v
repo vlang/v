@@ -52,6 +52,19 @@ pub fn (e &Emitter) result() string {
 	return e.b.bytestr()
 }
 
+// emit_comment writes `lines` as `//` comments indented `depth` levels. An empty
+// line, which separates paragraphs in a schema comment, is written as a bare
+// `//` so the generated file has no trailing whitespace.
+pub fn emit_comment(mut e Emitter, depth int, lines []string) {
+	for line in lines {
+		if line == '' {
+			e.wln(depth, '//')
+		} else {
+			e.wln(depth, '// ${line}')
+		}
+	}
+}
+
 // emit_codec writes the codec for a resolved schema: one struct per message, one
 // enum per enum, and an `encode`/`decode` pair per message.
 pub fn emit_codec(res &ResolvedFile) string {
@@ -85,14 +98,14 @@ pub fn emit_codec(res &ResolvedFile) string {
 // has to be a declared member: reading a field that was never set produces the
 // zero, and an enum that cannot name it has no way to express "unset".
 pub fn emit_enum(mut e Emitter, en ResolvedEnum) {
-	for line in en.comments {
-		e.wln(0, '// ${line}')
+	emit_comment(mut e, 0, en.comments)
+	if en.allow_alias {
+		// The schema allows two values to share a number, and so must V.
+		e.wln(0, '@[_allow_multiple_values]')
 	}
 	e.wln(0, 'pub enum ${en.v_name} {')
 	for v in en.values {
-		for line in v.comments {
-			e.wln(1, '// ${line}')
-		}
+		emit_comment(mut e, 1, v.comments)
 		e.wln(1, '${v.name} = ${v.number}')
 	}
 	e.wln(0, '}')
@@ -101,9 +114,7 @@ pub fn emit_enum(mut e Emitter, en ResolvedEnum) {
 
 // emit_message_struct writes the struct a message decodes into.
 pub fn emit_message_struct(mut e Emitter, m ResolvedMessage) {
-	for line in m.comments {
-		e.wln(0, '// ${line}')
-	}
+	emit_comment(mut e, 0, m.comments)
 	e.wln(0, '// ${m.v_name} is the generated form of the proto3 message `${m.doc_name}`.')
 	e.wln(0, '//')
 	e.wln(0, "// Each field's number is written into every call its codec makes, as the")
@@ -118,9 +129,7 @@ pub fn emit_message_struct(mut e Emitter, m ResolvedMessage) {
 	e.wln(0, 'pub struct ${m.v_name} {')
 	e.wln(1, 'pub mut:')
 	for f in m.fields {
-		for line in f.comments {
-			e.wln(2, '// ${line}')
-		}
+		emit_comment(mut e, 2, f.comments)
 		e.wln(2, '// ${f.name} is `${field_declaration(f)}`.')
 		e.wln(2, '${f.name} ${declared_type(f)}')
 	}
@@ -130,20 +139,30 @@ pub fn emit_message_struct(mut e Emitter, m ResolvedMessage) {
 
 // field_declaration spells the field as the schema wrote it, for the doc comment.
 pub fn field_declaration(f Resolved) string {
+	// A map is a repeated Entry message on the wire, but the schema spells it
+	// `map<K, V>` with no label.
 	label := match f.label {
-		.repeated { 'repeated ' }
+		.repeated {
+			if f.kind == .map { '' } else { 'repeated ' }
+		}
 		.optional { 'optional ' }
 		.singular { '' }
 	}
-	return '${label}${f.proto_type} ${f.name} = ${f.number}'
+	return '${label}${f.proto_type} ${f.proto_name} = ${f.number}'
 }
 
 // declared_type returns the V type a field is declared as. A field with explicit
 // presence is declared optional, so that a set default is still distinguishable
-// from an absent field. That covers a proto3 `optional` field as well as a
-// `oneof` member; a plain singular field keeps its bare type.
+// from an absent field. That covers a proto3 `optional` field, a `oneof` member,
+// and a singular message field; a plain singular scalar keeps its bare type.
+//
+// A message field that makes its message recursive is an optional pointer, the
+// only form of a recursive struct V accepts.
 pub fn declared_type(f Resolved) string {
 	if f.has_explicit_presence() {
+		if f.indirect {
+			return '?&${f.v_type}'
+		}
 		return '?${f.v_type}'
 	}
 	return f.v_type
@@ -180,15 +199,15 @@ pub fn emit_message_encode(mut e Emitter, m ResolvedMessage) {
 		e.wln(1, '_ = &packer')
 	}
 	for f in m.fields {
-		emit_encode_field(mut e, f)
+		emit_encode_field(mut e, m, f)
 	}
 	e.wln(1, 'return packer.bytes()')
 	e.wln(0, '}')
 	e.w('')
 }
 
-// emit_encode_field writes the statements that put one field on the wire.
-pub fn emit_encode_field(mut e Emitter, f Resolved) {
+// emit_encode_field writes the statements that put one field of `m` on the wire.
+pub fn emit_encode_field(mut e Emitter, m ResolvedMessage, f Resolved) {
 	n := f.number
 	value := 'msg.${f.name}'
 	match f.kind {
@@ -196,7 +215,7 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 			// An empty map writes nothing either way, so the options only matter
 			// for the entries that are written.
 			e.wln(1, 'if ${value}.len > 0 {')
-			e.wln(2, 'emit_map_${f.name}(mut packer, ${n}, ${value}, opts)!')
+			e.wln(2, '${map_encode_fn_name(m.v_name, f.name)}(mut packer, ${n}, ${value}, opts)!')
 			e.wln(1, '}')
 			return
 		}
@@ -212,6 +231,9 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 		// to the default" and "never set" is the whole point of declaring the
 		// presence in the first place. `emit_defaults` changes nothing here: this
 		// field already writes its default whenever it is set.
+		//
+		// A nested message is one of these: one set to an empty message is
+		// written as an empty payload, and one never set is not written at all.
 		e.wln(1, 'if inner := ${value} {')
 		line := emit_single_encode(f, n, 'inner')
 		if line != '' {
@@ -222,12 +244,6 @@ pub fn emit_encode_field(mut e Emitter, f Resolved) {
 	}
 	// proto3 implicit presence: skip a field at its default, unless the caller
 	// asked for the fields that hold one to be written anyway.
-	if f.kind == .message {
-		// A nested message is present whenever the field is, even when all of
-		// its own fields hold defaults, so it is written unconditionally.
-		e.wln(1, 'packer.write_message(${n}, ${value}.encode_with(opts)!)')
-		return
-	}
 	e.wln(1, 'if ${emit_default_test(f, value)} {')
 	line := emit_single_encode(f, n, value)
 	if line != '' {
@@ -319,7 +335,7 @@ pub fn emit_encode_repeated(mut e Emitter, f Resolved, value string) {
 		wire := f.scalar.wire_type()
 		e.wln(2, 'mut payload := []u8{cap: ${value}.len * ${packed_width(f.scalar)}}')
 		e.wln(2, 'for item in ${value} {')
-		e.wln(3, packed_element_call(f.scalar, 'item'))
+		e.wln(3, packed_element_call(f, 'item'))
 		e.wln(2, '}')
 		e.wln(2, 'packer.write_packed_payload(${n}, protobuf.WireType.${wire}, payload)')
 	}
@@ -336,11 +352,18 @@ pub fn packed_width(s protobuf.ProtoScalar) int {
 	}
 }
 
-// packed_element_call returns the statement that appends one element to a packed
-// payload. The module's own put_* helpers are used rather than a Packer, because
-// a Packer would write a tag per element, which is what packing exists to avoid.
-pub fn packed_element_call(s protobuf.ProtoScalar, value string) string {
-	return match s {
+// packed_element_call returns the statement that appends one element of `f` to a
+// packed payload. The module's own put_* helpers are used rather than a Packer,
+// because a Packer would write a tag per element, which is what packing exists
+// to avoid.
+//
+// An enum element travels as its `int32` value, but it is a V enum, which the
+// `int32` helper does not take, so it is converted first.
+pub fn packed_element_call(f Resolved, value string) string {
+	if f.kind == .enum {
+		return 'protobuf.put_varint(mut payload, protobuf.int32_varint(i32(${value})))'
+	}
+	return match f.scalar {
 		.boolean { 'protobuf.put_varint(mut payload, if ${value} { u64(1) } else { u64(0) })' }
 		.int32 { 'protobuf.put_varint(mut payload, protobuf.int32_varint(${value}))' }
 		.int64 { 'protobuf.put_varint(mut payload, protobuf.int64_varint(${value}))' }
@@ -357,10 +380,8 @@ pub fn packed_element_call(s protobuf.ProtoScalar, value string) string {
 }
 
 // emit_single_encode_elem returns the statement that writes one element of a
-// repeated field, where a message element is encoded by its own codec.
+// repeated field. A message element is encoded by its own codec, which
+// emit_single_encode already spells that way.
 pub fn emit_single_encode_elem(f Resolved, n int, value string) string {
-	if f.kind == .message {
-		return 'packer.write_message(${n}, ${value}.encode_with(opts)!)'
-	}
 	return emit_single_encode(f, n, value)
 }

@@ -12,9 +12,9 @@ module main
 //
 // Keeping this list by hand means a new local has to be added, which is the
 // point: the alternative is a module name that silently breaks output.
-pub const generated_idents = ['packer', 'unpacker', 'out', 'msg', 'sub', 'entry', 'entry_key',
-	'entry_value', 'keys', 'first', 'at', 'number', 'wire_type', 'part', 'part_wire', 'entry_wire',
-	'payload', 'data', 'field_number', 'map_data', 'inner', 'item']
+pub const generated_idents = ['packer', 'unpacker', 'out', 'msg', 'opts', 'sub', 'nested', 'entry',
+	'entry_key', 'entry_value', 'keys', 'number', 'wire_type', 'part', 'part_wire', 'payload',
+	'data', 'field_number', 'map_data', 'inner', 'item']
 
 // runtime_alias is the name the generated file imports the runtime under.
 pub const runtime_alias = 'protobuf'

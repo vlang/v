@@ -63,21 +63,38 @@ pub mut:
 	messages []Message
 	enums    []EnumDecl
 	oneofs   []Oneof
-	// reserved_numbers and reserved_names are recorded so the generator can
-	// report a field that reuses one.
-	reserved_numbers []int
-	reserved_names   []string
-	comments         []string
-	pos              Pos
+	// reserved_ranges and reserved_names are recorded so the generator can
+	// report a field that reuses one. A single reserved number is a range of
+	// one; `9 to max` is kept as a range rather than expanded, since expanding
+	// it would mean half a billion entries.
+	reserved_ranges []ReservedRange
+	reserved_names  []string
+	comments        []string
+	pos             Pos
+}
+
+// ReservedRange is an inclusive range of reserved field numbers.
+pub struct ReservedRange {
+pub:
+	start int
+	end   int
+}
+
+// contains reports whether `number` falls inside the range.
+pub fn (r ReservedRange) contains(number int) bool {
+	return number >= r.start && number <= r.end
 }
 
 // EnumDecl is an enum declaration, nested or top level.
 pub struct EnumDecl {
 pub mut:
-	name     string
-	values   []EnumValue
-	comments []string
-	pos      Pos
+	name   string
+	values []EnumValue
+	// allow_alias is `option allow_alias = true;`, which is what lets two
+	// values share a number. Without it a shared number is a schema error.
+	allow_alias bool
+	comments    []string
+	pos         Pos
 }
 
 // EnumValue is one enum member.

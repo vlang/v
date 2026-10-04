@@ -8,9 +8,10 @@ module main
 //   * A message or enum name becomes PascalCase, so `GetRequest` and
 //     `get_request` both arrive as `GetRequest` and a V reader is not asked to
 //     hold two names for one type.
-//   * A field name keeps its own spelling, because proto3 already uses
-//     snake_case and V's own convention is snake_case. Renaming a field would
-//     only obscure which field on the wire it is.
+//   * A field name becomes snake_case. proto3's style is already snake_case,
+//     so `user_name` is unchanged, but a schema is free to write `userName`,
+//     and V refuses an uppercase letter in a field name. An enum value is
+//     named under the same rule, so `COLOR_RED` becomes `color_red`.
 
 // v_keywords are V's reserved words. A proto field or message named after one
 // of these has to be escaped, or the generated file does not compile.
@@ -178,6 +179,41 @@ pub fn single_capital_name(name string) bool {
 // `GetRequest` gives `get_request`.
 pub fn method_name(name string) string {
 	return snake_case(name)
+}
+
+// The free functions the codec declares are all named here, because the
+// resolver has to see the same names to report two declarations that would
+// produce one function: `FooWith` and `Foo` both want `decode_foo_with`, and V
+// would only say "redefinition" about a file nobody wrote.
+
+// decode_fn_name returns the public decoder of message `v_name`, e.g.
+// `decode_get_request`.
+pub fn decode_fn_name(v_name string) string {
+	return 'decode_${method_name(v_name)}'
+}
+
+// decode_with_fn_name returns the public decoder of message `v_name` that takes
+// DecodeOpts, e.g. `decode_get_request_with`.
+pub fn decode_with_fn_name(v_name string) string {
+	return 'decode_${method_name(v_name)}_with'
+}
+
+// read_fn_name returns the private function that reads message `v_name`'s fields
+// from an Unpacker into an existing value, e.g. `read_get_request`.
+pub fn read_fn_name(v_name string) string {
+	return 'read_${method_name(v_name)}'
+}
+
+// map_encode_fn_name returns the private function that writes map field
+// `field` of message `v_name`.
+pub fn map_encode_fn_name(v_name string, field string) string {
+	return 'encode_${method_name(v_name)}_map_${field}'
+}
+
+// map_entry_read_fn_name returns the private function that reads one entry of
+// map field `field` of message `v_name`.
+pub fn map_entry_read_fn_name(v_name string, field string) string {
+	return 'read_${method_name(v_name)}_map_${field}_entry'
 }
 
 // zero_value returns an expression for the zero value of a V type, in the form

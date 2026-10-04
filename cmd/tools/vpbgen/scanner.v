@@ -251,13 +251,46 @@ fn (mut s Scanner) skip_space() ! {
 			if !closed {
 				return error('unterminated block comment starting before line ${s.line}')
 			}
-			// A block comment's inner lines are kept whole rather than split,
-			// so a multi-line note stays readable in the generated source.
-			s.comments << out.bytestr().trim_space()
+			// Each line of a block comment becomes a line of its own, since the
+			// emitter prefixes every comment line with `//` and a line it never
+			// sees would land in the generated source as bare text.
+			s.comments << block_comment_lines(out.bytestr())
 			continue
 		}
 		return
 	}
+}
+
+// block_comment_lines splits the text between `/*` and `*/` into trimmed lines.
+//
+// The leading `*` of the `/** ... */` style is dropped from each line, and so
+// are the blank lines that style leaves at either end, so
+//
+//     /**
+//      * Two lines.
+//      * Of text.
+//      */
+//
+// gives `Two lines.` and `Of text.`. A blank line in the middle is kept, since it
+// separates paragraphs.
+fn block_comment_lines(text string) []string {
+	mut lines := []string{}
+	for raw in text.split_into_lines() {
+		mut line := raw.trim_space()
+		if line.starts_with('*') {
+			line = line[1..].trim_space()
+		}
+		lines << line
+	}
+	mut first := 0
+	for first < lines.len && lines[first] == '' {
+		first++
+	}
+	mut last := lines.len
+	for last > first && lines[last - 1] == '' {
+		last--
+	}
+	return lines[first..last]
 }
 
 // take_comments returns the comments collected since the last call and clears

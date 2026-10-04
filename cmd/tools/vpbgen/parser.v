@@ -237,27 +237,36 @@ pub fn (mut p Parser) parse_import(mut file File) ! {
 
 // skip_option reads and discards an `option ...;` statement.
 //
-// Field options such as `[packed = true]` are parsed but not honoured, because
-// a packed default is a size preference and the generator emits the packed form
-// the spec already defaults to. The value is still skipped correctly so a schema
-// using options does not fail to parse.
+// A file, message, or service option describes the schema rather than its
+// encoding, so none of them change the generated code. The value is still
+// skipped correctly so a schema using options does not fail to parse.
 pub fn (mut p Parser) skip_option() ! {
+	p.read_option()!
+}
+
+// read_option reads an `option name = value;` statement and returns the name
+// and, for a scalar or a dotted name, the value's text. An aggregate value in
+// braces is skipped and reported as an empty string, and a custom option in
+// parentheses is skipped whole.
+pub fn (mut p Parser) read_option() !(string, string) {
 	p.advance() // option
 	if p.is_cur('(') {
 		p.skip_balanced('(', ')')!
-		return
+		return '', ''
 	}
-	p.parse_option_name()!
+	name := p.parse_option_name()!
 	p.expect('=')!
 	// A value can be a scalar, a message literal in braces, or a dotted name.
+	mut value := ''
 	if p.is_cur('{') {
 		p.skip_balanced('{', '}')!
 	} else if p.cur.kind == .str || p.cur.kind == .number {
-		p.advance()
+		value = p.advance().text
 	} else {
-		p.parse_dotted_name()!
+		value = p.parse_dotted_name()!
 	}
 	p.expect(';')!
+	return name, value
 }
 
 // parse_option_name reads a `(fully.qualified.option)` name without the parens.
@@ -393,22 +402,21 @@ pub fn (mut p Parser) parse_reserved(mut msg Message) ! {
 			msg.reserved_names << p.advance().text
 		} else if p.cur.kind == .number {
 			start := p.advance().text.int()
+			mut end := start
 			if p.cur.text == 'to' {
 				p.advance()
-				// `to max` is an open-ended range, which is recorded as running
-				// to the top of the field-number space.
-				mut end := max_field_number
-				if p.cur.kind == .number {
-					end = p.advance().text.int()
+				// `to max` is an open-ended range, which runs to the top of the
+				// field-number space.
+				if p.cur.text == 'max' {
+					p.advance()
+					end = max_field_number
+				} else {
+					end = p.expect_number('the end of a reserved range')!
 				}
-				// The inclusive upper bound is computed first: this compiler
-				// will not take an expression as a range's end.
-				last := end + 1
-				for n in start .. last {
-					msg.reserved_numbers << n
-				}
-			} else {
-				msg.reserved_numbers << start
+			}
+			msg.reserved_ranges << ReservedRange{
+				start: start
+				end:   end
 			}
 		} else {
 			p.fail('unexpected `${p.cur.text}` in a reserved declaration')
@@ -494,8 +502,14 @@ pub fn (mut p Parser) parse_field(comments []string, oneof_group string) !Field 
 	return f
 }
 
-// parse_type_name reads a scalar keyword or a possibly-qualified type name.
+// parse_type_name reads a scalar keyword or a possibly-qualified type name. A
+// leading dot, as in `.pkg.Message`, marks a fully qualified name and is kept,
+// since the resolver needs it to skip the scope search.
 pub fn (mut p Parser) parse_type_name() !string {
+	if p.is_cur('.') {
+		p.advance()
+		return '.' + p.parse_dotted_name()!
+	}
 	if p.cur.kind != .ident {
 		p.fail('expected a type name but found `${p.cur.text}`')
 		return ''
@@ -594,7 +608,12 @@ pub fn (mut p Parser) parse_enum(comments []string) !EnumDecl {
 		value_comments := p.scanner.take_comments()
 
 		if p.cur.text == 'option' {
-			p.skip_option()!
+			// `allow_alias` is the one enum option that changes what is legal:
+			// it lets two values share a number.
+			option_name, option_value := p.read_option()!
+			if option_name == 'allow_alias' {
+				e.allow_alias = option_value == 'true'
+			}
 			continue
 		}
 		if p.cur.text == 'reserved' {

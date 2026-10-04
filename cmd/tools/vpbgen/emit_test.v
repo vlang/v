@@ -136,12 +136,22 @@ fn test_generated_repeated_string_is_not_packed() {
 	assert out.contains('packer.write_string(4, item)!')
 }
 
-fn test_generated_nested_message_round_trips() {
+fn test_generated_nested_message_has_presence() {
 	out := generate(fixture('nested.proto'), 'demo')!
-	// A nested message is written whenever the field is, even when all of its
-	// own fields hold defaults.
-	assert out.contains('packer.write_message(1, msg.inner.encode_with(opts)!)')
-	assert out.contains('out.inner = decode_inner(payload)!')
+	// A singular message field has explicit presence in proto3: one set to an
+	// empty message is written as an empty payload, and one never set is not
+	// written at all. Writing it unconditionally made every peer see it as set.
+	assert out.contains('inner ?Inner')
+	assert out.contains('if inner := msg.inner {')
+	assert out.contains('packer.write_message(1, inner.encode_with(opts)!)')
+	// It is read through the parent's Unpacker, so the nesting depth is counted
+	// and `max_depth` applies, and into what an earlier occurrence left, so two
+	// occurrences merge.
+	assert out.contains('mut sub := unpacker.sub()!')
+	assert out.contains('sub.enter()!')
+	assert out.contains('mut nested := out.inner or { Inner{} }')
+	assert out.contains('read_inner(mut sub, mut nested)!')
+	assert !out.contains('decode_inner(payload)')
 }
 
 fn test_generated_map_is_an_entry_message() {
@@ -149,6 +159,12 @@ fn test_generated_map_is_an_entry_message() {
 	// A map is a repeated Entry message with key = 1 and value = 2.
 	assert out.contains('packer.write_message(field_number, entry.bytes())')
 	assert out.contains('keys.sort()')
+	// Each occurrence of the field is one entry, inserted into the map that is
+	// already there: a map whose entries are not adjacent on the wire still
+	// decodes to all of them.
+	assert out.contains('entry_key, entry_value := read_demo_map_counts_entry(mut sub)!')
+	assert out.contains('out.counts[entry_key] = entry_value')
+	assert !out.contains('out.counts = ')
 }
 
 fn test_generated_grpc_paths_and_interface() {
@@ -352,14 +368,14 @@ fn run_module_test(dir string, test_name string, source string) ! {
 	os.write_file(os.join_path(dir, test_name), source) or { return error(err.msg()) }
 	tcc := os.join_path(os.dir(vexe), 'thirdparty', 'tcc', 'tcc.exe')
 	out := os.join_path(dir, 'rt')
-	build := os.execute('${os.quoted_path(vexe)} -cc ${os.quoted_path(tcc)} -o ${os.quoted_path(out)} ${os.quoted_path(os.join_path(dir, test_name))}')
+	build := os.exec([vexe, '-cc', tcc, '-o', out, os.join_path(dir, test_name)])
 	if build.exit_code != 0 {
 		return error('the round-trip test does not compile:\n${build.output}')
 	}
 	exe := built_exe(dir, 'rt') or {
 		return error('the round-trip test compiled to nothing in ${dir}:\n${build.output}')
 	}
-	run := os.execute(os.quoted_path(exe))
+	run := os.exec([exe])
 	if run.exit_code != 0 {
 		return error('the round-trip test failed:\n${run.output}')
 	}
@@ -473,7 +489,37 @@ inner: Inner{
 x: 42
 }
 }.encode()!)!
-assert back.inner.x == 42
+assert (back.inner or { Inner{} }).x == 42
+}
+
+// An outer message whose nested field was never set encodes to nothing, which
+// is what the reference implementation writes, and decodes with the field still
+// unset.
+fn test_an_unset_nested_message_is_not_written() ! {
+assert Outer{}.encode()! == []u8{}
+assert decode_outer([]u8{})!.inner == none
+}
+
+// One set to an empty message is written, as a tag and a zero length, so a peer
+// can tell it from one never set.
+fn test_an_empty_nested_message_is_written() ! {
+data := Outer{
+inner: Inner{}
+}.encode()!
+assert data == [u8(0x0a), 0x00]
+assert decode_outer(data)!.inner != none
+}
+
+// A nested message that arrives twice is merged rather than replaced: the second
+// occurrence here carries nothing, and must not wipe the first.
+fn test_two_occurrences_of_a_nested_message_merge() ! {
+mut data := Outer{
+inner: Inner{
+x: 42
+}
+}.encode()!
+data << [u8(0x0a), 0x00]
+assert (decode_outer(data)!.inner or { Inner{} }).x == 42
 }
 '
 
@@ -491,6 +537,18 @@ p.write_string(4, 'kept')
 back := decode_demo(p.bytes())!
 assert back.status == .status_unspecified
 assert back.tags == ['kept']
+}
+
+// A caller that would rather be strict can have an unknown field rejected, and
+// the option reaches the generated decoder through decode_*_with.
+fn test_unknown_field_is_rejected_when_asked() ! {
+mut p := protobuf.new_packer(protobuf.EncodeOpts{})
+p.write_string(50, 'ignored')!
+if _ := decode_demo_with(p.bytes(), protobuf.DecodeOpts{ allow_unknown_fields: false }) {
+assert false, 'expected an unknown field error for field 50'
+} else {
+assert err is protobuf.UnknownFieldError
+}
 }
 
 // A known field arriving with the wrong wire type is a real disagreement between
@@ -529,10 +587,11 @@ fn test_generated_scalar_locals_initialize() {
 
 fn test_generated_map_reader_uses_its_own_receiver() {
 	out := generate(fixture('demo.proto'), 'demo')!
-	// A map entry is read through a sub-unpacker, so the reader call has to
-	// name `sub`. Baking in the message reader produced `sub.u.read_int32()`,
-	// which is not a call.
-	assert out.contains('entry_value = sub.read_int32()!')
+	// A map entry is read by a function of its own, over an Unpacker holding
+	// only the entry, so the reader call names that parameter. Baking in the
+	// message reader produced `sub.u.read_int32()`, which is not a call.
+	assert out.contains('fn read_demo_map_counts_entry(mut unpacker protobuf.Unpacker) !(string, i32) {')
+	assert out.contains('entry_value = unpacker.read_int32()!')
 	assert !out.contains('sub.u.read_int32')
 }
 
@@ -589,7 +648,7 @@ fn compile_generated(name string, contents []string) ! {
 		}
 	}
 	tcc := os.join_path(os.dir(vexe), 'thirdparty', 'tcc', 'tcc.exe')
-	res := os.execute('${os.quoted_path(vexe)} -cc ${os.quoted_path(tcc)} -shared ${os.quoted_path(dir)}')
+	res := os.exec([vexe, '-cc', tcc, '-shared', dir])
 	if res.exit_code != 0 {
 		return error('generated ${name} does not compile:\n${res.output}')
 	}
@@ -741,10 +800,10 @@ fn test_a_field_referring_to_a_qualified_type_uses_that_name() {
 	out := generate(fixture('ambiguous_b.proto'), 'amb')!
 	// The reference has to follow the declaration it points at, in the struct, on
 	// the wire, and in the decode arm.
-	assert out.contains('from_one OneItem')
-	assert out.contains('from_two TwoItem')
-	assert out.contains('out.from_one = decode_one_item(payload)!')
-	assert out.contains('out.from_two = decode_two_item(payload)!')
+	assert out.contains('from_one ?OneItem')
+	assert out.contains('from_two ?TwoItem')
+	assert out.contains('read_one_item(mut sub, mut nested)!')
+	assert out.contains('read_two_item(mut sub, mut nested)!')
 }
 
 fn test_a_unique_name_is_not_qualified() {
@@ -753,7 +812,7 @@ fn test_a_unique_name_is_not_qualified() {
 	// for no benefit: `Unique` stays `Unique`.
 	assert out.contains('pub struct Unique {')
 	assert !out.contains('pub struct TwoUnique {')
-	assert out.contains('unique Unique')
+	assert out.contains('unique ?Unique')
 }
 
 fn test_colliding_names_output_compiles() ! {
@@ -786,9 +845,9 @@ flag: true
 }
 }
 back := decode_holder(m.encode()!)!
-assert back.from_one.x == 1
-assert back.from_two.y == 'two'
-assert back.unique.flag
+assert (back.from_one or { OneItem{} }).x == 1
+assert (back.from_two or { TwoItem{} }).y == 'two'
+assert (back.unique or { Unique{} }).flag
 }
 
 fn test_the_two_items_do_not_cross() ! {
@@ -798,8 +857,8 @@ x: 7
 }
 }
 back := decode_holder(m.encode()!)!
-assert back.from_one.x == 7
-assert back.from_two.y == ''
+assert (back.from_one or { OneItem{} }).x == 7
+assert back.from_two == none
 }
 "
 
@@ -1100,8 +1159,8 @@ fn test_options_reach_nested_messages_and_map_entries() {
 	// A nested message and a map entry each build their own Packer. Options that
 	// stopped at the outer message would make validate_utf8 and emit_defaults
 	// depend on how deep the field happened to be.
-	assert out.contains('msg.inner.encode_with(opts)!')
-	assert out.contains('emit_map_counts(mut packer, 5, msg.counts, opts)!')
+	assert out.contains('inner.encode_with(opts)!')
+	assert out.contains('encode_demo_map_counts(mut packer, 5, msg.counts, opts)!')
 	assert out.contains('map_data map[string]i32, opts protobuf.EncodeOpts)')
 	assert out.contains('mut entry := protobuf.new_packer(opts)')
 }
@@ -1115,9 +1174,9 @@ fn test_emit_defaults_round_trips() ! {
 // `emit_defaults` is the flag that makes a codec keep explicit presence: a field
 // holding its default goes on the wire instead of being left off.
 //
-// The messages here are `Inner` and not `Demo`, because `Demo` holds a nested
-// message that is written whenever the field is, whichever way the defaults go.
-// That would have made every assertion in this file measure the nested field.
+// The messages here are mostly `Inner` and not `Demo`, because a nested message
+// that is set is written whichever way the defaults go, and that would have made
+// every assertion in this file measure the nested field.
 const emit_defaults_test_source = "module demo
 
 import encoding.protobuf
@@ -1304,11 +1363,15 @@ fn test_the_reader_accepts_packed_whatever_the_schema_says() {
 	// refuse a packed run for a field it had declared unpacked.
 	out := generate(fixture('packed.proto'), 'packed')!
 	// packed.proto has three repeated numeric fields and two repeated
-	// non-numeric ones. All three numeric arms must test `true`, so each can read
-	// either form; the two that cannot be packed must still test `false`, or a
-	// length-delimited element would be misread as a packed run.
-	assert out.count('if wire_type == .length_delimited && true {') == 3
-	assert out.count('if wire_type == .length_delimited && false {') == 2
+	// non-numeric ones. All three numeric arms must accept a length-delimited
+	// run, so each can read either form; the two that cannot be packed must
+	// not, or a length-delimited element would be misread as a packed run.
+	assert out.count('if wire_type == .length_delimited {') == 3
+	// An unpacked numeric element is still checked for its own wire type, so a
+	// string sent where an int32 list is declared is an error rather than a
+	// number read out of the string's length.
+	assert out.contains('protobuf.check_wire_type(1, wire_type, protobuf.WireType.varint)!')
+	assert out.contains('protobuf.check_wire_type(4, wire_type, protobuf.WireType.length_delimited)!')
 }
 
 fn test_the_readme_shows_what_the_generator_emits() {
@@ -1326,7 +1389,11 @@ fn test_the_readme_shows_what_the_generator_emits() {
 		'mut packer := protobuf.new_packer(opts)',
 		'if opts.emit_defaults || msg.key.len > 0 {',
 		'pub fn decode_get_request(data []u8) !GetRequest {',
-		'mut unpacker := protobuf.new_unpacker(data, protobuf.DecodeOpts{})',
+		'return decode_get_request_with(data, protobuf.DecodeOpts{})',
+		'pub fn decode_get_request_with(data []u8, opts protobuf.DecodeOpts) !GetRequest {',
+		'mut unpacker := protobuf.new_unpacker(data, opts)',
+		'read_get_request(mut unpacker, mut out)!',
+		'fn read_get_request(mut unpacker protobuf.Unpacker, mut out GetRequest) ! {',
 		'protobuf.check_wire_type(1, wire_type, protobuf.WireType.length_delimited)!',
 		'unpacker.skip_field(number, wire_type)!',
 	] {
@@ -1364,4 +1431,445 @@ fn test_is_well_known() {
 	assert is_well_known('google/protobuf/timestamp.proto')
 	assert !is_well_known('kv.proto')
 	assert !is_well_known('common/types.proto')
+}
+
+// The cases below are spellings and shapes whose generated code did not compile
+// while `-check` reported success. Each one is compiled and round-tripped, and
+// what the generator cannot express is refused by the resolver, which is what
+// makes `-check` fail.
+
+fn test_enum_values_and_fields_are_snake_case() {
+	out := generate(fixture('naming.proto'), 'naming')!
+	// V refuses an uppercase letter in an enum value or a field name, and
+	// UPPER_SNAKE values and camelCase fields are both common in real schemas.
+	assert out.contains('color_unspecified = 0')
+	assert out.contains('color_red = 1')
+	assert !out.contains('COLOR_RED =')
+	assert out.contains('user_name string')
+	// A name that is a V keyword once snake_cased is still suffixed.
+	assert out.contains('type_ = 2')
+	assert out.contains('type_ i32')
+	// The doc comment keeps the schema's own spelling, which is what a reader
+	// searches the .proto file for.
+	assert out.contains('// user_name is `string userName = 2`.')
+	assert out.contains('// labels is `map<string, string> labels = 1`.')
+}
+
+fn test_an_allowed_enum_alias_is_marked() {
+	out := generate(fixture('naming.proto'), 'naming')!
+	// Two values on one number are an error in V unless the enum says so.
+	assert out.contains('@[_allow_multiple_values]\npub enum Color {')
+	assert out.contains('color_crimson = 1')
+}
+
+fn test_a_block_comment_keeps_every_line_commented() {
+	out := generate(fixture('naming.proto'), 'naming')!
+	// Only the first line of a block comment used to get its `//`, and the rest
+	// landed in the generated file as bare text.
+	assert out.contains('// Color is spelled the way most published schemas spell an enum.\n//\n// Its values are UPPER_SNAKE, and two of them are aliases.\n')
+	assert out.contains('// Labels is the first message with a `labels` map.\n')
+	assert !out.contains('\nIts values')
+	assert !out.contains('\n * ')
+}
+
+fn test_block_comment_lines() {
+	// The `/** ... */` style loses its leading stars and the blank lines it
+	// leaves at either end, and keeps a blank line between paragraphs.
+	assert block_comment_lines('*\n * One.\n *\n * Two.\n ') == ['One.', '', 'Two.']
+	assert block_comment_lines(' one line ') == ['one line']
+	assert block_comment_lines('') == []string{}
+}
+
+fn test_map_helpers_are_named_after_their_message() {
+	out := generate(fixture('naming.proto'), 'naming')!
+	// Labels and Pod both have a `labels` map. A helper named after the field
+	// alone was declared once for each, which V reports as a redefinition.
+	assert out.contains('fn encode_labels_map_labels(')
+	assert out.contains('fn encode_pod_map_labels(')
+	assert out.contains('fn read_labels_map_labels_entry(')
+	assert out.contains('fn read_pod_map_labels_entry(')
+	// They belong to the codec, not to its API.
+	assert !out.contains('pub fn encode_pod_map_labels(')
+	assert !out.contains('pub fn read_pod_map_labels_entry(')
+}
+
+fn test_a_packed_enum_list_is_converted_to_int32() {
+	out := generate(fixture('naming.proto'), 'naming')!
+	// The varint helper takes an `i32`, and an enum is not one.
+	assert out.contains('protobuf.put_varint(mut payload, protobuf.int32_varint(i32(item)))')
+}
+
+fn test_a_map_value_is_tested_by_its_kind() {
+	out := generate(fixture('naming.proto'), 'naming')!
+	// `entry_value != 0` is not V for a message, an enum, or a bytes value.
+	assert out.contains('entry.write_message(2, entry_value.encode_with(opts)!)')
+	assert out.contains('if opts.emit_defaults || int(entry_value) != 0 {')
+	assert out.contains('entry.write_enum(2, int(entry_value))')
+	assert out.contains('if opts.emit_defaults || entry_value.len > 0 {')
+	assert out.contains('entry.write_bytes(2, entry_value)')
+	assert !out.contains('entry_value != 0 {')
+}
+
+fn test_naming_output_round_trips() ! {
+	res := generate_res(fixture('naming.proto'), 'naming')!
+	dir := write_roundtrip('naming', res)
+	run_module_test(dir, 'round_trip_test.v', naming_test_source)!
+}
+
+const naming_test_source = "module naming
+
+fn test_a_pod_round_trips() ! {
+	pod := Pod{
+		labels:      {
+			'app': 'web'
+		}
+		user_name:   'ada'
+		type_:       3
+		colors:      [Color.color_red, .type_, .color_unspecified]
+		items:       {
+			'a':     Item{
+				x: 1
+			}
+			'empty': Item{}
+		}
+		shades:      {
+			'r': Color.color_crimson
+			'u': .color_unspecified
+		}
+		blobs:       {
+			i32(-1): [u8(1), 2]
+			7:       []u8{}
+		}
+		leading_dot: Item{
+			x: 9
+		}
+	}
+	back := decode_pod(pod.encode()!)!
+	assert back.labels == pod.labels
+	assert back.user_name == 'ada'
+	assert back.type_ == 3
+	assert back.colors == pod.colors
+	assert back.items == pod.items
+	assert back.shades == pod.shades
+	assert back.blobs == pod.blobs
+	assert (back.leading_dot or { Item{} }).x == 9
+	assert decode_labels(Labels{
+		labels: {
+			'k': 'v'
+		}
+	}.encode()!)!.labels == {
+		'k': 'v'
+	}
+}
+
+fn test_an_alias_is_the_same_value() ! {
+	assert Color.color_crimson == Color.color_red
+	back := decode_pod(Pod{
+		colors: [Color.color_crimson]
+	}.encode()!)!
+	assert back.colors == [Color.color_red]
+}
+
+// A packed enum list is one tag, one length, and one varint per element.
+fn test_a_packed_enum_list_is_packed() ! {
+	assert Pod{
+		colors: [Color.color_red, .type_]
+	}.encode()! == [u8(0x22), 0x02, 0x01, 0x02]
+}
+
+// A message value is written even when it is empty, and an enum value at its
+// zero is not, as with any other default.
+fn test_map_values_follow_their_kind() ! {
+	assert Pod{
+		items: {
+			'e': Item{}
+		}
+	}.encode()! == [u8(0x2a), 0x05, 0x0a, 0x01, 0x65, 0x12, 0x00]
+	assert Pod{
+		shades: {
+			'u': Color.color_unspecified
+		}
+	}.encode()! == [u8(0x32), 0x03, 0x0a, 0x01, 0x75]
+}
+"
+
+fn test_a_recursive_field_is_an_optional_pointer() {
+	out := generate(fixture('recursive.proto'), 'tree')!
+	// V accepts a struct that contains itself only through an optional pointer.
+	assert out.contains('child ?&Node')
+	assert out.contains('alt ?&Node')
+	assert out.contains('pong ?&Pong')
+	assert out.contains('ping ?&Ping')
+	// A list holds its elements on the heap already, and a message field that is
+	// not on a cycle keeps its value type.
+	assert out.contains('kids []Node')
+	assert out.contains('leaf ?Leaf')
+	assert out.contains('mut nested := out.child or { &Node{} }')
+}
+
+fn test_recursive_output_round_trips() ! {
+	res := generate_res(fixture('recursive.proto'), 'tree')!
+	dir := write_roundtrip('recursive', res)
+	run_module_test(dir, 'round_trip_test.v', recursive_test_source)!
+}
+
+const recursive_test_source = "module tree
+
+import encoding.protobuf
+
+fn chain(depth int) Node {
+	mut n := Node{
+		v: depth
+	}
+	if depth > 0 {
+		n.child = &Node{
+			...chain(depth - 1)
+		}
+	}
+	return n
+}
+
+fn values(n Node) []int {
+	mut out := []int{}
+	mut cur := ?&Node(&n)
+	for {
+		node := cur or { break }
+		out << node.v
+		cur = node.child
+	}
+	return out
+}
+
+fn test_a_recursive_message_round_trips() ! {
+	back := decode_node(chain(3).encode()!)!
+	assert values(back) == [3, 2, 1, 0]
+}
+
+fn test_a_recursive_oneof_member_round_trips() ! {
+	back := decode_node(Node{
+		alt:  &Node{
+			v: 5
+		}
+		kids: [Node{
+			v: 6
+		}]
+	}.encode()!)!
+	assert (back.alt or { return error('alt lost') }).v == 5
+	assert back.kids.len == 1
+	assert back.kids[0].v == 6
+}
+
+fn test_an_empty_recursive_message_encodes_to_nothing() ! {
+	assert Node{}.encode()! == []u8{}
+	assert Ping{}.encode()! == []u8{}
+}
+
+fn test_mutually_recursive_messages_round_trip() ! {
+	back := decode_ping(Ping{
+		n:    1
+		pong: &Pong{
+			ping: &Ping{
+				n: 2
+			}
+			leaf: Leaf{
+				s: 'x'
+			}
+		}
+	}.encode()!)!
+	assert back.n == 1
+	pong := back.pong or { return error('pong lost') }
+	assert (pong.ping or { return error('ping lost') }).n == 2
+	assert (pong.leaf or { Leaf{} }).s == 'x'
+}
+
+// nested_payload returns `depth` levels of `Node.child`, each two to four bytes,
+// built from the inside out so that it costs one pass rather than one copy per
+// level.
+fn nested_payload(depth int) []u8 {
+	mut lens := [0]
+	for i in 1 .. depth + 1 {
+		mut prefix := []u8{}
+		protobuf.put_varint(mut prefix, u64(lens[i - 1]))
+		lens << 1 + prefix.len + lens[i - 1]
+	}
+	mut out := []u8{cap: lens[depth]}
+	for i := depth; i >= 1; i-- {
+		out << u8(0x12)
+		protobuf.put_varint(mut out, u64(lens[i - 1]))
+	}
+	return out
+}
+
+// A payload nested far deeper than the stack could follow is cheap to build, so
+// it has to stop at `max_depth` with an error rather than recurse until the
+// process dies.
+fn test_a_payload_nested_past_max_depth_is_an_error() ! {
+	if _ := decode_node(nested_payload(100_000)) {
+		assert false, 'a payload 100000 levels deep was accepted'
+	} else {
+		assert err is protobuf.MaxDepthError, err.msg()
+	}
+}
+
+// The bound is the caller's to set, and a payload exactly as deep as it passes.
+fn test_max_depth_is_the_callers() ! {
+	data := chain(10).encode()!
+	if _ := decode_node_with(data, protobuf.DecodeOpts{ max_depth: 9 }) {
+		assert false, 'ten levels were accepted under a bound of nine'
+	} else {
+		assert err is protobuf.MaxDepthError, err.msg()
+	}
+	back := decode_node_with(data, protobuf.DecodeOpts{ max_depth: 10 })!
+	assert values(back).len == 11
+}
+"
+
+fn test_map_keys_are_written_by_their_schema_type() {
+	out := generate(fixture('map_keys.proto'), 'mapkeys')!
+	// `i32` is `int32`, `sint32`, and `sfixed32`, so the V type cannot pick the
+	// encoding: the schema's key type has to.
+	assert out.contains('entry.write_sint32(1, entry_key)')
+	assert out.contains('entry.write_fixed64(1, entry_key)')
+	assert out.contains('entry.write_sfixed32(1, entry_key)')
+	assert out.contains('entry_key = unpacker.read_sint32()!')
+	assert out.contains('entry_key = unpacker.read_fixed64()!')
+	assert out.contains('protobuf.check_wire_type(1, part_wire, protobuf.WireType.fixed64)!')
+}
+
+fn test_map_keys_round_trip() ! {
+	res := generate_res(fixture('map_keys.proto'), 'mapkeys')!
+	dir := write_roundtrip('map_keys', res)
+	run_module_test(dir, 'round_trip_test.v', map_keys_test_source)!
+}
+
+// The byte vectors are what the reference implementation writes for the same
+// maps, so these check agreement with it, not only with this generator.
+const map_keys_test_source = "module mapkeys
+
+import encoding.hex
+
+fn test_a_sint32_key_is_zigzagged() ! {
+	data := Keys{
+		by_sint: {
+			i32(-1): 'neg'
+		}
+	}.encode()!
+	assert data.hex() == '0a07080112036e6567'
+	assert decode_keys(data)!.by_sint == {
+		i32(-1): 'neg'
+	}
+}
+
+fn test_a_fixed64_key_is_eight_bytes() ! {
+	assert Keys{
+		by_fixed: {
+			u64(1): true
+		}
+	}.encode()!.hex() == '120b0901000000000000001001'
+	assert decode_keys(hex.decode('120b09ffffffffffffffff1001')!)!.by_fixed == {
+		u64(0xffffffffffffffff): true
+	}
+}
+
+fn test_other_keys_follow_their_schema_type() ! {
+	assert Keys{
+		by_sfixed: {
+			i32(-2): 3
+		}
+	}.encode()!.hex() == '1a070dfeffffff1003'
+	assert decode_keys(hex.decode('220608d70412016d')!)!.by_sint64 == {
+		i64(-300): 'm'
+	}
+	k := Keys{
+		by_bool: {
+			true:  'y'
+			false: 'n'
+		}
+	}
+	assert decode_keys(k.encode()!)!.by_bool == k.by_bool
+}
+
+// Each occurrence of a map field is one entry, and the entries add up wherever
+// they are. Reading every adjacent entry at once and then assigning the map kept
+// only the last run.
+fn test_entries_that_are_not_adjacent_add_up() ! {
+	// counts {a: 1}, names ['x'], counts {b: 2}
+	back := decode_keys(hex.decode('32050a01611001' + '3a0178' + '32050a01621002')!)!
+	assert back.counts == {
+		'a': 1
+		'b': 2
+	}
+	assert back.names == ['x']
+}
+
+// A map tag with no entry after it is truncated input, not an empty map.
+fn test_a_truncated_entry_is_an_error() ! {
+	for bad in ['32', '3205', '32050a01'] {
+		if got := decode_keys(hex.decode(bad)!) {
+			assert false, '\${bad} decoded as \${got}'
+		}
+	}
+}
+
+// A known field with the wrong wire type is an error for a list element and a
+// map part as much as for a singular field: it is read as something else
+// otherwise, such as a string read out of a varint's bytes.
+fn test_wrong_wire_types_are_errors() ! {
+	for bad in [
+		// `names` (repeated string) sent as a varint, then `hi`
+		'38026869',
+		// `nums` (repeated int32) sent as fixed32
+		'4501000000',
+		// a `by_sint` key sent length-delimited
+		'0a040a026869',
+		// a `counts` value sent length-delimited
+		'320512036162',
+	] {
+		if got := decode_keys(hex.decode(bad)!) {
+			assert false, '\${bad} decoded as \${got}'
+		}
+	}
+}
+"
+
+fn test_resolver_rejects_an_alias_the_schema_does_not_allow() {
+	res := resolve_files([fixture_file('bad_alias.proto')!], 'badalias')!
+	assert res.errors.len == 1, res.errors.join_lines()
+	assert res.errors[0].contains('option allow_alias = true;')
+}
+
+fn test_resolver_rejects_names_that_meet_in_v() {
+	// Each of these used to be emitted, and V then reported a duplicate in a
+	// file nobody wrote.
+	res := resolve_files([fixture_file('bad_names.proto')!], 'badnames')!
+	all := res.errors.join_lines()
+	assert res.errors.len == 3, all
+	assert all.contains('would both be declared as `color_red`')
+	assert all.contains('so both would be declared as `user_name`')
+	assert all.contains('would both generate the function `decode_foo_with`')
+}
+
+fn test_resolver_rejects_an_enum_that_does_not_start_at_zero() {
+	f := parse_text('bad.proto', 'syntax = "proto3";
+package demo;
+enum Kind { KIND_A = 1; }
+')!
+	res := resolve_files([f], 'demo')!
+	assert res.errors.len == 1
+	assert res.errors[0].contains('requires the first value to be zero')
+}
+
+fn test_a_reserved_range_to_max_is_parsed() {
+	// `to max` used to stop the parser, and expanding it into a list of numbers
+	// would have meant half a billion entries.
+	f := parse_text('reserved.proto', 'syntax = "proto3";
+package demo;
+message Demo { reserved 40 to max; reserved 2, 5 to 6; int32 a = 1; int32 b = 100; int32 c = 6; }
+')!
+	assert f.messages[0].reserved_ranges.len == 3
+	res := resolve_files([f], 'demo')!
+	all := res.errors.join_lines()
+	assert res.errors.len == 2, all
+	assert all.contains('Demo.b uses field number 100')
+	assert all.contains('Demo.c uses field number 6')
 }
