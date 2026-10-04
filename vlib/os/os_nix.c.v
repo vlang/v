@@ -344,7 +344,7 @@ pub fn mkdir(path string, params MkdirParams) ! {
 	apath := real_path(path)
 	r := unsafe { C.mkdir(&char(apath.str), params.mode) }
 	if r == -1 {
-		return error(posix_get_error_msg(C.errno))
+		return error_posix()
 	}
 }
 

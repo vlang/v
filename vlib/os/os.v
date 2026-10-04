@@ -944,7 +944,9 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 		if exists(p) && is_dir(p) {
 			continue
 		}
-		mkdir(p, params) or { return error('folder: ${p}, error: ${err}') }
+		mkdir(p, params) or {
+			return error_with_code('folder: ${p}, error: ${err.msg()}', err.code())
+		}
 	}
 }
 
