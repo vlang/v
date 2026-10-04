@@ -356,7 +356,8 @@ pub fn ls(path string) ![]string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !is_dir(path) {
-		return error('ls() couldnt open dir "${path}": directory does not exist')
+		return error_with_code('ls() couldnt open dir "${path}": directory does not exist',
+			error_code_noent)
 	}
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
 	path_files := '${path}\\*'
@@ -365,7 +366,9 @@ pub fn ls(path string) ![]string {
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
 	// Handle cases where files cannot be opened. for example:"System Volume Information"
 	if h_find_files == invalid_handle_value {
-		return error('ls(): Could not get a file handle: ' + get_error_msg(int(C.GetLastError())))
+		code := int(C.GetLastError())
+		return error_with_code('ls(): Could not get a file handle: ' +
+			get_error_msg(code), code)
 	}
 	first_filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
 	if first_filename != '.' && first_filename != '..' {
@@ -388,8 +391,10 @@ pub fn mkdir(path string, params MkdirParams) ! {
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
-		return error('mkdir failed for "${apath}", because CreateDirectory returned: ' +
-			get_error_msg(int(C.GetLastError())))
+		// save the error code before get_error_msg(), which overwrites it
+		code := int(C.GetLastError())
+		return error_with_code('mkdir failed for "${apath}", because CreateDirectory returned: ' +
+			get_error_msg(code), code)
 	}
 }
 

@@ -86,6 +86,32 @@ On Windows, shell builtins and batch scripts likewise require an explicit shell.
 
 ---
 
+### Error codes
+
+The `IError` returned by the failing `os.*` functions carries a message produced by the
+platform's `strerror()`/`FormatMessage()`, so the message text is not the same on every
+system. Match the numeric code instead:
+
+```v ignore
+if err := os.stat(path) {
+    if os.is_not_exist(err) {
+        // ...
+    }
+}
+```
+
+`os.error_code_noent` and the other `error_code_*` constants hold the code the `os.*`
+functions return for a condition on the current platform, and `os.is_not_exist`,
+`os.is_exist` and `os.is_permission_denied` accept every code the platform may use for
+that condition. Comparing a code is also what avoids the extra `os.exists()` call that
+would otherwise be a time-of-check/time-of-use race.
+
+Not every condition has a portable constant. `ELOOP`, `ENAMETOOLONG` and `ENOTEMPTY` have
+different `errno` values on different POSIX systems, so no single value is correct
+everywhere V runs and none is defined here.
+
+---
+
 ### Security advice related to TOCTOU attacks
 
 A few `os` module functions can lead to the **TOCTOU** vulnerability if used incorrectly.
