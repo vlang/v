@@ -70,12 +70,22 @@ jobs:
           # Adapt the external generator to current V APIs and use this checkout's
           # documentation and commit, including when validating a pull request.
           git -C docs_generator apply ../.github/docs_site_generator.patch
-          ./v run docs_generator/. "$PWD/doc/docs.md" "$(git rev-parse HEAD)"
+          COMMIT_HASH="$(git rev-parse HEAD)"
+          COMMIT_TIME="$(git log -1 --format=%ct HEAD)"
+          ./v -o docs_generator/generate_docs docs_generator/.
+          ./docs_generator/generate_docs "$PWD/doc/docs.md" "$COMMIT_HASH" "$COMMIT_TIME"
           [ -s docs_generator/output/introduction.html ]
           [ -s docs_generator/output/v-types.html ]
           [ -s docs_generator/output/assets/scripts/v-docs.js ]
           cmp doc/docs.md docs_generator/output/assets/docs.md
-          grep -Fq "https://github.com/vlang/v/commit/$(git rev-parse HEAD)" docs_generator/output/introduction.html
+          grep -Fq "https://github.com/vlang/v/commit/${COMMIT_HASH}" docs_generator/output/introduction.html
+
+          # Retries must not create changes from the wall clock advancing. Compare
+          # every generated file after running the same binary in a later second.
+          cp -a docs_generator/output docs_generator/output_first
+          sleep 2
+          ./docs_generator/generate_docs "$PWD/doc/docs.md" "$COMMIT_HASH" "$COMMIT_TIME"
+          diff -r docs_generator/output_first docs_generator/output
 
       - name: Deploy to vlang/docs (main branch -> docs.vlang.io)
         if: github.event_name != 'pull_request' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'

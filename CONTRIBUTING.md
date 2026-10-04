@@ -226,6 +226,8 @@ The `docs.vlang.io deploy` workflow builds the language documentation site from 
 `doc/docs.md`. It validates generation on pull requests that change documentation, V sources,
 build files, or the workflow. On master, documentation changes and a daily scheduled run publish
 the site to <https://docs.vlang.io/>; `workflow_dispatch` can also retry a deployment manually.
+Each page's "Last updated" time comes from the V commit timestamp in UTC. Generation checks
+compare two runs so retrying the same source does not produce changes from the wall clock.
 The generator is pinned to a revision of `vlang/docs` and adapted by
 `.github/docs_site_generator.patch`. When updating that revision, check that the patch still
 applies and generation succeeds. Pull request builds only validate generation.
