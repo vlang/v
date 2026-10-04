@@ -513,6 +513,33 @@ fn test_lockfile_write_read_roundtrip() {
 		dump(newer)
 		assert false, 'a newer lockfile version has to be rejected'
 	}
+	// So is one without a valid format version.
+	os.write_file(lockfile_path(dir), '{}') or { panic(err) }
+	if unversioned := read_lockfile(dir) {
+		dump(unversioned)
+		assert false, 'a lockfile without a format version has to be rejected'
+	}
+}
+
+// The modules of a lockfile are written sorted by name, whatever the order
+// they were resolved in.
+fn test_lockfile_is_written_sorted() {
+	dir := os.join_path(test_path, 'lockfile_sorted')
+	os.mkdir_all(dir) or { panic(err) }
+	mut lf := LockFile{
+		version: lockfile_version
+		modules: map[string]LockedModule{}
+	}
+	for name in ['zeta', 'alpha', 'mid'] {
+		lf.upsert(LockedModule{
+			requested: name
+			revision:  name
+		}, name)
+	}
+	write_lockfile(dir, lf) or { panic(err) }
+	content := os.read_file(lockfile_path(dir)) or { panic(err) }
+	assert content.index('"alpha"') or { -1 } < content.index('"mid"') or { -1 }
+	assert content.index('"mid"') or { -1 } < content.index('"zeta"') or { -1 }
 }
 
 fn test_lockfile_upsert_and_remove() {
@@ -605,8 +632,6 @@ fn test_install_resolves_anew_when_the_dependency_string_changed() {
 	repo_path := os.join_path(test_path, 'anew_repo')
 	tagged_head := create_local_git_module(repo_path, 'anew_pkg')
 	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'tag', 'v1.0.0'])
-	new_head := advance_local_git_module(repo_path)
-	assert new_head != tagged_head
 	project_dir := os.join_path(test_path, 'anew_proj')
 	os.mkdir_all(project_dir) or { panic(err) }
 	dep := repo_path.replace('\\', '/')
@@ -624,18 +649,24 @@ fn test_install_resolves_anew_when_the_dependency_string_changed() {
 	assert tagged_entry.requested == '${dep}@v1.0.0'
 	assert tagged_entry.revision == tagged_head
 
-	// Install once more against a fresh module store, so the locked install
-	// checks out the recorded revision on a clone that also has the branch
-	// refs of the origin. `installed_version` is '' for such a checkout,
-	// which is what lets a later bare `v install` reach the update path.
+	// Another module store holds a plain install of the repository, made
+	// outside of the project while its HEAD was still the tagged revision.
+	// `installed_version` is '' for such a checkout, which is what lets a
+	// later bare `v install` reach the update path.
 	test_utils.set_test_env(os.join_path(test_path, 'va2'))
-	cmd_ok_args(@LOCATION, [v_exe, 'install'])
+	run_dir := os.join_path(test_path, 'anew_run_dir')
+	os.mkdir_all(run_dir) or { panic(err) }
+	os.chdir(run_dir) or { panic(err) }
+	cmd_ok_args(@LOCATION, [v_exe, 'install', repo_path])
 	installed_path := os.join_path(test_path, 'va2', 'anew_pkg')
 	assert git_head(installed_path) == tagged_head
+	new_head := advance_local_git_module(repo_path)
+	assert new_head != tagged_head
 
 	// The project now asks for the bare repository, without the tag: the
 	// stale lock entry must not pin the checkout, the module is updated to
 	// the HEAD of the origin, and the lockfile records the new resolution.
+	os.chdir(project_dir) or { panic(err) }
 	write_project_vmod(project_dir, [dep])
 	res := cmd_ok_args(@LOCATION, [v_exe, 'install', '-v'])
 	assert res.output.contains('resolving it anew'), res.output
@@ -647,6 +678,280 @@ fn test_install_resolves_anew_when_the_dependency_string_changed() {
 	}
 	assert entry.requested == dep
 	assert entry.revision == new_head
+}
+
+// Case: a lockfile from a teammate can record a revision that is newer than
+// the checkout in the module store. Restoring the checkout to it fetches the
+// revision from the origin first.
+fn test_install_restores_a_checkout_older_than_the_locked_revision() {
+	repo_path := os.join_path(test_path, 'nw_repo')
+	head := create_local_git_module(repo_path, 'nw_pkg')
+	project_dir := os.join_path(test_path, 'nw_proj')
+	os.mkdir_all(project_dir) or { panic(err) }
+	dep := repo_path.replace('\\', '/')
+	write_project_vmod(project_dir, [dep])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vnw'))
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
+	installed_path := os.join_path(test_path, 'vnw', 'nw_pkg')
+	assert git_head(installed_path) == head
+
+	// The teammate locked a later revision, which the installed clone has never
+	// seen: it was made before that commit existed.
+	new_head := advance_local_git_module(repo_path)
+	mut lf := read_lockfile(project_dir) or { panic(err) }
+	lf.upsert(LockedModule{
+		requested: dep
+		resolved:  pseudo_version(head_commit_unix_ts(repo_path), new_head)
+		revision:  new_head
+		url:       dep
+	}, dep)
+	write_lockfile(project_dir, lf) or { panic(err) }
+	assert !git_has_commit(installed_path, new_head)
+
+	res := cmd_ok_args(@LOCATION, [v_exe, 'install'])
+	assert res.output.contains('Restoring `nw_pkg` to the locked revision'), res.output
+	assert git_head(installed_path) == new_head
+}
+
+// Case: a checkout that a locked install left detached has no upstream branch,
+// yet `v outdated` and `v upgrade` still compare it with the default branch of
+// its origin, instead of reporting it as up to date forever.
+fn test_outdated_and_upgrade_see_a_locked_checkout() {
+	repo_path := os.join_path(test_path, 'od_repo')
+	head := create_local_git_module(repo_path, 'od_pkg')
+	project_dir := os.join_path(test_path, 'od_proj')
+	os.mkdir_all(project_dir) or { panic(err) }
+	dep := repo_path.replace('\\', '/')
+	write_project_vmod(project_dir, [dep])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vod1'))
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
+	test_utils.set_test_env(os.join_path(test_path, 'vod2'))
+	cmd_ok_args(@LOCATION, [v_exe, 'install', '--locked'])
+	installed_path := os.join_path(test_path, 'vod2', 'od_pkg')
+	assert git_head(installed_path) == head
+	assert head_is_detached(installed_path)
+	up_to_date := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
+	assert up_to_date.output.contains('Modules are up to date.'), up_to_date.output
+
+	new_head := advance_local_git_module(repo_path)
+	outdated := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
+	assert outdated.output.contains('od_pkg'), outdated.output
+	cmd_ok_args(@LOCATION, [v_exe, 'upgrade'])
+	assert git_head(installed_path) == new_head
+	lf := read_lockfile(project_dir) or { panic(err) }
+	entry := lf.modules[dep] or { panic('no lock entry for `${dep}` in ${lf.modules.keys()}') }
+	assert entry.revision == new_head
+	after := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
+	assert after.output.contains('Modules are up to date.'), after.output
+}
+
+// Case: when one dependency of a project cannot be installed at its locked
+// revision, the others are installed, but the run fails as a whole.
+fn test_install_fails_when_one_of_several_locked_dependencies_fails() {
+	good_repo_path := os.join_path(test_path, 'pf_good')
+	good_head := create_local_git_module(good_repo_path, 'pf_good_pkg')
+	bad_repo_path := os.join_path(test_path, 'pf_bad')
+	create_local_git_module(bad_repo_path, 'pf_bad_pkg')
+	project_dir := os.join_path(test_path, 'pf_proj')
+	os.mkdir_all(project_dir) or { panic(err) }
+	good_dep := good_repo_path.replace('\\', '/')
+	bad_dep := bad_repo_path.replace('\\', '/')
+	write_project_vmod(project_dir, [good_dep, bad_dep])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vpf1'))
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
+	// Point the lock entry of one dependency at a revision that does not exist.
+	mut lf := read_lockfile(project_dir) or { panic(err) }
+	bad_entry := lf.modules[bad_dep] or { panic('no lock entry for `${bad_dep}`') }
+	lf.upsert(LockedModule{
+		...bad_entry
+		revision: '0123456789abcdef0123456789abcdef01234567'
+	}, bad_dep)
+	write_lockfile(project_dir, lf) or { panic(err) }
+	lock_before := os.read_file(lockfile_path(project_dir)) or { panic(err) }
+
+	test_utils.set_test_env(os.join_path(test_path, 'vpf2'))
+	res := cmd_fail_args(@LOCATION, [v_exe, 'install', '--locked'])
+	assert res.output.contains('failed to install'), res.output
+	assert git_head(os.join_path(test_path, 'vpf2', 'pf_good_pkg')) == good_head
+	assert !os.exists(os.join_path(test_path, 'vpf2', 'pf_bad_pkg'))
+	test_utils.set_test_env(os.join_path(test_path, 'vpf3'))
+	cmd_fail_args(@LOCATION, [v_exe, 'install'])
+	assert os.read_file(lockfile_path(project_dir)) or { panic(err) } == lock_before
+}
+
+// Case: a dependency locked at a tag stays at the tagged revision: a locked
+// install clones it at that tag, `v update` and `v outdated` leave it there,
+// and `v update` of another checkout of the same source does not move its
+// lock entry either.
+fn test_a_tag_pinned_dependency_stays_at_its_tag() {
+	repo_path := os.join_path(test_path, 'tp_repo')
+	tagged_head := create_local_git_module(repo_path, 'tp_pkg')
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'tag', 'v1.0.0'])
+	advance_local_git_module(repo_path)
+	project_dir := os.join_path(test_path, 'tp_proj')
+	os.mkdir_all(project_dir) or { panic(err) }
+	dep := repo_path.replace('\\', '/')
+	write_project_vmod(project_dir, ['${dep}@v1.0.0'])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vtp1'))
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
+	lock_before := os.read_file(lockfile_path(project_dir)) or { panic(err) }
+
+	test_utils.set_test_env(os.join_path(test_path, 'vtp2'))
+	cmd_ok_args(@LOCATION, [v_exe, 'install', '--locked'])
+	installed_path := os.join_path(test_path, 'vtp2', 'tp_pkg')
+	assert git_head(installed_path) == tagged_head
+	outdated := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
+	assert outdated.output.contains('Modules are up to date.'), outdated.output
+	// Like for a tag install without a lockfile, there is no branch to update to.
+	os.exec([v_exe, 'update', 'tp_pkg'])
+	assert git_head(installed_path) == tagged_head
+	assert os.read_file(lockfile_path(project_dir)) or { panic(err) } == lock_before
+
+	// A plain install of the same repository, which does follow its default
+	// branch, is updated, but the lock entry of the project stays at the tag.
+	test_utils.set_test_env(os.join_path(test_path, 'vtp3'))
+	run_dir := os.join_path(test_path, 'tp_run_dir')
+	os.mkdir_all(run_dir) or { panic(err) }
+	os.chdir(run_dir) or { panic(err) }
+	cmd_ok_args(@LOCATION, [v_exe, 'install', repo_path])
+	advance_local_git_module(repo_path)
+	os.chdir(project_dir) or { panic(err) }
+	res := cmd_ok_args(@LOCATION, [v_exe, 'update', 'tp_pkg'])
+	assert res.output.contains('Updated module `tp_pkg`.'), res.output
+	assert os.read_file(lockfile_path(project_dir)) or { panic(err) } == lock_before
+}
+
+// Case: a lock entry only applies to the source the dependency resolves to. An
+// entry that names another source, e.g. after an edit of the lockfile alone,
+// is an error with `--locked`, and is resolved anew without it.
+fn test_a_lock_entry_from_another_source_does_not_apply() {
+	repo_path := os.join_path(test_path, 'os_repo')
+	head := create_local_git_module(repo_path, 'os_pkg')
+	other_repo_path := os.join_path(test_path, 'os_other')
+	create_local_git_module(other_repo_path, 'os_other_pkg')
+	project_dir := os.join_path(test_path, 'os_proj')
+	os.mkdir_all(project_dir) or { panic(err) }
+	dep := repo_path.replace('\\', '/')
+	write_project_vmod(project_dir, [dep])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vos1'))
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
+	mut lf := read_lockfile(project_dir) or { panic(err) }
+	entry := lf.modules[dep] or { panic('no lock entry for `${dep}`') }
+	lf.upsert(LockedModule{
+		...entry
+		url: other_repo_path.replace('\\', '/')
+	}, dep)
+	write_lockfile(project_dir, lf) or { panic(err) }
+
+	test_utils.set_test_env(os.join_path(test_path, 'vos2'))
+	res_locked := cmd_fail_args(@LOCATION, [v_exe, 'install', '--locked'])
+	assert res_locked.output.contains('records it from'), res_locked.output
+	assert !os.exists(os.join_path(test_path, 'vos2', 'os_other_pkg'))
+	res := cmd_ok_args(@LOCATION, [v_exe, 'install', '-v'])
+	assert res.output.contains('resolving it anew'), res.output
+	assert git_head(os.join_path(test_path, 'vos2', 'os_pkg')) == head
+	assert !os.exists(os.join_path(test_path, 'vos2', 'os_other_pkg'))
+	lf_after := read_lockfile(project_dir) or { panic(err) }
+	entry_after := lf_after.modules[dep] or { panic('no lock entry for `${dep}`') }
+	assert entry_after.url == dep
+}
+
+fn test_lock_mismatch() {
+	entry := LockedModule{
+		requested: 'https://github.com/vlang/vsl'
+		revision:  'a'
+		url:       'https://github.com/vlang/vsl'
+	}
+	assert lock_mismatch(entry, 'https://github.com/vlang/vsl', 'https://github.com/vlang/vsl.git') == ''
+	assert lock_mismatch(entry, 'https://github.com/vlang/vsl@v1.0.0', 'https://github.com/vlang/vsl').contains('records `https://github.com/vlang/vsl` for it')
+	assert lock_mismatch(entry, 'https://github.com/vlang/vsl', 'https://github.com/other/vsl').contains('records it from')
+	assert lock_mismatch(LockedModule{
+		...entry
+		url: '--upload-pack=touch pwned'
+	}, 'https://github.com/vlang/vsl', 'https://github.com/vlang/vsl') != ''
+}
+
+// Case: the submodules of a locked dependency follow the locked revision, so
+// that the checkout stays clean, and a later `v install` does not refuse it.
+fn test_locked_install_moves_submodules_along() {
+	$if windows {
+		// The nested `.git/modules` paths of a submodule clone exceed MAX_PATH
+		// under the test directories there.
+		return
+	}
+	// Recent git versions refuse to clone submodules from local paths by default.
+	os.setenv('GIT_CONFIG_COUNT', '1', true)
+	os.setenv('GIT_CONFIG_KEY_0', 'protocol.file.allow', true)
+	os.setenv('GIT_CONFIG_VALUE_0', 'always', true)
+	defer {
+		os.unsetenv('GIT_CONFIG_COUNT')
+		os.unsetenv('GIT_CONFIG_KEY_0')
+		os.unsetenv('GIT_CONFIG_VALUE_0')
+	}
+	sub_repo_path := os.join_path(test_path, 'sm_sub')
+	create_local_git_module(sub_repo_path, 'sm_sub')
+	repo_path := os.join_path(test_path, 'sm_repo')
+	create_local_git_module(repo_path, 'sm_pkg')
+	git_commit_args := ['-c', 'user.email=ci@vlang.io', '-c', 'user.name=V CI', 'commit', '--quiet']
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'submodule', 'add', '--quiet', sub_repo_path,
+		'sub'])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, ...git_commit_args, '-m', 'add sub'])
+	head := git_head(repo_path)
+	project_dir := os.join_path(test_path, 'sm_proj')
+	os.mkdir_all(project_dir) or { panic(err) }
+	write_project_vmod(project_dir, [repo_path])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vsm1'))
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
+
+	// The repository moves on to a later commit of its submodule.
+	advance_local_git_module(sub_repo_path)
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'submodule', 'update', '--quiet', '--remote',
+		'sub'])
+	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, ...git_commit_args, '-am', 'bump sub'])
+
+	test_utils.set_test_env(os.join_path(test_path, 'vsm2'))
+	cmd_ok_args(@LOCATION, [v_exe, 'install', '--locked'])
+	installed_path := os.join_path(test_path, 'vsm2', 'sm_pkg')
+	assert git_head(installed_path) == head
+	status := cmd_ok_args(@LOCATION, ['git', '-C', installed_path, 'status', '--porcelain'])
+	assert status.output.trim_space() == ''
+	cmd_ok_args(@LOCATION, [v_exe, 'install'])
 }
 
 // Case: `--local --locked` outside of a project is an error, the same as a
