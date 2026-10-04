@@ -1,0 +1,35 @@
+struct Routes {}
+
+fn (r Routes) list() int {
+	return 1
+}
+
+fn (r Routes) item() int {
+	return 2
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn main() {
+	mut hits := []string{}
+	$for method in Routes.methods {
+		$if method.name == 'list' {
+			hits << method.name
+		}
+		$if method.name.to_upper().len > 3 {
+			hits << method.name
+		}
+	}
+	$for field in User.fields {
+		$if field.name == 'name' {
+			hits << field.name
+		} $else $if field.name == 'email' ||
+			field.attrs.len > 0 {
+			hits << field.name
+		}
+	}
+	println(hits)
+}

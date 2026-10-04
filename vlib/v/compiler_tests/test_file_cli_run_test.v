@@ -1,4 +1,5 @@
 import os
+import v.cmdexec
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
@@ -8,7 +9,7 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3_test_file_cli_runner() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_test_file_cli_runner')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -25,13 +26,13 @@ fn test_direct_test_file_run_executes_harness() {
 
 	fail_src := os.join_path(tmp_dir, 'failing_test.v')
 	os.write_file(fail_src, 'fn test_failure() {\n\tassert false\n}\n')!
-	fail := os.execute('cd ${os.quoted_path(tmp_dir)} && ${os.quoted_path(v3_bin)} failing_test.v')
+	fail := cmdexec.run_in(v3_bin, ['failing_test.v'], tmp_dir)
 	assert fail.exit_code != 0, fail.output
 	assert fail.output.contains('Assertion failed'), fail.output
 
 	pass_src := os.join_path(tmp_dir, 'passing_test.v')
 	os.write_file(pass_src, 'fn test_success() {\n\tassert true\n}\n')!
-	pass := os.execute('cd ${os.quoted_path(tmp_dir)} && ${os.quoted_path(v3_bin)} passing_test.v')
+	pass := cmdexec.run_in(v3_bin, ['passing_test.v'], tmp_dir)
 	assert pass.exit_code == 0, pass.output
 
 	module_test_src := os.join_path(tmp_dir, 'module_test.v')
@@ -43,9 +44,9 @@ fn test_non_main_module() {
 ')!
 	module_test_bin := os.join_path(tmp_dir, 'module_test')
 	module_test_build :=
-		os.execute('${os.quoted_path(v3_bin)} -o ${os.quoted_path(module_test_bin)} ${os.quoted_path(module_test_src)}')
+		os.exec([v3_bin, '-o', module_test_bin, module_test_src])
 	assert module_test_build.exit_code == 0, module_test_build.output
-	module_test_run := os.execute(os.quoted_path(module_test_bin))
+	module_test_run := os.exec([module_test_bin])
 	assert module_test_run.exit_code == 0, module_test_run.output
 
 	propagation_test_src := os.join_path(tmp_dir, 'propagation_test.v')
@@ -58,7 +59,7 @@ fn test_implicit_result_propagation() {
 }
 ')!
 	propagation_test :=
-		os.execute('cd ${os.quoted_path(tmp_dir)} && ${os.quoted_path(v3_bin)} propagation_test.v')
+		cmdexec.run_in(v3_bin, ['propagation_test.v'], tmp_dir)
 	assert propagation_test.exit_code == 0, propagation_test.output
 }
 
@@ -99,9 +100,9 @@ fn test_virtual_module_sources_are_available() {
 }
 ')!
 	test_bin := os.join_path(root, 'virtual_module_test')
-	build := os.execute('${os.quoted_path(v3_bin)} -o ${os.quoted_path(test_bin)} ${os.quoted_path(test_file)}')
+	build := os.exec([v3_bin, '-o', test_bin, test_file])
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(test_bin))
+	run := os.exec([test_bin])
 	assert run.exit_code == 0, run.output
 }
 
@@ -130,7 +131,7 @@ fn test_directory_test_command_sets_test_define_before_parsing_inputs() {
 ')!
 	bin := os.join_path(tmp_dir, 'directory_tests')
 	result :=
-		os.execute('${os.quoted_path(v3_bin)} test ${os.quoted_path(tmp_dir)} -o ${os.quoted_path(bin)}')
+		os.exec([v3_bin, 'test', tmp_dir, '-o', bin])
 	assert result.exit_code == 0, result.output
 }
 
@@ -161,12 +162,12 @@ fn test_directory_test_command_filters_define_suffixes() {
 ')!
 	without_ssl_bin := os.join_path(tmp_dir, 'tests_without_ssl')
 	without_ssl :=
-		os.execute('${os.quoted_path(v3_bin)} test ${os.quoted_path(tmp_dir)} -o ${os.quoted_path(without_ssl_bin)}')
+		os.exec([v3_bin, 'test', tmp_dir, '-o', without_ssl_bin])
 	assert without_ssl.exit_code == 0, without_ssl.output
 
 	with_ssl_bin := os.join_path(tmp_dir, 'tests_with_ssl')
 	with_ssl :=
-		os.execute('${os.quoted_path(v3_bin)} -d ssl test ${os.quoted_path(tmp_dir)} -o ${os.quoted_path(with_ssl_bin)}')
+		os.exec([v3_bin, '-d', 'ssl', 'test', tmp_dir, '-o', with_ssl_bin])
 	assert with_ssl.exit_code == 0, with_ssl.output
 }
 
@@ -185,7 +186,7 @@ fn test_run_forwards_all_args_after_input_file() {
 	app_src := os.join_path(tmp_dir, 'app.v')
 	os.write_file(app_src, "import os\nfn main() {\n\tprintln(os.args[1..].join('|'))\n}\n")!
 	res :=
-		os.execute('cd ${os.quoted_path(tmp_dir)} && ${os.quoted_path(v3_bin)} run app.v --help pos --flag=1')
+		cmdexec.run_in(v3_bin, ['run', 'app.v', '--help', 'pos', '--flag=1'], tmp_dir)
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('--help|pos|--flag=1'), res.output
 }

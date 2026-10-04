@@ -33,7 +33,7 @@ fn enum_storage_c_type_is_unsigned(storage_ct string) bool {
 
 fn (mut g FlatGen) register_enum_backing_info(enum_name string, backing string) {
 	info := EnumBackingInfo{
-		c_name:         g.cname(enum_name)
+		c_name:         g.enum_typedef_c_name(enum_name)
 		storage_c_type: g.enum_backing_storage_c_type(backing)
 	}
 	g.enum_backing_infos[enum_name] = info
@@ -1552,10 +1552,11 @@ fn (mut g FlatGen) enum_decls() {
 					continue
 				}
 				emitted[cn] = true
+				type_cn := g.enum_typedef_c_name(name)
 				is_flag := enum_decl_is_flag(node)
 				if backing := enum_decl_backing_type(node) {
 					storage_ct := g.enum_emit_storage_c_type(name, backing)
-					g.writeln('typedef ${storage_ct} ${cn};')
+					g.writeln('typedef ${storage_ct} ${type_cn};')
 					if is_flag {
 						mut val := 0
 						for i in 0 .. node.children_count {
@@ -1566,7 +1567,7 @@ fn (mut g FlatGen) enum_decls() {
 								}
 							}
 							cfield := g.cname(f.value)
-							g.writeln('static const ${cn} ${cn}__${cfield} = (${cn})((${storage_ct})1 << ${val});')
+							g.writeln('static const ${type_cn} ${cn}__${cfield} = (${type_cn})((${storage_ct})1 << ${val});')
 							val++
 						}
 					} else {
@@ -1612,7 +1613,7 @@ fn (mut g FlatGen) enum_decls() {
 								field_values[f.value] = value
 							}
 							cfield := g.cname(f.value)
-							g.writeln('#define ${cn}__${cfield} ((${cn})(${value_expr}))')
+							g.writeln('#define ${cn}__${cfield} ((${type_cn})(${value_expr}))')
 							if value_known {
 								next_value = value + 1
 								next_value_known = true
@@ -1693,7 +1694,7 @@ fn (mut g FlatGen) enum_decls() {
 						}
 					}
 				}
-				g.writeln('} ${cn};')
+				g.writeln('} ${type_cn};')
 				g.writeln('')
 			}
 			else {}
@@ -1718,7 +1719,6 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 			}
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
-				enum_cn := g.cname(name)
 				fn_cn := g.enum_autostr_c_name(name)
 				if !g.enum_autostr_is_used(fn_cn) {
 					continue
@@ -1727,7 +1727,7 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 					continue
 				}
 				emitted[fn_cn] = true
-				g.writeln('string ${fn_cn}__autostr(${enum_cn} it);')
+				g.writeln('string ${fn_cn}__autostr(${g.enum_typedef_c_name(name)} it);')
 			}
 			else {}
 		}
@@ -1754,6 +1754,7 @@ fn (mut g FlatGen) enum_str_defs() {
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
 				enum_cn := g.cname(name)
+				type_cn := g.enum_typedef_c_name(name)
 				fn_cn := g.enum_autostr_c_name(name)
 				if !g.enum_autostr_is_used(fn_cn) {
 					continue
@@ -1769,7 +1770,7 @@ fn (mut g FlatGen) enum_str_defs() {
 					g.emit_flag_enum_autostr(node, name, enum_cn, fn_cn)
 				} else if backing := enum_decl_backing_type(node) {
 					storage_ct := g.enum_emit_storage_c_type(name, backing)
-					g.writeln('string ${fn_cn}__autostr(${enum_cn} it) {')
+					g.writeln('string ${fn_cn}__autostr(${type_cn} it) {')
 					for i in 0 .. node.children_count {
 						f := g.a.child_node(&node, i)
 						raw_fname := f.value
@@ -1785,7 +1786,7 @@ fn (mut g FlatGen) enum_str_defs() {
 					g.writeln('}')
 					g.writeln('')
 				} else {
-					g.writeln('string ${fn_cn}__autostr(${enum_cn} it) {')
+					g.writeln('string ${fn_cn}__autostr(${type_cn} it) {')
 					for i in 0 .. node.children_count {
 						f := g.a.child_node(&node, i)
 						raw_fname := f.value
@@ -1856,6 +1857,21 @@ fn (g &FlatGen) enum_type_c_name(name string) string {
 	return g.cname(g.enum_type_codegen_name(name))
 }
 
+// enum_typedef_c_name returns the C name of the enum's own type. Like structs, a
+// main-module enum keeps V1's `main__` namespace there, so it can share its name with a
+// type that an included C header declares (`typedef enum { ... } MediaState;`).
+// Its values and synthesized helpers keep their `<Enum>__` prefix.
+fn (g &FlatGen) enum_typedef_c_name(name string) string {
+	if !name.contains('.') {
+		if module_name := g.enum_modules[name] {
+			if module_name in ['', 'main'] {
+				return g.cname('main.${name}')
+			}
+		}
+	}
+	return g.cname(name)
+}
+
 fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
 	mut name := type_name
 	if name.starts_with('main.') {
@@ -1903,7 +1919,7 @@ fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, enum_cn s
 	if backing := enum_decl_backing_type(node) {
 		storage_ct = g.enum_emit_storage_c_type(name, backing)
 	}
-	g.writeln('string ${fn_cn}__autostr(${enum_cn} it) {')
+	g.writeln('string ${fn_cn}__autostr(${g.enum_typedef_c_name(name)} it) {')
 	g.writeln('\t${storage_ct} __fe_v = (${storage_ct})it;')
 	g.writeln('\tstring __fe_res = (string){.str = (u8*)"${short}{", .len = ${short.len + 1}, .is_lit = 1};')
 	g.writeln('\tbool __fe_first = true;')

@@ -22,7 +22,8 @@ fn test_bundled_libgc_compiles_with_windows_header_exclusion_macros() {
 	gc_defines := '-DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_NOT_DLL=1 -DGC_WIN32_THREADS=1 -DNO_MSGBOX_ON_ERROR=1 -DCONSOLE_LOG=1 -DGC_BUILTIN_ATOMIC=1 -DALL_INTERIOR_POINTERS=1'
 	for macros in windows_header_macro_sets {
 		cmd := '${os.quoted_path(gcc)} -fsyntax-only -w ${gc_defines} -I ${os.quoted_path(include_dir)} ${macros.join(' ')} ${os.quoted_path(gc_source)}'
-		res := os.execute(cmd)
+		res := os.exec([gcc, '-fsyntax-only', '-w', ...(os.split_args(gc_defines) or { panic(err) }),
+			'-I', include_dir, ...macros, gc_source])
 		assert res.exit_code == 0, '${cmd}\n${res.output}'
 	}
 }

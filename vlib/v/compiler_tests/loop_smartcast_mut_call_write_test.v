@@ -12,7 +12,9 @@ fn loop_smartcast_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${loop_smartcast_vexe} -gc none -path "${loop_smartcast_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${loop_smartcast_v3_src}')
+		os.exec([loop_smartcast_vexe, '-gc', 'none', '-path',
+			'${loop_smartcast_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${loop_smartcast_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -23,7 +25,7 @@ fn loop_smartcast_run_bad(v3_bin string, name string, source string, expected st
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -35,10 +37,10 @@ fn loop_smartcast_run_good(v3_bin string, name string, source string) string {
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

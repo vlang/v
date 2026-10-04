@@ -30,7 +30,9 @@ fn build_v3_for_in_ref_binding() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${for_in_ref_binding_vexe} -gc none -path "${for_in_ref_binding_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${for_in_ref_binding_v3_src}')
+		os.exec([for_in_ref_binding_vexe, '-gc', 'none', '-path',
+			'${for_in_ref_binding_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			for_in_ref_binding_v3_src])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -43,10 +45,10 @@ fn for_in_ref_binding_run_good(v3_bin string, name string, src string) string {
 	out := for_in_ref_binding_temp_path(name)
 	src_path := out + '.v'
 	os.write_file(src_path, src) or { panic(err) }
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -55,7 +57,7 @@ fn for_in_ref_binding_run_bad(v3_bin string, name string, src string, expected s
 	out := for_in_ref_binding_temp_path(name)
 	src_path := out + '.v'
 	os.write_file(src_path, src) or { panic(err) }
-	result := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	result := os.exec([v3_bin, src_path, '-b', 'c', '-o', '${out}'])
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 }

@@ -129,7 +129,7 @@ fn main() {
 	println(render_match(item))
 }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-o', output, source])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	// The stringifier needs the stored object pointer, not an address of that pointer.

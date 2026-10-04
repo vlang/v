@@ -264,7 +264,7 @@ fn test_match_tuple_rejects_all_none_non_final_slot() {
 	path := os.join_path(os.vtmp_dir(), 'v3_all_none_tuple_slot_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	os.write_file(path, 'fn main() { a, b := match true { true { none, 1 } else { none, 2 } }; _ = a; _ = b }\n')!
-	result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+	result := os.exec([@VEXE, '-check', path])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot assign a `none` value to a variable'), result.output
 }

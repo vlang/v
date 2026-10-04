@@ -3,6 +3,7 @@
 // signature help (`fn^`), completion (a bare column) and inlay hints (`ih^`).
 // V3 answers them from the checked program, in V1's formats.
 import os
+import v.cmdexec
 import time
 import x.json2
 import v.compiler_tests.method_form
@@ -485,7 +486,8 @@ fn main() {
 "
 
 fn testsuite_begin() {
-	res := os.execute('${os.quoted_path(vexe)} -gc none -prealloc -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(line_info_v3_bin)} ${os.quoted_path(v3_src)}')
+	res := os.exec([vexe, '-gc', 'none', '-prealloc', '-path', '${'${vlib_dir}|@vlib|@vmodules'}',
+		'-o', line_info_v3_bin, '${v3_src}'])
 	assert res.exit_code == 0, res.output
 	os.mkdir_all(os.join_path(work_dir, 'completion')) or { panic(err) }
 	os.mkdir_all(os.join_path(work_dir, 'declarations')) or { panic(err) }
@@ -552,7 +554,8 @@ fn ask_at(dir string, spec string) string {
 }
 
 fn ask_at_only(dir string, spec string) string {
-	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor -vls-mode -line-info "main.v:${spec}" main.v')
+	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
+		'main.v:' + '${spec}', 'main.v'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output.trim_space()
 }
@@ -656,7 +659,8 @@ fn without_host(answer string) string {
 // ask_in asks `-line-info` about `spec`, a file of the program of `dir` with a
 // position (`models/models.v:10:10`), checking the program from its main.v.
 fn ask_in(dir string, spec string) string {
-	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor -vls-mode -line-info "${spec}" main.v')
+	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
+		'${spec}', 'main.v'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output.trim_space()
 }
@@ -917,7 +921,8 @@ fn test_inlay_hints_of_the_whole_file() {
 // answers come one per line, after the index of their question.
 fn ask_many(dir string, questions []string) []string {
 	spec := questions.map('main.v:${it}').join('\t')
-	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor -vls-mode -line-info "${spec}" main.v')
+	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
+		'${spec}', 'main.v'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output.trim_right('\n').split('\n')
 }
@@ -1041,7 +1046,8 @@ fn ask_once(dir string, questions []string) []string {
 // ask_once_with is ask_once with the options `options` besides.
 fn ask_once_with(dir string, options string, questions []string) []string {
 	spec := questions.map('main.v:${it}').join('\t')
-	res := os.execute('cd ${os.quoted_path(dir)} && ${os.quoted_path(line_info_v3_bin)} -w -check -nocolor ${options} -vls-mode -line-info "${spec}" .')
+	res := cmdexec.run_in(line_info_v3_bin, ['-w', '-check', '-nocolor',
+		...(os.split_args(options) or { panic(err) }), '-vls-mode', '-line-info', '${spec}', '.'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output.trim_right('\n').split('\n').map(it.all_after('\t'))
 }
@@ -1205,7 +1211,7 @@ fn test_a_child_whose_server_ended_before_the_child_followed_it_ends() {
 	// to end then, before it checks and prints the error of this program.
 	dir := program_dir('orphan_child', 'module main\n\nfn main() {\n\tprintln(missing)\n}\n')
 	fifo := os.join_path(work_dir, 'orphan_child.fifo')
-	assert os.execute('mkfifo ${os.quoted_path(fifo)}').exit_code == 0
+	assert os.exec(['mkfifo', '${fifo}']).exit_code == 0
 	mut p := start_server(dir, {
 		'V_DIAGNOSTICS_CHILD_PAUSE': fifo
 	})
@@ -1840,7 +1846,8 @@ fn check_as_prepared_server(dir string, change fn (string)) (string, string) {
 
 // one_shot_check checks `dir` as a one-shot check of the same command line.
 fn one_shot_check(dir string) string {
-	res := os.execute('cd ${os.quoted_path(dir)} && V_CHECK_SELECTED_FILES_ONLY=1 ${os.quoted_path(line_info_v3_bin)} -no-memory-limit -w -check -nocolor .')
+	res := cmdexec.run_in('env', ['V_CHECK_SELECTED_FILES_ONLY=1', line_info_v3_bin, '-no-memory-limit',
+		'-w', '-check', '-nocolor', '.'], dir)
 	return 'exit ${res.exit_code}\n' + res.output.trim_space()
 }
 

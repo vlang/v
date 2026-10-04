@@ -520,7 +520,7 @@ fn test_external_stdio_client_returns_after_acknowledgment() {
 		'listen_consumer.v': consumer
 	} {
 		path := os.join_path(@VEXEROOT, 'vlib/mcp/testdata', source)
-		built := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(binary)} ${os.quoted_path(path)}')
+		built := os.exec([@VEXE, '-o', binary, path])
 		assert built.exit_code == 0, built.output
 	}
 	mut process := os.new_process(consumer)

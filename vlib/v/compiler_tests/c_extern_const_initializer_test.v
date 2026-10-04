@@ -15,7 +15,7 @@ fn test_c_extern_called_from_imported_const_has_prototype() {
 		panic(err)
 	}
 	out_path := os.join_path(root, 'out.c')
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -gc none -nocache -o ${os.quoted_path(out_path)} ${os.quoted_path(main_path)}')
+	result := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-nocache', '-o', out_path, main_path])
 	assert result.exit_code == 0, result.output
 	c_code := os.read_file(out_path) or { panic(err) }
 	assert c_code.contains('int hidden_external(void);'), 'missing C prototype for const initializer'

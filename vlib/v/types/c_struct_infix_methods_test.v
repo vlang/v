@@ -21,7 +21,8 @@ ${visibility}fn (a C.Counter) + (b C.Counter) C.Counter { return C.Counter{value
 			use := if visibility.len == 0 { 'extension.used();' } else { '' }
 			os.write_file(os.join_path(root, 'main.v'), 'module main\nimport provider\nimport left as extension\nfn main() { ${use} mut a := provider.make(); b := provider.make(); ${body} }\n')!
 			for flags in ['-W', '-W -no-parallel'] {
-				result := os.execute('${os.quoted_path(@VEXE)} ${flags} -check ${os.quoted_path(root)}')
+				result := os.exec([@VEXE, ...(os.split_args(flags) or { panic(err) }), '-check',
+					root])
 				if visibility.len > 0 {
 					assert result.exit_code == 0, result.output
 				} else {
@@ -39,7 +40,7 @@ pub fn (a C.Counter) + (b C.Counter) C.Counter { return C.Counter{value: a.value
 	}
 	for body in ['value := a + b; println(value.value)', 'a += b; println(a.value)'] {
 		os.write_file(os.join_path(root, 'main.v'), 'module main\nimport provider\nimport left\nimport right\nfn main() { left.used(); right.used(); mut a := provider.make(); b := provider.make(); ${body} }\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+		result := os.exec([@VEXE, '-check', root])
 		assert result.exit_code != 0, result.output
 	}
 }

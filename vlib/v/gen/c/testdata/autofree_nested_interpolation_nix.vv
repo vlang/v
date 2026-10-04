@@ -3,7 +3,7 @@ import os
 
 fn main() {
 	name := '  println(123)'
-	res := os.execute('${os.quoted_path(@VEXE)} -e "${name[2..]}" ')
+	res := os.exec([@VEXE, '-e', name[2..]])
 	println(res.exit_code)
 	println(res.output.trim_space())
 }

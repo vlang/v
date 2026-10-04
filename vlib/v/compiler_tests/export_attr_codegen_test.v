@@ -12,7 +12,8 @@ fn export_attr_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${export_attr_vexe} -gc none -path "${export_attr_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${export_attr_v3_src}')
+		os.exec([export_attr_vexe, '-gc', 'none', '-path',
+			'${export_attr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${export_attr_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -31,11 +32,11 @@ fn export_attr_project(name string, files map[string]string) string {
 }
 
 fn export_attr_compile(v3_bin string, main_file string, output string) os.Result {
-	return os.execute('${v3_bin} ${main_file} -b c -o ${output}')
+	return os.exec([v3_bin, main_file, '-b', 'c', '-o', output])
 }
 
 fn export_attr_compile_without_memory_limit(v3_bin string, main_file string, output string) os.Result {
-	return os.execute('${v3_bin} -no-memory-limit ${main_file} -b c -o ${output}')
+	return os.exec([v3_bin, '-no-memory-limit', main_file, '-b', 'c', '-o', output])
 }
 
 fn test_exported_imported_function_is_rooted_and_emitted_as_raw_symbol() {
@@ -76,7 +77,7 @@ fn helper_unused() int {
 	bin_path := os.join_path(root, 'app')
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '41\n41\n41', run.output
 
@@ -132,7 +133,7 @@ fn main() {
 	bin_path := os.join_path(root, 'app')
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), bin_path)
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '7', run.output
 

@@ -17,7 +17,7 @@ fn cross_generate_with(flags string, name string, source string) string {
 	src := os.join_path(dir, 'm.v')
 	os.write_file(src, source) or { panic(err) }
 	out := os.join_path(dir, 'out.c')
-	res := os.execute('${os.quoted_path(vexe)} ${flags} -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+	res := os.exec([vexe, ...(os.split_args(flags) or { panic(err) }), '-o', '${out}', '${src}'])
 	assert res.exit_code == 0, res.output
 	return os.read_file(out) or { panic(err) }
 }
@@ -56,7 +56,8 @@ fn test_cross_output_keeps_checker_errors_for_the_selected_target() {
 	os.write_file(src, 'fn main() {\n\t\$if windows {\n\t\tmissing_windows_value()\n\t} \$else {\n\t\tmissing_posix_value()\n\t}\n}\n')!
 	for target in ['linux', 'windows'] {
 		out := os.join_path(dir, '${target}.c')
-		result := os.execute('${os.quoted_path(vexe)} -no-retry-compilation -building-v -cross -os ${target} -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+		result := os.exec([vexe, '-no-retry-compilation', '-building-v', '-cross', '-os', '${target}',
+			'-o', '${out}', '${src}'])
 		assert result.exit_code != 0, result.output
 		selected := if target == 'windows' {
 			'missing_windows_value'
@@ -421,6 +422,17 @@ fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
 	assert condition.contains('__GLIBC__'), '<sys/poll.h> is guarded by `${condition}`, which does not check for glibc'
 	fallback := c_code[sys_poll_at..].all_before('#endif')
 	assert fallback.contains('#else\n#include <poll.h>'), 'musl and the other targets lost <poll.h>: ${fallback}'
+}
+
+fn test_glibc_hello_world_declares_the_array_constructors_it_calls() {
+	// A literal-output program skips markused's runtime seeds, while the glibc
+	// backtrace it reaches through `panic` passes an argument array to `addr2line`.
+	c_code := cross_generate_with('-os linux -glibc', 'glibc_hello', "fn main() {\n\tprintln('Hello World!')\n}\n")
+	for ctor in ['new_array_from_c_array', 'new_array_from_c_array_noscan'] {
+		if c_code.contains('(${ctor}(') {
+			assert c_code.contains('\narray ${ctor}('), '`${ctor}` is called but never declared'
+		}
+	}
 }
 
 fn test_cross_windows_output_guards_the_msvc_only_headers() {

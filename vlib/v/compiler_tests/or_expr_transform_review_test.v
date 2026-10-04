@@ -23,7 +23,8 @@ fn build_v3_or_review() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${or_review_vexe} -gc none -path "${or_review_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${or_review_v3_src}')
+		os.exec([or_review_vexe, '-gc', 'none', '-path', '${or_review_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${or_review_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,7 +34,7 @@ fn or_review_gen_c(v3_bin string, name string, src string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C'
 	return os.read_file(c_path) or { panic(err) }
@@ -43,9 +44,9 @@ fn or_review_run(v3_bin string, name string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -53,7 +54,7 @@ fn or_review_run(v3_bin string, name string, src string) string {
 fn or_review_compile_bad(v3_bin string, name string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
-	compile := os.execute('${v3_bin} ${src_path} -b c')
+	compile := os.exec([v3_bin, src_path, '-b', 'c'])
 	assert compile.exit_code != 0, '${name}: invalid source compiled successfully'
 	return compile.output
 }
@@ -160,8 +161,8 @@ fn test_backed_enum_map_key_uses_backing_storage_size() {
 	assert c_source.contains('new_map(sizeof(u64), sizeof(int), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
 	assert c_source.contains('u64 __map_key_'), 'backed enum map key temp does not use backing storage'
 	assert !c_source.contains('Wide __map_key_'), 'backed enum map key temp still uses enum typedef storage'
-	assert !c_source.contains('new_map(sizeof(Wide)'), 'backed enum map allocation still uses enum typedef size'
-	assert !c_source.contains('&(Wide[]){'), 'backed enum map compound key literal still uses enum typedef storage'
+	assert !c_source.contains('new_map(sizeof(main__Wide)'), 'backed enum map allocation still uses enum typedef size'
+	assert !c_source.contains('&(main__Wide[]){'), 'backed enum map compound key literal still uses enum typedef storage'
 }
 
 fn test_pointer_channel_try_call_derefs_receiver() {

@@ -10,7 +10,8 @@ const pwf_v3_src = os.join_path(pwf_v3_dir, 'v.v')
 fn build_parallel_failure_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_failure_${os.getpid()}_${rand.ulid()}')
 	build :=
-		os.execute('${os.quoted_path(@VEXE)} -gc none -path "${pwf_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(pwf_v3_src)}')
+		os.exec([@VEXE, '-gc', 'none', '-path', '${pwf_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${pwf_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -57,7 +58,7 @@ fn generate_parallel_failure_c(v3_bin string, source string, stage string) strin
 	}
 	os.setenv('VJOBS', '4', true)
 	result :=
-		os.execute('${os.quoted_path(v3_bin)} -silent ${os.quoted_path(source)} -o ${os.quoted_path(out)}')
+		os.exec([v3_bin, '-silent', source, '-o', '${out}'])
 	assert result.exit_code == 0, '${stage}: ${result.output}'
 	return os.read_file(out) or { panic(err) }
 }

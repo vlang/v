@@ -57,6 +57,30 @@ fn test_response_metadata_drops_control_headers() {
 	assert m['x-trace-id'] == ['abc']
 }
 
+// A response may spell the same field with different capitalization, and the
+// HTTP parser preserves each spelling rather than folding them. Metadata keys
+// are documented as case-insensitive, so one field must come back as one
+// lowercase key holding every value in wire order -- the same contract
+// request_metadata got in #29285.
+fn test_response_metadata_merges_capitalization_variants() {
+	mut h := http.new_header()
+	h.add(.content_type, 'application/grpc+proto')
+	for k, v in {
+		'X-Trace': 'first'
+		'x-trace': 'second'
+		'X-TRACE': 'third'
+	} {
+		h.add_custom(k, v) or { panic(err) }
+	}
+	m := response_metadata(h)
+	assert m['x-trace'] == ['first', 'second', 'third']
+	// no capitalized spelling may survive as its own key, and the three headers
+	// must not leave three separate entries behind
+	assert 'X-Trace' !in m
+	assert 'X-TRACE' !in m
+	assert m.len == 1
+}
+
 fn test_transport_error_maps_deadline_vs_unavailable() {
 	// the deadline_hit flag decides the code, not the error text
 	assert transport_error(error('read timed out'), true).status.code == .deadline_exceeded

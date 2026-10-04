@@ -9480,12 +9480,34 @@ fn expand_v3_exclude_patterns(patterns []string, vroot string) []string {
 	return expanded
 }
 
+// parse_memory_limit converts a nonnegative limit, defaulting to MiB, to KiB.
+fn parse_memory_limit(value string) !i64 {
+	if value.len == 0 {
+		return error('expected a nonnegative integer with an optional K, M, or G suffix')
+	}
+	number, multiplier := match value[value.len - 1] {
+		`K`, `k` { value[..value.len - 1], i64(1) }
+		`M`, `m` { value[..value.len - 1], i64(1) << 10 }
+		`G`, `g` { value[..value.len - 1], i64(1) << 20 }
+		else { value, i64(1) << 10 }
+	}
+	if number.len == 0 || !number.bytes().all(it >= `0` && it <= `9`) {
+		return error('expected a nonnegative integer with an optional K, M, or G suffix')
+	}
+	limit := strconv.parse_int(number, 10, 64) or { return error('memory limit is too large') }
+	if limit > max_i64 / multiplier {
+		return error('memory limit is too large')
+	}
+	return limit * multiplier
+}
+
 fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
 		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files', '-icon',
-		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix', '-memory-limit']
+		'--icon', '-seticon', '--seticon', '-line-info', '-raw-vsh-tmp-prefix', '-memory-limit',
+		'--memory-limit']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -10179,9 +10201,7 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-ownership' || args[i] == '--ownership' {
 			// The ownership checker itself is compiled into v3 via `-d ownership`.
-			// The main V launcher pairs this flag with a target `-d ownership`, which
-			// intentionally exposes `ownership` to target `$if` blocks and selects target
-			// `_d_ownership.v` files. This flag enables the ownership analysis itself.
+			// The final mode also selects ownership-specific target branches and files.
 			ownership_mode = true
 			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
@@ -10521,26 +10541,12 @@ pub fn run(args []string) {
 			no_memory_limit = true
 			i++
 		} else if args[i] == '-memory-limit' || args[i] == '--memory-limit' {
-			s := args[i + 1]
-			n, m := match s[s.len - 1] {
-				`K`, `k` { s[..s.len - 1], i64(1) }
-				`M`, `m` { s[..s.len - 1], i64(1) << 10 }
-				`G`, `g` { s[..s.len - 1], i64(1) << 20 }
-				else { s, i64(1) << 10 }
-			}
-			if n.len == 0 || !n.is_int() {
-				eprintln('invalid memory limit: ${s}')
-				exit(1)
-			}
-			memory_limit = m * strconv.parse_int(n, 10, 64) or {
-				eprintln('invalid memory limit: ${s}')
+			memory_limit = parse_memory_limit(args[i + 1]) or {
+				eprintln('invalid value for `${args[i]}`: ${err.msg()}')
 				exit(1)
 			}
 			if memory_limit == 0 {
 				no_memory_limit = true
-			} else if memory_limit < 0 {
-				eprintln('invalid memory limit: ${s}')
-				exit(1)
 			}
 			i += 2
 		} else if args[i] == '-prealloc' {
@@ -10815,6 +10821,9 @@ pub fn run(args []string) {
 	if ownership_mode && backend != 'fastc' && !ownership_checker_compiled() {
 		eprintln('ownership support is not compiled into this v3 executable')
 		exit(1)
+	}
+	if ownership_mode {
+		record_user_define(mut user_defines, mut compile_values, 'ownership')
 	}
 	if backend !in ['c', 'fastc', 'arm64', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
@@ -14881,7 +14890,7 @@ pub fn run(args []string) {
 					}
 				}
 				$if windows {
-					exit(os.system(v3_exec_command(os.executable(), regeneration_args)))
+					exit(os.system_args([os.executable(), ...regeneration_args]))
 				}
 				os.execvp(os.executable(), regeneration_args) or {
 					eprintln('failed to restart monolithic C compilation: ${err.msg()}')
@@ -15596,7 +15605,7 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	$if windows {
 		// `_execvp` would exit this process with status 0 before the retried
 		// build finishes, so forward the retried build's status instead.
-		exit(os.system(v3_exec_command(executable, restart_args)))
+		exit(os.system_args([executable, ...restart_args]))
 	}
 	os.execvp(executable, restart_args) or {
 		eprintln('failed to restart the build after discarding stale cache entries: ${err.msg()}')
@@ -16741,22 +16750,13 @@ fn restart_v3_with_args(extra_args []string) {
 		// Windows has no exec either: `_execvp` would start the child and then
 		// exit this process with status 0, dropping the restarted build's
 		// result on the floor.
-		exit(os.system(v3_exec_command(executable, args)))
+		exit(os.system_args([executable, ...args]))
 	} $else {
 		os.execvp(executable, args) or {
 			eprintln('failed to restart ${executable}: ${err.msg()}')
 			exit(1)
 		}
 	}
-}
-
-// v3_exec_command renders an argv for a shell, for the platforms that cannot exec.
-fn v3_exec_command(executable string, args []string) string {
-	mut command := [os.quoted_path(executable)]
-	for arg in args {
-		command << os.quoted_path(arg)
-	}
-	return command.join(' ')
 }
 
 fn cache_external_input_owner_modules(state &V3ModuleCacheState, a &flat.FlatAst, unscoped_inputs map[string][]string, static_inputs map[string][]string, user_files []string, c_flags []string, ccompiler string, target pref.Target) (map[string]bool, bool) {
@@ -20785,6 +20785,7 @@ fn (prepared &PreparedImports) resolution_change(prefs &pref.Preferences, projec
 // length and only its stored NodeIds shift. insertions must be sorted ascending
 // by pos (equal positions keep insertion order); the boundary loop produces them
 // in strictly increasing region order.
+@[direct_array_access]
 fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion) {
 	if insertions.len == 0 {
 		return
@@ -20812,8 +20813,12 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 		end = insertion.pos
 	}
 	for i in 0 .. a.nodes.len {
+		// Only directives need a look at their text; leave the other nodes in place.
+		if a.nodes[i].kind != .directive {
+			continue
+		}
 		mut node := a.nodes[i]
-		if node.kind == .directive && node.value.starts_with('@attributes:') {
+		if node.value.starts_with('@attributes:') {
 			target_idx := node.value['@attributes:'.len..].int()
 			if target_idx >= 0 && target_idx < old_len {
 				node.value = '@attributes:${target_idx + synthetic_index_shift(insertions, target_idx)}'
@@ -20824,11 +20829,21 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 	for i, idx in a.file_node_ids {
 		a.file_node_ids[i] = idx + synthetic_index_shift(insertions, idx)
 	}
+	// The insertions are in position order: an id before the first one keeps its
+	// place, and one at or after the last moves past all of them.
+	first_pos := insertions[0].pos
+	last_pos := insertions[insertions.len - 1].pos
 	for k in 0 .. a.children.len {
 		cid := int(a.children[k])
-		if cid >= 0 {
-			a.children[k] = flat.NodeId(cid + synthetic_index_shift(insertions, cid))
+		if cid < 0 || cid < first_pos {
+			continue
 		}
+		shift := if cid >= last_pos {
+			insertions.len
+		} else {
+			synthetic_index_shift(insertions, cid)
+		}
+		a.children[k] = flat.NodeId(cid + shift)
 	}
 	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
 }

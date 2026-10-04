@@ -14,7 +14,8 @@ fn test_iconv_include_uses_headerless_declarations() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_headerless_iconv_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_headerless_iconv_${pid}.v')
@@ -41,12 +42,12 @@ fn main() {
 	}
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(out + '.c') or { panic(err) }
 	assert !c_code.contains('#include <iconv.h>'), c_code
 
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'iconv-ok'
 }

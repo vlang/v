@@ -2080,6 +2080,8 @@ if a < b {
 `if` statements are pretty straightforward and similar to most other languages.
 Unlike other C-like languages,
 there are no parentheses surrounding the condition and the braces are always required.
+When the condition starts with another `if` or a `match` expression, parentheses are required
+around the condition, for example `if (if enabled { true } else { false }) { ... }`.
 
 #### `If` expressions
 Unlike C, V does not have a ternary operator, that would allow you to do: `x = c ? 1 : 2` .
@@ -6339,7 +6341,7 @@ file.
 import os
 
 fn test_subtest() {
-	res := os.execute('${os.quoted_path(@VEXE)} other_test.v')
+	res := os.exec([@VEXE, 'other_test.v'])
 	assert res.exit_code == 1
 	assert res.output.contains('other_test.v does not exist')
 }
@@ -7050,6 +7052,7 @@ v skills add v-mcp               # install into .agents/skills/ of this project
 v skills add v-mcp --global      # install into ~/.agents/skills for this user
 v skills remove v-mcp            # uninstall
 v skills path v-mcp              # where a skill is installed
+v skills update                  # refresh unchanged installs from newer bundles
 ```
 
 A project install is committed and shared with the team; a `--global` install
@@ -7057,6 +7060,13 @@ applies to every project on the machine. Installing a skill that is already ther
 is skipped rather than overwritten, so a local edit survives; `--force` restores
 the bundled copy, and `v skills list` flags an installed skill that has fallen
 behind the bundle it came from.
+
+`v skills update` uses the recorded installation digest to refresh unchanged skills
+from newer bundles. Locally edited or unrecorded installations are held back unless
+`--force` is passed; unreadable files are treated as unknown and held back too.
+Use `--dry-run` to preview updates. The provenance file `origin.json` must be a regular
+file: installation refuses symlinks and other file types before replacing skill content.
+`v.skills.content_digest` returns an error if any requested file cannot be read.
 
 Skill names must contain only lowercase letters, digits and single hyphens, and
 must match the bundled name. Installation stays within an immediate child of the
@@ -7989,6 +7999,31 @@ fn main() {
 
 // Output:
 // name is of type string
+```
+
+A `$if` in a reflection loop is decided at compile time, separately for each item. Its
+condition can compare the loop variable's metadata with literals (`==`, `!=`, `<`, `>`, `<=`,
+`>=`, `in`), check types with `is`, test names with `.starts_with()`, `.ends_with()`,
+`.contains()` and `.len`, and combine those with `&&`, `||` and `!`. A condition that cannot
+be decided at compile time is usually reported as an error; use a runtime `if` for it instead:
+
+```v
+struct User {
+	name string
+	age  int
+}
+
+fn main() {
+	$for field in User.fields {
+		// A runtime `if`: `$if` cannot call methods such as `to_upper()`.
+		if field.name.to_upper() == 'AGE' {
+			println('${field.name} is the age')
+		}
+	}
+}
+
+// Output:
+// age is the age
 ```
 
 #### <h4 id="comptime-values">.values</h4>
@@ -10033,10 +10068,11 @@ will be added last (note the .a suffix):
 ```v oksyntax
 #flag /path/to/ffi.a
 ```
-If you need to reverse the order (prepend the static library in the libs section of the
+If you need to reverse the order (prepend the library in the libs section of the
 C compilation line, before other libs), use:
 ```v oksyntax
 #flag /path/to/ffi.a@START_LIBS
+#flag -lffi@START_LIBS
 ```
 
 You can (optionally) use different flags for different targets.

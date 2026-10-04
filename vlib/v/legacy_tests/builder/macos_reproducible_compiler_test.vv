@@ -199,7 +199,7 @@ fn test_macos_debug_compiler_build_is_reproducible() {
 	os.write_file(source_path, 'fn main() {\n\tprintln(42)\n}\n')!
 	object_output := os.join_path(test_dir, 'compiler.o')
 	object_cmd := '${os.quoted_path(macos_reproducible_compiler_vexe)} -old-compiler -g -keepc -o ${os.quoted_path(object_output)} ${os.quoted_path(source_path)}'
-	object_result := os.execute(object_cmd)
+	object_result := os.exec([macos_reproducible_compiler_vexe, '-old-compiler', '-g', '-keepc', '-o', object_output, source_path])
 	assert object_result.exit_code == 0, object_result.output
 	assert os.is_file(object_output)
 	assert os.file_size(object_output) > 0
@@ -211,7 +211,7 @@ fn test_macos_debug_compiler_build_is_reproducible() {
 		extra_flags := build_flags[i]
 		output_path := os.join_path(test_dir, name)
 		cmd := '${os.quoted_path(macos_reproducible_compiler_vexe)} -old-compiler -g -keepc ${extra_flags} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-		result := os.execute(cmd)
+		result := os.exec([macos_reproducible_compiler_vexe, '-old-compiler', '-g', '-keepc', ...(os.split_args(extra_flags) or { panic(err) }), '-o', output_path, source_path])
 		assert result.exit_code == 0, result.output
 		binary_hashes << sha256.hexhash(os.read_file(output_path)!)
 	}
@@ -221,7 +221,7 @@ fn test_macos_debug_compiler_build_is_reproducible() {
 	os.setenv('VTMP', spaced_vtmp, true)
 	spaced_output := os.join_path(test_dir, 'spaced_vtmp')
 	spaced_cmd := '${os.quoted_path(macos_reproducible_compiler_vexe)} -old-compiler -g -keepc -o ${os.quoted_path(spaced_output)} ${os.quoted_path(source_path)}'
-	spaced_result := os.execute(spaced_cmd)
+	spaced_result := os.exec([macos_reproducible_compiler_vexe, '-old-compiler', '-g', '-keepc', '-o', spaced_output, source_path])
 	if previous_vtmp := old_vtmp {
 		os.setenv('VTMP', previous_vtmp, true)
 	} else {
@@ -234,7 +234,7 @@ fn test_macos_debug_compiler_build_is_reproducible() {
 	for name in ['cdebug_first', 'cdebug_second'] {
 		output_path := os.join_path(test_dir, name)
 		cmd := '${os.quoted_path(macos_reproducible_compiler_vexe)} -old-compiler -cg -keepc -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-		result := os.execute(cmd)
+		result := os.exec([macos_reproducible_compiler_vexe, '-old-compiler', '-cg', '-keepc', '-o', output_path, source_path])
 		assert result.exit_code == 0, result.output
 		cdebug_hashes << sha256.hexhash(os.read_file(output_path)!)
 	}
@@ -242,9 +242,9 @@ fn test_macos_debug_compiler_build_is_reproducible() {
 
 	first_output := os.join_path(test_dir, 'first')
 	first_codesign_result :=
-		os.execute('codesign --verify --strict ${os.quoted_path(first_output)}')
+		os.exec(['codesign', '--verify', '--strict', first_output])
 	assert first_codesign_result.exit_code == 0, first_codesign_result.output
-	nm_result := os.execute('nm -ap ${os.quoted_path(first_output)}')
+	nm_result := os.exec(['nm', '-ap', first_output])
 	assert nm_result.exit_code == 0, nm_result.output
 	oso_lines := nm_result.output.split_into_lines().filter(it.contains(' OSO '))
 	assert oso_lines.len > 0, nm_result.output
@@ -255,15 +255,15 @@ fn test_macos_debug_compiler_build_is_reproducible() {
 	assert os.is_dir(dsym_path)
 	os.rmdir_all(dsym_path)!
 	dsymutil_result :=
-		os.execute('dsymutil -o ${os.quoted_path(dsym_path)} ${os.quoted_path(first_output)}')
+		os.exec(['dsymutil', '-o', dsym_path, first_output])
 	assert dsymutil_result.exit_code == 0, dsymutil_result.output
 	assert os.is_dir(dsym_path)
 
 	compressed_output := os.join_path(test_dir, 'compressed')
 	compressed_cmd := '${os.quoted_path(macos_reproducible_compiler_vexe)} -old-compiler -g -keepc -compress -o ${os.quoted_path(compressed_output)} ${os.quoted_path(source_path)}'
-	compressed_result := os.execute(compressed_cmd)
+	compressed_result := os.exec([macos_reproducible_compiler_vexe, '-old-compiler', '-g', '-keepc', '-compress', '-o', compressed_output, source_path])
 	assert compressed_result.exit_code == 0, compressed_result.output
 	assert os.is_dir(compressed_output + '.dSYM')
-	codesign_result := os.execute('codesign --verify --strict ${os.quoted_path(compressed_output)}')
+	codesign_result := os.exec(['codesign', '--verify', '--strict', compressed_output])
 	assert codesign_result.exit_code == 0, codesign_result.output
 }

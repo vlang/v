@@ -1,3 +1,6 @@
+#ifndef V_OS_EXECUTE_CAPTURE_NIX_H
+#define V_OS_EXECUTE_CAPTURE_NIX_H
+
 // v_os_execute_set_cloexec marks an fd as close-on-exec. When multiple threads
 // each call os.execute, every pipe() they create is briefly visible to all of
 // them; without FD_CLOEXEC, one thread's spawned child can inherit another
@@ -255,3 +258,5 @@ static inline int v_os_exec_capture_input_start(char *const argv[], int *child_p
 	return 0;
 }
 #endif
+
+#endif // V_OS_EXECUTE_CAPTURE_NIX_H

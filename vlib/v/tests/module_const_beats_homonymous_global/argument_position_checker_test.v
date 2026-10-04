@@ -70,7 +70,7 @@ fn test_incompatible_argument_rejected_by_v_checker() {
 	defer {
 		os.rmdir_all(workspace) or {}
 	}
-	res := os.execute('${os.quoted_path(@VEXE)} -enable-globals -check ${os.quoted_path(workspace)}')
+	res := os.exec([@VEXE, '-enable-globals', '-check', '${workspace}'])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('cannot use `&api.ConstType` as `&api.GlobalType` in argument 1'), res.output
 }

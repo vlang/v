@@ -48,6 +48,10 @@ Use `v -new-compiler ...` to disable the C-error compatibility fallback as well.
 An explicit `v -old-compiler ...` request still selects V 0.5.2 directly and does not
 have a failed default compilation to display.
 
+When a compatibility compiler must be built, V searches PATH for `make`, then `gmake`.
+On Windows it also accepts MSYS2's `mingw32-make`. Install GNU make and ensure that
+MSYS2's make executable and `sh` are on PATH: the `make v1` target uses POSIX shell recipes.
+
 If a build needs a missing bundled Boehm GC archive, V reports the missing library
 before invoking the C compiler. Reinstall V to restore the bundled libraries, or
 pass `-d use_bundled_libgc` to build GC from source. `-gc none` compiles without GC.
@@ -69,3 +73,10 @@ on Windows, that last-resort cache has a fresh random name.
 Implicit C compiler selection excludes TCC for `-race`, because TCC has no ThreadSanitizer
 runtime. Test build facts follow this rule on every host, including Windows, where race
 builds themselves are unsupported. Explicit compiler requests are checked separately.
+
+User builds have a default memory safety limit of 10176 MiB. Set `-memory-limit <size>`
+(or `--memory-limit <size>`) before the source or subcommand to choose another limit.
+Unsuffixed values and `M`/`m` values use MiB; `K`/`k` use KiB and `G`/`g` use GiB.
+The value must be a nonnegative integer whose converted KiB value fits in a signed 64-bit
+integer. Missing, empty, malformed, negative, and overflowing values produce a CLI error.
+An explicit zero disables the limit, as does `-no-memory-limit`.

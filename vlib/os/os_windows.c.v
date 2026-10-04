@@ -470,14 +470,19 @@ pub fn get_error_msg(code int) string {
 // execute starts the specified command, waits for it to complete, and returns its output.
 // In opposition to `raw_execute` this function rejects `&&`, `||`, and linefeeds when they appear
 // outside double-quoted strings before delegating to `cmd.exe`.
+@[deprecated: 'use os.exec with an argument array; command strings can allow shell injection']
 pub fn execute(cmd string) Result {
+	return execute_shell(cmd)
+}
+
+fn execute_shell(cmd string) Result {
 	if windows_execute_has_forbidden_shell_operator(cmd) {
 		return Result{
 			exit_code: -1
 			output:    '&&, || and \\n are not allowed in shell commands'
 		}
 	}
-	return unsafe { raw_execute(cmd) }
+	return unsafe { raw_execute_shell(cmd) }
 }
 
 // exec starts the specified command with arguments, waits for it to complete, and returns its output.
@@ -529,8 +534,14 @@ fn windows_execute_has_forbidden_shell_operator(cmd string) bool {
 // raw_execute starts the specified command, waits for it to complete, and returns its output.
 // It's marked as `unsafe` to help emphasize the problems that may arise by allowing, for example,
 // user provided escape sequences.
+@[deprecated: 'use os.exec with an argument array; command strings can allow shell injection']
 @[unsafe]
 pub fn raw_execute(cmd string) Result {
+	return unsafe { raw_execute_shell(cmd) }
+}
+
+@[unsafe]
+fn raw_execute_shell(cmd string) Result {
 	mut pcmd := cmd
 	if cmd.contains('./') {
 		pcmd = pcmd.replace('./', '.\\')
@@ -726,7 +737,7 @@ pub fn uname() Uname {
 	// ToDO: environment variables have low reliability; check for another quick way
 	machine :=
 		getenv('PROCESSOR_ARCHITECTURE') // * note: 'AMD64' == 'x86_64' (not standardized, but 'x86_64' use is more common; but, python == 'AMD64')
-	version_info := execute('cmd /d/c ver')
+	version_info := exec(['cmd', '/d', '/c', 'ver'])
 	release, version := if version_info.exit_code == 0 {
 		windows_version_parts(version_info.output)
 	} else {

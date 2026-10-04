@@ -10,7 +10,8 @@ fn variadic_call_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_variadic_call_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${variadic_call_vexe} -gc none -path "${variadic_call_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${variadic_call_v3_src}')
+		os.exec([variadic_call_vexe, '-gc', 'none', '-path',
+			'${variadic_call_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${variadic_call_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -32,10 +33,10 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_slot_spread_variadic_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '278', run.output
 }
@@ -57,7 +58,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_slot_spread_variadic_trailing_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('when forwarding a variadic variable, it must be the final argument'), compile.output
 }
@@ -110,10 +111,10 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_interface_variadic_forward_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ab\n0', run.output
 }
@@ -137,10 +138,10 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_source_varargs_prefix_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} -translated ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-translated', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '1', run.output
 }

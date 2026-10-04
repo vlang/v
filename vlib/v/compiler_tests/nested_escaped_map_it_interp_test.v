@@ -25,15 +25,16 @@ const nested_it_program = r"fn main() {
 // `use of undeclared identifier 'it'`, which made V fall back to the stable compiler.
 fn test_escaped_it_interpolation_in_map_body_compiles() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_nested_escaped_map_it_interp_test')
-	build := os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	build := os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	source_file := os.join_path(os.temp_dir(), 'v3_nested_escaped_map_it_interp_input.v')
 	os.write_file(source_file, nested_it_program) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_nested_escaped_map_it_interp_input')
-	compile := os.execute('${v3_bin} -nocache ${source_file} -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', source_file, '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split_into_lines()
 	assert lines.len == 5, run.output

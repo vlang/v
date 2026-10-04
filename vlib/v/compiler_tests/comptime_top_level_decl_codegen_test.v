@@ -9,7 +9,8 @@ const comptime_decl_v3_src = os.join_path(comptime_decl_v3_dir, 'v.v')
 fn comptime_decl_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_comptime_top_level_decl_test')
 	build :=
-		os.execute('${comptime_decl_vexe} -gc none -path "${comptime_decl_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${comptime_decl_v3_src}')
+		os.exec([comptime_decl_vexe, '-gc', 'none', '-path',
+			'${comptime_decl_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${comptime_decl_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -72,7 +73,8 @@ fn main() {
 	}
 	bin_path := os.join_path(root, 'out')
 	feature_arg := if feature { '-d some_feature' } else { '' }
-	compile := os.execute('${v3_bin} ${main_path} ${feature_arg} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, main_path, ...(os.split_args(feature_arg) or { panic(err) }), '-b',
+		'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	c_path := bin_path + '.c'
 	assert os.exists(c_path), '${name}: missing generated C ${c_path}'
@@ -86,7 +88,8 @@ fn comptime_decl_gen_c_source(v3_bin string, name string, source string, flags s
 	main_path := os.join_path(root, 'main.v')
 	os.write_file(main_path, source) or { panic(err) }
 	c_path := os.join_path(root, 'out.c')
-	compile := os.execute('${v3_bin} ${main_path} ${flags} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, main_path, ...(os.split_args(flags) or { panic(err) }), '-b', 'c',
+		'-o', c_path])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C ${c_path}'
 	return os.read_file(c_path) or { panic(err) }
@@ -99,9 +102,9 @@ fn comptime_decl_compile_run_source(v3_bin string, name string, source string, f
 	main_path := os.join_path(root, 'main.v')
 	os.write_file(main_path, source) or { panic(err) }
 	bin_path := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${main_path} ${flags} -o ${bin_path}')
+	compile := os.exec([v3_bin, main_path, ...(os.split_args(flags) or { panic(err) }), '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
-	return os.execute(bin_path)
+	return os.exec([bin_path])
 }
 
 fn test_top_level_decls_inside_active_comptime_branch_are_codegen_visible() {

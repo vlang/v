@@ -579,7 +579,7 @@ pub fn user_os() string {
 // user_names returns an array containing the names of all users on the system.
 pub fn user_names() ![]string {
 	$if windows {
-		result := execute('wmic useraccount get name')
+		result := exec(['wmic', 'useraccount', 'get', 'name'])
 		if result.exit_code != 0 {
 			return error('Failed to get user names. Exited with code ${result.exit_code}: ${result.output}')
 		}
@@ -1181,8 +1181,9 @@ pub mut:
 }
 
 // execute_or_panic returns the os.Result of executing `cmd`, or panic with its output on failure.
+@[deprecated: 'use os.exec_or_panic with an argument array; command strings can allow shell injection']
 pub fn execute_or_panic(cmd string) Result {
-	res := execute(cmd)
+	res := execute_shell(cmd)
 	if res.exit_code != 0 {
 		eprintln('failed    cmd: ${cmd}')
 		eprintln('failed   code: ${res.exit_code}')
@@ -1192,8 +1193,9 @@ pub fn execute_or_panic(cmd string) Result {
 }
 
 // execute_or_exit returns the os.Result of executing `cmd`, or exit with its output on failure.
+@[deprecated: 'use os.exec_or_exit with an argument array; command strings can allow shell injection']
 pub fn execute_or_exit(cmd string) Result {
-	res := execute(cmd)
+	res := execute_shell(cmd)
 	if res.exit_code != 0 {
 		eprintln('failed    cmd: ${cmd}')
 		eprintln('failed   code: ${res.exit_code}')
@@ -1204,8 +1206,41 @@ pub fn execute_or_exit(cmd string) Result {
 }
 
 // execute_opt returns the os.Result of executing `cmd`, or an error with its output on failure.
+@[deprecated: 'use os.exec_opt with an argument array; command strings can allow shell injection']
 pub fn execute_opt(cmd string) !Result {
-	res := execute(cmd)
+	res := execute_shell(cmd)
+	if res.exit_code != 0 {
+		return error(res.output)
+	}
+	return res
+}
+
+// exec_or_panic returns the os.Result of executing `args`, or panic with its output on failure.
+pub fn exec_or_panic(args []string) Result {
+	res := exec(args)
+	if res.exit_code != 0 {
+		eprintln('failed    cmd: ${args}')
+		eprintln('failed   code: ${res.exit_code}')
+		panic(res.output)
+	}
+	return res
+}
+
+// exec_or_exit returns the os.Result of executing `args`, or exit with its output on failure.
+pub fn exec_or_exit(args []string) Result {
+	res := exec(args)
+	if res.exit_code != 0 {
+		eprintln('failed    cmd: ${args}')
+		eprintln('failed   code: ${res.exit_code}')
+		eprintln(res.output)
+		exit(1)
+	}
+	return res
+}
+
+// exec_opt returns the os.Result of executing `args`, or an error with its output on failure.
+pub fn exec_opt(args []string) !Result {
+	res := exec(args)
 	if res.exit_code != 0 {
 		return error(res.output)
 	}

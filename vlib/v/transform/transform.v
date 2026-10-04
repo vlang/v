@@ -572,6 +572,9 @@ mut:
 	// Allocations lowering adds that the source does not show, for
 	// -warn-about-allocs; see warn_alloc.
 	alloc_warnings []AllocWarning
+	// `$if`s in `$for` bodies whose conditions cannot be decided; see
+	// reject_unevaluated_comptime_if.
+	unevaluated_comptime_ifs []UnevaluatedComptimeIf
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -1204,6 +1207,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 		}
 	}
 	t.report_alloc_warnings()
+	t.report_unevaluated_comptime_ifs()
 	return t.used_fns, t.monomorph_errors, synthesized_helpers
 }
 
@@ -1315,6 +1319,7 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	t.used_fns_log_active = used_log_was_active
 	t.release_finished_scratch()
 	t.report_alloc_warnings()
+	t.report_unevaluated_comptime_ifs()
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
 }
 
@@ -1800,6 +1805,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.release_monomorph_worker_scopes()
 	}
 	t.report_alloc_warnings()
+	t.report_unevaluated_comptime_ifs()
 	return t.used_fns, t.monomorph_errors, final_specs
 }
 
@@ -4245,6 +4251,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.monomorph_errors = []string{}
 	w.monomorph_error_seen = map[string]bool{}
 	w.alloc_warnings = []AllocWarning{}
+	w.unevaluated_comptime_ifs = []UnevaluatedComptimeIf{}
 	// Fields added after the fork/merge machinery was first written. They are
 	// mutated during body transforms (or lazily built), so each worker needs
 	// private backing storage — a plain struct copy would share the master's.
@@ -5152,6 +5159,16 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 				flat.NodeId(int(warning.node) + int(node_shift))
 			} else {
 				warning.node
+			}
+		}
+	}
+	for item in w.unevaluated_comptime_ifs {
+		t.unevaluated_comptime_ifs << UnevaluatedComptimeIf{
+			...item
+			node: if int(item.node) >= base_nodes {
+				flat.NodeId(int(item.node) + int(node_shift))
+			} else {
+				item.node
 			}
 		}
 	}
@@ -13418,6 +13435,11 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		if i % 2 == 0 {
+			lhs := t.a.nodes[int(child_id)]
+			if node.op == .assign && lhs.kind == .ident && t.heaped_amp_locals[lhs.value] {
+				new_children << t.make_prefix(.mul, t.make_ident(lhs.value))
+				continue
+			}
 			preserves_smartcast := node.op == .assign && i + 1 < node.children_count
 				&& t.assignment_preserves_smartcast(child_id, t.a.child(&node, i + 1))
 			new_children << if node.op == .assign && !preserves_smartcast {
@@ -13515,6 +13537,12 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		}
 		if lhs_type_name.len == 0 {
 			lhs_type_name = t.original_expr_type(t.a.child(&node, 0))
+		}
+		// Heap promotion changes the local's type to a pointer, but assignment
+		// still replaces its owned value through that pointer.
+		if lhs_node.kind == .ident && t.heaped_amp_locals[lhs_node.value]
+			&& lhs_type_name.starts_with('&') {
+			lhs_type_name = lhs_type_name[1..]
 		}
 		lhs_type := t.tc.parse_type(lhs_type_name)
 		// V1 autofree leaves aggregate field/index replacement shallow. In particular,
@@ -15320,11 +15348,8 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 		return none
 	}
 	if lhs.value in t.heaped_amp_locals {
-		new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
-		value := t.transform_expr_for_type(rhs_id, lhs_value_type_raw)
-		return [
-			t.make_assign(new_lhs, t.clone_borrowed_assignment_value(rhs_id, value, lhs_value_type_raw)),
-		]
+		// The regular path handles value coercion and dropping the previous owner.
+		return none
 	}
 	rhs_node := t.a.nodes[int(rhs_id)]
 	if rhs_node.kind == .prefix && rhs_node.op == .amp {
@@ -16929,7 +16954,15 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				if clone_type.len == 0 {
 					clone_type = t.original_expr_type(child_id)
 				}
-				new_children << t.clone_borrowed_storage_projection(child_id, t.transform_expr_for_type(child_id, lhs_type), clone_type)
+				value := t.transform_expr_for_type(child_id, lhs_type)
+				borrow := t.a.node(t.unwrap_parens(child_id))
+				if clone_type.starts_with('&') && borrow.kind == .prefix && borrow.op == .amp {
+					// An explicit local address borrows its pointee. In particular, a
+					// callback must mutate the original mutable argument or slice view.
+					new_children << t.clone_borrowed_projection(child_id, value, clone_type)
+				} else {
+					new_children << t.clone_borrowed_storage_projection(child_id, value, clone_type)
+				}
 			}
 		}
 	}
@@ -18806,7 +18839,9 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 }
 
 fn (mut t Transformer) build_source_parent_index() {
-	t.source_parent_ids = []i32{len: t.a.nodes.len, init: -1}
+	t.source_parent_ids = []i32{len: t.a.nodes.len}
+	// -1 in every slot, in one memset rather than one store per node.
+	unsafe { C.memset(t.source_parent_ids.data, 0xff, usize(t.source_parent_ids.len) * sizeof(i32)) }
 	mut decls := map[string][]int{}
 	mut fn_offsets := map[int][]int{}
 	mut if_exprs := map[int][]int{}
@@ -19066,8 +19101,12 @@ fn comptime_cond_has_target_flag(cond string) bool {
 fn comptime_condition_matching_paren(s string, start int) int {
 	mut paren_depth := 0
 	mut bracket_depth := 0
-	for i in start .. s.len {
+	for i := start; i < s.len; i++ {
 		match s[i] {
+			`'`, `"`, `\`` {
+				// A bracket inside a literal (`'a)b'`) is text, not structure.
+				i = comptime_cond_skip_string(s, i) - 1
+			}
 			`(` {
 				paren_depth++
 			}
@@ -19109,6 +19148,12 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 	mut bracket_depth := 0
 	for i := 0; i <= s.len - needle.len; i++ {
 		match s[i] {
+			`'`, `"`, `\`` {
+				// Brackets and operators inside a literal (`'a)b'`, `'x || y'`) are
+				// text, not structure.
+				i = comptime_cond_skip_string(s, i) - 1
+				continue
+			}
 			`(` {
 				paren_depth++
 			}
@@ -22700,6 +22745,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	result := t.a.add_node(flat.Node{
 		kind:           .selector
 		op:             sel_op
+		is_mut:         node.is_mut
 		children_start: start
 		children_count: node.children_count
 		pos:            node.pos
@@ -22943,7 +22989,7 @@ fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.No
 		return lowered
 	}
 	expr_id := t.a.child(&node, 0)
-	if addr := t.transform_map_index_address_or_nil(node, expr_id, false) {
+	if addr := t.transform_map_index_address_or_expr(node, expr_id, false) {
 		return addr
 	}
 	if node.value == '?' && t.expr_has_option_unwrap_smartcast(expr_id) {
@@ -22993,8 +23039,8 @@ fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.No
 	return t.lower_or_expr_to_temp(id, node)
 }
 
-fn (mut t Transformer) transform_map_index_address_or_nil(node flat.Node, expr_id flat.NodeId, allow_bare_index bool) ?flat.NodeId {
-	if node.children_count < 2 || !t.or_body_is_nil(t.a.child(&node, 1)) || int(expr_id) < 0 {
+fn (mut t Transformer) transform_map_index_address_or_expr(node flat.Node, expr_id flat.NodeId, allow_bare_index bool) ?flat.NodeId {
+	if node.children_count < 2 || int(expr_id) < 0 {
 		return none
 	}
 	source := t.a.nodes[int(expr_id)]
@@ -23005,12 +23051,50 @@ fn (mut t Transformer) transform_map_index_address_or_nil(node flat.Node, expr_i
 		return none
 	}
 	info := t.map_index_info(index_id) or { return none }
+	if t.map_value_type_is_optional(info.value_type)
+		&& !t.or_body_is_nil(t.a.child(&node, 1)) {
+		return none
+	}
 	map_expr := t.stable_expr_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
-	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(info.key_id, info.key_type), info.key_storage_type)
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
+	mut prelude := []flat.NodeId{}
+	t.drain_pending(mut prelude)
+	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
 	ptr := t.make_map_get_check_expr(map_expr, info.base_type, key_name)
 	target_type := if node.typ.starts_with('&') { node.typ } else { '&${info.value_type}' }
-	return t.make_cast(target_type, ptr, target_type)
+	if t.or_body_is_nil(t.a.child(&node, 1)) {
+		t.pending_stmts = outer_pending
+		t.pending_stmts << prelude
+		return t.make_cast(target_type, ptr, target_type)
+	}
+	// Keep the map slot's address: lowering the index as a value first would
+	// return a pointer to a copy, and transforming it twice loses its temporaries.
+	ptr_name := t.new_temp('map_ptr')
+	value_name := t.new_temp('map_addr')
+	prelude << t.make_decl_assign_typed(ptr_name, ptr, 'voidptr')
+	if !isnil(t.tc) && t.map_key_expr_creates_owned_value(info.key_id, info.key_type)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(info.key_type)) {
+		prelude << t.make_expr_stmt(t.make_call_typed('drop_owned', [t.make_ident(key_name)],
+			'void'))
+	}
+	prelude << t.make_staging_value_decl(value_name, target_type)
+	condition := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	found := t.make_cast(target_type, t.make_ident(ptr_name), target_type)
+	found_block := t.make_block([t.make_assign(t.make_ident(value_name), found)])
+	failure := if node.value == '!' {
+		t.make_call_typed('error', [t.make_string_literal('map key does not exist')], 'IError')
+	} else {
+		flat.empty_node
+	}
+	missing_block := t.make_block(t.lower_map_or_body_to_stmts(t.a.child(&node, 1),
+		value_name, target_type, node.value, failure))
+	t.pending_stmts = outer_pending
+	t.pending_stmts << prelude
+	t.pending_stmts << t.make_if(condition, found_block, missing_block)
+	return t.make_ident(value_name)
 }
 
 fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node flat.Node) ?flat.NodeId {
@@ -23196,7 +23280,7 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .or_expr && child.children_count > 0 {
-			if addr := t.transform_map_index_address_or_nil(child, t.a.child(&child, 0), true) {
+			if addr := t.transform_map_index_address_or_expr(child, t.a.child(&child, 0), true) {
 				return addr
 			}
 		}
@@ -23237,14 +23321,53 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 				return expr
 			}
 		}
-		if child.kind in [.array_init, .array_literal]
+		if (child.kind in [.array_init, .array_literal] || t.is_range_index_expr(t.unwrap_parens(child_id)))
 			&& t.normalize_type_alias(child_type).starts_with('[]') {
-			// `&[]T{...}` owns a heap-allocated array header. Allocate that header
-			// explicitly instead of taking the address of a short-lived stabilization
-			// temporary.
+			// Array literals and ranges produce fresh headers. Allocate an addressed
+			// header so it survives a return; a range still borrows its existing data.
 			value := t.transform_expr(child_id)
 			result_type := if node.typ.len > 0 { node.typ } else { '&${child_type}' }
 			return t.make_call_typed('v3_heap_array', [value], result_type)
+		}
+		if t.is_range_index_expr(t.unwrap_parens(child_id)) && t.normalize_type_alias(child_type) == 'string' {
+			// Addressed string ranges also retain a header independently of the loop
+			// or stack temporary that produced it.
+			mut value := t.transform_expr(child_id)
+			$if ownership ? {
+				range := t.a.node(t.unwrap_parens(value))
+				if range.kind == .index && range.value == 'range' && range.children_count >= 2
+					&& range.op != .gated_index {
+					base := t.a.child(range, 0)
+					base_type := t.node_type(base)
+					mut base_value := base
+					if base_type.starts_with('&') {
+						base_value = t.make_prefix(.mul, base)
+						t.set_node_typ(int(base_value), 'string')
+					}
+					base_value = t.snapshot_transformed_expr_for_reuse(base_value, 'string', 'str_view_source')
+					start_id := t.a.child(range, 1)
+					start_value := if t.a.node(start_id).kind == .empty {
+						t.make_int_literal(0)
+					} else {
+						t.snapshot_transformed_expr_for_reuse(start_id, 'int', 'str_view_start')
+					}
+					end_value := if range.children_count > 2 {
+						t.snapshot_transformed_expr_for_reuse(t.a.child(range, 2), 'int', 'str_view_end')
+					} else {
+						t.make_selector(base_value, 'len', 'int')
+					}
+					value = t.make_call_typed('string__substr_borrowed', [base_value, start_value,
+						end_value], 'string')
+				}
+			}
+			// A stable range still produces a fresh header. Materialize its string
+			// type before taking its address, including ranges lowered by cgen.
+			stable := t.snapshot_transformed_expr_for_reuse(value, child_type, 'addr')
+			addr := t.make_prefix(.amp, stable)
+			t.set_node_typ(int(addr), '&${child_type}')
+			dup := t.make_memdup_call_for_type(addr, child_type)
+			result_type := if node.typ.len > 0 { node.typ } else { '&${child_type}' }
+			return t.make_cast(result_type, dup, result_type)
 		}
 		if child.kind == .map_init && t.normalize_type_alias(child_type).starts_with('map[') {
 			// Like `&[]T{}`, `&map[K]V{}` owns a heap-allocated container header.

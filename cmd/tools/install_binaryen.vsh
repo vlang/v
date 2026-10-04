@@ -61,7 +61,7 @@ fn main() {
 
 	println('Extracting `${tloc}/${fname}` to `${tloc}/binaryen` ...')
 	cmd := 'tar -xvf ${saveloc} --directory ${tloc}'
-	if os.system(cmd) != 0 {
+	if os.system_args(['tar', '-xvf', '${saveloc}', '--directory', '${tloc}']) != 0 {
 		eprintln('`${cmd}` exited with a non zero exit code')
 		exit(1)
 	}

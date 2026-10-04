@@ -5102,6 +5102,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.tc.cur_file
 	}
 	g.cur_fn_assert_continues = g.tc.declaration_has_attribute(node_id, 'assert_continues')
+	g.cur_fn_manualfree = node.skip_ownership_drops()
+		|| g.tc.declaration_has_attribute(node_id, 'manualfree')
 	g.begin_usable_expr_type_memo()
 	g.known_expr_type_id = -1
 	g.ownership_return_index = 0
@@ -15713,6 +15715,10 @@ fn (g &FlatGen) addressed_byvalue_arg(arg_node flat.Node) ?flat.NodeId {
 }
 
 fn (mut g FlatGen) gen_addressed_byvalue_arg(arg_node flat.Node, expected types.Type) bool {
+	if types.unalias_type(expected) is types.Pointer {
+		// A pointer alias must remain an address argument here.
+		return false
+	}
 	child_id := g.addressed_byvalue_arg(arg_node) or { return false }
 	child := g.a.nodes[int(child_id)]
 	if child.kind == .struct_init {

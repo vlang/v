@@ -151,7 +151,7 @@ fn test_explicit_pointer_branches_still_require_dereferencing_for_value_returns(
 		'match flag { true { &Item{} } else { &Item{} } }',
 	] {
 		os.write_file(path, 'struct Item {}\nfn invalid(flag bool) Item { return ${expression} }\nfn main() { _ = invalid(true) }\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('non reference type'), result.output
 	}
@@ -166,7 +166,7 @@ fn test_invalid_explicit_pointer_branches_in_wrapped_returns_stay_rejected() {
 		"!Item { return match flag { true { &Item{} } else { error('missing') } } }",
 	] {
 		os.write_file(path, 'struct Item {}\nfn invalid(flag bool) ${body}\nfn main() {}\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('&Item'), result.output
 	}
@@ -180,7 +180,7 @@ fn test_explicit_interface_pointer_smartcast_requires_dereference() {
 		'return if item is &Record { item } else { Record{} }',
 	] {
 		os.write_file(path, 'interface Named { name() string }\nstruct Record {}\nfn (_ &Record) name() string { return "record" }\nfn invalid(item Named) Record { ${body} }\nfn main() {}\n')!
-		result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+		result := os.exec([@VEXE, '-check', path])
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('non reference type'), result.output
 	}
@@ -222,7 +222,7 @@ fn test_explicit_pointer_patterns_require_dereferencing_for_value_returns() {
 			value := if mode == 1 { '*item' } else { 'item' }
 			declaration := body.replace('PATTERN', pattern).replace('VALUE', value)
 			os.write_file(path, '${preamble}\nfn value(item Named, flag bool) ${declaration}\nfn main() {}\n')!
-			result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+			result := os.exec([@VEXE, '-check', path])
 			if mode == 0 {
 				assert result.exit_code != 0, declaration
 				assert result.output.contains('&Record')
@@ -245,7 +245,7 @@ fn test_explicit_pointer_patterns_require_dereferencing_for_value_returns() {
 				value := if mode == 1 { '*${receiver}' } else { receiver }
 				body := 'holder := Holder{item}\nitems := [item]\n${tail.replace('PATTERN', pattern).replace('VALUE', value)}'
 				os.write_file(path, '${preamble}\nfn value(item Named) Record { ${body} }\nfn main() {}\n')!
-				result := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(path)}')
+				result := os.exec([@VEXE, '-check', path])
 				assert (result.exit_code == 0) == (mode != 0), '${body}\n${result.output}'
 			}
 		}

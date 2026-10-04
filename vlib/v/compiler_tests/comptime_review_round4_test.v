@@ -23,7 +23,8 @@ fn round4_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${round4_vexe} -gc none -prealloc -path "${round4_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${round4_v3_src}')
+		os.exec([round4_vexe, '-gc', 'none', '-prealloc', '-path',
+			'${round4_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${round4_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -42,10 +43,10 @@ fn round4_run_good(v3_bin string, name string, src string) string {
 	src_path := '${round4_tmp_path(name)}.v'
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := round4_tmp_path(name)
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: ${run.output}'
 	return run.output.trim_space()
 }
@@ -54,7 +55,7 @@ fn round4_run_bad(v3_bin string, name string, src string, expected string) {
 	src_path := '${round4_tmp_path(name)}.v'
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := round4_tmp_path(name)
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code != 0, '${name}: expected failure, got success\n${compile.output}'
 	assert compile.output.contains(expected), '${name}: expected `${expected}` in\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
@@ -71,10 +72,10 @@ fn round4_run_good_project(v3_bin string, name string, files map[string]string, 
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	bin_path := round4_tmp_path(name)
-	compile := os.execute('${v3_bin} ${input_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, input_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: ${run.output}'
 	return run.output.trim_space()
 }

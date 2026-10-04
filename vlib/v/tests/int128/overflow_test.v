@@ -9,7 +9,7 @@ fn compile_probe(name string, body string) string {
 	os.mkdir_all(dir) or {}
 	src := os.join_path(dir, '${name}.v')
 	os.write_file(src, 'fn main() {\n${body}}\n') or { return '' }
-	build := os.execute('${@VEXE} -check ${src}')
+	build := os.exec([@VEXE, '-check', '${src}'])
 	assert build.exit_code != 0, 'the probe was accepted: ${build.output}'
 	return build.output
 }

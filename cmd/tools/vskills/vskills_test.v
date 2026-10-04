@@ -258,22 +258,22 @@ fn test_cached_skills_launcher_lists_and_safely_removes_custom_skills() {
 	os.mkdir_all(victim)!
 	os.write_file(os.join_path(victim, 'keep.txt'), 'unrelated')!
 	vexe := os.quoted_path(@VEXE)
-	listed := os.execute('${vexe} skills list')
+	listed := os.exec([@VEXE, 'skills', 'list'])
 	assert listed.exit_code == 0, listed.output
 	assert listed.output.contains('v-mcp'), listed.output
 	assert os.is_dir(cache)
-	preview := os.execute('${vexe} skills remove custom --dry-run')
+	preview := os.exec([@VEXE, 'skills', 'remove', 'custom', '--dry-run'])
 	assert preview.exit_code == 0, preview.output
 	assert preview.output.contains('would remove'), preview.output
 	assert os.read_file(os.join_path(custom, 'SKILL.md'))! == 'custom entry'
 	assert os.read_file(os.join_path(custom, 'references', 'keep.txt'))! == 'keep'
 	for name in ['..', '../../victim'] {
-		bad := os.execute('${vexe} skills remove ${os.quoted_path(name)}')
+		bad := os.exec([@VEXE, 'skills', 'remove', '${name}'])
 		assert bad.exit_code == 1, bad.output
 		assert os.read_file(os.join_path(victim, 'keep.txt'))! == 'unrelated'
 		assert os.is_dir(custom)
 	}
-	removed := os.execute('${vexe} skills remove custom')
+	removed := os.exec([@VEXE, 'skills', 'remove', 'custom'])
 	assert removed.exit_code == 0, removed.output
 	assert !os.exists(custom)
 	assert os.read_file(os.join_path(victim, 'keep.txt'))! == 'unrelated'
@@ -285,6 +285,129 @@ fn test_list_reports_a_skill_whose_install_is_out_of_date() {
 	os.write_file(entry_of(root, 'alpha'), 'tampered\n')!
 	out := run(root, 'list')
 	assert out.lines.join('\n').contains('project (out of date)'), out.text()
+}
+
+// rebundle rewrites the bundled `SKILL.md` of `name`, so an installation made
+// before it is behind its bundle rather than edited.
+fn rebundle(root string, name string) {
+	os.write_file(os.join_path_single(os.join_path(skills.bundled_root(root), name),
+		skills.entry_file),
+		'---\nname: ${name}\ndescription: The newer ${name}.\n---\n\n# ${name}\n\nNew body.\n') or {
+		panic(err)
+	}
+}
+
+fn test_update_refreshes_a_skill_whose_bundle_moved_on() {
+	root := project()
+	run(root, 'add', 'alpha')
+	rebundle(root, 'alpha')
+	out := run(root, 'update')
+	assert out.code == 0, out.text()
+	assert out.lines.join('\n').contains('alpha: updated'), out.text()
+	assert os.read_file(entry_of(root, 'alpha'))!.contains('New body.')
+	// And the record now describes the refreshed copy, so a second run is quiet.
+	assert run(root, 'update').lines.join('\n').contains('already matches its bundle')
+}
+
+fn test_update_holds_back_a_skill_that_was_edited_here() {
+	root := project()
+	run(root, 'add', 'alpha')
+	os.write_file(entry_of(root, 'alpha'), 'edited here\n')!
+	out := run(root, 'update')
+	assert out.code != 0, out.text()
+	assert out.errors.join('\n').contains('was edited since it was installed'), out.text()
+	assert out.errors.join('\n').contains('--force'), out.text()
+	// The edit is still there: refusing is the whole point.
+	assert os.read_file(entry_of(root, 'alpha'))! == 'edited here\n'
+}
+
+fn test_update_dry_run_reports_without_writing() {
+	root := project()
+	run(root, 'add', 'alpha')
+	rebundle(root, 'alpha')
+	out := run(root, 'update', '--dry-run')
+	assert out.code == 0, out.text()
+	assert out.lines.join('\n').contains('would update'), out.text()
+	assert !os.read_file(entry_of(root, 'alpha'))!.contains('New body.')
+}
+
+fn test_update_force_overwrites_a_local_edit_and_warns_that_it_is_gone() {
+	root := project()
+	run(root, 'add', 'alpha')
+	os.write_file(entry_of(root, 'alpha'), 'edited here\n')!
+	out := run(root, 'update', '--force')
+	// Doing what `--force` asks for is not a failure, so the exit code is 0 even
+	// though the caution is on standard error.
+	assert out.code == 0, out.text()
+	assert out.errors.join('\n').contains('overwrote local changes in alpha'), out.text()
+	assert !os.read_file(entry_of(root, 'alpha'))!.contains('edited here')
+	assert os.read_file(entry_of(root, 'alpha'))!.contains('# alpha')
+	assert skills.origin_state(root, skills.target_dir(.project_root, root), 'alpha') ==
+		.current
+}
+
+fn test_update_holds_back_a_skill_with_no_record() {
+	root := project()
+	run(root, 'add', 'alpha')
+	// An installation made before the record existed. Nothing says what was
+	// installed, so `update` must not decide on its own to overwrite it.
+	os.rm(os.join_path_single(skills.target_dir(.project_root, root), skills.origin_file)) or {
+		panic(err)
+	}
+	out := run(root, 'update')
+	assert out.code != 0, out.text()
+	assert out.errors.join('\n').contains('has no record of what was installed'), out.text()
+	rebundle(root, 'alpha')
+	// Still refused without `--force`, even though it is plainly behind.
+	assert run(root, 'update').code != 0
+	assert run(root, 'update', '--force').code == 0
+	assert skills.origin_state(root, skills.target_dir(.project_root, root), 'alpha') ==
+		.current
+}
+
+fn test_update_can_be_limited_to_one_skill() {
+	root := project()
+	run(root, 'add', 'alpha')
+	run(root, 'add', 'beta')
+	rebundle(root, 'alpha')
+	rebundle(root, 'beta')
+	dir := skills.target_dir(.project_root, root)
+	out := run(root, 'update', 'alpha')
+	assert out.code == 0, out.text()
+	assert out.lines.join('\n').contains('alpha: updated'), out.text()
+	assert !out.text().contains('beta'), out.text()
+	// beta was not touched, so it still carries the description its bundle had
+	// before `rebundle` rewrote it.
+	assert os.read_file(entry_of(root, 'beta'))!.contains('The second skill.')
+	assert !os.read_file(entry_of(root, 'beta'))!.contains('The newer beta.')
+	assert skills.origin_state(root, dir, 'beta') == .stale
+}
+
+fn test_update_rejects_a_skill_that_is_not_installed() {
+	root := project()
+	out := run(root, 'update', 'alpha')
+	assert out.code != 0, out.text()
+	assert out.errors.join('\n').contains('is not installed'), out.text()
+}
+
+fn test_update_needs_something_installed() {
+	root := project()
+	out := run(root, 'update')
+	assert out.code != 0, out.text()
+	assert out.errors.join('\n').contains('nothing is installed'), out.text()
+}
+
+fn test_update_rejects_an_unknown_flag() {
+	root := project()
+	run(root, 'add', 'alpha')
+	out := run(root, 'update', '--overwrite')
+	assert out.code != 0, out.text()
+	assert out.errors.join('\n').contains('unknown option'), out.text()
+}
+
+fn test_the_usage_documents_update() {
+	assert usage.contains('v skills update'), usage
+	assert usage.contains('edited here'), usage
 }
 
 fn test_an_unknown_subcommand_is_rejected() {
@@ -330,4 +453,27 @@ fn test_list_does_not_complain_about_the_shipped_bundles() {
 	// Every bundle this compiler ships has to pass the rules it enforces.
 	out := run(@VEXEROOT, 'list')
 	assert out.errors.len == 0, out.errors.join('\n')
+}
+
+fn test_update_holds_back_an_unreadable_local_edit() {
+	$if windows {
+		return
+	}
+	$if !windows {
+		if os.getuid() == 0 { return }
+	}
+	root := project()
+	source := os.join_path(skills.bundled_root(root), 'alpha', 'references', 'note.md')
+	os.write_file(source, '')!
+	assert run(root, 'add', 'alpha').code == 0
+	installed := os.join_path(skills.target_dir(.project_root, root), 'alpha', 'references', 'note.md')
+	os.write_file(installed, 'local work')!
+	os.chmod(installed, 0o000)!
+	defer { os.chmod(installed, 0o600) or {} }
+	rebundle(root, 'alpha')
+	out := run(root, 'update')
+	assert out.code != 0, out.text()
+	assert out.errors.join('\n').contains('not updated'), out.text()
+	os.chmod(installed, 0o600)!
+	assert os.read_file(installed)! == 'local work'
 }

@@ -27,7 +27,8 @@ fn testsuite_begin() {
 	os.mkdir_all(borrow_storage_tmp_dir) or { panic(err) }
 	cmd_v := os.join_path(borrow_storage_vroot, 'cmd', 'v')
 	vlib := os.join_path(borrow_storage_vroot, 'vlib')
-	build := os.execute('${os.quoted_path(borrow_storage_vexe)} -gc none -d ownership -path "${vlib}|@vlib|@vmodules" -o ${os.quoted_path(borrow_storage_v3)} ${os.quoted_path(cmd_v)}')
+	build := os.exec([borrow_storage_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+		'${vlib}' + '|@vlib|@vmodules', '-o', '${borrow_storage_v3}', '${cmd_v}'])
 	assert build.exit_code == 0, build.output
 }
 
@@ -43,13 +44,14 @@ fn borrow_storage_compile_with_flags(name string, src string, flags string) os.R
 	path := os.join_path(borrow_storage_tmp_dir, '${name}.v')
 	os.write_file(path, src) or { panic(err) }
 	out := os.join_path(borrow_storage_tmp_dir, name)
-	return os.execute('${os.quoted_path(borrow_storage_v3)} -ownership -d ownership -no-parallel ${flags} -o ${os.quoted_path(out)} ${os.quoted_path(path)}')
+	return os.exec(['${borrow_storage_v3}', '-ownership', '-d', 'ownership', '-no-parallel',
+		...(os.split_args(flags) or { panic(err) }), '-o', '${out}', path])
 }
 
 fn borrow_storage_run(name string, src string) string {
 	build := borrow_storage_compile(name, src)
 	assert build.exit_code == 0, '${name}: ${build.output}'
-	run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+	run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 	assert run.exit_code == 0, '${name}: ${run.output}'
 	return run.output.trim_space()
 }
@@ -69,7 +71,7 @@ fn main() {
 		name := 'sum_box_allocator_${i}'
 		build := borrow_storage_compile_with_flags(name, src, flags)
 		assert build.exit_code == 0, '${name}: ${build.output}'
-		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 		assert run.exit_code == 0, '${name}: ${run.output}'
 		assert run.output.trim_space() == 'drop 1\ndrop 2'
 	}
@@ -256,7 +258,7 @@ fn main() {
 			case_name := '${name}_${borrowed}'
 			build := borrow_storage_compile(case_name, input)
 			assert build.exit_code == 0, build.output
-			run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, case_name)))
+			run := os.exec([os.join_path(borrow_storage_tmp_dir, case_name)])
 			if !borrowed && operation in ['values << Handle{2}', 'values.ensure_cap(values.cap + 1)'] {
 				// Mutating an unsliced owner does not require independent element owners.
 				assert run.exit_code == 0, run.output
@@ -307,7 +309,11 @@ mut:
 fn inspect(values &[]Resource) int { return values[0].id }
 fn change(mut values []Resource) { values[0].value = 7 }
 fn keep(mut values []Resource) []Resource { return values }
-fn keep_reference(mut values []Resource) &[]Resource { return &values }
+// Retained references below request an owned snapshot, including managed inputs.
+fn owned_reference(values &[]Resource) &[]Resource {
+	return &[]Resource{len: values.len, init: values[index].clone()}
+}
+fn keep_reference(mut values []Resource) &[]Resource { return owned_reference(&values) }
 type ResourceArray = []Resource
 struct Stored { mut: values &ResourceArray = unsafe { nil } }
 type ResourceRef = &[]Resource
@@ -316,14 +322,16 @@ struct StoredRef { mut: values ResourceRefAlias = unsafe { nil } }
 struct StoredOption { values ?ResourceRefAlias }
 fn store_and_change(mut values []Resource, mut stored Stored) {
 	values[0].value = 9
-	stored.values = &values
+	copy := owned_reference(&values)
+	stored.values = copy
 }
 fn store_alias_and_change(mut values []Resource, mut stored StoredRef, initializer bool) {
 	values[0].value = 11
+	copy := owned_reference(&values)
 	if initializer {
-		stored = StoredRef{values: &values}
+		stored = StoredRef{values: copy}
 	} else {
-		stored.values = &values
+		stored.values = copy
 	}
 	values[0].value = 12
 }
@@ -384,7 +392,8 @@ fn stored_option_reference(present bool) StoredOption {
 	return stored
 }
 fn store_option_reference(mut values []Resource) StoredOption {
-	return StoredOption{values: ?ResourceRefAlias(&values)}
+	copy := owned_reference(&values)
+	return StoredOption{values: ?ResourceRefAlias(copy)}
 }
 fn map_literal_from_borrow(mut values []Resource) map[string][]Resource {
 	return {"hit": values}
@@ -844,7 +853,7 @@ fn main() {
 				continue
 			}
 			assert build.exit_code == 0, build.output
-			run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+			run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 			assert run.exit_code != 0, run.output
 			assert run.output.contains('requires ownership destruction but has no compatible `clone()` method'), run.output
 		}
@@ -865,7 +874,7 @@ fn main() {
 '
 		build := borrow_storage_compile(name, source)
 		assert build.exit_code == 0, build.output
-		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 		assert run.exit_code != 0, run.output
 		assert run.output.contains('array.delete: index out of range'), run.output
 	}
@@ -905,7 +914,7 @@ fn main() {
 		name := 'owned_trim_bounds_${i}'
 		build := borrow_storage_compile_with_flags(name, source, flags)
 		assert build.exit_code == 0, '${name}: ${build.output}'
-		run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+		run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 		assert run.exit_code == 0, '${name}: ${run.output}'
 		assert run.output.trim_space() == 'ok'
 	}
@@ -1008,7 +1017,7 @@ fn main() {
 '
 				build := borrow_storage_compile(name, source)
 				assert build.exit_code == 0, '${name}: ${build.output}'
-				run := os.execute(os.quoted_path(os.join_path(borrow_storage_tmp_dir, name)))
+				run := os.exec([os.join_path(borrow_storage_tmp_dir, name)])
 				assert run.exit_code != 0, '${name}: ${run.output}'
 				assert !run.output.contains('unexpected clone'), '${name}: ${run.output}'
 				expected := if overflow {

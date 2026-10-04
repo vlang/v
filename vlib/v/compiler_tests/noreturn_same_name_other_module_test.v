@@ -21,7 +21,7 @@ fn compile(name string, command string, modules map[string]string, main_source s
 	}
 	os.write_file(os.join_path(dir, 'v.mod'), "Module{ name: '${name}' }\n") or { panic(err) }
 	os.write_file(os.join_path(dir, 'main.v'), main_source) or { panic(err) }
-	res := os.execute('${os.quoted_path(vexe)} -new-compiler ${command} ${os.quoted_path(dir)}')
+	res := os.exec([vexe, '-new-compiler', '${command}', dir])
 	return res.exit_code, res.output
 }
 

@@ -7,7 +7,7 @@ fn voidptr_slot_check(name string, source string) os.Result {
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
-	return os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(root)}')
+	return os.exec([@VEXE, '-check', root])
 }
 
 fn voidptr_slot_source(field_param string, fn_param string) string {

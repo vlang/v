@@ -167,6 +167,68 @@ fn call_helper_node(mut a flat.FlatAst, node flat.Node, children []flat.NodeId) 
 	})
 }
 
+fn test_array_literal_constructors_follow_cgen_lowering() {
+	// Cgen lowers runtime array literals to constructors after markused, and
+	// literal-output programs do not seed them, so the literal itself must keep
+	// them. Fixed arrays, `in` operands and fixed constant tables need none.
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.const_types['table'] = types.Type(types.ArrayFixed{
+		elem_type: types.int_
+		len:       2
+	})
+	tc.const_types['names'] = types.Type(types.Array{
+		elem_type: types.string_
+	})
+	c := CallCollector{
+		a:               &a
+		tc:              &tc
+		import_contexts: [map[string]string{}]
+	}
+	ctor := ['new_array_from_c_array']
+	assert array_literal_root_calls(mut a, c, .fn_decl, '', array_literal_node(mut a, 2)) == ctor
+	assert array_literal_root_calls(mut a, c, .fn_decl, '', array_literal_node(mut a, 1)) == [
+		'new_array_from_c_array',
+		'new_array_from_c_array_noscan',
+	]
+	assert array_literal_root_calls(mut a, c, .fn_decl, '', array_literal_node(mut a, 0)).len == 0
+	fixed := call_helper_node(mut a, flat.Node{ kind: .postfix, op: .not }, [
+		array_literal_node(mut a, 2),
+	])
+	assert array_literal_root_calls(mut a, c, .fn_decl, '', fixed).len == 0
+	// The elements of a fixed array can still be runtime arrays.
+	fixed_of_arrays := call_helper_node(mut a, flat.Node{ kind: .postfix, op: .not }, [
+		call_helper_node(mut a, flat.Node{ kind: .array_literal }, [
+			array_literal_node(mut a, 2),
+		]),
+	])
+	assert array_literal_root_calls(mut a, c, .fn_decl, '', fixed_of_arrays) == ctor
+	in_expr := call_helper_node(mut a, flat.Node{ kind: .in_expr }, [
+		a.add_val(.string_literal, 'a'),
+		array_literal_node(mut a, 2),
+	])
+	assert array_literal_root_calls(mut a, c, .fn_decl, '', in_expr).len == 0
+	not_in := call_helper_node(mut a, flat.Node{ kind: .prefix, op: .not }, [in_expr])
+	assert array_literal_root_calls(mut a, c, .fn_decl, '', not_in).len == 0
+	assert array_literal_root_calls(mut a, c, .const_field, 'table', array_literal_node(mut a,
+		2)).len == 0
+	assert array_literal_root_calls(mut a, c, .const_field, 'names', array_literal_node(mut a,
+		2)) == ctor
+}
+
+fn array_literal_node(mut a flat.FlatAst, len int) flat.NodeId {
+	elem := a.add_val(.string_literal, 'a')
+	return call_helper_node(mut a, flat.Node{ kind: .array_literal }, []flat.NodeId{len: len, init: elem})
+}
+
+fn array_literal_root_calls(mut a flat.FlatAst, c &CallCollector, kind flat.NodeKind, name string, expr flat.NodeId) []string {
+	root := call_helper_node(mut a, flat.Node{ kind: kind, value: name }, [expr])
+	mut calls := []string{}
+	c.collect_calls_with_locals(a.node(root), 'main', map[string]string{}, '', '', map[string]bool{},
+		map[string]string{}, map[int]bool{}, mut calls)
+	return calls
+}
+
 fn test_literal_output_gate_preserves_file_index_fallbacks() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_val(.ident, 'println')

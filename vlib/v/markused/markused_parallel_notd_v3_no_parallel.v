@@ -78,10 +78,16 @@ fn (c &CallCollector) collect_bodies_scoped_batches(body_ids []int, body_modules
 	} else {
 		max_batches
 	}
+	// The batches rewind one scratch arena instead of unmapping it and faulting
+	// in a fresh one for each batch.
+	mut scratch_scope := unsafe { nil }
 	for batch_idx in 0 .. n_batches {
 		start := range_start + item_count * batch_idx / n_batches
 		end := range_start + item_count * (batch_idx + 1) / n_batches
-		scratch_scope := markused_worker_scope_begin(true)
+		if scratch_scope == unsafe { nil } || !markused_worker_scope_reenter(scratch_scope) {
+			markused_worker_scope_free(scratch_scope)
+			scratch_scope = markused_worker_scope_begin(true)
+		}
 		batch_tc := c.tc.fork_for_parallel_transform(c.a)
 		batch := c.fork_with_tc(batch_tc)
 		batch.collect_bodies_range(body_ids, body_modules, body_import_contexts, start, end, mut
@@ -90,8 +96,23 @@ fn (c &CallCollector) collect_bodies_scoped_batches(body_ids []int, body_modules
 		for result_idx in start .. end {
 			results[result_idx] = clone_body_calls(results[result_idx])
 		}
-		markused_worker_scope_free(scratch_scope)
 	}
+	markused_worker_scope_free(scratch_scope)
+}
+
+// markused_batch_arena_keep_bytes bounds how much of a batch arena stays mapped
+// for the next batch (see prealloc_scope_reenter).
+const markused_batch_arena_keep_bytes = isize(8) * 1024 * 1024
+
+// markused_worker_scope_reenter makes a left batch arena current again, rewound.
+// False means the caller needs a new arena.
+fn markused_worker_scope_reenter(scope voidptr) bool {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			return unsafe { prealloc_scope_reenter(scope, markused_batch_arena_keep_bytes) }
+		}
+	}
+	return false
 }
 
 fn markused_worker_scope_begin(enabled bool) voidptr {

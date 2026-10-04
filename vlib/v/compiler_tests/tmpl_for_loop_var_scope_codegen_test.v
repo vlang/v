@@ -11,7 +11,8 @@ fn flvs_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_for_loop_var_scope_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${flvs_vexe} -gc none -path "${flvs_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${flvs_v3_src}')
+		os.exec([flvs_vexe, '-gc', 'none', '-path', '${flvs_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${flvs_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -36,10 +37,10 @@ fn test_template_loop_var_does_not_shadow_outer_capture_after_loop() {
 	source := "module main\n\nfn build(item string, items []string) string {\n\treturn ('[' + \$tmpl('t.html') + ']').replace('\\n', '')\n}\n\nfn main() {\n\tprintln(build('OUTER', ['a', 'b']))\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_for_loop_var_scope_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	// Loop body concatenated the two elements, then the OUTER `item` printed after the loop.
 	assert run.output.trim_space() == '[ab|OUTER]', run.output

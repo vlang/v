@@ -70,7 +70,7 @@ fn check_receiver_source(name string, source string) os.Result {
 	defer {
 		os.rmdir_all(os.dir(path)) or {}
 	}
-	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -check -nocolor ${os.quoted_path(path)}')
+	return os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', path])
 }
 
 fn build_receiver_source(name string, source string) os.Result {
@@ -78,7 +78,7 @@ fn build_receiver_source(name string, source string) os.Result {
 	defer {
 		os.rmdir_all(os.dir(path)) or {}
 	}
-	return os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocolor -o ${os.quoted_path(path.all_before_last('.'))} ${os.quoted_path(path)}')
+	return os.exec([@VEXE, '-new-compiler', '-nocolor', '-o', path.all_before_last('.'), path])
 }
 
 // error_lines returns `line:col: message` for every error of an output.

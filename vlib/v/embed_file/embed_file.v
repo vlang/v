@@ -130,9 +130,11 @@ pub fn (original &EmbedFileData) data() &u8 {
 	// Reading bytes may populate the private cache, as in to_string and to_bytes.
 	mut ed := unsafe { &EmbedFileData(original) }
 	if ed.uncompressed == unsafe { nil } && ed.compressed != unsafe { nil } {
-		decoder := g_embed_file_decoders.decoders[ed.compression_type] or {
+		if ed.compression_type !in g_embed_file_decoders.decoders {
 			panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
 		}
+		// The core module must also compile before address-or lowering is bootstrapped.
+		decoder := unsafe { &g_embed_file_decoders.decoders[ed.compression_type] }
 		compressed := unsafe { ed.compressed.vbytes(ed.compressed_len) }
 		decompressed := decoder.decompress(compressed) or {
 			panic('EmbedFileData error: decompression of "${ed.path}" failed: ${err}')

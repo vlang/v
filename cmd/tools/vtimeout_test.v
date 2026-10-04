@@ -9,7 +9,7 @@ fn depend_on_command(cmd string) ? {
 		println('skip: ${cmd} not found')
 		return none
 	}
-	res := os.execute('${os.quoted_path(path)} --version')
+	res := os.exec([path, '--version'])
 	if res.exit_code != 0 {
 		println('skip: ${cmd} does not support --version')
 		return none
@@ -22,7 +22,7 @@ fn depend_on_command(cmd string) ? {
 
 fn execute(cmd string) os.Result {
 	sw := time.new_stopwatch()
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	dt := sw.elapsed().milliseconds()
 	eprintln('>> command: `${cmd:-60s}`, took: ${dt:5} ms, exit_code: ${res.exit_code:3}, output.len: ${res.output.len}')
 	return res

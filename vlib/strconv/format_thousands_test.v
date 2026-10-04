@@ -47,8 +47,26 @@ fn test_expand_exponent() {
 
 fn test_format_thousands_int_types() {
 	assert format_thousands(1234567, ' ') == '1 234 567'
+	assert format_thousands(i8(-128), ',') == '-128'
+	assert format_thousands(i16(-32768), ',') == '-32,768'
+	assert format_thousands(i32(-2147483648), ',') == '-2,147,483,648'
 	assert format_thousands(i64(-1234567), ',') == '-1,234,567'
+	assert format_thousands(u8(255), ',') == '255'
+	assert format_thousands(u16(65535), ',') == '65,535'
+	assert format_thousands(u32(4294967295), ',') == '4,294,967,295'
 	assert format_thousands(u64(18446744073709551615), ' ') == '18 446 744 073 709 551 615'
+	assert format_thousands(isize(-1234567), ',') == '-1,234,567'
+	assert format_thousands(usize(1234567), ',') == '1,234,567'
+}
+
+fn grouped[T Numeric](x T) string {
+	return format_thousands(x, ',')
+}
+
+fn test_format_thousands_from_constrained_generic() {
+	assert grouped(1234567) == '1,234,567'
+	assert grouped(u16(65535)) == '65,535'
+	assert grouped(f64(1234.5)) == '1,234.5'
 }
 
 fn test_format_thousands_float_types_and_decimal_separator() {

@@ -35,7 +35,8 @@ fn build_v3_review_transform() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -46,7 +47,8 @@ fn build_v3_review_transform_ownership() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -prealloc -d ownership -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-prealloc', '-d', 'ownership', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -59,7 +61,8 @@ fn run_bad_with_flags(v3_bin string, name string, flags string, src string, expe
 	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.execute('${v3_bin} -nocache ${flags} ${bad_src} -b c -o ${bad_bin}')
+	result := os.exec([v3_bin, '-nocache', ...(os.split_args(flags) or { panic(err) }), '${bad_src}',
+		'-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
@@ -69,7 +72,7 @@ fn run_bad_backend(v3_bin string, name string, backend string, src string, expec
 	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.execute('${v3_bin} -nocache -b ${backend} ${bad_src} -o ${bad_bin}')
+	result := os.exec([v3_bin, '-nocache', '-b', '${backend}', '${bad_src}', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('build_expr: unsupported expr kind'), '${name}: reached SSA lowering\n${result.output}'
@@ -83,10 +86,11 @@ fn run_good_with_flags(v3_bin string, name string, flags string, src string) str
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} -nocache ${flags} ${good_src} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, '-nocache', ...(os.split_args(flags) or { panic(err) }), '${good_src}',
+		'-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -95,10 +99,10 @@ fn run_good_with_env(v3_bin string, name string, env string, src string) string 
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${env} ${v3_bin} -nocache ${good_src} -b c -o ${good_bin}')
+	compile := os.exec(['${env}', v3_bin, '-nocache', '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -714,7 +718,8 @@ fn gen_c_from_source_with_flags(v3_bin string, name string, flags string, src st
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), src_path, '-b', 'c',
+		'-o', c_path])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_path)
 	return os.read_file(c_path) or { panic(err) }
@@ -750,7 +755,7 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 
 fn run_good_project_with_flags(v3_bin string, name string, flags string, files map[string]string, input string) string {
 	good_bin := compile_good_project(v3_bin, name, flags, files, input)
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -766,7 +771,8 @@ fn compile_good_project(v3_bin string, name string, flags string, files map[stri
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), input_path, '-b',
+		'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	assert !compile.output.contains('gen_node: unsupported node kind'), '${name}: unsupported node reached C generation\n${compile.output}'
@@ -790,7 +796,8 @@ fn gen_c_from_project_with_flags(v3_bin string, name string, flags string, files
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), input_path, '-b',
+		'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: C generation failed\n${compile.output}'
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -4298,7 +4305,7 @@ fn main() {
 	src_path := os.join_path(os.temp_dir(), 'v3_owned_value_receiver_method_closure.v')
 	c_path := os.join_path(os.temp_dir(), 'v3_owned_value_receiver_method_closure.c')
 	os.write_file(src_path, source) or { panic(err) }
-	gen := os.execute('${v3_bin} -nocache -ownership ${src_path} -b c -o ${c_path}')
+	gen := os.exec([v3_bin, '-nocache', '-ownership', src_path, '-b', 'c', '-o', c_path])
 	assert gen.exit_code == 0, gen.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('closure__closure_create_with_data_and_drop'), c_source
@@ -4336,7 +4343,7 @@ fn main() {
 	src_path := os.join_path(os.temp_dir(), 'v3_owned_rvalue_method_receiver.v')
 	c_path := os.join_path(os.temp_dir(), 'v3_owned_rvalue_method_receiver.c')
 	os.write_file(src_path, source) or { panic(err) }
-	gen := os.execute('${v3_bin} -nocache -ownership ${src_path} -b c -o ${c_path}')
+	gen := os.exec([v3_bin, '-nocache', '-ownership', src_path, '-b', 'c', '-o', c_path])
 	assert gen.exit_code == 0, gen.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
@@ -4369,7 +4376,8 @@ fn main() {
 	src_path := os.join_path(os.temp_dir(), 'v3_owned_fn_literal_capture_context.v')
 	c_path := os.join_path(os.temp_dir(), 'v3_owned_fn_literal_capture_context.c')
 	os.write_file(src_path, source) or { panic(err) }
-	gen := os.execute('${v3_bin} -nocache -ownership -gc none ${src_path} -b c -o ${c_path}')
+	gen := os.exec([v3_bin, '-nocache', '-ownership', '-gc', 'none', src_path, '-b', 'c', '-o',
+		c_path])
 	assert gen.exit_code == 0, gen.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('static void _flctxdrop_'), c_source
@@ -4697,9 +4705,9 @@ fn test_single_module_test_file_skips_premodule_attributes() {
 		panic(err)
 	}
 	bin_path := os.join_path(root, 'reader_test_bin')
-	compile := os.execute('${v3_bin} ${test_file} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, test_file, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'reader'
 }
@@ -4710,9 +4718,9 @@ fn test_delete_last_empty_array_panics_before_tail_clear() {
 	good_src := os.join_path(os.temp_dir(), 'v3_delete_last_empty.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_delete_last_empty')
-	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code != 0, run.output
 	assert run.output.contains('array.delete_last: array is empty'), run.output
 }
@@ -5408,9 +5416,9 @@ fn test_vmodroot_c_flag_preserves_project_path_with_spaces() {
 	write_project_file(root, 'include/flag_value.h', 'static inline int flag_value_inner(void) {\n\treturn 57;\n}\n')
 	bin := os.join_path(os.temp_dir(), 'v3_flag_pseudo_path')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(bin)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(bin))
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '57'
 }
@@ -5687,10 +5695,13 @@ fn test_json2_reflected_fields_keep_independent_decoder_specializations() {
 	os.write_file(src_file, 'import x.json2\n\nstruct Result {\n\tvalue int\n}\n\nstruct Weather {\n\tlang string\n\tresult Result\n}\n\nfn main() {\n\t_ := json2.decode[Weather](r\'{"lang":"en","result":{"value":42}}\')!\n}\n') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -nocache ${src_file} -b c -o ${c_file}')
+	compile := os.exec([v3_bin, '-nocache', src_file, '-b', 'c', '-o', c_file])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_file) or { '' }
-	assert c_code.contains('json2__Decoder_Result__decode_value(decoder, &decoded_field_value)'), c_code
+	// Each field is decoded by the helper specialized for its own type.
+	assert c_code.contains('json2__Decoder_string__decode_struct_field(decoder, &val->lang'), c_code
+	assert c_code.contains('json2__Decoder_Result__decode_struct_field(decoder, &val->result'), c_code
+	assert c_code.contains('json2__Decoder_Result__decode_value(decoder, target)'), c_code
 }
 
 fn test_json2_reflected_main_type_does_not_use_imported_homonym() {
@@ -5844,7 +5855,9 @@ fn test_parallel_json2_exact_callee_does_not_rebind_main_type_to_imported_homony
 	c_source := gen_c_from_project(v3_bin, 'parallel_json2_exact_callee_homonym', {
 		'v.mod':             "Module { name: 'parallel_json2_exact_callee_homonym' }\n"
 		'discord/discord.v': 'module discord\n\npub struct Discord {\npub:\n\tname string\n}\n'
-		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Discord {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tvalue := json2.decode[Discord](r\'{"value":42}\')!\n\tprintln(value.value)\n}\n'
+		// json2 only decodes a struct key by key through `decode_struct_key` when the
+		// struct embeds another one.
+		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Base {\n\tid int\n}\n\nstruct Discord {\n\tBase\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tvalue := json2.decode[Discord](r\'{"value":42}\')!\n\tprintln(value.value)\n}\n'
 	}, 'main.v')
 	assert c_source.contains('decode_struct_key_T_Discord(')
 	assert !c_source.contains('decode_struct_key_T_discord__Discord(')
@@ -13216,13 +13229,13 @@ fn test_test_command_skips_incompatible_single_file() {
 	os.write_file(test_src, 'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or {
 		panic(err)
 	}
-	result := os.execute('${v3_bin} -nocache -os linux test ${test_src}')
+	result := os.exec([v3_bin, '-nocache', '-os', 'linux', 'test', '${test_src}'])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('SKIP ${test_src}'), result.output
 
 	backend_test_src := os.join_path(test_dir, 'v3_incompatible_backend_test.js.v')
 	os.write_file(backend_test_src, 'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or { panic(err) }
-	backend_result := os.execute('${v3_bin} -nocache test ${backend_test_src}')
+	backend_result := os.exec([v3_bin, '-nocache', 'test', '${backend_test_src}'])
 	assert backend_result.exit_code == 0, backend_result.output
 	assert backend_result.output.contains('SKIP ${backend_test_src}'), backend_result.output
 
@@ -13230,7 +13243,7 @@ fn test_test_command_skips_incompatible_single_file() {
 	os.write_file(compatible_test_src, "module main\n\nfn test_test_command_skips_incompatible_single_file() {\n\tprintln('compatible backend test')\n}\n") or {
 		panic(err)
 	}
-	compatible_result := os.execute('${v3_bin} -nocache test ${compatible_test_src}')
+	compatible_result := os.exec([v3_bin, '-nocache', 'test', '${compatible_test_src}'])
 	assert compatible_result.exit_code == 0, compatible_result.output
 	assert !compatible_result.output.contains('SKIP ${compatible_test_src}'), compatible_result.output
 	assert compatible_result.output.contains('compatible backend test'), compatible_result.output
@@ -13242,7 +13255,7 @@ fn test_test_command_honors_vtest_build_constraint() {
 	os.write_file(test_src, '// vtest build: windows\nmodule main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or {
 		panic(err)
 	}
-	result := os.execute('${v3_bin} -nocache -os linux test ${test_src}')
+	result := os.exec([v3_bin, '-nocache', '-os', 'linux', 'test', '${test_src}'])
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('SKIP ${test_src}'), result.output
 }

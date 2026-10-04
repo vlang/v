@@ -13,11 +13,22 @@
 module skills
 
 import os
+import rand
+import crypto.sha256
+import json2 as json
 
 // entry_file is the file every skill directory must contain. It is both the
 // entry point an agent reads first and the marker `catalog` looks for, so a
 // directory without one is never offered as a skill.
 pub const entry_file = 'SKILL.md'
+
+// origin_file records what a bundle looked like when it was installed, so a
+// later bundle change can be told apart from a local edit.
+//
+// It sits in the install directory's own root rather than inside each skill,
+// because `list_files` walks a skill directory and would otherwise count it as a
+// skill file.
+pub const origin_file = 'origin.json'
 
 // max_name_length is the longest a skill name may be, per the Agent Skills spec.
 pub const max_name_length = 64
@@ -373,8 +384,8 @@ pub fn target_dir(scope Scope, base string) string {
 //
 // A symlink sitting where the skill would go is refused. `os.is_dir` and
 // `os.rmdir_all` both follow their argument, so `--force` over a link would
-// list and delete the *target's* contents rather than the link. That is how an
-// install turns into an unrelated directory wipe.
+// list and delete the *target's* contents rather than the link. Provenance symlinks and
+// non-regular files are refused before installed content is replaced.
 pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 	validate_name(skill.name)!
 	bundle_name := validate_bundle(skill.directory)!
@@ -419,6 +430,8 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 			dry_run: opts.dry_run
 		}
 	}
+	// Validate provenance before replacing any installed content.
+	validate_origin_destination(dir)!
 	if already_installed && !opts.dry_run {
 		os.rmdir_all(dest)!
 	}
@@ -440,6 +453,15 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 			os.write_file(target, os.read_file(source)!)!
 		}
 		result.written << relative
+	}
+	if !opts.dry_run {
+		// Recorded after the write, so the digest always describes what is on
+		// disk. A failed write leaves the previous record, which then reads as
+		// `modified` rather than pretending the old content was kept.
+		write_origin(dir, skill.name, InstalledOrigin{
+			bundle: skill.name
+			digest: content_digest(dest, skill.files)!
+		})!
 	}
 	return result
 }
@@ -463,6 +485,10 @@ pub fn remove(dir string, name string) !RemoveResult {
 		return error('skill `${name}` is outside its immediate install directory')
 	}
 	os.rmdir_all(dest)!
+	// The record has to go with the directory. Left behind, it would describe a
+	// digest for files that no longer exist, and a later reinstall of the same
+	// name would be compared against it.
+	forget_origin(dir, name)
 	return RemoveResult{
 		skill:   name
 		path:    dest
@@ -507,6 +533,185 @@ pub fn out_of_date(vroot string, dir string) []string {
 		}
 	}
 	return stale
+}
+
+// OriginState is what an installed skill looks like relative to its bundle.
+//
+// The distinction matters because the two wrong answers are not the same event:
+// a bundle that moved on is safe to refresh, while a local edit is the user's
+// work. Content comparison alone cannot tell them apart, so `origin_file`
+// records the digests that were installed and this reports which case applies.
+pub enum OriginState {
+	// current means the installed files are exactly what was installed and the
+	// bundle still matches it.
+	current
+	// stale means the installed files are still what was installed, but the
+	// bundle has since changed. Refreshing cannot lose anything.
+	stale
+	// modified means the installed files no longer match what was installed, so
+	// they were edited here. Refreshing would discard that, and `update` will not
+	// do it without `force`.
+	modified
+	// unknown means there is no usable proof of unchanged content: unreadable files, an installation
+	// from before `origin_file` existed, or one written by hand. Treated as
+	// modified, because guessing wrong loses the user's files and guessing the
+	// other way only asks for `--force`.
+	unknown
+}
+
+// str renders a state as the word `v skills list` and `v skills update` report.
+pub fn (s OriginState) str() string {
+	return match s {
+		.current { 'current' }
+		.stale { 'stale' }
+		.modified { 'modified' }
+		.unknown { 'unknown' }
+	}
+}
+
+// InstalledOrigin is one recorded installation: the digest of each file as it
+// was installed, and the bundle that provided them.
+struct InstalledOrigin {
+	bundle string @[json: bundle]
+	digest string @[json: digest]
+}
+
+// InstalledOriginFile is the shape of `origin_file`.
+struct InstalledOriginFile {
+	skills map[string]InstalledOrigin
+}
+
+// origin_path is where `dir` keeps its provenance record.
+fn origin_path(dir string) string {
+	return os.join_path(dir, origin_file)
+}
+
+// read_origin returns the record for the skill `name` installed in `dir`, or
+// none when there is no usable record.
+fn read_origin(dir string, name string) ?InstalledOrigin {
+	text := os.read_file(origin_path(dir)) or { return none }
+	file := json.decode[InstalledOriginFile](text) or { return none }
+	return file.skills[name] or { return none }
+}
+
+// read_origin_file returns every recorded installation in `dir`, so one install
+// does not drop the entry another skill already has.
+fn read_origin_file(dir string) map[string]InstalledOrigin {
+	mut skills := map[string]InstalledOrigin{}
+	if text := os.read_file(origin_path(dir)) {
+		if file := json.decode[InstalledOriginFile](text) {
+			skills = file.skills
+		}
+	}
+	return skills
+}
+
+// validate_origin_destination refuses links (including dangling ones) and special files.
+fn validate_origin_destination(dir string) ! {
+	path := origin_path(dir)
+	if os.is_link(path) {
+		return error('refusing a symlink provenance file `${path}`')
+	}
+	if os.exists(path) {
+		info := os.stat(path)!
+		if info.get_filetype() != .regular {
+			return error('provenance file `${path}` is not a regular file')
+		}
+	}
+}
+
+// publish_origin writes into a fresh directory and replaces the destination by rename.
+// Replacing the file rather than truncating it also leaves hard-linked files untouched.
+fn publish_origin(dir string, skills map[string]InstalledOrigin) ! {
+	validate_origin_destination(dir)!
+	os.mkdir_all(dir)!
+	temporary := os.join_path(dir, '.origin-${rand.uuid_v4()}')
+	os.mkdir(temporary)!
+	defer { os.rmdir_all(temporary) or {} }
+	source := os.join_path(temporary, origin_file)
+	os.write_file(source, json.encode(InstalledOriginFile{ skills: skills }))!
+	validate_origin_destination(dir)!
+	destination := origin_path(dir)
+	$if windows {
+		// Windows rename cannot replace an existing file. Unlinking never truncates its target.
+		if os.exists(destination) { os.rm(destination)! }
+	}
+	os.rename(source, destination)!
+}
+
+// write_origin records `record` for the skill `name` as installed in `dir`.
+fn write_origin(dir string, name string, record InstalledOrigin) ! {
+	mut skills := read_origin_file(dir)
+	skills[name] = record
+	publish_origin(dir, skills)!
+}
+
+// forget_origin drops the record for `name`, so a reinstall is treated as new.
+//
+// Removing a skill has to do this: a record left behind describes a digest for
+// files that no longer exist, and a later reinstall of the same name would be
+// compared against it and read as modified.
+pub fn forget_origin(dir string, name string) {
+	validate_origin_destination(dir) or { return }
+	if read_origin(dir, name) == none {
+		return
+	}
+	mut skills := read_origin_file(dir)
+	skills.delete(name)
+	path := origin_path(dir)
+	// The record is removed rather than emptied once the last skill is gone, so
+	// an install directory that holds no skills holds nothing of ours either.
+	//
+	// Failing to tidy up is not worth reporting: the removal already succeeded,
+	// and what is left only affects a later comparison, which errs towards
+	// asking rather than overwriting.
+	if skills.len == 0 {
+		os.rm(path) or {}
+		return
+	}
+	publish_origin(dir, skills) or {}
+}
+
+// content_digest is one value describing the files `files` names in `directory`.
+//
+// The digest covers the file names as well as their bytes, so a rename changes
+// it, and the files are sorted so the order they were listed in does not.
+// An unreadable file returns an error; an incomplete digest cannot prove content is unchanged.
+pub fn content_digest(directory string, files []string) !string {
+	mut sorted := files.clone()
+	sorted.sort()
+	mut buf := []u8{}
+	for relative in sorted {
+		buf << relative.bytes()
+		buf << u8(0)
+		text := os.read_file(os.join_path(directory, relative))!
+		buf << text.bytes()
+		buf << u8(0)
+	}
+	return sha256.hexhash(buf.bytestr())
+}
+
+// origin_state reports how the skill `name` installed in `dir` relates to the
+// bundle of the same name under `vroot`.
+//
+// A skill that is no longer bundled is `current`: there is nothing to update it
+// to, so it is left to whoever installed it.
+pub fn origin_state(vroot string, dir string, name string) OriginState {
+	dest := os.join_path_single(dir, name)
+	skill := find(vroot, name) or { return OriginState.current }
+	now := content_digest(dest, list_files(dest)) or { return OriginState.unknown }
+	record := read_origin(dir, name) or { return OriginState.unknown }
+	if now == record.digest {
+		// What is on disk is what was installed. Whether that is still the right
+		// content is the bundle's business.
+		bundled := content_digest(skill.directory, skill.files) or { return OriginState.unknown }
+		return if bundled == record.digest {
+			OriginState.current
+		} else {
+			OriginState.stale
+		}
+	}
+	return OriginState.modified
 }
 
 // differs reports whether any of `files` has different content in the two

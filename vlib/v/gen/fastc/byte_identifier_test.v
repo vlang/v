@@ -86,7 +86,7 @@ fn test_fastc_arm64_byte_function_is_not_a_cast() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		executed := os.execute(os.quoted_path(output_path))
+		executed := os.exec([output_path])
 		assert executed.exit_code == 0, executed.output
 		assert executed.output == '9\n'
 	}
@@ -108,7 +108,7 @@ fn test_fastc_arm64_sizeof_byte_constant_uses_its_type() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		executed := os.execute(os.quoted_path(output_path))
+		executed := os.exec([output_path])
 		assert executed.exit_code == 0, executed.output
 		assert executed.output == '8\n'
 	}

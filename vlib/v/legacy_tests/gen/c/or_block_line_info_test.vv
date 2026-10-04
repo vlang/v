@@ -12,7 +12,7 @@ fn test_option_propagation_panic_has_matching_line_info() {
 	os.write_file(source_path,
 		'struct Foo{}\n\nfn (f Foo) foo() int {\n\treturn 1\n}\n\nfn new_foo() ?Foo {\n\treturn none\n}\n\nfn main() {\n\ti := new_foo()?.foo()\n\tprintln(i)\n}\n')!
 	cmd := '${os.quoted_path(line_info_test_vexe)} -g -o - ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([line_info_test_vexe, '-g', '-o', '-', source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	lines := res.output.replace('\r\n', '\n').split_into_lines()
 	// On Windows, #line directives use double-escaped backslashes, while

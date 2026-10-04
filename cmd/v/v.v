@@ -91,6 +91,7 @@ const external_commands = [
 	'vlib-docs',
 	'watch',
 	'where',
+	'why',
 	'wipe-cache',
 ]
 
@@ -242,13 +243,22 @@ fn ownership_compiler_is_required(args []string) bool {
 	return false
 }
 
+fn ownership_compiler_bootstrap_input(args []string, vroot string) bool {
+	compiler_sources := [
+		os.real_path(os.join_path(vroot, 'cmd', 'v')),
+		os.real_path(os.join_path(vroot, 'cmd', 'v', 'v.v')),
+		os.real_path(os.join_path(vroot, 'vlib', 'v', 'v.v')),
+	]
+	return args.any(os.exists(it) && os.real_path(it) in compiler_sources)
+}
+
 // ownership_bootstrap_can_use_current_compiler distinguishes compiling in support from
 // actually checking the compiler source with an ownership mode.
-fn ownership_bootstrap_can_use_current_compiler(args []string, compiler_source string) bool {
+fn ownership_bootstrap_can_use_current_compiler(args []string, vroot string) bool {
 	if args.any(it in ['-ownership', '--ownership', '-autofree']) {
 		return false
 	}
-	return args.any(os.exists(it) && os.real_path(it) == os.real_path(compiler_source))
+	return ownership_compiler_bootstrap_input(args, vroot)
 }
 
 // launch_ownership_compiler builds and starts a V3 executable that contains the optional
@@ -266,7 +276,7 @@ fn launch_ownership_compiler(args []string) {
 	compiler_source := os.join_path(vroot, 'cmd', 'v')
 	// A regular V3 compiler is deliberately allowed to create the ownership-enabled
 	// executable. Do not recursively dispatch that bootstrap compilation to itself.
-	if ownership_bootstrap_can_use_current_compiler(args, compiler_source) {
+	if ownership_bootstrap_can_use_current_compiler(args, vroot) {
 		driver.run(args)
 		exit(0)
 	}
@@ -358,7 +368,7 @@ fn run_external_tool(args []string, command_index int, command string) {
 			'vcreate'
 		}
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade' {
+		'upgrade', 'why' {
 			'vpm'
 		}
 		'vlib-docs' {
@@ -1049,7 +1059,7 @@ fn ensure_v1_fallback(reason string) !string {
 		return installed
 	} else {
 		make_command := find_make() or {
-			return error('${reason}, but no usable V ${v_version} fallback was found and make is unavailable. Install make, then run `make v1` in `${vroot}`.')
+			return error('${reason}, but no usable V ${v_version} fallback was found and make is unavailable. ${v1_fallback_make_hint()} Then run `make v1` in `${vroot}`.')
 		}
 		eprintln('${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...')
 		mut process := os.new_process(make_command)
@@ -1187,7 +1197,7 @@ fn v1_fallback_has_moved_modules(root string) bool {
 }
 
 fn v1_fallback_has_expected_version(executable string) bool {
-	result := os.execute('${os.quoted_path(executable)} version')
+	result := os.exec([executable, 'version'])
 	return result.exit_code == 0 && result.output.starts_with('V ${v_version} ')
 }
 
@@ -1211,11 +1221,30 @@ fn find_vroot(executable string) ?string {
 	return none
 }
 
+// find_make returns the GNU make to run `make v1` with, or none when PATH has
+// none.
+//
+// `mingw32-make` is the name MSYS2 gives GNU make. A stock Windows install of V
+// has no `make` on PATH, and both `v1:` targets are POSIX shell recipes, so
+// MSYS2 is the toolchain that can run them. It is Windows only: on a Unix host
+// `mingw32-make` is a Windows cross-make, which must not build the fallback.
 fn find_make() ?string {
-	for name in ['make', 'gmake'] {
+	mut names := ['make', 'gmake']
+	$if windows {
+		names << 'mingw32-make'
+	}
+	for name in names {
 		if executable := os.find_abs_path_of_executable(name) {
 			return executable
 		}
 	}
 	return none
+}
+
+// v1_fallback_make_hint says where to get make on this platform.
+fn v1_fallback_make_hint() string {
+	$if windows {
+		return 'On Windows, install GNU make in MSYS2 (`make` or `mingw32-make`) and put its tools, including `sh`, on PATH.'
+	}
+	return 'Install make.'
 }

@@ -12,7 +12,8 @@ fn orm_null_text_build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${orm_null_text_vexe} -gc none -path "${orm_null_text_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${orm_null_text_v3_src}')
+		os.exec([orm_null_text_vexe, '-gc', 'none', '-path',
+			'${orm_null_text_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${orm_null_text_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -27,7 +28,7 @@ fn orm_null_text_gen_c(v3_bin string, name string, src string) string {
 	src_path := os.join_path(root, 'main.v')
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(root, 'main.c')
-	result := os.execute('${v3_bin} ${src_path} -o ${c_path}')
+	result := os.exec([v3_bin, src_path, '-o', c_path])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -42,7 +43,7 @@ fn orm_null_text_gen_c_project(v3_bin string, name string, files map[string]stri
 	}
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.c')
 	os.rm(c_path) or {}
-	result := os.execute('${v3_bin} ${root} -o ${c_path}')
+	result := os.exec([v3_bin, root, '-o', c_path])
 	assert result.exit_code == 0, result.output
 	return os.read_file(c_path) or { panic(err) }
 }

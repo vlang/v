@@ -173,7 +173,7 @@ fn main() {
 			exit(2)
 		}
 	} else {
-		context.commit_v = scripting.run('git rev-list -n1 HEAD')
+		context.commit_v = scripting.run_args(['git', 'rev-list', '-n1', 'HEAD'])
 	}
 	if !context.show_vccommit {
 		scripting.cprintln('#################  context.commit_v: ${context.commit_v} #####################')
@@ -194,7 +194,7 @@ fn main() {
 	scripting.cprintln('#     v commit hash: ${shorter_hash} | folder: ${context.path_v}')
 	if context.cmd_to_run.len > 0 {
 		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')
-		cmdres := os.execute_or_exit(context.cmd_to_run)
+		cmdres := os.exec_or_exit(os.split_args(context.cmd_to_run) or { panic(err) })
 		if cmdres.exit_code != 0 {
 			scripting.cprintln_strong('#         exit code: ${cmdres.exit_code:-4d}')
 		}

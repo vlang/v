@@ -41,7 +41,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 	}
 	if topic in cli_topics {
 		vexe := get_vexe()
-		os.system('${os.quoted_path(vexe)} ${topic} --help')
+		os.system_args([vexe, '${topic}', '--help'])
 		exit(opts.exit_code)
 	}
 	mut topic_path := ''

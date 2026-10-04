@@ -21,7 +21,7 @@ fn curl_supports_ipv6() bool {
 	if curl_executable == '' {
 		return false
 	}
-	curl_res := os.execute('${curl_executable} --version')
+	curl_res := os.exec([curl_executable, '--version'])
 	if curl_res.exit_code != 0 {
 		return false
 	}
@@ -58,7 +58,8 @@ fn ensure_curl_works(tname string) ? {
 
 fn test_curl_connecting_through_ipv4_works() {
 	ensure_curl_works(@FN) or { return }
-	res := os.execute('${curl_executable} ${curl_local_options} --connect-timeout 0.5 --silent http://127.0.0.1:${port}/')
+	res := os.exec([curl_executable, ...(os.split_args(curl_local_options) or { panic(err) }),
+		'--connect-timeout', '0.5', '--silent', 'http://127.0.0.1:' + '${port}' + '/'])
 	assert res.exit_code == 0, res.output
 	assert res.output == welcome_text
 	log.info('> ${@FN}')
@@ -74,7 +75,8 @@ fn test_net_http_connecting_through_ipv4_works() {
 
 fn test_curl_connecting_through_ipv6_works() {
 	ensure_curl_works(@FN) or { return }
-	res := os.execute('${curl_executable} ${curl_local_options} --silent --connect-timeout 0.5 http://[::1]:${port}/')
+	res := os.exec([curl_executable, ...(os.split_args(curl_local_options) or { panic(err) }),
+		'--silent', '--connect-timeout', '0.5', 'http://[::1]:' + '${port}' + '/'])
 	assert res.exit_code == 0, res.output
 	assert res.output == welcome_text
 	log.info('> ${@FN}')
@@ -88,7 +90,7 @@ fn test_net_http_connecting_through_ipv6_works() {
 	$if freebsd {
 		// if the sysctl net.inet.ip.connect_inaddr_wild doesn't exist or
 		// if it axists and is non-zero, we should expect the IPv6 socket to be open.
-		result := os.execute('sysctl net.inet.ip.connect_inaddr_wild')
+		result := os.exec(['sysctl', 'net.inet.ip.connect_inaddr_wild'])
 		if result.exit_code == 0
 			&& result.output.trim_space() == 'net.inet.ip.connect_inaddr_wild: 0' {
 			log.warn('skipping test ${@FN} on FreeBSD because sysctl setting net.inet.ip.connect_inaddr_wild=0')

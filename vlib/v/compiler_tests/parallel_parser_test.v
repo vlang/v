@@ -395,7 +395,8 @@ fn build_parallel_parser_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_parser_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -path "${pp_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${pp_v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${pp_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${pp_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -460,12 +461,12 @@ fn test_parallel_parser_compiles_multi_module_project() {
 			os.unsetenv('VJOBS')
 		}
 	}
-	compile := os.execute('${v3_bin} -v -b c -o ${bin_out} ${main_path}')
+	compile := os.exec([v3_bin, '-v', '-b', 'c', '-o', bin_out, main_path])
 	assert compile.exit_code == 0, compile.output
 	$if !windows {
 		assert compile.output.contains('parse .v (parallel)'), compile.output
 	}
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	expected := os.read_file(os.join_path(os.dir(main_path), 'expected.txt')) or { panic(err) }
 	assert run.output.trim_space() == expected.trim_space()
@@ -543,7 +544,7 @@ fn test_parallel_parser_seeds_implicit_sync_import_mid_wave() {
 	v3_bin := build_parallel_parser_v3()
 	main_path := write_parallel_parser_implicit_sync_project('parallel_parser_implicit_sync')
 	c_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_implicit_sync_${os.getpid()}.c')
-	compile := os.execute('VJOBS=4 ${v3_bin} ${main_path} -o ${c_out}')
+	compile := os.exec(['env', 'VJOBS=4', v3_bin, main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
 	// The sync module's own functions only appear when the synthetic
@@ -651,7 +652,7 @@ fn test_parallel_parser_seeds_implicit_sync_before_explicit_import() {
 		write_parallel_parser_implicit_before_explicit_sync_project('parallel_parser_implicit_before_explicit_sync')
 	c_out := os.join_path(os.temp_dir(),
 		'v3_parallel_parser_implicit_before_explicit_sync_${os.getpid()}.c')
-	compile := os.execute('VJOBS=4 ${v3_bin} ${main_path} -o ${c_out}')
+	compile := os.exec(['env', 'VJOBS=4', v3_bin, main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
 	// The earlier module's `lock` lowered against sync, and the later module's
@@ -745,9 +746,9 @@ fn test_parallel_parser_splices_synthetic_import_in_serial_order() {
 	v3_bin := build_parallel_parser_v3()
 	main_path, expected := write_parallel_parser_splice_project('parallel_parser_splice')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_splice_out_${os.getpid()}')
-	compile := os.execute('VJOBS=4 ${v3_bin} ${main_path} -b c -o ${bin_out}')
+	compile := os.exec(['env', 'VJOBS=4', v3_bin, main_path, '-b', 'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == expected, run.output
 }
@@ -758,10 +759,11 @@ fn test_no_parallel_parser_keeps_parse_serial() {
 	v3_bin := build_parallel_parser_v3()
 	main_path := write_parallel_parser_project('parallel_parser_serial_project')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_parser_serial_out_${os.getpid()}')
-	compile := os.execute('VJOBS=4 ${v3_bin} --no-parallel ${main_path} -b c -o ${bin_out}')
+	compile := os.exec(['env', 'VJOBS=4', v3_bin, '--no-parallel', main_path, '-b', 'c', '-o',
+		bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('parse .v (parallel)'), compile.output
 	assert !compile.output.contains('parse .vh (parallel)'), compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 }

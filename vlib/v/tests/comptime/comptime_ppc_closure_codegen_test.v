@@ -22,7 +22,7 @@ fn test_cross_arch_ppc_closure_codegen() {
 		panic(err)
 	}
 	res :=
-		os.execute('${os.quoted_path(vexe)} -gc none -arch ppc -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		os.exec([vexe, '-gc', 'none', '-arch', 'ppc', '-o', output, source])
 	assert res.exit_code == 0, res.output
 	csrc := os.read_file(output) or { panic(err) }
 	assert csrc.contains('__V_ppc')

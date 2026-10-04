@@ -154,7 +154,7 @@ pub fn square(x int) int {
         return x * x
 }
 ')!
-	res := os.execute_opt('${vexe_} doc -m src/ -v') or { panic(err) }
+	res := os.exec_opt([vexe_path, 'doc', '-m', 'src/', '-v']) or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.contains('square')
 }
@@ -221,7 +221,8 @@ pub fn greet() string {
 	return 'hello'
 }
 ")!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - -readme -comments ${os.quoted_path('./' + mod_dir)}') or { panic(err) }
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', '-readme',
+		'-comments', '${'./' + mod_dir}']) or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.replace('\r\n', '\n').trim_space() == 'module overview
     `overview` uses the first comment after the module declaration as the module overview.
@@ -247,7 +248,8 @@ pub enum Bar {
 	bar
 }
 ')!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -m -f html -o - -html-only-contents ${os.quoted_path('./' + mod_dir)}') or { panic(err) }
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'html', '-o', '-',
+		'-html-only-contents', '${'./' + mod_dir}']) or { panic(err) }
 	assert res.exit_code == 0
 	output := res.output.replace('\r\n', '\n')
 	assert output.contains('Foo lorem ipsum foo.')
@@ -261,7 +263,8 @@ fn test_doc_generates_for_modules_without_public_symbols() {
 
 const internal = 1
 ')!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${os.quoted_path('./' + mod_dir)}') or {
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-',
+		'${'./' + mod_dir}']) or {
 		panic(err)
 	}
 	assert res.exit_code == 0
@@ -349,7 +352,8 @@ pub fn only_win() int {
 }
 ')!
 	// `-color` exercises the original crash path in `gen_plaintext`.
-	res := os.execute_opt('${vexe_} doc -no-timestamp -m -color -f text -o - ${os.quoted_path('./' + base_dir)}') or { panic(err) }
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-color', '-f', 'text', '-o',
+		'-', '${'./' + base_dir}']) or { panic(err) }
 	// The crash showed up as a non-zero exit code (V panic), so this is the key check.
 	assert res.exit_code == 0
 	assert res.output.contains('hello')
@@ -376,7 +380,8 @@ pub fn only_win() int {
 }
 ')!
 	// `os.execute` (not `execute_opt`) so the expected non-zero exit is not an error.
-	res := os.execute('${vexe_} doc -no-timestamp -m -f html -o ${os.quoted_path('./' + out_dir)} ${os.quoted_path('./' + base_dir)}')
+	res := os.exec([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'html', '-o', '${'./' + out_dir}',
+		'${'./' + base_dir}'])
 	assert res.exit_code != 0
 	assert res.output.contains('No documentation found')
 	// The output directory must not have been created.
@@ -423,7 +428,7 @@ fn test_vmod_subdirs_are_documented_as_part_of_the_module() {
 	assert d.contents.keys().sorted() == ['deep_fn', 'root_fn', 'sub_fn']
 	assert get_modules(root) == [root, os.join_path(root, 'internal', 'nested'),
 		os.join_path(root, 'internal_other')]
-	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${root}')!
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', root])!
 	assert res.output.contains('fn root_fn()')
 	assert res.output.contains('fn sub_fn()')
 	assert res.output.contains('fn deep_fn()')
@@ -445,7 +450,7 @@ fn test_vmod_external_subdirs_without_root_files() {
 		'../subdirs_external_only_sources/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
 	})!
 	assert get_modules(root) == [root]
-	os.execute_opt('${vexe_} doc -no-timestamp -m -f text ${os.quoted_path(root)}')!
+	os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'text', root])!
 	output := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
 	assert output.contains('fn external_fn()')
 }
@@ -541,7 +546,8 @@ fn test_repo_file_path_for_links_keeps_external_subdirs() {
 	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
 	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
 	assert vd.get_repo_file_path_for_links(os.join_path(real_repo, 'other', 'sub.v')) == 'other/sub.v'
-	res := os.execute_opt('${vexe_} doc -no-timestamp -f html -o - -html-only-contents -comments ${os.quoted_path(root)}')!
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-o', '-',
+		'-html-only-contents', '-comments', root])!
 	assert res.output.contains('https://github.com/example/project/blob/main/shared/sub.v#L')
 	assert res.output.contains('https://github.com/example/project/blob/main/other/sub.v#L')
 	assert res.output.contains('https://github.com/example/project/blob/main/shared/guide.md')
@@ -638,7 +644,8 @@ fn test_repo_file_path_for_links_ignores_unrelated_enclosing_checkout() {
 		}
 	}
 	root := os.join_path(repo, 'examples', 'mypkg')
-	res := os.execute_opt('${vexe_} doc -no-timestamp -f html -o - -html-only-contents -comments ${os.quoted_path(root)}')!
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-o', '-',
+		'-html-only-contents', '-comments', root])!
 	assert res.output.contains('https://github.com/example/mypkg/blob/main/root.v#L')
 	assert res.output.contains('https://github.com/example/mypkg/blob/main/internal/sub.v#L')
 	assert res.output.contains('https://github.com/example/mypkg/blob/main/guide.md')
@@ -690,8 +697,8 @@ fn test_vdocignore_applies_to_vmod_subdirs() {
 	// A file ignored through one alias is still documented when reached through another one.
 	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'ignored_link'))!
 	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'allowed_link'))!
-	single := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${root}')!
-	os.execute_opt('${vexe_} doc -no-timestamp -m -f text ${root}')!
+	single := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', root])!
+	os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'text', root])!
 	multi := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
 	for output in [single.output, multi] {
 		assert output.contains('fn root_fn()')

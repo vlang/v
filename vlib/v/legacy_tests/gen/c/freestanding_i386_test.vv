@@ -20,7 +20,7 @@ pub fn kmain() {
 }
 ")!
 	cmd := '${test_vexe} -cc gcc -gc none -no-skip-unused -freestanding -no-std -is_o -m32 -o ${os.quoted_path(out_c)} ${os.quoted_path(main_v)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, '-cc', 'gcc', '-gc', 'none', '-no-skip-unused', '-freestanding', '-no-std', '-is_o', '-m32', '-o', '${out_c}', '${main_v}'])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated := os.read_file(out_c)!
 	assert generated.contains('VV_LOC voidptr builtin__memdup(voidptr src, isize size);')

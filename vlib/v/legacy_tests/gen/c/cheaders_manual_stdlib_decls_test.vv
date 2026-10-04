@@ -12,7 +12,7 @@ const cheaders_manual_stdlib_stdio_source = os.join_path(cheaders_manual_stdlib_
 
 fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o - ${os.quoted_path(cheaders_manual_stdlib_varargs_source)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-o', '-', cheaders_manual_stdlib_varargs_source])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := res.output.replace('\r\n', '\n')
 	assert generated_c.contains('typedef struct _iobuf FILE;'), generated_c
@@ -118,7 +118,7 @@ fn test_android_prelude_uses_bionic_file_decls() {
 	output_path := os.join_path(tmp_dir, 'android.c')
 	os.write_file(source_path, 'fn main() {\n\tprintln("hi")\n}\n')!
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -os android -apk -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-os', 'android', '-apk', '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
 	assert generated_c.contains('#elif defined(__BIONIC__)\nstruct __sFILE;\ntypedef struct __sFILE FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;'), generated_c
@@ -138,7 +138,7 @@ fn test_vinix_prelude_leaves_stdio_and_stdlib_to_vinix_stubs() {
 		['fn C.printf_panic(charptr, ...voidptr)', 'fn C.text_start()', 'fn C.__builtin_return_address(int) voidptr', '', 'fn main() {', "\tC.printf_panic(c'%d', voidptr(1))", '\t_ = voidptr(C.text_start)', '\t_ = C.__builtin_return_address(0)', '}'].join('\n') +
 		'\n')!
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -os vinix -d no_backtrace -gc none -manualfree -enable-globals -nofloat -experimental -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-os', 'vinix', '-d', 'no_backtrace', '-gc', 'none', '-manualfree', '-enable-globals', '-nofloat', '-experimental', '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
 	assert generated_c.contains('#elif defined(__vinix__)\ntypedef struct __file FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;\nstruct __thread_data;\nstruct __threadattr;'), generated_c
@@ -161,7 +161,7 @@ fn test_msvc_windows_prelude_uses_msvc_crt_headers() {
 	output_path := os.join_path(tmp_dir, 'hello.c')
 	os.write_file(source_path, 'fn main() {\n\tprintln("hi")\n}\n')!
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -cc msvc -os windows -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-cc', 'msvc', '-os', 'windows', '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
 	assert generated_c.contains('#if (defined(_MSC_VER) && !defined(__clang__)) || defined(__cplusplus)\n// Under C++ (g++/clang++), let libc declare FILE/stdio/string/stdlib to keep\n// noexcept specifiers consistent'), generated_c
@@ -188,7 +188,7 @@ fn test_msvc_windows_splits_large_string_const_literals() {
 	os.write_file(source_path,
 		"const long_literal = '${long_text}'\n\nfn main() {\n\tassert long_literal.len == ${long_text.len}\n}\n")!
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -cc msvc -os windows -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-cc', 'msvc', '-os', 'windows', '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
 	marker := 'long_literal = _S('
@@ -209,7 +209,7 @@ fn test_manual_stdio_decls_do_not_conflict_with_later_stdio_includes() {
 	}
 	output_path := os.join_path(tmp_dir, 'shadowed_c_fn_call_test')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(cheaders_manual_stdlib_stdio_source)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-o', output_path, cheaders_manual_stdlib_stdio_source])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
 
@@ -225,7 +225,7 @@ fn test_manual_stdio_decls_allow_headerless_perror_declarations() {
 		['fn C.perror(message &char)', '', 'fn main() {', "\tC.perror(c'')", '}'].join('\n') + '\n')!
 	output_path := os.join_path(tmp_dir, 'c_perror')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
 
@@ -241,7 +241,7 @@ fn test_manual_stdio_decls_allow_headerless_rand_declarations() {
 		'\n')!
 	output_path := os.join_path(tmp_dir, 'c_rand')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
 
@@ -257,7 +257,7 @@ fn test_manual_stdio_decls_allow_rand_max_macro_usage() {
 		'\n')!
 	output_path := os.join_path(tmp_dir, 'c_rand_max')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
 
@@ -271,7 +271,7 @@ fn test_manual_stdio_decls_allow_direct_atof_calls() {
 	os.write_file(source_path, ['fn main() {', "\t_ = C.atof(c'1.25')", '}'].join('\n') + '\n')!
 	output_path := os.join_path(tmp_dir, 'c_atof')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
 
@@ -285,7 +285,7 @@ fn test_manual_stdio_decls_allow_translated_direct_abs_calls() {
 	os.write_file(source_path, ['fn main() {', '\t_ = C.abs(-7)', '}'].join('\n') + '\n')!
 	output_path := os.join_path(tmp_dir, 'c_abs')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -translated -cc clang -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-translated', '-cc', 'clang', '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
 
@@ -302,7 +302,7 @@ fn test_manual_stdio_decls_allow_translated_direct_strdup_calls() {
 	os.write_file(source_path, ['fn main() {', "\t_ = C.strdup(c'abc')", '}'].join('\n') + '\n')!
 	output_path := os.join_path(tmp_dir, 'c_strdup')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -translated -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-translated', '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
 
@@ -318,7 +318,7 @@ fn test_manual_stdio_decls_allow_translated_direct_strncmp_calls() {
 		['fn main() {', "\t_ = C.strncmp(c'abc', c'abd', 2)", '}'].join('\n') + '\n')!
 	output_path := os.join_path(tmp_dir, 'c_strncmp')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -translated -cc clang -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-translated', '-cc', 'clang', '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
 
@@ -337,7 +337,7 @@ fn test_c_prelude_ctype_decls_do_not_conflict_with_later_ctype_includes() {
 		'\n')!
 	output_path := os.join_path(tmp_dir, 'c_ctype')
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -cc clang -show-c-output -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-cc', 'clang', '-show-c-output', '-o', output_path, source_path])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 }
 
@@ -348,7 +348,7 @@ fn test_c_prelude_defines_l_tmpnam_on_glibc_without_including_stdio() {
 	// a module header (sqlite3.h, gc.h, ...) would fail with `L_tmpnam undeclared`. The prelude
 	// therefore defines L_tmpnam itself, on the glibc path, without adding an include.
 	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o - ${os.quoted_path(cheaders_manual_stdlib_varargs_source)}'
-	res := os.execute(cmd)
+	res := os.exec([cheaders_manual_stdlib_vexe, '-o', '-', cheaders_manual_stdlib_varargs_source])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated_c := res.output.replace('\r\n', '\n')
 	assert generated_c.contains('#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)'), generated_c

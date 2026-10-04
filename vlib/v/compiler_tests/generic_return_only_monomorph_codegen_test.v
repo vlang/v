@@ -18,7 +18,9 @@ fn test_return_only_generic_specializations_emit_bodies() {
 		os.rm(output + '.c') or {}
 	}
 	build :=
-		os.execute('${return_only_generic_vexe} -gc none -d ownership -path "${return_only_generic_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${return_only_generic_v3_src}')
+		os.exec([return_only_generic_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${return_only_generic_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${return_only_generic_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(source, "fn make_default[T]() T {
 	return T{}
@@ -45,9 +47,10 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -ownership -d ownership -no-parallel -o ${output} ${source}')
+	compile := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-no-parallel', '-o', output,
+		source])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(output)
+	run := os.exec([output])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }

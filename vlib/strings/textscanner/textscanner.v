@@ -12,9 +12,10 @@ pub mut:
 
 // new returns a stack allocated instance of TextScanner.
 pub fn new(input string) TextScanner {
+	ilen := input.len
 	return TextScanner{
 		input: input
-		ilen:  input.len
+		ilen:  ilen
 	}
 }
 

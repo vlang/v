@@ -19,7 +19,7 @@ fn run_old_compiler(src string, name string) os.Result {
 	defer {
 		os.rm(output_path) or {}
 	}
-	return os.execute('${test_vexe} -old-compiler -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+	return os.exec([@VEXE, '-old-compiler', '-o', output_path, source_path])
 }
 
 fn test_a_failed_v1_fallback_build_reports_a_failing_exit_code() {

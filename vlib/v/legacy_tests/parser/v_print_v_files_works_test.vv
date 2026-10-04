@@ -23,7 +23,7 @@ fn check_parsing_files_in_folder(folder string, options string) {
 	for f in files {
 		cmd := '${os.quoted_path(vexe)} ${options} ${os.quoted_path(f)}'
 		eprintln('> cmd: ${cmd}')
-		res := os.execute(cmd)
+		res := os.exec([vexe, ...(os.split_args(options) or { panic(err) }), '${f}'])
 		assert res.exit_code == 0, 'failed cmd: ${cmd}, output:\n${res.output}'
 		assert res.output.split_into_lines().len > 10, 'there should be several files printed by cmd: ${cmd}'
 	}

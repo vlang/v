@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_interface_type_pattern_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -134,7 +135,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_interface_type_pattern_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -146,7 +147,7 @@ fn main() {
 	assert !c_code.contains('n.age'), c_code
 	assert !c_code.contains('x.Box'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true\nfalse\ntrue\nfalse\ntrue\nfalse\nfoo\nbar\nAda:37\nb:4'
 }
@@ -224,7 +225,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_interface_type_pattern_alias_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -234,7 +235,7 @@ fn main() {
 	assert !c_code.contains('s == shapes__Rect'), c_code
 	assert !c_code.contains('s == sh__Rect'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true\nfalse\nrect\nother'
 }
@@ -292,7 +293,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_interface_match_embedded_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -300,7 +301,7 @@ fn main() {
 	assert !c_code.contains('base == Child'), c_code
 	assert !c_code.contains('base == main__Child'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'child:8\nbase:3'
 }

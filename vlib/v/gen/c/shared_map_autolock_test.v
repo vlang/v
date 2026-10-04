@@ -94,7 +94,7 @@ fn test_shared_map_reads_in_range_bounds_and_select_cases_are_locked() {
 	source := os.join_path(root, 'program.v')
 	os.write_file(source, shared_map_autolock_program)!
 	csource := os.join_path(root, 'program.c')
-	gen := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(csource)} ${os.quoted_path(source)}')
+	gen := os.exec([@VEXE, '-o', csource, source])
 	assert gen.exit_code == 0, gen.output
 	csrc := os.read_file(csource)!
 	range_unlocked, range_accesses := shared_map_accesses_outside_locks(csrc, 'range_bounds')
@@ -104,9 +104,9 @@ fn test_shared_map_reads_in_range_bounds_and_select_cases_are_locked() {
 	assert select_accesses >= 4
 	assert select_unlocked == []
 	executable := os.join_path(root, 'program')
-	build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(executable)} ${os.quoted_path(source)}')
+	build := os.exec([@VEXE, '-o', executable, source])
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(executable))
+	run := os.exec([executable])
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines() == ['7', '6']
 }

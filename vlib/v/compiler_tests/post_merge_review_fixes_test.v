@@ -31,7 +31,8 @@ fn build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -44,10 +45,11 @@ fn run_good_with_flags(v3_bin string, name string, flags string, src string) str
 	good_src := '${tmp_test_path(name)}.v'
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${flags} ${good_src} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), '${good_src}', '-b',
+		'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: ${run.output}'
 	return run.output.trim_space()
 }
@@ -56,10 +58,10 @@ fn run_good_backend(v3_bin string, name string, backend string, src string) stri
 	good_src := '${tmp_test_path(name)}.v'
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${good_src} -b ${backend} -o ${good_bin}')
+	compile := os.exec([v3_bin, '${good_src}', '-b', '${backend}', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: ${run.output}'
 	return run.output.trim_space()
 }
@@ -68,7 +70,7 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 	bad_src := '${tmp_test_path(name)}.v'
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: ${compile.output}'
 	assert compile.output.contains(expected), '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
@@ -95,7 +97,8 @@ fn gen_c_with_flags(v3_bin string, name string, flags string, src string) string
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := '${tmp_test_path(name)}.c'
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), src_path, '-b', 'c',
+		'-o', c_path])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_path)
 	return os.read_file(c_path) or { panic(err) }
@@ -140,10 +143,10 @@ fn run_good_cached_project(v3_bin string, name string, files map[string]string, 
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${input_path} -o ${good_bin}')
+	compile := os.exec([v3_bin, input_path, '-o', good_bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -168,10 +171,11 @@ fn run_good_project_result(v3_bin string, name string, flags string, files map[s
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), input_path, '-b',
+		'c', '-o', good_bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, run.output
 	return GoodProjectRun{
 		run_output:     run.output.trim_space()
@@ -192,10 +196,11 @@ fn run_good_project_relative_input(v3_bin string, name string, flags string, fil
 	input_path := os.join_path('project', input)
 	good_bin := tmp_test_path(name)
 	compile :=
-		os.execute('cd ${os.quoted_path(workspace)} && ${os.quoted_path(v3_bin)} ${flags} ${os.quoted_path(input_path)} -b c -o ${os.quoted_path(good_bin)}')
+		cmdexec.run_in(v3_bin, [...(os.split_args(flags) or { panic(err) }), input_path, '-b',
+			'c', '-o', good_bin], workspace)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -211,10 +216,10 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, inputs [
 	}
 	mut input_paths := []string{cap: inputs.len}
 	for input in inputs {
-		input_paths << os.quoted_path(os.join_path(root, input))
+		input_paths << os.join_path(root, input)
 	}
 	bad_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${input_paths.join(' ')} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, ...input_paths, '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: ${compile.output}'
 	assert compile.output.contains(expected), '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
@@ -4583,7 +4588,7 @@ fn test_selected_compile_error_in_void_fn_has_clean_diagnostic() {
 	bad_src := '${tmp_test_path('selected_compile_error_void_fn')}.v'
 	os.write_file(bad_src, "fn main() {\n\t\$compile_error('bad')\n}\n") or { panic(err) }
 	bad_bin := tmp_test_path('selected_compile_error_void_fn')
-	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('compile-time error: bad'), compile.output
 	assert !compile.output.contains('void function should not return a value'), compile.output
@@ -6587,7 +6592,7 @@ middle
 ')
 	output := tmp_test_path('repeated_template_line_diagnostics')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('repeated.txt:1:3: error: undefined ident: `unknown_var`'), compile.output
 
@@ -6612,7 +6617,7 @@ fn main() {
 ')
 	output := tmp_test_path('template_interpolation_columns')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('columns.txt:1:3: error: undefined ident: `unknown`'), compile.output
 	assert compile.output.contains('columns.txt:1:12: error: undefined ident: `unknown`'), compile.output
@@ -6637,7 +6642,7 @@ fn main() {
 ')
 	output := tmp_test_path('explicit_template_interpolation_columns')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('explicit_columns.txt:1:4: error: undefined ident: `missing`'), compile.output
 
@@ -6663,7 +6668,7 @@ fn main() {
 ')
 	output := tmp_test_path('dollar_template_interpolation_columns')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('dollar_columns.txt:1:4: error: undefined ident: `first`'), compile.output
 	assert compile.output.contains('dollar_columns.txt:1:12: error: undefined ident: `second`'), compile.output
@@ -6688,7 +6693,7 @@ fn main() {
 ')
 	output := tmp_test_path('template_translation_shorthand_diagnostics')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('translation.html:1:'), compile.output
 	assert compile.output.contains('undefined ident: `ctx`'), compile.output
@@ -6719,7 +6724,7 @@ value
 ')
 	output := tmp_test_path('template_control_diagnostics')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('control.txt:1:5: error: undefined ident: `missing`'), compile.output
 	assert compile.output.contains('control.txt:4:14: error: undefined ident: `missing_items`'), compile.output
@@ -6745,7 +6750,7 @@ fn main() {
 ')
 	output := tmp_test_path('inline_template_control_diagnostics')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('inline_control.txt:1:14: error: undefined ident: `missing_if`'), compile.output
 
@@ -6888,7 +6893,7 @@ fn main() {}
 	bad_src := '${tmp_test_path('unrelated_unknown_struct')}.v'
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := tmp_test_path('unrelated_unknown_struct')
-	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('generic type name `T` is not mentioned in fn `broken[U]`'), compile.output
 	assert compile.output.contains('unknown struct `T`'), compile.output
@@ -6906,7 +6911,7 @@ fn main() {
 	bad_src := '${tmp_test_path('generic_array_unrelated_unknown_type')}.v'
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := tmp_test_path('generic_array_unrelated_unknown_type')
-	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, compile.output
 	unknown_lines :=
 		compile.output.split_into_lines().filter(it.contains('error: unknown type `T`'))
@@ -7494,7 +7499,7 @@ fn test_diagnostic_footer_uses_deduplicated_error_count() {
 	bad_src := '${tmp_test_path('deduplicated_error_footer')}.v'
 	os.write_file(bad_src, source) or { panic(err) }
 	bad_bin := tmp_test_path('deduplicated_error_footer')
-	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.count('generic type name `T` is not mentioned in fn') == 15, compile.output
 	assert !compile.output.contains('unknown struct `T`'), compile.output
@@ -7516,7 +7521,7 @@ fn main() {}
 	bad_src := '${tmp_test_path('parameter_redefinition_unrelated_notice')}.vv'
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := tmp_test_path('parameter_redefinition_unrelated_notice')
-	compile := os.execute('${v3_bin} -checker-fixture ${bad_src} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, '-checker-fixture', '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('redefinition of parameter `value`'), compile.output
 	assert compile.output.contains('unused variable: `same_function_unused`'), compile.output
@@ -7538,7 +7543,7 @@ fn main() {}
 	bad_src := '${tmp_test_path('malformed_function_call_unused_notice')}.vv'
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := tmp_test_path('malformed_function_call_unused_notice')
-	compile := os.execute('${v3_bin} -checker-fixture ${bad_src} -b c -o ${bad_bin}')
+	compile := os.exec([v3_bin, '-checker-fixture', '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('redefinition of parameter `value`'), compile.output
 	assert compile.output.contains('unused variable: `unused`'), compile.output
@@ -8029,7 +8034,7 @@ partial last
 ')
 	output := tmp_test_path('template_include_diagnostic_source')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('partial.txt:2:3: error: undefined ident: `missing_from_partial`'), compile.output
 	assert compile.output.contains('called from ') && compile.output.contains('/main.v:4:2'), compile.output
@@ -8056,7 +8061,7 @@ middle
 ')
 	output := tmp_test_path('template_import_diagnostic_lines')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(output)}')
+		os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', output])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.count('invalid expression: unexpected keyword `import`') == 2, compile.output
 	assert compile.output.count('expression does not return a value (veb action: main__main)') == 2, compile.output
@@ -8174,7 +8179,7 @@ fn main() {
 		panic(err)
 	}
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('must be called from an `unsafe` block'), compile.output
 }
@@ -10111,9 +10116,9 @@ fn main() {
 	assert run_good_cached_project(v3_bin, 'inline_cached', files, 'main.v') == 'ok'
 	root := '${tmp_test_path('inline_cached')}_project'
 	warm_bin := tmp_test_path('inline_cached_warm')
-	warm := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -o ${warm_bin}')
+	warm := os.exec([v3_bin, os.join_path(root, 'main.v'), '-o', warm_bin])
 	assert warm.exit_code == 0, warm.output
-	run := os.execute(warm_bin)
+	run := os.exec([warm_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }

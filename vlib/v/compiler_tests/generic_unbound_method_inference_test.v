@@ -35,7 +35,8 @@ fn test_private_unbound_instance_method_is_rejected() {
 	os.write_file(main_file, 'module main\n\nimport other { Foo }\n\nfn main() {\n\tmut f := Foo{}\n\tprintln(f.call(Foo.value))\n}\n') or {
 		panic(err)
 	}
-	result := os.execute('${os.quoted_path(generic_callback_vexe)} -gc none -o ${os.quoted_path(os.join_path(dir, 'program'))} ${os.quoted_path(main_file)}')
+	result := os.exec([generic_callback_vexe, '-gc', 'none', '-o', os.join_path(dir, 'program'),
+		main_file])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('method `other.Foo.value` is private'), result.output
 }

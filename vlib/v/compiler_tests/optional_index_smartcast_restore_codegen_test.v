@@ -10,7 +10,8 @@ fn test_optional_index_keeps_smartcasts_recreated_after_ancestor_write() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_restore_test_${pid}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_restore_input_${pid}.v')
@@ -50,11 +51,11 @@ fn main() {
 ')!
 
 	bin := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_restore_input_${pid}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 
@@ -93,11 +94,11 @@ fn main() {
 ')!
 
 	reassigned_bin := os.join_path(os.temp_dir(), 'v3_optional_index_smartcast_reassignment_input_${pid}')
-	reassigned_compile := os.execute('${v3_bin} ${reassigned_src} -b c -o ${reassigned_bin}')
+	reassigned_compile := os.exec([v3_bin, '${reassigned_src}', '-b', 'c', '-o', reassigned_bin])
 	assert reassigned_compile.exit_code == 0, reassigned_compile.output
 	assert !reassigned_compile.output.contains('C compilation failed'), reassigned_compile.output
 
-	reassigned_run := os.execute(reassigned_bin)
+	reassigned_run := os.exec([reassigned_bin])
 	assert reassigned_run.exit_code == 0, reassigned_run.output
 	assert reassigned_run.output.trim_space() == 'ok', reassigned_run.output
 }

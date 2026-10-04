@@ -33,7 +33,9 @@ fn scoped_monomorph_v3_bin() string {
 	}
 	// `-prealloc` is what enables `scope_parallel_workers` and the scoped
 	// monomorphize path, matching how the distributed compiler is built.
-	build := os.execute('${os.quoted_path(scoped_monomorph_vexe)} -gc none -cc ${os.quoted_path(scoped_monomorph_cc())} -prealloc -path "${scoped_monomorph_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin)} ${os.quoted_path(scoped_monomorph_v3_src)}')
+	build := os.exec([scoped_monomorph_vexe, '-gc', 'none', '-cc', scoped_monomorph_cc(), '-prealloc',
+		'-path', '${scoped_monomorph_vlib_dir}' + '|@vlib|@vmodules', '-o', bin,
+		'${scoped_monomorph_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return bin
 }
@@ -127,7 +129,8 @@ fn main() {
 	out := os.join_path(dir, 'app${scoped_monomorph_bin_suffix}')
 	// Run V3 directly without C-compiler retries, so a failed scoped merge
 	// cannot be hidden by a successful retry with another compiler.
-	compile := os.execute('${os.quoted_path(v3_bin)} -new-compiler -no-retry-compilation -gc none -cc ${os.quoted_path(scoped_monomorph_cc())} -nocache -o ${os.quoted_path(out)} ${os.quoted_path(dir)}')
+	compile := os.exec([v3_bin, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
+		scoped_monomorph_cc(), '-nocache', '-o', '${out}', dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert os.is_file(out), 'the compile produced no binary'

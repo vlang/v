@@ -13,7 +13,8 @@ fn build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -23,11 +24,11 @@ fn run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0
 	assert !compile.output.contains('C compilation failed')
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0
 	return run.output.trim_space()
 }
@@ -36,7 +37,7 @@ fn generated_c(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }

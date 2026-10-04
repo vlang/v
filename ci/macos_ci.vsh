@@ -1,56 +1,61 @@
-import common { Task, exec }
+import common { Task, exec_args }
 import crypto.sha256
 import os
 import runtime
 
 fn test_symlink() {
-	exec('v symlink')
+	exec_args(['v', 'symlink'])
 }
 
 fn test_cross_compilation() {
-	exec('v -o hw -os linux examples/hello_world.v && ls -la hw && file hw')
-	exec('v -d use_openssl -o ve -os linux examples/veb/veb_example.v && ls -la ve && file ve')
+	exec_args(['v', '-o', 'hw', '-os', 'linux', 'examples/hello_world.v'])
+	exec_args(['ls', '-la', 'hw'])
+	exec_args(['file', 'hw'])
+	exec_args(['v', '-d', 'use_openssl', '-o', 've', '-os', 'linux', 'examples/veb/veb_example.v'])
+	exec_args(['ls', '-la', 've'])
+	exec_args(['file', 've'])
 }
 
 fn build_with_cstrict() {
-	exec('v -cg -cstrict -o vstrict1 cmd/v')
+	exec_args(['v', '-cg', '-cstrict', '-o', 'vstrict1', 'cmd/v'])
 }
 
 fn all_code_is_formatted() {
 	if common.is_github_job {
-		exec('VJOBS=1 v -silent test-cleancode')
+		exec_args(['env', 'VJOBS=1', 'v', '-silent', 'test-cleancode'])
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec('VJOBS=${vjobs} v -progress test-cleancode')
+		exec_args(['env', 'VJOBS=' + '${vjobs}', 'v', '-progress', 'test-cleancode'])
 	}
 }
 
 fn run_sanitizers() {
-	common.exec_with_progress('v -o v2 cmd/v -cflags -fsanitize=undefined', ['v2'])
-	exec('UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v')
+	common.exec_args_with_progress(['v', '-o', 'v2', 'cmd/v', '-cflags', '-fsanitize=undefined'], ['v2'])
+	exec_args(['env', 'UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1', './v2', '-o', 'v.c',
+		'cmd/v'])
 }
 
 fn build_using_v() {
-	exec('v -o v2 cmd/v')
-	exec('./v2 -o v3 cmd/v')
+	exec_args(['v', '-o', 'v2', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', 'cmd/v'])
 }
 
 fn verify_v_test_works() {
-	exec('echo \$VFLAGS')
-	exec('v cmd/tools/test_if_v_test_system_works.v')
-	exec('./cmd/tools/test_if_v_test_system_works')
+	println(os.getenv('VFLAGS'))
+	exec_args(['v', 'cmd/tools/test_if_v_test_system_works.v'])
+	exec_args(['./cmd/tools/test_if_v_test_system_works'])
 }
 
 fn install_iconv() {
 	// Skip Homebrew when iconv is already linkable for V on this machine.
-	if os.system('v -silent test vlib/encoding/iconv/') == 0 {
+	if os.system_args([os.join_path(@VEXEROOT, 'v'), '-silent', 'test', 'vlib/encoding/iconv/']) == 0 {
 		return
 	}
-	exec('brew list --versions libiconv >/dev/null 2>&1 || brew install libiconv')
+	exec_args(['sh', '-c', 'brew list --versions libiconv >/dev/null 2>&1 || brew install libiconv'])
 }
 
 fn test_pure_v_math_module() {
-	exec('v -silent -exclude @vlib/math/*.c.v test vlib/math/')
+	exec_args(['v', '-silent', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
 }
 
 fn self_tests() {
@@ -63,27 +68,29 @@ fn self_tests() {
 	// builds. Keep cache behavior covered by the dedicated compiler tests, and
 	// use every core on the 7 GB runners instead of the one-job memory default.
 	if common.is_github_job {
-		exec('VJOBS=${runtime.nr_cpus()} v -nocache -no-memory-limit -silent test-self vlib')
+		exec_args(['env', 'VJOBS=' + '${runtime.nr_cpus()}', 'v', '-nocache', '-no-memory-limit',
+			'-silent', 'test-self', 'vlib'])
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec('VJOBS=${vjobs} v -nocache -no-memory-limit -progress test-self vlib')
+		exec_args(['env', 'VJOBS=' + '${vjobs}', 'v', '-nocache', '-no-memory-limit', '-progress',
+			'test-self', 'vlib'])
 	}
 }
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v -no-memory-limit build-examples')
+		exec_args(['v', '-no-memory-limit', 'build-examples'])
 	} else {
-		exec('v -no-memory-limit -progress build-examples')
+		exec_args(['v', '-no-memory-limit', '-progress', 'build-examples'])
 	}
 }
 
 fn build_examples_v_compiled_with_tcc() {
-	exec('v -o vtcc -cc tcc cmd/v')
+	exec_args(['v', '-o', 'vtcc', '-cc', 'tcc', 'cmd/v'])
 	if common.is_github_job {
-		exec('./vtcc -no-memory-limit build-examples')
+		exec_args(['./vtcc', '-no-memory-limit', 'build-examples'])
 	} else {
-		exec('./vtcc -no-memory-limit -progress build-examples')
+		exec_args(['./vtcc', '-no-memory-limit', '-progress', 'build-examples'])
 	}
 }
 
@@ -92,7 +99,7 @@ fn build_examples_v_compiled_with_tcc() {
 fn ownership_vexe() string {
 	vexe := './vownership'
 	if !os.exists(vexe) {
-		exec('v -d ownership -o vownership cmd/v')
+		exec_args(['v', '-d', 'ownership', '-o', 'vownership', 'cmd/v'])
 	}
 	return vexe
 }
@@ -106,8 +113,8 @@ fn build_hello_world_autofree() {
 		eprintln('> skipping ownership/autofree test')
 		return
 	}
-	exec('${ownership_vexe()} -autofree -o hello_world examples/hello_world.v')
-	exec('./hello_world')
+	exec_args([ownership_vexe(), '-autofree', '-o', 'hello_world', 'examples/hello_world.v'])
+	exec_args(['./hello_world'])
 }
 
 fn build_tetris_autofree() {
@@ -115,7 +122,7 @@ fn build_tetris_autofree() {
 		eprintln('> skipping ownership/autofree test')
 		return
 	}
-	exec('${ownership_vexe()} -autofree -o tetris examples/tetris/tetris.v')
+	exec_args([ownership_vexe(), '-autofree', '-o', 'tetris', 'examples/tetris/tetris.v'])
 }
 
 fn build_blog_autofree() {
@@ -127,25 +134,25 @@ fn build_blog_autofree() {
 	// release behind it ships a vlib without `json2`, which the blog imports. Build
 	// the tutorial with the default compiler until V3 ownership can run it;
 	// build_tetris_autofree keeps the autofree path covered.
-	exec('v -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
+	exec_args(['v', '-o', 'blog', 'tutorials/building_a_simple_web_blog_with_veb/code/blog'])
 }
 
 fn build_examples_prod() {
-	exec('v -prod examples/news_fetcher.v')
+	exec_args(['v', '-prod', 'examples/news_fetcher.v'])
 }
 
 fn v_doctor() {
-	exec('v doctor')
+	exec_args(['v', 'doctor'])
 }
 
 fn build_v_with_prealloc() {
-	exec('v -cg -cstrict -o vstrict1 cmd/v')
-	exec('./vstrict1 -d debug_malloc -d debug_realloc -o vdebug1 cmd/v')
-	exec('./vstrict1 -o vprealloc -prealloc cmd/v')
+	exec_args(['v', '-cg', '-cstrict', '-o', 'vstrict1', 'cmd/v'])
+	exec_args(['./vstrict1', '-d', 'debug_malloc', '-d', 'debug_realloc', '-o', 'vdebug1', 'cmd/v'])
+	exec_args(['./vstrict1', '-o', 'vprealloc', '-prealloc', 'cmd/v'])
 	// TODO: fix prealloc on macos (the rwmutex implementation for shared maps there seems to require that mutexes are allocated by C.malloc directly, and segfaults for arbitrary memory addresses)
-	//	exec('./vprealloc run examples/hello_world.v')
-	//	exec('./vprealloc -o v3 cmd/v')
-	//	exec('./v3 -o v4 cmd/v')
+	//	exec_args(['./vprealloc', 'run', 'examples/hello_world.v'])
+	//	exec_args(['./vprealloc', '-o', 'v3', 'cmd/v'])
+	//	exec_args(['./v3', '-o', 'v4', 'cmd/v'])
 }
 
 fn v_self_compilation_usecache() {
@@ -153,19 +160,19 @@ fn v_self_compilation_usecache() {
 		eprintln('> ${@LOCATION} use `-d enable_usecache_test` in VFLAGS to enable this task')
 		return
 	}
-	exec('v -usecache examples/hello_world.v')
-	exec('./examples/hello_world')
-	exec('v -o v2 -usecache cmd/v')
-	exec('./v2 -o v3 -usecache cmd/v')
-	exec('./v3 version')
-	exec('./v3 -o tetris -usecache examples/tetris/tetris.v')
+	exec_args(['v', '-usecache', 'examples/hello_world.v'])
+	exec_args(['./examples/hello_world'])
+	exec_args(['v', '-o', 'v2', '-usecache', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	exec_args(['./v3', 'version'])
+	exec_args(['./v3', '-o', 'tetris', '-usecache', 'examples/tetris/tetris.v'])
 }
 
 fn v_self_compilation_parallel_cc() {
-	exec('v -o vp -parallel-cc cmd/v')
-	// exec('./v2 -o v3 -usecache cmd/v')
-	exec('./vp version')
-	exec('./vp -o tetris examples/tetris/tetris.v')
+	exec_args(['v', '-o', 'vp', '-parallel-cc', 'cmd/v'])
+	// exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	exec_args(['./vp', 'version'])
+	exec_args(['./vp', '-o', 'tetris', 'examples/tetris/tetris.v'])
 }
 
 fn test_password_input() {
@@ -174,15 +181,15 @@ fn test_password_input() {
 	if os.getenv('TERM') in ['', 'dumb'] {
 		os.setenv('TERM', 'xterm', true)
 	}
-	exec('v -silent test examples/password/')
+	exec_args(['v', '-silent', 'test', 'examples/password/'])
 }
 
 fn test_readline() {
-	exec('v -silent test examples/readline/')
+	exec_args(['v', '-silent', 'test', 'examples/readline/'])
 }
 
 fn test_inline_assembly() {
-	exec('v test vlib/v/slow_tests/assembly')
+	exec_args(['v', 'test', 'vlib/v/slow_tests/assembly'])
 }
 
 const ci_tasks = [
@@ -297,7 +304,7 @@ fn run_ci_tasks(reset bool) ! {
 		save_ci_progress(progress_path, task_name)!
 		os.setenv('V_MACOS_CI_TASK_PROGRESS', os.join_path(progress_dir, task_name), true)
 		eprintln('CI task ${i + 1}/${ci_tasks.len}: ${task_name}')
-		exec('v run ci/macos_ci.vsh ${task_name}')
+		exec_args(['v', 'run', 'ci/macos_ci.vsh', '${task_name}'])
 	}
 	os.rmdir_all(progress_dir)!
 	os.rm(progress_path)!

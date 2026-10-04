@@ -42,7 +42,7 @@ fn test_fastc_prepared_link() {
 	tcc_lib := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib')
 	base_args := ['-std=gnu11', '-B${tcc_lib}', '-I${os.join_path_single(tcc_lib, 'include')}',
 		'-L${tcc_lib}']
-	compile := os.execute('${tcc} ${base_args.join(' ')} -c -o ${object_path} ${source_path}')
+	compile := os.exec([tcc, ...base_args, '-c', '-o', object_path, source_path])
 	assert compile.exit_code == 0, compile.output
 	mut prepared := fastc_prepare_link(tcc, tcc_lib, base_args, [])
 	$if tinyc {
@@ -56,8 +56,8 @@ fn test_fastc_prepared_link() {
 		assert C.v_fastc_tcc_skipped_codesign_count() == skipped_codesigns + 1
 	}
 	fastc_sign_macho_adhoc(exe_path) or { panic(err) }
-	assert os.execute(exe_path).output.trim_space() == 'linked'
-	assert os.system('/usr/bin/true') == 0
+	assert os.exec([exe_path]).output.trim_space() == 'linked'
+	assert os.system_args(['/usr/bin/true']) == 0
 }
 
 fn test_fastc_prepared_libtcc_applies_linker_options_before_output_setup() {
@@ -89,7 +89,7 @@ fn test_fastc_prepared_libtcc_applies_linker_options_before_output_setup() {
 	os.write_file(source_path, 'int main(void) { return 0; }\n') or { panic(err) }
 	tcc_lib := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib')
 	base_args := ['-std=gnu11', '-B${tcc_lib}', '-I${os.join_path_single(tcc_lib, 'include')}']
-	compile := os.execute('${tcc} ${base_args.join(' ')} -c -o ${object_path} ${source_path}')
+	compile := os.exec([tcc, ...base_args, '-c', '-o', object_path, source_path])
 	assert compile.exit_code == 0, compile.output
 	final_args := ['-Wl,-nostdlib', '-ltcc1']
 	mut prepared := fastc_prepare_link(tcc, tcc_lib, base_args, final_args)
@@ -137,10 +137,10 @@ fn test_fastc_prepared_libtcc_preserves_archive_option_order() {
 		main_source:   main_object
 		member_source: member_object
 	} {
-		compile := os.execute('${tcc} ${base_args.join(' ')} -c -o ${object} ${source}')
+		compile := os.exec([tcc, ...base_args, '-c', '-o', '${object}', source])
 		assert compile.exit_code == 0, compile.output
 	}
-	archive := os.execute('${tcc} -ar rcs ${archive_path} ${member_object}')
+	archive := os.exec([tcc, '-ar', 'rcs', archive_path, '${member_object}'])
 	assert archive.exit_code == 0, archive.output
 	final_args := ['-Wl,--whole-archive', archive_path, '-Wl,--no-whole-archive']
 	mut prepared := fastc_prepare_link(tcc, tcc_lib, base_args, final_args)
@@ -149,7 +149,7 @@ fn test_fastc_prepared_libtcc_preserves_archive_option_order() {
 	fastc_add_prepared_link_input(mut prepared, main_object) or { panic(err) }
 	link_result := fastc_finish_link(mut prepared, [], final_args, exe_path)
 	assert link_result.exit_code == 0, link_result.output
-	nm_result := os.execute('/usr/bin/nm -g ${exe_path}')
+	nm_result := os.exec(['/usr/bin/nm', '-g', exe_path])
 	assert nm_result.exit_code == 0, nm_result.output
 	assert nm_result.output.contains('forced_member'), nm_result.output
 }
@@ -179,7 +179,7 @@ fn test_fastc_sign_macho_adhoc_matches_codesign() {
 		'-L${tcc_lib}']
 	mut sdk_root := os.getenv('SDKROOT')
 	if !os.is_dir(sdk_root) {
-		result := os.execute('xcrun --show-sdk-path')
+		result := os.exec(['xcrun', '--show-sdk-path'])
 		if result.exit_code == 0 {
 			sdk_root = result.output.trim_space()
 		}
@@ -192,20 +192,20 @@ fn test_fastc_sign_macho_adhoc_matches_codesign() {
 	// reports the failed call), which is what the signer is given.
 	old_path := os.getenv('PATH')
 	os.setenv('PATH', '/nonexistent', true)
-	os.execute('${tcc} ${args.join(' ')}')
+	os.exec([tcc, ...args])
 	os.setenv('PATH', old_path, true)
 	assert os.is_file(exe_path)
-	unsigned := os.execute(exe_path)
+	unsigned := os.exec([exe_path])
 	assert unsigned.exit_code != 0
 	fastc_sign_macho_adhoc(exe_path) or { panic(err) }
-	signed := os.execute(exe_path)
+	signed := os.exec([exe_path])
 	assert signed.exit_code == 0, signed.output
 	assert signed.output.trim_space() == 'signed'
-	verify := os.execute('codesign --verify --strict ${exe_path}')
+	verify := os.exec(['codesign', '--verify', '--strict', exe_path])
 	assert verify.exit_code == 0, verify.output
 	// Signing again replaces the signature.
 	fastc_sign_macho_adhoc(exe_path) or { panic(err) }
-	again := os.execute('codesign --verify --strict ${exe_path}')
+	again := os.exec(['codesign', '--verify', '--strict', exe_path])
 	assert again.exit_code == 0, again.output
 	// Re-signing under a shorter name replaces a larger signature (the
 	// identifier is the file name): the file shrinks and still verifies.
@@ -216,7 +216,7 @@ fn test_fastc_sign_macho_adhoc_matches_codesign() {
 	os.mv(long_path, exe_path) or { panic(err) }
 	fastc_sign_macho_adhoc(exe_path) or { panic(err) }
 	assert os.file_size(exe_path) < long_size
-	shrunk := os.execute('codesign --verify --strict ${exe_path}')
+	shrunk := os.exec(['codesign', '--verify', '--strict', exe_path])
 	assert shrunk.exit_code == 0, shrunk.output
-	assert os.execute(exe_path).output.trim_space() == 'signed'
+	assert os.exec([exe_path]).output.trim_space() == 'signed'
 }

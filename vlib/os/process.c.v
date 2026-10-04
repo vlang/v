@@ -358,3 +358,19 @@ pub fn (mut p Process) run() {
 	}
 	p._spawn()
 }
+
+// system_args runs a program with literal arguments and inherited standard streams.
+// It waits for the program and returns its exit code without invoking a shell.
+pub fn system_args(args []string) int {
+	if args.len == 0 {
+		return -1
+	}
+	filename := find_abs_path_of_executable(args[0]) or { return -1 }
+	mut process := new_process(filename)
+	process.set_args(args[1..])
+	process.expand_environment = false
+	process.wait()
+	code := process.code
+	process.close()
+	return code
+}

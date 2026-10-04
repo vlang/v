@@ -88,7 +88,8 @@ fn main() {
 		return
 	}
 	if !os.exists(log_txt) {
-		os.execute(git_log_cmd + ' > ' + log_txt)
+		result := os.exec(os.split_args(git_log_cmd)!)
+		os.write_file(log_txt, result.output)!
 		println('log.txt generated')
 		// println('log.txt generated, remove unnecessary commits from it and run the tool again')
 		// return

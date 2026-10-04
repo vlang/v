@@ -400,9 +400,9 @@ fn test_pool_links_with_the_bundled_tcc_on_windows() {
 	source := os.join_path(dir, 'pool_main.v')
 	os.write_file(source, "import v.workers\n\nfn main() {\n\tmut pool := workers.new(1)\n\tpool.close()\n\tprintln('pool closed')\n}\n")!
 	exe := os.join_path(dir, 'pool_main.exe')
-	build := os.execute('${os.quoted_path(vexe)} -cc tcc -no-retry-compilation -o ${os.quoted_path(exe)} ${os.quoted_path(source)}')
+	build := os.exec([vexe, '-cc', 'tcc', '-no-retry-compilation', '-o', exe, source])
 	assert build.exit_code == 0, build.output
-	run := os.execute(os.quoted_path(exe))
+	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'pool closed'
 }

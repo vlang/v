@@ -15,7 +15,8 @@ fn test_v3_preserves_vinix_style_selectors_and_linker_symbol_casts() {
 	out := os.join_path(root, 'out.c')
 	input := os.join_path(vinix_selector_test_dir, 'main.v')
 	result :=
-		os.execute('${os.quoted_path(vinix_selector_vexe)} -new-compiler -nocache -os vinix -target-libc-headers -enable-globals -no-closures -o ${os.quoted_path(out)} ${os.quoted_path(input)}')
+		os.exec([vinix_selector_vexe, '-new-compiler', '-nocache', '-os', 'vinix',
+			'-target-libc-headers', '-enable-globals', '-no-closures', '-o', '${out}', input])
 	assert result.exit_code == 0, result.output
 	code := os.read_file(out) or { panic(err) }
 	assert code.contains('void main__kernel_entry(void)'), code
@@ -37,7 +38,9 @@ fn test_v3_preserves_vinix_kernel_codegen_edges() {
 	out := os.join_path(root, 'out.c')
 	input := os.join_path(vinix_codegen_edges_test_dir, 'main.v')
 	result :=
-		os.execute('${os.quoted_path(vinix_selector_vexe)} -new-compiler -nocache -os vinix -arch arm64 -target-libc-headers -enable-globals -no-closures -nofloat -o ${os.quoted_path(out)} ${os.quoted_path(input)}')
+		os.exec([vinix_selector_vexe, '-new-compiler', '-nocache', '-os', 'vinix', '-arch', 'arm64',
+			'-target-libc-headers', '-enable-globals', '-no-closures', '-nofloat', '-o', '${out}',
+			input])
 	assert result.exit_code == 0, result.output
 	code := os.read_file(out) or { panic(err) }
 	assert code.contains('u32 __order_snapshot_0 = value;'), code

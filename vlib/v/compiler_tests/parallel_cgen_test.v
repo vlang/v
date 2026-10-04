@@ -22,7 +22,8 @@ fn build_parallel_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${parallel_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,7 +34,8 @@ fn build_parallel_prod_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -prealloc -prod -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
+		os.exec([vexe, '-gc', 'none', '-prealloc', '-prod', '-path',
+			'${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${parallel_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -44,7 +46,8 @@ fn build_parallel_prealloc_prod_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_prealloc_prod_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -prod -prealloc -d parallel -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
+		os.exec([vexe, '-gc', 'none', '-prod', '-prealloc', '-d', 'parallel', '-path',
+			'${parallel_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${parallel_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -112,7 +115,7 @@ fn test_parallel_cgen_main_emits_module_init_call() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_module_init_project('parallel_module_init')
 	c_out := os.join_path(os.temp_dir(), 'v3_parallel_module_init.c')
-	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -o ${c_out}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen'), compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
@@ -142,11 +145,11 @@ fn test_parallel_cgen_remaps_worker_string_ids() {
 	}
 	parallel_output := os.join_path(os.temp_dir(), 'v3_parallel_string_ids_${os.getpid()}.c')
 	serial_output := os.join_path(os.temp_dir(), 'v3_serial_string_ids_${os.getpid()}.c')
-	parallel_compile := os.execute('VJOBS=4 ${v3_bin} -nocache -o ${parallel_output} ${source}')
+	parallel_compile := os.exec(['env', 'VJOBS=4', v3_bin, '-nocache', '-o', parallel_output, source])
 	assert parallel_compile.exit_code == 0, parallel_compile.output
 	assert parallel_compile.output.contains('cgen (parallel)'), parallel_compile.output
 	serial_compile :=
-		os.execute('VJOBS=2 ${v3_bin} -no-parallel -nocache -o ${serial_output} ${source}')
+		os.exec(['env', 'VJOBS=2', v3_bin, '-no-parallel', '-nocache', '-o', serial_output, source])
 	assert serial_compile.exit_code == 0, serial_compile.output
 	parallel_c := os.read_file(parallel_output) or { panic(err) }
 	serial_c := os.read_file(serial_output) or { panic(err) }
@@ -188,7 +191,7 @@ fn test_parallel_cgen_merges_worker_gettid_compat() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_gettid_project('parallel_gettid_compat')
 	c_out := os.join_path(os.temp_dir(), 'v3_parallel_gettid_compat.c')
-	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -o ${c_out}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen'), compile.output
 	c_code := os.read_file(c_out) or { panic(err) }
@@ -230,10 +233,10 @@ fn test_parallel_cgen_worker_keeps_test_user_main_renamed() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_user_main_test_project('parallel_user_main_test_file')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_user_main_test_file_out')
-	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -b c -o ${bin_out}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-b', 'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen'), compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'user-main'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
@@ -289,10 +292,10 @@ fn test_parallel_cgen_worker_resolves_generic_struct_method_signature() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_generic_struct_method_project('parallel_generic_struct_method')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_generic_struct_method_out')
-	compile := os.execute('VJOBS=2 ${v3_bin} -nocache ${main_path} -b c -o ${bin_out}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-nocache', main_path, '-b', 'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '550740'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
@@ -306,7 +309,7 @@ fn test_parallel_cgen_generic_optional_method_uses_concrete_optional_abi_in_call
 	main_path :=
 		write_parallel_generic_struct_method_project('parallel_generic_struct_optional_abi')
 	c_out := os.join_path(os.temp_dir(), 'v3_parallel_generic_struct_optional_abi.c')
-	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -o ${c_out}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
 
@@ -369,10 +372,10 @@ fn test_parallel_cgen_worker_preserves_ierror_payload_success_with_builtin_error
 	main_path :=
 		write_parallel_ierror_payload_success_project('parallel_ierror_payload_success_${os.getpid()}')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_ierror_payload_success_out_${os.getpid()}')
-	compile := os.execute('VJOBS=2 ${v3_bin} -nocache ${main_path} -b c -o ${bin_out}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-nocache', main_path, '-b', 'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'OK::0\n844350'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
@@ -409,11 +412,11 @@ fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_top_level_no_main_project('parallel_top_level_no_main')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_top_level_no_main_out')
-	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -b c -o ${bin_out}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, main_path, '-b', 'c', '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('transform'), compile.output
 	assert compile.output.contains('cgen'), compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '51047'
 	c_code := os.read_file(bin_out + '.c') or { panic(err) }
@@ -424,7 +427,7 @@ fn test_prealloc_keeps_parallel_transform_enabled() {
 	v3_bin := build_parallel_prealloc_prod_v3()
 	main_path := write_parallel_module_init_project('parallel_prealloc_cgen_${os.getpid()}')
 	c_out := os.join_path(os.temp_dir(), 'v3_parallel_prealloc_transform_${os.getpid()}.c')
-	compile := os.execute('VJOBS=2 ${v3_bin} -nocache -b c -o ${c_out} ${main_path}')
+	compile := os.exec(['env', 'VJOBS=2', v3_bin, '-nocache', '-b', 'c', '-o', '${c_out}', main_path])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('transform (parallel)'), compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
@@ -443,7 +446,8 @@ fn test_parallel_transform_generates_v3_c_with_vjobs_4_and_12() {
 	c_out_4 := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_4_${os.getpid()}.c')
 	os.rm(c_out_4) or {}
 	cgen_4 :=
-		os.execute('VJOBS=4 ${v3_bin} -nocache -building-v -b c -o ${c_out_4} ${parallel_v3_src}')
+		os.exec(['env', 'VJOBS=4', v3_bin, '-nocache', '-building-v', '-b', 'c', '-o', '${c_out_4}',
+			'${parallel_v3_src}'])
 	assert cgen_4.exit_code == 0, cgen_4.output
 	assert cgen_4.output.contains('transform (parallel)'), cgen_4.output
 	assert cgen_4.output.contains('cgen (parallel)'), cgen_4.output
@@ -459,7 +463,8 @@ fn test_parallel_transform_generates_v3_c_with_vjobs_4_and_12() {
 	c_out_12 := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_12_${os.getpid()}.c')
 	os.rm(c_out_12) or {}
 	cgen_12 :=
-		os.execute('VJOBS=12 ${v3_bin} -nocache -building-v -b c -o ${c_out_12} ${parallel_v3_src}')
+		os.exec(['env', 'VJOBS=12', v3_bin, '-nocache', '-building-v', '-b', 'c', '-o', '${c_out_12}',
+			'${parallel_v3_src}'])
 	assert cgen_12.exit_code == 0, cgen_12.output
 	assert cgen_12.output.contains('transform (parallel)'), cgen_12.output
 	assert cgen_12.output.contains('cgen (parallel)'), cgen_12.output
@@ -472,7 +477,8 @@ fn test_no_parallel_directory_selfhost_retains_parallel_support() {
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	compile :=
-		os.execute('VJOBS=2 ${v3_bin} --no-parallel -nocache -no-memory-limit -selfhost -b c -o ${bin_out} ${parallel_v3_dir}')
+		os.exec(['env', 'VJOBS=2', v3_bin, '--no-parallel', '-nocache', '-no-memory-limit', '-selfhost',
+			'-b', 'c', '-o', bin_out, parallel_v3_dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('transform (parallel)'), compile.output
 	assert !compile.output.contains('cgen (parallel)'), compile.output
@@ -525,11 +531,12 @@ fn test_no_parallel_preserves_user_parallel_define_for_project() {
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
 	compile :=
-		os.execute('VJOBS=2 ${v3_bin} -nocache --no-parallel -d parallel -b c -o ${bin_out} ${project_dir}')
+		os.exec(['env', 'VJOBS=2', v3_bin, '-nocache', '--no-parallel', '-d', 'parallel', '-b',
+			'c', '-o', bin_out, project_dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('transform (parallel)'), compile.output
 	assert !compile.output.contains('cgen (parallel)'), compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'file:if'
 }

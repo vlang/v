@@ -13,7 +13,8 @@ fn tmp_const_or_panic_path(name string) string {
 fn build_v3_const_or_panic() string {
 	v3_bin := tmp_const_or_panic_path('const_or_panic')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -23,13 +24,13 @@ fn run_v3_const_or_panic_program(v3_bin string, name string, src string) string 
 	bin_path := tmp_const_or_panic_path('${name}_bin')
 	os.write_file(src_path, src) or { panic(err) }
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+		os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	// The regressed path emitted `gen_node: unsupported node kind: call` to stderr
 	// while still producing a binary, so assert the diagnostic is absent too.
 	assert !compile.output.contains('unsupported node kind'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(os.quoted_path(bin_path))
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

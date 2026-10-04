@@ -18,6 +18,17 @@ pub const method_value_clone_receiver_marker_prefix = '__v3_method_value_clone_r
 
 const static_type_method_name_marker = '@static@'
 
+// empty_node_ids returns `len` ids that are all empty_node. A single memset
+// fills them: empty_node is -1, every byte of which is 0xff. An `init:` value
+// would set each element on its own.
+pub fn empty_node_ids(len int) []NodeId {
+	mut ids := []NodeId{len: len}
+	if len > 0 {
+		unsafe { C.memset(ids.data, 0xff, usize(len) * sizeof(NodeId)) }
+	}
+	return ids
+}
+
 // encode_static_type_method_name makes a reversible internal name for a static type method.
 pub fn encode_static_type_method_name(receiver string, method string) string {
 	return '${receiver}${static_type_method_name_marker}${method}'

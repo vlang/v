@@ -18,7 +18,8 @@ fn test_mbedtls_compiles_with_tcc_on_arm64_macos() {
 	out := os.join_path(workdir, 'main')
 	os.write_file(src, 'import net.mbedtls as _\n\nfn main() {}\n') or { panic(err) }
 	cmd := 'env VCACHE=${os.quoted_path(vcache)} ${os.quoted_path(vexe)} -nocache -cc tcc -gc none -no-retry-compilation -o ${os.quoted_path(out)} ${os.quoted_path(src)}'
-	res := os.execute(cmd)
+	res := os.exec(['env', 'VCACHE=' + '${vcache}', vexe, '-nocache', '-cc', 'tcc', '-gc', 'none',
+		'-no-retry-compilation', '-o', '${out}', '${src}'])
 	if res.exit_code != 0 {
 		panic('command failed:\n${cmd}\n${res.output}')
 	}

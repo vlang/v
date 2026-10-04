@@ -63,7 +63,7 @@ fn test_wasm() {
 		if is_verbose {
 			println(cmd)
 		}
-		res_wasm := os.execute(cmd)
+		res_wasm := os.exec(['sh', '-c', '"\${1}" -b wasm run "\${2}" 2> "\${3}"', 'v', '${vexe}', '${full_test_path}', '${tmperrfile}'])
 		if res_wasm.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail(cmd))
