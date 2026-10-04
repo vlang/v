@@ -42,6 +42,7 @@ The default compiler:
 
 Use `v build script.vsh` to compile a `.vsh` script without running it.
 `v -skip-running script.vsh` works too.
+See `v help vsh` for what script mode changes.
 
 When compiling a single main package, V writes the resulting executable to an output file
 named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or 'abc.exe')

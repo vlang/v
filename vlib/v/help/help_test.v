@@ -40,6 +40,14 @@ fn test_build_topic_lists_fastc_backend() {
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('* `fastc`'), res.output
 	assert res.output.contains('on macOS and Linux hosts in V builds that embed V3'), res.output
+	assert res.output.contains('See `v help vsh`'), res.output
+}
+
+fn test_vsh_topic() {
+	res := os.exec([@VEXE, 'help', 'vsh'])
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('v build script.vsh'), res.output
+	assert res.output.contains('`os` types still need it (`os.File`)'), res.output
 }
 
 fn test_all_topics() {
