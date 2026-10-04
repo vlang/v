@@ -67,38 +67,48 @@ fn object_span(text string, key string) ?(int, int) {
 // like something a person wrote.
 fn insertion_point(text string, key string) ?Insertion {
 	start, end := object_span(text, key) or { return none }
+	return insertion_in(text, start, end)
+}
+
+// root_insertion is where a new top-level member goes: first in the root object.
+fn root_insertion(text string) ?Insertion {
+	start := skip_space(text, 0)
+	if start >= text.len || text[start] != `{` {
+		return none
+	}
+	return insertion_in(text, start, matching_bracket(text, start))
+}
+
+// insertion_in is `insertion_point` for the object that spans start..end.
+fn insertion_in(text string, start int, end int) Insertion {
 	j := skip_space(text, start + 1)
-	closing := line_start(text, j)
-	indent := text[closing..j]
 	if j < end && text[j] == `}` {
-		// An empty object has no entry to copy its layout from. `{}` gets a body
-		// indented under the brace; a brace already on its own line gets the
-		// entry on its line instead.
-		if j == start + 1 {
-			outer := line_indent(text, start)
-			return Insertion{
-				pos:    start + 1
-				prefix: '\n' + outer + '  '
-				suffix: '\n' + outer
-			}
-		}
+		// An empty object has no entry to copy its layout from, so whatever
+		// whitespace sits between its braces is replaced by a body indented one
+		// step under the line that opens it.
+		outer := line_indent(text, start)
 		return Insertion{
-			pos:    closing
-			prefix: indent
-			suffix: '\n'
+			pos:    start + 1
+			end:    j
+			prefix: '\n' + outer + '  '
+			suffix: '\n' + outer
 		}
 	}
+	closing := line_start(text, j)
 	if closing <= start {
 		// The body opens on the brace's own line, so it stays a one-liner.
 		return Insertion{
 			pos:    start + 1
+			end:    start + 1
 			prefix: ' '
 			suffix: ','
+			inline: true
 		}
 	}
 	return Insertion{
 		pos:    closing
-		prefix: indent
+		end:    closing
+		prefix: text[closing..j]
 		suffix: ',\n'
 	}
 }
@@ -151,19 +161,19 @@ fn find_entry(text string, start int, end int, id string) ?(int, int, int) {
 			} else if c == dquote {
 				in_string = false
 				if depth == 1 && text[token_start..i] == id {
-					entry_start := token_start - 1
-					mut j := skip_space(text, i + 1)
-					if j >= end || text[j] != `:` {
-						return none
+					colon := skip_space(text, i + 1)
+					// A string not followed by a colon is a value, not a key, so
+					// the search goes on past it.
+					if colon < end && text[colon] == `:` {
+						entry_start := token_start - 1
+						stop := value_end(text, skip_space(text, colon + 1), end)
+						k := skip_space(text, stop)
+						if k < end && text[k] == `,` {
+							return entry_start, stop, skip_space(text, k + 1)
+						}
+						// The last entry, so the comma before it has to go too.
+						return previous_comma(text, entry_start, start), stop, stop
 					}
-					j = skip_space(text, j + 1)
-					stop := value_end(text, j, end)
-					k := skip_space(text, stop)
-					if k < end && text[k] == `,` {
-						return entry_start, stop, skip_space(text, k + 1)
-					}
-					// The last entry, so the comma before it has to go too.
-					return previous_comma(text, entry_start, start), stop, stop
 				}
 			}
 		} else if c == dquote {
@@ -260,18 +270,62 @@ fn skip_space(text string, i int) int {
 	return j
 }
 
-// remove_entry deletes the entry from the client's file.
-fn remove_entry(h Harness, path string) bool {
+// remove_entry deletes the entry from the client's file. It reports whether
+// there was one to delete; an error means there may be one that was left in
+// place, and says why.
+fn remove_entry(h Harness, path string) !bool {
 	if !os.exists(path) {
 		return false
 	}
-	text := os.read_file(path) or { panic(err) }
+	text := os.read_file(path) or { return error('could not read ${path}: ${err.msg()}') }
+	// The scan below does not know where comments are, so in a file that has
+	// them a commented-out entry looks real and a real one can be cut together
+	// with the comment beside it. Such a file is left for the user to edit.
+	if !is_plain_json(text) {
+		if text.contains(json_string(server_id)) {
+			return error('${path} is not plain JSON (comments or trailing commas); not rewriting it. Remove the ${json_string(server_id)} entry by hand.')
+		}
+		return false
+	}
 	start, end := object_span(text, h.key) or { return false }
 	cut_from, _, cut_to := find_entry(text, start, end, server_id) or { return false }
-	os.write_file(path, text[..cut_from] + text[cut_to..]) or {
-		eprintln('v mcp uninstall: could not write ${path}: ${err.msg()}')
-		return false
+	write_atomically(path, text[..cut_from] + text[cut_to..]) or {
+		return error('could not write ${path}: ${err.msg()}')
 	}
 	println('${h.label}: removed ${server_id} from ${path}')
 	return true
+}
+
+// write_atomically replaces the file in one step: the new text goes to a
+// temporary file beside it, which is then renamed over it, so a crash or a full
+// disk leaves the old config in place rather than half of the new one.
+fn write_atomically(path string, text string) ! {
+	// A symlinked dotfile stays a symlink: the file it points at is replaced.
+	target := if os.exists(path) { os.real_path(path) } else { path }
+	tmp := '${target}.vmcp-${os.getpid()}'
+	replace_through(tmp, target, text) or {
+		os.rm(tmp) or {}
+		return err
+	}
+}
+
+// replace_through writes `text` to `tmp` and moves it over `target`, keeping
+// the permissions `target` had.
+fn replace_through(tmp string, target string, text string) ! {
+	os.write_file(tmp, text)!
+	$if !windows {
+		if st := os.stat(target) {
+			os.chmod(tmp, int(st.mode & 0o7777))!
+		}
+	}
+	os.rename(tmp, target) or {
+		// Windows will not rename over an existing file.
+		$if windows {
+			if os.exists(target) {
+				os.mv(tmp, target, overwrite: true)!
+				return
+			}
+		}
+		return err
+	}
 }

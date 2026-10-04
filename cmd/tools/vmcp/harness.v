@@ -26,9 +26,13 @@ struct Harness {
 	label string
 	// user is the config file that applies to every project.
 	user string
-	// project is the config file inside a project, empty when the client has no
-	// documented project-level file.
+	// project is the config file inside a project, empty when only the
+	// user-level file is handled for the client.
 	project string
+	// project_also are the other project files the client reads in the same
+	// role. The first of `project` and these that already exists is the one
+	// edited; `project` is created when none of them is there.
+	project_also []string
 	// key is the top-level object the servers live in.
 	key string
 	// argv_in_command is set for clients that take the executable and its
@@ -37,11 +41,10 @@ struct Harness {
 	// fields are the fixed pairs this client needs beyond the command, such as
 	// opencode's `type` discriminator.
 	fields []Field
-	// create_user is false when the path is not confirmed for this platform. A
-	// missing file there is reported rather than created, because writing a
-	// config to a place the client never reads is the worst possible outcome:
-	// it looks installed and is not.
-	create_user bool
+	// no_create_user is set when a missing user-level file is reported rather
+	// than created. It never applies to a project file, which sits at the path
+	// the client documents and is always safe to create.
+	no_create_user bool
 }
 
 // path_for is the file this harness reads for the requested scope.
@@ -52,7 +55,17 @@ fn (h Harness) path_for(project_root string, project bool) string {
 	if h.project == '' {
 		return ''
 	}
-	return os.join_path(project_root, h.project)
+	primary := os.join_path(project_root, h.project)
+	if os.exists(primary) {
+		return primary
+	}
+	for rel in h.project_also {
+		path := os.join_path(project_root, rel)
+		if os.exists(path) {
+			return path
+		}
+	}
+	return primary
 }
 
 // has_project_scope reports whether `--project` means anything for this client.
@@ -96,13 +109,14 @@ fn json_string_array(values []string) string {
 
 // harnesses returns every client V knows how to register with.
 //
-// Each path here was read out of that client's own documentation or its live
-// configuration file, not from memory. A client whose project-level file is not
-// documented has an empty `project`, and says so rather than guessing.
+// Each path here follows where that client itself reads its configuration. A
+// client with no project-level file here has an empty `project`, and says so
+// rather than guessing.
 fn harnesses() []Harness {
 	home := os.home_dir()
-	// VS Code and Zed keep their configuration under the platform config
-	// directory, which is `%APPDATA%` on Windows and `~/.config` elsewhere.
+	// VS Code keeps its configuration under the platform config directory:
+	// `%APPDATA%` on Windows, `~/Library/Application Support` on macOS, and
+	// `$XDG_CONFIG_HOME` (default `~/.config`) elsewhere.
 	config := os.config_dir() or { os.join_path(home, '.config') }
 	return [
 		Harness{
@@ -111,7 +125,12 @@ fn harnesses() []Harness {
 			// opencode reads `~/.config/opencode/` on every platform, including
 			// Windows, so this must not follow the platform config directory.
 			user:            os.join_path(home, '.config', 'opencode', 'opencode.json')
-			project:         os.join_path('.opencode', 'opencode.json')
+			// The project file is `opencode.json` at the root. An existing one of
+			// the other files opencode reads there is edited instead, in the order
+			// its own `opencode mcp add` looks for them.
+			project:         'opencode.json'
+			project_also:    ['opencode.jsonc', os.join_path('.opencode', 'opencode.json'),
+				os.join_path('.opencode', 'opencode.jsonc')]
 			key:             'mcp'
 			argv_in_command: true
 			fields:          [Field{ key: 'type', value: '"local"' }, Field{
@@ -138,22 +157,18 @@ fn harnesses() []Harness {
 			label:   'VS Code'
 			user:    os.join_path(config, 'Code', 'User', 'mcp.json')
 			project: os.join_path('.vscode', 'mcp.json')
+			// VS Code spells the object `servers`, not `mcpServers`.
 			key:     'servers'
-			// `.vscode/mcp.json` is deprecated in favour of the portable
-			// `.mcp.json`, which VS Code also reads and which is Claude Code's own
-			// project file. The path here stays the VS Code one, because naming
-			// one client should not edit another client's file.
 		},
 		Harness{
-			name:        'zed'
-			label:       'Zed'
-			user:        os.join_path(config, 'Zed', 'settings.json')
-			key:         'context_servers'
-			// Zed documents its servers inside its settings file and says
-			// nothing about a project-level file, so none is invented here.
-			// The Windows path is also unconfirmed, so a missing file is reported
-			// rather than created.
-			create_user: false
+			name:           'zed'
+			label:          'Zed'
+			user:           zed_settings_file(os.user_os(), home, config, os.getenv('FLATPAK_XDG_CONFIG_HOME'))
+			key:            'context_servers'
+			// The servers live in Zed's settings file, which holds every other
+			// Zed setting too, so it is only ever added to, never started from
+			// nothing. Only the user-level file is handled.
+			no_create_user: true
 		},
 		Harness{
 			name:    'gemini'
@@ -163,6 +178,27 @@ fn harnesses() []Harness {
 			key:     'mcpServers'
 		},
 	]
+}
+
+// zed_settings_file is the user settings file Zed reads, following Zed's own
+// `paths::config_dir`: `%APPDATA%\Zed` on Windows; on Linux and FreeBSD
+// `$FLATPAK_XDG_CONFIG_HOME/zed` inside a Flatpak, otherwise
+// `$XDG_CONFIG_HOME/zed` (default `~/.config/zed`); and `~/.config/zed`
+// everywhere else, macOS included, whatever XDG says. `config` is the platform
+// config directory, as `os.config_dir` reports it.
+fn zed_settings_file(os_name string, home string, config string, flatpak_config string) string {
+	dir := match os_name {
+		'windows' {
+			os.join_path(config, 'Zed')
+		}
+		'linux', 'freebsd' {
+			os.join_path(if flatpak_config != '' { flatpak_config } else { config }, 'zed')
+		}
+		else {
+			os.join_path(home, '.config', 'zed')
+		}
+	}
+	return os.join_path(dir, 'settings.json')
 }
 
 // find_harness looks up a client by the name the user typed.
