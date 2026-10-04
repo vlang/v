@@ -1,0 +1,48 @@
+Run a V file as a script, without giving up the language.
+
+Usage:
+  v [build flags] script.vsh [arguments...]  run the script
+  v build script.vsh                         compile it to an executable,
+                                             without running it
+  v -skip-running script.vsh                 the same thing
+
+A file ending in `.vsh` is parsed in script mode. It is still V, compiled the
+same way, and it can use every module V has; two rules are what make it read
+like a shell script.
+
+`import os` is added for you when the script does not import `os` itself, so
+the usual `os.` prefix is optional:
+
+  mkdir_all('build') or { panic(err) }
+  cp('data.txt', 'build/data.txt') or { panic(err) }
+  println(args)
+
+The public functions and constants of `os` (e.g. `args`) can be used without
+the `os.` prefix; `os` types still need it (`os.File`). A function, local or
+parameter of the same name in the script shadows the `os` one. Neither rule
+applies to a `.v` file.
+
+Arguments after the script name are passed to the script, not to V.
+
+`v script.vsh` keeps the executable beside the script, named after it
+(`script`, or `script.exe` on Windows), and reuses it like `v crun`: it is
+rebuilt when the script or the build options change. `v run script.vsh`
+rebuilds it on every run.
+
+On Unix-like systems, a script that starts with `#!/usr/bin/env -S v` can be
+run directly, once it is made executable with `chmod +x script.vsh`.
+
+A script with no extension runs too, when it starts with a shebang:
+
+  #!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp
+
+`tmp` is the prefix of the built executable, kept as `tmp.<filename>` beside
+the script, and that name is overwritten if it already exists. Add `run`
+after the prefix to rebuild every time instead of caching.
+
+On systems whose `/usr/bin/env` has no `-S` option, a `.vsh` script can start
+with `#!/usr/bin/env vrun` instead (see cmd/tools/vrun); this does not work
+for scripts without the `.vsh` extension.
+
+See also `v help build`, `v help crun`, `v help ast` for the AST of a script,
+and "Cross-platform shell scripts in V" in doc/docs.md.
