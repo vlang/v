@@ -315,6 +315,25 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 					tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.a.node(arg_id).pos)
 					return
 				}
+			} else if arg_index < method.param_is_mut.len && method.param_is_mut[arg_index]
+				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len {
+				// A `mut param T` parameter gets the address of `arg`, or the `&T`
+				// that `arg` already holds, so it has to be a `T`.
+				expected := tc.comptime_static_method_param_type(receiver_name, method,
+					arg_index)
+				source := tc.mut_pointer_slot_arg_source_type(arg_id)
+				value := if source is Pointer { source.base_type } else { source }
+				if expected is Pointer && !tc.type_compatible(value, expected.base_type) {
+					mut actual_ref := source
+					if source !is Pointer {
+						actual_ref = Type(Pointer{
+							base_type: source
+						})
+					}
+					tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual_ref)}` as `${call_argument_type_name(expected)}` in argument ${arg_index + 1} to `${receiver_name}.${method.name}`',
+						arg_id, tc.a.node(arg_id).pos)
+					return
+				}
 			}
 		}
 		if method.return_type.len > 0 && method.return_type != 'void' {

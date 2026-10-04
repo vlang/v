@@ -13528,13 +13528,18 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_compatible(actual Type, expected Type)
 // e.g. `T` for a `mut arg T` parameter of the current function, which is a `&T`
 // internally.
 fn (tc &TypeChecker) mut_pointer_slot_arg_source_type(arg_id flat.NodeId) Type {
+	return tc.implicit_mut_param_base_type(arg_id) or { tc.mut_pointer_slot_arg_type(arg_id) }
+}
+
+// implicit_mut_param_base_type returns `T`, when `arg` is a `mut arg T` parameter
+// of the current function (not an explicit `mut arg &T` one).
+fn (tc &TypeChecker) implicit_mut_param_base_type(arg_id flat.NodeId) ?Type {
 	arg := tc.a.node(arg_id)
-	if arg.kind == .ident && !tc.current_fn_param_is_explicit_mut_pointer(arg.value) {
-		if base := tc.fn_context.mut_param_base_types[arg.value] {
-			return base
-		}
+	if arg.kind != .ident || !tc.mut_param_binding_matches_lvalue(arg.value)
+		|| tc.current_fn_param_is_explicit_mut_pointer(arg.value) {
+		return none
 	}
-	return tc.mut_pointer_slot_arg_type(arg_id)
+	return tc.fn_context.mut_param_base_types[arg.value] or { return none }
 }
 
 // mut_pointer_slot_arg_type returns the checked type of a `mut arg` argument.
@@ -13549,20 +13554,15 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_type(arg_id flat.NodeId) Type {
 // mut_pointer_slot_arg_rejected reports whether `mut arg` cannot supply the `&T`
 // variable that an explicit `mut param &T` parameter expects.
 fn (tc &TypeChecker) mut_pointer_slot_arg_rejected(arg_id flat.NodeId, expected Type) bool {
-	actual := tc.mut_pointer_slot_arg_type(arg_id)
-	arg := tc.a.node(arg_id)
-	if arg.kind == .ident && !tc.current_fn_param_is_explicit_mut_pointer(arg.value) {
-		if base := tc.fn_context.mut_param_base_types[arg.value] {
-			// A `mut arg T` parameter is a `&T` internally, but it is not a `&T`
-			// variable that the callee could reassign.
-			actual_depth, _ := type_pointer_depth_and_base(actual)
-			base_depth, _ := type_pointer_depth_and_base(base)
-			if actual_depth > base_depth {
-				return true
-			}
+	if base := tc.implicit_mut_param_base_type(arg_id) {
+		// A `mut arg T` parameter is a `&T` internally, but it is not a `&T`
+		// variable that the callee could reassign. Its binding has type `T`, so
+		// this cannot be left to the type comparison below.
+		if expected is Pointer && unalias_type(base) !is Pointer {
+			return true
 		}
 	}
-	return !tc.mut_pointer_slot_arg_compatible(actual, expected)
+	return !tc.mut_pointer_slot_arg_compatible(tc.mut_pointer_slot_arg_type(arg_id), expected)
 }
 
 // mut_pointer_slot_arg_needs_ref reports whether `mut arg` is rejected by an
@@ -13595,7 +13595,10 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_error_msg(call_kind string, target str
 	param_label := if has_name { '`${param_name}`' } else { '${argument_number}' }
 	param_decl := if has_name { 'mut ${param_name}' } else { 'mut' }
 	arg_text := tc.source_text_for_node(arg_id)
-	example := if tc.a.node(arg_id).kind in [.ident, .selector, .index] {
+	// `&arr[i]` and `&m[key]` need `unsafe`, and `&arg` of an immutable `arg`
+	// is not mutable, so the example only fits mutable variables and fields.
+	example := if tc.a.node(arg_id).kind in [.ident, .selector]
+		&& tc.expr_root_is_mutable_lvalue(arg_id) {
 		ref_name := if arg_text == 'p' { 'ref' } else { 'p' }
 		' (e.g. `mut ${ref_name} := &${arg_text}`, then `mut ${ref_name}`)'
 	} else {
@@ -13607,10 +13610,19 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_error_msg(call_kind string, target str
 // record_mut_pointer_slot_arg_error reports an argument that cannot be passed to
 // the explicit `mut param &T` parameter at `param_idx`.
 fn (mut tc TypeChecker) record_mut_pointer_slot_arg_error(node flat.Node, info CallInfo, param_idx int, arg_id flat.NodeId, expected Type) {
-	call_kind := if info.has_receiver || tc.a.child_node(&node, 0).kind == .selector {
+	callee := tc.a.child_node(&node, 0)
+	mut call_kind := if info.has_receiver || callee.kind == .selector {
 		'method'
 	} else {
 		'function'
+	}
+	if !info.has_receiver && callee.kind == .selector && callee.children_count > 0 {
+		base := tc.a.child_node(callee, 0)
+		// `mod.fn(...)` is a selector too, but it does not call a method.
+		if base.kind == .ident && !tc.ident_resolves_to_value(base.value)
+			&& tc.resolve_import_alias(base.value) != none {
+			call_kind = 'function'
+		}
 	}
 	param_name := tc.source_call_param_name(info.name, param_idx) or { '' }
 	argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
