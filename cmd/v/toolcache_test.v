@@ -1117,6 +1117,33 @@ fn test_a_group_writable_own_cache_root_is_made_private() {
 	assert os.stat(directory)!.mode & 0o7777 == 0o1777, 'sticky shared roots are left alone'
 }
 
+// Someone who can write to the parent folder could replace the cache folder with a symlink
+// between the ownership check and the permission change. The repair must never follow such
+// a symlink, so the permissions of the unrelated target have to stay exactly as they were.
+fn test_making_a_cache_root_private_does_not_follow_a_replacing_symlink() {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('replaced_root')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	private_file := os.join_path(directory, 'private_file')
+	os.write_file(private_file, 'secret')!
+	os.chmod(private_file, 0o660)!
+	other_folder := os.join_path(directory, 'other_folder')
+	os.mkdir(other_folder)!
+	os.chmod(other_folder, 0o775)!
+	for target in [private_file, other_folder] {
+		before := os.stat(target)!.mode & 0o7777
+		root := os.join_path(directory, 'tools')
+		os.symlink(target, root)!
+		make_tool_cache_root_private(root)
+		os.rm(root)!
+		assert os.stat(target)!.mode & 0o7777 == before, 'the repair followed a symlink to `${target}`'
+	}
+}
+
 // `$pkgconfig(...)` and `#pkgconfig` select whole native branches, so the pkg-config
 // environment decides what a tool is built against without touching a single source stamp.
 fn test_the_cache_key_covers_the_pkgconfig_environment() {

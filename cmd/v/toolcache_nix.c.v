@@ -132,14 +132,29 @@ fn tool_cache_root_can_stage(path string) bool {
 // folder, so that `tool_cache_root_can_stage` accepts it. It only changes folders that the
 // current user owns, and skips shared folders like `/tmp` that use the sticky bit.
 fn make_tool_cache_root_private(path string) {
-	root := os.real_path(path)
-	information := os.stat(root) or { return }
+	// Open the folder once, and do both the check and the change through that descriptor.
+	// Checking and changing by path would be two separate lookups: in between, someone who
+	// can write to the parent folder could swap the folder for a symlink to another file, and
+	// the change would then loosen that file's permissions instead. O_NOFOLLOW refuses a
+	// symlink, and O_DIRECTORY refuses anything that is not a folder.
+	fd := C.open(&char(path.str), C.O_RDONLY | C.O_DIRECTORY | C.O_NOFOLLOW, 0)
+	if fd < 0 {
+		return
+	}
+	defer {
+		C.close(fd)
+	}
+	mut information := C.stat{}
+	if C.fstat(fd, &information) != 0 {
+		return
+	}
+	mode := u32(information.st_mode)
 	// 0o1000 is the sticky bit: in such a shared folder, users can not touch each other's files.
-	if information.uid != os.getuid() || information.mode & 0o1000 != 0 {
+	if u32(information.st_uid) != os.getuid() || mode & 0o1000 != 0 {
 		return
 	}
 	// Masking with 0o7755 removes write access for the group and for others, e.g. 0775 -> 0755.
-	os.chmod(root, int(information.mode & 0o7755)) or {}
+	C.fchmod(fd, mode & 0o7755)
 }
 
 // stage_parent uses the locked, mode-0700 entry itself, keeping compiler output on the cache
