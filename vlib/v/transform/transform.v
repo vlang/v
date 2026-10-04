@@ -506,23 +506,26 @@ mut:
 	// such writes stayed in the discarded clone) or deferred until after join
 	// (master, defer_oor_writes — matching the old path where the master's
 	// writes landed on the shared AST).
-	base_write_intercept    bool
-	defer_oor_writes        bool
-	shared_base_nodes       int = -1
-	shared_base_children    int = -1
-	item_range_lo           int = -1
-	item_range_hi           int = -1
-	item_escape_scan_known  bool
-	item_escape_scan_needed bool
-	memo_node_types         bool
-	node_type_memo          &NodeTypeMemo = unsafe { nil }
-	deferred_base_writes    []DeferredBaseWrite
+	base_write_intercept      bool
+	defer_oor_writes          bool
+	shared_base_nodes         int = -1
+	shared_base_children      int = -1
+	item_range_lo             int = -1
+	item_range_hi             int = -1
+	item_escape_scan_known    bool
+	item_escape_scan_needed   bool
+	memo_node_types           bool
+	memo_expansion_node_types bool
+	node_type_memo            &NodeTypeMemo = unsafe { nil }
+	expansion_node_type_memo  &NodeTypeMemo = unsafe { nil }
+	deferred_base_writes      []DeferredBaseWrite
 	// Prealloc self-host builds put helper-thread scratch allocations in
 	// disposable arenas. The worker's surviving AST strings are cloned by the
 	// master before that arena is released.
-	scope_parallel_workers bool
-	parallel_enabled       bool
-	fast_escape_precheck   bool
+	scope_parallel_workers   bool
+	parallel_enabled         bool
+	fast_escape_precheck     bool
+	ordinary_escape_precheck bool
 	// The skip-generics body pass owns disjoint source-node ranges. Reusing a
 	// source parent when its transformed child count is unchanged avoids
 	// copying that parent and its child span into the append-only AST.
@@ -974,6 +977,20 @@ mut:
 	is_ref_param bool
 }
 
+struct FunctionLocalState {
+	var_types                     []VarTypeBinding
+	var_type_indices              map[string]int
+	fn_value_locals               map[string]string
+	mut_param_values              map[string]bool
+	fixed_array_param_values      map[string]bool
+	heaped_amp_locals             map[string]bool
+	pointer_value_lvalues         map[string]bool
+	pointer_value_rvalues         map[string]bool
+	local_closure_cleanup_decls   map[int]string
+	local_closure_cleanup_assigns map[int]string
+	local_closure_field_cleanups  map[int]bool
+}
+
 struct BoundMethodArrayInfo {
 	receiver_type string
 	fn_type       string
@@ -1224,8 +1241,9 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) {
 	t.skip_generics = skip_generics
 	t.building_v = building_v
-	t.memo_node_types = building_v && os.getenv('V3_NO_NODE_TYPE_MEMO') == ''
+	t.memo_node_types = building_v && t.memo_expansion_node_types
 	t.fast_escape_precheck = building_v && os.getenv('V3_NO_ESCAPE_PRECHECK') == ''
+	t.ordinary_escape_precheck = !building_v && os.getenv('V3_NO_ESCAPE_PRECHECK') == ''
 	t.inplace_child_rewrites = building_v && os.getenv('V3_NO_INPLACE_TRANSFORM_CHILDREN') == ''
 	t.inplace_fn_child_rewrites = t.inplace_child_rewrites
 		&& os.getenv('V3_NO_INPLACE_TRANSFORM_FN_CHILDREN') == ''
@@ -1854,6 +1872,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 	return Transformer{
 		a:                           a
 		tc:                          unsafe { tc }
+		memo_expansion_node_types:   os.getenv('V3_NO_NODE_TYPE_MEMO') == ''
 		has_spawn_expr:              tc.threads_condition_value()
 		used_fns:                    used_fns.clone()
 		interface_box_param_cache:   &BoolLookupCache{
@@ -2709,6 +2728,53 @@ fn (mut t Transformer) reset_var_types() {
 	t.addr_lvalue_pointer_locals.clear()
 	t.orm_initialized_fields.clear()
 	t.sql_query_data_aliases.clear()
+}
+
+// detach_function_local_state preserves the outer containers while a lifted
+// function body builds independent bindings and ownership metadata.
+fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
+	state := FunctionLocalState{
+		var_types:                     t.var_types
+		var_type_indices:              t.var_type_indices
+		fn_value_locals:               t.fn_value_locals
+		mut_param_values:              t.mut_param_values
+		fixed_array_param_values:      t.fixed_array_param_values
+		heaped_amp_locals:             t.heaped_amp_locals
+		pointer_value_lvalues:         t.pointer_value_lvalues
+		pointer_value_rvalues:         t.pointer_value_rvalues
+		local_closure_cleanup_decls:   t.local_closure_cleanup_decls
+		local_closure_cleanup_assigns: t.local_closure_cleanup_assigns
+		local_closure_field_cleanups:  t.local_closure_field_cleanups
+	}
+	t.var_types = []VarTypeBinding{}
+	t.var_type_indices = map[string]int{}
+	t.fn_value_locals = map[string]string{}
+	t.mut_param_values = map[string]bool{}
+	t.fixed_array_param_values = map[string]bool{}
+	t.heaped_amp_locals = map[string]bool{}
+	t.pointer_value_lvalues = map[string]bool{}
+	t.pointer_value_rvalues = map[string]bool{}
+	t.local_closure_cleanup_decls = map[int]string{}
+	t.local_closure_cleanup_assigns = map[int]string{}
+	t.local_closure_field_cleanups = map[int]bool{}
+	return state
+}
+
+fn (mut t Transformer) restore_function_local_state(state FunctionLocalState) {
+	t.var_types = state.var_types
+	t.var_type_indices = state.var_type_indices
+	t.fn_value_locals = state.fn_value_locals
+	t.mut_param_values = state.mut_param_values
+	t.fixed_array_param_values = state.fixed_array_param_values
+	t.heaped_amp_locals = state.heaped_amp_locals
+	t.pointer_value_lvalues = state.pointer_value_lvalues
+	t.pointer_value_rvalues = state.pointer_value_rvalues
+	t.local_closure_cleanup_decls = state.local_closure_cleanup_decls
+	t.local_closure_cleanup_assigns = state.local_closure_cleanup_assigns
+	t.local_closure_field_cleanups = state.local_closure_field_cleanups
+	if !isnil(t.var_type_cache) {
+		t.var_type_cache.clear()
+	}
 }
 
 fn (mut t Transformer) rebuild_variadic_suffix_index() {
@@ -4543,6 +4609,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		skip_generics:                       t.skip_generics
 		building_v:                          t.building_v
 		memo_node_types:                     t.memo_node_types
+		memo_expansion_node_types:           t.memo_expansion_node_types
 		stringify_depth_cap:                 t.stringify_depth_cap
 		struct_autostr_recurse_types:        t.struct_autostr_recurse_types
 		has_spawn_expr:                      t.has_spawn_expr
@@ -4553,6 +4620,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		scoped_base_nodes:                   t.scoped_base_nodes
 		scope_parallel_workers:              t.scope_parallel_workers
 		fast_escape_precheck:                t.fast_escape_precheck
+		ordinary_escape_precheck:            t.ordinary_escape_precheck
 		inplace_child_rewrites:              t.inplace_child_rewrites
 		inplace_fn_child_rewrites:           t.inplace_fn_child_rewrites
 		inplace_assign_rewrites:             t.inplace_assign_rewrites
@@ -7253,15 +7321,20 @@ fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string
 // are recorded in `escaping_amp_ptrs` and consumed by the decl-assign transform. The walk is
 // structural apart from using resolved expression types to distinguish method-value selectors
 // from fields; the source type is checked at rewrite time when `v`'s type is known.
-fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
+// It returns true only when the ordinary-build proof also excludes all runtime
+// closure creators, allowing the immediately following cleanup walk to be skipped.
+fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) bool {
 	t.reset_escaping_amp_state()
+	if t.ordinary_escape_precheck && t.ordinary_escape_scan_can_be_skipped(body_ids) {
+		return true
+	}
 	if t.fast_escape_precheck {
 		if t.item_escape_scan_known {
 			if !t.item_escape_scan_needed && !t.escape_scan_may_be_needed(body_ids) {
-				return
+				return false
 			}
 		} else if !t.escape_scan_may_be_needed(body_ids) {
-			return
+			return false
 		}
 	}
 	mut amp_ptrs := map[string]bool{}
@@ -7354,6 +7427,91 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 			}
 			t.escaping_interface_box_locals[name] = true
 		}
+	}
+	return false
+}
+
+fn (mut t Transformer) ordinary_escape_scan_can_be_skipped(body_ids []flat.NodeId) bool {
+	for id in body_ids {
+		if !t.ordinary_escape_subtree_has_no_address_sources(id) {
+			return false
+		}
+	}
+	return true
+}
+
+// The full walk starts with empty address-provenance maps. Addresses can enter
+// them through explicit &, reference iteration, bound methods/captures, spawn,
+// or implicit reference arguments. Reject every such syntax/signature, including
+// unknown callees. Aliases and aggregate wrappers cannot create provenance on
+// their own. This proof deliberately rejects all selectors, reference loops and
+// nested callables, as well as generic calls whose concrete signature can differ.
+@[direct_array_access]
+fn (mut t Transformer) ordinary_escape_subtree_has_no_address_sources(id flat.NodeId) bool {
+	idx := int(id)
+	if idx < 0 || idx >= t.a.nodes.len {
+		return false
+	}
+	// Parameter lookups do not append nodes, so this borrowed header stays valid.
+	node := &t.a.nodes[idx]
+	if node.kind in [.selector, .for_in_stmt, .fn_literal, .lambda_expr, .fn_decl, .spawn_expr]
+		|| (node.kind == .prefix && node.op == .amp) {
+		return false
+	}
+	if node.kind == .call {
+		if isnil(t.tc) || node.children_count == 0 {
+			return false
+		}
+		callee := t.a.child_node(node, 0)
+		if callee.kind != .ident || t.var_type(callee.value).len > 0 {
+			return false
+		}
+		if t.tc.resolved_call_name(id) == none {
+			return false
+		}
+		name := t.call_name_for_node(id, *node)
+		// The full walk can replace declared parameters with an inferred generic
+		// signature. Reject the same superset used before generic resolution,
+		// without performing specialization or changing source annotations.
+		_ = t.cached_generic_fn_decls()
+		if t.resolved_call_is_generic_fn(name) || t.call_name_can_target_generic(*node) {
+			return false
+		}
+		known_params := t.tc.fn_param_types[name] or { return false }
+		// Use the same declaration/context-aware parameter view as the full walk.
+		params := t.call_param_types_for_node(name, *node)
+		if params.len == 0 && known_params.len > 0 {
+			return false
+		}
+		for param in params {
+			if ordinary_escape_param_may_borrow_local(param, 0) {
+				return false
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if !t.ordinary_escape_subtree_has_no_address_sources(t.a.child(node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn ordinary_escape_param_may_borrow_local(typ types.Type, depth int) bool {
+	if depth >= 64 {
+		return true
+	}
+	return match typ {
+		types.Pointer, types.Unknown { true }
+		types.Alias, types.OptionType, types.ResultType {
+			ordinary_escape_param_may_borrow_local(typ.base_type, depth + 1)
+		}
+		types.Array {
+			// A variadic array tail can pass an element by reference. Reject it even
+			// when the variadic marker/signature has not been published yet.
+			ordinary_escape_param_may_borrow_local(typ.elem_type, depth + 1)
+		}
+		else { false }
 	}
 }
 
@@ -7720,6 +7878,10 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 }
 
 fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) {
+	t.mark_local_closure_cleanup_decls_with_proof(body_ids, false)
+}
+
+fn (mut t Transformer) mark_local_closure_cleanup_decls_with_proof(body_ids []flat.NodeId, has_ordinary_escape_proof bool) {
 	t.local_closure_cleanup_decls.clear()
 	t.local_closure_cleanup_values.clear()
 	t.local_closure_cleanup_assigns.clear()
@@ -7727,7 +7889,10 @@ fn (mut t Transformer) mark_local_closure_cleanup_decls(body_ids []flat.NodeId) 
 	// The compiler build excludes the optional backend sources that contain
 	// capturing literals, and its remaining function literal is non-capturing.
 	// Avoid the whole-body escape analysis for every compiler function.
-	if t.building_v {
+	// The ordinary escape proof excludes every literal and selector in this
+	// exact body. Those are the only creator leaves in the closure walk, so its
+	// candidate lists would be empty. Keep this proof local to one function.
+	if t.building_v || has_ordinary_escape_proof {
 		return
 	}
 	mut candidates := []LocalClosureDeclCandidate{}
@@ -10341,13 +10506,13 @@ fn (t &Transformer) escape_ident_is_stack_local(name string, local_stack_names m
 		return false
 	}
 	if !isnil(t.tc) {
-		if _ := t.tc.file_scope.lookup(name) {
+		if t.tc.file_scope.contains(name) {
 			return false
 		}
 		if t.cur_module.len > 0 {
 			qname := '${t.cur_module}.${name}'
 			if qname != name {
-				if _ := t.tc.file_scope.lookup(qname) {
+				if t.tc.file_scope.contains(qname) {
 					return false
 				}
 			}
@@ -10675,14 +10840,14 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			}
 		}
 	}
-	t.mark_escaping_amp_ptrs(body_ids)
+	has_ordinary_escape_proof := t.mark_escaping_amp_ptrs(body_ids)
 	for name in source_mut_params {
 		t.pointer_value_lvalues[name] = true
 	}
 	for name in source_pointer_value_params {
 		t.pointer_value_rvalues[name] = true
 	}
-	t.mark_local_closure_cleanup_decls(body_ids)
+	t.mark_local_closure_cleanup_decls_with_proof(body_ids, has_ordinary_escape_proof)
 	if !t.literal_free_fn_body {
 		for id in body_ids {
 			t.collect_mut_capture_sources(id)
@@ -11270,12 +11435,21 @@ fn (mut t Transformer) transform_debugger_stmt(node flat.Node) flat.NodeId {
 		if contexts.len == 0 {
 			continue
 		}
-		value := t.apply_smartcast_contexts(t.make_ident(name), t.var_type(name), contexts)
+		last := contexts.last()
+		mut value := t.apply_smartcast_contexts(t.make_ident(name), t.var_type(name), contexts)
 		mut value_type := t.node_type(value)
 		if value_type.len == 0 {
-			value_type = t.smartcast_target_type(contexts.last())
+			value_type = t.smartcast_target_type(last)
 		}
-		mut display_type := contexts.last().display_type
+		// Interface smartcasts to structs select the boxed object by pointer to avoid
+		// copies; the debugger shows the value type that the source code sees.
+		if value_type.starts_with('&') && !last.variant_name.starts_with('&')
+			&& t.is_interface_type_name(last.sum_type_name) {
+			value = t.make_prefix(.mul, value)
+			value_type = value_type[1..]
+			t.set_node_typ(int(value), value_type)
+		}
+		mut display_type := last.display_type
 		if display_type.len == 0 {
 			display_type = value_type
 		}
@@ -21261,6 +21435,9 @@ fn (t &Transformer) is_disabled_fn_name(name string) bool {
 
 // is_disabled_fn_call reports whether is disabled fn call applies in transform.
 fn (t &Transformer) is_disabled_fn_call(id flat.NodeId, node flat.Node) bool {
+	if t.a.disabled_fns.len == 0 {
+		return false
+	}
 	name := t.call_name_for_node(id, node)
 	return t.is_disabled_fn_name(name)
 }
@@ -25975,6 +26152,7 @@ pub fn (mut t Transformer) pop_smartcast() {
 }
 
 // find_smartcast resolves find smartcast information for transform.
+@[direct_array_access]
 pub fn (t &Transformer) find_smartcast(expr_name string) ?SmartcastContext {
 	// Search from top of stack (most recent) to bottom
 	mut i := t.smartcast_stack.len - 1
@@ -27834,6 +28012,7 @@ fn (mut t Transformer) lower_match_stmts() {
 // lower_remaining_matches_in_used_fns lowers match nodes that become reachable only after
 // monomorphization roots a late helper. It walks emitted function subtrees, not the entire flat
 // arena, so unused generic templates do not add transform time or memory.
+@[direct_array_access]
 fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	t.ensure_node_module_map()
 	old_module := t.cur_module
@@ -27867,6 +28046,7 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	t.cur_file = old_file
 }
 
+@[direct_array_access]
 fn (mut t Transformer) lower_remaining_match_subtree(id flat.NodeId, mut visited []u32, epoch u32) {
 	idx := int(id)
 	if idx < 0 || idx >= t.a.nodes.len {
@@ -27889,8 +28069,15 @@ fn (mut t Transformer) lower_remaining_match_subtree(id flat.NodeId, mut visited
 	if node.children_count == 0 {
 		return
 	}
-	children := t.a.children_of(&node).clone()
-	for child_id in children {
+	if node.children_start < 0 || node.children_start >= t.a.children.len {
+		return
+	}
+	child_end := int_min(node.children_start + node.children_count, t.a.children.len)
+	// Lowering appends children and replaces nodes, but keeps existing child
+	// slots. Reload by slot after each recursive call so arena growth cannot
+	// invalidate a borrowed slice, without copying every non-leaf's children.
+	for child_slot in node.children_start .. child_end {
+		child_id := t.a.children[child_slot]
 		t.lower_remaining_match_subtree(child_id, mut visited, epoch)
 	}
 }

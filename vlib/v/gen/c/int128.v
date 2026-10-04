@@ -230,7 +230,11 @@ struct Int128LiteralParts {
 // Returns the halves of a literal, or none when it fits in 64 bits and can stay
 // on the ordinary path.
 fn int128_literal_parts(text string) ?Int128LiteralParts {
-	cleaned := text.replace('_', '')
+	// At most 16 digits fit in 64 bits even in the largest supported base.
+	if text.len <= 16 {
+		return none
+	}
+	cleaned := if text.contains_u8(`_`) { text.replace('_', '') } else { text }
 	if cleaned.len == 0 {
 		return none
 	}
@@ -250,6 +254,19 @@ fn int128_literal_parts(text string) ?Int128LiteralParts {
 		}
 	}
 	if digits.len == 0 {
+		return none
+	}
+	mut significant_start := 0
+	for significant_start < digits.len && digits[significant_start] == `0` {
+		significant_start++
+	}
+	low_digits := match base {
+		16 { 16 }
+		8 { 21 }
+		2 { 64 }
+		else { 19 }
+	}
+	if digits.len - significant_start <= low_digits {
 		return none
 	}
 	// Four 32-bit limbs, least significant first. Multiplying a limb by a base of
@@ -291,7 +308,7 @@ fn int128_literal_parts(text string) ?Int128LiteralParts {
 	}
 }
 
-fn (mut g FlatGen) gen_int128_cast(node flat.Node, target_type types.Type, source_id flat.NodeId) bool {
+fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId) bool {
 	target := int128_signedness(target_type)
 	source_type := g.usable_expr_type(source_id)
 	source := int128_signedness(source_type)

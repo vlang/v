@@ -809,7 +809,7 @@ fn (mut t Transformer) disabled_call_zero_value_expansion_estimate(id flat.NodeI
 }
 
 fn (mut t Transformer) disabled_struct_operator_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
-	if node.kind != .infix || node.children_count < 2 {
+	if node.kind != .infix || node.children_count < 2 || t.a.disabled_fns.len == 0 {
 		return 0
 	}
 	lhs_id := t.a.child(&node, 0)
@@ -1412,6 +1412,33 @@ fn (mut t Transformer) forwarded_return_conversion_expansion_estimate(actual_typ
 // lowering can substitute a constant identifier with a large initializer
 // outside that range.
 fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
+	if !t.memo_expansion_node_types {
+		return t.fn_span_map_expansion_estimate_uncached(lo, hi)
+	}
+	// This analysis keeps bindings, smartcasts and the AST fixed. Reuse scratch
+	// storage here, but preserve any body memo with its own context and contents.
+	saved_memo := t.node_type_memo
+	if isnil(t.expansion_node_type_memo) {
+		t.expansion_node_type_memo = &NodeTypeMemo{}
+	}
+	t.node_type_memo = t.expansion_node_type_memo
+	memo_lo := if lo < 0 { 0 } else { lo }
+	memo_hi := if hi <= 0 {
+		-1
+	} else if hi > t.a.nodes.len {
+		t.a.nodes.len - 1
+	} else {
+		hi - 1
+	}
+	t.begin_node_type_memo(memo_lo, memo_hi)
+	defer {
+		t.end_node_type_memo()
+		t.node_type_memo = saved_memo
+	}
+	return t.fn_span_map_expansion_estimate_uncached(lo, hi)
+}
+
+fn (mut t Transformer) fn_span_map_expansion_estimate_uncached(lo int, hi int) int {
 	mut estimate := 0
 	fn_return_type := if hi >= 0 && hi < t.a.nodes.len && t.a.nodes[hi].kind == .fn_decl {
 		t.fn_body_return_type(t.a.nodes[hi])

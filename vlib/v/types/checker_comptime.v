@@ -10336,7 +10336,19 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 		tc.record_error_at(.assignment_mismatch, 'expression requires a non empty `or {}` block', or_id, tc.or_block_operator_pos(source_id, fallback_id))
 		return
 	}
-	tail_id := tc.branch_tail_expr_id(fallback_id)
+	mut tail_id := tc.branch_tail_expr_id(fallback_id)
+	// Portable output keeps every branch of a target-dependent `$if` for the C
+	// preprocessor, but checks only the branch selected for its target (see
+	// check_comptime_if). That branch provides the value or leaves the block.
+	for tc.valid_node_id(tail_id) && tc.a.node(tail_id).kind == .comptime_if {
+		comptime_if := tc.a.node(tail_id)
+		take_then := tc.comptime_type_condition_value(comptime_if.value) or { break }
+		branch_index := if take_then { 0 } else { 1 }
+		if branch_index >= comptime_if.children_count {
+			break
+		}
+		tail_id = tc.branch_tail_expr_id(tc.a.child(comptime_if, branch_index))
+	}
 	if !tc.valid_node_id(tail_id) {
 		return
 	}
@@ -13407,6 +13419,13 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 				}
 			}
 			outer_scope = outer_scope.parent
+		}
+	} else {
+		// A lambda inside a closure cannot reach what the closure does not capture.
+		for name, _ in tc.fn_context.closure_forbidden_captures {
+			if tc.ident_uses_forbidden_closure_capture(name) {
+				forbidden_captures[name] = true
+			}
 		}
 	}
 	saved_fn_context := tc.fn_context

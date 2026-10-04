@@ -52,12 +52,21 @@ fn test_remaining_match_walk_lowers_siblings_and_nested_matches_after_arena_grow
 	second_value := a.add_val(.int_literal, '9')
 	second := remaining_match_walk_match(mut a, [second_value])
 	root := remaining_match_walk_node(mut a, .block, '', [first, second])
+	// Exact capacity forces recursive lowering to reallocate both backing arrays.
+	old_nodes := a.nodes
+	old_children := a.children
+	a.nodes = []flat.Node{cap: old_nodes.len}
+	a.children = []flat.NodeId{cap: old_children.len}
+	a.nodes << old_nodes
+	a.children << old_children
+	initial_children_cap := a.children.cap
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	initial_nodes := a.nodes.len
 	mut visited := []u32{len: initial_nodes}
 	t.lower_remaining_match_subtree(root, mut visited, 1)
 	assert a.nodes.len > initial_nodes
+	assert a.children.cap > initial_children_cap
 	assert a.node(first).kind != .match_stmt
 	assert a.node(second).kind != .match_stmt
 	values := remaining_match_walk_reachable_values(&a, root)
@@ -87,4 +96,37 @@ fn test_remaining_match_walk_revisits_shared_nodes_in_the_next_function_epoch() 
 	assert a.node(late_match).kind != .match_stmt
 	values := remaining_match_walk_reachable_values(&a, root)
 	assert '11' in values
+}
+
+fn test_remaining_match_walk_clamps_partial_and_missing_child_spans() {
+	mut a := flat.FlatAst.new()
+	value := a.add_val(.int_literal, '13')
+	child_match := remaining_match_walk_match(mut a, [value])
+	start := a.children.len
+	a.add_child(child_match)
+	partial := a.add_node(flat.Node{
+		kind:           .block
+		children_start: start
+		children_count: 4096
+	})
+	mut missing := []flat.NodeId{}
+	for missing_start in [-1, a.children.len, a.children.len + 4] {
+		missing << a.add_node(flat.Node{
+			kind:           .block
+			children_start: missing_start
+			children_count: 1
+		})
+	}
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	initial_nodes := a.nodes.len
+	mut visited := []u32{len: initial_nodes}
+	for root in missing {
+		t.lower_remaining_match_subtree(root, mut visited, 1)
+	}
+	assert a.nodes.len == initial_nodes
+	t.lower_remaining_match_subtree(partial, mut visited, 2)
+	assert a.nodes.len > initial_nodes
+	assert a.node(child_match).kind != .match_stmt
+	assert '13' in remaining_match_walk_reachable_values(&a, child_match)
 }

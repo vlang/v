@@ -140,8 +140,8 @@ int main(int argc, char** argv) {
 	assert build.exit_code == 0, build.output
 	run := os.exec([mock_binary])
 	assert run.exit_code == 0, run.output
-	for arguments in ['wrong-c-free', 'wrong-v-free extra'] {
-		crossed := os.exec([mock_binary, '${arguments}'])
+	for arguments in [['wrong-c-free'], ['wrong-v-free', 'extra']] {
+		crossed := os.exec([mock_binary, ...arguments])
 		assert crossed.exit_code != 0, 'the allocator mock accepted crossed allocation families'
 	}
 }

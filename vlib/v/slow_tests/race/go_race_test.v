@@ -279,8 +279,7 @@ fn test_go_race_suite() {
 		fns := program_test_fns(source)
 		mut results := []TestResult{}
 		for attempt in 1 .. max_runs + 1 {
-			run := os.exec(['env', 'VRACE=' + ...(os.split_args(vrace_options) or { panic(err) }),
-				exe])
+			run := os.exec(['env', 'VRACE=${vrace_options}', exe])
 			run_results, done := parse_output(run.output, os.file_name(program), fns, attempt)
 			if !done {
 				problems << '${name}.v did not run to completion (exit code ${run.exit_code}):\n${run.output#[-3000..]}'

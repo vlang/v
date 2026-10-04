@@ -15,6 +15,70 @@ fn test_c_name_sanitize_operator_overloads() {
 	assert c_name('Point.[]=') == 'Point__op_index_set'
 }
 
+fn test_operator_collision_names_preserve_short_and_long_method_names() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for op in ['+', '==', '[]='] {
+		name := 'Box.${op}'
+		ordinary := 'Box.${g.cname('T.${op}').all_after_last('__')}'
+		tc.fn_param_types[ordinary] = []types.Type{}
+		assert g.direct_call_name(name) == '${g.cname(name)}__operator'
+		assert g.direct_call_name(ordinary) == g.cname(ordinary)
+	}
+	for method in ['get', 'value', 'operator', 'operator[]=', '[]suffix'] {
+		name := 'Box.${method}'
+		assert g.direct_call_name(name) == g.cname(name)
+	}
+}
+
+fn test_direct_builtin_map_set_aliases_use_the_runtime_symbol() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for name in ['builtin.map__set', 'builtin_map__set', 'builtin__map__set',
+		fn_decl_module_key('builtin', 'map.set')] {
+		assert g.direct_call_name(name) == 'map__set'
+	}
+}
+
+fn test_direct_call_abi_overrides_work_after_an_initial_empty_table() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.direct_call_name('dep.call') == 'dep__call'
+	g.c_decl_abi_names['dep.call'] = 'custom_call'
+	assert g.direct_call_name('dep.call') == 'custom_call'
+	g.c_decl_abi_names['dep__other'] = 'custom_other'
+	assert g.direct_call_name('dep.other') == 'custom_other'
+}
+
+fn test_runtime_shadow_names_keep_declarations_and_uses_consistent() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for name in ['argc', 'argv', 'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq',
+		'string__lt', 'string__plus'] {
+		declaration := g.local_decl_cname(name)
+		assert declaration != g.cname(name)
+		assert g.local_cname(name) == declaration
+		assert g.debugger_var_expr(name) == declaration
+	}
+	for name in ['', 'arg', 'args', 'argc2', 'array_set', 'array_get_more', 'new_maps', 'string__ne',
+		'string__long'] {
+		assert g.local_decl_cname(name) == g.cname(name)
+		assert g.local_cname(name) == g.cname(name)
+	}
+}
+
 fn test_c_name_sanitize_escaped_keywords() {
 	assert c_name('@true') == '_v_true'
 	assert c_name('@false') == '_v_false'

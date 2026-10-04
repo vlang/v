@@ -1,8 +1,19 @@
 Update the V compiler to the latest version from https://github.com/vlang/v.
 
+It also reports the agent skills installed for this user, in ~/.agents/skills,
+that the new revision left behind. Skills with local changes, and skills
+installed before V recorded what it installed, are reported but left alone;
+`v skills update --global` explains that in more detail.
+
 Usage:
-  v up
+  v up [options]
 
 Options:
-  -v     Print more details about the update.
-  -prod  Compile the updated V with the -prod flag.
+  -v                 Print more details about the update.
+  -prod              Compile the updated V with the -prod flag.
+  -skills            Refresh the installed agent skills that fell behind, in
+                     ~/.agents/skills, like `v skills update --global` does.
+  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.
+  -skip_current      Recompile even when the checkout is already at the
+                     revision.
+  -h, -help, --help  Show this help and exit.

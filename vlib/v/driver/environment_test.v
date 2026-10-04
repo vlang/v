@@ -416,22 +416,6 @@ fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
 	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] != sha256.hexhash(os.read_file(header_path)!)
 }
 
-fn test_should_overlap_v3_native_inputs() {
-	// Large user builds without native typedefs can hide native-input discovery
-	// behind declaration collection.
-	assert should_overlap_v3_native_inputs('c', false, false, false, false, true, false)
-	// Self-hosting retains its existing overlap when native inputs are needed.
-	assert should_overlap_v3_native_inputs('c', false, false, true, true, false, false)
-	assert !should_overlap_v3_native_inputs('c', false, false, true, false, true, false)
-	assert !should_overlap_v3_native_inputs('c', false, false, false, false, false, false)
-	assert !should_overlap_v3_native_inputs('c', true, false, false, false, true, false)
-	assert !should_overlap_v3_native_inputs('c', false, true, false, false, true, false)
-	assert !should_overlap_v3_native_inputs('wasm', false, false, false, false, true, false)
-	// A check runs no Cgen: native inputs it does not need are never prepared.
-	assert !should_overlap_v3_native_inputs('c', false, false, false, false, true, true)
-	assert should_overlap_v3_native_inputs('c', false, false, true, true, false, true)
-}
-
 fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
 	hash_source := os.real_path(os.join_path(os.vtmp_dir(), 'v3_fallback_hash.v'))
 	mut state := V3ModuleCacheState{
@@ -570,6 +554,25 @@ fn test_v3_test_standard_dependency_probes_match_test_runner() {
 	assert go_probe.command == 'go'
 	assert go_probe.args == ['version']
 	assert go_probe.pkgconfig_name == ''
+}
+
+fn test_v3_test_started_redis_accepts_an_unrewritten_process_title() {
+	// `set-proc-title no` keeps the original command line, which does not show the port.
+	assert v3_test_process_line_is_server('started_redis', ' 1234 ?        Ssl    0:10 redis-server /tmp/redis.conf')
+	assert v3_test_process_line_is_server('started_redis', ' 1234 ?        Ssl    0:10 redis-server *:6379')
+}
+
+fn test_v3_test_started_redis_matches_the_whole_port() {
+	assert !v3_test_process_line_is_server('started_redis', ' 1234 ?        Ssl    0:10 redis-server *:63790')
+	assert !v3_test_process_line_is_server('started_redis', ' 1234 ?        Ssl    0:10 redis-server 127.0.0.1:54321')
+}
+
+fn test_v3_test_started_defines_match_their_process_names() {
+	assert v3_test_process_line_is_server('started_mysqld', ' 1234 ?        Ssl    0:10 /usr/sbin/mysqld')
+	assert v3_test_process_line_is_server('started_postgres', ' 1234 ?        Ss     0:10 postgres -D /var/lib/postgres')
+	assert v3_test_process_line_is_server('started_mssql', ' 1234 ?        Ssl    0:10 /opt/mssql/bin/sqlservr')
+	assert !v3_test_process_line_is_server('started_mysqld', ' 1234 ?        Ssl    0:10 redis-server *:6379')
+	assert !v3_test_process_line_is_server('started_unknown', ' 1234 ?        Ssl    0:10 redis-server *:6379')
 }
 
 fn test_v3_test_build_defines_populates_referenced_standard_dependencies() {

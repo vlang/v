@@ -1294,7 +1294,7 @@ fn (mut tc TypeChecker) constraint_walk_call_bindings(id flat.NodeId, node flat.
 	if node.children_count == 0 {
 		return none
 	}
-	info := tc.resolve_call_info(id, node) or { return none }
+	info := tc.constraint_walk_call_info(id, node) or { return none }
 	fn_params := tc.fn_generic_params[info.name] or { []string{} }
 	param_texts := tc.fn_param_type_texts[info.name] or { []string{} }
 	mut names := fn_params.clone()
@@ -1345,6 +1345,28 @@ fn (mut tc TypeChecker) constraint_walk_call_bindings(id flat.NodeId, node flat.
 		tc.constraint_walk_infer(param_texts[param_idx], arg, names, mut inferred)
 	}
 	return CallBinding{info, names, inferred}
+}
+
+// constraint_walk_call_info resolves the call `node` in the body of the walk,
+// and drops what resolving it reports. Resolving `a.f().g()` checks the call
+// `a.f()` (see resolve_call_info_uncached), where the locals are only as the
+// walk binds them, without their `mut` or the `lock` around them, so it would
+// report `a` as immutable. The walk reports what the constraints forbid; the
+// rest of the body is checked where it is instantiated.
+fn (mut tc TypeChecker) constraint_walk_call_info(id flat.NodeId, node flat.Node) ?CallInfo {
+	error_count := tc.errors.len
+	notice_count := tc.notices.len
+	pending_count := tc.pending_ierror_errors.len
+	info := tc.resolve_call_info(id, node) or {
+		tc.errors.trim(error_count)
+		tc.notices.trim(notice_count)
+		tc.pending_ierror_errors.trim(pending_count)
+		return none
+	}
+	tc.errors.trim(error_count)
+	tc.notices.trim(notice_count)
+	tc.pending_ierror_errors.trim(pending_count)
+	return info
 }
 
 // constraint_walk_infer binds the type parameters `names` that `param_text`, the

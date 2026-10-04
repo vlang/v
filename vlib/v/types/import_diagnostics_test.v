@@ -155,6 +155,51 @@ fn test_sql_table_import_usage_is_scoped_to_its_file() {
 	assert tc.notices[0].msg.contains("module 'schema_base' is imported but never used"), tc.notices.str()
 }
 
+fn test_unused_import_index_keeps_only_files_that_need_usage_diagnostics() {
+	root := os.join_path(os.vtmp_dir(), 'v3_unused_import_index_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	used_path := os.join_path(root, 'used.v')
+	unused_path := os.join_path(root, 'unused.v')
+	dependency_path := os.join_path(root, 'dependency.v')
+	plain_path := os.join_path(root, 'plain.v')
+	os.write_file(used_path, 'import math\nfn main() { _ = math.sqrt(4) }\n')!
+	os.write_file(unused_path, 'import os\nfn unused() {}\n')!
+	os.write_file(dependency_path, 'module dep\nimport rand\npub fn helper() { _ = rand.int() }\n')!
+	os.write_file(plain_path, 'fn local_helper() {}\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([used_path, unused_path, dependency_path, plain_path])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnostic_files = {
+		used_path:   true
+		unused_path: true
+	}
+	indexed := tc.unused_import_nodes_by_file()
+	assert indexed.len == 2
+	for file_id, node_ids in indexed {
+		file := a.source_files[file_id] or { panic('missing source file') }
+		assert file.name in [used_path, unused_path]
+		mut expected := []int{}
+		for idx, node in a.nodes {
+			if node.pos.id == file_id {
+				expected << idx
+			}
+		}
+		assert node_ids == expected
+	}
+	tc.check_unused_import_diagnostics()
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.notices.len == 1, tc.notices.str()
+	assert tc.notices[0].file == unused_path
+	assert tc.notices[0].msg.contains("module 'os' is imported but never used"), tc.notices.str()
+	// A standalone checker with no selected-file filter still indexes every file
+	// with a real import, leaving files with no imports outside the index.
+	tc.diagnostic_files.clear()
+	assert tc.unused_import_nodes_by_file().len == 3
+}
+
 fn unused_import_diagnostics(warns_are_errors bool, explicit_warns_are_errors bool) TypeChecker {
 	path := os.join_path(os.vtmp_dir(), 'v3_unused_import_prod_${os.getpid()}.v')
 	os.write_file(path, 'import os\n') or { panic(err) }
