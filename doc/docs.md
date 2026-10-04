@@ -9613,11 +9613,9 @@ everywhere_else();
 Conditions that do not depend on the target - `$if prealloc`, `$if debug`, `-d`
 values - are still resolved while generating, exactly as in an ordinary build.
 `#include`s written inside a `$if`, or carrying a target prefix such as
-`#include linux <sys/timerfd.h>`, are guarded the same way. Native C source text
-can be carried into the output, but C headers remain include directives. V does
-not inspect headers or recursively embed their includes. Supply the headers and
-appropriate include paths to the C compiler that consumes the generated output;
-absolute header paths must also be available there or adjusted before compiling.
+`#include linux <sys/timerfd.h>`, are guarded the same way, and headers or C
+sources shipped alongside your code are embedded into the output instead of
+being referenced by a path that will not exist on the machine that compiles it.
 
 What is *not* portable, and is therefore decided while generating, for the host
 V runs on:

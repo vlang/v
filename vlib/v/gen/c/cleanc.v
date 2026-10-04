@@ -4945,32 +4945,149 @@ fn combined_c_condition(outer string, inner string) string {
 	return '(${outer} && ${inner})'
 }
 
-// c_local_header_directive leaves headers shipped with V to the C compiler too.
+// c_local_header_directive renders an include of a header shipped with V. Portable
+// output carries the header text, because the absolute path only exists on the
+// machine that generated the C.
 fn (g &FlatGen) c_local_header_directive(path string) string {
+	if g.output_cross_c {
+		if text := g.cross_embedded_header_text(path, []string{}) {
+			return text
+		}
+	}
 	return '#include "${path}"'
 }
 
 // c_include_directive_text renders an `#include` for the output. Normal builds
 // resolve source-local headers because generated C is compiled outside their module;
-// portable output leaves header resolution to the consuming C compiler.
+// portable output carries the header text instead of a machine-local absolute path.
 fn (mut g FlatGen) c_include_directive_text(node_idx int, prefix_condition string, include_arg string, source_file string) string {
 	mut directive := '#include ${include_arg}'
 	clean_include_arg := include_arg.trim_space()
 	quoted_absolute_path := clean_include_arg.len >= 2 && clean_include_arg[0] == `"`
 		&& clean_include_arg[clean_include_arg.len - 1] == `"`
 		&& os.is_abs_path(clean_include_arg[1..clean_include_arg.len - 1])
-	// Portable output preserves includes for the consumer's C compiler. Ordinary
-	// builds anchor source-local includes without opening or parsing the header.
-	if !g.output_cross_c && clean_include_arg.starts_with('"') && !quoted_absolute_path {
-		path := c_include_file_path(include_arg, g.compiler_vroot, source_file)
-		if path.len > 0 && os.is_file(path) {
-			directive = c_native_source_context_include(path)
+	// Preserve already-absolute spellings, including symlink aliases such as macOS `/tmp`.
+	if clean_include_arg.starts_with('"') && (g.output_cross_c || !quoted_absolute_path) {
+		include_dirs := c_flag_include_dirs(g.c_flags)
+		mut paths := []string{}
+		if g.output_cross_c {
+			paths = c_include_file_paths(include_arg, g.compiler_vroot, source_file,
+				include_dirs)
+		} else {
+			// A header supplied through an explicit -I directory already resolves from
+			// the generated C compiler command. Keep its original portable spelling;
+			// only source-local headers need an absolute path after C output moves away
+			// from the V source directory.
+			path := c_include_file_path(include_arg, g.compiler_vroot, source_file)
+			if path.len > 0 {
+				paths << path
+			}
+		}
+		for path in paths {
+			if !os.is_file(path) {
+				continue
+			}
+			if g.output_cross_c {
+				if text := g.cross_embedded_header_text(path, include_dirs) {
+					directive = text
+				}
+			} else {
+				directive = c_native_source_context_include(path)
+			}
+			if directive != '#include ${include_arg}' {
+				break
+			}
 		}
 	}
 	return g.guarded_c_directive(node_idx, prefix_condition, directive)
 }
 
-// guarded_c_directive keeps the target condition around a native include.
+// cross_embedded_header_text returns a local header's text with the quoted
+// includes *inside* it embedded as well. The generated C is compiled far from the
+// source tree, where a nested `#include "sibling.h"` no longer resolves - for
+// example `thirdparty/fontstash/fontstash.h` includes its sibling
+// `stb_truetype.h` that way.
+fn (g &FlatGen) cross_embedded_header_text(path string, include_dirs []string) ?string {
+	mut embedded := map[string]bool{}
+	return g.cross_embed_header_file(path, include_dirs, mut embedded)
+}
+
+fn (g &FlatGen) cross_embed_header_file(path string, include_dirs []string, mut embedded map[string]bool) ?string {
+	real_path := os.real_path(path)
+	if real_path in embedded {
+		// Already carried by this expansion. C include guards would discard a
+		// second copy anyway, and dropping it here also stops an include cycle.
+		return ''
+	}
+	embedded[real_path] = true
+	text := os.read_file(real_path) or { return none }
+	return g.cross_embed_nested_includes(text, os.dir(real_path), include_dirs, mut embedded)
+}
+
+fn (g &FlatGen) cross_embed_nested_includes(text string, base_dir string, include_dirs []string, mut embedded map[string]bool) string {
+	if !text.contains('#include') {
+		return text
+	}
+	mut lines := []string{cap: 64}
+	for line in text.split_into_lines() {
+		if target := c_quoted_include_target(line) {
+			if resolved := c_resolve_quoted_include(target, base_dir, include_dirs) {
+				if nested := g.cross_embed_header_file(resolved, include_dirs, mut embedded) {
+					lines << nested
+					continue
+				}
+			}
+		}
+		// An unresolvable or angle-bracket include is left alone: it names a
+		// system header, or one the consumer supplies through `-I`.
+		lines << line
+	}
+	return lines.join('\n')
+}
+
+// c_quoted_include_target returns the path named by a `#include "..."` line.
+fn c_quoted_include_target(line string) ?string {
+	clean := line.trim_space()
+	if !clean.starts_with('#') {
+		return none
+	}
+	rest := clean[1..].trim_space()
+	if !rest.starts_with('include') {
+		return none
+	}
+	arg := rest['include'.len..].trim_space()
+	if arg.len < 2 || arg[0] != `"` {
+		return none
+	}
+	end := arg[1..].index_u8(`"`)
+	if end <= 0 {
+		return none
+	}
+	return arg[1..1 + end]
+}
+
+fn c_resolve_quoted_include(target string, base_dir string, include_dirs []string) ?string {
+	if os.is_abs_path(target) {
+		return if os.exists(target) { target } else { none }
+	}
+	if base_dir.len > 0 {
+		beside := os.join_path(base_dir, target)
+		if os.exists(beside) {
+			return beside
+		}
+	}
+	for dir in include_dirs {
+		candidate := os.join_path(dir, target)
+		if os.exists(candidate) {
+			return candidate
+		}
+	}
+	return none
+}
+
+// guarded_c_directive wraps a directive in the preprocessor condition of the
+// `$if` it came from, so portable output only applies it on the targets that
+// declared it.
 fn (g &FlatGen) guarded_c_directive(node_idx int, prefix_condition string, directive string) string {
 	mut guard := prefix_condition
 	if enclosing := g.cross_directive_guards[node_idx] {
@@ -5081,9 +5198,12 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 				g.collect_inlined_c_declared_fns(source_text)
 				mut source_directive := c_native_source_context_include(source_path)
 				if g.output_cross_c {
-					// Native source text can travel with the output, while its headers
-					// remain includes resolved by the consumer's C compiler.
-					source_directive = source_text
+					// Portable output carries the source text: its path is gone on the
+					// machine that later compiles the generated C. Its own quoted
+					// includes have to travel with it for the same reason.
+					mut embedded := map[string]bool{}
+					embedded[os.real_path(source_path)] = true
+					source_directive = g.cross_embed_nested_includes(source_text, os.dir(source_path), include_dirs, mut embedded)
 				}
 				// A native source written inside a target `$if`, or carrying a target
 				// prefix, has to keep that condition too: `$if macos { #include
