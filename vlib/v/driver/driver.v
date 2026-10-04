@@ -366,6 +366,13 @@ fn v3_embed_incbin_supported(target_os string, host_os string, effective_c_compi
 	if target_os == 'macos' && effective_c_compiler == 'tinyc' {
 		return false
 	}
+	// Windows TCC rejects the COFF object that the host GCC/Clang assembles for the
+	// payload, so linking it fails with `unrecognized file type` and the build
+	// silently falls back to that same GCC/Clang. Keep the array form instead, so
+	// `-cc tcc` is actually the compiler used.
+	if target_os == 'windows' && effective_c_compiler == 'tinyc' {
+		return false
+	}
 	if target_os in ['ios', 'wasm32', 'wasm32_emscripten', 'wasm32_wasi'] {
 		return false
 	}
