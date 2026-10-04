@@ -2244,6 +2244,10 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 		if _ := t.sum_variant_name(resolved_expr_sum, clean_variant) {
 			return clean_expr_type
 		}
+		// `x is V` tests a variant of the sum type of `x`, also one that is
+		// only found with its `&`, `&int` of `Maybe[&int]`: never a variant of
+		// another sum type with the same name, `int` of `strconv.Numeric`.
+		return clean_expr_type
 	}
 	return t.find_sum_type_for_variant(clean_variant)
 }
