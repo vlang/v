@@ -54,8 +54,11 @@ fn test_lex_accepts_every_rfc_escape() {
 fn test_lex_rejects_single_quoted_string() {
 	assert rejected("{'a': 1}").contains('single-quoted string')
 	assert rejected("['a']").contains('single-quoted string')
-	// The opening quote is what gets underlined.
+	// The position is the opening quote, and the range is the whole literal.
 	assert rejected("{'a': 1}").contains('jsonc: 1:2:')
+	v := lex_violation("{'a': 1}")
+	assert v.pos.offset == 1
+	assert v.pos.end_offset == 4
 }
 
 fn test_lex_rejects_escapes_outside_rfc() {

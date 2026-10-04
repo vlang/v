@@ -11,31 +11,24 @@ import encoding.utf8
 const r_star = 0x2A
 const r_quote_dbl = 0x22
 const r_quote_sgl = 0x27
-const r_comma = 0x2C
-const r_minus = 0x2D
-const r_dot = 0x2E
 const r_slash = 0x2F
 const r_zero = 0x30
 const r_nine = 0x39
-const r_colon = 0x3A
 const r_upper_a = 0x41
-const r_upper_e = 0x45
 const r_upper_f = 0x46
-const r_upper_x = 0x58
-const r_lbkt = 0x5B
 const r_backslash = 0x5C
-const r_rbkt = 0x5D
 const r_lower_a = 0x61
 const r_lower_b = 0x62
-const r_lower_e = 0x65
 const r_lower_f = 0x66
 const r_lower_n = 0x6E
 const r_lower_r = 0x72
 const r_lower_t = 0x74
 const r_lower_u = 0x75
-const r_lcbr = 0x7B
-const r_rcbr = 0x7D
 const r_bom = 0xFEFF
+
+// `string.runes()` decodes every byte that does not start a valid UTF-8 sequence
+// as this replacement character, consuming that one byte.
+const r_replacement = 0xFFFD
 
 // RFC 8259 restricts unescaped characters inside a string to everything above
 // U+001F; the remaining codes are the control characters it forbids.
@@ -53,9 +46,8 @@ const r_nbsp = 0xA0
 // the offending text occupies, so an editor can underline exactly it.
 pub struct Pos {
 pub:
-	line int
-	col  int
-pub mut:
+	line       int
+	col        int
 	offset     int // byte offset of the first character
 	end_offset int // byte offset one past the last character
 }
@@ -78,19 +70,12 @@ pub fn (e &ParseError) msg() string {
 	return 'jsonc: ${e.pos.line}:${e.pos.col}: ${e.message}'
 }
 
-// violation_at builds a ParseError for `message` at `pos`.
-//
-// A position that does not already say where the offending text ends is treated
-// as covering the single character at `offset`, so both passes report an end
-// offset that an editor can underline.
+// violation_at builds a ParseError for `message` at `pos`. Both passes fill in
+// the end of the range themselves, from the width of the text they report.
 fn violation_at(message string, pos Pos) &ParseError {
-	mut at := pos
-	if at.end_offset <= at.offset {
-		at.end_offset = at.offset + 1
-	}
 	return &ParseError{
 		message: message
-		pos:     at
+		pos:     pos
 	}
 }
 
@@ -109,13 +94,22 @@ fn rune_bytes(r rune) int {
 	return 4
 }
 
-// is_digit reports whether `code` is an ASCII decimal digit.
-fn is_digit(code int) bool {
-	return code >= r_zero && code <= r_nine
+// source_width returns the number of bytes of `src`, starting at `offset`, that
+// `r` was decoded from by `string.runes()`.
+//
+// That is the UTF-8 width of `r`, except for a replacement character standing in
+// for a byte that is not valid UTF-8: the decoder consumes only that byte. A
+// replacement character is three bytes wide only when the source spells it out.
+fn source_width(src string, offset int, r rune) int {
+	if int(r) == r_replacement && !(offset + 2 < src.len && src[offset] == 0xEF
+		&& src[offset + 1] == 0xBF && src[offset + 2] == 0xBD) {
+		return 1
+	}
+	return rune_bytes(r)
 }
 
-// is_digit_byte reports whether `b` is an ASCII decimal digit. It is the same
-// test as is_digit for the single bytes a number literal is walked through.
+// is_digit_byte reports whether `b` is an ASCII decimal digit, for the single
+// bytes a number literal is walked through.
 fn is_digit_byte(b u8) bool {
 	return b >= r_zero && b <= r_nine
 }
@@ -149,17 +143,6 @@ fn is_json5_whitespace(code int) bool {
 fn is_hex_digit(code int) bool {
 	return (code >= r_zero && code <= r_nine) || (code >= r_lower_a && code <= r_lower_f)
 		|| (code >= r_upper_a && code <= r_upper_f)
-}
-
-// hex_digit_value returns the numeric value of an ASCII hexadecimal digit.
-fn hex_digit_value(code int) int {
-	if code <= r_nine {
-		return code - r_zero
-	}
-	if code <= r_upper_f {
-		return code - r_upper_a + 10
-	}
-	return code - r_lower_a + 10
 }
 
 // is_line_terminator reports whether `code` ends a line for the purposes of a

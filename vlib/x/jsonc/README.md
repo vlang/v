@@ -24,9 +24,7 @@ syntax is refused, with the position of the problem.
 - Examples
 
 ## Install
-```sh
-v install x.jsonc
-```
+The module ships with V, so there is nothing to install: `import x.jsonc`.
 
 ## Parse
 `parse` returns the dynamic `Any` tree, and `parse_text` returns a `Doc` that
@@ -108,14 +106,19 @@ construct is refused even when the target struct has a field for it.
 
 ## Positions
 Every dialect violation carries a line, a column, and the byte range the
-offending text occupies, so an editor can underline exactly it. The range is the
-whole offending token and always falls on UTF-8 character boundaries, so slicing
-the original text with it is safe.
+offending text occupies, so an editor can underline exactly it. The range covers
+the whole offending text: the token, the character that is not whitespace, the
+escape sequence from its backslash, or the single-quoted string from quote to
+quote. It never ends inside a multi-byte character, so slicing the original text
+with it is safe. A byte that is not valid UTF-8 counts as one character.
 
-The byte range is reachable through `violation`, whose payload is a `ParseError`.
-It is a separate entry point from `parse_text` on purpose: a function returning
-`!T` cannot hand back a concrete error type, so the error from `parse_text`
-arrives as an `IError` and only its message can be read.
+When several violations are present, the one reported is the first in the
+document.
+
+`violation` is a convenience that returns the `ParseError` directly. When
+`parse_text` or another entry point refuses a document for its dialect, its
+error is that same `ParseError`, and `if err is jsonc.ParseError { ... }`
+reaches its position.
 
 ```v
 import x.jsonc
@@ -157,7 +160,7 @@ import x.jsonc
 
 fn main() {
 	text := '{\n// a note\n"a": 1 /* another */\n}'
-	println(jsonc.strip_comments(text) == text) // true, only the bytes changed
+	println(jsonc.strip_comments(text).len == text.len) // true, no byte moved
 	println(jsonc.parse(text) or { panic(err) }.str())
 }
 ```
@@ -189,7 +192,7 @@ Refused, because they are JSON5 extensions rather than JSONC:
 | leading `+` | `+1` |
 | leading zero | `01`, `00.5` |
 | `Infinity` and `NaN` | `Infinity` |
-| `\'`, `\"`, `\v`, `\0`, `\xNN` | `"\v"` |
+| `\'`, `\v`, `\0`, `\xNN` | `"\v"` |
 | ES6 `\u{...}` escape | `"\u{1F600}"` |
 | escaped line break | `"a\<newline>b"` |
 | unescaped control character | a raw newline inside a string |

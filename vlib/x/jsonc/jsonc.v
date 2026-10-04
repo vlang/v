@@ -22,14 +22,13 @@ pub type Any = json5.Any
 // Doc is a parsed document with path lookup. It is the JSON5 `Doc`.
 pub type Doc = json5.Doc
 
-// violation returns the JSONC strictness violation in `text`, or none when the
-// document is valid.
+// violation returns the first JSONC strictness violation in `text`, or none when
+// the document is valid.
 //
-// This is the entry point for a caller that needs to know *where* the problem is.
-// A function returning `!T` cannot hand back a concrete error type, so
-// parse_text, decode and their variants report the same violation through their
-// own error, where it arrives as an `IError` and only its message can be read.
-// The payload here is a `ParseError`, so its position is reachable directly:
+// This is a convenience for a caller that needs to know *where* the problem is:
+// the payload is the `ParseError` itself, so its position is reachable directly.
+// parse_text, decode and their variants return the same violation as their
+// error, where `if err is jsonc.ParseError` reaches it as well:
 //
 // ```v ignore
 // if v := jsonc.violation(text) {
@@ -43,20 +42,33 @@ pub fn violation(text string) ?ParseError {
 	return violation_opts(text, ParseOpts{})
 }
 
-// violation_opts returns the JSONC strictness violation in `text` under `opts`,
-// or none when the document is valid.
+// violation_opts returns the first JSONC strictness violation in `text` under
+// `opts`, or none when the document is valid.
 pub fn violation_opts(text string, opts ParseOpts) ?ParseError {
 	_ = json5.parse_text(text) or { return none }
-	lexed := lex(text)
-	found := lexed.violation
+	found := earliest_violation(text, opts)
 	if found != nil {
 		return as_value(found)
 	}
-	strict := validate(text, opts)
-	if strict != nil {
-		return as_value(strict)
-	}
 	return none
+}
+
+// earliest_violation returns the violation in `text` that comes first in the
+// document, or nil when the document is valid JSONC.
+//
+// The rune pass and the token pass each stop at the first problem they see, and
+// each sees only its own kind of problem, so the first in the document is
+// whichever of the two starts earlier.
+fn earliest_violation(text string, opts ParseOpts) &ParseError {
+	lexed := lex(text).violation
+	strict := validate(text, opts)
+	if lexed == nil {
+		return strict
+	}
+	if strict == nil || lexed.pos.offset <= strict.pos.offset {
+		return lexed
+	}
+	return strict
 }
 
 // as_value copies a reported violation into the payload shape that
@@ -97,14 +109,9 @@ pub fn parse_text(text string) !Doc {
 // a `Doc`.
 pub fn parse_text_opts(text string, opts ParseOpts) !Doc {
 	doc := json5.parse_text(text)!
-	lexed := lex(text)
-	found := lexed.violation
+	found := earliest_violation(text, opts)
 	if found != nil {
 		return found
-	}
-	strict := validate(text, opts)
-	if strict != nil {
-		return strict
 	}
 	return doc
 }
@@ -143,8 +150,7 @@ pub fn parse_opts(text string, opts ParseOpts) !Any {
 // value rather than the dialect comes from that decoder, and so carries its
 // `json5:` prefix.
 pub fn decode[T](text string) !T {
-	parse_text_opts(text, ParseOpts{})!
-	return json5.decode[T](text)
+	return json5.decode_any[T](parse(text)!)
 }
 
 // decode_file reads and decodes the JSONC document at `path` into `T`.

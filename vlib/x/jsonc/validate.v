@@ -177,33 +177,19 @@ fn validate(text string, opts ParseOpts) &ParseError {
 // `lit` has been decoded, such as a string, is never reported here, because the
 // rune pass owns string literals and measures them as it walks.
 //
-// A leading byte order mark is skipped because the JSON5 scanner drops it before
-// it starts counting, so the first reported column is 1 even though the first
-// byte of the file is at offset 0.
+// The walk uses the rune pass's Cursor, which counts lines and columns the way
+// the JSON5 scanner does, including stepping over a leading byte order mark
+// without counting a column for it, and which keeps the byte offset in step
+// with the source even across bytes that are not valid UTF-8.
 fn locate(text string, tok json5.Token) Pos {
-	mut offset := 0
-	if text.len > 0 && text[0] == 0xEF && text.len > 1 && text[1] == 0xBB {
-		offset = 3
-	}
-	runes := text[offset..].runes()
-	mut line := 1
-	mut col := 1
-	for r in runes {
-		if line == tok.pos.line && col == tok.pos.col {
-			break
-		}
-		offset += rune_bytes(r)
-		if int(r) == 0x0A {
-			line++
-			col = 1
-		} else {
-			col++
-		}
+	mut c := new_cursor(text)
+	for !c.done() && (c.line != tok.pos.line || c.col != tok.pos.col) {
+		c.next()
 	}
 	return Pos{
 		line:       tok.pos.line
 		col:        tok.pos.col
-		offset:     offset
-		end_offset: offset + tok.lit.len
+		offset:     c.offset
+		end_offset: c.offset + tok.lit.len
 	}
 }

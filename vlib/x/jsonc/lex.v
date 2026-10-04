@@ -24,7 +24,12 @@ mut:
 // byte order mark advances only the offset. That matches the underlying JSON5
 // scanner, so a violation reported here and a syntax error reported there name
 // the same place.
+//
+// The offset is advanced by the width each character has in `src`, rather than
+// by the width it would have when re-encoded, so a byte that is not valid UTF-8
+// moves it by exactly one byte and the offset never drifts from the source.
 struct Cursor {
+	src  string
 	text []rune
 mut:
 	i      int
@@ -36,11 +41,12 @@ mut:
 // new_cursor returns a Cursor over `text`, positioned on its first character.
 fn new_cursor(text string) Cursor {
 	mut c := Cursor{
+		src:  text
 		text: text.runes()
 	}
 	if c.text.len > 0 && int(c.text[0]) == r_bom {
+		c.offset = c.width()
 		c.i = 1
-		c.offset = rune_bytes(c.text[0])
 	}
 	return c
 }
@@ -68,6 +74,21 @@ fn (c &Cursor) done() bool {
 	return c.i >= c.text.len
 }
 
+// width returns the number of source bytes the character the cursor is on
+// occupies, or 0 at the end of the input.
+fn (c &Cursor) width() int {
+	if c.i < 0 || c.i >= c.text.len {
+		return 0
+	}
+	return source_width(c.src, c.offset, c.text[c.i])
+}
+
+// end returns the byte offset just past the character the cursor is on, which is
+// where a range covering only that character ends.
+fn (c &Cursor) end() int {
+	return c.offset + c.width()
+}
+
 // next consumes the current character and returns its code point, or -1 at the
 // end of the input. A line feed restarts the column.
 fn (mut c Cursor) next() int {
@@ -75,8 +96,8 @@ fn (mut c Cursor) next() int {
 		return -1
 	}
 	code := int(c.text[c.i])
+	c.offset += c.width()
 	c.i++
-	c.offset += rune_bytes(c.text[c.i - 1])
 	if code == 0x0A {
 		c.line++
 		c.col = 1
@@ -86,21 +107,27 @@ fn (mut c Cursor) next() int {
 	return code
 }
 
-// pos returns the location of the character the cursor is on.
+// pos returns the location of the character the cursor is on, as an empty range
+// that `record` extends to the end of the offending text.
 fn (c &Cursor) pos() Pos {
 	return Pos{
-		line:   c.line
-		col:    c.col
-		offset: c.offset
+		line:       c.line
+		col:        c.col
+		offset:     c.offset
+		end_offset: c.offset
 	}
 }
 
-// record stores `message` as the first violation, keeping the earliest one.
-fn (mut r LexResult) record(message string, pos Pos) {
+// record stores `message` as the first violation, keeping the earliest one. The
+// violation covers the text from `start` up to the byte offset `end`.
+fn (mut r LexResult) record(message string, start Pos, end int) {
 	if r.violation != nil {
 		return
 	}
-	r.violation = violation_at(message, pos)
+	r.violation = violation_at(message, Pos{
+		...start
+		end_offset: end
+	})
 }
 
 // lex walks `text` once and returns both the strictness violations that concern
@@ -137,7 +164,8 @@ fn lex(text string) LexResult {
 		// it as trivia, so the raw walk is the only place the dialect's narrower
 		// set can be enforced.
 		if is_json5_whitespace(code) {
-			res.record('U+${code:04X} is not whitespace between JSON tokens', c.pos())
+			res.record('U+${code:04X} is not whitespace between JSON tokens', c.pos(),
+				c.end())
 		}
 		c.next()
 	}
@@ -190,10 +218,24 @@ fn is_rfc_escape(code int) bool {
 //
 // An unterminated literal stops the scan and is left to the JSON5 parser.
 fn lex_string(mut c Cursor, quote_code int, mut res LexResult) {
-	start := c.pos()
-	if quote_code == r_quote_sgl {
-		res.record('a single-quoted string is not valid JSONC', start)
+	if quote_code == r_quote_dbl {
+		lex_string_body(mut c, quote_code, mut res)
+		return
 	}
+	// The opening quote of a single-quoted literal comes before anything inside
+	// it, so it is the violation to report, and the body is walked only to find
+	// where the literal ends: the reported range covers all of it.
+	start := c.pos()
+	mut body := LexResult{
+		violation: unsafe { nil }
+	}
+	lex_string_body(mut c, quote_code, mut body)
+	res.record('a single-quoted string is not valid JSONC', start, c.offset)
+}
+
+// lex_string_body consumes a string literal delimited by `quote_code`, the
+// cursor being on its opening quote, and reports what inside it is not JSONC.
+fn lex_string_body(mut c Cursor, quote_code int, mut res LexResult) {
 	c.next() // opening quote
 	for !c.done() {
 		code := c.at()
@@ -202,15 +244,17 @@ fn lex_string(mut c Cursor, quote_code int, mut res LexResult) {
 			return
 		}
 		if code == r_backslash {
+			start := c.pos()
 			c.next()
 			if c.done() {
 				return
 			}
-			lex_escape(mut c, mut res)
+			lex_escape(mut c, start, mut res)
 			continue
 		}
 		if code <= r_max_control {
-			res.record('a control character must be escaped inside a string', c.pos())
+			res.record('a control character must be escaped inside a string', c.pos(),
+				c.end())
 			c.next()
 			continue
 		}
@@ -218,20 +262,22 @@ fn lex_string(mut c Cursor, quote_code int, mut res LexResult) {
 	}
 }
 
-// lex_escape consumes the body of an escape sequence, the backslash having
-// already been consumed, and reports it when it is not valid JSONC.
+// lex_escape consumes the body of an escape sequence, the backslash at `start`
+// having already been consumed, and reports it when it is not valid JSONC.
 //
-// A malformed `\u` is reported and then skipped one character at a time, so the
-// scan stays in step with the text even though the literal is already invalid.
-fn lex_escape(mut c Cursor, mut res LexResult) {
+// The reported range starts at the backslash and ends after the escaped
+// character, or, for a malformed `\u`, after the hexadecimal digits that do
+// follow it. The rest of a malformed `\u` is left to the string walk, one
+// character at a time, so the scan stays in step with the text even though the
+// literal is already invalid.
+fn lex_escape(mut c Cursor, start Pos, mut res LexResult) {
 	code := c.at()
-	pos := c.pos()
 	if is_line_terminator(code) {
-		res.record('an escaped line break is not valid JSONC', pos)
 		if code == 0x0D && c.ahead(1) == 0x0A {
 			c.next()
 		}
 		c.next()
+		res.record('an escaped line break is not valid JSONC', start, c.offset)
 		return
 	}
 	if code == r_lower_u {
@@ -240,7 +286,8 @@ fn lex_escape(mut c Cursor, mut res LexResult) {
 		c.next()
 		for _ in 0 .. 4 {
 			if !is_hex_digit(c.at()) {
-				res.record('`\\u` must be followed by four hexadecimal digits', pos)
+				res.record('`\\u` must be followed by four hexadecimal digits', start,
+					c.offset)
 				return
 			}
 			c.next()
@@ -248,7 +295,8 @@ fn lex_escape(mut c Cursor, mut res LexResult) {
 		return
 	}
 	if !is_rfc_escape(code) {
-		res.record('`\\${rune(code).str()}` is not a valid JSONC escape sequence', pos)
+		res.record('`\\${rune(code).str()}` is not a valid JSONC escape sequence', start,
+			c.end())
 	}
 	c.next()
 }
