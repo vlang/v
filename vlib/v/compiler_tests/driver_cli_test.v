@@ -1046,7 +1046,7 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	}
 }
 
-fn test_driver_native_inputs_and_no_skip_unused_bypass_cgen_cache() {
+fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_skip_unused_cache_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -1057,11 +1057,10 @@ fn test_driver_native_inputs_and_no_skip_unused_bypass_cgen_cache() {
 	source := os.join_path(root, 'main.v')
 	os.mkdir_all(os.join_path(root, 'cached'))!
 	os.write_file(os.join_path(root, 'cached', 'cached.v'), 'module cached\n\npub fn value() int { return 40 }\n')!
-	os.write_file(source, 'module main\n\nimport cached\n\n#include <stddef.h>\n\nfn identity[T](value T) T { return value }\n\nfn unused_value() int { return 7 }\n\nfn main() { println(identity(cached.value() + 2)) }\n')!
+	os.write_file(source, 'module main\n\nimport cached\n\nfn identity[T](value T) T { return value }\n\nfn unused_value() int { return 7 }\n\nfn main() { println(identity(cached.value() + 2)) }\n')!
 	mut environment := os.environ()
 	environment['VTMP'] = os.join_path(root, 'vtmp')
 	environment['V3CACHE'] = os.join_path(root, 'cache')
-	environment['V3_CACHE_TRACE'] = '1'
 
 	cold_output := os.join_path(root, 'cold')
 	cold := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', cold_output,
@@ -1073,8 +1072,7 @@ fn test_driver_native_inputs_and_no_skip_unused_bypass_cgen_cache() {
 	warm := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', warm_output,
 		source], environment)
 	assert warm.exit_code == 0, warm.output
-	assert warm.output.contains('native C inputs require compilation without header inspection'), warm.output
-	assert !warm.output.contains('cgen (cached)'), warm.output
+	assert warm.output.contains('cgen (cached)'), warm.output
 
 	no_skip_output := os.join_path(root, 'no_skip')
 	no_skip := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-no-skip-unused',
@@ -1096,6 +1094,49 @@ fn test_driver_native_inputs_and_no_skip_unused_bypass_cgen_cache() {
 		'c', '-o', no_skip_c_path, source], environment)
 	assert no_skip_c.exit_code == 0, no_skip_c.output
 	assert os.read_file(no_skip_c_path)!.contains('unused_value(')
+}
+
+fn test_driver_user_native_header_bypasses_cgen_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_user_native_cache_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	mut environment := os.environ()
+	environment['VTMP'] = os.join_path(root, 'vtmp')
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	environment['V3_CACHE_TRACE'] = '1'
+	bypass := 'native C inputs require compilation without header inspection'
+
+	// System headers are versioned with the platform and keep the cache.
+	system_source := os.join_path(root, 'system.v')
+	os.write_file(system_source, 'module main\n\n#include <stddef.h>\n\nfn main() { println(42) }\n')!
+	for attempt in 0 .. 2 {
+		system := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o',
+			os.join_path(root, 'system_${attempt}'), system_source], environment)
+		assert system.exit_code == 0, system.output
+		assert !system.output.contains(bypass), system.output
+		assert attempt == 0 || system.output.contains('cgen (cached)'), system.output
+	}
+
+	// V cannot account for what a user header includes, so it is never cached.
+	header := os.join_path(root, 'native.h')
+	user_source := os.join_path(root, 'user.v')
+	os.write_file(user_source, 'module main\n\n#include "@DIR/native.h"\n\nfn C.native_value() int\n\nfn main() { println(C.native_value() + 1) }\n')!
+	for value in [41, 42] {
+		os.write_file(header, 'static inline int native_value(void) { return ${value}; }\n')!
+		output := os.join_path(root, 'user_${value}')
+		user := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', output,
+			user_source], environment)
+		assert user.exit_code == 0, user.output
+		assert user.output.contains(bypass), user.output
+		assert !user.output.contains('(cached)'), user.output
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, run.output
+		assert run.output == '${value + 1}\n', run.output
+	}
 }
 
 fn test_driver_valued_define_activates_optional_flag_and_source_suffix() {
@@ -1971,8 +2012,6 @@ pub fn message() string {
 	os.write_file(source, "import crunmod
 import os
 
-#include <stddef.h>
-
 println(os.executable().ends_with('.vsh'))
 println(crunmod.message())
 println(os.args[1..].join('|'))
@@ -2004,8 +2043,7 @@ println(os.args[1..].join('|'))
 	cached_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'cached'])
 	assert cached_run.exit_code == 0, cached_run.output
 	assert cached_run.output == 'false\ncached module\ncached\n', cached_run.output
-	// Native includes bypass the cached plan; the C compiler rebuilds the script.
-	assert os.file_last_mod_unix(script_binary) != cache_stamp
+	assert os.file_last_mod_unix(script_binary) == cache_stamp
 	os.write_file(crun_module_file, "module crunmod
 
 pub fn message() string {

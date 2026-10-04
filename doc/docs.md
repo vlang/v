@@ -9851,9 +9851,12 @@ Note that the name of the `C.` struct in V, is the one *after* the `struct SomeN
 This attribute is also required for anonymous C typedefs such as
 `typedef struct { int x; } Foo;`. V does not infer typedef declarations by scanning
 headers included with `#include` or `#insert`. Native header dependency tracking
-and declaration ownership belong to the C compiler. Builds with native includes
-or C flags bypass the V module-object and whole-program caches until those caches
-can use a C-compiler dependency manifest without inspecting headers.
+and declaration ownership belong to the C compiler. A build whose own code
+includes or inserts a C header or source that is not shipped with V, uses
+`#pkgconfig`, or whose C flags name native files or include directories outside
+the V installation, bypasses the V module-object and whole-program caches, and
+`v crun` or a `.vsh` script rebuilds it on every run. System headers
+(`#include <...>`) and the headers shipped with V keep the caches enabled.
 If a header needs Objective-C syntax, select the language with `#flag -x objective-c`;
 V does not infer the language from header contents.
 

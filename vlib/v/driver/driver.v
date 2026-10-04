@@ -2591,7 +2591,42 @@ fn v3_parallel_local_include_path(line string, including_dir string, include_dir
 	return none
 }
 
-fn v3_parallel_c_declaration_header(prefix string, include_dirs []string) (string, bool) {
+// v3_parallel_expand_local_includes expands a header shipped with V into its text,
+// following its nested includes of other V-shipped headers. Any other header stays
+// an include for the C compiler, and an unresolved quoted include marks the
+// expansion incomplete.
+fn v3_parallel_expand_local_includes(path string, include_dirs []string, vroot string, mut active map[string]bool) (string, bool) {
+	real_path := os.real_path(path)
+	if active[real_path] {
+		return '', true
+	}
+	source := os.read_file(real_path) or { return '', false }
+	active[real_path] = true
+	mut expanded := strings.new_builder(source.len)
+	mut complete := true
+	for line in source.split_into_lines() {
+		if include_path := v3_parallel_local_include_path(line, os.dir(real_path), include_dirs) {
+			if cgen.native_path_is_shipped(include_path, vroot) {
+				included, included_complete := v3_parallel_expand_local_includes(include_path,
+					include_dirs, vroot, mut active)
+				expanded.writeln(included)
+				complete = complete && included_complete
+				continue
+			}
+			if line.trim_space().starts_with('#include "') {
+				complete = false
+			}
+		} else if line.trim_space().starts_with('#include "') {
+			complete = false
+		}
+		expanded.writeln(line)
+	}
+	active.delete(real_path)
+	return expanded.str(), complete
+}
+
+fn v3_parallel_c_declaration_header(prefix string, include_dirs []string, vroot string) (string, bool) {
+	mut replacements := map[string]string{}
 	mut in_native_directives := false
 	mut native_directives := strings.new_builder(1024)
 	mut safe := true
@@ -2605,16 +2640,38 @@ fn v3_parallel_c_declaration_header(prefix string, include_dirs []string) (strin
 			in_native_directives = false
 			continue
 		}
-		if !in_native_directives {
+		if !in_native_directives || trimmed in replacements {
 			continue
 		}
 		native_directives.writeln(line)
-		if v3_parallel_local_include_path(line, '', include_dirs) != none
-			|| trimmed.starts_with('#include "') {
-			// A local native header may define shared file-static state. Leave it
+		include_path := v3_parallel_local_include_path(line, '', include_dirs) or {
+			if trimmed.starts_with('#include "') {
+				// An unresolved quoted include can still be found by the C compiler
+				// through an option that is opaque here.
+				safe = false
+			}
+			continue
+		}
+		if !cgen.native_path_is_shipped(include_path, vroot) {
+			// A user-supplied header may define shared file-static state. Leave it
 			// to the C compiler in one unit instead of parsing it to split the build.
 			safe = false
+			continue
 		}
+		// The runtime headers shipped with V are part of the compiler. Their
+		// declarations replace the include in the split units, while the owner unit
+		// keeps the definitions.
+		mut active := map[string]bool{}
+		expanded, complete := v3_parallel_expand_local_includes(include_path, include_dirs, vroot, mut
+			active)
+		variables, variables_complete := modulecache.c_source_static_variable_identifiers(expanded)
+		if !complete || !variables_complete
+			|| modulecache.c_source_replicated_function_has_static_storage(expanded)
+			|| (variables.len > 0
+				&& !expanded.contains('#define V_PARALLEL_CC_STATIC_STORAGE_HANDLED 1')) {
+			safe = false
+		}
+		replacements[trimmed] = modulecache.declaration_header(expanded)
 	}
 	native_source := native_directives.str()
 	variables, variables_complete := modulecache.c_source_static_variable_identifiers(native_source)
@@ -2623,7 +2680,19 @@ fn v3_parallel_c_declaration_header(prefix string, include_dirs []string) (strin
 		|| variables.keys().any(!it.starts_with('_v3_lit_') && !it.starts_with('_str_')) {
 		safe = false
 	}
-	return modulecache.declaration_header(prefix), safe
+	header := modulecache.declaration_header(prefix)
+	if replacements.len == 0 {
+		return header, safe
+	}
+	mut out := strings.new_builder(header.len)
+	for line in header.split_into_lines() {
+		if declarations := replacements[line.trim_space()] {
+			out.writeln(declarations)
+		} else {
+			out.writeln(line)
+		}
+	}
+	return out.str(), safe
 }
 
 fn merge_v3_parallel_c_units(parts []string, max_units int) []string {
@@ -2806,7 +2875,7 @@ fn compile_v3_macos_linux_cross(c_compiler string, c_flag_plan &V3CCompilerFlagP
 	return cmdexec.run_in(linker, linker_args, build_dir)
 }
 
-fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, output_name string, show_command bool, job_count int, unit_count int, is_shared bool, cache_objects bool, target pref.Target, mut cache_stats CObjectCacheStats) os.Result {
+fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, output_name string, show_command bool, job_count int, unit_count int, is_shared bool, cache_objects bool, target pref.Target, vroot string, mut cache_stats CObjectCacheStats) os.Result {
 	source := os.read_file(source_path) or {
 		return os.Result{
 			exit_code: 1
@@ -2823,7 +2892,8 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	header_path := os.join_path_single(build_dir, header_name)
 	mut c_flags := c_flag_plan.before_inputs.clone()
 	c_flags << c_flag_plan.after_inputs
-	header, header_is_safe := v3_parallel_c_declaration_header(prefix, v3_parallel_c_include_dirs(c_flags))
+	header, header_is_safe := v3_parallel_c_declaration_header(prefix, v3_parallel_c_include_dirs(c_flags),
+		vroot)
 	if !header_is_safe {
 		return os.Result{
 			exit_code: v3_parallel_cc_monolithic_exit_code
@@ -4104,20 +4174,34 @@ fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_di
 		&& (!os.base(vtmp_dir).starts_with('tsession_') || os.getenv('V3CACHE') != '')
 }
 
-// Native headers belong to the C compiler. Without a C-compiler dependency
-// manifest, a cached object cannot safely account for their transitive inputs.
-fn ast_has_external_c_inputs(a &flat.FlatAst, c_flags []string) bool {
-	for node in a.nodes {
-		if node.kind == .directive && node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
-			return true
-		}
-	}
-	return c_flags.len > 0
+// v3_native_inputs classifies the native inputs of a build. Native headers belong
+// to the C compiler: without a C-compiler dependency manifest, a cached object
+// cannot account for the transitive inputs of a user-supplied header, so such a
+// build bypasses the caches. Headers shipped with V and system headers are
+// versioned with the compiler and the platform; their direct paths, like
+// `$embed_file` resources, still take part in every cache key.
+fn v3_native_inputs(a &flat.FlatAst, prefs &pref.Preferences, user_files []string, user_c_flags []string) cgen.CacheNativeInputs {
+	return cgen.cache_native_inputs(a, prefs.vroot, prefs.target, user_c_flags, prefs.compile_values,
+		cgen.cache_program_file_set(a, user_files))
 }
 
-fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAst, user_c_flags []string) bool {
-	if ast_has_external_c_inputs(a, user_c_flags) {
+fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs &cgen.CacheNativeInputs) bool {
+	if native_inputs.user_supplied.len > 0 {
 		return false
+	}
+	if !state.external_inputs_ready {
+		state.module_external_inputs = clone_string_list_map(native_inputs.module_inputs)
+		mut digests := map[string]string{}
+		for paths in native_inputs.module_inputs.values() {
+			for path in paths {
+				if path in digests {
+					continue
+				}
+				content := os.read_bytes(path) or { continue }
+				digests[path] = sha256.sum(content).hex()
+			}
+		}
+		state.external_input_digests = digests.move()
 	}
 	state.external_inputs_ready = true
 	state.external_inputs_complete = true
@@ -10983,23 +11067,27 @@ pub fn run(args []string) {
 	b.metric('canonical AST texts', a.text_count(), 'texts')
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
 
-	mut native_c_flags := user_c_flags.clone()
-	native_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
-	has_external_c_inputs := ast_has_external_c_inputs(a, native_c_flags)
+	crun_may_reuse := (is_crun || is_direct_vsh) && should_run && !explicit_output
+	native_inputs := if cache_state.manager.enabled || crun_may_reuse {
+		v3_native_inputs(a, prefs, user_files, user_c_flags)
+	} else {
+		cgen.CacheNativeInputs{}
+	}
+	has_external_c_inputs := native_inputs.user_supplied.len > 0
 	if cache_state.manager.enabled && has_external_c_inputs {
-		trace_v3_cache_fallback('native C inputs require compilation without header inspection')
+		trace_v3_cache_fallback('native C inputs require compilation without header inspection: ${native_inputs.user_supplied}')
 		restart_v3_without_cache()
 	}
 
 	mut crun_build_identity := ''
-	if (is_crun || is_direct_vsh) && should_run && !explicit_output && !has_external_c_inputs {
+	if crun_may_reuse && !has_external_c_inputs {
 		carried_identity := os.getenv(v3_crun_build_identity_env)
 		if os.getenv(v3_internal_restart_env) == '1' && carried_identity.len > 0 {
 			crun_build_identity = carried_identity
 		} else {
 			mut crun_c_flags := user_c_flags.clone()
 			crun_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
-			_ = prepare_v3_cache_external_inputs(mut cache_state, a, crun_c_flags)
+			_ = prepare_v3_cache_external_inputs(mut cache_state, &native_inputs)
 			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files, crun_c_flags, link_ld_flags, is_strict, enable_globals_compat, input_file)
 			if crun_build_identity.len > 0 {
 				os.setenv(v3_crun_build_identity_env, crun_build_identity, true)
@@ -11056,7 +11144,7 @@ pub fn run(args []string) {
 	mut incremental_tcc_declarations_path := ''
 	if backend == 'c' && program_cache_enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
-		if !prepare_v3_cache_external_inputs(mut cache_state, a, cache_c_flags) {
+		if !prepare_v3_cache_external_inputs(mut cache_state, &native_inputs) {
 			trace_v3_cache_fallback('native C inputs require compilation without header inspection')
 			restart_v3_without_cache()
 		}
@@ -11637,7 +11725,7 @@ pub fn run(args []string) {
 		}
 		if cache_state.manager.enabled {
 			const_init_order := cgen.module_const_init_order(a, pre_tc)
-			if !prepare_v3_cache_external_inputs(mut cache_state, a, cache_c_flags) {
+			if !prepare_v3_cache_external_inputs(mut cache_state, &native_inputs) {
 				trace_v3_cache_fallback('external C inputs cannot be assigned to cache units')
 				restart_v3_without_cache()
 			}
@@ -11832,7 +11920,7 @@ pub fn run(args []string) {
 		// Uncached Cgen emits includes directly, and fallback reports contain only
 		// metadata, so neither needs a header traversal or compiler-macro probe.
 		if backend == 'c' && cache_state.manager.enabled && !cache_state.external_inputs_ready {
-			_ = prepare_v3_cache_external_inputs(mut cache_state, a, cache_c_flags)
+			_ = prepare_v3_cache_external_inputs(mut cache_state, &native_inputs)
 		}
 		if backend == 'c' && cache_state.external_inputs_ready {
 			fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)
@@ -13656,7 +13744,7 @@ pub fn run(args []string) {
 					is_shared)
 			} else if use_parallel_c_compilation && cached_program_main_object.len == 0
 				&& fallback_source == 'src.c' {
-				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count, is_shared, building_v && is_bsd_host && is_prod && !no_cache && !is_shared, prefs.target, mut c_object_cache_stats)
+				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count, is_shared, building_v && is_bsd_host && is_prod && !no_cache && !is_shared, prefs.target, prefs.vroot, mut c_object_cache_stats)
 			} else {
 				mut cc_args := c_flag_plan.compiler_args(cc_output_name, compiler_inputs, [])
 				if effective_c_compiler == 'msvc' {

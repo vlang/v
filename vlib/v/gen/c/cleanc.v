@@ -1954,6 +1954,223 @@ pub fn native_include_input_files(a &flat.FlatAst, vroot string, target pref.Tar
 	return result
 }
 
+// CacheNativeInputs separates the native inputs that ship with V from the ones a
+// user supplies. Headers under the V root's `vlib/`, `thirdparty/` and `cmd/` trees
+// are versioned with the compiler and system headers with the platform, so their
+// direct paths are only recorded, per owning module, next to `$embed_file`
+// resources. A user-supplied header is never opened: only the C compiler can
+// account for what it includes, so the first one found is reported instead.
+pub struct CacheNativeInputs {
+pub mut:
+	// module_inputs maps a module (`main` for program files) to the sorted paths of
+	// the V-shipped native files and embedded resources its directives name directly.
+	module_inputs map[string][]string
+	// user_supplied names the first user-supplied native input, if there is one.
+	user_supplied string
+}
+
+const c_native_path_flag_options = ['-isystem', '-iquote', '-idirafter', '-iframework', '-imacros',
+	'-include', '--include-directory', '--include', '-I', '-F']
+
+// cache_native_inputs classifies the native inputs of a build for the V caches.
+// Directives are attributed to the file that declares them: a V-shipped module may
+// include system headers or add system search paths, while a user file may only
+// name native files shipped with V without bypassing the caches.
+pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, user_c_flags []string, compile_values map[string]string, program_files map[string]bool) CacheNativeInputs {
+	shipped_roots := c_shipped_native_roots(vroot)
+	mut result := CacheNativeInputs{}
+	if input := c_flags_user_native_input(user_c_flags, shipped_roots) {
+		result.user_supplied = input
+		return result
+	}
+	mut include_flags := user_c_flags.clone()
+	mut relevant := []int{}
+	mut cur_file := ''
+	mut cur_file_is_shipped := false
+	mut shipped_memo := map[string]bool{}
+	for node_idx, node in a.nodes {
+		match node.kind {
+			.file {
+				relevant << node_idx
+				cur_file = a.cached_header_sources[node.value] or { node.value }
+				cur_file_is_shipped = c_source_file_is_shipped(a, cur_file, shipped_roots, mut
+					shipped_memo)
+			}
+			.module_decl {
+				relevant << node_idx
+			}
+			.directive {
+				if node.typ.len == 0 {
+					continue
+				}
+				if node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
+					relevant << node_idx
+				} else if node.value == 'pkgconfig' && !cur_file_is_shipped {
+					// A package's search paths lie outside V. Their resolution is
+					// left to pkg-config and the C compiler.
+					result.user_supplied = '#pkgconfig ${node.typ}'
+					return result
+				} else if node.value == 'flag' {
+					flags := c_flag_args_with_values(node.typ, vroot, cur_file, target,
+						compile_values)
+					if !cur_file_is_shipped {
+						if input := c_flags_user_native_input(flags, shipped_roots) {
+							result.user_supplied = input
+							return result
+						}
+					}
+					include_flags << flags
+				}
+			}
+			.struct_init {
+				if node.value == 'embed_file.EmbedFileData' {
+					relevant << node_idx
+				}
+			}
+			else {}
+		}
+	}
+	include_dirs := c_flag_include_dirs(include_flags)
+	mut inputs := map[string][]string{}
+	mut cur_module := ''
+	mut cur_file_is_program := false
+	mut program_file_memo := map[string]bool{}
+	cur_file = ''
+	cur_file_is_shipped = false
+	for node_idx in relevant {
+		node := a.nodes[node_idx]
+		if node.kind == .file {
+			cur_file = a.cached_header_sources[node.value] or { node.value }
+			cur_file_is_shipped = shipped_memo[cur_file]
+			cur_file_is_program = cache_program_file_matches(a, program_files, cur_file, mut
+				program_file_memo)
+			cur_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		owner_module := if cur_file_is_program || cur_module.len == 0 { 'main' } else { cur_module }
+		if path := c_embed_external_input_path(a, node) {
+			c_add_cache_external_input(mut inputs, owner_module, path)
+			continue
+		}
+		if node.kind != .directive {
+			continue
+		}
+		include_arg := c_include_arg_for_target_with_values(node.typ, vroot, cur_file, target,
+			compile_values)
+		if include_arg.len == 0 || c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
+			continue
+		}
+		mut resolved := ''
+		for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
+			if os.is_file(path) {
+				resolved = os.real_path(path)
+				break
+			}
+		}
+		if resolved.len > 0 && c_path_is_within_roots(resolved, shipped_roots) {
+			c_add_cache_external_input(mut inputs, owner_module, resolved)
+			continue
+		}
+		// System headers, and anything a V-shipped module leaves to the C compiler's
+		// search path, are versioned outside the program. A quoted user include that
+		// is not shipped with V is opaque to V.
+		if cur_file_is_shipped || include_arg.starts_with('<') {
+			continue
+		}
+		result.user_supplied = if resolved.len > 0 { resolved } else { include_arg }
+		return result
+	}
+	for module_name, paths in inputs {
+		mut sorted := paths.clone()
+		sorted.sort()
+		inputs[module_name] = sorted
+	}
+	result.module_inputs = inputs.move()
+	return result
+}
+
+// native_path_is_shipped reports whether a resolved native file belongs to the
+// trees shipped with the V installation at `vroot`.
+pub fn native_path_is_shipped(path string, vroot string) bool {
+	return c_path_is_within_roots(os.real_path(path), c_shipped_native_roots(vroot))
+}
+
+fn c_shipped_native_roots(vroot string) []string {
+	if vroot.len == 0 {
+		return []string{}
+	}
+	real_vroot := os.real_path(vroot)
+	return ['vlib', 'thirdparty', 'cmd'].map(os.join_path_single(real_vroot, it))
+}
+
+fn c_path_is_within_roots(path string, roots []string) bool {
+	for root in roots {
+		if path == root || (path.starts_with(root) && path.len > root.len
+			&& (path[root.len] == `/` || path[root.len] == `\\`)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_source_file_is_shipped(a &flat.FlatAst, file string, roots []string, mut memo map[string]bool) bool {
+	if known := memo[file] {
+		return known
+	}
+	shipped := file.len > 0 && c_path_is_within_roots(a.real_source_path(file), roots)
+	memo[file] = shipped
+	return shipped
+}
+
+// c_flags_user_native_input returns the first native file or search directory named
+// by user C flags outside the trees shipped with V. Other options, such as defines,
+// warnings and libraries, are part of every cache key already.
+fn c_flags_user_native_input(flags []string, shipped_roots []string) ?string {
+	mut expect_path := false
+	for flag in flags {
+		token := flag.trim_space().trim('"\'')
+		if token.len == 0 {
+			continue
+		}
+		if expect_path {
+			expect_path = false
+			if !c_path_is_within_roots(os.real_path(token), shipped_roots) {
+				return token
+			}
+			continue
+		}
+		if token in c_native_path_flag_options || token in ['/I', '/FI'] {
+			expect_path = true
+			continue
+		}
+		if token.starts_with('@') {
+			// A response file can carry any option.
+			return token
+		}
+		mut path := ''
+		for option in c_native_path_flag_options {
+			if token.len > option.len && token.starts_with(option) {
+				path = token[option.len..].trim_left('=')
+				break
+			}
+		}
+		if path.len == 0 && !token.starts_with('-') && c_is_native_input_path(token) {
+			path = token
+		}
+		if path.len > 0 && !c_path_is_within_roots(os.real_path(path), shipped_roots) {
+			return token
+		}
+	}
+	if expect_path {
+		return flags.last()
+	}
+	return none
+}
+
 // c_is_native_input_path reports whether a bare `#flag` token names a file that is compiled
 // or linked in, rather than an option or a library search term.
 fn c_is_native_input_path(path string) bool {

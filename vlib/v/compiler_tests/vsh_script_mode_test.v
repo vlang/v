@@ -130,7 +130,7 @@ callback()
 
 // `-raw-vsh-tmp-prefix` compiles an input without the `.vsh` extension as a V script
 // (e.g. from a `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp` shebang). Without `run`,
-// the executable is kept as `<prefix>.<script name>`, like a `.vsh` script.
+// the executable is kept as `<prefix>.<script name>` and reused, like a `.vsh` script.
 fn test_raw_vsh_tmp_prefix_runs_extensionless_script() {
 	root := os.join_path(os.vtmp_dir(), 'v3 vsh raw prefix ${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -141,7 +141,6 @@ fn test_raw_vsh_tmp_prefix_runs_extensionless_script() {
 	v3_bin := build_vsh_mode_v3(root)
 	script := os.join_path(root, 'myscript')
 	os.write_file(script, '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp
-#include <stddef.h>
 println(file_name(executable()))
 println(arguments()[1..])
 ') or { panic(err) }
@@ -151,13 +150,13 @@ println(arguments()[1..])
 	assert first.exit_code == 0, first.output
 	assert first.output.split_into_lines() == [expected_name, "['first']"], first.output
 	assert os.is_file(kept_bin)
-	// Native headers require a rebuild even when the script is unchanged.
+	// An unchanged script reuses the kept executable.
 	cache_stamp := os.file_last_mod_unix(kept_bin) + 3600
 	os.utime(kept_bin, cache_stamp, cache_stamp) or { panic(err) }
 	cached := os.exec([v3_bin, '-silent', '-raw-vsh-tmp-prefix', 'tmp', '${script}', 'cached'])
 	assert cached.exit_code == 0, cached.output
 	assert cached.output.split_into_lines() == [expected_name, "['cached']"], cached.output
-	assert os.file_last_mod_unix(kept_bin) != cache_stamp
+	assert os.file_last_mod_unix(kept_bin) == cache_stamp
 	// A newer script is rebuilt.
 	os.write_file(script, "println('rebuilt')
 ") or { panic(err) }

@@ -318,7 +318,7 @@ fn test_static_comptime_for_c_style_loop_shadows_are_reported() {
 	assert !res.output.contains('unknown identifier'), res.output
 }
 
-fn test_repeated_native_build_reports_new_global_shadow() {
+fn test_warm_owned_module_cache_reports_new_global_shadow() {
 	$if windows {
 		return
 	}
@@ -332,16 +332,15 @@ fn test_repeated_native_build_reports_new_global_shadow() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
 	write_file(os.join_path(app_dir, 'helpers', 'helpers.v'), 'module helpers\n\npub fn helper() int {\n\tcounter := 7\n\treturn counter\n}\n')
-	write_file(os.join_path(app_dir, 'main.v'), 'module main\n\nimport helpers\n\n#include <stddef.h>\n\nfn main() {\n\tprintln(helpers.helper())\n}\n')
+	write_file(os.join_path(app_dir, 'main.v'), 'module main\n\nimport helpers\n\nfn main() {\n\tprintln(helpers.helper())\n}\n')
 	cache_dir := os.join_path(tmp_root, 'cache')
 	first_output := os.join_path(tmp_root, 'first')
-	first := os.exec(['env', 'V3CACHE=' + '${cache_dir}', 'V3_CACHE_TRACE=1', vexe, '-prod', '-gc',
-		'none', '-enable-globals', '-o', first_output, app_dir])
+	first := os.exec(['env', 'V3CACHE=' + '${cache_dir}', vexe, '-prod', '-gc', 'none',
+		'-enable-globals', '-o', first_output, app_dir])
 	assert first.exit_code == 0, first.output
 	cache_headers := os.walk_ext(cache_dir, '.vh')
-	assert !cache_headers.any(os.file_name(it).starts_with('helpers_')), '${first.output}\ncache headers: ${cache_headers}'
-	assert first.output.contains('native C inputs require compilation without header inspection'), first.output
-	write_file(os.join_path(app_dir, 'main.v'), 'module main\n\nimport helpers\n\n#include <stddef.h>\n\nfn main() {\n\tprintln(helpers.helper() + 1)\n}\n')
+	assert cache_headers.any(os.file_name(it).starts_with('helpers_')), '${first.output}\ncache headers: ${cache_headers}'
+	write_file(os.join_path(app_dir, 'main.v'), 'module main\n\nimport helpers\n\nfn main() {\n\tprintln(helpers.helper() + 1)\n}\n')
 	warm_output := os.join_path(tmp_root, 'warm')
 	warm := os.exec(['env', 'V3CACHE=' + '${cache_dir}', vexe, '-prod', '-gc', 'none', '-enable-globals',
 		'-o', warm_output, app_dir])
@@ -349,7 +348,7 @@ fn test_repeated_native_build_reports_new_global_shadow() {
 	warm_run := os.exec([warm_output])
 	assert warm_run.exit_code == 0, warm_run.output
 	assert warm_run.output.trim_space() == '8', warm_run.output
-	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nimport helpers\n\n#include <stddef.h>\n\n__global (\n\tcounter int\n)\n\nfn main() {\n\tprintln(helpers.helper())\n}\n')
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nimport helpers\n\n__global (\n\tcounter int\n)\n\nfn main() {\n\tprintln(helpers.helper())\n}\n')
 	second_output := os.join_path(tmp_root, 'second')
 	second := os.exec(['env', 'V3CACHE=' + '${cache_dir}', vexe, '-prod', '-gc', 'none',
 		'-enable-globals', '-o', second_output, app_dir])

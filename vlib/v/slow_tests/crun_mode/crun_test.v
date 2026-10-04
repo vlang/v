@@ -20,25 +20,21 @@ fn testsuite_end() {
 }
 
 fn test_saving_simple_v_program() {
-	os.write_file(vprogram_file, '#include <stddef.h>\nprint("hello")')!
+	os.write_file(vprogram_file, 'print("hello")')!
 	assert true
 }
 
 fn test_crun_simple_v_program_several_times() {
-	mut binary := vprogram_file.all_before_last('.')
-	$if windows {
-		binary += '.exe'
+	mut sw := time.new_stopwatch()
+	mut times := []i64{}
+	for i in 0 .. 10 {
+		vcrun(vprogram_file)
+		times << sw.elapsed().microseconds()
+		time.sleep(50 * time.millisecond)
+		sw.restart()
 	}
-	first := vcrun(vprogram_file)
-	assert first.output == 'hello', first.output
-	assert os.is_file(binary)
-	for _ in 0 .. 3 {
-		cache_stamp := os.file_last_mod_unix(binary) + 3600
-		os.utime(binary, cache_stamp, cache_stamp)!
-		result := vcrun(vprogram_file)
-		assert result.output == 'hello', result.output
-		assert os.file_last_mod_unix(binary) != cache_stamp
-	}
+	dump(times)
+	assert times.first() > times.last() * 2 // cruns compile just once, if the source file is not changed
 	$if !windows {
 		os.system_args(['ls', '-la', '${crun_folder}'])
 		os.system_args(['find', '${crun_folder}'])
@@ -63,8 +59,11 @@ fn test_crun_rebuilds_when_local_c_source_changes() {
 		'}',
 	].join('\n'))!
 	write_c_source_module(module_dir, 'OLD', 2)!
+	// `crun` cache invalidation uses second-resolution mtimes.
+	time.sleep(1100 * time.millisecond)
 	first := vcrun(module_dir)
 	assert first.output == 'OLD:0:1\nOLD:1:2\n'
+	time.sleep(1100 * time.millisecond)
 	write_c_source_module(module_dir, 'NEW', 4)!
 	second := vcrun(module_dir)
 	assert second.output == 'NEW:0:1\nNEW:1:2\nNEW:2:3\nNEW:3:4\n'

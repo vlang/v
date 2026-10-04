@@ -1,7 +1,7 @@
 import os
 import v.cmdexec
 
-fn test_result_error_propagation_survives_native_cache_bypass() {
+fn test_result_error_propagation_compiles_with_cold_and_warm_builtin_cache() {
 	os.find_abs_path_of_executable('cc') or {
 		eprintln('skipping module cache test: cc is unavailable')
 		return
@@ -29,17 +29,24 @@ fn test_result_error_propagation_survives_native_cache_bypass() {
 	os.unsetenv('LDFLAGS')
 	vexe := os.join_path(@VMODROOT, 'v' + $if windows { '.exe' } $else { '' })
 	for attempt in 0 .. 2 {
-		// Distinct native-header programs must preserve errors on repeated uncached builds.
+		// Distinct programs must consume the shared builtin cache rather than a whole-program hit.
 		source := os.join_path(root, 'program_${attempt}.v')
-		os.write_file(source, "#include <stddef.h>\n\nstruct Fault {\n message string\n}\nfn (f Fault) msg() string { return f.message }\nfn (f Fault) code() int { return 17 }\nfn fail(boxed bool) !int {\n if boxed { return Fault{message: 'boxed'} }\n return error('boom')\n}\nfn caller(boxed bool) !int { return fail(boxed)! }\nfn main() {\n for boxed in [false, true] {\n caller(boxed) or {\n assert err.msg() == if boxed { 'boxed' } else { 'boom' }\n assert err.code() == if boxed { 17 } else { 0 }\n continue\n }\n panic('expected an error')\n }\n println('errors preserved ${attempt}')\n}\n")!
+		os.write_file(source, "struct Fault {\n message string\n}\nfn (f Fault) msg() string { return f.message }\nfn (f Fault) code() int { return 17 }\nfn fail(boxed bool) !int {\n if boxed { return Fault{message: 'boxed'} }\n return error('boom')\n}\nfn caller(boxed bool) !int { return fail(boxed)! }\nfn main() {\n for boxed in [false, true] {\n caller(boxed) or {\n assert err.msg() == if boxed { 'boxed' } else { 'boom' }\n assert err.code() == if boxed { 17 } else { 0 }\n continue\n }\n panic('expected an error')\n }\n println('errors preserved ${attempt}')\n}\n")!
 		output := os.join_path(root, 'program_${attempt}')
 		build := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-gc',
 			'none', '-cc', 'cc', '-showcc', '-o', output, source],
 			120_000)
 		assert build.exit_code == 0, build.output
-		assert build.output.contains('native C inputs require compilation without header inspection'), build.output
+		assert !build.output.contains('V3 module cache fallback'), build.output
 		builtin_objects := os.walk_ext(cache, '.o').filter(os.base(it).starts_with('builtin_'))
-		assert builtin_objects.len == 0, builtin_objects.str()
+		assert builtin_objects.len == 1, builtin_objects.str()
+		assert build.output.contains(os.base(builtin_objects[0])), build.output
+		if attempt == 0 {
+			assert build.output.contains('module=builtin'), build.output
+			assert os.walk_ext(cache, '.vh').any(os.base(it).starts_with('builtin_'))
+		} else {
+			assert !build.output.contains('miss: module=builtin'), build.output
+		}
 		assert !build.output.contains('drop_owned_T_IError'), build.output
 		run := cmdexec.run_with_timeout(output, [], 10_000)
 		assert run.exit_code == 0, run.output

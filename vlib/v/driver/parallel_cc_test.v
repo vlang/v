@@ -82,6 +82,29 @@ fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
 		defer {
 			os.rmdir_all(root) or {}
 		}
+		source := os.join_path_single(root, 'main.v')
+		output := os.join_path_single(root, 'main')
+		// The runtime headers shipped with V do not keep a program in one unit.
+		os.write_file(source, 'fn twice(value int) int { return value * 2 }\nfn main() { println(twice(21)) }\n')!
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
+		assert build.exit_code == 0, build.output
+		assert build.output.contains('unit_0.c'), build.output
+		assert build.output.contains('unit_1.c'), build.output
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 0, run_result.output
+		assert run_result.output.trim_space() == '42'
+	}
+}
+
+fn test_v3_parallel_cc_compiles_and_runs_a_split_c_fixture() {
+	$if bsd || linux {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_fixture_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
 		source := os.join_path_single(root, 'main.c')
 		build_dir := os.join_path_single(root, 'build')
 		os.mkdir_all(build_dir)!
@@ -93,7 +116,8 @@ fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
 		}
 		mut stats := CObjectCacheStats{}
 		build := compile_v3_parallel_c(source, 'cc', &plan, &plan, []string{}, []string{}, '',
-			false, build_dir, output, false, 2, 2, false, false, pref.host_target(), mut stats)
+			false, build_dir, output, false, 2, 2, false, false, pref.host_target(), @VEXEROOT, mut
+			stats)
 		assert build.exit_code == 0, build.output
 		assert os.is_file(os.join_path(build_dir, 'unit_0.c'))
 		assert os.is_file(os.join_path(build_dir, 'unit_1.c'))
