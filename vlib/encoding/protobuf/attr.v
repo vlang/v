@@ -5,10 +5,8 @@ module protobuf
 // concrete type in this compiler.
 //
 // There is deliberately nothing here for reading `@[...]` attributes back off a
-// struct. An earlier version carried `field_number`, `oneof_group`, and
-// friends, for a codec that reflected over the message type at run time. The
-// generator writes explicit calls instead, so nothing ever read those
-// attributes and the readers were unreachable code in the module's own API.
+// struct: the generator writes an explicit call per field instead, so the field
+// numbers live in the generated code rather than in attributes.
 
 // ProtoScalar names a protobuf scalar type. It exists because a V type does not
 // determine one on its own: `i32` is `int32`, `sint32`, or `sfixed32` depending

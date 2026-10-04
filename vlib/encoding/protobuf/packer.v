@@ -24,10 +24,10 @@ pub:
 //
 // A Packer is a plain writer: every `write_*` method emits the field you ask
 // for, including a value equal to its default. Applying proto3's rule that
-// defaults are not written is the caller's job, which `encode[T]` does for you
-// based on the schema. Keeping the two apart is deliberate — a writer that
-// silently dropped values would make the manual API impossible to use for
-// proto2, where presence has to survive.
+// defaults are not written is the caller's job, which the code `v pbgen`
+// generates does for you based on the schema. Keeping the two apart is
+// deliberate — a writer that silently dropped values would make the manual API
+// impossible to use for proto2, where presence has to survive.
 pub struct Packer {
 mut:
 	buf  []u8
@@ -43,9 +43,9 @@ pub fn new_packer(opts EncodeOpts) &Packer {
 	}
 }
 
-// new_packer_from returns a Packer whose buffer already holds `data`, so a
-// message can be appended to an existing one. The buffer is adopted, not
-// copied.
+// new_packer_from returns a Packer whose buffer starts with a copy of `data`,
+// so a message can be appended to an existing one. `data` itself is not
+// modified.
 pub fn new_packer_from(data []u8, opts EncodeOpts) &Packer {
 	mut p := new_packer(opts)
 	p.buf << data
@@ -201,8 +201,8 @@ pub fn (mut p Packer) write_string(field_number int, value string) ! {
 }
 
 // write_message writes an already-encoded message as a length-delimited
-// field. This is the seam between the manual and generic APIs: `encode[T]`
-// encodes a nested message into a sub-buffer and splices it in here.
+// field. Generated code encodes a nested message into a buffer of its own and
+// splices it in here.
 pub fn (mut p Packer) write_message(field_number int, encoded []u8) {
 	p.write_len_delimited(field_number, encoded)
 }
@@ -227,7 +227,7 @@ pub fn (mut p Packer) write_len_delimited(field_number int, payload []u8) {
 // wire encoding on its own: `i32` is `int32`, `sint32`, or `sfixed32` depending
 // on the schema, and only the schema knows which. `write_packed_varints`,
 // `write_packed_fixed32s` and `write_packed_fixed64s` cover the common cases;
-// `encode[T]` builds the payload itself because it has both halves in hand.
+// generated code builds the payload itself because it knows the schema type.
 pub fn (mut p Packer) write_packed_payload(field_number int, wire_type WireType, payload []u8) {
 	p.write_tag(field_number, .length_delimited)
 	put_varint(mut p.buf, u64(payload.len))

@@ -20,6 +20,10 @@ pub fn field_key(field_number int, wire_type WireType) u64 {
 // type. The wire type is not validated here, because a tag carrying an
 // unassigned value is a malformed tag rather than an unknown field, and the
 // two need different handling.
+//
+// The field number is converted to `int` without a range check, so a caller
+// reading untrusted input has to check `key >> 3` against `max_field_number`
+// first: where `int` is 32 bits the conversion wraps. `Unpacker.read_tag` does.
 pub fn split_field_key(key u64) (int, WireType) {
 	// The mask guarantees 0..7, so the conversion cannot produce a value
 	// outside the enum.

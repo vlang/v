@@ -274,6 +274,26 @@ fn test_unpacker_rejects_out_of_range_field_number() {
 	}
 }
 
+fn test_unpacker_rejects_a_field_number_that_would_wrap_to_a_legal_one() {
+	// 2^32 + 1 is 1 once truncated to 32 bits, so a target with a 32-bit `int`
+	// would read it as field 1 unless the range is checked before the cast.
+	mut data := []u8{}
+	put_varint(mut data, ((u64(1) << 32) | 1) << 3)
+	data << u8(0x01)
+	mut u := new_unpacker(data, DecodeOpts{})
+	if got, _ := u.read_tag() {
+		assert false, 'expected field number 2^32+1 to be rejected, got ${got}'
+	} else {
+		assert err is MalformedError
+	}
+	// The largest legal number still reads back as itself.
+	mut ok := []u8{}
+	put_varint(mut ok, field_key(max_field_number, .varint))
+	mut v := new_unpacker(ok, DecodeOpts{})
+	number, _ := v.read_tag()!
+	assert number == max_field_number
+}
+
 fn test_unpacker_depth_limit() {
 	// Each nesting level costs two bytes, so a 40-byte input can nest 20 deep.
 	// Without a bound that is a denial of service rather than a big message.
@@ -371,7 +391,7 @@ fn test_unpacker_truncated_value_fails() {
 
 fn test_unpacker_packed_reads_back() {
 	// A packed field is one length-delimited run of values; unpack it by hand
-	// the way decode[T] does.
+	// the way generated code does.
 	mut p := new_packer(EncodeOpts{})
 	p.write_packed_varints(1, [u64(1), 200, 300])
 	mut u := new_unpacker(p.bytes(), DecodeOpts{})

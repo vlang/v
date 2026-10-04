@@ -23,7 +23,7 @@ fn test_packer_len_delimited() {
 
 fn test_packer_writes_default_values_too() {
 	// A Packer is a plain writer. It emits what it is told to, including
-	// proto3 defaults; the presence rules live in encode[T].
+	// proto3 defaults; the presence rules live in the generated code.
 	mut p := new_packer(EncodeOpts{})
 	p.write_bool(1, false)
 	assert p.bytes() == [u8(0x08), u8(0x00)]

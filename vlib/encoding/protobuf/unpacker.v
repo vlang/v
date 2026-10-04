@@ -65,12 +65,12 @@ pub fn (u &Unpacker) offset() int {
 	return u.pos
 }
 
-// seek moves the read position back to `pos`.
+// seek moves the read position to `pos`, an offset previously returned by
+// `offset`.
 //
-// It exists for the one place a caller needs to re-read something: the generic
-// decoder peeks a tag to find out which field comes next, and when the tag
-// turns out to belong to the enclosing message it rewinds so the enclosing loop
-// reads it again.
+// It is for a hand-written reader that peeks at a tag to find out which field
+// comes next: when the tag turns out to belong to someone else, seeking back to
+// the offset taken before the peek hands it back to be read again.
 pub fn (mut u Unpacker) seek(pos int) {
 	u.pos = pos
 }
@@ -81,6 +81,12 @@ pub fn (mut u Unpacker) seek(pos int) {
 pub fn (mut u Unpacker) read_tag() !(int, WireType) {
 	at := u.pos
 	key := u.read_varint()!
+	// The field number is range-checked while it is still 64 bits wide. Where
+	// `int` is 32 bits, converting first would wrap a number such as 2^32 + 1
+	// to 1, which is in range and would be read as a different field.
+	if key >> 3 > u64(max_field_number) {
+		return malformed_at(at, 'field number ${key >> 3} is outside the legal range')
+	}
 	number, wire_type := split_field_key(key)
 	if !wire_type_valid(int(wire_type)) {
 		return unknown_wire_type(at, int(wire_type))
