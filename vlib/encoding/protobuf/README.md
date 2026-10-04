@@ -26,7 +26,8 @@ Only proto3 is supported. See `v help pbgen` for the options and
 
 ## What the generator emits
 
-For a message, one struct, an `encode`, an `encode_with`, and a `decode_*`:
+For a message, one struct, an `encode`, an `encode_with`, a `decode_*`, and a
+`decode_*_with`:
 
 ```v ignore
 pub struct GetRequest {
@@ -51,8 +52,19 @@ pub fn (msg GetRequest) encode_with(opts protobuf.EncodeOpts) ![]u8 {
 
 // decode_get_request parses the proto3 message `kv.GetRequest`. ...
 pub fn decode_get_request(data []u8) !GetRequest {
+	return decode_get_request_with(data, protobuf.DecodeOpts{})
+}
+
+// decode_get_request_with parses the proto3 message `kv.GetRequest` with `opts`, ...
+pub fn decode_get_request_with(data []u8, opts protobuf.DecodeOpts) !GetRequest {
 	mut out := GetRequest{}
-	mut unpacker := protobuf.new_unpacker(data, protobuf.DecodeOpts{})
+	mut unpacker := protobuf.new_unpacker(data, opts)
+	read_get_request(mut unpacker, mut out)!
+	return out
+}
+
+// read_get_request reads the fields of `kv.GetRequest` from `unpacker` into `out` ...
+fn read_get_request(mut unpacker protobuf.Unpacker, mut out GetRequest) ! {
 	for !unpacker.eof() {
 		number, wire_type := unpacker.read_tag()!
 		match number {
@@ -66,30 +78,37 @@ pub fn decode_get_request(data []u8) !GetRequest {
 			}
 		}
 	}
-	return out
 }
 ```
+
+A nested message is read through its parent's `Unpacker`, so `DecodeOpts`
+applies at every depth, and `max_depth` stops a payload that nests deeper than it
+allows with an error. A field this build does not know is skipped and dropped:
+it is not kept for re-encoding, so decoding and encoding again loses it. Set
+`allow_unknown_fields: false` to have it rejected instead.
 
 Each field's number appears literally in every call its codec makes — the `1` in
 `packer.write_string(1, msg.key)` — and in the doc comment above the field. It is
 not inferred from the order of the fields, because a schema is free to number them
 out of order and to leave gaps.
 
-The struct carries no attribute for the number. An earlier version emitted
-`@[protobuf: n]` and nothing read it; `encoding.cbor` reads its own attributes at
-run time, so the shape looked right while being inert. An attribute that looks
-load-bearing and is not is worse for a reader of the generated file than none.
+The struct carries no attribute for the number; nothing would read it.
 
-Three naming rules are worth knowing, because they are what makes the generated
+A few naming rules are worth knowing, because they are what makes the generated
 names predictable:
 
 - A message keeps its proto name. `GetRequest` in package `kv` becomes
-  `GetRequest`, not `KvGetRequest`. Only a name two declarations both want is
-  qualified, as `OneItem` and `TwoItem`.
-- A nested message flattens its chain, since V has no nested types: `Outer.Inner`
-  becomes `OuterInner`.
+  `GetRequest`, not `KvGetRequest`. A nested message is named the same way,
+  since V has no nested types: `Outer.Inner` becomes `Inner`. Only a name two
+  declarations both want is qualified with its package and enclosing messages,
+  as `OneItem` and `TwoItem`, or `OuterInner`.
+- A field and an enum value become snake_case, since V refuses an uppercase
+  letter in either: `userName` becomes `user_name` and `COLOR_RED` becomes
+  `color_red`. A name that is a V keyword gets a trailing `_`, as `type_`.
 - A one-letter capital name is refused. V reserves those for generic template
   types.
+- Names that are distinct in the schema but meet in V, such as `userName` and
+  `user_name` in one message, are refused rather than emitted.
 
 ### Presence
 
@@ -100,10 +119,17 @@ Three shapes of presence show up in the generated struct:
 | `string key = 1;` | `key string` | when it is not the default |
 | `optional bool flag = 1;` | `flag ?bool` | whenever it is set |
 | `oneof { int32 a = 1; }` | `a ?i32` | whenever it is set |
+| `Inner inner = 1;` | `inner ?Inner` | whenever it is set |
 
 The first two rows are why an absent field and a field set to its default are
 different things in the second case and not the first. On the wire they are the
-same, so proto3 cannot tell them apart unless the schema asks for presence.
+same, so proto3 cannot tell them apart unless the schema asks for presence. A
+message field always has presence: one set to an empty message is written as an
+empty payload, and one never set is not written.
+
+A message field that makes its message recursive, as `Node child = 2;` inside
+`message Node` does, is declared `?&Node`, because V accepts a recursive struct
+only through an optional pointer.
 
 Reading a member of a `oneof` clears the others, because the spec says the last
 member on the wire wins.
@@ -208,12 +234,8 @@ fn encode_get_request(msg GetRequest) ![]u8 {
   found without reading fields the reader does not understand, so this module
   refuses one rather than guessing. proto3 forbids them.
 - **proto2**, and with it `required` and proto2 default values.
-- **The reflection API.** An earlier version of this module had `encode[T]` and
-  `decode[T]`, driven by `@[...]` attributes read off the message type at run
-  time. V3 cannot express the generic decode a schema needs: an explicit type
-  argument on a call whose type parameter comes from a field rather than from a
-  generic reaches `__v_comptime_unsupported_late_generic_call`. The generator
-  writes explicit calls instead, and the attribute readers went with it.
+- **Unknown field preservation.** A field the generated code does not know is
+  skipped, not kept, so a decode followed by an encode drops it.
 
 ## Tests
 

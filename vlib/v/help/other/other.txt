@@ -33,6 +33,9 @@ Other less frequently used commands supported by V include:
                    `v mod why MODULE` prints the chain of imports that brings
                    MODULE into the build.
 
+  pbgen             Generate V protobuf codecs and gRPC service declarations
+                   from .proto schemas. See `v help pbgen`.
+
   setup-freetype   Setup thirdparty freetype on Windows.
 
   skills            List, install, update and remove the agent skills bundled

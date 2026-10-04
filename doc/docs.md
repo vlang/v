@@ -6203,7 +6203,8 @@ v pbgen -m kv -o kv/codec.v kv.proto
 ```v ignore
 pub struct GetRequest {
 pub mut:
-	key string @[protobuf: 1]
+	// key is `string key = 1`.
+	key string
 }
 
 pub fn (msg GetRequest) encode() ![]u8 {
@@ -6211,7 +6212,7 @@ pub fn (msg GetRequest) encode() ![]u8 {
 }
 
 pub fn decode_get_request(data []u8) !GetRequest {
-	// ...
+	return decode_get_request_with(data, protobuf.DecodeOpts{})
 }
 ```
 
