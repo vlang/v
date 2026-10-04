@@ -49,3 +49,58 @@ assert strconv.add_thousands_sep('-12345.5', strconv.Separator{
 	decimal: ','
 }) == '-12.345,5'
 ```
+
+## Quoting strings and runes
+
+`quote` returns a double-quoted V string literal for a string, and
+`quote_rune` the single-quoted form for one rune. Control characters and
+non-printable runes become Go escape sequences; everything else is kept as it
+is, so UTF-8 text stays readable in the output.
+
+```v
+import strconv
+
+assert strconv.quote('café') == '"café"'
+assert strconv.quote('a\tb') == '"a\\tb"'
+assert strconv.quote_rune('A'.runes()[0]) == "'A'"
+assert strconv.quote_rune(0x00E9) == "'é'"
+```
+
+The `*_to_ascii` variants escape every non-ASCII rune as `\u` or `\U`, and the
+`*_to_graphic` variants keep a rune only when it is in the graphic set.
+
+```v
+import strconv
+
+assert strconv.quote_to_ascii('café') == '"caf\\u00e9"'
+assert strconv.quote_to_graphic('a\u00e9') == '"aé"'
+```
+
+Each function has an `append_` form that extends a `[]u8` the caller already
+owns instead of allocating a new string, which is what you want inside a loop.
+
+```v
+import strconv
+
+mut buf := 'log: '.bytes()
+buf = strconv.append_quote(buf, 'a\tb')
+```
+
+`is_print` and `is_graphic` answer the two questions those functions ask, and
+`can_backquote` reports whether a string can be written as a raw backquoted
+literal.
+
+```v
+import strconv
+
+assert strconv.is_print('a'.runes()[0])
+assert !strconv.is_print(0x07)
+assert strconv.is_graphic(' '.runes()[0])
+assert !strconv.is_graphic(0x00AD)
+assert !strconv.can_backquote('a\\b')
+```
+
+The lookup tables live in `printable_tables.v`, generated from Go's
+`unicode.IsPrint`, `unicode.IsGraphic` and `strconv.CanBackquote`. The test
+suite checks all three against Go's output, and `is_print`, `is_graphic` and
+`can_backquote` are each verified over every code point from 0 to `0x10FFFF`.
