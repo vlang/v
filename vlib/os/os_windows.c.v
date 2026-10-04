@@ -361,8 +361,10 @@ pub fn ls(path string) ![]string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !is_dir(path) {
+		// match POSIX, where opendir() on an existing file fails with ENOTDIR
+		code := if exists(path) { error_code_notdir } else { error_code_noent }
 		return error_with_code('ls() couldnt open dir "${path}": directory does not exist',
-			error_code_noent)
+			code)
 	}
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
 	path_files := '${path}\\*'
