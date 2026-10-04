@@ -1,0 +1,27 @@
+struct Context {
+mut:
+	value int
+}
+
+struct App {}
+
+fn (_ App) index(mut ctx &Context) {
+	ctx.value++
+}
+
+fn call(app App, mut user_context Context) {
+	app.index(mut user_context)
+	mut local := Context{}
+	app.index(mut local)
+	mut name := 'ctx'
+	app.index(mut name)
+	mut p := &user_context
+	app.index(mut p)
+}
+
+fn main() {
+	app := App{}
+	mut ctx := Context{}
+	call(app, mut ctx)
+	println(ctx.value)
+}

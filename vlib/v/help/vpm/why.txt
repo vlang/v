@@ -1,0 +1,26 @@
+Explain why a module is in a project's dependency graph.
+
+Usage:
+  v why [PACKAGE]
+
+With no PACKAGE, prints the whole graph, rooted at the current project.
+With a PACKAGE, prints only the routes that reach it.
+
+Examples:
+  v why                 # the whole graph
+  v why vsl             # why vsl is here
+
+The graph is built by reading each installed module's own v.mod, so PACKAGE
+may be written either as a registered name or as a git URL. Modules are looked
+up in the project's own folder (where `v install --local` puts them) and then
+in VMODULES. A dependency that is required but not installed is reported as
+such rather than left out.
+
+`v why` follows the `dependencies` declared in v.mod files; to see which imports
+bring a module into the build, use `v mod why`.
+
+This command only reads. It never contacts the registry or the network, so it
+works in a build that has no network at all.
+
+Options:
+  -v  Print more details about the performed operation.

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/mut_ref_param_missing_mut_arg_err.vv:13:12: error: method `index` parameter `ctx` is `mut ctx &Context`, a mutable reference to a `&Context`: pass `mut` of a `&Context` variable (e.g. `mut p := &user_context`, then `mut p`), or declare it `mut ctx Context`
+   11 | 
+   12 | fn call(app App, mut user_context Context) {
+   13 |     app.index(user_context)
+      |               ~~~~~~~~~~~~
+   14 |     mut p := &user_context
+   15 |     app.index(p)
+vlib/v/checker/tests/mut_ref_param_missing_mut_arg_err.vv:15:12: error: method `index` parameter `ctx` is `mut`, so use `mut p` instead
+   13 |     app.index(user_context)
+   14 |     mut p := &user_context
+   15 |     app.index(p)
+      |               ^
+   16 | }
+   17 |

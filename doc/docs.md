@@ -8001,6 +8001,31 @@ fn main() {
 // name is of type string
 ```
 
+A `$if` in a reflection loop is decided at compile time, separately for each item. Its
+condition can compare the loop variable's metadata with literals (`==`, `!=`, `<`, `>`, `<=`,
+`>=`, `in`), check types with `is`, test names with `.starts_with()`, `.ends_with()`,
+`.contains()` and `.len`, and combine those with `&&`, `||` and `!`. A condition that cannot
+be decided at compile time is usually reported as an error; use a runtime `if` for it instead:
+
+```v
+struct User {
+	name string
+	age  int
+}
+
+fn main() {
+	$for field in User.fields {
+		// A runtime `if`: `$if` cannot call methods such as `to_upper()`.
+		if field.name.to_upper() == 'AGE' {
+			println('${field.name} is the age')
+		}
+	}
+}
+
+// Output:
+// age is the age
+```
+
 #### <h4 id="comptime-values">.values</h4>
 
 You can read [Enum](#enums) values and their attributes.
@@ -10043,10 +10068,11 @@ will be added last (note the .a suffix):
 ```v oksyntax
 #flag /path/to/ffi.a
 ```
-If you need to reverse the order (prepend the static library in the libs section of the
+If you need to reverse the order (prepend the library in the libs section of the
 C compilation line, before other libs), use:
 ```v oksyntax
 #flag /path/to/ffi.a@START_LIBS
+#flag -lffi@START_LIBS
 ```
 
 You can (optionally) use different flags for different targets.
