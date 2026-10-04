@@ -1,0 +1,23 @@
+enum Depmod {
+	any
+	equal
+	at_least
+}
+
+pub fn (mod &Depmod) str() string {
+	res := match mod {
+			.equal { '=' }
+			.at_least { '>=' }
+			else { ' ' }
+		}
+	}
+	return res
+}
+
+pub fn (mod &Depmod) format() string {
+	return mod.str()
+}
+
+fn main() {
+	println(Depmod.equal.format())
+}

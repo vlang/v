@@ -1,0 +1,7 @@
+vlib/v/parser/tests/missing_closing_brace_before_method_err.vv:11:1: error: unexpected function declaration, expecting `}` to close function `Foo.helper`
+    9 | }
+   10 | 
+   11 | fn (f Foo) other[T](v T) T {
+      | ~~
+   12 |     return v
+   13 | }

@@ -1,0 +1,17 @@
+fn helper(x int) int {
+	if x > 0 {
+		return x
+	return 0
+}
+
+pub fn format(x int) string {
+	return x.str()
+}
+
+fn other() int {
+	return 1
+}
+
+fn main() {
+	println(helper(3))
+}
