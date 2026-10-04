@@ -13408,6 +13408,13 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 			}
 			outer_scope = outer_scope.parent
 		}
+	} else {
+		// A lambda inside a closure cannot reach what the closure does not capture.
+		for name, _ in tc.fn_context.closure_forbidden_captures {
+			if tc.ident_uses_forbidden_closure_capture(name) {
+				forbidden_captures[name] = true
+			}
+		}
 	}
 	saved_fn_context := tc.fn_context
 	tc.fn_context = new_function_check_context()
