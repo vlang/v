@@ -11,6 +11,7 @@
 //   v skills add <name>              install one bundled skill into this project
 //   v skills add <name> --global     install it for the current user
 //   v skills remove <name>           uninstall it from this project
+//   v skills update [<name>...]      refresh installed skills whose bundle changed
 //   v skills path <name>             print where a skill is installed
 module main
 

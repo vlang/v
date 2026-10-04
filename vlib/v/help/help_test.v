@@ -61,6 +61,14 @@ fn test_all_topics() {
 	}
 }
 
+fn test_other_topic_summary_of_skills_mentions_update() {
+	res := os.exec([@VEXE, 'help', 'other'])
+	assert res.exit_code == 0, res.output
+	// The one-line summary is what a reader sees in the command list, so a
+	// subcommand missing from it is a subcommand the list claims is absent.
+	assert res.output.contains('List, install, update and remove the agent skills'), res.output
+}
+
 fn test_unknown_topic() {
 	res := os.exec([@VEXE, 'help', 'abc'])
 	assert res.exit_code == 1, res.output
