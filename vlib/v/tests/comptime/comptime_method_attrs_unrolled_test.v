@@ -192,6 +192,27 @@ fn test_comptime_if_method_attrs_index() {
 	assert at_most_two == ['list', 'item']
 }
 
+// A member access on an indexed attribute stays attached to the substituted value.
+fn test_comptime_if_method_attrs_index_member_access() {
+	mut gets := []string{}
+	mut puts := []string{}
+	mut plain := []string{}
+	$for method in Routes.methods {
+		$if method.attrs[0].starts_with('GET ') {
+			gets << method.name
+		}
+		$if method.attrs[1].starts_with('PUT ') {
+			puts << method.name
+		}
+		$if method.attrs[0].len == 0 {
+			plain << method.name
+		}
+	}
+	assert gets == ['list', 'item']
+	assert puts == ['item']
+	assert plain == ['helper']
+}
+
 // ── allocation: none per pass ───────────────────────────────────────────────
 
 fn count_for_in() int {
