@@ -128,7 +128,25 @@ fn tool_cache_root_can_stage(path string) bool {
 	return information.mode & 0o022 == 0 || information.mode & 0o1000 != 0
 }
 
-// make_tool_cache_root_private makes sure that only the current user can write to the cache
+// tool_cache_parents_are_trusted reports whether `path` and every folder above it pass
+// `tool_cache_root_can_stage`. If any of them is writable by others (without the sticky bit),
+// someone else could rename the folder below it and put their own one in its place.
+fn tool_cache_parents_are_trusted(path string) bool {
+	mut current := os.real_path(path)
+	for {
+		if !tool_cache_root_can_stage(current) {
+			return false
+		}
+		parent := os.dir(current)
+		if parent == current {
+			return true
+		}
+		current = parent
+	}
+	return true
+}
+
+// make_tool_cache_root_private makes sure that only the current user can write to a cache
 // folder, so that `tool_cache_root_can_stage` accepts it. It only changes folders that the
 // current user owns, and skips shared folders like `/tmp` that use the sticky bit.
 fn make_tool_cache_root_private(path string) {

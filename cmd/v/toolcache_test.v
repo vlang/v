@@ -1728,3 +1728,132 @@ fn test_binary_identity_separates_two_builds() {
 
 	assert binary_identity(os.join_path(directory, 'absent')) == file_stamp_missing
 }
+
+// trusted_toolcache_test_dir creates a private folder directly in the system temporary folder.
+// Default cache roots are only used when every folder above them is private too, which the
+// folders of the test runner are not, when they were created with a umask like 002.
+fn trusted_toolcache_test_dir(name string) ?string {
+	directory := os.join_path(os.temp_dir(), 'v_toolcache_${name}_${os.getpid()}')
+	os.rmdir_all(directory) or {}
+	os.mkdir(directory, mode: 0o700) or { return none }
+	if !tool_cache_parents_are_trusted(directory) {
+		os.rmdir_all(directory) or {}
+		return none
+	}
+	return directory
+}
+
+// with_default_tool_cache_roots points both default cache folders into `directory`, by way of
+// `XDG_CACHE_HOME` and `VTMP`, while `body` runs. `body` gets V`s own folder, `<directory>/xdg/v`.
+fn with_default_tool_cache_roots(directory string, body fn (string) !) ! {
+	names := ['XDG_CACHE_HOME', 'VTMP', tool_cache_dir_env, tool_cache_disable_env]
+	mut previous := map[string]?string{}
+	for name in names {
+		previous[name] = os.getenv_opt(name)
+	}
+	defer {
+		for name, value in previous {
+			if v := value {
+				os.setenv(name, v, true)
+			} else {
+				os.unsetenv(name)
+			}
+		}
+	}
+	xdg := os.join_path(directory, 'xdg')
+	vtmp := os.join_path(directory, 'vtmp')
+	os.mkdir(xdg, mode: 0o700)!
+	os.mkdir(vtmp, mode: 0o700)!
+	os.setenv('XDG_CACHE_HOME', xdg, true)
+	os.setenv('VTMP', vtmp, true)
+	os.unsetenv(tool_cache_dir_env)
+	os.unsetenv(tool_cache_disable_env)
+	body(os.join_path(xdg, 'v'))!
+}
+
+// A default cache folder that others could write to may contain entries that someone else
+// planted. It must be moved aside and replaced by a new, empty and private folder, and V's own
+// parent folder must be made private too, so that the new folder can not be swapped later.
+fn test_a_formerly_writable_default_cache_root_is_replaced_not_reused() {
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('formerly_writable_root') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn (v_dir string) ! {
+		old_root := os.join_path(v_dir, 'tools')
+		os.mkdir_all(os.join_path(old_root, 'planted'))!
+		os.chmod(v_dir, 0o775)!
+		os.chmod(old_root, 0o775)!
+		chosen := tool_cache_dir() or { panic('no usable tool cache directory') }
+		assert chosen == os.real_path(old_root), 'the default location should still be used'
+		assert os.ls(chosen)! == [], 'the new cache folder must start empty'
+		assert os.stat(chosen)!.mode & 0o777 == 0o700
+		assert os.stat(v_dir)!.mode & 0o777 == 0o755, 'V`s own parent folder must be private'
+		moved := os.ls(v_dir)!.filter(it.starts_with('tools.untrusted-'))
+		assert moved.len == 1, 'the old folder must be moved aside, got ${os.ls(v_dir)!}'
+		assert os.is_dir(os.join_path(v_dir, moved[0], 'planted'))
+		// A private folder is trusted from then on, and is reused as it is.
+		assert tool_cache_dir() or { '' } == chosen
+		assert os.ls(v_dir)!.filter(it.starts_with('tools.untrusted-')).len == 1
+	})!
+}
+
+// An entry planted in a formerly writable cache folder, under the exact name and with a manifest
+// that looks fresh, must never be executed. The real tool must be built and reused instead.
+fn test_an_entry_planted_in_a_formerly_writable_root_is_never_executed() {
+	$if windows {
+		return
+	}
+	vexe := os.real_path(@VEXE)
+	if !os.is_executable(vexe) {
+		eprintln('> skipping, no V executable at `${vexe}`')
+		return
+	}
+	vroot := find_vroot(vexe) or {
+		eprintln('> skipping, no V source tree for `${vexe}`')
+		return
+	}
+	source := find_external_tool_source(os.join_path(vroot, 'cmd', 'tools', probe_tool)) or {
+		panic('cannot find the `${probe_tool}` source')
+	}
+	directory := trusted_toolcache_test_dir('planted_entry') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	marker := os.join_path(directory, 'planted_entry_was_executed')
+	with_default_tool_cache_roots(directory, fn [vexe, source, marker] (v_dir string) ! {
+		old_root := os.join_path(v_dir, 'tools')
+		os.mkdir_all(old_root)!
+		os.chmod(v_dir, 0o775)!
+		os.chmod(old_root, 0o775)!
+		key := tool_cache_key(vexe, probe_tool, tool_key_sources(source), external_tool_build_args(probe_tool,
+			[]))
+		entry_dir := tool_cache_entry_dir_for_uid(old_root, probe_tool, key, os.getuid())
+		os.mkdir(entry_dir)!
+		planted := os.join_path(entry_dir, probe_tool)
+		os.write_file(planted, '#!/bin/sh\necho planted > ${os.quoted_path(marker)}\n')!
+		os.chmod(planted, 0o755)!
+		os.write_file(os.join_path(entry_dir, 'inputs'), '${tool_cache_manifest_version}\nstarted${tool_cache_field_separator}1\n')!
+
+		first := os.exec([vexe, 'timeout', '60', vexe, 'version'])
+		assert first.exit_code == 0, first.output
+		assert !os.exists(marker), 'the planted entry was executed'
+		os.setenv(tool_cache_verbose_env, '1', true)
+		defer {
+			os.unsetenv(tool_cache_verbose_env)
+		}
+		second := os.exec([vexe, 'timeout', '60', vexe, 'version'])
+		assert second.exit_code == 0, second.output
+		assert second.output.contains('> reusing the cached `${probe_tool}`'), second.output
+		assert !os.exists(marker), 'the planted entry was executed'
+	})!
+}

@@ -95,6 +95,9 @@ fn tool_cache_dir() ?string {
 		os.join_path(os.vtmp_dir(), 'tools')]
 	candidates << default_candidates
 	for candidate in candidates {
+		if candidate in default_candidates && !prepare_default_tool_cache_root(candidate) {
+			continue
+		}
 		if !os.is_dir(candidate) {
 			os.mkdir_all(os.dir(candidate)) or { continue }
 			// Create the folder so that only the current user can access it (mode 0700).
@@ -107,16 +110,43 @@ fn tool_cache_dir() ?string {
 				}
 			}
 		}
-		if candidate in default_candidates && !tool_cache_root_can_stage(candidate) {
-			// Older V versions created this folder group writable, so fix that here.
-			make_tool_cache_root_private(candidate)
-		}
 		if os.is_dir(candidate) && directory_is_writable(candidate)
 			&& tool_cache_root_can_stage(candidate) {
 			return os.real_path(candidate)
 		}
 	}
 	return none
+}
+
+// prepare_default_tool_cache_root makes sure that nobody else can change a default cache
+// folder, or what is inside it. It reports whether the folder can be used.
+//
+// The parent is V's own folder (`~/.cache/v` or `/tmp/v_<uid>`). It has to be private, along
+// with every folder above it, or someone else could swap the cache folder for their own one
+// at any time. V tightens the parent itself, when the current user owns it.
+//
+// A cache folder that others could write to earlier may hold entries that someone else put
+// there, and fixing its permissions afterwards does not make those entries trustworthy. So
+// such a folder is moved aside and never read again, and a new, empty one is created instead.
+fn prepare_default_tool_cache_root(candidate string) bool {
+	parent := os.dir(candidate)
+	os.mkdir_all(parent) or { return false }
+	if !tool_cache_root_can_stage(parent) {
+		make_tool_cache_root_private(parent)
+	}
+	if !tool_cache_parents_are_trusted(parent) {
+		return false
+	}
+	if os.is_dir(candidate) && !tool_cache_root_can_stage(candidate) {
+		$if windows {
+			// Privacy is decided by ACLs there, and a new folder would get the same ACL.
+			return false
+		}
+		// If this fails, e.g. because another V process just did the same, the check after
+		// the folder is created again decides.
+		os.rename(candidate, '${candidate}.untrusted-${time.now().unix()}-${os.getpid()}') or {}
+	}
+	return true
 }
 
 // directory_is_writable reports whether this process can actually create files in a
