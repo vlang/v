@@ -421,14 +421,15 @@ fn is_manifestless_registered_checkout(module_path string, module_name string, v
 	return normalize_mod_path(remote_owner) == normalize_mod_path(parts[0])
 }
 
-// candidate_module_path derives where a module lives, without reporting anything.
-// It returns the de-URL'd name alongside the path, because the name is what a user
-// recognises and callers report it when the module turns out not to be there.
+// candidate_module_path derives where a module lives under `vmodules_path`,
+// without checking that it is there or reporting anything. It returns the de-URL'd
+// name alongside the path, because the name is what a user recognises and callers
+// report it when the module turns out not to be there.
 //
 // Callers that treat a missing module as information rather than a failure (a
 // graph walk asks about every dependency of every module it visits) use this
 // directly instead of get_path_of_existing_module.
-fn candidate_module_path(mod_name string) (string, string, bool) {
+fn candidate_module_path(vmodules_path string, mod_name string) (string, string) {
 	// When given a URL, also try the publisher/name layout used by
 	// registered-name installations (e.g. `<vmodules>/spytheman/vtray` for
 	// `https://github.com/spytheman/vtray`), in addition to the bare name.
@@ -437,22 +438,18 @@ fn candidate_module_path(mod_name string) (string, string, bool) {
 	if is_url {
 		publisher, name := get_ident_from_url(mod_name) or { '', '' }
 		if publisher != '' && name != '' {
-			if path := get_path_of_existing_url_module(settings.vmodules_path, publisher,
-				name) {
-				return mod_name, path, true
+			if path := get_path_of_existing_url_module(vmodules_path, publisher, name) {
+				return mod_name, path
 			}
 		}
 	}
 	name := get_name_from_url(mod_name) or { mod_name }
 	rel_path := normalize_mod_path(name.replace('.', os.path_separator))
-	return name, os.real_path(os.join_path(settings.vmodules_path, rel_path)), true
+	return name, os.real_path(os.join_path(vmodules_path, rel_path))
 }
 
 fn get_path_of_existing_module(mod_name string) ?string {
-	name, path, ok := candidate_module_path(mod_name)
-	if !ok {
-		return none
-	}
+	name, path := candidate_module_path(settings.vmodules_path, mod_name)
 	if !os.exists(path) {
 		vpm_error('failed to find `${name}` at `${path}`.')
 		return none
