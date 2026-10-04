@@ -31,5 +31,19 @@ passing that text approves the edit instead of previewing it.
 Only the tools that genuinely compile or run something start the compiler; the
 rest answer from the parsed source.
 
+Registering with a coding agent:
+
+  v mcp install                 print the entry for every client it finds
+  v mcp install opencode         write it into that client's configuration
+  v mcp install --project        use the project-level file instead
+  v mcp install opencode --print print it without writing
+  v mcp uninstall opencode       remove it again
+
+  Clients: opencode, claude-code, cursor, vscode, zed, gemini.
+
+  Nothing is written without a client name. The file is edited where it already
+  is, so a commented or trailing-comma configuration is reported rather than
+  rewritten, and the entry is added beside the servers a client already has.
+
 See also `v skills`, which installs the bundled agent skills, including one for
 using this server.

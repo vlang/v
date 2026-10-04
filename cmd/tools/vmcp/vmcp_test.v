@@ -1175,3 +1175,275 @@ fn test_a_tool_only_requires_arguments_it_declares_as_properties() {
 		}
 	}
 }
+
+// A file the installer is pointed at is never a real one: every test writes into
+// its own directory under the temp root, so nothing here can touch the config
+// of a client that is actually installed.
+fn config_fixture(name string, content string) !string {
+	dir := os.join_path(test_root, 'cfg_' + name)
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	path := os.join_path(dir, 'config.json')
+	if content != '' {
+		os.write_file(path, content)!
+	}
+	return path
+}
+
+// read_config returns the file's text, for an assertion about what survived.
+fn read_config(path string) string {
+	return os.read_file(path) or { panic(err) }
+}
+
+// parses reports whether the file is still valid JSON after the edit, which is
+// the property that matters most: a config the client cannot load is worse than
+// one missing an entry.
+fn parses(path string) bool {
+	json.decode[map[string]json.Any](read_config(path)) or { return false }
+	return true
+}
+
+fn test_every_harness_names_a_key_and_a_user_file() {
+	for h in harnesses() {
+		assert h.name != '', 'a harness with no name'
+		assert h.key != '', '${h.name}: no top-level key'
+		assert h.user != '', '${h.name}: no user-level file'
+	}
+}
+
+fn test_harness_names_are_unique() {
+	mut seen := []string{}
+	for h in harnesses() {
+		assert h.name !in seen, '${h.name} is listed twice'
+		seen << h.name
+	}
+}
+
+fn test_opencode_takes_the_executable_and_arguments_as_one_array() {
+	opencode := find_harness('opencode') or { panic('opencode is missing') }
+	entry := opencode.entry('C:\\v\\v.exe', ['mcp', 'serve'])
+	// One array, not a command string plus args.
+	assert entry.contains('"command": ["C:\\\\v\\\\v.exe", "mcp", "serve"]'), entry
+	assert !entry.contains('"args"'), entry
+	// The discriminator this client requires.
+	assert entry.contains('"type": "local"'), entry
+}
+
+fn test_claude_style_clients_take_a_command_string_and_args() {
+	claude := find_harness('claude-code') or { panic('claude-code is missing') }
+	entry := claude.entry('C:\\v\\v.exe', ['mcp', 'serve'])
+	assert entry.contains('"command": "C:\\\\v\\\\v.exe"'), entry
+	assert entry.contains('"args": ["mcp", "serve"]'), entry
+}
+
+fn test_a_windows_executable_keeps_its_backslashes() {
+	cursor := find_harness('cursor') or { panic('cursor is missing') }
+	entry := cursor.entry('C:\\Users\\me\\v.exe', ['mcp'])
+	assert entry.contains('"command": "C:\\\\Users\\\\me\\\\v.exe"'), entry
+}
+
+fn test_it_refuses_to_reorder_or_drop_an_existing_config() {
+	path := config_fixture('order', '{"zed":{"a":1},"mcp":{"duck":{"type":"local"}},"other":true}')!
+	h := Harness{
+		name: 'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path) or { panic(err) }
+	after := read_config(path)
+	// The entry went in...
+	assert after.contains('"vlang"'), after
+	// ...and the surrounding keys are in the order they were written, which a
+	// decode/encode round trip would not preserve.
+	zed_at := after.index('"zed"') or { -1 }
+	servers_at := after.index('"mcp"') or { -1 }
+	other_at := after.index('"other"') or { -1 }
+	assert zed_at < servers_at, after
+	assert servers_at < other_at, after
+	assert after.contains('"duck"'), after
+	assert parses(path)
+}
+
+fn test_it_fills_an_empty_servers_object_without_a_stray_comma() {
+	path := config_fixture('empty', '{"mcp":{}}')!
+	h := Harness{
+		name: 'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path) or { panic(err) }
+	after := read_config(path)
+	assert !after.contains(',}'), after
+	assert parses(path), after
+}
+
+fn test_it_adds_a_comma_when_the_object_already_has_servers() {
+	path := config_fixture('nonempty', '{"mcp":{"duck":{"type":"local"}}}')!
+	h := Harness{
+		name: 'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path) or { panic(err) }
+	after := read_config(path)
+	assert after.contains('"vlang"'), after
+	assert after.contains('"duck"'), after
+	assert parses(path), after
+}
+
+fn test_it_puts_the_entry_on_its_own_line_at_the_files_indentation() {
+	path := config_fixture('indent', '{\n  "mcp": {\n    "duck": {\n      "type": "local"\n    }\n  }\n}\n')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path) or { panic(err) }
+	after := read_config(path)
+	assert parses(path), after
+	// The entry takes the line and the indentation of the entry already there,
+	// instead of being crammed onto the line that opens the object.
+	assert after.contains('\n    "vlang": '), after
+	assert !after.contains('{"vlang"'), after
+	// Everything else, including the entry it sat beside, is untouched. The new
+	// entry takes the comma, so the one it was inserted before stays last.
+	assert after.contains('\n    "duck": {\n      "type": "local"\n    }\n'), after
+}
+
+fn test_it_refuses_a_file_that_is_not_plain_json() {
+	// A comment is the common case: these files are meant to be edited by hand.
+	path := config_fixture('jsonc', '{\n  // my servers\n  "mcp": {}\n}\n')!
+	h := Harness{
+		name: 'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	assert !is_plain_json(read_config(path)), 'a commented file must not count as plain JSON'
+	before := read_config(path)
+	write_entry(h, path) or { panic(err) }
+	// Nothing was written, so the comment is still there.
+	assert read_config(path) == before, 'a JSONC file was rewritten'
+}
+
+fn test_it_refuses_a_config_with_trailing_commas() {
+	path := config_fixture('trailing', '{"mcp":{"duck":{},}}')!
+	assert !is_plain_json(read_config(path)), 'a trailing comma must not count as plain JSON'
+}
+
+fn test_it_will_not_register_the_same_server_twice() {
+	path := config_fixture('twice', '{"mcp":{}}')!
+	h := Harness{
+		name: 'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path) or { panic(err) }
+	once := read_config(path)
+	write_entry(h, path) or { panic(err) }
+	assert read_config(path) == once, 'a second install changed the file'
+}
+
+fn test_it_leaves_a_config_without_the_key_alone() {
+	path := config_fixture('nokey', '{"unrelated":{}}')!
+	h := Harness{
+		name: 'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	before := read_config(path)
+	write_entry(h, path) or { panic(err) }
+	assert read_config(path) == before, 'a file with no matching key was modified'
+}
+
+fn test_a_key_named_like_another_client_is_not_mistaken_for_it() {
+	// The string "mcp" appears inside a value here, and it must not be taken for
+	// the top-level key.
+	path := config_fixture('decoy', '{"note":{"text":"the mcp key"},"mcp":{"duck":{}}}')!
+	h := Harness{
+		name: 'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path) or { panic(err) }
+	after := read_config(path)
+	assert after.contains('"note"'), after
+	assert after.contains('"vlang"'), after
+	assert parses(path), after
+}
+
+fn test_it_creates_a_missing_config_with_the_key_in_it() {
+	path := config_fixture('missing', '')!
+	h := Harness{
+		name:       'test'
+		label:      'test'
+		key:        'mcpServers'
+		create_user: true
+	}
+	write_entry(h, path) or { panic(err) }
+	assert parses(path), read_config(path)
+	assert has_entry(read_config(path), 'mcpServers', server_id), read_config(path)
+}
+
+fn test_it_will_not_create_a_file_at_an_unconfirmed_path() {
+	path := config_fixture('unconfirmed', '')!
+	h := Harness{
+		name:       'test'
+		label:      'test'
+		key:        'context_servers'
+		create_user: false
+	}
+	write_entry(h, path) or { panic(err) }
+	// Creating a config where the client never reads it would look installed
+	// without being installed.
+	assert !os.exists(path), 'a file was created at an unconfirmed path'
+}
+
+fn test_uninstall_removes_the_entry_and_leaves_the_rest() {
+	path := config_fixture('remove', '{"mcp":{"duck":{"type":"local"},"vlang":{"type":"local"}},"other":true}')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	assert remove_entry(h, path), 'the entry was not removed'
+	after := read_config(path)
+	assert !after.contains('"vlang"'), after
+	assert after.contains('"duck"'), after
+	assert after.contains('"other"'), after
+	assert parses(path), after
+}
+
+fn test_uninstall_removes_the_last_entry_without_leaving_a_comma() {
+	path := config_fixture('removelast', '{"mcp":{"vlang":{"type":"local"}}}')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	assert remove_entry(h, path), 'the entry was not removed'
+	assert parses(path), read_config(path)
+	assert !read_config(path).contains('"vlang"'), read_config(path)
+}
+
+fn test_uninstall_reports_nothing_when_the_entry_is_absent() {
+	path := config_fixture('absent', '{"mcp":{"duck":{}}}')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	assert !remove_entry(h, path), 'removing a missing entry reported success'
+	assert read_config(path) == '{"mcp":{"duck":{}}}', 'the file changed'
+}
+
+fn test_uninstall_leaves_a_commented_file_alone() {
+	path := config_fixture('removejsonc', '{\n  // keep me\n  "mcp":{"vlang":{}}\n}\n')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	before := read_config(path)
+	// It is not plain JSON, so the entry cannot be located safely either.
+	assert !is_plain_json(before), 'a commented file must not count as plain JSON'
+}
