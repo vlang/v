@@ -391,6 +391,36 @@ fn test_path_rel_rejects_different_windows_volumes() {
 	}
 }
 
+fn test_path_rel_roots_and_case() ! {
+	$if windows {
+		// Volumes and components compare case-insensitively, and either
+		// separator may be used.
+		assert path_rel(r'C:\a\b', r'c:\A\c')! == r'..\c'
+		assert path_rel('C:/a/b', r'C:\a\c')! == r'..\c'
+		assert path_rel(r'\\server\share\a\b', r'\\SERVER\share\a\c')! == r'..\c'
+		assert path_rel(r'\\server\share', r'\\server\share\a')! == 'a'
+		// The drive of a drive relative path is its root, not a component.
+		assert path_rel('C:a', 'C:b')! == r'..\b'
+		assert path_rel('C:', 'C:a')! == 'a'
+		failing := [
+			[r'C:..\a', 'C:b']
+			['C:a', r'C:\a']
+			[r'\\server\s1\a', r'\\server\s2\a']
+			[r'\\?\UNC\srv\s1\a', r'\\?\UNC\srv\s2\a'],
+		]
+		for c in failing {
+			mut failed := false
+			path_rel(c[0], c[1]) or {
+				failed = true
+			}
+			assert failed, 'path_rel(${c[0]}, ${c[1]}) should have failed'
+		}
+	} $else {
+		// Elsewhere components that differ only in case name different paths.
+		assert path_rel('/a/B', '/a/b')! == '../b'
+	}
+}
+
 // A relative path that resolves back to the target is the whole point of the
 // function, so check that property rather than only the string it returns.
 fn test_path_rel_result_resolves_to_target() {

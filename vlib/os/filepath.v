@@ -126,34 +126,42 @@ pub fn norm_path(path string) string {
 }
 
 // path_rel returns a path which, resolved against basepath, reaches targpath.
-// It follows the same rules as Go's path/filepath.Rel: both paths are normalized
-// first, `.` is returned when they name the same path, and an error is returned
-// when targpath cannot be expressed relative to basepath. That happens when one
-// path is absolute and the other is not, when the two paths are on different
-// Windows volumes, or when basepath's first component is `..`.
+// It follows Go's path/filepath.Rel, except that the result is always
+// normalized: both paths are normalized first, `.` is returned when they name
+// the same path, and an error is returned when targpath cannot be expressed
+// relative to basepath. That happens when one path is absolute and the other is
+// not, when the two paths are on different Windows volumes, or when, after the
+// leading components it shares with targpath, basepath still contains `..`.
+// path_rel is purely lexical: it does not access the filesystem, resolve
+// symlinks or use the working directory. Pass the paths through `os.real_path`
+// or `os.abs_path` first if that matters.
 //
 // Example:
 // ```v
 // assert os.path_rel('/a/b', '/a/b/c')! == 'c'
-// assert os.path_rel('/a/b', '/a/c')! == '..\\c'
+// assert os.path_rel('/a/b', '/a/c')! == os.join_path('..', 'c')
 // ```
 pub fn path_rel(basepath string, targpath string) !string {
-	base := norm_path(basepath)
-	targ := norm_path(targpath)
-	if path_rel_same_word(base, targ) {
+	nbase := norm_path(basepath)
+	ntarg := norm_path(targpath)
+	if path_rel_same_word(nbase, ntarg) {
 		return dot_str
 	}
-	if is_abs_path(base) != is_abs_path(targ) {
+	if is_abs_path(nbase) != is_abs_path(ntarg) {
 		return error('path_rel: cannot make "${targpath}" relative to "${basepath}"')
 	}
+	// The root (a Windows volume, plus the server and share of a `\\?\UNC\`
+	// path) must match, and is left out of the components compared below.
+	base_root_len := win_root_len(nbase)
+	targ_root_len := win_root_len(ntarg)
 	$if windows {
-		if !path_rel_same_word(windows_volume(base), windows_volume(targ)) {
+		if !path_rel_same_word(nbase[..base_root_len], ntarg[..targ_root_len]) {
 			return error('path_rel: cannot make "${targpath}" relative to "${basepath}"')
 		}
 	}
 	sep := path_separator
-	base_elems := path_rel_components(base, sep)
-	targ_elems := path_rel_components(targ, sep)
+	base_elems := path_rel_components(nbase[base_root_len..], sep)
+	targ_elems := path_rel_components(ntarg[targ_root_len..], sep)
 	// The number of leading components the two paths share.
 	mut common := 0
 	for common < base_elems.len && common < targ_elems.len
@@ -176,9 +184,10 @@ pub fn path_rel(basepath string, targpath string) !string {
 	return ret.join(sep)
 }
 
-// path_rel_components splits an already normalized path into the components
-// below its root, so that a root of `/` or `C:` is left out. A path naming only
-// the current directory has no components at all.
+// path_rel_components splits an already normalized path, whose Windows root
+// has been cut off, into its components. The separator left at the front of a
+// rooted path does not make a component, and a path naming only the current
+// directory has no components at all.
 fn path_rel_components(norm string, sep string) []string {
 	if norm == dot_str || norm == empty_str {
 		return []string{}
@@ -187,7 +196,7 @@ fn path_rel_components(norm string, sep string) []string {
 }
 
 // path_rel_same_word compares two path components the way the host filesystem
-// would, which is case-insensitively on Windows and exactly elsewhere.
+// would, which is case-insensitively on Windows and exactly elsewhere (like Go).
 fn path_rel_same_word(a string, b string) bool {
 	$if windows {
 		return a.to_lower_ascii() == b.to_lower_ascii()
