@@ -3,11 +3,10 @@ module builtin
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
-
-fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
 
 // backtrace_exec_capture avoids a shell while keeping builtin independent of os.
+// It does not reuse os' C capture helpers: every program links builtin, and the
+// module cache can not split a static C helper between builtin and os objects.
 fn backtrace_exec_capture(args []string) (string, int) {
 	mut cargs := []&char{cap: args.len + 1}
 	for arg in args {
@@ -15,11 +14,29 @@ fn backtrace_exec_capture(args []string) (string, int) {
 	}
 	// The C argument vector must end with a null pointer.
 	cargs << &char(unsafe { nil })
-	mut pid := 0
-	mut fd := 0
-	if C.v_os_exec_capture_start(cargs.data, &pid, &fd) != 0 {
+	mut pipefd := [2]i32{}
+	if C.pipe(&pipefd[0]) != 0 {
 		return '', -1
 	}
+	// Children that other threads start meanwhile must not inherit the pipe;
+	// an open write end would keep the reader below from seeing EOF.
+	C.fcntl(pipefd[0], C.F_SETFD, C.FD_CLOEXEC)
+	C.fcntl(pipefd[1], C.F_SETFD, C.FD_CLOEXEC)
+	pid := C.fork()
+	if pid < 0 {
+		C.close(pipefd[0])
+		C.close(pipefd[1])
+		return '', -1
+	}
+	if pid == 0 {
+		// The duplicated stdout/stderr descriptors stay open across exec.
+		C.dup2(pipefd[1], 1)
+		C.dup2(pipefd[1], 2)
+		C.execvp(cargs[0], unsafe { &&char(cargs.data) })
+		C._exit(127)
+	}
+	C.close(pipefd[1])
+	fd := pipefd[0]
 	mut output := ''
 	mut buf := [4096]u8{}
 	for {

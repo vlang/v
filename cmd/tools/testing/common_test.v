@@ -183,3 +183,24 @@ fn test_build_v_args_failed_accepts_literal_arguments() {
 	assert !build_v_args_failed([@VEXE, 'version'])
 	assert build_v_args_failed([]string{})
 }
+
+fn test_find_started_redis_on_default_port_accepts_an_unrewritten_process_title() {
+	// `set-proc-title no` keeps the original command line, which does not show the port.
+	lines := [
+		'  PID TTY      STAT   TIME COMMAND',
+		' 1234 ?        Ssl    0:10 redis-server /tmp/redis.conf',
+	]
+	assert find_started_redis_on_default_port(lines)! == lines[1]
+}
+
+fn test_find_started_redis_on_default_port_matches_the_whole_port() {
+	other_port := ' 1234 ?        Ssl    0:10 redis-server *:63790'
+	default_port := ' 5678 ?        Ssl    0:10 redis-server *:6379'
+	if _ := find_started_redis_on_default_port([other_port]) {
+		assert false, 'a redis-server on port 63790 does not serve the default port'
+	}
+	if _ := find_started_redis_on_default_port([]string{}) {
+		assert false, 'no process is not a started redis-server'
+	}
+	assert find_started_redis_on_default_port([other_port, default_port])! == default_port
+}

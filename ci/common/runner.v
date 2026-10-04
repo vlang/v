@@ -14,17 +14,9 @@ pub fn exec(command string) {
 
 // exec_args runs literal arguments with the V compiler from this checkout.
 pub fn exec_args(arguments []string) {
-	mut argv := arguments.clone()
-	mut program_index := 0
-	for program_index < argv.len && is_env_assignment(argv[program_index]) {
-		program_index++
-	}
-	if program_index < argv.len && argv[program_index] == 'v' {
-		argv[program_index] = os.getenv_opt('V_CI_VEXE') or { os.join_path_single(@VEXEROOT, 'v') }
-	}
-	if program_index > 0 {
-		argv.prepend('env')
-	}
+	argv := ci_argv(arguments, os.getenv_opt('V_CI_VEXE') or {
+		os.join_path_single(@VEXEROOT, 'v')
+	})
 	command := argv.map(os.quoted_path(it)).join(' ')
 	cmd := resolve_v_command(command)
 	progress_dir := ci_task_progress_dir()
@@ -47,6 +39,25 @@ pub fn exec_args(arguments []string) {
 	if result != 0 {
 		exit(result)
 	}
+}
+
+// ci_argv replaces the program `v` with `vexe`, also after leading `NAME=value`
+// assignments, which are then run through `env`. An explicit leading `env`
+// program is kept, so `['env', 'VJOBS=1', 'v', ...]` does not depend on PATH.
+fn ci_argv(arguments []string, vexe string) []string {
+	mut argv := arguments.clone()
+	has_env_program := argv.len > 0 && argv[0] == 'env'
+	mut program_index := if has_env_program { 1 } else { 0 }
+	for program_index < argv.len && is_env_assignment(argv[program_index]) {
+		program_index++
+	}
+	if program_index < argv.len && argv[program_index] == 'v' {
+		argv[program_index] = vexe
+	}
+	if program_index > 0 && !has_env_program {
+		argv.prepend('env')
+	}
+	return argv
 }
 
 fn ci_task_progress_dir() string {
