@@ -49,6 +49,35 @@ directory, so they are ignored, and `os.parent_dir('/a/b/')` is `/a` rather than
 `/a/b`. A separator is any byte the platform accepts as one, so a Windows path
 may mix `/` and `\` and the last separator of either kind decides the parent.
 
+`os.path_rel()` goes the other way: given a base and a target, it returns the
+path that leads from one to the other. It is the function to reach for instead of
+stripping a common prefix by hand, which gets the number of `..` wrong as soon as
+the two paths share no prefix at all:
+
+```v ignore
+css := os.path_rel('/srv/app', '/srv/app/static/main.css') or { panic(err) } // 'static/main.css'
+up := os.path_rel('/srv/app/logs', '/srv/app/static') or { panic(err) }      // '../static'
+```
+
+Both paths are normalized first, so `.` comes back for two spellings of the same
+path, and `..` is collapsed before anything is compared. The separator in the
+result is the platform's, so on Windows the results above are `static\main.css`
+and `..\static`. Two cases have no answer and return an error rather than a
+misleading path: when one path is absolute and the other is not, and when, after
+the leading components it shares with the target, the base still contains `..`
+(the base climbs higher above the starting directory than the target does). A
+`..` in the target is fine, so `os.path_rel('a', '../b')` is `../../b`, and so is
+a `..` the two paths share: `os.path_rel('../a', '../b')` is `../b`.
+
+`os.path_rel()` is purely lexical: it does not access the filesystem, resolve
+symlinks or use the working directory, so `a/link/..` collapses to `a` even if
+`link` is a symlink. Pass the paths through `os.real_path()` or `os.abs_path()`
+first if that matters (this is also why mixing an absolute and a relative path is
+an error).
+
+On Windows the two paths must also be on the same volume, since `C:\a` cannot be
+reached from `D:\b` by changing directory.
+
 On Windows, `os.uname()` leaves `release` and `version` empty if the `ver` command
 fails or does not report a numeric version. Localized version labels are accepted.
 
