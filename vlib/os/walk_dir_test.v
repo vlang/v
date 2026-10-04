@@ -45,30 +45,33 @@ fn rel_to_tfolder(path string) string {
 	return path[tfolder.len..].trim_left(os.path_separator)
 }
 
-// Collector accumulates what walk_dir reported.
-//
-// Every test drives walk_dir through `walk_*` helpers that take `mut c
-// Collector`, rather than closing over a local and reading it afterwards. A
-// closure passed to walk_dir that inherits a mutable variable, and a method value
-// taken from a mutable local, both run but discard their writes, so the parameter
-// is what makes the accumulation observable.
+// Collector accumulates what walk_dir reported. Its `cb` method is handed to
+// walk_dir as a method value, which writes into the Collector it was taken from,
+// so the fields can be read once the walk returns.
 struct Collector {
 mut:
-	visits   []string
-	dirs     []string
-	files    []string
-	other    []string
-	failed   []string
-	prune    string // a directory name to veto with .skip_dir
-	stop_at  int    // stop once this many entries have been reported
-	calls    int    // how many times the callback ran, including the one that stops
-	deepest  int    // most separators seen in a reported directory path
-	sep_byte u8
+	visits      []string
+	dirs        []string
+	files       []string
+	links       []string
+	other       []string
+	failed      []string
+	err_codes   []int  // err.code() of every report that carried an error
+	last        string // the path reported by the previous call
+	prune       string // a directory name to veto with .skip_dir
+	stop_at     int    // stop once this many entries have been reported
+	stop_on_err bool   // stop at the first report that carries an error
+	calls       int    // how many times the callback ran, including the one that stops
+	deepest     int    // most separators seen in a reported directory path
+	sep_byte    u8
 }
 
 fn (mut c Collector) cb(path string, entry os.WalkDirEntry) os.WalkDirAction {
 	c.calls++
 	c.visits << rel_to_tfolder(path)
+	// Only a directory that could not be listed is reported twice in a row.
+	second_report := path == c.last
+	c.last = path
 	if entry.is_dir {
 		mut level := 0
 		for ch in path {
@@ -80,20 +83,33 @@ fn (mut c Collector) cb(path string, entry os.WalkDirEntry) os.WalkDirAction {
 			c.deepest = level
 		}
 	}
-	if entry.err != none {
+	if err := entry.err {
 		c.failed << path
-		// A path that could not be read must not look like a directory, or a
-		// callback could descend into it.
-		assert !entry.is_dir, 'a failed entry reported is_dir for ${path}'
-		assert entry.typ == .unknown, 'a failed entry reported ${entry.typ} for ${path}'
-		return .proceed
+		c.err_codes << err.code()
+		if second_report {
+			// The listing failure is attached to the directory as it was first
+			// reported.
+			assert entry.is_dir, 'a directory that could not be listed lost is_dir: ${path}'
+			assert entry.typ == .directory, 'a directory that could not be listed reported ${entry.typ}: ${path}'
+		} else {
+			// A path that could not be stat'ed must not look like a directory, or a
+			// callback could descend into it.
+			assert !entry.is_dir, 'a failed entry reported is_dir for ${path}'
+			assert entry.typ == .unknown, 'a failed entry reported ${entry.typ} for ${path}'
+		}
+		return if c.stop_on_err { .stop } else { .proceed }
 	}
+	assert !second_report, '${path} was reported twice without an error'
 	match entry.typ {
 		.directory {
 			c.dirs << entry.name
 		}
 		.regular {
 			c.files << entry.name
+		}
+		.symbolic_link {
+			assert !entry.is_dir, 'a symlink reported is_dir: ${path}'
+			c.links << entry.name
 		}
 		else {
 			c.other << entry.name
@@ -207,12 +223,84 @@ fn test_walk_dir_stop_ends_the_walk() {
 	os.rmdir_all(stop_root) or { panic(err) }
 }
 
+// Symlinks are reported, never followed: a link to a directory and a link back to
+// an ancestor are each reported once, as links, and nothing beneath them is
+// visited.
+fn test_walk_dir_does_not_follow_symlinks() {
+	$if !windows {
+		links_root := os.join_path_single(tfolder, 'links_root')
+		real := os.join_path_single(links_root, 'real')
+		os.mkdir_all(real) or { panic(err) }
+		defer {
+			os.rmdir_all(links_root) or {}
+		}
+		os.write_file(os.join_path_single(real, 'f.txt'), 'x') or { panic(err) }
+		os.symlink(real, os.join_path_single(links_root, 'to_real')) or { panic(err) }
+		os.symlink(tfolder, os.join_path_single(links_root, 'loop')) or { panic(err) }
+
+		mut c := Collector{}
+		walk_root(mut c, links_root)
+		sep := os.path_separator
+		assert c.visits == ['links_root', 'links_root${sep}loop', 'links_root${sep}real',
+			'links_root${sep}real${sep}f.txt', 'links_root${sep}to_real'], 'visits = ${c.visits}'
+		assert c.links == ['loop', 'to_real']
+		assert c.dirs == ['links_root', 'real']
+		assert c.failed.len == 0, 'unexpected read failures: ${c.failed}'
+	}
+}
+
+// A directory that cannot be listed is reported a second time, with the error,
+// and .stop from that report ends the walk.
+fn test_walk_dir_reports_a_directory_it_cannot_list() {
+	$if !windows {
+		if os.geteuid() == 0 {
+			// root lists a directory whatever its permissions say
+			return
+		}
+		locked_root := os.join_path_single(tfolder, 'locked_root')
+		locked := os.join_path_single(locked_root, 'aa')
+		os.mkdir_all(os.join_path_single(locked, 'inside')) or { panic(err) }
+		os.mkdir_all(os.join_path_single(locked_root, 'zz')) or { panic(err) }
+		os.chmod(locked, 0o000) or { panic(err) }
+		defer {
+			os.chmod(locked, 0o755) or {}
+			os.rmdir_all(locked_root) or {}
+		}
+		sep := os.path_separator
+
+		mut c := Collector{}
+		walk_root(mut c, locked_root)
+		assert c.visits == ['locked_root', 'locked_root${sep}aa', 'locked_root${sep}aa',
+			'locked_root${sep}zz'], 'visits = ${c.visits}'
+		assert c.failed == [locked]
+		assert c.err_codes == [int(C.EACCES)]
+
+		mut s := Collector{
+			stop_on_err: true
+		}
+		walk_root(mut s, locked_root)
+		assert s.visits == ['locked_root', 'locked_root${sep}aa', 'locked_root${sep}aa'], '.stop on the error report did not end the walk, visits = ${s.visits}'
+	}
+}
+
+// A root that does not exist is reported to the callback, like any other entry
+// that cannot be read, rather than failing the call.
+fn test_walk_dir_reports_a_missing_root() {
+	missing := os.join_path_single(tfolder, 'missing')
+	mut c := Collector{}
+	os.walk_dir(missing, c.cb) or {
+		assert false, 'walk_dir failed for a missing root: ${err}'
+		return
+	}
+	assert c.visits == ['missing'], 'visits = ${c.visits}'
+	assert c.failed == [missing]
+	assert c.err_codes.len == 1 && c.err_codes[0] != 0, 'err_codes = ${c.err_codes}'
+}
+
 fn test_walk_dir_rejects_an_empty_root() {
-	mut calls := 0
-	os.walk_dir('', fn [calls] (_ string, _ os.WalkDirEntry) os.WalkDirAction {
-		return .proceed
-	}) or {
-		assert calls == 0, 'the callback ran for an empty root'
+	mut c := Collector{}
+	os.walk_dir('', c.cb) or {
+		assert c.calls == 0, 'the callback ran for an empty root'
 		return
 	}
 	assert false, 'walk_dir accepted an empty root'
