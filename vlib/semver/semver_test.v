@@ -38,7 +38,11 @@ const ranges_to_test = [
 	TestRange{'3.0.0', '~3.0.0', '~4.0.0'},
 	TestRange{'2.3.1', '^2.0.0', '^2.4.0'},
 	TestRange{'0.3.1', '^0.3.0', '^2.4.0'},
-	TestRange{'0.0.4', '^0.0.1', '^0.1.0'},
+	// The point of this row is that a caret works on a 0.0 version. It used to read
+	// `0.0.4`, which asserted that `^0.0.1` admits the whole 0.0.x series; the
+	// grammar says `^0.0.1 := >=0.0.1 <0.0.2-0`, so the version that belongs here is
+	// the one at the floor.
+	TestRange{'0.0.1', '^0.0.1', '^0.1.0'},
 	TestRange{'2.3.4', '^0.0.1 || ^2.3.0', '^3.1.0 || ^4.2.0'},
 	TestRange{'2.3.4', '>2 || <3', '>3 || >4'},
 	TestRange{'2.3.4', '2.3.4 - 2.3.5', '2.5.1 - 2.8.3'},
@@ -63,6 +67,9 @@ const invalid_versions_to_test = [
 	'1.2.3.4',
 	'1.2.3-alpha@',
 	'1.2.3+meta%',
+	'1..2',
+	'1.2.',
+	'.1.2',
 ]
 const invalid_ranges_to_test = [
 	'^a',
