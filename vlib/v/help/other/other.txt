@@ -35,9 +35,9 @@ Other less frequently used commands supported by V include:
 
   setup-freetype   Setup thirdparty freetype on Windows.
 
-  skills            List, install and remove the agent skills bundled with this
-                   compiler. `v skills list` reports which are installed for this
-                   project or for the current user.
+  skills            List, install, update and remove the agent skills bundled
+                   with this compiler. `v skills list` reports which are
+                   installed for this project or for the current user.
 
   share            Send your code to the V Playground
 
