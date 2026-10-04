@@ -1,0 +1,26 @@
+// Names that are distinct in the schema and meet in the generated V: two enum
+// values that are both `color_red`, two fields that are both `user_name`, and
+// two messages that both want the function `decode_foo_with`.
+
+syntax = "proto3";
+
+package badnames;
+
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  ColorRed = 1;
+  COLOR_RED = 2;
+}
+
+message Account {
+  string userName = 1;
+  string user_name = 2;
+}
+
+message Foo {
+  int32 a = 1;
+}
+
+message FooWith {
+  int32 a = 1;
+}

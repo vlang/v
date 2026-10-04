@@ -1,0 +1,35 @@
+// Exercises the type shapes the generator has to get right: an enum with a
+// non-contiguous numbering, a nested message, a repeated numeric field, a
+// repeated string, and a map.
+
+syntax = "proto3";
+
+package demo;
+
+// Status has a mandated zero value and a gap, which is what every real enum
+// looks like and what a generated V enum has to be able to express.
+enum Status {
+  status_unspecified = 0;
+  active = 1;
+  suspended = 2;
+  // the value 5 is not used, and the jump has to survive
+  retired = 7;
+}
+
+// Inner is nested, which V has to flatten.
+message Inner {
+  int32 x = 1;
+  string label = 2;
+}
+
+message Demo {
+  Status status = 1;
+  Inner inner = 2;
+  repeated int32 numbers = 3;
+  repeated string tags = 4;
+  map<string, int32> counts = 5;
+  optional bool flag = 6;
+  double ratio = 7;
+  sint32 delta = 8;
+  fixed64 id = 9;
+}

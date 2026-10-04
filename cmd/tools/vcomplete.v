@@ -99,6 +99,7 @@ const auto_complete_commands = [
 	'gret',
 	'git-fmt-hook',
 	'ls',
+	'pbgen',
 	'quest',
 	'retry',
 	'reduce',

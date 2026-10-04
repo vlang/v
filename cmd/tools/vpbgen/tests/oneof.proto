@@ -1,0 +1,22 @@
+// A `oneof` group whose members are a scalar, a string, and a nested message, so
+// the exclusivity check is exercised across every kind of member.
+
+syntax = "proto3";
+
+package choice;
+
+message Payload {
+  int32 x = 1;
+}
+
+message Envelope {
+  oneof body {
+    int32 number = 1;
+    string text = 2;
+    Payload payload = 3;
+    Empty none_of_it = 4;
+  }
+}
+
+message Empty {
+}

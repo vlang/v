@@ -1,0 +1,16 @@
+// A one-letter capital name. V reserves those for generic template types, and
+// accepts `pub struct M` while lowering the type's uses to `int`, so the
+// generated file would compile alone and fail at the first call.
+
+syntax = "proto3";
+
+package single;
+
+message M {
+  int32 x = 1;
+}
+
+enum N {
+  n_unspecified = 0;
+  n_one = 1;
+}

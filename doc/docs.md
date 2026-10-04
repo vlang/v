@@ -6188,6 +6188,38 @@ println(json2.encode(user, escape_unicode: true)) // {"name":"Pierre","score":10
 The `json2` module also supports anonymous struct fields, which helps with complex JSON APIs with
 many levels.
 
+## Protocol Buffers
+
+V ships `encoding.protobuf`, the Protocol Buffers binary wire format in pure V. It has no C
+dependency and needs no `protoc` at build time.
+
+The usual way in is the `v pbgen` tool, which reads a `.proto` file and writes the message
+structs, their codecs, and the gRPC service declarations:
+
+```sh
+v pbgen -m kv -o kv/codec.v kv.proto
+```
+
+```v ignore
+pub struct GetRequest {
+pub mut:
+	// key is `string key = 1`.
+	key string
+}
+
+pub fn (msg GetRequest) encode() ![]u8 {
+	return msg.encode_with(protobuf.EncodeOpts{})
+}
+
+pub fn decode_get_request(data []u8) !GetRequest {
+	return decode_get_request_with(data, protobuf.DecodeOpts{})
+}
+```
+
+Only proto3 is supported. `v help pbgen` documents the options, and
+`vlib/encoding/protobuf/README.md` documents the runtime, the type mapping, and the shape of
+the generated code.
+
 ## Testing
 
 ### Asserts
