@@ -4,10 +4,15 @@ import v.skills
 const vexe = @VEXE
 const vroot = os.dir(vexe)
 
+// held_back_line and held_back_hint are what `v up` says about the skills it
+// leaves alone, whether they were edited or have no install record.
+const held_back_line = '> skills: left alone because they were edited locally or have no install record: '
+const held_back_hint = '> skills: run `v skills update --global` to see why; add `--force` to overwrite them'
+
 // skills_fixture builds a fake V checkout holding `bundled` skill bundles, plus
 // an install directory to install them into. It returns the checkout, the
 // install directory, and the root holding both, which the caller removes.
-fn skills_fixture(bundled []string) ! (string, string, string) {
+fn skills_fixture(bundled []string) !(string, string, string) {
 	root := os.join_path(os.vtmp_dir(), 'vup_skills_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(os.join_path(root, 'vroot', 'vlib', 'v', 'skills'))!
@@ -49,7 +54,7 @@ fn rebundle(fake_vroot string, name string) ! {
 //
 // It returns the checkout, the home directory, the built tool, and a PATH
 // holding only the stand-ins.
-fn vup_report_fixture() ! (string, string, string, string) {
+fn vup_report_fixture() !(string, string, string, string) {
 	root := os.join_path(os.vtmp_dir(), 'vup_report_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -77,15 +82,17 @@ fn vup_report_fixture() ! (string, string, string, string) {
 	write_executable(os.join_path(bin_dir, 'git'),
 		'#!/bin/sh\nif [ "\$1" = "pull" ]; then\n  echo "Already up to date."\nfi\nexit 0\n')!
 	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 0\n')!
+	// The BSDs and Solaris refresh TCC with `gmake`, which has to be found on PATH.
+	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\nexit 0\n')!
 	// `v up -skills` reaches the refresh through the compiler, so the stub answers
 	// it and records the call. The log is how a swallowed call would show up, and
 	// the exit status is non-zero because it held a skill back, which must not make
 	// the compiler update fail.
 	write_executable(os.join_path(root, 'v'),
 		'#!/bin/sh\nif [ "\$1" = "skills" ]; then\n  printf "skills %s\\n" "\$*" >> ' +
-		os.quoted_path(os.join_path(root, 'skills.log')) +
-		'\n  echo "alpha: updated 2 file(s)"\n  echo "beta was edited" >&2\n  exit 1\nfi\n' +
-		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+			os.quoted_path(os.join_path(root, 'skills.log')) +
+			'\n  echo "alpha: updated 2 file(s)"\n  echo "beta was edited" >&2\n  exit 1\nfi\n' +
+			'echo "V 0.5.2 abcdef0"\nexit 0\n')!
 
 	tool := os.join_path(root, 'vup')
 	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vup.v')])
@@ -96,8 +103,7 @@ fn vup_report_fixture() ! (string, string, string, string) {
 // run_vup runs the built tool with only the stand-ins on PATH and `home` as the
 // home directory the skills live in.
 fn run_vup(root string, home string, tool string, bin_dir string, extra ...string) !os.Result {
-	mut args := ['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
-		tool]
+	mut args := ['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'), tool]
 	args << extra
 	return os.exec(args)
 }
@@ -120,12 +126,12 @@ fn test_vup_reports_both_groups_and_names_the_scope_to_use() ! {
 	result := run_vup(root, home, tool, bin_dir)!
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('can be refreshed: alpha'), result.output
-	assert result.output.contains('local changes: beta'), result.output
+	assert result.output.contains('${held_back_line}beta\n'), result.output
+	assert result.output.contains(held_back_hint), result.output
 	// The report reads the home directory, so the command it suggests has to say so.
 	assert result.output.contains('v skills update --global'), result.output
 	// Reporting is not refreshing.
-	assert !os.exists(os.join_path(root, 'skills.log')),
-		os.read_file(os.join_path(root, 'skills.log')) or { '' }
+	assert !os.exists(os.join_path(root, 'skills.log')), os.read_file(os.join_path(root, 'skills.log')) or { '' }
 }
 
 fn test_vup_with_skills_forwards_the_refresh_and_still_names_what_it_held_back() ! {
@@ -152,6 +158,8 @@ fn test_vup_with_skills_forwards_the_refresh_and_still_names_what_it_held_back()
 	assert log.contains('skills update --global'), log
 	// The child's own words reach the user rather than being captured and dropped.
 	assert result.output.contains('alpha: updated 2 file(s)'), result.output
+	// So do the ones it writes to standard error, which name what it held back.
+	assert result.output.contains('beta was edited'), result.output
 }
 
 fn test_vup_with_skills_still_names_held_back_skills_when_there_is_nothing_to_refresh() ! {
@@ -170,10 +178,10 @@ fn test_vup_with_skills_still_names_held_back_skills_when_there_is_nothing_to_re
 
 	result := run_vup(root, home, tool, bin_dir, '-skills')!
 	assert result.exit_code == 0, result.output
-	assert result.output.contains('gamma'), result.output
+	assert result.output.contains('${held_back_line}gamma\n'), result.output
+	assert result.output.contains(held_back_hint), result.output
 	// Nothing to refresh, so the compiler was never asked to.
-	assert !os.exists(os.join_path(root, 'skills.log')),
-		os.read_file(os.join_path(root, 'skills.log')) or { '' }
+	assert !os.exists(os.join_path(root, 'skills.log')), os.read_file(os.join_path(root, 'skills.log')) or { '' }
 }
 
 fn test_refresh_candidates_splits_refreshable_from_held_back() ! {

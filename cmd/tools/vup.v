@@ -17,8 +17,8 @@ struct App {
 	vexe       string
 	vroot      string
 
-	skip_v_self  bool // do not run `v self`, effectively enforcing the running of `make` or `makev.bat`
-	skip_current bool // skip the current hash check, enabling easier testing on the same commit, without using docker etc
+	skip_v_self   bool // do not run `v self`, effectively enforcing the running of `make` or `makev.bat`
+	skip_current  bool // skip the current hash check, enabling easier testing on the same commit, without using docker etc
 	update_skills bool // refresh the skills that fell behind, instead of only reporting them
 }
 
@@ -26,13 +26,13 @@ const args = arguments()
 
 fn new_app() App {
 	return App{
-		is_verbose:     '-v' in args
-		is_prod:        '-prod' in args
-		vexe:           vexe
-		vroot:          vroot
-		skip_v_self:    '-skip_v_self' in args
-		skip_current:   '-skip_current' in args
-		update_skills:  '-skills' in args
+		is_verbose:    '-v' in args
+		is_prod:       '-prod' in args
+		vexe:          vexe
+		vroot:         vroot
+		skip_v_self:   '-skip_v_self' in args
+		skip_current:  '-skip_current' in args
+		update_skills: '-skills' in args
 	}
 }
 
@@ -98,7 +98,9 @@ fn skills_refresh_hint() string {
 //
 // Held-back skills are named whether or not anything can be refreshed, so an
 // installation holding only skills this update must not touch is still
-// reported rather than passing in silence.
+// reported rather than passing in silence. They are either edited locally or
+// have no install record, and only `v skills update` tells the two apart, so
+// the line names both and points there.
 fn skills_lines(refreshable []string, held_back []string) []string {
 	mut lines := []string{}
 	if refreshable.len > 0 {
@@ -106,7 +108,8 @@ fn skills_lines(refreshable []string, held_back []string) []string {
 		lines << '> skills: run ${skills_refresh_hint()} to refresh them'
 	}
 	if held_back.len > 0 {
-		lines << '> skills: left alone because they have local changes: ${held_back.join(', ')}'
+		lines << '> skills: left alone because they were edited locally or have no install record: ${held_back.join(', ')}'
+		lines << '> skills: run `v skills update --global` to see why; add `--force` to overwrite them'
 	}
 	return lines
 }
@@ -152,20 +155,20 @@ fn (app App) report_skills() {
 // The child's output is forwarded rather than captured and dropped: a refusal
 // the user cannot see is the same as one that did not happen.
 //
-// Its exit code is deliberately ignored. It reports a non-zero status exactly
-// when it holds a skill back, which is expected here and is not a failure of the
+// Its exit code does not fail `v up`. It reports a non-zero status exactly when
+// it holds a skill back, which is expected here and is not a failure of the
 // compiler update that just succeeded.
 fn (app App) refresh_skills() {
 	refresh := os.exec([app.current_vexe_path(), 'skills', 'update', '--global'])
 	report := refresh.output.trim_space()
-	if report == '' {
-		// No output means the child never ran, which is the one case where the
-		// skills it would have refreshed are not accounted for anywhere.
-		eprintln('> skills: could not refresh them; run `v skills update --global`')
-		return
-	}
 	for line in report.split_into_lines() {
 		println(line)
+	}
+	if refresh.exit_code < 0 || report == '' {
+		// The child could not be started (`os.exec` then reports that as its
+		// output, with a negative status), or it said nothing, so the skills it
+		// would have refreshed are not accounted for anywhere.
+		eprintln('> skills: could not refresh them; run `v skills update --global`')
 	}
 }
 
