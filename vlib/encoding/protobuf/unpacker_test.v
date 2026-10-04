@@ -218,6 +218,18 @@ fn test_unpacker_skip_field_steps_over_unknown_fields() {
 	assert u.eof()
 }
 
+fn test_unpacker_skip_field_rejects_when_unknown_fields_are_not_allowed() {
+	mut p := new_packer(EncodeOpts{})
+	p.write_string(99, 'a field from the future')!
+	mut u := new_unpacker(p.bytes(), DecodeOpts{ allow_unknown_fields: false })
+	number, wire_type := u.read_tag()!
+	if _ := u.skip_field(number, wire_type) {
+		assert false, 'expected the unknown field to be rejected'
+	} else {
+		assert err is UnknownFieldError
+	}
+}
+
 fn test_unpacker_skip_covers_every_fixed_width() {
 	mut p := new_packer(EncodeOpts{})
 	p.write_uint32(10, 1)

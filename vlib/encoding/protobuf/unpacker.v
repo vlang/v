@@ -263,7 +263,13 @@ pub fn (mut u Unpacker) read_string() !string {
 // skip_field advances past a value of `wire_type`, which is how a field this
 // build does not understand gets stepped over. Without it a newer producer
 // would break an older consumer the moment it added a field.
+//
+// With `allow_unknown_fields` off, the field is reported as an
+// UnknownFieldError instead of being skipped.
 pub fn (mut u Unpacker) skip_field(field_number int, wire_type WireType) ! {
+	if !u.opts.allow_unknown_fields {
+		return unknown_field_at(u.pos, field_number)
+	}
 	match wire_type {
 		.varint {
 			u.read_varint()!
