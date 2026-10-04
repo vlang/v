@@ -23452,6 +23452,14 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 		field_type := g.struct_default_field_type_for_source(source, field)
 		field_target := '${target}.${g.cname(field.value)}'
 		if field.children_count == 0 {
+			// Checked before the nested struct case: a `shared` struct field is a
+			// pointer to a lock wrapper, not an inline struct.
+			if value := g.global_struct_unset_field_value(source.owner_name, field.value,
+				field_type)
+			{
+				g.queue_runtime_init_for_module('\t${field_target} = ${value};', init_module)
+				continue
+			}
 			clean_field_type := default_init_unalias_type(field_type)
 			if clean_field_type is types.Struct && !clean_field_type.name.starts_with('C.') && g.struct_needs_default_init(clean_field_type.name) {
 				g.queue_global_struct_field_defaults(field_target, clean_field_type.name, init_module, mut visited)
@@ -23478,6 +23486,36 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 	}
 	g.restore_struct_default_context(old_ctx)
 	visited.delete(struct_name)
+}
+
+// global_struct_unset_field_value returns the value `Struct{}` gives an omitted
+// dynamic array, map, channel or `shared` field. C's zero initialization of a
+// global leaves those fields unusable.
+fn (mut g FlatGen) global_struct_unset_field_value(struct_name string, field_name string, field_type types.Type) ?string {
+	if raw, module_name := g.shared_array_field_raw_type(struct_name, field_name) {
+		if shared_array_raw_is_ptr(raw) {
+			return none
+		}
+		if info := g.shared_array_info_from_raw(raw, module_name, false) {
+			return 'array_new(sizeof(${info.wrapper}*), 0, 0)'
+		}
+	}
+	if g.shared_field_info(struct_name, field_name) != none {
+		old_sb := g.sb
+		old_line_start := g.line_start
+		g.sb = strings.new_builder(128)
+		g.line_start = false
+		g.gen_shared_default_value_for_field(struct_name, field_name, field_type)
+		value := g.sb.str()
+		g.sb = old_sb
+		g.line_start = old_line_start
+		return value
+	}
+	clean := default_init_unalias_type(field_type)
+	if clean is types.Map || clean is types.Array || clean is types.Channel {
+		return g.default_value_to_string(field_type)
+	}
+	return none
 }
 
 fn (mut g FlatGen) global_storage_type(name string, typ types.Type) types.Type {
