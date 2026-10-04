@@ -47,6 +47,15 @@ fn test_race_flag_is_found_before_and_after_the_input() {
 	assert race_build_requested(['-profile', 'prof.txt', 'main.v', '-race'])
 }
 
+fn test_compiler_option_is_told_apart_from_a_program_argument() {
+	assert compiler_option_requested(['-json-errors', 'main.v'], '-json-errors')
+	assert compiler_option_requested(['-check', 'main.v', '-json-errors'], '-json-errors')
+	assert compiler_option_requested(['-json-errors', 'run', 'main.v'], '-json-errors')
+	assert !compiler_option_requested(['run', 'main.v', '-json-errors'], '-json-errors')
+	assert !compiler_option_requested(['-o', '-json-errors', 'main.v'], '-json-errors')
+	assert !compiler_option_requested(['-json-errors', 'main.v'], '-race')
+}
+
 fn test_race_flag_of_a_run_program_is_not_a_compiler_option() {
 	assert !race_build_requested(['run', 'main.v', '-race'])
 	assert !race_build_requested(['crun', 'main.v', '-race'])

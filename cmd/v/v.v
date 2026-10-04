@@ -146,6 +146,11 @@ fn main() {
 		// report its own error instead of silently retrying without instrumentation.
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
+	if compiler_option_requested(args, '-json-errors') {
+		// A tool reads these diagnostics. A retry with the compatibility compiler would
+		// mix its own text into them.
+		os.setenv(v3_no_fallback_env, '1', true)
+	}
 	if '-new-compiler' !in args && v3_fixture_requires_compatibility_compiler(args) {
 		launch_v1(clean_compiler_selection_flags(args), 'legacy diagnostic fixture', RetryState{})
 	}
@@ -177,10 +182,15 @@ fn main() {
 	run_with_fallback(args, args)
 }
 
-// race_build_requested reports whether `-race` is one of the compiler options, and not an
-// argument of the program that `v run` starts. Like the driver, it reads compiler options
-// after the input too, except when the input is run: then they belong to the program.
+// race_build_requested reports whether `-race` is one of the compiler options.
 fn race_build_requested(args []string) bool {
+	return compiler_option_requested(args, '-race')
+}
+
+// compiler_option_requested reports whether `option` is one of the compiler options, and not
+// an argument of the program that `v run` starts. Like the driver, it reads compiler options
+// after the input too, except when the input is run: then they belong to the program.
+fn compiler_option_requested(args []string, option string) bool {
 	mut option_value_follows := false
 	mut runs_input := false
 	mut input_seen := false
@@ -189,7 +199,7 @@ fn race_build_requested(args []string) bool {
 			option_value_follows = false
 			continue
 		}
-		if arg == '-race' {
+		if arg == option {
 			return true
 		}
 		if arg in ['-prof', '-profile'] {
