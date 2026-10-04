@@ -1804,6 +1804,45 @@ fn test_a_formerly_writable_default_cache_root_is_replaced_not_reused() {
 	})!
 }
 
+// A default cache folder that is a symlink may have been planted while V's own folder was
+// writable by others. Its target is private, but a folder above the target is not, so someone
+// else could swap the target at any time. The symlink must be moved aside, not followed.
+fn test_a_symlinked_default_cache_root_is_replaced_not_followed() {
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('symlinked_root') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn [directory] (v_dir string) ! {
+		writable := os.join_path(directory, 'gw')
+		victim := os.join_path(writable, 'victimdir')
+		os.mkdir(writable)!
+		os.chmod(writable, 0o777)!
+		os.mkdir(victim, mode: 0o700)!
+		os.chmod(victim, 0o700)!
+		os.mkdir(v_dir)!
+		os.chmod(v_dir, 0o775)!
+		link := os.join_path(v_dir, 'tools')
+		os.symlink(victim, link)!
+		chosen := tool_cache_dir() or { panic('no usable tool cache directory') }
+		assert chosen != os.real_path(victim), 'the symlinked cache folder must not be followed'
+		assert !os.is_link(link)
+		assert chosen == os.real_path(link), 'the default location should still be used'
+		assert os.dir(chosen) == os.real_path(v_dir)
+		assert os.stat(chosen)!.mode & 0o777 == 0o700
+		assert os.stat(v_dir)!.mode & 0o777 == 0o755, 'V`s own parent folder must be private'
+		moved := os.ls(v_dir)!.filter(it.starts_with('tools.untrusted-'))
+		assert moved.len == 1, 'the symlink must be moved aside, got ${os.ls(v_dir)!}'
+		assert os.is_link(os.join_path(v_dir, moved[0]))
+		assert os.ls(victim)! == [], 'nothing may be written through the symlink'
+	})!
+}
+
 // An entry planted in a formerly writable cache folder, under the exact name and with a manifest
 // that looks fresh, must never be executed. The real tool must be built and reused instead.
 fn test_an_entry_planted_in_a_formerly_writable_root_is_never_executed() {
