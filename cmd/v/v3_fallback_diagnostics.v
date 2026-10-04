@@ -57,9 +57,11 @@ fn v3_fixture_requires_legacy_json_cgen(args []string) bool {
 	return expected.contains(': cgen error: json:')
 }
 
+// Legacy check-mode fixtures run against the compatibility compiler's own vlib:
+// V 0.5.2 cannot parse the current vlib (e.g. `strconv` uses type constraints),
+// which every program imports through `builtin`.
 fn v3_fixture_uses_current_vlib_compatibility(args []string) bool {
-	return v3_fixture_requires_legacy_check_mode(args)
-		|| v3_fixture_requires_legacy_json_cgen(args)
+	return v3_fixture_requires_legacy_json_cgen(args)
 }
 
 fn v3_fixture_requires_compatibility_compiler(args []string) bool {

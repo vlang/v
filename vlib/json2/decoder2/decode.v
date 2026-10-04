@@ -3,13 +3,6 @@ module decoder2
 import strconv
 import time
 
-// Node represents a node in a linked list to store ValueInfo.
-struct Node {
-	value ValueInfo
-mut:
-	next &Node = unsafe { nil } // next is the next node in the linked list.
-}
-
 // ValueInfo represents the position and length of a value, such as string, number, array, object key, and object value in a JSON string.
 struct ValueInfo {
 	position   int       // The position of the value in the JSON string.
@@ -22,9 +15,12 @@ mut:
 struct Decoder {
 	json string // json is the JSON data to be decoded.
 mut:
-	values_info  LinkedList // A linked list to store ValueInfo.
-	checker_idx  int        // checker_idx is the current index of the decoder.
-	current_node &Node = unsafe { nil } // The current node in the linked list.
+	// values_info describes every value of the JSON string, in the order in which they
+	// start: an array or an object is followed by its elements, or by its keys and their
+	// values. It is one flat array, so nothing is allocated per value.
+	values_info []ValueInfo
+	checker_idx int // checker_idx is the current index of the decoder.
+	current_idx int // current_idx is the index in values_info of the value that is decoded next.
 }
 
 interface NullDecoder {
@@ -32,60 +28,31 @@ mut:
 	from_json_null()
 }
 
-// LinkedList represents a linked list to store ValueInfo.
-struct LinkedList {
-mut:
-	head &Node = unsafe { nil } // head is the first node in the linked list.
-	tail &Node = unsafe { nil } // tail is the last node in the linked list.
-	len  int // len is the length of the linked list.
-}
-
-// push adds a new element to the linked list.
-fn (mut list LinkedList) push(value ValueInfo) {
-	new_node := &Node{
-		value: value
+// value_count_bound returns an upper bound of the number of values in the `json`
+// string, to allocate values_info once. Outside of strings, every value but the root
+// follows a `,`, a `:`, a `[` or a `{` of its own.
+@[direct_array_access]
+fn value_count_bound(json string) int {
+	mut count := 1
+	mut i := 0
+	for i < json.len {
+		c := json[i]
+		i++
+		if c == `"` {
+			// Skip the string: a `,` or a `:` in it does not separate values.
+			for i < json.len && json[i] != `"` {
+				if json[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		// `[` and `{` only differ in the bit that is set here.
+		count += int(c == `,`) + int(c == `:`) + int((c | 0x20) == `{`)
 	}
-	if list.head == unsafe { nil } {
-		list.head = new_node
-		list.tail = new_node
-	} else {
-		list.tail.next = new_node
-		list.tail = new_node
-	}
-	list.len++
-}
-
-// last returns the last element added to the linked list.
-fn (list LinkedList) last() &ValueInfo {
-	return &list.tail.value
-}
-
-// str returns a string representation of the linked list.
-fn (list LinkedList) str() string {
-	mut result_buffer := []u8{}
-	mut current := list.head
-	for current != unsafe { nil } {
-		value_kind_as_string := current.value.value_kind.str()
-		unsafe { result_buffer.push_many(value_kind_as_string.str, value_kind_as_string.len) }
-		result_buffer << u8(` `)
-
-		current = current.next
-	}
-	return result_buffer.bytestr()
-}
-
-@[unsafe]
-fn (list &LinkedList) free() {
-	mut current := list.head
-	for current != unsafe { nil } {
-		mut next := current.next
-		current.next = unsafe { nil }
-		unsafe { free(current) }
-		current = next
-	}
-	list.head = unsafe { nil }
-	list.tail = unsafe { nil }
-	list.len = 0
+	return count
 }
 
 // ValueKind represents the kind of a JSON value.
@@ -215,12 +182,14 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 	// check if generic type matches the JSON type
 	value_kind := get_value_kind(val[checker.checker_idx])
 	start_idx_position := checker.checker_idx
-	checker.values_info.push(ValueInfo{
+	// The values nested in this one are appended while it is checked, which can move
+	// values_info, so the value is referred to by its index.
+	value_idx := checker.values_info.len
+	checker.values_info << ValueInfo{
 		position:   start_idx_position
 		value_kind: value_kind
-	})
+	}
 
-	mut actual_value_info_pointer := checker.values_info.last()
 	match value_kind {
 		.unknown {
 			return checker.error('unknown value kind')
@@ -583,7 +552,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		}
 	}
 
-	actual_value_info_pointer.length = checker.checker_idx + 1 - start_idx_position
+	checker.values_info[value_idx].length = checker.checker_idx + 1 - start_idx_position
 
 	if checker.checker_idx >= checker_end - 1 {
 		return
@@ -606,27 +575,31 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 // decode decodes a JSON string into a specified type.
 pub fn decode[T](val string) !T {
 	mut decoder := Decoder{
-		json: val
+		json:        val
+		values_info: []ValueInfo{cap: value_count_bound(val)}
+	}
+	// Nothing that is decoded refers to values_info, so it is released right away.
+	defer {
+		unsafe { decoder.values_info.free() }
 	}
 
 	decoder.check_json_format(val)!
 	check_if_json_match[T](val)!
 
 	mut result := T{}
-	decoder.current_node = decoder.values_info.head
 	decoder.decode_value(mut result)!
 	return result
 }
 
 // decode_value decodes a value from the JSON nodes.
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
-	if decoder.current_node == unsafe { nil } {
+	if decoder.current_idx >= decoder.values_info.len {
 		return error('unexpected end of JSON values')
 	}
-	check_value_kind_match[T](decoder.current_node.value.value_kind)!
+	check_value_kind_match[T](decoder.values_info[decoder.current_idx].value_kind)!
 
 	$if T.unaliased_typ is string {
-		string_info := decoder.current_node.value
+		string_info := decoder.values_info[decoder.current_idx]
 
 		if string_info.value_kind == .string_ {
 			val = decoder.decode_string(string_info)!
@@ -634,7 +607,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
 	} $else $if T.unaliased_typ is time.Time {
-		time_info := decoder.current_node.value
+		time_info := decoder.values_info[decoder.current_idx]
 
 		if time_info.value_kind == .string_ {
 			string_time := decoder.decode_string(time_info)!
@@ -653,27 +626,27 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	} $else $if T is NullDecoder {
 		val.from_json_null()
 	} $else $if T.unaliased_typ is $struct {
-		struct_info := decoder.current_node.value
+		struct_info := decoder.values_info[decoder.current_idx]
 
 		if struct_info.value_kind == .object {
 			struct_position := struct_info.position
 			struct_end := struct_position + struct_info.length
 			mut seen_required := []string{}
 
-			decoder.current_node = decoder.current_node.next
+			decoder.current_idx++
 			for {
-				if decoder.current_node == unsafe { nil } {
+				if decoder.current_idx >= decoder.values_info.len {
 					break
 				}
 
-				key_info := decoder.current_node.value
+				key_info := decoder.values_info[decoder.current_idx]
 
 				if key_info.position >= struct_end {
 					break
 				}
 				key := decoder.decode_string(key_info)!
 
-				decoder.current_node = decoder.current_node.next
+				decoder.current_idx++
 				mut field_matched := false
 
 				$for field in T.fields {
@@ -699,7 +672,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 						if is_json_skip {
 							decoder.skip_value()
 						} else if is_raw {
-							value_info := decoder.current_node.value
+							value_info := decoder.values_info[decoder.current_idx]
 							raw_value := decoder.json[value_info.position..value_info.position +
 								value_info.length]
 							$if field.typ is ?string {
@@ -712,7 +685,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							decoder.skip_value()
 						} else {
 							$if field.typ is $option {
-								if decoder.current_node.value.value_kind == .null {
+								if decoder.values_info[decoder.current_idx].value_kind == .null {
 									val.$(field.name) = none
 									decoder.skip_value()
 								} else {
@@ -740,13 +713,13 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		}
 		return
 	} $else $if T.unaliased_typ is bool {
-		value_info := decoder.current_node.value
+		value_info := decoder.values_info[decoder.current_idx]
 
 		unsafe {
 			val = vmemcmp(decoder.json.str + value_info.position, c'true', 4) == 0
 		}
 	} $else $if T.unaliased_typ is $enum {
-		enum_info := decoder.current_node.value
+		enum_info := decoder.values_info[decoder.current_idx]
 		if enum_info.value_kind == .string_ {
 			decoded_value := decoder.decode_string(enum_info)!
 			mut matched := false
@@ -786,7 +759,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			}
 		}
 	} $else $if T.unaliased_typ in [$float, $int] {
-		value_info := decoder.current_node.value
+		value_info := decoder.values_info[decoder.current_idx]
 
 		if value_info.value_kind == .number {
 			bytes := unsafe { (decoder.json.str + value_info.position).vbytes(value_info.length) }
@@ -803,9 +776,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		return error('cannot encode value with ${typeof(val).name} type')
 	}
 
-	if decoder.current_node != unsafe { nil } {
-		decoder.current_node = decoder.current_node.next
-	}
+	decoder.current_idx++
 }
 
 fn (decoder &Decoder) decode_string(value_info ValueInfo) !string {
@@ -882,29 +853,32 @@ fn (decoder &Decoder) decode_string(value_info ValueInfo) !string {
 }
 
 fn (mut decoder Decoder) skip_value() {
-	if decoder.current_node == unsafe { nil } {
+	if decoder.current_idx >= decoder.values_info.len {
 		return
 	}
-	value_end := decoder.current_node.value.position + decoder.current_node.value.length
-	decoder.current_node = decoder.current_node.next
-	for decoder.current_node != unsafe { nil } && decoder.current_node.value.position < value_end {
-		decoder.current_node = decoder.current_node.next
+	value_info := decoder.values_info[decoder.current_idx]
+	value_end := value_info.position + value_info.length
+	// The values nested in the current one follow it, and start before its end.
+	decoder.current_idx++
+	for decoder.current_idx < decoder.values_info.len
+		&& decoder.values_info[decoder.current_idx].position < value_end {
+		decoder.current_idx++
 	}
 }
 
 fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
-	array_info := decoder.current_node.value
+	array_info := decoder.values_info[decoder.current_idx]
 
 	if array_info.value_kind == .array {
 		val.clear()
-		decoder.current_node = decoder.current_node.next
+		decoder.current_idx++
 
 		array_position := array_info.position
 		array_end := array_position + array_info.length
 
 		for {
-			if decoder.current_node == unsafe { nil }
-				|| decoder.current_node.value.position >= array_end {
+			if decoder.current_idx >= decoder.values_info.len
+				|| decoder.values_info[decoder.current_idx].position >= array_end {
 				break
 			}
 
@@ -918,21 +892,21 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 }
 
 fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
-	map_info := decoder.current_node.value
+	map_info := decoder.values_info[decoder.current_idx]
 
 	if map_info.value_kind == .object {
 		val.clear()
 		map_position := map_info.position
 		map_end := map_position + map_info.length
 
-		decoder.current_node = decoder.current_node.next
+		decoder.current_idx++
 		for {
-			if decoder.current_node == unsafe { nil }
-				|| decoder.current_node.value.position >= map_end {
+			if decoder.current_idx >= decoder.values_info.len
+				|| decoder.values_info[decoder.current_idx].position >= map_end {
 				break
 			}
 
-			key_info := decoder.current_node.value
+			key_info := decoder.values_info[decoder.current_idx]
 
 			if key_info.position >= map_end {
 				break
@@ -940,9 +914,9 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 
 			key := decoder.decode_string(key_info)!
 
-			decoder.current_node = decoder.current_node.next
+			decoder.current_idx++
 
-			value_info := decoder.current_node.value
+			value_info := decoder.values_info[decoder.current_idx]
 
 			if value_info.position + value_info.length >= map_end {
 				break
@@ -1124,7 +1098,7 @@ fn utf8_byte_length(unicode_value u32) int {
 }
 
 fn (mut decoder Decoder) calculate_string_space_and_escapes() !(int, []int) {
-	value_info := decoder.current_node.value
+	value_info := decoder.values_info[decoder.current_idx]
 	len := value_info.length
 
 	if len < 2 || decoder.json[value_info.position] != `"`

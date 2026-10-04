@@ -40,6 +40,14 @@ fn test_build_topic_lists_fastc_backend() {
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('* `fastc`'), res.output
 	assert res.output.contains('on macOS and Linux hosts in V builds that embed V3'), res.output
+	assert res.output.contains('See `v help vsh`'), res.output
+}
+
+fn test_vsh_topic() {
+	res := os.exec([@VEXE, 'help', 'vsh'])
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('v build script.vsh'), res.output
+	assert res.output.contains('`os` types still need it (`os.File`)'), res.output
 }
 
 fn test_all_topics() {
@@ -64,6 +72,14 @@ fn test_up_topic_says_the_report_leaves_edited_skills_alone() {
 	res := os.exec([@VEXE, 'help', 'up'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('reported but left alone'), res.output
+}
+
+fn test_other_topic_summary_of_skills_mentions_update() {
+	res := os.exec([@VEXE, 'help', 'other'])
+	assert res.exit_code == 0, res.output
+	// The one-line summary is what a reader sees in the command list, so a
+	// subcommand missing from it is a subcommand the list claims is absent.
+	assert res.output.contains('List, install, update and remove the agent skills'), res.output
 }
 
 fn test_unknown_topic() {

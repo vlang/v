@@ -1,0 +1,21 @@
+vlib/v/checker/tests/mut_ref_param_mut_arg_err.vv:13:16: error: method `index` parameter `ctx` is `mut ctx &Context`, a mutable reference to a `&Context`: pass `mut` of a `&Context` variable (e.g. `mut p := &user_context`, then `mut p`), or declare it `mut ctx Context`
+   11 | 
+   12 | fn call(app App, mut user_context Context) {
+   13 |     app.index(mut user_context)
+      |                   ~~~~~~~~~~~~
+   14 |     mut local := Context{}
+   15 |     app.index(mut local)
+vlib/v/checker/tests/mut_ref_param_mut_arg_err.vv:15:16: error: method `index` parameter `ctx` is `mut ctx &Context`, a mutable reference to a `&Context`: pass `mut` of a `&Context` variable (e.g. `mut p := &local`, then `mut p`), or declare it `mut ctx Context`
+   13 |     app.index(mut user_context)
+   14 |     mut local := Context{}
+   15 |     app.index(mut local)
+      |                   ~~~~~
+   16 |     mut name := 'ctx'
+   17 |     app.index(mut name)
+vlib/v/checker/tests/mut_ref_param_mut_arg_err.vv:17:16: error: cannot use `string` as `&Context` in argument 1 to `App.index`
+   15 |     app.index(mut local)
+   16 |     mut name := 'ctx'
+   17 |     app.index(mut name)
+      |                   ~~~~
+   18 |     mut p := &user_context
+   19 |     app.index(mut p)

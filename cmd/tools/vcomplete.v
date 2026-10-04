@@ -136,6 +136,7 @@ const auto_complete_commands = [
 	'list',
 	'remove',
 	'unlink',
+	'why',
 	'vlib-docs',
 	'get',
 	'version',

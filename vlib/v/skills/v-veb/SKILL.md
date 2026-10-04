@@ -1,6 +1,6 @@
 ---
 name: v-veb
-description: Writing V web applications with veb - the App and Context structs, route attributes with path parameters, ctx.html and ctx.json, templates with $tmpl and $veb.html, middleware with Middleware.use and route_use, shared state with shared and lock, and static file mounting. Use when creating or changing a veb server, adding a route or handler, returning JSON or HTML, adding middleware, or serving files. Does not cover concurrency in general (see v-concurrency), the language rules (see v-lang), or the build loop (see v-workflow).
+description: Writing V web applications with veb - the App and Context structs, route attributes with path parameters, ctx.html and ctx.json, templates with $tmpl and $veb.html, middleware with Middleware.use and route_use, shared state with shared and lock, and static file mounting. Use when creating or changing a veb server, adding a route or handler, returning JSON or HTML, adding middleware, or serving files. Does not cover concurrency in general (see v-concurrency), the language rules (see v-lang), the build loop (see v-workflow), scripting a task in V (see v-scripts), or the wider command surface (see v-tools).
 license: MIT
 ---
 
