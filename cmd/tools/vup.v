@@ -117,11 +117,15 @@ fn main() {
 	if os.user_os() == 'windows' {
 		app.backup('cmd/tools/vup.exe')
 	}
-	if !app.recompile_v() {
-		app.show_current_v_version()
-		eprintln('Recompiling V *failed*.')
-		eprintln('Try running `${get_make_cmd_name()}` .')
-		exit(1)
+	if app.skip_current || !app.compiler_sources_unchanged() {
+		if !app.recompile_v() {
+			app.show_current_v_version()
+			eprintln('Recompiling V *failed*.')
+			eprintln('Try running `${get_make_cmd_name()}` .')
+			exit(1)
+		}
+	} else {
+		println('> compiler sources did not change, not recompiling V.')
 	}
 	if !app.recompile_vup() {
 		app.show_current_v_version()
@@ -268,6 +272,16 @@ fn (app App) update_tcc() bool {
 	app.vprintln(result.output)
 	println('> done updating TCC.')
 	return true
+}
+
+// compiler_sources_unchanged checks whether nothing the compiler is built from
+// differs from the revision the current `v` executable was built at.
+fn (app App) compiler_sources_unchanged() bool {
+	built_hash := app.current_v_hash() or { return false }
+	diff := os.exec(['git', 'diff', '--quiet', built_hash, '--', 'cmd/v/', 'vlib/v/', 'thirdparty',
+		'vlib/builtin/', 'vlib/strings/', 'vlib/os/', 'vlib/strconv/', 'vlib/time/',
+		':(exclude)*_test.v', ':(exclude)*.md'])
+	return diff.exit_code == 0
 }
 
 fn (app App) recompile_v() bool {
