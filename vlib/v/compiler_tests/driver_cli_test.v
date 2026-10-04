@@ -1046,7 +1046,7 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	}
 }
 
-fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
+fn test_driver_native_inputs_and_no_skip_unused_bypass_cgen_cache() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_skip_unused_cache_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -1057,10 +1057,11 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	source := os.join_path(root, 'main.v')
 	os.mkdir_all(os.join_path(root, 'cached'))!
 	os.write_file(os.join_path(root, 'cached', 'cached.v'), 'module cached\n\npub fn value() int { return 40 }\n')!
-	os.write_file(source, 'module main\n\nimport cached\n\nfn identity[T](value T) T { return value }\n\nfn unused_value() int { return 7 }\n\nfn main() { println(identity(cached.value() + 2)) }\n')!
+	os.write_file(source, 'module main\n\nimport cached\n\n#include <stddef.h>\n\nfn identity[T](value T) T { return value }\n\nfn unused_value() int { return 7 }\n\nfn main() { println(identity(cached.value() + 2)) }\n')!
 	mut environment := os.environ()
 	environment['VTMP'] = os.join_path(root, 'vtmp')
 	environment['V3CACHE'] = os.join_path(root, 'cache')
+	environment['V3_CACHE_TRACE'] = '1'
 
 	cold_output := os.join_path(root, 'cold')
 	cold := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', cold_output,
@@ -1072,7 +1073,8 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	warm := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', warm_output,
 		source], environment)
 	assert warm.exit_code == 0, warm.output
-	assert warm.output.contains('cgen (cached)'), warm.output
+	assert warm.output.contains('native C inputs require compilation without header inspection'), warm.output
+	assert !warm.output.contains('cgen (cached)'), warm.output
 
 	no_skip_output := os.join_path(root, 'no_skip')
 	no_skip := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-no-skip-unused',
@@ -1969,6 +1971,8 @@ pub fn message() string {
 	os.write_file(source, "import crunmod
 import os
 
+#include <stddef.h>
+
 println(os.executable().ends_with('.vsh'))
 println(crunmod.message())
 println(os.args[1..].join('|'))
@@ -2000,7 +2004,8 @@ println(os.args[1..].join('|'))
 	cached_run := cmdexec.run(v3_bin, ['-silent', '-no-parallel', source, 'cached'])
 	assert cached_run.exit_code == 0, cached_run.output
 	assert cached_run.output == 'false\ncached module\ncached\n', cached_run.output
-	assert os.file_last_mod_unix(script_binary) == cache_stamp
+	// Native includes bypass the cached plan; the C compiler rebuilds the script.
+	assert os.file_last_mod_unix(script_binary) != cache_stamp
 	os.write_file(crun_module_file, "module crunmod
 
 pub fn message() string {
