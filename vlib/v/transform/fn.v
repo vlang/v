@@ -16122,6 +16122,18 @@ fn (t &Transformer) raw_selector_field_type(id flat.NodeId) ?string {
 		if t.is_type_alias_name(t.trim_pointer_type(canonical)) {
 			return canonical
 		}
+		// The declaration's spelling names types through the owner's module, so
+		// another module would rebind a bare `[]Row` to its own (or a first-wins) `Row`.
+		owner_base, _, _ := generic_app_parts(owner_type)
+		owner_module := if owner_base.contains('.') {
+			owner_base.all_before_last('.')
+		} else {
+			'main'
+		}
+		cur_module := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+		if owner_module != cur_module {
+			return canonical
+		}
 	}
 	return raw_type
 }
