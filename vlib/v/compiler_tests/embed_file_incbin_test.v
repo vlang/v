@@ -152,3 +152,27 @@ fn test_macos_tcc_build_keeps_the_array_form() {
 		assert !build.output.contains('.S -o'), build.output
 	}
 }
+
+fn test_windows_tcc_build_keeps_the_array_form() {
+	$if windows {
+		bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+		if !os.is_file(bundled_tcc) {
+			return
+		}
+		// Built here rather than through `build_and_run`, because that helper execs the
+		// output path verbatim and needs a `.exe` on Windows; unrelated to what this
+		// covers, and it has its own fix.
+		exe := os.join_path(incbin_workspace, 'app_tcc')
+		main_file := os.join_path(incbin_workspace, 'main.v')
+		// `-no-retry-compilation` turns off the retry that would hide the problem: TCC
+		// rejects the object the host assembler produced for the payload, so with the
+		// incbin path this build only succeeds through a fallback to that host.
+		build := os.exec([incbin_vexe, '-prod', '-showcc', '-cc', 'tcc', '-no-retry-compilation',
+			'-o', exe, main_file])
+		assert build.exit_code == 0, build.output
+		run := os.exec([exe + '.exe'])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == expected_output()
+		assert !build.output.contains('.S -o'), build.output
+	}
+}
