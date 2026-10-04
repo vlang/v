@@ -104,3 +104,51 @@ The lookup tables live in `printable_tables.v`, generated from Go's
 `unicode.IsPrint`, `unicode.IsGraphic` and `strconv.CanBackquote`. The test
 suite checks all three against Go's output, and `is_print`, `is_graphic` and
 `can_backquote` are each verified over every code point from 0 to `0x10FFFF`.
+
+## Unquoting literals
+
+`unquote` returns the string value a literal spells. It accepts a
+double-quoted, single-quoted or backquoted form, and fails on an unterminated
+literal or an invalid escape. `quoted_prefix` reads only the literal at the
+start of its input and returns it verbatim, quotes included, which is what you
+want when parsing a stream.
+
+```v
+import strconv
+
+assert strconv.unquote('"a\\tb"') or { '?' } == 'a	b'
+assert strconv.unquote('`raw`') or { '?' } == 'raw'
+assert strconv.quoted_prefix('"a" then more') or { '?' } == '"a"'
+```
+
+A single-quoted literal holds exactly one character, and a raw literal drops
+any carriage return inside it.
+
+```v
+import strconv
+
+sq := [1]u8[0x27].bytestr() // a single quote, as a string
+
+assert strconv.unquote(sq + 'a' + sq) or { '?' } == 'a'
+assert strconv.unquote('"a\rb"') or { '?' } == 'ab'
+```
+
+`unquote_char` decodes one character and reports what followed it. It is the
+building block the other two are written from, and returns a struct because V
+has no multi-value return. `quote` must be the quote byte the literal uses.
+
+```v
+import strconv
+
+r := strconv.unquote_char('\\x41BC', 0x22) or { return }
+
+assert r.value == `A`
+assert r.multibyte == false
+assert r.tail == 'BC'
+```
+
+Like the quoting functions, all three are checked against Go 1.26.1 over a
+corpus of 29675 inputs: every single byte, every two-byte escape body, the
+numeric escape forms including their boundaries, invalid UTF-8 tails, and
+multi-byte runes inside literals.
+
