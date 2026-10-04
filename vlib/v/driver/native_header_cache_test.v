@@ -181,5 +181,8 @@ fn test_only_declaration_headers_are_replicated_into_cached_objects() {
 	assert !modulecache.c_source_is_replicable('static int foo_size = sizeof(int);\n')
 	assert !modulecache.c_source_is_replicable('static void (*foo_callback)(void);\n')
 	assert !modulecache.c_source_is_replicable('static void (*foo_callback)(void) = 0;\n')
+	assert !modulecache.c_source_is_replicable('static char foo_buf[sizeof(int)];\n')
+	assert !modulecache.c_source_is_replicable('static int foo_counters[FOO(1)];\n')
 	assert modulecache.c_source_is_replicable('static int foo_helper(int x);\n')
+	assert modulecache.c_source_is_replicable('static int foo_helper(int a[sizeof(int)]);\n')
 }

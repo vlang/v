@@ -2440,7 +2440,19 @@ fn c_declaration_item_keeps_static_object(item string, has_brace bool) bool {
 	if c_declaration_item_has_initializer(head) {
 		return true
 	}
-	first_paren := head.index_u8(`(`)
+	// An array size such as `[sizeof(int)]` does not make the item a function.
+	mut first_paren := -1
+	mut bracket_depth := 0
+	for i, c in head {
+		if c == `[` {
+			bracket_depth++
+		} else if c == `]` && bracket_depth > 0 {
+			bracket_depth--
+		} else if c == `(` && bracket_depth == 0 {
+			first_paren = i
+			break
+		}
+	}
 	if first_paren < 0 {
 		return true
 	}
