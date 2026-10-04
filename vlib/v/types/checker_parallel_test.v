@@ -111,14 +111,15 @@ fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	for i in 0 .. 600 {
 		typ := Type(Struct{ name: 'Item${i}' })
 		originals << typ
-		assert tc.cached_check_type_promotion(typ, mut cache, false) == none
-		promoted := tc.cached_check_type_promotion(typ, mut cache, true)?
+		assert tc.cached_check_type_promotion(typ, mut cache, false, false) == none
+		promoted := tc.cached_check_type_promotion(typ, mut cache, true, false)?
 		assert promoted.name() == 'Item${i}'
-		assert tc.cached_check_type_promotion(typ, mut cache, false)? == promoted
+		assert tc.cached_check_type_promotion(typ, mut cache, false, false)? == promoted
 	}
 	// More live payloads than slots exercises eviction without losing identity.
+	// The interner is now frozen, as it is during parallel clone promotion.
 	for i, typ in originals {
-		assert tc.cached_check_type_promotion(typ, mut cache, false)?.name() == 'Item${i}'
+		assert tc.cached_check_type_promotion(typ, mut cache, false, true)?.name() == 'Item${i}'
 	}
 	assert tc.type_count() == initial_count + 600
 }

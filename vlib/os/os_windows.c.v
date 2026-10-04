@@ -274,8 +274,13 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 	}
 
 	if h_find_files == invalid_handle_value {
-		return error('os.glob(): Could not get a file handle: ' +
-			get_error_msg(int(C.GetLastError())))
+		// GetLastError has to be read before anything else, including building
+		// this message. Concatenating allocates, and an allocation is enough to
+		// reset the thread's last-error value, so the code reported could be 0 --
+		// "The operation completed successfully" for a call that just failed.
+		// windows_execute_command_line below already reads it into error_num first.
+		error_num := int(C.GetLastError())
+		return error('os.glob(): Could not get a file handle: ' + get_error_msg(error_num))
 	}
 
 	// save first finding
@@ -366,9 +371,9 @@ pub fn ls(path string) ![]string {
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
 	// Handle cases where files cannot be opened. for example:"System Volume Information"
 	if h_find_files == invalid_handle_value {
-		code := int(C.GetLastError())
-		return error_with_code('ls(): Could not get a file handle: ' +
-			get_error_msg(code), code)
+		error_num := int(C.GetLastError())
+		return error_with_code('ls(): Could not get a file handle: ' + get_error_msg(error_num),
+			error_num)
 	}
 	first_filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
 	if first_filename != '.' && first_filename != '..' {
@@ -391,10 +396,11 @@ pub fn mkdir(path string, params MkdirParams) ! {
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
-		// save the error code before get_error_msg(), which overwrites it
-		code := int(C.GetLastError())
+		// Read the code before the concatenation below allocates, or the message
+		// can name an error that never happened. See native_glob_pattern.
+		error_num := int(C.GetLastError())
 		return error_with_code('mkdir failed for "${apath}", because CreateDirectory returned: ' +
-			get_error_msg(code), code)
+			get_error_msg(error_num), error_num)
 	}
 }
 

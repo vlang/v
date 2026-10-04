@@ -13408,6 +13408,13 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 			}
 			outer_scope = outer_scope.parent
 		}
+	} else {
+		// A lambda inside a closure cannot reach what the closure does not capture.
+		for name, _ in tc.fn_context.closure_forbidden_captures {
+			if tc.ident_uses_forbidden_closure_capture(name) {
+				forbidden_captures[name] = true
+			}
+		}
 	}
 	saved_fn_context := tc.fn_context
 	tc.fn_context = new_function_check_context()
@@ -15921,7 +15928,8 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 				aliases = aliases || tc.fn_context.immutable_reference_aliases[root.value]
 			}
 		}
-		if aliases && !tc.mutable_alias_has_fresh_map_storage(base_id) {
+		if aliases && !tc.mutable_alias_has_fresh_map_storage(base_id)
+			&& !tc.lvalue_is_inline_fixed_array(base_id) {
 			tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(base_id)}` aliases mutable data from an immutable value, clone it first (or use `unsafe`)', base_id, if base.kind in [
 				.ident,
 				.selector,
@@ -15933,6 +15941,49 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 		}
 		return
 	}
+}
+
+// A fixed array is stored inside the variable or struct that holds it, so a copy of an
+// immutable value has elements of its own, and writing one of them cannot reach the
+// value it was copied from.
+fn (mut tc TypeChecker) lvalue_is_inline_fixed_array(id flat.NodeId) bool {
+	typ := tc.lvalue_inline_storage_type(id) or { return false }
+	return typ is ArrayFixed
+}
+
+// The declared type of an lvalue that a local variable holds by value: the variable
+// itself, a field of a struct held that way, or an element of a fixed array held that
+// way. A pointer, a dynamic array, a map or a smartcast on the way there leads to
+// storage a copy still shares with its source, so none is returned for those, as it is
+// for anything that cannot be looked into.
+fn (mut tc TypeChecker) lvalue_inline_storage_type(id flat.NodeId) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.lvalue_inline_storage_type(tc.a.child(node, 0))
+	}
+	if node.kind !in [.ident, .selector, .index] || tc.smartcast_type(id) != none {
+		return none
+	}
+	if node.kind == .ident {
+		return unalias_type(tc.resolve_type(id))
+	}
+	if node.children_count == 0 {
+		return none
+	}
+	base_type := tc.lvalue_inline_storage_type(tc.a.child(node, 0))?
+	if node.kind == .selector {
+		if base_type is Struct {
+			return unalias_type(tc.struct_field_type(base_type.name, node.value)?)
+		}
+		return none
+	}
+	if base_type is ArrayFixed && node.value != 'range' {
+		return unalias_type(base_type.elem_type)
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) call_immutable_alias_source(id flat.NodeId) ?flat.NodeId {

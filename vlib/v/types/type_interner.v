@@ -74,6 +74,24 @@ fn (i &TypeInterner) probe(t Type) ?Type {
 	return none
 }
 
+// probe_frozen requires an immutable table and immutable semantic payloads
+// until every reader joins. Normal callers must use the synchronized probe.
+fn (i &TypeInterner) probe_frozen(t Type) ?Type {
+	mut key := semantic_type_hash(t)
+	for {
+		id := i.buckets[key] or { return none }
+		if int(id) < 0 || int(id) >= i.types.len {
+			return none
+		}
+		candidate := i.types[int(id)]
+		if semantic_types_equal(candidate, t) {
+			return candidate
+		}
+		key = type_hash_tag(key, 0x5bd1e995)
+	}
+	return none
+}
+
 fn (mut i TypeInterner) name(id TypeId) string {
 	i.lock.lock()
 	defer {

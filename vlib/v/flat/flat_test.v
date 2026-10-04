@@ -158,7 +158,7 @@ fn test_text_intern_passes_detach_reused_source_storage() {
 		ast.add_node(Node{
 			value:   borrowed
 			typ:     borrowed
-			payload: node_payload([borrowed])
+			payload: node_payload_with_constraints([borrowed, 'U'], [borrowed, ''])
 		})
 		if i % 2 == 0 {
 			ast.intern_node_texts_range(i, i + 1)
@@ -170,7 +170,8 @@ fn test_text_intern_passes_detach_reused_source_storage() {
 		node := ast.nodes[i]
 		assert node.value == name
 		assert node.typ == name
-		assert node.generic_params() == [name]
+		assert node.generic_params() == [name, 'U']
+		assert node.generic_constraints() == [name, '']
 		assert ast.text(TextId(node.type_text_id())) == name
 		assert node.value.str == node.typ.str
 	}
@@ -263,4 +264,13 @@ fn test_clone_node_flags_keeps_detached_spawn() {
 	assert !Node{
 		kind: .spawn_expr
 	}.is_detached_spawn()
+}
+
+fn test_text_lookup_preserves_bounds_checks() {
+	mut a := FlatAst.new()
+	id, _ := a.intern_text('known')
+	assert a.text(id) == 'known'
+	assert a.text(TextId(0)) == ''
+	assert a.text(id + 1) == ''
+	assert a.text(TextId(0xffffffff)) == ''
 }

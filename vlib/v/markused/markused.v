@@ -3638,6 +3638,7 @@ fn markused_split_generic_args(s string) []string {
 	return args
 }
 
+@[direct_array_access]
 fn (c &CallCollector) node_tree_uses_generics(root flat.NodeId, cur_module string, imports map[string]string) bool {
 	mut stack := [root]
 	for stack.len > 0 {
@@ -4510,14 +4511,13 @@ mut:
 // worker threads against a forked TypeChecker.
 fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports map[string]string) BodyCalls {
 	receiver_name, receiver_struct := receiver_info(c.a, node)
-	local_values, mut local_types, local_ident_types := c.local_value_info(node, cur_module,
-		imports)
+	local_values, mut local_types, local_ident_types, inferred_visible_idents := c.local_value_info_with_visibility(node, cur_module, imports)
 	if receiver_name.len > 0 && receiver_struct.len > 0 {
 		local_types[receiver_name] = receiver_struct
 	}
 	needs_visibility := c.local_values_need_visibility(local_values, cur_module, imports)
 	visible_local_idents := if needs_visibility {
-		markused_visible_local_idents(c.a, node, local_values)
+		inferred_visible_idents
 	} else {
 		map[int]bool{}
 	}
@@ -4571,9 +4571,9 @@ fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 
 // collect_calls updates collect calls state for markused.
 fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, mut calls []string) {
-	local_values, local_types, local_ident_types := c.local_value_info(node, cur_module, imports)
+	local_values, local_types, local_ident_types, inferred_visible_idents := c.local_value_info_with_visibility(node, cur_module, imports)
 	visible_local_idents := if c.local_values_need_visibility(local_values, cur_module, imports) {
-		markused_visible_local_idents(c.a, node, local_values)
+		inferred_visible_idents
 	} else {
 		map[int]bool{}
 	}
@@ -4587,9 +4587,9 @@ fn (c &CallCollector) collect_calls(node &flat.Node, cur_module string, imports 
 }
 
 fn (c &CallCollector) collect_calls_with_generic_usage(node &flat.Node, cur_module string, imports map[string]string, receiver_name string, receiver_struct string, mut calls []string) bool {
-	local_values, local_types, local_ident_types := c.local_value_info(node, cur_module, imports)
+	local_values, local_types, local_ident_types, inferred_visible_idents := c.local_value_info_with_visibility(node, cur_module, imports)
 	visible_local_idents := if c.local_values_need_visibility(local_values, cur_module, imports) {
-		markused_visible_local_idents(c.a, node, local_values)
+		inferred_visible_idents
 	} else {
 		map[int]bool{}
 	}
@@ -5093,7 +5093,7 @@ fn (c &CallCollector) expr_contains_call(id flat.NodeId) bool {
 }
 
 fn (c &CallCollector) collect_initializer_refs(node &flat.Node, cur_module string, imports map[string]string, mut refs []string) {
-	local_values, _, _ := c.local_value_info(node, cur_module, imports)
+	local_values, _ := markused_local_value_names(c.a, node)
 	visible_local_idents := if c.local_values_need_visibility(local_values, cur_module, imports) {
 		markused_visible_local_idents(c.a, node, local_values)
 	} else {
@@ -5183,13 +5183,24 @@ fn (c &CallCollector) add_initializer_ref_candidates(name string, cur_module str
 	}
 }
 
-@[direct_array_access]
 fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, imports map[string]string) (map[string]bool, map[string]string, map[int]string) {
-	mut names := map[string]bool{}
+	names, type_names, ident_types, _ := c.local_value_info_with_visibility(node, cur_module,
+		imports)
+	return names, type_names, ident_types
+}
+
+@[direct_array_access]
+fn (c &CallCollector) local_value_info_with_visibility(node &flat.Node, cur_module string, imports map[string]string) (map[string]bool, map[string]string, map[int]string, map[int]bool) {
+	names, has_inference_binders := markused_local_value_names(c.a, node)
 	mut type_names := map[string]string{}
 	mut ident_types := map[int]string{}
+	visible_local_idents := markused_visible_local_idents(c.a, node, names)
+	// Initializer expressions without declarations, parameters or loop/lambda
+	// bindings cannot add any local types during the inference walk.
+	if names.len == 0 && !has_inference_binders {
+		return names, type_names, ident_types, visible_local_idents
+	}
 	param_types := c.local_fn_param_type_names(node, cur_module)
-	mut stack := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := c.a.child(node, i)
 		if int(child_id) >= 0 {
@@ -5199,17 +5210,43 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 					markused_resolve_imported_type_name(param.typ, imports)
 				}
 			}
+		}
+	}
+	// Infer calls using the locals visible at each identifier, not declarations
+	// collected later in the body or in a different block. The call walk reuses
+	// this same visibility map when local names collide with declarations.
+	scoped := CallCollector{
+		...c
+		local_ident_visibility:     visible_local_idents
+		has_local_ident_visibility: true
+	}
+	scoped.infer_local_type_bindings(node, cur_module, imports, names, mut type_names,
+		mut ident_types, true)
+	return names, type_names, ident_types, visible_local_idents
+}
+
+@[direct_array_access]
+fn markused_local_value_names(a &flat.FlatAst, node &flat.Node) (map[string]bool, bool) {
+	mut names := map[string]bool{}
+	mut has_inference_binders := false
+	mut stack := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		child_id := a.child(node, i)
+		if int(child_id) >= 0 {
 			stack << child_id
 		}
 	}
 	for stack.len > 0 {
 		id := stack.pop()
-		child := c.a.node(id)
+		child := a.node(id)
+		if child.kind in [.for_in_stmt, .lambda_expr] {
+			has_inference_binders = true
+		}
 		if child.kind == .param && child.value.len > 0 {
 			names[child.value] = true
 		} else if child.kind == .lambda_expr {
 			for i in 0 .. child.children_count - 1 {
-				param := c.a.child_node(child, i)
+				param := a.child_node(child, i)
 				if param.kind == .ident && param.value.len > 0 {
 					names[param.value] = true
 				}
@@ -5219,29 +5256,20 @@ fn (c &CallCollector) local_value_info(node &flat.Node, cur_module string, impor
 			rhs_count := int(child.children_count) - lhs_count
 			for i in 0 .. lhs_count {
 				idx := if i < rhs_count { i * 2 } else { rhs_count + i }
-				lhs := c.a.child_node(child, idx)
+				lhs := a.child_node(child, idx)
 				if lhs.kind == .ident && lhs.value.len > 0 {
 					names[lhs.value] = true
 				}
 			}
 		}
 		for i in 0 .. child.children_count {
-			next_id := c.a.child(child, i)
+			next_id := a.child(child, i)
 			if int(next_id) >= 0 {
 				stack << next_id
 			}
 		}
 	}
-	// Infer calls using the locals visible at each identifier, not declarations
-	// collected later in the body or in a different block.
-	scoped := CallCollector{
-		...c
-		local_ident_visibility:     markused_visible_local_idents(c.a, node, names)
-		has_local_ident_visibility: true
-	}
-	scoped.infer_local_type_bindings(node, cur_module, imports, names, mut type_names,
-		mut ident_types, true)
-	return names, type_names, ident_types
+	return names, has_inference_binders
 }
 
 fn markused_assign_lhs_count(node &flat.Node) int {
@@ -5257,7 +5285,43 @@ fn markused_assign_lhs_count(node &flat.Node) int {
 	return int(node.children_count) - 1
 }
 
+struct LocalTypeChange {
+	name    string
+	typ     string
+	present bool
+}
+
+fn markused_set_local_type(name string, typ string, mut type_names map[string]string, mut changes []LocalTypeChange) {
+	if previous := type_names[name] {
+		if previous == typ {
+			return
+		}
+		changes << LocalTypeChange{ name: name, typ: previous, present: true }
+	} else {
+		changes << LocalTypeChange{ name: name }
+	}
+	type_names[name] = typ
+}
+
+fn markused_restore_local_types(mark int, mut type_names map[string]string, mut changes []LocalTypeChange) {
+	for changes.len > mark {
+		change := changes.pop()
+		if change.present {
+			type_names[change.name] = change.typ
+		} else {
+			type_names.delete(change.name)
+		}
+	}
+}
+
 fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module string, imports map[string]string, names map[string]bool, mut type_names map[string]string, mut ident_types map[int]string, root bool) {
+	mut changes := []LocalTypeChange{}
+	c.infer_local_type_bindings_scoped(node, cur_module, imports, names, mut type_names,
+		mut ident_types, root, mut changes)
+}
+
+@[direct_array_access]
+fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_module string, imports map[string]string, names map[string]bool, mut type_names map[string]string, mut ident_types map[int]string, root bool, mut changes []LocalTypeChange) {
 	for i in 0 .. node.children_count {
 		id := c.a.child(node, i)
 		if int(id) < 0 {
@@ -5287,38 +5351,26 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 		if child.kind in [.block, .if_expr, .match_stmt, .match_branch, .select_stmt, .select_branch,
 			.for_stmt, .fn_literal, .comptime_if, .comptime_for, .defer_stmt, .lock_expr] {
 			if root && child.kind == .block {
-				c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
-					mut ident_types, false)
+				c.infer_local_type_bindings_scoped(child, cur_module, imports, names, mut type_names,
+					mut ident_types, false, mut changes)
 			} else {
-				mut nested_types := type_names.clone()
-				if child.kind == .lambda_expr {
-					for param_i in 0 .. int(child.children_count) - 1 {
-						param_id := c.a.child(child, param_i)
-						param := c.a.node(param_id)
-						if param.kind != .ident || param.value.len == 0 { continue }
-						nested_types[param.value] = if param.typ.len > 0 {
-							markused_resolve_imported_type_name(param.typ, imports)
-						} else {
-							resolve_type_name(c.node_type(param_id))
-						}
-					}
-				}
-				c.infer_local_type_bindings(child, cur_module, imports, names, mut nested_types,
-					mut ident_types, false)
+				// Keep only changed bindings, rather than cloning all outer locals
+				// for every branch and nested block.
+				mark := changes.len
+				c.infer_local_type_bindings_scoped(child, cur_module, imports, names, mut type_names,
+					mut ident_types, false, mut changes)
+				markused_restore_local_types(mark, mut type_names, mut changes)
 			}
 			continue
 		}
 		if child.kind == .param && child.value.len > 0 && child.typ.len > 0 {
 			if !root || child.value !in type_names {
-				type_names[child.value] = markused_resolve_imported_type_name(child.typ, imports)
+				markused_set_local_type(child.value, markused_resolve_imported_type_name(child.typ, imports), mut type_names, mut changes)
 			}
 			continue
 		}
 		if child.kind == .decl_assign {
 			lhs_count := markused_assign_lhs_count(child)
-			// A single binding reads the prior types before updating its name. Multiple
-			// bindings need a snapshot so earlier writes cannot affect later RHS types.
-			pre_types := markused_decl_type_snapshot(type_names, lhs_count)
 			rhs_count := int(child.children_count) - lhs_count
 			for j in 0 .. rhs_count {
 				rhs_idx := if j < lhs_count { j * 2 + 1 } else { lhs_count + j }
@@ -5326,17 +5378,21 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 				if int(rhs_id) >= 0 {
 					rhs := c.a.node(rhs_id)
 					if rhs.children_count > 0 {
-						mut rhs_types := pre_types.clone()
-						c.infer_local_type_bindings(rhs, cur_module, imports, names,
-							mut rhs_types, mut ident_types, false)
+						mark := changes.len
+						c.infer_local_type_bindings_scoped(rhs, cur_module, imports, names,
+							mut type_names, mut ident_types, false, mut changes)
+						markused_restore_local_types(mark, mut type_names, mut changes)
 					}
 					if rhs.kind == .ident {
-						if typ := pre_types[rhs.value] {
+						if typ := type_names[rhs.value] {
 							ident_types[int(rhs_id)] = typ
 						}
 					}
 				}
 			}
+			// All RHS bindings have been restored. Multiple LHS bindings still
+			// need a snapshot so an earlier write cannot affect later RHS types.
+			pre_types := markused_decl_type_snapshot(type_names, lhs_count)
 			mut parts := []string{}
 			if rhs_count == 1 && lhs_count > 1 {
 				rhs_id := c.a.child(child, 1)
@@ -5353,7 +5409,7 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 					continue
 				}
 				if parts.len == lhs_count {
-					type_names[lhs.value] = parts[j]
+					markused_set_local_type(lhs.value, parts[j], mut type_names, mut changes)
 					continue
 				}
 				if j >= rhs_count || (rhs_count == 1 && lhs_count > 1) {
@@ -5369,7 +5425,7 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 					c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names, pre_types)
 				}
 				if type_name.len > 0 {
-					type_names[lhs.value] = type_name
+					markused_set_local_type(lhs.value, type_name, mut type_names, mut changes)
 				}
 			}
 			continue
@@ -5380,8 +5436,8 @@ fn (c &CallCollector) infer_local_type_bindings(node &flat.Node, cur_module stri
 			}
 		}
 		if child.children_count > 0 {
-			c.infer_local_type_bindings(child, cur_module, imports, names, mut type_names,
-				mut ident_types, false)
+			c.infer_local_type_bindings_scoped(child, cur_module, imports, names, mut type_names,
+				mut ident_types, false, mut changes)
 		}
 	}
 }
@@ -5426,6 +5482,7 @@ fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node,
 	}
 }
 
+@[direct_array_access]
 fn (c &CallCollector) local_fn_param_type_names(node &flat.Node, cur_module string) map[string]string {
 	mut result := map[string]string{}
 	mut param_names := []string{}

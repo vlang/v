@@ -12771,19 +12771,10 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	}
 	saved_fn_name := t.cur_fn_name
 	saved_ret_type := t.cur_fn_ret_type
-	saved_vars := t.var_types.clone()
-	saved_heaped_state := t.save_heaped_local_state()
-	saved_fn_value_locals := t.fn_value_locals.clone()
-	saved_mut_param_values := t.mut_param_values.clone()
-	saved_fixed_array_param_values := t.fixed_array_param_values.clone()
-	saved_local_closure_cleanup_decls := t.local_closure_cleanup_decls.clone()
-	saved_local_closure_cleanup_assigns := t.local_closure_cleanup_assigns.clone()
-	saved_local_closure_field_cleanups := t.local_closure_field_cleanups.clone()
+	saved_locals := t.detach_function_local_state()
 	t.cur_fn_name = name
 	t.cur_fn_ret_type = ret_type
 	t.reset_var_types()
-	// Capture metadata above uses outer storage; the lifted body has its own bindings.
-	t.restore_heaped_local_state(HeapedLocalState{})
 	for param_id in param_ids {
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ.len > 0 {
@@ -12871,14 +12862,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		new_body << t.transform_stmts(lifted_body[synthetic_decl_count..])
 	}
 	t.pending_stmts = outer_pending
-	t.restore_heaped_local_state(saved_heaped_state)
-	t.restore_var_types(saved_vars)
-	t.fn_value_locals = saved_fn_value_locals.clone()
-	t.mut_param_values = saved_mut_param_values.clone()
-	t.fixed_array_param_values = saved_fixed_array_param_values.clone()
-	t.local_closure_cleanup_decls = saved_local_closure_cleanup_decls.clone()
-	t.local_closure_cleanup_assigns = saved_local_closure_cleanup_assigns.clone()
-	t.local_closure_field_cleanups = saved_local_closure_field_cleanups.clone()
+	t.restore_function_local_state(saved_locals)
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
 	mut all_ids := []flat.NodeId{cap: param_ids.len + new_body.len}

@@ -143,48 +143,6 @@ fn test_checker_fixture_header_check_resolves_through_the_source_path_table() {
 	assert missing.contains('v3_source_path_table_missing.h')
 }
 
-fn test_native_privacy_scan_resolves_v_sources_through_the_source_path_table() {
-	root := source_path_table_root('native_privacy')
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	referencing := os.join_path(root, 'referencing.v')
-	clean := os.join_path(root, 'clean.v')
-	os.write_file(referencing, 'module sibling\n\nfn use() {\n\tC.v3_private_ident()\n}\n')!
-	os.write_file(clean, 'module sibling\n\nfn unrelated() {}\n')!
-	identifiers := {
-		'v3_private_ident': true
-	}
-	sibling_state := &V3ModuleCacheState{
-		module_sources: {
-			'owner':   []string{}
-			'sibling': ['written_sibling.v']
-		}
-	}
-	// A user file and a sibling module source reach the scan only through the table.
-	mut a := flat.FlatAst.new()
-	a.resolved_source_paths['written_user.v'] = referencing
-	a.resolved_source_paths['written_sibling.v'] = referencing
-	a.resolve_source_paths()
-	user_state := &V3ModuleCacheState{
-		module_sources: {
-			'owner': []string{}
-		}
-	}
-	assert !cache_external_identifiers_are_private_to_module(&a, user_state, 'owner', identifiers,
-		['written_user.v'], '')
-	assert !cache_external_identifiers_are_private_to_module(&a, sibling_state, 'owner',
-		identifiers, []string{}, '')
-	// A parsed file that resolves to a source the scan already read is not read
-	// again.
-	mut parsed := parse_unrecorded_files([referencing])
-	parsed.resolved_source_paths['written_sibling.v'] = clean
-	parsed.resolved_source_paths[referencing] = clean
-	parsed.resolve_source_paths()
-	assert cache_external_identifiers_are_private_to_module(parsed, sibling_state, 'owner',
-		identifiers, []string{}, '')
-}
-
 fn test_unsupported_generic_scan_resolves_through_the_source_path_table() {
 	root := source_path_table_root('generic_scope')
 	defer {

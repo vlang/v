@@ -61,6 +61,19 @@ fn test_all_topics() {
 	}
 }
 
+fn test_up_topic_lists_the_skills_flag() {
+	res := os.exec([@VEXE, 'help', 'up'])
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('-skills'), res.output
+	assert res.output.contains('Refresh the installed agent skills'), res.output
+}
+
+fn test_up_topic_says_the_report_leaves_edited_skills_alone() {
+	res := os.exec([@VEXE, 'help', 'up'])
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('reported but left alone'), res.output
+}
+
 fn test_other_topic_summary_of_skills_mentions_update() {
 	res := os.exec([@VEXE, 'help', 'other'])
 	assert res.exit_code == 0, res.output

@@ -64,6 +64,19 @@ types, but the order of declaring field names and their types in C structs
 and V structs is different - in C you use: `short field_name;`, but in V,
 that would be: `field_name i16`.
 
+V does not scan C headers to discover declarations. Redeclare the fields you use
+in a `.c.v` file, and mark a C typedef with `@[typedef]`. For example,
+`typedef struct { int x; } Foo;` needs this V binding:
+
+```v ignore
+@[typedef]
+struct C.Foo {
+	x int
+}
+```
+
+The attribute is required with both `#include` and `#insert`.
+
 ## Passing V strings to C functions:
 The V string type, is currently defined like this:
 ```c
