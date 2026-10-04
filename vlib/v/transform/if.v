@@ -1246,7 +1246,7 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 			}
 		}
 	}
-	if value_decls.len == 0 {
+	if value_decls.len == 0 && lhs.value != '_' && value_type != 'void' {
 		value_decls << t.make_guard_value_decls(lhs.value, t.make_selector(t.make_ident(tmp_name), 'value', value_type), value_type)
 	}
 	then_id := t.a.child(&if_node, 1)
