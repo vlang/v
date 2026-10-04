@@ -8075,13 +8075,21 @@ fn (mut p Parser) report_fn_decl_inside_fn(start int, end int) {
 
 // method_decl_follows reports whether the `fn (` at the current token starts a
 // method declaration, `fn (r T) name(` or `fn (r T) name[U](`, rather than an
-// anonymous function like `fn (x int) int {` or `fn (x int) Box[int] {`.
+// anonymous function like `fn (x int) int {`, `fn (x int) Box[int] {` or
+// `fn (x int) thread (int, int) {`.
 fn (mut p Parser) method_decl_follows() bool {
 	if p.peek() != .lpar {
 		return false
 	}
 	mut lookahead := p.s
-	if !scan_past_closing(mut lookahead, .lpar, .rpar) || lookahead.scan() != .name {
+	// A receiver is never empty, so `fn () ...` is always an anonymous function.
+	first := lookahead.scan()
+	if first in [.rpar, .lpar] || !scan_past_closing(mut lookahead, .lpar, .rpar) {
+		return false
+	}
+	// `thread` is the one type name that takes a parenthesized operand, so it is
+	// an anonymous function's return type there, not a method name.
+	if lookahead.scan() != .name || lookahead.lit == 'thread' {
 		return false
 	}
 	mut next := lookahead.scan()
