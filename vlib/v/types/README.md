@@ -9,6 +9,10 @@ Enum values must be declared by their enum, including qualified values such as `
 and shorthand values such as `.blue` in `match` branches. Unknown values are rejected before
 C generation.
 
+Compiler integrations can use `Scope.contains(name)` to check whether a binding is visible
+in a scope or its parents without copying the binding's type. It includes unresolved type
+bindings and follows the same shadowing and scope-reuse rules as `Scope.lookup(name)`.
+
 An inline anonymous struct parameter accepts a matching anonymous literal from another module.
 Anonymous types declared as fields or aliases keep their declared field visibility.
 

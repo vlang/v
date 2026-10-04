@@ -787,6 +787,7 @@ pub fn (a &FlatAst) clone_text_table_owned() ([]string, map[string]TextId) {
 }
 
 // text resolves a stable AST text identity.
+@[direct_array_access]
 pub fn (a &FlatAst) text(id TextId) string {
 	idx := int(id) - 1
 	if idx < 0 || idx >= a.text_values.len {
@@ -880,11 +881,17 @@ pub fn (mut a FlatAst) intern_node_texts_at(indexes []int) {
 }
 
 fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string, mut type_cache_ptrs [4096]voidptr, mut type_cache_vals [4096]string, mut type_cache_ids [4096]u16) {
-	a.nodes[idx].value = a.intern_text_ptr_cached(a.nodes[idx].value, mut cache_ptrs, mut cache_vals)
-	type_id, canonical_type := a.intern_type_text_ptr_cached(a.nodes[idx].typ, mut type_cache_ptrs, mut type_cache_vals, mut type_cache_ids)
-	a.nodes[idx].typ = canonical_type
-	a.nodes[idx].set_type_text_id(type_id)
-	params := a.nodes[idx].generic_params()
+	// Interning grows the text tables, never the node array, so this slot stays valid.
+	mut node := &a.nodes[idx]
+	node.value = a.intern_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
+	type_id, canonical_type := a.intern_type_text_ptr_cached(node.typ, mut type_cache_ptrs, mut type_cache_vals, mut type_cache_ids)
+	node.typ = canonical_type
+	node.set_type_text_id(type_id)
+	if node.payload == 0 {
+		return
+	}
+	payload := node.payload_ptr()
+	params := payload.generic_params
 	if params.len > 0 {
 		// Always rebuild the payload: the params array itself may live in a
 		// stage arena even when every param string is already canonical.
@@ -892,7 +899,7 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 		for item in params {
 			canonical_params << a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
 		}
-		constraints := a.nodes[idx].generic_constraints()
+		constraints := payload.generic_constraints
 		mut canonical_constraints := []string{cap: constraints.len}
 		for item in constraints {
 			canonical_constraints << if item.len > 0 {
@@ -901,13 +908,14 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 				''
 			}
 		}
-		a.nodes[idx].set_generic_params_and_constraints(canonical_params, canonical_constraints)
+		node.set_generic_params_and_constraints(canonical_params, canonical_constraints)
 	}
 }
 
 // intern_type_text_ptr_cached canonicalizes a node type spelling and returns
 // its compact identity. Programs with more than 65535 texts use 0 and retain
 // the existing string-keyed fallback.
+@[direct_array_access]
 pub fn (mut a FlatAst) intern_type_text_ptr_cached(value string, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string, mut cache_ids [4096]u16) (u16, string) {
 	if value.len == 0 {
 		return 0, ''
@@ -967,6 +975,7 @@ pub fn (a &FlatAst) probe_type_text_ptr_cached(value string, mut cache_ptrs [409
 }
 
 // intern_text_ptr_cached interns text using a caller-owned scratch cache.
+@[direct_array_access]
 pub fn (mut a FlatAst) intern_text_ptr_cached(value string, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string) string {
 	if value.len == 0 {
 		return ''

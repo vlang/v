@@ -9885,6 +9885,21 @@ pub struct C.TypeName {
 }
 ```
 Note that the name of the `C.` struct in V, is the one *after* the `struct SomeName {...}`.
+This attribute is also required for anonymous C typedefs such as
+`typedef struct { int x; } Foo;`. V does not infer typedef declarations by scanning
+headers included with `#include` or `#insert`. Native header dependency tracking
+and declaration ownership belong to the C compiler. A build whose own code
+includes or inserts a C header or source that is not shipped with V, uses
+`#pkgconfig`, or whose C flags name native files or include directories outside
+the V installation, bypasses the V module-object and whole-program caches, and
+`v crun` or a `.vsh` script rebuilds it on every run. System headers
+(`#include <...>`) and declaration-only headers shipped with V keep the caches
+enabled. A module shipped with V that compiles a C source, or the implementation
+of a single-header library, into the program (as `gg`, `sokol`, `compress.szip`
+and `compress.zstd` do) makes the build bypass the caches too, but `v crun` still
+reuses its executable while none of its inputs change.
+If a header needs Objective-C syntax, select the language with `#flag -x objective-c`;
+V does not infer the language from header contents.
 
 **C. function redeclarations**
 The situation is similar for `C.` functions. If you are going to call just 1 function in a

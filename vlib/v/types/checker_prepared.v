@@ -374,6 +374,7 @@ fn (mut tc TypeChecker) extend_collect_node_caches(n int) {
 
 // extend_direct_parent_index adds the nodes from `start` on to the parent index.
 fn (mut tc TypeChecker) extend_direct_parent_index(a &flat.FlatAst, start int) {
+	tc.invalidate_lexical_parent_memo()
 	grow := a.nodes.len - tc.direct_parent_ids.len
 	if grow > 0 {
 		tc.direct_parent_ids << flat.empty_node_ids(grow)
