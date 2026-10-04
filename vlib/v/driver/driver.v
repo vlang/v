@@ -342,11 +342,11 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 // go into an object assembled from a generated `.S` file and linked next to the
 // generated C, instead of being spelled out as a C array initializer, which is
 // what makes a large embedded file cheap to compile. That needs a final native
-// link of this build's objects, so generated C and object output, MSVC, iOS,
-// WebAssembly, a Windows target built elsewhere, and the sysroot link of a Linux
-// build on macOS keep the array form. Retained C and dumped C flags must stay
-// reusable after the temporary build directory is removed. `-d no_incbin`
-// keeps the array form everywhere.
+// link of this build's objects, so generated C and object output, MSVC, TCC on
+// macOS and Windows, iOS, WebAssembly, a Windows target built elsewhere, and the
+// sysroot link of a Linux build on macOS keep the array form. Retained C and
+// dumped C flags must stay reusable after the temporary build directory is
+// removed. `-d no_incbin` keeps the array form everywhere.
 fn v3_embed_incbin_supported(target_os string, host_os string, effective_c_compiler string, backend string, c_only bool, is_o bool, macos_linux_cross bool, reusable_c_output bool, user_defines []string) bool {
 	if backend != 'c' || c_only || is_o || macos_linux_cross || reusable_c_output {
 		return false
