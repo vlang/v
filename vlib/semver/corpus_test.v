@@ -47,6 +47,7 @@ const conforming = [
 	Case{'0.0.9', '^0.0.x', true, ''},
 	Case{'0.1.0', '^0.0.x', false, ''},
 	Case{'0.0.1', '^0.0', true, 'node-semver: ^0.0 := >=0.0.0 <0.1.0-0'},
+	Case{'0.9.9', '^0.0', false, ''},
 	// tilde
 	Case{'1.2.3', '~1.2.3', true, ''},
 	Case{'1.2.9', '~1.2.3', true, ''},
@@ -123,8 +124,6 @@ const divergent = [
 		'so ^0.0.3 admits the whole 0.0.x series.'},
 	Case{'0.9.9', '^0.x', false, 'node-semver: ^0.x := >=0.0.0 <1.0.0-0, so true. ' +
 		'Same cause: the ceiling lands on 0.1.0 instead of 1.0.0.'},
-	Case{'0.9.9', '^0.0', false, 'node-semver: ^0.0 := >=0.0.0 <0.1.0-0, so true. ' +
-		'The ceiling lands on 0.0.0.'},
 	Case{'1.2.9', '1.2', false, 'node-semver: a partial version is an x-range, ' +
 		'so 1.2 := 1.2.x := >=1.2.0 <1.3.0-0 and the answer is true. ' +
 		'range.v can_expand only looks for an explicit x, X or *, so a bare 1.2 ' +
@@ -134,15 +133,18 @@ const divergent = [
 	Case{'0.9.9', '0', false, 'node-semver: 0 := 0.x.x := >=0.0.0 <1.0.0-0, so true. ' +
 		'Same cause.'},
 	Case{'1.0.0', '0.x', true, 'node-semver: 0.x := >=0.0.0 <1.0.0-0, so false. ' +
-		'range.v expand_xrange returns a bare >=0.0.0 with no ceiling whenever ' +
-		'the major is 0, so this is unbounded.'},
+		'range.v expand_xrange returns only the floor (>=0.0.0 here) with no ' +
+		'ceiling whenever the major is 0, so this is unbounded.'},
+	Case{'5.0.0', '0.1.x', true, 'node-semver: 0.1.x := >=0.1.0 <0.2.0-0, so false. ' +
+		'Same cause: 0.1.x becomes a bare >=0.1.0.'},
 	Case{'2.9.9', '2.2 - 2', false, 'node-semver: 1.2.3 - 2 := >=1.2.3 <3.0.0-0, so true. ' +
 		'A major-only upper bound hits is_missing(ver_major) and expand_hyphen ' +
 		'returns none, which makes the whole range unsatisfiable.'},
 	Case{'2.9.9', '2 - 3', false, 'node-semver: 2 - 3 := >=2.0.0 <4.0.0-0, so true. ' +
 		'Same cause.'},
 	Case{'1.9.9', '1.2.3 - 2', false, 'node-semver: >=1.2.3 <3.0.0-0, so true. Same cause.'},
-	Case{'1.0.0-alpha', '<1.0.0', false, 'node-semver: a prerelease sorts below its ' +
+	Case{'1.0.0-alpha', '>=1.0.0-alpha <1.0.0', false, 'node-semver: the >=1.0.0-alpha ' +
+		'comparator admits prereleases of 1.0.0, and a prerelease sorts below its ' +
 		'release, so true. compare.v compare_lt never looks at the prerelease; it ' +
 		'falls through to a patch comparison of 0 against 0.'},
 	Case{'1.0.0-beta', '>1.0.0-alpha', false, 'node-semver: alpha sorts below beta, so ' +
@@ -158,8 +160,11 @@ const divergent = [
 	Case{'1.2.4-beta.2', '^1.2.3-beta.2', true, 'node-semver: only prereleases of the ' +
 		'1.2.3 tuple are admitted, so false. This module admits any prerelease once ' +
 		'the range mentions one anywhere.'},
-	Case{'1.2.3', '', false, 'node-semver: "" := * := >=0.0.0, so true. An empty range ' +
-		'is a parse failure here, which is indistinguishable from "no match".'},
+	Case{'1.2.3', '', false, 'node-semver: "" := * := >=0.0.0, so true. Here the empty ' +
+		'string coerces to the exact pin =0.0.0, so only 0.0.0 matches.'},
+	Case{'1.0.0', '   ', false, 'node-semver trims the range, so whitespace only is the ' +
+		'empty range := * and the answer is true. range.v splits it on " " into four ' +
+		'empty comparators and rejects the set (more than two).'},
 	Case{'1.0.0', '^1||^3', false, 'node-semver: logical-or allows the surrounding ' +
 		'spaces to be absent, so true. range.v splits on the literal " || " only.'},
 	Case{'1.5.0', '>=1.0.0 <2.0.0 <=3.0.0', false, 'node-semver intersects comparator ' +
@@ -176,7 +181,6 @@ const rejected = [
 	Case{'1.0.0', 'a', false, ''},
 	Case{'1.0.0', 'a.x', false, ''},
 	Case{'1.0.0', 'not-a-range', false, ''},
-	Case{'1.0.0', '   ', false, 'whitespace only'},
 	Case{'1.0.0', '1.2.3 - ', false, 'the grammar needs a partial on both sides'},
 	Case{'1.2.3', '1.2.3', true, 'sanity: a valid range in this table still matches'},
 ]
@@ -216,9 +220,9 @@ fn test_unparseable_range_is_indistinguishable_from_no_match() {
 	// The second range is a perfectly good range that node-semver accepts, and that
 	// reads like a normal constraint rather than a typo. Here it silently becomes
 	// "no version satisfies this", the same answer as a genuine miss.
-	typo := satisfies('1.2.3', '>=1.0.0 <2.0.0')
+	valid := satisfies('1.2.3', '>=1.0.0 <2.0.0')
 	broken := satisfies('1.2.3', '>=1.0.0 <2.0.0 <=3.0.0')
-	assert typo == true
+	assert valid == true
 	assert broken == false
 }
 
