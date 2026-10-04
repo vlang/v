@@ -2428,6 +2428,27 @@ fn c_declaration_item_defines_external_symbol(item string, converted string, has
 	return c_declaration_item_has_initializer(item)
 }
 
+// c_declaration_item_keeps_static_object reports whether a file-scope item defines
+// a `static` object rather than a function, whatever its initializer looks like,
+// as in `static uint64_t n = UINT64_C(0);` or `static void (*cb)(void);`.
+fn c_declaration_item_keeps_static_object(item string, has_brace bool) bool {
+	clean := trim_leading_c_comments(item.trim_space())
+	if !clean.starts_with('static') || clean.len == 6 || !clean[6].is_space() {
+		return false
+	}
+	head := if has_brace { clean.all_before('{') } else { clean }
+	if c_declaration_item_has_initializer(head) {
+		return true
+	}
+	first_paren := head.index_u8(`(`)
+	if first_paren < 0 {
+		return true
+	}
+	// `static void (*callback)(void);` declares a pointer object, while a function
+	// declarator names the function before its parameter list.
+	return !has_brace && head[first_paren + 1..].trim_left(' \t').starts_with('*')
+}
+
 // c_declaration_item_has_initializer reports whether a declaration assigns a value
 // outside parentheses, brackets, literals and comments.
 fn c_declaration_item_has_initializer(item string) bool {
@@ -3695,6 +3716,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 			converted := c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros)
 			defines_external_symbols = defines_external_symbols
 				|| c_declaration_item_defines_external_symbol(declaration, converted, has_brace)
+				|| c_declaration_item_keeps_static_object(declaration, has_brace)
 			out.write_string(converted)
 		}
 		item_head.clear()
@@ -3723,6 +3745,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 			converted := c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros)
 			defines_external_symbols = defines_external_symbols
 				|| c_declaration_item_defines_external_symbol(declaration, converted, has_brace)
+				|| c_declaration_item_keeps_static_object(declaration, has_brace)
 			out.write_string(converted)
 		}
 	}

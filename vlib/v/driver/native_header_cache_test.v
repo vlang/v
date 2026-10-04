@@ -174,4 +174,12 @@ fn test_only_declaration_headers_are_replicated_into_cached_objects() {
 	assert !modulecache.c_source_is_replicable('int foo_count = 0;\n')
 	assert !modulecache.c_source_is_replicable('static int foo_count;\n')
 	assert !modulecache.c_source_is_replicable('static inline int foo_next(void) {\n\tstatic int n;\n\treturn ++n;\n}\n')
+	// Each cached object would get its own copy of a file-scope static object,
+	// whatever its initializer or declarator looks like.
+	assert !modulecache.c_source_is_replicable('static uint64_t foo_count = UINT64_C(0);\n')
+	assert !modulecache.c_source_is_replicable('static int foo_count = FOO(1);\n')
+	assert !modulecache.c_source_is_replicable('static int foo_size = sizeof(int);\n')
+	assert !modulecache.c_source_is_replicable('static void (*foo_callback)(void);\n')
+	assert !modulecache.c_source_is_replicable('static void (*foo_callback)(void) = 0;\n')
+	assert modulecache.c_source_is_replicable('static int foo_helper(int x);\n')
 }
