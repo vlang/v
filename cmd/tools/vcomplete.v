@@ -160,6 +160,7 @@ const auto_complete_flags = [
 	'-show-asserts',
 	'-check-syntax',
 	'-check',
+	'-json-errors',
 	'-?',
 	'-h',
 	'-help',

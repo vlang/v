@@ -99,7 +99,9 @@ reported as without the option, in the same order and with the same exit code, a
 `-message-limit` apply as usual. Two things differ: every error is printed, where the text
 form stops after 20 of them, and a failed build is not retried with the compatibility compiler.
 Messages that are not diagnostics of the V source, like the output of a failing C compiler, stay
-text: a line is a diagnostic when it starts with `{`.
+text: a line is a diagnostic when it starts with `{`. `-old-compiler`, and `-vls-mode` without
+`-new-compiler`, build with the compatibility compiler, which reads `-json-errors` in its own way
+and does not print this format.
 
 ## Profile-guided compiler build
 
