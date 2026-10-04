@@ -1,6 +1,6 @@
 ---
 name: v-mcp
-description: Using the V MCP server, `v mcp serve`, to read and change V code through the compiler itself - the AST, declarations, references, diagnostics, stdlib docs, an AST-aware rename, a guarded edit and the formatter. Use when an agent needs to know what a V file declares, whether V code compiles, where a symbol is used, or what a stdlib function takes, and to make a change safely across files. Does not cover the language rules themselves (see v-lang), the build and test loop (see v-workflow), or writing test cases (see v-testing), scripting a task in V (see v-scripts), or the command surface outside the MCP server (see v-tools).
+description: Using the V MCP server, `v mcp serve`, to read and change V code through the compiler itself - the AST, declarations, references, diagnostics, stdlib docs, an AST-aware rename, a guarded edit and the formatter. Use when an agent needs to know what a V file declares, whether V code compiles, where a symbol is used, or what a stdlib function takes, and to make a change safely across files. Does not cover the language rules themselves (see v-lang), the build and test loop (see v-workflow), writing test cases (see v-testing), scripting a task in V (see v-scripts), or the command surface outside the MCP server (see v-tools).
 license: MIT
 ---
 

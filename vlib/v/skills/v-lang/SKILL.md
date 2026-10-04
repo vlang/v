@@ -1,6 +1,6 @@
 ---
 name: v-lang
-description: The V language rules that make code which looks right fail to compile or behave wrongly - ?T versus !T, sum types and match exhaustiveness, mut receivers, module names matching directories, comptime $ forms, and explicit type conversion. Use when writing or reviewing any V code that uses an Option, a Result, a sum type, a match, generics, or a custom flag, and when a V compiler error names an option, a result, exhaustiveness, mutability, or a module. Does not cover the build and test loop (see v-workflow), writing tests (see v-testing), or reading a V project through the MCP server (see v-mcp), scripting in V (see v-scripts), or the wider command surface (see v-tools).
+description: The V language rules that make code which looks right fail to compile or behave wrongly - ?T versus !T, sum types and match exhaustiveness, mut receivers, module names matching directories, comptime $ forms, and explicit type conversion. Use when writing or reviewing any V code that uses an Option, a Result, a sum type, a match, generics, or a custom flag, and when a V compiler error names an option, a result, exhaustiveness, mutability, or a module. Does not cover the build and test loop (see v-workflow), writing tests (see v-testing), reading a V project through the MCP server (see v-mcp), scripting in V (see v-scripts), or the wider command surface (see v-tools).
 license: MIT
 ---
 

@@ -13,10 +13,14 @@ commands that answer a question, shrink a failure, or keep a project honest.
 ## Look at code before changing it
 
 ```sh
-v ast file.v            # the AST as JSON, the same as `v ast -p`
-v where NAME            # where a symbol is declared, and where it is used
+v ast -p file.v         # print the AST as JSON; without -p it writes file.json
+v where fn NAME         # where a symbol is declared; also struct, method, enum, const
 v mod why MODULE        # which import chain pulls a module into the build
 ```
+
+`v where` finds declarations only, and searches vlib as well as the project;
+`-mod main` keeps it to the project. Where a symbol is used is answered by the
+`v_references` tool of the MCP server.
 
 `v mod why` is the one that answers a question people otherwise guess at: nothing
 in `v.mod` records what a build actually reaches, so a dependency can outlive the
@@ -28,52 +32,61 @@ v-mcp.
 ## Shrink a compiler error
 
 ```sh
-v reduce file.v         # minimise to the smallest source that still errors
+v reduce -m 'text of the error' file.v   # the smallest source that still errors
 ```
 
-The reduction lands in `rpdc.v` in the current directory. Pair it with
+Without `-m`, `v reduce` only looks for a C compilation error, so a checker error
+such as `unknown function: nope` needs its text passed in. The reduction lands in
+`rpdc_<file>.v` (`rpdc_bad.v` for `bad.v`) in the current directory. Pair it with
 `v bug`, which opens a prefilled issue, and the report carries a minimal
 reproducer instead of the file you happened to be editing.
 
 ## Project hygiene
 
 ```sh
-v missdoc src/          # functions with no documentation comment
+v missdoc src/          # public functions with no documentation comment
 v check-md README.md    # are the ```v blocks in this markdown correct?
-v bump                  # bump the semantic version in v.mod
+v bump --patch          # or --minor / --major; bumps the version in v.mod
 v git-fmt-hook install  # format on commit
 ```
 
 `v check-md` is worth knowing about specifically: it compiles the V examples in a
 markdown file, which catches a snippet that stopped compiling long after anyone
-looked at the prose. `v missdoc` takes `-t` to include function tags.
+looked at the prose. `v missdoc` takes `-p` to include private functions and `-t`
+to include function tags.
 
 ## Embed binary files
 
 ```sh
-v bin2v assets/logo.png assets/font.ttf
+v bin2v -m main -w assets.v assets/logo.png assets/font.ttf
 ```
 
-Turns arbitrary files into a V module, so a program carries its images and fonts
-instead of reading them from disk at runtime.
+Writes each file into `assets.v` as a byte-array constant (`logo_png`, with its
+length in `logo_png_len`), so a program carries its images and fonts instead of
+reading them from disk at runtime. Without `-w` the source goes to stdout. The
+constants are private, so generate them into the module that uses them. For a
+single file, `$embed_file('assets/logo.png')` does the same at compile time.
 
 ## Shell integration
 
 ```sh
-v complete bash         # autocompletion; bash, fish, zsh and powershell
+v complete setup bash   # print the completion setup script; bash, fish, zsh, powershell
 ```
+
+Load it from the shell's startup file; for bash, add
+`source /dev/stdin <<<"$(v complete setup bash)"` to `~/.bashrc`.
 
 ## Time, repeat, retry
 
 ```sh
 v time CMD              # how long CMD took, and what it exited with
 v repeat CMD...         # repeat commands and collect statistics
-v retry CMD              # rerun until it succeeds, or a timeout passes
+v retry CMD             # rerun until it succeeds, for up to 10 retries or 10 minutes
 ```
 
 `v retry` is the one to reach for when a flaky network call or a busy port is the
-thing in the way; `v time` when the question is which of two approaches is
-actually cheaper.
+thing in the way; `-r` and `-t` change its limits. `v time` is the one when the
+question is which of two approaches is actually cheaper.
 
 ## Compiler upkeep
 
@@ -86,8 +99,8 @@ v tracev                # a tracing build of the compiler
 
 `v env` is the first thing to read when the compiler or one of its tools behaves
 differently on another machine, because most of that behaviour is an environment
-variable. `v build-c` documents the C-backend flags — `-cc`, `-glibc`, `-musl` —
-when the C toolchain itself is the thing in question.
+variable. `v help build-c` documents the C-backend flags — `-cc`, `-glibc`,
+`-musl` — when the C toolchain itself is the thing in question.
 
 ## Other commands worth knowing
 
@@ -97,10 +110,13 @@ v repl                  # the V REPL
 v watch file.v          # rebuild when the sources it needs change
 v crun file.v           # build and run, keeping the executable
 v tool NAME             # run a tool module by name
-v share                 # send the source to the V Playground
-v download -RD URL      # fetch a self-contained .v or .vsh program
+v share file.v          # send a .v file to the V Playground
+v download URL          # fetch a file over http or https
 v symlink               # put v on PATH
 ```
+
+`v download -RD URL` also runs the downloaded file with `v run` and deletes it
+afterwards. That executes remote code, so read the file first.
 
 Package management is `v search`, `v show`, `v list`, `v outdated`, `v update`,
 `v upgrade` and `v remove`, over the VPM registry.
@@ -113,7 +129,11 @@ v skills add v-tools    # install one
 v skills update         # refresh what a new V revision changed
 ```
 
-## See also
+## Related Skills
 
-v-scripts for `.vsh`, v-workflow for the build and test loop, v-lang for the
-language rules, v-mcp for the same questions answered through the compiler.
+- **Scripts**: see [v-scripts](../v-scripts/SKILL.md) for `.vsh` script mode and
+  its executable cache.
+- **The build and test loop**: see [v-workflow](../v-workflow/SKILL.md).
+- **The language rules**: see [v-lang](../v-lang/SKILL.md).
+- **Reading a project through the compiler**: see [v-mcp](../v-mcp/SKILL.md) for
+  declarations, references and diagnostics without shell commands.

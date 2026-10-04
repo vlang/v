@@ -1,6 +1,6 @@
 ---
 name: v-testing
-description: Writing and running V tests - _test.v layout, test_ function naming, the assert builtin, fixtures and cleanup with os.vtmp_dir and defer, and the VTEST_ONLY and VTEST_ONLY_FN filters for a subset. Use when adding or changing a V test, when a test does not compile or does not run, when choosing what to assert, or when the suite is slow and only part of it is needed. Does not cover the rest of the build loop (see v-workflow), the option and result semantics a test has to assert (see v-lang), or reading a project through the MCP server (see v-mcp), scripting in V (see v-scripts), or the wider command surface (see v-tools).
+description: Writing and running V tests - _test.v layout, test_ function naming, the assert builtin, fixtures and cleanup with os.vtmp_dir and defer, and the VTEST_ONLY and VTEST_ONLY_FN filters for a subset. Use when adding or changing a V test, when a test does not compile or does not run, when choosing what to assert, or when the suite is slow and only part of it is needed. Does not cover the rest of the build loop (see v-workflow), the option and result semantics a test has to assert (see v-lang), reading a project through the MCP server (see v-mcp), scripting in V (see v-scripts), or the wider command surface (see v-tools).
 license: MIT
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: v-workflow
-description: How to build, type-check, format, vet, test and ship V code, and how the v.mod module system resolves imports. Use before declaring a V change finished, when a build or test command is needed, when a dependency will not resolve, when working in the V compiler's own source tree, or when a v.mod needs reading or writing. Covers flag placement, the difference between -check and a real build, and when ./v self is required. Does not cover the language rules themselves (see v-lang), writing test cases (see v-testing), or working through the MCP server (see v-mcp), scripting a task in V (see v-scripts), or the wider command surface (see v-tools).
+description: How to build, type-check, format, vet, test and ship V code, and how the v.mod module system resolves imports. Use before declaring a V change finished, when a build or test command is needed, when a dependency will not resolve, when working in the V compiler's own source tree, or when a v.mod needs reading or writing. Covers flag placement, the difference between -check and a real build, and when ./v self is required. Does not cover the language rules themselves (see v-lang), writing test cases (see v-testing), working through the MCP server (see v-mcp), scripting a task in V (see v-scripts), or the wider command surface (see v-tools).
 license: MIT
 ---
 

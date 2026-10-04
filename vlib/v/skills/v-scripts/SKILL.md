@@ -26,10 +26,10 @@ println('hello')
 content := read_file('data.txt') or { panic(err) }
 ```
 
-That resolution reaches only `os` members that are public functions. A local or
-parameter of the same name shadows it, so naming a variable `println` or
-`exists` changes what the bare name means — and that shadowing is scoped to the
-script, not to a `.v` file compiled beside it.
+That resolution reaches public `os` functions and constants (for example
+`args`). A local or parameter of the same name shadows it, so naming a variable
+`args` or `exists` changes what the bare name means — and that shadowing is
+scoped to the script, not to a `.v` file compiled beside it.
 
 Neither rule applies to a plain `.v` file. If a name resolves in a `.vsh` but not
 in a `.v` file, this is why.
@@ -39,16 +39,33 @@ in a `.v` file, this is why.
 Running the file runs the script; there is no separate interpreter to install.
 
 ```sh
-v script.vsh
-v build script.vsh      # compile to an executable, do not run it
+v script.vsh                 # build if needed, then run
+v run script.vsh             # rebuild and run, keep no executable
+v build script.vsh           # compile to an executable, do not run it
 v -skip-running script.vsh   # the same thing
 ```
 
-A script follows **V's executable-cache contract**: it rebuilds only when its
-source changed, and keeps the binary between runs. That is what makes repeated
-invocation cheap, and it is also why a stale binary can outlive an edit in ways a
-build directory you control would not. `v clean` removes what a default build
-leaves behind (see v-tools).
+On Unix-like systems a script that starts with this shebang runs by its path,
+once it is executable (`chmod +x script.vsh`, then `./script.vsh`):
+
+```sh ignore
+#!/usr/bin/env -S v
+```
+
+For `.vsh` scripts on systems whose `/usr/bin/env` has no `-S` (BusyBox,
+OpenBSD), put `cmd/tools/vrun` on the PATH and start the script with
+`#!/usr/bin/env vrun` instead; it runs the script with `v run`.
+
+`v script.vsh` follows **V's executable-cache contract**: it builds the script
+as `script` (the name without `.vsh`) next to the source and reuses that binary
+on the next run, which is what makes repeated invocation cheap. It rebuilds when
+the script is newer than the binary, or when an imported module changed. The
+`#!/usr/bin/env -S v` shebang goes through the same cache.
+
+`v run script.vsh` skips the cache: it rebuilds on every run and leaves no
+executable behind, and so do the `#!/usr/bin/env -S v run` and `vrun` shebangs.
+The cached binary has to be deleted by hand: `v clean` handles `.v` files and
+directories, not `.vsh` scripts.
 
 ## Scripts with no extension
 
@@ -67,9 +84,6 @@ already exists. To rebuild every time instead of caching, use
 This runs in `crun` mode. V's own documentation recommends it for scripts that go
 on the PATH and advises against it for build or deploy scripts.
 
-For systems whose `/usr/bin/env` has no `-S` (BusyBox, OpenBSD), `cmd/tools/vrun`
-is the supported alternative.
-
 ## Choosing between a script and a program
 
 Reach for a script when the job is sequencing external tools, moving files,
@@ -82,14 +96,22 @@ mode does not make a script untestable — it compiles like anything else.
 
 ## Worked examples in the tree
 
-V ships scripts that use these features, and they are worth reading before
-writing one:
+These scripts rely on script mode — no `import os`, unqualified `os` calls,
+statements at the top level — and are worth reading before writing one:
 
-- `vlib/v/skills/v-workflow/scripts/check.vsh` — a check gate over a repository
-- `vlib/v/skills/v-testing/scripts/run-tests.vsh` — test selection and reporting
-- `vlib/db/sqlite/install_thirdparty_sqlite.vsh` — a dependency fetch
+- `examples/v_script.vsh` — creates, lists and removes files with `mkdir`, `ls`
+  and `rm`
+- `.github/problem-matchers/register_all.vsh` — reads `getenv`, then walks a
+  folder with `walk_ext`
 
-## See also
+A larger `.vsh` can also be written like a program, with `import os` and a
+`fn main`. The scripts bundled with the skills are written that way, for example
+`vlib/v/skills/v-workflow/scripts/check.vsh`; their `#!/usr/bin/env -S v run`
+shebang leaves no binary in the skill folder.
 
-`v-tools` for the commands around a script: `v clean`, `v time`, `v retry`,
-`v repeat`, `v check-md`, `v share`. `v-workflow` for the build and test loop.
+## Related Skills
+
+- **The commands around a script**: see [v-tools](../v-tools/SKILL.md) for
+  `v time`, `v retry`, `v repeat` and `v check-md`.
+- **The build and test loop**: see [v-workflow](../v-workflow/SKILL.md).
+- **The language rules**: see [v-lang](../v-lang/SKILL.md); a script is still V.
