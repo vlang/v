@@ -71,6 +71,34 @@ fn test_method_attrs_len_and_contains() {
 	assert inline == ['list']
 }
 
+struct Escaped {}
+
+@['it\'s']
+@[doc: 'it\'s']
+@['tab\tx']
+fn (e Escaped) one() {}
+
+// `contains` folds against the decoded values the array form holds, not their source spelling.
+fn test_method_attrs_contains_matches_decoded_attrs() {
+	mut hits := []string{}
+	$for method in Escaped.methods {
+		if method.attrs.contains("it's") {
+			hits << 'if'
+		}
+		if !method.attrs.contains("it\\'s") {
+			hits << 'not raw'
+		}
+		quoted := method.attrs.contains("doc: 'it's'")
+		tab := method.attrs.contains('tab\tx')
+		assert quoted
+		assert tab
+		for attr in method.attrs {
+			assert method.attrs.contains(attr)
+		}
+	}
+	assert hits == ['if', 'not raw']
+}
+
 // break/continue keep the array form; they must still work.
 fn test_break_and_continue_in_method_attrs_loop() {
 	mut first := []string{}

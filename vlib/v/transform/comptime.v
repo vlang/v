@@ -2111,8 +2111,7 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 	result = subst_method_attrs_access_cond(result, var_name, method)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.attrs.len', method.attrs.len.str())
 	if result.contains('${var_name}.attrs') {
-		attrs := method.attrs.map(comptime_cond_string_literal(comptime_attr_display(it)))
-		result = comptime_cond_replace_unquoted(result, '${var_name}.attrs', '[${attrs.join(', ')}]')
+		result = comptime_cond_replace_unquoted(result, '${var_name}.attrs', comptime_method_attrs_cond_array(method))
 	}
 	method_type := t.comptime_method_type_text(method)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.location', comptime_cond_string_literal(method.location))
@@ -2195,8 +2194,9 @@ fn subst_method_attrs_access_cond(cond string, var_name string, method MethodMet
 			} else {
 				"''"
 			}
-			// the guard is serialized as `method.attrs[0]== 'x'`; comparisons need ` == `
-			if end < result.len && result[end] != ` ` {
+			// the guard is serialized as `method.attrs[0]== 'x'`; comparisons need ` == `,
+			// while a method call (`.starts_with(...)`) or a closing paren must stay attached
+			if end < result.len && result[end] !in [` `, `.`, `)`] {
 				replacement += ' '
 			}
 			result = result[..start] + replacement + result[end..]
@@ -2237,12 +2237,17 @@ fn subst_method_attrs_access_cond(cond string, var_name string, method MethodMet
 			break
 		}
 		arg := comptime_condition_strip_outer_parens(result[arg_start..pos - 1].trim_space())
-		attrs := method.attrs.map(comptime_cond_string_literal(comptime_attr_display(it)))
-		replacement := '(${arg} in [${attrs.join(', ')}])'
+		replacement := '(${arg} in ${comptime_method_attrs_cond_array(method)})'
 		result = result[..start] + replacement + result[pos..]
 		offset = start + replacement.len
 	}
 	return result
+}
+
+// comptime_method_attrs_cond_array renders the method's attributes as a `$if` array literal.
+fn comptime_method_attrs_cond_array(method MethodMeta) string {
+	attrs := method.attrs.map(comptime_cond_string_literal(comptime_attr_display(it)))
+	return '[${attrs.join(', ')}]'
 }
 
 // subst_method_param_cond materializes indexed FunctionParam members in serialized `$if` guards.
@@ -4634,7 +4639,7 @@ fn (mut t Transformer) clone_field_match_branch_body(branch flat.Node, body_star
 }
 
 // comptime_attrs_condition folds `[!]<var>.attrs.contains('lit')` for a field or method
-// whose attributes (`known`) are fixed at this unrolled iteration.
+// whose attributes (`known`, in source spelling) are fixed at this unrolled iteration.
 fn (t &Transformer) comptime_attrs_condition(id flat.NodeId, var_name string, known []string) ?bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
@@ -4662,7 +4667,8 @@ fn (t &Transformer) comptime_attrs_condition(id flat.NodeId, var_name string, kn
 	if base.kind != .ident || base.value != var_name || needle.kind != .string_literal {
 		return none
 	}
-	return needle.value in known
+	// compare decoded values, as the runtime `attrs` array holds them (`it\'s` -> `it's`)
+	return known.any(comptime_attr_display(it) == needle.value)
 }
 
 // direct_reflected_field_selector reports whether an iterable is exactly

@@ -384,6 +384,20 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 	assert t.comptime_method_call_matches(call_with_required, required_method)
 }
 
+fn test_comptime_method_attrs_index_cond_keeps_member_access_attached() {
+	method := MethodMeta{
+		name:  'one'
+		attrs: ['GET /a', 'flag']
+	}
+	// `==` follows the index without a space in the serialized guard
+	assert subst_method_attrs_access_cond("method.attrs[0]== 'GET /a'", 'method', method) == "'GET /a' == 'GET /a'"
+	// a method call or a closing paren must stay attached to the literal
+	assert subst_method_attrs_access_cond("method.attrs[0].starts_with ( 'GET' )", 'method',
+		method) == "'GET /a'.starts_with ( 'GET' )"
+	assert subst_method_attrs_access_cond('method.attrs[2].len == 0', 'method', method) == "''.len == 0"
+	assert subst_method_attrs_access_cond("(method.attrs[1]) == 'flag'", 'method', method) == "('flag') == 'flag'"
+}
+
 fn test_comptime_sum_variants_normalize_main_specialization_lock() {
 	mut a := flat.FlatAst.new()
 	t := Transformer{

@@ -17967,7 +17967,6 @@ struct ComptimeStaticValueCase {
 	attr_kind     int
 	param_names   []string
 	param_types   []string
-	param_is_mut  []bool
 	// param_is_mut_ref marks `mut x &T` params (an explicit mutable reference). A plain
 	// `mut x T` param is recorded as `&T` too, so the type text cannot tell them apart.
 	param_is_mut_ref []bool
@@ -18589,14 +18588,12 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 				}
 				mut param_names := []string{}
 				mut param_types := []string{}
-				mut param_is_mut := []bool{}
 				mut param_is_mut_ref := []bool{}
 				for i in 1 .. candidate.children_count {
 					param := tc.a.child_node(&candidate, i)
 					if param.kind == .param {
 						param_names << param.value
 						param_types << subst_generic_text(param.typ, generic_args, generic_params)
-						param_is_mut << param.is_mut
 						param_is_mut_ref << (param.is_mut && param.op == .amp)
 					}
 				}
@@ -18614,7 +18611,6 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 					has_is_pub:       true
 					param_names:      param_names
 					param_types:      param_types
-					param_is_mut:     param_is_mut
 					param_is_mut_ref: param_is_mut_ref
 				}
 			}

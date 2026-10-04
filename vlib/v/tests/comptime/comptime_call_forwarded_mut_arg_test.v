@@ -50,6 +50,28 @@ fn call_each(app &Sink, mut out []u8, mut c Counter) {
 	}
 }
 
+// A plain `mut` local passed with `mut` (also rejected before), as a statement
+// and returned.
+fn write_local(app &Sink) string {
+	mut out := []u8{}
+	$for method in Sink.methods {
+		$if method.name == 'write' {
+			app.$method(5, mut out)
+		}
+	}
+	return out.bytestr()
+}
+
+fn return_local_write(app &Sink) int {
+	mut out := []u8{}
+	$for method in Sink.methods {
+		$if method.name == 'write' {
+			return app.$method(6, mut out)
+		}
+	}
+	return -1
+}
+
 // Forms that compiled before: the call inside an expression, and any call in
 // a generic function.
 fn add_write(app &Sink, mut out []u8) int {
@@ -94,4 +116,9 @@ fn test_expression_and_generic_calls_forward_mut_params() {
 	assert add_write(&Sink{}, mut out) == 1
 	assert return_write_generic(&Sink{}, mut out) == 2
 	assert out.bytestr() == 'de'
+}
+
+fn test_calls_take_mut_locals() {
+	assert return_local_write(&Sink{}) == 1
+	assert write_local(&Sink{}) == 'f'
 }
