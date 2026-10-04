@@ -20,8 +20,9 @@ pub:
 	// requested is the dependency string exactly as it is written in `v.mod`,
 	// including any `@version` suffix.
 	requested string
-	// resolved is the tag that was requested with a `@tag` suffix, or a
-	// pseudo-version of the checkout HEAD for dependencies requested without one.
+	// resolved is the selected revision: the requested tag for `@tag`
+	// installs, the version chosen by a resolver once version ranges exist,
+	// or a pseudo-version of the checkout HEAD otherwise.
 	resolved string
 	// revision is the full SHA of the resolved commit.
 	revision string
