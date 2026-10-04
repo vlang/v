@@ -54,15 +54,15 @@ fails or does not report a numeric version. Localized version labels are accepte
 
 ### Walking a tree
 
-`os.walk()` reports files only. It never tells you about a directory, so there is
-no way to say "do not descend into this one", and a large tree has to be read in
-full. `os.walk_dir()` reports every entry, directories included, and lets the
-callback prune:
+`os.walk()` reports files only, and `os.walk_with_context()` reports directories
+too but cannot skip them, so neither lets you say "do not descend into this one",
+and a large tree has to be read in full. `os.walk_dir()` reports every entry,
+directories included, and lets the callback prune:
 
 ```v ignore
 os.walk_dir('/srv/app', fn (path string, entry os.WalkDirEntry) os.WalkDirAction {
-	if entry.err != none {
-		eprintln('skipping ${path}: ${entry.err!}')
+	if err := entry.err {
+		eprintln('skipping ${path}: ${err}')
 		return .proceed
 	}
 	if entry.is_dir && entry.name in ['.git', 'node_modules', 'target'] {
@@ -76,48 +76,19 @@ os.walk_dir('/srv/app', fn (path string, entry os.WalkDirEntry) os.WalkDirAction
 ```
 
 Returning `.stop` ends the walk where it stands. Entries are visited in lexical
-order, the root is reported first, symlinks are reported but never followed, and
-an entry that cannot be read arrives with `entry.err` set and `is_dir` left false,
-so a callback cannot accidentally descend into something unreadable.
+order and the root is reported first. Symlinks are reported but never followed,
+a symlinked root included; pass `os.real_path(root)` to walk what it points to.
 
-Note that the error travels as a message inside the entry rather than as an
-`IError` argument, because the compiler cannot currently pass the builtin `IError`
-through a `fn` type declared in a vlib module.
+`entry.err` is set in two cases. An entry that cannot be stat'ed, such as a
+missing root, arrives with `is_dir` left false, so a callback cannot accidentally
+descend into something unreadable. A directory that cannot be listed is reported
+a second time, with `entry.err` set and `is_dir` still true; returning `.stop`
+from that report ends the walk, anything else moves on to its next sibling.
 
-**Accumulating state needs a `mut` parameter.** A closure that inherits a mutable
-variable, and a method value taken from a mutable local, both run but discard
-their writes:
-
-```v ignore
-mut n := 0
-os.walk_dir(root, fn [mut n] (path string, entry os.WalkDirEntry) os.WalkDirAction {
-	n++ // n is still 0 after the walk
-	return .proceed
-})
-```
-
-Put the state in a struct and pass it as a `mut` parameter instead, which does
-accumulate:
-
-```v ignore
-struct Counter {
-mut:
-	files int
-}
-
-fn (mut c Counter) visit(_ string, entry os.WalkDirEntry) os.WalkDirAction {
-	if entry.err == none && !entry.is_dir {
-		c.files++
-	}
-	return .proceed
-}
-
-fn count(root string) int {
-	mut c := Counter{}
-	os.walk_dir(root, c.visit) or { panic(err) }
-	return c.files
-}
-```
+To accumulate state across calls, pass a method of a `mut` local, as in
+`os.walk_dir(root, c.visit)`, or capture a reference (`mut c := &Counter{}`): a
+closure that captures `[mut n]` only updates its own copy, see
+[Closures](https://github.com/vlang/v/blob/master/doc/docs.md#closures).
 
 ### Running commands
 

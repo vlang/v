@@ -886,13 +886,18 @@ pub:
 	name   string // the entry's base name, without any directory part
 	is_dir bool   // true for a directory; symlinks are reported, never followed
 	typ    FileType
-	err    ?string // why the entry could not be read; none when it could
+	err    ?IError // why the entry could not be read or listed; none when it could
 }
 
 // WalkDirFn is the callback type for walk_dir.
-// When an entry cannot be read, `entry.err` says why and `is_dir` and `typ` are
-// left at their zero values, so a callback should look at `entry.err` before
-// relying on them.
+// `entry.err` is set in two cases, so a callback should look at it before relying
+// on the other fields:
+// - an entry that cannot be stat'ed is reported once, with `is_dir` and `typ` left
+//   at their zero values, so it is never descended into;
+// - a directory that was reported normally but then cannot be listed is reported
+//   a second time, with `err` set and `is_dir` and `typ` still describing the
+//   directory. Returning `.stop` from that second report ends the walk; anything
+//   else carries on with the directory's next sibling.
 pub type WalkDirFn = fn (path string, entry WalkDirEntry) WalkDirAction
 
 // walk_dir traverses the directory tree rooted at `root` and calls `cb` for
@@ -902,22 +907,21 @@ pub type WalkDirFn = fn (path string, entry WalkDirEntry) WalkDirAction
 // Returning `.skip_dir` leaves the directory that was just reported unread,
 // which is what makes pruning a large tree possible; on a non-directory it has no
 // effect. Returning `.stop` ends the walk immediately, and walk_dir then returns
-// no error. An entry that cannot be read is reported through `entry.err` rather
-// than aborting the walk, and walk_dir itself only fails when `root` is empty.
+// no error. An entry that cannot be read, or a directory that cannot be listed,
+// is reported through `entry.err` (see WalkDirFn) rather than aborting the walk,
+// and walk_dir itself only fails when `root` is empty; a missing `root` is
+// reported to the callback.
 //
-// The error travels as a message inside the entry rather than as an IError
-// argument, because the compiler cannot currently pass the builtin IError through
-// a fn type declared in a vlib module: cgen emits the module-prefixed
-// `os__IError`, which is not a type it ever defines, and tcc rejects the result
-// with "invalid type".
+// Symlinks are reported but never followed, and that includes a symlinked `root`;
+// pass `os.real_path(root)` to walk the directory it points to.
 //
 // Like walk, walk_dir iterates rather than recurses, so tree depth costs no stack.
 //
 // Example:
 // ```v
 // os.walk_dir('/srv/app', fn (path string, entry os.WalkDirEntry) os.WalkDirAction {
-//     if entry.err != none {
-//         eprintln('skipping ${path}: ${entry.err!}')
+//     if err := entry.err {
+//         eprintln('skipping ${path}: ${err}')
 //         return .proceed
 //     }
 //     if entry.is_dir && entry.name == '.git' {
@@ -939,14 +943,21 @@ pub fn walk_dir(root string, cb WalkDirFn) ! {
 		// that the public fields can stay read-only for callers.
 		mut typ := FileType.unknown
 		mut is_dir := false
-		mut entry_err := ?string(none)
+		mut entry_err := ?IError(none)
 		if attr := lstat(cpath) {
 			typ = attr.get_filetype()
+			$if windows {
+				// lstat follows reparse points there and never reports a link, so a
+				// directory symlink or junction would otherwise be descended into.
+				if kind_of_existing_path(cpath).is_link {
+					typ = .symbolic_link
+				}
+			}
 			is_dir = typ == .directory
 		} else {
 			// The entry could not be read, so is_dir stays false and a directory
 			// is not descended into.
-			entry_err = err.msg()
+			entry_err = err
 		}
 		entry := WalkDirEntry{
 			name:   file_name(cpath)
@@ -969,16 +980,11 @@ pub fn walk_dir(root string, cb WalkDirFn) ! {
 			continue
 		}
 		mut children := ls(cpath) or {
-			// The directory itself could not be listed, which is reported the same
-			// way as an entry that cannot be stat'ed. The original entry is passed
-			// back with the listing failure attached, so the callback sees one
-			// report per path.
-			cb(cpath, WalkDirEntry{
-				name:   entry.name
-				typ:    entry.typ
-				is_dir: entry.is_dir
-				err:    err.msg()
-			})
+			// The directory could not be listed. Like Go's WalkDir, it is reported a
+			// second time, as the directory it is, with the listing failure attached.
+			if cb(cpath, WalkDirEntry{ ...entry, err: err }) == .stop {
+				return
+			}
 			continue
 		}
 		// Sorted so the visit order is lexical rather than whatever order the
