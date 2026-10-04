@@ -39,7 +39,9 @@ enum ModuleKind {
 	local
 }
 
-fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope) []Module {
+// parse_query resolves the modules of `query` and their dependencies. It
+// returns them together with the number of modules that failed to resolve.
+fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope) ([]Module, int) {
 	mut p := Parser{}
 	for m in query {
 		p.parse_module(m, mut selector, mut scope)
@@ -47,7 +49,7 @@ fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope 
 	if p.errors > 0 && p.errors == query.len {
 		exit(1)
 	}
-	return p.modules.values()
+	return p.modules.values(), p.errors
 }
 
 fn (mut p Parser) lookup_registered_name_for_url(manifest_name string, ident string, mut selector VpmInstallServerSelector) ?string {

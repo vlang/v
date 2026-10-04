@@ -90,6 +90,10 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 			)
 			return &UpdateResult{}
 		}
+		update_git_submodules(install_path) or {
+			vpm_error('failed to update module `${name}` in `${install_path}`.', details: err.msg())
+			return &UpdateResult{}
+		}
 		if head_revision(install_path) == old_revision {
 			println('Skipped module `${ident}`. Already up to date.')
 		} else {

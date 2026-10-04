@@ -81,16 +81,28 @@ pub fn read_lockfile(dir string) !LockFile {
 	lf := json2.decode[LockFile](data) or {
 		return error('failed to parse `${path}`: ${err.msg()}')
 	}
+	if lf.version < 1 {
+		return error('invalid `${path}`: it records no valid format version.')
+	}
 	if lf.version > lockfile_version {
 		return error('unsupported `${path}` version ${lf.version}; this vpm understands versions up to ${lockfile_version}.')
 	}
 	return lf
 }
 
-// write_lockfile writes `lf` as the lockfile of the project in `dir`.
+// write_lockfile writes `lf` as the lockfile of the project in `dir`, with its
+// modules sorted by name, so that the file does not change with the order in
+// which they were resolved.
 pub fn write_lockfile(dir string, lf LockFile) ! {
 	path := lockfile_path(dir)
-	os.write_file(path, json2.encode(lf, prettify: true) + '\n')!
+	mut sorted := LockFile{
+		version: lf.version
+		modules: map[string]LockedModule{}
+	}
+	for name in lf.modules.keys().sorted() {
+		sorted.modules[name] = lf.modules[name]
+	}
+	os.write_file(path, json2.encode(sorted, prettify: true) + '\n')!
 }
 
 // upsert adds the lock entry `m` for the module `name`, replacing any entry
@@ -164,7 +176,7 @@ fn (mut scope LockScope) begin() {
 		return
 	}
 	lf := read_lockfile(dir) or {
-		vpm_error('failed to read `${fmt_mod_path(lock_path)}`.', details: err.msg())
+		vpm_error(err.msg())
 		exit(1)
 	}
 	scope.entries = lf.modules
@@ -213,7 +225,7 @@ fn (mut scope LockScope) finish() {
 	}
 	if os.exists(lock_path) {
 		lf = read_lockfile(scope.dir) or {
-			vpm_error('failed to read `${fmt_mod_path(lock_path)}`.', details: err.msg())
+			vpm_error(err.msg())
 			exit(1)
 		}
 	}
@@ -221,7 +233,7 @@ fn (mut scope LockScope) finish() {
 		lf.upsert(entry, name)
 	}
 	write_lockfile(scope.dir, lf) or {
-		vpm_error('failed to write `${fmt_mod_path(lock_path)}`.', details: err.msg())
+		vpm_error('failed to write `${fmt_mod_path(lock_path)}`: ${err.msg()}')
 		exit(1)
 	}
 	verbose_println('Recorded ${scope.entries.len} locked module(s) in `${fmt_mod_path(lock_path)}`.')
@@ -236,25 +248,54 @@ fn (scope &LockScope) entry_for(dep string) ?LockedModule {
 	return scope.entries[lockfile_module_key(dep)]
 }
 
+// lock_mismatch describes how the lock entry `entry` differs from the
+// dependency string `dep` that is cloned from `url`, or returns '' when the
+// entry applies to it. An entry only applies while the project asks for the
+// very dependency string, and source, it was recorded for: an entry naming
+// another source, e.g. after an edit of the lockfile alone, does not.
+fn lock_mismatch(entry LockedModule, dep string, url string) string {
+	if entry.requested != dep {
+		return 'records `${entry.requested}` for it'
+	}
+	if normalized_clone_source(entry.url) != normalized_clone_source(url) {
+		return 'records it from `${entry.url}`, not from `${url}`'
+	}
+	return ''
+}
+
+// locked_entry returns the lock entry of the dependency string `dep` that is
+// cloned from `url`, when the lockfile of the project in scope records one that
+// applies to it.
+fn (scope &LockScope) locked_entry(dep string, url string) ?LockedModule {
+	entry := scope.entry_for(dep)?
+	if lock_mismatch(entry, dep, url) != '' {
+		return none
+	}
+	return entry
+}
+
 // clone_module_source clones the source of the dependency `dep` from `url` at
-// `version` into `tmp_path`. When the lock scope of the run records `dep`, the
-// recorded source is cloned and its exact revision checked out, instead of
-// resolving the latest HEAD. With `--locked`, a dependency that the lockfile
-// does not record, or records under a different dependency string, is reported
-// as an error instead of being resolved.
+// `version` into `tmp_path`. When the lock scope of the run records `dep` from
+// the same source, its exact revision is checked out, instead of resolving the
+// latest HEAD. With `--locked`, a dependency that the lockfile does not record,
+// or records under a different dependency string or source, is reported as an
+// error instead of being resolved.
 fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path string, mut scope LockScope) ! {
 	if entry := scope.entry_for(dep) {
-		if entry.requested != dep {
+		mismatch := lock_mismatch(entry, dep, url)
+		if mismatch != '' {
 			if settings.is_locked {
-				vpm_error('cannot install `${dep}` with `--locked`: `${lockfile_name}` in `${fmt_mod_path(scope.dir)}` records `${entry.requested}` for it.',
+				vpm_error('cannot install `${dep}` with `--locked`: `${lockfile_name}` in `${fmt_mod_path(scope.dir)}` ${mismatch}.',
 					details: 'Update the lockfile by running `v install` without `--locked`, or remove `${fmt_mod_path(lockfile_path(scope.dir))}` to start over.'
 				)
 				exit(1)
 			}
-			verbose_println('`${dep}` changed since it was locked as `${entry.requested}`; resolving it anew.')
+			verbose_println('`${dep}` changed since it was locked (`${lockfile_name}` ${mismatch}); resolving it anew.')
 		} else {
-			verbose_println('Cloning `${entry.url}` at the locked revision `${entry.revision}` ...')
-			vcs.clone(entry.url, '', tmp_path)!
+			verbose_println('Cloning `${url}` at the locked revision `${entry.revision}` ...')
+			// A dependency pinned at a tag is cloned at that tag, the same as without
+			// a lockfile, so that `v update` and `v outdated` leave it there.
+			vcs.clone(url, version, tmp_path)!
 			vcs.checkout(tmp_path, entry.revision)!
 			return
 		}
@@ -270,7 +311,8 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 // refresh_lock_entries records the updated revisions of the modules pulled by
 // `v update` in the lockfile of the project in scope, when one exists. Entries
 // are matched by clone source, so only modules the project actually holds are
-// refreshed, and a project without a lockfile is left alone.
+// refreshed, and a project without a lockfile is left alone. Entries of
+// dependencies requested at a version, like `vsl@v0.1.50`, are never refreshed.
 fn refresh_lock_entries(results []UpdateResult) {
 	dir := project_lockfile_dir()
 	if dir == '' {
@@ -281,7 +323,7 @@ fn refresh_lock_entries(results []UpdateResult) {
 		return
 	}
 	mut lf := read_lockfile(dir) or {
-		vpm_error('failed to read `${fmt_mod_path(lock_path)}`.', details: err.msg())
+		vpm_error(err.msg())
 		return
 	}
 	mut refreshed := map[string]LockedModule{}
@@ -296,6 +338,11 @@ fn refresh_lock_entries(results []UpdateResult) {
 		}
 		canonical_origin := normalized_clone_source(origin)
 		for name, entry in lf.modules {
+			// A dependency pinned at a tag stays locked at that tag; it is not what
+			// a pulled checkout of the default branch holds.
+			if lockfile_module_key(entry.requested) != entry.requested {
+				continue
+			}
 			canonical_entry_url := normalized_clone_source(entry.url)
 			if canonical_entry_url != canonical_origin {
 				continue
@@ -317,7 +364,7 @@ fn refresh_lock_entries(results []UpdateResult) {
 		verbose_println('Refreshed the lock entry for `${name}` at revision `${entry.revision}`.')
 	}
 	write_lockfile(dir, lf) or {
-		vpm_error('failed to write `${fmt_mod_path(lock_path)}`.', details: err.msg())
+		vpm_error('failed to write `${fmt_mod_path(lock_path)}`: ${err.msg()}')
 	}
 }
 
@@ -335,7 +382,7 @@ fn remove_lock_entries(ident string, url string) {
 		return
 	}
 	mut lf := read_lockfile(dir) or {
-		vpm_error('failed to read `${fmt_mod_path(lock_path)}`.', details: err.msg())
+		vpm_error(err.msg())
 		return
 	}
 	canonical_url := if url != '' { normalized_clone_source(url) } else { '' }
@@ -359,7 +406,7 @@ fn remove_lock_entries(ident string, url string) {
 		lf.remove(name)
 	}
 	write_lockfile(dir, lf) or {
-		vpm_error('failed to write `${fmt_mod_path(lock_path)}`.', details: err.msg())
+		vpm_error('failed to write `${fmt_mod_path(lock_path)}`: ${err.msg()}')
 		return
 	}
 	println('Removed `${removed.join('`, `')}` from `${fmt_mod_path(lock_path)}`.')

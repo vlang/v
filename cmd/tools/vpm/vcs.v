@@ -70,6 +70,10 @@ fn (vcs VCS) clone_args(url string, version string, path string) ![]string {
 	if version.contains('\0') || version.contains('\r') || version.contains('\n') {
 		return error('version contains NUL, CR, or LF')
 	}
+	// A source like `--upload-pack=...` would be taken for an option, not a url.
+	if url.starts_with('-') {
+		return error('refusing to clone from `${url}`, which looks like an option')
+	}
 	info := vcs_info[vcs]
 	mut args := [vcs.str()]
 	args << info.args.install
@@ -157,10 +161,13 @@ fn head_is_detached(dir string) bool {
 }
 
 // checkout switches the git checkout in `dir` to the revision `rev`, e.g. the
-// full SHA recorded for a module in the lockfile of a project. `hg` checkouts
-// are left untouched, since a lockfile records git revisions only. A failed
-// checkout is an error: installing whatever HEAD the clone happens to sit on
-// instead would silently defeat the pinning the lockfile exists for.
+// full SHA recorded for a module in the lockfile of a project, and moves its
+// submodules along. A revision that the checkout does not hold yet, like one
+// that a teammate locked after this clone was made, is fetched from the origin
+// first. `hg` checkouts are left untouched, since a lockfile records git
+// revisions only. A failed checkout is an error: installing whatever HEAD the
+// clone happens to sit on instead would silently defeat the pinning the
+// lockfile exists for.
 fn (vcs VCS) checkout(dir string, rev string) ! {
 	if vcs != .git {
 		return
@@ -168,7 +175,18 @@ fn (vcs VCS) checkout(dir string, rev string) ! {
 	if rev == '' || rev.starts_with('-') || rev.contains_any(' \0\r\n') {
 		return error('refusing to checkout the invalid revision `${rev}`.')
 	}
-	args := ['git', '-C', dir, 'checkout', rev]
+	if !git_has_commit(dir, rev) {
+		// Fetch the branches of the origin explicitly, since a clone made at a tag
+		// with `--single-branch` would otherwise fetch only that tag.
+		fetch_args := ['git', '-C', dir, 'fetch', '--quiet', 'origin',
+			'+refs/heads/*:refs/remotes/origin/*']
+		vpm_log(@FILE_LINE, @FN, 'cmd: ${fetch_args}')
+		fetch_res := os.exec(fetch_args)
+		if fetch_res.exit_code != 0 {
+			return error('failed to fetch `${rev}` from the origin of `${fmt_mod_path(dir)}`: ${fetch_res.output.trim_space()}')
+		}
+	}
+	args := ['git', '-C', dir, 'checkout', '--quiet', rev]
 	vpm_log(@FILE_LINE, @FN, 'cmd: ${args}')
 	res := os.exec_opt(args) or {
 		return error('failed to checkout `${rev}` in `${fmt_mod_path(dir)}`: ${err.msg()}')
@@ -176,6 +194,26 @@ fn (vcs VCS) checkout(dir string, rev string) ! {
 	if res.exit_code != 0 {
 		return error('failed to checkout `${rev}` in `${fmt_mod_path(dir)}`: ${res.output.trim_space()}')
 	}
+	update_git_submodules(dir)!
+}
+
+// update_git_submodules moves the submodules of the git checkout in `dir` to the
+// commits its HEAD records. A plain `git checkout` leaves them where the
+// previous HEAD had them, which shows up as local changes that later installs
+// refuse to overwrite.
+fn update_git_submodules(dir string) ! {
+	args := ['git', '-C', dir, 'submodule', 'update', '--init', '--recursive']
+	vpm_log(@FILE_LINE, @FN, 'cmd: ${args}')
+	res := os.exec(args)
+	if res.exit_code != 0 {
+		return error('failed to update the submodules of `${fmt_mod_path(dir)}`: ${res.output.trim_space()}')
+	}
+}
+
+// git_has_commit reports whether the git checkout in `dir` holds the commit `rev`.
+fn git_has_commit(dir string, rev string) bool {
+	res := os.exec(['git', '-C', dir, 'cat-file', '-e', '${rev}^{commit}'])
+	return res.exit_code == 0
 }
 
 // checkout_origin_url returns the source url recorded in the VCS metadata of
