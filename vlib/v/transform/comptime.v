@@ -1153,7 +1153,8 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 		} else {
 			t.comptime_field_type_id_key(param.typ, param.module_name)
 		}
-		mut cond := comptime_cond_replace_unquoted(node.value, '${var_name}.typ', param_typ)
+		mut cond := comptime_cond_replace_int_compared(node.value, '${var_name}.typ', t.comptime_field_type_id(param.typ, param.module_name).str())
+		cond = comptime_cond_replace_unquoted(cond, '${var_name}.typ', param_typ)
 		cond = comptime_cond_replace_unquoted(cond, '${var_name}.name', "'${param.name}'")
 		cond = comptime_cond_replace_unquoted(cond, ' is &void', ' is voidptr')
 		cond = comptime_cond_replace_unquoted(cond, ' !is &void', ' !is voidptr')
@@ -2095,7 +2096,9 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 	result = comptime_cond_replace_unquoted(result, '${var_name}.params.len', method.params.len.str())
 	method_type := t.comptime_method_type_text(method)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.location', comptime_cond_string_literal(method.location))
+	result = comptime_cond_replace_int_compared(result, '${var_name}.return_type', t.comptime_field_type_id(method.return_type, method.module_name).str())
 	result = comptime_cond_replace_unquoted(result, '${var_name}.return_type', t.comptime_field_type_id_key(method.return_type, method.module_name))
+	result = comptime_cond_replace_int_compared(result, '${var_name}.typ', t.comptime_method_type_id(method).str())
 	result = comptime_cond_replace_unquoted(result, '${var_name}.typ', method_type)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.is_pub', method.is_pub.str())
 	result = comptime_cond_replace_unquoted(result, '${var_name}.name', "'${method.name}'")
@@ -2181,6 +2184,8 @@ fn (t &Transformer) subst_method_param_cond(cond string, var_name string, method
 			replacement := if index >= 0 && index < method.params.len {
 				if member == 'name' {
 					"'${method.params[index].name}'"
+				} else if comptime_cond_int_compared(result, start, member_end) {
+					t.comptime_field_type_id(method.params[index].typ, method.module_name).str()
 				} else if method.params[index].typ == '&void' {
 					'voidptr'
 				} else {
@@ -3394,7 +3399,8 @@ fn (t &Transformer) variant_member_type(member string, item VariantMeta) string 
 }
 
 fn (t &Transformer) subst_variant_cond(cond string, var_name string, item VariantMeta) string {
-	mut result := cond.replace('${var_name}.typ', item.typ)
+	mut result := comptime_cond_replace_int_compared(cond, '${var_name}.typ', item.typ_id.str())
+	result = result.replace('${var_name}.typ', item.typ)
 	result = comptime_cond_replace_bare_ident(result, var_name, item.typ)
 	return result
 }
@@ -4892,6 +4898,7 @@ fn (t &Transformer) subst_unquoted_field_cond(cond string, var_name string, fm F
 	if t.cur_module.len > 0 {
 		c = comptime_cond_replace_unquoted(c, '${t.cur_module}.${var_name}', var_name)
 	}
+	c = comptime_cond_replace_int_compared(c, '${var_name}.unaliased_typ', fm.unaliased_id.str())
 	c = comptime_cond_replace_unquoted(c, '${var_name}.unaliased_typ', fm.comptime_unaliased)
 	c = comptime_cond_replace_unquoted(c, '${var_name}.indirections', fm.indirections.str())
 	c = comptime_cond_replace_unquoted(c, '${var_name}.is_option', fm.is_option.str())
@@ -4909,6 +4916,7 @@ fn (t &Transformer) subst_unquoted_field_cond(cond string, var_name string, fm F
 	c = comptime_cond_replace_unquoted(c, '${var_name}.is_pub', fm.is_pub.str())
 	// Preserve the metadata selector marker until type matching. It distinguishes
 	// an alias-valued `field.typ` from `field.unaliased_typ` after substitution.
+	c = comptime_cond_replace_int_compared(c, '${var_name}.typ', fm.typ_id.str())
 	c = comptime_cond_replace_unquoted(c, '${var_name}.typ', '${fm.comptime_typ}.typ')
 	c = comptime_cond_replace_unquoted(c, '${var_name}.name', "'${fm.name}'")
 	c = comptime_cond_replace_bare_ident(c, var_name, fm.comptime_typ)
@@ -4944,6 +4952,95 @@ fn comptime_cond_replace_unquoted(cond string, needle string, replacement string
 		offset++
 	}
 	return out
+}
+
+// comptime_cond_replace_int_compared replaces the unquoted `needle` with `replacement` where
+// it is compared with an integer literal (see comptime_cond_int_compared). Type members such
+// as `method.return_type` hold type ids at runtime, so `$if method.return_type == 1` needs the
+// id, while `is`, `in` and a comparison with a type (`== void`) need the type text.
+fn comptime_cond_replace_int_compared(cond string, needle string, replacement string) string {
+	if needle == '' || !cond.contains(needle) {
+		return cond
+	}
+	mut out := ''
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			end := comptime_cond_skip_string(cond, offset)
+			out += cond[offset..end]
+			offset = end
+			continue
+		}
+		after := offset + needle.len
+		if after <= cond.len && cond[offset..after] == needle
+			&& !comptime_cond_operand_char(cond, offset - 1)
+			&& !comptime_cond_operand_char(cond, after)
+			&& comptime_cond_int_compared(cond, offset, after) {
+			out += replacement
+			offset = after
+			continue
+		}
+		out += cond[offset].ascii_str()
+		offset++
+	}
+	return out
+}
+
+// comptime_cond_int_compared reports whether the operand `cond[start..end]` is compared with
+// an integer literal by `==`, `!=`, `<`, `>`, `<=` or `>=`, on either side.
+fn comptime_cond_int_compared(cond string, start int, end int) bool {
+	// `operand == 1`
+	mut i := end
+	for i < cond.len && cond[i] == ` ` {
+		i++
+	}
+	op_len := if cond[i..].starts_with('==') || cond[i..].starts_with('!=')
+		|| cond[i..].starts_with('<=') || cond[i..].starts_with('>=') {
+		2
+	} else if i < cond.len && cond[i] in [`<`, `>`] {
+		1
+	} else {
+		0
+	}
+	if op_len > 0 {
+		i += op_len
+		for i < cond.len && cond[i] == ` ` {
+			i++
+		}
+		mut j := i
+		for j < cond.len && cond[j].is_digit() {
+			j++
+		}
+		if j > i && !comptime_cond_operand_char(cond, j) {
+			return true
+		}
+	}
+	// `1 == operand`
+	mut k := start
+	for k > 0 && cond[k - 1] == ` ` {
+		k--
+	}
+	if k >= 2 && cond[k - 2..k] in ['==', '!=', '<=', '>='] {
+		k -= 2
+	} else if k >= 1 && cond[k - 1] in [`<`, `>`] && (k < 2 || cond[k - 2] !in [`<`, `>`]) {
+		k--
+	} else {
+		return false
+	}
+	for k > 0 && cond[k - 1] == ` ` {
+		k--
+	}
+	mut j := k
+	for j > 0 && cond[j - 1].is_digit() {
+		j--
+	}
+	return j < k && !comptime_cond_operand_char(cond, j - 1)
+}
+
+// comptime_cond_operand_char reports whether `cond[i]` exists and continues an operand such
+// as `field.typ` or `12`: a name character or a `.`.
+fn comptime_cond_operand_char(cond string, i int) bool {
+	return i >= 0 && i < cond.len && (comptime_cond_name_char(cond[i]) || cond[i] == `.`)
 }
 
 fn comptime_cond_replace_bare_ident(cond string, ident string, replacement string) string {
@@ -5144,7 +5241,7 @@ fn (mut t Transformer) report_unevaluated_comptime_ifs() {
 			cond = source_cond
 			pos = source_pos
 		}
-		t.tc.record_transform_error(item.node, pos, 'cannot evaluate `\$if` condition `${cond}` at compile time')
+		t.tc.record_transform_error(item.node, pos, 'cannot evaluate `\$if` condition `${cond}` at compile time; use a runtime `if` instead')
 	}
 	t.unevaluated_comptime_ifs.clear()
 }

@@ -8005,7 +8005,7 @@ A `$if` in a reflection loop is decided at compile time, separately for each ite
 condition can compare the loop variable's metadata with literals (`==`, `!=`, `<`, `>`, `<=`,
 `>=`, `in`), check types with `is`, test names with `.starts_with()`, `.ends_with()`,
 `.contains()` and `.len`, and combine those with `&&`, `||` and `!`. A condition that cannot
-be decided at compile time is an error; use a runtime `if` for it instead:
+be decided at compile time is usually reported as an error; use a runtime `if` for it instead:
 
 ```v
 struct User {
