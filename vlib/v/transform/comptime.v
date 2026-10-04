@@ -1710,6 +1710,27 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 			return none
 		}
 	}
+	// Method attributes are compile-time metadata: fold what is already known
+	// for this unrolled method instead of materializing a runtime array (one
+	// heap allocation per pass of the enclosing `$for`).
+	if node.kind == .for_in_stmt && node.children_count >= 3
+		&& t.direct_reflected_field_attrs_selector(t.a.child(&node, 2), var_name) {
+		if method.attrs.len == 0 {
+			return none
+		}
+		if unrolled := t.unroll_method_attrs_loop(node, var_name, method, inner_vars) {
+			return unrolled
+		}
+	}
+	if node.kind == .call {
+		if contains := t.comptime_attrs_condition(id, var_name, method.attrs) {
+			return t.make_bool_literal(contains)
+		}
+	}
+	if node.kind == .selector && node.value == 'len' && node.children_count > 0
+		&& t.direct_reflected_field_attrs_selector(t.a.child(&node, 0), var_name) {
+		return t.make_int_literal(method.attrs.len)
+	}
 	if node.kind == .selector && node.value == '\$' && node.children_count >= 2
 		&& t.comptime_method_name_expr_matches(t.a.child(&node, 1), var_name) {
 		receiver := t.clone_method_subst_scoped(t.a.child(&node, 0), var_name, method, inner_vars) or {
@@ -2094,6 +2115,12 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 	mut result := t.subst_method_param_cond(cond, var_name, method)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.args.len', method.params.len.str())
 	result = comptime_cond_replace_unquoted(result, '${var_name}.params.len', method.params.len.str())
+	// `$if method.attrs.len > 0`, `$if 'GET /x' in method.attrs`
+	result = subst_method_attrs_access_cond(result, var_name, method)
+	result = comptime_cond_replace_unquoted(result, '${var_name}.attrs.len', method.attrs.len.str())
+	if result.contains('${var_name}.attrs') {
+		result = comptime_cond_replace_unquoted(result, '${var_name}.attrs', comptime_method_attrs_cond_array(method))
+	}
 	method_type := t.comptime_method_type_text(method)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.location', comptime_cond_string_literal(method.location))
 	result = comptime_cond_replace_int_compared(result, '${var_name}.return_type', t.comptime_field_type_id(method.return_type, method.module_name).str())
@@ -2136,6 +2163,101 @@ fn (t &Transformer) comptime_method_type_text(method MethodMeta) string {
 
 fn (t &Transformer) comptime_method_type_id(method MethodMeta) int {
 	return t.comptime_field_type_id(t.comptime_method_type_text(method), '')
+}
+
+// subst_method_attrs_access_cond materializes `method.attrs[i]` (the attribute, or '' past the
+// last one, like a missing param name) and `method.attrs.contains(x)` (as `x in [...]`) in
+// serialized `$if` guards; left as they are, neither could be evaluated.
+fn subst_method_attrs_access_cond(cond string, var_name string, method MethodMeta) string {
+	prefix := '${var_name}.attrs'
+	if !cond.contains(prefix) {
+		return cond
+	}
+	mut result := cond
+	mut offset := 0
+	for offset < result.len {
+		if result[offset] == `'` || result[offset] == `"` {
+			offset = comptime_cond_skip_string(result, offset)
+			continue
+		}
+		if !result[offset..].starts_with(prefix)
+			|| (offset > 0 && comptime_cond_name_char(result[offset - 1])) {
+			offset++
+			continue
+		}
+		start := offset
+		mut pos := start + prefix.len
+		if pos < result.len && result[pos] == `[` {
+			rel_end := result[pos + 1..].index_u8(`]`)
+			if rel_end < 0 {
+				break
+			}
+			index_text := result[pos + 1..pos + 1 + rel_end].trim_space()
+			end := pos + 1 + rel_end + 1
+			if !comptime_is_int(index_text) || index_text.starts_with('-') {
+				offset = end
+				continue
+			}
+			index := index_text.int()
+			mut replacement := if index < method.attrs.len {
+				comptime_cond_string_literal(comptime_attr_display(method.attrs[index]))
+			} else {
+				"''"
+			}
+			// the guard is serialized as `method.attrs[0]== 'x'`; comparisons need ` == `,
+			// while a method call (`.starts_with(...)`) or a closing paren must stay attached
+			if end < result.len && result[end] !in [` `, `.`, `)`] {
+				replacement += ' '
+			}
+			result = result[..start] + replacement + result[end..]
+			offset = start + replacement.len
+			continue
+		}
+		if !result[pos..].starts_with('.contains')
+			|| (pos + 9 < result.len && comptime_cond_name_char(result[pos + 9])) {
+			offset = pos
+			continue
+		}
+		pos += '.contains'.len
+		for pos < result.len && result[pos] == ` ` {
+			pos++
+		}
+		if pos >= result.len || result[pos] != `(` {
+			offset = pos
+			continue
+		}
+		// the argument runs to the matching `)`; parens inside strings do not count
+		arg_start := pos + 1
+		mut depth := 1
+		pos = arg_start
+		for pos < result.len && depth > 0 {
+			ch := result[pos]
+			if ch == `'` || ch == `"` {
+				pos = comptime_cond_skip_string(result, pos)
+				continue
+			}
+			if ch == `(` {
+				depth++
+			} else if ch == `)` {
+				depth--
+			}
+			pos++
+		}
+		if depth != 0 {
+			break
+		}
+		arg := comptime_condition_strip_outer_parens(result[arg_start..pos - 1].trim_space())
+		replacement := '(${arg} in ${comptime_method_attrs_cond_array(method)})'
+		result = result[..start] + replacement + result[pos..]
+		offset = start + replacement.len
+	}
+	return result
+}
+
+// comptime_method_attrs_cond_array renders the method's attributes as a `$if` array literal.
+fn comptime_method_attrs_cond_array(method MethodMeta) string {
+	attrs := method.attrs.map(comptime_cond_string_literal(comptime_attr_display(it)))
+	return '[${attrs.join(', ')}]'
 }
 
 // subst_method_param_cond materializes indexed FunctionParam members in serialized `$if` guards.
@@ -4250,7 +4372,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	// lowering runtime array work for operations whose result is already known
 	// for this unrolled field.
 	if node.kind == .call {
-		if contains := t.comptime_field_attrs_condition(id, var_name, fm) {
+		if contains := t.comptime_attrs_condition(id, var_name, fm.attrs) {
 			return t.make_bool_literal(contains)
 		}
 	}
@@ -4429,7 +4551,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	// serializers for types that can never be visited at runtime.
 	if node.kind == .if_expr && node.children_count >= 2 {
 		cond_id := t.a.child(&node, 0)
-		if taken := t.comptime_field_attrs_condition(cond_id, var_name, fm) {
+		if taken := t.comptime_attrs_condition(cond_id, var_name, fm.attrs) {
 			branch_idx := if taken { 1 } else { 2 }
 			if branch_idx >= int(node.children_count) {
 				return none
@@ -4487,6 +4609,62 @@ fn (t &Transformer) direct_reflected_field_attrs_selector(id flat.NodeId, var_na
 	return base.kind == .ident && base.value == var_name
 }
 
+// unroll_method_attrs_loop expands `for [i,] attr in <var>.attrs { body }` into one block
+// per attribute of the unrolled method, binding `attr` (and `i`) to that attribute's
+// literal value. The attributes are compile-time data, so the runtime array the loop
+// would iterate is pure overhead: one heap allocation on every pass of the enclosing
+// `$for`, i.e. per call for code like a request router. A body that can `break` or
+// `continue` keeps the array form.
+fn (mut t Transformer) unroll_method_attrs_loop(node flat.Node, var_name string, method MethodMeta, inner_vars []string) ?flat.NodeId {
+	if node.value != '3' {
+		return none
+	}
+	key := t.a.child_node(&node, 0)
+	val_id := t.a.child(&node, 1)
+	idx_name := if int(val_id) < 0 { '' } else { key.value }
+	attr_name := if int(val_id) < 0 { key.value } else { t.a.node(val_id).value }
+	for i in 3 .. node.children_count {
+		if t.node_has_loop_jump(t.a.child(&node, i)) {
+			return none
+		}
+	}
+	mut blocks := []flat.NodeId{cap: method.attrs.len}
+	for i, raw in method.attrs {
+		mut stmts := []flat.NodeId{}
+		if attr_name.len > 0 && attr_name != '_' {
+			stmts << t.make_decl_assign_typed(attr_name, t.make_string_literal(comptime_attr_display(raw)),
+				'string')
+		}
+		if idx_name.len > 0 && idx_name != '_' {
+			stmts << t.make_decl_assign_typed(idx_name, t.make_int_literal(i), 'int')
+		}
+		for j in 3 .. node.children_count {
+			if stmt := t.clone_method_subst_scoped(t.a.child(&node, j), var_name, method, inner_vars) {
+				stmts << stmt
+			}
+		}
+		blocks << t.make_block(stmts)
+	}
+	return t.make_block(blocks)
+}
+
+// node_has_loop_jump reports whether a `break` or `continue` occurs anywhere under `id`.
+fn (t &Transformer) node_has_loop_jump(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.node(id)
+	if node.kind in [.break_stmt, .continue_stmt] {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.node_has_loop_jump(t.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut t Transformer) clone_field_match_branch_body(branch flat.Node, body_start int, var_name string, fm FieldMeta, inner_vars []string) flat.NodeId {
 	mut body := []flat.NodeId{}
 	for i in body_start .. branch.children_count {
@@ -4497,13 +4675,15 @@ fn (mut t Transformer) clone_field_match_branch_body(branch flat.Node, body_star
 	return t.make_block(body)
 }
 
-fn (t &Transformer) comptime_field_attrs_condition(id flat.NodeId, var_name string, fm FieldMeta) ?bool {
+// comptime_attrs_condition folds `[!]<var>.attrs.contains('lit')` for a field or method
+// whose attributes (`known`, in source spelling) are fixed at this unrolled iteration.
+fn (t &Transformer) comptime_attrs_condition(id flat.NodeId, var_name string, known []string) ?bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
 	node := t.a.node(id)
 	if node.kind == .prefix && node.op == .not && node.children_count == 1 {
-		value := t.comptime_field_attrs_condition(t.a.child(node, 0), var_name, fm) or {
+		value := t.comptime_attrs_condition(t.a.child(node, 0), var_name, known) or {
 			return none
 		}
 		return !value
@@ -4524,7 +4704,8 @@ fn (t &Transformer) comptime_field_attrs_condition(id flat.NodeId, var_name stri
 	if base.kind != .ident || base.value != var_name || needle.kind != .string_literal {
 		return none
 	}
-	return needle.value in fm.attrs
+	// compare decoded values, as the runtime `attrs` array holds them (`it\'s` -> `it's`)
+	return known.any(comptime_attr_display(it) == needle.value)
 }
 
 // direct_reflected_field_selector reports whether an iterable is exactly
