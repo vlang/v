@@ -1601,12 +1601,12 @@ fn cgen_builtin_slice_index_array_elem(typ types.Type) ?types.Type {
 	return none
 }
 
-fn (mut g FlatGen) gen_index_operator_get_call(node flat.Node) bool {
+fn (mut g FlatGen) gen_index_operator_get_call(node &flat.Node) bool {
 	if node.value == 'range' || node.children_count != 2 {
 		return false
 	}
-	base_id := g.a.child(&node, 0)
-	index_id := g.a.child(&node, 1)
+	base_id := g.a.child(node, 0)
+	index_id := g.a.child(node, 1)
 	base_type := g.usable_expr_type(base_id)
 	info := g.tc.index_operator_call_info(base_type, '[]') or { return false }
 	if info.params.len < 2 {

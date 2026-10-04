@@ -403,25 +403,32 @@ fn test_cross_output_keeps_a_working_clock_on_apple() {
 }
 
 fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
-	// The portable snapshot is generated on glibc Linux and later compiled on musl
-	// too. musl warns about <sys/poll.h>, which fails consumers building with
-	// `-Werror`, while the linuxroot sysroot ships only <sys/poll.h>. A `$if musl ?`
-	// check is folded for the generating host, so the target C preprocessor has to
-	// pick the header from the libc it actually compiles against.
 	c_code := cross_generate_with('-cross -os linux', 'cmdexec_poll', "module main\n\nimport v.cmdexec\n\nfn main() {\n\tprintln(cmdexec.run('true', []string{}).exit_code)\n}\n")
-	sys_poll_at := c_code.index('#include <sys/poll.h>') or {
-		assert false, 'the glibc poll header is missing from the snapshot'
-		return
+	assert c_code.contains('cmdexec_poll.h"'), 'the native poll include is missing'
+	assert !c_code.contains('#include <sys/poll.h>'), 'V embedded the poll header contents'
+
+	// The consuming C compiler selects the libc branch; V never opens the header.
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_cross_poll_preprocessor_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'sys'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'features.h'), '#ifdef TEST_GLIBC\n#define __GLIBC__ 1\n#endif\n')!
+	os.write_file(os.join_path(root, 'sys', 'poll.h'), 'int glibc_poll_marker;\n')!
+	os.write_file(os.join_path(root, 'poll.h'), 'int other_poll_marker;\n')!
+	source := os.join_path(root, 'probe.c')
+	header := os.join_path(@VEXEROOT, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h').replace('\\', '/')
+	os.write_file(source, '#include "${header}"\n')!
+	for glibc in [false, true] {
+		mut args := ['-E', '-P', '-nostdinc', '-I', root, '-D__linux__', '-U__ANDROID__', '-U__GLIBC__']
+		if glibc { args << '-DTEST_GLIBC' }
+		args << source
+		result := cmdexec.run(cc, args)
+		assert result.exit_code == 0, result.output
+		selected := if glibc { 'glibc_poll_marker' } else { 'other_poll_marker' }
+		inactive := if glibc { 'other_poll_marker' } else { 'glibc_poll_marker' }
+		assert result.output.contains(selected), result.output
+		assert !result.output.contains(inactive), result.output
 	}
-	before := c_code[..sys_poll_at]
-	guard_at := before.last_index('#if ') or {
-		assert false, '<sys/poll.h> is not behind any preprocessor guard'
-		return
-	}
-	condition := before[guard_at..].all_before('\n')
-	assert condition.contains('__GLIBC__'), '<sys/poll.h> is guarded by `${condition}`, which does not check for glibc'
-	fallback := c_code[sys_poll_at..].all_before('#endif')
-	assert fallback.contains('#else\n#include <poll.h>'), 'musl and the other targets lost <poll.h>: ${fallback}'
 }
 
 fn test_glibc_hello_world_declares_the_array_constructors_it_calls() {

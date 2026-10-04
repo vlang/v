@@ -1905,12 +1905,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
 	}
-	// The wider real-builtin ABI is covered on macOS. Linux keeps its headers
-	// until the matching pthread, signal, file-lock and Mach-independent types
-	// have been added to the glibc table too.
-	header_free := prefs.building_v
-		&& ('fastc_real_builtin' !in prefs.user_defines || prefs.target.os == 'macos')
-		&& fastc_c_abi_supported(prefs.target.os, prefs.target.arch, fastc_host_uses_glibc())
+	// Leave native headers to the C compiler, including compiler self-builds.
+	header_free := false
 	global_output := fastc_generate_global_declarations(ordered_sources, global_sources, prefs, header_free, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, function_c_names, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
 	timer.mark('global_declarations')
 	for name, _ in global_output.composite_types {
@@ -1937,10 +1933,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	struct_field_lookup := constant_output.struct_field_lookup.move()
 	// The per-file prototype blocks are emitted as pieces too, so they are
 	// never concatenated into one buffer.
-	// A self-host build for a target with a C ABI table takes no header:
-	// the prelude declares what the emitted C uses, and `#include` lines are
-	// left out of the output.
-	mut inlined_header_paths := []string{}
 	mut prototype_pieces := []string{cap: sources.len + 16}
 	// The per-file bodies are stitched by reference: the directive partition
 	// works on their virtual concatenation and the final assembly copies each
@@ -2026,17 +2018,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		body_pieces << fastc_piece(output.body)
 		body_len += output.body.len
 		for line in output.directive_lines {
-			mut kind := line.kind
-			if header_free && kind == 1 && fastc_c_directive_is_include(output.body, line.start, line.end) {
-				// System headers are replaced by the prelude; V's own C helper
-				// headers are inlined after it (see fastc_inlined_c_headers).
-				kind = 4
-				if path := fastc_c_directive_quoted_include_path(output.body, line.start, line.end) {
-					if path !in inlined_header_paths {
-						inlined_header_paths << path
-					}
-				}
-			}
+			kind := line.kind
 			body_directive_lines << FastcCDirectiveLine{
 				start: body_offset + line.start
 				end:   body_offset + line.end
@@ -2257,9 +2239,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut extern_texts := []string{}
 	mut define_texts := []string{}
 	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, preamble)
-	for header_path in inlined_header_paths {
-		fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, fastc_inlined_c_header(header_path))
-	}
 	fastc_append_split_head_piece(mut pieces, mut extern_indexes, mut extern_texts, mut define_texts, c_integer_comparison_helpers)
 	fastc_collect_c_piece_ranges(mut pieces, body_pieces, hoisted_body.directive_ranges)
 	timer.mark('assemble.directives')
@@ -3504,33 +3483,6 @@ fn fastc_partition_c_directive_ranges(total_len int, lines []FastcCDirectiveLine
 		body_ranges:        body_ranges
 		final_kind:         final_kind
 	}
-}
-
-// fastc_inlined_c_header returns the text a header-free build emits for one
-// of V's own C helper headers: the file itself, or the include directive when
-// it cannot be read (so the C compiler reports the problem).
-fn fastc_inlined_c_header(path string) string {
-	content := os.read_file(path) or { return '#include "${path}"\n' }
-	is_tcc_atomic := path.ends_with('/thirdparty/stdatomic/nix/atomic.h')
-	// The helper headers' own includes (Windows and MSVC branches, or the
-	// system headers the prelude replaces) are left out: the build has none.
-	mut out := strings.new_builder(content.len + 64)
-	out.writeln('/* ${path} */')
-	for line in content.split_into_lines() {
-		if line.trim_left(' \t').starts_with('#include') {
-			out.writeln('')
-			continue
-		}
-		// TinyCC's ARM atomic fallbacks are external inline definitions. A
-		// header-free parallel build emits this header in every translation unit,
-		// so keep those fallback definitions local to their unit.
-		out.writeln(if is_tcc_atomic {
-			line.replace('extern inline ', 'static inline ')
-		} else {
-			line
-		})
-	}
-	return out.str()
 }
 
 // fastc_function_id_table numbers the C names of the indexed functions and

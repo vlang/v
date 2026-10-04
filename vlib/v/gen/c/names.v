@@ -86,7 +86,7 @@ fn c_name_is_string_literal_symbol(name string) bool {
 	return true
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (c &CNameCache) recent(name string) ?string {
 	if name.len > 65535 {
 		return none
@@ -99,7 +99,7 @@ fn (c &CNameCache) recent(name string) ?string {
 	return none
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (mut c CNameCache) remember(name string, value string) {
 	if name.len > 65535 {
 		return
@@ -249,6 +249,29 @@ mut:
 }
 
 @[inline]
+fn (mut c ContextStringLookupCache) get(name string) ?string {
+	if c.last_valid && c.last_name.len == name.len
+		&& (unsafe { c.last_name.str == name.str } || c.last_name == name) {
+		return c.last_value
+	}
+	if cached := c.entries[name] {
+		c.last_name = name
+		c.last_value = cached
+		c.last_valid = true
+		return cached
+	}
+	return none
+}
+
+@[inline]
+fn (mut c ContextStringLookupCache) put(name string, value string) {
+	c.entries[name] = value
+	c.last_name = name
+	c.last_value = value
+	c.last_valid = true
+}
+
+@[inline]
 fn (mut c ContextStringLookupCache) select_context(file string, module_name string) {
 	if c.file.len == file.len && c.module.len == module_name.len
 		&& (unsafe { c.file.str == file.str } || c.file == file)
@@ -264,6 +287,7 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 }
 
 fn (mut g FlatGen) reset_context_lookup_caches() {
+	g.normalize_call_cache = &ContextStringLookupCache{}
 	g.import_key_cache = &util.KeyRecentCache{}
 	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
@@ -282,7 +306,7 @@ fn (mut g FlatGen) reset_context_lookup_caches() {
 // See begin_scratch_lookup_caches.
 struct ScratchLookupCaches {
 	interface_receiver_cache        &StringLookupCache
-	normalize_call_cache            &StringLookupCache
+	normalize_call_cache            &ContextStringLookupCache
 	flattened_generic_name_cache    &StringLookupCache
 	generic_struct_context_ct_cache &StringLookupCache
 	struct_cname_cache              &StringLookupCache
@@ -333,7 +357,7 @@ fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
 	// A cache the generator has disabled stays disabled, so this only changes
 	// where entries are written, never whether they are memoized at all.
 	g.interface_receiver_cache = scratch_string_lookup_cache(saved.interface_receiver_cache)
-	g.normalize_call_cache = scratch_string_lookup_cache(saved.normalize_call_cache)
+	g.normalize_call_cache = scratch_context_string_lookup_cache(saved.normalize_call_cache)
 	g.flattened_generic_name_cache = scratch_string_lookup_cache(saved.flattened_generic_name_cache)
 	g.generic_struct_context_ct_cache = scratch_string_lookup_cache(saved.generic_struct_context_ct_cache)
 	g.struct_cname_cache = scratch_string_lookup_cache(saved.struct_cname_cache)

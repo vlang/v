@@ -9613,9 +9613,11 @@ everywhere_else();
 Conditions that do not depend on the target - `$if prealloc`, `$if debug`, `-d`
 values - are still resolved while generating, exactly as in an ordinary build.
 `#include`s written inside a `$if`, or carrying a target prefix such as
-`#include linux <sys/timerfd.h>`, are guarded the same way, and headers or C
-sources shipped alongside your code are embedded into the output instead of
-being referenced by a path that will not exist on the machine that compiles it.
+`#include linux <sys/timerfd.h>`, are guarded the same way. Native C source text
+can be carried into the output, but C headers remain include directives. V does
+not inspect headers or recursively embed their includes. Supply the headers and
+appropriate include paths to the C compiler that consumes the generated output;
+absolute header paths must also be available there or adjusted before compiling.
 
 What is *not* portable, and is therefore decided while generating, for the host
 V runs on:
@@ -9848,6 +9850,14 @@ pub struct C.TypeName {
 }
 ```
 Note that the name of the `C.` struct in V, is the one *after* the `struct SomeName {...}`.
+This attribute is also required for anonymous C typedefs such as
+`typedef struct { int x; } Foo;`. V does not infer typedef declarations by scanning
+headers included with `#include` or `#insert`. Native header dependency tracking
+and declaration ownership belong to the C compiler. Builds with native includes
+or C flags bypass the V module-object and whole-program caches until those caches
+can use a C-compiler dependency manifest without inspecting headers.
+If a header needs Objective-C syntax, select the language with `#flag -x objective-c`;
+V does not infer the language from header contents.
 
 **C. function redeclarations**
 The situation is similar for `C.` functions. If you are going to call just 1 function in a

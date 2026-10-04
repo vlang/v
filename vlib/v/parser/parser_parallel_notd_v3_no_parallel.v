@@ -968,6 +968,14 @@ mut:
 	pending_files []PendingSourceFile
 }
 
+fn new_parse_merge_text_cache() &flat.TextProbeCache {
+	// Probes read a value/id only after its nonzero pointer key matches. Initialize
+	// the keys alone; cached strings already belong to the master's text table.
+	mut cache := unsafe { &flat.TextProbeCache(malloc_noscan(sizeof(flat.TextProbeCache))) }
+	cache.ptrs = unsafe { [4096]voidptr{} }
+	return cache
+}
+
 // parse_merge_copy_thread copies one worker's nodes/children into the master
 // arrays at precomputed offsets, applying the same id relocations as the
 // serial merge. Chunks write disjoint master ranges, so the copies run
@@ -988,8 +996,15 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 			cid
 		}
 	}
-	mut value_cache := flat.TextProbeCache{}
-	mut type_cache := flat.TextProbeCache{}
+	mut value_cache := new_parse_merge_text_cache()
+	mut type_cache := new_parse_merge_text_cache()
+	defer {
+		// Only the buffers are owned here; their strings borrow the master AST.
+		unsafe {
+			free(value_cache)
+			free(type_cache)
+		}
+	}
 	for k in 0 .. w.a.nodes.len {
 		mut node := w.a.nodes[k]
 		if node.children_count != 0 {

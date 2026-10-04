@@ -3,6 +3,92 @@ module transform
 import v.flat
 import v.types
 
+fn literal_binding_test_node(mut a flat.FlatAst, kind flat.NodeKind, children []flat.NodeId) flat.NodeId {
+	start := a.children.len
+	for child in children {
+		a.add_child(child)
+	}
+	return a.add_node(flat.Node{
+		kind:           kind
+		children_start: start
+		children_count: flat.child_count(children.len)
+	})
+}
+
+fn test_nested_fn_literal_restores_outer_binding_containers_after_growth() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	t.cur_fn_name = 'outer'
+	t.cur_fn_ret_type = 'void'
+	for i in 0 .. 128 {
+		t.set_var_type_with_raw('outer_${i}', 'int', 'OuterInt')
+	}
+	t.mark_var_as_ref_param('outer_0')
+	t.var_types[0] = VarTypeBinding{
+		...t.var_types[0]
+		heap_value_typ: 'int'
+	}
+	t.fn_value_locals['outer_callback'] = 'known_callback'
+	t.mut_param_values['outer_0'] = true
+	t.fixed_array_param_values['outer_array'] = true
+	t.heaped_amp_locals['outer_0'] = true
+	t.pointer_value_lvalues['outer_0'] = true
+	t.pointer_value_rvalues['outer_0'] = true
+	t.local_closure_cleanup_decls[71] = 'outer_callback'
+	t.local_closure_cleanup_assigns[72] = 'outer_callback'
+	t.local_closure_field_cleanups[73] = true
+	outer_bindings := t.var_types.clone()
+	assert t.var_type_index('outer_0') == 0
+	param := a.add_node(flat.Node{ kind: .param, value: 'outer_0', typ: 'string' })
+	mut body := []flat.NodeId{}
+	for i in 0 .. 256 {
+		value := a.add_node(flat.Node{ kind: .int_literal, value: '${i}', typ: 'int' })
+		lhs := a.add_node(flat.Node{ kind: .ident, value: 'inner_${i}', typ: 'int' })
+		decl := literal_binding_test_node(mut a, .decl_assign, [lhs, value])
+		t.set_node_typ(int(decl), 'int')
+		body << decl
+	}
+	inner_value := a.add_node(flat.Node{ kind: .int_literal, value: '7', typ: 'int' })
+	nested_return := literal_binding_test_node(mut a, .return_stmt, [inner_value])
+	nested := literal_binding_test_node(mut a, .fn_literal, [nested_return])
+	t.set_node_typ(int(nested), 'int')
+	nested_lhs := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'nested_callback'
+		typ:   'fn () int'
+	})
+	nested_decl := literal_binding_test_node(mut a, .decl_assign, [nested_lhs, nested])
+	t.set_node_typ(int(nested_decl), 'fn () int')
+	body << nested_decl
+	value := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: 'int' })
+	body << literal_binding_test_node(mut a, .return_stmt, [value])
+	block := literal_binding_test_node(mut a, .block, body)
+	literal := literal_binding_test_node(mut a, .fn_literal, [param, block])
+	t.set_node_typ(int(literal), 'int')
+	result := t.lift_fn_literal(literal, a.nodes[int(literal)])
+	assert a.node(result).kind == .ident
+	assert t.global_temp_counter == 2
+	assert t.cur_fn_name == 'outer'
+	assert t.cur_fn_ret_type == 'void'
+	assert t.var_types.len == outer_bindings.len
+	assert t.var_types == outer_bindings
+	assert t.var_type_indices.len == 128
+	assert t.var_type_index('outer_0') == 0
+	assert t.var_type_index('inner_255') == -1
+	assert t.var_type_index('nested_callback') == -1
+	assert t.fn_value_locals['outer_callback'] == 'known_callback'
+	assert t.mut_param_values['outer_0']
+	assert t.fixed_array_param_values['outer_array']
+	assert t.heaped_amp_locals['outer_0']
+	assert t.pointer_value_lvalues['outer_0']
+	assert t.pointer_value_rvalues['outer_0']
+	assert t.local_closure_cleanup_decls[71] == 'outer_callback'
+	assert t.local_closure_cleanup_assigns[72] == 'outer_callback'
+	assert t.local_closure_field_cleanups[73]
+}
+
 fn test_callback_payload_checks_symbolic_fixed_array_lengths() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
