@@ -1965,12 +1965,19 @@ pub mut:
 	// module_inputs maps a module (`main` for program files) to the sorted paths of
 	// the V-shipped native files and embedded resources its directives name directly.
 	module_inputs map[string][]string
+	// native_paths holds the paths in module_inputs that native directives name.
+	native_paths map[string]bool
+	// include_dirs are the include directories that every C flag of the build adds.
+	include_dirs []string
+	// implementation_define names the first `#define` that selects the implementation
+	// section of a single-header C library, such as `STB_IMAGE_IMPLEMENTATION`.
+	implementation_define string
 	// user_supplied names the first user-supplied native input, if there is one.
 	user_supplied string
 }
 
 const c_native_path_flag_options = ['-isystem', '-iquote', '-idirafter', '-iframework', '-imacros',
-	'-include', '--include-directory', '--include', '-I', '-F']
+	'-include-pch', '-include', '--include-directory', '--include', '-I', '-F']
 
 // cache_native_inputs classifies the native inputs of a build for the V caches.
 // Directives are attributed to the file that declares them: a V-shipped module may
@@ -2005,6 +2012,12 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 				}
 				if node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
 					relevant << node_idx
+				} else if node.value == 'define' {
+					name := node.typ.trim_space().all_before(' ').all_before('\t').all_before('(')
+					if result.implementation_define.len == 0
+						&& c_define_selects_native_implementation(name) {
+						result.implementation_define = name
+					}
 				} else if node.value == 'pkgconfig' && !cur_file_is_shipped {
 					// A package's search paths lie outside V. Their resolution is
 					// left to pkg-config and the C compiler.
@@ -2073,6 +2086,7 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 		}
 		if resolved.len > 0 && c_path_is_within_roots(resolved, shipped_roots) {
 			c_add_cache_external_input(mut inputs, owner_module, resolved)
+			result.native_paths[resolved] = true
 			continue
 		}
 		// System headers, and anything a V-shipped module leaves to the C compiler's
@@ -2090,7 +2104,28 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 		inputs[module_name] = sorted
 	}
 	result.module_inputs = inputs.move()
+	result.include_dirs = include_dirs
 	return result
+}
+
+// c_define_selects_native_implementation reports whether a `#define` selects the
+// implementation section of a single-header library, as `#define SOKOL_IMPL` or
+// `#define STB_IMAGE_IMPLEMENTATION` do. modulecache.declaration_header omits the
+// same defines from the declarations replicated into every cached object.
+fn c_define_selects_native_implementation(name string) bool {
+	return name.ends_with('_IMPLEMENTATION') || (name.starts_with('SOKOL') && name.ends_with('_IMPL'))
+}
+
+// cache_native_input_is_source reports whether a native input is a C, C++,
+// Objective-C or assembly source rather than a header.
+pub fn cache_native_input_is_source(path string) bool {
+	lowered := path.to_lower()
+	for extension in ['.c', '.cc', '.cpp', '.cxx', '.m', '.mm', '.s'] {
+		if lowered.ends_with(extension) {
+			return true
+		}
+	}
+	return false
 }
 
 // native_path_is_shipped reports whether a resolved native file belongs to the
@@ -2156,6 +2191,16 @@ fn c_flags_user_native_input(flags []string, shipped_roots []string) ?string {
 			if token.len > option.len && token.starts_with(option) {
 				path = token[option.len..].trim_left('=')
 				break
+			}
+		}
+		// MSVC spells `/Idir` and `/FIheader.h` without a separator. A token that
+		// names an existing file is an absolute path, not such an option.
+		if path.len == 0 && !os.exists(token) {
+			for option in ['/FI', '/I'] {
+				if token.len > option.len && token.starts_with(option) {
+					path = token[option.len..]
+					break
+				}
 			}
 		}
 		if path.len == 0 && !token.starts_with('-') && c_is_native_input_path(token) {

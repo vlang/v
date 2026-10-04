@@ -109,12 +109,19 @@ fn test_dump_flags_after_cached_incbin_build_uses_arrays() {
 	cache_dir := os.join_path(os.vtmp_dir(), 'embed_file_incbin_cache_${os.getpid()}')
 	os.rmdir_all(cache_dir) or {}
 	old_cache := os.getenv_opt('V3CACHE')
+	old_trace := os.getenv_opt('V3_CACHE_TRACE')
 	os.setenv('V3CACHE', cache_dir, true)
+	os.setenv('V3_CACHE_TRACE', '1', true)
 	defer {
 		if value := old_cache {
 			os.setenv('V3CACHE', value, true)
 		} else {
 			os.unsetenv('V3CACHE')
+		}
+		if value := old_trace {
+			os.setenv('V3_CACHE_TRACE', value, true)
+		} else {
+			os.unsetenv('V3_CACHE_TRACE')
 		}
 		os.rmdir_all(cache_dir) or {}
 	}
@@ -131,7 +138,11 @@ fn test_dump_flags_after_cached_incbin_build_uses_arrays() {
 			}
 		}
 	}
-	assert cached_incbin_plan, 'the seed build did not cache its incbin C plan'
+	// A build whose V-shipped native inputs cannot be replicated into every cached
+	// object (such as the file-static state of the closure runtime) stays uncached
+	// and leaves no plan to reuse. Any other seed build caches its incbin plan.
+	uncached := seed_build.output.contains('external C inputs cannot be assigned to cache units')
+	assert cached_incbin_plan != uncached, 'the seed build neither cached its incbin C plan nor bypassed the cache:\n${seed_build.output}'
 	flags_file := os.join_path(incbin_workspace, 'cached_flags.txt')
 	dump_build, dump_output := build_and_run('app_cache_dump',
 		'-dump-c-flags ${os.quoted_path(flags_file)}')

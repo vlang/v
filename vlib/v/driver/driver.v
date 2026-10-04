@@ -2596,19 +2596,29 @@ fn v3_parallel_local_include_path(line string, including_dir string, include_dir
 // an include for the C compiler, and an unresolved quoted include marks the
 // expansion incomplete.
 fn v3_parallel_expand_local_includes(path string, include_dirs []string, vroot string, mut active map[string]bool) (string, bool) {
+	mut expanded_paths := map[string]bool{}
+	return v3_expand_shipped_native_file(path, include_dirs, vroot, false, mut active, mut
+		expanded_paths)
+}
+
+// v3_expand_shipped_native_file implements v3_parallel_expand_local_includes. It
+// records every file it expands in `expanded_paths`; with `once` set, a file that
+// was already expanded contributes no text again.
+fn v3_expand_shipped_native_file(path string, include_dirs []string, vroot string, once bool, mut active map[string]bool, mut expanded_paths map[string]bool) (string, bool) {
 	real_path := os.real_path(path)
-	if active[real_path] {
+	if active[real_path] || (once && expanded_paths[real_path]) {
 		return '', true
 	}
 	source := os.read_file(real_path) or { return '', false }
 	active[real_path] = true
+	expanded_paths[real_path] = true
 	mut expanded := strings.new_builder(source.len)
 	mut complete := true
 	for line in source.split_into_lines() {
 		if include_path := v3_parallel_local_include_path(line, os.dir(real_path), include_dirs) {
 			if cgen.native_path_is_shipped(include_path, vroot) {
-				included, included_complete := v3_parallel_expand_local_includes(include_path,
-					include_dirs, vroot, mut active)
+				included, included_complete := v3_expand_shipped_native_file(include_path,
+					include_dirs, vroot, once, mut active, mut expanded_paths)
 				expanded.writeln(included)
 				complete = complete && included_complete
 				continue
@@ -4185,14 +4195,70 @@ fn v3_native_inputs(a &flat.FlatAst, prefs &pref.Preferences, user_files []strin
 		cgen.cache_program_file_set(a, user_files))
 }
 
-fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs &cgen.CacheNativeInputs) bool {
+// V3NativeInputClosure holds the native inputs of a build without user-supplied ones.
+struct V3NativeInputClosure {
+mut:
+	// inputs maps each owning module to its V-shipped native files, including the
+	// V-shipped headers they include, and its embedded resources.
+	inputs map[string][]string
+	// unassignable names the first V-shipped native input that cannot be replicated
+	// into every cached module object, when the closure was checked for that.
+	unassignable string
+}
+
+// v3_native_input_closure follows the V-shipped native inputs of a build through
+// the V-shipped headers they include, so that an edit to a nested runtime header
+// invalidates the crun build identity and the caches. With `check_replication` it
+// also reports the first input that cannot be replicated into every cached module
+// object: a native source, an implementation section of a single-header library,
+// or a header that defines symbols with external linkage or keeps static storage.
+// The caches have no owner for such definitions, so those builds stay uncached.
+fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, check_replication bool) V3NativeInputClosure {
+	mut result := V3NativeInputClosure{}
+	if check_replication && native_inputs.implementation_define.len > 0 {
+		result.unassignable = '#define ${native_inputs.implementation_define}'
+	}
+	mut expansions := map[string][]string{}
+	mut replicable := map[string]bool{}
+	for module_name, paths in native_inputs.module_inputs {
+		mut closure := map[string]bool{}
+		for path in paths {
+			closure[path] = true
+			if !native_inputs.native_paths[path] {
+				continue
+			}
+			if path !in expansions {
+				mut active := map[string]bool{}
+				mut expanded_paths := map[string]bool{}
+				text, complete := v3_expand_shipped_native_file(path, native_inputs.include_dirs,
+					vroot, true, mut active, mut expanded_paths)
+				expansions[path] = expanded_paths.keys()
+				replicable[path] = !check_replication || (complete
+					&& !cgen.cache_native_input_is_source(path)
+					&& modulecache.c_source_is_replicable(text))
+			}
+			for expanded_path in expansions[path] {
+				closure[expanded_path] = true
+			}
+			if result.unassignable.len == 0 && !replicable[path] {
+				result.unassignable = path
+			}
+		}
+		mut sorted := closure.keys()
+		sorted.sort()
+		result.inputs[module_name] = sorted
+	}
+	return result
+}
+
+fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs &cgen.CacheNativeInputs, closure &V3NativeInputClosure) bool {
 	if native_inputs.user_supplied.len > 0 {
 		return false
 	}
 	if !state.external_inputs_ready {
-		state.module_external_inputs = clone_string_list_map(native_inputs.module_inputs)
+		state.module_external_inputs = clone_string_list_map(closure.inputs)
 		mut digests := map[string]string{}
-		for paths in native_inputs.module_inputs.values() {
+		for paths in closure.inputs.values() {
 			for path in paths {
 				if path in digests {
 					continue
@@ -4205,7 +4271,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs 
 	}
 	state.external_inputs_ready = true
 	state.external_inputs_complete = true
-	return true
+	return closure.unassignable.len == 0
 }
 
 fn register_headerless_c_types(mut tc types.TypeChecker) {
@@ -11078,6 +11144,15 @@ pub fn run(args []string) {
 		trace_v3_cache_fallback('native C inputs require compilation without header inspection: ${native_inputs.user_supplied}')
 		restart_v3_without_cache()
 	}
+	native_closure := if has_external_c_inputs || native_inputs.module_inputs.len == 0 {
+		V3NativeInputClosure{}
+	} else {
+		v3_native_input_closure(&native_inputs, prefs.vroot, cache_state.manager.enabled)
+	}
+	if cache_state.manager.enabled && native_closure.unassignable.len > 0 {
+		trace_v3_cache_fallback('external C inputs cannot be assigned to cache units: ${native_closure.unassignable}')
+		restart_v3_without_cache()
+	}
 
 	mut crun_build_identity := ''
 	if crun_may_reuse && !has_external_c_inputs {
@@ -11087,7 +11162,8 @@ pub fn run(args []string) {
 		} else {
 			mut crun_c_flags := user_c_flags.clone()
 			crun_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
-			_ = prepare_v3_cache_external_inputs(mut cache_state, &native_inputs)
+			_ = prepare_v3_cache_external_inputs(mut cache_state, &native_inputs,
+				&native_closure)
 			crun_build_identity = v3_crun_build_identity(&cache_state, prefs, user_files, crun_c_flags, link_ld_flags, is_strict, enable_globals_compat, input_file)
 			if crun_build_identity.len > 0 {
 				os.setenv(v3_crun_build_identity_env, crun_build_identity, true)
@@ -11144,7 +11220,8 @@ pub fn run(args []string) {
 	mut incremental_tcc_declarations_path := ''
 	if backend == 'c' && program_cache_enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
-		if !prepare_v3_cache_external_inputs(mut cache_state, &native_inputs) {
+		if !prepare_v3_cache_external_inputs(mut cache_state, &native_inputs,
+			&native_closure) {
 			trace_v3_cache_fallback('native C inputs require compilation without header inspection')
 			restart_v3_without_cache()
 		}
@@ -11725,7 +11802,8 @@ pub fn run(args []string) {
 		}
 		if cache_state.manager.enabled {
 			const_init_order := cgen.module_const_init_order(a, pre_tc)
-			if !prepare_v3_cache_external_inputs(mut cache_state, &native_inputs) {
+			if !prepare_v3_cache_external_inputs(mut cache_state, &native_inputs,
+				&native_closure) {
 				trace_v3_cache_fallback('external C inputs cannot be assigned to cache units')
 				restart_v3_without_cache()
 			}
@@ -11920,7 +11998,8 @@ pub fn run(args []string) {
 		// Uncached Cgen emits includes directly, and fallback reports contain only
 		// metadata, so neither needs a header traversal or compiler-macro probe.
 		if backend == 'c' && cache_state.manager.enabled && !cache_state.external_inputs_ready {
-			_ = prepare_v3_cache_external_inputs(mut cache_state, &native_inputs)
+			_ = prepare_v3_cache_external_inputs(mut cache_state, &native_inputs,
+				&native_closure)
 		}
 		if backend == 'c' && cache_state.external_inputs_ready {
 			fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)

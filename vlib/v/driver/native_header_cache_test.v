@@ -2,6 +2,7 @@ module driver
 
 import v.flat
 import v.gen.c as cgen
+import v.modulecache
 import v.pref
 import os
 import time
@@ -110,4 +111,56 @@ fn test_native_dependency_list_uses_compiler_manifest_without_reading_headers() 
 	assert native_build_input_paths(&a, prefs, []string{}, compiler) == expected
 	empty := flat.FlatAst.new()
 	assert native_build_input_paths(&empty, prefs, ['-include', header], compiler) == expected
+}
+
+fn test_native_input_closure_tracks_nested_shipped_headers() {
+	vroot := os.join_path(os.vtmp_dir(), 'native_closure_${os.getpid()}_${time.now().unix_nano()}')
+	scratch := os.join_path(vroot, 'vlib', 'scratch')
+	os.mkdir_all(scratch)!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	outer := os.join_path(scratch, 'outer.h')
+	inner := os.join_path(scratch, 'inner.h')
+	source := os.join_path(scratch, 'impl.c')
+	os.write_file(outer, '#include <stddef.h>\n#include "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
+	os.write_file(inner, '#pragma once\nstatic inline int inner_value(void) { return 101; }\n')!
+	os.write_file(source, '#include "inner.h"\nint impl_value(void) { return inner_value(); }\n')!
+	real_outer := os.real_path(outer)
+	real_inner := os.real_path(inner)
+	mut inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'scratch': [real_outer]
+		}
+		native_paths:  {
+			real_outer: true
+		}
+	}
+	closure := v3_native_input_closure(&inputs, vroot, true)
+	// An edit to the nested header has to reach the crun identity and the caches.
+	assert closure.inputs['scratch'] == [real_inner, real_outer].sorted()
+	assert closure.unassignable == ''
+	// A native source defines symbols that every cached object would duplicate.
+	real_source := os.real_path(source)
+	inputs.module_inputs['scratch'] = [real_source]
+	inputs.native_paths[real_source] = true
+	with_source := v3_native_input_closure(&inputs, vroot, true)
+	assert with_source.unassignable == real_source
+	assert real_inner in with_source.inputs['scratch']
+	// crun only needs the closure, not the replication check.
+	assert v3_native_input_closure(&inputs, vroot, false).unassignable == ''
+	inputs.module_inputs['scratch'] = [real_outer]
+	inputs.implementation_define = 'STB_IMAGE_IMPLEMENTATION'
+	assert v3_native_input_closure(&inputs, vroot, true).unassignable == '#define STB_IMAGE_IMPLEMENTATION'
+}
+
+fn test_only_declaration_headers_are_replicated_into_cached_objects() {
+	assert modulecache.c_source_is_replicable('#include <stdio.h>\ntypedef struct { int x; } Foo;\nint foo_get(Foo *f);\nextern int foo_count;\nstatic inline int foo_one(void) { return 1; }\n')
+	// A macro such as `GC_API` supplies the `extern` of a plain declaration, and
+	// the linker merges weak definitions.
+	assert modulecache.c_source_is_replicable('GC_API int GC_count;\n__attribute__ ((weak)) GC_API void GC_noop(void *p) { (void)p; }\n')
+	assert !modulecache.c_source_is_replicable('int foo_get(void) { return 1; }\n')
+	assert !modulecache.c_source_is_replicable('int foo_count = 0;\n')
+	assert !modulecache.c_source_is_replicable('static int foo_count;\n')
+	assert !modulecache.c_source_is_replicable('static inline int foo_next(void) {\n\tstatic int n;\n\treturn ++n;\n}\n')
 }

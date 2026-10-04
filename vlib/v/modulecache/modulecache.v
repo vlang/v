@@ -2397,6 +2397,80 @@ pub fn c_source_has_static_storage(source string) bool {
 	return has_static_storage
 }
 
+// c_source_is_replicable reports whether every translation unit can include a
+// native input unchanged: it defines no function or variable with external
+// linkage and keeps no static storage, so the copies that separate objects get
+// can neither collide at link time nor diverge at run time.
+pub fn c_source_is_replicable(source string) bool {
+	_, has_static_storage, has_function_static_storage, _, _, defines_external_symbols := c_declaration_header_mode(source,
+		false)
+	if has_static_storage || has_function_static_storage || defines_external_symbols {
+		return false
+	}
+	variables, complete := c_source_static_variable_identifiers(source)
+	return complete && variables.len == 0
+}
+
+// c_declaration_item_defines_external_symbol reports whether declaration_header had
+// to turn a file-scope item into a declaration because it defines a function or a
+// variable with external linkage. A plain declaration that only lacks a visible
+// `extern` is not one: a macro such as `GC_API` usually supplies that keyword.
+fn c_declaration_item_defines_external_symbol(item string, converted string, has_brace bool) bool {
+	if converted == item {
+		return false
+	}
+	if has_brace {
+		// Weak definitions, such as the `GC_noop1_ptr` helper in V's `gc.h`, are
+		// merged by the linker.
+		head := item.all_before('{').replace(' ', '')
+		return !head.contains('((weak))') && !head.contains('__weak__')
+	}
+	return c_declaration_item_has_initializer(item)
+}
+
+// c_declaration_item_has_initializer reports whether a declaration assigns a value
+// outside parentheses, brackets, literals and comments.
+fn c_declaration_item_has_initializer(item string) bool {
+	mut depth := 0
+	mut i := 0
+	for i < item.len {
+		c := item[i]
+		if c == `/` && i + 1 < item.len && item[i + 1] == `/` {
+			i = item.index_after('\n', i) or { return false }
+			continue
+		}
+		if c == `/` && i + 1 < item.len && item[i + 1] == `*` {
+			end := item.index_after('*/', i + 2) or { return false }
+			i = end + 2
+			continue
+		}
+		if c == `"` || c == `\'` {
+			i++
+			for i < item.len && item[i] != c {
+				if item[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		if c in [`(`, `[`] {
+			depth++
+		} else if c in [`)`, `]`] && depth > 0 {
+			depth--
+		} else if c == `=` && depth == 0 {
+			prev := if i > 0 { item[i - 1] } else { ` ` }
+			next := if i + 1 < item.len { item[i + 1] } else { ` ` }
+			if next != `=` && prev !in [`=`, `!`, `<`, `>`] {
+				return true
+			}
+		}
+		i++
+	}
+	return false
+}
+
 // c_source_declares_types reports whether a local C input defines a type whose
 // declaration may be required by generated V declarations in another cache unit.
 pub fn c_source_declares_types(source string) bool {
@@ -3452,23 +3526,24 @@ pub fn c_source_type_declarations(source string) string {
 // c_source_type_declarations_with_status also reports whether every declaration-like
 // file-scope macro invocation could be classified.
 pub fn c_source_type_declarations_with_status(source string) (string, bool) {
-	header, _, _, _, complete := c_declaration_header_mode(source, true)
+	header, _, _, _, complete, _ := c_declaration_header_mode(source, true)
 	return header, complete
 }
 
 fn c_declaration_header(prefix string) (string, bool, bool) {
-	header, has_static_storage, _, declares_types, _ := c_declaration_header_mode(prefix, false)
+	header, has_static_storage, _, declares_types, _, _ := c_declaration_header_mode(prefix, false)
 	return header, has_static_storage, declares_types
 }
 
 // c_source_replicated_function_has_static_storage reports whether a function
 // definition retained by declaration_header contains function-local static storage.
 pub fn c_source_replicated_function_has_static_storage(source string) bool {
-	_, _, has_replicated_function_static_storage, _, _ := c_declaration_header_mode(source, false)
+	_, _, has_replicated_function_static_storage, _, _, _ := c_declaration_header_mode(source,
+		false)
 	return has_replicated_function_static_storage
 }
 
-fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool, bool, bool) {
+fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool, bool, bool, bool) {
 	mut out := strings.new_builder(prefix.len / 2)
 	mut item := strings.new_builder(512)
 	mut item_head := strings.new_builder(512)
@@ -3481,6 +3556,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 	mut has_replicated_function_static_storage := false
 	mut declares_types := false
 	mut types_complete := true
+	mut defines_external_symbols := false
 	mut in_block_comment := false
 	mut in_preprocessor_directive := false
 	mut preprocessor_in_item := false
@@ -3616,7 +3692,10 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		}
 		declares_types = declares_types || item_declares_type
 		if !types_only || item_declares_type {
-			out.write_string(c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros))
+			converted := c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros)
+			defines_external_symbols = defines_external_symbols
+				|| c_declaration_item_defines_external_symbol(declaration, converted, has_brace)
+			out.write_string(converted)
 		}
 		item_head.clear()
 		brace_depth = 0
@@ -3641,10 +3720,13 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		}
 		declares_types = declares_types || item_declares_type
 		if !types_only || item_declares_type {
-			out.write_string(c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros))
+			converted := c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros)
+			defines_external_symbols = defines_external_symbols
+				|| c_declaration_item_defines_external_symbol(declaration, converted, has_brace)
+			out.write_string(converted)
 		}
 	}
-	return out.str(), has_static_storage, has_replicated_function_static_storage, declares_types, types_complete
+	return out.str(), has_static_storage, has_replicated_function_static_storage, declares_types, types_complete, defines_external_symbols
 }
 
 fn c_type_declaration_macro_names(source string) map[string]bool {
@@ -3906,7 +3988,7 @@ fn c_declaration_item(item string, has_brace bool, types_only bool, definition_p
 	}
 	clean := trim_leading_c_comments(trimmed)
 	if block := c_extern_c_block(item) {
-		inner_header, _, _, _, _ := c_declaration_header_mode(block.inner, types_only)
+		inner_header, _, _, _, _, _ := c_declaration_header_mode(block.inner, types_only)
 		mut result := block.before
 		if !result.ends_with('\n') && !inner_header.starts_with('\n') {
 			result += '\n'
