@@ -178,6 +178,10 @@ fn tool_cache_root_can_stage(path string) bool {
 	return C.v_toolcache_root_is_private(w_path) != 0
 }
 
+// make_tool_cache_root_private does nothing on Windows. There, folder access is controlled by
+// ACLs (per-user permission lists), not by Unix permission bits.
+fn make_tool_cache_root_private(_ string) {}
+
 fn (entry ToolCacheEntryDir) stage_parent(_ string) !string {
 	// The entry handle was opened without FILE_SHARE_DELETE, so a staging child created
 	// underneath this path cannot be redirected by replacing the entry directory.

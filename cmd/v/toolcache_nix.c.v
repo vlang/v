@@ -128,6 +128,20 @@ fn tool_cache_root_can_stage(path string) bool {
 	return information.mode & 0o022 == 0 || information.mode & 0o1000 != 0
 }
 
+// make_tool_cache_root_private makes sure that only the current user can write to the cache
+// folder, so that `tool_cache_root_can_stage` accepts it. It only changes folders that the
+// current user owns, and skips shared folders like `/tmp` that use the sticky bit.
+fn make_tool_cache_root_private(path string) {
+	root := os.real_path(path)
+	information := os.stat(root) or { return }
+	// 0o1000 is the sticky bit: in such a shared folder, users can not touch each other's files.
+	if information.uid != os.getuid() || information.mode & 0o1000 != 0 {
+		return
+	}
+	// Masking with 0o7755 removes write access for the group and for others, e.g. 0775 -> 0755.
+	os.chmod(root, int(information.mode & 0o7755)) or {}
+}
+
 // stage_parent uses the locked, mode-0700 entry itself, keeping compiler output on the cache
 // filesystem and inaccessible to other accounts.
 fn (entry ToolCacheEntryDir) stage_parent(path string) !string {

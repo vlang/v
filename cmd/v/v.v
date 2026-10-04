@@ -475,6 +475,8 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 				exit(1)
 			}
 			exec_cached_tool(entry.binary, tool_args)
+		} else if tool_cache_is_verbose() {
+			eprintln('> no usable tool cache directory, running `${tool_name}` from source')
 		}
 	}
 	install_external_tool_modules(tool_name, tool_source, compile_args)

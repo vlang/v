@@ -69,6 +69,9 @@ fn toolcache_test_dir(name string) string {
 	directory := os.join_path(os.vtmp_dir(), 'v_toolcache_test', '${name}_${os.getpid()}')
 	os.rmdir_all(directory) or {}
 	os.mkdir_all(directory) or { panic(err) }
+	// Make the test folder private (0700). The cache refuses folders that the group can
+	// write to, and a umask like 002 would create them that way.
+	os.chmod(directory, 0o700) or { panic(err) }
 	return directory
 }
 
@@ -1091,6 +1094,27 @@ fn test_a_non_sticky_shared_cache_cannot_hold_staged_outputs() {
 	assert !tool_cache_root_can_stage(directory)
 	os.chmod(directory, 0o1777)!
 	assert tool_cache_root_can_stage(directory), 'a sticky shared cache protects user-owned staging directories'
+}
+
+// Regression test: with a umask like 002, the cache folder used to be group writable. The
+// cache then refused to use it, so `v doc`, `v fmt` etc. recompiled their tool on every run.
+fn test_a_group_writable_own_cache_root_is_made_private() {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('group_writable_root')
+	defer {
+		os.chmod(directory, 0o700) or {}
+		os.rmdir_all(directory) or {}
+	}
+	os.chmod(directory, 0o775)!
+	assert !tool_cache_root_can_stage(directory)
+	make_tool_cache_root_private(directory)
+	assert os.stat(directory)!.mode & 0o777 == 0o755
+	assert tool_cache_root_can_stage(directory)
+	os.chmod(directory, 0o1777)!
+	make_tool_cache_root_private(directory)
+	assert os.stat(directory)!.mode & 0o7777 == 0o1777, 'sticky shared roots are left alone'
 }
 
 // `$pkgconfig(...)` and `#pkgconfig` select whole native branches, so the pkg-config

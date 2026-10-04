@@ -91,11 +91,25 @@ fn tool_cache_dir() ?string {
 			candidates << custom.trim_space()
 		}
 	}
-	candidates << os.join_path(os.cache_dir(), 'v', 'tools')
-	candidates << os.join_path(os.vtmp_dir(), 'tools')
+	default_candidates := [os.join_path(os.cache_dir(), 'v', 'tools'),
+		os.join_path(os.vtmp_dir(), 'tools')]
+	candidates << default_candidates
 	for candidate in candidates {
 		if !os.is_dir(candidate) {
-			os.mkdir_all(candidate) or { continue }
+			os.mkdir_all(os.dir(candidate)) or { continue }
+			// Create the folder so that only the current user can access it (mode 0700).
+			// With the default mode, a umask like 002 would let the whole group write to it.
+			// `tool_cache_root_can_stage` would then reject the folder, and every tool would
+			// be recompiled on each run instead of being cached.
+			os.mkdir(candidate, mode: 0o700) or {
+				if !os.is_dir(candidate) {
+					continue
+				}
+			}
+		}
+		if candidate in default_candidates && !tool_cache_root_can_stage(candidate) {
+			// Older V versions created this folder group writable, so fix that here.
+			make_tool_cache_root_private(candidate)
 		}
 		if os.is_dir(candidate) && directory_is_writable(candidate)
 			&& tool_cache_root_can_stage(candidate) {
