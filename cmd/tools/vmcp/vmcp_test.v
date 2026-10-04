@@ -1245,7 +1245,7 @@ fn test_a_windows_executable_keeps_its_backslashes() {
 fn test_it_refuses_to_reorder_or_drop_an_existing_config() {
 	path := config_fixture('order', '{"zed":{"a":1},"mcp":{"duck":{"type":"local"}},"other":true}')!
 	h := Harness{
-		name: 'test'
+		name:  'test'
 		label: 'test'
 		key:   'mcp'
 	}
@@ -1267,7 +1267,7 @@ fn test_it_refuses_to_reorder_or_drop_an_existing_config() {
 fn test_it_fills_an_empty_servers_object_without_a_stray_comma() {
 	path := config_fixture('empty', '{"mcp":{}}')!
 	h := Harness{
-		name: 'test'
+		name:  'test'
 		label: 'test'
 		key:   'mcp'
 	}
@@ -1280,7 +1280,7 @@ fn test_it_fills_an_empty_servers_object_without_a_stray_comma() {
 fn test_it_adds_a_comma_when_the_object_already_has_servers() {
 	path := config_fixture('nonempty', '{"mcp":{"duck":{"type":"local"}}}')!
 	h := Harness{
-		name: 'test'
+		name:  'test'
 		label: 'test'
 		key:   'mcp'
 	}
@@ -1314,7 +1314,7 @@ fn test_it_refuses_a_file_that_is_not_plain_json() {
 	// A comment is the common case: these files are meant to be edited by hand.
 	path := config_fixture('jsonc', '{\n  // my servers\n  "mcp": {}\n}\n')!
 	h := Harness{
-		name: 'test'
+		name:  'test'
 		label: 'test'
 		key:   'mcp'
 	}
@@ -1333,7 +1333,7 @@ fn test_it_refuses_a_config_with_trailing_commas() {
 fn test_it_will_not_register_the_same_server_twice() {
 	path := config_fixture('twice', '{"mcp":{}}')!
 	h := Harness{
-		name: 'test'
+		name:  'test'
 		label: 'test'
 		key:   'mcp'
 	}
@@ -1346,7 +1346,7 @@ fn test_it_will_not_register_the_same_server_twice() {
 fn test_it_leaves_a_config_without_the_key_alone() {
 	path := config_fixture('nokey', '{"unrelated":{}}')!
 	h := Harness{
-		name: 'test'
+		name:  'test'
 		label: 'test'
 		key:   'mcp'
 	}
@@ -1360,7 +1360,7 @@ fn test_a_key_named_like_another_client_is_not_mistaken_for_it() {
 	// the top-level key.
 	path := config_fixture('decoy', '{"note":{"text":"the mcp key"},"mcp":{"duck":{}}}')!
 	h := Harness{
-		name: 'test'
+		name:  'test'
 		label: 'test'
 		key:   'mcp'
 	}
@@ -1374,9 +1374,9 @@ fn test_a_key_named_like_another_client_is_not_mistaken_for_it() {
 fn test_it_creates_a_missing_config_with_the_key_in_it() {
 	path := config_fixture('missing', '')!
 	h := Harness{
-		name:       'test'
-		label:      'test'
-		key:        'mcpServers'
+		name:        'test'
+		label:       'test'
+		key:         'mcpServers'
 		create_user: true
 	}
 	write_entry(h, path) or { panic(err) }
@@ -1387,9 +1387,9 @@ fn test_it_creates_a_missing_config_with_the_key_in_it() {
 fn test_it_will_not_create_a_file_at_an_unconfirmed_path() {
 	path := config_fixture('unconfirmed', '')!
 	h := Harness{
-		name:       'test'
-		label:      'test'
-		key:        'context_servers'
+		name:        'test'
+		label:       'test'
+		key:         'context_servers'
 		create_user: false
 	}
 	write_entry(h, path) or { panic(err) }

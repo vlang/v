@@ -199,7 +199,7 @@ fn write_entry(h Harness, path string) ! {
 
 	if !os.exists(path) {
 		if !h.create_user {
-			eprintln('v mcp install: ${path} does not exist, and this client\'s path is not confirmed')
+			eprintln("v mcp install: ${path} does not exist, and this client's path is not confirmed")
 			eprintln('  on this platform, so it was not created. Add this by hand:')
 			println('  ${server_id}: ${entry_text(h)}')
 			return

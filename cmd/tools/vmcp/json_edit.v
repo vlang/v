@@ -12,11 +12,9 @@ import os
 // The bytes this file scans for, as numbers rather than literals: a backtick
 // char literal cannot hold a backslash, and every other error in the file
 // cascades from that one.
-const (
-	dquote = u8(34)
-	bslash = u8(92)
-	sp     = u8(32)
-)
+const dquote = u8(34)
+const bslash = u8(92)
+const sp = u8(32)
 
 // is_space is JSON whitespace: space, tab, newline, carriage return.
 fn is_space(c u8) bool {

@@ -106,8 +106,8 @@ fn harnesses() []Harness {
 	config := os.config_dir() or { os.join_path(home, '.config') }
 	return [
 		Harness{
-			name: 'opencode'
-			label: 'opencode'
+			name:            'opencode'
+			label:           'opencode'
 			// opencode reads `~/.config/opencode/` on every platform, including
 			// Windows, so this must not follow the platform config directory.
 			user:            os.join_path(home, '.config', 'opencode', 'opencode.json')
@@ -145,10 +145,10 @@ fn harnesses() []Harness {
 			// one client should not edit another client's file.
 		},
 		Harness{
-			name:   'zed'
-			label:  'Zed'
-			user:   os.join_path(config, 'Zed', 'settings.json')
-			key:    'context_servers'
+			name:        'zed'
+			label:       'Zed'
+			user:        os.join_path(config, 'Zed', 'settings.json')
+			key:         'context_servers'
 			// Zed documents its servers inside its settings file and says
 			// nothing about a project-level file, so none is invented here.
 			// The Windows path is also unconfirmed, so a missing file is reported
