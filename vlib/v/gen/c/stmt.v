@@ -3065,7 +3065,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					// a zeroed `(Iface){0}` — that drops `_typ`/`_object` and makes every
 					// dispatch through the returned interface panic as "not implemented".
 					if g.cur_fn_ret is types.Interface {
-						if !g.gen_interface_value_expr(ret_id, g.cur_fn_ret) {
+						if !g.gen_interface_value_expr(ret_id, g.cur_fn_ret)
+							&& !g.gen_current_mut_param_value_read(ret_id, g.cur_fn_ret) {
 							g.gen_expr(ret_id)
 						}
 					} else if g.gen_pointer_value_return_expr(ret_id, g.cur_fn_ret) {

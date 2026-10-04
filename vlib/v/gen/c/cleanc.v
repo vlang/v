@@ -11644,7 +11644,7 @@ fn (mut g FlatGen) interface_value_to_string(id flat.NodeId, expected types.Type
 	g.sb = strings.new_builder(64)
 	// Box mid-statement (no leading indent), matching the direct return path.
 	g.line_start = false
-	if !g.gen_interface_value_expr(id, expected) {
+	if !g.gen_interface_value_expr(id, expected) && !g.gen_current_mut_param_value_read(id, expected) {
 		mut actual := g.usable_expr_type(id)
 		node := g.a.nodes[int(id)]
 		if node.kind == .ident {
