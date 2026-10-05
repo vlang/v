@@ -930,6 +930,7 @@ To use a format specifier, follow this pattern:
   append a `f` specifier to the precision value (see examples below). Applies only to float
   variables and is ignored for integer variables. Runtime precisions use the same parenthesized
   form, for example `${value:(width).(precision)f}`.
+  Negative zero keeps its sign when formatted, including when trailing zeros are omitted.
 - type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
   the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
   the input is a float--the renderer will use floating point notation for small values and exponent

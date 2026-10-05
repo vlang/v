@@ -33,3 +33,16 @@ fn test_string_interpolation_float_precision_without_type_letter() {
 	huge := 1e20
 	assert '${big:.3} ${tiny:.4} ${huge:.2}' == '-1.23e+08 1e-07 1e+20'
 }
+
+fn test_string_interpolation_float_precision_preserves_negative_zero() {
+	negative := -0.0
+	positive := 0.0
+	assert '${negative:.0} ${negative:.1} ${negative:.3}' == '-0 -0 -0'
+	assert '${positive:.0} ${positive:.1} ${positive:.3}' == '0 0 0'
+	assert '[${negative:5.2}] [${negative:-5.2}]' == '[   -0] [-0   ]'
+	negative32 := f32(negative)
+	positive32 := f32(positive)
+	assert '${negative32:.0} ${negative32:.3}' == '-0 -0'
+	assert '${positive32:.0} ${positive32:.3}' == '0 0'
+	assert '[${negative32:5.2}] [${negative32:-5.2}]' == '[   -0] [-0   ]'
+}
