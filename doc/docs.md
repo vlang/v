@@ -9357,7 +9357,12 @@ financial calculations.
 
 Using this flag omits the segfault handler, reducing the executable size and potentially improving
 compile time. However, in the case of a segmentation fault, the output will not contain stack trace
-information, making debugging more challenging.
+information, making debugging more challenging. A stack overflow (for example from unbounded
+recursion) is then also no longer reported as `V panic: stack overflow`.
+
+On macOS, signal handlers installed before V starts retain precedence, including TCC's
+backtrace handlers. V reports stack overflows when the signal still has its default disposition;
+compile with `-cc clang` to use this reporter without TCC's earlier handlers.
 
 **When to Use**
 
