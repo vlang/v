@@ -179,6 +179,9 @@ mut:
 	anonymous_struct_count            int
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
+	// The offsets of the `#line` directives of the file that are between statements, or in
+	// skipped code; report_misplaced_line_directives reports the others.
+	accepted_line_directives map[int]bool
 pub mut:
 	a &flat.FlatAst = unsafe { nil }
 	// quick_source_sums records the quick_sum of each parsed source instead of
@@ -435,6 +438,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.anonymous_struct_types = map[string][]string{}
 	p.anonymous_struct_count = 0
 	p.sql_query_data_aliases.clear()
+	p.accepted_line_directives.clear()
 	// File marker before content so import resolver can track source files
 	marker_id := p.add_node(flat.Node{
 		kind:  .file
@@ -602,7 +606,31 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.a.formatter_file_sources[p.cur_file_id] = stable_src
 		p.collect_formatter_comments(file, stable_src)
 	}
+	p.report_misplaced_line_directives()
 	p.collect_scanner_diagnostics()
+}
+
+// report_misplaced_line_directives reports the `#line` directives of the file that are
+// not at the top level or between statements, like one in an expression or in a struct:
+// the parser reads them as something else, while they still renumber the lines after them.
+fn (mut p Parser) report_misplaced_line_directives() {
+	for offset in p.s.line_directive_offsets {
+		if offset !in p.accepted_line_directives {
+			p.record_diagnostic_span('a `#line` directive can only be used at the top level of a file or between statements',
+				offset, p.s.src.index_after('\n', offset) or { p.s.src.len })
+		}
+	}
+}
+
+// accept_skipped_line_directives accepts the `#line` directives scanned since the byte
+// offset `start` and before the current token, like the ones of a skipped `$if` branch.
+fn (mut p Parser) accept_skipped_line_directives(start int) {
+	offsets := p.s.line_directive_offsets
+	for i := offsets.len - 1; i >= 0 && offsets[i] >= start; i-- {
+		if offsets[i] < p.tok_pos {
+			p.accepted_line_directives[offsets[i]] = true
+		}
+	}
 }
 
 fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback_end int, ignore_statement bool, mut state ScriptModeState) {
@@ -3797,6 +3825,9 @@ fn (mut p Parser) directive() flat.NodeId {
 	if full == 'line' || (full.len > 4 && full.starts_with('line') && full[4] in [` `, `\t`]) {
 		// The scanner already recorded a valid directive in the line table of the file.
 		// It only remaps positions, so later stages never see it; vfmt keeps it.
+		if p.s.line_directives {
+			p.accepted_line_directives[directive_start] = true
+		}
 		mut line_begin := clamp_source_offset(directive_start, p.s.src.len)
 		for line_begin > 0 && p.s.src[line_begin - 1] in [` `, `\t`] {
 			line_begin--
@@ -6960,6 +6991,7 @@ fn (mut p Parser) skip_block() {
 	if p.tok != .lcbr {
 		return
 	}
+	start := p.tok_pos
 	mut depth := 1
 	p.next()
 	for depth > 0 && p.tok != .eof {
@@ -6970,11 +7002,13 @@ fn (mut p Parser) skip_block() {
 		}
 		p.next()
 	}
+	p.accept_skipped_line_directives(start)
 }
 
 // skip_block_recording_decl_names skips a block like skip_block, recording each
 // name it spells as a possible use of a function or a constant.
 fn (mut p Parser) skip_block_recording_decl_names() {
+	start := p.tok_pos
 	mut depth := 1
 	mut scan := p.new_skipped_decl_name_scan()
 	p.next()
@@ -6987,6 +7021,7 @@ fn (mut p Parser) skip_block_recording_decl_names() {
 		}
 		p.next()
 	}
+	p.accept_skipped_line_directives(start)
 }
 
 // SkippedDeclNameScan remembers the tokens before the current one in a skipped
@@ -7119,6 +7154,7 @@ fn (mut p Parser) skip_comptime_block() {
 	mut map_type_paren_depth := -1
 	mut map_type_bracket_depth := -1
 	mut decl_name_scan := p.new_skipped_decl_name_scan()
+	start := p.tok_pos
 	p.next()
 	for depth > 0 && p.tok != .eof {
 		p.record_skipped_decl_name(mut decl_name_scan)
@@ -7288,6 +7324,7 @@ fn (mut p Parser) skip_comptime_block() {
 	for key in pending_comma_lhs_reads {
 		p.a.comptime_skipped_read_names[key] = true
 	}
+	p.accept_skipped_line_directives(start)
 }
 
 fn (mut p Parser) skip_brackets() {
@@ -7674,6 +7711,8 @@ fn (mut p Parser) parse_formatter_comptime_match(start int) flat.NodeId {
 		}
 		p.next()
 	}
+	// vfmt keeps the source of the match as it is, `#line` directives included.
+	p.accept_skipped_line_directives(start)
 	end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 	source := p.s.src[start..end]
 	id := p.a.add_node(flat.Node{
