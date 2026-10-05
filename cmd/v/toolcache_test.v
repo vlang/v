@@ -1843,6 +1843,37 @@ fn test_a_symlinked_default_cache_root_is_replaced_not_followed() {
 	})!
 }
 
+// When V's own folder is a symlink, the folder holding that symlink must be private too, or
+// someone else could point the symlink at their own folder at any time. Checking only the
+// folders above the symlink's target is not enough.
+fn test_a_symlinked_v_folder_inside_a_writable_cache_folder_is_not_used() {
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('symlinked_v_folder') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn [directory] (v_dir string) ! {
+		target := os.join_path(directory, 'private_v')
+		os.mkdir(target, mode: 0o700)!
+		os.chmod(target, 0o700)!
+		os.symlink(target, v_dir)!
+		cache := os.dir(v_dir)
+		os.chmod(cache, 0o777)!
+		chosen := tool_cache_dir() or { panic('no usable tool cache directory') }
+		assert chosen == os.real_path(os.join_path(directory, 'vtmp', 'tools')), 'the symlinked V folder must not be used'
+		assert os.ls(target)! == [], 'nothing may be written through the symlink'
+		assert os.stat(cache)!.mode & 0o777 == 0o777, 'a folder that is not V`s own must be left as it is'
+		// With a private folder holding it, the symlinked V folder is used as before.
+		os.chmod(cache, 0o700)!
+		assert tool_cache_dir() or { '' } == os.real_path(os.join_path(target, 'tools'))
+	})!
+}
+
 // An entry planted in a formerly writable cache folder, under the exact name and with a manifest
 // that looks fresh, must never be executed. The real tool must be built and reused instead.
 fn test_an_entry_planted_in_a_formerly_writable_root_is_never_executed() {
