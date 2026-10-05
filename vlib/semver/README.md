@@ -34,6 +34,15 @@ true
 
 For more details see `semver.v` file.
 
+Tilde ranges allow changes to the patch when a minor is specified: `~2.0` and
+`~2.0.0` mean `>=2.0.0 <2.1.0`. A bare major such as `~2` allows minor changes
+up to `3.0.0`.
+
+Comparison operators accept wildcard or missing version components. For example,
+`>=1.x` means `>=1.0.0`, `>1.x` means `>=2.0.0`, and `<=1.2.x` stops before
+`1.3.0`, including its prereleases. Wildcard comparators can be combined with
+other comparators, as in `>=1.x <2.0.0`.
+
 [semver]: https://semver.org/
 
 Malformed comparator sets return a descriptive parse error when range expansion fails.
