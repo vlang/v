@@ -155,7 +155,27 @@ fn comparator_parts(input string) (Operator, string) {
 }
 
 fn parse_xrange(input string) ?Version {
-	mut raw_ver := parse(input).complete()
+	parsed := parse(input)
+	if has_prerelease(input) {
+		if parsed.prerelease.len == 0 || parsed.raw_ints.len != 3 {
+			return none
+		}
+		for identifier in parsed.prerelease.split('.') {
+			if identifier.len == 0
+				|| (identifier.len > 1 && identifier[0] == `0` && is_valid_number(identifier)) {
+				return none
+			}
+		}
+	}
+	if input.contains('+') && (parsed.metadata.len == 0
+		|| parsed.metadata.split('.').any(it.len == 0)) {
+		return none
+	}
+	// Validate every component before a wildcard replaces the later components.
+	if parsed.raw_ints.any(it !in ['x', 'X', '*'] && !is_valid_number(it)) {
+		return none
+	}
+	mut raw_ver := parsed.complete()
 	for typ in versions {
 		if raw_ver.raw_ints[typ].index_any(x_range_symbols) == -1 {
 			continue
@@ -176,7 +196,11 @@ fn parse_xrange(input string) ?Version {
 			else {}
 		}
 	}
-	return raw_ver.validate()
+	version := raw_ver.validate() or { return none }
+	if first_wildcard_index(input) < 3 {
+		return Version{version.major, version.minor, version.patch, '', version.metadata}
+	}
+	return version
 }
 
 // numeric_core strips the prerelease and build metadata from a version-shaped

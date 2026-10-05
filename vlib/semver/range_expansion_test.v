@@ -102,3 +102,39 @@ fn test_malformed_partial_comparator_sets_remain_invalid() {
 		assert !ver.satisfies(range), range
 	}
 }
+
+fn test_wildcard_comparator_components_are_whole_tokens() {
+	for version in ['1.0.0', '1.2.0', '1.2.0-beta.1'] {
+		ver := semver.from(version) or { panic(err) }
+		for range in ['>=1.ax', '>1.ax', '<=1.ax', '=1.ax', '>=1.x.foo', '>=1.2.xfoo', '>=1.x-beta.1',
+			'<=1.x-beta.1', '=1.x-beta.1', '>=1.x-beta.1+build', '>=1.2.x-beta..1', '>=1.2.x-.beta',
+			'>=1.2.x-beta.', '>=1.2.x-', '>=1.2.x-01', '>=1.2.x+', '>=1.2.x-beta+build..1',
+			'>=1.2.x-beta+foo_bar', '>=1.2.x-beta+build+extra'] {
+			assert !ver.satisfies(range), '${version} ${range}'
+			assert !ver.satisfies('>=0.0.0 ${range}'), '${version} >=0.0.0 ${range}'
+		}
+	}
+}
+
+fn test_wildcard_prerelease_tags_do_not_change_the_release_floor() {
+	cases := [
+		ComparatorRangeCase{'1.2.0', '>=1.2.x-beta.1', true},
+		ComparatorRangeCase{'1.2.0-beta.1', '>=1.2.x-beta.1', false},
+		ComparatorRangeCase{'1.2.0-beta.2', '>=1.2.x-beta.1', false},
+		ComparatorRangeCase{'1.2.9', '=1.2.x-beta.1', true},
+		ComparatorRangeCase{'1.2.0-beta.1', '=1.2.x-beta.1', false},
+		ComparatorRangeCase{'1.3.0', '=1.2.x-beta.1', false},
+		ComparatorRangeCase{'1.2.0', '>=1.2.x-beta.1+build', true},
+		ComparatorRangeCase{'1.2.0-beta.1', '>=1.2.x-beta.1+build', false},
+		ComparatorRangeCase{'1.2.0-beta.1', '>=1.2.x-beta.1 >=1.2.0-beta.1', false},
+		ComparatorRangeCase{'1.2.1-beta.1', '>=1.2.x-beta.1 >=1.2.1-beta.1', true},
+		ComparatorRangeCase{'1.0.0', '>=1.x+build', true},
+		ComparatorRangeCase{'1.2.0-beta.1', '>=1.x+build', false},
+		ComparatorRangeCase{'1.2.9', '<=1.x+build', true},
+		ComparatorRangeCase{'1.2.9', '=1.x+build', true},
+	]
+	for c in cases {
+		ver := semver.from(c.version) or { panic(err) }
+		assert ver.satisfies(c.range) == c.match, '${c.version} ${c.range}'
+	}
+}

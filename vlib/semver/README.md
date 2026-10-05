@@ -42,6 +42,9 @@ Comparison operators accept wildcard or missing version components. For example,
 `>=1.x` means `>=1.0.0`, `>1.x` means `>=2.0.0`, and `<=1.2.x` stops before
 `1.3.0`, including its prereleases. Wildcard or partial comparators can be combined
 with other comparators in any order, as in `>=1.x <2.0.0` or `>=0.0.0 >1.2`.
+Wildcard components must be whole `x`, `X`, or `*` tokens. Prerelease tags on
+wildcard ranges do not change their release floor; for example, `>=1.2.x-beta.1`
+starts at `1.2.0` and does not admit `1.2.0-beta.1`.
 
 [semver]: https://semver.org/
 
