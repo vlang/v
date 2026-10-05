@@ -1168,11 +1168,14 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 	if typ.starts_with('[]') {
 		return '[]' + t.normalize_field_type_with_owner_substitution(typ[2..], owner_type, allow_owner_substitution)
 	}
+	// `?T` of an option `T` is that option, as the checker substitutes it.
 	if typ.starts_with('?') {
-		return '?' + t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		inner := t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		return if inner.starts_with('?') { inner } else { '?' + inner }
 	}
 	if typ.starts_with('!') {
-		return '!' + t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		inner := t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		return if inner.starts_with('!') { inner } else { '!' + inner }
 	}
 	if typ.starts_with('map[') {
 		bracket_end := typ.index(']') or { return t.normalize_type_alias(typ) }

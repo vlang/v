@@ -1350,6 +1350,10 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 			.global_decl, .const_decl] {
 			tc.check_written_generic_types(flat.NodeId(i))
 		}
+		if do_signatures && (node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .interface_decl,
+			.type_decl, .global_decl, .const_decl] || is_top_level_statement_kind(node.kind)) {
+			tc.check_written_nested_option_types(flat.NodeId(i))
+		}
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
