@@ -328,7 +328,7 @@ fn test_self_build_keeps_fastc_backend() {
 			'/tmp/vself_fastc_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
 	assert prod_result.output.contains('-compile-backend fastc'), prod_result.output
-	for opt_out in [['-d', 'skip_fastc'], ['-old-compiler']] {
+	for opt_out in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-old-compiler']] {
 		mut args := ['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self']
 		args << opt_out
 		args << ['-o', '/tmp/vself_fastc_opt_out_test']

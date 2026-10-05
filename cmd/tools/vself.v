@@ -347,6 +347,9 @@ fn self_build_sets_fastc_inclusion(args []string) bool {
 			&& args[i + 1].all_before('=').trim_space() == 'skip_fastc' {
 			return true
 		}
+		if arg.starts_with('-d') && arg.len > 2 && arg[2..].all_before('=') == 'skip_fastc' {
+			return true
+		}
 	}
 	return false
 }
