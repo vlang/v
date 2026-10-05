@@ -1,7 +1,11 @@
 // The schema this example implements, kept next to the code so the two can be
-// read together. The V side is generated from this file by `v pbgen`, into
-// kv/codec.v and kv/service.v. net.grpc itself takes `[]u8` payloads, so
-// nothing above the codec changes.
+// read together. kv/codec.v and kv/service.v are generated from this file; run
+// from examples/grpc, this reproduces them exactly:
+//
+//   v pbgen -m kv -o kv/codec.v -grpc kv/service.v kv.proto
+//   v fmt -w kv/codec.v kv/service.v
+//
+// net.grpc itself takes `[]u8` payloads, so nothing above the codec changes.
 
 syntax = "proto3";
 

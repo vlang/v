@@ -99,7 +99,7 @@ fn server_streaming(client &grpc.Client) {
 			value: key.bytes()
 		}
 		put_body := req.encode() or {
-			eprintln('put failed: ${err}')
+			eprintln('put: could not encode the request: ${err}')
 			return
 		}
 		client.unary(kv.kv_method_put, put_body) or {

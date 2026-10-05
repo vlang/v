@@ -11,11 +11,12 @@
 // payload. `GrpcServer` turns that into the grpc-status trailer, which is what
 // lets the client see a typed code instead of a transport error.
 //
-// This file is hand-written and is not generated. The service paths, the method
-// names and the `KV` handler interface come from `service.v`, which `v pbgen`
-// generates from kv.proto and which deliberately mentions no transport type; the
-// adapter below is what binds that interface to net.grpc, so it is the caller's
-// to write.
+// This file is hand-written and is not generated. Only the method paths
+// (`kv_method_*`, from `service.v`) and the codec (`codec.v`) come from files
+// that `v pbgen` generates from kv.proto. `Service` deliberately does not
+// implement the generated `KV` interface: its handlers need a
+// `grpc.ServerContext` to set headers and trailers (e.g. `x-kv-scanned`), and
+// that transport-free interface has no parameter for one.
 module kv
 
 import net.grpc
