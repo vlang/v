@@ -38,12 +38,18 @@ fn (mut tc TypeChecker) declare_named_variant_binding(subject_type Type, branch 
 	cond := tc.a.node(cond_id)
 	binding_id := named_variant_pattern_binding(tc.a, cond) or { return }
 	binding := tc.a.node(binding_id)
-	if subject_type !is SumType {
+	// An earlier `is` check can already narrow the subject to a variant struct.
+	// Resolve patterns against its owning sum so payload bindings still work.
+	sum_name := if subject_type is SumType {
+		subject_type.name
+	} else if subject_type is Struct {
+		owner, _ := flat.decode_named_variant_type_name(subject_type.name) or { return }
+		owner
+	} else {
 		return
 	}
-	sum_type := subject_type as SumType
 	pattern := tc.match_type_pattern(cond) or { return }
-	variant_type := tc.sum_variant_type_for_pattern(sum_type.name, pattern) or { return }
+	variant_type := tc.sum_variant_type_for_pattern(sum_name, pattern) or { return }
 	display := flat.named_variant_display_name(variant_type)
 	payload_type := tc.named_variant_payload_type(variant_type) or {
 		tc.record_error_at(.condition_mismatch, '`${display}` has no payload to bind to `${binding.value}`',

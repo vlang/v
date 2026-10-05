@@ -339,23 +339,48 @@ fn (p &Parser) named_variant_pattern_type(type_name string) ?string {
 	if p.prefs.is_fmt || p.is_translated || !type_name.contains('.') {
 		return none
 	}
-	parts := type_name.split('.')
-	if parts.len == 2 && p.is_named_variant_owner_name(parts[0])
-		&& is_plain_capitalized_ident(parts[1]) {
-		return flat.named_variant_type_name(parts[0], parts[1])
+	// Dots inside generic arguments belong to their payload types, not the variant.
+	mut depth := 0
+	mut dot := -1
+	for i, c in type_name {
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+		} else if c == `.` && depth == 0 {
+			dot = i
+		}
 	}
-	if parts.len == 3 && parts[0] in p.imported_module_names && !p.is_local_binding(parts[0])
-		&& p.is_named_variant_owner_name(parts[1]) && is_plain_capitalized_ident(parts[2]) {
-		return flat.named_variant_type_name('${parts[0]}.${parts[1]}', parts[2])
+	if dot < 0 || !is_plain_capitalized_ident(type_name[dot + 1..]) {
+		return none
+	}
+	owner := type_name[..dot]
+	base := owner.all_before('[')
+	args := owner[base.len..]
+	parts := base.split('.')
+	if (parts.len == 1 && p.is_named_variant_owner_name(parts[0]))
+		|| (parts.len == 2 && parts[0] in p.imported_module_names
+			&& !p.is_local_binding(parts[0]) && p.is_named_variant_owner_name(parts[1])) {
+		return flat.named_variant_type_name(base, type_name[dot + 1..]) + args
 	}
 	return none
+}
+
+// named_variant_pattern_type_name also reads the variant after explicit type arguments.
+fn (mut p Parser) named_variant_pattern_type_name() string {
+	mut name := p.parse_type_name()
+	if name.ends_with(']') && p.tok == .dot && p.peek() == .name {
+		p.next()
+		name += '.' + p.expect_name()
+	}
+	return name
 }
 
 // named_variant_match_pattern parses the optional payload binding of a variant
 // pattern in a `match` branch, `Expr.Count(n)` or `Expr.Count(mut n)`, after the
 // variant name. The binding is stored as a `.param` child of the pattern node.
 fn (mut p Parser) named_variant_match_pattern(type_name string, start int) ?flat.NodeId {
-	is_variant_spelling := type_name.count('.') in [1, 2]
+	is_variant_spelling := type_name.contains('.')
 	if p.prefs.is_fmt {
 		if p.tok != .lpar || !is_variant_spelling {
 			return none
@@ -485,7 +510,7 @@ fn (mut p Parser) skip_named_variant_binding_rest() {
 // `e is Expr.Count`, checks for its hidden struct.
 fn (mut p Parser) is_expr_type_name() string {
 	type_start := p.tok_pos
-	type_name := p.parse_type_name()
+	type_name := p.named_variant_pattern_type_name()
 	hidden := p.named_variant_pattern_type(type_name) or { return type_name }
 	if p.tok == .lpar {
 		p.record_diagnostic_span('cannot bind the payload of `${type_name}` in an `is` check; use `match` to bind it',

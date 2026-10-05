@@ -5071,6 +5071,11 @@ fn main() {
 	b := Opt[int].Nothing
 	println(a) // Opt[int].Some(3)
 	println(b) // Opt[int].Nothing
+	println(a is Opt[int].Some) // true
+	match a {
+		Opt[int].Some(n) { println(n) } // 3
+		Opt[int].Nothing {}
+	}
 }
 ```
 

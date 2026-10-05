@@ -1,5 +1,7 @@
 module shapes
 
+pub type Choice[T] = Value(T) | Empty
+
 pub type Shape = Circle(f64) | Square(f64) | Nothing
 
 pub fn describe(s Shape) string {

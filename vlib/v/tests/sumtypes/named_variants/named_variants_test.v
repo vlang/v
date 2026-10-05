@@ -18,6 +18,39 @@ type Other = Void | Count(string)
 
 type Opt[T] = Some(T) | Nothing
 
+fn test_explicit_generic_named_variant_patterns() {
+	value := Opt[int].Some(7)
+	assert value is Opt[int].Some
+	assert value !is Opt[int].Nothing
+	match value {
+		Opt[int].Some(n) {
+			assert n == 7
+		}
+		Opt[int].Nothing {
+			assert false
+		}
+	}
+	empty := Opt[string].Nothing
+	match empty {
+		Opt[string].Some(_) {
+			assert false
+		}
+		Opt[string].Nothing {
+			assert true
+		}
+	}
+	imported := shapes.Choice[shapes.Shape].Value(shapes.Shape.Nothing)
+	assert imported is shapes.Choice[shapes.Shape].Value
+	match imported {
+		shapes.Choice[shapes.Shape].Value(payload) {
+			assert payload is shapes.Shape.Nothing
+		}
+		shapes.Choice[shapes.Shape].Empty {
+			assert false
+		}
+	}
+}
+
 type Single = Only(int)
 
 fn eval(e Expr) string {

@@ -9342,7 +9342,7 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		p.next()
 		p.next()
 		if p.tok == .name && p.lit.len > 0 && p.lit[0] >= `A` && p.lit[0] <= `Z` {
-			type_name := mod_name + '.' + p.parse_type_name()
+			type_name := mod_name + '.' + p.named_variant_pattern_type_name()
 			if pattern := p.named_variant_match_pattern(type_name, pattern_start) {
 				return pattern
 			}
@@ -9374,7 +9374,11 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		return sel
 	}
 	if p.tok == .name && p.lit.len > 0 && p.lit[0] >= `A` && p.lit[0] <= `Z` {
-		name := p.parse_type_name()
+		pattern_start := p.span_start()
+		name := p.named_variant_pattern_type_name()
+		if pattern := p.named_variant_match_pattern(name, pattern_start) {
+			return pattern
+		}
 		return p.match_type_pattern_node(name)
 	}
 	if p.tok == .key_fn {
