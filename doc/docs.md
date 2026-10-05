@@ -3273,6 +3273,7 @@ global reads that value's field; it does not name a static type method.
 Instance methods can also be used as unbound function values, such as `f := User.register`.
 The receiver becomes the first parameter, so a mutable receiver is passed as `f(mut user)`.
 Inside a method reflection loop, `T.$method` likewise creates an unbound function value.
+Unbound and reflected method values follow the same method privacy and `mut` argument rules.
 
 > [!NOTE]
 > Note, that these are not constructors, but simple functions. V doesn't have constructors or
