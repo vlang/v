@@ -14784,8 +14784,16 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		return none
 	}
 	builtin_base_type := t.normalize_type_alias(base_type)
-	if base_type == '[]rune' && method == 'string' {
-		return t.make_call_typed('Array_rune__string', [t.transform_expr(base_id)], 'string')
+	if method == 'string' && (base_type == '[]rune'
+		|| (t.is_fixed_array_type(base_type) && fixed_array_outer_elem_type(base_type) == 'rune')) {
+		mut receiver := t.transform_expr(base_id)
+		receiver_type := t.normalize_type_alias(t.node_type(receiver)).trim_left('&')
+		if t.is_fixed_array_type(receiver_type) {
+			// Fixed-array map preserves its shape even when the checker records a
+			// dynamic result. Borrow its storage for the rune conversion call.
+			receiver = t.fixed_array_data_to_array_no_alloc(receiver, receiver_type, '[]rune')
+		}
+		return t.make_call_typed('Array_rune__string', [receiver], 'string')
 	}
 	if method == 'str' && t.is_array_transform_call(base_id) {
 		base := t.transform_expr(base_id)
@@ -17314,9 +17322,17 @@ fn (mut t Transformer) clone_checker_marked_receiver_alias_arg(arg_id flat.NodeI
 // transform_receiver_method_args_with_base transforms helper data for transform.
 fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, base flat.NodeId, method_name string) []flat.NodeId {
 	mut args := []flat.NodeId{cap: int(node.children_count)}
-	args << base
-	recv_root := t.expr_root_ident_name(base)
 	params := t.call_param_types(method_name)
+	mut receiver := base
+	if method_name.all_after_last('.') == 'string' && params.len > 0
+		&& t.normalize_type_alias(t.semantic_type_name(params[0])) == '[]rune' {
+		receiver_type := t.normalize_type_alias(t.node_type(receiver)).trim_left('&')
+		if t.is_fixed_array_type(receiver_type) {
+			receiver = t.fixed_array_data_to_array_no_alloc(receiver, receiver_type, '[]rune')
+		}
+	}
+	args << receiver
+	recv_root := t.expr_root_ident_name(base)
 	param_offset := t.receiver_method_param_offset(base, node, params, method_name)
 	mut snapshotted_args := 0
 	explicit_args := int(node.children_count) - 1
