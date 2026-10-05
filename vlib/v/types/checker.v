@@ -3481,6 +3481,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.visible_mutation_cache = new_visible_mutation_cache()
 	tc.unsafe_c_fns.clear()
 	tc.v_fn_semantic_names.clear()
+	tc.checked_comptime_method_calls.clear()
+	tc.comptime_method_calls_by_decl.clear()
 	tc.has_spawn_expr = -1
 	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
 	tc.file_scope = new_scope(unsafe { nil })
