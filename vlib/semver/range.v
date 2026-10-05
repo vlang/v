@@ -229,17 +229,18 @@ fn has_prerelease(s string) bool {
 // before they get here.
 fn is_grammar_operand(operand string) bool {
 	body := operand.all_before('+')
-	for part in body.split('-') {
-		if part.len == 0 {
-			continue
-		}
-		for comp in part.split('.') {
-			if comp.len == 0 {
-				return false
-			}
+	core := numeric_core(body)
+	if core.split('.').any(it.len == 0) {
+		return false
+	}
+	if has_prerelease(body) {
+		// Hyphens belong to prerelease identifiers after the first separator.
+		// Only dots delimit identifiers, so `a-.b` and `a.-b` are both valid.
+		if parts_of(core).len < 3 || body.all_after('-').split('.').any(it.len == 0) {
+			return false
 		}
 	}
-	return !(has_prerelease(body) && parts_of(body).len < 3)
+	return true
 }
 
 // parts_of splits a version-shaped string into its dotted components, without
@@ -330,7 +331,7 @@ fn can_expand(input string) bool {
 	}
 	// A prerelease identifier may be alphanumeric, so an `x` after the `-` belongs
 	// to the tag and is not a wildcard: `1.4.0-125.12.x` is a plain comparator.
-	if operand.all_before('-').index_any(x_range_symbols) > -1 {
+	if numeric_core(operand).index_any(x_range_symbols) > -1 {
 		return true
 	}
 	return is_bare_partial_version(operand)
@@ -384,7 +385,12 @@ fn expand_operator_range(input string) ?ComparatorSet {
 	}
 	expanded := expand_xrange(raw_version) or { return none }
 	if expanded.comparators.len < 2 {
-		return none
+		// A wildcard major has no ceiling. Inclusive operators and equality keep
+		// that open range, while strict operators cannot match any version.
+		if inclusive || input[0] == `=` {
+			return expanded
+		}
+		return ComparatorSet{[Comparator{Version{0, 0, 0, '0', ''}, Operator.lt}]}
 	}
 	floor := expanded.comparators[0].ver
 	ceiling := expanded.comparators[1].ver

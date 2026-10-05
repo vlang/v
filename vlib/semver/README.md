@@ -37,3 +37,14 @@ For more details see `semver.v` file.
 [semver]: https://semver.org/
 
 Malformed comparator sets return a descriptive parse error when range expansion fails.
+
+Each whitespace-separated operand in a comparator set is evaluated and intersected with the
+others. Partial versions and wildcards describe a series: `1.2` and `1.2.x` cover all stable
+versions from `1.2.0` up to `1.3.0`. Operators apply to those series, so `>=1.2` includes
+`1.2.0`, `<=1.2` includes `1.2.9`, and `>1.2` starts at `1.3.0`. A wildcard major with `=`,
+`>=`, or `<=` accepts every stable version; `<*` and `>*` accept none.
+
+Prereleases require an explicit prerelease comparator with the same major, minor, and patch
+in that set. Advanced ranges keep their exclusive ceiling at the next series' `-0` boundary,
+so adding a prerelease comparator cannot admit the next series. Hyphens inside prerelease
+identifiers and wildcard letters in build metadata are literal characters.
