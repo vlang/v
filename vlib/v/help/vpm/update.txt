@@ -4,6 +4,8 @@ Usage:
   v update [PACKAGE]...
 
 With no PACKAGE, ALL installed packages are updated to their latest versions.
+Run inside a project, the entries of the updated packages in its `v.mod.lock`
+are rewritten to their new revisions. Packages locked at a tag are kept.
 
 Options:
   -v           Print more details about the update.
