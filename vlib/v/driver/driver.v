@@ -8384,10 +8384,9 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
 	}
-	// The reduced builtin set contains only no-GC implementations. Selecting it
-	// with an active collector drops its declarations while retaining GC calls
-	// in allocation and builtin initialization.
-	if 'gcboehm' in prefs.user_defines || 'vgc' in prefs.user_defines {
+	// The reduced builtin set includes Boehm's declarations and startup helpers.
+	// VGC still needs the complete builtin dependency graph.
+	if 'vgc' in prefs.user_defines {
 		return false
 	}
 	// Parse the one user file before builtin. This conservative syntax-only pass
@@ -8411,12 +8410,14 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 fn is_minimal_literal_output_builtin_file(path string) bool {
 	return os.file_name(path) in [
 		'array.v',
+		'array_d_gcboehm_opt.v',
 		'array_notd_gcboehm_opt.v',
 		'builtin.v',
 		'chan_option_result.v',
 		'int.v',
 		'int_notd_new_int.v',
 		'map_d_v3_backend.v',
+		'map_d_gcboehm_opt.v',
 		'map_notd_gcboehm_opt.v',
 		'string.v',
 		'allocation.c.v',
@@ -8425,11 +8426,15 @@ fn is_minimal_literal_output_builtin_file(path string) bool {
 		'builtin.c.v',
 		'builtin_backtraces_nix.c.v',
 		'builtin_nix.c.v',
+		'builtin_d_gcboehm.c.v',
+		'builtin_d_gcboehm_d_musl.c.v',
 		'builtin_notd_gcboehm.c.v',
 		'builtin_notd_use_libbacktrace.c.v',
 		'cfns.c.v',
 		'cfns_wrapper.c.v',
 		'character_inout.c.v',
+		'gc_startup_d_gcboehm.c.v',
+		'gc_startup_d_v3_backend.v',
 		'map.c.v',
 		'option.c.v',
 		'panicing.c.v',
@@ -8437,6 +8442,7 @@ fn is_minimal_literal_output_builtin_file(path string) bool {
 		'printing.c.v',
 		// panicing.c.v hands a panic to the unwinder of `recover()` in there.
 		'recover.c.v',
+		'segfault_handler_nix.c.v',
 		'vgc_notd_vgc.c.v',
 	]
 }
@@ -13162,8 +13168,9 @@ pub fn run(args []string) {
 			}
 			b.step('MSVC C compatibility')
 		}
+		mut msvc_saved_environment := []MsvcSavedVariable{}
 		if effective_c_compiler == 'msvc' && !c_only {
-			msvc_require_cl(c_compiler, host_os, prefs.target)
+			msvc_saved_environment = msvc_require_cl(c_compiler, host_os, prefs.target)
 		}
 		pic_flag := shared_pic_flag(is_shared || use_cached_dev_dylib, prefs.normalized_target_os())
 		mut linux_cross_sysroot := ''
@@ -14176,6 +14183,8 @@ Please install the corresponding development package/libraries and make sure the
 			'cc'
 		})
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		// The C compiler is done. What was set up for `cl` must not reach the program that runs next.
+		msvc_restore_environment(msvc_saved_environment)
 		if should_run {
 			if (is_crun || is_direct_vsh) && !explicit_output {
 				write_v3_crun_cache_marker(bin_file, crun_build_identity) or {}

@@ -3343,7 +3343,8 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		if member := t.typeof_arg_variant_member(t.a.child(&node, 0), var_name) {
 			match node.value {
 				'name' {
-					return t.make_string_literal(t.variant_member_type(member, item))
+					return t.make_string_literal(flat.demangle_named_variants(t.variant_member_type(member,
+						item)))
 				}
 				'idx' {
 					if member == 'typ' {
@@ -3356,7 +3357,8 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	}
 	if node.kind == .typeof_expr {
 		if member := t.typeof_arg_variant_member(id, var_name) {
-			return t.make_string_literal(t.variant_member_type(member, item))
+			return t.make_string_literal(flat.demangle_named_variants(t.variant_member_type(member,
+				item)))
 		}
 	}
 	if node.kind == .selector && node.children_count > 0 {

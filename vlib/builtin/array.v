@@ -811,34 +811,36 @@ fn (a array) get(i int) voidptr {
 	}
 }
 
-@[markused]
-fn (a array) get_i64(i i64) voidptr {
-	$if !no_bounds_checking {
-		if i < 0 || i >= i64(a.len) {
-			panic_n2('array.get: index out of range (i,a.len):', i, a.len)
+$if !v3_backend ? {
+	@[markused]
+	fn (a array) get_i64(i i64) voidptr {
+		$if !no_bounds_checking {
+			if i < 0 || i >= i64(a.len) {
+				panic_n2('array.get: index out of range (i,a.len):', i, a.len)
+			}
+		}
+		unsafe {
+			return &u8(a.data) + u64(i) * u64(a.element_size)
 		}
 	}
-	unsafe {
-		return &u8(a.data) + u64(i) * u64(a.element_size)
-	}
-}
 
-@[markused]
-fn (a array) get_u64(i u64) voidptr {
-	$if !no_bounds_checking {
-		if i >= u64(a.len) {
-			panic('array.get: index out of range (i,a.len): ' + i.str() + ', ' +
-				impl_i64_to_string(a.len))
+	@[markused]
+	fn (a array) get_u64(i u64) voidptr {
+		$if !no_bounds_checking {
+			if i >= u64(a.len) {
+				panic('array.get: index out of range (i,a.len): ' + i.str() + ', ' +
+					impl_i64_to_string(a.len))
+			}
+		}
+		unsafe {
+			return &u8(a.data) + i * u64(a.element_size)
 		}
 	}
-	unsafe {
-		return &u8(a.data) + i * u64(a.element_size)
-	}
-}
 
-@[markused]
-fn (a array) get_ni(i int) voidptr {
-	return a.get(v_ni_index(i, a.len))
+	@[markused]
+	fn (a array) get_ni(i int) voidptr {
+		return a.get(v_ni_index(i, a.len))
+	}
 }
 
 // Private function. Used to implement x = a[i] or { ... }
@@ -851,29 +853,31 @@ fn (a array) get_with_check(i int) voidptr {
 	}
 }
 
-@[markused]
-fn (a array) get_with_check_i64(i i64) voidptr {
-	if i < 0 || i >= i64(a.len) {
-		return 0
+$if !v3_backend ? {
+	@[markused]
+	fn (a array) get_with_check_i64(i i64) voidptr {
+		if i < 0 || i >= i64(a.len) {
+			return 0
+		}
+		unsafe {
+			return &u8(a.data) + u64(i) * u64(a.element_size)
+		}
 	}
-	unsafe {
-		return &u8(a.data) + u64(i) * u64(a.element_size)
-	}
-}
 
-@[markused]
-fn (a array) get_with_check_u64(i u64) voidptr {
-	if i >= u64(a.len) {
-		return 0
+	@[markused]
+	fn (a array) get_with_check_u64(i u64) voidptr {
+		if i >= u64(a.len) {
+			return 0
+		}
+		unsafe {
+			return &u8(a.data) + i * u64(a.element_size)
+		}
 	}
-	unsafe {
-		return &u8(a.data) + i * u64(a.element_size)
-	}
-}
 
-@[markused]
-fn (a array) get_with_check_ni(i int) voidptr {
-	return a.get_with_check(v_ni_index(i, a.len))
+	@[markused]
+	fn (a array) get_with_check_ni(i int) voidptr {
+		return a.get_with_check(v_ni_index(i, a.len))
+	}
 }
 
 // first returns the first element of the `array`.
@@ -1195,30 +1199,32 @@ fn array_sort_move(dst voidptr, di int, src voidptr, si int, count int, element_
 		isize(usize(count) * element_size))
 }
 
-@[markused]
-fn (mut a array) set_i64(i i64, val voidptr) {
-	$if !no_bounds_checking {
-		if i < 0 || i >= i64(a.len) {
-			panic_n2('array.set: index out of range (i,a.len):', i, a.len)
+$if !v3_backend ? {
+	@[markused]
+	fn (mut a array) set_i64(i i64, val voidptr) {
+		$if !no_bounds_checking {
+			if i < 0 || i >= i64(a.len) {
+				panic_n2('array.set: index out of range (i,a.len):', i, a.len)
+			}
 		}
+		unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
 	}
-	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
-}
 
-@[markused]
-fn (mut a array) set_u64(i u64, val voidptr) {
-	$if !no_bounds_checking {
-		if i >= u64(a.len) {
-			panic('array.set: index out of range (i,a.len): ' + i.str() + ', ' +
-				impl_i64_to_string(a.len))
+	@[markused]
+	fn (mut a array) set_u64(i u64, val voidptr) {
+		$if !no_bounds_checking {
+			if i >= u64(a.len) {
+				panic('array.set: index out of range (i,a.len): ' + i.str() + ', ' +
+					impl_i64_to_string(a.len))
+			}
 		}
+		unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * i, val, a.element_size) }
 	}
-	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * i, val, a.element_size) }
-}
 
-@[markused]
-fn (mut a array) set_ni(i int, val voidptr) {
-	a.set(v_ni_index(i, a.len), val)
+	@[markused]
+	fn (mut a array) set_ni(i int, val voidptr) {
+		a.set(v_ni_index(i, a.len), val)
+	}
 }
 
 // copy_element_to copies a single `element_size` byte element from `src` to `dest`.
