@@ -39,25 +39,17 @@ fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) !int {
 
 // socket_write writes the provided byte array to the socket
 fn (mut ws Client) socket_write(bytes []u8) !int {
-	lock {
+	// Serialize complete frames/batches, including control frames from listen().
+	lock ws.write_lock {
 		if ws.get_state() == .closed || ws.conn.sock.handle <= 1 {
-			ws.debug_log('socket_write: Socket already closed')
 			return error('socket_write: trying to write on a closed socket')
 		}
 		if ws.is_ssl {
 			return ws.ssl_conn.write(bytes)
-		} else {
-			for {
-				n := ws.conn.write(bytes) or {
-					if err.code() == net.err_timed_out_code {
-						continue
-					}
-					return err
-				}
-				return n
-			}
-			panic('reached unreachable code')
 		}
+		// TcpConn.write already completes short writes. A timeout may follow a
+		// partial send: replaying the whole buffer would corrupt frame boundaries.
+		return ws.conn.write(bytes)
 	}
 }
 

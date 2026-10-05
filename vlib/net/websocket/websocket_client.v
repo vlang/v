@@ -19,6 +19,10 @@ pub mut:
 	state State = .closed // current state of connection
 }
 
+struct WriteLock {
+	reserved bool
+}
+
 // Client represents websocket client
 pub struct Client {
 	is_server bool
@@ -31,6 +35,7 @@ mut:
 	error_callbacks   []ErrorEventHandler   // all callbacks on_error
 	open_callbacks    []OpenEventHandler    // all callbacks on_open
 	close_callbacks   []CloseEventHandler   // all callbacks on_close
+	write_lock        shared WriteLock
 pub:
 	is_ssl        bool   // true if secure socket is used
 	uri           Uri    // uri of current connection
