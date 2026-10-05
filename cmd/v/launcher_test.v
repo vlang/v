@@ -561,14 +561,14 @@ fn test_failed_run_retry_explains_how_to_show_v3_diagnostics() {
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'import time\n\nfn main() {\n\ttimer := time.new_timer(time.nanosecond)\n\t_ = timer\n\tmissing_v3_failure()\n}\n')!
+	os.write_file(source, 'import sync\nimport time\n\nfn main() {\n\ttimer := sync.new_timer(time.nanosecond)\n\t_ = timer\n\tmissing_v3_failure()\n}\n')!
 	mut environment := os.environ()
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
 	environment['V_MACOS_V3_NO_FALLBACK'] = ''
 	retried := run_launcher_test_process(dispatcher, ['-nocache', '-no-parallel', 'run', source], os.dir(dispatcher), environment)
 	assert retried.exit_code == 1, retried.output
-	assert retried.output.contains('unknown function: time.new_timer'), retried.output
+	assert retried.output.contains('unknown function: sync.new_timer'), retried.output
 	assert retried.output.contains('compatibility retry exited unsuccessfully'), retried.output
 	assert retried.output.contains('any errors above are its own'), retried.output
 	assert retried.output.contains('exit status may instead come from the program'), retried.output
@@ -579,7 +579,7 @@ fn test_failed_run_retry_explains_how_to_show_v3_diagnostics() {
 		'run', source], os.dir(dispatcher), environment)
 	assert strict.exit_code == 1, strict.output
 	assert strict.output.contains('unknown function `missing_v3_failure`'), strict.output
-	assert !strict.output.contains('unknown function: time.new_timer'), strict.output
+	assert !strict.output.contains('unknown function: sync.new_timer'), strict.output
 	assert !strict.output.contains('compatibility retry'), strict.output
 }
 
