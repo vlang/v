@@ -11,6 +11,12 @@ struct WaitHeaderProgram {
 	out    string
 }
 
+fn wait_header_exe(name string) string {
+	// V appends `.exe` to the `-o` name on Windows and `os.exec` does not, so name
+	// the file that is actually on disk.
+	return name + $if windows { '.exe' } $else { '' }
+}
+
 fn wait_header_execute_without_vflags(command string) os.Result {
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')
@@ -26,7 +32,7 @@ fn wait_header_execute_without_vflags(command string) os.Result {
 fn wait_header_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_wait_header_test_${pid}')
-	if os.is_executable(v3_bin) {
+	if os.is_executable(wait_header_exe(v3_bin)) {
 		return v3_bin
 	}
 	build :=
@@ -43,9 +49,9 @@ fn wait_header_compile(v3_bin string, name string, source string) WaitHeaderProg
 	os.write_file(src, source) or { panic(err) }
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
-	compile := wait_header_execute_without_vflags('${v3_bin} -b c -o ${out} ${src}')
+	compile := wait_header_execute_without_vflags('${wait_header_exe(v3_bin)} -b c -o ${out} ${src}')
 	assert compile.exit_code == 0, compile.output
-	gen_c := wait_header_execute_without_vflags('${v3_bin} -b c -o ${out}.c ${src}')
+	gen_c := wait_header_execute_without_vflags('${wait_header_exe(v3_bin)} -b c -o ${out}.c ${src}')
 	assert gen_c.exit_code == 0, gen_c.output
 	return WaitHeaderProgram{
 		c_code: os.read_file(out + '.c') or { panic(err) }
@@ -59,7 +65,7 @@ fn wait_header_gen_c(v3_bin string, name string, source string) string {
 	c_path := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.c')
 	os.write_file(src, source) or { panic(err) }
 	os.rm(c_path) or {}
-	compile := wait_header_execute_without_vflags('${v3_bin} -b c -o ${c_path} ${src}')
+	compile := wait_header_execute_without_vflags('${wait_header_exe(v3_bin)} -b c -o ${c_path} ${src}')
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -282,7 +288,7 @@ fn main() {
 	assert with_os.c_code.contains('#define TLS_OUT_OF_INDEXES 0xffffffffU'), with_os.c_code
 	assert with_os.c_code.contains('#define SOCKET_ERROR (-1)'), with_os.c_code
 	assert with_os.c_code.contains('#define WSAEWOULDBLOCK 10035'), with_os.c_code
-	run := os.exec([with_os.out])
+	run := os.exec([wait_header_exe(with_os.out)])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'waitpid-ok\ntrue', run.output
 
@@ -328,7 +334,7 @@ fn main() {
 ')
 	assert !wait_header_has_include_directive(program.c_code), program.c_code
 	assert program.c_code.contains('int getppid(void);'), program.c_code
-	run := os.exec([program.out])
+	run := os.exec([wait_header_exe(program.out)])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().int() > 0, run.output
 }
@@ -637,7 +643,7 @@ fn main() {
 	assert program.c_code.contains('struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; long tm_gmtoff; const char* tm_zone; };'), program.c_code
 	assert program.c_code.contains('typedef struct tm tm;'), program.c_code
 	assert !program.c_code.contains('int tm_gmtoff;'), program.c_code
-	run := os.exec([program.out])
+	run := os.exec([wait_header_exe(program.out)])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
 }
@@ -667,7 +673,7 @@ fn main() {
 	assert program.c_code.contains('struct termios { int c_iflag; int c_oflag; int c_cflag; int c_lflag; u8 c_cc[20]; int c_ispeed; int c_ospeed; };'), program.c_code
 	assert program.c_code.contains('#define VMIN'), program.c_code
 	assert program.c_code.contains('#define TIOCGWINSZ'), program.c_code
-	run := os.exec([program.out])
+	run := os.exec([wait_header_exe(program.out)])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
 }
@@ -712,7 +718,7 @@ fn main() {
 	assert program.c_code.contains('BOOL LockFileEx(HANDLE handle, DWORD flags, DWORD reserved, DWORD low, DWORD high, OVERLAPPED* overlap);'), program.c_code
 	assert program.c_code.contains('return LockFileEx(handle, flags, 0, low, high, &overlap) ? 0 : -1;'), program.c_code
 	assert program.c_code.contains('return UnlockFileEx(handle, 0, low, high, &overlap) ? 0 : -1;'), program.c_code
-	run := os.exec([program.out])
+	run := os.exec([wait_header_exe(program.out)])
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split_into_lines()
 	assert lines.len == 3, run.output
@@ -832,7 +838,7 @@ fn main() {
 	assert program.c_code.contains('#error unsupported headerless C platform constants'), program.c_code
 
 	assert program.c_code.contains('#define TCP_NODELAY 1'), program.c_code
-	run := os.exec([program.out])
+	run := os.exec([wait_header_exe(program.out)])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true\ntrue\ntrue', run.output
 }
