@@ -1242,6 +1242,39 @@ fn copy_element_to(dest voidptr, src voidptr, element_size int) {
 	}
 }
 
+// grown returns `a` with room for `required` elements. It is the rare path of
+// `push`, which calls it out of line and by value: inlined, the growth makes
+// `push` too large for the C compiler to inline that in turn, and a call that
+// takes the address of the array keeps the caller's array in memory for every
+// `a << x`, where it otherwise stays in registers.
+@[noinline]
+fn (a array) grown(required int) array {
+	mut res := a
+	res.ensure_cap(required)
+	return res
+}
+
+// unshared returns `a` with a buffer of its own, for a `push` to a slice.
+// It is out of line and by value for the reasons that grown is.
+@[noinline]
+fn (a array) unshared() array {
+	mut res := a
+	res.clone_shallow_to_cap(res.cap)
+	return res
+}
+
+// take_buffer makes `a` use the buffer of `other`, which grown or unshared made
+// from it. The length and the element size are not copied: they did not change,
+// and the caller often knows them, where it knows nothing of what a call returned.
+@[inline]
+fn (mut a array) take_buffer(other array) {
+	a.data = other.data
+	a.offset = other.offset
+	a.cap = other.cap
+	a.flags = other.flags
+}
+
+@[inline]
 fn (mut a array) push(val voidptr) {
 	$if !no_bounds_checking {
 		if a.len < 0 {
@@ -1253,10 +1286,10 @@ fn (mut a array) push(val voidptr) {
 	}
 	required := a.len + 1
 	if required > a.cap {
-		a.ensure_cap(required)
+		a.take_buffer(a.grown(required))
 	} else if a.flags.has(.is_slice) {
 		// `required <= a.cap` here, so this is the `needs_unique_append` case
-		a.clone_shallow_to_cap(a.cap)
+		a.take_buffer(a.unshared())
 	}
 	unsafe {
 		copy_element_to(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size)
