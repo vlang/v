@@ -16121,9 +16121,6 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.ends_with('.typ') {
 		return tc.parse_type(typ[..typ.len - 4])
 	}
-	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
-		return unknown_type('generic placeholder `${typ}`')
-	}
 	// `main.Foo` is an explicit reference to a program-module type. It is used to
 	// lock a bare concrete generic argument against being rebased into a callee
 	// module that declares a same-named type (see explicit_generic_concrete_arg_text
@@ -16287,6 +16284,12 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	}
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return tc.parse_fn_type(typ)
+	}
+	// Inspect a nominal name only after parsing its wrappers. Otherwise the last
+	// component of `!module.M` looks generic while the complete wrapper is absent
+	// from the declared-type tables, even though `module.M` is concrete.
+	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
+		return unknown_type('generic placeholder `${typ}`')
 	}
 	qtyp := if tc.resolution_type_mode {
 		tc.qualify_resolution_type_name(typ)

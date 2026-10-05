@@ -2995,6 +2995,9 @@ a nested loop, and those do not risk violating memory-safety.
 
 ## Structs
 
+Concrete struct names can be a single capital letter, such as `M`. Functions can return these
+structs directly, as results (`!M`), or as options (`?M`).
+
 ```v
 struct Point {
 	x int
