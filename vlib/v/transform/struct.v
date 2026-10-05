@@ -1210,6 +1210,22 @@ fn (t &Transformer) lookup_checker_struct_info(name string) ?StructInfo {
 	}
 }
 
+// struct_info_matches_qualifier reports whether `info` can be the struct that the
+// qualified `name` (`mod.Type`, or an import alias of `mod`) refers to.
+fn (t &Transformer) struct_info_matches_qualifier(info StructInfo, name string) bool {
+	qualifier := name.all_before_last('.')
+	if info.module.len == 0 || info.module == 'main' {
+		return qualifier == 'main'
+	}
+	if qualifier == info.module || qualifier == info.module.all_after_last('.') {
+		return true
+	}
+	if imported := t.resolve_imported_type_name(name) {
+		return imported.all_before_last('.') == info.module
+	}
+	return false
+}
+
 fn (t &Transformer) resolve_imported_type_name(name string) ?string {
 	if isnil(t.tc) || !name.contains('.') || name.starts_with('C.') {
 		return none
@@ -1264,8 +1280,12 @@ fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
 	}
 	if name.contains('.') {
 		short_name := name.all_after_last('.')
-		if short_name in t.structs {
-			return t.structs[short_name]
+		if info := t.structs[short_name] {
+			// The bare table is first-wins across modules: its entry may be another
+			// module's homonym, which must not answer for this qualified name.
+			if t.struct_info_matches_qualifier(info, name) {
+				return info
+			}
 		}
 	} else if t.struct_short_name_index_ready {
 		if qualified := t.struct_short_name_index[name] {

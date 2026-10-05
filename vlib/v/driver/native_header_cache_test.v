@@ -140,6 +140,17 @@ fn test_native_input_closure_tracks_nested_shipped_headers() {
 	// An edit to the nested header has to reach the crun identity and the caches.
 	assert closure.inputs['scratch'] == [real_inner, real_outer].sorted()
 	assert closure.unassignable == ''
+	// C allows blanks around `#` and `include`, as in libgc's
+	// `#  include "gc_pthread_redirects.h"`.
+	for directive in ['# include', '#\tinclude', '#  include', '  #include'] {
+		os.write_file(outer, '${directive} "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
+		spaced := v3_native_input_closure(&inputs, vroot, true)
+		assert spaced.inputs['scratch'] == [real_inner, real_outer].sorted(), directive
+		assert spaced.unassignable == '', directive
+		os.write_file(outer, '${directive} "missing.h"\n')!
+		assert v3_native_input_closure(&inputs, vroot, true).unassignable == real_outer, directive
+	}
+	os.write_file(outer, '#include <stddef.h>\n#include "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
 	// A native source defines symbols that every cached object would duplicate.
 	real_source := os.real_path(source)
 	inputs.module_inputs['scratch'] = [real_source]
@@ -163,4 +174,15 @@ fn test_only_declaration_headers_are_replicated_into_cached_objects() {
 	assert !modulecache.c_source_is_replicable('int foo_count = 0;\n')
 	assert !modulecache.c_source_is_replicable('static int foo_count;\n')
 	assert !modulecache.c_source_is_replicable('static inline int foo_next(void) {\n\tstatic int n;\n\treturn ++n;\n}\n')
+	// Each cached object would get its own copy of a file-scope static object,
+	// whatever its initializer or declarator looks like.
+	assert !modulecache.c_source_is_replicable('static uint64_t foo_count = UINT64_C(0);\n')
+	assert !modulecache.c_source_is_replicable('static int foo_count = FOO(1);\n')
+	assert !modulecache.c_source_is_replicable('static int foo_size = sizeof(int);\n')
+	assert !modulecache.c_source_is_replicable('static void (*foo_callback)(void);\n')
+	assert !modulecache.c_source_is_replicable('static void (*foo_callback)(void) = 0;\n')
+	assert !modulecache.c_source_is_replicable('static char foo_buf[sizeof(int)];\n')
+	assert !modulecache.c_source_is_replicable('static int foo_counters[FOO(1)];\n')
+	assert modulecache.c_source_is_replicable('static int foo_helper(int x);\n')
+	assert modulecache.c_source_is_replicable('static int foo_helper(int a[sizeof(int)]);\n')
 }

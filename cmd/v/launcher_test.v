@@ -442,6 +442,9 @@ fn test_v1_fallback_private_temp_cache_rejects_a_symlink() {
 			os.rmdir_all(base) or {}
 		}
 		os.mkdir_all(target)!
+		// Make the folder private, so that a umask like 002 can not make it fail early.
+		// The check below should reject the symlink, not the folder's permissions.
+		os.chmod(base, 0o700)!
 		os.symlink(target, candidate)!
 		if unsafe_cache := v1_fallback_private_temp_cache_parent(base) {
 			assert false, 'accepted unsafe fallback cache `${unsafe_cache}`'

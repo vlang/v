@@ -91,11 +91,24 @@ fn tool_cache_dir() ?string {
 			candidates << custom.trim_space()
 		}
 	}
-	candidates << os.join_path(os.cache_dir(), 'v', 'tools')
-	candidates << os.join_path(os.vtmp_dir(), 'tools')
+	default_candidates := [os.join_path(os.cache_dir(), 'v', 'tools'),
+		os.join_path(os.vtmp_dir(), 'tools')]
+	candidates << default_candidates
 	for candidate in candidates {
+		if candidate in default_candidates && !prepare_default_tool_cache_root(candidate) {
+			continue
+		}
 		if !os.is_dir(candidate) {
-			os.mkdir_all(candidate) or { continue }
+			os.mkdir_all(os.dir(candidate)) or { continue }
+			// Create the folder so that only the current user can access it (mode 0700).
+			// With the default mode, a umask like 002 would let the whole group write to it.
+			// `tool_cache_root_can_stage` would then reject the folder, and every tool would
+			// be recompiled on each run instead of being cached.
+			os.mkdir(candidate, mode: 0o700) or {
+				if !os.is_dir(candidate) {
+					continue
+				}
+			}
 		}
 		if os.is_dir(candidate) && directory_is_writable(candidate)
 			&& tool_cache_root_can_stage(candidate) {
@@ -103,6 +116,45 @@ fn tool_cache_dir() ?string {
 		}
 	}
 	return none
+}
+
+// prepare_default_tool_cache_root makes sure that nobody else can change a default cache
+// folder, or what is inside it. It reports whether the folder can be used.
+//
+// The parent is V's own folder (`~/.cache/v`) or the `VTMP` folder (`/tmp/v_<uid>` by default).
+// It has to be private, along with every folder above it, or someone else could swap the cache
+// folder for their own one at any time. V tightens `~/.cache/v` itself, when the current user
+// owns it.
+//
+// A cache folder that others could write to earlier may hold entries that someone else put
+// there, and fixing its permissions afterwards does not make those entries trustworthy. So
+// such a folder is moved aside and never read again, and a new, empty one is created instead.
+// A symlink is moved aside too: it could have been planted while the parent was writable,
+// and the folder it points to lives under parents that were never checked.
+fn prepare_default_tool_cache_root(candidate string) bool {
+	parent := os.dir(candidate)
+	os.mkdir_all(parent, mode: 0o700) or { return false }
+	// A `VTMP` folder set by the user may be shared on purpose, so it is left as it is.
+	if !tool_cache_root_can_stage(parent) && parent == os.join_path(os.cache_dir(), 'v') {
+		make_tool_cache_root_private(parent)
+	}
+	if !tool_cache_parents_are_trusted(parent) {
+		return false
+	}
+	if os.is_link(candidate) || (os.is_dir(candidate) && !tool_cache_root_can_stage(candidate)) {
+		$if windows {
+			// Privacy is decided by ACLs there, and a new folder would get the same ACL.
+			return false
+		}
+		aside := '${candidate}.untrusted-${time.now().unix()}-${os.getpid()}'
+		// If this fails, e.g. because another V process just did the same, the check after
+		// the folder is created again decides. A symlink that is still there is never used.
+		os.rename(candidate, aside) or { return !os.is_link(candidate) }
+		if tool_cache_is_verbose() {
+			eprintln('> moved the untrusted tool cache folder `${candidate}` aside, to `${aside}`')
+		}
+	}
+	return true
 }
 
 // directory_is_writable reports whether this process can actually create files in a
