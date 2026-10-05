@@ -523,7 +523,7 @@ fn (s &NoAllocScan) struct_executable_defaults(typ Struct, mut seen map[string]b
 }
 
 fn (mut s NoAllocScan) check_argument_storage(call flat.Node, target NoAllocFunction,
-	decl NoAllocFunction, chain []string, anchor flat.NodeId, parameters map[string]string) {
+	chain []string, anchor flat.NodeId, parameters map[string]string) {
 	fn_node := s.tc.a.node(target.id)
 	if !noalloc_foreign(*fn_node) && s.tc.fn_variadic[target.name] {
 		s.report(s.tc.a.child(&call, 0), chain, anchor, 'variadic arguments may allocate an array')
@@ -860,7 +860,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 					}
 				}
 			} else if target := s.function(name, decl.module) {
-				s.check_argument_storage(*node, target, decl, chain, anchor, parameters)
+				s.check_argument_storage(*node, target, chain, anchor, parameters)
 				mut next_chain := chain.clone()
 				next_chain << target.name
 				first_call := if s.tc.valid_node_id(anchor) { anchor } else { id }
