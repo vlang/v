@@ -181,9 +181,12 @@ custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL m
 rejected.
 
 Builds of the full `cmd/v` CLI (`make`, `makev.bat`, `v self`, `v up`) keep FastC, so default V
-executables accept `-b fastc`; `-d skip_fastc` leaves it out. A standalone `vlib/v/v.v` C-backend
-self-host prunes FastC along with the other optional backends. Pass `-compile-backend fastc` or
-`-all-backends` when that compiler should retain `-b fastc`.
+executables accept `-b fastc`; `-d skip_fastc` leaves it out. Portable `-cross` C (the `vc/v.c` and
+`vc/v_win.c` bootstrap snapshots) leaves it out too, because FastC's libtcc linking and Mach-O
+signing are host specific; the compiler that `make` and `makev.bat` build from a snapshot rebuilds
+`cmd/v` natively and keeps it. A standalone `vlib/v/v.v` C-backend self-host prunes FastC along
+with the other optional backends. Pass `-compile-backend fastc` or `-all-backends` when that
+compiler should retain `-b fastc`.
 
 FastC builds programs on macOS, Linux, and Windows hosts; the C step always uses the bundled
 TinyCC (`thirdparty/tcc/tcc.exe`). The FastC self-host compiler described below lowers `spawn` to
