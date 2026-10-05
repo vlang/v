@@ -175,6 +175,7 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
 	// An explicit request bypasses preflight; disabling retries reports TCC's failure.
 	// Use a real missing library because object-based builds bypass the injected seam.
+	os.unsetenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE')
 	os.write_file(source, "#flag -lV3ExplicitTccMissingLibrary\nfn main() { println('ok') }\n")!
 	explicit_tcc := if os.is_file(bundled_tcc) {
 		bundled_tcc
