@@ -3645,7 +3645,8 @@ fn (g &FlatGen) expr_is_stable_for_reuse(id flat.NodeId) bool {
 			node.children_count > 0 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
 		}
 		.index {
-			node.children_count >= 2 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
+			node.children_count >= 2 && !g.assert_index_is_overloaded(node)
+				&& g.expr_is_stable_for_reuse(g.a.child(&node, 0))
 				&& g.expr_is_stable_for_reuse(g.a.child(&node, 1))
 		}
 		else {

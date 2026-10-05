@@ -743,14 +743,25 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'last' {
-			g.write('*(${c_elem}*)array_get(')
-			if is_ptr {
-				g.write('*')
+			if g.expr_is_stable_for_reuse(base_id) {
+				g.write('*(${c_elem}*)array_get(')
+				if is_ptr {
+					g.write('*')
+				}
+				g.gen_expr(base_id)
+				g.write(', ')
+				g.gen_expr(base_id)
+				g.write('${dot}len - 1)')
+			} else {
+				// The index above names the receiver twice, which would evaluate
+				// `make().last()` twice.
+				g.write('*(${c_elem}*)array__last(')
+				if is_ptr {
+					g.write('*')
+				}
+				g.gen_expr(base_id)
+				g.write(')')
 			}
-			g.gen_expr(base_id)
-			g.write(', ')
-			g.gen_expr(base_id)
-			g.write('${dot}len - 1)')
 		}
 		'first' {
 			g.write('*(${c_elem}*)array_get(')

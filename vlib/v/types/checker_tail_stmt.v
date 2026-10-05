@@ -16794,30 +16794,41 @@ fn (tc &TypeChecker) explicit_alias_constructor_type(id flat.NodeId) ?Type {
 }
 
 fn (tc &TypeChecker) is_untyped_float_literal_expr(id flat.NodeId) bool {
-	known, has_float := tc.untyped_numeric_literal_expr_info(id, 0)
+	mut states := map[flat.NodeId]u8{}
+	known, has_float := tc.untyped_numeric_literal_expr_info(id, mut states)
 	return known && has_float
 }
 
-fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, depth int) (bool, bool) {
-	mut current_id := id
-	for {
-		if !tc.valid_node_id(current_id) {
-			return false, false
-		}
-		current := tc.a.node(current_id)
-		if current.kind !in [.paren, .expr_stmt] {
-			break
-		}
-		if current.children_count == 0 {
-			return false, false
-		}
-		current_id = tc.a.child(current, 0)
-	}
-	if depth > 16 {
+// States distinguish an active constant reference from completed integer/float expressions.
+// This detects cycles and reuses shared subexpressions without a semantic nesting limit.
+fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, mut states map[flat.NodeId]u8) (bool, bool) {
+	if !tc.valid_node_id(id) {
 		return false, false
 	}
-	node := tc.a.node(current_id)
+	if state := states[id] {
+		return state in [u8(2), 3], state == 3
+	}
+	states[id] = 1
+	known, has_float := tc.untyped_numeric_literal_node_info(id, mut states)
+	states[id] = if !known {
+		u8(4)
+	} else if has_float {
+		u8(3)
+	} else {
+		u8(2)
+	}
+	return known, has_float
+}
+
+fn (tc &TypeChecker) untyped_numeric_literal_node_info(id flat.NodeId, mut states map[flat.NodeId]u8) (bool, bool) {
+	node := tc.a.node(id)
 	match node.kind {
+		.paren, .expr_stmt {
+			if node.children_count == 0 {
+				return false, false
+			}
+			return tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), mut states)
+		}
 		.float_literal {
 			return true, true
 		}
@@ -16828,20 +16839,20 @@ fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, depth int
 			if node.op !in [.plus, .minus] || node.children_count == 0 {
 				return false, false
 			}
-			return tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), depth + 1)
+			return tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), mut states)
 		}
 		.infix {
 			if node.op !in [.plus, .minus, .mul, .div, .mod] || node.children_count < 2 {
 				return false, false
 			}
-			left_known, left_float := tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), depth + 1)
-			right_known, right_float := tc.untyped_numeric_literal_expr_info(tc.a.child(node, 1), depth + 1)
+			left_known, left_float := tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), mut states)
+			right_known, right_float := tc.untyped_numeric_literal_expr_info(tc.a.child(node, 1), mut states)
 			return left_known && right_known, left_float || right_float
 		}
 		.ident {
 			key := tc.const_key_for_name(node.value) or { return false, false }
 			expr_id := tc.const_exprs[key] or { return false, false }
-			return tc.untyped_numeric_literal_expr_info(expr_id, depth + 1)
+			return tc.untyped_numeric_literal_expr_info(expr_id, mut states)
 		}
 		.selector {
 			if node.children_count == 0 {
@@ -16854,7 +16865,7 @@ fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, depth int
 			file := tc.a.source_files[node.pos.id] or { return false, false }
 			module_name := tc.file_imports[file_import_key(file.name, base.value)] or { base.value }
 			expr_id := tc.const_exprs['${module_name}.${node.value}'] or { return false, false }
-			return tc.untyped_numeric_literal_expr_info(expr_id, depth + 1)
+			return tc.untyped_numeric_literal_expr_info(expr_id, mut states)
 		}
 		else {
 			return false, false

@@ -1135,13 +1135,18 @@ If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
 Integer literals can be assigned to `f32` and `f64` variables without a cast.
-Unary `+`, unary `-`, and parentheses around a literal preserve this behavior:
+Unary `+`, unary `-`, parentheses, and arithmetic on integer literals and on the
+constants declared with them preserve this behavior:
 
 ```v
+const tile_size = 32
+
 mut a := f32(0)
 a = 1
 a = -1
 assert a == f32(-1)
+a = 6 * tile_size
+assert a == f32(192)
 ```
 
 This does not make typed integer variables implicitly assignable to `f32`;
@@ -1794,6 +1799,8 @@ println(buf.bytestr()) // => hel
 ### Maps
 
 Methods and references on map iteration values address the stored element, including nested maps.
+Postfix updates to a mutable map value field, such as `m[key].level++`, update the stored
+entry and insert a zero value first when the key is absent. The key is evaluated once.
 
 ```v
 mut m := map[string]int{} // a map with `string` keys and `int` values
