@@ -117,8 +117,13 @@ enum ParserState {
 	extra_char     // extra char after number
 }
 
+// is_float_digit accepts decimal digits and separators between two digits.
+fn is_float_digit(s string, i int) bool {
+	return s[i].is_digit() || (s[i] == `_` && i > 0 && i + 1 < s.len
+		&& s[i - 1].is_digit() && s[i + 1].is_digit())
+}
+
 // parser tries to parse the given string into a number
-// FIXME: need one char after the last char of the number
 @[direct_array_access]
 fn parser(s string) (ParserState, PrepNumber) {
 	mut digx := 0
@@ -128,24 +133,23 @@ fn parser(s string) (ParserState, PrepNumber) {
 	mut i := 0
 	mut pn := PrepNumber{}
 
-	// skip spaces
-	for i < s.len && s[i].is_space() {
+	// A sign may appear only once, and must be followed by a mantissa.
+	if s[0] == `-` || s[0] == `+` {
+		pn.negative = s[0] == `-`
 		i++
 	}
-
-	// check negatives
-	if s[i] == `-` {
-		pn.negative = true
-		i++
+	if i == s.len {
+		return .invalid_number, pn
 	}
-
-	// positive sign ignore it
-	if s[i] == `+` {
-		i++
-	}
+	mut has_mantissa_digit := false
 
 	// read mantissa
-	for i < s.len && s[i].is_digit() {
+	for i < s.len && is_float_digit(s, i) {
+		if s[i] == `_` {
+			i++
+			continue
+		}
+		has_mantissa_digit = true
 		if pn.mantissa == 0 && s[i] == c_zero {
 			i++
 			continue
@@ -164,7 +168,12 @@ fn parser(s string) (ParserState, PrepNumber) {
 	// read mantissa decimals
 	if i < s.len && s[i] == `.` {
 		i++
-		for i < s.len && s[i].is_digit() {
+		for i < s.len && is_float_digit(s, i) {
+			if s[i] == `_` {
+				i++
+				continue
+			}
+			has_mantissa_digit = true
 			if pn.mantissa == 0 && s[i] == c_zero {
 				pn.exponent--
 				i++
@@ -180,6 +189,10 @@ fn parser(s string) (ParserState, PrepNumber) {
 		}
 	}
 
+	if !has_mantissa_digit {
+		return .invalid_number, pn
+	}
+
 	// read exponent
 	if i < s.len && (s[i] == `e` || s[i] == `E`) {
 		i++
@@ -191,14 +204,22 @@ fn parser(s string) (ParserState, PrepNumber) {
 				expneg = true
 				i++
 			}
-
-			for i < s.len && s[i].is_digit() {
-				if expexp < 214748364 {
-					expexp *= 10
-					expexp += int(s[i] - c_zero)
-				}
+		}
+		mut has_exponent_digit := false
+		for i < s.len && is_float_digit(s, i) {
+			if s[i] == `_` {
 				i++
+				continue
 			}
+			has_exponent_digit = true
+			if expexp < 214748364 {
+				expexp *= 10
+				expexp += int(s[i] - c_zero)
+			}
+			i++
+		}
+		if !has_exponent_digit {
+			return .invalid_number, pn
 		}
 	}
 
@@ -435,12 +456,33 @@ pub:
 	allow_extra_chars bool // allow extra characters after number
 }
 
-// atof64 parses the string `s`, and if possible, converts it into a f64 number
+// atof64 parses a decimal string into an f64, including case-insensitive NaN
+// and signed Inf or Infinity. Underscores may separate digits. Whitespace,
+// missing mantissa or exponent digits, and other invalid syntax return errors.
+// Set allow_extra_chars to accept trailing characters after a decimal number.
 pub fn atof64(s string, param AtoF64Param) !f64 {
 	if s.len == 0 {
 		return error('expected a number found an empty string')
 	}
 	mut res := Float64u{}
+	special_start := if s[0] == `+` || s[0] == `-` { 1 } else { 0 }
+	if special_start < s.len && byte_to_lower(s[special_start]) in [`i`, `n`] {
+		match s.to_lower() {
+			'inf', '+inf', 'infinity', '+infinity' {
+				res.u = double_plus_infinity
+				return unsafe { res.f }
+			}
+			'-inf', '-infinity' {
+				res.u = double_minus_infinity
+				return unsafe { res.f }
+			}
+			'nan' {
+				res.u = u64(0x7FF8000000000000)
+				return unsafe { res.f }
+			}
+			else {}
+		}
+	}
 	res_parsing, mut pn := parser(s)
 	match res_parsing {
 		.ok {
