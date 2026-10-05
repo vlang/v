@@ -2564,16 +2564,33 @@ fn v3_parallel_c_include_dirs(flags []string) []string {
 	return dirs
 }
 
-fn v3_parallel_local_include_path(line string, including_dir string, include_dirs []string) ?string {
+// v3_include_directive_argument returns the text after `#include` in a line,
+// allowing the blanks C permits around `#` and `include`, as in `#  include "x.h"`.
+fn v3_include_directive_argument(line string) ?string {
 	trimmed := line.trim_space()
-	quoted_prefix := '#include "'
-	angle_prefix := '#include <'
-	quoted := trimmed.starts_with(quoted_prefix)
-	prefix := if quoted { quoted_prefix } else { angle_prefix }
-	if !quoted && !trimmed.starts_with(angle_prefix) {
+	if !trimmed.starts_with('#') {
 		return none
 	}
-	rest := trimmed[prefix.len..]
+	directive := trimmed[1..].trim_left(' \t')
+	if !directive.starts_with('include') {
+		return none
+	}
+	return directive['include'.len..].trim_left(' \t')
+}
+
+// v3_line_is_quoted_include reports whether a line is a `#include "..."` directive.
+fn v3_line_is_quoted_include(line string) bool {
+	argument := v3_include_directive_argument(line) or { return false }
+	return argument.starts_with('"')
+}
+
+fn v3_parallel_local_include_path(line string, including_dir string, include_dirs []string) ?string {
+	argument := v3_include_directive_argument(line) or { return none }
+	quoted := argument.starts_with('"')
+	if !quoted && !argument.starts_with('<') {
+		return none
+	}
+	rest := argument[1..]
 	end := rest.index_u8(if quoted { `"` } else { `>` })
 	if end <= 0 {
 		return none
@@ -2631,10 +2648,10 @@ fn v3_expand_shipped_native_file(path string, include_dirs []string, vroot strin
 				complete = complete && included_complete
 				continue
 			}
-			if line.trim_space().starts_with('#include "') {
+			if v3_line_is_quoted_include(line) {
 				complete = false
 			}
-		} else if line.trim_space().starts_with('#include "') {
+		} else if v3_line_is_quoted_include(line) {
 			complete = false
 		}
 		expanded.writeln(line)
@@ -2663,7 +2680,7 @@ fn v3_parallel_c_declaration_header(prefix string, include_dirs []string, vroot 
 		}
 		native_directives.writeln(line)
 		include_path := v3_parallel_local_include_path(line, '', include_dirs) or {
-			if trimmed.starts_with('#include "') {
+			if v3_line_is_quoted_include(line) {
 				// An unresolved quoted include can still be found by the C compiler
 				// through an option that is opaque here.
 				safe = false
