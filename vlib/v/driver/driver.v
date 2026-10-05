@@ -14064,7 +14064,7 @@ pub fn run(args []string) {
 				}
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
 					fallback := v3_platform_c_compiler_command(host_os)
-					eprintln('warning: tcc compilation failed, falling back to ${fallback}')
+					eprintln(v3_explicit_tcc_fallback_warning(fallback, result.output))
 					// Recovery above already declined, so discarding the entries
 					// did not help. Name them: the fallback still produces a
 					// working binary, which is what makes this easy to miss.
@@ -14795,24 +14795,32 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 // error, else the first non-empty one, so an "In file included from" line does
 // not hide the actual error.
 fn v3_implicit_tcc_fallback_warning(fallback string, reason string) string {
-	mut cause := ''
-	for line in reason.split_into_lines() {
-		trimmed := line.trim_space()
-		if trimmed.len == 0 {
-			continue
-		}
-		if trimmed.to_lower().contains('error') {
-			cause = trimmed
-			break
-		}
-		if cause.len == 0 {
-			cause = trimmed
-		}
-	}
+	cause := v3_c_compiler_failure_reason(reason)
 	if cause.len == 0 {
 		return 'warning: implicit tcc could not be used for this build, regenerating it with ${fallback}'
 	}
 	return 'warning: implicit tcc could not be used for this build (${cause}), regenerating it with ${fallback}'
+}
+
+// v3_c_compiler_failure_reason selects an error line before include context, or the
+// first nonempty line when the compiler did not identify an error explicitly.
+fn v3_c_compiler_failure_reason(reason string) string {
+	mut cause := ''
+	for line in reason.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.len == 0 { continue }
+		if trimmed.to_lower().contains('error') { return trimmed }
+		if cause.len == 0 { cause = trimmed }
+	}
+	return cause
+}
+
+fn v3_explicit_tcc_fallback_warning(fallback string, reason string) string {
+	cause := v3_c_compiler_failure_reason(reason)
+	if cause.len == 0 {
+		return 'warning: tcc compilation failed, falling back to ${fallback}'
+	}
+	return 'warning: tcc compilation failed (${cause}), falling back to ${fallback}'
 }
 
 // v3_regenerate_after_implicit_tcc rebuilds the program for the platform C

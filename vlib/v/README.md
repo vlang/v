@@ -135,6 +135,10 @@ multiple input paths. `-cc <executable>` selects the C compiler. V3 uses
 `-gc boehm_full_opt` by default and supports the V1 collector modes; compiler self-builds
 disable GC regardless of the requested mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
+When an explicit `-cc tcc` build fails, the driver retries with the platform C compiler
+and reports the first error line from tcc in its fallback warning. This retry applies to
+all tcc failures. `-show-c-output` displays the complete original diagnostics, and
+`-no-retry-compilation` disables the retry.
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
