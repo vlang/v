@@ -1114,6 +1114,9 @@ pub mut:
 	type_declaration_ids   map[string][]int
 mut:
 	cache_lexical_parents bool = true
+	// Source-validated bodies consisting solely of a known terminating call.
+	// Their lowered temporaries belong to the exempt argument expression.
+	noalloc_terminal_functions map[string]bool
 	// Dropped with phase caches before a disposable arena is released. Forks
 	// start with nil so their mutable topology slots are never shared.
 	lexical_parent_memo &LexicalParentMemo = unsafe { nil }
@@ -1325,6 +1328,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		symbols:                                 symbols
 		enclosing_generic_params_by_node:        map[int][]string{}
 		declaration_attributes:                  map[int][]string{}
+		noalloc_terminal_functions:              map[string]bool{}
 		type_declaration_ids:                    map[string][]int{}
 		strings_builder_bindings:                map[string]bool{}
 		static_associated_fn_keys:               map[string]bool{}
