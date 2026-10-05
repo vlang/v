@@ -199,10 +199,13 @@ fn list(vroot string, opts Options) Output {
 			code:   1
 		}
 	}
-	stale := skills.out_of_date(vroot, project_dir)
-	global_stale := skills.out_of_date(vroot, global_dir)
 	in_project := skills.installed(project_dir)
 	in_global := skills.installed(global_dir)
+	// `refresh_candidates` is the split `update` acts on, so `list` reports the
+	// same three cases `update` will. A single "out of date" word would say a
+	// local edit was pending work, and following that advice would delete it.
+	project_refreshable, project_held := skills.refresh_candidates(vroot, project_dir)
+	global_refreshable, global_held := skills.refresh_candidates(vroot, global_dir)
 	mut out := Output{
 		lines: ['bundled in ${skills.bundled_root(vroot)}', '']
 	}
@@ -212,7 +215,7 @@ fn list(vroot string, opts Options) Output {
 		for relative in skill.files {
 			out.lines << '	${relative}'
 		}
-		out.lines << '	status: ${marker(skill.name, in_project, in_global, stale, global_stale)}'
+		out.lines << '\tstatus: ${marker(skill.name, in_project, project_refreshable, project_held, in_global, global_refreshable, global_held)}'
 	}
 	out.lines << ''
 	out.lines << 'project: ${project_dir}${exists_mark(project_dir)}'
@@ -231,19 +234,45 @@ fn list(vroot string, opts Options) Output {
 
 // marker says where a skill is installed, so `list` shows one line per skill that
 // says what is true rather than making the reader check the paths.
-fn marker(name string, in_project []string, in_global []string, stale []string,
-	global_stale []string) string {
+//
+// An installed skill that is not plain `installed` says which of the two
+// remaining cases it is, because the two need different actions: a stale copy is
+// refreshed by `v skills update`, while an edited or unrecorded one is held back
+// unless `--force` is passed. Naming them is the point; a single "out of date"
+// covers both and would invite a refresh that discards a local edit.
+fn marker(name string, in_project []string, project_refreshable []string,
+	project_held []string, in_global []string, global_refreshable []string,
+	global_held []string) string {
 	mut marks := []string{}
-	if name in in_project {
-		marks << if name in stale { 'project (out of date)' } else { 'project' }
-	}
-	if name in in_global {
-		marks << if name in global_stale { 'global (out of date)' } else { 'global' }
+	for part in [
+		scoped_mark('project', name, in_project, project_refreshable, project_held),
+		scoped_mark('global', name, in_global, global_refreshable, global_held),
+	] {
+		if part != '' {
+			marks << part
+		}
 	}
 	if marks.len == 0 {
 		return 'not installed'
 	}
 	return marks.join(', ')
+}
+
+// scoped_mark is one scope's half of a status line, or '' when the skill is not
+// installed there.
+fn scoped_mark(scope string, name string, installed []string, refreshable []string,
+	held []string) string {
+	if name !in installed {
+		return ''
+	}
+	command := if scope == 'global' { 'v skills update --global' } else { 'v skills update' }
+	if name in refreshable {
+		return '${scope} (stale: ${command} refreshes it)'
+	}
+	if name in held {
+		return '${scope} (edited or unrecorded: ${command} needs --force)'
+	}
+	return scope
 }
 
 // exists_mark annotates a directory that is not there yet.

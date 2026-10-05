@@ -519,8 +519,9 @@ pub fn installed(dir string) []string {
 }
 
 // out_of_date returns the bundled skills installed in `dir` whose installed copy
-// no longer matches the bundled one. `v skills list` reports these so an agent
-// can offer `v skills add --force` instead of acting on stale guidance.
+// no longer matches the bundled one. This content comparison cannot distinguish
+// local edits from an unchanged installation of an older bundle. Use
+// refresh_candidates when deciding which installations can be safely updated.
 pub fn out_of_date(vroot string, dir string) []string {
 	mut stale := []string{}
 	for name in installed(dir) {
