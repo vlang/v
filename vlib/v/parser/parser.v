@@ -101,9 +101,9 @@ mut:
 	next_file_id                 int = 1
 	cur_module                   string
 	is_translated                bool
-	is_generated                 bool // `@[generated] module x`: type names need not be capitalized
+	is_generated                 bool            // `@[generated] module x`: type names need not be capitalized
 	file_type_names              map[string]bool // types declared so far in the current file
-	file_type_names_indexed      int // nodes before this index are in `file_type_names`
+	file_type_names_indexed      int             // nodes before this index are in `file_type_names`
 	cur_fn                       string
 	cur_fn_offset                int = -1
 	cur_fn_generic_params        []string

@@ -51,6 +51,12 @@ interface _zbr_ty_Summer {
 	sumAll() int
 }
 
+struct _zbr_ty_Holder {
+	inner struct {
+		xPos int
+	}
+}
+
 fn camelCase(n int) int {
 	return n + 1
 }
@@ -169,4 +175,9 @@ fn test_values_of_imported_modules() {
 	assert zbrgen.zbrNames.len == 2
 	assert zbrgen._zbr_c_Origin.xPos == 2
 	assert zbrgen._zbr_c_Origin.scaledSum() == 50
+}
+
+fn test_anonymous_structs() {
+	h := _zbr_ty_Holder{}
+	assert h.inner.xPos == 0
 }

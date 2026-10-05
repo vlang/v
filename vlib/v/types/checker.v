@@ -11334,7 +11334,9 @@ fn (mut tc TypeChecker) check_snake_case_name(id flat.NodeId, name string, ident
 // the C code names its temporaries `_t1`, `_a2` and so on.
 fn (mut tc TypeChecker) check_generated_value_name(id flat.NodeId, name string, identifier string, pos token.Pos) {
 	short_name := name.all_after_last('.')
-	if short_name.len == 0 || short_name == '_' {
+	// Like in ordinary files, the names the compiler itself declares are exempt.
+	if short_name.len == 0 || short_name == '_' || short_name.starts_with('__v3_')
+		|| source_name_is_numbered_string_symbol(short_name) {
 		return
 	}
 	if short_name[0].is_capital() {
@@ -11374,7 +11376,8 @@ fn (mut tc TypeChecker) check_generated_type_name(node_id flat.NodeId, node flat
 		return
 	}
 	name := node.value.all_after_last('.')
-	if name.len == 0 {
+	// Anonymous structs get names like `AnonStruct__x2e_...` from the parser.
+	if name.len == 0 || is_anonymous_aggregate_name(name) {
 		return
 	}
 	identifier := match node.kind {
