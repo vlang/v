@@ -118,12 +118,15 @@ fn parse_comparator_set(input string) !ComparatorSet {
 		if raw_comp.len == 0 {
 			continue
 		}
-		if can_expand(raw_comp) {
-			if !is_grammar_operand(raw_comp) {
-				return &InvalidComparatorFormatError{
-					msg: 'Invalid comparator "${raw_comp}" in input "${input}"'
-				}
+		// Checked for every operand, not only for the ones that go on to be
+		// expanded: `>2.1.` reaches the plain comparator path, and without this it
+		// is answered instead of refused.
+		if !is_grammar_operand(raw_comp) {
+			return &InvalidComparatorFormatError{
+				msg: 'Invalid comparator "${raw_comp}" in input "${input}"'
 			}
+		}
+		if can_expand(raw_comp) {
 			expanded := expand_comparator_set(raw_comp) or {
 				return &InvalidComparatorFormatError{
 					msg: 'Invalid comparator "${raw_comp}" in input "${input}"'
@@ -312,6 +315,7 @@ fn expand_comparator_set(input string) ?ComparatorSet {
 	match input[0] {
 		`~` { return expand_tilda(input[1..]) }
 		`^` { return expand_caret(input[1..]) }
+		`<`, `>`, `=` { return expand_operator_range(input) }
 		else {}
 	}
 
@@ -319,6 +323,58 @@ fn expand_comparator_set(input string) ?ComparatorSet {
 		return expand_hyphen(input)
 	}
 	return expand_xrange(input)
+}
+
+// expand_operator_range handles an operator in front of an incomplete version.
+//
+// The grammar does not read these as a comparator applied to a shortened version.
+// It expands the version to its x-range first and applies the operator to that
+// range, so:
+//
+//     >=1.2   is  >=1.2.0
+//     <1.2    is  <1.2.0-0
+//     <=1.2   is  <1.3.0-0
+//     >1.2    is  >=1.3.0
+//     =1.2    is  >=1.2.0 <1.3.0-0
+//
+// which is why `<=1.2` admits nothing below 0.0.0 while `<=1.2.0` does not: the
+// first drops the whole `1.2` series and the second is an ordinary comparator.
+//
+// A version with all three components is not rewritten. `>=1.2.3` is `>=1.2.3`,
+// prerelease included, which is what parse_comparator already does.
+fn expand_operator_range(input string) ?ComparatorSet {
+	mut raw_version := input[1..]
+	if input[0] == `=` && input.len > 1 && input[1] == `=` {
+		raw_version = input[2..]
+	} else if input[0] != `=` && input.len > 1 && input[1] == `=` {
+		raw_version = input[2..]
+	}
+	// `first_wildcard_index` counts a missing component as standing in for a
+	// number, so it answers below 3 exactly for the versions the grammar shortens.
+	if raw_version.len == 0 || first_wildcard_index(raw_version) > 2 {
+		return none
+	}
+	expanded := expand_xrange(raw_version) or { return none }
+	if expanded.comparators.len < 2 {
+		return none
+	}
+	floor := expanded.comparators[0].ver
+	ceiling := expanded.comparators[1].ver
+	match input[0] {
+		`=` { return expanded }
+		`>` {
+			return ComparatorSet{[Comparator{Version{ceiling.major, ceiling.minor, ceiling.patch, '', ''}, Operator.ge}]}
+		}
+		`<` {
+			return ComparatorSet{[Comparator{Version{floor.major, floor.minor, floor.patch, '0', ''}, Operator.lt}]}
+		}
+		else {}
+	}
+	// `<=` is the ceiling as a `<`, and `>=` is the floor as a `>=`.
+	if input[0] == `<` && input.len > 1 && input[1] == `=` {
+		return ComparatorSet{[Comparator{ceiling, Operator.lt}]}
+	}
+	return ComparatorSet{[Comparator{floor, Operator.ge}]}
 }
 
 fn expand_tilda(raw_version string) ?ComparatorSet {
