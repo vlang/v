@@ -2618,6 +2618,13 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		if inline_access {
 			pending_attrs << '__v3_inline_field_access'
 			embedding_allowed = false
+			// Keep this declaration's access flags while consuming attributes after its modifier.
+			for p.tok == .attribute {
+				if pending_attrs_start < 0 {
+					pending_attrs_start = p.tok_pos
+				}
+				pending_attrs << p.parse_field_attrs()
+			}
 		}
 		if p.tok == .key_global {
 			if p.peek() == .colon {
@@ -2919,14 +2926,37 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	})
 }
 
-// struct_access_is_modifier distinguishes `mut field Type` from a field named `mut`.
+// struct_access_is_modifier distinguishes inline access from fields named `pub` or `mut`.
 fn (p &Parser) struct_access_is_modifier() bool {
 	mut lookahead := p.s
 	next := if p.has_peek { p.peek_tok } else { lookahead.scan() }
-	if next in [.colon, .key_mut] {
+	next_lit := if p.has_peek { p.peek_lit } else { lookahead.lit }
+	if next in [.colon, .key_mut, .attribute] {
 		return true
 	}
+	if next != .name && !next.is_keyword() {
+		return false
+	}
 	after := lookahead.scan()
+	if interface_param_token_continues_type(next, next_lit, after) || after == .dot {
+		return false
+	}
+	if after == .lsbr {
+		// `pub Box[int]` names the field `pub`; `pub items []int` modifies `items`.
+		mut depth := 1
+		for depth > 0 {
+			tok := lookahead.scan()
+			if tok == .eof {
+				return false
+			}
+			if tok == .lsbr {
+				depth++
+			} else if tok == .rsbr {
+				depth--
+			}
+		}
+		return token_can_start_type_name(lookahead.scan())
+	}
 	return after !in [.semicolon, .rcbr, .assign, .attribute, .eof]
 }
 

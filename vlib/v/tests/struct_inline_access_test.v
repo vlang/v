@@ -35,3 +35,47 @@ fn test_inline_field_modifiers_preserve_layout_and_mutability() {
 	assert mutable == ['b', 'd']
 	assert public == ['c', 'd']
 }
+
+struct AccessKeywordArray {
+	pub []int
+}
+
+struct AccessKeywordMap {
+	pub map[string]int
+}
+
+struct AccessKeywordPointer {
+	pub &int = unsafe { nil }
+}
+
+fn test_access_keyword_field_names_keep_composite_types() {
+	array := AccessKeywordArray{ pub: [1, 2] }
+	mapping := AccessKeywordMap{
+		pub: {
+			'a': 3
+		}
+	}
+	pointer := AccessKeywordPointer{}
+	assert array.pub == [1, 2]
+	assert mapping.pub['a'] == 3
+	assert pointer.pub == unsafe { nil }
+}
+
+struct InlineAttributedAccess {
+	pub     value int @[required]
+	pub mut other int @[required]
+}
+
+fn test_inline_access_with_leading_attributes() {
+	mut value := InlineAttributedAccess{ value: 1, other: 2 }
+	value.other++
+	assert value.value == 1
+	assert value.other == 3
+	$for field in InlineAttributedAccess.fields {
+		assert field.is_pub
+		assert 'required' in field.attrs
+		$if field.name == 'other' {
+			assert field.is_mut
+		}
+	}
+}
