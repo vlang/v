@@ -788,7 +788,8 @@ fn (tc &TypeChecker) assignment_integer_constant_operand(id flat.NodeId) ?flat.N
 // untyped, like the literal it folds to: `x = 6 * tile_size` assigns to a float.
 // Casts, typed constants and variables give the expression a type of its own.
 fn (tc &TypeChecker) is_untyped_integer_constant_expr(id flat.NodeId) bool {
-	known, has_float := tc.untyped_numeric_literal_expr_info(id, 0)
+	mut states := map[flat.NodeId]u8{}
+	known, has_float := tc.untyped_numeric_literal_expr_info(id, mut states)
 	return known && !has_float && !tc.expr_names_visible_local(id)
 }
 
