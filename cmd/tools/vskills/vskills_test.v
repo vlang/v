@@ -112,6 +112,13 @@ fn test_list_fails_when_there_is_no_catalog() {
 	assert out.errors.join('\n').contains('no bundled skills'), out.text()
 }
 
+fn test_list_status_advice_selects_the_installed_scope() {
+	assert marker('alpha', ['alpha'], ['alpha'], [], ['alpha'], [], ['alpha']) ==
+		'project (stale: v skills update refreshes it), global (edited or unrecorded: v skills update --global needs --force)'
+	assert marker('alpha', [], [], [], ['alpha'], ['alpha'], []) ==
+		'global (stale: v skills update --global refreshes it)'
+}
+
 fn test_add_installs_a_skill_into_the_project() {
 	root := project()
 	out := run(root, 'add', 'alpha')
@@ -279,12 +286,22 @@ fn test_cached_skills_launcher_lists_and_safely_removes_custom_skills() {
 	assert os.read_file(os.join_path(victim, 'keep.txt'))! == 'unrelated'
 }
 
-fn test_list_reports_a_skill_whose_install_is_out_of_date() {
-	root := project()
-	run(root, 'add', 'alpha')
-	os.write_file(entry_of(root, 'alpha'), 'tampered\n')!
-	out := run(root, 'list')
-	assert out.lines.join('\n').contains('project (out of date)'), out.text()
+fn test_list_tells_a_local_edit_apart_from_a_bundle_that_moved_on() {
+	edited := project()
+	run(edited, 'add', 'alpha')
+	os.write_file(entry_of(edited, 'alpha'), 'tampered\n')!
+	out := run(edited, 'list')
+	// A local edit is not work waiting to be done, and `update` refuses it without
+	// `--force`, so `list` must not describe it as something to refresh. Telling
+	// the reader to refresh, then deleting their file, is the harm this avoids.
+	assert out.lines.join('\n').contains('project (edited or unrecorded:'), out.text()
+	assert !out.lines.join('\n').contains('out of date'), out.text()
+
+	moved := project()
+	run(moved, 'add', 'alpha')
+	rebundle(moved, 'alpha')
+	out2 := run(moved, 'list')
+	assert out2.lines.join('\n').contains('project (stale:'), out2.text()
 }
 
 // rebundle rewrites the bundled `SKILL.md` of `name`, so an installation made
