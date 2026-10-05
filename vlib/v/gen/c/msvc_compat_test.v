@@ -134,3 +134,27 @@ fn test_statement_expressions_in_macro_loop_bodies_stay_in_the_loop() {
 	out := msvc_lower_fn('int n = 0; each(item, list) { n += ({ int t = g(item); t; }); } h(n);')
 	assert out.contains('int n = 0; each(item, list) { int t__vmsvc1 = g(item); n += (t__vmsvc1); } h(n);')
 }
+
+// assert_directives_start_their_line checks that every preprocessor directive in `out` is
+// the first non-blank thing on its line, which MSVC requires (error C2014 otherwise).
+fn assert_directives_start_their_line(out string) {
+	for line in out.split_into_lines() {
+		if line.contains('#line') {
+			assert line.trim_space().starts_with('#line'), 'directive is not at the start of its line: ${line}'
+		}
+	}
+}
+
+fn test_line_directives_inside_statement_expressions_start_their_line() {
+	src := 'int f(int a) {\nint x = ({ int t = g(a);\n#line 5 "x.v"\n{ h(t); }\n#line 6 "x.v"\nt; });\n}\n'
+	out := msvc_compat_c_source(src)
+	assert !out.contains('({')
+	assert_directives_start_their_line(out)
+}
+
+fn test_line_directives_inside_guarded_statement_expressions_start_their_line() {
+	src := 'int f(int a, int b) {\nif (a && ({ int t = g(b);\n#line 7 "x.v"\n{ h(t); }\n#line 8 "x.v"\nt > 0; })) { k(); }\n}\n'
+	out := msvc_compat_c_source(src)
+	assert !out.contains('({')
+	assert_directives_start_their_line(out)
+}
