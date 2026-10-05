@@ -17,6 +17,7 @@ Examples:
 Options:
   -all            Includes private and public functions/methods/structs/consts/enums.
   -color          Forces the use of ANSI escape sequences to make the output colorful.
+                  String interpolation delimiters are highlighted separately from literal text.
   -no-color       Forces plain text output, without ANSI colors.
                   Note: -color is on for -f ansi .
   -f              Specifies the output format to be used.
