@@ -1,6 +1,7 @@
 module c
 
 import os
+import strconv
 import strings
 import time
 import v.cmdexec
@@ -25648,6 +25649,20 @@ fn (mut g FlatGen) gen_checked_integer_cast(id flat.NodeId, target_type types.Ty
 	if check.len == 0 {
 		return false
 	}
+	mut lit := g.a.nodes[int(arg_id)]
+	for lit.kind == .paren && lit.children_count > 0 {
+		lit = g.a.nodes[int(g.a.child(&lit, 0))]
+	}
+	if lit.kind == .int_literal {
+		// An untyped literal like `u64(0xcbf29ce484222325)` is only nominally `int`:
+		// compare its exact value with the target range, not the wrapped `int` value.
+		if value := strconv.parse_uint(lit.value.replace('_', ''), 0, 64) {
+			limit := if dst.unsigned { dst.bits } else { dst.bits - 1 }
+			if limit >= 64 || value < (u64(1) << limit) {
+				return false
+			}
+		}
+	}
 	if value := g.shift_count_const_value(arg_id, []string{}) {
 		if integer_cast_const_fits(i64(value), src, dst) {
 			return false
@@ -25729,7 +25744,13 @@ fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId,
 // `min / -1` (and `min % -1`) under `-check-overflow`, which C leaves undefined.
 fn (mut g FlatGen) gen_checked_integer_division_value(lhs_text string, rhs_tmp string, rhs_id flat.NodeId, result_type types.Type, c_type string, op flat.Op, allow_overflow_check bool) {
 	g.write('${c_type} ${rhs_tmp} = (${c_type})(')
-	g.gen_expr(rhs_id)
+	if op in [.div_assign, .mod_assign] {
+		// Like the other compound assignments, the divisor of `*p /= y` is generated
+		// as a value of the assigned type (a plain `gen_expr` can emit it as `&y`).
+		g.gen_expr_with_expected_type(rhs_id, result_type)
+	} else {
+		g.gen_expr(rhs_id)
+	}
 	g.write('); ')
 	if allow_overflow_check && g.overflow_checks_active() {
 		if kind := g.checked_int_kind(result_type) {

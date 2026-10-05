@@ -207,12 +207,16 @@ fn overflow_ops_source() string {
 		sb << 'fn shl_assign_${typ}(x ${typ}, n int) ${typ} {\n\tmut r := x\n\tr <<= n\n\treturn r\n}\n'
 		sb << 'fn shr_assign_${typ}(x ${typ}, n int) ${typ} {\n\tmut r := x\n\tr >>= n\n\treturn r\n}\n'
 		sb << 'fn div_assign_${typ}(x ${typ}, y ${typ}) ${typ} {\n\tmut r := x\n\tr /= y\n\treturn r\n}\n'
+		sb << 'fn div_into_${typ}(mut p &${typ}, y ${typ}) {\n\tunsafe {\n\t\t*p /= y\n\t}\n}\n'
+		sb << 'fn div_ptr_${typ}(x ${typ}, y ${typ}) ${typ} {\n\tmut r := x\n\tdiv_into_${typ}(mut &r, y)\n\treturn r\n}\n'
 	}
 	for typ in signed_int_types {
 		sb << 'fn neg_${typ}(x ${typ}) ${typ} {\n\treturn -x\n}\n'
 		sb << 'fn div_${typ}(x ${typ}, y ${typ}) ${typ} {\n\treturn x / y\n}\n'
 		sb << 'fn mod_${typ}(x ${typ}, y ${typ}) ${typ} {\n\treturn x % y\n}\n'
 		sb << 'fn mod_assign_${typ}(x ${typ}, y ${typ}) ${typ} {\n\tmut r := x\n\tr %= y\n\treturn r\n}\n'
+		sb << 'fn mod_into_${typ}(mut p &${typ}, y ${typ}) {\n\tunsafe {\n\t\t*p %= y\n\t}\n}\n'
+		sb << 'fn mod_ptr_${typ}(x ${typ}, y ${typ}) ${typ} {\n\tmut r := x\n\tmod_into_${typ}(mut &r, y)\n\treturn r\n}\n'
 	}
 	sb << '@[ignore_overflow]\nfn ignored_ops(x i8, n int) string {\n\treturn "\${-x} \${u64(1) << n}"\n}\n'
 	sb << 'fn main() {\n\top := os.args[1]\n\ttyp := os.args[2]\n\ta := os.args[3]'
@@ -221,11 +225,13 @@ fn overflow_ops_source() string {
 		for op in ['shl', 'shr', 'ushr', 'shl_assign', 'shr_assign'] {
 			sb << '\t\t"${op}_${typ}" { println(${printable(typ, '${op}_${typ}(parse_${typ}(a), b.int())')}) }'
 		}
-		sb << '\t\t"div_assign_${typ}" { println(${printable(typ, 'div_assign_${typ}(parse_${typ}(a), parse_${typ}(b))')}) }'
+		for op in ['div_assign', 'div_ptr'] {
+			sb << '\t\t"${op}_${typ}" { println(${printable(typ, '${op}_${typ}(parse_${typ}(a), parse_${typ}(b))')}) }'
+		}
 	}
 	for typ in signed_int_types {
 		sb << '\t\t"neg_${typ}" { println(${printable(typ, 'neg_${typ}(parse_${typ}(a))')}) }'
-		for op in ['div', 'mod', 'mod_assign'] {
+		for op in ['div', 'mod', 'mod_assign', 'mod_ptr'] {
 			sb << '\t\t"${op}_${typ}" { println(${printable(typ, '${op}_${typ}(parse_${typ}(a), parse_${typ}(b))')}) }'
 		}
 	}
@@ -248,6 +254,7 @@ fn overflow_ops_cases(checked bool) []OpCase {
 		cases << ok_case('16', 'shl_assign', typ, '1', '4')
 		cases << ok_case('0', 'shr_assign', typ, '1', '${bits - 1}')
 		cases << ok_case('3', 'div_assign', typ, '7', '2')
+		cases << ok_case('14', 'div_ptr', typ, '100', '7')
 		if checked {
 			cases << panic_case('attempt to shl with overflow(${h}(1) << ${w})', 'shl', typ, '1',
 				w)
@@ -283,6 +290,8 @@ fn overflow_ops_cases(checked bool) []OpCase {
 		cases << ok_case('-${u64(1) << (bits - 2)}', 'div', typ, min, '2')
 		cases << ok_case('-1', 'mod_assign', typ, '-7', '-2')
 		cases << ok_case(signed_min_plus_one(bits), 'div_assign', typ, signed_max(bits), '-1')
+		cases << ok_case('-50', 'div_ptr', typ, '-100', '2')
+		cases << ok_case('-2', 'mod_ptr', typ, '-100', '7')
 		if checked {
 			cases << panic_case('attempt to neg with overflow(-${h}(${min}))', 'neg', typ, min)
 			cases << panic_case('attempt to div with overflow(${h}(${min}) / ${h}(-1))', 'div',
@@ -293,6 +302,10 @@ fn overflow_ops_cases(checked bool) []OpCase {
 				'div_assign', typ, min, '-1')
 			cases << panic_case('attempt to mod with overflow(${h}(${min}) % ${h}(-1))',
 				'mod_assign', typ, min, '-1')
+			cases << panic_case('attempt to div with overflow(${h}(${min}) / ${h}(-1))',
+				'div_ptr', typ, min, '-1')
+			cases << panic_case('attempt to mod with overflow(${h}(${min}) % ${h}(-1))',
+				'mod_ptr', typ, min, '-1')
 			cases << panic_case('division by zero', 'div', typ, min, '0')
 			cases << panic_case('modulo by zero', 'mod_assign', typ, '5', '0')
 		} else {
@@ -335,6 +348,8 @@ fn casts_source() string {
 		sb << 'fn cast_${src}_${dst}(x ${src}) ${dst} {\n\treturn ${dst}(x)\n}\n'
 	}
 	sb << 'fn literal_cast() u8 {\n\treturn u8(-1)\n}\n'
+	sb << 'fn literal_not_cast() u64 {\n\treturn u64(~0)\n}\n'
+	sb << 'fn big_literal_casts() string {\n\treturn "\${u64(0x8000000000000000)} \${u64(18446744073709551615)} \${u64(0xcbf29ce484222325)} \${u64((0xffff_ffff_ffff_ffff))} \${u32(0xffffffff)} \${usize(0xffffffff)} \${i8(0x7f)} \${u16(0b1111111111111111)}"\n}\n'
 	sb << 'fn alias_cast(x i64) Byte {\n\treturn Byte(x)\n}\n'
 	sb << '@[ignore_overflow]\nfn ignored_cast(x i64) u8 {\n\treturn u8(x)\n}\n'
 	sb << 'fn main() {\n\tkind := os.args[1]\n\ta := os.args[2]\n\tmatch kind {'
@@ -344,6 +359,8 @@ fn casts_source() string {
 		sb << '\t\t"${src}_${dst}" { println(cast_${src}_${dst}(${src}(a.${parse}()))) }'
 	}
 	sb << '\t\t"literal" { println(literal_cast()) }'
+	sb << '\t\t"literal_not" { println(literal_not_cast()) }'
+	sb << '\t\t"big_literals" { println(big_literal_casts()) }'
 	sb << '\t\t"alias" { println(alias_cast(a.i64())) }'
 	sb << '\t\t"ignored" { println(ignored_cast(a.i64())) }'
 	sb << '\t\t"vlib" { println("\${bits.rotate_left_64(u64(5), 0)} \${strconv.format_int(-255, 16)} \${f64(1.5)} \${u32(0xdeadbeef).hex()}") }'
@@ -415,11 +432,17 @@ fn casts_cases(checked bool) []OpCase {
 	}
 	if checked {
 		cases << panic_case('attempt to cast with overflow(u8(int(-1)))', 'literal', '0')
+		cases << panic_case('attempt to cast with overflow(u64(int(-1)))', 'literal_not', '0')
 		cases << panic_case('attempt to cast with overflow(u8(i64(256)))', 'alias', '256')
 	} else {
 		cases << ok_case('255', 'literal', '0')
+		cases << ok_case('18446744073709551615', 'literal_not', '0')
 		cases << ok_case('0', 'alias', '256')
 	}
+	// Untyped literals that fit the target type are not reported, even when they do
+	// not fit in `int`.
+	cases << ok_case('9223372036854775808 18446744073709551615 14695981039346656037 18446744073709551615 4294967295 4294967295 127 65535',
+		'big_literals', '0')
 	cases << ok_case('44', 'ignored', '300')
 	cases << ok_case('5 -ff 1.5 deadbeef', 'vlib', '0')
 	return cases
