@@ -14715,6 +14715,7 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 		}
 		if is_builtin_type_name(node.value) || tc.type_symbol_known(node.value)
 			|| tc.pattern_type_known(node.value)
+			|| flat.is_named_variant_type_name(node.value)
 			|| (node.value.len > 0 && node.value[0].is_capital())
 			|| (tc.generated_files.len > 0 && tc.type_name_known_in_current_module(node.value)) {
 			return node.value
@@ -14726,7 +14727,8 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 		if base.kind == .ident && !tc.ident_resolves_to_value(base.value) {
 			pattern := '${base.value}.${node.value}'
 			if (base.value != 'C' && node.value.len > 0 && node.value[0].is_capital())
-				|| tc.type_symbol_known(pattern) || tc.pattern_type_known(pattern) {
+				|| tc.type_symbol_known(pattern) || tc.pattern_type_known(pattern)
+				|| flat.is_named_variant_type_name(pattern) {
 				return pattern
 			}
 		}

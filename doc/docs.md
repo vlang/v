@@ -5132,7 +5132,8 @@ fn main() {
 ```
 
 `$for v in Expr.variants` iterates the named variants; `typeof(v.typ).name` gives their
-names, like `Expr.Count`.
+names, like `Expr.Count`. Types in `@[generated]` modules can also use named variants
+when their type names start with a lowercase letter or underscore.
 
 ### Option/Result types and error handling
 

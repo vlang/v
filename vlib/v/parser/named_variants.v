@@ -223,11 +223,11 @@ fn (mut p Parser) validate_named_sum_variants(name string, language_prefix strin
 }
 
 // named_variant_owner returns the sum type text (`Expr`, `mod.Expr`) when the
-// selector `lhs.variant` names a sum type variant: both the sum type and the
-// variant are capitalized names. Modules, constants, fields, methods and enum
-// values are snake_case, so `Type.Name` has no other meaning outside translated
-// code. C and JS names and capitalized import aliases keep their meaning.
-fn (p &Parser) named_variant_owner(lhs flat.NodeId, variant string) ?string {
+// selector `lhs.variant` names a sum type variant. The variant is capitalized;
+// the owner is a capitalized type or a declared generated type. Modules,
+// constants, fields, methods and enum values are snake_case. C and JS names
+// and capitalized import aliases keep their meaning.
+fn (mut p Parser) named_variant_owner(lhs flat.NodeId, variant string) ?string {
 	if p.prefs.is_fmt || p.is_translated || !is_plain_capitalized_ident(variant) || int(lhs) < 0
 		|| int(lhs) >= p.a.nodes.len {
 		return none
@@ -242,7 +242,7 @@ fn (p &Parser) named_variant_owner(lhs flat.NodeId, variant string) ?string {
 	if node.kind == .selector && node.children_count == 1 {
 		base := p.a.child_node(&node, 0)
 		if base.kind == .ident && base.value in p.imported_module_names
-			&& !p.is_local_binding(base.value) && p.is_named_variant_owner_name(node.value) {
+			&& !p.is_local_binding(base.value) && is_imported_named_variant_owner_name(node.value) {
 			return '${base.value}.${node.value}'
 		}
 	}
@@ -261,10 +261,46 @@ fn (p &Parser) named_variant_owner(lhs flat.NodeId, variant string) ?string {
 	return none
 }
 
-fn (p &Parser) is_named_variant_owner_name(name string) bool {
+fn (mut p Parser) is_named_variant_owner_name(name string) bool {
 	// Single capital letters are generic parameters.
-	return name.len > 1 && is_plain_capitalized_ident(name) && name !in ['C', 'JS']
+	return ((name.len > 1 && is_plain_capitalized_ident(name)) || p.is_generated_type_name(name))
+		&& name !in ['C', 'JS']
 		&& name !in p.imported_module_names && !p.is_local_binding(name)
+}
+
+// is_imported_named_variant_owner_name also accepts generated type names. The
+// module prefix separates them from local values, whose fields cannot be capitalized.
+fn is_imported_named_variant_owner_name(name string) bool {
+	if name.len == 0 || name in ['C', 'JS'] {
+		return false
+	}
+	for c in name {
+		if !is_name_char(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// imported_named_variant_pattern_starts_here recognizes a generated owner
+// followed by a capitalized variant, including an owner's generic arguments.
+fn (mut p Parser) imported_named_variant_pattern_starts_here(module_name string) bool {
+	if module_name !in p.imported_module_names || p.is_local_binding(module_name)
+		|| p.tok != .name || !is_imported_named_variant_owner_name(p.lit) {
+		return false
+	}
+	mut next := p.peek()
+	mut lookahead := p.s
+	if next == .lsbr {
+		if !scan_past_closing(mut lookahead, .lsbr, .rsbr) {
+			return false
+		}
+		next = lookahead.scan()
+	}
+	if next != .dot {
+		return false
+	}
+	return lookahead.scan() == .name && is_plain_capitalized_ident(lookahead.lit)
 }
 
 // named_variant_value lowers a payload-less variant reference `Expr.Void` to
@@ -335,7 +371,7 @@ fn (mut p Parser) named_variant_init(sum string, variant string, payload flat.No
 
 // named_variant_pattern_type maps a variant written in a type position, as in
 // `e is Expr.Count` or a `match` branch, to its hidden struct name.
-fn (p &Parser) named_variant_pattern_type(type_name string) ?string {
+fn (mut p Parser) named_variant_pattern_type(type_name string) ?string {
 	if p.prefs.is_fmt || p.is_translated || !type_name.contains('.') {
 		return none
 	}
@@ -360,7 +396,7 @@ fn (p &Parser) named_variant_pattern_type(type_name string) ?string {
 	parts := base.split('.')
 	if (parts.len == 1 && p.is_named_variant_owner_name(parts[0]))
 		|| (parts.len == 2 && parts[0] in p.imported_module_names
-			&& !p.is_local_binding(parts[0]) && p.is_named_variant_owner_name(parts[1])) {
+			&& !p.is_local_binding(parts[0]) && is_imported_named_variant_owner_name(parts[1])) {
 		return flat.named_variant_type_name(base, type_name[dot + 1..]) + args
 	}
 	return none
