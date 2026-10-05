@@ -113,14 +113,20 @@ fn test_a_multi_line_doc_comment_is_joined() {
 	assert find_decl(decls, 'go').doc == 'first line\nsecond line'
 }
 
-fn test_exported_markers_are_not_reported_as_fields() {
-	// The flat AST turns a field's access modifier into a `.field_decl` of its
-	// own; `visibility_markers` keeps it out of the field list.
+fn test_inline_public_fields_keep_their_names_and_types() {
 	source := 'module m\n\nstruct S {\n\tpub count int\n\tplain int\n}\n'
 	decls := astquery.declarations(astquery.parse(write_sample('pubfield.v', source)!))
 	fields := decls.filter(it.kind == .field)
-	assert fields.len == 1
-	assert fields[0].name == 'plain'
+	assert fields.map(it.name) == ['count', 'plain']
+	assert fields.map(it.type_name) == ['int', 'int']
+}
+
+fn test_field_names_matching_visibility_words_are_reported() {
+	source := 'module m\n\nstruct S {\n\tpub []int\n\tafter_pub string\n\tpriv map[string]int\n\tafter_priv bool\n}\n'
+	decls := astquery.declarations(astquery.parse(write_sample('visibility_names.v', source)!))
+	fields := decls.filter(it.kind == .field)
+	assert fields.map(it.name) == ['pub', 'after_pub', 'priv', 'after_priv']
+	assert fields.map(it.type_name) == ['[]int', 'string', 'map[string]int', 'bool']
 }
 
 fn test_references_finds_the_declaration_and_every_use() {
