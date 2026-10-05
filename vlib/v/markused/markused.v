@@ -762,13 +762,33 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		mu_sw.restart()
 	}
 	has_entry_main := markused_has_entry_main_indexed(a, tc)
+	needs_closure_runtime := if reachable_runtime_helpers {
+		a.nodes.any(it.kind == .import_decl && it.value == 'builtin.closure'
+			&& it.typ != '__v3_builtin_closure_runtime')
+	} else if use_prepared && prepared.needs_closure_runtime {
+		true
+	} else {
+		markused_program_needs_closure_runtime(a, tc)
+	}
 	mut reachable_helper_scan := RuntimeHelpersScan{}
 	mut runtime_helper_seen := []bool{}
 	mut runtime_helper_stack := []flat.NodeId{cap: 128}
 	mut runtime_helper_nodes := []int{cap: 128}
 	if reachable_runtime_helpers {
 		reachable_helper_scan.select_map_runtime = true
+		reachable_helper_scan.select_closure_runtime = true
 		reachable_helper_scan.auto_str_skipped_fields = markused_auto_str_skipped_fields(a)
+		if !needs_closure_runtime {
+			reachable_helper_scan.deferred_closure_mask = []bool{len: a.nodes.len}
+			for idx in tc.top_level_idx {
+				node := a.nodes[idx]
+				if markused_is_builtin_closure_global(a, tc, node) {
+					runtime_helper_subtree(a, flat.NodeId(idx), mut reachable_helper_scan.deferred_closure_mask,
+						mut runtime_helper_stack, mut runtime_helper_nodes)
+					reachable_helper_scan.deferred_closure_nodes << runtime_helper_nodes
+				}
+			}
+		}
 		mut body_nodes := []bool{len: a.nodes.len}
 		for id in body_ids {
 			runtime_helper_subtree(a, flat.NodeId(id), mut body_nodes, mut runtime_helper_stack, mut runtime_helper_nodes)
@@ -777,11 +797,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		runtime_helper_seen = []bool{len: a.nodes.len}
 	} else if !rt_scan_parallel && !trivial_literal_output {
 		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
-	}
-	needs_closure_runtime := if use_prepared && prepared.needs_closure_runtime {
-		true
-	} else {
-		markused_program_needs_closure_runtime(a, tc)
 	}
 	if !trivial_literal_output && needs_closure_runtime {
 		enqueue('closure.closure_init', mut used, mut queue)
@@ -855,6 +870,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 		name := queue[qi]
 		qi++
+		if reachable_runtime_helpers && name in ['closure.closure_init', 'closure__closure_init']
+			&& !reachable_helper_scan.closure_globals_scanned {
+			reachable_helper_scan.closure_globals_scanned = true
+			if reachable_helper_scan.deferred_closure_nodes.len > 0 {
+				reachable_helper_scan.enqueue_nodes(a, tc, reachable_helper_scan.deferred_closure_nodes,
+					[]bool{}, 'closure', map[string]string{}, mut used, mut queue)
+			}
+		}
 		if reachable_runtime_helpers && !reachable_helper_scan.map_runtime_enqueued
 			&& (name == 'new_map' || markused_is_map_runtime_seed(name)) {
 			reachable_helper_scan.enqueue_map_runtime(mut used, mut queue)
@@ -2539,6 +2562,12 @@ mut:
 	select_map_runtime              bool
 	needs_map_runtime               bool
 	map_runtime_enqueued            bool
+	select_closure_runtime          bool
+	closure_globals_scanned         bool
+	closure_runtime_enqueued        bool
+	deferred_closure_mask           []bool
+	deferred_closure_nodes          []int
+	direct_call_callees             map[int]bool
 
 	channel_stringify_cache map[string]int
 	ierror_equality_cache   map[string]int
@@ -2577,6 +2606,18 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 	mut imports := initial_imports.clone()
 	if !scan.initialized {
 		scan.initialized = true
+		if scan.select_closure_runtime {
+			for call in a.nodes {
+				if call.kind == .call && call.children_count > 0 {
+					callee := a.child(&call, 0)
+					scan.direct_call_callees[int(callee)] = true
+					callee_node := a.node(callee)
+					if callee_node.kind == .index && callee_node.children_count > 0 {
+						scan.direct_call_callees[int(a.child(callee_node, 0))] = true
+					}
+				}
+			}
+		}
 		for _, shared_params in tc.fn_shared_params {
 			if shared_params.any(it) {
 				scan.needs_shared_runtime = true
@@ -2588,12 +2629,38 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 	for scan_idx in 0 .. node_count {
 		node_idx := if node_ids.len > 0 { node_ids[scan_idx] } else { scan_idx }
 		node := a.nodes[node_idx]
+		if node_ids.len == 0 && scan.deferred_closure_mask.len > 0
+			&& scan.deferred_closure_mask[node_idx] {
+			continue
+		}
 		// Signatures and generated type helpers are emitted independently of a
 		// function body. Keep those declarations even when its expressions are skipped.
 		if body_nodes.len > 0 && body_nodes[node_idx]
 			&& node.kind !in [.fn_decl, .c_fn_decl, .param, .field_decl, .field_init, .const_field,
 				.struct_decl, .interface_decl, .type_decl, .enum_decl] {
 			continue
+		}
+		if scan.select_closure_runtime && !scan.closure_runtime_enqueued {
+			mut needs_closure := node.kind in [.fn_literal, .lambda_expr]
+			if node.kind == .selector && node.children_count > 0
+				&& !scan.direct_call_callees[node_idx] {
+				base := a.child_node(&node, 0)
+				if !(base.kind == .ident && (base.value in ['C', 'JS'] || base.value in imports)) {
+					needs_closure = tc.expr_is_method_value(flat.NodeId(node_idx))
+						|| base.kind in [.string_literal, .int_literal, .float_literal, .char_literal]
+					if !needs_closure {
+						// Generic receivers acquire their concrete method after markused.
+						needs_closure = tc.resolve_type(a.child(&node, 0)) is types.Unknown
+					}
+				}
+			}
+			if needs_closure {
+				scan.closure_runtime_enqueued = true
+				for helper in ['closure.closure_init', 'closure.closure_create_with_data',
+					'closure.closure_try_destroy'] {
+					enqueue(helper, mut used, mut queue)
+				}
+			}
 		}
 		if scan.select_map_runtime && !scan.map_runtime_enqueued && !scan.needs_map_runtime
 			&& node.kind == .global_decl {
@@ -2961,6 +3028,15 @@ fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker
 		}
 	}
 	return false
+}
+
+fn markused_is_builtin_closure_global(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node) bool {
+	if node.kind != .global_decl {
+		return false
+	}
+	file := a.source_files[node.pos.id] or { return false }
+	return tc.file_modules[file.name] == 'closure'
+		&& os.dir(file.name).replace('\\', '/').ends_with('vlib/builtin/closure')
 }
 
 fn enqueue_ierror_equality_dispatch_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {

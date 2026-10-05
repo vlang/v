@@ -2196,10 +2196,10 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 }
 
 fn (mut t Transformer) interface_box_call_param_maybe(param types.Type) bool {
-	// Numeric, boolean and string parameters cannot box an interface. They are
-	// common enough that building a per-module cache key costs more than this test.
-	if param is types.Primitive || param is types.String {
-		return false
+	// Only structs and aliases need module-dependent field lookup. Other types
+	// can use the recursive predicate without constructing a cache key.
+	if param !is types.Struct && param !is types.Alias {
+		return interface_box_expected_type(param)
 	}
 	key := '${t.cur_module}:${t.tc.type_name(param)}'
 	if !isnil(t.interface_box_param_cache) {

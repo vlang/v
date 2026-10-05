@@ -383,3 +383,88 @@ fn main() { println(42) }
 		assert used['map.free'], declaration
 	}
 }
+
+fn test_synthetic_closure_import_does_not_root_unused_runtime() {
+	mut a, tc := checked_runtime_helper_source('module main
+fn main() { values := [1, 2, 3]; assert values[0] == 1 }
+')
+	a.nodes << flat.Node{
+		kind:  .import_decl
+		value: 'builtin.closure'
+		typ:   '__v3_builtin_closure_runtime'
+	}
+	used := mark_used(a, tc)
+	assert !used['closure.closure_init']
+	full, _ := mark_used_with_generic_usage_full_runtime(a, tc)
+	assert full['closure.closure_init']
+	a.nodes[a.nodes.len - 1].typ = 'closure'
+	explicit := mark_used(a, tc)
+	assert explicit['closure.closure_init']
+}
+
+fn test_closure_runtime_follows_reached_captures_and_method_values() {
+	for source in [
+		'offset := 3; cb := fn [offset]() int { return offset }; assert cb() == 3',
+		'item := Item{ number: 3 }; cb := item.value; assert cb() == 3',
+		'item := Item{ number: 3 }; assert (item.value)() == 3',
+		'offset := 3; cb := || offset + 1; assert cb() == 4',
+	] {
+		for reached in [false, true] {
+			call := if reached { 'extra()' } else { '' }
+			a, tc := checked_runtime_helper_source('module main
+struct Item { number int }
+fn (i Item) value() int { return i.number }
+fn extra() { ${source} }
+fn main() { values := [1, 2, 3]; assert values[0] == 1; ${call} }
+')
+			used := mark_used(a, tc)
+			for helper in ['closure.closure_init', 'closure.closure_create_with_data',
+				'closure.closure_try_destroy'] {
+				assert used[helper] == reached, '${helper}: ${source}'
+			}
+		}
+	}
+}
+
+fn test_builtin_closure_globals_wait_for_reached_runtime() {
+	root := os.join_path(os.temp_dir(), 'v_reachable_closure_globals_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'vlib', 'builtin', 'closure')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	for reached in [false, true] {
+		path := os.join_path(root, 'vlib', 'builtin', 'closure', 'closure.c.v')
+		main_path := os.join_path(root, 'main.v')
+		os.write_file(path, 'module closure
+struct Closure { live map[string]int }
+__global g_closure = Closure{}
+pub fn closure_init() {}
+') or { panic(err) }
+		call := if reached { 'closure.closure_init()' } else { '' }
+		os.write_file(main_path, 'module main
+import builtin.closure as closure
+fn main() { values := [1, 2, 3]; assert values[0] == 1; ${call} }
+') or { panic(err) }
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_files([path, main_path])
+		for mut node in a.nodes {
+			if node.kind == .import_decl && node.value == 'builtin.closure' {
+				node.typ = '__v3_builtin_closure_runtime'
+			}
+		}
+		mut tc := types.TypeChecker.new(a)
+		tc.enable_globals = true
+		tc.collect(a)
+		tc.diagnostic_files[path] = true
+		tc.diagnostic_files[main_path] = true
+		// The synthetic import's private alias never replaces the runtime's
+		// fully qualified declaration names.
+		tc.check_semantics()
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		assert tc.errors.len == 0, tc.errors.str()
+		used := mark_used(a, &tc)
+		assert used['closure.closure_init'] == reached
+		assert used['new_map'] == reached
+		assert used['map.set'] == reached
+	}
+}

@@ -82,3 +82,36 @@ fn test_interface_box_scan_preserves_interface_alias_after_primitive_arguments()
 	assert !t.interface_boxed_types['Reader\nint']
 	assert !t.interface_boxed_types['Reader\nstring']
 }
+
+fn test_interface_box_param_predicate_preserves_container_and_callback_types() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['Reader'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	reader := types.Type(types.Interface{ name: 'Reader' })
+	integer := types.Type(types.int_)
+	for elem in [integer, reader] {
+		expected := elem is types.Interface
+		params := [elem, types.Type(types.Pointer{ base_type: elem }), types.Type(types.Array{
+			elem_type: elem
+		}), types.Type(types.ArrayFixed{ elem_type: elem, len: 2 }), types.Type(types.Map{
+			key_type:   types.Type(types.String{})
+			value_type: elem
+		}), types.Type(types.OptionType{ base_type: elem }), types.Type(types.ResultType{
+			base_type: elem
+		}), types.Type(types.MultiReturn{ types: [integer, elem] })]
+		for module_name in ['main', 'dependency'] {
+			t.cur_module = module_name
+			for param in params {
+				assert t.interface_box_call_param_maybe_uncached(param) == expected
+				assert t.interface_box_call_param_maybe(param) == expected
+				assert t.interface_box_call_param_maybe(param) == expected
+			}
+			// Callback signatures do not box their parameter or return types at the
+			// call site; the callback's own body handles them.
+			callback := types.Type(types.FnType{ params: [elem], return_type: elem })
+			assert !t.interface_box_call_param_maybe_uncached(callback)
+			assert !t.interface_box_call_param_maybe(callback)
+		}
+	}
+}
