@@ -1126,13 +1126,18 @@ If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
 Integer literals can be assigned to `f32` and `f64` variables without a cast.
-Unary `+`, unary `-`, and parentheses around a literal preserve this behavior:
+Unary `+`, unary `-`, parentheses, and arithmetic on integer literals and on the
+constants declared with them preserve this behavior:
 
 ```v
+const tile_size = 32
+
 mut a := f32(0)
 a = 1
 a = -1
 assert a == f32(-1)
+a = 6 * tile_size
+assert a == f32(192)
 ```
 
 This does not make typed integer variables implicitly assignable to `f32`;

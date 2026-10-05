@@ -743,7 +743,8 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 		return true
 	}
 	if op == .assign && clean_expected.is_float()
-		&& tc.assignment_integer_constant_operand(rhs_id) != none {
+		&& (tc.assignment_integer_constant_operand(rhs_id) != none
+			|| tc.is_untyped_integer_constant_expr(rhs_id)) {
 		if _ := tc.implicit_integer_constant_value(rhs_id, rhs_type) {
 			return true
 		}
@@ -781,6 +782,32 @@ fn (tc &TypeChecker) assignment_integer_constant_operand(id flat.NodeId) ?flat.N
 		current = tc.a.child(node, 0)
 	}
 	return none
+}
+
+// Arithmetic on integer literals and on the constants declared by them is still
+// untyped, like the literal it folds to: `x = 6 * tile_size` assigns to a float.
+// Casts, typed constants and variables give the expression a type of its own.
+fn (tc &TypeChecker) is_untyped_integer_constant_expr(id flat.NodeId) bool {
+	known, has_float := tc.untyped_numeric_literal_expr_info(id, 0)
+	return known && !has_float && !tc.expr_names_visible_local(id)
+}
+
+// expr_names_visible_local reports whether an identifier in `id` is a local or a
+// parameter, which hides a constant of the same name.
+fn (tc &TypeChecker) expr_names_visible_local(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return tc.visible_local_scope_owns_name(node.value)
+	}
+	for i in 0 .. node.children_count {
+		if tc.expr_names_visible_local(tc.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Signs and parentheses preserve literal assignment compatibility.
