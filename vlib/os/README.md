@@ -14,6 +14,14 @@ It returns an empty string when the standard input handle is invalid.
 
 ### Path helpers
 
+`os.join_path()` and `os.join_path_single()` ignore empty elements and collapse
+repeated separators between elements. For example, joining `a` with `/b` gives
+`a/b` on POSIX or `a\b` on Windows. An absolute first nonempty element keeps its
+root: joining `''` with `/b` gives `/b` on POSIX or `\b` on Windows. Windows UNC
+and device prefixes keep their initial double separator. A relative first element
+such as `./b` still gives `b` when the base is empty. A component containing only
+the current directory, such as `./` or `././`, remains `.` instead of an empty path.
+
 `os.dir()` returns everything before the last separator, matching the classic
 `dirname` behaviour. It is not a "go up one level" primitive: on Windows it
 answers `.` for `C:` and the bare volume `C:` for `C:\dir`, and both of those
