@@ -377,6 +377,7 @@ It prints the value passed to it to standard output.
 
 `fn main()` declaration can be skipped in single file programs.
 This is useful when writing small programs, "scripts", or just learning the language.
+Imports and script statements can share a line when separated by semicolons.
 For brevity, `fn main()` will be skipped in this tutorial.
 
 This means that a "hello world" program in V is as simple as

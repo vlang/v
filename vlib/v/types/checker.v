@@ -12071,7 +12071,39 @@ fn (tc &TypeChecker) node_is_on_import_line(id flat.NodeId) bool {
 	} else {
 		0
 	}
-	return source[line_start..pos.offset].trim_left(' \t').starts_with('import ')
+	if !source[line_start..pos.offset].trim_left(' \t').starts_with('import ') {
+		return false
+	}
+	// Tokenize from the file start so comments opened on an earlier line stay
+	// comments. Real separators end imports; quoted and commented semicolons do not.
+	prefix := source[..pos.offset]
+	mut files := token.FileSet.new()
+	mut prefix_file := files.add_file('<script import prefix>', prefix.len)
+	prefix_file.index_lines(prefix)
+	mut lexer := scanner.new_scanner(pref.new_preferences(), .skip_interpolation)
+	lexer.init(prefix_file, prefix)
+	mut at_statement_start := true
+	mut is_import := false
+	for {
+		tok := lexer.scan()
+		if tok == .eof {
+			break
+		}
+		if tok == .semicolon {
+			// The scanner also inserts a semicolon at EOF; the incomplete prefix
+			// must keep the import state rather than treating that as a separator.
+			if lexer.pos < prefix.len && prefix[lexer.pos] in [`;`, `\n`, `\r`] {
+				at_statement_start = true
+				is_import = false
+			}
+			continue
+		}
+		if at_statement_start {
+			is_import = tok == .key_import
+			at_statement_start = false
+		}
+	}
+	return is_import
 }
 
 fn is_top_level_statement_kind(kind flat.NodeKind) bool {
