@@ -4265,7 +4265,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			spread_id := if spread.kind == .prefix && spread.value == '...'
 				&& spread.children_count > 0 {
 				tc.a.child(spread, 0)
-			} else if tc.node_has_ellipsis_prefix(raw_spread_id) {
+			} else if node.kind == .assoc && i == 0 {
+				// `Type{...base, f: v}`: the parser stores `base` bare as the first child.
 				raw_spread_id
 			} else {
 				continue
@@ -4796,20 +4797,6 @@ fn struct_init_field_is_mut(fields []StructField, field flat.Node, index int) bo
 		return false
 	}
 	return index >= 0 && index < fields.len && fields[index].is_mut
-}
-
-fn (tc &TypeChecker) node_has_ellipsis_prefix(id flat.NodeId) bool {
-	if !tc.valid_node_id(id) {
-		return false
-	}
-	node := tc.a.node(id)
-	file := tc.a.source_files[node.pos.id] or { return false }
-	source := tc.source_texts_by_file[file.name] or { return false }
-	mut cursor := int_min(int_max(node.pos.offset, 0), source.len)
-	for cursor > 0 && source[cursor - 1] in [` `, `\t`, `\n`, `\r`] {
-		cursor--
-	}
-	return cursor >= 3 && source[cursor - 3..cursor] == '...'
 }
 
 fn (tc &TypeChecker) struct_init_has_positional_fields(node flat.Node) bool {
