@@ -3182,19 +3182,43 @@ fn (mut t Transformer) validate_specialized_fn_value_mut_args(node flat.Node) {
 		|| node.children_count < 2 {
 		return
 	}
-	callee_id := t.unwrap_parens(t.a.child(&node, 0))
+	callee_expr_id := t.a.child(&node, 0)
+	callee_id := t.unwrap_parens(callee_expr_id)
 	callee := t.a.node(callee_id)
-	if callee.kind != .ident || t.raw_var_type(callee.value).len == 0 {
-		return
+	if callee.kind == .ident {
+		// A parenthesized direct symbol is an explicit function-value call. Ordinary
+		// method lowering can insert its receiver without a source `mut` argument.
+		if t.raw_var_type(callee.value).len == 0 && callee_expr_id == callee_id {
+			return
+		}
+	} else if callee.kind == .index {
+		if !t.index_callee_is_value_index(callee) {
+			return
+		}
+	} else if callee.kind == .selector {
+		field_type := t.raw_selector_field_type(callee_id) or { return }
+		if _ := transform_fn_type(t.tc.parse_type(field_type)) {
+		} else {
+			return
+		}
 	}
-	fn_type := t.call_callee_fn_type(callee_id) or { return }
+	fn_type := t.call_callee_fn_type(callee_id) or {
+		// Carrier expressions cloned during specialization can outlive the
+		// checker scope; recover their signature from the transformer's view.
+		transform_fn_type(t.tc.parse_type(t.node_type(callee_id))) or { return }
+	}
 	for index, is_mut in fn_type.params_mut {
 		if !is_mut || index + 1 >= node.children_count {
 			continue
 		}
 		arg := t.a.child_node(&node, index + 1)
 		if !arg.is_mut {
-			t.record_monomorph_error('function `${callee.value}` parameter ${index + 1} is `mut`, so use a `mut` argument instead')
+			target := if callee.kind == .ident {
+				'function `${callee.value}`'
+			} else {
+				'function value'
+			}
+			t.record_monomorph_error('${target} parameter ${index + 1} is `mut`, so use a `mut` argument instead')
 		}
 	}
 }
