@@ -45,20 +45,27 @@ fn compare_prerelease(pre1 string, pre2 string) int {
 		if ids1[i] == ids2[i] {
 			continue
 		}
-		return if compare_prerelease_identifier(ids1[i], ids2[i]) < 0 { -1 } else { 1 }
+		c := compare_prerelease_identifier(ids1[i], ids2[i])
+		if c != 0 {
+			return c
+		}
 	}
 	return if ids2.len > ids1.len { -1 } else { 0 }
 }
 
 // compare_prerelease_identifier orders one field of a prerelease tag. Numeric
 // fields compare as numbers rather than as text, so `alpha.10` outranks
-// `alpha.9`.
+// `alpha.9`. They are compared by their digits rather than converted, since a
+// field such as a timestamp does not fit in an `int`.
 fn compare_prerelease_identifier(id1 string, id2 string) int {
 	numeric1 := is_valid_number(id1)
 	numeric2 := is_valid_number(id2)
 	if numeric1 && numeric2 {
-		num1 := id1.int()
-		num2 := id2.int()
+		num1 := id1.trim_left('0')
+		num2 := id2.trim_left('0')
+		if num1.len != num2.len {
+			return if num1.len < num2.len { -1 } else { 1 }
+		}
 		return if num1 < num2 {
 			-1
 		} else if num1 > num2 {

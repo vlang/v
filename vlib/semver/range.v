@@ -269,10 +269,12 @@ fn expand_comparator_set(input string) ?ComparatorSet {
 
 fn expand_tilda(raw_version string) ?ComparatorSet {
 	min_ver := coerce_version(raw_version) or { return none }
+	// The ceiling carries no prerelease, so `~1.2.3-beta.2` stops below every
+	// 1.3.0, and does not reach up to `1.3.0-alpha`.
 	max_ver := if min_ver.minor == 0 && min_ver.patch == 0 {
-		min_ver.increment(.major)
+		Version{min_ver.major + 1, 0, 0, '', ''}
 	} else {
-		min_ver.increment(.minor)
+		Version{min_ver.major, min_ver.minor + 1, 0, '', ''}
 	}
 	return make_comparator_set_ge_lt(min_ver, max_ver)
 }
