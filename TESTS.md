@@ -87,6 +87,12 @@ The C backend has focused unit and integration tests beside its implementation.
 Many tests compile a small V source to C and assert on the generated declarations,
 expressions, ABI, linker inputs, or runtime behavior.
 
+## `v test cmd/v/`
+
+The compiler process regressions workflow runs every launcher test in `cmd/v/` on Linux,
+macOS, and Windows with the default compiler. This covers argument routing, fallback
+messages, executable discovery, and tool-cache behavior, including platform-specific code.
+
 ## Line coverage
 
 Collect coverage with `v -coverage coverage_dir path/to/file_test.v`, then inspect it with
