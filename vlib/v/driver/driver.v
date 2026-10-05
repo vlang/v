@@ -11635,7 +11635,8 @@ pub fn run(args []string) {
 				library_files := v3_library_source_files(a, &pre_tc, prefs.vroot)
 				if library_files.len > 0 {
 					hint_sw := time.new_stopwatch()
-					reachable := pre_tc.skip_unreachable_library_bodies(library_files, os.getenv('V_CHECK_LIBRARY_BODIES') != 'late')
+					reachable := pre_tc.skip_unreachable_library_bodies(library_files, markused.seeded_fn_names(),
+						os.getenv('V_CHECK_LIBRARY_BODIES') != 'late')
 					if verbose {
 						eprintln('  [ttime]   ck reachable     ${f64(hint_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (${reachable})')
 					}

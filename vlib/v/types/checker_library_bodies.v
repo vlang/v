@@ -20,12 +20,13 @@ import v.flat
 
 // skip_unreachable_library_bodies leaves the bodies of the functions in
 // `library_files` that the program cannot name unchecked, and returns how many
-// library functions it can. Without `follow_names` it leaves out every body that
-// is not checked whatever the program names, which leaves them all to
+// library functions it can. `seeded_fns` are the functions that markused keeps
+// without a call that leads to them. Without `follow_names` it leaves out every
+// body that is not checked whatever the program names, which leaves them all to
 // check_reached_library_bodies: a test of that path.
-pub fn (mut tc TypeChecker) skip_unreachable_library_bodies(library_files map[string]bool, follow_names bool) int {
+pub fn (mut tc TypeChecker) skip_unreachable_library_bodies(library_files map[string]bool, seeded_fns []string, follow_names bool) int {
 	tc.library_files = library_files.clone()
-	tc.reachable_library_fns = tc.library_fns_reachable_by_name(follow_names)
+	tc.reachable_library_fns = tc.library_fns_reachable_by_name(seeded_fns, follow_names)
 	tc.skips_library_bodies = library_files.len > 0
 	return tc.reachable_library_fns.len
 }
@@ -51,9 +52,16 @@ struct LibraryFnBody {
 // rest of the program can reach, judged by name alone: a body reaches every
 // function whose name, without its module or receiver, it mentions anywhere. That
 // needs no types, so it can run before the check, and it errs on the side of more
-// functions: `x.len` reaches every method named `len`.
-fn (mut tc TypeChecker) library_fns_reachable_by_name(follow_names bool) map[string]bool {
+// functions: `x.len` reaches every method named `len`. The functions of
+// `seeded_fns` are reached without a name that leads to them.
+fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follow_names bool) map[string]bool {
 	mut reachable := map[string]bool{}
+	mut seeded_names := map[string]bool{}
+	if follow_names {
+		for name in seeded_fns {
+			seeded_names[name.all_after_last('.')] = true
+		}
+	}
 	mut bodies := []LibraryFnBody{cap: 4096}
 	mut by_name := map[string][]int{}
 	mut reached := []bool{cap: 4096}
@@ -86,7 +94,7 @@ fn (mut tc TypeChecker) library_fns_reachable_by_name(follow_names bool) map[str
 			.fn_decl {
 				short_name := node.value.all_after_last('.')
 				is_root := !is_library || tc.cur_module in library_runtime_modules
-					|| short_name in library_fn_implicit_names
+					|| short_name in library_fn_implicit_names || seeded_names[short_name]
 					|| !library_fn_name_is_identifier(short_name)
 					|| tc.infer_decl_generic_param_names(node).len > 0
 					|| tc.library_fn_is_marked_root(i)

@@ -105,6 +105,31 @@ fn test_build_checks_library_bodies_that_markused_reaches_later() {
 	assert run.output == 'b.v\n', run.output
 }
 
+fn test_build_checks_the_functions_that_markused_keeps_with_the_others() {
+	root := library_bodies_test_root('seeded')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	// markused keeps the callback that the parser hands to its workers, and no name
+	// in this program leads to it.
+	os.write_file(source, 'import v.parser
+
+fn main() {
+	println(sizeof(parser.Parser) > 0)
+}
+')!
+	output := os.join_path(root, 'main')
+	build := build_program(source, output, '')
+	assert build.exit_code == 0, build.output
+	assert library_bodies_left_unchecked(build.output) > 100, build.output
+	// A body that is checked late costs another run of markused.
+	assert library_bodies_checked_late(build.output) == 0, build.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'true\n', run.output
+}
+
 fn test_build_checks_unused_functions_of_the_program() {
 	root := library_bodies_test_root('program')
 	defer {
