@@ -1314,7 +1314,8 @@ pub fn (mut s Server) serve_http(addr string) ! {
 // http_handler returns an `http.Handler` that serves MCP requests, so the
 // endpoint can be mounted on an existing `http.Server` that owns the port.
 // The request URL must match `ServerConfig.http_path`, the same as it must
-// when `serve_http` owns the listener.
+// when `serve_http` owns the listener. `close()` only stops a listener started
+// by `serve_http`, so it has no effect on a mounted handler.
 pub fn (mut s Server) http_handler() http.Handler {
 	return HttpHandler{
 		server: s

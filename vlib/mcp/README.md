@@ -101,11 +101,11 @@ instead of starting a second listener:
   e.g. another `http.Server`.
 
 Both apply the same routing rule as `serve_http`: the request URL must match
-`ServerConfig.http_path` (default `/mcp`). The host server owns the HTTP
-listener lifecycle; call `server.close()` only to shut down the MCP server
-itself.
+`ServerConfig.http_path` (default `/mcp`). The host server owns the listener
+and its shutdown. `server.close()` only stops a listener started by
+`serve_http`, so it has no effect on a mounted server.
 
-```v oksyntax
+```v
 import mcp
 import net.http
 
@@ -133,6 +133,42 @@ fn main() {
 		handler: app
 	}
 	host.listen_and_serve()
+}
+```
+
+A `veb` route can call `handle_http_request` and copy the response:
+
+```v
+import mcp
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {
+mut:
+	mcp &mcp.Server = unsafe { nil }
+}
+
+@['/mcp'; delete; get; post]
+pub fn (mut app App) mcp_endpoint(mut ctx Context) veb.Result {
+	resp := app.mcp.handle_http_request(ctx.req)
+	ctx.res.set_status(resp.status())
+	for key in resp.header.keys() {
+		for value in resp.header.custom_values(key) {
+			ctx.res.header.add_custom(key, value) or {}
+		}
+	}
+	return ctx.send_response_to_client(resp.header.get(.content_type) or { '' }, resp.body)
+}
+
+fn main() {
+	mut server := mcp.new_server(name: 'veb-mounted', version: '1.0.0')
+	mut app := &App{
+		mcp: &server
+	}
+	veb.run[App, Context](mut app, 8080)
 }
 ```
 
