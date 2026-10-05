@@ -1984,7 +1984,6 @@ fn test_http_handler_mounts_on_existing_server() {
 	}
 	host_thread := spawn host.listen_and_serve()
 	host.wait_till_running(max_retries: 200, retry_period_ms: 10)!
-	time.sleep(20 * time.millisecond)
 	url := 'http://${host.addr}/mcp'
 
 	session_id, mut header := http_initialize(url)!

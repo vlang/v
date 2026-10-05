@@ -101,8 +101,9 @@ instead of starting a second listener:
   e.g. another `http.Server`.
 
 Both apply the same routing rule as `serve_http`: the request URL must match
-`ServerConfig.http_path` (default `/mcp`). The host server owns shutdown, so
-`server.close()` is not needed for it.
+`ServerConfig.http_path` (default `/mcp`). The host server owns the HTTP
+listener lifecycle; call `server.close()` only to shut down the MCP server
+itself.
 
 ```v oksyntax
 import mcp
