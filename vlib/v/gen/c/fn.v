@@ -15902,6 +15902,15 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	arg_type := g.usable_expr_type(arg_id)
 	child_id := g.a.child(&arg_node, 0)
 	child_type := g.usable_expr_type(child_id)
+	child := g.a.node(child_id)
+	if child.kind == .ident && g.current_param_is_mut(child.value)
+		&& g.tc.c_type(child_type) == g.tc.c_type(expected_base) {
+		// `&value` of an implicit `mut value T` parameter is a pointer value,
+		// just as for a local T. Give the callee a temporary pointer slot.
+		ct := g.tc.c_type(expected_base)
+		g.write('&((${ct}[]){${g.local_decl_cname(child.value)}})[0]')
+		return true
+	}
 	if child_type is types.Pointer && g.tc.c_type(child_type) == g.tc.c_type(expected_base) {
 		return false
 	}
