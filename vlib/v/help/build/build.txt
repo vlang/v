@@ -69,8 +69,11 @@ NB: the build flags are shared with the run command too:
     Specifies the backend that will be used for building the executable.
     Current list of supported backends:
     * `c` (default)       - V outputs C source code, which is then passed to a C compiler.
-    * `fastc`             - V parses supported source directly to C without an AST; available only
-                            on macOS and Linux hosts in V builds that embed V3.
+    * `fastc`             - V parses supported source directly to C without an AST and compiles
+                            it with the bundled TinyCC; available on macOS, Linux, and Windows
+                            hosts. V executables built from `cmd/v` (`make`, `makev.bat`,
+                            `v self`, `v up`) include it unless they are built with
+                            `-d skip_fastc`.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
     * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
     * `js_browser`        - V outputs JS source code ready for the browser.
