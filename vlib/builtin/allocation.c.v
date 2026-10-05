@@ -74,7 +74,7 @@ pub fn malloc(n isize) &u8 {
 	$if builtin_arena ? {
 		// A scoped arena of the current thread (see arena_d_builtin_arena.c.v)
 		// serves first.
-		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
+		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			res = g_arena_alloc_hook(n, 0)
 			if res != 0 {
 				return res
@@ -130,7 +130,7 @@ pub fn malloc_noscan(n isize) &u8 {
 	}
 	mut res := &u8(unsafe { nil })
 	$if builtin_arena ? {
-		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
+		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			res = g_arena_alloc_hook(n, 0)
 			if res != 0 {
 				return res
@@ -230,7 +230,7 @@ pub fn malloc_uncollectable(n isize) &u8 {
 	mut res := &u8(unsafe { nil })
 	$if builtin_arena ? {
 		// Arena chunks are uncollectable with the Boehm GC too.
-		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
+		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			res = g_arena_alloc_hook(n, 0)
 			if res != 0 {
 				return res
@@ -284,7 +284,7 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 	mut new_ptr := &u8(unsafe { nil })
 	$if builtin_arena ? {
 		// Arena memory never reaches the C allocator; see arena_realloc.
-		if _unlikely_(g_arena_realloc_hook != unsafe { nil }) {
+		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			new_ptr = g_arena_realloc_hook(b, -1, n)
 			if new_ptr != 0 {
 				return new_ptr
@@ -343,7 +343,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	}
 	$if builtin_arena ? {
 		// Arena memory never reaches the C allocator; see arena_realloc.
-		if _unlikely_(g_arena_realloc_hook != unsafe { nil }) {
+		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			arena_ptr := g_arena_realloc_hook(old_data, old_size, new_size)
 			if arena_ptr != 0 {
 				return arena_ptr
@@ -409,7 +409,7 @@ pub fn vcalloc(n isize) &u8 {
 		return &u8(unsafe { nil })
 	}
 	$if builtin_arena ? {
-		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
+		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			arena_ptr := g_arena_alloc_hook(n, 0)
 			if arena_ptr != 0 {
 				// Reset arenas reuse their memory, so it is not zeroed.
@@ -464,7 +464,7 @@ pub fn vcalloc_noscan(n isize) &u8 {
 			_memory_panic(@FN, n)
 		}
 		$if builtin_arena ? {
-			if _unlikely_(g_arena_alloc_hook != unsafe { nil }) && n > 0 {
+			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) && n > 0 {
 				arena_ptr := g_arena_alloc_hook(n, 0)
 				if arena_ptr != 0 {
 					unsafe { C.memset(arena_ptr, 0, n) }
@@ -535,7 +535,7 @@ pub fn free(ptr voidptr) {
 		$if gcboehm_leak ? {
 			$if builtin_arena ? {
 				// Arena memory is released in bulk by its arena.
-				if _unlikely_(g_arena_owns_hook != unsafe { nil }) && g_arena_owns_hook(ptr) {
+				if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) && g_arena_owns_hook(ptr) {
 					return
 				}
 			}
@@ -544,7 +544,7 @@ pub fn free(ptr voidptr) {
 	} $else {
 		$if builtin_arena ? {
 			// Arena memory is released in bulk by its arena.
-			if _unlikely_(g_arena_owns_hook != unsafe { nil }) && g_arena_owns_hook(ptr) {
+			if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) && g_arena_owns_hook(ptr) {
 				return
 			}
 		}
@@ -641,7 +641,7 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 		_memory_panic(@FN, n)
 	}
 	$if builtin_arena ? {
-		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
+		if _unlikely_(C.atomic_load_u32(&g_arena_hooks_ready) != 0) {
 			arena_ptr := g_arena_alloc_hook(n, align)
 			if arena_ptr != 0 {
 				return C.memcpy(arena_ptr, src, sz)

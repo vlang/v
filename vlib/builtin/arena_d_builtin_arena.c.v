@@ -17,7 +17,7 @@ module builtin
 // Only programs that use the `arena` module contain this file and the hooks
 // in the allocation entry points: the compiler defines `builtin_arena` for
 // them. Until such a program creates its first arena, each entry point only
-// checks one global (see g_arena_alloc_hook). -prealloc and -gc vgc builds
+// checks one atomic global (see g_arena_hooks_ready). -prealloc and -gc vgc builds
 // never call into this file.
 
 const arena_magic = u32(0x41524e41)
@@ -70,10 +70,9 @@ fn C.atomic_load_ptr(voidptr) voidptr
 fn C.atomic_store_ptr(voidptr, voidptr)
 
 // The allocation entry points call these hooks, which v_arena_new installs
-// and nothing clears. Until then, each entry point only checks one global.
-// A thread that reads a stale nil has not pushed an arena itself, and it can
-// only get arena memory from another thread through a synchronizing operation
-// that also publishes the hooks.
+// and nothing clears. Publishing g_arena_hooks_ready after installation makes
+// all three immutable hooks visible together to allocation entry points.
+__global g_arena_hooks_ready u32
 __global g_arena_alloc_hook fn (n isize, align isize) &u8
 __global g_arena_realloc_hook fn (old_data &u8, old_size isize, new_size isize) &u8
 __global g_arena_owns_hook fn (ptr voidptr) bool
@@ -485,12 +484,13 @@ pub fn v_arena_new(chunk_size isize) voidptr {
 		arena_max_chunk_size
 	}
 	// The lock orders the installation with the one of other threads, and the
-	// unlock publishes the hooks together.
+	// atomic ready flag publishes the immutable hooks to lock-free readers.
 	arena_lock()
-	if g_arena_alloc_hook == unsafe { nil } {
+	if C.atomic_load_u32(&g_arena_hooks_ready) == 0 {
 		g_arena_realloc_hook = arena_realloc
 		g_arena_owns_hook = arena_owns_ptr
 		g_arena_alloc_hook = arena_alloc_current
+		C.atomic_store_u32(&g_arena_hooks_ready, 1)
 	}
 	arena_unlock()
 	return a
@@ -554,7 +554,7 @@ pub fn v_arena_free(handle voidptr) {
 
 // v_arena_current returns the innermost arena of the current thread, or nil.
 pub fn v_arena_current() voidptr {
-	if g_arena_alloc_hook == unsafe { nil } {
+	if C.atomic_load_u32(&g_arena_hooks_ready) == 0 {
 		return unsafe { nil }
 	}
 	return g_arena_top
