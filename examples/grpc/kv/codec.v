@@ -54,8 +54,23 @@ pub fn (msg GetRequest) encode_with(opts protobuf.EncodeOpts) ![]u8 {
 // the wrong wire type is an error, since that is a real disagreement
 // rather than a field from the future.
 pub fn decode_get_request(data []u8) !GetRequest {
+	return decode_get_request_with(data, protobuf.DecodeOpts{})
+}
+
+// decode_get_request_with parses the proto3 message `kv.GetRequest` with `opts`, which
+// bound how deeply messages may nest and how long a field may be.
+pub fn decode_get_request_with(data []u8, opts protobuf.DecodeOpts) !GetRequest {
 	mut out := GetRequest{}
-	mut unpacker := protobuf.new_unpacker(data, protobuf.DecodeOpts{})
+	mut unpacker := protobuf.new_unpacker(data, opts)
+	read_get_request(mut unpacker, mut out)!
+	return out
+}
+
+// read_get_request reads the fields of `kv.GetRequest` from `unpacker` into `out`
+// until the input ends. A scalar that arrives again replaces the earlier
+// value, a list or a map gains the new elements, and a nested message is
+// merged into the one already there.
+fn read_get_request(mut unpacker protobuf.Unpacker, mut out GetRequest) ! {
 	for !unpacker.eof() {
 		number, wire_type := unpacker.read_tag()!
 		match number {
@@ -69,7 +84,6 @@ pub fn decode_get_request(data []u8) !GetRequest {
 			}
 		}
 	}
-	return out
 }
 
 // GetResponse is the generated form of the proto3 message `kv.GetResponse`.
@@ -123,8 +137,23 @@ pub fn (msg GetResponse) encode_with(opts protobuf.EncodeOpts) ![]u8 {
 // the wrong wire type is an error, since that is a real disagreement
 // rather than a field from the future.
 pub fn decode_get_response(data []u8) !GetResponse {
+	return decode_get_response_with(data, protobuf.DecodeOpts{})
+}
+
+// decode_get_response_with parses the proto3 message `kv.GetResponse` with `opts`, which
+// bound how deeply messages may nest and how long a field may be.
+pub fn decode_get_response_with(data []u8, opts protobuf.DecodeOpts) !GetResponse {
 	mut out := GetResponse{}
-	mut unpacker := protobuf.new_unpacker(data, protobuf.DecodeOpts{})
+	mut unpacker := protobuf.new_unpacker(data, opts)
+	read_get_response(mut unpacker, mut out)!
+	return out
+}
+
+// read_get_response reads the fields of `kv.GetResponse` from `unpacker` into `out`
+// until the input ends. A scalar that arrives again replaces the earlier
+// value, a list or a map gains the new elements, and a nested message is
+// merged into the one already there.
+fn read_get_response(mut unpacker protobuf.Unpacker, mut out GetResponse) ! {
 	for !unpacker.eof() {
 		number, wire_type := unpacker.read_tag()!
 		match number {
@@ -142,7 +171,6 @@ pub fn decode_get_response(data []u8) !GetResponse {
 			}
 		}
 	}
-	return out
 }
 
 // PutManyResponse is the generated form of the proto3 message `kv.PutManyResponse`.
@@ -191,8 +219,23 @@ pub fn (msg PutManyResponse) encode_with(opts protobuf.EncodeOpts) ![]u8 {
 // the wrong wire type is an error, since that is a real disagreement
 // rather than a field from the future.
 pub fn decode_put_many_response(data []u8) !PutManyResponse {
+	return decode_put_many_response_with(data, protobuf.DecodeOpts{})
+}
+
+// decode_put_many_response_with parses the proto3 message `kv.PutManyResponse` with `opts`, which
+// bound how deeply messages may nest and how long a field may be.
+pub fn decode_put_many_response_with(data []u8, opts protobuf.DecodeOpts) !PutManyResponse {
 	mut out := PutManyResponse{}
-	mut unpacker := protobuf.new_unpacker(data, protobuf.DecodeOpts{})
+	mut unpacker := protobuf.new_unpacker(data, opts)
+	read_put_many_response(mut unpacker, mut out)!
+	return out
+}
+
+// read_put_many_response reads the fields of `kv.PutManyResponse` from `unpacker` into `out`
+// until the input ends. A scalar that arrives again replaces the earlier
+// value, a list or a map gains the new elements, and a nested message is
+// merged into the one already there.
+fn read_put_many_response(mut unpacker protobuf.Unpacker, mut out PutManyResponse) ! {
 	for !unpacker.eof() {
 		number, wire_type := unpacker.read_tag()!
 		match number {
@@ -206,7 +249,6 @@ pub fn decode_put_many_response(data []u8) !PutManyResponse {
 			}
 		}
 	}
-	return out
 }
 
 // PutRequest is the generated form of the proto3 message `kv.PutRequest`.
@@ -260,8 +302,23 @@ pub fn (msg PutRequest) encode_with(opts protobuf.EncodeOpts) ![]u8 {
 // the wrong wire type is an error, since that is a real disagreement
 // rather than a field from the future.
 pub fn decode_put_request(data []u8) !PutRequest {
+	return decode_put_request_with(data, protobuf.DecodeOpts{})
+}
+
+// decode_put_request_with parses the proto3 message `kv.PutRequest` with `opts`, which
+// bound how deeply messages may nest and how long a field may be.
+pub fn decode_put_request_with(data []u8, opts protobuf.DecodeOpts) !PutRequest {
 	mut out := PutRequest{}
-	mut unpacker := protobuf.new_unpacker(data, protobuf.DecodeOpts{})
+	mut unpacker := protobuf.new_unpacker(data, opts)
+	read_put_request(mut unpacker, mut out)!
+	return out
+}
+
+// read_put_request reads the fields of `kv.PutRequest` from `unpacker` into `out`
+// until the input ends. A scalar that arrives again replaces the earlier
+// value, a list or a map gains the new elements, and a nested message is
+// merged into the one already there.
+fn read_put_request(mut unpacker protobuf.Unpacker, mut out PutRequest) ! {
 	for !unpacker.eof() {
 		number, wire_type := unpacker.read_tag()!
 		match number {
@@ -279,7 +336,6 @@ pub fn decode_put_request(data []u8) !PutRequest {
 			}
 		}
 	}
-	return out
 }
 
 // PutResponse is the generated form of the proto3 message `kv.PutResponse`.
@@ -328,8 +384,23 @@ pub fn (msg PutResponse) encode_with(opts protobuf.EncodeOpts) ![]u8 {
 // the wrong wire type is an error, since that is a real disagreement
 // rather than a field from the future.
 pub fn decode_put_response(data []u8) !PutResponse {
+	return decode_put_response_with(data, protobuf.DecodeOpts{})
+}
+
+// decode_put_response_with parses the proto3 message `kv.PutResponse` with `opts`, which
+// bound how deeply messages may nest and how long a field may be.
+pub fn decode_put_response_with(data []u8, opts protobuf.DecodeOpts) !PutResponse {
 	mut out := PutResponse{}
-	mut unpacker := protobuf.new_unpacker(data, protobuf.DecodeOpts{})
+	mut unpacker := protobuf.new_unpacker(data, opts)
+	read_put_response(mut unpacker, mut out)!
+	return out
+}
+
+// read_put_response reads the fields of `kv.PutResponse` from `unpacker` into `out`
+// until the input ends. A scalar that arrives again replaces the earlier
+// value, a list or a map gains the new elements, and a nested message is
+// merged into the one already there.
+fn read_put_response(mut unpacker protobuf.Unpacker, mut out PutResponse) ! {
 	for !unpacker.eof() {
 		number, wire_type := unpacker.read_tag()!
 		match number {
@@ -343,5 +414,4 @@ pub fn decode_put_response(data []u8) !PutResponse {
 			}
 		}
 	}
-	return out
 }
