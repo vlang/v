@@ -119,6 +119,8 @@ mut:
 	// A quick sum stands in for the digest where only a change of the file matters.
 	source_sum     u64
 	has_source_sum bool
+	// `#line` directives of the file, ordered by line; empty for almost every file.
+	line_directives []LineDirective
 }
 
 // FileSet represents file set data used by token.

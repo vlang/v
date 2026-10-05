@@ -470,6 +470,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	}
 	p.a.source_files[p.cur_file_id] = file
 	p.s.init(file, stable_src)
+	p.s.line_directives = true
 	if source_may_have_dynamic_sql(stable_src) {
 		p.collect_sql_query_data_aliases()
 	}
@@ -1022,6 +1023,25 @@ fn (mut p Parser) next() {
 fn (p &Parser) line_nr_for_pos(pos int) int {
 	offset := clamp_source_offset(pos, p.s.src.len)
 	return p.s.current_file().find_line(offset)
+}
+
+// pseudo_location returns the file and line that `@LINE`, `@FILE_LINE` and `@LOCATION`
+// report for a byte offset: they follow the `#line` directives of the file.
+fn (p &Parser) pseudo_location(pos int) (string, int) {
+	line := p.line_nr_for_pos(pos)
+	file := p.s.current_file()
+	if !file.has_line_directives() {
+		return p.cur_file, line
+	}
+	name, logical_line := file.logical_line(line)
+	return if name == file.name { p.cur_file } else { name }, logical_line
+}
+
+// pseudo_file returns the value of `@FILE` at a byte offset: the absolute path of the
+// source file, or the file named by a `#line` directive, as it is written there.
+fn (p &Parser) pseudo_file(pos int) string {
+	file, _ := p.pseudo_location(pos)
+	return if file == p.cur_file { os.real_path(p.cur_file) } else { file }
 }
 
 fn (p &Parser) column_for_pos(pos int) int {
@@ -3731,6 +3751,29 @@ fn (mut p Parser) directive() flat.NodeId {
 	if name == 'flag' && value.len == 0 {
 		p.record_diagnostic_span('no argument(s) provided for #flag', directive_start, directive_end)
 	}
+	if full == 'line' || (full.len > 4 && full.starts_with('line') && full[4] in [` `, `\t`]) {
+		// The scanner already recorded a valid directive in the line table of the file.
+		// It only remaps positions, so later stages never see it; vfmt keeps it.
+		mut line_begin := clamp_source_offset(directive_start, p.s.src.len)
+		for line_begin > 0 && p.s.src[line_begin - 1] in [` `, `\t`] {
+			line_begin--
+		}
+		if line_begin > 0 && p.s.src[line_begin - 1] != `\n` {
+			p.record_diagnostic_span('a `#line` directive must be on a line of its own',
+				directive_start, directive_end)
+		} else {
+			token.parse_line_directive(full[4..]) or {
+				p.record_diagnostic_span('invalid `#line` directive: ${err.msg()}', directive_start,
+					directive_end)
+			}
+		}
+		if !p.prefs.is_fmt {
+			if p.tok == .semicolon {
+				p.next()
+			}
+			return flat.empty_node
+		}
+	}
 	if name.starts_with('!') && directive_start > 0 && !p.prefs.is_fmt {
 		p.record_diagnostic_span('a shebang is only valid at the top of the file', directive_start,
 			directive_end)
@@ -5043,7 +5086,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 			name := cond[start..i]
 			match name {
 				'@FILE' {
-					write_comptime_cond_string(mut out, os.real_path(p.cur_file))
+					write_comptime_cond_string(mut out, p.pseudo_file(pseudo_pos))
 				}
 				'@DIR' {
 					write_comptime_cond_string(mut out, os.real_path(os.dir(p.cur_file)))
@@ -5076,13 +5119,15 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					write_comptime_cond_string(mut out, vexe)
 				}
 				'@LINE' {
-					write_comptime_cond_string(mut out, p.line_nr_for_pos(pseudo_pos).str())
+					_, line := p.pseudo_location(pseudo_pos)
+					write_comptime_cond_string(mut out, line.str())
 				}
 				'@COLUMN' {
 					write_comptime_cond_string(mut out, p.column_for_pos(pseudo_pos + start).str())
 				}
 				'@FILE_LINE' {
-					write_comptime_cond_string(mut out, '${os.file_name(p.cur_file)}:${p.line_nr_for_pos(pseudo_pos)}')
+					file, line := p.pseudo_location(pseudo_pos)
+					write_comptime_cond_string(mut out, '${os.file_name(file)}:${line}')
 				}
 				'@METHOD' {
 					write_comptime_cond_string(mut out, method_name)
@@ -5105,7 +5150,8 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 							location_method = '${module_name}.${p.cur_struct}{}.${fn_name}'
 						}
 					}
-					write_comptime_cond_string(mut out, '${p.cur_file}:${p.line_nr_for_pos(pseudo_pos)}, ${location_method}')
+					file, line := p.pseudo_location(pseudo_pos)
+					write_comptime_cond_string(mut out, '${file}:${line}, ${location_method}')
 				}
 				'@BUILD_DATE' {
 					write_comptime_cond_string(mut out, p.prefs.build_date)
@@ -11942,7 +11988,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.sql_expr(name_pos)
 			}
 			if name == '@FILE' {
-				return p.add_val_id(5, os.real_path(p.cur_file))
+				return p.add_val_id(5, p.pseudo_file(name_pos))
 			}
 			if name == '@DIR' {
 				return p.add_val_id(5, os.real_path(os.dir(p.cur_file)))
@@ -11979,13 +12025,15 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == '@LINE' {
 				// like V1, `@LINE` is a string literal holding the 1-based line number
-				return p.add_val_id(5, p.line_nr_for_pos(name_pos).str())
+				_, line := p.pseudo_location(name_pos)
+				return p.add_val_id(5, line.str())
 			}
 			if name == '@COLUMN' {
 				return p.add_val_id(5, p.column_for_pos(name_pos).str())
 			}
 			if name == '@FILE_LINE' {
-				return p.add_val_id(5, '${os.file_name(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')
+				file, line := p.pseudo_location(name_pos)
+				return p.add_val_id(5, '${os.file_name(file)}:${line}')
 			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {
@@ -12018,7 +12066,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						method_name = '${module_name}.${p.cur_struct}{}.${fn_name}'
 					}
 				}
-				return p.add_val_id(5, '${p.cur_file}:${p.line_nr_for_pos(name_pos)}, ${method_name}')
+				file, line := p.pseudo_location(name_pos)
+				return p.add_val_id(5, '${file}:${line}, ${method_name}')
 			}
 			if name == '@BUILD_DATE' {
 				return p.add_val_id(5, p.prefs.build_date)

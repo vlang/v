@@ -5053,6 +5053,13 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, m
 			|| file_module_name(a, file_node) != module_name {
 			continue
 		}
+		// An embedded declaration is parsed again without the `#line` directives of its
+		// file, which would change the source locations that it reports.
+		uses_line_directives := if file := a.source_files[file_node.pos.id] {
+			file.has_line_directives()
+		} else {
+			false
+		}
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
 			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
@@ -5063,7 +5070,7 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, m
 					continue
 				}
 				node := a.nodes[int(id)]
-				if !declaration_node_source_is_embeddable(a, id) {
+				if uses_line_directives || !declaration_node_source_is_embeddable(a, id) {
 					return false
 				}
 				source := declaration_source_text(a, node, file_node.value, mut source_cache) or {

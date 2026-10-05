@@ -11957,8 +11957,9 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 		mut path := t.cur_file
 		mut line := 0
 		if file := t.a.source_files[node.pos.id] {
-			path = file.name
-			line = file.position(node.pos).line
+			position := file.logical_position(node.pos)
+			path = position.filename
+			line = position.line
 		}
 		expr_text := if node.value.len > 0 {
 			t.dump_expr_display_text(node.value, child_node)

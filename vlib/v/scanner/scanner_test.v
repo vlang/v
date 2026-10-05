@@ -273,3 +273,27 @@ fn test_char_literal_byte_escapes_are_one_character_only_when_well_formed_utf8()
 		}
 	}
 }
+
+fn test_line_directives_are_recorded_only_when_enabled() {
+	source := 'a := 1\n#line 42 "gen.zbr"\nb := 2\n#line x\nc := 3\n'
+	for enabled in [false, true] {
+		mut files := token.FileSet.new()
+		mut file := files.add_file('line_directive.v', source.len)
+		file.index_lines(source)
+		preferences := &pref.Preferences{}
+		mut scanner := new_scanner(preferences, .normal)
+		scanner.init(file, source)
+		scanner.line_directives = enabled
+		for scanner.scan() != .eof {
+		}
+		// A malformed directive is left to the parser to report.
+		assert scanner.diagnostics.len == 0
+		assert file.has_line_directives() == enabled
+		position := file.logical_position_at(source.index('b :=') or { -1 })
+		if enabled {
+			assert position.filename == 'gen.zbr' && position.line == 42
+		} else {
+			assert position.filename == 'line_directive.v' && position.line == 3
+		}
+	}
+}

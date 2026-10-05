@@ -1090,6 +1090,7 @@ fn clone_parser_source_file(file &token.File) &token.File {
 	for line in 2 .. file.line_count() + 1 {
 		stored_file.add_line(file.line_start(line))
 	}
+	stored_file.copy_line_directives(file)
 	return stored_file
 }
 

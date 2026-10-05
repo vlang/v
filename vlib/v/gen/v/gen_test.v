@@ -252,6 +252,36 @@ fn test_formatter_preserves_compact_function_and_expression_bodies() {
 	assert vfmt('compact_bodies_twice', out) == out
 }
 
+fn test_formatter_keeps_line_directives_next_to_the_code_they_locate() {
+	source := 'module main
+
+#line 100 "src/app.zbr"
+fn helper() int {
+	return 5
+}
+
+#line 1 \'gen.zbr\' // generated
+@[inline]
+fn twice(x int) int {
+	#line 2
+	return x * 2
+}
+
+#line 10 "src/app.zbr"
+
+fn main() {
+	#line 42 "src/app.zbr"
+	x := helper()
+	#line 43
+	println(twice(x))
+}
+'
+	assert vfmt('line_directive.v', source) == source
+	// A directive at the start of a line in a function body is indented like other statements.
+	unindented := source.replace('\t#line 42', '#line 42')
+	assert vfmt('line_directive.v', unindented) == source
+}
+
 fn test_formatter_keeps_single_statement_bodies_written_on_one_line() {
 	source := 'struct Point {
 	x int

@@ -1337,7 +1337,9 @@ fn comptime_source_line_offsets(path string) []int {
 	return offsets
 }
 
-fn comptime_source_location(path string, encoded_offset int, line_offsets []int) string {
+// comptime_source_location returns the `file:line:column` of a declaration, following
+// the `#line` directives of its source `file`, when it has any.
+fn comptime_source_location(path string, encoded_offset int, line_offsets []int, file &token.File) string {
 	if path == '' || encoded_offset <= 0 || line_offsets.len == 0 {
 		return ''
 	}
@@ -1353,7 +1355,12 @@ fn comptime_source_location(path string, encoded_offset int, line_offsets []int)
 		}
 	}
 	line_index := if lo > 0 { lo - 1 } else { 0 }
-	return '${path}:${line_index + 1}:${offset - line_offsets[line_index] + 1}'
+	column := offset - line_offsets[line_index] + 1
+	if !isnil(file) && file.has_line_directives() {
+		logical_file, logical_line := file.logical_line(line_index + 1)
+		return '${logical_file}:${logical_line}:${column}'
+	}
+	return '${path}:${line_index + 1}:${column}'
 }
 
 fn comptime_method_receiver_matches(receiver string, requested string, normalized string, receiver_module string, requested_module string) bool {
@@ -1445,7 +1452,8 @@ fn (mut t Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			name:        name
 			receiver:    first.typ
 			module_name: decl.module_name
-			location:    comptime_source_location(decl.file_name, node.pos.offset, t.comptime_method_line_offsets[decl.file_name])
+			location:    comptime_source_location(decl.file_name, node.pos.offset, t.comptime_method_line_offsets[decl.file_name],
+				t.a.source_files[node.pos.id] or { unsafe { nil } })
 			return_type: return_type
 			is_pub:      node.op == .arrow
 			params:      params
