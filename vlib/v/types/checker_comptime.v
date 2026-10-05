@@ -20225,3 +20225,72 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 		tc.record_error(.assignment_mismatch, 'operator ${op_text} not defined on right operand type `${rhs_name}`', rhs_id)
 	}
 }
+
+// check_instantiated_comptime_method_args checks reflection method arguments once
+// an unconstrained generic receiver is known at its call site.
+fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.NodeId, call flat.Node, info CallInfo) {
+	// A fork already checking an instance must not recursively check other bodies.
+	if tc.type_param_texts.len > 0 {
+		return
+	}
+	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+	key := '${int(instantiation.decl_id)}[${instantiation.concrete_args.join(',')}]'
+	if tc.checked_comptime_method_calls[key] {
+		return
+	}
+	tc.checked_comptime_method_calls[key] = true
+	fn_node := tc.a.node(instantiation.decl_id)
+	mut method_calls := (tc.comptime_method_calls_by_decl[int(instantiation.decl_id)] or {
+		map[int]bool{}
+	}).clone()
+	if int(instantiation.decl_id) !in tc.comptime_method_calls_by_decl {
+		tc.collect_comptime_method_calls(instantiation.decl_id, '', mut method_calls)
+		tc.comptime_method_calls_by_decl[int(instantiation.decl_id)] = method_calls
+	}
+	if method_calls.len == 0 {
+		return
+	}
+	mut texts := map[string]string{}
+	for i, name in instantiation.generic_params {
+		if i >= instantiation.concrete_args.len { return }
+		texts[name] = instantiation.concrete_args[i]
+	}
+	mut w := tc.fork_for_parallel_check()
+	w.valid_diagnostic_fast = false
+	w.valid_resolution_fast = false
+	w.cur_module = tc.fn_type_modules[info.name] or { tc.cur_module }
+	w.cur_file = tc.fn_type_files[info.name] or { tc.cur_file }
+	checked := w.check_generic_fn_body_as(fn_node, int(instantiation.decl_id), texts)
+	for err in checked.errors {
+		if err.kind != .call_arg_mismatch { continue }
+		mut current := err.node
+		for _ in 0 .. 16 {
+			if int(current) in method_calls {
+				if !tc.has_type_error(err.kind, err.msg, err.node) {
+					tc.record_ordered_error_at(err.kind, err.msg, err.node, err.pos, int(call_id) + 1)
+				}
+				break
+			}
+			current = tc.direct_parent_id(current)
+			if !tc.valid_node_id(current) { break }
+		}
+	}
+}
+
+// collect_comptime_method_calls finds the calls whose arguments depend on a
+// method reflection loop, while keeping nested functions out of the instance.
+fn (tc &TypeChecker) collect_comptime_method_calls(id flat.NodeId, method_var string, mut calls map[int]bool) {
+	node := tc.a.node(id)
+	if node.kind in [.fn_literal, .lambda_expr] { return }
+	mut var_name := method_var
+	if node.kind == .comptime_for {
+		parts := node.value.split('|')
+		if parts.len == 2 && parts[1] == 'methods' { var_name = parts[0] }
+	}
+	if node.kind == .call && var_name.len > 0 && tc.comptime_static_is_method_var_call(node, var_name) {
+		calls[int(id)] = true
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_comptime_method_calls(tc.a.child(node, i), var_name, mut calls)
+	}
+}

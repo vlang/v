@@ -31,6 +31,23 @@ fn test_comptime_method_call_mut_ref_param() {
 	assert ctx.value == 11
 }
 
+fn call_methods_generic[A](app A, mut user_context Context) {
+	$for method in A.methods {
+		if method.name == 'by_ref' {
+			mut p := &user_context
+			app.$method(mut p)
+		} else if method.name == 'by_value' {
+			app.$method(mut user_context)
+		}
+	}
+}
+
+fn test_comptime_method_call_mut_ref_param_generic() {
+	mut ctx := Context{}
+	call_methods_generic(App{}, mut ctx)
+	assert ctx.value == 11
+}
+
 fn call_by_value_with_local_and_ref(app App) int {
 	mut local := Context{}
 	mut p := &local

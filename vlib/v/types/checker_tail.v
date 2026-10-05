@@ -5014,6 +5014,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
 		}
+		tc.check_instantiated_comptime_method_args(id, node, info)
 		if tc.valid_resolution_fast {
 			tc.check_valid_call_arg_types(id, node, info)
 			return
