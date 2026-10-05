@@ -13355,6 +13355,194 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 	}
 }
 
+// check_written_nested_option_types reports every type written in the
+// top-level declaration `top_id`, its body included, in which an option or a
+// result directly wraps another option or result: `??int`, `!!int`, `?!int`.
+// An option has a single `none` and a result a single error, so the outer one
+// could not be told from the inner one, and V does not have such types (see
+// #27171). `?T` with an option `T`, and `?Alias` of an option, are not written
+// nested types: they collapse to the option itself.
+fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId) {
+	if !tc.should_diagnose(top_id) {
+		return
+	}
+	mut stack := [WrittenTypeItem{top_id, top_id}]
+	for stack.len > 0 {
+		item := stack.pop()
+		if !tc.valid_node_id(item.id) {
+			continue
+		}
+		node := tc.a.node(item.id)
+		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
+		if nested_option_result_marker(node.typ) >= 0 || nested_option_result_marker(node.value) >= 0 {
+			tc.report_written_nested_option_types(*node, anchor)
+		}
+		for i in 0 .. node.children_count {
+			stack << WrittenTypeItem{tc.a.child(node, i), anchor}
+		}
+	}
+}
+
+fn (mut tc TypeChecker) report_written_nested_option_types(node flat.Node, anchor flat.NodeId) {
+	mut texts := written_type_texts(node)
+	// The types written as names: a sum type variant, a generic type argument,
+	// a struct literal, and the return type of a C function.
+	if node.kind in [.ident, .struct_init] && node.value !in texts {
+		texts << node.value
+	}
+	if node.kind == .c_fn_decl {
+		texts << node.typ
+	}
+	for text in texts {
+		idx := nested_option_result_marker(text)
+		if idx < 0 {
+			continue
+		}
+		outer := text[idx]
+		inner := text[idx + 1]
+		// check_fn_receiver_and_operator_return reports it for a function's own
+		// return type.
+		if outer != inner && node.kind == .fn_decl && text == node.typ
+			&& trimmed_space(text[..idx]).len == 0 {
+			continue
+		}
+		nested := nested_option_result_type_text(text, idx)
+		pos := tc.nested_option_result_type_pos(node, anchor, text, idx, nested)
+		msg := if outer != inner {
+			'the type must be Option or Result'
+		} else if outer == `?` {
+			'nested option type `${nested}` is not supported'
+		} else {
+			'nested result type `${nested}` is not supported'
+		}
+		if tc.errors.any(it.pos == pos && it.msg == msg) {
+			continue
+		}
+		details := if outer != inner {
+			[]string{}
+		} else if outer == `?` {
+			['an option has a single `none`, so the outer option could not be told from the inner one; use `${nested[1..]}` instead']
+		} else {
+			['a result has a single error, so the outer result could not be told from the inner one; use `${nested[1..]}` instead']
+		}
+		tc.record_error_with_details_at(.unknown_type, msg, anchor, pos, details)
+	}
+}
+
+// nested_option_result_marker is the index of the first option or result marker
+// in the type text `text` that directly wraps another one, as the first `?` of
+// `[]??int`, or -1.
+fn nested_option_result_marker(text string) int {
+	for i := 0; i + 1 < text.len; i++ {
+		if text[i] in [`?`, `!`] && text[i + 1] in [`?`, `!`] {
+			return i
+		}
+	}
+	return -1
+}
+
+// nested_option_result_type_text is the type that starts at `idx` in the type
+// text `text`: `??int` in `map[string]??int` or in `fn (??int) string`.
+fn nested_option_result_type_text(text string, idx int) string {
+	mut depth := 0
+	for i in idx .. text.len {
+		match text[i] {
+			`(`, `[`, `{` {
+				depth++
+			}
+			`)`, `]`, `}` {
+				if depth == 0 {
+					return trimmed_space(text[idx..i])
+				}
+				depth--
+			}
+			`,` {
+				if depth == 0 {
+					return trimmed_space(text[idx..i])
+				}
+			}
+			else {}
+		}
+	}
+	return trimmed_space(text[idx..])
+}
+
+// nested_option_result_type_pos is where the nested type `nested`, at `idx` in
+// the type text `text` that `node` writes, is in the source. The return type of
+// a function is the last type in its header; any other type is on the line of
+// the node that writes it, after where that node starts. The parser drops the
+// spaces and the parentheses of `? ?int` and `?(?int)`: then it is where the
+// two markers are.
+fn (tc &TypeChecker) nested_option_result_type_pos(node flat.Node, anchor flat.NodeId, text string, idx int, nested string) token.Pos {
+	anchor_pos := tc.a.node(anchor).pos
+	file := tc.a.source_files[anchor_pos.id] or { return anchor_pos }
+	source := tc.source_texts_by_file[file.name] or { return anchor_pos }
+	if anchor_pos.offset < 0 || anchor_pos.offset > source.len {
+		return anchor_pos
+	}
+	is_return_type := node.kind == .fn_decl && text == node.typ
+	mut lo := anchor_pos.offset
+	mut hi := anchor_pos.offset
+	if is_return_type {
+		header := tc.fn_declaration_diagnostic_pos(node)
+		lo = int_max(header.offset, 0)
+		hi = int_min(header.end, source.len)
+	} else {
+		for lo > 0 && source[lo - 1] != `\n` {
+			lo--
+		}
+		for hi < source.len && source[hi] != `\n` {
+			hi++
+		}
+	}
+	if lo >= hi {
+		return anchor_pos
+	}
+	region := source[lo..hi]
+	from := anchor_pos.offset - lo
+	if start := find_written_type_text(region, text, from, is_return_type) {
+		return token.new_span(anchor_pos.id, lo + start + idx, lo + start + idx + nested.len)
+	}
+	if start := find_written_type_text(region, nested, from, is_return_type) {
+		return token.new_span(anchor_pos.id, lo + start, lo + start + nested.len)
+	}
+	// The last markers in a header, or the first ones at or after `from`, or
+	// else the last ones before it.
+	mut found := -1
+	mut found_end := -1
+	for i := 0; i < region.len && (is_return_type || found < from); i++ {
+		if region[i] !in [`?`, `!`] {
+			continue
+		}
+		mut j := i + 1
+		for j < region.len && region[j] in [` `, `\t`, `(`] {
+			j++
+		}
+		if j < region.len && region[j] in [`?`, `!`] {
+			found = i
+			found_end = j + 1
+		}
+	}
+	if found >= 0 {
+		return token.new_span(anchor_pos.id, lo + found, lo + found_end)
+	}
+	return anchor_pos
+}
+
+// find_written_type_text is where `text` is in `region`: the last occurrence
+// when `last`, else the first one at or after `from`, or else the first one.
+fn find_written_type_text(region string, text string, from int, last bool) ?int {
+	if last {
+		return region.last_index(text)
+	}
+	if from >= 0 && from < region.len {
+		if start := region.index_after(text, from) {
+			return start
+		}
+	}
+	return region.index(text)
+}
+
 fn (mut tc TypeChecker) check_type_alias_generic_struct_application(node_id flat.NodeId, node flat.Node) bool {
 	clean := node.typ.trim_space()
 	if clean.len == 0 {
