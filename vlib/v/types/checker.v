@@ -18542,7 +18542,6 @@ fn (tc &TypeChecker) comptime_struct_update_id(id flat.NodeId) ?flat.NodeId {
 			child := tc.a.node(child_id)
 			is_update := node.kind == .assoc
 				|| (child.kind == .prefix && child.value == '...')
-				|| tc.node_has_ellipsis_prefix(child_id)
 			if is_update && tc.node_source_contains(child_id, '\$(') {
 				return child_id
 			}
