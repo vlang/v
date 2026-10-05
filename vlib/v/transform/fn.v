@@ -8782,6 +8782,32 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		int_type := if t.enum_backing_is_unsigned(clean_typ) { 'u64' } else { 'i64' }
 		return t.wrap_formatted_string_conversion(t.make_cast(int_type, expr, int_type), int_type, format)
 	}
+	if plus_format := plus_numeric_format(format) {
+		is_float := clean_typ in ['f32', 'f64', 'float_literal']
+		is_integer := clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'rune', 'u8', 'u16',
+			'u32', 'u64', 'usize', 'i128', 'u128']
+		if is_integer || (is_float && (plus_format.width > 0 || plus_format.core.starts_with('.'))) {
+			// A rune's ordinary str() returns a character; numeric flags need its code point.
+			converted := if clean_typ == 'rune' {
+				t.wrap_formatted_string_conversion(t.make_cast('i64', expr, 'i64'), 'i64',
+					plus_format.core)
+			} else {
+				t.wrap_formatted_string_conversion(expr, typ, plus_format.core)
+			}
+			mut formatted := t.make_call_typed('v3_string_plus_sign', [converted], 'string')
+			if plus_format.width > 0 {
+				formatted = if plus_format.zero && !plus_format.left {
+					t.make_call_typed(if is_float { 'v3_f64_zpad' } else { 'v3_string_zpad' },
+						[formatted, t.make_int_literal(plus_format.width)], 'string')
+				} else {
+					t.make_call_typed('v3_string_pad', [formatted,
+						t.make_int_literal(plus_format.width),
+						t.make_int_literal(if plus_format.left { 1 } else { 0 })], 'string')
+				}
+			}
+			return formatted
+		}
+	}
 	if decimal_format := fixed_decimal_format(format) {
 		if clean_typ in ['f32', 'f64', 'float_literal'] {
 			arg := if clean_typ == 'f64' {
@@ -9168,6 +9194,51 @@ fn (mut t Transformer) signed_plus_string(expr flat.NodeId, typ string) flat.Nod
 	])
 	t.pending_stmts << t.make_if(cond, then_body, t.make_empty())
 	return t.make_ident(text_name)
+}
+
+struct PlusNumericFormat {
+	width int
+	zero  bool
+	left  bool
+	core  string
+}
+
+// plus_numeric_format separates the sign and width from the numeric conversion.
+// The sign is added before padding so it counts towards the requested width.
+fn plus_numeric_format(format string) ?PlusNumericFormat {
+	mut i := 0
+	mut plus := false
+	mut zero := false
+	mut left := false
+	for i < format.len && format[i] in [`+`, `-`, `0`] {
+		match format[i] {
+			`+` { plus = true }
+			`-` { left = true }
+			`0` { zero = true }
+			else {}
+		}
+		i++
+	}
+	if !plus {
+		return none
+	}
+	mut width := 0
+	for i < format.len && format[i] >= `0` && format[i] <= `9` {
+		width = width * 10 + int(format[i] - `0`)
+		i++
+	}
+	core := format[i..]
+	if core != '' && core != 'd' && core != 'g' && core != 'G'
+		&& fixed_decimal_format(core) == none && exponent_decimal_format(core) == none
+		&& general_float_format(core) == none {
+		return none
+	}
+	return PlusNumericFormat{
+		width: width
+		zero:  zero
+		left:  left
+		core:  core
+	}
 }
 
 struct FixedDecimalFormat {
