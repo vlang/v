@@ -9228,6 +9228,8 @@ directly into C array operations - omitting bounds checking. This may save a lot
 function that iterates over an array but at the cost of making the function unsafe - unless the
 boundaries will be checked by the user.
 
+Element stores remain valid when the right-hand side grows the array.
+
 **When to Use**
 
 - In tight loops that access array elements, where bounds have been manually verified or you are
