@@ -57,9 +57,17 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 }
 
 fn (t &Transformer) fixed_array_call_param_borrows(name string, call flat.Node, index int) bool {
-	callee := t.a.child_node(&call, 0)
-	if callee.kind == .ident && t.var_type(callee.value).len > 0 {
-		return false
+	callee_id := t.a.child(&call, 0)
+	callee := t.a.node(callee_id)
+	if callee.kind == .ident {
+		if t.var_type(callee.value).len > 0 {
+			return false
+		}
+		// Escape prescanning precedes local type registration. Resolve lexical
+		// bindings before trusting a same-named function declaration's summary.
+		if _ := t.local_binding_before(callee.value, callee_id) {
+			return false
+		}
 	}
 	decl := t.call_param_types_decl_index[name] or { return false }
 	summary := t.fixed_array_borrow_params[decl.idx] or { return false }
