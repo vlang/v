@@ -8793,8 +8793,13 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 				t.make_int_literal(decimal_format.precision)], 'string')
 			if decimal_format.width > 0 || decimal_format.left {
 				left := if decimal_format.left { 1 } else { 0 }
-				formatted = t.make_call_typed('v3_string_pad', [formatted,
-					t.make_int_literal(decimal_format.width), t.make_int_literal(left)], 'string')
+				formatted = if decimal_format.zero && !decimal_format.left {
+					t.make_call_typed('v3_f64_zpad', [formatted,
+						t.make_int_literal(decimal_format.width)], 'string')
+				} else {
+					t.make_call_typed('v3_string_pad', [formatted,
+						t.make_int_literal(decimal_format.width), t.make_int_literal(left)], 'string')
+				}
 			}
 			return formatted
 		}
@@ -9167,6 +9172,7 @@ fn (mut t Transformer) signed_plus_string(expr flat.NodeId, typ string) flat.Nod
 struct FixedDecimalFormat {
 	width     int
 	precision int
+	zero      bool
 	left      bool
 }
 
@@ -9237,7 +9243,9 @@ fn fixed_decimal_format(format string) ?FixedDecimalFormat {
 		left = true
 		i++
 	}
+	mut zero := false
 	if i < format.len && format[i] == `0` {
+		zero = true
 		i++
 	}
 	mut width := 0
@@ -9273,6 +9281,7 @@ fn fixed_decimal_format(format string) ?FixedDecimalFormat {
 	return FixedDecimalFormat{
 		width:     width
 		precision: precision
+		zero:      zero
 		left:      left
 	}
 }
