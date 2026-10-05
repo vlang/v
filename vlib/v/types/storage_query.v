@@ -54,9 +54,9 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 				if storage_query_guards_match(cached.guards, visiting) {
 					parent := unsafe { prealloc_scope_suspend(scope) }
 					cache.record_storage_query_guards(cached.guards, true)
-					promoted := clone_storage_query_result(cached.writes)
 					unsafe { prealloc_scope_resume(scope, parent) }
-					return promoted
+					// The outer memo arena outlives every nested query; consumers only read it.
+					return cached.writes
 				}
 			}
 		}
@@ -74,6 +74,12 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		mut active := visiting.clone()
 		result := view.param_storage_writes_for_decl_unscoped(decl, target_param_idx, mut active)
 		trace := view.visible_mutation_cache.storage_query_trace
+		// Map iteration copies string keys, so estimate inside the disposable arena.
+		estimated_bytes := if inherited_owner && trace.complete {
+			storage_query_result_bytes(cache_key, result, trace.guards)
+		} else {
+			0
+		}
 		// Allocate suspension bookkeeping before selecting any older arena.
 		mut states := []voidptr{len: if inherited_owner {
 			cache.storage_query_scopes.len - 1
@@ -81,16 +87,21 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 			0
 		}, init: voidptr(0)}
 		parent := unsafe { prealloc_scope_suspend(scope) }
-		promoted := clone_storage_query_result(result)
 		if use_cache {
 			cache.record_storage_query_guards(trace.guards, trace.complete)
 		}
 		if inherited_owner && trace.complete {
 			// Only admitted memo payloads are allocated in the outer query's arena.
 			suspend_storage_query_scopes(cache.storage_query_scopes, mut states)
-			owner.cache_storage_query_result(cache_key, result, trace.guards, true)
+			retained := owner.cache_storage_query_result(cache_key, result, trace.guards, true,
+				estimated_bytes)
 			resume_storage_query_scopes(cache.storage_query_scopes, states)
+			if cached := retained {
+				unsafe { prealloc_scope_resume(scope, parent) }
+				return cached
+			}
 		}
+		promoted := clone_storage_query_result(result)
 		unsafe { prealloc_scope_resume(scope, parent) }
 		return promoted
 	} $else {
@@ -150,20 +161,39 @@ fn clone_storage_query_result(result map[string][]int) map[string][]int {
 	return promoted
 }
 
-fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, guards map[u64]bool, clone_result bool) {
-	if cache.storage_query_count >= 4096 { return }
-	mut entries := cache.storage_query_results[key] or { []StorageQueryResult{} }
-	for entry in entries { if entry.guards == guards { return } }
+fn storage_query_guards_equal(left map[u64]bool, right map[u64]bool) bool {
+	if left.len != right.len { return false }
+	for id, expected in left {
+		actual := right[id] or { return false }
+		if actual != expected { return false }
+	}
+	return true
+}
+
+fn storage_query_result_bytes(key string, result map[string][]int, guards map[u64]bool) int {
 	mut bytes := key.len + 64 + guards.len * 32
 	for path, sources in result { bytes += path.len + sources.len * int(sizeof(int)) + 64 }
-	if cache.storage_query_bytes + bytes > 8 * 1024 * 1024 { return }
+	return bytes
+}
+
+fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, guards map[u64]bool, clone_result bool, estimated_bytes int) ?map[string][]int {
+	if cache.storage_query_count >= 4096
+		|| cache.storage_query_bytes + estimated_bytes > 8 * 1024 * 1024 {
+		return none
+	}
+	mut entries := cache.storage_query_results[key] or { []StorageQueryResult{} }
+	for entry in entries {
+		if storage_query_guards_equal(entry.guards, guards) { return entry.writes }
+	}
+	writes := if clone_result { clone_storage_query_result(result) } else { result }
 	entries << StorageQueryResult{
-		writes: if clone_result { clone_storage_query_result(result) } else { result }
+		writes: writes
 		guards: guards.clone()
 	}
 	cache.storage_query_results[key] = entries
-	cache.storage_query_bytes += bytes
+	cache.storage_query_bytes += estimated_bytes
 	cache.storage_query_count++
+	return writes
 }
 
 fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {

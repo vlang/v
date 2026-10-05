@@ -5,6 +5,11 @@ import v.flat
 import v.parser
 import v.pref
 
+fn (mut cache VisibleMutationCache) cache_storage_query_fixture_result(key string, result map[string][]int, guards map[u64]bool) ?map[string][]int {
+	estimated_bytes := storage_query_result_bytes(key, result, guards)
+	return cache.cache_storage_query_result(key, result, guards, true, estimated_bytes)
+}
+
 fn test_storage_query_results_survive_nested_arena_release() {
 	$if prealloc {
 		path := os.join_path(os.vtmp_dir(), 'storage_query_runtime_${os.getpid()}.v')
@@ -116,7 +121,8 @@ fn self_source(mut target Box) { target.value = target.value }
 		promotion_view.visible_mutation_cache.storage_query_owner = promotion_memo
 		promotion_view.visible_mutation_cache.storage_query_scopes = [promotion_scope]
 		mut no_ancestors := map[u64]bool{}
-		assert promotion_view.param_storage_writes_for_decl(deep_decl, 0, mut no_ancestors)['.child.value'] == [1]
+		admitted_query := promotion_view.param_storage_writes_for_decl(deep_decl, 0, mut no_ancestors)
+		assert admitted_query['.child.value'] == [1]
 		mut child_context := map[u64]bool{}
 		delegate_id := visible_mutation_cache_id(delegate_decl, 0)
 		store_id := visible_mutation_cache_id(store_decl, 0)
@@ -141,6 +147,9 @@ fn self_source(mut target Box) { target.value = target.value }
 			delegate_id: false
 			store_id:    false
 		}
+		admitted_sources := admitted_query['.child.value']
+		root_admitted_sources := promotion_memo.storage_query_results[deep_key][0].writes['.child.value']
+		assert unsafe { admitted_sources.data == root_admitted_sources.data }
 		assert promotion_view.visible_mutation_cache.storage_query_results.len == 0
 		sibling_scope := unsafe { prealloc_scope_begin() }
 		mut sibling_view := promotion_view.fork_storage_query_view()
@@ -154,8 +163,31 @@ fn self_source(mut target Box) { target.value = target.value }
 		}
 		from_root := sibling_view.param_storage_writes_for_decl(store_decl, 0, mut child_context)
 		assert from_root['.value'] == [1]
-		// Root hits leave each private checker cache empty and copy into its parent arena.
+		// Root hits borrow immutable payloads from the still-live outer query arena.
 		assert sibling_view.visible_mutation_cache.storage_query_results.len == 0
+		cached_sources := promotion_memo.storage_query_results[child_key][0].writes['.value']
+		borrowed_sources := from_root['.value']
+		assert unsafe { borrowed_sources.data == cached_sources.data }
+		for iteration in 0 .. 96 {
+			hit_scope := unsafe { prealloc_scope_begin() }
+			mut hit_view := sibling_view.fork_storage_query_view()
+			hit_view.visible_mutation_cache.storage_query_owner = promotion_memo
+			hit_view.visible_mutation_cache.storage_query_scopes = [promotion_scope, sibling_scope,
+				hit_scope]
+			hit := hit_view.param_storage_writes_for_decl(store_decl, 0, mut child_context)
+			hit_sources := hit['.value']
+			assert hit_sources == [1]
+			assert unsafe { hit_sources.data == cached_sources.data }
+			unsafe { prealloc_scope_end(hit_scope) }
+			hit_churn_scope := unsafe { prealloc_scope_begin() }
+			mut hit_churn := map[string][]int{}
+			for i in 0 .. 128 {
+				hit_churn['hit_${iteration}_${i}'.repeat(8)] = [iteration, i]
+			}
+			assert hit_churn.len == 128
+			unsafe { prealloc_scope_end(hit_churn_scope) }
+			assert hit['.value'] == [1]
+		}
 		assert sibling_view.visible_mutation_cache.storage_query_trace.guards == {
 			delegate_id: false
 			store_id:    false
@@ -221,6 +253,55 @@ fn self_source(mut target Box) { target.value = target.value }
 			u64(9_000_000): false
 		}
 		memo_view.visible_mutation_cache.storage_query_trace = unsafe { nil }
+		left_false := {
+			u64(1): false
+		}
+		right_false := {
+			u64(2): false
+		}
+		assert storage_query_guards_equal(left_false, left_false)
+		assert !storage_query_guards_equal(left_false, right_false)
+		assert !storage_query_guards_equal(left_false, {
+			u64(1): true
+		})
+		assert !storage_query_guards_equal(left_false, map[u64]bool{})
+		assert storage_query_guards_equal(map[u64]bool{}, map[u64]bool{})
+		mut admission := &VisibleMutationCache{ storage_query: true }
+		first_admitted := admission.cache_storage_query_fixture_result('false_keys', {
+			'.value': [1]
+		}, left_false) or { panic('first admission rejected') }
+		second_admitted := admission.cache_storage_query_fixture_result('false_keys', {
+			'.value': [2]
+		}, right_false) or { panic('second admission rejected') }
+		assert admission.storage_query_count == 2
+		assert admission.storage_query_results['false_keys'].len == 2
+		assert first_admitted['.value'] == [1]
+		assert second_admitted['.value'] == [2]
+		first_admitted_sources := first_admitted['.value']
+		root_first_sources := admission.storage_query_results['false_keys'][0].writes['.value']
+		assert unsafe { first_admitted_sources.data == root_first_sources.data }
+		deduplicated := admission.cache_storage_query_fixture_result('false_keys', {
+			'.value': [3]
+		}, left_false) or { panic('existing entry rejected') }
+		assert admission.storage_query_count == 2
+		assert admission.storage_query_results['false_keys'][0].writes['.value'] == [1]
+		assert deduplicated['.value'] == [1]
+		deduplicated_sources := deduplicated['.value']
+		assert unsafe { deduplicated_sources.data == first_admitted_sources.data }
+		admission.storage_query_bytes = 8 * 1024 * 1024
+		if _ := admission.cache_storage_query_fixture_result('byte_cap', {
+			'.value': [1]
+		}, left_false) {
+			assert false, 'saturated byte cap accepted a new entry'
+		}
+		if _ := admission.cache_storage_query_fixture_result('false_keys', {
+			'.value': [1]
+		}, left_false) {
+			assert false, 'saturated byte cap reached duplicate lookup'
+		}
+		assert admission.storage_query_count == 2
+		assert admission.storage_query_bytes == 8 * 1024 * 1024
+		assert 'byte_cap' !in admission.storage_query_results
 		cycle_id := visible_mutation_cache_id(cycle_decl, 0)
 		mut inactive := map[u64]bool{}
 		inactive[cycle_id] = false
@@ -240,24 +321,32 @@ fn self_source(mut target Box) { target.value = target.value }
 		// Ancestors whose guards were never read do not create distinct entries.
 		assert memo_owner.storage_query_count == count_before_store + 1
 		oversized := 'x'.repeat(8 * 1024 * 1024 + 1)
-		memo_owner.cache_storage_query_result('oversized', {
+		if _ := memo_owner.cache_storage_query_fixture_result('oversized', {
 			oversized: [1]
-		}, map[u64]bool{}, true)
+		}, map[u64]bool{}) {
+			assert false, 'oversized entry admitted'
+		}
 		assert memo_owner.storage_query_count == count_before_store + 1
 		for iteration in 0 .. 4096 {
-			memo_owner.cache_storage_query_result('bounded', {
+			memo_owner.cache_storage_query_fixture_result('bounded', {
 				'.value': [1]
 			},
 				{
 					u64(2_000_000 + iteration): false
-				}, true)
+				}) or { map[string][]int{} }
 		}
 		assert memo_owner.storage_query_count == 4096
 		assert memo_owner.storage_query_results.len < 4096
 		assert memo_owner.storage_query_bytes <= 8 * 1024 * 1024
 		// The bounded table declines new entries while the exact deferred query still succeeds.
 		mut full_context := map[u64]bool{}
-		assert memo_view.param_storage_writes_for_decl(deferred_decl, 0, mut full_context)['.value'] == [1]
+		full_result := memo_view.param_storage_writes_for_decl(deferred_decl, 0, mut full_context)
+		fallback_churn_scope := unsafe { prealloc_scope_begin() }
+		mut fallback_churn := map[string][]int{}
+		for i in 0 .. 1024 { fallback_churn['fallback_${i}'.repeat(8)] = [i, i + 1] }
+		assert fallback_churn.len == 1024
+		unsafe { prealloc_scope_end(fallback_churn_scope) }
+		assert full_result['.value'] == [1]
 		assert memo_owner.storage_query_count == 4096
 		assert memo_view.visible_mutation_cache.storage_query_results.len == 0
 		for _, entries in memo_owner.storage_query_results {
