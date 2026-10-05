@@ -1007,6 +1007,8 @@ pub mut:
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
 	is_test                       bool
+	checked_comptime_method_calls map[string]bool
+	comptime_method_calls_by_decl map[int]map[int]bool
 	check_concrete_generic_bodies bool              // `-check` checks the concrete clones of the program's generics for fields and methods their types lack
 	library_instances             int               // the instances of library generics that such a check cloned
 	library_headers               int               // how many of them it cloned without their bodies (see transform.LibraryBodies)
@@ -1480,6 +1482,10 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unsupported_generics:           tc.reject_unsupported_generics
 		checker_fixture_mode:                  tc.checker_fixture_mode
 		is_test:                               tc.is_test
+		// Reflection argument caches belong to semantic checking, not lookup or
+		// transform views that may outlive the arena where those caches were made.
+		checked_comptime_method_calls:         map[string]bool{}
+		comptime_method_calls_by_decl:         map[int]map[int]bool{}
 		check_concrete_generic_bodies:         tc.check_concrete_generic_bodies
 		check_generic_bodies:                  tc.check_generic_bodies
 		module_diagnostic_root:                tc.module_diagnostic_root
@@ -3498,6 +3504,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.visible_mutation_cache = new_visible_mutation_cache()
 	tc.unsafe_c_fns.clear()
 	tc.v_fn_semantic_names.clear()
+	tc.checked_comptime_method_calls.clear()
+	tc.comptime_method_calls_by_decl.clear()
 	tc.has_spawn_expr = -1
 	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
 	tc.file_scope = new_scope(unsafe { nil })
@@ -18679,7 +18687,7 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	if tc.check_comptime_for_source_type(_id, node) {
 		return
 	}
-	source_is_type := tc.type_name_known(node.typ)
+	source_is_type := tc.type_name_known(tc.instance_type_text(node.typ))
 	source_is_value := if tc.cur_scope == unsafe { nil } {
 		false
 	} else {
@@ -19177,14 +19185,21 @@ fn (tc &TypeChecker) comptime_static_deferred_cases(source string, loop_kind str
 }
 
 fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticValueCases {
-	base_type := tc.comptime_static_for_base_type(source)
+	base_type := tc.instance_type_text(tc.comptime_static_for_base_type(source))
 	clean_type := comptime_static_unwrap_type_text(base_type)
 	generic_base, generic_args, is_generic := generic_type_application_parts(clean_type)
 	if is_generic && !tc.generic_args_are_concrete(generic_args) {
 		return ComptimeStaticValueCases{}
 	}
 	lookup_type := if is_generic { generic_base } else { clean_type }
-	struct_name := tc.comptime_static_struct_name(lookup_type) or {
+	// A forwarded main-owned type is locked as `main.Type` so an imported
+	// helper cannot rebase it. The collected main symbol still has a bare key.
+	canonical_lookup := if lookup_type.starts_with('main.') {
+		tc.parse_type(lookup_type).name()
+	} else {
+		lookup_type
+	}
+	struct_name := tc.comptime_static_struct_name(canonical_lookup) or {
 		return ComptimeStaticValueCases{}
 	}
 	generic_params := if is_generic {

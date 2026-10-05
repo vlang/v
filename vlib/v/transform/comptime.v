@@ -1771,7 +1771,25 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 			return none
 		}
 		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
-		t.mark_fn_used('${receiver_name}.${method.name}')
+		method_key := '${receiver_name}.${method.name}'
+		t.mark_fn_used(method_key)
+		receiver_node := t.a.node(receiver)
+		if receiver_node.kind == .ident && receiver_node.value.len > 0
+			&& receiver_node.value[0].is_capital() && t.var_type(receiver_node.value).len == 0 {
+			same_main_module := method.module_name in ['', 'main']
+				&& t.cur_module in ['', 'main']
+			if !method.is_pub && method.module_name != t.cur_module && !same_main_module
+				&& !t.cur_file.ends_with('_test.v') && !t.cur_file.ends_with('_test.vv') {
+				t.record_monomorph_error('method `${method_key}` is private')
+			}
+			value := t.make_ident(method_key)
+			fn_type := t.tc.resolve_type(value)
+			if fn_type is types.FnType {
+				t.set_node_typ(int(value), t.semantic_type_name(fn_type))
+				t.tc.register_synth_type(value, fn_type)
+				return value
+			}
+		}
 		return t.make_comptime_method_selector(receiver, method)
 	}
 	if node.kind == .selector && node.children_count > 0 {
@@ -1970,6 +1988,33 @@ fn (mut t Transformer) make_param_array_literal(params []ParamMeta, module_name 
 }
 
 fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, method MethodMeta) flat.NodeId {
+	receiver_node := t.a.node(receiver)
+	if receiver_node.kind == .ident && t.raw_var_type(receiver_node.value).len == 0 {
+		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
+		method_key := '${receiver_name}.${method.name}'
+		same_main_module := method.module_name in ['', 'main'] && t.cur_module in ['', 'main']
+		if !method.is_pub && method.module_name != t.cur_module && !same_main_module
+			&& !t.cur_file.ends_with('_test.v') && !t.cur_file.ends_with('_test.vv') {
+			t.record_monomorph_error('method `${method_key}` is private')
+		}
+		if params := t.tc.fn_param_types[method_key] {
+			ret := t.tc.fn_ret_types[method_key] or { types.Type(types.void_) }
+			fn_type := types.Type(types.FnType{
+				params:      params.clone()
+				params_mut:  (t.tc.declaration_param_mutability[method_key] or { []bool{} }).clone()
+				return_type: ret
+			})
+			value := t.a.add_node(flat.Node{
+				kind:  .ident
+				value: method_key
+				typ:   fn_type.name()
+			})
+			t.set_resolved_fn_value_entry(int(value), method_key)
+			t.set_node_typ(int(value), fn_type.name())
+			t.tc.register_synth_type(value, fn_type)
+			return value
+		}
+	}
 	start := t.a.children.len
 	t.a.children << receiver
 	fn_type := fn_literal_value_type_text_from_text(method.params.map(it.typ), method.return_type)

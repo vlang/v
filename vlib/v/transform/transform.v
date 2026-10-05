@@ -316,6 +316,7 @@ mut:
 	call_param_types_decl_index   map[string]FnParamDeclRef
 	call_param_types_index_ready  bool
 	call_param_types_prepared     bool
+	fixed_array_borrow_params     map[int][]bool
 	used_fns                      map[string]bool
 	used_fns_parent               &map[string]bool = unsafe { nil }
 	used_fns_root                 &map[string]bool = unsafe { nil }
@@ -1363,6 +1364,7 @@ fn (mut t Transformer) release_finished_scratch() {
 			t.structs.free()
 			t.fn_ret_types.free()
 			t.call_param_types_decl_index.free()
+			t.fixed_array_borrow_params.free()
 		}
 	}
 }
@@ -2081,6 +2083,7 @@ fn (mut t Transformer) prepare() {
 	t.raw_return_alias_cache = &ContextBoolLookupCache{}
 	t.prepare_interface_impl_indexes()
 	t.ierror_none_type_id = t.interface_impl_type_id('IError', 'None__') or { 0 }
+	t.prepare_fixed_array_borrow_params()
 }
 
 fn (mut t Transformer) rebuild_embedded_fields_index() {
@@ -4549,6 +4552,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		}
 		call_param_types_index_ready:        t.call_param_types_index_ready
 		call_param_types_prepared:           t.call_param_types_prepared
+		fixed_array_borrow_params:           t.fixed_array_borrow_params
 		comptime_reflected_params:           t.comptime_reflected_params
 		// Function-body lowering records operator helpers as used. Each parallel
 		// worker therefore needs private map storage; sharing this map races on
@@ -9904,7 +9908,8 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 	}
 	if offset == 1 && params.len > 0 {
 		callee := t.a.child_node(&call, 0)
-		if callee.kind == .selector && callee.children_count > 0 {
+		if callee.kind == .selector && callee.children_count > 0
+			&& !t.fixed_array_call_param_borrows(call_name, call, 0) {
 			t.mark_fixed_array_reference_argument_escape(t.a.child(callee, 0), params[0], amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 		}
 	}
@@ -9916,6 +9921,9 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 	for child_idx in 1 .. call.children_count {
 		param_idx := child_idx - 1 + offset
 		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
+		if t.fixed_array_call_param_borrows(call_name, call, param_idx) {
+			continue
+		}
 		t.mark_fixed_array_reference_argument_escape(t.a.child(&call, child_idx), param_type, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}
 }
@@ -10578,6 +10586,11 @@ fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names ma
 		}
 		.selector, .index {
 			if !isnil(t.tc) && escape_type_is_scalar_value(t.tc.resolve_type(id)) {
+				return
+			}
+		}
+		.call {
+			if !isnil(t.tc) && escape_call_result_is_scalar(t.tc.resolve_type(id)) {
 				return
 			}
 		}
@@ -17078,6 +17091,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			&& (t.is_fixed_array_type(inferred_typ) || t.heapable_value_type(inferred_typ)) {
 			// Sibling scopes can declare the same name. Promote each value binding;
 			// an earlier binding's heap marker must not suppress this declaration.
+			t.warn_alloc(node, t.a.child(&node, 1), src.pos, 'local moved to the heap: its fixed array storage may escape')
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ, inferred_raw_typ)
 		}
 		// Every declaration of the name is moved: uses are rewritten by name, and sibling
