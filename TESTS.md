@@ -87,6 +87,12 @@ The C backend has focused unit and integration tests beside its implementation.
 Many tests compile a small V source to C and assert on the generated declarations,
 expressions, ABI, linker inputs, or runtime behavior.
 
+## `v test cmd/v/`
+
+The compiler process regressions workflow runs every launcher test in `cmd/v/` on Linux,
+macOS, and Windows with the default compiler. This covers argument routing, fallback
+messages, executable discovery, and tool-cache behavior, including platform-specific code.
+
 ## Line coverage
 
 Collect coverage with `v -coverage coverage_dir path/to/file_test.v`, then inspect it with
@@ -187,6 +193,35 @@ This runs tests for:
 * `vlib/v/scanner/tests/*.vv`
 * `vlib/v/checker/tests/*.vv`
 * `vlib/v/parser/tests/*.vv`
+
+Some fixtures require the V 0.5.2 compatibility compiler: legacy compiler-module diagnostics,
+legacy JSON code-generation errors, and the `with_check_option` cases. The current driver selects
+that compiler for those fixtures; other fixtures start with the current compiler and may use its
+normal compatibility fallback. The suite remains runnable on master even though the legacy
+compiler sources were removed from this tree.
+
+Prepare the compatibility compiler from the repository root before running the complete suite:
+
+```sh
+make v1
+./v -silent vlib/v/compiler_errors_test.v
+```
+
+`make v1` installs the pinned V 0.5.2 release and its matching library in a cache, or builds that
+release with `oldv` when a usable release binary is unavailable. Initial installation needs network
+access and the installer tools; source builds also need Git and a C compiler. On Windows, run this
+from MSYS2 with GNU make (`make` or `mingw32-make`) available. Building the ordinary compiler with
+`makev.bat` alone does not provision this compatibility compiler.
+
+The driver can run `make v1` automatically when needed. If it reports that no usable fallback was
+found and make is unavailable, install GNU make and run the preparation command above. This is a
+missing test prerequisite, and also affects the complete `v test vlib/v/` run, which includes this
+suite. After installation, a usable cached compatibility compiler can run without make.
+
+Use `-new-compiler` when investigating an individual fixture with the current compiler. It overrides
+explicit legacy fixture selection, so its diagnostics need not match that fixture's existing `.out`
+file. Disabling automatic fallback with `V_MACOS_V3_NO_FALLBACK=1` still permits explicit legacy
+fixture selection and does not remove the suite's compatibility-compiler prerequisite.
 
 > [!NOTE]
 > There are special folders, that compiler_errors_test.v will try to
