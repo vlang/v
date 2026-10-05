@@ -5044,6 +5044,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
 		}
+		tc.check_instantiated_comptime_method_args(id, node, info)
 		if tc.valid_resolution_fast {
 			tc.check_valid_call_arg_types(id, node, info)
 			return
@@ -5955,7 +5956,15 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 			return none
 		}
 		for type_arg in type_args {
-			concrete_args << tc.explicit_generic_concrete_arg_text(type_arg)
+			// A forwarded explicit argument can name a type parameter of this
+			// instance, including inside a container such as `[]A`.
+			concrete := if tc.type_param_texts.len > 0 {
+				subst_generic_text(type_arg, tc.type_param_texts.values(),
+					tc.type_param_texts.keys())
+			} else {
+				type_arg
+			}
+			concrete_args << tc.explicit_generic_concrete_arg_text(concrete)
 		}
 	}
 	mut inferred := map[string]string{}
