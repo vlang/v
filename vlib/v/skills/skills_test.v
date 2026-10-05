@@ -307,28 +307,40 @@ fn test_installed_ignores_entries_without_an_entry_file() {
 	assert skills.installed(os.join_path(test_root, 'nowhere')).len == 0
 }
 
-fn test_out_of_date_compares_the_installed_copy_with_the_bundle() {
+fn test_refresh_candidates_splits_stale_work_from_a_local_edit() {
 	vroot := fixture_root(['alpha'])!
-	dir := scratch_dir('stale')!
+	dir := scratch_dir('refresh_split')!
 	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
 	skills.install(skill, dir, skills.InstallOptions{})!
-	assert skills.out_of_date(vroot, dir).len == 0
+	mut refreshable := []string{}
+	mut held := []string{}
+	refreshable, held = skills.refresh_candidates(vroot, dir)
+	assert refreshable.len == 0 && held.len == 0
 	entry := os.join_path(os.join_path_single(dir, 'alpha'), 'SKILL.md')
 	os.write_file(entry, 'edited locally\n')!
-	assert skills.out_of_date(vroot, dir) == ['alpha']
-	// A deleted extra file is stale too.
+	refreshable, held = skills.refresh_candidates(vroot, dir)
+	// An edit here is not pending work, so it must never be offered as safe to
+	// refresh. This is the distinction a content comparison cannot make, and the
+	// reason `v skills list` reports these separately.
+	assert refreshable.len == 0, refreshable.str()
+	assert held == ['alpha'], held.str()
+	// Deleting a bundled file is also a local edit, not a stale copy: whether the
+	// file was removed on purpose is not something a digest can answer.
 	os.write_file(entry, os.read_file(os.join_path(skill.directory, 'SKILL.md'))!)!
 	os.rm(os.join_path(os.join_path(dir, 'alpha', 'references'), 'notes.md'))!
-	assert skills.out_of_date(vroot, dir) == ['alpha']
-}
-
-fn test_out_of_date_ignores_a_skill_that_is_not_bundled_anymore() {
-	vroot := fixture_root(['alpha'])!
-	dir := scratch_dir('dropped')!
-	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
-	skills.install(skill, dir, skills.InstallOptions{})!
-	os.rmdir_all(os.join_path(vroot, 'vlib', 'v', 'skills', 'alpha'))!
-	assert skills.out_of_date(vroot, dir).len == 0
+	refreshable, held = skills.refresh_candidates(vroot, dir)
+	assert refreshable.len == 0, refreshable.str()
+	assert held == ['alpha'], held.str()
+	// Moving the bundle on, with the installed copy untouched, is the one case
+	// that is safe to refresh. The reinstall is forced, because an install over
+	// an existing directory is a no-op otherwise and would leave the missing file
+	// in place.
+	skills.install(skill, dir, skills.InstallOptions{ force: true })!
+	os.write_file(os.join_path_single(skill.directory, 'SKILL.md'),
+		'---\nname: alpha\ndescription: Test the alpha skill.\n---\n\n# alpha\n\nA newer body.\n')!
+	refreshable, held = skills.refresh_candidates(vroot, dir)
+	assert refreshable == ['alpha'], refreshable.str()
+	assert held.len == 0, held.str()
 }
 
 fn test_origin_state_is_current_after_an_install() {
@@ -348,9 +360,6 @@ fn test_origin_state_is_stale_when_only_the_bundle_moved_on() {
 		'---\nname: alpha\ndescription: Test the alpha skill.\n---\n\n# alpha\n\nA newer body.\n')!
 	// The installed copy is untouched, so refreshing it cannot lose anything.
 	assert skills.origin_state(vroot, dir, 'alpha') == .stale
-	// The older content comparison calls this the same thing it calls a local
-	// edit, which is the distinction `origin_state` exists to make.
-	assert skills.out_of_date(vroot, dir) == ['alpha']
 }
 
 fn test_origin_state_is_modified_when_the_installed_copy_is_edited() {
@@ -392,7 +401,6 @@ fn test_the_origin_file_is_neither_a_skill_nor_part_of_one() {
 	// listed as a skill and is never compared as skill content.
 	assert os.is_file(os.join_path_single(dir, skills.origin_file))
 	assert skills.installed(dir) == ['alpha']
-	assert skills.out_of_date(vroot, dir).len == 0
 	assert skills.origin_state(vroot, dir, 'alpha') == .current
 }
 
@@ -431,7 +439,6 @@ fn test_forget_origin_drops_the_record_and_leaves_the_files() {
 	assert skills.origin_state(vroot, dir, 'alpha') == .unknown
 	// Only the record is gone.
 	assert skills.installed(dir) == ['alpha']
-	assert skills.out_of_date(vroot, dir).len == 0
 }
 
 fn test_forget_origin_ignores_a_skill_that_has_no_record() {

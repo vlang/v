@@ -518,23 +518,6 @@ pub fn installed(dir string) []string {
 	return names
 }
 
-// out_of_date returns the bundled skills installed in `dir` whose installed copy
-// no longer matches the bundled one. `v skills list` reports these so an agent
-// can offer `v skills add --force` instead of acting on stale guidance.
-pub fn out_of_date(vroot string, dir string) []string {
-	mut stale := []string{}
-	for name in installed(dir) {
-		skill := find(vroot, name) or { continue }
-		dest := os.join_path_single(dir, name)
-		if skill.files.len != list_files(dest).len || differs(skill.directory, dest,
-			skill.files)
-		{
-			stale << name
-		}
-	}
-	return stale
-}
-
 // OriginState is what an installed skill looks like relative to its bundle.
 //
 // The distinction matters because the two wrong answers are not the same event:
@@ -739,23 +722,6 @@ pub fn refresh_candidates(vroot string, dir string) ([]string, []string) {
 		}
 	}
 	return refreshable, held_back
-}
-
-// differs reports whether any of `files` has different content in the two
-// directories, or is missing from `current`.
-fn differs(bundled string, current string, files []string) bool {
-	for relative in files {
-		want := os.read_file(os.join_path(bundled, relative)) or {
-			return true
-		}
-		got := os.read_file(os.join_path(current, relative)) or {
-			return true
-		}
-		if want != got {
-			return true
-		}
-	}
-	return false
 }
 
 // relative_to renders `path` relative to `base` with forward slashes, for
