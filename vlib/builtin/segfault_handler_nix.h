@@ -326,12 +326,16 @@ static int v_segfault_save_previous(int sig, struct sigaction* previous) {
 	return sigaction(sig, NULL, previous) == 0 && previous->sa_handler != SIG_IGN;
 }
 
+// v_segfault_install_signal must run after v_segfault_save_previous: V's handler calls
+// the previous one directly, so it blocks the signals of the previous action's sa_mask.
+// The Boehm GC, for example, blocks its stop-the-world signal in its write fault
+// handler, and the heap gets corrupted when a collection interrupts that handler.
 static void v_segfault_install_signal(int sig) {
 	struct sigaction sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_sigaction = v_segfault_signal_handler;
 	sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
-	sigemptyset(&sa.sa_mask);
+	sa.sa_mask = v_segfault_previous[sig == SIGBUS ? 1 : 0].sa_mask;
 	sigaction(sig, &sa, NULL);
 }
 
