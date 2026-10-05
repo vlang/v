@@ -1879,38 +1879,50 @@ fn (mut g FlatGen) gen_direct_array_elem_store(node flat.Node, arr_type types.Ar
 	// store uses it: a source local named `array` hides the lowercase C typedef.
 	tmp := g.tmp_count
 	g.tmp_count++
-	g.write('{ Array* _a${tmp} = ')
+	array_tmp := '__v3_internal_symbol_array_store_base_${tmp}'
+	index_tmp := '__v3_internal_symbol_array_store_index_${tmp}'
+	g.write('{ Array* ${array_tmp} = ')
 	if is_ptr {
 		g.gen_expr(base_id)
 	} else {
 		g.write('&')
 		g.gen_expr(base_id)
 	}
-	g.write('; int _i${tmp} = ')
+	g.write('; int ${index_tmp} = ')
 	g.gen_expr(idx_id)
 	g.write('; ')
 	// The lvalue of one element, in the same spelling the direct element load in
 	// cleanc.v uses: (*((${c_elem}*)((<base>).data) + (<idx>)))
-	lhs_text := '(*((${c_elem}*)((_a${tmp})->data) + (_i${tmp})))'
+	lhs_text := '(*((${c_elem}*)((${array_tmp})->data) + (${index_tmp})))'
+	// The RHS may grow the array. Finish computing the value before resolving
+	// the final element address, so no pointer into the old allocation survives.
+	value_text := '__v3_internal_symbol_array_store_value_${tmp}'
+	g.write('${c_elem} ${value_text} = ')
+	if assign_op == .assign {
+		g.gen_expr_with_expected_type(rhs_id, elem_type)
+		g.writeln('; ${lhs_text} = ${value_text}; }')
+		return true
+	}
+	g.write('${lhs_text}; ')
 	if signed := int128_signedness(elem_type) {
 		if int128_assign_base_op(node.op) != none {
-			g.write('${lhs_text} = ')
-			g.gen_int128_compound_value(node.op, lhs_text, rhs_id,
+			g.write('${value_text} = ')
+			g.gen_int128_compound_value(node.op, value_text, rhs_id,
 				g.usable_expr_type(rhs_id), signed, c_elem)
-			g.writeln('; }')
+			g.writeln('; ${lhs_text} = ${value_text}; }')
 			return true
 		}
 	}
 	if assign_op == .power {
-		g.write('${lhs_text} = ')
+		g.write('${value_text} = ')
 		if method_name := g.assign_struct_operator_method(elem_type, node.op) {
-			g.write('${g.cname(method_name)}(${lhs_text}, ')
+			g.write('${g.cname(method_name)}(${value_text}, ')
 			g.gen_expr_with_expected_type(rhs_id, elem_type)
 			g.write(')')
 		} else {
-			g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, elem_type)
+			g.gen_power_expr_from_lhs_text(value_text, rhs_id, elem_type)
 		}
-		g.writeln('; }')
+		g.writeln('; ${lhs_text} = ${value_text}; }')
 		return true
 	}
 	if assign_op in [.left_shift, .right_shift, .right_shift_unsigned] {
@@ -1919,30 +1931,23 @@ fn (mut g FlatGen) gen_direct_array_elem_store(node flat.Node, arr_type types.Ar
 			.right_shift_assign { flat.Op.right_shift }
 			else { flat.Op.right_shift_unsigned }
 		}
-		g.write('${lhs_text} = ')
-		g.gen_compound_shift_value(lhs_text, lhs_id, rhs_id, elem_type, shift_op)
-		g.writeln('; }')
-		return true
-	}
-	if assign_op == .assign {
-		g.write('${lhs_text} = (')
-		g.gen_expr_with_expected_type(rhs_id, elem_type)
-		g.write(')')
-		g.writeln('; }')
+		g.write('${value_text} = ')
+		g.gen_compound_shift_value(value_text, lhs_id, rhs_id, elem_type, shift_op)
+		g.writeln('; ${lhs_text} = ${value_text}; }')
 		return true
 	}
 	if operator := g.translated_numeric_compound_operator(base_id, elem_type,
 		g.usable_expr_type(rhs_id), node.op) {
-		g.write('${lhs_text} = ')
-		g.gen_translated_numeric_compound_value(lhs_text, base_id, rhs_id, elem_type,
+		g.write('${value_text} = ')
+		g.gen_translated_numeric_compound_value(value_text, base_id, rhs_id, elem_type,
 			g.usable_expr_type(rhs_id), operator)
-		g.writeln('; }')
+		g.writeln('; ${lhs_text} = ${value_text}; }')
 		return true
 	}
-	g.write('${lhs_text} ${g.op_str(assign_op)}= (')
+	g.write('${value_text} ${g.op_str(assign_op)}= (')
 	g.gen_expr_with_expected_type(rhs_id, elem_type)
 	g.write(')')
-	g.writeln('; }')
+	g.writeln('; ${lhs_text} = ${value_text}; }')
 	return true
 }
 

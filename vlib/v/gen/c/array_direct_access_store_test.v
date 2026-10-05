@@ -116,11 +116,12 @@ fn main() {
 	generated := g.gen_with_used_options(a, used, &tc, true)
 
 	direct_store := direct_store_body(generated, 'direct_store')
-	assert direct_store.contains('(*((u64*)((_a0)->data) + (_i0))) = '), direct_store
+	assert direct_store.contains('(*((u64*)((__v3_internal_symbol_array_store_base_0)->data) + (__v3_internal_symbol_array_store_index_0))) = '), direct_store
 	assert !direct_store.contains('array__set'), direct_store
 
 	direct_add := direct_store_body(generated, 'direct_add')
-	assert direct_add.contains('(*((u64*)((_a0)->data) + (_i0))) += '), direct_add
+	assert direct_add.contains('__v3_internal_symbol_array_store_value_0 += '), direct_add
+	assert direct_add.contains('(*((u64*)((__v3_internal_symbol_array_store_base_0)->data) + (__v3_internal_symbol_array_store_index_0))) = __v3_internal_symbol_array_store_value_0;'), direct_add
 	assert !direct_add.contains('array__set'), direct_add
 
 	direct_bits := direct_store_body(generated, 'direct_bits')
@@ -149,7 +150,7 @@ fn main() {
 	// and the index are hoisted into temporaries: a call in either place has to
 	// run once, not once per mention of the lvalue.
 	direct_pow_from_call := direct_store_body(generated, 'direct_pow_from_call')
-	assert direct_pow_from_call.contains('Array* _a0 = &arr_of(*a); int _i0 = 0;'), direct_pow_from_call
+	assert direct_pow_from_call.contains('Array* __v3_internal_symbol_array_store_base_0 = &arr_of(*a); int __v3_internal_symbol_array_store_index_0 = 0;'), direct_pow_from_call
 	assert direct_pow_from_call.split('arr_of(*a)').len == 2, direct_pow_from_call
 
 	// An element type that needs its own lowering keeps the bounds-checked store,
