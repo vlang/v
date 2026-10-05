@@ -11596,7 +11596,18 @@ pub fn run(args []string) {
 			&& !cache_state.manager.enabled && test_files.len == 0 && !is_checker_fixture
 			&& !trivial_literal_output && !is_vsh_input && !no_skip_unused
 		prepared_markused_thread := spawn markused.prepare_markused_declarations(a, &pre_tc, prepare_markused_overlap)
+		// A plain build of a program checks the bodies of the standard library that
+		// the program can reach, not the others (see types.skip_unreachable_library_bodies).
+		// What else needs every body checked keeps them all: a check without a build,
+		// a test, the compiler itself, a module cache that compiles whole modules.
+		skip_library_bodies := backend == 'c' && !check_only && !is_checker_fixture && !building_v
+			&& test_files.len == 0 && !no_skip_unused && !is_vsh_input && !is_repl && !is_prof
+			&& !is_trace_calls && coverage_dir.len == 0 && !trivial_literal_output
+			&& !incremental_cache_hit && !generic_cache_hit && !cache_state.manager.enabled
+			&& vls_line_info == '' && !served.from_server && !served.shares_checks()
+			&& a.missing_imports.len == 0 && os.getenv('V_CHECK_LIBRARY_BODIES') != 'all'
 		mut check_was_parallel := false
+		mut check_may_be_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {
 			used_fns = markused.mark_used_without_generic_detection(a, &pre_tc)
 			pre_tc.check_semantics_reachable(used_fns)
@@ -11621,6 +11632,17 @@ pub fn run(args []string) {
 				pre_tc.start_incremental_check(served.incremental_record(), own_files,
 					os.getenv('V_DIAGNOSTICS_INCREMENTAL_VERIFY') != '', min_left_out.int())
 			}
+			if skip_library_bodies {
+				library_files := v3_library_source_files(a, &pre_tc, prefs.vroot)
+				if library_files.len > 0 {
+					hint_sw := time.new_stopwatch()
+					reachable := pre_tc.skip_unreachable_library_bodies(library_files, markused.seeded_fn_names(),
+						os.getenv('V_CHECK_LIBRARY_BODIES') != 'late')
+					if verbose {
+						eprintln('  [ttime]   ck reachable     ${f64(hint_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (${reachable})')
+					}
+				}
+			}
 			ck_stage_sw.restart()
 			// On very large user import graphs, serial checking uses less memory than
 			// retaining one semantic-check accumulator per worker.
@@ -11632,6 +11654,7 @@ pub fn run(args []string) {
 					|| pre_tc.scope_parallel_check_workers)
 				&& (building_v || !scope_prealloc_check
 					|| a.nodes.len < scoped_serial_user_check_node_threshold)
+			check_may_be_parallel = parallel_semantic_check
 			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
 			if verbose {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -12007,6 +12030,29 @@ pub fn run(args []string) {
 		}
 		if prepare_markused_overlap {
 			prepared_markused.release()
+		}
+		if skip_library_bodies {
+			// The check found the types that markused resolves calls with, so
+			// markused can reach library functions that its first pass did not.
+			mut reached_later := 0
+			for {
+				reached := pre_tc.check_reached_library_bodies(used_fns, check_may_be_parallel)
+				if reached == 0 {
+					break
+				}
+				reached_later += reached
+				if pre_tc.errors.len > 0 {
+					print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+						check_only, message_limit, skip_notices)
+					exit(1)
+				}
+				// The types of those bodies can lead markused to more functions.
+				used_fns, uses_generics = v3_mark_used_for_program(a, mut pre_tc, scope_prealloc_markused,
+					effective_c_compiler == 'msvc', prefs.verbose)
+			}
+			if verbose {
+				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${reached_later} checked late (worker threads: ${a.worker_count()})')
+			}
 		}
 		mut prepared_transform := prepared_transform_thread.wait()
 		b.step('markused')
@@ -17615,6 +17661,52 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 			tc.diagnostic_files[node.value] = true
 		}
 	}
+}
+
+// v3_library_source_files returns the parsed files of the standard library that are
+// not part of the program: its entry files and the modules of its project are
+// checked in full wherever they are.
+fn v3_library_source_files(a &flat.FlatAst, tc &types.TypeChecker, vroot string) map[string]bool {
+	mut files := map[string]bool{}
+	if vroot.len == 0 {
+		return files
+	}
+	real_vlib := os.real_path(os.join_path(vroot, 'vlib'))
+	for node in a.nodes {
+		if node.kind != .file || node.value.len == 0 || node.value in tc.diagnostic_files
+			|| types.is_module_cache_header(node.value) {
+			continue
+		}
+		if real_path_is_in_dir(a.real_source_path(node.value), real_vlib) {
+			files[node.value] = true
+		}
+	}
+	return files
+}
+
+// v3_mark_used_for_program runs markused as a plain build of a program does, in a
+// scope of its own when the stage scopes its scratch memory.
+fn v3_mark_used_for_program(a &flat.FlatAst, mut tc types.TypeChecker, scoped bool, full_runtime bool, verbose bool) (map[string]bool, bool) {
+	mut scope := unsafe { nil }
+	mut markused_tc := unsafe { &tc }
+	if scoped {
+		scope = prealloc_scope_begin_for_v3()
+		markused_tc = tc.fork_for_parallel_transform(a)
+		markused_tc.share_direct_dependencies_from(tc)
+		markused_tc.enable_scoped_parallel_workers()
+		markused_tc.verbose = verbose
+	}
+	mut used_fns, uses_generics := if full_runtime {
+		markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
+	} else {
+		markused.mark_used_with_generic_usage(a, markused_tc)
+	}
+	if scoped {
+		prealloc_scope_leave_for_v3(scope)
+		used_fns = clone_string_bool_map(used_fns)
+		prealloc_scope_free_for_v3(scope)
+	}
+	return used_fns, uses_generics
 }
 
 fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, include_imports bool, diagnostic_root string) {

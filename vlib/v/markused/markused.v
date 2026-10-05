@@ -11,6 +11,27 @@ import v.types
 const trace_markused = false
 const min_eager_markused_bodies = 4096
 
+// library_seeds are the functions that every program keeps, whatever it calls.
+const library_seeds = ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue', 'gen_assign',
+	'c.gen_assign']
+
+// parallel_callback_seeds are the callbacks that the compiler hands to its workers.
+const parallel_callback_seeds = ['c.FlatGen.gen_fn_items_scoped_batches',
+	'markused.CallCollector.collect_bodies_scoped_batches',
+	'parser.Parser.precollect_parallel_comptime_consts', 'types.TypeChecker.check_scoped_batches',
+	'driver.compare_print_notices', 'pref.detect_vroot', 'pref.detect_vexe', 'v.pref.detect_vroot',
+	'v.pref.detect_vexe', 'types.compare_type_errors', 'types.compare_type_notices',
+	'types.TypeChecker.result_return_uses_multi_tail', 'sync.Semaphore.timed_wait',
+	'sync.Semaphore.destroy']
+
+// seeded_fn_names returns the functions that mark_used keeps without a call that
+// leads to them, by the names it looks them up with.
+pub fn seeded_fn_names() []string {
+	mut names := library_seeds.clone()
+	names << parallel_callback_seeds
+	return names
+}
+
 // mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil })
@@ -513,22 +534,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	if !trivial_literal_output {
 		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
 		enqueue_test_file_roots(a, test_files, mut used, mut queue)
-		for seed in ['time.Time.new', 'Time.new', 'gen_expr_lvalue', 'c.gen_expr_lvalue', 'gen_assign',
-			'c.gen_assign'] {
+		for seed in library_seeds {
 			queue << seed
 			used[seed] = true
 		}
 		// Parallel compiler callbacks and channel runtime helpers contain calls that
 		// are only selected after markused (by prealloc/worker lowering). Keep their
 		// concrete callees available for self-hosted compiler builds.
-		for seed in ['c.FlatGen.gen_fn_items_scoped_batches',
-			'markused.CallCollector.collect_bodies_scoped_batches',
-			'parser.Parser.precollect_parallel_comptime_consts',
-			'types.TypeChecker.check_scoped_batches', 'driver.compare_print_notices',
-			'pref.detect_vroot', 'pref.detect_vexe', 'v.pref.detect_vroot', 'v.pref.detect_vexe',
-			'types.compare_type_errors', 'types.compare_type_notices',
-			'types.TypeChecker.result_return_uses_multi_tail', 'sync.Semaphore.timed_wait',
-			'sync.Semaphore.destroy'] {
+		for seed in parallel_callback_seeds {
 			queue << seed
 			used[seed] = true
 		}
