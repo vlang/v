@@ -3597,6 +3597,11 @@ changes private fields in another module. An immutable value parameter cannot ca
 such a method: mutations would affect its copy and be lost when the function returns.
 Declare the parameter or receiver with `mut` when its changes must reach the caller.
 
+An explicit `mut param &T` takes mutable pointer storage. Passing `mut &value`
+creates temporary pointer storage for that call, including when `value` is a
+`mut value T` parameter. Changes to fields reach `value`; rebinding the temporary
+pointer does not rebind the caller's value.
+
 ```v
 struct User {
 	name string
