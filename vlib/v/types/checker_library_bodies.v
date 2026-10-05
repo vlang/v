@@ -1,6 +1,7 @@
 module types
 
 import v.flat
+import v.gen.c.naming
 
 // A build compiles only the functions that the program reaches, and a library has
 // many that it does not: most of what `import os` brings is never called. The
@@ -15,8 +16,8 @@ import v.flat
 // (check_reached_library_bodies).
 //
 // The bodies of the program itself, of the modules of its project, of the runtime
-// modules that the compiler calls on its own, and of every generic function are
-// always checked, as are all the declarations.
+// modules that a program has for one construct (library_runtime_modules), and of
+// every generic function are always checked, as are all the declarations.
 
 // skip_unreachable_library_bodies leaves the bodies of the functions in
 // `library_files` that the program cannot name unchecked, and returns how many
@@ -36,11 +37,15 @@ pub fn (mut tc TypeChecker) skip_unreachable_library_bodies(library_files map[st
 // report an error.
 const library_fn_implicit_names = ['str', 'free', 'next', 'msg', 'code', 'init', 'cleanup', 'main']
 
-// library_runtime_modules are the modules whose functions the compiler calls on its
-// own, for arrays, maps, strings, closures, channels and the like. No name in the
-// program leads to those calls, so their bodies are all checked.
-const library_runtime_modules = ['builtin', 'closure', 'sync', 'stdatomic', 'strconv', 'strings',
-	'embed_file', 'overflow', 'debug']
+// library_runtime_modules are the modules that a program only has for a construct
+// that the compiler lowers to calls of their functions: a closure, a channel, a
+// `shared` value, an embedded file, a checked overflow, a debugger statement. No
+// name in the program leads to those calls, so their bodies are all checked.
+//
+// `builtin`, `strings` and `strconv` are in every program, which calls a part of
+// them. Of those, the check takes what the program names, and what markused keeps
+// on its own for the arrays, maps, strings and errors of a program: `seeded_fns`.
+const library_runtime_modules = ['closure', 'sync', 'stdatomic', 'embed_file', 'overflow', 'debug']
 
 struct LibraryFnBody {
 	fn_idx   int
@@ -59,7 +64,9 @@ fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follo
 	mut seeded_names := map[string]bool{}
 	if follow_names {
 		for name in seeded_fns {
-			seeded_names[name.all_after_last('.')] = true
+			// `array.push`, `array__push` and `strconv__format_int` name functions
+			// that are declared as `push` and `format_int`.
+			seeded_names[name.all_after_last('.').all_after_last('__')] = true
 		}
 	}
 	mut bodies := []LibraryFnBody{cap: 4096}
@@ -241,8 +248,8 @@ fn (mut tc TypeChecker) library_body_items(used map[string]bool, only_used bool)
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
-				if tc.skips_library_body(node) && (!only_used || used[node.value]
-					|| used[checker_qualified_fn_name(tc.cur_module, node.value)]) {
+				if tc.skips_library_body(node)
+					&& (!only_used || library_fn_is_used(used, tc.cur_module, node.value)) {
 					cost := i - prev_tl
 					items << CheckWorkItem{
 						fn_idx:   i
@@ -261,6 +268,23 @@ fn (mut tc TypeChecker) library_body_items(used map[string]bool, only_used bool)
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
 	return items
+}
+
+// library_fn_is_used reports whether `used`, the functions that markused keeps, has
+// the function `name` of `module`: under its V name, or under the name that it has
+// in the generated C, which is how markused keeps some functions of the runtime
+// and how the code generator looks them up too.
+fn library_fn_is_used(used map[string]bool, module string, name string) bool {
+	qualified := checker_qualified_fn_name(module, name)
+	if used[name] || used[qualified] {
+		return true
+	}
+	c_name := naming.c_name(name)
+	if c_name != name && used[c_name] {
+		return true
+	}
+	c_qualified := naming.c_name(qualified)
+	return c_qualified != qualified && c_qualified != c_name && used[c_qualified]
 }
 
 // check_reached_library_bodies checks the bodies that the check left out and that
