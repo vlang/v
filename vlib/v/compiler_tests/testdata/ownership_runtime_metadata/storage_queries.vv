@@ -14,6 +14,7 @@ struct Box { mut: value &Value }
 struct Holder { mut: child Box }
 fn store(mut target Box, source &Value) { target.value = source }
 fn delegate(mut target Holder, source &Value) { store(mut target.child, source) }
+fn deep_delegate(mut target Holder, source &Value) { delegate(mut target, source) }
 fn overwrite(mut target Box, source &Value, replacement &Value) {
 	store(mut target, source)
 	target.value = replacement
@@ -71,6 +72,7 @@ fn self_source(mut target Box) { target.value = target.value }
 			unsafe { prealloc_scope_end(scope) }
 		}
 		assert results['delegate']['.child.value'] == [1]
+		assert results['deep_delegate']['.child.value'] == [1]
 		assert results['overwrite']['.value'] == [2]
 		assert results['deferred']['.value'] == [1]
 		assert results['first_cycle']['.value'] == [2]
@@ -83,6 +85,8 @@ fn self_source(mut target Box) { target.value = target.value }
 		mut store_decl := VisibleMutationFnDecl{}
 		mut delegate_decl := VisibleMutationFnDecl{}
 		mut self_decl := VisibleMutationFnDecl{}
+		mut deep_decl := VisibleMutationFnDecl{}
+		mut deferred_decl := VisibleMutationFnDecl{}
 		for i, node in a.nodes {
 			if node.kind == .fn_decl && node.value == 'first_cycle' {
 				cycle_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
@@ -93,6 +97,12 @@ fn self_source(mut target Box) { target.value = target.value }
 			if node.kind == .fn_decl && node.value == 'delegate' {
 				delegate_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
 			}
+			if node.kind == .fn_decl && node.value == 'deep_delegate' {
+				deep_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
+			}
+			if node.kind == .fn_decl && node.value == 'deferred' {
+				deferred_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
+			}
 			if node.kind == .fn_decl && node.value == 'self_source' {
 				self_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
 			}
@@ -102,41 +112,57 @@ fn self_source(mut target Box) { target.value = target.value }
 		assert self_active.len == 0
 		promotion_scope := unsafe { prealloc_scope_begin() }
 		mut promotion_view := tc.fork_storage_query_view()
+		mut promotion_memo := &VisibleMutationCache{ storage_query: true }
+		promotion_view.visible_mutation_cache.storage_query_owner = promotion_memo
+		promotion_view.visible_mutation_cache.storage_query_scopes = [promotion_scope]
 		mut no_ancestors := map[u64]bool{}
-		assert promotion_view.param_storage_writes_for_decl(delegate_decl, 0, mut no_ancestors)['.child.value'] == [1]
+		assert promotion_view.param_storage_writes_for_decl(deep_decl, 0, mut no_ancestors)['.child.value'] == [1]
 		mut child_context := map[u64]bool{}
 		delegate_id := visible_mutation_cache_id(delegate_decl, 0)
 		store_id := visible_mutation_cache_id(store_decl, 0)
 		child_context[delegate_id] = true
 		child_key := '${store_decl.mod}:${store_decl.idx}:0'
-		// A completed descendant context is promoted before its query arena ends.
-		assert child_key in promotion_view.visible_mutation_cache.storage_query_results
-		child_entry := promotion_view.visible_mutation_cache.storage_query_results[child_key][0]
+		// Deep descendant results reach the root memo before both intervening arenas end.
+		assert child_key in promotion_memo.storage_query_results
+		child_entry := promotion_memo.storage_query_results[child_key][0]
 		assert child_entry.guards == {
 			store_id: false
 		}
 		delegate_key := '${delegate_decl.mod}:${delegate_decl.idx}:0'
-		delegate_entry := promotion_view.visible_mutation_cache.storage_query_results[delegate_key][0]
+		delegate_entry := promotion_memo.storage_query_results[delegate_key][0]
 		assert delegate_entry.guards == {
 			delegate_id: false
 			store_id:    false
 		}
+		deep_id := visible_mutation_cache_id(deep_decl, 0)
+		deep_key := '${deep_decl.mod}:${deep_decl.idx}:0'
+		assert promotion_memo.storage_query_results[deep_key][0].guards == {
+			deep_id:     false
+			delegate_id: false
+			store_id:    false
+		}
+		assert promotion_view.visible_mutation_cache.storage_query_results.len == 0
 		sibling_scope := unsafe { prealloc_scope_begin() }
 		mut sibling_view := promotion_view.fork_storage_query_view()
+		sibling_view.visible_mutation_cache.storage_query_owner = promotion_memo
+		sibling_view.visible_mutation_cache.storage_query_scopes = [promotion_scope, sibling_scope]
 		sibling_view.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{
 			guard_id: delegate_id
 			guards:   {
 				delegate_id: false
 			}
 		}
-		borrowed := sibling_view.param_storage_writes_for_decl(store_decl, 0, mut child_context)
-		assert borrowed['.value'] == [1]
-		// A read-only hit in the parent does not populate this sibling's memo.
+		from_root := sibling_view.param_storage_writes_for_decl(store_decl, 0, mut child_context)
+		assert from_root['.value'] == [1]
+		// Root hits leave each private checker cache empty and copy into its parent arena.
 		assert sibling_view.visible_mutation_cache.storage_query_results.len == 0
 		assert sibling_view.visible_mutation_cache.storage_query_trace.guards == {
 			delegate_id: false
 			store_id:    false
 		}
+		sibling_parent := unsafe { prealloc_scope_suspend(sibling_scope) }
+		retained := clone_storage_query_result(from_root)
+		unsafe { prealloc_scope_resume(sibling_scope, sibling_parent) }
 		unsafe { prealloc_scope_end(sibling_scope) }
 		churn_scope := unsafe { prealloc_scope_begin() }
 		mut sibling_churn := map[string][]int{}
@@ -145,8 +171,8 @@ fn self_source(mut target Box) { target.value = target.value }
 		}
 		assert sibling_churn.len == 1024
 		unsafe { prealloc_scope_end(churn_scope) }
-		assert borrowed['.value'] == [1]
-		assert promotion_view.visible_mutation_cache.storage_query_results[child_key][0].writes['.value'] == [1]
+		assert retained['.value'] == [1]
+		assert promotion_memo.storage_query_results[child_key][0].writes['.value'] == [1]
 		promotion_view.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{
 			guard_id: delegate_id
 			guards:   {
@@ -177,6 +203,9 @@ fn self_source(mut target Box) { target.value = target.value }
 		assert tc.visible_mutation_cache.storage_query_results.len == 0
 		memo_scope := unsafe { prealloc_scope_begin() }
 		mut memo_view := tc.fork_storage_query_view()
+		mut memo_owner := &VisibleMutationCache{ storage_query: true }
+		memo_view.visible_mutation_cache.storage_query_owner = memo_owner
+		memo_view.visible_mutation_cache.storage_query_scopes = [memo_scope]
 		memo_view.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{
 			guard_id: u64(9_000_000)
 			guards:   {
@@ -187,7 +216,7 @@ fn self_source(mut target Box) { target.value = target.value }
 		readonly_context[visible_mutation_cache_id(store_decl, 1)] = false
 		assert memo_view.param_storage_writes_for_decl(store_decl, 1, mut readonly_context).len == 0
 		assert memo_view.param_storage_writes_for_decl(store_decl, 99, mut readonly_context).len == 0
-		assert memo_view.visible_mutation_cache.storage_query_count == 0
+		assert memo_owner.storage_query_count == 0
 		assert memo_view.visible_mutation_cache.storage_query_trace.guards == {
 			u64(9_000_000): false
 		}
@@ -202,26 +231,36 @@ fn self_source(mut target Box) { target.value = target.value }
 		assert memo_view.param_storage_writes_for_decl(cycle_decl, 0, mut active_cycle).len == 0
 		mut absent := map[u64]bool{}
 		assert memo_view.param_storage_writes_for_decl(cycle_decl, 0, mut absent)['.value'] == [2]
-		count_before_store := memo_view.visible_mutation_cache.storage_query_count
+		count_before_store := memo_owner.storage_query_count
 		for iteration in 0 .. 96 {
 			mut distinct_context := map[u64]bool{}
 			distinct_context[u64(1_000_000 + iteration)] = true
 			assert memo_view.param_storage_writes_for_decl(store_decl, 0, mut distinct_context)['.value'] == [1]
 		}
 		// Ancestors whose guards were never read do not create distinct entries.
-		assert memo_view.visible_mutation_cache.storage_query_count == count_before_store + 1
-		for iteration in 0 .. 96 {
-			memo_view.visible_mutation_cache.cache_storage_query_result('bounded', {
+		assert memo_owner.storage_query_count == count_before_store + 1
+		oversized := 'x'.repeat(8 * 1024 * 1024 + 1)
+		memo_owner.cache_storage_query_result('oversized', {
+			oversized: [1]
+		}, map[u64]bool{}, true)
+		assert memo_owner.storage_query_count == count_before_store + 1
+		for iteration in 0 .. 4096 {
+			memo_owner.cache_storage_query_result('bounded', {
 				'.value': [1]
 			},
 				{
 					u64(2_000_000 + iteration): false
 				}, true)
 		}
-		assert memo_view.visible_mutation_cache.storage_query_count == 64
-		assert memo_view.visible_mutation_cache.storage_query_results.len < 64
-		assert memo_view.visible_mutation_cache.storage_query_bytes <= 256 * 1024
-		for _, entries in memo_view.visible_mutation_cache.storage_query_results {
+		assert memo_owner.storage_query_count == 4096
+		assert memo_owner.storage_query_results.len < 4096
+		assert memo_owner.storage_query_bytes <= 8 * 1024 * 1024
+		// The bounded table declines new entries while the exact deferred query still succeeds.
+		mut full_context := map[u64]bool{}
+		assert memo_view.param_storage_writes_for_decl(deferred_decl, 0, mut full_context)['.value'] == [1]
+		assert memo_owner.storage_query_count == 4096
+		assert memo_view.visible_mutation_cache.storage_query_results.len == 0
+		for _, entries in memo_owner.storage_query_results {
 			for entry in entries {
 				for _, sources in entry.writes {
 					assert sources.len > 0
@@ -230,6 +269,7 @@ fn self_source(mut target Box) { target.value = target.value }
 		}
 		unsafe { prealloc_scope_end(memo_scope) }
 		assert tc.visible_mutation_cache.storage_query_results.len == 0
+		assert isnil(tc.visible_mutation_cache.storage_query_owner)
 		for _, paths in results {
 			for name, sources in paths {
 				assert name.len > 0

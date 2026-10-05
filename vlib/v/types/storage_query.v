@@ -43,21 +43,28 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 			return empty
 		}
 		cache_key := '${decl.mod}:${decl.idx}:${target_param_idx}'
-		if use_cache {
-			mut lookup := cache
-			for !isnil(lookup) && lookup.storage_query {
-				for cached in lookup.storage_query_results[cache_key] {
-					if storage_query_guards_match(cached.guards, visiting) {
-						parent := unsafe { prealloc_scope_suspend(scope) }
-						cache.record_storage_query_guards(cached.guards, true)
-						unsafe { prealloc_scope_resume(scope, parent) }
-						return cached.writes
-					}
+		inherited_owner := use_cache && !isnil(cache.storage_query_owner)
+		mut owner := if inherited_owner {
+			cache.storage_query_owner
+		} else {
+			&VisibleMutationCache{ storage_query: true }
+		}
+		if inherited_owner {
+			for cached in owner.storage_query_results[cache_key] {
+				if storage_query_guards_match(cached.guards, visiting) {
+					parent := unsafe { prealloc_scope_suspend(scope) }
+					cache.record_storage_query_guards(cached.guards, true)
+					promoted := clone_storage_query_result(cached.writes)
+					unsafe { prealloc_scope_resume(scope, parent) }
+					return promoted
 				}
-				lookup = lookup.base
 			}
 		}
 		mut view := tc.fork_storage_query_view()
+		view.visible_mutation_cache.storage_query_owner = owner
+		mut scopes := if inherited_owner { cache.storage_query_scopes.clone() } else { []voidptr{} }
+		scopes << scope
+		view.visible_mutation_cache.storage_query_scopes = scopes
 		view.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{
 			guard_id: guard_id
 			guards:   {
@@ -66,25 +73,46 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		}
 		mut active := visiting.clone()
 		result := view.param_storage_writes_for_decl_unscoped(decl, target_param_idx, mut active)
+		trace := view.visible_mutation_cache.storage_query_trace
+		// Allocate suspension bookkeeping before selecting any older arena.
+		mut states := []voidptr{len: if inherited_owner {
+			cache.storage_query_scopes.len - 1
+		} else {
+			0
+		}, init: voidptr(0)}
 		parent := unsafe { prealloc_scope_suspend(scope) }
 		promoted := clone_storage_query_result(result)
 		if use_cache {
-			trace := view.visible_mutation_cache.storage_query_trace
 			cache.record_storage_query_guards(trace.guards, trace.complete)
-			if trace.complete {
-				cache.cache_storage_query_result(cache_key, promoted, trace.guards, false)
-			}
-			for key, entries in view.visible_mutation_cache.storage_query_results {
-				for cached in entries {
-					// Retain completed descendant traces before this view's arena is freed.
-					cache.cache_storage_query_result(key, cached.writes, cached.guards, true)
-				}
-			}
+		}
+		if inherited_owner && trace.complete {
+			// Only admitted memo payloads are allocated in the outer query's arena.
+			suspend_storage_query_scopes(cache.storage_query_scopes, mut states)
+			owner.cache_storage_query_result(cache_key, result, trace.guards, true)
+			resume_storage_query_scopes(cache.storage_query_scopes, states)
 		}
 		unsafe { prealloc_scope_resume(scope, parent) }
 		return promoted
 	} $else {
 		return tc.param_storage_writes_for_decl_unscoped(decl, target_param_idx, mut visiting)
+	}
+}
+
+fn suspend_storage_query_scopes(scopes []voidptr, mut states []voidptr) {
+	$if prealloc {
+		for i := scopes.len - 1; i > 0; i-- {
+			states[i - 1] = unsafe { prealloc_scope_suspend(scopes[i]) }
+		}
+	}
+}
+
+fn resume_storage_query_scopes(scopes []voidptr, states []voidptr) {
+	$if prealloc {
+		for i in 1 .. scopes.len {
+			unsafe {
+				prealloc_scope_resume(scopes[i], states[i - 1])
+			}
+		}
 	}
 }
 
@@ -123,12 +151,12 @@ fn clone_storage_query_result(result map[string][]int) map[string][]int {
 }
 
 fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, guards map[u64]bool, clone_result bool) {
-	if cache.storage_query_count >= 64 { return }
+	if cache.storage_query_count >= 4096 { return }
 	mut entries := cache.storage_query_results[key] or { []StorageQueryResult{} }
 	for entry in entries { if entry.guards == guards { return } }
 	mut bytes := key.len + 64 + guards.len * 32
 	for path, sources in result { bytes += path.len + sources.len * int(sizeof(int)) + 64 }
-	if cache.storage_query_bytes + bytes > 256 * 1024 { return }
+	if cache.storage_query_bytes + bytes > 8 * 1024 * 1024 { return }
 	entries << StorageQueryResult{
 		writes: if clone_result { clone_storage_query_result(result) } else { result }
 		guards: guards.clone()

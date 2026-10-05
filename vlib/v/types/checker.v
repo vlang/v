@@ -332,7 +332,9 @@ mut:
 	base                  &VisibleMutationCache = unsafe { nil }
 	storage_query         bool
 	storage_query_results map[string][]StorageQueryResult
-	storage_query_trace   &StorageQueryTrace = unsafe { nil }
+	storage_query_trace   &StorageQueryTrace    = unsafe { nil }
+	storage_query_owner   &VisibleMutationCache = unsafe { nil }
+	storage_query_scopes  []voidptr
 	storage_query_count   int
 	storage_query_bytes   int
 	// decls holds the module-qualified keys (`mod\x01name`) and global_decls the
