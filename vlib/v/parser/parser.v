@@ -15215,6 +15215,12 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 		'u32', 'u64', 'f32', 'f64', 'string', 'rune', 'usize', 'isize', 'voidptr'] {
 		return false
 	}
+	// `builtin` declares the other builtin types, such as `array`, so none of its
+	// consts has the name of one. Its directory is the largest to index, and every
+	// program parses it.
+	if !p.is_translated && p.cur_module == 'builtin' && is_builtin_type(name) {
+		return false
+	}
 	if p.resolve_local_type_name(name) != name {
 		return false
 	}
