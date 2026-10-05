@@ -62,3 +62,35 @@ fn test_concurrent_batches_never_interleave_frames() ! {
 fn assert_send_batch(mut client Client, messages []Message) {
 	assert client.write_messages(messages) or { panic(err) } == 131082
 }
+
+fn test_batch_rejects_close_frames_before_sending_any_message() ! {
+	close_message := Message{
+		opcode: .close
+	}
+	data_message := Message{
+		opcode:  .text_frame
+		payload: 'batch data'.bytes()
+	}
+	for server in [true, false] {
+		for messages in [[close_message], [close_message, data_message], [data_message, close_message],
+			[data_message, close_message, data_message]] {
+			mut sender, mut receiver := batch_pair(server)!
+			defer {
+				sender.conn.close() or {}
+				receiver.conn.close() or {}
+			}
+			if _ := sender.write_messages(messages) {
+				assert false, 'a batch containing a close frame must be rejected'
+			} else {
+				assert err.msg() == 'close frames cannot be batched; use close() instead'
+			}
+			assert sender.get_state() == .open
+			// This must be the first received frame: even data preceding the rejected
+			// close frame must not escape from the batch validation pass.
+			assert sender.write_string('still open')! > 0
+			actual := receiver.read_next_message()!
+			assert actual.opcode == .text_frame
+			assert actual.payload.bytestr() == 'still open'
+		}
+	}
+}

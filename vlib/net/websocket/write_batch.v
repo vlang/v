@@ -4,13 +4,17 @@ module websocket
 // does not wait for more messages or retain caller buffers after returning.
 // The return value includes frame headers, as with write(). A failed write may
 // have sent a prefix; close the connection instead of replaying the batch.
+// Close frames are not accepted; use close() to perform the closing handshake.
 pub fn (mut ws Client) write_messages(messages []Message) !int {
 	if ws.get_state() != .open {
 		return error('trying to write on a closed socket!')
 	}
 	mut size := i64(0)
 	for message in messages {
-		if message.opcode !in [.text_frame, .binary_frame, .ping, .pong, .close] {
+		if message.opcode == .close {
+			return error('close frames cannot be batched; use close() instead')
+		}
+		if message.opcode !in [.text_frame, .binary_frame, .ping, .pong] {
 			return error('batch messages must be complete data or control frames')
 		}
 		if is_control_frame(message.opcode) && message.payload.len > 125 {
