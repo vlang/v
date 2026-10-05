@@ -3,6 +3,12 @@
 // that can be found in the LICENSE file.
 module arena
 
+// The arenas live in builtin, in code that only the `builtin_arena` define
+// selects. The compiler defines it for every program that imports `arena`.
+$if !builtin_arena ? {
+	$compile_error('module `arena` needs the `builtin_arena` define, which V sets for programs that import `arena`; pass `-d builtin_arena` to compilers that do not')
+}
+
 // Config holds the options for `new`.
 @[params]
 pub struct Config {

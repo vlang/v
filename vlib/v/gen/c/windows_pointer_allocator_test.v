@@ -75,9 +75,6 @@ fn main() {
 typedef unsigned char u8;
 typedef struct { void* _object; } IError;
 static IError builtin__none__, builtin__error_sentinel;
-static u8* (*g_arena_alloc_hook)(ptrdiff_t, ptrdiff_t);
-static u8* (*g_arena_realloc_hook)(u8*, ptrdiff_t, ptrdiff_t);
-static _Bool (*g_arena_owns_hook)(void*);
 typedef struct __attribute__((aligned(64))) { int values[32]; } main__Holder;
 typedef struct __attribute__((aligned(8))) { int value; } main__NaturalCell;
 typedef struct { main__NaturalCell values[2]; } main__NaturalHolder;

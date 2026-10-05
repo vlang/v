@@ -47,10 +47,15 @@ fn main() {
 * `free()` of arena memory (also by vlib code, like `s.free()` or `arr.free()`) does nothing.
   Growing arena memory (realloc) after `pop()` copies it to the current allocator, so a map
   or array built in an arena can keep growing after the arena was popped.
-* Values stored into longer lived places while an arena is active (globals, caches, outer
-  arrays that grow inside the scope, errors returned from the scope) point into the arena,
-  and dangle after `reset()` or `free()`. Initialize lazily created global state before
-  pushing an arena.
+* Values stored into longer lived places while an arena is active (globals, caches, errors
+  returned from the scope) point into the arena, and dangle after `reset()` or `free()`.
+  Initialize lazily created global state before pushing an arena.
+* Growing an array, map or string builder allocates new storage, so one that was created
+  before `push()` and grows inside the scope gets storage in the arena, which dangles after
+  `reset()` too. Reserve its capacity before `push()`, or grow it after `pop()`.
+* Closures, channels, `shared` values and other objects that are created inside a scope live
+  in the arena as well. A thread that is spawned in the scope and still uses them after
+  `reset()` or `free()` uses freed memory: wait for such threads before releasing the arena.
 * `reset()` and `free()` panic when the arena is still pushed. Using an arena after `free()`
   panics. Do not use a copy of an `Arena` after the original was freed.
 * Pop every arena before its thread ends.
@@ -63,4 +68,6 @@ fn main() {
 * `-prealloc` and `-gc vgc` are not supported, and using `arena` with them is a compile
   time error. `-prealloc` has its own scopes (`prealloc_scope_begin()`).
 
-Programs that never create an arena only pay one global check per allocation and `free()`.
+Programs that do not import `arena` are not affected: V compiles the allocator hooks into
+builtin (with `-d builtin_arena`) only for programs that import the module. Until such a
+program creates its first arena, the hooks cost one global check per allocation and `free()`.

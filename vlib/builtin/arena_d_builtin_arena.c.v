@@ -12,9 +12,13 @@ module builtin
 //
 // Every live chunk is listed in a process-wide registry, so free() and
 // realloc on any thread can tell arena memory from heap memory. Its readers
-// take no lock (see arena_registry_find). Programs that never create an arena
-// only pay a check of one global in each allocation entry point (see
-// g_arena_alloc_hook). -prealloc and -gc vgc builds never call into this file.
+// take no lock (see arena_registry_find).
+//
+// Only programs that use the `arena` module contain this file and the hooks
+// in the allocation entry points: the compiler defines `builtin_arena` for
+// them. Until such a program creates its first arena, each entry point only
+// checks one global (see g_arena_alloc_hook). -prealloc and -gc vgc builds
+// never call into this file.
 
 const arena_magic = u32(0x41524e41)
 const arena_default_chunk_size = isize(64 * 1024)
@@ -66,8 +70,7 @@ fn C.atomic_load_ptr(voidptr) voidptr
 fn C.atomic_store_ptr(voidptr, voidptr)
 
 // The allocation entry points call these hooks, which v_arena_new installs
-// and nothing clears. Until then, each entry point only checks one global, and
-// programs that never create an arena do not even contain the arena code.
+// and nothing clears. Until then, each entry point only checks one global.
 // A thread that reads a stale nil has not pushed an arena itself, and it can
 // only get arena memory from another thread through a synchronizing operation
 // that also publishes the hooks.

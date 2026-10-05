@@ -71,38 +71,39 @@ pub fn malloc(n isize) &u8 {
 		return &u8(unsafe { nil })
 	}
 	mut res := &u8(unsafe { nil })
-	$if prealloc {
-		return unsafe { prealloc_malloc(n) }
-	} $else $if vgc ? {
-		unsafe {
-			res = &u8(vgc_malloc(usize(n)))
-		}
-	} $else {
-		// A scoped arena of the current thread (see arena.c.v) serves first.
+	$if builtin_arena ? {
+		// A scoped arena of the current thread (see arena_d_builtin_arena.c.v)
+		// serves first.
 		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
 			res = g_arena_alloc_hook(n, 0)
 			if res != 0 {
 				return res
 			}
 		}
-		$if gcboehm ? {
-			unsafe {
-				res = C.GC_MALLOC(n)
-			}
-		} $else $if freestanding {
-			// todo: is this safe to call malloc there? We export __malloc as malloc and it uses dlmalloc behind the scenes
-			// so theoretically it is safe
-			res = unsafe { __malloc(usize(n)) }
+	}
+	$if prealloc {
+		return unsafe { prealloc_malloc(n) }
+	} $else $if vgc ? {
+		unsafe {
+			res = &u8(vgc_malloc(usize(n)))
+		}
+	} $else $if gcboehm ? {
+		unsafe {
+			res = C.GC_MALLOC(n)
+		}
+	} $else $if freestanding {
+		// todo: is this safe to call malloc there? We export __malloc as malloc and it uses dlmalloc behind the scenes
+		// so theoretically it is safe
+		res = unsafe { __malloc(usize(n)) }
+	} $else {
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc.
+			res = unsafe { C._aligned_malloc(n, 1) }
 		} $else {
-			$if windows {
-				// Warning! On windows, we always use _aligned_malloc to allocate memory.
-				// This ensures that we can later free the memory with _aligned_free
-				// without needing to track whether the memory was originally allocated
-				// by malloc or _aligned_malloc.
-				res = unsafe { C._aligned_malloc(n, 1) }
-			} $else {
-				res = unsafe { C.malloc(n) }
-			}
+			res = unsafe { C.malloc(n) }
 		}
 	}
 	if res == 0 {
@@ -128,41 +129,41 @@ pub fn malloc_noscan(n isize) &u8 {
 		_memory_panic(@FN, n)
 	}
 	mut res := &u8(unsafe { nil })
-	$if prealloc {
-		return unsafe { prealloc_malloc(n) }
-	} $else $if vgc ? {
-		unsafe {
-			res = &u8(vgc_malloc_noscan(usize(n)))
-		}
-	} $else {
+	$if builtin_arena ? {
 		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
 			res = g_arena_alloc_hook(n, 0)
 			if res != 0 {
 				return res
 			}
 		}
-		$if gcboehm ? {
-			$if gcboehm_opt ? {
-				unsafe {
-					res = C.GC_MALLOC_ATOMIC(n)
-				}
-			} $else {
-				unsafe {
-					res = C.GC_MALLOC(n)
-				}
+	}
+	$if prealloc {
+		return unsafe { prealloc_malloc(n) }
+	} $else $if vgc ? {
+		unsafe {
+			res = &u8(vgc_malloc_noscan(usize(n)))
+		}
+	} $else $if gcboehm ? {
+		$if gcboehm_opt ? {
+			unsafe {
+				res = C.GC_MALLOC_ATOMIC(n)
 			}
-		} $else $if freestanding {
-			res = unsafe { __malloc(usize(n)) }
 		} $else {
-			$if windows {
-				// Warning! On windows, we always use _aligned_malloc to allocate memory.
-				// This ensures that we can later free the memory with _aligned_free
-				// without needing to track whether the memory was originally allocated
-				// by malloc or _aligned_malloc.
-				res = unsafe { C._aligned_malloc(n, 1) }
-			} $else {
-				res = unsafe { C.malloc(n) }
+			unsafe {
+				res = C.GC_MALLOC(n)
 			}
+		}
+	} $else $if freestanding {
+		res = unsafe { __malloc(usize(n)) }
+	} $else {
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc.
+			res = unsafe { C._aligned_malloc(n, 1) }
+		} $else {
+			res = unsafe { C.malloc(n) }
 		}
 	}
 	if res == 0 {
@@ -227,13 +228,7 @@ pub fn malloc_uncollectable(n isize) &u8 {
 	}
 
 	mut res := &u8(unsafe { nil })
-	$if prealloc {
-		return unsafe { prealloc_malloc(n) }
-	} $else $if vgc ? {
-		unsafe {
-			res = &u8(vgc_malloc(usize(n)))
-		}
-	} $else {
+	$if builtin_arena ? {
 		// Arena chunks are uncollectable with the Boehm GC too.
 		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
 			res = g_arena_alloc_hook(n, 0)
@@ -241,22 +236,28 @@ pub fn malloc_uncollectable(n isize) &u8 {
 				return res
 			}
 		}
-		$if gcboehm ? {
-			unsafe {
-				res = C.GC_MALLOC_UNCOLLECTABLE(n)
-			}
-		} $else $if freestanding {
-			res = unsafe { __malloc(usize(n)) }
+	}
+	$if prealloc {
+		return unsafe { prealloc_malloc(n) }
+	} $else $if vgc ? {
+		unsafe {
+			res = &u8(vgc_malloc(usize(n)))
+		}
+	} $else $if gcboehm ? {
+		unsafe {
+			res = C.GC_MALLOC_UNCOLLECTABLE(n)
+		}
+	} $else $if freestanding {
+		res = unsafe { __malloc(usize(n)) }
+	} $else {
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc.
+			res = unsafe { C._aligned_malloc(n, 1) }
 		} $else {
-			$if windows {
-				// Warning! On windows, we always use _aligned_malloc to allocate memory.
-				// This ensures that we can later free the memory with _aligned_free
-				// without needing to track whether the memory was originally allocated
-				// by malloc or _aligned_malloc.
-				res = unsafe { C._aligned_malloc(n, 1) }
-			} $else {
-				res = unsafe { C.malloc(n) }
-			}
+			res = unsafe { C.malloc(n) }
 		}
 	}
 	if res == 0 {
@@ -281,6 +282,15 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
 	}
 	mut new_ptr := &u8(unsafe { nil })
+	$if builtin_arena ? {
+		// Arena memory never reaches the C allocator; see arena_realloc.
+		if _unlikely_(g_arena_realloc_hook != unsafe { nil }) {
+			new_ptr = g_arena_realloc_hook(b, -1, n)
+			if new_ptr != 0 {
+				return new_ptr
+			}
+		}
+	}
 	$if prealloc {
 		unsafe {
 			new_ptr = malloc(n)
@@ -289,26 +299,17 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 		return new_ptr
 	} $else $if vgc ? {
 		new_ptr = unsafe { &u8(vgc_realloc(b, usize(n))) }
+	} $else $if gcboehm ? {
+		new_ptr = unsafe { C.GC_REALLOC(b, n) }
 	} $else {
-		// Arena memory never reaches the C allocator; see arena_realloc.
-		if _unlikely_(g_arena_realloc_hook != unsafe { nil }) {
-			new_ptr = g_arena_realloc_hook(b, -1, n)
-			if new_ptr != 0 {
-				return new_ptr
-			}
-		}
-		$if gcboehm ? {
-			new_ptr = unsafe { C.GC_REALLOC(b, n) }
+		$if windows {
+			// Warning! On windows, we always use _aligned_realloc to reallocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc/_aligned_realloc.
+			new_ptr = unsafe { C._aligned_realloc(b, n, 1) }
 		} $else {
-			$if windows {
-				// Warning! On windows, we always use _aligned_realloc to reallocate memory.
-				// This ensures that we can later free the memory with _aligned_free
-				// without needing to track whether the memory was originally allocated
-				// by malloc or _aligned_malloc/_aligned_realloc.
-				new_ptr = unsafe { C._aligned_realloc(b, n, 1) }
-			} $else {
-				new_ptr = unsafe { C.realloc(b, n) }
-			}
+			new_ptr = unsafe { C.realloc(b, n) }
 		}
 	}
 	if new_ptr == 0 {
@@ -339,7 +340,8 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	}
 	$if prealloc {
 		return unsafe { prealloc_realloc(old_data, old_size, new_size) }
-	} $else $if !vgc ? {
+	}
+	$if builtin_arena ? {
 		// Arena memory never reaches the C allocator; see arena_realloc.
 		if _unlikely_(g_arena_realloc_hook != unsafe { nil }) {
 			arena_ptr := g_arena_realloc_hook(old_data, old_size, new_size)
@@ -406,11 +408,7 @@ pub fn vcalloc(n isize) &u8 {
 	} else if n == 0 {
 		return &u8(unsafe { nil })
 	}
-	$if prealloc {
-		return unsafe { prealloc_calloc(n) }
-	} $else $if vgc ? {
-		return unsafe { &u8(vgc_calloc(usize(n))) }
-	} $else {
+	$if builtin_arena ? {
 		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
 			arena_ptr := g_arena_alloc_hook(n, 0)
 			if arena_ptr != 0 {
@@ -419,25 +417,29 @@ pub fn vcalloc(n isize) &u8 {
 				return arena_ptr
 			}
 		}
-		$if gcboehm ? {
-			return unsafe { &u8(C.GC_MALLOC(n)) }
-		} $else {
-			$if windows {
-				// Warning! On windows, we always use _aligned_malloc to allocate memory.
-				// This ensures that we can later free the memory with _aligned_free
-				// without needing to track whether the memory was originally allocated
-				// by malloc or _aligned_malloc/_aligned_realloc/_aligned_recalloc.
-				ptr := unsafe { C._aligned_malloc(n, 1) }
-				if ptr != &u8(unsafe { nil }) {
-					unsafe { C.memset(ptr, 0, n) }
-				}
-				_ht_alloc(ptr, n)
-				return ptr
-			} $else {
-				r := unsafe { C.calloc(1, n) }
-				_ht_alloc(r, n)
-				return r
+	}
+	$if prealloc {
+		return unsafe { prealloc_calloc(n) }
+	} $else $if vgc ? {
+		return unsafe { &u8(vgc_calloc(usize(n))) }
+	} $else $if gcboehm ? {
+		return unsafe { &u8(C.GC_MALLOC(n)) }
+	} $else {
+		$if windows {
+			// Warning! On windows, we always use _aligned_malloc to allocate memory.
+			// This ensures that we can later free the memory with _aligned_free
+			// without needing to track whether the memory was originally allocated
+			// by malloc or _aligned_malloc/_aligned_realloc/_aligned_recalloc.
+			ptr := unsafe { C._aligned_malloc(n, 1) }
+			if ptr != &u8(unsafe { nil }) {
+				unsafe { C.memset(ptr, 0, n) }
 			}
+			_ht_alloc(ptr, n)
+			return ptr
+		} $else {
+			r := unsafe { C.calloc(1, n) }
+			_ht_alloc(r, n)
+			return r
 		}
 	}
 	return &u8(unsafe { nil }) // not reached, TODO: remove when V's checker is improved
@@ -461,11 +463,13 @@ pub fn vcalloc_noscan(n isize) &u8 {
 		if n < 0 {
 			_memory_panic(@FN, n)
 		}
-		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) && n > 0 {
-			arena_ptr := g_arena_alloc_hook(n, 0)
-			if arena_ptr != 0 {
-				unsafe { C.memset(arena_ptr, 0, n) }
-				return arena_ptr
+		$if builtin_arena ? {
+			if _unlikely_(g_arena_alloc_hook != unsafe { nil }) && n > 0 {
+				arena_ptr := g_arena_alloc_hook(n, 0)
+				if arena_ptr != 0 {
+					unsafe { C.memset(arena_ptr, 0, n) }
+					return arena_ptr
+				}
 			}
 		}
 		$if gcboehm_opt ? {
@@ -522,35 +526,37 @@ pub fn free(ptr voidptr) {
 		// VGC: explicit free is optional (GC will collect unreachable objects).
 		// But hint the allocator for faster reuse.
 		vgc_free(ptr)
-	} $else {
-		$if gcboehm ? {
-			// It is generally better to leave it to Boehm's gc to free things.
-			// Calling C.GC_FREE(ptr) was tried initially, but does not work
-			// well with programs that do manual management themselves.
-			//
-			// The exception is doing leak detection for manual memory management:
-			$if gcboehm_leak ? {
-				// Arena memory is released in bulk by its arena (see arena.c.v).
+	} $else $if gcboehm ? {
+		// It is generally better to leave it to Boehm's gc to free things.
+		// Calling C.GC_FREE(ptr) was tried initially, but does not work
+		// well with programs that do manual management themselves.
+		//
+		// The exception is doing leak detection for manual memory management:
+		$if gcboehm_leak ? {
+			$if builtin_arena ? {
+				// Arena memory is released in bulk by its arena.
 				if _unlikely_(g_arena_owns_hook != unsafe { nil }) && g_arena_owns_hook(ptr) {
 					return
 				}
-				unsafe { C.GC_FREE(ptr) }
 			}
-		} $else {
-			// Arena memory is released in bulk by its arena (see arena.c.v).
+			unsafe { C.GC_FREE(ptr) }
+		}
+	} $else {
+		$if builtin_arena ? {
+			// Arena memory is released in bulk by its arena.
 			if _unlikely_(g_arena_owns_hook != unsafe { nil }) && g_arena_owns_hook(ptr) {
 				return
 			}
-			// Manual memory management: this is the only path that actually returns
-			// the block to the C allocator, and it mirrors where _ht_alloc fires, so
-			// report the free here (after the nil / none__ / nop / GC guards above).
-			_ht_free(ptr)
-			$if windows {
-				// Warning! On windows, we always use _aligned_free to free memory.
-				unsafe { C._aligned_free(ptr) }
-			} $else {
-				C.free(ptr)
-			}
+		}
+		// Manual memory management: this is the only path that actually returns
+		// the block to the C allocator, and it mirrors where _ht_alloc fires, so
+		// report the free here (after the nil / none__ / nop / GC guards above).
+		_ht_free(ptr)
+		$if windows {
+			// Warning! On windows, we always use _aligned_free to free memory.
+			unsafe { C._aligned_free(ptr) }
+		} $else {
+			C.free(ptr)
 		}
 	}
 }
@@ -634,7 +640,7 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 	if n < 0 {
 		_memory_panic(@FN, n)
 	}
-	$if !prealloc && !vgc ? {
+	$if builtin_arena ? {
 		if _unlikely_(g_arena_alloc_hook != unsafe { nil }) {
 			arena_ptr := g_arena_alloc_hook(n, align)
 			if arena_ptr != 0 {
