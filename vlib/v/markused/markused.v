@@ -6310,6 +6310,19 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 			}
 			.string_interp {
 				calls << 'string_plus_many'
+				for i in 0 .. child.children_count {
+					mut part_id := c.a.child(child, i)
+					part := c.a.node(part_id)
+					if part.kind == .directive && part.value == 'string_interp_format'
+						&& part.children_count > 0 {
+						if part.typ == 'p' {
+							continue
+						}
+						part_id = c.a.child(part, 0)
+					}
+					c.collect_top_level_stringification_calls(part_id, cur_module, imports,
+						local_values, local_types, mut calls)
+				}
 			}
 			.assign, .selector_assign, .index_assign {
 				c.collect_assign_operator_call(child, cur_module, local_types, mut calls)
@@ -6418,6 +6431,27 @@ fn (c &CallCollector) top_level_expr_lowers_to_map_str(id flat.NodeId, cur_modul
 	return type_name.len > 0 && markused_type_name_lowers_to_map_str(type_name, c.tc)
 }
 
+// collect_top_level_stringification_calls resolves script values with their own
+// imports and local bindings, before the checker has cached their expression types.
+fn (c &CallCollector) collect_top_level_stringification_calls(id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) {
+	type_name := c.top_level_expr_type_name(id, cur_module, imports, local_values, local_types, false)
+	if type_name.len == 0 {
+		return
+	}
+	typ := c.tc.parse_canonical_type(type_name)
+	base := types.unalias_type(typ)
+	skipped_fields := if base is types.Primitive || base is types.Rune || base is types.Char
+		|| base is types.ISize || base is types.USize || base is types.String {
+		map[string]bool{}
+	} else {
+		markused_auto_str_skipped_fields(c.a)
+	}
+	mut used := map[string]bool{}
+	mut seen := map[string]bool{}
+	enqueue_stringified_type_dependencies(typ, cur_module, c.tc, skipped_fields,
+		mut used, mut calls, mut seen)
+}
+
 fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) {
 	mut resolved_call := ''
 	if resolved := c.tc.resolved_call_name(call_id) {
@@ -6441,6 +6475,8 @@ fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Nod
 		}
 		if callee.value in ['print', 'println', 'eprint', 'eprintln'] && call.children_count >= 2 {
 			arg_id := c.a.child(call, 1)
+			c.collect_top_level_stringification_calls(arg_id, cur_module, imports, local_values,
+				local_types, mut calls)
 			if c.top_level_expr_lowers_to_map_str(arg_id, cur_module, imports, local_values, local_types) {
 				calls << 'string__plus'
 			}
@@ -8754,6 +8790,71 @@ fn (c &CallCollector) typed_receiver_method_name(type_name string, method string
 		if lowered != candidate && c.is_known_fn_name(lowered) {
 			return lowered
 		}
+	}
+	return c.collection_alias_receiver_method_name(clean_type_name, method, cur_module)
+}
+
+fn (c &CallCollector) collection_alias_receiver_method_name(type_name string, method string, cur_module string) ?string {
+	mut current := type_name
+	mut owner := cur_module
+	mut aliases := []string{}
+	for _ in 0 .. 16 {
+		qualified := if current.contains('.') { current } else { qualify_fn(owner, current) }
+		alias_name := if qualified in c.tc.type_aliases {
+			qualified
+		} else if current in c.tc.type_aliases {
+			current
+		} else {
+			return none
+		}
+		if alias_name in aliases || (c.tc.type_alias_generic_params[alias_name] or { []string{} }).len > 0 {
+			return none
+		}
+		aliases << alias_name
+		owner = c.tc.type_alias_modules[alias_name] or { owner }
+		target := markused_clean_receiver_type_name(c.tc.type_aliases[alias_name])
+		if !target.starts_with('[]') && !target.starts_with('map[') {
+			current = target
+			continue
+		}
+		// Only collection aliases inherit these runtime methods. Keep each alias's
+		// own methods ahead of the element-specific and generic implementations.
+		for alias in aliases {
+			candidate := '${alias}.${method}'
+			if c.is_known_fn_name(candidate) {
+				return candidate
+			}
+			lowered := markused_c_name(candidate)
+			if lowered != candidate && c.is_known_fn_name(lowered) {
+				return lowered
+			}
+		}
+		parsed := types.unalias_type(types.unwrap_all_pointers(types.unalias_type(c.tc.parse_canonical_type(alias_name))))
+		mut candidates := []string{}
+		if parsed is types.Array {
+			candidates << markused_array_receiver_method_candidates(parsed.name(), method, owner)
+			candidates << 'array.${method}'
+		} else if parsed is types.Map {
+			generic := 'map.${method}'
+			for candidate in markused_map_receiver_method_candidates(parsed.name(), method, owner) {
+				if candidate != generic {
+					candidates << candidate
+				}
+			}
+			candidates << generic
+		} else {
+			return none
+		}
+		for candidate in candidates {
+			if c.is_known_fn_name(candidate) {
+				return candidate
+			}
+			lowered := markused_c_name(candidate)
+			if lowered != candidate && c.is_known_fn_name(lowered) {
+				return lowered
+			}
+		}
+		return none
 	}
 	return none
 }

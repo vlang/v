@@ -563,3 +563,74 @@ fn main() { values := [1, 2, 3]; assert values[0] == 1; ${call} }
 		assert used['map.set'] == reached
 	}
 }
+
+fn test_script_stringification_helpers_use_imports_and_local_bindings() {
+	root := os.join_path(os.temp_dir(), 'v_script_runtime_helpers_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	path := os.join_path(root, 'main.v')
+	for body in ['println(math.sin(1.25))', 'value := math.sin(1.25)\nprintln(value)',
+		'println("\${math.sin(1.25):.2f}")', 'value := math.sin(1.25)\nprintln("\${value:.2f}")',
+		'println(math.small(1.25))', 'value := math.small(1.25)\nprintln(value)',
+		'println(math.values())', 'println(math.alias_value())', 'value := math.sin(1.25)\nprintln(1)'] {
+		os.write_file(path, 'module main
+import math
+fn unused() { println(f64(2.5)) }
+${body}
+') or { panic(err) }
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := types.TypeChecker.new(a)
+		tc.collect(a)
+		// Only imported declarations are available before script expressions are checked.
+		tc.fn_ret_types['math.sin'] = types.Type(types.f64_)
+		tc.fn_ret_types['math.small'] = types.Type(types.f32_)
+		tc.fn_ret_types['math.values'] = types.Type(types.Array{ elem_type: types.Type(types.f64_) })
+		tc.type_aliases['dep.Number'] = 'f64'
+		tc.type_alias_modules['dep.Number'] = 'dep'
+		tc.type_aliases['other.Number'] = 'int'
+		tc.type_alias_modules['other.Number'] = 'other'
+		tc.fn_ret_types['math.alias_value'] = types.Type(types.Alias{
+			name:      'dep.Number'
+			base_type: types.Type(types.f64_)
+		})
+		tc.cur_module = 'unrelated'
+		tc.cur_file = 'unrelated.v'
+		tc.register_file_import('dep', 'other')
+		assert types.unalias_type(tc.parse_type('dep.Number')) == types.Type(types.int_)
+		assert types.unalias_type(tc.parse_canonical_type('dep.Number')) == types.Type(types.f64_)
+		collector := CallCollector{ a: a, tc: &tc }
+		mut calls := []string{}
+		mut local_values := map[string]bool{}
+		mut local_types := map[string]string{}
+		for file in a.nodes {
+			if file.kind != .file { continue }
+			for i in 0 .. file.children_count {
+				id := a.child(&file, i)
+				if markused_is_top_level_stmt(a.node(id)) {
+					collector.collect_top_level_stmt_calls(id, 'main', {
+						'math': 'math'
+					},
+						mut local_values, mut local_types, mut calls)
+				}
+			}
+		}
+		if body.ends_with('println(1)') {
+			assert 'f64.str' !in calls, body
+			assert 'strconv__f64_to_str_l' !in calls, body
+			used := mark_used(a, &tc)
+			assert !used['f64.str']
+			assert !used['strconv__f64_to_str_l']
+		} else if body.contains('small') {
+			assert 'f32.str' in calls, body
+			assert 'strconv__f32_to_str_l' in calls, body
+			assert 'f64.str' in calls, body
+		} else {
+			assert 'f64.str' in calls, body
+			assert 'strconv__f64_to_str_l' in calls, body
+		}
+	}
+}
