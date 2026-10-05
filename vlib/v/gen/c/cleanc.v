@@ -14823,6 +14823,12 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		return '0'
 	}
 	node := g.a.nodes[int(id)]
+	// expr_to_string retains indentation in nested expression contexts.
+	if g.indent == 0 && node.kind in [.int_literal, .float_literal]
+		&& g.assert_expr_overrides.len == 0
+		&& g.callback_target_overrides.len == 0 {
+		return numeric_literal_c_text(&node)
+	}
 	if _ := int128_signedness(g.usable_expr_type(id)) {
 		// A 128-bit constant has to reach C as an expression built from the helpers.
 		// A cast to the struct representation plus a plain `<<` does not compile on
@@ -15459,26 +15465,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	}
 	node := unsafe { &g.a.nodes[int(id)] }
 	match node.kind {
-		.int_literal {
-			v := if node.value.contains_u8(`_`) { node.value.replace('_', '') } else { node.value }
-			if parts := int128_literal_parts(v) {
-				// Wider than 64 bits: emit the halves, because a C decimal constant
-				// that large is silently reduced to its low 64 bits.
-				g.write('__v_u128_make(${parts.high}ULL, ${parts.low}ULL)')
-				return
-			}
-			if v.starts_with('0o') {
-				g.write('0${v[2..]}')
-			} else {
-				g.write(v)
-			}
-		}
-		.float_literal {
-			if node.value.contains_u8(`_`) {
-				g.write(node.value.replace('_', ''))
-			} else {
-				g.write(node.value)
-			}
+		.int_literal, .float_literal {
+			g.write(numeric_literal_c_text(node))
 		}
 		.bool_literal {
 			g.write(node.value)
@@ -24885,6 +24873,15 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		return
 	}
 	node := g.a.nodes[int(val_id)]
+	// Numeric constant initializers use the existing const-expression text. Write
+	// them directly instead of resolving their type and copying a temporary builder
+	// for each element of a constant table.
+	if g.indent == 0 && node.kind in [.int_literal, .float_literal]
+		&& g.assert_expr_overrides.len == 0
+		&& g.callback_target_overrides.len == 0 {
+		builder.write_string(numeric_literal_c_text(&node))
+		return
+	}
 	clean_elem_type := default_init_unalias_type(elem_type)
 	if node.kind == .map_init && clean_elem_type is types.Map {
 		builder.write_string(g.new_map_expr_string(clean_elem_type.key_type, clean_elem_type.value_type))
@@ -24908,6 +24905,21 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		return
 	}
 	builder.write_u8(`0`)
+}
+
+fn numeric_literal_c_text(node &flat.Node) string {
+	value := if node.value.contains_u8(`_`) { node.value.replace('_', '') } else { node.value }
+	if node.kind == .int_literal {
+		if parts := int128_literal_parts(value) {
+			// Wider than 64 bits: emit the halves, because a C decimal constant
+			// that large is silently reduced to its low 64 bits.
+			return '__v_u128_make(${parts.high}ULL, ${parts.low}ULL)'
+		}
+		if value.starts_with('0o') {
+			return '0${value[2..]}'
+		}
+	}
+	return value
 }
 
 fn (mut g FlatGen) precompute_consts() string {
