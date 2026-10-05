@@ -909,6 +909,7 @@ pub mut:
 	file_imports_by_file   map[string]&FileImportInfo
 	file_modules           map[string]string
 	translated_files       map[string]bool
+	generated_files        map[string]bool // files of `@[generated]` modules: relaxed naming rules
 	has_globals_files      map[string]bool
 	deprecated_symbols     map[string]DeprecationInfo
 	deprecated_modules     map[string]DeprecationInfo
@@ -1259,6 +1260,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		file_imports_by_file:                    map[string]&FileImportInfo{}
 		file_modules:                            map[string]string{}
 		translated_files:                        map[string]bool{}
+		generated_files:                         map[string]bool{}
 		has_globals_files:                       map[string]bool{}
 		deprecated_symbols:                      map[string]DeprecationInfo{}
 		deprecated_modules:                      map[string]DeprecationInfo{}
@@ -1421,6 +1423,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		file_imports_by_file:                  tc.file_imports_by_file
 		file_modules:                          tc.file_modules
 		translated_files:                      tc.translated_files
+		generated_files:                       tc.generated_files
 		has_globals_files:                     tc.has_globals_files
 		deprecated_symbols:                    tc.deprecated_symbols
 		deprecated_modules:                    tc.deprecated_modules
@@ -1956,6 +1959,7 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.declaration_attributes = map[int][]string{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
 	tc.translated_files = map[string]bool{}
+	tc.generated_files = map[string]bool{}
 	tc.has_globals_files = map[string]bool{}
 	tc.strings_builder_candidates = []i32{cap: 1024}
 	tc.synthetic_top_level_type_ids = []i32{cap: 2048}
@@ -3312,6 +3316,9 @@ fn (mut tc TypeChecker) collect_module_attributes(node flat.Node, file string) {
 		match attr.all_before(':').trim_space() {
 			'translated' {
 				tc.translated_files[file] = true
+			}
+			'generated' {
+				tc.generated_files[file] = true
 			}
 			'has_globals' {
 				tc.has_globals_files[file] = true
@@ -11242,8 +11249,37 @@ fn (mut tc TypeChecker) check_invalid_test_file_name(id flat.NodeId, node flat.N
 	])
 }
 
+// relaxes_identifier_case reports whether the declaration `id` belongs to a
+// `@[generated]` module. Code generators may keep their own spelling there:
+// camelCase, a leading `_`, and type names that do not begin with a capital
+// letter. Only type names may begin with one, since V's grammar relies on that
+// to tell `Type{}`/`Type(x)` from values. Nothing else changes for such modules.
+fn (tc &TypeChecker) relaxes_identifier_case(id flat.NodeId) bool {
+	if tc.generated_files.len == 0 {
+		return false
+	}
+	if tc.valid_node_id(id) {
+		if file := tc.a.source_files[tc.a.node(id).pos.id] {
+			return tc.generated_files[file.name]
+		}
+	}
+	return tc.generated_files[tc.cur_file]
+}
+
+// name_may_be_type reports whether `name`, the base of a selector like `name.member` or
+// the member of `mod.name`, can be a type. V type names begin with a capital letter,
+// but types declared in `@[generated]` modules can have any name.
+fn (tc &TypeChecker) name_may_be_type(name string) bool {
+	return name.len > 0 && (name[0].is_capital() || tc.generated_files.len > 0)
+}
+
 fn (mut tc TypeChecker) check_snake_case_name(id flat.NodeId, name string, identifier string, pos token.Pos) {
 	if tc.translated_files[tc.cur_file] || name.starts_with('C.') || name.starts_with('JS.') {
+		return
+	}
+	// Module names must keep matching their directory, even in generated code.
+	if identifier != 'module name' && tc.relaxes_identifier_case(id) {
+		tc.check_generated_value_name(id, name, identifier, pos)
 		return
 	}
 	if name.starts_with('__v3_') || source_name_is_numbered_string_symbol(name) {
@@ -11257,13 +11293,23 @@ fn (mut tc TypeChecker) check_snake_case_name(id flat.NodeId, name string, ident
 	}
 }
 
+// check_generated_value_name enforces the one naming rule `@[generated]` keeps for
+// names that are not types: they cannot begin with an uppercase letter.
+fn (mut tc TypeChecker) check_generated_value_name(id flat.NodeId, name string, identifier string, pos token.Pos) {
+	short_name := name.all_after_last('.')
+	if short_name.len > 0 && short_name[0].is_capital() {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot start with an uppercase letter, only type names can', id, pos)
+	}
+}
+
 fn source_name_is_numbered_string_symbol(name string) bool {
 	return name.len > 5 && name.starts_with('_str_') && name[5..].bytes().all(it >= `0`
 		&& it <= `9`)
 }
 
 fn (mut tc TypeChecker) check_pascal_case_name(id flat.NodeId, name string, identifier string, pos token.Pos) {
-	if tc.translated_files[tc.cur_file] || name.starts_with('C.') || name.starts_with('JS.') {
+	if tc.translated_files[tc.cur_file] || name.starts_with('C.') || name.starts_with('JS.')
+		|| tc.relaxes_identifier_case(id) {
 		return
 	}
 	short_name := name.all_after_last('.')
@@ -11296,6 +11342,12 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 	if !node.value.contains('.') && !node.is_static_type_method()
 		&& tc.cur_module in ['', 'main'] && is_builtin_type_name(name) {
 		tc.record_error_at(.duplicate_decl, 'top level declaration cannot shadow builtin type', id, tc.fn_declaration_diagnostic_pos(node))
+	}
+	// `@[generated]` types need not start with a capital letter, so a function can
+	// share a type's name; `name(x)` would then be parsed as a cast.
+	if !node.value.contains('.') && !node.is_static_type_method()
+		&& tc.relaxes_identifier_case(id) && tc.type_name_known_in_current_module(name) {
+		tc.record_error_at(.duplicate_decl, 'function `${name}` has the same name as a type', id, tc.fn_declaration_diagnostic_pos(node))
 	}
 	// V1 treats os and strconv like builtin modules. Their long-standing private
 	// implementation methods intentionally use a leading underscore.
@@ -17089,11 +17141,20 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 			&& !tc.current_file_uses_nested_module_path() {
 			tc.record_error_at(.duplicate_decl, 'duplicate of a module name `${qname}`', field_id, tc.node_value_diagnostic_pos(field_id))
 		}
+		if field.value != '_' && tc.relaxes_identifier_case(field_id)
+			&& tc.should_check_source_name(field_id)
+			&& tc.type_name_known_in_current_module(field.value) {
+			tc.record_error_at(.duplicate_decl, 'const `${field.value}` has the same name as a type', field_id, tc.node_value_diagnostic_pos(field_id))
+		}
 		if field.value == '_' {
 			tc.record_error_at(.duplicate_decl, 'cannot use `_` as a const name', field_id, tc.node_value_diagnostic_pos(field_id))
 		} else if tc.should_check_source_name(field_id) && !field.value.starts_with('C.')
 			&& field.value != field.value.to_lower() {
-			tc.record_error_at(.duplicate_decl, 'const names cannot contain uppercase letters, use snake_case instead', field_id, tc.node_value_diagnostic_pos(field_id))
+			if tc.relaxes_identifier_case(field_id) {
+				tc.check_generated_value_name(field_id, field.value, 'const name', tc.node_value_diagnostic_pos(field_id))
+			} else {
+				tc.record_error_at(.duplicate_decl, 'const names cannot contain uppercase letters, use snake_case instead', field_id, tc.node_value_diagnostic_pos(field_id))
+			}
 		}
 		if tc.has_active_import(field.value) {
 			tc.record_error_at(.duplicate_decl, 'const `${field.value}` conflicts with imported module `${field.value}`', field_id, tc.node_value_diagnostic_pos(field_id))
