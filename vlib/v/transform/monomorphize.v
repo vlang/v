@@ -10981,6 +10981,15 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		}
 	}
 	t.substitute_cloned_generic_call_type_args(node, mut children, args)
+	comptime_payload := if node.kind == .comptime_for {
+		if substituted_node_type != node.typ {
+			flat.canonical_comptime_type_payload
+		} else {
+			node.payload
+		}
+	} else {
+		u32(0)
+	}
 	if t.cloning_comptime_for_depth > 0 {
 		// Inside a `$for` body: clone verbatim, no generic-call retargeting.
 		mut comptime_value := t.subst_node_value(node, args)
@@ -11004,6 +11013,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			children_count: flat.child_count(children.len)
 			typ:            cloned_typ
 			value:          comptime_value
+			payload:        comptime_payload
 			is_mut:         node.is_mut
 			flags:          flat.clone_node_flags(node, false)
 		})
@@ -11076,6 +11086,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		children_count: flat.child_count(children.len)
 		typ:            final_typ
 		value:          cloned_value
+		payload:        comptime_payload
 		is_mut:         node.is_mut
 		flags:          flat.clone_node_flags(node, false)
 	})
