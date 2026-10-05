@@ -428,7 +428,7 @@ const is_print16 = [
 	u16(0xffee),
 	u16(0xfffc),
 	u16(0xfffd),
-]
+]!
 
 const is_not_print16 = [
 	u16(0x00ad),
@@ -564,7 +564,7 @@ const is_not_print16 = [
 	u16(0xfe67),
 	u16(0xfe75),
 	u16(0xffe7),
-]
+]!
 
 const is_print32 = [
 	u32(0x010000),
@@ -1075,7 +1075,7 @@ const is_print32 = [
 	u32(0x0323af),
 	u32(0x0e0100),
 	u32(0x0e01ef),
-]
+]!
 
 const is_not_print32 = [
 	u16( // add 0x10000 to each entry
@@ -1191,9 +1191,9 @@ const is_not_print32 = [
 	u16(0xf0d0),
 	u16(0xfabe),
 	u16(0xfb93),
-]
+]!
 
-const is_graphic = [
+const is_graphic_list = [
 	u16(0x00a0),
 	u16(0x1680),
 	u16(0x2000),
@@ -1210,4 +1210,4 @@ const is_graphic = [
 	u16(0x202f),
 	u16(0x205f),
 	u16(0x3000),
-]
+]!

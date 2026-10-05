@@ -1,6 +1,6 @@
 module strconv
 
-// UnquoteChar is the result of unquote_char: the rune that was decoded,
+// UnquoteCharResult is the result of unquote_char: the rune that was decoded,
 // whether it was written as a multi-byte sequence, and whatever followed it.
 pub struct UnquoteCharResult {
 pub:
@@ -16,58 +16,17 @@ fn syntax_error() string {
 	return 'strconv: invalid syntax'
 }
 
-// index_byte returns the index of the first c in s, or -1.
-fn index_byte(s string, c u8) int {
-	for i, b in s.bytes() {
-		if b == c {
+// index_byte_in returns the index of the first c in s[start..end], or -1.
+fn index_byte_in(s string, c u8, start int, end int) int {
+	for i in start .. end {
+		if s[i] == c {
 			return i
 		}
 	}
 	return -1
 }
 
-// contains_byte reports whether c appears in s.
-fn contains_byte(s string, c u8) bool {
-	return index_byte(s, c) >= 0
-}
-
-// valid_string reports whether s is well-formed UTF-8. Go uses
-// utf8.ValidString here, and an empty string is valid.
-fn valid_string(s string) bool {
-	mut rest := s
-	mut n := 0
-	for n < s.len {
-		r, size := decode_rune_in_string(rest)
-		if r == rune_error && size == 1 {
-			return false
-		}
-		rest = rest[size..]
-		n += size
-	}
-	return true
-}
-
-// append_rune encodes r as UTF-8 and appends it to buf.
-fn append_rune(mut buf []u8, r rune) {
-	x := u32(r)
-	if r < 0x80 {
-		buf << u8(x)
-	} else if r < 0x800 {
-		buf << u8(0xC0 | x >> 6)
-		buf << u8(0x80 | x & 0x3F)
-	} else if r < 0x10000 {
-		buf << u8(0xE0 | x >> 12)
-		buf << u8(0x80 | (x >> 6) & 0x3F)
-		buf << u8(0x80 | x & 0x3F)
-	} else {
-		buf << u8(0xF0 | x >> 18)
-		buf << u8(0x80 | (x >> 12) & 0x3F)
-		buf << u8(0x80 | (x >> 6) & 0x3F)
-		buf << u8(0x80 | x & 0x3F)
-	}
-}
-
-// hex_value returns the numeric value of a hexadecimal digit.
+// hex_value returns the numeric value of a hexadecimal digit, or -1.
 fn hex_value(c u8) int {
 	if c >= `0` && c <= `9` {
 		return int(c - `0`)
@@ -85,269 +44,238 @@ fn hex_value(c u8) int {
 // literal body for the given quote byte, and returns the rest of s unchanged.
 // It fails when s does not begin with a decodable character.
 //
-// quote must be a single quote byte, '"' or '\''.
+// quote must be the quote byte of the literal s comes from: `"`, `'` or `` ` ``.
 pub fn unquote_char(s string, quote u8) !UnquoteCharResult {
-	if s.len == 0 {
+	value, multibyte, next := unquote_char_at(s, 0, quote)!
+	return UnquoteCharResult{
+		value:     value
+		multibyte: multibyte
+		tail:      s[next..]
+	}
+}
+
+// unquote_char_at decodes the character that starts at byte i of s, like
+// unquote_char(s[i..], quote), and returns the index just past it instead of
+// the tail, so that a caller walking a whole literal never copies its rest.
+fn unquote_char_at(s string, i int, quote u8) !(rune, bool, int) {
+	if i >= s.len {
 		return error(syntax_error())
 	}
-	c0 := s.bytes()[0]
-	if c0 == quote && (quote == 0x27 || quote == 0x22) {
+	c0 := s[i]
+	if c0 == quote && (quote == `'` || quote == `"`) {
 		// the quote character itself cannot appear unescaped
 		return error(syntax_error())
 	}
 	if c0 >= 0x80 {
-		r, size := decode_rune_in_string(s)
-		return UnquoteCharResult{
-			value:     r
-			multibyte: true
-			tail:      s[size..]
-		}
+		r, size := decode_rune_at(s, i)
+		return r, true, i + size
 	}
-	if c0 != 0x5C {
-		return UnquoteCharResult{
-			value: rune(c0)
-			tail:  s[1..]
-		}
+	if c0 != `\\` {
+		return rune(c0), false, i + 1
 	}
 
 	// the hard case: c0 is a backslash
-	if s.len <= 1 {
+	if i + 1 >= s.len {
 		return error(syntax_error())
 	}
-	c := s.bytes()[1]
-	mut rest := s[2..]
-	mut value := rune(0)
-	mut multibyte := false
-
+	c := s[i + 1]
+	mut next := i + 2
 	match c {
-		0x61 {
-			value = 0x07
+		`a` {
+			return 0x07, false, next
 		}
-		0x62 {
-			value = 0x08
+		`b` {
+			return 0x08, false, next
 		}
-		0x66 {
-			value = 0x0C
+		`f` {
+			return 0x0C, false, next
 		}
-		0x6E {
-			value = 0x0A
+		`n` {
+			return 0x0A, false, next
 		}
-		0x72 {
-			value = 0x0D
+		`r` {
+			return 0x0D, false, next
 		}
-		0x74 {
-			value = 0x09
+		`t` {
+			return 0x09, false, next
 		}
-		0x76 {
-			value = 0x0B
+		`v` {
+			return 0x0B, false, next
 		}
-		0x78, 0x75, 0x55 {
-			n := if c == 0x78 {
+		`x`, `u`, `U` {
+			n := if c == `x` {
 				2
-			} else if c == 0x75 {
+			} else if c == `u` {
 				4
 			} else {
 				8
 			}
-			if rest.len < n {
+			if s.len - next < n {
 				return error(syntax_error())
 			}
 			mut v := rune(0)
 			for j in 0 .. n {
-				x := hex_value(rest.bytes()[j])
+				x := hex_value(s[next + j])
 				if x < 0 {
 					return error(syntax_error())
 				}
 				v = rune(u32(v) << 4) | rune(x)
 			}
-			rest = rest[n..]
-			if c == 0x78 {
+			next += n
+			if c == `x` {
 				// \x yields a single byte, which need not be valid UTF-8
-				value = v
-			} else {
-				if !is_valid_rune(v) {
-					return error(syntax_error())
-				}
-				value = v
-				multibyte = true
+				return v, false, next
 			}
+			if !is_valid_rune(v) {
+				return error(syntax_error())
+			}
+			return v, true, next
 		}
-		0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37 {
+		`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7` {
 			mut v := rune(c) - rune(`0`)
-			if rest.len < 2 {
+			if s.len - next < 2 {
 				return error(syntax_error())
 			}
 			for j in 0 .. 2 {
-				x := rune(rest.bytes()[j]) - rune(`0`)
+				x := rune(s[next + j]) - rune(`0`)
 				if x < 0 || x > 7 {
 					return error(syntax_error())
 				}
 				v = rune(u32(v) << 3) | x
 			}
-			rest = rest[2..]
+			next += 2
 			if v > 255 {
 				return error(syntax_error())
 			}
-			value = v
+			return v, false, next
 		}
-		0x5C {
-			value = 0x5C
+		`\\` {
+			return `\\`, false, next
 		}
-		0x27, 0x22 {
+		`'`, `"` {
 			if c != quote {
 				return error(syntax_error())
 			}
-			value = rune(c)
+			return rune(c), false, next
 		}
 		else {
 			return error(syntax_error())
 		}
 	}
-	return UnquoteCharResult{
-		value:     value
-		multibyte: multibyte
-		tail:      rest
-	}
 }
 
-// UnquoteResult carries what unquote_prefix parses: the consumed part and
-// whatever was left over.
-struct UnquoteResult {
-	out string
-	rem string
-}
-
-// unquote_prefix parses one quoted literal at the start of the input. When
-// unescape is true the value is unescaped, otherwise the matched text is
-// returned verbatim, quotes included.
-fn unquote_prefix(src string, unescape bool) !UnquoteResult {
-	// A `return` directly followed by a composite literal is ambiguous to the
-	// parser here, so each return below binds a named value first.
-
+// unquote_prefix parses one quoted literal at the start of src. When unescape
+// is true it returns the value the literal spells, otherwise the literal
+// itself, quotes included. The second result is the index just past the
+// literal.
+fn unquote_prefix(src string, unescape bool) !(string, int) {
 	if src.len < 2 {
 		return error(syntax_error())
 	}
-	qch := src.bytes()[0]
-	mut end := index_byte(src[1..], qch)
+	qch := src[0]
+	mut end := index_byte_in(src, qch, 1, src.len)
 	if end < 0 {
 		return error(syntax_error())
 	}
-	end += 2 // one past the closing qch; wrong if escapes are present
+	end++ // one past the closing qch; wrong if escapes are present
 
-	if qch == 0x60 {
+	if qch == `\`` {
 		// a raw literal, delimited by backquotes
 		if !unescape {
-			res := UnquoteResult{
-				out: src[..end]
-				rem: src[end..]
-			}
-			return res
+			return src[..end], end
 		}
-		body := src[1..end - 1]
-		if !contains_byte(body, 0x0D) {
-			res := UnquoteResult{
-				out: body
-				rem: src[end..]
-			}
-			return res
+		if index_byte_in(src, `\r`, 1, end - 1) < 0 {
+			return src[1..end - 1], end
 		}
 		// a carriage return inside a raw literal is discarded
-		mut buf := []u8{}
-		for b in body.bytes() {
-			if b != 0x0D {
-				buf << b
+		mut buf := []u8{cap: end - 2}
+		for i in 1 .. end - 1 {
+			if src[i] != `\r` {
+				buf << src[i]
 			}
 		}
-		res := UnquoteResult{
-			out: buf.bytestr()
-			rem: src[end..]
-		}
-		return res
+		return buf.bytestr(), end
 	}
 
-	if qch != 0x22 && qch != 0x27 {
+	if qch != `"` && qch != `'` {
 		return error(syntax_error())
 	}
 
-	head := src[..end]
 	// the fast path: no escapes and no unescaped newline
-	if !contains_byte(head, 0x5C) && !contains_byte(head, 0x0A) {
-		body := src[1..end - 1]
+	if index_byte_in(src, `\\`, 1, end) < 0 && index_byte_in(src, `\n`, 1, end) < 0 {
 		mut valid := false
-		if qch == 0x22 {
-			valid = valid_string(body)
+		if qch == `"` {
+			valid = true
+			mut i := 1
+			for i < end - 1 {
+				r, size := decode_rune_at(src, i)
+				if r == rune_error && size == 1 {
+					valid = false
+					break
+				}
+				i += size
+			}
 		} else {
-			r, n := decode_rune_in_string(body)
-			valid = n == body.len && (r != rune_error || n != 1)
+			r, n := decode_rune_at(src, 1)
+			valid = 1 + n + 1 == end && (r != rune_error || n != 1)
 		}
 		if valid {
-			res := UnquoteResult{
-				out: if unescape { body } else { head }
-				rem: src[end..]
+			if unescape {
+				return src[1..end - 1], end
 			}
-			return res
+			return src[..end], end
 		}
 	}
 
 	// the slow path: at least one escape sequence
 	mut buf := []u8{}
-	in0 := src
-	mut cur := src[1..]
-	mut ok := false
-	for cur.len > 0 && cur.bytes()[0] != qch {
-		if cur.bytes()[0] == 0x0A {
+	if unescape {
+		buf = []u8{cap: 3 * end / 2}
+	}
+	mut i := 1
+	for i < src.len && src[i] != qch {
+		if src[i] == `\n` {
 			// an unescaped newline is never valid
 			return error(syntax_error())
 		}
-		res := unquote_char(cur, qch) or { return error(syntax_error()) }
-		cur = res.tail
+		r, multibyte, next := unquote_char_at(src, i, qch) or { return error(syntax_error()) }
+		i = next
 		if unescape {
-			if res.value < 0x80 || !res.multibyte {
-				buf << u8(res.value)
+			if r < 0x80 || !multibyte {
+				buf << u8(r)
 			} else {
-				append_rune(mut buf, res.value)
+				append_rune(mut buf, r)
 			}
 		}
-		if qch == 0x27 {
+		if qch == `'` {
 			// a single-quoted literal holds exactly one character
 			break
 		}
 	}
-	if cur.len > 0 && cur.bytes()[0] == qch {
-		cur = cur[1..]
-		ok = true
-	}
-	if !ok {
+	if i >= src.len || src[i] != qch {
 		return error(syntax_error())
 	}
+	i++ // skip the closing quote
 	if unescape {
-		res := UnquoteResult{
-			out: buf.bytestr()
-			rem: cur
-		}
-		return res
+		return buf.bytestr(), i
 	}
-	res := UnquoteResult{
-		out: in0[..in0.len - cur.len]
-		rem: cur
-	}
-	return res
+	return src[..i], i
 }
 
 // quoted_prefix returns the quoted literal at the start of s, verbatim and
 // including its quotes. It fails when s does not begin with a valid literal.
 pub fn quoted_prefix(s string) !string {
-	r := unquote_prefix(s, false) or { return error(syntax_error()) }
-	return r.out
+	out, _ := unquote_prefix(s, false) or { return error(syntax_error()) }
+	return out
 }
 
-// unquote returns the string value that s quotes. s may be single-quoted,
-// double-quoted or backquoted; a single-quoted literal yields the one
-// character it holds.
+// unquote returns the string value that s quotes. s may be a Go-syntax
+// single-quoted, double-quoted or backquoted literal; a single-quoted literal
+// yields the one character it holds.
 pub fn unquote(s string) !string {
-	r := unquote_prefix(s, true) or { return error(syntax_error()) }
-	if r.rem.len > 0 {
+	out, end := unquote_prefix(s, true) or { return error(syntax_error()) }
+	if end != s.len {
 		return error(syntax_error())
 	}
-	return r.out
+	return out
 }

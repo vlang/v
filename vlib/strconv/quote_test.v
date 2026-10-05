@@ -2395,7 +2395,9 @@ fn test_quote_matches_go() {
 		assert quote_to_graphic(s) == unhex(gold_quote_to_graphic[i]), 'quote_to_graphic mismatch at ' + i.str()
 		// gold_append_quote was recorded with a "PRE" prefix already in place, so
 		// the prefix is part of the expectation, not something to add again.
-		assert append_quote([3]u8[0x50, 0x52, 0x45], s).bytestr() == unhex(gold_append_quote[i]), 'append_quote mismatch at ' + i.str()
+		mut buf := 'PRE'.bytes()
+		append_quote(mut buf, s)
+		assert buf.bytestr() == unhex(gold_append_quote[i]), 'append_quote mismatch at ' + i.str()
 		assert can_backquote(s) == (gold_can_backquote[i] == 'true'), 'can_backquote mismatch at ' + i.str()
 	}
 }
@@ -2403,19 +2405,38 @@ fn test_quote_matches_go() {
 fn test_append_quote_preserves_prefix() {
 	// the append_* family must extend the caller's buffer, not replace it
 	for i, s in corpus_strs() {
-		got := append_quote([3]u8[0x50, 0x52, 0x45], s)
+		mut got := 'PRE'.bytes()
+		append_quote(mut got, s)
 		assert got[..3].bytestr() == 'PRE', 'append_quote dropped the prefix at ' + i.str()
-		assert got.len > 3 || i == 0, 'append_quote produced no quoted output at ' + i.str()
+		assert got.len >= 5, 'append_quote produced no quoted output at ' + i.str()
 		assert got.bytestr() == unhex(gold_append_quote[i]), 'append_quote mismatch at ' + i.str()
 	}
 }
 
 fn test_append_quote_rune_preserves_prefix() {
 	for i, rs in corpus_runes {
-		got := append_quote_rune([3]u8[0x50, 0x52, 0x45], rune(rs.i64()))
+		mut got := 'PRE'.bytes()
+		append_quote_rune(mut got, rune(rs.i64()))
 		assert got[..3].bytestr() == 'PRE', 'append_quote_rune dropped the prefix at ' + i.str()
 		assert got.bytestr() == unhex(gold_append_quote_rune[i]), 'append_quote_rune mismatch at ' + i.str()
 	}
+}
+
+fn test_append_variants_extend_one_buffer() {
+	// each append_* call extends dst in place, so a loop builds one buffer
+	mut buf := []u8{}
+	for _ in 0 .. 3 {
+		append_quote(mut buf, 'a' + '\t' + 'b')
+	}
+	assert buf.bytestr() == from_hx('22615c746222').repeat(3) // "a\tb" three times
+	mut all := 'x='.bytes()
+	append_quote_to_ascii(mut all, 'caf' + '\u00e9')
+	append_quote_to_graphic(mut all, 'a' + '\u00a0')
+	append_quote_rune(mut all, 0x0A)
+	append_quote_rune_to_ascii(mut all, 0x00E9)
+	append_quote_rune_to_graphic(mut all, 0x3000)
+	assert all.bytestr() == 'x=' + quote_to_ascii('caf' + '\u00e9') + quote_to_graphic('a' + '\u00a0') +
+		quote_rune(0x0A) + quote_rune_to_ascii(0x00E9) + quote_rune_to_graphic(0x3000)
 }
 
 fn test_quote_rune_matches_go() {
@@ -2494,10 +2515,10 @@ fn test_is_print_basics() {
 	assert !is_print(0x110000)
 }
 
-// Expectations below were taken from Go 1.26.1's CanBackquote. Two of them
-// are counter-intuitive: a tab IS allowed inside a raw backquoted string
-// (only a carriage return, newline and U+FEFF are not), while a backslash is
-// NOT, because it would escape the closing backquote.
+// Expectations below were taken from Go 1.26.1's CanBackquote. A tab and a
+// backslash are both allowed, since a raw string has no escapes. Every other
+// control character is rejected, as are the backquote itself, DEL, invalid
+// UTF-8 and the byte order mark U+FEFF.
 fn test_can_backquote_basics() {
 	assert can_backquote('')
 	assert can_backquote('hello')

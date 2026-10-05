@@ -76,14 +76,19 @@ assert strconv.quote_to_ascii('café') == '"caf\\u00e9"'
 assert strconv.quote_to_graphic('a\u00e9') == '"aé"'
 ```
 
-Each function has an `append_` form that extends a `[]u8` the caller already
-owns instead of allocating a new string, which is what you want inside a loop.
+Each function has an `append_` form that writes into a `[]u8` the caller
+already owns instead of allocating a new string, which is what you want inside
+a loop.
 
 ```v
 import strconv
 
 mut buf := 'log: '.bytes()
-buf = strconv.append_quote(buf, 'a\tb')
+for word in ['a', 'b\tc'] {
+	strconv.append_quote(mut buf, word)
+	buf << ` `
+}
+assert buf.bytestr() == 'log: "a" "b\\tc" '
 ```
 
 `is_print` and `is_graphic` answer the two questions those functions ask, and
