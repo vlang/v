@@ -44,7 +44,9 @@ fn hex_value(c u8) int {
 // literal body for the given quote byte, and returns the rest of s unchanged.
 // It fails when s does not begin with a decodable character.
 //
-// quote must be the quote byte of the literal s comes from: `"`, `'` or `` ` ``.
+// quote is the quote byte of the literal s comes from. With `'` it accepts the
+// escape `\'` and rejects an unescaped `'`, with `"` likewise for `"`, and with
+// any other byte, such as 0, it accepts neither escape and both quotes as is.
 pub fn unquote_char(s string, quote u8) !UnquoteCharResult {
 	value, multibyte, next := unquote_char_at(s, 0, quote)!
 	return UnquoteCharResult{
