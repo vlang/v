@@ -37,6 +37,8 @@ import os
 
 const usage = 'Usage: v mcp serve [options]\n' +
 	'       v mcp tools\n' +
+	'       v mcp install [client] [--project] [--print]\n' +
+	'       v mcp uninstall [client|--all] [--project]\n' +
 	'\n' +
 	'Options:\n' +
 	'  --http <addr>    serve over Streamable HTTP instead of stdio\n' +
@@ -61,6 +63,12 @@ fn main() {
 		}
 		'tools' {
 			list_tools()
+		}
+		'install' {
+			install(args[1..])
+		}
+		'uninstall' {
+			uninstall(args[1..])
 		}
 		else {
 			eprintln('v mcp: unknown subcommand `${args[0]}`')

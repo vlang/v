@@ -50,8 +50,17 @@ fn get_outdated() []string {
 fn is_outdated(path string) bool {
 	vcs := vcs_used_in_dir(path) or { return false }
 	args := vcs_info[vcs].args
+	// A checkout that a locked install left detached has no upstream branch to
+	// compare with; compare it with the default branch of the origin instead,
+	// which is where `v update` moves such a checkout. A clone made at a tag has
+	// no such branch, and stays pinned, the same as before.
+	steps := if vcs == .git && head_is_detached(path) {
+		['fetch', 'rev-parse HEAD', 'rev-parse origin/HEAD']
+	} else {
+		args.outdated
+	}
 	mut outputs := []string{}
-	for step in args.outdated {
+	for step in steps {
 		cmd := [vcs.str(), args.path, os.quoted_path(path), step].join(' ')
 		vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
 		res := os.exec([vcs.str(), args.path, path, ...(os.split_args(step) or { panic(err) })])

@@ -41,6 +41,10 @@ fn test_clone_args() {
 	if _ := VCS.git.clone_args(url, 'v0.1.0\n', path) {
 		assert false
 	}
+	// A source that looks like an option is never passed on to git.
+	if _ := VCS.git.clone_args('--upload-pack=touch pwned', '', path) {
+		assert false
+	}
 	assert head_args.filter(it.starts_with('--branch')).len == 0
 	assert !head_args.contains('-b')
 	assert !head_args.contains('--single-branch')

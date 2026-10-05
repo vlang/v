@@ -55,6 +55,7 @@ const external_commands = [
 	'mod',
 	'new',
 	'outdated',
+	'pbgen',
 	'quest',
 	'reduce',
 	'remove',
@@ -146,6 +147,11 @@ fn main() {
 		// report its own error instead of silently retrying without instrumentation.
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
+	if compiler_option_requested(args, '-json-errors') {
+		// A tool reads these diagnostics. A retry with the compatibility compiler would
+		// mix its own text into them.
+		os.setenv(v3_no_fallback_env, '1', true)
+	}
 	if '-new-compiler' !in args && v3_fixture_requires_compatibility_compiler(args) {
 		launch_v1(clean_compiler_selection_flags(args), 'legacy diagnostic fixture', RetryState{})
 	}
@@ -177,10 +183,17 @@ fn main() {
 	run_with_fallback(args, args)
 }
 
-// race_build_requested reports whether `-race` is one of the compiler options, and not an
-// argument of the program that `v run` starts. Like the driver, it reads compiler options
-// after the input too, except when the input is run: then they belong to the program.
+// race_build_requested reports whether `-race` is one of the compiler options.
 fn race_build_requested(args []string) bool {
+	return compiler_option_requested(args, '-race')
+}
+
+// compiler_option_requested reports whether `option` is one of the compiler options, and not
+// an argument of the program that `v run` starts. Like the driver, it reads compiler options
+// after the input too, except when the input is run: then they belong to the program. The
+// driver runs the input of `run` and `crun`, a `.vsh` script, and the input that follows
+// `-raw-vsh-tmp-prefix`; `-` is the input that reads the program from stdin.
+fn compiler_option_requested(args []string, option string) bool {
 	mut option_value_follows := false
 	mut runs_input := false
 	mut input_seen := false
@@ -189,18 +202,21 @@ fn race_build_requested(args []string) bool {
 			option_value_follows = false
 			continue
 		}
-		if arg == '-race' {
+		if arg == option {
 			return true
 		}
 		if arg in ['-prof', '-profile'] {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
 			continue
 		}
+		if arg == '-raw-vsh-tmp-prefix' && !input_seen {
+			runs_input = true
+		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
 			option_value_follows = true
 			continue
 		}
-		if arg.starts_with('-') {
+		if arg.starts_with('-') && arg != '-' {
 			continue
 		}
 		if !input_seen && arg in ['run', 'crun'] {
@@ -475,6 +491,8 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 				exit(1)
 			}
 			exec_cached_tool(entry.binary, tool_args)
+		} else if tool_cache_is_verbose() {
+			eprintln('> no usable tool cache directory, running `${tool_name}` from source')
 		}
 	}
 	install_external_tool_modules(tool_name, tool_source, compile_args)

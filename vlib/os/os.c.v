@@ -240,12 +240,12 @@ pub fn rename_dir(src string, dst string) ! {
 		w_dst := dst.replace('/', '\\')
 		ret := C._wrename(w_src.to_wide(), w_dst.to_wide())
 		if ret != 0 {
-			return error_with_code('failed to rename ${src} to ${dst}', int(ret))
+			return error_posix(msg: 'failed to rename ${src} to ${dst}')
 		}
 	} $else {
 		ret := C.rename(&char(src.str), &char(dst.str))
 		if ret != 0 {
-			return error_with_code('failed to rename ${src} to ${dst}', ret)
+			return error_posix(msg: 'failed to rename ${src} to ${dst}')
 		}
 	}
 }
@@ -263,12 +263,12 @@ pub fn rename(src string, dst string) ! {
 		w_dst := rdst.replace('/', '\\')
 		ret := C._wrename(w_src.to_wide(), w_dst.to_wide())
 		if ret != 0 {
-			return error_with_code('failed to rename ${src} to ${dst}', int(ret))
+			return error_posix(msg: 'failed to rename ${src} to ${dst}')
 		}
 	} $else {
 		ret := C.rename(&char(src.str), &char(rdst.str))
 		if ret != 0 {
-			return error_with_code('failed to rename ${src} to ${dst}', ret)
+			return error_posix(msg: 'failed to rename ${src} to ${dst}')
 		}
 	}
 }

@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package kv;
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  bytes value = 1;
+  bool found = 2;
+}
+
+message PutRequest {
+  string key = 1;
+  bytes value = 2;
+}
+
+message PutResponse {
+  bool replaced = 1;
+}
+
+message PutManyResponse {
+  int32 written = 1;
+}
+
+service KV {
+  // unary: one request, one response
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // unary
+  rpc Put(PutRequest) returns (PutResponse);
+
+  // server streaming: one request, many responses
+  rpc Scan(GetRequest) returns (stream GetResponse);
+
+  // client streaming: many requests, one response
+  rpc PutMany(stream PutRequest) returns (PutManyResponse);
+}

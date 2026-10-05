@@ -276,6 +276,7 @@ argument, e.g. `v new abc`.
 * [Package Management](#package-management)
     * [v mod why](#v-mod-why)
     * [Package commands](#package-commands)
+    * [Locking dependency revisions](#locking-dependency-revisions)
     * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Attributes](#attributes)
@@ -6189,6 +6190,38 @@ println(json2.encode(user, escape_unicode: true)) // {"name":"Pierre","score":10
 The `json2` module also supports anonymous struct fields, which helps with complex JSON APIs with
 many levels.
 
+## Protocol Buffers
+
+V ships `encoding.protobuf`, the Protocol Buffers binary wire format in pure V. It has no C
+dependency and needs no `protoc` at build time.
+
+The usual way in is the `v pbgen` tool, which reads a `.proto` file and writes the message
+structs, their codecs, and the gRPC service declarations:
+
+```sh
+v pbgen -m kv -o kv/codec.v kv.proto
+```
+
+```v ignore
+pub struct GetRequest {
+pub mut:
+	// key is `string key = 1`.
+	key string
+}
+
+pub fn (msg GetRequest) encode() ![]u8 {
+	return msg.encode_with(protobuf.EncodeOpts{})
+}
+
+pub fn decode_get_request(data []u8) !GetRequest {
+	return decode_get_request_with(data, protobuf.DecodeOpts{})
+}
+```
+
+Only proto3 is supported. `v help pbgen` documents the options, and
+`vlib/encoding/protobuf/README.md` documents the runtime, the type mapping, and the shape of
+the generated code.
+
 ## Testing
 
 ### Asserts
@@ -7471,6 +7504,41 @@ v outdated
 Package are up to date.
 ```
 
+### Locking dependency revisions
+
+When `v install` resolves the dependencies of a project, i.e. when it runs
+without packages in a folder holding a `v.mod`, or with `--local`, it records
+what it installed in a `v.mod.lock` file next to that `v.mod`. Commit that file,
+so that everyone working on the project, and its CI, builds against the same
+sources. A plain `v install [package]` installs globally, and records nothing.
+For each dependency, the lockfile records:
+
+- `requested`: the dependency string as written in `v.mod`, e.g. `vsl@v0.1.50`
+- `resolved`: the requested tag, or otherwise a pseudo-version made of the
+  commit time and the short SHA, like `v0.0.0-20240102150405-0123456789ab`
+- `revision`: the full SHA of the installed commit
+- `url`: the source the package was cloned from
+
+Without a lock entry, `v install` updates an already installed dependency to its
+latest revision. With one, it installs the locked revision instead, and puts an
+installed checkout that moved away from it back on the lock, fetching the
+revision first when needed. A dependency whose string in `v.mod`, or whose
+source, no longer matches its entry is resolved anew, and its entry is replaced.
+`v install --locked` fails instead of resolving anything anew, e.g. to check in
+CI that the lockfile is complete and up to date.
+
+To move a locked dependency forward, run `v update [package]` or `v upgrade`
+inside the project: the installed checkout moves to the latest revision of the
+default branch of its source, and its lock entry is rewritten. Dependencies
+requested at a tag stay at that tag. `v remove [package]` drops the entry of the
+package from the lockfile.
+
+Note that the global `VMODULES` folder holds a single checkout of each package,
+shared by all projects. `v install` in a project switches the checkouts of its
+dependencies to the revisions in its lockfile, and `v install` in another
+project that locks other revisions of the same packages switches them back. Use
+`v install --local` to give a project checkouts of its own.
+
 ### Publish package
 
 1. Put a `v.mod` file inside the toplevel folder of your package (if you
@@ -8285,11 +8353,13 @@ directive: V writes the bytes to a file, assembles a small `.S` source that
 includes it, and links the resulting object next to the generated C, so the C
 compiler never has to parse the bytes as an array initializer. That happens when
 the build links natively with GCC, Clang or MinGW, or with TCC targeting the
-host on non-macOS systems when a GCC or Clang compatible compiler is installed.
+host on systems other than macOS and Windows when a GCC or Clang compatible
+compiler is installed.
 On ELF targets, the payload object marks its stack as non-executable.
 Generated C or object output (`-o file.c`, `-o file.o`, `-generate-c-project`),
 MSVC, iOS and WebAssembly targets, and a Windows target built on another OS keep
-the array form. TCC builds targeting another OS or architecture also keep it.
+the array form. TCC builds on macOS and Windows, and TCC builds targeting another
+OS or architecture, also keep it.
 `-keepc`, an explicit `-b c`, and `-dump-c-flags` also keep the array form so
 their retained output does not depend on temporary object files. `-d no_incbin`
 selects it everywhere.

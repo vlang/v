@@ -1,0 +1,13 @@
+// A message that embeds another, for checking the nested-message encoding.
+
+syntax = "proto3";
+
+package demo;
+
+message Inner {
+  int32 x = 1;
+}
+
+message Outer {
+  Inner inner = 1;
+}

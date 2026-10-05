@@ -1,0 +1,16 @@
+// Two messages that want the same V name, in different packages. The generator
+// has to qualify both, or the output declares the same struct and the same
+// decode function twice.
+
+syntax = "proto3";
+
+package one;
+
+message Item {
+  int32 x = 1;
+}
+
+enum Kind {
+  kind_unspecified = 0;
+  kind_a = 1;
+}

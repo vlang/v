@@ -1486,6 +1486,14 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	if bare_val_type.starts_with('_fn_ptr_') {
 		g.ensure_fn_ptr_typedef_by_name(bare_val_type)
 	}
+	// An option payload of an option or a result (`?T` of an option alias `T`)
+	// is emitted first: sorted by name, `__v_option___v_option_i64` would come
+	// before the `__v_option_i64` it stores.
+	if val_type != opt_name {
+		if inner_val_type := g.needed_optional_types[val_type] {
+			g.emit_optional_typedef(val_type, inner_val_type)
+		}
+	}
 	g.write_optional_typedef(opt_name, val_type)
 	g.emitted_optional_types[opt_name] = true
 	return true

@@ -103,6 +103,7 @@ mut:
 	is_translated                bool
 	cur_fn                       string
 	cur_fn_offset                int = -1
+	unclosed_fn_offset           int = -1 // cur_fn_offset of the last function reported as missing its `}`
 	cur_fn_generic_params        []string
 	cur_veb_ctx_name             string // source-level name of the active veb request context
 	veb_tmpl_counter             int    // monotonic id for unique `$veb.html`/`$tmpl` builder var names
@@ -195,6 +196,9 @@ mut:
 	start       int = -1
 	end         int = -1
 	has_main_fn bool
+	// Start/end offset pairs of statements after `main`, reported at the next
+	// definition or the end of the file.
+	after_main_spans []int
 }
 
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
@@ -383,6 +387,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.cur_module = ''
 	p.is_translated = false
 	p.cur_fn = ''
+	p.unclosed_fn_offset = -1
 	p.defer_depth = 0
 	p.defer_result_allowed = false
 	p.nested_block_depth = 0
@@ -536,11 +541,27 @@ pub fn (mut p Parser) parse_into(path string) {
 		}
 		stmt_start := p.tok_pos
 		stmt_end := p.tok_end
+		if p.tok == .rcbr {
+			// A stray `}` at file scope, usually left by an extra brace in the
+			// previous declaration. Statement parsers leave `}` to the enclosing
+			// block, and there is none here, so report it once and skip it.
+			p.record_diagnostic_span('invalid expression: unexpected token `}`', stmt_start,
+				stmt_end)
+			drop_cut_off_script_statements(mut script_mode)
+			p.next()
+			continue
+		}
 		if p.tok == .name && p.lit == 'cosnt' && p.peek() == .name {
 			malformed_const_line_end = p.s.src.index_after('\n', stmt_start) or { p.s.src.len }
 		}
 		is_malformed_const := stmt_start < malformed_const_line_end
+		stmt_tok := p.tok
 		id := p.top_level_stmt()
+		if p.tok == stmt_tok && p.tok_pos == stmt_start && p.tok != .eof {
+			// The statement consumed nothing (its diagnostic is already recorded);
+			// skip the token, or the same error repeats until the diagnostic limit.
+			p.next()
+		}
 		if expansion := p.expand_veb_template_stmt(id) {
 			ids << expansion
 			continue
@@ -556,6 +577,7 @@ pub fn (mut p Parser) parse_into(path string) {
 			ids << id
 		}
 	}
+	p.report_script_statements_after_main(mut script_mode)
 	p.end_local_binding_scope()
 	if !p.prefs.is_fmt && p.is_vsh_path(path) {
 		p.a.has_vsh_source = true
@@ -604,6 +626,7 @@ fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback
 		.asm_stmt]
 		&& !is_definition && !ignore_statement
 	if is_definition {
+		p.report_script_statements_after_main(mut state)
 		if state.start >= 0 {
 			p.record_notice_span('script mode started here', state.start, state.end)
 			def_start, def_end := p.script_definition_diagnostic_span(node, fallback_start,
@@ -616,13 +639,33 @@ fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback
 		}
 	} else if is_script_statement {
 		if state.has_main_fn {
-			p.record_diagnostic_span('function `main` is already defined, put your script statements inside it',
-				fallback_start, fallback_end)
+			state.after_main_spans << fallback_start
+			state.after_main_spans << fallback_end
 		} else if state.start < 0 {
 			state.start = fallback_start
 			state.end = fallback_end
 		}
 	}
+}
+
+// report_script_statements_after_main reports the statements held back since the
+// last definition, once it is clear that a stray `}` did not cut them off.
+fn (mut p Parser) report_script_statements_after_main(mut state ScriptModeState) {
+	for i := 0; i + 1 < state.after_main_spans.len; i += 2 {
+		p.record_diagnostic_span('function `main` is already defined, put your script statements inside it',
+			state.after_main_spans[i], state.after_main_spans[i + 1])
+	}
+	state.after_main_spans.clear()
+}
+
+// drop_cut_off_script_statements handles a stray `}` at file scope: the statements
+// since the last definition are the tail of a function body that an extra brace
+// closed early, so they are not script code, and reporting them as such would
+// bury the actual error.
+fn drop_cut_off_script_statements(mut state ScriptModeState) {
+	state.start = -1
+	state.end = -1
+	state.after_main_spans.clear()
 }
 
 // is_vsh_path reports whether `path` is parsed in V script mode: a `.vsh` file, or
@@ -8058,6 +8101,76 @@ fn (mut p Parser) parse_comptime_expr_block() flat.NodeId {
 
 // ==================== statements ====================
 
+// report_fn_decl_inside_fn reports a function declaration in another function's
+// body. V has no nested named functions, so this is where a `}` went missing. Only
+// the first one is reported: every later declaration in the file is nested too. An
+// earlier error in the enclosing function usually already shows where the brace
+// went missing (e.g. an unclosed `match`), so it is not repeated then.
+fn (mut p Parser) report_fn_decl_inside_fn(start int, end int) {
+	if p.unclosed_fn_offset == p.cur_fn_offset {
+		return
+	}
+	p.unclosed_fn_offset = p.cur_fn_offset
+	if p.diagnostics.any(it.file == p.cur_file && it.severity !in ['warning:', 'notice:']
+		&& int(it.pos.offset) >= p.cur_fn_offset) {
+		return
+	}
+	p.record_diagnostic_span('unexpected function declaration, expecting `}` to close function `${p.cur_fn}`',
+		start, end)
+}
+
+// method_decl_follows reports whether the `fn (` at the current token starts a
+// method declaration, `fn (r T) name(`, `fn (r T) name[U](` or `fn (r T) + (`,
+// rather than an anonymous function like `fn (x int) int {`,
+// `fn (x int) Box[int] {` or `fn (x int) thread (int, int) {`.
+fn (mut p Parser) method_decl_follows() bool {
+	if p.peek() != .lpar {
+		return false
+	}
+	mut lookahead := p.s
+	// A receiver is never empty, so `fn () ...` is always an anonymous function.
+	first := lookahead.scan()
+	if first in [.rpar, .lpar] || !scan_past_closing(mut lookahead, .lpar, .rpar) {
+		return false
+	}
+	name := lookahead.scan()
+	// No return type starts with an operator, so `fn (a T) + (` is an operator overload.
+	if name.is_overloadable() {
+		return lookahead.scan() == .lpar
+	}
+	// `thread` is the one type name that takes a parenthesized operand, so it is
+	// an anonymous function's return type there, not a method name.
+	if name != .name || lookahead.lit == 'thread' {
+		return false
+	}
+	mut next := lookahead.scan()
+	if next == .lsbr {
+		if !scan_past_closing(mut lookahead, .lsbr, .rsbr) {
+			return false
+		}
+		next = lookahead.scan()
+	}
+	return next == .lpar
+}
+
+// scan_past_closing advances `s`, positioned just after an `opening` token, past
+// its matching `closing` token.
+fn scan_past_closing(mut s scanner.Scanner, opening token.Token, closing token.Token) bool {
+	mut depth := 1
+	for depth > 0 {
+		tok := s.scan()
+		if tok == .eof {
+			return false
+		}
+		if tok == opening {
+			depth++
+		} else if tok == closing {
+			depth--
+		}
+	}
+	return true
+}
+
 fn (mut p Parser) stmt() flat.NodeId {
 	match p.tok {
 		.key_return {
@@ -8086,7 +8199,14 @@ fn (mut p Parser) stmt() flat.NodeId {
 		}
 		.key_fn {
 			if p.peek() in [.lpar, .lsbr] {
+				if p.cur_fn != '' && p.method_decl_follows() {
+					p.report_fn_decl_inside_fn(p.tok_pos, p.tok_end)
+					return p.fn_decl()
+				}
 				return p.assign_or_expr_stmt()
+			}
+			if p.cur_fn != '' {
+				p.report_fn_decl_inside_fn(p.tok_pos, p.tok_end)
 			}
 			return p.fn_decl()
 		}
@@ -8198,8 +8318,12 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.static_decl_stmt()
 		}
 		.key_pub {
+			pub_pos := p.tok_pos
 			p.next()
 			if p.tok == .key_fn {
+				if p.cur_fn != '' {
+					p.report_fn_decl_inside_fn(pub_pos, p.tok_end)
+				}
 				return p.fn_decl()
 			}
 			if p.tok == .key_struct || p.tok == .key_union {
@@ -9317,19 +9441,9 @@ fn (mut p Parser) parenthesized_match_header_starts_block() bool {
 			next = lookahead.scan()
 			continue
 		}
-		opening := next
-		closing := if opening == .lpar { token.Token.rpar } else { token.Token.rsbr }
-		mut depth := 1
-		for depth > 0 {
-			tok := lookahead.scan()
-			if tok == .eof {
-				return false
-			}
-			if tok == opening {
-				depth++
-			} else if tok == closing {
-				depth--
-			}
+		closing := if next == .lpar { token.Token.rpar } else { token.Token.rsbr }
+		if !scan_past_closing(mut lookahead, next, closing) {
+			return false
 		}
 		next = lookahead.scan()
 	}

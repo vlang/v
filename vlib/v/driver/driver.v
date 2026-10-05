@@ -342,11 +342,11 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 // go into an object assembled from a generated `.S` file and linked next to the
 // generated C, instead of being spelled out as a C array initializer, which is
 // what makes a large embedded file cheap to compile. That needs a final native
-// link of this build's objects, so generated C and object output, MSVC, iOS,
-// WebAssembly, a Windows target built elsewhere, and the sysroot link of a Linux
-// build on macOS keep the array form. Retained C and dumped C flags must stay
-// reusable after the temporary build directory is removed. `-d no_incbin`
-// keeps the array form everywhere.
+// link of this build's objects, so generated C and object output, MSVC, TCC on
+// macOS and Windows, iOS, WebAssembly, a Windows target built elsewhere, and the
+// sysroot link of a Linux build on macOS keep the array form. Retained C and
+// dumped C flags must stay reusable after the temporary build directory is
+// removed. `-d no_incbin` keeps the array form everywhere.
 fn v3_embed_incbin_supported(target_os string, host_os string, effective_c_compiler string, backend string, c_only bool, is_o bool, macos_linux_cross bool, reusable_c_output bool, user_defines []string) bool {
 	if backend != 'c' || c_only || is_o || macos_linux_cross || reusable_c_output {
 		return false
@@ -359,6 +359,13 @@ fn v3_embed_incbin_supported(target_os string, host_os string, effective_c_compi
 	}
 	// macOS TCC emits ELF objects and cannot link the Mach-O object from Clang.
 	if target_os == 'macos' && effective_c_compiler == 'tinyc' {
+		return false
+	}
+	// Windows TCC rejects the COFF object that the host GCC/Clang assembles for the
+	// payload, so linking it fails with `unrecognized file type` and the build
+	// silently falls back to that same GCC/Clang. Keep the array form instead, so
+	// `-cc tcc` is actually the compiler used.
+	if target_os == 'windows' && effective_c_compiler == 'tinyc' {
 		return false
 	}
 	if target_os in ['ios', 'wasm32', 'wasm32_emscripten', 'wasm32_wasi'] {
@@ -2557,16 +2564,33 @@ fn v3_parallel_c_include_dirs(flags []string) []string {
 	return dirs
 }
 
-fn v3_parallel_local_include_path(line string, including_dir string, include_dirs []string) ?string {
+// v3_include_directive_argument returns the text after `#include` in a line,
+// allowing the blanks C permits around `#` and `include`, as in `#  include "x.h"`.
+fn v3_include_directive_argument(line string) ?string {
 	trimmed := line.trim_space()
-	quoted_prefix := '#include "'
-	angle_prefix := '#include <'
-	quoted := trimmed.starts_with(quoted_prefix)
-	prefix := if quoted { quoted_prefix } else { angle_prefix }
-	if !quoted && !trimmed.starts_with(angle_prefix) {
+	if !trimmed.starts_with('#') {
 		return none
 	}
-	rest := trimmed[prefix.len..]
+	directive := trimmed[1..].trim_left(' \t')
+	if !directive.starts_with('include') {
+		return none
+	}
+	return directive['include'.len..].trim_left(' \t')
+}
+
+// v3_line_is_quoted_include reports whether a line is a `#include "..."` directive.
+fn v3_line_is_quoted_include(line string) bool {
+	argument := v3_include_directive_argument(line) or { return false }
+	return argument.starts_with('"')
+}
+
+fn v3_parallel_local_include_path(line string, including_dir string, include_dirs []string) ?string {
+	argument := v3_include_directive_argument(line) or { return none }
+	quoted := argument.starts_with('"')
+	if !quoted && !argument.starts_with('<') {
+		return none
+	}
+	rest := argument[1..]
 	end := rest.index_u8(if quoted { `"` } else { `>` })
 	if end <= 0 {
 		return none
@@ -2624,10 +2648,10 @@ fn v3_expand_shipped_native_file(path string, include_dirs []string, vroot strin
 				complete = complete && included_complete
 				continue
 			}
-			if line.trim_space().starts_with('#include "') {
+			if v3_line_is_quoted_include(line) {
 				complete = false
 			}
-		} else if line.trim_space().starts_with('#include "') {
+		} else if v3_line_is_quoted_include(line) {
 			complete = false
 		}
 		expanded.writeln(line)
@@ -2656,7 +2680,7 @@ fn v3_parallel_c_declaration_header(prefix string, include_dirs []string, vroot 
 		}
 		native_directives.writeln(line)
 		include_path := v3_parallel_local_include_path(line, '', include_dirs) or {
-			if trimmed.starts_with('#include "') {
+			if v3_line_is_quoted_include(line) {
 				// An unresolved quoted include can still be found by the C compiler
 				// through an option that is opaque here.
 				safe = false
@@ -7574,29 +7598,28 @@ fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string,
 	return !v3_test_matches_build_constraint(input_file, target, ccompiler, is_prod, user_defines)
 }
 
-fn v3_cache_compiler_signature(vroot string) string {
-	dir := os.join_path(vroot, 'vlib', 'v')
-	if !os.is_dir(dir) {
-		return ''
-	}
-	mut files := []string{}
-	for file in os.walk_ext(dir, '.v') {
-		normalized := file.replace('\\', '/')
-		if normalized.contains('/tests/') {
-			continue
-		}
-		files << file
-	}
-	files << os.walk_ext(dir, '.h')
-	cache_dir := os.join_path(os.vtmp_dir(), 'v3_source_signatures')
-	return modulecache.cached_source_signature(cache_dir, os.real_path(vroot), files)
-}
-
-// v3_cache_compiler_executable_identity prevents an old compiler from populating the module
-// cache under the source signature of a newer compiler that has not been rebuilt yet.
+// v3_cache_compiler_executable_identity identifies the code that generates cached artifacts.
+// Editing unbuilt compiler sources does not change that code; rebuilding the executable does.
+// The exceptions are files that a development build reads at run time, see
+// v3_cache_compiler_runtime_inputs_identity.
 fn v3_cache_compiler_executable_identity(vexe string) string {
 	path := os.real_path(vexe)
 	return '${path}\t${v3_cache_file_identity(path)}'
+}
+
+// v3_cache_compiler_runtime_inputs lists the `$embed_file` targets of the C backend, which
+// copies them into the generated C code. Outside of -prod, the compiler executable keeps only
+// their paths and reads the files at run time.
+const v3_cache_compiler_runtime_inputs = ['manual_stdlib_c_headers.h', 'int128_helpers.h',
+	'int128_string.h']
+
+// v3_cache_compiler_runtime_inputs_identity identifies the files in
+// v3_cache_compiler_runtime_inputs, under the compiler source tree `root`, so that editing
+// them invalidates cached artifacts without rebuilding the compiler executable.
+fn v3_cache_compiler_runtime_inputs_identity(root string) string {
+	dir := os.join_path(root, 'vlib', 'v', 'gen', 'c')
+	return v3_cache_compiler_runtime_inputs.map(v3_cache_file_identity(os.join_path(dir,
+		it))).join('\t')
 }
 
 fn restored_fn_c_name(name string) string {
@@ -8934,6 +8957,7 @@ fn v3_parallel_transform_allowed(parallel_transform bool, no_parallel bool) bool
 @[markused]
 pub fn run(args []string) {
 	apply_v3_default_diagnostic_color()
+	compiler_errors.set_json_output(false)
 	if args.len == 0 {
 		eprintln(cli_usage())
 		exit(1)
@@ -9463,6 +9487,10 @@ pub fn run(args []string) {
 		} else if args[i] in ['-color', '-nocolor'] {
 			apply_v3_diagnostic_color_option(args[i])
 			i++
+		} else if args[i] == '-json-errors' {
+			// Prints each diagnostic as a line of JSON, for the tools that read them.
+			compiler_errors.set_json_output(true)
+			i++
 		} else if args[i] == '-apk' {
 			// Accepted V1 compatibility switches. V3 always emits direct C,
 			// applies ownership cleanup, and forwards C failures.
@@ -9624,6 +9652,10 @@ pub fn run(args []string) {
 			}
 			i++
 		}
+	}
+	if compiler_errors.json_output() {
+		// The details of a diagnostic are text, whatever `-color` asked for.
+		ansi.set_colors_enabled(false)
 	}
 	mut vls_queries := if vls_line_info != '' {
 		types.parse_vls_line_infos(vls_line_info, input_file) or {
@@ -10594,23 +10626,24 @@ pub fn run(args []string) {
 		&& 'track_heap' !in prefs.user_defines
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
-	compiler_signature := if cache_candidate_enabled {
-		v3_cache_compiler_signature(prefs.vroot)
+	compiler_executable_identity := if cache_candidate_enabled {
+		v3_cache_compiler_executable_identity(prefs.vexe)
 	} else {
 		''
 	}
-	compiler_executable_identity := if cache_candidate_enabled {
-		v3_cache_compiler_executable_identity(prefs.vexe)
+	// `$embed_file` paths are relative to the compiler sources that this executable was built from.
+	compiler_runtime_inputs_identity := if cache_candidate_enabled {
+		v3_cache_compiler_runtime_inputs_identity(@VMODROOT)
 	} else {
 		''
 	}
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
 	reusable_c_output := keep_c || backend_explicit || dump_c_flags.len > 0
 	cache_salt := [
-		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
 		'ccompiler=${prefs.ccompiler}',
 		'vexe=${compiler_executable_identity}',
+		'compiler_runtime_inputs=${compiler_runtime_inputs_identity}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
@@ -11054,13 +11087,23 @@ pub fn run(args []string) {
 					} else {
 						'error:'
 					}
-					eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
 					printed_parser_diagnostic = true
-					print_type_diagnostic_details(diagnostic.details)
-					if diagnostic.detail_pos.is_valid() {
-						eprintln('Details: ')
-						eprintln(compiler_errors.formatted_parser_diagnostic('details:',
-							diagnostic.detail_message, a, diagnostic.detail_pos))
+					if compiler_errors.json_output() {
+						mut details := diagnostic.details.clone()
+						if diagnostic.detail_pos.is_valid() {
+							details << compiler_errors.formatted_parser_diagnostic('details:',
+								diagnostic.detail_message, a, diagnostic.detail_pos)
+						}
+						eprintln(compiler_errors.json_parser_diagnostic(severity, diagnostic.message,
+							details, a, diagnostic.pos))
+					} else {
+						eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
+						print_type_diagnostic_details(diagnostic.details)
+						if diagnostic.detail_pos.is_valid() {
+							eprintln('Details: ')
+							eprintln(compiler_errors.formatted_parser_diagnostic('details:',
+								diagnostic.detail_message, a, diagnostic.detail_pos))
+						}
 					}
 					if fatal_errors && severity == 'error:' {
 						break
@@ -11073,7 +11116,12 @@ pub fn run(args []string) {
 					} else {
 						'error:'
 					}
-					eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
+					if compiler_errors.json_output() {
+						eprintln(compiler_errors.json_located_message(severity, diagnostic.message,
+							diagnostic.details, diagnostic.file, diagnostic.line, diagnostic.column))
+					} else {
+						eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
+					}
 					printed_parser_diagnostic = true
 					if fatal_errors && severity == 'error:' {
 						break
@@ -12382,6 +12430,12 @@ pub fn run(args []string) {
 			pre_tc.refresh_rewritten_parent_index(a)
 		}
 		if transform_errors.len > 0 {
+			if compiler_errors.json_output() {
+				for message in transform_errors {
+					eprintln(compiler_errors.json_message('error:', message, []string{}))
+				}
+				exit(1)
+			}
 			eprintln('type checker found ${transform_errors.len} error(s):')
 			for message in transform_errors {
 				eprintln(message)
@@ -12601,6 +12655,12 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if monomorph_errors.len > 0 {
+			if compiler_errors.json_output() {
+				for message in monomorph_errors {
+					eprintln(compiler_errors.json_message('error:', message, []string{}))
+				}
+				exit(1)
+			}
 			eprintln('type checker found ${monomorph_errors.len} error(s):')
 			for message in monomorph_errors {
 				eprintln(message)
@@ -16655,8 +16715,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			}
 			err := type_errors[first_unused]
 			severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-			eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
-			print_type_diagnostic_details(err.details)
+			print_type_diagnostic(a, severity, err)
 			return
 		}
 	}
@@ -16675,8 +16734,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			continue
 		}
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
-		eprintln(compiler_errors.formatted_error(severity, notice.msg, a, notice.node, notice.pos))
-		print_type_diagnostic_details(notice.details)
+		print_type_diagnostic(a, severity, notice)
 		printed_diagnostics++
 	}
 	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a, type_errors))
@@ -16691,9 +16749,11 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			ordered_errors << err
 		}
 	}
+	// A tool reading `-json-errors` gets every error: the note about the ones left out
+	// is text for a reader.
 	default_max_errors := if fatal_errors {
 		if ordered_errors.len > 0 { 1 } else { 0 }
-	} else if all_errors || ordered_errors.len < 20 {
+	} else if all_errors || ordered_errors.len < 20 || compiler_errors.json_output() {
 		ordered_errors.len
 	} else {
 		20
@@ -16710,8 +16770,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	for ei in 0 .. max_errors {
 		err := ordered_errors[ei]
 		severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-		eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
-		print_type_diagnostic_details(err.details)
+		print_type_diagnostic(a, severity, err)
 	}
 	if message_limit < 0 && !fatal_errors && !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
@@ -16911,6 +16970,18 @@ fn type_diagnostic_call_uses_struct_receiver(a &flat.FlatAst, call_id flat.NodeI
 fn is_bare_generic_fntype_decl_error(err types.TypeError) bool {
 	return err.msg.starts_with('generic function `')
 		&& err.msg.contains(' in fn declaration must specify the generic type names')
+}
+
+// print_type_diagnostic prints one diagnostic of the checker: a line of JSON with
+// `-json-errors`, else the message with its source excerpt and details.
+fn print_type_diagnostic(a &flat.FlatAst, severity string, diagnostic types.TypeError) {
+	if compiler_errors.json_output() {
+		eprintln(compiler_errors.json_error(severity, diagnostic.msg, diagnostic.details, a,
+			diagnostic.node, diagnostic.pos))
+		return
+	}
+	eprintln(compiler_errors.formatted_error(severity, diagnostic.msg, a, diagnostic.node, diagnostic.pos))
+	print_type_diagnostic_details(diagnostic.details)
 }
 
 fn print_type_diagnostic_details(details []string) {
@@ -20515,6 +20586,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						// V1 compatibility compiler, which would repeat it against its own
 						// source tree.
 						clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
+						if compiler_errors.json_output() {
+							eprintln(compiler_errors.json_error('error:', message, []string{}, a,
+								flat.NodeId(node_idx), a.nodes[node_idx].pos))
+							exit(1)
+						}
 						eprintln('error: ${message}')
 						formatted := compiler_errors.formatted_error('error:', message, a, flat.NodeId(node_idx), a.nodes[node_idx].pos)
 						context := formatted.all_after_first('\n')

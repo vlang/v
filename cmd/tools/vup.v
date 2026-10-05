@@ -24,6 +24,42 @@ struct App {
 
 const args = arguments()
 
+// usage lists what `v up` accepts, for `-h`.
+//
+// Kept here rather than delegated to `v help up`, so that asking how to use the
+// command does not depend on being able to start the main compiler: `v up` reads
+// `VEXE`, which is allowed to be set, and a stale one must not turn `-h` into a
+// failure. `v help up` remains the place with the prose; keep the options listed
+// here in sync with vlib/v/help/installation/up.txt.
+const usage = 'Usage: v up [options]\n' +
+	'\n' +
+	'Options:\n' +
+	'  -v                 Print more details about the update.\n' +
+	'  -prod              Compile the updated V with the -prod flag.\n' +
+	'  -skills            Refresh the installed agent skills that fell behind.\n' +
+	'  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.\n' +
+	'  -skip_current      Recompile even when the checkout is already at the\n' +
+	'                     revision.\n' +
+	'  -h, -help, --help  Show this help and exit.\n' +
+	'\n' +
+	'See `v help up` for what an update does.\n'
+
+// known_options are the options `v up` acts on. Anything else stops it before
+// the update starts, so a mistyped flag cannot pull and rebuild the compiler.
+const known_options = ['-v', '-prod', '-skills', '-skip_v_self', '-skip_current']
+
+const help_options = ['-h', '-help', '--help', 'help']
+
+fn wants_help() bool {
+	return args.any(it in help_options)
+}
+
+// unknown_options returns the arguments that are neither options of `v up` nor
+// the `up` command name that the launcher passes along with them.
+fn unknown_options() []string {
+	return args[1..].filter(it != 'up' && it !in known_options)
+}
+
 fn new_app() App {
 	return App{
 		is_verbose:    '-v' in args
@@ -37,6 +73,18 @@ fn new_app() App {
 }
 
 fn main() {
+	if wants_help() {
+		// Checked before anything else, because asking how to use the command
+		// must not update the compiler.
+		println(usage.trim_space())
+		exit(0)
+	}
+	unknown := unknown_options()
+	if unknown.len > 0 {
+		eprintln('v up: unknown option: ${unknown.join(' ')}')
+		eprintln(usage.trim_space())
+		exit(1)
+	}
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
 	os.chdir(app.vroot)!

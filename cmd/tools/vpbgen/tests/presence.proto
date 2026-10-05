@@ -1,0 +1,18 @@
+// proto3 explicit presence. The spec models `optional` as a synthetic one-member
+// `oneof`, so `false` has to be distinguishable from never having been sent. The
+// singular fields here are the control: they must keep implicit presence.
+
+syntax = "proto3";
+
+package presence;
+
+message Reading {
+  optional bool flag = 1;
+  optional string note = 2;
+  optional int32 count = 3;
+  optional double ratio = 4;
+  // No `optional`: a singular field, whose absence and default are the same
+  // thing on the wire.
+  bool bare_flag = 5;
+  string bare_note = 6;
+}

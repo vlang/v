@@ -361,7 +361,10 @@ pub fn ls(path string) ![]string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !is_dir(path) {
-		return error('ls() couldnt open dir "${path}": directory does not exist')
+		// match POSIX, where opendir() on an existing file fails with ENOTDIR
+		code := if exists(path) { error_code_notdir } else { error_code_noent }
+		return error_with_code('ls() couldnt open dir "${path}": directory does not exist',
+			code)
 	}
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
 	path_files := '${path}\\*'
@@ -371,7 +374,8 @@ pub fn ls(path string) ![]string {
 	// Handle cases where files cannot be opened. for example:"System Volume Information"
 	if h_find_files == invalid_handle_value {
 		error_num := int(C.GetLastError())
-		return error('ls(): Could not get a file handle: ' + get_error_msg(error_num))
+		return error_with_code('ls(): Could not get a file handle: ' + get_error_msg(error_num),
+			error_num)
 	}
 	first_filename := wide_ptr_to_string(&find_file_data.c_file_name[0])
 	if first_filename != '.' && first_filename != '..' {
@@ -397,8 +401,8 @@ pub fn mkdir(path string, params MkdirParams) ! {
 		// Read the code before the concatenation below allocates, or the message
 		// can name an error that never happened. See native_glob_pattern.
 		error_num := int(C.GetLastError())
-		return error('mkdir failed for "${apath}", because CreateDirectory returned: ' +
-			get_error_msg(error_num))
+		return error_with_code('mkdir failed for "${apath}", because CreateDirectory returned: ' +
+			get_error_msg(error_num), error_num)
 	}
 }
 

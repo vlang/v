@@ -1,0 +1,10 @@
+// `packed = true` on a field with no packed form. protoc refuses this, and
+// accepting it would mean the schema said one thing and the codec did another.
+
+syntax = "proto3";
+
+package badpack;
+
+message Refused {
+  repeated string tags = 1 [packed = true];
+}
