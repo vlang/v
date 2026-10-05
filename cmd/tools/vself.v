@@ -87,6 +87,13 @@ fn main() {
 		// the bounded-memory implementation too.
 		args << '-prealloc'
 	}
+	effective_args = effective_self_build_args(args)
+	if !fastc_self_build && !self_build_sets_fastc_inclusion(effective_args) {
+		// Compilers built from `cmd/v` keep the FastC backend by default. Pass that
+		// explicitly too, so the first `v up` run by an older compiler, whose driver
+		// still pruned FastC from `cmd/v`, already produces a V that accepts `-b fastc`.
+		args << ['-compile-backend', 'fastc']
+	}
 	// A replacement compiler has to be built entirely from the checked-out sources.
 	// Reusing a whole-program cache entry here can carry stale checker/codegen state
 	// from the compiler that is being replaced into a binary that reports the new hash.
@@ -318,6 +325,26 @@ fn has_gc_arg(args []string) bool {
 			return true
 		}
 		if arg.starts_with('-gc=') {
+			return true
+		}
+	}
+	return false
+}
+
+// self_build_sets_fastc_inclusion reports whether the arguments already decide
+// whether FastC is compiled in, or select the compatibility compiler, which has
+// no `-compile-backend` option.
+fn self_build_sets_fastc_inclusion(args []string) bool {
+	for i, arg in args {
+		if arg in ['-old-compiler', '-all-backends', '--all-backends'] {
+			return true
+		}
+		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len
+			&& args[i + 1].split(',').any(it.trim_space() == 'fastc') {
+			return true
+		}
+		if arg in ['-d', '-define'] && i + 1 < args.len
+			&& args[i + 1].all_before('=').trim_space() == 'skip_fastc' {
 			return true
 		}
 	}
@@ -639,8 +666,22 @@ fn initial_bootstrap_args(args []string) []string {
 	// vc/v.c can be one generation behind this source tree. Its parallel C
 	// splitter predates the single-definition header protocol, and older copies
 	// may also predate V3's process-memory switch. The compiler it produces is
-	// current and receives the original arguments for the final build.
-	return args.filter(it !in ['-parallel-cc', '-no-memory-limit', '--no-memory-limit'])
+	// current and receives the original arguments for the final build. Its V1
+	// compiler also predates `-compile-backend`.
+	mut filtered := []string{cap: args.len}
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len {
+			i += 2
+			continue
+		}
+		if arg !in ['-parallel-cc', '-no-memory-limit', '--no-memory-limit'] {
+			filtered << arg
+		}
+		i++
+	}
+	return filtered
 }
 
 fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {

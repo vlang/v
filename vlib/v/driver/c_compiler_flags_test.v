@@ -1292,6 +1292,15 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	assert flags == ['-lpthread', '-lm']
 }
 
+fn test_v3_compiles_fastc_by_default_only_for_the_full_cli() {
+	for input in ['cmd/v', 'cmd/v/', 'cmd/v/v.v', '/opt/v/cmd/v', 'C:\\v\\cmd\\v'] {
+		assert v3_compiles_fastc_by_default(input), input
+	}
+	for input in ['vlib/v/v.v', 'examples/hello_world.v', 'cmd/tools/vself.v'] {
+		assert !v3_compiles_fastc_by_default(input), input
+	}
+}
+
 fn test_v3_fastc_default_linker_flags() {
 	assert v3_fastc_default_linker_flags('windows', true) == []
 	assert v3_fastc_default_linker_flags('linux', false) == ['-lm']

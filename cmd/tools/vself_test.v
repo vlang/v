@@ -303,3 +303,42 @@ fn test_windows_plain_self_transition_does_not_install_fallback() {
 	assert !self_result.output.contains('-prealloc'), self_result.output
 	assert !os.exists(os.join_path(root, 'v1_fallback.exe'))
 }
+
+fn test_self_build_keeps_fastc_backend() {
+	$if windows {
+		return
+	}
+	noop := os.find_abs_path_of_executable('echo') or { return }
+	tool := os.join_path(os.vtmp_dir(), 'vself_fastc_backend_test')
+	defer {
+		os.rm(tool) or {}
+	}
+	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
+	assert build.exit_code == 0, build.output
+	// Older drivers prune FastC from cmd/v unless asked, so `v self` and `v up`
+	// request it explicitly.
+	default_result :=
+		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
+			'/tmp/vself_fastc_default_test'])
+	assert default_result.exit_code == 0, default_result.output
+	assert default_result.output.contains('-compile-backend fastc'), default_result.output
+	assert_vself_preserves_full_cli(default_result.output)
+	prod_result :=
+		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-prod', '-o',
+			'/tmp/vself_fastc_prod_test'])
+	assert prod_result.exit_code == 0, prod_result.output
+	assert prod_result.output.contains('-compile-backend fastc'), prod_result.output
+	for opt_out in [['-d', 'skip_fastc'], ['-old-compiler']] {
+		mut args := ['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self']
+		args << opt_out
+		args << ['-o', '/tmp/vself_fastc_opt_out_test']
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert !result.output.contains('-compile-backend'), result.output
+	}
+	vflags_result :=
+		os.exec(['env', 'VFLAGS=-d skip_fastc', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
+			'/tmp/vself_fastc_vflags_test'])
+	assert vflags_result.exit_code == 0, vflags_result.output
+	assert !vflags_result.output.contains('-compile-backend'), vflags_result.output
+}

@@ -2231,6 +2231,13 @@ fn input_is_v3_compiler_entry(input_file string) bool {
 	return normalized.ends_with('/vlib/v/v.v')
 }
 
+// v3_compiles_fastc_by_default reports whether a build of `input_file` keeps the
+// FastC backend without `-compile-backend fastc` or `-all-backends`. Only the full
+// `cmd/v` CLI does: it is the V executable that users run `-b fastc` with.
+fn v3_compiles_fastc_by_default(input_file string) bool {
+	return input_is_cmd_v(input_file)
+}
+
 fn input_is_cmd_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
 	return normalized in ['cmd/v', 'cmd/v/v.v'] || normalized.ends_with('/cmd/v')
@@ -10072,7 +10079,10 @@ pub fn run(args []string) {
 	// resolve_imports skips parsing the corresponding module directories.
 	// `-all-backends` keeps everything; `-compile-backend <name>` opts a specific backend back
 	// in; the active `-b` target backend is always force-included.
-	mut include_fastc := all_backends
+	// The full `cmd/v` CLI (the executable that `make`, `makev.bat`, `v self`, and `v up`
+	// produce) always keeps FastC, so `-b fastc` works in default builds; `-d skip_fastc`
+	// still removes it. Standalone `vlib/v/v.v` builds keep pruning it.
+	mut include_fastc := all_backends || v3_compiles_fastc_by_default(input_file)
 	mut include_arm64 := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
@@ -10133,6 +10143,12 @@ pub fn run(args []string) {
 		// internal `-d fastc_selfhost` implementation detail at the command line.
 		// Descendant FastC compilers preserve the same define in v.fastcdriver.
 		record_user_define(mut user_defines, mut compile_values, 'fastc_selfhost')
+	}
+	if fastc_selfhost_build && target.os == 'windows' {
+		// FastC self-hosts lower the compiler's `spawn` calls to pthreads and emit the
+		// header-free macOS/glibc C ABI tables; neither exists for Windows targets.
+		eprintln('the FastC self-host compiler (`v self -b fastc`, `-selfhost -b fastc`) does not support Windows targets; use `v self`, which keeps `-b fastc` for programs')
+		exit(1)
 	}
 	mut b := bench.new()
 	driver_sw := time.new_stopwatch()
@@ -10309,6 +10325,8 @@ pub fn run(args []string) {
 	if backend == 'fastc' {
 		$if skip_fastc ? {
 			eprintln('fastc support is not compiled into this v3 executable')
+			eprintln('Rebuild V from source with `v self` (or `make`, or `makev.bat` on Windows); builds of `cmd/v` include FastC unless `-d skip_fastc` is passed.')
+			eprintln('A standalone `vlib/v/v.v` compiler needs `-compile-backend fastc` (or `-all-backends`) when it is built.')
 			exit(1)
 		} $else {
 			fastc_bench := os.getenv('FASTC_BENCH') != ''
