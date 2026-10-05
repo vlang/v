@@ -256,9 +256,9 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 	if !ws.is_server {
 		header_len += 4
 	}
-	mut header := []u8{len: header_len, init: `0`} // [`0`].repeat(header_len)
+	mut header := [14]u8{}
 	header[0] = u8(int(code)) | 0x80
-	masking_key := create_masking_key()
+	masking_key := if ws.is_server { []u8{} } else { create_masking_key() }
 	if ws.is_server {
 		if payload_len <= 125 {
 			header[1] = u8(payload_len)
@@ -299,12 +299,12 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 			return error('frame too large')
 		}
 	}
-	len := header.len + payload_len
+	len := header_len + payload_len
 	mut frame_buf := []u8{len: len}
 	unsafe {
-		vmemcpy(&frame_buf[0], &u8(header.data), header.len)
+		vmemcpy(&frame_buf[0], &header[0], header_len)
 		if payload_len > 0 {
-			vmemcpy(&frame_buf[header.len], bytes, payload_len)
+			vmemcpy(&frame_buf[header_len], bytes, payload_len)
 		}
 	}
 	if !ws.is_server {
@@ -316,7 +316,6 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 	unsafe {
 		frame_buf.free()
 		masking_key.free()
-		header.free()
 	}
 	return written_len
 }
