@@ -86,28 +86,52 @@ fn parse_range(input string) !Range {
 			comparator_sets << ComparatorSet{[Comparator{Version{}, Operator.ge}]}
 			continue
 		}
-		if can_expand(comp_set) {
-			s := expand_comparator_set(comp_set) or {
-				return &InvalidComparatorFormatError{
-					msg: 'Invalid comparator set "${comp_set}"'
-				}
-			}
-			comparator_sets << s
-		} else {
-			s := parse_comparator_set(comp_set) or { return err }
-			comparator_sets << s
-		}
+		comparator_sets << parse_comparator_set(comp_set) or { return err }
 	}
 	return Range{comparator_sets}
 }
 
-// parse_comparator_set reads the comparators joined by whitespace in one `||` arm.
+// parse_comparator_set reads the whitespace-separated operands of one `||` arm.
+//
 // The grammar puts no limit on how many there are, so `>=1.0.0 <2.0.0 <=3.0.0` is a
-// legitimate range rather than a parse failure.
+// legitimate range rather than a parse failure. Each operand is expanded on its
+// own if it is a range form and read as a comparator otherwise, and the results are
+// intersected. Deciding once for the whole arm instead — which is what this used to
+// do — only works when the arm holds a single range, because `expand_comparator_set`
+// expands exactly one: `3.X >0.0 >=2.4` was handed over whole and came back as the
+// expansion of `3.X` alone.
 fn parse_comparator_set(input string) !ComparatorSet {
+	// A hyphen range is three whitespace-separated operands (`1.2.3`, `-`, `2.3.4`),
+	// and `-` occurs nowhere else in the grammar, so the arm is one of those or it
+	// is not.
+	if input.contains(hyphen_range_sep) {
+		return expand_hyphen(input) or {
+			return &InvalidComparatorFormatError{
+				msg: 'Invalid comparator set "${input}"'
+			}
+		}
+	}
+
 	raw_comparators := input.split(comparator_sep)
 	mut comparators := []Comparator{}
 	for raw_comp in raw_comparators {
+		if raw_comp.len == 0 {
+			continue
+		}
+		if can_expand(raw_comp) {
+			if !is_grammar_operand(raw_comp) {
+				return &InvalidComparatorFormatError{
+					msg: 'Invalid comparator "${raw_comp}" in input "${input}"'
+				}
+			}
+			expanded := expand_comparator_set(raw_comp) or {
+				return &InvalidComparatorFormatError{
+					msg: 'Invalid comparator "${raw_comp}" in input "${input}"'
+				}
+			}
+			comparators << expanded.comparators
+			continue
+		}
 		c := parse_comparator(raw_comp) or {
 			return &InvalidComparatorFormatError{
 				msg: 'Invalid comparator "${raw_comp}" in input "${input}"'
@@ -183,6 +207,36 @@ fn numeric_core(s string) string {
 // has_prerelease reports whether a version-shaped string carries a prerelease tag.
 fn has_prerelease(s string) bool {
 	return s.all_before('+').contains('-')
+}
+
+// is_grammar_operand reports whether an operand that is about to be expanded
+// actually has a shape the grammar gives meaning to.
+//
+// `coerce_version` completes a short version into a plausible one, so an operand
+// the grammar does not define would be answered rather than refused: `~1.4-Z`
+// would complete to `1.4.0-Z` and become a real tilde range, and `0.4.` would
+// complete to `0.4.0`. node-semver rejects both. Two rules do the refusing:
+//
+//   - a prerelease needs all three components, since `1.2-beta` is not a version
+//     any more than `1-beta` is
+//   - no component may be empty
+//
+// A `-` that is the hyphen range separator rather than a prerelease tag is not
+// this function's business: `parse_comparator_set` routes those to expand_hyphen
+// before they get here.
+fn is_grammar_operand(operand string) bool {
+	body := operand.all_before('+')
+	for part in body.split('-') {
+		if part.len == 0 {
+			continue
+		}
+		for comp in part.split('.') {
+			if comp.len == 0 {
+				return false
+			}
+		}
+	}
+	return !(has_prerelease(body) && parts_of(body).len < 3)
 }
 
 // parts_of splits a version-shaped string into its dotted components, without
