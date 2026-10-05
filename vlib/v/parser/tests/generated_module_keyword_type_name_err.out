@@ -1,0 +1,7 @@
+vlib/v/parser/tests/generated_module_keyword_type_name_err.vv:4:8: error: expected name, got match "match"
+    2 | module main
+    3 | 
+    4 | struct match {
+      |        ^
+    5 |     x int
+    6 | }

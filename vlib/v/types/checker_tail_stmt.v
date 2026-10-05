@@ -6374,7 +6374,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if base.kind == .selector && base.children_count > 0 {
 		module_node := tc.a.child_node(&base, 0)
 		if module_node.kind == .ident && tc.has_active_import(module_node.value)
-			&& base.value.len > 0 && base.value[0].is_capital() {
+			&& tc.module_member_may_be_type(module_node.value, base.value) {
 			module_name := tc.resolve_import_alias(module_node.value) or { module_node.value }
 			display_module_name := tc.current_file_import_path_for_alias(module_node.value) or {
 				module_name
@@ -6407,7 +6407,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	}
 	// `Color.nope`: the enum is a namespace below, which accepts any member, so a
 	// value the enum does not declare would otherwise pass unnoticed.
-	if base.kind == .ident && base.value.len > 0 && base.value[0].is_capital() {
+	if base.kind == .ident && tc.ident_may_be_type(base.value) {
 		if enum_name := tc.resolve_enum_name(base.value) {
 			if !tc.enum_has_field(enum_name, node.value)
 				&& !tc.enum_member_is_callable(enum_name, base.value, node.value) {
@@ -6474,7 +6474,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if node.value.len > 0 && node.value[0].is_capital() && is_known_type {
+		if tc.module_member_may_be_type(base.value, node.value) && is_known_type {
 			if tc.resolve_enum_name(semantic_type_name) != none
 				|| tc.resolve_enum_name(display_type_name) != none {
 				parent_id := tc.direct_parent_id(id)
@@ -6507,7 +6507,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				return
 			}
 		}
-		if base.value != 'C' && node.value.len > 0 && node.value[0].is_capital() && is_known_type {
+		if base.value != 'C' && tc.module_member_may_be_type(base.value, node.value)
+			&& is_known_type {
 			tc.record_error_at(.assignment_mismatch, '`${display_type_name}` must be initialized', id, tc.node_value_diagnostic_pos(id))
 			tc.register_synth_type(id, builtin_void_type)
 			return
@@ -8014,7 +8015,7 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 	if base.kind == .selector && base.children_count > 0 {
 		module_node := tc.a.child_node(&base, 0)
 		if module_node.kind == .ident && tc.has_active_import(module_node.value)
-			&& base.value.len > 0 && base.value[0].is_capital() {
+			&& tc.module_member_may_be_type(module_node.value, base.value) {
 			module_name := tc.resolve_import_alias(module_node.value) or { module_node.value }
 			if resolved_enum_name := tc.resolve_enum_name('${module_name}.${base.value}') {
 				tc.register_synth_type(base_id, Type(Enum{
@@ -8556,7 +8557,8 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, typ)
 		return
 	}
-	if node.value[0].is_capital() && tc.type_name_known(node.value) {
+	if (node.value[0].is_capital() && tc.type_name_known(node.value))
+		|| (tc.generated_files.len > 0 && tc.type_name_known_in_current_module(node.value)) {
 		tc.record_error_at(.assignment_mismatch, '`${node.value}` must be initialized', id, tc.node_value_diagnostic_pos(id))
 		tc.register_synth_type(id, builtin_void_type)
 		return
@@ -9849,13 +9851,13 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 	base := tc.a.child_node(node, 0)
 	mut enum_name := ''
 	if base.kind == .ident {
-		if base.value.len == 0 || !base.value[0].is_capital() {
+		if !tc.ident_may_be_type(base.value) {
 			return none
 		}
 		enum_name = tc.resolve_enum_name(base.value) or { '' }
 	} else if base.kind == .selector && base.children_count > 0 {
 		inner := tc.a.child_node(base, 0)
-		if inner.kind == .ident && base.value.len > 0 && base.value[0].is_capital() {
+		if inner.kind == .ident && tc.module_member_may_be_type(inner.value, base.value) {
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			enum_name = tc.resolve_enum_name('${mod_name}.${base.value}') or { '' }
 		}
@@ -14696,7 +14698,8 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 		}
 		if is_builtin_type_name(node.value) || tc.type_symbol_known(node.value)
 			|| tc.pattern_type_known(node.value)
-			|| (node.value.len > 0 && node.value[0].is_capital()) {
+			|| (node.value.len > 0 && node.value[0].is_capital())
+			|| (tc.generated_files.len > 0 && tc.type_name_known_in_current_module(node.value)) {
 			return node.value
 		}
 		return none
