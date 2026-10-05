@@ -111,3 +111,70 @@ fn test_source_digest_survives_parser_worker_file_clone() {
 	cloned.set_source_sha256(literal_width)
 	assert cloned.source_sha256() == digest
 }
+
+fn test_line_directives_remap_the_lines_after_them() {
+	src := 'A\n#line 10 "gen.zbr"\nB\nC\n#line 30\nD\n#line 5 "other.zbr"\nE\n'
+	mut fs := FileSet.new()
+	mut f := fs.add_file('x.v', src.len)
+	f.index_lines(src)
+	assert !f.has_line_directives()
+	f.add_line_directive(src.index('#line 10') or { -1 }, 10, 'gen.zbr')
+	f.add_line_directive(src.index('#line 30') or { -1 }, 30, '')
+	f.add_line_directive(src.index('#line 5') or { -1 }, 5, 'other.zbr')
+	// Scanning a directive again replaces its entry.
+	f.add_line_directive(src.index('#line 30') or { -1 }, 30, '')
+	assert f.line_directives().len == 3
+	a := f.logical_position_at(0)
+	assert a.filename == 'x.v' && a.line == 1 && a.column == 1
+	// The directive line itself still follows the previous mapping.
+	directive := f.logical_position_at(src.index('#line 10') or { -1 })
+	assert directive.filename == 'x.v' && directive.line == 2
+	b := f.logical_position_at(src.index('B') or { -1 })
+	assert b.filename == 'gen.zbr' && b.line == 10 && b.column == 1
+	assert f.logical_position_at(src.index('C') or { -1 }).line == 11
+	// `#line N` keeps the logical file.
+	d := f.logical_position_at(src.index('D') or { -1 })
+	assert d.filename == 'gen.zbr' && d.line == 30
+	e := f.logical_position_at(src.index('E') or { -1 })
+	assert e.filename == 'other.zbr' && e.line == 5
+	// The physical positions are unchanged.
+	assert f.position_at(src.index('E') or { -1 }).line == 8
+	mut copy := fs.add_file('x.v', src.len)
+	copy.index_lines(src)
+	copy.copy_line_directives(f)
+	copy_file, copy_line := copy.logical_line(8)
+	assert copy_file == 'other.zbr' && copy_line == 5
+}
+
+fn test_line_numbers_after_the_largest_line_directive_do_not_overflow() {
+	src := '#line 2147483647
+A
+B
+'
+	mut fs := FileSet.new()
+	mut f := fs.add_file('x.v', src.len)
+	f.index_lines(src)
+	f.add_line_directive(0, max_i32, '')
+	assert f.logical_position_at(src.index('A') or { -1 }).line == max_i32
+	assert f.logical_position_at(src.index('B') or { -1 }).line == max_i32
+}
+
+fn parsed_line_directive(args string) string {
+	line, file := parse_line_directive(args) or { return 'error: ${err.msg()}' }
+	return '${line} ${file}'
+}
+
+fn test_parse_line_directive() {
+	assert parsed_line_directive(' 42 "src/app.zbr"') == '42 src/app.zbr'
+	assert parsed_line_directive("7 'a b.zbr' // generated") == '7 a b.zbr'
+	assert parsed_line_directive('3') == '3 '
+	assert parsed_line_directive(r'5 "C:\\src\\a \"q\".zbr"') == r'5 C:\src\a "q".zbr'
+	assert parsed_line_directive('') == 'error: expected a line number, like `#line 42 "file.v"`'
+	assert parsed_line_directive('abc') == 'error: `abc` is not a valid line number'
+	assert parsed_line_directive('0') == 'error: line numbers start at 1, not 0'
+	assert parsed_line_directive('99999999999') == 'error: line number `99999999999` is too large'
+	assert parsed_line_directive('1 a.zbr').starts_with('error: the file name must be a quoted string')
+	assert parsed_line_directive('1 "a.zbr') == 'error: unterminated file name string'
+	assert parsed_line_directive('1 ""') == 'error: the file name cannot be empty'
+	assert parsed_line_directive('1 "a.zbr" xyz') == 'error: unexpected `xyz` after the file name'
+}

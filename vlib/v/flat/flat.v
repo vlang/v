@@ -1017,7 +1017,8 @@ pub fn (mut a FlatAst) intern_metadata_texts() {
 	a.noreturn_fns = noreturn_fns.move()
 }
 
-// source_position resolves an AST source position to file/line/column metadata.
+// source_position resolves an AST source position to the file/line/column that it
+// reports, following `#line` directives in the source (see File.logical_position_at).
 pub fn (a &FlatAst) source_position(pos token.Pos) ?token.Position {
 	if !pos.is_valid() {
 		return none
@@ -1026,7 +1027,7 @@ pub fn (a &FlatAst) source_position(pos token.Pos) ?token.Position {
 	if pos.offset < 0 || pos.offset > file.size {
 		return none
 	}
-	return file.position_at(pos.offset)
+	return file.logical_position_at(pos.offset)
 }
 
 // add updates add state for FlatAst.

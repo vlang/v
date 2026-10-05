@@ -65,29 +65,37 @@ pub fn json_message(kind string, message string, details []string) string {
 }
 
 fn json_source_error(kind string, message string, details []string, file &token.File, pos token.Pos, call_positions []token.Pos, a &flat.FlatAst) string {
-	start := file.position(pos)
+	// Like the text form, the location follows the `#line` directives of the file.
+	start := file.logical_position(pos)
 	column := if pos.reported_column() > 0 { pos.reported_column() } else { start.column }
 	// A span is half-open; an empty one covers the byte it points at, as the caret of the
 	// text form does.
-	end := file.position_at(int_max(pos.offset + 1, pos.end))
-	end_column := if end.line == start.line {
+	end := file.logical_position_at(int_max(pos.offset + 1, pos.end))
+	// A span that a `#line` directive cuts off in another logical file, or before its
+	// start, is just the column of its start.
+	mut end_line := end.line
+	mut end_column := if end.line == start.line {
 		column + end.column - start.column
 	} else {
 		end.column
 	}
-	mut out := strings.new_builder(message.len + file.name.len + 128)
+	if end.filename != start.filename || end.line < start.line {
+		end_line = start.line
+		end_column = column + 1
+	}
+	mut out := strings.new_builder(message.len + start.filename.len + 128)
 	out.write_string('{')
-	write_json_location(mut out, relative_error_path(file.name), start.line, column, end.line,
+	write_json_location(mut out, relative_error_path(start.filename), start.line, column, end_line,
 		end_column)
 	out.write_string(',')
 	write_json_message(mut out, kind, message, details)
 	mut has_call_sites := false
 	for call_pos in call_positions {
 		call_file := a.source_files[call_pos.id] or { continue }
-		call := call_file.position(call_pos)
+		call := call_file.logical_position(call_pos)
 		out.write_string(if has_call_sites { ',' } else { ',"called_from":[' })
 		has_call_sites = true
-		out.write_string('{"file":"${json_escape(relative_error_path(call_file.name))}","line":${call.line},"col":${call.column}}')
+		out.write_string('{"file":"${json_escape(relative_error_path(call.filename))}","line":${call.line},"col":${call.column}}')
 	}
 	if has_call_sites {
 		out.write_string(']')

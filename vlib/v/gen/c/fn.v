@@ -4,6 +4,7 @@ import os
 import strings
 import v.flat
 import v.gen.c.naming
+import v.token
 import v.types
 
 const builtin_map_set_fn_key = fn_decl_module_key('builtin', 'map.set')
@@ -14,6 +15,7 @@ struct TestHarnessFn {
 	c_name       string
 	ret          types.Type
 	file         string
+	failure_file string
 	failure_line int
 }
 
@@ -6031,7 +6033,7 @@ fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, idx int) {
 			g.interface_str_lit('none')
 		}
 		g.writeln('string __test_err_msg_${idx} = ${message};')
-		g.writeln('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(test_fn.file)}", ${test_fn.failure_line}, "${c_escape(test_fn.name)}", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
+		g.writeln('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(test_fn.failure_file)}", ${test_fn.failure_line}, "${c_escape(test_fn.name)}", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
 		g.writeln('__test_failures++;')
 		g.indent--
 		g.writeln('}')
@@ -6082,13 +6084,20 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 						if !g.test_fn_matches_run_only(module_name, child.value) {
 							continue
 						}
+						failure := g.test_fn_failure_position(child_id) or {
+							token.Position{
+								filename: file_node.value
+								line:     1
+							}
+						}
 						tests << TestHarnessFn{
 							node_id:      child_id
 							name:         child.value
 							c_name:       cname
 							ret:          g.parse_node_type(&child)
 							file:         file_node.value
-							failure_line: g.test_fn_failure_line(child_id)
+							failure_file: failure.filename
+							failure_line: failure.line
 						}
 					}
 				}
@@ -6111,30 +6120,28 @@ fn (g &FlatGen) test_fn_matches_run_only(module_name string, name string) bool {
 	return false
 }
 
-fn (g &FlatGen) test_fn_failure_line(id flat.NodeId) int {
-	line := g.test_fn_propagation_line(id)
-	if line > 0 {
-		return line
+// test_fn_failure_position returns the location reported when the test function `id`
+// fails with an error that it propagates.
+fn (g &FlatGen) test_fn_failure_position(id flat.NodeId) ?token.Position {
+	if position := g.test_fn_propagation_position(id) {
+		return position
 	}
-	source_line := g.test_fn_source_failure_line(id)
-	if source_line > 0 {
-		return source_line
+	if position := g.test_fn_source_failure_position(id) {
+		return position
 	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
-		if position := g.a.source_position(g.a.nodes[int(id)].pos) {
-			return position.line
-		}
+		return g.a.source_position(g.a.nodes[int(id)].pos)
 	}
-	return 1
+	return none
 }
 
-fn (g &FlatGen) test_fn_source_failure_line(id flat.NodeId) int {
+fn (g &FlatGen) test_fn_source_failure_position(id flat.NodeId) ?token.Position {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return 0
+		return none
 	}
 	node := g.a.nodes[int(id)]
-	file := g.a.source_files[node.pos.id] or { return 0 }
-	lines := os.read_lines(file.name) or { return 0 }
+	file := g.a.source_files[node.pos.id] or { return none }
+	lines := os.read_lines(file.name) or { return none }
 	start_line := file.position(node.pos).line
 	for line_index in start_line .. lines.len {
 		trimmed := lines[line_index].trim_space()
@@ -6143,20 +6150,24 @@ fn (g &FlatGen) test_fn_source_failure_line(id flat.NodeId) int {
 		}
 		if trimmed.contains(' or {') || trimmed.contains(')!') || trimmed.contains(']!')
 			|| trimmed.ends_with('!') || trimmed.starts_with('return error(') {
-			return line_index + 1
+			filename, line := file.logical_line(line_index + 1)
+			return token.Position{
+				filename: filename
+				line:     line
+			}
 		}
 	}
-	return 0
+	return none
 }
 
-fn (g &FlatGen) test_fn_propagation_line(id flat.NodeId) int {
+fn (g &FlatGen) test_fn_propagation_position(id flat.NodeId) ?token.Position {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return 0
+		return none
 	}
 	node := g.a.nodes[int(id)]
 	if node.kind in [.or_expr, .return_stmt] {
 		if position := g.a.source_position(node.pos) {
-			return position.line
+			return position
 		}
 	}
 	for i in 0 .. node.children_count {
@@ -6168,12 +6179,11 @@ fn (g &FlatGen) test_fn_propagation_line(id flat.NodeId) int {
 		if child.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
 			continue
 		}
-		line := g.test_fn_propagation_line(child_id)
-		if line > 0 {
-			return line
+		if position := g.test_fn_propagation_position(child_id) {
+			return position
 		}
 	}
-	return 0
+	return none
 }
 
 fn (g &FlatGen) collect_test_harness_decl_ids(node flat.Node, mut ids []flat.NodeId) {

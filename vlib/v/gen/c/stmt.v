@@ -3654,9 +3654,10 @@ fn (g &FlatGen) assert_source_detail(node flat.Node) ?AssertSourceDetail {
 			lhs_label = ''
 		}
 	}
+	position := file.logical_position_at(start)
 	return AssertSourceDetail{
-		file:       file.name
-		line:       source[..start].count('\n') + 1
+		file:       position.filename
+		line:       position.line
 		expression: expression
 		lhs_label:  lhs_label
 		rhs_label:  rhs_label
@@ -10474,14 +10475,10 @@ fn (mut g FlatGen) gen_test_propagation_failure(node flat.Node, is_result bool) 
 		g.write('__test_failures++; return;')
 		return
 	}
-	file := g.a.source_files[node.pos.id] or {
-		g.write('__test_failures++; return;')
-		return
-	}
 	err_msg := g.tmp_name()
 	message := if is_result { 'IError__msg(&err)' } else { g.interface_str_lit('none') }
 	g.write('string ${err_msg} = ${message}; ')
-	g.write('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(file.name)}", ${position.line}, "${c_escape(g.cur_fn_name)}", ${err_msg}.len, ${err_msg}.str); ')
+	g.write('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(position.filename)}", ${position.line}, "${c_escape(g.cur_fn_name)}", ${err_msg}.len, ${err_msg}.str); ')
 	g.write('__test_failures++; return;')
 }
 

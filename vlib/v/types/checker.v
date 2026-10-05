@@ -19010,7 +19010,8 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 				}, generic_args, generic_params)
 				cases << ComptimeStaticValueCase{
 					name:             name
-					location:         comptime_static_source_location(file_name, candidate.pos.offset, line_offsets_by_file[file_name])
+					location:         comptime_static_source_location(file_name, candidate.pos.offset, line_offsets_by_file[file_name],
+						tc.a.source_files[candidate.pos.id] or { unsafe { nil } })
 					typ:              comptime_static_method_type_text(param_types, return_type)
 					return_type:      return_type
 					is_pub:           candidate.op == .arrow
@@ -19143,7 +19144,9 @@ fn comptime_static_source_line_offsets(path string) []int {
 	return offsets
 }
 
-fn comptime_static_source_location(path string, encoded_offset int, line_offsets []int) string {
+// comptime_static_source_location returns the `file:line:column` of a declaration,
+// following the `#line` directives of its source `file`, when it has any.
+fn comptime_static_source_location(path string, encoded_offset int, line_offsets []int, file &token.File) string {
 	if path == '' || encoded_offset <= 0 || line_offsets.len == 0 {
 		return ''
 	}
@@ -19159,7 +19162,12 @@ fn comptime_static_source_location(path string, encoded_offset int, line_offsets
 		}
 	}
 	line_index := if lo > 0 { lo - 1 } else { 0 }
-	return '${path}:${line_index + 1}:${offset - line_offsets[line_index]}'
+	column := offset - line_offsets[line_index]
+	if !isnil(file) && file.has_line_directives() {
+		logical_file, logical_line := file.logical_line(line_index + 1)
+		return '${logical_file}:${logical_line}:${column}'
+	}
+	return '${path}:${line_index + 1}:${column}'
 }
 
 fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase {

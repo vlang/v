@@ -179,6 +179,9 @@ mut:
 	anonymous_struct_count            int
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
+	// The offsets of the `#line` directives of the file that are between statements, or in
+	// skipped code; report_misplaced_line_directives reports the others.
+	accepted_line_directives map[int]bool
 pub mut:
 	a &flat.FlatAst = unsafe { nil }
 	// quick_source_sums records the quick_sum of each parsed source instead of
@@ -435,6 +438,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.anonymous_struct_types = map[string][]string{}
 	p.anonymous_struct_count = 0
 	p.sql_query_data_aliases.clear()
+	p.accepted_line_directives.clear()
 	// File marker before content so import resolver can track source files
 	marker_id := p.add_node(flat.Node{
 		kind:  .file
@@ -475,6 +479,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	}
 	p.a.source_files[p.cur_file_id] = file
 	p.s.init(file, stable_src)
+	p.s.line_directives = true
 	if source_may_have_dynamic_sql(stable_src) {
 		p.collect_sql_query_data_aliases()
 	}
@@ -601,7 +606,31 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.a.formatter_file_sources[p.cur_file_id] = stable_src
 		p.collect_formatter_comments(file, stable_src)
 	}
+	p.report_misplaced_line_directives()
 	p.collect_scanner_diagnostics()
+}
+
+// report_misplaced_line_directives reports the `#line` directives of the file that are
+// not at the top level or between statements, like one in an expression or in a struct:
+// the parser reads them as something else, while they still renumber the lines after them.
+fn (mut p Parser) report_misplaced_line_directives() {
+	for offset in p.s.line_directive_offsets {
+		if offset !in p.accepted_line_directives {
+			p.record_diagnostic_span('a `#line` directive can only be used at the top level of a file or between statements',
+				offset, p.s.src.index_after('\n', offset) or { p.s.src.len })
+		}
+	}
+}
+
+// accept_skipped_line_directives accepts the `#line` directives scanned since the byte
+// offset `start` and before the current token, like the ones of a skipped `$if` branch.
+fn (mut p Parser) accept_skipped_line_directives(start int) {
+	offsets := p.s.line_directive_offsets
+	for i := offsets.len - 1; i >= 0 && offsets[i] >= start; i-- {
+		if offsets[i] < p.tok_pos {
+			p.accepted_line_directives[offsets[i]] = true
+		}
+	}
 }
 
 fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback_end int, ignore_statement bool, mut state ScriptModeState) {
@@ -1065,6 +1094,25 @@ fn (mut p Parser) next() {
 fn (p &Parser) line_nr_for_pos(pos int) int {
 	offset := clamp_source_offset(pos, p.s.src.len)
 	return p.s.current_file().find_line(offset)
+}
+
+// pseudo_location returns the file and line that `@LINE`, `@FILE_LINE` and `@LOCATION`
+// report for a byte offset: they follow the `#line` directives of the file.
+fn (p &Parser) pseudo_location(pos int) (string, int) {
+	line := p.line_nr_for_pos(pos)
+	file := p.s.current_file()
+	if !file.has_line_directives() {
+		return p.cur_file, line
+	}
+	name, logical_line := file.logical_line(line)
+	return if name == file.name { p.cur_file } else { name }, logical_line
+}
+
+// pseudo_file returns the value of `@FILE` at a byte offset: the absolute path of the
+// source file, or the file named by a `#line` directive, as it is written there.
+fn (p &Parser) pseudo_file(pos int) string {
+	file, _ := p.pseudo_location(pos)
+	return if file == p.cur_file { os.real_path(p.cur_file) } else { file }
 }
 
 fn (p &Parser) column_for_pos(pos int) int {
@@ -3774,6 +3822,32 @@ fn (mut p Parser) directive() flat.NodeId {
 	if name == 'flag' && value.len == 0 {
 		p.record_diagnostic_span('no argument(s) provided for #flag', directive_start, directive_end)
 	}
+	if full == 'line' || (full.len > 4 && full.starts_with('line') && full[4] in [` `, `\t`]) {
+		// The scanner already recorded a valid directive in the line table of the file.
+		// It only remaps positions, so later stages never see it; vfmt keeps it.
+		if p.s.line_directives {
+			p.accepted_line_directives[directive_start] = true
+		}
+		mut line_begin := clamp_source_offset(directive_start, p.s.src.len)
+		for line_begin > 0 && p.s.src[line_begin - 1] in [` `, `\t`] {
+			line_begin--
+		}
+		if line_begin > 0 && p.s.src[line_begin - 1] != `\n` {
+			p.record_diagnostic_span('a `#line` directive must be on a line of its own',
+				directive_start, directive_end)
+		} else {
+			token.parse_line_directive(full[4..]) or {
+				p.record_diagnostic_span('invalid `#line` directive: ${err.msg()}', directive_start,
+					directive_end)
+			}
+		}
+		if !p.prefs.is_fmt {
+			if p.tok == .semicolon {
+				p.next()
+			}
+			return flat.empty_node
+		}
+	}
 	if name.starts_with('!') && directive_start > 0 && !p.prefs.is_fmt {
 		p.record_diagnostic_span('a shebang is only valid at the top of the file', directive_start,
 			directive_end)
@@ -5086,7 +5160,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 			name := cond[start..i]
 			match name {
 				'@FILE' {
-					write_comptime_cond_string(mut out, os.real_path(p.cur_file))
+					write_comptime_cond_string(mut out, p.pseudo_file(pseudo_pos))
 				}
 				'@DIR' {
 					write_comptime_cond_string(mut out, os.real_path(os.dir(p.cur_file)))
@@ -5119,13 +5193,15 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					write_comptime_cond_string(mut out, vexe)
 				}
 				'@LINE' {
-					write_comptime_cond_string(mut out, p.line_nr_for_pos(pseudo_pos).str())
+					_, line := p.pseudo_location(pseudo_pos)
+					write_comptime_cond_string(mut out, line.str())
 				}
 				'@COLUMN' {
 					write_comptime_cond_string(mut out, p.column_for_pos(pseudo_pos + start).str())
 				}
 				'@FILE_LINE' {
-					write_comptime_cond_string(mut out, '${os.file_name(p.cur_file)}:${p.line_nr_for_pos(pseudo_pos)}')
+					file, line := p.pseudo_location(pseudo_pos)
+					write_comptime_cond_string(mut out, '${os.file_name(file)}:${line}')
 				}
 				'@METHOD' {
 					write_comptime_cond_string(mut out, method_name)
@@ -5148,7 +5224,8 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 							location_method = '${module_name}.${p.cur_struct}{}.${fn_name}'
 						}
 					}
-					write_comptime_cond_string(mut out, '${p.cur_file}:${p.line_nr_for_pos(pseudo_pos)}, ${location_method}')
+					file, line := p.pseudo_location(pseudo_pos)
+					write_comptime_cond_string(mut out, '${file}:${line}, ${location_method}')
 				}
 				'@BUILD_DATE' {
 					write_comptime_cond_string(mut out, p.prefs.build_date)
@@ -6914,6 +6991,7 @@ fn (mut p Parser) skip_block() {
 	if p.tok != .lcbr {
 		return
 	}
+	start := p.tok_pos
 	mut depth := 1
 	p.next()
 	for depth > 0 && p.tok != .eof {
@@ -6924,11 +7002,13 @@ fn (mut p Parser) skip_block() {
 		}
 		p.next()
 	}
+	p.accept_skipped_line_directives(start)
 }
 
 // skip_block_recording_decl_names skips a block like skip_block, recording each
 // name it spells as a possible use of a function or a constant.
 fn (mut p Parser) skip_block_recording_decl_names() {
+	start := p.tok_pos
 	mut depth := 1
 	mut scan := p.new_skipped_decl_name_scan()
 	p.next()
@@ -6941,6 +7021,7 @@ fn (mut p Parser) skip_block_recording_decl_names() {
 		}
 		p.next()
 	}
+	p.accept_skipped_line_directives(start)
 }
 
 // SkippedDeclNameScan remembers the tokens before the current one in a skipped
@@ -7073,6 +7154,7 @@ fn (mut p Parser) skip_comptime_block() {
 	mut map_type_paren_depth := -1
 	mut map_type_bracket_depth := -1
 	mut decl_name_scan := p.new_skipped_decl_name_scan()
+	start := p.tok_pos
 	p.next()
 	for depth > 0 && p.tok != .eof {
 		p.record_skipped_decl_name(mut decl_name_scan)
@@ -7242,6 +7324,7 @@ fn (mut p Parser) skip_comptime_block() {
 	for key in pending_comma_lhs_reads {
 		p.a.comptime_skipped_read_names[key] = true
 	}
+	p.accept_skipped_line_directives(start)
 }
 
 fn (mut p Parser) skip_brackets() {
@@ -7628,6 +7711,8 @@ fn (mut p Parser) parse_formatter_comptime_match(start int) flat.NodeId {
 		}
 		p.next()
 	}
+	// vfmt keeps the source of the match as it is, `#line` directives included.
+	p.accept_skipped_line_directives(start)
 	end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 	source := p.s.src[start..end]
 	id := p.a.add_node(flat.Node{
@@ -12056,7 +12141,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.sql_expr(name_pos)
 			}
 			if name == '@FILE' {
-				return p.add_val_id(5, os.real_path(p.cur_file))
+				return p.add_val_id(5, p.pseudo_file(name_pos))
 			}
 			if name == '@DIR' {
 				return p.add_val_id(5, os.real_path(os.dir(p.cur_file)))
@@ -12093,13 +12178,15 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == '@LINE' {
 				// like V1, `@LINE` is a string literal holding the 1-based line number
-				return p.add_val_id(5, p.line_nr_for_pos(name_pos).str())
+				_, line := p.pseudo_location(name_pos)
+				return p.add_val_id(5, line.str())
 			}
 			if name == '@COLUMN' {
 				return p.add_val_id(5, p.column_for_pos(name_pos).str())
 			}
 			if name == '@FILE_LINE' {
-				return p.add_val_id(5, '${os.file_name(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')
+				file, line := p.pseudo_location(name_pos)
+				return p.add_val_id(5, '${os.file_name(file)}:${line}')
 			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {
@@ -12132,7 +12219,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						method_name = '${module_name}.${p.cur_struct}{}.${fn_name}'
 					}
 				}
-				return p.add_val_id(5, '${p.cur_file}:${p.line_nr_for_pos(name_pos)}, ${method_name}')
+				file, line := p.pseudo_location(name_pos)
+				return p.add_val_id(5, '${file}:${line}, ${method_name}')
 			}
 			if name == '@BUILD_DATE' {
 				return p.add_val_id(5, p.prefs.build_date)

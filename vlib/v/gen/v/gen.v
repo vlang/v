@@ -597,7 +597,12 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 				&& int(previous) >= 0 {
 				preserved_group_break = g.has_preserved_blank_line_between(previous, id)
 			}
-			if preserved_group_break
+			if prev == .directive && int(previous) >= 0 && is_line_directive(g.a.node(previous)) {
+				// A blank line after `#line` would move the code that the directive locates.
+				if g.source_has_blank_line_between(g.a.node(previous).pos.end, g.a.node(id).pos.offset) {
+					g.writeln('')
+				}
+			} else if preserved_group_break
 				|| (!injected_now && !both_statements && !same_unseparated_group
 					&& !source_c_group && !adjacent_consts) {
 				g.writeln('')
@@ -5282,6 +5287,11 @@ fn (mut g Gen) global_field(fid flat.NodeId, group_pub bool, align_width int) {
 		g.writeln('')
 	}
 	g.source_end = int_max(g.source_end, f.pos.end)
+}
+
+// is_line_directive reports whether `node` is a `#line` directive.
+fn is_line_directive(node flat.Node) bool {
+	return node.kind == .directive && (node.value == 'line' || node.value.starts_with('line\t'))
 }
 
 fn (mut g Gen) directive_stmt(id flat.NodeId) {
