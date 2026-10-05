@@ -9375,6 +9375,12 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 			}
 			return none
 		}
+		for type_name in tc.static_assoc_type_candidates(base.value) {
+			key := '${type_name}.${node.value}'
+			if tc.fn_signature_known(key) {
+				return key
+			}
+		}
 		if key := tc.static_assoc_fn_key_for_base(base.value, node.value) {
 			return key
 		}

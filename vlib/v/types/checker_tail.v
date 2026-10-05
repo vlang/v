@@ -13516,7 +13516,10 @@ fn (tc &TypeChecker) call_local_fn_param_is_mut(node flat.Node, param_idx int) b
 	if node.children_count == 0 {
 		return false
 	}
-	callee := tc.a.child_node(&node, 0)
+	mut callee := tc.a.child_node(&node, 0)
+	for callee.kind in [.paren, .expr_stmt] && callee.children_count > 0 {
+		callee = tc.a.child_node(callee, 0)
+	}
 	if callee.kind != .ident {
 		return false
 	}
