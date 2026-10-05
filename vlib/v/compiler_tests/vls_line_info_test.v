@@ -1457,11 +1457,18 @@ fn functions_line(text string) int {
 	return line
 }
 
+// decl_in_builtin_array reports whether a go-to-definition result points into
+// `builtin/array.v`. The server reports the declaration at its real path, so the
+// separators differ per platform and are normalised before the comparison.
+fn decl_in_builtin_array(decl string) bool {
+	return decl.replace('\\', '/').contains('builtin/array.v:')
+}
+
 fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 	// `xs.map()` over `xs []T` in a generic body calls the `map` of every array:
 	// the declaration and the signature of `nums.map()` over an `[]int`.
 	map_decl := function('gd^', '\tprintln(nums.map(it * 2))', 'map', 0)
-	assert map_decl.contains('builtin/array.v:'), map_decl
+	assert decl_in_builtin_array(map_decl), map_decl
 	assert function('gd^', '\tprintln(xs.map(count))', 'map', 0) == map_decl
 	assert function('gd^', '\treturn xs.map(|x| x.name.to_upper())', 'map', 0) == map_decl
 	// Over an array literal, whose elements the checker keeps no type for.
@@ -1471,10 +1478,10 @@ fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 	assert map_hover.contains('fn map('), map_hover
 	assert function('hv^', '\tprintln(xs.map(count))', 'map', 0) == map_hover
 	filter_decl := function('gd^', '\tprintln(nums.filter(it > 1))', 'filter', 0)
-	assert filter_decl.contains('builtin/array.v:'), filter_decl
+	assert decl_in_builtin_array(filter_decl), filter_decl
 	assert function('gd^', '\tprintln(xs.filter(it.name.len > 1))', 'filter', 0) == filter_decl
 	sort_decl := function('gd^', '\tsorted.sort(a < b)', 'sort', 0)
-	assert sort_decl.contains('builtin/array.v:'), sort_decl
+	assert decl_in_builtin_array(sort_decl), sort_decl
 	assert function('gd^', '\txs.sort(a.name < b.name)', 'sort', 0) == sort_decl
 	// A method of a generic struct, called on a `Box[T]`.
 	label := functions_line('fn (b Box[T]) label() string {')
@@ -1530,7 +1537,7 @@ fn main() {
 		panic(err)
 	}
 	map_decl := ask(dir, 'gd^', 11, 'map', 0)
-	assert map_decl.contains('builtin/array.v:'), map_decl
+	assert decl_in_builtin_array(map_decl), map_decl
 	assert ask(dir, 'gd^', 4, 'map', 0) == map_decl
 	assert ask(dir, 'hv^', 4, 'it', 0) == hover_of('it T')
 }
@@ -1800,7 +1807,7 @@ fn main() {
 }
 ')
 	map_decl := ask(dir, 'gd^', 11, 'map', 0)
-	assert map_decl.contains('builtin/array.v:'), map_decl
+	assert decl_in_builtin_array(map_decl), map_decl
 	assert ask(dir, 'gd^', 4, 'map', 0) == map_decl
 }
 
