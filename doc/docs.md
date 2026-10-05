@@ -347,6 +347,9 @@ fn main() {
 
 Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
 
+V source files use UTF-8. A UTF-8 byte order mark at the start of a file is ignored;
+a byte order mark outside a string or comment elsewhere in the file is rejected.
+
 > That is assuming you have symlinked your V with `v symlink`, as described
 [here](https://github.com/vlang/v/blob/master/README.md#symlinking).
 > If you haven't yet, you have to type the path to V manually.
