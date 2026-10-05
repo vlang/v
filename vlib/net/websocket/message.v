@@ -79,6 +79,21 @@ fn is_data_frame(opcode OPCode) bool {
 	return opcode in [.text_frame, .binary_frame]
 }
 
+// read_exact fills a frame field without consuming bytes from the next field.
+// TCP/TLS reads may return fewer bytes than requested; EOF and timeout errors
+// propagate instead of returning a partially initialized frame or payload.
+fn (mut ws Client) read_exact(buffer &u8, length int) ! {
+	mut offset := 0
+	for offset < length {
+		// Callers supply length writable bytes; offset stays within that region.
+		read_bytes := ws.socket_read_ptr(unsafe { buffer + offset }, length - offset)!
+		if read_bytes <= 0 {
+			return error('websocket peer closed connection during frame')
+		}
+		offset += read_bytes
+	}
+}
+
 // read_payload reads the message payload from the socket
 fn (mut ws Client) read_payload(frame &Frame) ![]u8 {
 	if frame.payload_len == 0 {
@@ -208,16 +223,12 @@ fn (ws &Client) opcode_from_fragments() OPCode {
 pub fn (mut ws Client) parse_frame_header() !Frame {
 	mut buffer := [256]u8{}
 	mut bytes_read := 0
+	mut read_until := header_len_offset
 	mut frame := Frame{}
-	mut rbuff := [1]u8{}
 	mut mask_end_byte := 0
 	for ws.get_state() == .open {
-		read_bytes := ws.socket_read_ptr(&rbuff[0], 1)!
-		if read_bytes == 0 {
-			return error('websocket peer closed connection')
-		}
-		buffer[bytes_read] = rbuff[0]
-		bytes_read++
+		ws.read_exact(&buffer[bytes_read], read_until - bytes_read)!
+		bytes_read = read_until
 		// parses the first two header bytes to get basic frame information
 		if bytes_read == header_len_offset {
 			frame.fin = (buffer[0] & 0x80) == 0x80
@@ -244,6 +255,13 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 			if !frame.has_mask && frame.payload_len < 126 {
 				break
 			}
+			read_until = if frame.payload_len == 126 {
+				extended_payload16_end_byte
+			} else if frame.payload_len == 127 {
+				extended_payload64_end_byte
+			} else {
+				mask_end_byte
+			}
 		}
 		if frame.payload_len == 126 && bytes_read == extended_payload16_end_byte {
 			frame.header_len += 2
@@ -254,6 +272,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 			if !frame.has_mask {
 				break
 			}
+			read_until = mask_end_byte
 		}
 		if frame.payload_len == 127 && bytes_read == extended_payload64_end_byte {
 			frame.header_len += 8
@@ -271,6 +290,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 			if !frame.has_mask {
 				break
 			}
+			read_until = mask_end_byte
 		}
 		if frame.has_mask && bytes_read == mask_end_byte {
 			frame.masking_key[0] = buffer[mask_end_byte - 4]
