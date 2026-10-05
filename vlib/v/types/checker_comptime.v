@@ -301,6 +301,30 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				return
 			}
 			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
+				&& !tc.a.node(arg_id).is_mut && !tc.disable_explicit_mutability {
+				expected := tc.comptime_static_method_param_type(receiver_name, method,
+					arg_index)
+				param_name := if arg_index < method.param_names.len {
+					method.param_names[arg_index]
+				} else {
+					''
+				}
+				msg := if tc.mut_pointer_slot_arg_needs_ref(arg_id, expected) {
+					tc.mut_pointer_slot_arg_error_msg('method', '${receiver_name}.${method.name}',
+						param_name, arg_index + 1, expected, arg_id)
+				} else {
+					param_label := if param_name.len > 0 {
+						'`${param_name}`'
+					} else {
+						'${arg_index + 1}'
+					}
+					arg_text := tc.source_text_for_node(arg_id)
+					'method `${method.name}` parameter ${param_label} is `mut`, so use `mut ${arg_text}` instead'
+				}
+				tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.call_argument_diagnostic_pos(arg_id))
+				return
+			}
+			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
 				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len {
 				expected := tc.comptime_static_method_param_type(receiver_name, method,
 					arg_index)

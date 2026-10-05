@@ -3598,6 +3598,9 @@ println(nums)
 Note that you have to add `mut` before `nums` when calling this function. This makes
 it clear that the function being called will modify the value.
 
+A comptime `app.$method(...)` call also requires `mut` when passing a pointer variable
+to an explicit `mut param &T` parameter.
+
 It is preferable to return values instead of modifying arguments,
 e.g. `user = register(user)` (or `user.register()`) instead of `register(mut user)`.
 Modifying arguments should only be done in performance-critical parts of your application
