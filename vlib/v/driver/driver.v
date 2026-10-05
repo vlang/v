@@ -6405,11 +6405,11 @@ fn merge_monomorph_cache_specs(cached []transform.MonomorphCacheSpec, generated 
 	return merged
 }
 
-// clone_string_bool_map promotes a string-keyed set out of a disposable stage arena.
 fn clone_string_bool_map(values map[string]bool) map[string]bool {
 	mut cloned := map[string]bool{}
+	cloned.reserve(u32(values.len))
 	for key, value in values {
-		cloned[key.clone()] = value
+		cloned[key] = value
 	}
 	return cloned
 }
@@ -6417,7 +6417,7 @@ fn clone_string_bool_map(values map[string]bool) map[string]bool {
 fn clone_string_string_map(values map[string]string) map[string]string {
 	mut cloned := map[string]string{}
 	for key, value in values {
-		cloned[key.clone()] = value.clone()
+		cloned[key] = value.clone()
 	}
 	return cloned
 }
@@ -6425,7 +6425,7 @@ fn clone_string_string_map(values map[string]string) map[string]string {
 fn clone_nested_string_bool_map(values map[string]map[string]bool) map[string]map[string]bool {
 	mut cloned := map[string]map[string]bool{}
 	for key, value in values {
-		cloned[key.clone()] = clone_string_bool_map(value)
+		cloned[key] = clone_string_bool_map(value)
 	}
 	return cloned
 }
@@ -6778,7 +6778,7 @@ fn clone_struct_field_map(values map[string][]types.StructField) map[string][]ty
 				is_volatile: field.is_volatile
 			}
 		}
-		cloned[name.clone()] = owned_fields
+		cloned[name] = owned_fields
 	}
 	return cloned
 }
@@ -6786,12 +6786,13 @@ fn clone_struct_field_map(values map[string][]types.StructField) map[string][]ty
 fn clone_string_list_map(values map[string][]string) map[string][]string {
 	mut cloned := map[string][]string{}
 	for name, items in values {
-		cloned[name.clone()] = clone_string_list(items)
+		cloned[name] = clone_string_list(items)
 	}
 	return cloned
 }
 
 fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
+	tc.runtime_type_indexes = tc.runtime_type_indexes.clone()
 	// Transform and specialization can grow these maps inside a disposable arena,
 	// so move both their storage and string payloads before releasing that arena.
 	tc.fn_type_files = clone_string_string_map(tc.fn_type_files)
@@ -6832,7 +6833,7 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 				tc.resolved_call_names[idx] = types.promote_cached_name(tc.resolved_call_names[idx], scope)
 			}
 			if idx >= generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+				tc.expr_type_values[idx] = &types.Type(types.clone_owned_type(tc.expr_type_values[idx]))
 			}
 		}
 	}
@@ -6842,7 +6843,7 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	for idx in rewritten_base_nodes {
 		if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx]
 			&& idx < tc.expr_type_values.len {
-			tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+			tc.expr_type_values[idx] = &types.Type(types.clone_owned_type(tc.expr_type_values[idx]))
 		}
 	}
 	// The dense caches are reserved in the parent arena, but an unexpectedly
@@ -7770,20 +7771,19 @@ fn ast_contains_sql_expr(a &flat.FlatAst) bool {
 }
 
 fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst, used_fns map[string]bool) {
-	void_type := types.builtin_type_value('void')
 	for tc.expr_type_values.len < a.nodes.len {
-		tc.expr_type_values << void_type
+		tc.expr_type_values << types.empty_type
 		tc.expr_type_set << false
 	}
 	// Signature arrays and payloads stay immutable throughout this restoration.
-	mut fn_value_types := map[string]types.Type{}
+	mut fn_value_types := map[string]&types.Type{}
 	for idx, name in tc.sparse_resolved_fn_values {
 		if idx < 0 || idx >= a.nodes.len {
 			continue
 		}
 		params := tc.fn_param_types[name] or { continue }
 		ret := tc.fn_ret_types[name] or { continue }
-		tc.expr_type_values[idx] = restored_fn_value_type(name, params, ret, mut fn_value_types)
+		tc.expr_type_values[idx] = restored_fn_value_type(tc, name, params, ret, mut fn_value_types)
 		tc.expr_type_set[idx] = true
 	}
 	mut cur_module := ''
@@ -7840,7 +7840,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						if name.len > 0 {
 							params := tc.fn_param_types[name] or { []types.Type{} }
 							if ret := tc.fn_ret_types[name] {
-								tc.expr_type_values[callee_idx] = restored_fn_value_type(name, params, ret, mut fn_value_types)
+								tc.expr_type_values[callee_idx] = restored_fn_value_type(tc, name, params, ret, mut fn_value_types)
 								tc.expr_type_set[callee_idx] = true
 							}
 						}
@@ -7859,7 +7859,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						&& (tc.resolved_fn_value_name(base_id) or { '' }) == cname {
 						params := tc.fn_param_types[cname] or { []types.Type{} }
 						if ret := tc.fn_ret_types[cname] {
-							tc.expr_type_values[base_idx] = restored_fn_value_type(cname, params, ret, mut fn_value_types)
+							tc.expr_type_values[base_idx] = restored_fn_value_type(tc, cname, params, ret, mut fn_value_types)
 							tc.expr_type_set[base_idx] = true
 						}
 					}
@@ -7875,14 +7875,11 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 	}
 }
 
-fn restored_fn_value_type(name string, params []types.Type, ret types.Type, mut fn_value_types map[string]types.Type) types.Type {
+fn restored_fn_value_type(tc &types.TypeChecker, name string, params []types.Type, ret types.Type, mut fn_value_types map[string]&types.Type) &types.Type {
 	if cached := fn_value_types[name] {
 		return cached
 	}
-	typ := types.Type(types.FnType{
-		params:      params
-		return_type: ret
-	})
+	typ := tc.intern_type_reference(types.Type(tc.fn_type(params, ret, []bool{})))
 	fn_value_types[name] = typ
 	return typ
 }

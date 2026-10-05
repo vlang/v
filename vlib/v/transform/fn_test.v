@@ -97,10 +97,10 @@ fn test_callback_payload_checks_symbolic_fixed_array_lengths() {
 	t := new_transformer(mut a, &tc, map[string]bool{})
 	int_type := types.Type(types.int_)
 	two := types.Type(types.Array{
-		elem_type: types.Type(types.ArrayFixed{ elem_type: int_type, len_expr: 'two' })
+		elem_type: &types.Type(types.ArrayFixed{ elem_type: &types.Type(int_type), len_expr: 'two' })
 	})
 	three := types.Type(types.Array{
-		elem_type: types.Type(types.ArrayFixed{ elem_type: int_type, len_expr: 'three' })
+		elem_type: &types.Type(types.ArrayFixed{ elem_type: &types.Type(int_type), len_expr: 'three' })
 	})
 	assert t.callback_payload_type_compatible(two, two, false)
 	assert !t.callback_payload_type_compatible(two, three, false)
@@ -110,9 +110,9 @@ fn test_callback_payload_checks_channel_mutability() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
-	elem_type := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
-	mutable := types.Type(types.Channel{ elem_type: elem_type, is_mut: true })
-	read_only := types.Type(types.Channel{ elem_type: elem_type })
+	elem_type := types.Type(types.Pointer{ base_type: &types.Type(types.int_) })
+	mutable := types.Type(types.Channel{ elem_type: &types.Type(elem_type), is_mut: true })
+	read_only := types.Type(types.Channel{ elem_type: &types.Type(elem_type) })
 	assert t.callback_payload_type_compatible(mutable, mutable, false)
 	assert !t.callback_payload_type_compatible(mutable, read_only, false)
 }
@@ -121,12 +121,12 @@ fn test_callback_payload_accepts_void_pointer_userdata() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
-	int_ptr := types.Type(types.Pointer{ base_type: types.Type(types.int_) })
-	void_ptr := types.Type(types.Pointer{ base_type: types.Type(types.void_) })
-	float_ptr := types.Type(types.Pointer{ base_type: types.Type(types.f64_) })
-	int_callback := types.Type(types.FnType{ params: [int_ptr], return_type: types.Type(types.void_) })
-	void_callback := types.Type(types.FnType{ params: [void_ptr], return_type: types.Type(types.void_) })
-	float_callback := types.Type(types.FnType{ params: [float_ptr], return_type: types.Type(types.void_) })
+	int_ptr := types.Type(types.Pointer{ base_type: &types.Type(types.int_) })
+	void_ptr := types.Type(types.Pointer{ base_type: &types.Type(types.void_) })
+	float_ptr := types.Type(types.Pointer{ base_type: &types.Type(types.f64_) })
+	int_callback := types.Type(tc.fn_type([int_ptr], &types.Type(types.void_), []bool{}))
+	void_callback := types.Type(tc.fn_type([void_ptr], &types.Type(types.void_), []bool{}))
+	float_callback := types.Type(tc.fn_type([float_ptr], &types.Type(types.void_), []bool{}))
 	assert t.callback_payload_type_compatible(int_callback, void_callback, false)
 	assert t.callback_payload_type_compatible(void_callback, int_callback, false)
 	assert !t.callback_payload_type_compatible(int_callback, float_callback, false)
@@ -1015,9 +1015,9 @@ fn test_typeof_display_canonicalizes_fixed_array_map_values() {
 	assert typeof_display_type_text('Pair[int[3], Box[string[2]]]') == 'Pair[[3]int, Box[[2]string]]'
 	assert typeof_display_type_text('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
-		elem_type: types.Type(types.Map{
-			key_type:   types.Type(types.String{})
-			value_type: types.Type(types.int_)
+		elem_type: &types.Type(types.Map{
+			key_type:   &types.Type(types.String{})
+			value_type: &types.Type(types.int_)
 		})
 		len:       3
 	})
@@ -1062,15 +1062,28 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	// same single index probe, and recording it would detach the shared maps.
 	assert worker.call_param_types_from_decl('worker_missing') == none
 	assert worker.call_param_types_decl_shared
-	assert !worker.call_param_types_decl_misses['worker_missing']
-	assert !t.call_param_types_decl_misses['worker_missing']
-	assert !sibling.call_param_types_decl_misses['worker_missing']
 	assert t.call_param_types_from_decl('master_missing') == none
 	assert t.call_param_types_decl_shared
-	assert !worker.call_param_types_decl_misses['master_missing']
-	assert !sibling.call_param_types_decl_misses['master_missing']
 	assert sibling.call_param_types_from_decl('sibling_missing') == none
-	assert !t.call_param_types_decl_misses['sibling_missing']
+	assert sibling.call_param_types_decl_shared
+	late_param := a.add_node(flat.Node{ kind: .param, value: 'value', typ: 'int' })
+	late_start := a.children.len
+	a.children << late_param
+	late_decl := a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          'later'
+		children_start: late_start
+		children_count: 1
+	})
+	worker.call_param_types_decl_index = worker.call_param_types_decl_index.clone()
+	worker.add_call_param_types_decl_key('later', int(late_decl), '', 'main')
+	late := worker.call_param_types_from_decl('later') or { panic('missing signature') }
+	assert late.len == 1
+	assert late[0] == types.Type(types.int_)
+	assert !worker.call_param_types_decl_shared
+	assert int(late_decl) !in t.call_param_types_decl_cache
+	assert int(late_decl) !in sibling.call_param_types_decl_cache
+
 	t.add_call_param_types_decl_key('main.takes_string', a.nodes.len - 1, 'signature_index_test.v', 'main')
 	assert !t.call_param_types_prepared
 }
@@ -1601,4 +1614,23 @@ fn test_thread_handle_array_append_does_not_clone_result_fields() {
 	results := workers.wait()
 	assert results[0][0].values == ['first']
 	assert results[1][0].values == ['second']
+}
+
+fn test_sum_resolution_preserves_reference_and_container_types() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut t := new_transformer(mut ast, &tc, map[string]bool{})
+	t.sum_types['model.Value'] = ['int', 'string']
+	assert t.is_sum_type_name('model.Value')
+	wrapped := [
+		'&model.Value',
+		'?model.Value',
+		'!model.Value',
+		'[]model.Value',
+		'[2]model.Value',
+		'map[string]model.Value',
+	]
+	for name in wrapped {
+		assert !t.is_sum_type_name(name), name
+	}
 }

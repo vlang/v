@@ -394,7 +394,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		return t.lower_iterator_for_in(id, node, key_id, val_id, container_id, iter_type,
 			iter_info, has_index, body_ids)
 	}
-	effective_iter := if iter_type.starts_with('...') {
+	mut effective_iter := if iter_type.starts_with('...') {
 		'[]' + iter_type[3..]
 	} else if iter_type.starts_with('&[]') {
 		iter_type[1..]
@@ -408,7 +408,15 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 	if effective_iter.starts_with('[]') || effective_iter == 'string'
 		|| t.is_fixed_array_type(effective_iter) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
-		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, effective_iter,
+		mut collection := container_id
+		literal := t.a.nodes[int(container_id)]
+		if node.op != .amp && effective_iter.starts_with('[]')
+			&& t.array_literal_can_emit_direct(literal) {
+			effective_iter = '[${literal.children_count}]${effective_iter[2..]}'
+			values := t.a.children_of(&literal).clone()
+			collection = t.make_array_literal_typed(values, effective_iter)
+		}
+		return t.lower_indexed_for_in(id, node, key_id, val_id, collection, effective_iter,
 			has_index, body_ids)
 	}
 	return t.rebuild_for_in_stmt(id, node)

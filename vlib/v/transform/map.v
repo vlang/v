@@ -1,7 +1,7 @@
 module transform
 
 import v.flat
-import v.types
+import v.types { unalias_type }
 
 // Map literals normally add about 12 transform nodes per entry. Keep the
 // estimate conservative because ownership cleanup and nested values can add
@@ -230,7 +230,7 @@ fn (t &Transformer) fixed_array_empty_init_requires_deferral(elem_type string) b
 	}
 	// Struct defaults can recursively synthesize collection literals that are not
 	// represented by children of the external initializer.
-	return types.unalias_type(t.tc.parse_type(clean_type)) is types.Struct
+	return unalias_type(t.tc.parse_type(clean_type)) is types.Struct
 }
 
 fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type string) bool {
@@ -251,7 +251,7 @@ fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type string) bool {
 	}
 	// Struct fields can carry runtime defaults. Treat every struct conservatively here;
 	// this estimate only decides whether lowering should leave the bounded worker arena.
-	return types.unalias_type(t.tc.parse_type(clean_type)) is types.Struct
+	return unalias_type(t.tc.parse_type(clean_type)) is types.Struct
 }
 
 // external_map_tree_expansion_estimate counts writes caused by lowering an initializer
@@ -1354,8 +1354,8 @@ fn (mut t Transformer) forwarded_return_conversion_expansion_estimate(actual_typ
 	if depth >= 32 || !t.forwarded_slot_conversion_supported(actual_type, expected_type) {
 		return 0
 	}
-	actual := forwarded_return_unalias_type(actual_type)
-	expected := forwarded_return_unalias_type(expected_type)
+	actual := unalias_type(actual_type)
+	expected := unalias_type(expected_type)
 	if actual is types.OptionType && expected is types.OptionType {
 		return t.forwarded_return_conversion_expansion_estimate(actual.base_type, expected.base_type, depth + 1)
 	}
@@ -1635,6 +1635,16 @@ fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 	args << t.make_ident(eq_fn)
 	args << t.make_ident(clone_fn)
 	args << t.make_ident(free_fn)
+	if !isnil(t.tc) {
+		key := t.tc.parse_type(key_storage_type)
+		value := t.tc.parse_type(value_type)
+		if t.tc.requires_aligned_allocation(key) || t.tc.requires_aligned_allocation(value) {
+			args << t.make_type_alignment(key_storage_type)
+			args << t.make_type_alignment(value_type)
+			t.mark_fn_used('new_map_aligned')
+			return t.make_call_typed('new_map_aligned', args, map_type)
+		}
+	}
 	return t.make_call_typed('new_map', args, map_type)
 }
 

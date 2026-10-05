@@ -1,7 +1,8 @@
 module transform
 
 import v.flat
-import v.types
+import v.gen.c.naming { sum_field_name }
+import v.types { unalias_type }
 
 struct ArrayMapLoopPointerExit {
 	origins     map[string]bool
@@ -24,8 +25,19 @@ fn (mut t Transformer) make_array_new_call(elem_type string, len_expr flat.NodeI
 	} else {
 		elem_type
 	}
+	if !isnil(t.tc) && t.tc.requires_aligned_allocation(t.tc.parse_type(storage_size_type)) {
+		t.mark_fn_used('__new_array_aligned')
+		size := t.make_sizeof_type(storage_size_type)
+		alignment := t.make_type_alignment(storage_size_type)
+		return t.make_call_typed('__new_array_aligned', [
+			len_expr,
+			cap_expr,
+			size,
+			alignment,
+		], '[]${elem_type}')
+	}
 	if !isnil(t.tc)
-		&& array_element_can_use_noscan(t.tc.parse_type(t.normalize_type_alias(storage_size_type))) {
+		&& !t.tc.allocation_layout(t.tc.parse_type(storage_size_type)).has(.scanned) {
 		// Use the runtime allocator, not just the flag: scalar rows must really
 		// live in atomic storage. Non-optimized GC modes provide a scanned fallback.
 		t.mark_fn_used('__new_array_noscan')
@@ -35,14 +47,17 @@ fn (mut t Transformer) make_array_new_call(elem_type string, len_expr flat.NodeI
 	return t.make_call_typed('array_new', [t.make_sizeof_type(storage_size_type), len_expr, cap_expr], '[]${elem_type}')
 }
 
-// Only known scalar element types can bypass GC scanning. In particular, an
-// outer array stores row headers containing pointers, even when its rows are numeric.
-fn array_element_can_use_noscan(elem_type types.Type) bool {
-	if elem_type is types.Alias {
-		return array_element_can_use_noscan(elem_type.base_type)
+fn (mut t Transformer) make_array_storage_call(name string, args []flat.NodeId, array_type string) flat.NodeId {
+	elem_type := array_type.trim_string_left('[]')
+	if isnil(t.tc) || !t.tc.requires_aligned_allocation(t.tc.parse_type(elem_type)) {
+		t.mark_fn_used(name)
+		return t.make_call_typed(name, args, array_type)
 	}
-	return elem_type is types.Primitive || elem_type is types.Char || elem_type is types.Rune
-		|| elem_type is types.ISize || elem_type is types.USize || elem_type is types.Enum
+	mut aligned_args := args
+	aligned_args << t.make_type_alignment(elem_type)
+	aligned_name := '${name}_aligned'
+	t.mark_fn_used(aligned_name)
+	return t.make_call_typed(aligned_name, aligned_args, array_type)
 }
 
 fn shared_array_inner_type_text(raw string) ?string {
@@ -561,11 +576,10 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		mut indexed_init := t.substitute_ident_expr(init_expr_id, 'index', t.make_ident(idx_name))
 		indexed_init = t.substitute_ident_expr(indexed_init, 'it', t.make_ident(idx_name))
 		// Typed value lowering so a value `match`/`if` init field is materialized as a value.
-		init_expr = t.transform_expr_for_type(indexed_init, elem_type)
 		// The source-level initializer is evaluated once for every generated element.
 		// Keep a borrowed projection owned by its source by cloning it inside this loop,
 		// so each element also receives independent owned storage.
-		init_expr = t.clone_borrowed_storage_projection(init_expr_id, init_expr, elem_type)
+		init_expr = t.transform_owned_array_literal_element(indexed_init, elem_type)
 		init_pending := t.pending_stmts.clone()
 		t.pending_stmts = saved_pending
 		for stmt in init_pending {
@@ -729,6 +743,9 @@ fn (mut t Transformer) fixed_array_needs_runtime_default(field_type string) bool
 }
 
 fn (mut t Transformer) transform_owned_array_literal_element(elem_id flat.NodeId, elem_type string) flat.NodeId {
+	if value := t.owned_reference_for_type(elem_id, elem_type) {
+		return value
+	}
 	value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
 		t.wrap_sum_value(elem_id, elem_type)
 	} else {
@@ -737,12 +754,29 @@ fn (mut t Transformer) transform_owned_array_literal_element(elem_id flat.NodeId
 	return t.clone_borrowed_storage_projection(elem_id, value, elem_type)
 }
 
+fn (mut t Transformer) owned_reference_for_type(id flat.NodeId, typ string) ?flat.NodeId {
+	target := t.normalize_type_alias(typ)
+	if !target.starts_with('&') {
+		return none
+	}
+	source := t.normalize_type_alias(t.decl_rhs_type(id))
+	source_depth, source_base := pointer_type_depth_and_base(source)
+	target_depth, target_base := pointer_type_depth_and_base(target)
+	if source_depth >= target_depth || source_base != target_base {
+		return none
+	}
+	mut value := t.transform_expr_for_type(id, source)
+	mut storage_type := source
+	for _ in source_depth .. target_depth {
+		value = t.heap_value(value, storage_type)
+		storage_type = '&${storage_type}'
+	}
+	return value
+}
+
 // lower_array_literal_to_runtime converts lower array literal to runtime data for transform.
 fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
 	if t.in_const_init {
-		return id
-	}
-	if t.array_literal_can_emit_direct(node) {
 		return id
 	}
 	array_type := if elem_type := t.array_literal_pointer_value_elem_type(node) {
@@ -758,6 +792,9 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 		return id
 	}
 	elem_type := array_type[2..]
+	if t.array_literal_can_emit_direct(node) {
+		return id
+	}
 	tmp_name := t.new_temp('arr_lit')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_array_new_call(elem_type, t.make_int_literal(0), t.make_int_literal(node.children_count)), array_type)
 	for i in 0 .. node.children_count {
@@ -1191,8 +1228,8 @@ fn (mut t Transformer) transform_fixed_array_init_expr(node flat.Node) ?flat.Nod
 	mut values := []flat.NodeId{cap: len}
 	for i in 0 .. len {
 		indexed_init := t.substitute_ident_expr(init_id, 'index', t.make_int_literal(i))
-		value := t.transform_expr_for_type(indexed_init, elem_type)
-		values << t.clone_borrowed_storage_projection(init_id, value, elem_type)
+		value := t.transform_owned_array_literal_element(indexed_init, elem_type)
+		values << value
 	}
 	return t.make_array_literal_typed(values, fixed_type)
 }
@@ -1315,8 +1352,8 @@ fn (mut t Transformer) transform_array_value_for_dynamic_target(value_id flat.No
 	}
 	expected_type := t.tc.parse_type(expected_name)
 	actual_type := t.tc.parse_type(actual_name)
-	expected_base := forwarded_return_unalias_type(expected_type)
-	actual_base := forwarded_return_unalias_type(actual_type)
+	expected_base := unalias_type(expected_type)
+	actual_base := unalias_type(actual_type)
 	if expected_base is types.Array {
 		if actual_base is types.Array {
 			if !t.forwarded_slot_conversion_supported(actual_base.elem_type, expected_base.elem_type) {
@@ -1785,7 +1822,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	// set when the RHS was rebuilt into a freshly allocated array to box or widen its
 	// elements; that buffer has no other owner and has to be freed after the bulk append
 	mut converted_bulk_append := false
-	source := t.transform_lvalue(source_id)
+	source := t.transform_lvalue_without_smartcast(source_id)
 	t.drain_pending(mut result)
 	not_ok := t.make_prefix(.not, t.make_selector(source, 'ok', 'bool'))
 	guard_stmts := t.optional_selector_lvalue_guard_stmts(t.a.child(&lhs_node, 1), lhs_node.value, source)
@@ -2173,8 +2210,6 @@ struct OwnedArraySumVariant {
 	wrappers []string
 }
 
-// Acquire a fresh literal's payload before boxing it. Its boxes have not been
-// emitted yet, whereas a copied mutable sum borrows boxes owned by its caller.
 fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, typ string) ?flat.NodeId {
 	node := t.a.node(t.unwrap_parens(value))
 	resolved_sum, variants := t.concrete_sum_name_and_variants(typ)
@@ -2186,13 +2221,12 @@ fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, ty
 	tag := t.a.child_node(node, 0)
 	field := t.a.child_node(node, 1)
 	if tag.kind != .field_init || tag.value != 'typ' || tag.children_count != 1
-		|| field.kind != .field_init || field.children_count != 1
-		|| field.typ.starts_with('sum_ref ') {
+		|| field.kind != .field_init || field.children_count != 1 {
 		return none
 	}
 	for variant in variants {
 		qvariant := t.resolve_variant(resolved_sum, variant)
-		if qvariant.len == 0 || field.value != t.sum_field_name(qvariant) {
+		if qvariant.len == 0 || field.value != sum_field_name(qvariant) {
 			continue
 		}
 		mut variant_type := t.comptime_normalize_type_alias_chain(qvariant)
@@ -2280,18 +2314,13 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 			|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type))) {
 			continue
 		}
-		use_ptr := t.variant_references_sum(qvariant, resolved_sum) && !t.sum_variant_is_direct_pointer(qvariant)
-		field_type := if use_ptr { '&${qvariant}' } else { qvariant }
-		field := t.make_selector_op(source, t.sum_field_name(qvariant), field_type, .dot)
+		field_type := qvariant
+		field := t.make_selector_op(source, sum_field_name(qvariant), field_type, .dot)
 		mut payload := field
 		mut branch_guards := guards.clone()
 		branch_guards << t.make_sum_is_check(source, sum_type, resolved_sum, qvariant)
-		if use_ptr || clean_variant.starts_with('&') {
+		if clean_variant.starts_with('&') {
 			branch_guards << t.make_infix(.ne, field, t.a.add(.nil_literal))
-		}
-		if use_ptr {
-			payload = t.make_prefix(.mul, field)
-			t.set_node_typ(int(payload), qvariant)
 		}
 		mut branch_path := path.clone()
 		if is_nested_sum && (!clone_owned_value || wrappers.len == 0) {
@@ -3881,14 +3910,14 @@ fn (mut t Transformer) array_map_call_implicitly_borrows_ident(id flat.NodeId, n
 	params := t.call_param_types_for_node(call_name, node)
 	param_offset := t.call_param_offset_for_node(call_name, node, params)
 	callee := t.a.child_node(&node, 0)
-	if param_offset == 1 && params.len > 0 && types.unalias_type(params[0]) is types.Pointer
+	if param_offset == 1 && params.len > 0 && unalias_type(params[0]) is types.Pointer
 		&& callee.kind == .selector && callee.children_count > 0
 		&& t.array_map_lvalue_is_rooted_at_ident(t.a.child(callee, 0), name) {
 		return true
 	}
 	for i in 1 .. node.children_count {
 		param_idx := i - 1 + param_offset
-		if param_idx < params.len && types.unalias_type(params[param_idx]) is types.Pointer && t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, i), name) {
+		if param_idx < params.len && unalias_type(params[param_idx]) is types.Pointer && t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, i), name) {
 			return true
 		}
 	}
@@ -5077,7 +5106,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 		for i in 1 .. stmt.children_count {
 			target_id := t.a.child(&stmt, i)
 			target := t.a.nodes[int(target_id)]
-			if !target.is_mut || types.unalias_type(t.tc.resolve_type(target_id)) !is types.Pointer {
+			if !target.is_mut || unalias_type(t.tc.resolve_type(target_id)) !is types.Pointer {
 				continue
 			}
 			target_param_idx := i - 1 + param_offset
@@ -5231,7 +5260,7 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 		mut globally_storing_callback_params := []int{}
 		for i in 1 .. node.children_count {
 			arg_id := t.a.child(&node, i)
-			if types.unalias_type(t.tc.resolve_type(arg_id)) !is types.FnType {
+			if unalias_type(t.tc.resolve_type(arg_id)) !is types.FnType {
 				continue
 			}
 			if t.array_map_side_effect_source_retains_element_address(arg_id, elem_name, block, before_idx) {
@@ -5246,7 +5275,7 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 			// even when the callback expression itself captures no mapper state.
 			for i in 1 .. node.children_count {
 				arg_id := t.a.child(&node, i)
-				if types.unalias_type(t.tc.resolve_type(arg_id)) !is types.FnType && t.array_map_side_effect_source_retains_element_address(arg_id, elem_name, block, before_idx) {
+				if unalias_type(t.tc.resolve_type(arg_id)) !is types.FnType && t.array_map_side_effect_source_retains_element_address(arg_id, elem_name, block, before_idx) {
 					source_param_idx := i - 1 + param_offset
 					for callback_param_idx in globally_storing_callback_params {
 						if t.tc.call_param_flows_to_callback(id, callback_param_idx, source_param_idx) {
@@ -6928,7 +6957,7 @@ fn (t &Transformer) array_compare_fn_type(cmp_id flat.NodeId, elem_type string) 
 	if raw_type.len == 0 {
 		return default_type
 	}
-	if types.unalias_type(t.tc.parse_type(raw_type)) is types.FnType {
+	if unalias_type(t.tc.parse_type(raw_type)) is types.FnType {
 		return raw_type
 	}
 	return default_type
@@ -7241,7 +7270,7 @@ fn (t &Transformer) array_sort_compare_arg_types(cmp flat.NodeId, elem_type stri
 	if isnil(t.tc) || int(cmp) < 0 {
 		return default_type, default_type
 	}
-	resolved_elem := types.unalias_type(t.tc.parse_type(elem_type))
+	resolved_elem := unalias_type(t.tc.parse_type(elem_type))
 	if resolved_elem !is types.Pointer {
 		return default_type, default_type
 	}
@@ -7254,14 +7283,14 @@ fn (t &Transformer) array_sort_compare_arg_types(cmp flat.NodeId, elem_type stri
 	if raw_type.len == 0 {
 		return default_type, default_type
 	}
-	cmp_type := types.unalias_type(t.tc.parse_type(raw_type))
+	cmp_type := unalias_type(t.tc.parse_type(raw_type))
 	if cmp_type is types.FnType && cmp_type.params.len >= 2 {
-		first_type := if types.unalias_type(cmp_type.params[0]).name() == resolved_elem.name() {
+		first_type := if unalias_type(cmp_type.params[0].typ).name() == resolved_elem.name() {
 			elem_type
 		} else {
 			default_type
 		}
-		second_type := if types.unalias_type(cmp_type.params[1]).name() == resolved_elem.name() {
+		second_type := if unalias_type(cmp_type.params[1].typ).name() == resolved_elem.name() {
 			elem_type
 		} else {
 			default_type

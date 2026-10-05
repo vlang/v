@@ -1,1 +1,1 @@
-*(int**)builtin____as_cast
+return value._ptr__int;

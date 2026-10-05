@@ -3,7 +3,7 @@ module c
 import strconv
 import v.flat
 import v.gen.c.naming
-import v.types
+import v.types { unalias_type }
 
 fn enum_decl_is_flag(node flat.Node) bool {
 	return node.typ == 'flag'
@@ -59,7 +59,7 @@ fn (g &FlatGen) enum_backing_info(enum_name string) ?EnumBackingInfo {
 // enums as `int`. A narrower value round-trips through `int`, but a 64 bit value
 // would be truncated, and a pointer (`mut e E`) must address the real storage: an
 // `int*` to a `u8` field would overwrite the bytes after it.
-fn (g &FlatGen) wide_enum_signature_c_type(t types.Type) ?string {
+fn (g &FlatGen) wide_enum_signature_c_type(t &types.Type) ?string {
 	if t is types.Pointer {
 		if t.base_type is types.Enum {
 			if info := g.enum_backing_info(t.base_type.name) {
@@ -86,19 +86,19 @@ fn (g &FlatGen) enum_value_c_type(enum_type types.Enum) string {
 	if info := g.enum_backing_info(enum_type.name) {
 		return info.c_name
 	}
-	return g.tc.c_type(enum_type)
+	return g.tc.c_type(types.Type(enum_type))
 }
 
 fn (g &FlatGen) enum_storage_c_type(enum_type types.Enum) string {
 	if info := g.enum_backing_info(enum_type.name) {
 		return info.storage_c_type
 	}
-	return g.tc.c_type(enum_type)
+	return g.tc.c_type(types.Type(enum_type))
 }
 
 // optional_type_name supports optional type name handling for FlatGen.
-fn (mut g FlatGen) optional_type_name(t types.Type) string {
-	clean_type := cgen_unalias_type(t)
+fn (mut g FlatGen) optional_type_name(t &types.Type) string {
+	clean_type := unalias_type(t)
 	if clean_type is types.Pointer {
 		if clean_type.base_type is types.OptionType || clean_type.base_type is types.ResultType {
 			return g.optional_type_name(clean_type.base_type) + '*'
@@ -151,7 +151,7 @@ fn optional_result_unalias_type(t types.Type) types.Type {
 	return t
 }
 
-fn (mut g FlatGen) value_c_type(t types.Type) string {
+fn (mut g FlatGen) value_c_type(t &types.Type) string {
 	g.note_thread_type_usage(t)
 	if c_type := c_alias_value_c_type(t) {
 		return c_type
@@ -209,15 +209,15 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		}
 	}
 	if target := g.tc.type_aliases[ct] {
-		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
+		return g.tc.c_type(unalias_type(g.tc.parse_type(target)))
 	}
 	if target := g.tc.type_aliases['main.${ct}'] {
-		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
+		return g.tc.c_type(unalias_type(g.tc.parse_type(target)))
 	}
 	return ct
 }
 
-fn type_references_thread(typ types.Type) bool {
+fn type_references_thread(typ &types.Type) bool {
 	return match typ {
 		types.Struct {
 			name := trimmed_space(typ.name)
@@ -234,7 +234,7 @@ fn type_references_thread(typ types.Type) bool {
 		}
 		types.Pointer { type_references_thread(typ.base_type) }
 		types.FnType {
-			type_references_thread(typ.return_type) || typ.params.any(type_references_thread(it))
+			type_references_thread(typ.return_type) || typ.params.any(type_references_thread(it.typ))
 		}
 		types.OptionType { type_references_thread(typ.base_type) }
 		types.ResultType { type_references_thread(typ.base_type) }
@@ -244,7 +244,7 @@ fn type_references_thread(typ types.Type) bool {
 	}
 }
 
-fn type_references_pthread(typ types.Type) bool {
+fn type_references_pthread(typ &types.Type) bool {
 	return match typ {
 		types.Struct {
 			name := trimmed_space(typ.name)
@@ -258,7 +258,7 @@ fn type_references_pthread(typ types.Type) bool {
 		}
 		types.Pointer { type_references_pthread(typ.base_type) }
 		types.FnType {
-			type_references_pthread(typ.return_type) || typ.params.any(type_references_pthread(it))
+			type_references_pthread(typ.return_type) || typ.params.any(type_references_pthread(it.typ))
 		}
 		types.OptionType { type_references_pthread(typ.base_type) }
 		types.ResultType { type_references_pthread(typ.base_type) }
@@ -272,7 +272,7 @@ fn type_references_pthread(typ types.Type) bool {
 	}
 }
 
-fn (mut g FlatGen) note_thread_type_usage(typ types.Type) {
+fn (mut g FlatGen) note_thread_type_usage(typ &types.Type) {
 	if !g.target_libc_headers {
 		return
 	}
@@ -313,7 +313,7 @@ fn (mut g FlatGen) precompute_thread_type_usage() {
 	}
 }
 
-fn c_alias_value_c_type(typ types.Type) ?string {
+fn c_alias_value_c_type(typ &types.Type) ?string {
 	if typ is types.Alias && typ.name.starts_with('C.') {
 		return typ.name['C.'.len..]
 	}
@@ -325,20 +325,20 @@ fn c_alias_value_c_type(typ types.Type) ?string {
 	return none
 }
 
-fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
-	clean_type := cgen_unalias_type(typ)
+fn (mut g FlatGen) value_unalias_type(typ &types.Type) types.Type {
+	clean_type := unalias_type(typ)
 	if clean_type is types.Struct {
 		// Generic substitution can preserve a caller alias only as its type name
 		// after the specialized body has moved into the generic function's module.
 		// Recover the registered alias before selecting the C storage type.
 		if target := g.tc.type_aliases[clean_type.name] {
-			return cgen_unalias_type(g.tc.parse_type(target))
+			return *unalias_type(g.tc.parse_type(target))
 		}
 		if target := g.tc.type_aliases['main.${clean_type.name}'] {
-			return cgen_unalias_type(g.tc.parse_type(target))
+			return *unalias_type(g.tc.parse_type(target))
 		}
 	}
-	return clean_type
+	return *clean_type
 }
 
 // cgen_type_is_map reports whether typ is a map, looking through any alias
@@ -347,26 +347,14 @@ fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
 // map branch as well. Matching only the bare map type left the alias falling
 // through to a plain field access, and the generated C did not compile:
 // `error: no member named 'len' in 'struct map'`.
-fn cgen_type_is_map(typ types.Type) bool {
-	clean := cgen_unalias_type(typ)
+fn cgen_type_is_map(typ &types.Type) bool {
+	clean := unalias_type(typ)
 	return clean is types.Map || (clean is types.Struct && clean.name == 'map')
 }
 
-fn cgen_unalias_type(typ types.Type) types.Type {
-	mut current := typ
-	for _ in 0 .. 1000 {
-		if current is types.Alias {
-			current = current.base_type
-			continue
-		}
-		return current
-	}
-	return current
-}
-
-fn cgen_types_equal_after_alias_erasure(left types.Type, right types.Type) bool {
-	l := cgen_unalias_type(left)
-	r := cgen_unalias_type(right)
+fn cgen_types_equal_after_alias_erasure(left &types.Type, right &types.Type) bool {
+	l := unalias_type(left)
+	r := unalias_type(right)
 	if l is types.OptionType {
 		return r is types.OptionType
 			&& cgen_types_equal_after_alias_erasure(l.base_type, r.base_type)
@@ -401,7 +389,7 @@ fn cgen_types_equal_after_alias_erasure(left types.Type, right types.Type) bool 
 			return false
 		}
 		for i, param in l.params {
-			if !cgen_types_equal_after_alias_erasure(param, r.params[i]) {
+			if !cgen_types_equal_after_alias_erasure(param.typ, r.params[i].typ) {
 				return false
 			}
 		}
@@ -494,7 +482,7 @@ fn (mut g FlatGen) optional_value_info(t types.Type, opt_ct string) (string, typ
 	semantic_ct := g.optional_payload_c_type(val_type)
 	if val_ct.ends_with('*') && !semantic_ct.ends_with('*') {
 		val_type = types.Type(types.Pointer{
-			base_type: val_type
+			base_type: &types.Type(val_type)
 		})
 	}
 	return val_ct, val_type
@@ -543,16 +531,16 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 	return ct + pointer_suffix
 }
 
-fn optional_payload_may_have_stale_interface_spelling(t types.Type) bool {
-	mut clean := cgen_unalias_type(t)
+fn optional_payload_may_have_stale_interface_spelling(t &types.Type) bool {
+	mut clean := unalias_type(t)
 	for clean is types.Pointer {
-		clean = cgen_unalias_type(clean.base_type)
+		clean = unalias_type(clean.base_type)
 	}
 	return clean is types.Interface || (clean is types.Struct && !clean.name.contains('.'))
 }
 
-fn optional_payload_struct_name(t types.Type) ?string {
-	mut clean := t
+fn optional_payload_struct_name(t &types.Type) ?string {
+	mut clean := *t
 	for clean is types.Pointer {
 		clean = clean.base_type
 	}
@@ -620,9 +608,9 @@ fn (g &FlatGen) canonical_import_alias_type_in_file_uncached(typ string, file st
 	return g.tc.parse_resolution_type_in_file(typ, file)
 }
 
-fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.Node) types.Type {
+fn (g &FlatGen) canonical_import_alias_type_for_node(typ &types.Type, node &flat.Node) types.Type {
 	if !type_has_import_alias_text(typ) {
-		return typ
+		return *typ
 	}
 	source := typ.name()
 	// This function receives a semantic Type, not raw source text. Preserve an
@@ -640,12 +628,12 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 			return exact
 		}
 	}
-	return typ
+	return *typ
 }
 
 // Primitive containers already have canonical names. Inspect their leaves
 // directly instead of allocating type text merely to normalize it unchanged.
-fn type_has_import_alias_text(typ types.Type) bool {
+fn type_has_import_alias_text(typ &types.Type) bool {
 	return match typ {
 		types.Struct, types.Interface, types.Enum, types.SumType, types.Alias, types.FnType, types.MultiReturn,
 		types.Channel {
@@ -690,22 +678,22 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 	clean := trimmed_space(typ)
 	if clean.starts_with('&') {
 		return types.Type(types.Pointer{
-			base_type: g.exact_known_import_type_text(clean[1..])?
+			base_type: &types.Type(g.exact_known_import_type_text(clean[1..])?)
 		})
 	}
 	if clean.starts_with('?') {
 		return types.Type(types.OptionType{
-			base_type: g.exact_known_import_type_text(clean[1..])?
+			base_type: &types.Type(g.exact_known_import_type_text(clean[1..])?)
 		})
 	}
 	if clean.starts_with('!') {
 		return types.Type(types.ResultType{
-			base_type: g.exact_known_import_type_text(clean[1..])?
+			base_type: &types.Type(g.exact_known_import_type_text(clean[1..])?)
 		})
 	}
 	if clean.starts_with('[]') {
 		return types.Type(types.Array{
-			elem_type: g.exact_known_import_type_text(clean[2..])?
+			elem_type: &types.Type(g.exact_known_import_type_text(clean[2..])?)
 		})
 	}
 	if clean in g.tc.type_aliases {
@@ -860,7 +848,7 @@ fn (g &FlatGen) current_file_import_alias_module(alias string) ?string {
 	return g.cached_file_import(g.tc.cur_file, alias) or { none }
 }
 
-fn optional_payload_is_bare_struct(t types.Type) bool {
+fn optional_payload_is_bare_struct(t &types.Type) bool {
 	mut clean := t
 	for clean is types.Pointer {
 		clean = clean.base_type
@@ -1095,7 +1083,7 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		if name in g.tc.fn_generic_params {
 			continue
 		}
-		if !cgen_type_first_seen(ret, mut seen) {
+		if !seen.insert(ret) {
 			continue
 		}
 		g.collect_declaration_signature_type(ret)
@@ -1105,7 +1093,7 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 			continue
 		}
 		for param in params {
-			if !cgen_type_first_seen(param, mut seen) {
+			if !seen.insert(param) {
 				continue
 			}
 			g.collect_declaration_signature_type(param)
@@ -1113,7 +1101,7 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 	}
 	for _, fields in g.tc.structs {
 		for field in fields {
-			if !cgen_type_first_seen(field.typ, mut seen) {
+			if !seen.insert(field.typ) {
 				continue
 			}
 			g.collect_declaration_signature_type(field.typ)
@@ -1121,20 +1109,20 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 	}
 	for _, fields in g.tc.interface_fields {
 		for field in fields {
-			if !cgen_type_first_seen(field.typ, mut seen) {
+			if !seen.insert(field.typ) {
 				continue
 			}
 			g.collect_declaration_signature_type(field.typ)
 		}
 	}
 	for _, typ in g.tc.c_globals {
-		if !cgen_type_first_seen(typ, mut seen) {
+		if !seen.insert(typ) {
 			continue
 		}
 		g.collect_declaration_signature_type(typ)
 	}
 	for _, typ in g.tc.const_types {
-		if !cgen_type_first_seen(typ, mut seen) {
+		if !seen.insert(typ) {
 			continue
 		}
 		g.collect_declaration_signature_type(typ)
@@ -1144,7 +1132,7 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 			continue
 		}
 		typ := g.tc.expr_type_values[idx]
-		if !cgen_type_first_seen(typ, mut seen) {
+		if !seen.insert(typ) {
 			continue
 		}
 		g.collect_declaration_signature_type(typ)
@@ -1182,21 +1170,6 @@ fn (mut g FlatGen) collect_selected_declaration_signature_types() {
 			g.collect_known_declaration_signature_type(g.fn_node_effective_param_type(param, raw_type))
 		}
 	}
-}
-
-@[inline]
-fn cgen_type_first_seen(typ &types.Type, mut seen PreseedTypeSeen) bool {
-	words := unsafe { &u64(voidptr(typ)) }
-	w0 := unsafe { words[0] }
-	w1 := unsafe { words[1] }
-	slot := int((w0 >> 4 ^ w1) & 4095)
-	if seen.seen[slot] && seen.w0[slot] == w0 && seen.w1[slot] == w1 {
-		return false
-	}
-	seen.w0[slot] = w0
-	seen.w1[slot] = w1
-	seen.seen[slot] = true
-	return true
 }
 
 fn (mut g FlatGen) collect_declaration_signature_type(t types.Type) {
@@ -1253,7 +1226,8 @@ fn (mut g FlatGen) collect_concrete_optional_typedef_type(t types.Type) {
 			g.collect_concrete_optional_typedef_type(t.base_type)
 		}
 		types.FnType {
-			for param in t.params {
+			for parameter in t.params {
+				param := parameter.typ
 				g.collect_concrete_optional_typedef_type(param)
 			}
 			g.collect_concrete_optional_typedef_type(t.return_type)
@@ -1270,7 +1244,7 @@ fn (mut g FlatGen) collect_concrete_optional_typedef_type(t types.Type) {
 	}
 }
 
-fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
+fn (g &FlatGen) type_contains_generic_placeholder(t &types.Type) bool {
 	match t {
 		types.Unknown {
 			return true
@@ -1292,7 +1266,8 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_contains_generic_placeholder(t.base_type)
 		}
 		types.FnType {
-			for param in t.params {
+			for parameter in t.params {
+				param := parameter.typ
 				if g.type_contains_generic_placeholder(param) {
 					return true
 				}

@@ -154,9 +154,12 @@ fn test_nested_callback_payloads_use_checker_parameter_modes() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
-	mutable := types.FnType{ params: [types.Type(types.int_)], params_mut: [true], return_type: types.Type(types.void_) }
-	immutable := types.FnType{ params: [types.Type(types.int_)], return_type: types.Type(types.void_) }
-	referenced := types.FnType{ params: [types.Type(types.Pointer{ base_type: types.Type(types.int_) })], return_type: types.Type(types.void_) }
+	integer := tc.parse_type('int')
+	pointer := tc.parse_type('&int')
+	result := tc.intern_type_reference(types.Type(types.void_))
+	mutable := tc.fn_type([integer], result, [true])
+	immutable := tc.fn_type([integer], result, []bool{})
+	referenced := tc.fn_type([pointer], result, []bool{})
 	assert !t.callback_fn_type_payloads_compatible(mutable, immutable, true)
 	assert !t.callback_fn_type_payloads_compatible(immutable, mutable, true)
 	assert t.callback_fn_type_payloads_compatible(mutable, referenced, true)

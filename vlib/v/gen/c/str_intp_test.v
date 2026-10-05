@@ -70,7 +70,7 @@ fn test_character_interpolation_unwraps_integer_alias() {
 	g.tc = &tc
 	assert g.gen_formatted_string_interp_child_expr(value_id, types.Alias{
 		name:      'Code'
-		base_type: types.Type(types.u8_)
+		base_type: &types.Type(types.u8_)
 	}, 'c')
 	assert g.sb.str() == 'rune__str((u32)(65))'
 }

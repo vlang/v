@@ -1,7 +1,7 @@
 module c
 
 import v.flat
-import v.types
+import v.types { unalias_type }
 
 struct LoopBodyNodeResult {
 	emitted_continue_label bool
@@ -297,9 +297,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				c_val := g.value_c_type(clean_container_type.value_type)
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
-				container_storage_is_pointer := cgen_unalias_type(storage_container_type) is types.Pointer
+				container_storage_is_pointer := unalias_type(storage_container_type) is types.Pointer
 				container_is_mutable_value_storage := g.for_in_mutable_value_storage(container_id)
-				mut clean_value_type := clean_container_type.value_type
+				mut clean_value_type := *clean_container_type.value_type
 				for clean_value_type is types.Alias {
 					clean_value_type = clean_value_type.base_type
 				}
@@ -389,7 +389,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 						base_type: clean_container_type.value_type
 					})
 				} else {
-					clean_container_type.value_type
+					*clean_container_type.value_type
 				}
 				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, val_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, val_owner)
@@ -462,12 +462,12 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 						base_type: container_type.elem_type
 					})
 				} else {
-					container_type.elem_type
+					*container_type.elem_type
 				}
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_mutability(elem_owner, node.op == .amp
-					&& (cgen_unalias_type(g.usable_expr_type(container_id)) !is types.Pointer
+					&& (unalias_type(g.usable_expr_type(container_id)) !is types.Pointer
 						|| container_is_mutable_value_storage))
 				if node.op == .amp {
 					g.declare_local_indirect_value_type(elem_owner, container_type.elem_type)
@@ -502,12 +502,12 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 						base_type: af.elem_type
 					})
 				} else {
-					af.elem_type
+					*af.elem_type
 				}
 				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
 				g.track_shadowed_global_local(elem_binding_name, elem_owner)
 				g.declare_local_mutability(elem_owner, node.op == .amp
-					&& (cgen_unalias_type(g.usable_expr_type(container_id)) !is types.Pointer
+					&& (unalias_type(g.usable_expr_type(container_id)) !is types.Pointer
 						|| container_is_mutable_value_storage))
 				if node.op == .amp {
 					g.declare_local_indirect_value_type(elem_owner, af.elem_type)
@@ -610,7 +610,7 @@ fn (g &FlatGen) for_in_container_type(node flat.Node, container_id flat.NodeId) 
 			return typ
 		}
 	}
-	return g.usable_expr_type(container_id)
+	return *g.usable_expr_type(container_id)
 }
 
 fn (g &FlatGen) for_in_array_literal_element_needs_ierror_copy(container flat.Node) bool {
@@ -641,7 +641,7 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 		|| low_type is types.USize {
 		low_type
 	} else {
-		types.Type(types.int_)
+		g.tc.parse_type('int')
 	}
 	ct := g.value_c_type(range_type)
 	low_name := '__range_low_${g.tmp_count}'

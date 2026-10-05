@@ -8,12 +8,7 @@ fn (mut t Transformer) transform_field_init_expr(id flat.NodeId, node flat.Node)
 		return id
 	}
 	val_id := t.a.child(&node, 0)
-	val_node := t.a.nodes[int(val_id)]
-	new_val := if inferred_sum := t.sum_type_for_field_variant(node.value, val_id, val_node) {
-		t.wrap_sum_value(val_id, inferred_sum)
-	} else {
-		t.transform_expr(val_id)
-	}
+	new_val := t.transform_expr(val_id)
 	if t.rewrite_one_child_in_place(id, new_val) {
 		return id
 	}
@@ -153,8 +148,6 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				t.fixed_array_value_to_owned_array(val_id, value_type, field_type)
 			} else if sum_field_type.len > 0 {
 				t.wrap_sum_value(val_id, sum_field_type)
-			} else if inferred_sum := t.sum_type_for_field_variant(field_name, val_id, val_node) {
-				t.wrap_sum_value(val_id, inferred_sum)
 			} else if field_type.starts_with('&') {
 				t.transform_expr_for_type(val_id, field_type)
 			} else if field_type.len > 0 {
@@ -1668,39 +1661,6 @@ fn split_sum_union_text(s string) []string {
 	return parts
 }
 
-// sum_type_for_field_variant supports sum type for field variant handling for Transformer.
-fn (t &Transformer) sum_type_for_field_variant(field_name string, val_id flat.NodeId, val_node flat.Node) ?string {
-	if field_name != 'info' {
-		return none
-	}
-	mut variant := if val_node.kind in [.struct_init, .cast_expr, .assoc] && val_node.value.len > 0 {
-		val_node.value
-	} else if val_node.kind == .assoc && val_node.children_count > 0 {
-		t.node_type(t.a.child(&val_node, 0))
-	} else {
-		t.node_type(val_id)
-	}
-	if variant.starts_with('&') {
-		variant = variant[1..]
-	}
-	if variant.len == 0 {
-		return none
-	}
-	short_variant := if variant.contains('.') { variant.all_after_last('.') } else { variant }
-	for sum_name, variants in t.sum_types {
-		if sum_name != 'TypeInfo' && !sum_name.ends_with('.TypeInfo') {
-			continue
-		}
-		for v in variants {
-			short_v := if v.contains('.') { v.all_after_last('.') } else { v }
-			if v == variant || short_v == short_variant {
-				return sum_name
-			}
-		}
-	}
-	return none
-}
-
 // fixed_array_value_to_array converts fixed array value to array data for transform.
 fn (mut t Transformer) fixed_array_value_to_array(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	return t.fixed_array_data_to_array(t.transform_expr(value_id), fixed_type, array_type)
@@ -1751,7 +1711,7 @@ fn (mut t Transformer) fixed_array_data_to_array_no_alloc(data_id flat.NodeId, f
 	elem_type := fixed_array_elem_type(fixed_type)
 	len_expr := t.make_fixed_array_len_expr(fixed_type)
 	t.mark_fn_used('new_array_from_c_array_no_alloc')
-	return t.make_call_typed('new_array_from_c_array_no_alloc', [
+	return t.make_array_storage_call('new_array_from_c_array_no_alloc', [
 		len_expr,
 		len_expr,
 		t.make_sizeof_type(elem_type),
@@ -1762,7 +1722,7 @@ fn (mut t Transformer) fixed_array_data_to_array_no_alloc(data_id flat.NodeId, f
 fn (mut t Transformer) fixed_array_data_to_array(data_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	elem_type := fixed_array_elem_type(fixed_type)
 	len_expr := t.make_fixed_array_len_expr(fixed_type)
-	return t.make_call_typed('new_array_from_c_array', [
+	return t.make_array_storage_call('new_array_from_c_array', [
 		len_expr,
 		len_expr,
 		t.make_sizeof_type(elem_type),

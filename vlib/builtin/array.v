@@ -83,12 +83,16 @@ fn alloc_array_data_uninit(total_size u64) voidptr {
 }
 
 @[inline]
-fn (a array) uses_noscan_data() bool {
+fn (a &array) uses_noscan_data() bool {
 	return a.flags.has(.noscan_data)
 }
 
 @[inline]
-fn (a array) alloc_array_data_like(total_size u64) voidptr {
+fn (a &array) alloc_array_data_like(total_size u64) voidptr {
+	alignment := a.data_alignment()
+	if alignment > 16 {
+		return alloc_array_data_aligned(total_size, alignment, true)
+	}
 	$if gcboehm_opt ? {
 		if a.uses_noscan_data() {
 			return alloc_array_data_noscan(total_size)
@@ -98,7 +102,11 @@ fn (a array) alloc_array_data_like(total_size u64) voidptr {
 }
 
 @[inline]
-fn (a array) alloc_array_data_like_uninit(total_size u64) voidptr {
+fn (a &array) alloc_array_data_like_uninit(total_size u64) voidptr {
+	alignment := a.data_alignment()
+	if alignment > 16 {
+		return alloc_array_data_aligned(total_size, alignment, false)
+	}
 	$if gcboehm_opt ? {
 		if a.uses_noscan_data() {
 			return alloc_array_data_noscan_uninit(total_size)
@@ -108,7 +116,7 @@ fn (a array) alloc_array_data_like_uninit(total_size u64) voidptr {
 }
 
 @[inline; unsafe]
-fn (a array) data_header() &ArrayDataHeader {
+fn (a &array) data_header() &ArrayDataHeader {
 	if !a.flags.has(.managed) || a.data == unsafe { nil } {
 		return unsafe { nil }
 	}
@@ -117,7 +125,7 @@ fn (a array) data_header() &ArrayDataHeader {
 }
 
 @[inline]
-fn (a array) buffer_has_slices() bool {
+fn (a &array) buffer_has_slices() bool {
 	if a.flags.has(array_flag_retained_aligned_fixed) {
 		return true
 	}
@@ -457,9 +465,9 @@ pub fn (mut a array) ensure_cap(required int) {
 					prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size))
 				}
 				if a.flags.has(.managed) {
-					free(a.data_header().allocation)
+					free_unaliased(a.data_header().allocation)
 				} else {
-					free(a.data)
+					free_unaliased(a.data)
 				}
 			}
 		}
@@ -500,18 +508,13 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		size = u64(a.element_size)
 	}
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
-	mut data := unsafe { nil }
-	if use_noscan_data {
-		data = a.alloc_array_data_like(size)
-	} else {
-		data = alloc_array_data(size)
-	}
+	data := a.alloc_array_data_like(size)
 	arr := array{
 		element_size: a.element_size
 		data:         data
 		len:          count * a.len
 		cap:          count * a.len
-		flags:        if use_noscan_data { .managed | .noscan_data } else { .managed }
+		flags:        a.storage_flags(use_noscan_data)
 	}
 	if a.len > 0 {
 		a_total_size := u64(a.len) * u64(a.element_size)
@@ -535,22 +538,22 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 }
 
 @[inline]
-fn (a array) needs_unique_shift(required int) bool {
+fn (a &array) needs_unique_shift(required int) bool {
 	return required <= a.cap && (a.flags.has(.is_slice) || a.buffer_has_slices())
 }
 
 @[inline]
-fn (a array) needs_unique_append(required int) bool {
+fn (a &array) needs_unique_append(required int) bool {
 	return required <= a.cap && a.flags.has(.is_slice)
 }
 
 @[inline]
-fn (a array) needs_unique_shrink() bool {
+fn (a &array) needs_unique_shrink() bool {
 	return a.flags.has(.is_slice) || a.buffer_has_slices()
 }
 
 @[inline]
-fn (a array) is_slice_view() bool {
+fn (a &array) is_slice_view() bool {
 	return a.flags.has(.is_slice)
 }
 
@@ -1026,7 +1029,8 @@ fn (a array) slice(start int, _end int) array {
 	offset := u64(start) * u64(a.element_size)
 	data := unsafe { &u8(a.data) + offset }
 	l := end - start
-	mut flags := ArrayFlags.is_slice | (a.flags & ArrayFlags.managed)
+	mut flags := unsafe { ArrayFlags(u32(a.flags) & (array_alignment_mask | u32(ArrayFlags.managed))) }
+	unsafe { flags.set(.is_slice) }
 	if a.uses_noscan_data() {
 		unsafe { flags.set(.noscan_data) }
 	}
@@ -1049,7 +1053,8 @@ fn (a array) slice(start int, _end int) array {
 // This function always return a valid array.
 fn (a array) slice_ni(_start int, _end int) array {
 	unsafe { a.mark_buffer_has_slices() }
-	mut flags := ArrayFlags.is_slice | (a.flags & ArrayFlags.managed)
+	mut flags := unsafe { ArrayFlags(u32(a.flags) & (array_alignment_mask | u32(ArrayFlags.managed))) }
+	unsafe { flags.set(.is_slice) }
 	if a.uses_noscan_data() {
 		unsafe { flags.set(.noscan_data) }
 	}
@@ -1133,9 +1138,9 @@ pub fn (a &array) clone_to_depth(depth int) array {
 				data = a.alloc_array_data_like(source_capacity_in_bytes)
 			}
 		} else if copies_capacity {
-			data = alloc_array_data_uninit(source_capacity_in_bytes)
+			data = a.alloc_array_data_like_uninit(source_capacity_in_bytes)
 		} else {
-			data = alloc_array_data(source_capacity_in_bytes)
+			data = a.alloc_array_data_like(source_capacity_in_bytes)
 		}
 	}
 	mut arr := array{
@@ -1143,7 +1148,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		data:         data
 		len:          a.len
 		cap:          a.cap
-		flags:        if use_noscan_data { .managed | .noscan_data } else { .managed }
+		flags:        a.storage_flags(use_noscan_data)
 	}
 	// Recursively clone-generated elements if array element is array type
 	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
@@ -1330,7 +1335,7 @@ pub fn (a array) reverse() array {
 		data:         a.alloc_array_data_like(u64(a.cap) * u64(a.element_size))
 		len:          a.len
 		cap:          a.cap
-		flags:        if use_noscan_data { .managed | .noscan_data } else { .managed }
+		flags:        a.storage_flags(use_noscan_data)
 	}
 	for i in 0 .. a.len {
 		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }
@@ -1361,10 +1366,15 @@ pub fn (a &array) free() {
 	mblock_ptr := &u8(u64(a.data) - u64(a.offset))
 	if mblock_ptr != unsafe { nil } {
 		unsafe {
-			if a.flags.has(.managed) {
-				free(a.data_header().allocation)
+			allocation := if a.flags.has(.managed) {
+				a.data_header().allocation
 			} else {
-				free(mblock_ptr)
+				voidptr(mblock_ptr)
+			}
+			if a.flags.has(.noslices) {
+				free_unaliased(allocation)
+			} else {
+				free(allocation)
 			}
 		}
 	}

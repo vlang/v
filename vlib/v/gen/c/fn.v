@@ -3,9 +3,9 @@ module c
 import os
 import strings
 import v.flat
-import v.gen.c.naming
+import v.gen.c.naming { sum_field_name }
 import v.token
-import v.types
+import v.types { unalias_type }
 
 const builtin_map_set_fn_key = fn_decl_module_key('builtin', 'map.set')
 
@@ -1038,7 +1038,7 @@ fn (mut g FlatGen) specialization_signature_has_missing_nominal(node flat.Node, 
 	return false
 }
 
-fn (g &FlatGen) type_has_missing_qualified_nominal(t types.Type) bool {
+fn (g &FlatGen) type_has_missing_qualified_nominal(t &types.Type) bool {
 	return match t {
 		types.Array {
 			g.type_has_missing_qualified_nominal(t.elem_type)
@@ -1060,7 +1060,8 @@ fn (g &FlatGen) type_has_missing_qualified_nominal(t types.Type) bool {
 			if g.type_has_missing_qualified_nominal(t.return_type) {
 				return true
 			}
-			for param in t.params {
+			for parameter in t.params {
+				param := parameter.typ
 				if g.type_has_missing_qualified_nominal(param) {
 					return true
 				}
@@ -2410,7 +2411,7 @@ fn (mut g FlatGen) gen_compiler_default_free_call(fn_node flat.Node, resolved_ta
 	return true
 }
 
-fn cgen_type_is_pointer_like(t types.Type) bool {
+fn cgen_type_is_pointer_like(t &types.Type) bool {
 	if t is types.Pointer {
 		return true
 	}
@@ -2424,22 +2425,19 @@ fn cgen_type_is_pointer_like(t types.Type) bool {
 }
 
 fn pointer_free_base_type(t types.Type) ?types.Type {
-	clean := default_init_unalias_type(t)
+	clean := unalias_type(t)
 	if clean is types.Pointer {
-		return default_init_unalias_type(clean.base_type)
+		return *unalias_type(clean.base_type)
 	}
 	return none
 }
 
-fn (g &FlatGen) pointer_free_needs_aligned_free(t types.Type) bool {
+fn (g &FlatGen) pointer_free_needs_aligned_free(t &types.Type) bool {
 	base_type := pointer_free_base_type(t) or { return false }
-	mut seen := map[string]bool{}
-	// Windows manual builtin malloc and memdup also use _aligned_malloc. Only C.free
-	// releases pointers from the C allocator; it bypasses this builtin free path.
-	return g.global_fixed_array_type_has_aligned_struct(base_type, mut seen)
+	return g.tc.requires_aligned_allocation(base_type)
 }
 
-fn (g &FlatGen) receiver_has_method(base_type types.Type, method string) bool {
+fn (g &FlatGen) receiver_has_method(base_type &types.Type, method string) bool {
 	mut names := []string{}
 	raw := types.unwrap_pointer(base_type)
 	if raw_name := receiver_method_type_name(raw) {
@@ -2508,7 +2506,7 @@ fn (g &FlatGen) fn_key_registered(name string) bool {
 		|| cname in g.fn_decl_mut_receivers
 }
 
-fn receiver_method_type_name(t types.Type) ?string {
+fn receiver_method_type_name(t &types.Type) ?string {
 	name := t.name()
 	if name.len == 0 {
 		return none
@@ -2651,10 +2649,10 @@ fn (g &FlatGen) concrete_generic_method_name_from_call_receiver(node flat.Node, 
 
 // cgen_type_is_indexable_container reports whether `typ` is a container value that
 // `x[i]` indexes into. A selector of such a type cannot be a generic method name.
-fn cgen_type_is_indexable_container(typ types.Type) bool {
-	mut cur := types.unalias_type(typ)
+fn cgen_type_is_indexable_container(typ &types.Type) bool {
+	mut cur := unalias_type(typ)
 	for cur is types.Pointer {
-		cur = types.unalias_type(cur.base_type)
+		cur = unalias_type(cur.base_type)
 	}
 	return cur is types.Array || cur is types.ArrayFixed || cur is types.Map
 }
@@ -2693,7 +2691,7 @@ fn (g &FlatGen) is_explicit_generic_method_call_selector(fn_node &flat.Node, res
 	return false
 }
 
-fn (g &FlatGen) method_name_by_receiver_param_type(receiver_type types.Type, method string) ?string {
+fn (g &FlatGen) method_name_by_receiver_param_type(receiver_type &types.Type, method string) ?string {
 	if method.contains('.') {
 		return none
 	}
@@ -2895,7 +2893,7 @@ fn (g &FlatGen) generic_method_candidate_arg_score(node flat.Node, candidate Gen
 		}
 		arg_id := g.a.child(&node, arg_child_idx)
 		arg_node := g.a.nodes[int(arg_id)]
-		arg_type := g.const_type_for_arg_node(arg_node) or { g.usable_expr_type(arg_id) }
+		arg_type := g.const_type_for_arg_node(arg_node) or { *g.usable_expr_type(arg_id) }
 		arg_score := g.generic_method_param_arg_score(params[i], arg_type, arg_node)
 		if arg_score < 0 {
 			return -1
@@ -2933,7 +2931,7 @@ fn (g &FlatGen) generic_method_candidate_type_arg_score(node flat.Node, candidat
 		arg_id := g.a.child(&node, i)
 		arg_node := g.a.nodes[int(arg_id)]
 		actual := types.unwrap_pointer(g.const_type_for_arg_node(arg_node) or {
-			g.usable_expr_type(arg_id)
+			*g.usable_expr_type(arg_id)
 		})
 		for type_arg in type_args {
 			if g.generic_method_type_arg_matches_actual(type_arg, actual) {
@@ -2944,7 +2942,7 @@ fn (g &FlatGen) generic_method_candidate_type_arg_score(node flat.Node, candidat
 	return score
 }
 
-fn (g &FlatGen) generic_method_type_arg_matches_actual(type_arg string, actual types.Type) bool {
+fn (g &FlatGen) generic_method_type_arg_matches_actual(type_arg string, actual &types.Type) bool {
 	clean := trimmed_space(type_arg)
 	if clean.len == 0 || actual is types.Unknown || actual is types.Void {
 		return false
@@ -2990,7 +2988,7 @@ fn (g &FlatGen) generic_method_param_arg_score(param types.Type, actual types.Ty
 	return 0
 }
 
-fn (g &FlatGen) generic_method_arg_types_match(actual types.Type, expected types.Type) bool {
+fn (g &FlatGen) generic_method_arg_types_match(actual &types.Type, expected &types.Type) bool {
 	if g.type_names_match(actual, expected) {
 		return true
 	}
@@ -3003,7 +3001,7 @@ fn (g &FlatGen) generic_method_arg_types_match(actual types.Type, expected types
 	return false
 }
 
-fn generic_method_type_arg_from_return(ret types.Type) ?string {
+fn generic_method_type_arg_from_return(ret &types.Type) ?string {
 	if ret is types.Pointer {
 		base_name := ret.base_type.name()
 		if base_name.len > 0 && base_name != 'void' {
@@ -3320,7 +3318,7 @@ fn cgen_flattened_generic_receiver_leaf_parts(leaf string) []string {
 	return parts
 }
 
-fn c_string_pointer_base_arg(base types.Type) bool {
+fn c_string_pointer_base_arg(base &types.Type) bool {
 	clean := if base is types.Alias { base.base_type } else { base }
 	if clean is types.Char {
 		return true
@@ -3328,8 +3326,8 @@ fn c_string_pointer_base_arg(base types.Type) bool {
 	return clean is types.Primitive && types.Type(clean).name() == 'u8'
 }
 
-fn c_type_is_pointer_like(typ types.Type) bool {
-	mut clean := typ
+fn c_type_is_pointer_like(typ &types.Type) bool {
+	mut clean := *typ
 	for {
 		if clean is types.Alias {
 			clean = clean.base_type
@@ -3343,14 +3341,14 @@ fn c_type_is_pointer_like(typ types.Type) bool {
 // voidptr_value_arg_needs_address mirrors the checker rules that let a voidptr
 // parameter borrow an addressable value. C calls restrict the implicit borrow
 // to struct values; V calls also accept other addressable runtime values.
-fn (g &FlatGen) voidptr_value_arg_needs_address(arg_id flat.NodeId, arg_node flat.Node, actual types.Type, expected types.Type, is_c_call bool) bool {
+fn (g &FlatGen) voidptr_value_arg_needs_address(arg_id flat.NodeId, arg_node flat.Node, actual &types.Type, expected &types.Type, is_c_call bool) bool {
 	if !type_is_void_pointer(expected) || c_type_is_pointer_like(actual)
 		|| g.arg_is_null_pointer_literal(arg_id, arg_node)
 		|| g.fn_value_arg_passes_direct_to_voidptr(arg_id, arg_node, actual, expected)
 		|| g.voidptr_method_value_arg(arg_id, expected) || !g.expr_is_addressable(arg_id) {
 		return false
 	}
-	if is_c_call && cgen_unalias_type(actual) !is types.Struct {
+	if is_c_call && unalias_type(actual) !is types.Struct {
 		return false
 	}
 	if arg_node.kind == .ident {
@@ -3370,7 +3368,7 @@ fn (g &FlatGen) addressed_const_arg_value_type(arg_id flat.NodeId, expected type
 	if type_is_void_pointer(expected) {
 		actual := g.usable_expr_type(arg_id)
 		if actual !is types.Unknown && actual !is types.Void {
-			return actual
+			return *actual
 		}
 	}
 	return types.unwrap_pointer(expected)
@@ -3387,7 +3385,7 @@ fn (g &FlatGen) c_char_literal_arg(id flat.NodeId) bool {
 	return node.kind == .char_literal && node.value.starts_with('c:')
 }
 
-fn (g &FlatGen) c_string_pointer_arg(arg_node flat.Node, expected types.Type) bool {
+fn (g &FlatGen) c_string_pointer_arg(arg_node flat.Node, expected &types.Type) bool {
 	if expected !is types.Pointer {
 		return false
 	}
@@ -3462,7 +3460,7 @@ fn (mut g FlatGen) gen_pointer_builtin_method_call(node flat.Node, fn_node &flat
 	return false
 }
 
-fn pointer_builtin_receiver_name_for_c(typ types.Type) string {
+fn pointer_builtin_receiver_name_for_c(typ &types.Type) string {
 	if typ is types.Alias {
 		if typ.name in ['charptr', 'byteptr', 'voidptr'] {
 			return typ.name
@@ -3470,7 +3468,7 @@ fn pointer_builtin_receiver_name_for_c(typ types.Type) string {
 		return pointer_builtin_receiver_name_for_c(typ.base_type)
 	}
 	if typ is types.Pointer {
-		base := typ.base_type
+		base := *typ.base_type
 		if base is types.Alias {
 			return pointer_builtin_receiver_name_for_c(base)
 		}
@@ -3668,11 +3666,11 @@ fn (mut g FlatGen) gen_mut_sum_lvalue_arg(arg_id flat.NodeId, expected types.Typ
 		}
 	}
 	base0 := if expected is types.Pointer {
-		expected.base_type
+		*expected.base_type
 	} else {
 		return false
 	}
-	base := if base0 is types.Alias { base0.base_type } else { base0 }
+	base := if base0 is types.Alias { *base0.base_type } else { base0 }
 	if base !is types.SumType {
 		return false
 	}
@@ -3692,7 +3690,7 @@ fn (mut g FlatGen) gen_mut_sum_lvalue_arg(arg_id flat.NodeId, expected types.Typ
 		return false
 	}
 	storage0 := if declared := g.selector_declared_type(lvalue_id) { declared } else { actual0 }
-	storage := if storage0 is types.Alias { storage0.base_type } else { storage0 }
+	storage := if storage0 is types.Alias { *storage0.base_type } else { storage0 }
 	if storage !is types.SumType || !g.type_names_match(storage, base) {
 		return false
 	}
@@ -3830,7 +3828,9 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	if is_interface_receiver {
 		if actual_params := g.fn_decl_param_types[method_key] {
 			params = actual_params.clone()
-			ret = g.fn_decl_ret_types[method_key] or {
+			ret = if declared := g.fn_decl_ret_types[method_key] {
+				*declared
+			} else {
 				g.tc.fn_ret_types[method_key] or { types.Type(types.void_) }
 			}
 		} else {
@@ -3861,7 +3861,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 			recv_concrete := types.unwrap_pointer(base_type)
 			params[0] = if params[0] is types.Pointer {
 				types.Type(types.Pointer{
-					base_type: recv_concrete
+					base_type: &types.Type(recv_concrete)
 				})
 			} else {
 				recv_concrete
@@ -3913,13 +3913,19 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	wrap_name := '_mvwrap_${idx}'
 	drop_name := '_mvdrop_${idx}'
 	mut wparams := []string{}
-	mut receiver_arg := if receiver_value_copy { '&ctx->receiver' } else { 'ctx->receiver' }
+	mut receiver_arg := if indirect_value_parameter(params[0]) {
+		'&(${recv_ct}[]){ctx->receiver}[0]'
+	} else if receiver_value_copy {
+		'&ctx->receiver'
+	} else {
+		'ctx->receiver'
+	}
 	if clone_receiver_fn.len > 0 {
 		receiver_arg = '${g.cname(clone_receiver_fn)}(&ctx->receiver)'
 	}
 	mut call_args := [receiver_arg]
 	for i in 1 .. params.len {
-		pt := g.tc.c_type(params[i])
+		pt := g.parameter_c_type(params[i])
 		wparams << '${pt} a${i}'
 		call_args << 'a${i}'
 	}
@@ -3927,7 +3933,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	if !is_interface_receiver {
 		mut method_param_types := []string{cap: params.len}
 		for param in params {
-			method_param_types << g.tc.c_type(param)
+			method_param_types << g.parameter_c_type(param)
 		}
 		g.add_spawn_wrapper_def('${ret_ct} ${cname}(${method_param_types.join(', ')});')
 	}
@@ -3939,7 +3945,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	ret_prefix := if ret_ct == 'void' { '' } else { 'return ' }
 	g.add_spawn_wrapper_def('static ${ret_ct} ${wrap_name}(${wparam_str}) { ${ctx_name}* ctx = (${ctx_name}*)closure__g_closure.closure_get_data(); ${ret_prefix}${cname}(${call_args.join(', ')}); }')
 	fnptr_ct := if fnt := fn_type_from(g.expected_expr_type) {
-		g.value_c_type(fnt)
+		g.value_c_type(types.Type(fnt))
 	} else {
 		'void*'
 	}
@@ -4100,7 +4106,8 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 		if fn_type := fn_type_from(looked_up) {
 			if fn_type.params.len == int(call_node.children_count) - 1 {
 				mut packed_args := []SpawnPackedArg{}
-				for i, pt in fn_type.params {
+				for i, parameter in fn_type.params {
+					pt := parameter.typ
 					arg_id := g.a.child(&call_node, i + 1)
 					packed_args << g.spawn_packed_arg_for_call_param(call_key, arg_id, pt, i)
 				}
@@ -4141,7 +4148,8 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	} else if fn_type := g.spawn_selector_fn_value_type(g.a.child(&call_node, 0), fn_node) {
 		if fn_type.params.len == int(call_node.children_count) - 1 {
 			mut packed_args := []SpawnPackedArg{}
-			for i, pt in fn_type.params {
+			for i, parameter in fn_type.params {
+				pt := parameter.typ
 				arg_id := g.a.child(&call_node, i + 1)
 				mut expected_ct := g.tc.c_type(pt)
 				if expected_ct.starts_with('fn_ptr:') {
@@ -4224,7 +4232,8 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	} else if fn_type := fn_type_from(g.tc.resolve_type(g.a.child(&call_node, 0))) {
 		if fn_type.params.len == int(call_node.children_count) - 1 {
 			mut packed_args := []SpawnPackedArg{}
-			for i, pt in fn_type.params {
+			for i, parameter in fn_type.params {
+				pt := parameter.typ
 				arg_id := g.a.child(&call_node, i + 1)
 				mut expected_ct := g.tc.c_type(pt)
 				if expected_ct.starts_with('fn_ptr:') {
@@ -4320,7 +4329,7 @@ fn (mut g FlatGen) detached_spawn_result_cleanup(typ types.Type, expr string, de
 	if depth > 64 {
 		return ''
 	}
-	clean_type := default_init_unalias_type(typ)
+	clean_type := unalias_type(typ)
 	if clean_type is types.FnType {
 		return '${g.cname('closure.closure_try_destroy')}((void*)(${expr})); '
 	}
@@ -4336,7 +4345,7 @@ fn (mut g FlatGen) detached_spawn_result_cleanup(typ types.Type, expr string, de
 				inner_type := g.tc.parse_type(trimmed_space(thread_name[7..]))
 				inner_ct := g.fn_return_type_name(inner_type)
 				inner := '__tr_inner${idx}'
-				inner_value := if default_init_unalias_type(inner_type) is types.ArrayFixed {
+				inner_value := if unalias_type(inner_type) is types.ArrayFixed {
 					'${inner}.ret_arr'
 				} else {
 					inner
@@ -4378,9 +4387,9 @@ fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, 
 		needs_cleanup := g.ownership_type_requires_destruction(g.spawn_return_type, 0)
 		g.detached_spawn_drop = old_detached_spawn_drop
 		if needs_cleanup
-			|| default_init_unalias_type(g.spawn_return_type) is types.FnType
+			|| unalias_type(g.spawn_return_type) is types.FnType
 			|| ret_ct == '__v_thread' {
-			clean_type := default_init_unalias_type(g.spawn_return_type)
+			clean_type := unalias_type(g.spawn_return_type)
 			value := if clean_type is types.ArrayFixed { '__tr.ret_arr' } else { '__tr' }
 			drop := g.detached_spawn_result_cleanup(g.spawn_return_type, value, 0)
 			return '${pre}${ret_ct} __tr = ${call_expr}; ${drop}${post}return NULL;'
@@ -4531,7 +4540,7 @@ fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPacke
 }
 
 fn (mut g FlatGen) emit_fn_value_spawn_expr(call_id flat.NodeId, fn_node flat.Node, fn_type types.FnType, args []SpawnPackedArg, ret_ct string) {
-	fn_ct := g.value_c_type(fn_type)
+	fn_ct := g.value_c_type(types.Type(fn_type))
 	captures := g.spawn_fn_value_captures(fn_node)
 	mut callable := fn_node
 	for callable.kind == .paren && callable.children_count > 0 {
@@ -4545,7 +4554,7 @@ fn (mut g FlatGen) emit_fn_value_spawn_expr(call_id flat.NodeId, fn_node flat.No
 	g.tmp_count++
 	g.write('({ ${struct_name}* _sa${tmp} = (${struct_name}*)__v_thread_alloc(sizeof(${struct_name})); ')
 	g.write('_sa${tmp}->f = ')
-	g.gen_expr_with_expected_type(g.a.child(&g.a.nodes[int(call_id)], 0), fn_type)
+	g.gen_expr_with_expected_type(g.a.child(&g.a.nodes[int(call_id)], 0), types.Type(fn_type))
 	g.write('; ')
 	for i, arg in args {
 		g.write_spawn_packed_arg_init(tmp, i, arg)
@@ -4743,6 +4752,13 @@ fn (mut g FlatGen) shared_spawn_wrapper_c_type(expected types.Type) string {
 }
 
 fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types.Type, expected_ct string, field_idx int) SpawnPackedArg {
+	if indirect_value_parameter(expected) {
+		return SpawnPackedArg{
+			field_ct:    expected_ct
+			assign_expr: g.expr_to_string_with_expected_type(arg_id, expected)
+			call_expr:   '&p->a${field_idx}'
+		}
+	}
 	if expr := g.shared_lowered_spawn_arg_storage_c_expr(arg_id) {
 		wrapper_ct := g.shared_spawn_wrapper_c_type(expected)
 		return SpawnPackedArg{
@@ -5072,7 +5088,7 @@ fn (mut g FlatGen) gen_thread_wait_call(fn_node &flat.Node) bool {
 	base_type := if base_type0 is types.Unknown || base_type0 is types.Void {
 		g.tc.resolve_type(base_id)
 	} else {
-		base_type0
+		*base_type0
 	}
 	clean_type := types.unwrap_pointer(base_type)
 	if clean_type !is types.Struct {
@@ -5106,7 +5122,7 @@ fn (mut g FlatGen) gen_thread_wait_call(fn_node &flat.Node) bool {
 	return true
 }
 
-fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method string) string {
+fn (g &FlatGen) resolved_method_name_for_spawn(clean_type &types.Type, method string) string {
 	mut type_name := clean_type.name()
 	if clean_type is types.Struct {
 		type_name = clean_type.name
@@ -5222,10 +5238,14 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 			param_idx++
 			if p.value.len > 0 {
 				g.cur_param_names << p.value
-				g.cur_param_type_values << param_type
-				g.cur_param_types[p.value] = param_type
+				parameter := g.tc.intern_type_reference(param_type)
+				g.cur_param_type_values << parameter
+				g.cur_param_types[p.value] = parameter
 				g.cur_param_name_bits |= current_param_name_bit(p.value)
 				owner := g.tc.cur_scope.insert_with_owner(p.value, param_type)
+				if indirect_value_parameter(param_type) {
+					g.declare_local_implicit_deref(owner, true)
+				}
 				if shared_ct := g.shared_param_c_type(p.typ) {
 					g.declare_local_c_type(owner, shared_ct)
 					g.declare_local_pointer_storage(owner, true)
@@ -5698,9 +5718,9 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	mut old_explicit_mut_pointer_params := g.cur_explicit_mut_pointer_params.move()
 	mut old_mut_param_owners := g.cur_mut_param_owners.move()
 	g.cur_param_names = []string{}
-	g.cur_param_type_values = []types.Type{}
+	g.cur_param_type_values = []&types.Type{}
 	g.cur_param_name_bits = 0
-	g.cur_param_types = map[string]types.Type{}
+	g.cur_param_types = map[string]&types.Type{}
 	g.cur_concrete_optional_params = map[string]bool{}
 	g.cur_mut_params = map[string]bool{}
 	g.cur_mut_pointer_params = map[string]bool{}
@@ -6236,7 +6256,7 @@ fn (g &FlatGen) test_fn_param_count(node flat.Node) int {
 	return count
 }
 
-fn test_harness_fn_return_supported(ret types.Type) bool {
+fn test_harness_fn_return_supported(ret &types.Type) bool {
 	return ret is types.Void || ret is types.OptionType || ret is types.ResultType
 }
 
@@ -7235,19 +7255,19 @@ fn (mut g FlatGen) c_call_is_int_out_arg(arg_id flat.NodeId, arg_idx int, param_
 	if g.a.child_node(&arg_node, 0).kind == .index {
 		return false
 	}
-	if !c_type_is_pointer_to_platform_int(cgen_unalias_type(g.usable_expr_type(arg_id))) {
+	if !c_type_is_pointer_to_platform_int(unalias_type(g.usable_expr_type(arg_id))) {
 		return false
 	}
 	if arg_idx < typed_param_count {
 		return arg_idx < param_types.len
-			&& c_type_is_pointer_to_platform_int(cgen_unalias_type(param_types[arg_idx]))
+			&& c_type_is_pointer_to_platform_int(unalias_type(param_types[arg_idx]))
 	}
 	return is_native_variadic
 }
 
-fn c_type_is_pointer_to_platform_int(t types.Type) bool {
+fn c_type_is_pointer_to_platform_int(t &types.Type) bool {
 	if t is types.Pointer {
-		base := cgen_unalias_type(t.base_type)
+		base := unalias_type(t.base_type)
 		if base is types.Primitive {
 			return base.size == 0 && base.props.has(.integer) && !base.props.has(.unsigned)
 		}
@@ -7259,7 +7279,7 @@ fn (mut g FlatGen) c_call_is_int_fixed_array_arg(arg_id flat.NodeId, arg_idx int
 	if arg_idx >= typed_param_count || arg_idx >= param_types.len {
 		return false
 	}
-	expected := cgen_unalias_type(param_types[arg_idx])
+	expected := unalias_type(param_types[arg_idx])
 	if expected is types.Pointer {
 		if !c_type_is_platform_int_array_storage(expected.base_type) {
 			return false
@@ -7282,15 +7302,15 @@ fn (mut g FlatGen) c_call_fixed_array_arg_type(arg_id flat.NodeId) ?types.ArrayF
 	if node.kind == .call {
 		// A pointer parameter can annotate the call with its contextual type;
 		// the declared return type still describes the array's source storage.
-		if fixed := array_fixed_type(cgen_unalias_type(g.declared_call_return_type(arg_id))) {
+		if fixed := array_fixed_type(unalias_type(g.declared_call_return_type(arg_id))) {
 			return fixed
 		}
 	}
-	return array_fixed_type(cgen_unalias_type(g.usable_expr_type(arg_id)))
+	return array_fixed_type(unalias_type(g.usable_expr_type(arg_id)))
 }
 
-fn c_type_is_platform_int_array_storage(typ types.Type) bool {
-	clean := cgen_unalias_type(typ)
+fn c_type_is_platform_int_array_storage(typ &types.Type) bool {
+	clean := unalias_type(typ)
 	if clean is types.ArrayFixed {
 		return c_type_is_platform_int_array_storage(clean.elem_type)
 	}
@@ -7302,11 +7322,11 @@ fn c_type_is_platform_int_array_storage(typ types.Type) bool {
 
 fn (mut g FlatGen) c_call_int_array_dimensions(typ types.Type) []string {
 	mut dimensions := []string{}
-	mut current := cgen_unalias_type(typ)
+	mut current := unalias_type(typ)
 	for {
 		if fixed := array_fixed_type(current) {
 			dimensions << g.fixed_array_len_value(fixed)
-			current = cgen_unalias_type(fixed.elem_type)
+			current = unalias_type(fixed.elem_type)
 		} else {
 			break
 		}
@@ -7338,9 +7358,9 @@ fn (mut g FlatGen) c_call_is_int_array_data_arg(arg_id flat.NodeId, arg_idx int,
 	if !g.expr_is_addressable(base_id) || !g.expr_is_stable_for_reuse(base_id) {
 		return false
 	}
-	base_type := cgen_unalias_type(g.usable_expr_type(base_id))
+	base_type := unalias_type(g.usable_expr_type(base_id))
 	if base_type is types.Array {
-		elem_type := cgen_unalias_type(base_type.elem_type)
+		elem_type := unalias_type(base_type.elem_type)
 		if elem_type !is types.Primitive || elem_type.size != 0
 			|| !elem_type.props.has(.integer) || elem_type.props.has(.unsigned) {
 			return false
@@ -7350,7 +7370,7 @@ fn (mut g FlatGen) c_call_is_int_array_data_arg(arg_id flat.NodeId, arg_idx int,
 	}
 	if arg_idx < typed_param_count {
 		return arg_idx < param_types.len
-			&& c_type_is_pointer_to_platform_int(cgen_unalias_type(param_types[arg_idx]))
+			&& c_type_is_pointer_to_platform_int(unalias_type(param_types[arg_idx]))
 	}
 	return is_native_variadic
 }
@@ -7725,7 +7745,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				base_type: raw_base_type
 			})
 		} else {
-			raw_base_type
+			*raw_base_type
 		}
 		clean_type := concrete_receiver_type(base_type)
 		if base_type is types.Pointer && clean_type is types.Struct {
@@ -7947,7 +7967,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 		'error' {
 			if g.is_ierror_type_name(g.expected_expr_type.name()) {
 				g.gen_ierror_from_error_call(node)
-			} else if cgen_unalias_type(g.cur_fn_ret) is types.ResultType {
+			} else if unalias_type(g.cur_fn_ret) is types.ResultType {
 				ct := g.optional_type_name(g.cur_fn_ret)
 				g.gen_optional_error_from_call(ct, node)
 			} else {
@@ -7958,7 +7978,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 		'error_with_code' {
 			if g.is_ierror_type_name(g.expected_expr_type.name()) {
 				g.gen_ierror_from_error_call(node)
-			} else if cgen_unalias_type(g.cur_fn_ret) is types.ResultType {
+			} else if unalias_type(g.cur_fn_ret) is types.ResultType {
 				ct := g.optional_type_name(g.cur_fn_ret)
 				g.gen_optional_error_from_call(ct, node)
 			} else {
@@ -8549,7 +8569,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				// parameter types from the value's own function type. This lets `mut` /
 				// pointer arguments receive their `&` exactly as a direct call would.
 				if ft := fn_type_from(g.tc.resolve_type(g.a.child(node, 0))) {
-					param_types = ft.params.clone()
+					param_types = ft.params.map(*it.typ)
 				}
 			}
 			mut arg_start := 1
@@ -8588,7 +8608,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				receiver_wants_shared :=
 					g.fn_param_is_shared_for_call(0, actual_fn, emitted_callee_name, method_name, fn_name)
 						|| g.fn_param_is_shared_for_call(0, base_method_name, g.cname(base_method_name), '', '')
-				if receiver_wants_shared && (g.gen_shared_local_receiver_arg(base_id)
+				if param_types.len > 0 && g.gen_indirect_value_argument(base_id, param_types[0]) {
+				} else if receiver_wants_shared && (g.gen_shared_local_receiver_arg(base_id)
 					|| g.gen_shared_storage_expr(base_id)) {
 					arg_start = 1
 				} else if param_types.len > 0
@@ -8727,6 +8748,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 					g.write(', ')
 				}
 				emitted_arg_count++
+				if !is_c_call && arg_idx < typed_param_count
+					&& g.gen_indirect_value_argument(arg_id, param_types[arg_idx]) {
+					continue
+				}
 				if arg_node.kind == .field_init && variadic_idx >= 0 && arg_idx == variadic_idx {
 					variadic_type := param_types[variadic_idx]
 					if variadic_type is types.Array {
@@ -8893,14 +8918,14 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				arg_type := if arg_idx >= 0 && arg_idx < typed_param_count {
 					g.usable_expr_type(arg_id)
 				} else {
-					types.Type(types.void_)
+					types.empty_type
 				}
 				mut needs_addr := false
 				if !is_c_call && arg_idx < typed_param_count
 					&& param_types[arg_idx] is types.Pointer && !(arg_node.kind == .prefix
 					&& arg_node.op == .amp) && !g.arg_is_null_pointer_literal(arg_id, arg_node) {
 					arg_is_pointer_param := arg_node.kind == .ident && c_type_is_pointer_like(g.current_param_type(arg_node.value) or {
-						types.Type(types.void_)
+						types.empty_type
 					})
 					arg_is_pointer_global := arg_node.kind == .ident && c_type_is_pointer_like(g.global_type_for_ident(arg_node.value) or {
 						types.Type(types.void_)
@@ -8960,7 +8985,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 						}
 					}
 				}
-				is_rvalue := arg_node.kind == .call
+				is_rvalue := arg_node.kind in [.call, .struct_init, .cast_expr, .assoc]
 					|| (arg_node.kind == .index && arg_node.value == 'range')
 					|| g.arg_is_const_ident(arg_node)
 				if needs_addr && g.arg_is_const_ident(arg_node) {
@@ -9125,7 +9150,7 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 	if node.kind in [.string_literal, .string_interp] {
 		return false
 	}
-	usable := cgen_unalias_type(g.usable_expr_type(id))
+	usable := unalias_type(g.usable_expr_type(id))
 	if usable is types.String || usable.name().all_after_last('.') == 'string' {
 		return false
 	}
@@ -9138,7 +9163,7 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 				'u32', 'u64', 'usize', 'f32', 'f64', 'rune']
 		}
 		if raw_type := g.local_storage_raw_type(node.value) {
-			clean := cgen_unalias_type(g.tc.parse_type(raw_type))
+			clean := unalias_type(g.tc.parse_type(raw_type))
 			if clean is types.String || clean.name() == 'string' {
 				return false
 			}
@@ -9156,7 +9181,7 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 			}
 		}
 	}
-	clean := cgen_unalias_type(g.usable_expr_type(id))
+	clean := unalias_type(g.usable_expr_type(id))
 	if clean is types.String || clean.name() == 'string' {
 		return false
 	}
@@ -9275,8 +9300,8 @@ fn (mut g FlatGen) fixed_array_type_for_expr(id flat.NodeId) ?types.ArrayFixed {
 	return none
 }
 
-fn (g &FlatGen) voidptr_method_value_arg(arg_id flat.NodeId, expected types.Type) bool {
-	expected_ptr := cgen_unalias_type(expected) as types.Pointer
+fn (g &FlatGen) voidptr_method_value_arg(arg_id flat.NodeId, expected &types.Type) bool {
+	expected_ptr := unalias_type(expected) as types.Pointer
 	if expected_ptr.base_type !is types.Void {
 		return false
 	}
@@ -9333,18 +9358,18 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 		}
 	}
 	if base.kind == .index && base.value != 'range' && base.children_count > 0 {
-		container_type := cgen_unalias_type(g.receiver_base_type(g.a.child(&base, 0)))
+		container_type := unalias_type(g.receiver_base_type(g.a.child(&base, 0)))
 		is_fixed, _, fixed := fixed_array_index_info(container_type)
 		if is_fixed {
-			return fixed.elem_type
+			return *fixed.elem_type
 		}
 		is_array, _, array_type := array_index_info(container_type)
 		if is_array {
-			return array_type.elem_type
+			return *array_type.elem_type
 		}
 		clean_container := types.unwrap_pointer(container_type)
 		if clean_container is types.Map {
-			return clean_container.value_type
+			return *clean_container.value_type
 		}
 		if clean_container is types.String {
 			return types.Type(types.u8_)
@@ -9359,7 +9384,7 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 					return declared
 				}
 			}
-			return typ
+			return *typ
 		}
 		if typ := g.tc.expr_type(base_id) {
 			if typ !is types.Unknown && typ !is types.Void
@@ -9544,7 +9569,7 @@ fn (mut g FlatGen) mut_receiver_arg_wants_addr(fn_name string, arg_id flat.NodeI
 	if g.local_storage_is_pointer(arg_node.value) {
 		return false
 	}
-	arg_is_pointer_param := (g.current_param_type(arg_node.value) or { types.Type(types.void_) }) is types.Pointer
+	arg_is_pointer_param := (g.current_param_type(arg_node.value) or { types.empty_type }) is types.Pointer
 	if arg_is_pointer_param {
 		return false
 	}
@@ -9608,7 +9633,7 @@ fn (g &FlatGen) c_style_mut_receiver_arg_wants_addr(fn_name string, arg_id flat.
 	if arg_node.kind != .ident || g.local_storage_is_pointer(arg_node.value) {
 		return false
 	}
-	arg_is_pointer_param := (g.current_param_type(arg_node.value) or { types.Type(types.void_) }) is types.Pointer
+	arg_is_pointer_param := (g.current_param_type(arg_node.value) or { types.empty_type }) is types.Pointer
 	if arg_is_pointer_param {
 		return false
 	}
@@ -9642,12 +9667,12 @@ fn (g &FlatGen) c_style_mut_receiver_arg_wants_addr(fn_name string, arg_id flat.
 fn concrete_receiver_type(base_type types.Type) types.Type {
 	clean_type := types.unwrap_pointer(base_type)
 	if clean_type is types.Alias {
-		return clean_type.base_type
+		return *clean_type.base_type
 	}
 	return clean_type
 }
 
-fn cgen_is_channel_close_receiver_type(base_type types.Type) bool {
+fn cgen_is_channel_close_receiver_type(base_type &types.Type) bool {
 	clean_type := concrete_receiver_type(base_type)
 	if clean_type is types.Channel {
 		return true
@@ -9700,7 +9725,7 @@ fn (g &FlatGen) receiver_ident_storage_is_pointer(base_id flat.NodeId) bool {
 	return false
 }
 
-fn (g &FlatGen) receiver_needs_address(base_id flat.NodeId, base_type types.Type) bool {
+fn (g &FlatGen) receiver_needs_address(base_id flat.NodeId, base_type &types.Type) bool {
 	if int(base_id) >= 0 && int(base_id) < g.a.nodes.len {
 		node := g.a.nodes[int(base_id)]
 		if node.kind == .ident && g.local_storage_is_pointer(node.value) {
@@ -9715,7 +9740,7 @@ fn (g &FlatGen) receiver_needs_address(base_id flat.NodeId, base_type types.Type
 	return base_type !is types.Pointer
 }
 
-fn (g &FlatGen) interface_receiver_needs_address(base_id flat.NodeId, base_type types.Type) bool {
+fn (g &FlatGen) interface_receiver_needs_address(base_id flat.NodeId, base_type &types.Type) bool {
 	if int(base_id) >= 0 && int(base_id) < g.a.nodes.len {
 		node := g.a.nodes[int(base_id)]
 		if node.kind == .ident {
@@ -9799,6 +9824,9 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 		emitted_arg_count++
 		param_idx := i
 		if param_idx < param_types.len {
+			if g.gen_indirect_value_argument(arg_id, param_types[param_idx]) {
+				continue
+			}
 			if g.gen_fixed_array_pointer_lvalue_arg(arg_id, param_types[param_idx]) {
 				continue
 			}
@@ -10260,7 +10288,7 @@ fn (g &FlatGen) is_veb_context_receiver(id flat.NodeId) bool {
 	return g.type_embeds_veb_context(typ)
 }
 
-fn (g &FlatGen) type_embeds_veb_context(typ types.Type) bool {
+fn (g &FlatGen) type_embeds_veb_context(typ &types.Type) bool {
 	clean := types.unwrap_pointer(typ)
 	if clean is types.Alias {
 		return g.type_embeds_veb_context(clean.base_type)
@@ -10436,7 +10464,7 @@ fn (g &FlatGen) type_arg_text(id flat.NodeId) string {
 	}
 }
 
-fn (g &FlatGen) embedded_method_name_for_type(base_type types.Type, method string) ?string {
+fn (g &FlatGen) embedded_method_name_for_type(base_type &types.Type, method string) ?string {
 	type_name := g.type_lookup_name(base_type)
 	if type_name.len == 0 || method.len == 0 {
 		return none
@@ -10615,7 +10643,7 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 }
 
 fn (g &FlatGen) interface_impl_field_access_suffix(impl_name string, field_name string) string {
-	if field_name == 'len' && types.unalias_type(g.tc.parse_type(impl_name)) is types.Map {
+	if field_name == 'len' && unalias_type(g.tc.parse_type(impl_name)) is types.Map {
 		return '->data->count'
 	}
 	if g.direct_struct_field_exists(impl_name, field_name) {
@@ -10655,7 +10683,7 @@ fn (g &FlatGen) interface_receiver_type_id_mappings(source_iface string, target_
 	return mappings
 }
 
-fn (g &FlatGen) interface_receiver_name(typ types.Type) string {
+fn (g &FlatGen) interface_receiver_name(typ &types.Type) string {
 	clean_type := types.unwrap_pointer(typ)
 	if clean_type !is types.Interface && clean_type !is types.Struct && clean_type !is types.Alias {
 		return ''
@@ -10723,7 +10751,7 @@ fn (g &FlatGen) embedded_receiver_path_for_expected(base_type types.Type, expect
 	return g.embedded_receiver_path_for_expected_name(base_name, expected_name, mut seen)
 }
 
-fn (g &FlatGen) emitted_method_belongs_to_receiver(receiver_type types.Type, method string, emitted_name string) bool {
+fn (g &FlatGen) emitted_method_belongs_to_receiver(receiver_type &types.Type, method string, emitted_name string) bool {
 	if method.len == 0 || emitted_name.len == 0 {
 		return false
 	}
@@ -10737,7 +10765,7 @@ fn (g &FlatGen) emitted_method_belongs_to_receiver(receiver_type types.Type, met
 	return g.cname(qualified_method) == emitted_name || g.cname(local_method) == emitted_name
 }
 
-fn (g &FlatGen) embedded_receiver_expected_name(expected_type types.Type) string {
+fn (g &FlatGen) embedded_receiver_expected_name(expected_type &types.Type) string {
 	clean_type := types.unwrap_pointer(expected_type)
 	if clean_type is types.Alias {
 		return g.struct_init_import_alias_type_name(clean_type.name)
@@ -10778,7 +10806,7 @@ fn (g &FlatGen) embedded_receiver_type_names_match(actual string, expected strin
 }
 
 // current_param_type returns current param type data for FlatGen.
-fn (g &FlatGen) current_param_type(name string) ?types.Type {
+fn (g &FlatGen) current_param_type(name string) ?&types.Type {
 	if g.cur_param_types.len == 0 {
 		return none
 	}
@@ -10879,7 +10907,7 @@ fn (g &FlatGen) generic_fn_base_known(base string) bool {
 	return false
 }
 
-fn type_is_optional_result(t types.Type) bool {
+fn type_is_optional_result(t &types.Type) bool {
 	clean := optional_result_unalias_type(t)
 	return clean is types.OptionType || clean is types.ResultType
 }
@@ -11006,7 +11034,7 @@ fn (g &FlatGen) concrete_optional_param_type_for_expr(id flat.NodeId) ?types.Typ
 	}
 	param_type := g.current_param_type(node.value) or { return none }
 	if type_is_optional_result(param_type) {
-		return param_type
+		return *param_type
 	}
 	return none
 }
@@ -11162,13 +11190,13 @@ fn (mut g FlatGen) gen_lowered_enum_autostr_pointer_call(id flat.NodeId, node fl
 		return false
 	}
 	arg_id := g.a.child(&node, 1)
-	arg_type := cgen_unalias_type(g.usable_expr_type(arg_id))
+	arg_type := unalias_type(g.usable_expr_type(arg_id))
 	pointer_type := if arg_type is types.Pointer {
 		arg_type
 	} else {
 		return false
 	}
-	enum_base_type := cgen_unalias_type(pointer_type.base_type)
+	enum_base_type := unalias_type(pointer_type.base_type)
 	enum_type := if enum_base_type is types.Enum {
 		enum_base_type
 	} else {
@@ -11222,7 +11250,7 @@ fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_ty
 		arg_id := g.a.child(&node, i)
 		arg_idx := i - 1
 		if arg_idx < fn_type.params.len {
-			g.gen_arg_for_expected_type(arg_id, fn_type.params[arg_idx])
+			g.gen_arg_for_expected_type(arg_id, fn_type.params[arg_idx].typ)
 		} else {
 			g.gen_expr(arg_id)
 		}
@@ -11712,7 +11740,7 @@ fn (g &FlatGen) interface_method_param_types(name string) ?[]types.Type {
 	}
 	mut params := []types.Type{cap: decl_params.len}
 	params << types.Type(types.Pointer{
-		base_type: types.Type(types.Interface{
+		base_type: &types.Type(types.Interface{
 			name: iface_name
 		})
 	})
@@ -11768,6 +11796,9 @@ fn short_receiver_method_name(name string) string {
 
 // gen_arg_for_expected_type emits arg for expected type output for c.
 fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.Type) {
+	if g.gen_indirect_value_argument(arg_id, expected) {
+		return
+	}
 	arg_node := g.a.nodes[int(arg_id)]
 	if g.gen_mut_sum_lvalue_arg(arg_id, expected) {
 		return
@@ -11785,7 +11816,7 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 		&& !g.arg_is_null_pointer_literal(arg_id, arg_node) {
 		arg_type := g.usable_expr_type(arg_id)
 		value_local := arg_node.kind == .ident && !g.local_storage_is_pointer(arg_node.value) && (g.current_param_type(arg_node.value) or {
-			types.Type(types.void_)
+			types.empty_type
 		}) !is types.Pointer && (g.global_type_for_ident(arg_node.value) or {
 			types.Type(types.void_)
 		}) !is types.Pointer && !g.arg_is_pointer_const_for(arg_node, arg_type, expected)
@@ -11804,15 +11835,14 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 			g.write('}')
 			return
 		}
-		is_rvalue := arg_node.kind == .call
+		is_rvalue := arg_node.kind in [.call, .struct_init, .cast_expr, .assoc]
 			|| (arg_node.kind == .index && arg_node.value == 'range')
 			|| (!arg_node.is_mut && g.map_index_value_is_rvalue(arg_id))
 		if is_rvalue {
 			ct := g.tc.c_type(types.unwrap_pointer(expected))
-			g.write('({${ct} _t${g.tmp_count} = ')
+			g.write('&((${ct}[]){')
 			g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(expected))
-			g.write('; &_t${g.tmp_count};})')
-			g.tmp_count++
+			g.write('})[0]')
 			return
 		}
 		if g.gen_mut_sum_lvalue_arg(arg_id, expected) {
@@ -11839,7 +11869,7 @@ fn (mut g FlatGen) gen_interface_pointer_arg(arg_id flat.NodeId, expected types.
 		return false
 	}
 	node := g.a.nodes[int(arg_id)]
-	mut iface_type := ptr_type.base_type
+	mut iface_type := *ptr_type.base_type
 	if iface_type is types.Alias {
 		iface_type = iface_type.base_type
 	}
@@ -11851,16 +11881,16 @@ fn (mut g FlatGen) gen_interface_pointer_arg(arg_id flat.NodeId, expected types.
 		g.gen_expr(arg_id)
 		return true
 	}
-	mut actual := g.usable_expr_type(arg_id)
+	mut actual := *g.usable_expr_type(arg_id)
 	if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
 			actual = param_type
 		}
 	}
-	actual_unaliased := cgen_unalias_type(actual)
+	actual_unaliased := unalias_type(actual)
 	if actual_unaliased is types.Nil || actual_unaliased is types.Void
 		|| (actual_unaliased is types.Pointer
-			&& cgen_unalias_type(actual_unaliased.base_type) is types.Void) {
+			&& unalias_type(actual_unaliased.base_type) is types.Void) {
 		g.write('(${g.tc.c_type(iface_type)}*)')
 		g.gen_expr(arg_id)
 		return true
@@ -11880,7 +11910,7 @@ fn (mut g FlatGen) gen_interface_pointer_arg(arg_id flat.NodeId, expected types.
 		}
 	}
 	if actual is types.Pointer {
-		mut actual_base := actual.base_type
+		mut actual_base := *actual.base_type
 		if actual_base is types.Alias {
 			actual_base = actual_base.base_type
 		}
@@ -12232,14 +12262,11 @@ fn (mut g FlatGen) callback_fn_value_type(name string) ?types.FnType {
 	ret := if r := g.tc.fn_ret_types[name] {
 		r
 	} else if r := g.fn_decl_ret_types[name] {
-		r
+		*r
 	} else {
 		types.Type(types.void_)
 	}
-	return types.FnType{
-		params:      params.clone()
-		return_type: ret
-	}
+	return g.tc.fn_type(params, ret, []bool{})
 }
 
 fn (mut g FlatGen) callback_fn_emitted_param_types(name string, semantic []types.Type) []types.Type {
@@ -12297,7 +12324,7 @@ fn (mut g FlatGen) callback_fn_types_cast_compatible(actual types.FnType, expect
 	for i in 0 .. expected.params.len {
 		actual_param := fn_type_effective_param(actual, i)
 		expected_param := fn_type_effective_param(expected, i)
-		actual_ct := g.callback_c_type(actual_param)
+		actual_ct := g.parameter_c_type(actual_param)
 		expected_ct := g.callback_expected_param_c_type(expected, i, expected_c_abi)
 		if actual_ct == expected_ct
 			|| g.callback_can_cast_userdata_pointer(actual_param, expected_param)
@@ -12317,10 +12344,10 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	expected_ret_ct := g.callback_expected_return_c_type(expected.return_type, expected_c_abi)
 	mut needs_wrapper := false
 	mut cast_return := false
-	expected_return := cgen_unalias_type(expected.return_type)
+	expected_return := unalias_type(expected.return_type)
 	promote_void_result := actual.return_type is types.Void
 		&& expected_return is types.ResultType
-		&& cgen_unalias_type(expected_return.base_type) is types.Void
+		&& unalias_type(expected_return.base_type) is types.Void
 		&& expected_c_abi.len == 0
 	if actual_ret_ct != expected_ret_ct {
 		if !promote_void_result && !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct)
@@ -12337,7 +12364,7 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 		expected_param := fn_type_effective_param(expected, i)
 		actual_param := fn_type_effective_param(actual, i)
 		expected_ct := g.callback_expected_param_c_type(expected, i, expected_c_abi)
-		actual_ct := g.callback_c_type(actual_param)
+		actual_ct := g.parameter_c_type(actual_param)
 		param_decls << '${expected_ct} arg${i}'
 		if actual_ct == expected_ct {
 			call_args << 'arg${i}'
@@ -12415,7 +12442,7 @@ fn (mut g FlatGen) callback_expected_param_c_type(expected types.FnType, idx int
 			return g.callback_c_abi_part_c_type(params[idx])
 		}
 	}
-	return g.callback_c_type(fn_type_effective_param(expected, idx))
+	return g.parameter_c_type(fn_type_effective_param(expected, idx))
 }
 
 // callback_c_abi_part_c_type spells one return or parameter part of a retained C-ABI
@@ -12502,34 +12529,27 @@ fn callback_stable_key_hash(key string) string {
 	return '${hash}'
 }
 
-fn (g &FlatGen) callback_can_cast_userdata_pointer(actual types.Type, expected types.Type) bool {
+fn (g &FlatGen) callback_can_cast_userdata_pointer(actual &types.Type, expected &types.Type) bool {
 	return (callback_is_voidptr_type(expected) && callback_is_nonvoid_pointer_type(actual))
 		|| (callback_is_nonvoid_pointer_type(expected) && callback_is_voidptr_type(actual))
 }
 
-fn callback_is_voidptr_type(typ types.Type) bool {
-	clean := callback_unalias_type(typ)
+fn callback_is_voidptr_type(typ &types.Type) bool {
+	clean := unalias_type(typ)
 	if clean is types.Pointer {
-		base := callback_unalias_type(clean.base_type)
+		base := unalias_type(clean.base_type)
 		return base is types.Void
 	}
 	return false
 }
 
-fn callback_is_nonvoid_pointer_type(typ types.Type) bool {
-	clean := callback_unalias_type(typ)
+fn callback_is_nonvoid_pointer_type(typ &types.Type) bool {
+	clean := unalias_type(typ)
 	if clean is types.Pointer {
-		base := callback_unalias_type(clean.base_type)
+		base := unalias_type(clean.base_type)
 		return base !is types.Void
 	}
 	return false
-}
-
-fn callback_unalias_type(typ types.Type) types.Type {
-	if typ is types.Alias {
-		return callback_unalias_type(typ.base_type)
-	}
-	return typ
 }
 
 fn (mut g FlatGen) callback_c_fn_name(name string) string {
@@ -12552,21 +12572,17 @@ fn (mut g FlatGen) callback_c_fn_name(name string) string {
 	return g.direct_call_name(name)
 }
 
-fn fn_type_param(typ types.FnType, idx int) types.Type {
-	return typ.params[idx]
-}
-
-fn fn_type_effective_param(typ types.FnType, idx int) types.Type {
-	param := fn_type_param(typ, idx)
-	if idx >= 0 && idx < typ.params_mut.len && typ.params_mut[idx] && param !is types.Pointer {
+fn fn_type_effective_param(typ &types.FnType, idx int) types.Type {
+	param := typ.params[idx].typ
+	if idx >= 0 && idx < typ.params.len && typ.params[idx].is_mut && param !is types.Pointer {
 		return types.Type(types.Pointer{
-			base_type: param
+			base_type: &types.Type(param)
 		})
 	}
-	return param
+	return *param
 }
 
-fn fn_type_effective_params(typ types.FnType) []types.Type {
+fn fn_type_effective_params(typ &types.FnType) []types.Type {
 	mut params := []types.Type{cap: typ.params.len}
 	for i in 0 .. typ.params.len {
 		params << fn_type_effective_param(typ, i)
@@ -12588,7 +12604,7 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 	} else {
 		return false
 	}
-	if g.gen_current_mut_param_value_read(arg_id, cgen_unalias_type(expected)) {
+	if g.gen_current_mut_param_value_read(arg_id, unalias_type(expected)) {
 		return true
 	}
 	if g.expr_is_optional_literal(arg_id, expected) {
@@ -12671,7 +12687,7 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 			}
 		}
 	}
-	mut arg_type := g.usable_expr_type(arg_id)
+	mut arg_type := *g.usable_expr_type(arg_id)
 	if arg_node.kind == .selector {
 		if arg_node.typ.len > 0 && (arg_node.typ.starts_with('?') || arg_node.typ.starts_with('!')) {
 			arg_type = g.tc.parse_resolution_type(arg_node.typ)
@@ -12800,7 +12816,7 @@ fn (g &FlatGen) optional_error_payload_err_expr(id flat.NodeId) ?flat.NodeId {
 		return g.optional_error_payload_err_expr(g.a.child(&node, 0))
 	}
 	if node.kind != .struct_init
-		|| cgen_unalias_type(g.parse_node_type(&node)) !is types.ResultType {
+		|| unalias_type(g.parse_node_type(&node)) !is types.ResultType {
 		return none
 	}
 	mut has_false_ok := false
@@ -12899,6 +12915,13 @@ fn (g &FlatGen) field_type(base_type types.Type, field_name string) ?types.Type 
 		struct_name = 'map'
 	} else if clean is types.String {
 		struct_name = 'string'
+	} else if clean is types.SumType {
+		for variant in g.tc.sum_types[g.resolve_sum_name(clean.name)] {
+			if sum_field_name(variant) == field_name {
+				return g.tc.parse_canonical_type(variant)
+			}
+		}
+		return none
 	} else if clean is types.Interface {
 		for field in g.tc.interface_field_list(clean.name) {
 			if field.name == field_name {
@@ -12933,7 +12956,7 @@ fn fn_type_from(t types.Type) ?types.FnType {
 	return none
 }
 
-fn fn_type_is_pointer(t types.Type) bool {
+fn fn_type_is_pointer(t &types.Type) bool {
 	if t is types.Alias {
 		return fn_type_is_pointer(t.base_type)
 	}
@@ -14233,7 +14256,7 @@ fn (g &FlatGen) isreftype_ident_is_type_name(name string) bool {
 		|| (name[0] >= `A` && name[0] <= `Z`)
 }
 
-fn (g &FlatGen) type_is_reftype(typ types.Type, mut seen map[string]bool) bool {
+fn (g &FlatGen) type_is_reftype(typ &types.Type, mut seen map[string]bool) bool {
 	if typ is types.Alias {
 		return g.type_is_reftype(typ.base_type, mut seen)
 	}
@@ -14401,6 +14424,10 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				continue
 			}
 		}
+		if !is_c_call && arg_idx < typed_param_count
+			&& g.gen_indirect_value_argument(arg_id, param_types[arg_idx]) {
+			continue
+		}
 		if arg_node.kind == .field_init && variadic_idx >= 0 && arg_idx == variadic_idx {
 			variadic_type := param_types[variadic_idx]
 			if variadic_type is types.Array {
@@ -14444,7 +14471,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		if !is_c_call && arg_idx == 0 && start == 1 && arg_node.kind == .ident
 			&& (g.mut_receiver_arg_wants_addr(fn_name, arg_id)
 				|| (!callee_is_module_selector && g.mut_receiver_arg_wants_addr(callee_name, arg_id))) {
-			param_type := g.current_param_type(arg_node.value) or { types.Type(types.void_) }
+			param_type := g.current_param_type(arg_node.value) or { types.empty_type }
 			if g.local_storage_is_pointer(arg_node.value) || param_type is types.Pointer
 				|| g.usable_expr_type(arg_id) is types.Pointer {
 				g.write(g.local_cname(arg_node.value))
@@ -14687,7 +14714,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			arg_param_is_shared :=
 				g.fn_param_is_shared_for_call(arg_idx, fn_name, callee_name, '', '')
 			arg_is_pointer_param := arg_node.kind == .ident && (g.current_param_type(arg_node.value) or {
-				types.Type(types.void_)
+				types.empty_type
 			}) is types.Pointer
 			arg_is_pointer_global := arg_node.kind == .ident && (g.global_type_for_ident(arg_node.value) or {
 				types.Type(types.void_)
@@ -14727,7 +14754,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		if arg_idx < typed_param_count && g.gen_interface_pointer_arg(arg_id, param_types[arg_idx]) {
 			continue
 		}
-		is_rvalue := arg_node.kind == .call
+		is_rvalue := arg_node.kind in [.call, .struct_init, .cast_expr, .assoc]
 			|| (arg_node.kind == .index && arg_node.value == 'range')
 			|| (!arg_node.is_mut && g.map_index_value_is_rvalue(arg_id))
 			|| g.arg_is_const_ident(arg_node)
@@ -14839,7 +14866,7 @@ fn (mut g FlatGen) gen_local_fn_value_address_arg(arg_node flat.Node, expected t
 	}
 	child_id, child := g.unwrapped_fn_value_operand(g.a.child(&node, 0), g.a.child_node(&node, 0))
 	if child.kind != .ident || !g.ident_is_local_binding(child.value)
-		|| cgen_unalias_type(g.fn_value_candidate_type(child_id, child)) !is types.FnType {
+		|| unalias_type(g.fn_value_candidate_type(child_id, child)) !is types.FnType {
 		return false
 	}
 	old_expected := g.expected_expr_type
@@ -15051,9 +15078,7 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 		break
 	}
 	if !g.node_is_fn_value_for_voidptr(value_id, value_node) {
-		voidptr_type := types.Type(types.Pointer{
-			base_type: types.Type(types.void_)
-		})
+		voidptr_type := types.Type(types.Pointer{})
 		if !g.voidptr_method_value_arg(value_id, voidptr_type) {
 			return false
 		}
@@ -15086,9 +15111,9 @@ fn (g &FlatGen) fn_value_operand_has_storage(id flat.NodeId, node flat.Node) boo
 			if node.children_count == 0 || g.tc.expr_is_method_value(id) {
 				return false
 			}
-			base_type := types.unwrap_pointer(cgen_unalias_type(g.usable_expr_type(g.a.child(&node,
+			base_type := types.unwrap_pointer(unalias_type(g.usable_expr_type(g.a.child(&node,
 				0))))
-			return cgen_unalias_type(base_type) is types.Struct
+			return unalias_type(base_type) is types.Struct
 		}
 		.index {
 			return node.value != 'range'
@@ -15108,7 +15133,7 @@ fn (g &FlatGen) fn_value_candidate_type(id flat.NodeId, node flat.Node) types.Ty
 			return explicit_type
 		}
 	}
-	return g.usable_expr_type(id)
+	return *g.usable_expr_type(id)
 }
 
 fn (g &FlatGen) node_is_fn_value_for_voidptr(id flat.NodeId, node flat.Node) bool {
@@ -15133,7 +15158,7 @@ fn (g &FlatGen) node_is_fn_value_for_voidptr(id flat.NodeId, node flat.Node) boo
 	return false
 }
 
-fn (g &FlatGen) fn_value_arg_passes_direct_to_voidptr(arg_id flat.NodeId, arg_node flat.Node, actual types.Type, expected types.Type) bool {
+fn (g &FlatGen) fn_value_arg_passes_direct_to_voidptr(arg_id flat.NodeId, arg_node flat.Node, actual &types.Type, expected &types.Type) bool {
 	if !type_is_void_pointer(expected) {
 		return false
 	}
@@ -15162,7 +15187,7 @@ fn (g &FlatGen) fn_value_arg_passes_direct_to_voidptr(arg_id flat.NodeId, arg_no
 	return false
 }
 
-fn type_is_fn_value(typ types.Type) bool {
+fn type_is_fn_value(typ &types.Type) bool {
 	if typ is types.FnType {
 		return true
 	}
@@ -15172,9 +15197,9 @@ fn type_is_fn_value(typ types.Type) bool {
 	return false
 }
 
-fn type_is_void_pointer(typ types.Type) bool {
+fn type_is_void_pointer(typ &types.Type) bool {
 	if typ is types.Pointer {
-		base := if typ.base_type is types.Alias { typ.base_type.base_type } else { typ.base_type }
+		base := if typ.base_type is types.Alias { *typ.base_type.base_type } else { *typ.base_type }
 		return base is types.Void
 	}
 	if typ is types.Alias {
@@ -15264,7 +15289,8 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	}
 	g.write(emitted_name)
 	g.write('(')
-	if receiver_wants_shared
+	if g.gen_indirect_value_argument(receiver_id, params[0]) {
+	} else if receiver_wants_shared
 		&& (g.gen_shared_local_receiver_arg(receiver_id) || g.gen_shared_storage_expr(receiver_id)) {
 		// handled
 	} else if !receiver_declares_method
@@ -15355,14 +15381,14 @@ fn (mut g FlatGen) gen_ierror_str_arg(fn_name string, callee_name string, arg_id
 	return true
 }
 
-fn variadic_elem_is_voidptr(typ types.Type) bool {
+fn variadic_elem_is_voidptr(typ &types.Type) bool {
 	if typ is types.Pointer {
 		return typ.base_type is types.Void
 	}
 	return false
 }
 
-fn variadic_array_is_native(typ types.Type) bool {
+fn variadic_array_is_native(typ &types.Type) bool {
 	if typ is types.Array {
 		return typ.elem_type is types.Void
 	}
@@ -15418,15 +15444,15 @@ fn (mut g FlatGen) gen_voidptr_variadic_arg(arg_id flat.NodeId) {
 	g.write('}[0])')
 }
 
-fn voidptr_variadic_type_passes_direct(typ types.Type) bool {
+fn voidptr_variadic_type_passes_direct(typ &types.Type) bool {
 	if typ is types.Alias {
 		return voidptr_variadic_type_passes_direct(typ.base_type)
 	}
 	return typ is types.Pointer || typ is types.Nil
 }
 
-fn (g &FlatGen) voidptr_variadic_storage_c_type(actual types.Type) string {
-	mut clean := actual
+fn (g &FlatGen) voidptr_variadic_storage_c_type(actual &types.Type) string {
+	mut clean := *actual
 	for _ in 0 .. 8 {
 		if clean is types.Alias {
 			clean = clean.base_type
@@ -15562,7 +15588,7 @@ fn (mut g FlatGen) gen_flag_enum_zero_call(id flat.NodeId, fn_node flat.Node, no
 	if enum_name !in g.tc.flag_enums {
 		return false
 	}
-	mut typ := g.usable_expr_type(id)
+	mut typ := *g.usable_expr_type(id)
 	if typ is types.Alias {
 		typ = typ.base_type
 	}
@@ -15594,7 +15620,7 @@ fn (mut g FlatGen) gen_flag_enum_from_call(id flat.NodeId, fn_node flat.Node, no
 	}
 	enum_type := types.Type(enum_info)
 	result_type := types.Type(types.ResultType{
-		base_type: enum_type
+		base_type: &types.Type(enum_type)
 	})
 	ct := g.optional_type_name(result_type)
 	value_ct := g.enum_value_c_type(enum_info)
@@ -15819,7 +15845,7 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	if arg_node.kind == .prefix && arg_node.op == .mul && arg_node.children_count == 1 {
 		child := g.a.child_node(&arg_node, 0)
 		if child.kind == .ident && g.current_param_is_mut(child.value) {
-			param_type := g.current_param_type(child.value) or { types.Type(types.void_) }
+			param_type := g.current_param_type(child.value) or { types.empty_type }
 			if g.tc.c_type(param_type) == g.tc.c_type(expected) {
 				g.write(g.local_decl_cname(child.value))
 				return true
@@ -15949,7 +15975,7 @@ fn (g &FlatGen) spread_arg_child(arg_node flat.Node) ?flat.NodeId {
 // as `expected`. Such a const is stored as a C pointer, like a pointer global, so it is
 // passed as is. A shallower one, like a `&T` const for a `&&T` param, still needs the
 // address of a copy.
-fn (g &FlatGen) arg_is_pointer_const_for(arg_node flat.Node, arg_type types.Type, expected types.Type) bool {
+fn (g &FlatGen) arg_is_pointer_const_for(arg_node flat.Node, arg_type &types.Type, expected &types.Type) bool {
 	return g.arg_is_const_ident(arg_node)
 		&& cgen_type_pointer_depth(arg_type) == cgen_type_pointer_depth(expected)
 }
@@ -16081,20 +16107,13 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 		return false
 	}
 	is_ptr_arg := g.tc.resolve_type(arg_id) is types.Pointer
-	is_ref_variant := g.variant_references_sum(variant, sum_name)
-	if is_ref_variant {
-		g.write('(*')
-	}
 	g.gen_expr(arg_id)
 	if is_ptr_arg {
 		g.write('->')
 	} else {
 		g.write('.')
 	}
-	g.write(g.sum_field_name(variant))
-	if is_ref_variant {
-		g.write(')')
-	}
+	g.write(sum_field_name(variant))
 	return true
 }
 
@@ -17425,7 +17444,7 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 		if g.is_assumed_int_c_const_arg(arg_id) {
 			return none
 		}
-		at := cgen_unalias_type(g.tc.resolve_type(arg_id))
+		at := unalias_type(g.tc.resolve_type(arg_id))
 		if at is types.Primitive && at.size == 0 && at.props.has(.integer)
 			&& !at.props.has(.unsigned) {
 			return 'int'
@@ -17759,7 +17778,7 @@ fn (mut g FlatGen) c_extern_param_c_type(pt types.Type) string {
 		return g.optional_type_name(pt)
 	}
 	if pt is types.Pointer {
-		base := pt.base_type
+		base := *pt.base_type
 		if base is types.Struct && base.name.starts_with('C.') {
 			base_ct := g.tc.c_type(base)
 			if base_ct.starts_with('struct ') {
@@ -17770,7 +17789,7 @@ fn (mut g FlatGen) c_extern_param_c_type(pt types.Type) string {
 	return g.tc.c_type(pt)
 }
 
-fn c_extern_param_needs_const_prefix(param_name string, raw_typ string, pt types.Type) bool {
+fn c_extern_param_needs_const_prefix(param_name string, raw_typ string, pt &types.Type) bool {
 	return param_name.starts_with('const_') && !trimmed_space(raw_typ).starts_with('mut ')
 		&& pt is types.Pointer
 }
@@ -17780,9 +17799,9 @@ fn (mut g FlatGen) insert_cur_implicit_veb_ctx_param(node flat.Node) {
 		return
 	}
 	insert_idx := g.fn_implicit_veb_ctx_insert_index(node)
-	ctx_type := g.implicit_veb_ctx_type()
+	ctx_type := g.tc.intern_type_reference(g.implicit_veb_ctx_type())
 	mut names := []string{cap: g.cur_param_names.len + 1}
-	mut type_values := []types.Type{cap: g.cur_param_type_values.len + 1}
+	mut type_values := []&types.Type{cap: g.cur_param_type_values.len + 1}
 	for i, name in g.cur_param_names {
 		if i == insert_idx {
 			names << 'ctx'
@@ -17980,7 +17999,7 @@ fn (mut g FlatGen) fn_needs_implicit_veb_ctx(node flat.Node) bool {
 
 // is_implicit_veb_ctx_param reports whether a callee parameter is the hidden
 // veb `Context` pointer that callers do not supply explicitly.
-fn (g &FlatGen) is_implicit_veb_ctx_param(pt types.Type) bool {
+fn (g &FlatGen) is_implicit_veb_ctx_param(pt &types.Type) bool {
 	if pt is types.Pointer {
 		return pt.base_type.name().all_after_last('.') == 'Context'
 	}
@@ -18089,7 +18108,7 @@ fn (g &FlatGen) fn_receiver_type_is_context(node flat.Node) bool {
 }
 
 fn (mut g FlatGen) implicit_veb_ctx_type() types.Type {
-	return g.tc.parse_type('mut Context')
+	return *g.tc.parse_type('mut Context')
 }
 
 fn (mut g FlatGen) fn_node_return_type(node flat.Node, module_name string) types.Type {
@@ -18130,17 +18149,17 @@ fn (mut g FlatGen) fn_node_return_type(node flat.Node, module_name string) types
 
 fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_name string) ?types.Type {
 	if rt := g.fn_decl_ret_types[fn_decl_module_key(module_name, node.value)] {
-		return rt
+		return *rt
 	}
 	if module_name.len == 0 {
 		if rt := g.fn_decl_ret_types[fn_decl_module_key('main', node.value)] {
-			return rt
+			return *rt
 		}
 	}
 	if !node.value.contains('.') {
 		full_name := qualify_name_in_module(module_name, node.value)
 		if rt := g.fn_decl_ret_types[full_name] {
-			return rt
+			return *rt
 		}
 	}
 	dotted_name := dotted_fn_name_in_module(module_name, node.value)
@@ -18357,7 +18376,7 @@ fn (mut g FlatGen) fn_node_effective_param_type(param flat.Node, typed types.Typ
 		return typed
 	}
 	return types.Type(types.Pointer{
-		base_type: typed
+		base_type: &types.Type(typed)
 	})
 }
 
@@ -18426,7 +18445,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		} else if wide_ct := g.wide_enum_signature_c_type(effective_pt) {
 			wide_ct
 		} else {
-			g.fn_ptr_signature_type(effective_pt) or { g.tc.c_type(effective_pt) }
+			g.parameter_c_type(effective_pt)
 		}
 		if ct.starts_with('fn_ptr:') {
 			g.write(g.resolve_fn_ptr_type(ct))
@@ -18481,7 +18500,7 @@ fn (mut g FlatGen) explicit_mut_pointer_param_type(param flat.Node, typ types.Ty
 		return typ
 	}
 	return types.Type(types.Pointer{
-		base_type: typ
+		base_type: &types.Type(typ)
 	})
 }
 
@@ -18632,7 +18651,9 @@ fn (mut g FlatGen) fn_ptr_typedef_params(params string, mut emitted map[string]b
 	}
 	mut out := []string{}
 	for param in param_cts {
-		out << g.fn_ptr_typedef_type(param, mut emitted)
+		ct := g.fn_ptr_typedef_type(param, mut emitted)
+		sum_name := g.sum_name_lookup[param] or { '' }
+		out << if sum_name in g.tc.sum_types { '${ct}*' } else { ct }
 	}
 	return out.join(', ')
 }
@@ -18935,7 +18956,7 @@ fn (g &FlatGen) shared_optional_call_type(id flat.NodeId, node flat.Node) ?types
 	}
 	pointer := g.shared_alias_pointer_type_from_text(payload)?
 	return match clean[0] {
-		`?` { types.Type(types.OptionType{ base_type: pointer }) }
-		else { types.Type(types.ResultType{ base_type: pointer }) }
+		`?` { types.Type(types.OptionType{ base_type: &types.Type(pointer) }) }
+		else { types.Type(types.ResultType{ base_type: &types.Type(pointer) }) }
 	}
 }

@@ -11,11 +11,11 @@ fn test_none_error_pair_keeps_option_constraint_until_concrete_type() {
 	error_type := Type(Interface{ name: 'IError' })
 	partial := tc.promoted_multi_tail_type(none_type, error_type) or { panic('missing promotion') }
 	assert partial is None
-	result_type := Type(ResultType{ base_type: Type(string_) })
+	result_type := Type(ResultType{ base_type: &Type(string_) })
 	if _ := tc.promoted_multi_tail_type(partial, result_type) {
 		assert false
 	}
-	option_type := Type(OptionType{ base_type: Type(string_) })
+	option_type := Type(OptionType{ base_type: &Type(string_) })
 	promoted_option := tc.promoted_multi_tail_type(partial, option_type) or { panic('missing option') }
 	assert promoted_option == option_type
 }

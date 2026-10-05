@@ -156,7 +156,7 @@ fn (tc &TypeChecker) vls_calls_generic(id flat.NodeId, node flat.Node) bool {
 // generic body with its type parameters open gave a node, tells what the node
 // is: each type parameter it names is one of `params`, the body's own, and
 // nothing in it is void or a type the check could not tell.
-fn vls_open_type_holds(typ Type, params map[string]bool) bool {
+fn vls_open_type_holds(typ &Type, params map[string]bool) bool {
 	match typ {
 		Unknown {
 			name := generic_placeholder_from_unknown(typ) or { return false }
@@ -186,7 +186,7 @@ fn vls_open_type_holds(typ Type, params map[string]bool) bool {
 		}
 		FnType {
 			for param in typ.params {
-				if !vls_open_type_holds(param, params) {
+				if !vls_open_type_holds(param.typ, params) {
 					return false
 				}
 			}
@@ -266,7 +266,7 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 				bound[fn_params[k]] = if is_bare_generic_param(text.trim_space()) {
 					unknown_type('generic placeholder `${text.trim_space()}`')
 				} else {
-					tc.parse_type(text)
+					*tc.parse_type(text)
 				}
 			}
 		}
@@ -326,7 +326,7 @@ fn (tc &TypeChecker) vls_bind_type_params(text string, actual Type, names []stri
 	}
 	held := unalias_type(actual)
 	if clean.starts_with('...') {
-		elem := if held is Array { held.elem_type } else { actual }
+		elem := if held is Array { *held.elem_type } else { actual }
 		tc.vls_bind_type_params(clean[3..], elem, names, mut bound)
 		return
 	}
@@ -375,7 +375,7 @@ fn (tc &TypeChecker) vls_bind_type_params(text string, actual Type, names []stri
 		arg_type := if is_bare_generic_param(arg_text) {
 			unknown_type('generic placeholder `${arg_text}`')
 		} else {
-			tc.parse_type(arg_text)
+			*tc.parse_type(arg_text)
 		}
 		tc.vls_bind_type_params(arg, arg_type, names, mut bound)
 	}

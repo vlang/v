@@ -1034,7 +1034,7 @@ fn checker_cache_promote_thread(arg voidptr) voidptr {
 		}
 		if idx >= a.generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx]
 			&& idx < tc.expr_type_values.len {
-			tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+			tc.expr_type_values[idx] = &types.Type(types.clone_owned_type(tc.expr_type_values[idx]))
 		}
 	}
 	return unsafe { nil }
@@ -3494,13 +3494,12 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 	if os.getenv('V3_NO_PAR_TRANSFORM_PARAM_PREP') == '' {
 		param_tc := t.tc.fork_for_parallel_transform(t.a)
 		mut param_w := &Transformer{
-			a:                            t.a
-			tc:                           param_tc
-			prefix_param_scan:            t.prefix_param_scan
-			retain_prescan_scopes:        t.retain_prescan_scopes
-			call_param_types_decl_cache:  map[int][]types.Type{}
-			call_param_types_decl_misses: map[string]bool{}
-			call_param_types_decl_index:  map[string]FnParamDeclRef{}
+			a:                           t.a
+			tc:                          param_tc
+			prefix_param_scan:           t.prefix_param_scan
+			retain_prescan_scopes:       t.retain_prescan_scopes
+			call_param_types_decl_cache: map[int][]types.Type{}
+			call_param_types_decl_index: map[string]FnParamDeclRef{}
 		}
 		param_thread := spawn transform_param_prep_thread(voidptr(param_w))
 		t.defer_pre_scan_indexes = true
@@ -3509,7 +3508,6 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		t.add_prescan_scope(param_thread.wait())
 		t.add_prescan_scope(index_thread.wait())
 		t.call_param_types_decl_cache = param_w.call_param_types_decl_cache.move()
-		t.call_param_types_decl_misses = param_w.call_param_types_decl_misses.move()
 		t.call_param_types_decl_shared = true
 		t.call_param_types_decl_index = param_w.call_param_types_decl_index.move()
 		t.call_param_types_index_ready = param_w.call_param_types_index_ready

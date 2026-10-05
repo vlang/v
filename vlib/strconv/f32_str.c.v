@@ -45,21 +45,24 @@ const maxexp32 = 255
 
 // max 46 char
 // -3.40282346638528859811704183484516925440e+38
-@[direct_array_access]
+@[direct_array_access; manualfree]
 pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string {
 	n_digit := i_n_digit + 1
 	pad_digit := i_pad_digit + 1
 	mut out := d.m
 	// mut out_len      := decimal_len_32(out)
 	mut out_len := dec_digits(out)
-	out_len_original := out_len
+	mut exponent := d.e + out_len - 1
 
 	mut fw_zeros := 0
 	if pad_digit > out_len {
 		fw_zeros = pad_digit - out_len
 	}
 
-	mut buf := []u8{len: int(out_len + 5 + 1 + 1)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
+	buffer_len := out_len + 7 + fw_zeros
+	mut buf := []u8{len: buffer_len}
+	unsafe { buf.flags |= .noslices }
+	defer { unsafe { buf.free() } }
 	mut i := 0
 
 	if neg {
@@ -81,6 +84,10 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		// println("orig: ${out_len_original}")
 		out += ten_pow_table_32[out_len - n_digit - 1] * 5 // round to up
 		out /= ten_pow_table_32[out_len - n_digit]
+		if out >= ten_pow_table_32[n_digit] {
+			out /= 10
+			exponent++
+		}
 		out_len = n_digit
 	}
 
@@ -91,14 +98,6 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		out /= 10
 		i++
 		x++
-	}
-
-	// no decimal digits needed, end here
-	if i_n_digit == 0 {
-		unsafe {
-			buf[i] = 0
-			return tos(memdup(&buf[0], i + 1), i)
-		}
 	}
 
 	if out_len > 1 || fw_zeros > 0 {
@@ -121,7 +120,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	buf[i] = `e`
 	i++
 
-	mut exp := d.e + out_len_original - 1
+	mut exp := exponent
 	if exp < 0 {
 		buf[i] = `-`
 		i++
@@ -141,7 +140,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	buf[i] = 0
 
 	return unsafe {
-		tos(memdup(&buf[0], i + 1), i)
+		tos(memdup_noscan(&buf[0], i + 1), i)
 	}
 }
 

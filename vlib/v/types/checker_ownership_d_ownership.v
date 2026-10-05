@@ -6385,7 +6385,7 @@ fn (mut tc TypeChecker) check_array_dsl_fn_borrows_element(node flat.Node, elem_
 	mapper_id := tc.call_arg_value(tc.a.child(&node, 1))
 	mapper_type := tc.resolve_type(mapper_id)
 	mapper := fn_type_from_type(mapper_type) or { return }
-	if mapper.params.len == 0 || fn_param_unalias_type(fn_param_type(mapper, 0)) is Pointer {
+	if mapper.params.len == 0 || unalias_type(fn_param_type(mapper, 0)) is Pointer {
 		return
 	}
 	tc.record_error(.call_arg_mismatch, '${label} cannot consume borrowed `${elem_type.name()}` elements; use a pointer parameter or clone the element', pos)

@@ -4,7 +4,7 @@ import os
 import v.flat
 import v.parser
 import v.pref
-import v.types
+import v.types { unalias_type }
 
 fn test_fixed_array_alias_chains_and_pointer_sizes_use_array_typedefs() {
 	mut ast := flat.FlatAst.new()
@@ -42,7 +42,7 @@ fn test_type_references_thread_through_containers() {
 		name: 'thread'
 	})
 	thread_array := types.Type(types.Array{
-		elem_type: thread_type
+		elem_type: &types.Type(thread_type)
 	})
 	assert type_references_thread(thread_type)
 	assert type_references_thread(thread_array)
@@ -50,10 +50,10 @@ fn test_type_references_thread_through_containers() {
 		name: 'thread dep.Result'
 	}))
 	assert type_references_thread(types.Type(types.Pointer{
-		base_type: thread_array
+		base_type: &types.Type(thread_array)
 	}))
 	assert !type_references_thread(types.Type(types.Array{
-		elem_type: types.Type(types.int_)
+		elem_type: &types.Type(types.int_)
 	}))
 }
 
@@ -345,7 +345,7 @@ fn test_specialized_generic_struct_default_value_preserves_field_defaults() {
 		name: 'GenericBox[int]'
 	}))
 	assert default_value_text.contains('.x = 5'), default_value_text
-	assert default_value_text.contains('.items = array_new'), default_value_text
+	assert default_value_text.contains('.items = __new_array_noscan'), default_value_text
 	string_default_value_text := g.default_value_to_string(types.Type(types.Struct{
 		name: 'GenericBox[string]'
 	}))
@@ -406,7 +406,7 @@ fn test_optional_scan_lanes_preserve_declaration_and_unresolved_call_types() {
 	ast.add_node(flat.Node{ kind: .call, typ: '?string' })
 	ast.add_node(flat.Node{ kind: .call, typ: '?([]' })
 	mut tc := types.TypeChecker.new(&ast)
-	tc.fn_ret_types['resolved'] = types.Type(types.OptionType{ base_type: types.Type(types.int_) })
+	tc.fn_ret_types['resolved'] = types.Type(types.OptionType{ base_type: &types.Type(types.int_) })
 	mut serial := FlatGen.new()
 	serial.a = &ast
 	serial.tc = &tc
@@ -429,19 +429,20 @@ fn test_optional_scan_lanes_preserve_declaration_and_unresolved_call_types() {
 }
 
 fn test_void_pointer_predicate_preserves_alias_and_named_type_rules() {
-	void_alias := types.Type(types.Alias{ name: 'Nothing', base_type: types.Type(types.void_) })
-	for typ in [types.Type(types.voidptr_), types.Type(types.Pointer{ base_type: void_alias }),
-		types.Type(types.Alias{ name: 'Opaque', base_type: types.Type(types.voidptr_) }),
-		types.Type(types.Alias{ name: 'voidptr', base_type: types.Type(types.int_) }),
+	void_alias := types.Type(types.Alias{ name: 'Nothing', base_type: &types.Type(types.void_) })
+	for typ in [types.Type(types.voidptr_),
+		types.Type(types.Pointer{ base_type: &types.Type(void_alias) }),
+		types.Type(types.Alias{ name: 'Opaque', base_type: &types.Type(types.voidptr_) }),
+		types.Type(types.Alias{ name: 'voidptr', base_type: &types.Type(types.int_) }),
 		types.Type(types.Struct{ name: 'voidptr' }), types.Type(types.Enum{ name: 'voidptr' }),
 		types.Type(types.Interface{ name: 'voidptr' }), types.Type(types.SumType{ name: 'voidptr' })] {
 		assert type_is_void_pointer(typ)
 	}
 	for typ in [types.Type(types.int_), types.Type(types.void_), void_alias,
-		types.Type(types.Pointer{ base_type: types.Type(types.voidptr_) }),
-		types.Type(types.Array{ elem_type: types.Type(types.voidptr_) }),
-		types.Type(types.Map{ key_type: types.Type(types.String{}), value_type: types.Type(types.voidptr_) }),
-		types.Type(types.FnType{ return_type: types.Type(types.voidptr_) })] {
+		types.Type(types.Pointer{ base_type: &types.Type(types.voidptr_) }),
+		types.Type(types.Array{ elem_type: &types.Type(types.voidptr_) }),
+		types.Type(types.Map{ key_type: &types.Type(types.String{}), value_type: &types.Type(types.voidptr_) }),
+		types.Type(types.FnType{ return_type: &types.Type(types.voidptr_) })] {
 		assert !type_is_void_pointer(typ)
 	}
 }
@@ -545,7 +546,7 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 		name: 'StructKeyDecodeResult_TestEchoArgs'
 	})
 	pointer_type := types.Type(types.Pointer{
-		base_type: types.Type(types.Struct{
+		base_type: &types.Type(types.Struct{
 			name: 'Task_mcp__Response'
 		})
 	})
@@ -556,10 +557,10 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	}))
 	assert alias_payload == 'AnyStruct_json2__Any'
 	assert g.optional_payload_c_type(types.Type(types.Array{
-		elem_type: types.Type(types.int_)
+		elem_type: &types.Type(types.int_)
 	})) == 'Array'
 	result_type := types.Type(types.ResultType{
-		base_type: value_type
+		base_type: &types.Type(value_type)
 	})
 	assert g.optional_type_name(result_type) == '__v_result_json2__StructKeyDecodeResult_TestEchoArgs'
 	assert g.needed_optional_types['__v_result_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
@@ -572,7 +573,7 @@ fn test_concrete_optional_enum_uses_common_int_abi() {
 	g.a = ast
 	g.tc = &tc
 	option_enum := types.Type(types.OptionType{
-		base_type: types.Type(types.Enum{ name: 'State' })
+		base_type: &types.Type(types.Enum{ name: 'State' })
 	})
 	assert g.optional_type_name(option_enum) == '__v_option'
 	assert g.optional_type_name(option_enum) == '__v_option'
@@ -591,7 +592,7 @@ fn test_value_type_qualifies_concrete_generic_struct() {
 		name: 'QueryBuilder_User'
 	})
 	pointer_type := types.Type(types.Pointer{
-		base_type: value_type
+		base_type: &types.Type(value_type)
 	})
 	assert g.value_c_type(value_type) == 'orm__QueryBuilder_User'
 	assert g.value_c_type(pointer_type) == 'orm__QueryBuilder_User*'
@@ -752,8 +753,8 @@ fn test_import_alias_type_normalization_preserves_primitive_containers_and_named
 		assert g.canonical_import_alias_type_for_node(typ, &node).name() == expected
 	}
 	wrapped := types.Type(types.Array{
-		elem_type: types.Type(types.Pointer{
-			base_type: types.Type(types.Struct{ name: 'model.Item' })
+		elem_type: &types.Type(types.Pointer{
+			base_type: &types.Type(types.Struct{ name: 'model.Item' })
 		})
 	})
 	assert g.canonical_import_alias_type_for_node(wrapped, &node).name() == '[]&app.model.Item'
@@ -772,7 +773,7 @@ fn test_optional_payload_qualifies_interface() {
 	})
 	assert g.optional_payload_c_type(value_type) == 'firebird__Value'
 	result_type := types.Type(types.ResultType{
-		base_type: value_type
+		base_type: &types.Type(value_type)
 	})
 	assert g.optional_type_name(result_type) == '__v_result_firebird__Value'
 }
@@ -791,7 +792,7 @@ fn test_optional_payload_keeps_concrete_c_type_with_interface_collision() {
 	assert g.value_c_type(value_type) == 'Value'
 	assert g.optional_payload_c_type(value_type) == 'Value'
 	result_type := types.Type(types.ResultType{
-		base_type: value_type
+		base_type: &types.Type(value_type)
 	})
 	assert g.optional_type_name(result_type) == '__v_result_Value'
 }
@@ -800,10 +801,10 @@ fn test_c_alias_value_type_preserves_the_system_typedef() {
 	mut g := FlatGen.new()
 	c_alias := types.Type(types.Alias{
 		name:      'C.DWORD'
-		base_type: types.Type(types.u32_)
+		base_type: &types.Type(types.u32_)
 	})
 	assert g.value_c_type(c_alias) == 'DWORD'
-	assert g.value_c_type(types.Type(types.Pointer{ base_type: c_alias })) == 'DWORD*'
+	assert g.value_c_type(types.Type(types.Pointer{ base_type: &types.Type(c_alias) })) == 'DWORD*'
 }
 
 fn test_optional_typedef_keeps_qualified_interface_with_struct_collision() {
@@ -1033,7 +1034,7 @@ fn test_optional_value_info_preserves_pointer_payload_abi() {
 	g.tc = &tc
 
 	option_type := types.Type(types.OptionType{
-		base_type: types.Type(types.Struct{
+		base_type: &types.Type(types.Struct{
 			name: 'Data'
 		})
 	})
@@ -1047,7 +1048,7 @@ fn test_array_equality_depth_follows_the_resolved_element_type() {
 	mut elem_type := types.Type(types.int_)
 	for _ in 0 .. 8 {
 		elem_type = types.Type(types.Array{
-			elem_type: elem_type
+			elem_type: &types.Type(elem_type)
 		})
 	}
 	assert array_equality_depth_from_elem_type(elem_type) == 9
@@ -1192,4 +1193,33 @@ fn test_promoted_root_declared_default_recovers_generic_source() {
 	assert out == '.Inner.a = sizeof(i64)'
 	assert g.struct_default_generic_params.len == 0
 	assert g.struct_default_generic_args.len == 0
+}
+
+fn test_unalias_type_traverses_without_a_depth_limit() {
+	mut typ := types.Type(types.int_)
+	for i in 0 .. 2048 {
+		alias := types.Alias{
+			name:      'Alias${i}'
+			base_type: &types.Type(typ)
+		}
+		typ = types.Type(alias)
+	}
+	assert *unalias_type(typ) == types.Type(types.int_)
+}
+
+fn test_parameter_descriptor_survives_parameter_table_reuse() {
+	a := flat.FlatAst.new()
+	tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.tc = &tc
+	original := tc.parse_type('[]int')
+	g.cur_param_types['first'] = original
+	borrowed := g.current_param_type('first') or { panic('missing parameter') }
+	g.cur_param_types.clear()
+	for i in 0 .. 1024 {
+		g.cur_param_types['next${i}'] = tc.parse_type('string')
+	}
+	assert voidptr(borrowed) == voidptr(original)
+	assert borrowed.name() == '[]int'
+	assert g.current_param_type('first') == none
 }

@@ -1,28 +1,19 @@
-module main
+struct Button {
+	value int
+}
 
-@[typedef]
-struct C.uiControl {}
+struct Label {
+	value string
+}
 
-@[typedef]
-struct C.uiLabel {}
+type Control = Button | Label
 
-@[typedef]
-struct C.uiBox {}
-
-fn C.uiNewBox() &C.uiBox
-
-fn C.uiConsume(x &C.uiControl)
-
-type Control = C.uiLabel | C.uiBox
-
-@[unsafe]
-fn use_control(c &Control) {
-	C.uiConsume(&C.uiControl(c))
+fn read_value(control &Control) int {
+	button := unsafe { &Button(control) }
+	return button.value
 }
 
 fn main() {
-	box := C.uiNewBox()
-	unsafe {
-		use_control(box)
-	}
+	control := Control(Button{ value: 7 })
+	assert read_value(&control) == 7
 }

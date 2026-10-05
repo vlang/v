@@ -224,7 +224,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 		return_type := tc.fn_ret_types[name] or { panic('missing signature ${name}') }
 		assert return_type is types.FnType
 		assert (return_type as types.FnType).return_type.name() == arg
-		assert (return_type as types.FnType).params[0].name() == arg
+		assert (return_type as types.FnType).params[0].typ.name() == arg
 	}
 	mut lifted := 0
 	for idx in 0 .. a.nodes.len {

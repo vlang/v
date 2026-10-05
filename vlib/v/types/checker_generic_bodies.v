@@ -200,7 +200,7 @@ fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
 	}
 	if names.len == 0 || !type_text_names_any(typ, name_set) {
 		_, result := tc.intern_type(tc.parse_type_uncached(typ))
-		return result
+		return *result
 	}
 	// A type parameter that the texts put in still name, `T` of
 	// `[T Comparable[T]]` (see closed_type_param_texts), is open inside them: `T`
@@ -220,7 +220,7 @@ fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
 	for name in expanding {
 		fork.type_params_expanding.delete(name)
 	}
-	return result
+	return *result
 }
 
 // instance_type_text is the type that `text` stands for in a `$if` of a generic

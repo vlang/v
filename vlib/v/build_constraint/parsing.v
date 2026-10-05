@@ -72,12 +72,12 @@ fn (mut p BParser) unary_expr() !BUnary {
 			if nt.kind in [.tfact, .tdefine] {
 				ident := p.unary_expr()!
 				return BNot{
-					expr: ident
+					expr: &BUnary(ident)
 				}
 			}
 			expr := p.expr()!
 			return BNot{
-				expr: expr
+				expr: &BUnary(expr)
 			}
 		}
 		.tparen_open {

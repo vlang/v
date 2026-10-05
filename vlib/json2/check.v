@@ -28,7 +28,7 @@ fn (mut checker Decoder) check_json_format() ! {
 	start_idx_position := checker.checker_idx
 
 	// The values nested in this one are added after it, while it is checked.
-	value_idx := checker.values_len
+	value_idx := checker.values_info.len
 
 	match checker.json[checker.checker_idx] {
 		`"` {

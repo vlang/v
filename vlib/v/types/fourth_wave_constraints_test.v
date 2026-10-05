@@ -66,7 +66,7 @@ fn main() { println(accept([]int{})) }
 	}
 }
 
-fn test_fourth_constraints_keep_finite_nested_aliases_and_regular_cycles() {
+fn test_fourth_constraints_keep_finite_aliases_and_reject_value_cycles() {
 	finite := fourth_constraint_program('finite', 'module main
 type Part[T] = T | bool
 type First = Part[int]
@@ -81,7 +81,8 @@ type Recursive[T] = T | Part[Recursive[T]]
 fn accept[T Recursive[int]](value T) T { return value }
 fn main() { println(accept(1)); println(accept(true)) }
 ', '')
-	assert regular.exit_code == 0, regular.output
+	assert regular.exit_code != 0, regular.output
+	assert regular.output.contains('cannot be defined recursively'), regular.output
 }
 
 fn test_fourth_constraints_accept_deep_struct_embedding_families() {
@@ -110,7 +111,7 @@ fn test_fourth_constraints_struct_embedding_cycles_terminate() {
 	assert !tc.struct_embeds('CycleA', 'Missing')
 }
 
-fn test_fourth_constraints_preserve_finite_changing_recursive_instances() {
+fn test_fourth_constraints_reject_changing_recursive_value_layouts() {
 	for name, definition in {
 		'constant':                   'type Recursive[T] = T | Part[Recursive[int]]\nfn accept[T Recursive[string]](value T) T { return value }\nfn main() { println(accept("ok")); println(accept(1)); println(accept(true)) }'
 		'constant_array':             'type Recursive[T] = T | Part[Recursive[[]int]]\nfn accept[T Recursive[int]](value T) T { return value }\nfn main() { println(accept(1)); println(accept([]int{})); println(accept(true)) }'
@@ -119,7 +120,8 @@ fn test_fourth_constraints_preserve_finite_changing_recursive_instances() {
 		'constant_alias_replacement': 'type Identity[T] = T\ntype Recursive[T] = T | Part[Recursive[Identity[int]]]\nfn accept[T Recursive[string]](value T) T { return value }\nfn main() { println(accept("ok")); println(accept(Identity[int](1))); println(accept(true)) }'
 	} {
 		result := fourth_constraint_program(name, 'module main\ntype Part[T] = T | bool\n${definition}\n', '')
-		assert result.exit_code == 0, result.output
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot be defined recursively'), result.output
 	}
 }
 
@@ -180,13 +182,14 @@ fn main() { println(accept(Integer(1))); println(accept(1)); println(accept(true
 	assert separate.exit_code == 0, separate.output
 }
 
-fn test_fourth_constraints_keep_symbolic_cycles_in_imported_modules() {
+fn test_fourth_constraints_reject_value_cycles_in_imported_modules() {
 	for name, definition in {
 		'permutation': 'pub type Recursive[T, U] = T | Part[Recursive[U, T]]\npub fn accept[T Recursive[int, string]](value T) T { return value }'
 		'constant':    'pub type Recursive[T] = T | Part[Recursive[int]]\npub fn accept[T Recursive[string]](value T) T { return value }'
 	} {
 		result := fourth_constraint_program_with_module('imported_${name}', 'module main\nimport limits\nfn main() { println(limits.accept(1)); println(limits.accept("ok")) }\n', '', 'module limits\npub type Part[T] = T | bool\n${definition}\n')
-		assert result.exit_code == 0, result.output
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cannot be defined recursively'), result.output
 	}
 	growing := fourth_constraint_program_with_module('imported_growth', 'module main\nimport limits\nfn main() { println(limits.accept(1)) }\n', '', 'module limits
 pub type Part[T] = T | bool

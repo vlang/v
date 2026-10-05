@@ -22,18 +22,20 @@ fn init_int(mut i Int) {
 }
 
 fn test_main() {
-	mut i := Int{
+	mut i := Sum(Int{
 		i: 333
-	}
-	mut s := String{
+	})
+	mut s := Sum(String{
 		s: 'string'
-	}
-	assert i.i == 333
-	assert s.s == 'string'
+	})
+	assert (i as Int).i == 333
+	assert (s as String).s == 'string'
 	init(mut i)
 	init(mut s)
-	assert i.i == 0
-	assert s.s == ''
-	init_int(mut i)
-	assert i.i == 0
+	assert (i as Int).i == 0
+	assert (s as String).s == ''
+	if mut i is Int {
+		init_int(mut i)
+	}
+	assert (i as Int).i == 0
 }

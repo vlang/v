@@ -214,7 +214,7 @@ struct Other[T] {
 	value T
 }
 
-type Tree[T] = Empty | Node[T]
+type Tree[T] = Empty | &Node[T]
 '
 
 fn test_generic_sum_type_checker_accepts_shared_field_on_concrete_sum() {
@@ -247,27 +247,27 @@ fn test_generic_sum_type_checker_accepts_methods_returns_and_smartcasts() {
 fn (tree Tree[T]) size[T]() int {
 	return match tree {
 		Empty { 0 }
-		Node[T] { 1 +
+		&Node[T] { 1 +
 		tree.left.size() }
 	}
 }
 
 fn make_int_tree() Tree[int] {
-	return Node[int]{
+	return &Node[int]{
 		value: 1
 		left: Empty{}
 	}
 }
 
 fn make_tree[T](value T) Tree[T] {
-	return Node[T]{
+	return &Node[T]{
 		value: value
 		left: Empty{}
 	}
 }
 
 fn field_after_is[T](tree Tree[T]) T {
-	if tree is Node[T] {
+	if tree is &Node[T] {
 		return tree.value
 	}
 	return T(0)
@@ -287,7 +287,7 @@ fn test_generic_sum_type_checker_rejects_wrong_generic_variant() {
 	assert_checker_error_contains('generic_sum_wrong_variant_arg', generic_sum_defs +
 		'
 fn bad() Tree[int] {
-	return Node[string]{
+	return &Node[string]{
 		value: "bad"
 		left: Empty{}
 	}
@@ -295,7 +295,7 @@ fn bad() Tree[int] {
 
 fn main() {}
 ',
-		'cannot use `Node[string]` as type `Tree[int]` in return argument')
+		'cannot use `&Node[string]` as type `Tree[int]` in return argument')
 }
 
 fn test_generic_sum_type_checker_rejects_non_variant_pattern() {

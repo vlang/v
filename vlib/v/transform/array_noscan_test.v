@@ -14,7 +14,7 @@ fn test_array_new_selects_noscan_for_scalar_elements() {
 	len_expr := t.make_int_literal(3)
 	cap_expr := t.make_int_literal(7)
 	for elem_type in ['f64', 'f32', 'int', 'u8', 'bool', 'char', 'rune', 'isize', 'usize', 'ScalarAlias',
-		'ScalarAliasChain'] {
+		'ScalarAliasChain', '?f64'] {
 		id := t.make_array_new_call(elem_type, len_expr, cap_expr)
 		call := a.nodes[int(id)]
 		assert call.kind == .call
@@ -27,21 +27,25 @@ fn test_array_new_selects_noscan_for_scalar_elements() {
 		assert a.child_node(&call, 3).value == elem_type
 	}
 	assert t.used_fns['__new_array_noscan']
-	assert array_element_can_use_noscan(types.Enum{ name: 'ScalarEnum' })
+	enum_type := types.Type(types.Enum{ name: 'ScalarEnum' })
+	assert !tc.allocation_layout(enum_type).has(.scanned)
 }
 
 fn test_array_new_keeps_pointer_bearing_and_unknown_elements_scanned() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.type_aliases['PointerAlias'] = '&f64'
-	tc.structs['PointerValue'] = []types.StructField{}
+	tc.structs['PointerValue'] = [types.StructField{
+		name: 'pointer'
+		typ:  *tc.parse_type('&f64')
+	}]
 	mut t := new_transformer(mut a, &tc, {
 		'main': true
 	})
 	len_expr := t.make_int_literal(2)
 	cap_expr := t.make_int_literal(5)
 	for elem_type in ['[]f64', 'string', '&f64', 'voidptr', 'PointerAlias', 'PointerValue',
-		'map[string]int', '?f64', 'fn ()', 'shared int', 'UnresolvedElement'] {
+		'map[string]int', 'fn ()', 'shared int', 'UnresolvedElement'] {
 		id := t.make_array_new_call(elem_type, len_expr, cap_expr)
 		call := a.nodes[int(id)]
 		assert a.child_node(&call, 0).value == 'array_new'

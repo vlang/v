@@ -190,9 +190,11 @@ fn test_checker_type_promotion_survives_batch_arena_release() {
 		a := flat.FlatAst.new()
 		tc := TypeChecker.new(&a)
 		scope := unsafe { prealloc_scope_begin() }
+		parameter := &Type(Struct{ name: 'ScopedItem'.clone() })
+		result := &Type(Array{ elem_type: &Type(string_) })
 		borrowed := Type(FnType{
-			params:      [Type(Struct{ name: 'ScopedItem'.clone() })]
-			return_type: Type(Array{ elem_type: Type(string_) })
+			params:      [FnParam{ typ: parameter }]
+			return_type: result
 		})
 		unsafe { prealloc_scope_leave(scope) }
 		first := tc.promote_check_type(borrowed)

@@ -44,19 +44,25 @@ fn test_sizeof_ordinary_constants_keep_expression_operands() {
 	}
 }
 
-fn test_sizeof_translated_local_type_name_keeps_expression_operand() {
+fn test_sizeof_translated_names_keep_expression_operands() {
 	root := os.join_path(os.vtmp_dir(), 'sizeof_translated_operand_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
-	os.write_file(path, '@[translated]\nmodule main\nfn check(int string) { _ = sizeof(int) }\n')!
-	mut p := Parser.new(pref.new_preferences())
-	p.parse_file(path)
-	assert p.diagnostics.len == 0, p.diagnostics.str()
-	sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
-	assert sizes.len == 1
-	assert sizes[0].children_count == 1
-	operand := p.a.node(p.a.child(&sizes[0], 0))
-	assert operand.kind == .ident
-	assert operand.value == 'int'
+	sources := {
+		'int':  'fn check(int string) { _ = sizeof(int) }'
+		'Item': 'const Item = u8(1)\nfn main() { _ = sizeof(Item) }'
+	}
+	for name, source in sources {
+		os.write_file(path, '@[translated]\nmodule main\n${source}\n')!
+		mut p := Parser.new(pref.new_preferences())
+		p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		sizes := p.a.nodes.filter(it.kind == .sizeof_expr)
+		assert sizes.len == 1
+		assert sizes[0].children_count == 1
+		operand := p.a.node(p.a.child(&sizes[0], 0))
+		assert operand.kind == .ident
+		assert operand.value == name
+	}
 }

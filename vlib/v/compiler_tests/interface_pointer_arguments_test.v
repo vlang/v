@@ -35,8 +35,13 @@ fn read_x(w &Widget) int {
 	return w.x
 }
 
-fn make_label(mut calls int) &Label {
-	calls++
+struct CallCount {
+mut:
+	value int
+}
+
+fn make_label(mut calls CallCount) &Label {
+	calls.value++
 	return &Label{ x: 42 }
 }
 
@@ -48,9 +53,9 @@ fn main() {
 	assert read_x(probe) == 42
 	value := Widget(probe)
 	assert read_x(value) == 42
-	mut calls := 0
+	mut calls := CallCount{}
 	assert read_x(Widget(make_label(mut calls))) == 42
-	assert calls == 1
+	assert calls.value == 1
 	println('ok')
 }
 ")

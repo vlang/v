@@ -527,9 +527,9 @@ fn fn_value_type_name_from_type(typ types.Type) ?string {
 
 fn fn_call_value_type_name_from_type(typ types.Type) ?string {
 	if typ is types.FnType {
-		for i, param in typ.params {
-			if i < typ.params_mut.len && typ.params_mut[i] && param is types.Pointer {
-				return fn_literal_value_type_text(typ.params, typ.return_type.name())
+		for parameter in typ.params {
+			if parameter.is_mut && parameter.typ is types.Pointer {
+				return fn_literal_value_type_text(typ.params.map(*it.typ), typ.return_type.name())
 			}
 		}
 	}
@@ -1870,11 +1870,7 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) string {
 		return t.normalize_type_alias(for_in_fixed_array_elem_type(base_type))
 	}
 	if base_type.starts_with('map[') {
-		bracket_end := base_type.index(']') or { return '' }
-		if bracket_end + 1 < base_type.len {
-			return t.normalize_type_alias(base_type[bracket_end + 1..])
-		}
-		return ''
+		return t.normalize_type_alias(t.map_value_type(base_type))
 	}
 	if base_type == 'string' {
 		return 'u8'

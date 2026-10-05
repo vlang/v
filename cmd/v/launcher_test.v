@@ -748,3 +748,26 @@ fn test_install_external_tool_modules_leaves_a_build_with_a_path_to_the_compiler
 	install_external_tool_modules('vdoc', tool_source, ['-path', path_root])
 	assert !os.exists(attempts)
 }
+
+fn test_ownership_bootstrap_recognizes_compiler_inputs_only() {
+	root := os.join_path(os.temp_dir(), 'v3_bootstrap_inputs_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	for entry in ['cmd/v', 'vlib/v'] {
+		directory := os.join_path(root, entry)
+		os.mkdir_all(directory)!
+		os.write_file(os.join_path(directory, 'v.v'), 'module main')!
+	}
+	for entry in ['cmd/v', 'cmd/v/v.v', 'vlib/v', 'vlib/v/v.v'] {
+		input := os.join_path(root, entry)
+		args := ['-gc', 'none', '-d', 'ownership', '-o', 'compiler', input]
+		assert compiler_bootstrap_requested(args, root)
+	}
+	entry := os.join_path(root, 'vlib/v/v.v')
+	assert compiler_bootstrap_requested(['run', entry], root)
+	assert compiler_bootstrap_requested(['crun', entry], root)
+	input := os.join_path(root, 'v.v')
+	os.write_file(input, 'module main')!
+	assert !compiler_bootstrap_requested(['-d', 'ownership', input], root)
+	assert !compiler_bootstrap_requested(['-o', entry, input], root)
+	assert !compiler_bootstrap_requested(['-path', entry, input], root)
+}

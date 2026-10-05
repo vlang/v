@@ -230,7 +230,7 @@ pub struct InfixType {
 pub:
 	name     string
 	operator MathOperationKind
-	right    Primitive
+	right    &Primitive
 }
 
 pub struct Table {

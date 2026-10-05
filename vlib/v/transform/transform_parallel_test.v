@@ -34,8 +34,8 @@ fn test_generated_calls_publish_exact_resolution_except_cgen_intrinsics() {
 
 fn test_forwarded_optional_conversion_propagates_borrowed_clone() {
 	payload := types.Type(types.string_)
-	option := types.Type(types.OptionType{ base_type: payload })
-	result := types.Type(types.ResultType{ base_type: payload })
+	option := types.Type(types.OptionType{ base_type: &types.Type(payload) })
+	result := types.Type(types.ResultType{ base_type: &types.Type(payload) })
 	option_clones := ['string__clone']
 	result_clones := ['__v3_clone_owned_ierror', 'string__clone']
 	assert forwarded_wrapper_clone_calls(option, true) == option_clones

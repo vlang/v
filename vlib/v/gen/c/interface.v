@@ -1,43 +1,9 @@
 module c
 
 import strings
-import v.gen.c.naming
-import v.types
+import v.gen.c.naming { sum_field_name }
+import v.types { unalias_type }
 import v.flat
-
-// emit_sum_type emits emit sum type output for c.
-fn (mut g FlatGen) emit_sum_type(name string) {
-	variants := g.tc.sum_types[name]
-	g.writeln('struct ${g.cname(name)} {')
-	g.writeln('\tint typ;')
-	g.writeln('\tu32 _pointer_variant_is_owned;')
-	g.writeln('\tunion {')
-	for v in variants {
-		variant_type := select_receive_unalias_type(g.tc.parse_canonical_type(v))
-		ct := if variant_type is types.Pointer {
-			g.value_c_type(variant_type.base_type)
-		} else {
-			g.value_c_type(variant_type)
-		}
-		field := g.sum_field_name(v)
-		g.writeln('\t\t${ct}* ${field};')
-	}
-	g.writeln('\t};')
-	g.writeln('};')
-	g.writeln('')
-}
-
-// sum_type_contains_struct reports whether sum type contains struct applies in c.
-fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bool {
-	if sum_name in g.tc.sum_types {
-		for v in g.tc.sum_types[sum_name] {
-			if v == struct_name {
-				return true
-			}
-		}
-	}
-	return false
-}
 
 // sum_type_index supports sum type index handling for FlatGen.
 fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
@@ -95,42 +61,33 @@ fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
 }
 
 fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
-	if sum_name in g.tc.sum_types {
-		for i, v in g.tc.sum_types[sum_name] {
-			if v == variant {
-				return i + 1
-			}
-		}
-		resolved_variant := g.tc.qualify_name(variant)
-		if resolved_variant != variant {
-			for i, v in g.tc.sum_types[sum_name] {
-				if v == resolved_variant {
-					return i + 1
-				}
-			}
-		}
-		for i, v in g.tc.sum_types[sum_name] {
-			if v.all_after_last('.') == variant {
-				return i + 1
-			}
-		}
-		// Container variants written through an import alias (`map[string]ast.Value`
-		// vs the registered `map[string]toml.ast.Value`) match on the
-		// module-stripped spelling only when that spelling is unambiguous.
-		if variant.contains('.') || variant.contains('[') {
-			mut short_match := 0
-			for i, v in g.tc.sum_types[sum_name] {
-				if short_module_type_texts_equal(v, variant) {
-					if short_match != 0 {
-						return 0
-					}
-					short_match = i + 1
-				}
-			}
-			return short_match
-		}
+	variants := g.tc.sum_types[sum_name] or { return 0 }
+	exact := variants.index(variant)
+	if exact >= 0 {
+		return exact + 1
 	}
-	return 0
+	qualified := g.tc.qualify_name(variant)
+	resolved := variants.index(qualified)
+	if resolved >= 0 {
+		return resolved + 1
+	}
+	allow_short_modules := variant.contains('.') || variant.contains('[')
+	mut found := 0
+	for i, candidate in variants {
+		matches := if allow_short_modules {
+			short_module_type_texts_equal(candidate, variant)
+		} else {
+			c_short_name_view(candidate) == variant
+		}
+		if !matches {
+			continue
+		}
+		if found != 0 {
+			return 0
+		}
+		found = i + 1
+	}
+	return found
 }
 
 fn (mut g FlatGen) interface_tmp(prefix string) string {
@@ -201,7 +158,7 @@ fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_param
 	}
 }
 
-fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type types.Type, target_type types.Type) ?string {
+fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type &types.Type, target_type &types.Type) ?string {
 	if source_type is types.Pointer || target_type is types.Pointer {
 		return none
 	}
@@ -336,94 +293,15 @@ fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name s
 	return matches == 1
 }
 
-// variant_references_sum supports variant references sum handling for FlatGen.
-fn (g &FlatGen) variant_references_sum(variant string, sum_name string) bool {
-	_ = variant
-	_ = sum_name
-	return true
-}
-
-// variant_refs_sum_inner supports variant refs sum inner handling for FlatGen.
-fn (g &FlatGen) variant_refs_sum_inner(variant string, sum_name string, mut visited map[string]bool) bool {
-	normalized_variant := g.normalize_variant_name(variant)
-	if normalized_variant == sum_name
-		|| normalized_variant.all_after_last('.') == sum_name.all_after_last('.') {
-		return true
-	}
-	if normalized_variant in visited {
-		return false
-	}
-	visited[normalized_variant] = true
-	mut lookup := normalized_variant
-	if lookup !in g.tc.structs && !lookup.contains('.') && sum_name.contains('.') {
-		qualified := '${sum_name.all_before_last('.')}.${lookup}'
-		if qualified in g.tc.structs {
-			lookup = qualified
-		}
-	}
-	if lookup !in g.tc.structs && !lookup.contains('.') {
-		for struct_name, _ in g.tc.structs {
-			if struct_name.all_after_last('.') == lookup {
-				lookup = struct_name
-				break
-			}
-		}
-	}
-	if lookup in g.tc.structs {
-		for f in g.tc.structs[lookup] {
-			if g.type_references_sum(f.typ, sum_name, mut visited) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// normalize_variant_name transforms normalize variant name data for c.
-fn (g &FlatGen) normalize_variant_name(name string) string {
-	_ = g
-	mut res := name
-	if res.starts_with('&') {
-		res = res[1..]
-	}
-	if res.starts_with('ptr') && res.len > 3 {
-		res = res[3..]
-	}
-	if res.contains('__') && !res.contains('.') {
-		res = res.replace('__', '.')
-	}
-	return res
-}
-
-// type_references_sum returns type references sum data for FlatGen.
-fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited map[string]bool) bool {
-	resolved_sum := g.resolve_sum_name(sum_name)
-	clean := types.unwrap_pointer(typ)
-	if clean is types.Struct && g.resolve_sum_name(clean.name) == resolved_sum {
-		return true
-	}
-	if clean is types.SumType && g.resolve_sum_name(clean.name) == resolved_sum {
-		return true
-	}
-	if clean is types.SumType {
-		return true
-	}
-	if clean is types.Struct {
-		if g.variant_refs_sum_inner(clean.name, resolved_sum, mut visited) {
-			return true
-		}
-	}
-	if clean is types.Array {
-		return g.type_references_sum(clean.elem_type, resolved_sum, mut visited)
-	}
-	return false
-}
-
 // resolve_sum_name resolves a canonical or unqualified sum name without
 // interpreting its first component as a source-file import alias.
 fn (g &FlatGen) resolve_sum_name(sum_name string) string {
+	if sum_name.len == 0 || sum_name[0] in [`&`, `?`, `!`, `[`]
+		|| sum_name.starts_with('map[') {
+		return sum_name
+	}
 	if resolved := g.sum_name_lookup[sum_name] {
-		return resolved
+		return if resolved.len > 0 { resolved } else { sum_name }
 	}
 	if sum_name.contains('.') {
 		// A qualified name that already names a concrete type is that type. The
@@ -434,7 +312,7 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 			return sum_name
 		}
 		if resolved := g.sum_name_lookup[c_short_name_view(sum_name)] {
-			return resolved
+			return if resolved.len > 0 { resolved } else { sum_name }
 		}
 	}
 	return sum_name
@@ -462,10 +340,9 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 	g.sum_name_lookup = map[string]string{}
 	g.sum_variant_lookup = map[string]map[string]string{}
 	for name, variants in g.tc.sum_types {
-		g.sum_name_lookup[name] = name
 		short := c_short_name_view(name)
-		if short.len > 0 && short !in g.sum_name_lookup {
-			g.sum_name_lookup[short] = name
+		if short.len > 0 && short !in g.tc.sum_types {
+			g.sum_name_lookup[short] = if short in g.sum_name_lookup { '' } else { name }
 		}
 		mut lookup := map[string]string{}
 		for variant in variants {
@@ -473,153 +350,31 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 		}
 		for variant in variants {
 			variant_short := c_short_name_view(variant)
-			if variant_short.len > 0 && variant_short !in lookup {
-				lookup[variant_short] = variant
+			if variant_short.len > 0 && variant_short !in variants {
+				lookup[variant_short] = if variant_short in lookup { '' } else { variant }
 			}
 		}
 		g.sum_variant_lookup[name] = lookup.move()
+	}
+	for name, _ in g.tc.sum_types {
+		g.sum_name_lookup[g.cname(name)] = name
+		g.sum_name_lookup[name] = name
 	}
 }
 
 // resolve_variant resolves resolve variant information for c.
 fn (g &FlatGen) resolve_variant(sum_name string, variant string) string {
 	resolved_sum := g.resolve_sum_name(sum_name)
-	normalized_variant := g.normalize_variant_name(variant)
 	if lookup := g.sum_variant_lookup[resolved_sum] {
-		if resolved := lookup[normalized_variant] {
-			return resolved
+		if resolved := lookup[variant] {
+			return if resolved.len > 0 { resolved } else { variant }
+		}
+		if variant.contains('__') && !variant.contains('.') {
+			normalized := variant.replace('__', '.')
+			return lookup[normalized] or { normalized }
 		}
 	}
-	return normalized_variant
-}
-
-// sum_field_name supports sum field name handling for FlatGen.
-fn (g &FlatGen) sum_field_name(variant string) string {
-	if variant.starts_with('&') {
-		return g.sum_field_name(variant[1..])
-	}
-	if variant.starts_with('?') {
-		return '_Option_${g.cname(variant[1..])}'
-	}
-	if variant.starts_with('!') {
-		return '_Result_${g.cname(variant[1..])}'
-	}
-	if variant.starts_with('ptr') && variant.len > 3 && variant[3..].contains('.') {
-		return g.sum_field_name(variant[3..])
-	}
-	if variant.starts_with('ptr') && variant.len > 3 && variant[3..].contains('__') {
-		return g.sum_field_name(variant[3..].replace('__', '.'))
-	}
-	if variant.starts_with('[]') {
-		return '_Array_${g.cname(variant[2..])}'
-	}
-	if variant.starts_with('map[') {
-		return '_Map_${g.cname(variant[4..].replace(']', '_'))}'
-	}
-	if variant.starts_with('fn(') || variant.starts_with('fn (') {
-		return '_Fn_${callback_stable_key_hash(sum_fn_variant_key(variant))}'
-	}
-	if sum_variant_needs_type_name_field(variant) {
-		return '_${naming.type_name_part(variant)}'
-	}
-	return match variant {
-		'int' { '_int' }
-		'i8' { '_i8' }
-		'i16' { '_i16' }
-		'i64' { '_i64' }
-		'u8' { '_u8' }
-		'u16' { '_u16' }
-		'u32' { '_u32' }
-		'u64' { '_u64' }
-		'f32' { '_f32' }
-		'f64' { '_f64' }
-		'bool' { '_bool' }
-		'string' { '_string' }
-		else { g.cname(variant) }
-	}
-}
-
-fn sum_variant_needs_type_name_field(variant string) bool {
-	return variant.contains('(') || variant.contains(')') || variant.contains(' ')
-}
-
-fn sum_fn_variant_key(variant string) string {
-	clean := variant.trim_space()
-	open := clean.index('(') or { return clean.replace(' ', '') }
-	close := clean.last_index(')') or { return clean.replace(' ', '') }
-	params := clean[open + 1..close]
-	ret := clean[close + 1..].trim_space().replace(' ', '')
-	mut parts := []string{}
-	for part in sum_fn_split_top_level_commas(params) {
-		ptyp := sum_fn_param_type(part)
-		if ptyp.len > 0 {
-			parts << ptyp
-		}
-	}
-	return 'fn(${parts.join(',')})${ret}'
-}
-
-fn sum_fn_split_top_level_commas(params string) []string {
-	mut parts := []string{}
-	mut depth := 0
-	mut start := 0
-	for i := 0; i < params.len; i++ {
-		ch := params[i]
-		if ch == `(` || ch == `[` || ch == `{` {
-			depth++
-		} else if ch == `)` || ch == `]` || ch == `}` {
-			if depth > 0 {
-				depth--
-			}
-		} else if ch == `,` && depth == 0 {
-			parts << params[start..i].trim_space()
-			start = i + 1
-		}
-	}
-	parts << params[start..].trim_space()
-	return parts
-}
-
-fn sum_fn_param_type(param string) string {
-	clean := param.trim_space()
-	if clean.len == 0 {
-		return ''
-	}
-	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		return sum_fn_variant_key(clean)
-	}
-	space := clean.index(' ') or { return clean }
-	first := clean[..space]
-	if sum_fn_is_ident(first) && first !in ['fn', 'mut', 'shared'] {
-		return clean[space + 1..].trim_space().replace(' ', '')
-	}
-	if first in ['mut', 'shared'] {
-		rest := clean[space + 1..].trim_space()
-		second_space := rest.index(' ') or { return clean.replace(' ', '') }
-		second := rest[..second_space]
-		if sum_fn_is_ident(second) {
-			return '${first}${rest[second_space + 1..].trim_space().replace(' ', '')}'
-		}
-	}
-	return clean.replace(' ', '')
-}
-
-fn sum_fn_is_ident(s string) bool {
-	if s.len == 0 {
-		return false
-	}
-	first := s[0]
-	if !((first >= `a` && first <= `z`) || (first >= `A` && first <= `Z`) || first == `_`) {
-		return false
-	}
-	for i := 1; i < s.len; i++ {
-		ch := s[i]
-		if !((ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
-			|| (ch >= `0` && ch <= `9`) || ch == `_`) {
-			return false
-		}
-	}
-	return true
+	return variant
 }
 
 // register_interface_strings updates register interface strings state for c.
@@ -1060,7 +815,7 @@ fn (g &FlatGen) ierror_method_signature_matches(name string, concrete string, me
 	return g.type_names_match(receiver, expected)
 }
 
-fn (g &FlatGen) ierror_method_return_matches(method string, ret types.Type) bool {
+fn (g &FlatGen) ierror_method_return_matches(method string, ret &types.Type) bool {
 	clean := if ret is types.Alias { ret.base_type } else { ret }
 	return match method {
 		'msg' { clean is types.String }
@@ -1071,7 +826,7 @@ fn (g &FlatGen) ierror_method_return_matches(method string, ret types.Type) bool
 
 fn (g &FlatGen) ierror_clean_type(typ types.Type) types.Type {
 	clean0 := types.unwrap_pointer(typ)
-	return if clean0 is types.Alias { clean0.base_type } else { clean0 }
+	return if clean0 is types.Alias { *clean0.base_type } else { clean0 }
 }
 
 struct IErrorMethodCall {
@@ -1140,7 +895,7 @@ fn (g &FlatGen) type_can_box_as_ierror(concrete string) bool {
 	return g.tc.named_type_compatible_with_ierror(concrete)
 }
 
-fn (g &FlatGen) ierror_concrete_name(t types.Type) ?string {
+fn (g &FlatGen) ierror_concrete_name(t &types.Type) ?string {
 	clean := g.ierror_payload_concrete_type(t)
 	if clean !is types.Struct {
 		return none
@@ -1204,7 +959,7 @@ fn (mut g FlatGen) ierror_none_literal_string() string {
 
 fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
 	node := g.a.nodes[int(id)]
-	mut actual := g.usable_expr_type(id)
+	mut actual := *g.usable_expr_type(id)
 	if node.kind == .struct_init && node.value.len > 0 {
 		// A concrete error returned from a result function can carry the surrounding
 		// result type as its node annotation. The literal name still identifies the
@@ -1426,7 +1181,7 @@ fn (g &FlatGen) iface_type_id_for_concrete(iface string, concrete types.Type) in
 }
 
 fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type) bool {
-	iface_type := cgen_unalias_type(expected)
+	iface_type := unalias_type(expected)
 	if iface_type !is types.Interface {
 		return false
 	}
@@ -1444,14 +1199,14 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 			// A `mut p &T` parameter uses `&&T` storage, but reading `p` yields
 			// the semantic `&T` value that is being boxed into the interface.
 			actual = if g.current_param_is_mut_pointer(node.value) && param_type is types.Pointer {
-				param_type.base_type
+				*param_type.base_type
 			} else {
-				param_type
+				*param_type
 			}
 		}
 	}
-	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
-	actual_base := cgen_unalias_type(actual_clean)
+	actual_clean := if actual is types.Pointer { *actual.base_type } else { actual }
+	actual_base := unalias_type(actual_clean)
 	actual_name := actual_base.name()
 	if actual_base is types.Interface || actual_name == iface.name
 		|| (actual_name.starts_with('main.') && actual_name['main.'.len..] == iface.name)
@@ -1470,7 +1225,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		return false
 	}
 	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
-	ct := g.tc.c_type(iface)
+	ct := g.tc.c_type(types.Type(iface))
 	fields := g.interface_cached_fields(iface.name)
 	concrete_ct := g.tc.c_type(actual_base)
 	if concrete_ct == ct {
@@ -1523,9 +1278,9 @@ fn (mut g FlatGen) gen_interface_pointer_value_expr(id flat.NodeId, expected typ
 	} else {
 		return false
 	}
-	mut iface_type := cgen_unalias_type(ptr_type.base_type)
+	mut iface_type := unalias_type(ptr_type.base_type)
 	if iface_type is types.Alias {
-		iface_type = cgen_unalias_type(iface_type.base_type)
+		iface_type = unalias_type(iface_type.base_type)
 	}
 	if iface_type !is types.Interface {
 		return false
@@ -1536,14 +1291,14 @@ fn (mut g FlatGen) gen_interface_pointer_value_expr(id flat.NodeId, expected typ
 		g.gen_expr(id)
 		return true
 	}
-	actual := cgen_unalias_type(g.interface_source_type(id))
+	actual := unalias_type(g.interface_source_type(id))
 	if actual is types.Nil || actual is types.Void
-		|| (actual is types.Pointer && cgen_unalias_type(actual.base_type) is types.Void) {
+		|| (actual is types.Pointer && unalias_type(actual.base_type) is types.Void) {
 		g.write('(${ct}*)')
 		g.gen_expr(id)
 		return true
 	}
-	if actual is types.Pointer && cgen_unalias_type(actual.base_type) is types.Interface {
+	if actual is types.Pointer && unalias_type(actual.base_type) is types.Interface {
 		return false
 	}
 	iface_value := g.interface_value_to_string(id, iface_type)
@@ -1563,7 +1318,7 @@ fn (mut g FlatGen) interface_source_type(id flat.NodeId) types.Type {
 			return local_type
 		}
 		if param_type := g.current_param_type(node.value) {
-			return param_type
+			return *param_type
 		}
 	}
 	if node.kind == .ident && g.current_param_type(node.value) == none
@@ -1579,7 +1334,7 @@ fn (mut g FlatGen) interface_source_type(id flat.NodeId) types.Type {
 			}
 		}
 	}
-	return g.usable_expr_type(id)
+	return *g.usable_expr_type(id)
 }
 
 fn (g &FlatGen) interface_unknown_qualified_name_matches(actual_name string, iface_name string) bool {
@@ -2233,18 +1988,18 @@ fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected t
 	}
 	expected_base := interface_dispatch_wrapped_base_type(expected) or { return false }
 	actual_base := interface_dispatch_wrapped_base_type(actual) or { return false }
-	expected_iface_type := cgen_unalias_type(expected_base)
+	expected_iface_type := unalias_type(expected_base)
 	if expected_iface_type !is types.Interface {
 		return false
 	}
 	expected_iface := expected_iface_type as types.Interface
-	actual_clean := cgen_unalias_type(actual_base)
+	actual_clean := unalias_type(actual_base)
 	actual_value := if actual_clean is types.Pointer {
 		actual_clean.base_type
 	} else {
 		actual_clean
 	}
-	if cgen_unalias_type(actual_value) is types.Interface {
+	if unalias_type(actual_value) is types.Interface {
 		return false
 	}
 	type_id := g.iface_type_id_for_concrete(expected_iface.name, actual_value)
@@ -2283,21 +2038,21 @@ fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected t
 	return true
 }
 
-fn (g &FlatGen) interface_dispatch_wrapped_return_can_adapt(expected types.Type, actual types.Type) bool {
+fn (g &FlatGen) interface_dispatch_wrapped_return_can_adapt(expected &types.Type, actual &types.Type) bool {
 	expected_base := interface_dispatch_wrapped_base_type(expected) or { return false }
 	actual_base := interface_dispatch_wrapped_base_type(actual) or { return false }
-	expected_iface_type := cgen_unalias_type(expected_base)
+	expected_iface_type := unalias_type(expected_base)
 	if expected_iface_type !is types.Interface {
 		return false
 	}
 	expected_iface := expected_iface_type as types.Interface
-	actual_clean := cgen_unalias_type(actual_base)
+	actual_clean := unalias_type(actual_base)
 	actual_value := if actual_clean is types.Pointer {
 		actual_clean.base_type
 	} else {
 		actual_clean
 	}
-	if cgen_unalias_type(actual_value) is types.Interface {
+	if unalias_type(actual_value) is types.Interface {
 		return false
 	}
 	return g.iface_type_id_for_concrete(expected_iface.name, actual_value) != 0
@@ -2306,7 +2061,7 @@ fn (g &FlatGen) interface_dispatch_wrapped_return_can_adapt(expected types.Type,
 fn interface_dispatch_wrapped_base_type(typ types.Type) ?types.Type {
 	match typ {
 		types.OptionType, types.ResultType {
-			return typ.base_type
+			return *typ.base_type
 		}
 		else {
 			return none
@@ -2321,7 +2076,7 @@ fn (mut g FlatGen) interface_dispatch_param_c_type(typ types.Type) string {
 	mut ct := if typ is types.OptionType || typ is types.ResultType {
 		g.optional_type_name(typ)
 	} else {
-		g.tc.c_type(typ)
+		g.parameter_c_type(typ)
 	}
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
@@ -2378,7 +2133,7 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 				continue
 			}
 			mut obj_type := if field.typ.len > 0 {
-				g.tc.parse_type(field.typ)
+				*g.tc.parse_type(field.typ)
 			} else {
 				g.tc.resolve_type(g.a.child(field, 0))
 			}
@@ -2483,7 +2238,7 @@ fn (g &FlatGen) interface_concrete_storage_c_type(concrete string) string {
 	return g.interface_storage_c_type(concrete_type)
 }
 
-fn (g &FlatGen) interface_storage_c_type(typ types.Type) string {
+fn (g &FlatGen) interface_storage_c_type(typ &types.Type) string {
 	ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
 		return naming.fn_ptr_type_name(ct)
@@ -2496,7 +2251,7 @@ fn (g &FlatGen) interface_storage_c_type(typ types.Type) string {
 
 fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {
 	if types.is_builtin_type_name(concrete) {
-		return g.tc.parse_type(concrete)
+		return *g.tc.parse_type(concrete)
 	}
 	for candidate in [concrete, g.tc.qualify_name(concrete)] {
 		if candidate in g.tc.type_aliases {
@@ -2526,7 +2281,7 @@ fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {
 			})
 		}
 	}
-	return g.tc.parse_type(concrete)
+	return *g.tc.parse_type(concrete)
 }
 
 // short_module_type_texts_equal compares the module-stripped spellings without
@@ -2742,7 +2497,7 @@ fn (mut g FlatGen) interface_custom_str_expr(type_name string, typ types.Type, e
 
 fn (mut g FlatGen) interface_pointer_str_expr(base_type types.Type, expr string, prefix_pointer bool, mut stack []string) ?string {
 	ptr_type := types.Type(types.Pointer{
-		base_type: base_type
+		base_type: &types.Type(base_type)
 	})
 	ptr_ct := g.value_c_type(ptr_type)
 	tmp := g.interface_tmp('iface_str_ptr')
@@ -2896,7 +2651,7 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 		stack.delete_last()
 	}
 	variants := g.tc.sum_types[sum_name] or { return none }
-	ct := g.tc.c_type(sum_type)
+	ct := g.tc.c_type(types.Type(sum_type))
 	tmp := g.interface_tmp('iface_str_sum')
 	out := g.interface_tmp('iface_str_out')
 	display_name := sum_name.all_after_last('.')
@@ -2906,18 +2661,14 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 		resolved := g.resolve_variant(sum_name, variant)
 		variant_type := g.tc.parse_type(resolved)
 		idx := g.sum_type_index(sum_name, resolved)
-		field := g.sum_field_name(resolved)
-		value_expr := if variant_type is types.Pointer {
-			'${tmp}.${field}'
-		} else {
-			'*${tmp}.${field}'
-		}
+		field := sum_field_name(resolved)
+		value_expr := '${tmp}.${field}'
 		inner := g.interface_implicit_str_expr(variant_type, value_expr, false, mut stack) or {
 			g.interface_str_lit('<value>')
 		}
 		wrapped := g.interface_str_plus(g.interface_str_plus(g.interface_str_lit('${display_name}('),
 			inner), g.interface_str_lit(')'))
-		body += ' case ${idx}: if (${tmp}.${field} != 0) ${out} = ${wrapped}; break;'
+		body += ' case ${idx}: ${out} = ${wrapped}; break;'
 	}
 	body += ' default: break; } ${out};'
 	return '({ ${body} })'
@@ -2937,7 +2688,7 @@ fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string
 		qualified := g.tc.qualify_name(iface_name)
 		g.iface_impls[qualified] or { return none }
 	}
-	ct := g.tc.c_type(iface)
+	ct := g.tc.c_type(types.Type(iface))
 	tmp := g.interface_tmp('iface_str_dynamic')
 	out := g.interface_tmp('iface_str_out')
 	fallback := g.interface_str_lit('${iface_name.all_after_last('.')}{}')

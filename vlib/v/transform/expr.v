@@ -1,7 +1,7 @@
 module transform
 
 import v.flat
-import v.gen.c.naming
+import v.gen.c.naming { sum_field_name }
 import v.types
 
 // transform_infix_string_ops transforms transform infix string ops data for transform.
@@ -3397,16 +3397,14 @@ fn (mut t Transformer) box_membership_interface_eq_rhs(rhs flat.NodeId, interfac
 	return none
 }
 
-// make_sum_semantic_eq_expr compares two sum-type values by tag, then by the
-// boxed payload of the active variant (deep equality, like V1). Raw memcmp on
-// the sum struct compares payload POINTERS and is always false for distinct
-// allocations. The comparison is delegated to a synthesized helper fn
-// (__v3_sum_eq_<name>) so recursive types (an XML node tree, an AST) compare
-// correctly at any depth — the helper is generated after the transform pass.
 fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, sum_type string, seen []string) flat.NodeId {
 	_ = seen
 	clean_sum, variants := t.sum_eq_type_and_variants(t.trim_pointer_type(sum_type)) or {
 		return t.make_memcmp_eq_expr(lhs, rhs, sum_type, 'eq')
+	}
+	if operator := t.struct_operator_fn_name_any(clean_sum, '==') {
+		t.mark_fn_used_name(operator)
+		return t.make_call_typed(operator, [lhs, rhs], 'bool')
 	}
 	if variants.len == 0 {
 		return t.make_memcmp_eq_expr(lhs, rhs, sum_type, 'eq')
@@ -3560,10 +3558,6 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	return new_names
 }
 
-// build_sum_eq_helper_fn appends `fn __v3_sum_eq_<Sum>(a Sum, b Sum) bool` to the
-// AST: tags must match, then the active variant's payload is unboxed and compared
-// by value (recursing through the usual membership-eq machinery, which routes
-// nested sum types back through their own helpers).
 fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 	variants := t.sum_eq_variants(clean_sum) or { return }
 	if variants.len == 0 {
@@ -3596,20 +3590,9 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 		if qv.len == 0 {
 			continue
 		}
-		field := t.sum_field_name(qv)
-		// Value variants are boxed in the sum payload and must be dereferenced
-		// before comparison. Pointer variants already are the payload value
-		// itself (`voidptr` is emitted as `void *`, not `void **`).
-		use_ptr := t.variant_references_sum(qv, clean_sum) && !t.sum_variant_is_direct_pointer(qv)
-		field_typ := if use_ptr { '&${qv}' } else { qv }
-		mut lhs_payload := t.make_selector_op(lhs_value, field, field_typ, .dot)
-		mut rhs_payload := t.make_selector_op(rhs_value, field, field_typ, .dot)
-		if use_ptr {
-			lhs_payload = t.make_prefix(.mul, lhs_payload)
-			t.set_node_typ(int(lhs_payload), qv)
-			rhs_payload = t.make_prefix(.mul, rhs_payload)
-			t.set_node_typ(int(rhs_payload), qv)
-		}
+		field := sum_field_name(qv)
+		lhs_payload := t.make_selector_op(lhs_value, field, qv, .dot)
+		rhs_payload := t.make_selector_op(rhs_value, field, qv, .dot)
 		pending_start := t.pending_stmts.len
 		payload_eq := if t.is_sum_type_name(qv) && t.resolve_sum_name(qv) == clean_sum {
 			// a variant that aliases back to this same sum: recurse via the helper
@@ -3664,7 +3647,7 @@ fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum
 	if !isnil(t.tc) {
 		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type('bool')
-		params := [t.tc.parse_type(clean_sum), t.tc.parse_type(clean_sum)]
+		params := [*t.tc.parse_type(clean_sum), *t.tc.parse_type(clean_sum)]
 		t.tc.fn_ret_types[helper] = ret
 		t.tc.register_generated_fn_param_types(helper, params.clone())
 		t.tc.fn_variadic[helper] = false
@@ -4507,8 +4490,9 @@ fn (mut t Transformer) runtime_addr(expr flat.NodeId, typ string) flat.NodeId {
 		}
 	}
 	if !t.expr_can_take_address(expr) {
-		stable := t.stable_transformed_expr_for_reuse(expr, typ, 'addr')
-		return t.make_prefix(.amp, stable)
+		name := t.new_temp('addr')
+		t.pending_stmts << t.make_decl_assign_typed(name, expr, typ)
+		return t.make_prefix(.amp, t.make_ident(name))
 	}
 	return t.make_prefix(.amp, expr)
 }

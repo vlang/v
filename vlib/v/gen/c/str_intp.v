@@ -121,9 +121,9 @@ fn (g &FlatGen) string_interp_child_type(child_id flat.NodeId, child flat.Node) 
 				if map_str_clean_type(param_type.base_type) is types.Map {
 					return param_type
 				}
-				return param_type.base_type
+				return *param_type.base_type
 			}
-			return param_type
+			return *param_type
 		}
 	}
 	mut typ := g.tc.resolve_type(child_id)
@@ -179,8 +179,8 @@ fn parse_string_interp_format(format string) StringInterpFormat {
 	return f
 }
 
-fn string_interp_type_name(typ types.Type) string {
-	mut name := types.Type(typ).name()
+fn string_interp_type_name(typ &types.Type) string {
+	mut name := typ.name()
 	if name.starts_with('builtin.') {
 		name = name.all_after_last('.')
 	}

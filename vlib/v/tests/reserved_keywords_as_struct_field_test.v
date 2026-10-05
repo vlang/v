@@ -8,7 +8,7 @@ struct Empty {}
 // LLNode is struct which holds data and links
 struct LLNode {
 	data int
-	link LinkedList
+	link &LinkedList
 }
 
 // LinkedList represent a linked list
@@ -18,12 +18,12 @@ type LinkedList = Empty | LLNode
 fn insert(ll LinkedList, val int) LinkedList {
 	match ll {
 		Empty {
-			return LLNode{val, Empty{}}
+			return LLNode{val, &LinkedList(ll)}
 		}
 		LLNode {
 			return LLNode{
 				...ll
-				link: insert(ll.link, val)
+				link: &LinkedList(insert(ll.link, val))
 			}
 		}
 	}
@@ -33,12 +33,12 @@ fn insert(ll LinkedList, val int) LinkedList {
 fn prepend(ll LinkedList, val int) LinkedList {
 	match ll {
 		Empty {
-			return LLNode{val, Empty{}}
+			return LLNode{val, &LinkedList(ll)}
 		}
 		LLNode {
 			return LLNode{
 				data: val
-				link: ll
+				link: &LinkedList(ll)
 			}
 		}
 	}
@@ -49,15 +49,16 @@ fn test_reserved_keywords_as_struct_field() {
 	ll = insert(ll, 997)
 	ll = insert(ll, 998)
 	ll = insert(ll, 999)
-	mut desired_ll := LinkedList(LLNode{
-		data: 997
-		link: LinkedList(LLNode{
-			data: 998
-			link: LinkedList(LLNode{
-				data: 999
-				link: Empty{}
-			})
-		})
-	})
+	empty := LinkedList(Empty{})
+	last := LinkedList(LLNode{ data: 999, link: &empty })
+	middle := LinkedList(LLNode{ data: 998, link: &last })
+	desired_ll := LinkedList(LLNode{ data: 997, link: &middle })
 	assert ll == desired_ll
+}
+
+fn (a LinkedList) == (b LinkedList) bool {
+	if a is LLNode && b is LLNode {
+		return a.data == b.data && *a.link == *b.link
+	}
+	return a is Empty && b is Empty
 }

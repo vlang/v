@@ -259,13 +259,35 @@ fn ownership_compiler_is_required(args []string) bool {
 	return false
 }
 
+fn compiler_bootstrap_requested(args []string, vroot string) bool {
+	entries := ['cmd/v', 'vlib/v'].map(os.real_path(os.join_path(vroot, it)))
+	mut option_value_follows := false
+	for arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if arg.starts_with('-') || arg in ['run', 'crun'] {
+			continue
+		}
+		if !os.exists(arg) {
+			return false
+		}
+		input := os.real_path(arg)
+		if os.is_dir(input) {
+			return input in entries
+		}
+		return os.file_name(input) == 'v.v' && os.dir(input) in entries
+	}
+	return false
+}
+
 fn ownership_compiler_bootstrap_input(args []string, vroot string) bool {
-	compiler_sources := [
-		os.real_path(os.join_path(vroot, 'cmd', 'v')),
-		os.real_path(os.join_path(vroot, 'cmd', 'v', 'v.v')),
-		os.real_path(os.join_path(vroot, 'vlib', 'v', 'v.v')),
-	]
-	return args.any(os.exists(it) && os.real_path(it) in compiler_sources)
+	return compiler_bootstrap_requested(args, vroot)
 }
 
 // ownership_bootstrap_can_use_current_compiler distinguishes compiling in support from

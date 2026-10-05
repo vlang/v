@@ -86,7 +86,7 @@ fn (tc &TypeChecker) vls_field_init_owner(id flat.NodeId) ?Type {
 	parent := tc.a.node(parent_id)
 	if parent.kind == .struct_init {
 		// The checker keeps no type for a struct literal: it is the one it names.
-		return tc.expr_type(parent_id) or { tc.parse_type(parent.value.all_before('[')) }
+		return tc.expr_type(parent_id) or { *tc.parse_type(parent.value.all_before('[')) }
 	}
 	if parent.kind != .call || parent.children_count < 2 {
 		return none
@@ -277,7 +277,7 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	// methods it handles itself: `[a, b].filter()`, `'abc'.to_upper()`.
 	if node.kind == .array_literal && node.children_count > 0 {
 		return Type(Array{
-			elem_type: tc.vls_expr_type(tc.a.child(node, 0))?
+			elem_type: &Type(tc.vls_expr_type(tc.a.child(node, 0))?)
 		})
 	}
 	if node.kind in [.string_literal, .string_interp] {
@@ -286,10 +286,10 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 	// The other literals, as the elements of `[1, 2].map()`: the type V gives
 	// them by default.
 	match node.kind {
-		.int_literal { return tc.parse_type('int') }
-		.float_literal { return tc.parse_type('f64') }
-		.bool_literal { return tc.parse_type('bool') }
-		.char_literal { return tc.parse_type('rune') }
+		.int_literal { return *tc.parse_type('int') }
+		.float_literal { return *tc.parse_type('f64') }
+		.bool_literal { return *tc.parse_type('bool') }
+		.char_literal { return *tc.parse_type('rune') }
 		else {}
 	}
 	// The receiver of a builtin method, which the checker handles without
@@ -312,7 +312,7 @@ fn (tc &TypeChecker) vls_expr_type(id flat.NodeId) ?Type {
 			if constrained := tc.vls_constrained_type(id, declared) {
 				return constrained
 			}
-			return if type_contains_unknown(declared) { none } else { declared }
+			return if type_contains_unknown(declared) { none } else { *declared }
 		}
 		if elem := tc.vls_lambda_param_type(decl_id) {
 			if constrained := tc.vls_constrained_type(id, elem) {
@@ -352,10 +352,10 @@ fn (tc &TypeChecker) vls_array_method_call_type(call flat.Node) ?Type {
 			return receiver
 		}
 		'array.any', 'array.all' {
-			return tc.parse_type('bool')
+			return *tc.parse_type('bool')
 		}
 		'array.count' {
-			return tc.parse_type('int')
+			return *tc.parse_type('int')
 		}
 		'array.map' {
 			if call.children_count < 2 {
@@ -370,13 +370,13 @@ fn (tc &TypeChecker) vls_array_method_call_type(call flat.Node) ?Type {
 				tc.vls_expr_type(body_id) or { tc.vls_unconstrained_type(body_id)? }
 			} else {
 				value := tc.vls_value_type(arg_id) or { tc.vls_unconstrained_type(arg_id)? }
-				if value is FnType { value.return_type } else { value }
+				if value is FnType { *value.return_type } else { value }
 			}
 			if elem is Void {
 				return none
 			}
 			return Type(Array{
-				elem_type: elem
+				elem_type: &Type(elem)
 			})
 		}
 		else {
@@ -394,7 +394,7 @@ fn (tc &TypeChecker) vls_implicit_type(binding VlsBinding) ?Type {
 	}
 	site := tc.a.node(binding.site)
 	if site.kind == .block {
-		return tc.parse_type('IError')
+		return *tc.parse_type('IError')
 	}
 	return tc.vls_array_method_elem(*site)
 }
@@ -443,13 +443,13 @@ fn (tc &TypeChecker) vls_value_type(id flat.NodeId) ?Type {
 		decl_id := tc.vls_local_declaration(id)?
 		decl := tc.a.node(decl_id)
 		if decl.kind == .param && decl.typ.len > 0 {
-			return tc.parse_type(decl.typ)
+			return *tc.parse_type(decl.typ)
 		}
 	}
 	// A struct literal is a value of the type it writes: `Host{}` of
 	// `Host{}.first_of(values)` in a body the checker did not type.
 	if node.kind == .struct_init && node.value.len > 0 {
-		return tc.parse_type(node.value)
+		return *tc.parse_type(node.value)
 	}
 	return none
 }
@@ -796,8 +796,8 @@ fn (tc &TypeChecker) vls_local_type(id flat.NodeId) ?Type {
 		rhs_id := tc.multi_assign_rhs_id(decl, 0)
 		value := tc.vls_unconstrained_type(rhs_id) or { tc.vls_expr_type(rhs_id)? }
 		base := match value {
-			OptionType { value.base_type }
-			ResultType { value.base_type }
+			OptionType { *value.base_type }
+			ResultType { *value.base_type }
 			else { value }
 		}
 		if base is MultiReturn {
@@ -896,7 +896,7 @@ fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
 			}
 			decl := tc.a.node(binding.decl_id)
 			if decl.kind == .param && decl.typ.len > 0 {
-				return tc.parse_type(decl.typ)
+				return *tc.parse_type(decl.typ)
 			}
 			if elem := tc.vls_lambda_param_type(binding.decl_id) {
 				return elem
@@ -910,10 +910,10 @@ fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
 	// `T(0)`: a value of the type it casts to, a type parameter kept as one; a
 	// literal that writes its type, `[]T{}` or `map[string]T{}`, of that type.
 	if node.kind == .cast_expr && node.value.len > 0 {
-		return tc.parse_type(node.value)
+		return *tc.parse_type(node.value)
 	}
 	if node.kind in [.array_init, .map_init] && node.typ.len > 0 {
-		return tc.parse_type(node.typ)
+		return *tc.parse_type(node.typ)
 	}
 	// A generic call returns what its arguments bind: `identity(a)` of `a A` is
 	// an `A`, not the `T` that `identity` declares.
@@ -926,9 +926,9 @@ fn (tc &TypeChecker) vls_unconstrained_type(id flat.NodeId) ?Type {
 	if node.kind == .or_expr && node.children_count > 0 {
 		held := unalias_type(tc.vls_unconstrained_type(tc.a.child(node, 0))?)
 		return match held {
-			OptionType { held.base_type }
-			ResultType { held.base_type }
-			else { held }
+			OptionType { *held.base_type }
+			ResultType { *held.base_type }
+			else { *held }
 		}
 	}
 	// What the check of a generic body with its type parameters open gives it
@@ -1003,9 +1003,9 @@ fn (tc &TypeChecker) vls_element_type(node flat.Node) ?Type {
 	}
 	base := unalias_type(unwrap_pointer(container))
 	return match base {
-		Array { base.elem_type }
-		ArrayFixed { base.elem_type }
-		Map { base.value_type }
+		Array { *base.elem_type }
+		ArrayFixed { *base.elem_type }
+		Map { *base.value_type }
 		String { Type(u8_) }
 		else { none }
 	}
@@ -1014,24 +1014,22 @@ fn (tc &TypeChecker) vls_element_type(node flat.Node) ?Type {
 // vls_fn_literal_type is the type of the function literal `literal` as its
 // signature writes it.
 fn (tc &TypeChecker) vls_fn_literal_type(literal flat.Node) Type {
-	mut params := []Type{}
-	mut params_mut := []bool{}
+	mut params := []FnParam{}
 	for i in 0 .. literal.children_count {
 		param := tc.a.child_node(&literal, i)
 		if param.kind != .param {
 			continue
 		}
-		params << tc.parse_type(param.typ)
-		params_mut << param.is_mut
+		params << FnParam{ typ: tc.parse_type(param.typ), is_mut: param.is_mut }
+	}
+	result := if literal.typ in ['', 'void'] {
+		Type(void_)
+	} else {
+		*tc.parse_type(literal.typ)
 	}
 	return Type(FnType{
 		params:      params
-		params_mut:  params_mut
-		return_type: if literal.typ in ['', 'void'] {
-			Type(void_)
-		} else {
-			tc.parse_type(literal.typ)
-		}
+		return_type: tc.intern_type_reference(result)
 	})
 }
 
@@ -1251,7 +1249,7 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 		values << if is_bare_generic_param(arg) {
 			unknown_type('generic placeholder `${arg}`')
 		} else {
-			tc.parse_type(arg)
+			*tc.parse_type(arg)
 		}
 	}
 	return tc.substitute_generic_type_values(declared, values, params)
@@ -1737,8 +1735,8 @@ fn (tc &TypeChecker) vls_type_text(t Type) string {
 			// in a generic body, names it: `fn (T) int`.
 			mut params := []string{cap: t.params.len}
 			for i in 0 .. t.params.len {
-				param := fn_type_param_type(t, i)
-				if fn_type_param_is_mut(t, i) {
+				param := t.params[i].typ
+				if t.params[i].is_mut {
 					base := if param is Pointer { param.base_type } else { param }
 					params << 'mut ${tc.vls_type_text(base)}'
 				} else {

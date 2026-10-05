@@ -85,13 +85,13 @@ pub const void_ = Void{}
 pub const nil_ = Nil{}
 pub const none_ = None{}
 pub const voidptr_ = Pointer{
-	base_type: Type(Void{})
+	base_type: &Type(Void{})
 }
 pub const charptr_ = Pointer{
-	base_type: Type(Char{})
+	base_type: &Type(Char{})
 }
 pub const byteptr_ = Pointer{
-	base_type: Type(Primitive{
+	base_type: &Type(Primitive{
 		props: .integer | .unsigned
 		size:  8
 	})
@@ -204,7 +204,7 @@ pub fn builtin_type_value(name string) Type {
 	}
 	if name == 'array' {
 		return Type(Array{
-			elem_type: Type(Void{})
+			elem_type: &Type(Void{})
 		})
 	}
 	if name == 'charptr' {

@@ -23,7 +23,7 @@ fn (mut p Parse) process_open_tag() string {
 
 fn test_sumtype_with_reference() {
 	mut parse := Parse{
-		stack: [&RawText{'raw'}]
+		stack: [&Element(RawText{'raw'})]
 	}
 	assert parse.process_open_tag() == 'raw'
 }

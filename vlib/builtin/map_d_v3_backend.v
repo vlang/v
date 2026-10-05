@@ -78,9 +78,11 @@ struct DenseArray {
 	key_bytes   int
 	value_bytes int
 mut:
-	cap     int
-	len     int
-	deletes u32 // count
+	cap             int
+	len             int
+	deletes         u32 // count
+	key_alignment   u8
+	value_alignment u8
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
 	all_deleted &u8 = unsafe { nil }
@@ -89,17 +91,19 @@ mut:
 }
 
 @[inline]
-fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
+fn new_dense_array(key_bytes int, value_bytes int, key_alignment u8, value_alignment u8) DenseArray {
 	cap := 8
 	return DenseArray{
-		key_bytes:   key_bytes
-		value_bytes: value_bytes
-		cap:         cap
-		len:         0
-		deletes:     0
-		all_deleted: unsafe { nil }
-		keys:        unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
-		values:      unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
+		key_bytes:       key_bytes
+		value_bytes:     value_bytes
+		key_alignment:   key_alignment
+		value_alignment: value_alignment
+		cap:             cap
+		len:             0
+		deletes:         0
+		all_deleted:     unsafe { nil }
+		keys:            dense_array_allocate(u64(cap) * u64(key_bytes), key_alignment)
+		values:          dense_array_allocate(u64(cap) * u64(value_bytes), value_alignment)
 	}
 }
 
@@ -148,8 +152,8 @@ fn (mut d DenseArray) reserve(n int) {
 	old_value_size := d.value_bytes * old_cap
 	d.cap = n
 	unsafe {
-		d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
-		d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+		d.keys = dense_array_resize(d.keys, old_key_size, d.key_bytes * d.cap, d.key_alignment)
+		d.values = dense_array_resize(d.values, old_value_size, d.value_bytes * d.cap, d.value_alignment)
 		if d.deletes != 0 {
 			d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
 			vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
@@ -162,23 +166,12 @@ fn (mut d DenseArray) reserve(n int) {
 // storage and copying. Other allocators use the compact 1.125 growth factor.
 @[inline]
 fn (mut d DenseArray) expand() int {
-	old_cap := d.cap
-	old_key_size := d.key_bytes * old_cap
-	old_value_size := d.value_bytes * old_cap
 	if d.cap == d.len {
+		mut growth := d.cap >> 3
 		$if prealloc {
-			d.cap += d.cap
-		} $else {
-			d.cap += d.cap >> 3
+			growth = d.cap
 		}
-		unsafe {
-			d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
-			d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
-			if d.deletes != 0 {
-				d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
-				vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
-			}
-		}
+		d.reserve(d.cap + int_max(1, growth))
 	}
 	push_index := d.len
 	unsafe {
@@ -409,6 +402,14 @@ fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
 	}
 }
 
+fn new_map_aligned(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
+	clone_fn MapCloneFn, free_fn MapFreeFn, key_alignment usize, value_alignment usize) map {
+	mut result := new_map(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
+	result.data.key_values.key_alignment = data_alignment_exponent(key_alignment)
+	result.data.key_values.value_alignment = data_alignment_exponent(value_alignment)
+	return result
+}
+
 fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int,
 	value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
@@ -447,6 +448,8 @@ pub fn (mut m map) move() map {
 		m.data = &map_empty_data
 	} else {
 		m.data = new_map_data(m.data.key_bytes, m.data.value_bytes, m.data.hash_fn, m.data.key_eq_fn, m.data.clone_fn, m.data.free_fn)
+		m.data.key_values.key_alignment = r.data.key_values.key_alignment
+		m.data.key_values.value_alignment = r.data.key_values.value_alignment
 	}
 	return r
 }
@@ -591,7 +594,7 @@ fn (mut m VMapData) set(key voidptr, value voidptr) {
 	if m.metas == unsafe { nil } {
 		// Most compiler bookkeeping maps remain empty. Allocate backing storage
 		// only on the first insertion or an explicit reservation.
-		m.key_values = new_dense_array(m.key_bytes, m.value_bytes)
+		m.key_values = new_dense_array(m.key_bytes, m.value_bytes, m.key_values.key_alignment, m.key_values.value_alignment)
 		m.metas = unsafe { &u32(vcalloc_noscan(sizeof(u32) * (m.even_index + 2 + m.extra_metas))) }
 	}
 	// Integer-based load factor check: equivalent to (2*len)/even_index > 0.8
@@ -704,12 +707,7 @@ fn (mut m VMapData) reserve(n u32) {
 	if dense_cap > u64(max_int) {
 		panic('map.reserve: max_int will be exceeded')
 	}
-	// DenseArray's geometric growth starts at eight slots.
-	if dense_cap > 0 && dense_cap < 8 {
-		m.key_values.reserve(8)
-	} else {
-		m.key_values.reserve(int(dense_cap))
-	}
+	m.key_values.reserve(int(dense_cap))
 }
 
 // cached_rehashd works like rehash. However, instead of rehashing the
@@ -961,13 +959,55 @@ fn (mut m VMapData) delete(key voidptr) {
 	}
 }
 
+@[inline]
+fn dense_array_allocate(size u64, alignment u8) &u8 {
+	if alignment == 0 {
+		return unsafe { malloc(__at_least_one(size)) }
+	}
+	return alloc_array_data_aligned(size, usize(1) << alignment, false)
+}
+
+@[inline; unsafe]
+fn dense_array_free(data &u8, alignment u8) {
+	if alignment == 0 {
+		unsafe { free(data) }
+		return
+	}
+	unsafe {
+		header := &ArrayDataHeader(data - array_data_header_size())
+		free(header.allocation)
+	}
+}
+
+@[inline; unsafe]
+fn dense_array_resize(data &u8, previous int, requested int, alignment u8) &u8 {
+	if alignment == 0 {
+		return unsafe { realloc_data(data, previous, requested) }
+	}
+	result := dense_array_allocate(u64(requested), alignment)
+	if data == unsafe { nil } {
+		return result
+	}
+	count := if previous < requested { previous } else { requested }
+	if count > 0 {
+		unsafe { vmemcpy(result, data, count) }
+	}
+	unsafe { dense_array_free(data, alignment) }
+	return result
+}
+
 // keys returns all keys in the map.
 pub fn (m &map) keys() array {
 	return m.data.keys()
 }
 
 fn (m &VMapData) keys() array {
-	mut keys := __new_array(m.count, 0, m.key_bytes)
+	alignment := m.key_values.key_alignment
+	mut keys := if alignment == 0 {
+		__new_array(m.count, 0, m.key_bytes)
+	} else {
+		__new_array_aligned(m.count, 0, m.key_bytes, usize(1) << alignment)
+	}
 	mut item := unsafe { &u8(keys.data) }
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
@@ -998,7 +1038,12 @@ pub fn (m &map) values() array {
 }
 
 fn (m &VMapData) values() array {
-	mut values := __new_array(m.count, 0, m.value_bytes)
+	alignment := m.key_values.value_alignment
+	mut values := if alignment == 0 {
+		__new_array(m.count, 0, m.value_bytes)
+	} else {
+		__new_array_aligned(m.count, 0, m.value_bytes, usize(1) << alignment)
+	}
 	if m.count == 0 {
 		return values
 	}
@@ -1028,21 +1073,25 @@ fn (m &VMapData) values() array {
 @[unsafe]
 fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
-		key_bytes:   d.key_bytes
-		value_bytes: d.value_bytes
-		cap:         d.cap
-		len:         d.len
-		deletes:     d.deletes
-		all_deleted: unsafe { nil }
-		values:      unsafe { nil }
-		keys:        unsafe { nil }
+		key_bytes:       d.key_bytes
+		value_bytes:     d.value_bytes
+		key_alignment:   d.key_alignment
+		value_alignment: d.value_alignment
+		cap:             d.cap
+		len:             d.len
+		deletes:         d.deletes
+		all_deleted:     unsafe { nil }
+		values:          unsafe { nil }
+		keys:            unsafe { nil }
 	}
 	unsafe {
 		if d.deletes != 0 {
 			res.all_deleted = memdup(d.all_deleted, d.cap)
 		}
-		res.keys = memdup(d.keys, d.cap * d.key_bytes)
-		res.values = memdup(d.values, d.cap * d.value_bytes)
+		res.keys = dense_array_allocate(u64(d.cap) * u64(d.key_bytes), d.key_alignment)
+		vmemcpy(res.keys, d.keys, d.cap * d.key_bytes)
+		res.values = dense_array_allocate(u64(d.cap) * u64(d.value_bytes), d.value_alignment)
+		vmemcpy(res.values, d.values, d.cap * d.value_bytes)
 	}
 	return res
 }
@@ -1063,7 +1112,10 @@ pub fn (m &map) clone() map {
 @[unsafe]
 fn (m &VMapData) clone() &VMapData {
 	if m.metas == unsafe { nil } {
-		return new_map_data(m.key_bytes, m.value_bytes, m.hash_fn, m.key_eq_fn, m.clone_fn, m.free_fn)
+		mut result := new_map_data(m.key_bytes, m.value_bytes, m.hash_fn, m.key_eq_fn, m.clone_fn, m.free_fn)
+		result.key_values.key_alignment = m.key_values.key_alignment
+		result.key_values.value_alignment = m.key_values.value_alignment
+		return result
 	}
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := &VMapData{
@@ -1149,14 +1201,14 @@ fn (m &VMapData) free() {
 			$if prealloc {
 				prealloc_discard_pages(m.key_values.keys, usize(m.key_values.cap) * usize(m.key_bytes))
 			}
-			free(m.key_values.keys)
+			dense_array_free(m.key_values.keys, m.key_values.key_alignment)
 			m.key_values.keys = nil
 		}
 		if m.key_values.values != nil {
 			$if prealloc {
 				prealloc_discard_pages(m.key_values.values, usize(m.key_values.cap) * usize(m.value_bytes))
 			}
-			free(m.key_values.values)
+			dense_array_free(m.key_values.values, m.key_values.value_alignment)
 			m.key_values.values = nil
 		}
 		// TODO: the next lines assume that callback functions are static and independent from each particular

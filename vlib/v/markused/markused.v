@@ -532,32 +532,33 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			queue << seed
 			used[seed] = true
 		}
-		for seed in ['__new_array', 'array.get', 'array.push', 'map_hash_int_4', 'map_hash_int_8',
-			'map_hash_int_16', 'map_eq_int_4', 'map_eq_int_8', 'map_eq_int_16', 'map_clone_int_4',
-			'map_clone_int_8', 'map_clone_int_16', 'map_free_nop'] {
+		for seed in ['__new_array', '__new_array_noscan', 'array.get', 'array.push', 'map_hash_int_4',
+			'map_hash_int_8', 'map_hash_int_16', 'map_eq_int_4', 'map_eq_int_8', 'map_eq_int_16',
+			'map_clone_int_4', 'map_clone_int_8', 'map_clone_int_16', 'map_free_nop'] {
 			queue << seed
 			used[seed] = true
 		}
-		mut runtime_seeds := ['new_array_from_c_array', 'new_array_from_c_array_noscan', 'array.set',
-			'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
-			'array.slice', 'array.slice_ni', 'string.substr_ni', 'array.pop_left', 'array.clone',
-			'array.delete', 'array.ensure_cap', 'string.==', 'string.<', 'string.free',
-			'string.all_before', 'string.all_before_last', 'string.all_after', 'string.all_after_last',
-			'string.substr', 'string__substr', 'u8.vstring', 'u8.vstring_with_len', 'u8.vbytes',
-			'charptr.vstring', 'charptr.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len',
-			'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set', 'map.exists', 'map.get',
-			'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys',
-			'map.values', 'map.reserve', 'map_map_eq', 'memdup', 'memdup_align',
-			'strings.Builder.write_ptr', 'strings.Builder.write_runes', 'strings.Builder.free',
-			'strconv.format_int', 'strconv.format_uint', 'strconv.Dec32.get_string_32',
-			'strconv.Dec64.get_string_64', 'bool.str', 'int.str', 'u64.str', 'rune.str', 'string.+',
-			'ptr_str', 'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital',
-			'string.is_capital', 'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr',
-			'Array_u8__hex', 'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2',
-			'map_hash_int_16', 'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_16',
-			'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_16',
-			'map_free_string', '[]string.join', 'Array_string__join', 'embed_file.Decoder.decompress',
-			'embed_file.join_chunks', 'exit', 'v_exit']
+		mut runtime_seeds := ['new_array_from_c_array_aligned', 'new_array_from_c_array',
+			'new_array_from_c_array_noscan', 'array.set', 'array.push_many', 'array.insert',
+			'array.insert_many', 'array.prepend', 'array.reverse', 'array.slice', 'array.slice_ni',
+			'string.substr_ni', 'array.pop_left', 'array.clone', 'array.delete', 'array.ensure_cap',
+			'string.==', 'string.<', 'string.free', 'string.all_before', 'string.all_before_last',
+			'string.all_after', 'string.all_after_last', 'string.substr', 'string__substr', 'u8.vstring',
+			'u8.vstring_with_len', 'u8.vbytes', 'charptr.vstring', 'charptr.vstring_with_len',
+			'byteptr.vstring', 'byteptr.vstring_with_len', 'byteptr.vbytes', 'voidptr.vbytes',
+			'[]rune.string', 'map.set', 'map.exists', 'map.get', 'map.get_check', 'map.get_and_set',
+			'map.delete', 'map.clone', 'map.clear', 'map.keys', 'map.values', 'map.reserve',
+			'map_map_eq', 'memdup', 'memdup_align', 'strings.Builder.write_ptr',
+			'strings.Builder.write_runes', 'strings.Builder.free', 'strconv.format_int',
+			'strconv.format_uint', 'strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64',
+			'bool.str', 'int.str', 'u64.str', 'rune.str', 'string.+', 'ptr_str', 'os.join_path_single',
+			'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
+			'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
+			'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_16', 'map_eq_string',
+			'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_16', 'map_clone_string', 'map_clone_int_1',
+			'map_clone_int_2', 'map_clone_int_16', 'map_free_string', '[]string.join',
+			'Array_string__join', 'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit',
+			'v_exit']
 		if !tc.nofloat {
 			runtime_seeds << ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l']
 		}
@@ -2678,6 +2679,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	}
 	if needs_new_map {
 		enqueue('new_map', mut used, mut queue)
+		enqueue('new_map_aligned', mut used, mut queue)
 	}
 	if needs_map_iteration_snapshot {
 		for helper in ['map.clone', 'map__clone', 'map.free', 'map__free'] {
@@ -3192,7 +3194,7 @@ fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &
 				mut used, mut queue, mut seen)
 		}
 		types.Pointer {
-			base := typ.base_type
+			base := *typ.base_type
 			if base is types.Struct || base is types.SumType || base is types.Interface
 				|| base is types.Enum || base is types.Alias {
 				enqueue_stringified_type_dependencies(base, cur_module, tc, skipped_fields,
@@ -3866,7 +3868,8 @@ fn (c &CallCollector) parsed_type_uses_concrete_generics(typ types.Type, depth i
 			return c.parsed_type_uses_concrete_generics(typ.base_type, depth + 1)
 		}
 		types.FnType {
-			for param in typ.params {
+			for parameter in typ.params {
+				param := parameter.typ
 				if c.parsed_type_uses_concrete_generics(param, depth + 1) {
 					return true
 				}
@@ -5456,7 +5459,8 @@ fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node,
 	mut param_types := []string{}
 	if fn_type := c.tc.expr_type(id) {
 		if fn_type is types.FnType {
-			for param in fn_type.params {
+			for parameter in fn_type.params {
+				param := parameter.typ
 				param_types << if markused_type_has_unknown(param) { '' } else { param.name() }
 			}
 		}
@@ -6295,7 +6299,7 @@ fn (c &CallCollector) alias_aware_expr_type(id flat.NodeId, cur_module string, i
 	if type_name.len > 0 {
 		typ := c.tc.parse_type(type_name)
 		if typ !is types.Unknown && typ !is types.Void {
-			return typ
+			return *typ
 		}
 	}
 	typ := c.node_type(id)
@@ -6322,7 +6326,7 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 					return none
 				}
 				return types.Type(types.Pointer{
-					base_type: inner
+					base_type: &types.Type(inner)
 				})
 			}
 		}
@@ -6331,7 +6335,7 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 				elem_id := c.a.child(node, i)
 				elem_type := c.syntax_alias_expr_type(elem_id, cur_module, imports) or { continue }
 				return types.Type(types.Array{
-					elem_type: elem_type
+					elem_type: &types.Type(elem_type)
 				})
 			}
 		}
@@ -7352,7 +7356,8 @@ fn markused_type_has_unknown(typ types.Type) bool {
 		}
 		types.FnType {
 			mut found := markused_type_has_unknown(typ.return_type)
-			for param in typ.params {
+			for parameter in typ.params {
+				param := parameter.typ
 				found = found || markused_type_has_unknown(param)
 			}
 			found
@@ -7451,7 +7456,7 @@ fn (c &CallCollector) fn_param_types_for_name(name string) ?[]types.Type {
 }
 
 fn markused_index_overload_compound_type_is_string(typ types.Type) bool {
-	clean := if typ is types.Alias { typ.base_type } else { typ }
+	clean := if typ is types.Alias { *typ.base_type } else { typ }
 	return clean is types.String
 }
 
@@ -7661,9 +7666,9 @@ fn (c &CallCollector) operator_lhs_type(lhs_id flat.NodeId, local_types map[stri
 		if lhs.kind == .index && lhs.children_count > 0 {
 			base_type := types.unwrap_pointer(c.operator_lhs_type(c.a.child(lhs, 0), local_types))
 			return match base_type {
-				types.Array { base_type.elem_type }
-				types.ArrayFixed { base_type.elem_type }
-				types.Map { base_type.value_type }
+				types.Array { *base_type.elem_type }
+				types.ArrayFixed { *base_type.elem_type }
+				types.Map { *base_type.value_type }
 				else { base_type }
 			}
 		}
@@ -8970,13 +8975,13 @@ fn (c &CallCollector) specialized_struct_default_type(type_text string, id flat.
 	// Canonical bare argument names belong to main; protect them from an imported declaration's scope.
 	qualified_type := c.generic_factory_qualified_type_text(substituted_type, id, 'main', map[string]string{})
 	// All names are semantic now; no declaration-file import may capture them.
-	return types.unalias_type(c.tc.parse_resolution_type_in_file(qualified_type, ''))
+	return *types.unalias_type(c.tc.parse_resolution_type_in_file(qualified_type, ''))
 }
 
 // value_type_in_source resolves a value's semantic type in its source context.
 fn (c &CallCollector) value_type_in_source(type_text string, node &flat.Node, imports map[string]string) types.Type {
 	clean := type_text.trim_space()
-	return types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
+	return *types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
 		c.tc.parse_resolution_type_in_file(clean, source_file.name)
 	} else {
 		c.tc.parse_canonical_type(markused_resolve_imported_type_name(clean, imports))
@@ -9080,9 +9085,9 @@ fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module st
 			// Empty and capacity-only dynamic arrays do not initialize elements.
 			return
 		}
-		array_type.elem_type
+		*array_type.elem_type
 	} else if array_type is types.ArrayFixed {
-		array_type.elem_type
+		*array_type.elem_type
 	} else {
 		if (typ.starts_with('[]') || !typ.starts_with('[')) && !has_len {
 			return

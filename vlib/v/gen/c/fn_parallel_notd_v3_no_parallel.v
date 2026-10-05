@@ -1082,12 +1082,7 @@ fn (mut g FlatGen) replay_prep_candidates(args []FlatCgenCostArgs) {
 				g.tc.cur_module = item.module
 			}
 			if cand.is_expr {
-				w0, w1, slot := preseed_type_words(cand.typ)
-				if !replay_seen.seen[slot] || replay_seen.w0[slot] != w0
-					|| replay_seen.w1[slot] != w1 {
-					replay_seen.w0[slot] = w0
-					replay_seen.w1[slot] = w1
-					replay_seen.seen[slot] = true
+				if replay_seen.insert(cand.typ) {
 					g.preseed_parallel_fn_ptr_type(cand.typ)
 				}
 			} else {
@@ -1639,7 +1634,7 @@ fn clone_cgen_fixed_array_typedef_map(values map[string]FixedArrayTypedefInfo) m
 	for key, info in values {
 		cloned[key.clone()] = FixedArrayTypedefInfo{
 			arr:    types.ArrayFixed{
-				elem_type: types.clone_owned_type(info.arr.elem_type)
+				elem_type: &types.Type(types.clone_owned_type(info.arr.elem_type))
 				len:       info.arr.len
 				len_expr:  info.arr.len_expr.clone()
 			}
@@ -2290,7 +2285,7 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node &flat.Node) ?type
 		return none
 	}
 	if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len && g.tc.expr_type_set[idx] {
-		return g.tc.expr_type_values[idx]
+		return *g.tc.expr_type_values[idx]
 	}
 	if node.kind == .call && idx < g.tc.resolved_call_set.len && idx < g.tc.resolved_call_names.len
 		&& g.tc.resolved_call_set[idx] {
@@ -2314,11 +2309,12 @@ struct FlatCgenPrepCandidate {
 
 struct ResolvedCallTypeCache {
 mut:
-	ptrs   [4096]voidptr
-	lens   [4096]int
-	values [4096]types.Type
-	seen   [4096]bool
-	found  [4096]bool
+	ptrs    [4096]voidptr
+	lens    [4096]int
+	indexes [4096]u32
+	values  []types.Type
+	seen    [4096]bool
+	found   [4096]bool
 }
 
 // exact_flat_fn_gen_item_cost_and_prep is exact_flat_fn_gen_item_cost plus the
@@ -2376,11 +2372,7 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 			}
 		}
 		if expr_type := g.parallel_cached_expr_type_with_cache(id, node, mut resolved_call_cache) {
-			w0, w1, slot := preseed_type_words(expr_type)
-			if !type_seen.seen[slot] || type_seen.w0[slot] != w0 || type_seen.w1[slot] != w1 {
-				type_seen.w0[slot] = w0
-				type_seen.w1[slot] = w1
-				type_seen.seen[slot] = true
+			if type_seen.insert(expr_type) {
 				cands << FlatCgenPrepCandidate{
 					is_expr:  true
 					typ:      expr_type
@@ -2408,7 +2400,7 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 		return g.parallel_cached_expr_type(id, node)
 	}
 	if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len && g.tc.expr_type_set[idx] {
-		return g.tc.expr_type_values[idx]
+		return *g.tc.expr_type_values[idx]
 	}
 	if node.kind != .call || idx >= g.tc.resolved_call_set.len
 		|| idx >= g.tc.resolved_call_names.len || !g.tc.resolved_call_set[idx] {
@@ -2418,7 +2410,7 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 	slot := int((u64(voidptr(name.str)) >> 4 ^ u64(name.len)) & 4095)
 	if cache.seen[slot] && cache.ptrs[slot] == voidptr(name.str) && cache.lens[slot] == name.len {
 		if cache.found[slot] {
-			return cache.values[slot]
+			return cache.values[int(cache.indexes[slot] - 1)]
 		}
 		return none
 	}
@@ -2426,7 +2418,13 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 	cache.lens[slot] = name.len
 	cache.seen[slot] = true
 	if typ := g.tc.fn_ret_types[name] {
-		cache.values[slot] = typ
+		index := cache.indexes[slot]
+		if index == 0 {
+			cache.values << typ
+			cache.indexes[slot] = u32(cache.values.len)
+		} else {
+			cache.values[int(index - 1)] = typ
+		}
 		cache.found[slot] = true
 		return typ
 	}
@@ -2492,14 +2490,6 @@ fn parallel_type_text_may_preseed(g &FlatGen, typ string) bool {
 	}
 	short := unsafe { tos(typ.str + name_start, end - name_start) }
 	return short in g.prep_alias_short_names
-}
-
-@[inline]
-fn preseed_type_words(typ &types.Type) (u64, u64, int) {
-	words := unsafe { &u64(voidptr(typ)) }
-	w0 := unsafe { words[0] }
-	w1 := unsafe { words[1] }
-	return w0, w1, int((w0 >> 4 ^ w1) & 4095)
 }
 
 // par_cgen_prep_enabled gates the parallel fused item prep, so a single binary
@@ -2579,7 +2569,8 @@ fn (g &FlatGen) parallel_base_type_text(typ string) string {
 fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
 	if typ is types.FnType {
 		g.register_fn_ptr_type(g.fn_ptr_type_key(typ))
-		for param in typ.params {
+		for parameter in typ.params {
+			param := parameter.typ
 			g.preseed_parallel_fn_ptr_type(param)
 		}
 		g.preseed_parallel_fn_ptr_type(typ.return_type)

@@ -20,10 +20,9 @@ fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
 	t := Transformer{
 		a: &a
 	}
-	assert comptime_type_id_hash('T207') & ~(0xff << 16) < 65536
-	type_id := t.comptime_field_type_id('T207', '')
+	type_id := t.type_index('T207', '')
 	assert type_id > 65535
-	assert type_id != comptime_builtin_type_idx('isize')
+	assert type_id != types.builtin_type_index('isize')
 	assert type_id & (0xff << 16) == 0
 }
 
@@ -34,7 +33,7 @@ fn test_comptime_field_type_id_keeps_specialized_main_type_provenance() {
 	}
 	t.active_specialization_main_types['MyParams'] = true
 	assert t.comptime_field_type_id_key('MyParams', 'reflection') == 'main.MyParams'
-	assert t.comptime_field_type_id('MyParams', 'reflection') == comptime_type_id_hash('main.MyParams') & ~(0xff << 16)
+	assert t.type_index('MyParams', 'reflection') == types.stable_type_index('main.MyParams')
 }
 
 fn test_comptime_for_base_type_unwraps_storage_indirections() {

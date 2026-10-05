@@ -20,7 +20,7 @@ https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
 =============================================================================*/
 
-@[direct_array_access]
+@[direct_array_access; manualfree]
 fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	mut n_digit := if i_n_digit < 1 { 1 } else { i_n_digit + 1 }
 	pad_digit := i_pad_digit + 1
@@ -36,6 +36,8 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	}
 
 	mut buf := []u8{len: (out_len + 6 + 1 + 1 + fw_zeros)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
+	unsafe { buf.flags |= .noslices }
+	defer { unsafe { buf.free() } }
 	mut i := 0
 
 	if neg {
@@ -132,7 +134,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	buf[i] = 0
 
 	return unsafe {
-		tos(memdup(&buf[0], i + 1), i)
+		tos(memdup_noscan(&buf[0], i + 1), i)
 	}
 }
 

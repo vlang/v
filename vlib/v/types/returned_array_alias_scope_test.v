@@ -25,11 +25,11 @@ fn test_cached_guard_binding_does_not_escape_alias_analysis_scope() {
 		children_count: 2
 	})
 	mut tc := TypeChecker.new(&a)
-	outer_type := Type(FnType{ return_type: Type(string_) })
-	guard_type := Type(FnType{ return_type: Type(int_) })
+	outer_type := Type(tc.fn_type([]Type{}, &Type(string_), []bool{}))
+	guard_type := Type(tc.fn_type([]Type{}, &Type(int_), []bool{}))
 	tc.cur_scope.insert('helper', outer_type)
 	tc.register_synth_type(lhs, guard_type)
-	tc.register_synth_type(rhs, Type(OptionType{ base_type: guard_type }))
+	tc.register_synth_type(rhs, Type(OptionType{ base_type: &Type(guard_type) }))
 	mut visiting := map[int]bool{}
 	mut sources := []flat.NodeId{}
 	tc.collect_returned_alias_sources_in_scope(if_expr, map[string]flat.NodeId{}, mut visiting,

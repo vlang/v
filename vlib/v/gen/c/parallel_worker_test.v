@@ -287,7 +287,7 @@ fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	}]
 	tc.resolved_call_names = [types.cached_name('source_call')]
 	tc.resolved_call_set = [true]
-	tc.expr_type_values = [types.Type(types.int_)]
+	tc.expr_type_values = [tc.intern_type_reference(types.Type(types.int_))]
 	tc.expr_type_set = [true]
 	tc.begin_sparse_transform_node_caches(1)
 	tc.sparse_resolved_call_names[1] = 'transformed_call'

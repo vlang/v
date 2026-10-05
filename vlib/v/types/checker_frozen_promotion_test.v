@@ -2,12 +2,6 @@ module types
 
 import v.flat
 
-fn frozen_promotion_same_payload(first Type, second Type) bool {
-	first_word, first_tail, _ := type_value_words(&first)
-	second_word, second_tail, _ := type_value_words(&second)
-	return first_word == second_word && first_tail == second_tail
-}
-
 fn test_frozen_parallel_promotion_reuses_canonical_payloads_and_defers_misses() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -25,14 +19,14 @@ fn test_frozen_parallel_promotion_reuses_canonical_payloads_and_defers_misses() 
 	target_key := semantic_type_hash(target)
 	interner.buckets[target_key] = other_id
 	interner.buckets[type_hash_tag(target_key, 0x5bd1e995)] = target_id
-	worker_target := Type(ArrayFixed{ elem_type: Type(int_), len: 17 })
-	worker_other := Type(ArrayFixed{ elem_type: Type(int_), len: 18 })
+	worker_target := Type(ArrayFixed{ elem_type: &Type(int_), len: 17 })
+	worker_other := Type(ArrayFixed{ elem_type: &Type(int_), len: 18 })
 	missing_first := Type(Struct{ name: 'FrozenFirstMissing' })
 	missing_second := Type(Struct{ name: 'FrozenSecondMissing' })
-	assert !frozen_promotion_same_payload(worker_target, target)
-	assert frozen_promotion_same_payload(interner.probe(worker_target)?, target)
-	tc.expr_type_values = [worker_target, worker_other, missing_first, worker_target, missing_second,
-		worker_other]
+	assert voidptr(&worker_target) != voidptr(target)
+	assert voidptr(interner.probe(worker_target)?) == voidptr(target)
+	tc.expr_type_values = [&worker_target, &worker_other, &missing_first, &worker_target,
+		&missing_second, &worker_other]
 	tc.expr_type_set = []bool{len: tc.expr_type_values.len, init: true}
 	tc.resolved_call_set = []bool{len: tc.expr_type_values.len}
 	mut chunks := [
@@ -57,12 +51,12 @@ fn test_frozen_parallel_promotion_reuses_canonical_payloads_and_defers_misses() 
 	assert args[0].miss == [2]
 	assert args[1].miss == [4]
 	assert tc.type_count() == initial_count
-	assert frozen_promotion_same_payload(tc.expr_type_values[0], target)
-	assert frozen_promotion_same_payload(tc.expr_type_values[3], target)
-	assert frozen_promotion_same_payload(tc.expr_type_values[1], other)
-	assert frozen_promotion_same_payload(tc.expr_type_values[5], other)
-	assert frozen_promotion_same_payload(tc.expr_type_values[2], missing_first)
-	assert frozen_promotion_same_payload(tc.expr_type_values[4], missing_second)
+	assert voidptr(tc.expr_type_values[0]) == voidptr(target)
+	assert voidptr(tc.expr_type_values[3]) == voidptr(target)
+	assert voidptr(tc.expr_type_values[1]) == voidptr(other)
+	assert voidptr(tc.expr_type_values[5]) == voidptr(other)
+	assert voidptr(tc.expr_type_values[2]) == voidptr(&missing_first)
+	assert voidptr(tc.expr_type_values[4]) == voidptr(&missing_second)
 	assert interner.probe_frozen(missing_first) == none
 	assert interner.probe_frozen(missing_second) == none
 
@@ -75,8 +69,8 @@ fn test_frozen_parallel_promotion_reuses_canonical_payloads_and_defers_misses() 
 	second_id, second_type := interner.canonicalize(missing_second)
 	assert first_id == TypeId(initial_count)
 	assert second_id == TypeId(initial_count + 1)
-	assert frozen_promotion_same_payload(tc.expr_type_values[2], first_type)
-	assert frozen_promotion_same_payload(tc.expr_type_values[4], second_type)
+	assert voidptr(tc.expr_type_values[2]) == voidptr(first_type)
+	assert voidptr(tc.expr_type_values[4]) == voidptr(second_type)
 }
 
 fn test_frozen_probe_preserves_empty_and_invalid_bucket_misses() {

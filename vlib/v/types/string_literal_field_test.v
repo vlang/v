@@ -25,7 +25,7 @@ fn test_string_literal_str_field_shadows_method() {
 			mut tc := TypeChecker.new(&a)
 			tc.valid_resolution_fast = fast
 			field_type := Type(Pointer{
-				base_type: Type(u8_)
+				base_type: &Type(u8_)
 			})
 			tc.structs['string'] = [
 				StructField{
@@ -56,7 +56,7 @@ fn test_string_literal_method_value_without_a_matching_field() {
 		StructField{
 			name: 'str'
 			typ:  Type(Pointer{
-				base_type: Type(u8_)
+				base_type: &Type(u8_)
 			})
 		},
 	]

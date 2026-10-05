@@ -560,8 +560,8 @@ fn main() {
 }
 ')
 	assert out == "Animal(Cat{\n    name: 'Tom'\n})"
-	assert c_source.contains('replace_T_Animal(value, replacement);')
-	assert !c_source.contains('replace_T_Animal(&value, replacement);')
+	assert c_source.contains('replace_T_Animal(value, ')
+	assert !c_source.contains('replace_T_Animal(&value, ')
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {

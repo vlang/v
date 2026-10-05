@@ -10,6 +10,6 @@ fn test_uint_is_platform_width_unsigned_builtin() {
 
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	assert tc.parse_type('uint') == Type(uint_)
+	assert semantic_types_equal(tc.parse_type('uint'), Type(uint_))
 	assert tc.c_type(tc.parse_type('uint')) == 'size_t'
 }

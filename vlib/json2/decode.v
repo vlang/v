@@ -44,12 +44,13 @@ fn struct_field_info(field_name string, attrs []string) StructFieldInfo {
 	mut json_name_str := field_name.str
 	mut json_name_len := field_name.len
 	mut is_json_skip := false
-	for attr in attrs {
+	for i in 0 .. attrs.len {
+		attr := &attrs[i]
 		if start, end := json_attr_value_range(attr) {
 			if end <= start {
 				continue
 			}
-			if end == start + 1 && attr[start] == `-` {
+			if end == start + 1 && (*attr)[start] == `-` {
 				is_json_skip = true
 				break
 			}
@@ -102,7 +103,6 @@ mut:
 	// values. It is one flat array, so nothing is allocated per value, and moving to
 	// the next value is an index increment.
 	values_info []ValueInfo
-	values_len  int // values_len is the number of values that the checker has put in values_info.
 	checker_idx int // checker_idx is the current index of the decoder.
 	current_idx int // current_idx is the index in values_info of the value that is decoded next.
 }
@@ -200,14 +200,18 @@ fn word_has_byte(word u64, b u8) bool {
 // values_info. Its length is set once its end is known.
 @[direct_array_access; inline; markused]
 fn (mut checker Decoder) add_value(value_kind ValueKind) {
-	if checker.values_len >= checker.values_info.len {
-		// value_count_bound() leaves room for every value of a valid JSON string. In
-		// an invalid one the checker can see more values, before it reports the error.
-		checker.values_info << ValueInfo{}
+	if checker.values_info.len == checker.values_info.cap
+		&& !checker.values_info.flags.has(.managed) {
+		capacity := value_count_bound(checker.json)
+		unsafe { checker.values_info.grow_cap(capacity - checker.values_info.len) }
 	}
-	checker.values_info[checker.values_len].position = checker.checker_idx
-	checker.values_info[checker.values_len].value_kind = value_kind
-	checker.values_len++
+	checker.values_info << ValueInfo{
+		position:   checker.checker_idx
+		value_kind: value_kind
+	}
+	if checker.values_info.flags.has(.managed) {
+		unsafe { checker.values_info.flags |= .noslices }
+	}
 }
 
 const max_context_length = 50
@@ -362,7 +366,7 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 
 // decode decodes a JSON string into a specified type.
 // By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
-@[manualfree]
+@[manualfree; noinline]
 pub fn decode[T](val string, params DecoderOptions) !T {
 	if val == '' {
 		return JsonDecodeError{
@@ -371,18 +375,27 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 			character: 1
 		}
 	}
+	mut storage := [8]ValueInfo{}
+	values := unsafe {
+		[]ValueInfo(array{
+			data:         &storage[0]
+			cap:          storage.len
+			element_size: sizeof(ValueInfo)
+			flags:        .noscan_data
+		})
+	}
 	mut decoder := Decoder{
 		json:        val
 		strict:      params.strict
-		values_info: []ValueInfo{len: value_count_bound(val)}
-	}
-	// Nothing that is decoded refers to values_info, so it is released right away.
-	defer {
-		unsafe { decoder.values_info.free() }
+		values_info: values
 	}
 
+	defer {
+		if decoder.values_info.data != values.data {
+			unsafe { decoder.values_info.free() }
+		}
+	}
 	decoder.check_json_format()!
-	decoder.values_info.trim(decoder.values_len)
 
 	mut result := T{}
 	$if T.unaliased_typ is $array_dynamic {
@@ -392,7 +405,7 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 		decoder.decode_map(mut result)!
 	} $else $if T is $pointer {
 		// `&T`, `&&T` and `&&&T` point to a newly decoded value; `null` keeps `result`.
-		result = decoder.decode_array_element(result)!
+		decoder.decode_element[T](mut result)!
 	} $else {
 		decoder.decode_value(mut result)!
 	}
@@ -464,7 +477,7 @@ fn decoder_field_infos[T]() []DecoderFieldInfo {
 				if end <= start {
 					continue
 				}
-				if end == start + 1 && attr[start] == `-` {
+				if end == start + 1 && (*attr)[start] == `-` {
 					is_json_skip = true
 					break
 				}
@@ -563,17 +576,46 @@ fn (mut decoder Decoder) json_key_matches(key_info ValueInfo, key_name string) !
 // skip_current_value moves past the current value, and past the values nested in it:
 // those follow it in values_info, and start before its end.
 @[direct_array_access; markused]
+fn (decoder &Decoder) next_value(index int) int {
+	if index >= decoder.values_info.len {
+		return decoder.values_info.len
+	}
+	value := decoder.values_info[index]
+	end := value.position + value.length
+	mut next := index + 1
+	mut limit := decoder.values_info.len
+	if next == limit || decoder.values_info[next].position >= end {
+		return next
+	}
+	for next < limit {
+		middle := next + (limit - next) / 2
+		if decoder.values_info[middle].position < end {
+			next = middle + 1
+		} else {
+			limit = middle
+		}
+	}
+	return next
+}
+
+fn (decoder &Decoder) container_len(index int) int {
+	value := decoder.values_info[index]
+	end := value.position + value.length
+	mut next := index + 1
+	mut count := 0
+	for next < decoder.values_info.len {
+		if decoder.values_info[next].position >= end {
+			break
+		}
+		count++
+		next = decoder.next_value(next)
+	}
+	return if value.value_kind == .object { count / 2 } else { count }
+}
+
+@[markused]
 fn (mut decoder Decoder) skip_current_value() {
-	if decoder.current_idx >= decoder.values_info.len {
-		return
-	}
-	value_info := decoder.values_info[decoder.current_idx]
-	value_end := value_info.position + value_info.length
-	mut next_idx := decoder.current_idx + 1
-	for next_idx < decoder.values_info.len && decoder.values_info[next_idx].position < value_end {
-		next_idx++
-	}
-	decoder.current_idx = next_idx
+	decoder.current_idx = decoder.next_value(decoder.current_idx)
 }
 
 @[manualfree]
@@ -1254,46 +1296,70 @@ fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
 }
 
 fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
-	$if T is $interface {
+	$if T is $interface || T.unaliased_typ is voidptr {
 		decoder.skip_current_value()
 		return
-	} $else $if T.unaliased_typ is voidptr {
-		decoder.skip_current_value()
+	}
+	array_info := decoder.values_info[decoder.current_idx]
+	if array_info.value_kind == .null && !decoder.strict {
+		decoder.current_idx++
 		return
-	} $else {
-		array_info := decoder.current_value()
+	}
+	if array_info.value_kind != .array {
+		return decoder.decode_error('Expected array, but got ${array_info.value_kind}')
+	}
+	capacity := decoder.container_len(decoder.current_idx)
+	mut decoded := []T{cap: capacity}
+	decoder.current_idx++
 
-		if array_info.value_kind == .array {
-			decoder.current_idx++
+	array_end := array_info.position + array_info.length
 
-			array_position := array_info.position
-			array_end := array_position + array_info.length
+	for {
+		if decoder.current_idx >= decoder.values_info.len
+			|| decoder.values_info[decoder.current_idx].position >= array_end {
+			break
+		}
 
-			for {
-				if decoder.current_idx >= decoder.values_info.len
-					|| decoder.current_value().position >= array_end {
-					break
-				}
-
-				$if T is $option {
-					// An option element (`[]?int`): `null` is `none`. Decoded directly,
-					// since v3 cannot return `!?T` from the element helper.
-					if decoder.option_element_is_none(T(none)) {
-						val << T(none)
-						decoder.skip_current_value()
-					} else {
-						val << decoder.decode_option_payload(T(none))!
-					}
-				} $else {
-					val << decoder.decode_array_element(T{})!
-				}
+		$if T is $option {
+			// An option element (`[]?int`): `null` is `none`. Decoded directly,
+			// since v3 cannot return `!?T` from the element helper.
+			if decoder.option_element_is_none(T(none)) {
+				decoded << T(none)
+				decoder.skip_current_value()
+			} else {
+				decoded << decoder.decode_option_payload(T(none))!
 			}
-		} else if array_info.value_kind == .null && !decoder.strict {
-			// Outside of strict mode `null` is an empty array, like in the removed module.
+		} $else {
+			mut element := T{}
+			decoder.decode_element[T](mut element)!
+			decoded << element
+		}
+	}
+	val = decoded
+}
+
+fn (mut decoder Decoder) decode_element[E](mut element E) ! {
+	$if E is $interface {
+		decoder.skip_current_value()
+	} $else $if E.unaliased_typ is voidptr {
+		decoder.skip_current_value()
+	} $else $if E.indirections == 1 {
+		if decoder.values_info[decoder.current_idx].value_kind == .null {
 			decoder.current_idx++
 		} else {
-			decoder.decode_error('Expected array, but got ${array_info.value_kind}')!
+			mut decoded_ptr := create_decoded_ptr(element)
+			decoder.decode_value(mut decoded_ptr)!
+			element = decoded_ptr
 		}
+	} $else $if E.indirections > 1 {
+		// `&&T`, `&&&T`, ... elements point to a newly decoded value, like fields.
+		if decoder.values_info[decoder.current_idx].value_kind == .null {
+			decoder.current_idx++
+		} else {
+			element = decoder.decode_new_pointer(element)!
+		}
+	} $else {
+		decoder.decode_value(mut element)!
 	}
 }
 
@@ -1428,95 +1494,70 @@ fn (mut decoder Decoder) decode_enum_map_key[K](key_str string) !K {
 	return zero
 }
 
-fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
-	$if V is $interface {
-		decoder.skip_current_value()
-		return
-	} $else $if V.unaliased_typ is voidptr {
-		decoder.skip_current_value()
-		return
+fn (mut decoder Decoder) decode_map_key[K](info ValueInfo) !K {
+	text := if decoder.key_has_escape(info) {
+		decoder.decode_string_value(info)!
+	} else {
+		decoder.json.substr_unsafe(info.position + 1, info.position + info.length - 1)
+	}
+	$if K.unaliased_typ is string {
+		return K(text)
+	} $else $if K.unaliased_typ is $enum {
+		return decoder.decode_enum_map_key[K](text)!
+	} $else $if K.unaliased_typ is rune {
+		mut runes := text.runes_iterator()
+		first := runes.next() or { return error('expected one rune for JSON key') }
+		if _ := runes.next() {
+			return error('expected one rune for JSON key')
+		}
+		return K(first)
+	} $else $if K.unaliased_typ is $int {
+		return parse_integer_number[K](text)!
 	} $else {
-		map_info := decoder.current_value()
+		return error('unsupported JSON map key type ${K.name}')
+	}
+}
 
-		if map_info.value_kind == .object {
-			map_position := map_info.position
-			map_end := map_position + map_info.length
-
-			decoder.current_idx++
-			for {
-				if decoder.current_idx >= decoder.values_info.len
-					|| decoder.current_value().position >= map_end {
-					break
-				}
-
-				key_info := decoder.current_value()
-
-				if key_info.position >= map_end {
-					break
-				}
-
-				key_str := if decoder.key_has_escape(key_info) {
-					decoder.decode_string_value(key_info)!
-				} else {
-					decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
-				}
-
-				mut key := K{}
-				$if K is string {
-					key = K(key_str)
-				} $else $if K.unaliased_typ is $enum {
-					key = decoder.decode_enum_map_key[K](key_str)!
-				} $else $if K is rune {
-					key = K(key_str.int())
-				} $else $if K is u8 || K is u16 || K is u32 || K is u64 || K is usize {
-					key = K(key_str.u64())
-				} $else $if K is i64 || K is isize {
-					key = K(key_str.i64())
-				} $else $if K is $int {
-					key = K(key_str.int())
-				} $else {
-					key = K(key_str)
-				}
-
+fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
+	$if V is $interface || V.unaliased_typ is voidptr {
+		decoder.skip_current_value()
+		return
+	}
+	map_info := decoder.values_info[decoder.current_idx]
+	if map_info.value_kind == .null && !decoder.strict {
+		val.clear()
+		decoder.current_idx++
+		return
+	}
+	if map_info.value_kind != .object {
+		return decoder.decode_error('Expected object, but got ${map_info.value_kind}')
+	}
+	map_end := map_info.position + map_info.length
+	capacity := val.len + decoder.container_len(decoder.current_idx)
+	val.reserve(u32(capacity))
+	decoder.current_idx++
+	for decoder.current_idx < decoder.values_info.len {
+		key_info := decoder.values_info[decoder.current_idx]
+		if key_info.position >= map_end {
+			break
+		}
+		key := decoder.decode_map_key[K](key_info)!
+		decoder.current_idx++
+		$if V is $option {
+			if decoder.values_info[decoder.current_idx].value_kind == .null {
+				val[key] = V(none)
 				decoder.current_idx++
-
-				value_info := decoder.current_value()
-
-				if value_info.position + value_info.length > map_end {
-					break
-				}
-
-				$if V is $option {
-					// An option map value: `null` is `none`.
-					if decoder.current_value().value_kind == .null {
-						val[key] = V(none)
-						decoder.current_idx++
-					} else {
-						val[key] = decoder.decode_option_payload(V(none))!
-					}
-					continue
-				}
-				mut map_value := V{}
-
-				$if V is $pointer {
-					map_value = decoder.decode_array_element(map_value)!
-				} $else {
-					decoder.decode_value(mut map_value)!
-				}
-
-				// Map alias values (`type Props = map[string]int`) also need to move.
-				$if V is $map || (V is $alias && V.unaliased_typ is $map) {
-					val[key] = map_value.move()
-				} $else {
-					val[key] = map_value
-				}
+			} else {
+				val[key] = decoder.decode_option_payload(V(none))!
 			}
-		} else if map_info.value_kind == .null && !decoder.strict {
-			// Outside of strict mode `null` is an empty map, like in the removed module.
-			val.clear()
-			decoder.current_idx++
-		} else {
-			decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
+			continue
+		}
+		mut map_value := V{}
+		decoder.decode_element[V](mut map_value)!
+		$if V.unaliased_typ is $map {
+			val[key] = map_value.move()
+		} $else {
+			val[key] = map_value
 		}
 	}
 }

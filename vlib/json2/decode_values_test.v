@@ -5,10 +5,9 @@ module json2
 fn checked_decoder(json string, room int) !Decoder {
 	mut decoder := Decoder{
 		json:        json
-		values_info: []ValueInfo{len: room}
+		values_info: []ValueInfo{cap: room}
 	}
 	decoder.check_json_format()!
-	decoder.values_info.trim(decoder.values_len)
 	return decoder
 }
 
@@ -24,7 +23,6 @@ fn value_texts(decoder Decoder) []string {
 fn test_values_are_stored_in_one_array_in_document_order() {
 	json := '{"a": [1, {"b": null}], "c": "d", "e": true}'
 	decoder := checked_decoder(json, value_count_bound(json))!
-	assert decoder.values_info.len == decoder.values_len
 	assert value_texts(decoder) == [json, '"a"', '[1, {"b": null}]', '1', '{"b": null}', '"b"',
 		'null', '"c"', '"d"', '"e"', 'true']
 	assert decoder.values_info.map(it.value_kind) == [ValueKind.object, .string, .array, .number,
@@ -35,7 +33,7 @@ fn test_value_count_bound_is_exact_without_empty_containers() {
 	for json in ['1', '"text"', 'null', '[1]', '[1, 2, 3]', '{"a": 1}', '{"a": [1, 2], "b": {"c": "d"}}',
 		'[[[1]]]', ' [ 1 , 2 ] '] {
 		decoder := checked_decoder(json, value_count_bound(json))!
-		assert decoder.values_len == value_count_bound(json), json
+		assert decoder.values_info.len == value_count_bound(json), json
 	}
 }
 
@@ -44,7 +42,7 @@ fn test_value_count_bound_counts_separators_in_strings_of_short_json() {
 		r'{"a\",\":": "b\\", "c": ",\\\",:"}', r'["\\\\", 1, "{\"a\":[1,2]}"]'] {
 		assert json.len < skip_strings_min_json_len
 		decoder := checked_decoder(json, value_count_bound(json))!
-		assert decoder.values_len <= value_count_bound(json), json
+		assert decoder.values_info.len <= value_count_bound(json), json
 	}
 }
 
@@ -60,9 +58,9 @@ fn test_value_count_bound_skips_strings_of_long_json() {
 	json := '[' + elements.join(',') + ']'
 	assert json.len >= skip_strings_min_json_len
 	decoder := checked_decoder(json, value_count_bound(json))!
-	assert decoder.values_len == value_count_bound(json)
+	assert decoder.values_info.len == value_count_bound(json)
 	// the root array, and the 1, 3, 4, 5 and 4 values of every repetition of `items`
-	assert decoder.values_len == 1 + (elements.len / items.len) * 17
+	assert decoder.values_info.len == 1 + (elements.len / items.len) * 17
 }
 
 // naive_json_string_end is json_string_end, one byte at a time.
@@ -130,8 +128,8 @@ fn test_value_count_bound_counts_a_value_too_many_for_an_empty_container() {
 	// number of values.
 	for json in ['[]', '{}', '[[], {}]', '{"a": {}}'] {
 		decoder := checked_decoder(json, value_count_bound(json))!
-		assert decoder.values_len < value_count_bound(json), json
-		assert decoder.values_len > 0, json
+		assert decoder.values_info.len < value_count_bound(json), json
+		assert decoder.values_info.len > 0, json
 	}
 }
 
@@ -152,7 +150,7 @@ fn test_checker_grows_values_info_when_it_has_no_room() {
 	expected := checked_decoder(json, value_count_bound(json))!
 	for room in [0, 1, 2, 5] {
 		decoder := checked_decoder(json, room)!
-		assert decoder.values_len == expected.values_len, 'room: ${room}'
+		assert decoder.values_info.len == expected.values_info.len, 'room: ${room}'
 		assert value_texts(decoder) == value_texts(expected), 'room: ${room}'
 	}
 }

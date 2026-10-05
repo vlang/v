@@ -41,14 +41,14 @@ fn test_map_codegen_callbacks_unwrap_alias_keys() {
 		for key in [types.Type(types.string_), types.Type(types.int_), types.Type(types.u8_),
 			types.Type(types.u16_), types.Type(types.u32_), types.Type(types.u64_),
 			types.Type(types.isize_), types.Type(types.usize_), types.Type(types.voidptr_),
-			types.Type(types.ArrayFixed{ elem_type: types.Type(types.u64_), len: 2 })] {
+			types.Type(types.ArrayFixed{ elem_type: &types.Type(types.u64_), len: 2 })] {
 			alias := types.Type(types.Alias{
 				name:      'MapKey'
-				base_type: key
+				base_type: &types.Type(key)
 			})
 			nested := types.Type(types.Alias{
 				name:      'NestedMapKey'
-				base_type: alias
+				base_type: &types.Type(alias)
 			})
 			expected := map_codegen_callback_test_names(g, key)
 			assert map_codegen_callback_test_names(g, alias) == expected, '${bits}: ${key.name()}'

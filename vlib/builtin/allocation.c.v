@@ -485,6 +485,18 @@ pub fn free(ptr voidptr) {
 	}
 }
 
+@[unsafe]
+fn free_unaliased(ptr voidptr) {
+	$if prealloc || builtin_free_nop ? {
+		return
+	}
+	$if gcboehm ? {
+		C.GC_FREE(ptr)
+	} $else {
+		free(ptr)
+	}
+}
+
 // memdup dynamically allocates a `sz` bytes block of memory on the heap
 // memdup then copies the contents of `src` into the allocated space and
 // returns a pointer to the newly allocated space.

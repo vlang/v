@@ -2,8 +2,8 @@ struct Empty {}
 
 struct Node[T] {
 	value T
-	left  Leaf[T]
-	right Leaf[T]
+	left  &Leaf[T]
+	right &Leaf[T]
 }
 
 type Leaf[T] = Empty | Node[T]
@@ -17,15 +17,16 @@ fn (leaf Leaf[T]) size[T]() int {
 }
 
 fn test_generic_sumtype_method() {
-	r := Node[int]{
+	empty := Leaf[int](Empty{})
+	r := Leaf[int](Node[int]{
 		value: 20
-		left:  Empty{}
-		right: Empty{}
-	}
+		left:  &empty
+		right: &empty
+	})
 	tree := Leaf[int](Node[int]{
 		value: 10
-		left:  Empty{}
-		right: r
+		left:  &empty
+		right: &r
 	})
 	println(tree.size())
 	assert tree.size() == 2

@@ -342,12 +342,17 @@ fn test_promoted_fixed_array_storage_preserves_nested_element_alignment() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Aligned'] = StructInfo{ name: 'Aligned', is_aligned: true, alignment: '64' }
+	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'Aligned' })
+	tc.structs['Aligned'] = []types.StructField{}
+	tc.collect(&a)
+	tc.declaration_attributes[int(decl)] = ['aligned: 64']
 	for typ in ['Aligned', '[2]Aligned', '[2][3]Aligned'] {
 		call := t.make_memdup_call_for_type(t.make_ident('source'), typ)
 		node := t.a.nodes[int(call)]
 		assert t.a.child_node(&node, 0).value == 'v3_aligned_memdup'
-		assert t.a.child_node(&node, 3).value == '64'
+		alignment := t.a.child_node(&node, 3)
+		assert alignment.kind == .call
+		assert t.a.child_node(alignment, 0).value == '__alignof__'
 	}
 }
 
@@ -450,7 +455,7 @@ fn test_fixed_array_range_reference_headers_are_allocated_before_wrapping() {
 	}
 }
 
-fn test_fixed_array_reference_sum_headers_do_not_own_inline_variant_storage() {
+fn test_fixed_array_reference_sums_own_inline_variant_storage() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
@@ -462,15 +467,15 @@ fn test_fixed_array_reference_sum_headers_do_not_own_inline_variant_storage() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for name in ['Payload', 'Generic[FixedPayload]'] {
 		mut seen := map[string]bool{}
-		assert !t.escape_value_contains_fixed_array(types.Type(types.SumType{ name: name }), mut seen)
+		assert t.escape_value_contains_fixed_array(types.Type(types.SumType{ name: name }), mut seen)
 	}
 	mut seen := map[string]bool{}
-	assert !t.escape_value_contains_fixed_array(types.Type(types.Alias{
+	assert t.escape_value_contains_fixed_array(types.Type(types.Alias{
 		name:      'PayloadAlias'
 		base_type: types.Type(types.SumType{ name: 'Payload' })
 	}), mut seen)
 	seen.clear()
-	assert !t.escape_value_contains_fixed_array(types.Type(types.Struct{ name: 'Wrapper' }), mut seen)
+	assert t.escape_value_contains_fixed_array(types.Type(types.Struct{ name: 'Wrapper' }), mut seen)
 	seen.clear()
 	assert t.escape_value_contains_fixed_array(types.Type(types.Struct{ name: 'FixedPayload' }), mut seen)
 }

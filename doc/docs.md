@@ -4874,7 +4874,9 @@ println(sum)
 The built-in method `type_name` returns the name of the currently held
 type.
 
-With sum types you could build recursive structures and write concise but powerful code on them.
+Copying a sum type copies its held value. Reference variants still refer to the same object.
+
+Use references for recursive fields, as in this binary tree:
 
 ```v
 // V's binary tree
@@ -4882,8 +4884,8 @@ struct Empty {}
 
 struct Node {
 	value f64
-	left  Tree
-	right Tree
+	left  &Tree
+	right &Tree
 }
 
 type Tree = Empty | Node
@@ -4898,9 +4900,11 @@ fn sum(tree Tree) f64 {
 }
 
 fn main() {
-	left := Node{0.2, Empty{}, Empty{}}
-	right := Node{0.3, Empty{}, Node{0.4, Empty{}, Empty{}}}
-	tree := Node{0.5, left, right}
+	empty := Tree(Empty{})
+	left := Tree(Node{0.2, &empty, &empty})
+	leaf := Tree(Node{0.4, &empty, &empty})
+	right := Tree(Node{0.3, &empty, &leaf})
+	tree := Tree(Node{0.5, &left, &right})
 	println(sum(tree)) // 0.2 + 0.3 + 0.4 + 0.5 = 1.4
 }
 ```

@@ -378,16 +378,12 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 				is_c_variadic = true
 			}
 		}
-		raw_parsed_param_type := if is_open_generic {
+		parsed_param_type := if is_open_generic {
 			tc.parse_scope_param_type(param_type)
 		} else {
 			tc.parse_resolution_type(param_type)
 		}
-		ptypes << if child.is_mut {
-			mut_param_semantic_type(raw_parsed_param_type)
-		} else {
-			raw_parsed_param_type
-		}
+		ptypes << parsed_param_type
 		param_texts << param_type
 		shared_params << param_type_text_is_shared(child.typ)
 	}
@@ -2773,7 +2769,7 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 		tc.statement_nodes[idx] = true
 	}
 	for idx, typ in tc.sparse_expr_type_values {
-		tc.expr_type_values[idx] = typ
+		tc.expr_type_values[idx] = tc.intern_type_reference(typ)
 		tc.expr_type_set[idx] = true
 	}
 	tc.sparse_resolved_call_names.clear()
@@ -4486,10 +4482,10 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		}
 		parse_entries:               map[u64]ParseTypeCacheEntry{}
 		c_entries:                   map[TypeId]string{}
-		struct_field_entries:        map[string]Type{}
+		struct_field_entries:        map[string]&Type{}
 		struct_field_misses:         map[string]bool{}
 		sum_variant_pattern_entries: map[string]string{}
-		lexical_smartcast_entries:   map[int]Type{}
+		lexical_smartcast_entries:   map[int]&Type{}
 		lexical_smartcast_misses:    map[int]bool{}
 		short_type_name_index:       if isnil(precomputed)
 			|| !precomputed.short_type_name_index_built {
@@ -4572,9 +4568,7 @@ mut:
 
 struct CheckTypePromotionCache {
 mut:
-	w0     [512]u64
-	w1     [512]u64
-	values [512]Type
+	values [512]&Type
 	set    [512]bool
 }
 
@@ -4603,13 +4597,9 @@ fn promote_cached_name_value(name &CachedName, mut cache CheckNamePromotionCache
 	return promoted
 }
 
-// Source payloads stay alive and immutable for the entire promotion pass. Raw
-// identities are safe within that pass; never retain this cache across arena frees.
-// frozen_interner is reserved for the parallel clone phase after checking joins.
-fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePromotionCache, promote_missing bool, frozen_interner bool) ?Type {
-	w0, w1, raw_slot := type_value_words(&typ)
-	slot := raw_slot & (cache.set.len - 1)
-	if cache.set[slot] && cache.w0[slot] == w0 && cache.w1[slot] == w1 {
+fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePromotionCache, promote_missing bool, frozen_interner bool) ?&Type {
+	slot := int(semantic_type_hash(typ) & u64(cache.set.len - 1))
+	if cache.set[slot] && semantic_types_equal(cache.values[slot], typ) {
 		return cache.values[slot]
 	}
 	canonical := tc.probe_check_type_promotion(typ, frozen_interner) or {
@@ -4618,15 +4608,13 @@ fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePr
 		}
 		tc.promote_check_type(typ)
 	}
-	cache.w0[slot] = w0
-	cache.w1[slot] = w1
 	cache.values[slot] = canonical
 	cache.set[slot] = true
 	return canonical
 }
 
 @[inline]
-fn (tc &TypeChecker) probe_check_type_promotion(typ Type, frozen_interner bool) ?Type {
+fn (tc &TypeChecker) probe_check_type_promotion(typ &Type, frozen_interner bool) ?&Type {
 	if frozen_interner {
 		if isnil(tc.type_interner) {
 			return none
@@ -4676,11 +4664,11 @@ fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 // A batch repeats the same types on thousands of nodes. Clone only the first
 // instance into the accumulator's arena, before releasing the batch's storage.
 // The accumulator is private to this lane (or the joined master during merge).
-fn (tc &TypeChecker) promote_check_type(typ Type) Type {
+fn (tc &TypeChecker) promote_check_type(typ Type) &Type {
 	if canonical := tc.probe_intern_type(typ) {
 		return canonical
 	}
-	_, canonical := tc.intern_type(clone_owned_type(typ))
+	canonical := tc.intern_type_reference(clone_owned_type(typ))
 	return canonical
 }
 
@@ -4823,14 +4811,14 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 	}
 	for idx, typ in w.sparse_expr_type_values {
 		owned_type := if scoped {
-			tc.promote_check_type(typ)
+			*tc.promote_check_type(typ)
 		} else {
 			typ
 		}
 		if tc.parallel_check_sparse {
 			tc.sparse_expr_type_values[idx] = owned_type
 		} else {
-			tc.expr_type_values[idx] = owned_type
+			tc.expr_type_values[idx] = tc.intern_type_reference(owned_type)
 			tc.expr_type_set[idx] = true
 		}
 	}

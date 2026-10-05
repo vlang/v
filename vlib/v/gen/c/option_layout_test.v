@@ -11,8 +11,8 @@ fn test_option_and_result_have_distinct_layouts() {
 	g.a = &ast
 	g.tc = &tc
 	g.interfaces['IError'] = []string{}
-	option := types.Type(types.OptionType{ base_type: types.Type(types.i64_) })
-	result := types.Type(types.ResultType{ base_type: types.Type(types.i64_) })
+	option := types.Type(types.OptionType{ base_type: &types.Type(types.i64_) })
+	result := types.Type(types.ResultType{ base_type: &types.Type(types.i64_) })
 	option_name := g.optional_type_name(option)
 	result_name := g.optional_type_name(result)
 	assert option_name != result_name

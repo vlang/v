@@ -370,7 +370,7 @@ fn test_concrete_generic_fn_alias_call_expands_multi_return_signature() {
 	tc.type_alias_generic_params['FnMultiReturn'] = ['I', 'O', 'R']
 	tc.fn_ret_types['make_splitter'] = types.Type(types.Alias{
 		name:      'FnMultiReturn[string, string, string]'
-		base_type: types.Type(types.void_)
+		base_type: &types.Type(types.void_)
 	})
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
@@ -401,7 +401,7 @@ fn test_concrete_generic_fn_alias_call_expands_result_signature() {
 	tc.type_alias_generic_params['ParseFunction'] = ['T']
 	tc.fn_ret_types['literal'] = types.Type(types.Alias{
 		name:      'ParseFunction[string]'
-		base_type: types.Type(types.void_)
+		base_type: &types.Type(types.void_)
 	})
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'

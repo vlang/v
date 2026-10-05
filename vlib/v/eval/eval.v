@@ -55,7 +55,7 @@ pub struct MapValue {
 pub mut:
 	key_type_name   string
 	value_type_name string
-	default_value   Value
+	default_value   &Value
 	entries         []MapEntry
 }
 
@@ -83,7 +83,7 @@ pub:
 	type_name    string
 	variant_name string
 pub mut:
-	payload Value
+	payload &Value
 }
 
 pub struct TupleValue {
@@ -1959,7 +1959,7 @@ fn (mut e Eval) set_selector_value(container Value, field_name string, value Val
 		}
 		SumValue {
 			mut sv := container
-			sv.payload = e.set_selector_value(sv.payload, field_name, value)!
+			sv.payload = &Value(e.set_selector_value(sv.payload, field_name, value)!)
 			return sv
 		}
 		else {
@@ -2101,7 +2101,7 @@ fn (e &Eval) smartcast_value(value Value, target_type string) ?Value {
 	if value is SumValue {
 		if e.type_name_matches(value.variant_name, target_type)
 			|| e.value_matches_type_name(value.payload, target_type) {
-			return value.payload
+			return *value.payload
 		}
 	}
 	return none
@@ -4318,7 +4318,7 @@ fn (mut e Eval) eval_map_init_flow(node &flat.Node) !FlowSignal {
 	mut m := MapValue{
 		key_type_name:   key_type
 		value_type_name: value_type
-		default_value:   e.zero_value_for_type_name(value_type)
+		default_value:   &Value(e.zero_value_for_type_name(value_type))
 	}
 	for j, key in keys {
 		m = e.map_set_value(m, key, values[j])
@@ -5078,7 +5078,7 @@ fn (mut e Eval) call_value_method(receiver Value, receiver_type_name string, met
 				receiver:         SumValue{
 					type_name:    receiver.type_name
 					variant_name: receiver.variant_name
-					payload:      result.receiver
+					payload:      &Value(result.receiver)
 				}
 				mutated_args:     result.mutated_args
 			}
@@ -5725,7 +5725,7 @@ fn (mut e Eval) zero_value_like(value Value) Value {
 			return SumValue{
 				type_name:    value.type_name
 				variant_name: value.variant_name
-				payload:      e.zero_value_like(value.payload)
+				payload:      &Value(e.zero_value_like(value.payload))
 			}
 		}
 		else {
@@ -5781,7 +5781,7 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name
 		return MapValue{
 			key_type_name:   qualified_key_type
 			value_type_name: qualified_value_type
-			default_value:   e.zero_value_for_type_name_in_module(qualified_value_type, module_name)
+			default_value:   &Value(e.zero_value_for_type_name_in_module(qualified_value_type, module_name))
 		}
 	}
 	enum_name := e.qualify_type_name(module_name, name)
@@ -5799,13 +5799,13 @@ fn (mut e Eval) zero_value_for_type_name_in_module(type_name string, module_name
 	if sum_name in e.sum_types {
 		return SumValue{
 			type_name: sum_name
-			payload:   void_value()
+			payload:   &Value(void_value())
 		}
 	}
 	if name in e.sum_types {
 		return SumValue{
 			type_name: name
-			payload:   void_value()
+			payload:   &Value(void_value())
 		}
 	}
 	struct_name := e.resolve_struct_type_name_in_module(name, module_name)
@@ -5997,8 +5997,8 @@ fn (e &Eval) adapt_value_to_type_name(value Value, type_name string) Value {
 		mut m := MapValue{
 			key_type_name:   qualified_key_type_name
 			value_type_name: qualified_value_type_name
-			default_value:   e.adapt_value_to_type_name(value.default_value,
-				qualified_value_type_name)
+			default_value:   &Value(e.adapt_value_to_type_name(value.default_value,
+				qualified_value_type_name))
 		}
 		for entry in value.entries {
 			m = e.map_set_value(m, entry.key, entry.value)
@@ -6032,7 +6032,7 @@ fn (e &Eval) wrap_sum_value(type_name string, value Value) Value {
 	return SumValue{
 		type_name:    type_name
 		variant_name: e.runtime_type_name(value)
-		payload:      value
+		payload:      &Value(value)
 	}
 }
 
@@ -6041,7 +6041,7 @@ fn (e &Eval) unwrap_sum_cast_value(value Value, type_name string) Value {
 		if !e.type_name_matches(value.type_name, type_name)
 			&& (e.type_name_matches(value.variant_name, type_name)
 				|| e.value_matches_type_name(value.payload, type_name)) {
-			return value.payload
+			return *value.payload
 		}
 	}
 	return value
@@ -6357,6 +6357,9 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		context := e.declaration_type_context(alias.module_name, alias.file_name)
 		return context.sizeof_type_layout(alias.target, alias.module_name, visited)
 	}
+	if variants := e.sum_types[name] {
+		return e.sizeof_sum_layout(variants, module_name, visited)
+	}
 	if name.starts_with('map[') || name.starts_with('fn ') || name.starts_with('chan ')
 		|| name.starts_with('thread ') {
 		return TypeLayout{ size: 8, align: 8 }
@@ -6435,6 +6438,25 @@ fn (e &Eval) sizeof_type_layout(raw_name string, module_name string, seen []stri
 		'IError' { TypeLayout{ size: 16, align: 8 } }
 		else { TypeLayout{ size: 8, align: 8 } }
 	}
+}
+
+fn (e &Eval) sizeof_sum_layout(variants []string, module_name string, seen []string) TypeLayout {
+	mut size := i64(1)
+	mut align := i64(1)
+	for variant in variants {
+		layout := e.sizeof_type_layout(variant, module_name, seen)
+		if layout.size > size {
+			size = layout.size
+		}
+		if layout.align > align {
+			align = layout.align
+		}
+	}
+	offset := sizeof_aligned_size(4, align)
+	if align < 4 {
+		align = 4
+	}
+	return TypeLayout{ size: sizeof_aligned_size(offset + size, align), align: align }
 }
 
 fn (e &Eval) sizeof_fixed_array_len(text string, module_name string, seen []flat.NodeId) ?i64 {
