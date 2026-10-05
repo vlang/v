@@ -3598,11 +3598,6 @@ println(nums)
 Note that you have to add `mut` before `nums` when calling this function. This makes
 it clear that the function being called will modify the value.
 
-Generic comptime method calls enforce the same mutable pointer parameter requirements
-as calls through a concrete receiver type, including calls forwarded through generic functions
-and methods. An explicit `mut param &T` requires a mutable `&T` variable, rather than a
-`mut param T` value parameter.
-
 It is preferable to return values instead of modifying arguments,
 e.g. `user = register(user)` (or `user.register()`) instead of `register(mut user)`.
 Modifying arguments should only be done in performance-critical parts of your application
@@ -8268,6 +8263,11 @@ fn main() {
 #### <h4 id="comptime-method-params">.params</h4>
 
 You can retrieve information about struct method params.
+
+Generic comptime method calls enforce the same mutable pointer parameter requirements
+as calls through a concrete receiver type, including calls forwarded through generic functions
+and methods. An explicit `mut param &T` requires a mutable `&T` variable, rather than a
+`mut param T` value parameter.
 
 Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
 Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.
