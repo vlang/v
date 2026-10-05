@@ -1265,6 +1265,10 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 					prev_tl = i
 					continue
 				}
+				if tc.skips_library_body(node) {
+					prev_tl = i
+					continue
+				}
 				span := i - prev_tl
 				cost := if i < tc.fn_check_costs.len && tc.fn_check_costs[i] > 0 {
 					tc.fn_check_costs[i]

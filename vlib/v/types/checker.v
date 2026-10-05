@@ -1011,6 +1011,9 @@ pub mut:
 	cross_target_prefs            &pref.Preferences = unsafe { nil }
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
+	skips_library_bodies          bool            // see skip_unreachable_library_bodies
+	library_files                 map[string]bool // the files whose unreachable bodies the check leaves out
+	reachable_library_fns         map[string]bool // the functions of those files that it checks
 	shadow_diagnostic_root        string
 	shadow_explicit_roots         []string
 	shadow_dependency_roots       []string
@@ -10519,6 +10522,9 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.check_sumtype_builtin_method_override(flat.NodeId(i), node)
 				tc.check_test_fn_signature(flat.NodeId(i), node)
 				tc.check_decl_type_strings(flat.NodeId(i), node)
+				if tc.skips_library_body(node) {
+					continue
+				}
 				if tc.scope_parallel_check_workers {
 					tc.check_fn_decl_semantics_scoped(i, range_lo, tc.cur_file, tc.cur_module)
 				} else {

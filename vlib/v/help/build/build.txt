@@ -298,6 +298,9 @@ NB: the build flags are shared with the run command too:
 
   -check
     Scans, parses, and checks the files without compiling the program.
+    It checks every function. A build leaves out the bodies of the standard library functions
+    that the program cannot reach, as it does not compile them either; the environment
+    variable V_CHECK_LIBRARY_BODIES=all makes a build check them too.
 
   -check-syntax
     Only scan and parse the files, but then stop. Useful for very quick syntax checks.
