@@ -379,6 +379,9 @@ It prints the value passed to it to standard output.
 This is useful when writing small programs, "scripts", or just learning the language.
 For brevity, `fn main()` will be skipped in this tutorial.
 
+Scripts can print values returned by imported functions, including floating-point values,
+and interpolate them with the same formatting available inside an explicit `main` function.
+
 This means that a "hello world" program in V is as simple as
 
 ```v
