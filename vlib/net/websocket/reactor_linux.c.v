@@ -246,7 +246,7 @@ pub fn (mut c ReactorClient) write(payload []u8, opcode OPCode) !int {
 		|| payload.len > c.owner.options.max_pending_bytes - 10 {
 		return error('output frame too large')
 	}
-	if opcode == .text_frame && !utf8.validate(payload.data, payload.len) {
+	if opcode == .text_frame && !frame_text_valid(payload) {
 		return error('invalid text UTF-8')
 	}
 	// The owner consumes this view inline; external posting clones it.
