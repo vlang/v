@@ -17,16 +17,59 @@ fn wait_header_exe(name string) string {
 	return name + $if windows { '.exe' } $else { '' }
 }
 
-fn wait_header_execute_without_vflags(command string) os.Result {
+fn wait_header_execute_without_vflags(args []string) os.Result {
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')
-	result := os.exec(os.split_args(command) or { panic(err) })
-	if vflags := old_vflags {
-		os.setenv('VFLAGS', vflags, true)
-	} else {
-		os.unsetenv('VFLAGS')
+	defer {
+		if vflags := old_vflags {
+			os.setenv('VFLAGS', vflags, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
 	}
-	return result
+	return os.exec(args)
+}
+
+fn test_wait_header_execute_preserves_spaced_args_and_vflags() {
+	root := os.join_path(os.vtmp_dir(), 'wait header argv ${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src := os.join_path(root, 'source with spaces.v')
+	out := os.join_path(root, 'program with spaces')
+	os.write_file(src, "import os
+
+fn main() {
+	assert os.args.len == 2
+	assert os.args[1] == 'argument with spaces'
+	assert os.getenv('VFLAGS') == ''
+	println(os.args[1])
+}
+")!
+	old_vflags := os.getenv_opt('VFLAGS')
+	defer {
+		if vflags := old_vflags {
+			os.setenv('VFLAGS', vflags, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
+	}
+	os.setenv('VFLAGS', 'must not reach child', true)
+	compile := wait_header_execute_without_vflags([wait_header_vexe, '-gc', 'none', '-o', out,
+		src])
+	assert compile.exit_code == 0, compile.output
+	assert os.getenv('VFLAGS') == 'must not reach child'
+	run := wait_header_execute_without_vflags([wait_header_exe(out), 'argument with spaces'])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'argument with spaces', run.output
+	assert os.getenv('VFLAGS') == 'must not reach child'
+	os.unsetenv('VFLAGS')
+	unsetting := wait_header_execute_without_vflags([wait_header_exe(out), 'argument with spaces'])
+	assert unsetting.exit_code == 0, unsetting.output
+	if flags := os.getenv_opt('VFLAGS') {
+		assert false, 'VFLAGS was unexpectedly restored as ${flags}'
+	}
 }
 
 fn wait_header_build_v3() string {
@@ -47,11 +90,13 @@ fn wait_header_compile(v3_bin string, name string, source string) WaitHeaderProg
 	src := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.v')
 	out := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}')
 	os.write_file(src, source) or { panic(err) }
-	os.rm(out) or {}
+	os.rm(wait_header_exe(out)) or {}
 	os.rm(out + '.c') or {}
-	compile := wait_header_execute_without_vflags('${wait_header_exe(v3_bin)} -b c -o ${out} ${src}')
+	compile := wait_header_execute_without_vflags([wait_header_exe(v3_bin), '-b', 'c', '-o', out,
+		src])
 	assert compile.exit_code == 0, compile.output
-	gen_c := wait_header_execute_without_vflags('${wait_header_exe(v3_bin)} -b c -o ${out}.c ${src}')
+	gen_c := wait_header_execute_without_vflags([wait_header_exe(v3_bin), '-b', 'c', '-o', out + '.c',
+		src])
 	assert gen_c.exit_code == 0, gen_c.output
 	return WaitHeaderProgram{
 		c_code: os.read_file(out + '.c') or { panic(err) }
@@ -65,7 +110,8 @@ fn wait_header_gen_c(v3_bin string, name string, source string) string {
 	c_path := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.c')
 	os.write_file(src, source) or { panic(err) }
 	os.rm(c_path) or {}
-	compile := wait_header_execute_without_vflags('${wait_header_exe(v3_bin)} -b c -o ${c_path} ${src}')
+	compile := wait_header_execute_without_vflags([wait_header_exe(v3_bin), '-b', 'c', '-o', c_path,
+		src])
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }
