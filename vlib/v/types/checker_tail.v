@@ -11789,19 +11789,22 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) ?VisibleMutationFnDecl {
 	cache_key := '${fallback_mod}\x01${visible_mutation_fn_lookup_name(name)}'
 	if !isnil(tc.visible_mutation_cache) {
-		cache := tc.visible_mutation_cache
-		if visible_mutation_key_is_global(cache_key) {
-			if decl := cache.global_decls[cache_key] {
+		mut cache := tc.visible_mutation_cache
+		for !isnil(cache) {
+			if visible_mutation_key_is_global(cache_key) {
+				if decl := cache.global_decls[cache_key] {
+					return decl
+				}
+			} else if decl := cache.decls[cache_key] {
 				return decl
 			}
-		} else if decl := cache.decls[cache_key] {
-			return decl
-		}
-		if cache.decl_misses[cache_key] {
-			return none
-		}
-		if cache.decl_index_ready {
-			return none
+			if cache.decl_misses[cache_key] {
+				return none
+			}
+			if cache.decl_index_ready {
+				return none
+			}
+			cache = cache.base
 		}
 	}
 	mut cur_mod := ''
@@ -12635,7 +12638,7 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	}
 }
 
-fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) map[string][]int {
+fn (tc &TypeChecker) param_storage_writes_for_decl_unscoped(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) map[string][]int {
 	target_param := tc.visible_mutation_fn_param(decl, target_param_idx) or {
 		return map[string][]int{}
 	}

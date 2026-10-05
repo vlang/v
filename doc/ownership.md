@@ -28,6 +28,12 @@ Ownership inference follows function calls, including long acyclic call chains. 
 limit grows with the number of functions; if inference still does not converge, the compiler
 reports the function being analyzed instead of continuing indefinitely.
 
+Ownership checking uses disposable arenas for function batches and recursive storage-source
+queries, so temporary snapshots and query state are released throughout large compilations,
+including compiler builds. Query results, inferred metadata, and diagnostics survive arena release.
+If the compiler memory limit is exceeded,
+it reports the limit and exits with status 1, without running cleanup against active workers.
+
 ## Creating owned values
 
 Call `.to_owned()` on a string to create an owned copy. Copies made with `.clone()` also

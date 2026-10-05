@@ -1,0 +1,194 @@
+module types
+
+import os
+import v.flat
+import v.parser
+import v.pref
+
+fn test_storage_query_results_survive_nested_arena_release() {
+	$if prealloc {
+		path := os.join_path(os.vtmp_dir(), 'storage_query_runtime_${os.getpid()}.v')
+		defer { os.rm(path) or {} }
+		os.write_file(path, 'struct Value {}
+struct Box { mut: value &Value }
+struct Holder { mut: child Box }
+fn store(mut target Box, source &Value) { target.value = source }
+fn delegate(mut target Holder, source &Value) { store(mut target.child, source) }
+fn overwrite(mut target Box, source &Value, replacement &Value) {
+	store(mut target, source)
+	target.value = replacement
+}
+fn deferred(mut target Box, source &Value, replacement &Value) {
+	defer { target.value = source }
+	target.value = replacement
+}
+fn first_cycle(mut target Box, source &Value, replacement &Value) {
+	target.value = source
+	second_cycle(mut target, source, replacement)
+}
+fn second_cycle(mut target Box, source &Value, replacement &Value) {
+	target.value = replacement
+	first_cycle(mut target, source, replacement)
+}
+fn cycle_contexts(mut target Box, source &Value, replacement &Value) {
+	first_cycle(mut target, source, replacement)
+	second_cycle(mut target, source, replacement)
+}
+fn reverse_cycle_contexts(mut target Box, source &Value, replacement &Value) {
+	second_cycle(mut target, source, replacement)
+	first_cycle(mut target, source, replacement)
+}
+') or { panic(err) }
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		_ = tc.check_semantics_opt(false)
+		assert tc.errors.len == 0, tc.errors.str()
+		mut results := map[string]map[string][]int{}
+		for i, node in a.nodes {
+			if node.kind != .fn_decl { continue }
+			decl := VisibleMutationFnDecl{ idx: i, mod: 'main' }
+			mut active := map[u64]bool{}
+			result := tc.param_storage_writes_for_decl(decl, 0, mut active)
+			assert active.len == 0
+			mut original_active := map[u64]bool{}
+			original := tc.param_storage_writes_for_decl_unscoped(decl, 0, mut original_active)
+			assert storage_param_sources_equal(result, original), node.value
+			assert original_active.len == 0
+			results[node.value] = result
+		}
+		// Freed child arenas are reused for unrelated strings, arrays, and map buckets.
+		for iteration in 0 .. 32 {
+			scope := unsafe { prealloc_scope_begin() }
+			mut churn := map[string][]int{}
+			for i in 0 .. 1024 {
+				churn['unrelated_${iteration}_${i}'.repeat(4)] = [iteration, i, i + 1]
+			}
+			assert churn.len == 1024
+			unsafe { prealloc_scope_end(scope) }
+		}
+		assert results['delegate']['.child.value'] == [1]
+		assert results['overwrite']['.value'] == [2]
+		assert results['deferred']['.value'] == [1]
+		assert results['first_cycle']['.value'] == [2]
+		assert results['second_cycle']['.value'] == [1]
+		assert results['cycle_contexts']['.value'] == [1]
+		assert results['reverse_cycle_contexts']['.value'] == [2]
+		assert tc.visible_mutation_cache.storage_query_results.len == 0
+		mut cycle_decl := VisibleMutationFnDecl{}
+		mut store_decl := VisibleMutationFnDecl{}
+		for i, node in a.nodes {
+			if node.kind == .fn_decl && node.value == 'first_cycle' {
+				cycle_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
+			}
+			if node.kind == .fn_decl && node.value == 'store' {
+				store_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
+			}
+		}
+		memo_scope := unsafe { prealloc_scope_begin() }
+		memo_view := tc.fork_storage_query_view()
+		cycle_id := visible_mutation_cache_id(cycle_decl, 0)
+		mut inactive := map[u64]bool{}
+		inactive[cycle_id] = false
+		// Original cycle cutoffs test key membership, including false entries.
+		assert memo_view.param_storage_writes_for_decl(cycle_decl, 0, mut inactive).len == 0
+		mut active_cycle := map[u64]bool{}
+		active_cycle[cycle_id] = true
+		assert memo_view.param_storage_writes_for_decl(cycle_decl, 0, mut active_cycle).len == 0
+		mut absent := map[u64]bool{}
+		assert memo_view.param_storage_writes_for_decl(cycle_decl, 0, mut absent)['.value'] == [2]
+		for iteration in 0 .. 96 {
+			mut distinct_context := map[u64]bool{}
+			distinct_context[u64(1_000_000 + iteration)] = true
+			assert memo_view.param_storage_writes_for_decl(store_decl, 0, mut distinct_context)['.value'] == [1]
+		}
+		assert memo_view.visible_mutation_cache.storage_query_results.len == 64
+		assert memo_view.visible_mutation_cache.storage_query_bytes <= 256 * 1024
+		for _, paths in memo_view.visible_mutation_cache.storage_query_results {
+			for _, sources in paths {
+				assert sources.len > 0
+			}
+		}
+		unsafe { prealloc_scope_end(memo_scope) }
+		assert tc.visible_mutation_cache.storage_query_results.len == 0
+		for _, paths in results {
+			for name, sources in paths {
+				assert name.len > 0
+				assert sources.len > 0
+				assert sources[0] in [1, 2]
+			}
+		}
+	}
+}
+
+fn test_storage_query_views_keep_parent_identity_tables_private() {
+	$if prealloc {
+		mut a := flat.FlatAst.new()
+		a.has_vsh_source = true
+		mut tc := TypeChecker.new(&a)
+		tc.type_cache.parse_enabled = true
+		tc.fn_ret_types['os.getenv'] = builtin_string_type
+		tc.v_fn_semantic_names['getenv'] = true
+		parent_type := Type(ArrayFixed{ elem_type: builtin_int_type, len: 2 })
+		parent_c := tc.c_type(parent_type)
+		parent_array := tc.parse_type('[]u8')
+		parent_symbol, _ := tc.intern_symbol('parent_symbol')
+		parent_type_count := tc.type_count()
+		parent_c_count := tc.type_cache.c_entries.len
+		scope := unsafe { prealloc_scope_begin() }
+		view := tc.fork_storage_query_view()
+		child_type := Type(ArrayFixed{ elem_type: builtin_string_type, len: 3 })
+		// Each table's first TypeId and SymbolId can be identical while their
+		// semantic values differ. ID-indexed caches must remain table-local.
+		assert view.c_type(child_type) == view.c_type_uncached(child_type)
+		assert view.c_type(child_type) != parent_c
+		child_symbol, child_name := view.intern_symbol('child_symbol')
+		assert child_symbol == parent_symbol
+		assert child_name == 'child_symbol'
+		assert tc.symbol_name(parent_symbol) == 'parent_symbol'
+		assert view.type_name(view.parse_type('[]u8')) == parent_array.name()
+		assert view.visible_mutation_cache.base == tc.visible_mutation_cache
+		assert view.type_cache.base == tc.type_cache
+		assert view.vsh_os_fn_key('getenv') == none
+		assert tc.vsh_os_fn_key('getenv') == none
+		assert isnil(view.body_resolve_memo)
+		unsafe { prealloc_scope_end(scope) }
+		assert tc.type_count() == parent_type_count
+		assert tc.type_cache.c_entries.len == parent_c_count
+		assert tc.c_type(parent_type) == parent_c
+		assert tc.symbols.names == ['parent_symbol']
+	}
+}
+
+fn test_storage_query_views_preserve_cold_declaration_lookups() {
+	$if prealloc {
+		path := os.join_path(os.vtmp_dir(), 'storage_query_cold_${os.getpid()}.v')
+		defer { os.rm(path) or {} }
+		os.write_file(path, 'module main
+fn declared() int { return 42 }
+fn main() { assert declared() == 42 }
+') or { panic(err) }
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.cur_module = 'main'
+		tc.type_cache = new_type_cache(false)
+		assert tc.local_fn_decl_exists_scan('declared')
+		scope := unsafe { prealloc_scope_begin() }
+		view := tc.fork_storage_query_view()
+		// The nested query must retain the same lookup policy after the first
+		// query has introduced a private cache layer.
+		nested := view.fork_storage_query_view()
+		assert nested.local_fn_decl_exists('declared')
+		assert view.local_fn_decl_exists('declared')
+		assert !view.local_fn_decl_exists('absent')
+		unsafe { prealloc_scope_end(scope) }
+		assert tc.type_cache.local_fn_decl_index.len == 0
+		assert tc.local_fn_decl_exists('declared')
+		assert !tc.local_fn_decl_exists('absent')
+	}
+}
