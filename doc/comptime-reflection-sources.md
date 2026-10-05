@@ -9,6 +9,10 @@ Importing a module with an unused generic reflection function does not resolve i
 parameter as a type in another imported module. Named types used as reflection sources
 are checked in the source file's own module, including before function body checking.
 
+A concrete type passed to a generic reflection function keeps its declaring module.
+For example, `config.Cfg` retains its own fields when another dependency imports
+`rand.config`; an unrelated module import cannot change `$for field in T.fields`.
+
 Repeated method reflection loops in generic specializations borrow AST node headers during
 metadata lookup. Empty method scans allocate only their metadata containers instead of a
 node copy for every scanned AST entry.

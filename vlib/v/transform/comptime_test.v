@@ -3,6 +3,22 @@ module transform
 import v.flat
 import v.types
 
+fn test_comptime_canonical_type_is_not_rebound_by_another_module_import() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['config.Cfg'] = []types.StructField{}
+	tc.imports['config'] = 'rand.config'
+	tc.imports['cfg'] = 'config'
+	t := Transformer{
+		a:          &a
+		tc:         &tc
+		cur_file:   'generic.v'
+		cur_module: 'json2'
+	}
+	assert t.comptime_resolve_selective_import_type('config.Cfg') == 'config.Cfg'
+	assert t.comptime_resolve_selective_import_type('cfg.Cfg') == 'config.Cfg'
+}
+
 fn test_comptime_field_function_type_keeps_declaring_module() {
 	mut a := flat.FlatAst.new()
 	t := Transformer{

@@ -199,6 +199,12 @@ fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
 		return clean
 	}
 	if clean.contains('.') {
+		// Generic specialization already supplies canonical types. An unrelated
+		// import alias from another file must not rebind `config.Cfg` to
+		// `rand.config.Cfg` before its fields are reflected.
+		if t.type_authority_has(clean) {
+			return clean
+		}
 		if imported := t.resolve_imported_type_name(clean) {
 			return imported
 		}
