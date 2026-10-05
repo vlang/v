@@ -13325,6 +13325,14 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	if specialized_enum_type.len > 0 {
 		return t.lower_specialized_enum_from_call(node, specialized_enum_type)
 	}
+	if node.children_count > 0 {
+		string_callee := t.a.child_node(&node, 0)
+		if string_callee.kind == .selector && string_callee.children_count > 0 {
+			if folded := t.try_fold_literal_string_call(node, string_callee) {
+				return folded
+			}
+		}
+	}
 	if receiver_call := t.try_lower_receiver_method_call(_id, node) {
 		return receiver_call
 	}
@@ -17727,6 +17735,72 @@ fn (mut t Transformer) try_lower_string_method_call(node flat.Node) ?flat.NodeId
 
 	t.mark_fn_used_name('string.${method}')
 	return t.make_call_typed('string__${method}', args, ret_type)
+}
+
+// try_fold_literal_string_call emits a literal when a pure string call has literal operands.
+fn (mut t Transformer) try_fold_literal_string_call(node flat.Node, callee flat.Node) ?flat.NodeId {
+	if callee.value !in ['starts_with', 'ends_with', 'contains', 'count', 'all_before', 'all_after',
+		'all_before_last', 'all_after_last', 'trim', 'trim_left', 'trim_right', 'trim_space',
+		'trim_string_left', 'trim_string_right', 'replace', 'to_lower', 'to_upper'] {
+		return none
+	}
+	base_id := t.a.child(&callee, 0)
+	if t.node_type(base_id) != 'string' {
+		return none
+	}
+	// Probe without transforming nonliteral operands: falling back must not emit them twice.
+	if !t.literal_string_call_operand(base_id) {
+		return none
+	}
+	for i in 1 .. node.children_count {
+		if !t.literal_string_call_operand(t.a.child(&node, i)) {
+			return none
+		}
+	}
+	base := t.a.node(t.transform_expr(base_id))
+	if base.kind != .string_literal {
+		return none
+	}
+	mut args := []string{}
+	for i in 1 .. node.children_count {
+		arg := t.a.node(t.transform_expr(t.a.child(&node, i)))
+		if arg.kind != .string_literal {
+			return none
+		}
+		args << arg.value
+	}
+	value := comptime_string_scalar(base.value, callee.value, args) or { return none }
+	return match value.typ {
+		'string' { t.make_string_literal(value.value) }
+		'bool' { t.make_bool_literal(value.value == 'true') }
+		else { t.make_int_literal(value.value.int()) }
+	}
+}
+
+fn (t &Transformer) literal_string_call_operand(id flat.NodeId) bool {
+	node := t.a.node(id)
+	if node.kind == .string_literal {
+		return true
+	}
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	callee := t.a.child_node(node, 0)
+	if callee.kind != .selector || callee.children_count == 0
+		|| callee.value !in ['all_before', 'all_after', 'all_before_last', 'all_after_last', 'trim',
+			'trim_left', 'trim_right', 'trim_space', 'trim_string_left', 'trim_string_right', 'replace',
+			'to_lower', 'to_upper'] {
+		return false
+	}
+	if !t.literal_string_call_operand(t.a.child(callee, 0)) {
+		return false
+	}
+	for i in 1 .. node.children_count {
+		if !t.literal_string_call_operand(t.a.child(node, i)) {
+			return false
+		}
+	}
+	return true
 }
 
 // lower_string_count_call builds lower string count call data for transform.
