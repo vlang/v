@@ -7311,6 +7311,86 @@ fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_
 	return retry_compilation && use_implicit_tcc_semantics && (!tried_tcc || tcc_exit_code != 0)
 }
 
+fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string) ?string {
+	if c_flags_need_objective_c(flags) || c_link_flags_use_non_c_language(flags) {
+		return 'its native inputs require a C++ or Objective-C compiler'
+	}
+	if target_os == 'macos' {
+		mut i := 0
+		for i < flags.len {
+			flag := flags[i].trim_space()
+			if c_flag_consumes_next_operand(flag) {
+				i += 2
+				continue
+			}
+			if c_flag_is_object_file(flag) {
+				return 'its native inputs require linking external objects on macOS'
+			}
+			i++
+		}
+	}
+	return none
+}
+
+// Probe only the link dependencies, before generating the program. Headers and
+// program symbols can still reveal failures later; those need a fresh compiler
+// pass because parsing has already selected compiler-specific `$if` branches.
+fn v3_implicit_tcc_preflight(vroot string, tcc_path string, bundled_tcc string, bundled_tcc_available bool, target pref.Target, flags []string, mut sdk_cache V3MacosSdkRootCache) ?string {
+	if reason := v3_implicit_tcc_flags_incompatibility(flags, target.os) {
+		return reason
+	}
+	link_flags := c_dylib_link_flags(flags)
+	if link_flags.len == 0 {
+		return none
+	}
+	dir := os.join_path(os.vtmp_dir(), 'v3_tcc_preflight_${tempname.unique_token()}')
+	os.mkdir_all(dir) or { return none }
+	defer {
+		cleanup_c_build_dir(dir)
+	}
+	os.write_file(os.join_path(dir, 'probe.c'), 'int main(void) { return 0; }\n') or {
+		return none
+	}
+	resources := v3_tcc_resource_flags_for_compiler(vroot, tcc_path, bundled_tcc,
+		bundled_tcc_available)
+	mut probe_args := ['-w']
+	sdk_root := if target.os == 'macos' { sdk_cache.get() } else { '' }
+	if resources.base_arg.len > 0 {
+		probe_args << [resources.base_arg, resources.include_arg, resources.library_arg]
+		probe_args << v3_tcc_host_system_flags(target.os, sdk_root)
+	}
+	probe_args << ['-o', 'probe.exe', 'probe.c']
+	probe_args << link_flags
+	probe_args = v3_tcc_macos_framework_flags(probe_args, target.os, sdk_root)
+	result := cmdexec.run_in(tcc_path, probe_args, dir)
+	if result.exit_code != 0 && v3_tcc_dependency_probe_is_incompatible(result.output) {
+		return if result.output.trim_space().len > 0 {
+			result.output
+		} else {
+			'tcc dependency probe exited with code ${result.exit_code}'
+		}
+	}
+	return none
+}
+
+fn v3_tcc_dependency_probe_is_incompatible(output string) bool {
+	message := output.to_lower_ascii()
+	missing := message.contains('not found') || message.contains('cannot find')
+		|| message.contains('could not find') || message.contains('no such file')
+	if missing && (message.contains('library ') || message.contains('file ')) {
+		return true
+	}
+	for format_error in ['invalid elf', 'invalid mach-o', 'unrecognized filetype',
+		'unrecognized file type', 'file format not recognized', 'unsupported file type',
+		'not a valid archive', 'unrecognized option', 'unsupported option'] {
+		if message.contains(format_error) {
+			return true
+		}
+	}
+	// A library's undefined symbols can be supplied by the generated program.
+	return false
+}
+
 struct V3TestBuildConstraint {
 	expression string
 	line       int
@@ -10193,10 +10273,6 @@ pub fn run(args []string) {
 		b.stop_memory_monitor()
 	}
 	mut c_object_cache_stats := CObjectCacheStats{}
-	if verbose && !silent && !c_to_stdout {
-		println('=== V compiler benchmark ===')
-	}
-
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
 	is_vsh_input := input_file.ends_with('.vsh') || raw_vsh_tmp_prefix != ''
@@ -10253,6 +10329,16 @@ pub fn run(args []string) {
 	c_compiler = selection.c_compiler
 	use_implicit_tcc_semantics := selection.use_implicit_tcc_semantics
 	effective_c_compiler := selection.effective_c_compiler
+	if retry_compilation && use_implicit_tcc_semantics && !check_only && !only_check_syntax
+		&& !c_only && !is_o {
+		if injected_failure := os.getenv_opt('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE') {
+			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent, injected_failure)
+			return
+		}
+	}
+	if verbose && !silent && !c_to_stdout && !use_implicit_tcc_semantics {
+		println('=== V compiler benchmark ===')
+	}
 	if race {
 		v3_race_check_c_compiler(c_compiler, effective_c_compiler) or {
 			eprintln(err.msg())
@@ -11148,6 +11234,22 @@ pub fn run(args []string) {
 		if parser_has_errors {
 			exit(1)
 		}
+	}
+	if retry_compilation && use_implicit_tcc_semantics && !check_only && !only_check_syntax
+		&& !c_only && !is_o {
+		mut preflight_flags := environment_c_flags.clone()
+		preflight_flags << user_c_flags
+		preflight_flags << link_ld_flags
+		preflight_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target,
+			prefs.compile_values)
+		if reason := v3_implicit_tcc_preflight(prefs.vroot, implicit_tcc, bundled_tcc,
+			bundled_tcc_available, prefs.target, preflight_flags, mut macos_sdk_root_cache) {
+			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent, reason)
+			return
+		}
+	}
+	if verbose && !silent && !c_to_stdout && use_implicit_tcc_semantics {
+		println('=== V compiler benchmark ===')
 	}
 	if only_check_syntax {
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
@@ -13193,8 +13295,8 @@ pub fn run(args []string) {
 				mut c_object_cache_stats) or {
 				message := err.msg()
 				if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, false, 0) {
-					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose,
-						show_cc, silent, if message.len > 0 {
+					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, silent,
+						if message.len > 0 {
 							message
 						} else {
 							'its C flags could not be prepared'
@@ -13915,8 +14017,8 @@ pub fn run(args []string) {
 			return
 		}
 		if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
-			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc,
-				silent, if !tried_tcc {
+			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, silent,
+				if !tried_tcc {
 					''
 				} else if result.output.trim_space().len > 0 {
 					result.output
@@ -14762,26 +14864,32 @@ fn v3_implicit_tcc_fallback_warning(fallback string, reason string) string {
 }
 
 // v3_regenerate_after_implicit_tcc rebuilds the program for the platform C
-// compiler. A non-empty `failure` means tcc failed rather than being skipped
-// on purpose (-prod, -cg, cross builds ...); unless the build is `-silent`, that
-// is reported like the explicit `-cc tcc` fallback, because the retry is often
-// several times slower and an unreported one hides the tcc failure behind a
-// slow build.
-fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_dir string, verbose bool, show_cc bool, silent bool, failure string) {
+// compiler and reports the switch unless the build is silent. Replacing this
+// process on POSIX releases the old compiler's ASTs and generated C before the
+// retry starts. Windows waits for the child to preserve its exit status.
+fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_dir string, silent bool, failure string) {
 	fallback := v3_platform_c_compiler_command(os.user_os())
-	if failure.len > 0 && !silent {
+	if !silent {
 		eprintln(v3_implicit_tcc_fallback_warning(fallback, failure))
-	} else if verbose || show_cc {
-		eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
 	}
-	retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
+	mut retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
+	if v3_parser_diagnostics_printed(false)
+		&& v3_internal_parser_diagnostics_printed_flag !in retry_args {
+		retry_args.insert(0, v3_internal_parser_diagnostics_printed_flag)
+	}
 	cleanup_c_build_dir(cc_dir)
-	retry_result := cmdexec.run(os.executable(), retry_args)
-	if retry_result.output.len > 0 {
-		print(retry_result.output)
-	}
-	if retry_result.exit_code != 0 {
+	flush_stdout()
+	flush_stderr()
+	$if windows {
+		retry_result := cmdexec.run(os.executable(), retry_args)
+		if retry_result.output.len > 0 {
+			print(retry_result.output)
+		}
 		exit(retry_result.exit_code)
+	}
+	os.execvp(os.executable(), retry_args) or {
+		eprintln('failed to restart the build with ${fallback}: ${err.msg()}')
+		exit(1)
 	}
 }
 
