@@ -49,7 +49,8 @@ pub fn (mut c Conn) validate() !bool {
 	return c.driver.validate()
 }
 
-// reset resets the session of this checked-out connection.
+// reset invokes the driver's backend-defined reset for this checked-out connection.
+// Finish manual transactions and any required session cleanup before releasing it.
 pub fn (mut c Conn) reset() ! {
 	c.mu.lock()
 	defer { c.mu.unlock() }

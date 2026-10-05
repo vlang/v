@@ -67,6 +67,10 @@ before reusing a released connection and discards connections whose reset fails.
 connections are validated during acquisition, including direct handoffs to waiting callers;
 invalid and expired connections are discarded.
 
+Reset behavior depends on the driver. Some built-in drivers implement `reset()` as a no-op;
+the pool does not guarantee a rollback or restore session settings. Finish manual transactions
+and perform any required session cleanup on the checked-out `Conn` before releasing it.
+
 Closing a pool wakes waiting callers and closes idle connections. Checked-out connections
 remain usable until released, when they are closed. Acquisition errors from the factory
 are returned to the caller; construction itself does not connect. `db.open()` and existing
