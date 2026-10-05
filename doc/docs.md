@@ -5052,6 +5052,7 @@ is a type.
 Values are created with `Expr.Count(3)` and `Expr.Void`. A `match` branch like
 `Expr.Count(n)` binds the payload to `n`. The binding is an immutable copy of the payload;
 to change a value in a `match mut` branch, assign a new variant to the matched variable.
+Payload bindings follow the same redeclaration and global shadowing rules as other local variables.
 A branch can list several variants, like `Expr.IntLit, Expr.Count {`, when it binds no
 payload. `match` must cover every variant or have an `else` branch, and `is`/`!is` checks
 work with variants as well: `e is Expr.Void`. Two values are equal when they hold the same

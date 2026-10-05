@@ -210,6 +210,19 @@ fn test_recursive_sum_type() {
 	assert sum_tree(Tree.Ref(&leaf)) == 10
 }
 
+fn test_recursive_named_sum_string() {
+	tree := Tree.Node([Tree.Leaf(1), Tree.Nil])
+	assert tree.str() == 'Tree.Node([Tree.Leaf(1), Tree.Nil])'
+	assert '${tree}' == 'Tree.Node([Tree.Leaf(1), Tree.Nil])'
+	nested := Tree.Node([Tree.Node([Tree.Leaf(1)]), Tree.Nil])
+	assert nested.str() == 'Tree.Node([Tree.Node([Tree.Leaf(1)]), Tree.Nil])'
+	leaf := Tree.Leaf(1)
+	assert Tree.Ref(&leaf).str() == 'Tree.Ref(&Tree.Leaf(1))'
+	mut cycle := Tree.Nil
+	cycle = Tree.Ref(&cycle)
+	assert cycle.str().contains('<circular>')
+}
+
 fn test_variant_names_are_scoped() {
 	o := Other.Void
 	v := Void(3)

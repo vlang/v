@@ -61,7 +61,8 @@ fn (mut tc TypeChecker) declare_named_variant_binding(subject_type Type, branch 
 		tc.record_error_at(.assignment_mismatch, 'the payload binding `${binding.value}` cannot be mutable; it is a copy of the payload, assign a new variant value to change it',
 			binding_id, binding.pos)
 	}
-	owner := tc.cur_scope.insert_with_owner(binding.value, payload_type)
+	tc.check_local_binding_global_shadowing(binding_id)
+	owner := tc.insert_decl_lhs(binding_id, payload_type, false)
 	tc.initialize_unknown_pointer_binding(owner, payload_type)
 	tc.remember_expr_type(binding_id, payload_type)
 }

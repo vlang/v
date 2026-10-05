@@ -61,6 +61,12 @@ fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant string, is_re
 	payload_type := t.tc.named_variant_payload_type(variant) or {
 		return t.make_string_literal(display)
 	}
+	// Keep the payload's variant on the stack, as ordinary struct formatting
+	// does, so an array of the enclosing sum is not mistaken for a direct cycle.
+	t.stringify_stack << variant
+	defer {
+		t.stringify_stack.delete_last()
+	}
 	payload_name := t.tc.type_name(payload_type)
 	mut value := expr
 	if is_ref {
