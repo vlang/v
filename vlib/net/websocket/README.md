@@ -24,3 +24,10 @@ Close frames are not accepted; call `client.close(code, reason)` for the closing
 The entire batch is validated before any frames are sent.
 Socket writes, including pongs from the reader, are serialized per connection.
 On a write error, close the connection: a prefix may already have been sent.
+
+## Incremental server frame decoding
+
+`ServerFrameDecoder.decode(mut input)` processes masked client frames from a
+caller-owned buffer without performing socket I/O. It supports incomplete input,
+fragmented messages, interleaved controls, message limits, and protocol validation.
+See [the decoder documentation](FRAME_DECODER.md) for buffer ownership and usage.
