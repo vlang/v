@@ -2233,9 +2233,13 @@ fn input_is_v3_compiler_entry(input_file string) bool {
 
 // v3_compiles_fastc_by_default reports whether a build of `input_file` keeps the
 // FastC backend without `-compile-backend fastc` or `-all-backends`. Only the full
-// `cmd/v` CLI does: it is the V executable that users run `-b fastc` with.
-fn v3_compiles_fastc_by_default(input_file string) bool {
-	return input_is_cmd_v(input_file)
+// `cmd/v` CLI does: it is the V executable that users run `-b fastc` with. Portable
+// `-cross` C (the `vc/v.c` bootstrap snapshots) leaves it out: FastC's libtcc linking
+// and Mach-O signing are host specific, so such a snapshot would not compile and link
+// everywhere. The compiler that `make` and `makev.bat` build from the snapshot
+// rebuilds `cmd/v` natively, which keeps FastC again.
+fn v3_compiles_fastc_by_default(input_file string, output_cross_c bool) bool {
+	return !output_cross_c && input_is_cmd_v(input_file)
 }
 
 fn input_is_cmd_v(input_file string) bool {
@@ -10081,8 +10085,8 @@ pub fn run(args []string) {
 	// in; the active `-b` target backend is always force-included.
 	// The full `cmd/v` CLI (the executable that `make`, `makev.bat`, `v self`, and `v up`
 	// produce) always keeps FastC, so `-b fastc` works in default builds; `-d skip_fastc`
-	// still removes it. Standalone `vlib/v/v.v` builds keep pruning it.
-	mut include_fastc := all_backends || v3_compiles_fastc_by_default(input_file)
+	// still removes it. Standalone `vlib/v/v.v` builds and portable `-cross` C keep pruning it.
+	mut include_fastc := all_backends || v3_compiles_fastc_by_default(input_file, output_cross_c)
 	mut include_arm64 := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
