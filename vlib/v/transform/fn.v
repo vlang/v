@@ -8606,12 +8606,10 @@ fn (mut t Transformer) lower_sum_str(expr flat.NodeId, sum_name string) flat.Nod
 	} else {
 		resolved_sum
 	}
-	// V's auto stringifier expands recursive sums far enough to show two nested
-	// payload structs, then uses the same text as an invalid/zero runtime tag.
-	// Stopping at the first repeated sum loses useful structure (`Expr{}` for
-	// every recursive field).
-	if t.stringify_stack_count(resolved_sum) >= 3 {
-		return t.make_string_literal('unknown sum type value')
+	// Repeated sum types can contain distinct, acyclic payloads. Emit a runtime
+	// helper instead of truncating them according to their compile-time nesting.
+	if t.stringify_stack_count(resolved_sum) > 0 {
+		return t.request_auto_str_helper(expr, resolved_sum)
 	}
 	if t.stringify_stack.len >= t.stringify_depth_cap && t.stringify_stack_count(resolved_sum) == 0
 		&& !t.stringify_types_match(t.auto_str_synthesis_type, resolved_sum) {
@@ -8663,6 +8661,10 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 		} else {
 			variant
 		})
+	} else if aggregate := t.stringify_aggregate_type_name(variant_base) {
+		// Sum payloads are boxed. Their addresses, rather than their types, identify
+		// an actual cycle when a recursive helper reaches the same payload again.
+		t.lower_ref_str_guarded(field_sel, aggregate, false, '', 'nil')
 	} else {
 		value := t.make_prefix(.mul, field_sel)
 		payload_type := if variant_base != variant { variant_base } else { variant }

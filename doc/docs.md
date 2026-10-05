@@ -4056,6 +4056,9 @@ See also [String interpolation](#string-interpolation).
 Automatic string conversion also works for values whose local name was used for a reference in
 an earlier scope.
 
+Recursive sum types print nested values, including repeated types and shared payloads.
+An actual circular reference is shown as `<circular>`.
+
 If you want to define a custom print value for your type, simply define a
 `str() string` method:
 
