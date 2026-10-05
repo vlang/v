@@ -69,6 +69,18 @@ fn test_join_path_single() {
 	}
 }
 
+fn test_join_path_preserves_current_directory() {
+	for component in ['./', '././', './/', '.\\', '.\\.\\'] {
+		assert os.join_path('', component) == '.'
+		assert os.join_path('', '', component) == '.'
+		dirs := ['', component]
+		assert os.join_path('', ...dirs) == '.'
+		assert os.join_path_single('', component) == '.'
+		assert os.is_dir(os.join_path('', component))
+		assert os.is_dir(os.join_path_single('', component))
+	}
+}
+
 fn test_join_path_separators_and_roots() {
 	sep := os.path_separator
 	empty_dirs := []string{}

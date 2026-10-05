@@ -716,6 +716,7 @@ pub fn is_file(path string) bool {
 // them with a platform-specific path_separator. Empty elements are ignored.
 // Windows platform output will rewrite forward slashes to backslash.
 // An absolute first nonempty element retains its root when base is empty.
+// A component naming only the current directory remains `.`.
 // Consider looking at the unit tests in os_test.v for semi-formal API.
 @[manualfree]
 pub fn join_path(base string, dirs ...string) string {
@@ -732,7 +733,7 @@ pub fn join_path(base string, dirs ...string) string {
 	normalize_path_in_builder(mut sb)
 	mut res := sb.str()
 	if base == '' && res.starts_with('.${path_separator}') {
-		res = res[2..]
+		res = if res.len == 2 { '.' } else { res[2..] }
 	}
 	return res
 }
@@ -740,6 +741,7 @@ pub fn join_path(base string, dirs ...string) string {
 // join_path_single appends the `elem` after `base`, separated with a
 // platform-specific path_separator. Empty elements are ignored.
 // An absolute elem retains its root when base is empty.
+// An elem naming only the current directory remains `.`.
 @[manualfree]
 pub fn join_path_single(base string, elem string) string {
 	// TODO: deprecate this and make it `return os.join_path(base, elem)`,
@@ -753,7 +755,7 @@ pub fn join_path_single(base string, elem string) string {
 	normalize_path_in_builder(mut sb)
 	mut res := sb.str()
 	if base == '' && res.starts_with('.${path_separator}') {
-		res = res[2..]
+		res = if res.len == 2 { '.' } else { res[2..] }
 	}
 	return res
 }
