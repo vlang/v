@@ -767,6 +767,11 @@ fn write_path_base(mut sb strings.Builder, base string) {
 	sb.write_string(sbase)
 	if sbase == '' && base != '' {
 		sb.write_string(path_separator)
+		$if windows {
+			if base.len == 2 {
+				sb.write_string(path_separator)
+			}
+		}
 	}
 	$if windows {
 		// A drive root, including a device-prefixed drive, needs its separator.
@@ -776,12 +781,21 @@ fn write_path_base(mut sb strings.Builder, base string) {
 	}
 }
 
+@[manualfree]
 fn append_path_component(mut sb strings.Builder, component string) {
 	if component == '' {
 		return
 	}
-	if sb.len > 0 && sb[sb.len - 1] !in [`/`, `\\`] {
-		sb.write_string(path_separator)
+	if sb.len > 0 {
+		if sb[sb.len - 1] !in [`/`, `\\`] {
+			sb.write_string(path_separator)
+		}
+		trimmed := component.trim_left('\\/')
+		defer {
+			unsafe { trimmed.free() }
+		}
+		sb.write_string(trimmed)
+		return
 	}
 	sb.write_string(component)
 }
@@ -804,7 +818,7 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 	mut idx := 0
 	$if windows {
 		// Preserve the two separators introducing a UNC or device path.
-		if sb.len > 2 && sb[0] == rs && sb[1] == rs && sb[2] != rs {
+		if sb.len >= 2 && sb[0] == rs && sb[1] == rs && (sb.len == 2 || sb[2] != rs) {
 			idx = 2
 		}
 	}

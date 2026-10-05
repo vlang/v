@@ -87,6 +87,11 @@ fn test_join_path_separators_and_roots() {
 		assert os.join_path('', '', root, 'b') == '${sep}b'
 		assert os.join_path_single(root, '') == sep
 		assert os.join_path_single('', root) == sep
+		for elem in ['/b', '\\b', '//b', '\\\\b'] {
+			assert os.join_path(root, elem) == '${sep}b'
+			assert os.join_path('', root, elem) == '${sep}b'
+			assert os.join_path_single(root, elem) == '${sep}b'
+		}
 	}
 	assert os.join_path('a', '/./b') == 'a${sep}b'
 	assert os.join_path('a', 'b///') == 'a${sep}b${sep}'
@@ -95,6 +100,14 @@ fn test_join_path_separators_and_roots() {
 	dirs := ['', '/b']
 	assert os.join_path('', ...dirs) == '${sep}b'
 	$if windows {
+		for root in [r'\\', '//'] {
+			assert os.join_path(root, ...empty_dirs) == r'\\'
+			assert os.join_path('', root) == r'\\'
+			assert os.join_path(root, 'server', 'share') == r'\\server\share'
+			assert os.join_path('', root, 'server', 'share') == r'\\server\share'
+			assert os.join_path_single(root, 'server') == r'\\server'
+			assert os.join_path_single('', root) == r'\\'
+		}
 		for base in [r'C:\', r'C:/'] {
 			assert os.join_path(base, ...empty_dirs) == r'C:\'
 			assert os.join_path_single(base, '') == r'C:\'
