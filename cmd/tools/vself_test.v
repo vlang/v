@@ -126,7 +126,7 @@ fn test_linux_default_self_build_preserves_full_cli() {
 		os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-prod',
 			'-o', '/tmp/vself_linux_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
-	assert prod_result.output.contains('-parallel-cc'), prod_result.output
+	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
 	assert_vself_uses_single_prod_build(prod_result.output)
 	vflags_parallel_result :=
 		os.exec(['env', '-u', 'CC', 'VFLAGS=-parallel-cc', 'VEXE=' + '${noop}', '${tool}', 'self',
@@ -168,7 +168,7 @@ fn test_macos_default_self_build_compiler_selection() {
 		os.exec(['env', 'CC=clang', 'VEXE=' + '${noop}', '${tool}', 'self', '-prod', '-o',
 			'/tmp/vself_macos_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
-	assert prod_result.output.contains('-parallel-cc'), prod_result.output
+	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
 	assert_vself_uses_single_prod_build(prod_result.output)
 	old_result :=
 		os.exec(['env', 'CC=cc', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-old-compiler',
@@ -202,7 +202,7 @@ fn test_bsd_self_build_uses_system_cc_and_v3_safeguards() {
 		os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-prod',
 			'-o', '/tmp/vself_bsd_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
-	assert prod_result.output.contains('-parallel-cc'), prod_result.output
+	assert !prod_result.output.contains('-parallel-cc'), prod_result.output
 	assert_vself_uses_single_prod_build(prod_result.output)
 	tinyc_result :=
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-cc', 'tcc', '-o',
