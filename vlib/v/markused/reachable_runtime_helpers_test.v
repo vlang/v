@@ -426,6 +426,101 @@ fn main() { values := [1, 2, 3]; assert values[0] == 1; ${call} }
 	}
 }
 
+fn test_checked_enum_constants_do_not_root_closure_runtime() {
+	for source in ['Choice.first', 'AliasChoice.first'] {
+		mut a, tc := checked_runtime_helper_source('module main
+enum Choice { first second }
+type AliasChoice = Choice
+fn main() { value := ${source}; assert value == Choice.first }
+')
+		a.nodes << flat.Node{
+			kind:  .import_decl
+			value: 'builtin.closure'
+			typ:   '__v3_builtin_closure_runtime'
+		}
+		used := mark_used(a, tc)
+		assert !used['closure.closure_init'], source
+		assert !used['closure.closure_create_with_data'], source
+		assert !used['closure.closure_try_destroy'], source
+		assert !used['new_map'], source
+		assert !used['map.set'], source
+	}
+}
+
+fn test_enum_alias_method_values_keep_closure_runtime() {
+	mut a, tc := checked_runtime_helper_source('module main
+enum Choice { first second }
+type AliasChoice = Choice
+fn (value AliasChoice) number() int { return int(value) }
+fn main() {
+	value := AliasChoice(Choice.first)
+	callback := value.number
+	assert callback() == 0
+}
+')
+	a.nodes << flat.Node{
+		kind:  .import_decl
+		value: 'builtin.closure'
+		typ:   '__v3_builtin_closure_runtime'
+	}
+	used := mark_used(a, tc)
+	assert used['AliasChoice.number']
+	assert used['closure.closure_init']
+	assert used['closure.closure_create_with_data']
+	assert used['closure.closure_try_destroy']
+}
+
+fn test_assignment_targets_do_not_root_closure_runtime() {
+	for source in ['item.number = 3', 'item.number += 3', 'unsafe { values.len = 3 }',
+		'unsafe { values.len += 1 }', 'item.number, other = 3, 4', 'unsafe { values.len, other = 3, 4 }'] {
+		mut a, tc := checked_runtime_helper_source('module main
+struct Item { mut: number int }
+fn main() {
+	mut item := Item{}
+	mut values := [0, 0, 0, 0]
+	mut other := 0
+	${source}
+	assert other >= 0
+}
+')
+		a.nodes << flat.Node{
+			kind:  .import_decl
+			value: 'builtin.closure'
+			typ:   '__v3_builtin_closure_runtime'
+		}
+		used := mark_used(a, tc)
+		for helper in ['closure.closure_init', 'closure.closure_create_with_data',
+			'closure.closure_try_destroy', 'new_map', 'map.set'] {
+			assert !used[helper], '${helper}: ${source}'
+		}
+	}
+}
+
+fn test_assignment_operands_keep_bound_method_values() {
+	for source in [
+		'mut callback := plain; callback = item.value; assert callback() == 3',
+		'mut values := [0, 0, 0, 0]; values[(item.value)()] = 3; assert values[3] == 3',
+	] {
+		mut a, tc := checked_runtime_helper_source('module main
+struct Item { number int }
+fn (i Item) value() int { return i.number }
+fn plain() int { return 0 }
+fn main() { item := Item{ number: 3 }; ${source} }
+')
+		a.nodes << flat.Node{
+			kind:  .import_decl
+			value: 'builtin.closure'
+			typ:   '__v3_builtin_closure_runtime'
+		}
+		used := mark_used(a, tc)
+		assert used['Item.value'], source
+		for helper in ['closure.closure_init', 'closure.closure_create_with_data',
+			'closure.closure_try_destroy'] {
+			assert used[helper], '${helper}: ${source}'
+		}
+	}
+}
+
 fn test_builtin_closure_globals_wait_for_reached_runtime() {
 	root := os.join_path(os.temp_dir(), 'v_reachable_closure_globals_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'vlib', 'builtin', 'closure')) or { panic(err) }

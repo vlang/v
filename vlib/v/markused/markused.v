@@ -2568,6 +2568,7 @@ mut:
 	deferred_closure_mask           []bool
 	deferred_closure_nodes          []int
 	direct_call_callees             map[int]bool
+	assignment_targets              map[int]bool
 
 	channel_stringify_cache map[string]int
 	ierror_equality_cache   map[string]int
@@ -2608,6 +2609,14 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 		scan.initialized = true
 		if scan.select_closure_runtime {
 			for call in a.nodes {
+				if call.kind in [.assign, .selector_assign, .index_assign]
+					&& call.children_count > 0 {
+					mut target := a.child(&call, 0)
+					for a.node(target).kind == .paren && a.node(target).children_count > 0 {
+						target = a.child(a.node(target), 0)
+					}
+					scan.assignment_targets[int(target)] = true
+				}
 				if call.kind == .call && call.children_count > 0 {
 					callee := a.child(&call, 0)
 					scan.direct_call_callees[int(callee)] = true
@@ -2643,14 +2652,19 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 		if scan.select_closure_runtime && !scan.closure_runtime_enqueued {
 			mut needs_closure := node.kind in [.fn_literal, .lambda_expr]
 			if node.kind == .selector && node.children_count > 0
-				&& !scan.direct_call_callees[node_idx] {
+				&& !scan.direct_call_callees[node_idx] && !scan.assignment_targets[node_idx] {
 				base := a.child_node(&node, 0)
 				if !(base.kind == .ident && (base.value in ['C', 'JS'] || base.value in imports)) {
 					needs_closure = tc.expr_is_method_value(flat.NodeId(node_idx))
 						|| base.kind in [.string_literal, .int_literal, .float_literal, .char_literal]
 					if !needs_closure {
-						// Generic receivers acquire their concrete method after markused.
-						needs_closure = tc.resolve_type(a.child(&node, 0)) is types.Unknown
+						// Enum namespaces have no receiver value. Their checked selector
+						// type distinguishes them from unresolved generic method values.
+						selector_type := tc.expr_type(flat.NodeId(node_idx)) or {
+							types.Type(types.Unknown{})
+						}
+						needs_closure = types.unalias_type(selector_type) !is types.Enum
+							&& tc.resolve_type(a.child(&node, 0)) is types.Unknown
 					}
 				}
 			}
