@@ -561,5 +561,16 @@ see also `v help build`.
       all the time (which can break your flow).
 
    -check-overflow
-      Enable runtime overflow checking for integer arithmetic operations (+, -, *).
-      Triggers a panic when integer overflow is detected.
+      Enable runtime overflow checking for integer arithmetic operations (+, -, *),
+      and for `min / -1` and `min % -1` (also in `/=` and `%=`).
+      In code outside vlib, it also checks unary negation of the minimum signed value,
+      and `<<`, `>>`, `>>>` (and their compound forms) with a shift count that is negative
+      or not less than the bit width of the left operand.
+      Triggers a panic when one of these is detected. Functions tagged with
+      `@[ignore_overflow]` are not checked.
+
+   -check-casts
+      Enable runtime checks for integer casts that lose information, like `i8(i64(300))`,
+      `u8(-1)` or `u32(i64(-5))`. Triggers a panic instead of truncating or reinterpreting
+      the value. Only code outside vlib is checked, since the standard library relies on
+      truncating casts. Functions tagged with `@[ignore_overflow]` are not checked.

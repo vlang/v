@@ -1502,6 +1502,18 @@ fn test_direct_array_access() {
 	a[2] = x + 3
 	a[3] -= a[1]
 	assert a == [21, 24, 14, 20]
+	// `**` and the shifts have no C compound operator that works on an element
+	// lvalue, so these have to reach the same value lowering the bounds-checked
+	// store uses, with the element read through the data pointer.
+	mut b := [u32(2), 3, 4, 9]
+	b[0] **= 3
+	b[1] <<= 4
+	b[2] >>= 1
+	b[3] >>>= 2
+	assert b == [u32(8), 48, 2, 2]
+	shift := u32(2)
+	b[0] <<= shift
+	assert b == [u32(32), 48, 2, 2]
 }
 
 @[direct_array_access]

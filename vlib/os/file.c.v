@@ -98,7 +98,7 @@ pub fn open_file(path string, mode string, options ...int) !File {
 		C.open(&char(p.str), flags, permission)
 	}
 	if fd == -1 {
-		return error(posix_get_error_msg(C.errno))
+		return error_posix()
 	}
 	mut cfile := C.fdopen(fd, &char(mode.str))
 	if isnil(cfile) {

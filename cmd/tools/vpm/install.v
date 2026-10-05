@@ -18,9 +18,15 @@ fn vpm_install(query []string) {
 		vpm_adopt(query)
 		return
 	}
+	if settings.is_locked && query.len != 0 && !settings.is_local {
+		vpm_error('`--locked` applies to installing the dependencies of a project (a directory with a `v.mod`); a plain `v install <module>` installs globally and has no lockfile to check against.',
+			details: 'Run without `--locked`, or run `v install --locked` inside the project directory.'
+		)
+		exit(1)
+	}
 
 	mut selector := new_install_server_selector()
-	mut modules := parse_query(if query.len == 0 {
+	dep_strings := if query.len == 0 {
 		if os.exists('./v.mod') {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
@@ -39,7 +45,19 @@ fn vpm_install(query []string) {
 		}
 	} else {
 		query
-	}, mut selector)
+	}
+
+	// Anchor the run to the project in scope, so that the resolved revisions of
+	// its dependencies are recorded in `v.mod.lock` once everything installed.
+	mut scope := LockScope{}
+	if settings.is_local || query.len == 0 {
+		scope.begin()
+	}
+
+	mut modules, parse_errors := parse_query(dep_strings, mut selector, mut scope)
+	// The dependencies of a project have to resolve completely. The ones that
+	// did are still installed, but the run fails, and records no lockfile.
+	is_incomplete := parse_errors > 0 && scope.active
 
 	installed_modules := get_installed_modules()
 
@@ -65,20 +83,25 @@ fn vpm_install(query []string) {
 			verbose_println('Already installed modules: ${already_installed}')
 			if already_installed.len == num_to_install {
 				println('All modules are already installed.')
-				exit(0)
+				exit(if is_incomplete { 1 } else { 0 })
 			}
 		}
 	}
 
-	install_modules(modules, selector.selected_url)
+	install_modules(modules, selector.selected_url, mut scope)
+	if is_incomplete {
+		vpm_error('failed to install ${parse_errors} module(s) of the project; not recording `${lockfile_name}`.')
+		exit(1)
+	}
+	scope.finish()
 }
 
-fn install_modules(modules []Module, selected_server_url string) {
+fn install_modules(modules []Module, selected_server_url string, mut scope LockScope) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
-		match m.install() {
+		match m.install(mut scope) {
 			.installed {}
 			.failed {
 				errors++
@@ -141,7 +164,7 @@ fn (m Module) manifest_name_was_normalized() bool {
 	return normalized_name != m.manifest.name
 }
 
-fn (m Module) install() InstallResult {
+fn (m Module) install(mut scope LockScope) InstallResult {
 	defer {
 		os.rmdir_all(m.tmp_path) or {}
 	}
@@ -167,8 +190,30 @@ fn (m Module) install() InstallResult {
 		exit(1)
 	}
 	if m.is_installed {
-		// Case: installed, but not an explicit version. Update instead of continuing the installation.
+		// Case: installed, but not an explicit version. Update instead of continuing the installation,
+		// unless the lockfile of the project in scope records the module: installs honor
+		// the locked revision, and moving it forward is what `v update` is for.
 		if m.version == '' && m.installed_version == '' {
+			// The lock only applies while the project still asks for the
+			// dependency string and source it was recorded under; a changed one
+			// falls through to the update below and is then locked anew.
+			if entry := scope.locked_entry(m.requested, m.url) {
+				installed_revision := head_revision(m.install_path)
+				if installed_revision == entry.revision {
+					verbose_println('`${m.name}` is already installed at the locked revision `${entry.revision}`.')
+					return .skipped
+				}
+				// The installed checkout drifted from the locked revision: put the
+				// project back on the lock, fetching the revision when the checkout
+				// is older than it. The local-changes guard above already refused
+				// checkouts holding work that would be lost.
+				println('Restoring `${m.name}` to the locked revision `${entry.revision}` ...')
+				(m.vcs or { settings.vcs }).checkout(m.install_path, entry.revision) or {
+					vpm_error('failed to restore `${m.name}` to the locked revision `${entry.revision}` in `${m.install_path_fmted}`: ${err.msg()}')
+					return .failed
+				}
+				return .skipped
+			}
 			if m.is_external && m.url.starts_with('http://') {
 				vpm_update([
 					m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator, '.'),
@@ -176,6 +221,9 @@ fn (m Module) install() InstallResult {
 			} else {
 				vpm_update([m.name])
 			}
+			// The module sits at a new revision now, so what the lockfile of the
+			// project records for it has to follow.
+			scope.record(m)
 			return .skipped
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
@@ -229,6 +277,7 @@ fn (m Module) install() InstallResult {
 			return .failed
 		}
 	}
+	scope.record(m)
 	return .installed
 }
 

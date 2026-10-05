@@ -715,6 +715,8 @@ pub fn is_file(path string) bool {
 // join_path joins any number of path elements into a single path, separating
 // them with a platform-specific path_separator. Empty elements are ignored.
 // Windows platform output will rewrite forward slashes to backslash.
+// An absolute first nonempty element retains its root when base is empty.
+// A component naming only the current directory remains `.`.
 // Consider looking at the unit tests in os_test.v for semi-formal API.
 @[manualfree]
 pub fn join_path(base string, dirs ...string) string {
@@ -724,27 +726,22 @@ pub fn join_path(base string, dirs ...string) string {
 	defer {
 		unsafe { sb.free() }
 	}
-	sbase := base.trim_right('\\/')
-	defer {
-		unsafe { sbase.free() }
-	}
-	sb.write_string(sbase)
+	write_path_base(mut sb, base)
 	for d in dirs {
-		if d != '' {
-			sb.write_string(path_separator)
-			sb.write_string(d)
-		}
+		append_path_component(mut sb, d)
 	}
 	normalize_path_in_builder(mut sb)
 	mut res := sb.str()
-	if base == '' {
-		res = res.trim_left(path_separator)
+	if base == '' && res.starts_with('.${path_separator}') {
+		res = if res.len == 2 { '.' } else { res[2..] }
 	}
 	return res
 }
 
 // join_path_single appends the `elem` after `base`, separated with a
 // platform-specific path_separator. Empty elements are ignored.
+// An absolute elem retains its root when base is empty.
+// An elem naming only the current directory remains `.`.
 @[manualfree]
 pub fn join_path_single(base string, elem string) string {
 	// TODO: deprecate this and make it `return os.join_path(base, elem)`,
@@ -753,21 +750,56 @@ pub fn join_path_single(base string, elem string) string {
 	defer {
 		unsafe { sb.free() }
 	}
+	write_path_base(mut sb, base)
+	append_path_component(mut sb, elem)
+	normalize_path_in_builder(mut sb)
+	mut res := sb.str()
+	if base == '' && res.starts_with('.${path_separator}') {
+		res = if res.len == 2 { '.' } else { res[2..] }
+	}
+	return res
+}
+
+@[manualfree]
+fn write_path_base(mut sb strings.Builder, base string) {
 	sbase := base.trim_right('\\/')
 	defer {
 		unsafe { sbase.free() }
 	}
 	sb.write_string(sbase)
-	if elem != '' {
+	if sbase == '' && base != '' {
 		sb.write_string(path_separator)
-		sb.write_string(elem)
+		$if windows {
+			if base.len == 2 {
+				sb.write_string(path_separator)
+			}
+		}
 	}
-	normalize_path_in_builder(mut sb)
-	mut res := sb.str()
-	if base == '' {
-		res = res.trim_left(path_separator)
+	$if windows {
+		// A drive root, including a device-prefixed drive, needs its separator.
+		if sbase.ends_with(':') && sbase.len < base.len {
+			sb.write_string(path_separator)
+		}
 	}
-	return res
+}
+
+@[manualfree]
+fn append_path_component(mut sb strings.Builder, component string) {
+	if component == '' {
+		return
+	}
+	if sb.len > 0 {
+		if sb[sb.len - 1] !in [`/`, `\\`] {
+			sb.write_string(path_separator)
+		}
+		trimmed := component.trim_left('\\/')
+		defer {
+			unsafe { trimmed.free() }
+		}
+		sb.write_string(trimmed)
+		return
+	}
+	sb.write_string(component)
 }
 
 @[direct_array_access]
@@ -785,8 +817,15 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 			}
 		}
 	}
-	for idx in 0 .. sb.len - 3 {
-		if sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
+	mut idx := 0
+	$if windows {
+		// Preserve the two separators introducing a UNC or device path.
+		if sb.len >= 2 && sb[0] == rs && sb[1] == rs && (sb.len == 2 || sb[2] != rs) {
+			idx = 2
+		}
+	}
+	for idx < sb.len {
+		if idx + 2 < sb.len && sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
 			unsafe {
 				// let `/foo/./bar.txt` become `/foo/bar.txt` in place
 				for j := idx + 1; j < sb.len - 2; j++ {
@@ -794,8 +833,9 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 				}
 				sb.len -= 2
 			}
+			continue
 		}
-		if sb[idx] == rs && sb[idx + 1] == rs {
+		if idx + 1 < sb.len && sb[idx] == rs && sb[idx + 1] == rs {
 			unsafe {
 				// let `/foo//bar.txt` become `/foo/bar.txt` in place
 				for j := idx + 1; j < sb.len - 1; j++ {
@@ -803,7 +843,9 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 				}
 				sb.len -= 1
 			}
+			continue
 		}
+		idx++
 	}
 }
 
@@ -869,6 +911,129 @@ pub fn walk(path string, f fn (string)) {
 		mut files := ls(cpath) or { continue }
 		for idx := files.len - 1; idx >= 0; idx-- {
 			remaining << cpath + path_separator + files[idx]
+		}
+	}
+}
+
+// WalkDirAction tells walk_dir what to do after its callback returns.
+pub enum WalkDirAction {
+	proceed  // carry on with the next entry
+	skip_dir // do not descend into the directory that was just reported
+	stop     // end the walk
+}
+
+// WalkDirEntry describes one entry visited by walk_dir.
+pub struct WalkDirEntry {
+pub:
+	name   string // the entry's base name, without any directory part
+	is_dir bool   // true for a directory; symlinks are reported, never followed
+	typ    FileType
+	err    ?IError // why the entry could not be read or listed; none when it could
+}
+
+// WalkDirFn is the callback type for walk_dir.
+// `entry.err` is set in two cases, so a callback should look at it before relying
+// on the other fields:
+// - an entry that cannot be stat'ed is reported once, with `is_dir` and `typ` left
+//   at their zero values, so it is never descended into;
+// - a directory that was reported normally but then cannot be listed is reported
+//   a second time, with `err` set and `is_dir` and `typ` still describing the
+//   directory. Returning `.stop` from that second report ends the walk; anything
+//   else carries on with the directory's next sibling.
+pub type WalkDirFn = fn (path string, entry WalkDirEntry) WalkDirAction
+
+// walk_dir traverses the directory tree rooted at `root` and calls `cb` for
+// every entry, directories included, in lexical order. It is the counterpart of
+// Go's filepath.WalkDir.
+//
+// Returning `.skip_dir` leaves the directory that was just reported unread,
+// which is what makes pruning a large tree possible; on a non-directory it has no
+// effect. Returning `.stop` ends the walk immediately, and walk_dir then returns
+// no error. An entry that cannot be read, or a directory that cannot be listed,
+// is reported through `entry.err` (see WalkDirFn) rather than aborting the walk,
+// and walk_dir itself only fails when `root` is empty; a missing `root` is
+// reported to the callback.
+//
+// Symlinks are reported but never followed, and that includes a symlinked `root`;
+// pass `os.real_path(root)` to walk the directory it points to.
+//
+// Like walk, walk_dir iterates rather than recurses, so tree depth costs no stack.
+//
+// Example:
+// ```v
+// os.walk_dir('/srv/app', fn (path string, entry os.WalkDirEntry) os.WalkDirAction {
+//     if err := entry.err {
+//         eprintln('skipping ${path}: ${err}')
+//         return .proceed
+//     }
+//     if entry.is_dir && entry.name == '.git' {
+//         return .skip_dir
+//     }
+//     println(path)
+//     return .proceed
+// }) or { panic(err) }
+// ```
+pub fn walk_dir(root string, cb WalkDirFn) ! {
+	if root == '' {
+		return error('os: walk_dir needs a non-empty root path')
+	}
+	mut pending := []string{cap: 64}
+	pending << norm_path(root)
+	for pending.len > 0 {
+		cpath := pending.pop()
+		// Filled through locals and handed over in a single struct literal, so
+		// that the public fields can stay read-only for callers.
+		mut typ := FileType.unknown
+		mut is_dir := false
+		mut entry_err := ?IError(none)
+		if attr := lstat(cpath) {
+			typ = attr.get_filetype()
+			$if windows {
+				// lstat follows reparse points there and never reports a link, so a
+				// directory symlink or junction would otherwise be descended into.
+				if kind_of_existing_path(cpath).is_link {
+					typ = .symbolic_link
+				}
+			}
+			is_dir = typ == .directory
+		} else {
+			// The entry could not be read, so is_dir stays false and a directory
+			// is not descended into.
+			entry_err = err
+		}
+		entry := WalkDirEntry{
+			name:   file_name(cpath)
+			typ:    typ
+			is_dir: is_dir
+			err:    entry_err
+		}
+		// Whether to descend into cpath, which a .skip_dir reply can veto.
+		mut descend := true
+		match cb(cpath, entry) {
+			.stop {
+				return
+			}
+			.skip_dir {
+				descend = false
+			}
+			.proceed {}
+		}
+		if !descend || !entry.is_dir {
+			continue
+		}
+		mut children := ls(cpath) or {
+			// The directory could not be listed. Like Go's WalkDir, it is reported a
+			// second time, as the directory it is, with the listing failure attached.
+			if cb(cpath, WalkDirEntry{ ...entry, err: err }) == .stop {
+				return
+			}
+			continue
+		}
+		// Sorted so the visit order is lexical rather than whatever order the
+		// filesystem happened to hand back.
+		children.sort()
+		for i := children.len - 1; i >= 0; i-- {
+			pending << join_path_single(cpath, children[i])
 		}
 	}
 }
@@ -944,7 +1109,9 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 		if exists(p) && is_dir(p) {
 			continue
 		}
-		mkdir(p, params) or { return error('folder: ${p}, error: ${err}') }
+		mkdir(p, params) or {
+			return error_with_code('folder: ${p}, error: ${err.msg()}', err.code())
+		}
 	}
 }
 

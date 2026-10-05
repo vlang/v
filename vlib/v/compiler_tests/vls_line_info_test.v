@@ -1189,15 +1189,20 @@ fn test_a_server_child_answers_no_more_once_a_module_appears_at_the_project_root
 
 // release_child writes to `fifo` once a child reads it, without waiting for a
 // child that never does: a FIFO opened to write without a reader fails at once.
+// `C.O_NONBLOCK` is POSIX, so the body is wrapped in `$if linux` rather than
+// guarded by an early return: `$if !linux { return }` still compiles everything
+// after it, which is why the unguarded version failed to build off Linux.
 fn release_child(fifo string) {
-	for _ in 0 .. 500 {
-		fd := C.open(&char(fifo.str), C.O_WRONLY | C.O_NONBLOCK)
-		if fd >= 0 {
-			C.write(fd, c'go', 2)
-			C.close(fd)
-			return
+	$if linux {
+		for _ in 0 .. 500 {
+			fd := C.open(&char(fifo.str), C.O_WRONLY | C.O_NONBLOCK)
+			if fd >= 0 {
+				C.write(fd, c'go', 2)
+				C.close(fd)
+				return
+			}
+			time.sleep(10 * time.millisecond)
 		}
-		time.sleep(10 * time.millisecond)
 	}
 }
 

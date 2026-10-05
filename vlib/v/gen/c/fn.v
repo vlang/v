@@ -4,6 +4,7 @@ import os
 import strings
 import v.flat
 import v.gen.c.naming
+import v.token
 import v.types
 
 const builtin_map_set_fn_key = fn_decl_module_key('builtin', 'map.set')
@@ -14,6 +15,7 @@ struct TestHarnessFn {
 	c_name       string
 	ret          types.Type
 	file         string
+	failure_file string
 	failure_line int
 }
 
@@ -529,17 +531,52 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		g.direct_array_access = item.direct_array_access
 		old_ignore_overflow := g.ignore_overflow
 		g.ignore_overflow = item.ignore_overflow
+		old_user_code_checks := g.user_code_checks
+		g.user_code_checks = (g.check_overflow || g.check_casts) && !item.ignore_overflow
+			&& g.file_gets_user_code_checks(item.file)
 		old_cur_fn_is_specialized := g.cur_fn_is_specialized
 		g.cur_fn_is_specialized = g.a.specialized_fn_nodes[int(item.node_id)]
 			|| g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
 		g.gen_fn_in_module(item.node_id, node, item.module, item.skip_prelude_scan)
 		g.cur_fn_is_specialized = old_cur_fn_is_specialized
+		g.user_code_checks = old_user_code_checks
 		g.ignore_overflow = old_ignore_overflow
 		g.direct_array_access = old_direct_array_access
 		if g.cache_split {
 			g.writeln('/* V3CACHE_FN_END ${cache_fn_marker_key(item.file, item.module, node.value)} */')
 		}
 	}
+}
+
+// file_gets_user_code_checks reports whether functions from `file` get the
+// `-check-overflow` negation and shift-count checks, and the `-check-casts` checks.
+// The standard library relies on V's defined semantics for these (`-x` wraps,
+// `x >> 64` is `0`, `u8(x)` truncates), so only the program's own files and
+// modules outside `vlib/` get them.
+fn (g &FlatGen) file_gets_user_code_checks(file string) bool {
+	if g.cache_program_files[file] || g.test_files[file] {
+		return true
+	}
+	if file.len == 0 || file.ends_with('.vh') {
+		// Cached module headers stand in for imported modules.
+		return false
+	}
+	for raw_path in [file, g.a.real_source_path(file)] {
+		mut path := raw_path.replace('\\', '/')
+		if g.check_scope_vlib_prefixes.len == 0 {
+			if path.contains('/vlib/') || path.starts_with('vlib/') {
+				return false
+			}
+			continue
+		}
+		if !os.is_abs_path(path) {
+			path = os.abs_path(path).replace('\\', '/')
+		}
+		if g.check_scope_vlib_prefixes.any(path.starts_with(it)) {
+			return false
+		}
+	}
+	return true
 }
 
 // file_is_cache_program_file reports whether `file`, as written or resolved,
@@ -3608,7 +3645,8 @@ fn (g &FlatGen) expr_is_stable_for_reuse(id flat.NodeId) bool {
 			node.children_count > 0 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
 		}
 		.index {
-			node.children_count >= 2 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
+			node.children_count >= 2 && !g.assert_index_is_overloaded(node)
+				&& g.expr_is_stable_for_reuse(g.a.child(&node, 0))
 				&& g.expr_is_stable_for_reuse(g.a.child(&node, 1))
 		}
 		else {
@@ -4331,7 +4369,16 @@ fn (mut g FlatGen) spawn_wrapper_body(call_expr string, ret_ct string, post stri
 	return g.spawn_wrapper_body_with_pre(call_expr, ret_ct, '', post)
 }
 
-fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, pre string, post string) string {
+fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, user_pre string, user_post string) string {
+	mut pre := user_pre
+	mut post := user_post
+	if g.uses_thread_signal_stack() {
+		// The wrapper is the first V frame of a spawned thread. Give the thread an
+		// alternate signal stack, so that the segfault handler can still report a
+		// stack overflow. `&arg` marks the top of the thread stack, for the handler.
+		pre = 'void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); ${pre}'
+		post = '${post}__v_thread_signal_stack_leave(__v3_signal_stack); '
+	}
 	if ret_ct == 'void' || ret_ct.len == 0 {
 		return '${pre}${call_expr}; ${post}return NULL;'
 	}
@@ -5996,7 +6043,7 @@ fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, idx int) {
 			g.interface_str_lit('none')
 		}
 		g.writeln('string __test_err_msg_${idx} = ${message};')
-		g.writeln('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(test_fn.file)}", ${test_fn.failure_line}, "${c_escape(test_fn.name)}", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
+		g.writeln('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(test_fn.failure_file)}", ${test_fn.failure_line}, "${c_escape(test_fn.name)}", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
 		g.writeln('__test_failures++;')
 		g.indent--
 		g.writeln('}')
@@ -6047,13 +6094,20 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 						if !g.test_fn_matches_run_only(module_name, child.value) {
 							continue
 						}
+						failure := g.test_fn_failure_position(child_id) or {
+							token.Position{
+								filename: file_node.value
+								line:     1
+							}
+						}
 						tests << TestHarnessFn{
 							node_id:      child_id
 							name:         child.value
 							c_name:       cname
 							ret:          g.parse_node_type(&child)
 							file:         file_node.value
-							failure_line: g.test_fn_failure_line(child_id)
+							failure_file: failure.filename
+							failure_line: failure.line
 						}
 					}
 				}
@@ -6076,30 +6130,28 @@ fn (g &FlatGen) test_fn_matches_run_only(module_name string, name string) bool {
 	return false
 }
 
-fn (g &FlatGen) test_fn_failure_line(id flat.NodeId) int {
-	line := g.test_fn_propagation_line(id)
-	if line > 0 {
-		return line
+// test_fn_failure_position returns the location reported when the test function `id`
+// fails with an error that it propagates.
+fn (g &FlatGen) test_fn_failure_position(id flat.NodeId) ?token.Position {
+	if position := g.test_fn_propagation_position(id) {
+		return position
 	}
-	source_line := g.test_fn_source_failure_line(id)
-	if source_line > 0 {
-		return source_line
+	if position := g.test_fn_source_failure_position(id) {
+		return position
 	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
-		if position := g.a.source_position(g.a.nodes[int(id)].pos) {
-			return position.line
-		}
+		return g.a.source_position(g.a.nodes[int(id)].pos)
 	}
-	return 1
+	return none
 }
 
-fn (g &FlatGen) test_fn_source_failure_line(id flat.NodeId) int {
+fn (g &FlatGen) test_fn_source_failure_position(id flat.NodeId) ?token.Position {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return 0
+		return none
 	}
 	node := g.a.nodes[int(id)]
-	file := g.a.source_files[node.pos.id] or { return 0 }
-	lines := os.read_lines(file.name) or { return 0 }
+	file := g.a.source_files[node.pos.id] or { return none }
+	lines := os.read_lines(file.name) or { return none }
 	start_line := file.position(node.pos).line
 	for line_index in start_line .. lines.len {
 		trimmed := lines[line_index].trim_space()
@@ -6108,20 +6160,24 @@ fn (g &FlatGen) test_fn_source_failure_line(id flat.NodeId) int {
 		}
 		if trimmed.contains(' or {') || trimmed.contains(')!') || trimmed.contains(']!')
 			|| trimmed.ends_with('!') || trimmed.starts_with('return error(') {
-			return line_index + 1
+			filename, line := file.logical_line(line_index + 1)
+			return token.Position{
+				filename: filename
+				line:     line
+			}
 		}
 	}
-	return 0
+	return none
 }
 
-fn (g &FlatGen) test_fn_propagation_line(id flat.NodeId) int {
+fn (g &FlatGen) test_fn_propagation_position(id flat.NodeId) ?token.Position {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return 0
+		return none
 	}
 	node := g.a.nodes[int(id)]
 	if node.kind in [.or_expr, .return_stmt] {
 		if position := g.a.source_position(node.pos) {
-			return position.line
+			return position
 		}
 	}
 	for i in 0 .. node.children_count {
@@ -6133,12 +6189,11 @@ fn (g &FlatGen) test_fn_propagation_line(id flat.NodeId) int {
 		if child.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
 			continue
 		}
-		line := g.test_fn_propagation_line(child_id)
-		if line > 0 {
-			return line
+		if position := g.test_fn_propagation_position(child_id) {
+			return position
 		}
 	}
-	return 0
+	return none
 }
 
 fn (g &FlatGen) collect_test_harness_decl_ids(node flat.Node, mut ids []flat.NodeId) {
@@ -14655,11 +14710,12 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				&& !g.local_storage_is_pointer(arg_node.value) && !arg_is_pointer_param
 				&& !arg_is_pointer_global
 				&& !g.arg_is_pointer_const_for(arg_node, arg_type, param_types[arg_idx])
-			// A mutable block can already yield the pointer a `mut T` parameter needs.
-			pointer_block_passes_direct := arg_node.kind == .block
+			// A mutable block or reference field can already yield the pointer a `mut T`
+			// parameter needs, e.g. `mut app.sessions` for a `&Sessions` field.
+			pointer_arg_passes_direct := arg_node.kind in [.block, .selector, .index, .paren]
 				&& c_type_is_pointer_like(arg_type)
 				&& g.tc.c_type(arg_type) == g.tc.c_type(param_types[arg_idx])
-			explicit_mut_value := arg_node.is_mut && !pointer_block_passes_direct
+			explicit_mut_value := arg_node.is_mut && !pointer_arg_passes_direct
 				&& !(arg_node.kind == .ident
 					&& (g.local_storage_is_pointer(arg_node.value)
 						|| arg_is_pointer_param || arg_is_pointer_global))

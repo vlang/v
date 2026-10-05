@@ -349,7 +349,7 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 		os.real_path(warmup_source): sha256.hexhash(warmup_source_text)
 	}, {
 		os.real_path(warmup_source): true
-	})
+	}, true)
 	real_path := os.real_path(path)
 	assert sources[real_path] == sha256.hexhash(parsed_source)
 	assert sources[real_path] != sha256.hexhash(os.read_file(path)!)
@@ -554,6 +554,25 @@ fn test_v3_test_standard_dependency_probes_match_test_runner() {
 	assert go_probe.command == 'go'
 	assert go_probe.args == ['version']
 	assert go_probe.pkgconfig_name == ''
+}
+
+fn test_v3_test_started_redis_accepts_an_unrewritten_process_title() {
+	// `set-proc-title no` keeps the original command line, which does not show the port.
+	assert v3_test_process_line_is_server('started_redis', ' 1234 ?        Ssl    0:10 redis-server /tmp/redis.conf')
+	assert v3_test_process_line_is_server('started_redis', ' 1234 ?        Ssl    0:10 redis-server *:6379')
+}
+
+fn test_v3_test_started_redis_matches_the_whole_port() {
+	assert !v3_test_process_line_is_server('started_redis', ' 1234 ?        Ssl    0:10 redis-server *:63790')
+	assert !v3_test_process_line_is_server('started_redis', ' 1234 ?        Ssl    0:10 redis-server 127.0.0.1:54321')
+}
+
+fn test_v3_test_started_defines_match_their_process_names() {
+	assert v3_test_process_line_is_server('started_mysqld', ' 1234 ?        Ssl    0:10 /usr/sbin/mysqld')
+	assert v3_test_process_line_is_server('started_postgres', ' 1234 ?        Ss     0:10 postgres -D /var/lib/postgres')
+	assert v3_test_process_line_is_server('started_mssql', ' 1234 ?        Ssl    0:10 /opt/mssql/bin/sqlservr')
+	assert !v3_test_process_line_is_server('started_mysqld', ' 1234 ?        Ssl    0:10 redis-server *:6379')
+	assert !v3_test_process_line_is_server('started_unknown', ' 1234 ?        Ssl    0:10 redis-server *:6379')
 }
 
 fn test_v3_test_build_defines_populates_referenced_standard_dependencies() {

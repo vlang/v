@@ -111,6 +111,10 @@ retry through it after a compiler or C compilation failure. Explicit
 `-new-compiler` remains accepted for command-line compatibility and otherwise
 selects the same embedded driver.
 
+`oldv --command` runs a shell command in the checked-out repository, using `sh -c`
+on Unix and `cmd /c` on Windows. Commands can use shell operators such as `&&`,
+pipes, and redirection; `oldv` returns the command's exit status.
+
 The installer supplements the cached fallback vlib with modules whose public
 paths moved after 0.5.2. Fallback roots missing these compatibility modules are
 not used. If a fallback command exits unsuccessfully, V notes where the default
@@ -276,6 +280,7 @@ argument, e.g. `v new abc`.
 * [Package Management](#package-management)
     * [v mod why](#v-mod-why)
     * [Package commands](#package-commands)
+    * [Locking dependency revisions](#locking-dependency-revisions)
     * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Attributes](#attributes)
@@ -321,6 +326,7 @@ argument, e.g. `v new abc`.
     * [Hot code reloading](#hot-code-reloading)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
     * [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
+    * [Source locations in generated code](#source-locations-in-generated-code)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
@@ -344,6 +350,9 @@ fn main() {
 ```
 
 Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
+
+V source files use UTF-8. A UTF-8 byte order mark at the start of a file is ignored;
+a byte order mark outside a string or comment elsewhere in the file is rejected.
 
 > That is assuming you have symlinked your V with `v symlink`, as described
 [here](https://github.com/vlang/v/blob/master/README.md#symlinking).
@@ -916,11 +925,13 @@ To use a format specifier, follow this pattern:
 `${varname:[flags][width][.precision][type]}`
 
 - flags: may be zero or more of the following: `-` to left-align output within the field, `0` to use
-  `0` as the padding character instead of the default `space` character.
+  `0` as the padding character instead of the default `space` character, and `+` to show
+  the sign of decimal integers and floats with a width or precision.
+  The `+` flag may be combined with `-` and `0` in any order; left alignment uses trailing
+  spaces even when `0` is also present.
   > **Note**
   >
-  > V does not currently support the use of `'` or `#` as format flags, and V supports but
-  > doesn't need `+` to right-align since that's the default.
+  > V does not currently support the use of `'` or `#` as format flags.
 - width: may be an integer value describing the minimum width of total field to output. For
   runtime widths, wrap an `int` expression in parentheses, for example `${name:(width)}`.
 - precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
@@ -928,6 +939,7 @@ To use a format specifier, follow this pattern:
   append a `f` specifier to the precision value (see examples below). Applies only to float
   variables and is ignored for integer variables. Runtime precisions use the same parenthesized
   form, for example `${value:(width).(precision)f}`.
+  Negative zero keeps its sign when formatted, including when trailing zeros are omitted.
 - type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
   the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
   the input is a float--the renderer will use floating point notation for small values and exponent
@@ -963,6 +975,9 @@ println('[${x:.2}]') // round to two decimal places => [123.46]
 println('[${x:10}]') // right-align with spaces on the left => [   123.457]
 println('[${int(x):-10}]') // left-align with spaces on the right => [123       ]
 println('[${int(x):010}]') // pad with zeros on the left => [0000000123]
+println('[${int(x):+05}]') // include the sign in the padded width => [+0123]
+println('[${x:+08.2f}]') // sign, zero padding, and precision => [+0123.46]
+println('[${x:-+010.2f}]') // sign and left alignment override zero padding => [+123.46   ]
 println('[${int(x):b}]') // output as binary => [1111011]
 println('[${int(x):o}]') // output as octal => [173]
 println('[${int(x):X}]') // output as uppercase hex => [7B]
@@ -1124,13 +1139,18 @@ If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
 Integer literals can be assigned to `f32` and `f64` variables without a cast.
-Unary `+`, unary `-`, and parentheses around a literal preserve this behavior:
+Unary `+`, unary `-`, parentheses, and arithmetic on integer literals and on the
+constants declared with them preserve this behavior:
 
 ```v
+const tile_size = 32
+
 mut a := f32(0)
 a = 1
 a = -1
 assert a == f32(-1)
+a = 6 * tile_size
+assert a == f32(192)
 ```
 
 This does not make typed integer variables implicitly assignable to `f32`;
@@ -1142,6 +1162,30 @@ Float literals can also be declared as a power of ten:
 f0 := 42e1 // 420
 f1 := 123e-2 // 1.23
 f2 := 456e+2 // 45600
+```
+
+#### Checked integer arithmetic
+
+Integer arithmetic wraps on overflow, a shift by the bit width or more gives `0`,
+and a cast to a smaller integer type keeps the low bits.
+Two opt-in flags turn these into runtime panics:
+
+* `v -check-overflow` checks `+`, `-`, `*`, `++`, `--`, and `min / -1` and `min % -1`
+  (with their compound forms like `-=`, `/=`). In code outside the standard library, it also
+  checks the negation of the minimum value (`-x` for `x == min_i64`), and shifts whose count is
+  negative or not less than the bit width of the left operand.
+* `v -check-casts` checks integer casts that lose information, like `i8(i64(300))`, `u8(-1)`
+  or `u64(i64(-5))`. Casts from floats, or to `char` and enums, are not checked. Only code
+  outside the standard library is checked, since vlib uses truncating casts on purpose
+  (hashes, byte extraction).
+
+A function tagged with `@[ignore_overflow]` is not checked by either flag:
+
+```v
+@[ignore_overflow]
+fn hash_step(h u32, b u8) u32 {
+	return (h ^ u32(b)) * 16777619 // wraps on purpose
+}
 ```
 
 ### Arrays
@@ -1759,6 +1803,8 @@ println(buf.bytestr()) // => hel
 ### Maps
 
 Methods and references on map iteration values address the stored element, including nested maps.
+Postfix updates to a mutable map value field, such as `m[key].level++`, update the stored
+entry and insert a zero value first when the key is absent. The key is evaluated once.
 
 ```v
 mut m := map[string]int{} // a map with `string` keys and `int` values
@@ -2092,8 +2138,10 @@ if a < b {
 `if` statements are pretty straightforward and similar to most other languages.
 Unlike other C-like languages,
 there are no parentheses surrounding the condition and the braces are always required.
-When the condition starts with another `if` or a `match` expression, parentheses are required
-around the condition, for example `if (if enabled { true } else { false }) { ... }`.
+The condition cannot start with another `if`, not even a parenthesized one: store the result of
+the inner `if` expression in a variable first.
+When the condition starts with a `match` expression, parentheses are required around the
+condition, for example `if (match enabled { true { false } else { true } }) { ... }`.
 
 #### `If` expressions
 Unlike C, V does not have a ternary operator, that would allow you to do: `x = c ? 1 : 2` .
@@ -3250,6 +3298,9 @@ global reads that value's field; it does not name a static type method.
 V supports `[noinit]` structs, which are structs that cannot be initialised outside the module
 they are defined in. They are either meant to be used internally or they can be used externally
 through _factory functions_.
+
+The restriction applies to empty literals and literals with explicit fields, including aliases
+and concrete generic instances of the struct.
 
 For an example, consider the following source in a directory `sample`:
 
@@ -6257,6 +6308,38 @@ println(json2.encode(user, escape_unicode: true)) // {"name":"Pierre","score":10
 The `json2` module also supports anonymous struct fields, which helps with complex JSON APIs with
 many levels.
 
+## Protocol Buffers
+
+V ships `encoding.protobuf`, the Protocol Buffers binary wire format in pure V. It has no C
+dependency and needs no `protoc` at build time.
+
+The usual way in is the `v pbgen` tool, which reads a `.proto` file and writes the message
+structs, their codecs, and the gRPC service declarations:
+
+```sh
+v pbgen -m kv -o kv/codec.v kv.proto
+```
+
+```v ignore
+pub struct GetRequest {
+pub mut:
+	// key is `string key = 1`.
+	key string
+}
+
+pub fn (msg GetRequest) encode() ![]u8 {
+	return msg.encode_with(protobuf.EncodeOpts{})
+}
+
+pub fn decode_get_request(data []u8) !GetRequest {
+	return decode_get_request_with(data, protobuf.DecodeOpts{})
+}
+```
+
+Only proto3 is supported. `v help pbgen` documents the options, and
+`vlib/encoding/protobuf/README.md` documents the runtime, the type mapping, and the shape of
+the generated code.
+
 ## Testing
 
 ### Asserts
@@ -6448,6 +6531,27 @@ For developers willing to have more low-level control, memory can be managed man
 
 Arena allocation is available via a `-prealloc` flag. Note: currently this mode is only
 suitable to speed up short lived, single-threaded, batch-like programs (like compilers).
+
+For scoped arenas, use the `arena` module: while an arena is pushed on a thread, all V
+allocations on that thread (strings, arrays, maps, ...) come from it, and they are released
+together by `reset()` or `free()`. This keeps memory bounded in long-running, multi-threaded
+programs built with `-gc none`. It also works with the default GC, but not with `-prealloc`.
+
+```v
+import arena
+
+mut a := arena.new()
+mut results := []string{}
+for i in 0 .. 3 {
+	a.push()
+	s := 'iteration ${i}: ' + 'x'.repeat(i)
+	a.pop()
+	results << s.clone() // copy the value out of the arena
+	a.reset() // reuse the arena memory in the next iteration
+}
+a.free()
+println(results)
+```
 
 ### Control
 
@@ -7539,6 +7643,41 @@ v outdated
 Package are up to date.
 ```
 
+### Locking dependency revisions
+
+When `v install` resolves the dependencies of a project, i.e. when it runs
+without packages in a folder holding a `v.mod`, or with `--local`, it records
+what it installed in a `v.mod.lock` file next to that `v.mod`. Commit that file,
+so that everyone working on the project, and its CI, builds against the same
+sources. A plain `v install [package]` installs globally, and records nothing.
+For each dependency, the lockfile records:
+
+- `requested`: the dependency string as written in `v.mod`, e.g. `vsl@v0.1.50`
+- `resolved`: the requested tag, or otherwise a pseudo-version made of the
+  commit time and the short SHA, like `v0.0.0-20240102150405-0123456789ab`
+- `revision`: the full SHA of the installed commit
+- `url`: the source the package was cloned from
+
+Without a lock entry, `v install` updates an already installed dependency to its
+latest revision. With one, it installs the locked revision instead, and puts an
+installed checkout that moved away from it back on the lock, fetching the
+revision first when needed. A dependency whose string in `v.mod`, or whose
+source, no longer matches its entry is resolved anew, and its entry is replaced.
+`v install --locked` fails instead of resolving anything anew, e.g. to check in
+CI that the lockfile is complete and up to date.
+
+To move a locked dependency forward, run `v update [package]` or `v upgrade`
+inside the project: the installed checkout moves to the latest revision of the
+default branch of its source, and its lock entry is rewritten. Dependencies
+requested at a tag stay at that tag. `v remove [package]` drops the entry of the
+package from the lockfile.
+
+Note that the global `VMODULES` folder holds a single checkout of each package,
+shared by all projects. `v install` in a project switches the checkouts of its
+dependencies to the revisions in its lockfile, and `v install` in another
+project that locks other revisions of the same packages switches them back. Use
+`v install --local` to give a project checkouts of its own.
+
 ### Publish package
 
 1. Put a `v.mod` file inside the toplevel folder of your package (if you
@@ -8353,11 +8492,13 @@ directive: V writes the bytes to a file, assembles a small `.S` source that
 includes it, and links the resulting object next to the generated C, so the C
 compiler never has to parse the bytes as an array initializer. That happens when
 the build links natively with GCC, Clang or MinGW, or with TCC targeting the
-host on non-macOS systems when a GCC or Clang compatible compiler is installed.
+host on systems other than macOS and Windows when a GCC or Clang compatible
+compiler is installed.
 On ELF targets, the payload object marks its stack as non-executable.
 Generated C or object output (`-o file.c`, `-o file.o`, `-generate-c-project`),
 MSVC, iOS and WebAssembly targets, and a Windows target built on another OS keep
-the array form. TCC builds targeting another OS or architecture also keep it.
+the array form. TCC builds on macOS and Windows, and TCC builds targeting another
+OS or architecture, also keep it.
 `-keepc`, an explicit `-b c`, and `-dump-c-flags` also keep the array form so
 their retained output does not depend on temporary object files. `-d no_incbin`
 selects it everywhere.
@@ -9178,6 +9319,8 @@ directly into C array operations - omitting bounds checking. This may save a lot
 function that iterates over an array but at the cost of making the function unsafe - unless the
 boundaries will be checked by the user.
 
+Element stores remain valid when the right-hand side grows the array.
+
 **When to Use**
 
 - In tight loops that access array elements, where bounds have been manually verified or you are
@@ -9307,7 +9450,12 @@ financial calculations.
 
 Using this flag omits the segfault handler, reducing the executable size and potentially improving
 compile time. However, in the case of a segmentation fault, the output will not contain stack trace
-information, making debugging more challenging.
+information, making debugging more challenging. A stack overflow (for example from unbounded
+recursion) is then also no longer reported as `V panic: stack overflow`.
+
+On macOS, signal handlers installed before V starts retain precedence, including TCC's
+backtrace handlers. V reports stack overflows when the signal still has its default disposition;
+compile with `-cc clang` to use this reporter without TCC's earlier handlers.
 
 **When to Use**
 
@@ -10474,6 +10622,48 @@ Only source files selected for the target and compile-time defines contribute de
 Lowercase type aliases declared in the same file remain type operands of `sizeof`.
 Translated local C variables can be updated without an explicit `mut` declaration.
 
+Code generated by other compilers often needs only V's naming rules relaxed, without the C
+semantics above. Mark such a module with `@[generated]` instead:
+
+```v
+@[generated]
+module main
+
+struct _zbr_ty_Point {
+	xPos int
+}
+
+fn _zbr_ty_Point.new(xPos int) _zbr_ty_Point {
+	return _zbr_ty_Point{
+		xPos: xPos
+	}
+}
+
+fn camelCase(p _zbr_ty_Point) int {
+	_value := p.xPos
+	return _value + 1
+}
+
+fn main() {
+	println(camelCase(_zbr_ty_Point.new(41)))
+}
+```
+
+The attribute has to be put on an explicit `module` line, `module main` included, and it
+applies only to the file it is in, so mark every generated file of a module. In such a file,
+names of functions, methods, variables, parameters, constants, fields and globals can use
+camelCase and start with `_`, and type names do not have to start with a capital letter. Only
+type names can start with an uppercase letter, because V relies on that to tell `Type{}` and
+`Type(x)` apart from values.
+
+A few names stay invalid, because the generated C code needs them: no name can contain `__`,
+type names cannot end with `_`, and other names cannot start with `_` and an uppercase letter,
+or consist of `_`, lowercase letters and digits like `_t1`. A type cannot share its name with a
+function or constant of its module or with a builtin function, and interfaces cannot have the
+fields `_typ` and `_object`. Keywords stay reserved, module names keep the usual rules, and
+everything else, including type checks and mutability, works exactly as in ordinary V files.
+Casts like `t(x)` to a type whose name starts in lower case work inside its module.
+
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.
 
@@ -10896,6 +11086,37 @@ instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 Note: there is a small shell script `cmd/tools/vrun`, that can be useful for systems, that have an
 env program (`/usr/bin/env`), that still does not support an `-S` option (like BusyBox and OpenBSD).
 See https://github.com/vlang/v/blob/master/cmd/tools/vrun for more details.
+
+### Source locations in generated code
+
+A compiler that translates another language to V can mark the V code that it generates with
+`#line` directives, like in C, so that V reports locations in the original source.
+The source line after `#line N "file"` is line `N` of `file`, and the lines after it count up
+from there, until the next directive. `#line N` keeps the current file. A directive must be on
+a line of its own, at the top level of a file or between the statements of a function.
+
+```v
+fn main() {
+	#line 42 "src/app.zbr"
+	x := 6 * 7
+	#line 43
+	println(x)
+}
+```
+
+V then uses these locations:
+- in compiler errors, warnings and notices. The source excerpt under a message comes from
+  the named file, if V can read it; otherwise it is the generated V line, numbered as the
+  line in the named file. Columns are always those of the generated V line.
+- in the locations that are compiled into the program: failed `assert`s, `dump()`,
+  `@FILE`, `@LINE`, `@FILE_LINE`, `@LOCATION`, and panics of `-g` builds.
+- in the `#line` directives of the C code that `-g` generates, so debuggers and
+  native backtraces show the original source.
+- in the line counts of `-coverage`.
+
+Unlike in C, a directive in a `$if` branch that is not compiled still applies to the lines after
+it. A relative file name is relative to the directory that V runs in. `@DIR`, `@VMODROOT` and
+`$embed_file()` still refer to the generated `.v` file, since they locate files on disk.
 
 # Appendices
 

@@ -79,6 +79,19 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_keeps_anon_fn_statements_returning_threads() {
+	src := 'fn main() {
+	fn () thread (int, int) {
+		return spawn pair()
+	}().wait()
+	fn (x int) thread (int, int) {
+		return spawn pair()
+	}(1).wait()
+}
+'
+	assert vfmt('anon_fn_thread_return', src) == src
+}
+
 fn test_formatter_keeps_the_spacing_of_compile_time_conditions() {
 	// `v fmt` wrote `[f32, f64]&& b`, `!( a is f64 )`, `sizeof ( A )` and `[]&& int`.
 	source := "module main\n\nfn f[A, B](a A, b B) {\n\t\$if a in [f32, f64] && b !is f32 {\n\t\tprintln(1)\n\t}\n\t\$if !(a is f64) {\n\t\tprintln(2)\n\t}\n\t\$if A is []&&int {\n\t\tprintln(3)\n\t}\n\t\$if A in [f32, f64] || A is int {\n\t\tprintln(4)\n\t}\n\t\$if sizeof(A) == 8 {\n\t\tprintln(5)\n\t}\n\t\$if (a is int) || (a is f64) {\n\t\tprintln(6)\n\t}\n\t\$if A.name == 'f64' {\n\t\tprintln(7)\n\t}\n\t\$if linux && !debug {\n\t\tprintln(8)\n\t}\n\t\$if my_flag ? {\n\t\tprintln(9)\n\t}\n\t\$if a is \$int {\n\t\tprintln(10)\n\t}\n\t\$if A !in [i8, i16] && A is \$int {\n\t\tprintln(11)\n\t}\n\t\$if a is ?int {\n\t\tprintln(12)\n\t}\n\t\$if \$d('mode', 1) == 2 {\n\t\tprintln(13)\n\t}\n\t\$if !(A in [f32, f64]) && (B is int || B is i64) {\n\t\tprintln(14)\n\t}\n\t\$if A is [3]&&int {\n\t\tprintln(15)\n\t}\n}\n\nfn main() {\n\tf(1, 2)\n}\n"
@@ -250,6 +263,36 @@ fn test_formatter_preserves_compact_function_and_expression_bodies() {
 	out := vfmt('compact_bodies', source)
 	assert out == source, out
 	assert vfmt('compact_bodies_twice', out) == out
+}
+
+fn test_formatter_keeps_line_directives_next_to_the_code_they_locate() {
+	source := 'module main
+
+#line 100 "src/app.zbr"
+fn helper() int {
+	return 5
+}
+
+#line 1 \'gen.zbr\' // generated
+@[inline]
+fn twice(x int) int {
+	#line 2
+	return x * 2
+}
+
+#line 10 "src/app.zbr"
+
+fn main() {
+	#line 42 "src/app.zbr"
+	x := helper()
+	#line 43
+	println(twice(x))
+}
+'
+	assert vfmt('line_directive.v', source) == source
+	// A directive at the start of a line in a function body is indented like other statements.
+	unindented := source.replace('\t#line 42', '#line 42')
+	assert vfmt('line_directive.v', unindented) == source
 }
 
 fn test_formatter_keeps_single_statement_bodies_written_on_one_line() {

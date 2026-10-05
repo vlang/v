@@ -74,6 +74,35 @@ remains within its scratch-memory safety limit.
 Explicit `-new-compiler` builds remain strict default-compiler operations and do not retry with
 V1.
 
+## Machine-readable diagnostics
+
+`-json-errors` prints each error, warning and notice of the scanner, the parser and the checker
+as one JSON object per line on stderr, instead of the text with a source excerpt:
+
+```json
+{"file":"bad.v","line":3,"col":7,"end_line":3,"end_col":14,"severity":"error","message":"..."}
+```
+
+| Member | Value |
+| --- | --- |
+| `file` | The path the text form shows: relative to the working directory, or absolute with `VERROR_PATHS=absolute`. |
+| `line`, `col` | Where the reported span starts. Both start at 1; a column counts bytes. |
+| `end_line`, `end_col` | The position after the last byte of the span. |
+| `severity` | `error`, `warning` or `notice`. |
+| `label` | Only when the text form uses another label than the severity, like `builder error`, `cgen error` or `conflicting declaration`. |
+| `message` | The message of the text form. |
+| `details` | Only when there are any: the text printed after `Details:`. |
+| `called_from` | Only for a template: the `$tmpl` calls that included it, innermost first, each with `file`, `line` and `col`. |
+
+A diagnostic without a source position has no location members. The same diagnostics are
+reported as without the option, in the same order and with the same exit code, and `-W` and
+`-message-limit` apply as usual. Two things differ: every error is printed, where the text
+form stops after 20 of them, and a failed build is not retried with the compatibility compiler.
+Messages that are not diagnostics of the V source, like the output of a failing C compiler, stay
+text: a line is a diagnostic when it starts with `{`. `-old-compiler`, and `-vls-mode` without
+`-new-compiler`, build with the compatibility compiler, which reads `-json-errors` in its own way
+and does not print this format.
+
 ## Profile-guided compiler build
 
 On macOS or Linux with Clang and a matching `llvm-profdata`, build an optimized standalone

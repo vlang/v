@@ -41,13 +41,23 @@ fn expected_output() string {
 	return '${data.len} ${sha256.hexhash(data.bytestr())}'
 }
 
+// retained_c_file names the C source kept next to the `-o` output of a `-b c` build.
+// V derives it from the output name verbatim and appends `.exe` to that name on
+// Windows, so the file is `app_retained.c` elsewhere and `app_retained.exe.c` there.
+fn retained_c_file(name string) string {
+	return os.join_path(incbin_workspace, name + $if windows { '.exe' } $else { '' } + '.c')
+}
+
 fn build_and_run(name string, flags string) (os.Result, string) {
 	exe := os.join_path(incbin_workspace, name)
 	main_file := os.join_path(incbin_workspace, 'main.v')
 	build := os.exec([incbin_vexe, '-prod', '-showcc', ...(os.split_args(flags) or { panic(err) }),
 		'-o', exe, main_file])
 	assert build.exit_code == 0, build.output
-	run := os.exec([exe])
+	// V writes the executable next to the `-o` name, adding `.exe` on Windows, and
+	// `os.exec` does not add it, so name the file that is actually there. The `-o`
+	// argument keeps the bare name, which is what the retained-C tests below read.
+	run := os.exec([exe + $if windows { '.exe' } $else { '' }])
 	assert run.exit_code == 0, run.output
 	return build, run.output.trim_space()
 }
@@ -87,7 +97,7 @@ fn test_retained_c_output_spells_the_bytes_out() {
 	build, output := build_and_run('app_retained', '-b c')
 	assert output == expected_output()
 	assert !build.output.contains('.S -o'), build.output
-	source := os.read_file(os.join_path(incbin_workspace, 'app_retained.c')) or { panic(err) }
+	source := os.read_file(retained_c_file('app_retained')) or { panic(err) }
 	assert source.contains('static const unsigned char _v_embed_blob_')
 	assert !source.contains('extern const unsigned char _v_embed_blob_')
 }
@@ -139,8 +149,8 @@ fn test_dump_flags_after_cached_incbin_build_uses_arrays() {
 		}
 	}
 	// A build whose V-shipped native inputs cannot be replicated into every cached
-	// object (such as the file-static state of the closure runtime) stays uncached
-	// and leaves no plan to reuse. Any other seed build caches its incbin plan.
+	// object (such as a header that keeps file-static state) stays uncached and
+	// leaves no plan to reuse. Any other seed build caches its incbin plan.
 	uncached := seed_build.output.contains('external C inputs cannot be assigned to cache units')
 	assert cached_incbin_plan != uncached, 'the seed build neither cached its incbin C plan nor bypassed the cache:\n${seed_build.output}'
 	flags_file := os.join_path(incbin_workspace, 'cached_flags.txt')
@@ -158,6 +168,21 @@ fn test_macos_tcc_build_keeps_the_array_form() {
 		if !os.is_file(bundled_tcc) {
 			return
 		}
+		build, output := build_and_run('app_tcc', '-cc tcc -no-retry-compilation')
+		assert output == expected_output()
+		assert !build.output.contains('.S -o'), build.output
+	}
+}
+
+fn test_windows_tcc_build_keeps_the_array_form() {
+	$if windows {
+		bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+		if !os.is_file(bundled_tcc) {
+			return
+		}
+		// `-no-retry-compilation` turns off the retry that would hide the problem: TCC
+		// rejects the object the host assembler produced for the payload, so with the
+		// incbin path this build only succeeds through a fallback to that host.
 		build, output := build_and_run('app_tcc', '-cc tcc -no-retry-compilation')
 		assert output == expected_output()
 		assert !build.output.contains('.S -o'), build.output

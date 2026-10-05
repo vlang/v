@@ -66,13 +66,6 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && '-prod' in effective_args && '-parallel-cc' !in effective_args {
-		// A V3-only cmd/v is large enough that a monolithic C compiler + LTO dominates
-		// the self-build. Parallel C compilation also keeps the generated unit out
-		// of the full-LTO path when the self-build is already running under V3.
-		args << '-parallel-cc'
-	}
-	effective_args = effective_self_build_args(args)
 	if !fastc_self_build && '-prod' in effective_args && '-no-memory-limit' !in effective_args
 		&& '--no-memory-limit' !in effective_args {
 		// Production C generation for the embedded V3 compiler can legitimately
@@ -112,11 +105,12 @@ fn main() {
 		compile_args << '-selfhost'
 	}
 	final_binary := if obinary != '' { obinary } else { 'v2' }
-	pgo_cc_kind := if fastc_self_build || '-parallel-cc' in effective_args {
-		''
-	} else {
-		pgo_compiler_kind(args)
-	}
+	// A production self-build compiles the compiler once, as a single C unit that the
+	// C compiler optimizes as a whole: parallel units leave every call between two of
+	// them out of line. The three-pass profile-guided cycle would build the large V3
+	// compiler three times.
+	single_prod_build := '-prod' in effective_args
+	pgo_cc_kind := if fastc_self_build || single_prod_build { '' } else { pgo_compiler_kind(args) }
 	// Only explicit FastC builds are standalone. Regular replacements must retain
 	// cmd/v so commands such as self, up, fmt, and version remain available.
 	compilation_source := if fastc_self_build { standalone_v3_source } else { full_v_cli_source }
@@ -403,9 +397,8 @@ fn pgo_compiler_kind(args []string) string {
 	if '-prod' !in args || '-no-prod-options' in args {
 		return ''
 	}
-	// A parallel self-build is the bounded-cost production path for the large
-	// V3-only compiler. PGO would compile that compiler three times and erase
-	// most of the gain from splitting C compilation / avoiding full LTO.
+	// A parallel self-build trades optimization for build time. PGO would compile
+	// that compiler three times and erase the gain from splitting C compilation.
 	if '-parallel-cc' in args {
 		return ''
 	}
@@ -649,8 +642,10 @@ fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
 	// Portable VC snapshots have the full V1 compiler but no embedded V3 driver.
 	parts << '-DCUSTOM_DEFINE_v1_fallback'
 	if os.user_os() == 'windows' {
+		// vc/v_win.c calls BCryptGenRandom, so -lws2_32 alone fails to link, the same
+		// way GNUmakefile and makev.bat need -lbcrypt for this snapshot.
 		parts << ['-std=c99', '-municode', '-w', '-o', os.quoted_path(out_binary),
-			os.quoted_path(vc_source), '-lws2_32']
+			os.quoted_path(vc_source), '-lws2_32', '-lbcrypt']
 	} else {
 		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary), os.quoted_path(vc_source),
 			'-lm', '-lpthread']

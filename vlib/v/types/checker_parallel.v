@@ -1265,6 +1265,10 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 					prev_tl = i
 					continue
 				}
+				if tc.skips_library_body(node) {
+					prev_tl = i
+					continue
+				}
 				span := i - prev_tl
 				cost := if i < tc.fn_check_costs.len && tc.fn_check_costs[i] > 0 {
 					tc.fn_check_costs[i]
@@ -1349,6 +1353,10 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 		if do_signatures && node.kind in [.fn_decl, .struct_decl, .interface_decl, .type_decl,
 			.global_decl, .const_decl] {
 			tc.check_written_generic_types(flat.NodeId(i))
+		}
+		if do_signatures && (node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .interface_decl,
+			.type_decl, .global_decl, .const_decl] || is_top_level_statement_kind(node.kind)) {
+			tc.check_written_nested_option_types(flat.NodeId(i))
 		}
 		match node.kind {
 			.file {
@@ -3071,8 +3079,10 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 				tc.check_reserved_parameter_name(param_id)
 				if param.op == .dot {
 					tc.check_import_symbol_conflict_at(param_id, param.value, tc.fn_receiver_param_diagnostic_pos(node, param.value))
+					tc.check_generated_parameter_name(param_id, param, tc.fn_receiver_param_diagnostic_pos(node, param.value))
 				} else {
 					tc.check_import_symbol_conflict(param_id, param.value)
+					tc.check_generated_parameter_name(param_id, param, tc.node_value_diagnostic_pos(param_id))
 				}
 				tc.check_module_name_conflict(param_id, param.value)
 			}

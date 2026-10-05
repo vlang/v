@@ -1,4 +1,6 @@
 Installs each PACKAGE.
+Dependencies resolved for a project are recorded in a `v.mod.lock` file next
+to its `v.mod`.
 
 Usage:
   v install [PACKAGE...]
@@ -11,6 +13,8 @@ Options:
   --hg         Install from mercurial repository url
   --help, -h   Prints the help menu
   --once       Only install the package if it was not previously installed
+  --locked     Fail rather than resolve a dependency differently from the
+               project's `v.mod.lock`. Only applies to project installs.
   --local, -l  Install into the project's own module lookup root, i.e. the folder
                holding its `v.mod`, instead of into VMODULES.
   --adopt      With `--local`, record the named modules as installed by VPM,

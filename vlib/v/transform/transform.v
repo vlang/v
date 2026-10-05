@@ -3973,6 +3973,13 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				} else {
 					0
 				}
+				// A region is a share of the pool by cost, and the node count of a
+				// dense `match` is less than what lowering its branches appends.
+				match_est := if t.skip_generics && !t.building_v {
+					t.fn_span_match_lowering_estimate(range_lo, i)
+				} else {
+					0
+				}
 				if est_profile {
 					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 				}
@@ -3989,7 +3996,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				} else {
-					adj_cost := cost + str_est + map_est
+					adj_cost := cost + str_est + map_est + match_est
 					pure << FnWorkItem{
 						fn_idx:                    i
 						range_lo:                  range_lo
@@ -7281,7 +7288,25 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 	t.clear_source_decl_heaped_bindings(node)
 	t.set_var_type_with_raw(var_name, elem_typ, raw_typ)
 	stmts << t.heap_escaping_value_decl(var_name, elem_typ, raw_typ, transformed_init, struct_init)
+	// The heap declaration stands for the source one. Keep its `mut`: the checks
+	// that read the lowered body again must still accept `f(mut var_name)`.
+	t.keep_source_decl_mutability(node, stmts.last())
 	return stmts
+}
+
+// keep_source_decl_mutability marks the single variable of the lowered declaration
+// `lowered_id` as `mut` when the source declaration `source` declared it so.
+fn (mut t Transformer) keep_source_decl_mutability(source flat.Node, lowered_id flat.NodeId) {
+	if source.children_count == 0 || int(lowered_id) < 0 {
+		return
+	}
+	lowered := t.a.nodes[int(lowered_id)]
+	if lowered.kind != .decl_assign || lowered.children_count == 0 {
+		return
+	}
+	if source.is_mut || t.a.child_node(&source, 0).is_mut {
+		t.a.nodes[int(t.a.child(&lowered, 0))].is_mut = true
+	}
 }
 
 // heap_escaping_value_decl moves an already-lowered value into a local's heap storage.
@@ -11435,12 +11460,21 @@ fn (mut t Transformer) transform_debugger_stmt(node flat.Node) flat.NodeId {
 		if contexts.len == 0 {
 			continue
 		}
-		value := t.apply_smartcast_contexts(t.make_ident(name), t.var_type(name), contexts)
+		last := contexts.last()
+		mut value := t.apply_smartcast_contexts(t.make_ident(name), t.var_type(name), contexts)
 		mut value_type := t.node_type(value)
 		if value_type.len == 0 {
-			value_type = t.smartcast_target_type(contexts.last())
+			value_type = t.smartcast_target_type(last)
 		}
-		mut display_type := contexts.last().display_type
+		// Interface smartcasts to structs select the boxed object by pointer to avoid
+		// copies; the debugger shows the value type that the source code sees.
+		if value_type.starts_with('&') && !last.variant_name.starts_with('&')
+			&& t.is_interface_type_name(last.sum_type_name) {
+			value = t.make_prefix(.mul, value)
+			value_type = value_type[1..]
+			t.set_node_typ(int(value), value_type)
+		}
+		mut display_type := last.display_type
 		if display_type.len == 0 {
 			display_type = value_type
 		}
@@ -11948,8 +11982,9 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 		mut path := t.cur_file
 		mut line := 0
 		if file := t.a.source_files[node.pos.id] {
-			path = file.name
-			line = file.position(node.pos).line
+			position := file.logical_position(node.pos)
+			path = position.filename
+			line = position.line
 		}
 		expr_text := if node.value.len > 0 {
 			t.dump_expr_display_text(node.value, child_node)

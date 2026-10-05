@@ -1,0 +1,48 @@
+vlib/v/parser/tests/line_directive_invalid_err.vv:2:1: error: invalid `#line` directive: expected a line number, like `#line 42 "file.v"`
+    1 | fn main() {
+    2 | #line
+      | ~~~~~
+    3 | #line abc
+    4 | #line 0
+vlib/v/parser/tests/line_directive_invalid_err.vv:3:1: error: invalid `#line` directive: `abc` is not a valid line number
+    1 | fn main() {
+    2 | #line
+    3 | #line abc
+      | ~~~~~~~~~
+    4 | #line 0
+    5 | #line 12 src/app.zbr
+vlib/v/parser/tests/line_directive_invalid_err.vv:4:1: error: invalid `#line` directive: line numbers start at 1, not 0
+    2 | #line
+    3 | #line abc
+    4 | #line 0
+      | ~~~~~~~
+    5 | #line 12 src/app.zbr
+    6 | #line 12 "src/app.zbr
+vlib/v/parser/tests/line_directive_invalid_err.vv:5:1: error: invalid `#line` directive: the file name must be a quoted string, like `#line 42 "file.v"`
+    3 | #line abc
+    4 | #line 0
+    5 | #line 12 src/app.zbr
+      | ~~~~~~~~~~~~~~~~~~~~
+    6 | #line 12 "src/app.zbr
+    7 | #line 12 "src/app.zbr" extra
+vlib/v/parser/tests/line_directive_invalid_err.vv:6:1: error: invalid `#line` directive: unterminated file name string
+    4 | #line 0
+    5 | #line 12 src/app.zbr
+    6 | #line 12 "src/app.zbr
+      | ~~~~~~~~~~~~~~~~~~~~~
+    7 | #line 12 "src/app.zbr" extra
+    8 |     x := 1 #line 12
+vlib/v/parser/tests/line_directive_invalid_err.vv:7:1: error: invalid `#line` directive: unexpected `extra` after the file name
+    5 | #line 12 src/app.zbr
+    6 | #line 12 "src/app.zbr
+    7 | #line 12 "src/app.zbr" extra
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 |     x := 1 #line 12
+    9 |     println(x)
+vlib/v/parser/tests/line_directive_invalid_err.vv:8:9: error: a `#line` directive must be on a line of its own
+    6 | #line 12 "src/app.zbr
+    7 | #line 12 "src/app.zbr" extra
+    8 |     x := 1 #line 12
+      |            ~~~~~~~~
+    9 |     println(x)
+   10 | }

@@ -177,6 +177,9 @@ fn vpm_remove(query []string) {
 		}
 		println('Removing module "${m}" from ${fmt_mod_path(final_module_path)} ...')
 		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
+		// The clone source is read before the directory is gone; it is what the
+		// lockfile of the project in scope may still name the module by.
+		origin_url := checkout_origin_url(final_module_path)
 		// Whatever is left behind by a failed removal stays VPM's, so the command
 		// can be retried. Losing the record here would make the leftovers look like
 		// the project's own, and nothing could finish the removal.
@@ -188,6 +191,7 @@ fn vpm_remove(query []string) {
 			continue
 		}
 		cleanup_empty_module_parent_dirs(final_module_path)
+		remove_lock_entries(m, origin_url)
 	}
 	if errors > 0 {
 		exit(1)

@@ -7,12 +7,15 @@ import v.vmod
 
 struct VpmSettings {
 mut:
-	is_help               bool
-	is_once               bool
-	is_adopt              bool
-	is_verbose            bool
-	is_force              bool
-	is_local              bool
+	is_help    bool
+	is_once    bool
+	is_adopt   bool
+	is_verbose bool
+	is_force   bool
+	is_local   bool
+	// `--locked` refuses to resolve a dependency differently from the `v.mod.lock`
+	// of the project in scope, instead of updating the lockfile.
+	is_locked             bool
 	server_urls           []string
 	mirror_urls           []string
 	vmodules_path         string
@@ -79,6 +82,7 @@ fn init_settings() VpmSettings {
 		is_verbose:            '-v' in opts || '--verbose' in opts
 		is_force:              '-f' in opts || '--force' in opts
 		is_local:              is_local
+		is_locked:             '--locked' in opts
 		server_urls:           get_server_urls_from_args(args)
 		mirror_urls:           get_mirror_urls_from_args(args)
 		vcs:                   if '--hg' in opts { .hg } else { .git }

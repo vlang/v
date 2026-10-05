@@ -3156,6 +3156,13 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 			return
 		}
 	}
+	// Record what this pass resolved while the enclosing function's scope is still
+	// current. `resolve_type_uncached` re-derives an array literal's element type
+	// from the bare name of its first element, so a later phase that asks for the
+	// type after checking has moved on resolves a parameter that shadowed a
+	// module-level function to that function instead, and types the literal as an
+	// array of function pointers.
+	tc.register_synth_type(id, array_type)
 	if elem_type is Unknown {
 		return
 	}
@@ -10338,7 +10345,19 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 		tc.record_error_at(.assignment_mismatch, 'expression requires a non empty `or {}` block', or_id, tc.or_block_operator_pos(source_id, fallback_id))
 		return
 	}
-	tail_id := tc.branch_tail_expr_id(fallback_id)
+	mut tail_id := tc.branch_tail_expr_id(fallback_id)
+	// Portable output keeps every branch of a target-dependent `$if` for the C
+	// preprocessor, but checks only the branch selected for its target (see
+	// check_comptime_if). That branch provides the value or leaves the block.
+	for tc.valid_node_id(tail_id) && tc.a.node(tail_id).kind == .comptime_if {
+		comptime_if := tc.a.node(tail_id)
+		take_then := tc.comptime_type_condition_value(comptime_if.value) or { break }
+		branch_index := if take_then { 0 } else { 1 }
+		if branch_index >= comptime_if.children_count {
+			break
+		}
+		tail_id = tc.branch_tail_expr_id(tc.a.child(comptime_if, branch_index))
+	}
 	if !tc.valid_node_id(tail_id) {
 		return
 	}
@@ -12914,6 +12933,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		if param.value != '_' {
 			param_names[param.value] = true
 			tc.check_import_symbol_conflict(param_id, param.value)
+			tc.check_generated_parameter_name(param_id, param, tc.node_value_diagnostic_pos(param_id))
 		}
 	}
 	mut closure_copy_owners := map[string]ScopeBindingOwner{}

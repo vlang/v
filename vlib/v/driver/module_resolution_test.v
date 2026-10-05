@@ -84,3 +84,37 @@ fn test_manifest_subdir_probe_filters_sources_for_target() {
 	assert !module_path_has_v_sources(incompatible, &prefs)
 	assert resolve_global_module_path(&prefs, 'sample', 'sample') == valid
 }
+
+fn test_declared_module_is_read_from_the_head_of_a_file() {
+	root := os.join_path(os.vtmp_dir(), 'v3_declared_module_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	path := os.join_path(root, 'source.v')
+	body := 'fn main() {\n\tprintln(1)\n}\n'.repeat(200)
+	for source, expected in {
+		'module alpha\n':                                       'alpha'
+		'module alpha':                                         'alpha'
+		'\n\n  module beta // the module\n':                    'beta'
+		'// a comment\r\n/* one */ module gamma /* two */\r\n': 'gamma'
+		'/*\nmodule hidden\n*/\nmodule delta\n':                'delta'
+		'@[has_globals]\nmodule epsilon\n':                     'epsilon'
+		'@[has_globals;\n  translated]\nmodule zeta\n':         'zeta'
+		'// old style line ends\rmodule eta\rfn f() {}\r':      'eta'
+		'// only a comment\n':                                  ''
+		'fn first() {}\nmodule late\n':                         ''
+		'import os\nmodule late\n':                             ''
+		'':                                                     ''
+	} {
+		os.write_file(path, source)!
+		assert declared_module_in_file(path) == expected, source
+		if source.len == 0 || source[source.len - 1] in [`\n`, `\r`] {
+			// The rest of a file changes nothing: the first line of code decides.
+			os.write_file(path, source + body)!
+			assert declared_module_in_file(path) == expected, source
+		}
+	}
+	assert declared_module_in_file(os.join_path(root, 'missing.v')) == ''
+}

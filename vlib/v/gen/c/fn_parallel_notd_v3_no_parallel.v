@@ -2759,6 +2759,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		vlines:                             g.vlines
 		uses_recover:                       g.uses_recover
 		check_overflow:                     g.check_overflow
+		check_casts:                        g.check_casts
+		check_scope_vlib_prefixes:          g.check_scope_vlib_prefixes
 		force_bounds_checking:              g.force_bounds_checking
 		object_file_mode:                   g.object_file_mode
 		cache_program_files:                g.cache_program_files

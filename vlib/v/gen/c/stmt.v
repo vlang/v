@@ -99,6 +99,9 @@ fn (g &FlatGen) is_map_entry_lvalue(id flat.NodeId) bool {
 	if node.kind in [.paren, .selector] && node.children_count > 0 {
 		return g.is_map_entry_lvalue(g.a.child(&node, 0))
 	}
+	if _ := g.lowered_map_get_lvalue_cast(id) {
+		return true
+	}
 	if node.kind != .index || node.children_count == 0 {
 		return false
 	}
@@ -111,41 +114,50 @@ fn (g &FlatGen) is_map_entry_lvalue(id flat.NodeId) bool {
 // lowered before its enclosing postfix expression. `map__get_or_set` also preserves `m[k]++`
 // semantics for a missing key, instead of incrementing the temporary zero value.
 fn (mut g FlatGen) gen_lowered_map_get_postfix_lvalue(id flat.NodeId) bool {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return false
-	}
-	deref := g.a.nodes[int(id)]
-	if deref.kind != .prefix || deref.op != .mul || deref.children_count != 1 {
-		return false
-	}
-	cast_id := g.a.child(&deref, 0)
-	cast := g.a.nodes[int(cast_id)]
-	if cast.kind != .cast_expr || cast.children_count != 1 || cast.value.len == 0 {
-		return false
-	}
-	call_id := g.a.child(&cast, 0)
-	call := g.a.nodes[int(call_id)]
-	if call.kind != .call || call.children_count != 4 {
-		return false
-	}
-	callee := g.a.child_node(&call, 0)
-	if callee.kind != .ident || callee.value != 'map__get' {
-		return false
-	}
+	cast := g.lowered_map_get_lvalue_cast(id) or { return false }
+	call := g.a.child_node(&cast, 0)
 	ct := g.cast_c_type(g.tc.parse_type(cast.value))
 	g.write('(*(${ct})map__get_or_set(')
 	for i in 1 .. call.children_count {
 		if i > 1 {
 			g.write(', ')
 		}
-		g.gen_expr(g.a.child(&call, i))
+		g.gen_expr(g.a.child(call, i))
 	}
 	g.write('))')
 	return true
 }
 
+fn (g &FlatGen) lowered_map_get_lvalue_cast(id flat.NodeId) ?flat.Node {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	deref := g.a.nodes[int(id)]
+	if deref.kind != .prefix || deref.op != .mul || deref.children_count != 1 {
+		return none
+	}
+	cast_id := g.a.child(&deref, 0)
+	cast := g.a.nodes[int(cast_id)]
+	if cast.kind != .cast_expr || cast.children_count != 1 || cast.value.len == 0 {
+		return none
+	}
+	call_id := g.a.child(&cast, 0)
+	call := g.a.nodes[int(call_id)]
+	if call.kind != .call || call.children_count != 4 {
+		return none
+	}
+	callee := g.a.child_node(&call, 0)
+	if callee.kind != .ident || callee.value != 'map__get' {
+		return none
+	}
+	return cast
+}
+
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
+	if g.gen_lowered_map_get_postfix_lvalue(id) {
+		return
+	}
 	node := g.a.nodes[int(id)]
 	if node.kind == .ident && g.current_param_is_mut_pointer(node.value) {
 		g.gen_mut_pointer_slot_expr(id)
@@ -3065,7 +3077,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					// a zeroed `(Iface){0}` — that drops `_typ`/`_object` and makes every
 					// dispatch through the returned interface panic as "not implemented".
 					if g.cur_fn_ret is types.Interface {
-						if !g.gen_interface_value_expr(ret_id, g.cur_fn_ret) {
+						if !g.gen_interface_value_expr(ret_id, g.cur_fn_ret)
+							&& !g.gen_current_mut_param_value_read(ret_id, g.cur_fn_ret) {
 							g.gen_expr(ret_id)
 						}
 					} else if g.gen_pointer_value_return_expr(ret_id, g.cur_fn_ret) {
@@ -3653,9 +3666,10 @@ fn (g &FlatGen) assert_source_detail(node flat.Node) ?AssertSourceDetail {
 			lhs_label = ''
 		}
 	}
+	position := file.logical_position_at(start)
 	return AssertSourceDetail{
-		file:       file.name
-		line:       source[..start].count('\n') + 1
+		file:       position.filename
+		line:       position.line
 		expression: expression
 		lhs_label:  lhs_label
 		rhs_label:  rhs_label
@@ -9178,6 +9192,12 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					i += 2
 					continue
 				}
+				if g.gen_checked_integer_division_assign(lhs_id, rhs_id, lhs_type, rhs_type,
+					node.op) {
+					g.expected_enum = ''
+					i += 2
+					continue
+				}
 				if method_name := g.assign_struct_operator_method(lhs_type, node.op) {
 					g.gen_expr(lhs_id)
 					g.write(' = ${g.cname(method_name)}(')
@@ -9388,6 +9408,33 @@ fn (mut g FlatGen) gen_checked_integer_assign(lhs_id flat.NodeId, rhs_id flat.No
 	g.write('); *${address} = ${helper}(*${address}, ')
 	g.gen_expr_with_expected_type(rhs_id, value_type)
 	g.writeln('); }')
+	return true
+}
+
+// gen_checked_integer_division_assign writes `x /= y` and `x %= y` under
+// `-check-overflow` the way `x = x / y` is written: a zero divisor panics, and so
+// does a signed `min / -1`.
+fn (mut g FlatGen) gen_checked_integer_division_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	if op !in [.div_assign, .mod_assign] || !g.has_builtins || !g.overflow_checks_active()
+		|| g.expr_is_in_translated_file(lhs_id) {
+		return false
+	}
+	value_type := g.assign_rhs_expected_type(lhs_id, lhs_type)
+	g.checked_int_kind(value_type) or { return false }
+	c_type := g.value_c_type(value_type)
+	if c_type.len == 0 {
+		return false
+	}
+	address := g.tmp_name()
+	g.write('{ ${c_type}* ${address} = &(')
+	if g.assign_lhs_needs_deref(lhs_id, lhs_type, rhs_type, op) {
+		g.write('*')
+	}
+	gen_expr_lvalue(mut g, lhs_id)
+	g.write('); *${address} = ({ ')
+	g.gen_checked_integer_division_value('*${address}', g.tmp_name(), rhs_id, value_type,
+		c_type, op, true)
+	g.writeln('; }); }')
 	return true
 }
 
@@ -10440,14 +10487,10 @@ fn (mut g FlatGen) gen_test_propagation_failure(node flat.Node, is_result bool) 
 		g.write('__test_failures++; return;')
 		return
 	}
-	file := g.a.source_files[node.pos.id] or {
-		g.write('__test_failures++; return;')
-		return
-	}
 	err_msg := g.tmp_name()
 	message := if is_result { 'IError__msg(&err)' } else { g.interface_str_lit('none') }
 	g.write('string ${err_msg} = ${message}; ')
-	g.write('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(file.name)}", ${position.line}, "${c_escape(g.cur_fn_name)}", ${err_msg}.len, ${err_msg}.str); ')
+	g.write('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(position.filename)}", ${position.line}, "${c_escape(g.cur_fn_name)}", ${err_msg}.len, ${err_msg}.str); ')
 	g.write('__test_failures++; return;')
 }
 

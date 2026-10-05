@@ -1311,6 +1311,17 @@ pub fn (mut s Server) serve_http(addr string) ! {
 	http_server.listen_and_serve()
 }
 
+// http_handler returns an `http.Handler` that serves MCP requests, so the
+// endpoint can be mounted on an existing `http.Server` that owns the port.
+// The request URL must match `ServerConfig.http_path`, the same as it must
+// when `serve_http` owns the listener. `close()` only stops a listener started
+// by `serve_http`, so it has no effect on a mounted handler.
+pub fn (mut s Server) http_handler() http.Handler {
+	return HttpHandler{
+		server: s
+	}
+}
+
 // close stops the HTTP server if it is running.
 pub fn (mut s Server) close() {
 	if !isnil(s.http_server) {
@@ -3402,7 +3413,9 @@ fn (mut s Server) handle_http_get(req http.Request, session_id string) http.Resp
 	return response
 }
 
-fn (mut s Server) handle_http_request(req http.Request) http.Response {
+// handle_http_request serves one MCP request received by a host HTTP server,
+// letting an existing server own the port instead of `serve_http`.
+pub fn (mut s Server) handle_http_request(req http.Request) http.Response {
 	if req.url.all_before('?') != s.http_path {
 		return json_http_response(.not_found, '', '')
 	}

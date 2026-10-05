@@ -24,6 +24,42 @@ struct App {
 
 const args = arguments()
 
+// usage lists what `v up` accepts, for `-h`.
+//
+// Kept here rather than delegated to `v help up`, so that asking how to use the
+// command does not depend on being able to start the main compiler: `v up` reads
+// `VEXE`, which is allowed to be set, and a stale one must not turn `-h` into a
+// failure. `v help up` remains the place with the prose; keep the options listed
+// here in sync with vlib/v/help/installation/up.txt.
+const usage = 'Usage: v up [options]\n' +
+	'\n' +
+	'Options:\n' +
+	'  -v                 Print more details about the update.\n' +
+	'  -prod              Compile the updated V with the -prod flag.\n' +
+	'  -skills            Refresh the installed agent skills that fell behind.\n' +
+	'  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.\n' +
+	'  -skip_current      Recompile even when the checkout is already at the\n' +
+	'                     revision.\n' +
+	'  -h, -help, --help  Show this help and exit.\n' +
+	'\n' +
+	'See `v help up` for what an update does.\n'
+
+// known_options are the options `v up` acts on. Anything else stops it before
+// the update starts, so a mistyped flag cannot pull and rebuild the compiler.
+const known_options = ['-v', '-prod', '-skills', '-skip_v_self', '-skip_current']
+
+const help_options = ['-h', '-help', '--help', 'help']
+
+fn wants_help() bool {
+	return args.any(it in help_options)
+}
+
+// unknown_options returns the arguments that are neither options of `v up` nor
+// the `up` command name that the launcher passes along with them.
+fn unknown_options() []string {
+	return args[1..].filter(it != 'up' && it !in known_options)
+}
+
 fn new_app() App {
 	return App{
 		is_verbose:    '-v' in args
@@ -37,6 +73,18 @@ fn new_app() App {
 }
 
 fn main() {
+	if wants_help() {
+		// Checked before anything else, because asking how to use the command
+		// must not update the compiler.
+		println(usage.trim_space())
+		exit(0)
+	}
+	unknown := unknown_options()
+	if unknown.len > 0 {
+		eprintln('v up: unknown option: ${unknown.join(' ')}')
+		eprintln(usage.trim_space())
+		exit(1)
+	}
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
 	os.chdir(app.vroot)!
@@ -48,9 +96,15 @@ fn main() {
 		eprintln('Try running `${get_tcc_update_cmd()}` .')
 		exit(1)
 	}
-	current_v_hash := app.current_v_hash() or { @VCURRENTHASH }
-	current_hash_from_filesystem := version.githash(vroot) or { current_v_hash }
-	if !app.skip_current && current_v_hash == current_hash_from_filesystem {
+	current_v_hash := app.current_v_hash() or {
+		// A fallback-built tool can restore a missing primary compiler at its own
+		// revision. An existing compiler with an unknown revision must rebuild.
+		if !os.exists(app.current_vexe_path()) { @VCURRENTHASH } else { '' }
+	}
+	current_hash_from_filesystem := version.githash(vroot) or { '' }
+	if !app.skip_current && !app.is_prod && !app.skip_v_self
+		&& current_v_hash != '' && current_hash_from_filesystem != ''
+		&& current_v_hash == current_hash_from_filesystem {
 		println('V is already updated.')
 		current_vexe_path := app.current_vexe_path()
 		if !os.exists(current_vexe_path) {
@@ -69,11 +123,16 @@ fn main() {
 	if os.user_os() == 'windows' {
 		app.backup('cmd/tools/vup.exe')
 	}
-	if !app.recompile_v() {
-		app.show_current_v_version()
-		eprintln('Recompiling V *failed*.')
-		eprintln('Try running `${get_make_cmd_name()}` .')
-		exit(1)
+	if app.skip_current || app.is_prod || app.skip_v_self || current_v_hash == ''
+		|| current_hash_from_filesystem == '' || !app.compiler_sources_unchanged() {
+		if !app.recompile_v() {
+			app.show_current_v_version()
+			eprintln('Recompiling V *failed*.')
+			eprintln('Try running `${get_make_cmd_name()}` .')
+			exit(1)
+		}
+	} else {
+		println('> compiler sources did not change, not recompiling V.')
 	}
 	if !app.recompile_vup() {
 		app.show_current_v_version()
@@ -220,6 +279,17 @@ fn (app App) update_tcc() bool {
 	app.vprintln(result.output)
 	println('> done updating TCC.')
 	return true
+}
+
+// compiler_sources_unchanged checks whether nothing the compiler is built from
+// differs from the revision the current `v` executable was built at.
+fn (app App) compiler_sources_unchanged() bool {
+	built_hash := app.current_v_hash() or { return false }
+	// Compiler dependencies extend beyond the core modules (for example crypto.sha256,
+	// runtime and sync). Conservatively include all vlib implementation sources.
+	diff := os.exec(['git', 'diff', '--quiet', built_hash, '--', 'cmd/v/', 'vlib/', 'thirdparty/',
+		'v.mod', 'GNUmakefile', 'Makefile', 'makev.bat', ':(exclude)*_test.v', ':(exclude)*.md'])
+	return diff.exit_code == 0
 }
 
 fn (app App) recompile_v() bool {

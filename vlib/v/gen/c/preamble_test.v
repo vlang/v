@@ -344,6 +344,15 @@ fn test_vinix_globals_do_not_require_elf_tls() {
 	assert g.global_is_thread_local('__anon_fn_1_capture')
 }
 
+fn test_arena_stack_top_is_thread_local_only_in_builtin() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	g.global_modules['g_arena_top'] = 'builtin'
+	assert g.global_is_thread_local('g_arena_top')
+	g.global_modules['g_arena_top'] = 'main'
+	assert !g.global_is_thread_local('g_arena_top')
+}
+
 fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	headers := manual_stdlib_c_headers()
 	for name in ['memcpy', 'memmove', 'memset'] {

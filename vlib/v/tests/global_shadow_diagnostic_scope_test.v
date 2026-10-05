@@ -28,6 +28,11 @@ const nested_modules_dir = os.join_path(app_dir, '.vmodules')
 
 const private_modules_dir = os.join_path(tmp_root, 'private_modules')
 
+// `-os cross` checks the branches that the host target selects, and only resolves
+// the ones that are kept for other targets. Keep the platform part of the mixed
+// conditions selected, so that the type part decides whether the branch is checked.
+const host_target_condition = if os.user_os() == 'windows' { 'windows' } else { '!windows' }
+
 fn write_file(path string, content string) {
 	os.mkdir_all(os.dir(path)) or { panic(err) }
 	os.write_file(path, content) or { panic(err) }
@@ -58,12 +63,8 @@ fn testsuite_end() {
 fn compile_project_with_path(project_dir string, modules_dir string, module_path string) os.Result {
 	os.setenv('VMODULES', modules_dir, true)
 	out := os.join_path(tmp_root, 'app.c')
-	path_option := if module_path.len > 0 {
-		' -path ${os.quoted_path(module_path)}'
-	} else {
-		''
-	}
-	return os.exec([vexe, '-enable-globals' + '${path_option}', '-o', '${out}', project_dir])
+	path_options := if module_path.len > 0 { ['-path', module_path] } else { []string{} }
+	return os.exec([vexe, '-enable-globals', ...path_options, '-o', out, project_dir])
 }
 
 fn compile_app_with_path(modules_dir string, module_path string) os.Result {
@@ -174,7 +175,7 @@ fn test_unselected_specialized_comptime_branch_does_not_report_shadow() {
 fn test_cross_target_mixed_unselected_specialization_does_not_report_shadow() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
-	write_file(os.join_path(app_dir, 'main.v'), "@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[string]('ok'))\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), "@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if ${host_target_condition} && T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[string]('ok'))\n}\n")
 	out := os.join_path(tmp_root, 'app.c')
 	res := os.exec([vexe, '-os', 'cross', '-enable-globals', '-o', '${out}', app_dir])
 	assert res.exit_code == 0, res.output
@@ -184,7 +185,7 @@ fn test_cross_target_mixed_unselected_specialization_does_not_report_shadow() {
 fn test_cross_target_mixed_selected_specialization_reports_shadow() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
-	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if ${host_target_condition} && T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
 	out := os.join_path(tmp_root, 'app.c')
 	res := os.exec([vexe, '-os', 'cross', '-enable-globals', '-o', '${out}', app_dir])
 	assert res.exit_code != 0, res.output
@@ -194,7 +195,7 @@ fn test_cross_target_mixed_selected_specialization_reports_shadow() {
 fn test_cross_target_mixed_unselected_metadata_condition_does_not_report_shadow() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
-	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T.indirections != 0 {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if ${host_target_condition} && T.indirections != 0 {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
 	out := os.join_path(tmp_root, 'app.c')
 	res := os.exec([vexe, '-os', 'cross', '-enable-globals', '-o', '${out}', app_dir])
 	assert res.exit_code == 0, res.output
@@ -204,7 +205,7 @@ fn test_cross_target_mixed_unselected_metadata_condition_does_not_report_shadow(
 fn test_cross_target_mixed_selected_metadata_condition_reports_shadow() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
-	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T.indirections != 0 {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tvalue := 1\n\tprintln(get[&int](&value))\n}\n')
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if ${host_target_condition} && T.indirections != 0 {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tvalue := 1\n\tprintln(get[&int](&value))\n}\n')
 	out := os.join_path(tmp_root, 'app.c')
 	res := os.exec([vexe, '-os', 'cross', '-enable-globals', '-o', '${out}', app_dir])
 	assert res.exit_code != 0, res.output

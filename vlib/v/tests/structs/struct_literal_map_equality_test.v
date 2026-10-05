@@ -14,17 +14,23 @@ fn differs_from_default[T](value T) bool {
 fn test_struct_literal_map_equality() {
 	assert GateState{} == GateState{}
 	assert !differs_from_default(GateState{})
-	assert differs_from_default(GateState{ quests: {
-		1: Quest{ creatures: ['guard'] }
-	} })
-	assert GateState{ quests: {
-		1: Quest{ creatures: ['guard'] }
-	} } == GateState{
+	assert differs_from_default(GateState{
+		quests: {
+			1: Quest{ creatures: ['guard'] }
+		}
+	})
+	assert GateState{
+		quests: {
+			1: Quest{ creatures: ['guard'] }
+		}
+	} == GateState{
 		quests: {
 			1: Quest{ creatures: ['guard'] }
 		}
 	}
-	assert GateState{ quests: {
-		1: Quest{ creatures: ['guard'] }
-	} } != GateState{}
+	assert GateState{
+		quests: {
+			1: Quest{ creatures: ['guard'] }
+		}
+	} != GateState{}
 }

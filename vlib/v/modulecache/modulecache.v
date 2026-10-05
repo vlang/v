@@ -2428,6 +2428,39 @@ fn c_declaration_item_defines_external_symbol(item string, converted string, has
 	return c_declaration_item_has_initializer(item)
 }
 
+// c_declaration_item_keeps_static_object reports whether a file-scope item defines
+// a `static` object rather than a function, whatever its initializer looks like,
+// as in `static uint64_t n = UINT64_C(0);` or `static void (*cb)(void);`.
+fn c_declaration_item_keeps_static_object(item string, has_brace bool) bool {
+	clean := trim_leading_c_comments(item.trim_space())
+	if !clean.starts_with('static') || clean.len == 6 || !clean[6].is_space() {
+		return false
+	}
+	head := if has_brace { clean.all_before('{') } else { clean }
+	if c_declaration_item_has_initializer(head) {
+		return true
+	}
+	// An array size such as `[sizeof(int)]` does not make the item a function.
+	mut first_paren := -1
+	mut bracket_depth := 0
+	for i, c in head {
+		if c == `[` {
+			bracket_depth++
+		} else if c == `]` && bracket_depth > 0 {
+			bracket_depth--
+		} else if c == `(` && bracket_depth == 0 {
+			first_paren = i
+			break
+		}
+	}
+	if first_paren < 0 {
+		return true
+	}
+	// `static void (*callback)(void);` declares a pointer object, while a function
+	// declarator names the function before its parameter list.
+	return !has_brace && head[first_paren + 1..].trim_left(' \t').starts_with('*')
+}
+
 // c_declaration_item_has_initializer reports whether a declaration assigns a value
 // outside parentheses, brackets, literals and comments.
 fn c_declaration_item_has_initializer(item string) bool {
@@ -3695,6 +3728,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 			converted := c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros)
 			defines_external_symbols = defines_external_symbols
 				|| c_declaration_item_defines_external_symbol(declaration, converted, has_brace)
+				|| c_declaration_item_keeps_static_object(declaration, has_brace)
 			out.write_string(converted)
 		}
 		item_head.clear()
@@ -3723,6 +3757,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 			converted := c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros)
 			defines_external_symbols = defines_external_symbols
 				|| c_declaration_item_defines_external_symbol(declaration, converted, has_brace)
+				|| c_declaration_item_keeps_static_object(declaration, has_brace)
 			out.write_string(converted)
 		}
 	}
@@ -5053,6 +5088,13 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, m
 			|| file_module_name(a, file_node) != module_name {
 			continue
 		}
+		// An embedded declaration is parsed again without the `#line` directives of its
+		// file, which would change the source locations that it reports.
+		uses_line_directives := if file := a.source_files[file_node.pos.id] {
+			file.has_line_directives()
+		} else {
+			false
+		}
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
 			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
@@ -5063,7 +5105,7 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, m
 					continue
 				}
 				node := a.nodes[int(id)]
-				if !declaration_node_source_is_embeddable(a, id) {
+				if uses_line_directives || !declaration_node_source_is_embeddable(a, id) {
 					return false
 				}
 				source := declaration_source_text(a, node, file_node.value, mut source_cache) or {

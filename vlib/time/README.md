@@ -143,19 +143,5 @@ fn main() {
 }
 ```
 
-Use a timer when a wait needs to participate in a `select`:
-
-```v
-import time
-
-timer := time.new_timer(500 * time.millisecond)
-defer {
-	timer.stop()
-}
-select {
-	fired_at := <-timer.c {
-		println('timer fired at ${fired_at}')
-	}
-	// another channel can be handled here
-}
-```
+A wait that needs to participate in a `select` uses `sync.new_timer`, which sends the
+time on a channel: see the `sync` module.

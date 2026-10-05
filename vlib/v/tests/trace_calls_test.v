@@ -56,8 +56,8 @@ struct CmdOutput {
 
 fn run(fpath string, compiler_opts string, label string) CmdOutput {
 	cmd := '${os.quoted_path(vexe)} -new-compiler ${compiler_opts} -no-skip-unused -trace-calls run ${os.quoted_path(fpath)}'
-	res := os.exec([vexe, '-new-compiler', compiler_opts, '-no-skip-unused', '-trace-calls', 'run',
-		fpath])
+	res := os.exec([vexe, '-new-compiler', ...(os.split_args(compiler_opts) or { panic(err) }),
+		'-no-skip-unused', '-trace-calls', 'run', fpath])
 	if res.exit_code != 0 {
 		eprintln('> ${label} compilation output:\n${res.output}')
 		assert res.exit_code == 0, 'compilation of ${fpath} failed'

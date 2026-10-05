@@ -47,7 +47,13 @@ const conforming = [
 	Case{'0.0.9', '^0.0.x', true, ''},
 	Case{'0.1.0', '^0.0.x', false, ''},
 	Case{'0.0.1', '^0.0', true, 'node-semver: ^0.0 := >=0.0.0 <0.1.0-0'},
+	Case{'0.0.9', '^0.0', true, ''},
 	Case{'0.9.9', '^0.0', false, ''},
+	Case{'0.0.1', '^0.x', true, 'node-semver: ^0.x := >=0.0.0 <1.0.0-0'},
+	Case{'0.9.9', '^0.x', true, ''},
+	Case{'1.0.0', '^0.x', false, ''},
+	Case{'0.0.4', '^0.0.3', false, 'node-semver: ^0.0.3 := >=0.0.3 <0.0.4-0'},
+	Case{'0.0.9', '^0.0.3', false, ''},
 	// tilde
 	Case{'1.2.3', '~1.2.3', true, ''},
 	Case{'1.2.9', '~1.2.3', true, ''},
@@ -63,11 +69,26 @@ const conforming = [
 	// x-ranges
 	Case{'1.2.3', '1.2.x', true, ''},
 	Case{'1.3.0', '1.2.x', false, ''},
-	Case{'1.3.0', '1.2', false, 'right answer, but reached as an exact pin'},
+	Case{'1.2.9', '1.2', true, 'node-semver: a partial version is an x-range'},
+	Case{'1.3.0', '1.2', false, ''},
+	Case{'1.2.0', '1.2', true, ''},
+	Case{'1.9.9', '1', true, 'node-semver: 1 := 1.x.x := >=1.0.0 <2.0.0-0'},
+	Case{'1.0.0', '1', true, ''},
+	Case{'2.0.0', '1', false, ''},
+	Case{'0.9.9', '0', true, 'node-semver: 0 := 0.x.x := >=0.0.0 <1.0.0-0'},
+	Case{'1.0.0', '0', false, ''},
+	Case{'0.0.4', '0.0', true, 'node-semver: 0.0 := 0.0.x := >=0.0.0 <0.1.0-0'},
+	Case{'0.1.0', '0.0', false, ''},
 	Case{'1.9.9', '1.x', true, ''},
 	Case{'2.0.0', '1.x', false, ''},
 	Case{'0.2.5', '0.x', true, ''},
 	Case{'0.9.9', '0.x', true, ''},
+	Case{'1.0.0', '0.x', false, 'node-semver: 0.x := >=0.0.0 <1.0.0-0'},
+	Case{'0.1.9', '0.1.x', true, ''},
+	Case{'0.2.0', '0.1.x', false, 'node-semver: 0.1.x := >=0.1.0 <0.2.0-0'},
+	Case{'5.0.0', '0.1.x', false, ''},
+	Case{'0.0.9', '0.0.x', true, ''},
+	Case{'0.1.0', '0.0.x', false, ''},
 	Case{'9.9.9', '*', true, ''},
 	Case{'0.0.1', '*', true, 'a non-prerelease is always inside *'},
 	// hyphen ranges
@@ -77,16 +98,37 @@ const conforming = [
 	Case{'2.3.3', '2.3.4 - 2.3.5', false, ''},
 	Case{'2.3.4', '2.2 - 2.3', true, ''},
 	Case{'2.4.0', '2.2 - 2.3', false, ''},
-	Case{'3.0.0', '2.2 - 2', false, 'right answer, but the expansion failed outright'},
+	Case{'2.9.9', '2.2 - 2', true, 'node-semver: 1.2.3 - 2 := >=1.2.3 <3.0.0-0'},
+	Case{'3.0.0', '2.2 - 2', false, ''},
+	Case{'2.9.9', '2 - 3', true, 'node-semver: 2 - 3 := >=2.0.0 <4.0.0-0'},
+	Case{'3.0.0', '2 - 3', true, 'inside major 3, because the upper bound is major 4'},
+	Case{'4.0.0', '2 - 3', false, ''},
+	Case{'1.9.9', '1.2.3 - 2', true, ''},
+	Case{'3.0.0', '1.2.3 - 2', false, ''},
+	Case{'1.5.0', '1.0.0 - *', true, 'an open ended upper bound'},
 	// disjunctions
 	Case{'1.5.0', '^1.0.0 || ^3.0.0', true, ''},
 	Case{'3.1.0', '^1.0.0 || ^3.0.0', true, ''},
 	Case{'2.0.0', '^1.0.0 || ^3.0.0', false, ''},
 	Case{'3.5.0', '^1 || ^3', true, ''},
+	Case{'1.0.0', '^1||^3', true, 'the spaces around || are optional'},
+	Case{'3.5.0', '^1||^3', true, ''},
+	Case{'2.0.0', '^1||^3', false, ''},
+	Case{'1.5.0', '>=1.0.0 <2.0.0 || >=3.0.0', true, 'arms of unequal length'},
+	Case{'5.0.0', '^1.0.0 ||', true, 'node-semver: an empty arm is the empty range, *'},
+	Case{'5.0.0', '|| ^1.0.0', true, ''},
+	Case{'1.2.3', '||', true, ''},
 	// primitive comparators
 	Case{'1.5.0', '>=1.0.0 <2.0.0', true, ''},
 	Case{'2.0.0', '>=1.0.0 <2.0.0', false, ''},
 	Case{'0.9.0', '>=1.0.0 <2.0.0', false, ''},
+	Case{'1.5.0', '>=1.0.0 <2.0.0 <=3.0.0', true, 'no limit on the comparator count'},
+	Case{'2.5.0', '>=1.0.0 <2.0.0 <=3.0.0', false, ''},
+	// the empty range is `*`
+	Case{'1.2.3', '', true, 'node-semver: "" := * := >=0.0.0'},
+	Case{'0.0.1', '', true, ''},
+	Case{'1.2.3', '   ', true, 'whitespace only trims to the empty range'},
+	Case{'1.2.3', ' 1.2.3 ', true, 'surrounding spaces are trimmed'},
 	Case{'1.2.3', '>=1.2.3', true, ''},
 	Case{'1.2.3', '<=1.2.3', true, ''},
 	Case{'1.2.3', '>1.2.3', false, ''},
@@ -105,6 +147,33 @@ const conforming = [
 	Case{'2.0.0-beta.4', '^1.2.3-beta.2', false, 'a different tuple, so excluded'},
 	Case{'1.2.3-beta.4', '^1.2.3-beta.2', true, ''},
 	Case{'1.0.0', '<1.0.0-alpha', false, ''},
+	// prerelease ordering
+	Case{'1.0.0-alpha', '>=1.0.0-alpha <1.0.0', true, 'the comparator names a prerelease ' +
+		'of 1.0.0, which admits it, and a prerelease sorts below its release'},
+	Case{'1.0.0-beta', '>1.0.0-alpha', true, 'alpha sorts below beta'},
+	Case{'1.0.0-alpha.2', '>1.0.0-alpha.1', true, 'numeric identifiers compare as numbers'},
+	Case{'1.0.0-alpha.10', '>1.0.0-alpha.9', true, 'numerically, not as text'},
+	Case{'1.0.0', '>1.0.0-alpha', true, 'a release outranks the prerelease before it'},
+	Case{'1.0.0-1', '<1.0.0-beta', true, 'a numeric identifier sorts below alphanumeric'},
+	Case{'1.0.0-1710000000000', '>=1.0.0-1710000000001', false, 'numbers too large ' +
+		'for an int still compare as numbers'},
+	// prerelease admission
+	Case{'1.0.0-alpha', '^1.0.0', false, 'no comparator in the set carries a prerelease'},
+	Case{'1.0.0-alpha', '>=0.9.0', false, 'same rule'},
+	Case{'1.0.0-alpha', '*', false, '* := >=0.0.0, which names no prerelease'},
+	Case{'1.2.4-beta.2', '^1.2.3-beta.2', false, 'the prerelease is named on 1.2.3, and ' +
+		'1.2.4-beta.2 is a different tuple'},
+	Case{'1.2.3-beta.2', '^1.2.3-beta.2', true, 'the same tuple, so admitted'},
+	Case{'1.2.3-beta.3', '~1.2.3-beta.2', true, ''},
+	Case{'1.2.9', '~1.2.3-beta.2', true, ''},
+	Case{'1.3.0-alpha', '~1.2.3-beta.2', false, 'the ceiling is <1.3.0-0, which carries ' +
+		'no prerelease of its own'},
+	Case{'1.3.0-0', '~1.2.3-beta.2', false, ''},
+	Case{'1.3.0-beta.1', '~1.2.3-beta.2', false, ''},
+	Case{'0.3.0-alpha', '~0.2.3-rc.1', false, ''},
+	Case{'1.0.0-alpha', '^1.0.0 || ^2.0.0-alpha', false, 'the other arm names a ' +
+		'prerelease of 2.0.0, which does not admit a prerelease of 1.0.0, and neither ' +
+		'arm satisfies the comparator either'},
 	// shapes taken from real usage in the V ecosystem
 	Case{'0.1.47', '^0.1.47', true, ''},
 	Case{'0.1.47', '^0.1.0', true, ''},
@@ -118,59 +187,7 @@ const conforming = [
 //
 // These are pinned rather than asserted as correct. A resolver built on top of
 // this has to know about every row here.
-const divergent = [
-	Case{'0.0.4', '^0.0.3', true, 'node-semver: ^0.0.3 := >=0.0.3 <0.0.4-0, so false. ' +
-		'range.v expand_caret always increments the minor when the major is 0, ' +
-		'so ^0.0.3 admits the whole 0.0.x series.'},
-	Case{'0.9.9', '^0.x', false, 'node-semver: ^0.x := >=0.0.0 <1.0.0-0, so true. ' +
-		'Same cause: the ceiling lands on 0.1.0 instead of 1.0.0.'},
-	Case{'1.2.9', '1.2', false, 'node-semver: a partial version is an x-range, ' +
-		'so 1.2 := 1.2.x := >=1.2.0 <1.3.0-0 and the answer is true. ' +
-		'range.v can_expand only looks for an explicit x, X or *, so a bare 1.2 ' +
-		'is parsed as the exact pin =1.2.0.'},
-	Case{'1.9.9', '1', false, 'node-semver: 1 := 1.x.x := >=1.0.0 <2.0.0-0, so true. ' +
-		'Same cause: 1 is read as =1.0.0.'},
-	Case{'0.9.9', '0', false, 'node-semver: 0 := 0.x.x := >=0.0.0 <1.0.0-0, so true. ' +
-		'Same cause.'},
-	Case{'1.0.0', '0.x', true, 'node-semver: 0.x := >=0.0.0 <1.0.0-0, so false. ' +
-		'range.v expand_xrange returns only the floor (>=0.0.0 here) with no ' +
-		'ceiling whenever the major is 0, so this is unbounded.'},
-	Case{'5.0.0', '0.1.x', true, 'node-semver: 0.1.x := >=0.1.0 <0.2.0-0, so false. ' +
-		'Same cause: 0.1.x becomes a bare >=0.1.0.'},
-	Case{'2.9.9', '2.2 - 2', false, 'node-semver: 1.2.3 - 2 := >=1.2.3 <3.0.0-0, so true. ' +
-		'A major-only upper bound hits is_missing(ver_major) and expand_hyphen ' +
-		'returns none, which makes the whole range unsatisfiable.'},
-	Case{'2.9.9', '2 - 3', false, 'node-semver: 2 - 3 := >=2.0.0 <4.0.0-0, so true. ' +
-		'Same cause.'},
-	Case{'1.9.9', '1.2.3 - 2', false, 'node-semver: >=1.2.3 <3.0.0-0, so true. Same cause.'},
-	Case{'1.0.0-alpha', '>=1.0.0-alpha <1.0.0', false, 'node-semver: the >=1.0.0-alpha ' +
-		'comparator admits prereleases of 1.0.0, and a prerelease sorts below its ' +
-		'release, so true. compare.v compare_lt never looks at the prerelease; it ' +
-		'falls through to a patch comparison of 0 against 0.'},
-	Case{'1.0.0-beta', '>1.0.0-alpha', false, 'node-semver: alpha sorts below beta, so ' +
-		'true. Same cause: prerelease identifiers are never compared.'},
-	Case{'1.0.0-alpha.2', '>1.0.0-alpha.1', false, 'node-semver: numeric prerelease ' +
-		'identifiers compare numerically, so true. Same cause.'},
-	Case{'1.0.0-alpha', '^1.0.0', true, 'node-semver excludes a prerelease unless some ' +
-		'comparator in the set carries one on the same [major, minor, patch], so false. ' +
-		'There is no prerelease admission check at all.'},
-	Case{'1.0.0-alpha', '>=0.9.0', true, 'node-semver: false, same rule.'},
-	Case{'1.0.0-alpha', '*', true, 'node-semver: * := >=0.0.0 and admits non-prereleases ' +
-		'only, so false. Same missing check.'},
-	Case{'1.2.4-beta.2', '^1.2.3-beta.2', true, 'node-semver: only prereleases of the ' +
-		'1.2.3 tuple are admitted, so false. This module admits any prerelease once ' +
-		'the range mentions one anywhere.'},
-	Case{'1.2.3', '', false, 'node-semver: "" := * := >=0.0.0, so true. Here the empty ' +
-		'string coerces to the exact pin =0.0.0, so only 0.0.0 matches.'},
-	Case{'1.0.0', '   ', false, 'node-semver trims the range, so whitespace only is the ' +
-		'empty range := * and the answer is true. range.v splits it on " " into four ' +
-		'empty comparators and rejects the set (more than two).'},
-	Case{'1.0.0', '^1||^3', false, 'node-semver: logical-or allows the surrounding ' +
-		'spaces to be absent, so true. range.v splits on the literal " || " only.'},
-	Case{'1.5.0', '>=1.0.0 <2.0.0 <=3.0.0', false, 'node-semver intersects comparator ' +
-		'sets without a limit on how many, so true. range.v parse_comparator_set ' +
-		'rejects anything with more than two comparators.'},
-]
+const divergent = []Case{}
 
 // ranges outside the grammar, which must not match anything.
 const rejected = [
@@ -182,6 +199,8 @@ const rejected = [
 	Case{'1.0.0', 'a.x', false, ''},
 	Case{'1.0.0', 'not-a-range', false, ''},
 	Case{'1.0.0', '1.2.3 - ', false, 'the grammar needs a partial on both sides'},
+	Case{'1.2.5', '1.2-beta', false, 'a prerelease needs all three components'},
+	Case{'2.5.0', '1.2.3 - 2-beta', false, ''},
 	Case{'1.2.3', '1.2.3', true, 'sanity: a valid range in this table still matches'},
 ]
 
@@ -212,33 +231,55 @@ fn test_corpus_rejects_out_of_grammar_ranges() {
 	}
 }
 
-// A range this module cannot parse is reported as "does not satisfy", the same as a
-// genuine miss. A caller cannot tell the two apart, so a typo in a constraint is
-// indistinguishable from an unsatisfiable one. Pinned because it is the failure
-// mode most likely to surprise a resolver.
-fn test_unparseable_range_is_indistinguishable_from_no_match() {
-	// The second range is a perfectly good range that node-semver accepts, and that
-	// reads like a normal constraint rather than a typo. Here it silently becomes
-	// "no version satisfies this", the same answer as a genuine miss.
-	valid := satisfies('1.2.3', '>=1.0.0 <2.0.0')
-	broken := satisfies('1.2.3', '>=1.0.0 <2.0.0 <=3.0.0')
-	assert valid == true
-	assert broken == false
+// Version.satisfies answers with a bool and has no way to report a range it could
+// not read, so a malformed constraint and a genuine miss look identical to the
+// caller. That still bites ranges node-semver accepts but this module cannot read,
+// such as a space between an operator and its version (`>= 1.0.0`); the limitation
+// is a property of the signature, so it is pinned here.
+fn test_an_unreadable_range_is_reported_as_no_match() {
+	// each of these is outside the grammar, and each reports the same way
+	for bad in ['>=', '>=1.0.0 <', 'not-a-range', '^a', '1.2.3 - '] {
+		assert satisfies('1.2.3', bad) == false, bad
+	}
+	// node-semver reads this as `>=1.0.0`, so true; here it is unreadable, so false
+	assert satisfies('1.5.0', '>= 1.0.0') == false
+	// and a well formed range beside them still answers
+	assert satisfies('1.2.3', '>=1.0.0 <2.0.0')
 }
 
-// The ordering operators do not order prereleases at all: two versions that differ
-// only in their prerelease tag come out as neither `<` nor `>`, and yet both `<=`
-// and `>=` hold, because `Version` overloads only `==` and `<` and the compiler
-// derives the rest. That is an inconsistent relation, and it is why the prerelease
-// rows in the tables above cannot simply be fixed in the range layer.
-fn test_prereleases_have_no_ordering() {
+// A prerelease sorts below the release it precedes, and every ordering operator
+// agrees with that in both directions.
+//
+// This used to assert the opposite. `Version` overloads only `==` and `<`, and
+// `compare_lt` never read the prerelease, so two versions differing only in
+// their tag came out as neither `<` nor `>` while both `<=` and `>=` held — an
+// inconsistent relation, which is why the prerelease rows above could not be
+// fixed in the range layer alone.
+fn test_prereleases_sort_below_their_release() {
 	alpha := semver.from('1.0.0-alpha') or { panic('bad alpha') }
 	release := semver.from('1.0.0') or { panic('bad release') }
-	assert !(alpha < release)
+	assert alpha < release
 	assert !(release < alpha)
 	assert alpha <= release
-	assert release <= alpha
-	assert alpha >= release
+	assert !(release <= alpha)
+	assert !(alpha >= release)
 	assert release >= alpha
 	assert alpha != release
+}
+
+// Numeric identifiers too large for an `int`, such as a timestamp, are ordered
+// by their value rather than coming out equal, and the operators agree.
+fn test_large_numeric_prerelease_identifiers_are_ordered() {
+	older := semver.from('1.0.0-nightly.20240315123045') or { panic('bad older') }
+	newer := semver.from('1.0.0-nightly.20240316000000') or { panic('bad newer') }
+	assert older < newer
+	assert !(newer < older)
+	assert older <= newer
+	assert !(newer <= older)
+	assert newer >= older
+	assert older != newer
+	max_int := semver.from('1.0.0-2147483647') or { panic('bad max_int') }
+	past_max_int := semver.from('1.0.0-2147483648') or { panic('bad past_max_int') }
+	assert max_int < past_max_int
+	assert !(past_max_int < max_int)
 }

@@ -101,8 +101,12 @@ mut:
 	next_file_id                 int = 1
 	cur_module                   string
 	is_translated                bool
+	is_generated                 bool            // `@[generated] module x`: type names need not be capitalized
+	file_type_names              map[string]bool // types declared so far in the current file
+	file_type_names_indexed      int             // nodes before this index are in `file_type_names`
 	cur_fn                       string
 	cur_fn_offset                int = -1
+	unclosed_fn_offset           int = -1 // cur_fn_offset of the last function reported as missing its `}`
 	cur_fn_generic_params        []string
 	cur_veb_ctx_name             string // source-level name of the active veb request context
 	veb_tmpl_counter             int    // monotonic id for unique `$veb.html`/`$tmpl` builder var names
@@ -133,6 +137,13 @@ mut:
 	translated_sizeof_const_names     map[string]bool
 	translated_sizeof_global_names    map[string]bool
 	translated_sizeof_scanned_modules map[string]bool
+	// The type declarations among the first parsed_type_decls_end nodes, by the key
+	// of translated_sizeof_declaration_key, and the directory and module of the file
+	// that node is in (see parsed_module_declares_type).
+	parsed_type_decls        map[string]bool
+	parsed_type_decls_end    int
+	parsed_type_decls_dir    string
+	parsed_type_decls_module string
 	// The sibling-file declarations the workers of one parse batch share (see
 	// scan_translated_sizeof_declarations), and this worker's place among them.
 	translated_sizeof_shared          &TranslatedSizeofShared = unsafe { nil }
@@ -178,8 +189,19 @@ mut:
 	anonymous_struct_count            int
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
+	// The offsets of the `#line` directives of the file that are between statements, or in
+	// skipped code; report_misplaced_line_directives reports the others.
+	accepted_line_directives map[int]bool
+	// The probe caches that canonicalize the texts of each file of a batch (see
+	// intern_parsed_node_texts): nil outside of a batch.
+	text_value_cache &flat.TextProbeCache = unsafe { nil }
+	text_type_cache  &flat.TextProbeCache = unsafe { nil }
 pub mut:
 	a &flat.FlatAst = unsafe { nil }
+	// no_source_digests leaves the SHA-256 of each parsed source out (see
+	// token.File.index_line_starts): the compiler driver sets it for a build
+	// that stages no fallback manifest, the only reader of those digests.
+	no_source_digests bool
 	// quick_source_sums records the quick_sum of each parsed source instead of
 	// its SHA-256 (see token.File.index_lines_with_quick_sum).
 	quick_source_sums          bool
@@ -195,6 +217,9 @@ mut:
 	start       int = -1
 	end         int = -1
 	has_main_fn bool
+	// Start/end offset pairs of statements after `main`, reported at the next
+	// definition or the end of the file.
+	after_main_spans []int
 }
 
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
@@ -334,6 +359,7 @@ pub fn (mut p Parser) release_source_storage() {
 	p.peek_lit = ''
 	p.cur_module = ''
 	p.is_translated = false
+	p.is_generated = false
 	p.cur_fn = ''
 	p.cur_struct = ''
 	p.pending_export = ''
@@ -356,11 +382,40 @@ pub fn (mut p Parser) parse_files_with_starts(paths []string) []int {
 	p.reset_translated_sizeof_declarations()
 	defer { p.parse_batch_paths = previous_paths }
 	mut starts := []int{cap: paths.len}
+	p.begin_text_cache_batch(paths.len)
 	for path in paths {
 		starts << p.a.nodes.len
 		p.parse_into(path)
 	}
+	p.end_text_cache_batch()
 	return starts
+}
+
+// begin_text_cache_batch gives the files of a batch one pair of probe caches to
+// canonicalize their texts with, instead of a pair each. The caches are dropped
+// with the batch (end_text_cache_batch), so they never outlive the arena that
+// the batch was parsed in.
+fn (mut p Parser) begin_text_cache_batch(files int) {
+	if files > 1 && isnil(p.text_value_cache) {
+		p.text_value_cache = flat.new_text_probe_cache()
+		p.text_type_cache = flat.new_text_probe_cache()
+	}
+}
+
+fn (mut p Parser) end_text_cache_batch() {
+	p.text_value_cache = unsafe { nil }
+	p.text_type_cache = unsafe { nil }
+}
+
+// intern_parsed_node_texts canonicalizes the texts of the file parsed from
+// `first_node` on.
+fn (mut p Parser) intern_parsed_node_texts(first_node int) {
+	if isnil(p.text_value_cache) {
+		p.a.intern_node_texts_from(first_node)
+		return
+	}
+	p.a.intern_node_texts_range_cached(first_node, p.a.nodes.len, mut p.text_value_cache, mut
+		p.text_type_cache)
 }
 
 // parse_into reads parse into input for parser.
@@ -370,11 +425,13 @@ pub fn (mut p Parser) parse_into(path string) {
 	}
 	first_node := p.a.nodes.len
 	defer {
-		p.a.intern_node_texts_from(first_node)
+		p.intern_parsed_node_texts(first_node)
 	}
 	p.cur_file = path
 	p.cur_file_id = p.next_file_id
 	p.next_file_id++
+	p.file_type_names.clear()
+	p.file_type_names_indexed = p.a.nodes.len
 	p.tok_pos = 0
 	p.tok_end = 0
 	p.prev_tok_end = 0
@@ -382,7 +439,9 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.peek_end = 0
 	p.cur_module = ''
 	p.is_translated = false
+	p.is_generated = false
 	p.cur_fn = ''
+	p.unclosed_fn_offset = -1
 	p.defer_depth = 0
 	p.defer_result_allowed = false
 	p.nested_block_depth = 0
@@ -430,25 +489,27 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.anonymous_struct_types = map[string][]string{}
 	p.anonymous_struct_count = 0
 	p.sql_query_data_aliases.clear()
+	p.accepted_line_directives.clear()
 	// File marker before content so import resolver can track source files
 	marker_id := p.add_node(flat.Node{
 		kind:  .file
 		value: path
 	})
 	p.a.file_node_ids << int(marker_id)
-	src := read_source_file_raw(path) or {
+	// Scanner token strings are zero-copy views into the source. The AST owns
+	// every source buffer so those views remain valid through later phases.
+	// The buffer is appended as it is read: appending a named string would copy
+	// the whole source first.
+	p.a.source_buffers << read_source_file_raw(path) or {
 		p.record_diagnostic('error reading source: ${err.msg()}', 0)
 		// The trailing .file node is never added: the (marker, trailing)
 		// pairing in file_node_ids is broken for this AST.
 		p.a.file_index_incomplete = true
 		return
 	}
-	// Scanner token strings are zero-copy views into the source. The AST owns
-	// every source buffer so those views remain valid through later phases.
-	p.a.source_buffers << src
 	stable_src := p.a.source_buffers.last()
 	p.has_veb_template = false
-	p.may_have_local_types = stable_src.contains('struct') || stable_src.contains('union')
+	p.may_have_local_types = source_has_struct_or_union(stable_src)
 	p.unsupported_inline_asm_guards.clear()
 	if !p.prefs.supports_inline_asm && !p.supports_c_inline_asm_lowering() {
 		p.precollect_unsupported_inline_asm_guards(stable_src, p.prefs.target.arch)
@@ -465,11 +526,14 @@ pub fn (mut p Parser) parse_into(path string) {
 	mut file := file_set.add_file(path, stable_src.len)
 	if p.quick_source_sums {
 		file.index_lines_with_quick_sum(stable_src)
+	} else if p.no_source_digests {
+		file.index_line_starts(stable_src)
 	} else {
 		file.index_lines(stable_src)
 	}
 	p.a.source_files[p.cur_file_id] = file
 	p.s.init(file, stable_src)
+	p.s.line_directives = true
 	if source_may_have_dynamic_sql(stable_src) {
 		p.collect_sql_query_data_aliases()
 	}
@@ -535,11 +599,27 @@ pub fn (mut p Parser) parse_into(path string) {
 		}
 		stmt_start := p.tok_pos
 		stmt_end := p.tok_end
+		if p.tok == .rcbr {
+			// A stray `}` at file scope, usually left by an extra brace in the
+			// previous declaration. Statement parsers leave `}` to the enclosing
+			// block, and there is none here, so report it once and skip it.
+			p.record_diagnostic_span('invalid expression: unexpected token `}`', stmt_start,
+				stmt_end)
+			drop_cut_off_script_statements(mut script_mode)
+			p.next()
+			continue
+		}
 		if p.tok == .name && p.lit == 'cosnt' && p.peek() == .name {
 			malformed_const_line_end = p.s.src.index_after('\n', stmt_start) or { p.s.src.len }
 		}
 		is_malformed_const := stmt_start < malformed_const_line_end
+		stmt_tok := p.tok
 		id := p.top_level_stmt()
+		if p.tok == stmt_tok && p.tok_pos == stmt_start && p.tok != .eof {
+			// The statement consumed nothing (its diagnostic is already recorded);
+			// skip the token, or the same error repeats until the diagnostic limit.
+			p.next()
+		}
 		if expansion := p.expand_veb_template_stmt(id) {
 			ids << expansion
 			continue
@@ -555,6 +635,7 @@ pub fn (mut p Parser) parse_into(path string) {
 			ids << id
 		}
 	}
+	p.report_script_statements_after_main(mut script_mode)
 	p.end_local_binding_scope()
 	if !p.prefs.is_fmt && p.is_vsh_path(path) {
 		p.a.has_vsh_source = true
@@ -579,7 +660,31 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.a.formatter_file_sources[p.cur_file_id] = stable_src
 		p.collect_formatter_comments(file, stable_src)
 	}
+	p.report_misplaced_line_directives()
 	p.collect_scanner_diagnostics()
+}
+
+// report_misplaced_line_directives reports the `#line` directives of the file that are
+// not at the top level or between statements, like one in an expression or in a struct:
+// the parser reads them as something else, while they still renumber the lines after them.
+fn (mut p Parser) report_misplaced_line_directives() {
+	for offset in p.s.line_directive_offsets {
+		if offset !in p.accepted_line_directives {
+			p.record_diagnostic_span('a `#line` directive can only be used at the top level of a file or between statements',
+				offset, p.s.src.index_after('\n', offset) or { p.s.src.len })
+		}
+	}
+}
+
+// accept_skipped_line_directives accepts the `#line` directives scanned since the byte
+// offset `start` and before the current token, like the ones of a skipped `$if` branch.
+fn (mut p Parser) accept_skipped_line_directives(start int) {
+	offsets := p.s.line_directive_offsets
+	for i := offsets.len - 1; i >= 0 && offsets[i] >= start; i-- {
+		if offsets[i] < p.tok_pos {
+			p.accepted_line_directives[offsets[i]] = true
+		}
+	}
 }
 
 fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback_end int, ignore_statement bool, mut state ScriptModeState) {
@@ -603,6 +708,7 @@ fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback
 		.asm_stmt]
 		&& !is_definition && !ignore_statement
 	if is_definition {
+		p.report_script_statements_after_main(mut state)
 		if state.start >= 0 {
 			p.record_notice_span('script mode started here', state.start, state.end)
 			def_start, def_end := p.script_definition_diagnostic_span(node, fallback_start,
@@ -615,13 +721,33 @@ fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback
 		}
 	} else if is_script_statement {
 		if state.has_main_fn {
-			p.record_diagnostic_span('function `main` is already defined, put your script statements inside it',
-				fallback_start, fallback_end)
+			state.after_main_spans << fallback_start
+			state.after_main_spans << fallback_end
 		} else if state.start < 0 {
 			state.start = fallback_start
 			state.end = fallback_end
 		}
 	}
+}
+
+// report_script_statements_after_main reports the statements held back since the
+// last definition, once it is clear that a stray `}` did not cut them off.
+fn (mut p Parser) report_script_statements_after_main(mut state ScriptModeState) {
+	for i := 0; i + 1 < state.after_main_spans.len; i += 2 {
+		p.record_diagnostic_span('function `main` is already defined, put your script statements inside it',
+			state.after_main_spans[i], state.after_main_spans[i + 1])
+	}
+	state.after_main_spans.clear()
+}
+
+// drop_cut_off_script_statements handles a stray `}` at file scope: the statements
+// since the last definition are the tail of a function body that an extra brace
+// closed early, so they are not script code, and reporting them as such would
+// bury the actual error.
+fn drop_cut_off_script_statements(mut state ScriptModeState) {
+	state.start = -1
+	state.end = -1
+	state.after_main_spans.clear()
 }
 
 // is_vsh_path reports whether `path` is parsed in V script mode: a `.vsh` file, or
@@ -1024,6 +1150,25 @@ fn (p &Parser) line_nr_for_pos(pos int) int {
 	return p.s.current_file().find_line(offset)
 }
 
+// pseudo_location returns the file and line that `@LINE`, `@FILE_LINE` and `@LOCATION`
+// report for a byte offset: they follow the `#line` directives of the file.
+fn (p &Parser) pseudo_location(pos int) (string, int) {
+	line := p.line_nr_for_pos(pos)
+	file := p.s.current_file()
+	if !file.has_line_directives() {
+		return p.cur_file, line
+	}
+	name, logical_line := file.logical_line(line)
+	return if name == file.name { p.cur_file } else { name }, logical_line
+}
+
+// pseudo_file returns the value of `@FILE` at a byte offset: the absolute path of the
+// source file, or the file named by a `#line` directive, as it is written there.
+fn (p &Parser) pseudo_file(pos int) string {
+	file, _ := p.pseudo_location(pos)
+	return if file == p.cur_file { os.real_path(p.cur_file) } else { file }
+}
+
 fn (p &Parser) column_for_pos(pos int) int {
 	offset := clamp_source_offset(pos, p.s.src.len)
 	_, column := p.s.current_file().find_line_and_column(offset)
@@ -1373,8 +1518,13 @@ fn (mut p Parser) apply_decl_attrs(decl_id flat.NodeId) {
 			id = last
 		}
 	}
-	if p.a.node(id).kind == .module_decl && 'translated' in p.pending_decl_attrs {
-		p.is_translated = true
+	if p.a.node(id).kind == .module_decl {
+		if 'translated' in p.pending_decl_attrs {
+			p.is_translated = true
+		}
+		if 'generated' in p.pending_decl_attrs {
+			p.is_generated = true
+		}
 	}
 	attr_id := p.add_node(flat.Node{
 		kind:    .directive
@@ -3381,6 +3531,89 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	})
 }
 
+// is_generated_type_name reports whether `name`, which does not start with a capital
+// letter, is a type declared in the current `@[generated]` module. Generated code may
+// use any identifier as a type name, so there the capital-letter heuristic that tells
+// `Type{...}` and `Type(x)` apart from `expr {` and calls needs the declared names.
+fn (mut p Parser) is_generated_type_name(name string) bool {
+	return p.is_generated && p.is_lowercase_type_name(name)
+}
+
+// lowercase_type_name_starts_struct_init reports whether `name{` is a struct literal
+// of a type declared without a leading capital letter. Outside `@[generated]` modules
+// such a declaration is invalid, but parsing the literal lets the checker report the
+// declaration's name instead of `expression evaluated but not used` at the `{`. There
+// only the earlier declarations of the same file count: indexing the other files of
+// the module would cost every ordinary build a rescan of its sources.
+fn (mut p Parser) lowercase_type_name_starts_struct_init(name string) bool {
+	if p.is_generated {
+		return p.is_lowercase_type_name(name)
+	}
+	if p.cur_module == 'builtin' || !p.may_be_lowercase_type_name(name) {
+		return false
+	}
+	return p.resolve_local_type_name(name) != name || p.file_declares_type_name(name)
+}
+
+// may_be_lowercase_type_name reports whether `name`, which does not start with a capital
+// letter, can name a type of the current module rather than a value.
+fn (p &Parser) may_be_lowercase_type_name(name string) bool {
+	return name.len > 0 && !(name[0] >= `A` && name[0] <= `Z`) && !name.contains('.')
+		&& !is_builtin_type(name) && !p.is_local_binding(name)
+}
+
+// file_declares_type_name reports whether a type named `name` is declared earlier in
+// the current file. It indexes the nodes added since its previous call.
+fn (mut p Parser) file_declares_type_name(name string) bool {
+	if p.file_type_names_indexed > p.a.nodes.len {
+		p.file_type_names_indexed = p.a.nodes.len
+	}
+	for p.file_type_names_indexed < p.a.nodes.len {
+		node := p.a.nodes[p.file_type_names_indexed]
+		p.file_type_names_indexed++
+		if node.pos.id == p.cur_file_id
+			&& node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl] {
+			p.file_type_names[node.value] = true
+		}
+	}
+	return p.file_type_names[name]
+}
+
+// is_lowercase_type_name reports whether `name`, which does not start with a capital
+// letter, is a type declared in the current module.
+fn (mut p Parser) is_lowercase_type_name(name string) bool {
+	if !p.may_be_lowercase_type_name(name) {
+		return false
+	}
+	if p.resolve_local_type_name(name) != name {
+		return true
+	}
+	p.scan_translated_sizeof_declarations()
+	if p.prefs.is_fmt && p.is_generated {
+		p.scan_generated_sibling_files()
+	}
+	return p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(name)]
+}
+
+// scan_generated_sibling_files indexes the type declarations of every `.v` file next
+// to the current one. vfmt parses a single file, but a `@[generated]` module can use
+// type names declared in its other files, and misreading them would corrupt the code.
+fn (mut p Parser) scan_generated_sibling_files() {
+	key := p.translated_sizeof_declaration_key('\x01siblings')
+	if p.translated_sizeof_scanned_modules[key] {
+		return
+	}
+	p.translated_sizeof_scanned_modules[key] = true
+	dir := os.dir(p.cur_file)
+	current := os.file_name(p.cur_file)
+	for name in os.ls(dir) or { []string{} } {
+		if name == current || !name.ends_with('.v') {
+			continue
+		}
+		p.scan_translated_sizeof_sibling(os.join_path(dir, name))
+	}
+}
+
 fn (p &Parser) has_prior_type_declaration(name string) bool {
 	for i := p.a.nodes.len - 1; i >= 0; i-- {
 		node := p.a.nodes[i]
@@ -3740,6 +3973,32 @@ fn (mut p Parser) directive() flat.NodeId {
 	}
 	if name == 'flag' && value.len == 0 {
 		p.record_diagnostic_span('no argument(s) provided for #flag', directive_start, directive_end)
+	}
+	if full == 'line' || (full.len > 4 && full.starts_with('line') && full[4] in [` `, `\t`]) {
+		// The scanner already recorded a valid directive in the line table of the file.
+		// It only remaps positions, so later stages never see it; vfmt keeps it.
+		if p.s.line_directives {
+			p.accepted_line_directives[directive_start] = true
+		}
+		mut line_begin := clamp_source_offset(directive_start, p.s.src.len)
+		for line_begin > 0 && p.s.src[line_begin - 1] in [` `, `\t`] {
+			line_begin--
+		}
+		if line_begin > 0 && p.s.src[line_begin - 1] != `\n` {
+			p.record_diagnostic_span('a `#line` directive must be on a line of its own',
+				directive_start, directive_end)
+		} else {
+			token.parse_line_directive(full[4..]) or {
+				p.record_diagnostic_span('invalid `#line` directive: ${err.msg()}', directive_start,
+					directive_end)
+			}
+		}
+		if !p.prefs.is_fmt {
+			if p.tok == .semicolon {
+				p.next()
+			}
+			return flat.empty_node
+		}
 	}
 	if name.starts_with('!') && directive_start > 0 && !p.prefs.is_fmt {
 		p.record_diagnostic_span('a shebang is only valid at the top of the file', directive_start,
@@ -5053,7 +5312,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 			name := cond[start..i]
 			match name {
 				'@FILE' {
-					write_comptime_cond_string(mut out, os.real_path(p.cur_file))
+					write_comptime_cond_string(mut out, p.pseudo_file(pseudo_pos))
 				}
 				'@DIR' {
 					write_comptime_cond_string(mut out, os.real_path(os.dir(p.cur_file)))
@@ -5086,13 +5345,15 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					write_comptime_cond_string(mut out, vexe)
 				}
 				'@LINE' {
-					write_comptime_cond_string(mut out, p.line_nr_for_pos(pseudo_pos).str())
+					_, line := p.pseudo_location(pseudo_pos)
+					write_comptime_cond_string(mut out, line.str())
 				}
 				'@COLUMN' {
 					write_comptime_cond_string(mut out, p.column_for_pos(pseudo_pos + start).str())
 				}
 				'@FILE_LINE' {
-					write_comptime_cond_string(mut out, '${os.file_name(p.cur_file)}:${p.line_nr_for_pos(pseudo_pos)}')
+					file, line := p.pseudo_location(pseudo_pos)
+					write_comptime_cond_string(mut out, '${os.file_name(file)}:${line}')
 				}
 				'@METHOD' {
 					write_comptime_cond_string(mut out, method_name)
@@ -5115,7 +5376,8 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 							location_method = '${module_name}.${p.cur_struct}{}.${fn_name}'
 						}
 					}
-					write_comptime_cond_string(mut out, '${p.cur_file}:${p.line_nr_for_pos(pseudo_pos)}, ${location_method}')
+					file, line := p.pseudo_location(pseudo_pos)
+					write_comptime_cond_string(mut out, '${file}:${line}, ${location_method}')
 				}
 				'@BUILD_DATE' {
 					write_comptime_cond_string(mut out, p.prefs.build_date)
@@ -6881,6 +7143,7 @@ fn (mut p Parser) skip_block() {
 	if p.tok != .lcbr {
 		return
 	}
+	start := p.tok_pos
 	mut depth := 1
 	p.next()
 	for depth > 0 && p.tok != .eof {
@@ -6891,11 +7154,13 @@ fn (mut p Parser) skip_block() {
 		}
 		p.next()
 	}
+	p.accept_skipped_line_directives(start)
 }
 
 // skip_block_recording_decl_names skips a block like skip_block, recording each
 // name it spells as a possible use of a function or a constant.
 fn (mut p Parser) skip_block_recording_decl_names() {
+	start := p.tok_pos
 	mut depth := 1
 	mut scan := p.new_skipped_decl_name_scan()
 	p.next()
@@ -6908,6 +7173,7 @@ fn (mut p Parser) skip_block_recording_decl_names() {
 		}
 		p.next()
 	}
+	p.accept_skipped_line_directives(start)
 }
 
 // SkippedDeclNameScan remembers the tokens before the current one in a skipped
@@ -7040,6 +7306,7 @@ fn (mut p Parser) skip_comptime_block() {
 	mut map_type_paren_depth := -1
 	mut map_type_bracket_depth := -1
 	mut decl_name_scan := p.new_skipped_decl_name_scan()
+	start := p.tok_pos
 	p.next()
 	for depth > 0 && p.tok != .eof {
 		p.record_skipped_decl_name(mut decl_name_scan)
@@ -7209,6 +7476,7 @@ fn (mut p Parser) skip_comptime_block() {
 	for key in pending_comma_lhs_reads {
 		p.a.comptime_skipped_read_names[key] = true
 	}
+	p.accept_skipped_line_directives(start)
 }
 
 fn (mut p Parser) skip_brackets() {
@@ -7595,6 +7863,8 @@ fn (mut p Parser) parse_formatter_comptime_match(start int) flat.NodeId {
 		}
 		p.next()
 	}
+	// vfmt keeps the source of the match as it is, `#line` directives included.
+	p.accept_skipped_line_directives(start)
 	end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 	source := p.s.src[start..end]
 	id := p.a.add_node(flat.Node{
@@ -8022,6 +8292,76 @@ fn (mut p Parser) parse_comptime_expr_block() flat.NodeId {
 
 // ==================== statements ====================
 
+// report_fn_decl_inside_fn reports a function declaration in another function's
+// body. V has no nested named functions, so this is where a `}` went missing. Only
+// the first one is reported: every later declaration in the file is nested too. An
+// earlier error in the enclosing function usually already shows where the brace
+// went missing (e.g. an unclosed `match`), so it is not repeated then.
+fn (mut p Parser) report_fn_decl_inside_fn(start int, end int) {
+	if p.unclosed_fn_offset == p.cur_fn_offset {
+		return
+	}
+	p.unclosed_fn_offset = p.cur_fn_offset
+	if p.diagnostics.any(it.file == p.cur_file && it.severity !in ['warning:', 'notice:']
+		&& int(it.pos.offset) >= p.cur_fn_offset) {
+		return
+	}
+	p.record_diagnostic_span('unexpected function declaration, expecting `}` to close function `${p.cur_fn}`',
+		start, end)
+}
+
+// method_decl_follows reports whether the `fn (` at the current token starts a
+// method declaration, `fn (r T) name(`, `fn (r T) name[U](` or `fn (r T) + (`,
+// rather than an anonymous function like `fn (x int) int {`,
+// `fn (x int) Box[int] {` or `fn (x int) thread (int, int) {`.
+fn (mut p Parser) method_decl_follows() bool {
+	if p.peek() != .lpar {
+		return false
+	}
+	mut lookahead := p.s
+	// A receiver is never empty, so `fn () ...` is always an anonymous function.
+	first := lookahead.scan()
+	if first in [.rpar, .lpar] || !scan_past_closing(mut lookahead, .lpar, .rpar) {
+		return false
+	}
+	name := lookahead.scan()
+	// No return type starts with an operator, so `fn (a T) + (` is an operator overload.
+	if name.is_overloadable() {
+		return lookahead.scan() == .lpar
+	}
+	// `thread` is the one type name that takes a parenthesized operand, so it is
+	// an anonymous function's return type there, not a method name.
+	if name != .name || lookahead.lit == 'thread' {
+		return false
+	}
+	mut next := lookahead.scan()
+	if next == .lsbr {
+		if !scan_past_closing(mut lookahead, .lsbr, .rsbr) {
+			return false
+		}
+		next = lookahead.scan()
+	}
+	return next == .lpar
+}
+
+// scan_past_closing advances `s`, positioned just after an `opening` token, past
+// its matching `closing` token.
+fn scan_past_closing(mut s scanner.Scanner, opening token.Token, closing token.Token) bool {
+	mut depth := 1
+	for depth > 0 {
+		tok := s.scan()
+		if tok == .eof {
+			return false
+		}
+		if tok == opening {
+			depth++
+		} else if tok == closing {
+			depth--
+		}
+	}
+	return true
+}
+
 fn (mut p Parser) stmt() flat.NodeId {
 	match p.tok {
 		.key_return {
@@ -8050,7 +8390,14 @@ fn (mut p Parser) stmt() flat.NodeId {
 		}
 		.key_fn {
 			if p.peek() in [.lpar, .lsbr] {
+				if p.cur_fn != '' && p.method_decl_follows() {
+					p.report_fn_decl_inside_fn(p.tok_pos, p.tok_end)
+					return p.fn_decl()
+				}
 				return p.assign_or_expr_stmt()
+			}
+			if p.cur_fn != '' {
+				p.report_fn_decl_inside_fn(p.tok_pos, p.tok_end)
 			}
 			return p.fn_decl()
 		}
@@ -8162,8 +8509,12 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.static_decl_stmt()
 		}
 		.key_pub {
+			pub_pos := p.tok_pos
 			p.next()
 			if p.tok == .key_fn {
+				if p.cur_fn != '' {
+					p.report_fn_decl_inside_fn(pub_pos, p.tok_end)
+				}
 				return p.fn_decl()
 			}
 			if p.tok == .key_struct || p.tok == .key_union {
@@ -8524,6 +8875,8 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
 			p.tok_pos, p.tok_end)
 		p.next()
+	} else if p.tok == .lpar && !p.is_translated {
+		p.check_parenthesized_if_condition()
 	} else if !p.prefs.is_fmt && p.tok == .name && p.lit in p.cur_fn_generic_params
 		&& p.peek() == .key_is {
 		p.record_diagnostic_span('use `$if` instead of `if`', if_start, if_start + 2)
@@ -8624,6 +8977,27 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(if_start)
 	})
+}
+
+// check_parenthesized_if_condition rejects an `if` condition that starts with another `if`
+// behind one or more opening parentheses, e.g. `if (if a { b } else { c }) {`. The parentheses
+// would otherwise hide the nested `if` from the `if if` check in if_stmt.
+fn (mut p Parser) check_parenthesized_if_condition() {
+	mut next := p.peek()
+	mut start := p.peek_pos
+	mut end := p.peek_end
+	if next == .lpar {
+		mut lookahead := p.s
+		for next == .lpar {
+			next = lookahead.scan()
+			start = lookahead.pos
+			end = lookahead.offset
+		}
+	}
+	if next == .key_if {
+		p.record_diagnostic_span('the condition of an `if` cannot start with a parenthesized `if` expression; assign it to a variable first',
+			start, end)
+	}
 }
 
 fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
@@ -9281,19 +9655,9 @@ fn (mut p Parser) parenthesized_match_header_starts_block() bool {
 			next = lookahead.scan()
 			continue
 		}
-		opening := next
-		closing := if opening == .lpar { token.Token.rpar } else { token.Token.rsbr }
-		mut depth := 1
-		for depth > 0 {
-			tok := lookahead.scan()
-			if tok == .eof {
-				return false
-			}
-			if tok == opening {
-				depth++
-			} else if tok == closing {
-				depth--
-			}
+		closing := if next == .lpar { token.Token.rpar } else { token.Token.rsbr }
+		if !scan_past_closing(mut lookahead, next, closing) {
+			return false
 		}
 		next = lookahead.scan()
 	}
@@ -9373,7 +9737,8 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		}
 		return sel
 	}
-	if p.tok == .name && p.lit.len > 0 && p.lit[0] >= `A` && p.lit[0] <= `Z` {
+	if p.tok == .name && p.lit.len > 0
+		&& ((p.lit[0] >= `A` && p.lit[0] <= `Z`) || p.is_generated_type_name(p.lit)) {
 		pattern_start := p.span_start()
 		name := p.named_variant_pattern_type_name()
 		if pattern := p.named_variant_match_pattern(name, pattern_start) {
@@ -9759,6 +10124,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		// block in the same file uses `x`. The formatter has no such luxury: the shape check
 		// alone already rules out map literals (a top level `:` disqualifies), and reading one
 		// as a map instead turns its conditions into keys with empty values.
+		rhs_first_node := p.a.nodes.len
 		rhs := if p.prefs.is_fmt && p.tok == .name && p.lit == 'sql' && p.peek() == .lcbr {
 			// Keep standalone query-data assignments together without treating `sql`
 			// in a control header as the start of a database expression.
@@ -9771,7 +10137,10 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		} else {
 			p.expr(.lowest)
 		}
-		if !p.prefs.is_fmt && p.expression_depth_exceeds(rhs, max_assignment_expr_depth) {
+		// An expression that deep is made of more nodes than that, all of them parsed
+		// just now: nearly every declaration is known to be shallow without a walk.
+		if !p.prefs.is_fmt && p.a.nodes.len - rhs_first_node > max_assignment_expr_depth
+			&& p.expression_depth_exceeds(rhs, max_assignment_expr_depth) {
 			p.record_diagnostic_span('expr level > ${max_assignment_expr_depth}', assign_start,
 				assign_end)
 		}
@@ -9909,8 +10278,58 @@ fn (p &Parser) lhs_is_dynamic_sql_expr_alias(lhs flat.NodeId) bool {
 // comments and strings count as well, so it can answer yes without a query, but
 // never no with one.
 fn source_may_have_dynamic_sql(src string) bool {
-	sql_at := source_word_index(src, 'sql', 0)
+	sql_at := source_sql_word_index(src)
 	return sql_at >= 0 && source_word_index(src, 'dynamic', sql_at + 1) >= 0
+}
+
+// source_sql_word_index returns what source_word_index(src, 'sql', 0) does. Nearly
+// no source holds the word, so it looks for its `q`, a byte that few of them hold
+// at all, instead of comparing the word at each byte.
+@[direct_array_access]
+fn source_sql_word_index(src string) int {
+	mut q := 1
+	for {
+		q = source_index_u8(src, `q`, q)
+		if q < 0 {
+			return -1
+		}
+		at := q - 1
+		end := at + 3
+		if end <= src.len && src[at] == `s` && src[q + 1] == `l` {
+			starts_token := at == 0 || !(src[at - 1].is_letter() || src[at - 1] == `_`)
+			ends_token := end >= src.len || !(src[end].is_alnum() || src[end] == `_`)
+			if starts_token && ends_token {
+				return at
+			}
+		}
+		q++
+	}
+	return -1
+}
+
+// source_has_struct_or_union reports whether `src` holds `struct` or `union`
+// anywhere, as `src.contains('struct') || src.contains('union')` does. Both words
+// hold a `u`, which is far rarer than their first byte, so one scan for it serves
+// the two of them.
+@[direct_array_access]
+fn source_has_struct_or_union(src string) bool {
+	mut u := 0
+	for {
+		u = source_index_u8(src, `u`, u)
+		if u < 0 {
+			return false
+		}
+		if u >= 3 && u + 2 < src.len && src[u - 3] == `s` && src[u - 2] == `t`
+			&& src[u - 1] == `r` && src[u + 1] == `c` && src[u + 2] == `t` {
+			return true
+		}
+		if u + 4 < src.len && src[u + 1] == `n` && src[u + 2] == `i` && src[u + 3] == `o`
+			&& src[u + 4] == `n` {
+			return true
+		}
+		u++
+	}
+	return false
 }
 
 // source_word_index returns the first index from `start` where `word` can be a
@@ -10773,7 +11192,8 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				full_name := p.type_expr_name(lhs)
 				is_c_struct := full_name.starts_with('C.')
 					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
-				is_unknown_qualified_struct := p.in_struct_init_value > 0
+				// Generated modules may import types whose names start in lower case.
+				is_unknown_qualified_struct := (p.in_struct_init_value > 0 || p.is_generated)
 					&& p.imported_module_names[full_name.all_before('.')]
 					&& p.current_lcbr_looks_struct_init()
 				is_v_struct := !full_name.starts_with('C.')
@@ -10846,8 +11266,20 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// index / generic
 		if p.tok == .lsbr {
+			lhs_node := p.a.nodes[int(lhs)]
+			if lhs_node.kind == .postfix && lhs_node.op in [.inc, .dec] && p.prev_tok_end > 0
+				&& p.line_nr_for_pos(p.prev_tok_end - 1) < p.line_nr_for_pos(p.tok_pos) {
+				break
+			}
 			base_type_name := p.resolve_local_type_name(p.type_expr_name(lhs))
-			if !p.in_for_container && type_name_can_init(base_type_name)
+			// Imported generated types can start with a lowercase letter or underscore.
+			// A static import path followed by type arguments and `{` is a type literal;
+			// local values and container expressions retain their indexing interpretation.
+			is_imported_type := base_type_name.count('.') == 1
+				&& p.imported_module_names[base_type_name.all_before('.')]
+				&& !p.is_local_binding(base_type_name.all_before('.'))
+			if !p.in_for_container && (type_name_can_init(base_type_name)
+				|| p.is_generated_type_name(base_type_name) || is_imported_type)
 				&& p.current_generic_struct_init_suffix_followed_by_lcbr() {
 				before_suffix_offset := p.s.offset
 				suffix := p.parse_type_generic_suffix()
@@ -11748,6 +12180,123 @@ fn is_float_number_literal(val string) bool {
 	return val.contains('.') || val.contains('e') || val.contains('E')
 }
 
+// pseudo_variable_expr returns the string literal that the pseudo variable `name`
+// (`@FILE`, `@LINE`, `@FN`, ...) at `name_pos` stands for, or none when `name` is not
+// one of them. The token is already consumed.
+fn (mut p Parser) pseudo_variable_expr(name string, name_pos int) ?flat.NodeId {
+	if name == '@FILE' {
+		return p.add_val_id(5, p.pseudo_file(name_pos))
+	}
+	if name == '@DIR' {
+		return p.add_val_id(5, os.real_path(os.dir(p.cur_file)))
+	}
+	if name == '@VMODROOT' {
+		return p.add_val_id(5, os.real_path(vmod_root_for_file(p.cur_file)))
+	}
+	if name == '@VMOD_FILE' {
+		vmod_file := os.join_path_single(vmod_root_for_file(p.cur_file), 'v.mod')
+		content := os.read_file(vmod_file) or {
+			message := p.add_val_id(5, '@VMOD_FILE can only be used in projects that have a v.mod file')
+			// name_pos was captured before @VMOD_FILE was consumed, so the
+			// sentinel call is reported at the directive, not the next token.
+			// prev_tok_end is the end of the just-consumed @VMOD_FILE token.
+			return p.make_compile_error_call(message, name_pos, p.prev_tok_end)
+		}
+		return p.add_val_id(5, content.replace('\r\n', '\n'))
+	}
+	if name == '@VMODHASH' {
+		hash := vmod_hash_for_file(p.cur_file) or {
+			message := p.add_val_id(5, err.msg())
+			return p.make_compile_error_call(message, name_pos, p.prev_tok_end)
+		}
+		return p.add_val_id(5, hash)
+	}
+	if name in ['@VEXEROOT', '@VROOT'] {
+		return p.add_val_id(5, p.prefs.vroot)
+	}
+	if name == '@VEXE' {
+		if p.prefs.vexe.len > 0 {
+			return p.add_val_id(5, p.prefs.vexe)
+		}
+		return p.add_val_id(5, p.prefs.vroot + '/v')
+	}
+	if name == '@LINE' {
+		// like V1, `@LINE` is a string literal holding the 1-based line number
+		_, line := p.pseudo_location(name_pos)
+		return p.add_val_id(5, line.str())
+	}
+	if name == '@COLUMN' {
+		return p.add_val_id(5, p.column_for_pos(name_pos).str())
+	}
+	if name == '@FILE_LINE' {
+		file, line := p.pseudo_location(name_pos)
+		return p.add_val_id(5, '${os.file_name(file)}:${line}')
+	}
+	if name == '@MOD' {
+		if p.cur_module.len == 0 {
+			return p.add_val_id(5, 'main')
+		}
+		return p.add_val_id(5, p.cur_module)
+	}
+	if name == '@FN' {
+		return p.add_val_id(5, p.current_source_fn_name())
+	}
+	if name == '@METHOD' {
+		fn_name := p.current_source_fn_name()
+		return p.add_val_id(5, if p.cur_struct.len > 0 {
+			'${p.cur_struct}.${fn_name}'
+		} else {
+			fn_name
+		})
+	}
+	if name == '@STRUCT' {
+		return p.add_val_id(5, p.cur_struct)
+	}
+	if name == '@LOCATION' {
+		module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
+		fn_name := p.current_source_fn_name()
+		mut method_name := '${module_name}.${fn_name}'
+		if p.cur_struct.len > 0 {
+			if p.cur_method_is_static {
+				method_name = '${module_name}.${p.cur_struct}.${fn_name} (static)'
+			} else {
+				method_name = '${module_name}.${p.cur_struct}{}.${fn_name}'
+			}
+		}
+		file, line := p.pseudo_location(name_pos)
+		return p.add_val_id(5, '${file}:${line}, ${method_name}')
+	}
+	if name == '@BUILD_DATE' {
+		return p.add_val_id(5, p.prefs.build_date)
+	}
+	if name == '@BUILD_TIME' {
+		return p.add_val_id(5, p.prefs.build_time)
+	}
+	if name == '@BUILD_TIMESTAMP' {
+		return p.add_val_id(5, p.prefs.build_timestamp)
+	}
+	if name == '@OS' {
+		return p.add_val_id(5, p.prefs.normalized_target_os())
+	}
+	if name == '@CCOMPILER' {
+		return p.add_val_id(5, p.prefs.ccompiler)
+	}
+	if name == '@BACKEND' {
+		return p.add_val_id(5, p.prefs.backend)
+	}
+	if name == '@PLATFORM' {
+		return p.add_val_id(5, p.prefs.comptime_platform())
+	}
+	if name == '@VCURRENTHASH' || name == '@VHASH' {
+		return p.add_val_id(5, if name == '@VHASH' {
+			p.prefs.vhash
+		} else {
+			p.prefs.vcurrent_hash
+		})
+	}
+	return none
+}
+
 fn (mut p Parser) prefix_expr() flat.NodeId {
 	// Capture the leading token's span before consuming it so leaf literals keep
 	// their own location and prefix operators can span from here to the operand.
@@ -11963,112 +12512,12 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if name == 'sql' && p.starts_sql_expr() {
 				return p.sql_expr(name_pos)
 			}
-			if name == '@FILE' {
-				return p.add_val_id(5, os.real_path(p.cur_file))
-			}
-			if name == '@DIR' {
-				return p.add_val_id(5, os.real_path(os.dir(p.cur_file)))
-			}
-			if name == '@VMODROOT' {
-				return p.add_val_id(5, os.real_path(vmod_root_for_file(p.cur_file)))
-			}
-			if name == '@VMOD_FILE' {
-				vmod_file := os.join_path_single(vmod_root_for_file(p.cur_file), 'v.mod')
-				content := os.read_file(vmod_file) or {
-					message := p.add_val_id(5, '@VMOD_FILE can only be used in projects that have a v.mod file')
-					// name_pos was captured before @VMOD_FILE was consumed, so the
-					// sentinel call is reported at the directive, not the next token.
-					// prev_tok_end is the end of the just-consumed @VMOD_FILE token.
-					return p.make_compile_error_call(message, name_pos, p.prev_tok_end)
+			// Only a pseudo variable is spelled with a leading `@`: every other name skips
+			// the comparisons with each of them.
+			if name.len > 1 && name[0] == `@` {
+				if id := p.pseudo_variable_expr(name, name_pos) {
+					return id
 				}
-				return p.add_val_id(5, content.replace('\r\n', '\n'))
-			}
-			if name == '@VMODHASH' {
-				hash := vmod_hash_for_file(p.cur_file) or {
-					message := p.add_val_id(5, err.msg())
-					return p.make_compile_error_call(message, name_pos, p.prev_tok_end)
-				}
-				return p.add_val_id(5, hash)
-			}
-			if name in ['@VEXEROOT', '@VROOT'] {
-				return p.add_val_id(5, p.prefs.vroot)
-			}
-			if name == '@VEXE' {
-				if p.prefs.vexe.len > 0 {
-					return p.add_val_id(5, p.prefs.vexe)
-				}
-				return p.add_val_id(5, p.prefs.vroot + '/v')
-			}
-			if name == '@LINE' {
-				// like V1, `@LINE` is a string literal holding the 1-based line number
-				return p.add_val_id(5, p.line_nr_for_pos(name_pos).str())
-			}
-			if name == '@COLUMN' {
-				return p.add_val_id(5, p.column_for_pos(name_pos).str())
-			}
-			if name == '@FILE_LINE' {
-				return p.add_val_id(5, '${os.file_name(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')
-			}
-			if name == '@MOD' {
-				if p.cur_module.len == 0 {
-					return p.add_val_id(5, 'main')
-				}
-				return p.add_val_id(5, p.cur_module)
-			}
-			if name == '@FN' {
-				return p.add_val_id(5, p.current_source_fn_name())
-			}
-			if name == '@METHOD' {
-				fn_name := p.current_source_fn_name()
-				return p.add_val_id(5, if p.cur_struct.len > 0 {
-					'${p.cur_struct}.${fn_name}'
-				} else {
-					fn_name
-				})
-			}
-			if name == '@STRUCT' {
-				return p.add_val_id(5, p.cur_struct)
-			}
-			if name == '@LOCATION' {
-				module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
-				fn_name := p.current_source_fn_name()
-				mut method_name := '${module_name}.${fn_name}'
-				if p.cur_struct.len > 0 {
-					if p.cur_method_is_static {
-						method_name = '${module_name}.${p.cur_struct}.${fn_name} (static)'
-					} else {
-						method_name = '${module_name}.${p.cur_struct}{}.${fn_name}'
-					}
-				}
-				return p.add_val_id(5, '${p.cur_file}:${p.line_nr_for_pos(name_pos)}, ${method_name}')
-			}
-			if name == '@BUILD_DATE' {
-				return p.add_val_id(5, p.prefs.build_date)
-			}
-			if name == '@BUILD_TIME' {
-				return p.add_val_id(5, p.prefs.build_time)
-			}
-			if name == '@BUILD_TIMESTAMP' {
-				return p.add_val_id(5, p.prefs.build_timestamp)
-			}
-			if name == '@OS' {
-				return p.add_val_id(5, p.prefs.normalized_target_os())
-			}
-			if name == '@CCOMPILER' {
-				return p.add_val_id(5, p.prefs.ccompiler)
-			}
-			if name == '@BACKEND' {
-				return p.add_val_id(5, p.prefs.backend)
-			}
-			if name == '@PLATFORM' {
-				return p.add_val_id(5, p.prefs.comptime_platform())
-			}
-			if name == '@VCURRENTHASH' || name == '@VHASH' {
-				return p.add_val_id(5, if name == '@VHASH' {
-					p.prefs.vhash
-				} else {
-					p.prefs.vcurrent_hash
-				})
 			}
 			if name == 'chan' && p.tok == .lcbr {
 				id := p.struct_init('chan')
@@ -12121,13 +12570,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if p.tok == .lcbr && local_type_name.len > 0
 				&& (!p.in_for_container || p.current_lcbr_is_attached())
 				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
-					|| name in ['any', 'array', 'string', 'map', 'mapnode', '_result', '_option']) {
+					|| name in ['any', 'array', 'string', 'map', 'mapnode', '_result', '_option']
+					|| p.lowercase_type_name_starts_struct_init(name)) {
 				return p.struct_init(local_type_name)
 			}
 			// type cast: TypeName(expr) or builtin_type(expr)
 			if p.tok == .lpar && local_type_name.len > 0
 				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
-					|| is_builtin_type(name)) {
+					|| is_builtin_type(name) || p.is_generated_type_name(name)) {
 				p.next() // skip (
 				inner := p.expr(.lowest)
 				p.check(.rpar)
@@ -12179,7 +12629,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						return cast
 					}
 				}
-				if p.tok == .name && parser_name_can_start_pointer_type(p.lit) {
+				if p.tok == .name && p.name_can_start_pointer_type(p.lit) {
 					base_name := p.pointer_type_base_name(p.lit)
 					type_name := parser_pointer_type_name(2, base_name)
 					p.next()
@@ -12216,7 +12666,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				if cast := p.pointer_cast_expr_from_current_depth(1, amp_start) {
 					return cast
 				}
-			} else if p.tok == .name && parser_name_can_start_pointer_type(p.lit)
+			} else if p.tok == .name && p.name_can_start_pointer_type(p.lit)
 				&& !(p.lit == 'map' && p.peek() == .lsbr) {
 				saved_s := p.s
 				saved_tok := p.tok
@@ -12438,7 +12888,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					return cast
 				}
 			}
-			if p.tok == .name && parser_name_can_start_pointer_type(p.lit) && p.peek() == .lpar {
+			if p.tok == .name && p.name_can_start_pointer_type(p.lit) && p.peek() == .lpar {
 				type_name := parser_pointer_type_name(depth, p.pointer_type_base_name(p.lit))
 				p.next()
 				p.next()
@@ -15013,7 +15463,19 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 		'u32', 'u64', 'f32', 'f64', 'string', 'rune', 'usize', 'isize', 'voidptr'] {
 		return false
 	}
+	// `builtin` declares the other builtin types, such as `array`, so none of its
+	// consts has the name of one. Its directory is the largest to index, and every
+	// program parses it.
+	if !p.is_translated && p.cur_module == 'builtin' && is_builtin_type(name) {
+		return false
+	}
 	if p.resolve_local_type_name(name) != name {
+		return false
+	}
+	// A type that this module already declared is never read as a const operand,
+	// whatever its other files declare, so no other module is indexed for one of
+	// its own types either.
+	if p.parsed_module_declares_type(name) {
 		return false
 	}
 	p.scan_translated_sizeof_declarations()
@@ -15021,6 +15483,32 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	// Deferred branches can declare both candidates. Retain the existing named
 	// type form when a type is possible; later phases resolve the bare spelling.
 	return p.translated_sizeof_const_names[key] && !p.translated_sizeof_type_names[key]
+}
+
+// parsed_module_declares_type reports whether a file of the current module that
+// this parser already parsed, or the part of the current file it did, declares
+// the type `name` at the top level. It reads each node once: every call resumes
+// after the nodes that the one before it saw.
+@[direct_array_access]
+fn (mut p Parser) parsed_module_declares_type(name string) bool {
+	for i in p.parsed_type_decls_end .. p.a.nodes.len {
+		node := &p.a.nodes[i]
+		match node.kind {
+			.file {
+				p.parsed_type_decls_dir = os.dir(node.value)
+				p.parsed_type_decls_module = ''
+			}
+			.module_decl {
+				p.parsed_type_decls_module = node.value
+			}
+			.struct_decl, .type_decl, .interface_decl, .enum_decl {
+				p.parsed_type_decls['${p.parsed_type_decls_dir}\x00${p.parsed_type_decls_module}\x00${node.value}'] = true
+			}
+			else {}
+		}
+	}
+	p.parsed_type_decls_end = p.a.nodes.len
+	return p.parsed_type_decls[p.translated_sizeof_declaration_key(name)]
 }
 
 fn (mut p Parser) translated_sizeof_name_is_global(name string) bool {
@@ -17527,6 +18015,10 @@ fn is_builtin_type(name string) bool {
 
 fn parser_name_can_start_pointer_type(name string) bool {
 	return is_builtin_type(name) || (name.len > 0 && name[0] >= `A` && name[0] <= `Z`)
+}
+
+fn (mut p Parser) name_can_start_pointer_type(name string) bool {
+	return parser_name_can_start_pointer_type(name) || p.is_generated_type_name(name)
 }
 
 fn (p &Parser) pointer_type_base_name(name string) string {

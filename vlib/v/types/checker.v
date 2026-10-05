@@ -909,6 +909,7 @@ pub mut:
 	file_imports_by_file   map[string]&FileImportInfo
 	file_modules           map[string]string
 	translated_files       map[string]bool
+	generated_files        map[string]bool // files of `@[generated]` modules: relaxed naming rules
 	has_globals_files      map[string]bool
 	deprecated_symbols     map[string]DeprecationInfo
 	deprecated_modules     map[string]DeprecationInfo
@@ -1011,6 +1012,9 @@ pub mut:
 	cross_target_prefs            &pref.Preferences = unsafe { nil }
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
+	skips_library_bodies          bool            // see skip_unreachable_library_bodies
+	library_files                 map[string]bool // the files whose unreachable bodies the check leaves out
+	reachable_library_fns         map[string]bool // the functions of those files that it checks
 	shadow_diagnostic_root        string
 	shadow_explicit_roots         []string
 	shadow_dependency_roots       []string
@@ -1259,6 +1263,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		file_imports_by_file:                    map[string]&FileImportInfo{}
 		file_modules:                            map[string]string{}
 		translated_files:                        map[string]bool{}
+		generated_files:                         map[string]bool{}
 		has_globals_files:                       map[string]bool{}
 		deprecated_symbols:                      map[string]DeprecationInfo{}
 		deprecated_modules:                      map[string]DeprecationInfo{}
@@ -1421,6 +1426,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		file_imports_by_file:                  tc.file_imports_by_file
 		file_modules:                          tc.file_modules
 		translated_files:                      tc.translated_files
+		generated_files:                       tc.generated_files
 		has_globals_files:                     tc.has_globals_files
 		deprecated_symbols:                    tc.deprecated_symbols
 		deprecated_modules:                    tc.deprecated_modules
@@ -1956,6 +1962,7 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.declaration_attributes = map[int][]string{}
 	tc.insert_include_dirs_by_file = map[string][]string{}
 	tc.translated_files = map[string]bool{}
+	tc.generated_files = map[string]bool{}
 	tc.has_globals_files = map[string]bool{}
 	tc.strings_builder_candidates = []i32{cap: 1024}
 	tc.synthetic_top_level_type_ids = []i32{cap: 2048}
@@ -3312,6 +3319,9 @@ fn (mut tc TypeChecker) collect_module_attributes(node flat.Node, file string) {
 		match attr.all_before(':').trim_space() {
 			'translated' {
 				tc.translated_files[file] = true
+			}
+			'generated' {
+				tc.generated_files[file] = true
 			}
 			'has_globals' {
 				tc.has_globals_files[file] = true
@@ -10519,6 +10529,9 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.check_sumtype_builtin_method_override(flat.NodeId(i), node)
 				tc.check_test_fn_signature(flat.NodeId(i), node)
 				tc.check_decl_type_strings(flat.NodeId(i), node)
+				if tc.skips_library_body(node) {
+					continue
+				}
 				if tc.scope_parallel_check_workers {
 					tc.check_fn_decl_semantics_scoped(i, range_lo, tc.cur_file, tc.cur_module)
 				} else {
@@ -11217,8 +11230,10 @@ fn snake_case_name_is_valid(name string) bool {
 	if name.starts_with('C.') || name.starts_with('JS.') {
 		return true
 	}
+	// Names with `__` are valid in ordinary files, but `check_snake_case_name` rejects
+	// them in `@[generated]` ones, so they have to reach it.
 	return (name.len <= 1 || (name[0] != `_` && !name.contains('._')))
-		&& !util.contains_capital(name)
+		&& !util.contains_capital(name) && !name.contains('__')
 }
 
 fn pascal_case_name_is_valid(name string) bool {
@@ -11242,8 +11257,69 @@ fn (mut tc TypeChecker) check_invalid_test_file_name(id flat.NodeId, node flat.N
 	])
 }
 
+// relaxes_identifier_case reports whether the declaration `id` belongs to a
+// `@[generated]` module. Code generators may keep their own spelling there:
+// camelCase, a leading `_`, and type names that do not begin with a capital
+// letter. Only type names may begin with one, since V's grammar relies on that
+// to tell `Type{}`/`Type(x)` from values. Nothing else changes for such modules.
+fn (tc &TypeChecker) relaxes_identifier_case(id flat.NodeId) bool {
+	if tc.generated_files.len == 0 {
+		return false
+	}
+	if tc.valid_node_id(id) {
+		if file := tc.a.source_files[tc.a.node(id).pos.id] {
+			return tc.generated_files[file.name]
+		}
+	}
+	return tc.generated_files[tc.cur_file]
+}
+
+// ident_may_be_type reports whether the identifier `name`, the base of a selector
+// `name.member`, can name a type. V type names begin with a capital letter. Only
+// `@[generated]` files can use other type names, so there a name that does not begin
+// with one is a type only when such a type is declared and no local shadows it.
+fn (tc &TypeChecker) ident_may_be_type(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if name[0].is_capital() {
+		return true
+	}
+	if tc.generated_files.len == 0 || !tc.generated_files[tc.cur_file] {
+		return false
+	}
+	if _ := tc.non_file_scope_type(name) {
+		return false
+	}
+	return tc.type_name_known(name)
+}
+
+// module_member_may_be_type reports whether `name` in `mod.name` can name a type of the
+// module imported as `mod`. V type names begin with a capital letter. Only `@[generated]`
+// modules can declare other type names, so such a name is a type only when the module
+// really declares it: `os.args` stays a const even when the build has generated code.
+fn (tc &TypeChecker) module_member_may_be_type(mod_alias string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if name[0].is_capital() {
+		return true
+	}
+	if tc.generated_files.len == 0 {
+		return false
+	}
+	module_name := tc.resolve_import_alias(mod_alias) or { mod_alias }
+	qualified_name := '${module_name}.${name}'
+	return tc.type_symbol_known(qualified_name) || tc.resolve_enum_name(qualified_name) != none
+}
+
 fn (mut tc TypeChecker) check_snake_case_name(id flat.NodeId, name string, identifier string, pos token.Pos) {
 	if tc.translated_files[tc.cur_file] || name.starts_with('C.') || name.starts_with('JS.') {
+		return
+	}
+	// Module names must keep matching their directory, even in generated code.
+	if identifier != 'module name' && tc.relaxes_identifier_case(id) {
+		tc.check_generated_value_name(id, name, identifier, pos)
 		return
 	}
 	if name.starts_with('__v3_') || source_name_is_numbered_string_symbol(name) {
@@ -11257,13 +11333,97 @@ fn (mut tc TypeChecker) check_snake_case_name(id flat.NodeId, name string, ident
 	}
 }
 
+// check_generated_value_name enforces the naming rules `@[generated]` keeps for names
+// that are not types. Only type names can begin with an uppercase letter. The rest keep
+// the generated C code valid: V joins names with `__` to build C names (`mod__fn`,
+// `type__method`), C reserves names that begin with `_` and an uppercase letter, and
+// the C code names its temporaries `_t1`, `_a2` and so on.
+fn (mut tc TypeChecker) check_generated_value_name(id flat.NodeId, name string, identifier string, pos token.Pos) {
+	short_name := name.all_after_last('.')
+	// Like in ordinary files, the names the compiler itself declares are exempt.
+	if short_name.len == 0 || short_name == '_' || short_name.starts_with('__v3_')
+		|| source_name_is_numbered_string_symbol(short_name) {
+		return
+	}
+	if short_name[0].is_capital() {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot start with an uppercase letter, only type names can', id, pos)
+	} else if short_name.contains('__') {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot contain `__`, V uses it to build C names', id, pos)
+	} else if short_name.len > 1 && short_name[0] == `_` && short_name[1].is_capital() {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot start with `_` and an uppercase letter, C reserves such names', id, pos)
+	} else if generated_name_is_c_temporary_name(short_name) {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` is reserved for the temporaries of the generated C code', id, pos)
+	}
+}
+
+// generated_name_is_c_temporary_name reports names like `_t1`: `_`, lowercase letters,
+// then digits. The generated C code names its temporaries that way.
+fn generated_name_is_c_temporary_name(name string) bool {
+	if name.len < 2 || name[0] != `_` || !name[name.len - 1].is_digit() {
+		return false
+	}
+	mut i := 1
+	for i < name.len && name[i] >= `a` && name[i] <= `z` {
+		i++
+	}
+	for i < name.len && name[i].is_digit() {
+		i++
+	}
+	return i == name.len
+}
+
+// check_generated_type_name enforces the naming rules `@[generated]` keeps for type
+// names. Their C names join the type and its members with `__`, so a type name cannot
+// contain `__` or end with `_`: methods `_b` of `a` and `b` of `a_` would both become
+// `a___b`. A type cannot share the name of a builtin function either, because the call
+// `name(x)` would then be parsed as a cast.
+fn (mut tc TypeChecker) check_generated_type_name(node_id flat.NodeId, node flat.Node, pos token.Pos) {
+	if !tc.relaxes_identifier_case(node_id) || !tc.should_check_source_name(node_id) {
+		return
+	}
+	name := node.value.all_after_last('.')
+	// Anonymous structs get names like `AnonStruct__x2e_...` from the parser.
+	if name.len == 0 || is_anonymous_aggregate_name(name) {
+		return
+	}
+	identifier := match node.kind {
+		.struct_decl {
+			'struct name'
+		}
+		.interface_decl {
+			'interface name'
+		}
+		.enum_decl {
+			'enum name'
+		}
+		else {
+			if node.children_count > 0 {
+				'sum type name'
+			} else if node.typ.starts_with('fn') {
+				'fn type name'
+			} else {
+				'type alias name'
+			}
+		}
+	}
+	if name.contains('__') {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot contain `__`, V uses it to build C names', node_id, pos)
+	} else if name.ends_with('_') {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot end with `_`, V uses `__` to build the C names of its members', node_id, pos)
+	}
+	if !name.contains('.') && (tc.fn_type_modules[name] or { '' }) == 'builtin' {
+		tc.record_error_at(.duplicate_decl, 'type `${name}` has the same name as a builtin function', node_id, pos)
+	}
+}
+
 fn source_name_is_numbered_string_symbol(name string) bool {
 	return name.len > 5 && name.starts_with('_str_') && name[5..].bytes().all(it >= `0`
 		&& it <= `9`)
 }
 
 fn (mut tc TypeChecker) check_pascal_case_name(id flat.NodeId, name string, identifier string, pos token.Pos) {
-	if tc.translated_files[tc.cur_file] || name.starts_with('C.') || name.starts_with('JS.') {
+	if tc.translated_files[tc.cur_file] || name.starts_with('C.') || name.starts_with('JS.')
+		|| tc.relaxes_identifier_case(id) {
 		return
 	}
 	short_name := name.all_after_last('.')
@@ -11296,6 +11456,13 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 	if !node.value.contains('.') && !node.is_static_type_method()
 		&& tc.cur_module in ['', 'main'] && is_builtin_type_name(name) {
 		tc.record_error_at(.duplicate_decl, 'top level declaration cannot shadow builtin type', id, tc.fn_declaration_diagnostic_pos(node))
+	}
+	// `@[generated]` types need not start with a capital letter, so a function can
+	// share a type's name; `name(x)` would then be parsed as a cast. The function can
+	// be declared in an ordinary file of the module, so check every file.
+	if !node.value.contains('.') && !node.is_static_type_method()
+		&& tc.generated_files.len > 0 && tc.type_name_known_in_current_module(name) {
+		tc.record_error_at(.duplicate_decl, 'function `${name}` has the same name as a type', id, tc.fn_declaration_diagnostic_pos(node))
 	}
 	// V1 treats os and strconv like builtin modules. Their long-standing private
 	// implementation methods intentionally use a leading underscore.
@@ -11491,6 +11658,9 @@ fn (mut tc TypeChecker) check_sumtype_builtin_method_override(id flat.NodeId, no
 	}
 }
 
+// interface_internal_field_names are the members of every interface's C struct.
+const interface_internal_field_names = ['_typ', '_object', '_object_is_boxed']
+
 fn (mut tc TypeChecker) check_interface_member_names(node flat.Node) {
 	for i in 0 .. node.children_count {
 		field_id := tc.a.child(&node, i)
@@ -11500,6 +11670,12 @@ fn (mut tc TypeChecker) check_interface_member_names(node flat.Node) {
 		}
 		if field.op != .dot && field.typ.len == 0 {
 			// Embedded interfaces use their type name as `value`; they are not fields.
+			continue
+		}
+		if field.op != .dot && field.value in interface_internal_field_names
+			&& tc.relaxes_identifier_case(field_id) && tc.should_check_source_name(field_id) {
+			// The C struct of an interface already has these members.
+			tc.record_error_at(.duplicate_decl, 'field name `${field.value}` is reserved for the interface value itself', field_id, tc.node_value_diagnostic_pos(field_id))
 			continue
 		}
 		if !tc.should_check_source_name(field_id) || snake_case_name_is_valid(field.value) {
@@ -11561,6 +11737,17 @@ fn (tc &TypeChecker) struct_has_invalid_reference_default(receiver string) bool 
 		}
 	}
 	return false
+}
+
+// check_generated_parameter_name applies the `@[generated]` naming rules to a parameter.
+// Ordinary parameter names are not checked, but generated code must not use the names
+// of the C temporaries: `fn f(_t1 int)` would read an uninitialized `_t1` in C.
+fn (mut tc TypeChecker) check_generated_parameter_name(id flat.NodeId, param flat.Node, pos token.Pos) {
+	if param.value.len == 0 || param.value == '_' || !tc.relaxes_identifier_case(id)
+		|| !tc.should_check_source_name(id) {
+		return
+	}
+	tc.check_generated_value_name(id, param.value, 'parameter name', pos)
 }
 
 fn (mut tc TypeChecker) check_reserved_parameter_name(id flat.NodeId) {
@@ -13353,6 +13540,194 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			}
 		}
 	}
+}
+
+// check_written_nested_option_types reports every type written in the
+// top-level declaration `top_id`, its body included, in which an option or a
+// result directly wraps another option or result: `??int`, `!!int`, `?!int`.
+// An option has a single `none` and a result a single error, so the outer one
+// could not be told from the inner one, and V does not have such types (see
+// #27171). `?T` with an option `T`, and `?Alias` of an option, are not written
+// nested types: they collapse to the option itself.
+fn (mut tc TypeChecker) check_written_nested_option_types(top_id flat.NodeId) {
+	if !tc.should_diagnose(top_id) {
+		return
+	}
+	mut stack := [WrittenTypeItem{top_id, top_id}]
+	for stack.len > 0 {
+		item := stack.pop()
+		if !tc.valid_node_id(item.id) {
+			continue
+		}
+		node := tc.a.node(item.id)
+		anchor := if node.pos.end > 0 { item.id } else { item.anchor }
+		if nested_option_result_marker(node.typ) >= 0 || nested_option_result_marker(node.value) >= 0 {
+			tc.report_written_nested_option_types(*node, anchor)
+		}
+		for i in 0 .. node.children_count {
+			stack << WrittenTypeItem{tc.a.child(node, i), anchor}
+		}
+	}
+}
+
+fn (mut tc TypeChecker) report_written_nested_option_types(node flat.Node, anchor flat.NodeId) {
+	mut texts := written_type_texts(node)
+	// The types written as names: a sum type variant, a generic type argument,
+	// a struct literal, and the return type of a C function.
+	if node.kind in [.ident, .struct_init] && node.value !in texts {
+		texts << node.value
+	}
+	if node.kind == .c_fn_decl {
+		texts << node.typ
+	}
+	for text in texts {
+		idx := nested_option_result_marker(text)
+		if idx < 0 {
+			continue
+		}
+		outer := text[idx]
+		inner := text[idx + 1]
+		// check_fn_receiver_and_operator_return reports it for a function's own
+		// return type.
+		if outer != inner && node.kind == .fn_decl && text == node.typ
+			&& trimmed_space(text[..idx]).len == 0 {
+			continue
+		}
+		nested := nested_option_result_type_text(text, idx)
+		pos := tc.nested_option_result_type_pos(node, anchor, text, idx, nested)
+		msg := if outer != inner {
+			'the type must be Option or Result'
+		} else if outer == `?` {
+			'nested option type `${nested}` is not supported'
+		} else {
+			'nested result type `${nested}` is not supported'
+		}
+		if tc.errors.any(it.pos == pos && it.msg == msg) {
+			continue
+		}
+		details := if outer != inner {
+			[]string{}
+		} else if outer == `?` {
+			['an option has a single `none`, so the outer option could not be told from the inner one; use `${nested[1..]}` instead']
+		} else {
+			['a result has a single error, so the outer result could not be told from the inner one; use `${nested[1..]}` instead']
+		}
+		tc.record_error_with_details_at(.unknown_type, msg, anchor, pos, details)
+	}
+}
+
+// nested_option_result_marker is the index of the first option or result marker
+// in the type text `text` that directly wraps another one, as the first `?` of
+// `[]??int`, or -1.
+fn nested_option_result_marker(text string) int {
+	for i := 0; i + 1 < text.len; i++ {
+		if text[i] in [`?`, `!`] && text[i + 1] in [`?`, `!`] {
+			return i
+		}
+	}
+	return -1
+}
+
+// nested_option_result_type_text is the type that starts at `idx` in the type
+// text `text`: `??int` in `map[string]??int` or in `fn (??int) string`.
+fn nested_option_result_type_text(text string, idx int) string {
+	mut depth := 0
+	for i in idx .. text.len {
+		match text[i] {
+			`(`, `[`, `{` {
+				depth++
+			}
+			`)`, `]`, `}` {
+				if depth == 0 {
+					return trimmed_space(text[idx..i])
+				}
+				depth--
+			}
+			`,` {
+				if depth == 0 {
+					return trimmed_space(text[idx..i])
+				}
+			}
+			else {}
+		}
+	}
+	return trimmed_space(text[idx..])
+}
+
+// nested_option_result_type_pos is where the nested type `nested`, at `idx` in
+// the type text `text` that `node` writes, is in the source. The return type of
+// a function is the last type in its header; any other type is on the line of
+// the node that writes it, after where that node starts. The parser drops the
+// spaces and the parentheses of `? ?int` and `?(?int)`: then it is where the
+// two markers are.
+fn (tc &TypeChecker) nested_option_result_type_pos(node flat.Node, anchor flat.NodeId, text string, idx int, nested string) token.Pos {
+	anchor_pos := tc.a.node(anchor).pos
+	file := tc.a.source_files[anchor_pos.id] or { return anchor_pos }
+	source := tc.source_texts_by_file[file.name] or { return anchor_pos }
+	if anchor_pos.offset < 0 || anchor_pos.offset > source.len {
+		return anchor_pos
+	}
+	is_return_type := node.kind == .fn_decl && text == node.typ
+	mut lo := anchor_pos.offset
+	mut hi := anchor_pos.offset
+	if is_return_type {
+		header := tc.fn_declaration_diagnostic_pos(node)
+		lo = int_max(header.offset, 0)
+		hi = int_min(header.end, source.len)
+	} else {
+		for lo > 0 && source[lo - 1] != `\n` {
+			lo--
+		}
+		for hi < source.len && source[hi] != `\n` {
+			hi++
+		}
+	}
+	if lo >= hi {
+		return anchor_pos
+	}
+	region := source[lo..hi]
+	from := anchor_pos.offset - lo
+	if start := find_written_type_text(region, text, from, is_return_type) {
+		return token.new_span(anchor_pos.id, lo + start + idx, lo + start + idx + nested.len)
+	}
+	if start := find_written_type_text(region, nested, from, is_return_type) {
+		return token.new_span(anchor_pos.id, lo + start, lo + start + nested.len)
+	}
+	// The last markers in a header, or the first ones at or after `from`, or
+	// else the last ones before it.
+	mut found := -1
+	mut found_end := -1
+	for i := 0; i < region.len && (is_return_type || found < from); i++ {
+		if region[i] !in [`?`, `!`] {
+			continue
+		}
+		mut j := i + 1
+		for j < region.len && region[j] in [` `, `\t`, `(`] {
+			j++
+		}
+		if j < region.len && region[j] in [`?`, `!`] {
+			found = i
+			found_end = j + 1
+		}
+	}
+	if found >= 0 {
+		return token.new_span(anchor_pos.id, lo + found, lo + found_end)
+	}
+	return anchor_pos
+}
+
+// find_written_type_text is where `text` is in `region`: the last occurrence
+// when `last`, else the first one at or after `from`, or else the first one.
+fn find_written_type_text(region string, text string, from int, last bool) ?int {
+	if last {
+		return region.last_index(text)
+	}
+	if from >= 0 && from < region.len {
+		if start := region.index_after(text, from) {
+			return start
+		}
+	}
+	return region.index(text)
 }
 
 fn (mut tc TypeChecker) check_type_alias_generic_struct_application(node_id flat.NodeId, node flat.Node) bool {
@@ -16611,7 +16986,8 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 		if field.kind != .enum_field {
 			continue
 		}
-		if tc.should_check_source_name(field_id) && !field.value.starts_with('_')
+		if tc.should_check_source_name(field_id)
+			&& (!field.value.starts_with('_') || tc.relaxes_identifier_case(field_id))
 			&& !snake_case_name_is_valid(field.value) {
 			tc.check_snake_case_name(field_id, field.value, 'field name', tc.source_line_declaration_pos(field_id))
 		}
@@ -16940,6 +17316,7 @@ fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, nod
 		return
 	}
 	name_pos := tc.type_declaration_name_pos(node_id)
+	tc.check_generated_type_name(node_id, node, name_pos)
 	if node.value == 'IError' && tc.cur_module != 'builtin'
 		&& node.kind in [.struct_decl, .interface_decl] {
 		kind := if node.kind == .struct_decl { 'struct' } else { 'interface' }
@@ -17089,8 +17466,17 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 			&& !tc.current_file_uses_nested_module_path() {
 			tc.record_error_at(.duplicate_decl, 'duplicate of a module name `${qname}`', field_id, tc.node_value_diagnostic_pos(field_id))
 		}
+		if field.value != '_' && tc.generated_files.len > 0
+			&& tc.should_check_source_name(field_id)
+			&& tc.type_name_known_in_current_module(field.value) {
+			tc.record_error_at(.duplicate_decl, 'const `${field.value}` has the same name as a type', field_id, tc.node_value_diagnostic_pos(field_id))
+		}
 		if field.value == '_' {
 			tc.record_error_at(.duplicate_decl, 'cannot use `_` as a const name', field_id, tc.node_value_diagnostic_pos(field_id))
+		} else if tc.relaxes_identifier_case(field_id) {
+			if tc.should_check_source_name(field_id) && !field.value.starts_with('C.') {
+				tc.check_generated_value_name(field_id, field.value, 'const name', tc.node_value_diagnostic_pos(field_id))
+			}
 		} else if tc.should_check_source_name(field_id) && !field.value.starts_with('C.')
 			&& field.value != field.value.to_lower() {
 			tc.record_error_at(.duplicate_decl, 'const names cannot contain uppercase letters, use snake_case instead', field_id, tc.node_value_diagnostic_pos(field_id))
@@ -18348,7 +18734,6 @@ fn (tc &TypeChecker) comptime_struct_update_id(id flat.NodeId) ?flat.NodeId {
 			child := tc.a.node(child_id)
 			is_update := node.kind == .assoc
 				|| (child.kind == .prefix && child.value == '...')
-				|| tc.node_has_ellipsis_prefix(child_id)
 			if is_update && tc.node_source_contains(child_id, '\$(') {
 				return child_id
 			}
@@ -18822,7 +19207,8 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 				}, generic_args, generic_params)
 				cases << ComptimeStaticValueCase{
 					name:             name
-					location:         comptime_static_source_location(file_name, candidate.pos.offset, line_offsets_by_file[file_name])
+					location:         comptime_static_source_location(file_name, candidate.pos.offset, line_offsets_by_file[file_name],
+						tc.a.source_files[candidate.pos.id] or { unsafe { nil } })
 					typ:              comptime_static_method_type_text(param_types, return_type)
 					return_type:      return_type
 					is_pub:           candidate.op == .arrow
@@ -18955,7 +19341,9 @@ fn comptime_static_source_line_offsets(path string) []int {
 	return offsets
 }
 
-fn comptime_static_source_location(path string, encoded_offset int, line_offsets []int) string {
+// comptime_static_source_location returns the `file:line:column` of a declaration,
+// following the `#line` directives of its source `file`, when it has any.
+fn comptime_static_source_location(path string, encoded_offset int, line_offsets []int, file &token.File) string {
 	if path == '' || encoded_offset <= 0 || line_offsets.len == 0 {
 		return ''
 	}
@@ -18971,7 +19359,12 @@ fn comptime_static_source_location(path string, encoded_offset int, line_offsets
 		}
 	}
 	line_index := if lo > 0 { lo - 1 } else { 0 }
-	return '${path}:${line_index + 1}:${offset - line_offsets[line_index]}'
+	column := offset - line_offsets[line_index]
+	if !isnil(file) && file.has_line_directives() {
+		logical_file, logical_line := file.logical_line(line_index + 1)
+		return '${logical_file}:${logical_line}:${column}'
+	}
+	return '${path}:${line_index + 1}:${column}'
 }
 
 fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase {

@@ -1,6 +1,7 @@
 module json2
 
 import time
+import sync.stdatomic
 
 // EncoderOptions provides a list of options for encoding
 @[params]
@@ -182,6 +183,33 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 	}
 }
 
+// next_string_escape returns the next byte needing JSON escaping, or val.len.
+@[direct_array_access; inline]
+fn next_string_escape(val string, start int, escape_unicode bool) int {
+	mut i := start
+	for i <= val.len - 8 {
+		mut word := u64(0)
+		// The length check bounds every load; memcpy also permits unaligned strings.
+		unsafe { vmemcpy(&word, val.str + i, 8) }
+		// A byte below 0x20 leaves a high bit after subtraction and masking.
+		control := (word - u64(0x2020202020202020)) & ~word & u64(0x8080808080808080)
+		if control != 0 || word_has_byte(word, `"`) || word_has_byte(word, `\\`)
+			|| (escape_unicode && word & u64(0x8080808080808080) != 0) {
+			break
+		}
+		i += 8
+	}
+	// Locate an escape within a flagged word, or handle the final short tail.
+	for i < val.len {
+		b := val[i]
+		if b < 0x20 || b == `"` || b == `\\` || (escape_unicode && b >= 0x80) {
+			break
+		}
+		i++
+	}
+	return i
+}
+
 fn (mut encoder Encoder) encode_string(val string) {
 	encoder.output << `"`
 	mut buffer_start := 0
@@ -273,7 +301,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 					continue
 				}
 
-				buffer_end++
+				buffer_end = next_string_escape(val, buffer_end + 1, encoder.escape_unicode)
 			}
 		}
 	}
@@ -781,10 +809,22 @@ fn check_not_empty[T](val T) ?bool {
 @[manualfree; unsafe]
 fn (mut encoder Encoder) cached_field_infos[T]() &EncoderFieldInfoCache {
 	static cache := &EncoderFieldInfoCache(nil)
-	if cache == nil {
-		cache = &EncoderFieldInfoCache{}
-		$for field in T.fields {
-			cache.field_infos << encoder_field_info(field.name, field.attrs)
+	static initializing := u64(0)
+	static initialized := u64(0)
+	// Elect one initializer, then publish the completed immutable cache. This makes
+	// every field visible before another thread can read the immutable cache.
+	if stdatomic.load_u64(&initialized) == 0 {
+		if stdatomic.fetch_add_u64(&initializing, 1) == 0 {
+			cache = &EncoderFieldInfoCache{}
+			$for field in T.fields {
+				cache.field_infos << encoder_field_info(field.name, field.attrs)
+			}
+			stdatomic.store_u64(&initialized, 1)
+		} else {
+			// Only concurrent first use waits; warm encodes need one atomic load.
+			for stdatomic.load_u64(&initialized) == 0 {
+				time.sleep(time.microsecond)
+			}
 		}
 	}
 	return cache

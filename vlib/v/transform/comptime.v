@@ -132,6 +132,10 @@ fn (t &Transformer) comptime_for_base_type(raw string) string {
 		raw
 	}
 	base := t.comptime_for_value_type_base(source)
+	// Checked value types already identify their declaration, unlike source import aliases.
+	if source != raw && t.type_authority_has(base) {
+		return t.comptime_normalize_type_alias_chain(base)
+	}
 	return t.comptime_normalize_type_alias_chain(t.comptime_resolve_selective_import_type(base))
 }
 
@@ -199,6 +203,16 @@ fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
 		return clean
 	}
 	if clean.contains('.') {
+		alias := clean.all_before('.')
+		if imported := t.file_import_module(t.cur_file, alias) {
+			return imported + clean[alias.len..]
+		}
+		// Generic specialization already supplies canonical types. An unrelated
+		// import alias from another file must not rebind `config.Cfg` to
+		// `rand.config.Cfg` before its fields are reflected.
+		if t.type_authority_has(clean) {
+			return clean
+		}
 		if imported := t.resolve_imported_type_name(clean) {
 			return imported
 		}
@@ -503,9 +517,21 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	if is_generic_fn_placeholder_name(node.typ) && t.generic_arg_is_unresolved(node.typ) {
 		return [id]
 	}
-	base_type := if kind == 'methods' {
+	base_type := if node.payload == flat.canonical_comptime_type_payload {
+		// A substituted T is canonical even when this file imports a different type
+		// under the same spelling. Source-written operands still resolve their aliases.
+		if kind == 'methods' {
+			node.typ
+		} else {
+			t.comptime_normalize_type_alias_chain(t.comptime_for_value_type_base(node.typ))
+		}
+	} else if kind == 'methods' {
 		source := t.comptime_for_value_source_type(node.typ) or { node.typ }
-		t.comptime_resolve_selective_import_type(source)
+		if source != node.typ && t.type_authority_has(t.comptime_for_value_type_base(source)) {
+			source
+		} else {
+			t.comptime_resolve_selective_import_type(source)
+		}
 	} else {
 		t.comptime_for_base_type(node.typ)
 	}
@@ -1337,7 +1363,9 @@ fn comptime_source_line_offsets(path string) []int {
 	return offsets
 }
 
-fn comptime_source_location(path string, encoded_offset int, line_offsets []int) string {
+// comptime_source_location returns the `file:line:column` of a declaration, following
+// the `#line` directives of its source `file`, when it has any.
+fn comptime_source_location(path string, encoded_offset int, line_offsets []int, file &token.File) string {
 	if path == '' || encoded_offset <= 0 || line_offsets.len == 0 {
 		return ''
 	}
@@ -1353,7 +1381,12 @@ fn comptime_source_location(path string, encoded_offset int, line_offsets []int)
 		}
 	}
 	line_index := if lo > 0 { lo - 1 } else { 0 }
-	return '${path}:${line_index + 1}:${offset - line_offsets[line_index] + 1}'
+	column := offset - line_offsets[line_index] + 1
+	if !isnil(file) && file.has_line_directives() {
+		logical_file, logical_line := file.logical_line(line_index + 1)
+		return '${logical_file}:${logical_line}:${column}'
+	}
+	return '${path}:${line_index + 1}:${column}'
 }
 
 fn comptime_method_receiver_matches(receiver string, requested string, normalized string, receiver_module string, requested_module string) bool {
@@ -1445,7 +1478,8 @@ fn (mut t Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			name:        name
 			receiver:    first.typ
 			module_name: decl.module_name
-			location:    comptime_source_location(decl.file_name, node.pos.offset, t.comptime_method_line_offsets[decl.file_name])
+			location:    comptime_source_location(decl.file_name, node.pos.offset, t.comptime_method_line_offsets[decl.file_name],
+				t.a.source_files[node.pos.id] or { unsafe { nil } })
 			return_type: return_type
 			is_pub:      node.op == .arrow
 			params:      params

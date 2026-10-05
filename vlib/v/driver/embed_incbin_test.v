@@ -13,6 +13,9 @@ fn test_v3_embed_incbin_supported_keeps_the_array_form_where_no_object_is_linked
 		false, [])
 	assert v3_embed_incbin_supported('windows', 'windows', 'gcc', 'c', false, false, false, false,
 		[])
+	// Windows TCC cannot link the object the host assembler produces for the payload
+	assert !v3_embed_incbin_supported('windows', 'windows', 'tinyc', 'c', false, false, false,
+		false, [])
 	// generated C and object output are linked elsewhere
 	assert !v3_embed_incbin_supported('linux', 'linux', 'gcc', 'c', true, false, false, false,
 		[])

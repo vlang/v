@@ -1,0 +1,16 @@
+// Generated code: compiler messages point to the source that it was generated from.
+fn main() {
+#line 1 "vlib/v/checker/tests/line_directive_remapped_err.zbr"
+	mut total := 0
+#line 4
+	println(totl)
+#line 40
+	unused := 1
+#line 3 "src/app.zbr"
+	total += 1
+}
+
+fn helper() int {
+#line 7 "src/app.zbr"
+	return missing_price
+}

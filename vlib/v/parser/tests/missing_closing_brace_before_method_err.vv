@@ -1,0 +1,21 @@
+struct Foo {}
+
+fn (f Foo) helper(x int) int {
+	for i in 0 .. x {
+		if i > 2 {
+			return i
+		}
+	return 0
+}
+
+fn (f Foo) other[T](v T) T {
+	return v
+}
+
+fn (f Foo) third() int {
+	return 3
+}
+
+fn main() {
+	println(Foo{}.helper(3))
+}
