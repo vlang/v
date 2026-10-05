@@ -1,10 +1,8 @@
-module time
+module sync
 
-#insert "@VEXEROOT/vlib/sync/thread_helper.h"
+import time
 
-fn C.v_sync_thread_create_detached(voidptr, voidptr) int
-
-fn timer_thread_entry(args_ptr voidptr) voidptr {
+fn timer_thread_entry(args_ptr voidptr) u32 {
 	args := unsafe { &TimerThreadArgs(args_ptr) }
 	$if prealloc {
 		scope := unsafe { prealloc_scope_begin() }
@@ -17,10 +15,10 @@ fn timer_thread_entry(args_ptr voidptr) voidptr {
 	}
 	run_timer(args.duration, args.output, args.stop, args.done)
 	free_timer_thread_args(args)
-	return unsafe { nil }
+	return 0
 }
 
-fn start_timer(duration Duration, output chan Time, stop chan chan bool, done chan bool) {
+fn start_timer(duration time.Duration, output chan time.Time, stop chan chan bool, done chan bool) {
 	args := new_timer_thread_args(duration, output, stop, done)
 	result := C.v_sync_thread_create_detached(voidptr(timer_thread_entry), voidptr(args))
 	if result != 0 {

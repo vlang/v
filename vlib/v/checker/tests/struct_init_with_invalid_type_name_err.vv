@@ -1,0 +1,10 @@
+struct _zbr_ty_Point {
+	x int
+}
+
+fn main() {
+	p := _zbr_ty_Point{
+		x: 3
+	}
+	println(p.x)
+}

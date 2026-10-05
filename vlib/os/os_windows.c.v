@@ -650,7 +650,7 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	C.CloseHandle(proc_info.h_thread)
 	return Result{
 		output:    soutput
-		exit_code: int(exit_code)
+		exit_code: int(i32(exit_code))
 	}
 }
 

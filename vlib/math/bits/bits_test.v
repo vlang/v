@@ -315,6 +315,20 @@ fn test_div_64_edge_cases() {
 	assert r == 23
 }
 
+fn test_normalize() {
+	subnormal := 1.0e-310
+	scale := f64(u64(1) << u64(52))
+	y, exp := normalize(subnormal)
+	assert y == subnormal * scale
+	assert exp == -52
+	negative_y, negative_exp := normalize(-subnormal)
+	assert negative_y == -subnormal * scale
+	assert negative_exp == -52
+	normal_y, normal_exp := normalize(-1.5)
+	assert normal_y == -1.5
+	assert normal_exp == 0
+}
+
 fn test_randomized_arithmetic_properties() {
 	mut state := u64(0x9e3779b97f4a7c15)
 	for _ in 0 .. 2000 {

@@ -66,13 +66,6 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && '-prod' in effective_args && '-parallel-cc' !in effective_args {
-		// A V3-only cmd/v is large enough that a monolithic C compiler + LTO dominates
-		// the self-build. Parallel C compilation also keeps the generated unit out
-		// of the full-LTO path when the self-build is already running under V3.
-		args << '-parallel-cc'
-	}
-	effective_args = effective_self_build_args(args)
 	if !fastc_self_build && '-prod' in effective_args && '-no-memory-limit' !in effective_args
 		&& '--no-memory-limit' !in effective_args {
 		// Production C generation for the embedded V3 compiler can legitimately
@@ -86,6 +79,13 @@ fn main() {
 		// flag explicitly so the first `v up` built by an older compiler gets
 		// the bounded-memory implementation too.
 		args << '-prealloc'
+	}
+	effective_args = effective_self_build_args(args)
+	if !fastc_self_build && !self_build_sets_fastc_inclusion(effective_args) {
+		// Compilers built from `cmd/v` keep the FastC backend by default. Pass that
+		// explicitly too, so the first `v up` run by an older compiler, whose driver
+		// still pruned FastC from `cmd/v`, already produces a V that accepts `-b fastc`.
+		args << ['-compile-backend', 'fastc']
 	}
 	// A replacement compiler has to be built entirely from the checked-out sources.
 	// Reusing a whole-program cache entry here can carry stale checker/codegen state
@@ -112,11 +112,12 @@ fn main() {
 		compile_args << '-selfhost'
 	}
 	final_binary := if obinary != '' { obinary } else { 'v2' }
-	pgo_cc_kind := if fastc_self_build || '-parallel-cc' in effective_args {
-		''
-	} else {
-		pgo_compiler_kind(args)
-	}
+	// A production self-build compiles the compiler once, as a single C unit that the
+	// C compiler optimizes as a whole: parallel units leave every call between two of
+	// them out of line. The three-pass profile-guided cycle would build the large V3
+	// compiler three times.
+	single_prod_build := '-prod' in effective_args
+	pgo_cc_kind := if fastc_self_build || single_prod_build { '' } else { pgo_compiler_kind(args) }
 	// Only explicit FastC builds are standalone. Regular replacements must retain
 	// cmd/v so commands such as self, up, fmt, and version remain available.
 	compilation_source := if fastc_self_build { standalone_v3_source } else { full_v_cli_source }
@@ -324,6 +325,29 @@ fn has_gc_arg(args []string) bool {
 	return false
 }
 
+// self_build_sets_fastc_inclusion reports whether the arguments already decide
+// whether FastC is compiled in, or select the compatibility compiler, which has
+// no `-compile-backend` option.
+fn self_build_sets_fastc_inclusion(args []string) bool {
+	for i, arg in args {
+		if arg in ['-old-compiler', '-all-backends', '--all-backends'] {
+			return true
+		}
+		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len
+			&& args[i + 1].split(',').any(it.trim_space() == 'fastc') {
+			return true
+		}
+		if arg in ['-d', '-define'] && i + 1 < args.len
+			&& args[i + 1].all_before('=').trim_space() == 'skip_fastc' {
+			return true
+		}
+		if arg.starts_with('-d') && arg.len > 2 && arg[2..].all_before('=') == 'skip_fastc' {
+			return true
+		}
+	}
+	return false
+}
+
 fn has_prealloc_arg(args []string) bool {
 	return args.any(it in ['-prealloc', '-no-prealloc'])
 }
@@ -403,9 +427,8 @@ fn pgo_compiler_kind(args []string) string {
 	if '-prod' !in args || '-no-prod-options' in args {
 		return ''
 	}
-	// A parallel self-build is the bounded-cost production path for the large
-	// V3-only compiler. PGO would compile that compiler three times and erase
-	// most of the gain from splitting C compilation / avoiding full LTO.
+	// A parallel self-build trades optimization for build time. PGO would compile
+	// that compiler three times and erase the gain from splitting C compilation.
 	if '-parallel-cc' in args {
 		return ''
 	}
@@ -639,8 +662,22 @@ fn initial_bootstrap_args(args []string) []string {
 	// vc/v.c can be one generation behind this source tree. Its parallel C
 	// splitter predates the single-definition header protocol, and older copies
 	// may also predate V3's process-memory switch. The compiler it produces is
-	// current and receives the original arguments for the final build.
-	return args.filter(it !in ['-parallel-cc', '-no-memory-limit', '--no-memory-limit'])
+	// current and receives the original arguments for the final build. Its V1
+	// compiler also predates `-compile-backend`.
+	mut filtered := []string{cap: args.len}
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len {
+			i += 2
+			continue
+		}
+		if arg !in ['-parallel-cc', '-no-memory-limit', '--no-memory-limit'] {
+			filtered << arg
+		}
+		i++
+	}
+	return filtered
 }
 
 fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
@@ -649,8 +686,10 @@ fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
 	// Portable VC snapshots have the full V1 compiler but no embedded V3 driver.
 	parts << '-DCUSTOM_DEFINE_v1_fallback'
 	if os.user_os() == 'windows' {
+		// vc/v_win.c calls BCryptGenRandom, so -lws2_32 alone fails to link, the same
+		// way GNUmakefile and makev.bat need -lbcrypt for this snapshot.
 		parts << ['-std=c99', '-municode', '-w', '-o', os.quoted_path(out_binary),
-			os.quoted_path(vc_source), '-lws2_32']
+			os.quoted_path(vc_source), '-lws2_32', '-lbcrypt']
 	} else {
 		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary), os.quoted_path(vc_source),
 			'-lm', '-lpthread']

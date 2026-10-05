@@ -69,8 +69,11 @@ NB: the build flags are shared with the run command too:
     Specifies the backend that will be used for building the executable.
     Current list of supported backends:
     * `c` (default)       - V outputs C source code, which is then passed to a C compiler.
-    * `fastc`             - V parses supported source directly to C without an AST; available only
-                            on macOS and Linux hosts in V builds that embed V3.
+    * `fastc`             - V parses supported source directly to C without an AST and compiles
+                            it with the bundled TinyCC; available on macOS, Linux, and Windows
+                            hosts. V executables built from `cmd/v` (`make`, `makev.bat`,
+                            `v self`, `v up`) include it unless they are built with
+                            `-d skip_fastc`.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
     * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
     * `js_browser`        - V outputs JS source code ready for the browser.
@@ -298,6 +301,9 @@ NB: the build flags are shared with the run command too:
 
   -check
     Scans, parses, and checks the files without compiling the program.
+    It checks every function. A build leaves out the bodies of the standard library functions
+    that the program cannot reach, as it does not compile them either; the environment
+    variable V_CHECK_LIBRARY_BODIES=all makes a build check them too.
 
   -check-syntax
     Only scan and parse the files, but then stop. Useful for very quick syntax checks.

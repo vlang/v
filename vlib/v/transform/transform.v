@@ -3973,6 +3973,13 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				} else {
 					0
 				}
+				// A region is a share of the pool by cost, and the node count of a
+				// dense `match` is less than what lowering its branches appends.
+				match_est := if t.skip_generics && !t.building_v {
+					t.fn_span_match_lowering_estimate(range_lo, i)
+				} else {
+					0
+				}
 				if est_profile {
 					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 				}
@@ -3989,7 +3996,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				} else {
-					adj_cost := cost + str_est + map_est
+					adj_cost := cost + str_est + map_est + match_est
 					pure << FnWorkItem{
 						fn_idx:                    i
 						range_lo:                  range_lo
@@ -7281,7 +7288,25 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 	t.clear_source_decl_heaped_bindings(node)
 	t.set_var_type_with_raw(var_name, elem_typ, raw_typ)
 	stmts << t.heap_escaping_value_decl(var_name, elem_typ, raw_typ, transformed_init, struct_init)
+	// The heap declaration stands for the source one. Keep its `mut`: the checks
+	// that read the lowered body again must still accept `f(mut var_name)`.
+	t.keep_source_decl_mutability(node, stmts.last())
 	return stmts
+}
+
+// keep_source_decl_mutability marks the single variable of the lowered declaration
+// `lowered_id` as `mut` when the source declaration `source` declared it so.
+fn (mut t Transformer) keep_source_decl_mutability(source flat.Node, lowered_id flat.NodeId) {
+	if source.children_count == 0 || int(lowered_id) < 0 {
+		return
+	}
+	lowered := t.a.nodes[int(lowered_id)]
+	if lowered.kind != .decl_assign || lowered.children_count == 0 {
+		return
+	}
+	if source.is_mut || t.a.child_node(&source, 0).is_mut {
+		t.a.nodes[int(t.a.child(&lowered, 0))].is_mut = true
+	}
 }
 
 // heap_escaping_value_decl moves an already-lowered value into a local's heap storage.

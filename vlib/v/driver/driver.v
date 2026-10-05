@@ -53,6 +53,7 @@ const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
+const macos_v3_source_manifest_env = 'V_MACOS_V3_SOURCE_MANIFEST'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
@@ -2236,6 +2237,17 @@ fn input_looks_like_a_command(input_file string) bool {
 fn input_is_v3_compiler_entry(input_file string) bool {
 	normalized := os.real_path(input_file).replace('\\', '/').trim_right('/')
 	return normalized.ends_with('/vlib/v/v.v')
+}
+
+// v3_compiles_fastc_by_default reports whether a build of `input_file` keeps the
+// FastC backend without `-compile-backend fastc` or `-all-backends`. Only the full
+// `cmd/v` CLI does: it is the V executable that users run `-b fastc` with. Portable
+// `-cross` C (the `vc/v.c` bootstrap snapshots) leaves it out: FastC's libtcc linking
+// and Mach-O signing are host specific, so such a snapshot would not compile and link
+// everywhere. The compiler that `make` and `makev.bat` build from the snapshot
+// rebuilds `cmd/v` natively, which keeps FastC again.
+fn v3_compiles_fastc_by_default(input_file string, output_cross_c bool) bool {
+	return !output_cross_c && input_is_cmd_v(input_file)
 }
 
 fn input_is_cmd_v(input_file string) bool {
@@ -8214,14 +8226,34 @@ fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_d
 	return false
 }
 
-fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source_digests map[string]string, ignored_source_paths map[string]bool) map[string]string {
+// macos_v3_fallback_report_sources returns the V sources of the build by their real
+// path, with the SHA-256 of what was parsed of each. Without `with_digests`, the
+// parser took none (see parser.Parser.no_source_digests): the sources it parsed are
+// listed with an empty digest then, for the callers that only read the paths.
+fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source_digests map[string]string, ignored_source_paths map[string]bool, with_digests bool) map[string]string {
 	mut sources := map[string]string{}
 	mut ambiguous := map[string]bool{}
 	builtin_root :=
 		os.real_path(os.join_path(vroot, 'vlib', 'builtin')).trim_right(os.path_separator)
 	for _, file in a.source_files {
-		if (file.name.ends_with('.v') || file.name.ends_with('.vv')
-			|| file.name.ends_with('.vsh')) && file.has_source_sha256() {
+		if !(file.name.ends_with('.v') || file.name.ends_with('.vv')
+			|| file.name.ends_with('.vsh')) {
+			continue
+		}
+		if !with_digests {
+			// The same files as with digests: a diagnostics server's quick sum is none.
+			if !file.has_source_lines() || file.has_source_quick_sum() {
+				continue
+			}
+			path := a.real_source_path(file.name)
+			if ignored_source_paths[path]
+				|| v3_fallback_backend_specific_builtin_source(path, builtin_root) {
+				continue
+			}
+			sources[path] = ''
+			continue
+		}
+		if file.has_source_sha256() {
 			path := a.real_source_path(file.name)
 			if ignored_source_paths[path] {
 				continue
@@ -8255,7 +8287,7 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source
 			continue
 		}
 		if old_digest := sources[path] {
-			if old_digest != digest {
+			if with_digests && old_digest != digest {
 				ambiguous[path] = true
 			}
 		} else {
@@ -8994,6 +9026,11 @@ pub fn run(args []string) {
 	}
 	mut macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
 	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
+	// The manifest of the parsed sources (see stage_macos_v3_fallback_source_digests)
+	// takes a SHA-256 of each of them, which cost more than scanning them. The V
+	// launcher never reads it, so only a caller that asks for one gets it.
+	macos_v3_source_manifest := macos_v3_c_error_dir != ''
+		&& os.getenv(macos_v3_source_manifest_env) == '1'
 	// A delegated V3 process owns the fallback marker until it has successfully
 	// produced its output. Specialized failures overwrite it below. Successful
 	// run/test programs clear it before launch, so their exit status is never
@@ -10108,7 +10145,10 @@ pub fn run(args []string) {
 	// resolve_imports skips parsing the corresponding module directories.
 	// `-all-backends` keeps everything; `-compile-backend <name>` opts a specific backend back
 	// in; the active `-b` target backend is always force-included.
-	mut include_fastc := all_backends
+	// The full `cmd/v` CLI (the executable that `make`, `makev.bat`, `v self`, and `v up`
+	// produce) always keeps FastC, so `-b fastc` works in default builds; `-d skip_fastc`
+	// still removes it. Standalone `vlib/v/v.v` builds and portable `-cross` C keep pruning it.
+	mut include_fastc := all_backends || v3_compiles_fastc_by_default(input_file, output_cross_c)
 	mut include_arm64 := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
@@ -10169,6 +10209,12 @@ pub fn run(args []string) {
 		// internal `-d fastc_selfhost` implementation detail at the command line.
 		// Descendant FastC compilers preserve the same define in v.fastcdriver.
 		record_user_define(mut user_defines, mut compile_values, 'fastc_selfhost')
+	}
+	if fastc_selfhost_build && target.os == 'windows' {
+		// FastC self-hosts lower the compiler's `spawn` calls to pthreads and emit the
+		// header-free macOS/glibc C ABI tables; neither exists for Windows targets.
+		eprintln('the FastC self-host compiler (`v self -b fastc`, `-selfhost -b fastc`) does not support Windows targets; use `v self`, which keeps `-b fastc` for programs')
+		exit(1)
 	}
 	mut b := bench.new()
 	driver_sw := time.new_stopwatch()
@@ -10290,6 +10336,9 @@ pub fn run(args []string) {
 	prefs.target_libc_headers = target_libc_headers
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.enable_globals = enable_globals_compat
+	if v3_builtin_arena_define !in user_defines && v3_input_imports_arena(input_file) {
+		user_defines << v3_builtin_arena_define
+	}
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot)
@@ -10345,6 +10394,8 @@ pub fn run(args []string) {
 	if backend == 'fastc' {
 		$if skip_fastc ? {
 			eprintln('fastc support is not compiled into this v3 executable')
+			eprintln('Rebuild V from source with `v self` (or `make`, or `makev.bat` on Windows); builds of `cmd/v` include FastC unless `-d skip_fastc` is passed.')
+			eprintln('A standalone `vlib/v/v.v` compiler needs `-compile-backend fastc` (or `-all-backends`) when it is built.')
 			exit(1)
 		} $else {
 			fastc_bench := os.getenv('FASTC_BENCH') != ''
@@ -10707,6 +10758,7 @@ pub fn run(args []string) {
 	if os.getenv('V_DIAGNOSTICS_SERVER') != '' {
 		p.quick_source_sums = true
 	}
+	p.no_source_digests = !macos_v3_source_manifest
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
 	}
@@ -10988,6 +11040,11 @@ pub fn run(args []string) {
 	if prepared_imports.diverged != '' {
 		rerun_as_one_shot_check(prepared_imports.diverged, served.question)
 	}
+	if !no_builtin && v3_builtin_arena_define !in prefs.user_defines
+		&& v3_program_uses_arena(a, prefs.vroot) {
+		v3_rerun_with_builtin_arena(args, served.question)
+		return
+	}
 	mut logical_file_order := []int{}
 	if prepared_imports.ready {
 		logical_file_order = prepared_imports.logical_file_order(a, &cache_state) or {
@@ -11012,8 +11069,11 @@ pub fn run(args []string) {
 	// Preserve the digest of every exact source buffer V3 parsed before any parser or
 	// later compiler error can request the compatibility compiler. The dispatcher owns
 	// this staging directory and forwards only content plus verification metadata.
-	mut fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot, cache_state.cached_source_digests, v3_fallback_ignored_warmup_source_paths(cache_state))
-	_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
+	mut fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot, cache_state.cached_source_digests,
+		v3_fallback_ignored_warmup_source_paths(cache_state), macos_v3_source_manifest)
+	if macos_v3_source_manifest {
+		_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
+	}
 	if print_v_files || print_watched_files || dump_files != '' {
 		mut watched := watched_v_source_paths(a, cache_state.module_sources)
 		if prefs.raw_vsh_file != '' {
@@ -11596,7 +11656,18 @@ pub fn run(args []string) {
 			&& !cache_state.manager.enabled && test_files.len == 0 && !is_checker_fixture
 			&& !trivial_literal_output && !is_vsh_input && !no_skip_unused
 		prepared_markused_thread := spawn markused.prepare_markused_declarations(a, &pre_tc, prepare_markused_overlap)
+		// A plain build of a program checks the bodies of the standard library that
+		// the program can reach, not the others (see types.skip_unreachable_library_bodies).
+		// What else needs every body checked keeps them all: a check without a build,
+		// a test, the compiler itself, a module cache that compiles whole modules.
+		skip_library_bodies := backend == 'c' && !check_only && !is_checker_fixture && !building_v
+			&& test_files.len == 0 && !no_skip_unused && !is_vsh_input && !is_repl && !is_prof
+			&& !is_trace_calls && coverage_dir.len == 0 && !trivial_literal_output
+			&& !incremental_cache_hit && !generic_cache_hit && !cache_state.manager.enabled
+			&& vls_line_info == '' && !served.from_server && !served.shares_checks()
+			&& a.missing_imports.len == 0 && os.getenv('V_CHECK_LIBRARY_BODIES') != 'all'
 		mut check_was_parallel := false
+		mut check_may_be_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {
 			used_fns = markused.mark_used_without_generic_detection(a, &pre_tc)
 			pre_tc.check_semantics_reachable(used_fns)
@@ -11621,6 +11692,17 @@ pub fn run(args []string) {
 				pre_tc.start_incremental_check(served.incremental_record(), own_files,
 					os.getenv('V_DIAGNOSTICS_INCREMENTAL_VERIFY') != '', min_left_out.int())
 			}
+			if skip_library_bodies {
+				library_files := v3_library_source_files(a, &pre_tc, prefs.vroot)
+				if library_files.len > 0 {
+					hint_sw := time.new_stopwatch()
+					reachable := pre_tc.skip_unreachable_library_bodies(library_files, markused.seeded_fn_names(),
+						os.getenv('V_CHECK_LIBRARY_BODIES') != 'late')
+					if verbose {
+						eprintln('  [ttime]   ck reachable     ${f64(hint_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (${reachable})')
+					}
+				}
+			}
 			ck_stage_sw.restart()
 			// On very large user import graphs, serial checking uses less memory than
 			// retaining one semantic-check accumulator per worker.
@@ -11632,6 +11714,7 @@ pub fn run(args []string) {
 					|| pre_tc.scope_parallel_check_workers)
 				&& (building_v || !scope_prealloc_check
 					|| a.nodes.len < scoped_serial_user_check_node_threshold)
+			check_may_be_parallel = parallel_semantic_check
 			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
 			if verbose {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -12008,6 +12091,29 @@ pub fn run(args []string) {
 		if prepare_markused_overlap {
 			prepared_markused.release()
 		}
+		if skip_library_bodies {
+			// The check found the types that markused resolves calls with, so
+			// markused can reach library functions that its first pass did not.
+			mut reached_later := 0
+			for {
+				reached := pre_tc.check_reached_library_bodies(used_fns, check_may_be_parallel)
+				if reached == 0 {
+					break
+				}
+				reached_later += reached
+				if pre_tc.errors.len > 0 {
+					print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+						check_only, message_limit, skip_notices)
+					exit(1)
+				}
+				// The types of those bodies can lead markused to more functions.
+				used_fns, uses_generics = v3_mark_used_for_program(a, mut pre_tc, scope_prealloc_markused,
+					effective_c_compiler == 'msvc', prefs.verbose)
+			}
+			if verbose {
+				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${reached_later} checked late (worker threads: ${a.worker_count()})')
+			}
+		}
 		mut prepared_transform := prepared_transform_thread.wait()
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
@@ -12077,7 +12183,9 @@ pub fn run(args []string) {
 		}
 		if backend == 'c' && cache_state.external_inputs_ready {
 			fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)
-			_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
+			if macos_v3_source_manifest {
+				_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
+			}
 		}
 		// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
 		// by default for compatible builds, and `-no-parallel` disables both threaded transform
@@ -13378,6 +13486,7 @@ pub fn run(args []string) {
 					eprintln('error reading cache-marked C source ${cache_plan_file}: ${err.msg()}')
 					exit(1)
 				}
+				object_compile_signature := compile_signature
 				compile_signature = v3_cached_object_wrapper_compile_signature(compile_signature, generated_source)
 				if generated_c_flags.len == 0 && !generic_cache_hit && !incremental_cache_hit
 					&& p.parsed_v_header_files == 0 {
@@ -13407,6 +13516,10 @@ pub fn run(args []string) {
 							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 							restart_v3_after_cache_invalidation()
 						}
+						// An incremental plan holds only the bodies that changed. The wrappers
+						// and the panic frames that select the cached module objects are in the
+						// prefix those objects were compiled with.
+						compile_signature = v3_cached_object_wrapper_compile_signature(object_compile_signature, cached_prefix)
 						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file, incremental_prefix_path, incremental_tcc_declarations_path, cached_prefix, compile_signature, a, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
@@ -13641,7 +13754,7 @@ pub fn run(args []string) {
 			}
 		}
 		mut cached_program_main_object := ''
-		if use_macos_dev_program_cache && !use_cached_dev_dylib && !is_c_debug && !needs_objective_c {
+		if use_macos_dev_program_cache && !use_cached_dev_dylib && !is_c_debug {
 			program_main_source := os.read_file(published_c_source) or {
 				eprintln('error reading cached program source ${published_c_source}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
@@ -13951,7 +14064,7 @@ pub fn run(args []string) {
 				}
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
 					fallback := v3_platform_c_compiler_command(host_os)
-					eprintln('warning: tcc compilation failed, falling back to ${fallback}')
+					eprintln(v3_explicit_tcc_fallback_warning(fallback, result.output))
 					// Recovery above already declined, so discarding the entries
 					// did not help. Name them: the fallback still produces a
 					// working binary, which is what makes this easy to miss.
@@ -14682,24 +14795,32 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 // error, else the first non-empty one, so an "In file included from" line does
 // not hide the actual error.
 fn v3_implicit_tcc_fallback_warning(fallback string, reason string) string {
-	mut cause := ''
-	for line in reason.split_into_lines() {
-		trimmed := line.trim_space()
-		if trimmed.len == 0 {
-			continue
-		}
-		if trimmed.to_lower().contains('error') {
-			cause = trimmed
-			break
-		}
-		if cause.len == 0 {
-			cause = trimmed
-		}
-	}
+	cause := v3_c_compiler_failure_reason(reason)
 	if cause.len == 0 {
 		return 'warning: implicit tcc could not be used for this build, regenerating it with ${fallback}'
 	}
 	return 'warning: implicit tcc could not be used for this build (${cause}), regenerating it with ${fallback}'
+}
+
+// v3_c_compiler_failure_reason selects an error line before include context, or the
+// first nonempty line when the compiler did not identify an error explicitly.
+fn v3_c_compiler_failure_reason(reason string) string {
+	mut cause := ''
+	for line in reason.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.len == 0 { continue }
+		if trimmed.to_lower().contains('error') { return trimmed }
+		if cause.len == 0 { cause = trimmed }
+	}
+	return cause
+}
+
+fn v3_explicit_tcc_fallback_warning(fallback string, reason string) string {
+	cause := v3_c_compiler_failure_reason(reason)
+	if cause.len == 0 {
+		return 'warning: tcc compilation failed, falling back to ${fallback}'
+	}
+	return 'warning: tcc compilation failed (${cause}), falling back to ${fallback}'
 }
 
 // v3_regenerate_after_implicit_tcc rebuilds the program for the platform C
@@ -16406,16 +16527,16 @@ fn same_dir_module_source_files(mut a flat.FlatAst, test_file string, module_nam
 	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir,
 		prefs.user_defines, prefs.target))
 	// A `subdirs` manifest makes several directories one source module. When a
-	// test file sits beside a source in one of those virtual directories, include
+	// test file sits in one of those virtual directories, include
 	// the complete module instead of only its physical-directory siblings.
 	vmod_root := nearest_vmod_root_for_file(test_file)
 	if vmod_root.len > 0 {
-		virtual_module_files := v3_directory_user_files(mut a, vmod_root, prefs, false, false) or {
+		virtual_module_files := v3_directory_user_files(mut a, vmod_root, prefs, true, false) or {
 			[]string{}
 		}
 		real_dir := os.real_path(dir)
 		if virtual_module_files.any(os.real_path(os.dir(it)) == real_dir) {
-			all_files = virtual_module_files.clone()
+			all_files = virtual_module_files.filter(!is_test_file_for_any_backend(it))
 		}
 	}
 	mut files := []string{}
@@ -16514,6 +16635,54 @@ fn append_declared_import(mut imports []string, line string) {
 	}
 }
 
+// Programs that use the `arena` module (vlib/arena) need the allocator hooks
+// of builtin, which every other program goes without: this define selects
+// them (see vlib/builtin/arena_d_builtin_arena.c.v). Builtin is parsed before
+// the imports of a program are resolved, so the driver adds the define when
+// the input file imports `arena` itself (v3_input_imports_arena), and builds
+// again with it when an imported module does (v3_rerun_with_builtin_arena).
+const v3_builtin_arena_define = 'builtin_arena'
+
+// v3_input_imports_arena reports whether the input file imports `arena`.
+fn v3_input_imports_arena(input_file string) bool {
+	if input_file in ['', '-'] || !os.is_file(input_file) {
+		return false
+	}
+	return 'arena' in declared_imports_in_file(input_file)
+}
+
+// v3_program_uses_arena reports whether the resolved imports of a program
+// include vlib's `arena` module.
+fn v3_program_uses_arena(a &flat.FlatAst, vroot string) bool {
+	mut arena_dir := ''
+	for _, dir in a.resolved_module_dirs {
+		if os.file_name(dir) != 'arena' {
+			continue
+		}
+		if arena_dir.len == 0 {
+			arena_dir = os.real_path(os.join_path(vroot, 'vlib', 'arena'))
+		}
+		if os.real_path(dir) == arena_dir {
+			return true
+		}
+	}
+	return false
+}
+
+// v3_rerun_with_builtin_arena builds the program again with the
+// `builtin_arena` define, for an import of `arena` that only the import
+// resolution found.
+fn v3_rerun_with_builtin_arena(args []string, question string) {
+	if os.getenv('V_DIAGNOSTICS_SERVER') != '' {
+		// The server parsed builtin once, without the define.
+		rerun_as_one_shot_check_with('the program imports `arena`', question, ['-d',
+			v3_builtin_arena_define])
+	}
+	mut rerun_args := ['-d', v3_builtin_arena_define]
+	rerun_args << args
+	run(rerun_args)
+}
+
 fn append_unique_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string) {
 	key := a.record_source_path(file)
 	if seen[key] {
@@ -16527,7 +16696,21 @@ fn declared_module_in_file(path string) string {
 	content := os.read_file(path) or { return '' }
 	mut in_block_comment := false
 	mut in_attr := false
-	for raw_line in content.split_into_lines() {
+	mut line_start := 0
+	for line_start < content.len {
+		// The lines that `split_into_lines` makes of the file, one at a time: the
+		// declaration is among the first of them, and the rest is never looked at.
+		mut line_end := line_start
+		for line_end < content.len && content[line_end] != `\n` && content[line_end] != `\r` {
+			line_end++
+		}
+		raw_line := content[line_start..line_end]
+		line_start = if line_end + 1 < content.len && content[line_end] == `\r`
+			&& content[line_end + 1] == `\n` {
+			line_end + 2
+		} else {
+			line_end + 1
+		}
 		mut line := raw_line.trim_space()
 		if in_block_comment {
 			if end := line.index('*/') {
@@ -17610,6 +17793,52 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 			tc.diagnostic_files[node.value] = true
 		}
 	}
+}
+
+// v3_library_source_files returns the parsed files of the standard library that are
+// not part of the program: its entry files and the modules of its project are
+// checked in full wherever they are.
+fn v3_library_source_files(a &flat.FlatAst, tc &types.TypeChecker, vroot string) map[string]bool {
+	mut files := map[string]bool{}
+	if vroot.len == 0 {
+		return files
+	}
+	real_vlib := os.real_path(os.join_path(vroot, 'vlib'))
+	for node in a.nodes {
+		if node.kind != .file || node.value.len == 0 || node.value in tc.diagnostic_files
+			|| types.is_module_cache_header(node.value) {
+			continue
+		}
+		if real_path_is_in_dir(a.real_source_path(node.value), real_vlib) {
+			files[node.value] = true
+		}
+	}
+	return files
+}
+
+// v3_mark_used_for_program runs markused as a plain build of a program does, in a
+// scope of its own when the stage scopes its scratch memory.
+fn v3_mark_used_for_program(a &flat.FlatAst, mut tc types.TypeChecker, scoped bool, full_runtime bool, verbose bool) (map[string]bool, bool) {
+	mut scope := unsafe { nil }
+	mut markused_tc := unsafe { &tc }
+	if scoped {
+		scope = prealloc_scope_begin_for_v3()
+		markused_tc = tc.fork_for_parallel_transform(a)
+		markused_tc.share_direct_dependencies_from(tc)
+		markused_tc.enable_scoped_parallel_workers()
+		markused_tc.verbose = verbose
+	}
+	mut used_fns, uses_generics := if full_runtime {
+		markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
+	} else {
+		markused.mark_used_with_generic_usage(a, markused_tc)
+	}
+	if scoped {
+		prealloc_scope_leave_for_v3(scope)
+		used_fns = clone_string_bool_map(used_fns)
+		prealloc_scope_free_for_v3(scope)
+	}
+	return used_fns, uses_generics
 }
 
 fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, include_imports bool, diagnostic_root string) {
@@ -19467,8 +19696,15 @@ fn trace_diagnostics_server(message string) {
 // a preparation cannot guarantee to match. A child that was to answer
 // `question` answers it there, as `-line-info` does.
 fn rerun_as_one_shot_check(reason string, question string) {
+	rerun_as_one_shot_check_with(reason, question, []string{})
+}
+
+// rerun_as_one_shot_check_with is rerun_as_one_shot_check with `extra_args`
+// before the original arguments.
+fn rerun_as_one_shot_check_with(reason string, question string, extra_args []string) {
 	trace_diagnostics_server('one-shot check: ${reason}')
-	mut args := os.args[1..].clone()
+	mut args := extra_args.clone()
+	args << os.args[1..]
 	if question != '' && args.len > 0 {
 		// Before the input, which the command line ends with.
 		args.insert(args.len - 1, ['-line-info', question])
@@ -21049,7 +21285,7 @@ fn source_file_line_count(paths []string, files map[int]&compiler_token.File) in
 	// tables instead of reading every source file again for the stage report.
 	mut counts := map[string]int{}
 	for _, file in files {
-		if !file.has_source_sha256() {
+		if !file.has_source_lines() {
 			continue
 		}
 		count := file.line_count()

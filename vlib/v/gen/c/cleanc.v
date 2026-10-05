@@ -18587,6 +18587,7 @@ fn (mut g FlatGen) preamble() {
 	} else {
 		g.headerless_libc_preamble()
 	}
+	g.thread_signal_stack_runtime(use_system_libc)
 	g.write_arch_macros()
 	g.panic_recovery_preamble()
 	g.writeln('')
@@ -18903,6 +18904,86 @@ fn (mut g FlatGen) thread_allocation_helpers() {
 	g.writeln('\tfree(ptr);')
 	g.writeln('#endif')
 	g.writeln('}')
+}
+
+// uses_thread_signal_stack reports whether spawn wrappers give their thread an
+// alternate signal stack. The segfault handler of builtin (segfault_handler_nix.h)
+// runs on it, so that it can still report a stack overflow of that thread.
+fn (g &FlatGen) uses_thread_signal_stack() bool {
+	return g.has_builtins && !g.target_libc_headers
+		&& g.target.os !in ['windows', 'vinix', 'wasm32', 'wasm32_emscripten', 'wasm32_wasi']
+		&& 'no_segfault_handler' !in g.compile_defines && 'freestanding' !in g.compile_defines
+}
+
+// thread_signal_stack_runtime writes `__v_thread_signal_stack_enter/leave`, that spawn
+// wrappers call at the start and at the end of a thread. Every alternate signal stack
+// starts with the 4-word header that segfault_handler_nix.h reads: a magic value, the
+// lowest and highest address of the thread stack, and the size of the mapping. Where
+// the alternate stack can not be used, or a sanitizer handles the signals, both are
+// no-op macros.
+fn (mut g FlatGen) thread_signal_stack_runtime(use_system_libc bool) {
+	if !use_system_libc || !g.uses_thread_signal_stack() {
+		g.writeln('#define __v_thread_signal_stack_enter(stack_top) ((void)(stack_top), (void*)0)')
+		g.writeln('#define __v_thread_signal_stack_leave(alt_stack) ((void)(alt_stack))')
+		return
+	}
+	g.writeln('#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__) || defined(__SANITIZE_HWADDRESS__)')
+	g.writeln('#define __V_NO_THREAD_SIGNAL_STACK 1')
+	g.writeln('#elif defined(__has_feature)')
+	g.writeln('#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || __has_feature(memory_sanitizer) || __has_feature(hwaddress_sanitizer)')
+	g.writeln('#define __V_NO_THREAD_SIGNAL_STACK 1')
+	g.writeln('#endif')
+	g.writeln('#endif')
+	g.writeln('#if !defined(_WIN32) && !defined(__V_NO_THREAD_SIGNAL_STACK) && defined(SA_ONSTACK) && defined(SS_DISABLE) && (defined(MAP_ANONYMOUS) || defined(MAP_ANON)) && !defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)')
+	g.writeln('static inline void* __v_thread_signal_stack_enter(void* stack_top) {')
+	g.writeln('\tstack_t old;')
+	g.writeln('\tmemset(&old, 0, sizeof(old));')
+	g.writeln('\tif (sigaltstack(NULL, &old) != 0 || !(old.ss_flags & SS_DISABLE)) { return NULL; }')
+	g.writeln('\tsize_t size = 64 * 1024;')
+	g.writeln('#if defined(_SC_MINSIGSTKSZ)')
+	g.writeln('\tlong min_size = sysconf(_SC_MINSIGSTKSZ);')
+	g.writeln('\tif (min_size > 0 && (size_t)min_size + 32 * 1024 > size) { size = (size_t)min_size + 32 * 1024; }')
+	g.writeln('#endif')
+	g.writeln('#if defined(MAP_ANONYMOUS)')
+	g.writeln('\tvoid* base = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);')
+	g.writeln('#else')
+	g.writeln('\tvoid* base = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);')
+	g.writeln('#endif')
+	g.writeln('\tif (base == MAP_FAILED) { return NULL; }')
+	g.writeln('#if defined(__APPLE__)')
+	g.writeln('\t(void)stack_top;')
+	g.writeln('\tuintptr_t hi = (uintptr_t)pthread_get_stackaddr_np(pthread_self());')
+	g.writeln('\tuintptr_t stack_size = (uintptr_t)pthread_get_stacksize_np(pthread_self());')
+	g.writeln('#else')
+	// The first V frame of the thread is close to the top of its stack, that has the
+	// requested size; the handler tolerates the small error of this estimate.
+	g.writeln('\tuintptr_t hi = (uintptr_t)stack_top;')
+	g.writeln('\tuintptr_t stack_size = (uintptr_t)V_THREAD_STACK_SIZE;')
+	g.writeln('#endif')
+	g.writeln('\tuintptr_t* header = (uintptr_t*)base;')
+	g.writeln('\theader[0] = (uintptr_t)0x56534f56u;')
+	g.writeln('\theader[1] = hi > stack_size ? hi - stack_size : 0;')
+	g.writeln('\theader[2] = hi;')
+	g.writeln('\theader[3] = (uintptr_t)size;')
+	g.writeln('\tstack_t ss;')
+	g.writeln('\tmemset(&ss, 0, sizeof(ss));')
+	g.writeln('\tss.ss_sp = base;')
+	g.writeln('\tss.ss_size = size;')
+	g.writeln('\tif (sigaltstack(&ss, NULL) != 0) { munmap(base, size); return NULL; }')
+	g.writeln('\treturn base;')
+	g.writeln('}')
+	g.writeln('static inline void __v_thread_signal_stack_leave(void* alt_stack) {')
+	g.writeln('\tif (alt_stack == NULL) { return; }')
+	g.writeln('\tstack_t ss;')
+	g.writeln('\tmemset(&ss, 0, sizeof(ss));')
+	g.writeln('\tss.ss_flags = SS_DISABLE;')
+	g.writeln('\tif (sigaltstack(&ss, NULL) != 0) { return; }')
+	g.writeln('\tmunmap(alt_stack, (size_t)((uintptr_t*)alt_stack)[3]);')
+	g.writeln('}')
+	g.writeln('#else')
+	g.writeln('#define __v_thread_signal_stack_enter(stack_top) ((void)(stack_top), (void*)0)')
+	g.writeln('#define __v_thread_signal_stack_leave(alt_stack) ((void)(alt_stack))')
+	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) thread_stack_size_definition() {
@@ -21556,7 +21637,14 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline double math__abs(double a) { return a < 0 ? -a : a; }')
 	g.writeln('static inline double math__min(double a, double b) { return a < b ? a : b; }')
 	g.writeln('static const u64 _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};')
+	// The folded 128-bit product of two words, which the map of a program hashes
+	// its string keys with. The portable form computes the same product from four
+	// 64-bit ones, for a compiler without a 128-bit integer.
+	g.writeln('#if defined(__SIZEOF_INT128__) && !defined(__TINYC__)')
+	g.writeln('static inline u64 _wymix(u64 a, u64 b) { unsigned __int128 r = (unsigned __int128)a * b; return (u64)r ^ (u64)(r >> 64); }')
+	g.writeln('#else')
 	g.writeln('static inline u64 _wymix(u64 a, u64 b) { u64 ha = a >> 32, hb = b >> 32, la = (u32)a, lb = (u32)b, hi, lo; u64 rh = ha * hb, rm0 = ha * lb, rm1 = hb * la, rl = la * lb, t = rl + (rm0 << 32), c = t < rl; lo = t + (rm1 << 32); c += lo < t; hi = rh + (rm0 >> 32) + (rm1 >> 32) + c; return lo ^ hi; }')
+	g.writeln('#endif')
 	g.writeln('static inline u64 wyhash64(u64 a, u64 b) { a ^= _wyp[0]; b ^= _wyp[1]; a *= 0xa0761d6478bd642full; b *= 0xe7037ed1a0b428dbull; return (a ^ (a >> 32)) ^ (b ^ (b >> 32)); }')
 	// Map keys are hashed on every lookup, so this mixes a 64-bit word per step
 	// instead of a byte. Assembling the word from its bytes is defined for any
@@ -21713,10 +21801,16 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	}
 	g.writeln('static inline string v3_f64_exp(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*E", precision, x) : snprintf(tmp, sizeof(tmp), "%.*e", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*E", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*e", precision, x); return (string){.str = out, .len = n, .is_lit = 0}; }')
 	g.writeln('static inline string v3_f64_general(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*G", precision, x) : snprintf(tmp, sizeof(tmp), "%.*g", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*G", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*g", precision, x); return (string){.str = out, .len = n, .is_lit = 0}; }')
-	g.writeln("static inline string v3_string_zpad(string s, int width) { if (s.len >= width) return s; int sign = s.len > 0 && s.str[0] == '-'; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); int pos = 0; if (sign) out[pos++] = '-'; memset(out + pos, '0', (size_t)pad); pos += pad; memcpy(out + pos, s.str + sign, (size_t)(s.len - sign)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
+	// A float precision with no `f` verb: `precision` decimals with trailing zeros trimmed,
+	// or the exponent form with `precision - 1` decimals outside [1e-5, 999999).
+	g.writeln('static inline string v3_f64_trimmed(double x, int precision) { if (x == 0.0) return signbit(x) ? v3_c_lit("-0", 2) : v3_c_lit("0", 1); double d = fabs(x); string s = !isfinite(x) || (d < 999999.0 && d >= 0.00001) ? v3_f64_fixed(x, precision) : v3_f64_exp(x, precision > 0 ? precision - 1 : 0, 0); if (s.is_lit) return s; int mant = s.len; int dot = -1; for (int i = 0; i < s.len; ++i) { if (s.str[i] == \'.\') dot = i; if (s.str[i] == \'e\') { mant = i; break; } } if (dot < 0) return s; int end = mant; while (end > dot + 1 && s.str[end - 1] == \'0\') --end; if (end == dot + 1) --end; memmove(s.str + end, s.str + mant, (size_t)(s.len - mant)); s.len -= mant - end; s.str[s.len] = 0; return s; }')
+	g.writeln('static inline string v3_string_plus_sign(string s) { if (s.len > 0 && (s.str[0] == \'-\' || s.str[0] == \'+\')) return s; return string__plus(v3_c_lit("+", 1), s); }')
+	g.writeln("static inline string v3_string_zpad(string s, int width) { if (s.len >= width) return s; int sign = s.len > 0 && (s.str[0] == '-' || s.str[0] == '+'); int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); int pos = 0; if (sign) out[pos++] = s.str[0]; memset(out + pos, '0', (size_t)pad); pos += pad; memcpy(out + pos, s.str + sign, (size_t)(s.len - sign)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
 	g.writeln('static inline string v3_int_zpad(${g.int_ct} n, int width) { return v3_string_zpad(int__str(n), width); }')
 	g.writeln('static inline string v3_i64_zpad(i64 n, int width) { return v3_string_zpad(i64__str(n), width); }')
 	g.writeln('static inline string v3_u64_zpad(u64 n, int width) { return v3_string_zpad(u64__str(n), width); }')
+	// Zero-pad a formatted float after its sign; `inf`/`nan` are space-padded, as in C.
+	g.writeln("static inline string v3_f64_zpad(string s, int width) { int sign = s.len > 0 && (s.str[0] == '-' || s.str[0] == '+'); if (s.len <= sign || s.str[sign] < '0' || s.str[sign] > '9') return v3_string_pad(s, width, 0); return v3_string_zpad(s, width); }")
 	g.writeln("static inline string v3_string_rpad_zero(string s, int width) { if (s.len >= width) return s; u8* out = malloc_noscan((ptrdiff_t)width + 1); memcpy(out, s.str, (size_t)s.len); memset(out + s.len, '0', (size_t)(width - s.len)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
 	// The 128-bit printers only exist when the program uses those types, so the map
 	// printer reaches for the preamble's decimal helpers instead, and only when one
@@ -22625,7 +22719,15 @@ fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
 // exist during early boot.
 fn (g &FlatGen) global_is_thread_local(name string) bool {
 	return g.target.os != 'vinix' && (name.contains('__anon_fn_')
-		|| g.is_builtin_autostr_addr_state(name) || g.is_builtin_panic_state(name))
+		|| g.is_builtin_autostr_addr_state(name) || g.is_builtin_panic_state(name)
+		|| g.is_builtin_arena_top(name))
+}
+
+// Each thread has its own stack of scoped arenas (see
+// vlib/builtin/arena_d_builtin_arena.c.v), so a spawned thread starts with the
+// default allocator.
+fn (g &FlatGen) is_builtin_arena_top(name string) bool {
+	return name == 'g_arena_top' && (g.global_modules[name] or { '' }) == 'builtin'
 }
 
 // Every thread unwinds its own stack, so the panic frames it links are its own.

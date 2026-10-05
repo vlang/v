@@ -1,5 +1,10 @@
 Update the V compiler to the latest version from https://github.com/vlang/v.
 
+After updating the checkout, it skips rebuilding the compiler if its implementation
+sources and dependencies have not changed since the executable's recorded revision.
+Documentation and test-only changes do not trigger a rebuild. An unknown revision,
+a failed source comparison, or -prod, -skip_v_self or -skip_current forces rebuilding.
+
 It also reports the agent skills installed for this user, in ~/.agents/skills,
 that the new revision left behind. Skills with local changes, and skills
 installed before V recorded what it installed, are reported but left alone;

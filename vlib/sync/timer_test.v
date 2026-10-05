@@ -1,11 +1,13 @@
-module time
+module sync
+
+import time
 
 // Leave enough headroom for heavily loaded CI runners to schedule both sides of
 // the channel handoff before the timer expires.
-const timer_test_timeout = 5 * second
+const timer_test_timeout = 5 * time.second
 
 fn test_timer_fires_once() {
-	timer := new_timer(10 * millisecond)
+	timer := new_timer(10 * time.millisecond)
 	select {
 		fired_at := <-timer.c {
 			assert fired_at.unix() > 0
@@ -25,7 +27,7 @@ fn test_timer_stop_prevents_firing() {
 		_ := <-timer.c {
 			assert false, 'stopped timer fired'
 		}
-		20 * millisecond {
+		20 * time.millisecond {
 		}
 	}
 }

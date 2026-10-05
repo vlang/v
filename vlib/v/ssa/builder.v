@@ -1184,7 +1184,6 @@ fn (mut b Builder) register_functions() {
 	b.register_rand_prng_interface_stubs()
 	b.register_embed_file_interface_stubs()
 	b.register_pthread_compat_stubs()
-	b.register_closure_once_stub()
 	b.register_prealloc_allocator_stubs()
 	b.register_prealloc_atomic_stubs()
 	b.register_atomic_builtin_stubs()
@@ -4119,24 +4118,6 @@ fn (mut b Builder) register_pthread_compat_stubs() {
 	setkind_id := b.register_synthetic_c_function('pthread_rwlockattr_setkind_np', b.i32_type,
 		p_setkind)
 	b.generate_const_body_with_params(setkind_id, b.i32_type, '0', p_setkind)
-}
-
-fn (mut b Builder) register_closure_once_stub() {
-	callback_type := b.m.type_store.get_ptr(b.i8_type)
-	params := [callback_type]
-	func_id := b.register_synthetic_c_function('v_closure_init_once', b.void_type, params)
-	once_flag := b.m.add_global('v3_closure_init_once_done', b.i1_type)
-	entry := b.m.add_block(func_id, 'closure_once_entry')
-	callback := b.func_add_argument(func_id, callback_type, 'init_fn')
-	done := b.block_instr1(.load, entry, b.i1_type, once_flag)
-	call_init := b.m.add_block(func_id, 'closure_once_call')
-	return_block := b.m.add_block(func_id, 'closure_once_return')
-	b.block_instr3(.br, entry, b.void_type, done, ValueID(return_block), ValueID(call_init))
-	true_value := b.m.get_or_add_const(b.i1_type, '1')
-	b.block_instr2(.store, call_init, b.void_type, true_value, once_flag)
-	b.block_instr1(.call_indirect, call_init, b.void_type, callback)
-	b.block_instr1(.jmp, call_init, b.void_type, ValueID(return_block))
-	b.block_instr0(.ret, return_block, b.void_type)
 }
 
 fn (mut b Builder) register_rand_prng_interface_stubs() {

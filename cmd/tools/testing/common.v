@@ -825,8 +825,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.build_tools {
 		// `v build-tools`, produce all executables in the same session folder, so that they can be copied later:
 		test_folder_path = ts.vtmp_dir
-	} else {
-		os.mkdir_all(test_folder_path) or {}
 	}
 	fname := os.file_name(file)
 	// There are test files ending with `_test.v`, `_test.c.v` and `_test.js.v`.
@@ -852,12 +850,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
 	}
-	defer {
-		if produces_file_output && ts.rm_binaries {
-			os.rmdir_all(test_folder_path) or {}
-		}
-	}
-
 	mut skip_running := '-skip-running'
 	if ts.show_stats {
 		skip_running = ''
@@ -918,6 +910,22 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			), mtc)
 		}
 		return pool.no_result
+	}
+	if produces_file_output && !ts.build_tools {
+		os.mkdir_all(test_folder_path) or {
+			ts.benchmark_fail()
+			tls_bench.fail()
+			ts.add_failed_cmd(reproduce_cmd)
+			ts.append_message(.fail, tls_bench.step_message_with_label(benchmark.b_fail,
+				'${normalised_relative_file}\n>> could not create test folder ${test_folder_path}: ${err}'),
+				mtc)
+			return pool.no_result
+		}
+	}
+	defer {
+		if produces_file_output && ts.rm_binaries {
+			os.rmdir_all(test_folder_path) or {}
+		}
 	}
 	mut test_succeeded := true
 	mut compile_cmd_duration := time.Duration(0)
@@ -1382,11 +1390,15 @@ fn check_modern_openssl_present() bool {
 	if res.exit_code != 0 {
 		return false
 	}
-	line := res.output.trim_space()
-	if !line.starts_with('OpenSSL ') {
+	return has_modern_openssl_version(res.output)
+}
+
+fn has_modern_openssl_version(output string) bool {
+	words := output.fields()
+	if words.len < 2 || words[0] != 'OpenSSL' {
 		return false
 	}
-	version := semver.coerce(line) or { return false }
+	version := semver.coerce(words[1].all_before('-')) or { return false }
 	return version.satisfies('>=3.5.0')
 }
 

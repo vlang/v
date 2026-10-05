@@ -1,0 +1,5 @@
+vlib/v/checker/tests/struct_init_with_invalid_type_name_err.vv:1:1: error: struct name `_zbr_ty_Point` must begin with capital letter
+    1 | struct _zbr_ty_Point {
+      | ~~~~~~~~~~~~~~~~~~~~
+    2 |     x int
+    3 | }

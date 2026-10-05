@@ -1,0 +1,14 @@
+vlib/v/checker/tests/map_value_field_postfix_immutable_err.vv:14:2: error: `heroes` is immutable, declare it with `mut` to make it mutable
+   12 |         'a': Hero{}
+   13 |     }
+   14 |     heroes['a'].level++
+      |     ~~~~~~
+   15 |     mut frozen := {
+   16 |         'a': Frozen{}
+vlib/v/checker/tests/map_value_field_postfix_immutable_err.vv:18:14: error: field `level` of struct `Frozen` is immutable
+   16 |         'a': Frozen{}
+   17 |     }
+   18 |     frozen['a'].level++
+      |                 ~~~~~
+   19 |     println(heroes['a'].level)
+   20 |     println(frozen['a'].level)

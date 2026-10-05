@@ -1042,7 +1042,7 @@ fn (t &Transformer) checker_struct_field_type_name(type_name string, field_name 
 	if checker_typ := t.tc.struct_field_type_name(lookup_type, field_name) {
 		return checker_typ
 	}
-	if lookup_type.contains('.') {
+	if is_qualified_type_name_text(lookup_type) {
 		short := lookup_type.all_after_last('.')
 		if checker_typ := t.tc.struct_field_type_name(short, field_name) {
 			return checker_typ
@@ -1062,6 +1062,21 @@ fn (t &Transformer) checker_struct_field_type_name(type_name string, field_name 
 	return none
 }
 
+// is_qualified_type_name_text reports whether `text` is a module-qualified type name
+// (`mod.Type`, `a.b.Type`): only name characters and dots. A composite type such as
+// `[]mod.Type` or `map[string]mod.Type` is not, so its last segment is not its name.
+fn is_qualified_type_name_text(text string) bool {
+	if !text.contains('.') {
+		return false
+	}
+	for c in text {
+		if !(c.is_letter() || c.is_digit() || c == `_` || c == `.`) {
+			return false
+		}
+	}
+	return true
+}
+
 // lookup_struct_info_for_field resolves lookup struct info for field information for transform.
 fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name string) ?StructFieldLookup {
 	if type_name == '' || field_name == '' {
@@ -1073,7 +1088,7 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 	if is_generic_app {
 		lookup_type = base
 	}
-	if lookup_type !in t.structs && lookup_type.contains('.') {
+	if lookup_type !in t.structs && is_qualified_type_name_text(lookup_type) {
 		short_type := lookup_type.all_after_last('.')
 		if short_type in t.structs {
 			lookup_type = short_type

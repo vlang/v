@@ -85,6 +85,26 @@ fn test_node_uses_compact_header_and_uncommon_payload() {
 	assert sizeof(NodeId) == 4
 }
 
+fn test_canonical_comptime_type_payload_survives_owned_cloning() {
+	node := Node{
+		kind:    .comptime_for
+		typ:     'config.Cfg'
+		payload: canonical_comptime_type_payload
+	}
+	assert !isnil(node.payload_ptr())
+	assert node.generic_constraints().len == 0
+	assert node.generic_params().len == 0
+	cloned := node.clone_owned()
+	assert cloned.typ == 'config.Cfg'
+	assert cloned.payload == canonical_comptime_type_payload
+	assert !isnil(cloned.payload_ptr())
+	assert cloned.generic_params().len == 0
+	mut a := FlatAst.new()
+	id := a.add_node(node)
+	a.intern_node_texts_from(0)
+	assert a.node(id).payload == canonical_comptime_type_payload
+}
+
 fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	node := Node{
 		value:          'value'
@@ -175,6 +195,41 @@ fn test_text_intern_passes_detach_reused_source_storage() {
 		assert ast.text(TextId(node.type_text_id())) == name
 		assert node.value.str == node.typ.str
 	}
+}
+
+fn test_text_intern_passes_can_share_probe_caches() {
+	mut ast := FlatAst.new()
+	mut source := []u8{len: 5}
+	borrowed := unsafe { tos(source.data, source.len) }
+	mut values := new_text_probe_cache()
+	mut types := new_text_probe_cache()
+	names := ['alpha', 'bravo', 'cider', 'alpha']
+	for i, name in names {
+		for j in 0 .. source.len {
+			source[j] = name[j]
+		}
+		ast.add_node(Node{
+			value: borrowed
+			typ:   borrowed
+		})
+		// One pair of caches serves every pass, as a parser's does for the files of a
+		// batch: a pass must not reuse what the one before it found at the same address.
+		ast.intern_node_texts_range_cached(i, i + 1, mut values, mut types)
+	}
+	for i, name in names {
+		node := ast.nodes[i]
+		assert node.value == name
+		assert node.typ == name
+		assert ast.text(TextId(node.type_text_id())) == name
+		assert node.value.str == node.typ.str
+		assert node.value.str != borrowed.str
+	}
+	assert ast.nodes[0].value.str == ast.nodes[3].value.str
+	assert ast.text_count() == 3
+	// An empty or reversed range reads nothing.
+	ast.intern_node_texts_range_cached(4, 4, mut values, mut types)
+	ast.intern_node_texts_range_cached(3, 1, mut values, mut types)
+	assert ast.text_count() == 3
 }
 
 fn test_promote_transform_texts_rebuilds_scoped_table_growth() {

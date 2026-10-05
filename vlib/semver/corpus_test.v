@@ -147,6 +147,33 @@ const conforming = [
 	Case{'2.0.0-beta.4', '^1.2.3-beta.2', false, 'a different tuple, so excluded'},
 	Case{'1.2.3-beta.4', '^1.2.3-beta.2', true, ''},
 	Case{'1.0.0', '<1.0.0-alpha', false, ''},
+	// prerelease ordering
+	Case{'1.0.0-alpha', '>=1.0.0-alpha <1.0.0', true, 'the comparator names a prerelease ' +
+		'of 1.0.0, which admits it, and a prerelease sorts below its release'},
+	Case{'1.0.0-beta', '>1.0.0-alpha', true, 'alpha sorts below beta'},
+	Case{'1.0.0-alpha.2', '>1.0.0-alpha.1', true, 'numeric identifiers compare as numbers'},
+	Case{'1.0.0-alpha.10', '>1.0.0-alpha.9', true, 'numerically, not as text'},
+	Case{'1.0.0', '>1.0.0-alpha', true, 'a release outranks the prerelease before it'},
+	Case{'1.0.0-1', '<1.0.0-beta', true, 'a numeric identifier sorts below alphanumeric'},
+	Case{'1.0.0-1710000000000', '>=1.0.0-1710000000001', false, 'numbers too large ' +
+		'for an int still compare as numbers'},
+	// prerelease admission
+	Case{'1.0.0-alpha', '^1.0.0', false, 'no comparator in the set carries a prerelease'},
+	Case{'1.0.0-alpha', '>=0.9.0', false, 'same rule'},
+	Case{'1.0.0-alpha', '*', false, '* := >=0.0.0, which names no prerelease'},
+	Case{'1.2.4-beta.2', '^1.2.3-beta.2', false, 'the prerelease is named on 1.2.3, and ' +
+		'1.2.4-beta.2 is a different tuple'},
+	Case{'1.2.3-beta.2', '^1.2.3-beta.2', true, 'the same tuple, so admitted'},
+	Case{'1.2.3-beta.3', '~1.2.3-beta.2', true, ''},
+	Case{'1.2.9', '~1.2.3-beta.2', true, ''},
+	Case{'1.3.0-alpha', '~1.2.3-beta.2', false, 'the ceiling is <1.3.0-0, which carries ' +
+		'no prerelease of its own'},
+	Case{'1.3.0-0', '~1.2.3-beta.2', false, ''},
+	Case{'1.3.0-beta.1', '~1.2.3-beta.2', false, ''},
+	Case{'0.3.0-alpha', '~0.2.3-rc.1', false, ''},
+	Case{'1.0.0-alpha', '^1.0.0 || ^2.0.0-alpha', false, 'the other arm names a ' +
+		'prerelease of 2.0.0, which does not admit a prerelease of 1.0.0, and neither ' +
+		'arm satisfies the comparator either'},
 	// shapes taken from real usage in the V ecosystem
 	Case{'0.1.47', '^0.1.47', true, ''},
 	Case{'0.1.47', '^0.1.0', true, ''},
@@ -160,25 +187,7 @@ const conforming = [
 //
 // These are pinned rather than asserted as correct. A resolver built on top of
 // this has to know about every row here.
-const divergent = [
-	Case{'1.0.0-alpha', '>=1.0.0-alpha <1.0.0', false, 'node-semver: the >=1.0.0-alpha ' +
-		'comparator admits prereleases of 1.0.0, and a prerelease sorts below its ' +
-		'release, so true. compare.v compare_lt never looks at the prerelease; it ' +
-		'falls through to a patch comparison of 0 against 0.'},
-	Case{'1.0.0-beta', '>1.0.0-alpha', false, 'node-semver: alpha sorts below beta, so ' +
-		'true. Same cause: prerelease identifiers are never compared.'},
-	Case{'1.0.0-alpha.2', '>1.0.0-alpha.1', false, 'node-semver: numeric prerelease ' +
-		'identifiers compare numerically, so true. Same cause.'},
-	Case{'1.0.0-alpha', '^1.0.0', true, 'node-semver excludes a prerelease unless some ' +
-		'comparator in the set carries one on the same [major, minor, patch], so false. ' +
-		'There is no prerelease admission check at all.'},
-	Case{'1.0.0-alpha', '>=0.9.0', true, 'node-semver: false, same rule.'},
-	Case{'1.0.0-alpha', '*', true, 'node-semver: * := >=0.0.0 and admits non-prereleases ' +
-		'only, so false. Same missing check.'},
-	Case{'1.2.4-beta.2', '^1.2.3-beta.2', true, 'node-semver: only prereleases of the ' +
-		'1.2.3 tuple are admitted, so false. This module admits any prerelease once ' +
-		'the range mentions one anywhere.'},
-]
+const divergent = []Case{}
 
 // ranges outside the grammar, which must not match anything.
 const rejected = [
@@ -238,19 +247,39 @@ fn test_an_unreadable_range_is_reported_as_no_match() {
 	assert satisfies('1.2.3', '>=1.0.0 <2.0.0')
 }
 
-// The ordering operators do not order prereleases at all: two versions that differ
-// only in their prerelease tag come out as neither `<` nor `>`, and yet both `<=`
-// and `>=` hold, because `Version` overloads only `==` and `<` and the compiler
-// derives the rest. That is an inconsistent relation, and it is why the prerelease
-// rows in the tables above cannot simply be fixed in the range layer.
-fn test_prereleases_have_no_ordering() {
+// A prerelease sorts below the release it precedes, and every ordering operator
+// agrees with that in both directions.
+//
+// This used to assert the opposite. `Version` overloads only `==` and `<`, and
+// `compare_lt` never read the prerelease, so two versions differing only in
+// their tag came out as neither `<` nor `>` while both `<=` and `>=` held — an
+// inconsistent relation, which is why the prerelease rows above could not be
+// fixed in the range layer alone.
+fn test_prereleases_sort_below_their_release() {
 	alpha := semver.from('1.0.0-alpha') or { panic('bad alpha') }
 	release := semver.from('1.0.0') or { panic('bad release') }
-	assert !(alpha < release)
+	assert alpha < release
 	assert !(release < alpha)
 	assert alpha <= release
-	assert release <= alpha
-	assert alpha >= release
+	assert !(release <= alpha)
+	assert !(alpha >= release)
 	assert release >= alpha
 	assert alpha != release
+}
+
+// Numeric identifiers too large for an `int`, such as a timestamp, are ordered
+// by their value rather than coming out equal, and the operators agree.
+fn test_large_numeric_prerelease_identifiers_are_ordered() {
+	older := semver.from('1.0.0-nightly.20240315123045') or { panic('bad older') }
+	newer := semver.from('1.0.0-nightly.20240316000000') or { panic('bad newer') }
+	assert older < newer
+	assert !(newer < older)
+	assert older <= newer
+	assert !(newer <= older)
+	assert newer >= older
+	assert older != newer
+	max_int := semver.from('1.0.0-2147483647') or { panic('bad max_int') }
+	past_max_int := semver.from('1.0.0-2147483648') or { panic('bad past_max_int') }
+	assert max_int < past_max_int
+	assert !(past_max_int < max_int)
 }

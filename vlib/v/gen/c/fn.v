@@ -3645,7 +3645,8 @@ fn (g &FlatGen) expr_is_stable_for_reuse(id flat.NodeId) bool {
 			node.children_count > 0 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
 		}
 		.index {
-			node.children_count >= 2 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
+			node.children_count >= 2 && !g.assert_index_is_overloaded(node)
+				&& g.expr_is_stable_for_reuse(g.a.child(&node, 0))
 				&& g.expr_is_stable_for_reuse(g.a.child(&node, 1))
 		}
 		else {
@@ -4368,7 +4369,16 @@ fn (mut g FlatGen) spawn_wrapper_body(call_expr string, ret_ct string, post stri
 	return g.spawn_wrapper_body_with_pre(call_expr, ret_ct, '', post)
 }
 
-fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, pre string, post string) string {
+fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, user_pre string, user_post string) string {
+	mut pre := user_pre
+	mut post := user_post
+	if g.uses_thread_signal_stack() {
+		// The wrapper is the first V frame of a spawned thread. Give the thread an
+		// alternate signal stack, so that the segfault handler can still report a
+		// stack overflow. `&arg` marks the top of the thread stack, for the handler.
+		pre = 'void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); ${pre}'
+		post = '${post}__v_thread_signal_stack_leave(__v3_signal_stack); '
+	}
 	if ret_ct == 'void' || ret_ct.len == 0 {
 		return '${pre}${call_expr}; ${post}return NULL;'
 	}
