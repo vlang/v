@@ -1462,6 +1462,10 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unsupported_generics:           tc.reject_unsupported_generics
 		checker_fixture_mode:                  tc.checker_fixture_mode
 		is_test:                               tc.is_test
+		// Each scoped fork carries its ancestors' concrete checks, without sharing
+		// mutable visited maps with another worker. Completed summaries are immutable.
+		checked_comptime_method_calls:         tc.checked_comptime_method_calls.clone()
+		comptime_method_calls_by_decl:         tc.comptime_method_calls_by_decl.clone()
 		check_concrete_generic_bodies:         tc.check_concrete_generic_bodies
 		check_generic_bodies:                  tc.check_generic_bodies
 		module_diagnostic_root:                tc.module_diagnostic_root
@@ -19131,7 +19135,14 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 		return ComptimeStaticValueCases{}
 	}
 	lookup_type := if is_generic { generic_base } else { clean_type }
-	struct_name := tc.comptime_static_struct_name(lookup_type) or {
+	// A forwarded main-owned type is locked as `main.Type` so an imported
+	// helper cannot rebase it. The collected main symbol still has a bare key.
+	canonical_lookup := if lookup_type.starts_with('main.') {
+		tc.parse_type(lookup_type).name()
+	} else {
+		lookup_type
+	}
+	struct_name := tc.comptime_static_struct_name(canonical_lookup) or {
 		return ComptimeStaticValueCases{}
 	}
 	generic_params := if is_generic {

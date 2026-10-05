@@ -3599,8 +3599,9 @@ Note that you have to add `mut` before `nums` when calling this function. This m
 it clear that the function being called will modify the value.
 
 Generic comptime method calls enforce the same mutable pointer parameter requirements
-as calls through a concrete receiver type. An explicit `mut param &T` requires a
-mutable `&T` variable, rather than a `mut param T` value parameter.
+as calls through a concrete receiver type, including calls forwarded through generic functions
+and methods. An explicit `mut param &T` requires a mutable `&T` variable, rather than a
+`mut param T` value parameter.
 
 It is preferable to return values instead of modifying arguments,
 e.g. `user = register(user)` (or `user.register()`) instead of `register(mut user)`.
