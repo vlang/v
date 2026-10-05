@@ -6380,6 +6380,27 @@ For developers willing to have more low-level control, memory can be managed man
 Arena allocation is available via a `-prealloc` flag. Note: currently this mode is only
 suitable to speed up short lived, single-threaded, batch-like programs (like compilers).
 
+For scoped arenas, use the `arena` module: while an arena is pushed on a thread, all V
+allocations on that thread (strings, arrays, maps, ...) come from it, and they are released
+together by `reset()` or `free()`. This keeps memory bounded in long-running, multi-threaded
+programs built with `-gc none`. It also works with the default GC, but not with `-prealloc`.
+
+```v
+import arena
+
+mut a := arena.new()
+mut results := []string{}
+for i in 0 .. 3 {
+	a.push()
+	s := 'iteration ${i}: ' + 'x'.repeat(i)
+	a.pop()
+	results << s.clone() // copy the value out of the arena
+	a.reset() // reuse the arena memory in the next iteration
+}
+a.free()
+println(results)
+```
+
 ### Control
 
 You can take advantage of V's autofree engine and define a `free()` method on custom

@@ -22594,7 +22594,14 @@ fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
 // exist during early boot.
 fn (g &FlatGen) global_is_thread_local(name string) bool {
 	return g.target.os != 'vinix' && (name.contains('__anon_fn_')
-		|| g.is_builtin_autostr_addr_state(name) || g.is_builtin_panic_state(name))
+		|| g.is_builtin_autostr_addr_state(name) || g.is_builtin_panic_state(name)
+		|| g.is_builtin_arena_top(name))
+}
+
+// Each thread has its own stack of scoped arenas (see vlib/builtin/arena.c.v),
+// so a spawned thread starts with the default allocator.
+fn (g &FlatGen) is_builtin_arena_top(name string) bool {
+	return name == 'g_arena_top' && (g.global_modules[name] or { '' }) == 'builtin'
 }
 
 // Every thread unwinds its own stack, so the panic frames it links are its own.
