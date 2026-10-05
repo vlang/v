@@ -35,7 +35,10 @@ fn create_local_git_module(repo_path string, module_name string) string {
 // advance_local_git_module adds another commit to the repository at
 // `repo_path` and returns the sha of its new HEAD.
 fn advance_local_git_module(repo_path string) string {
-	os.write_file(os.join_path(repo_path, 'feature.v'), 'module feature\n') or { panic(err) }
+	// Append, so that every call has a change to commit.
+	feature_path := os.join_path(repo_path, 'feature.v')
+	content := os.read_file(feature_path) or { 'module feature\n' }
+	os.write_file(feature_path, content + '// advanced\n') or { panic(err) }
 	cmd_ok_args(@LOCATION, ['git', '-C', repo_path, 'add', 'feature.v'])
 	cmd_ok_args(@LOCATION,
 		['git', '-C', repo_path, '-c', 'user.email=ci@vlang.io', '-c', 'user.name=V CI', 'commit',
