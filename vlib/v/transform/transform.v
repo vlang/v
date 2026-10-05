@@ -3973,6 +3973,13 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				} else {
 					0
 				}
+				// A region is a share of the pool by cost, and the node count of a
+				// dense `match` is less than what lowering its branches appends.
+				match_est := if t.skip_generics && !t.building_v {
+					t.fn_span_match_lowering_estimate(range_lo, i)
+				} else {
+					0
+				}
 				if est_profile {
 					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 				}
@@ -3989,7 +3996,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				} else {
-					adj_cost := cost + str_est + map_est
+					adj_cost := cost + str_est + map_est + match_est
 					pure << FnWorkItem{
 						fn_idx:                    i
 						range_lo:                  range_lo
