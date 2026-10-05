@@ -21519,7 +21519,8 @@ fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
-// The parser requires a group when an if condition starts with another if or match.
+// The parser requires a group when an if condition starts with a match. It rejects a group
+// that starts with another if, except in translated code.
 fn (tc &TypeChecker) if_condition_starts_with_conditional(id flat.NodeId) bool {
 	mut current := id
 	for tc.valid_node_id(current) {

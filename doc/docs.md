@@ -2118,8 +2118,10 @@ if a < b {
 `if` statements are pretty straightforward and similar to most other languages.
 Unlike other C-like languages,
 there are no parentheses surrounding the condition and the braces are always required.
-When the condition starts with another `if` or a `match` expression, parentheses are required
-around the condition, for example `if (if enabled { true } else { false }) { ... }`.
+The condition cannot start with another `if`, not even a parenthesized one: store the result of
+the inner `if` expression in a variable first.
+When the condition starts with a `match` expression, parentheses are required around the
+condition, for example `if (match enabled { true { false } else { true } }) { ... }`.
 
 #### `If` expressions
 Unlike C, V does not have a ternary operator, that would allow you to do: `x = c ? 1 : 2` .

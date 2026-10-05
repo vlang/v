@@ -8723,6 +8723,8 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
 			p.tok_pos, p.tok_end)
 		p.next()
+	} else if p.tok == .lpar && !p.is_translated {
+		p.check_parenthesized_if_condition()
 	} else if !p.prefs.is_fmt && p.tok == .name && p.lit in p.cur_fn_generic_params
 		&& p.peek() == .key_is {
 		p.record_diagnostic_span('use `$if` instead of `if`', if_start, if_start + 2)
@@ -8823,6 +8825,27 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(if_start)
 	})
+}
+
+// check_parenthesized_if_condition rejects an `if` condition that starts with another `if`
+// behind one or more opening parentheses, e.g. `if (if a { b } else { c }) {`. The parentheses
+// would otherwise hide the nested `if` from the `if if` check in if_stmt.
+fn (mut p Parser) check_parenthesized_if_condition() {
+	mut next := p.peek()
+	mut start := p.peek_pos
+	mut end := p.peek_end
+	if next == .lpar {
+		mut lookahead := p.s
+		for next == .lpar {
+			next = lookahead.scan()
+			start = lookahead.pos
+			end = lookahead.offset
+		}
+	}
+	if next == .key_if {
+		p.record_diagnostic_span('the condition of an `if` cannot start with a parenthesized `if` expression; assign it to a variable first',
+			start, end)
+	}
 }
 
 fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
