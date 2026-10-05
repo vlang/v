@@ -166,6 +166,30 @@ fn test_realloc_copies_arena_memory_out_after_pop() {
 	assert m[4999] == 9998
 }
 
+fn test_v_realloc_of_an_older_block_in_the_current_arena() {
+	mut a := arena.new()
+	defer {
+		a.free()
+	}
+	a.push()
+	p := unsafe { malloc(16) }
+	unsafe { vmemset(p, 1, 16) }
+	q := unsafe { malloc(16) }
+	unsafe { vmemset(q, 2, 16) }
+	// `p` is not the newest allocation, so it is copied to a new block of the
+	// arena right after `q`; without the old size, the copy must not overlap it.
+	r := unsafe { v_realloc(p, 100) }
+	a.pop()
+	assert r != p
+	assert a.owns(r)
+	unsafe {
+		for i in 0 .. 16 {
+			assert r[i] == 1
+			assert q[i] == 2
+		}
+	}
+}
+
 fn worker(id int) int {
 	if arena.active() {
 		// Spawned threads must start with the default allocator.

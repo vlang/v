@@ -311,6 +311,11 @@ fn arena_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 		if available < n {
 			n = available
 		}
+		// A new block in the same chunk starts at or after the end of the old
+		// one, so the bytes before it hold all of the old block.
+		if usize(new_ptr) > usize(old_data) && usize(new_ptr) - usize(old_data) < usize(n) {
+			n = isize(usize(new_ptr) - usize(old_data))
+		}
 		C.memcpy(new_ptr, old_data, usize(n))
 		return new_ptr
 	}
