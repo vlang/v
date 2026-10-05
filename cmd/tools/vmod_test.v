@@ -2,7 +2,7 @@ import os
 
 const vexe = os.quoted_path(@VEXE)
 
-const tfolder = os.join_path(os.vtmp_dir(), 'vmod_test')
+const tfolder = os.join_path(os.vtmp_dir(), 'vmod_test_${os.getpid()}')
 
 // write_file creates `path` and its parent folders.
 fn write_file(path string, content string) ! {
@@ -210,4 +210,32 @@ fn test_v_mod_why_preserves_imports_in_comptime_declaration_branches() {
 	unused := mod_why('string')
 	assert unused.exit_code == 0, unused.output
 	assert unused.output.trim_space() == '(main module does not need module `string`)', unused.output
+}
+
+fn test_v_mod_why_selects_the_shortest_import_chain() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport near\nimport far\nfn main() { println(near.value() + far.value()) }\n')!
+	write_module('near', 'module near\nimport shared\npub fn value() int { return shared.value() }\n')!
+	write_module('far', 'module far\nimport mid\npub fn value() int { return mid.value() }\n')!
+	write_module('mid', 'module mid\nimport shared\npub fn value() int { return shared.value() }\n')!
+	write_module('shared', 'module shared\npub fn value() int { return 1 }\n')!
+	res := mod_why('shared')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['app', 'near', 'shared'], res.output
+}
+
+fn test_v_mod_why_handles_import_cycles_and_unreachable_modules() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport near\nimport far\nfn main() {}\n')!
+	write_module('near', 'module near\nimport cycle\n')!
+	write_module('cycle', 'module cycle\nimport near\n')!
+	write_module('far', 'module far\nimport mid\n')!
+	write_module('mid', 'module mid\nimport shared\n')!
+	write_module('shared', 'module shared\nimport far\n')!
+	res := mod_why('shared')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['app', 'far', 'mid', 'shared'], res.output
+	unreachable := mod_why('orphan')
+	assert unreachable.exit_code == 0, unreachable.output
+	assert unreachable.output.trim_space() == '(main module does not need module `orphan`)', unreachable.output
 }
