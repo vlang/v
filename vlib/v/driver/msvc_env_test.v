@@ -239,13 +239,47 @@ fn test_msvc_include_and_lib_cover_the_runtime_the_toolset_and_the_sdk() {
 }
 
 fn test_msvc_parse_registry_value() {
+	mut env := MsvcTestEnvironment{}
+	defer { env.restore() }
+	env.set('V_MSVC_UNDEFINED_REGISTRY_TEST', '')
 	output := '\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots\r\n    KitsRoot10    REG_SZ    C:\\Program Files (x86)\\Windows Kits\\10\\\r\n\r\n'
 	assert msvc_parse_registry_value(output, 'KitsRoot10') == r'C:\Program Files (x86)\Windows Kits\10\'
-	assert msvc_parse_registry_value('    KitsRoot10\tREG_EXPAND_SZ\t%X%\\kits', 'KitsRoot10') == r'%X%\kits'
+	assert msvc_parse_registry_value('    KitsRoot10\tREG_EXPAND_SZ\t%V_MSVC_UNDEFINED_REGISTRY_TEST%\\kits',
+		'KitsRoot10') == r'%V_MSVC_UNDEFINED_REGISTRY_TEST%\kits'
 	assert msvc_parse_registry_value('    KitsRoot10    REG_DWORD    0x1', 'KitsRoot10') == ''
 	assert msvc_parse_registry_value('ERROR: The system was unable to find the specified registry key or value.',
 		'KitsRoot10') == ''
 	assert msvc_parse_registry_value('', 'KitsRoot10') == ''
+}
+
+fn test_msvc_expandable_registry_paths_find_the_sdk() {
+	root := msvc_test_root('registry_expand')
+	mut env := MsvcTestEnvironment{}
+	defer {
+		env.restore()
+		os.rmdir_all(root) or {}
+	}
+	kits := os.join_path(root, 'kits with spaces')
+	msvc_test_sdk(kits, '10.0.19041.0', ['x64'])
+	env.set('V_MSVC_REGISTRY_TEST_ROOT', kits)
+	env.set('V_MSVC_UNDEFINED_REGISTRY_TEST', '')
+	value := msvc_parse_registry_value('KitsRoot10 REG_EXPAND_SZ %V_MSVC_REGISTRY_TEST_ROOT%',
+		'KitsRoot10')
+	assert value == kits
+	sdk := msvc_find_windows_sdk([value], 'x64') or {
+		assert false, 'the SDK under an expanded registry root was not found'
+		return
+	}
+	assert sdk.root == kits
+	assert msvc_parse_registry_value('KitsRoot10 REG_SZ %V_MSVC_REGISTRY_TEST_ROOT%',
+		'KitsRoot10') == '%V_MSVC_REGISTRY_TEST_ROOT%'
+	assert msvc_expand_registry_environment('%V_MSVC_UNDEFINED_REGISTRY_TEST%/kits') ==
+		'%V_MSVC_UNDEFINED_REGISTRY_TEST%/kits'
+	assert msvc_expand_registry_environment('kits%unfinished') == 'kits%unfinished'
+	assert msvc_expand_registry_environment('kits%%') == 'kits%%'
+	env.set('V_MSVC_REGISTRY_TEST_ROOT', '%V_MSVC_UNDEFINED_REGISTRY_TEST%')
+	assert msvc_expand_registry_environment('%V_MSVC_REGISTRY_TEST_ROOT%') ==
+		'%V_MSVC_UNDEFINED_REGISTRY_TEST%'
 }
 
 fn test_msvc_prepare_environment_sets_up_what_a_developer_prompt_would() {
@@ -518,6 +552,85 @@ fn test_msvc_prepare_environment_swaps_a_cl_for_another_architecture() {
 	assert again.saved.map(it.name) == ['INCLUDE', 'LIB']
 	assert os.getenv('PATH') == x86_dir
 	assert os.getenv('LIB') == msvc_lib_value(tools, sdk, 'x86')
+}
+
+fn test_msvc_prepare_environment_reports_an_unavailable_target_compiler() {
+	root := msvc_test_root('unavailable_target')
+	mut env := MsvcTestEnvironment{}
+	defer {
+		env.restore()
+		os.rmdir_all(root) or {}
+	}
+	tools := msvc_test_install(os.join_path(root, 'vs'), '14.51.1')
+	os.rmdir_all(os.join_path(tools, 'lib', 'x64')) or { panic(err) }
+	os.rmdir_all(os.join_path(tools, 'bin', 'Hostx64', 'x64')) or { panic(err) }
+	kits := os.join_path(root, 'kits')
+	msvc_test_sdk(kits, '10.0.19041.0', ['x86'])
+	x86_dir, x86_cl := msvc_test_cl(tools, 'x86')
+	target := pref.Target{
+		os:   'windows'
+		arch: 'amd64'
+	}
+	env.set('PATH', x86_dir)
+	env.set('VCToolsInstallDir', tools)
+	env.set('WindowsSdkDir', kits)
+	env.set('ProgramFiles(x86)', '')
+	env.set('ProgramFiles', '')
+	for existing in ['', 'already provided'] {
+		env.set('INCLUDE', existing)
+		env.set('LIB', existing)
+		prepared := msvc_prepare_environment('cl', target)
+		assert prepared.problem.contains('x64'), prepared.problem
+		assert prepared.saved.len == 0
+		assert os.getenv('PATH') == x86_dir
+		assert os.getenv('INCLUDE') == existing
+		assert os.getenv('LIB') == existing
+	}
+	// Naming the available x86 compiler by its path remains an explicit choice.
+	env.set('INCLUDE', '')
+	env.set('LIB', '')
+	explicit := msvc_prepare_environment(x86_cl, target)
+	assert explicit.problem == '', explicit.problem
+	assert os.getenv('PATH') == x86_dir
+	sdk := MsvcWindowsSdk{
+		root:    kits
+		version: '10.0.19041.0'
+	}
+	assert os.getenv('LIB') == msvc_lib_value(tools, sdk, 'x86')
+}
+
+fn test_msvc_prepare_environment_finds_a_target_toolset_after_a_wrong_arch_cl() {
+	root := msvc_test_root('target_toolset')
+	mut env := MsvcTestEnvironment{}
+	defer {
+		env.restore()
+		os.rmdir_all(root) or {}
+	}
+	tools := msvc_test_install(os.join_path(root, 'vs'), '14.51.1')
+	os.rmdir_all(os.join_path(tools, 'lib', 'x64')) or { panic(err) }
+	os.rmdir_all(os.join_path(tools, 'bin', 'Hostx64', 'x64')) or { panic(err) }
+	other := msvc_test_install(os.join_path(root, 'other'), '14.52.1')
+	kits := os.join_path(root, 'kits')
+	msvc_test_sdk(kits, '10.0.19041.0', ['x64'])
+	x86_dir, _ := msvc_test_cl(tools, 'x86')
+	target := pref.Target{
+		os:   'windows'
+		arch: 'amd64'
+	}
+	env.set('PATH', x86_dir)
+	env.set('INCLUDE', '')
+	env.set('LIB', '')
+	env.set('VCToolsInstallDir', other)
+	env.set('WindowsSdkDir', kits)
+	prepared := msvc_prepare_environment('cl', target)
+	assert prepared.problem == '', prepared.problem
+	assert os.getenv('PATH').starts_with(os.join_path(other, 'bin', 'Hostx64', 'x64'))
+	sdk := MsvcWindowsSdk{
+		root:    kits
+		version: '10.0.19041.0'
+	}
+	assert os.getenv('INCLUDE') == msvc_include_value(other, sdk)
+	assert os.getenv('LIB') == msvc_lib_value(other, sdk, 'x64')
 }
 
 fn test_msvc_prepare_environment_keeps_a_cl_that_is_named_by_its_path() {

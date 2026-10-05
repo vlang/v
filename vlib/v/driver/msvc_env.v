@@ -240,8 +240,35 @@ fn msvc_find_windows_sdk(roots []string, arch string) ?MsvcWindowsSdk {
 	return none
 }
 
-// msvc_parse_registry_value returns the text of a REG_SZ or REG_EXPAND_SZ value in the output
-// of `reg query`, or ''.
+// msvc_expand_registry_environment replaces defined %NAME% references in a registry path.
+// Unknown variables, unmatched percent signs, and percent signs in replacements stay literal.
+fn msvc_expand_registry_environment(value string) string {
+	mut expanded := []u8{cap: value.len}
+	mut i := 0
+	for i < value.len {
+		if value[i] != `%` {
+			expanded << value[i]
+			i++
+			continue
+		}
+		offset := value[i + 1..].index_u8(`%`)
+		if offset < 0 {
+			expanded << value[i..].bytes()
+			break
+		}
+		end := i + 1 + offset
+		if replacement := os.getenv_opt(value[i + 1..end]) {
+			expanded << replacement.bytes()
+		} else {
+			expanded << value[i..end + 1].bytes()
+		}
+		i = end + 1
+	}
+	return expanded.bytestr()
+}
+
+// msvc_parse_registry_value returns a REG_SZ or REG_EXPAND_SZ value in `reg query` output,
+// expanding environment references only for REG_EXPAND_SZ, or '' when no value matches.
 fn msvc_parse_registry_value(output string, name string) string {
 	for line in output.split_into_lines() {
 		trimmed := line.trim_space()
@@ -251,7 +278,12 @@ fn msvc_parse_registry_value(output string, name string) string {
 		rest := trimmed[name.len..].trim_space()
 		kind := rest.all_before(' ').all_before('\t')
 		if kind in ['REG_SZ', 'REG_EXPAND_SZ'] {
-			return rest[kind.len..].trim_space()
+			value := rest[kind.len..].trim_space()
+			return if kind == 'REG_EXPAND_SZ' {
+				msvc_expand_registry_environment(value)
+			} else {
+				value
+			}
 		}
 	}
 	return ''
@@ -373,16 +405,18 @@ fn msvc_prepare_environment(c_compiler string, target pref.Target) MsvcPreparati
 	cl_path := os.find_abs_path_of_executable(c_compiler) or { '' }
 	need_include := os.getenv('INCLUDE') == ''
 	need_lib := os.getenv('LIB') == ''
-	if cl_path != '' && !need_include && !need_lib {
-		return prepared
-	}
 	target_arch := msvc_arch_dir(target.arch)
 	if target_arch == '' {
 		return prepared
 	}
-	// A `cl` that is already there decides the toolset to use, and the architecture to build for.
+	// A compiler named by its path is the user's choice, including its target architecture.
 	location := msvc_cl_location(cl_path) or { MsvcClLocation{} }
-	mut arch := if location.target != '' { location.target } else { target_arch }
+	named_by_path := c_compiler.contains('/') || c_compiler.contains('\\')
+	wrong_arch := location.target != '' && location.target != target_arch && !named_by_path
+	if cl_path != '' && !need_include && !need_lib && !wrong_arch {
+		return prepared
+	}
+	mut arch := if named_by_path && location.target != '' { location.target } else { target_arch }
 	mut tools_dir := location.tools_dir
 	if tools_dir == '' || !msvc_tools_dir_usable(tools_dir, arch) {
 		tools_dir = msvc_find_tools_dir(arch)
@@ -393,14 +427,12 @@ fn msvc_prepare_environment(c_compiler string, target pref.Target) MsvcPreparati
 	}
 	// The `cl` that runs has to build for the architecture that V generates C for. A compiler
 	// named by its path is the user's choice, and stays.
-	named_by_path := c_compiler.contains('/') || c_compiler.contains('\\')
-	wrong_arch := location.target != '' && location.target != target_arch && !named_by_path
 	if cl_path == '' || wrong_arch {
 		cl_dir := msvc_find_cl_dir(tools_dir, msvc_arch_dir(pref.host_arch()), target_arch)
 		if cl_dir != '' && msvc_tools_dir_usable(tools_dir, target_arch) {
 			msvc_set_variable(mut prepared.saved, 'PATH', msvc_path_with_front(cl_dir))
 			arch = target_arch
-		} else if cl_path == '' {
+		} else {
 			prepared.problem = msvc_no_tools_message(target_arch)
 			return prepared
 		}
