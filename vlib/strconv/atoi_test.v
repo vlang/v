@@ -445,3 +445,34 @@ fn test_common_parse_uint2_compatibility() {
 		assert a0.str() == query[1]
 	}
 }
+
+fn test_parse_base_zero_implicit_octal() {
+	for input, expected in {
+		'0':    u64(0)
+		'00':   0
+		'07':   7
+		'010':  8
+		'0777': 511
+		'0644': 420
+		'0_10': 8
+		'07_7': 63
+	} {
+		assert strconv.parse_uint(input, 0, 64)! == expected
+		assert strconv.parse_int(input, 0, 64)! == i64(expected)
+		assert strconv.parse_int('+' + input, 0, 64)! == i64(expected)
+		assert strconv.parse_int('-' + input, 0, 64)! == -i64(expected)
+	}
+	for input in ['08', '09', '099', '0_8', '0_', '0__7'] {
+		if value := strconv.parse_uint(input, 0, 64) {
+			assert false, '${input} parsed as ${value}'
+		}
+		if value := strconv.parse_int(input, 0, 64) {
+			assert false, '${input} parsed as ${value}'
+		}
+	}
+	assert strconv.parse_int('0777', 10, 64)! == 777
+	assert strconv.parse_uint('08', 10, 64)! == 8
+	assert strconv.parse_int('0o777', 0, 64)! == 511
+	assert strconv.parse_uint('0b101', 0, 64)! == 5
+	assert strconv.parse_int('0x10', 0, 64)! == 16
+}

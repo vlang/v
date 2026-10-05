@@ -2,6 +2,23 @@
 
 `strconv` provides functions for converting strings to numbers and numbers to strings.
 
+## Integer parsing
+
+`parse_int` and `parse_uint` accept an explicit base from 2 to 36, or base 0
+for prefix inference: `0b` selects binary, `0o` or a bare leading `0` selects
+octal, and `0x` selects hexadecimal. Other inputs use decimal. Use base 10
+when leading zeros should remain decimal digits.
+
+```v
+import strconv
+
+assert strconv.parse_int('0777', 0, 64)! == 511
+assert strconv.parse_uint('010', 0, 64)! == 8
+assert strconv.parse_int('0777', 10, 64)! == 777
+```
+
+Digits must be valid for the selected base, so `08` and `09` fail with base 0.
+
 ## Buffer formatting
 
 `write_dec` and `write_dec_u` write a decimal integer into a caller-provided `[]u8`

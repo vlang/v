@@ -43,36 +43,25 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	mut start_index := 0
 
 	if base == 0 {
-		// Look for octal, binary and hex prefix.
+		// A leading zero implies octal unless an explicit prefix selects another base.
 		base = 10
 		if s[0] == `0` {
-			ch := if s.len > 1 { s[1] | 32 } else { `0` }
+			base = 8
 			if s.len >= 3 {
+				ch := s[1] | 32
 				if ch == `b` {
 					base = 2
-					start_index += 2
+					start_index = 2
 				} else if ch == `o` {
-					base = 8
-					start_index += 2
+					start_index = 2
 				} else if ch == `x` {
 					base = 16
-					start_index += 2
+					start_index = 2
 				}
-
-				// check for underscore after the base prefix
-				if s[start_index] == `_` {
+				// An underscore may immediately follow an explicit base prefix.
+				if start_index == 2 && s[start_index] == `_` {
 					start_index++
 				}
-			}
-			// manage leading zeros in decimal base's numbers
-			// otherwise it is an octal for C compatibility
-			// TODO: Check if this behaviour is logically right
-			else if s.len >= 2 && (s[1] >= `0` && s[1] <= `9`) {
-				base = 10
-				start_index++
-			} else {
-				base = 8
-				start_index++
 			}
 		}
 	}
