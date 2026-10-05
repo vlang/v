@@ -163,23 +163,36 @@ fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! 
 		assert result.output.contains('not recompiling V.') == !should_rebuild, result.output
 		os.write_file(os.join_path(sources, path), 'original\n')!
 	}
-	for option in ['-prod', '-skip_current', '-skip_v_self'] {
-		os.write_file(log, '')!
-		result := run_vup(root, home, tool, bin_dir, option)!
-		assert result.exit_code == 0, result.output
-		assert !result.output.contains('not recompiling V.'), result.output
-		calls := os.read_file(log)!
-		if option == '-skip_v_self' {
-			assert calls.contains('make \n'), calls
-		} else {
-			assert calls.contains(if option == '-prod' { 'v -prod self\n' } else { 'v self\n' }), calls
+	for checkout_hash in ['0000000000000000000000000000000000000001', hash] {
+		os.write_file(os.join_path(root, '.git', 'refs', 'heads', 'master'), checkout_hash + '\n')!
+		for option in ['-prod', '-skip_current', '-skip_v_self'] {
+			os.write_file(log, '')!
+			result := run_vup(root, home, tool, bin_dir, option)!
+			assert result.exit_code == 0, result.output
+			assert !result.output.contains('not recompiling V.'), result.output
+			assert !result.output.contains('V is already updated.'), result.output
+			calls := os.read_file(log)!
+			if option == '-skip_v_self' {
+				assert calls.contains('make \n'), calls
+			} else {
+				assert calls.contains(if option == '-prod' { 'v -prod self\n' } else { 'v self\n' }), calls
+			}
 		}
 	}
+	os.write_file(os.join_path(root, '.git', 'refs', 'heads', 'master'),
+		'0000000000000000000000000000000000000001\n')!
 	// An unavailable revision must conservatively rebuild, rather than skip.
 	os.rm(os.join_path(sources, '.git', 'HEAD'))!
 	os.write_file(log, '')!
 	result := run_vup(root, home, tool, bin_dir)!
 	assert result.exit_code == 0, result.output
+	assert os.read_file(log)!.contains('v self\n')
+	// The filesystem revision is also needed before the same-revision shortcut.
+	os.rm(os.join_path(root, '.git', 'HEAD'))!
+	os.write_file(log, '')!
+	unknown_checkout := run_vup(root, home, tool, bin_dir)!
+	assert unknown_checkout.exit_code == 0, unknown_checkout.output
+	assert !unknown_checkout.output.contains('V is already updated.'), unknown_checkout.output
 	assert os.read_file(log)!.contains('v self\n')
 }
 

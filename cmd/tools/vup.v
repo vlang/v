@@ -96,9 +96,15 @@ fn main() {
 		eprintln('Try running `${get_tcc_update_cmd()}` .')
 		exit(1)
 	}
-	current_v_hash := app.current_v_hash() or { @VCURRENTHASH }
-	current_hash_from_filesystem := version.githash(vroot) or { current_v_hash }
-	if !app.skip_current && current_v_hash == current_hash_from_filesystem {
+	current_v_hash := app.current_v_hash() or {
+		// A fallback-built tool can restore a missing primary compiler at its own
+		// revision. An existing compiler with an unknown revision must rebuild.
+		if !os.exists(app.current_vexe_path()) { @VCURRENTHASH } else { '' }
+	}
+	current_hash_from_filesystem := version.githash(vroot) or { '' }
+	if !app.skip_current && !app.is_prod && !app.skip_v_self
+		&& current_v_hash != '' && current_hash_from_filesystem != ''
+		&& current_v_hash == current_hash_from_filesystem {
 		println('V is already updated.')
 		current_vexe_path := app.current_vexe_path()
 		if !os.exists(current_vexe_path) {
@@ -117,7 +123,8 @@ fn main() {
 	if os.user_os() == 'windows' {
 		app.backup('cmd/tools/vup.exe')
 	}
-	if app.skip_current || app.is_prod || app.skip_v_self || !app.compiler_sources_unchanged() {
+	if app.skip_current || app.is_prod || app.skip_v_self || current_v_hash == ''
+		|| current_hash_from_filesystem == '' || !app.compiler_sources_unchanged() {
 		if !app.recompile_v() {
 			app.show_current_v_version()
 			eprintln('Recompiling V *failed*.')
