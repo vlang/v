@@ -221,6 +221,10 @@ const node_payload_chunk_size = 1 << node_payload_chunk_bits
 const node_payload_chunk_mask = node_payload_chunk_size - 1
 const node_payload_max_chunks = 4096
 
+// canonical_comptime_type_payload marks an already resolved reflection type without an allocation.
+// Its reserved id is outside the table range; node_payload_at returns a static empty payload.
+pub const canonical_comptime_type_payload = u32(0xffffffff)
+
 struct NodePayloadTable {
 mut:
 	chunks [node_payload_max_chunks]voidptr
@@ -229,6 +233,7 @@ mut:
 
 __global g_node_payload_table &NodePayloadTable
 __global g_node_payload_lock u32
+__global g_canonical_comptime_payload NodePayload
 
 // node_payload registers an uncommon node payload and returns its id, or 0
 // for an empty list.
@@ -279,7 +284,11 @@ pub fn node_payload_with_constraints(generic_params []string, generic_constraint
 }
 
 // node_payload_at resolves a payload id registered by node_payload; 0 yields nil.
+// canonical_comptime_type_payload yields a static empty payload that outlives all arenas.
 pub fn node_payload_at(id u32) &NodePayload {
+	if id == canonical_comptime_type_payload {
+		return &g_canonical_comptime_payload
+	}
 	if id == 0 {
 		return &NodePayload(unsafe { nil })
 	}
@@ -351,7 +360,7 @@ pub mut:
 	value          string
 	typ            string
 	children_start i32
-	payload        u32 // node_payload() id, 0 = none; see payload_ptr/generic_params
+	payload        u32 // payload id or canonical_comptime_type_payload; 0 = none
 	is_mut         bool
 	kind           NodeKind
 	op             Op
@@ -1150,7 +1159,11 @@ pub fn (n Node) clone_owned() Node {
 	return Node{
 		value:          n.value.clone()
 		typ:            n.typ.clone()
-		payload:        node_payload_with_constraints(params, constraints)
+		payload:        if n.payload == canonical_comptime_type_payload {
+			canonical_comptime_type_payload
+		} else {
+			node_payload_with_constraints(params, constraints)
+		}
 		pos:            n.pos
 		children_start: n.children_start
 		children_count: n.children_count

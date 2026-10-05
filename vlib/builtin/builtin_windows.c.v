@@ -349,6 +349,12 @@ fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 		0x4001000A, 0x40010006, 0x406D1388, 0xE06D7363 {
 			return 0
 		}
+		0xC00000FD {
+			// EXCEPTION_STACK_OVERFLOW: the filter runs on what is left of the
+			// overflowed stack, so only write the message, without a backtrace.
+			msg := c'V panic: stack overflow\n'
+			write_buf_to_fd_kernel32(2, &u8(msg), vstrlen_char(msg))
+		}
 		else {
 			eprintln('Unhandled Exception 0x' + ptr_str(e.exception_record.code) + ' at ' +
 				ptr_str(e.exception_record.address))

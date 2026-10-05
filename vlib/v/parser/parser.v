@@ -101,6 +101,9 @@ mut:
 	next_file_id                 int = 1
 	cur_module                   string
 	is_translated                bool
+	is_generated                 bool            // `@[generated] module x`: type names need not be capitalized
+	file_type_names              map[string]bool // types declared so far in the current file
+	file_type_names_indexed      int             // nodes before this index are in `file_type_names`
 	cur_fn                       string
 	cur_fn_offset                int = -1
 	unclosed_fn_offset           int = -1 // cur_fn_offset of the last function reported as missing its `}`
@@ -356,6 +359,7 @@ pub fn (mut p Parser) release_source_storage() {
 	p.peek_lit = ''
 	p.cur_module = ''
 	p.is_translated = false
+	p.is_generated = false
 	p.cur_fn = ''
 	p.cur_struct = ''
 	p.pending_export = ''
@@ -426,6 +430,8 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.cur_file = path
 	p.cur_file_id = p.next_file_id
 	p.next_file_id++
+	p.file_type_names.clear()
+	p.file_type_names_indexed = p.a.nodes.len
 	p.tok_pos = 0
 	p.tok_end = 0
 	p.prev_tok_end = 0
@@ -433,6 +439,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.peek_end = 0
 	p.cur_module = ''
 	p.is_translated = false
+	p.is_generated = false
 	p.cur_fn = ''
 	p.unclosed_fn_offset = -1
 	p.defer_depth = 0
@@ -1501,8 +1508,13 @@ fn (mut p Parser) apply_decl_attrs(id flat.NodeId) {
 		p.pending_decl_attr_sources.clear()
 		return
 	}
-	if p.a.node(id).kind == .module_decl && 'translated' in p.pending_decl_attrs {
-		p.is_translated = true
+	if p.a.node(id).kind == .module_decl {
+		if 'translated' in p.pending_decl_attrs {
+			p.is_translated = true
+		}
+		if 'generated' in p.pending_decl_attrs {
+			p.is_generated = true
+		}
 	}
 	attr_id := p.add_node(flat.Node{
 		kind:    .directive
@@ -3507,6 +3519,89 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		payload: flat.node_payload_with_constraints(generic_params, named_constraints(generic_constraints))
 		pos:     p.span_to(type_start)
 	})
+}
+
+// is_generated_type_name reports whether `name`, which does not start with a capital
+// letter, is a type declared in the current `@[generated]` module. Generated code may
+// use any identifier as a type name, so there the capital-letter heuristic that tells
+// `Type{...}` and `Type(x)` apart from `expr {` and calls needs the declared names.
+fn (mut p Parser) is_generated_type_name(name string) bool {
+	return p.is_generated && p.is_lowercase_type_name(name)
+}
+
+// lowercase_type_name_starts_struct_init reports whether `name{` is a struct literal
+// of a type declared without a leading capital letter. Outside `@[generated]` modules
+// such a declaration is invalid, but parsing the literal lets the checker report the
+// declaration's name instead of `expression evaluated but not used` at the `{`. There
+// only the earlier declarations of the same file count: indexing the other files of
+// the module would cost every ordinary build a rescan of its sources.
+fn (mut p Parser) lowercase_type_name_starts_struct_init(name string) bool {
+	if p.is_generated {
+		return p.is_lowercase_type_name(name)
+	}
+	if p.cur_module == 'builtin' || !p.may_be_lowercase_type_name(name) {
+		return false
+	}
+	return p.resolve_local_type_name(name) != name || p.file_declares_type_name(name)
+}
+
+// may_be_lowercase_type_name reports whether `name`, which does not start with a capital
+// letter, can name a type of the current module rather than a value.
+fn (p &Parser) may_be_lowercase_type_name(name string) bool {
+	return name.len > 0 && !(name[0] >= `A` && name[0] <= `Z`) && !name.contains('.')
+		&& !is_builtin_type(name) && !p.is_local_binding(name)
+}
+
+// file_declares_type_name reports whether a type named `name` is declared earlier in
+// the current file. It indexes the nodes added since its previous call.
+fn (mut p Parser) file_declares_type_name(name string) bool {
+	if p.file_type_names_indexed > p.a.nodes.len {
+		p.file_type_names_indexed = p.a.nodes.len
+	}
+	for p.file_type_names_indexed < p.a.nodes.len {
+		node := p.a.nodes[p.file_type_names_indexed]
+		p.file_type_names_indexed++
+		if node.pos.id == p.cur_file_id
+			&& node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl] {
+			p.file_type_names[node.value] = true
+		}
+	}
+	return p.file_type_names[name]
+}
+
+// is_lowercase_type_name reports whether `name`, which does not start with a capital
+// letter, is a type declared in the current module.
+fn (mut p Parser) is_lowercase_type_name(name string) bool {
+	if !p.may_be_lowercase_type_name(name) {
+		return false
+	}
+	if p.resolve_local_type_name(name) != name {
+		return true
+	}
+	p.scan_translated_sizeof_declarations()
+	if p.prefs.is_fmt && p.is_generated {
+		p.scan_generated_sibling_files()
+	}
+	return p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(name)]
+}
+
+// scan_generated_sibling_files indexes the type declarations of every `.v` file next
+// to the current one. vfmt parses a single file, but a `@[generated]` module can use
+// type names declared in its other files, and misreading them would corrupt the code.
+fn (mut p Parser) scan_generated_sibling_files() {
+	key := p.translated_sizeof_declaration_key('\x01siblings')
+	if p.translated_sizeof_scanned_modules[key] {
+		return
+	}
+	p.translated_sizeof_scanned_modules[key] = true
+	dir := os.dir(p.cur_file)
+	current := os.file_name(p.cur_file)
+	for name in os.ls(dir) or { []string{} } {
+		if name == current || !name.ends_with('.v') {
+			continue
+		}
+		p.scan_translated_sizeof_sibling(os.join_path(dir, name))
+	}
 }
 
 fn (p &Parser) has_prior_type_declaration(name string) bool {
@@ -9628,7 +9723,8 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		}
 		return sel
 	}
-	if p.tok == .name && p.lit.len > 0 && p.lit[0] >= `A` && p.lit[0] <= `Z` {
+	if p.tok == .name && p.lit.len > 0
+		&& ((p.lit[0] >= `A` && p.lit[0] <= `Z`) || p.is_generated_type_name(p.lit)) {
 		name := p.parse_type_name()
 		return p.match_type_pattern_node(name)
 	}
@@ -11074,7 +11170,8 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				full_name := p.type_expr_name(lhs)
 				is_c_struct := full_name.starts_with('C.')
 					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
-				is_unknown_qualified_struct := p.in_struct_init_value > 0
+				// Generated modules may import types whose names start in lower case.
+				is_unknown_qualified_struct := (p.in_struct_init_value > 0 || p.is_generated)
 					&& p.imported_module_names[full_name.all_before('.')]
 					&& p.current_lcbr_looks_struct_init()
 				is_v_struct := !full_name.starts_with('C.')
@@ -11153,7 +11250,14 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				break
 			}
 			base_type_name := p.resolve_local_type_name(p.type_expr_name(lhs))
-			if !p.in_for_container && type_name_can_init(base_type_name)
+			// Imported generated types can start with a lowercase letter or underscore.
+			// A static import path followed by type arguments and `{` is a type literal;
+			// local values and container expressions retain their indexing interpretation.
+			is_imported_type := base_type_name.count('.') == 1
+				&& p.imported_module_names[base_type_name.all_before('.')]
+				&& !p.is_local_binding(base_type_name.all_before('.'))
+			if !p.in_for_container && (type_name_can_init(base_type_name)
+				|| p.is_generated_type_name(base_type_name) || is_imported_type)
 				&& p.current_generic_struct_init_suffix_followed_by_lcbr() {
 				before_suffix_offset := p.s.offset
 				suffix := p.parse_type_generic_suffix()
@@ -12444,13 +12548,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if p.tok == .lcbr && local_type_name.len > 0
 				&& (!p.in_for_container || p.current_lcbr_is_attached())
 				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
-					|| name in ['any', 'array', 'string', 'map', 'mapnode', '_result', '_option']) {
+					|| name in ['any', 'array', 'string', 'map', 'mapnode', '_result', '_option']
+					|| p.lowercase_type_name_starts_struct_init(name)) {
 				return p.struct_init(local_type_name)
 			}
 			// type cast: TypeName(expr) or builtin_type(expr)
 			if p.tok == .lpar && local_type_name.len > 0
 				&& ((local_type_name[0] >= `A` && local_type_name[0] <= `Z`)
-					|| is_builtin_type(name)) {
+					|| is_builtin_type(name) || p.is_generated_type_name(name)) {
 				p.next() // skip (
 				inner := p.expr(.lowest)
 				p.check(.rpar)
@@ -12502,7 +12607,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						return cast
 					}
 				}
-				if p.tok == .name && parser_name_can_start_pointer_type(p.lit) {
+				if p.tok == .name && p.name_can_start_pointer_type(p.lit) {
 					base_name := p.pointer_type_base_name(p.lit)
 					type_name := parser_pointer_type_name(2, base_name)
 					p.next()
@@ -12539,7 +12644,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				if cast := p.pointer_cast_expr_from_current_depth(1, amp_start) {
 					return cast
 				}
-			} else if p.tok == .name && parser_name_can_start_pointer_type(p.lit)
+			} else if p.tok == .name && p.name_can_start_pointer_type(p.lit)
 				&& !(p.lit == 'map' && p.peek() == .lsbr) {
 				saved_s := p.s
 				saved_tok := p.tok
@@ -12761,7 +12866,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					return cast
 				}
 			}
-			if p.tok == .name && parser_name_can_start_pointer_type(p.lit) && p.peek() == .lpar {
+			if p.tok == .name && p.name_can_start_pointer_type(p.lit) && p.peek() == .lpar {
 				type_name := parser_pointer_type_name(depth, p.pointer_type_base_name(p.lit))
 				p.next()
 				p.next()
@@ -15330,12 +15435,18 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 		'u32', 'u64', 'f32', 'f64', 'string', 'rune', 'usize', 'isize', 'voidptr'] {
 		return false
 	}
+	// `builtin` declares the other builtin types, such as `array`, so none of its
+	// consts has the name of one. Its directory is the largest to index, and every
+	// program parses it.
+	if !p.is_translated && p.cur_module == 'builtin' && is_builtin_type(name) {
+		return false
+	}
 	if p.resolve_local_type_name(name) != name {
 		return false
 	}
 	// A type that this module already declared is never read as a const operand,
-	// whatever its other files declare: `sizeof(array)` in `builtin` would index
-	// every file of the module on each build otherwise.
+	// whatever its other files declare, so no other module is indexed for one of
+	// its own types either.
 	if p.parsed_module_declares_type(name) {
 		return false
 	}
@@ -17876,6 +17987,10 @@ fn is_builtin_type(name string) bool {
 
 fn parser_name_can_start_pointer_type(name string) bool {
 	return is_builtin_type(name) || (name.len > 0 && name[0] >= `A` && name[0] <= `Z`)
+}
+
+fn (mut p Parser) name_can_start_pointer_type(name string) bool {
+	return parser_name_can_start_pointer_type(name) || p.is_generated_type_name(name)
 }
 
 fn (p &Parser) pointer_type_base_name(name string) string {

@@ -16,6 +16,7 @@ fn builtin_init() {
 	$if !vinix {
 		unbuffer_stdout()
 	}
+	install_segfault_handler()
 }
 
 fn break_if_debugger_attached() {
