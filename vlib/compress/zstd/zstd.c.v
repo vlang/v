@@ -7,6 +7,14 @@ import encoding.binary
 
 #flag -I @VMODROOT/thirdparty/zstd
 #flag linux -D_GNU_SOURCE
+
+// tcc advertises `__GNUC__ 4`, but does not provide `__builtin_prefetch`,
+// so disable the prefetch hints in the bundled zstd/xxHash sources for it.
+$if tinyc {
+	#flag -DNO_PREFETCH
+	#flag -DXXH_NO_PREFETCH
+}
+
 #include "zstd.c"	// msvc can't compile multiple source files, so included
 
 const frame_header_size_max = 18
