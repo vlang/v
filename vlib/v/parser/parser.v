@@ -11023,6 +11023,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// index / generic
 		if p.tok == .lsbr {
+			lhs_node := p.a.nodes[int(lhs)]
+			if lhs_node.kind == .postfix && lhs_node.op in [.inc, .dec] && p.prev_tok_end > 0
+				&& p.line_nr_for_pos(p.prev_tok_end - 1) < p.line_nr_for_pos(p.tok_pos) {
+				break
+			}
 			base_type_name := p.resolve_local_type_name(p.type_expr_name(lhs))
 			if !p.in_for_container && type_name_can_init(base_type_name)
 				&& p.current_generic_struct_init_suffix_followed_by_lcbr() {
