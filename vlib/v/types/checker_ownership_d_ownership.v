@@ -9,10 +9,12 @@ import v.gen.c.naming
 // compiler. Without it the only bound on returned-parameter paths lived in a test
 // assertion, while these two worklists were uncapped.
 //
-// Measured at master on `vlib/v/v.v` and `cmd/v`: the return prescan converges in
-// 9 rounds and the params prescan in 7, over roughly 15,000 functions. This leaves
-// about 7x headroom.
-const ownership_prescan_max_rounds = 64
+// An acyclic call chain can propagate one function per round in the opposite
+// direction to the scan. Allow a round per function and one to observe stability,
+// with at least 64 rounds for smaller programs and recursive fixed points.
+fn ownership_prescan_max_rounds(item_count int) int {
+	return if item_count < 64 { 64 } else { item_count + 1 }
+}
 
 enum OwnershipBorrowedProjectionAction {
 	not_borrowed
@@ -1882,8 +1884,9 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 		}
 	}
 	fn_items := tc.ownership_fn_scan_items()
-	tc.ownership_prescan_fn_returns(fn_items)
-	tc.ownership_prescan_owned_call_params(fn_items)
+	max_rounds := ownership_prescan_max_rounds(fn_items.len)
+	tc.ownership_prescan_fn_returns(fn_items, max_rounds)
+	tc.ownership_prescan_owned_call_params(fn_items, max_rounds)
 	tc.ownership_collect_globals_after_prescan()
 }
 
@@ -2425,7 +2428,7 @@ fn (mut tc TypeChecker) ownership_register_fn_param_mut_alias(name string, param
 	tc.ownership_state().ownership_fn_param_mut[name] = params.clone()
 }
 
-fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem) {
+fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem, max_rounds int) {
 	if items.len == 0 {
 		return
 	}
@@ -2446,7 +2449,7 @@ fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem
 			if !pending[item_idx] {
 				continue
 			}
-			if rounds > ownership_prescan_max_rounds {
+			if rounds > max_rounds {
 				not_converged_idx = item_idx
 				break
 			}
@@ -3734,7 +3737,7 @@ fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_
 	tc.ownership_note_fn_param_change(fn_name)
 }
 
-fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnScanItem) {
+fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnScanItem, max_rounds int) {
 	if tc.autofree_mode || items.len == 0 {
 		return
 	}
@@ -3769,7 +3772,7 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 			if !pending[item_idx] {
 				continue
 			}
-			if rounds > ownership_prescan_max_rounds {
+			if rounds > max_rounds {
 				not_converged_idx = item_idx
 				break
 			}
