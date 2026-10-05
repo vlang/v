@@ -64,12 +64,14 @@ fn parse_chunk_thread(arg voidptr) voidptr {
 	w.reserve_for_source(a.chunk_bytes)
 	paths := unsafe { &[]string(a.paths_ptr) }
 	mut starts := unsafe { &[]int(a.starts_ptr) }
+	w.begin_text_cache_batch(a.end - a.start)
 	for i in a.start .. a.end {
 		unsafe {
 			(*starts)[i] = w.a.nodes.len
 		}
 		w.parse_into((*paths)[i])
 	}
+	w.end_text_cache_batch()
 	parser_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
@@ -186,6 +188,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		w.parse_batch_paths = paths.clone()
 		w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
 		w.quick_source_sums = p.quick_source_sums
+		w.no_source_digests = p.no_source_digests
 		mut chunk_bytes := i64(0)
 		for i in bounds[ci + 1] .. bounds[ci + 2] {
 			chunk_bytes += sizes[i]
@@ -969,11 +972,7 @@ mut:
 }
 
 fn new_parse_merge_text_cache() &flat.TextProbeCache {
-	// Probes read a value/id only after its nonzero pointer key matches. Initialize
-	// the keys alone; cached strings already belong to the master's text table.
-	mut cache := unsafe { &flat.TextProbeCache(malloc_noscan(sizeof(flat.TextProbeCache))) }
-	cache.ptrs = unsafe { [4096]voidptr{} }
-	return cache
+	return flat.new_text_probe_cache()
 }
 
 // parse_merge_copy_thread copies one worker's nodes/children into the master
@@ -1079,19 +1078,7 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 }
 
 fn clone_parser_source_file(file &token.File) &token.File {
-	mut file_set := token.FileSet.new()
-	mut stored_file := file_set.add_file(file.name.clone(), file.size)
-	if file.has_source_sha256() {
-		stored_file.set_source_sha256(file.source_sha256())
-	}
-	if file.has_source_quick_sum() {
-		stored_file.set_source_quick_sum(file.source_quick_sum())
-	}
-	for line in 2 .. file.line_count() + 1 {
-		stored_file.add_line(file.line_start(line))
-	}
-	stored_file.copy_line_directives(file)
-	return stored_file
+	return file.clone_index()
 }
 
 fn par_parse_merge_enabled() bool {

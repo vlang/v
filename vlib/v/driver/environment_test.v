@@ -349,7 +349,7 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 		os.real_path(warmup_source): sha256.hexhash(warmup_source_text)
 	}, {
 		os.real_path(warmup_source): true
-	})
+	}, true)
 	real_path := os.real_path(path)
 	assert sources[real_path] == sha256.hexhash(parsed_source)
 	assert sources[real_path] != sha256.hexhash(os.read_file(path)!)

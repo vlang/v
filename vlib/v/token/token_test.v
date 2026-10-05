@@ -92,6 +92,66 @@ fn test_a_quick_sum_indexes_the_lines_as_a_digest_does() {
 	assert !with_sum.has_source_quick_sum()
 }
 
+fn test_line_starts_index_the_lines_as_a_digest_does_without_one() {
+	for src in ['module main\n\nfn main() {\n\tprintln(1)\n}\n', '', 'no newline', '\n', '\n\n',
+		'a\r\nb\r\nc'] {
+		mut fs := FileSet.new()
+		mut with_digest := fs.add_file('a.v', src.len)
+		with_digest.index_lines(src)
+		mut plain := fs.add_file('a.v', src.len)
+		plain.index_line_starts(src)
+		assert plain.line_count() == src.count('\n') + 1
+		assert plain.line_count() == with_digest.line_count()
+		for line in 1 .. with_digest.line_count() + 1 {
+			assert plain.line_start(line) == with_digest.line_start(line)
+		}
+		for offset in 0 .. src.len + 1 {
+			assert plain.find_line(offset) == with_digest.find_line(offset)
+		}
+		assert plain.has_source_lines() && with_digest.has_source_lines()
+		assert with_digest.has_source_sha256()
+		assert !plain.has_source_sha256() && !plain.has_source_quick_sum()
+		// Indexing again with a digest records one: a file is indexed one way at a time.
+		plain.index_lines(src)
+		assert plain.has_source_sha256()
+		assert plain.source_sha256() == with_digest.source_sha256()
+		plain.index_line_starts(src)
+		assert !plain.has_source_sha256()
+	}
+	mut fs := FileSet.new()
+	assert !fs.add_file('a.v', 0).has_source_lines()
+	assert !File.unindexed('a.v', 0).has_source_lines()
+}
+
+fn test_clone_index_copies_the_lines_and_what_stands_for_the_source() {
+	src := '#line 5 "other.zbr"\nA\nB\n'
+	mut fs := FileSet.new()
+	mut with_digest := fs.add_file('a.v', src.len)
+	with_digest.index_lines(src)
+	with_digest.add_line_directive(0, 5, 'other.zbr')
+	mut with_sum := fs.add_file('b.v', src.len)
+	with_sum.index_lines_with_quick_sum(src)
+	mut plain := fs.add_file('c.v', src.len)
+	plain.index_line_starts(src)
+	for file in [with_digest, with_sum, plain] {
+		copy := file.clone_index()
+		assert copy.name == file.name && copy.name.str != file.name.str
+		assert copy.size == file.size
+		assert copy.line_count() == file.line_count()
+		for line in 1 .. file.line_count() + 1 {
+			assert copy.line_start(line) == file.line_start(line)
+		}
+		assert copy.has_source_lines()
+		assert copy.has_source_sha256() == file.has_source_sha256()
+		assert copy.source_sha256() == file.source_sha256()
+		assert copy.has_source_quick_sum() == file.has_source_quick_sum()
+		assert copy.source_quick_sum() == file.source_quick_sum()
+		assert copy.has_line_directives() == file.has_line_directives()
+	}
+	copy_file, copy_line := with_digest.clone_index().logical_line(2)
+	assert copy_file == 'other.zbr' && copy_line == 5
+}
+
 fn test_source_digest_survives_parser_worker_file_clone() {
 	source := 'module main\nfn main() { println(42) }\n'
 	mut files := FileSet.new()

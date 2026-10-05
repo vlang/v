@@ -2691,6 +2691,8 @@ fn main() {
 	environment['V3CACHE'] = cache_dir
 	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
+	// The manifest costs a digest of every parsed source: a caller asks for it.
+	environment['V_MACOS_V3_SOURCE_MANIFEST'] = '1'
 	mut process := os.new_process(v3_bin)
 	process.set_args(['-silent', '-no-memory-limit', 'run', main_file, side_effect_file])
 	process.set_environment(environment)

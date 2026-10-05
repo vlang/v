@@ -53,6 +53,7 @@ const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
+const macos_v3_source_manifest_env = 'V_MACOS_V3_SOURCE_MANIFEST'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
@@ -8214,14 +8215,34 @@ fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_d
 	return false
 }
 
-fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source_digests map[string]string, ignored_source_paths map[string]bool) map[string]string {
+// macos_v3_fallback_report_sources returns the V sources of the build by their real
+// path, with the SHA-256 of what was parsed of each. Without `with_digests`, the
+// parser took none (see parser.Parser.no_source_digests): the sources it parsed are
+// listed with an empty digest then, for the callers that only read the paths.
+fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source_digests map[string]string, ignored_source_paths map[string]bool, with_digests bool) map[string]string {
 	mut sources := map[string]string{}
 	mut ambiguous := map[string]bool{}
 	builtin_root :=
 		os.real_path(os.join_path(vroot, 'vlib', 'builtin')).trim_right(os.path_separator)
 	for _, file in a.source_files {
-		if (file.name.ends_with('.v') || file.name.ends_with('.vv')
-			|| file.name.ends_with('.vsh')) && file.has_source_sha256() {
+		if !(file.name.ends_with('.v') || file.name.ends_with('.vv')
+			|| file.name.ends_with('.vsh')) {
+			continue
+		}
+		if !with_digests {
+			// The same files as with digests: a diagnostics server's quick sum is none.
+			if !file.has_source_lines() || file.has_source_quick_sum() {
+				continue
+			}
+			path := a.real_source_path(file.name)
+			if ignored_source_paths[path]
+				|| v3_fallback_backend_specific_builtin_source(path, builtin_root) {
+				continue
+			}
+			sources[path] = ''
+			continue
+		}
+		if file.has_source_sha256() {
 			path := a.real_source_path(file.name)
 			if ignored_source_paths[path] {
 				continue
@@ -8255,7 +8276,7 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source
 			continue
 		}
 		if old_digest := sources[path] {
-			if old_digest != digest {
+			if with_digests && old_digest != digest {
 				ambiguous[path] = true
 			}
 		} else {
@@ -8994,6 +9015,11 @@ pub fn run(args []string) {
 	}
 	mut macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
 	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
+	// The manifest of the parsed sources (see stage_macos_v3_fallback_source_digests)
+	// takes a SHA-256 of each of them, which cost more than scanning them. The V
+	// launcher never reads it, so only a caller that asks for one gets it.
+	macos_v3_source_manifest := macos_v3_c_error_dir != ''
+		&& os.getenv(macos_v3_source_manifest_env) == '1'
 	// A delegated V3 process owns the fallback marker until it has successfully
 	// produced its output. Specialized failures overwrite it below. Successful
 	// run/test programs clear it before launch, so their exit status is never
@@ -10710,6 +10736,7 @@ pub fn run(args []string) {
 	if os.getenv('V_DIAGNOSTICS_SERVER') != '' {
 		p.quick_source_sums = true
 	}
+	p.no_source_digests = !macos_v3_source_manifest
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
 	}
@@ -11020,8 +11047,11 @@ pub fn run(args []string) {
 	// Preserve the digest of every exact source buffer V3 parsed before any parser or
 	// later compiler error can request the compatibility compiler. The dispatcher owns
 	// this staging directory and forwards only content plus verification metadata.
-	mut fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot, cache_state.cached_source_digests, v3_fallback_ignored_warmup_source_paths(cache_state))
-	_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
+	mut fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot, cache_state.cached_source_digests,
+		v3_fallback_ignored_warmup_source_paths(cache_state), macos_v3_source_manifest)
+	if macos_v3_source_manifest {
+		_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
+	}
 	if print_v_files || print_watched_files || dump_files != '' {
 		mut watched := watched_v_source_paths(a, cache_state.module_sources)
 		if prefs.raw_vsh_file != '' {
@@ -12131,7 +12161,9 @@ pub fn run(args []string) {
 		}
 		if backend == 'c' && cache_state.external_inputs_ready {
 			fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)
-			_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
+			if macos_v3_source_manifest {
+				_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
+			}
 		}
 		// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
 		// by default for compatible builds, and `-no-parallel` disables both threaded transform
@@ -16634,7 +16666,21 @@ fn declared_module_in_file(path string) string {
 	content := os.read_file(path) or { return '' }
 	mut in_block_comment := false
 	mut in_attr := false
-	for raw_line in content.split_into_lines() {
+	mut line_start := 0
+	for line_start < content.len {
+		// The lines that `split_into_lines` makes of the file, one at a time: the
+		// declaration is among the first of them, and the rest is never looked at.
+		mut line_end := line_start
+		for line_end < content.len && content[line_end] != `\n` && content[line_end] != `\r` {
+			line_end++
+		}
+		raw_line := content[line_start..line_end]
+		line_start = if line_end + 1 < content.len && content[line_end] == `\r`
+			&& content[line_end + 1] == `\n` {
+			line_end + 2
+		} else {
+			line_end + 1
+		}
 		mut line := raw_line.trim_space()
 		if in_block_comment {
 			if end := line.index('*/') {
@@ -21209,7 +21255,7 @@ fn source_file_line_count(paths []string, files map[int]&compiler_token.File) in
 	// tables instead of reading every source file again for the stage report.
 	mut counts := map[string]int{}
 	for _, file in files {
-		if !file.has_source_sha256() {
+		if !file.has_source_lines() {
 			continue
 		}
 		count := file.line_count()
