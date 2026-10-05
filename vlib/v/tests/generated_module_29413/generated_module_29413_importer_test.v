@@ -13,3 +13,14 @@ fn test_ordinary_file_importing_a_generated_module() {
 	assert mode == .fastMode
 	assert zbrgen._zbr_fn_describe(zbrgen._zbr_ty_Value(mode)) == 'mode fastMode'
 }
+
+fn test_imported_generated_generic_struct_literal() {
+	box := zbrgen._zbr_box[int]{
+		value: 7
+	}
+	assert box.value == 7
+	text := zbrgen._zbr_box[string]{
+		value: 'generated'
+	}
+	assert text.value == 'generated'
+}
