@@ -7687,6 +7687,10 @@ to allow for a better search experience.
 
 V has several attributes that modify the behavior of functions and structs.
 
+`@[noalloc]` checks that a function's reachable code does not allocate, with an exception for
+growing an existing mutable array parameter. `@[noalloc: strict]` also forbids that growth.
+See [Allocation contracts](noalloc.md) for conservative checks and foreign function contracts.
+
 An attribute is a compiler instruction specified inside `[]` right before a
 function/struct/enum declaration and applies only to the following declaration.
 Attributes with arguments support both `name: value` and call-style `name(value)` syntax.

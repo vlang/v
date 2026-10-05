@@ -12,18 +12,25 @@ __global C.environ &&char
 __global C._wyp &u64
 
 // <string.h>
+@[noalloc]
 fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
 
+@[noalloc]
 fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n usize) i32
 
+@[noalloc]
 fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 
+@[noalloc]
 fn C.memset(str voidptr, c i32, n usize) voidptr
 
+@[noalloc]
 fn C.memchr(str voidptr, c i32, n usize) voidptr
 
+@[noalloc]
 fn C.memmem(haystack voidptr, haystacklen usize, needle voidptr, needlelen usize) voidptr
 
+@[noalloc]
 fn C.mempcpy(dest voidptr, src voidptr, n usize) voidptr
 
 @[trusted]
@@ -35,6 +42,7 @@ fn C.malloc(usize) voidptr
 
 fn C.realloc(a voidptr, b usize) voidptr
 
+@[noalloc]
 fn C.free(ptr voidptr)
 
 fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
@@ -64,6 +72,7 @@ fn C.exit(code i32)
 
 fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
 
+@[noalloc]
 fn C.strlen(s &char) usize
 
 @[trusted]

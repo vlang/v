@@ -10615,6 +10615,23 @@ pub fn run(args []string) {
 	}
 	minimal_literal_output := !is_prof && !is_trace_calls
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
+	mut noalloc_modes := []string{}
+	if ownership_mode || 'ownership' in prefs.user_defines {
+		noalloc_modes << 'ownership'
+	}
+	if 'autofree' in prefs.user_defines {
+		noalloc_modes << 'autofree'
+	}
+	if is_prof || profile_file != '' {
+		noalloc_modes << 'profiling'
+	}
+	if is_trace_calls {
+		noalloc_modes << 'call tracing'
+	}
+	if coverage_dir != '' {
+		noalloc_modes << 'coverage'
+	}
+	noalloc_unsupported_modes := noalloc_modes.join(', ')
 	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !effective_tcc
 		&& effective_c_compiler != 'msvc' && !is_o && coverage_dir.len == 0 && profile_file.len == 0
 		&& !is_trace_calls
@@ -11871,6 +11888,15 @@ pub fn run(args []string) {
 			program_instance_check = start_program_instance_check(mut a, mut pre_tc, is_checker_fixture,
 				fatal_errors, message_limit, skip_notices)
 		}
+		if pre_tc.has_noalloc_contracts() {
+			pre_tc.check_noalloc_contracts(false, noalloc_unsupported_modes)
+			if pre_tc.errors.len > 0 {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only, message_limit, skip_notices)
+				exit(1)
+			}
+		}
 		if check_only {
 			// Before the monomorphization below rewrites the tree, as in a build. A
 			// REPL check validates a declaration that only later lines will use.
@@ -11891,6 +11917,7 @@ pub fn run(args []string) {
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc, check_used_fns, false)
 				}
 			}
+			pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
@@ -12756,6 +12783,15 @@ pub fn run(args []string) {
 	// generic dependency-cache path already resets it after annotation.
 	if !generic_cache_hit {
 		pre_tc.reset_resolution_type_view_cache()
+	}
+	if pre_tc.has_noalloc_contracts() {
+		pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
+		if pre_tc.errors.len > 0 {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+				check_only, message_limit, skip_notices)
+			exit(1)
+		}
 	}
 	if cgen_cache_hit {
 		b.step('monomorphize (cached)')
