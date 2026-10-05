@@ -182,6 +182,33 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 	}
 }
 
+// next_string_escape returns the next byte needing JSON escaping, or val.len.
+@[direct_array_access; inline]
+fn next_string_escape(val string, start int, escape_unicode bool) int {
+	mut i := start
+	for i <= val.len - 8 {
+		mut word := u64(0)
+		// The length check bounds every load; memcpy also permits unaligned strings.
+		unsafe { vmemcpy(&word, val.str + i, 8) }
+		// A byte below 0x20 leaves a high bit after subtraction and masking.
+		control := (word - u64(0x2020202020202020)) & ~word & u64(0x8080808080808080)
+		if control != 0 || word_has_byte(word, `"`) || word_has_byte(word, `\\`)
+			|| (escape_unicode && word & u64(0x8080808080808080) != 0) {
+			break
+		}
+		i += 8
+	}
+	// Locate an escape within a flagged word, or handle the final short tail.
+	for i < val.len {
+		b := val[i]
+		if b < 0x20 || b == `"` || b == `\\` || (escape_unicode && b >= 0x80) {
+			break
+		}
+		i++
+	}
+	return i
+}
+
 fn (mut encoder Encoder) encode_string(val string) {
 	encoder.output << `"`
 	mut buffer_start := 0
@@ -273,7 +300,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 					continue
 				}
 
-				buffer_end++
+				buffer_end = next_string_escape(val, buffer_end + 1, encoder.escape_unicode)
 			}
 		}
 	}
