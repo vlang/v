@@ -58,6 +58,17 @@ typedef void (*v_segfault_fallback_fn)(int);
 static v_segfault_fallback_fn v_segfault_fallback = 0;
 // The actions that were installed before V's handler, for SIGSEGV and SIGBUS.
 static struct sigaction v_segfault_previous[2];
+// Saved actions stay immutable. Atomically consume one-shot handlers across threads.
+static int v_segfault_previous_consumed[2];
+
+static int v_segfault_consume_previous(int index) {
+#if defined(__TINYC__)
+	extern unsigned int __atomic_exchange_4(unsigned int*, unsigned int, int);
+	return __atomic_exchange_4((unsigned int*)&v_segfault_previous_consumed[index], 1, 5) == 0;
+#else
+	return __atomic_exchange_n(&v_segfault_previous_consumed[index], 1, 5) == 0;
+#endif
+}
 
 static void v_segfault_write(const char* s, size_t len) {
 	while (len > 0) {
@@ -248,8 +259,11 @@ static void v_segfault_signal_handler(int sig, siginfo_t* info, void* context) {
 	}
 	// A handler that was installed earlier (by TCC's `-bt` runtime, or by the GC for
 	// its write barrier) keeps handling every other fault.
-	struct sigaction* previous = &v_segfault_previous[sig == SIGBUS ? 1 : 0];
-	if (previous->sa_handler != SIG_DFL && previous->sa_handler != SIG_IGN) {
+	int previous_index = sig == SIGBUS ? 1 : 0;
+	struct sigaction* previous = &v_segfault_previous[previous_index];
+	if (previous->sa_handler != SIG_DFL && previous->sa_handler != SIG_IGN
+		&& (!(previous->sa_flags & SA_RESETHAND)
+			|| v_segfault_consume_previous(previous_index))) {
 		if (previous->sa_flags & SA_SIGINFO) {
 			previous->sa_sigaction(sig, info, context);
 		} else {
@@ -323,7 +337,17 @@ static void v_signal_stack_register(uintptr_t lo, uintptr_t hi) {
 // SA_SIGINFO in sa_flags across exec, while it resets the handler to SIG_DFL.
 static int v_segfault_save_previous(int sig, struct sigaction* previous) {
 	memset(previous, 0, sizeof(*previous));
-	return sigaction(sig, NULL, previous) == 0 && previous->sa_handler != SIG_IGN;
+	if (sigaction(sig, NULL, previous) != 0 || previous->sa_handler == SIG_IGN) {
+		return 0;
+	}
+#if defined(__APPLE__)
+	// Darwin does not return SA_RESETHAND when querying an installed action. Keep
+	// existing callbacks under kernel control, so one-shot handlers stay one-shot.
+	if (previous->sa_handler != SIG_DFL) {
+		return 0;
+	}
+#endif
+	return 1;
 }
 
 // v_segfault_install_signal must run after v_segfault_save_previous: V's handler calls
@@ -334,8 +358,9 @@ static void v_segfault_install_signal(int sig) {
 	struct sigaction sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_sigaction = v_segfault_signal_handler;
-	sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
-	sa.sa_mask = v_segfault_previous[sig == SIGBUS ? 1 : 0].sa_mask;
+	struct sigaction* previous = &v_segfault_previous[sig == SIGBUS ? 1 : 0];
+	sa.sa_flags = SA_SIGINFO | SA_ONSTACK | (previous->sa_flags & (SA_NODEFER | SA_RESTART));
+	sa.sa_mask = previous->sa_mask;
 	sigaction(sig, &sa, NULL);
 }
 

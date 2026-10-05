@@ -112,7 +112,14 @@ fn test_stack_overflow_prints_a_message() {
 	source := os.join_path(work_dir, 'child.v')
 	binary := os.join_path(work_dir, 'child')
 	os.write_file(source, child_source)!
-	compile := os.exec([@VEXE, '-o', binary, source])
+	mut flags := [@VEXE]
+	$if macos {
+		// Darwin leaves TCC's preinstalled backtrace handlers in control. Test the
+		// overflow reporter with default signal dispositions instead.
+		flags << ['-cc', 'clang']
+	}
+	flags << ['-o', binary, source]
+	compile := os.exec(flags)
 	assert compile.exit_code == 0, compile.output
 	for mode in ['main', 'thread'] {
 		res := run_child(binary, mode)
@@ -150,4 +157,107 @@ fn test_previous_handler_keeps_its_signal_mask() {
 		return
 	}
 	assert res.output.contains('previous handler: SIGUSR1 blocked'), res.output
+}
+
+fn test_previous_one_shot_handler_is_consumed() ! {
+	$if windows || vinix || freestanding {
+		return
+	}
+	work_dir := os.join_path(os.vtmp_dir(), 'stack_overflow_one_shot_${os.getpid()}')
+	os.mkdir_all(work_dir)!
+	defer {
+		os.rmdir_all(work_dir) or {}
+	}
+	header := r'
+#include <signal.h>
+#include <unistd.h>
+static void v_test_one_shot(int sig) {
+	(void)sig;
+	write(2, "one shot handler\n", 17);
+}
+
+__attribute__((constructor)) static void v_test_install_one_shot(void) {
+	struct sigaction sa = {0};
+	sa.sa_handler = v_test_one_shot;
+	sa.sa_flags = SA_RESETHAND;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGBUS, &sa, NULL);
+}
+static void v_test_raise_bus(void) { raise(SIGBUS); }
+'
+	os.write_file(os.join_path(work_dir, 'one_shot.h'), header)!
+	source := os.join_path(work_dir, 'child.c.v')
+	binary := os.join_path(work_dir, 'child')
+	os.write_file(source, r'
+module main
+#include "@DIR/one_shot.h"
+fn C.v_test_raise_bus()
+fn main() {
+	C.v_test_raise_bus()
+	C.v_test_raise_bus()
+	println("unexpected survival")
+}
+')!
+	// Clang leaves the constructor installed; TCC backtrace mode replaces it.
+	compile := os.exec([@VEXE, '-cc', 'clang', '-o', binary, source])
+	assert compile.exit_code == 0, compile.output
+	result := run_child(binary, '')
+	assert result.exit_code != 0, result.output
+	assert result.output.count('one shot handler') == 1, result.output
+	assert !result.output.contains('unexpected survival'), result.output
+}
+
+fn test_previous_persistent_handler_can_return_twice() ! {
+	$if windows || vinix || freestanding {
+		return
+	}
+	work_dir := os.join_path(os.vtmp_dir(), 'stack_overflow_persistent_${os.getpid()}')
+	os.mkdir_all(work_dir)!
+	defer {
+		os.rmdir_all(work_dir) or {}
+	}
+	header := r'
+#include <signal.h>
+#include <unistd.h>
+static void v_test_persistent(int sig) {
+	(void)sig;
+	write(2, "persistent handler\n", 19);
+}
+__attribute__((constructor)) static void v_test_install_persistent(void) {
+	struct sigaction sa = {0};
+	sa.sa_handler = v_test_persistent;
+	sigemptyset(&sa.sa_mask);
+	sigaction(SIGBUS, &sa, NULL);
+}
+static void v_test_raise_bus(void) { raise(SIGBUS); }
+static int v_test_persistent_has_precedence(void) {
+#if defined(__APPLE__)
+	struct sigaction sa;
+	return sigaction(SIGBUS, NULL, &sa) == 0 && sa.sa_handler == v_test_persistent;
+#else
+	return 1;
+#endif
+}
+'
+	os.write_file(os.join_path(work_dir, 'persistent.h'), header)!
+	source := os.join_path(work_dir, 'child.c.v')
+	binary := os.join_path(work_dir, 'child')
+	os.write_file(source, r'
+module main
+#include "@DIR/persistent.h"
+fn C.v_test_raise_bus()
+fn C.v_test_persistent_has_precedence() int
+fn main() {
+	assert C.v_test_persistent_has_precedence() == 1
+	C.v_test_raise_bus()
+	C.v_test_raise_bus()
+	println("survived")
+}
+')!
+	compile := os.exec([@VEXE, '-cc', 'clang', '-o', binary, source])
+	assert compile.exit_code == 0, compile.output
+	result := run_child(binary, '')
+	assert result.exit_code == 0, result.output
+	assert result.output.count('persistent handler') == 2, result.output
+	assert result.output.contains('survived'), result.output
 }
