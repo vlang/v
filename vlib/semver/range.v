@@ -303,12 +303,37 @@ fn is_major_only(s string) bool {
 	return parts.len == 1 && is_valid_number(parts[0])
 }
 
+// can_expand reports whether an operand is a shape expand_comparator_set knows how
+// to expand, rather than a plain comparator.
 fn can_expand(input string) bool {
 	if input.len == 0 {
 		return false
 	}
-	return input[0] == `~` || input[0] == `^` || input.contains(hyphen_range_sep)
-		|| input.index_any(x_range_symbols) > -1 || is_bare_partial_version(input)
+	if input[0] == `~` || input[0] == `^` || input.contains(hyphen_range_sep) {
+		return true
+	}
+	// An operator in front of a shortened version is a rewrite rather than a plain
+	// comparator, so it is stepped over before the shape is judged. Without this,
+	// `>0` looks like a comparator and is answered as `>0.0.0` instead of `>=1.0.0`.
+	operand := match input[0] {
+		`<`, `>`, `=` {
+			if input.len > 1 && input[1] == `=` {
+				input[2..]
+			} else {
+				input[1..]
+			}
+		}
+		else { input }
+	}
+	if operand.len == 0 {
+		return false
+	}
+	// A prerelease identifier may be alphanumeric, so an `x` after the `-` belongs
+	// to the tag and is not a wildcard: `1.4.0-125.12.x` is a plain comparator.
+	if operand.all_before('-').index_any(x_range_symbols) > -1 {
+		return true
+	}
+	return is_bare_partial_version(operand)
 }
 
 fn expand_comparator_set(input string) ?ComparatorSet {
@@ -344,9 +369,12 @@ fn expand_comparator_set(input string) ?ComparatorSet {
 // prerelease included, which is what parse_comparator already does.
 fn expand_operator_range(input string) ?ComparatorSet {
 	mut raw_version := input[1..]
-	if input[0] == `=` && input.len > 1 && input[1] == `=` {
-		raw_version = input[2..]
-	} else if input[0] != `=` && input.len > 1 && input[1] == `=` {
+	// The `=` has to be read off before the operator is dispatched on. Matching on
+	// input[0] alone sends `>=1.2` down the `>` branch, which drops the whole 1.2
+	// series when it should keep it.
+	mut inclusive := false
+	if input.len > 1 && input[1] == `=` {
+		inclusive = true
 		raw_version = input[2..]
 	}
 	// `first_wildcard_index` counts a missing component as standing in for a
@@ -360,28 +388,38 @@ fn expand_operator_range(input string) ?ComparatorSet {
 	}
 	floor := expanded.comparators[0].ver
 	ceiling := expanded.comparators[1].ver
-	match input[0] {
-		`=` { return expanded }
-		`>` {
-			return ComparatorSet{[Comparator{Version{ceiling.major, ceiling.minor, ceiling.patch, '', ''}, Operator.ge}]}
-		}
-		`<` {
-			return ComparatorSet{[Comparator{Version{floor.major, floor.minor, floor.patch, '0', ''}, Operator.lt}]}
-		}
-		else {}
+	// `floor - 0` is the exclusive lower bound the grammar writes for `<`, and
+	// `ceiling` already carries its own `- 0`.
+	floor_exclusive := Version{floor.major, floor.minor, floor.patch, '0', ''}
+	ceiling_exclusive := Version{ceiling.major, ceiling.minor, ceiling.patch, '', ''}
+
+	if input[0] == `=` {
+		return expanded
 	}
-	// `<=` is the ceiling as a `<`, and `>=` is the floor as a `>=`.
-	if input[0] == `<` && input.len > 1 && input[1] == `=` {
-		return ComparatorSet{[Comparator{ceiling, Operator.lt}]}
+	if input[0] == `<` {
+		return ComparatorSet{[Comparator{if inclusive {
+			ceiling
+		} else {
+			floor_exclusive
+		}, Operator.lt}]}
 	}
-	return ComparatorSet{[Comparator{floor, Operator.ge}]}
+	return ComparatorSet{[Comparator{if inclusive {
+		floor
+	} else {
+		ceiling_exclusive
+	}, Operator.ge}]}
 }
 
 fn expand_tilda(raw_version string) ?ComparatorSet {
 	min_ver := coerce_version(raw_version) or { return none }
 	// The ceiling carries no prerelease, so `~1.2.3-beta.2` stops below every
 	// 1.3.0, and does not reach up to `1.3.0-alpha`.
-	max_ver := if min_ver.minor == 0 && min_ver.patch == 0 {
+	//
+	// Whether the minor may grow is decided by whether it was *written*, not by
+	// whether it is zero. `~2` runs to the end of major 2, but `~2.0` and `~2.0.0`
+	// both stop at 2.1.0; reading `minor == 0 && patch == 0` as the major case
+	// sends `~2.0` to 3.0.0 and lets it admit the whole of 2.x.
+	max_ver := if first_wildcard_index(raw_version) == 1 {
 		Version{min_ver.major + 1, 0, 0, '', ''}
 	} else {
 		Version{min_ver.major, min_ver.minor + 1, 0, '', ''}
@@ -432,6 +470,14 @@ fn expand_hyphen(raw_range string) ?ComparatorSet {
 		// `1.2.3 - *` is open ended above, like `*` on its own
 		return ComparatorSet{[Comparator{min_ver, Operator.ge}]}
 	}
+	// `2-beta` has a bare major under a prerelease tag, which `parts_of` reports as one
+	// component, so it must not be taken for the `2.x` case.
+	if first_wildcard_index(raw_versions[1]) == 1 && !has_prerelease(raw_versions[1]) {
+		// `1.2 - 2.x` runs to the end of major 2 rather than to 2.0.0: a wildcard
+		// minor means the whole series, the same reading `2 - 3.*` gets.
+		next := numeric_core(raw_versions[1]).int() + 1
+		return make_comparator_set_ge_lt(min_ver, Version{next, 0, 0, '', ''})
+	}
 	raw_max_ver := parse(raw_versions[1])
 	if raw_max_ver.is_missing(ver_major) {
 		return none
@@ -472,10 +518,18 @@ fn expand_xrange(raw_range string) ?ComparatorSet {
 	}
 }
 
+// make_comparator_set_ge_lt builds `>= min, < max`.
+//
+// The ceiling always carries a `-0`. node-semver writes every exclusive upper
+// bound that way — `<1.3.0-0`, `<2.0.0-0`, `<0.0.4-0` — and it is not decoration:
+// `0.0.4-canary < 0.0.4` is true, while `0.0.4-canary < 0.0.4-0` is not. Without
+// it a range with a caret admits a prerelease of the version it was supposed to
+// stop below, which is what `^0.0.3-2.2.10 ^0.0.4-8.1` did.
 fn make_comparator_set_ge_lt(min Version, max Version) ComparatorSet {
+	ceiling := Version{max.major, max.minor, max.patch, '0', ''}
 	return ComparatorSet{[
 		Comparator{min, Operator.ge},
-		Comparator{max, Operator.lt},
+		Comparator{ceiling, Operator.lt},
 	]}
 }
 
