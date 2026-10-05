@@ -215,8 +215,7 @@ fn list(vroot string, opts Options) Output {
 		for relative in skill.files {
 			out.lines << '	${relative}'
 		}
-		out.lines << '\tstatus: ${marker(skill.name, in_project, project_refreshable,
-			project_held, in_global, global_refreshable, global_held)}'
+		out.lines << '\tstatus: ${marker(skill.name, in_project, project_refreshable, project_held, in_global, global_refreshable, global_held)}'
 	}
 	out.lines << ''
 	out.lines << 'project: ${project_dir}${exists_mark(project_dir)}'
@@ -266,11 +265,12 @@ fn scoped_mark(scope string, name string, installed []string, refreshable []stri
 	if name !in installed {
 		return ''
 	}
+	command := if scope == 'global' { 'v skills update --global' } else { 'v skills update' }
 	if name in refreshable {
-		return '${scope} (stale: v skills update refreshes it)'
+		return '${scope} (stale: ${command} refreshes it)'
 	}
 	if name in held {
-		return '${scope} (edited or unrecorded: v skills update needs --force)'
+		return '${scope} (edited or unrecorded: ${command} needs --force)'
 	}
 	return scope
 }

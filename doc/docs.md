@@ -7251,8 +7251,10 @@ v skills update                  # refresh unchanged installs from newer bundles
 A project install is committed and shared with the team; a `--global` install
 applies to every project on the machine. Installing a skill that is already there
 is skipped rather than overwritten, so a local edit survives; `--force` restores
-the bundled copy, and `v skills list` flags an installed skill that has fallen
-behind the bundle it came from.
+the bundled copy. `v skills list` marks unchanged installations from older bundles
+as `stale`, and locally edited or unrecorded installations as `edited or unrecorded`.
+Each status names the update command for that scope; global installations need
+`v skills update --global`. A deleted installed file also counts as a local edit.
 
 `v skills update` uses the recorded installation digest to refresh unchanged skills
 from newer bundles. Locally edited or unrecorded installations are held back unless
@@ -7260,6 +7262,10 @@ from newer bundles. Locally edited or unrecorded installations are held back unl
 Use `--dry-run` to preview updates. The provenance file `origin.json` must be a regular
 file: installation refuses symlinks and other file types before replacing skill content.
 `v.skills.content_digest` returns an error if any requested file cannot be read.
+
+The `v.skills.refresh_candidates` API returns separate lists of safe refreshes
+and installations held back for local changes or missing provenance. The
+`out_of_date` API only compares content and cannot distinguish these cases.
 
 Skill names must contain only lowercase letters, digits and single hyphens, and
 must match the bundled name. Installation stays within an immediate child of the

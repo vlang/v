@@ -112,6 +112,13 @@ fn test_list_fails_when_there_is_no_catalog() {
 	assert out.errors.join('\n').contains('no bundled skills'), out.text()
 }
 
+fn test_list_status_advice_selects_the_installed_scope() {
+	assert marker('alpha', ['alpha'], ['alpha'], [], ['alpha'], [], ['alpha']) ==
+		'project (stale: v skills update refreshes it), global (edited or unrecorded: v skills update --global needs --force)'
+	assert marker('alpha', [], [], [], ['alpha'], ['alpha'], []) ==
+		'global (stale: v skills update --global refreshes it)'
+}
+
 fn test_add_installs_a_skill_into_the_project() {
 	root := project()
 	out := run(root, 'add', 'alpha')
