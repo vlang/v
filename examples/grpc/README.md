@@ -8,9 +8,9 @@ examples/grpc/
   server.v          the service, served over gRPC on HTTP/2 + TLS
   client.v          calls every RPC against a running server
   kv.proto          the schema, kept next to the code that implements it
-  kv/codec.v        a hand-written proto3 encoder/decoder for that schema
-  kv/codec_test.v   tests for the codec
-  kv/service.v      the GrpcService implementation
+  kv/codec.v        the proto3 encoder/decoder for that schema, generated
+  kv/service.v      the service paths and handler interface, generated
+  kv/service_impl.v the GrpcService implementation that binds them to net.grpc
   cert/             a self-signed certificate so gRPC has something to speak
 ```
 
@@ -58,16 +58,24 @@ looks equivalent but is not: it becomes a framed body the client tries to parse
 as a message, and the call fails with a framing error instead of a status.
 
 **`net.grpc` never looks inside a message.** Payloads are `[]u8` end to end, so
-the codec is a separate concern. This example hand-writes one to stay free of
-dependencies; a real project would generate it:
+the codec is a separate concern. Here `kv/codec.v` and `kv/service.v` are
+generated from `kv.proto` by `v pbgen`; only `kv/service_impl.v` is written by
+hand, because the generated service names no transport type and the adapter that
+registers it with a `GrpcServer` is the caller's to write.
+
+Regenerate them with:
 
 ```sh
-v install protobuf.v
-v run cmd/vpbgen -m kv -o kv/codec_generated.v -grpc kv/service_generated.v kv.proto
+v pbgen -m kv -o kv/codec.v -grpc kv/service.v kv.proto
+v fmt -w kv/codec.v kv/service.v
 ```
 
-and delete `kv/codec.v` and `kv/service.v`. Nothing else changes, because the
-generated code plugs into the same `[][]u8` boundary.
+Then run `v test vlib/encoding/protobuf/`: the codec has no tests of its own
+because the wire format it is written against is tested once, in the module,
+rather than per example.
+
+Nothing above the codec changes, because the generated code plugs into the same
+`[][]u8` boundary.
 
 ## The certificate
 
