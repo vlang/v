@@ -8667,7 +8667,16 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 		value := t.make_prefix(.mul, field_sel)
 		payload_type := if variant_base != variant { variant_base } else { variant }
 		t.set_node_typ(int(value), payload_type)
-		t.wrap_string_conversion(value, payload_type)
+		if t.stringify_type_at_circular_limit(payload_type)
+			&& t.aggregate_str_method_name(payload_type) == none {
+			// Repeating a payload type does not imply a repeated object. Continue in
+			// a helper, guarding the actual payload address to stop genuine cycles.
+			t.request_auto_str_helper(value, payload_type)
+			t.lower_ref_str_guarded(field_sel, payload_type, false,
+				auto_str_helper_name(payload_type), 'nil')
+		} else {
+			t.wrap_string_conversion(value, payload_type)
+		}
 	}
 	// V prints a sum value as `SumName(payload_str)` — the payload's own str
 	// already carries its type name for structs; string/rune payloads are quoted.
