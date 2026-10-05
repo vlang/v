@@ -1,19 +1,17 @@
 module time
 
-import os
-
 fn local_location() !&Location {
-	if tz := os.getenv_opt('TZ') {
+	if tz := zoneinfo_getenv('TZ') {
 		if tz == '' {
 			return load_location('UTC')
 		}
-		if tz.starts_with(':') || os.is_abs_path(tz) {
+		if tz.starts_with(':') || zoneinfo_is_abs_path(tz) {
 			path := if tz.starts_with(':') { tz[1..] } else { tz }
 			if path != '' {
-				if data := os.read_bytes(path) {
+				if data := zoneinfo_read_file(path) {
 					return parse_tzif_location('Local', data) or { fixed_local_location() }
 				}
-				if !os.is_abs_path(path) {
+				if !zoneinfo_is_abs_path(path) {
 					return load_location(path) or {
 						if rule := parse_posix_zone_rule(path) {
 							return location_from_posix_rule('Local', rule)
@@ -32,17 +30,14 @@ fn local_location() !&Location {
 		}
 	}
 	localtime := '/etc/localtime'
-	if os.is_link(localtime) {
-		target := os.readlink(localtime) or { '' }
-		if target != '' {
-			if name := zoneinfo_name_from_path(target) {
-				return load_location(name) or { fixed_local_location() }
-			}
+	if target := zoneinfo_readlink(localtime) {
+		if name := zoneinfo_name_from_path(target) {
+			return load_location(name) or { fixed_local_location() }
 		}
 	}
 	// Regular file or symlink whose target is not under .../zoneinfo/...
-	if os.exists(localtime) {
-		if data := os.read_bytes(localtime) {
+	if zoneinfo_exists(localtime) {
+		if data := zoneinfo_read_file(localtime) {
 			return parse_tzif_location('Local', data) or { fixed_local_location() }
 		}
 	}
