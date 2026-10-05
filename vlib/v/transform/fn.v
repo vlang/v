@@ -8789,7 +8789,8 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 			} else {
 				t.make_cast('f64', expr, 'f64')
 			}
-			mut formatted := t.make_call_typed('v3_f64_fixed', [arg,
+			fixed_fn := if decimal_format.trim { 'v3_f64_trimmed' } else { 'v3_f64_fixed' }
+			mut formatted := t.make_call_typed(fixed_fn, [arg,
 				t.make_int_literal(decimal_format.precision)], 'string')
 			if decimal_format.width > 0 || decimal_format.left {
 				left := if decimal_format.left { 1 } else { 0 }
@@ -9168,6 +9169,7 @@ struct FixedDecimalFormat {
 	width     int
 	precision int
 	left      bool
+	trim      bool // no `f`: trim trailing zeros, exponent form outside [1e-5, 999999)
 }
 
 struct ExponentDecimalFormat {
@@ -9259,13 +9261,12 @@ fn fixed_decimal_format(format string) ?FixedDecimalFormat {
 	if !has_precision {
 		return none
 	}
-	if i < format.len {
+	trim := i == format.len
+	if !trim {
 		if format[i] != `f` {
 			return none
 		}
 		i++
-	} else if precision > 0 {
-		precision--
 	}
 	if i != format.len {
 		return none
@@ -9274,6 +9275,7 @@ fn fixed_decimal_format(format string) ?FixedDecimalFormat {
 		width:     width
 		precision: precision
 		left:      left
+		trim:      trim
 	}
 }
 
