@@ -1,6 +1,7 @@
 module types
 
 import v.flat
+import v.gen.c.naming
 
 // A build compiles only the functions that the program reaches, and a library has
 // many that it does not: most of what `import os` brings is never called. The
@@ -247,8 +248,8 @@ fn (mut tc TypeChecker) library_body_items(used map[string]bool, only_used bool)
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
-				if tc.skips_library_body(node) && (!only_used || used[node.value]
-					|| used[checker_qualified_fn_name(tc.cur_module, node.value)]) {
+				if tc.skips_library_body(node)
+					&& (!only_used || library_fn_is_used(used, tc.cur_module, node.value)) {
 					cost := i - prev_tl
 					items << CheckWorkItem{
 						fn_idx:   i
@@ -267,6 +268,23 @@ fn (mut tc TypeChecker) library_body_items(used map[string]bool, only_used bool)
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
 	return items
+}
+
+// library_fn_is_used reports whether `used`, the functions that markused keeps, has
+// the function `name` of `module`: under its V name, or under the name that it has
+// in the generated C, which is how markused keeps some functions of the runtime
+// and how the code generator looks them up too.
+fn library_fn_is_used(used map[string]bool, module string, name string) bool {
+	qualified := checker_qualified_fn_name(module, name)
+	if used[name] || used[qualified] {
+		return true
+	}
+	c_name := naming.c_name(name)
+	if c_name != name && used[c_name] {
+		return true
+	}
+	c_qualified := naming.c_name(qualified)
+	return c_qualified != qualified && c_qualified != c_name && used[c_qualified]
 }
 
 // check_reached_library_bodies checks the bodies that the check left out and that
