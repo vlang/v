@@ -3495,7 +3495,35 @@ fn (mut p Parser) lowercase_type_name_starts_struct_init(name string) bool {
 	if p.cur_module == 'builtin' || !p.may_be_lowercase_type_name(name) {
 		return false
 	}
+	if p.prefs.is_fmt {
+		p.scan_formatter_type_declarations()
+		return p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(name)]
+	}
 	return p.resolve_local_type_name(name) != name || p.file_declares_type_name(name)
+}
+
+// scan_formatter_type_declarations indexes the current file regardless of declaration
+// order or conditional compilation. Formatting must preserve inactive branches too.
+fn (mut p Parser) scan_formatter_type_declarations() {
+	key := p.translated_sizeof_declaration_key('\x01formatter_types')
+	if p.translated_sizeof_scanned_modules[key] {
+		return
+	}
+	p.translated_sizeof_scanned_modules[key] = true
+	mut scan := scanner.new_scanner(p.prefs, .skip_interpolation)
+	scan.init(p.s.current_file(), p.s.src)
+	mut previous := token.Token.eof
+	for {
+		kind := scan.scan()
+		if kind == .eof {
+			break
+		}
+		if kind == .name
+			&& previous in [.key_struct, .key_type, .key_enum, .key_interface, .key_union] {
+			p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(scan.lit)] = true
+		}
+		previous = kind
+	}
 }
 
 // may_be_lowercase_type_name reports whether `name`, which does not start with a capital
@@ -3527,6 +3555,9 @@ fn (mut p Parser) file_declares_type_name(name string) bool {
 fn (mut p Parser) is_lowercase_type_name(name string) bool {
 	if !p.may_be_lowercase_type_name(name) {
 		return false
+	}
+	if p.prefs.is_fmt {
+		p.scan_formatter_type_declarations()
 	}
 	if p.resolve_local_type_name(name) != name {
 		return true
