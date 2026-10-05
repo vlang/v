@@ -1721,6 +1721,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		$if ownership ? {
 			tc.ownership_mark_scope_node(branch_id)
 		}
+		tc.declare_named_variant_binding(subject_type, branch, n_conds)
 		tc.check_statement_sequence(branch, n_conds, value_context)
 		tc.pop_scope()
 		if value_context && has_value_tail && !tc.branch_has_value_tail(branch_id)
@@ -3938,6 +3939,9 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 
 // check_struct_init validates check struct init state for types.
 fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
+	if flat.is_named_variant_type_name(node.value) && !tc.check_named_variant_init(id, node) {
+		return
+	}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
@@ -3961,7 +3965,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	is_optional_init := node.value.starts_with('?')
 	init_type_text := if is_optional_init { node.value[1..] } else { node.value }
-	raw_source_type_text := if node.value == 'embed_file.EmbedFileData' {
+	// Synthesized literals have no source spelling of their type: `$embed_file`, and
+	// `Expr.Count(x)`, which the parser lowers to a hidden variant struct literal.
+	raw_source_type_text := if node.value == 'embed_file.EmbedFileData'
+		|| flat.is_named_variant_type_name(node.value) {
 		''
 	} else {
 		tc.source_text_for_node(id).all_before('{').trim_space().trim_left('?')

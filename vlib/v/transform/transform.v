@@ -24849,11 +24849,11 @@ fn typeof_display_is_param_name(name string) bool {
 }
 
 fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	return t.transform_typeof_expr_mode(id, node, true)
+	return t.demangle_named_variant_literal(t.transform_typeof_expr_mode(id, node, true))
 }
 
 fn (mut t Transformer) transform_typeof_name_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	return t.transform_typeof_expr_mode(id, node, false)
+	return t.demangle_named_variant_literal(t.transform_typeof_expr_mode(id, node, false))
 }
 
 fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node, runtime_sum bool) flat.NodeId {
@@ -28182,7 +28182,7 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 			}
 		}
 	}
-	mut body_ids := []flat.NodeId{cap: int(branch.children_count) - body_start_idx}
+	mut body_ids := t.named_variant_binding_decls(match_expr_id, branch)
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)
 	}
@@ -28299,7 +28299,7 @@ fn (mut t Transformer) build_match_value_chain(match_expr_id flat.NodeId, orig_e
 		}
 	}
 
-	mut body_ids := []flat.NodeId{cap: int(branch.children_count) - body_start_idx}
+	mut body_ids := t.named_variant_binding_decls(match_expr_id, branch)
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)
 	}

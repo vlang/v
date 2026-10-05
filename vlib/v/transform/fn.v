@@ -5993,6 +5993,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ['builtin.'.len..]
 	}
+	if flat.is_named_variant_type_name(clean_typ) {
+		return t.named_variant_str(expr, clean_typ, is_ref)
+	}
 	if clean_typ in stringify_narrow_integer_types {
 		// An arithmetic node with a 128-bit operand resolves to the narrower side
 		// here, so the printer picked for it showed the low 64 bits only. The value
@@ -8672,7 +8675,10 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 	// V prints a sum value as `SumName(payload_str)` — the payload's own str
 	// already carries its type name for structs; string/rune payloads are quoted.
 	// An alias variant keeps its alias-name wrapper (`Res(Ints([1, 2]))`).
-	if variant_base == 'string' {
+	if flat.is_named_variant_type_name(variant_base) {
+		// A named variant prints as `Expr.Count(3)` or `Expr.Void`, without the
+		// `SumName(...)` wrapper: the variant name already names the sum type.
+	} else if variant_base == 'string' {
 		value_text = t.string_plus(t.string_plus(t.make_string_literal("'"), value_text), t.make_string_literal("'"))
 	} else if variant_base == 'rune' {
 		value_text = t.string_plus(t.string_plus(t.make_string_literal('`'), value_text), t.make_string_literal('`'))
@@ -8680,7 +8686,9 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 		display := if variant.contains('.') { variant.all_after_last('.') } else { variant }
 		value_text = t.string_plus(t.string_plus(t.make_string_literal('${display}('), value_text), t.make_string_literal(')'))
 	}
-	value_text = t.string_plus(t.string_plus(t.make_string_literal('${sum_display}('), value_text), t.make_string_literal(')'))
+	if !flat.is_named_variant_type_name(variant_base) {
+		value_text = t.string_plus(t.string_plus(t.make_string_literal('${sum_display}('), value_text), t.make_string_literal(')'))
+	}
 	mut then_stmts := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	then_stmts << t.make_expr_stmt(value_text)
@@ -14520,7 +14528,13 @@ fn (mut t Transformer) build_sum_type_name_chain(tag flat.NodeId, sum_name strin
 		return t.make_string_literal('')
 	}
 	variant := variants[idx]
-	display := if variant.contains('.') { variant.all_after_last('.') } else { variant }
+	display := if flat.is_named_variant_type_name(variant) {
+		named_variant_display_short(variant)
+	} else if variant.contains('.') {
+		variant.all_after_last('.')
+	} else {
+		variant
+	}
 	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name, variant)))
 	then_block := t.make_block([t.make_expr_stmt(t.make_string_literal(display))])
 	else_expr := t.build_sum_type_name_chain(tag, sum_name, variants, idx + 1)

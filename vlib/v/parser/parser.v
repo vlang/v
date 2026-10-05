@@ -1356,12 +1356,22 @@ fn (mut p Parser) parse_pending_decl_attrs() {
 	p.pending_decl_attr_sources << parsed.sources
 }
 
-fn (mut p Parser) apply_decl_attrs(id flat.NodeId) {
-	if p.pending_decl_attrs.len == 0 || int(id) < 0 || int(id) >= p.a.nodes.len {
+fn (mut p Parser) apply_decl_attrs(decl_id flat.NodeId) {
+	if p.pending_decl_attrs.len == 0 || int(decl_id) < 0 || int(decl_id) >= p.a.nodes.len {
 		p.pending_decl_attrs.clear()
 		p.pending_decl_attr_kinds.clear()
 		p.pending_decl_attr_sources.clear()
 		return
+	}
+	mut id := decl_id
+	// A sum type with named variants is a block of its hidden variant structs
+	// followed by the sum type declaration, which owns the attributes.
+	decl_node := p.a.node(decl_id)
+	if decl_node.kind == .block && decl_node.children_count > 0 {
+		last := p.a.child(decl_node, decl_node.children_count - 1)
+		if p.a.node(last).kind == .type_decl {
+			id = last
+		}
 	}
 	if p.a.node(id).kind == .module_decl && 'translated' in p.pending_decl_attrs {
 		p.is_translated = true
@@ -3305,22 +3315,14 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	}
 	// check for sum type: type T = A | B | C
 	// skip auto-semicolon before pipe
-	if is_sum_type {
+	if is_sum_type || p.tok == .lpar {
 		if !p.prefs.is_fmt && language_prefix.len == 0 && name.len == 1 && name[0] >= `A`
 			&& name[0] <= `Z` {
 			p.record_diagnostic_span('single letter capital names are reserved for generic template types',
 				name_pos.offset, name_pos.end)
 		}
-		mut variants := []flat.NodeId{}
-		if !p.prefs.is_fmt && first_type == 'none' {
-			p.record_diagnostic_span('named sum type cannot have none as its variant', type_start,
-				p.prev_tok_end)
-		}
-		variants << p.add_node(flat.Node{
-			kind:  .ident
-			value: first_type
-			pos:   p.span_to(type_start)
-		})
+		mut parsed := []ParsedSumVariant{}
+		parsed << p.parse_sum_type_variant(first_type, type_start)
 		for p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe)) {
 			if p.tok == .semicolon {
 				p.next()
@@ -3328,18 +3330,26 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			p.next() // skip |
 			variant_start := p.span_start()
 			variant_type := p.parse_type_name()
-			if !p.prefs.is_fmt && variant_type == 'none' {
-				p.record_diagnostic_span('named sum type cannot have none as its variant', variant_start,
-					p.prev_tok_end)
-			}
-			variants << p.add_node(flat.Node{
-				kind:  .ident
-				value: variant_type
-				pos:   p.span_to(variant_start)
-			})
+			parsed << p.parse_sum_type_variant(variant_type, variant_start)
 		}
 		if p.tok == .semicolon {
 			p.next()
+		}
+		if parsed.any(it.is_named) {
+			return p.named_sum_type_decl(name, is_pub, language_prefix, generic_params,
+				generic_constraints, parsed, type_start)
+		}
+		mut variants := []flat.NodeId{}
+		for variant in parsed {
+			if !p.prefs.is_fmt && variant.text == 'none' {
+				p.record_diagnostic_span('named sum type cannot have none as its variant',
+					variant.start, variant.end)
+			}
+			variants << p.add_node(flat.Node{
+				kind:  .ident
+				value: variant.text
+				pos:   token.new_span(p.cur_file_id, variant.start, variant.end)
+			})
 		}
 		start := p.add_children(variants)
 		return p.add_node(flat.Node{
@@ -9327,11 +9337,15 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		return p.add_val(.ident, typ)
 	}
 	if p.tok == .name && p.peek() == .dot {
+		pattern_start := p.span_start()
 		mod_name := p.lit
 		p.next()
 		p.next()
 		if p.tok == .name && p.lit.len > 0 && p.lit[0] >= `A` && p.lit[0] <= `Z` {
 			type_name := mod_name + '.' + p.parse_type_name()
+			if pattern := p.named_variant_match_pattern(type_name, pattern_start) {
+				return pattern
+			}
 			return p.match_type_pattern_node(type_name)
 		}
 		field_name := p.expect_name_or_keyword()
@@ -9477,6 +9491,9 @@ fn (mut p Parser) match_branch() flat.NodeId {
 			branch_ids << cond
 			n_conds++
 		}
+		if n_conds > 1 {
+			p.check_named_variant_bindings_in_multi_pattern_branch(branch_ids)
+		}
 	}
 
 	if p.tok == .semicolon && p.peek() == .lcbr {
@@ -9489,6 +9506,7 @@ fn (mut p Parser) match_branch() flat.NodeId {
 	p.push_local_type_scope(block_scope)
 	p.begin_comptime_value_scope()
 	p.begin_local_binding_scope()
+	p.declare_named_variant_bindings(branch_ids)
 	p.predeclare_local_type_names_in_block(branch_block_start)
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.looks_like_match_branch_start() {
@@ -10939,7 +10957,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			}
 			is_negated := p.tok == .not_is
 			p.next()
-			type_name := p.parse_type_name()
+			type_name := p.is_expr_type_name()
 			istart := p.add_child(lhs)
 			// Span operand..type like `in_expr` does. A default (point) span would sit on the
 			// *next* token, which for `if x is T { // c` is the `{`, and the formatter would
@@ -10970,7 +10988,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			}
 			p.next() // skip !
 			p.next() // skip is
-			type_name := p.parse_type_name()
+			type_name := p.is_expr_type_name()
 			istart := p.add_child(lhs)
 			is_node := p.add_node_from(flat.Node{
 				kind:           .is_expr
@@ -12869,6 +12887,12 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 		return sel
 	}
 	field_name := p.expect_name_or_keyword()
+	if sum := p.named_variant_owner(lhs, field_name) {
+		if p.tok == .lpar {
+			return p.named_variant_constructor(sum, field_name, lhs)
+		}
+		return p.named_variant_value(sum, field_name, lhs)
+	}
 	sel_start := p.add_child(lhs)
 	// Anchor the selector at its receiver (lhs) so it spans `recv.field` rather
 	// than the `(`/`[` that follows; call/index nodes built on it inherit this.

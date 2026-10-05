@@ -4641,7 +4641,9 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			&& tc.sum_type_contains_variant(clean_target, clean_actual.base_type)
 		if !tc.sum_type_contains_variant(clean_target, actual) && !pointee_is_variant
 			&& !tc.smartcast_wrapper_cast_payload_compatible(child_id, actual, target) {
-			tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
+			if !tc.named_variant_init_was_reported(child_id) {
+				tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
+			}
 			return
 		}
 	}
