@@ -3709,6 +3709,11 @@ Parameter names and whitespace do not affect function type compatibility.
 
 ### Closures
 
+An instance method can be used as an unbound function value through its type, such as
+`App.method`. Its first parameter is the receiver, including the receiver's `&` or `mut`
+modifier. This form captures no receiver and creates no closure. The same applies to
+`T.$method` inside a compile-time loop over `T.methods`.
+
 Callbacks in specialized generic functions retain the functions they call, including imported
 functions referenced only from the callback body.
 

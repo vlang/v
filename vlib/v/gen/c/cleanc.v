@@ -16291,6 +16291,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.write(')')
 		}
 		.selector {
+			if function_name := g.tc.resolved_fn_value_name(id) {
+				g.write(g.direct_call_name(function_name))
+				return
+			}
 			base_id := g.a.child(node, 0)
 			base := g.a.nodes[int(base_id)]
 			if base.kind == .ident {

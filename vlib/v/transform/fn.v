@@ -1408,6 +1408,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	if addr := t.transform_builtin_addr_call(node) {
 		return addr
 	}
+	t.validate_specialized_fn_value_mut_args(node)
 	call_name := t.call_name_for_node(id, node)
 	if node.children_count == 2 && (call_name in ['drop_owned', 'builtin.drop_owned']
 		|| call_name.starts_with('builtin.drop_owned_T_') || call_name.starts_with('drop_owned_T_')) {
@@ -3172,6 +3173,30 @@ fn (t &Transformer) call_callee_fn_type(fn_id flat.NodeId) ?types.FnType {
 		}
 	}
 	return transform_fn_type(t.tc.resolve_type(fn_id))
+}
+
+// Reflected method values acquire their concrete signature while the generic
+// body is unrolled, after the checker has visited the template.
+fn (mut t Transformer) validate_specialized_fn_value_mut_args(node flat.Node) {
+	if !t.validating_generic_spec || isnil(t.tc) || t.tc.disable_explicit_mutability
+		|| node.children_count < 2 {
+		return
+	}
+	callee_id := t.unwrap_parens(t.a.child(&node, 0))
+	callee := t.a.node(callee_id)
+	if callee.kind != .ident || t.raw_var_type(callee.value).len == 0 {
+		return
+	}
+	fn_type := t.call_callee_fn_type(callee_id) or { return }
+	for index, is_mut in fn_type.params_mut {
+		if !is_mut || index + 1 >= node.children_count {
+			continue
+		}
+		arg := t.a.child_node(&node, index + 1)
+		if !arg.is_mut {
+			t.record_monomorph_error('function `${callee.value}` parameter ${index + 1} is `mut`, so use a `mut` argument instead')
+		}
+	}
 }
 
 fn (mut t Transformer) ensure_private_call_param_types_decl_cache() {

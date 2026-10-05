@@ -6365,6 +6365,9 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		tc.check_comptime_field_selector(id, node, '', ComptimeStaticFieldCases{})
 		return
 	}
+	if tc.check_unbound_instance_method_value(id, node) {
+		return
+	}
 	if typ := tc.enum_selector_type(&node) {
 		tc.register_synth_type(id, typ)
 		return
@@ -9361,6 +9364,9 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 		if key := tc.static_assoc_fn_key_for_base(base.value, node.value) {
 			return key
 		}
+		if key := tc.unbound_instance_method_key(base.value, node.value) {
+			return key
+		}
 		return none
 	}
 	if base.kind == .selector && base.children_count > 0 {
@@ -9378,9 +9384,47 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 			if static_key := tc.static_assoc_fn_key_for_base('${mod_name}.${base.value}', node.value) {
 				return static_key
 			}
+			if instance_key := tc.unbound_instance_method_key('${mod_name}.${base.value}', node.value) {
+				return instance_key
+			}
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) unbound_instance_method_key(type_name string, method string) ?string {
+	if !tc.ident_may_be_type(type_name) && !tc.type_symbol_known(type_name) {
+		return none
+	}
+	receiver := tc.parse_type(type_name)
+	for receiver_type in [receiver, unalias_and_unwrap_pointer_type(receiver)] {
+		for candidate in receiver_method_name_candidates(receiver_type, method, tc.cur_module) {
+			if tc.fn_signature_known(candidate) && !tc.fn_key_is_static_associated(candidate) {
+				return candidate
+			}
+		}
+	}
+	return none
+}
+
+fn (mut tc TypeChecker) check_unbound_instance_method_value(id flat.NodeId, node flat.Node) bool {
+	if tc.ident_is_call_callee_or_generic_base(id) {
+		return false
+	}
+	key := tc.selector_fn_value_key(node) or { return false }
+	if tc.fn_key_is_static_associated(key) || !key.contains('.') || key.starts_with('C.') {
+		return false
+	}
+	if tc.unbound_instance_method_key(key.all_before_last('.'), node.value) == none {
+		return false
+	}
+	if _ := tc.private_declaration(key) {
+		tc.record_error_at(.unknown_field, 'method `${key}` is private', id, tc.node_value_diagnostic_pos(id))
+	}
+	typ := tc.fn_type_from_key(key) or { return false }
+	tc.remember_resolved_fn_value(id, key)
+	tc.register_synth_type(id, typ)
+	return true
 }
 
 fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident string, method string) ?string {
