@@ -43,7 +43,23 @@ fn (set ComparatorSet) satisfies(ver Version) bool {
 			return false
 		}
 	}
+	// The grammar excludes a prerelease unless this set names one on the same
+	// `[major, minor, patch]`. Without that, `^1.0.0` would admit `1.0.0-alpha`
+	// and a resolver could never tell a pre-release from the release it precedes.
+	if ver.prerelease.len > 0 && !set.admits_prerelease(ver) {
+		return false
+	}
 	return true
+}
+
+fn (set ComparatorSet) admits_prerelease(ver Version) bool {
+	for comp in set.comparators {
+		if comp.ver.prerelease.len > 0 && comp.ver.major == ver.major && comp.ver.minor == ver.minor
+			&& comp.ver.patch == ver.patch {
+			return true
+		}
+	}
+	return false
 }
 
 fn (c Comparator) satisfies(ver Version) bool {
@@ -253,10 +269,12 @@ fn expand_comparator_set(input string) ?ComparatorSet {
 
 fn expand_tilda(raw_version string) ?ComparatorSet {
 	min_ver := coerce_version(raw_version) or { return none }
+	// The ceiling carries no prerelease, so `~1.2.3-beta.2` stops below every
+	// 1.3.0, and does not reach up to `1.3.0-alpha`.
 	max_ver := if min_ver.minor == 0 && min_ver.patch == 0 {
-		min_ver.increment(.major)
+		Version{min_ver.major + 1, 0, 0, '', ''}
 	} else {
-		min_ver.increment(.minor)
+		Version{min_ver.major, min_ver.minor + 1, 0, '', ''}
 	}
 	return make_comparator_set_ge_lt(min_ver, max_ver)
 }
