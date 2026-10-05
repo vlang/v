@@ -1,6 +1,5 @@
 // vtest build: !msvc
 // msvc does not support inline assembly at all (tracked for a MASM-based path: vlang/v#29105).
-// This file is also never compiled on any Windows CI leg (tracked: vlang/v#29107).
 
 fn test_raw_template_with_named_operands() {
 	// `movl`/`addl` are 32-bit instructions, so the operands have to be 32-bit too:
