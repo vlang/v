@@ -18611,7 +18611,7 @@ struct ComptimeStaticFieldCases {
 struct ComptimeStaticValueCase {
 	name          string
 	location      string
-	value         int
+	value         i64
 	has_value     bool
 	typ           string
 	return_type   string

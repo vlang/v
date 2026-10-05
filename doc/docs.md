@@ -7952,8 +7952,9 @@ fn inlined_function() {
 fn function() {
 }
 
-// Calls to this function in const and enum expressions can be evaluated at compile time,
-// when all call arguments are compile-time constants.
+// Calls to this function in enum expressions can be evaluated at compile time,
+// when all call arguments are compile-time constants. Integer parameters, casts, and
+// return values use their declared integer widths. Const initializers remain runtime calls.
 @[comptime]
 fn make_mask(value u32, shift u32) u32 {
 	return value << shift
