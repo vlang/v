@@ -1390,11 +1390,15 @@ fn check_modern_openssl_present() bool {
 	if res.exit_code != 0 {
 		return false
 	}
-	line := res.output.trim_space()
-	if !line.starts_with('OpenSSL ') {
+	return has_modern_openssl_version(res.output)
+}
+
+fn has_modern_openssl_version(output string) bool {
+	words := output.fields()
+	if words.len < 2 || words[0] != 'OpenSSL' {
 		return false
 	}
-	version := semver.coerce(line) or { return false }
+	version := semver.coerce(words[1].all_before('-')) or { return false }
 	return version.satisfies('>=3.5.0')
 }
 
