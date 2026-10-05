@@ -82,10 +82,10 @@ fn main() {
 }
 ```
 
-Only strings created with `.to_owned()` participate; literals and primitives are
-unaffected. So it is a targeted tool for the case it covers, not a general
-guarantee. `doc/ownership.md` is the reference; `references/OWNERSHIP.md` here is
-the summary.
+Strings created with `.to_owned()` or `.clone()`, ordinary string slices, and the
+`Owned` / `Copy` / `Drop` struct markers participate. Literals and primitives are
+unaffected; arbitrary structs, maps and slices are not tracked as owned on their
+own. `doc/ownership.md` is the reference; `references/OWNERSHIP.md` here is the summary.
 
 ```bash
 v -ownership file.v        # check and compile
