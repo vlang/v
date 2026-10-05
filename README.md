@@ -228,6 +228,16 @@ active (`cl` on `PATH`, with `INCLUDE` and `LIB` set; not for `-o file.o`), othe
 that targets x86_64 MinGW, otherwise `gcc`. A native `-prod` build on another Windows
 architecture uses `gcc`. An explicit `-cc` always wins.
 
+An explicit `-cc msvc` on Windows does not need a Developer environment. When `INCLUDE` or `LIB`
+is not set, V finds the Visual Studio C++ tools (the `cl` on `PATH`, `VCToolsInstallDir`, or the
+newest installation `vswhere` reports) and the Windows SDK (`WindowsSdkDir`, the `KitsRoot10`
+registry value, or `Program Files (x86)\Windows Kits\10`). It puts a `cl` for the architecture V
+builds for on `PATH` when none is there, or when the one there is for another architecture (unless
+`-cc` names it by its path), and sets the missing variables for the C compiler. Variables that are
+already set, as in a Developer Command Prompt, are left as they are. The program that `v run`
+starts gets the environment it was started with, not these changes. If V finds nothing, it says
+what is missing before `cl` fails.
+
 On macOS, `-cc tcc -gc boehm` uses a persistent bundled `libgc.dylib` store when the physical V
 installation path contains a comma. The store is under `$XDG_DATA_HOME/v-tcc-libgc-v1`, or
 `$HOME/.local/share/v-tcc-libgc-v1` when the XDG variable is unset or empty. V creates the fallback

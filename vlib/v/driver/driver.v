@@ -13162,8 +13162,9 @@ pub fn run(args []string) {
 			}
 			b.step('MSVC C compatibility')
 		}
+		mut msvc_saved_environment := []MsvcSavedVariable{}
 		if effective_c_compiler == 'msvc' && !c_only {
-			msvc_require_cl(c_compiler, host_os, prefs.target)
+			msvc_saved_environment = msvc_require_cl(c_compiler, host_os, prefs.target)
 		}
 		pic_flag := shared_pic_flag(is_shared || use_cached_dev_dylib, prefs.normalized_target_os())
 		mut linux_cross_sysroot := ''
@@ -14176,6 +14177,8 @@ Please install the corresponding development package/libraries and make sure the
 			'cc'
 		})
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		// The C compiler is done. What was set up for `cl` must not reach the program that runs next.
+		msvc_restore_environment(msvc_saved_environment)
 		if should_run {
 			if (is_crun || is_direct_vsh) && !explicit_output {
 				write_v3_crun_cache_marker(bin_file, crun_build_identity) or {}
