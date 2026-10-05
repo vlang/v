@@ -50,6 +50,7 @@ pub fn emit_service(mut e Emitter, res &ResolvedFile, svc Service) {
 		e.wln(0, '// agree on it before any message is exchanged.')
 		e.wln(0, "pub const ${prefix}_method_${snake_case(r.name)} = '/${qualified}/${r.name}'")
 	}
+	e.w('')
 	e.wln(0, '// ${v_name} is the handler interface for the gRPC service `${qualified}`.')
 	e.wln(0, '//')
 	e.wln(0, '// A method returns a `grpc.StatusError` as its error to fail the call with a')
