@@ -40,8 +40,8 @@ up to `3.0.0`.
 
 Comparison operators accept wildcard or missing version components. For example,
 `>=1.x` means `>=1.0.0`, `>1.x` means `>=2.0.0`, and `<=1.2.x` stops before
-`1.3.0`, including its prereleases. Wildcard comparators can be combined with
-other comparators, as in `>=1.x <2.0.0`.
+`1.3.0`, including its prereleases. Wildcard or partial comparators can be combined
+with other comparators in any order, as in `>=1.x <2.0.0` or `>=0.0.0 >1.2`.
 
 [semver]: https://semver.org/
 

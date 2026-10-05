@@ -70,3 +70,35 @@ fn test_comparators_with_wildcard_or_missing_components() {
 		}
 	}
 }
+
+fn test_partial_comparators_in_each_position() {
+	cases := [
+		ComparatorRangeCase{'1.2.9', '>=0.0.0 >1.2', false},
+		ComparatorRangeCase{'1.3.0', '>=0.0.0 >1.2', true},
+		ComparatorRangeCase{'1.2.9', '>=0.0.0 =1.2', true},
+		ComparatorRangeCase{'1.3.0', '>=0.0.0 =1.2', false},
+		ComparatorRangeCase{'1.2.9', '>0.0.0 <=1', true},
+		ComparatorRangeCase{'2.0.0', '>0.0.0 <=1', false},
+		ComparatorRangeCase{'1.2.9', '>=0.0.0 1.2', true},
+		ComparatorRangeCase{'1.3.0', '>=0.0.0 1.2', false},
+		ComparatorRangeCase{'1.1.9', '>=0.0.0 <1.2', true},
+		ComparatorRangeCase{'1.2.0', '>=0.0.0 <1.2', false},
+		ComparatorRangeCase{'1.2.0-beta.1', '>=1.2.0-beta.1 <1.2', false},
+		ComparatorRangeCase{'2.0.0-beta.1', '>=2.0.0-beta.1 <=1', false},
+		ComparatorRangeCase{'1.2.9', '>=0.0.0 >1.2 <=99.0.0', false},
+		ComparatorRangeCase{'1.3.0', '>=0.0.0 >1.2 <=99.0.0', true},
+	]
+	for c in cases {
+		ver := semver.from(c.version) or { panic(err) }
+		for range in [c.range, c.range.split(' ').reverse().join(' ')] {
+			assert ver.satisfies(range) == c.match, '${c.version} ${range}'
+		}
+	}
+}
+
+fn test_malformed_partial_comparator_sets_remain_invalid() {
+	ver := semver.from('1.2.9') or { panic(err) }
+	for range in ['>=0.0.0 >1.2 garbage', '>=0.0.0  >1.2', '>=0.0.0 =1..2', '>=0.0.0 >'] {
+		assert !ver.satisfies(range), range
+	}
+}

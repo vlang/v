@@ -255,6 +255,11 @@ fn can_expand(input string) bool {
 	if input.len == 0 {
 		return false
 	}
+	// Inspect each comparator's version separately: a partial bound can appear
+	// anywhere in a set, and later versions are not components of the first one.
+	if input.contains(comparator_sep) && !input.contains(hyphen_range_sep) {
+		return input.split(comparator_sep).any(can_expand(it))
+	}
 	_, raw_version := comparator_parts(input)
 	return input[0] == `~` || input[0] == `^` || input.contains(hyphen_range_sep)
 		|| input.index_any(x_range_symbols) > -1 || is_bare_partial_version(input)
