@@ -138,3 +138,20 @@ fn test_wildcard_prerelease_tags_do_not_change_the_release_floor() {
 		assert ver.satisfies(c.range) == c.match, '${c.version} ${c.range}'
 	}
 }
+
+fn test_numeric_components_cannot_follow_wildcards() {
+	for version in ['0.0.0', '1.0.0', '1.2.0', '2.0.0'] {
+		ver := semver.from(version) or { panic(err) }
+		for core in ['1.x.2', '1.X.2', '1.*.2', '*.1.2', 'x.1', 'X.1.x'] {
+			for operator in ['>=', '<=', '>', '<', '='] {
+				range := operator + core
+				assert !ver.satisfies(range), '${version} ${range}'
+				assert !ver.satisfies('>=0.0.0 ${range}'), '${version} >=0.0.0 ${range}'
+			}
+		}
+	}
+	ver := semver.from('1.2.9') or { panic(err) }
+	assert ver.satisfies('>=1.x.x')
+	assert ver.satisfies('=x.x.x')
+	assert ver.satisfies('>=1.X.*')
+}

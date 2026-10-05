@@ -175,6 +175,14 @@ fn parse_xrange(input string) ?Version {
 	if parsed.raw_ints.any(it !in ['x', 'X', '*'] && !is_valid_number(it)) {
 		return none
 	}
+	mut wildcard_seen := false
+	for component in parsed.raw_ints {
+		if component in ['x', 'X', '*'] {
+			wildcard_seen = true
+		} else if wildcard_seen {
+			return none
+		}
+	}
 	mut raw_ver := parsed.complete()
 	for typ in versions {
 		if raw_ver.raw_ints[typ].index_any(x_range_symbols) == -1 {
