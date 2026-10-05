@@ -1944,6 +1944,27 @@ fn (mut t Transformer) make_param_array_literal(params []ParamMeta, module_name 
 }
 
 fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, method MethodMeta) flat.NodeId {
+	receiver_node := t.a.node(receiver)
+	if receiver_node.kind == .ident && t.raw_var_type(receiver_node.value).len == 0 {
+		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
+		method_key := '${receiver_name}.${method.name}'
+		if params := t.tc.fn_param_types[method_key] {
+			ret := t.tc.fn_ret_types[method_key] or { types.Type(types.void_) }
+			fn_type := types.Type(types.FnType{
+				params:      params.clone()
+				params_mut:  (t.tc.declaration_param_mutability[method_key] or { []bool{} }).clone()
+				return_type: ret
+			})
+			value := t.a.add_node(flat.Node{
+				kind:  .ident
+				value: method_key
+				typ:   fn_type.name()
+			})
+			t.set_resolved_fn_value_entry(int(value), method_key)
+			t.set_node_typ(int(value), fn_type.name())
+			return value
+		}
+	}
 	start := t.a.children.len
 	t.a.children << receiver
 	fn_type := fn_literal_value_type_text_from_text(method.params.map(it.typ), method.return_type)
