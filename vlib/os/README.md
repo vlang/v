@@ -145,6 +145,9 @@ through `os.start_new_command` or `os.Command.start` is also deprecated; use
 `read_line()`, `eof`, `close()`, and `exit_code`. `read_line()` waits for a complete
 line or the end of the output pipe, including when the child pauses between writes.
 For more control, use `os.new_process(program)` and `process.set_args(args)`.
+These arguments are literal on Windows too: `%PATH%` stays `%PATH%`, and quotes
+and trailing backslashes are preserved. Expand environment variables explicitly
+with `os.getenv()` when that is intended.
 
 When shell syntax is required, invoke the shell explicitly with an argument array.
 A shell still interprets its script as code: use a fixed script with positional
