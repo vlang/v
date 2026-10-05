@@ -176,6 +176,12 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			p.errors++
 			return
 		}
+		check_min_v(manifest, ident) or {
+			vpm_error(err.msg())
+			rmdir_all(tmp_path) or {}
+			p.errors++
+			return
+		}
 		// Reuse the registered VPM name when a direct VCS URL points to the same repository.
 		registered_name := if kind in [.https, .ssh] {
 			p.lookup_registered_name_for_url(manifest.name, ident, mut selector) or { '' }
