@@ -31,6 +31,49 @@ compiled in only when their C client libraries are enabled:
 For backend-specific features, continue using `db.pg`, `db.mysql`, `db.sqlite`, or
 `db.mssql` directly.
 
+## Shared connection pool
+
+`open_pooled` creates a lazy pool over any built-in `Driver`. Each operation checks out
+one connection and releases it after the operation, including after a query error.
+SQLite's `:memory:` databases belong to individual connections; use a single connection
+or a file-backed database when statements must share their data.
+
+```v ignore
+import db
+
+mut database := db.open_pooled(db.DriverConfig{
+	kind: .sqlite
+	path: ':memory:'
+}, max_open_conns: 1, max_idle_conns: 1)
+defer { database.close() or {} }
+
+database.exec('create table users (id integer primary key, name text)')!
+database.exec_param_many('insert into users (name) values (?)', ['alice'])!
+println(database.exec_one('select name from users')!.val(0))
+```
+
+`PoolConfig` sets `max_open_conns` (zero means unlimited), `max_idle_conns` (default two),
+and `conn_max_lifetime` (zero disables expiration). The limits can also be changed on
+`DB` with `set_max_open_conns`, `set_max_idle_conns`, and `set_conn_max_lifetime`.
+`stats()` reports open, idle, in-use, and waiting connections. Negative count limits
+are normalized to zero.
+
+Implement `DriverFactory.connect() !&Driver` to use a third-party driver with `new_pool`
+or `new_db`. The factory must support concurrent calls and return an independent physical
+connection each time. `Pool.acquire()` and `DB.acquire()` return fresh `Conn` handles;
+`Conn.close()` returns the physical connection. A released handle remains invalid even
+when another caller acquires the same physical connection. The pool calls `Driver.reset()`
+before reusing a released connection and discards connections whose reset fails. Invalid
+idle connections and expired connections are discarded during acquisition.
+
+Closing a pool wakes waiting callers and closes idle connections. Checked-out connections
+remain usable until released, when they are closed. Acquisition errors from the factory
+are returned to the caller; construction itself does not connect. `db.open()` and existing
+backend-specific pools retain their current APIs.
+
+Use a checked-out `Conn` to pin several statements to one session. This shared pool does
+not yet provide an ORM adapter, a transaction type, or a pooled prepared-statement manager.
+
 ## Cross-driver consistency helpers
 
 `db.pg` and `db.mysql` accept both `user` and `username` in their `Config` structs.
