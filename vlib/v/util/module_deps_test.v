@@ -3,10 +3,13 @@ module util
 import os
 import time
 
-fn test_external_modules_for_tool() {
-	assert external_modules_for_tool('vdoc') == ['markdown']
-	assert external_modules_for_tool('vfmt') == []
-	assert external_modules_for_tool('') == []
+fn test_dev_dependencies_for_tool() {
+	// vdoc declares its own dependency in its own `v.mod`, so this reads the tool
+	// rather than a table the compiler carries.
+	assert dev_dependencies_for_tool('vdoc') == ['markdown']
+	// A tool with no `dev_dependencies` entry, and a name that is not a tool.
+	assert dev_dependencies_for_tool('vfmt') == []
+	assert dev_dependencies_for_tool('') == []
 }
 
 fn test_ensure_modules_for_tool_are_installed_keeps_installed_modules() {
