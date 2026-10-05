@@ -13,6 +13,7 @@ mut:
 	fail_connect  bool
 	fail_reset    bool
 	valid         bool = true
+	invalid_id    int
 	gate_reset    bool
 	reset_started chan bool
 	reset_resume  chan bool
@@ -55,7 +56,7 @@ fn (mut driver TestPoolDriver) exec_param_many(query string, _ []string) ![]Driv
 fn (mut driver TestPoolDriver) validate() !bool {
 	driver.state.mu.lock()
 	defer { driver.state.mu.unlock() }
-	return driver.state.valid
+	return driver.state.valid && driver.id != driver.state.invalid_id
 }
 
 fn (mut driver TestPoolDriver) reset() ! {
@@ -237,6 +238,36 @@ fn test_pool_waiter_handoff_capacity_change_and_shutdown() {
 	pinned.close()!
 	assert pool.stats().open_connections == 0
 	assert state.closed == 2
+}
+
+fn test_pool_waiter_discards_invalid_released_connection() {
+	state := &TestPoolState{ invalid_id: 1 }
+	mut pool := new_pool(TestPoolFactory{state}, max_open_conns: 1)
+	defer { pool.close() }
+	mut first := pool.acquire()!
+	result := chan string{cap: 1}
+	worker := spawn pool_waiter(mut pool, result)
+	wait_for_pool_waiter(mut pool)
+	first.close()!
+	id := <-result
+	worker.wait()
+	assert id == '2'
+	assert state.opened == 2
+	assert state.closed == 1
+	assert state.resets == 2
+	stats := pool.stats()
+	assert stats.open_connections == 1
+	assert stats.in_use == 0
+	assert stats.idle == 1
+	assert stats.wait_count == 0
+	pool.close()
+	assert state.closed == 2
+	assert pool.stats().open_connections == 0
+	if _ := pool.acquire() {
+		assert false
+	} else {
+		assert err.msg() == 'db: pool is closed'
+	}
 }
 
 struct NilPoolFactory {}

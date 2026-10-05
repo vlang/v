@@ -63,8 +63,9 @@ or `new_db`. The factory must support concurrent calls and return an independent
 connection each time. `Pool.acquire()` and `DB.acquire()` return fresh `Conn` handles;
 `Conn.close()` returns the physical connection. A released handle remains invalid even
 when another caller acquires the same physical connection. The pool calls `Driver.reset()`
-before reusing a released connection and discards connections whose reset fails. Invalid
-idle connections and expired connections are discarded during acquisition.
+before reusing a released connection and discards connections whose reset fails. Reused
+connections are validated during acquisition, including direct handoffs to waiting callers;
+invalid and expired connections are discarded.
 
 Closing a pool wakes waiting callers and closes idle connections. Checked-out connections
 remain usable until released, when they are closed. Acquisition errors from the factory

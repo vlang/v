@@ -91,6 +91,7 @@ fn (p &Pool) wrap(slot PoolSlot) &Conn {
 }
 
 // acquire returns a fresh handle, waiting when the physical connection limit is reached.
+// Reused connections are validated before they are handed to the caller.
 pub fn (mut p Pool) acquire() !&Conn {
 	for {
 		p.mu.lock()
@@ -149,11 +150,13 @@ pub fn (mut p Pool) acquire() !&Conn {
 		p.mu.unlock()
 		slot := <-waiter or { return error('db: pool is closed') }
 		if !isnil(slot.driver) {
+			mut driver := slot.driver
+			valid := driver.validate() or { false }
 			p.mu.lock()
 			closed := p.closed
 			lifetime := p.max_lifetime
 			p.mu.unlock()
-			if closed || pool_slot_expired(slot, lifetime) {
+			if !valid || closed || pool_slot_expired(slot, lifetime) {
 				p.discard(slot)
 				if closed { return error('db: pool is closed') }
 				continue
