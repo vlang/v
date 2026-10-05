@@ -12757,6 +12757,9 @@ pub fn run(args []string) {
 	if !generic_cache_hit {
 		pre_tc.reset_resolution_type_view_cache()
 	}
+	// Dynamic smartcasts belong to function checks and may use a freed stage arena.
+	// Backend queries use lexical metadata, so give the master a durable empty map.
+	pre_tc.smartcasts = map[string]types.Type{}
 	if cgen_cache_hit {
 		b.step('monomorphize (cached)')
 	} else if incremental_cache_hit {
