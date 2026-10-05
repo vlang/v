@@ -23,6 +23,57 @@ fn test_implicit_tcc_preflight_does_not_link_c_or_object_output() {
 	with_implicit_tcc_environment(check_implicit_tcc_preflight_does_not_link_c_or_object_output)
 }
 
+fn test_implicit_tcc_preflight_preserves_semantic_errors() {
+	with_implicit_tcc_environment(check_implicit_tcc_preflight_preserves_semantic_errors)
+}
+
+fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
+	vexe := @VEXE
+	vroot := os.dir(vexe)
+	if !os.is_file(os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')) {
+		return
+	}
+	fixture := 'vlib/v/parser/tests/register_imported_enum.vv'
+	registered := cmdexec.run_in(vexe, ['-new-compiler', fixture], vroot)
+	assert registered.exit_code != 0, registered.output
+	expected := os.read_file(os.join_path(vroot, fixture.replace('.vv', '.out')))!
+	assert registered.output.trim_space() == expected.trim_space(), registered.output
+	dir := os.join_path(os.vtmp_dir(), 'v_tcc_preflight_semantic_error_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'main.v')
+	os.write_file(source, '#flag -lV3InvalidSourceMustNotLink\nfn main() { println(v3_missing_value) }\n')!
+	invalid := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-nocache', source])
+	assert invalid.exit_code != 0, invalid.output
+	assert invalid.output.contains('v3_missing_value'), invalid.output
+	assert !invalid.output.contains('implicit tcc could not be used'), invalid.output
+	old_forced := os.getenv_opt('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE')
+	os.setenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE', 'injected for invalid source', true)
+	defer {
+		if value := old_forced {
+			os.setenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE', value, true)
+		} else {
+			os.unsetenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE')
+		}
+	}
+	os.write_file(source, 'fn read_value[T](value T) { println(value.v3_missing_field) }\nfn main() { read_value(1) }\n')!
+	forced := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-nocache', source])
+	assert forced.exit_code != 0, forced.output
+	assert forced.output.contains('v3_missing_field'), forced.output
+	assert !forced.output.contains('implicit tcc could not be used'), forced.output
+	os.write_file(source, 'fn main() { \$if tinyc { println(v3_invalid_tinyc_value) } \$else { answer := 40 + 2; println(answer) } }\n')!
+	exe := os.join_path(dir, 'valid.exe')
+	valid := cmdexec.run(vexe, ['-new-compiler', '-v', '-gc', 'none', '-nocache', '-o', exe, source])
+	assert valid.exit_code == 0, valid.output
+	assert valid.output.count('warning: implicit tcc could not be used') == 1, valid.output
+	assert valid.output.count('=== V compiler benchmark ===') == 1, valid.output
+	run := cmdexec.run(exe, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
+}
+
 fn with_implicit_tcc_environment(check fn () !) {
 	old_vflags := os.getenv_opt('VFLAGS')
 	old_vosargs := os.getenv_opt('VOSARGS')

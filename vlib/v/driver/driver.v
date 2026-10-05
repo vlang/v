@@ -139,6 +139,7 @@ const v3_vvmrc_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 const v3_crun_build_identity_env = 'V3_CRUN_BUILD_IDENTITY'
 const v3_internal_restart_env = 'V3_INTERNAL_RESTART'
 const v3_internal_parser_diagnostics_printed_flag = '-v3-internal-parser-diagnostics-printed'
+const v3_internal_implicit_tcc_warning_prefix = '-v3-internal-implicit-tcc-warning='
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 
 fn v3_parser_diagnostics_printed(value bool) bool {
@@ -9145,6 +9146,7 @@ pub fn run(args []string) {
 	mut ownership_mode := false
 	mut verbose := false
 	mut silent := false
+	mut deferred_implicit_tcc_warning := ''
 	mut skip_notices := false
 	mut is_repl := false
 	mut parser_diagnostics_already_printed := false
@@ -9569,6 +9571,9 @@ pub fn run(args []string) {
 			// accepts module-less main input; the marker also suppresses transient
 			// unused-code notices while the snippet is being assembled.
 			is_repl = true
+			i++
+		} else if args[i].starts_with(v3_internal_implicit_tcc_warning_prefix) {
+			deferred_implicit_tcc_warning = args[i].all_after(v3_internal_implicit_tcc_warning_prefix)
 			i++
 		} else if args[i] == v3_internal_parser_diagnostics_printed_flag {
 			parser_diagnostics_already_printed = true
@@ -13044,6 +13049,11 @@ pub fn run(args []string) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			exit(1)
 		}
+		// A compiler switch does not add diagnostics to an invalid program. Wait
+		// for the asynchronous generic checks too, before reporting the retry.
+		if deferred_implicit_tcc_warning.len > 0 && !silent {
+			eprintln(deferred_implicit_tcc_warning)
+		}
 		// Test harness declarations must remain ahead of their function bodies, so
 		// scoped test generation stays serial instead of streaming worker batches.
 		// The completed translation unit is already on disk before the stage arena
@@ -14890,10 +14900,11 @@ fn v3_implicit_tcc_fallback_warning(fallback string, reason string) string {
 // retry starts. Windows waits for the child to preserve its exit status.
 fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_dir string, silent bool, failure string) {
 	fallback := v3_platform_c_compiler_command(os.user_os())
-	if !silent {
-		eprintln(v3_implicit_tcc_fallback_warning(fallback, failure))
-	}
 	mut retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
+	if !silent {
+		retry_args.insert(0, v3_internal_implicit_tcc_warning_prefix + v3_implicit_tcc_fallback_warning(fallback,
+			failure))
+	}
 	if v3_parser_diagnostics_printed(false)
 		&& v3_internal_parser_diagnostics_printed_flag !in retry_args {
 		retry_args.insert(0, v3_internal_parser_diagnostics_printed_flag)
