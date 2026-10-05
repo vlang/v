@@ -529,17 +529,52 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		g.direct_array_access = item.direct_array_access
 		old_ignore_overflow := g.ignore_overflow
 		g.ignore_overflow = item.ignore_overflow
+		old_user_code_checks := g.user_code_checks
+		g.user_code_checks = (g.check_overflow || g.check_casts) && !item.ignore_overflow
+			&& g.file_gets_user_code_checks(item.file)
 		old_cur_fn_is_specialized := g.cur_fn_is_specialized
 		g.cur_fn_is_specialized = g.a.specialized_fn_nodes[int(item.node_id)]
 			|| g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
 		g.gen_fn_in_module(item.node_id, node, item.module, item.skip_prelude_scan)
 		g.cur_fn_is_specialized = old_cur_fn_is_specialized
+		g.user_code_checks = old_user_code_checks
 		g.ignore_overflow = old_ignore_overflow
 		g.direct_array_access = old_direct_array_access
 		if g.cache_split {
 			g.writeln('/* V3CACHE_FN_END ${cache_fn_marker_key(item.file, item.module, node.value)} */')
 		}
 	}
+}
+
+// file_gets_user_code_checks reports whether functions from `file` get the
+// `-check-overflow` negation and shift-count checks, and the `-check-casts` checks.
+// The standard library relies on V's defined semantics for these (`-x` wraps,
+// `x >> 64` is `0`, `u8(x)` truncates), so only the program's own files and
+// modules outside `vlib/` get them.
+fn (g &FlatGen) file_gets_user_code_checks(file string) bool {
+	if g.cache_program_files[file] || g.test_files[file] {
+		return true
+	}
+	if file.len == 0 || file.ends_with('.vh') {
+		// Cached module headers stand in for imported modules.
+		return false
+	}
+	for raw_path in [file, g.a.real_source_path(file)] {
+		mut path := raw_path.replace('\\', '/')
+		if g.check_scope_vlib_prefixes.len == 0 {
+			if path.contains('/vlib/') || path.starts_with('vlib/') {
+				return false
+			}
+			continue
+		}
+		if !os.is_abs_path(path) {
+			path = os.abs_path(path).replace('\\', '/')
+		}
+		if g.check_scope_vlib_prefixes.any(path.starts_with(it)) {
+			return false
+		}
+	}
+	return true
 }
 
 // file_is_cache_program_file reports whether `file`, as written or resolved,

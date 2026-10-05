@@ -465,14 +465,24 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	// Overflow calls are introduced by C generation after reachability has been
 	// computed. The synthetic `builtin.overflow` import exists only for
-	// `-check-overflow`, so its declarations are the signal to retain the helper
+	// `-check-overflow` and `-check-casts`, so its declarations are the signal to retain the helper
 	// bodies that those generated calls need.
 	if 'builtin.overflow.add_i8' in fn_decls || 'overflow.add_i8' in fn_decls {
-		for op in ['add', 'sub', 'mul'] {
+		for op in ['add', 'sub', 'mul', 'shl', 'shr'] {
 			for typ in ['i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64'] {
 				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
 				enqueue('overflow.${op}_${typ}', mut used, mut queue)
 			}
+		}
+		for op in ['neg', 'div', 'mod'] {
+			for typ in ['i8', 'i16', 'i32', 'i64'] {
+				enqueue('builtin.overflow.${op}_${typ}', mut used, mut queue)
+				enqueue('overflow.${op}_${typ}', mut used, mut queue)
+			}
+		}
+		for name in ['cast_overflow_signed', 'cast_overflow_unsigned'] {
+			enqueue('builtin.overflow.${name}', mut used, mut queue)
+			enqueue('overflow.${name}', mut used, mut queue)
 		}
 	}
 	// Interface dispatchers are generated after reachability has been computed.

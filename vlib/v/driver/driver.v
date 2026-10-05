@@ -9031,6 +9031,7 @@ pub fn run(args []string) {
 	mut fatal_errors := false
 	mut message_limit := -1
 	mut check_overflow := false
+	mut check_casts := false
 	mut target_libc_headers := false
 	mut force_bounds_checking := false
 	mut print_v_files := false
@@ -9449,6 +9450,9 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-check-overflow' {
 			check_overflow = true
+			i++
+		} else if args[i] == '-check-casts' {
+			check_casts = true
 			i++
 		} else if args[i] == '-manualfree' {
 			ownership_mode = false
@@ -10372,7 +10376,7 @@ pub fn run(args []string) {
 				|| dump_c_flags.len > 0 || generate_c_project.len > 0 {
 				unsupported_modes << 'compiler inspection output'
 			}
-			if c99_explicit || is_strict || check_overflow {
+			if c99_explicit || is_strict || check_overflow || check_casts {
 				unsupported_modes << 'strict/checked C modes'
 			}
 			if c_compiler_explicit {
@@ -10631,6 +10635,7 @@ pub fn run(args []string) {
 		'translated=${translated_mode}',
 		'enable_globals=${enable_globals_compat}',
 		'check_overflow=${check_overflow}',
+		'check_casts=${check_casts}',
 		'force_bounds_checking=${prefs.force_bounds_checking}',
 		'warn_about_allocs=${prefs.warn_about_allocs}',
 		'warns_are_errors=${effective_warns_are_errors}',
@@ -10784,7 +10789,7 @@ pub fn run(args []string) {
 			prefs.is_test = prepared_imports.is_test
 			mut unscanned := ImplicitImportScan{}
 			resolve_imports(mut prepared_ast, mut p, prefs, []string{}, !current_no_parallel,
-				minimal_literal_output || no_closures, check_overflow, mut cache_state, mut
+				minimal_literal_output || no_closures, check_overflow || check_casts, mut cache_state, mut
 				parse_timing, mut unscanned, mut prepared_imports)
 			prepared_imports.capturing = false
 			prepared_imports.ready = true
@@ -10935,9 +10940,9 @@ pub fn run(args []string) {
 	if !no_builtin {
 		implicit_imports = if prepared_imports.ready {
 			seed_implicit_imports_from(mut a, prepared_imports.user_start, prepared_imports.builtin_field_index,
-				skip_closure_runtime, check_overflow)
+				skip_closure_runtime, check_overflow || check_casts)
 		} else {
-			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
+			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow || check_casts)
 		}
 	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
@@ -10946,7 +10951,7 @@ pub fn run(args []string) {
 	resolve_imports_started_us := b.current_step_time_us()
 	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
 	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime,
-		check_overflow, mut cache_state, mut parse_timing, mut implicit_imports, mut prepared_imports)
+		check_overflow || check_casts, mut cache_state, mut parse_timing, mut implicit_imports, mut prepared_imports)
 	if prepared_imports.diverged != '' {
 		rerun_as_one_shot_check(prepared_imports.diverged, served.question)
 	}
@@ -12826,6 +12831,8 @@ pub fn run(args []string) {
 			g.set_race(race)
 			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
+			g.set_check_casts(check_casts)
+			g.set_check_scope_vroot(prefs.vroot)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
@@ -12898,6 +12905,8 @@ pub fn run(args []string) {
 			g.set_race(race)
 			g.set_vlines(is_debug && !is_c_debug)
 			g.set_check_overflow(check_overflow)
+			g.set_check_casts(check_casts)
+			g.set_check_scope_vroot(prefs.vroot)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)

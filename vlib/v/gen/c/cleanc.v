@@ -403,6 +403,9 @@ mut:
 	is_debug                       bool
 	check_overflow                 bool
 	ignore_overflow                bool
+	check_casts                    bool
+	check_scope_vlib_prefixes      []string
+	user_code_checks               bool
 	force_bounds_checking          bool
 	is_shared                      bool
 	interface_exports              []string
@@ -905,9 +908,31 @@ pub fn (mut g FlatGen) set_debug(enabled bool) {
 	g.is_debug = enabled
 }
 
-// set_check_overflow enables runtime checks for integer addition, subtraction, and multiplication.
+// set_check_overflow enables runtime checks for integer addition, subtraction, multiplication,
+// negation and division, and for out of range shift counts.
 pub fn (mut g FlatGen) set_check_overflow(enabled bool) {
 	g.check_overflow = enabled
+}
+
+// set_check_casts enables runtime checks for integer casts that lose information.
+pub fn (mut g FlatGen) set_check_casts(enabled bool) {
+	g.check_casts = enabled
+}
+
+// set_check_scope_vroot records the V installation, whose standard library (`vlib/`)
+// keeps V's defined negation, shift and cast semantics under `-check-overflow` and `-check-casts`.
+pub fn (mut g FlatGen) set_check_scope_vroot(vroot string) {
+	g.check_scope_vlib_prefixes = []string{}
+	if vroot.len == 0 {
+		return
+	}
+	vlib_dir := os.join_path(vroot, 'vlib')
+	for dir in [vlib_dir, os.real_path(vlib_dir)] {
+		prefix := dir.replace('\\', '/').trim_right('/') + '/'
+		if prefix !in g.check_scope_vlib_prefixes {
+			g.check_scope_vlib_prefixes << prefix
+		}
+	}
 }
 
 // set_force_bounds_checking ignores direct-array-access attributes so every
@@ -15880,6 +15905,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			if g.gen_int128_prefix(node, child_id) {
 				return
 			}
+			if node.op == .minus && g.gen_checked_integer_negation(id, child_id) {
+				return
+			}
 			if node.op == .amp && g.in_global_array_pointer_init {
 				// Guard/branch lowering can hide an addressed temporary in a nested
 				// assignment, so give it owned storage wherever it occurs in the initializer.
@@ -17005,6 +17033,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.gen_expr(g.a.child(node, 0))
 					g.write(')')
 				}
+			} else if g.gen_checked_integer_cast(id, target_type, cast_arg_id, cast_arg_type, ct) {
+				return
 			} else {
 				g.write('(${ct})(')
 				g.gen_expr(g.a.child(node, 0))
@@ -25324,6 +25354,22 @@ fn (mut g FlatGen) gen_guarded_shift_from_text(lhs_text string, rhs_id flat.Node
 	}
 	lhs_tmp := g.tmp_name()
 	rhs_tmp := g.tmp_name()
+	if g.user_overflow_checks_active() && !g.expr_is_in_translated_file(rhs_id) {
+		if kind := g.checked_int_kind(lhs_type) {
+			// `-check-overflow`: a negative count, or one that is not less than the
+			// width, panics instead of giving V's defined result.
+			suffix := if op == .right_shift_unsigned {
+				'u${kind.bits}'
+			} else {
+				kind.helper_suffix()
+			}
+			helper := if op == .left_shift { 'shl' } else { 'shr' }
+			g.write('({ ${lhs_type_name} ${lhs_tmp} = (${lhs_type_name})(${lhs_text}); i64 ${rhs_tmp} = (i64)(')
+			g.gen_shift_count_value(rhs_id)
+			g.write('); (${result_type})builtin__overflow__${helper}_${suffix}(${lhs_tmp}, ${rhs_tmp}); })')
+			return
+		}
+	}
 	g.write('({ ${lhs_type_name} ${lhs_tmp} = (${lhs_type_name})(${lhs_text}); u64 ${rhs_tmp} = ')
 	g.gen_shift_count_value(rhs_id)
 	g.write('; ${rhs_tmp} >= ${bits} ? (${result_type})0 : (${result_type})(${lhs_tmp} ${op_text} ${rhs_tmp}); })')
@@ -25490,6 +25536,27 @@ fn (g &FlatGen) integer_overflow_helper(typ types.Type, op flat.Op) ?string {
 		.mul, .mul_assign { 'mul' }
 		else { return none }
 	}
+	kind := g.checked_int_kind(typ) or { return none }
+	return 'builtin__overflow__${op_name}_${kind.helper_suffix()}'
+}
+
+// CheckedIntKind is the width and signedness of an integer type that has
+// `builtin.overflow` helpers.
+struct CheckedIntKind {
+	unsigned bool
+	bits     int
+	name     string
+}
+
+// helper_suffix is the type part of a `builtin.overflow` helper name, like `i64`.
+fn (k CheckedIntKind) helper_suffix() string {
+	prefix := if k.unsigned { 'u' } else { 'i' }
+	return '${prefix}${k.bits}'
+}
+
+// checked_int_kind returns the width and signedness of the 8 to 64 bit integer
+// type `typ` (after aliases), or none for any other type.
+fn (g &FlatGen) checked_int_kind(typ types.Type) ?CheckedIntKind {
 	clean := cgen_unalias_type(typ)
 	mut unsigned := false
 	mut bits := 0
@@ -25519,8 +25586,121 @@ fn (g &FlatGen) integer_overflow_helper(typ types.Type, op flat.Op) ?string {
 	if bits !in [8, 16, 32, 64] {
 		return none
 	}
-	prefix := if unsigned { 'u' } else { 'i' }
-	return 'builtin__overflow__${op_name}_${prefix}${bits}'
+	return CheckedIntKind{
+		unsigned: unsigned
+		bits:     bits
+		name:     clean.name()
+	}
+}
+
+// overflow_checks_active reports whether `-check-overflow` instruments the
+// integer arithmetic being generated: `+ - *`, and `/ %` for `min / -1`.
+fn (g &FlatGen) overflow_checks_active() bool {
+	return g.check_overflow && !g.ignore_overflow && !g.static_c_initializer
+}
+
+// user_overflow_checks_active reports whether `-check-overflow` instruments the
+// negation of signed integers and the shift counts being generated. vlib relies
+// on both wrapping (`u64(-x)` for `min_i64`) and V's defined result for a shift
+// by the width or more (`x >> (64 - s)` with `s == 0` in `bits.rotate_left_64`).
+fn (g &FlatGen) user_overflow_checks_active() bool {
+	return g.check_overflow && g.user_code_checks && !g.static_c_initializer
+}
+
+// cast_checks_active reports whether `-check-casts` instruments the integer
+// casts being generated. Code in vlib keeps the defined truncating casts.
+fn (g &FlatGen) cast_checks_active() bool {
+	return g.check_casts && g.user_code_checks && !g.static_c_initializer
+}
+
+// gen_checked_integer_negation writes `-x` for a signed integer `x` through a
+// helper that panics for the minimum value, whose negation does not fit.
+fn (mut g FlatGen) gen_checked_integer_negation(id flat.NodeId, child_id flat.NodeId) bool {
+	if !g.user_overflow_checks_active() || g.expr_is_in_translated_file(id) {
+		return false
+	}
+	child := g.a.nodes[int(child_id)]
+	if child.kind in [.int_literal, .float_literal] {
+		// The checker validates constant operands; `-128` must stay a literal.
+		return false
+	}
+	kind := g.checked_int_kind(g.usable_expr_type(child_id)) or { return false }
+	if kind.unsigned {
+		return false
+	}
+	g.write('builtin__overflow__neg_${kind.helper_suffix()}(')
+	g.gen_expr(child_id)
+	g.write(')')
+	return true
+}
+
+// gen_checked_integer_cast writes the integer cast `ct(arg)` with a `-check-casts`
+// range check, when the target type cannot hold every value of the source type.
+// A value that does not fit panics instead of being truncated or reinterpreted.
+fn (mut g FlatGen) gen_checked_integer_cast(id flat.NodeId, target_type types.Type, arg_id flat.NodeId, arg_type types.Type, ct string) bool {
+	if !g.cast_checks_active() || g.expr_is_in_translated_file(id) {
+		return false
+	}
+	dst := g.checked_int_kind(target_type) or { return false }
+	src := g.checked_int_kind(arg_type) or { return false }
+	tmp := g.tmp_name()
+	check := integer_cast_range_check(src, dst, tmp)
+	if check.len == 0 {
+		return false
+	}
+	if value := g.shift_count_const_value(arg_id, []string{}) {
+		if integer_cast_const_fits(i64(value), src, dst) {
+			return false
+		}
+	}
+	wide := if src.unsigned { 'u64' } else { 'i64' }
+	reporter := if src.unsigned { 'cast_overflow_unsigned' } else { 'cast_overflow_signed' }
+	g.write('({ ${wide} ${tmp} = (${wide})(')
+	g.gen_expr(arg_id)
+	g.write('); if (${check}) builtin__overflow__${reporter}(${tmp}, _S("${src.name}"), _S("${dst.name}")); (${ct})(${tmp}); })')
+	return true
+}
+
+// integer_cast_range_check returns the C condition under which the value `tmp`,
+// widened to `i64`/`u64` from the `src` type, does not fit in the `dst` type, or
+// '' when every `src` value fits.
+fn integer_cast_range_check(src CheckedIntKind, dst CheckedIntKind, tmp string) string {
+	if !src.unsigned {
+		if !dst.unsigned {
+			if dst.bits >= src.bits {
+				return ''
+			}
+			half := u64(1) << (dst.bits - 1)
+			return '${tmp} < -${half}LL || ${tmp} > ${half - 1}LL'
+		}
+		if dst.bits >= src.bits {
+			return '${tmp} < 0'
+		}
+		return '${tmp} < 0 || ${tmp} > ${(u64(1) << dst.bits) - 1}LL'
+	}
+	if dst.unsigned {
+		if dst.bits >= src.bits {
+			return ''
+		}
+		return '${tmp} > ${(u64(1) << dst.bits) - 1}ULL'
+	}
+	if dst.bits > src.bits {
+		return ''
+	}
+	return '${tmp} > ${(u64(1) << (dst.bits - 1)) - 1}ULL'
+}
+
+// integer_cast_const_fits reports whether the constant `value` of the `src` type
+// is known to fit in the `dst` type, so its cast needs no runtime check.
+fn integer_cast_const_fits(value i64, src CheckedIntKind, dst CheckedIntKind) bool {
+	if value < 0 {
+		if src.unsigned || dst.unsigned {
+			return false
+		}
+		return dst.bits == 64 || value >= -(i64(1) << (dst.bits - 1))
+	}
+	limit := if dst.unsigned { dst.bits } else { dst.bits - 1 }
+	return limit >= 63 || u64(value) < (u64(1) << limit)
 }
 
 fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, result_type types.Type) bool {
@@ -25534,13 +25714,35 @@ fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId,
 	}
 	lhs_tmp := g.tmp_name()
 	rhs_tmp := g.tmp_name()
-	message := if node.op == .div { 'division by zero' } else { 'modulo by zero' }
 	g.write('({ ${c_type} ${lhs_tmp} = (${c_type})(')
 	g.gen_expr(lhs_id)
-	g.write('); ${c_type} ${rhs_tmp} = (${c_type})(')
-	g.gen_expr(rhs_id)
-	g.write('); if (${rhs_tmp} == 0) v_panic(_S("${message}")); (${c_type})(${lhs_tmp} ${g.op_str(node.op)} ${rhs_tmp}); })')
+	g.write('); ')
+	g.gen_checked_integer_division_value(lhs_tmp, rhs_tmp, rhs_id, result_type, c_type,
+		node.op, !g.expr_is_in_translated_file(lhs_id))
+	g.write('; })')
 	return true
+}
+
+// gen_checked_integer_division_value writes `lhs_text / rhs` (or `%`) as the
+// statements of a GNU statement expression whose value is the result, keeping
+// `rhs` in `rhs_tmp`. A zero divisor panics, and so does the overflowing
+// `min / -1` (and `min % -1`) under `-check-overflow`, which C leaves undefined.
+fn (mut g FlatGen) gen_checked_integer_division_value(lhs_text string, rhs_tmp string, rhs_id flat.NodeId, result_type types.Type, c_type string, op flat.Op, allow_overflow_check bool) {
+	g.write('${c_type} ${rhs_tmp} = (${c_type})(')
+	g.gen_expr(rhs_id)
+	g.write('); ')
+	if allow_overflow_check && g.overflow_checks_active() {
+		if kind := g.checked_int_kind(result_type) {
+			if !kind.unsigned {
+				op_name := if op in [.div, .div_assign] { 'div' } else { 'mod' }
+				g.write('(${c_type})builtin__overflow__${op_name}_${kind.helper_suffix()}(${lhs_text}, ${rhs_tmp})')
+				return
+			}
+		}
+	}
+	message := if op in [.div, .div_assign] { 'division by zero' } else { 'modulo by zero' }
+	op_text := if op in [.div, .div_assign] { '/' } else { '%' }
+	g.write('if (${rhs_tmp} == 0) v_panic(_S("${message}")); (${c_type})(${lhs_text} ${op_text} ${rhs_tmp})')
 }
 
 fn (mut g FlatGen) translated_numeric_c_type(id flat.NodeId, typ types.Type) string {

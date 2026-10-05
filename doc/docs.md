@@ -1144,6 +1144,29 @@ f1 := 123e-2 // 1.23
 f2 := 456e+2 // 45600
 ```
 
+#### Checked integer arithmetic
+
+Integer arithmetic wraps on overflow, a shift by the bit width or more gives `0` (or `-1` for
+`>>` on a negative value), and a cast to a smaller integer type keeps the low bits.
+Two opt-in flags turn these into runtime panics:
+
+* `v -check-overflow` checks `+`, `-`, `*`, `++`, `--`, and `min / -1` and `min % -1`
+  (with their compound forms like `-=`, `/=`). In code outside the standard library, it also
+  checks the negation of the minimum value (`-x` for `x == min_i64`), and shifts whose count is
+  negative or not less than the bit width of the left operand.
+* `v -check-casts` checks integer casts that lose information, like `i8(i64(300))`, `u8(-1)`
+  or `u64(i64(-5))`. Only code outside the standard library is checked, since vlib uses
+  truncating casts on purpose (hashes, byte extraction).
+
+A function tagged with `@[ignore_overflow]` is not checked by either flag:
+
+```v
+@[ignore_overflow]
+fn hash_step(h u32, b u8) u32 {
+	return (h ^ u32(b)) * 16777619 // wraps on purpose
+}
+```
+
 ### Arrays
 
 Returning a new array through helper calls preserves each helper's parameter scope.
