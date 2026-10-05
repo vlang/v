@@ -1215,6 +1215,12 @@ fn v1_fallback_has_moved_modules(root string) bool {
 }
 
 fn v1_fallback_has_expected_version(executable string) bool {
+	// Both compilers report 0.5.2. This launcher-only marker also identifies
+	// older launchers copied into the fallback slot before identity checks existed.
+	binary := os.read_file(executable) or { return false }
+	if binary.contains(v3_no_fallback_env) {
+		return false
+	}
 	result := os.exec([executable, 'version'])
 	return result.exit_code == 0 && result.output.starts_with('V ${v_version} ')
 }

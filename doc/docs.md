@@ -117,7 +117,10 @@ pipes, and redirection; `oldv` returns the command's exit status.
 
 The installer supplements the cached fallback vlib with modules whose public
 paths moved after 0.5.2. Fallback roots missing these compatibility modules are
-not used. If a fallback command exits unsuccessfully, V notes where the default
+not used. The fallback identity check also rejects a current launcher copied into the
+fallback slot, including older launchers that report the same compiler version, so
+compatibility commands cannot recursively launch it.
+If a fallback command exits unsuccessfully, V notes where the default
 compiler stopped and how to show its suppressed diagnostics. For a command
 that may have run user code, the note preserves the child's status without
 mislabeling it as a compiler failure, including JavaScript tests run by the compatibility compiler.
