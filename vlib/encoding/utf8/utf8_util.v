@@ -141,14 +141,9 @@ pub fn to_lower(s string) string {
 	return convert_case(s, false)
 }
 
-// Punctuation functions
-//
-// The "western" function search on a small table, that is quicker than
-// the global unicode table search. **Use only for western chars**.
-
-// Western
-
-// is_punct return true if the string[index] byte is the start of a unicode western punctuation
+// is_punct returns true if the rune starting at the byte offset index belongs to
+// a Unicode punctuation category. It recognizes punctuation from every script,
+// with the same Unicode 15.0.0 membership as is_global_punct.
 pub fn is_punct(s string, index int) bool {
 	return is_rune_punct(get_rune(s, index))
 }

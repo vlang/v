@@ -540,8 +540,9 @@ const props = [
 	// 'ÿ'
 ]!
 
-// These tables are based on Go lang's tables: https://cs.opensource.google/go/go/+/refs/tags/go1.17.1:src/unicode/tables.go.
-// There is no need to investigate unicodes' type like letter yourself.
+// The letter, number and punctuation tables use Unicode 15.0.0 data, matching
+// https://github.com/golang/go/blob/go1.26.1/src/unicode/tables.go.
+// Source data: https://www.unicode.org/Public/15.0.0/ucd/UnicodeData.txt.
 const max_latin_1 = rune(0x00ff)
 
 // Represents all unicode in unicode category L.
