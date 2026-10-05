@@ -24,11 +24,78 @@ const parallel_callback_seeds = ['c.FlatGen.gen_fn_items_scoped_batches',
 	'types.TypeChecker.result_return_uses_multi_tail', 'sync.Semaphore.timed_wait',
 	'sync.Semaphore.destroy']
 
+// core_runtime_seeds and lowered_runtime_seeds are the runtime functions that the
+// code generator calls for the constructs of the language. No call in a program
+// leads to them, so every program keeps them.
+const core_runtime_seeds = ['__new_array', 'array.get', 'array.push', 'map_hash_int_4', 'map_hash_int_8',
+	'map_hash_int_16', 'map_eq_int_4', 'map_eq_int_8', 'map_eq_int_16', 'map_clone_int_4',
+	'map_clone_int_8', 'map_clone_int_16', 'map_free_nop']
+
+const lowered_runtime_seeds = ['new_array_from_c_array', 'new_array_from_c_array_noscan', 'array.set',
+	'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
+	'array.slice', 'array.slice_ni', 'string.substr_ni', 'array.pop_left', 'array.clone', 'array.delete',
+	'array.ensure_cap', 'string.==', 'string.<', 'string.free', 'string.all_before',
+	'string.all_before_last', 'string.all_after', 'string.all_after_last', 'string.substr',
+	'string__substr', 'u8.vstring', 'u8.vstring_with_len', 'u8.vbytes', 'charptr.vstring',
+	'charptr.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len', 'byteptr.vbytes',
+	'voidptr.vbytes', '[]rune.string', 'map.set', 'map.exists', 'map.get', 'map.get_check',
+	'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys', 'map.values', 'map.reserve',
+	'map_map_eq', 'memdup', 'memdup_align', 'strings.Builder.write_ptr', 'strings.Builder.write_runes',
+	'strings.Builder.free', 'strconv.format_int', 'strconv.format_uint', 'strconv.Dec32.get_string_32',
+	'strconv.Dec64.get_string_64', 'bool.str', 'int.str', 'u64.str', 'rune.str', 'string.+', 'ptr_str',
+	'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
+	'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
+	'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_16', 'map_eq_string',
+	'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_16', 'map_clone_string', 'map_clone_int_1',
+	'map_clone_int_2', 'map_clone_int_16', 'map_free_string', '[]string.join', 'Array_string__join',
+	'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit']
+
+// float_runtime_seeds format the floats of a program that can have them.
+const float_runtime_seeds = ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l']
+
+const ownership_runtime_seeds = ['array.free', 'array__free', 'map.free', 'map__free', 'free']
+
+const int_str_runtime_seeds = ['i8.str', 'i16.str', 'i32.str', 'i64.str']
+
+// The helpers that follow are kept for a construct that enqueue_detected_runtime_helpers
+// finds anywhere in a program, in a function that is reached or not.
+const optional_runtime_helpers = ['IError.str', 'error', 'error_with_code']
+
+const string_interp_runtime_helpers = ['strings.new_builder', 'strings.Builder.write_string',
+	'strings.Builder.str', 'string_plus_many']
+
+const string_membership_runtime_helpers = ['string__contains', 'string__contains_u8']
+
+const map_snapshot_runtime_helpers = ['map.clone', 'map__clone', 'map.free', 'map__free']
+
+// string_method_runtime_helpers are the methods of `string` that are kept when a
+// call of that name is found, whatever its receiver is.
+const string_method_runtime_helpers = ['trim_space', 'trim_space_left', 'trim_space_right', 'to_upper',
+	'to_upper_ascii', 'to_lower', 'to_lower_ascii', 'contains', 'count']
+
+// single_runtime_helpers are the rest of what enqueue_detected_runtime_helpers and
+// mark_used keep by name for a construct.
+const single_runtime_helpers = ['array.delete_last', 'string__plus', 'new_map', 'f32.eq_epsilon',
+	'malloc_uncollectable', 'escape_default_string', 'join_path_single', 'RunesIterator.next']
+
 // seeded_fn_names returns the functions that mark_used keeps without a call that
-// leads to them, by the names it looks them up with.
+// leads to them, by the names it looks them up with: those that every program
+// keeps, and those that a program keeps for a construct found anywhere in it.
+// The channel and `shared` helpers of `sync` are not among them.
 pub fn seeded_fn_names() []string {
 	mut names := library_seeds.clone()
 	names << parallel_callback_seeds
+	names << core_runtime_seeds
+	names << lowered_runtime_seeds
+	names << float_runtime_seeds
+	names << ownership_runtime_seeds
+	names << int_str_runtime_seeds
+	names << optional_runtime_helpers
+	names << string_interp_runtime_helpers
+	names << string_membership_runtime_helpers
+	names << map_snapshot_runtime_helpers
+	names << string_method_runtime_helpers
+	names << single_runtime_helpers
 	return names
 }
 
@@ -545,34 +612,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			queue << seed
 			used[seed] = true
 		}
-		for seed in ['__new_array', 'array.get', 'array.push', 'map_hash_int_4', 'map_hash_int_8',
-			'map_hash_int_16', 'map_eq_int_4', 'map_eq_int_8', 'map_eq_int_16', 'map_clone_int_4',
-			'map_clone_int_8', 'map_clone_int_16', 'map_free_nop'] {
+		for seed in core_runtime_seeds {
 			queue << seed
 			used[seed] = true
 		}
-		mut runtime_seeds := ['new_array_from_c_array', 'new_array_from_c_array_noscan', 'array.set',
-			'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
-			'array.slice', 'array.slice_ni', 'string.substr_ni', 'array.pop_left', 'array.clone',
-			'array.delete', 'array.ensure_cap', 'string.==', 'string.<', 'string.free',
-			'string.all_before', 'string.all_before_last', 'string.all_after', 'string.all_after_last',
-			'string.substr', 'string__substr', 'u8.vstring', 'u8.vstring_with_len', 'u8.vbytes',
-			'charptr.vstring', 'charptr.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len',
-			'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set', 'map.exists', 'map.get',
-			'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys',
-			'map.values', 'map.reserve', 'map_map_eq', 'memdup', 'memdup_align',
-			'strings.Builder.write_ptr', 'strings.Builder.write_runes', 'strings.Builder.free',
-			'strconv.format_int', 'strconv.format_uint', 'strconv.Dec32.get_string_32',
-			'strconv.Dec64.get_string_64', 'bool.str', 'int.str', 'u64.str', 'rune.str', 'string.+',
-			'ptr_str', 'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital',
-			'string.is_capital', 'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr',
-			'Array_u8__hex', 'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2',
-			'map_hash_int_16', 'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_16',
-			'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_16',
-			'map_free_string', '[]string.join', 'Array_string__join', 'embed_file.Decoder.decompress',
-			'embed_file.join_chunks', 'exit', 'v_exit']
+		mut runtime_seeds := lowered_runtime_seeds.clone()
 		if !tc.nofloat {
-			runtime_seeds << ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l']
+			runtime_seeds << float_runtime_seeds
 		}
 		for seed in runtime_seeds {
 			queue << seed
@@ -583,7 +629,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		// Ownership cleanup is synthesized after markused. Its array/map destructors
 		// therefore have no AST call sites for the collector to follow. This also
 		// applies to drop-before-reassignment, which is not part of the exit snapshots.
-		for helper in ['array.free', 'array__free', 'map.free', 'map__free', 'free'] {
+		for helper in ownership_runtime_seeds {
 			enqueue(helper, mut used, mut queue)
 		}
 		for type_name in tc.ownership_drop_type_names() {
@@ -594,7 +640,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				enqueue(lowered, mut used, mut queue)
 			}
 		}
-		for seed in ['i8.str', 'i16.str', 'i32.str', 'i64.str'] {
+		for seed in int_str_runtime_seeds {
 			queue << seed
 			used[seed] = true
 		}
@@ -2519,10 +2565,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					if fn_node.kind == .ident && fn_node.value == 'flag_default_value' {
 						enqueue('escape_default_string', mut used, mut queue)
 					}
-					if fn_node.kind == .selector
-						&& fn_node.value in ['trim_space', 'trim_space_left', 'trim_space_right',
-							'to_upper', 'to_upper_ascii', 'to_lower', 'to_lower_ascii', 'contains',
-							'count'] {
+					if fn_node.kind == .selector && fn_node.value in string_method_runtime_helpers {
 						enqueue('string.${fn_node.value}', mut used, mut queue)
 					}
 					if markused_call_lowers_to_join_path_single(a, fn_node, imports) {
@@ -2671,13 +2714,12 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 		}
 	}
 	if needs_optional_helpers {
-		for helper in ['IError.str', 'error', 'error_with_code'] {
+		for helper in optional_runtime_helpers {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
 	if needs_string_interp_helpers {
-		for helper in ['strings.new_builder', 'strings.Builder.write_string', 'strings.Builder.str',
-			'string_plus_many'] {
+		for helper in string_interp_runtime_helpers {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
@@ -2685,7 +2727,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 		enqueue('string__plus', mut used, mut queue)
 	}
 	if needs_string_membership_helpers {
-		for helper in ['string__contains', 'string__contains_u8'] {
+		for helper in string_membership_runtime_helpers {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
@@ -2693,7 +2735,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 		enqueue('new_map', mut used, mut queue)
 	}
 	if needs_map_iteration_snapshot {
-		for helper in ['map.clone', 'map__clone', 'map.free', 'map__free'] {
+		for helper in map_snapshot_runtime_helpers {
 			enqueue(helper, mut used, mut queue)
 		}
 	}

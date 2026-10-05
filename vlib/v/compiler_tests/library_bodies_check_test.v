@@ -173,6 +173,109 @@ fn main() {
 	assert run.output == 'true\n', run.output
 }
 
+fn test_build_leaves_unreachable_runtime_bodies_unchecked() {
+	root := library_bodies_test_root('runtime')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	// Without an import, the library of this program is `builtin`, `strings` and
+	// `strconv`, of which it calls little.
+	os.write_file(source, 'fn main() {
+	a := []u8{len: 10}
+	println(a.len)
+}
+')!
+	output := os.join_path(root, 'main')
+	build := build_program(source, output, '')
+	assert build.exit_code == 0, build.output
+	assert library_bodies_left_unchecked(build.output) > 300, build.output
+	assert library_bodies_checked_late(build.output) == 0, build.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == '10\n', run.output
+}
+
+fn test_build_checks_the_runtime_functions_of_lowered_constructs_at_once() {
+	root := library_bodies_test_root('constructs')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	// No name in this program leads to the runtime functions that its maps,
+	// slices, interpolations, errors and loops are lowered to. markused keeps them,
+	// and the check takes them from it: none is left for a later check.
+	os.write_file(source, "struct Point {
+	x int
+	y int
+}
+
+fn half(n int) !int {
+	if n % 2 != 0 {
+		return error('odd: \${n}')
+	}
+	return n / 2
+}
+
+fn first(names []string) ?string {
+	if names.len == 0 {
+		return none
+	}
+	return names[0]
+}
+
+fn main() {
+	mut ages := map[string]int{}
+	ages['ada'] = 36
+	ages['alan'] = 41
+	mut names := ages.keys()
+	names.sort()
+	println(names[..1])
+	for name, age in ages {
+		if name == 'ada' {
+			println('\${name:-6}|\${age:4}|\${f64(age) / 3:.2f}')
+		}
+	}
+	println(half(8) or { -1 })
+	println(half(7) or { -1 })
+	println(first(names) or { 'nobody' })
+	println(first([]string{}) or { 'nobody' })
+	text := '  padded  '
+	println('[' + text.trim_space() + ']')
+	println('alan' in ages)
+	println(Point{1, 2})
+	mut squares := []int{cap: 4}
+	for i in 0 .. 4 {
+		squares << i * i
+	}
+	println(squares[1..3])
+	println(text.trim_space()[1..3].to_upper())
+}
+")!
+	output := os.join_path(root, 'main')
+	build := build_program(source, output, '')
+	assert build.exit_code == 0, build.output
+	assert library_bodies_left_unchecked(build.output) > 200, build.output
+	assert library_bodies_checked_late(build.output) == 0, build.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == "['ada']
+ada   |  36|12.00
+4
+-1
+ada
+nobody
+[padded]
+true
+Point{
+    x: 1
+    y: 2
+}
+[1, 4]
+AD
+", run.output
+}
+
 fn test_build_checks_unused_functions_of_the_program() {
 	root := library_bodies_test_root('program')
 	defer {
