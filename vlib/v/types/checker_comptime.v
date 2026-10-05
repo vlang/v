@@ -3156,6 +3156,13 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 			return
 		}
 	}
+	// Record what this pass resolved while the enclosing function's scope is still
+	// current. `resolve_type_uncached` re-derives an array literal's element type
+	// from the bare name of its first element, so a later phase that asks for the
+	// type after checking has moved on resolves a parameter that shadowed a
+	// module-level function to that function instead, and types the literal as an
+	// array of function pointers.
+	tc.register_synth_type(id, array_type)
 	if elem_type is Unknown {
 		return
 	}
