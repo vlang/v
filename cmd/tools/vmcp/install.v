@@ -246,13 +246,19 @@ fn write_entry(h Harness, path string, project bool) ! {
 	// A file with comments or trailing commas is not something to rewrite: json2
 	// cannot parse it back, and a round trip would drop what it cannot model.
 	if !is_plain_json(text) {
+		// Parsing as some other JSON value means the file is fine and its shape is
+		// wrong, which is a different problem. Saying "comments or trailing commas"
+		// about it sends the reader hunting for a comment the file does not have.
+		if is_json_value(text) {
+			return error('${path} is valid JSON, but its top level is not an object; not guessing where the servers belong.')
+		}
 		return error('${path} is not plain JSON (comments or trailing commas); not rewriting it.')
 	}
 	mut point := Insertion{}
 	mut addition := entry
 	if found := insertion_point(text, h.key) {
 		if has_entry(text, h.key, server_id) {
-			eprintln('v mcp install: ${server_id} is already in ${path}; leaving it alone.')
+			report_existing(text, h, path)
 			return
 		}
 		point = found
@@ -278,6 +284,55 @@ fn write_entry(h Harness, path string, project bool) ! {
 		return error('could not write ${path}: ${err.msg()}')
 	}
 	println('${h.label}: added ${server_id} to ${path}')
+}
+
+// is_json_value reports whether the text parses as JSON at all, whatever its
+// top level is. `is_plain_json` cannot answer that, because it decodes into a
+// map and so rejects an array, a string and a number for the same reason it
+// rejects a comment.
+fn is_json_value(text string) bool {
+	json.decode[json.Any](text) or { return false }
+	return true
+}
+
+// report_existing says which command the entry that is already there runs.
+//
+// Without it, the only way to learn that the registered compiler is not the one
+// you just invoked is to read the file, and the only way to move the entry is to
+// discover that `install` will not do it.
+fn report_existing(text string, h Harness, path string) {
+	eprintln('v mcp install: ${server_id} is already in ${path}; leaving it alone.')
+	exe, command := recorded_entry(text, h.key) or { return }
+	eprintln('  it runs ${command}')
+	wanted := server_exe()
+	if exe != wanted {
+		eprintln('  this compiler is ${wanted}')
+		eprintln('  to move it: v mcp uninstall ${h.name} && v mcp install ${h.name}')
+	}
+}
+
+// recorded_entry returns the executable the entry for `server_id` runs, and the
+// whole command as a shell would read it, or none when the entry holds no
+// readable command. The two are returned apart because only the executable can
+// be compared with the compiler running this tool.
+fn recorded_entry(text string, key string) ?(string, string) {
+	root := json.decode[map[string]json.Any](text) or { return none }
+	group := root[key] or { return none }
+	servers := group.as_map()
+	entry := servers[server_id] or { return none }
+	command := entry.as_map()['command'] or { return none }
+	mut parts := []string{}
+	if command is []json.Any {
+		for part in command as []json.Any {
+			parts << part.str()
+		}
+	} else {
+		parts << command.str()
+	}
+	if parts.len == 0 {
+		return none
+	}
+	return parts[0], parts.join(' ')
 }
 
 // wrap_entry is the object a new top-level key holds, with the entry one step

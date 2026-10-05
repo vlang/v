@@ -1346,6 +1346,47 @@ fn test_it_will_not_register_the_same_server_twice() {
 	assert read_config(path) == once, 'a second install changed the file'
 }
 
+fn test_it_says_which_compiler_an_existing_entry_runs() {
+	path := config_fixture('moved', '{"mcp":{}}')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path, false) or { panic(err) }
+	// An entry registered from a different compiler is the case a reader cannot
+	// otherwise discover: install says nothing and changes nothing, so the file is
+	// the only place the answer lives.
+	other := '{"mcp":{"vlang":{"command":["C:\\\\elsewhere\\\\v.exe","mcp","serve"]}}}'
+	os.write_file(path, other)!
+	exe, command := recorded_entry(read_config(path), 'mcp') or { panic('no entry') }
+	assert exe == 'C:\\elsewhere\\v.exe', exe
+	assert command == 'C:\\elsewhere\\v.exe mcp serve', command
+	// And the harness that ran install names a different one, which is what the
+	// message compares.
+	assert exe != server_exe(), 'the fixture must not name this compiler'
+}
+
+fn test_it_refuses_a_config_whose_root_is_not_an_object() {
+	// Valid JSON, so it is not the JSONC case, and an array is not somewhere a
+	// top-level object can be added without guessing.
+	path := config_fixture('arrayroot', '["not","an","object"]')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	before := read_config(path)
+	mut refused := false
+	write_entry(h, path, false) or { refused = true }
+	assert refused, 'an array-root file was not refused'
+	// The file is valid JSON, so it must not be described as JSONC, which sends
+	// the reader looking for a comment that is not there.
+	assert is_json_value(before), 'an array is valid JSON'
+	assert !is_plain_json(before), 'but it is not an object either'
+	assert read_config(path) == before, 'the file was rewritten'
+}
+
 fn test_it_adds_the_key_to_a_config_that_has_no_servers_yet() {
 	path := config_fixture('nokey', '{"unrelated":{}}')!
 	h := Harness{
