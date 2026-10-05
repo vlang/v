@@ -15476,7 +15476,7 @@ fn (mut t Transformer) record_specialized_slot_mismatch(actual types.Type, expec
 		return false
 	}
 	// The checker's own rule is the authority here: it already covers registered
-	// aliases, integer widths, integer-to-float, float-to-float, integer-to-enum,
+	// aliases, integer widths, integer-to-float, float-to-float, integer-to-flag-enum,
 	// interfaces and sum variants, recursing through arrays and maps.
 	if t.tc.slot_value_compatible(actual, expected) {
 		return false

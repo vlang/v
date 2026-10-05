@@ -2231,13 +2231,16 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 	assert rows == '4'
 	// Elements the copy loop does coerce are legal slots, not mismatches: the
 	// declared element type only has to be assignment-compatible, which covers
-	// integer into float, float into float and integer into enum.
+	// integer into float, float into float and integer into a `@[flag]` enum.
 	widened := run_good(v3_bin, 'good_generic_array_elem_int_to_float', 'fn take[T](items []T) []f64 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1, 2, 3])[0] + 0.5)\n}\n')
 	assert widened == '1.5'
 	narrowed := run_good(v3_bin, 'good_generic_array_elem_float_to_float', 'fn take[T](items []T) []f32 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1.5, 2.5])[0])\n}\n')
 	assert narrowed == '1.5'
-	enum_slot := run_good(v3_bin, 'good_generic_array_elem_int_to_enum', 'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([0, 1]).len))\n}\n')
-	assert enum_slot == '2'
+	flag_slot := run_good(v3_bin, 'good_generic_array_elem_int_to_flag_enum', '@[flag]\nenum Access {\n\tread\n\twrite\n}\n\nfn take[T](items []T) []Access {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([1, 2]).len))\n}\n')
+	assert flag_slot == '2'
+	// An integer is not converted to any other enum implicitly, in a
+	// specialization as in `fn f(items []int) []Color { return items }`.
+	run_bad(v3_bin, 'bad_generic_array_elem_int_to_enum', 'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\t_ := take([0, 1])\n}\n', 'cannot return `[]int` as `[]Color`')
 	// Having a lowering is not the same as being legal: the element copy boxes
 	// any struct into an interface, so an element that does not implement the
 	// target has to be rejected here rather than at `.id = src.id` in the C.
