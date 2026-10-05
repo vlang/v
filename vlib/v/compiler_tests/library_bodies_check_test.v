@@ -13,6 +13,11 @@ fn library_bodies_test_root(name string) string {
 // build_program builds `source` without a module cache, which checks whole modules,
 // and with `mode` in V_CHECK_LIBRARY_BODIES.
 fn build_program(source string, output string, mode string) os.Result {
+	return build_program_with_flags(source, output, mode, [])
+}
+
+// build_program_with_flags is build_program with more compiler `flags`.
+fn build_program_with_flags(source string, output string, mode string, flags []string) os.Result {
 	saved := os.getenv_opt('V_CHECK_LIBRARY_BODIES')
 	defer {
 		if value := saved {
@@ -26,8 +31,10 @@ fn build_program(source string, output string, mode string) os.Result {
 	} else {
 		os.setenv('V_CHECK_LIBRARY_BODIES', mode, true)
 	}
-	return cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-v', '-nocache',
-		'-o', output, source], 120_000)
+	mut args := ['-new-compiler', '-no-retry-compilation', '-v', '-nocache']
+	args << flags
+	args << ['-o', output, source]
+	return cmdexec.run_with_timeout(vexe, args, 120_000)
 }
 
 fn library_bodies_left_unchecked(output string) int {
@@ -44,6 +51,16 @@ fn library_bodies_checked_late(output string) int {
 		return -1
 	}
 	return line.all_after('left unchecked,').all_before('checked late').trim_space().int()
+}
+
+// library_bodies_worker_threads returns how many worker threads the compiler had
+// once the late bodies were checked.
+fn library_bodies_worker_threads(output string) int {
+	line := output.all_after('mu library bodies').all_before('\n')
+	if !line.contains('worker threads:') {
+		return -1
+	}
+	return line.all_after('worker threads:').all_before(')').trim_space().int()
 }
 
 const program_that_uses_little_of_os = "import os
@@ -100,6 +117,32 @@ fn test_build_checks_library_bodies_that_markused_reaches_later() {
 	assert build.exit_code == 0, build.output
 	assert library_bodies_checked_late(build.output) > 0, build.output
 	assert library_bodies_left_unchecked(build.output) > 100, build.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'b.v\n', run.output
+}
+
+fn test_serial_build_checks_late_bodies_without_worker_threads() {
+	root := library_bodies_test_root('serial')
+	saved_jobs := os.getenv_opt('VJOBS')
+	defer {
+		if value := saved_jobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+		os.rmdir_all(root) or {}
+	}
+	// More than one job, whatever the machine has: a worker pool that the late
+	// check started would have threads.
+	os.setenv('VJOBS', '4', true)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, program_that_uses_little_of_os)!
+	output := os.join_path(root, 'main')
+	build := build_program_with_flags(source, output, 'late', ['-no-parallel'])
+	assert build.exit_code == 0, build.output
+	assert library_bodies_checked_late(build.output) > 0, build.output
+	assert library_bodies_worker_threads(build.output) == 0, build.output
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'b.v\n', run.output

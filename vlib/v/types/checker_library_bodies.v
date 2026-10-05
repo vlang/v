@@ -265,8 +265,10 @@ fn (mut tc TypeChecker) library_body_items(used map[string]bool, only_used bool)
 
 // check_reached_library_bodies checks the bodies that the check left out and that
 // `used`, the functions that markused found since, names. It returns how many
-// there were: their types can lead markused to more functions.
-pub fn (mut tc TypeChecker) check_reached_library_bodies(used map[string]bool) int {
+// there were: their types can lead markused to more functions. `parallel` is
+// what check_semantics_opt was asked for: a check that had to be serial stays
+// so, and starts no worker.
+pub fn (mut tc TypeChecker) check_reached_library_bodies(used map[string]bool, parallel bool) int {
 	items := tc.library_body_items(used, true)
 	if items.len == 0 {
 		return 0
@@ -287,7 +289,13 @@ pub fn (mut tc TypeChecker) check_reached_library_bodies(used map[string]bool) i
 	// As the check of the other bodies: an invalid IError return is only reported
 	// for the functions that the selected files call.
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
-	tc.run_parallel_check(items, true)
+	if parallel {
+		tc.run_parallel_check(items, true)
+	} else if tc.scope_parallel_check_workers {
+		tc.check_scoped_batches(items, scoped_check_serial_batches)
+	} else {
+		tc.check_fn_items_serial(items)
+	}
 	if tc.defer_ierror_gating {
 		if tc.pending_ierror_errors.len > 0 {
 			tc.collect_selected_file_called_fns()

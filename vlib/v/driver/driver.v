@@ -11607,6 +11607,7 @@ pub fn run(args []string) {
 			&& vls_line_info == '' && !served.from_server && !served.shares_checks()
 			&& a.missing_imports.len == 0 && os.getenv('V_CHECK_LIBRARY_BODIES') != 'all'
 		mut check_was_parallel := false
+		mut check_may_be_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {
 			used_fns = markused.mark_used_without_generic_detection(a, &pre_tc)
 			pre_tc.check_semantics_reachable(used_fns)
@@ -11653,6 +11654,7 @@ pub fn run(args []string) {
 					|| pre_tc.scope_parallel_check_workers)
 				&& (building_v || !scope_prealloc_check
 					|| a.nodes.len < scoped_serial_user_check_node_threshold)
+			check_may_be_parallel = parallel_semantic_check
 			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
 			if verbose {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -12034,7 +12036,7 @@ pub fn run(args []string) {
 			// markused can reach library functions that its first pass did not.
 			mut reached_later := 0
 			for {
-				reached := pre_tc.check_reached_library_bodies(used_fns)
+				reached := pre_tc.check_reached_library_bodies(used_fns, check_may_be_parallel)
 				if reached == 0 {
 					break
 				}
@@ -12049,7 +12051,7 @@ pub fn run(args []string) {
 					effective_c_compiler == 'msvc', prefs.verbose)
 			}
 			if verbose {
-				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${reached_later} checked late')
+				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${reached_later} checked late (worker threads: ${a.worker_count()})')
 			}
 		}
 		mut prepared_transform := prepared_transform_thread.wait()
