@@ -173,14 +173,14 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 	quiet := cmdexec.run(vexe, ['-new-compiler', '-silent', '-nocache', '-o', exe, source])
 	assert quiet.exit_code == 0, quiet.output
 	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
-	// An explicit request for TCC still reaches TCC and reports its failure.
+	// An explicit request bypasses preflight; disabling retries reports TCC's failure.
 	explicit_tcc := if os.is_file(bundled_tcc) {
 		bundled_tcc
 	} else {
 		os.find_abs_path_of_executable('tcc')!
 	}
-	explicit := cmdexec.run(vexe, ['-new-compiler', '-cc', explicit_tcc, '-nocache', '-o', exe,
-		source])
+	explicit := cmdexec.run(vexe, ['-new-compiler', '-no-retry-compilation', '-cc', explicit_tcc,
+		'-nocache', '-o', exe, source])
 	assert explicit.exit_code != 0, explicit.output
 	assert explicit.output.contains('injected for test coverage'), explicit.output
 	assert !explicit.output.contains('regenerating it with'), explicit.output

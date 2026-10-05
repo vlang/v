@@ -13,5 +13,6 @@ for the platform compiler. Regeneration re-evaluates compiler-specific condition
 buffers before the retry. Windows waits for the retry to preserve its exit status.
 
 An implicit compiler switch prints its reason, including when TinyCC was skipped. `-silent`
-suppresses this warning. An explicit `-cc tcc` keeps TinyCC and reports failures as errors.
+suppresses this warning. An explicit `-cc tcc` bypasses early preflight and retains the existing
+retry behavior for recognized TinyCC failures. `-no-retry-compilation` disables these retries.
 Passing `-cc clang`, `-cc gcc`, or `-cc cc` selects that compiler directly.
