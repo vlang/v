@@ -1,4 +1,7 @@
+@[has_globals]
 module time
+
+#include <pthread.h>
 
 // The time zone data is read with the C library directly, rather than through
 // `os`: every program that imports `time` would otherwise have to compile `os`,
@@ -8,7 +11,23 @@ fn C.getenv(&char) &char
 
 fn C.readlink(pathname &char, buf &char, bufsiz usize) i32
 
+@[typedef]
+struct C.pthread_mutex_t {}
+
 const zoneinfo_vroot_zip = @VEXEROOT + '/vlib/time/tzdata/zoneinfo.zip'
+
+@[cinit]
+__global zoneinfo_loaders_mutex C.pthread_mutex_t = C.PTHREAD_MUTEX_INITIALIZER
+
+// zoneinfo_loaders_lock waits for the registered time zone loaders.
+fn zoneinfo_loaders_lock() {
+	C.pthread_mutex_lock(&zoneinfo_loaders_mutex)
+}
+
+// zoneinfo_loaders_unlock releases the registered time zone loaders.
+fn zoneinfo_loaders_unlock() {
+	C.pthread_mutex_unlock(&zoneinfo_loaders_mutex)
+}
 
 // zoneinfo_getenv returns the value of the environment variable `name`, when it is set.
 fn zoneinfo_getenv(name string) ?string {

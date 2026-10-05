@@ -10,15 +10,17 @@ const zoneinfo_unix_sources = [
 
 const max_posix_transition_seconds = 167 * seconds_per_hour + 59 * seconds_per_minute + 59
 
-__global zoneinfo_loaders shared []ZoneinfoLoaderFn
+// The loaders are guarded by a lock of this module rather than declared `shared`:
+// a shared global makes every program that imports `time` compile `sync` too.
+__global zoneinfo_loaders = []ZoneinfoLoaderFn{}
 
 // register_zoneinfo_loader registers a fallback loader for IANA time zone data.
 // Registered loaders are used after ZONEINFO, system zoneinfo paths, and V's
 // installed zoneinfo.zip have been tried.
 pub fn register_zoneinfo_loader(loader ZoneinfoLoaderFn) {
-	lock zoneinfo_loaders {
-		zoneinfo_loaders << loader
-	}
+	zoneinfo_loaders_lock()
+	zoneinfo_loaders << loader
+	zoneinfo_loaders_unlock()
 }
 
 // load_location loads an IANA time zone location from ZONEINFO, system zoneinfo
@@ -168,10 +170,9 @@ fn load_zoneinfo_location(name string) !&Location {
 }
 
 fn zoneinfo_loaders_snapshot() []ZoneinfoLoaderFn {
-	mut loaders := []ZoneinfoLoaderFn{}
-	rlock zoneinfo_loaders {
-		loaders = zoneinfo_loaders.clone()
-	}
+	zoneinfo_loaders_lock()
+	loaders := zoneinfo_loaders.clone()
+	zoneinfo_loaders_unlock()
 	return loaders
 }
 

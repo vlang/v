@@ -1,8 +1,22 @@
+@[has_globals]
 module time
 
 import os
 
 const zoneinfo_vroot_zip = os.join_path(@VEXEROOT, 'vlib', 'time', 'tzdata', 'zoneinfo.zip')
+
+@[cinit]
+__global zoneinfo_loaders_srwlock C.SRWLOCK = C.SRWLOCK_INIT
+
+// zoneinfo_loaders_lock waits for the registered time zone loaders.
+fn zoneinfo_loaders_lock() {
+	C.AcquireSRWLockExclusive(&zoneinfo_loaders_srwlock)
+}
+
+// zoneinfo_loaders_unlock releases the registered time zone loaders.
+fn zoneinfo_loaders_unlock() {
+	C.ReleaseSRWLockExclusive(&zoneinfo_loaders_srwlock)
+}
 
 // zoneinfo_getenv returns the value of the environment variable `name`, when it is set.
 fn zoneinfo_getenv(name string) ?string {
