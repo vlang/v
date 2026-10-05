@@ -1,0 +1,10 @@
+type Expr = IntLit( int )|Count(  int ) |  Void
+
+fn main() {
+	e := Expr.Count( 3 )
+	match e {
+		Expr.IntLit( n ) { println(n) }
+		Expr.Count(n) {println(n)}
+		Expr.Void{ println('void') }
+	}
+}

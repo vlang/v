@@ -5071,6 +5071,76 @@ fn pass_time(w World) {
 }
 ```
 
+#### Named variants
+
+A sum type can also identify its variants by name instead of by type. Each named variant
+holds at most one payload, so two variants can carry the same payload type, and a variant
+can carry no payload at all:
+
+```v
+type Expr = IntLit(int) | Count(int) | Str(string) | Void
+
+fn describe(e Expr) string {
+	return match e {
+		Expr.IntLit(n) { 'literal ${n}' }
+		Expr.Count(n) { 'count ${n}' }
+		Expr.Str(s) { 'string ${s}' }
+		Expr.Void { 'void' }
+	}
+}
+
+fn main() {
+	e := Expr.Count(3)
+	println(describe(e)) // count 3
+	println(e) // Expr.Count(3)
+	println(e is Expr.Count) // true
+	println(e == Expr.IntLit(3)) // false
+	println(describe(Expr.Void)) // void
+}
+```
+
+A declaration is named as soon as one variant is written as `Name(Type)`. Then every
+variant is either `Name(Type)` or a bare `Name` without a payload, and its name must be
+capitalized and unique in the sum type. The names belong to the sum type: `Expr.Void` does
+not clash with a type called `Void` or with a `Void` variant of another sum type.
+Declarations without any `Name(Type)` variant keep their usual meaning, where each variant
+is a type.
+
+Values are created with `Expr.Count(3)` and `Expr.Void`. A `match` branch like
+`Expr.Count(n)` binds the payload to `n`. The binding is an immutable copy of the payload;
+to change a value in a `match mut` branch, assign a new variant to the matched variable.
+Payload bindings follow the same redeclaration and global shadowing rules as other local variables.
+A branch can list several variants, like `Expr.IntLit, Expr.Count {`, when it binds no
+payload. `match` must cover every variant or have an `else` branch, and `is`/`!is` checks
+work with variants as well: `e is Expr.Void`. Two values are equal when they hold the same
+variant and equal payloads.
+
+Payloads can have any type, including structs, arrays, maps, options and other sum types,
+and a payload can refer to its own sum type, like `Node([]Tree)` in
+`type Tree = Leaf(int) | Node([]Tree)`. A payload with several values is written as a
+struct: `Rect(Size)`. Generic sum types are supported too, but their values need explicit
+type arguments:
+
+```v
+type Opt[T] = Some(T) | Nothing
+
+fn main() {
+	a := Opt[int].Some(3)
+	b := Opt[int].Nothing
+	println(a) // Opt[int].Some(3)
+	println(b) // Opt[int].Nothing
+	println(a is Opt[int].Some) // true
+	match a {
+		Opt[int].Some(n) { println(n) } // 3
+		Opt[int].Nothing {}
+	}
+}
+```
+
+`$for v in Expr.variants` iterates the named variants; `typeof(v.typ).name` gives their
+names, like `Expr.Count`. Types in `@[generated]` modules can also use named variants
+when their type names start with a lowercase letter or underscore.
+
 ### Option/Result types and error handling
 
 Option types can represent a value or `none`. Result types may

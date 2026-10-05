@@ -2765,7 +2765,7 @@ fn (mut tc TypeChecker) record_error(kind TypeErrorKind, msg string, node flat.N
 		return
 	}
 	tc.errors << TypeError{
-		msg:        msg
+		msg:        tc.named_variant_diagnostic(msg, node)
 		kind:       kind
 		node:       node
 		file:       tc.cur_file
@@ -2798,7 +2798,7 @@ fn (tc &TypeChecker) make_type_error(kind TypeErrorKind, msg string, node flat.N
 
 fn (tc &TypeChecker) make_type_error_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos) TypeError {
 	return TypeError{
-		msg:        msg.replace('[fn(', '[fn (')
+		msg:        tc.named_variant_diagnostic(msg, node).replace('[fn(', '[fn (')
 		kind:       kind
 		node:       node
 		file:       tc.cur_file
