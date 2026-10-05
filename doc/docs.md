@@ -7663,6 +7663,9 @@ project that locks other revisions of the same packages switches them back. Use
    selected subdirectories as part of the same module. These paths are relative
    to the module source root, and files there should declare the same
    `module mypackage`. `v doc` documents them as part of that module too.
+   Tests in these subdirectories can use sources from the module root and its other
+   declared subdirectories, even if their own directory contains only test files.
+   Each test file runs independently; other test files are not included as support sources.
    `v doc -m` also discovers modules whose sources are all in external `subdirs`.
    HTML source links use the common root of the nearest manifest and its declared
    source directories, including external `subdirs` and the `base_url` source folder.
