@@ -20,7 +20,7 @@ pub struct Process {
 pub mut:
 	filename         string // the process's command file path
 	pid              int    // the PID of the process
-	code             int          = -1           // the exit code of the process, != -1 *only* when status is .exited *and* the process was not aborted
+	code             int          = -1           // the exit code; on Windows this is a signed 32-bit value, so an exited child can also return -1
 	status           ProcessState = .not_started // the current status of the process
 	err              string   // if the process fails, contains the reason why
 	args             []string // the arguments that the command takes
