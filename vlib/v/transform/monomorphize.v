@@ -2196,6 +2196,11 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 }
 
 fn (mut t Transformer) interface_box_call_param_maybe(param types.Type) bool {
+	// Numeric, boolean and string parameters cannot box an interface. They are
+	// common enough that building a per-module cache key costs more than this test.
+	if param is types.Primitive || param is types.String {
+		return false
+	}
 	key := '${t.cur_module}:${t.tc.type_name(param)}'
 	if !isnil(t.interface_box_param_cache) {
 		mut cache := t.interface_box_param_cache
@@ -2320,12 +2325,13 @@ fn (mut t Transformer) collect_interface_return_boxes(id flat.NodeId, return_typ
 }
 
 fn (mut t Transformer) collect_interface_assign_boxes(node flat.Node) {
-	lhs_ids := t.multi_assign_lhs_ids(node)
+	lhs_count := t.multi_assign_lhs_count(node)
 	rhs_count := t.multi_assign_rhs_count(node)
-	if lhs_ids.len > 1 && rhs_count == 1 {
+	if lhs_count > 1 && rhs_count == 1 {
 		rhs_id := t.multi_assign_rhs_id(node, 0)
-		if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
-			for i, lhs_id in lhs_ids {
+		if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_count) {
+			for i in 0 .. lhs_count {
+				lhs_id := t.multi_assign_lhs_id(node, i)
 				expected := t.interface_box_lhs_type(lhs_id)
 				if interface_box_expected_type(expected) {
 					t.collect_interface_boxed_type(rhs_types[i], expected)

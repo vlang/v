@@ -20,6 +20,7 @@ const min_flat_cgen_parallel_items = 128
 // expression. Keep self-host body batches narrow so those values are released
 // throughout cgen instead of accumulating across hundreds of functions.
 const scoped_cgen_worker_batches = 256
+const min_scoped_cgen_batch_cost = 16_384
 const flat_cgen_chunks_per_job = 32
 
 // FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -1460,6 +1461,22 @@ fn remap_scoped_worker_string_list(source []string, remap map[int]int, user_c_sy
 	return result
 }
 
+// scoped_cgen_batch_count amortizes worker setup across small function bodies.
+// Compiler builds keep their narrower batches to bound retained lowering scratch.
+fn (g &FlatGen) scoped_cgen_batch_count(n_items int, total_cost i64) int {
+	if n_items == 0 {
+		return 0
+	}
+	mut count := int_min(n_items, scoped_cgen_worker_batches)
+	if !g.tc.building_v_fast {
+		by_cost := total_cost / min_scoped_cgen_batch_cost
+		if by_cost < i64(count) {
+			count = int(by_cost)
+		}
+	}
+	return int_max(count, 1)
+}
+
 // gen_fn_items_scoped_batches bounds helper scratch without adding worker-pool
 // barriers. Each batch gets fresh mutable generator/checker caches while its C
 // output is accumulated in a much smaller result arena.
@@ -1469,15 +1486,12 @@ fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
 	for item in items {
 		total_cost += item.cost
 	}
-	n_batches := if items.len < scoped_cgen_worker_batches {
-		items.len
-	} else {
-		scoped_cgen_worker_batches
-	}
+	n_batches := g.scoped_cgen_batch_count(items.len, total_cost)
 	mut start := 0
 	mut consumed_cost := i64(0)
 	for batch_idx in 0 .. n_batches {
 		mut end := start
+		batch_start_cost := consumed_cost
 		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
 		for end < items.len
 			&& (batch_idx == n_batches - 1 || consumed_cost < target_cost || end == start) {
@@ -1488,7 +1502,7 @@ fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
 		mut batch := g.new_parallel_worker(batch_idx)
 		// Weighted AST cost tracks generated body bytes closely enough to avoid
 		// the 64 KiB builder growing and copying five or six times per worker.
-		batch.sb = strings.new_builder(int(total_cost * 5) + 65_536)
+		batch.sb = strings.new_builder(int((consumed_cost - batch_start_cost) * 5) + 65_536)
 		batch.gen_fn_items(items[start..end])
 		cgen_worker_scope_leave(scratch_scope)
 		g.absorb_scoped_cgen_batch(batch, false)
@@ -1561,11 +1575,7 @@ fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
 	for item in items {
 		total_cost += item.cost
 	}
-	n_batches := if items.len < scoped_cgen_worker_batches {
-		items.len
-	} else {
-		scoped_cgen_worker_batches
-	}
+	n_batches := g.scoped_cgen_batch_count(items.len, total_cost)
 	mut start := 0
 	mut consumed_cost := i64(0)
 	for batch_idx in 0 .. n_batches {

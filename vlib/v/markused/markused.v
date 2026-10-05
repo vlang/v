@@ -262,18 +262,23 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// can instantiate a generic. Skip generic indexes and per-node generic checks,
 	// just as the known non-generic self-host path does.
 	detect_reachable_generics := detect_generics && !trivial_literal_output
+	// Full-runtime fixtures, tests, module caches, and self-host builds retain the
+	// conservative whole-program scan. Ordinary builds discover expression helpers
+	// while following their reachable function bodies.
+	reachable_runtime_helpers := detect_reachable_generics && allow_trivial_literal_output
+		&& !cache_mode && cache_modules.len == 0 && test_files.len == 0 && !all_functions
 	use_prepared := !isnil(prepared) && prepared.ready && !detect_reachable_generics && !cache_mode
 		&& !all_functions
 	// Runtime-helper detection reads completed semantic types. Start it here,
 	// after checking, and overlap it with the declaration scan + precollect.
 	// Its enqueue requests are replayed in scan order at the seeds step below.
-	mut rt_scan := &RtHelpersScanArgs{
-		a:  a
-		tc: tc.fork_for_parallel_transform(a)
-	}
 	markused_parallel_allowed := !isnil(a.worker_pool) || tc.scoped_parallel_workers_enabled()
 	rt_scan_parallel := markused_parallel_allowed && par_markused_seeds_enabled()
-		&& !trivial_literal_output
+		&& !trivial_literal_output && !reachable_runtime_helpers
+	mut rt_scan := &RtHelpersScanArgs{
+		a:  a
+		tc: if rt_scan_parallel { tc.fork_for_parallel_transform(a) } else { tc }
+	}
 	rt_scan.enabled = rt_scan_parallel
 	mut rt_scan_threads := []thread{cap: 1}
 	if rt_scan_parallel {
@@ -613,14 +618,26 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			used[seed] = true
 		}
 		for seed in core_runtime_seeds {
+			if reachable_runtime_helpers && markused_is_map_runtime_seed(seed) {
+				continue
+			}
 			queue << seed
 			used[seed] = true
 		}
 		mut runtime_seeds := lowered_runtime_seeds.clone()
-		if !tc.nofloat {
+		if !tc.nofloat && !reachable_runtime_helpers {
 			runtime_seeds << float_runtime_seeds
 		}
 		for seed in runtime_seeds {
+			if reachable_runtime_helpers && markused_is_map_runtime_seed(seed) {
+				continue
+			}
+			// Float conversion methods have source callers. Ordinary reachability
+			// keeps them when a reached expression actually needs float formatting.
+			if reachable_runtime_helpers
+				&& seed in ['strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64'] {
+				continue
+			}
 			queue << seed
 			used[seed] = true
 		}
@@ -630,6 +647,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		// therefore have no AST call sites for the collector to follow. This also
 		// applies to drop-before-reassignment, which is not part of the exit snapshots.
 		for helper in ownership_runtime_seeds {
+			if reachable_runtime_helpers && markused_is_map_runtime_seed(helper) {
+				continue
+			}
 			enqueue(helper, mut used, mut queue)
 		}
 		for type_name in tc.ownership_drop_type_names() {
@@ -742,7 +762,20 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		mu_sw.restart()
 	}
 	has_entry_main := markused_has_entry_main_indexed(a, tc)
-	if !rt_scan_parallel && !trivial_literal_output {
+	mut reachable_helper_scan := RuntimeHelpersScan{}
+	mut runtime_helper_seen := []bool{}
+	mut runtime_helper_stack := []flat.NodeId{cap: 128}
+	mut runtime_helper_nodes := []int{cap: 128}
+	if reachable_runtime_helpers {
+		reachable_helper_scan.select_map_runtime = true
+		reachable_helper_scan.auto_str_skipped_fields = markused_auto_str_skipped_fields(a)
+		mut body_nodes := []bool{len: a.nodes.len}
+		for id in body_ids {
+			runtime_helper_subtree(a, flat.NodeId(id), mut body_nodes, mut runtime_helper_stack, mut runtime_helper_nodes)
+		}
+		reachable_helper_scan.enqueue_nodes(a, tc, []int{}, body_nodes, '', map[string]string{}, mut used, mut queue)
+		runtime_helper_seen = []bool{len: a.nodes.len}
+	} else if !rt_scan_parallel && !trivial_literal_output {
 		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	}
 	needs_closure_runtime := if use_prepared && prepared.needs_closure_runtime {
@@ -822,6 +855,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 		name := queue[qi]
 		qi++
+		if reachable_runtime_helpers && !reachable_helper_scan.map_runtime_enqueued
+			&& (name == 'new_map' || markused_is_map_runtime_seed(name)) {
+			reachable_helper_scan.enqueue_map_runtime(mut used, mut queue)
+		}
 		prev_len := queue.len
 		fn_infos := fn_decl_infos_for_queue_name(name, fn_decl_lists, a, detect_reachable_generics)
 		if fn_infos.len == 0 {
@@ -844,6 +881,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				continue
 			}
 			processed_nodes[node_key] = true
+			if reachable_runtime_helpers {
+				runtime_helper_subtree(a, fn_info.node_id, mut runtime_helper_seen, mut runtime_helper_stack, mut runtime_helper_nodes)
+				if runtime_helper_nodes.len > 0 {
+					reachable_helper_scan.enqueue_nodes(a, tc, runtime_helper_nodes, []bool{}, fn_info.module, collector.imports(fn_info.import_context), mut used, mut queue)
+				}
+			}
 			// This function is reachable, so any methods it uses as *values* (recorded by
 			// the checker per enclosing function) are reachable too -- mark them so they
 			// survive pruning (cgen emits a wrapper that calls them).
@@ -2478,43 +2521,121 @@ fn markused_fn_has_attribute(a &flat.FlatAst, node_idx int, name string) bool {
 	return name in attr.generic_params()
 }
 
-// enqueue_detected_runtime_helpers supports enqueue detected runtime helpers handling for markused.
+// RuntimeHelpersScan shares helper flags and type-query caches across reached bodies.
+struct RuntimeHelpersScan {
+mut:
+	needs_optional_helpers          bool
+	needs_string_interp_helpers     bool
+	needs_string_plus_helper        bool
+	needs_string_membership_helpers bool
+	needs_new_map                   bool
+	needs_map_iteration_snapshot    bool
+	needs_channel_helpers           bool
+	needs_channel_select_helpers    bool
+	needs_channel_str_helpers       bool
+	needs_f32_eq_epsilon            bool
+	needs_ierror_equality_dispatch  bool
+	needs_shared_runtime            bool
+	select_map_runtime              bool
+	needs_map_runtime               bool
+	map_runtime_enqueued            bool
+
+	channel_stringify_cache map[string]int
+	ierror_equality_cache   map[string]int
+	map_type_cache          map[string]int
+	auto_str_skipped_fields map[string]bool
+	initialized             bool
+}
+
 fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
-	mut needs_optional_helpers := false
-	mut needs_string_interp_helpers := false
-	mut needs_string_plus_helper := false
-	mut needs_string_membership_helpers := false
-	mut needs_new_map := false
-	mut needs_map_iteration_snapshot := false
-	mut needs_channel_helpers := false
-	mut needs_channel_select_helpers := false
-	mut needs_channel_str_helpers := false
-	mut needs_f32_eq_epsilon := false
-	mut needs_ierror_equality_dispatch := false
-	mut needs_shared_runtime := false
-	mut channel_stringify_cache := map[string]int{}
-	mut ierror_equality_cache := map[string]int{}
-	auto_str_skipped_fields := markused_auto_str_skipped_fields(a)
-	mut cur_module := ''
-	mut imports := map[string]string{}
-	for _, shared_params in tc.fn_shared_params {
-		if shared_params.any(it) {
-			needs_shared_runtime = true
-			break
+	mut scan := RuntimeHelpersScan{ auto_str_skipped_fields: markused_auto_str_skipped_fields(a) }
+	scan.enqueue_nodes(a, tc, []int{}, []bool{}, '', map[string]string{}, mut used, mut queue)
+}
+
+// runtime_helper_subtree appends each node of a reached body once, including nested
+// expressions introduced by checking. These need not be contiguous in the arena.
+fn runtime_helper_subtree(a &flat.FlatAst, root flat.NodeId, mut seen []bool, mut stack []flat.NodeId, mut node_ids []int) {
+	stack.clear()
+	node_ids.clear()
+	stack << root
+	for stack.len > 0 {
+		id := int(stack.pop())
+		if id < 0 || id >= a.nodes.len || seen[id] {
+			continue
+		}
+		seen[id] = true
+		node_ids << id
+		node := a.nodes[id]
+		for i in 0 .. node.children_count {
+			stack << a.child(&node, i)
 		}
 	}
-	for node_idx, node in a.nodes {
-		if node.typ.len > 0 {
-			if !needs_channel_helpers && markused_type_text_is_channel(node.typ) {
-				needs_channel_helpers = true
-			}
-			if !needs_shared_runtime && markused_type_text_needs_shared_runtime(node.typ) {
-				needs_shared_runtime = true
+}
+
+fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeChecker, node_ids []int, body_nodes []bool, initial_module string, initial_imports map[string]string, mut used map[string]bool, mut queue []string) {
+	mut cur_module := initial_module
+	mut imports := initial_imports.clone()
+	if !scan.initialized {
+		scan.initialized = true
+		for _, shared_params in tc.fn_shared_params {
+			if shared_params.any(it) {
+				scan.needs_shared_runtime = true
+				break
 			}
 		}
-		if !needs_shared_runtime && node.kind == .decl_assign
+	}
+	node_count := if node_ids.len > 0 { node_ids.len } else { a.nodes.len }
+	for scan_idx in 0 .. node_count {
+		node_idx := if node_ids.len > 0 { node_ids[scan_idx] } else { scan_idx }
+		node := a.nodes[node_idx]
+		// Signatures and generated type helpers are emitted independently of a
+		// function body. Keep those declarations even when its expressions are skipped.
+		if body_nodes.len > 0 && body_nodes[node_idx]
+			&& node.kind !in [.fn_decl, .c_fn_decl, .param, .field_decl, .field_init, .const_field,
+				.struct_decl, .interface_decl, .type_decl, .enum_decl] {
+			continue
+		}
+		if scan.select_map_runtime && !scan.map_runtime_enqueued && !scan.needs_map_runtime
+			&& node.kind == .global_decl {
+			// Global struct defaults are emitted even when main never reads them.
+			for i in 0 .. node.children_count {
+				field := a.child_node(&node, i)
+				global_name := if cur_module in ['', 'main', 'builtin'] || field.value.contains('.') {
+					field.value
+				} else {
+					'${cur_module}.${field.value}'
+				}
+				global_type := if field.value.starts_with('C.') {
+					tc.c_globals[field.value] or { tc.parse_type(field.typ) }
+				} else {
+					tc.file_scope.lookup(global_name) or { tc.parse_type(field.typ) }
+				}
+				if scan.type_needs_map_runtime(global_type, tc) {
+					scan.needs_map_runtime = true
+					break
+				}
+			}
+		}
+		if scan.select_map_runtime && !scan.map_runtime_enqueued && !scan.needs_map_runtime
+			&& node.kind in [.ident, .selector, .call, .struct_init, .array_init, .cast_expr, .as_expr,
+				.prefix, .index] {
+			if typ := tc.expr_type(flat.NodeId(node_idx)) {
+				scan.needs_map_runtime = scan.type_needs_map_runtime(typ, tc)
+			} else if node.kind in [.struct_init, .array_init, .cast_expr, .as_expr] {
+				scan.needs_map_runtime = scan.type_needs_map_runtime(tc.resolve_type(flat.NodeId(node_idx)), tc)
+			}
+		}
+		if node.typ.len > 0 {
+			if !scan.needs_channel_helpers && markused_type_text_is_channel(node.typ) {
+				scan.needs_channel_helpers = true
+			}
+			if !scan.needs_shared_runtime && markused_type_text_needs_shared_runtime(node.typ) {
+				scan.needs_shared_runtime = true
+			}
+		}
+		if !scan.needs_shared_runtime && node.kind == .decl_assign
 			&& (node.value == 'shared' || node.value.starts_with('shared:')) {
-			needs_shared_runtime = true
+			scan.needs_shared_runtime = true
 		}
 		match node.kind {
 			.file {
@@ -2528,39 +2649,44 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				imports[node.typ] = node.value
 			}
 			.fn_decl {
-				if !needs_optional_helpers && type_string_needs_optional_helpers(node.typ) {
-					needs_optional_helpers = true
+				if !scan.needs_optional_helpers && type_string_needs_optional_helpers(node.typ) {
+					scan.needs_optional_helpers = true
 				}
 			}
 			.param, .field_decl, .field_init, .const_field {
-				if !needs_optional_helpers && type_string_needs_optional_helpers(node.typ) {
-					needs_optional_helpers = true
+				if !scan.needs_optional_helpers && type_string_needs_optional_helpers(node.typ) {
+					scan.needs_optional_helpers = true
 				}
 			}
 			.none_expr {
-				needs_optional_helpers = true
+				scan.needs_optional_helpers = true
 			}
 			.or_expr {
-				needs_optional_helpers = true
+				scan.needs_optional_helpers = true
 				if node.children_count > 0 {
 					expr_id := a.child(&node, 0)
 					expr_type := tc.expr_type(expr_id) or { tc.resolve_type(expr_id) }
 					if type_needs_zero_map(expr_type) {
-						needs_new_map = true
+						scan.needs_new_map = true
 					}
 				}
 			}
 			.call {
 				if node.children_count > 0 {
 					fn_node := a.child_node(&node, 0)
-					if !needs_channel_str_helpers && fn_node.kind == .selector
-						&& fn_node.value == 'str' && fn_node.children_count > 0
-						&& markused_expr_stringifies_channel(tc, a.child(fn_node, 0), cur_module, mut channel_stringify_cache) {
-						needs_channel_str_helpers = true
+					if fn_node.kind == .selector && fn_node.value == 'str'
+						&& fn_node.children_count > 0 {
+						base_id := a.child(fn_node, 0)
+						if !scan.needs_channel_str_helpers
+							&& markused_expr_stringifies_channel(tc, base_id, cur_module, mut scan.channel_stringify_cache) {
+							scan.needs_channel_str_helpers = true
+						}
+						enqueue_stringified_custom_str_method(base_id, cur_module, tc,
+							scan.auto_str_skipped_fields, mut used, mut queue)
 					}
 					if fn_node.kind == .ident
 						&& (fn_node.value == 'error' || fn_node.value == 'error_with_code') {
-						needs_optional_helpers = true
+						scan.needs_optional_helpers = true
 					}
 					if fn_node.kind == .ident && fn_node.value == 'flag_default_value' {
 						enqueue('escape_default_string', mut used, mut queue)
@@ -2578,53 +2704,53 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					if fn_node.kind == .ident
 						&& fn_node.value in ['print', 'println', 'eprint', 'eprintln']
 						&& node.children_count >= 2 {
-						if !needs_channel_str_helpers
-							&& markused_expr_stringifies_channel(tc, a.child(&node, 1), cur_module, mut channel_stringify_cache) {
-							needs_channel_str_helpers = true
+						if !scan.needs_channel_str_helpers
+							&& markused_expr_stringifies_channel(tc, a.child(&node, 1), cur_module, mut scan.channel_stringify_cache) {
+							scan.needs_channel_str_helpers = true
 						}
 						enqueue_stringified_custom_str_method(a.child(&node, 1), cur_module, tc,
-							auto_str_skipped_fields, mut used, mut queue)
+							scan.auto_str_skipped_fields, mut used, mut queue)
 					}
 				}
 			}
 			.select_stmt {
-				needs_channel_helpers = true
-				needs_channel_select_helpers = true
+				scan.needs_channel_helpers = true
+				scan.needs_channel_select_helpers = true
 			}
 			.struct_init {
 				if node.value.starts_with('chan ') {
-					needs_channel_helpers = true
+					scan.needs_channel_helpers = true
 				}
 			}
 			.lock_expr {
-				needs_shared_runtime = true
+				scan.needs_shared_runtime = true
 			}
 			.infix {
 				if node.op == .arrow {
-					needs_channel_helpers = true
+					scan.needs_channel_helpers = true
 				}
 				if node.op in [.eq, .ne] {
-					if !tc.nofloat && !needs_f32_eq_epsilon
+					if !tc.nofloat && !scan.needs_f32_eq_epsilon
 						&& markused_infix_needs_f32_eq_epsilon(a, tc, node) {
-						needs_f32_eq_epsilon = true
+						scan.needs_f32_eq_epsilon = true
 					}
-					if !needs_ierror_equality_dispatch && node.children_count >= 2 {
+					if !scan.needs_ierror_equality_dispatch && node.children_count >= 2 {
 						lhs_type := tc.resolve_type(a.child(&node, 0))
 						rhs_type := tc.resolve_type(a.child(&node, 1))
-						needs_ierror_equality_dispatch =
-							markused_type_equality_uses_ierror(lhs_type, tc, mut ierror_equality_cache)
-								|| markused_type_equality_uses_ierror(rhs_type, tc, mut ierror_equality_cache)
+						scan.needs_ierror_equality_dispatch =
+							markused_type_equality_uses_ierror(lhs_type, tc, mut scan.ierror_equality_cache)
+								|| markused_type_equality_uses_ierror(rhs_type, tc, mut scan.ierror_equality_cache)
 					}
 				}
 			}
 			.prefix {
 				if node.op == .arrow {
-					needs_channel_helpers = true
+					scan.needs_channel_helpers = true
 				}
 			}
 			.string_interp {
-				needs_string_interp_helpers = true
-				needs_string_plus_helper = true
+				scan.needs_string_interp_helpers = true
+				scan.needs_string_plus_helper = true
 				for i in 0 .. node.children_count {
 					mut part_id := a.child(&node, i)
 					part := a.node(part_id)
@@ -2635,12 +2761,12 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 						}
 						part_id = a.child(part, 0)
 					}
-					if !needs_channel_str_helpers
-						&& markused_expr_stringifies_channel(tc, part_id, cur_module, mut channel_stringify_cache) {
-						needs_channel_str_helpers = true
+					if !scan.needs_channel_str_helpers
+						&& markused_expr_stringifies_channel(tc, part_id, cur_module, mut scan.channel_stringify_cache) {
+						scan.needs_channel_str_helpers = true
 					}
 					enqueue_stringified_custom_str_method(part_id, cur_module, tc,
-						auto_str_skipped_fields, mut used, mut queue)
+						scan.auto_str_skipped_fields, mut used, mut queue)
 				}
 			}
 			.assign, .index_assign {
@@ -2652,7 +2778,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					rhs_type := markused_membership_container_type(tc, tc.resolve_type(rhs_id))
 					if lhs_type == 'string' || rhs_type == 'string'
 						|| rhs.kind in [.string_literal, .string_interp] {
-						needs_string_plus_helper = true
+						scan.needs_string_plus_helper = true
 					}
 				}
 			}
@@ -2663,7 +2789,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 						&& condition.op !in [.logical_and, .logical_or] {
 						for operand in 0 .. 2 {
 							enqueue_stringified_custom_str_method(a.child(condition, operand),
-								cur_module, tc, auto_str_skipped_fields, mut used, mut queue)
+								cur_module, tc, scan.auto_str_skipped_fields, mut used, mut queue)
 						}
 					}
 				}
@@ -2671,31 +2797,31 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.in_expr {
 				if node.children_count >= 2 {
 					lhs_id := a.child(&node, 0)
-					if !needs_ierror_equality_dispatch {
-						needs_ierror_equality_dispatch = markused_type_equality_uses_ierror(tc.resolve_type(lhs_id), tc, mut ierror_equality_cache)
+					if !scan.needs_ierror_equality_dispatch {
+						scan.needs_ierror_equality_dispatch = markused_type_equality_uses_ierror(tc.resolve_type(lhs_id), tc, mut scan.ierror_equality_cache)
 					}
-					if !needs_string_membership_helpers {
+					if !scan.needs_string_membership_helpers {
 						rhs_id := a.child(&node, 1)
 						rhs_type := markused_membership_container_type(tc, tc.resolve_type(rhs_id))
 						if rhs_type == 'string' {
-							needs_string_membership_helpers = true
+							scan.needs_string_membership_helpers = true
 						}
 					}
 				}
 			}
 			.map_init {
-				needs_new_map = true
+				scan.needs_new_map = true
 			}
 			.for_in_stmt {
 				if node.value.int() == 3 && node.children_count > 2 {
 					container_id := a.child(&node, 2)
 					container_type := tc.resolve_type(container_id)
 					if types.unwrap_pointer(container_type) is types.Map {
-						needs_map_iteration_snapshot = true
+						scan.needs_map_iteration_snapshot = true
 					}
 					if info := tc.iterator_for_in_next_call_info(container_type) {
 						enqueue(info.name, mut used, mut queue)
-						needs_optional_helpers = true
+						scan.needs_optional_helpers = true
 					}
 				}
 			}
@@ -2707,39 +2833,43 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				// string concatenation, leaving the autostr calling an undefined
 				// `string__plus`.
 				if node.typ == 'flag' {
-					needs_string_plus_helper = true
+					scan.needs_string_plus_helper = true
 				}
 			}
 			else {}
 		}
 	}
-	if needs_optional_helpers {
+	if scan.needs_optional_helpers {
 		for helper in optional_runtime_helpers {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
-	if needs_string_interp_helpers {
+	if scan.needs_string_interp_helpers {
 		for helper in string_interp_runtime_helpers {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
-	if needs_string_plus_helper {
+	if scan.needs_string_plus_helper {
 		enqueue('string__plus', mut used, mut queue)
 	}
-	if needs_string_membership_helpers {
+	if scan.needs_string_membership_helpers {
 		for helper in string_membership_runtime_helpers {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
-	if needs_new_map {
+	if scan.needs_new_map {
 		enqueue('new_map', mut used, mut queue)
 	}
-	if needs_map_iteration_snapshot {
+	if scan.select_map_runtime && (scan.needs_new_map || scan.needs_map_runtime)
+		&& !scan.map_runtime_enqueued {
+		scan.enqueue_map_runtime(mut used, mut queue)
+	}
+	if scan.needs_map_iteration_snapshot {
 		for helper in map_snapshot_runtime_helpers {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
-	if needs_channel_helpers {
+	if scan.needs_channel_helpers {
 		for helper in ['sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop',
 			'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed',
 			'sync.Channel.try_push_priv', 'sync.Channel.closed_error', 'new_channel_st', 'Channel.push',
@@ -2748,25 +2878,25 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
-	if needs_channel_select_helpers {
+	if scan.needs_channel_select_helpers {
 		for helper in ['sync.channel_select', 'sync.channel_select_lang', 'channel_select',
 			'channel_select_lang', 'rand.init', 'array.free', 'array__free', 'time.sleep', 'time__sleep'] {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
-	if needs_channel_str_helpers {
+	if scan.needs_channel_str_helpers {
 		for helper in ['string__plus', 'int.str', 'int__str'] {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
-	if needs_f32_eq_epsilon {
+	if scan.needs_f32_eq_epsilon {
 		enqueue('f32.eq_epsilon', mut used, mut queue)
 		enqueue('f32__eq_epsilon', mut used, mut queue)
 	}
-	if needs_ierror_equality_dispatch {
+	if scan.needs_ierror_equality_dispatch {
 		enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue)
 	}
-	if needs_shared_runtime {
+	if scan.needs_shared_runtime {
 		enqueue('malloc_uncollectable', mut used, mut queue)
 		for helper in ['sync.cpanic', 'sync.cpanic_errno', 'sync.should_be_zero', 'sync.RwMutex.init',
 			'sync.RwMutex.lazy_init', 'sync.RwMutex.lock', 'sync.RwMutex.unlock', 'sync.RwMutex.rlock',
@@ -2914,6 +3044,93 @@ fn markused_type_equality_uses_ierror_uncached(typ types.Type, tc &types.TypeChe
 	}
 
 	return false
+}
+
+fn markused_is_map_runtime_seed(name string) bool {
+	return name.starts_with('map.') || name.starts_with('map_')
+}
+
+fn (mut scan RuntimeHelpersScan) enqueue_map_runtime(mut used map[string]bool, mut queue []string) {
+	scan.map_runtime_enqueued = true
+	// Container initialization, indexing and ownership lowering can introduce
+	// calls after markused. Retain the existing map runtime group as one unit.
+	enqueue('new_map', mut used, mut queue)
+	for seeds in [core_runtime_seeds, lowered_runtime_seeds, ownership_runtime_seeds] {
+		for seed in seeds {
+			if markused_is_map_runtime_seed(seed) {
+				enqueue(seed, mut used, mut queue)
+			}
+		}
+	}
+}
+
+fn (mut scan RuntimeHelpersScan) type_needs_map_runtime(typ types.Type, tc &types.TypeChecker) bool {
+	key := if typ is types.Unknown { 'unknown:${typ.reason}' } else { typ.name() }
+	if cached := scan.map_type_cache[key] {
+		return cached == 1
+	}
+	scan.map_type_cache[key] = 2
+	mut needed := false
+	match typ {
+		types.Map {
+			needed = true
+		}
+		types.Unknown {
+			// Markused precedes monomorphization. A reached generic value may
+			// become a map even when its placeholder has no concrete type yet.
+			needed = typ.reason.starts_with('generic placeholder ')
+		}
+		types.Alias, types.Pointer, types.OptionType, types.ResultType {
+			needed = scan.type_needs_map_runtime(typ.base_type, tc)
+		}
+		types.Array, types.ArrayFixed, types.Channel {
+			needed = scan.type_needs_map_runtime(typ.elem_type, tc)
+		}
+		types.Struct {
+			for field in tc.struct_fields_for_type(typ.name) {
+				if scan.type_needs_map_runtime(field.typ, tc) {
+					needed = true
+					break
+				}
+			}
+		}
+		types.SumType {
+			for variant in markused_sum_variants(typ.name, tc) {
+				if scan.type_needs_map_runtime(tc.parse_type(variant), tc) {
+					needed = true
+					break
+				}
+			}
+		}
+		types.Interface {
+			for impl in markused_interface_impl_names(typ.name, tc) {
+				if scan.type_needs_map_runtime(tc.parse_type(impl), tc) {
+					needed = true
+					break
+				}
+			}
+		}
+		types.FnType {
+			needed = scan.type_needs_map_runtime(typ.return_type, tc)
+			for param in typ.params {
+				if scan.type_needs_map_runtime(param, tc) {
+					needed = true
+					break
+				}
+			}
+		}
+		types.MultiReturn {
+			for part in typ.types {
+				if scan.type_needs_map_runtime(part, tc) {
+					needed = true
+					break
+				}
+			}
+		}
+		else {}
+	}
+	scan.map_type_cache[key] = if needed { 1 } else { -1 }
+	return needed
 }
 
 fn markused_type_text_needs_shared_runtime(typ string) bool {
@@ -3249,7 +3466,8 @@ fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &
 		types.Pointer {
 			base := typ.base_type
 			if base is types.Struct || base is types.SumType || base is types.Interface
-				|| base is types.Enum || base is types.Alias {
+				|| base is types.Enum || base is types.Alias || base is types.Map
+				|| base is types.Array || base is types.ArrayFixed {
 				enqueue_stringified_type_dependencies(base, cur_module, tc, skipped_fields,
 					mut used, mut queue, mut seen)
 			}
@@ -3295,6 +3513,9 @@ fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &
 				mut used, mut queue, mut seen)
 		}
 		types.Map {
+			// The generated map formatter has runtime branches for every scalar
+			// kind, so even an integer map needs its float conversion callee.
+			enqueue_implicit_map_str_helpers(mut used, mut queue)
 			enqueue_stringified_type_dependencies(typ.key_type, cur_module, tc, skipped_fields,
 				mut used, mut queue, mut seen)
 			enqueue_stringified_type_dependencies(typ.value_type, cur_module, tc, skipped_fields,
@@ -3355,10 +3576,22 @@ fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeCh
 	}
 	seen[typ_name] = true
 	match typ {
+		types.Unknown {
+			// Before monomorphization an implicit interface implementer can still
+			// expose its declaration's generic field type. Keep both float widths
+			// until the concrete field selected by the boxer is available.
+			if !tc.nofloat && typ.reason.starts_with('generic placeholder ') {
+				enqueue_stringified_primitive_helpers('f32', mut used, mut queue)
+				enqueue_stringified_primitive_helpers('f64', mut used, mut queue)
+			}
+		}
 		types.Alias {
+			if enqueue_structlike_str_method(typ_name, '', tc, mut used, mut queue) {
+				return
+			}
 			enqueue_implicit_interface_str_helpers_inner(typ.base_type, tc, mut used, mut queue, mut seen)
 		}
-		types.Pointer {
+		types.Pointer, types.OptionType, types.ResultType {
 			enqueue_implicit_interface_str_helpers_inner(typ.base_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Primitive, types.Rune, types.Char, types.ISize, types.USize, types.String {
@@ -3382,8 +3615,26 @@ fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeCh
 			enqueue_implicit_interface_str_helpers_inner(typ.value_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Struct {
-			for field in tc.structs[typ.name] or { []types.StructField{} } {
+			if enqueue_structlike_str_method(typ_name, '', tc, mut used, mut queue) {
+				return
+			}
+			for field in tc.struct_fields_for_type(typ.name) {
 				enqueue_implicit_interface_str_helpers_inner(field.typ, tc, mut used, mut queue, mut seen)
+			}
+		}
+		types.SumType {
+			if enqueue_structlike_str_method(typ_name, '', tc, mut used, mut queue) {
+				return
+			}
+			for variant in markused_sum_variants(typ.name, tc) {
+				enqueue_implicit_interface_str_helpers_inner(tc.parse_type(variant), tc, mut used,
+					mut queue, mut seen)
+			}
+		}
+		types.Interface {
+			for impl in markused_interface_impl_names(typ.name, tc) {
+				enqueue_implicit_interface_str_helpers_inner(tc.parse_type(impl), tc, mut used,
+					mut queue, mut seen)
 			}
 		}
 		else {}
@@ -3522,7 +3773,7 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 			enqueue(markused_c_name('f64.str'), mut used, mut queue)
 			enqueue('strconv__f32_to_str_l', mut used, mut queue)
 		}
-		'f64' {
+		'f64', 'float literal' {
 			enqueue('f64.str', mut used, mut queue)
 			enqueue(markused_c_name('f64.str'), mut used, mut queue)
 			enqueue('strconv__f64_to_str_l', mut used, mut queue)

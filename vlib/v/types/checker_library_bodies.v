@@ -66,7 +66,7 @@ fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follo
 		for name in seeded_fns {
 			// `array.push`, `array__push` and `strconv__format_int` name functions
 			// that are declared as `push` and `format_int`.
-			seeded_names[name.all_after_last('.').all_after_last('__')] = true
+			seeded_names[short_name_view(name).all_after_last('__')] = true
 		}
 	}
 	mut bodies := []LibraryFnBody{cap: 4096}
@@ -99,11 +99,13 @@ fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follo
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
-				short_name := node.value.all_after_last('.')
+				short_name := short_name_view(node.value)
+				// The parser wraps top-level compile errors and warnings in synthetic bodies.
 				is_root := !is_library || tc.cur_module in library_runtime_modules
+					|| short_name.starts_with('__v_top_level_compile_error_')
 					|| short_name in library_fn_implicit_names || seeded_names[short_name]
 					|| !library_fn_name_is_identifier(short_name)
-					|| tc.infer_decl_generic_param_names(node).len > 0
+					|| tc.enclosing_generic_params_by_node[i].len > 0
 					|| tc.library_fn_is_marked_root(i)
 				if is_root {
 					root_ranges << LibraryFnBody{
@@ -159,11 +161,17 @@ fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follo
 // name as reached, and queues them for their own bodies.
 fn (tc &TypeChecker) reach_library_fns_named_in(body LibraryFnBody, by_name map[string][]int, mut reached []bool, mut queue []int) {
 	for i in body.range_lo .. body.fn_idx + 1 {
-		value := tc.a.nodes[i].value
+		node := tc.a.nodes[i]
+		// Declaration names and literal contents do not reference functions. Casts
+		// retain possible callees when parsing a name as a type precedes resolution.
+		if node.kind !in [.ident, .selector, .call, .cast_expr] {
+			continue
+		}
+		value := node.value
 		if value.len == 0 {
 			continue
 		}
-		short_name := value.all_after_last('.')
+		short_name := short_name_view(value)
 		candidates := by_name[short_name] or { continue }
 		for candidate in candidates {
 			if !reached[candidate] {

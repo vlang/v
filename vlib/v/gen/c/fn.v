@@ -1170,6 +1170,9 @@ fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_
 		return g.cache_program_files[file_name]
 			|| g.cache_program_files[g.a.real_source_path(file_name)]
 	}
+	if g.tc.specialized_generic_fns.len == 0 {
+		return false
+	}
 	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
 		|| g.cname(node.value) in g.tc.specialized_generic_fns
 }
@@ -1209,8 +1212,11 @@ fn (g &FlatGen) used_fn_contains_in_module(name string, module_name string) bool
 		}
 	}
 	dfn := dotted_fn_name_in_module(module_name, name)
+	if g.used_fn_contains(dfn) {
+		return true
+	}
 	qfn := g.qualified_fn_name_in_module_c(module_name, name)
-	if g.used_fn_contains(dfn) || g.used_fn_contains(qfn) {
+	if g.used_fn_contains(qfn) {
 		return true
 	}
 	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin' {
