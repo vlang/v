@@ -4182,6 +4182,16 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if init_struct := struct_type_from_type(init_type) {
 		is_synthetic_embed_file := node.value == 'embed_file.EmbedFileData'
+		decl_module := tc.struct_module_for_type(init_struct.name)
+		noinit_same_main_module := decl_module in ['', 'main'] && tc.cur_module in ['', 'main']
+		if decl_module != tc.cur_module && !noinit_same_main_module {
+			if decl_id := tc.source_struct_decl_id_for_name(init_struct.name) {
+				if tc.declaration_has_attribute(decl_id, 'noinit') {
+					display_name := tc.diagnostic_type_name(init_type)
+					tc.record_error_at(.assignment_mismatch, 'struct `${display_name}` is declared with a `@[noinit]` attribute, so it cannot be initialized with `${display_name}{}`', id, node.pos)
+				}
+			}
+		}
 		// A `struct { ... }` literal is parsed into a name the parser synthesized for it
 		// (or left as a bare `struct` when its field types cannot be inferred), which the
 		// checker then resolves to whichever anonymous type the context expects.

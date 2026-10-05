@@ -3288,6 +3288,9 @@ V supports `[noinit]` structs, which are structs that cannot be initialised outs
 they are defined in. They are either meant to be used internally or they can be used externally
 through _factory functions_.
 
+The restriction applies to empty literals and literals with explicit fields, including aliases
+and concrete generic instances of the struct.
+
 For an example, consider the following source in a directory `sample`:
 
 ```v oksyntax
