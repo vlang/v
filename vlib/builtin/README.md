@@ -5,6 +5,8 @@
 It implements the builtin V types `array`, `string`, `map`.
 It also includes Unicode-aware string helpers such as `string.graphemes()`
 for splitting text into grapheme clusters.
+The `.string()` method converts dynamic and fixed arrays of runes to UTF-8 strings,
+including fixed arrays returned by `.map()`.
 
 It also implements builtin functions like `println`, `eprintln`, `malloc`,
 `panic`, `print_backtrace`.
