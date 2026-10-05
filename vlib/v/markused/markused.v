@@ -718,6 +718,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut in_cg := 0
 	mut not_in_cg := 0
 	mut total_callees := 0
+	has_entry_main := markused_has_entry_main_indexed(a, tc)
+	auto_str_skipped_fields := if reachable_runtime_helpers || !has_entry_main {
+		markused_auto_str_skipped_fields(a)
+	} else {
+		map[string]bool{}
+	}
 	collector := CallCollector{
 		a:                                a
 		tc:                               tc
@@ -738,6 +744,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			map[string]bool{}
 		}
 		generic_type_bases:               generic_type_bases
+		auto_str_skipped_fields:          auto_str_skipped_fields
 		detect_generics:                  detect_reachable_generics
 		body_checker_edges_authoritative: use_prepared && !detect_reachable_generics
 	}
@@ -761,7 +768,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		eprintln('  [ttime] mu precollect      ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
 		mu_sw.restart()
 	}
-	has_entry_main := markused_has_entry_main_indexed(a, tc)
 	needs_closure_runtime := if reachable_runtime_helpers {
 		a.nodes.any(it.kind == .import_decl && it.value == 'builtin.closure'
 			&& it.typ != '__v3_builtin_closure_runtime')
@@ -777,7 +783,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	if reachable_runtime_helpers {
 		reachable_helper_scan.select_map_runtime = true
 		reachable_helper_scan.select_closure_runtime = true
-		reachable_helper_scan.auto_str_skipped_fields = markused_auto_str_skipped_fields(a)
+		reachable_helper_scan.auto_str_skipped_fields = auto_str_skipped_fields
 		if !needs_closure_runtime {
 			reachable_helper_scan.deferred_closure_mask = []bool{len: a.nodes.len}
 			for idx in tc.top_level_idx {
@@ -2186,6 +2192,8 @@ struct CallCollector {
 	// Includes scoped local declarations, which are intentionally absent from
 	// the checker's top-level generic declaration maps.
 	generic_type_bases map[string]bool
+	// Shared read-only metadata for every script stringification in this pass.
+	auto_str_skipped_fields map[string]bool
 	// Self-host builds are known not to need monomorphization, so they can omit
 	// generic-only reachability probes while preserving ordinary call collection.
 	local_ident_visibility           map[int]bool
@@ -4970,6 +4978,7 @@ fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 		selective_alias_targets:          c.selective_alias_targets
 		iface_param_gate:                 c.iface_param_gate
 		generic_type_bases:               c.generic_type_bases
+		auto_str_skipped_fields:          c.auto_str_skipped_fields
 		detect_generics:                  c.detect_generics
 		body_checker_edges_authoritative: c.body_checker_edges_authoritative
 	}
@@ -6439,16 +6448,9 @@ fn (c &CallCollector) collect_top_level_stringification_calls(id flat.NodeId, cu
 		return
 	}
 	typ := c.tc.parse_canonical_type(type_name)
-	base := types.unalias_type(typ)
-	skipped_fields := if base is types.Primitive || base is types.Rune || base is types.Char
-		|| base is types.ISize || base is types.USize || base is types.String {
-		map[string]bool{}
-	} else {
-		markused_auto_str_skipped_fields(c.a)
-	}
 	mut used := map[string]bool{}
 	mut seen := map[string]bool{}
-	enqueue_stringified_type_dependencies(typ, cur_module, c.tc, skipped_fields,
+	enqueue_stringified_type_dependencies(typ, cur_module, c.tc, c.auto_str_skipped_fields,
 		mut used, mut calls, mut seen)
 }
 

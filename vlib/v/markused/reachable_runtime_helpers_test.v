@@ -564,6 +564,27 @@ fn main() { values := [1, 2, 3]; assert values[0] == 1; ${call} }
 	}
 }
 
+fn test_repeated_script_stringification_keeps_visible_fields() {
+	for skipped in [true, false] {
+		attribute := if skipped { '@[str: skip]' } else { '' }
+		prints := 'println(value)\nprintln("\${value}")\n'.repeat(64)
+		a, tc := checked_runtime_helper_source('module main
+struct Hidden {}
+fn (_ Hidden) str() string { return "hidden" }
+struct Item {
+	hidden Hidden ${attribute}
+	values []f64
+}
+value := Item{ values: [1.25] }
+${prints}
+')
+		used := mark_used(a, tc)
+		assert used['Hidden.str'] == !skipped
+		assert used['f64.str']
+		assert used['strconv__f64_to_str_l']
+	}
+}
+
 fn test_script_stringification_helpers_use_imports_and_local_bindings() {
 	root := os.join_path(os.temp_dir(), 'v_script_runtime_helpers_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
