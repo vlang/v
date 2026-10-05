@@ -5102,10 +5102,39 @@ fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
 
 // cache_directive_flags resolves source C flags that affect early C cache keys.
 pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
+	return cache_directive_flags_skipping(a, vroot, target, compile_values, map[int]bool{})
+}
+
+// preflight_directive_flags resolves flags whose compile-time branches were decided by
+// parsing. Deferred type/metadata conditions are left for the checked, transformed AST.
+pub fn preflight_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
+	mut deferred := map[int]bool{}
+	for node in a.nodes {
+		if node.kind in [.comptime_if, .comptime_for] {
+			for i in 0 .. node.children_count {
+				mark_preflight_deferred_directives(a, a.child(&node, i), mut deferred)
+			}
+		}
+	}
+	return cache_directive_flags_skipping(a, vroot, target, compile_values, deferred)
+}
+
+fn mark_preflight_deferred_directives(a &flat.FlatAst, id flat.NodeId, mut deferred map[int]bool) {
+	if int(id) < 0 || int(id) >= a.nodes.len || int(id) in deferred {
+		return
+	}
+	deferred[int(id)] = true
+	node := a.nodes[int(id)]
+	for i in 0 .. node.children_count {
+		mark_preflight_deferred_directives(a, a.child(&node, i), mut deferred)
+	}
+}
+
+fn cache_directive_flags_skipping(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, skipped map[int]bool) []string {
 	mut groups := []CFlagDirectiveGroup{}
 	mut cur_file := ''
 	mut cur_module := ''
-	for node in a.nodes {
+	for node_idx, node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = ''
@@ -5115,7 +5144,7 @@ pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, 
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .directive || node.typ.len == 0 {
+		if node.kind != .directive || node.typ.len == 0 || node_idx in skipped {
 			continue
 		}
 		mut flags := []string{}

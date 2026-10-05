@@ -18,8 +18,8 @@ The `v fmt` command uses `v.parser` and `v.gen.v`. Formatter-mode parsing retain
 compile-time branches, inline assembly, SQL bodies, and literal prefixes so they round-trip
 without a legacy formatter path.
 It also preserves literals of locally declared lowercase types, including declarations that
-follow their uses or appear in inactive compile-time branches. Normal compilation still checks
-the type naming rules.
+follow their uses or appear in inactive compile-time branches. Assembly directives such as
+`.type` do not declare V types. Normal compilation still checks the type naming rules.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and

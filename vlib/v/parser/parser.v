@@ -3572,15 +3572,18 @@ fn (mut p Parser) scan_formatter_type_declarations() {
 	mut scan := scanner.new_scanner(p.prefs, .skip_interpolation)
 	scan.init(p.s.current_file(), p.s.src)
 	mut previous := token.Token.eof
+	mut expects_type_name := false
 	for {
 		kind := scan.scan()
 		if kind == .eof {
 			break
 		}
-		if kind == .name
-			&& previous in [.key_struct, .key_type, .key_enum, .key_interface, .key_union] {
+		if kind == .name && expects_type_name {
 			p.translated_sizeof_type_names[p.translated_sizeof_declaration_key(scan.lit)] = true
 		}
+		// Dotted member names and assembly directives such as `.type` are not declarations.
+		expects_type_name = kind in [.key_struct, .key_type, .key_enum, .key_interface, .key_union]
+			&& previous != .dot
 		previous = kind
 	}
 }

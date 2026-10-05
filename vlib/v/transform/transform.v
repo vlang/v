@@ -1262,7 +1262,8 @@ fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bo
 	t.lean_struct_init_fields = building_v && os.getenv('V3_NO_LEAN_TRANSFORM_STRUCT_FIELDS') == ''
 	t.inplace_struct_fields = t.inplace_child_rewrites
 		&& os.getenv('V3_NO_INPLACE_TRANSFORM_STRUCT_FIELDS') == ''
-	t.memo_call_param_type_names = building_v && os.getenv('V3_NO_TRANSFORM_TYPE_NAME_MEMO') == ''
+	t.memo_call_param_type_names = (building_v || skip_generics)
+		&& os.getenv('V3_NO_TRANSFORM_TYPE_NAME_MEMO') == ''
 	t.memo_semantic_type_names = building_v && os.getenv('V3_TRANSFORM_TYPE_NAME_MEMO_ALL') != ''
 	t.prefix_param_scan = building_v && os.getenv('V3_NO_PREFIX_PARAM_SCAN') == ''
 	t.preserve_inplace_expr_types = t.inplace_child_rewrites

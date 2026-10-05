@@ -377,6 +377,7 @@ It prints the value passed to it to standard output.
 
 `fn main()` declaration can be skipped in single file programs.
 This is useful when writing small programs, "scripts", or just learning the language.
+Imports and script statements can share a line when separated by semicolons.
 For brevity, `fn main()` will be skipped in this tutorial.
 
 This means that a "hello world" program in V is as simple as
@@ -7780,6 +7781,10 @@ to allow for a better search experience.
 
 V has several attributes that modify the behavior of functions and structs.
 
+`@[noalloc]` checks that a function's reachable code does not allocate, with an exception for
+growing an existing mutable array parameter. `@[noalloc: strict]` also forbids that growth.
+See [Allocation contracts](noalloc.md) for conservative checks and foreign function contracts.
+
 An attribute is a compiler instruction specified inside `[]` right before a
 function/struct/enum declaration and applies only to the following declaration.
 Attributes with arguments support both `name: value` and call-style `name(value)` syntax.
@@ -8735,6 +8740,9 @@ time, without modifying your source code, or keeping different versions of it.
 
 These two comptime functions are very useful for displaying custom errors/warnings during
 compile time.
+
+Top-level compile errors and warnings in imported modules are evaluated even when none of their
+functions is called.
 
 Both receive as their only argument a string literal that contains the message to display:
 

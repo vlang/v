@@ -1185,6 +1185,9 @@ fn (g &FlatGen) ierror_type_id_for_pattern(pattern string) int {
 }
 
 fn (g &FlatGen) should_emit_ierror_method(name string, qname string) bool {
+	if g.ierror_method_emit_names.len == 0 {
+		return false
+	}
 	if name in g.ierror_method_emit_names || qname in g.ierror_method_emit_names {
 		return true
 	}
