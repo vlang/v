@@ -10290,6 +10290,9 @@ pub fn run(args []string) {
 	prefs.target_libc_headers = target_libc_headers
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.enable_globals = enable_globals_compat
+	if v3_builtin_arena_define !in user_defines && v3_input_imports_arena(input_file) {
+		user_defines << v3_builtin_arena_define
+	}
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot)
@@ -10987,6 +10990,11 @@ pub fn run(args []string) {
 		check_overflow || check_casts, mut cache_state, mut parse_timing, mut implicit_imports, mut prepared_imports)
 	if prepared_imports.diverged != '' {
 		rerun_as_one_shot_check(prepared_imports.diverged, served.question)
+	}
+	if !no_builtin && v3_builtin_arena_define !in prefs.user_defines
+		&& v3_program_uses_arena(a, prefs.vroot) {
+		v3_rerun_with_builtin_arena(args, served.question)
+		return
 	}
 	mut logical_file_order := []int{}
 	if prepared_imports.ready {
@@ -16565,6 +16573,54 @@ fn append_declared_import(mut imports []string, line string) {
 	}
 }
 
+// Programs that use the `arena` module (vlib/arena) need the allocator hooks
+// of builtin, which every other program goes without: this define selects
+// them (see vlib/builtin/arena_d_builtin_arena.c.v). Builtin is parsed before
+// the imports of a program are resolved, so the driver adds the define when
+// the input file imports `arena` itself (v3_input_imports_arena), and builds
+// again with it when an imported module does (v3_rerun_with_builtin_arena).
+const v3_builtin_arena_define = 'builtin_arena'
+
+// v3_input_imports_arena reports whether the input file imports `arena`.
+fn v3_input_imports_arena(input_file string) bool {
+	if input_file in ['', '-'] || !os.is_file(input_file) {
+		return false
+	}
+	return 'arena' in declared_imports_in_file(input_file)
+}
+
+// v3_program_uses_arena reports whether the resolved imports of a program
+// include vlib's `arena` module.
+fn v3_program_uses_arena(a &flat.FlatAst, vroot string) bool {
+	mut arena_dir := ''
+	for _, dir in a.resolved_module_dirs {
+		if os.file_name(dir) != 'arena' {
+			continue
+		}
+		if arena_dir.len == 0 {
+			arena_dir = os.real_path(os.join_path(vroot, 'vlib', 'arena'))
+		}
+		if os.real_path(dir) == arena_dir {
+			return true
+		}
+	}
+	return false
+}
+
+// v3_rerun_with_builtin_arena builds the program again with the
+// `builtin_arena` define, for an import of `arena` that only the import
+// resolution found.
+fn v3_rerun_with_builtin_arena(args []string, question string) {
+	if os.getenv('V_DIAGNOSTICS_SERVER') != '' {
+		// The server parsed builtin once, without the define.
+		rerun_as_one_shot_check_with('the program imports `arena`', question, ['-d',
+			v3_builtin_arena_define])
+	}
+	mut rerun_args := ['-d', v3_builtin_arena_define]
+	rerun_args << args
+	run(rerun_args)
+}
+
 fn append_unique_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string) {
 	key := a.record_source_path(file)
 	if seen[key] {
@@ -19564,8 +19620,15 @@ fn trace_diagnostics_server(message string) {
 // a preparation cannot guarantee to match. A child that was to answer
 // `question` answers it there, as `-line-info` does.
 fn rerun_as_one_shot_check(reason string, question string) {
+	rerun_as_one_shot_check_with(reason, question, []string{})
+}
+
+// rerun_as_one_shot_check_with is rerun_as_one_shot_check with `extra_args`
+// before the original arguments.
+fn rerun_as_one_shot_check_with(reason string, question string, extra_args []string) {
 	trace_diagnostics_server('one-shot check: ${reason}')
-	mut args := os.args[1..].clone()
+	mut args := extra_args.clone()
+	args << os.args[1..]
 	if question != '' && args.len > 0 {
 		// Before the input, which the command line ends with.
 		args.insert(args.len - 1, ['-line-info', question])
