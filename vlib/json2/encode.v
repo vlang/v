@@ -1,6 +1,7 @@
 module json2
 
 import time
+import sync.stdatomic
 
 // EncoderOptions provides a list of options for encoding
 @[params]
@@ -808,10 +809,22 @@ fn check_not_empty[T](val T) ?bool {
 @[manualfree; unsafe]
 fn (mut encoder Encoder) cached_field_infos[T]() &EncoderFieldInfoCache {
 	static cache := &EncoderFieldInfoCache(nil)
-	if cache == nil {
-		cache = &EncoderFieldInfoCache{}
-		$for field in T.fields {
-			cache.field_infos << encoder_field_info(field.name, field.attrs)
+	static initializing := u64(0)
+	static initialized := u64(0)
+	// Elect one initializer, then publish the completed immutable cache. This makes
+	// every field visible before another thread can read the immutable cache.
+	if stdatomic.load_u64(&initialized) == 0 {
+		if stdatomic.fetch_add_u64(&initializing, 1) == 0 {
+			cache = &EncoderFieldInfoCache{}
+			$for field in T.fields {
+				cache.field_infos << encoder_field_info(field.name, field.attrs)
+			}
+			stdatomic.store_u64(&initialized, 1)
+		} else {
+			// Only concurrent first use waits; warm encodes need one atomic load.
+			for stdatomic.load_u64(&initialized) == 0 {
+				time.sleep(time.microsecond)
+			}
 		}
 	}
 	return cache
