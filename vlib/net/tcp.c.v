@@ -39,8 +39,9 @@ pub mut:
 	// use -1 for the indeterminate case they cannot prove; plain TCP never does.)
 	last_write_sent int
 mut:
-	read_timeout_in_socket    bool
-	socket_read_timeout_value time.Duration
+	read_timeout_in_socket     bool
+	socket_read_timeout_value  time.Duration
+	socket_read_timeout_handle int
 }
 
 // dial_tcp will try to create a new TcpConn to the given address.
@@ -185,6 +186,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	// A deadline-only read still uses select; ordinary blocking reads let recv enforce the timeout.
 	socket_read_timeout := c.is_blocking && c.read_timeout_in_socket
 		&& c.read_timeout == c.socket_read_timeout_value
+		&& c.sock.handle == c.socket_read_timeout_handle
 		&& (c.read_timeout != 0 || c.read_deadline.unix() == 0)
 	$if is_coroutine ? {
 		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
@@ -361,6 +363,7 @@ pub fn (mut c TcpConn) set_read_timeout(t time.Duration) {
 		c.read_timeout_in_socket = C.setsockopt(c.sock.handle, C.SOL_SOCKET, C.SO_RCVTIMEO,
 			voidptr(&timeout), sizeof(timeout)) == 0
 		c.socket_read_timeout_value = t
+		c.socket_read_timeout_handle = c.sock.handle
 	}
 }
 

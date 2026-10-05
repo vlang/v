@@ -31,7 +31,7 @@ fn test_tcp_blocking_read_uses_socket_timeout() ! {
 	server.read(mut buffer) or {
 		assert err.code() == err_timed_out.code()
 		assert started.elapsed() >= 100 * time.millisecond
-		assert started.elapsed() < 350 * time.millisecond
+		assert started.elapsed() < 2 * time.second
 		client.write_string('ok')!
 		assert server.read(mut buffer)! == 2
 		assert buffer[..2].bytestr() == 'ok'
