@@ -1462,10 +1462,10 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unsupported_generics:           tc.reject_unsupported_generics
 		checker_fixture_mode:                  tc.checker_fixture_mode
 		is_test:                               tc.is_test
-		// Each scoped fork carries its ancestors' concrete checks, without sharing
-		// mutable visited maps with another worker. Completed summaries are immutable.
-		checked_comptime_method_calls:         tc.checked_comptime_method_calls.clone()
-		comptime_method_calls_by_decl:         tc.comptime_method_calls_by_decl.clone()
+		// Reflection argument caches belong to semantic checking, not lookup or
+		// transform views that may outlive the arena where those caches were made.
+		checked_comptime_method_calls:         map[string]bool{}
+		comptime_method_calls_by_decl:         map[int]map[int]bool{}
 		check_concrete_generic_bodies:         tc.check_concrete_generic_bodies
 		check_generic_bodies:                  tc.check_generic_bodies
 		module_diagnostic_root:                tc.module_diagnostic_root

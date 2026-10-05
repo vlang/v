@@ -4436,6 +4436,10 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
+	// Semantic forks need their live ancestors' visited instances for recursive
+	// forwarding. Completed declaration summaries remain read-only in each fork.
+	w.checked_comptime_method_calls = tc.checked_comptime_method_calls.clone()
+	w.comptime_method_calls_by_decl = tc.comptime_method_calls_by_decl.clone()
 	precomputed := tc.precomputed_check_cache()
 	// Parallel checker workers may populate this cache concurrently, so each
 	// worker (and each disposable scoped batch) owns mutable result/miss maps while
