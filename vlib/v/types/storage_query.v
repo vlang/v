@@ -74,6 +74,10 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		mut active := visiting.clone()
 		result := view.param_storage_writes_for_decl_unscoped(decl, target_param_idx, mut active)
 		trace := view.visible_mutation_cache.storage_query_trace
+		// An active declaration also returns no paths, so this guard cannot affect an empty result.
+		if trace.complete && result.len == 0 {
+			trace.guards.delete(guard_id)
+		}
 		// Map iteration copies string keys, so estimate inside the disposable arena.
 		estimated_bytes := if inherited_owner && trace.complete {
 			storage_query_result_bytes(cache_key, result, trace.guards)

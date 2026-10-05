@@ -438,3 +438,60 @@ fn main() { assert declared() == 42 }
 		assert !tc.local_fn_decl_exists('absent')
 	}
 }
+
+fn test_complete_empty_summaries_remove_only_their_own_guard() {
+	$if prealloc {
+		source_path := os.join_path(os.vtmp_dir(), 'empty_own_guard_${os.getpid()}.v')
+		defer { os.rm(source_path) or {} }
+		os.write_file(source_path, 'struct Value {}\nstruct Box { mut: value &Value }\nfn empty_a(mut target Box, source &Value, replacement &Value) { empty_b(mut target, source, replacement) }\nfn empty_b(mut target Box, source &Value, replacement &Value) { empty_a(mut target, replacement, source) }\nfn clear(mut target Box, source &Value, replacement &Value) { target.value = &Value{} }\n') or { panic(err) }
+		mut parser_instance := parser.Parser.new(pref.new_preferences())
+		ast := parser_instance.parse_file(source_path)
+		assert parser_instance.diagnostics.len == 0, parser_instance.diagnostics.str()
+		mut checker := TypeChecker.new(ast)
+		checker.collect(ast)
+		_ = checker.check_semantics_opt(false)
+		assert checker.errors.len == 0, checker.errors.str()
+		mut empty_decl := VisibleMutationFnDecl{}
+		mut clear_decl := VisibleMutationFnDecl{}
+		for node_idx, ast_node in ast.nodes {
+			if ast_node.kind != .fn_decl { continue }
+			if ast_node.value == 'empty_a' {
+				empty_decl = VisibleMutationFnDecl{ idx: node_idx, mod: 'main' }
+			}
+			if ast_node.value == 'clear' {
+				clear_decl = VisibleMutationFnDecl{ idx: node_idx, mod: 'main' }
+			}
+		}
+		arena := unsafe { prealloc_scope_begin() }
+		defer { unsafe { prealloc_scope_end(arena) } }
+		mut query := checker.fork_storage_query_view()
+		query.visible_mutation_cache.storage_query_owner = &VisibleMutationCache{ storage_query: true }
+		query.visible_mutation_cache.storage_query_scopes = [arena]
+		query.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{}
+		mut absent := map[u64]bool{}
+		empty_writes := query.param_storage_writes_for_decl(empty_decl, 0, mut absent)
+		assert empty_writes.len == 0
+		empty_key := 'main:${empty_decl.idx}:0'
+		assert query.visible_mutation_cache.storage_query_owner.storage_query_results[empty_key][0].guards.len == 0
+		assert query.visible_mutation_cache.storage_query_trace.guards.len == 0
+		empty_guard := visible_mutation_cache_id(empty_decl, 0)
+		query.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{}
+		mut false_present := {
+			empty_guard: false
+		}
+		cutoff_writes := query.param_storage_writes_for_decl(empty_decl, 0, mut false_present)
+		assert cutoff_writes.len == 0
+		assert empty_guard in query.visible_mutation_cache.storage_query_trace.guards
+		assert query.visible_mutation_cache.storage_query_trace.guards[empty_guard]
+		query.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{}
+		clear_writes := query.param_storage_writes_for_decl(clear_decl, 0, mut absent)
+		assert clear_writes.len == 1
+		assert '.value' in clear_writes
+		assert clear_writes['.value'].len == 0
+		clear_guard := visible_mutation_cache_id(clear_decl, 0)
+		clear_key := 'main:${clear_decl.idx}:0'
+		clear_guards := query.visible_mutation_cache.storage_query_owner.storage_query_results[clear_key][0].guards
+		assert clear_guard in clear_guards
+		assert !clear_guards[clear_guard]
+	}
+}

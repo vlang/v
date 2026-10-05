@@ -37,6 +37,7 @@ pub fn run_runtime_tests() {
 	test_storage_query_results_survive_nested_arena_release()
 	test_storage_query_views_keep_parent_identity_tables_private()
 	test_storage_query_views_preserve_cold_declaration_lookups()
+	test_complete_empty_summaries_remove_only_their_own_guard()
 	println("runtime metadata assertions passed")
 }
 ')!
