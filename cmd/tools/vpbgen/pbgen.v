@@ -184,7 +184,7 @@ fn write_outputs(opts PbgenOptions, res &ResolvedFile) ! {
 		// One file holds both halves, which is the common case and what the
 		// gRPC example does. The service half is emitted without its own
 		// `module` line, since a file has exactly one.
-		write_generated(target, codec + '\n' + emit_grpc_body(res))!
+		write_generated(target, codec.trim_right('\n') + '\n\n' + emit_grpc_body(res))!
 	} else {
 		write_generated(target, grpc_source)!
 	}

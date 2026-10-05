@@ -117,8 +117,8 @@ fn test_generated_enum_spells_out_every_value() {
 	out := generate(fixture('enum.proto'), 'demo')!
 	assert out.contains('pub enum Status {')
 	assert out.contains('status_unspecified = 0')
-	assert out.contains('active = 1')
-	assert out.contains('retired = 7')
+	assert out.contains('active             = 1')
+	assert out.contains('retired            = 7')
 }
 
 fn test_generated_repeated_numeric_is_packed() {
@@ -793,6 +793,28 @@ fn test_write_generated_normalises_trailing_newlines() {
 	}
 }
 
+fn test_generated_files_survive_formatting() {
+	mut paths := []string{}
+	for name in ['enum', 'demo', 'naming', 'spelled_out', 'kv'] {
+		res := generate_res(fixture('${name}.proto'), name)!
+		path := os.join_path(work_dir, '${name}_formatted.v')
+		write_outputs(PbgenOptions{ codec_out: path }, res)!
+		paths << path
+	}
+	res := generate_res(fixture('kv.proto'), 'kv')!
+	codec_path := os.join_path(work_dir, 'kv_split_codec.v')
+	grpc_path := os.join_path(work_dir, 'kv_split_service.v')
+	write_outputs(PbgenOptions{ codec_out: codec_path, grpc_out: grpc_path }, res)!
+	paths << codec_path
+	paths << grpc_path
+	for path in paths {
+		before := os.read_file(path)!
+		formatted := os.exec([vexe, 'fmt', '-w', path])
+		assert formatted.exit_code == 0, formatted.output
+		assert os.read_file(path)! == before, '${path} changed after formatting'
+	}
+}
+
 fn test_colliding_names_are_qualified() {
 	out := generate(fixture('ambiguous_b.proto'), 'amb')!
 	// Two declarations wanting one V name is the only case worth prefixing: the
@@ -1457,11 +1479,11 @@ fn test_enum_values_and_fields_are_snake_case() {
 	// V refuses an uppercase letter in an enum value or a field name, and
 	// UPPER_SNAKE values and camelCase fields are both common in real schemas.
 	assert out.contains('color_unspecified = 0')
-	assert out.contains('color_red = 1')
+	assert out.contains('color_red         = 1')
 	assert !out.contains('COLOR_RED =')
 	assert out.contains('user_name string')
 	// A name that is a V keyword once snake_cased is still suffixed.
-	assert out.contains('type_ = 2')
+	assert out.contains('type_             = 2')
 	assert out.contains('type_ i32')
 	// The doc comment keeps the schema's own spelling, which is what a reader
 	// searches the .proto file for.
@@ -1473,7 +1495,7 @@ fn test_an_allowed_enum_alias_is_marked() {
 	out := generate(fixture('naming.proto'), 'naming')!
 	// Two values on one number are an error in V unless the enum says so.
 	assert out.contains('@[_allow_multiple_values]\npub enum Color {')
-	assert out.contains('color_crimson = 1')
+	assert out.contains('color_crimson     = 1')
 }
 
 fn test_a_block_comment_keeps_every_line_commented() {

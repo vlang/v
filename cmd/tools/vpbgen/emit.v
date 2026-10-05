@@ -104,9 +104,16 @@ pub fn emit_enum(mut e Emitter, en ResolvedEnum) {
 		e.wln(0, '@[_allow_multiple_values]')
 	}
 	e.wln(0, 'pub enum ${en.v_name} {')
+	mut width := 0
+	for v in en.values {
+		if v.name.len > width {
+			width = v.name.len
+		}
+	}
 	for v in en.values {
 		emit_comment(mut e, 1, v.comments)
-		e.wln(1, '${v.name} = ${v.number}')
+		padding := ' '.repeat(width - v.name.len)
+		e.wln(1, '${v.name}${padding} = ${v.number}')
 	}
 	e.wln(0, '}')
 	e.w('')
