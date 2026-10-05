@@ -947,3 +947,29 @@ fn test_local_binding_scopes_track_shadowing_and_nesting() {
 	assert !p.is_local_binding('render')
 	assert !p.is_local_binding('row')
 }
+
+fn test_inline_struct_access_modifiers_preserve_field_metadata() {
+	ast, src := parse_span_source('inline_struct_access', 'struct Record {
+	private_value int
+	mut mutable_value int
+	pub public_value int
+	pub mut public_mutable_value int
+	private_again int
+pub:
+	section_value int
+	mut override_value int
+	section_again int
+	pub mut left, right int
+	mut u8
+}
+')
+	fields := ast.nodes.filter(it.kind == .field_decl)
+	assert fields.map(it.value) == ['private_value', 'mutable_value', 'public_value',
+		'public_mutable_value', 'private_again', 'section_value', 'override_value', 'section_again',
+		'left', 'right', 'mut']
+	for i, expected in ['', 'mi', 'pi', 'mpi', '', 'p', 'mi', 'p', 'mpi', 'mpi', 'p'] {
+		meta := fields[i].generic_params()
+		assert (if meta.len > 0 { meta[0] } else { '' }) == expected, fields[i].value
+		assert src[fields[i].pos.offset..].starts_with(fields[i].value)
+	}
+}

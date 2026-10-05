@@ -2572,69 +2572,37 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	mut embedded_types := map[string]bool{}
 	mut embedded_names := map[string]string{}
 	for p.tok != .rcbr && p.tok != .eof {
-		// access modifiers
-		if p.tok == .key_pub {
-			peek_tok := p.peek()
-			peek_lit := p.peek_lit
-			if peek_tok == .colon || peek_tok == .key_mut
-				|| (peek_tok == .name && peek_lit == 'module_mut') {
-				p.next()
-				mut section_mut := false
-				if p.tok == .key_mut {
-					section_mut = true
-					p.next()
-				}
-				if p.tok == .name && p.lit == 'module_mut' {
-					section_mut = true
-					p.next()
-				}
-				if p.tok == .colon {
-					p.next()
-				}
-				sect_is_pub = true
-				sect_is_mut = section_mut
-				sect_is_global = false
-				sect_is_module = false
-				embedding_allowed = false
-				continue
-			}
-		}
-		if p.tok == .key_mut {
-			if p.peek() == .colon {
-				p.next()
-				p.next()
-				sect_is_pub = false
-				sect_is_mut = true
-				sect_is_global = false
-				sect_is_module = false
-				embedding_allowed = false
-				continue
-			}
-			saved_s := p.s
-			saved_tok := p.tok
-			saved_lit := p.lit
-			saved_tok_pos := p.tok_pos
-			saved_tok_end := p.tok_end
-			saved_peek_tok := p.peek_tok
-			saved_peek_lit := p.peek_lit
-			saved_peek_pos := p.peek_pos
-			saved_peek_end := p.peek_end
-			saved_has_peek := p.has_peek
+		mut field_is_pub := sect_is_pub
+		mut field_is_mut := sect_is_mut
+		mut inline_access := false
+		// A colon changes the section; an inline modifier applies to this field only.
+		if p.tok == .key_pub && p.struct_access_is_modifier() {
 			p.next()
-			mut_is_field_name := p.peek() in [.semicolon, .rcbr, .assign, .attribute]
-			p.s = saved_s
-			p.tok = saved_tok
-			p.lit = saved_lit
-			p.tok_pos = saved_tok_pos
-			p.tok_end = saved_tok_end
-			p.peek_tok = saved_peek_tok
-			p.peek_lit = saved_peek_lit
-			p.peek_pos = saved_peek_pos
-			p.peek_end = saved_peek_end
-			p.has_peek = saved_has_peek
-			// `mut` is also a legal field name, as in `mut u8`.
-			if !mut_is_field_name {
-				p.record_diagnostic_span('missing `:` after `mut` in struct', p.tok_pos, p.tok_end)
+			mut access_mut := false
+			if p.tok == .key_mut && p.struct_access_is_modifier() {
+				access_mut = true
+				p.next()
+			}
+			if p.tok == .name && p.lit == 'module_mut' {
+				access_mut = true
+				p.next()
+			}
+			if p.tok == .colon {
+				p.next()
+				sect_is_pub = true
+				sect_is_mut = access_mut
+				sect_is_global = false
+				sect_is_module = false
+				embedding_allowed = false
+				continue
+			}
+			field_is_pub = true
+			field_is_mut = access_mut
+			inline_access = true
+		}
+		if !inline_access && p.tok == .key_mut && p.struct_access_is_modifier() {
+			p.next()
+			if p.tok == .colon {
 				p.next()
 				sect_is_pub = false
 				sect_is_mut = true
@@ -2643,6 +2611,13 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				embedding_allowed = false
 				continue
 			}
+			field_is_pub = false
+			field_is_mut = true
+			inline_access = true
+		}
+		if inline_access {
+			pending_attrs << '__v3_inline_field_access'
+			embedding_allowed = false
 		}
 		if p.tok == .key_global {
 			if p.peek() == .colon {
@@ -2735,7 +2710,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				})
 				p.validate_struct_embed(field_type, field_start, p.prev_tok_end, embedding_allowed,
 					pending_attrs_start, mut embedded_types, mut embedded_names)
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, pending_attrs, true)
+				p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, pending_attrs, true)
 				pending_attrs = []string{}
 				pending_attrs_start = -1
 				ids << fid
@@ -2767,7 +2742,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						attr_start
 					},
 					mut embedded_types, mut embedded_names)
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module,
+				p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access,
 					embed_attrs, true)
 				pending_attrs = []string{}
 				pending_attrs_start = -1
@@ -2801,7 +2776,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					})
 					p.validate_struct_embed(embedded_type, field_start, p.prev_tok_end,
 						embedding_allowed, pending_attrs_start, mut embedded_types, mut embedded_names)
-					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, pending_attrs, true)
+					p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, pending_attrs, true)
 					pending_attrs = []string{}
 					pending_attrs_start = -1
 					ids << fid
@@ -2833,7 +2808,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				})
 				p.validate_struct_embed(embedded_type, field_start, p.prev_tok_end, embedding_allowed,
 					pending_attrs_start, mut embedded_types, mut embedded_names)
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, pending_attrs, true)
+				p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, pending_attrs, true)
 				pending_attrs = []string{}
 				pending_attrs_start = -1
 				ids << fid
@@ -2868,7 +2843,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   field_type
 						pos:   p.span_to(name_starts[index])
 					})
-					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, group_attrs, false)
+					p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, group_attrs, false)
 					ids << fid
 				}
 				if p.tok == .semicolon {
@@ -2915,7 +2890,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				children_count: flat.child_count(children_count)
 				pos:            p.span_to(field_start)
 			})
-			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, fattrs, false)
+			p.apply_field_meta(fid, field_is_mut, field_is_pub, sect_is_global && !inline_access, sect_is_module && !inline_access, fattrs, false)
 			ids << fid
 			if p.tok == .semicolon {
 				p.next()
@@ -2942,6 +2917,17 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
+}
+
+// struct_access_is_modifier distinguishes `mut field Type` from a field named `mut`.
+fn (p &Parser) struct_access_is_modifier() bool {
+	mut lookahead := p.s
+	next := if p.has_peek { p.peek_tok } else { lookahead.scan() }
+	if next in [.colon, .key_mut] {
+		return true
+	}
+	after := lookahead.scan()
+	return after !in [.semicolon, .rcbr, .assign, .attribute, .eof]
 }
 
 fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_typedef bool, is_soa bool, is_aligned bool, aligned string, implements_types []string) string {
@@ -4168,9 +4154,10 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_
 		return
 	}
 	is_volatile := '__v3_volatile_field' in attrs
-	stored_attrs := attrs.filter(it != '__v3_volatile_field')
+	is_inline := '__v3_inline_field_access' in attrs
+	stored_attrs := attrs.filter(it !in ['__v3_volatile_field', '__v3_inline_field_access'])
 	if !is_mut && !is_pub && !is_global && !is_module && !is_volatile && !is_embedded
-		&& stored_attrs.len == 0 {
+		&& !is_inline && stored_attrs.len == 0 {
 		return
 	}
 	mut flags := ''
@@ -4191,6 +4178,9 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_
 	}
 	if is_embedded {
 		flags += 'e'
+	}
+	if is_inline {
+		flags += 'i'
 	}
 	mut gp := []string{cap: stored_attrs.len + 1}
 	gp << flags
