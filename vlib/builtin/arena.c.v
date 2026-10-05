@@ -87,9 +87,11 @@ __global g_arena_seq u32
 __global g_arena_registry &VArenaRegistry
 __global g_arena_ranges_len u32
 
+// arena_align is the alignment of arena allocations without an explicit one:
+// that of malloc, which is 16 bytes on 32-bit targets too.
 @[inline]
 fn arena_align() isize {
-	return isize(sizeof(voidptr) * 2)
+	return 16
 }
 
 @[inline]
@@ -334,6 +336,11 @@ fn arena_grow(mut a VArena, need isize) &VArenaChunk {
 fn arena_alloc(mut a VArena, n isize, align isize) &u8 {
 	default_align := arena_align()
 	fixed_align := if align > default_align { align } else { default_align }
+	// Like malloc, fail for a size that no chunk can hold, before computing the
+	// size of that chunk overflows.
+	if usize(n) > (~usize(0) >> 1) - usize(fixed_align + arena_chunk_header_size()) {
+		_memory_panic(@FN, n)
+	}
 	unsafe {
 		mut c := a.chunk
 		mut p := &u8(nil)
