@@ -10,8 +10,9 @@ import encoding.binary
 
 // tcc advertises `__GNUC__ 4`, but does not provide `__builtin_prefetch`,
 // so disable the prefetch hints in the bundled zstd/xxHash sources for it.
+// NO_PREFETCH is defined empty, to match the ARM define in zstd.c.
 $if tinyc {
-	#flag -DNO_PREFETCH
+	#flag -DNO_PREFETCH=
 	#flag -DXXH_NO_PREFETCH
 }
 
