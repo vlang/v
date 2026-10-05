@@ -23,6 +23,9 @@ pub mut:
 pub struct Client {
 	is_server bool
 mut:
+	read_buffer       [8192]u8
+	read_start        int
+	read_end          int
 	ssl_conn          &ssl.SSLConn = unsafe { nil } // secure connection used when wss is used
 	proxy_url         string
 	flags             []Flag                // flags used in handshake
@@ -114,6 +117,8 @@ pub fn new_client(address string, opt ClientOpt) !&Client {
 // connect connects to remote websocket server
 pub fn (mut ws Client) connect() ! {
 	ws.assert_not_connected()!
+	ws.read_start = 0
+	ws.read_end = 0
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host ${ws.uri}')
 	ws.conn = ws.dial_socket()!
