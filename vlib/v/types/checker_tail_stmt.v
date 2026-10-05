@@ -17089,6 +17089,13 @@ fn (tc &TypeChecker) unique_qualified_type_name_scan(short_name string) ?string 
 
 // is_generic_placeholder_type reports whether is generic placeholder type applies in types.
 fn is_generic_placeholder_type(typ string) bool {
+	// A qualified placeholder is a name, not a composite type such as !module.M.
+	// Parse wrappers first so an accepted one-letter struct keeps its result/option.
+	for ch in typ {
+		if ch != `.` && !placeholder_token_ident_char(ch) {
+			return false
+		}
+	}
 	if typ.contains('.') {
 		last := typ.all_after_last('.')
 		return is_generic_placeholder_type(last)
