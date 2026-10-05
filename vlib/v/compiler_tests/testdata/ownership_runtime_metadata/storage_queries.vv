@@ -79,6 +79,7 @@ fn reverse_cycle_contexts(mut target Box, source &Value, replacement &Value) {
 		assert tc.visible_mutation_cache.storage_query_results.len == 0
 		mut cycle_decl := VisibleMutationFnDecl{}
 		mut store_decl := VisibleMutationFnDecl{}
+		mut delegate_decl := VisibleMutationFnDecl{}
 		for i, node in a.nodes {
 			if node.kind == .fn_decl && node.value == 'first_cycle' {
 				cycle_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
@@ -86,7 +87,39 @@ fn reverse_cycle_contexts(mut target Box, source &Value, replacement &Value) {
 			if node.kind == .fn_decl && node.value == 'store' {
 				store_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
 			}
+			if node.kind == .fn_decl && node.value == 'delegate' {
+				delegate_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
+			}
 		}
+		promotion_scope := unsafe { prealloc_scope_begin() }
+		promotion_view := tc.fork_storage_query_view()
+		mut no_ancestors := map[u64]bool{}
+		assert promotion_view.param_storage_writes_for_decl(delegate_decl, 0, mut no_ancestors)['.child.value'] == [1]
+		mut child_context := map[u64]bool{}
+		child_context[visible_mutation_cache_id(delegate_decl, 0)] = true
+		mut child_ancestors := child_context.keys()
+		child_ancestors.sort()
+		child_key := '${store_decl.mod}:${store_decl.idx}:0:${child_ancestors}'
+		// A completed descendant context is promoted before its query arena ends.
+		assert child_key in promotion_view.visible_mutation_cache.storage_query_results
+		sibling_scope := unsafe { prealloc_scope_begin() }
+		sibling_view := promotion_view.fork_storage_query_view()
+		borrowed := sibling_view.param_storage_writes_for_decl(store_decl, 0, mut child_context)
+		assert borrowed['.value'] == [1]
+		// A read-only hit in the parent does not populate this sibling's memo.
+		assert sibling_view.visible_mutation_cache.storage_query_results.len == 0
+		unsafe { prealloc_scope_end(sibling_scope) }
+		churn_scope := unsafe { prealloc_scope_begin() }
+		mut sibling_churn := map[string][]int{}
+		for i in 0 .. 1024 {
+			sibling_churn['sibling_${i}'.repeat(8)] = [i, i + 1]
+		}
+		assert sibling_churn.len == 1024
+		unsafe { prealloc_scope_end(churn_scope) }
+		assert borrowed['.value'] == [1]
+		assert promotion_view.visible_mutation_cache.storage_query_results[child_key]['.value'] == [1]
+		unsafe { prealloc_scope_end(promotion_scope) }
+		assert tc.visible_mutation_cache.storage_query_results.len == 0
 		memo_scope := unsafe { prealloc_scope_begin() }
 		memo_view := tc.fork_storage_query_view()
 		cycle_id := visible_mutation_cache_id(cycle_decl, 0)

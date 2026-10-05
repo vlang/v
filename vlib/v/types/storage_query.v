@@ -8,33 +8,37 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		defer { unsafe { prealloc_scope_end(scope) } }
 		mut cache := tc.visible_mutation_cache
 		use_cache := !isnil(cache) && cache.storage_query
+		if visible_mutation_cache_id(decl, target_param_idx) in visiting {
+			// An active declaration has the same empty result in every context.
+			parent := unsafe { prealloc_scope_suspend(scope) }
+			empty := map[string][]int{}
+			unsafe { prealloc_scope_resume(scope, parent) }
+			return empty
+		}
 		mut cache_key := ''
 		if use_cache {
 			// Cycle cutoffs depend on the complete active set, not its order.
 			mut ancestors := visiting.keys()
 			ancestors.sort()
 			cache_key = '${decl.mod}:${decl.idx}:${target_param_idx}:${ancestors}'
-			if cached := cache.storage_query_results[cache_key] {
-				return cached
+			mut lookup := cache
+			for !isnil(lookup) && lookup.storage_query {
+				if cached := lookup.storage_query_results[cache_key] {
+					return cached
+				}
+				lookup = lookup.base
 			}
 		}
 		view := tc.fork_storage_query_view()
 		mut active := visiting.clone()
 		result := view.param_storage_writes_for_decl_unscoped(decl, target_param_idx, mut active)
 		parent := unsafe { prealloc_scope_suspend(scope) }
-		mut promoted := map[string][]int{}
-		for path, sources in result {
-			promoted[path.clone()] = sources.clone()
-		}
-		if use_cache && cache.storage_query_results.len < 64 {
-			mut bytes := cache_key.len
-			for path, sources in promoted {
-				bytes += path.len + sources.len * int(sizeof(int)) + 64
-			}
-			if cache.storage_query_bytes + bytes <= 256 * 1024 {
-				// Results remain read-only and belong to the immediate parent query.
-				cache.storage_query_results[cache_key] = promoted
-				cache.storage_query_bytes += bytes
+		promoted := clone_storage_query_result(result)
+		if use_cache {
+			cache.cache_storage_query_result(cache_key, promoted, false)
+			for key, cached in view.visible_mutation_cache.storage_query_results {
+				// Retain completed contexts for sibling paths after this view is freed.
+				cache.cache_storage_query_result(key, cached, true)
 			}
 		}
 		unsafe { prealloc_scope_resume(scope, parent) }
@@ -42,6 +46,33 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 	} $else {
 		return tc.param_storage_writes_for_decl_unscoped(decl, target_param_idx, mut visiting)
 	}
+}
+
+fn clone_storage_query_result(result map[string][]int) map[string][]int {
+	mut promoted := map[string][]int{}
+	for path, sources in result {
+		promoted[path.clone()] = sources.clone()
+	}
+	return promoted
+}
+
+fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, clone_result bool) {
+	if key in cache.storage_query_results || cache.storage_query_results.len >= 64 {
+		return
+	}
+	mut bytes := key.len + 64
+	for path, sources in result {
+		bytes += path.len + sources.len * int(sizeof(int)) + 64
+	}
+	if cache.storage_query_bytes + bytes > 256 * 1024 {
+		return
+	}
+	cache.storage_query_results[key] = if clone_result {
+		clone_storage_query_result(result)
+	} else {
+		result
+	}
+	cache.storage_query_bytes += bytes
 }
 
 fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
