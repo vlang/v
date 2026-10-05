@@ -16124,9 +16124,11 @@ fn (t &Transformer) raw_selector_field_type(id flat.NodeId) ?string {
 		}
 		// The declaration's spelling names types through the owner's module, so
 		// another module would rebind a bare `[]Row` to its own (or a first-wins) `Row`.
-		owner_base, _, _ := generic_app_parts(owner_type)
-		owner_module := if owner_base.contains('.') {
-			owner_base.all_before_last('.')
+		// A struct declared in `main` has no module prefix, so it maps to `main`.
+		owner_base, _, is_generic_owner := generic_app_parts(owner_type)
+		owner_name := if is_generic_owner { owner_base } else { owner_type }
+		owner_module := if owner_name.contains('.') {
+			owner_name.all_before_last('.')
 		} else {
 			'main'
 		}

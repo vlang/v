@@ -22,3 +22,16 @@ fn test_closure_capture_keeps_the_field_type_module() {
 	}
 	assert sorter.order(log) == [1, 0, 2]
 }
+
+fn test_closure_in_main_keeps_the_field_type_module() {
+	log := owner.Log{
+		rows: [owner.Row{
+			t_s: 5
+		}]
+	}
+	rows := log.rows
+	first := fn [rows] () f64 {
+		return rows[0].t_s
+	}
+	assert first() == 5
+}
