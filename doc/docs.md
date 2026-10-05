@@ -8736,6 +8736,9 @@ time, without modifying your source code, or keeping different versions of it.
 These two comptime functions are very useful for displaying custom errors/warnings during
 compile time.
 
+Top-level compile errors and warnings in imported modules are evaluated even when none of their
+functions is called.
+
 Both receive as their only argument a string literal that contains the message to display:
 
 ```v failcompile nofmt
