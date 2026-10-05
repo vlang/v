@@ -722,11 +722,14 @@ fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 			continue
 		}
 
-		// minus symbol
-		if status == .start && ch == `-` {
+		// A leading or trailing minus is a literal, rather than a range separator.
+		if ch == `-` && (status == .start
+			|| (status == .in_char && i + char_len < in_txt.len
+				&& in_txt[i + char_len] == `]`)) {
 			re.cc[tmp_index].cc_type = cc_char
 			re.cc[tmp_index].ch0 = char_tmp
 			re.cc[tmp_index].ch1 = char_tmp
+			status = .in_char
 			i += char_len
 			tmp_index++
 			continue
