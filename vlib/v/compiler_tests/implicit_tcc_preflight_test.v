@@ -37,7 +37,8 @@ fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
 	registered := cmdexec.run_in(vexe, ['-new-compiler', fixture], vroot)
 	assert registered.exit_code != 0, registered.output
 	expected := os.read_file(os.join_path(vroot, fixture.replace('.vv', '.out')))!
-	assert registered.output.trim_space() == expected.trim_space(), registered.output
+	actual := registered.output.replace('\r\n', '\n').trim_space()
+	assert actual == expected.replace('\r\n', '\n').trim_space(), registered.output
 	dir := os.join_path(os.vtmp_dir(), 'v_tcc_preflight_semantic_error_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer {
@@ -63,6 +64,8 @@ fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
 	assert forced.exit_code != 0, forced.output
 	assert forced.output.contains('v3_missing_field'), forced.output
 	assert !forced.output.contains('implicit tcc could not be used'), forced.output
+	fallback := if os.user_os() == 'windows' { 'gcc' } else { 'cc' }
+	os.find_abs_path_of_executable(fallback) or { return }
 	os.write_file(source, 'fn main() { \$if tinyc { println(v3_invalid_tinyc_value) } \$else { answer := 40 + 2; println(answer) } }\n')!
 	exe := os.join_path(dir, 'valid.exe')
 	valid := cmdexec.run(vexe, ['-new-compiler', '-v', '-gc', 'none', '-nocache', '-o', exe, source])
@@ -71,7 +74,7 @@ fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
 	assert valid.output.count('=== V compiler benchmark ===') == 1, valid.output
 	run := cmdexec.run(exe, [])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42'
+	assert run.output.replace('\r\n', '\n').trim_space() == '42'
 }
 
 fn with_implicit_tcc_environment(check fn () !) {
