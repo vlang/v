@@ -3598,6 +3598,11 @@ println(nums)
 Note that you have to add `mut` before `nums` when calling this function. This makes
 it clear that the function being called will modify the value.
 
+An explicit `mut param &T` takes mutable pointer storage. Passing `mut &value`
+creates temporary pointer storage for that call, including when `value` is a
+`mut value T` parameter. Changes to fields reach `value`; rebinding the temporary
+pointer does not rebind the caller's value.
+
 It is preferable to return values instead of modifying arguments,
 e.g. `user = register(user)` (or `user.register()`) instead of `register(mut user)`.
 Modifying arguments should only be done in performance-critical parts of your application
