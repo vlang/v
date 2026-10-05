@@ -6,9 +6,10 @@ import v.vmod
 
 struct Module {
 mut:
-	name    string
-	url     string
-	version string // specifies the requested version.
+	name          string
+	url           string
+	version       string // selected tag or the requested exact VCS ref.
+	version_range string // requested semantic version range, when one was supplied.
 	// requested is the dependency string the module was parsed from, as it is
 	// written in the `v.mod` or on the command line, including any `@version`.
 	requested          string
@@ -29,6 +30,7 @@ mut:
 	search_modules       []string
 	search_loaded        bool
 	errors               int
+	encountered_range    bool
 }
 
 enum ModuleKind {
@@ -46,10 +48,30 @@ fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope 
 	for m in query {
 		p.parse_module(m, mut selector, mut scope)
 	}
-	if p.errors > 0 && p.errors == query.len {
+	if p.errors > 0 && (p.errors == query.len || p.encountered_range) {
+		for m in p.modules.values() {
+			rmdir_all(m.tmp_path) or {}
+		}
 		exit(1)
 	}
-	return p.modules.values(), p.errors
+	modules := p.modules.values()
+	validate_range_destinations(modules) or {
+		for m in modules {
+			rmdir_all(m.tmp_path) or {}
+		}
+		vpm_error(err.msg())
+		exit(1)
+	}
+	return modules, p.errors
+}
+
+// report_module_clone_error shows range failures without requiring verbose mode.
+fn report_module_clone_error(ident string, requested string, version string, message string) {
+	if is_version_range(version) {
+		vpm_error('failed to resolve `${requested}`: ${message}')
+	} else {
+		vpm_error('failed to install `${ident}`.', details: message)
+	}
 }
 
 fn (mut p Parser) lookup_registered_name_for_url(manifest_name string, ident string, mut selector VpmInstallServerSelector) ?string {
@@ -100,6 +122,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 	} else {
 		m.rsplit_once('@') or { m, '' }
 	}
+	p.encountered_range = p.encountered_range || is_version_range(version)
 	key := match kind {
 		.registered { m }
 		.ssh { ident.replace(':', '/') + at_version(version) }
@@ -134,13 +157,13 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 				exit(1)
 			}
 		}
-		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(publisher, name, version)) or {
+		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(publisher, name, version_tmp_name(version))) or {
 			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
 			p.errors++
 			return
 		}
-		clone_module_source(settings.vcs, m, ident, version, tmp_path, mut scope) or {
-			vpm_error('failed to install `${ident}`.', details: err.msg())
+		resolved_version := clone_module_source(settings.vcs, m, ident, version, tmp_path, mut scope) or {
+			report_module_clone_error(ident, m, version, err.msg())
 			rmdir_all(tmp_path) or {}
 			p.errors++
 			return
@@ -166,13 +189,14 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			direct_install_mod_path(if kind == .http { publisher } else { '' }, manifest.name)
 		}
 		Module{
-			name:         final_name
-			url:          ident
-			version:      version
-			install_path: os.abs_path(os.join_path(settings.vmodules_path, mod_path))
-			is_external:  true
-			tmp_path:     tmp_path
-			manifest:     manifest
+			name:          final_name
+			url:           ident
+			version:       resolved_version
+			version_range: if is_version_range(version) { version } else { '' }
+			install_path:  os.abs_path(os.join_path(settings.vmodules_path, mod_path))
+			is_external:   true
+			tmp_path:      tmp_path
+			manifest:      manifest
 		}
 	} else {
 		// VPM registered module.
@@ -198,13 +222,13 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			return
 		}
 		mod_path := normalize_mod_path(info.name.replace('.', os.path_separator))
-		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(mod_path, version)) or {
+		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(mod_path, version_tmp_name(version))) or {
 			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
 			p.errors++
 			return
 		}
-		clone_module_source(vcs, m, info.url, version, tmp_path, mut scope) or {
-			vpm_error('failed to install `${ident}`.', details: err.msg())
+		resolved_version := clone_module_source(vcs, m, info.url, version, tmp_path, mut scope) or {
+			report_module_clone_error(ident, m, version, err.msg())
 			rmdir_all(tmp_path) or {}
 			p.errors++
 			return
@@ -225,13 +249,14 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			vmod.Manifest{}
 		}
 		Module{
-			name:         info.name
-			url:          info.url
-			version:      version
-			vcs:          vcs
-			install_path: os.abs_path(os.join_path(settings.vmodules_path, mod_path))
-			tmp_path:     tmp_path
-			manifest:     manifest
+			name:          info.name
+			url:           info.url
+			version:       resolved_version
+			version_range: if is_version_range(version) { version } else { '' }
+			vcs:           vcs
+			install_path:  os.abs_path(os.join_path(settings.vmodules_path, mod_path))
+			tmp_path:      tmp_path
+			manifest:      manifest
 		}
 	}
 	mod.install_path_fmted = fmt_mod_path(mod.install_path)
@@ -304,6 +329,10 @@ fn (mut m Module) get_installed() {
 	}
 	vpm_log(@FILE_LINE, @FN, 'refs: ${refs}')
 	m.is_installed = true
+	if m.version_range != '' && head_revision(m.install_path) == head_revision(m.tmp_path) {
+		m.installed_version = m.version
+		return
+	}
 	// In case the head just temporarily matches a tag, make sure that there
 	// really is a version installation before adding it as `installed_version`.
 	// NOTE: can be refined for branch installations. E.g., for `sdl`.
