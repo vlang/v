@@ -7339,7 +7339,7 @@ fn v3_implicit_tcc_preflight(vroot string, tcc_path string, bundled_tcc string, 
 	if reason := v3_implicit_tcc_flags_incompatibility(flags, target.os) {
 		return reason
 	}
-	link_flags := c_dylib_link_flags(flags)
+	link_flags := v3_tcc_preflight_link_flags(flags)
 	if link_flags.len == 0 {
 		return none
 	}
@@ -7371,6 +7371,27 @@ fn v3_implicit_tcc_preflight(vroot string, tcc_path string, bundled_tcc string, 
 		}
 	}
 	return none
+}
+
+fn v3_tcc_preflight_link_flags(flags []string) []string {
+	link_flags := c_dylib_link_flags(flags)
+	mut pending_objects := map[int]bool{}
+	for index in c_link_input_indices(link_flags) {
+		flag := link_flags[index].trim_space()
+		if c_flag_is_object_file(flag) && !os.exists(flag) {
+			if _ := c_source_from_object_file(flag) {
+				// Object preparation will compile this source before the real link.
+				pending_objects[index] = true
+			}
+		}
+	}
+	mut probe_flags := []string{cap: link_flags.len}
+	for index, flag in link_flags {
+		if index !in pending_objects {
+			probe_flags << flag
+		}
+	}
+	return probe_flags
 }
 
 fn v3_tcc_dependency_probe_is_incompatible(output string) bool {

@@ -6,6 +6,22 @@ import v.gen.c as cgen
 import v.parser
 import v.pref
 
+fn test_preflight_defers_source_backed_objects_without_dropping_operands() {
+	dir := os.join_path(os.vtmp_dir(), 'v_tcc_preflight_pending_object_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	pending := os.join_path(dir, 'pending.o')
+	existing := os.join_path(dir, 'existing.o')
+	missing := os.join_path(dir, 'missing.o')
+	os.write_file(os.join_path(dir, 'pending.c'), 'int answer(void) { return 42; }\n')!
+	os.write_file(existing, '')!
+	flags := ['-L', pending, pending, existing, missing, '-lm']
+	assert v3_tcc_preflight_link_flags(flags) == ['-L', pending, existing, missing, '-lm']
+	assert v3_implicit_tcc_flags_incompatibility([pending], 'macos') != none
+}
+
 fn test_dependency_probe_does_not_reject_program_supplied_symbols() {
 	assert v3_tcc_dependency_probe_is_incompatible("tcc: error: library 'pq' not found")
 	assert v3_tcc_dependency_probe_is_incompatible('tcc: error: unrecognized file type')
