@@ -174,15 +174,18 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 	assert quiet.exit_code == 0, quiet.output
 	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
 	// An explicit request bypasses preflight; disabling retries reports TCC's failure.
+	// Use a real missing library because object-based builds bypass the injected seam.
+	os.write_file(source, "#flag -lV3ExplicitTccMissingLibrary\nfn main() { println('ok') }\n")!
 	explicit_tcc := if os.is_file(bundled_tcc) {
 		bundled_tcc
 	} else {
 		os.find_abs_path_of_executable('tcc')!
 	}
-	explicit := cmdexec.run(vexe, ['-new-compiler', '-no-retry-compilation', '-cc', explicit_tcc,
-		'-nocache', '-o', exe, source])
+	explicit := cmdexec.run(vexe, ['-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
+		explicit_tcc, '-nocache', '-o', exe, source])
 	assert explicit.exit_code != 0, explicit.output
-	assert explicit.output.contains('injected for test coverage'), explicit.output
+	assert explicit.output.contains('V3ExplicitTccMissingLibrary'), explicit.output
+	assert !explicit.output.contains('implicit tcc could not be used'), explicit.output
 	assert !explicit.output.contains('regenerating it with'), explicit.output
 }
 
