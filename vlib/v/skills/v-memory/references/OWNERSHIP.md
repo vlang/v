@@ -4,9 +4,12 @@
 > repository is the authoritative reference; this is the summary an agent needs
 > before reaching for it.
 
-V's ownership system is optional, off by default, and deliberately narrow: it
-currently tracks **strings created with `.to_owned()`**. That scope matters more
-than the flag does, so read it before relying on it.
+V's ownership system is optional, off by default, and still narrow in what it tracks.
+The authoritative reference is `doc/ownership.md`; this is the summary an agent needs
+before reaching for it.
+What is tracked today: **strings created with `.to_owned()` or `.clone()`**, ordinary string
+slices, and the `Owned` / `Copy` / `Drop` struct markers. Not yet covered: arbitrary structs,
+maps and slices tracked as owned on their own.
 
 ## Enabling it
 
@@ -112,8 +115,14 @@ into a file that was not written for it is the case the checker exists to reject
 
 - **Yes** when a long-lived string is passed through several layers and a
   use-after-move is a plausible mistake.
-- **Not yet** when you expected it to cover structs, slices or maps. It does not,
-  and the errors you will get are only about strings.
+- **Know the limits before you promise anything.** Arbitrary structs, maps and slices are
+  not tracked as owned on their own, and coverage of stdlib APIs that hand out owned
+  values is still incomplete. Some vlib modules carry `@[manualfree]` or
+  `@[autofree_bug]` to work around gaps, so a clean compile does not prove a module is
+  ownership-clean.
+- **It is off in the shipped compiler.** The standard `v3` executable is built without
+  `-d ownership`, so it rejects `-ownership` outright; the driver builds a separate
+  ownership-enabled compiler for an explicit `v -ownership`.
 
 Read `doc/ownership.md` for the current scope before promising more than the
 checker delivers.
