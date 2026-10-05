@@ -21637,7 +21637,14 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline double math__abs(double a) { return a < 0 ? -a : a; }')
 	g.writeln('static inline double math__min(double a, double b) { return a < b ? a : b; }')
 	g.writeln('static const u64 _wyp[4] = {0x2d358dccaa6c78a5ull, 0x8bb84b93962eacc9ull, 0x4b33a62ed433d4a3ull, 0x4d5a2da51de1aa47ull};')
+	// The folded 128-bit product of two words, which the map of a program hashes
+	// its string keys with. The portable form computes the same product from four
+	// 64-bit ones, for a compiler without a 128-bit integer.
+	g.writeln('#if defined(__SIZEOF_INT128__) && !defined(__TINYC__)')
+	g.writeln('static inline u64 _wymix(u64 a, u64 b) { unsigned __int128 r = (unsigned __int128)a * b; return (u64)r ^ (u64)(r >> 64); }')
+	g.writeln('#else')
 	g.writeln('static inline u64 _wymix(u64 a, u64 b) { u64 ha = a >> 32, hb = b >> 32, la = (u32)a, lb = (u32)b, hi, lo; u64 rh = ha * hb, rm0 = ha * lb, rm1 = hb * la, rl = la * lb, t = rl + (rm0 << 32), c = t < rl; lo = t + (rm1 << 32); c += lo < t; hi = rh + (rm0 >> 32) + (rm1 >> 32) + c; return lo ^ hi; }')
+	g.writeln('#endif')
 	g.writeln('static inline u64 wyhash64(u64 a, u64 b) { a ^= _wyp[0]; b ^= _wyp[1]; a *= 0xa0761d6478bd642full; b *= 0xe7037ed1a0b428dbull; return (a ^ (a >> 32)) ^ (b ^ (b >> 32)); }')
 	// Map keys are hashed on every lookup, so this mixes a 64-bit word per step
 	// instead of a byte. Assembling the word from its bytes is defined for any
