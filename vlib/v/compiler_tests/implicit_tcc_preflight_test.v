@@ -34,7 +34,7 @@ fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
 		return
 	}
 	fixture := 'vlib/v/parser/tests/register_imported_enum.vv'
-	registered := cmdexec.run_in(vexe, ['-new-compiler', fixture], vroot)
+	registered := cmdexec.run_in(vexe, ['-new-compiler', '-nocolor', fixture], vroot)
 	assert registered.exit_code != 0, registered.output
 	expected := os.read_file(os.join_path(vroot, fixture.replace('.vv', '.out')))!
 	actual := registered.output.replace('\r\n', '\n').trim_space()
