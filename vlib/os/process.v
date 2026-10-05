@@ -35,7 +35,7 @@ pub mut:
 	wdata            voidptr  // the WProcess; used only by the windows implementation
 	create_no_window bool     // sets a value indicating whether to start the process in a new window, The default is false; used only by the windows implementation
 mut:
-	expand_environment bool = true // preserve legacy Windows Process environment expansion
+	expand_environment bool // Process arguments are literal, including environment references on Windows
 	merge_stdio        bool // when true, redirect the child's stderr to its stdout pipe
 }
 
@@ -44,6 +44,7 @@ mut:
 // That is done because you may want to customize it first,
 // by calling different set_ methods on it.
 // In order to start it, call p.run() or p.wait()
+// The filename and arguments are used literally, without shell or environment expansion.
 pub fn new_process(filename string) &Process {
 	return &Process{
 		filename: filename
@@ -52,6 +53,7 @@ pub fn new_process(filename string) &Process {
 }
 
 // set_args - set the arguments for the new process.
+// Pass literal arguments without shell quoting or escaping.
 pub fn (mut p Process) set_args(pargs []string) {
 	if p.status != .not_started {
 		return

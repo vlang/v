@@ -153,6 +153,9 @@ through `os.start_new_command` or `os.Command.start` is also deprecated; use
 `read_line()`, `eof`, `close()`, and `exit_code`. `read_line()` waits for a complete
 line or the end of the output pipe, including when the child pauses between writes.
 For more control, use `os.new_process(program)` and `process.set_args(args)`.
+These arguments are literal on Windows too: `%PATH%` stays `%PATH%`, and quotes
+and trailing backslashes are preserved. Expand environment variables explicitly
+with `os.getenv()` when that is intended.
 
 On Windows, `Result.exit_code` and `Process.code` interpret the child's 32-bit exit
 status as a signed value: `0x80000000` becomes `-2147483648` and `0xFFFFFFFF` becomes
