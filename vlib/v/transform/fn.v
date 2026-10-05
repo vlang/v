@@ -1413,6 +1413,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	if addr := t.transform_builtin_addr_call(node) {
 		return addr
 	}
+	t.validate_specialized_fn_value_mut_args(node)
 	call_name := t.call_name_for_node(id, node)
 	if node.children_count == 2 && (call_name in ['drop_owned', 'builtin.drop_owned']
 		|| call_name.starts_with('builtin.drop_owned_T_') || call_name.starts_with('drop_owned_T_')) {
@@ -3177,6 +3178,54 @@ fn (t &Transformer) call_callee_fn_type(fn_id flat.NodeId) ?types.FnType {
 		}
 	}
 	return transform_fn_type(t.tc.resolve_type(fn_id))
+}
+
+// Reflected method values acquire their concrete signature while the generic
+// body is unrolled, after the checker has visited the template.
+fn (mut t Transformer) validate_specialized_fn_value_mut_args(node flat.Node) {
+	if !t.validating_generic_spec || isnil(t.tc) || t.tc.disable_explicit_mutability
+		|| node.children_count < 2 {
+		return
+	}
+	callee_expr_id := t.a.child(&node, 0)
+	callee_id := t.unwrap_parens(callee_expr_id)
+	callee := t.a.node(callee_id)
+	if callee.kind == .ident {
+		// A parenthesized direct symbol is an explicit function-value call. Ordinary
+		// method lowering can insert its receiver without a source `mut` argument.
+		if t.raw_var_type(callee.value).len == 0 && callee_expr_id == callee_id {
+			return
+		}
+	} else if callee.kind == .index {
+		if !t.index_callee_is_value_index(callee) {
+			return
+		}
+	} else if callee.kind == .selector {
+		field_type := t.raw_selector_field_type(callee_id) or { return }
+		if _ := transform_fn_type(t.tc.parse_type(field_type)) {
+		} else {
+			return
+		}
+	}
+	fn_type := t.call_callee_fn_type(callee_id) or {
+		// Carrier expressions cloned during specialization can outlive the
+		// checker scope; recover their signature from the transformer's view.
+		transform_fn_type(t.tc.parse_type(t.node_type(callee_id))) or { return }
+	}
+	for index, is_mut in fn_type.params_mut {
+		if !is_mut || index + 1 >= node.children_count {
+			continue
+		}
+		arg := t.a.child_node(&node, index + 1)
+		if !arg.is_mut {
+			target := if callee.kind == .ident {
+				'function `${callee.value}`'
+			} else {
+				'function value'
+			}
+			t.record_monomorph_error('${target} parameter ${index + 1} is `mut`, so use a `mut` argument instead')
+		}
+	}
 }
 
 fn (mut t Transformer) ensure_private_call_param_types_decl_cache() {
@@ -8614,12 +8663,10 @@ fn (mut t Transformer) lower_sum_str(expr flat.NodeId, sum_name string) flat.Nod
 	} else {
 		resolved_sum
 	}
-	// V's auto stringifier expands recursive sums far enough to show two nested
-	// payload structs, then uses the same text as an invalid/zero runtime tag.
-	// Stopping at the first repeated sum loses useful structure (`Expr{}` for
-	// every recursive field).
-	if t.stringify_stack_count(resolved_sum) >= 3 {
-		return t.make_string_literal('unknown sum type value')
+	// Repeated sum types can contain distinct, acyclic payloads. Emit a runtime
+	// helper instead of truncating them according to their compile-time nesting.
+	if t.stringify_stack_count(resolved_sum) > 0 {
+		return t.request_auto_str_helper(expr, resolved_sum)
 	}
 	if t.stringify_stack.len >= t.stringify_depth_cap && t.stringify_stack_count(resolved_sum) == 0
 		&& !t.stringify_types_match(t.auto_str_synthesis_type, resolved_sum) {
@@ -8671,6 +8718,10 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 		} else {
 			variant
 		})
+	} else if aggregate := t.stringify_aggregate_type_name(variant_base) {
+		// Sum payloads are boxed. Their addresses, rather than their types, identify
+		// an actual cycle when a recursive helper reaches the same payload again.
+		t.lower_ref_str_guarded(field_sel, aggregate, false, '', 'nil')
 	} else {
 		value := t.make_prefix(.mul, field_sel)
 		payload_type := if variant_base != variant { variant_base } else { variant }

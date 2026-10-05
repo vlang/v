@@ -184,7 +184,7 @@ fn chain_to(g &Graph, root string, target string) []string {
 		root: true
 	}
 	for queue.len > 0 {
-		path := queue.pop()
+		path := queue.pop_left()
 		last := path[path.len - 1]
 		for next in g.edges[last] or {
 			[]string{}
