@@ -19,9 +19,10 @@ mut:
 
 struct ClosureLiveInfo {
 mut:
-	ctx        voidptr
-	owns_data  bool
-	drop_data  voidptr
+	ctx       voidptr
+	drop_data voidptr
+	// A full-width flag prevents stale pointer bytes in padding from reaching the GC-scanned map.
+	owns_data  u64
 	generation u64
 }
 
@@ -359,7 +360,7 @@ fn closure_live_set(exec_ptr voidptr, data voidptr, owns_data bool, drop_data vo
 	g_closure.next_generation++
 	g_closure.live[exec_ptr] = ClosureLiveInfo{
 		ctx:        data
-		owns_data:  owns_data
+		owns_data:  if owns_data { u64(1) } else { u64(0) }
 		drop_data:  drop_data
 		generation: g_closure.next_generation
 	}
@@ -483,7 +484,7 @@ fn closure_release_no_lock(exec_ptr voidptr, generation u64) bool {
 	}
 	data := closure_slot_data(exec_ptr)
 	_ := closure_live_delete(exec_ptr)
-	if info.owns_data && !isnil(data) {
+	if info.owns_data != 0 && !isnil(data) {
 		if !isnil(info.drop_data) {
 			drop_fn := ClosureDataDropFn(info.drop_data)
 			// A user-defined drop can allocate another closure. Run it outside the
