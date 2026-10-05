@@ -467,6 +467,7 @@ pub fn atof64(s string, param AtoF64Param) !f64 {
 	mut res := Float64u{}
 	special_start := if s[0] == `+` || s[0] == `-` { 1 } else { 0 }
 	if special_start < s.len && byte_to_lower(s[special_start]) in [`i`, `n`] {
+		// The union reinterprets IEEE 754 special-value bit patterns as f64 values.
 		match s.to_lower() {
 			'inf', '+inf', 'infinity', '+infinity' {
 				res.u = double_plus_infinity
