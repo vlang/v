@@ -1939,3 +1939,82 @@ fn test_http_client_and_server_listen_round_trip() {
 	assert subscription_id_of(notifications[0]) or { '' } == '2'
 	assert client.request_message('tools/list', empty_object)!.error.code == 0
 }
+
+// MountedHostHandler is a host server that delegates `/mcp` to an MCP handler
+// and answers everything else itself.
+struct MountedHostHandler {
+mut:
+	mcp http.Handler
+}
+
+fn (mut h MountedHostHandler) handle(req http.Request) http.Response {
+	if req.url.all_before('?') == '/mcp' {
+		return h.mcp.handle(req)
+	}
+	mut response := http.Response{}
+	response.set_status(.not_found)
+	return response
+}
+
+fn test_http_handler_mounts_on_existing_server() {
+	mut server := new_server(
+		name:    'mounted-server'
+		version: '0.0.1'
+	)
+	server.add_tool(Tool{
+		name: 'ping_tool'
+	}, fn (_ Context, _ string) !ToolResult {
+		return tool_text_result('pong')
+	})!
+
+	// The per-request entry point is directly callable by a host route.
+	not_found := server.handle_http_request(http.Request{
+		method: .post
+		url:    '/not-mcp'
+	})
+	assert not_found.status_code == 404
+
+	mut host := &http.Server{
+		addr:                 '127.0.0.1:0'
+		handler:              MountedHostHandler{
+			mcp: server.http_handler()
+		}
+		accept_timeout:       100 * time.millisecond
+		show_startup_message: false
+	}
+	host_thread := spawn host.listen_and_serve()
+	host.wait_till_running(max_retries: 200, retry_period_ms: 10)!
+	time.sleep(20 * time.millisecond)
+	url := 'http://${host.addr}/mcp'
+
+	session_id, mut header := http_initialize(url)!
+	header.set_custom(mcp_session_id_header, session_id)!
+	notification_response := http.fetch(
+		method: .post
+		url:    url
+		data:   new_notification('notifications/initialized', empty).encode()
+		header: header
+	)!
+	assert notification_response.status_code == 202
+
+	list_response := http.fetch(
+		method: .post
+		url:    url
+		data:   new_request(2, 'tools/list', empty).encode()
+		header: header
+	)!
+	assert list_response.status_code == 200
+	list_result := decode_response(list_response.body)!.decode_result[ListToolsResult]()!
+	assert list_result.tools.len == 1
+	assert list_result.tools[0].name == 'ping_tool'
+
+	missing := http.fetch(
+		method: .post
+		url:    'http://${host.addr}/other'
+		data:   '{}'
+	)!
+	assert missing.status_code == 404
+
+	host.close()
+	host_thread.wait()
+}

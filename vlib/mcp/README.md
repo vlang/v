@@ -89,6 +89,52 @@ fn main() {
 }
 ```
 
+## Mounting on an existing HTTP server
+
+`serve_http` owns its listener, so it takes the whole port. When an existing
+server already owns the port, dispatch MCP requests to the server in-process
+instead of starting a second listener:
+
+- `server.handle_http_request(req)` returns the `http.Response` for one
+  request. Use it from a host route that already holds the request.
+- `server.http_handler()` returns an `http.Handler` for hosts that take one,
+  e.g. another `http.Server`.
+
+Both apply the same routing rule as `serve_http`: the request URL must match
+`ServerConfig.http_path` (default `/mcp`). The host server owns shutdown, so
+`server.close()` is not needed for it.
+
+```v oksyntax
+import mcp
+import net.http
+
+struct App {
+mut:
+	mcp http.Handler
+}
+
+fn (mut app App) handle(req http.Request) http.Response {
+	if req.url.all_before('?') == '/mcp' {
+		return app.mcp.handle(req)
+	}
+	mut response := http.Response{}
+	response.set_status(.not_found)
+	return response
+}
+
+fn main() {
+	mut server := mcp.new_server(name: 'mounted', version: '1.0.0')
+	mut app := App{
+		mcp: server.http_handler()
+	}
+	mut host := &http.Server{
+		addr:    '127.0.0.1:8080'
+		handler: app
+	}
+	host.listen_and_serve()
+}
+```
+
 ## Cancellation and progress
 
 Tool/resource/prompt handlers receive a `Context`. When the client supplies a
