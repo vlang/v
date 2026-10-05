@@ -13378,6 +13378,7 @@ pub fn run(args []string) {
 					eprintln('error reading cache-marked C source ${cache_plan_file}: ${err.msg()}')
 					exit(1)
 				}
+				object_compile_signature := compile_signature
 				compile_signature = v3_cached_object_wrapper_compile_signature(compile_signature, generated_source)
 				if generated_c_flags.len == 0 && !generic_cache_hit && !incremental_cache_hit
 					&& p.parsed_v_header_files == 0 {
@@ -13407,6 +13408,10 @@ pub fn run(args []string) {
 							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 							restart_v3_after_cache_invalidation()
 						}
+						// An incremental plan holds only the bodies that changed. The wrappers
+						// and the panic frames that select the cached module objects are in the
+						// prefix those objects were compiled with.
+						compile_signature = v3_cached_object_wrapper_compile_signature(object_compile_signature, cached_prefix)
 						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file, incremental_prefix_path, incremental_tcc_declarations_path, cached_prefix, compile_signature, a, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
@@ -13641,7 +13646,7 @@ pub fn run(args []string) {
 			}
 		}
 		mut cached_program_main_object := ''
-		if use_macos_dev_program_cache && !use_cached_dev_dylib && !is_c_debug && !needs_objective_c {
+		if use_macos_dev_program_cache && !use_cached_dev_dylib && !is_c_debug {
 			program_main_source := os.read_file(published_c_source) or {
 				eprintln('error reading cached program source ${published_c_source}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)

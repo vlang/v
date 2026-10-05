@@ -1,23 +1,25 @@
-module time
+module sync
+
+import time
 
 // Timer sends the current time on `c` after its duration elapses.
 pub struct Timer {
 	stop chan chan bool
 	done chan bool
 pub:
-	c chan Time
+	c chan time.Time
 }
 
 struct TimerThreadArgs {
 mut:
-	duration       Duration
-	output         chan Time
+	duration       time.Duration
+	output         chan time.Time
 	stop           chan chan bool
 	done           chan bool
 	prealloc_scope voidptr
 }
 
-fn new_timer_thread_args(duration Duration, output chan Time, stop chan chan bool, done chan bool) &TimerThreadArgs {
+fn new_timer_thread_args(duration time.Duration, output chan time.Time, stop chan chan bool, done chan bool) &TimerThreadArgs {
 	// Keep the channels visible to tracing collectors until the detached worker finishes.
 	mut args := unsafe { &TimerThreadArgs(vcalloc(sizeof(TimerThreadArgs))) }
 	if args == unsafe { nil } {
@@ -46,9 +48,9 @@ fn free_timer_thread_args(args &TimerThreadArgs) {
 }
 
 // new_timer creates a Timer that sends the current time on its unbuffered channel after `duration`.
-pub fn new_timer(duration Duration) &Timer {
+pub fn new_timer(duration time.Duration) &Timer {
 	timer := &Timer{
-		c:    chan Time{}
+		c:    chan time.Time{}
 		stop: chan chan bool{}
 		done: chan bool{}
 	}
@@ -56,7 +58,7 @@ pub fn new_timer(duration Duration) &Timer {
 	return timer
 }
 
-fn run_timer(duration Duration, output chan Time, stop chan chan bool, done chan bool) {
+fn run_timer(duration time.Duration, output chan time.Time, stop chan chan bool, done chan bool) {
 	defer {
 		done.close()
 	}
@@ -68,7 +70,7 @@ fn run_timer(duration Duration, output chan Time, stop chan chan bool, done chan
 		duration {
 		}
 	}
-	fired_at := now()
+	fired_at := time.now()
 	select {
 		reply := <-stop {
 			reply <- true
