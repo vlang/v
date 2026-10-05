@@ -480,27 +480,43 @@ mut:
 }
 
 fn new_type_cache(parse_enabled bool) &TypeCache {
-	return &TypeCache{
-		parse_enabled:               parse_enabled
-		parse_entries:               map[u64]ParseTypeCacheEntry{}
-		c_entries:                   map[TypeId]string{}
-		c_name_entries:              map[string]string{}
-		struct_field_entries:        map[string]Type{}
-		struct_field_misses:         map[string]bool{}
-		struct_field_shared:         map[string]Type{}
-		struct_field_complete:       map[string]bool{}
-		struct_field_fn_diagnostics: map[string]string{}
-		sum_variant_pattern_entries: map[string]string{}
-		recv_pattern_entries:        map[string]GenericReceiverMethodPatternMatch{}
-		recv_pattern_misses:         map[string]bool{}
-		lexical_smartcast_entries:   map[int]Type{}
-		lexical_smartcast_misses:    map[int]bool{}
-		ierror_compat_entries:       map[string]int{}
-		interface_impl_entries:      map[string][]string{}
-		source_error_embed_entries:  map[string]int{}
-		short_type_name_index:       map[string]string{}
-		local_fn_decl_index:         map[string]bool{}
-	}
+	// Allocate the fixed caches in place instead of copying a large temporary.
+	// Their owned map/array payloads need a scanned allocation under a GC.
+	mut cache := unsafe { &TypeCache(malloc(sizeof(TypeCache))) }
+	unsafe { vmemset(cache, 0, sizeof(TypeCache)) }
+	cache.parse_enabled = parse_enabled
+	cache.generated_parent_entries = map[int]flat.NodeId{}
+	cache.parse_entries = map[u64]ParseTypeCacheEntry{}
+	cache.parse_context_generics = []string{}
+	cache.parse_text_id_context = []u64{}
+	cache.parse_text_id_values = []Type{}
+	cache.parse_text_ids = []u16{}
+	cache.canonical_texts = []string{}
+	cache.canonical_contexts = []u64{}
+	cache.canonical_values = []Type{}
+	cache.alias_parse_stack = []string{}
+	cache.c_entries = map[TypeId]string{}
+	cache.c_name_entries = map[string]string{}
+	cache.struct_field_entries = map[string]Type{}
+	cache.struct_field_misses = map[string]bool{}
+	cache.struct_field_shared = map[string]Type{}
+	cache.struct_field_complete = map[string]bool{}
+	cache.struct_field_fn_diagnostics = map[string]string{}
+	cache.sum_variant_pattern_entries = map[string]string{}
+	cache.recv_pattern_entries = map[string]GenericReceiverMethodPatternMatch{}
+	cache.recv_pattern_misses = map[string]bool{}
+	cache.lexical_smartcast_entries = map[int]Type{}
+	cache.lexical_smartcast_misses = map[int]bool{}
+	cache.ierror_compat_entries = map[string]int{}
+	cache.interface_impl_entries = map[string][]string{}
+	cache.source_error_embed_entries = map[string]int{}
+	cache.ierror_impl_names = []string{}
+	cache.short_type_name_index = map[string]string{}
+	cache.local_fn_decl_index = map[string]bool{}
+	cache.tail_decl_ids = []i32{}
+	cache.tail_decl_start = -1
+	cache.tail_decl_end = -1
+	return cache
 }
 
 fn new_type_cache_with_base(parse_enabled bool, base &TypeCache) &TypeCache {
@@ -1098,6 +1114,9 @@ pub mut:
 	type_declaration_ids   map[string][]int
 mut:
 	cache_lexical_parents bool = true
+	// Source-validated bodies consisting solely of a known terminating call.
+	// Their lowered temporaries belong to the exempt argument expression.
+	noalloc_terminal_functions map[string]bool
 	// Dropped with phase caches before a disposable arena is released. Forks
 	// start with nil so their mutable topology slots are never shared.
 	lexical_parent_memo &LexicalParentMemo = unsafe { nil }
@@ -1309,6 +1328,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		symbols:                                 symbols
 		enclosing_generic_params_by_node:        map[int][]string{}
 		declaration_attributes:                  map[int][]string{}
+		noalloc_terminal_functions:              map[string]bool{}
 		type_declaration_ids:                    map[string][]int{}
 		strings_builder_bindings:                map[string]bool{}
 		static_associated_fn_keys:               map[string]bool{}
@@ -1997,6 +2017,7 @@ fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start int, end int) DirectParentChunk {
 	mut chunk := DirectParentChunk{}
 	mut fn_cost := 0
+	profile_fn_costs := tc.fn_check_costs.len > 0
 	for parent_idx in start .. end {
 		node := a.nodes[parent_idx]
 		if node.kind in [.decl_assign, .directive] {
@@ -2006,19 +2027,21 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 			.goto_stmt] {
 			chunk.preflight_node_ids << parent_idx
 		}
-		// Node count alone severely underestimates index-heavy and control-flow
-		// functions, which leaves one parallel checker worker running last.
-		mut node_cost := 1 + int(node.children_count) * 2
-		node_cost += match node.kind {
-			.index { 64 }
-			.call { 8 }
-			.selector { 4 }
-			.infix { 8 }
-			.for_stmt, .for_in_stmt { 64 }
-			.if_expr, .match_stmt { 16 }
-			else { 0 }
+		if profile_fn_costs {
+			// Node count alone severely underestimates index-heavy and control-flow
+			// functions, which leaves one parallel checker worker running last.
+			mut node_cost := 1 + int(node.children_count) * 2
+			node_cost += match node.kind {
+				.index { 64 }
+				.call { 8 }
+				.selector { 4 }
+				.infix { 8 }
+				.for_stmt, .for_in_stmt { 64 }
+				.if_expr, .match_stmt { 16 }
+				else { 0 }
+			}
+			fn_cost += node_cost
 		}
-		fn_cost += node_cost
 		if node.kind == .goto_stmt {
 			chunk.has_goto_nodes = true
 		}
@@ -2049,8 +2072,8 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 		if node.kind == .fn_decl && parent_idx < tc.fn_check_costs.len {
 			tc.fn_check_costs[parent_idx] = fn_cost
 		}
-		if node.kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl, .enum_decl,
-			.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
+		if profile_fn_costs && node.kind in [.file, .module_decl, .struct_decl, .type_decl,
+			.interface_decl, .enum_decl, .import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
 			fn_cost = 0
 		}
 	}
@@ -2765,7 +2788,7 @@ fn (mut tc TypeChecker) record_error(kind TypeErrorKind, msg string, node flat.N
 		return
 	}
 	tc.errors << TypeError{
-		msg:        msg
+		msg:        tc.named_variant_diagnostic(msg, node)
 		kind:       kind
 		node:       node
 		file:       tc.cur_file
@@ -2798,7 +2821,7 @@ fn (tc &TypeChecker) make_type_error(kind TypeErrorKind, msg string, node flat.N
 
 fn (tc &TypeChecker) make_type_error_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos) TypeError {
 	return TypeError{
-		msg:        msg.replace('[fn(', '[fn (')
+		msg:        tc.named_variant_diagnostic(msg, node).replace('[fn(', '[fn (')
 		kind:       kind
 		node:       node
 		file:       tc.cur_file

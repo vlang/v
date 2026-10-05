@@ -1192,6 +1192,11 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if base.len == 0 {
 				return node.value
 			}
+			// Source-qualified arguments belong to the caller's import scope.
+			// Substituted generic arguments are identifiers and are already canonical.
+			if imported := t.file_import_module(t.node_file_or(int(id), t.cur_file), base) {
+				return '${imported}.${node.value}'
+			}
 			return '${base}.${node.value}'
 		}
 		.index {
@@ -5993,6 +5998,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ['builtin.'.len..]
 	}
+	if flat.is_named_variant_type_name(clean_typ) {
+		return t.named_variant_str(expr, clean_typ, is_ref)
+	}
 	if clean_typ in stringify_narrow_integer_types {
 		// An arithmetic node with a 128-bit operand resolves to the narrower side
 		// here, so the printer picked for it showed the low 64 bits only. The value
@@ -8667,12 +8675,24 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 		value := t.make_prefix(.mul, field_sel)
 		payload_type := if variant_base != variant { variant_base } else { variant }
 		t.set_node_typ(int(value), payload_type)
-		t.wrap_string_conversion(value, payload_type)
+		if t.stringify_type_at_circular_limit(payload_type)
+			&& t.aggregate_str_method_name(payload_type) == none {
+			// Repeating a payload type does not imply a repeated object. Continue in
+			// a helper, guarding the actual payload address to stop genuine cycles.
+			t.request_auto_str_helper(value, payload_type)
+			t.lower_ref_str_guarded(field_sel, payload_type, false,
+				auto_str_helper_name(payload_type), 'nil')
+		} else {
+			t.wrap_string_conversion(value, payload_type)
+		}
 	}
 	// V prints a sum value as `SumName(payload_str)` — the payload's own str
 	// already carries its type name for structs; string/rune payloads are quoted.
 	// An alias variant keeps its alias-name wrapper (`Res(Ints([1, 2]))`).
-	if variant_base == 'string' {
+	if flat.is_named_variant_type_name(variant_base) {
+		// A named variant prints as `Expr.Count(3)` or `Expr.Void`, without the
+		// `SumName(...)` wrapper: the variant name already names the sum type.
+	} else if variant_base == 'string' {
 		value_text = t.string_plus(t.string_plus(t.make_string_literal("'"), value_text), t.make_string_literal("'"))
 	} else if variant_base == 'rune' {
 		value_text = t.string_plus(t.string_plus(t.make_string_literal('`'), value_text), t.make_string_literal('`'))
@@ -8680,7 +8700,9 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 		display := if variant.contains('.') { variant.all_after_last('.') } else { variant }
 		value_text = t.string_plus(t.string_plus(t.make_string_literal('${display}('), value_text), t.make_string_literal(')'))
 	}
-	value_text = t.string_plus(t.string_plus(t.make_string_literal('${sum_display}('), value_text), t.make_string_literal(')'))
+	if !flat.is_named_variant_type_name(variant_base) {
+		value_text = t.string_plus(t.string_plus(t.make_string_literal('${sum_display}('), value_text), t.make_string_literal(')'))
+	}
 	mut then_stmts := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	then_stmts << t.make_expr_stmt(value_text)
@@ -8781,6 +8803,32 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 	if format[format.len - 1] in [`x`, `b`, `o`, `d`] && t.is_formatted_enum_type(clean_typ) {
 		int_type := if t.enum_backing_is_unsigned(clean_typ) { 'u64' } else { 'i64' }
 		return t.wrap_formatted_string_conversion(t.make_cast(int_type, expr, int_type), int_type, format)
+	}
+	if plus_format := plus_numeric_format(format) {
+		is_float := clean_typ in ['f32', 'f64', 'float_literal']
+		is_integer := clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'rune', 'u8', 'u16',
+			'u32', 'u64', 'usize', 'i128', 'u128']
+		if is_integer || (is_float && (plus_format.width > 0 || plus_format.core.starts_with('.'))) {
+			// A rune's ordinary str() returns a character; numeric flags need its code point.
+			converted := if clean_typ == 'rune' {
+				t.wrap_formatted_string_conversion(t.make_cast('i64', expr, 'i64'), 'i64',
+					plus_format.core)
+			} else {
+				t.wrap_formatted_string_conversion(expr, typ, plus_format.core)
+			}
+			mut formatted := t.make_call_typed('v3_string_plus_sign', [converted], 'string')
+			if plus_format.width > 0 {
+				formatted = if plus_format.zero && !plus_format.left {
+					t.make_call_typed(if is_float { 'v3_f64_zpad' } else { 'v3_string_zpad' },
+						[formatted, t.make_int_literal(plus_format.width)], 'string')
+				} else {
+					t.make_call_typed('v3_string_pad', [formatted,
+						t.make_int_literal(plus_format.width),
+						t.make_int_literal(if plus_format.left { 1 } else { 0 })], 'string')
+				}
+			}
+			return formatted
+		}
 	}
 	if decimal_format := fixed_decimal_format(format) {
 		if clean_typ in ['f32', 'f64', 'float_literal'] {
@@ -9168,6 +9216,51 @@ fn (mut t Transformer) signed_plus_string(expr flat.NodeId, typ string) flat.Nod
 	])
 	t.pending_stmts << t.make_if(cond, then_body, t.make_empty())
 	return t.make_ident(text_name)
+}
+
+struct PlusNumericFormat {
+	width int
+	zero  bool
+	left  bool
+	core  string
+}
+
+// plus_numeric_format separates the sign and width from the numeric conversion.
+// The sign is added before padding so it counts towards the requested width.
+fn plus_numeric_format(format string) ?PlusNumericFormat {
+	mut i := 0
+	mut plus := false
+	mut zero := false
+	mut left := false
+	for i < format.len && format[i] in [`+`, `-`, `0`] {
+		match format[i] {
+			`+` { plus = true }
+			`-` { left = true }
+			`0` { zero = true }
+			else {}
+		}
+		i++
+	}
+	if !plus {
+		return none
+	}
+	mut width := 0
+	for i < format.len && format[i] >= `0` && format[i] <= `9` {
+		width = width * 10 + int(format[i] - `0`)
+		i++
+	}
+	core := format[i..]
+	if core != '' && core != 'd' && core != 'g' && core != 'G'
+		&& fixed_decimal_format(core) == none && exponent_decimal_format(core) == none
+		&& general_float_format(core) == none {
+		return none
+	}
+	return PlusNumericFormat{
+		width: width
+		zero:  zero
+		left:  left
+		core:  core
+	}
 }
 
 struct FixedDecimalFormat {
@@ -14531,7 +14624,13 @@ fn (mut t Transformer) build_sum_type_name_chain(tag flat.NodeId, sum_name strin
 		return t.make_string_literal('')
 	}
 	variant := variants[idx]
-	display := if variant.contains('.') { variant.all_after_last('.') } else { variant }
+	display := if flat.is_named_variant_type_name(variant) {
+		named_variant_display_short(variant)
+	} else if variant.contains('.') {
+		variant.all_after_last('.')
+	} else {
+		variant
+	}
 	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name, variant)))
 	then_block := t.make_block([t.make_expr_stmt(t.make_string_literal(display))])
 	else_expr := t.build_sum_type_name_chain(tag, sum_name, variants, idx + 1)
@@ -14784,8 +14883,16 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		return none
 	}
 	builtin_base_type := t.normalize_type_alias(base_type)
-	if base_type == '[]rune' && method == 'string' {
-		return t.make_call_typed('Array_rune__string', [t.transform_expr(base_id)], 'string')
+	if method == 'string' && (base_type == '[]rune'
+		|| (t.is_fixed_array_type(base_type) && fixed_array_outer_elem_type(base_type) == 'rune')) {
+		mut receiver := t.transform_expr(base_id)
+		receiver_type := t.normalize_type_alias(t.node_type(receiver)).trim_left('&')
+		if t.is_fixed_array_type(receiver_type) {
+			// Fixed-array map preserves its shape even when the checker records a
+			// dynamic result. Borrow its storage for the rune conversion call.
+			receiver = t.fixed_array_data_to_array_no_alloc(receiver, receiver_type, '[]rune')
+		}
+		return t.make_call_typed('Array_rune__string', [receiver], 'string')
 	}
 	if method == 'str' && t.is_array_transform_call(base_id) {
 		base := t.transform_expr(base_id)
@@ -15400,7 +15507,7 @@ fn (mut t Transformer) record_specialized_slot_mismatch(actual types.Type, expec
 		return false
 	}
 	// The checker's own rule is the authority here: it already covers registered
-	// aliases, integer widths, integer-to-float, float-to-float, integer-to-enum,
+	// aliases, integer widths, integer-to-float, float-to-float, integer-to-flag-enum,
 	// interfaces and sum variants, recursing through arrays and maps.
 	if t.tc.slot_value_compatible(actual, expected) {
 		return false
@@ -17314,9 +17421,17 @@ fn (mut t Transformer) clone_checker_marked_receiver_alias_arg(arg_id flat.NodeI
 // transform_receiver_method_args_with_base transforms helper data for transform.
 fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, base flat.NodeId, method_name string) []flat.NodeId {
 	mut args := []flat.NodeId{cap: int(node.children_count)}
-	args << base
-	recv_root := t.expr_root_ident_name(base)
 	params := t.call_param_types(method_name)
+	mut receiver := base
+	if method_name.all_after_last('.') == 'string' && params.len > 0
+		&& t.normalize_type_alias(t.semantic_type_name(params[0])) == '[]rune' {
+		receiver_type := t.normalize_type_alias(t.node_type(receiver)).trim_left('&')
+		if t.is_fixed_array_type(receiver_type) {
+			receiver = t.fixed_array_data_to_array_no_alloc(receiver, receiver_type, '[]rune')
+		}
+	}
+	args << receiver
+	recv_root := t.expr_root_ident_name(base)
 	param_offset := t.receiver_method_param_offset(base, node, params, method_name)
 	mut snapshotted_args := 0
 	explicit_args := int(node.children_count) - 1

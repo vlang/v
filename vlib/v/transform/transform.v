@@ -1262,7 +1262,8 @@ fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bo
 	t.lean_struct_init_fields = building_v && os.getenv('V3_NO_LEAN_TRANSFORM_STRUCT_FIELDS') == ''
 	t.inplace_struct_fields = t.inplace_child_rewrites
 		&& os.getenv('V3_NO_INPLACE_TRANSFORM_STRUCT_FIELDS') == ''
-	t.memo_call_param_type_names = building_v && os.getenv('V3_NO_TRANSFORM_TYPE_NAME_MEMO') == ''
+	t.memo_call_param_type_names = (building_v || skip_generics)
+		&& os.getenv('V3_NO_TRANSFORM_TYPE_NAME_MEMO') == ''
 	t.memo_semantic_type_names = building_v && os.getenv('V3_TRANSFORM_TYPE_NAME_MEMO_ALL') != ''
 	t.prefix_param_scan = building_v && os.getenv('V3_NO_PREFIX_PARAM_SCAN') == ''
 	t.preserve_inplace_expr_types = t.inplace_child_rewrites
@@ -7288,7 +7289,25 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 	t.clear_source_decl_heaped_bindings(node)
 	t.set_var_type_with_raw(var_name, elem_typ, raw_typ)
 	stmts << t.heap_escaping_value_decl(var_name, elem_typ, raw_typ, transformed_init, struct_init)
+	// The heap declaration stands for the source one. Keep its `mut`: the checks
+	// that read the lowered body again must still accept `f(mut var_name)`.
+	t.keep_source_decl_mutability(node, stmts.last())
 	return stmts
+}
+
+// keep_source_decl_mutability marks the single variable of the lowered declaration
+// `lowered_id` as `mut` when the source declaration `source` declared it so.
+fn (mut t Transformer) keep_source_decl_mutability(source flat.Node, lowered_id flat.NodeId) {
+	if source.children_count == 0 || int(lowered_id) < 0 {
+		return
+	}
+	lowered := t.a.nodes[int(lowered_id)]
+	if lowered.kind != .decl_assign || lowered.children_count == 0 {
+		return
+	}
+	if source.is_mut || t.a.child_node(&source, 0).is_mut {
+		t.a.nodes[int(t.a.child(&lowered, 0))].is_mut = true
+	}
 }
 
 // heap_escaping_value_decl moves an already-lowered value into a local's heap storage.
@@ -24866,11 +24885,11 @@ fn typeof_display_is_param_name(name string) bool {
 }
 
 fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	return t.transform_typeof_expr_mode(id, node, true)
+	return t.demangle_named_variant_literal(t.transform_typeof_expr_mode(id, node, true))
 }
 
 fn (mut t Transformer) transform_typeof_name_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	return t.transform_typeof_expr_mode(id, node, false)
+	return t.demangle_named_variant_literal(t.transform_typeof_expr_mode(id, node, false))
 }
 
 fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node, runtime_sum bool) flat.NodeId {
@@ -28199,7 +28218,7 @@ fn (mut t Transformer) build_match_chain(match_expr_id flat.NodeId, orig_expr_id
 			}
 		}
 	}
-	mut body_ids := []flat.NodeId{cap: int(branch.children_count) - body_start_idx}
+	mut body_ids := t.named_variant_binding_decls(match_expr_id, branch)
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)
 	}
@@ -28316,7 +28335,7 @@ fn (mut t Transformer) build_match_value_chain(match_expr_id flat.NodeId, orig_e
 		}
 	}
 
-	mut body_ids := []flat.NodeId{cap: int(branch.children_count) - body_start_idx}
+	mut body_ids := t.named_variant_binding_decls(match_expr_id, branch)
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)
 	}

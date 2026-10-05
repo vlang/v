@@ -4,6 +4,25 @@ import v.flat
 import v.token
 import v.types
 
+fn test_scoped_transform_batches_use_source_cost_for_ordinary_programs() {
+	$if !v3_no_parallel ? {
+		assert scoped_transform_batch_count(0, 0, 16, false) == 0
+		assert scoped_transform_batch_count(1, 1, 16, false) == 1
+		assert scoped_transform_batch_count(128, 512, 16, false) == 1
+		assert scoped_transform_batch_count(128, 4096, 16, false) == 2
+		assert scoped_transform_batch_count(128, 262144, 16, false) == 16
+		assert scoped_transform_batch_count(128, 512, 16, true) == 16
+		assert scoped_transform_batch_count(3, 512, 16, true) == 3
+		assert scoped_transform_batch_count(128, 512, 4, true) == 4
+		small := []FnWorkItem{len: 128, init: FnWorkItem{ cost: 3 }}
+		assert shared_helper_batch_count(small, false) == 1
+		assert shared_helper_batch_count(small, true) == 16
+		large := []FnWorkItem{len: 128, init: FnWorkItem{ cost: 2047 }}
+		assert shared_helper_batch_count(large, false) == 64
+		assert shared_helper_batch_count(large, true) == 64
+	}
+}
+
 fn test_monomorph_job_count_does_not_start_empty_workers() {
 	$if !v3_no_parallel ? {
 		assert monomorph_job_count(16, 1) == 1

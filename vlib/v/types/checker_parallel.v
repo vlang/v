@@ -4367,10 +4367,7 @@ fn (mut tc TypeChecker) install_type_cache_overlay() {
 		return
 	}
 	tc.prewarm_shared_type_cache()
-	tc.type_cache = &TypeCache{
-		base:          tc.type_cache
-		parse_enabled: tc.type_cache.parse_enabled
-	}
+	tc.type_cache = new_type_cache_with_base(tc.type_cache.parse_enabled, tc.type_cache)
 	if !isnil(tc.resolution_type_views) {
 		// Cached parse views still point at the cache that is now the shared base.
 		tc.reset_resolution_type_view_cache()
@@ -4477,58 +4474,32 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	$if ownership ? {
 		w.ownership_fork_for_parallel_check(tc)
 	}
-	w.type_cache = &TypeCache{
-		// The master's frozen pre-region cache (the overlay's base) is shared
-		// read-only across all forks; each fork writes to its own maps.
-		base:                        if tc.type_cache != unsafe { nil } {
-			tc.type_cache.base
-		} else {
-			&TypeCache(unsafe { nil })
+	// The master's frozen pre-region cache (the overlay's base) is shared
+	// read-only across all forks; each fork writes to its own maps.
+	w.type_cache = new_type_cache_with_base(if !isnil(tc.type_cache) {
+		tc.type_cache.parse_enabled
+	} else {
+		false
+	}, if !isnil(tc.type_cache) {
+		tc.type_cache.base
+	} else {
+		unsafe { nil }
+	})
+	if !isnil(precomputed) {
+		if precomputed.short_type_name_index_built {
+			w.type_cache.short_type_name_index = precomputed.short_type_name_index
 		}
-		parse_enabled:               if tc.type_cache != unsafe { nil } {
-			tc.type_cache.parse_enabled
-		} else {
-			false
+		w.type_cache.short_type_name_index_built = precomputed.short_type_name_index_built
+		if precomputed.local_fn_decl_indexed_len != 0 {
+			w.type_cache.local_fn_decl_index = precomputed.local_fn_decl_index
 		}
-		parse_entries:               map[u64]ParseTypeCacheEntry{}
-		c_entries:                   map[TypeId]string{}
-		struct_field_entries:        map[string]Type{}
-		struct_field_misses:         map[string]bool{}
-		sum_variant_pattern_entries: map[string]string{}
-		lexical_smartcast_entries:   map[int]Type{}
-		lexical_smartcast_misses:    map[int]bool{}
-		short_type_name_index:       if isnil(precomputed)
-			|| !precomputed.short_type_name_index_built {
-			map[string]string{}
-		} else {
-			precomputed.short_type_name_index
+		w.type_cache.local_fn_decl_indexed_len = precomputed.local_fn_decl_indexed_len
+		w.type_cache.local_fn_decl_last_module = precomputed.local_fn_decl_last_module
+		if precomputed.source_error_embed_indexed {
+			w.type_cache.source_error_embed_entries = precomputed.source_error_embed_entries
 		}
-		short_type_name_index_built: !isnil(precomputed) && precomputed.short_type_name_index_built
-		local_fn_decl_index:         if isnil(precomputed)
-			|| precomputed.local_fn_decl_indexed_len == 0 {
-			map[string]bool{}
-		} else {
-			precomputed.local_fn_decl_index
-		}
-		local_fn_decl_indexed_len:   if isnil(precomputed) {
-			0
-		} else {
-			precomputed.local_fn_decl_indexed_len
-		}
-		local_fn_decl_last_module:   if isnil(precomputed) {
-			''
-		} else {
-			precomputed.local_fn_decl_last_module
-		}
-		ierror_compat_entries:       map[string]int{}
-		source_error_embed_entries:  if isnil(precomputed)
-			|| !precomputed.source_error_embed_indexed {
-			map[string]int{}
-		} else {
-			precomputed.source_error_embed_entries
-		}
-		source_error_embed_indexed:  !isnil(precomputed) && precomputed.source_error_embed_indexed
-		source_error_embed_shared:   !isnil(precomputed) && precomputed.source_error_embed_indexed
+		w.type_cache.source_error_embed_indexed = precomputed.source_error_embed_indexed
+		w.type_cache.source_error_embed_shared = precomputed.source_error_embed_indexed
 	}
 	if tc.scope_parallel_check_workers {
 		// Shared interner growth from a helper arena would leave compilation-wide

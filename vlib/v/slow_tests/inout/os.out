@@ -6,6 +6,7 @@ comptime-reflection-sources.md
 docs.md
 function-field-calls.md
 ierror_pointer_casts.md
+noalloc.md
 ownership.md
 packaging_v_for_distributions.md
 recursive_sum_printing.md

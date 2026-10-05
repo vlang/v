@@ -99,6 +99,9 @@ fn (g &FlatGen) is_map_entry_lvalue(id flat.NodeId) bool {
 	if node.kind in [.paren, .selector] && node.children_count > 0 {
 		return g.is_map_entry_lvalue(g.a.child(&node, 0))
 	}
+	if _ := g.lowered_map_get_lvalue_cast(id) {
+		return true
+	}
 	if node.kind != .index || node.children_count == 0 {
 		return false
 	}
@@ -111,41 +114,50 @@ fn (g &FlatGen) is_map_entry_lvalue(id flat.NodeId) bool {
 // lowered before its enclosing postfix expression. `map__get_or_set` also preserves `m[k]++`
 // semantics for a missing key, instead of incrementing the temporary zero value.
 fn (mut g FlatGen) gen_lowered_map_get_postfix_lvalue(id flat.NodeId) bool {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return false
-	}
-	deref := g.a.nodes[int(id)]
-	if deref.kind != .prefix || deref.op != .mul || deref.children_count != 1 {
-		return false
-	}
-	cast_id := g.a.child(&deref, 0)
-	cast := g.a.nodes[int(cast_id)]
-	if cast.kind != .cast_expr || cast.children_count != 1 || cast.value.len == 0 {
-		return false
-	}
-	call_id := g.a.child(&cast, 0)
-	call := g.a.nodes[int(call_id)]
-	if call.kind != .call || call.children_count != 4 {
-		return false
-	}
-	callee := g.a.child_node(&call, 0)
-	if callee.kind != .ident || callee.value != 'map__get' {
-		return false
-	}
+	cast := g.lowered_map_get_lvalue_cast(id) or { return false }
+	call := g.a.child_node(&cast, 0)
 	ct := g.cast_c_type(g.tc.parse_type(cast.value))
 	g.write('(*(${ct})map__get_or_set(')
 	for i in 1 .. call.children_count {
 		if i > 1 {
 			g.write(', ')
 		}
-		g.gen_expr(g.a.child(&call, i))
+		g.gen_expr(g.a.child(call, i))
 	}
 	g.write('))')
 	return true
 }
 
+fn (g &FlatGen) lowered_map_get_lvalue_cast(id flat.NodeId) ?flat.Node {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	deref := g.a.nodes[int(id)]
+	if deref.kind != .prefix || deref.op != .mul || deref.children_count != 1 {
+		return none
+	}
+	cast_id := g.a.child(&deref, 0)
+	cast := g.a.nodes[int(cast_id)]
+	if cast.kind != .cast_expr || cast.children_count != 1 || cast.value.len == 0 {
+		return none
+	}
+	call_id := g.a.child(&cast, 0)
+	call := g.a.nodes[int(call_id)]
+	if call.kind != .call || call.children_count != 4 {
+		return none
+	}
+	callee := g.a.child_node(&call, 0)
+	if callee.kind != .ident || callee.value != 'map__get' {
+		return none
+	}
+	return cast
+}
+
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
+	if g.gen_lowered_map_get_postfix_lvalue(id) {
+		return
+	}
 	node := g.a.nodes[int(id)]
 	if node.kind == .ident && g.current_param_is_mut_pointer(node.value) {
 		g.gen_mut_pointer_slot_expr(id)

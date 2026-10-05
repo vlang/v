@@ -1,7 +1,6 @@
 // vtest build: !msvc && !tinyc
 // The tests here have constraints, that are not implemented yet in tcc, and msvc does not
 // support inline assembly at all (tracked for a MASM-based path: vlang/v#29105).
-// This file is also never compiled on any Windows CI leg (tracked: vlang/v#29107).
 fn test_constraints() {
 	x := u64(100)
 	y := u64(200)
