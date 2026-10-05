@@ -2128,14 +2128,21 @@ fn test_fmt_preserves_lowercase_struct_literals_before_and_after_declarations() 
 	}
 	shadow_source := declaration + 'fn check(lower_rec bool) {\n if lower_rec{ println("yes") }\n}\n'
 	text_source := '// struct lower_rec { count int }\nconst text = "struct lower_rec { count int }"\nconst lower_rec = false\nfn check() {\n if lower_rec{ println("yes") }\n}\n'
+	assembly_source := 'const lower_rec = true\nfn check() {\n asm amd64 {\n .type lower_rec, @function\n }\n if lower_rec{ println("yes") }\n}\n'
 	for prefix in ['', '@[generated]\nmodule main\n'] {
-		for negative in [shadow_source, text_source] {
+		for negative in [shadow_source, text_source, assembly_source] {
 			case_dir := 'lowercase_value_${case_index}'
 			case_index++
 			os.mkdir_all(os.join_path(vfmt_test_tdir, case_dir))!
 			res, formatted := run_vfmt_write('${case_dir}/value', prefix + negative, '')
 			assert res.exit_code == 0, res.output
 			assert formatted.contains("if lower_rec { println('yes') }"), formatted
+			if negative == assembly_source {
+				assert formatted.contains('.type lower_rec, @function'), formatted
+			}
+			second, twice := run_vfmt_write('${case_dir}/second', formatted, '')
+			assert second.exit_code == 0, second.output
+			assert twice == formatted
 		}
 	}
 }
