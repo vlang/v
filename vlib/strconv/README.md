@@ -52,28 +52,32 @@ assert strconv.add_thousands_sep('-12345.5', strconv.Separator{
 
 ## Quoting strings and runes
 
-`quote` returns a double-quoted V string literal for a string, and
-`quote_rune` the single-quoted form for one rune. Control characters and
-non-printable runes become Go escape sequences; everything else is kept as it
-is, so UTF-8 text stays readable in the output.
+`quote` returns a double-quoted Go-syntax string literal for a string, and
+`quote_rune` a single-quoted Go rune literal for one rune. Control characters
+and non-printable runes become Go escape sequences; everything else is kept as
+it is, so UTF-8 text stays readable in the output. The result follows Go's
+syntax rather than V's: `$` is not escaped, so `quote('\${x}')` returns
+`"${x}"`, which V would read as an interpolation.
 
 ```v
 import strconv
 
 assert strconv.quote('café') == '"café"'
 assert strconv.quote('a\tb') == '"a\\tb"'
-assert strconv.quote_rune('A'.runes()[0]) == "'A'"
-assert strconv.quote_rune(0x00E9) == "'é'"
+assert strconv.quote_rune(`A`) == "'A'"
+assert strconv.quote_rune(`é`) == "'é'"
 ```
 
 The `*_to_ascii` variants escape every non-ASCII rune as `\u` or `\U`, and the
-`*_to_graphic` variants keep a rune only when it is in the graphic set.
+`*_to_graphic` variants escape only the runes `is_graphic` rejects, so they keep
+spaces such as U+00A0 that `quote` escapes.
 
 ```v
 import strconv
 
 assert strconv.quote_to_ascii('café') == '"caf\\u00e9"'
-assert strconv.quote_to_graphic('a\u00e9') == '"aé"'
+assert strconv.quote('a b') == '"a\\u00a0b"'
+assert strconv.quote_to_graphic('a b') == '"a b"'
 ```
 
 Each function has an `append_` form that writes into a `[]u8` the caller
@@ -92,36 +96,41 @@ assert buf.bytestr() == 'log: "a" "b\\tc" '
 ```
 
 `is_print` and `is_graphic` answer the two questions those functions ask, and
-`can_backquote` reports whether a string can be written as a raw backquoted
-literal.
+`can_backquote` reports whether a string can be written unchanged as a Go raw
+string literal, between backquotes. That rules out control characters other
+than tab, the backquote itself, DEL, invalid UTF-8 and the byte order mark; a
+backslash is fine, since a raw string has no escapes.
 
 ```v
 import strconv
 
-assert strconv.is_print('a'.runes()[0])
+assert strconv.is_print(`a`)
 assert !strconv.is_print(0x07)
-assert strconv.is_graphic(' '.runes()[0])
+assert !strconv.is_print(0x00A0)
+assert strconv.is_graphic(0x00A0)
 assert !strconv.is_graphic(0x00AD)
-assert !strconv.can_backquote('a\\b')
+assert strconv.can_backquote('a\\b')
+assert !strconv.can_backquote('a`b')
 ```
 
-The lookup tables live in `printable_tables.v`, generated from Go's
-`unicode.IsPrint`, `unicode.IsGraphic` and `strconv.CanBackquote`. The test
-suite checks all three against Go's output, and `is_print`, `is_graphic` and
-`can_backquote` are each verified over every code point from 0 to `0x10FFFF`.
+The lookup tables in `printable_tables.v` are generated from Go 1.26.1's
+`unicode.IsPrint` and `unicode.IsGraphic` (Unicode 15.0.0) by
+`testdata/gen_quote_data.go`, which also produces the expected results the tests
+compare against. `is_print`, `is_graphic` and `can_backquote` are each checked
+against Go over every code point from 0 to `0x10FFFF`.
 
 ## Unquoting literals
 
-`unquote` returns the string value a literal spells. It accepts a
-double-quoted, single-quoted or backquoted form, and fails on an unterminated
-literal or an invalid escape. `quoted_prefix` reads only the literal at the
-start of its input and returns it verbatim, quotes included, which is what you
-want when parsing a stream.
+`unquote` returns the string value a Go-syntax literal spells. It accepts a
+double-quoted, single-quoted or backquoted (raw) form, and fails on an
+unterminated literal or an invalid escape. `quoted_prefix` reads only the
+literal at the start of its input and returns it verbatim, quotes included,
+which is what you want when parsing a stream.
 
 ```v
 import strconv
 
-assert strconv.unquote('"a\\tb"') or { '?' } == 'a	b'
+assert strconv.unquote('"a\\tb"') or { '?' } == 'a\tb'
 assert strconv.unquote('`raw`') or { '?' } == 'raw'
 assert strconv.quoted_prefix('"a" then more') or { '?' } == '"a"'
 ```
@@ -132,28 +141,27 @@ any carriage return inside it.
 ```v
 import strconv
 
-sq := [1]u8[0x27].bytestr() // a single quote, as a string
-
-assert strconv.unquote(sq + 'a' + sq) or { '?' } == 'a'
-assert strconv.unquote('"a\rb"') or { '?' } == 'ab'
+assert strconv.unquote("'a'") or { '?' } == 'a'
+assert strconv.unquote("'ab'") or { '?' } == '?'
+assert strconv.unquote('`a\rb`') or { '?' } == 'ab'
 ```
 
-`unquote_char` decodes one character and reports what followed it. It is the
-building block the other two are written from, and returns a struct because V
-has no multi-value return. `quote` must be the quote byte the literal uses.
+`unquote_char` decodes one character and returns it together with whether it
+was written as a multi-byte sequence and the input that followed it. `quote`
+must be the quote byte of the literal the input comes from.
 
 ```v
 import strconv
 
-r := strconv.unquote_char('\\x41BC', 0x22) or { return }
+r := strconv.unquote_char('\\x41BC', `"`) or { return }
 
 assert r.value == `A`
 assert r.multibyte == false
 assert r.tail == 'BC'
 ```
 
-Like the quoting functions, all three are checked against Go 1.26.1 over a
-corpus of 29675 inputs: every single byte, every two-byte escape body, the
-numeric escape forms including their boundaries, invalid UTF-8 tails, and
-multi-byte runes inside literals.
-
+Like the quoting functions, all three are checked against Go 1.26.1: over
+21760 generated literals (every byte in all three quote styles, and every
+two-byte body whose second byte is 0x00-0x28 in the two quoted styles), and
+over 49 hand-picked inputs covering the numeric escape forms and their
+boundaries, invalid UTF-8 and the error cases.
