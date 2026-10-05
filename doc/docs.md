@@ -7405,7 +7405,7 @@ project folder, `vlib`, and the global module folders. Nothing records which of
 those a build actually reaches, so a `v.mod` quietly collects modules that no
 longer have anything to do with the code.
 
-`v mod why` answers that question. It prints the chain of imports that brings a
+`v mod why` answers that question. It prints the shortest chain of imports that brings a
 module into the build, one module per line, starting at the project itself:
 
 ```shell
