@@ -2126,8 +2126,8 @@ fn test_fmt_preserves_lowercase_struct_literals_before_and_after_declarations() 
 			}
 		}
 	}
-	shadow_source := declaration + 'fn check(lower_rec bool) {\n if lower_rec { println("yes") }\n}\n'
-	text_source := '// struct lower_rec { count int }\nconst text = "struct lower_rec { count int }"\nconst lower_rec = false\nfn check() {\n if lower_rec { println("yes") }\n}\n'
+	shadow_source := declaration + 'fn check(lower_rec bool) {\n if lower_rec{ println("yes") }\n}\n'
+	text_source := '// struct lower_rec { count int }\nconst text = "struct lower_rec { count int }"\nconst lower_rec = false\nfn check() {\n if lower_rec{ println("yes") }\n}\n'
 	for prefix in ['', '@[generated]\nmodule main\n'] {
 		for negative in [shadow_source, text_source] {
 			case_dir := 'lowercase_value_${case_index}'
