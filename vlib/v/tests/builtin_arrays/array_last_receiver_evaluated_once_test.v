@@ -49,3 +49,21 @@ fn test_last_evaluates_a_reference_returning_receiver_once() {
 	assert source.stored_items().last().id == 2
 	assert source.calls == 1
 }
+
+struct LastOnceRows {
+mut:
+	calls int
+}
+
+fn (mut rows LastOnceRows) [] (index int) []int {
+	rows.calls++
+	return [index, rows.calls]
+}
+
+fn test_last_evaluates_an_overloaded_index_receiver_once() {
+	mut rows := LastOnceRows{}
+	assert rows[0].last() == 1
+	assert rows.calls == 1
+	assert rows[1].last() == 2
+	assert rows.calls == 2
+}
