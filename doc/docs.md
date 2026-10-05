@@ -1790,6 +1790,8 @@ println(buf.bytestr()) // => hel
 ### Maps
 
 Methods and references on map iteration values address the stored element, including nested maps.
+Postfix updates to a mutable map value field, such as `m[key].level++`, update the stored
+entry and insert a zero value first when the key is absent. The key is evaluated once.
 
 ```v
 mut m := map[string]int{} // a map with `string` keys and `int` values

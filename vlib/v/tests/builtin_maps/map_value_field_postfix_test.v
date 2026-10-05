@@ -73,3 +73,37 @@ fn test_postfix_on_map_value_array_element() {
 	rows['a'][2]--
 	assert rows['a'] == [1, 3, 2]
 }
+
+struct MapPostfixCounter {
+mut:
+	calls int
+}
+
+fn map_postfix_next_key(mut counter MapPostfixCounter) string {
+	counter.calls++
+	return 'missing'
+}
+
+fn test_postfix_inserts_a_missing_map_value_before_updating_fields() {
+	mut counter := MapPostfixCounter{}
+	mut heroes := map[string]MapPostfixHero{}
+	heroes[map_postfix_next_key(mut counter)].level++
+	assert counter.calls == 1
+	assert heroes.len == 1
+	assert heroes['missing'].level == 1
+	heroes[map_postfix_next_key(mut counter)].stats.mana--
+	assert counter.calls == 2
+	assert heroes['missing'].stats.mana == -1
+	mut nested := map[string]MapPostfixHero{}
+	nested['missing'].stats.xp--
+	assert nested.len == 1
+	assert nested['missing'].stats.xp == -1
+}
+
+fn test_postfix_inserts_missing_map_value_of_struct_and_mut_param() {
+	mut game := &MapPostfixGame{}
+	map_postfix_bump(mut game)
+	assert game.heroes.len == 1
+	assert game.heroes[1].level == 1
+	assert game.heroes[1].stats.mana == -1
+}
