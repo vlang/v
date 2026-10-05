@@ -124,6 +124,8 @@ mut:
 	comptime_const_values        map[string]string
 	comptime_local_values        map[string]string
 	imported_module_names        map[string]bool // import aliases in the current file; not captured by inlined template closures
+	named_variant_import_types   map[string]bool
+	named_variant_import_scans   map[string]bool
 	file_method_names            map[string]bool // qualified method names declared so far in the current file, for duplicate diagnostics
 	check_imports                bool            // enabled by the compiler driver, but not by syntax-only parser clients
 	// local_binding_* track the variable/parameter names currently in scope, so an inlined

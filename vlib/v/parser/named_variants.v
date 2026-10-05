@@ -1,6 +1,8 @@
 module parser
 
 import v.flat
+import os
+import v.pref
 import v.token
 
 // ParsedSumVariant is one `|`-separated entry of a sum type declaration: a plain
@@ -242,7 +244,7 @@ fn (mut p Parser) named_variant_owner(lhs flat.NodeId, variant string) ?string {
 	if node.kind == .selector && node.children_count == 1 {
 		base := p.a.child_node(&node, 0)
 		if base.kind == .ident && base.value in p.imported_module_names
-			&& !p.is_local_binding(base.value) && is_imported_named_variant_owner_name(node.value) {
+			&& !p.is_local_binding(base.value) && p.is_imported_named_variant_owner_name(base.value, node.value) {
 			return '${base.value}.${node.value}'
 		}
 	}
@@ -268,25 +270,66 @@ fn (mut p Parser) is_named_variant_owner_name(name string) bool {
 		&& name !in p.imported_module_names && !p.is_local_binding(name)
 }
 
-// is_imported_named_variant_owner_name also accepts generated type names. The
-// module prefix separates them from local values, whose fields cannot be capitalized.
-fn is_imported_named_variant_owner_name(name string) bool {
+// is_imported_named_variant_owner_name also accepts declared generated type names.
+// Imported translated values can have capitalized fields, so a lowercase owner
+// must be a type rather than a constant or variable in the imported module.
+fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name string) bool {
 	if name.len == 0 || name in ['C', 'JS'] {
 		return false
+	}
+	if name.len > 1 && is_plain_capitalized_ident(name) {
+		return true
 	}
 	for c in name {
 		if !is_name_char(c) {
 			return false
 		}
 	}
-	return true
+	key := '${p.cur_file}\x00${module_alias}'
+	if !p.named_variant_import_scans[key] {
+		p.named_variant_import_scans[key] = true
+		for node in p.a.nodes {
+			if node.kind != .import_decl || node.pos.id != p.cur_file_id || node.typ != module_alias {
+				continue
+			}
+			dir := p.prefs.get_module_path(node.value, p.cur_file)
+			if dir.len == 0 {
+				break
+			}
+			for path in p.prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir,
+				p.prefs.user_defines, p.prefs.target)) {
+				source := os.read_file(path) or { continue }
+				mut declarations := Parser.new(p.prefs)
+				declarations.cur_file = path
+				declarations.s.init(p.s.current_file(), source)
+				for {
+					kind := declarations.s.scan()
+					if kind == .eof {
+						break
+					}
+					if kind == .key_module {
+						if declarations.s.scan() == .name {
+							declarations.cur_module = declarations.s.lit
+						}
+						break
+					}
+				}
+				declarations.scan_translated_sizeof_source(source)
+				for type_key in declarations.translated_sizeof_type_names.keys() {
+					p.named_variant_import_types['${key}\x00${type_key.all_after_last('\x00')}'] = true
+				}
+			}
+			break
+		}
+	}
+	return p.named_variant_import_types['${key}\x00${name}']
 }
 
 // imported_named_variant_pattern_starts_here recognizes a generated owner
 // followed by a capitalized variant, including an owner's generic arguments.
 fn (mut p Parser) imported_named_variant_pattern_starts_here(module_name string) bool {
 	if module_name !in p.imported_module_names || p.is_local_binding(module_name)
-		|| p.tok != .name || !is_imported_named_variant_owner_name(p.lit) {
+		|| p.tok != .name || !p.is_imported_named_variant_owner_name(module_name, p.lit) {
 		return false
 	}
 	mut next := p.peek()
@@ -396,7 +439,7 @@ fn (mut p Parser) named_variant_pattern_type(type_name string) ?string {
 	parts := base.split('.')
 	if (parts.len == 1 && p.is_named_variant_owner_name(parts[0]))
 		|| (parts.len == 2 && parts[0] in p.imported_module_names
-			&& !p.is_local_binding(parts[0]) && is_imported_named_variant_owner_name(parts[1])) {
+			&& !p.is_local_binding(parts[0]) && p.is_imported_named_variant_owner_name(parts[0], parts[1])) {
 		return flat.named_variant_type_name(base, type_name[dot + 1..]) + args
 	}
 	return none

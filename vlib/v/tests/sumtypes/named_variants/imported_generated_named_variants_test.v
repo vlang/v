@@ -1,4 +1,9 @@
 import gensums
+import foreignselectors
+
+fn test_imported_translated_constant_field() {
+	assert foreignselectors.entry.Value == 7
+}
 
 fn test_imported_generated_named_variant_owner() {
 	event := gensums._generated_Event.Value(7)
@@ -30,6 +35,19 @@ fn test_imported_generated_generic_named_variant_owner() {
 			assert payload == 9
 		}
 		gensums._generated_Option[int].Nothing {
+			assert false
+		}
+	}
+}
+
+fn test_imported_lowercase_generated_named_variant_owner() {
+	value := gensums.choice[int].Some(11)
+	assert value is gensums.choice[int].Some
+	match value {
+		gensums.choice[int].Some(payload) {
+			assert payload == 11
+		}
+		gensums.choice[int].Nothing {
 			assert false
 		}
 	}
