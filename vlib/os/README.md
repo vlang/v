@@ -14,6 +14,17 @@ It returns an empty string when the standard input handle is invalid.
 
 ### Path helpers
 
+`is_abs_path` follows the host operating system's path conventions. On Unix,
+a leading `/` identifies an absolute path. On Windows, it accepts drive-rooted
+paths (`C:/x`), UNC paths containing a server and share (`//Host/share`), and
+paths rooted on the current drive (`/x` or `\\x`). The last form depends on the
+current drive; this predicate does not promise that the path names a drive.
+A bare doubled separator (`//` or `\\\\`) is an incomplete UNC path and returns
+false. Both slash styles, including mixed separators, are accepted on Windows.
+
+This preserves V's rooted-path convention; it differs from Go's
+`filepath.IsAbs`, which requires a fully qualified Windows path.
+
 `os.join_path()` and `os.join_path_single()` ignore empty elements and collapse
 repeated separators between elements. For example, joining `a` with `/b` gives
 `a/b` on POSIX or `a\b` on Windows. An absolute first nonempty element keeps its
