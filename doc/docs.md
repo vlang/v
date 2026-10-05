@@ -10432,12 +10432,20 @@ fn main() {
 }
 ```
 
-In a `@[generated]` file, names of functions, methods, variables, parameters, constants and
-fields can use camelCase and start with `_`, and type names do not have to start with a capital
-letter. Only type names can start with an uppercase letter, because V relies on that to tell
-`Type{}` and `Type(x)` apart from values. Keywords stay reserved, module names keep the usual
-rules, and everything else, including type checks and mutability, works exactly as in ordinary
-V files. Casts like `t(x)` to a type whose name starts in lower case work inside its module.
+The attribute has to be put on an explicit `module` line, `module main` included, and it
+applies only to the file it is in, so mark every generated file of a module. In such a file,
+names of functions, methods, variables, parameters, constants, fields and globals can use
+camelCase and start with `_`, and type names do not have to start with a capital letter. Only
+type names can start with an uppercase letter, because V relies on that to tell `Type{}` and
+`Type(x)` apart from values.
+
+A few names stay invalid, because the generated C code needs them: no name can contain `__`,
+type names cannot end with `_`, and other names cannot start with `_` and an uppercase letter,
+or consist of `_`, lowercase letters and digits like `_t1`. A type cannot share its name with a
+function or constant of its module or with a builtin function, and interfaces cannot have the
+fields `_typ` and `_object`. Keywords stay reserved, module names keep the usual rules, and
+everything else, including type checks and mutability, works exactly as in ordinary V files.
+Casts like `t(x)` to a type whose name starts in lower case work inside its module.
 
 V can translate your C code to human readable V code, and generating V wrappers
 on top of C libraries.

@@ -3071,8 +3071,10 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 				tc.check_reserved_parameter_name(param_id)
 				if param.op == .dot {
 					tc.check_import_symbol_conflict_at(param_id, param.value, tc.fn_receiver_param_diagnostic_pos(node, param.value))
+					tc.check_generated_parameter_name(param_id, param, tc.fn_receiver_param_diagnostic_pos(node, param.value))
 				} else {
 					tc.check_import_symbol_conflict(param_id, param.value)
+					tc.check_generated_parameter_name(param_id, param, tc.node_value_diagnostic_pos(param_id))
 				}
 				tc.check_module_name_conflict(param_id, param.value)
 			}

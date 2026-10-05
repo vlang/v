@@ -12924,6 +12924,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		if param.value != '_' {
 			param_names[param.value] = true
 			tc.check_import_symbol_conflict(param_id, param.value)
+			tc.check_generated_parameter_name(param_id, param, tc.node_value_diagnostic_pos(param_id))
 		}
 	}
 	mut closure_copy_owners := map[string]ScopeBindingOwner{}

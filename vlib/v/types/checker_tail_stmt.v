@@ -6387,7 +6387,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if base.kind == .selector && base.children_count > 0 {
 		module_node := tc.a.child_node(&base, 0)
 		if module_node.kind == .ident && tc.has_active_import(module_node.value)
-			&& tc.name_may_be_type(base.value) {
+			&& tc.module_member_may_be_type(module_node.value, base.value) {
 			module_name := tc.resolve_import_alias(module_node.value) or { module_node.value }
 			display_module_name := tc.current_file_import_path_for_alias(module_node.value) or {
 				module_name
@@ -6420,7 +6420,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	}
 	// `Color.nope`: the enum is a namespace below, which accepts any member, so a
 	// value the enum does not declare would otherwise pass unnoticed.
-	if base.kind == .ident && tc.name_may_be_type(base.value) {
+	if base.kind == .ident && tc.ident_may_be_type(base.value) {
 		if enum_name := tc.resolve_enum_name(base.value) {
 			if !tc.enum_has_field(enum_name, node.value)
 				&& !tc.enum_member_is_callable(enum_name, base.value, node.value) {
@@ -6487,7 +6487,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if tc.name_may_be_type(node.value) && is_known_type {
+		if tc.module_member_may_be_type(base.value, node.value) && is_known_type {
 			if tc.resolve_enum_name(semantic_type_name) != none
 				|| tc.resolve_enum_name(display_type_name) != none {
 				parent_id := tc.direct_parent_id(id)
@@ -6520,7 +6520,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				return
 			}
 		}
-		if base.value != 'C' && tc.name_may_be_type(node.value) && is_known_type {
+		if base.value != 'C' && tc.module_member_may_be_type(base.value, node.value)
+			&& is_known_type {
 			tc.record_error_at(.assignment_mismatch, '`${display_type_name}` must be initialized', id, tc.node_value_diagnostic_pos(id))
 			tc.register_synth_type(id, builtin_void_type)
 			return
@@ -8027,7 +8028,7 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 	if base.kind == .selector && base.children_count > 0 {
 		module_node := tc.a.child_node(&base, 0)
 		if module_node.kind == .ident && tc.has_active_import(module_node.value)
-			&& tc.name_may_be_type(base.value) {
+			&& tc.module_member_may_be_type(module_node.value, base.value) {
 			module_name := tc.resolve_import_alias(module_node.value) or { module_node.value }
 			if resolved_enum_name := tc.resolve_enum_name('${module_name}.${base.value}') {
 				tc.register_synth_type(base_id, Type(Enum{
@@ -9863,13 +9864,13 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 	base := tc.a.child_node(node, 0)
 	mut enum_name := ''
 	if base.kind == .ident {
-		if !tc.name_may_be_type(base.value) {
+		if !tc.ident_may_be_type(base.value) {
 			return none
 		}
 		enum_name = tc.resolve_enum_name(base.value) or { '' }
 	} else if base.kind == .selector && base.children_count > 0 {
 		inner := tc.a.child_node(base, 0)
-		if inner.kind == .ident && tc.name_may_be_type(base.value) {
+		if inner.kind == .ident && tc.module_member_may_be_type(inner.value, base.value) {
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			enum_name = tc.resolve_enum_name('${mod_name}.${base.value}') or { '' }
 		}

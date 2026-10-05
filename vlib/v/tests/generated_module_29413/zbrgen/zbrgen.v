@@ -5,6 +5,8 @@ module zbrgen
 
 pub const _zbr_c_Scale = 10
 
+pub const zbrNames = ['a', 'b']
+
 pub struct _zbr_ty_Vec {
 pub:
 	xPos  int
@@ -28,3 +30,8 @@ pub enum _zbr_ty_Mode {
 }
 
 pub type _zbr_ty_Value = _zbr_ty_Vec | _zbr_ty_Mode | int
+
+pub const _zbr_c_Origin = _zbr_ty_Vec{
+	xPos:  2
+	_yPos: 3
+}

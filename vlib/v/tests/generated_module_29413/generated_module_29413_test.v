@@ -1,6 +1,7 @@
 @[generated]
 module main
 
+import os
 import zbrgen
 
 // https://github.com/vlang/v/issues/29413
@@ -160,4 +161,12 @@ fn test_types_of_an_imported_generated_module() {
 	assert zbrgen._zbr_fn_describe(value) == 'vec 1'
 	assert zbrgen._zbr_fn_describe(zbrgen._zbr_ty_Value(mode)) == 'mode fastMode'
 	assert zbrgen._zbr_c_Scale == 10
+}
+
+fn test_values_of_imported_modules() {
+	// `mod.value.member` is not an enum value, even though types can be lowercase here.
+	assert os.args.len > 0
+	assert zbrgen.zbrNames.len == 2
+	assert zbrgen._zbr_c_Origin.xPos == 2
+	assert zbrgen._zbr_c_Origin.scaledSum() == 50
 }

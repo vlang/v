@@ -11224,8 +11224,10 @@ fn snake_case_name_is_valid(name string) bool {
 	if name.starts_with('C.') || name.starts_with('JS.') {
 		return true
 	}
+	// Names with `__` are valid in ordinary files, but `check_snake_case_name` rejects
+	// them in `@[generated]` ones, so they have to reach it.
 	return (name.len <= 1 || (name[0] != `_` && !name.contains('._')))
-		&& !util.contains_capital(name)
+		&& !util.contains_capital(name) && !name.contains('__')
 }
 
 fn pascal_case_name_is_valid(name string) bool {
@@ -11266,11 +11268,43 @@ fn (tc &TypeChecker) relaxes_identifier_case(id flat.NodeId) bool {
 	return tc.generated_files[tc.cur_file]
 }
 
-// name_may_be_type reports whether `name`, the base of a selector like `name.member` or
-// the member of `mod.name`, can be a type. V type names begin with a capital letter,
-// but types declared in `@[generated]` modules can have any name.
-fn (tc &TypeChecker) name_may_be_type(name string) bool {
-	return name.len > 0 && (name[0].is_capital() || tc.generated_files.len > 0)
+// ident_may_be_type reports whether the identifier `name`, the base of a selector
+// `name.member`, can name a type. V type names begin with a capital letter. Only
+// `@[generated]` files can use other type names, so there a name that does not begin
+// with one is a type only when such a type is declared and no local shadows it.
+fn (tc &TypeChecker) ident_may_be_type(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if name[0].is_capital() {
+		return true
+	}
+	if tc.generated_files.len == 0 || !tc.generated_files[tc.cur_file] {
+		return false
+	}
+	if _ := tc.non_file_scope_type(name) {
+		return false
+	}
+	return tc.type_name_known(name)
+}
+
+// module_member_may_be_type reports whether `name` in `mod.name` can name a type of the
+// module imported as `mod`. V type names begin with a capital letter. Only `@[generated]`
+// modules can declare other type names, so such a name is a type only when the module
+// really declares it: `os.args` stays a const even when the build has generated code.
+fn (tc &TypeChecker) module_member_may_be_type(mod_alias string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if name[0].is_capital() {
+		return true
+	}
+	if tc.generated_files.len == 0 {
+		return false
+	}
+	module_name := tc.resolve_import_alias(mod_alias) or { mod_alias }
+	qualified_name := '${module_name}.${name}'
+	return tc.type_symbol_known(qualified_name) || tc.resolve_enum_name(qualified_name) != none
 }
 
 fn (mut tc TypeChecker) check_snake_case_name(id flat.NodeId, name string, identifier string, pos token.Pos) {
@@ -11293,12 +11327,83 @@ fn (mut tc TypeChecker) check_snake_case_name(id flat.NodeId, name string, ident
 	}
 }
 
-// check_generated_value_name enforces the one naming rule `@[generated]` keeps for
-// names that are not types: they cannot begin with an uppercase letter.
+// check_generated_value_name enforces the naming rules `@[generated]` keeps for names
+// that are not types. Only type names can begin with an uppercase letter. The rest keep
+// the generated C code valid: V joins names with `__` to build C names (`mod__fn`,
+// `type__method`), C reserves names that begin with `_` and an uppercase letter, and
+// the C code names its temporaries `_t1`, `_a2` and so on.
 fn (mut tc TypeChecker) check_generated_value_name(id flat.NodeId, name string, identifier string, pos token.Pos) {
 	short_name := name.all_after_last('.')
-	if short_name.len > 0 && short_name[0].is_capital() {
+	if short_name.len == 0 || short_name == '_' {
+		return
+	}
+	if short_name[0].is_capital() {
 		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot start with an uppercase letter, only type names can', id, pos)
+	} else if short_name.contains('__') {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot contain `__`, V uses it to build C names', id, pos)
+	} else if short_name.len > 1 && short_name[0] == `_` && short_name[1].is_capital() {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot start with `_` and an uppercase letter, C reserves such names', id, pos)
+	} else if generated_name_is_c_temporary_name(short_name) {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` is reserved for the temporaries of the generated C code', id, pos)
+	}
+}
+
+// generated_name_is_c_temporary_name reports names like `_t1`: `_`, lowercase letters,
+// then digits. The generated C code names its temporaries that way.
+fn generated_name_is_c_temporary_name(name string) bool {
+	if name.len < 2 || name[0] != `_` || !name[name.len - 1].is_digit() {
+		return false
+	}
+	mut i := 1
+	for i < name.len && name[i] >= `a` && name[i] <= `z` {
+		i++
+	}
+	for i < name.len && name[i].is_digit() {
+		i++
+	}
+	return i == name.len
+}
+
+// check_generated_type_name enforces the naming rules `@[generated]` keeps for type
+// names. Their C names join the type and its members with `__`, so a type name cannot
+// contain `__` or end with `_`: methods `_b` of `a` and `b` of `a_` would both become
+// `a___b`. A type cannot share the name of a builtin function either, because the call
+// `name(x)` would then be parsed as a cast.
+fn (mut tc TypeChecker) check_generated_type_name(node_id flat.NodeId, node flat.Node, pos token.Pos) {
+	if !tc.relaxes_identifier_case(node_id) || !tc.should_check_source_name(node_id) {
+		return
+	}
+	name := node.value.all_after_last('.')
+	if name.len == 0 {
+		return
+	}
+	identifier := match node.kind {
+		.struct_decl {
+			'struct name'
+		}
+		.interface_decl {
+			'interface name'
+		}
+		.enum_decl {
+			'enum name'
+		}
+		else {
+			if node.children_count > 0 {
+				'sum type name'
+			} else if node.typ.starts_with('fn') {
+				'fn type name'
+			} else {
+				'type alias name'
+			}
+		}
+	}
+	if name.contains('__') {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot contain `__`, V uses it to build C names', node_id, pos)
+	} else if name.ends_with('_') {
+		tc.record_error_at(.duplicate_decl, '${identifier} `${name}` cannot end with `_`, V uses `__` to build the C names of its members', node_id, pos)
+	}
+	if !name.contains('.') && (tc.fn_type_modules[name] or { '' }) == 'builtin' {
+		tc.record_error_at(.duplicate_decl, 'type `${name}` has the same name as a builtin function', node_id, pos)
 	}
 }
 
@@ -11344,9 +11449,10 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 		tc.record_error_at(.duplicate_decl, 'top level declaration cannot shadow builtin type', id, tc.fn_declaration_diagnostic_pos(node))
 	}
 	// `@[generated]` types need not start with a capital letter, so a function can
-	// share a type's name; `name(x)` would then be parsed as a cast.
+	// share a type's name; `name(x)` would then be parsed as a cast. The function can
+	// be declared in an ordinary file of the module, so check every file.
 	if !node.value.contains('.') && !node.is_static_type_method()
-		&& tc.relaxes_identifier_case(id) && tc.type_name_known_in_current_module(name) {
+		&& tc.generated_files.len > 0 && tc.type_name_known_in_current_module(name) {
 		tc.record_error_at(.duplicate_decl, 'function `${name}` has the same name as a type', id, tc.fn_declaration_diagnostic_pos(node))
 	}
 	// V1 treats os and strconv like builtin modules. Their long-standing private
@@ -11543,6 +11649,9 @@ fn (mut tc TypeChecker) check_sumtype_builtin_method_override(id flat.NodeId, no
 	}
 }
 
+// interface_internal_field_names are the members of every interface's C struct.
+const interface_internal_field_names = ['_typ', '_object', '_object_is_boxed']
+
 fn (mut tc TypeChecker) check_interface_member_names(node flat.Node) {
 	for i in 0 .. node.children_count {
 		field_id := tc.a.child(&node, i)
@@ -11552,6 +11661,12 @@ fn (mut tc TypeChecker) check_interface_member_names(node flat.Node) {
 		}
 		if field.op != .dot && field.typ.len == 0 {
 			// Embedded interfaces use their type name as `value`; they are not fields.
+			continue
+		}
+		if field.op != .dot && field.value in interface_internal_field_names
+			&& tc.relaxes_identifier_case(field_id) && tc.should_check_source_name(field_id) {
+			// The C struct of an interface already has these members.
+			tc.record_error_at(.duplicate_decl, 'field name `${field.value}` is reserved for the interface value itself', field_id, tc.node_value_diagnostic_pos(field_id))
 			continue
 		}
 		if !tc.should_check_source_name(field_id) || snake_case_name_is_valid(field.value) {
@@ -11613,6 +11728,17 @@ fn (tc &TypeChecker) struct_has_invalid_reference_default(receiver string) bool 
 		}
 	}
 	return false
+}
+
+// check_generated_parameter_name applies the `@[generated]` naming rules to a parameter.
+// Ordinary parameter names are not checked, but generated code must not use the names
+// of the C temporaries: `fn f(_t1 int)` would read an uninitialized `_t1` in C.
+fn (mut tc TypeChecker) check_generated_parameter_name(id flat.NodeId, param flat.Node, pos token.Pos) {
+	if param.value.len == 0 || param.value == '_' || !tc.relaxes_identifier_case(id)
+		|| !tc.should_check_source_name(id) {
+		return
+	}
+	tc.check_generated_value_name(id, param.value, 'parameter name', pos)
 }
 
 fn (mut tc TypeChecker) check_reserved_parameter_name(id flat.NodeId) {
@@ -16663,7 +16789,8 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 		if field.kind != .enum_field {
 			continue
 		}
-		if tc.should_check_source_name(field_id) && !field.value.starts_with('_')
+		if tc.should_check_source_name(field_id)
+			&& (!field.value.starts_with('_') || tc.relaxes_identifier_case(field_id))
 			&& !snake_case_name_is_valid(field.value) {
 			tc.check_snake_case_name(field_id, field.value, 'field name', tc.source_line_declaration_pos(field_id))
 		}
@@ -16992,6 +17119,7 @@ fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, nod
 		return
 	}
 	name_pos := tc.type_declaration_name_pos(node_id)
+	tc.check_generated_type_name(node_id, node, name_pos)
 	if node.value == 'IError' && tc.cur_module != 'builtin'
 		&& node.kind in [.struct_decl, .interface_decl] {
 		kind := if node.kind == .struct_decl { 'struct' } else { 'interface' }
@@ -17141,20 +17269,20 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 			&& !tc.current_file_uses_nested_module_path() {
 			tc.record_error_at(.duplicate_decl, 'duplicate of a module name `${qname}`', field_id, tc.node_value_diagnostic_pos(field_id))
 		}
-		if field.value != '_' && tc.relaxes_identifier_case(field_id)
+		if field.value != '_' && tc.generated_files.len > 0
 			&& tc.should_check_source_name(field_id)
 			&& tc.type_name_known_in_current_module(field.value) {
 			tc.record_error_at(.duplicate_decl, 'const `${field.value}` has the same name as a type', field_id, tc.node_value_diagnostic_pos(field_id))
 		}
 		if field.value == '_' {
 			tc.record_error_at(.duplicate_decl, 'cannot use `_` as a const name', field_id, tc.node_value_diagnostic_pos(field_id))
+		} else if tc.relaxes_identifier_case(field_id) {
+			if tc.should_check_source_name(field_id) && !field.value.starts_with('C.') {
+				tc.check_generated_value_name(field_id, field.value, 'const name', tc.node_value_diagnostic_pos(field_id))
+			}
 		} else if tc.should_check_source_name(field_id) && !field.value.starts_with('C.')
 			&& field.value != field.value.to_lower() {
-			if tc.relaxes_identifier_case(field_id) {
-				tc.check_generated_value_name(field_id, field.value, 'const name', tc.node_value_diagnostic_pos(field_id))
-			} else {
-				tc.record_error_at(.duplicate_decl, 'const names cannot contain uppercase letters, use snake_case instead', field_id, tc.node_value_diagnostic_pos(field_id))
-			}
+			tc.record_error_at(.duplicate_decl, 'const names cannot contain uppercase letters, use snake_case instead', field_id, tc.node_value_diagnostic_pos(field_id))
 		}
 		if tc.has_active_import(field.value) {
 			tc.record_error_at(.duplicate_decl, 'const `${field.value}` conflicts with imported module `${field.value}`', field_id, tc.node_value_diagnostic_pos(field_id))

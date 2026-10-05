@@ -102,6 +102,8 @@ mut:
 	cur_module                   string
 	is_translated                bool
 	is_generated                 bool // `@[generated] module x`: type names need not be capitalized
+	file_type_names              map[string]bool // types declared so far in the current file
+	file_type_names_indexed      int // nodes before this index are in `file_type_names`
 	cur_fn                       string
 	cur_fn_offset                int = -1
 	cur_fn_generic_params        []string
@@ -377,6 +379,8 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.cur_file = path
 	p.cur_file_id = p.next_file_id
 	p.next_file_id++
+	p.file_type_names.clear()
+	p.file_type_names_indexed = p.a.nodes.len
 	p.tok_pos = 0
 	p.tok_end = 0
 	p.prev_tok_end = 0
@@ -3390,16 +3394,47 @@ fn (mut p Parser) is_generated_type_name(name string) bool {
 // lowercase_type_name_starts_struct_init reports whether `name{` is a struct literal
 // of a type declared without a leading capital letter. Outside `@[generated]` modules
 // such a declaration is invalid, but parsing the literal lets the checker report the
-// declaration's name instead of `expression evaluated but not used` at the `{`.
+// declaration's name instead of `expression evaluated but not used` at the `{`. There
+// only the earlier declarations of the same file count: indexing the other files of
+// the module would cost every ordinary build a rescan of its sources.
 fn (mut p Parser) lowercase_type_name_starts_struct_init(name string) bool {
-	return (p.is_generated || p.cur_module != 'builtin') && p.is_lowercase_type_name(name)
+	if p.is_generated {
+		return p.is_lowercase_type_name(name)
+	}
+	if p.cur_module == 'builtin' || !p.may_be_lowercase_type_name(name) {
+		return false
+	}
+	return p.resolve_local_type_name(name) != name || p.file_declares_type_name(name)
+}
+
+// may_be_lowercase_type_name reports whether `name`, which does not start with a capital
+// letter, can name a type of the current module rather than a value.
+fn (p &Parser) may_be_lowercase_type_name(name string) bool {
+	return name.len > 0 && !(name[0] >= `A` && name[0] <= `Z`) && !name.contains('.')
+		&& !is_builtin_type(name) && !p.is_local_binding(name)
+}
+
+// file_declares_type_name reports whether a type named `name` is declared earlier in
+// the current file. It indexes the nodes added since its previous call.
+fn (mut p Parser) file_declares_type_name(name string) bool {
+	if p.file_type_names_indexed > p.a.nodes.len {
+		p.file_type_names_indexed = p.a.nodes.len
+	}
+	for p.file_type_names_indexed < p.a.nodes.len {
+		node := p.a.nodes[p.file_type_names_indexed]
+		p.file_type_names_indexed++
+		if node.pos.id == p.cur_file_id
+			&& node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl] {
+			p.file_type_names[node.value] = true
+		}
+	}
+	return p.file_type_names[name]
 }
 
 // is_lowercase_type_name reports whether `name`, which does not start with a capital
 // letter, is a type declared in the current module.
 fn (mut p Parser) is_lowercase_type_name(name string) bool {
-	if name.len == 0 || (name[0] >= `A` && name[0] <= `Z`) || name.contains('.')
-		|| is_builtin_type(name) || p.is_local_binding(name) {
+	if !p.may_be_lowercase_type_name(name) {
 		return false
 	}
 	if p.resolve_local_type_name(name) != name {
