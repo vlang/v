@@ -90,7 +90,7 @@ pub fn (mut f File) add_line_directive(offset int, logical_line int, file string
 		}
 	}
 	logical_file := if file.len > 0 {
-		file.clone()
+		file
 	} else if lo > 0 {
 		f.line_directives[lo - 1].file
 	} else {
@@ -154,7 +154,9 @@ pub fn (f &File) logical_line(line int) (string, int) {
 	}
 	directive := f.line_directives[lo - 1]
 	name := if directive.file.len > 0 { directive.file } else { f.name }
-	return name, directive.logical_line + line - directive.line
+	// The lines after `#line 2147483647` keep the largest line number.
+	logical_line := i64(directive.logical_line) + line - directive.line
+	return name, if logical_line > max_i32 { max_i32 } else { int(logical_line) }
 }
 
 // logical_position_at resolves a file-local byte offset to the position that it

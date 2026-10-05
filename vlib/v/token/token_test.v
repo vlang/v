@@ -146,6 +146,19 @@ fn test_line_directives_remap_the_lines_after_them() {
 	assert copy_file == 'other.zbr' && copy_line == 5
 }
 
+fn test_line_numbers_after_the_largest_line_directive_do_not_overflow() {
+	src := '#line 2147483647
+A
+B
+'
+	mut fs := FileSet.new()
+	mut f := fs.add_file('x.v', src.len)
+	f.index_lines(src)
+	f.add_line_directive(0, max_i32, '')
+	assert f.logical_position_at(src.index('A') or { -1 }).line == max_i32
+	assert f.logical_position_at(src.index('B') or { -1 }).line == max_i32
+}
+
 fn parsed_line_directive(args string) string {
 	line, file := parse_line_directive(args) or { return 'error: ${err.msg()}' }
 	return '${line} ${file}'

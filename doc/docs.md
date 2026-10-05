@@ -10924,8 +10924,10 @@ V then uses these locations:
   `@FILE`, `@LINE`, `@FILE_LINE`, `@LOCATION`, and panics of `-g` builds.
 - in the `#line` directives of the C code that `-g` generates, so debuggers and
   native backtraces show the original source.
+- in the line counts of `-coverage`.
 
-A relative file name is relative to the directory that V runs in. `@DIR`, `@VMODROOT` and
+Unlike in C, a directive in a `$if` branch that is not compiled still applies to the lines after
+it. A relative file name is relative to the directory that V runs in. `@DIR`, `@VMODROOT` and
 `$embed_file()` still refer to the generated `.v` file, since they locate files on disk.
 
 # Appendices
