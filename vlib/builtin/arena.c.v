@@ -10,11 +10,11 @@ module builtin
 // built in an arena keeps working after the arena is popped. The chunks of an
 // arena are released in bulk by v_arena_reset and v_arena_free.
 //
-// Every live chunk is listed in a process-wide, lock-protected registry, so
-// free() and realloc on any thread can tell arena memory from heap memory.
-// Programs that never create an arena only pay a check of one global in each
-// allocation entry point (see g_arena_alloc_hook). -prealloc and -gc vgc
-// builds never call into this file.
+// Every live chunk is listed in a process-wide registry, so free() and
+// realloc on any thread can tell arena memory from heap memory. Its readers
+// take no lock (see arena_registry_find). Programs that never create an arena
+// only pay a check of one global in each allocation entry point (see
+// g_arena_alloc_hook). -prealloc and -gc vgc builds never call into this file.
 
 const arena_magic = u32(0x41524e41)
 const arena_default_chunk_size = isize(64 * 1024)
@@ -51,6 +51,20 @@ mut:
 	owner &VArena = unsafe { nil }
 }
 
+// VArenaRegistry lists the live chunks of all arenas, sorted by start address.
+// Readers search it without a lock, so a registry that was replaced by a bigger
+// one is never freed: a reader may still be searching it. Each replacement
+// doubles the capacity, so the retired ones hold fewer entries than the live one.
+struct VArenaRegistry {
+	cap    int
+	ranges &VArenaRange = unsafe { nil }
+}
+
+fn C.atomic_load_u32(voidptr) u32
+fn C.atomic_store_u32(voidptr, u32)
+fn C.atomic_load_ptr(voidptr) voidptr
+fn C.atomic_store_ptr(voidptr, voidptr)
+
 // The allocation entry points call these hooks, which v_arena_new installs
 // and nothing clears. Until then, each entry point only checks one global, and
 // programs that never create an arena do not even contain the arena code.
@@ -64,11 +78,14 @@ __global g_arena_owns_hook fn (ptr voidptr) bool
 // thread-local (see `is_builtin_arena_top` in the C backend), so spawned
 // threads start with the default allocator.
 __global g_arena_top &VArena
-// The registry of live chunks, sorted by start address, guarded by g_arena_lock.
+// g_arena_lock serializes the writers of the registry and the installation of
+// the hooks. g_arena_seq is odd while a writer changes the registry; a reader
+// that sees it change during a search searches again. Writers store the
+// registry fields with atomics, so that readers never race with them.
 __global g_arena_lock i32
-__global g_arena_ranges &VArenaRange
-__global g_arena_ranges_len i32
-__global g_arena_ranges_cap int
+__global g_arena_seq u32
+__global g_arena_registry &VArenaRegistry
+__global g_arena_ranges_len u32
 
 @[inline]
 fn arena_align() isize {
@@ -82,7 +99,7 @@ fn arena_chunk_header_size() isize {
 }
 
 @[inline]
-fn arena_registry_lock() {
+fn arena_lock() {
 	for C.v_prealloc_atomic_cas_i32(&g_arena_lock, 0, 1) == 0 {
 		for C.v_prealloc_atomic_load_i32(&g_arena_lock) != 0 {
 		}
@@ -90,21 +107,51 @@ fn arena_registry_lock() {
 }
 
 @[inline]
-fn arena_registry_unlock() {
+fn arena_unlock() {
 	// A CAS is a full barrier with every supported C compiler; a plain store
 	// would not publish the registry writes on weakly ordered CPUs.
 	C.v_prealloc_atomic_cas_i32(&g_arena_lock, 1, 0)
 }
 
-// arena_registry_upper returns the index of the first range starting after
-// `addr`. The registry lock must be held.
+// arena_registry_begin_write locks the registry for a change.
+@[inline]
+fn arena_registry_begin_write() {
+	arena_lock()
+	C.atomic_store_u32(&g_arena_seq, C.atomic_load_u32(&g_arena_seq) + 1)
+}
+
+@[inline]
+fn arena_registry_end_write() {
+	C.atomic_store_u32(&g_arena_seq, C.atomic_load_u32(&g_arena_seq) + 1)
+	arena_unlock()
+}
+
+@[inline; unsafe]
+fn arena_range_start(r &VArenaRange) usize {
+	return usize(C.atomic_load_ptr(&r.start))
+}
+
+@[inline; unsafe]
+fn arena_range_stop(r &VArenaRange) usize {
+	return usize(C.atomic_load_ptr(&r.stop))
+}
+
+@[inline; unsafe]
+fn arena_range_set(mut r VArenaRange, value VArenaRange) {
+	C.atomic_store_ptr(&r.start, voidptr(value.start))
+	C.atomic_store_ptr(&r.stop, voidptr(value.stop))
+	C.atomic_store_ptr(&r.owner, value.owner)
+}
+
+// arena_registry_upper returns the index of the first of the `len` ranges of
+// `reg` that starts after `addr`.
 @[direct_array_access; unsafe]
-fn arena_registry_upper(addr usize) int {
+fn arena_registry_upper(reg &VArenaRegistry, len int, addr usize) int {
 	mut lo := 0
-	mut hi := int(g_arena_ranges_len)
+	mut hi := len
 	for lo < hi {
 		mid := lo + (hi - lo) / 2
-		if g_arena_ranges[mid].start <= addr {
+		if arena_range_start(&reg.ranges[mid]) <= addr {
 			lo = mid + 1
 		} else {
 			hi = mid
@@ -115,43 +162,92 @@ fn arena_registry_upper(addr usize) int {
 
 @[unsafe]
 fn arena_registry_add(owner &VArena, chunk &VArenaChunk) {
-	arena_registry_lock()
+	arena_registry_begin_write()
 	unsafe {
 		len := int(g_arena_ranges_len)
-		if len == g_arena_ranges_cap {
-			new_cap := if g_arena_ranges_cap == 0 { 16 } else { g_arena_ranges_cap * 2 }
-			bytes := usize(new_cap) * sizeof(VArenaRange)
-			ranges := &VArenaRange(C.realloc(g_arena_ranges, bytes))
-			vmemory_abort_on_nil(ranges, isize(bytes))
-			g_arena_ranges = ranges
-			g_arena_ranges_cap = new_cap
+		mut reg := g_arena_registry
+		if reg == nil || len == reg.cap {
+			new_cap := if reg == nil { 16 } else { reg.cap * 2 }
+			bytes := sizeof(VArenaRegistry) + usize(new_cap) * sizeof(VArenaRange)
+			mut grown := &VArenaRegistry(C.malloc(bytes))
+			vmemory_abort_on_nil(grown, isize(bytes))
+			grown.cap = new_cap
+			grown.ranges = &VArenaRange(&u8(grown) + sizeof(VArenaRegistry))
+			if len > 0 {
+				C.memcpy(grown.ranges, reg.ranges, usize(len) * sizeof(VArenaRange))
+			}
+			// The old registry is left allocated (see VArenaRegistry).
+			C.atomic_store_ptr(&g_arena_registry, grown)
+			reg = grown
 		}
 		start := usize(chunk.start)
-		i := arena_registry_upper(start)
-		C.memmove(&g_arena_ranges[i + 1], &g_arena_ranges[i], usize(len - i) * sizeof(VArenaRange))
-		g_arena_ranges[i] = VArenaRange{
+		i := arena_registry_upper(reg, len, start)
+		for j := len; j > i; j-- {
+			arena_range_set(mut reg.ranges[j], reg.ranges[j - 1])
+		}
+		arena_range_set(mut reg.ranges[i], VArenaRange{
 			start: start
 			stop:  usize(chunk.stop)
 			owner: owner
-		}
-		C.v_prealloc_atomic_add_i32(&g_arena_ranges_len, 1)
+		})
+		C.atomic_store_u32(&g_arena_ranges_len, u32(len + 1))
 	}
-	arena_registry_unlock()
+	arena_registry_end_write()
 }
 
 @[unsafe]
 fn arena_registry_remove(chunk &VArenaChunk) {
-	arena_registry_lock()
+	arena_registry_begin_write()
 	unsafe {
-		start := usize(chunk.start)
-		i := arena_registry_upper(start) - 1
+		reg := g_arena_registry
 		len := int(g_arena_ranges_len)
-		if i >= 0 && g_arena_ranges[i].start == start {
-			C.memmove(&g_arena_ranges[i], &g_arena_ranges[i + 1], usize(len - i - 1) * sizeof(VArenaRange))
-			C.v_prealloc_atomic_add_i32(&g_arena_ranges_len, -1)
+		start := usize(chunk.start)
+		i := arena_registry_upper(reg, len, start) - 1
+		if i >= 0 && reg.ranges[i].start == start {
+			for j in i .. len - 1 {
+				arena_range_set(mut reg.ranges[j], reg.ranges[j + 1])
+			}
+			C.atomic_store_u32(&g_arena_ranges_len, u32(len - 1))
 		}
 	}
-	arena_registry_unlock()
+	arena_registry_end_write()
+}
+
+// arena_registry_find returns the arena that owns `addr` (nil for any other
+// memory) and the end of the chunk that contains it. It takes no lock, so
+// free() on many threads does not serialize: a search that overlapped a change
+// of the registry is repeated. Its loads stay inside the registry it searches,
+// whatever a writer does meanwhile.
+@[direct_array_access; unsafe]
+fn arena_registry_find(addr usize) (&VArena, usize) {
+	for {
+		seq := C.atomic_load_u32(&g_arena_seq)
+		if seq & 1 != 0 {
+			continue
+		}
+		reg := &VArenaRegistry(C.atomic_load_ptr(&g_arena_registry))
+		mut owner := &VArena(nil)
+		mut stop := usize(0)
+		if reg != nil {
+			mut len := int(C.atomic_load_u32(&g_arena_ranges_len))
+			if len > reg.cap {
+				// The length of a registry that replaced this one.
+				len = reg.cap
+			}
+			i := arena_registry_upper(reg, len, addr) - 1
+			if i >= 0 {
+				chunk_stop := arena_range_stop(&reg.ranges[i])
+				if addr < chunk_stop {
+					owner = &VArena(C.atomic_load_ptr(&reg.ranges[i].owner))
+					stop = chunk_stop
+				}
+			}
+		}
+		if C.atomic_load_u32(&g_arena_seq) == seq {
+			return owner, stop
+		}
+	}
+	return nil, 0
 }
 
 // arena_owner returns the arena that owns `ptr` (nil for any other memory) and
@@ -161,7 +257,7 @@ fn arena_owner(ptr voidptr) (&VArena, usize) {
 	addr := usize(ptr)
 	unsafe {
 		// Only this thread changes the arenas on its own stack, so they can be
-		// searched without the lock. They own most memory freed in a scope.
+		// searched without the registry. They own most memory freed in a scope.
 		mut a := g_arena_top
 		for a != nil {
 			mut c := a.chunk
@@ -173,19 +269,10 @@ fn arena_owner(ptr voidptr) (&VArena, usize) {
 			}
 			a = a.below
 		}
-		if C.v_prealloc_atomic_load_i32(&g_arena_ranges_len) == 0 {
+		if C.atomic_load_u32(&g_arena_ranges_len) == 0 {
 			return nil, 0
 		}
-		mut owner := &VArena(nil)
-		mut stop := usize(0)
-		arena_registry_lock()
-		i := arena_registry_upper(addr) - 1
-		if i >= 0 && addr < g_arena_ranges[i].stop {
-			owner = g_arena_ranges[i].owner
-			stop = g_arena_ranges[i].stop
-		}
-		arena_registry_unlock()
-		return owner, stop
+		return arena_registry_find(addr)
 	}
 }
 
@@ -387,11 +474,15 @@ pub fn v_arena_new(chunk_size isize) voidptr {
 	} else {
 		arena_max_chunk_size
 	}
+	// The lock orders the installation with the one of other threads, and the
+	// unlock publishes the hooks together.
+	arena_lock()
 	if g_arena_alloc_hook == unsafe { nil } {
 		g_arena_realloc_hook = arena_realloc
 		g_arena_owns_hook = arena_owns_ptr
 		g_arena_alloc_hook = arena_alloc_current
 	}
+	arena_unlock()
 	return a
 }
 

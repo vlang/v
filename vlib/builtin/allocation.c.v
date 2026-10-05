@@ -523,10 +523,6 @@ pub fn free(ptr voidptr) {
 		// But hint the allocator for faster reuse.
 		vgc_free(ptr)
 	} $else {
-		// Arena memory is released in bulk by its arena (see arena.c.v).
-		if _unlikely_(g_arena_owns_hook != unsafe { nil }) && g_arena_owns_hook(ptr) {
-			return
-		}
 		$if gcboehm ? {
 			// It is generally better to leave it to Boehm's gc to free things.
 			// Calling C.GC_FREE(ptr) was tried initially, but does not work
@@ -534,9 +530,17 @@ pub fn free(ptr voidptr) {
 			//
 			// The exception is doing leak detection for manual memory management:
 			$if gcboehm_leak ? {
+				// Arena memory is released in bulk by its arena (see arena.c.v).
+				if _unlikely_(g_arena_owns_hook != unsafe { nil }) && g_arena_owns_hook(ptr) {
+					return
+				}
 				unsafe { C.GC_FREE(ptr) }
 			}
 		} $else {
+			// Arena memory is released in bulk by its arena (see arena.c.v).
+			if _unlikely_(g_arena_owns_hook != unsafe { nil }) && g_arena_owns_hook(ptr) {
+				return
+			}
 			// Manual memory management: this is the only path that actually returns
 			// the block to the C allocator, and it mirrors where _ht_alloc fires, so
 			// report the free here (after the nil / none__ / nop / GC guards above).

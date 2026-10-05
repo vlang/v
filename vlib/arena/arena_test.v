@@ -266,6 +266,60 @@ fn test_spawned_threads_have_their_own_arenas() {
 	assert unsafe { p[15] } == 42
 }
 
+fn churn_arenas(rounds int) int {
+	mut total := 0
+	for round in 0 .. rounds {
+		mut a := arena.new(chunk_size: 1024)
+		a.push()
+		mut parts := []string{}
+		for i in 0 .. 32 {
+			parts << 'r${round}-i${i}-' + 'x'.repeat(i)
+		}
+		total += parts.join(',').len
+		a.pop()
+		a.free()
+	}
+	return total
+}
+
+fn release_repeatedly(p &u8, rounds int) bool {
+	for _ in 0 .. rounds {
+		unsafe { free(p) }
+		q := unsafe { realloc_data(p, 16, 64) }
+		if q == p || unsafe { q[0] != 42 || q[15] != 42 } {
+			return false
+		}
+		unsafe { free(q) }
+	}
+	return true
+}
+
+fn test_other_threads_recognize_arena_memory_while_arenas_change() {
+	mut main_arena := arena.new()
+	defer {
+		main_arena.free()
+	}
+	main_arena.push()
+	p := unsafe { malloc(16) }
+	unsafe { vmemset(p, 42, 16) }
+	main_arena.pop()
+	// The registry of chunks changes on some threads, while others look up
+	// arena memory in it.
+	mut churners := []thread int{}
+	for _ in 0 .. 3 {
+		churners << spawn churn_arenas(100)
+	}
+	mut releasers := []thread bool{}
+	for _ in 0 .. 3 {
+		releasers << spawn release_repeatedly(p, 2000)
+	}
+	totals := churners.wait()
+	assert releasers.wait().all(it)
+	assert totals.all(it == churn_arenas(100))
+	assert main_arena.owns(p)
+	assert unsafe { p[15] } == 42
+}
+
 fn test_arena_memory_is_reused_in_loops() {
 	mut a := arena.new(chunk_size: 4096)
 	defer {
