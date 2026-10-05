@@ -1249,7 +1249,9 @@ fn copy_element_to(dest voidptr, src voidptr, element_size int) {
 // `a << x`, where it otherwise stays in registers.
 @[noinline]
 fn (a array) grown(required int) array {
-	mut res := a
+	mut res := array{
+		...a
+	}
 	res.ensure_cap(required)
 	return res
 }
@@ -1258,7 +1260,9 @@ fn (a array) grown(required int) array {
 // It is out of line and by value for the reasons that grown is.
 @[noinline]
 fn (a array) unshared() array {
-	mut res := a
+	mut res := array{
+		...a
+	}
 	res.clone_shallow_to_cap(res.cap)
 	return res
 }
