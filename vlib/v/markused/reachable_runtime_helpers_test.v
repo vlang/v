@@ -426,6 +426,101 @@ fn main() { values := [1, 2, 3]; assert values[0] == 1; ${call} }
 	}
 }
 
+fn test_checked_enum_constants_do_not_root_closure_runtime() {
+	for source in ['Choice.first', 'AliasChoice.first'] {
+		mut a, tc := checked_runtime_helper_source('module main
+enum Choice { first second }
+type AliasChoice = Choice
+fn main() { value := ${source}; assert value == Choice.first }
+')
+		a.nodes << flat.Node{
+			kind:  .import_decl
+			value: 'builtin.closure'
+			typ:   '__v3_builtin_closure_runtime'
+		}
+		used := mark_used(a, tc)
+		assert !used['closure.closure_init'], source
+		assert !used['closure.closure_create_with_data'], source
+		assert !used['closure.closure_try_destroy'], source
+		assert !used['new_map'], source
+		assert !used['map.set'], source
+	}
+}
+
+fn test_enum_alias_method_values_keep_closure_runtime() {
+	mut a, tc := checked_runtime_helper_source('module main
+enum Choice { first second }
+type AliasChoice = Choice
+fn (value AliasChoice) number() int { return int(value) }
+fn main() {
+	value := AliasChoice(Choice.first)
+	callback := value.number
+	assert callback() == 0
+}
+')
+	a.nodes << flat.Node{
+		kind:  .import_decl
+		value: 'builtin.closure'
+		typ:   '__v3_builtin_closure_runtime'
+	}
+	used := mark_used(a, tc)
+	assert used['AliasChoice.number']
+	assert used['closure.closure_init']
+	assert used['closure.closure_create_with_data']
+	assert used['closure.closure_try_destroy']
+}
+
+fn test_assignment_targets_do_not_root_closure_runtime() {
+	for source in ['item.number = 3', 'item.number += 3', 'unsafe { values.len = 3 }',
+		'unsafe { values.len += 1 }', 'item.number, other = 3, 4', 'unsafe { values.len, other = 3, 4 }'] {
+		mut a, tc := checked_runtime_helper_source('module main
+struct Item { mut: number int }
+fn main() {
+	mut item := Item{}
+	mut values := [0, 0, 0, 0]
+	mut other := 0
+	${source}
+	assert other >= 0
+}
+')
+		a.nodes << flat.Node{
+			kind:  .import_decl
+			value: 'builtin.closure'
+			typ:   '__v3_builtin_closure_runtime'
+		}
+		used := mark_used(a, tc)
+		for helper in ['closure.closure_init', 'closure.closure_create_with_data',
+			'closure.closure_try_destroy', 'new_map', 'map.set'] {
+			assert !used[helper], '${helper}: ${source}'
+		}
+	}
+}
+
+fn test_assignment_operands_keep_bound_method_values() {
+	for source in [
+		'mut callback := plain; callback = item.value; assert callback() == 3',
+		'mut values := [0, 0, 0, 0]; values[(item.value)()] = 3; assert values[3] == 3',
+	] {
+		mut a, tc := checked_runtime_helper_source('module main
+struct Item { number int }
+fn (i Item) value() int { return i.number }
+fn plain() int { return 0 }
+fn main() { item := Item{ number: 3 }; ${source} }
+')
+		a.nodes << flat.Node{
+			kind:  .import_decl
+			value: 'builtin.closure'
+			typ:   '__v3_builtin_closure_runtime'
+		}
+		used := mark_used(a, tc)
+		assert used['Item.value'], source
+		for helper in ['closure.closure_init', 'closure.closure_create_with_data',
+			'closure.closure_try_destroy'] {
+			assert used[helper], '${helper}: ${source}'
+		}
+	}
+}
+
 fn test_builtin_closure_globals_wait_for_reached_runtime() {
 	root := os.join_path(os.temp_dir(), 'v_reachable_closure_globals_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'vlib', 'builtin', 'closure')) or { panic(err) }
@@ -466,5 +561,97 @@ fn main() { values := [1, 2, 3]; assert values[0] == 1; ${call} }
 		assert used['closure.closure_init'] == reached
 		assert used['new_map'] == reached
 		assert used['map.set'] == reached
+	}
+}
+
+fn test_repeated_script_stringification_keeps_visible_fields() {
+	for skipped in [true, false] {
+		attribute := if skipped { '@[str: skip]' } else { '' }
+		prints := 'println(value)\nprintln("\${value}")\n'.repeat(64)
+		a, tc := checked_runtime_helper_source('module main
+struct Hidden {}
+fn (_ Hidden) str() string { return "hidden" }
+struct Item {
+	hidden Hidden ${attribute}
+	values []f64
+}
+value := Item{ values: [1.25] }
+${prints}
+')
+		used := mark_used(a, tc)
+		assert used['Hidden.str'] == !skipped
+		assert used['f64.str']
+		assert used['strconv__f64_to_str_l']
+	}
+}
+
+fn test_script_stringification_helpers_use_imports_and_local_bindings() {
+	root := os.join_path(os.temp_dir(), 'v_script_runtime_helpers_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	path := os.join_path(root, 'main.v')
+	for body in ['println(math.sin(1.25))', 'value := math.sin(1.25)\nprintln(value)',
+		'println("\${math.sin(1.25):.2f}")', 'value := math.sin(1.25)\nprintln("\${value:.2f}")',
+		'println(math.small(1.25))', 'value := math.small(1.25)\nprintln(value)',
+		'println(math.values())', 'println(math.alias_value())', 'value := math.sin(1.25)\nprintln(1)'] {
+		os.write_file(path, 'module main
+import math
+fn unused() { println(f64(2.5)) }
+${body}
+') or { panic(err) }
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := types.TypeChecker.new(a)
+		tc.collect(a)
+		// Only imported declarations are available before script expressions are checked.
+		tc.fn_ret_types['math.sin'] = types.Type(types.f64_)
+		tc.fn_ret_types['math.small'] = types.Type(types.f32_)
+		tc.fn_ret_types['math.values'] = types.Type(types.Array{ elem_type: types.Type(types.f64_) })
+		tc.type_aliases['dep.Number'] = 'f64'
+		tc.type_alias_modules['dep.Number'] = 'dep'
+		tc.type_aliases['other.Number'] = 'int'
+		tc.type_alias_modules['other.Number'] = 'other'
+		tc.fn_ret_types['math.alias_value'] = types.Type(types.Alias{
+			name:      'dep.Number'
+			base_type: types.Type(types.f64_)
+		})
+		tc.cur_module = 'unrelated'
+		tc.cur_file = 'unrelated.v'
+		tc.register_file_import('dep', 'other')
+		assert types.unalias_type(tc.parse_type('dep.Number')) == types.Type(types.int_)
+		assert types.unalias_type(tc.parse_canonical_type('dep.Number')) == types.Type(types.f64_)
+		collector := CallCollector{ a: a, tc: &tc }
+		mut calls := []string{}
+		mut local_values := map[string]bool{}
+		mut local_types := map[string]string{}
+		for file in a.nodes {
+			if file.kind != .file { continue }
+			for i in 0 .. file.children_count {
+				id := a.child(&file, i)
+				if markused_is_top_level_stmt(a.node(id)) {
+					collector.collect_top_level_stmt_calls(id, 'main', {
+						'math': 'math'
+					},
+						mut local_values, mut local_types, mut calls)
+				}
+			}
+		}
+		if body.ends_with('println(1)') {
+			assert 'f64.str' !in calls, body
+			assert 'strconv__f64_to_str_l' !in calls, body
+			used := mark_used(a, &tc)
+			assert !used['f64.str']
+			assert !used['strconv__f64_to_str_l']
+		} else if body.contains('small') {
+			assert 'f32.str' in calls, body
+			assert 'strconv__f32_to_str_l' in calls, body
+			assert 'f64.str' in calls, body
+		} else {
+			assert 'f64.str' in calls, body
+			assert 'strconv__f64_to_str_l' in calls, body
+		}
 	}
 }
