@@ -1,4 +1,5 @@
-// vtest build: !msvc
+// vtest build: !msvc && !tinyc
+// tcc rejects XMM registers as asm clobbers (`invalid clobber register 'xmm0'`).
 
 // raw_simd_pressure deliberately lists xmm6-xmm15 as clobbers. Those registers are
 // nonvolatile in the Win64 ABI, so GCC/Clang must preserve them around this block.

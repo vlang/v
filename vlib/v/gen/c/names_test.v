@@ -5,6 +5,62 @@ import v.flat
 import v.pref
 import v.types
 
+fn test_used_function_lookup_preserves_source_and_c_spelling() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	mut used := {
+		'dep.read': true
+		'dep__run': true
+		'v_malloc': true
+	}
+	g.used_fns = &used
+	assert g.used_fn_contains_in_module('read', 'dep')
+	assert g.used_fn_contains_in_module('run', 'dep')
+	assert g.used_fn_contains_in_module('malloc', 'main')
+	assert !g.used_fn_contains_in_module('absent', 'dep')
+}
+
+fn test_ierror_method_lookup_preserves_source_and_c_spelling() {
+	mut g := FlatGen.new()
+	assert !g.should_emit_ierror_method('Box.message', 'dep.Box.message')
+	g.ierror_method_emit_names['Box.message'] = true
+	assert g.should_emit_ierror_method('Box.message', 'dep.Box.message')
+	g.ierror_method_emit_names.clear()
+	g.ierror_method_emit_names['dep__Box__message'] = true
+	assert g.should_emit_ierror_method('Box.message', 'dep.Box.message')
+	assert !g.should_emit_ierror_method('Box.code', 'dep.Box.code')
+}
+
+fn test_program_specialization_preserves_generated_functions_without_generic_names() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	node := flat.Node{
+		kind:  .fn_decl
+		value: 'Box.read'
+	}
+	assert !g.is_program_specialization_fn_node_with_qfn(node, 0, 'Box__read', 'program.v')
+	a.specialized_fn_nodes[0] = true
+	assert g.is_program_specialization_fn_node_with_qfn(node, 0, 'Box__read', 'program.v')
+	a.specialized_fn_nodes.clear()
+	g.cache_program_files['program.v'] = true
+	for name in ['__v3_sum_eq_Box', '__v3_autostr_Box', '__v3_default_clone_Box'] {
+		generated := flat.Node{
+			kind:  .fn_decl
+			value: name
+		}
+		assert g.is_program_specialization_fn_node_with_qfn(generated, 1, name, 'program.v')
+		assert !g.is_program_specialization_fn_node_with_qfn(generated, 1, name, 'library.v')
+	}
+	tc.specialized_generic_fns['Box__read'] = true
+	assert g.is_program_specialization_fn_node_with_qfn(node, 0, 'Box__read', 'program.v')
+}
+
 // test_c_name_sanitize_operator_overloads validates this v3 regression case.
 fn test_c_name_sanitize_operator_overloads() {
 	assert c_name('Point.<') == 'Point__lt'

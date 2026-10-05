@@ -17,6 +17,9 @@ available for non-test programs. JavaScript test sources are retained for future
 The `v fmt` command uses `v.parser` and `v.gen.v`. Formatter-mode parsing retains comments,
 compile-time branches, inline assembly, SQL bodies, and literal prefixes so they round-trip
 without a legacy formatter path.
+It also preserves literals of locally declared lowercase types, including declarations that
+follow their uses or appear in inactive compile-time branches. Normal compilation still checks
+the type naming rules.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
@@ -135,6 +138,10 @@ multiple input paths. `-cc <executable>` selects the C compiler. V3 uses
 `-gc boehm_full_opt` by default and supports the V1 collector modes; compiler self-builds
 disable GC regardless of the requested mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
+When an explicit `-cc tcc` build fails, the driver retries with the platform C compiler
+and reports the first error line from tcc in its fallback warning. This retry applies to
+all tcc failures. `-show-c-output` displays the complete original diagnostics, and
+`-no-retry-compilation` disables the retry.
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
@@ -209,8 +216,18 @@ Production, test, shared/live, ownership/autofree, object-file, profiling/covera
 custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL modes are currently
 rejected.
 
-A conventional C-backend self-host prunes FastC along with the other optional backends. Pass
-`-compile-backend fastc` or `-all-backends` when the generated compiler should retain `-b fastc`.
+Builds of the full `cmd/v` CLI (`make`, `makev.bat`, `v self`, `v up`) keep FastC, so default V
+executables accept `-b fastc`; `-d skip_fastc` leaves it out. Portable `-cross` C (the `vc/v.c` and
+`vc/v_win.c` bootstrap snapshots) leaves it out too, because FastC's libtcc linking and Mach-O
+signing are host specific; the compiler that `make` and `makev.bat` build from a snapshot rebuilds
+`cmd/v` natively and keeps it. A standalone `vlib/v/v.v` C-backend self-host prunes FastC along
+with the other optional backends. Pass `-compile-backend fastc` or `-all-backends` when that
+compiler should retain `-b fastc`.
+
+FastC builds programs on macOS, Linux, and Windows hosts; the C step always uses the bundled
+TinyCC (`thirdparty/tcc/tcc.exe`). The FastC self-host compiler described below lowers `spawn` to
+pthreads and uses header-free C ABI tables for macOS and glibc Linux, so `-selfhost -b fastc` and
+`v self -b fastc` reject Windows targets.
 
 `-selfhost -b fastc -o v4 vlib/v/v.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v.fastcdriver` entry point and can build further FastC generations without
@@ -290,13 +307,13 @@ translation units (the shared head of typedefs, prototypes and runtime in every 
 dispatch tables and lifecycle functions only in the first, the file bodies grouped by size; the
 globals are definitions in the first unit and `extern` declarations in the others),
 `fastc_compile_c_units` compiles them with concurrent `tcc -c` processes started through
-`posix_spawn` (forking the large compiler process costs more), and one `tcc` call links the
-objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the single-file build; both
-give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign` after linking, which costs
-~50 ms per build: the drivers put a no-op `codesign` first on its PATH and ad-hoc sign the
-executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through CommonCrypto,
-patched into the file in place). The SDK path is taken from `SDKROOT` or the toolchain selected by
-`xcrun`; conventional SDK locations are used only as a fallback.
+`posix_spawn` (forking the large compiler process costs more; Windows uses `os.Process`), and one
+`tcc` call links the objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the
+single-file build; both give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign`
+after linking, which costs ~50 ms per build: the drivers put a no-op `codesign` first on its PATH
+and ad-hoc sign the executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through
+CommonCrypto, patched into the file in place). The SDK path is taken from `SDKROOT` or the
+toolchain selected by `xcrun`; conventional SDK locations are used only as a fallback.
 
 Default self-host builds content-cache the split TinyCC objects and the linked, signed executable
 under `os.vtmp_dir()`. The keys cover the exact generated units, TinyCC build, compile options, and

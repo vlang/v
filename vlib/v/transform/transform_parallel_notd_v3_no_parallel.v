@@ -406,11 +406,28 @@ fn transform_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+fn scoped_transform_batch_count(n_items int, total_cost i64, max_batches int, building_v bool) int {
+	if n_items <= 0 {
+		return 0
+	}
+	mut batches := int_min(n_items, int_max(1, max_batches))
+	if !building_v {
+		// Small programs do not need a fresh checker and transformer for every
+		// few function bodies. Keep the existing self-host scratch bounds.
+		by_cost := int_max(1, int(total_cost / shared_helper_min_batch_cost))
+		batches = int_min(batches, by_cost)
+	}
+	return batches
+}
+
 // shared_helper_batch_count picks the scratch batch count for one helper chunk.
-fn shared_helper_batch_count(items []FnWorkItem) int {
+fn shared_helper_batch_count(items []FnWorkItem, building_v bool) int {
 	mut total := i64(0)
 	for item in items {
 		total += i64(item.cost) + 1
+	}
+	if !building_v {
+		return scoped_transform_batch_count(items.len, total, shared_helper_transform_batches, false)
 	}
 	by_cost := int(total / shared_helper_min_batch_cost)
 	return int_max(scoped_transform_batches, int_min(shared_helper_transform_batches, by_cost))
@@ -424,7 +441,7 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 	items := unsafe { &[]FnWorkItem(a.items_ptr) }
 	mut csw := time.new_stopwatch()
 	if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
-		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items))
+		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items, w.building_v))
 	} else {
 		w.transform_pure_items_serial(*items)
 	}
@@ -2450,11 +2467,7 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	for item in items {
 		total_cost += i64(item.cost) + 1
 	}
-	target_batches := if items.len < max_batches {
-		items.len
-	} else {
-		max_batches
-	}
+	target_batches := scoped_transform_batch_count(items.len, total_cost, max_batches, t.building_v)
 	target_cost := if target_batches > 0 {
 		(total_cost + i64(target_batches) - 1) / i64(target_batches)
 	} else {

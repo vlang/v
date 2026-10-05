@@ -146,6 +146,12 @@ fn parse_comparator_set(input string) !ComparatorSet {
 }
 
 fn parse_comparator(input string) ?Comparator {
+	op, raw_version := comparator_parts(input)
+	version := coerce_version(raw_version) or { return none }
+	return Comparator{version, op}
+}
+
+fn comparator_parts(input string) (Operator, string) {
 	mut op := Operator.eq
 	raw_version := match true {
 		input.starts_with('>=') {
@@ -172,12 +178,39 @@ fn parse_comparator(input string) ?Comparator {
 		}
 	}
 
-	version := coerce_version(raw_version) or { return none }
-	return Comparator{version, op}
+	return op, raw_version
 }
 
 fn parse_xrange(input string) ?Version {
-	mut raw_ver := parse(input).complete()
+	parsed := parse(input)
+	if has_prerelease(input) {
+		if parsed.prerelease.len == 0 || parsed.raw_ints.len != 3 {
+			return none
+		}
+		for identifier in parsed.prerelease.split('.') {
+			if identifier.len == 0
+				|| (identifier.len > 1 && identifier[0] == `0` && is_valid_number(identifier)) {
+				return none
+			}
+		}
+	}
+	if input.contains('+') && (parsed.metadata.len == 0
+		|| parsed.metadata.split('.').any(it.len == 0)) {
+		return none
+	}
+	// Validate every component before a wildcard replaces the later components.
+	if parsed.raw_ints.any(it !in ['x', 'X', '*'] && !is_valid_number(it)) {
+		return none
+	}
+	mut wildcard_seen := false
+	for component in parsed.raw_ints {
+		if component in ['x', 'X', '*'] {
+			wildcard_seen = true
+		} else if wildcard_seen {
+			return none
+		}
+	}
+	mut raw_ver := parsed.complete()
 	for typ in versions {
 		if raw_ver.raw_ints[typ].index_any(x_range_symbols) == -1 {
 			continue
@@ -198,7 +231,11 @@ fn parse_xrange(input string) ?Version {
 			else {}
 		}
 	}
-	return raw_ver.validate()
+	version := raw_ver.validate() or { return none }
+	if first_wildcard_index(input) < 3 {
+		return Version{version.major, version.minor, version.patch, '', version.metadata}
+	}
+	return version
 }
 
 // numeric_core strips the prerelease and build metadata from a version-shaped
@@ -310,6 +347,10 @@ fn can_expand(input string) bool {
 	if input.len == 0 {
 		return false
 	}
+	// Inspect each operand before judging a composite set.
+	if input.contains(comparator_sep) && !input.contains(hyphen_range_sep) {
+		return input.split(comparator_sep).any(can_expand(it))
+	}
 	if input[0] == `~` || input[0] == `^` || input.contains(hyphen_range_sep) {
 		return true
 	}
@@ -338,15 +379,29 @@ fn can_expand(input string) bool {
 }
 
 fn expand_comparator_set(input string) ?ComparatorSet {
+	if input.contains(hyphen_range_sep) {
+		return expand_hyphen(input)
+	}
+	if input.contains(comparator_sep) {
+		mut comparators := []Comparator{}
+		for raw_comp in input.split(comparator_sep) {
+			if raw_comp.len == 0 {
+				return none
+			}
+			if can_expand(raw_comp) {
+				set := expand_comparator_set(raw_comp) or { return none }
+				comparators << set.comparators
+			} else {
+				comparators << parse_comparator(raw_comp) or { return none }
+			}
+		}
+		return ComparatorSet{comparators}
+	}
 	match input[0] {
 		`~` { return expand_tilda(input[1..]) }
 		`^` { return expand_caret(input[1..]) }
 		`<`, `>`, `=` { return expand_operator_range(input) }
 		else {}
-	}
-
-	if input.contains(hyphen_range_sep) {
-		return expand_hyphen(input)
 	}
 	return expand_xrange(input)
 }
@@ -418,17 +473,12 @@ fn expand_operator_range(input string) ?ComparatorSet {
 
 fn expand_tilda(raw_version string) ?ComparatorSet {
 	min_ver := coerce_version(raw_version) or { return none }
-	// The ceiling carries no prerelease, so `~1.2.3-beta.2` stops below every
-	// 1.3.0, and does not reach up to `1.3.0-alpha`.
-	//
-	// Whether the minor may grow is decided by whether it was *written*, not by
-	// whether it is zero. `~2` runs to the end of major 2, but `~2.0` and `~2.0.0`
-	// both stop at 2.1.0; reading `minor == 0 && patch == 0` as the major case
-	// sends `~2.0` to 3.0.0 and lets it admit the whole of 2.x.
-	max_ver := if first_wildcard_index(raw_version) == 1 {
-		Version{min_ver.major + 1, 0, 0, '', ''}
+	// A written minor, including zero, limits a tilde range to the next minor.
+	// The -0 ceiling excludes prereleases of the next series when ranges intersect.
+	max_ver := if !has_real_component(raw_version, 1) {
+		Version{min_ver.major + 1, 0, 0, '0', ''}
 	} else {
-		Version{min_ver.major, min_ver.minor + 1, 0, '', ''}
+		Version{min_ver.major, min_ver.minor + 1, 0, '0', ''}
 	}
 	return make_comparator_set_ge_lt(min_ver, max_ver)
 }
@@ -510,11 +560,11 @@ fn expand_xrange(raw_range string) ?ComparatorSet {
 			return ComparatorSet{[Comparator{Version{}, Operator.ge}]}
 		}
 		1 {
-			upper := Version{min_ver.major + 1, 0, 0, '', ''}
+			upper := Version{min_ver.major + 1, 0, 0, '0', ''}
 			return make_comparator_set_ge_lt(min_ver, upper)
 		}
 		2 {
-			upper := Version{min_ver.major, min_ver.minor + 1, 0, '', ''}
+			upper := Version{min_ver.major, min_ver.minor + 1, 0, '0', ''}
 			return make_comparator_set_ge_lt(min_ver, upper)
 		}
 		else {
@@ -522,6 +572,40 @@ fn expand_xrange(raw_range string) ?ComparatorSet {
 			return ComparatorSet{[Comparator{min_ver, Operator.eq}]}
 		}
 	}
+}
+
+// expand_xrange_comparator adjusts the bound at the first wildcard or missing
+// component: >1.x starts at 2.0.0, while <=1.2.x stops before 1.3.0.
+fn expand_xrange_comparator(raw_version string, op Operator) ?ComparatorSet {
+	if op == .eq {
+		return expand_xrange(raw_version)
+	}
+	min_ver := parse_xrange(raw_version) or { return none }
+	wildcard := first_wildcard_index(raw_version)
+	if wildcard >= 3 {
+		return ComparatorSet{[Comparator{min_ver, op}]}
+	}
+	if wildcard == 0 {
+		if op in [.gt, .lt] {
+			// No release can be strictly above or below an unspecified major.
+			return ComparatorSet{[Comparator{Version{0, 0, 0, '0', ''}, Operator.lt}]}
+		}
+		return ComparatorSet{[Comparator{Version{}, Operator.ge}]}
+	}
+	mut bound := min_ver
+	mut bound_op := op
+	if op in [.gt, .le] {
+		bound = if wildcard == 1 {
+			Version{min_ver.major + 1, 0, 0, '', ''}
+		} else {
+			Version{min_ver.major, min_ver.minor + 1, 0, '', ''}
+		}
+		bound_op = if op == .gt { Operator.ge } else { Operator.lt }
+	}
+	if bound_op == .lt {
+		bound = Version{bound.major, bound.minor, bound.patch, '0', ''}
+	}
+	return ComparatorSet{[Comparator{bound, bound_op}]}
 }
 
 // make_comparator_set_ge_lt builds `>= min, < max`.

@@ -715,6 +715,8 @@ pub fn is_file(path string) bool {
 // join_path joins any number of path elements into a single path, separating
 // them with a platform-specific path_separator. Empty elements are ignored.
 // Windows platform output will rewrite forward slashes to backslash.
+// An absolute first nonempty element retains its root when base is empty.
+// A component naming only the current directory remains `.`.
 // Consider looking at the unit tests in os_test.v for semi-formal API.
 @[manualfree]
 pub fn join_path(base string, dirs ...string) string {
@@ -724,27 +726,22 @@ pub fn join_path(base string, dirs ...string) string {
 	defer {
 		unsafe { sb.free() }
 	}
-	sbase := base.trim_right('\\/')
-	defer {
-		unsafe { sbase.free() }
-	}
-	sb.write_string(sbase)
+	write_path_base(mut sb, base)
 	for d in dirs {
-		if d != '' {
-			sb.write_string(path_separator)
-			sb.write_string(d)
-		}
+		append_path_component(mut sb, d)
 	}
 	normalize_path_in_builder(mut sb)
 	mut res := sb.str()
-	if base == '' {
-		res = res.trim_left(path_separator)
+	if base == '' && res.starts_with('.${path_separator}') {
+		res = if res.len == 2 { '.' } else { res[2..] }
 	}
 	return res
 }
 
 // join_path_single appends the `elem` after `base`, separated with a
 // platform-specific path_separator. Empty elements are ignored.
+// An absolute elem retains its root when base is empty.
+// An elem naming only the current directory remains `.`.
 @[manualfree]
 pub fn join_path_single(base string, elem string) string {
 	// TODO: deprecate this and make it `return os.join_path(base, elem)`,
@@ -753,21 +750,56 @@ pub fn join_path_single(base string, elem string) string {
 	defer {
 		unsafe { sb.free() }
 	}
+	write_path_base(mut sb, base)
+	append_path_component(mut sb, elem)
+	normalize_path_in_builder(mut sb)
+	mut res := sb.str()
+	if base == '' && res.starts_with('.${path_separator}') {
+		res = if res.len == 2 { '.' } else { res[2..] }
+	}
+	return res
+}
+
+@[manualfree]
+fn write_path_base(mut sb strings.Builder, base string) {
 	sbase := base.trim_right('\\/')
 	defer {
 		unsafe { sbase.free() }
 	}
 	sb.write_string(sbase)
-	if elem != '' {
+	if sbase == '' && base != '' {
 		sb.write_string(path_separator)
-		sb.write_string(elem)
+		$if windows {
+			if base.len == 2 {
+				sb.write_string(path_separator)
+			}
+		}
 	}
-	normalize_path_in_builder(mut sb)
-	mut res := sb.str()
-	if base == '' {
-		res = res.trim_left(path_separator)
+	$if windows {
+		// A drive root, including a device-prefixed drive, needs its separator.
+		if sbase.ends_with(':') && sbase.len < base.len {
+			sb.write_string(path_separator)
+		}
 	}
-	return res
+}
+
+@[manualfree]
+fn append_path_component(mut sb strings.Builder, component string) {
+	if component == '' {
+		return
+	}
+	if sb.len > 0 {
+		if sb[sb.len - 1] !in [`/`, `\\`] {
+			sb.write_string(path_separator)
+		}
+		trimmed := component.trim_left('\\/')
+		defer {
+			unsafe { trimmed.free() }
+		}
+		sb.write_string(trimmed)
+		return
+	}
+	sb.write_string(component)
 }
 
 @[direct_array_access]
@@ -785,8 +817,15 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 			}
 		}
 	}
-	for idx in 0 .. sb.len - 3 {
-		if sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
+	mut idx := 0
+	$if windows {
+		// Preserve the two separators introducing a UNC or device path.
+		if sb.len >= 2 && sb[0] == rs && sb[1] == rs && (sb.len == 2 || sb[2] != rs) {
+			idx = 2
+		}
+	}
+	for idx < sb.len {
+		if idx + 2 < sb.len && sb[idx] == rs && sb[idx + 1] == `.` && sb[idx + 2] == rs {
 			unsafe {
 				// let `/foo/./bar.txt` become `/foo/bar.txt` in place
 				for j := idx + 1; j < sb.len - 2; j++ {
@@ -794,8 +833,9 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 				}
 				sb.len -= 2
 			}
+			continue
 		}
-		if sb[idx] == rs && sb[idx + 1] == rs {
+		if idx + 1 < sb.len && sb[idx] == rs && sb[idx + 1] == rs {
 			unsafe {
 				// let `/foo//bar.txt` become `/foo/bar.txt` in place
 				for j := idx + 1; j < sb.len - 1; j++ {
@@ -803,7 +843,9 @@ fn normalize_path_in_builder(mut sb strings.Builder) {
 				}
 				sb.len -= 1
 			}
+			continue
 		}
+		idx++
 	}
 }
 

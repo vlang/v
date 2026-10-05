@@ -1,0 +1,26 @@
+@[generated]
+module main
+
+// `@[generated]` allows camelCase and a leading `_`, but only type names can
+// begin with an uppercase letter.
+const MaxCount = 3
+
+struct _zbr_ty_Point {
+	XPos int
+}
+
+enum _zbr_ty_Color {
+	Red
+}
+
+fn (p _zbr_ty_Point) GetX() int {
+	return p.XPos
+}
+
+fn MakePoint() {}
+
+fn main() {
+	MyValue := 1
+	println(MyValue + MaxCount)
+	println(_zbr_ty_Point{}.XPos)
+}

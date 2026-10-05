@@ -743,14 +743,25 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'last' {
-			g.write('*(${c_elem}*)array_get(')
-			if is_ptr {
-				g.write('*')
+			if g.expr_is_stable_for_reuse(base_id) {
+				g.write('*(${c_elem}*)array_get(')
+				if is_ptr {
+					g.write('*')
+				}
+				g.gen_expr(base_id)
+				g.write(', ')
+				g.gen_expr(base_id)
+				g.write('${dot}len - 1)')
+			} else {
+				// The index above names the receiver twice, which would evaluate
+				// `make().last()` twice.
+				g.write('*(${c_elem}*)array__last(')
+				if is_ptr {
+					g.write('*')
+				}
+				g.gen_expr(base_id)
+				g.write(')')
 			}
-			g.gen_expr(base_id)
-			g.write(', ')
-			g.gen_expr(base_id)
-			g.write('${dot}len - 1)')
 		}
 		'first' {
 			g.write('*(${c_elem}*)array_get(')
@@ -1835,6 +1846,122 @@ fn (mut g FlatGen) gen_index_operator_receiver_tmp_arg(tmp string, actual types.
 	g.write(tmp)
 }
 
+// can_gen_direct_array_store reports whether an element store may go through the
+// array data pointer directly, the same way an element load does: under the
+// attribute, and inside an unsafe block, which is the condition the direct load
+// in cleanc.v uses. That also drops the bounds check, exactly as the load has.
+// Element types that need their own lowering (strings, fixed arrays used as
+// elements) are excluded here, and the caller excludes shared array wrappers.
+fn (g &FlatGen) can_gen_direct_array_store(arr_type types.Array) bool {
+	if !(g.direct_array_access || g.unsafe_depth > 0) {
+		return false
+	}
+	if arr_type.elem_type is types.String {
+		return false
+	}
+	if _ := array_fixed_type(arr_type.elem_type) {
+		return false
+	}
+	return true
+}
+
+// gen_direct_array_elem_store writes an element store that goes straight through
+// the array data pointer, the same way an element load does, and reports whether
+// it could. Every operator takes the value lowering the bounds-checked store
+// uses, with the element lvalue in place of the bounds-checked read, because no
+// operator can be spelled directly on that lvalue: `**` and the shifts have no
+// compound operator for it, a 128-bit element has none at all, and a struct
+// element may need its operator method. An operator without a direct spelling
+// returns false, and the caller emits the bounds-checked store.
+fn (mut g FlatGen) gen_direct_array_elem_store(node flat.Node, arr_type types.Array, lhs_id flat.NodeId, base_id flat.NodeId, idx_id flat.NodeId, c_elem string, is_ptr bool) bool {
+	elem_type := arr_type.elem_type
+	rhs_id := g.a.child(&node, 1)
+	// The operator is resolved before anything is written, so an operator this
+	// path does not handle leaves the statement to the bounds-checked store.
+	assign_op := if node.op == .assign {
+		flat.Op.assign
+	} else {
+		compound_assign_to_infix_op(node.op) or { return false }
+	}
+	// The base and the index are hoisted the way the bounds-checked store hoists
+	// them, because the lowerings below read the element through the lvalue
+	// before writing it, which would run a side effect in the base or the index
+	// a second time. The public alias, for the same reason the bounds-checked
+	// store uses it: a source local named `array` hides the lowercase C typedef.
+	tmp := g.tmp_count
+	g.tmp_count++
+	array_tmp := '__v3_internal_symbol_array_store_base_${tmp}'
+	index_tmp := '__v3_internal_symbol_array_store_index_${tmp}'
+	g.write('{ Array* ${array_tmp} = ')
+	if is_ptr {
+		g.gen_expr(base_id)
+	} else {
+		g.write('&')
+		g.gen_expr(base_id)
+	}
+	g.write('; int ${index_tmp} = ')
+	g.gen_expr(idx_id)
+	g.write('; ')
+	// The lvalue of one element, in the same spelling the direct element load in
+	// cleanc.v uses: (*((${c_elem}*)((<base>).data) + (<idx>)))
+	lhs_text := '(*((${c_elem}*)((${array_tmp})->data) + (${index_tmp})))'
+	// The RHS may grow the array. Finish computing the value before resolving
+	// the final element address, so no pointer into the old allocation survives.
+	value_text := '__v3_internal_symbol_array_store_value_${tmp}'
+	g.write('${c_elem} ${value_text} = ')
+	if assign_op == .assign {
+		g.gen_expr_with_expected_type(rhs_id, elem_type)
+		g.writeln('; ${lhs_text} = ${value_text}; }')
+		return true
+	}
+	g.write('${lhs_text}; ')
+	if signed := int128_signedness(elem_type) {
+		if int128_assign_base_op(node.op) != none {
+			g.write('${value_text} = ')
+			g.gen_int128_compound_value(node.op, value_text, rhs_id,
+				g.usable_expr_type(rhs_id), signed, c_elem)
+			g.writeln('; ${lhs_text} = ${value_text}; }')
+			return true
+		}
+	}
+	if assign_op == .power {
+		g.write('${value_text} = ')
+		if method_name := g.assign_struct_operator_method(elem_type, node.op) {
+			g.write('${g.cname(method_name)}(${value_text}, ')
+			g.gen_expr_with_expected_type(rhs_id, elem_type)
+			g.write(')')
+		} else {
+			g.gen_power_expr_from_lhs_text(value_text, rhs_id, elem_type)
+		}
+		g.writeln('; ${lhs_text} = ${value_text}; }')
+		return true
+	}
+	if assign_op in [.left_shift, .right_shift, .right_shift_unsigned] {
+		shift_op := match node.op {
+			.left_shift_assign { flat.Op.left_shift }
+			.right_shift_assign { flat.Op.right_shift }
+			else { flat.Op.right_shift_unsigned }
+		}
+		g.write('${value_text} = ')
+		g.gen_compound_shift_value(value_text, lhs_id, rhs_id, elem_type, shift_op)
+		g.writeln('; ${lhs_text} = ${value_text}; }')
+		return true
+	}
+	if operator := g.translated_numeric_compound_operator(base_id, elem_type,
+		g.usable_expr_type(rhs_id), node.op) {
+		g.write('${value_text} = ')
+		g.gen_translated_numeric_compound_value(value_text, base_id, rhs_id, elem_type,
+			g.usable_expr_type(rhs_id), operator)
+		g.writeln('; ${lhs_text} = ${value_text}; }')
+		return true
+	}
+	g.write('${value_text} ${g.op_str(assign_op)}= (')
+	g.gen_expr_with_expected_type(rhs_id, elem_type)
+	g.write(')')
+	g.writeln('; ${lhs_text} = ${value_text}; }')
+	return true
+}
+
 // gen_index_assign emits index assign output for c.
 fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 	lhs_id := g.a.child(&node, 0)
@@ -1912,6 +2039,19 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		}
 		if is_array_base {
 			c_elem := g.value_c_type(arr_type.elem_type)
+			// Direct element store, mirroring the direct element load in cleanc.v:
+			// when the function is marked @[direct_array_access] (or we are inside an
+			// unsafe block), a store must go straight through the data pointer like a
+			// load does. Without this, a hot loop that writes array elements compiles to
+			// an array__set() call per element while the reads next to it are inlined.
+			if g.can_gen_direct_array_store(arr_type)
+				&& !g.array_assign_base_is_shared_value_selector(base_id) {
+				if g.gen_direct_array_elem_store(node, arr_type, lhs_id, base_id,
+					g.a.child(&lhs, 1), c_elem, base_type is types.Pointer)
+				{
+					return
+				}
+			}
 			tmp := g.tmp_count
 			g.tmp_count++
 			// Use the public alias here: a source local named `array` hides the

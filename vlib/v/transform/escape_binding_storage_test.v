@@ -110,3 +110,29 @@ fn test_multi_declarations_clear_only_lhs_markers_after_reading_rhs_bindings() {
 		assert t.pointer_value_rvalues['values'] == (target != 'values')
 	}
 }
+
+fn test_heap_moved_source_declaration_keeps_its_mutability() {
+	for is_mut in [true, false] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		lhs := t.make_ident('value')
+		t.a.nodes[int(lhs)].is_mut = is_mut
+		start := t.a.children.len
+		t.a.children << [lhs, t.make_int_literal(1)]
+		decl := t.a.add_node(flat.Node{
+			kind:           .decl_assign
+			typ:            'int'
+			children_start: start
+			children_count: 2
+			pos:            token.new_span(1, 1, 10)
+		})
+		lowered := t.heap_escaping_source_decl(t.a.nodes[int(decl)], 'value', 'int', 'int')
+		heap_decl := t.a.nodes[int(lowered.last())]
+		assert heap_decl.kind == .decl_assign
+		heap_lhs := t.a.child_node(&heap_decl, 0)
+		assert heap_lhs.value == 'value'
+		// A check that reads the lowered body again must still accept `f(mut value)`.
+		assert heap_lhs.is_mut == is_mut
+	}
+}

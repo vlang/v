@@ -743,7 +743,8 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 		return true
 	}
 	if op == .assign && clean_expected.is_float()
-		&& tc.assignment_integer_constant_operand(rhs_id) != none {
+		&& (tc.assignment_integer_constant_operand(rhs_id) != none
+			|| tc.is_untyped_integer_constant_expr(rhs_id)) {
 		if _ := tc.implicit_integer_constant_value(rhs_id, rhs_type) {
 			return true
 		}
@@ -781,6 +782,33 @@ fn (tc &TypeChecker) assignment_integer_constant_operand(id flat.NodeId) ?flat.N
 		current = tc.a.child(node, 0)
 	}
 	return none
+}
+
+// Arithmetic on integer literals and on the constants declared by them is still
+// untyped, like the literal it folds to: `x = 6 * tile_size` assigns to a float.
+// Casts, typed constants and variables give the expression a type of its own.
+fn (tc &TypeChecker) is_untyped_integer_constant_expr(id flat.NodeId) bool {
+	mut states := map[flat.NodeId]u8{}
+	known, has_float := tc.untyped_numeric_literal_expr_info(id, mut states)
+	return known && !has_float && !tc.expr_names_visible_local(id)
+}
+
+// expr_names_visible_local reports whether an identifier in `id` is a local or a
+// parameter, which hides a constant of the same name.
+fn (tc &TypeChecker) expr_names_visible_local(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return tc.visible_local_scope_owns_name(node.value)
+	}
+	for i in 0 .. node.children_count {
+		if tc.expr_names_visible_local(tc.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Signs and parentheses preserve literal assignment compatibility.
@@ -1308,8 +1336,10 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 		}
 		is_map_index := child.kind == .index && child.children_count > 0
 			&& unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(&child, 0)))) is Map
-		is_unsafe_map_path := tc.unsafe_depth > 0 && tc.address_path_contains_map_index(child_id)
-		if !tc.expr_can_take_address(child_id) && !is_map_index && !is_unsafe_map_path {
+		// A map value has no address to take, but it is still assignable:
+		// `m[k].field++` updates the entry, as `m[k].field += 1` does.
+		is_map_path := tc.address_path_contains_map_index(child_id)
+		if !tc.expr_can_take_address(child_id) && !is_map_index && !is_map_path {
 			source := tc.source_text_for_node(child_id)
 			tc.record_error_with_details_at(.assignment_mismatch, 'cannot ${action} `${source}` because it is non lvalue expression', child_id, tc.a.node(child_id).pos, [
 				'try rewrite this as `${source} ${rewrite_op} 1`',
@@ -21519,7 +21549,8 @@ fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
-// The parser requires a group when an if condition starts with another if or match.
+// The parser requires a group when an if condition starts with a match. It rejects a group
+// that starts with another if, except in translated code.
 fn (tc &TypeChecker) if_condition_starts_with_conditional(id flat.NodeId) bool {
 	mut current := id
 	for tc.valid_node_id(current) {

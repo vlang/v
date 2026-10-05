@@ -294,7 +294,10 @@ fn test_v1_fallback_resolution_requires_compatibility_modules() {
 	cached_fallback := os.join_path(fallback_root, 'v' + $if windows { '.exe' } $else { '' })
 	os.mkdir_all(fallback_root)!
 	os.cp(@VEXE, fallback)!
-	os.cp(@VEXE, cached_fallback)!
+	compatibility_source := os.join_path(root, 'compatibility.v')
+	os.write_file(compatibility_source, 'fn main() { println("V 0.5.2 legacy") }\n')!
+	compiled := os.exec([@VEXE, '-new-compiler', '-o', cached_fallback, compatibility_source])
+	assert compiled.exit_code == 0, compiled.output
 	os.chmod(fallback, 0o755)!
 	os.chmod(cached_fallback, 0o755)!
 	os.write_file(fallback + '.vroot', fallback_root)!
@@ -561,14 +564,14 @@ fn test_failed_run_retry_explains_how_to_show_v3_diagnostics() {
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'import time\n\nfn main() {\n\ttimer := time.new_timer(time.nanosecond)\n\t_ = timer\n\tmissing_v3_failure()\n}\n')!
+	os.write_file(source, 'import sync\nimport time\n\nfn main() {\n\ttimer := sync.new_timer(time.nanosecond)\n\t_ = timer\n\tmissing_v3_failure()\n}\n')!
 	mut environment := os.environ()
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
 	environment['V_MACOS_V3_NO_FALLBACK'] = ''
 	retried := run_launcher_test_process(dispatcher, ['-nocache', '-no-parallel', 'run', source], os.dir(dispatcher), environment)
 	assert retried.exit_code == 1, retried.output
-	assert retried.output.contains('unknown function: time.new_timer'), retried.output
+	assert retried.output.contains('unknown function: sync.new_timer'), retried.output
 	assert retried.output.contains('compatibility retry exited unsuccessfully'), retried.output
 	assert retried.output.contains('any errors above are its own'), retried.output
 	assert retried.output.contains('exit status may instead come from the program'), retried.output
@@ -579,7 +582,7 @@ fn test_failed_run_retry_explains_how_to_show_v3_diagnostics() {
 		'run', source], os.dir(dispatcher), environment)
 	assert strict.exit_code == 1, strict.output
 	assert strict.output.contains('unknown function `missing_v3_failure`'), strict.output
-	assert !strict.output.contains('unknown function: time.new_timer'), strict.output
+	assert !strict.output.contains('unknown function: sync.new_timer'), strict.output
 	assert !strict.output.contains('compatibility retry'), strict.output
 }
 
@@ -747,4 +750,22 @@ fn test_install_external_tool_modules_leaves_a_build_with_a_path_to_the_compiler
 	// there would not help. The compiler reports the missing module instead.
 	install_external_tool_modules('vdoc', tool_source, ['-path', path_root])
 	assert !os.exists(attempts)
+}
+
+fn test_v1_fallback_rejects_copied_current_launcher() {
+	root := os.join_path(os.vtmp_dir(), 'v1_fallback_self_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	copy := os.join_path(root, 'v' + $if windows { '.exe' } $else { '' })
+	os.cp(@VEXE, copy)!
+	os.chmod(copy, 0o755)!
+	assert !v1_fallback_has_expected_version(copy)
+	source := os.join_path(root, 'preprobe_launcher.v')
+	os.write_file(source, 'fn main() { println("V 0.5.2 old launcher"); println("${v3_no_fallback_env}") }\n')!
+	compiled := os.exec([@VEXE, '-new-compiler', '-o', copy, source])
+	assert compiled.exit_code == 0, compiled.output
+	result := os.exec([copy, 'version'])
+	assert result.exit_code == 0, result.output
+	assert result.output.starts_with('V ${v_version} ')
+	assert !v1_fallback_has_expected_version(copy)
 }

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generated_module_builtin_fn_type_name_err.vv:5:6: error: type `println` has the same name as a builtin function
+    3 | 
+    4 | // `println('a')` would be parsed as a cast to the type.
+    5 | type println = string
+      |      ~~~~~~~
+    6 | 
+    7 | fn main() {

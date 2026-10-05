@@ -24,6 +24,10 @@ Ownership mode defines the target-visible custom option `ownership`. Code can us
 `$if ownership ? {}` to select ownership-specific branches, and files named
 `*_d_ownership.v` are included in ownership builds.
 
+Ownership inference follows function calls, including long acyclic call chains. Its convergence
+limit grows with the number of functions; if inference still does not converge, the compiler
+reports the function being analyzed instead of continuing indefinitely.
+
 ## Creating owned values
 
 Call `.to_owned()` on a string to create an owned copy. Copies made with `.clone()` also

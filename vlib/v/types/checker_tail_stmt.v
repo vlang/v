@@ -1721,6 +1721,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		$if ownership ? {
 			tc.ownership_mark_scope_node(branch_id)
 		}
+		tc.declare_named_variant_binding(subject_type, branch, n_conds)
 		tc.check_statement_sequence(branch, n_conds, value_context)
 		tc.pop_scope()
 		if value_context && has_value_tail && !tc.branch_has_value_tail(branch_id)
@@ -3938,6 +3939,9 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 
 // check_struct_init validates check struct init state for types.
 fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
+	if flat.is_named_variant_type_name(node.value) && !tc.check_named_variant_init(id, node) {
+		return
+	}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
@@ -3961,7 +3965,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	is_optional_init := node.value.starts_with('?')
 	init_type_text := if is_optional_init { node.value[1..] } else { node.value }
-	raw_source_type_text := if node.value == 'embed_file.EmbedFileData' {
+	// Synthesized literals have no source spelling of their type: `$embed_file`, and
+	// `Expr.Count(x)`, which the parser lowers to a hidden variant struct literal.
+	raw_source_type_text := if node.value == 'embed_file.EmbedFileData'
+		|| flat.is_named_variant_type_name(node.value) {
 		''
 	} else {
 		tc.source_text_for_node(id).all_before('{').trim_space().trim_left('?')
@@ -4182,6 +4189,16 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if init_struct := struct_type_from_type(init_type) {
 		is_synthetic_embed_file := node.value == 'embed_file.EmbedFileData'
+		decl_module := tc.struct_module_for_type(init_struct.name)
+		noinit_same_main_module := decl_module in ['', 'main'] && tc.cur_module in ['', 'main']
+		if decl_module != tc.cur_module && !noinit_same_main_module {
+			if decl_id := tc.source_struct_decl_id_for_name(init_struct.name) {
+				if tc.declaration_has_attribute(decl_id, 'noinit') {
+					display_name := tc.diagnostic_type_name(init_type)
+					tc.record_error_at(.assignment_mismatch, 'struct `${display_name}` is declared with a `@[noinit]` attribute, so it cannot be initialized with `${display_name}{}`', id, node.pos)
+				}
+			}
+		}
 		// A `struct { ... }` literal is parsed into a name the parser synthesized for it
 		// (or left as a bare `struct` when its field types cannot be inferred), which the
 		// checker then resolves to whichever anonymous type the context expects.
@@ -4265,7 +4282,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			spread_id := if spread.kind == .prefix && spread.value == '...'
 				&& spread.children_count > 0 {
 				tc.a.child(spread, 0)
-			} else if tc.node_has_ellipsis_prefix(raw_spread_id) {
+			} else if node.kind == .assoc && i == 0 {
+				// `Type{...base, f: v}`: the parser stores `base` bare as the first child.
 				raw_spread_id
 			} else {
 				continue
@@ -4796,20 +4814,6 @@ fn struct_init_field_is_mut(fields []StructField, field flat.Node, index int) bo
 		return false
 	}
 	return index >= 0 && index < fields.len && fields[index].is_mut
-}
-
-fn (tc &TypeChecker) node_has_ellipsis_prefix(id flat.NodeId) bool {
-	if !tc.valid_node_id(id) {
-		return false
-	}
-	node := tc.a.node(id)
-	file := tc.a.source_files[node.pos.id] or { return false }
-	source := tc.source_texts_by_file[file.name] or { return false }
-	mut cursor := int_min(int_max(node.pos.offset, 0), source.len)
-	for cursor > 0 && source[cursor - 1] in [` `, `\t`, `\n`, `\r`] {
-		cursor--
-	}
-	return cursor >= 3 && source[cursor - 3..cursor] == '...'
 }
 
 fn (tc &TypeChecker) struct_init_has_positional_fields(node flat.Node) bool {
@@ -6387,7 +6391,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if base.kind == .selector && base.children_count > 0 {
 		module_node := tc.a.child_node(&base, 0)
 		if module_node.kind == .ident && tc.has_active_import(module_node.value)
-			&& base.value.len > 0 && base.value[0].is_capital() {
+			&& tc.module_member_may_be_type(module_node.value, base.value) {
 			module_name := tc.resolve_import_alias(module_node.value) or { module_node.value }
 			display_module_name := tc.current_file_import_path_for_alias(module_node.value) or {
 				module_name
@@ -6420,7 +6424,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	}
 	// `Color.nope`: the enum is a namespace below, which accepts any member, so a
 	// value the enum does not declare would otherwise pass unnoticed.
-	if base.kind == .ident && base.value.len > 0 && base.value[0].is_capital() {
+	if base.kind == .ident && tc.ident_may_be_type(base.value) {
 		if enum_name := tc.resolve_enum_name(base.value) {
 			if !tc.enum_has_field(enum_name, node.value)
 				&& !tc.enum_member_is_callable(enum_name, base.value, node.value) {
@@ -6487,7 +6491,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if node.value.len > 0 && node.value[0].is_capital() && is_known_type {
+		if tc.module_member_may_be_type(base.value, node.value) && is_known_type {
 			if tc.resolve_enum_name(semantic_type_name) != none
 				|| tc.resolve_enum_name(display_type_name) != none {
 				parent_id := tc.direct_parent_id(id)
@@ -6520,7 +6524,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				return
 			}
 		}
-		if base.value != 'C' && node.value.len > 0 && node.value[0].is_capital() && is_known_type {
+		if base.value != 'C' && tc.module_member_may_be_type(base.value, node.value)
+			&& is_known_type {
 			tc.record_error_at(.assignment_mismatch, '`${display_type_name}` must be initialized', id, tc.node_value_diagnostic_pos(id))
 			tc.register_synth_type(id, builtin_void_type)
 			return
@@ -8027,7 +8032,7 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 	if base.kind == .selector && base.children_count > 0 {
 		module_node := tc.a.child_node(&base, 0)
 		if module_node.kind == .ident && tc.has_active_import(module_node.value)
-			&& base.value.len > 0 && base.value[0].is_capital() {
+			&& tc.module_member_may_be_type(module_node.value, base.value) {
 			module_name := tc.resolve_import_alias(module_node.value) or { module_node.value }
 			if resolved_enum_name := tc.resolve_enum_name('${module_name}.${base.value}') {
 				tc.register_synth_type(base_id, Type(Enum{
@@ -8569,7 +8574,8 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, typ)
 		return
 	}
-	if node.value[0].is_capital() && tc.type_name_known(node.value) {
+	if (node.value[0].is_capital() && tc.type_name_known(node.value))
+		|| (tc.generated_files.len > 0 && tc.type_name_known_in_current_module(node.value)) {
 		tc.record_error_at(.assignment_mismatch, '`${node.value}` must be initialized', id, tc.node_value_diagnostic_pos(id))
 		tc.register_synth_type(id, builtin_void_type)
 		return
@@ -9862,13 +9868,13 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 	base := tc.a.child_node(node, 0)
 	mut enum_name := ''
 	if base.kind == .ident {
-		if base.value.len == 0 || !base.value[0].is_capital() {
+		if !tc.ident_may_be_type(base.value) {
 			return none
 		}
 		enum_name = tc.resolve_enum_name(base.value) or { '' }
 	} else if base.kind == .selector && base.children_count > 0 {
 		inner := tc.a.child_node(base, 0)
-		if inner.kind == .ident && base.value.len > 0 && base.value[0].is_capital() {
+		if inner.kind == .ident && tc.module_member_may_be_type(inner.value, base.value) {
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			enum_name = tc.resolve_enum_name('${mod_name}.${base.value}') or { '' }
 		}
@@ -14709,7 +14715,9 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 		}
 		if is_builtin_type_name(node.value) || tc.type_symbol_known(node.value)
 			|| tc.pattern_type_known(node.value)
-			|| (node.value.len > 0 && node.value[0].is_capital()) {
+			|| flat.is_named_variant_type_name(node.value)
+			|| (node.value.len > 0 && node.value[0].is_capital())
+			|| (tc.generated_files.len > 0 && tc.type_name_known_in_current_module(node.value)) {
 			return node.value
 		}
 		return none
@@ -14719,7 +14727,8 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 		if base.kind == .ident && !tc.ident_resolves_to_value(base.value) {
 			pattern := '${base.value}.${node.value}'
 			if (base.value != 'C' && node.value.len > 0 && node.value[0].is_capital())
-				|| tc.type_symbol_known(pattern) || tc.pattern_type_known(pattern) {
+				|| tc.type_symbol_known(pattern) || tc.pattern_type_known(pattern)
+				|| flat.is_named_variant_type_name(pattern) {
 				return pattern
 			}
 		}
@@ -16121,9 +16130,6 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.ends_with('.typ') {
 		return tc.parse_type(typ[..typ.len - 4])
 	}
-	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
-		return unknown_type('generic placeholder `${typ}`')
-	}
 	// `main.Foo` is an explicit reference to a program-module type. It is used to
 	// lock a bare concrete generic argument against being rebased into a callee
 	// module that declares a same-named type (see explicit_generic_concrete_arg_text
@@ -16287,6 +16293,12 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	}
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return tc.parse_fn_type(typ)
+	}
+	// Inspect a nominal name only after parsing its wrappers. Otherwise the last
+	// component of `!module.M` looks generic while the complete wrapper is absent
+	// from the declared-type tables, even though `module.M` is concrete.
+	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
+		return unknown_type('generic placeholder `${typ}`')
 	}
 	qtyp := if tc.resolution_type_mode {
 		tc.qualify_resolution_type_name(typ)
@@ -16804,30 +16816,41 @@ fn (tc &TypeChecker) explicit_alias_constructor_type(id flat.NodeId) ?Type {
 }
 
 fn (tc &TypeChecker) is_untyped_float_literal_expr(id flat.NodeId) bool {
-	known, has_float := tc.untyped_numeric_literal_expr_info(id, 0)
+	mut states := map[flat.NodeId]u8{}
+	known, has_float := tc.untyped_numeric_literal_expr_info(id, mut states)
 	return known && has_float
 }
 
-fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, depth int) (bool, bool) {
-	mut current_id := id
-	for {
-		if !tc.valid_node_id(current_id) {
-			return false, false
-		}
-		current := tc.a.node(current_id)
-		if current.kind !in [.paren, .expr_stmt] {
-			break
-		}
-		if current.children_count == 0 {
-			return false, false
-		}
-		current_id = tc.a.child(current, 0)
-	}
-	if depth > 16 {
+// States distinguish an active constant reference from completed integer/float expressions.
+// This detects cycles and reuses shared subexpressions without a semantic nesting limit.
+fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, mut states map[flat.NodeId]u8) (bool, bool) {
+	if !tc.valid_node_id(id) {
 		return false, false
 	}
-	node := tc.a.node(current_id)
+	if state := states[id] {
+		return state in [u8(2), 3], state == 3
+	}
+	states[id] = 1
+	known, has_float := tc.untyped_numeric_literal_node_info(id, mut states)
+	states[id] = if !known {
+		u8(4)
+	} else if has_float {
+		u8(3)
+	} else {
+		u8(2)
+	}
+	return known, has_float
+}
+
+fn (tc &TypeChecker) untyped_numeric_literal_node_info(id flat.NodeId, mut states map[flat.NodeId]u8) (bool, bool) {
+	node := tc.a.node(id)
 	match node.kind {
+		.paren, .expr_stmt {
+			if node.children_count == 0 {
+				return false, false
+			}
+			return tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), mut states)
+		}
 		.float_literal {
 			return true, true
 		}
@@ -16838,20 +16861,20 @@ fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, depth int
 			if node.op !in [.plus, .minus] || node.children_count == 0 {
 				return false, false
 			}
-			return tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), depth + 1)
+			return tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), mut states)
 		}
 		.infix {
 			if node.op !in [.plus, .minus, .mul, .div, .mod] || node.children_count < 2 {
 				return false, false
 			}
-			left_known, left_float := tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), depth + 1)
-			right_known, right_float := tc.untyped_numeric_literal_expr_info(tc.a.child(node, 1), depth + 1)
+			left_known, left_float := tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), mut states)
+			right_known, right_float := tc.untyped_numeric_literal_expr_info(tc.a.child(node, 1), mut states)
 			return left_known && right_known, left_float || right_float
 		}
 		.ident {
 			key := tc.const_key_for_name(node.value) or { return false, false }
 			expr_id := tc.const_exprs[key] or { return false, false }
-			return tc.untyped_numeric_literal_expr_info(expr_id, depth + 1)
+			return tc.untyped_numeric_literal_expr_info(expr_id, mut states)
 		}
 		.selector {
 			if node.children_count == 0 {
@@ -16864,7 +16887,7 @@ fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, depth int
 			file := tc.a.source_files[node.pos.id] or { return false, false }
 			module_name := tc.file_imports[file_import_key(file.name, base.value)] or { base.value }
 			expr_id := tc.const_exprs['${module_name}.${node.value}'] or { return false, false }
-			return tc.untyped_numeric_literal_expr_info(expr_id, depth + 1)
+			return tc.untyped_numeric_literal_expr_info(expr_id, mut states)
 		}
 		else {
 			return false, false
@@ -17078,6 +17101,13 @@ fn (tc &TypeChecker) unique_qualified_type_name_scan(short_name string) ?string 
 
 // is_generic_placeholder_type reports whether is generic placeholder type applies in types.
 fn is_generic_placeholder_type(typ string) bool {
+	// A qualified placeholder is a name, not a composite type such as !module.M.
+	// Parse wrappers first so an accepted one-letter struct keeps its result/option.
+	for ch in typ {
+		if ch != `.` && !placeholder_token_ident_char(ch) {
+			return false
+		}
+	}
 	if typ.contains('.') {
 		last := typ.all_after_last('.')
 		return is_generic_placeholder_type(last)

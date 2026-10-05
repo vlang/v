@@ -13,6 +13,7 @@ const macos_v3_caller_no_fallback_present_env = 'V_MACOS_V3_CALLER_NO_FALLBACK_P
 const macos_v3_private_environment_names = [
 	'V_MACOS_V3_FALLBACK_FILE',
 	'V_MACOS_V3_C_ERROR_DIR',
+	'V_MACOS_V3_SOURCE_MANIFEST',
 	'V_MACOS_V3_VHASH',
 	'V_MACOS_V3_VCURRENT_HASH',
 	'V_MACOS_V3_EMBEDDED',

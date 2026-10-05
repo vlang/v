@@ -1,0 +1,9 @@
+@[generated]
+module main
+
+struct match {
+	x int
+}
+
+fn main() {
+}

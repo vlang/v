@@ -41,6 +41,98 @@ fn test_generic_param_cache_keeps_empty_and_inferred_parameters() {
 	assert tc.node_has_enclosing_generic_param(flat.NodeId(get_id), 'T')
 }
 
+fn test_library_reachability_keeps_inferred_generic_receiver_roots() {
+	a := generic_param_cache_fixture()!
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	file := a.nodes[a.file_node_ids[0]].value
+	get_id := tc.fn_decl_short_name_ids['get'] or { panic('missing get declaration') }
+	get := a.nodes[get_id]
+	// No call reaches this method, but its receiver's generic body must still be checked.
+	assert get.generic_params().len == 0
+	tc.skip_unreachable_library_bodies({
+		file: true
+	}, []string{}, true)
+	assert tc.reachable_library_fns[get.value]
+	tc.cur_file = file
+	assert !tc.skips_library_body(get)
+}
+
+fn test_library_reachability_keeps_top_level_compile_messages() {
+	path := os.join_path(os.vtmp_dir(), 'v3_library_compile_messages_${os.getpid()}.v')
+	os.write_file(path, 'module dependency
+\$compile_error("library error")
+\$compile_warn("library warning")
+fn unused() {
+	\$compile_error("unreachable error")
+}
+')!
+	defer { os.rm(path) or {} }
+	for follow_names in [false, true] {
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.diagnostic_files[path] = true
+		tc.skip_unreachable_library_bodies({
+			path: true
+		}, []string{}, follow_names)
+		tc.check_semantics()
+		assert tc.errors.len == 1, tc.errors.str()
+		assert tc.errors[0].msg == 'library error', tc.errors.str()
+		assert tc.errors[0].kind == .compile_error
+		assert tc.notices.any(it.msg == 'library warning' && it.severity == 'warning:'), tc.notices.str()
+	}
+}
+
+fn test_library_reachability_follows_references_without_literal_or_declaration_names() {
+	root := os.join_path(os.vtmp_dir(), 'v3_library_reference_names_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	main_path := os.join_path(root, 'main.v')
+	library_path := os.join_path(root, 'dependency.v')
+	os.write_file(main_path, 'module main
+import dependency { value_target, CastTarget }
+struct Record { field_name int }
+fn accept(parameter_name int) {}
+fn main() {
+	_ := "literal_name"
+	_ := Record{field_name: 1}
+	callback := value_target
+	callback()
+	item := dependency.Item{}
+	_ := item.method_target
+	dependency.direct_target()
+	_ := CastTarget(1)
+}
+')!
+	os.write_file(library_path, 'module dependency
+pub struct Item {}
+pub fn literal_name() {}
+pub fn parameter_name() {}
+pub fn field_name() {}
+pub fn value_target() {}
+pub fn direct_target() {}
+pub fn (item Item) method_target() {}
+pub fn CastTarget(value int) int { return value }
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([main_path, library_path])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.skip_unreachable_library_bodies({
+		library_path: true
+	}, []string{}, true)
+	for name in ['literal_name', 'parameter_name', 'field_name'] {
+		assert !tc.reachable_library_fns['dependency.${name}'], name
+	}
+	for name in ['value_target', 'direct_target', 'Item.method_target', 'CastTarget'] {
+		assert tc.reachable_library_fns['dependency.${name}'], name
+	}
+}
+
 fn test_generic_instantiation_falls_back_for_uncached_declarations() {
 	a := generic_param_cache_fixture()!
 	mut tc := TypeChecker.new(a)

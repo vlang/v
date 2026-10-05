@@ -101,6 +101,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\v.exe symlink
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and run hello world with -b fastc
+        env:
+          # FastC always compiles with the bundled TinyCC and rejects `-cc`.
+          VFLAGS: ''
+        run: |
+          .\v.exe -b fastc -o hello_fastc.exe examples\hello_world.v
+          if ($LASTEXITCODE -ne 0) {
+            throw "v -b fastc failed with exit code $LASTEXITCODE"
+          }
+          $output = (.\hello_fastc.exe | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "hello_fastc.exe failed with exit code $LASTEXITCODE"
+          }
+          if ($output -ne 'Hello, World!') {
+            throw "unexpected -b fastc hello world output: '$output'"
+          }
+          Remove-Item hello_fastc.exe, hello_fastc.c -ErrorAction SilentlyContinue
       - name: Pkg-config regressions (MSVC dynamic isolation)
         run: |
           $tests = @(

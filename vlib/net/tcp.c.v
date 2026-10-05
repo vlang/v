@@ -38,6 +38,10 @@ pub mut:
 	// replay — from a partial write. (The TLS backends expose the same field but
 	// use -1 for the indeterminate case they cannot prove; plain TCP never does.)
 	last_write_sent int
+mut:
+	read_timeout_in_socket     bool
+	socket_read_timeout_value  time.Duration
+	socket_read_timeout_handle int
 }
 
 // dial_tcp will try to create a new TcpConn to the given address.
@@ -76,6 +80,7 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 			read_timeout:  tcp_default_read_timeout
 			write_timeout: tcp_default_write_timeout
 		}
+		conn.set_read_timeout(tcp_default_read_timeout)
 		// The blocking / non-blocking mode is determined before the connection is established.
 		$if net_nonblocking_sockets ? {
 			conn.is_blocking = false
@@ -119,6 +124,7 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 			read_timeout:  tcp_default_read_timeout
 			write_timeout: tcp_default_write_timeout
 		}
+		conn.set_read_timeout(tcp_default_read_timeout)
 		// The blocking / non-blocking mode is determined before the connection is established.
 		$if net_nonblocking_sockets ? {
 			conn.is_blocking = false
@@ -177,14 +183,19 @@ pub fn (mut c TcpConn) close() ! {
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
 	mut ecode := 0
+	// A deadline-only read still uses select; ordinary blocking reads let recv enforce the timeout.
+	socket_read_timeout := c.is_blocking && c.read_timeout_in_socket
+		&& c.read_timeout == c.socket_read_timeout_value
+		&& c.sock.handle == c.socket_read_timeout_handle
+		&& (c.read_timeout != 0 || c.read_deadline.unix() == 0)
 	$if is_coroutine ? {
 		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		ecode = error_code()
 	} $else {
 		if c.is_blocking {
-			// Honor read deadlines/timeouts first, then use a normal blocking recv.
-			// This avoids transient EAGAIN-style reads on newly accepted sockets.
-			c.wait_for_read()!
+			if !socket_read_timeout {
+				c.wait_for_read()!
+			}
 			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
 		} else {
 			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
@@ -204,6 +215,9 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
+	}
+	if socket_read_timeout && ecode in [int(error_ewouldblock), int(error_eagain)] {
+		return err_timed_out
 	}
 	if ecode in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
@@ -326,8 +340,31 @@ pub fn (c &TcpConn) read_timeout() time.Duration {
 	return c.read_timeout
 }
 
+// set_read_timeout sets the timeout used by subsequent reads.
+// On POSIX sockets, blocking recv enforces it directly when the socket option is available.
 pub fn (mut c TcpConn) set_read_timeout(t time.Duration) {
 	c.read_timeout = t
+	c.read_timeout_in_socket = false
+	$if !windows && !is_coroutine ? {
+		if t < 0 && t != infinite_timeout {
+			return
+		}
+		mut microseconds := i64(0)
+		if t > 0 && t != infinite_timeout {
+			microseconds = t / time.microsecond
+			if t % time.microsecond != 0 {
+				microseconds++
+			}
+		}
+		timeout := C.timeval{
+			tv_sec:  u64(microseconds / 1_000_000)
+			tv_usec: u64(microseconds % 1_000_000)
+		}
+		c.read_timeout_in_socket = C.setsockopt(c.sock.handle, C.SOL_SOCKET, C.SO_RCVTIMEO,
+			voidptr(&timeout), sizeof(timeout)) == 0
+		c.socket_read_timeout_value = t
+		c.socket_read_timeout_handle = c.sock.handle
+	}
 }
 
 pub fn (c &TcpConn) write_timeout() time.Duration {
@@ -352,6 +389,7 @@ pub fn (mut c TcpConn) wait_for_write() ! {
 // Note: just use `.accept()!`. In most cases it is simpler, and calls `.set_sock()!` for you.
 pub fn (mut c TcpConn) set_sock() ! {
 	c.sock = tcp_socket_from_handle(c.handle)!
+	c.set_read_timeout(c.read_timeout)
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | << new_sock.handle: ${c.handle:6}')
 	}

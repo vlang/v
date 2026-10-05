@@ -113,6 +113,8 @@ pub:
 mut:
 	// One entry per source line, so keep it compact: offsets are file-local.
 	line_offsets []i32 = [i32(0)]
+	// Set once the line table holds the line starts of the source.
+	has_line_index bool
 	// Keep the digest inline: stored files can outlive parser-worker preallocation scopes.
 	source_digest     [sha256.size]u8
 	has_source_digest bool
@@ -167,15 +169,42 @@ pub fn (mut f File) add_line(offset int) {
 	f.line_offsets << i32(offset)
 }
 
+// clone_index returns a copy of this file index that owns its storage: the name,
+// the line table, the digest or quick sum of the source, and the `#line`
+// directives. A parser worker's file outlives the memory of the worker this way.
+pub fn (f &File) clone_index() &File {
+	mut cloned := &File{
+		name:              f.name.clone()
+		size:              f.size
+		line_offsets:      f.line_offsets.clone()
+		has_line_index:    f.has_line_index
+		source_digest:     f.source_digest
+		has_source_digest: f.has_source_digest
+		source_sum:        f.source_sum
+		has_source_sum:    f.has_source_sum
+	}
+	cloned.copy_line_directives(f)
+	return cloned
+}
+
 // index_lines records every source-line start for logarithmic position lookup
 // and stores the source digest consumed by cache and fallback verification.
 pub fn (mut f File) index_lines(src string) {
 	f.index_line_offsets(src)
-	digest := sha256.sum(src.bytes())
+	// The digest only reads the source: hash it in place instead of a copy of it.
+	digest := sha256.sum(unsafe { src.str.vbytes(src.len) })
 	for i in 0 .. sha256.size {
 		f.source_digest[i] = digest[i]
 	}
 	f.has_source_digest = true
+}
+
+// index_line_starts records every source-line start as index_lines does, and
+// leaves the digest of the source out. Only a fallback manifest reads that
+// digest, and hashing every parsed source with SHA-256 cost more than scanning
+// it: a build that stages no manifest indexes its sources with this instead.
+pub fn (mut f File) index_line_starts(src string) {
+	f.index_line_offsets(src)
 }
 
 // index_lines_with_quick_sum indexes the lines of `src` as index_lines does, but
@@ -188,14 +217,28 @@ pub fn (mut f File) index_lines_with_quick_sum(src string) {
 	f.has_source_sum = true
 }
 
+@[direct_array_access]
 fn (mut f File) index_line_offsets(src string) {
-	f.index_lines_without_digest(src)
+	f.has_source_digest = false
 	f.has_source_sum = false
-	for i, c in src {
+	// Count the lines first, so the table is allocated once at its final size
+	// instead of growing a line at a time.
+	mut lines := 1
+	for c in src {
 		if c == `\n` {
-			f.line_offsets << i32(i + 1)
+			lines++
 		}
 	}
+	mut offsets := []i32{len: lines}
+	mut line := 1
+	for i, c in src {
+		if c == `\n` {
+			offsets[line] = i32(i + 1)
+			line++
+		}
+	}
+	f.line_offsets = offsets
+	f.has_line_index = true
 }
 
 // quick_sum is the sum a diagnostics server compares to tell whether a file
@@ -215,6 +258,7 @@ pub fn quick_sum(data &u8, len int) u64 {
 pub fn (mut f File) index_lines_without_digest(src string) {
 	_ := src
 	f.line_offsets = [i32(0)]
+	f.has_line_index = false
 	f.has_source_digest = false
 }
 
@@ -223,9 +267,15 @@ pub fn (f &File) source_sha256() [sha256.size]u8 {
 	return f.source_digest
 }
 
-// has_source_sha256 reports whether this file index was built from source bytes.
+// has_source_sha256 reports whether this file index holds the digest of its source.
 pub fn (f &File) has_source_sha256() bool {
 	return f.has_source_digest
+}
+
+// has_source_lines reports whether this file index was built from source bytes,
+// whichever of index_lines, index_line_starts and index_lines_with_quick_sum did it.
+pub fn (f &File) has_source_lines() bool {
+	return f.has_line_index
 }
 
 // set_source_sha256 preserves a source digest when a parser worker clones a file index.

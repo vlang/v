@@ -5,6 +5,18 @@ import v.pref
 import v.types
 import v.workers
 
+fn test_scoped_cgen_batches_amortize_small_bodies_and_bound_compiler_scratch() {
+	g, mut tc := parallel_worker_test_gen(true)
+	assert g.scoped_cgen_batch_count(0, 0) == 0
+	assert g.scoped_cgen_batch_count(169, 1000) == 1
+	assert g.scoped_cgen_batch_count(445, 100_000) < 10
+	assert g.scoped_cgen_batch_count(1, 1_000_000) == 1
+	assert g.scoped_cgen_batch_count(10_000, 100_000_000) == scoped_cgen_worker_batches
+	tc.building_v_fast = true
+	assert g.scoped_cgen_batch_count(169, 1000) == 169
+	assert g.scoped_cgen_batch_count(10_000, 100_000_000) == scoped_cgen_worker_batches
+}
+
 fn test_parallel_cgen_job_limit_preserves_large_graph_and_compiler_dispatch() {
 	mut g, mut tc := parallel_worker_test_gen(true)
 	mut used := {

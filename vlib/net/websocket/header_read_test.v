@@ -154,3 +154,21 @@ fn test_header_reads_propagate_eof_and_timeouts_in_each_field() ! {
 		}
 	}
 }
+
+fn test_buffered_reader_retains_coalesced_frames_and_zero_length_reads() ! {
+	mut client, mut sender := header_test_pair(true)!
+	defer { client.conn.close() or {} }
+	defer { sender.close() or {} }
+	first := header_test_frame('one'.bytes(), true, 0x81)
+	second := header_test_frame('two'.bytes(), true, 0x81)
+	mut wire := first.clone()
+	wire << second
+	assert sender.write(wire)! == wire.len
+	assert client.read_next_message()!.payload.bytestr() == 'one'
+	// No syscall or buffer consumption for an empty request.
+	before := client.read_start
+	mut byte := u8(0)
+	assert client.socket_read_ptr(&byte, 0)! == 0
+	assert client.read_start == before
+	assert client.read_next_message()!.payload.bytestr() == 'two'
+}

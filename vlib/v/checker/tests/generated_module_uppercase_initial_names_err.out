@@ -1,0 +1,42 @@
+vlib/v/checker/tests/generated_module_uppercase_initial_names_err.vv:6:7: error: const name `MaxCount` cannot start with an uppercase letter, only type names can
+    4 | // `@[generated]` allows camelCase and a leading `_`, but only type names can
+    5 | // begin with an uppercase letter.
+    6 | const MaxCount = 3
+      |       ~~~~~~~~
+    7 | 
+    8 | struct _zbr_ty_Point {
+vlib/v/checker/tests/generated_module_uppercase_initial_names_err.vv:9:2: error: field name `XPos` cannot start with an uppercase letter, only type names can
+    7 | 
+    8 | struct _zbr_ty_Point {
+    9 |     XPos int
+      |     ~~~~~~~~
+   10 | }
+   11 |
+vlib/v/checker/tests/generated_module_uppercase_initial_names_err.vv:13:2: error: field name `Red` cannot start with an uppercase letter, only type names can
+   11 | 
+   12 | enum _zbr_ty_Color {
+   13 |     Red
+      |     ~~~
+   14 | }
+   15 |
+vlib/v/checker/tests/generated_module_uppercase_initial_names_err.vv:16:1: error: method name `GetX` cannot start with an uppercase letter, only type names can
+   14 | }
+   15 | 
+   16 | fn (p _zbr_ty_Point) GetX() int {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   17 |     return p.XPos
+   18 | }
+vlib/v/checker/tests/generated_module_uppercase_initial_names_err.vv:20:1: error: function name `MakePoint` cannot start with an uppercase letter, only type names can
+   18 | }
+   19 | 
+   20 | fn MakePoint() {}
+      | ~~~~~~~~~~~~~~
+   21 | 
+   22 | fn main() {
+vlib/v/checker/tests/generated_module_uppercase_initial_names_err.vv:23:2: error: variable name `MyValue` cannot start with an uppercase letter, only type names can
+   21 | 
+   22 | fn main() {
+   23 |     MyValue := 1
+      |     ~~~~~~~
+   24 |     println(MyValue + MaxCount)
+   25 |     println(_zbr_ty_Point{}.XPos)

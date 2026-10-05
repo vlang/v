@@ -4,6 +4,18 @@ import time
 import v.flat
 import v.gen.c.naming
 
+// ownership_prescan_max_rounds bounds each ownership fixed point, so that a
+// regression in path composition fails as a diagnostic instead of hanging the
+// compiler. Without it the only bound on returned-parameter paths lived in a test
+// assertion, while these two worklists were uncapped.
+//
+// An acyclic call chain can propagate one function per round in the opposite
+// direction to the scan. Allow a round per function and one to observe stability,
+// with at least 64 rounds for smaller programs and recursive fixed points.
+fn ownership_prescan_max_rounds(item_count int) int {
+	return if item_count < 64 { 64 } else { item_count + 1 }
+}
+
 enum OwnershipBorrowedProjectionAction {
 	not_borrowed
 	owned_value
@@ -1872,8 +1884,9 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 		}
 	}
 	fn_items := tc.ownership_fn_scan_items()
-	tc.ownership_prescan_fn_returns(fn_items)
-	tc.ownership_prescan_owned_call_params(fn_items)
+	max_rounds := ownership_prescan_max_rounds(fn_items.len)
+	tc.ownership_prescan_fn_returns(fn_items, max_rounds)
+	tc.ownership_prescan_owned_call_params(fn_items, max_rounds)
 	tc.ownership_collect_globals_after_prescan()
 }
 
@@ -2415,7 +2428,7 @@ fn (mut tc TypeChecker) ownership_register_fn_param_mut_alias(name string, param
 	tc.ownership_state().ownership_fn_param_mut[name] = params.clone()
 }
 
-fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem) {
+fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem, max_rounds int) {
 	if items.len == 0 {
 		return
 	}
@@ -2427,6 +2440,7 @@ fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem
 	tc.ownership_return_record_calls = true
 	mut pending := []bool{len: items.len, init: true}
 	mut rounds := 0
+	mut not_converged_idx := -1
 	for {
 		rounds++
 		mut scanned_items := 0
@@ -2434,6 +2448,10 @@ fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem
 		for item_idx := items.len - 1; item_idx >= 0; item_idx-- {
 			if !pending[item_idx] {
 				continue
+			}
+			if rounds > max_rounds {
+				not_converged_idx = item_idx
+				break
 			}
 			scanned_items++
 			tc.ownership_return_current_item = item_idx
@@ -2451,6 +2469,9 @@ fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem
 				|| tc.ownership_return_prescan_fn_state_count(item.name) != item_before {
 				changed_items << item_idx
 			}
+		}
+		if not_converged_idx >= 0 {
+			break
 		}
 		tc.timing_profile('  [ttime]   ownership return round ${rounds}: ${scanned_items} scanned, ${changed_items.len} changed')
 		if changed_items.len == 0 {
@@ -2481,6 +2502,10 @@ fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem
 	tc.ownership_return_current_item = -1
 	tc.ownership_return_item_by_name = map[string]int{}
 	tc.ownership_return_edges = []u64{}
+	if not_converged_idx >= 0 {
+		tc.ownership_report_prescan_no_convergence(items[not_converged_idx], rounds,
+			'ownership return-alias inference')
+	}
 	tc.timing_profile('  [ttime]   ownership return prescan ${rounds} rounds')
 }
 
@@ -3712,7 +3737,7 @@ fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_
 	tc.ownership_note_fn_param_change(fn_name)
 }
 
-fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnScanItem) {
+fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnScanItem, max_rounds int) {
 	if tc.autofree_mode || items.len == 0 {
 		return
 	}
@@ -3737,6 +3762,7 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 	}
 	tc.timing_profile('  [ttime]   ownership params initial ${initial_items}/${items.len} functions')
 	mut rounds := 0
+	mut not_converged_idx := -1
 	for {
 		rounds++
 		tc.ownership_param_changed_items = []bool{len: items.len}
@@ -3746,6 +3772,10 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 			if !pending[item_idx] {
 				continue
 			}
+			if rounds > max_rounds {
+				not_converged_idx = item_idx
+				break
+			}
 			scanned_items++
 			tc.ownership_param_current_item = item_idx
 			tc.cur_file = item.file
@@ -3753,6 +3783,9 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 			tc.ownership_prescan_fn_owned_call_params(item.name, tc.a.nodes[item.idx])
 		}
 		tc.ownership_param_track_changes = false
+		if not_converged_idx >= 0 {
+			break
+		}
 		mut changed_items := 0
 		for changed in tc.ownership_param_changed_items {
 			if changed {
@@ -3770,6 +3803,10 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 	tc.ownership_param_item_by_name = map[string]int{}
 	tc.ownership_param_changed_items = []bool{}
 	tc.timing_profile('  [ttime]   ownership params prescan ${rounds} rounds')
+	if not_converged_idx >= 0 {
+		tc.ownership_report_prescan_no_convergence(items[not_converged_idx], rounds,
+			'ownership parameter inference')
+	}
 }
 
 fn (tc &TypeChecker) ownership_node_contains_defer(node flat.Node) bool {
@@ -5135,6 +5172,25 @@ fn (mut tc TypeChecker) ownership_consume_fn_literal_capture(name string, fn_nam
 
 fn ownership_fn_literal_name(cur_fn string, id flat.NodeId) string {
 	return '${cur_fn}__fn_literal_${int(id)}'
+}
+
+// ownership_report_prescan_no_convergence turns a fixed point that exceeded
+// ownership_prescan_max_rounds into a compile error on the function still changing.
+// Its result state is not trustworthy at that point, so continuing would risk
+// emitting destructor calls at the wrong places; failing is the safer outcome.
+//
+// The report is unfiltered on purpose. `should_diagnose` drops nodes without a valid
+// position, and a function that is still changing can well be a builtin or prelude
+// declaration, so a filtered error would be silently swallowed for exactly the inputs
+// most likely to hit the bound.
+fn (mut tc TypeChecker) ownership_report_prescan_no_convergence(item OwnershipFnScanItem, rounds int, what string) {
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	tc.cur_file = item.file
+	tc.cur_module = item.module
+	tc.record_error_unfiltered(.compile_error, '${what} did not converge for `${item.name}` after ${rounds - 1} rounds; this is a compiler bug, please report it', flat.NodeId(item.idx))
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
 }
 
 // ownership_lambda_name derives the ownership identity of a lambda from the

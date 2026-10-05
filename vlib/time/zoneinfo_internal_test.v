@@ -244,6 +244,39 @@ fn test_zoneinfo_search_continues_after_invalid_tzif_data() {
 	assert loc.offset_at(1_704_067_200)! == 0
 }
 
+fn test_zoneinfo_source_directory_needs_no_permission_to_list_it() {
+	$if !windows {
+		temp_dir := os.join_path(os.vtmp_dir(), 'zoneinfo_search_only_source')
+		zone_name := 'ReviewZone'
+		os.chmod(temp_dir, 0o755) or {}
+		os.rmdir_all(temp_dir) or {}
+		defer {
+			os.chmod(temp_dir, 0o755) or {}
+			os.rmdir_all(temp_dir) or {}
+		}
+		os.mkdir_all(temp_dir)!
+		data := load_zoneinfo_from_source(zoneinfo_vroot_zip, 'America/New_York')!
+		os.write_file_array(os.join_path(temp_dir, zone_name), data)!
+		// Search permission alone: the directory cannot be listed, and its files can
+		// still be opened by name.
+		os.chmod(temp_dir, 0o111)!
+		if os.getuid() != 0 {
+			if _ := os.ls(temp_dir) {
+				assert false, 'a directory without the permission to read it was listed'
+			}
+		}
+		assert zoneinfo_is_dir(temp_dir)
+		assert !zoneinfo_is_file(temp_dir)
+		assert load_zoneinfo_from_source(temp_dir, zone_name)! == data
+		loc := load_zoneinfo_location_from_sources(zone_name, [temp_dir], [])!
+		assert loc.name == zone_name
+		assert loc.offset_at(1_704_067_200)! == -18_000
+		// A file is not a directory, whatever follows its name.
+		assert !zoneinfo_is_dir(os.join_path(temp_dir, zone_name))
+		assert zoneinfo_is_file(os.join_path(temp_dir, zone_name))
+	}
+}
+
 fn test_local_location_loads_unprefixed_absolute_tz_path() {
 	$if !windows {
 		temp_dir := os.join_path(os.vtmp_dir(), 'zoneinfo_absolute_tz_path')
