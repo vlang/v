@@ -347,7 +347,7 @@ fn (mut p Process) win_wait() {
 		close_valid_handle(&wdata.proc_info.h_thread)
 	}
 	p.status = .exited
-	p.code = int(exit_code)
+	p.code = int(i32(exit_code))
 }
 
 fn (mut p Process) win_is_alive() bool {
