@@ -38,6 +38,7 @@ fn reverse_cycle_contexts(mut target Box, source &Value, replacement &Value) {
 	second_cycle(mut target, source, replacement)
 	first_cycle(mut target, source, replacement)
 }
+fn self_source(mut target Box) { target.value = target.value }
 ') or { panic(err) }
 		mut p := parser.Parser.new(pref.new_preferences())
 		a := p.parse_file(path)
@@ -76,10 +77,12 @@ fn reverse_cycle_contexts(mut target Box, source &Value, replacement &Value) {
 		assert results['second_cycle']['.value'] == [1]
 		assert results['cycle_contexts']['.value'] == [1]
 		assert results['reverse_cycle_contexts']['.value'] == [2]
+		assert results['self_source']['.value'] == [0]
 		assert tc.visible_mutation_cache.storage_query_results.len == 0
 		mut cycle_decl := VisibleMutationFnDecl{}
 		mut store_decl := VisibleMutationFnDecl{}
 		mut delegate_decl := VisibleMutationFnDecl{}
+		mut self_decl := VisibleMutationFnDecl{}
 		for i, node in a.nodes {
 			if node.kind == .fn_decl && node.value == 'first_cycle' {
 				cycle_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
@@ -90,24 +93,50 @@ fn reverse_cycle_contexts(mut target Box, source &Value, replacement &Value) {
 			if node.kind == .fn_decl && node.value == 'delegate' {
 				delegate_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
 			}
+			if node.kind == .fn_decl && node.value == 'self_source' {
+				self_decl = VisibleMutationFnDecl{ idx: i, mod: 'main' }
+			}
 		}
+		mut self_active := map[u64]bool{}
+		assert tc.param_storage_source_params_for_decl(self_decl, 0, mut self_active).len == 0
+		assert self_active.len == 0
 		promotion_scope := unsafe { prealloc_scope_begin() }
-		promotion_view := tc.fork_storage_query_view()
+		mut promotion_view := tc.fork_storage_query_view()
 		mut no_ancestors := map[u64]bool{}
 		assert promotion_view.param_storage_writes_for_decl(delegate_decl, 0, mut no_ancestors)['.child.value'] == [1]
 		mut child_context := map[u64]bool{}
-		child_context[visible_mutation_cache_id(delegate_decl, 0)] = true
-		mut child_ancestors := child_context.keys()
-		child_ancestors.sort()
-		child_key := '${store_decl.mod}:${store_decl.idx}:0:${child_ancestors}'
+		delegate_id := visible_mutation_cache_id(delegate_decl, 0)
+		store_id := visible_mutation_cache_id(store_decl, 0)
+		child_context[delegate_id] = true
+		child_key := '${store_decl.mod}:${store_decl.idx}:0'
 		// A completed descendant context is promoted before its query arena ends.
 		assert child_key in promotion_view.visible_mutation_cache.storage_query_results
+		child_entry := promotion_view.visible_mutation_cache.storage_query_results[child_key][0]
+		assert child_entry.guards == {
+			store_id: false
+		}
+		delegate_key := '${delegate_decl.mod}:${delegate_decl.idx}:0'
+		delegate_entry := promotion_view.visible_mutation_cache.storage_query_results[delegate_key][0]
+		assert delegate_entry.guards == {
+			delegate_id: false
+			store_id:    false
+		}
 		sibling_scope := unsafe { prealloc_scope_begin() }
-		sibling_view := promotion_view.fork_storage_query_view()
+		mut sibling_view := promotion_view.fork_storage_query_view()
+		sibling_view.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{
+			guard_id: delegate_id
+			guards:   {
+				delegate_id: false
+			}
+		}
 		borrowed := sibling_view.param_storage_writes_for_decl(store_decl, 0, mut child_context)
 		assert borrowed['.value'] == [1]
 		// A read-only hit in the parent does not populate this sibling's memo.
 		assert sibling_view.visible_mutation_cache.storage_query_results.len == 0
+		assert sibling_view.visible_mutation_cache.storage_query_trace.guards == {
+			delegate_id: false
+			store_id:    false
+		}
 		unsafe { prealloc_scope_end(sibling_scope) }
 		churn_scope := unsafe { prealloc_scope_begin() }
 		mut sibling_churn := map[string][]int{}
@@ -117,11 +146,52 @@ fn reverse_cycle_contexts(mut target Box, source &Value, replacement &Value) {
 		assert sibling_churn.len == 1024
 		unsafe { prealloc_scope_end(churn_scope) }
 		assert borrowed['.value'] == [1]
-		assert promotion_view.visible_mutation_cache.storage_query_results[child_key]['.value'] == [1]
+		assert promotion_view.visible_mutation_cache.storage_query_results[child_key][0].writes['.value'] == [1]
+		promotion_view.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{
+			guard_id: delegate_id
+			guards:   {
+				delegate_id: false
+			}
+		}
+		assert promotion_view.param_storage_writes_for_decl(store_decl, 0, mut child_context)['.value'] == [1]
+		assert promotion_view.visible_mutation_cache.storage_query_trace.guards == {
+			delegate_id: false
+			store_id:    false
+		}
+		mut cutoff := map[u64]bool{}
+		cutoff[store_id] = false
+		assert promotion_view.param_storage_writes_for_decl(store_decl, 0, mut cutoff).len == 0
+		// False-valued visiting entries still conflict with a recorded absence.
+		assert !promotion_view.visible_mutation_cache.storage_query_trace.complete
+		parent_trace := &StorageQueryTrace{
+			guard_id: delegate_id
+			guards:   {
+				delegate_id: false
+			}
+		}
+		mut incomplete_parent := &VisibleMutationCache{ storage_query_trace: parent_trace }
+		incomplete_parent.record_storage_query_guards(promotion_view.visible_mutation_cache.storage_query_trace.guards,
+			promotion_view.visible_mutation_cache.storage_query_trace.complete)
+		assert !parent_trace.complete
 		unsafe { prealloc_scope_end(promotion_scope) }
 		assert tc.visible_mutation_cache.storage_query_results.len == 0
 		memo_scope := unsafe { prealloc_scope_begin() }
-		memo_view := tc.fork_storage_query_view()
+		mut memo_view := tc.fork_storage_query_view()
+		memo_view.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{
+			guard_id: u64(9_000_000)
+			guards:   {
+				u64(9_000_000): false
+			}
+		}
+		mut readonly_context := map[u64]bool{}
+		readonly_context[visible_mutation_cache_id(store_decl, 1)] = false
+		assert memo_view.param_storage_writes_for_decl(store_decl, 1, mut readonly_context).len == 0
+		assert memo_view.param_storage_writes_for_decl(store_decl, 99, mut readonly_context).len == 0
+		assert memo_view.visible_mutation_cache.storage_query_count == 0
+		assert memo_view.visible_mutation_cache.storage_query_trace.guards == {
+			u64(9_000_000): false
+		}
+		memo_view.visible_mutation_cache.storage_query_trace = unsafe { nil }
 		cycle_id := visible_mutation_cache_id(cycle_decl, 0)
 		mut inactive := map[u64]bool{}
 		inactive[cycle_id] = false
@@ -132,16 +202,30 @@ fn reverse_cycle_contexts(mut target Box, source &Value, replacement &Value) {
 		assert memo_view.param_storage_writes_for_decl(cycle_decl, 0, mut active_cycle).len == 0
 		mut absent := map[u64]bool{}
 		assert memo_view.param_storage_writes_for_decl(cycle_decl, 0, mut absent)['.value'] == [2]
+		count_before_store := memo_view.visible_mutation_cache.storage_query_count
 		for iteration in 0 .. 96 {
 			mut distinct_context := map[u64]bool{}
 			distinct_context[u64(1_000_000 + iteration)] = true
 			assert memo_view.param_storage_writes_for_decl(store_decl, 0, mut distinct_context)['.value'] == [1]
 		}
-		assert memo_view.visible_mutation_cache.storage_query_results.len == 64
+		// Ancestors whose guards were never read do not create distinct entries.
+		assert memo_view.visible_mutation_cache.storage_query_count == count_before_store + 1
+		for iteration in 0 .. 96 {
+			memo_view.visible_mutation_cache.cache_storage_query_result('bounded', {
+				'.value': [1]
+			},
+				{
+					u64(2_000_000 + iteration): false
+				}, true)
+		}
+		assert memo_view.visible_mutation_cache.storage_query_count == 64
+		assert memo_view.visible_mutation_cache.storage_query_results.len < 64
 		assert memo_view.visible_mutation_cache.storage_query_bytes <= 256 * 1024
-		for _, paths in memo_view.visible_mutation_cache.storage_query_results {
-			for _, sources in paths {
-				assert sources.len > 0
+		for _, entries in memo_view.visible_mutation_cache.storage_query_results {
+			for entry in entries {
+				for _, sources in entry.writes {
+					assert sources.len > 0
+				}
 			}
 		}
 		unsafe { prealloc_scope_end(memo_scope) }
@@ -150,7 +234,7 @@ fn reverse_cycle_contexts(mut target Box, source &Value, replacement &Value) {
 			for name, sources in paths {
 				assert name.len > 0
 				assert sources.len > 0
-				assert sources[0] in [1, 2]
+				assert sources[0] in [0, 1, 2]
 			}
 		}
 	}

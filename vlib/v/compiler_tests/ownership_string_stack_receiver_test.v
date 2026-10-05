@@ -30,7 +30,7 @@ fn main() {}
 	] {
 		os.write_file(source, fixture)!
 		for mode in ['-no-parallel', ''] {
-			result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
+			result := run_owned_string_storage(source, mode, '-check')
 			assert result.exit_code != 0, '${mode}: ${result.output}'
 			assert result.output.contains('cannot return a reference to local storage `local`'), '${mode}: ${result.output}'
 		}
@@ -71,8 +71,15 @@ fn main() {
 }
 ")!
 	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -cc clang ${mode} run ${os.quoted_path(source)}')
+		result := run_owned_string_storage(source, mode, 'run')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 		assert result.output.trim_space() == 'ok', result.output
 	}
+}
+
+fn run_owned_string_storage(source string, mode string, command string) os.Result {
+	mut args := [@VEXE, '-new-compiler', '-nocache', '-ownership', '-d', 'ownership']
+	if mode != '' { args << mode }
+	args << [command, source]
+	return os.exec(args)
 }

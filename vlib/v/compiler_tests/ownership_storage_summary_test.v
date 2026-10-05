@@ -19,7 +19,7 @@ fn test_ownership_value_returns_survive_repeated_storage_queries() {
 fn main() { assert value() == "value" }
 '
 	os.write_file(source_path, source)!
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source_path)}')
+	result := run_owned_storage_summary(source_path, '', '-check')
 	assert result.exit_code == 0, result.output
 }
 
@@ -76,7 +76,7 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} run ${os.quoted_path(source_path)}')
+		result := run_owned_storage_summary(source_path, mode, 'run')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
 }
@@ -104,7 +104,7 @@ fn main() {}
 ')!
 		for mode in ['-no-parallel', ''] {
 			// Returned references would dangle, so only check these fixtures.
-			result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source_path)}')
+			result := run_owned_storage_summary(source_path, mode, '-check')
 			assert result.exit_code != 0, '${return_type}: ${mode}: ${result.output}'
 			assert result.output.contains('cannot return a reference to local storage')
 				|| result.output.contains('cannot move `ptr.holder.target` because it borrows'), '${return_type}: ${mode}: ${result.output}'
@@ -134,7 +134,7 @@ fn main() {}
 ')!
 		for mode in ['-no-parallel', ''] {
 			// A Result can hold a borrowed error payload even when its success value is a scalar.
-			result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source_path)}')
+			result := run_owned_storage_summary(source_path, mode, '-check')
 			assert result.exit_code != 0, '${return_type}: ${mode}: ${result.output}'
 			assert result.output.contains('cannot return a reference to local storage `local`'), '${return_type}: ${mode}: ${result.output}'
 		}
@@ -151,12 +151,12 @@ fn (mut builder Builder) reference() &Builder { return builder }
 struct Holder { mut: target &Builder }
 fn store_number(mut holder Holder, number int) { holder.target = &Builder{number: number} }
 fn no_op(mut holder Holder, number int) { _ = holder; _ = number }
-fn store_borrowed(mut holder Holder, mut builder Builder) { holder.target = builder.reference() }
+fn store_borrowed(mut holder Holder, builder &Builder) { holder.target = builder }
 '
 	for setter, accepted in {
-		'store_number(mut holder, 42)':          true
-		'no_op(mut holder, 42)':                 false
-		'store_borrowed(mut holder, mut local)': false
+		'store_number(mut holder, 42)':                  true
+		'no_op(mut holder, 42)':                         false
+		'store_borrowed(mut holder, local.reference())': false
 	} {
 		initial := if accepted || setter.starts_with('no_op') {
 			'Holder{target: local.reference()}'
@@ -173,7 +173,7 @@ fn main() { assert escaped().target.number == 42 }
 ')!
 		for mode in ['-no-parallel', ''] {
 			command := if accepted { 'run' } else { '-check' }
-			result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} ${command} ${os.quoted_path(source_path)}')
+			result := run_owned_storage_summary(source_path, mode, command)
 			if accepted {
 				assert result.exit_code == 0, '${setter}: ${mode}: ${result.output}'
 			} else {
@@ -208,7 +208,7 @@ struct Holder { mut: target &Builder }
 fn main() {}
 '
 	os.write_file(source_path, source)!
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -check ${os.quoted_path(source_path)}')
+	result := run_owned_storage_summary(source_path, '', '-check')
 	assert result.exit_code == 0, result.output
 }
 
@@ -230,8 +230,15 @@ fn escaped() Holder {
 fn main() {}
 ')!
 	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source_path)}')
+		result := run_owned_storage_summary(source_path, mode, '-check')
 		assert result.exit_code != 0, '${mode}: ${result.output}'
 		assert result.output.contains('cannot return a reference to local storage `local`'), '${mode}: ${result.output}'
 	}
+}
+
+fn run_owned_storage_summary(source string, mode string, command string) os.Result {
+	mut args := [@VEXE, '-new-compiler', '-nocache', '-ownership', '-d', 'ownership']
+	if mode != '' { args << mode }
+	args << [command, source]
+	return os.exec(args)
 }

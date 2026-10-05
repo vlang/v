@@ -1,44 +1,84 @@
 module types
 
-// A summary returns only paths and parameter indexes. Every other allocation
-// belongs to this query, including its memoization and active recursion map.
+struct StorageQueryResult {
+	writes map[string][]int
+	guards map[u64]bool
+}
+
+@[heap]
+struct StorageQueryTrace {
+mut:
+	guard_id u64
+	guards   map[u64]bool
+	complete bool = true
+}
+
+// A summary returns only paths and parameter indexes. Query state is disposable;
+// memo entries retain the ancestor membership checks required to replay a result.
 fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) map[string][]int {
 	$if prealloc {
 		scope := unsafe { prealloc_scope_begin() }
 		defer { unsafe { prealloc_scope_end(scope) } }
-		mut cache := tc.visible_mutation_cache
-		use_cache := !isnil(cache) && cache.storage_query
-		if visible_mutation_cache_id(decl, target_param_idx) in visiting {
-			// An active declaration has the same empty result in every context.
+		needs_analysis := if param := tc.visible_mutation_fn_param(decl, target_param_idx) {
+			param.is_mut
+		} else {
+			false
+		}
+		if !needs_analysis {
 			parent := unsafe { prealloc_scope_suspend(scope) }
 			empty := map[string][]int{}
 			unsafe { prealloc_scope_resume(scope, parent) }
 			return empty
 		}
-		mut cache_key := ''
+		mut cache := tc.visible_mutation_cache
+		use_cache := !isnil(cache) && cache.storage_query
+		guard_id := visible_mutation_cache_id(decl, target_param_idx)
+		if guard_id in visiting {
+			parent := unsafe { prealloc_scope_suspend(scope) }
+			if use_cache {
+				cache.record_storage_query_guard(guard_id, true)
+			}
+			empty := map[string][]int{}
+			unsafe { prealloc_scope_resume(scope, parent) }
+			return empty
+		}
+		cache_key := '${decl.mod}:${decl.idx}:${target_param_idx}'
 		if use_cache {
-			// Cycle cutoffs depend on the complete active set, not its order.
-			mut ancestors := visiting.keys()
-			ancestors.sort()
-			cache_key = '${decl.mod}:${decl.idx}:${target_param_idx}:${ancestors}'
 			mut lookup := cache
 			for !isnil(lookup) && lookup.storage_query {
-				if cached := lookup.storage_query_results[cache_key] {
-					return cached
+				for cached in lookup.storage_query_results[cache_key] {
+					if storage_query_guards_match(cached.guards, visiting) {
+						parent := unsafe { prealloc_scope_suspend(scope) }
+						cache.record_storage_query_guards(cached.guards, true)
+						unsafe { prealloc_scope_resume(scope, parent) }
+						return cached.writes
+					}
 				}
 				lookup = lookup.base
 			}
 		}
-		view := tc.fork_storage_query_view()
+		mut view := tc.fork_storage_query_view()
+		view.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{
+			guard_id: guard_id
+			guards:   {
+				guard_id: false
+			}
+		}
 		mut active := visiting.clone()
 		result := view.param_storage_writes_for_decl_unscoped(decl, target_param_idx, mut active)
 		parent := unsafe { prealloc_scope_suspend(scope) }
 		promoted := clone_storage_query_result(result)
 		if use_cache {
-			cache.cache_storage_query_result(cache_key, promoted, false)
-			for key, cached in view.visible_mutation_cache.storage_query_results {
-				// Retain completed contexts for sibling paths after this view is freed.
-				cache.cache_storage_query_result(key, cached, true)
+			trace := view.visible_mutation_cache.storage_query_trace
+			cache.record_storage_query_guards(trace.guards, trace.complete)
+			if trace.complete {
+				cache.cache_storage_query_result(cache_key, promoted, trace.guards, false)
+			}
+			for key, entries in view.visible_mutation_cache.storage_query_results {
+				for cached in entries {
+					// Retain completed descendant traces before this view's arena is freed.
+					cache.cache_storage_query_result(key, cached.writes, cached.guards, true)
+				}
 			}
 		}
 		unsafe { prealloc_scope_resume(scope, parent) }
@@ -48,31 +88,54 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 	}
 }
 
+fn storage_query_guards_match(guards map[u64]bool, visiting map[u64]bool) bool {
+	for id, expected in guards {
+		if (id in visiting) != expected { return false }
+	}
+	return true
+}
+
+fn (mut cache VisibleMutationCache) record_storage_query_guards(guards map[u64]bool, complete bool) {
+	if isnil(cache.storage_query_trace) { return }
+	mut trace := cache.storage_query_trace
+	trace.complete = trace.complete && complete
+	for id, present in guards {
+		cache.record_storage_query_guard(id, present)
+	}
+}
+
+fn (mut cache VisibleMutationCache) record_storage_query_guard(id u64, present bool) {
+	if isnil(cache.storage_query_trace) { return }
+	mut trace := cache.storage_query_trace
+	// This declaration was pushed by the parent, rather than its incoming context.
+	if id == trace.guard_id { return }
+	if previous := trace.guards[id] {
+		if previous != present { trace.complete = false }
+	} else {
+		trace.guards[id] = present
+	}
+}
+
 fn clone_storage_query_result(result map[string][]int) map[string][]int {
 	mut promoted := map[string][]int{}
-	for path, sources in result {
-		promoted[path.clone()] = sources.clone()
-	}
+	for path, sources in result { promoted[path.clone()] = sources.clone() }
 	return promoted
 }
 
-fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, clone_result bool) {
-	if key in cache.storage_query_results || cache.storage_query_results.len >= 64 {
-		return
+fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, guards map[u64]bool, clone_result bool) {
+	if cache.storage_query_count >= 64 { return }
+	mut entries := cache.storage_query_results[key] or { []StorageQueryResult{} }
+	for entry in entries { if entry.guards == guards { return } }
+	mut bytes := key.len + 64 + guards.len * 32
+	for path, sources in result { bytes += path.len + sources.len * int(sizeof(int)) + 64 }
+	if cache.storage_query_bytes + bytes > 256 * 1024 { return }
+	entries << StorageQueryResult{
+		writes: if clone_result { clone_storage_query_result(result) } else { result }
+		guards: guards.clone()
 	}
-	mut bytes := key.len + 64
-	for path, sources in result {
-		bytes += path.len + sources.len * int(sizeof(int)) + 64
-	}
-	if cache.storage_query_bytes + bytes > 256 * 1024 {
-		return
-	}
-	cache.storage_query_results[key] = if clone_result {
-		clone_storage_query_result(result)
-	} else {
-		result
-	}
+	cache.storage_query_results[key] = entries
 	cache.storage_query_bytes += bytes
+	cache.storage_query_count++
 }
 
 fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {

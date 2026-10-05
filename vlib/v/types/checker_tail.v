@@ -12715,6 +12715,10 @@ fn (tc &TypeChecker) param_storage_writes_for_decl_unscoped(decl VisibleMutation
 }
 
 fn (tc &TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) []int {
+	if target_param_idx == 0 && tc.visible_mutation_fn_param(decl, 1) == none {
+		// This result excludes the target itself, so no other source can remain.
+		return []int{}
+	}
 	writes := tc.param_storage_writes_for_decl(decl, target_param_idx, mut visiting)
 	mut sources := []int{}
 	for _, params in writes {
