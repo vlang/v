@@ -9179,6 +9179,12 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					i += 2
 					continue
 				}
+				if g.gen_checked_integer_division_assign(lhs_id, rhs_id, lhs_type, rhs_type,
+					node.op) {
+					g.expected_enum = ''
+					i += 2
+					continue
+				}
 				if method_name := g.assign_struct_operator_method(lhs_type, node.op) {
 					g.gen_expr(lhs_id)
 					g.write(' = ${g.cname(method_name)}(')
@@ -9389,6 +9395,33 @@ fn (mut g FlatGen) gen_checked_integer_assign(lhs_id flat.NodeId, rhs_id flat.No
 	g.write('); *${address} = ${helper}(*${address}, ')
 	g.gen_expr_with_expected_type(rhs_id, value_type)
 	g.writeln('); }')
+	return true
+}
+
+// gen_checked_integer_division_assign writes `x /= y` and `x %= y` under
+// `-check-overflow` the way `x = x / y` is written: a zero divisor panics, and so
+// does a signed `min / -1`.
+fn (mut g FlatGen) gen_checked_integer_division_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	if op !in [.div_assign, .mod_assign] || !g.has_builtins || !g.overflow_checks_active()
+		|| g.expr_is_in_translated_file(lhs_id) {
+		return false
+	}
+	value_type := g.assign_rhs_expected_type(lhs_id, lhs_type)
+	g.checked_int_kind(value_type) or { return false }
+	c_type := g.value_c_type(value_type)
+	if c_type.len == 0 {
+		return false
+	}
+	address := g.tmp_name()
+	g.write('{ ${c_type}* ${address} = &(')
+	if g.assign_lhs_needs_deref(lhs_id, lhs_type, rhs_type, op) {
+		g.write('*')
+	}
+	gen_expr_lvalue(mut g, lhs_id)
+	g.write('); *${address} = ({ ')
+	g.gen_checked_integer_division_value('*${address}', g.tmp_name(), rhs_id, value_type,
+		c_type, op, true)
+	g.writeln('; }); }')
 	return true
 }
 
