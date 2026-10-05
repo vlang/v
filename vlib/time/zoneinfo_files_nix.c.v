@@ -53,14 +53,13 @@ fn zoneinfo_exists(path string) bool {
 	return C.access(&char(path.str), 0) == 0
 }
 
-// zoneinfo_is_dir reports whether `path` names a directory.
+// zoneinfo_is_dir reports whether `path` names a directory. It resolves the `.`
+// entry of the directory, which takes the permission to search it and not the one
+// to list it: the files of a directory that can only be searched are still read
+// by their names.
 fn zoneinfo_is_dir(path string) bool {
-	dir := C.opendir(&char(path.str))
-	if dir == unsafe { nil } {
-		return false
-	}
-	C.closedir(dir)
-	return true
+	own_entry := path + '/.'
+	return C.access(&char(own_entry.str), 0) == 0
 }
 
 // zoneinfo_is_file reports whether `path` names a file.
