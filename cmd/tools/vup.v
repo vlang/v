@@ -117,7 +117,7 @@ fn main() {
 	if os.user_os() == 'windows' {
 		app.backup('cmd/tools/vup.exe')
 	}
-	if app.skip_current || !app.compiler_sources_unchanged() {
+	if app.skip_current || app.is_prod || app.skip_v_self || !app.compiler_sources_unchanged() {
 		if !app.recompile_v() {
 			app.show_current_v_version()
 			eprintln('Recompiling V *failed*.')
@@ -278,9 +278,10 @@ fn (app App) update_tcc() bool {
 // differs from the revision the current `v` executable was built at.
 fn (app App) compiler_sources_unchanged() bool {
 	built_hash := app.current_v_hash() or { return false }
-	diff := os.exec(['git', 'diff', '--quiet', built_hash, '--', 'cmd/v/', 'vlib/v/', 'thirdparty',
-		'vlib/builtin/', 'vlib/strings/', 'vlib/os/', 'vlib/strconv/', 'vlib/time/',
-		':(exclude)*_test.v', ':(exclude)*.md'])
+	// Compiler dependencies extend beyond the core modules (for example crypto.sha256,
+	// runtime and sync). Conservatively include all vlib implementation sources.
+	diff := os.exec(['git', 'diff', '--quiet', built_hash, '--', 'cmd/v/', 'vlib/', 'thirdparty/',
+		'v.mod', 'GNUmakefile', 'Makefile', 'makev.bat', ':(exclude)*_test.v', ':(exclude)*.md'])
 	return diff.exit_code == 0
 }
 
