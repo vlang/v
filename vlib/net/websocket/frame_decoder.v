@@ -85,10 +85,6 @@ fn (mut decoder ServerFrameDecoder) fail(code int, reason string) DecodedFrame {
 	return DecodedFrame{ kind: .failure, close_code: code, reason: reason }
 }
 
-fn frame_unmask(mut payload []u8, mask []u8) {
-	for i in 0 .. payload.len { payload[i] ^= mask[i % 4] }
-}
-
 // decode consumes at most one complete frame. It checks declared lengths before
 // allocation, unmasks complete payloads in place, combines fragments, and checks
 // UTF-8, close payloads, reserved bits/opcodes, and canonical lengths. Incomplete
@@ -157,7 +153,7 @@ pub fn (mut decoder ServerFrameDecoder) decode(mut input []u8) DecodedFrame {
 		return DecodedFrame{ kind: .control, consumed: end, opcode: unsafe { OPCode(opcode) }, payload: payload }
 	}
 	if fin && decoder.fragment_opcode == 0 {
-		if opcode == 1 && !utf8.validate(payload.data, payload.len) {
+		if opcode == 1 && !frame_text_valid(payload) {
 			return decoder.fail(1007, 'Invalid text UTF-8')
 		}
 		return DecodedFrame{ kind: .message, consumed: end, opcode: unsafe { OPCode(opcode) }, payload: payload }

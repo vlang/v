@@ -1493,6 +1493,20 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 				return converted
 			}
 		}
+		if t.is_builtin_ierror_interface_name(clean_type0) && target_is_pointer {
+			if concrete := t.resolve_interface_pattern(target_pattern, clean_type0) {
+				// IError stores the concrete object directly. Read the original interface
+				// box before applying an active smartcast to its payload.
+				child := if t.expr_has_smartcast(expr_id) {
+					t.make_plain_expr_for_smartcast(expr_id)
+				} else {
+					t.transform_expr(expr_id)
+				}
+				field_op := if expr_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
+				object := t.make_selector_op(child, '_object', 'voidptr', field_op)
+				return t.make_cast('&${concrete}', object, '&${concrete}')
+			}
+		}
 		if !interface_pattern_is_collapsed_container_type(node.value) {
 			if qv := t.resolve_interface_pattern(node.value, clean_type0) {
 				if sc := t.find_smartcast(t.expr_key(expr_id)) {

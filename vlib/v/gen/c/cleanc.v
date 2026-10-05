@@ -5102,10 +5102,39 @@ fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
 
 // cache_directive_flags resolves source C flags that affect early C cache keys.
 pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
+	return cache_directive_flags_skipping(a, vroot, target, compile_values, map[int]bool{})
+}
+
+// preflight_directive_flags resolves flags whose compile-time branches were decided by
+// parsing. Deferred type/metadata conditions are left for the checked, transformed AST.
+pub fn preflight_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
+	mut deferred := map[int]bool{}
+	for node in a.nodes {
+		if node.kind in [.comptime_if, .comptime_for] {
+			for i in 0 .. node.children_count {
+				mark_preflight_deferred_directives(a, a.child(&node, i), mut deferred)
+			}
+		}
+	}
+	return cache_directive_flags_skipping(a, vroot, target, compile_values, deferred)
+}
+
+fn mark_preflight_deferred_directives(a &flat.FlatAst, id flat.NodeId, mut deferred map[int]bool) {
+	if int(id) < 0 || int(id) >= a.nodes.len || int(id) in deferred {
+		return
+	}
+	deferred[int(id)] = true
+	node := a.nodes[int(id)]
+	for i in 0 .. node.children_count {
+		mark_preflight_deferred_directives(a, a.child(&node, i), mut deferred)
+	}
+}
+
+fn cache_directive_flags_skipping(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, skipped map[int]bool) []string {
 	mut groups := []CFlagDirectiveGroup{}
 	mut cur_file := ''
 	mut cur_module := ''
-	for node in a.nodes {
+	for node_idx, node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = ''
@@ -5115,7 +5144,7 @@ pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, 
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .directive || node.typ.len == 0 {
+		if node.kind != .directive || node.typ.len == 0 || node_idx in skipped {
 			continue
 		}
 		mut flags := []string{}
@@ -21804,7 +21833,8 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// A float precision with no `f` verb: `precision` decimals with trailing zeros trimmed,
 	// or the exponent form with `precision - 1` decimals outside [1e-5, 999999).
 	g.writeln('static inline string v3_f64_trimmed(double x, int precision) { if (x == 0.0) return signbit(x) ? v3_c_lit("-0", 2) : v3_c_lit("0", 1); double d = fabs(x); string s = !isfinite(x) || (d < 999999.0 && d >= 0.00001) ? v3_f64_fixed(x, precision) : v3_f64_exp(x, precision > 0 ? precision - 1 : 0, 0); if (s.is_lit) return s; int mant = s.len; int dot = -1; for (int i = 0; i < s.len; ++i) { if (s.str[i] == \'.\') dot = i; if (s.str[i] == \'e\') { mant = i; break; } } if (dot < 0) return s; int end = mant; while (end > dot + 1 && s.str[end - 1] == \'0\') --end; if (end == dot + 1) --end; memmove(s.str + end, s.str + mant, (size_t)(s.len - mant)); s.len -= mant - end; s.str[s.len] = 0; return s; }')
-	g.writeln("static inline string v3_string_zpad(string s, int width) { if (s.len >= width) return s; int sign = s.len > 0 && s.str[0] == '-'; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); int pos = 0; if (sign) out[pos++] = '-'; memset(out + pos, '0', (size_t)pad); pos += pad; memcpy(out + pos, s.str + sign, (size_t)(s.len - sign)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
+	g.writeln('static inline string v3_string_plus_sign(string s) { if (s.len > 0 && (s.str[0] == \'-\' || s.str[0] == \'+\')) return s; return string__plus(v3_c_lit("+", 1), s); }')
+	g.writeln("static inline string v3_string_zpad(string s, int width) { if (s.len >= width) return s; int sign = s.len > 0 && (s.str[0] == '-' || s.str[0] == '+'); int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); int pos = 0; if (sign) out[pos++] = s.str[0]; memset(out + pos, '0', (size_t)pad); pos += pad; memcpy(out + pos, s.str + sign, (size_t)(s.len - sign)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
 	g.writeln('static inline string v3_int_zpad(${g.int_ct} n, int width) { return v3_string_zpad(int__str(n), width); }')
 	g.writeln('static inline string v3_i64_zpad(i64 n, int width) { return v3_string_zpad(i64__str(n), width); }')
 	g.writeln('static inline string v3_u64_zpad(u64 n, int width) { return v3_string_zpad(u64__str(n), width); }')

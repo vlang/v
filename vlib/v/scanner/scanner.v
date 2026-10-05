@@ -86,10 +86,11 @@ pub fn (mut s Scanner) skip_block_to(offset int) {
 	s.after_dot = false
 }
 
-// init supports init handling for Scanner.
+// init resets the scanner for src, ignoring a leading UTF-8 byte order mark.
 pub fn (mut s Scanner) init(file &token.File, src string) {
-	s.offset = 0
-	s.pos = 0
+	// Keep the original buffer and byte positions for source spans and diagnostics.
+	s.offset = if src.starts_with('\xef\xbb\xbf') { 3 } else { 0 }
+	s.pos = s.offset
 	s.lit = ''
 	s.insert_semi = false
 	s.after_dot = false

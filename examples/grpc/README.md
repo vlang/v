@@ -65,8 +65,10 @@ committed files exactly:
 
 ```sh
 v pbgen -m kv -o kv/codec.v -grpc kv/service.v kv.proto
-v fmt -w kv/codec.v kv/service.v
 ```
+
+`pbgen` writes what `v fmt` would write, so there is no format step to remember and
+no second commit to explain a reformat.
 
 `kv/service_impl.v` is hand-written and is not regenerated. Only the method
 paths (`kv_method_*`) and the codec come from the generated files; `Service`

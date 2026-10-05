@@ -2096,3 +2096,53 @@ fn test_fmt_preserves_contextual_range_embed_and_position_restrictions() {
 		assert twice == formatted
 	}
 }
+
+fn test_fmt_preserves_lowercase_struct_literals_before_and_after_declarations() {
+	declaration := 'struct lower_rec {\nmut:\n count int\n}\n'
+	function := 'fn make() lower_rec {\n mut r := lower_rec{count: 2}\n return r\n}\n'
+	mut case_index := 0
+	for declaration_first in [true, false] {
+		source := if declaration_first { declaration + function } else { function + declaration }
+		conditional_declaration := '@[if windows]\n' + declaration
+		attribute_source := if declaration_first {
+			conditional_declaration + function
+		} else {
+			function + conditional_declaration
+		}
+		for variant in [source, attribute_source, '\$if windows {\n${source}}\n',
+			'\$if windows {\n}\n\$else {\n${source}}\n'] {
+			for prefix in ['', '@[generated]\nmodule main\n'] {
+				// Generated modules scan sibling files. Isolate each variant so a
+				// preceding active declaration cannot hide an inactive-branch failure.
+				case_dir := 'lowercase_struct_literal_${case_index}'
+				case_index++
+				os.mkdir_all(os.join_path(vfmt_test_tdir, case_dir))!
+				res, formatted := run_vfmt_write('${case_dir}/first', prefix + variant, '')
+				assert res.exit_code == 0, res.output
+				assert formatted.contains('mut r := lower_rec{ count: 2 }'), formatted
+				second, twice := run_vfmt_write('${case_dir}/second', formatted, '')
+				assert second.exit_code == 0, second.output
+				assert twice == formatted
+			}
+		}
+	}
+	shadow_source := declaration + 'fn check(lower_rec bool) {\n if lower_rec{ println("yes") }\n}\n'
+	text_source := '// struct lower_rec { count int }\nconst text = "struct lower_rec { count int }"\nconst lower_rec = false\nfn check() {\n if lower_rec{ println("yes") }\n}\n'
+	assembly_source := 'const lower_rec = true\nfn check() {\n asm amd64 {\n .type lower_rec, @function\n }\n if lower_rec{ println("yes") }\n}\n'
+	for prefix in ['', '@[generated]\nmodule main\n'] {
+		for negative in [shadow_source, text_source, assembly_source] {
+			case_dir := 'lowercase_value_${case_index}'
+			case_index++
+			os.mkdir_all(os.join_path(vfmt_test_tdir, case_dir))!
+			res, formatted := run_vfmt_write('${case_dir}/value', prefix + negative, '')
+			assert res.exit_code == 0, res.output
+			assert formatted.contains("if lower_rec { println('yes') }"), formatted
+			if negative == assembly_source {
+				assert formatted.contains('.type lower_rec, @function'), formatted
+			}
+			second, twice := run_vfmt_write('${case_dir}/second', formatted, '')
+			assert second.exit_code == 0, second.output
+			assert twice == formatted
+		}
+	}
+}

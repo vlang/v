@@ -9,6 +9,8 @@ Options:
   All other options are passed to the build command. (e.g. -prod)
   Plain self-builds compile the full `cmd/v` CLI, which embeds and defaults to V3 on macOS,
   Linux, and BSD.
+  Plain self-builds keep the FastC backend, so the new compiler accepts `-b fastc`; pass
+  `-d skip_fastc` to leave it out.
   On Apple Silicon, regular self-builds use bundled TCC by default; `CC` or `-cc` overrides it.
   -prod uses a single build of one C unit with LTO instead of a PGO cycle. That build runs
   the C compiler on one thread; add -parallel-cc for a faster build of a slower compiler.

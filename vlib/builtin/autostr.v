@@ -7,29 +7,31 @@ const autostr_type_stack_max_depth = 64
 __global g_autostr_type_stack = [autostr_type_stack_max_depth]int{}
 __global g_autostr_type_stack_len = 0
 
-@[markused]
-fn autostr_type_in_stack(typ int) bool {
-	for i := 0; i < g_autostr_type_stack_len; i++ {
-		if g_autostr_type_stack[i] == typ {
-			return true
+$if !v3_backend ? {
+	@[markused]
+	fn autostr_type_in_stack(typ int) bool {
+		for i := 0; i < g_autostr_type_stack_len; i++ {
+			if g_autostr_type_stack[i] == typ {
+				return true
+			}
 		}
+		return false
 	}
-	return false
-}
 
-@[markused]
-fn autostr_type_push(typ int) {
-	if g_autostr_type_stack_len >= autostr_type_stack_max_depth {
-		return
+	@[markused]
+	fn autostr_type_push(typ int) {
+		if g_autostr_type_stack_len >= autostr_type_stack_max_depth {
+			return
+		}
+		g_autostr_type_stack[g_autostr_type_stack_len] = typ
+		g_autostr_type_stack_len++
 	}
-	g_autostr_type_stack[g_autostr_type_stack_len] = typ
-	g_autostr_type_stack_len++
-}
 
-@[markused]
-fn autostr_type_pop() {
-	if g_autostr_type_stack_len > 0 {
-		g_autostr_type_stack_len--
+	@[markused]
+	fn autostr_type_pop() {
+		if g_autostr_type_stack_len > 0 {
+			g_autostr_type_stack_len--
+		}
 	}
 }
 
@@ -49,28 +51,30 @@ mut:
 // V3 cgen emits this recursion state as thread-local storage.
 __global g_autostr_addr_state = AutostrAddrStackState{}
 
-@[markused]
-fn autostr_addr_in_stack(addr voidptr) bool {
-	if g_autostr_addr_state.len >= autostr_type_stack_max_depth {
-		return true
-	}
-	for i := 0; i < g_autostr_addr_state.len; i++ {
-		if g_autostr_addr_state.addrs[i] == addr {
+$if !v3_backend ? {
+	@[markused]
+	fn autostr_addr_in_stack(addr voidptr) bool {
+		if g_autostr_addr_state.len >= autostr_type_stack_max_depth {
 			return true
 		}
+		for i := 0; i < g_autostr_addr_state.len; i++ {
+			if g_autostr_addr_state.addrs[i] == addr {
+				return true
+			}
+		}
+		return false
 	}
-	return false
-}
 
-@[markused]
-fn autostr_addr_push(addr voidptr) {
-	if g_autostr_addr_state.len >= autostr_type_stack_max_depth {
-		g_autostr_addr_state.overflow_depth++
-		return
+	@[markused]
+	fn autostr_addr_push(addr voidptr) {
+		if g_autostr_addr_state.len >= autostr_type_stack_max_depth {
+			g_autostr_addr_state.overflow_depth++
+			return
+		}
+		g_autostr_addr_state.addrs[g_autostr_addr_state.len] = addr
+		g_autostr_addr_state.types[g_autostr_addr_state.len] = 0
+		g_autostr_addr_state.len++
 	}
-	g_autostr_addr_state.addrs[g_autostr_addr_state.len] = addr
-	g_autostr_addr_state.types[g_autostr_addr_state.len] = 0
-	g_autostr_addr_state.len++
 }
 
 @[markused]
@@ -106,21 +110,23 @@ fn autostr_addr_pop() {
 	}
 }
 
-@[markused]
-fn autostr_array_circular(len int) string {
-	if len <= 0 {
-		return '[]'
-	}
-	mut sb := strings.new_builder(2 + len * 12)
-	sb.write_string('[')
-	for i in 0 .. len {
-		if i > 0 {
-			sb.write_string(', ')
+$if !v3_backend ? {
+	@[markused]
+	fn autostr_array_circular(len int) string {
+		if len <= 0 {
+			return '[]'
 		}
-		sb.write_string('<circular>')
+		mut sb := strings.new_builder(2 + len * 12)
+		sb.write_string('[')
+		for i in 0 .. len {
+			if i > 0 {
+				sb.write_string(', ')
+			}
+			sb.write_string('<circular>')
+		}
+		sb.write_string(']')
+		res := sb.str()
+		unsafe { sb.free() }
+		return res
 	}
-	sb.write_string(']')
-	res := sb.str()
-	unsafe { sb.free() }
-	return res
 }

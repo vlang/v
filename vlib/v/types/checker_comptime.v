@@ -4651,7 +4651,9 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			&& tc.sum_type_contains_variant(clean_target, clean_actual.base_type)
 		if !tc.sum_type_contains_variant(clean_target, actual) && !pointee_is_variant
 			&& !tc.smartcast_wrapper_cast_payload_compatible(child_id, actual, target) {
-			tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
+			if !tc.named_variant_init_was_reported(child_id) {
+				tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
+			}
 			return
 		}
 	}
@@ -18699,7 +18701,7 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 		return ScopeBindingOwner{}
 	}
 	lhs := tc.a.nodes[int(lhs_id)]
-	if lhs.kind == .ident && lhs.value.len > 0 {
+	if lhs.kind in [.ident, .param] && lhs.value.len > 0 {
 		if lhs.value != '_' && (tc.visible_local_scope_owns_name(lhs.value)
 			|| tc.visible_mut_param_binding_owns_name(lhs.value))
 			&& !(tc.unsafe_depth > 1 && !tc.current_local_scope_owns_name(lhs.value))

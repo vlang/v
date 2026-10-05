@@ -221,6 +221,10 @@ const node_payload_chunk_size = 1 << node_payload_chunk_bits
 const node_payload_chunk_mask = node_payload_chunk_size - 1
 const node_payload_max_chunks = 4096
 
+// canonical_comptime_type_payload marks an already resolved reflection type without an allocation.
+// Its reserved id is outside the table range; node_payload_at returns a static empty payload.
+pub const canonical_comptime_type_payload = u32(0xffffffff)
+
 struct NodePayloadTable {
 mut:
 	chunks [node_payload_max_chunks]voidptr
@@ -229,6 +233,7 @@ mut:
 
 __global g_node_payload_table &NodePayloadTable
 __global g_node_payload_lock u32
+__global g_canonical_comptime_payload NodePayload
 
 // node_payload registers an uncommon node payload and returns its id, or 0
 // for an empty list.
@@ -279,7 +284,11 @@ pub fn node_payload_with_constraints(generic_params []string, generic_constraint
 }
 
 // node_payload_at resolves a payload id registered by node_payload; 0 yields nil.
+// canonical_comptime_type_payload yields a static empty payload that outlives all arenas.
 pub fn node_payload_at(id u32) &NodePayload {
+	if id == canonical_comptime_type_payload {
+		return &g_canonical_comptime_payload
+	}
 	if id == 0 {
 		return &NodePayload(unsafe { nil })
 	}
@@ -351,7 +360,7 @@ pub mut:
 	value          string
 	typ            string
 	children_start i32
-	payload        u32 // node_payload() id, 0 = none; see payload_ptr/generic_params
+	payload        u32 // payload id or canonical_comptime_type_payload; 0 = none
 	is_mut         bool
 	kind           NodeKind
 	op             Op
@@ -836,8 +845,8 @@ pub fn (mut a FlatAst) intern_node_texts_from(start int) {
 	a.intern_node_texts_range(start, a.nodes.len)
 }
 
-// TextProbeCache holds per-pass scratch on the stack. Its strings borrow
-// canonical text owned by the AST; the cache itself never escapes the pass.
+// TextProbeCache holds per-pass scratch. Its strings borrow canonical text
+// owned by the AST; the cache itself never escapes the passes it serves.
 pub struct TextProbeCache {
 pub mut:
 	ptrs   [4096]voidptr
@@ -845,10 +854,39 @@ pub mut:
 	ids    [4096]u16
 }
 
+// new_text_probe_cache returns an empty probe cache. A local `TextProbeCache{}`
+// passed on by reference is allocated as well, after it is zeroed whole and
+// copied: this allocates it alone and clears no more than a pass reads.
+pub fn new_text_probe_cache() &TextProbeCache {
+	mut cache := unsafe { &TextProbeCache(malloc_noscan(sizeof(TextProbeCache))) }
+	cache.reset()
+	return cache
+}
+
+// reset empties the cache for another pass. A probe reads a value or an id
+// only after its nonzero pointer key matches, so the keys alone are cleared;
+// the cached strings already belong to the text table.
+pub fn (mut c TextProbeCache) reset() {
+	unsafe { vmemset(&c.ptrs[0], 0, int(sizeof(voidptr)) * c.ptrs.len) }
+}
+
 // intern_node_texts_range canonicalizes managed payloads in nodes[start..end).
 // The bounded form serves the parallel parse merge, where later chunks are
 // already present in the node array but must be interned in chunk order.
 pub fn (mut a FlatAst) intern_node_texts_range(start int, end int) {
+	if start >= end {
+		return
+	}
+	mut value_cache := new_text_probe_cache()
+	mut type_cache := new_text_probe_cache()
+	a.intern_node_texts_range_cached(start, end, mut value_cache, mut type_cache)
+}
+
+// intern_node_texts_range_cached is intern_node_texts_range with the probe
+// caches of the caller, which it empties first. A parser canonicalizes each
+// file as it completes it, and a fresh pair of caches for every file cost
+// more than the table lookups they save in a small one.
+pub fn (mut a FlatAst) intern_node_texts_range_cached(start int, end int, mut value_cache TextProbeCache, mut type_cache TextProbeCache) {
 	first := if start < 0 { 0 } else { start }
 	if first >= end {
 		return
@@ -856,10 +894,9 @@ pub fn (mut a FlatAst) intern_node_texts_range(start int, end int) {
 	// Node texts repeat heavily by exact string instance (already-interned
 	// strings share `.str`), so a direct-mapped pointer probe skips the
 	// content-hash table lookup for the overwhelming majority of nodes.
-	// Nothing is freed during this pass, so pointer keys stay valid. Fixed
-	// arrays keep this per-pass scratch off the compilation arena.
-	mut value_cache := TextProbeCache{}
-	mut type_cache := TextProbeCache{}
+	// Nothing is freed during this pass, so pointer keys stay valid.
+	value_cache.reset()
+	type_cache.reset()
 	for idx in first .. end {
 		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
 	}
@@ -873,8 +910,8 @@ pub fn (mut a FlatAst) intern_node_texts_at(indexes []int) {
 	if indexes.len == 0 {
 		return
 	}
-	mut value_cache := TextProbeCache{}
-	mut type_cache := TextProbeCache{}
+	mut value_cache := new_text_probe_cache()
+	mut type_cache := new_text_probe_cache()
 	for idx in indexes {
 		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
 	}
@@ -1122,7 +1159,11 @@ pub fn (n Node) clone_owned() Node {
 	return Node{
 		value:          n.value.clone()
 		typ:            n.typ.clone()
-		payload:        node_payload_with_constraints(params, constraints)
+		payload:        if n.payload == canonical_comptime_type_payload {
+			canonical_comptime_type_payload
+		} else {
+			node_payload_with_constraints(params, constraints)
+		}
 		pos:            n.pos
 		children_start: n.children_start
 		children_count: n.children_count

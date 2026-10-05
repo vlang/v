@@ -5601,6 +5601,11 @@ fn (g &FlatGen) type_is_effectively_empty(typ types.Type, mut seen map[string]bo
 }
 
 fn (g &FlatGen) struct_fields_for_type_uncached(type_name string) ?[]types.StructField {
+	// An interface has its own runtime fields. A main-module struct with
+	// the same short name must not filter `_typ` and `_object` out of its box.
+	if type_name in g.tc.interface_names {
+		return none
+	}
 	if info := g.find_struct_decl(type_name) {
 		if fields := g.tc.structs[info.full_name] {
 			return fields

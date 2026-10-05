@@ -1,0 +1,30 @@
+type Expr = IntLit(int) | Count(int) | Str(string) | Void
+
+pub type Opt[T] = Some(T) | Nothing
+
+type Long = FirstVariantName(int)
+	| SecondVariantName(string)
+	| ThirdVariantName([]int)
+	| FourthVariantName
+
+fn main() {
+	e := Expr.Count(3)
+	v := Expr.Void
+	match e {
+		Expr.IntLit(n) { println(n) }
+		Expr.Count(n) { println(n) }
+		Expr.Str(_) { println('str') }
+		Expr.Void { println('void') }
+	}
+	mut m := Expr.IntLit(1)
+	match mut m {
+		Expr.IntLit(n) {
+			m = Expr.IntLit(n + 1)
+		}
+		Expr.Count, Expr.Str {}
+		else {}
+	}
+	if e is Expr.Count || v !is Expr.Void {
+		println(e)
+	}
+}

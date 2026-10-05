@@ -31,3 +31,12 @@ On a write error, close the connection: a prefix may already have been sent.
 caller-owned buffer without performing socket I/O. It supports incomplete input,
 fragmented messages, interleaved controls, message limits, and protocol validation.
 See [the decoder documentation](FRAME_DECODER.md) for buffer ownership and usage.
+
+## Optional Linux reactor
+
+`new_reactor()` serves already upgraded plaintext TCP sockets on an explicit worker
+thread using epoll and eventfd. It provides bounded input/output work, cross-thread
+send handles, backpressure, deadlines, and graceful shutdown. The existing `Client`
+and `Server` APIs keep their execution model.
+See [the reactor documentation](REACTOR.md) for ownership, callbacks, and limits.
+See [text validation](FRAME_VALIDATION.md) for the ASCII fast path and Unicode fallback.
