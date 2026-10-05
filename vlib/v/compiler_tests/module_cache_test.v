@@ -6117,6 +6117,49 @@ fn main() {
 	assert run_module_cache_binary(strict_output) == '43'
 }
 
+fn test_module_cache_keeps_programs_that_use_the_closure_runtime() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_closure_runtime_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn make_adder(n int) fn (int) int {
+	return fn [n] (x int) int {
+		return x + n
+	}
+}
+
+fn main() {
+	add := make_adder(2)
+	println(add(40))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	// The module cache follows the system C compiler: a bundled TCC builds without it.
+	first :=
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', 'V3_CACHE_TRACE=1', v3_bin, '-v', '-cc', 'cc',
+			'-o', first_output, main_file])
+	assert first.exit_code == 0, first.output
+	assert !first.output.contains('V3 module cache fallback'), first.output
+	assert run_module_cache_binary(first_output) == '42'
+
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', 'V3_CACHE_TRACE=1', v3_bin, '-v', '-cc', 'cc',
+			'-o', second_output, main_file])
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('V3 module cache fallback'), second.output
+	assert second.output.contains('check (cached)'), second.output
+	assert second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_incremental_program_cache_keeps_main_native_insert() {
 	$if !macos {
 		return

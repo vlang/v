@@ -9,8 +9,6 @@ const ppc64_architecture = int(11)
 
 type ClosureGetDataFn = fn () voidptr
 
-type ClosureInitFn = fn ()
-
 type ClosureDataDropFn = fn (voidptr)
 
 struct ClosurePage {

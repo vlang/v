@@ -149,8 +149,8 @@ fn test_dump_flags_after_cached_incbin_build_uses_arrays() {
 		}
 	}
 	// A build whose V-shipped native inputs cannot be replicated into every cached
-	// object (such as the file-static state of the closure runtime) stays uncached
-	// and leaves no plan to reuse. Any other seed build caches its incbin plan.
+	// object (such as a header that keeps file-static state) stays uncached and
+	// leaves no plan to reuse. Any other seed build caches its incbin plan.
 	uncached := seed_build.output.contains('external C inputs cannot be assigned to cache units')
 	assert cached_incbin_plan != uncached, 'the seed build neither cached its incbin C plan nor bypassed the cache:\n${seed_build.output}'
 	flags_file := os.join_path(incbin_workspace, 'cached_flags.txt')
