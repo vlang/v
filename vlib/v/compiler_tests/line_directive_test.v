@@ -97,4 +97,9 @@ fn test_compiler_messages_follow_line_directives() {
 	// ... else it is the generated line, numbered as the logical line.
 	assert result.output.contains('missing.zbr:9:10: error: undefined ident: `c`'), result.output
 	assert result.output.contains('    9 |     println(c)\n'), result.output
+	// `-json-errors` reports the same locations.
+	json := os.exec([@VEXE, '-new-compiler', '-json-errors', source])
+	assert json.exit_code != 0
+	assert json.output.contains('app.zbr","line":2,"col":10,'), json.output
+	assert json.output.contains('{"file":"missing.zbr","line":9,"col":10,'), json.output
 }
