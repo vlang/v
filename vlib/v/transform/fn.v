@@ -1192,6 +1192,11 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if base.len == 0 {
 				return node.value
 			}
+			// Source-qualified arguments belong to the caller's import scope.
+			// Substituted generic arguments are identifiers and are already canonical.
+			if imported := t.file_import_module(t.node_file_or(int(id), t.cur_file), base) {
+				return '${imported}.${node.value}'
+			}
 			return '${base}.${node.value}'
 		}
 		.index {

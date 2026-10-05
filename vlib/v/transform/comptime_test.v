@@ -19,6 +19,21 @@ fn test_comptime_canonical_type_is_not_rebound_by_another_module_import() {
 	assert t.comptime_resolve_selective_import_type('cfg.Cfg') == 'config.Cfg'
 }
 
+fn test_comptime_explicit_file_alias_precedes_a_same_spelled_canonical_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['config.Cfg'] = []types.StructField{}
+	tc.structs['alternate.Cfg'] = []types.StructField{}
+	tc.file_imports[file_import_key('alias.v', 'config')] = 'alternate'
+	t := Transformer{
+		a:          &a
+		tc:         &tc
+		cur_file:   'alias.v'
+		cur_module: 'main'
+	}
+	assert t.comptime_resolve_selective_import_type('config.Cfg') == 'alternate.Cfg'
+}
+
 fn test_comptime_field_function_type_keeps_declaring_module() {
 	mut a := flat.FlatAst.new()
 	t := Transformer{

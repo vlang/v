@@ -13,6 +13,10 @@ A concrete type passed to a generic reflection function keeps its declaring modu
 For example, `config.Cfg` retains its own fields when another dependency imports
 `rand.config`; an unrelated module import cannot change `$for field in T.fields`.
 
+An explicit import alias keeps the type imported by that source file. A generic
+reflection function can import another type under the same alias as its caller
+without changing the concrete type passed as `T`.
+
 Repeated method reflection loops in generic specializations borrow AST node headers during
 metadata lookup. Empty method scans allocate only their metadata containers instead of a
 node copy for every scanned AST entry.
