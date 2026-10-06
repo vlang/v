@@ -130,7 +130,7 @@ that compiles.
 
 Field options other than `packed` are parsed and skipped, so a schema using them
 does not fail to parse. None of them change the bytes: `deprecated` and
-`json_name` describe the schema rather than its encoding.
+`json_name` describes the schema rather than its encoding.
 
 ## Tests
 
