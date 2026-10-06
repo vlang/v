@@ -70,9 +70,9 @@ fn install(args []string) {
 		return
 	}
 	write_entry(harness, path, project) or {
+		// The message already says what to do, including the member to paste when
+		// the file was refused rather than written.
 		eprintln('v mcp install: ${err.msg()}')
-		eprintln('  Add this to the top-level ${json_string(harness.key)} object by hand:')
-		println('  ${json_string(server_id)}: ${entry_text(harness)}')
 		exit(1)
 	}
 }
@@ -212,19 +212,27 @@ fn print_one(h Harness, path string, project bool) string {
 	return out
 }
 
-// server_exe is the compiler this tool is running as, which is the one the
-// registered command has to keep working after a PATH change.
+// server_exe selects a launchable compiler path, trying the build-time path when
+// VEXE is stale. A resolved path keeps the registration independent of PATH.
 fn server_exe() string {
-	raw := os.getenv_opt('VEXE') or { @VEXE }
-	// The compiler is routinely named without its extension, which nothing on
-	// Windows can launch, so the executable form wins whenever it is there.
-	// The real path is preferred so the entry does not carry forward slashes
-	// that only work by accident.
-	if os.exists(raw) {
-		return os.real_path(raw)
+	return server_exe_for(os.getenv_opt('VEXE') or { @VEXE }, @VEXE, os.user_os() == 'windows')
+}
+
+fn server_exe_for(raw string, recorded string, windows bool) string {
+	mut candidates := []string{}
+	for path in [raw, recorded] {
+		if windows && path.to_lower().all_after_last('.') !in ['exe', 'com', 'bat', 'cmd'] {
+			candidates << path + '.exe'
+			candidates << path
+		} else {
+			candidates << path
+			candidates << path + '.exe'
+		}
 	}
-	if os.exists(raw + '.exe') {
-		return os.real_path(raw + '.exe')
+	for candidate in candidates {
+		if os.is_file(candidate) && os.is_executable(candidate) {
+			return os.real_path(candidate)
+		}
 	}
 	return raw
 }
@@ -277,7 +285,12 @@ fn write_entry(h Harness, path string, project bool) ! {
 		if is_json_value(text) {
 			return error('${path} is valid JSON, but its top level is not an object; not guessing where the servers belong.')
 		}
-		return error('${path} is not plain JSON (comments or trailing commas); not rewriting it.')
+		// The file is left exactly as it was. An entry on its own is not something
+		// a client can read, so the whole member is what a reader pastes, and
+		// printing it here saves them assembling that by hand.
+		return error('${path} is not plain JSON (for example, comments or trailing commas); it was not rewritten.\n' +
+			'  Add this member by hand. If ${json_string(h.key)} already exists, merge ${json_string(server_id)} into it instead of adding a second key:\n' +
+			'  ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }')
 	}
 	mut point := Insertion{}
 	mut addition := entry
