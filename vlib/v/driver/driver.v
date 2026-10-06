@@ -12972,9 +12972,9 @@ pub fn run(args []string) {
 	if !generic_cache_hit {
 		pre_tc.reset_resolution_type_view_cache()
 	}
-	// Dynamic smartcasts belong to function checks and may use a freed stage arena.
-	// Backend queries use lexical metadata, so give the master a durable empty map.
-	pre_tc.smartcasts = map[string]types.Type{}
+	// Function-local smartcasts are not backend metadata. Their empty backing
+	// map may have been replaced inside a transform or specialization arena.
+	pre_tc.reset_codegen_smartcasts()
 	if pre_tc.has_noalloc_contracts() {
 		pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
 		if pre_tc.errors.len > 0 {
