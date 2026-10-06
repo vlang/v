@@ -8,13 +8,99 @@ import v.types
 
 // test_bench_runtime_stubs_include_macos_rss_helper validates this v3 regression case.
 fn test_bench_runtime_stubs_include_macos_rss_helper() {
-	assert 'macos_rss_kb' in bench_runtime_stub_names
 	assert 'bench.macos_rss_kb' in bench_runtime_stub_names
+	assert 'v.bench.macos_rss_kb' in bench_runtime_stub_names
+	assert 'macos_rss_kb' !in bench_runtime_stub_names
 	assert 'macos_peak_rss_kb' !in bench_runtime_stub_names
 	assert 'bench.macos_peak_rss_kb' !in bench_runtime_stub_names
 	b := Builder{}
-	assert b.skip_source_fn('macos_rss_kb')
-	assert b.skip_source_fn('bench.macos_rss_kb')
+	for name in ['current_rss_kb', 'macos_rss_kb', 'linux_rss_kb'] {
+		assert b.skip_source_fn_in_module(name, 'bench')
+		assert b.skip_source_fn_in_module(name, 'v.bench')
+		assert !b.skip_source_fn_in_module(name, 'main')
+		assert !b.skip_source_fn_in_module(name, 'other')
+	}
+}
+
+fn test_bench_runtime_stubs_preserve_user_functions() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_user_rss_helpers_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'module main\nfn current_rss_kb() i64 { return 17 }\nfn macos_rss_kb() i64 { return 23 }\nfn linux_rss_kb() i64 { return 31 }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	m := build(a)
+	expected := {
+		'current_rss_kb': '17'
+		'macos_rss_kb':   '23'
+		'linux_rss_kb':   '31'
+	}
+	mut found := 0
+	for f in m.funcs {
+		if want := expected[f.name] {
+			assert f.blocks.len == 1
+			last := m.blocks[f.blocks[0]].instrs.last()
+			instruction := m.instrs[m.values[last].index]
+			assert instruction.op == .ret
+			assert m.values[instruction.operands[0]].name == want
+			found++
+		}
+	}
+	assert found == expected.len
+}
+
+fn test_char_literal_value_decodes_unicode_and_escapes() {
+	expected := {
+		'A':           65
+		'é':           233
+		'★':           9733
+		'😀':          128512
+		r'\x41':       65
+		r'\u0041':     65
+		r'\U0001F600': 128512
+		r'\101':       65
+		r'\0':         0
+		r'\a':         7
+		r'\b':         8
+		r'\e':         27
+		r'\f':         12
+		r'\n':         10
+		r'\r':         13
+		r'\t':         9
+		r'\v':         11
+		r'\\':         92
+	}
+	for value, want in expected {
+		assert char_literal_value(value) == want, value
+	}
+}
+
+fn test_rune_literals_use_rune_width() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_rune_literals_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn unicode() rune { return `😀` }\nfn escaped_ascii() rune { return `\\u0041` }\nfn escaped_unicode() rune { return `\\xe2\\x98\\x85` }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	m := build(a)
+	expected := {
+		'unicode':         '128512'
+		'escaped_ascii':   '65'
+		'escaped_unicode': '9733'
+	}
+	mut found := 0
+	for f in m.funcs {
+		if want := expected[f.name] {
+			last := m.blocks[f.blocks[0]].instrs.last()
+			instruction := m.instrs[m.values[last].index]
+			assert instruction.op == .ret
+			value := m.values[instruction.operands[0]]
+			assert value.name == want
+			assert m.type_store.types[value.typ].width == 32
+			found++
+		}
+	}
+	assert found == expected.len
 }
 
 // test_runtime_helpers_remain_used_when_module_qualified validates this v3 regression case.
@@ -266,6 +352,60 @@ fn test_wasm32_global_constant_initializers() {
 		}
 	}
 	assert found == expected.len + 1
+}
+
+fn test_wasm32_indirect_call_numeric_parameter_types() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_indirect_numeric_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn scale(value f64) f64 { return value * 2.0 }\nfn scale32(value f32) f32 { return value * f32(2) }\nfn integer_argument() f64 { callback := scale\nreturn callback(3) }\nfn f32_argument() f64 { callback := scale\nreturn callback(f32(3.5)) }\nfn integer_to_f32_argument() f32 { callback := scale32\nreturn callback(3) }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	// The CLI's non-generic path lowers after the local checker scopes are gone.
+	tc.trust_checked_expr_types = false
+	for node in a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		callee_id := a.child(&node, 0)
+		if a.nodes[int(callee_id)].value == 'callback' {
+			// Transformed local callees recover their signature from the binding.
+			a.nodes[int(callee_id)].typ = ''
+			tc.expr_type_set[int(callee_id)] = false
+		}
+	}
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
+	expected := {
+		'integer_argument':        64
+		'f32_argument':            64
+		'integer_to_f32_argument': 32
+	}
+	mut found := 0
+	for f in m.funcs {
+		if width := expected[f.name] {
+			for block in f.blocks {
+				for value in m.blocks[block].instrs {
+					instruction := m.instrs[m.values[value].index]
+					if instruction.op != .call_indirect {
+						continue
+					}
+					argument := m.values[instruction.operands[1]]
+					argument_type := m.type_store.types[argument.typ]
+					assert argument_type.kind == .float_t, f.name
+					assert argument_type.width == width, f.name
+					found++
+				}
+			}
+		}
+	}
+	assert found == expected.len
 }
 
 fn test_wasm32_scalar_str_methods_without_native_runtime_bodies() {

@@ -45,9 +45,8 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop', '_MTLCreateSystemDefaultDevice', '_dlopen',
 	'_dlsym']
 
-const bench_runtime_stub_names = ['current_rss_kb', 'macos_rss_kb', 'linux_rss_kb',
-	'bench.current_rss_kb', 'bench.macos_rss_kb', 'bench.linux_rss_kb', 'v.bench.current_rss_kb',
-	'v.bench.macos_rss_kb', 'v.bench.linux_rss_kb']
+const bench_runtime_stub_names = ['bench.current_rss_kb', 'bench.macos_rss_kb', 'bench.linux_rss_kb',
+	'v.bench.current_rss_kb', 'v.bench.macos_rss_kb', 'v.bench.linux_rss_kb']
 
 // Builder stores state for SSA construction.
 pub struct Builder {
@@ -1816,9 +1815,6 @@ fn (b &Builder) has_fn_decl(name string) bool {
 
 // skip_source_fn supports skip source fn handling for Builder.
 fn (b &Builder) skip_source_fn(name string) bool {
-	if name in bench_runtime_stub_names {
-		return true
-	}
 	if name in ['_wymix', 'wyhash', 'wyhash64', 'string__eq', 'string__lt', 'array_new', 'array_get',
 		'string__plus', 'string_plus_many', 'string.trim_right', 'array_push', 'array_push_many',
 		'array.push_many', 'array_clone', 'panic', 'panic_debug', 'fast_string_eq',
@@ -1855,6 +1851,10 @@ fn (b &Builder) skip_source_fn(name string) bool {
 
 // skip_source_fn_in_module supports skip source fn in module handling for Builder.
 fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
+	if module_name in ['bench', 'v.bench']
+		&& ssa_fn_name_in_module(module_name, name) in bench_runtime_stub_names {
+		return true
+	}
 	if module_name == 'builtin' && name in b.c_fn_ids {
 		return true
 	}
@@ -7898,7 +7898,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			return b.m.add_value(.string_literal, b.str_type, node.value, 0)
 		}
 		.char_literal {
-			return b.m.get_or_add_const(b.i8_type, '${char_literal_value(node.value)}')
+			return b.m.get_or_add_const(b.i32_type, '${char_literal_value(node.value)}')
 		}
 		.string_interp {
 			return b.build_string_interp(node)
@@ -8276,17 +8276,28 @@ fn char_literal_value(value string) int {
 		return 0
 	}
 	if value[0] == `\\` && value.len > 1 {
+		if value[1] in [`x`, `u`, `U`] {
+			return int(global_integer_literal('0x' + value[2..]))
+		}
+		if value.len == 4 && value[1] >= `0` && value[1] <= `7` {
+			return int(global_integer_literal('0o' + value[1..]))
+		}
 		return match value[1] {
+			`a` { 7 }
+			`b` { 8 }
+			`e` { 27 }
+			`f` { 12 }
 			`n` { 10 }
 			`r` { 13 }
 			`t` { 9 }
+			`v` { 11 }
 			`0` { 0 }
 			`\\` { 92 }
 			`'` { 39 }
 			else { int(value[1]) }
 		}
 	}
-	return int(value[0])
+	return int(value.runes()[0])
 }
 
 fn parse_int_literal(value string) int {
@@ -8959,9 +8970,21 @@ fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 		return b.build_string_infix(node.op, lhs, rhs)
 	}
 	if b.m.target.ptr_size == 4 && b.tc != unsafe { nil } {
-		lhs = b.coerce_numeric_value(lhs, b.global_constant_type(lhs_id))
-		rhs = b.coerce_numeric_value(rhs, b.global_constant_type(rhs_id))
+		lhs_literal := b.is_integer_literal_expr(lhs_id)
+		rhs_literal := b.is_integer_literal_expr(rhs_id)
+		// Untyped literals must keep their bits until the operation's type is known.
+		if !lhs_literal {
+			lhs = b.coerce_numeric_value(lhs, b.global_constant_type(lhs_id))
+		}
+		if !rhs_literal {
+			rhs = b.coerce_numeric_value(rhs, b.global_constant_type(rhs_id))
+		}
 		if node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
+			if lhs_literal && !rhs_literal {
+				lhs = b.coerce_numeric_value(lhs, b.value_type(rhs))
+			} else if rhs_literal && !lhs_literal {
+				rhs = b.coerce_numeric_value(rhs, b.value_type(lhs))
+			}
 			if b.is_int_type(b.value_type(lhs)) && b.is_int_type(b.value_type(rhs)) {
 				if b.is_unsigned_type(b.value_type(lhs)) != b.is_unsigned_type(b.value_type(rhs)) {
 					return b.build_mixed_integer_comparison(node.op, lhs, rhs)
@@ -8983,10 +9006,12 @@ fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 				lhs = b.coerce_numeric_value(lhs, common)
 				rhs = b.coerce_numeric_value(rhs, common)
 			}
-		} else if node.op !in [.left_shift, .right_shift, .right_shift_unsigned] {
+		} else {
 			result := b.global_constant_type(id)
 			lhs = b.coerce_numeric_value(lhs, result)
-			rhs = b.coerce_numeric_value(rhs, result)
+			if node.op !in [.left_shift, .right_shift, .right_shift_unsigned] {
+				rhs = b.coerce_numeric_value(rhs, result)
+			}
 		}
 	}
 	lhs_type := b.value_type(lhs)
@@ -9101,6 +9126,21 @@ fn (mut b Builder) build_mixed_integer_comparison(op flat.Op, lhs ValueID, rhs V
 
 fn int_max(left int, right int) int {
 	return if left > right { left } else { right }
+}
+
+fn (b &Builder) is_integer_literal_expr(id flat.NodeId) bool {
+	if !b.valid_node_id(id) {
+		return false
+	}
+	node := b.a.nodes[int(id)]
+	if node.kind == .int_literal {
+		return true
+	}
+	if node.children_count > 0 && (node.kind == .paren
+		|| (node.kind == .prefix && node.op in [.plus, .minus])) {
+		return b.is_integer_literal_expr(b.a.child(&node, 0))
+	}
+	return false
 }
 
 fn (mut b Builder) coerce_numeric_value(value ValueID, target TypeID) ValueID {
@@ -10806,7 +10846,13 @@ fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id
 	callee := b.build_expr(callee_id)
 	mut param_types := []TypeID{}
 	if b.m.target.ptr_size == 4 && b.tc != unsafe { nil } {
-		callee_type := types.unalias_type(b.tc.resolve_type(callee_id))
+		mut callee_type := types.unalias_type(b.tc.expr_type(callee_id) or {
+			b.tc.resolve_type(callee_id)
+		})
+		if callee_type !is types.FnType {
+			// Transformed local callees can retain their type only on the binding.
+			callee_type = types.unalias_type(b.tc.parse_type(b.checked_expr_type_name(callee_id)))
+		}
 		if callee_type is types.FnType {
 			for param_type in callee_type.params {
 				param_types << b.ssa_type_from_checker_type(param_type)
@@ -10818,7 +10864,7 @@ fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id
 	for i in 1 .. node.children_count {
 		mut arg := b.build_expr(b.a.child(&node, i))
 		if i - 1 < param_types.len {
-			arg = b.coerce_int_value(arg, param_types[i - 1])
+			arg = b.coerce_numeric_value(arg, param_types[i - 1])
 		}
 		args << arg
 	}

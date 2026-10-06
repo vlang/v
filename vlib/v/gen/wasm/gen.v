@@ -356,6 +356,33 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 			work << key
 		}
 	}
+	// SSA synthesizes main from executable file children. Treat its statements
+	// as roots too, using the file's imports to resolve calls and fn references.
+	mut script_keys := []string{}
+	for file_idx, file_node in g.a.nodes {
+		if file_idx < g.a.user_code_start || file_node.kind != .file
+			|| file_node.children_count == 0 {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			child_id := g.a.child(&file_node, i)
+			if int(child_id) < g.a.user_code_start {
+				continue
+			}
+			child := g.a.nodes[int(child_id)]
+			// Keep the statement kinds aligned with SSA's top_level_stmt_ids.
+			if child.kind in [.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign,
+				.for_stmt, .for_in_stmt, .if_expr, .assert_stmt, .defer_stmt, .block] {
+				g.collect_call_keys(child_id, '', file_node.value, candidates, mut script_keys)
+			}
+		}
+	}
+	for key in script_keys {
+		if key !in reached {
+			reached[key] = true
+			work << key
+		}
+	}
 	// `init` functions are entry points (run before main), like the C path's
 	// _vinit. Every imported module runs its init regardless of whether any of
 	// its other functions are called, so seed the init of main and of every

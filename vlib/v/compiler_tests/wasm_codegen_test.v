@@ -130,6 +130,167 @@ fn test_wasm_implicit_main() {
 	run_wasi_expect(wasm, ['hello script'])
 }
 
+fn assert_wasm_source_before_and_after_optimization(name string, source string, checks string) {
+	dir := os.join_path(os.vtmp_dir(), 'wasm_review_${name}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	source_path := os.join_path(dir, 'main.v')
+	runner := os.join_path(dir, 'check.mjs')
+	os.write_file(source_path, source) or { panic(err) }
+	os.write_file(runner, "import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const bytes = readFileSync(process.argv[2]);
+assert.ok(WebAssembly.validate(bytes));
+const { instance } = await WebAssembly.instantiate(bytes, {});
+const e = instance.exports;
+${checks}
+") or { panic(err) }
+	for production in [false, true] {
+		output := os.join_path(dir, 'main_${production}.wasm')
+		mut args := [v3_binary(), '-enable-globals', '-b', 'wasm', '-o', output, source_path]
+		if production {
+			args.insert(1, '-prod')
+		}
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert_valid_wasm(output)
+		if node := node_path() {
+			execution := run_node(node, runner, output)
+			assert execution.exit_code == 0, '${name}, production=${production}: ${execution.output}'
+		}
+	}
+}
+
+fn test_wasm_float_constant_comparisons() {
+	assert_wasm_source_before_and_after_optimization('float_comparisons', '
+pub fn less() bool { return f64(1.25) < f64(1.5) }
+pub fn less_equal() bool { return f64(1.25) <= f64(1.5) }
+pub fn greater() bool { return f64(1.25) > f64(1.5) }
+pub fn greater_equal() bool { return f64(1.25) >= f64(1.5) }
+pub fn equal() bool { return f64(1.25) == f64(1.5) }
+pub fn unequal() bool { return f64(1.25) != f64(1.5) }
+pub fn f32_less() bool { return f32(-1.5) < f32(-1.25) }
+pub fn f32_rounded_equal() bool { return f32(16777216) == f32(16777217) }
+', '
+assert.equal(e.less(), 1);
+assert.equal(e.less_equal(), 1);
+assert.equal(e.greater(), 0);
+assert.equal(e.greater_equal(), 0);
+assert.equal(e.equal(), 0);
+assert.equal(e.unequal(), 1);
+assert.equal(e.f32_less(), 1);
+assert.equal(e.f32_rounded_equal(), 1);
+')
+}
+
+fn test_wasm_wide_integer_literal_operands() {
+	assert_wasm_source_before_and_after_optimization('wide_literals', '
+pub fn equal(n i64) bool { return n == 4294967296 }
+pub fn reversed_equal(n i64) bool { return 4294967296 == n }
+pub fn add(n i64) i64 { return n + 4294967296 }
+pub fn reversed_add(n i64) i64 { return 4294967296 + n }
+pub fn float_add(n f64) f64 { return n + 4294967296 }
+pub fn float_equal(n f64) bool { return n == 4294967296 }
+', '
+assert.equal(e.equal(4294967296n), 1);
+assert.equal(e.equal(0n), 0);
+assert.equal(e.reversed_equal(4294967296n), 1);
+assert.equal(e.reversed_equal(0n), 0);
+assert.equal(e.add(1n), 4294967297n);
+assert.equal(e.reversed_add(1n), 4294967297n);
+assert.equal(e.float_add(1), 4294967297);
+assert.equal(e.float_equal(4294967296), 1);
+assert.equal(e.float_equal(0), 0);
+')
+}
+
+fn test_wasm_indirect_call_numeric_conversions() {
+	assert_wasm_source_before_and_after_optimization('indirect_numeric', '
+fn scale(x f64) f64 { return x * 2.0 }
+fn scale32(x f32) f32 { return x * f32(2) }
+pub fn integer_argument() f64 {
+	callback := scale
+	return callback(3)
+}
+pub fn f32_argument() f64 {
+	callback := scale
+	return callback(f32(3.5))
+}
+pub fn integer_to_f32_argument() f32 {
+	callback := scale32
+	return callback(3)
+}
+', '
+assert.equal(e.integer_argument(), 6);
+assert.equal(e.f32_argument(), 7);
+assert.equal(e.integer_to_f32_argument(), 6);
+')
+}
+
+fn test_wasm_unicode_rune_initializers_and_expressions() {
+	assert_wasm_source_before_and_after_optimization('runes', '
+__global letter = `é`
+__global ideograph = `界`
+__global emoji = `😀`
+pub fn global_letter() rune { return letter }
+pub fn global_ideograph() rune { return ideograph }
+pub fn global_emoji() rune { return emoji }
+pub fn direct_letter() rune { return `é` }
+pub fn direct_ideograph() rune { return `界` }
+pub fn direct_emoji() rune { return `😀` }
+pub fn newline() rune { return `\\n` }
+', '
+assert.equal(e.global_letter(), 233);
+assert.equal(e.global_ideograph(), 30028);
+assert.equal(e.global_emoji(), 128512);
+assert.equal(e.direct_letter(), 233);
+assert.equal(e.direct_ideograph(), 30028);
+assert.equal(e.direct_emoji(), 128512);
+assert.equal(e.newline(), 10);
+')
+}
+
+fn test_wasm_user_functions_keep_runtime_stub_names() {
+	assert_wasm_source_before_and_after_optimization('user_runtime_names', '
+fn current_rss_kb() i64 { return 123 }
+fn macos_rss_kb() i64 { return 456 }
+fn linux_rss_kb() i64 { return 789 }
+pub fn sum() i64 { return current_rss_kb() + macos_rss_kb() + linux_rss_kb() }
+', '
+assert.equal(e.current_rss_kb(), 123n);
+assert.equal(e.macos_rss_kb(), 456n);
+assert.equal(e.linux_rss_kb(), 789n);
+assert.equal(e.sum(), 1368n);
+')
+}
+
+fn test_wasm_implicit_main_imported_scalar_calls() {
+	dir := os.join_path(os.vtmp_dir(), 'wasm_script_import_${os.getpid()}')
+	os.mkdir_all(os.join_path(dir, 'foo')) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	main_v := os.join_path(dir, 'main.v')
+	os.write_file(main_v, 'import foo as helper
+println(helper.answer())
+callback := helper.answer
+println(callback())
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'foo', 'foo.v'), 'module foo
+fn value() int { return 21 }
+pub fn answer() int { return value() * 2 }
+') or { panic(err) }
+	for production in [false, true] {
+		output := os.join_path(dir, 'main_${production}.wasm')
+		mut args := [vexe, '-b', 'wasm', '-o', output, main_v]
+		if production {
+			args.insert(1, '-prod')
+		}
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert_valid_wasm(output)
+		run_wasi_expect(output, ['42', '42'])
+	}
+}
+
 fn test_wasm_imported_function_value() {
 	dir := os.join_path(os.vtmp_dir(), 'wasm_imported_fn_value_${os.getpid()}')
 	defer { os.rmdir_all(dir) or {} }

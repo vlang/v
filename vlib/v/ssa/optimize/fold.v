@@ -25,6 +25,13 @@ fn constant_fold(mut m ssa.Module) bool {
 				if rhs.kind == .constant && rhs.name == 'undef' {
 					continue
 				}
+				// These folds use integer identities and parse constants as i64.
+				// Comparisons share opcodes with floats, which must retain their
+				// precision and IEEE semantics when evaluated by the backend.
+				if m.type_store.types[lhs.typ].kind != .int_t
+					|| m.type_store.types[rhs.typ].kind != .int_t {
+					continue
+				}
 
 				// Algebraic simplifications first (work even with non-constant operands):
 				// x+0, x*1, x*0, x-x, x^x, x&x, x|x, x<<0, x*2 -> x<<1, etc.
