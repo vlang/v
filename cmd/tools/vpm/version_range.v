@@ -106,12 +106,37 @@ fn (vcs VCS) resolve_version(url string, version string) !string {
 	for line in res.output.split_into_lines() {
 		fields := line.split('\t')
 		if fields.len == 2 && fields[1].starts_with('refs/tags/') {
-			tags << fields[1].trim_string_left('refs/tags/')
+			tag := fields[1].trim_string_left('refs/tags/')
+			if settings.exclude_newer != '' {
+				tag_date := tag_commit_date(url, tag) or { continue }
+				if tag_date > settings.exclude_newer {
+					continue
+				}
+			}
+			tags << tag
 		}
 	}
 	selected := select_version_tag(tags, version)!
 	verbose_println('Resolved `${version}` to `${selected}` from `${url}`.')
 	return selected
+}
+
+fn tag_commit_date(url string, tag string) !string {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'vpm_exclude_newer_${tag}')
+	os.rmdir_all(tmp_dir) or {}
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	res := os.exec(['git', 'clone', '--bare', '--filter=blob:none', '--no-checkout', '--depth=1',
+		'--branch', '${tag}', url, tmp_dir])
+	if res.exit_code != 0 {
+		return error('failed to clone tag `${tag}` from `${url}`')
+	}
+	date_res := os.exec(['git', '-C', tmp_dir, 'log', '-1', '--format=%cI'])
+	if date_res.exit_code != 0 {
+		return error('failed to get date for tag `${tag}`')
+	}
+	return date_res.output.trim_space()
 }
 
 // validate_range_destinations prevents multiple selections from overwriting
