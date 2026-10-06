@@ -26,7 +26,9 @@ tags are ignored; prereleases require a matching prerelease constraint.
 Version components must fit the `int` fields of `semver.Version`.
 If no tag satisfies the range, installation fails.
 
-Exact Git refs such as `@v1.2.3` or `@main` keep their existing meaning.
+Exact Git refs such as `@v1.2.3`, `@v1.2.3-rc.x`, `@1.2.3+build.x`, or `@topic.x`
+keep their existing meaning. An implicit `x` or `X` wildcard must occur in the numeric
+version core, as in `1.x` or `1.2.X`, rather than a prerelease or build identifier.
 A bare module name continues to install its default branch.
 
 Project installs record the original range in `v.mod.lock` together with the

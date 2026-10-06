@@ -10,7 +10,20 @@ fn is_version_range(version string) bool {
 		|| version.contains_any('* \t') || version.contains('||') {
 		return true
 	}
-	return version.split('.').any(it == 'x' || it == 'X')
+	core := version.all_before('+').all_before('-')
+	parts := core.split('.')
+	if parts.len > 3 {
+		return false
+	}
+	mut wildcard := false
+	for part in parts {
+		if part == 'x' || part == 'X' {
+			wildcard = true
+		} else if part == '' || !part.bytes().all(it.is_digit()) {
+			return false
+		}
+	}
+	return wildcard
 }
 
 // version_tmp_name keeps range operators out of filesystem path components.

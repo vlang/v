@@ -5,6 +5,7 @@ import rand
 import test_utils { cmd_ok_args, cmd_fail_args }
 
 const range_test_path = os.join_path(os.vtmp_dir(), 'vpm_version_range_${rand.ulid()}')
+const range_original_dir = os.getwd()
 const range_vexe = @VEXE
 const range_vpm_exe = os.join_path(range_test_path, if os.user_os() == 'windows' {
 	'vpm.exe'
@@ -14,6 +15,7 @@ const range_vpm_exe = os.join_path(range_test_path, if os.user_os() == 'windows'
 
 fn testsuite_begin() {
 	os.mkdir_all(range_test_path)!
+	os.chdir(range_test_path)!
 	test_utils.set_test_env(os.join_path(range_test_path, 'build_store'))
 	os.setenv('VEXE', range_vexe, true)
 	// Compile once, so changing the isolated module store does not rebuild the tool.
@@ -22,6 +24,7 @@ fn testsuite_begin() {
 }
 
 fn testsuite_end() {
+	os.chdir(range_original_dir)!
 	os.rmdir_all(range_test_path) or {}
 }
 
@@ -46,12 +49,15 @@ fn test_select_highest_semantic_version_tag() {
 }
 
 fn test_range_syntax_and_temporary_names() {
-	for version in ['main', 'v1.2.3', '1.2.3', 'release/1.0', 'topic/a=b', 'topic/a|b'] {
+	for version in ['main', 'v1.2.3', '1.2.3', 'release/1.0', 'topic/a=b', 'topic/a|b', 'v1.2.3-rc.x',
+		'1.2.3+build.x', 'v1.2.3+build.x', 'topic.x', 'release/1.x', '1.2.3.4.x', '1.topic.x',
+		'x.branch', '.x'] {
 		assert !is_version_range(version)
 		assert version_tmp_name(version) == version
 		assert VCS.git.resolve_version('--not-used-for-exact-refs', version)! == version
 	}
-	for constraint in ['^1.0', '~1.2', '>=1.0 <2.0', '*', '1.x', '1.2 - 1.4', '^1 || ^2'] {
+	for constraint in ['^1.0', '~1.2', '>=1.0 <2.0', '*', 'x', 'X', '1.x', '1.X', '1.2.x', '1.2.X',
+		'1.2 - 1.4', '^1 || ^2'] {
 		assert is_version_range(constraint)
 		tmp_name := version_tmp_name(constraint)
 		assert !tmp_name.contains_any('<>^~|*/\\ \t')
@@ -236,4 +242,22 @@ fn test_malformed_version_tags_are_ignored() {
 	assert select_version_tag(['v1.10.1-beta.01', 'v1.10.1-beta.1'],
 		'^1.10.1-beta.0')! == 'v1.10.1-beta.1'
 	assert version_tag('v1.2.3+build.01')!.metadata == 'build.01'
+}
+
+fn test_exact_refs_with_dot_x_suffixes_keep_the_requested_commit() {
+	repo := range_create_repo('range_exact_refs')!
+	range_add_tag(repo, 'range_exact_refs', '1.2.3')!
+	range_add_tag(repo, 'range_exact_refs', 'v1.2.3-rc.x')!
+	range_add_tag(repo, 'range_exact_refs', '1.2.3+build.x')!
+	range_git(repo, ['branch', 'topic.x', 'refs/tags/v1.2.0'])
+	for i, ref in ['v1.2.3-rc.x', '1.2.3+build.x', 'topic.x'] {
+		store := os.join_path(range_test_path, 'exact_ref_store_${i}')
+		test_utils.set_test_env(store)
+		cmd_ok_args(@LOCATION, [range_vpm_exe, 'install', repo.replace('\\', '/') + '@' + ref])
+		installed := os.join_path(store, 'range_exact_refs')
+		assert range_git(installed, ['rev-parse', 'HEAD']) == range_git(repo, [
+			'rev-parse',
+			ref,
+		])
+	}
 }
