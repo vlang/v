@@ -94,10 +94,18 @@ are unordered, and would quietly drop anything the decoder does not model. So:
 - A file that is not plain JSON — comments, trailing commas — is **reported, not
   rewritten**. These files are meant to be edited by hand, and losing a comment
   to gain an entry is a bad trade.
+- A valid JSON value whose top level is not an object is left untouched. The
+  error identifies the missing root object.
 - A file with no top-level key for the client is not refused: the key goes in,
   holding the entry, as the first member of the root object. A key whose value
   is not an object is reported rather than guessed at.
-- An entry that is already there is not added twice.
+- An entry that is already there stays unchanged, and installation succeeds.
+  When its command can be read, the installer prints its executable and arguments.
+  If the executable path differs from this compiler, it names this compiler and
+  suggests uninstall/install commands to move the entry. These commands keep
+  `--project` when the entry belongs to the project configuration and invoke
+  this compiler by its full path, even when `v` on `PATH` names another compiler.
+  Windows guidance uses PowerShell syntax.
 - Zed's user-level file is never created from nothing, only added to if it
   exists.
 - `v mcp uninstall` leaves a file that is not plain JSON alone too, says the
@@ -106,7 +114,7 @@ are unordered, and would quietly drop anything the decoder does not model. So:
   beside it, which then replaces it in one step. A symlinked config stays a
   symlink, and keeps its permissions.
 
-Whenever the entry is not written, `v mcp install` prints it for pasting by hand
+When installation is refused, `v mcp install` prints the entry for pasting by hand
 and exits with status 1.
 
 Nothing else on your machine is touched: the entry names the compiler that is
