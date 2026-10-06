@@ -1,130 +1,134 @@
 module main
 
 import semver
-import v.vmod
 
-fn constraint(required_by string, rng string) Constraint {
+fn vd(version string, deps ...string) VersionedDeps {
+	return VersionedDeps{
+		version: version
+		deps:    deps
+	}
+}
+
+fn con(required_by string, rng string) Constraint {
 	return Constraint{
 		required_by: required_by
 		range:       rng
 	}
 }
 
-fn test_collect_constraints_gathers_every_requirement() {
-	mut modules := map[string]Module{}
-	modules['a'] = Module{
-		name:     'vsl'
-		version:  '0.0.1'
-		manifest: vmod.Manifest{
-			name:         'vsl'
-			dependencies: ['c@^1.0.0', 'markdown']
-		}
+fn test_topo_sort_puts_dependencies_first() {
+	candidates := {
+		'a': [vd('1.0.0', 'b@^1.0.0')]
+		'b': [vd('1.0.0')]
 	}
-	modules['b'] = Module{
-		name:     'other'
-		version:  '0.0.1'
-		manifest: vmod.Manifest{
-			name:         'other'
-			dependencies: ['c@^2.0.0']
-		}
+	order := topo_sort(candidates)
+	assert order == ['b', 'a']
+}
+
+fn test_topo_sort_handles_a_diamond() {
+	candidates := {
+		'a': [vd('1.0.0', 'b@^1.0.0', 'c@^1.0.0')]
+		'b': [vd('1.0.0', 'd@^1.0.0')]
+		'c': [vd('1.0.0', 'd@^1.0.0')]
+		'd': [vd('1.0.0')]
 	}
-	graph := build_graph(modules)
-	constraints := collect_constraints(modules, graph)
-	assert constraints['c'].len == 2
-	assert constraints['c'][0].required_by == 'vsl'
-	assert constraints['c'][0].range == '^1.0.0'
-	assert constraints['c'][1].required_by == 'other'
-	assert constraints['c'][1].range == '^2.0.0'
+	order := topo_sort(candidates)
+	// d must come before b and c, which must come before a.
+	assert order.index('d') < order.index('b')
+	assert order.index('d') < order.index('c')
+	assert order.index('b') < order.index('a')
+	assert order.index('c') < order.index('a')
 }
 
-fn test_collect_constraints_ignores_a_bare_name() {
-	// A dependency with no `@` places no range constraint, so it must not appear as
-	// one: `c` and `c@*` are different statements.
-	mut modules := map[string]Module{}
-	modules['a'] = Module{
-		name:     'vsl'
-		version:  '0.0.1'
-		manifest: vmod.Manifest{
-			name:         'vsl'
-			dependencies: ['c']
-		}
+fn test_resolve_with_backtracking_resolves_a_simple_chain() {
+	candidates := {
+		'a': [vd('1.0.0', 'b@^1.0.0')]
+		'b': [vd('1.0.0')]
 	}
-	graph := build_graph(modules)
-	constraints := collect_constraints(modules, graph)
-	assert constraints['c'].len == 1
-	assert constraints['c'][0].range == ''
+	resolved := resolve_with_backtracking(candidates, map[string][]Constraint{}) or { panic(err) }
+	assert resolved['a'] == '1.0.0'
+	assert resolved['b'] == '1.0.0'
 }
 
-fn test_select_version_tag_with_constraints_picks_the_highest_that_satisfies_all() {
-	tags := ['v1.0.0', 'v1.5.0', 'v2.0.0']
-	constraints := [constraint('a', '^1.0.0'), constraint('b', '<2.0.0')]
-	tag := select_version_tag_with_constraints(tags, constraints) or { panic(err) }
-	assert tag == 'v1.5.0'
-}
-
-fn test_select_version_tag_with_constraints_takes_the_highest_when_one_constraint() {
-	tags := ['v1.0.0', 'v1.5.0', 'v2.0.0']
-	constraints := [constraint('a', '^1.0.0')]
-	tag := select_version_tag_with_constraints(tags, constraints) or { panic(err) }
-	assert tag == 'v1.5.0'
-}
-
-fn test_select_version_tag_with_constraints_reports_the_conflict() {
-	// ^1.0.0 and ^2.0.0 cannot both be met, and the error has to say which
-	// requirements conflict rather than just "no tag matched".
-	tags := ['v1.0.0', 'v1.5.0', 'v2.0.0']
-	constraints := [constraint('a', '^1.0.0'), constraint('b', '^2.0.0')]
-	mut msg := ''
-	select_version_tag_with_constraints(tags, constraints) or { msg = err.msg() }
-	assert msg.contains('a requires ^1.0.0'), msg
-	assert msg.contains('b requires ^2.0.0'), msg
-}
-
-fn test_select_version_tag_with_constraints_accepts_an_empty_constraint_set() {
-	// A module no dependent constrains resolves as if unconstrained.
-	tags := ['v1.0.0', 'v2.0.0']
-	tag := select_version_tag_with_constraints(tags, []Constraint{}) or { panic(err) }
-	assert tag == 'v2.0.0'
-}
-
-fn test_select_version_tag_with_constraints_skips_a_tag_that_fails_one_constraint() {
-	// v2.0.0 is the highest, but `b` requires <2.0.0, so v1.5.0 wins even though it is
-	// not the highest tag.
-	tags := ['v1.0.0', 'v1.5.0', 'v2.0.0']
-	constraints := [constraint('a', '*'), constraint('b', '<2.0.0')]
-	tag := select_version_tag_with_constraints(tags, constraints) or { panic(err) }
-	assert tag == 'v1.5.0'
-}
-
-fn test_select_version_tag_with_constraints_treats_an_empty_range_as_no_constraint() {
-	// A bare dependency name places no range, so it must not filter anything out.
-	tags := ['v1.0.0', 'v2.0.0']
-	constraints := [constraint('a', '')]
-	tag := select_version_tag_with_constraints(tags, constraints) or { panic(err) }
-	assert tag == 'v2.0.0'
-}
-
-fn test_resolve_modules_resolves_each_module_against_its_constraints() {
-	mut modules := map[string]Module{}
-	modules['a'] = Module{
-		name:          'c'
-		version:       '1.5.0'
-		version_range: '^1.0.0'
+fn test_resolve_with_backtracking_picks_the_highest_satisfying_version() {
+	candidates := {
+		'a': [vd('1.0.0'), vd('2.0.0')]
 	}
 	constraints := {
-		'c': [constraint('a', '^1.0.0 <2.0.0')]
+		'a': [con('root', '^1.0.0')]
 	}
-	// module_tags reads from git, so this can only be tested through the selection
-	// logic. The resolution entry point is covered by the selection tests above.
-	assert constraints['c'].len == 1
+	resolved := resolve_with_backtracking(candidates, constraints) or { panic(err) }
+	assert resolved['a'] == '1.0.0'
 }
 
-fn test_a_conflict_is_reported_per_module_not_per_run() {
-	// Two modules can conflict independently; the error must name the one that failed
-	// rather than failing the whole run on the first.
-	tags := ['v1.0.0']
-	constraints := [constraint('a', '^2.0.0')]
+fn test_resolve_with_backtracks_when_the_highest_version_dead_ends() {
+	// a@2.0.0 needs b@^2.0.0, but b is constrained to ^1.0.0. The highest a fails,
+	// so the search backtracks to a@1.0.0, which needs b@^1.0.0 and works.
+	candidates := {
+		'a': [vd('1.0.0', 'b@^1.0.0'), vd('2.0.0', 'b@^2.0.0')]
+		'b': [vd('1.0.0'), vd('2.0.0')]
+	}
+	constraints := {
+		'b': [con('root', '^1.0.0')]
+	}
+	resolved := resolve_with_backtracking(candidates, constraints) or { panic(err) }
+	assert resolved['a'] == '1.0.0'
+	assert resolved['b'] == '1.0.0'
+}
+
+fn test_resolve_reports_a_conflict_when_no_version_works() {
+	// a needs b@^1.0.0 and b needs a@^2.0.0. Whichever is resolved first, the other
+	// cannot be satisfied, and the error has to say so.
+	candidates := {
+		'a': [vd('1.0.0', 'b@^1.0.0')]
+		'b': [vd('1.0.0', 'a@^2.0.0')]
+	}
 	mut msg := ''
-	select_version_tag_with_constraints(tags, constraints) or { msg = err.msg() }
-	assert msg.contains('a requires ^2.0.0'), msg
+	resolve_with_backtracking(candidates, map[string][]Constraint{}) or { msg = err.msg() }
+	assert msg.contains('failed to resolve'), msg
+}
+
+fn test_resolve_backtracks_past_a_module_that_was_resolved_first() {
+	// The ordering matters: b is resolved first and takes 2.0.0, then a@2.0.0 needs
+	// b@^2.0.0 which works. But if a had been resolved first at 2.0.0 and then b
+	// failed, the search has to go back and try a@1.0.0.
+	candidates := {
+		'a': [vd('1.0.0', 'b@^1.0.0'), vd('2.0.0', 'b@^2.0.0')]
+		'b': [vd('1.0.0'), vd('2.0.0')]
+	}
+	constraints := {
+		'a': [con('root', '^1.0.0')]
+	}
+	resolved := resolve_with_backtracking(candidates, constraints) or { panic(err) }
+	assert resolved['a'] == '1.0.0'
+	assert resolved['b'] == '1.0.0'
+}
+
+fn test_resolve_with_backtracking_takes_the_highest_version_when_unconstrained() {
+	candidates := {
+		'a': [vd('1.0.0'), vd('2.0.0'), vd('3.0.0')]
+	}
+	resolved := resolve_with_backtracking(candidates, map[string][]Constraint{}) or { panic(err) }
+	assert resolved['a'] == '3.0.0'
+}
+
+fn test_resolve_handles_a_module_with_no_dependencies() {
+	candidates := {
+		'a': [vd('1.0.0')]
+	}
+	resolved := resolve_with_backtracking(candidates, map[string][]Constraint{}) or { panic(err) }
+	assert resolved['a'] == '1.0.0'
+}
+
+fn test_resolve_reports_which_module_failed() {
+	candidates := {
+		'a': [vd('1.0.0', 'b@^1.0.0')]
+		'b': [vd('1.0.0')]
+	}
+	constraints := {
+		'b': [con('root', '^2.0.0')]
+	}
+	mut msg2 := ''
+	resolve_with_backtracking(candidates, constraints) or { msg2 = err.msg() }
+	assert msg2.contains('b'), msg2
 }
