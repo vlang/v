@@ -62,6 +62,9 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+`Time.custom_format('YYYY')` pads nonnegative years to at least four digits, so year `100`
+is written as `0100`. The `YY` token writes the final two year digits with leading zeros.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time
