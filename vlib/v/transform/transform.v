@@ -337,6 +337,7 @@ mut:
 	default_clone_synthesized     map[string]bool
 	default_clone_expansion_stack []string
 	interface_boxed_types         map[string]bool
+	interface_boxed_skip_nodes    []bool
 	// interface_boxed_types_late records concrete boxes discovered after the
 	// source-level box index is frozen. Each transform worker owns this map, so
 	// auto-string lowering can extend its local dispatch index without mutating
@@ -3838,6 +3839,7 @@ fn (mut t Transformer) collect_interface_boxed_types_dispatch(want_parallel bool
 	if t.interface_boxed_types_done {
 		return
 	}
+	t.interface_boxed_skip_nodes = t.unchecked_library_box_nodes()
 	if !want_parallel || !t.scope_parallel_workers {
 		t.collect_interface_boxed_types()
 		return
@@ -4571,6 +4573,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 			unsafe { &t.generic_specialization_args }
 		}
 		interface_var_concrete_types:        map[string]string{}
+		interface_boxed_skip_nodes:          t.interface_boxed_skip_nodes
 		interface_boxed_types:               if t.skip_generics && t.interface_boxed_types_frozen {
 			t.interface_boxed_types
 		} else {
@@ -20975,26 +20978,28 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			return t.transform_infix_expr(new_id, t.a.nodes[int(new_id)])
 		}
 	}
-	if str_result := t.transform_infix_string_ops(id, node) {
-		return str_result
-	}
-	if array_result := t.transform_infix_array_ops(id, node) {
-		return array_result
-	}
-	if map_result := t.transform_infix_map_ops(id, node) {
-		return map_result
-	}
-	if optional_result := t.transform_infix_optional_none_ops(id, node) {
-		return optional_result
-	}
-	if interface_result := t.transform_infix_interface_ops(id, node) {
-		return interface_result
-	}
-	if sum_result := t.transform_infix_sum_ops(id, node) {
-		return sum_result
-	}
-	if struct_result := t.transform_infix_struct_ops(id, node) {
-		return struct_result
+	if !t.checked_numeric_infix_can_skip_handlers(node) {
+		if str_result := t.transform_infix_string_ops(id, node) {
+			return str_result
+		}
+		if array_result := t.transform_infix_array_ops(id, node) {
+			return array_result
+		}
+		if map_result := t.transform_infix_map_ops(id, node) {
+			return map_result
+		}
+		if optional_result := t.transform_infix_optional_none_ops(id, node) {
+			return optional_result
+		}
+		if interface_result := t.transform_infix_interface_ops(id, node) {
+			return interface_result
+		}
+		if sum_result := t.transform_infix_sum_ops(id, node) {
+			return sum_result
+		}
+		if struct_result := t.transform_infix_struct_ops(id, node) {
+			return struct_result
+		}
 	}
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
@@ -21058,6 +21063,83 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		value:          node.value
 		typ:            node.typ
 	})
+}
+
+// Checked scalar arithmetic uses the common infix lowering path. Alias
+// operators still require the type-specific dispatch, including aliases recovered
+// from the original element type of an indexed operand.
+fn (t &Transformer) checked_numeric_infix_can_skip_handlers(node flat.Node) bool {
+	if !t.skip_generics || t.building_v || t.validating_generic_spec || t.cur_fn_is_generic
+		|| t.active_generic_params.len > 0 || t.active_specialization_args.len > 0
+		|| t.smartcast_stack.len > 0 || isnil(t.tc)
+		|| node.children_count != 2 || node.op !in [.plus, .minus, .mul, .div, .mod, .eq, .ne,
+		.lt, .gt, .le, .ge, .amp, .pipe, .xor, .right_shift, .right_shift_unsigned] {
+		return false
+	}
+	lhs := t.a.child(&node, 0)
+	rhs := t.a.child(&node, 1)
+	if !t.checked_numeric_infix_operand(lhs, node.op, true) {
+		return false
+	}
+	// For these operators the first six handlers reject the operator before
+	// inspecting operands. Struct/operator dispatch then depends only on LHS.
+	if node.op in [.minus, .mul, .div, .mod, .amp, .pipe, .xor, .right_shift, .right_shift_unsigned] {
+		return true
+	}
+	return t.checked_numeric_infix_operand(rhs, node.op, false)
+}
+
+fn (t &Transformer) checked_numeric_infix_operand(id flat.NodeId, op flat.Op, is_lhs bool) bool {
+	if typ := t.tc.expr_type(id) {
+		if !checked_small_numeric_type(typ) {
+			return false
+		}
+		if !t.checked_numeric_operand_has_alias_candidates(id, typ) {
+			return true
+		}
+	} else {
+		// String comparisons/addition query both node types; the remaining
+		// operators reach the struct handler's LHS type query instead.
+		name := t.node_type(id)
+		if !is_numeric_type_name(name) || name in ['i128', 'u128'] {
+			return false
+		}
+		if !is_lhs && op !in [.eq, .ne] {
+			return true
+		}
+		// Alias dispatch reads the raw checker LHS type. Array equality also
+		// consults the raw RHS type, so a heuristic scalar must not hide it.
+		typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
+		if !checked_small_numeric_type(typ) {
+			return false
+		}
+		if !t.checked_numeric_operand_has_alias_candidates(id, typ) {
+			return true
+		}
+	}
+	if _ := t.operator_alias_type_for_operand(id, op) {
+		return false
+	}
+	return true
+}
+
+// The alias helper only has candidates from the cached semantic type, node
+// annotation/cast target, and original indexed element type. A plain primitive
+// sidecar has a builtin name, so it needs no nominal operator lookup.
+fn (t &Transformer) checked_numeric_operand_has_alias_candidates(id flat.NodeId, typ types.Type) bool {
+	if typ is types.Alias {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	return node.kind == .index
+		|| (node.typ.len > 0 && !types.is_builtin_type_name(node.typ))
+		|| (node.kind == .cast_expr && node.value.len > 0 && !types.is_builtin_type_name(node.value))
+}
+
+fn checked_small_numeric_type(typ types.Type) bool {
+	clean := types.unalias_type(typ)
+	return clean is types.Primitive && clean.size <= 64
+		&& (clean.props.has(.integer) || clean.props.has(.float))
 }
 
 fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node flat.Node, child_index int) bool {

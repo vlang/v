@@ -15510,6 +15510,10 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	if p.resolve_local_type_name(name) != name {
 		return false
 	}
+	// A visible local or parameter cannot select a module constant.
+	if !p.is_translated && p.is_local_binding(name) {
+		return false
+	}
 	// A type that this module already declared is never read as a const operand,
 	// whatever its other files declare, so no other module is indexed for one of
 	// its own types either.
