@@ -7182,8 +7182,20 @@ fn (tc &TypeChecker) comptime_initializer_is_static_depth(id flat.NodeId, depth 
 		return true
 	}
 	if node.kind == .ident {
+		key := if '${module_name}.${node.value}' in tc.const_exprs {
+			'${module_name}.${node.value}'
+		} else {
+			node.value
+		}
 		if allow_locals && tc.ident_is_mutable_lvalue(node.value) {
-			return false
+			owner := tc.const_modules[key] or { '' }
+			same_owner := owner == module_name || (owner in ['', 'main'] && module_name in ['',
+				'main'])
+			binding := tc.cur_scope.lookup_owner(node.value) or { return false }
+			// A foreign global's bare cache entry does not override an owner constant.
+			if key !in tc.const_exprs || !same_owner || !tc.binding_owner_is_file_scope(binding) {
+				return false
+			}
 		}
 		if allow_locals && tc.comptime_condition_type_is_loop_metadata(id, '${node.value}.name') {
 			return true
@@ -7192,11 +7204,6 @@ fn (tc &TypeChecker) comptime_initializer_is_static_depth(id flat.NodeId, depth 
 			if init := tc.comptime_local_initializer(node.value, id) {
 				return tc.comptime_initializer_is_static_depth(init, depth + 1, module_name, file, true)
 			}
-		}
-		key := if '${module_name}.${node.value}' in tc.const_exprs {
-			'${module_name}.${node.value}'
-		} else {
-			node.value
 		}
 		if init := tc.const_exprs[key] {
 			owner := tc.const_modules[key] or { module_name }

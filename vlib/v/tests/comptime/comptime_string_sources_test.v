@@ -167,3 +167,31 @@ fn static_generic_field_parts[T]() []string {
 fn test_generic_reflection_string_source() {
 	assert static_generic_field_parts[StringSourceFields]() == ['first', 'name', 'second', 'name']
 }
+
+fn runtime_string_source_bytes(value string) []u8 {
+	return value.bytes()
+}
+
+fn runtime_string_source_result(value bool) !bool {
+	return value
+}
+
+fn test_runtime_membership_and_unwrapped_booleans_keep_runtime_values() {
+	bytes := runtime_string_source_bytes('12.3')
+	mut dots := 0
+	if `.` !in bytes {
+		dots++
+	}
+	if `.` in bytes {
+		dots += 2
+	}
+	assert dots == 2
+	value := runtime_string_source_result(true) or { false }
+	mut branches := 0
+	if !value {
+		branches++
+	} else {
+		branches += 2
+	}
+	assert branches == 2
+}

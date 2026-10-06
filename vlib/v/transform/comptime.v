@@ -5655,9 +5655,14 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 			} else {
 				needle := comptime_cond_operand(needle_text) or { return none }
 				if list.starts_with('[') && list.ends_with(']') {
-					for item in split_generic_args(list[1..list.len - 1]) {
+					mut rest := list[1..list.len - 1].trim_space()
+					for rest.len > 0 {
+						comma := comptime_condition_top_level_index(rest, ',')
+						item := if comma >= 0 { rest[..comma] } else { rest }
 						value := comptime_cond_operand(item) or { return none }
 						found = found || value == needle
+						if comma < 0 { break }
+						rest = rest[comma + 1..].trim_space()
 					}
 				} else {
 					value := comptime_cond_string_member(list) or { list }

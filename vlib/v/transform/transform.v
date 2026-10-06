@@ -11629,10 +11629,10 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 			return locked
 		}
 	}
-	if (node.kind == .selector && node.value == 'len')
+	if !t.assert_watch.active && ((node.kind == .selector && node.value == 'len')
 		|| (node.kind == .index && node.value == 'range')
 		|| (node.kind == .infix && node.op in [.plus, .eq, .ne, .logical_and, .logical_or])
-		|| node.kind == .in_expr || (node.kind == .prefix && node.op == .not) {
+		|| node.kind == .in_expr || (node.kind == .prefix && node.op == .not)) {
 		if scalar := t.comptime_scalar_expr(id, 0) {
 			return t.make_comptime_scalar_literal(scalar)
 		}
@@ -19226,7 +19226,9 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 		if comptime_cond_has_target_flag(node.value) {
 			return [t.lower_retained_comptime_if(node)]
 		}
-		t.reject_unevaluated_comptime_if(_id, node, cond)
+		if !t.comptime_condition_has_unresolved_type_test(cond) {
+			t.reject_unevaluated_comptime_if(_id, node, cond)
+		}
 		return [_id]
 	}
 	branch_index := if take_then { 0 } else { 1 }
@@ -19256,7 +19258,9 @@ fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node
 		if comptime_cond_has_target_flag(node.value) {
 			return t.lower_retained_comptime_if_expr(node)
 		}
-		t.reject_unevaluated_comptime_if(id, node, cond)
+		if !t.comptime_condition_has_unresolved_type_test(cond) {
+			t.reject_unevaluated_comptime_if(id, node, cond)
+		}
 		return id
 	}
 	branch_index := if take_then { 0 } else { 1 }
@@ -20601,13 +20605,15 @@ fn (mut t Transformer) transform_watched_assert_operand(id flat.NodeId, target_t
 	} else {
 		return none
 	}
-	t.assert_watch.active = false
+	// Keep scalar folding disabled while lowering the operands, without watching them twice.
+	saved_ids := t.assert_watch.ids
+	t.assert_watch.ids = [-1, -1]!
 	result := if target_type == '' {
 		t.transform_expr(id)
 	} else {
 		t.transform_expr_for_type(id, target_type)
 	}
-	t.assert_watch.active = true
+	t.assert_watch.ids = saved_ids
 	t.assert_watch.results[side] = int(result)
 	return result
 }

@@ -163,8 +163,21 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 fn (t &Transformer) comptime_scalar_named_const(name string, depth int, module_name string, file string) ?ComptimeStringScalar {
 	if isnil(t.tc) { return none }
 	key := t.const_type_key_in_context(name, module_name, file)?
-	expr := t.tc.const_exprs[key] or { return none }
 	owner := t.tc.const_modules[key] or { module_name }
+	base := name.all_before('.')
+	global_name := if module_name !in ['', 'main', 'builtin'] {
+		'${module_name}.${base}'
+	} else {
+		base
+	}
+	// Explicit imports are namespaces; other selectors can refer to owner globals.
+	imported := name.contains('.') && t.file_import_module(file, base) != none
+	same_owner := owner == module_name || (owner in ['', 'main'] && module_name in ['', 'main'])
+	if !imported && global_name in t.globals
+		&& (name.contains('.') || !same_owner) {
+		return none
+	}
+	expr := t.tc.const_exprs[key] or { return none }
 	owner_file := t.tc.const_files[key] or { file }
 	return t.comptime_scalar_expr_in_context(expr, depth + 1, owner, owner_file, false)
 }
@@ -186,7 +199,8 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 	result := t.transform_decl_assign_stmt(id, node)
 	if lhs.kind == .ident {
 		t.comptime_scalar_locals.delete(lhs.value)
-		if !lhs.is_mut && !node.is_mut {
+		// Generated staging locals can be assigned later despite lacking `mut` flags.
+		if node.pos.is_valid() && !lhs.is_mut && !node.is_mut {
 			if scalar := value {
 				t.comptime_scalar_locals[lhs.value] = scalar
 			}
@@ -375,7 +389,10 @@ fn (mut t Transformer) expand_comptime_for_strings(id flat.NodeId, node flat.Nod
 	mut result := []flat.NodeId{}
 	for value in values {
 		// The literal binding and the entire iteration have their own lexical scope.
-		mut stmts := [t.make_decl_assign_typed(var_name, t.make_string_literal(value), 'string')]
+		binding := t.make_decl_assign_typed(var_name, t.make_string_literal(value), 'string')
+		// This generated binding is immutable and belongs to the source iteration.
+		t.a.nodes[int(binding)].pos = node.pos
+		mut stmts := [binding]
 		for stmt in t.a.children_of(&body) {
 			stmts << t.clone_node_tree(stmt)
 		}
@@ -405,4 +422,27 @@ fn (mut t Transformer) eval_reflected_string_condition(cond string, node flat.No
 		return none
 	}
 	return t.eval_field_cond(cond)
+}
+
+// A type guard can stay unresolved until a generic template is specialized.
+// Concrete type tests do not hide invalid string operands in the same condition.
+fn (mut t Transformer) comptime_condition_has_unresolved_type_test(cond string) bool {
+	if 'is' !in comptime_condition_bare_names(cond) { return false }
+	clean := comptime_condition_strip_outer_parens(cond.trim_space())
+	for op in ['||', '&&'] {
+		index := comptime_condition_top_level_index(clean, op)
+		if index >= 0 {
+			return t.comptime_condition_has_unresolved_type_test(clean[..index])
+				|| t.comptime_condition_has_unresolved_type_test(clean[index + op.len..])
+		}
+	}
+	for op in [' !is ', ' is '] {
+		if comptime_condition_top_level_index(clean, op) >= 0 {
+			return t.comptime_type_condition_value(clean) == none
+		}
+	}
+	if clean.starts_with('!') {
+		return t.comptime_condition_has_unresolved_type_test(clean[1..])
+	}
+	return false
 }
