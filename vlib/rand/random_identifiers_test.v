@@ -83,6 +83,23 @@ fn test_rand_uuid_v7_session() {
 	}
 }
 
+// unix_ts_ms is the 48-bit millisecond field of the UUIDv7 `uuid`.
+fn unix_ts_ms(uuid string) i64 {
+	return i64(('0x' + uuid.replace('-', '')[..12]).u64())
+}
+
+fn test_rand_uuid_v7_timestamps_are_unix_milliseconds() {
+	mut session := rand.new_uuid_v7_session()
+	before := time.now().unix_milli()
+	from_session := session.next()
+	plain := rand.uuid_v7()
+	after := time.now().unix_milli()
+	for uuid in [from_session, plain] {
+		ms := unix_ts_ms(uuid)
+		assert ms >= before && ms <= after, '${uuid}: ${ms} is not in [${before}, ${after}]'
+	}
+}
+
 // ulids:
 fn test_ulids_are_unique() {
 	ulid1 := rand.ulid()
