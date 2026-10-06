@@ -91,6 +91,14 @@ pub:
 	strict bool
 }
 
+// DecodeBuffer retains token storage between decode_reuse calls. Give each
+// concurrent or reentrant decoding operation its own buffer. It never retains
+// the input or decoded values; its capacity grows with the largest token count.
+pub struct DecodeBuffer {
+mut:
+	values_info []ValueInfo
+}
+
 // Decoder is the internal decoding state.
 @[markused]
 struct Decoder {
@@ -383,7 +391,37 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 
 	decoder.check_json_format()!
 	decoder.values_info.trim(decoder.values_len)
+	return decoder.decode_root[T]()
+}
 
+// decode_reuse decodes with the same options and validation as decode, reusing
+// buffer's token allocation and growing it during validation instead of counting
+// values in a separate pass. Returned values remain valid when buffer is reused,
+// including after an error. The caller must provide exclusive access to buffer.
+@[manualfree]
+pub fn decode_reuse[T](val string, mut buffer DecodeBuffer, params DecoderOptions) !T {
+	if val == '' {
+		return JsonDecodeError{
+			message:   'empty string'
+			line:      1
+			character: 1
+		}
+	}
+	mut decoder := Decoder{
+		json:        val
+		strict:      params.strict
+		// The decoder has exclusive access until the defer returns its storage.
+		values_info: unsafe { buffer.values_info }
+	}
+	defer {
+		buffer.values_info = unsafe { decoder.values_info }
+	}
+	decoder.check_json_format()!
+	decoder.values_info.trim(decoder.values_len)
+	return decoder.decode_root[T]()
+}
+
+fn (mut decoder Decoder) decode_root[T]() !T {
 	mut result := T{}
 	$if T.unaliased_typ is $array_dynamic {
 		result.clear()

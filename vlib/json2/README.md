@@ -72,6 +72,14 @@ booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects en
 
 #### decode[T]
 
+`decode_reuse[T](text, mut buffer, options)` accepts a `DecodeBuffer` and retains its
+token storage for the next call. It uses the same validation and decoding rules as
+`decode`. Results stay valid across reuse and errors; the buffer stores neither input
+strings nor decoded values. Each concurrent or reentrant call needs its own buffer.
+Capacity follows the largest token count seen, so limit input sizes when appropriate.
+With garbage collection, assigning `DecodeBuffer{}` releases the retained allocation
+for collection when it is no longer needed.
+
 JSON object keys are decoded to the target map key type, including signed and unsigned
 integer keys. Nested maps and maps stored in struct fields follow the same conversion.
 Enum map keys, including enum type aliases, use member names as written by `encode`.
