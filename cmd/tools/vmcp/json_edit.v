@@ -22,7 +22,7 @@ fn is_space(c u8) bool {
 }
 
 // skip_comment returns the offset just past the comment that starts at `at`,
-// or `at` when no comment starts there. It is only ever called outside a string.
+// or `at` when no complete comment starts there. It is only called outside a string.
 fn skip_comment(text string, at int) int {
 	if at + 1 >= text.len || text[at] != `/` {
 		return at
@@ -42,7 +42,7 @@ fn skip_comment(text string, at int) int {
 			}
 			i++
 		}
-		return text.len
+		return at
 	}
 	return at
 }

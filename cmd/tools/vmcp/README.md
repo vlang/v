@@ -96,9 +96,10 @@ The config file is edited textually, beside the servers the client already has.
 A `json.decode`/`json.encode` round trip would reorder every key, because V maps
 are unordered, and would quietly drop anything the decoder does not model. So:
 
-- A file that is not plain JSON — comments, trailing commas — is **reported, not
-  rewritten**. These files are meant to be edited by hand, and losing a comment
-  to gain an entry is a bad trade.
+- Line comments and complete block comments are preserved during textual installation
+  and removal. Comments inside string values remain part of those values.
+- Invalid JSON, trailing commas, and unterminated block comments are reported and left
+  unchanged.
 - A valid JSON value whose top level is not an object is left untouched. The
   error identifies the missing root object.
 - A file with no top-level key for the client is not refused: the key goes in,
@@ -113,13 +114,14 @@ are unordered, and would quietly drop anything the decoder does not model. So:
   Windows guidance uses PowerShell syntax.
 - Zed's user-level file is never created from nothing, only added to if it
   exists.
-- `v mcp uninstall` leaves a file that is not plain JSON alone too, says the
+- `v mcp uninstall` leaves a file with invalid JSON or trailing commas alone too, says the
   entry has to be removed by hand, and exits with status 1.
 - A file is never left half-written: the new text goes to a temporary file
   beside it, which then replaces it in one step. A symlinked config stays a
   symlink, and keeps its permissions.
 
-When a file is not plain JSON, `v mcp install` leaves it unchanged and prints the
+When a file cannot be parsed after removing comments, `v mcp install` leaves it unchanged
+and prints the
 client's top-level member for pasting by hand. If that key already exists, merge the
 `vlang` server member into it instead of adding a second key. Other failures report
 why the file could not be edited. Refused installations exit with status 1.

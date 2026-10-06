@@ -1960,6 +1960,22 @@ fn test_a_trailing_comma_is_still_refused() {
 	assert refused, 'a trailing comma was not refused'
 }
 
+fn test_an_unterminated_block_comment_is_refused_without_changing_the_file() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, text in ['{} /* unfinished', '{"mcp":{"vlang":{}}} /* unfinished'] {
+		path := config_fixture('unterminated_block_${i}', text)!
+		assert !is_editable(text)
+		mut message := ''
+		write_entry(h, path, false) or { message = err.msg() }
+		assert message.len > 0
+		assert read_config(path) == text
+		mut removed := false
+		remove_entry(h, path) or { removed = true }
+		assert removed || !text.contains('vlang')
+		assert read_config(path) == text
+	}
+}
+
 fn test_a_string_value_equal_to_the_name_is_not_taken_for_the_entry() {
 	path := config_fixture('valuename', '{"mcp":{"duck":"vlang","vlang":{"type":"local"}}}')!
 	h := Harness{
