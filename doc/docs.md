@@ -9771,6 +9771,9 @@ to race conditions. There are several approaches to deal with these:
   correlated, which is acceptable considering the performance penalty that using
   synchronization primitives would represent.
 
+A global declared in the current module keeps its own type when another module
+declares a constant with the same name.
+
 ### Shadowing a global
 
 A local variable may not reuse the name of a global. A global's bare name is visible
