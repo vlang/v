@@ -1,0 +1,46 @@
+module main
+
+struct Context {
+mut:
+	value int
+}
+
+struct App {}
+
+fn (_ App) index(mut ctx &Context) {
+	ctx.value++
+}
+
+fn call_pointer[A](app A, mut user_context Context, args []string) {
+	$for method in A.methods {
+		$if method.name == 'index' {
+			app.$method(mut user_context, ...args)
+		}
+	}
+}
+
+fn call_missing_mut[A](app A, mut user_context Context, args []string) {
+	mut p := &user_context
+	$for method in A.methods {
+		$if method.name == 'index' {
+			app.$method(p, ...args)
+		}
+	}
+}
+
+fn call_too_many[A](app A, mut user_context Context, args []string) {
+	mut p := &user_context
+	$for method in A.methods {
+		$if method.name == 'index' {
+			app.$method(mut p, 'extra', ...args)
+		}
+	}
+}
+
+fn main() {
+	app := App{}
+	mut ctx := Context{}
+	call_pointer(app, mut ctx, [])
+	call_missing_mut(app, mut ctx, [])
+	call_too_many(app, mut ctx, [])
+}

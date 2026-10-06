@@ -17,6 +17,9 @@ const empty_str = ''
 const dot_str = '.'
 
 // is_abs_path returns `true` if the given `path` is absolute.
+// On Windows it also accepts paths rooted on the current drive, such as `\x`
+// or `/x`; these do not specify a drive. UNC paths require a server and share,
+// so a bare doubled separator (`//` or `\\`) returns false.
 pub fn is_abs_path(path string) bool {
 	if path == '' {
 		return false
