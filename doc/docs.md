@@ -3708,6 +3708,9 @@ println(sum(...b)) // output: 18
 
 ### Anonymous & higher order functions
 
+Calling a function parameter or local function variable uses that binding, even when
+another module defines a function constant with the same name.
+
 ```v
 fn sqr(n int) int {
 	return n * n
