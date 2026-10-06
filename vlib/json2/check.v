@@ -34,6 +34,7 @@ fn (mut checker Decoder) check_json_format() ! {
 		`"` {
 			checker.add_value(.string)
 			checker.check_string()!
+			checker.values_info[value_idx].has_escape = checker.string_has_escape
 		}
 		`-`, `0`...`9` {
 			checker.add_value(.number)
@@ -72,11 +73,13 @@ fn (mut checker Decoder) check_json_format() ! {
 
 @[markused]
 fn (mut checker Decoder) check_string() ! {
+	checker.string_has_escape = false
 	checker.increment('string not closed')!
 
 	// check if the JSON string is a valid escape sequence
 	for checker.json[checker.checker_idx] != `"` {
 		if checker.json[checker.checker_idx] == `\\` {
+			checker.string_has_escape = true
 			checker.increment('invalid escape sequence')!
 			escaped_char := checker.json[checker.checker_idx]
 			match escaped_char {
