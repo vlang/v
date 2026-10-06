@@ -21,6 +21,77 @@ fn is_space(c u8) bool {
 	return c == sp || c == 9 || c == 10 || c == 13
 }
 
+// skip_comment returns the offset just past the comment that starts at `at`,
+// or `at` when no comment starts there. It is only ever called outside a string.
+fn skip_comment(text string, at int) int {
+	if at + 1 >= text.len || text[at] != `/` {
+		return at
+	}
+	if text[at + 1] == `/` {
+		mut i := at + 2
+		for i < text.len && text[i] != `\n` {
+			i++
+		}
+		return i
+	}
+	if text[at + 1] == `*` {
+		mut i := at + 2
+		for i + 1 < text.len {
+			if text[i] == `*` && text[i + 1] == `/` {
+				return i + 2
+			}
+			i++
+		}
+		return text.len
+	}
+	return at
+}
+
+// strip_comments returns the text with every comment removed. This is how a
+// commented file is judged: if what is left is plain JSON, the file is one this
+// tool can edit, and the comments around the edit are preserved because the
+// edit is textual.
+fn strip_comments(text string) string {
+	mut out := []u8{}
+	mut in_string := false
+	mut escaped := false
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if in_string {
+			out << c
+			if escaped {
+				escaped = false
+			} else if c == bslash {
+				escaped = true
+			} else if c == dquote {
+				in_string = false
+			}
+			i++
+			continue
+		}
+		if c == dquote {
+			in_string = true
+			out << c
+			i++
+			continue
+		}
+		if c == `/` {
+			end := skip_comment(text, i)
+			if end > i {
+				// One space keeps whatever was on either side of the comment
+				// from ending up joined.
+				out << sp
+				i = end
+				continue
+			}
+		}
+		out << c
+		i++
+	}
+	return out.bytestr()
+}
+
 // object_span returns the byte range of the value of the top-level `key`, where
 // the value is an object.
 fn object_span(text string, key string) ?(int, int) {
@@ -31,6 +102,13 @@ fn object_span(text string, key string) ?(int, int) {
 	mut i := 0
 	for i < text.len {
 		c := text[i]
+		if !in_string && c == `/` {
+			comment_end := skip_comment(text, i)
+			if comment_end > i {
+				i = comment_end
+				continue
+			}
+		}
 		if in_string {
 			if escaped {
 				escaped = false
@@ -39,9 +117,9 @@ fn object_span(text string, key string) ?(int, int) {
 			} else if c == dquote {
 				in_string = false
 				if depth == 1 && text[token_start..i] == key {
-					mut j := skip_space(text, i + 1)
+					mut j := skip_space_and_comments(text, i + 1)
 					if j < text.len && text[j] == `:` {
-						j = skip_space(text, j + 1)
+						j = skip_space_and_comments(text, j + 1)
 						if j < text.len && text[j] == `{` {
 							return j, matching_bracket(text, j)
 						}
@@ -153,6 +231,13 @@ fn find_entry(text string, start int, end int, id string) ?(int, int, int) {
 	mut i := start
 	for i < end {
 		c := text[i]
+		if !in_string && c == `/` {
+			comment_end := skip_comment(text, i)
+			if comment_end > i {
+				i = comment_end
+				continue
+			}
+		}
 		if in_string {
 			if escaped {
 				escaped = false
@@ -161,7 +246,7 @@ fn find_entry(text string, start int, end int, id string) ?(int, int, int) {
 			} else if c == dquote {
 				in_string = false
 				if depth == 1 && text[token_start..i] == id {
-					colon := skip_space(text, i + 1)
+					colon := skip_space_and_comments(text, i + 1)
 					// A string not followed by a colon is a value, not a key, so
 					// the search goes on past it.
 					if colon < end && text[colon] == `:` {
@@ -190,7 +275,16 @@ fn find_entry(text string, start int, end int, id string) ?(int, int, int) {
 }
 
 // value_end returns the offset just past the value that starts at `i`.
-fn value_end(text string, i int, end int) int {
+fn value_end(text string, start int, end int) int {
+	mut i := start
+	// A comment can sit between the colon and the value.
+	for i < end && text[i] == `/` {
+		comment_end := skip_comment(text, i)
+		if comment_end == i {
+			break
+		}
+		i = skip_space(text, comment_end)
+	}
 	if i >= end {
 		return i
 	}
@@ -226,6 +320,13 @@ fn matching_bracket(text string, i int) int {
 	mut j := i
 	for j < text.len {
 		c := text[j]
+		if !in_string && c == `/` {
+			comment_end := skip_comment(text, j)
+			if comment_end > j {
+				j = comment_end
+				continue
+			}
+		}
 		if in_string {
 			if escaped {
 				escaped = false
@@ -270,6 +371,21 @@ fn skip_space(text string, i int) int {
 	return j
 }
 
+// skip_space_and_comments skips whitespace and any comments, which is what a
+// scan needs when a comment can sit between a colon and the value that follows
+// it.
+fn skip_space_and_comments(text string, i int) int {
+	mut j := skip_space(text, i)
+	for j < text.len && text[j] == `/` {
+		end := skip_comment(text, j)
+		if end == j {
+			break
+		}
+		j = skip_space(text, end)
+	}
+	return j
+}
+
 // remove_entry deletes the entry from the client's file. It reports whether
 // there was one to delete; an error means there may be one that was left in
 // place, and says why.
@@ -278,12 +394,11 @@ fn remove_entry(h Harness, path string) !bool {
 		return false
 	}
 	text := os.read_file(path) or { return error('could not read ${path}: ${err.msg()}') }
-	// The scan below does not know where comments are, so in a file that has
-	// them a commented-out entry looks real and a real one can be cut together
-	// with the comment beside it. Such a file is left for the user to edit.
-	if !is_plain_json(text) {
+	// The scan skips comments, so a commented-out entry is not mistaken for a
+	// real one. A file that is not JSON at all is still left alone.
+	if !is_editable(text) {
 		if text.contains(json_string(server_id)) {
-			return error('${path} is not plain JSON (comments or trailing commas); not rewriting it. Remove the ${json_string(server_id)} entry by hand.')
+			return error('${path} is not JSON this tool can edit; remove the ${json_string(server_id)} entry by hand.')
 		}
 		return false
 	}
