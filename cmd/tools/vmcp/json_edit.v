@@ -150,7 +150,7 @@ fn insertion_point(text string, key string) ?Insertion {
 
 // root_insertion is where a new top-level member goes: first in the root object.
 fn root_insertion(text string) ?Insertion {
-	start := skip_space(text, 0)
+	start := skip_space_and_comments(text, 0)
 	if start >= text.len || text[start] != `{` {
 		return none
 	}
@@ -159,7 +159,17 @@ fn root_insertion(text string) ?Insertion {
 
 // insertion_in is `insertion_point` for the object that spans start..end.
 fn insertion_in(text string, start int, end int) Insertion {
-	j := skip_space(text, start + 1)
+	j := skip_space_and_comments(text, start + 1)
+	has_leading_comments := j != skip_space(text, start + 1)
+	if has_leading_comments {
+		outer := line_indent(text, start)
+		return Insertion{
+			pos:    start + 1
+			end:    start + 1
+			prefix: '\n' + outer + '  '
+			suffix: if j < end && text[j] == `}` { '\n' + outer } else { ',\n' + outer }
+		}
+	}
 	if j < end && text[j] == `}` {
 		// An empty object has no entry to copy its layout from, so whatever
 		// whitespace sits between its braces is replaced by a body indented one
@@ -221,8 +231,8 @@ fn has_entry(text string, key string, id string) bool {
 
 // find_entry locates `"id"` at one level inside the object spanning start..end.
 // It returns the start of the whole `"id": value` pair, the offset just past the
-// value, and the offset to cut to: past a following comma when there is one,
-// otherwise past the value so the preceding comma is taken instead.
+// value, and a following or preceding comma's offset. When there is no comma,
+// the third offset is the entry's start.
 fn find_entry(text string, start int, end int, id string) ?(int, int, int) {
 	mut depth := 0
 	mut in_string := false
@@ -251,13 +261,13 @@ fn find_entry(text string, start int, end int, id string) ?(int, int, int) {
 					// the search goes on past it.
 					if colon < end && text[colon] == `:` {
 						entry_start := token_start - 1
-						stop := value_end(text, skip_space(text, colon + 1), end)
-						k := skip_space(text, stop)
+						stop := value_end(text, skip_space_and_comments(text, colon + 1), end)
+						k := skip_space_and_comments(text, stop)
 						if k < end && text[k] == `,` {
-							return entry_start, stop, skip_space(text, k + 1)
+							return entry_start, stop, k
 						}
 						// The last entry, so the comma before it has to go too.
-						return previous_comma(text, entry_start, start), stop, stop
+						return entry_start, stop, previous_comma(text, entry_start, start)
 					}
 				}
 			}
@@ -307,7 +317,7 @@ fn value_end(text string, start int, end int) int {
 		return end
 	}
 	mut j := i
-	for j < end && text[j] != `,` && text[j] != `}` {
+	for j < end && text[j] != `,` && text[j] != `}` && !is_space(text[j]) && text[j] != `/` {
 		j++
 	}
 	return j
@@ -353,14 +363,40 @@ fn matching_bracket(text string, i int) int {
 // previous_comma returns the offset of the comma before `i`, or `i` when the
 // entry is the first one and there is nothing to take.
 fn previous_comma(text string, i int, floor int) int {
-	mut j := i - 1
-	for j > floor {
-		if text[j] == `,` {
-			return j
+	mut j := floor
+	mut comma := i
+	mut depth := 0
+	mut in_string := false
+	mut escaped := false
+	for j < i {
+		c := text[j]
+		if !in_string && c == `/` {
+			end := skip_comment(text, j)
+			if end > j {
+				j = end
+				continue
+			}
 		}
-		j--
+		if in_string {
+			if escaped {
+				escaped = false
+			} else if c == bslash {
+				escaped = true
+			} else if c == dquote {
+				in_string = false
+			}
+		} else if c == dquote {
+			in_string = true
+		} else if c == `{` || c == `[` {
+			depth++
+		} else if c == `}` || c == `]` {
+			depth--
+		} else if c == `,` && depth == 1 {
+			comma = j
+		}
+		j++
 	}
-	return i
+	return comma
 }
 
 fn skip_space(text string, i int) int {
@@ -403,8 +439,20 @@ fn remove_entry(h Harness, path string) !bool {
 		return false
 	}
 	start, end := object_span(text, h.key) or { return false }
-	cut_from, _, cut_to := find_entry(text, start, end, server_id) or { return false }
-	write_atomically(path, text[..cut_from] + text[cut_to..]) or {
+	entry_start, stop, comma := find_entry(text, start, end, server_id) or { return false }
+	edited := if is_plain_json(text) {
+		// Preserve existing spacing for plain JSON configurations.
+		cut_from := if comma < entry_start { comma } else { entry_start }
+		cut_to := if comma >= stop { skip_space(text, comma + 1) } else { stop }
+		text[..cut_from] + text[cut_to..]
+	} else if comma >= stop {
+		text[..entry_start] + text[stop..comma] + text[comma + 1..]
+	} else if comma < entry_start {
+		text[..comma] + text[comma + 1..entry_start] + text[stop..]
+	} else {
+		text[..entry_start] + text[stop..]
+	}
+	write_atomically(path, edited) or {
 		return error('could not write ${path}: ${err.msg()}')
 	}
 	println('${h.label}: removed ${server_id} from ${path}')

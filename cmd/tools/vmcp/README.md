@@ -96,8 +96,8 @@ The config file is edited textually, beside the servers the client already has.
 A `json.decode`/`json.encode` round trip would reorder every key, because V maps
 are unordered, and would quietly drop anything the decoder does not model. So:
 
-- Line comments and complete block comments are preserved during textual installation
-  and removal. Comments inside string values remain part of those values.
+- Line comments and complete block comments around server entries are preserved during
+  textual installation and removal. Comment markers inside strings remain string values.
 - Invalid JSON, trailing commas, and unterminated block comments are reported and left
   unchanged.
 - A valid JSON value whose top level is not an object is left untouched. The

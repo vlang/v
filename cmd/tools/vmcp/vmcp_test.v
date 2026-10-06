@@ -1976,6 +1976,71 @@ fn test_an_unterminated_block_comment_is_refused_without_changing_the_file() {
 	}
 }
 
+fn test_install_preserves_comments_in_an_empty_server_object() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, text in ['{"mcp":{/* keep, \"quoted\" } */}}', '{"mcp":{\n// keep, \"quoted\" }\n}}'] {
+		path := config_fixture('comment_only_servers_${i}', text)!
+		write_entry(h, path, false)!
+		installed := read_config(path)
+		assert is_editable(installed), installed
+		assert has_entry(installed, 'mcp', server_id), installed
+		assert installed.contains(if i == 0 {
+			'/* keep, "quoted" } */'
+		} else {
+			'// keep, "quoted" }'
+		})
+		assert remove_entry(h, path)!
+		after := read_config(path)
+		assert is_editable(after), after
+		assert !has_entry(after, 'mcp', server_id)
+		assert after.contains(if i == 0 { '/* keep, "quoted" } */' } else { '// keep, "quoted" }' })
+	}
+}
+
+fn test_install_preserves_leading_comments_when_adding_the_root_key() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, prefix in ['// leading, "mcp"\n', '/* leading, "mcp" */\n'] {
+		text := prefix + '{"other":true}'
+		path := config_fixture('leading_comments_${i}', text)!
+		write_entry(h, path, false)!
+		after := read_config(path)
+		assert after.starts_with(prefix)
+		assert after.contains('"other":true')
+		assert is_editable(after), after
+		assert has_entry(after, 'mcp', server_id)
+	}
+}
+
+fn test_uninstall_preserves_comments_around_each_entry_separator() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, body in [
+		'"vlang":{} /* tail, */ ,"duck":{"text":"a,b"}',
+		'"duck":{}, /* before, */ "vlang":{} /* after, */',
+		'"duck":{}, /* before, */ "vlang":{} /* after, */,"goose":{}',
+		'"vlang":null /* tail, */ ,"duck":{}',
+		'"vlang":{} // tail,\n ,"duck":{}',
+	] {
+		text := '{"mcp":{${body}}}'
+		path := config_fixture('comment_separators_${i}', text)!
+		assert remove_entry(h, path)!
+		after := read_config(path)
+		assert is_editable(after), after
+		assert !has_entry(after, 'mcp', server_id)
+		assert has_entry(after, 'mcp', 'duck')
+		for comment in ['/* tail, */', '/* before, */', '/* after, */', '// tail,'] {
+			if text.contains(comment) {
+				assert after.contains(comment), after
+			}
+		}
+		if text.contains('"goose"') {
+			assert has_entry(after, 'mcp', 'goose')
+		}
+		if text.contains('"a,b"') {
+			assert after.contains('"a,b"')
+		}
+	}
+}
+
 fn test_a_string_value_equal_to_the_name_is_not_taken_for_the_entry() {
 	path := config_fixture('valuename', '{"mcp":{"duck":"vlang","vlang":{"type":"local"}}}')!
 	h := Harness{
