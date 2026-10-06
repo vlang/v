@@ -204,6 +204,152 @@ fn test_build_can_skip_optimizer_use_lists() {
 	assert m.values.all(it.uses.len == 0)
 }
 
+fn test_wasm32_and_native_string_layouts() {
+	a := &flat.FlatAst{}
+	for pointer_size in [4, 8] {
+		m := build_with_options(a, map[string]bool{}, unsafe { nil }, BuildOptions{
+			target: TargetData{ ptr_size: pointer_size }
+		})
+		mut found := false
+		for f in m.funcs {
+			if f.name != 'println' {
+				continue
+			}
+			string_type := m.values[f.params[0]].typ
+			pointer_type := m.type_store.types[string_type].fields[0]
+			assert m.type_size(pointer_type) == pointer_size
+			assert m.type_align(pointer_type) == pointer_size
+			assert m.struct_field_offset(string_type, 1) == pointer_size
+			assert m.struct_field_offset(string_type, 2) == pointer_size + 4
+			assert m.type_size(string_type) == pointer_size + 8
+			found = true
+		}
+		assert found
+	}
+}
+
+fn test_wasm32_global_constant_initializers() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_wasm_global_initializers_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'const base = 10\n__global nested = int(u8(u16(300)))\n__global signed = int(i8(128))\n__global wrapped = int(u8(250) + u8(10))\n__global folded = base * 4 + 1\n__global half = u64(18446744073709551615) / u64(2)\n__global fractional = 1.5 + 2.0\n__global oversized64 = u64(1) << u64(64)\n__global oversized32 = u32(1) << u64(32)\n__global narrow_signed = int(i8(-1) >> u64(8))\n__global narrow_logical = int(i8(-5) >>> 1)\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
+	expected := {
+		'nested':         i64(44)
+		'signed':         i64(-128)
+		'wrapped':        i64(4)
+		'folded':         i64(41)
+		'half':           i64(9223372036854775807)
+		'oversized64':    i64(0)
+		'oversized32':    i64(0)
+		'narrow_signed':  i64(-1)
+		'narrow_logical': i64(125)
+	}
+	mut found := 0
+	for global in m.globals {
+		if value := expected[global.name] {
+			assert global.initial_value == value, global.name
+			found++
+		} else if global.name == 'fractional' {
+			assert global.initial_data == [u8(0), 0, 0, 0, 0, 0, 12, 64]
+			found++
+		}
+	}
+	assert found == expected.len + 1
+}
+
+fn test_wasm32_scalar_str_methods_without_native_runtime_bodies() {
+	dir := os.join_path(os.vtmp_dir(), 'ssa_wasm_scalar_str_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	builtin_source := os.join_path(dir, 'builtin.v')
+	main_source := os.join_path(dir, 'main.v')
+	os.write_file(builtin_source, 'module builtin\nfn (value int) str() string { return "native signed" }\nfn (value u64) str() string { return "native unsigned" }\nfn (value bool) str() string { return "native boolean" }\n')!
+	os.write_file(main_source, 'module main\nstruct Named {}\nfn (value Named) str() string { return "user method" }\nfn main() {\n signed := int(-1).str()\n unsigned := u64(18446744073709551615).str()\n boolean := true.str()\n user := Named{}.str()\n wide := (-9223372036854775807).str()\n}\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_files([builtin_source, main_source])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	for transformed in [false, true] {
+		if transformed {
+			// The transformer moves method receivers into explicit call arguments.
+			for id in 0 .. a.nodes.len {
+				node := a.nodes[id]
+				if node.kind != .call || node.children_count != 1 {
+					continue
+				}
+				callee_id := a.child(&node, 0)
+				callee := a.nodes[int(callee_id)]
+				if callee.kind != .selector || callee.value != 'str' {
+					continue
+				}
+				base_id := a.child(&callee, 0)
+				base := a.nodes[int(base_id)]
+				primitive := if base.kind == .bool_literal {
+					'bool'
+				} else if base.kind == .paren {
+					'int'
+				} else {
+					base.value
+				}
+				if primitive !in ['int', 'u64', 'bool'] {
+					continue
+				}
+				a.nodes[int(callee_id)].kind = .ident
+				a.nodes[int(callee_id)].value = '${primitive}.str'
+				a.nodes[int(callee_id)].children_count = 0
+				a.nodes[id].children_start = i32(a.begin_children())
+				a.add_child(callee_id)
+				a.add_child(base_id)
+				a.nodes[id].children_count = 2
+			}
+		}
+		m := build_with_options(a, {
+			'main':      true
+			'Named.str': true
+		}, &tc, BuildOptions{
+			target:         TargetData{ ptr_size: 4 }
+			exact_used_fns: true
+		})
+		mut targets := []string{}
+		mut signed_widths := []int{}
+		for f in m.funcs {
+			assert f.name !in ['int.str', 'u64.str', 'bool.str']
+			if f.name != 'main' {
+				continue
+			}
+			for block in f.blocks {
+				for value in m.blocks[block].instrs {
+					instruction := m.instrs[m.values[value].index]
+					if instruction.op == .call {
+						target := m.values[instruction.operands[0]].name
+						targets << target
+						if target == 'int_str' {
+							signed_widths << m.type_store.types[m.values[instruction.operands[1]].typ].width
+						}
+					}
+				}
+			}
+		}
+		assert targets == ['int_str', 'strconv__format_uint', 'bool_str', 'Named.str', 'int_str']
+		assert signed_widths == [32, 64]
+	}
+}
+
 fn test_type_size_reuses_module_layout_cache() {
 	mut m := Module.new()
 	i32_type := m.type_store.get_int(32)

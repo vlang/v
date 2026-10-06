@@ -4,20 +4,23 @@ const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const wasm_compiler = os.join_path(os.vtmp_dir(), 'ssa_wasm_codegen_compiler_${os.getpid()}')
 
 fn testsuite_begin() {
 	if os.getenv('V3_TEST_WASM') != '1' {
 		eprintln('> skipping v3 wasm backend tests; set V3_TEST_WASM=1 to run')
 		exit(0)
 	}
+	build := os.exec([vexe, '-gc', 'none', '-compile-backend', 'wasm', '-o', wasm_compiler, v3_src])
+	assert build.exit_code == 0, build.output
+}
+
+fn testsuite_end() {
+	os.rm(wasm_compiler) or {}
 }
 
 fn v3_binary() string {
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_wasm_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+	return wasm_compiler
 }
 
 fn compile_to_wasm(v3_bin string, src string, name string) string {
@@ -26,8 +29,8 @@ fn compile_to_wasm(v3_bin string, src string, name string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	os.rm(out_path) or {}
 	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', out_path, src_path])
-	assert res.exit_code == 0, res.output
+		os.exec([v3_bin, '-enable-globals', '-b', 'wasm', '-o', out_path, src_path])
+	assert res.exit_code == 0, '${name}: ${res.output}'
 	assert os.exists(out_path), 'missing wasm output for ${name}'
 	return out_path
 }
@@ -73,15 +76,15 @@ fn run_wasi_expect(wasm string, expected []string) {
 	assert lines.len >= expected.len, res.output
 	for i, want in expected {
 		got := lines[lines.len - expected.len + i]
-		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${res.output})'
+		assert got == want, '${os.base(wasm)} line ${i}: got ${got}, want ${want} (full: ${res.output})'
 	}
 }
 
 fn test_wasm_block_scoping_preserves_outer_locals() {
 	v3_bin := v3_binary()
-	// A shadowing for-initializer and a loop-body declaration must not leak:
-	// after the loops the outer i (10) and x (1) are restored.
-	src := 'fn main() {\n\ti := 10\n\tfor i := 0; i < 1; i++ {\n\t}\n\tprintln(i)\n\tx := 1\n\tfor j := 0; j < 2; j++ {\n\t\tx := j + 2\n\t\tprintln(x)\n\t}\n\tprintln(x)\n}\n'
+	// A for-initializer and a loop-body declaration must not alter outer locals:
+	// after the loops the outer i and x remain 10 and 1.
+	src := 'fn main() {\n\ti := 10\n\tfor inner_i := 0; inner_i < 1; inner_i++ {\n\t}\n\tprintln(i)\n\tx := 1\n\tfor j := 0; j < 2; j++ {\n\t\tinner_x := j + 2\n\t\tprintln(inner_x)\n\t}\n\tprintln(x)\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_scope')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['10', '2', '3', '1'])
@@ -89,7 +92,7 @@ fn test_wasm_block_scoping_preserves_outer_locals() {
 
 fn test_wasm_narrow_integer_casts_and_arithmetic_wrap() {
 	v3_bin := v3_binary()
-	src := 'fn main() {\n\tprintln(int(i8(128)))\n\tprintln(int(u8(256)))\n\tprintln(int(u16(65536)))\n\tprintln(int(i16(32768)))\n\tmut a := u8(250)\n\ta += u8(10)\n\tprintln(int(a))\n\tmut b := i8(127)\n\tb++\n\tprintln(int(b))\n\tprintln(int(u8(200) + u8(100)))\n}\n'
+	src := 'fn main() {\n\tprintln(int(i8(i16(128))))\n\tprintln(int(u8(u16(256))))\n\tprintln(int(u16(u32(65536))))\n\tprintln(int(i16(i32(32768))))\n\tmut a := u8(250)\n\ta += u8(10)\n\tprintln(int(a))\n\tmut b := i8(127)\n\tb++\n\tprintln(int(b))\n\tprintln(int(u8(200) + u8(100)))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_narrow')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['-128', '0', '0', '-32768', '4', '-128', '44'])
@@ -121,6 +124,36 @@ fn test_wasm_hello_world() {
 	assert last_line(res.output) == 'hello world', res.output
 }
 
+fn test_wasm_implicit_main() {
+	wasm := compile_to_wasm(v3_binary(), "println('hello script')\n", 'wasm_implicit_main')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['hello script'])
+}
+
+fn test_wasm_imported_function_value() {
+	dir := os.join_path(os.vtmp_dir(), 'wasm_imported_fn_value_${os.getpid()}')
+	defer { os.rmdir_all(dir) or {} }
+	os.mkdir_all(os.join_path(dir, 'foo')) or { panic(err) }
+	main_v := os.join_path(dir, 'main.v')
+	wasm := os.join_path(dir, 'main.wasm')
+	os.write_file(main_v, 'module main
+import foo as helper
+fn main() {
+	callback := helper.add
+	println(callback(35))
+}
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'foo', 'foo.v'), 'module foo
+pub fn add(value int) int {
+	return value + 7
+}
+') or { panic(err) }
+	result := os.exec([v3_binary(), '-b', 'wasm', '-o', wasm, main_v])
+	assert result.exit_code == 0, result.output
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['42'])
+}
+
 fn test_wasm_control_flow_and_int_print() {
 	v3_bin := v3_binary()
 	src := 'fn main() {\n\tmut sum := 0\n\tfor i := 0; i < 5; i++ {\n\t\tsum = sum + i\n\t}\n\tif sum > 5 {\n\t\tprintln(sum)\n\t} else {\n\t\tprintln(-1)\n\t}\n}\n'
@@ -133,6 +166,31 @@ fn test_wasm_control_flow_and_int_print() {
 	res := run_node(node, runner, wasm)
 	assert res.exit_code == 0, res.output
 	assert last_line(res.output) == '10', res.output
+}
+
+fn test_wasm_production_control_flow_and_recursion() {
+	source := os.join_path(os.vtmp_dir(), 'wasm_ssa_prod_${os.getpid()}.v')
+	output := os.join_path(os.vtmp_dir(), 'wasm_ssa_prod_${os.getpid()}.wasm')
+	defer {
+		os.rm(source) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(source, 'fn fib(n int) int {
+	if n < 2 { return n }
+	return fib(n - 1) + fib(n - 2)
+}
+fn main() {
+	mut a := 1
+	mut b := 2
+	for i := 0; i < 3; i++ { a, b = b, a }
+	println(a * 10 + b)
+	println(fib(10))
+}
+') or { panic(err) }
+	result := os.exec([v3_binary(), '-prod', '-b', 'wasm', '-o', output, source])
+	assert result.exit_code == 0, result.output
+	assert_valid_wasm(output)
+	run_wasi_expect(output, ['21', '55'])
 }
 
 fn test_wasm_exported_functions() {
@@ -300,7 +358,7 @@ fn test_wasm_module_scoped_globals() {
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
 	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
+		os.exec([v3_bin, '-enable-globals', '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 
@@ -318,12 +376,12 @@ fn test_wasm_module_scoped_globals() {
 	}
 }
 
-fn test_wasm_for_post_uses_loop_var_not_body_shadow() {
+fn test_wasm_for_post_uses_loop_var_with_body_local() {
 	v3_bin := v3_binary()
-	// A body-local `i` must not rebind the name used by the post `i++`; the
+	// A body-local value must not replace the counter used by the post `i++`; the
 	// outer loop counter must still advance. The count/break bound keeps the
 	// test terminating even if the fix regresses (it would loop otherwise).
-	src := 'fn main() {\n\tmut i := 0\n\tmut count := 0\n\tfor ; i < 3; i++ {\n\t\ti := 10\n\t\t_ = i\n\t\tcount++\n\t\tif count > 100 {\n\t\t\tbreak\n\t\t}\n\t}\n\tprintln(i)\n\tprintln(count)\n}\n'
+	src := 'fn main() {\n\tmut i := 0\n\tmut count := 0\n\tfor ; i < 3; i++ {\n\t\tvalue := 10\n\t\t_ = value\n\t\tcount++\n\t\tif count > 100 {\n\t\t\tbreak\n\t\t}\n\t}\n\tprintln(i)\n\tprintln(count)\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_loopshadow')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['3', '3'])
@@ -352,11 +410,11 @@ fn test_wasm_imported_module_alias_call() {
 	run_wasi_expect(out_wasm, ['42', '7'])
 }
 
-fn test_wasm_shadowing_initializer_reads_outer() {
+fn test_wasm_inner_initializer_reads_outer() {
 	v3_bin := v3_binary()
-	// The inner `x := x + 1` initializer must read the outer x (5), giving 6,
+	// The inner `value := x + 1` initializer reads the outer x (5), giving 6,
 	// and the outer x is unchanged afterwards.
-	src := 'fn main() {\n\tx := 5\n\t{\n\t\tx := x + 1\n\t\tprintln(x)\n\t}\n\tprintln(x)\n}\n'
+	src := 'fn main() {\n\tx := 5\n\t{\n\t\tvalue := x + 1\n\t\tprintln(value)\n\t}\n\tprintln(x)\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_shadow_init')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['6', '5'])
@@ -419,8 +477,8 @@ fn test_wasm_import_aliases_are_file_scoped() {
 fn test_wasm_numeric_type_aliases() {
 	v3_bin := v3_binary()
 	// Scalar aliases must classify as their base type: the alias-typed function
-	// is emitted, and Byte(300) wraps to u8 (44) rather than keeping 300.
-	src := 'type Byte = u8\ntype MyInt = int\n\nfn val() Byte {\n\treturn Byte(300)\n}\n\nfn add(a MyInt, b MyInt) MyInt {\n\treturn a + b\n}\n\nfn main() {\n\tprintln(int(val()))\n\tprintln(int(add(3, 4)))\n\tmut x := Byte(250)\n\tx += Byte(10)\n\tprintln(int(x))\n}\n'
+	// is emitted, and Byte(u16(300)) wraps to u8 (44) rather than keeping 300.
+	src := 'type Byte = u8\ntype MyInt = int\n\nfn val() Byte {\n\treturn Byte(u16(300))\n}\n\nfn add(a MyInt, b MyInt) MyInt {\n\treturn a + b\n}\n\nfn main() {\n\tprintln(int(val()))\n\tprintln(int(add(3, 4)))\n\tmut x := Byte(250)\n\tx += Byte(10)\n\tprintln(int(x))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_alias_types')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['44', '7', '4'])
@@ -811,10 +869,10 @@ fn test_wasm_global_postfix() {
 
 fn test_wasm_global_narrow_cast_initializer() {
 	v3_bin := v3_binary()
-	// An out-of-range cast initializer on an inferred narrow global must be
+	// A narrowing cast initializer on an inferred narrow global must be
 	// wrapped to the global's width at compile time, so the first read already
-	// sees the V value (u8(300)=44, i8(128)=-128, u16(70000)=4464).
-	src := '__global b = u8(300)\n__global s = i8(128)\n__global w = u16(70000)\n\nfn main() {\n\tprintln(int(b))\n\tprintln(int(s))\n\tprintln(int(w))\n}\n'
+	// sees the V value (u8(u16(300))=44, i8(i16(128))=-128, u16(u32(70000))=4464).
+	src := '__global b = u8(u16(300))\n__global s = i8(i16(128))\n__global w = u16(u32(70000))\n\nfn main() {\n\tprintln(int(b))\n\tprintln(int(s))\n\tprintln(int(w))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_narrow_init')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['44', '-128', '4464'])
@@ -833,9 +891,9 @@ fn test_wasm_global_const_expr_initializers() {
 fn test_wasm_global_nested_cast_initializer() {
 	v3_bin := v3_binary()
 	// A nested cast initializer keeps each cast's width: the inner cast narrows
-	// before the wider outer cast, so `int(u8(300))` is 44, not 300, and a folded
+	// before the wider outer cast, so `int(u8(u16(300)))` is 44, not 300, and a folded
 	// float initializer rounds through an int cast (1.5 + 2.0 -> 3).
-	src := '__global b = int(u8(300))\n__global g = int(i8(128))\n__global h = u8(300) + u8(100)\n__global fl = 1.5 + 2.0\n\nfn main() {\n\tprintln(b)\n\tprintln(g)\n\tprintln(int(h))\n\tprintln(int(fl))\n}\n'
+	src := '__global b = int(u8(u16(300)))\n__global g = int(i8(i16(128)))\n__global h = u8(u16(300)) + u8(100)\n__global fl = 1.5 + 2.0\n\nfn main() {\n\tprintln(b)\n\tprintln(g)\n\tprintln(int(h))\n\tprintln(int(fl))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_nested_cast')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['44', '-128', '144', '3'])

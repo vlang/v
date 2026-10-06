@@ -1,5 +1,6 @@
 module ssa
 
+import math
 import v.flat
 import v.token
 import v.types
@@ -98,6 +99,9 @@ mut:
 	defer_body_ids     []flat.NodeId
 	break_targets      []BlockID
 	continue_targets   []BlockID
+	break_labels       map[string]BlockID
+	continue_labels    map[string]BlockID
+	pending_loop_label string
 	top_level_main     bool
 	// --- Build-control machinery (ported from v2 build_all) ---
 	// When set, build_functions only materializes this one function body (hot reload).
@@ -110,6 +114,10 @@ mut:
 	// SSA-level type alias name -> resolved base TypeID. Supplements the checker's
 	// alias map (used when building without a checker).
 	type_aliases map[string]TypeID
+	// File-scoped names preserve distinct nested modules that share a leaf name.
+	source_modules map[string]string
+	source_imports map[string]map[string]string
+	exact_used_fns bool
 }
 
 // VarBinding represents var binding data used by ssa.
@@ -117,6 +125,12 @@ struct VarBinding {
 	exists bool
 	addr   ValueID
 	typ    string
+}
+
+struct BuilderScope {
+	active     bool
+	vars       map[string]ValueID
+	type_names map[string]string
 }
 
 // IfGuardState stores if guard state state used by ssa.
@@ -138,6 +152,10 @@ pub:
 	skip_fn_bodies bool     // register signatures only, mark them prototypes
 	skip_modules   []string // skip all functions declared in these modules
 	track_uses     bool = true // build optimizer/verifier use lists
+	target         TargetData                   // target memory layout, defaults to 64-bit pointers
+	source_modules map[string]string            // source filename -> full module path
+	source_imports map[string]map[string]string // source filename -> import alias -> full module path
+	exact_used_fns bool                         // materialize only source functions listed in used_fns
 }
 
 // build supports build handling for ssa.
@@ -181,10 +199,16 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		defer_body_ids:     []flat.NodeId{}
 		break_targets:      []BlockID{}
 		continue_targets:   []BlockID{}
+		break_labels:       map[string]BlockID{}
+		continue_labels:    map[string]BlockID{}
 		skip_modules:       map[string]bool{}
 		type_aliases:       map[string]TypeID{}
+		source_modules:     opts.source_modules
+		source_imports:     opts.source_imports
+		exact_used_fns:     opts.exact_used_fns
 	}
 	b.m.track_uses = opts.track_uses
+	b.m.target = opts.target
 	b.void_type = TypeID(0)
 	b.i64_type = b.m.type_store.get_int(64)
 	b.i32_type = b.m.type_store.get_int(32)
@@ -199,9 +223,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	mut str_fields := []TypeID{}
 	str_fields << b.m.type_store.get_ptr(b.i8_type)
 	str_fields << b.i32_type
-	// `is_lit` occupies the trailing 4-byte slot (offset 12) that the struct is padded
-	// to anyway. It must be a named field so `s.is_lit` (e.g. in `string.free`) resolves
-	// to offset 12 instead of defaulting to offset 0 (which would read `str`).
+	// Keep `is_lit` named so string ownership checks resolve its target-specific offset.
 	str_fields << b.i32_type
 	mut str_field_names := []string{}
 	str_field_names << 'str'
@@ -282,7 +304,7 @@ fn (mut b Builder) register_types() {
 	mut cur_module := ''
 	for node in b.a.nodes {
 		if node.kind == .module_decl {
-			cur_module = node.value
+			cur_module = b.source_module_name(node)
 			continue
 		}
 		if node.kind == .struct_decl {
@@ -303,7 +325,7 @@ fn (mut b Builder) register_types() {
 	cur_module = ''
 	for node in b.a.nodes {
 		if node.kind == .module_decl {
-			cur_module = node.value
+			cur_module = b.source_module_name(node)
 			continue
 		}
 		if node.kind == .struct_decl {
@@ -375,7 +397,7 @@ fn (mut b Builder) register_types() {
 	cur_module = ''
 	for node in b.a.nodes {
 		if node.kind == .module_decl {
-			cur_module = node.value
+			cur_module = b.source_module_name(node)
 			continue
 		}
 		if node.kind != .type_decl || node.children_count == 0 {
@@ -578,6 +600,9 @@ fn (mut b Builder) ssa_type_from_checker_type(typ types.Type) TypeID {
 		return b.i32_type
 	}
 	if typ is types.ISize || typ is types.USize {
+		if b.m.target.ptr_size == 4 {
+			return if typ is types.USize { b.u32_type } else { b.i32_type }
+		}
 		return b.i64_type
 	}
 	if typ is types.Primitive {
@@ -807,7 +832,7 @@ fn (mut b Builder) register_consts() {
 	mut cur_module := ''
 	for node in b.a.nodes {
 		if node.kind == .module_decl {
-			cur_module = node.value
+			cur_module = b.source_module_name(node)
 			continue
 		}
 		if node.kind == .const_decl {
@@ -836,18 +861,278 @@ fn (mut b Builder) register_consts() {
 
 // register_globals updates register globals state for ssa.
 fn (mut b Builder) register_globals() {
+	mut cur_module := ''
 	for node in b.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = b.source_module_name(node)
+			continue
+		}
 		if node.kind == .global_decl {
 			for i in 0 .. node.children_count {
 				f := b.a.child_node(&node, i)
-				typ := b.resolve_type(f.typ)
-				b.vars[f.value] = b.m.add_global(f.value, typ)
+				mut typ := b.resolve_type(f.typ)
+				if b.m.target.ptr_size == 4 && f.typ.len == 0 && f.children_count > 0 {
+					typ = b.global_constant_type(b.a.child(f, 0))
+				}
+				name := if b.source_modules.len > 0 {
+					ssa_fn_name_in_module(cur_module, f.value)
+				} else {
+					f.value
+				}
+				addr := b.m.add_global(name, typ)
+				b.vars[name] = addr
+				if b.m.target.ptr_size == 4 && f.children_count > 0 {
+					b.cur_module = cur_module
+					b.initialize_global(b.m.values[addr].index, b.a.child(f, 0))
+				}
 			}
 		}
 	}
 	b.ensure_runtime_global('g_main_argc', b.i64_type)
 	b.ensure_runtime_global('g_main_argv',
 		b.m.type_store.get_ptr(b.m.type_store.get_ptr(b.i8_type)))
+}
+
+fn (mut b Builder) initialize_global(index int, id flat.NodeId) {
+	typ_id := b.m.globals[index].typ
+	if typ_id <= 0 || typ_id >= b.m.type_store.types.len {
+		return
+	}
+	typ := b.m.type_store.types[typ_id]
+	if typ.kind == .float_t {
+		value := b.global_constant_float(id, 0)
+		bits := if typ.width == 32 { u64(math.f32_bits(f32(value))) } else { math.f64_bits(value) }
+		mut data := []u8{len: b.m.type_size(typ_id)}
+		for i in 0 .. data.len {
+			data[i] = u8(bits >> (i * 8))
+		}
+		b.m.globals[index].initial_data = data
+	} else if typ.kind == .int_t {
+		b.m.globals[index].initial_value = b.narrow_global_constant(b.global_constant_int(id,
+			0), typ_id)
+	}
+}
+
+fn (mut b Builder) global_constant_type(id flat.NodeId) TypeID {
+	if b.tc != unsafe { nil } {
+		return b.ssa_type_from_checker_type(b.tc.resolve_type(id))
+	}
+	node := b.a.nodes[int(id)]
+	if node.kind == .cast_expr {
+		return b.resolve_type(node.value)
+	}
+	if node.kind == .float_literal {
+		return b.f64_type
+	}
+	if node.kind == .bool_literal {
+		return b.i1_type
+	}
+	return b.i32_type
+}
+
+fn (b &Builder) narrow_global_constant(value i64, typ_id TypeID) i64 {
+	if typ_id <= 0 || typ_id >= b.m.type_store.types.len {
+		return value
+	}
+	typ := b.m.type_store.types[typ_id]
+	if typ.kind != .int_t || typ.width <= 1 || typ.width >= 64 {
+		return value
+	}
+	mask := (u64(1) << typ.width) - 1
+	bits := u64(value) & mask
+	if !typ.is_unsigned && bits & (u64(1) << (typ.width - 1)) != 0 {
+		return i64(bits | ~mask)
+	}
+	return i64(bits)
+}
+
+fn (b &Builder) global_constant_expr(node flat.Node) ?flat.NodeId {
+	if node.kind == .ident {
+		return b.lookup_const_expr(node.value)
+	}
+	if name := b.source_selector_name(node) {
+		return b.lookup_const_expr(name)
+	}
+	return none
+}
+
+fn (mut b Builder) global_constant_int(id flat.NodeId, depth int) i64 {
+	if !b.valid_node_id(id) || depth > 64 {
+		return 0
+	}
+	node := b.a.nodes[int(id)]
+	if expr := b.global_constant_expr(node) {
+		return b.global_constant_int(expr, depth + 1)
+	}
+	match node.kind {
+		.int_literal {
+			return global_integer_literal(node.value)
+		}
+		.float_literal {
+			return i64(node.value.f64())
+		}
+		.bool_literal {
+			return i64(int(node.value == 'true'))
+		}
+		.char_literal {
+			return i64(char_literal_value(node.value))
+		}
+		.paren {
+			return b.global_constant_int(b.a.child(&node, 0), depth + 1)
+		}
+		.cast_expr {
+			target := b.resolve_type(node.value)
+			if b.m.type_store.types[target].kind == .float_t {
+				return i64(b.global_constant_float(id, depth + 1))
+			}
+			value := b.global_constant_int(b.a.child(&node, 0), depth + 1)
+			return b.narrow_global_constant(value, target)
+		}
+		.prefix {
+			value := b.global_constant_int(b.a.child(&node, 0), depth + 1)
+			return match node.op {
+				.minus { -value }
+				.bit_not { ~value }
+				.not { i64(int(value == 0)) }
+				else { value }
+			}
+		}
+		.infix {
+			expr_type := b.global_constant_type(id)
+			if b.m.type_store.types[expr_type].kind == .float_t {
+				return i64(b.global_constant_float(id, depth + 1))
+			}
+			left_id := b.a.child(&node, 0)
+			right_id := b.a.child(&node, 1)
+			left := b.global_constant_int(left_id, depth + 1)
+			right := b.global_constant_int(right_id, depth + 1)
+			left_type := b.global_constant_type(left_id)
+			right_type := b.global_constant_type(right_id)
+			unsigned := b.is_unsigned_type(left_type) || b.is_unsigned_type(right_type)
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+				width := int_max(32, b.scalar_type_width(left_type))
+				if u64(right) >= u64(width) {
+					return 0
+				}
+				mut bits := u64(left)
+				if node.op == .right_shift_unsigned && b.scalar_type_width(left_type) < 32 {
+					bits &= (u64(1) << b.scalar_type_width(left_type)) - 1
+				}
+				shifted := if node.op == .left_shift {
+					i64(bits << u64(right))
+				} else if node.op == .right_shift_unsigned || b.is_unsigned_type(left_type) {
+					i64(bits >> u64(right))
+				} else {
+					left >> u64(right)
+				}
+				return b.narrow_global_constant(shifted, expr_type)
+			}
+			value := match node.op {
+				.plus { left + right }
+				.minus { left - right }
+				.mul { left * right }
+				.div {
+					if right == 0 {
+						i64(0)
+					} else if unsigned {
+						i64(u64(left) / u64(right))
+					} else {
+						left / right
+					}
+				}
+				.mod {
+					if right == 0 {
+						i64(0)
+					} else if unsigned {
+						i64(u64(left) % u64(right))
+					} else {
+						left % right
+					}
+				}
+				.amp { left & right }
+				.pipe { left | right }
+				.xor { left ^ right }
+				.eq { i64(int(left == right)) }
+				.ne { i64(int(left != right)) }
+				.lt { i64(int(if unsigned { u64(left) < u64(right) } else { left < right })) }
+				.le { i64(int(if unsigned { u64(left) <= u64(right) } else { left <= right })) }
+				.gt { i64(int(if unsigned { u64(left) > u64(right) } else { left > right })) }
+				.ge { i64(int(if unsigned { u64(left) >= u64(right) } else { left >= right })) }
+				else { i64(0) }
+			}
+			return b.narrow_global_constant(value, expr_type)
+		}
+		else { return 0 }
+	}
+}
+
+fn (mut b Builder) global_constant_float(id flat.NodeId, depth int) f64 {
+	if !b.valid_node_id(id) || depth > 64 {
+		return 0
+	}
+	node := b.a.nodes[int(id)]
+	if expr := b.global_constant_expr(node) {
+		return b.global_constant_float(expr, depth + 1)
+	}
+	match node.kind {
+		.float_literal { return node.value.f64() }
+		.int_literal { return f64(u64(global_integer_literal(node.value))) }
+		.paren { return b.global_constant_float(b.a.child(&node, 0), depth + 1) }
+		.prefix {
+			value := b.global_constant_float(b.a.child(&node, 0), depth + 1)
+			return if node.op == .minus { -value } else { value }
+		}
+		.cast_expr {
+			target := b.resolve_type(node.value)
+			if b.m.type_store.types[target].kind != .float_t {
+				return f64(b.global_constant_int(id, depth + 1))
+			}
+			value := b.global_constant_float(b.a.child(&node, 0), depth + 1)
+			return if target == b.f32_type { f64(f32(value)) } else { value }
+		}
+		.infix {
+			left := b.global_constant_float(b.a.child(&node, 0), depth + 1)
+			right := b.global_constant_float(b.a.child(&node, 1), depth + 1)
+			return match node.op {
+				.plus { left + right }
+				.minus { left - right }
+				.mul { left * right }
+				.div {
+					if right != 0 { left / right } else { f64(0) }
+				}
+				else { f64(0) }
+			}
+		}
+		else { return f64(b.global_constant_int(id, depth + 1)) }
+	}
+}
+
+fn global_integer_literal(value string) i64 {
+	clean := value.replace('_', '')
+	mut digits := clean
+	mut base := u64(10)
+	if clean.starts_with('0x') || clean.starts_with('0X') {
+		digits = clean[2..]
+		base = 16
+	} else if clean.starts_with('0b') || clean.starts_with('0B') {
+		digits = clean[2..]
+		base = 2
+	} else if clean.starts_with('0o') || clean.starts_with('0O') {
+		digits = clean[2..]
+		base = 8
+	}
+	mut result := u64(0)
+	for ch in digits {
+		digit := if ch >= `0` && ch <= `9` {
+			u64(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			u64(ch - `a` + 10)
+		} else {
+			u64(ch - `A` + 10)
+		}
+		result = result * base + digit
+	}
+	return i64(result)
 }
 
 // ensure_runtime_global supports ensure runtime global handling for Builder.
@@ -1123,7 +1408,7 @@ fn (mut b Builder) register_functions() {
 	mut cur_module := ''
 	for node in b.a.nodes {
 		if node.kind == .module_decl {
-			cur_module = node.value
+			cur_module = b.source_module_name(node)
 			continue
 		}
 		if node.kind == .fn_decl {
@@ -1131,7 +1416,7 @@ fn (mut b Builder) register_functions() {
 				continue
 			}
 			fn_name := ssa_fn_name_in_module(cur_module, node.value)
-			if b.used_fns.len > 0 && !b.source_fn_is_used(node.value, cur_module) {
+			if (b.exact_used_fns || b.used_fns.len > 0) && !b.source_fn_is_used(node.value, cur_module) {
 				continue
 			}
 			ret_type := b.checker_return_type(node.value, cur_module) or {
@@ -1212,7 +1497,7 @@ fn (mut b Builder) register_enum_autostr_fns() {
 				cur_module = ''
 			}
 			.module_decl {
-				cur_module = node.value
+				cur_module = b.source_module_name(node)
 			}
 			.enum_decl {
 				qualified := if cur_module.len > 0 && cur_module != 'main'
@@ -1462,6 +1747,32 @@ fn ssa_fn_name_in_module(module_name string, name string) string {
 		return module_name + '.' + name
 	}
 	return name
+}
+
+fn (b &Builder) source_module_name(node flat.Node) string {
+	if file := b.a.source_files[node.pos.id] {
+		if name := b.source_modules[file.name] {
+			return name
+		}
+	}
+	return node.value
+}
+
+fn (b &Builder) source_import_name(node flat.Node, alias string) ?string {
+	file := b.a.source_files[node.pos.id] or { return none }
+	return b.source_imports[file.name][alias] or { return none }
+}
+
+fn (b &Builder) source_selector_name(node flat.Node) ?string {
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	base := b.a.child_node(&node, 0)
+	if base.kind != .ident || base.value in b.vars {
+		return none
+	}
+	module_name := b.source_import_name(node, base.value) or { return none }
+	return ssa_fn_name_in_module(module_name, node.value)
 }
 
 // register_extern updates register extern state for ssa.
@@ -1715,53 +2026,6 @@ fn (mut b Builder) block_instr4(op OpCode, block_id BlockID, typ TypeID, a Value
 
 // block_struct_field_ptr supports block struct field ptr handling for Builder.
 fn (mut b Builder) block_struct_field_ptr(block_id BlockID, base_addr ValueID, typ_id TypeID, field_idx int) ValueID {
-	mut builtin_field_type := TypeID(0)
-	mut builtin_offset := 0
-	mut has_builtin_layout := false
-	if typ_id == b.str_type {
-		has_builtin_layout = true
-		if field_idx == 0 {
-			builtin_field_type = b.m.type_store.get_ptr(b.i8_type)
-			builtin_offset = 0
-		} else if field_idx == 1 {
-			builtin_field_type = b.i32_type
-			builtin_offset = 8
-		} else if field_idx == 2 {
-			// is_lit (i32) shares the trailing word with len; it sits at offset 12,
-			// matching `struct_field_offset` used by the field readers.
-			builtin_field_type = b.i32_type
-			builtin_offset = 12
-		} else {
-			builtin_field_type = b.i64_type
-			builtin_offset = field_idx * 8
-		}
-	} else if typ_id == b.array_type {
-		has_builtin_layout = true
-		if field_idx == 0 {
-			builtin_field_type = b.m.type_store.get_ptr(b.i8_type)
-			builtin_offset = 0
-		} else {
-			builtin_field_type = b.i32_type
-			builtin_offset = 8 + (field_idx - 1) * 4
-		}
-	} else if typ_id == b.map_state_type {
-		has_builtin_layout = true
-		if field_idx == 0 || field_idx == 1 {
-			builtin_field_type = b.m.type_store.get_ptr(b.i8_type)
-		} else {
-			builtin_field_type = b.i64_type
-		}
-		builtin_offset = field_idx * 8
-	} else if typ_id == b.map_type {
-		has_builtin_layout = true
-		builtin_field_type = b.m.type_store.get_ptr(b.map_state_type)
-		builtin_offset = 0
-	}
-	if has_builtin_layout {
-		off_const := b.m.get_or_add_const(b.i64_type, '${builtin_offset}')
-		return b.block_instr2(.get_element_ptr, block_id,
-			b.m.type_store.get_ptr(builtin_field_type), base_addr, off_const)
-	}
 	typ := b.m.type_store.types[typ_id]
 	field_type := if field_idx < typ.fields.len { typ.fields[field_idx] } else { b.i64_type }
 	offset := b.m.struct_field_offset(typ_id, field_idx)
@@ -1984,7 +2248,8 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 	b.block_instr1(.jmp, zero_digit_block, b.void_type, ValueID(sign_block))
 
 	n_cur := b.block_instr1(.load, loop_block, b.i64_type, alloca_n)
-	rem := b.block_instr2(.srem, loop_block, b.i64_type, n_cur, ten)
+	// The magnitude of the minimum signed integer occupies the unsigned half of i64.
+	rem := b.block_instr2(.urem, loop_block, b.i64_type, n_cur, ten)
 	digit := b.block_instr2(.add, loop_block, b.i64_type, rem, ascii_zero)
 	pos := b.block_instr1(.load, loop_block, ptr_i8, alloca_pos)
 	pos_next := b.block_instr2(.add, loop_block, ptr_i8, pos, minus_one)
@@ -1993,9 +2258,9 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 	old_len := b.block_instr1(.load, loop_block, b.i64_type, alloca_len)
 	new_len := b.block_instr2(.add, loop_block, b.i64_type, old_len, one)
 	b.block_instr2(.store, loop_block, b.void_type, new_len, alloca_len)
-	quot := b.block_instr2(.sdiv, loop_block, b.i64_type, n_cur, ten)
+	quot := b.block_instr2(.udiv, loop_block, b.i64_type, n_cur, ten)
 	b.block_instr2(.store, loop_block, b.void_type, quot, alloca_n)
-	has_more := b.block_instr2(.gt, loop_block, b.i1_type, quot, zero)
+	has_more := b.block_instr2(.ne, loop_block, b.i1_type, quot, zero)
 	b.block_instr3(.br, loop_block, b.void_type, has_more, ValueID(loop_block), ValueID(sign_block))
 
 	neg_flag := b.block_instr1(.load, sign_block, b.i1_type, alloca_neg)
@@ -2341,7 +2606,7 @@ fn (mut b Builder) generate_string_plus_many_body(func_id int) {
 	alloca_written := b.block_instr0(.alloca, entry, ptr_i64)
 	zero64 := b.m.get_or_add_const(b.i64_type, '0')
 	one64 := b.m.get_or_add_const(b.i64_type, '1')
-	stride := b.m.get_or_add_const(b.i64_type, '16')
+	stride := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
 	b.block_instr2(.store, entry, b.void_type, zero64, alloca_i)
 	b.block_instr2(.store, entry, b.void_type, zero64, alloca_total)
 
@@ -3447,7 +3712,7 @@ fn (mut b Builder) generate_os_ls_body(func_id int, result_type TypeID) {
 	path := b.func_add_argument(func_id, b.str_type, 'path')
 	path_data := b.emit_cstring_from_string(entry, path)
 
-	str_size := b.m.get_or_add_const(b.i64_type, '16')
+	str_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
 	zero64 := b.m.get_or_add_const(b.i64_type, '0')
 	cap := b.m.get_or_add_const(b.i64_type, '50')
 	array_new_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.fn_ids['array_new'])
@@ -4268,7 +4533,7 @@ fn (mut b Builder) generate_fixed_array_contains_string_body(func_id int) {
 	in_range := b.block_instr2(.lt, blk_loop, b.i1_type, i, len)
 	b.block_instr3(.br, blk_loop, b.void_type, in_range, ValueID(blk_body), ValueID(blk_not_found))
 
-	stride := b.m.get_or_add_const(b.i64_type, '16')
+	stride := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
 	offset := b.block_instr2(.mul, blk_body, b.i64_type, i, stride)
 	slot := b.block_instr2(.add, blk_body, ptr_i8, arr, offset)
 	slot_string_ptr := b.block_instr1(.bitcast, blk_body, ptr_string, slot)
@@ -4540,7 +4805,7 @@ fn (mut b Builder) generate_map_find_body(func_id int) {
 	key_size := b.block_instr1(.load, blk_body, b.i64_type, key_size_ptr)
 	offset := b.block_instr2(.mul, blk_body, b.i64_type, i, key_size)
 	slot_key := b.block_instr2(.add, blk_body, ptr_i8, keys, offset)
-	string_key_size := b.m.get_or_add_const(b.i64_type, '16')
+	string_key_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
 	is_string_key := b.block_instr2(.eq, blk_body, b.i1_type, key_size, string_key_size)
 	b.block_instr3(.br, blk_body, b.void_type, is_string_key, ValueID(blk_string_cmp),
 		ValueID(blk_mem_cmp))
@@ -4678,7 +4943,7 @@ fn (mut b Builder) generate_map_set_default_body(func_id int) {
 	map_ptr := b.func_add_argument(func_id, ptr_map, 'map')
 	key_ptr := b.func_add_argument(func_id, ptr_i8, 'key')
 	val_ptr := b.func_add_argument(func_id, ptr_i8, 'val')
-	key_size := b.m.get_or_add_const(b.i64_type, '16')
+	key_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
 	val_size := b.m.get_or_add_const(b.i64_type, '8')
 	fn_ref := b.m.add_value(.func_ref, b.void_type, 'v3_map_set_sized',
 		b.fn_ids['v3_map_set_sized'])
@@ -5070,10 +5335,10 @@ fn (mut b Builder) generate_arguments_body(func_id int) {
 	argc := b.block_instr1(.load, entry, b.i64_type, argc_global)
 	argv := b.block_instr1(.load, entry, ptr_ptr_i8, argv_global)
 
-	elem_size := b.m.get_or_add_const(b.i64_type, '16')
+	elem_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	one := b.m.get_or_add_const(b.i64_type, '1')
-	ptr_size := b.m.get_or_add_const(b.i64_type, '8')
+	ptr_size := b.m.get_or_add_const(b.i64_type, '${b.m.target.ptr_size}')
 	new_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.fn_ids['array_new'])
 	arr := b.block_instr4(.call, entry, b.array_type, new_ref, elem_size, zero, argc)
 
@@ -5910,7 +6175,7 @@ fn (mut b Builder) build_functions() {
 	mut cur_module := ''
 	for node in b.a.nodes {
 		if node.kind == .module_decl {
-			cur_module = node.value
+			cur_module = b.source_module_name(node)
 			continue
 		}
 		if node.kind == .fn_decl {
@@ -5923,7 +6188,7 @@ fn (mut b Builder) build_functions() {
 				b.mark_fn_prototype(fn_name)
 				continue
 			}
-			if b.used_fns.len > 0 && !b.source_fn_is_used(node.value, cur_module) {
+			if (b.exact_used_fns || b.used_fns.len > 0) && !b.source_fn_is_used(node.value, cur_module) {
 				continue
 			}
 			// Hot reload: only the named function's body is materialized.
@@ -5969,7 +6234,7 @@ fn (mut b Builder) register_type_aliases() {
 	mut cur_module := ''
 	for node in b.a.nodes {
 		if node.kind == .module_decl {
-			cur_module = node.value
+			cur_module = b.source_module_name(node)
 			continue
 		}
 		// A type_decl with no children and a non-empty `typ` is an alias
@@ -6119,6 +6384,9 @@ fn (b &Builder) fn_is_used(name string) bool {
 
 fn (b &Builder) source_fn_is_used(name string, module_name string) bool {
 	fn_name := ssa_fn_name_in_module(module_name, name)
+	if b.exact_used_fns {
+		return b.used_fns[fn_name]
+	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		return b.fn_is_used(fn_name)
 	}
@@ -6224,9 +6492,19 @@ fn (mut b Builder) reset_function_state() {
 	b.vars.clear()
 	b.var_type_names.clear()
 	b.label_blocks.clear()
+	b.break_labels.clear()
+	b.continue_labels.clear()
+	b.pending_loop_label = ''
 	b.defer_body_ids.clear()
 	for name, val_id in b.global_vars {
 		b.vars[name] = val_id
+	}
+	if b.source_modules.len > 0 && b.cur_module !in ['', 'main', 'builtin'] {
+		for name, val_id in b.global_vars {
+			if name.starts_with(b.cur_module + '.') {
+				b.vars[name[b.cur_module.len + 1..]] = val_id
+			}
+		}
 	}
 }
 
@@ -6454,13 +6732,17 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 			b.build_for_in(node)
 		}
 		.break_stmt {
-			if b.break_targets.len > 0 {
+			if target := b.break_labels[node.value] {
+				b.emit1(.jmp, b.void_type, ValueID(target))
+			} else if b.break_targets.len > 0 {
 				target := b.break_targets.last()
 				b.emit1(.jmp, b.void_type, ValueID(target))
 			}
 		}
 		.continue_stmt {
-			if b.continue_targets.len > 0 {
+			if target := b.continue_labels[node.value] {
+				b.emit1(.jmp, b.void_type, ValueID(target))
+			} else if b.continue_targets.len > 0 {
 				target := b.continue_targets.last()
 				b.emit1(.jmp, b.void_type, ValueID(target))
 			}
@@ -6470,6 +6752,13 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 			b.emit1(.jmp, b.void_type, ValueID(target))
 		}
 		.label_stmt {
+			if b.m.target.ptr_size == 4 {
+				if node.value.starts_with('__v_pending_loop_label:') {
+					b.pending_loop_label = node.value.all_after(':')
+					return
+				}
+				b.pending_loop_label = node.value
+			}
 			target := b.label_block(node.value)
 			if !b.current_block_terminated() {
 				b.emit1(.jmp, b.void_type, ValueID(target))
@@ -6483,9 +6772,7 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 			b.build_match_stmt(node)
 		}
 		.block {
-			for i in 0 .. node.children_count {
-				b.build_stmt(b.a.child(&node, i))
-			}
+			b.build_scoped_stmts(node, 0)
 		}
 		.assert_stmt {
 			b.build_assert(node)
@@ -6499,6 +6786,35 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 			eprintln('build_stmt: unsupported node kind: ${node.kind}')
 		}
 	}
+}
+
+fn (b &Builder) save_scope() BuilderScope {
+	if b.m.target.ptr_size != 4 {
+		return BuilderScope{}
+	}
+	return BuilderScope{
+		active:     true
+		vars:       b.vars.clone()
+		type_names: b.var_type_names.clone()
+	}
+}
+
+fn (mut b Builder) restore_scope(scope BuilderScope) {
+	if scope.active {
+		b.vars = scope.vars.clone()
+		b.var_type_names = scope.type_names.clone()
+	}
+}
+
+fn (mut b Builder) build_scoped_stmts(node flat.Node, start int) {
+	scope := b.save_scope()
+	for i in start .. node.children_count {
+		b.build_stmt(b.a.child(&node, i))
+		if scope.active && b.current_block_terminated() {
+			break
+		}
+	}
+	b.restore_scope(scope)
 }
 
 // build_multi_return_value builds multi return value data for ssa.
@@ -6601,6 +6917,13 @@ fn (mut b Builder) build_assign_rhs(lhs flat.Node, rhs_id flat.NodeId) ValueID {
 }
 
 fn (mut b Builder) build_assign(node flat.Node) {
+	mut parallel_values := []ValueID{}
+	if b.m.target.ptr_size == 4 && node.op == .assign && node.children_count > 2 {
+		for index := 0; index < node.children_count; index += 2 {
+			lhs := b.a.child_node(&node, index)
+			parallel_values << b.build_assign_rhs(*lhs, b.a.child(&node, index + 1))
+		}
+	}
 	mut i := 0
 	for i < node.children_count {
 		lhs_id := b.a.child(&node, i)
@@ -6608,19 +6931,25 @@ fn (mut b Builder) build_assign(node flat.Node) {
 		lhs := b.a.nodes[int(lhs_id)]
 
 		if lhs.kind == .ident && lhs.value == '_' {
-			b.build_expr(rhs_id)
+			if parallel_values.len == 0 {
+				b.build_expr(rhs_id)
+			}
 			i += 2
 			continue
 		}
 		if lhs.kind == .ident {
 			if addr := b.vars[lhs.value] {
 				if node.op == .assign {
-					rhs_val := b.build_assign_rhs(lhs, rhs_id)
+					rhs_val := if parallel_values.len > 0 {
+						parallel_values[i / 2]
+					} else {
+						b.build_assign_rhs(lhs, rhs_id)
+					}
 					b.emit2(.store, b.void_type, rhs_val, addr)
 				} else {
 					cur := b.emit1(.load, b.deref_type(addr), addr)
 					rhs_val := b.build_expr(rhs_id)
-					op := b.compound_to_op(node.op)
+					op := b.compound_to_op(node.op, b.value_type(cur))
 					result := b.emit2(op, b.value_type(cur), cur, rhs_val)
 					b.emit2(.store, b.void_type, result, addr)
 				}
@@ -6635,13 +6964,17 @@ fn (mut b Builder) build_assign(node flat.Node) {
 				b.build_lvalue_addr(lhs_id)
 			}
 			if node.op == .assign {
-				rhs_val := b.build_assign_rhs(lhs, rhs_id)
+				rhs_val := if parallel_values.len > 0 {
+					parallel_values[i / 2]
+				} else {
+					b.build_assign_rhs(lhs, rhs_id)
+				}
 				b.emit2(.store, b.void_type, rhs_val, addr)
 			} else {
 				field_type := b.deref_type(addr)
 				cur := b.emit1(.load, field_type, addr)
 				rhs_val := b.build_expr(rhs_id)
-				op := b.compound_to_op(node.op)
+				op := b.compound_to_op(node.op, b.value_type(cur))
 				result := b.emit2(op, field_type, cur, rhs_val)
 				b.emit2(.store, b.void_type, result, addr)
 			}
@@ -6667,7 +7000,7 @@ fn (mut b Builder) build_selector_assign(node flat.Node) {
 				field_type := b.deref_type(field_ptr)
 				cur := b.emit1(.load, field_type, field_ptr)
 				rhs_val := b.build_expr(rhs_id)
-				op := b.compound_to_op(node.op)
+				op := b.compound_to_op(node.op, b.value_type(cur))
 				result := b.emit2(op, field_type, cur, rhs_val)
 				b.emit2(.store, b.void_type, result, field_ptr)
 			}
@@ -6690,7 +7023,7 @@ fn (mut b Builder) build_index_assign(node flat.Node) {
 			field_type := b.deref_type(addr)
 			cur := b.emit1(.load, field_type, addr)
 			rhs_val := b.build_expr(rhs_id)
-			op := b.compound_to_op(node.op)
+			op := b.compound_to_op(node.op, b.value_type(cur))
 			result := b.emit2(op, field_type, cur, rhs_val)
 			b.emit2(.store, b.void_type, result, addr)
 		}
@@ -6700,6 +7033,7 @@ fn (mut b Builder) build_index_assign(node flat.Node) {
 
 // build_for builds for data for ssa.
 fn (mut b Builder) build_for(node flat.Node) {
+	scope := b.save_scope()
 	init_id := b.a.child(&node, 0)
 	cond_id := b.a.child(&node, 1)
 	post_id := b.a.child(&node, 2)
@@ -6727,14 +7061,14 @@ fn (mut b Builder) build_for(node flat.Node) {
 	}
 
 	b.cur_block = body_block
-	b.break_targets << exit_block
-	b.continue_targets << if post_node.kind != .empty { post_block } else { cond_block }
+	loop_label := b.push_loop_targets(exit_block, if post_node.kind != .empty {
+		post_block
+	} else {
+		cond_block
+	})
 
-	for i in 3 .. node.children_count {
-		b.build_stmt(b.a.child(&node, i))
-	}
-	b.break_targets.delete_last()
-	b.continue_targets.delete_last()
+	b.build_scoped_stmts(node, 3)
+	b.pop_loop_targets(loop_label)
 
 	blk := b.m.blocks[b.cur_block]
 	if blk.instrs.len == 0 || !b.is_terminator(blk.instrs.last()) {
@@ -6755,6 +7089,28 @@ fn (mut b Builder) build_for(node flat.Node) {
 	}
 
 	b.cur_block = exit_block
+	b.restore_scope(scope)
+}
+
+fn (mut b Builder) push_loop_targets(break_target BlockID, continue_target BlockID) string {
+	b.break_targets << break_target
+	b.continue_targets << continue_target
+	label := b.pending_loop_label
+	b.pending_loop_label = ''
+	if label.len > 0 {
+		b.break_labels[label] = break_target
+		b.continue_labels[label] = continue_target
+	}
+	return label
+}
+
+fn (mut b Builder) pop_loop_targets(label string) {
+	b.break_targets.delete_last()
+	b.continue_targets.delete_last()
+	if label.len > 0 {
+		b.break_labels.delete(label)
+		b.continue_labels.delete(label)
+	}
 }
 
 // build_for_in builds for in data for ssa.
@@ -6808,11 +7164,9 @@ fn (mut b Builder) build_range_for_in(node flat.Node, key_id flat.NodeId, start_
 	if key_alloca > 0 {
 		b.emit2(.store, b.void_type, idx, key_alloca)
 	}
-	b.break_targets << exit_block
-	b.continue_targets << post_block
+	loop_label := b.push_loop_targets(exit_block, post_block)
 	b.build_for_in_body(node, body_start)
-	b.break_targets.delete_last()
-	b.continue_targets.delete_last()
+	b.pop_loop_targets(loop_label)
 	if !b.current_block_terminated() {
 		b.emit1(.jmp, b.void_type, ValueID(post_block))
 	}
@@ -6874,11 +7228,9 @@ fn (mut b Builder) build_array_for_in(node flat.Node, key_id flat.NodeId, val_id
 		elem_val := b.emit1(.load, elem_type, elem_ptr)
 		b.emit2(.store, b.void_type, elem_val, val_alloca)
 	}
-	b.break_targets << exit_block
-	b.continue_targets << post_block
+	loop_label := b.push_loop_targets(exit_block, post_block)
 	b.build_for_in_body(node, body_start)
-	b.break_targets.delete_last()
-	b.continue_targets.delete_last()
+	b.pop_loop_targets(loop_label)
 	if !b.current_block_terminated() {
 		b.emit1(.jmp, b.void_type, ValueID(post_block))
 	}
@@ -6945,11 +7297,9 @@ fn (mut b Builder) build_string_for_in(node flat.Node, key_id flat.NodeId, val_i
 	if val_alloca > 0 {
 		b.emit2(.store, b.void_type, ch, val_alloca)
 	}
-	b.break_targets << exit_block
-	b.continue_targets << post_block
+	loop_label := b.push_loop_targets(exit_block, post_block)
 	b.build_for_in_body(node, body_start)
-	b.break_targets.delete_last()
-	b.continue_targets.delete_last()
+	b.pop_loop_targets(loop_label)
 	if !b.current_block_terminated() {
 		b.emit1(.jmp, b.void_type, ValueID(post_block))
 	}
@@ -7035,11 +7385,9 @@ fn (mut b Builder) build_map_for_in(node flat.Node, key_id flat.NodeId, val_id f
 		val_val := b.emit1(.load, val_type, val_ptr)
 		b.emit2(.store, b.void_type, val_val, val_alloca)
 	}
-	b.break_targets << exit_block
-	b.continue_targets << post_block
+	loop_label := b.push_loop_targets(exit_block, post_block)
 	b.build_for_in_body(node, body_start)
-	b.break_targets.delete_last()
-	b.continue_targets.delete_last()
+	b.pop_loop_targets(loop_label)
 	if !b.current_block_terminated() {
 		b.emit1(.jmp, b.void_type, ValueID(post_block))
 	}
@@ -7060,9 +7408,7 @@ fn (mut b Builder) build_map_for_in(node flat.Node, key_id flat.NodeId, val_id f
 
 // build_for_in_body builds for in body data for ssa.
 fn (mut b Builder) build_for_in_body(node flat.Node, body_start int) {
-	for i in body_start .. node.children_count {
-		b.build_stmt(b.a.child(&node, i))
-	}
+	b.build_scoped_stmts(node, body_start)
 }
 
 // build_if builds if data for ssa.
@@ -7090,9 +7436,7 @@ fn (mut b Builder) build_if(node flat.Node) {
 			if else_node.kind == .if_expr {
 				b.build_if(*else_node)
 			} else if else_node.kind == .block {
-				for i in 0 .. else_node.children_count {
-					b.build_stmt(b.a.child(else_node, i))
-				}
+				b.build_scoped_stmts(*else_node, 0)
 			}
 			eblk := b.m.blocks[b.cur_block]
 			if eblk.instrs.len == 0 || !b.is_terminator(eblk.instrs.last()) {
@@ -7108,9 +7452,7 @@ fn (mut b Builder) build_if(node flat.Node) {
 		b.activate_if_guard(guard)
 	}
 	then_node := b.a.child_node(&node, 1)
-	for i in 0 .. then_node.children_count {
-		b.build_stmt(b.a.child(then_node, i))
-	}
+	b.build_scoped_stmts(*then_node, 0)
 	tblk := b.m.blocks[b.cur_block]
 	if tblk.instrs.len == 0 || !b.is_terminator(tblk.instrs.last()) {
 		b.emit1(.jmp, b.void_type, ValueID(merge_block))
@@ -7660,7 +8002,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			return b.m.get_or_add_const(b.i64_type, '0')
 		}
 		.infix {
-			return b.build_infix(node)
+			return b.build_infix(id, node)
 		}
 		.prefix {
 			return b.build_prefix(node, id)
@@ -8584,7 +8926,7 @@ fn (b &Builder) current_block_terminated() bool {
 	return blk.instrs.len > 0 && b.is_terminator(blk.instrs.last())
 }
 
-fn (mut b Builder) build_infix(node flat.Node) ValueID {
+fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 	if node.op == .power {
 		panic('power expression reached the V3 SSA backend')
 	}
@@ -8603,18 +8945,49 @@ fn (mut b Builder) build_infix(node flat.Node) ValueID {
 	rhs_node := b.a.nodes[int(rhs_id)]
 	lhs_type_name := b.checked_expr_type_name(lhs_id)
 	rhs_type_name := b.checked_expr_type_name(rhs_id)
-	lhs := if lhs_node.kind == .enum_val && rhs_type_name.len > 0 {
+	mut lhs := if lhs_node.kind == .enum_val && rhs_type_name.len > 0 {
 		b.build_enum_val_with_type(lhs_node, rhs_type_name) or { b.build_expr(lhs_id) }
 	} else {
 		b.build_expr(lhs_id)
 	}
-	rhs := if rhs_node.kind == .enum_val && lhs_type_name.len > 0 {
+	mut rhs := if rhs_node.kind == .enum_val && lhs_type_name.len > 0 {
 		b.build_enum_val_with_type(rhs_node, lhs_type_name) or { b.build_expr(rhs_id) }
 	} else {
 		b.build_expr(rhs_id)
 	}
 	if b.value_type(lhs) == b.str_type || b.value_type(rhs) == b.str_type {
 		return b.build_string_infix(node.op, lhs, rhs)
+	}
+	if b.m.target.ptr_size == 4 && b.tc != unsafe { nil } {
+		lhs = b.coerce_numeric_value(lhs, b.global_constant_type(lhs_id))
+		rhs = b.coerce_numeric_value(rhs, b.global_constant_type(rhs_id))
+		if node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
+			if b.is_int_type(b.value_type(lhs)) && b.is_int_type(b.value_type(rhs)) {
+				if b.is_unsigned_type(b.value_type(lhs)) != b.is_unsigned_type(b.value_type(rhs)) {
+					return b.build_mixed_integer_comparison(node.op, lhs, rhs)
+				}
+				width := int_max(b.scalar_type_width(b.value_type(lhs)), b.scalar_type_width(b.value_type(rhs)))
+				common := if b.is_unsigned_type(b.value_type(lhs)) {
+					b.m.type_store.get_uint(width)
+				} else {
+					b.m.type_store.get_int(width)
+				}
+				lhs = b.coerce_int_value(lhs, common)
+				rhs = b.coerce_int_value(rhs, common)
+			} else if b.is_float_type(b.value_type(lhs)) || b.is_float_type(b.value_type(rhs)) {
+				common := if b.value_type(lhs) == b.f64_type || b.value_type(rhs) == b.f64_type {
+					b.f64_type
+				} else {
+					b.f32_type
+				}
+				lhs = b.coerce_numeric_value(lhs, common)
+				rhs = b.coerce_numeric_value(rhs, common)
+			}
+		} else if node.op !in [.left_shift, .right_shift, .right_shift_unsigned] {
+			result := b.global_constant_type(id)
+			lhs = b.coerce_numeric_value(lhs, result)
+			rhs = b.coerce_numeric_value(rhs, result)
+		}
 	}
 	lhs_type := b.value_type(lhs)
 	mut op := OpCode.add
@@ -8667,6 +9040,9 @@ fn (mut b Builder) build_infix(node flat.Node) ValueID {
 			.right_shift {
 				op = if b.is_unsigned_type(lhs_type) { OpCode.lshr } else { OpCode.ashr }
 			}
+			.right_shift_unsigned {
+				op = OpCode.lshr
+			}
 			.eq {
 				op = OpCode.eq
 			}
@@ -8692,6 +9068,56 @@ fn (mut b Builder) build_infix(node flat.Node) ValueID {
 	}
 	result_type := if node.op in [.eq, .ne, .lt, .gt, .le, .ge] { b.i1_type } else { lhs_type }
 	return b.emit2(op, result_type, lhs, rhs)
+}
+
+fn (mut b Builder) build_mixed_integer_comparison(op flat.Op, lhs ValueID, rhs ValueID) ValueID {
+	lhs_signed := !b.is_unsigned_type(b.value_type(lhs))
+	signed_value := if lhs_signed { lhs } else { rhs }
+	zero := b.m.get_or_add_const(b.value_type(signed_value), '0')
+	negative := b.emit2(.lt, b.i1_type, signed_value, zero)
+	width := int_max(b.scalar_type_width(b.value_type(lhs)), b.scalar_type_width(b.value_type(rhs)))
+	common := b.m.type_store.get_uint(width)
+	left := b.coerce_int_value(lhs, common)
+	right := b.coerce_int_value(rhs, common)
+	comparison_op := match op {
+		.eq { OpCode.eq }
+		.ne { OpCode.ne }
+		.lt { OpCode.ult }
+		.le { OpCode.ule }
+		.gt { OpCode.ugt }
+		.ge { OpCode.uge }
+		else { OpCode.eq }
+	}
+	nonnegative_result := b.emit2(comparison_op, b.i1_type, left, right)
+	negative_result := match op {
+		.lt, .le { lhs_signed }
+		.gt, .ge { !lhs_signed }
+		.ne { true }
+		else { false }
+	}
+	constant := b.m.get_or_add_const(b.i1_type, if negative_result { '1' } else { '0' })
+	return b.emit3(.select, b.i1_type, negative, constant, nonnegative_result)
+}
+
+fn int_max(left int, right int) int {
+	return if left > right { left } else { right }
+}
+
+fn (mut b Builder) coerce_numeric_value(value ValueID, target TypeID) ValueID {
+	from := b.value_type(value)
+	if from == target {
+		return value
+	}
+	if b.is_int_type(from) && b.is_int_type(target) {
+		return b.coerce_int_value(value, target)
+	}
+	if b.is_int_type(from) && b.is_float_type(target) {
+		return b.emit1(if b.is_unsigned_type(from) { OpCode.uitofp } else { OpCode.sitofp }, target, value)
+	}
+	if b.is_float_type(from) && b.is_float_type(target) {
+		return b.emit1(.bitcast, target, value)
+	}
+	return value
 }
 
 fn (mut b Builder) build_qualified_infix_call(node flat.Node) ?ValueID {
@@ -8864,8 +9290,16 @@ fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 	if value := b.build_sum_type_cast(target_name, b.a.child(&node, 0)) {
 		return value
 	}
-	value := b.build_expr(b.a.child(&node, 0))
 	target_type := b.resolve_type(target_name)
+	child_id := b.a.child(&node, 0)
+	child := b.a.nodes[int(child_id)]
+	// A positive literal can occupy the unsigned half of i64 before a float cast.
+	value := if b.m.target.ptr_size == 4 && b.is_float_type(target_type)
+		&& child.kind == .int_literal {
+		b.m.get_or_add_const(b.u64_type, child.value)
+	} else {
+		b.build_expr(child_id)
+	}
 	from_type := b.value_type(value)
 	if target_type == from_type {
 		return value
@@ -9318,6 +9752,11 @@ fn (mut b Builder) build_lvalue_addr(id flat.NodeId) ValueID {
 }
 
 fn (mut b Builder) build_selector_addr(node flat.Node) ValueID {
+	if name := b.source_selector_name(node) {
+		if addr := b.vars[name] {
+			return addr
+		}
+	}
 	if node.children_count == 0 {
 		return b.m.get_or_add_const(b.m.type_store.get_ptr(b.i8_type), '0')
 	}
@@ -9437,12 +9876,28 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	if fn_node.kind == .selector {
 		base_id = b.a.child(&fn_node, 0)
 		base := b.a.nodes[int(base_id)]
+		if b.m.target.ptr_size == 4 && fn_node.value == 'str' {
+			receiver_name := if base.kind == .bool_literal {
+				'bool'
+			} else {
+				b.receiver_type_name(base_id)
+			}
+			if result := b.build_scalar_str_call(node, '${receiver_name}.str', base_id) {
+				return result
+			}
+		}
 		if base.kind == .ident && base.value == 'C' {
 			actual_name = fn_node.value
 			is_c_call = true
 		} else {
 			mut found_name := fn_node.value
 			mut resolved_handled := false
+			if name := b.source_selector_name(fn_node) {
+				if name in b.fn_ids {
+					found_name = name
+					resolved_handled = true
+				}
+			}
 			if builder_name := b.builder_method_name_for_base(base, fn_node.value) {
 				found_name = builder_name
 				is_method = true
@@ -9509,7 +9964,10 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			actual_name = found_name
 		}
 	} else {
-		if resolved := b.resolved_call_name(id) {
+		qualified_name := ssa_fn_name_in_module(b.cur_module, fn_name)
+		if b.source_modules.len > 0 && qualified_name in b.fn_ids {
+			actual_name = qualified_name
+		} else if resolved := b.resolved_call_name(id) {
 			actual_name = resolved
 		}
 	}
@@ -9522,6 +9980,12 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	if actual_name.starts_with('C.') {
 		actual_name = actual_name[2..]
 		is_c_call = true
+	}
+	if b.m.target.ptr_size == 4 && !is_c_call {
+		scalar_base := if fn_node.kind == .selector { base_id } else { flat.empty_node }
+		if result := b.build_scalar_str_call(node, actual_name, scalar_base) {
+			return result
+		}
 	}
 	if !is_c_call && b.is_disabled_fn_name(actual_name) {
 		// The transformer normally elides disabled `@[if ...]` calls. Minimal
@@ -9763,6 +10227,10 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 
 	mut args := []ValueID{}
 	args << fn_ref
+	if b.m.target.ptr_size == 4 && resolved_name in ['print', 'println', 'eprint', 'eprintln']
+		&& node.children_count == 1 {
+		args << b.m.add_value(.string_literal, b.str_type, '', 0)
+	}
 	if resolved_name == 'error_posix' && node.children_count == 1 && param_types.len > 0 {
 		args << b.default_system_error_value(param_types[0])
 		return b.m.add_instr(.call, b.cur_block, ret_type, args)
@@ -9855,7 +10323,11 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 				}
 			}
 		}
-		args << b.build_expr(arg_id)
+		mut arg := b.build_expr(arg_id)
+		if b.m.target.ptr_size == 4 && resolved_name in ['print', 'println', 'eprint', 'eprintln'] {
+			arg = b.stringify_scalar(arg)
+		}
+		args << arg
 	}
 	if resolved_name in ['map__keys', 'map__values'] && args.len == 2 && param_types.len == 2 {
 		if elem_size := b.map_array_elem_size_arg(id, node) {
@@ -9865,6 +10337,54 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		}
 	}
 	return b.m.add_instr(.call, b.cur_block, ret_type, args)
+}
+
+fn (mut b Builder) stringify_scalar(value ValueID) ValueID {
+	typ := b.value_type(value)
+	if typ == b.str_type {
+		return value
+	}
+	if typ == b.i1_type {
+		return b.emit_runtime_call('bool_str', b.str_type, [value])
+	}
+	if b.is_unsigned_type(typ) {
+		ten := b.m.get_or_add_const(b.i64_type, '10')
+		return b.emit_runtime_call('strconv__format_uint', b.str_type, [value, ten])
+	}
+	if b.is_int_type(typ) {
+		return b.emit_runtime_call('int_str', b.str_type, [value])
+	}
+	return value
+}
+
+fn (mut b Builder) build_scalar_str_call(node flat.Node, resolved_name string, base_id flat.NodeId) ?ValueID {
+	name := resolved_name.replace('__', '.').trim_string_left('builtin.')
+	primitive_name := name.all_before_last('.')
+	if name.all_after_last('.') != 'str'
+		|| primitive_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'bool',
+			'rune', 'isize', 'usize', 'string'] {
+		return none
+	}
+	mut value_id := base_id
+	if int(base_id) < 0 {
+		if node.children_count != 2 {
+			return none
+		}
+		value_id = b.a.child(&node, 1)
+	} else if node.children_count != 1 {
+		base := b.a.nodes[int(base_id)]
+		if node.children_count != 2 || base.kind != .ident || base.value != primitive_name {
+			return none
+		}
+		value_id = b.a.child(&node, 1)
+	}
+	// Default integer literals can exceed int's width before their print conversion.
+	value := if primitive_name == 'int' {
+		b.build_expr(value_id)
+	} else {
+		b.coerce_numeric_value(b.build_expr(value_id), b.resolve_type(primitive_name))
+	}
+	return b.stringify_scalar(value)
 }
 
 fn (b &Builder) is_disabled_fn_name(name string) bool {
@@ -10284,10 +10804,23 @@ fn (b &Builder) typed_receiver_method_name(base_id flat.NodeId, method string) ?
 
 fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id flat.NodeId) ValueID {
 	callee := b.build_expr(callee_id)
+	mut param_types := []TypeID{}
+	if b.m.target.ptr_size == 4 && b.tc != unsafe { nil } {
+		callee_type := types.unalias_type(b.tc.resolve_type(callee_id))
+		if callee_type is types.FnType {
+			for param_type in callee_type.params {
+				param_types << b.ssa_type_from_checker_type(param_type)
+			}
+		}
+	}
 	mut args := []ValueID{}
 	args << callee
 	for i in 1 .. node.children_count {
-		args << b.build_expr(b.a.child(&node, i))
+		mut arg := b.build_expr(b.a.child(&node, i))
+		if i - 1 < param_types.len {
+			arg = b.coerce_int_value(arg, param_types[i - 1])
+		}
+		args << arg
 	}
 	return b.m.add_instr(.call_indirect, b.cur_block, b.call_expr_result_type(id, node), args)
 }
@@ -10333,7 +10866,7 @@ fn (mut b Builder) build_const_string_array_arg(id flat.NodeId) ?ValueID {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	count := b.m.get_or_add_const(b.i64_type, '${expr.children_count}')
 	alloca := b.emit1(.alloca, ptr_string, count)
-	stride := 16
+	stride := b.m.type_size(b.str_type)
 	for i in 0 .. expr.children_count {
 		child_id := b.a.child(&expr, i)
 		value := b.build_expr(child_id)
@@ -10934,6 +11467,17 @@ fn (b &Builder) should_pass_ident_addr_for_ptr_param(addr ValueID, param_type Ty
 }
 
 fn (mut b Builder) build_selector(node flat.Node) ValueID {
+	if name := b.source_selector_name(node) {
+		if addr := b.vars[name] {
+			return b.emit1(.load, b.deref_type(addr), addr)
+		}
+		if expr_id := b.lookup_const_expr(name) {
+			return b.build_expr(expr_id)
+		}
+		if fn_idx := b.fn_ids[name] {
+			return b.m.add_value(.func_ref, b.i64_type, name, fn_idx)
+		}
+	}
 	base_id := b.a.child(&node, 0)
 	base := b.a.nodes[int(base_id)]
 	field_name := node.value
@@ -11785,7 +12329,7 @@ fn (mut b Builder) build_string_interp(node flat.Node) ValueID {
 	count_const := b.m.get_or_add_const(b.i64_type, '${parts.len}')
 	alloca := b.emit1(.alloca, b.m.type_store.get_ptr(b.str_type), count_const)
 	for i, part in parts {
-		off_const := b.m.get_or_add_const(b.i64_type, '${i * 16}')
+		off_const := b.m.get_or_add_const(b.i64_type, '${i * b.m.type_size(b.str_type)}')
 		ptr := b.emit2(.get_element_ptr, b.m.type_store.get_ptr(b.str_type), alloca, off_const)
 		b.emit2(.store, b.void_type, part, ptr)
 	}
@@ -11914,11 +12458,17 @@ fn (mut b Builder) primitive_type_id(name string) ?TypeID {
 		'int' {
 			b.i32_type
 		}
+		'isize' {
+			if b.m.target.ptr_size == 4 { b.i32_type } else { b.i64_type }
+		}
+		'usize' {
+			if b.m.target.ptr_size == 4 { b.u32_type } else { b.u64_type }
+		}
 		'i8', 'char' {
 			b.i8_type
 		}
 		'i16' {
-			b.i32_type
+			if b.m.target.ptr_size == 4 { b.m.type_store.get_int(16) } else { b.i32_type }
 		}
 		'i32', 'rune' {
 			b.i32_type
@@ -12290,7 +12840,18 @@ fn (mut b Builder) emit4(op OpCode, typ TypeID, a ValueID, c ValueID, d ValueID,
 	return b.m.add_instr(op, b.cur_block, typ, ops)
 }
 
-fn (b &Builder) compound_to_op(op flat.Op) OpCode {
+fn (b &Builder) compound_to_op(op flat.Op, typ TypeID) OpCode {
+	if b.m.target.ptr_size == 4 && op == .right_shift_unsigned_assign {
+		return .lshr
+	}
+	if b.m.target.ptr_size == 4 && b.is_unsigned_type(typ) {
+		match op {
+			.div_assign { return .udiv }
+			.mod_assign { return .urem }
+			.right_shift_assign { return .lshr }
+			else {}
+		}
+	}
 	return match op {
 		.plus_assign { .add }
 		.minus_assign { .sub }

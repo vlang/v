@@ -40,6 +40,9 @@ $if !skip_eval ? {
 
 $if !skip_arm64 ? {
 	import v.gen.arm64
+}
+
+$if !skip_ssa ? {
 	import v.ssa
 	import v.ssa.optimize
 }
@@ -10259,22 +10262,20 @@ pub fn run(args []string) {
 	remove_binary_after_run := should_run && !is_crun && !is_direct_vsh && !explicit_output && !keep_c
 		&& !binary_existed_before
 
-	// Decide which backend modules to compile into the output. By default only the C
-	// backend is built; the fastc/arm64/wasm/eval backends (and the whole SSA pipeline that the
-	// arm64 backend pulls in: v.ssa + v.ssa.optimize) are skipped entirely. When compiling
-	// the V compiler itself this avoids parsing/checking/transforming/cgen-ing ~30k lines of
-	// unused backend code, which measurably speeds up the self-host build. The `skip_*`
+	// Decide which backend modules to compile into the output. Standalone compilers
+	// default to C; optional backends and their SSA dependencies can be skipped. This
+	// avoids parsing/checking/transforming/cgen-ing unused code when self-hosting. The `skip_*`
 	// defines drive two things in lock-step: `$if !skip_* ?` gates in main() make the parser
 	// drop the dispatch blocks (so the backend symbols are never referenced), and
 	// resolve_imports skips parsing the corresponding module directories.
 	// `-all-backends` keeps everything; `-compile-backend <name>` opts a specific backend back
 	// in; the active `-b` target backend is always force-included.
 	// The full `cmd/v` CLI (the executable that `make`, `makev.bat`, `v self`, and `v up`
-	// produce) always keeps FastC, so `-b fastc` works in default builds; `-d skip_fastc`
-	// still removes it. Standalone `vlib/v/v.v` builds and portable `-cross` C keep pruning it.
+	// produce) keeps FastC and WebAssembly, so both work in default builds. Explicit skip
+	// defines still remove them. Standalone compilers and portable `-cross` C prune them.
 	mut include_fastc := all_backends || v3_compiles_fastc_by_default(input_file, output_cross_c)
 	mut include_arm64 := all_backends
-	mut include_wasm := all_backends
+	mut include_wasm := all_backends || (cmd_v_build && !output_cross_c)
 	mut include_eval := all_backends
 	for cb in compile_backends {
 		for name in cb.split(',') {
@@ -10321,6 +10322,9 @@ pub fn run(args []string) {
 	}
 	if !include_wasm {
 		user_defines << 'skip_wasm'
+	}
+	if !include_arm64 && !include_wasm {
+		user_defines << 'skip_ssa'
 	}
 	if !include_eval {
 		user_defines << 'skip_eval'
@@ -13045,18 +13049,53 @@ pub fn run(args []string) {
 			// Generate only after monomorphization has pruned deferred generic comptime
 			// branches. output_file is the exact path requested via -o (or the
 			// <name>.wasm default).
-			mut g := wasmgen.Gen.new(a, pre_tc, used_fns)
-			g.gen()
+			mut metadata := wasmgen.Gen.new(a, pre_tc, used_fns)
+			config := metadata.ssa_configuration()
+			mut m := ssa.build_with_options(a, config.used_fns, pre_tc, ssa.BuildOptions{
+				target:         ssa.TargetData{ ptr_size: 4 }
+				track_uses:     is_prod
+				exact_used_fns: true
+				source_modules: config.source_modules
+				source_imports: config.source_imports
+			})
+			b.step('ssa build')
+			if is_prod {
+				optimize.optimize(mut m)
+				b.step('optimize')
+			}
+			m.release_codegen_analysis_metadata()
+			mut g := wasmgen.SSAGen.new(m)
+			mut main_fn := config.main_fn
+			mut exports := config.exports.clone()
+			if main_fn.len == 0 {
+				// SSA synthesizes main for scripts with top-level statements.
+				for f in m.funcs {
+					if f.name == 'main' && f.blocks.len > 0 && !f.is_c_extern {
+						main_fn = f.name
+						exports[main_fn] = 'main'
+						break
+					}
+				}
+			}
+			g.configure(exports, config.init_fns, main_fn)
+			g.gen() or {
+				eprintln(err.msg())
+				exit(1)
+			}
 			g.write(output_file) or {
 				eprintln('error writing ${output_file}')
 				exit(1)
 			}
-			for w in g.warnings_list() {
-				eprintln('wasm: ${w}')
+			for warning in g.warnings_list() {
+				eprintln('wasm: ${warning}')
 			}
 			b.step('wasm gen')
 			b.print_report()
 			return
+		} $else {
+			eprintln('WebAssembly support is not compiled into this executable')
+			eprintln('Rebuild with `v -compile-backend wasm self` or `-all-backends`.')
+			exit(1)
 		}
 	}
 	mut newly_cached_module_count := 0
@@ -18097,18 +18136,20 @@ fn real_path_is_in_dir(real_path string, real_dir string) bool {
 
 // skipped_backend_module_groups lists the importable backend module groups that the current
 // configuration excludes (driven by the same `skip_*` defines that gate the dispatch in
-// main()). The arm64 backend is the only consumer of the SSA pipeline, so it shares a group
-// with v.ssa and v.ssa.optimize.
+// main()). SSA is shared by ARM64 and WebAssembly and is excluded only when both are disabled.
 fn skipped_backend_module_groups(prefs &pref.Preferences) [][]string {
 	mut skipped := [][]string{}
 	if 'skip_fastc' in prefs.user_defines {
 		skipped << ['v.gen.fastc', 'v.fastcdriver']
 	}
 	if 'skip_arm64' in prefs.user_defines {
-		skipped << ['v.gen.arm64', 'v.ssa', 'v.ssa.optimize']
+		skipped << ['v.gen.arm64']
 	}
 	if 'skip_wasm' in prefs.user_defines {
 		skipped << ['v.gen.wasm']
+	}
+	if 'skip_arm64' in prefs.user_defines && 'skip_wasm' in prefs.user_defines {
+		skipped << ['v.ssa', 'v.ssa.optimize']
 	}
 	if 'skip_eval' in prefs.user_defines {
 		skipped << ['v.eval']
@@ -20598,10 +20639,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
 	// references their symbols. Pre-seeding parsed_modules makes the loop below treat
 	// them as already handled, so neither v.v's top-level imports nor any transitive
-	// import pulls them in. Skipping the arm64 group (v.gen.arm64 + the v.ssa SSA
-	// pipeline) and the wasm/eval backends avoids ~30k lines of work when self-hosting.
+	// import pulls them in. The shared SSA pipeline is retained when either consumer is
+	// explicitly imported, even if neither backend is enabled in the compiler being built.
 	for skipped_group in skipped_backend_module_groups(prefs) {
 		mut group_requested := false
+		if 'v.ssa' in skipped_group
+			&& ('v.gen.arm64' in explicit_initial_imports || 'v.gen.wasm' in explicit_initial_imports) {
+			group_requested = true
+		}
 		for skipped in skipped_group {
 			if skipped in explicit_initial_imports {
 				group_requested = true
