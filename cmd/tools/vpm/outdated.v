@@ -92,7 +92,7 @@ fn outdated_row(name string, path string, constraints map[string]string) Outdate
 		return OutdatedRow{ name: name, current: current, upgradable: 'n/a', resolvable: 'n/a', latest: 'n/a' }
 	}
 	latest := select_version_tag(tags, '*') or { 'none' }
-	range_str := constraints[name] or { '' }
+	range_str := project_request_for_module(constraints, name, path)
 	constraint := outdated_constraint(range_str) or {
 		return OutdatedRow{ name: name, current: current, upgradable: 'n/a', resolvable: 'n/a', latest: latest }
 	}
@@ -108,6 +108,30 @@ fn outdated_row(name string, path string, constraints map[string]string) Outdate
 		resolvable: resolvable
 		latest:     latest
 	}
+}
+
+fn project_request_for_module(constraints map[string]string, name string, path string) string {
+	if request := constraints[name] {
+		return request
+	}
+	origin := os.exec(['git', '-C', path, 'remote', 'get-url', 'origin'])
+	if origin.exit_code == 0 {
+		source := origin.output.trim_space()
+		if request := constraints[source] {
+			return request
+		}
+		if is_local_repository(source) {
+			source_path := source.trim_string_left('file://')
+			for dependency, request in constraints {
+				dependency_path := dependency.trim_string_left('file://')
+				if os.exists(dependency_path)
+					&& os.real_path(dependency_path) == os.real_path(source_path) {
+					return request
+				}
+			}
+		}
+	}
+	return ''
 }
 
 // outdated_constraint preserves exact semantic-version refs while leaving other Git
@@ -127,8 +151,12 @@ fn project_constraints() map[string]string {
 	if os.exists('./v.mod') {
 		manifest := vmod.from_file('./v.mod') or { return constraints }
 		for dep in manifest.dependencies {
-			name := dep.all_before('@').trim_space()
-			range_str := if dep.contains('@') { dep.all_after('@').trim_space() } else { '' }
+			name := if dep.starts_with('git@') && dep.count('@') == 1 {
+				dep.trim_space()
+			} else {
+				dep.all_before_last('@').trim_space()
+			}
+			range_str := dependency_request_version(dep).trim_space()
 			if name != '' {
 				constraints[name] = range_str
 			}

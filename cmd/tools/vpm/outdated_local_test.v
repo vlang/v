@@ -28,10 +28,14 @@ fn test_project_constraints_reads_the_project_vmod() {
 	constraints := project_constraints()
 	assert constraints['lib'] == '^1.0.0'
 	assert constraints['other'] == ''
+	os.write_file(os.join_path(project, 'v.mod'), "Module {\n\tname: 'app'\n\tdependencies: ['git@host:repo.git', 'git@host:versioned.git@^2.0.0']\n}\n")!
+	ssh := project_constraints()
+	assert ssh['git@host:repo.git'] == ''
+	assert ssh['git@host:versioned.git'] == '^2.0.0'
 }
 
 // test_project_constraints_without_a_vmod: a directory with no v.mod places no
-// constraints, so every column falls back to Latest.
+// constraints, so available release tags are unconstrained.
 fn test_project_constraints_without_a_vmod() {
 	project := os.join_path(test_path, 'author_no_manifest')
 	os.mkdir_all(project)!
@@ -110,6 +114,16 @@ fn test_rows_use_new_upstream_tags_and_exclude_unrequested_prereleases() {
 	assert row.upgradable == 'v2.0.0'
 	assert row.resolvable == 'v2.0.0'
 	assert row.latest == 'v10.0.0'
+	direct := outdated_row('lib', checkout, {
+		origin: '^2.0.0'
+	})
+	assert direct.upgradable == 'v2.0.0'
+	assert direct.resolvable == 'v2.0.0'
+	file_url := outdated_row('lib', checkout, {
+		'file://${origin}': '^2.0.0'
+	})
+	assert file_url.upgradable == 'v2.0.0'
+	assert file_url.resolvable == 'v2.0.0'
 	bare := outdated_row('lib', checkout, map[string]string{})
 	assert bare.upgradable == 'v10.0.0'
 	assert bare.resolvable == 'v10.0.0'
@@ -166,6 +180,7 @@ fn test_existing_commit_based_upgrade_detection_handles_branch_and_detached_chec
 	local_outdated_git(checkout, 'checkout', '-q', '--detach', 'v1.0.0')
 	assert is_outdated(checkout)
 	pinned := os.join_path(test_path, 'pinned_checkout')
-	cmd_ok_args(@LOCATION, ['git', 'clone', '-q', '--branch', 'v1.0.0', origin, pinned])
+	cmd_ok_args(@LOCATION, ['git', 'clone', '-q', '--single-branch', '--branch', 'v1.0.0', origin,
+		pinned])
 	assert !is_outdated(pinned)
 }
