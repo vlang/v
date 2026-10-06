@@ -10979,6 +10979,9 @@ The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the 
 does not support this form of inline assembly on 64-bit targets, and individual instructions or
 constraints can still depend on the selected C compiler and target architecture.
 
+When V builds a binary with `-cc msvc`, it stops with an error at the first inline assembly block
+that the program uses. Guard such a block with `$if !msvc`.
+
 ### Whole-function assembly
 
 Use an external assembly source when a kernel needs its own prologue, epilogue, stack frame, or
