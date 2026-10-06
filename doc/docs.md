@@ -5499,6 +5499,8 @@ A later declaration using a module type with the same name resolves to that modu
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
+Nested generic calls preserve reference return types when passed directly to another generic
+call, including references stored as map values.
 
 Currently generic function definitions must declare their type parameters, but in
 future versions, V will infer generic type parameters from single-letter type names in
