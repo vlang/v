@@ -41,12 +41,13 @@ fn test_satisfies_or_error_names_the_offending_input() {
 	assert msg.contains('>= '), msg
 }
 
-fn test_the_empty_range_is_valid_and_matches_everything() {
-	// The grammar reads an empty range as `*`, so it is not an error and it is not a
-	// miss either. This is the case a caller most needs to tell apart from a broken
-	// constraint, because a template renders it and a typo can produce it.
+fn test_the_empty_range_is_valid_and_matches_releases() {
+	// Empty ranges are valid and follow the usual release/prerelease matching rules.
 	v := semver.from('0.1.50') or { panic(err) }
 	assert is_valid_range('')
 	assert v.satisfies('') == true
 	assert v.satisfies_or_error('') or { panic(err) } == true
+	prerelease := semver.from('1.0.0-alpha') or { panic(err) }
+	assert !prerelease.satisfies('')
+	assert !prerelease.satisfies_or_error('') or { panic(err) }
 }

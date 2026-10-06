@@ -91,3 +91,25 @@ semantic version constraints, candidate dependencies and cycles with backtrackin
 It is a foundation for joint resolution; installation still uses the range-selection
 behavior described above. The installer does not yet discover candidates for every
 version or run a joint dependency solver.
+
+## Installed version reporting
+
+`v outdated` lists installed modules in a table with four version columns:
+
+| Column | Meaning |
+| --- | --- |
+| Current | The checkout's exact Git tag, or its short commit ID. |
+| Upgradable | The highest upstream release tag matching the root project's dependency request. |
+| Resolvable | Currently the same root project constraint, checked by the multi-constraint helper. |
+| Latest | The highest upstream release tag, without the project's constraint. |
+
+`Resolvable` does not yet include transitive constraints, overrides or candidate discovery
+for the whole dependency graph. Exact semantic-version refs are compared as exact versions;
+other Git refs cannot be compared with semantic-version tags. Prereleases require an explicit
+matching prerelease comparator, including when a dependency has no version constraint.
+
+`none` means no tag matches, `invalid` means the project's semantic-version range is malformed,
+and `n/a` means a value could not be obtained or a non-semantic Git ref cannot be compared.
+These states do not fall back to `Latest`. Repositories without release tags still have rows.
+Tag availability is read from the checkout's origin without moving the installed checkout.
+The existing commit-based repository checks used by `v upgrade` are unchanged.

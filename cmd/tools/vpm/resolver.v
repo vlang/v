@@ -119,6 +119,14 @@ fn compare_candidate_versions(a &VersionedDeps, b &VersionedDeps) int {
 // constraint, or an error naming the constraints that could not be met. This is the
 // joint step: `select_version_tag` answers one range, this answers all of them.
 fn select_version_tag_with_constraints(tags []string, constraints []Constraint) !string {
+	if constraints.len == 0 {
+		return select_version_tag(tags, '*')!
+	}
+	for c in constraints {
+		if !semver.is_valid_range(c.range) {
+			return error('invalid version range `${c.range}` required by `${c.required_by}`')
+		}
+	}
 	mut sorted := tags.clone()
 	sorted.sort()
 	mut selected := ''

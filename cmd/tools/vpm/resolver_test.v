@@ -14,6 +14,28 @@ fn con(required_by string, rng string) Constraint {
 	}
 }
 
+fn test_joint_tag_selection_requires_every_constraint_and_excludes_unrequested_prereleases() {
+	tags := ['v1.0.0', 'v2.0.0', 'v10.0.0', 'v11.0.0-alpha', 'notes']
+	assert select_version_tag_with_constraints(tags, []Constraint{})! == 'v10.0.0'
+	assert select_version_tag_with_constraints(tags, [con('root', '')])! == 'v10.0.0'
+	assert select_version_tag_with_constraints(tags, [con('root', '^2.0.0'),
+		con('dependency', '<3.0.0')])! == 'v2.0.0'
+	assert select_version_tag_with_constraints(tags, [con('root', '>=11.0.0-alpha <11.0.0')])! == 'v11.0.0-alpha'
+	assert tags == ['v1.0.0', 'v2.0.0', 'v10.0.0', 'v11.0.0-alpha', 'notes']
+	mut conflict := ''
+	select_version_tag_with_constraints(tags, [con('root', '^1.0.0'), con('dependency',
+		'^2.0.0')]) or { conflict = err.msg() }
+	assert conflict.contains('root requires ^1.0.0'), conflict
+	assert conflict.contains('dependency requires ^2.0.0'), conflict
+	for invalid_tags in [[]string{}, tags] {
+		mut invalid := ''
+		select_version_tag_with_constraints(invalid_tags, [con('root', '^invalid')]) or {
+			invalid = err.msg()
+		}
+		assert invalid.contains('invalid version range'), invalid
+	}
+}
+
 fn test_topo_sort_puts_dependencies_first() {
 	candidates := {
 		'a': [vd('1.0.0', 'b@^1.0.0')]

@@ -66,7 +66,8 @@ identifiers and wildcard letters in build metadata are literal characters.
 `Version.satisfies(range)` returns `false` when a range cannot be parsed.
 Use `Version.satisfies_or_error(range)` to distinguish an invalid range from a valid
 range that does not match. `semver.is_valid_range(range)` checks the range syntax
-without choosing a version. An empty range is valid and matches every version.
+without choosing a version. An empty range is valid and matches every release version.
+It follows the normal prerelease exclusion rule described above.
 
 ```v
 import semver

@@ -2,7 +2,14 @@ module main
 
 import os
 import semver
+import sync.pool
 import v.vmod
+
+pub struct OutdatedResult {
+	name string
+mut:
+	outdated bool
+}
 
 // OutdatedRow is one module and the four versions that answer four different
 // questions about it.
@@ -15,17 +22,6 @@ pub:
 	latest     string
 }
 
-// vpm_outdated prints the four-column table. Each column answers a different
-// question, and the difference between them is the point:
-//
-//   Current    what is installed
-//   Upgradable what the project's own constraint allows
-//   Resolvable what the resolver would pick given every constraint
-//   Latest     what exists upstream
-//
-// Upgradable alone cannot distinguish "my constraint is too tight" from "someone
-// else's is", which is the question a user actually has when something did not
-// update.
 // pad_right pads `s` with spaces to width `n`, so the columns line up.
 fn pad_right(s string, n int) string {
 	mut result := s
@@ -35,6 +31,7 @@ fn pad_right(s string, n int) string {
 	return result
 }
 
+// vpm_outdated reports installed versions and project-constrained tag choices.
 fn vpm_outdated() {
 	rows := get_outdated_rows()
 	if rows.len == 0 {
@@ -49,48 +46,78 @@ fn vpm_outdated() {
 	}
 }
 
-// get_outdated returns the names of installed modules that are not at the latest
-// version. It is the shape `vpm.v` expects, and it is a thin wrapper over the
-// four-column table.
+// get_outdated retains commit-based repository checks used by upgrade.
 fn get_outdated() []string {
-	mut names := []string{}
-	for row in get_outdated_rows() {
-		if row.current != row.latest {
-			names << row.name
-		}
-	}
-	return names
-}
-
-// get_outdated_rows builds a row for every installed module. The constraint on each
-// module comes from the project's own v.mod, and the resolvable column from the
-// resolver over the whole graph.
-fn get_outdated_rows() []OutdatedRow {
 	installed := get_installed_modules()
 	if installed.len == 0 {
-		return []OutdatedRow{}
+		println('No modules installed.')
+		exit(0)
 	}
+	mut pp := pool.new_pool_processor(
+		callback: fn (mut pp pool.PoolProcessor, idx int, wid int) &OutdatedResult {
+			mut result := &OutdatedResult{
+				name: pp.get_item[string](idx)
+			}
+			path := get_path_of_existing_module(result.name) or { return result }
+			result.outdated = is_outdated(path)
+			return result
+		}
+	)
+	pp.work_on_items(installed)
+	mut outdated := []string{}
+	for res in pp.get_results[OutdatedResult]() {
+		if res.outdated {
+			outdated << res.name
+		}
+	}
+	return outdated
+}
+
+// get_outdated_rows builds a row for every installed module. Resolvable currently
+// uses only the root project constraint; transitive candidate discovery is not wired
+// into reporting yet.
+fn get_outdated_rows() []OutdatedRow {
 	constraints := project_constraints()
 	mut rows := []OutdatedRow{}
-	for name in installed {
+	for name in get_installed_modules() {
 		path := get_path_of_existing_module(name) or { continue }
-		tags := module_tags(path) or { continue }
-		if tags.len == 0 {
-			continue
-		}
-		current := installed_version(path) or { continue }
-		latest := select_version_tag(tags, '*') or { continue }
-		upgradable := select_version_tag(tags, constraints[name] or { '' }) or { latest }
-		resolvable := select_version_tag_with_constraints(tags, constraints_for(constraints, name)) or { latest }
-		rows << OutdatedRow{
-			name:       name
-			current:    current
-			upgradable: upgradable
-			resolvable: resolvable
-			latest:     latest
-		}
+		rows << outdated_row(name, path, constraints)
 	}
 	return rows
+}
+
+fn outdated_row(name string, path string, constraints map[string]string) OutdatedRow {
+	current := installed_version(path) or { 'n/a' }
+	tags := module_tags(path) or {
+		return OutdatedRow{ name: name, current: current, upgradable: 'n/a', resolvable: 'n/a', latest: 'n/a' }
+	}
+	latest := select_version_tag(tags, '*') or { 'none' }
+	range_str := constraints[name] or { '' }
+	constraint := outdated_constraint(range_str) or {
+		return OutdatedRow{ name: name, current: current, upgradable: 'n/a', resolvable: 'n/a', latest: latest }
+	}
+	no_match := if semver.is_valid_range(constraint) { 'none' } else { 'invalid' }
+	upgradable := select_version_tag(tags, constraint) or { no_match }
+	resolvable := select_version_tag_with_constraints(tags, constraints_for({
+		name: constraint
+	}, name)) or { no_match }
+	return OutdatedRow{
+		name:       name
+		current:    current
+		upgradable: upgradable
+		resolvable: resolvable
+		latest:     latest
+	}
+}
+
+// outdated_constraint preserves exact semantic-version refs while leaving other Git
+// refs out of semantic-version comparisons.
+fn outdated_constraint(request string) !string {
+	if request == '' || is_version_range(request) {
+		return request
+	}
+	version := version_tag(request) or { return error('not a semantic-version ref') }
+	return version.str()
 }
 
 // project_constraints reads the project's v.mod and returns, for each dependency
@@ -101,7 +128,7 @@ fn project_constraints() map[string]string {
 		manifest := vmod.from_file('./v.mod') or { return constraints }
 		for dep in manifest.dependencies {
 			name := dep.all_before('@').trim_space()
-			range_str := dep.all_after('@').trim_space()
+			range_str := if dep.contains('@') { dep.all_after('@').trim_space() } else { '' }
 			if name != '' {
 				constraints[name] = range_str
 			}
@@ -110,9 +137,7 @@ fn project_constraints() map[string]string {
 	return constraints
 }
 
-// constraints_for returns every constraint placed on `name`, which for now is the
-// project's own. When the resolver walks the graph, this grows to include the
-// constraints of every dependent.
+// constraints_for currently returns only the root project constraint on `name`.
 fn constraints_for(constraints map[string]string, name string) []Constraint {
 	if rng := constraints[name] {
 		return [Constraint{
@@ -123,9 +148,11 @@ fn constraints_for(constraints map[string]string, name string) []Constraint {
 	return []Constraint{}
 }
 
-// module_tags lists the semantic-version tags of a module's repository.
+// module_tags lists current upstream tags, including ones absent from the checkout.
 fn module_tags(path string) ![]string {
-	res := os.exec(['git', 'ls-remote', '--tags', '--refs', '--', path])
+	origin := os.exec(['git', '-C', path, 'remote', 'get-url', 'origin'])
+	source := if origin.exit_code == 0 { origin.output.trim_space() } else { path }
+	res := os.exec(['git', 'ls-remote', '--tags', '--refs', '--', source])
 	if res.exit_code != 0 {
 		return error('failed to list tags: ${res.output.trim_space()}')
 	}
@@ -151,4 +178,35 @@ fn installed_version(path string) ?string {
 		return none
 	}
 	return res2.output.trim_space()
+}
+
+fn is_outdated(path string) bool {
+	vcs := vcs_used_in_dir(path) or { return false }
+	args := vcs_info[vcs].args
+	// A checkout that a locked install left detached has no upstream branch to
+	// compare with; compare it with the default branch of the origin instead,
+	// which is where `v update` moves such a checkout. A clone made at a tag has
+	// no such branch, and stays pinned, the same as before.
+	steps := if vcs == .git && head_is_detached(path) {
+		['fetch', 'rev-parse HEAD', 'rev-parse origin/HEAD']
+	} else {
+		args.outdated
+	}
+	mut outputs := []string{}
+	for step in steps {
+		cmd := [vcs.str(), args.path, os.quoted_path(path), step].join(' ')
+		vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
+		res := os.exec([vcs.str(), args.path, path, ...(os.split_args(step) or { panic(err) })])
+		vpm_log(@FILE_LINE, @FN, 'output: ${res.output}')
+		if res.exit_code != 0 {
+			return false
+		}
+		if vcs == .hg {
+			// HG uses only one outdated step. If it has not failed, the module is outdated.
+			return true
+		}
+		outputs << res.output
+	}
+	// Compare the current and latest origin commit sha.
+	return outputs[1] != outputs[2]
 }
