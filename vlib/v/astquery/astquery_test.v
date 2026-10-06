@@ -114,19 +114,65 @@ fn test_a_multi_line_doc_comment_is_joined() {
 }
 
 fn test_inline_public_fields_keep_their_names_and_types() {
-	source := 'module m\n\nstruct S {\n\tpub count int\n\tplain int\n}\n'
-	decls := astquery.declarations(astquery.parse(write_sample('pubfield.v', source)!))
+	source := 'module m\n\nstruct S {\n\tpub count int\n\tplain int\n}\n\nfn total(s S) int {\n\treturn s.count + s.plain\n}\n'
+	a := astquery.parse(write_sample('pubfield.v', source)!)
+	decls := astquery.declarations(a)
 	fields := decls.filter(it.kind == .field)
 	assert fields.map(it.name) == ['count', 'plain']
 	assert fields.map(it.type_name) == ['int', 'int']
+	assert fields.map(it.line) == [4, 5]
+	assert fields.map(it.column) == [6, 2]
+	assert astquery.references(a, 'pub').len == 0
+	count_refs := astquery.references(a, 'count')
+	assert count_refs.len == 2
+	assert count_refs[0].declaration
+	assert count_refs[0].line == 4
+	assert count_refs[0].column == 6
+	assert count_refs[0].end_column == 11
+	assert !count_refs[1].declaration
+	assert count_refs[1].line == 9
+	assert count_refs[1].column == 11
+	assert count_refs[1].end_column == 16
+}
+
+fn test_field_sections_report_fields_without_marker_declarations() {
+	source := 'module m\n\nstruct S {\n\tplain int\n\tpub:\n\tcount int\n\tmut:\n\tchanged string\n\tpub mut:\n\tshared bool\n}\n'
+	a := astquery.parse(write_sample('field_sections.v', source)!)
+	fields := astquery.declarations(a).filter(it.kind == .field)
+	assert fields.map(it.name) == ['plain', 'count', 'changed', 'shared']
+	assert fields.map(it.type_name) == ['int', 'int', 'string', 'bool']
+	assert fields.map(it.line) == [4, 6, 8, 10]
+	assert fields.all(it.column == 2)
+	assert astquery.references(a, 'pub').len == 0
+	assert astquery.references(a, 'mut').len == 0
+	for field in fields {
+		refs := astquery.references(a, field.name)
+		assert refs.len == 1
+		assert refs[0].declaration
+		assert refs[0].node_kind == 'field_decl'
+		assert refs[0].line == field.line
+		assert refs[0].column == 2
+		assert refs[0].end_column == 2 + field.name.len
+	}
 }
 
 fn test_field_names_matching_visibility_words_are_reported() {
 	source := 'module m\n\nstruct S {\n\tpub []int\n\tafter_pub string\n\tpriv map[string]int\n\tafter_priv bool\n}\n'
-	decls := astquery.declarations(astquery.parse(write_sample('visibility_names.v', source)!))
+	a := astquery.parse(write_sample('visibility_names.v', source)!)
+	decls := astquery.declarations(a)
 	fields := decls.filter(it.kind == .field)
 	assert fields.map(it.name) == ['pub', 'after_pub', 'priv', 'after_priv']
 	assert fields.map(it.type_name) == ['[]int', 'string', 'map[string]int', 'bool']
+	assert fields.map(it.line) == [4, 5, 6, 7]
+	assert fields.all(it.column == 2)
+	for field in fields {
+		refs := astquery.references(a, field.name)
+		assert refs.len == 1
+		assert refs[0].declaration
+		assert refs[0].line == field.line
+		assert refs[0].column == 2
+		assert refs[0].end_column == 2 + field.name.len
+	}
 }
 
 fn test_references_finds_the_declaration_and_every_use() {
