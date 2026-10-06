@@ -8295,9 +8295,30 @@ condition can compare the loop variable's metadata with literals (`==`, `!=`, `<
 Pure string method chains on literal or substituted reflection strings also support
 `all_before`, `all_after`, `all_before_last`, `all_after_last`, `trim`, `trim_left`,
 `trim_right`, `trim_space`, `trim_string_left`, `trim_string_right`, `replace`,
-`to_lower`, `to_upper`, and `count`, when every argument is a string literal.
-These scalar operations also fold in ordinary expressions with literal operands, including
-constant initializers. A condition that cannot be decided at compile time is reported as an error:
+`to_lower`, `to_upper`, and `count`, when every argument is a compile-time-known string.
+These scalar operations also fold in ordinary expressions and constant initializers. Operands
+may be literals, reflection strings, constants, or immutable locals initialized from them.
+Static string slices (`text[start..end]`) and `.len` also fold. Mutable locals stay runtime;
+using one in a compile-time condition is an error.
+
+`$for` can iterate `split`, `split_any`, or `fields` of a compile-time-known string. Each
+iteration binds its variable to a string literal in its own scope. The compiler unrolls the
+body without allocating an array or parsing the string at runtime:
+
+```v
+fn main() {
+	path := 'GET /users/:id/posts'.all_after(' ').trim_left('/')
+	$for segment in path.split('/') {
+		$if !segment.starts_with(':') {
+			println(segment)
+		}
+	}
+}
+```
+
+A source containing runtime operands or unsupported operations is an error. String arrays
+from these calls are folded only as `$for` sources. A condition that cannot be decided at
+compile time is reported as an error:
 
 ```v
 struct User {

@@ -11366,6 +11366,7 @@ pub fn run(args []string) {
 			current_parallel_transform = false
 		}
 	}
+	p.resolve_comptime_string_declarations()
 	p.release_source_storage()
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)

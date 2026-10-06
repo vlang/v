@@ -4042,7 +4042,13 @@ fn (mut g Gen) comptime_for(id flat.NodeId) {
 	parts := n.value.split('|')
 	loopvar := if parts.len > 0 { parts[0] } else { 'x' }
 	kind := if parts.len > 1 { parts[1] } else { 'fields' }
-	g.write('\$for ${loopvar} in ${g.type_text(n.typ)}.${kind} {')
+	g.write('\$for ${loopvar} in ')
+	if kind == 'strings' && n.children_count == 2 {
+		g.expr(g.a.child(n, 1))
+	} else {
+		g.write('${g.type_text(n.typ)}.${kind}')
+	}
+	g.write(' {')
 	g.writeln('')
 	if n.children_count > 0 {
 		blk := g.a.child_node(n, 0)

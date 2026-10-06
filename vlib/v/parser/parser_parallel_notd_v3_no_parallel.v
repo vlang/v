@@ -494,7 +494,14 @@ fn (mut p Parser) precollect_parallel_comptime_if(mut s scanner.Scanner, src str
 	for {
 		mut is_enabled := true
 		if has_condition {
-			is_enabled = p.parallel_comptime_branch_enabled(mut s, src, path, current_module, values)
+			if enabled := p.parallel_comptime_branch_enabled(mut s, src, path, current_module, values) {
+				is_enabled = enabled
+			} else {
+				// An unresolved branch also makes its later else arms unresolved.
+				// The full parse/finalizer will publish only the selected constants.
+				is_enabled = false
+				any_taken = true
+			}
 		}
 		take_branch := !any_taken && is_enabled
 		if take_branch {
@@ -536,7 +543,7 @@ fn (mut p Parser) precollect_parallel_comptime_if(mut s scanner.Scanner, src str
 	return current_module
 }
 
-fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src string, path string, module_name string, values map[string]string) bool {
+fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src string, path string, module_name string, values map[string]string) ?bool {
 	mut cond := ''
 	mut cond_start := s.offset
 	mut prev := ''
@@ -563,6 +570,9 @@ fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src st
 		prev = piece
 	}
 	resolved := p.resolve_parallel_comptime_prepass_text(cond, cond_start, src, path, module_name, values, true)
+	// The scanner prepass has no import bindings or string-expression AST.
+	// Leave these declarations for the same proof used by the full parser.
+	if comptime_cond_has_string_operation(resolved) { return none }
 	return p.eval_comptime_cond(resolved)
 }
 

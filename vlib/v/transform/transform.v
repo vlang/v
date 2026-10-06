@@ -220,6 +220,7 @@ mut:
 	skip_generics                       bool
 	building_v                          bool
 	var_types                           []VarTypeBinding
+	comptime_scalar_locals              map[string]ComptimeStringScalar
 	var_type_indices                    map[string]int
 	var_type_cache                      &VarTypeIndexCache = unsafe { nil }
 	refined_node_types                  map[int]string
@@ -979,6 +980,7 @@ mut:
 }
 
 struct FunctionLocalState {
+	comptime_scalar_locals        map[string]ComptimeStringScalar
 	var_types                     []VarTypeBinding
 	var_type_indices              map[string]int
 	fn_value_locals               map[string]string
@@ -2738,6 +2740,7 @@ fn (mut t Transformer) reset_var_types() {
 // function body builds independent bindings and ownership metadata.
 fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 	state := FunctionLocalState{
+		comptime_scalar_locals:        t.comptime_scalar_locals
 		var_types:                     t.var_types
 		var_type_indices:              t.var_type_indices
 		fn_value_locals:               t.fn_value_locals
@@ -2751,6 +2754,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 		local_closure_field_cleanups:  t.local_closure_field_cleanups
 	}
 	t.var_types = []VarTypeBinding{}
+	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
 	t.var_type_indices = map[string]int{}
 	t.fn_value_locals = map[string]string{}
 	t.mut_param_values = map[string]bool{}
@@ -2766,6 +2770,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 
 fn (mut t Transformer) restore_function_local_state(state FunctionLocalState) {
 	t.var_types = state.var_types
+	t.comptime_scalar_locals = state.comptime_scalar_locals
 	t.var_type_indices = state.var_type_indices
 	t.fn_value_locals = state.fn_value_locals
 	t.mut_param_values = state.mut_param_values
@@ -4304,6 +4309,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		w.node_module_map_nodes = -1
 	}
 	w.var_types = []VarTypeBinding{}
+	w.comptime_scalar_locals = map[string]ComptimeStringScalar{}
 	w.var_type_indices = map[string]int{}
 	w.refined_node_types = t.refined_node_types.clone()
 	w.mut_param_values = map[string]bool{}
@@ -4438,6 +4444,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.node_module_map_cache = []u16{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
+	w.comptime_scalar_locals = map[string]ComptimeStringScalar{}
 	w.var_type_indices = map[string]int{}
 	w.mut_param_values = map[string]bool{}
 	w.fixed_array_param_values = map[string]bool{}
@@ -6023,7 +6030,7 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 				new_val := t.transform_const_or_expr(val_id, val, const_typ)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .array_init,
-				.map_init, .fn_literal, .lambda_expr, .sizeof_expr] {
+				.map_init, .fn_literal, .lambda_expr, .sizeof_expr, .selector, .index, .paren] {
 				new_val := t.transform_const_expr_no_pending(val_id)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind == .infix && val.children_count >= 2 {
@@ -10704,6 +10711,9 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 }
 
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
+	outer_comptime_locals := t.comptime_scalar_locals
+	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
+	defer { t.comptime_scalar_locals = outer_comptime_locals }
 	if !isnil(t.selector_type_cache) {
 		t.selector_type_cache.generation++
 	}
@@ -11084,6 +11094,8 @@ fn (t &Transformer) fn_return_type_for_name(name string) ?string {
 @[direct_array_access]
 pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 	mut result := []flat.NodeId{cap: ids.len}
+	saved_comptime_locals := t.comptime_scalar_locals.clone()
+	defer { t.comptime_scalar_locals = saved_comptime_locals }
 	had_base_smartcasts := t.smartcast_stack.len > 0
 	base_smartcasts := if had_base_smartcasts {
 		t.smartcast_stack.clone()
@@ -11362,7 +11374,7 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 		return t.transform_assign_stmt(id, node)
 	}
 	if kind_id == 41 {
-		return t.transform_decl_assign_stmt(id, node)
+		return t.transform_comptime_scalar_decl(id, node)
 	}
 	if kind_id == 39 {
 		return t.transform_expr_stmt(id, node)
@@ -11407,7 +11419,7 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 			return t.transform_assign_stmt(id, node)
 		}
 		.decl_assign {
-			return t.transform_decl_assign_stmt(id, node)
+			return t.transform_comptime_scalar_decl(id, node)
 		}
 		.expr_stmt {
 			return t.transform_expr_stmt(id, node)
@@ -11615,6 +11627,14 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	if t.shared_map_read_locks.len > 0 && t.autolock_depth == 0 {
 		if locked := t.try_autolock_shared_map_read(id) {
 			return locked
+		}
+	}
+	if (node.kind == .selector && node.value == 'len')
+		|| (node.kind == .index && node.value == 'range')
+		|| (node.kind == .infix && node.op in [.plus, .eq, .ne, .logical_and, .logical_or])
+		|| node.kind == .in_expr || (node.kind == .prefix && node.op == .not) {
+		if scalar := t.comptime_scalar_expr(id, 0) {
+			return t.make_comptime_scalar_literal(scalar)
 		}
 	}
 	kind_id := int(node.kind)
@@ -19197,7 +19217,8 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 	defer {
 		t.restore_heaped_local_state(heaped_state)
 	}
-	take_then := t.comptime_type_condition_value(node.value) or {
+	cond := t.subst_comptime_scalar_locals(node.value)
+	take_then := t.comptime_scalar_condition_value(cond) or {
 		// Portable output (`-os cross`) keeps both branches so that the C
 		// preprocessor can pick one. They are ordinary statements and still need
 		// lowering. Conditions deferred for any other reason (a `$for` loop var, a
@@ -19205,6 +19226,7 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 		if comptime_cond_has_target_flag(node.value) {
 			return [t.lower_retained_comptime_if(node)]
 		}
+		t.reject_unevaluated_comptime_if(_id, node, cond)
 		return [_id]
 	}
 	branch_index := if take_then { 0 } else { 1 }
@@ -19229,10 +19251,12 @@ fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node
 	defer {
 		t.restore_heaped_local_state(heaped_state)
 	}
-	take_then := t.comptime_type_condition_value(node.value) or {
+	cond := t.subst_comptime_scalar_locals(node.value)
+	take_then := t.comptime_scalar_condition_value(cond) or {
 		if comptime_cond_has_target_flag(node.value) {
 			return t.lower_retained_comptime_if_expr(node)
 		}
+		t.reject_unevaluated_comptime_if(id, node, cond)
 		return id
 	}
 	branch_index := if take_then { 0 } else { 1 }
