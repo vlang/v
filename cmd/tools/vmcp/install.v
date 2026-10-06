@@ -280,8 +280,8 @@ fn write_entry(h Harness, path string, project bool) ! {
 		// The file is left exactly as it was. An entry on its own is not something
 		// a client can read, so the whole member is what a reader pastes, and
 		// printing it here saves them assembling that by hand.
-		return error('${path} has comments or trailing commas, so it was not rewritten.\n' +
-			'  Add this member by hand:\n' +
+		return error('${path} is not plain JSON (for example, comments or trailing commas); it was not rewritten.\n' +
+			'  Add this member by hand. If ${json_string(h.key)} already exists, merge ${json_string(server_id)} into it instead of adding a second key:\n' +
 			'  ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }')
 	}
 	mut point := Insertion{}
