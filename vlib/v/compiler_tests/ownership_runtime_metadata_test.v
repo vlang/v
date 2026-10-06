@@ -13,8 +13,9 @@ fn test_ownership_checker_runtime_metadata_survives_arena_release() {
 	bootstrap := os.join_path(root, 'bootstrap${suffix}')
 	// Compile the optional ownership helpers with normal value semantics. The
 	// bare frontend permits this bootstrap for either compiler entry point.
-	build := os.exec([@VEXE, '-gc', 'none', '-path', '${ownership_runtime_vlib_dir}|@vlib|@vmodules',
-		'-o', bootstrap, os.join_path(ownership_runtime_compiler_dir, 'v.v')])
+	build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none',
+		'-path', '${ownership_runtime_vlib_dir}|@vlib|@vmodules', '-o', bootstrap,
+		os.join_path(ownership_runtime_compiler_dir, 'v.v')])
 	assert build.exit_code == 0, build.output
 
 	overlay_vlib := os.join_path(root, 'vlib')
@@ -50,8 +51,9 @@ import v.types
 fn main() { types.run_runtime_tests() }
 ')!
 	executable := os.join_path(root, 'runtime_metadata${suffix}')
-	compiled := os.exec([bootstrap, '-d', 'ownership', '-prealloc', '-path',
-		'${overlay_vlib}|${ownership_runtime_vlib_dir}|@vlib|@vmodules', '-o', executable, entry])
+	compiled := os.exec([bootstrap, '-no-retry-compilation', '-cc', 'clang', '-d', 'ownership',
+		'-prealloc', '-path', '${overlay_vlib}|${ownership_runtime_vlib_dir}|@vlib|@vmodules',
+		'-o', executable, entry])
 	assert compiled.exit_code == 0, compiled.output
 	result := os.exec([executable])
 	assert result.exit_code == 0, result.output
