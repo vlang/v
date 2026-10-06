@@ -19,7 +19,7 @@ on:
       - 0.**
 
 concurrency:
-  group: release-${{ github.workflow }}-${{ inputs.release_tag || github.ref }}
+  group: release-${{ github.workflow }}-${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' && inputs.release_tag == '' }}
 
 permissions:
