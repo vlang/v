@@ -2,6 +2,35 @@
 
 `strconv` provides functions for converting strings to numbers and numbers to strings.
 
+## Integer parsing
+
+`parse_int` and `parse_uint` accept an explicit base from 2 to 36, or base 0
+for prefix inference: `0b` selects binary, `0o` or a bare leading `0` selects
+octal, and `0x` selects hexadecimal. Other inputs use decimal. Use base 10
+when leading zeros should remain decimal digits.
+
+```v
+import strconv
+
+assert strconv.parse_int('0777', 0, 64)! == 511
+assert strconv.parse_uint('010', 0, 64)! == 8
+assert strconv.parse_int('0777', 10, 64)! == 777
+```
+
+Digits must be valid for the selected base, so `08` and `09` fail with base 0.
+An explicit prefix, with its optional underscore separator, must be followed by digits.
+V integer literal analysis keeps bare leading zeros decimal; octal literals use `0o`.
+
+String numeric conveniences such as `.int()`, `.i64()`, `.u64()`, and their narrower variants
+also keep bare leading zeros decimal. Explicit `0b`, `0o`, and `0x` prefixes still select a base.
+Use `.parse_int(0, bits)` or `.parse_uint(0, bits)` for base-zero inference on a string.
+
+```v
+assert '010'.int() == 10
+assert '0o10'.int() == 8
+assert '010'.parse_int(0, 64)! == 8
+```
+
 ## Floating-point parsing
 
 On the C backend, `atof64` parses decimal numbers with an optional sign,

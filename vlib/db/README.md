@@ -76,8 +76,47 @@ remain usable until released, when they are closed. Acquisition errors from the 
 are returned to the caller; construction itself does not connect. `db.open()` and existing
 backend-specific pools retain their current APIs.
 
-Use a checked-out `Conn` to pin several statements to one session. This shared pool does
-not yet provide an ORM adapter, a transaction type, or a pooled prepared-statement manager.
+Use a checked-out `Conn` to pin several statements to one session. The shared pool does
+not yet provide an ORM adapter or a pooled prepared-statement manager.
+
+## Shared transactions
+
+`DB.begin()` returns a `Tx` that owns one connection until `commit()` or `rollback()`.
+Queries through the transaction always use that connection, while other database operations
+acquire their own connections and may wait for pool capacity. Always finish a transaction;
+defer a rollback so an early return or a query error does not keep a connection checked out.
+
+```v ignore
+mut tx := database.begin()!
+defer { tx.rollback() or {} }
+
+tx.exec_param_many('insert into users (name) values (?)', ['bob'])!
+tx.savepoint('before_update')!
+tx.exec_param_many('update users set name = ? where name = ?', ['bobby', 'bob'])!
+tx.rollback_to('before_update')!
+tx.release_savepoint('before_update')!
+tx.commit()!
+```
+
+`Tx` exposes `exec`, `exec_one`, and `exec_param_many`, plus `savepoint`, `rollback_to`,
+and `release_savepoint`. Savepoint names must start with an ASCII letter or underscore and
+contain only ASCII letters, digits, or underscores. Built-in drivers quote these identifiers,
+so SQL keywords can be used as names. MSSQL limits names to 32 characters and does not support
+`release_savepoint`; it returns an error without finishing the transaction.
+
+Transaction operations are serialized. A commit or rollback attempt finishes the transaction
+even if it fails; subsequent calls, including through a copied handle, return an error.
+A failed begin, commit, or rollback closes the physical connection to prevent reuse of an
+uncertain transaction state. Successful completion returns it through the pool's reset hook.
+Closing the database lets an existing transaction finish and closes its connection on release.
+
+The default transaction commands use `BEGIN`, `COMMIT`, `ROLLBACK`, and ANSI SQL savepoints,
+with the database's default isolation level. A driver can implement the optional
+`TransactionDriver.transaction(command TransactionCommand, name string) !` interface to
+use its native transaction API or SQL dialect. This keeps the existing `Driver` interface
+unchanged. The hook receives a validated, unquoted savepoint name, or an empty name for other
+commands; it must report database failures accurately. Built-in SQLite checks transaction
+result codes, MySQL uses backtick identifiers, and MSSQL uses its own transaction syntax.
 
 ## Cross-driver consistency helpers
 

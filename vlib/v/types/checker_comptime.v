@@ -5834,7 +5834,7 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 		}
 		return
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, bit_size)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), bit_size)
 	if parse_error == -3 {
 		tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
 		return
@@ -6013,7 +6013,7 @@ fn (mut tc TypeChecker) check_untyped_integer_literal_overflow(id flat.NodeId) {
 	if magnitude.len == 0 {
 		return
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	overflows := parse_error == -3 || (parse_error == 0 && is_negative && value > (u64(1) << 63))
 	if overflows {
 		tc.record_error_at(.assignment_mismatch, 'integer literal ${literal} overflows int', id, tc.a.node(id).pos)
@@ -6034,7 +6034,7 @@ fn (tc &TypeChecker) implicit_int_literal_overflows(id flat.NodeId) bool {
 	if magnitude.len == 0 {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 32)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 32)
 	if parse_error == -3 {
 		return true
 	}
@@ -6115,7 +6115,7 @@ fn integer_literal_outside_range(literal string, type_range IntegerTypeRange) bo
 	if magnitude.len == 0 {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	if parse_error == -3 {
 		return true
 	}
@@ -6141,7 +6141,7 @@ fn integer_literal_overflows_signed_64(literal string) bool {
 	if literal.len < 2 || literal[0] != `-` {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(literal[1..], 0, 64)
+	value, parse_error := strconv.common_parse_uint2(literal[1..], util.v_literal_parse_base(literal[1..]), 64)
 	return parse_error == -3 || (parse_error == 0 && value > (u64(1) << 63))
 }
 
@@ -15129,7 +15129,7 @@ fn (tc &TypeChecker) for_in_range_unsigned_const_value(id flat.NodeId) ?(u64, st
 		literal = literal.replace('_', '')
 		if literal.len > 0 && literal[0] != `-` {
 			magnitude := if literal[0] == `+` { literal[1..] } else { literal }
-			value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+			value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 			if parse_error == 0 {
 				return value, value.str()
 			}

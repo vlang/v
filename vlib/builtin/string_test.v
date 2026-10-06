@@ -1750,3 +1750,49 @@ fn test_hex() {
 		assert c.ascii_str().hex() == [c].hex()
 	}
 }
+
+fn test_integer_conveniences_keep_leading_zeros_decimal() {
+	for input, expected in {
+		'010':     10
+		'08':      8
+		'0_10':    10
+		'0b1010':  10
+		'0B_1010': 10
+		'0o12':    10
+		'0O_12':   10
+		'0xA':     10
+		'0X_A':    10
+	} {
+		assert input.int() == expected
+		assert input.i8() == i8(expected)
+		assert input.i16() == i16(expected)
+		assert input.i32() == i32(expected)
+		assert input.i64() == i64(expected)
+		assert input.u8() == u8(expected)
+		assert input.u16() == u16(expected)
+		assert input.u32() == u32(expected)
+		assert input.u64() == u64(expected)
+	}
+	for input in ['-010', '-0b1010', '-0o12', '-0xA', '-0X_A'] {
+		assert input.int() == -10
+		assert input.i8() == i8(-10)
+		assert input.i16() == i16(-10)
+		assert input.i32() == i32(-10)
+		assert input.i64() == i64(-10)
+	}
+	for input in ['+010', '+0b1010', '+0o12', '+0xA', '+0X_A'] {
+		assert input.int() == 10
+		assert input.i8() == i8(10)
+		assert input.i16() == i16(10)
+		assert input.i32() == i32(10)
+		assert input.i64() == i64(10)
+	}
+	assert '010'.parse_int(0, 64)! == 8
+	assert '010'.parse_uint(0, 64)! == 8
+	if value := '08'.parse_int(0, 64) {
+		assert false, 'invalid octal digits parsed as ${value}'
+	}
+	if value := '08'.parse_uint(0, 64) {
+		assert false, 'invalid octal digits parsed as ${value}'
+	}
+}
