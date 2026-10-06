@@ -32,7 +32,10 @@ pub:
 
 // LockFile holds the resolved revisions of the dependencies of a project.
 // The entries are keyed by the module name as written in the `v.mod`
-// dependencies, without any `@version` suffix.
+// dependencies, without any `@version` suffix. When a module is resolved
+// from a non-default registry, the key is qualified as `name@registry:version`
+// to prevent two registries serving the same name from collapsing onto one
+// entry.
 pub struct LockFile {
 pub:
 	version int
@@ -58,7 +61,10 @@ fn lockfile_path(dir string) string {
 
 // lockfile_module_key strips the `@version` suffix from the dependency string
 // `dep`, the same way vpm splits a requested version away while installing.
-// The result is the name a module is keyed under in a lockfile.
+// The result is the name a module is keyed under in a lockfile. When the
+// dependency string carries a registry qualifier (`name@registry:version`),
+// the key is qualified as `name@registry:version` to prevent two registries
+// serving the same name from collapsing onto one entry.
 fn lockfile_module_key(dep string) string {
 	if dep.starts_with('git@') {
 		if dep.count('@') > 1 {
@@ -66,7 +72,10 @@ fn lockfile_module_key(dep string) string {
 		}
 		return dep
 	}
-	ident, _ := dep.rsplit_once('@') or { dep, '' }
+	ident, version := dep.rsplit_once('@') or { dep, '' }
+	if version != '' && version.contains(':') {
+		return '${ident}@${version}'
+	}
 	return ident
 }
 
