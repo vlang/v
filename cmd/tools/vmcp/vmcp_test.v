@@ -1321,11 +1321,16 @@ fn test_it_refuses_a_file_that_is_not_plain_json() {
 	assert !is_plain_json(read_config(path)), 'a commented file must not count as plain JSON'
 	before := read_config(path)
 	// The refusal is an error, so `v mcp install` exits non-zero.
-	mut refused := false
-	write_entry(h, path, false) or { refused = true }
-	assert refused, 'a JSONC file was not refused'
+	mut message := ''
+	write_entry(h, path, false) or { message = err.msg() }
+	assert message != '', 'a JSONC file was not refused'
 	// Nothing was written, so the comment is still there.
 	assert read_config(path) == before, 'a JSONC file was rewritten'
+	// And the refusal carries the member to paste, wrapped in the client's own
+	// key, rather than an entry that has to be wrapped by hand.
+	assert message.contains('has comments or trailing commas'), message
+	assert message.contains('"mcp": { "vlang": '), message
+	assert message.contains('Add this member by hand'), message
 }
 
 fn test_print_gives_a_pasteable_member_when_the_key_is_absent() {

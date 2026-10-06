@@ -70,9 +70,9 @@ fn install(args []string) {
 		return
 	}
 	write_entry(harness, path, project) or {
+		// The message already says what to do, including the member to paste when
+		// the file was refused rather than written.
 		eprintln('v mcp install: ${err.msg()}')
-		eprintln('  Add this to the top-level ${json_string(harness.key)} object by hand:')
-		println('  ${json_string(server_id)}: ${entry_text(harness)}')
 		exit(1)
 	}
 }
@@ -277,7 +277,12 @@ fn write_entry(h Harness, path string, project bool) ! {
 		if is_json_value(text) {
 			return error('${path} is valid JSON, but its top level is not an object; not guessing where the servers belong.')
 		}
-		return error('${path} is not plain JSON (comments or trailing commas); not rewriting it.')
+		// The file is left exactly as it was. An entry on its own is not something
+		// a client can read, so the whole member is what a reader pastes, and
+		// printing it here saves them assembling that by hand.
+		return error('${path} has comments or trailing commas, so it was not rewritten.\n' +
+			'  Add this member by hand:\n' +
+			'  ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }')
 	}
 	mut point := Insertion{}
 	mut addition := entry
