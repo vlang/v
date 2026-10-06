@@ -15,6 +15,56 @@ fn literal_binding_test_node(mut a flat.FlatAst, kind flat.NodeKind, children []
 	})
 }
 
+fn literal_string_test_call(mut a flat.FlatAst, receiver flat.NodeId, method string, args []flat.NodeId) flat.NodeId {
+	selector_start := a.begin_children()
+	a.add_child(receiver)
+	selector := a.add_node(flat.Node{
+		kind:           .selector
+		value:          method
+		typ:            'string'
+		children_start: selector_start
+		children_count: 1
+	})
+	call_start := a.begin_children()
+	a.add_child(selector)
+	for arg in args {
+		a.add_child(arg)
+	}
+	return a.add_node(flat.Node{
+		kind:           .call
+		typ:            'string'
+		children_start: call_start
+		children_count: flat.child_count(args.len + 1)
+	})
+}
+
+fn test_literal_string_call_retains_receiver_while_arguments_grow_ast() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	receiver := a.add_node(flat.Node{ kind: .string_literal, typ: 'string', value: 'abc' })
+	needle := a.add_node(flat.Node{ kind: .string_literal, typ: 'string', value: 'A' })
+	replacement := a.add_node(flat.Node{ kind: .string_literal, typ: 'string', value: 'z' })
+	lower := literal_string_test_call(mut a, needle, 'to_lower', [])
+	upper := literal_string_test_call(mut a, replacement, 'to_upper', [])
+	call := literal_string_test_call(mut a, receiver, 'replace', [lower, upper])
+	node := a.nodes[int(call)]
+	callee := *a.child_node(&node, 0)
+	capacity := a.nodes.cap
+	// The receiver is already a literal; folding its nested arguments must grow the array.
+	for a.nodes.len < capacity {
+		a.add_node(flat.Node{ kind: .empty })
+	}
+	result := t.try_fold_literal_string_call(node, callee) or {
+		assert false, 'literal call should fold'
+		return
+	}
+	assert a.nodes.cap > capacity
+	assert a.node(result).kind == .string_literal
+	assert a.node(result).value == 'Zbc'
+	assert a.node(receiver).value == 'abc'
+}
+
 fn test_call_param_type_name_memo_preserves_composites_and_module_locks() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

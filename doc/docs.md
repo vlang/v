@@ -8291,8 +8291,13 @@ fn main() {
 A `$if` in a reflection loop is decided at compile time, separately for each item. Its
 condition can compare the loop variable's metadata with literals (`==`, `!=`, `<`, `>`, `<=`,
 `>=`, `in`), check types with `is`, test names with `.starts_with()`, `.ends_with()`,
-`.contains()` and `.len`, and combine those with `&&`, `||` and `!`. A condition that cannot
-be decided at compile time is usually reported as an error; use a runtime `if` for it instead:
+`.contains()` and `.len`, and combine those with `&&`, `||` and `!`.
+Pure string method chains on literal or substituted reflection strings also support
+`all_before`, `all_after`, `all_before_last`, `all_after_last`, `trim`, `trim_left`,
+`trim_right`, `trim_space`, `trim_string_left`, `trim_string_right`, `replace`,
+`to_lower`, `to_upper`, and `count`, when every argument is a string literal.
+These scalar operations also fold in ordinary expressions with literal operands, including
+constant initializers. A condition that cannot be decided at compile time is reported as an error:
 
 ```v
 struct User {
@@ -8302,8 +8307,8 @@ struct User {
 
 fn main() {
 	$for field in User.fields {
-		// A runtime `if`: `$if` cannot call methods such as `to_upper()`.
-		if field.name.to_upper() == 'AGE' {
+		// The string operation is evaluated separately for each reflected field.
+		$if field.name.to_upper() == 'AGE' {
 			println('${field.name} is the age')
 		}
 	}
