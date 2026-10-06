@@ -110,6 +110,7 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 		host_target:         host_target
 		target:              target
 		bundled_tcc:         os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		host_rejects_tcc:    pref.host_rejects_tcc_executables()
 	})
 	v3_apply_libc_define(mut user_defines, mut compile_values, libc_mode, selection.c_compiler,
 		v3_should_infer_host_libc(false, false, '', cross_output, target, host_target))

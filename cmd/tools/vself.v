@@ -49,8 +49,14 @@ fn main() {
 		if host_os == 'macos' {
 			// Apple Silicon's bundled TCC is much faster for compiler rebuilds. The
 			// generated compiler uses pthread-backed allocator state because native
-			// TinyCC TLS is not reliable on macOS.
-			default_cc := if unam.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+			// TinyCC TLS is not reliable on macOS. Newer macOS releases cannot load what
+			// TCC links at all (see pref.host_rejects_tcc_executables).
+			default_cc := if unam.machine in ['arm64', 'aarch64']
+				&& !pref.host_rejects_tcc_executables() {
+				'tcc'
+			} else {
+				'cc'
+			}
 			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
 		} else if host_os == 'linux' && unam.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so

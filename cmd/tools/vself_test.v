@@ -1,4 +1,5 @@
 import os
+import v.pref
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -150,7 +151,12 @@ fn test_macos_default_self_build_compiler_selection() {
 		os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_macos_prealloc_test'])
 	assert default_result.exit_code == 0, default_result.output
-	default_cc := if os.uname().machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+	default_cc := if os.uname().machine in ['arm64', 'aarch64']
+		&& !pref.host_rejects_tcc_executables() {
+		'tcc'
+	} else {
+		'cc'
+	}
 	assert !default_result.output.contains('-b fastc'), default_result.output
 	assert default_result.output.contains('-cc ${default_cc}'), default_result.output
 	assert default_result.output.contains('-prealloc'), default_result.output

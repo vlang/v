@@ -1760,3 +1760,30 @@ fn test_tcc_compiler_identity_tracks_same_size_rebuilds() {
 	assert os.file_size(compiler) == 11
 	assert first != tcc_compiler_identity(compiler)
 }
+
+// A host whose loader corrupts TCC-linked executables never selects TCC
+// implicitly, neither the bundled one nor a system one, but still honors an
+// explicit `-cc tcc`.
+fn test_v3_host_rejecting_tcc_executables_never_selects_tcc_implicitly() {
+	host := pref.host_target()
+	options := V3BundledTccProbeOptions{
+		backend:          'c'
+		c_compiler:       'cc'
+		host_os:          host.os
+		host_target:      host
+		target:           host
+		bundled_tcc:      os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+		host_rejects_tcc: true
+	}
+	assert !v3_should_probe_bundled_tcc(options)
+	selection := v3_select_c_compiler(@VEXEROOT, options)
+	assert !selection.bundled_tcc_available
+	assert selection.implicit_tcc == ''
+	assert !selection.c_compiler.contains('tcc')
+	assert selection.effective_c_compiler != 'tinyc'
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...options
+		c_compiler:          'tcc'
+		c_compiler_explicit: true
+	})
+}
