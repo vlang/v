@@ -9,6 +9,9 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+Nested generic struct arguments retain the module of every type component when used as
+fields or passed to generics declared in another module.
+
 V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
 all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
 and explicit `-b js` invocations. The limited JavaScript compatibility generator remains

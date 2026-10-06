@@ -1236,12 +1236,7 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 		}
 		mut normalized_args := []string{cap: args.len}
 		for arg in args {
-			mut normalized_arg := t.normalize_field_type_with_owner_substitution(arg, owner_type, allow_owner_substitution)
-			if field_base.contains('.') {
-				field_mod := field_base.all_before_last('.')
-				normalized_arg = strip_field_module_prefix_from_type(normalized_arg, field_mod)
-			}
-			normalized_args << normalized_arg
+			normalized_args << t.normalize_field_type_with_owner_substitution(arg, owner_type, allow_owner_substitution)
 		}
 		return t.normalize_type_alias('${field_base}[${normalized_args.join(', ')}]')
 	}
