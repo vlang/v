@@ -222,9 +222,8 @@ generates payload. Its up to specific encoding rules or other constraints.
 > implemented required constraints in this module.
 
 ### Build custom element payload
-It is possible to build a payload for a complex structure: your own defined 
-struct contains multiple 
-fields of elements with the help of the functions in this module. Of course, you can build 
+It is possible to build a payload for a complex structure: your own defined struct contains 
+multiple fields of elements with the help of the functions in this module. Of course, you can build 
 your payload manually, but this `asn1` module has provides helper routine to do that, in the form:
 ```codeblocks
 fn make_payload[T](val T, kd KeyDefault) ![]u8 
