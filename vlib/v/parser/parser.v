@@ -1933,6 +1933,11 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, interop_prefix string, name_pos int) flat.NodeId {
 	is_c_decl := interop_prefix.len > 0
 	is_static_type_method := is_method && receiver_name.len == 0 && !is_c_decl
+	if !p.prefs.is_fmt && !is_c_decl && !is_method && p.cur_module in ['', 'main']
+		&& name in ['dump', 'sizeof', 'typeof', 'isreftype'] {
+		p.record_diagnostic_span('cannot redefine builtin function `${name}`', name_pos,
+			name_pos + name.len)
+	}
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	// Capture & clear here so it applies only to this function (not nested closures
