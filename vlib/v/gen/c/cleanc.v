@@ -25803,7 +25803,7 @@ fn (mut g FlatGen) gen_checked_integer_cast(id flat.NodeId, target_type types.Ty
 	if lit.kind == .int_literal {
 		// An untyped literal like `u64(0xcbf29ce484222325)` is only nominally `int`:
 		// compare its exact value with the target range, not the wrapped `int` value.
-		if value := strconv.parse_uint(lit.value.replace('_', ''), 0, 64) {
+		if value := strconv.parse_uint(lit.value.replace('_', ''), util.v_literal_parse_base(lit.value), 64) {
 			limit := if dst.unsigned { dst.bits } else { dst.bits - 1 }
 			if limit >= 64 || value < (u64(1) << limit) {
 				return false
