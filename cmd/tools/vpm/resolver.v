@@ -53,7 +53,7 @@ fn topo_visit(node string, candidates map[string][]VersionedDeps, mut order []st
 
 // version_ok reports whether a candidate version satisfies every constraint on its
 // module and is compatible with the versions already resolved.
-fn version_ok(cand VersionedDeps, name string, resolved map[string]string, constraints map[string][]Constraint) bool {
+fn version_ok(cand VersionedDeps, name string, resolved map[string]string, constraints map[string][]Constraint, candidates map[string][]VersionedDeps) bool {
 	for c in constraints[name] {
 		v := semver.from(cand.version) or { return false }
 		if !v.satisfies(c.range) {
@@ -67,6 +67,26 @@ fn version_ok(cand VersionedDeps, name string, resolved map[string]string, const
 			dep_v := semver.from(resolved[dep_name]) or { return false }
 			if !dep_v.satisfies(dep_range) {
 				return false
+			}
+		}
+	}
+	for resolved_name, resolved_version in resolved {
+		if resolved_name == name {
+			continue
+		}
+		for resolved_cand in candidates[resolved_name] {
+			if resolved_cand.version != resolved_version {
+				continue
+			}
+			for dep_str in resolved_cand.deps {
+				dep_name := dep_str.all_before('@').trim_space()
+				dep_range := dep_str.all_after('@').trim_space()
+				if dep_name == name {
+					v := semver.from(cand.version) or { return false }
+					if !v.satisfies(dep_range) {
+						return false
+					}
+				}
 			}
 		}
 	}
@@ -125,8 +145,7 @@ fn resolve_with_backtracking(candidates map[string][]VersionedDeps, constraints 
 	for idx < order.len {
 		mod_name := order[idx]
 		mut cands := candidates[mod_name]
-		cands.sort(a.version < b.version)
-		cands.reverse()
+		cands.sort(a.version > b.version)
 
 		mut found := false
 		for i in 0 .. cands.len {
@@ -134,7 +153,7 @@ fn resolve_with_backtracking(candidates map[string][]VersionedDeps, constraints 
 				continue
 			}
 			cand := cands[i]
-			if version_ok(cand, mod_name, resolved, constraints) {
+			if version_ok(cand, mod_name, resolved, constraints, candidates) {
 				resolved[mod_name] = cand.version
 				pos[mod_name] = i + 1
 				found = true
