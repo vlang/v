@@ -30,3 +30,8 @@ Reentry returns `false` and leaves the scope untouched while it is current, reta
 owner, or being freed. Start a new scope in that case. When finished, call
 `prealloc_scope_end(scope)` to free the scope. These functions are unsafe because callers must
 ensure no allocation from a rewound or freed scope remains in use.
+
+String indexing checks signed and unsigned positions before reading a byte, including `i64`
+and `u64` positions without narrowing them to `int`. An index below zero or at least the string
+length panics. `unsafe` indexing, `@[direct_array_access]`, and `-no-bounds-checking` retain their
+explicit unchecked behavior.

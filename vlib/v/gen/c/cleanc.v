@@ -16899,6 +16899,21 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 							g.gen_expr(g.a.child(node, 1))
 							g.write('))')
 						} else if default_init_unalias_type(base_type) is types.String {
+							if !g.direct_array_access && g.unsafe_depth == 0 {
+								index_id := g.a.child(node, 1)
+								index_type := cgen_unalias_type(g.usable_expr_type(index_id))
+								helper := match index_type.name() {
+									'i64', 'isize' { 'string__at_i64' }
+									'u8', 'u16', 'u32', 'u64', 'uint', 'usize' { 'string__at_u64' }
+									else { 'string__at' }
+								}
+								g.write('${helper}(')
+								g.gen_expr(base_id)
+								g.write(', ')
+								g.gen_expr(index_id)
+								g.write(')')
+								return
+							}
 							// Parenthesize the base: a smartcast sum variant yields a deref
 							// like `*v._string`, and `*v._string.str[i]` would bind as
 							// `*(v._string.str[i])`. `(*v._string).str[i]` is what we want.
