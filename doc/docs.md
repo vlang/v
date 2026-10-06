@@ -5499,8 +5499,6 @@ A later declaration using a module type with the same name resolves to that modu
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
-Nested generic calls preserve reference return types when passed directly to another generic
-call, including references stored as map values.
 
 Currently generic function definitions must declare their type parameters, but in
 future versions, V will infer generic type parameters from single-letter type names in
@@ -5512,6 +5510,9 @@ are resolved in the module that defines the method, so a caller type with the sa
 does not change the inferred type arguments. `typeof(call()).name` reports the concrete
 return type of an inferred generic method call.
 Inference also follows receivers obtained by unwrapping an option or propagating a result.
+
+Nested generic calls preserve reference return types when passed directly to another generic
+call, including references stored as map values.
 
 Another example:
 
