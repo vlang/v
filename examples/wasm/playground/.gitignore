@@ -1,0 +1,3 @@
+/build/
+!playground.js
+!worker.js

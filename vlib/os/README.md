@@ -7,6 +7,8 @@ handling processes etc.
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
+`os.user_os()` returns `wasm32_emscripten` when compiled for Emscripten.
+
 ### Console input
 
 On Windows, `os.input()` supports both console and redirected standard input.

@@ -11818,7 +11818,13 @@ pub fn run(args []string) {
 			&& scope_prealloc_markused && !incremental_cache_hit && !generic_cache_hit
 			&& !cache_state.manager.enabled && test_files.len == 0 && !is_checker_fixture
 			&& !trivial_literal_output && !is_vsh_input && !no_skip_unused
-		prepared_markused_thread := spawn markused.prepare_markused_declarations(a, &pre_tc, prepare_markused_overlap)
+		mut prepared_markused_threads := []thread &markused.PreparedMarkusedDecls{}
+		mut waited_markused := ?&markused.PreparedMarkusedDecls(none)
+		if prepare_markused_overlap {
+			prepared_markused_threads << spawn markused.prepare_markused_declarations(a, &pre_tc, true)
+		} else {
+			waited_markused = markused.prepare_markused_declarations(a, &pre_tc, false)
+		}
 		// A plain build of a program checks the bodies of the standard library that
 		// the program can reach, not the others (see types.skip_unreachable_library_bodies).
 		// What else needs every body checked keeps them all: a check without a build,
@@ -11897,11 +11903,10 @@ pub fn run(args []string) {
 		// the check, into the diagnostics, and the child prints what it printed.
 		// The rest of the check rewrites the tree the answers come from.
 		shares_checks := served.shares_checks()
-		mut waited_markused := ?&markused.PreparedMarkusedDecls(none)
-		if shares_checks {
+		if shares_checks && prepared_markused_threads.len > 0 {
 			// No thread of this process but the worker pools' goes into the
 			// grandchild.
-			waited_markused = prepared_markused_thread.wait()
+			waited_markused = prepared_markused_threads[0].wait()
 		}
 		if shares_checks {
 			// What the check found so far, for a client that shows it while the
@@ -11962,7 +11967,7 @@ pub fn run(args []string) {
 		mut prepared_markused := if waited := waited_markused {
 			waited
 		} else {
-			prepared_markused_thread.wait()
+			prepared_markused_threads[0].wait()
 		}
 		if verbose {
 			eprintln('  [ttime]   ck mkused wait   ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -12194,7 +12199,10 @@ pub fn run(args []string) {
 		if prepare_transform_overlap {
 			transform.materialize_inferred_anonymous_structs_before_prepare(mut a, &pre_tc)
 		}
-		mut prepared_transform_thread := spawn transform.prepare_selfhost_transform(a, &pre_tc, prepare_transform_overlap)
+		mut prepared_transform_threads := []thread &transform.PreparedSelfhostTransform{}
+		if prepare_transform_overlap {
+			prepared_transform_threads << spawn transform.prepare_selfhost_transform(a, &pre_tc, true)
+		}
 		// Mark used functions (dead-code elimination). This is done before transform
 		// so the transformer can skip function bodies that the C backend will prune.
 		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
@@ -12302,7 +12310,11 @@ pub fn run(args []string) {
 				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
 			}
 		}
-		mut prepared_transform := prepared_transform_thread.wait()
+		mut prepared_transform := if prepare_transform_overlap {
+			prepared_transform_threads[0].wait()
+		} else {
+			transform.prepare_selfhost_transform(a, &pre_tc, false)
+		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
 		mut tfpre_sw := time.new_stopwatch()
