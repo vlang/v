@@ -18,6 +18,7 @@ assert strconv.parse_int('0777', 10, 64)! == 777
 ```
 
 Digits must be valid for the selected base, so `08` and `09` fail with base 0.
+An explicit prefix, with its optional underscore separator, must be followed by digits.
 
 ## Integer formatting
 

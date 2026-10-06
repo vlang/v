@@ -476,3 +476,27 @@ fn test_parse_base_zero_implicit_octal() {
 	assert strconv.parse_uint('0b101', 0, 64)! == 5
 	assert strconv.parse_int('0x10', 0, 64)! == 16
 }
+
+fn test_parse_base_zero_prefix_requires_digits() {
+	for input in ['0b', '0B', '0o', '0O', '0x', '0X', '0b_', '0B_', '0o_', '0O_', '0x_', '0X_'] {
+		value, code := strconv.common_parse_uint2(input, 0, 64)
+		assert value == 0
+		assert code > 0
+		if parsed := strconv.parse_uint(input, 0, 64) {
+			assert false, '${input} parsed as ${parsed}'
+		}
+		for signed in [input, '+' + input, '-' + input] {
+			if parsed := strconv.parse_int(signed, 0, 64) {
+				assert false, '${signed} parsed as ${parsed}'
+			}
+		}
+		for bits in [-1, 65] {
+			_, bit_code := strconv.common_parse_uint2(input, 0, bits)
+			assert bit_code == -2
+		}
+	}
+	for input in ['0b_0', '0B_0', '0o_0', '0O_0', '0x_0', '0X_0'] {
+		assert strconv.parse_uint(input, 0, 64)! == 0
+		assert strconv.parse_int(input, 0, 64)! == 0
+	}
+}

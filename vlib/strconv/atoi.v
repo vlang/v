@@ -31,7 +31,8 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 }
 
 // common_parse_uint2 returns the parsed value as its first result,
-// the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
+// Its second result is 0 on success, positive for syntax errors (including a
+// non-parseable character's index + 1), -2 for a wrong bit size, or -3 for overflow.
 @[direct_array_access]
 pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	if s == '' {
@@ -70,6 +71,9 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		bit_size = int_size
 	} else if bit_size < 0 || bit_size > 64 {
 		return u64(0), -2
+	}
+	if start_index == s.len {
+		return u64(0), 1
 	}
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
