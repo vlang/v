@@ -66,6 +66,11 @@ fn tag_satisfies_range(tag string, constraint string) bool {
 // select_version_tag returns the highest semantic-version tag in the range.
 // Sort first so equal-precedence tags have a deterministic spelling.
 fn select_version_tag(tags []string, constraint string) !string {
+	// An unparseable constraint must not look like "no tag matched", or a typo in a
+	// range reads as an empty repository.
+	if !semver.is_valid_range(constraint) {
+		return error('invalid version range `${constraint}`')
+	}
 	mut sorted := tags.clone()
 	sorted.sort()
 	mut selected := ''
