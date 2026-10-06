@@ -49,7 +49,7 @@ fn test_select_highest_semantic_version_tag() {
 }
 
 fn test_malformed_version_ranges_have_a_distinct_error_even_without_tags() {
-	for tags in [[], ['v1.2.3']] {
+	for tags in [[]string{}, ['v1.2.3']] {
 		for constraint in ['^invalid', 'not-a-range', '^', '>=1.2 nope'] {
 			if _ := select_version_tag(tags, constraint) {
 				assert false, 'malformed range ${constraint} was accepted'
