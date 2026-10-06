@@ -40,3 +40,37 @@ This is the initial range-selection layer. Different requirements targeting the
 same installation directory are rejected when a range is involved, before
 installation changes the module store. Joint constraint solving, backtracking,
 version-aware updates and graph reporting are not yet implemented.
+
+## Minimum compiler versions and root overrides
+
+A dependency can declare `min_v: '0.5.0'` in `v.mod`. Installation checks this
+against the running compiler before consuming that dependency's own dependencies.
+An empty requirement is allowed; an invalid version or an unmet requirement fails
+installation for both registered modules and direct repositories.
+
+The root project's manifest can force a dependency ref or semantic version range:
+
+```text
+Module {
+    dependencies: ['publisher.package@^1.0.0']
+    dependency_overrides: ['publisher.package: v2.0.0']
+}
+```
+
+Only the root manifest supplies overrides. Dependency manifests cannot override
+the consumer's choices. Overrides match a registered name, or a direct repository's
+basename or manifest name, and replace its requested constraint before its selected
+manifest and dependencies are read. A direct repository with a different manifest
+name may require a default-branch metadata checkout to discover that name.
+Malformed or duplicate overrides fail before installation.
+
+The lockfile records the effective dependency request including the override,
+the selected tag and the actual commit. Reinstalling reuses that commit. Changing
+an override requires a normal install to refresh the lock; `--locked` rejects it.
+An override can intentionally select a version outside the original constraint.
+
+Bundled tools declare external build requirements in their own `v.mod` under
+`dev_dependencies`, for example `dev_dependencies: ['markdown']` for `vdoc`.
+The launcher reads these manifests beside its own compiler. The legacy
+`v.util.external_modules_for_tool` function remains available as a wrapper;
+`external_module_dependencies_for_tool` remains the old compatibility snapshot.

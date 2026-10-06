@@ -17,8 +17,8 @@ const lockfile_version = 1
 // the very same sources can be installed again later.
 pub struct LockedModule {
 pub:
-	// requested is the dependency string exactly as it is written in `v.mod`,
-	// including any `@version` suffix.
+	// requested is the effective dependency string, including a root override
+	// when present and any `@version` suffix.
 	requested string
 	// resolved is the selected revision: the requested tag for `@tag`
 	// installs, the version chosen by a resolver once version ranges exist,

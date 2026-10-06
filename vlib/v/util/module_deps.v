@@ -5,10 +5,24 @@ import time
 import v.pref
 import v.vmod
 
+// external_module_dependencies_for_tool is the legacy dependency snapshot.
+// Installation reads each tool's current manifest through dev_dependencies_for_tool.
+pub const external_module_dependencies_for_tool = {
+	'vdoc': ['markdown']
+}
+
+// external_modules_for_tool returns the external dependencies in the tool's manifest.
+pub fn external_modules_for_tool(tool_name string) []string {
+	return dev_dependencies_for_tool(tool_name)
+}
+
 // tool_source_dir returns the folder holding a bundled tool's sources, from the
 // name it is invoked under. It is anchored at the compiler's own `cmd/tools`, not
 // at the working directory, so it does not move when vpm is run from a project.
 fn tool_source_dir(tool_name string) string {
+	if tool_name == '' || tool_name in ['.', '..'] || tool_name.contains_any('/\\') {
+		return ''
+	}
 	return os.join_path_single(os.join_path(os.dir(pref.vexe_path()), 'cmd', 'tools'),
 		tool_name)
 }
@@ -19,7 +33,11 @@ fn tool_source_dir(tool_name string) string {
 // needing a module was invisible in the tool's own manifest and could not be
 // declared without editing `vlib`.
 pub fn dev_dependencies_for_tool(tool_name string) []string {
-	vmod_path := os.join_path_single(tool_source_dir(tool_name), 'v.mod')
+	source := tool_source_dir(tool_name)
+	if source == '' {
+		return []string{}
+	}
+	vmod_path := os.join_path_single(source, 'v.mod')
 	if !os.is_file(vmod_path) {
 		return []string{}
 	}
@@ -43,7 +61,7 @@ fn tools_with_dev_dependencies() []string {
 			tools << entry
 		}
 	}
-	return tools
+	return tools.sorted()
 }
 
 // check_module_is_installed makes sure that `modulename` is present in ~/.vmodules,

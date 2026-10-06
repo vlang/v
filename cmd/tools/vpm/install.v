@@ -32,7 +32,10 @@ fn vpm_install(query []string) {
 	mut root_manifest := vmod.Manifest{}
 	if os.exists('./v.mod') {
 		root_manifest = vmod.from_file('./v.mod') or { panic(err) }
-		overrides = parse_overrides(root_manifest.unknown['dependency_overrides'] or { []string{} })
+		overrides = parse_overrides(root_manifest.unknown['dependency_overrides'] or { []string{} }) or {
+			vpm_error(err.msg())
+			exit(1)
+		}
 	}
 	dep_strings := if query.len == 0 {
 		if os.exists('./v.mod') {
