@@ -2,6 +2,7 @@ module c
 
 import strconv
 import v.flat
+import v.util
 import v.gen.c.naming
 import v.types
 
@@ -2344,7 +2345,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 
 fn enum_foldable_int_literal(value string) ?i64 {
 	clean := value.replace('_', '')
-	parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
+	parsed := strconv.common_parse_int(clean, util.v_literal_parse_base(clean), 64, true, true) or { return none }
 	return parsed
 }
 

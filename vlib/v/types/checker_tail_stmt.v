@@ -3427,7 +3427,7 @@ fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type
 
 fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
 	literal := (tc.integer_literal_source(id) or { return none }).replace('_', '').to_lower()
-	value, parse_error := strconv.common_parse_uint2(literal, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(literal, util.v_literal_parse_base(literal), 64)
 	if parse_error != 0 {
 		return none
 	}
