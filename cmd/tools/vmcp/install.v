@@ -301,14 +301,26 @@ fn is_json_value(text string) bool {
 // you just invoked is to read the file, and the only way to move the entry is to
 // discover that `install` will not do it.
 fn existing_entry_report(text string, h Harness, path string, project bool) string {
+	return existing_entry_report_for_compiler(text, h, path, project, server_exe(), os.user_os() == 'windows')
+}
+
+fn existing_entry_report_for_compiler(text string, h Harness, path string, project bool, wanted string, windows bool) string {
 	mut lines := ['v mcp install: ${server_id} is already in ${path}; leaving it alone.']
 	exe, command := recorded_entry(text, h.key) or { return lines.join('\n') }
 	lines << '  it runs ${command}'
-	wanted := server_exe()
 	if exe != wanted {
 		lines << '  this compiler is ${wanted}'
 		scope := if project { ' --project' } else { '' }
-		lines << '  to move it: v mcp uninstall ${h.name}${scope} && v mcp install ${h.name}${scope}'
+		// PowerShell needs its call operator for a quoted executable. POSIX shells
+		// accept the quoted path directly. Both commands name this compiler.
+		compiler := if windows {
+			"& '" + wanted.replace("'", "''") + "'"
+		} else {
+			"'" + wanted.replace("'", "'\\''") + "'"
+		}
+		lines << if windows { '  to move it (PowerShell):' } else { '  to move it:' }
+		lines << '  ${compiler} mcp uninstall ${h.name}${scope}'
+		lines << '  ${compiler} mcp install ${h.name}${scope}'
 	}
 	return lines.join('\n')
 }

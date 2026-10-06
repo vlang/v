@@ -103,7 +103,9 @@ are unordered, and would quietly drop anything the decoder does not model. So:
   When its command can be read, the installer prints its executable and arguments.
   If the executable path differs from this compiler, it names this compiler and
   suggests uninstall/install commands to move the entry. These commands keep
-  `--project` when the entry belongs to the project configuration.
+  `--project` when the entry belongs to the project configuration and invoke
+  this compiler by its full path, even when `v` on `PATH` names another compiler.
+  Windows guidance uses PowerShell syntax.
 - Zed's user-level file is never created from nothing, only added to if it
   exists.
 - `v mcp uninstall` leaves a file that is not plain JSON alone too, says the

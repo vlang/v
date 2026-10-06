@@ -1408,15 +1408,33 @@ fn test_existing_entry_report_reads_both_command_shapes_and_keeps_project_scope(
 			report := existing_entry_report(text, shape, '/fixture/config.json', project)
 			assert report.contains('  it runs ${command}\n')
 			assert report.contains('  this compiler is ${server_exe()}\n')
-			if project {
-				assert report.ends_with('v mcp uninstall opencode --project && v mcp install opencode --project')
+			assert report.contains('  to move it'), report
+			assert !report.contains('to move it: v mcp'), report
+			compiler := if os.user_os() == 'windows' {
+				"& '" + server_exe().replace("'", "''") + "'"
 			} else {
-				assert report.ends_with('v mcp uninstall opencode && v mcp install opencode')
+				os.quoted_path(server_exe())
+			}
+			if project {
+				assert report.ends_with('${compiler} mcp uninstall opencode --project\n  ${compiler} mcp install opencode --project')
+			} else {
+				assert report.ends_with('${compiler} mcp uninstall opencode\n  ${compiler} mcp install opencode')
 			}
 		}
 	}
 	matching := '{"mcp":{"vlang":${h.entry(server_exe(), server_args())}}}'
 	assert !existing_entry_report(matching, h, '/fixture/config.json', true).contains('to move it:')
+}
+
+fn test_existing_entry_report_moves_to_the_invoked_compiler_with_shell_quoting() {
+	h := Harness{ name: 'opencode', key: 'mcp' }
+	text := '{"mcp":{"vlang":{"command":"v","args":["mcp","serve"]}}}'
+	wanted := "/somewhere/My Compiler's v\$1"
+	posix := existing_entry_report_for_compiler(text, h, '/fixture/config.json', true, wanted, false)
+	assert posix.ends_with("  '/somewhere/My Compiler'\\''s v\$1' mcp uninstall opencode --project\n  '/somewhere/My Compiler'\\''s v\$1' mcp install opencode --project"), posix
+	windows := existing_entry_report_for_compiler(text, h, '/fixture/config.json', false, wanted, true)
+	assert windows.contains('to move it (PowerShell):'), windows
+	assert windows.ends_with("  & '/somewhere/My Compiler''s v\$1' mcp uninstall opencode\n  & '/somewhere/My Compiler''s v\$1' mcp install opencode"), windows
 }
 
 fn test_existing_entry_report_leaves_unreadable_commands_alone() {
