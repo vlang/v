@@ -17808,7 +17808,8 @@ fn (mut t Transformer) try_fold_literal_string_call(node flat.Node, callee flat.
 			return none
 		}
 	}
-	base := t.a.node(t.transform_expr(base_id))
+	// Argument transformations can grow the AST node array, so retain a value copy.
+	base := *t.a.node(t.transform_expr(base_id))
 	if base.kind != .string_literal {
 		return none
 	}
