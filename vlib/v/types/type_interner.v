@@ -224,6 +224,7 @@ fn semantic_type_hash(t Type) u64 {
 		FnType {
 			hash = type_hash_tag(hash, 16)
 			hash = type_hash_tag(hash, t.params.len)
+			hash = type_hash_tag(hash, int(t.is_variadic))
 			for idx, param in t.params {
 				hash = type_hash_tag(hash, int(fn_type_param_is_mut(t, idx)))
 				hash = type_hash_child(hash, param)
@@ -376,7 +377,8 @@ fn semantic_types_equal(a Type, b Type) bool {
 				return false
 			}
 			bb := b as FnType
-			if a.params.len != bb.params.len || !semantic_types_equal(a.return_type, bb.return_type) {
+			if a.params.len != bb.params.len || a.is_variadic != bb.is_variadic
+				|| !semantic_types_equal(a.return_type, bb.return_type) {
 				return false
 			}
 			for idx, param in a.params {

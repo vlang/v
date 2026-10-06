@@ -10323,6 +10323,7 @@ fn (mut tc TypeChecker) generic_fn_value_matches_expected(key string, expected T
 	specialized := Type(FnType{
 		params:      specialized_params
 		params_mut:  actual_fn.params_mut.clone()
+		is_variadic: actual_fn.is_variadic
 		return_type: tc.substitute_generic_type_values(actual_fn.return_type, concrete_types, generic_params)
 	})
 	return tc.fn_value_signature_compatible(specialized, expected)

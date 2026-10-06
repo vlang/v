@@ -2002,6 +2002,7 @@ fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, metho
 			fn_type := types.Type(types.FnType{
 				params:      params.clone()
 				params_mut:  (t.tc.declaration_param_mutability[method_key] or { []bool{} }).clone()
+				is_variadic: t.tc.fn_variadic[method_key] or { false }
 				return_type: ret
 			})
 			value := t.a.add_node(flat.Node{

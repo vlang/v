@@ -713,6 +713,7 @@ fn (mut t Transformer) bind_explicit_generic_method_value(id flat.NodeId, node f
 	method_type := if params.len > 0 {
 		types.Type(types.FnType{
 			params:      params[1..].clone()
+			is_variadic: t.tc.fn_variadic[spec_name] or { t.tc.fn_variadic[spec_value] or { false } }
 			return_type: t.tc.fn_ret_types[spec_name] or {
 				t.tc.fn_ret_types[spec_value] or { types.Type(types.void_) }
 			}

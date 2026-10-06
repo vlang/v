@@ -8935,6 +8935,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				name:         ''
 				params:       fn_typ.params.clone()
 				return_type:  fn_typ.return_type
+				is_variadic:  fn_typ.is_variadic
 				params_known: true
 			}
 		}
@@ -9946,6 +9947,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					name:         ''
 					params:       fn_typ.params
 					return_type:  fn_typ.return_type
+					is_variadic:  fn_typ.is_variadic
 					params_known: true
 				}
 			}
@@ -17670,6 +17672,7 @@ fn c_fixed_array_pointee_storage_type(typ Type) Type {
 			Type(FnType{
 				params:      clean.params.map(c_fixed_array_pointee_storage_type(it))
 				params_mut:  clean.params_mut
+				is_variadic: clean.is_variadic
 				return_type: c_fixed_array_pointee_storage_type(clean.return_type)
 			})
 		}
@@ -20202,6 +20205,7 @@ fn (tc &TypeChecker) method_value_type(receiver_name string, method string) ?Typ
 	return Type(FnType{
 		params:      bound_params
 		params_mut:  bound_params_mut
+		is_variadic: tc.fn_variadic[signature] or { false }
 		return_type: ret_type
 	})
 }
@@ -20295,6 +20299,7 @@ fn (tc &TypeChecker) builtin_method_value_type(base_type Type, method string) ?T
 	}
 	return Type(FnType{
 		params:      bound_params
+		is_variadic: info.is_variadic
 		return_type: info.return_type
 	})
 }

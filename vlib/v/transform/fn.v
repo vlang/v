@@ -2466,6 +2466,12 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 		|| t.is_import_alias_ident(base_id)) {
 		return 0
 	}
+	base_type := t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(base_id)))
+	if t.receiver_selector_is_fn_field(base_type, fn_node.value) {
+		// Function-valued fields have no implicit receiver parameter.
+		return 0
+	}
+
 	if base_node.kind == .ident && base_node.value.len > 0 && base_node.value[0] >= `a`
 		&& base_node.value[0] <= `z`
 		&& t.selector_call_name_has_receiver_param(call_name, fn_node.value, params) {
