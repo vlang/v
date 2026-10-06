@@ -19,6 +19,17 @@ assert strconv.parse_int('0777', 10, 64)! == 777
 
 Digits must be valid for the selected base, so `08` and `09` fail with base 0.
 An explicit prefix, with its optional underscore separator, must be followed by digits.
+V integer literal analysis keeps bare leading zeros decimal; octal literals use `0o`.
+
+String numeric conveniences such as `.int()`, `.i64()`, `.u64()`, and their narrower variants
+also keep bare leading zeros decimal. Explicit `0b`, `0o`, and `0x` prefixes still select a base.
+Use `.parse_int(0, bits)` or `.parse_uint(0, bits)` for base-zero inference on a string.
+
+```v
+assert '010'.int() == 10
+assert '0o10'.int() == 8
+assert '010'.parse_int(0, 64)! == 8
+```
 
 ## Integer formatting
 

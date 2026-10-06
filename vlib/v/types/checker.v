@@ -16925,7 +16925,7 @@ fn enum_backing_literal_overflows(literal string, bounds EnumBackingValueBounds)
 	if magnitude.len == 0 {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	if parse_error == -3 {
 		return true
 	}
@@ -16968,7 +16968,7 @@ fn enum_backing_literal_becomes_max(literal string, bounds EnumBackingValueBound
 	if literal[0] == `+` {
 		magnitude = literal[1..]
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	if bounds.is_unsigned {
 		return parse_error == 0 && value == enum_backing_unsigned_max(bounds.bits)
 	}

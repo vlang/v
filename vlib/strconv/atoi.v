@@ -30,7 +30,7 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 	return result
 }
 
-// common_parse_uint2 returns the parsed value as its first result,
+// common_parse_uint2 returns the parsed value as its first result.
 // Its second result is 0 on success, positive for syntax errors (including a
 // non-parseable character's index + 1), -2 for a wrong bit size, or -3 for overflow.
 @[direct_array_access]
