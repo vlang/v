@@ -351,7 +351,8 @@ const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
 const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 
 // custom_format returns a date with custom format.
-// YYYY pads nonnegative years to at least four digits; YY pads the final two digits.
+// YYYY pads nonnegative years to at least four digits; YY pads their final two digits.
+// Negative years retain their existing token formatting.
 //
 // | Category         | Token | Output                                 |
 // |:-----------------|:------|:---------------------------------------|
@@ -470,10 +471,14 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(long_days[iclamp(0, t.day_of_week() - 1, 6)])
 			}
 			'YY' {
-				sb.write_string('${t.year % 100:02}')
+				if t.year < 0 {
+					sb.write_string(t.year.str()#[2..4])
+				} else {
+					sb.write_string('${t.year % 100:02}')
+				}
 			}
 			'YYYY' {
-				sb.write_string('${t.year:04}')
+				sb.write_string(if t.year < 0 { t.year.str() } else { '${t.year:04}' })
 			}
 			'H' {
 				sb.write_string(t.hour.str())

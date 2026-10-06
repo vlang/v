@@ -39,3 +39,19 @@ fn test_custom_format_small_year_roundtrip() {
 		assert time.parse_format(t.custom_format('YYYY-MM-DD'), 'YYYY-MM-DD')!.year == year
 	}
 }
+
+fn test_custom_format_preserves_negative_years() {
+	for year, expected in {
+		-1:     '-1|'
+		-99:    '-99|9'
+		-100:   '-100|00'
+		-999:   '-999|99'
+		-2024:  '-2024|02'
+		-99999: '-99999|99'
+	} {
+		t := time.Time{ year: year }
+		assert t.custom_format('YYYY|YY') == expected
+		assert t.custom_format('N YYYY|YY') == 'AD ${expected}'
+		assert t.custom_format('NN YYYY|YY') == 'Anno Domini ${expected}'
+	}
+}
