@@ -54,7 +54,8 @@ fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope 
 		}
 		exit(1)
 	}
-	apply_overrides(mut p.modules, overrides)
+	graph := build_graph(p.modules)
+	apply_overrides(mut p.modules, overrides, graph)
 	modules := p.modules.values()
 	validate_range_destinations(modules) or {
 		for m in modules {
