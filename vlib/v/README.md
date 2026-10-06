@@ -652,3 +652,7 @@ skipped during C code generation; C runtime functions are provided via a compact
 preamble.
 
 Measured on macOS (Apple Silicon), warm runs. V1 built from `~/code/v5/v` (V 0.5.1).
+
+Import aliases in type expressions are normalized to full module paths once.
+A module path can begin with the alias itself, including in nested generic heap
+initializers, without repeated expansion or compiler recursion.

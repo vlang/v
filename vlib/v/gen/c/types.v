@@ -815,6 +815,11 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	if clean.contains('.') {
 		alias := clean.all_before('.')
 		if module_name := g.cached_file_import(file, alias) {
+			// Canonical module paths may themselves start with the import alias.
+			// Re-expanding that prefix makes heap initializer normalization recurse.
+			if clean.starts_with(module_name + '.') {
+				return clean
+			}
 			return module_name + clean[alias.len..]
 		}
 	}
