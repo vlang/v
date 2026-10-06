@@ -6,9 +6,9 @@
 // answer is available even for a file that does not compile. That is the point:
 // a tool has to be able to look at broken code.
 //
-// Two things the flat AST does not keep are absent by design: a declaration's
-// `pub` marker, and the name and type of a `pub` struct field. See
-// `visibility_markers` for the second. Read the source for those.
+// Declaration results omit visibility modifiers. Struct fields retain their
+// names and types regardless of access modifiers, which are AST metadata rather
+// than separate declarations.
 module astquery
 
 import os
@@ -21,16 +21,6 @@ import v.token
 // max_doc_gap is how far above a declaration a comment may sit and still be read
 // as its documentation. A larger gap means the comment documents something else.
 const max_doc_gap = 20
-
-// visibility_markers are the words that may stand where a field name would.
-//
-// The flat AST folds a field's access modifier into a `.field_decl` node of its
-// own: `pub count int` reaches this module as a node whose value is `pub` and
-// whose type is the field name, followed by a second node holding only the type.
-// Neither is the field, and the pair does not name it either, so a `pub` field
-// is reported by neither its name nor its type here. The source text remains the
-// authority for those fields.
-const visibility_markers = ['pub', 'priv']
 
 // parse reads one V file into a fresh AST with the preferences a formatter and an
 // inspector agree on.
@@ -146,6 +136,8 @@ fn span_of(a &flat.FlatAst, pos token.Pos) (string, int, int) {
 //
 // Order is the order the parser produced, which is source order for a single
 // file. A declaration nested in a `$if` block is reported where it appears.
+// Struct field names and types are reported regardless of access modifiers,
+// including fields named `pub` or `priv`.
 pub fn declarations(a &flat.FlatAst) []Declaration {
 	mut out := []Declaration{}
 	for file_id in file_nodes(a) {
@@ -211,11 +203,6 @@ fn collect_declarations(a &flat.FlatAst, node &flat.Node) []Declaration {
 			child_node := a.node(children[i])
 			if child_node.kind != .field_decl {
 				i++
-				continue
-			}
-			if child_node.value in visibility_markers {
-				// Skip the marker and the type remnant that follows it.
-				i += 2
 				continue
 			}
 			out << declaration(a, child_node, .field, child_node.value, child_node.typ, '')

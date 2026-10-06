@@ -503,8 +503,8 @@ fn test_comptime_condition_string_literal_members() {
 		"'a)b'.contains ( ')' )":        'true'
 		'"it\'s".contains ( "\'" )':     'true'
 		"'name'.contains ( 'a' + 'b' )": ''
-		"'name'.to_upper ( )":           ''
-		"'name'.to_upper ( ).len":       ''
+		"'name'.to_upper ( )":           "'NAME'"
+		"'name'.to_upper ( ).len":       '4'
 		"'name'.starts_with ( prefix )": ''
 		"name.starts_with ( 'na' )":     ''
 	}
@@ -524,9 +524,7 @@ fn test_comptime_condition_string_literal_members() {
 		}
 		assert got == want, cond
 	}
-	if _ := t.eval_field_cond("'name'.to_upper ( ).len > 3") {
-		assert false, 'a call on a call result should stay undecided'
-	}
+	assert t.eval_field_cond("'name'.to_upper ( ).len > 3") or { false }
 }
 
 fn test_comptime_condition_does_not_compare_expressions_as_text() {
@@ -534,8 +532,8 @@ fn test_comptime_condition_does_not_compare_expressions_as_text() {
 	mut t := Transformer{
 		a: &a
 	}
-	for cond in ["'name'.to_upper ( ) == 'NAME'", "'name'[0] != `n`", "'n' == 'name'.trim ( 'e' )",
-		"'name'.split ( 'a' ) in ['n']", "'name'.index ( 'a' ) < 2"] {
+	for cond in ["'name'.unsupported ( ) == 'NAME'", "'name'[0] != `n`", "'name'.split ( 'a' ) in ['n']",
+		"'name'.index ( 'a' ) < 2"] {
 		if value := t.eval_field_cond(cond) {
 			assert false, 'condition `${cond}` should stay undecided, got ${value}'
 		}
@@ -1006,4 +1004,28 @@ fn test_comptime_method_metadata_reuses_repeated_receiver_lookups() {
 		allocated := gc_heap_usage().total_bytes - before
 		assert allocated < 1024 * 1024, 'repeated method lookups allocated ${allocated} bytes'
 	}
+}
+
+fn test_comptime_string_method_chains_match_builtin_methods() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{ a: &a }
+	for cond in ["'GET /users/:id'.all_after(' ').trim_left('/').starts_with('users')",
+		"'GET /users'.all_before(' ').to_lower() == 'get'", "'a/b/c'.count('/') == 2",
+		"'  x  '.trim_space().to_upper() == 'X'",
+		"'prefix-value'.trim_string_left('prefix-') == 'value'",
+		"'value-suffix'.trim_string_right('-suffix') == 'value'",
+		"'a,b,c'.replace(',', '/').all_after_last('/') == 'c'", "'a/b/c'.all_before_last('/') == 'a/b'",
+		"'name'.trim_right('e').trim_left('n') == 'am'", "'aa'.replace('a', 'x').count('x') == 2"] {
+		assert t.eval_field_cond(cond) or { false }, cond
+	}
+}
+
+fn test_folded_condition_string_keeps_its_own_quotes() {
+	value := "'QUOTED'"
+	text := comptime_cond_string_literal(value)
+	expr := text + '.to_lower()'
+	assert comptime_cond_operand(expr) or { '' } == value.to_lower()
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{ a: &a }
+	assert t.eval_field_cond(expr + ' == ' + comptime_cond_string_literal(value.to_lower())) or { false }
 }
