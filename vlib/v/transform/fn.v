@@ -2515,6 +2515,11 @@ fn (mut t Transformer) call_param_offset_for_node(call_name string, node flat.No
 		return param_offset
 	}
 	base_id := t.a.child(&selector, 0)
+	base_type := t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(base_id)))
+	if t.receiver_selector_is_fn_field(base_type, selector.value) {
+		return 0
+	}
+
 	base := t.a.nodes[int(base_id)]
 	first := types.unwrap_all_pointers(params[0])
 	base_is_lexical_module := t.selector_is_lexical_module_call(base_id, selector.value, call_name)

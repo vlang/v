@@ -48,3 +48,33 @@ fn test_variadic_function_parameters_keep_empty_and_nonempty_tails() {
 	assert indexed[0](80) == 80
 	assert local(90) == 90
 }
+
+interface VariadicValue {
+	value() int
+}
+
+struct VariadicConcrete {}
+
+fn (value VariadicConcrete) value() int {
+	return 100
+}
+
+type VariadicInterfaceCallback = fn (VariadicValue, ...string) int
+
+struct VariadicInterfaceCallbacks {
+	callback VariadicInterfaceCallback @[required]
+}
+
+fn variadic_interface_parameter_impl(value VariadicValue, args ...string) int {
+	return value.value() + args.len
+}
+
+fn test_variadic_function_fields_with_interface_first_argument() {
+	callbacks := VariadicInterfaceCallbacks{ callback: variadic_interface_parameter_impl }
+	assert callbacks.callback(VariadicConcrete{}) == 100
+	assert callbacks.callback(VariadicConcrete{}, 'x') == 101
+	args := ['a', 'b']
+	assert callbacks.callback(VariadicConcrete{}, ...args) == 102
+	pointer := &callbacks
+	assert pointer.callback(VariadicConcrete{}) == 100
+}
