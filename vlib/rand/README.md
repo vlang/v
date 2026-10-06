@@ -57,6 +57,11 @@ the generator must implement the `PRNG` interface. See `get_current_rng()` and `
 There are only a few extra functions that are defined only in this top-level `rand` module.
 Otherwise, there is feature parity between the generator functions and the top-level functions.
 
+`uuid_v7()` and `UUIDSession.next()` encode Unix milliseconds in the 48-bit timestamp
+field required by [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562.html#section-5.7).
+Sessions use the 12-bit `rand_a` field for a 6-bit submillisecond fraction and
+a 6-bit counter that wraps after 64 calls; random bits come from the default PRNG.
+
 # General Background
 
 A PRNG is a Pseudo Random Number Generator.

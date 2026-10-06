@@ -33,7 +33,7 @@ pub fn min_v_violation(manifest vmod.Manifest, module_name string) ?MinVersionEr
 	}
 	// A malformed min_v is the module author's bug, not the user's, and refusing is
 	// better than installing something that cannot be checked once it is on disk.
-	wanted := semver.from(required[0]) or {
+	wanted := semver.from(required[0].trim_space()) or {
 		return MinVersionError{
 			module_name: module_name
 			installed:   version.v_version

@@ -24,7 +24,8 @@ provided by `semver`, including caret, tilde, comparators, wildcards, hyphen
 ranges and `||`. Tags may have an optional lowercase `v` prefix. Non-version
 tags are ignored; prereleases require a matching prerelease constraint.
 Version components must fit the `int` fields of `semver.Version`.
-If no tag satisfies the range, installation fails.
+Malformed ranges fail with an invalid-range error. A valid range with no matching tag
+fails with a no-matching-tag error.
 
 Exact Git refs such as `@v1.2.3`, `@v1.2.3-rc.x`, `@1.2.3+build.x`, or `@topic.x`
 keep their existing meaning. An implicit `x` or `X` wildcard must occur in the numeric
@@ -39,4 +40,76 @@ with `--locked`, even when newer tags exist. A changed range is resolved again;
 This is the initial range-selection layer. Different requirements targeting the
 same installation directory are rejected when a range is involved, before
 installation changes the module store. Joint constraint solving, backtracking,
-version-aware updates and graph reporting are not yet implemented.
+version-aware updates and dependency-version graph reporting are not yet implemented.
+
+## Minimum compiler versions and root overrides
+
+A dependency can declare `min_v: '0.5.0'` in `v.mod`. Installation checks this
+against the running compiler before consuming that dependency's own dependencies.
+An empty requirement is allowed; an invalid version or an unmet requirement fails
+installation for both registered modules and direct repositories.
+
+The root project's manifest can force a dependency ref or semantic version range:
+
+```text
+Module {
+    dependencies: ['publisher.package@^1.0.0']
+    dependency_overrides: ['publisher.package: v2.0.0']
+}
+```
+
+Only the root manifest supplies overrides. Dependency manifests cannot override
+the consumer's choices. Overrides match a registered name, or a direct repository's
+basename or manifest name, and replace its requested constraint before its selected
+manifest and dependencies are read. A direct repository with a different manifest
+name may require a default-branch metadata checkout to discover that name.
+Malformed or duplicate overrides fail before installation. A selector such as
+`requiring>package: v2.0.0` applies only to the dependency edge from the named
+requiring module. A matching selector takes precedence over a global override.
+Source checkout, minimum-version checks, transitive dependencies and locks all
+use that effective request.
+
+The lockfile records the effective dependency request including the override,
+the selected tag and the actual commit. Reinstalling reuses that commit. Changing
+an override requires a normal install to refresh the lock; `--locked` rejects it.
+An override can intentionally select a version outside the original constraint.
+
+Bundled tools declare external build requirements in their own `v.mod` under
+`dev_dependencies`, for example `dev_dependencies: ['markdown']` for `vdoc`.
+The launcher reads these manifests beside its own compiler. The legacy
+`v.util.external_modules_for_tool` function remains available as a wrapper;
+`external_module_dependencies_for_tool` remains the old compatibility snapshot.
+
+## Import graph and resolver helpers
+
+`v mod graph` prints the project's import graph as an indented tree. Each module
+appears at its first occurrence; shared subtrees and import cycles are visited once.
+The graph reads import declarations, including both conditional-compilation branches.
+
+The internal version-assignment helper checks all supplied candidate modules,
+semantic version constraints, candidate dependencies and cycles with backtracking.
+It is a foundation for joint resolution; installation still uses the range-selection
+behavior described above. The installer does not yet discover candidates for every
+version or run a joint dependency solver.
+
+## Installed version reporting
+
+`v outdated` lists installed modules in a table with four version columns:
+
+| Column | Meaning |
+| --- | --- |
+| Current | The checkout's exact Git tag, or its short commit ID. |
+| Upgradable | The highest upstream release tag matching the root project's dependency request. |
+| Resolvable | Currently the same root project constraint, checked by the multi-constraint helper. |
+| Latest | The highest upstream release tag, without the project's constraint. |
+
+`Resolvable` does not yet include transitive constraints, overrides or candidate discovery
+for the whole dependency graph. Exact semantic-version refs are compared as exact versions;
+other Git refs cannot be compared with semantic-version tags. Prereleases require an explicit
+matching prerelease comparator, including when a dependency has no version constraint.
+
+`none` means no tag matches, `invalid` means the project's semantic-version range is malformed,
+and `n/a` means a value could not be obtained or a non-semantic Git ref cannot be compared.
+These states do not fall back to `Latest`. Repositories without release tags still have rows.
+Tag availability is read from the checkout's origin without moving the installed checkout.
+The existing commit-based repository checks used by `v upgrade` are unchanged.

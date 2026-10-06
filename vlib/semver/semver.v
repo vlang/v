@@ -73,10 +73,7 @@ pub fn (ver Version) satisfies(input string) bool {
 // satisfies keeps returning false for that case, because changing it would break
 // every caller at once and the ones that need the distinction can move over.
 pub fn (ver Version) satisfies_or_error(input string) !bool {
-	range := parse_range(input) or {
-		return error('invalid version range `${input}`')
-	}
-	return range.satisfies(ver)
+	return version_satisfies_or_error(ver, input)
 }
 
 // is_valid_range reports whether input parses as a range at all. It exists so a

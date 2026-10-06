@@ -243,15 +243,22 @@ fn graph(project string) ! {
 	g := build_graph(project)!
 	root := module_name_of(project)
 	println(root)
-	print_graph(g, root, '')
+	mut seen := map[string]bool{
+		root: true
+	}
+	print_graph(g, root, '', mut seen)
 }
 
 // print_graph prints a module and its dependencies, indented by `prefix`. Modules are
 // printed once, at their first occurrence, so a diamond does not repeat a subtree.
-fn print_graph(g &Graph, name string, prefix string) {
+fn print_graph(g &Graph, name string, prefix string, mut seen map[string]bool) {
 	for dep in g.edges[name] or { []string{} } {
+		if dep in seen {
+			continue
+		}
+		seen[dep] = true
 		println('${prefix}${dep}')
-		print_graph(g, dep, '${prefix}  ')
+		print_graph(g, dep, '${prefix}  ', mut seen)
 	}
 }
 

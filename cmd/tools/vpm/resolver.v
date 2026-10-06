@@ -2,6 +2,7 @@ module main
 
 import semver
 
+// Constraint records a version range imposed on a module by a requiring module.
 pub struct Constraint {
 pub:
 	required_by string
@@ -18,19 +19,22 @@ pub:
 }
 
 // topo_sort orders module names so that a module's dependencies come before it. The
-// resolver needs this because a module can only be resolved once the versions of its
-// dependencies are known.
+// resolver prefers this order to check dependency versions early. Cycles are checked
+// in both directions as their candidate versions become known.
 fn topo_sort(candidates map[string][]VersionedDeps) []string {
 	mut order := []string{}
 	mut visited := map[string]bool{}
 	mut visiting := map[string]bool{}
-	for name in candidates.keys() {
+	for name in candidates.keys().sorted() {
 		topo_visit(name, candidates, mut order, mut visited, mut visiting)
 	}
 	return order
 }
 
 fn topo_visit(node string, candidates map[string][]VersionedDeps, mut order []string, mut visited map[string]bool, mut visiting map[string]bool) {
+	if node !in candidates {
+		return
+	}
 	if visiting[node] {
 		return
 	}
@@ -53,39 +57,45 @@ fn topo_visit(node string, candidates map[string][]VersionedDeps, mut order []st
 
 // version_ok reports whether a candidate version satisfies every constraint on its
 // module and is compatible with the versions already resolved.
-fn version_ok(cand VersionedDeps, name string, resolved map[string]string, constraints map[string][]Constraint, candidates map[string][]VersionedDeps) bool {
+fn version_ok(cand VersionedDeps, name string, resolved map[string]VersionedDeps, candidates map[string][]VersionedDeps, constraints map[string][]Constraint) bool {
+	v := semver.from(cand.version) or { return false }
 	for c in constraints[name] {
-		v := semver.from(cand.version) or { return false }
 		if !v.satisfies(c.range) {
 			return false
 		}
 	}
 	for dep_str in cand.deps {
 		dep_name := dep_str.all_before('@').trim_space()
-		dep_range := dep_str.all_after('@').trim_space()
-		if dep_name in resolved {
-			dep_v := semver.from(resolved[dep_name]) or { return false }
+		dep_range := if dep_str.contains('@') { dep_str.all_after('@').trim_space() } else { '' }
+		if dep_name !in candidates {
+			return false
+		}
+		if dep_name == name {
+			if !v.satisfies(dep_range) {
+				return false
+			}
+		} else if dep_name in resolved {
+			dep_v := semver.from(resolved[dep_name].version) or { return false }
 			if !dep_v.satisfies(dep_range) {
 				return false
 			}
 		}
 	}
-	for resolved_name, resolved_version in resolved {
-		if resolved_name == name {
+	// A cycle can place a requiring module first. Check its selected dependency
+	// against the new candidate too, instead of accepting an unchecked edge.
+	for other_name, other in resolved {
+		if other_name == name {
 			continue
 		}
-		for resolved_cand in candidates[resolved_name] {
-			if resolved_cand.version != resolved_version {
-				continue
-			}
-			for dep_str in resolved_cand.deps {
-				dep_name := dep_str.all_before('@').trim_space()
-				dep_range := dep_str.all_after('@').trim_space()
-				if dep_name == name {
-					v := semver.from(cand.version) or { return false }
-					if !v.satisfies(dep_range) {
-						return false
-					}
+		for dep_str in other.deps {
+			if dep_str.all_before('@').trim_space() == name {
+				dep_range := if dep_str.contains('@') {
+					dep_str.all_after('@').trim_space()
+				} else {
+					''
+				}
+				if !v.satisfies(dep_range) {
+					return false
 				}
 			}
 		}
@@ -93,10 +103,30 @@ fn version_ok(cand VersionedDeps, name string, resolved map[string]string, const
 	return true
 }
 
+fn compare_candidate_versions(a &VersionedDeps, b &VersionedDeps) int {
+	av := semver.from(a.version) or { return 0 }
+	bv := semver.from(b.version) or { return 0 }
+	if av > bv {
+		return -1
+	}
+	if av < bv {
+		return 1
+	}
+	return compare_strings(a.version, b.version)
+}
+
 // select_version_tag_with_constraints returns the highest tag satisfying every
 // constraint, or an error naming the constraints that could not be met. This is the
 // joint step: `select_version_tag` answers one range, this answers all of them.
 fn select_version_tag_with_constraints(tags []string, constraints []Constraint) !string {
+	if constraints.len == 0 {
+		return select_version_tag(tags, '*')!
+	}
+	for c in constraints {
+		if !semver.is_valid_range(c.range) {
+			return error('invalid version range `${c.range}` required by `${c.required_by}`')
+		}
+	}
 	mut sorted := tags.clone()
 	sorted.sort()
 	mut selected := ''
@@ -134,8 +164,39 @@ fn select_version_tag_with_constraints(tags []string, constraints []Constraint) 
 // module fails, the search steps back to the previous module and resumes it from
 // where it left off, so a different earlier choice gets a different later outcome.
 fn resolve_with_backtracking(candidates map[string][]VersionedDeps, constraints map[string][]Constraint) !map[string]string {
+	for name, requirements in constraints {
+		if name !in candidates {
+			return error('failed to resolve `${name}`: no candidate versions were supplied')
+		}
+		for requirement in requirements {
+			if !semver.is_valid_range(requirement.range) {
+				return error('invalid version range `${requirement.range}` required by `${requirement.required_by}` for `${name}`')
+			}
+		}
+	}
+	for name, versions in candidates {
+		mut seen_versions := map[string]bool{}
+		for candidate in versions {
+			_ := semver.from(candidate.version) or {
+				return error('invalid candidate version `${candidate.version}` for `${name}`')
+			}
+			if candidate.version in seen_versions {
+				return error('duplicate candidate version `${candidate.version}` for `${name}`')
+			}
+			seen_versions[candidate.version] = true
+			for dep in candidate.deps {
+				if dep.all_before('@').trim_space() == '' {
+					return error('invalid dependency `${dep}` for `${name}`')
+				}
+				range := if dep.contains('@') { dep.all_after('@').trim_space() } else { '' }
+				if !semver.is_valid_range(range) {
+					return error('invalid version range `${range}` required by `${name}`')
+				}
+			}
+		}
+	}
 	order := topo_sort(candidates)
-	mut resolved := map[string]string{}
+	mut resolved := map[string]VersionedDeps{}
 	mut pos := map[string]int{}
 	for mod_name in order {
 		pos[mod_name] = 0
@@ -144,8 +205,8 @@ fn resolve_with_backtracking(candidates map[string][]VersionedDeps, constraints 
 	mut idx := 0
 	for idx < order.len {
 		mod_name := order[idx]
-		mut cands := candidates[mod_name]
-		cands.sort(a.version > b.version)
+		mut cands := candidates[mod_name].clone()
+		cands.sort_with_compare(compare_candidate_versions)
 
 		mut found := false
 		for i in 0 .. cands.len {
@@ -153,8 +214,8 @@ fn resolve_with_backtracking(candidates map[string][]VersionedDeps, constraints 
 				continue
 			}
 			cand := cands[i]
-			if version_ok(cand, mod_name, resolved, constraints, candidates) {
-				resolved[mod_name] = cand.version
+			if version_ok(cand, mod_name, resolved, candidates, constraints) {
+				resolved[mod_name] = cand
 				pos[mod_name] = i + 1
 				found = true
 				break
@@ -172,7 +233,11 @@ fn resolve_with_backtracking(candidates map[string][]VersionedDeps, constraints 
 			idx--
 		}
 	}
-	return resolved
+	mut versions := map[string]string{}
+	for name, candidate in resolved {
+		versions[name] = candidate.version
+	}
+	return versions
 }
 
 // PubGrub-style solver: incremental, conflict-driven resolution.

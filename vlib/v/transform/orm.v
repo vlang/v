@@ -465,7 +465,7 @@ fn (mut t Transformer) sql_select_query_builder(stmt SqlTransformStmt, db_expr f
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_select_qualified_fields', [
 			t.sql_string_array(stmt.fields),
 		], qb_type)
-	} else if stmt.fields.len > 0 {
+	} else {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_select_fields', [
 			t.sql_string_array(stmt.fields),
 		], qb_type)

@@ -2,65 +2,88 @@ module main
 
 import semver
 
-// Override is one `dependency_overrides` entry. The `requiring` field is the module
-// that has to ask for the dependency for the override to apply; when it is empty the
-// override applies everywhere. The `version` field is the forced version, or `-` to
-// remove the edge entirely. The `constraint` field is the consumer's version range
-// that must admit the override version for it to apply.
+// Override selects a root dependency ref or range, optionally only where
+// requiring asks for that dependency. Dependency manifests supply no overrides.
 pub struct Override {
 pub:
-	name       string
-	version    string
+	name      string
+	version   string
 	requiring  string
 	constraint string
 }
 
-// parse_overrides reads the `dependency_overrides` entries of a manifest. Each entry
-// is `[requiring>]name: version`, pnpm-style. An entry that is not that shape is
-// skipped rather than guessed at, because a typo in an override should not silently
-// install something else.
-pub fn parse_overrides(raw []string) []Override {
+// parse_overrides reads [requiring>]name: version entries and rejects malformed
+// or duplicate selectors before installation can change the module store.
+pub fn parse_overrides(raw []string) ![]Override {
 	mut result := []Override{}
+	mut seen := map[string]bool{}
 	for entry in raw {
-		o := parse_override(entry) or { continue }
+		o := parse_override(entry)!
+		key := o.requiring + '@' + o.constraint + '>' + o.name
+		if key in seen { return error('duplicate dependency override for `${key}`') }
+		seen[key] = true
 		result << o
 	}
 	return result
 }
 
-// parse_override reads one entry. The `requiring>name` form forces a version only
-// where `requiring` asks for `name`; without it the override applies everywhere.
-// A version of `-` removes the edge. The `requiring@range>name` form only applies
-// when the consumer's constraint admits the override version.
+fn valid_override_name(name string) bool {
+	return name != '' && name !in ['.', '..'] && !name.contains_any('/\\@<>:')
+}
+
 fn parse_override(entry string) !Override {
 	parts := entry.split(':')
 	if parts.len != 2 {
-		return error('invalid override `${entry}`')
+		return error('invalid dependency override `${entry}`; expected [requiring>]name: version')
 	}
-	left := parts[0].trim_space()
-	version := parts[1].trim_space()
-
-	mut requiring := ''
+	selectors := parts[0].trim_space().split('>')
+	if selectors.len !in [1, 2] { return error('invalid dependency override selector `${entry}`') }
+	name := selectors[selectors.len - 1].trim_space()
+	mut requiring := if selectors.len == 2 { selectors[0].trim_space() } else { '' }
 	mut constraint := ''
-	mut name := left
-	if idx := left.index('>') {
-		requiring = left[..idx].trim_space()
-		name = left[idx + 1..].trim_space()
-		if at_idx := requiring.index('@') {
-			constraint = requiring[at_idx + 1..].trim_space()
-			requiring = requiring[..at_idx].trim_space()
+	if requiring.contains('@') {
+		requiring, constraint = requiring.split_once('@') or { '', '' }
+		if constraint == '' || !semver.is_valid_range(constraint) {
+			return error('invalid dependency override constraint `${constraint}` in `${entry}`')
 		}
 	}
+	version := parts[1].trim_space()
+	if !valid_override_name(name) || (selectors.len == 2 && !valid_override_name(requiring)) || version == '' {
+		return error('invalid dependency override `${entry}`')
+	}
+	return Override{ name: name, version: version, requiring: requiring, constraint: constraint }
+}
 
-	if name == '' || version == '' {
-		return error('invalid override `${entry}`')
+// overridden_request applies global root overrides before a source is selected.
+pub fn overridden_request(request string, names []string, overrides []Override) string {
+	return overridden_request_for_module(request, names, '', overrides)
+}
+
+// overridden_request_for_module applies a selector to the actual requiring edge.
+// A matching scoped selector takes precedence over a global override. The result
+// becomes the source request and lock entry before its manifest is read.
+pub fn overridden_request_for_module(request string, names []string, requiring string, overrides []Override) string {
+	for name in names {
+		for o in overrides {
+			if requiring != '' && o.requiring == requiring && o.name == name && override_constraint_matches(o) {
+				return lockfile_module_key(request) + at_version(o.version)
+			}
+		}
 	}
-	return Override{
-		name:       name
-		version:    version
-		requiring:  requiring
-		constraint: constraint
+	for name in names {
+		for o in overrides {
+			if o.requiring == '' && o.name == name && override_constraint_matches(o) {
+				return lockfile_module_key(request) + at_version(o.version)
+			}
+		}
 	}
+	return request
+}
+
+fn override_constraint_matches(o Override) bool {
+	if o.constraint == '' || o.version == '-' { return true }
+	v := version_tag(o.version) or { return false }
+	return v.satisfies(o.constraint)
 }
 
 // build_graph reads the dependencies of every module and returns a map from a module
@@ -81,12 +104,12 @@ fn build_graph(modules map[string]Module) map[string][]string {
 	return graph
 }
 
-// apply_overrides replaces the version of every module an override names. It runs
-// before `validate_range_destinations`, so an overridden module is checked at the
-// version it will actually be installed at. A version of `-` removes the module from
-// the install set entirely.
+// apply_overrides adjusts parsed graph metadata for callers that display a graph.
+// Installation resolves overrides before cloning and does not use this helper to
+// change the version recorded for already selected sources.
 pub fn apply_overrides(mut modules map[string]Module, overrides []Override, graph map[string][]string) {
 	for o in overrides {
+		if !override_constraint_matches(o) { continue }
 		// A selector override only applies where the requiring module asks for the
 		// dependency. Without this, `vsl>c: 1.0.2` would force c everywhere.
 		if o.requiring != '' {
@@ -94,21 +117,6 @@ pub fn apply_overrides(mut modules map[string]Module, overrides []Override, grap
 			if o.name !in deps {
 				continue
 			}
-		}
-		// Check that the consumer's constraint admits the override version.
-		if o.constraint != '' && o.version != '-' {
-			v := semver.from(o.version) or { continue }
-			if !v.satisfies(o.constraint) {
-				continue
-			}
-		}
-		if o.version == '-' {
-			for key, m in modules {
-				if m.name == o.name {
-					modules.delete(key)
-				}
-			}
-			continue
 		}
 		for key, mut m in modules {
 			if m.name == o.name {

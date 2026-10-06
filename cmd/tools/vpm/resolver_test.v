@@ -1,7 +1,5 @@
 module main
 
-import semver
-
 fn vd(version string, deps ...string) VersionedDeps {
 	return VersionedDeps{
 		version: version
@@ -13,6 +11,28 @@ fn con(required_by string, rng string) Constraint {
 	return Constraint{
 		required_by: required_by
 		range:       rng
+	}
+}
+
+fn test_joint_tag_selection_requires_every_constraint_and_excludes_unrequested_prereleases() {
+	tags := ['v1.0.0', 'v2.0.0', 'v10.0.0', 'v11.0.0-alpha', 'notes']
+	assert select_version_tag_with_constraints(tags, []Constraint{})! == 'v10.0.0'
+	assert select_version_tag_with_constraints(tags, [con('root', '')])! == 'v10.0.0'
+	assert select_version_tag_with_constraints(tags, [con('root', '^2.0.0'),
+		con('dependency', '<3.0.0')])! == 'v2.0.0'
+	assert select_version_tag_with_constraints(tags, [con('root', '>=11.0.0-alpha <11.0.0')])! == 'v11.0.0-alpha'
+	assert tags == ['v1.0.0', 'v2.0.0', 'v10.0.0', 'v11.0.0-alpha', 'notes']
+	mut conflict := ''
+	select_version_tag_with_constraints(tags, [con('root', '^1.0.0'), con('dependency',
+		'^2.0.0')]) or { conflict = err.msg() }
+	assert conflict.contains('root requires ^1.0.0'), conflict
+	assert conflict.contains('dependency requires ^2.0.0'), conflict
+	for invalid_tags in [[]string{}, tags] {
+		mut invalid := ''
+		select_version_tag_with_constraints(invalid_tags, [con('root', '^invalid')]) or {
+			invalid = err.msg()
+		}
+		assert invalid.contains('invalid version range'), invalid
 	}
 }
 
@@ -131,4 +151,78 @@ fn test_resolve_reports_which_module_failed() {
 	mut msg2 := ''
 	resolve_with_backtracking(candidates, constraints) or { msg2 = err.msg() }
 	assert msg2.contains('b'), msg2
+}
+
+fn test_resolve_orders_multi_digit_versions_semantically() {
+	resolved := resolve_with_backtracking({
+		'a': [vd('2.0.0'), vd('10.0.0')]
+	}, map[string][]Constraint{})!
+	assert resolved['a'] == '10.0.0'
+}
+
+fn test_resolve_handles_satisfiable_cycles() {
+	candidates := {
+		'a': [vd('1.0.0', 'b@^1.0.0'), vd('2.0.0', 'b@^1.0.0')]
+		'b': [vd('1.0.0', 'a@^2.0.0')]
+	}
+	resolved := resolve_with_backtracking(candidates, map[string][]Constraint{})!
+	assert resolved['a'] == '2.0.0'
+	assert resolved['b'] == '1.0.0'
+}
+
+fn test_resolve_ignores_unavailable_dependencies_of_rejected_candidates() {
+	resolved := resolve_with_backtracking({
+		'a': [vd('2.0.0', 'missing@^1.0.0'), vd('1.0.0')]
+	}, map[string][]Constraint{})!
+	assert resolved == {
+		'a': '1.0.0'
+	}
+}
+
+fn test_resolve_checks_self_dependencies() {
+	resolved := resolve_with_backtracking({
+		'a': [vd('1.0.0', 'a@^2.0.0'), vd('2.0.0', 'a@^2.0.0')]
+	}, map[string][]Constraint{})!
+	assert resolved['a'] == '2.0.0'
+	mut rejected := false
+	resolve_with_backtracking({
+		'a': [vd('1.0.0', 'a@^2.0.0')]
+	}, map[string][]Constraint{}) or { rejected = true }
+	assert rejected
+}
+
+fn test_resolve_does_not_reorder_caller_candidates() {
+	candidates := {
+		'a': [vd('1.0.0'), vd('2.0.0')]
+	}
+	resolve_with_backtracking(candidates, map[string][]Constraint{})!
+	assert candidates['a'][0].version == '1.0.0'
+	assert candidates['a'][1].version == '2.0.0'
+}
+
+fn test_resolve_reports_invalid_input_ranges_and_missing_candidates() {
+	mut range_msg := ''
+	resolve_with_backtracking({
+		'a': [vd('1.0.0')]
+	}, {
+		'a': [con('root', 'not-a-range')]
+	}) or { range_msg = err.msg() }
+	assert range_msg.contains('invalid version range'), range_msg
+	assert range_msg.contains('root'), range_msg
+	mut missing_msg := ''
+	resolve_with_backtracking(map[string][]VersionedDeps{}, {
+		'missing': [con('root', '*')]
+	}) or { missing_msg = err.msg() }
+	assert missing_msg.contains('missing'), missing_msg
+	for candidates in [{
+		'a': [vd('not-a-version')]
+	}, {
+		'a': [vd('1.0.0'), vd('1.0.0')]
+	}, {
+		'a': [vd('1.0.0', 'b@not-a-range')]
+	}] {
+		mut rejected := false
+		resolve_with_backtracking(candidates, map[string][]Constraint{}) or { rejected = true }
+		assert rejected
+	}
 }
