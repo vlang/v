@@ -1437,6 +1437,117 @@ fn test_it_will_not_register_the_same_server_twice() {
 	assert read_config(path) == once, 'a second install changed the file'
 }
 
+fn test_it_says_which_compiler_an_existing_entry_runs() {
+	path := config_fixture('moved', '{"mcp":{}}')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path, false) or { panic(err) }
+	// An entry registered from a different compiler is the case a reader cannot
+	// otherwise discover: install says nothing and changes nothing, so the file is
+	// the only place the answer lives.
+	other := '{"mcp":{"vlang":{"command":["C:\\\\elsewhere\\\\v.exe","mcp","serve"]}}}'
+	os.write_file(path, other)!
+	exe, command := recorded_entry(read_config(path), 'mcp') or { panic('no entry') }
+	assert exe == 'C:\\elsewhere\\v.exe', exe
+	assert command == 'C:\\elsewhere\\v.exe mcp serve', command
+	// And the harness that ran install names a different one, which is what the
+	// message compares.
+	assert exe != server_exe(), 'the fixture must not name this compiler'
+}
+
+fn test_it_refuses_a_config_whose_root_is_not_an_object() {
+	// Valid JSON, so it is not the JSONC case, and an array is not somewhere a
+	// top-level object can be added without guessing.
+	path := config_fixture('arrayroot', '["not","an","object"]')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	before := read_config(path)
+	mut refused := false
+	write_entry(h, path, false) or {
+		refused = true
+		assert err.msg().contains('valid JSON'), err.msg()
+		assert err.msg().contains('top level is not an object'), err.msg()
+	}
+	assert refused, 'an array-root file was not refused'
+	// The file is valid JSON, so it must not be described as JSONC, which sends
+	// the reader looking for a comment that is not there.
+	assert is_json_value(before), 'an array is valid JSON'
+	assert !is_plain_json(before), 'but it is not an object either'
+	assert read_config(path) == before, 'the file was rewritten'
+}
+
+fn test_existing_entry_report_reads_both_command_shapes_and_keeps_project_scope() {
+	h := Harness{
+		name:  'opencode'
+		label: 'opencode'
+		key:   'mcp'
+	}
+	for argv_in_command in [false, true] {
+		shape := Harness{ ...h, argv_in_command: argv_in_command }
+		entry := shape.entry('/elsewhere/My Compiler/v', ['mcp', 'serve', '--title=one two'])
+		text := '{"mcp":{"vlang":${entry}}}'
+		exe, command := recorded_entry(text, 'mcp') or { panic('no readable entry') }
+		assert exe == '/elsewhere/My Compiler/v'
+		assert command == '"/elsewhere/My Compiler/v" mcp serve "--title=one two"'
+		for project in [false, true] {
+			report := existing_entry_report(text, shape, '/fixture/config.json', project)
+			assert report.contains('  it runs ${command}\n')
+			assert report.contains('  this compiler is ${server_exe()}\n')
+			assert report.contains('  to move it'), report
+			assert !report.contains('to move it: v mcp'), report
+			compiler := if os.user_os() == 'windows' {
+				"& '" + server_exe().replace("'", "''") + "'"
+			} else {
+				os.quoted_path(server_exe())
+			}
+			if project {
+				assert report.ends_with('${compiler} mcp uninstall opencode --project\n  ${compiler} mcp install opencode --project')
+			} else {
+				assert report.ends_with('${compiler} mcp uninstall opencode\n  ${compiler} mcp install opencode')
+			}
+		}
+	}
+	matching := '{"mcp":{"vlang":${h.entry(server_exe(), server_args())}}}'
+	assert !existing_entry_report(matching, h, '/fixture/config.json', true).contains('to move it:')
+}
+
+fn test_existing_entry_report_moves_to_the_invoked_compiler_with_shell_quoting() {
+	h := Harness{ name: 'opencode', key: 'mcp' }
+	text := '{"mcp":{"vlang":{"command":"v","args":["mcp","serve"]}}}'
+	wanted := "/somewhere/My Compiler's v\$1"
+	posix := existing_entry_report_for_compiler(text, h, '/fixture/config.json', true, wanted, false)
+	assert posix.ends_with("  '/somewhere/My Compiler'\\''s v\$1' mcp uninstall opencode --project\n  '/somewhere/My Compiler'\\''s v\$1' mcp install opencode --project"), posix
+	windows := existing_entry_report_for_compiler(text, h, '/fixture/config.json', false, wanted, true)
+	assert windows.contains('to move it (PowerShell):'), windows
+	assert windows.ends_with("  & '/somewhere/My Compiler''s v\$1' mcp uninstall opencode\n  & '/somewhere/My Compiler''s v\$1' mcp install opencode"), windows
+}
+
+fn test_existing_entry_report_leaves_unreadable_commands_alone() {
+	h := Harness{ name: 'test', label: 'test', key: 'mcp' }
+	for index, entry in ['{}', '{"command":null}', '{"command":42}', '{"command":false}',
+		'{"command":""}', '{"command":[]}', '{"command":["v",null]}',
+		'{"command":"v","args":"mcp serve"}', '{"command":"v","args":["mcp",true]}'] {
+		text := '{"mcp":{"vlang":${entry}}}'
+		path := config_fixture('unreadable${index}', text)!
+		write_entry(h, path, false) or { panic(err) }
+		assert read_config(path) == text
+		assert existing_entry_report(text, h, path, false) == 'v mcp install: vlang is already in ${path}; leaving it alone.'
+	}
+}
+
+fn test_recorded_entry_quotes_empty_arguments_and_control_bytes() {
+	text := '{"mcp":{"vlang":{"command":"v","args":["","line\\nnext","quote\\\"here"]}}}'
+	exe, command := recorded_entry(text, 'mcp') or { panic('no readable entry') }
+	assert exe == 'v'
+	assert command == 'v "" "line\\nnext" "quote\\\"here"'
+}
+
 fn test_it_adds_the_key_to_a_config_that_has_no_servers_yet() {
 	path := config_fixture('nokey', '{"unrelated":{}}')!
 	h := Harness{
