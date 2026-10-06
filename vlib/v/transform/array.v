@@ -3311,7 +3311,35 @@ fn (mut t Transformer) materialize_array_callback(id flat.NodeId, prefix string)
 	return callback_ident, setup
 }
 
-fn (mut t Transformer) transform_array_predicate(predicate_id flat.NodeId, default_elem_name string, elem_type string, prefix string) (string, flat.NodeId, []flat.NodeId, []flat.NodeId) {
+// array_receiver_raw_elem_type is the element type of the receiver of the array method
+// `fn_node` as the source names it, when that is an alias of `elem_type`: `UUID` for a
+// `[]UUID`, whose elements are lowered as `[16]u8`. An element bound with the alias keeps
+// the methods of the alias, like its own `str`. Otherwise it is `elem_type`.
+fn (t &Transformer) array_receiver_raw_elem_type(fn_node flat.Node, elem_type string) string {
+	if fn_node.children_count == 0 {
+		return elem_type
+	}
+	receiver := t.a.child(&fn_node, 0)
+	mut raw := t.raw_var_type_for_expr(receiver) or { '' }
+	if !raw.starts_with('[') {
+		raw = t.raw_checker_node_type(receiver)
+	}
+	raw = t.trim_pointer_type(raw)
+	raw_elem := if raw.starts_with('[]') {
+		raw[2..]
+	} else if raw.starts_with('[') {
+		fixed_array_elem_type(raw)
+	} else {
+		''
+	}
+	if raw_elem.len == 0 || raw_elem == elem_type || !t.is_type_alias_name(raw_elem)
+		|| t.normalize_type_alias(raw_elem) != t.normalize_type_alias(elem_type) {
+		return elem_type
+	}
+	return raw_elem
+}
+
+fn (mut t Transformer) transform_array_predicate(predicate_id flat.NodeId, default_elem_name string, elem_type string, raw_elem_type string, prefix string) (string, flat.NodeId, []flat.NodeId, []flat.NodeId) {
 	predicate_node := t.a.nodes[int(predicate_id)]
 	predicate_allocates_closure := t.expr_allocates_fresh_runtime_closure(predicate_id)
 	predicate_is_fn_value := predicate_node.kind != .lambda_expr
@@ -3338,7 +3366,7 @@ fn (mut t Transformer) transform_array_predicate(predicate_id flat.NodeId, defau
 	}
 	elem_name := if lambda_param.len > 0 { lambda_param } else { default_elem_name }
 	old_elem := t.var_type(elem_name)
-	t.set_var_type(elem_name, elem_type)
+	t.set_var_type_with_raw(elem_name, elem_type, raw_elem_type)
 	predicate_source := if lambda_param.len > 0 {
 		predicate_expr_id
 	} else {
@@ -3455,7 +3483,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	elem_name := if lambda_param.len > 0 { lambda_param } else { elem_name_default }
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
 	old_elem := t.var_type(elem_name)
-	t.set_var_type(elem_name, elem_type)
+	t.set_var_type_with_raw(elem_name, elem_type, t.array_receiver_raw_elem_type(fn_node, elem_type))
 	predicate_source := if lambda_param.len > 0 {
 		predicate_expr_id
 	} else {
@@ -3566,8 +3594,10 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	// Binding a copied value here would return pointers to a loop-local temporary.
 	mapper_takes_elem_address := lambda_param.len == 0 && (t.array_map_expr_takes_address_of_ident(mapped_source, elem_name) || t.array_map_expr_implicit_reference_can_escape(map_source_id, 'it'))
 	elem_var_type := if mapper_takes_elem_address { '&${elem_type}' } else { elem_type }
+	raw_elem_type := t.array_receiver_raw_elem_type(fn_node, elem_type)
+	raw_elem_var_type := if mapper_takes_elem_address { '&${raw_elem_type}' } else { raw_elem_type }
 	old_elem := t.var_type(elem_name)
-	t.set_var_type(elem_name, elem_var_type)
+	t.set_var_type_with_raw(elem_name, elem_var_type, raw_elem_var_type)
 	// What a lambda maps an element to is the type of its body: the type of the
 	// lambda itself is its function type, `fn (User) string`, which the checker
 	// can have for it, as when a local function before it names a parameter as
@@ -6713,7 +6743,7 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 	default_elem_name := t.new_temp('count_it')
 	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
 	predicate_id := t.a.child(&node, 1)
-	elem_name, predicate, callback_setup, predicate_pending := t.transform_array_predicate(predicate_id, default_elem_name, elem_type, 'count_callback')
+	elem_name, predicate, callback_setup, predicate_pending := t.transform_array_predicate(predicate_id, default_elem_name, elem_type, t.array_receiver_raw_elem_type(fn_node, elem_type), 'count_callback')
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
 	for stmt in callback_setup {
 		prefix << stmt
@@ -6781,7 +6811,7 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 	default_elem_name := t.new_temp('${method}_it')
 	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
 	predicate_id := t.a.child(&node, 1)
-	elem_name, predicate, callback_setup, predicate_pending := t.transform_array_predicate(predicate_id, default_elem_name, elem_type, '${method}_callback')
+	elem_name, predicate, callback_setup, predicate_pending := t.transform_array_predicate(predicate_id, default_elem_name, elem_type, t.array_receiver_raw_elem_type(fn_node, elem_type), '${method}_callback')
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
 	for stmt in callback_setup {
 		prefix << stmt
