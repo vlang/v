@@ -20,8 +20,8 @@ fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 			})
 		})
 		unsafe { prealloc_scope_leave(scope) }
-		// Parallel cgen replay interns types while their producer's arena is
-		// still alive, then releases that arena after publishing its results.
+		// Canonical types must own payloads borrowed from a caller's arena before
+		// that arena is released.
 		id, canonical := interner.canonicalize(borrowed)
 		assert canonical is FnType
 		assert !unsafe { prealloc_scope_owns(scope, canonical.params.data) }
