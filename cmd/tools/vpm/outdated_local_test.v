@@ -85,7 +85,7 @@ fn local_outdated_git(path string, args ...string) string {
 		'user.name=V CI', ...args]).output.trim_space()
 }
 
-fn local_outdated_repo(name string) string {
+fn local_outdated_repo(name string) !string {
 	path := os.join_path(test_path, name)
 	os.mkdir_all(path)!
 	local_outdated_git(path, 'init', '-q', '-b', 'main')
@@ -98,7 +98,7 @@ fn local_outdated_repo(name string) string {
 
 fn test_rows_use_new_upstream_tags_and_exclude_unrequested_prereleases() {
 	os.chdir(test_path)!
-	origin := local_outdated_repo('row_origin')
+	origin := local_outdated_repo('row_origin')!
 	checkout := os.join_path(test_path, 'row_checkout')
 	cmd_ok_args(@LOCATION, ['git', 'clone', '-q', origin, checkout])
 	for tag in ['v2.0.0', 'v10.0.0', 'v11.0.0-alpha'] {
@@ -133,7 +133,7 @@ fn test_rows_use_new_upstream_tags_and_exclude_unrequested_prereleases() {
 
 fn test_rows_keep_unsatisfied_invalid_and_git_ref_states_separate_from_latest() {
 	os.chdir(test_path)!
-	repo := local_outdated_repo('row_constraints')
+	repo := local_outdated_repo('row_constraints')!
 	for constraint in ['^2.0.0', '^invalid', 'topic'] {
 		row := outdated_row('lib', repo, {
 			'lib': constraint
@@ -169,7 +169,7 @@ fn test_rows_keep_unsatisfied_invalid_and_git_ref_states_separate_from_latest() 
 
 fn test_existing_commit_based_upgrade_detection_handles_branch_and_detached_checkouts() {
 	os.chdir(test_path)!
-	origin := local_outdated_repo('commit_origin')
+	origin := local_outdated_repo('commit_origin')!
 	checkout := os.join_path(test_path, 'commit_checkout')
 	cmd_ok_args(@LOCATION, ['git', 'clone', '-q', origin, checkout])
 	assert !is_outdated(checkout)
