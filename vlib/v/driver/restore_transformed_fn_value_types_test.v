@@ -45,7 +45,7 @@ fn test_restored_types_extend_unset_slots_and_preserve_sparse_signature_modes() 
 	assert tc.expr_type_values[int(existing)] == boolean && tc.expr_type_set[int(existing)]
 	assert tc.expr_type_values[int(unset)] is types.Void && !tc.expr_type_set[int(unset)]
 	assert tc.expr_type_values[int(missing)] is types.Void && !tc.expr_type_set[int(missing)]
-	expected := types.Type(types.FnType{ params: params, return_type: integer })
+	expected := types.Type(types.FnType{ params: params, is_variadic: true, return_type: integer })
 	assert tc.expr_type_values[int(first)] == expected && tc.expr_type_set[int(first)]
 	assert tc.expr_type_values[int(second)] == expected && tc.expr_type_set[int(second)]
 	// Replacing one expression slot cannot alter another restored signature.
@@ -53,6 +53,13 @@ fn test_restored_types_extend_unset_slots_and_preserve_sparse_signature_modes() 
 	assert tc.expr_type_values[int(second)] == expected
 	assert tc.fn_param_types['retain'] == params
 	assert tc.fn_variadic['retain'] && tc.mut_receiver_methods['retain']
+	assert (tc.expr_type_values[int(second)] as types.FnType).is_variadic
+	// A later restoration must observe a refreshed fixed-array signature.
+	tc.fn_variadic['retain'] = false
+	restore_transformed_fn_value_types(mut tc, &a, map[string]bool{})
+	fixed := types.Type(types.FnType{ params: params, return_type: integer })
+	assert tc.expr_type_values[int(first)] == fixed
+	assert tc.expr_type_values[int(second)] == fixed
 }
 
 fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {

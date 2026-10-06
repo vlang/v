@@ -12252,8 +12252,14 @@ fn (mut g FlatGen) callback_fn_value_type(name string) ?types.FnType {
 	} else {
 		types.Type(types.void_)
 	}
+	is_variadic := if name in g.tc.fn_param_types {
+		g.tc.fn_variadic[name] or { false }
+	} else {
+		g.fn_decl_variadic[name] or { false }
+	}
 	return types.FnType{
 		params:      params.clone()
+		is_variadic: is_variadic
 		return_type: ret
 	}
 }

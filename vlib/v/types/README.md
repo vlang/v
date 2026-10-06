@@ -33,3 +33,4 @@ Explicit generic arguments retain the types written at the call site.
 Variadic function types keep their variadic tail when used as parameters or fields.
 For `fn (int, ...string) bool`, a call must supply the fixed `int` argument and may supply
 zero or more strings. A `fn (int, []string) bool` still requires an explicit array argument.
+Restoring transformed function values and reconstructing callback signatures also keep this tail.
