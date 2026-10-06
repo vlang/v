@@ -18711,6 +18711,7 @@ struct ComptimeStaticValueCase {
 	param_is_mut  []bool
 	// param_is_mut_ref marks explicit `mut param &T` parameters.
 	param_is_mut_ref []bool
+	runtime_dispatch bool
 }
 
 struct ComptimeStaticValueCases {
@@ -20180,6 +20181,7 @@ fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Nod
 
 fn (mut tc TypeChecker) check_comptime_static_method_runtime_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	condition_id := tc.a.child(&node, 0)
+	has_metadata := tc.comptime_static_method_condition_has_metadata(condition_id, var_name)
 	mut then_cases := []ComptimeStaticValueCase{}
 	mut else_cases := []ComptimeStaticValueCase{}
 	for item in value_cases.cases {
@@ -20190,8 +20192,12 @@ fn (mut tc TypeChecker) check_comptime_static_method_runtime_if(node flat.Node, 
 				else_cases << item
 			}
 		} else {
-			then_cases << item
-			else_cases << item
+			dispatched := ComptimeStaticValueCase{
+				...item
+				runtime_dispatch: item.runtime_dispatch || has_metadata
+			}
+			then_cases << dispatched
+			else_cases << dispatched
 		}
 	}
 	tc.check_comptime_static_body(condition_id, var_name, loop_kind, field_cases, value_cases)
@@ -20244,6 +20250,23 @@ fn (tc &TypeChecker) comptime_static_method_condition_value(id flat.NodeId, var_
 			true
 		} else {
 			tc.comptime_static_method_condition_value(tc.a.child(node, 1), var_name, item)
+		}
+	}
+	if node.op !in [.eq, .ne, .lt, .le, .gt, .ge] {
+		return none
+	}
+	if left := tc.comptime_static_method_int_value(tc.a.child(node, 0), var_name, item) {
+		right := tc.comptime_static_method_int_value(tc.a.child(node, 1), var_name, item) or {
+			return none
+		}
+		return match node.op {
+			.eq { left == right }
+			.ne { left != right }
+			.lt { left < right }
+			.le { left <= right }
+			.gt { left > right }
+			.ge { left >= right }
+			else { false }
 		}
 	}
 	if node.op !in [.eq, .ne] {

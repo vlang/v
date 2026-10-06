@@ -10333,9 +10333,10 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 	}
 	if header_end >= 3 {
 		container_id := t.a.child(node, 2)
-		// detect_for_in_type records the type it finds on the loop header, which is too
-		// early here: the names in scope still have the types of the previous function.
-		iter_type := for_iter_payload_type(t.comptime_normalize_type_alias_chain(t.node_type(container_id))).trim_space()
+		// Local declarations have not populated var_types yet. Prefer the checked
+		// source type so a local homonym does not resolve to a foreign constant.
+		container_type := t.checker_expr_type_name(container_id) or { t.node_type(container_id) }
+		iter_type := for_iter_payload_type(t.comptime_normalize_type_alias_chain(container_type)).trim_space()
 		reference_iteration := node.op == .amp || iter_type.starts_with('&')
 		mut backing_id := container_id
 		mut fixed_backing := t.is_fixed_array_type(iter_type.trim_left('&'))
@@ -10343,7 +10344,9 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 			range_id := t.unwrap_parens(container_id)
 			if t.is_range_index_expr(range_id) {
 				base_id := t.a.child(t.a.node(range_id), 0)
-				if t.is_fixed_array_type(t.unaliased_value_type(base_id)) {
+				checked_base_type := t.checker_expr_type_name(base_id) or { t.node_type(base_id) }
+				base_type := t.alias_str_resolved_base_type(checked_base_type.trim_left('&')).trim_left('&')
+				if t.is_fixed_array_type(base_type) {
 					backing_id = base_id
 					fixed_backing = true
 				}

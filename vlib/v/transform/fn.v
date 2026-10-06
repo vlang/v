@@ -12165,7 +12165,7 @@ fn array_method_stays_in_cgen(method string) bool {
 fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
 	return match method.len {
 		3 { method == 'pop' }
-		4 { method == 'trim' }
+		4 { method == 'last' || method == 'trim' }
 		5 { method == 'clear' }
 		else { false }
 	}

@@ -58,6 +58,11 @@ When a compatibility compiler must be built, V searches PATH for `make`, then `g
 On Windows it also accepts MSYS2's `mingw32-make`. Install GNU make and ensure that
 MSYS2's make executable and `sh` are on PATH: the `make v1` target uses POSIX shell recipes.
 
+The `-vls-mode` compatibility protocol suppresses successful on-demand installation progress
+so the first response contains only the requested compiler output. Installation failures still
+include the installer's output and a failing exit status. Other commands retain installation
+progress.
+
 If a build needs a missing bundled Boehm GC archive, V reports the missing library
 before invoking the C compiler. Reinstall V to restore the bundled libraries, or
 pass `-d use_bundled_libgc` to build GC from source. `-gc none` compiles without GC.

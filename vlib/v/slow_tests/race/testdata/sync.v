@@ -32,8 +32,8 @@ fn run(name string, test fn ()) {
 // after_func is Go's time.AfterFunc: it waits for the duration `d` to elapse and then calls
 // `f` in its own thread. The returned Timer can be used to cancel the call with its stop()
 // method.
-fn after_func(d time.Duration, f fn ()) &time.Timer {
-	timer := time.new_timer(d)
+fn after_func(d time.Duration, f fn ()) &sync.Timer {
+	timer := sync.new_timer(d)
 	spawn fn [timer, f] () {
 		_ = <-timer.c or { return }
 		f()
