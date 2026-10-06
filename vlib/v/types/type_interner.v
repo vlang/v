@@ -40,7 +40,9 @@ fn (mut i TypeInterner) intern_locked(t Type, hash u64) (TypeId, Type) {
 		break
 	}
 	id := TypeId(i.types.len)
-	i.types << t
+	// Callers can publish a type borrowed from a worker arena that is released
+	// after replay. Own its semantic payloads before retaining the canonical copy.
+	i.types << clone_owned_type(t)
 	i.names << ''
 	i.buckets[key] = id
 	return id, i.types[int(id)]

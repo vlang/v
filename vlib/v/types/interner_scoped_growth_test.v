@@ -1,5 +1,66 @@
 module types
 
+fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
+	$if prealloc {
+		mut interner := new_type_interner()
+		scope := unsafe { prealloc_scope_begin() }
+		borrowed := Type(FnType{
+			params:      [Type(ArrayFixed{
+				elem_type: Type(Struct{
+					name: 'C.WorkerPayload'.clone()
+				})
+				len_expr:  'worker_count'.clone()
+			})]
+			params_mut:  [true]
+			return_type: Type(Alias{
+				name:      'WorkerResult'.clone()
+				base_type: Type(Struct{
+					name: 'C.WorkerResult'.clone()
+				})
+			})
+		})
+		unsafe { prealloc_scope_leave(scope) }
+		// Parallel cgen replay interns types while their producer's arena is
+		// still alive, then releases that arena after publishing its results.
+		id, canonical := interner.canonicalize(borrowed)
+		assert canonical is FnType
+		assert !unsafe { prealloc_scope_owns(scope, canonical.params.data) }
+		assert !unsafe { prealloc_scope_owns(scope, canonical.params_mut.data) }
+		param := canonical.params[0]
+		assert param is ArrayFixed
+		assert !unsafe { prealloc_scope_owns(scope, param.len_expr.str) }
+		elem := param.elem_type
+		assert elem is Struct
+		assert !unsafe { prealloc_scope_owns(scope, elem.name.str) }
+		result := canonical.return_type
+		assert result is Alias
+		assert !unsafe { prealloc_scope_owns(scope, result.name.str) }
+		unsafe { prealloc_scope_free_after(scope) }
+
+		expected := Type(FnType{
+			params:      [Type(ArrayFixed{
+				elem_type: Type(Struct{
+					name: 'C.WorkerPayload'
+				})
+				len_expr:  'worker_count'
+			})]
+			params_mut:  [true]
+			return_type: Type(Alias{
+				name:      'WorkerResult'
+				base_type: Type(Struct{
+					name: 'C.WorkerResult'
+				})
+			})
+		})
+		second_id, second := interner.canonicalize(expected)
+		assert second_id == id
+		assert semantic_types_equal(second, expected)
+		assert interner.name(id) == expected.name()
+		probed := interner.probe(expected) or { panic('published type is missing') }
+		assert semantic_types_equal(probed, expected)
+	}
+}
+
 fn test_type_interner_promotes_scoped_slice_growth() {
 	$if prealloc {
 		mut interner := new_type_interner()
