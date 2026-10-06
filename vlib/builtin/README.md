@@ -3,6 +3,8 @@
 `builtin` is a module that is implicitly imported by every V program.
 
 It implements the builtin V types `array`, `string`, `map`.
+Maps with empty struct values support growth, reservation, and deletion with every C compiler,
+including compilers where the empty struct occupies zero bytes.
 It also includes Unicode-aware string helpers such as `string.graphemes()`
 for splitting text into grapheme clusters.
 The `.string()` method converts dynamic and fixed arrays of runes to UTF-8 strings,
