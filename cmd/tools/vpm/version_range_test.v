@@ -69,7 +69,7 @@ fn test_range_syntax_and_temporary_names() {
 	}
 }
 
-fn test_range_destination_conflicts_use_install_paths() {
+fn test_different_source_destination_conflicts_use_install_paths() {
 	first := Module{
 		name:          'pkg'
 		requested:     'publisher.pkg@^1'
@@ -83,13 +83,13 @@ fn test_range_destination_conflicts_use_install_paths() {
 		version:      'v2.0.0'
 		install_path: os.join_path(range_test_path, 'subdir', '..', 'pkg')
 	}
-	if _ := validate_range_destinations([first, second]) {
+	if _ := validate_resolved_destinations([first, second]) {
 		assert false
 	} else {
 		assert err.msg().contains(first.requested)
 		assert err.msg().contains(second.requested)
 	}
-	validate_range_destinations([first, Module{
+	validate_resolved_destinations([first, Module{
 		install_path: os.join_path(range_test_path, 'other')
 	}])!
 }

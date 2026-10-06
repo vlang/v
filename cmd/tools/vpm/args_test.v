@@ -24,3 +24,10 @@ fn test_merge_server_urls_appends_custom_urls_after_defaults() {
 		'https://mirror.example',
 	]
 }
+
+fn test_precise_update_option_values_are_not_module_queries() {
+	args := ['update', '-p', 'publisher.pkg', '--precise', 'v1.2.3']
+	assert parse_vpm_command(args) == 'update'
+	assert parse_query_args(args, 'update') == []string{}
+	assert parse_query_args(['update', 'pkg', '--precise', 'v1.2.3'], 'update') == ['pkg']
+}

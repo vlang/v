@@ -108,21 +108,3 @@ fn (vcs VCS) resolve_version(url string, version string) !string {
 	verbose_println('Resolved `${version}` to `${selected}` from `${url}`.')
 	return selected
 }
-
-// validate_range_destinations prevents multiple selections from overwriting
-// the single-version module store. Joint constraint solving is not yet supported.
-fn validate_range_destinations(modules []Module) ! {
-	mut seen := map[string]Module{}
-	for m in modules {
-		mut destination := os.norm_path(real_path_with_missing_suffix(m.install_path))
-		$if windows {
-			destination = destination.to_lower()
-		}
-		if previous := seen[destination] {
-			if m.version_range != '' || previous.version_range != '' {
-				return error('multiple requirements for `${m.name}` at `${fmt_mod_path(destination)}`: `${previous.requested}` selected `${previous.version}`, while `${m.requested}` selected `${m.version}`; joint version-range resolution is not yet supported')
-			}
-		}
-		seen[destination] = m
-	}
-}

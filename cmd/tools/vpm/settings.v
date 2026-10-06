@@ -16,6 +16,12 @@ mut:
 	// `--locked` refuses to resolve a dependency differently from the `v.mod.lock`
 	// of the project in scope, instead of updating the lockfile.
 	is_locked             bool
+	is_frozen             bool
+	is_latest             bool
+	is_graph              bool
+	is_outdated           bool
+	precise               string
+	package               string
 	server_urls           []string
 	mirror_urls           []string
 	vmodules_path         string
@@ -82,7 +88,13 @@ fn init_settings() VpmSettings {
 		is_verbose:            '-v' in opts || '--verbose' in opts
 		is_force:              '-f' in opts || '--force' in opts
 		is_local:              is_local
-		is_locked:             '--locked' in opts
+		is_locked:             '--locked' in opts || '--frozen' in opts
+		is_frozen:             '--frozen' in opts
+		is_latest:             '--latest' in opts
+		is_graph:              '--graph' in opts
+		is_outdated:           'outdated' in cmds
+		precise:               cmdline.option(args, '--precise', '')
+		package:               cmdline.option(args, '-p', cmdline.option(args, '--package', ''))
 		server_urls:           get_server_urls_from_args(args)
 		mirror_urls:           get_mirror_urls_from_args(args)
 		vcs:                   if '--hg' in opts { .hg } else { .git }

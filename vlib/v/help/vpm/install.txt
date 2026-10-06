@@ -26,3 +26,8 @@ Options:
                Can be given multiple times. Official vpm servers are still tried first.
   -server-url  When doing network operations, use this vpm server.
                Can be given multiple times.
+
+Version ranges such as 'vsl@^0.1.47' select tags satisfying all requirements,
+backtracking across releases when necessary. Failed resolution reports the
+requirement chains before changing installed modules. --locked uses recorded
+commits only; --frozen also prevents writing v.mod.lock.
