@@ -2,7 +2,12 @@ module types
 
 struct StorageQueryResult {
 	writes map[string][]int
-	guards map[u64]bool
+	guards StorageQueryGuards
+}
+
+struct StorageQueryGuards {
+	present []u64
+	absent  []u64
 }
 
 @[heap]
@@ -53,7 +58,7 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 			for cached in owner.storage_query_results[cache_key] {
 				if storage_query_guards_match(cached.guards, visiting) {
 					parent := unsafe { prealloc_scope_suspend(scope) }
-					cache.record_storage_query_guards(cached.guards, true)
+					cache.record_storage_query_certificate(cached.guards)
 					unsafe { prealloc_scope_resume(scope, parent) }
 					// The outer memo arena outlives every nested query; consumers only read it.
 					return cached.writes
@@ -79,8 +84,13 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 			trace.guards.delete(guard_id)
 		}
 		// Map iteration copies string keys, so estimate inside the disposable arena.
+		certificate := if inherited_owner && trace.complete {
+			storage_query_encode_guards(trace.guards)
+		} else {
+			StorageQueryGuards{}
+		}
 		estimated_bytes := if inherited_owner && trace.complete {
-			storage_query_result_bytes(cache_key, result, trace.guards)
+			storage_query_result_bytes(cache_key, result, certificate)
 		} else {
 			0
 		}
@@ -97,8 +107,8 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		if inherited_owner && trace.complete {
 			// Only admitted memo payloads are allocated in the outer query's arena.
 			suspend_storage_query_scopes(cache.storage_query_scopes, mut states)
-			retained := owner.cache_storage_query_result(cache_key, result, trace.guards, true,
-				estimated_bytes)
+			retained := owner.cache_storage_query_result(cache_key, result, trace.guards,
+				certificate, true, estimated_bytes)
 			resume_storage_query_scopes(cache.storage_query_scopes, states)
 			if cached := retained {
 				unsafe { prealloc_scope_resume(scope, parent) }
@@ -131,11 +141,40 @@ fn resume_storage_query_scopes(scopes []voidptr, states []voidptr) {
 	}
 }
 
-fn storage_query_guards_match(guards map[u64]bool, visiting map[u64]bool) bool {
+fn storage_query_encode_guards(guards map[u64]bool) StorageQueryGuards {
+	mut present_count := 0
+	for _, present in guards {
+		if present { present_count++ }
+	}
+	mut present := []u64{len: present_count}
+	mut absent := []u64{len: guards.len - present_count}
+	mut present_idx := 0
+	mut absent_idx := 0
 	for id, expected in guards {
-		if (id in visiting) != expected { return false }
+		if expected {
+			present[present_idx] = id
+			present_idx++
+		} else {
+			absent[absent_idx] = id
+			absent_idx++
+		}
+	}
+	return StorageQueryGuards{ present: present, absent: absent }
+}
+
+fn storage_query_guards_match(guards StorageQueryGuards, visiting map[u64]bool) bool {
+	for id in guards.present {
+		if id !in visiting { return false }
+	}
+	for id in guards.absent {
+		if id in visiting { return false }
 	}
 	return true
+}
+
+fn (mut cache VisibleMutationCache) record_storage_query_certificate(guards StorageQueryGuards) {
+	for id in guards.present { cache.record_storage_query_guard(id, true) }
+	for id in guards.absent { cache.record_storage_query_guard(id, false) }
 }
 
 fn (mut cache VisibleMutationCache) record_storage_query_guards(guards map[u64]bool, complete bool) {
@@ -165,23 +204,29 @@ fn clone_storage_query_result(result map[string][]int) map[string][]int {
 	return promoted
 }
 
-fn storage_query_guards_equal(left map[u64]bool, right map[u64]bool) bool {
-	if left.len != right.len { return false }
-	for id, expected in left {
+fn storage_query_guards_equal(left StorageQueryGuards, right map[u64]bool) bool {
+	if left.present.len + left.absent.len != right.len { return false }
+	for id in left.present {
 		actual := right[id] or { return false }
-		if actual != expected { return false }
+		if !actual { return false }
+	}
+	for id in left.absent {
+		actual := right[id] or { return false }
+		if actual { return false }
 	}
 	return true
 }
 
-fn storage_query_result_bytes(key string, result map[string][]int, guards map[u64]bool) int {
-	mut bytes := key.len + 64 + guards.len * 32
+fn storage_query_result_bytes(key string, result map[string][]int, guards StorageQueryGuards) int {
+	// The entry includes both array headers; primitive buffers retain their exact lengths.
+	mut bytes := key.len + int(sizeof(StorageQueryResult)) +
+		(guards.present.len + guards.absent.len) * int(sizeof(u64))
 	for path, sources in result { bytes += path.len + sources.len * int(sizeof(int)) + 64 }
 	return bytes
 }
 
-fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, guards map[u64]bool, clone_result bool, estimated_bytes int) ?map[string][]int {
-	if cache.storage_query_count >= 8192
+fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, guards map[u64]bool, certificate StorageQueryGuards, clone_result bool, estimated_bytes int) ?map[string][]int {
+	if cache.storage_query_count >= 32768
 		|| cache.storage_query_bytes + estimated_bytes > 64 * 1024 * 1024 {
 		return none
 	}
@@ -192,7 +237,10 @@ fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, resul
 	writes := if clone_result { clone_storage_query_result(result) } else { result }
 	entries << StorageQueryResult{
 		writes: writes
-		guards: guards.clone()
+		guards: StorageQueryGuards{
+			present: certificate.present.clone()
+			absent:  certificate.absent.clone()
+		}
 	}
 	cache.storage_query_results[key] = entries
 	cache.storage_query_bytes += estimated_bytes

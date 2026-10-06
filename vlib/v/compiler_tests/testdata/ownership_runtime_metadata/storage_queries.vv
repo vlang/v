@@ -6,8 +6,9 @@ import v.parser
 import v.pref
 
 fn (mut cache VisibleMutationCache) cache_storage_query_fixture_result(key string, result map[string][]int, guards map[u64]bool) ?map[string][]int {
-	estimated_bytes := storage_query_result_bytes(key, result, guards)
-	return cache.cache_storage_query_result(key, result, guards, true, estimated_bytes)
+	certificate := storage_query_encode_guards(guards)
+	estimated_bytes := storage_query_result_bytes(key, result, certificate)
+	return cache.cache_storage_query_result(key, result, guards, certificate, true, estimated_bytes)
 }
 
 fn test_storage_query_results_survive_nested_arena_release() {
@@ -131,22 +132,22 @@ fn self_source(mut target Box) { target.value = target.value }
 		// Deep descendant results reach the root memo before both intervening arenas end.
 		assert child_key in promotion_memo.storage_query_results
 		child_entry := promotion_memo.storage_query_results[child_key][0]
-		assert child_entry.guards == {
+		assert storage_query_guards_equal(child_entry.guards, {
 			store_id: false
-		}
+		})
 		delegate_key := '${delegate_decl.mod}:${delegate_decl.idx}:0'
 		delegate_entry := promotion_memo.storage_query_results[delegate_key][0]
-		assert delegate_entry.guards == {
+		assert storage_query_guards_equal(delegate_entry.guards, {
 			delegate_id: false
 			store_id:    false
-		}
+		})
 		deep_id := visible_mutation_cache_id(deep_decl, 0)
 		deep_key := '${deep_decl.mod}:${deep_decl.idx}:0'
-		assert promotion_memo.storage_query_results[deep_key][0].guards == {
+		assert storage_query_guards_equal(promotion_memo.storage_query_results[deep_key][0].guards, {
 			deep_id:     false
 			delegate_id: false
 			store_id:    false
-		}
+		})
 		admitted_sources := admitted_query['.child.value']
 		root_admitted_sources := promotion_memo.storage_query_results[deep_key][0].writes['.child.value']
 		assert unsafe { admitted_sources.data == root_admitted_sources.data }
@@ -259,13 +260,101 @@ fn self_source(mut target Box) { target.value = target.value }
 		right_false := {
 			u64(2): false
 		}
-		assert storage_query_guards_equal(left_false, left_false)
-		assert !storage_query_guards_equal(left_false, right_false)
-		assert !storage_query_guards_equal(left_false, {
+		assert storage_query_guards_equal(storage_query_encode_guards(left_false), left_false)
+		assert !storage_query_guards_equal(storage_query_encode_guards(left_false), right_false)
+		assert !storage_query_guards_equal(storage_query_encode_guards(left_false), {
 			u64(1): true
 		})
-		assert !storage_query_guards_equal(left_false, map[u64]bool{})
-		assert storage_query_guards_equal(map[u64]bool{}, map[u64]bool{})
+		assert !storage_query_guards_equal(storage_query_encode_guards(left_false), map[u64]bool{})
+		assert storage_query_guards_equal(storage_query_encode_guards(map[u64]bool{}), map[u64]bool{})
+		mixed_guards := {
+			u64(1): true
+			u64(2): false
+		}
+		mixed_certificate := storage_query_encode_guards(mixed_guards)
+		assert mixed_certificate.present == [u64(1)]
+		assert mixed_certificate.absent == [u64(2)]
+		assert mixed_certificate.present.cap == mixed_certificate.present.len
+		assert mixed_certificate.absent.cap == mixed_certificate.absent.len
+		assert storage_query_guards_equal(mixed_certificate, mixed_guards)
+		assert !storage_query_guards_equal(mixed_certificate, {
+			u64(1): false
+			u64(2): true
+		})
+		assert storage_query_guards_match(mixed_certificate, {
+			u64(1): false
+			u64(3): true
+		})
+		assert !storage_query_guards_match(mixed_certificate, {
+			u64(1): true
+			u64(2): false
+		})
+		assert !storage_query_guards_match(mixed_certificate, map[u64]bool{})
+		empty_certificate := storage_query_encode_guards(map[u64]bool{})
+		assert storage_query_guards_match(empty_certificate, {
+			u64(1): false
+		})
+		assert storage_query_result_bytes('guards', map[string][]int{}, mixed_certificate) -
+			storage_query_result_bytes('guards', map[string][]int{}, empty_certificate) == 2 * int(sizeof(u64))
+		assert storage_query_result_bytes('guards', map[string][]int{}, empty_certificate) ==
+			'guards'.len + int(sizeof(StorageQueryResult))
+		certificate_trace := &StorageQueryTrace{
+			guard_id: u64(3)
+			guards:   {
+				u64(3): false
+			}
+		}
+		mut certificate_cache := &VisibleMutationCache{ storage_query_trace: certificate_trace }
+		certificate_cache.record_storage_query_certificate(storage_query_encode_guards({
+			u64(1): true
+			u64(2): false
+			u64(3): true
+		}))
+		assert certificate_trace.complete
+		assert certificate_trace.guards == {
+			u64(1): true
+			u64(2): false
+			u64(3): false
+		}
+		certificate_cache.record_storage_query_certificate(storage_query_encode_guards({
+			u64(2): true
+		}))
+		assert !certificate_trace.complete
+		mut certificate_owner := &VisibleMutationCache{ storage_query: true }
+		certificate_scope := unsafe { prealloc_scope_begin() }
+		child_guards := {
+			u64(0):              true
+			u64(0xffffffffffff): false
+		}
+		child_certificate := storage_query_encode_guards(child_guards)
+		child_writes := {
+			'.value': [1]
+		}
+		child_bytes := storage_query_result_bytes('child_certificate', child_writes, child_certificate)
+		certificate_parent := unsafe { prealloc_scope_suspend(certificate_scope) }
+		child_retained := certificate_owner.cache_storage_query_result('child_certificate', child_writes,
+			child_guards, child_certificate, true, child_bytes) or { panic('child certificate rejected') }
+		unsafe { prealloc_scope_resume(certificate_scope, certificate_parent) }
+		root_certificate := certificate_owner.storage_query_results['child_certificate'][0].guards
+		assert root_certificate.present.cap == root_certificate.present.len
+		assert root_certificate.absent.cap == root_certificate.absent.len
+		assert unsafe { root_certificate.present.data != child_certificate.present.data }
+		assert unsafe { root_certificate.absent.data != child_certificate.absent.data }
+		unsafe { prealloc_scope_end(certificate_scope) }
+		certificate_churn_scope := unsafe { prealloc_scope_begin() }
+		mut certificate_churn := [][]u64{}
+		for i in 0 .. 1024 { certificate_churn << []u64{len: 64, init: u64(i)} }
+		assert certificate_churn.len == 1024
+		unsafe { prealloc_scope_end(certificate_churn_scope) }
+		assert root_certificate.present == [u64(0)]
+		assert root_certificate.absent == [u64(0xffffffffffff)]
+		assert storage_query_guards_equal(root_certificate, {
+			u64(0):              true
+			u64(0xffffffffffff): false
+		})
+		assert child_retained['.value'] == [1]
+		assert certificate_owner.storage_query_count == 1
+		assert certificate_owner.storage_query_bytes == child_bytes
 		mut admission := &VisibleMutationCache{ storage_query: true }
 		first_admitted := admission.cache_storage_query_fixture_result('false_keys', {
 			'.value': [1]
@@ -298,7 +387,7 @@ fn self_source(mut target Box) { target.value = target.value }
 		boundary_writes := {
 			'.value': [3]
 		}
-		boundary_bytes := storage_query_result_bytes('exact_boundary', boundary_writes, left_false)
+		boundary_bytes := storage_query_result_bytes('exact_boundary', boundary_writes, storage_query_encode_guards(left_false))
 		admission.storage_query_bytes = 64 * 1024 * 1024 - boundary_bytes
 		boundary := admission.cache_storage_query_fixture_result('exact_boundary', boundary_writes, left_false) or { panic('exact byte boundary rejected') }
 		assert boundary['.value'] == [3]
@@ -342,16 +431,16 @@ fn self_source(mut target Box) { target.value = target.value }
 			assert false, 'oversized entry admitted'
 		}
 		assert memo_owner.storage_query_count == count_before_store + 1
-		for iteration in 0 .. 8192 {
-			memo_owner.cache_storage_query_fixture_result('bounded', {
+		for iteration in 0 .. 32768 {
+			memo_owner.cache_storage_query_fixture_result('bounded_${iteration % 64}', {
 				'.value': [1]
 			},
 				{
 					u64(2_000_000 + iteration): false
 				}) or { map[string][]int{} }
 		}
-		assert memo_owner.storage_query_count == 8192
-		assert memo_owner.storage_query_results.len < 8192
+		assert memo_owner.storage_query_count == 32768
+		assert memo_owner.storage_query_results.len < 32768
 		assert memo_owner.storage_query_bytes <= 64 * 1024 * 1024
 		// The bounded table declines new entries while the exact deferred query still succeeds.
 		mut full_context := map[u64]bool{}
@@ -362,7 +451,7 @@ fn self_source(mut target Box) { target.value = target.value }
 		assert fallback_churn.len == 1024
 		unsafe { prealloc_scope_end(fallback_churn_scope) }
 		assert full_result['.value'] == [1]
-		assert memo_owner.storage_query_count == 8192
+		assert memo_owner.storage_query_count == 32768
 		assert memo_view.visible_mutation_cache.storage_query_results.len == 0
 		for _, entries in memo_owner.storage_query_results {
 			for entry in entries {
@@ -487,7 +576,8 @@ fn test_complete_empty_summaries_remove_only_their_own_guard() {
 		empty_writes := query.param_storage_writes_for_decl(empty_decl, 0, mut absent)
 		assert empty_writes.len == 0
 		empty_key := 'main:${empty_decl.idx}:0'
-		assert query.visible_mutation_cache.storage_query_owner.storage_query_results[empty_key][0].guards.len == 0
+		assert query.visible_mutation_cache.storage_query_owner.storage_query_results[empty_key][0].guards.present.len == 0
+		assert query.visible_mutation_cache.storage_query_owner.storage_query_results[empty_key][0].guards.absent.len == 0
 		assert query.visible_mutation_cache.storage_query_trace.guards.len == 0
 		empty_guard := visible_mutation_cache_id(empty_decl, 0)
 		query.visible_mutation_cache.storage_query_trace = &StorageQueryTrace{}
@@ -506,7 +596,7 @@ fn test_complete_empty_summaries_remove_only_their_own_guard() {
 		clear_guard := visible_mutation_cache_id(clear_decl, 0)
 		clear_key := 'main:${clear_decl.idx}:0'
 		clear_guards := query.visible_mutation_cache.storage_query_owner.storage_query_results[clear_key][0].guards
-		assert clear_guard in clear_guards
-		assert !clear_guards[clear_guard]
+		assert clear_guard in clear_guards.absent
+		assert clear_guard !in clear_guards.present
 	}
 }
