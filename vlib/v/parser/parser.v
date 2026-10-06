@@ -6814,7 +6814,12 @@ fn comptime_const_value_key(module_name string, name string) string {
 }
 
 fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {
-	if int(id) < 0 || int(id) >= p.a.nodes.len {
+	return p.comptime_node_value_depth(id, 0)
+}
+
+fn (p &Parser) comptime_node_value_depth(id flat.NodeId, depth int) ?string {
+	// Static-value probing must preserve parser recovery for oversized expressions.
+	if depth > max_assignment_expr_depth || int(id) < 0 || int(id) >= p.a.nodes.len {
 		return none
 	}
 	node := p.a.nodes[int(id)]
@@ -6832,29 +6837,29 @@ fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {
 			p.comptime_value(node.value)
 		}
 		.selector {
-			p.comptime_selector_value(node)
+			p.comptime_selector_value(node, depth)
 		}
 		.paren {
 			if node.children_count == 1 {
-				p.comptime_node_value(p.a.children[int(node.children_start)])
+				p.comptime_node_value_depth(p.a.children[int(node.children_start)], depth + 1)
 			} else {
 				none
 			}
 		}
 		.infix {
-			p.comptime_infix_value(node)
+			p.comptime_infix_value(node, depth)
 		}
 		.call {
-			p.comptime_call_value(node)
+			p.comptime_call_value(node, depth)
 		}
 		.index {
-			p.comptime_string_slice_value(node)
+			p.comptime_string_slice_value(node, depth)
 		}
 		.in_expr {
-			p.comptime_string_in_value(node)
+			p.comptime_string_in_value(node, depth)
 		}
 		.prefix {
-			p.comptime_bool_not_value(node)
+			p.comptime_bool_not_value(node, depth)
 		}
 		else {
 			none
@@ -6862,13 +6867,13 @@ fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {
 	}
 }
 
-fn (p &Parser) comptime_selector_value(node flat.Node) ?string {
+fn (p &Parser) comptime_selector_value(node flat.Node, depth int) ?string {
 	if node.children_count != 1 {
 		return none
 	}
 	base := p.a.child_node(&node, 0)
 	if node.value == 'len' {
-		value := p.comptime_node_value(p.a.child(&node, 0))?
+		value := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
 		if comptime_value_is_string(value) { return comptime_cond_value(value).len.str() }
 	}
 	if base.kind == .ident {
@@ -6887,33 +6892,33 @@ fn (p &Parser) comptime_selector_value(node flat.Node) ?string {
 	return none
 }
 
-fn (p &Parser) comptime_call_value(node flat.Node) ?string {
-	if value := p.comptime_string_call_value(node) { return value }
-	return p.comptime_join_path_value(node)
+fn (p &Parser) comptime_call_value(node flat.Node, depth int) ?string {
+	if value := p.comptime_string_call_value(node, depth) { return value }
+	return p.comptime_join_path_value(node, depth)
 }
 
-fn (p &Parser) comptime_bool_not_value(node flat.Node) ?string {
+fn (p &Parser) comptime_bool_not_value(node flat.Node, depth int) ?string {
 	if node.op != .not || node.children_count != 1 { return none }
-	value := p.comptime_node_value(p.a.child(&node, 0))?
+	value := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
 	if value !in ['true', 'false'] { return none }
 	return (value == 'false').str()
 }
 
-fn (p &Parser) comptime_string_in_value(node flat.Node) ?string {
+fn (p &Parser) comptime_string_in_value(node flat.Node, depth int) ?string {
 	if node.children_count != 2 { return none }
-	needle := p.comptime_node_value(p.a.child(&node, 0))?
+	needle := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
 	if !comptime_value_is_string(needle) { return none }
 	right := p.a.child_node(&node, 1)
 	if right.kind == .array_literal {
 		mut found := false
 		for child in p.a.children_of(right) {
-			value := p.comptime_node_value(child)?
+			value := p.comptime_node_value_depth(child, depth + 1)?
 			if !comptime_value_is_string(value) { return none }
 			found = found || comptime_cond_value(value) == comptime_cond_value(needle)
 		}
 		return found.str()
 	}
-	value := p.comptime_node_value(p.a.child(&node, 1))?
+	value := p.comptime_node_value_depth(p.a.child(&node, 1), depth + 1)?
 	if !comptime_value_is_string(value) { return none }
 	return comptime_cond_value(value).contains(comptime_cond_value(needle)).str()
 }
@@ -6923,10 +6928,10 @@ fn comptime_value_is_string(value string) bool {
 }
 
 // comptime_infix_value evaluates operations with proven literal operands.
-fn (p &Parser) comptime_infix_value(node flat.Node) ?string {
+fn (p &Parser) comptime_infix_value(node flat.Node, depth int) ?string {
 	if node.children_count != 2 { return none }
-	left := p.comptime_node_value(p.a.child(&node, 0))?
-	right := p.comptime_node_value(p.a.child(&node, 1))?
+	left := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
+	right := p.comptime_node_value_depth(p.a.child(&node, 1), depth + 1)?
 	if node.op == .plus {
 		return comptime_cond_quoted_string(comptime_cond_value(left) + comptime_cond_value(right))
 	}
@@ -6971,15 +6976,15 @@ fn (p &Parser) comptime_infix_value(node flat.Node) ?string {
 	}
 }
 
-fn (p &Parser) comptime_string_call_value(node flat.Node) ?string {
+fn (p &Parser) comptime_string_call_value(node flat.Node, depth int) ?string {
 	if node.children_count == 0 { return none }
 	callee := p.a.child_node(&node, 0)
 	if callee.kind != .selector || callee.children_count != 1 { return none }
-	receiver := p.comptime_node_value(p.a.child(callee, 0))?
+	receiver := p.comptime_node_value_depth(p.a.child(callee, 0), depth + 1)?
 	if !comptime_value_is_string(receiver) { return none }
 	mut args := []string{}
 	for i in 1 .. node.children_count {
-		arg := p.comptime_node_value(p.a.child(&node, i))?
+		arg := p.comptime_node_value_depth(p.a.child(&node, i), depth + 1)?
 		if !comptime_value_is_string(arg) { return none }
 		args << comptime_cond_value(arg)
 	}
@@ -6991,16 +6996,16 @@ fn (p &Parser) comptime_string_call_value(node flat.Node) ?string {
 	}
 }
 
-fn (p &Parser) comptime_string_slice_value(node flat.Node) ?string {
+fn (p &Parser) comptime_string_slice_value(node flat.Node, depth int) ?string {
 	if node.value != 'range' || node.children_count !in [2, 3] { return none }
-	base := p.comptime_node_value(p.a.child(&node, 0))?
+	base := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
 	if !comptime_value_is_string(base) { return none }
 	value := comptime_cond_value(base)
-	low := p.comptime_node_value(p.a.child(&node, 1))?
+	low := p.comptime_node_value_depth(p.a.child(&node, 1), depth + 1)?
 	start := util.comptime_string_bound(low)?
 	mut high := value.len
 	if node.children_count == 3 {
-		bound := p.comptime_node_value(p.a.child(&node, 2))?
+		bound := p.comptime_node_value_depth(p.a.child(&node, 2), depth + 1)?
 		high = util.comptime_string_bound(bound)?
 	}
 	if start < 0 || high < start || high > value.len { return none }
@@ -7034,7 +7039,7 @@ fn (p &Parser) comptime_scalar_condition_literal(cond string) ?string {
 // comptime_join_path_value evaluates a compile-time `os.join_path(...)` /
 // `os.join_path_single(...)` call so composed path constants using them resolve like
 // v1's template path resolver. Returns none for any other call or non-const argument.
-fn (p &Parser) comptime_join_path_value(node flat.Node) ?string {
+fn (p &Parser) comptime_join_path_value(node flat.Node, depth int) ?string {
 	if node.children_count < 2 {
 		return none
 	}
@@ -7048,7 +7053,7 @@ fn (p &Parser) comptime_join_path_value(node flat.Node) ?string {
 	}
 	mut parts := []string{}
 	for i in 1 .. int(node.children_count) {
-		arg_value := p.comptime_node_value(p.a.children[int(node.children_start) + i])?
+		arg_value := p.comptime_node_value_depth(p.a.children[int(node.children_start) + i], depth + 1)?
 		parts << comptime_cond_value(arg_value)
 	}
 	if parts.len == 0 {

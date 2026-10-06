@@ -3,6 +3,18 @@ module parser
 import os
 import v.pref
 
+fn test_static_value_probe_preserves_deep_expression_recovery() {
+	path := os.join_path(@VEXEROOT, 'vlib/v/parser/tests/check_undefined_variables_too_deep_nested.vv')
+	mut compiler := Parser.new(pref.new_preferences())
+	compiler.parse_file(path)
+	assert compiler.diagnostics.any(it.message == 'expr level > 100'), compiler.diagnostics.str()
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	mut formatter := Parser.new(prefs)
+	formatter.parse_file(path)
+	assert formatter.diagnostics.len == 0, formatter.diagnostics.str()
+}
+
 fn test_static_string_conditions_select_declarations_before_collection() {
 	path := os.join_path(os.vtmp_dir(), 'comptime_string_declarations_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
