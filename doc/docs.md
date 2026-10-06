@@ -10190,6 +10190,9 @@ Note also that they *do not have* to be complete, unlike the ones in the .h file
 Parameter names in `C.` function declarations may start with uppercase letters, as in C headers.
 The lowercase naming rule still applies to parameters of ordinary V functions.
 
+Fields of a C struct returned by value can be accessed directly on the call, for example
+`C.get_point(5).row`, without first assigning the result to a variable.
+
 
 An escaped C field name such as `@type` also matches a binding declared with the plain name `type`.
 An exact escaped V field takes precedence, including fields promoted from embedded structs.
