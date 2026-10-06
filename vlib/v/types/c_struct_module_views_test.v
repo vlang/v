@@ -98,7 +98,17 @@ pub fn z_of_new_point(z i32) i32 {
 	return point.z
 }
 ')!
-	result := os.exec(['env', 'VMODULES=' + '${root}', @VEXE, '-new-compiler', 'test',
-		os.join_path(root, 'outer', 'outer_test.v')])
+	// The synthetic modules are found through VMODULES. Set it in this process
+	// rather than through `env VMODULES=...`, which is not on the PATH on Windows.
+	old_vmodules := os.getenv_opt('VMODULES')
+	os.setenv('VMODULES', root, true)
+	defer {
+		if value := old_vmodules {
+			os.setenv('VMODULES', value, true)
+		} else {
+			os.unsetenv('VMODULES')
+		}
+	}
+	result := os.exec([@VEXE, '-new-compiler', 'test', os.join_path(root, 'outer', 'outer_test.v')])
 	assert result.exit_code == 0, result.output
 }
