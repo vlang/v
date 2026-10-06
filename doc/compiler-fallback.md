@@ -19,6 +19,7 @@ For a C compiler failure, V prints the saved output when available, without comp
 again, before retrying. It is labeled `C compiler output from the default V compiler:`.
 Internal arguments used to restart the default compiler are removed before launching
 the compatibility compiler, so a prior implicit TCC warning cannot cause an unknown-argument error.
+Option values and arguments passed to a program remain intact during this filtering.
 
 Literal-output programs retain the array iteration helpers used by Linux backtrace formatting.
 For example, `v -show-timings examples/hello_world.v` builds without a missing `array__get` symbol.

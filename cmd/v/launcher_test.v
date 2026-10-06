@@ -56,6 +56,26 @@ fn test_v1_fallback_preserves_private_option_names_in_program_arguments() {
 	}
 }
 
+fn test_v1_fallback_consumes_profile_output_after_a_command() {
+	dir := os.join_path(os.vtmp_dir(), 'fallback_profile_output_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	private_option := '-v3-internal-parser-diagnostics-printed'
+	for command in ['run', 'crun', 'build', 'test'] {
+		for option in ['-prof', '-profile'] {
+			for output in ['profile.v', 'profile.vv', 'profile.vsh', 'run', 'build', 'test', 'doc',
+				dir, '-', ''] {
+				assert v1_fallback_args([command, option, output, private_option, 'main.v']) ==
+					[command, option, output, 'main.v']
+				if command in ['run', 'crun'] {
+					assert v1_fallback_args([command, option, output, private_option, 'main.v',
+						private_option]) == [command, option, output, 'main.v', private_option]
+				}
+			}
+		}
+	}
+}
+
 fn test_external_tool_build_args_drop_non_binary_modes() {
 	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
 	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [

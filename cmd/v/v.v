@@ -766,6 +766,7 @@ fn v1_fallback_args(args []string) []string {
 	mut option_value_follows := false
 	mut runs_input := false
 	mut input_seen := false
+	mut command_seen := false
 	for i, arg in args {
 		if option_value_follows {
 			result << arg
@@ -780,6 +781,11 @@ fn v1_fallback_args(args []string) []string {
 		result << arg
 		if arg in ['-prof', '-profile'] {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			// After a command, the driver treats the next non-option as profile output.
+			if command_seen && i + 1 < args.len {
+				next := args[i + 1]
+				option_value_follows = next == '-' || !next.starts_with('-')
+			}
 			continue
 		}
 		if arg == '-raw-vsh-tmp-prefix' && !input_seen {
@@ -794,9 +800,11 @@ fn v1_fallback_args(args []string) []string {
 		}
 		if !input_seen && !runs_input && arg in ['run', 'crun'] {
 			runs_input = true
+			command_seen = true
 			continue
 		}
 		if !input_seen && !runs_input && arg in ['build', 'test'] {
+			command_seen = true
 			continue
 		}
 		if runs_input || arg.ends_with('.vsh') {
