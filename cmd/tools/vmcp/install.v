@@ -382,7 +382,7 @@ fn existing_entry_report_for_compiler(text string, h Harness, path string, proje
 // readable command. The two are returned apart because only the executable can
 // be compared with the compiler running this tool.
 fn recorded_entry(text string, key string) ?(string, string) {
-	root := json.decode[map[string]json.Any](text) or { return none }
+	root := json.decode[map[string]json.Any](strip_comments(text)) or { return none }
 	group := root[key] or { return none }
 	servers := group.as_map()
 	entry := servers[server_id] or { return none }

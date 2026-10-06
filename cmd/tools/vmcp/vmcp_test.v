@@ -1526,6 +1526,25 @@ fn test_existing_entry_report_moves_to_the_invoked_compiler_with_shell_quoting()
 	assert windows.ends_with("  & '/somewhere/My Compiler''s v\$1' mcp uninstall opencode\n  & '/somewhere/My Compiler''s v\$1' mcp install opencode"), windows
 }
 
+fn test_commented_existing_entry_reports_both_command_shapes_without_rewriting() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, argv_in_command in [false, true] {
+		shape := Harness{ ...h, argv_in_command: argv_in_command }
+		entry := shape.entry('/elsewhere/My Compiler/v', ['mcp', 'serve', '--title=one two'])
+		text := '// keep leading comment\n{"mcp":{/* keep server comment */"vlang":${entry}}}'
+		exe, command := recorded_entry(text, 'mcp') or { panic('no readable commented entry') }
+		assert exe == '/elsewhere/My Compiler/v'
+		assert command == '"/elsewhere/My Compiler/v" mcp serve "--title=one two"'
+		report := existing_entry_report_for_compiler(text, shape, '/fixture/config.json', true,
+			'/current/v', false)
+		assert report.contains('  it runs ${command}\n')
+		assert report.ends_with("  '/current/v' mcp uninstall opencode --project\n  '/current/v' mcp install opencode --project")
+		path := config_fixture('commented_existing_command_${i}', text)!
+		write_entry(shape, path, true)!
+		assert read_config(path) == text
+	}
+}
+
 fn test_existing_entry_report_leaves_unreadable_commands_alone() {
 	h := Harness{ name: 'test', label: 'test', key: 'mcp' }
 	for index, entry in ['{}', '{"command":null}', '{"command":42}', '{"command":false}',
