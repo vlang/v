@@ -62,6 +62,11 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+`parse_format` supports `A` for `AM`/`PM` and `a` for `am`/`pm`. Use these markers with
+an hour from `1` to `12`, for example `time.parse_format('02:30:45PM', 'hh:mm:ssA')!`
+returns hour `14`, while `12:00:00AM` returns hour `0`. Layouts without a marker retain
+their existing 24-hour behavior.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time

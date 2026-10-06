@@ -204,6 +204,8 @@ fn extract_tokens(s string) ![]string {
 // mm - minute, 0..59
 // s - second, 0..59
 // ss - second, 0..59
+// A - AM or PM, with hours 1..12
+// a - am or pm, with hours 1..12
 fn (mut p DateTimeParser) parse() !Time {
 	mut year_ := 0
 	mut month_ := 0
@@ -211,6 +213,7 @@ fn (mut p DateTimeParser) parse() !Time {
 	mut hour_ := 0
 	mut minute_ := 0
 	mut second_ := 0
+	mut meridiem := ''
 	tokens := extract_tokens(p.format) or {
 		return error_invalid_time(0, 'malformed format string: ${err}')
 	}
@@ -374,10 +377,26 @@ fn (mut p DateTimeParser) parse() !Time {
 					return error_invalid_time(0, 'second must be between 00 and 59')
 				}
 			}
+			'A', 'a' {
+				meridiem = p.next(2) or {
+					return error_invalid_time(0, 'end of string reached before AM/PM was specified')
+				}
+				if (token == 'A' && meridiem !in ['AM', 'PM'])
+					|| (token == 'a' && meridiem !in ['am', 'pm']) {
+					return error_invalid_time(0, 'invalid AM/PM marker: ${meridiem}')
+				}
+			}
 			else {
 				p.must_be_string(token) or { return error_invalid_time(0, '${err}') }
 			}
 		}
+	}
+
+	if meridiem != '' {
+		if hour_ < 1 || hour_ > 12 {
+			return error_invalid_time(0, 'hour must be between 1 and 12 with AM/PM')
+		}
+		hour_ = hour_ % 12 + if meridiem in ['PM', 'pm'] { 12 } else { 0 }
 	}
 
 	if month_ == 2 {
