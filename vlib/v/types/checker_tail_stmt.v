@@ -17437,7 +17437,8 @@ mut:
 	call_generation  u32 = 1
 	call_ids         [2048]int
 	call_generations [2048]u32
-	call_infos       [2048]CallInfo
+	// A fixed array expands every CallInfo default into a huge C initializer.
+	call_infos []CallInfo = []CallInfo{len: 2048, init: CallInfo{}}
 }
 
 // arm_body_resolve_memo (re)activates the per-item resolve memo for one work

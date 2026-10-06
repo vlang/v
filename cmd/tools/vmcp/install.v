@@ -66,7 +66,7 @@ fn install(args []string) {
 	}
 	path := harness.path_for(os.getwd(), project)
 	if print_only {
-		print_one(harness, path, project)
+		println(print_one(harness, path, project))
 		return
 	}
 	write_entry(harness, path, project) or {
@@ -169,7 +169,7 @@ fn print_registrations(project bool) {
 		if any {
 			println('')
 		}
-		print_one(h, path, project)
+		println(print_one(h, path, project))
 		any = true
 	}
 	if !any {
@@ -178,13 +178,38 @@ fn print_registrations(project bool) {
 	}
 }
 
-fn print_one(h Harness, path string, project bool) {
-	println('${h.label}  (${path})')
-	println('  top-level key: ${h.key}')
-	println('  ${server_id}: ${h.entry(server_exe(), server_args())}')
+// print_one is what `v mcp install <client> --print` reports for one client. It
+// returns the text rather than printing it, so the wording can be asserted.
+fn print_one(h Harness, path string, project bool) string {
+	mut out := '${h.label}  (${path})\n'
 	if project && !h.has_project_scope() {
-		println('  (no project-level file)')
+		return out + '  (no project-level file)\n'
 	}
+	if !os.exists(path) {
+		if h.no_create_user && !project {
+			out += '  no config file yet; the installer will not create this file.\n'
+			out += '  If preparing the configuration by hand, use this JSON:\n'
+		} else {
+			out += '  no config file yet; this is what would be created:\n'
+		}
+		out += '  { ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} } }\n'
+		return out
+	}
+	if !os.is_file(path) {
+		return out + '  could not read ${path}: not a regular file\n'
+	}
+	text := os.read_file(path) or { return out + '  could not read ${path}: ${err.msg()}\n' }
+	if has_top_level_key(text, h.key) {
+		out += '  top-level key: ${h.key}\n'
+		out += '  ${json_string(server_id)}: ${entry_text(h)}\n'
+	} else {
+		// The entry alone is not something a client can read: it has to sit
+		// inside the client's own key. Print the member, which is what a reader
+		// pastes, rather than the entry, which is not.
+		out += '  no top-level ${json_string(h.key)} yet; add this member:\n'
+		out += '  ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }\n'
+	}
+	return out
 }
 
 // server_exe is the compiler this tool is running as, which is the one the
@@ -256,13 +281,19 @@ fn write_entry(h Harness, path string, project bool) ! {
 	// A file with comments or trailing commas is not something to rewrite: json2
 	// cannot parse it back, and a round trip would drop what it cannot model.
 	if !is_plain_json(text) {
+		// Parsing as some other JSON value means the file is fine and its shape is
+		// wrong, which is a different problem. Saying "comments or trailing commas"
+		// about it sends the reader hunting for a comment the file does not have.
+		if is_json_value(text) {
+			return error('${path} is valid JSON, but its top level is not an object; not guessing where the servers belong.')
+		}
 		return error('${path} is not plain JSON (comments or trailing commas); not rewriting it.')
 	}
 	mut point := Insertion{}
 	mut addition := entry
 	if found := insertion_point(text, h.key) {
 		if has_entry(text, h.key, server_id) {
-			eprintln('v mcp install: ${server_id} is already in ${path}; leaving it alone.')
+			eprintln(existing_entry_report(text, h, path, project))
 			return
 		}
 		point = found
@@ -288,6 +319,107 @@ fn write_entry(h Harness, path string, project bool) ! {
 		return error('could not write ${path}: ${err.msg()}')
 	}
 	println('${h.label}: added ${server_id} to ${path}')
+}
+
+// is_json_value reports whether the text parses as JSON at all, whatever its
+// top level is. `is_plain_json` cannot answer that, because it decodes into a
+// map and so rejects an array, a string and a number for the same reason it
+// rejects a comment.
+fn is_json_value(text string) bool {
+	json.decode[json.Any](text) or { return false }
+	return true
+}
+
+// existing_entry_report says which command the entry that is already there runs.
+//
+// Without it, the only way to learn that the registered compiler is not the one
+// you just invoked is to read the file, and the only way to move the entry is to
+// discover that `install` will not do it.
+fn existing_entry_report(text string, h Harness, path string, project bool) string {
+	return existing_entry_report_for_compiler(text, h, path, project, server_exe(), os.user_os() == 'windows')
+}
+
+fn existing_entry_report_for_compiler(text string, h Harness, path string, project bool, wanted string, windows bool) string {
+	mut lines := ['v mcp install: ${server_id} is already in ${path}; leaving it alone.']
+	exe, command := recorded_entry(text, h.key) or { return lines.join('\n') }
+	lines << '  it runs ${command}'
+	if exe != wanted {
+		lines << '  this compiler is ${wanted}'
+		scope := if project { ' --project' } else { '' }
+		// PowerShell needs its call operator for a quoted executable. POSIX shells
+		// accept the quoted path directly. Both commands name this compiler.
+		compiler := if windows {
+			"& '" + wanted.replace("'", "''") + "'"
+		} else {
+			"'" + wanted.replace("'", "'\\''") + "'"
+		}
+		lines << if windows { '  to move it (PowerShell):' } else { '  to move it:' }
+		lines << '  ${compiler} mcp uninstall ${h.name}${scope}'
+		lines << '  ${compiler} mcp install ${h.name}${scope}'
+	}
+	return lines.join('\n')
+}
+
+// recorded_entry returns the executable the entry for `server_id` runs, and the
+// command and arguments rendered for reading, or none when the entry holds no
+// readable command. The two are returned apart because only the executable can
+// be compared with the compiler running this tool.
+fn recorded_entry(text string, key string) ?(string, string) {
+	root := json.decode[map[string]json.Any](text) or { return none }
+	group := root[key] or { return none }
+	servers := group.as_map()
+	entry := servers[server_id] or { return none }
+	fields := entry.as_map()
+	command := fields['command'] or { return none }
+	mut parts := []string{}
+	if command is []json.Any {
+		parts = command_strings(command) or { return none }
+	} else if command is string {
+		parts << command
+		if args := fields['args'] {
+			argument_parts := command_strings(args) or { return none }
+			parts << argument_parts
+		}
+	} else {
+		return none
+	}
+	if parts.len == 0 || parts[0] == '' {
+		return none
+	}
+	mut displayed := []string{cap: parts.len}
+	for part in parts {
+		displayed << display_argument(part)
+	}
+	return parts[0], displayed.join(' ')
+}
+
+// command_strings reads an argument array without treating non-strings as commands.
+fn command_strings(value json.Any) ?[]string {
+	if value !is []json.Any {
+		return none
+	}
+	mut parts := []string{}
+	for part in value as []json.Any {
+		if part is string {
+			parts << part
+		} else {
+			return none
+		}
+	}
+	return parts
+}
+
+// display_argument quotes whitespace and control bytes to preserve argument boundaries.
+fn display_argument(value string) string {
+	if value == '' {
+		return json.encode(value)
+	}
+	for byte in value {
+		if byte <= ` ` || byte == `"` {
+			return json.encode(value)
+		}
+	}
+	return value
 }
 
 // wrap_entry is the object a new top-level key holds, with the entry one step
