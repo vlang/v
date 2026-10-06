@@ -38,6 +38,8 @@ decimal point, and exponent. Underscores may separate digits, as in `1_000` or `
 It also accepts case-insensitive `nan`, `inf`, and `infinity`, with an optional
 sign for infinity. Whitespace, bare signs, missing digits, and misplaced
 underscores return an error.
+Conversion retains up to 18 significant decimal digits and rounds binary halfway cases
+to the nearest value with an even significand. Subnormal results use the same rounding rule.
 
 ```v
 import strconv
