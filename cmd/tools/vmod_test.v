@@ -96,6 +96,83 @@ fn test_v_mod_why_needs_a_project() {
 	assert res.output.contains('no v.mod found'), res.output
 }
 
+fn mod_graph() os.Result {
+	return os.exec([@VEXE, 'mod', 'graph'])
+}
+
+// test_v_mod_graph_prints_the_dependency_graph is the picture `v mod why` answers one
+// question about: every module and the modules it imports, indented.
+fn test_v_mod_graph_prints_the_dependency_graph() {
+	prepare_fixture()!
+	res := mod_graph()
+	assert res.exit_code == 0, res.output
+	lines := res.output.trim_space().split_into_lines()
+	assert lines[0] == 'app', res.output
+	assert lines.contains('lib'), res.output
+	assert lines.contains('  deeper'), res.output
+}
+
+// test_v_mod_graph_indents_nested_dependencies: a module imported by an imported
+// module is indented further than a direct dependency.
+fn test_v_mod_graph_indents_nested_dependencies() {
+	prepare_fixture()!
+	res := mod_graph()
+	assert res.exit_code == 0, res.output
+	lines := res.output.trim_space().split_into_lines()
+	lib_idx := lines.index('lib')
+	deeper_idx := lines.index('  deeper')
+	assert deeper_idx > lib_idx, res.output
+	assert lines[deeper_idx].starts_with('  '), lines[deeper_idx]
+}
+
+// test_v_mod_graph_prints_each_module_once: a diamond must not repeat a subtree.
+fn test_v_mod_graph_prints_each_module_once() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport near\nimport far\nfn main() {}\n')!
+	write_module('near', 'module near\nimport shared\n')!
+	write_module('far', 'module far\nimport shared\n')!
+	write_module('shared', 'module shared\n')!
+	res := mod_graph()
+	assert res.exit_code == 0, res.output
+	lines := res.output.trim_space().split_into_lines()
+	mut shared_count := 0
+	for line in lines {
+		if line.trim_space() == 'shared' {
+			shared_count++
+		}
+	}
+	assert shared_count == 1, res.output
+}
+
+fn test_v_mod_graph_stops_at_import_cycles_and_keeps_other_branches() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport near\nimport far\nfn main() {}\n')!
+	write_module('near', 'module near\nimport cycle\n')!
+	write_module('cycle', 'module cycle\nimport near\n')!
+	write_module('far', 'module far\nimport shared\n')!
+	write_module('shared', 'module shared\n')!
+	res := mod_graph()
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split_into_lines() == ['app', 'near', '  cycle', 'far', '  shared'], res.output
+}
+
+// test_v_mod_graph_needs_a_project: like every `v mod` subcommand, it has to run from
+// a project folder.
+fn test_v_mod_graph_needs_a_project() {
+	os.chdir(os.vtmp_dir())!
+	os.rmdir_all(os.join_path(tfolder, 'app')) or {}
+	res := os.exec([@VEXE, 'mod', 'graph'])
+	assert res.exit_code == 1
+	assert res.output.contains('no v.mod found'), res.output
+}
+
+// test_v_mod_help_lists_graph: the help text has to name the subcommand.
+fn test_v_mod_help_lists_graph() {
+	res := os.exec([@VEXE, 'mod'])
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('graph'), res.output
+}
+
 fn test_v_mod_rejects_an_unknown_subcommand() {
 	prepare_fixture()!
 	res := os.exec([@VEXE, 'mod', 'nosuchsubcommand'])

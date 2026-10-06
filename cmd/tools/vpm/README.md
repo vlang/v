@@ -39,7 +39,7 @@ with `--locked`, even when newer tags exist. A changed range is resolved again;
 This is the initial range-selection layer. Different requirements targeting the
 same installation directory are rejected when a range is involved, before
 installation changes the module store. Joint constraint solving, backtracking,
-version-aware updates and graph reporting are not yet implemented.
+version-aware updates and dependency-version graph reporting are not yet implemented.
 
 ## Minimum compiler versions and root overrides
 
@@ -62,7 +62,11 @@ the consumer's choices. Overrides match a registered name, or a direct repositor
 basename or manifest name, and replace its requested constraint before its selected
 manifest and dependencies are read. A direct repository with a different manifest
 name may require a default-branch metadata checkout to discover that name.
-Malformed or duplicate overrides fail before installation.
+Malformed or duplicate overrides fail before installation. A selector such as
+`requiring>package: v2.0.0` applies only to the dependency edge from the named
+requiring module. A matching selector takes precedence over a global override.
+Source checkout, minimum-version checks, transitive dependencies and locks all
+use that effective request.
 
 The lockfile records the effective dependency request including the override,
 the selected tag and the actual commit. Reinstalling reuses that commit. Changing
@@ -74,3 +78,15 @@ Bundled tools declare external build requirements in their own `v.mod` under
 The launcher reads these manifests beside its own compiler. The legacy
 `v.util.external_modules_for_tool` function remains available as a wrapper;
 `external_module_dependencies_for_tool` remains the old compatibility snapshot.
+
+## Import graph and resolver helpers
+
+`v mod graph` prints the project's import graph as an indented tree. Each module
+appears at its first occurrence; shared subtrees and import cycles are visited once.
+The graph reads import declarations, including both conditional-compilation branches.
+
+The internal version-assignment helper checks all supplied candidate modules,
+semantic version constraints, candidate dependencies and cycles with backtracking.
+It is a foundation for joint resolution; installation still uses the range-selection
+behavior described above. The installer does not yet discover candidates for every
+version or run a joint dependency solver.

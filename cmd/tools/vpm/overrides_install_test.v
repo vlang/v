@@ -120,6 +120,29 @@ fn test_override_range_resolves_and_locks_actual_tag() {
 	assert os.read_file(os.join_path(store, 'range_pkg', 'marker.txt'))! == 'v2.1.0'
 }
 
+fn test_selector_override_selects_the_requiring_edges_source_before_min_v() {
+	leaf := override_repo('selector-leaf')!
+	selected := override_tag(leaf, 'c', 'v1.0.0', '0.0.1', [], [])!
+	override_tag(leaf, 'c', 'v2.0.0', '99.0.0', ['does.not.exist'], [])!
+	parent := override_repo('selector-parent')!
+	override_tag(parent, 'requiring', 'v1.0.0', '0.0.1', [leaf + '@v2.0.0'], [])!
+	project := override_project('selector-project', [parent + '@v1.0.0'], ['requiring>c: v1.0.0'])!
+	store := os.join_path(override_test_root, 'selector-store')
+	test_utils.set_test_env(store)
+	cmd_ok_args(@LOCATION, [override_vpm_exe, 'install'])
+	assert override_git(os.join_path(store, 'c'), ['rev-parse', 'HEAD']) == selected
+	assert os.read_file(os.join_path(store, 'c', 'marker.txt'))! == 'v1.0.0'
+	assert read_lockfile(project)!.modules[leaf]!.requested == leaf + '@v1.0.0'
+	other := override_repo('selector-other')!
+	override_tag(other, 'other', 'v1.0.0', '0.0.1', [leaf + '@v2.0.0'], [])!
+	override_project('selector-other-project', [other + '@v1.0.0'], ['requiring>c: v1.0.0'])!
+	other_store := os.join_path(override_test_root, 'selector-other-store')
+	test_utils.set_test_env(other_store)
+	rejected := cmd_fail_args(@LOCATION, [override_vpm_exe, 'install'])
+	assert rejected.output.contains('requires V 99.0.0'), rejected.output
+	assert !os.exists(os.join_path(other_store, 'c'))
+}
+
 fn override_metadata_once(mut listener net.TcpListener, repo string) {
 	mut conn := listener.accept() or { panic(err) }
 	defer { conn.close() or {} }

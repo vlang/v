@@ -44,10 +44,10 @@ enum ModuleKind {
 
 // parse_query resolves the modules of `query` and their dependencies. It
 // returns them together with the number of modules that failed to resolve.
-fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope, overrides []Override) ([]Module, int) {
+fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope, overrides []Override, requiring string) ([]Module, int) {
 	mut p := Parser{ overrides: overrides }
 	for m in query {
-		p.parse_module(m, mut selector, mut scope)
+		p.parse_module(m, mut selector, mut scope, requiring)
 	}
 	if p.errors > 0 && (p.errors == query.len || p.encountered_range) {
 		for m in p.modules.values() {
@@ -105,7 +105,7 @@ fn (mut p Parser) lookup_registered_name_for_url(manifest_name string, ident str
 	return none
 }
 
-fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, mut scope LockScope) {
+fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, mut scope LockScope, requiring string) {
 	kind := match true {
 		m.starts_with('https://') { ModuleKind.https }
 		m.starts_with('git@') { ModuleKind.ssh }
@@ -123,7 +123,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 	} else {
 		m.rsplit_once('@') or { m, '' }
 	}
-	mut request := overridden_request(m, [ident], p.overrides)
+	mut request := overridden_request_for_module(m, [ident], requiring, p.overrides)
 	mut version := if request == m { original_version } else { dependency_request_version(request) }
 	mut key := match kind {
 		.registered { request }
@@ -151,7 +151,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			p.errors++
 			return
 		}
-		request = overridden_request(m, [ident, name], p.overrides)
+		request = overridden_request_for_module(m, [ident, name], requiring, p.overrides)
 		version = dependency_request_version(request)
 		key = ident.all_after('//').trim_string_right('.git') + at_version(version)
 		if key in p.modules {
@@ -190,7 +190,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			p.errors++
 			return
 		}
-		selected_request := overridden_request(m, [ident, name, manifest.name], p.overrides)
+		selected_request := overridden_request_for_module(m, [ident, name, manifest.name], requiring, p.overrides)
 		if probe || selected_request != request {
 			request = selected_request
 			version = dependency_request_version(request)
@@ -249,7 +249,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			p.errors++
 			return
 		}
-		request = overridden_request(m, [ident, info.name], p.overrides)
+		request = overridden_request_for_module(m, [ident, info.name], requiring, p.overrides)
 		version = dependency_request_version(request)
 		key = request
 		if key in p.modules {
@@ -323,7 +323,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 	if mod.manifest.dependencies.len > 0 {
 		verbose_println('Found ${mod.manifest.dependencies.len} dependencies for `${mod.name}`: ${mod.manifest.dependencies}.')
 		for d in mod.manifest.dependencies {
-			p.parse_module(d, mut selector, mut scope)
+			p.parse_module(d, mut selector, mut scope, mod.name)
 		}
 	}
 }

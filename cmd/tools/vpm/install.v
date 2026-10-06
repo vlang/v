@@ -63,7 +63,7 @@ fn vpm_install(query []string) {
 		scope.begin()
 	}
 
-	mut modules, parse_errors := parse_query(dep_strings, mut selector, mut scope, overrides)
+	mut modules, parse_errors := parse_query(dep_strings, mut selector, mut scope, overrides, root_manifest.name)
 	// The dependencies of a project have to resolve completely. The ones that
 	// did are still installed, but the run fails, and records no lockfile.
 	is_incomplete := parse_errors > 0 && scope.active
