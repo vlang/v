@@ -530,7 +530,12 @@ fn (mut r Reactor) parse(mut socket ReactorSocket, budget int) int {
 	mut offset := 0
 	mut frames := 0
 	for frames < budget && socket.client.key in r.sockets && !socket.abort_after_flush && !socket.close_received {
-		mut input := unsafe { socket.input[offset..] }
+		if offset == socket.input.len { break }
+		// decode and on_message borrow these bytes only until delivery returns.
+		// A tracked slice would force delete_many to detach the reusable input.
+		mut input := unsafe {
+			(&u8(socket.input.data) + offset).vbytes(socket.input.len - offset)
+		}
 		frame := socket.decoder.decode(mut input)
 		if frame.kind == .need_more { break }
 		if frame.kind == .failure {
