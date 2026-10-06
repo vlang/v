@@ -14,12 +14,13 @@ import v.vmod
 // no directory, so it is identified, and shown, by the string that named it.
 struct DepGraph {
 mut:
-	deps      map[string][]string // id -> the ids of the nodes it requires
-	labels    map[string]string   // id -> the name the node is shown as
-	absent    map[string]bool     // id -> required by something, but not installed
-	ids       map[string]string   // dependency string, as written -> id
-	root_name string
-	root_deps []string // the ids of the current project's dependencies
+	deps        map[string][]string // id -> the ids of the nodes it requires
+	labels      map[string]string   // id -> the name the node is shown as
+	absent      map[string]bool     // id -> required by something, but not installed
+	ids         map[string]string   // dependency string, as written -> id
+	constraints map[string]string   // id -> version constraint from the requiring module
+	root_name   string
+	root_deps   []string // the ids of the current project's dependencies
 }
 
 // vpm_why explains why a module is in the dependency graph, or prints the whole
@@ -100,6 +101,10 @@ fn (mut g DepGraph) node_ids(raws []string, roots []string, mut queue []string) 
 			}
 			g.ids[raw] = id
 		}
+		_, constraint := raw.rsplit_once('@') or { raw, '' }
+		if constraint != '' {
+			g.constraints[id] = constraint
+		}
 		// The same module written twice, e.g. once by name and once by URL, is one
 		// dependency rather than two.
 		if id !in ids {
@@ -169,9 +174,15 @@ fn print_level(graph &DepGraph, level []string, prefix string, focus string, lea
 		last := i == shown.len - 1
 		branch := if last { '`-- ' } else { '|-- ' }
 		label := graph.labels[node] or { node }
+		constraint := graph.constraints[node] or { '' }
+		constraint_str := if constraint != '' { ' @${constraint}' } else { '' }
 		missing := if graph.absent[node] { ' (not installed)' } else { '' }
 		repeat := node in *on_path
-		println('${prefix}${branch}${label}${missing}${if repeat { ' (cycle)' } else { '' }}')
+		println('${prefix}${branch}${label}${constraint_str}${missing}${if repeat {
+			' (cycle)'
+		} else {
+			''
+		}}')
 		if repeat || node == focus {
 			continue
 		}
