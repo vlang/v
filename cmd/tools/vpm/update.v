@@ -20,6 +20,10 @@ fn vpm_update(query []string) {
 	if settings.is_help {
 		help.print_and_exit('update')
 	}
+	if settings.is_dry_run {
+		dry_run_update(query)
+		return
+	}
 	if settings.is_precise {
 		if settings.pin_module != '' && query.len > 0 {
 			vpm_error('--precise takes exactly one module name')
@@ -47,6 +51,34 @@ fn vpm_update(query []string) {
 	refresh_lock_entries(results)
 	if errors > 0 {
 		exit(1)
+	}
+}
+
+fn dry_run_update(query []string) {
+	idents := if query.len == 0 { get_installed_modules() } else { query.clone() }
+	mut would_update := 0
+	for ident in idents {
+		install_path := get_path_of_existing_module(ident) or { continue }
+		if !install_path_is_in_vmodules(install_path, settings.vmodules_path) {
+			continue
+		}
+		name := import_path_of(install_path)
+		vcs := vcs_used_in_dir(install_path) or { continue }
+		if vcs != .git {
+			continue
+		}
+		os.exec_opt(['git', '-C', install_path, 'fetch', 'origin']) or { continue }
+		local_rev := head_revision(install_path)
+		remote_rev := os.exec_opt(['git', '-C', install_path, 'rev-parse', 'origin/HEAD']) or { continue }
+		if local_rev == remote_rev.output.trim_space() {
+			println('${name}: up to date')
+		} else {
+			println('${name}: would update (${local_rev[..7]} -> ${remote_rev.output.trim_space()[..7]})')
+			would_update++
+		}
+	}
+	if would_update == 0 {
+		println('All modules are up to date.')
 	}
 }
 
