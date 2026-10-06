@@ -16259,14 +16259,14 @@ fn method_name_contains_mangled_open_generic_placeholder(method_name string) boo
 
 // is_builder_receiver reports whether is builder receiver applies in transform.
 fn (t &Transformer) is_builder_receiver(base_id flat.NodeId, base_type string) bool {
-	if is_builder_type_name(base_type) {
+	if is_builder_type_name(base_type, t.cur_module) {
 		return true
 	}
 	if raw_type := t.raw_var_type_for_expr(base_id) {
-		return is_builder_type_name(raw_type)
+		return is_builder_type_name(raw_type, t.cur_module)
 	}
 	if raw_field_type := t.raw_selector_field_type(base_id) {
-		return is_builder_type_name(raw_field_type)
+		return is_builder_type_name(raw_field_type, t.cur_module)
 	}
 	return false
 }
@@ -16317,13 +16317,13 @@ fn (t &Transformer) raw_selector_field_type(id flat.NodeId) ?string {
 	return raw_type
 }
 
-// is_builder_type_name reports whether is builder type name applies in transform.
-fn is_builder_type_name(typ string) bool {
+// is_builder_type_name recognizes strings.Builder, including its local spelling in strings.
+fn is_builder_type_name(typ string, module_name string) bool {
 	mut clean := typ
 	if clean.starts_with('&') {
 		clean = clean[1..]
 	}
-	return clean == 'strings.Builder' || clean == 'Builder'
+	return clean == 'strings.Builder' || (clean == 'Builder' && module_name == 'strings')
 }
 
 // resolved_call_uses_receiver_type
