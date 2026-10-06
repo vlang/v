@@ -112,6 +112,27 @@ fn json_string_array(values []string) string {
 // Each path here follows where that client itself reads its configuration. A
 // client with no project-level file here has an empty `project`, and says so
 // rather than guessing.
+//
+// Where each path came from, and when it was last checked. A path that is
+// questioned should be re-verified against that client's own documentation
+// rather than against this list, because a list is only as good as the day it
+// was written:
+//
+//   opencode    `~/.config/opencode/opencode.json` on every platform, and
+//               `opencode.json` at the project root. From
+//               https://opencode.ai/docs/config/, and checked against the live
+//               file on this machine, 2026-10-05.
+//   Claude Code `~/.claude.json`, `.mcp.json` at the project root. From the
+//               Claude Code documentation.
+//   Cursor      `~/.cursor/mcp.json`, `.cursor/mcp.json`. From the Cursor
+//               documentation.
+//   VS Code     `<config>/Code/User/mcp.json`, `.vscode/mcp.json`. Checked
+//               against the live file on this machine, 2026-10-05.
+//   Zed         that client's own settings file per platform, including
+//               Flatpak, under `context_servers`. From
+//               https://zed.dev/docs/ai/mcp, 2026-10-05.
+//   Gemini CLI  `~/.gemini/settings.json`, `.gemini/settings.json`. From the
+//               Gemini CLI documentation.
 fn harnesses() []Harness {
 	home := os.home_dir()
 	// VS Code keeps its configuration under the platform config directory:
