@@ -1,6 +1,8 @@
 #ifndef V_CRYPTO_RAND_GETRANDOM_LINUX_H
 #define V_CRYPTO_RAND_GETRANDOM_LINUX_H
 
+#if defined(__linux__)
+
 /*
  * v_crypto_getrandom fills `buf` with `n` random bytes, like getrandom(2) with no
  * flags. Using libc allows its platform-specific optimizations, including vDSO
@@ -24,5 +26,7 @@ static inline long v_crypto_getrandom(void* buf, size_t n) {
 	return syscall(SYS_getrandom, buf, n, 0);
 #endif
 }
+
+#endif /* __linux__ */
 
 #endif

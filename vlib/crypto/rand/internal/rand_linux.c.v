@@ -3,13 +3,14 @@
 // that can be found in the LICENSE file.
 module internal
 
+#insert "@VEXEROOT/vlib/crypto/rand/internal/getrandom_linux.h"
+
 // A portable `-os cross` compiler snapshot is generated on Linux, so it bakes
 // in this file even when its C source is later compiled on an Apple host.
 $if macos || ios || openbsd {
 	#include <sys/random.h>
 } $else {
 	#include <sys/syscall.h>
-	#insert "@VEXEROOT/vlib/crypto/rand/internal/getrandom_linux.h"
 }
 
 pub const C.SYS_getrandom int
