@@ -1278,7 +1278,16 @@ fn (t &Transformer) node_enclosing_generic_params(id flat.NodeId) []string {
 		}
 		parent := t.a.node(flat.NodeId(parent_id))
 		if parent.kind in [.fn_decl, .struct_decl, .type_decl, .interface_decl, .c_fn_decl] {
-			return parent.generic_params()
+			mut params := parent.generic_params().clone()
+			if parent.kind == .fn_decl {
+				module_name := t.node_module_or(parent_id, t.cur_module)
+				for param in t.declared_generic_receiver_param_names(*parent, module_name) {
+					if param !in params {
+						params << param
+					}
+				}
+			}
+			return params
 		}
 		cursor = parent_id
 	}

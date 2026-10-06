@@ -16347,7 +16347,8 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	// Inspect a nominal name only after parsing its wrappers. Otherwise the last
 	// component of `!module.M` looks generic while the complete wrapper is absent
 	// from the declared-type tables, even though `module.M` is concrete.
-	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
+	if is_generic_placeholder_type(typ)
+		&& (tc.active_generic_param(typ) || !tc.is_known_type_text(typ)) {
 		return unknown_type('generic placeholder `${typ}`')
 	}
 	qtyp := if tc.resolution_type_mode {

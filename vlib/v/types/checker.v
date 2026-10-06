@@ -4334,6 +4334,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 			}
 			.struct_decl {
 				mut fields := []StructField{}
+				old_generic_params := tc.fn_context.generic_params
+				tc.fn_context.generic_params = node.generic_params()
 				mut field_c_abi_fns := map[string]string{}
 				mut shared_field_names := []string{}
 				mut shared_element_field_names := []string{}
@@ -4382,6 +4384,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						is_volatile: source_field_decl_is_volatile(f)
 					}
 				}
+				tc.fn_context.generic_params = old_generic_params
 				qname := tc.qualify_decl_name(node.value)
 				// A `C.` struct denotes a single external C type, but several modules may
 				// mirror it with partial or imprecise field views (e.g. `C.termios` in both
