@@ -272,9 +272,19 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 	receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
 	receiver_name := receiver_type.name()
 	actual_count := int(node.children_count) - 1
+	mut fixed_arg_count := actual_count
+	for arg_index in 0 .. actual_count {
+		arg_id := tc.call_arg_value(tc.a.child(&node, arg_index + 1))
+		if tc.arg_is_spread(arg_id) {
+			// The transformer expands the spread into the remaining method parameters.
+			fixed_arg_count = arg_index
+			break
+		}
+	}
 	mut return_type := ''
 	for method in value_cases.cases {
-		if actual_count != method.param_types.len {
+		if fixed_arg_count > method.param_types.len
+			|| (fixed_arg_count == actual_count && actual_count != method.param_types.len) {
 			mut pos := node.pos
 			if file := tc.a.source_files[node.pos.id] {
 				if source := tc.source_texts_by_file[file.name] {
@@ -290,7 +300,7 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 			tc.record_error_severity_at(.call_arg_mismatch, 'expected ${method.param_types.len} arguments to method ${receiver_name}.${method.name}, but got ${actual_count}', id, pos, 'cgen error:')
 			return
 		}
-		for arg_index in 0 .. actual_count {
+		for arg_index in 0 .. fixed_arg_count {
 			raw_arg_id := tc.a.child(&node, arg_index + 1)
 			raw_arg := tc.a.child_node(&node, arg_index + 1)
 			arg_id := tc.call_arg_value(raw_arg_id)
