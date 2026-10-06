@@ -155,6 +155,8 @@ current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety 
 `-memory-limit` to set your own.
 A memory-limit failure flushes its diagnostic and immediately exits with status 1. Process-exit
 callbacks are skipped because compiler workers may still be using their allocation arenas.
+Backend type queries discard transient function smartcasts after scoped specialization,
+so generic builds with small worker counts do not retain freed map storage.
 Native compiler and `v self` builds use `-prealloc` when their target and selected C compiler
 support it, enabling the disposable stage arenas that keep compiler self-hosting within that
 ceiling.

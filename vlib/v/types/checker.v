@@ -1553,6 +1553,12 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 	}
 }
 
+// reset_codegen_smartcasts discards function-local bindings before backend type queries.
+// A scoped transform can leave even an empty map in its disposable arena.
+pub fn (mut tc TypeChecker) reset_codegen_smartcasts() {
+	tc.smartcasts = map[string]Type{}
+}
+
 // fork_for_parallel_codegen returns a complete read-only semantic view with
 // private scope and memoization state for one C-generation worker.
 pub fn (tc &TypeChecker) fork_for_parallel_codegen() &TypeChecker {
