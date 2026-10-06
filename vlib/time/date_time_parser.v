@@ -380,6 +380,10 @@ fn (mut p DateTimeParser) parse() !Time {
 		}
 	}
 
+	if p.current_pos_datetime != p.datetime.len {
+		return error_invalid_time(0, 'extra text: ${p.datetime[p.current_pos_datetime..]}')
+	}
+
 	if month_ == 2 {
 		feb_days_in_year := if is_leap_year(year_) { 29 } else { 28 }
 		if day_in_month > feb_days_in_year {

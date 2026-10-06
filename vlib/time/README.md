@@ -62,6 +62,9 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+`parse_format(s, format)` requires the format to cover the entire input, including literals.
+Unmatched trailing text or whitespace returns an error instead of parsing only a prefix.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time
