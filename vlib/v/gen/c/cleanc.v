@@ -5020,14 +5020,14 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 
 fn (mut g FlatGen) collect_c_flags_from_directives() {
 	mut cur_file := ''
-	mut cur_module := ''
+	mut cur_module := 'main'
 	mut groups := []CFlagDirectiveGroup{}
 	for node_idx in g.top_level_nodes() {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
-			cur_module = ''
+			cur_module = 'main'
 			g.note_compiler_source_file(node.value)
 			continue
 		}
@@ -5208,14 +5208,36 @@ fn c_flag_links_c_source(flag string) bool {
 		|| flag.contains('.cc') || flag.contains('.o ') || flag.ends_with('.o')
 }
 
+// c_flag_links_c_library reports whether a flag links a library by path.
+fn c_flag_links_c_library(flag string) bool {
+	mut skip_path := false
+	for raw_arg in tokenize_c_flag(c_flag_strip_hash_comment(flag)) {
+		if skip_path {
+			skip_path = false
+			continue
+		}
+		arg := raw_arg.trim('\'"')
+		skip_path = c_flag_takes_path_operand(arg)
+		if arg.starts_with('-') {
+			continue
+		}
+		if arg.ends_with('.a') || arg.ends_with('.so') || arg.ends_with('.dylib')
+			|| arg.ends_with('.lib') {
+			return true
+		}
+	}
+	return false
+}
+
 // note_c_flag_directive records the two `#flag` shapes that leave a `fn C.` symbol
 // without a header: a linked C source/object, and a user module that links a C
-// library (`-lfoo`) without including anything.
+// library by name or path without including anything.
 fn (mut g FlatGen) note_c_flag_directive(module_name string, source_file string, flag string) {
 	if source_file.len > 0 && c_flag_links_c_source(flag) {
 		g.files_linking_c_sources[source_file] = true
 	}
-	if module_name.len > 0 && flag.contains('-l') && !g.c_source_file_is_in_vlib(source_file) {
+	if module_name.len > 0 && (flag.contains('-l') || c_flag_links_c_library(flag))
+		&& !g.c_source_file_is_in_vlib(source_file) {
 		g.mods_with_c_libs[module_name] = true
 	}
 }

@@ -16349,7 +16349,7 @@ struct CExternForwardDecl {
 }
 
 fn (mut g FlatGen) c_extern_forward_decls() {
-	mut cur_module := ''
+	mut cur_module := 'main'
 	mut cur_file := ''
 	mut decls := map[string]CExternForwardDecl{}
 	mut names := []string{}
@@ -16383,7 +16383,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
-			cur_module = ''
+			cur_module = 'main'
 			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			continue
