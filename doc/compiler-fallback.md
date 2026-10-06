@@ -17,6 +17,11 @@ not. Explicit `-building-v` builds still validate assignments, field access, and
 
 For a C compiler failure, V prints the saved output when available, without compiling
 again, before retrying. It is labeled `C compiler output from the default V compiler:`.
+Internal arguments used to restart the default compiler are removed before launching
+the compatibility compiler, so a prior implicit TCC warning cannot cause an unknown-argument error.
+
+Literal-output programs retain the array iteration helpers used by Linux backtrace formatting.
+For example, `v -show-timings examples/hello_world.v` builds without a missing `array__get` symbol.
 
 If V diagnostics were deferred while a failure marker was armed, V replays only the
 default compiler with fallback disabled to display them. This diagnostic replay is
