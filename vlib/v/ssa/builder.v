@@ -8981,9 +8981,9 @@ fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 		}
 		if node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
 			if lhs_literal && !rhs_literal {
-				lhs = b.coerce_numeric_value(lhs, b.value_type(rhs))
+				lhs = b.coerce_comparison_literal(lhs_id, lhs, b.value_type(rhs))
 			} else if rhs_literal && !lhs_literal {
-				rhs = b.coerce_numeric_value(rhs, b.value_type(lhs))
+				rhs = b.coerce_comparison_literal(rhs_id, rhs, b.value_type(lhs))
 			}
 			if b.is_int_type(b.value_type(lhs)) && b.is_int_type(b.value_type(rhs)) {
 				if b.is_unsigned_type(b.value_type(lhs)) != b.is_unsigned_type(b.value_type(rhs)) {
@@ -9141,6 +9141,34 @@ fn (b &Builder) is_integer_literal_expr(id flat.NodeId) bool {
 		return b.is_integer_literal_expr(b.a.child(&node, 0))
 	}
 	return false
+}
+
+fn (b &Builder) is_negative_integer_literal_expr(id flat.NodeId) bool {
+	node := b.a.nodes[int(id)]
+	if node.kind == .int_literal {
+		return node.value.starts_with('-')
+	}
+	if node.kind == .prefix && node.op == .minus {
+		return !b.is_negative_integer_literal_expr(b.a.child(&node, 0))
+	}
+	if node.children_count > 0 {
+		return b.is_negative_integer_literal_expr(b.a.child(&node, 0))
+	}
+	return false
+}
+
+fn (mut b Builder) coerce_comparison_literal(id flat.NodeId, value ValueID, peer_type TypeID) ValueID {
+	mut target := peer_type
+	value_type := b.value_type(value)
+	if b.is_int_type(value_type) && b.is_int_type(peer_type) {
+		width := int_max(b.scalar_type_width(value_type), b.scalar_type_width(peer_type))
+		target = if b.is_unsigned_type(peer_type) && !b.is_negative_integer_literal_expr(id) {
+			b.m.type_store.get_uint(width)
+		} else {
+			b.m.type_store.get_int(width)
+		}
+	}
+	return b.coerce_numeric_value(value, target)
 }
 
 fn (mut b Builder) coerce_numeric_value(value ValueID, target TypeID) ValueID {

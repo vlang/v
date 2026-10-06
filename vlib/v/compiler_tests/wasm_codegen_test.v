@@ -191,6 +191,11 @@ pub fn add(n i64) i64 { return n + 4294967296 }
 pub fn reversed_add(n i64) i64 { return 4294967296 + n }
 pub fn float_add(n f64) f64 { return n + 4294967296 }
 pub fn float_equal(n f64) bool { return n == 4294967296 }
+pub fn narrow_equal(n int) bool { return n == 4294967296 }
+pub fn narrow_less(n int) bool { return n < 4294967296 }
+pub fn narrow_negative_equal(n int) bool { return n == -4294967296 }
+pub fn narrow_unsigned_equal(n u8) bool { return n == 256 }
+pub fn unsigned_wide_equal(n u64) bool { return n == 18446744073709551615 }
 ', '
 assert.equal(e.equal(4294967296n), 1);
 assert.equal(e.equal(0n), 0);
@@ -201,6 +206,14 @@ assert.equal(e.reversed_add(1n), 4294967297n);
 assert.equal(e.float_add(1), 4294967297);
 assert.equal(e.float_equal(4294967296), 1);
 assert.equal(e.float_equal(0), 0);
+assert.equal(e.narrow_equal(0), 0);
+assert.equal(e.narrow_less(0), 1);
+assert.equal(e.narrow_less(2147483647), 1);
+assert.equal(e.narrow_negative_equal(0), 0);
+assert.equal(e.narrow_unsigned_equal(0), 0);
+assert.equal(e.narrow_unsigned_equal(255), 0);
+assert.equal(e.unsigned_wide_equal(-1n), 1);
+assert.equal(e.unsigned_wide_equal(0n), 0);
 ')
 }
 

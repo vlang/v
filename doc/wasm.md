@@ -28,6 +28,7 @@ imported functions use their qualified module name with dots replaced by double 
 An explicit `@[export: 'name']` attribute supplies the export name.
 
 Rune literals retain their full Unicode code points in expressions and global initializers.
+Integer literals retain their width until an operation or comparison selects its operand types.
 Numeric arguments convert to the declared parameter types for both direct calls and function
 values. Implicit-main scripts retain imported functions called by their top-level statements.
 

@@ -354,6 +354,50 @@ fn test_wasm32_global_constant_initializers() {
 	assert found == expected.len + 1
 }
 
+fn test_wasm32_wide_literals_compared_with_narrow_integers() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_narrow_comparison_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn equal(value int) bool { return value == 4294967296 }\nfn lower(value int) bool { return value < 4294967296 }\nfn unsigned_byte(value u8) bool { return value == 256 }\nfn unsigned_max(value u64) bool { return value == 18446744073709551615 }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
+	expected_unsigned := {
+		'equal':         false
+		'lower':         false
+		'unsigned_byte': true
+		'unsigned_max':  true
+	}
+	mut found := 0
+	for f in m.funcs {
+		if unsigned := expected_unsigned[f.name] {
+			for block in f.blocks {
+				for value in m.blocks[block].instrs {
+					instruction := m.instrs[m.values[value].index]
+					if instruction.op !in [.eq, .lt] {
+						continue
+					}
+					for operand in instruction.operands {
+						typ := m.type_store.types[m.values[operand].typ]
+						assert typ.kind == .int_t, f.name
+						assert typ.width == 64, f.name
+						assert typ.is_unsigned == unsigned, f.name
+					}
+					found++
+				}
+			}
+		}
+	}
+	assert found == expected_unsigned.len
+}
+
 fn test_wasm32_indirect_call_numeric_parameter_types() {
 	path := os.join_path(os.vtmp_dir(), 'ssa_indirect_numeric_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
