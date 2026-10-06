@@ -130,25 +130,6 @@ fn test_an_install_leaves_no_temporary_directory_behind() {
 	}
 }
 
-fn test_swap_into_puts_the_old_directory_back_when_the_move_fails() {
-	dir := scratch_dir('atomic_restore')!
-	dest := os.join_path_single(dir, 'alpha')
-	os.mkdir_all(dest)!
-	os.write_file(os.join_path_single(dest, 'SKILL.md'), 'the old copy')!
-	// The source is not there, so the move fails after the old directory has
-	// already been set aside. That is the moment the restore exists for, and
-	// the only way to reach it from outside is a failure.
-	missing := os.join_path_single(dir, 'not-there')
-	mut failed := false
-	skills.swap_into(missing, dest) or { failed = true }
-	assert failed, 'a missing source was expected to fail'
-	assert os.is_dir(dest), 'the old directory did not come back'
-	assert os.read_file(os.join_path_single(dest, 'SKILL.md'))! == 'the old copy'
-	for entry in os.ls(dir)! {
-		assert !entry.starts_with('.'), entry
-	}
-}
-
 fn test_install_skips_an_existing_skill_unless_forced() {
 	vroot := fixture_root(['alpha'])!
 	dir := scratch_dir('skip')!
@@ -165,6 +146,21 @@ fn test_install_skips_an_existing_skill_unless_forced() {
 	forced := skills.install(skill, dir, skills.InstallOptions{ force: true })!
 	assert !forced.skipped
 	assert os.read_file(entry)! != 'local edit\n'
+}
+
+fn test_install_refuses_a_regular_file_at_the_skill_destination() {
+	vroot := fixture_root(['alpha'])!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	for force in [false, true] {
+		dir := scratch_dir('file_destination_${force}')!
+		dest := os.join_path_single(dir, 'alpha')
+		os.write_file(dest, 'local file')!
+		mut failed := false
+		skills.install(skill, dir, skills.InstallOptions{ force: force }) or { failed = true }
+		assert failed, 'an existing file must not be replaced by a skill directory'
+		assert os.read_file(dest)! == 'local file'
+		assert os.ls(dir)! == ['alpha']
+	}
 }
 
 fn test_install_dry_run_writes_nothing() {

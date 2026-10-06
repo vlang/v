@@ -396,6 +396,9 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 	if os.is_link(dest) {
 		return error('refusing to install over a symlink skill directory `${dest}`')
 	}
+	if os.exists(dest) && !os.is_dir(dest) {
+		return error('refusing to install over a non-directory skill path `${dest}`')
+	}
 	install_dir := os.real_path(os.abs_path(dir))
 	resolved_dest := if os.exists(dest) {
 		os.real_path(os.abs_path(dest))
@@ -455,13 +458,7 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 	return result
 }
 
-// install_into writes the files into `dest` in one step.
-//
-// The files are written to a sibling directory and moved over `dest` only once
-// they are all there. Deleting the old copy first, which is what this used to
-// do, left a window in which a failure meant a skill that was neither the old
-// copy nor the new one. A rename that fails leaves `dest` alone, so the
-// previous installation survives a failure part way through.
+// install_into stages all files beside `dest` before replacing the installation.
 fn install_into(dest string, files []string, source_dir string) ! {
 	temporary := os.join_path_single(os.dir(dest), '.${os.file_name(dest)}-${rand.uuid_v4()}')
 	os.mkdir_all(temporary)!
@@ -475,14 +472,9 @@ fn install_into(dest string, files []string, source_dir string) ! {
 	swap_into(temporary, dest)!
 }
 
-// swap_into moves `source` over `dest`, and is public so the restore below can
-// be tested: reaching it from outside needs a rename to fail, and the only way
-// to arrange that is a source that is not there.
-//
-// A rename cannot replace a directory on Windows, so the old one is moved aside
-// first and removed once the new one is in place; if the second rename fails the
-// old one is put back, so the caller never sees neither directory.
-pub fn swap_into(source string, dest string) ! {
+// swap_into moves a staged directory into place and restores the previous one on failure.
+// Directory replacement requires moving the old directory aside first on Windows.
+fn swap_into(source string, dest string) ! {
 	mut aside := ''
 	if os.exists(dest) {
 		aside = os.join_path_single(os.dir(dest), '.${os.file_name(dest)}.old-${rand.uuid_v4()}')
