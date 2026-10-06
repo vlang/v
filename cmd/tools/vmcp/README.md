@@ -119,8 +119,10 @@ are unordered, and would quietly drop anything the decoder does not model. So:
   beside it, which then replaces it in one step. A symlinked config stays a
   symlink, and keeps its permissions.
 
-When installation is refused, `v mcp install` prints the entry for pasting by hand
-and exits with status 1.
+When a file is not plain JSON, `v mcp install` leaves it unchanged and prints the
+client's top-level member for pasting by hand. If that key already exists, merge the
+`vlang` server member into it instead of adding a second key. Other failures report
+why the file could not be edited. Refused installations exit with status 1.
 
 The registered command uses the executable named by `VEXE` when available. If that
 path is missing or is not an executable file, it tries the compiler path recorded when the
