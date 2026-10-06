@@ -652,3 +652,6 @@ skipped during C code generation; C runtime functions are provided via a compact
 preamble.
 
 Measured on macOS (Apple Silicon), warm runs. V1 built from `~/code/v5/v` (V 0.5.1).
+
+Constant references to map literals own a heap copy of the map descriptor.
+Both populated and empty map references retain valid storage after initialization.
