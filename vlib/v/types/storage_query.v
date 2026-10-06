@@ -91,12 +91,6 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		if trace.complete && result.len == 0 {
 			trace.guards.delete(guard_id)
 		}
-		// Map iteration copies string keys, so estimate inside the disposable arena.
-		mut certificate := if inherited_owner && trace.complete {
-			storage_query_encode_guards(trace.guards)
-		} else {
-			StorageQueryGuards{}
-		}
 		mut consensus := StorageQueryUnion{ entry_idx: -1 }
 		if inherited_owner && trace.complete && trace.guards.len > 0 {
 			if proof := owner.storage_query_union(cache_key, result, trace.guards) {
@@ -104,9 +98,20 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 				if consensus.incoming {
 					// Only this complete incoming proof is propagated to the parent.
 					trace.guards.delete(consensus.guard_id)
-					certificate = storage_query_encode_guards(trace.guards)
 				}
 			}
+		}
+		// Keep the initial existing-entry proof separate from later incoming deletions.
+		mut sharing_idx := consensus.entry_idx
+		if consensus.entry_idx >= 0 && trace.guards.len > 0 {
+			forward_idx := owner.storage_query_forward_union(cache_key, result, mut trace.guards)
+			if forward_idx >= 0 { sharing_idx = forward_idx }
+		}
+		// Map iteration copies string keys, so estimate inside the disposable arena.
+		certificate := if inherited_owner && trace.complete {
+			storage_query_encode_guards(trace.guards)
+		} else {
+			StorageQueryGuards{}
 		}
 		mut estimated_bytes := if inherited_owner && trace.complete {
 			storage_query_result_bytes(cache_key, result, certificate)
@@ -116,9 +121,9 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		// Borrow immutable map descriptors; no copied payload is mutated or freed.
 		mut retained_result := unsafe { result }
 		mut clone_result := true
-		if consensus.entry_idx >= 0 {
+		if sharing_idx >= 0 {
 			// The equality proof also permits borrowing this result after admission stops.
-			retained_result = unsafe { owner.storage_query_results[cache_key][consensus.entry_idx].writes }
+			retained_result = unsafe { owner.storage_query_results[cache_key][sharing_idx].writes }
 			clone_result = false
 			estimated_bytes = storage_query_entry_bytes(cache_key, certificate)
 		} else if inherited_owner && trace.complete {
@@ -144,8 +149,11 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		if inherited_owner && trace.complete {
 			// Only admitted memo payloads are allocated in the outer query's arena.
 			suspend_storage_query_scopes(cache.storage_query_scopes, mut states)
-			if consensus.existing {
-				owner.broaden_storage_query_entry(cache_key, consensus.entry_idx, consensus.guard_id)
+			if consensus.entry_idx >= 0 {
+				if !owner.broaden_storage_query_entry_to_guards(cache_key, consensus.entry_idx,
+					trace.guards) && consensus.existing {
+					owner.broaden_storage_query_entry(cache_key, consensus.entry_idx, consensus.guard_id)
+				}
 			}
 			retained := owner.cache_storage_query_result(cache_key, retained_result, trace.guards,
 				certificate, clone_result, estimated_bytes)
@@ -154,7 +162,7 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 				unsafe { prealloc_scope_resume(scope, parent) }
 				return cached
 			}
-			if consensus.entry_idx >= 0 {
+			if sharing_idx >= 0 {
 				unsafe { prealloc_scope_resume(scope, parent) }
 				return retained_result
 			}
@@ -321,6 +329,42 @@ fn (cache &VisibleMutationCache) storage_query_union(key string, result map[stri
 	return none
 }
 
+fn (cache &VisibleMutationCache) storage_query_forward_union(key string, result map[string][]int, mut guards map[u64]bool) int {
+	paths := result.keys()
+	entries := cache.storage_query_results[key]
+	mut matched := -1
+	for guards.len > 0 {
+		mut selected := -1
+		mut guard_id := u64(0)
+		for entry_idx, entry in entries {
+			complementary := storage_query_complementary_guard(entry.guards, guards) or {
+				continue
+			}
+			if result.len != entry.writes.len { continue }
+			if paths.len > 0 {
+				$if prealloc {
+					scope := unsafe { prealloc_scope_begin() }
+					equal := storage_query_ordered_results_equal(paths, result, entry.writes)
+					unsafe { prealloc_scope_end(scope) }
+					if !equal { continue }
+				} $else {
+					if !storage_query_ordered_results_equal(paths, result, entry.writes) {
+						continue
+					}
+				}
+			}
+			selected = entry_idx
+			guard_id = complementary
+			break
+		}
+		if selected < 0 { break }
+		// Each proof removes one incoming condition; retained certificates stay unchanged.
+		guards.delete(guard_id)
+		matched = selected
+	}
+	return matched
+}
+
 fn storage_query_remove_guard(mut ids []u64, guard_id u64) bool {
 	for i, id in ids {
 		if id != guard_id { continue }
@@ -345,6 +389,49 @@ fn (mut cache VisibleMutationCache) broaden_storage_query_entry(key string, entr
 		&& !storage_query_remove_guard(mut absent, guard_id) {
 		return false
 	}
+	entries[entry_idx] = StorageQueryResult{
+		writes: unsafe { entry.writes }
+		guards: StorageQueryGuards{ present: unsafe { present }, absent: unsafe { absent } }
+	}
+	return true
+}
+
+fn storage_query_filter_guard_ids(mut ids []u64, guards map[u64]bool) {
+	mut retained := 0
+	for id in ids {
+		if id in guards {
+			ids[retained] = id
+			retained++
+		}
+	}
+	// The original unique buffer and its full capacity remain allocated and charged.
+	unsafe { ids.len = retained }
+}
+
+fn (mut cache VisibleMutationCache) broaden_storage_query_entry_to_guards(key string, entry_idx int, guards map[u64]bool) bool {
+	mut entries := unsafe { cache.storage_query_results[key] }
+	if entry_idx < 0 || entry_idx >= entries.len { return false }
+	entry := entries[entry_idx]
+	mut present := unsafe { entry.guards.present }
+	mut absent := unsafe { entry.guards.absent }
+	mut found := 0
+	for id in present {
+		if expected := guards[id] {
+			if !expected { return false }
+			found++
+		}
+	}
+	for id in absent {
+		if expected := guards[id] {
+			if expected { return false }
+			found++
+		}
+	}
+	// Validate the complete incoming proof before changing either retained buffer.
+	if found != guards.len { return false }
+	if found == present.len + absent.len { return true }
+	storage_query_filter_guard_ids(mut present, guards)
+	storage_query_filter_guard_ids(mut absent, guards)
 	entries[entry_idx] = StorageQueryResult{
 		writes: unsafe { entry.writes }
 		guards: StorageQueryGuards{ present: unsafe { present }, absent: unsafe { absent } }

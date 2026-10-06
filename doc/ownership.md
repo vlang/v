@@ -49,6 +49,13 @@ the partner's conditions. An existing certificate can be updated even after the 
 its limits, without allocating another buffer or refunding its original charge. Retained results
 remain immutable. Parent queries use the current incoming proof, and lookups prefer matching
 entries with fewer conditions.
+The current incoming proof can repeat this step with other retained forward partners, removing
+one condition at a time. These additional steps leave retained certificates unchanged and stop
+when no further partner applies. Parent queries receive the final proved conditions.
+After that parent copy, one known equal-result entry can use the final proof when every
+condition of that proof also occurs in the entry with the same expectation.
+Filtering the existing buffers preserves their allocated capacity and cumulative charge;
+otherwise the original one-condition update remains available.
 
 Serial ownership checks reuse resolved call information during return analysis, as parallel
 checks do. This avoids false moved-value diagnostics from rechecking an earlier chained-call

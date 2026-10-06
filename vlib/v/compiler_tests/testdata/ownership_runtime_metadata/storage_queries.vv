@@ -14,24 +14,28 @@ fn (mut cache VisibleMutationCache) cache_storage_query_fixture_result_with_unio
 		scope := unsafe { prealloc_scope_begin() }
 		defer { unsafe { prealloc_scope_end(scope) } }
 		mut active_guards := guards.clone()
-		mut certificate := storage_query_encode_guards(active_guards)
 		mut consensus := StorageQueryUnion{ entry_idx: -1 }
 		if allow_union && active_guards.len > 0 {
 			if proof := cache.storage_query_union(key, result, active_guards) {
 				consensus = proof
 				if consensus.incoming {
 					active_guards.delete(consensus.guard_id)
-					certificate = storage_query_encode_guards(active_guards)
 				}
 			}
 		}
+		mut sharing_idx := consensus.entry_idx
+		if allow_union && consensus.entry_idx >= 0 && active_guards.len > 0 {
+			forward_idx := cache.storage_query_forward_union(key, result, mut active_guards)
+			if forward_idx >= 0 { sharing_idx = forward_idx }
+		}
+		certificate := storage_query_encode_guards(active_guards)
 		mut estimated_bytes := storage_query_result_bytes(key, result, certificate)
 		// Borrow immutable descriptors; admission alone owns any retained clone.
 		mut retained := unsafe { result }
 		mut clone_result := true
 		entry_bytes := storage_query_entry_bytes(key, certificate)
-		if consensus.entry_idx >= 0 {
-			retained = unsafe { cache.storage_query_results[key][consensus.entry_idx].writes }
+		if sharing_idx >= 0 {
+			retained = unsafe { cache.storage_query_results[key][sharing_idx].writes }
 			clone_result = false
 			estimated_bytes = entry_bytes
 		} else if cache.storage_query_can_admit(entry_bytes) {
@@ -50,8 +54,11 @@ fn (mut cache VisibleMutationCache) cache_storage_query_fixture_result_with_unio
 		if cache.storage_query_scopes.len > 1 {
 			suspend_storage_query_scopes(cache.storage_query_scopes, mut states)
 		}
-		if consensus.existing {
-			assert cache.broaden_storage_query_entry(key, consensus.entry_idx, consensus.guard_id)
+		if consensus.entry_idx >= 0 {
+			if !cache.broaden_storage_query_entry_to_guards(key, consensus.entry_idx, active_guards)
+				&& consensus.existing {
+				assert cache.broaden_storage_query_entry(key, consensus.entry_idx, consensus.guard_id)
+			}
 		}
 		admitted := cache.cache_storage_query_result(key, retained, active_guards, certificate,
 			clone_result, estimated_bytes)
@@ -59,7 +66,7 @@ fn (mut cache VisibleMutationCache) cache_storage_query_fixture_result_with_unio
 			resume_storage_query_scopes(cache.storage_query_scopes, states)
 		}
 		unsafe { prealloc_scope_resume(scope, parent) }
-		if consensus.entry_idx >= 0 {
+		if sharing_idx >= 0 {
 			return retained
 		}
 		return admitted
@@ -239,6 +246,8 @@ fn test_storage_query_results_survive_nested_arena_release() {
 	$if prealloc {
 		assert_storage_query_result_payload_sharing()
 		assert_storage_query_exact_complementary_union()
+		assert_storage_query_repeated_forward_consensus()
+		assert_storage_query_final_certificate_publication()
 		path := os.join_path(os.vtmp_dir(), 'storage_query_runtime_${os.getpid()}.v')
 		defer { os.rm(path) or {} }
 		os.write_file(path, 'struct Value {}
@@ -1207,5 +1216,426 @@ fn assert_storage_query_exact_complementary_union() {
 		assert promoted.keys() == ['.first', '.last']
 		assert promoted['.first'] == [1, 2]
 		assert promoted['.last'] == [3]
+	}
+}
+
+fn assert_storage_query_repeated_forward_consensus() {
+	$if prealloc {
+		root_scope := unsafe { prealloc_scope_begin() }
+		mut owner := &VisibleMutationCache{ storage_query: true }
+		owner.storage_query_scopes = [root_scope]
+		key := 'forward_chain'
+		writes := {
+			'.first': [2, 1]
+			'.kill':  []int{}
+		}
+		incoming := {
+			u64(0): false
+			u64(1): false
+			u64(2): false
+			u64(3): false
+		}
+		partners := [{
+			u64(0): true
+			u64(1): false
+			u64(2): false
+			u64(3): false
+		}, {
+			u64(1): true
+			u64(2): false
+			u64(3): false
+		}, {
+			u64(2): true
+			u64(3): false
+		}, {
+			u64(3): true
+		}]
+		for partner in partners {
+			owner.cache_storage_query_fixture_result(key, writes, partner) or { panic('chain partner rejected') }
+		}
+		initial := owner.storage_query_union(key, writes, incoming) or { panic('initial chain proof missing') }
+		assert initial.entry_idx == 0 && initial.guard_id == 0
+		assert initial.incoming && initial.existing
+		mut final_guards := incoming.clone()
+		final_guards.delete(initial.guard_id)
+		assert owner.storage_query_forward_union(key, writes, mut final_guards) == 3
+		assert final_guards.len == 0
+		// The child-only extra phase never mutates any historical certificate.
+		for idx, partner in partners {
+			assert storage_query_guards_equal(owner.storage_query_results[key][idx].guards, partner)
+		}
+		assert initial.entry_idx == 0 && initial.guard_id == 0 && initial.existing
+		last_sources := owner.storage_query_results[key][3].writes['.first']
+		bucket_data := unsafe { owner.storage_query_results[key].data }
+		first_absent_data := unsafe { owner.storage_query_results[key][0].guards.absent.data }
+		first_absent_cap := owner.storage_query_results[key][0].guards.absent.cap
+		count := owner.storage_query_count
+		owner.storage_query_bytes = 64 * 1024 * 1024
+		child := unsafe { prealloc_scope_begin() }
+		owner.storage_query_scopes = [root_scope, child]
+		shared := owner.cache_storage_query_fixture_result_with_union(key, writes, incoming, true) or { panic('saturated chain proof lost') }
+		shared_sources := shared['.first']
+		assert unsafe { shared_sources.data == last_sources.data }
+		assert owner.storage_query_count == count
+		assert owner.storage_query_bytes == 64 * 1024 * 1024
+		assert owner.storage_query_results[key].len == 4
+		assert unsafe { owner.storage_query_results[key].data == bucket_data }
+		assert owner.storage_query_results[key][0].guards.present.len == 0
+		assert storage_query_guards_equal(owner.storage_query_results[key][0].guards, map[u64]bool{})
+		assert unsafe { owner.storage_query_results[key][0].guards.absent.data == first_absent_data }
+		assert owner.storage_query_results[key][0].guards.absent.cap == first_absent_cap
+		for idx in 1 .. partners.len {
+			assert storage_query_guards_equal(owner.storage_query_results[key][idx].guards, partners[idx])
+		}
+		mut parent := &VisibleMutationCache{
+			storage_query_trace: &StorageQueryTrace{
+				guard_id: u64(99)
+				guards:   {
+					u64(99): false
+				}
+			}
+		}
+		parent.record_storage_query_guards(final_guards, true)
+		assert parent.storage_query_trace.complete
+		assert parent.storage_query_trace.guards == {
+			u64(99): false
+		}
+		assert storage_query_guards_match(storage_query_encode_guards(final_guards), {
+			u64(0): false
+			u64(3): false
+		})
+		for iteration in 0 .. 16 {
+			mut wrong_order := incoming.clone()
+			assert owner.storage_query_forward_union(key, {
+				'.kill':  []int{}
+				'.first': [2, 1]
+			}, mut wrong_order) == -1
+			assert wrong_order == incoming
+			mut wrong_sources := incoming.clone()
+			assert owner.storage_query_forward_union(key, {
+				'.first': [1, 2]
+				'.kill':  []int{}
+			}, mut wrong_sources) == -1
+			assert wrong_sources == incoming
+			mut missing_kill := incoming.clone()
+			assert owner.storage_query_forward_union(key, {
+				'.first': [2, 1]
+			}, mut missing_kill) == -1
+			assert missing_kill == incoming
+			mut absent_id := {
+				u64(9): false
+			}
+			assert owner.storage_query_forward_union(key, writes, mut absent_id) == -1
+			assert absent_id == {
+				u64(9): false
+			}
+		}
+		child_parent := unsafe { prealloc_scope_suspend(child) }
+		owner.storage_query_scopes = [root_scope]
+		unsafe { prealloc_scope_resume(child, child_parent) }
+		unsafe { prealloc_scope_end(child) }
+
+		mut stalled_owner := &VisibleMutationCache{ storage_query: true }
+		stalled_owner.storage_query_scopes = [root_scope]
+		stalled_owner.cache_storage_query_fixture_result('no_second_step', writes, {
+			u64(0): true
+			u64(1): false
+		}) or { panic('stalled first partner rejected') }
+		stalled_owner.cache_storage_query_fixture_result('no_second_step', writes, {
+			u64(0): false
+			u64(1): true
+		}) or { panic('stalled second partner rejected') }
+		mut stalled_guards := {
+			u64(1): false
+		}
+		// The second partner still requires the already deleted ID; it cannot widen F.
+		assert stalled_owner.storage_query_forward_union('no_second_step', writes, mut stalled_guards) == -1
+		assert stalled_guards == {
+			u64(1): false
+		}
+
+		// Reverse-only initial proof retains its historical ordinal while later
+		// forward proofs select different payload backing and weaken only current F.
+		mut reverse_owner := &VisibleMutationCache{ storage_query: true }
+		reverse_owner.storage_query_scopes = [root_scope]
+		reverse_key := 'reverse_then_forward'
+		reverse_partners := [{
+			u64(0): true
+			u64(1): false
+			u64(2): false
+		}, {
+			u64(1): true
+		}, {
+			u64(0): true
+		}]
+		for partner in reverse_partners {
+			reverse_owner.cache_storage_query_fixture_result(reverse_key, writes, partner) or { panic('reverse chain partner rejected') }
+		}
+		reverse_incoming := {
+			u64(0): false
+			u64(1): false
+		}
+		reverse_plan := reverse_owner.storage_query_union(reverse_key, writes, reverse_incoming) or { panic('reverse chain proof missing') }
+		assert reverse_plan.entry_idx == 0 && reverse_plan.guard_id == 0
+		assert !reverse_plan.incoming && reverse_plan.existing
+		mut reverse_final := reverse_incoming.clone()
+		assert reverse_owner.storage_query_forward_union(reverse_key, writes, mut reverse_final) == 2
+		assert reverse_final.len == 0
+		assert reverse_plan.entry_idx == 0 && reverse_plan.guard_id == 0
+		for idx, partner in reverse_partners {
+			assert storage_query_guards_equal(reverse_owner.storage_query_results[reverse_key][idx].guards, partner)
+		}
+		reverse_owner.storage_query_count = 32768
+		reverse_bytes := reverse_owner.storage_query_bytes
+		reverse_shared := reverse_owner.cache_storage_query_fixture_result_with_union(reverse_key, writes, reverse_incoming, true) or { panic('entry-saturated reverse chain lost') }
+		reverse_sources := reverse_shared['.first']
+		expected_sources := reverse_owner.storage_query_results[reverse_key][2].writes['.first']
+		assert unsafe { reverse_sources.data == expected_sources.data }
+		assert reverse_owner.storage_query_count == 32768
+		assert reverse_owner.storage_query_bytes == reverse_bytes
+		assert storage_query_guards_equal(reverse_owner.storage_query_results[reverse_key][0].guards, map[u64]bool{})
+		for idx in 1 .. reverse_partners.len {
+			assert storage_query_guards_equal(reverse_owner.storage_query_results[reverse_key][idx].guards, reverse_partners[idx])
+		}
+		actual_visiting := {
+			u64(2): false
+		}
+		assert storage_query_guards_match(storage_query_encode_guards(reverse_incoming), actual_visiting)
+		assert !storage_query_guards_match(storage_query_encode_guards(reverse_partners[0]), actual_visiting)
+		assert storage_query_guards_match(reverse_owner.storage_query_results[reverse_key][0].guards, actual_visiting)
+		assert storage_query_guards_match(storage_query_encode_guards(reverse_final), actual_visiting)
+		mut reverse_parent := &VisibleMutationCache{
+			storage_query_trace: &StorageQueryTrace{
+				guard_id: u64(99)
+				guards:   {
+					u64(99): false
+					u64(2):  true
+				}
+			}
+		}
+		reverse_parent.record_storage_query_guards(reverse_final, true)
+		assert reverse_parent.storage_query_trace.complete
+		assert reverse_parent.storage_query_trace.guards == {
+			u64(99): false
+			u64(2):  true
+		}
+		for iteration in 0 .. 16 {
+			churn_scope := unsafe { prealloc_scope_begin() }
+			mut churn := [][]u64{}
+			for i in 0 .. 128 { churn << []u64{len: 64, init: u64(i + iteration)} }
+			assert churn.len == 128
+			unsafe { prealloc_scope_end(churn_scope) }
+			assert shared['.first'] == [2, 1]
+			assert shared['.kill'].len == 0
+			assert reverse_shared['.first'] == [2, 1]
+		}
+		root_parent := unsafe { prealloc_scope_suspend(root_scope) }
+		promoted := clone_storage_query_result(shared)
+		unsafe { prealloc_scope_resume(root_scope, root_parent) }
+		unsafe { prealloc_scope_end(root_scope) }
+		churn_scope := unsafe { prealloc_scope_begin() }
+		mut churn := map[string][]int{}
+		for i in 0 .. 1024 { churn['repeated_forward_${i}'.repeat(8)] = [i, i + 1] }
+		assert churn.len == 1024
+		unsafe { prealloc_scope_end(churn_scope) }
+		assert promoted.keys() == ['.first', '.kill']
+		assert promoted['.first'] == [2, 1]
+		assert '.kill' in promoted
+		assert promoted['.kill'].len == 0
+	}
+}
+
+fn assert_storage_query_final_certificate_publication() {
+	$if prealloc {
+		root_scope := unsafe { prealloc_scope_begin() }
+		mut owner := &VisibleMutationCache{ storage_query: true }
+		owner.storage_query_scopes = [root_scope]
+		key := 'complete_final_filter'
+		writes := {
+			'.first': [2, 1]
+			'.kill':  []int{}
+		}
+		original := {
+			u64(0): true
+			u64(1): false
+			u64(7): true
+			u64(9): false
+		}
+		first := owner.cache_storage_query_fixture_result(key, writes, original) or { panic('filter partner rejected') }
+		// Inspect header metadata only: the ROOT buffers remain allocated after shrinking.
+		present_before := unsafe { owner.storage_query_results[key][0].guards.present }
+		absent_before := unsafe { owner.storage_query_results[key][0].guards.absent }
+		bucket_before := unsafe { owner.storage_query_results[key] }
+		owner.storage_query_bytes = 64 * 1024 * 1024
+		owner.storage_query_count = 32768
+		child := unsafe { prealloc_scope_begin() }
+		owner.storage_query_scopes = [root_scope, child]
+		mut parent := &VisibleMutationCache{
+			storage_query_trace: &StorageQueryTrace{
+				guard_id: u64(99)
+				guards:   {
+					u64(99): false
+				}
+			}
+		}
+		final_guards := {
+			u64(1): false
+		}
+		parent.record_storage_query_guards(final_guards, true)
+		assert parent.storage_query_trace.complete
+		assert parent.storage_query_trace.guards == {
+			u64(99): false
+			u64(1):  false
+		}
+		child_parent := unsafe { prealloc_scope_suspend(child) }
+		// The complete final proof discards three conditions in one saturated update.
+		assert owner.broaden_storage_query_entry_to_guards(key, 0, final_guards)
+		unsafe { prealloc_scope_resume(child, child_parent) }
+		assert owner.storage_query_results[key][0].guards.present.len == 0
+		assert owner.storage_query_results[key][0].guards.absent == [u64(1)]
+		assert storage_query_guards_equal(owner.storage_query_results[key][0].guards, final_guards)
+		assert owner.storage_query_count == 32768
+		assert owner.storage_query_bytes == 64 * 1024 * 1024
+		present_after := owner.storage_query_results[key][0].guards.present
+		absent_after := owner.storage_query_results[key][0].guards.absent
+		assert unsafe { present_after.data == present_before.data && absent_after.data == absent_before.data }
+		assert present_after.cap == present_before.cap && absent_after.cap == absent_before.cap
+		assert present_after.offset == present_before.offset && absent_after.offset == absent_before.offset
+		assert present_after.flags == present_before.flags && absent_after.flags == absent_before.flags
+		assert present_after.element_size == present_before.element_size
+		assert absent_after.element_size == absent_before.element_size
+		assert unsafe { owner.storage_query_results[key].data == bucket_before.data }
+		assert owner.storage_query_results[key].len == bucket_before.len
+		assert owner.storage_query_results[key].cap == bucket_before.cap
+		assert owner.storage_query_results[key].offset == bucket_before.offset
+		assert owner.storage_query_results[key].flags == bucket_before.flags
+		assert owner.storage_query_results[key].element_size == bucket_before.element_size
+		assert !storage_query_guards_match(owner.storage_query_results[key][0].guards, {
+			u64(1): false
+		})
+		assert storage_query_guards_match(owner.storage_query_results[key][0].guards, map[u64]bool{})
+		// Missing keys and explicitly false requirements are distinct; validation is atomic.
+		assert !owner.broaden_storage_query_entry_to_guards(key, 0, {
+			u64(0): false
+		})
+		assert !owner.broaden_storage_query_entry_to_guards(key, 0, {
+			u64(1): true
+		})
+		assert !owner.broaden_storage_query_entry_to_guards(key, 0, {
+			u64(1): false
+			u64(8): true
+		})
+		assert !owner.broaden_storage_query_entry_to_guards('missing_bucket', 0, final_guards)
+		assert !owner.broaden_storage_query_entry_to_guards(key, -1, final_guards)
+		assert !owner.broaden_storage_query_entry_to_guards(key, 1, final_guards)
+		assert storage_query_guards_equal(owner.storage_query_results[key][0].guards, final_guards)
+		assert owner.broaden_storage_query_entry_to_guards(key, 0, final_guards)
+		assert owner.broaden_storage_query_entry_to_guards(key, 0, map[u64]bool{})
+		assert owner.storage_query_results[key][0].guards.present.len == 0
+		assert owner.storage_query_results[key][0].guards.absent.len == 0
+		assert owner.storage_query_count == 32768 && owner.storage_query_bytes == 64 * 1024 * 1024
+		assert parent.storage_query_trace.guards == {
+			u64(99): false
+			u64(1):  false
+		}
+		for iteration in 0 .. 16 {
+			assert owner.broaden_storage_query_entry_to_guards(key, 0, map[u64]bool{})
+			assert unsafe { owner.storage_query_results[key][0].guards.present.data == present_before.data }
+			assert unsafe { owner.storage_query_results[key][0].guards.absent.data == absent_before.data }
+			assert owner.storage_query_results[key][0].guards.absent.cap == absent_before.cap
+			assert owner.storage_query_count == 32768 && owner.storage_query_bytes == 64 * 1024 * 1024
+		}
+		final_parent := unsafe { prealloc_scope_suspend(child) }
+		owner.storage_query_scopes = [root_scope]
+		unsafe { prealloc_scope_resume(child, final_parent) }
+		unsafe { prealloc_scope_end(child) }
+
+		// An opposite pivot in a reverse-only incoming proof rejects the filter.
+		// The original single-bit update still executes exactly once as fallback.
+		mut fallback_owner := &VisibleMutationCache{ storage_query: true }
+		fallback_owner.storage_query_scopes = [root_scope]
+		fallback_key := 'reverse_filter_fallback'
+		fallback_owner.cache_storage_query_fixture_result(fallback_key, writes, {
+			u64(0): true
+			u64(7): false
+		}) or { panic('fallback partner rejected') }
+		fallback_owner.storage_query_bytes = 64 * 1024 * 1024
+		fallback_count := fallback_owner.storage_query_count
+		fallback_incoming := {
+			u64(0): false
+		}
+		assert !fallback_owner.broaden_storage_query_entry_to_guards(fallback_key, 0, fallback_incoming)
+		assert storage_query_guards_equal(fallback_owner.storage_query_results[fallback_key][0].guards, {
+			u64(0): true
+			u64(7): false
+		})
+		fallback_owner.cache_storage_query_fixture_result_with_union(fallback_key, writes, fallback_incoming, true) or { panic('reverse filter fallback lost') }
+		assert storage_query_guards_equal(fallback_owner.storage_query_results[fallback_key][0].guards, {
+			u64(7): false
+		})
+		assert fallback_owner.storage_query_count == fallback_count
+		assert fallback_owner.storage_query_bytes == 64 * 1024 * 1024
+		mut proof_parent := &VisibleMutationCache{
+			storage_query_trace: &StorageQueryTrace{
+				guard_id: u64(99)
+				guards:   {
+					u64(99): false
+					u64(7):  true
+				}
+			}
+		}
+		proof_parent.record_storage_query_guards(fallback_incoming, true)
+		assert proof_parent.storage_query_trace.complete
+		assert proof_parent.storage_query_trace.guards == {
+			u64(99): false
+			u64(7):  true
+			u64(0):  false
+		}
+		assert fallback_owner.storage_query_union(fallback_key, {
+			'.kill':  []int{}
+			'.first': [2, 1]
+		}, fallback_incoming) == none
+		assert fallback_owner.storage_query_union(fallback_key, {
+			'.first': [1, 2]
+			'.kill':  []int{}
+		}, fallback_incoming) == none
+		assert fallback_owner.storage_query_union(fallback_key, {
+			'.first': [2, 1]
+		}, fallback_incoming) == none
+		mut zero_owner := &VisibleMutationCache{ storage_query: true }
+		zero_owner.storage_query_scopes = [root_scope]
+		zero_owner.cache_storage_query_fixture_result('false_zero_filter', writes, {
+			u64(0): false
+			u64(7): true
+		}) or { panic('false zero partner rejected') }
+		zero_owner.storage_query_count = 32768
+		zero_bytes := zero_owner.storage_query_bytes
+		assert zero_owner.broaden_storage_query_entry_to_guards('false_zero_filter', 0, {
+			u64(0): false
+		})
+		assert zero_owner.storage_query_results['false_zero_filter'][0].guards.absent == [u64(0)]
+		assert zero_owner.storage_query_results['false_zero_filter'][0].guards.present.len == 0
+		assert !storage_query_guards_match(zero_owner.storage_query_results['false_zero_filter'][0].guards, {
+			u64(0): false
+		})
+		assert storage_query_guards_match(zero_owner.storage_query_results['false_zero_filter'][0].guards, map[u64]bool{})
+		assert zero_owner.storage_query_count == 32768 && zero_owner.storage_query_bytes == zero_bytes
+
+		for iteration in 0 .. 16 {
+			churn_scope := unsafe { prealloc_scope_begin() }
+			mut churn := [][]u64{}
+			for i in 0 .. 128 { churn << []u64{len: 64, init: u64(i + iteration)} }
+			assert churn.len == 128
+			unsafe { prealloc_scope_end(churn_scope) }
+			assert first['.first'] == [2, 1]
+			assert '.kill' in first
+			assert storage_query_guards_equal(owner.storage_query_results[key][0].guards, map[u64]bool{})
+		}
+		root_parent := unsafe { prealloc_scope_suspend(root_scope) }
+		promoted := clone_storage_query_result(first)
+		unsafe { prealloc_scope_resume(root_scope, root_parent) }
+		unsafe { prealloc_scope_end(root_scope) }
+		assert promoted.keys() == ['.first', '.kill']
+		assert promoted['.first'] == [2, 1] && promoted['.kill'].len == 0
 	}
 }
