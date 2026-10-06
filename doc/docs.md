@@ -1219,6 +1219,10 @@ println(nums) // `[10, 5, 30]`
 An element can be appended to the end of an array using the push operator `<<`.
 It can also append an entire array.
 
+The C backend uses typed stores for scalar element assignments and single-element appends.
+Assignments retain bounds checking. Appends retain capacity checks and detach slice storage
+when needed. The right-hand side can grow the array before the final element address is resolved.
+
 ```v
 mut nums := [1, 2, 3]
 nums << 4
