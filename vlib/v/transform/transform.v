@@ -6553,7 +6553,11 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		typ = typ[1..]
 	} else if format != 'p' && expr_node.kind == .ident
 		&& t.string_interp_needs_value_read(expr_node.value, typ) {
-		transformed = t.make_prefix(.mul, transformed)
+		// Reading a local moved to the heap already dereferences its storage, while
+		// `typ` can still be the `&Alias` of that storage: read the value only once.
+		if !t.is_value_read_of(transformed, expr_node.value) {
+			transformed = t.make_prefix(.mul, transformed)
+		}
 		typ = typ[1..]
 	}
 	if typ.len == 0 {
@@ -6638,6 +6642,20 @@ fn (mut t Transformer) mark_string_interp_call_part_used(expr_id flat.NodeId) {
 			t.mark_fn_used_name(method_name)
 		}
 	}
+}
+
+// is_value_read_of reports whether `id` is `*name`, the value of the pointer-backed
+// local `name`.
+fn (t &Transformer) is_value_read_of(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .mul || node.children_count != 1 {
+		return false
+	}
+	operand := t.a.child_node(&node, 0)
+	return operand.kind == .ident && operand.value == name
 }
 
 fn (t &Transformer) string_interp_needs_value_read(name string, typ string) bool {
