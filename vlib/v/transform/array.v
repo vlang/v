@@ -6862,7 +6862,8 @@ fn (mut t Transformer) lower_array_sort_call(node flat.Node, fn_node flat.Node, 
 	t.set_node_typ(int(base), clean_type)
 	elem_type := clean_type[2..]
 	cmp_id := if node.children_count > 1 { t.a.child(&node, 1) } else { flat.empty_node }
-	t.pending_stmts << t.make_array_default_sort_stmt(base, elem_type, node, cmp_id)
+	t.pending_stmts << t.make_array_default_sort_stmt(base, elem_type, t.array_receiver_raw_elem_type(fn_node,
+		elem_type), node, cmp_id)
 	return t.make_empty()
 }
 
@@ -6891,7 +6892,8 @@ fn (mut t Transformer) lower_array_sorted_call(node flat.Node, fn_node flat.Node
 	t.set_var_type(clone_name, clean_base_type)
 	t.pending_stmts << t.make_decl_assign_typed(clone_name, clone_call, clean_base_type)
 	cmp_id := if node.children_count > 1 { t.a.child(&node, 1) } else { flat.empty_node }
-	t.pending_stmts << t.make_array_default_sort_stmt(t.make_ident(clone_name), clean_base_type[2..], node, cmp_id)
+	t.pending_stmts << t.make_array_default_sort_stmt(t.make_ident(clone_name), clean_base_type[2..],
+		t.array_receiver_raw_elem_type(fn_node, clean_base_type[2..]), node, cmp_id)
 	return t.make_ident(clone_name)
 }
 
@@ -6965,14 +6967,16 @@ fn (t &Transformer) array_compare_fn_type(cmp_id flat.NodeId, elem_type string) 
 }
 
 // make_array_default_sort_stmt builds make array default sort stmt data for transform.
-fn (mut t Transformer) make_array_default_sort_stmt(base flat.NodeId, elem_type string, src flat.Node, cmp_id flat.NodeId) flat.NodeId {
-	if int(cmp_id) < 0 {
+// `raw_elem_type` is the element type as the source names it (see
+// `array_receiver_raw_elem_type`): the `<` of an alias orders its elements.
+fn (mut t Transformer) make_array_default_sort_stmt(base flat.NodeId, elem_type string, raw_elem_type string, src flat.Node, cmp_id flat.NodeId) flat.NodeId {
+	if int(cmp_id) < 0 && t.array_sort_alias_less(elem_type, raw_elem_type) == none {
 		if helper := t.array_default_sort_runtime_helper(elem_type) {
 			base_addr := t.make_prefix(.amp, base)
 			return t.make_expr_stmt(t.make_call_typed(helper, [base_addr], 'void'))
 		}
 	}
-	return t.make_array_merge_sort_stmt(base, elem_type, src, cmp_id, false)
+	return t.make_array_merge_sort_stmt(base, elem_type, raw_elem_type, src, cmp_id, false)
 }
 
 // make_array_merge_sort_stmt lowers `arr.sort(...)` / `arr.sort_with_compare(...)`
@@ -6987,7 +6991,7 @@ fn (mut t Transformer) make_array_default_sort_stmt(base flat.NodeId, elem_type 
 // time; only an odd pass count copies the result back once at the end. Every
 // index is bounded by the loops, so reads skip array_get and moves are raw
 // element copies (whole leftover runs in one go).
-fn (mut t Transformer) make_array_merge_sort_stmt(base flat.NodeId, elem_type string, src flat.Node, cmp flat.NodeId, use_compare bool) flat.NodeId {
+fn (mut t Transformer) make_array_merge_sort_stmt(base flat.NodeId, elem_type string, raw_elem_type string, src flat.Node, cmp flat.NodeId, use_compare bool) flat.NodeId {
 	array_type := '[]${elem_type}'
 	// `[]shared T` stores pointers to lock wrappers, not inline T values.
 	storage_size_type := if elem_type.trim_space().starts_with('shared ') {
@@ -7028,7 +7032,7 @@ fn (mut t Transformer) make_array_merge_sort_stmt(base flat.NodeId, elem_type st
 	less := if use_compare {
 		t.array_sort_compare_less_expr(right, left, elem_type, cmp)
 	} else {
-		t.array_sort_less_expr(right, left, elem_type, cmp)
+		t.array_sort_less_expr(right, left, elem_type, raw_elem_type, cmp)
 	}
 	mut merge_body := t.pending_stmts.clone()
 	t.pending_stmts = outer_pending
@@ -7161,11 +7165,11 @@ fn (t &Transformer) array_default_sort_runtime_helper(elem_type string) ?string 
 
 // make_array_compare_sort_stmt builds make array compare sort stmt data for transform.
 fn (mut t Transformer) make_array_compare_sort_stmt(base flat.NodeId, elem_type string, src flat.Node, cmp flat.NodeId) flat.NodeId {
-	return t.make_array_merge_sort_stmt(base, elem_type, src, cmp, true)
+	return t.make_array_merge_sort_stmt(base, elem_type, elem_type, src, cmp, true)
 }
 
 // array_sort_less_expr supports array sort less expr handling for Transformer.
-fn (mut t Transformer) array_sort_less_expr(cur flat.NodeId, prev flat.NodeId, elem_type string, cmp_id flat.NodeId) flat.NodeId {
+fn (mut t Transformer) array_sort_less_expr(cur flat.NodeId, prev flat.NodeId, elem_type string, raw_elem_type string, cmp_id flat.NodeId) flat.NodeId {
 	if int(cmp_id) >= 0 {
 		cmp_node := t.a.nodes[int(cmp_id)]
 		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
@@ -7173,7 +7177,7 @@ fn (mut t Transformer) array_sort_less_expr(cur flat.NodeId, prev flat.NodeId, e
 				return cmp
 			}
 		}
-		if cmp := t.array_sort_simple_operator_expr(cmp_node, cur, prev, elem_type) {
+		if cmp := t.array_sort_simple_operator_expr(cmp_node, cur, prev, elem_type, raw_elem_type) {
 			return cmp
 		}
 		old_a := t.var_type('a')
@@ -7200,7 +7204,31 @@ fn (mut t Transformer) array_sort_less_expr(cur flat.NodeId, prev flat.NodeId, e
 	if cmp := t.array_sort_struct_less_expr(cur, prev, elem_type) {
 		return cmp
 	}
+	if info := t.array_sort_alias_less(elem_type, raw_elem_type) {
+		return t.struct_operator_call(info, cur, prev, 'bool')
+	}
 	return t.make_infix(.lt, cur, prev)
+}
+
+// array_sort_alias_less is the `<` that the alias `raw_elem_type` declares for the
+// elements of an array, which are lowered as `elem_type`.
+fn (t &Transformer) array_sort_alias_less(elem_type string, raw_elem_type string) ?StructOperatorCallInfo {
+	if raw_elem_type.len == 0 || raw_elem_type == elem_type
+		|| !t.is_type_alias_name(t.trim_pointer_type(raw_elem_type)) {
+		return none
+	}
+	return t.struct_operator_call_info_any(t.trim_pointer_type(raw_elem_type), .lt)
+}
+
+// struct_operator_call calls the operator `info` on `lhs` and `rhs`.
+fn (mut t Transformer) struct_operator_call(info StructOperatorCallInfo, lhs flat.NodeId, rhs flat.NodeId, typ string) flat.NodeId {
+	args := if info.reverse { [rhs, lhs] } else { [lhs, rhs] }
+	t.mark_fn_used_name(info.name)
+	call := t.make_call_typed(info.name, args, typ)
+	if info.negate {
+		return t.make_prefix(.not, call)
+	}
+	return call
 }
 
 fn (mut t Transformer) array_sort_struct_less_expr(cur flat.NodeId, prev flat.NodeId, elem_type string) ?flat.NodeId {
@@ -7221,7 +7249,7 @@ fn (mut t Transformer) array_sort_struct_less_expr(cur flat.NodeId, prev flat.No
 	return call
 }
 
-fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.NodeId, prev flat.NodeId, elem_type string) ?flat.NodeId {
+fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.NodeId, prev flat.NodeId, elem_type string, raw_elem_type string) ?flat.NodeId {
 	if node.kind != .infix || node.children_count < 2 {
 		return none
 	}
@@ -7234,19 +7262,20 @@ fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.
 		return none
 	}
 	struct_type := t.struct_lookup_name(elem_type)
-	if struct_type.len == 0 {
+	call_info := if struct_type.len > 0 {
+		t.struct_operator_call_info(struct_type, node.op) or { return none }
+	} else if raw_elem_type.len > 0 && raw_elem_type != elem_type
+		&& t.is_type_alias_name(t.trim_pointer_type(raw_elem_type)) {
+		// The elements are an alias, lowered as its base type: `UUID` as `[16]u8`.
+		t.struct_operator_call_info_any(t.trim_pointer_type(raw_elem_type), node.op) or {
+			return none
+		}
+	} else {
 		return none
 	}
-	call_info := t.struct_operator_call_info(struct_type, node.op) or { return none }
 	lhs := if lhs_node.value == 'a' { cur } else { prev }
 	rhs := if rhs_node.value == 'a' { cur } else { prev }
-	args := if call_info.reverse { [rhs, lhs] } else { [lhs, rhs] }
-	t.mark_fn_used_name(call_info.name)
-	call := t.make_call_typed(call_info.name, args, node.typ)
-	if call_info.negate {
-		return t.make_prefix(.not, call)
-	}
-	return call
+	return t.struct_operator_call(call_info, lhs, rhs, node.typ)
 }
 
 // array_sort_compare_less_expr supports array sort compare less expr handling for Transformer.
