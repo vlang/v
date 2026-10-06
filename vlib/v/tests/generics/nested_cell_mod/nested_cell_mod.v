@@ -6,6 +6,7 @@ pub mut:
 	value T
 }
 
+// name returns the concrete type parameter name.
 pub fn name[T]() string {
 	return typeof[T]().name
 }
