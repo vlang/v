@@ -89,10 +89,23 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		} else {
 			StorageQueryGuards{}
 		}
-		estimated_bytes := if inherited_owner && trace.complete {
+		mut estimated_bytes := if inherited_owner && trace.complete {
 			storage_query_result_bytes(cache_key, result, certificate)
 		} else {
 			0
+		}
+		// Borrow immutable map descriptors; no copied payload is mutated or freed.
+		mut retained_result := unsafe { result }
+		mut clone_result := true
+		if inherited_owner && trace.complete {
+			entry_bytes := storage_query_entry_bytes(cache_key, certificate)
+			if owner.storage_query_can_admit(entry_bytes) {
+				if shared := owner.storage_query_shared_result(cache_key, result) {
+					retained_result = unsafe { shared }
+					clone_result = false
+					estimated_bytes = entry_bytes
+				}
+			}
 		}
 		// Allocate suspension bookkeeping before selecting any older arena.
 		mut states := []voidptr{len: if inherited_owner {
@@ -107,8 +120,8 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		if inherited_owner && trace.complete {
 			// Only admitted memo payloads are allocated in the outer query's arena.
 			suspend_storage_query_scopes(cache.storage_query_scopes, mut states)
-			retained := owner.cache_storage_query_result(cache_key, result, trace.guards,
-				certificate, true, estimated_bytes)
+			retained := owner.cache_storage_query_result(cache_key, retained_result, trace.guards,
+				certificate, clone_result, estimated_bytes)
 			resume_storage_query_scopes(cache.storage_query_scopes, states)
 			if cached := retained {
 				unsafe { prealloc_scope_resume(scope, parent) }
@@ -218,18 +231,59 @@ fn storage_query_guards_equal(left StorageQueryGuards, right map[u64]bool) bool 
 }
 
 fn storage_query_result_bytes(key string, result map[string][]int, guards StorageQueryGuards) int {
-	// The entry includes both array headers; primitive buffers retain their exact lengths.
-	mut bytes := key.len + int(sizeof(StorageQueryResult)) +
-		(guards.present.len + guards.absent.len) * int(sizeof(u64))
+	mut bytes := storage_query_entry_bytes(key, guards)
 	for path, sources in result { bytes += path.len + sources.len * int(sizeof(int)) + 64 }
 	return bytes
 }
 
-fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, guards map[u64]bool, certificate StorageQueryGuards, clone_result bool, estimated_bytes int) ?map[string][]int {
-	if cache.storage_query_count >= 32768
-		|| cache.storage_query_bytes + estimated_bytes > 64 * 1024 * 1024 {
-		return none
+fn storage_query_entry_bytes(key string, guards StorageQueryGuards) int {
+	// The entry includes both array headers; primitive buffers retain their exact lengths.
+	return key.len + int(sizeof(StorageQueryResult)) +
+		(guards.present.len + guards.absent.len) * int(sizeof(u64))
+}
+
+fn storage_query_ordered_results_equal(paths []string, result map[string][]int, candidate map[string][]int) bool {
+	if paths.len != candidate.len { return false }
+	candidate_paths := candidate.keys()
+	for i, path in paths {
+		if path != candidate_paths[i] { return false }
+		sources := result[path]
+		candidate_sources := candidate[path]
+		if sources.len != candidate_sources.len { return false }
+		for j, source in sources {
+			if source != candidate_sources[j] { return false }
+		}
 	}
+	return true
+}
+
+fn (cache &VisibleMutationCache) storage_query_shared_result(key string, result map[string][]int) ?map[string][]int {
+	paths := result.keys()
+	for entry in cache.storage_query_results[key] {
+		if result.len != entry.writes.len { continue }
+		if paths.len == 0 { return entry.writes }
+		// Key copies for each comparison are scratch, even when many variants share a payload.
+		$if prealloc {
+			scope := unsafe { prealloc_scope_begin() }
+			equal := storage_query_ordered_results_equal(paths, result, entry.writes)
+			unsafe { prealloc_scope_end(scope) }
+			if equal { return entry.writes }
+		} $else {
+			if storage_query_ordered_results_equal(paths, result, entry.writes) {
+				return entry.writes
+			}
+		}
+	}
+	return none
+}
+
+fn (cache &VisibleMutationCache) storage_query_can_admit(estimated_bytes int) bool {
+	return cache.storage_query_count < 32768
+		&& cache.storage_query_bytes + estimated_bytes <= 64 * 1024 * 1024
+}
+
+fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, guards map[u64]bool, certificate StorageQueryGuards, clone_result bool, estimated_bytes int) ?map[string][]int {
+	if !cache.storage_query_can_admit(estimated_bytes) { return none }
 	mut entries := cache.storage_query_results[key] or { []StorageQueryResult{} }
 	for entry in entries {
 		if storage_query_guards_equal(entry.guards, guards) { return entry.writes }

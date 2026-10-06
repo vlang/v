@@ -1,5 +1,30 @@
 import os
 
+fn test_ownership_return_does_not_recheck_earlier_chained_receiver_after_move() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_chained_receiver_return_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	os.write_file(source_path, 'fn parse_array_key(key string) (string, int) {
+	mut index := -1
+	mut k := key
+	if k.contains("[") {
+		index = k.all_after("[").all_before("]").int()
+		if k.starts_with("[") { k = "" } else { k = k.all_before("[") }
+	}
+	return k, index
+}
+fn main() {
+	key, index := parse_array_key("entry[0]")
+	assert key == "entry" && index == 0
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_storage_summary(source_path, mode, '-check')
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+}
+
 fn test_ownership_value_returns_survive_repeated_storage_queries() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_value_return_${os.getpid()}')
 	os.mkdir_all(root)!

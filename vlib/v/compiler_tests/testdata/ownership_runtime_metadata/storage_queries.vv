@@ -6,13 +6,213 @@ import v.parser
 import v.pref
 
 fn (mut cache VisibleMutationCache) cache_storage_query_fixture_result(key string, result map[string][]int, guards map[u64]bool) ?map[string][]int {
-	certificate := storage_query_encode_guards(guards)
-	estimated_bytes := storage_query_result_bytes(key, result, certificate)
-	return cache.cache_storage_query_result(key, result, guards, certificate, true, estimated_bytes)
+	$if prealloc {
+		scope := unsafe { prealloc_scope_begin() }
+		defer { unsafe { prealloc_scope_end(scope) } }
+		certificate := storage_query_encode_guards(guards)
+		mut estimated_bytes := storage_query_result_bytes(key, result, certificate)
+		// Borrow immutable descriptors; admission alone owns any retained clone.
+		mut retained := unsafe { result }
+		mut clone_result := true
+		entry_bytes := storage_query_entry_bytes(key, certificate)
+		if cache.storage_query_can_admit(entry_bytes) {
+			if shared := cache.storage_query_shared_result(key, result) {
+				retained = unsafe { shared }
+				clone_result = false
+				estimated_bytes = entry_bytes
+			}
+		}
+		mut states := []voidptr{len: if cache.storage_query_scopes.len > 1 {
+			cache.storage_query_scopes.len - 1
+		} else {
+			0
+		}, init: voidptr(0)}
+		parent := unsafe { prealloc_scope_suspend(scope) }
+		if cache.storage_query_scopes.len > 1 {
+			suspend_storage_query_scopes(cache.storage_query_scopes, mut states)
+		}
+		admitted := cache.cache_storage_query_result(key, retained, guards, certificate,
+			clone_result, estimated_bytes)
+		if cache.storage_query_scopes.len > 1 {
+			resume_storage_query_scopes(cache.storage_query_scopes, states)
+		}
+		unsafe { prealloc_scope_resume(scope, parent) }
+		return admitted
+	} $else {
+		certificate := storage_query_encode_guards(guards)
+		estimated_bytes := storage_query_result_bytes(key, result, certificate)
+		return cache.cache_storage_query_result(key, result, guards, certificate, true,
+			estimated_bytes)
+	}
+}
+
+fn assert_storage_query_result_payload_sharing() {
+	$if prealloc {
+		root_scope := unsafe { prealloc_scope_begin() }
+		mut owner := &VisibleMutationCache{ storage_query: true }
+		owner.storage_query_scopes = [root_scope]
+		key := 'ordered_payload'
+		first_guards := {
+			u64(1): false
+		}
+		second_guards := {
+			u64(2): false
+		}
+		first_writes := {
+			'.first': [1, 2]
+			'.last':  [3]
+		}
+		first := owner.cache_storage_query_fixture_result(key, first_writes, first_guards) or {
+			panic('first payload rejected')
+		}
+		first_sources := first['.first']
+		first_bytes := storage_query_result_bytes(key, first_writes,
+			storage_query_encode_guards(first_guards))
+		assert owner.storage_query_bytes == first_bytes
+		assert owner.storage_query_count == 1
+		child_scope := unsafe { prealloc_scope_begin() }
+		owner.storage_query_scopes = [root_scope, child_scope]
+		equal_writes := {
+			'.first': [1, 2]
+			'.last':  [3]
+		}
+		assert storage_query_ordered_results_equal(equal_writes.keys(), equal_writes, first)
+		shared := owner.cache_storage_query_fixture_result(key, equal_writes, second_guards) or {
+			panic('shared payload rejected')
+		}
+		shared_sources := shared['.first']
+		assert unsafe { shared_sources.data == first_sources.data }
+		shared_entry_bytes := storage_query_entry_bytes(key,
+			storage_query_encode_guards(second_guards))
+		assert owner.storage_query_bytes == first_bytes + shared_entry_bytes
+		assert owner.storage_query_count == 2
+		assert owner.storage_query_results[key].len == 2
+		// The earlier certificate is deduplicated even after a later variant was admitted.
+		deduplicated := owner.cache_storage_query_fixture_result(key, equal_writes, first_guards) or {
+			panic('earlier certificate rejected')
+		}
+		deduplicated_sources := deduplicated['.first']
+		assert unsafe { deduplicated_sources.data == first_sources.data }
+		assert owner.storage_query_count == 2
+		assert owner.storage_query_bytes == first_bytes + shared_entry_bytes
+		child_parent := unsafe { prealloc_scope_suspend(child_scope) }
+		owner.storage_query_scopes = [root_scope]
+		unsafe { prealloc_scope_resume(child_scope, child_parent) }
+		unsafe { prealloc_scope_end(child_scope) }
+		for iteration in 0 .. 64 {
+			churn_scope := unsafe { prealloc_scope_begin() }
+			mut churn := map[string][]int{}
+			for i in 0 .. 128 { churn['shared_${iteration}_${i}'.repeat(8)] = [i, iteration] }
+			assert churn.len == 128
+			unsafe { prealloc_scope_end(churn_scope) }
+			assert shared['.first'] == [1, 2]
+			assert shared['.last'] == [3]
+		}
+		path_reordered := {
+			'.last':  [3]
+			'.first': [1, 2]
+		}
+		assert path_reordered.keys() != first.keys()
+		assert !storage_query_ordered_results_equal(path_reordered.keys(), path_reordered, first)
+		if _ := owner.storage_query_shared_result(key, path_reordered) {
+			assert false, 'reordered paths reused a payload'
+		}
+		bytes_before_reordering := owner.storage_query_bytes
+		path_variant_guards := {
+			u64(6): false
+		}
+		path_variant := owner.cache_storage_query_fixture_result(key, path_reordered,
+			path_variant_guards) or { panic('path-order variant rejected') }
+		path_variant_sources := path_variant['.first']
+		assert unsafe { path_variant_sources.data != first_sources.data }
+		assert path_variant.keys() == path_reordered.keys()
+		assert owner.storage_query_bytes == bytes_before_reordering +
+			storage_query_result_bytes(key, path_reordered,
+				storage_query_encode_guards(path_variant_guards))
+		source_reordered := {
+			'.first': [2, 1]
+			'.last':  [3]
+		}
+		assert !storage_query_ordered_results_equal(source_reordered.keys(), source_reordered,
+			first)
+		if _ := owner.storage_query_shared_result(key, source_reordered) {
+			assert false, 'reordered source indexes reused a payload'
+		}
+		source_variant := owner.cache_storage_query_fixture_result(key, source_reordered,
+			{
+				u64(3): false
+			}) or { panic('ordered variant rejected') }
+		variant_sources := source_variant['.first']
+		assert unsafe { variant_sources.data != first_sources.data }
+		assert source_variant['.first'] == [2, 1]
+		kill := {
+			'.first': []int{}
+		}
+		other_kill := {
+			'.last': []int{}
+		}
+		empty := map[string][]int{}
+		assert !storage_query_ordered_results_equal(kill.keys(), kill, empty)
+		assert !storage_query_ordered_results_equal(empty.keys(), empty, kill)
+		assert !storage_query_ordered_results_equal(kill.keys(), kill, other_kill)
+		kill_result := owner.cache_storage_query_fixture_result('kill_payload', kill,
+			first_guards) or { panic('kill payload rejected') }
+		assert '.first' in kill_result && kill_result['.first'].len == 0
+		if _ := owner.storage_query_shared_result('kill_payload', empty) {
+			assert false, 'missing path reused an explicit overwrite'
+		}
+		if _ := owner.storage_query_shared_result('kill_payload', other_kill) {
+			assert false, 'different overwrite paths reused a payload'
+		}
+		assert owner.storage_query_shared_result('different_key', first) == none
+		// A new certificate can fit exactly even when another payload clone cannot.
+		boundary_guards := {
+			u64(4): true
+			u64(5): false
+		}
+		boundary_bytes := storage_query_entry_bytes(key,
+			storage_query_encode_guards(boundary_guards))
+		assert boundary_bytes == key.len + int(sizeof(StorageQueryResult)) + 2 * int(sizeof(u64))
+		owner.storage_query_bytes = 64 * 1024 * 1024 - boundary_bytes
+		count_before := owner.storage_query_count
+		boundary := owner.cache_storage_query_fixture_result(key, first, boundary_guards) or {
+			panic('shared entry at exact boundary rejected')
+		}
+		boundary_sources := boundary['.first']
+		assert unsafe { boundary_sources.data == first_sources.data }
+		assert owner.storage_query_bytes == 64 * 1024 * 1024
+		assert owner.storage_query_count == count_before + 1
+		for iteration in 0 .. 64 {
+			if _ := owner.cache_storage_query_fixture_result(key, first, boundary_guards) {
+				assert false, 'saturated cap performed certificate deduplication'
+			}
+			if _ := owner.cache_storage_query_fixture_result(key, first,
+				{
+					u64(100 + iteration): false
+				}) {
+				assert false, 'saturated cap admitted a shared payload'
+			}
+		}
+		assert owner.storage_query_bytes == 64 * 1024 * 1024
+		assert owner.storage_query_count == count_before + 1
+		// Only a final promoted copy may outlive the outer memo arena.
+		parent := unsafe { prealloc_scope_suspend(root_scope) }
+		promoted := clone_storage_query_result(shared)
+		unsafe { prealloc_scope_resume(root_scope, parent) }
+		unsafe { prealloc_scope_end(root_scope) }
+		churn_scope := unsafe { prealloc_scope_begin() }
+		mut churn := map[string][]int{}
+		for i in 0 .. 1024 { churn['promoted_shared_${i}'.repeat(8)] = [i, i + 1] }
+		assert churn.len == 1024
+		unsafe { prealloc_scope_end(churn_scope) }
+		assert promoted['.first'] == [1, 2]
+		assert promoted['.last'] == [3]
+	}
 }
 
 fn test_storage_query_results_survive_nested_arena_release() {
 	$if prealloc {
+		assert_storage_query_result_payload_sharing()
 		path := os.join_path(os.vtmp_dir(), 'storage_query_runtime_${os.getpid()}.v')
 		defer { os.rm(path) or {} }
 		os.write_file(path, 'struct Value {}
