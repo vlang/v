@@ -15047,11 +15047,10 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 		if value_node.kind == .prefix && value_node.op == .amp {
 			operand_id, operand := g.unwrapped_fn_value_operand(g.a.child(&value_node, 0),
 				g.a.child_node(&value_node, 0))
-			// In translated C, `voidptr(&f)` of a function variable is the address of
-			// the variable, as in V1 (C translated by c2v stores `(void*)&finder` and
-			// calls through `**(finder_type*)p`). `&` on a function name is the function.
-			if g.expr_is_in_translated_file(operand_id)
-				&& g.fn_value_operand_has_storage(operand_id, operand)
+			// `voidptr(&f)` addresses the slot holding a function value, including
+			// implicit voidptr arguments such as memdup(&f, sizeof(Fn)). A function
+			// declaration has no value slot: `&named_fn` remains the function itself.
+			if g.fn_value_operand_has_storage(operand_id, operand)
 				&& g.node_is_fn_value_for_voidptr(operand_id, operand) {
 				g.write('&')
 				gen_expr_lvalue(mut g, operand_id)

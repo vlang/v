@@ -652,3 +652,7 @@ skipped during C code generation; C runtime functions are provided via a compact
 preamble.
 
 Measured on macOS (Apple Silicon), warm runs. V1 built from `~/code/v5/v` (V 0.5.1).
+
+Converting `&callback` to `voidptr`, or passing it to a `voidptr` parameter,
+addresses the storage of a function-valued variable, parameter, field or array
+element. Taking the address of a named function remains the function pointer.
