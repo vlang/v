@@ -432,26 +432,15 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 	}
 	// Validate provenance before replacing any installed content.
 	validate_origin_destination(dir)!
-	if already_installed && !opts.dry_run {
-		os.rmdir_all(dest)!
+	if !opts.dry_run {
+		install_into(dest, skill.files, skill.directory)!
 	}
 	mut result := InstallResult{
 		skill:   skill.name
 		path:    os.join_path(dest, entry_file)
 		dry_run: opts.dry_run
 	}
-	if !opts.dry_run {
-		os.mkdir_all(dest)!
-	}
 	for relative in skill.files {
-		source := os.join_path(skill.directory, relative)
-		target := os.join_path(dest, relative)
-		if !opts.dry_run {
-			os.mkdir_all(os.dir(target))!
-			// Every bundled skill file is text, so a read and a write are enough
-			// and no platform-specific copy code is needed.
-			os.write_file(target, os.read_file(source)!)!
-		}
 		result.written << relative
 	}
 	if !opts.dry_run {
@@ -464,6 +453,50 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 		})!
 	}
 	return result
+}
+
+// install_into writes the files into `dest` in one step.
+//
+// The files are written to a sibling directory and moved over `dest` only once
+// they are all there. Deleting the old copy first, which is what this used to
+// do, left a window in which a failure meant a skill that was neither the old
+// copy nor the new one. A rename that fails leaves `dest` alone, so the
+// previous installation survives a failure part way through.
+fn install_into(dest string, files []string, source_dir string) ! {
+	temporary := os.join_path_single(os.dir(dest), '.${os.file_name(dest)}-${rand.uuid_v4()}')
+	os.mkdir_all(temporary)!
+	defer { os.rmdir_all(temporary) or {} }
+	for relative in files {
+		source := os.join_path(source_dir, relative)
+		target := os.join_path(temporary, relative)
+		os.mkdir_all(os.dir(target))!
+		os.write_file(target, os.read_file(source)!)!
+	}
+	swap_into(temporary, dest)!
+}
+
+// swap_into moves `source` over `dest`, and is public so the restore below can
+// be tested: reaching it from outside needs a rename to fail, and the only way
+// to arrange that is a source that is not there.
+//
+// A rename cannot replace a directory on Windows, so the old one is moved aside
+// first and removed once the new one is in place; if the second rename fails the
+// old one is put back, so the caller never sees neither directory.
+pub fn swap_into(source string, dest string) ! {
+	mut aside := ''
+	if os.exists(dest) {
+		aside = os.join_path_single(os.dir(dest), '.${os.file_name(dest)}.old-${rand.uuid_v4()}')
+		os.rename(dest, aside)!
+	}
+	os.rename(source, dest) or {
+		if aside != '' {
+			os.rename(aside, dest) or {}
+		}
+		return err
+	}
+	if aside != '' {
+		os.rmdir_all(aside) or {}
+	}
 }
 
 // remove deletes an installed skill directory. It reports `removed: false` when

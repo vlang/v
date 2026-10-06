@@ -117,6 +117,38 @@ fn test_install_copies_the_bundle_and_reports_written_files() {
 	assert skills.installed(dir) == ['alpha']
 }
 
+fn test_an_install_leaves_no_temporary_directory_behind() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('atomic_clean')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{ force: true })!
+	// The copy is made in a sibling directory and moved over, so a failure
+	// cannot leave a half-written skill. Nothing dot-prefixed may survive
+	// beside the skill, on either side of that move.
+	for entry in os.ls(dir)! {
+		assert !entry.starts_with('.'), entry
+	}
+}
+
+fn test_swap_into_puts_the_old_directory_back_when_the_move_fails() {
+	dir := scratch_dir('atomic_restore')!
+	dest := os.join_path_single(dir, 'alpha')
+	os.mkdir_all(dest)!
+	os.write_file(os.join_path_single(dest, 'SKILL.md'), 'the old copy')!
+	// The source is not there, so the move fails after the old directory has
+	// already been set aside. That is the moment the restore exists for, and
+	// the only way to reach it from outside is a failure.
+	missing := os.join_path_single(dir, 'not-there')
+	mut failed := false
+	skills.swap_into(missing, dest) or { failed = true }
+	assert failed, 'a missing source was expected to fail'
+	assert os.is_dir(dest), 'the old directory did not come back'
+	assert os.read_file(os.join_path_single(dest, 'SKILL.md'))! == 'the old copy'
+	for entry in os.ls(dir)! {
+		assert !entry.starts_with('.'), entry
+	}
+}
+
 fn test_install_skips_an_existing_skill_unless_forced() {
 	vroot := fixture_root(['alpha'])!
 	dir := scratch_dir('skip')!
