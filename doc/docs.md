@@ -10602,6 +10602,8 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 Passing `unsafe { nil }` to a pointer parameter passes a null pointer, including pointers to
 handles that alias `voidptr`.
+Reference results of generic calls also pass the pointer value to `voidptr` parameters.
+For example, `isnil(identity[&User](unsafe { nil }))` tests the returned pointer for null.
 A mutable block that yields `&T` can pass that pointer to a `mut T` parameter,
 including generic functions and functions from imported modules.
 
