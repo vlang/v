@@ -1,3 +1,4 @@
+// vtest vflags: -prealloc -gc none
 module types
 
 fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
