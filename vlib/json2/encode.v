@@ -43,6 +43,21 @@ pub fn encode[T](val T, config EncoderOptions) string {
 	return encoder.output.bytestr()
 }
 
+// encode_append appends the JSON representation of val to destination, preserving
+// its existing bytes and reusing its capacity. Clear destination before calling
+// to replace its contents. The caller owns the buffer and must not mutate it from
+// another thread during encoding or pass a value that aliases its storage.
+@[manualfree]
+pub fn encode_append[T](val T, mut destination []u8, config EncoderOptions) {
+	mut encoder := Encoder{
+		EncoderOptions: config
+		// Only this encoder accesses the caller's buffer until it is returned below.
+		output:         unsafe { destination }
+	}
+	encoder.encode_value[T](val)
+	destination = unsafe { encoder.output }
+}
+
 fn (mut encoder Encoder) encode_value[T](val T) {
 	$if T is $interface {
 		encoder.encode_null()
