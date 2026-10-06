@@ -110,29 +110,39 @@ fn test_stack_overflow_prints_a_message() {
 		os.rmdir_all(work_dir) or {}
 	}
 	source := os.join_path(work_dir, 'child.v')
-	binary := os.join_path(work_dir, 'child')
 	os.write_file(source, child_source)!
-	mut flags := [@VEXE]
-	$if macos {
-		// Darwin leaves TCC's preinstalled backtrace handlers in control. Test the
-		// overflow reporter with default signal dispositions instead.
-		flags << ['-cc', 'clang']
+	for build_mode in ['normal', 'parallel'] {
+		binary := os.join_path(work_dir, 'child_${build_mode}')
+		mut flags := [@VEXE]
+		if build_mode == 'parallel' {
+			flags << ['-parallel-cc', '-cc', 'cc', '-showcc', '-nocache']
+		} else {
+			$if macos {
+				// Darwin leaves TCC's preinstalled backtrace handlers in control. Test the
+				// overflow reporter with default signal dispositions instead.
+				flags << ['-cc', 'clang']
+			}
+		}
+		flags << ['-o', binary, source]
+		compile := os.exec(flags)
+		assert compile.exit_code == 0, '${build_mode}: ${compile.output}'
+		if build_mode == 'parallel' {
+			assert compile.output.contains('unit_0.c'), compile.output
+			assert compile.output.contains('unit_1.c'), compile.output
+		}
+		for mode in ['main', 'thread'] {
+			res := run_child(binary, mode)
+			assert res.exit_code != 0, '${build_mode}/${mode}: ${res.output}'
+			assert res.output.contains('V panic: stack overflow'), '${build_mode}/${mode}: ${res.output}'
+		}
+		// Other faults keep their message: V's segmentation fault message, or the one of
+		// the TCC `-bt` runtime, that handled them before.
+		res := run_child(binary, 'nil')
+		assert res.exit_code != 0, '${build_mode}/nil: ${res.output}'
+		assert res.output.contains('segmentation fault')
+			|| res.output.contains('invalid memory access'), '${build_mode}/nil: ${res.output}'
+		assert !res.output.contains('stack overflow'), '${build_mode}/nil: ${res.output}'
 	}
-	flags << ['-o', binary, source]
-	compile := os.exec(flags)
-	assert compile.exit_code == 0, compile.output
-	for mode in ['main', 'thread'] {
-		res := run_child(binary, mode)
-		assert res.exit_code != 0, '${mode}: ${res.output}'
-		assert res.output.contains('V panic: stack overflow'), '${mode}: ${res.output}'
-	}
-	// Other faults keep their message: V's segmentation fault message, or the one of
-	// the TCC `-bt` runtime, that handled them before.
-	res := run_child(binary, 'nil')
-	assert res.exit_code != 0, res.output
-	assert res.output.contains('segmentation fault')
-		|| res.output.contains('invalid memory access'), res.output
-	assert !res.output.contains('stack overflow'), res.output
 }
 
 // V's handler calls the handler that was installed before it for any fault that is not
