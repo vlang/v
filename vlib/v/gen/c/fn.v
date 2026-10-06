@@ -9972,6 +9972,11 @@ fn (g &FlatGen) call_target_name(id flat.NodeId) string {
 
 @[direct_array_access]
 fn (g &FlatGen) const_fn_call_target_name(node flat.Node) ?string {
+	// Parameters and local callbacks keep their lexical binding, even if another
+	// module publishes a function constant with the same name.
+	if node.kind == .ident && g.selector_base_is_local_value(node.value) {
+		return none
+	}
 	key := g.const_key_for_call_target(node) or { g.const_ref_name_from_node(node) }
 	if key.len == 0 {
 		return none
