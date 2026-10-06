@@ -1242,6 +1242,17 @@ fn test_a_windows_executable_keeps_its_backslashes() {
 	assert entry.contains('"command": "C:\\\\Users\\\\me\\\\v.exe"'), entry
 }
 
+fn test_server_exe_falls_back_to_the_recorded_path_when_the_env_names_nothing() {
+	// A binary run outside `v` has no VEXE, or has one that is not there. The
+	// path recorded at build time is then the best answer available, so it is
+	// tried rather than returning a path that cannot be launched.
+	original := os.getenv_opt('VEXE') or { '' }
+	os.setenv('VEXE', os.join_path(os.vtmp_dir(), 'no-such-compiler'), true)
+	defer { os.setenv('VEXE', original, true) }
+	got := server_exe()
+	assert got == @VEXE || got == @VEXE + '.exe', got
+}
+
 fn test_it_refuses_to_reorder_or_drop_an_existing_config() {
 	path := config_fixture('order', '{"zed":{"a":1},"mcp":{"duck":{"type":"local"}},"other":true}')!
 	h := Harness{
