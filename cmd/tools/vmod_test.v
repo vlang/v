@@ -3,8 +3,46 @@ import os
 const vexe = os.quoted_path(@VEXE)
 
 const tfolder = os.join_path(os.vtmp_dir(), 'vmod_test_${os.getpid()}')
-const project_free_folder = os.join_path(os.temp_dir(), 'vmod_no_project_${os.getpid()}')
+const project_free_folder = make_project_free_folder()
 const original_dir = os.getwd()
+
+fn has_project_ancestor(path string) bool {
+	mut current := os.real_path(path)
+	for current != '' {
+		if os.is_file(os.join_path(current, 'v.mod')) {
+			return true
+		}
+		parent := os.dir(current)
+		if parent == current { break }
+		current = parent
+	}
+	return false
+}
+
+fn select_project_free_temp_dir(candidates []string) !string {
+	for candidate in candidates {
+		if os.is_dir(candidate) && !has_project_ancestor(candidate) {
+			return os.real_path(candidate)
+		}
+	}
+	return error('no temporary directory without a v.mod ancestor is available')
+}
+
+fn make_project_free_folder() string {
+	mut candidates := [os.temp_dir()]
+	$if windows {
+		candidates << os.getenv('TEMP')
+		candidates << os.getenv('TMP')
+		if system_root := os.getenv_opt('SystemRoot') {
+			candidates << os.join_path(system_root, 'Temp')
+		}
+	} $else {
+		// Linux TMPDIR may point inside a checkout; /tmp supplies the OS fallback.
+		candidates << '/tmp'
+	}
+	root := select_project_free_temp_dir(candidates) or { panic(err) }
+	return os.join_path(root, 'vmod_no_project_${os.getpid()}')
+}
 
 fn prepare_project_free_folder() ! {
 	os.mkdir_all(project_free_folder)!
@@ -335,4 +373,17 @@ fn test_v_mod_graph_lists_manifest_requirements_without_imports() {
 	assert res.output.contains('app -> lib@1.3.0 (requires ^1.2)'), res.output
 	assert res.output.contains('ghost (requires ^2) (not installed)'), res.output
 	assert res.output.contains('(not installed)'), res.output
+}
+
+fn test_project_free_fixture_skips_a_temporary_directory_inside_a_project() {
+	blocked := os.join_path(tfolder, 'project_free_selection')
+	nested := os.join_path(blocked, 'temporary', 'nested')
+	os.mkdir_all(nested)!
+	os.write_file(os.join_path(blocked, 'v.mod'), "Module { name: 'temporary_project' }\n")!
+	defer { os.rmdir_all(blocked) or {} }
+	assert has_project_ancestor(nested)
+	fallback := os.dir(project_free_folder)
+	selected := select_project_free_temp_dir([nested, fallback])!
+	assert selected == os.real_path(fallback)
+	assert !has_project_ancestor(selected)
 }
