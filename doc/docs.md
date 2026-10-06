@@ -1832,6 +1832,7 @@ m.delete('two')
 
 Maps can have keys of type string, rune, integer, float, voidptr,
 enum, or fixed arrays of those supported key types.
+Struct keys are rejected, including when a generic key parameter is instantiated with a struct.
 
 The whole map can be initialized using this short syntax:
 

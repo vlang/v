@@ -11078,6 +11078,13 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			cloned_value = t.lock_colliding_main_substitution_type_text(node.value, cloned_value, t.cur_module, t.active_generic_params)
 		}
 	}
+	if node.kind == .map_init && !isnil(t.tc) {
+		key_type, _ := t.map_type_parts(cloned_value)
+		resolved_key := types.unalias_type(t.tc.parse_type(key_type))
+		if resolved_key is types.Struct && resolved_key.name != 'any' {
+			t.record_monomorph_error('map key type `${resolved_key.name}` not supported')
+		}
+	}
 	if is_root && t.cur_module.len > 0 {
 		t.a.add_node(flat.Node{
 			kind:  .module_decl
