@@ -270,6 +270,11 @@ The following list shows the possible outputs when casting a value to an incompa
    JSON string representation of the value.
 4. Casting non-numeric values to int/float (`int()`/`i64()`/`f32()`/`f64()`) will return zero.
 
+## Decoding errors
+
+Error previews begin within the line containing the failing position. Tabs expand
+the displayed column count without expanding byte offsets into the input string.
+
 ## Encoding using string builder instead of []u8
 
 To be more performant, `json2`, in PR 20052, decided to use buffers directly instead of Writers.
