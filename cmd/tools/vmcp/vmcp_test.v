@@ -1242,6 +1242,65 @@ fn test_a_windows_executable_keeps_its_backslashes() {
 	assert entry.contains('"command": "C:\\\\Users\\\\me\\\\v.exe"'), entry
 }
 
+fn test_server_exe_falls_back_to_the_recorded_path_when_the_env_names_nothing() {
+	// A binary run outside `v` has no VEXE, or has one that is not there. The
+	// path recorded at build time is then the best answer available, so it is
+	// tried rather than returning a path that cannot be launched.
+	original := os.getenv_opt('VEXE') or { '' }
+	os.setenv('VEXE', os.join_path(os.vtmp_dir(), 'no-such-compiler'), true)
+	defer { os.setenv('VEXE', original, true) }
+	got := server_exe()
+	assert got == os.real_path(@VEXE) || got == os.real_path(@VEXE + '.exe'), got
+}
+
+fn test_server_exe_chooses_a_regular_executable_and_keeps_platform_order() {
+	path := config_fixture('compiler_candidates', '')!
+	raw := path + '_v'
+	exe := raw + '.exe'
+	recorded := path + '_recorded.exe'
+	for candidate in [raw, exe, recorded] {
+		os.write_file(candidate, 'compiler fixture')!
+		os.chmod(candidate, 0o755)!
+	}
+	defer {
+		for candidate in [raw, exe, recorded] {
+			os.rm(candidate) or {}
+		}
+	}
+	assert server_exe_for(raw, recorded, true) == os.real_path(exe)
+	assert server_exe_for(exe, recorded, true) == os.real_path(exe)
+	$if !windows {
+		assert server_exe_for(raw, recorded, false) == os.real_path(raw)
+		os.chmod(raw, 0o600)!
+		assert server_exe_for(raw, recorded, false) == os.real_path(exe)
+	}
+	os.rm(raw)!
+	os.mkdir(raw)!
+	defer { os.rmdir(raw) or {} }
+	assert server_exe_for(raw, recorded, false) == os.real_path(exe)
+	os.rm(exe)!
+	assert server_exe_for(raw, recorded, false) == os.real_path(recorded)
+	assert server_exe_for('', recorded, false) == os.real_path(recorded)
+	assert server_exe_for(raw + '_missing', recorded + '_missing', false) == raw + '_missing'
+}
+
+fn test_server_exe_resolves_the_selected_symlink() {
+	$if windows {
+		return
+	}
+	path := config_fixture('compiler_symlink', '')!
+	executable := path + '_real'
+	link := path + '_link'
+	os.write_file(executable, 'compiler fixture')!
+	os.chmod(executable, 0o755)!
+	os.symlink(executable, link)!
+	defer {
+		os.rm(link) or {}
+		os.rm(executable) or {}
+	}
+	assert server_exe_for(link, @VEXE, false) == os.real_path(executable)
+}
+
 fn test_it_refuses_to_reorder_or_drop_an_existing_config() {
 	path := config_fixture('order', '{"zed":{"a":1},"mcp":{"duck":{"type":"local"}},"other":true}')!
 	h := Harness{
@@ -1321,11 +1380,56 @@ fn test_it_refuses_a_file_that_is_not_plain_json() {
 	assert !is_plain_json(read_config(path)), 'a commented file must not count as plain JSON'
 	before := read_config(path)
 	// The refusal is an error, so `v mcp install` exits non-zero.
-	mut refused := false
-	write_entry(h, path, false) or { refused = true }
-	assert refused, 'a JSONC file was not refused'
+	mut message := ''
+	write_entry(h, path, false) or { message = err.msg() }
+	assert message != '', 'a JSONC file was not refused'
 	// Nothing was written, so the comment is still there.
 	assert read_config(path) == before, 'a JSONC file was rewritten'
+	// And the refusal carries the member to paste, wrapped in the client's own
+	// key, rather than an entry that has to be wrapped by hand.
+	assert message.contains('is not plain JSON'), message
+	assert message.contains('merge'), message
+	assert message.contains('"mcp": { "vlang": '), message
+	assert message.contains('Add this member by hand'), message
+}
+
+fn test_non_plain_json_refusal_members_use_every_clients_key_and_entry_shape() {
+	mut clients := harnesses()
+	clients << Harness{ name: 'escaped', label: 'escaped', key: 'servers"\\key' }
+	for i, h in clients {
+		path := config_fixture('refusal_member_${i}', '{"other": true,}')!
+		before := read_config(path)
+		mut message := ''
+		write_entry(h, path, false) or { message = err.msg() }
+		assert message.contains('is not plain JSON'), message
+		assert message.contains('already exists, merge'), message
+		assert read_config(path) == before
+		member := message.split_into_lines().last().trim_space()
+		assert member == '${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }'
+		assert is_plain_json('{ ${member} }'), member
+	}
+}
+
+fn test_truncated_json_refusal_does_not_claim_it_contains_a_comment() {
+	path := config_fixture('truncated_refusal', '{"mcp":')!
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	before := read_config(path)
+	mut message := ''
+	write_entry(h, path, false) or { message = err.msg() }
+	assert message.contains('is not plain JSON'), message
+	assert !message.contains('has comments'), message
+	assert message.contains('Add this member by hand'), message
+	assert read_config(path) == before
+}
+
+fn test_unreadable_config_refusal_does_not_suggest_pasting_a_member() {
+	path := config_fixture('directory_refusal', '')!
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	mut message := ''
+	write_entry(h, os.dir(path), false) or { message = err.msg() }
+	assert message.contains('could not read'), message
+	assert !message.contains('Add this member'), message
+	assert os.is_dir(os.dir(path))
 }
 
 fn test_print_gives_a_pasteable_member_when_the_key_is_absent() {
