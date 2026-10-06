@@ -2,6 +2,7 @@ module types
 
 import strconv
 import v.flat
+import v.util
 
 enum RecursiveStrMutationEffect {
 	none
@@ -2911,7 +2912,7 @@ fn numeric_literal_i64(value string) ?i64 {
 			break
 		}
 	}
-	parsed := strconv.parse_int(clean, 0, 64) or { return none }
+	parsed := strconv.parse_int(clean, util.v_literal_parse_base(clean), 64) or { return none }
 	return parsed
 }
 
