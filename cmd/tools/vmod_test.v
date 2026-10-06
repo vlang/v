@@ -3,6 +3,13 @@ import os
 const vexe = os.quoted_path(@VEXE)
 
 const tfolder = os.join_path(os.vtmp_dir(), 'vmod_test_${os.getpid()}')
+const project_free_folder = os.join_path(os.temp_dir(), 'vmod_no_project_${os.getpid()}')
+const original_dir = os.getwd()
+
+fn prepare_project_free_folder() ! {
+	os.mkdir_all(project_free_folder)!
+	os.chdir(project_free_folder)!
+}
 
 // write_file creates `path` and its parent folders.
 fn write_file(path string, content string) ! {
@@ -89,7 +96,7 @@ fn test_v_mod_why_separates_unused_from_missing() {
 }
 
 fn test_v_mod_why_needs_a_project() {
-	os.chdir(os.vtmp_dir())!
+	prepare_project_free_folder()!
 	os.rmdir_all(os.join_path(tfolder, 'app')) or {}
 	res := os.exec([@VEXE, 'mod', 'why', 'os'])
 	assert res.exit_code == 1
@@ -159,7 +166,7 @@ fn test_v_mod_graph_stops_at_import_cycles_and_keeps_other_branches() {
 // test_v_mod_graph_needs_a_project: like every `v mod` subcommand, it has to run from
 // a project folder.
 fn test_v_mod_graph_needs_a_project() {
-	os.chdir(os.vtmp_dir())!
+	prepare_project_free_folder()!
 	os.rmdir_all(os.join_path(tfolder, 'app')) or {}
 	res := os.exec([@VEXE, 'mod', 'graph'])
 	assert res.exit_code == 1
@@ -187,7 +194,9 @@ fn test_v_mod_help_lists_the_subcommands() {
 }
 
 fn testsuite_end() {
+	os.chdir(original_dir) or {}
 	os.rmdir_all(tfolder) or {}
+	os.rmdir_all(project_free_folder) or {}
 }
 
 fn test_v_mod_why_preserves_standard_library_import_names() {
