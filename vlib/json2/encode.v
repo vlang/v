@@ -699,6 +699,8 @@ fn (mut encoder Encoder) encode_sumtype_time_variant(val time.Time, variant_name
 
 struct EncoderFieldInfo {
 	key_name string
+	// Compact ASCII keys include a leading comma, skipped for the first member.
+	compact_key string
 
 	is_skip      bool
 	is_omitempty bool
@@ -747,8 +749,15 @@ fn encoder_field_info(field_name string, attrs []string) EncoderFieldInfo {
 			key_name = json_attr
 		}
 	}
+	resolved_key := if key_name == '' { field_name } else { key_name.clone() }
+	compact_key := if !is_skip && next_string_escape(resolved_key, 0, true) == resolved_key.len {
+		',"' + resolved_key + '":'
+	} else {
+		''
+	}
 	return EncoderFieldInfo{
-		key_name:     if key_name == '' { field_name } else { key_name.clone() }
+		key_name:     resolved_key
+		compact_key:  compact_key
 		is_skip:      is_skip
 		is_omitempty: is_omitempty
 		is_required:  is_required
@@ -899,6 +908,21 @@ fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
 	return true
 }
 
+// encode_cached_struct_key copies ordinary compact keys from immutable metadata.
+// Pretty layouts and keys requiring escaping use the existing encoder.
+fn (mut encoder Encoder) encode_cached_struct_key(is_first bool, field_info EncoderFieldInfo) bool {
+	if !encoder.prettify && field_info.compact_key.len > 0 {
+		start := if is_first { 1 } else { 0 }
+		// The cached string always contains a comma, quotes, the key, and a colon.
+		unsafe {
+			encoder.output.push_many(field_info.compact_key.str + start,
+				field_info.compact_key.len - start)
+		}
+		return false
+	}
+	return encoder.encode_object_key(is_first, field_info.key_name)
+}
+
 // encode_struct_field_key keeps the non-type-specific part of struct field
 // encoding out of the comptime field loop. Otherwise every field gets its own
 // copy of the key-collision scan and key selection code.
@@ -910,17 +934,17 @@ fn (mut encoder Encoder) encode_struct_field_key(mut used_keys []string, old_use
 	if track_keys {
 		used_keys << field_info.key_name
 	}
-	return encoder.encode_object_key(is_first, field_info.key_name)
+	return encoder.encode_cached_struct_key(is_first, field_info)
 }
 
 @[noinline]
 fn (mut encoder Encoder) encode_embedded_struct_field_key(mut used_keys []string, reserved_keys []string, prefix string, field_info EncoderFieldInfo, is_first bool) bool {
 	should_prefix := field_info.key_name in used_keys || field_info.key_name in reserved_keys
-	json_key := if should_prefix { prefix + field_info.key_name } else { field_info.key_name }
 	if !should_prefix {
 		used_keys << field_info.key_name
+		return encoder.encode_cached_struct_key(is_first, field_info)
 	}
-	return encoder.encode_object_key(is_first, json_key)
+	return encoder.encode_object_key(is_first, prefix + field_info.key_name)
 }
 
 // encode_struct_field writes a struct field with its key, unless the field is skipped or
