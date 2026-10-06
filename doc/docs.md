@@ -8411,6 +8411,10 @@ as calls through a concrete receiver type, including calls forwarded through gen
 and methods. An explicit `mut param &T` requires a mutable `&T` variable, rather than a
 `mut param T` value parameter.
 
+A reflected method call can pass explicit arguments followed by `...args` to supply the remaining
+parameters. The spread can be empty when the method has no remaining parameters. Explicit arguments
+before the spread still follow the method's `mut` parameter requirements.
+
 Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
 Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.
 
