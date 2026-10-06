@@ -1242,6 +1242,65 @@ fn test_a_windows_executable_keeps_its_backslashes() {
 	assert entry.contains('"command": "C:\\\\Users\\\\me\\\\v.exe"'), entry
 }
 
+fn test_server_exe_falls_back_to_the_recorded_path_when_the_env_names_nothing() {
+	// A binary run outside `v` has no VEXE, or has one that is not there. The
+	// path recorded at build time is then the best answer available, so it is
+	// tried rather than returning a path that cannot be launched.
+	original := os.getenv_opt('VEXE') or { '' }
+	os.setenv('VEXE', os.join_path(os.vtmp_dir(), 'no-such-compiler'), true)
+	defer { os.setenv('VEXE', original, true) }
+	got := server_exe()
+	assert got == os.real_path(@VEXE) || got == os.real_path(@VEXE + '.exe'), got
+}
+
+fn test_server_exe_chooses_a_regular_executable_and_keeps_platform_order() {
+	path := config_fixture('compiler_candidates', '')!
+	raw := path + '_v'
+	exe := raw + '.exe'
+	recorded := path + '_recorded.exe'
+	for candidate in [raw, exe, recorded] {
+		os.write_file(candidate, 'compiler fixture')!
+		os.chmod(candidate, 0o755)!
+	}
+	defer {
+		for candidate in [raw, exe, recorded] {
+			os.rm(candidate) or {}
+		}
+	}
+	assert server_exe_for(raw, recorded, true) == os.real_path(exe)
+	assert server_exe_for(exe, recorded, true) == os.real_path(exe)
+	$if !windows {
+		assert server_exe_for(raw, recorded, false) == os.real_path(raw)
+		os.chmod(raw, 0o600)!
+		assert server_exe_for(raw, recorded, false) == os.real_path(exe)
+	}
+	os.rm(raw)!
+	os.mkdir(raw)!
+	defer { os.rmdir(raw) or {} }
+	assert server_exe_for(raw, recorded, false) == os.real_path(exe)
+	os.rm(exe)!
+	assert server_exe_for(raw, recorded, false) == os.real_path(recorded)
+	assert server_exe_for('', recorded, false) == os.real_path(recorded)
+	assert server_exe_for(raw + '_missing', recorded + '_missing', false) == raw + '_missing'
+}
+
+fn test_server_exe_resolves_the_selected_symlink() {
+	$if windows {
+		return
+	}
+	path := config_fixture('compiler_symlink', '')!
+	executable := path + '_real'
+	link := path + '_link'
+	os.write_file(executable, 'compiler fixture')!
+	os.chmod(executable, 0o755)!
+	os.symlink(executable, link)!
+	defer {
+		os.rm(link) or {}
+		os.rm(executable) or {}
+	}
+	assert server_exe_for(link, @VEXE, false) == os.real_path(executable)
+}
+
 fn test_it_refuses_to_reorder_or_drop_an_existing_config() {
 	path := config_fixture('order', '{"zed":{"a":1},"mcp":{"duck":{"type":"local"}},"other":true}')!
 	h := Harness{

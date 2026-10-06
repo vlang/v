@@ -212,19 +212,27 @@ fn print_one(h Harness, path string, project bool) string {
 	return out
 }
 
-// server_exe is the compiler this tool is running as, which is the one the
-// registered command has to keep working after a PATH change.
+// server_exe selects a launchable compiler path, trying the build-time path when
+// VEXE is stale. A resolved path keeps the registration independent of PATH.
 fn server_exe() string {
-	raw := os.getenv_opt('VEXE') or { @VEXE }
-	// The compiler is routinely named without its extension, which nothing on
-	// Windows can launch, so the executable form wins whenever it is there.
-	// The real path is preferred so the entry does not carry forward slashes
-	// that only work by accident.
-	if os.exists(raw) {
-		return os.real_path(raw)
+	return server_exe_for(os.getenv_opt('VEXE') or { @VEXE }, @VEXE, os.user_os() == 'windows')
+}
+
+fn server_exe_for(raw string, recorded string, windows bool) string {
+	mut candidates := []string{}
+	for path in [raw, recorded] {
+		if windows && path.to_lower().all_after_last('.') !in ['exe', 'com', 'bat', 'cmd'] {
+			candidates << path + '.exe'
+			candidates << path
+		} else {
+			candidates << path
+			candidates << path + '.exe'
+		}
 	}
-	if os.exists(raw + '.exe') {
-		return os.real_path(raw + '.exe')
+	for candidate in candidates {
+		if os.is_file(candidate) && os.is_executable(candidate) {
+			return os.real_path(candidate)
+		}
 	}
 	return raw
 }

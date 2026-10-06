@@ -124,6 +124,11 @@ client's top-level member for pasting by hand. If that key already exists, merge
 `vlang` server member into it instead of adding a second key. Other failures report
 why the file could not be edited. Refused installations exit with status 1.
 
+The registered command uses the executable named by `VEXE` when available. If that
+path is missing or is not an executable file, it tries the compiler path recorded when the
+tool was built. Directories and non-executable files are skipped. Paths are resolved
+before registration, and the `.exe` form is preferred on Windows.
+
 Nothing else on your machine is touched: the entry names the compiler that is
 running the tool, so it keeps working after `PATH` changes, and no token or
 credential is ever written.
