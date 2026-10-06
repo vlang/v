@@ -20,6 +20,15 @@ fn vpm_update(query []string) {
 	if settings.is_help {
 		help.print_and_exit('update')
 	}
+	if settings.is_precise {
+		if settings.pin_module != '' && query.len > 0 {
+			vpm_error('--precise takes exactly one module name')
+			exit(1)
+		}
+		module := if settings.pin_module != '' { settings.pin_module } else { query[0] }
+		update_precise(module, settings.precise_version)
+		return
+	}
 	idents := if query.len == 0 { get_installed_modules() } else { query.clone() }
 	mut pp := pool.new_pool_processor(callback: update_module)
 	ctx := UpdateSession{idents}
@@ -39,6 +48,45 @@ fn vpm_update(query []string) {
 	if errors > 0 {
 		exit(1)
 	}
+}
+
+fn update_precise(module string, version string) {
+	install_path := get_path_of_existing_module(module) or {
+		vpm_error('failed to find path for `${module}`.')
+		exit(1)
+	}
+	if !install_path_is_in_vmodules(install_path, settings.vmodules_path) {
+		vpm_error('refusing to update `${module}`: `${fmt_mod_path(install_path)}` is outside the modules directory.')
+		exit(1)
+	}
+	name := import_path_of(install_path)
+	if !vpm_owns_module_dir(install_path) {
+		vpm_error('refusing to update `${name}`: `${fmt_mod_path(install_path)}` was not installed by VPM.')
+		exit(1)
+	}
+	vcs := vcs_used_in_dir(install_path) or {
+		vpm_error('failed to find version control system for `${name}`.')
+		exit(1)
+	}
+	if vcs != .git {
+		vpm_error('--precise is only supported for git repositories.')
+		exit(1)
+	}
+	println('Pinning module `${name}` to `${version}` in `${fmt_mod_path(install_path)}`...')
+	os.exec_opt(['git', '-C', install_path, 'fetch', 'origin', '--tags']) or {
+		vpm_error('failed to fetch tags for module `${name}`.', details: err.msg())
+		exit(1)
+	}
+	os.exec_opt(['git', '-C', install_path, 'checkout', '--quiet', version]) or {
+		vpm_error('failed to checkout `${version}` for module `${name}`.', details: err.msg())
+		exit(1)
+	}
+	update_git_submodules(install_path) or {
+		vpm_error('failed to update submodules for module `${name}`.', details: err.msg())
+		exit(1)
+	}
+	increment_module_download_count(name, '') or { vpm_error(err.msg(), verbose: true) }
+	println('Pinned module `${name}` to `${version}`.')
 }
 
 fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {

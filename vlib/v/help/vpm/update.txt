@@ -11,3 +11,5 @@ Options:
   -v           Print more details about the update.
   -server-url  When doing network operations, use this vpm server.
                Can be given multiple times.
+  -p MODULE     Pin MODULE to an exact version (requires --precise).
+  --precise V   Pin the module to exact version V instead of pulling latest.
