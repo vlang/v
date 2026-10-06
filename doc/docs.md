@@ -3252,6 +3252,22 @@ __global:
 }
 ```
 
+Access modifiers can also be written before individual fields to preserve their declaration order:
+
+```v
+struct Record {
+	a         int
+	mut     b int
+	pub     c int
+	pub mut d int
+}
+```
+
+An inline `pub`, `mut`, or `pub mut` applies only to that field (or comma-separated field group).
+It overrides the current section for that declaration; following fields still use the section's
+modifiers. Without a section, following fields remain private and immutable.
+`v fmt` preserves inline modifiers and aligns their field types.
+
 Private fields are available only inside the same [module](#modules), any attempt
 to directly access them from another module will cause an error during compilation.
 Public immutable fields are readonly everywhere.
