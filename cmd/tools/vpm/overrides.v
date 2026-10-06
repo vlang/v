@@ -4,14 +4,15 @@ import semver
 
 // Override is one `dependency_overrides` entry. The `requiring` field is the module
 // that has to ask for the dependency for the override to apply; when it is empty the
-// override applies everywhere. This is the root project's last word, and it
-// deliberately does not check whether other constraints allow the version — that is
-// what an override is for.
+// override applies everywhere. The `version` field is the forced version, or `-` to
+// remove the edge entirely. The `constraint` field is the consumer's version range
+// that must admit the override version for it to apply.
 pub struct Override {
 pub:
-	name      string
-	version   string
-	requiring string
+	name       string
+	version    string
+	requiring  string
+	constraint string
 }
 
 // parse_overrides reads the `dependency_overrides` entries of a manifest. Each entry
@@ -29,6 +30,8 @@ pub fn parse_overrides(raw []string) []Override {
 
 // parse_override reads one entry. The `requiring>name` form forces a version only
 // where `requiring` asks for `name`; without it the override applies everywhere.
+// A version of `-` removes the edge. The `requiring@range>name` form only applies
+// when the consumer's constraint admits the override version.
 fn parse_override(entry string) !Override {
 	parts := entry.split(':')
 	if parts.len != 2 {
@@ -38,19 +41,25 @@ fn parse_override(entry string) !Override {
 	version := parts[1].trim_space()
 
 	mut requiring := ''
+	mut constraint := ''
 	mut name := left
 	if idx := left.index('>') {
 		requiring = left[..idx].trim_space()
 		name = left[idx + 1..].trim_space()
+		if at_idx := requiring.index('@') {
+			constraint = requiring[at_idx + 1..].trim_space()
+			requiring = requiring[..at_idx].trim_space()
+		}
 	}
 
 	if name == '' || version == '' {
 		return error('invalid override `${entry}`')
 	}
 	return Override{
-		name:      name
-		version:   version
-		requiring: requiring
+		name:       name
+		version:    version
+		requiring:  requiring
+		constraint: constraint
 	}
 }
 
@@ -74,7 +83,8 @@ fn build_graph(modules map[string]Module) map[string][]string {
 
 // apply_overrides replaces the version of every module an override names. It runs
 // before `validate_range_destinations`, so an overridden module is checked at the
-// version it will actually be installed at.
+// version it will actually be installed at. A version of `-` removes the module from
+// the install set entirely.
 pub fn apply_overrides(mut modules map[string]Module, overrides []Override, graph map[string][]string) {
 	for o in overrides {
 		// A selector override only applies where the requiring module asks for the
@@ -84,6 +94,21 @@ pub fn apply_overrides(mut modules map[string]Module, overrides []Override, grap
 			if o.name !in deps {
 				continue
 			}
+		}
+		// Check that the consumer's constraint admits the override version.
+		if o.constraint != '' && o.version != '-' {
+			v := semver.from(o.version) or { continue }
+			if !v.satisfies(o.constraint) {
+				continue
+			}
+		}
+		if o.version == '-' {
+			for key, m in modules {
+				if m.name == o.name {
+					modules.delete(key)
+				}
+			}
+			continue
 		}
 		for key, mut m in modules {
 			if m.name == o.name {
