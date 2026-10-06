@@ -177,6 +177,7 @@ When shell syntax is required, invoke the shell explicitly with an argument arra
 A shell still interprets its script as code: use a fixed script with positional
 arguments for data, and never interpolate untrusted values into the script.
 On Windows, shell builtins and batch scripts likewise require an explicit shell.
+For example, `os.exec(['cmd', '/d', '/c', 'echo', 'hello'])` runs the `echo` builtin.
 
 ---
 
