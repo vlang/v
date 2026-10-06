@@ -37,6 +37,10 @@ builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until V
 can compile the full builtin map.v.
 
+An explicit `.str()` call on a generic struct pointer preserves the result of its
+user-defined pointer-receiver method. Pointer interpolation still adds its reference prefix,
+and automatic pointer stringification retains its existing prefix and nil handling.
+
 ## Compiler dispatch
 
 On every native platform, this is the default compiler for user source and test builds. The
