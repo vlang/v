@@ -1328,6 +1328,95 @@ fn test_it_refuses_a_file_that_is_not_plain_json() {
 	assert read_config(path) == before, 'a JSONC file was rewritten'
 }
 
+fn test_print_gives_a_pasteable_member_when_the_key_is_absent() {
+	path := config_fixture('printnokey', '{"unrelated":{}}')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	out := print_one(h, path, false)
+	// The entry on its own is not something a client can read, so what is printed
+	// has to be the member that holds it.
+	assert out.contains('add this member'), out
+	assert out.contains('"mcp": { "vlang": '), out
+	assert !out.contains('top-level key:'), out
+	member := out.split_into_lines().last().trim_space()
+	assert is_plain_json('{ ${member} }'), out
+	assert read_config(path) == '{"unrelated":{}}'
+}
+
+fn test_print_gives_the_whole_file_when_there_is_none() {
+	path := config_fixture('printmissing', '')!
+	os.rm(path) or {}
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	out := print_one(h, path, false)
+	assert out.contains('no config file yet'), out
+	assert out.contains('"mcp": { "vlang": '), out
+	whole_file := out.split_into_lines().last().trim_space()
+	assert is_plain_json(whole_file), out
+	assert has_entry(whole_file, 'mcp', server_id), out
+	assert !os.exists(path)
+}
+
+fn test_print_still_names_the_key_when_it_is_there() {
+	path := config_fixture('printkey', '{"mcp":{"duck":{}}}')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	out := print_one(h, path, false)
+	assert out.contains('top-level key: mcp'), out
+	assert !out.contains('add this member'), out
+	member := out.split_into_lines().last().trim_space()
+	assert member.starts_with('"vlang": '), out
+	assert is_plain_json('{ ${member} }'), out
+	assert read_config(path) == '{"mcp":{"duck":{}}}'
+}
+
+fn test_print_reports_a_read_error() {
+	path := config_fixture('printunreadable', '')!
+	os.mkdir(path)!
+	h := Harness{ name: 'test', label: 'test', key: 'mcp' }
+	out := print_one(h, path, false)
+	assert out.contains('could not read ${path}:'), out
+	assert !out.contains('add this member'), out
+	assert os.is_dir(path)
+}
+
+fn test_print_keeps_scope_and_creation_restrictions() {
+	path := config_fixture('printnocreate', '')!
+	h := Harness{ name: 'test', label: 'test', key: 'mcp', no_create_user: true }
+	user := print_one(h, path, false)
+	assert user.contains('the installer will not create this file'), user
+	assert !user.contains('what would be created'), user
+	assert is_plain_json(user.split_into_lines().last().trim_space()), user
+	project := print_one(h, '', true)
+	assert project == 'test  ()\n  (no project-level file)\n', project
+	assert !os.exists(path)
+}
+
+fn test_server_entry_escapes_control_bytes() {
+	exe := 'C:\\tools\\v\n\t\r"\x01.exe'
+	args := ['mcp', 'serve', 'line\nbreak', '\x00\x1f']
+	for array_command in [false, true] {
+		h := Harness{ argv_in_command: array_command }
+		entry := h.entry(exe, args)
+		decoded := json.decode[map[string]json.Any](entry)!
+		if array_command {
+			assert decoded['command']!.as_array().map(it.str()) == [exe, ...args]
+		} else {
+			assert decoded['command']!.str() == exe
+			assert decoded['args']!.as_array().map(it.str()) == args
+		}
+	}
+}
+
 fn test_it_refuses_a_config_with_trailing_commas() {
 	path := config_fixture('trailing', '{"mcp":{"duck":{},}}')!
 	assert !is_plain_json(read_config(path)), 'a trailing comma must not count as plain JSON'
