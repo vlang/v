@@ -33,6 +33,7 @@ pub mut:
 	dependencies []string
 	unknown      map[string][]string
 	catalog      map[string]string
+	workspaces   []string
 }
 
 struct Scanner {
@@ -305,6 +306,12 @@ fn (mut p Parser) parse() !Manifest {
 						}
 						mn.catalog = catalog
 						i = j + 1
+						continue
+					}
+					'workspaces' {
+						ws, idx := get_array_content(tokens, i + 1, true)!
+						mn.workspaces = ws
+						i = idx
 						continue
 					}
 					else {
