@@ -1,12 +1,15 @@
 module main
 
+import semver
+
 // Override selects a root dependency ref or range, optionally only where
 // requiring asks for that dependency. Dependency manifests supply no overrides.
 pub struct Override {
 pub:
 	name      string
 	version   string
-	requiring string
+	requiring  string
+	constraint string
 }
 
 // parse_overrides reads [requiring>]name: version entries and rejects malformed
@@ -16,7 +19,7 @@ pub fn parse_overrides(raw []string) ![]Override {
 	mut seen := map[string]bool{}
 	for entry in raw {
 		o := parse_override(entry)!
-		key := o.requiring + '>' + o.name
+		key := o.requiring + '@' + o.constraint + '>' + o.name
 		if key in seen { return error('duplicate dependency override for `${key}`') }
 		seen[key] = true
 		result << o
@@ -36,12 +39,19 @@ fn parse_override(entry string) !Override {
 	selectors := parts[0].trim_space().split('>')
 	if selectors.len !in [1, 2] { return error('invalid dependency override selector `${entry}`') }
 	name := selectors[selectors.len - 1].trim_space()
-	requiring := if selectors.len == 2 { selectors[0].trim_space() } else { '' }
+	mut requiring := if selectors.len == 2 { selectors[0].trim_space() } else { '' }
+	mut constraint := ''
+	if requiring.contains('@') {
+		requiring, constraint = requiring.split_once('@') or { '', '' }
+		if constraint == '' || !semver.is_valid_range(constraint) {
+			return error('invalid dependency override constraint `${constraint}` in `${entry}`')
+		}
+	}
 	version := parts[1].trim_space()
 	if !valid_override_name(name) || (selectors.len == 2 && !valid_override_name(requiring)) || version == '' {
 		return error('invalid dependency override `${entry}`')
 	}
-	return Override{ name: name, version: version, requiring: requiring }
+	return Override{ name: name, version: version, requiring: requiring, constraint: constraint }
 }
 
 // overridden_request applies global root overrides before a source is selected.
@@ -55,19 +65,25 @@ pub fn overridden_request(request string, names []string, overrides []Override) 
 pub fn overridden_request_for_module(request string, names []string, requiring string, overrides []Override) string {
 	for name in names {
 		for o in overrides {
-			if requiring != '' && o.requiring == requiring && o.name == name {
+			if requiring != '' && o.requiring == requiring && o.name == name && override_constraint_matches(o) {
 				return lockfile_module_key(request) + at_version(o.version)
 			}
 		}
 	}
 	for name in names {
 		for o in overrides {
-			if o.requiring == '' && o.name == name {
+			if o.requiring == '' && o.name == name && override_constraint_matches(o) {
 				return lockfile_module_key(request) + at_version(o.version)
 			}
 		}
 	}
 	return request
+}
+
+fn override_constraint_matches(o Override) bool {
+	if o.constraint == '' || o.version == '-' { return true }
+	v := version_tag(o.version) or { return false }
+	return v.satisfies(o.constraint)
 }
 
 // build_graph reads the dependencies of every module and returns a map from a module
@@ -93,6 +109,7 @@ fn build_graph(modules map[string]Module) map[string][]string {
 // change the version recorded for already selected sources.
 pub fn apply_overrides(mut modules map[string]Module, overrides []Override, graph map[string][]string) {
 	for o in overrides {
+		if !override_constraint_matches(o) { continue }
 		// A selector override only applies where the requiring module asks for the
 		// dependency. Without this, `vsl>c: 1.0.2` would force c everywhere.
 		if o.requiring != '' {

@@ -28,6 +28,12 @@ mut:
 	// and VPM modules that specify a different VCS in their `v.mod`, the VCS is validated separately.
 	vcs    VCS
 	logger &log.Logger
+	// --precise pins one module to an exact version tag instead of pulling latest.
+	is_precise      bool
+	precise_version string
+	pin_module      string
+	// --dry-run reports what would be updated without making changes.
+	is_dry_run bool
 }
 
 // local_vmodules_path returns the directory `v install --local` installs into:
@@ -75,6 +81,22 @@ fn init_settings() VpmSettings {
 		logger.set_output_path(os.join_path(cache_path, 'vpm.log'))
 	}
 
+	mut precise_version := ''
+	mut pin_module := ''
+	if '--precise' in opts {
+		precise_version = cmdline.option(args, '--precise', '')
+		if precise_version == '' {
+			vpm_error('--precise requires a version argument')
+			exit(1)
+		}
+	}
+	if '-p' in opts || '--pin' in opts {
+		pin_module = cmdline.option(args, '-p', '')
+		if pin_module == '' {
+			pin_module = cmdline.option(args, '--pin', '')
+		}
+	}
+
 	return VpmSettings{
 		is_help:               '-h' in opts || '--help' in opts || 'help' in cmds
 		is_once:               '--once' in opts
@@ -91,6 +113,10 @@ fn init_settings() VpmSettings {
 		no_dl_count_increment: is_ci || is_no_inc
 		fail_on_prompt:        os.getenv('VPM_FAIL_ON_PROMPT') != ''
 		logger:                logger
+		is_precise:            '--precise' in opts
+		precise_version:       precise_version
+		pin_module:            pin_module
+		is_dry_run:            '--dry-run' in opts
 	}
 }
 

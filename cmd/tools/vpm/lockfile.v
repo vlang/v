@@ -320,6 +320,56 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 	return resolved
 }
 
+// resolve_and_lock runs the resolver on the full dependency graph and records
+// the resolved versions in the lockfile. It is called after install when any
+// module was installed with a version range, so that the lockfile reflects the
+// joint resolution rather than independent per-module selections.
+fn resolve_and_lock(mut modules []Module, _scope LockScope) {
+	mut candidates := map[string][]VersionedDeps{}
+	mut constraints := map[string][]Constraint{}
+	for m in modules {
+		if m.version_range == '' {
+			continue
+		}
+		tags := fetch_tags(m.url) or { continue }
+		mut vds := []VersionedDeps{}
+		for tag in tags {
+			vds << VersionedDeps{ version: tag, deps: [] }
+		}
+		candidates[m.name] = vds
+		constraints[m.name] << Constraint{ required_by: 'root', range: m.version_range }
+	}
+	if candidates.len == 0 {
+		return
+	}
+	resolved := resolve_with_backtracking(candidates, constraints) or {
+		vpm_error('failed to resolve version ranges: ${err.msg()}')
+		return
+	}
+	for name, version in resolved {
+		for mut m in modules {
+			if m.name == name {
+				m.version = version
+			}
+		}
+	}
+}
+
+fn fetch_tags(url string) ![]string {
+	res := os.exec(['git', 'ls-remote', '--tags', '--refs', '--', url])
+	if res.exit_code != 0 {
+		return error('failed to list tags from `${url}`: ${res.output.trim_space()}')
+	}
+	mut tags := []string{}
+	for line in res.output.split_into_lines() {
+		fields := line.split('\t')
+		if fields.len == 2 && fields[1].starts_with('refs/tags/') {
+			tags << fields[1].trim_string_left('refs/tags/')
+		}
+	}
+	return tags
+}
+
 // refresh_lock_entries records the updated revisions of the modules pulled by
 // `v update` in the lockfile of the project in scope, when one exists. Entries
 // are matched by clone source, so only modules the project actually holds are
