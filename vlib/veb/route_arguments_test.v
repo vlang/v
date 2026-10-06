@@ -24,9 +24,14 @@ fn (mut app RouteArgumentsApp) query(mut ctx RouteArgumentsContext, value string
 	return ctx.text('${value}:${count}')
 }
 
-@['/items/:id'; delete]
+@['/items/:id'; get; post; delete]
 fn (mut app RouteArgumentsApp) item(mut ctx RouteArgumentsContext, id int) Result {
 	return ctx.text('item:${id}')
+}
+
+@['/bools'; get; post]
+fn (mut app RouteArgumentsApp) bools(mut ctx RouteArgumentsContext, enabled bool) Result {
+	return ctx.text(enabled.str())
 }
 
 @['/ping'; get; post; put; patch; delete; head; options]
@@ -98,6 +103,19 @@ fn test_route_arguments_path_parameter_on_delete() {
 	ctx := route_arguments_request(.delete, '/items/42?id=99', '')
 	assert ctx.res.status_code == int(http.Status.ok)
 	assert ctx.res.body == 'item:42'
+}
+
+fn test_route_arguments_path_parameters_take_precedence_over_query_and_form() {
+	query := route_arguments_request(.get, '/items/42?id=99', '')
+	assert query.res.body == 'item:42'
+	form := route_arguments_request(.post, '/items/43?id=99', 'id=100')
+	assert form.res.body == 'item:43'
+}
+
+fn test_route_arguments_boolean_conversion_and_missing_value() {
+	assert route_arguments_request(.get, '/bools?enabled=true', '').res.body == 'true'
+	assert route_arguments_request(.post, '/bools?enabled=false', 'enabled=true').res.body == 'true'
+	assert route_arguments_request(.get, '/bools', '').res.body == 'false'
 }
 
 fn test_route_arguments_context_only_handlers() {
