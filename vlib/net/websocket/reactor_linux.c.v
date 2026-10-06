@@ -543,7 +543,8 @@ fn (mut r Reactor) read_ready(mut socket ReactorSocket) {
 		if n > 0 {
 			read += int(n)
 			socket.last_read = time.sys_mono_now()
-			socket.input << buffer[..int(n)]
+			// recv initialized exactly n bytes. Copy them before this stack buffer is reused.
+			unsafe { socket.input.push_many(&buffer[0], int(n)) }
 			frames += r.parse(mut socket, r.options.frames_per_turn - frames)
 			continue
 		}
