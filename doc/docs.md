@@ -5520,6 +5520,9 @@ does not change the inferred type arguments. `typeof(call()).name` reports the c
 return type of an inferred generic method call.
 Inference also follows receivers obtained by unwrapping an option or propagating a result.
 
+Nested generic calls preserve reference return types when passed directly to another generic
+call, including references stored as map values.
+
 Another example:
 
 ```v
