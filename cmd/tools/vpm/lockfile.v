@@ -382,7 +382,7 @@ fn resolve_and_lock(mut modules []Module, _scope LockScope) {
 	if candidates.len == 0 {
 		return
 	}
-	resolved := resolve_with_backtracking(candidates, constraints) or {
+	resolved := resolve_with_pubgrub(candidates, constraints) or {
 		vpm_error('failed to resolve version ranges: ${err.msg()}')
 		return
 	}

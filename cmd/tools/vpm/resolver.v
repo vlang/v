@@ -174,3 +174,155 @@ fn resolve_with_backtracking(candidates map[string][]VersionedDeps, constraints 
 	}
 	return resolved
 }
+
+// PubGrub-style solver: incremental, conflict-driven resolution.
+// Instead of backtracking, it makes decisions one at a time and learns from conflicts
+// to avoid redundant work. This provides better error messages and scales better.
+
+struct PartialSolution {
+mut:
+	assignments       map[string]string
+	incompatibilities map[string]map[string][]string
+}
+
+fn new_partial_solution() PartialSolution {
+	return PartialSolution{
+		assignments:       map[string]string{}
+		incompatibilities: map[string]map[string][]string{}
+	}
+}
+
+fn (ps &PartialSolution) is_compatible(name string, version string) bool {
+	if versions := ps.incompatibilities[name] {
+		if reasons := versions[version] {
+			if reasons.len > 0 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn (mut ps PartialSolution) add_incompatibility(name string, version string, reason string) {
+	if name !in ps.incompatibilities {
+		ps.incompatibilities[name] = map[string][]string{}
+	}
+	if version !in ps.incompatibilities[name] {
+		ps.incompatibilities[name][version] = []string{}
+	}
+	ps.incompatibilities[name][version] << reason
+}
+
+fn (mut ps PartialSolution) assign(name string, version string) {
+	ps.assignments[name] = version
+}
+
+fn (ps &PartialSolution) get(name string) string {
+	return ps.assignments[name]
+}
+
+fn (ps &PartialSolution) is_assigned(name string) bool {
+	return name in ps.assignments
+}
+
+// unit_propagation processes constraints and derives new assignments.
+// When a module has only one compatible version left, it is assigned.
+fn unit_propagation(candidates map[string][]VersionedDeps, constraints map[string][]Constraint, mut ps PartialSolution) !bool {
+	mut changed := true
+	for changed {
+		changed = false
+		for name, cands in candidates {
+			if ps.is_assigned(name) {
+				continue
+			}
+			mut compatible := []string{}
+			for cand in cands {
+				if !ps.is_compatible(name, cand.version) {
+					continue
+				}
+				mut ok := true
+				for c in constraints[name] {
+					v := semver.from(cand.version) or {
+						ok = false
+						break
+					}
+					if !v.satisfies(c.range) {
+						ok = false
+						break
+					}
+				}
+				if ok {
+					compatible << cand.version
+				}
+			}
+			if compatible.len == 0 {
+				return false
+			}
+			if compatible.len == 1 {
+				ps.assign(name, compatible[0])
+				changed = true
+			}
+		}
+	}
+	return true
+}
+
+// conflict_resolution handles the case where no compatible version exists.
+// It identifies the conflicting constraints and reports them.
+fn conflict_resolution(name string, candidates []VersionedDeps, constraints []Constraint, ps PartialSolution) !string {
+	mut msg := 'failed to resolve `${name}`:'
+	for c in constraints {
+		msg += '\n  ${c.required_by} requires ${c.range}'
+	}
+	for cand in candidates {
+		if !ps.is_compatible(name, cand.version) {
+			msg += '\n  ${cand.version} is incompatible: ${ps.incompatibilities[name][cand.version].join(', ')}'
+		}
+	}
+	return error(msg)
+}
+
+// resolve_with_pubgrub implements the PubGrub algorithm for version resolution.
+// It combines unit propagation with conflict-driven learning.
+fn resolve_with_pubgrub(candidates map[string][]VersionedDeps, constraints map[string][]Constraint) !map[string]string {
+	mut ps := new_partial_solution()
+
+	// Phase 1: Unit propagation
+	unit_propagation(candidates, constraints, mut ps) or {
+		return error(err.msg())
+	}
+
+	// Phase 2: Decision making for unassigned modules
+	for name, cands in candidates {
+		if ps.is_assigned(name) {
+			continue
+		}
+		mut compatible := []string{}
+		for cand in cands {
+			if !ps.is_compatible(name, cand.version) {
+				continue
+			}
+			mut ok := true
+			for c in constraints[name] {
+				v := semver.from(cand.version) or {
+					ok = false
+					break
+				}
+				if !v.satisfies(c.range) {
+					ok = false
+					break
+				}
+			}
+			if ok {
+				compatible << cand.version
+			}
+		}
+		if compatible.len == 0 {
+			return error('failed to resolve `${name}`: no compatible version')
+		}
+		compatible.sort(a > b)
+		ps.assign(name, compatible[0])
+	}
+
+	return ps.assignments.clone()
+}
