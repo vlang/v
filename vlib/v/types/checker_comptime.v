@@ -10476,7 +10476,8 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	clean_outer_expected := unalias_type(outer_expected)
 	clean_actual := unalias_type(actual)
-	if tc.direct_parent_kind(or_id) != .return_stmt && clean_outer_expected is OptionType
+	if tc.direct_parent_kind(or_id) != .return_stmt && !tc.or_expr_is_struct_field_value(or_id)
+		&& clean_outer_expected is OptionType
 		&& clean_actual is OptionType
 		&& tc.type_compatible(expected, clean_outer_expected.base_type)
 		&& tc.type_compatible(clean_actual.base_type, clean_outer_expected.base_type) {
@@ -10526,6 +10527,27 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	pos := tc.or_fallback_value_pos(tail_id, tail)
 	tc.record_error_at(.assignment_mismatch, message, tail_id, pos)
+}
+
+fn (tc &TypeChecker) or_expr_is_struct_field_value(id flat.NodeId) bool {
+	mut child_id := id
+	for _ in 0 .. 64 {
+		parent_id := tc.direct_parent_id(child_id)
+		if !tc.valid_node_id(parent_id) || parent_id == child_id {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .field_init {
+			return parent.children_count > 0
+				&& tc.expr_is_value_tail_of(tc.a.child(parent, 0), id)
+		}
+		if parent.kind !in [.paren, .expr_stmt, .block, .match_branch, .lock_expr, .if_expr,
+			.match_stmt, .comptime_if, .or_expr] {
+			return false
+		}
+		child_id = parent_id
+	}
+	return false
 }
 
 fn (tc &TypeChecker) or_expr_is_branch_tail(id flat.NodeId) bool {

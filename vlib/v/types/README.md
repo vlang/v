@@ -29,3 +29,7 @@ inside parentheses or a collapsed struct literal. Bare `nil` still requires an u
 
 Calls inferred inside a comptime sum-type branch use that branch's concrete variant type.
 Explicit generic arguments retain the types written at the call site.
+
+An `or` block in a struct field initializer must provide the unwrapped payload type.
+For a `?bool` field, use `input.value or { false }`; an optional fallback value is rejected.
+Direct option values can still initialize optional fields without an `or` block.
