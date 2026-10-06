@@ -7313,6 +7313,11 @@ Use `--dry-run` to preview updates. The provenance file `origin.json` must be a 
 file: installation refuses symlinks and other file types before replacing skill content.
 `v.skills.content_digest` returns an error if any requested file cannot be read.
 
+Installation stages all bundled files in a sibling directory before replacing an
+existing skill. A staging failure preserves the installed copy; a failed replacement
+attempt restores the previous directory. Existing files at the skill destination are
+refused, including with `--force`.
+
 The `v.skills.refresh_candidates` API returns separate lists of safe refreshes
 and installations held back for local changes or missing provenance. The
 `out_of_date` API only compares content and cannot distinguish these cases.
