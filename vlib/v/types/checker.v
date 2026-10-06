@@ -15842,6 +15842,19 @@ fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
 			return tc.type_text_has_generic_placeholder(clean[bracket_end + 1..])
 		}
 	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		open := clean.index_u8(`(`)
+		close := comptime_condition_matching_paren(clean, open)
+		if close >= clean.len {
+			return false
+		}
+		for param in split_params(clean[open + 1..close]) {
+			if tc.type_text_has_generic_placeholder(normalize_fn_type_param_text(param)) {
+				return true
+			}
+		}
+		return tc.type_text_has_generic_placeholder(clean[close + 1..])
+	}
 	_, args, ok := generic_type_application_parts(clean)
 	if ok {
 		for arg in args {

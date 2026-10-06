@@ -15122,6 +15122,15 @@ fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {
 				|| t.generic_arg_is_unresolved(clean[bracket_end + 1..])
 		}
 	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		params, ret := fn_type_text_parts(clean) or { return true }
+		for param in params {
+			if t.generic_arg_is_unresolved(generic_fn_type_param_payload(param)) {
+				return true
+			}
+		}
+		return ret.len > 0 && t.generic_arg_is_unresolved(ret)
+	}
 	_, nested_args, ok := generic_app_parts(clean)
 	if ok {
 		for nested in nested_args {
