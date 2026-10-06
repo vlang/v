@@ -15,6 +15,30 @@ fn test_fn_literal_string_bindings_do_not_defer_outer_plain_comparisons() {
 	assert !p.a.nodes.any(it.kind == .string_literal && it.value == 'wrong')
 }
 
+fn test_function_literal_parameters_hide_and_restore_outer_static_values() {
+	path := os.join_path(os.vtmp_dir(), 'comptime_string_closure_shadow_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, "fn main() {\n route := 'local'\n check := fn(route string) { \$if route.starts_with('loc') { println('wrong') } }\n check('runtime')\n \$if route.starts_with('loc') { println('restored') } \$else { println('lost') }\n}\n")!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert p.a.nodes.filter(it.kind == .comptime_if).len == 1
+	assert p.a.nodes.any(it.kind == .string_literal && it.value == 'restored')
+	assert !p.a.nodes.any(it.kind == .string_literal && it.value == 'lost')
+}
+
+fn test_comptime_loop_bindings_hide_and_restore_outer_static_values() {
+	path := os.join_path(os.vtmp_dir(), 'comptime_string_loop_shadow_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, "fn main() {\n route := 'constant'\n \$for route in 'runtime'.fields() {\n  \$if route.starts_with('con') { println('wrong') }\n }\n \$if route.starts_with('con') { println('restored') } \$else { println('lost') }\n}\n")!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert p.a.nodes.filter(it.kind == .comptime_if).len == 1
+	assert p.a.nodes.any(it.kind == .string_literal && it.value == 'restored')
+	assert !p.a.nodes.any(it.kind == .string_literal && it.value == 'lost')
+}
+
 fn test_static_value_probe_preserves_deep_expression_recovery() {
 	path := os.join_path(@VEXEROOT, 'vlib/v/parser/tests/check_undefined_variables_too_deep_nested.vv')
 	mut compiler := Parser.new(pref.new_preferences())
@@ -124,16 +148,25 @@ fn test_static_string_probes_preserve_shadowing_local_bindings() {
 }
 
 fn test_unresolved_scalar_import_guards_defer_only_their_imports() {
-	path := os.join_path(os.vtmp_dir(), 'comptime_string_deferred_imports_${os.getpid()}.v')
-	defer { os.rm(path) or {} }
-	os.write_file(path, 'import config as cfg\n\$if cfg.enabled {\n import inactive\n}\n\$if string is int {\n import type_guarded\n}\n\$if threads {\n import thread_guarded\n}\n')!
+	root := os.join_path(os.vtmp_dir(), 'comptime_string_deferred_imports_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'import config as cfg\n\$if cfg.enabled {\n import inactive\n}\n\$if string is int {\n import type_guarded\n const enabled = cfg.enabled\n \$if enabled {\n  import nested_inactive\n }\n}\n\$if threads {\n import thread_guarded\n}\n')!
 	mut p := Parser.new(pref.new_preferences())
 	p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	deferred := p.resolve_comptime_string_declarations()
-	assert deferred.len == 1, deferred.str()
+	assert deferred.len == 2, deferred.str()
 	for id, _ in deferred {
 		assert p.a.nodes[id].kind == .import_decl
-		assert p.a.nodes[id].value == 'inactive'
+		assert p.a.nodes[id].value in ['inactive', 'nested_inactive']
 	}
+	config_path := os.join_path(root, 'config.v')
+	os.write_file(config_path, 'module config\npub const enabled = false\n')!
+	p.parse_file(config_path)
+	assert p.resolve_comptime_string_declarations().len == 0
+	assert p.a.nodes.any(it.kind == .import_decl && it.value == 'type_guarded')
+	assert !p.a.nodes.any(it.kind == .import_decl && it.value == 'nested_inactive')
+	assert comptime_const_value_key('main', 'enabled') !in p.comptime_const_values
 }

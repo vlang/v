@@ -1873,6 +1873,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 			pnode := p.a.nodes[int(pid)]
 			if pnode.kind == .param {
 				p.declare_local_binding(pnode.value)
+				p.forget_comptime_local_value(pnode.value)
 			}
 		}
 		if disable_body {
@@ -2106,6 +2107,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		pnode := p.a.nodes[int(pid)]
 		if pnode.kind == .param {
 			p.declare_local_binding(pnode.value)
+			p.forget_comptime_local_value(pnode.value)
 		}
 	}
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
@@ -4841,10 +4843,13 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 	if kind == 'methods' {
 		p.comptime_method_var = val_var
 	}
+	p.begin_comptime_value_scope()
 	p.begin_local_binding_scope()
 	p.declare_local_binding(val_var)
+	p.forget_comptime_local_value(val_var)
 	body := p.block_stmt()
 	p.end_local_binding_scope()
+	p.end_comptime_value_scope()
 	p.comptime_method_var = previous_method_var
 	p.comptime_for_vars.pop()
 	children := if is_string_source { [body, source_id] } else { [body] }
@@ -13910,10 +13915,12 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		}
 	}
 	p.check(.pipe)
+	p.begin_comptime_value_scope()
 	p.begin_local_binding_scope()
 	for param_id in lambda_params {
 		name := p.a.nodes[int(param_id)].value
 		p.declare_local_binding(name)
+		p.forget_comptime_local_value(name)
 		p.active_lambda_param_counts[name] = (p.active_lambda_param_counts[name] or { 0 }) + 1
 	}
 	lambda_body := p.lambda_body_expr()
@@ -13927,6 +13934,7 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		}
 	}
 	p.end_local_binding_scope()
+	p.end_comptime_value_scope()
 	mut ids := lambda_params.clone()
 	ids << lambda_body
 	lstart := p.add_children(ids)
@@ -15341,6 +15349,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 			pnode := p.a.nodes[int(pid)]
 			if pnode.kind == .param {
 				p.declare_local_binding(pnode.value)
+				p.forget_comptime_local_value(pnode.value)
 			}
 		}
 		// The explicit `[captures]` are in scope in the closure body just like parameters,
@@ -18464,7 +18473,8 @@ pub fn (mut p Parser) resolve_comptime_string_declarations() map[int]bool {
 				p.collect_comptime_string_import_aliases(child)
 			}
 			for child in p.a.children_of(&node) {
-				if p.resolve_comptime_string_declaration(child) { changed = true }
+				values_changed, guards_changed := p.resolve_comptime_string_declaration(child)
+				changed = changed || values_changed || guards_changed
 			}
 		}
 		if !changed { break }
@@ -18499,7 +18509,7 @@ fn (p &Parser) collect_deferred_comptime_string_imports(id flat.NodeId, mut impo
 		&& !comptime_cond_has_type_metadata(node.value)
 		&& !comptime_cond_has_builtin_threads(node.value) {
 		p.collect_comptime_branch_imports(id, mut imports)
-	} else if node.kind == .block {
+	} else if node.kind in [.block, .comptime_if] {
 		for child in p.a.children_of(&node) {
 			p.collect_deferred_comptime_string_imports(child, mut imports)
 		}
@@ -18518,9 +18528,10 @@ fn (p &Parser) collect_comptime_branch_imports(id flat.NodeId, mut imports map[i
 	}
 }
 
-fn (mut p Parser) resolve_comptime_string_declaration(id flat.NodeId) bool {
-	if int(id) < 0 { return false }
-	mut changed := false
+fn (mut p Parser) resolve_comptime_string_declaration(id flat.NodeId) (bool, bool) {
+	if int(id) < 0 { return false, false }
+	mut values_changed := false
+	mut guards_changed := false
 	mut node := p.a.nodes[int(id)]
 	if node.kind == .const_decl {
 		for child in p.a.children_of(&node) {
@@ -18528,7 +18539,7 @@ fn (mut p Parser) resolve_comptime_string_declaration(id flat.NodeId) bool {
 			if field.kind == .const_field && field.children_count > 0 {
 				if value := p.comptime_node_value(p.a.child(&field, 0)) {
 					key := comptime_const_value_key(p.cur_module, field.value)
-					if key !in p.comptime_const_values { changed = true }
+					if key !in p.comptime_const_values { values_changed = true }
 					p.comptime_const_values[key] = value
 				}
 			}
@@ -18547,13 +18558,41 @@ fn (mut p Parser) resolve_comptime_string_declaration(id flat.NodeId) bool {
 				flat.Node{}
 			}
 			p.a.nodes[int(id)] = node
-			changed = true
+			guards_changed = true
+		} else {
+			// Retained type/reflection/thread guards still contain scalar guards.
+			// Resolve each branch in its own constant/import scope so undecided
+			// declarations cannot publish values into the surrounding file.
+			for child in p.a.children_of(&node) {
+				if p.resolve_comptime_string_declaration_scope(child) { guards_changed = true }
+			}
 		}
 	}
 	if node.kind == .block {
 		for child in p.a.children_of(&node) {
-			if p.resolve_comptime_string_declaration(child) { changed = true }
+			child_values_changed, child_guards_changed := p.resolve_comptime_string_declaration(child)
+			values_changed = values_changed || child_values_changed
+			guards_changed = guards_changed || child_guards_changed
 		}
+	}
+	return values_changed, guards_changed
+}
+
+fn (mut p Parser) resolve_comptime_string_declaration_scope(id flat.NodeId) bool {
+	saved_values := p.comptime_const_values
+	saved_imports := p.comptime_string_imports
+	p.comptime_const_values = saved_values.clone()
+	p.comptime_string_imports = saved_imports.clone()
+	defer {
+		p.comptime_const_values = saved_values
+		p.comptime_string_imports = saved_imports
+	}
+	mut changed := false
+	for {
+		p.collect_comptime_string_import_aliases(id)
+		values_changed, guards_changed := p.resolve_comptime_string_declaration(id)
+		changed = changed || guards_changed
+		if !values_changed && !guards_changed { break }
 	}
 	return changed
 }

@@ -183,6 +183,7 @@ fn test_static_string_conditions_reject_runtime_shadows_of_constants() {
 	for body in [
 		"fn check(route string) { \$if route.starts_with('con') { panic('wrong') } }\nfn main() { check('runtime') }",
 		"fn main() { mut route := 'first'; route = 'second'; \$if route.starts_with('con') { panic('wrong') } }",
+		"fn main() { route := 'constant'; check := fn(route string) { \$if route.starts_with('con') { panic('wrong') } }; check('runtime') }",
 	] {
 		path := os.join_path(root, 'main.v')
 		os.write_file(path, "const route = 'constant'\n${body}\n")!
@@ -193,6 +194,13 @@ fn test_static_string_conditions_reject_runtime_shadows_of_constants() {
 		assert result.output.contains('cannot evaluate `\$if` condition')
 			|| result.output.contains('is mut and may have changed'), result.output
 	}
+	path := os.join_path(root, 'restored.v')
+	os.write_file(path, "fn main() {\n route := 'constant'\n check := fn(route string) { assert route == 'runtime' }\n check('runtime')\n \$if route.starts_with('con') { assert true } \$else { assert false }\n}\n")!
+	result := os.exec([@VEXE, '-nocache', '-gc', 'none', '-no-retry-compilation', '-o',
+		os.join_path(root, 'restored'), path])
+	assert result.exit_code == 0, result.output
+	run := os.exec([os.join_path(root, 'restored')])
+	assert run.exit_code == 0, run.output
 }
 
 fn test_scalar_import_guards_resolve_between_import_waves() {
@@ -202,7 +210,7 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 	os.mkdir_all(os.join_path(root, 'route_data'))!
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), 'Module { name: "import_waves" }')!
-	os.write_file(os.join_path(root, 'route_data/route_data.v'), 'module route_data\npub const yes = true\n')!
+	data_source := 'module route_data\npub const yes = true\npub const value = 3\n'
 	path := os.join_path(root, 'main.v')
 	saved_no_file_index := os.getenv('V3_NO_FILE_IDX')
 	defer { os.setenv('V3_NO_FILE_IDX', saved_no_file_index, true) }
@@ -211,20 +219,56 @@ fn test_scalar_import_guards_resolve_between_import_waves() {
 		mut args := [@VEXE, '-nocache', '-gc', 'none', '-no-retry-compilation']
 		if mode == 'serial' { args << '-no-parallel' }
 		args << ['-o', os.join_path(root, 'selected'), path]
+		os.write_file(os.join_path(root, 'route_data/route_data.v'), data_source)!
 		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = false\n')!
-		os.write_file(path, "import config as cfg\n\$if cfg.enabled {\n import broken\n}\nfn main() { println('ok') }\n")!
+		for nested in [false, true] {
+			body := '\$if cfg.enabled {\n import broken\n}\n'
+			guarded := if nested { '\$if string is string {\n${body}}\n' } else { body }
+			os.write_file(path, "import config as cfg\n${guarded}fn main() { println('ok') }\n")!
+			for broken in ['module broken\nfn unused() { missing() }\n', 'module broken\nfn unused( { }\n'] {
+				os.write_file(os.join_path(root, 'broken/broken.v'), broken)!
+				result := os.exec(args)
+				assert result.exit_code == 0, '${mode}, nested=${nested}: ${result.output}'
+				run := os.exec([os.join_path(root, 'selected')])
+				assert run.exit_code == 0 && run.output.trim_space() == 'ok', run.output
+			}
+		}
+		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = true\n')!
+		for nested in [false, true] {
+			body := '\$if cfg.enabled {\n import route_data as rd\n}\n\$if rd.yes {\n fn chosen() int { return 1 }\n} \$else {\n fn chosen() Unavailable { return missing() }\n}\n'
+			guarded := if nested { '\$if string is string {\n${body}}\n' } else { body }
+			os.write_file(path, 'import config as cfg\n${guarded}fn main() { assert chosen() == 1 }\n')!
+			result := os.exec(args)
+			assert result.exit_code == 0, '${mode}, nested=${nested}: ${result.output}'
+			run := os.exec([os.join_path(root, 'selected')])
+			assert run.exit_code == 0, run.output
+		}
+		os.write_file(path, 'import config as cfg\n\$if string is string {\n \$if cfg.enabled {\n  import broken\n }\n}\nfn main() {}\n')!
 		for broken in ['module broken\nfn unused() { missing() }\n', 'module broken\nfn unused( { }\n'] {
 			os.write_file(os.join_path(root, 'broken/broken.v'), broken)!
 			result := os.exec(args)
-			assert result.exit_code == 0, '${mode}: ${result.output}'
-			run := os.exec([os.join_path(root, 'selected')])
-			assert run.exit_code == 0 && run.output.trim_space() == 'ok', run.output
+			assert result.exit_code != 0, '${mode}: ${result.output}'
+			assert result.output.contains('broken.v'), result.output
 		}
-		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = true\n')!
-		os.write_file(path, 'import config as cfg\n\$if cfg.enabled {\n import route_data as rd\n}\n\$if rd.yes {\n fn chosen() int { return 1 }\n} \$else {\n fn chosen() Unavailable { return missing() }\n}\nfn main() { assert chosen() == 1 }\n')!
+		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = false\n')!
+		os.write_file(os.join_path(root, 'route_data/route_data.v'), data_source.replace('module route_data\n', 'module route_data\nimport config as cfg\n\$if cfg.enabled {\n import broken\n}\n'))!
+		os.write_file(path, "\$if selected.starts_with('y') {\n import route_data\n}\n\$if int is int { const selected = 'yes' }\nfn main() { assert route_data.value == 3 }\n")!
 		result := os.exec(args)
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 		run := os.exec([os.join_path(root, 'selected')])
 		assert run.exit_code == 0, run.output
 	}
+}
+
+fn test_comptime_string_loop_bindings_restore_outer_values_after_unrolling() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_string_loop_shadow_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, "fn main() {\n route := 'constant'\n \$for route in 'runtime'.fields() {\n  \$if route.starts_with('con') { panic('wrong') } \$else { assert route == 'runtime' }\n }\n \$if route.starts_with('con') { assert true } \$else { assert false }\n}\n")!
+	result := os.exec([@VEXE, '-nocache', '-gc', 'none', '-no-retry-compilation', '-o',
+		os.join_path(root, 'restored'), path])
+	assert result.exit_code == 0, result.output
+	run := os.exec([os.join_path(root, 'restored')])
+	assert run.exit_code == 0, run.output
 }

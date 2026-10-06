@@ -20763,6 +20763,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut ri_waves := 0
 	mut pair_cursor := 0
 	mut had_deferred_imports := initial_deferred_imports.len > 0
+	mut resolve_deferred_imports := false
 	for {
 		ri_waves++
 		ri_t0 := time.sys_mono_now()
@@ -20776,14 +20777,15 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		}
 		had_deferred_imports = deferred_imports.len > 0
 		mut scan_ids, next_pair_cursor := collect_import_scan_ids(a, node_idx, pair_cursor)
-		if deferred_imports.len > 0 {
+		if deferred_imports.len > 0 && !resolve_deferred_imports {
 			scan_ids = scan_ids.filter(int(it) !in deferred_imports)
 		}
 		pair_cursor = next_pair_cursor
 		if os.getenv('V3_VERIFY_IMPORT_IDX') != '' {
 			mut full := []i32{}
 			for i in node_idx .. a.nodes.len {
-				if a.nodes[i].kind in [.file, .module_decl, .import_decl] && i !in deferred_imports {
+				if a.nodes[i].kind in [.file, .module_decl, .import_decl]
+					&& (resolve_deferred_imports || i !in deferred_imports) {
 					full << i
 				}
 			}
@@ -21144,7 +21146,18 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		// wave's region starts where this one's appends begin.
 		node_idx = a.nodes.len
 		ri_wave_ns += time.sys_mono_now() - ri_t1
+		released_this_wave := resolve_deferred_imports
+		resolve_deferred_imports = false
 		if wave_files.len == 0 {
+			if deferred_imports.len > 0 && !released_this_wave {
+				// A remaining scalar guard can depend on a retained type/thread
+				// declaration selected by later stages. No further dependency can
+				// supply its value, so preserve the existing import resolution for
+				// one wave. Newly parsed modules resume normal guard filtering.
+				resolve_deferred_imports = true
+				had_deferred_imports = true
+				continue
+			}
 			if prefs.verbose {
 				ri_coll_ms := f64(ri_collision_ns) / 1e6
 				ri_wave_ms := f64(ri_wave_ns) / 1e6
