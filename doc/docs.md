@@ -380,6 +380,9 @@ This is useful when writing small programs, "scripts", or just learning the lang
 Imports and script statements can share a line when separated by semicolons.
 For brevity, `fn main()` will be skipped in this tutorial.
 
+Scripts can print values returned by imported functions, including floating-point values,
+and interpolate them with the same formatting available inside an explicit `main` function.
+
 This means that a "hello world" program in V is as simple as
 
 ```v
@@ -1755,6 +1758,12 @@ Fixed values read from maps, including inline fields, are copied into independen
 Mutable iteration over those fixed elements preserves the same backing lifetime.
 Pointer fields and indexed pointers retain the original fixed-array roots recorded by their owners.
 Borrowing does not clone elements or require a `clone()` method.
+
+Passing a local struct's fixed-array storage by reference keeps the local on the stack when
+the called function only reads or writes scalar fields and array elements. Calls that may retain
+the storage still move it to the heap; `-warn-about-allocs` reports these moves.
+Calls through local function values remain conservative, including values that shadow
+function names.
 Explicitly destroying owned source elements invalidates views of those elements, as with other
 borrowed slices.
 With ownership checking enabled, returning or storing a view copies its buffer to independent
@@ -3296,6 +3305,11 @@ Static type methods can also be used as function values by omitting the call par
 such as `make_user := User.new`. A field selector rooted in a local variable, constant, or
 global reads that value's field; it does not name a static type method.
 
+Instance methods can also be used as unbound function values, such as `f := User.register`.
+The receiver becomes the first parameter, so a mutable receiver is passed as `f(mut user)`.
+Inside a method reflection loop, `T.$method` likewise creates an unbound function value.
+Unbound and reflected method values follow the same method privacy and `mut` argument rules.
+
 > [!NOTE]
 > Note, that these are not constructors, but simple functions. V doesn't have constructors or
 > classes.
@@ -3591,6 +3605,11 @@ changes private fields in another module. An immutable value parameter cannot ca
 such a method: mutations would affect its copy and be lost when the function returns.
 Declare the parameter or receiver with `mut` when its changes must reach the caller.
 
+An explicit `mut param &T` takes mutable pointer storage. Passing `mut &value`
+creates temporary pointer storage for that call, including when `value` is a
+`mut value T` parameter. Changes to fields reach `value`; rebinding the temporary
+pointer does not rebind the caller's value.
+
 ```v
 struct User {
 	name string
@@ -3732,6 +3751,11 @@ Function values passed to generic methods are checked by their parameter and ret
 Parameter names and whitespace do not affect function type compatibility.
 
 ### Closures
+
+An instance method can be used as an unbound function value through its type, such as
+`App.method`. Its first parameter is the receiver, including the receiver's `&` or `mut`
+modifier. This form captures no receiver and creates no closure. The same applies to
+`T.$method` inside a compile-time loop over `T.methods`.
 
 Callbacks in specialized generic functions retain the functions they call, including imported
 functions referenced only from the callback body.
@@ -4079,6 +4103,9 @@ See also [String interpolation](#string-interpolation).
 
 Automatic string conversion also works for values whose local name was used for a reference in
 an earlier scope.
+
+Recursive sum types print nested values, including repeated types and shared payloads.
+An actual circular reference is shown as `<circular>`.
 
 If you want to define a custom print value for your type, simply define a
 `str() string` method:
@@ -7513,7 +7540,7 @@ project folder, `vlib`, and the global module folders. Nothing records which of
 those a build actually reaches, so a `v.mod` quietly collects modules that no
 longer have anything to do with the code.
 
-`v mod why` answers that question. It prints the chain of imports that brings a
+`v mod why` answers that question. It prints the shortest chain of imports that brings a
 module into the build, one module per line, starting at the project itself:
 
 ```shell
@@ -8378,6 +8405,11 @@ fn main() {
 #### <h4 id="comptime-method-params">.params</h4>
 
 You can retrieve information about struct method params.
+
+Generic comptime method calls enforce the same mutable pointer parameter requirements
+as calls through a concrete receiver type, including calls forwarded through generic functions
+and methods. An explicit `mut param &T` requires a mutable `&T` variable, rather than a
+`mut param T` value parameter.
 
 Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
 Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.

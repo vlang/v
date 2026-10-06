@@ -19,6 +19,19 @@ assert strconv.parse_int('0777', 10, 64)! == 777
 
 Digits must be valid for the selected base, so `08` and `09` fail with base 0.
 
+## Integer formatting
+
+`format_int` and `format_uint` represent signed and unsigned integers in any radix
+from 2 to 36. Digits above 9 use lowercase letters; negative signed values keep
+a leading minus sign, including `min_i64`.
+
+```v
+import strconv
+
+assert strconv.format_int(min_i64, 16) == '-8000000000000000'
+assert strconv.format_uint(max_u64, 16) == 'ffffffffffffffff'
+```
+
 ## Buffer formatting
 
 `write_dec` and `write_dec_u` write a decimal integer into a caller-provided `[]u8`
