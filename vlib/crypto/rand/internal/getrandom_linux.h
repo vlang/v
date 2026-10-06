@@ -3,10 +3,9 @@
 
 /*
  * v_crypto_getrandom fills `buf` with `n` random bytes, like getrandom(2) with no
- * flags. The libc function answers from the vDSO when it can (glibc 2.41 and later
- * on Linux 6.11 and later), without entering the kernel for every call; it is about
- * 13 times faster than the syscall for 16 bytes. A libc without <sys/random.h>
- * (glibc before 2.25, musl before 1.1.20) gets the syscall, as before.
+ * flags. Using libc allows its platform-specific optimizations, including vDSO
+ * support where available. If the compiler cannot find <sys/random.h>, use the
+ * syscall as before. Both paths retain getrandom(2)'s return value and flags.
  */
 #include <unistd.h>
 #include <sys/syscall.h>
