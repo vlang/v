@@ -61,7 +61,7 @@ fn scalar_array_generate(source string, compile_defines []string) !string {
 	assert tc.errors.len == 0, tc.errors.str()
 	transform.transform(mut a, &tc)
 	tc.annotate_types()
-	used := markused.mark_used(a, tc)
+	used, _ := markused.mark_all_used_with_generic_usage(a, tc, [])
 	mut g := FlatGen.new()
 	g.set_target(pref.target_from('linux', 'amd64') or { panic(err) })
 	g.set_compile_defines(compile_defines)
@@ -111,7 +111,7 @@ fn array_push(mut values []i64, value &i64) {
 }
 
 pub fn check() {
-	mut values := [i64(1)]
+	mut values := []i64{len: 1, cap: 4, init: 1}
 	value := i64(42)
 	array_push(mut values, &value)
 }
@@ -122,5 +122,6 @@ pub fn check() {
 }
 
 fn scalar_array_body(generated string, name string) string {
+	assert generated.contains('void ${name}('), 'missing generated function ${name}'
 	return generated.all_after_last('void ${name}(').all_after('{').all_before('\n}').trim_space()
 }
