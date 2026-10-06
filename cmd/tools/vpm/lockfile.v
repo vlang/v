@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
+import crypto.sha256
 import json2
 import os
 import time
@@ -28,6 +29,9 @@ pub:
 	revision string
 	// url is the source the module was cloned from.
 	url string
+	// hash is the SHA256 of the module's file content, used for integrity
+	// verification and content-addressable storage.
+	hash string
 }
 
 // LockFile holds the resolved revisions of the dependencies of a project.
@@ -126,6 +130,26 @@ pub fn (mut lf LockFile) remove(name string) {
 	lf.modules.delete(name)
 }
 
+// dir_sha256 computes the SHA256 hash of all files in `dir` recursively,
+// returning a hex-encoded digest. Files are sorted by path for determinism.
+fn dir_sha256(dir string) string {
+	mut files := os.walk_ext(dir, '')
+	files.sort()
+	mut content := []u8{}
+	for f in files {
+		if os.is_file(f) {
+			file_content := os.read_file(f) or { continue }
+			content << file_content.bytes()
+		}
+	}
+	sum := sha256.sum(content)
+	mut hex := ''
+	for b in sum {
+		hex += b.hex()
+	}
+	return hex
+}
+
 // pseudo_version returns a deterministic version-like identifier of a commit,
 // in the form `v0.0.0-<UTC time of ts>-<first 12 chars of sha>`, e.g.
 // `v0.0.0-20240102150405-0123456789ab`. It is recorded as the `resolved`
@@ -215,6 +239,7 @@ fn (mut scope LockScope) record(m Module) {
 		resolved:  resolved
 		revision:  revision
 		url:       m.url
+		hash:      dir_sha256(m.install_path)
 	}
 	verbose_println('Locked `${m.name}` at revision `${revision}`.')
 }
@@ -316,6 +341,12 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 			clone_version := if is_version_range(version) { '' } else { version }
 			vcs.clone(url, clone_version, tmp_path)!
 			vcs.checkout(tmp_path, entry.revision)!
+			if entry.hash != '' {
+				actual_hash := dir_sha256(tmp_path)
+				if actual_hash != entry.hash {
+					return error('content hash mismatch for `${dep}`: lockfile records `${entry.hash}`, but cloned content hashes to `${actual_hash}`')
+				}
+			}
 			return if is_version_range(version) { entry.resolved } else { version }
 		}
 	} else if settings.is_locked && scope.active {
@@ -423,6 +454,7 @@ fn refresh_lock_entries(results []UpdateResult) {
 				resolved:  pseudo_version(head_commit_unix_ts(res.install_path), revision)
 				revision:  revision
 				url:       entry.url
+				hash:      dir_sha256(res.install_path)
 			}
 			refreshed[name] = updated
 		}
