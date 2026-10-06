@@ -9360,6 +9360,12 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 		return none
 	}
 	base := tc.a.child_node(&node, 0)
+	// A namespace value can share a function's name; only call syntax selects
+	// that function. Keep the stored value's type and identity for bare selectors.
+	if tc.is_namespace_selector(node, base)
+		&& (tc.global_type_for_selector(node) != none || tc.const_type_for_selector(node) != none) {
+		return none
+	}
 	if base.kind == .ident {
 		if base.value == 'C' {
 			key := 'C.${node.value}'
