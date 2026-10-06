@@ -43,6 +43,10 @@ Entries for the same declaration and parameter share a retained result when its 
 ordered source indexes match exactly. Each entry still retains its own membership conditions;
 shared paths and source indexes are charged once. Previously retained allocations stay charged
 until the query finishes.
+If a completed query and a retained entry prove the same ordered result under complementary
+conditions for one declaration ID, a new entry can omit it. The other conditions must match exactly.
+Previously retained entries remain immutable and charged, and lookups prefer matching entries
+with fewer conditions.
 
 Serial ownership checks reuse resolved call information during return analysis, as parallel
 checks do. This avoids false moved-value diagnostics from rechecking an earlier chained-call

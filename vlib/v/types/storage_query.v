@@ -55,14 +55,15 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 			&VisibleMutationCache{ storage_query: true }
 		}
 		if inherited_owner {
-			for cached in owner.storage_query_results[cache_key] {
-				if storage_query_guards_match(cached.guards, visiting) {
-					parent := unsafe { prealloc_scope_suspend(scope) }
-					cache.record_storage_query_certificate(cached.guards)
-					unsafe { prealloc_scope_resume(scope, parent) }
-					// The outer memo arena outlives every nested query; consumers only read it.
-					return cached.writes
-				}
+			entries := owner.storage_query_results[cache_key]
+			matched := storage_query_matching_index(entries, visiting)
+			if matched >= 0 {
+				cached := entries[matched]
+				parent := unsafe { prealloc_scope_suspend(scope) }
+				cache.record_storage_query_certificate(cached.guards)
+				unsafe { prealloc_scope_resume(scope, parent) }
+				// The outer memo arena outlives every nested query; consumers only read it.
+				return cached.writes
 			}
 		}
 		mut view := tc.fork_storage_query_view()
@@ -84,10 +85,19 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 			trace.guards.delete(guard_id)
 		}
 		// Map iteration copies string keys, so estimate inside the disposable arena.
-		certificate := if inherited_owner && trace.complete {
+		mut certificate := if inherited_owner && trace.complete {
 			storage_query_encode_guards(trace.guards)
 		} else {
 			StorageQueryGuards{}
+		}
+		if inherited_owner && trace.complete && trace.guards.len > 0
+			&& owner.storage_query_can_admit(storage_query_entry_bytes(cache_key, certificate) -
+				int(sizeof(u64))) {
+			if complementary := owner.storage_query_union_guard(cache_key, result, trace.guards) {
+				// Both memberships prove the same ordered result; only this new trace changes.
+				trace.guards.delete(complementary)
+				certificate = storage_query_encode_guards(trace.guards)
+			}
 		}
 		mut estimated_bytes := if inherited_owner && trace.complete {
 			storage_query_result_bytes(cache_key, result, certificate)
@@ -183,6 +193,65 @@ fn storage_query_guards_match(guards StorageQueryGuards, visiting map[u64]bool) 
 		if id in visiting { return false }
 	}
 	return true
+}
+
+fn storage_query_matching_index(entries []StorageQueryResult, visiting map[u64]bool) int {
+	mut matched := -1
+	mut conditions := 0
+	for i, entry in entries {
+		entry_conditions := entry.guards.present.len + entry.guards.absent.len
+		if (matched < 0 || entry_conditions < conditions)
+			&& storage_query_guards_match(entry.guards, visiting) {
+			matched = i
+			conditions = entry_conditions
+			if conditions == 0 { return matched }
+		}
+	}
+	return matched
+}
+
+fn storage_query_complementary_guard(left StorageQueryGuards, right map[u64]bool) ?u64 {
+	if left.present.len + left.absent.len != right.len { return none }
+	mut differences := 0
+	mut complementary := u64(0)
+	for id in left.present {
+		actual := right[id] or { return none }
+		if !actual {
+			differences++
+			complementary = id
+			if differences > 1 { return none }
+		}
+	}
+	for id in left.absent {
+		actual := right[id] or { return none }
+		if actual {
+			differences++
+			complementary = id
+			if differences > 1 { return none }
+		}
+	}
+	if differences == 1 { return complementary }
+	return none
+}
+
+fn (cache &VisibleMutationCache) storage_query_union_guard(key string, result map[string][]int, guards map[u64]bool) ?u64 {
+	paths := result.keys()
+	for entry in cache.storage_query_results[key] {
+		complementary := storage_query_complementary_guard(entry.guards, guards) or { continue }
+		if result.len != entry.writes.len { continue }
+		if paths.len == 0 { return complementary }
+		$if prealloc {
+			scope := unsafe { prealloc_scope_begin() }
+			equal := storage_query_ordered_results_equal(paths, result, entry.writes)
+			unsafe { prealloc_scope_end(scope) }
+			if equal { return complementary }
+		} $else {
+			if storage_query_ordered_results_equal(paths, result, entry.writes) {
+				return complementary
+			}
+		}
+	}
+	return none
 }
 
 fn (mut cache VisibleMutationCache) record_storage_query_certificate(guards StorageQueryGuards) {
