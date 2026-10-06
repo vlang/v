@@ -1328,6 +1328,46 @@ fn test_it_refuses_a_file_that_is_not_plain_json() {
 	assert read_config(path) == before, 'a JSONC file was rewritten'
 }
 
+fn test_print_gives_a_pasteable_member_when_the_key_is_absent() {
+	path := config_fixture('printnokey', '{"unrelated":{}}')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	out := print_one(h, path, false)
+	// The entry on its own is not something a client can read, so what is printed
+	// has to be the member that holds it.
+	assert out.contains('add this member'), out
+	assert out.contains('"mcp": { "vlang": '), out
+	assert !out.contains('top-level key:'), out
+}
+
+fn test_print_gives_the_whole_file_when_there_is_none() {
+	path := config_fixture('printmissing', '')!
+	os.rm(path) or {}
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	out := print_one(h, path, false)
+	assert out.contains('no config file yet'), out
+	assert out.contains('"mcp": { "vlang": '), out
+}
+
+fn test_print_still_names_the_key_when_it_is_there() {
+	path := config_fixture('printkey', '{"mcp":{"duck":{}}}')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	out := print_one(h, path, false)
+	assert out.contains('top-level key: mcp'), out
+	assert !out.contains('add this member'), out
+}
+
 fn test_it_refuses_a_config_with_trailing_commas() {
 	path := config_fixture('trailing', '{"mcp":{"duck":{},}}')!
 	assert !is_plain_json(read_config(path)), 'a trailing comma must not count as plain JSON'

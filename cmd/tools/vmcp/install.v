@@ -66,7 +66,7 @@ fn install(args []string) {
 	}
 	path := harness.path_for(os.getwd(), project)
 	if print_only {
-		print_one(harness, path, project)
+		println(print_one(harness, path, project))
 		return
 	}
 	write_entry(harness, path, project) or {
@@ -169,7 +169,7 @@ fn print_registrations(project bool) {
 		if any {
 			println('')
 		}
-		print_one(h, path, project)
+		println(print_one(h, path, project))
 		any = true
 	}
 	if !any {
@@ -178,13 +178,31 @@ fn print_registrations(project bool) {
 	}
 }
 
-fn print_one(h Harness, path string, project bool) {
-	println('${h.label}  (${path})')
-	println('  top-level key: ${h.key}')
-	println('  ${server_id}: ${h.entry(server_exe(), server_args())}')
-	if project && !h.has_project_scope() {
-		println('  (no project-level file)')
+// print_one is what `v mcp install <client> --print` reports for one client. It
+// returns the text rather than printing it, so the wording can be asserted.
+fn print_one(h Harness, path string, project bool) string {
+	mut out := '${h.label}  (${path})\n'
+	if !os.exists(path) {
+		// Nothing is there to show, so the whole file is what has to be created.
+		out += '  no config file yet; this is what would be created:\n'
+		out += '  ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }\n'
+		return out
 	}
+	text := os.read_file(path) or { return out }
+	if has_top_level_key(text, h.key) {
+		out += '  top-level key: ${h.key}\n'
+		out += '  ${server_id}: ${entry_text(h)}\n'
+	} else {
+		// The entry alone is not something a client can read: it has to sit
+		// inside the client's own key. Print the member, which is what a reader
+		// pastes, rather than the entry, which is not.
+		out += '  no top-level ${json_string(h.key)} yet; add this member:\n'
+		out += '  ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }\n'
+	}
+	if project && !h.has_project_scope() {
+		out += '  (no project-level file)\n'
+	}
+	return out
 }
 
 // server_exe is the compiler this tool is running as, which is the one the
