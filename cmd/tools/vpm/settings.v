@@ -36,6 +36,8 @@ mut:
 	is_dry_run bool
 	// --exclude-newer excludes tags newer than the given date from resolution.
 	exclude_newer string
+	// --minimum-release-age excludes tags newer than the given duration from resolution.
+	minimum_release_age string
 }
 
 // local_vmodules_path returns the directory `v install --local` installs into:
@@ -120,6 +122,7 @@ fn init_settings() VpmSettings {
 		pin_module:            pin_module
 		is_dry_run:            '--dry-run' in opts
 		exclude_newer:         cmdline.option(args, '--exclude-newer', '')
+		minimum_release_age:   cmdline.option(args, '--minimum-release-age', '')
 	}
 }
 

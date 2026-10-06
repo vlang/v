@@ -3,6 +3,7 @@ module main
 import crypto.sha256
 import os
 import semver
+import time
 
 // is_version_range distinguishes explicit constraints from existing Git refs.
 fn is_version_range(version string) bool {
@@ -113,12 +114,54 @@ fn (vcs VCS) resolve_version(url string, version string) !string {
 					continue
 				}
 			}
+			if settings.minimum_release_age != '' {
+				tag_date := tag_commit_date(url, tag) or { continue }
+				if is_tag_too_new(tag_date, settings.minimum_release_age) {
+					continue
+				}
+			}
 			tags << tag
 		}
 	}
 	selected := select_version_tag(tags, version)!
 	verbose_println('Resolved `${version}` to `${selected}` from `${url}`.')
 	return selected
+}
+
+fn is_tag_too_new(tag_date string, age string) bool {
+	mut duration := age
+	mut unit := 'h'
+	if age.ends_with('d') {
+		unit = 'd'
+		duration = age[..age.len - 1]
+	} else if age.ends_with('h') {
+		duration = age[..age.len - 1]
+	} else if age.ends_with('m') {
+		unit = 'm'
+		duration = age[..age.len - 1]
+	}
+	mut n := 0
+	for c in duration {
+		if c.is_digit() {
+			n = n * 10 + (c - `0`)
+		} else {
+			return false
+		}
+	}
+	mut threshold := time.now()
+	match unit {
+		'd' {
+			threshold = threshold.add_days(-n)
+		}
+		'm' {
+			threshold = threshold.add_seconds(-n * 60)
+		}
+		else {
+			threshold = threshold.add_seconds(-n * 3600)
+		}
+	}
+	tag_time := time.parse_rfc3339(tag_date) or { return false }
+	return tag_time.unix() > threshold.unix()
 }
 
 fn tag_commit_date(url string, tag string) !string {
