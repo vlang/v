@@ -211,6 +211,10 @@ value too, while the ones built on the Win32 API (`os.mkdir`, `os.rmdir`, `os.ls
 hold one of these codes for a condition, so prefer the predicates over comparing
 `err.code()` with them.
 
+`os.symlink` and `os.link` preserve the Windows API's error code when link creation fails,
+so duplicate targets and missing paths can be classified with these predicates.
+`os.hostname` and `os.loginname` also preserve their Win32 error codes on failure.
+
 ---
 
 ### Security advice related to TOCTOU attacks
