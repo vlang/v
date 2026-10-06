@@ -175,12 +175,8 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 		// resolving the request; consume no dependencies or min_v from that probe.
 		probe := p.overrides.len > 0 && request == m
 		p.encountered_range = p.encountered_range || is_version_range(version)
-		mut probe_scope := LockScope{}
-		mut resolved_version := if probe {
-			clone_module_source(settings.vcs, ident, ident, '', tmp_path, mut probe_scope)
-		} else {
-			clone_module_source(settings.vcs, request, ident, version, tmp_path, mut scope)
-		} or {
+		mut resolved_version := clone_initial_override_source(probe, settings.vcs, ident,
+			request, version, tmp_path, mut scope) or {
 			report_module_clone_error(ident, request, version, err.msg())
 			rmdir_all(tmp_path) or {}
 			p.errors++
@@ -330,6 +326,15 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			p.parse_module(d, mut selector, mut scope)
 		}
 	}
+}
+
+// A manifest-name probe must not consume or enforce the root lock request.
+fn clone_initial_override_source(probe bool, vcs VCS, ident string, request string, version string, tmp_path string, mut scope LockScope) !string {
+	if probe {
+		mut probe_scope := LockScope{}
+		return clone_module_source(vcs, ident, ident, '', tmp_path, mut probe_scope)!
+	}
+	return clone_module_source(vcs, request, ident, version, tmp_path, mut scope)!
 }
 
 fn dependency_request_version(request string) string {

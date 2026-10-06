@@ -199,30 +199,30 @@ fn (m Module) install(mut scope LockScope) InstallResult {
 		exit(1)
 	}
 	if m.is_installed {
+		// The lock only applies while the project still asks for the
+		// dependency string and source it was recorded under; a changed one
+		// falls through to the update below and is then locked anew.
+		if entry := scope.locked_entry(m.requested, m.url) {
+			installed_revision := head_revision(m.install_path)
+			if installed_revision == entry.revision {
+				verbose_println('`${m.name}` is already installed at the locked revision `${entry.revision}`.')
+				return .skipped
+			}
+			// The installed checkout drifted from the locked revision: put the
+			// project back on the lock, fetching the revision when the checkout
+			// is older than it. The local-changes guard above already refused
+			// checkouts holding work that would be lost.
+			println('Restoring `${m.name}` to the locked revision `${entry.revision}` ...')
+			(m.vcs or { settings.vcs }).checkout(m.install_path, entry.revision) or {
+				vpm_error('failed to restore `${m.name}` to the locked revision `${entry.revision}` in `${m.install_path_fmted}`: ${err.msg()}')
+				return .failed
+			}
+			return .skipped
+		}
 		// Case: installed, but not an explicit version. Update instead of continuing the installation,
 		// unless the lockfile of the project in scope records the module: installs honor
 		// the locked revision, and moving it forward is what `v update` is for.
 		if m.version == '' && m.installed_version == '' {
-			// The lock only applies while the project still asks for the
-			// dependency string and source it was recorded under; a changed one
-			// falls through to the update below and is then locked anew.
-			if entry := scope.locked_entry(m.requested, m.url) {
-				installed_revision := head_revision(m.install_path)
-				if installed_revision == entry.revision {
-					verbose_println('`${m.name}` is already installed at the locked revision `${entry.revision}`.')
-					return .skipped
-				}
-				// The installed checkout drifted from the locked revision: put the
-				// project back on the lock, fetching the revision when the checkout
-				// is older than it. The local-changes guard above already refused
-				// checkouts holding work that would be lost.
-				println('Restoring `${m.name}` to the locked revision `${entry.revision}` ...')
-				(m.vcs or { settings.vcs }).checkout(m.install_path, entry.revision) or {
-					vpm_error('failed to restore `${m.name}` to the locked revision `${entry.revision}` in `${m.install_path_fmted}`: ${err.msg()}')
-					return .failed
-				}
-				return .skipped
-			}
 			if m.is_external && m.url.starts_with('http://') {
 				vpm_update([
 					m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator, '.'),

@@ -83,6 +83,10 @@ fn test_override_selects_source_manifest_dependencies_and_locked_revision() {
 	// A warm store and a fresh store both keep the exact selected revision.
 	cmd_ok_args(@LOCATION, [override_vpm_exe, 'install', '--locked'])
 	assert override_git(os.join_path(store, 'pkg'), ['rev-parse', 'HEAD']) == parent_two
+	assert override_git(os.join_path(store, 'leaf'), ['rev-parse', 'HEAD']) == leaf_one
+	// Matching locks also avoid prompts for a regular warm reinstall.
+	cmd_ok_args(@LOCATION, [override_vpm_exe, 'install'])
+	assert override_git(os.join_path(store, 'leaf'), ['rev-parse', 'HEAD']) == leaf_one
 	fresh := os.join_path(override_test_root, 'exact-fresh-store')
 	test_utils.set_test_env(fresh)
 	cmd_ok_args(@LOCATION, [override_vpm_exe, 'install', '--locked'])
