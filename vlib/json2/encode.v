@@ -888,11 +888,13 @@ fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
 // encoding out of the comptime field loop. Otherwise every field gets its own
 // copy of the key-collision scan and key selection code.
 @[noinline]
-fn (mut encoder Encoder) encode_struct_field_key(mut used_keys []string, old_used_keys []string, prefix string, field_info EncoderFieldInfo, is_first bool) bool {
+fn (mut encoder Encoder) encode_struct_field_key(mut used_keys []string, old_used_keys []string, prefix string, field_info EncoderFieldInfo, is_first bool, track_keys bool) bool {
 	if field_info.key_name in old_used_keys {
 		return encoder.encode_object_key(is_first, prefix + field_info.key_name)
 	}
-	used_keys << field_info.key_name
+	if track_keys {
+		used_keys << field_info.key_name
+	}
 	return encoder.encode_object_key(is_first, field_info.key_name)
 }
 
@@ -910,7 +912,7 @@ fn (mut encoder Encoder) encode_embedded_struct_field_key(mut used_keys []string
 // left out as empty, and returns the new `is_first`. It is specialized per field type, so
 // all structs share it and each struct only pays for one call per field. `other_keys` are
 // the keys of the outer struct for an embedded struct field, else the keys used before.
-fn (mut encoder Encoder) encode_struct_field[F](val F, field_info EncoderFieldInfo, is_first bool, mut used_keys []string, other_keys []string, prefix string, embedded bool) bool {
+fn (mut encoder Encoder) encode_struct_field[F](val F, field_info EncoderFieldInfo, is_first bool, mut used_keys []string, other_keys []string, prefix string, embedded bool, track_keys bool) bool {
 	if !struct_field_should_encode(field_info, val) {
 		return is_first
 	}
@@ -918,7 +920,8 @@ fn (mut encoder Encoder) encode_struct_field[F](val F, field_info EncoderFieldIn
 		encoder.encode_embedded_struct_field_key(mut used_keys, other_keys, prefix, field_info,
 			is_first)
 	} else {
-		encoder.encode_struct_field_key(mut used_keys, other_keys, prefix, field_info, is_first)
+		encoder.encode_struct_field_key(mut used_keys, other_keys, prefix, field_info, is_first,
+			track_keys)
 	}
 	encoder.encode_struct_field_value(val)
 	return new_is_first
@@ -946,6 +949,13 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 	mut is_first := was_first
 	mut used_keys := old_used_keys
 	mut i := 0
+	// Only embedded children consume the keys collected by this struct.
+	mut track_keys := false
+	$for field in T.fields {
+		$if field.is_embed {
+			track_keys = true
+		}
+	}
 
 	$for field in T.fields {
 		$if !field.is_embed {
@@ -954,11 +964,11 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 					shared field_value := unsafe { val.$(field.name) }
 					rlock field_value {
 						is_first = encoder.encode_struct_field(field_value, field_info_cache.field_infos[i],
-							is_first, mut used_keys, old_used_keys, prefix, false)
+							is_first, mut used_keys, old_used_keys, prefix, false, track_keys)
 					}
 				} $else {
 					is_first = encoder.encode_struct_field(val.$(field.name), field_info_cache.field_infos[i],
-						is_first, mut used_keys, old_used_keys, prefix, false)
+						is_first, mut used_keys, old_used_keys, prefix, false, track_keys)
 				}
 			}
 		}
@@ -1019,11 +1029,11 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 					shared field_value := unsafe { val.$(field.name) }
 					rlock field_value {
 						is_first = encoder.encode_struct_field(field_value, field_info_cache.field_infos[i],
-							is_first, mut used_keys, reserved_keys, prefix, true)
+							is_first, mut used_keys, reserved_keys, prefix, true, true)
 					}
 				} $else {
 					is_first = encoder.encode_struct_field(val.$(field.name), field_info_cache.field_infos[i],
-						is_first, mut used_keys, reserved_keys, prefix, true)
+						is_first, mut used_keys, reserved_keys, prefix, true, true)
 				}
 			}
 		}
