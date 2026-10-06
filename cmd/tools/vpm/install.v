@@ -99,6 +99,7 @@ fn vpm_install(query []string) {
 		vpm_error('failed to install ${parse_errors} module(s) of the project; not recording `${lockfile_name}`.')
 		exit(1)
 	}
+	resolve_and_lock(mut modules, scope)
 	scope.finish()
 }
 
