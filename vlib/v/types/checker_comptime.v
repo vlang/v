@@ -260,6 +260,71 @@ fn (tc &TypeChecker) comptime_static_expr_has_void_method_call(id flat.NodeId, v
 	return false
 }
 
+fn (tc &TypeChecker) comptime_static_method_condition_has_metadata(id flat.NodeId, var_name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .selector && node.value == '$' {
+		// The reflected callee's method binding is not a runtime metadata guard.
+		return node.children_count > 0
+			&& tc.comptime_static_method_condition_has_metadata(tc.a.child(node, 0), var_name)
+	}
+	if node.kind == .selector && node.value != '$' && node.children_count > 0 {
+		base := tc.a.child_node(node, 0)
+		if base.kind == .ident && base.value == var_name {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.comptime_static_method_condition_has_metadata(tc.a.child(node, i), var_name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) comptime_static_method_int_value(id flat.NodeId, var_name string, item ComptimeStaticValueCase) ?i64 {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.comptime_static_method_int_value(tc.a.child(node, 0), var_name, item)
+	}
+	if node.kind == .int_literal {
+		return strconv.parse_int(node.value.replace('_', ''), 0, 64) or { return none }
+	}
+	if node.kind == .selector && node.value == 'len' && node.children_count > 0 {
+		collection := tc.a.child_node(node, 0)
+		if collection.kind == .selector && collection.value in ['args', 'params']
+			&& collection.children_count > 0 {
+			base := tc.a.child_node(collection, 0)
+			if base.kind == .ident && base.value == var_name {
+				return i64(item.param_types.len)
+			}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_method_min_arg_count(receiver_name string, method ComptimeStaticValueCase) int {
+	mut count := method.param_types.len
+	if count > 0 && method.param_types[count - 1].starts_with('...') {
+		return count - 1
+	}
+	for count > 0 {
+		typ := tc.comptime_static_method_param_type(receiver_name, method, count - 1)
+		if unalias_type(typ) is OptionType
+			|| tc.params_structs[unalias_and_unwrap_pointer_type(typ).name()] {
+			count--
+			continue
+		}
+		break
+	}
+	return count
+}
+
 fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, node flat.Node, value_cases ComptimeStaticValueCases) {
 	if !value_cases.known || value_cases.cases.len == 0 || node.children_count == 0 {
 		return
@@ -283,8 +348,38 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 	}
 	mut return_type := ''
 	for method in value_cases.cases {
-		if fixed_arg_count > method.param_types.len
-			|| (fixed_arg_count == actual_count && actual_count != method.param_types.len) {
+		method_key := tc.concrete_method_signature_key(receiver_name, method.name) or {
+			'${receiver_name}.${method.name}'
+		}
+		has_implicit_ctx := tc.fn_implicit_veb_ctx[method_key]
+		params := tc.fn_param_types[method_key] or { []Type{} }
+		mut explicit_ctx := has_implicit_ctx && fixed_arg_count == actual_count
+			&& actual_count > method.param_types.len
+		if has_implicit_ctx && fixed_arg_count > 0 && params.len > 1 {
+			first_arg := tc.call_arg_value(tc.a.child(&node, 1))
+			actual := tc.resolve_type(first_arg)
+			ctx_matches := tc.receiver_compatible(actual, params[1])
+				|| tc.type_compatible(actual, params[1])
+			if fixed_arg_count < actual_count {
+				explicit_ctx = ctx_matches
+			} else if !explicit_ctx && ctx_matches && method.param_types.len > 0 {
+				first_route_param := tc.comptime_static_method_param_type(receiver_name, method, 0)
+				explicit_ctx = !tc.receiver_compatible(actual, first_route_param)
+					&& !tc.type_compatible(actual, first_route_param)
+			}
+		}
+		param_offset := if explicit_ctx { 1 } else { 0 }
+		param_count := method.param_types.len + param_offset
+		min_count := tc.comptime_static_method_min_arg_count(receiver_name, method) + param_offset
+		is_variadic := method.param_types.len > 0
+			&& method.param_types.last().starts_with('...')
+		if (!is_variadic && fixed_arg_count > param_count)
+			|| (fixed_arg_count == actual_count && actual_count < min_count) {
+			if method.runtime_dispatch {
+				// Runtime metadata dispatch retains branches while the transformer
+				// removes calls whose argument list cannot invoke this method.
+				continue
+			}
 			mut pos := node.pos
 			if file := tc.a.source_files[node.pos.id] {
 				if source := tc.source_texts_by_file[file.name] {
@@ -297,10 +392,27 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 					}
 				}
 			}
-			tc.record_error_severity_at(.call_arg_mismatch, 'expected ${method.param_types.len} arguments to method ${receiver_name}.${method.name}, but got ${actual_count}', id, pos, 'cgen error:')
+			tc.record_error_severity_at(.call_arg_mismatch, 'expected ${param_count} arguments to method ${receiver_name}.${method.name}, but got ${actual_count}', id, pos, 'cgen error:')
 			return
 		}
+		if explicit_ctx && params.len > 1 {
+			arg_id := tc.call_arg_value(tc.a.child(&node, 1))
+			actual := tc.resolve_type(arg_id)
+			if actual !is Unknown && !tc.receiver_compatible(actual, params[1])
+				&& !tc.type_compatible(actual, params[1]) {
+				tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual.name()}` as `${call_argument_type_name(params[1])}` in argument 1 to `${receiver_name}.${method.name}`', arg_id, tc.a.node(arg_id).pos)
+				return
+			}
+			if !tc.a.node(arg_id).is_mut && !tc.disable_explicit_mutability {
+				tc.record_error_at(.call_arg_mismatch, 'method `${method.name}` parameter `ctx` is `mut`, so use `mut ${tc.source_text_for_node(arg_id)}` instead', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+				return
+			}
+		}
 		for arg_index in 0 .. fixed_arg_count {
+			param_index := arg_index - param_offset
+			if param_index < 0 {
+				continue
+			}
 			raw_arg_id := tc.a.child(&node, arg_index + 1)
 			raw_arg := tc.a.child_node(&node, arg_index + 1)
 			arg_id := tc.call_arg_value(raw_arg_id)
@@ -310,12 +422,12 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				tc.record_error_at(.call_arg_mismatch, 'to auto-expand `[]string` arguments in comptime method calls, use `...${tc.source_text_for_node(arg_id)}`', arg_id, tc.a.node(arg_id).pos)
 				return
 			}
-			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
+			if param_index < method.param_is_mut_ref.len && method.param_is_mut_ref[param_index]
 				&& !tc.a.node(arg_id).is_mut && !tc.disable_explicit_mutability {
 				expected := tc.comptime_static_method_param_type(receiver_name, method,
-					arg_index)
-				param_name := if arg_index < method.param_names.len {
-					method.param_names[arg_index]
+					param_index)
+				param_name := if param_index < method.param_names.len {
+					method.param_names[param_index]
 				} else {
 					''
 				}
@@ -334,13 +446,13 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				return
 			}
-			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
-				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len {
+			if param_index < method.param_is_mut_ref.len && method.param_is_mut_ref[param_index]
+				&& tc.a.node(arg_id).is_mut && param_index < method.param_types.len {
 				expected := tc.comptime_static_method_param_type(receiver_name, method,
-					arg_index)
+					param_index)
 				if tc.mut_pointer_slot_arg_rejected(arg_id, expected) {
-					param_name := if arg_index < method.param_names.len {
-						method.param_names[arg_index]
+					param_name := if param_index < method.param_names.len {
+						method.param_names[param_index]
 					} else {
 						''
 					}
@@ -349,12 +461,12 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 					tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.a.node(arg_id).pos)
 					return
 				}
-			} else if arg_index < method.param_is_mut.len && method.param_is_mut[arg_index]
-				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len {
+			} else if param_index < method.param_is_mut.len && method.param_is_mut[param_index]
+				&& tc.a.node(arg_id).is_mut && param_index < method.param_types.len {
 				// A `mut param T` parameter gets the address of `arg`, or the `&T`
 				// that `arg` already holds, so it has to be a `T`.
 				expected := tc.comptime_static_method_param_type(receiver_name, method,
-					arg_index)
+					param_index)
 				source := tc.mut_pointer_slot_arg_source_type(arg_id)
 				value := if source is Pointer { source.base_type } else { source }
 				if expected is Pointer && !tc.type_compatible(value, expected.base_type) {
@@ -392,6 +504,9 @@ fn (tc &TypeChecker) comptime_static_method_param_type(receiver_name string, met
 		'${receiver_name}.${method.name}'
 	}
 	params := tc.fn_param_types[method_key] or { []Type{} }
+	if tc.fn_implicit_veb_ctx[method_key] && params.len == method.param_types.len + 2 {
+		return params[arg_index + 2]
+	}
 	if params.len == method.param_types.len + 1 {
 		return params[arg_index + 1]
 	}
