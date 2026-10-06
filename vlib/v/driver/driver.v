@@ -13093,6 +13093,12 @@ pub fn run(args []string) {
 		}
 	} else {
 		// C backend (default)
+		if effective_c_compiler == 'msvc' && !c_only && !output_cross_c {
+			if msg := msvc_inline_asm_error(a, used_fns) {
+				eprintln(msg)
+				exit(1)
+			}
+		}
 		// Large generic user programs retain their transformed AST through cgen.
 		// Bounded serial batches prevent worker snapshots from overlapping that live
 		// set at the memory-limit peak; smaller programs keep the parallel fast path.
@@ -17628,6 +17634,74 @@ fn backend_fn_location(a &flat.FlatAst, node flat.Node) string {
 		return '${source_pos}: '
 	}
 	return ''
+}
+
+// msvc_inline_asm_error returns a located diagnostic for the first inline assembly block
+// that the C backend would emit into a translation unit compiled by `cl`. cl.exe has no GNU
+// `__asm__`, so such a block otherwise fails inside the C compiler as
+// `C4013: '__asm__' undefined`, at a line of the generated C. Like unsupported_backend_error
+// it only looks at functions that are used, so assembly in unused library code does not stop
+// a build. File-scope assembly is always emitted, so it is always reported.
+fn msvc_inline_asm_error(a &flat.FlatAst, used_fns map[string]bool) ?string {
+	mut visited := []bool{len: a.nodes.len}
+	for node in a.nodes {
+		if node.kind != .file {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			if msg := msvc_inline_asm_node_error(a, a.child(&node, i), true, mut visited) {
+				return msg
+			}
+		}
+	}
+	mut cur_module := ''
+	for idx, node in a.nodes {
+		if node.kind == .file {
+			cur_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .fn_decl || (node.generic_params().len > 0 && !a.specialized_fn_nodes[idx]) {
+			continue
+		}
+		module_name := a.specialized_fn_modules[idx] or { cur_module }
+		if !transformed_fn_is_used(node.value, module_name, used_fns) {
+			continue
+		}
+		if msg := msvc_inline_asm_node_error(a, flat.NodeId(idx), false, mut visited) {
+			return msg
+		}
+	}
+	return none
+}
+
+// msvc_inline_asm_node_error finds an inline assembly block at or below `id`. At file scope
+// (`top_level`) it only descends through blocks and `$if` branches, the way cgen emits
+// top-level assembly.
+fn msvc_inline_asm_node_error(a &flat.FlatAst, id flat.NodeId, top_level bool, mut visited []bool) ?string {
+	idx := int(id)
+	if idx < 0 || idx >= a.nodes.len || visited[idx] {
+		return none
+	}
+	node := a.nodes[idx]
+	// Declarations that sit directly in a file are not entered from here, and must not be
+	// marked as visited either: the per-function pass has to reach their bodies.
+	if top_level && node.kind !in [.asm_stmt, .block, .comptime_if] {
+		return none
+	}
+	visited[idx] = true
+	if node.kind == .asm_stmt {
+		return '${backend_node_location(a, node)}error: inline assembly is not supported when the C compiler is MSVC (cl.exe has no GNU inline assembly); guard the block with `\$if !msvc`, or link a prebuilt `.obj` instead'
+	}
+	for i in 0 .. node.children_count {
+		if msg := msvc_inline_asm_node_error(a, a.child(&node, i), top_level, mut visited) {
+			return msg
+		}
+	}
+	return none
 }
 
 fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, backend string, diagnose_aggregates bool, fallback_location string, mut visited []bool) ?string {
