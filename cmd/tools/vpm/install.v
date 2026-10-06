@@ -26,17 +26,23 @@ fn vpm_install(query []string) {
 	}
 
 	mut selector := new_install_server_selector()
+	// Overrides are read from the root project's own `v.mod`, never from a
+	// dependency's, so a dependency cannot dictate the consumer's tree.
+	mut overrides := []Override{}
+	mut root_manifest := vmod.Manifest{}
+	if os.exists('./v.mod') {
+		root_manifest = vmod.from_file('./v.mod') or { panic(err) }
+		overrides = parse_overrides(root_manifest.unknown['dependency_overrides'] or { []string{} })
+	}
 	dep_strings := if query.len == 0 {
 		if os.exists('./v.mod') {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
 			println('Detected v.mod file inside the project directory. Using it...')
-			manifest := vmod.from_file('./v.mod') or { panic(err) }
-			if manifest.dependencies.len == 0 {
-				println('Nothing to install.')
-				exit(0)
+			if overrides.len > 0 {
+				println('Using dependency_overrides from the project v.mod...')
 			}
-			manifest.dependencies
+			root_manifest.dependencies
 		} else {
 			vpm_error('specify at least one module for installation.',
 				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'
@@ -54,7 +60,7 @@ fn vpm_install(query []string) {
 		scope.begin()
 	}
 
-	mut modules, parse_errors := parse_query(dep_strings, mut selector, mut scope)
+	mut modules, parse_errors := parse_query(dep_strings, mut selector, mut scope, overrides)
 	// The dependencies of a project have to resolve completely. The ones that
 	// did are still installed, but the run fails, and records no lockfile.
 	is_incomplete := parse_errors > 0 && scope.active

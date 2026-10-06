@@ -43,7 +43,7 @@ enum ModuleKind {
 
 // parse_query resolves the modules of `query` and their dependencies. It
 // returns them together with the number of modules that failed to resolve.
-fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope) ([]Module, int) {
+fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope, overrides []Override) ([]Module, int) {
 	mut p := Parser{}
 	for m in query {
 		p.parse_module(m, mut selector, mut scope)
@@ -54,6 +54,7 @@ fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope 
 		}
 		exit(1)
 	}
+	apply_overrides(mut p.modules, overrides)
 	modules := p.modules.values()
 	validate_range_destinations(modules) or {
 		for m in modules {
