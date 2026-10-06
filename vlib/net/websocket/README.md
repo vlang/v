@@ -39,3 +39,4 @@ thread using epoll and eventfd. It provides bounded input/output work, cross-thr
 send handles, backpressure, deadlines, and graceful shutdown. The existing `Client`
 and `Server` APIs keep their execution model.
 See [the reactor documentation](REACTOR.md) for ownership, callbacks, and limits.
+See [text validation](FRAME_VALIDATION.md) for the ASCII fast path and Unicode fallback.

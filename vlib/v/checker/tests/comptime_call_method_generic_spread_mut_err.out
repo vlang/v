@@ -1,0 +1,28 @@
+vlib/v/checker/tests/comptime_call_method_generic_spread_mut_err.vv:17:20: error: method `index` parameter `ctx` is `mut ctx &Context`, a mutable reference to a `&Context`: pass `mut` of a `&Context` variable (e.g. `mut p := &user_context`, then `mut p`), or declare it `mut ctx Context`
+   15 |     $for method in A.methods {
+   16 |         $if method.name == 'index' {
+   17 |             app.$method(mut user_context, ...args)
+      |                             ~~~~~~~~~~~~
+   18 |         }
+   19 |     }
+vlib/v/checker/tests/comptime_call_method_generic_spread_mut_err.vv:26:16: error: method `index` parameter `ctx` is `mut`, so use `mut p` instead
+   24 |     $for method in A.methods {
+   25 |         $if method.name == 'index' {
+   26 |             app.$method(p, ...args)
+      |                         ^
+   27 |         }
+   28 |     }
+vlib/v/checker/tests/comptime_call_method_generic_spread_mut_err.vv:35:8: error: expected 1 arguments to method App.index, but got 3
+   33 |     $for method in A.methods {
+   34 |         $if method.name == 'index' {
+   35 |             app.$method(mut p, 'extra', ...args)
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   36 |         }
+   37 |     }
+vlib/v/checker/tests/comptime_call_method_generic_spread_mut_err.vv:35:8: cgen error: expected 1 arguments to method App.index, but got 3
+   33 |     $for method in A.methods {
+   34 |         $if method.name == 'index' {
+   35 |             app.$method(mut p, 'extra', ...args)
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   36 |         }
+   37 |     }

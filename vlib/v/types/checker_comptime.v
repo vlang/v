@@ -272,9 +272,19 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 	receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
 	receiver_name := receiver_type.name()
 	actual_count := int(node.children_count) - 1
+	mut fixed_arg_count := actual_count
+	for arg_index in 0 .. actual_count {
+		arg_id := tc.call_arg_value(tc.a.child(&node, arg_index + 1))
+		if tc.arg_is_spread(arg_id) {
+			// The transformer expands the spread into the remaining method parameters.
+			fixed_arg_count = arg_index
+			break
+		}
+	}
 	mut return_type := ''
 	for method in value_cases.cases {
-		if actual_count != method.param_types.len {
+		if fixed_arg_count > method.param_types.len
+			|| (fixed_arg_count == actual_count && actual_count != method.param_types.len) {
 			mut pos := node.pos
 			if file := tc.a.source_files[node.pos.id] {
 				if source := tc.source_texts_by_file[file.name] {
@@ -290,7 +300,7 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 			tc.record_error_severity_at(.call_arg_mismatch, 'expected ${method.param_types.len} arguments to method ${receiver_name}.${method.name}, but got ${actual_count}', id, pos, 'cgen error:')
 			return
 		}
-		for arg_index in 0 .. actual_count {
+		for arg_index in 0 .. fixed_arg_count {
 			raw_arg_id := tc.a.child(&node, arg_index + 1)
 			raw_arg := tc.a.child_node(&node, arg_index + 1)
 			arg_id := tc.call_arg_value(raw_arg_id)
@@ -298,6 +308,30 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 			if raw_arg.kind !in [.prefix, .array_literal]
 				&& unalias_type(actual).name() == '[]string' {
 				tc.record_error_at(.call_arg_mismatch, 'to auto-expand `[]string` arguments in comptime method calls, use `...${tc.source_text_for_node(arg_id)}`', arg_id, tc.a.node(arg_id).pos)
+				return
+			}
+			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
+				&& !tc.a.node(arg_id).is_mut && !tc.disable_explicit_mutability {
+				expected := tc.comptime_static_method_param_type(receiver_name, method,
+					arg_index)
+				param_name := if arg_index < method.param_names.len {
+					method.param_names[arg_index]
+				} else {
+					''
+				}
+				msg := if tc.mut_pointer_slot_arg_needs_ref(arg_id, expected) {
+					tc.mut_pointer_slot_arg_error_msg('method', '${receiver_name}.${method.name}',
+						param_name, arg_index + 1, expected, arg_id)
+				} else {
+					param_label := if param_name.len > 0 {
+						'`${param_name}`'
+					} else {
+						'${arg_index + 1}'
+					}
+					arg_text := tc.source_text_for_node(arg_id)
+					'method `${method.name}` parameter ${param_label} is `mut`, so use `mut ${arg_text}` instead'
+				}
+				tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				return
 			}
 			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
@@ -354,7 +388,10 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 // method iterated by `$for method in T.methods`.
 fn (tc &TypeChecker) comptime_static_method_param_type(receiver_name string, method ComptimeStaticValueCase, arg_index int) Type {
 	// The checked signature also lists the receiver, as its first parameter.
-	params := tc.fn_param_types['${receiver_name}.${method.name}'] or { []Type{} }
+	method_key := tc.concrete_method_signature_key(receiver_name, method.name) or {
+		'${receiver_name}.${method.name}'
+	}
+	params := tc.fn_param_types[method_key] or { []Type{} }
 	if params.len == method.param_types.len + 1 {
 		return params[arg_index + 1]
 	}
@@ -5797,7 +5834,7 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 		}
 		return
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, bit_size)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), bit_size)
 	if parse_error == -3 {
 		tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
 		return
@@ -5976,7 +6013,7 @@ fn (mut tc TypeChecker) check_untyped_integer_literal_overflow(id flat.NodeId) {
 	if magnitude.len == 0 {
 		return
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	overflows := parse_error == -3 || (parse_error == 0 && is_negative && value > (u64(1) << 63))
 	if overflows {
 		tc.record_error_at(.assignment_mismatch, 'integer literal ${literal} overflows int', id, tc.a.node(id).pos)
@@ -5997,7 +6034,7 @@ fn (tc &TypeChecker) implicit_int_literal_overflows(id flat.NodeId) bool {
 	if magnitude.len == 0 {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 32)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 32)
 	if parse_error == -3 {
 		return true
 	}
@@ -6078,7 +6115,7 @@ fn integer_literal_outside_range(literal string, type_range IntegerTypeRange) bo
 	if magnitude.len == 0 {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	if parse_error == -3 {
 		return true
 	}
@@ -6104,7 +6141,7 @@ fn integer_literal_overflows_signed_64(literal string) bool {
 	if literal.len < 2 || literal[0] != `-` {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(literal[1..], 0, 64)
+	value, parse_error := strconv.common_parse_uint2(literal[1..], util.v_literal_parse_base(literal[1..]), 64)
 	return parse_error == -3 || (parse_error == 0 && value > (u64(1) << 63))
 }
 
@@ -15092,7 +15129,7 @@ fn (tc &TypeChecker) for_in_range_unsigned_const_value(id flat.NodeId) ?(u64, st
 		literal = literal.replace('_', '')
 		if literal.len > 0 && literal[0] != `-` {
 			magnitude := if literal[0] == `+` { literal[1..] } else { literal }
-			value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+			value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 			if parse_error == 0 {
 				return value, value.str()
 			}
@@ -20226,4 +20263,154 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 	} else {
 		tc.record_error(.assignment_mismatch, 'operator ${op_text} not defined on right operand type `${rhs_name}`', rhs_id)
 	}
+}
+
+// check_instantiated_comptime_method_args checks reflection method arguments once
+// an unconstrained generic receiver is known at its call site.
+fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.NodeId, call flat.Node, info CallInfo) {
+	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+	if !tc.generic_args_are_concrete(instantiation.concrete_args) {
+		return
+	}
+	method_calls := tc.reachable_comptime_method_calls(instantiation.decl_id)
+	if method_calls.len == 0 {
+		return
+	}
+	// Inferred type names are already canonical. Lock bare program-owned names
+	// before the callee's module context can rebase them onto a helper type.
+	mut argument_view := tc.fork_type_parse_view('', 'main')
+	concrete_args := instantiation.concrete_args.map(argument_view.explicit_generic_concrete_arg_text(it))
+	key := '${int(instantiation.decl_id)}[${concrete_args.join(',')}]'
+	if tc.checked_comptime_method_calls[key] {
+		return
+	}
+	tc.checked_comptime_method_calls[key] = true
+	fn_node := tc.a.node(instantiation.decl_id)
+	mut texts := map[string]string{}
+	for i, name in instantiation.generic_params {
+		if i >= concrete_args.len { return }
+		texts[name] = concrete_args[i]
+	}
+	mut w := tc.fork_for_parallel_check()
+	w.valid_diagnostic_fast = false
+	w.valid_resolution_fast = false
+	w.cur_module = tc.fn_type_modules[info.name] or { tc.cur_module }
+	w.cur_file = tc.fn_type_files[info.name] or { tc.cur_file }
+	checked := w.check_generic_fn_body_as(fn_node, int(instantiation.decl_id), texts)
+	for err in checked.errors {
+		if err.kind != .call_arg_mismatch { continue }
+		mut current := err.node
+		for _ in 0 .. 16 {
+			if int(current) in method_calls {
+				if !tc.has_type_error(err.kind, err.msg, err.node) {
+					tc.record_ordered_error_at(err.kind, err.msg, err.node, err.pos, int(call_id) + 1)
+				}
+				break
+			}
+			current = tc.direct_parent_id(current)
+			if !tc.valid_node_id(current) { break }
+		}
+	}
+}
+
+// reachable_comptime_method_calls collects reflected call sites reachable through
+// statically resolved generic forwarders. Only completed root summaries are cached:
+// a recursive declaration can be visited before another path reaches its methods.
+fn (mut tc TypeChecker) reachable_comptime_method_calls(root flat.NodeId) map[int]bool {
+	if calls := tc.comptime_method_calls_by_decl[int(root)] {
+		return calls
+	}
+	mut calls := map[int]bool{}
+	mut seen := map[int]bool{}
+	mut pending := [root]
+	for pending.len > 0 {
+		id := pending.pop()
+		if seen[int(id)] { continue }
+		seen[int(id)] = true
+		node := tc.a.node(id)
+		mut w := tc.fork_for_parallel_check()
+		if file := tc.a.source_files[node.pos.id] {
+			w.cur_file = file.name
+			w.cur_module = tc.file_modules[file.name] or { tc.cur_module }
+		}
+		w.type_param_texts = map[string]string{}
+		w.fn_context.generic_params = tc.infer_decl_generic_param_names(*node)
+		w.push_scope()
+		w.collect_comptime_method_calls(id, '', mut calls, mut pending)
+		w.pop_scope()
+	}
+	tc.comptime_method_calls_by_decl[int(root)] = calls
+	return calls
+}
+
+// collect_comptime_method_calls keeps lexical bindings while finding reflected
+// calls and static generic forwarders, excluding nested function bodies.
+fn (mut tc TypeChecker) collect_comptime_method_calls(id flat.NodeId, method_var string, mut calls map[int]bool, mut pending []flat.NodeId) {
+	node := tc.a.node(id)
+	if node.kind in [.fn_literal, .lambda_expr] { return }
+	if node.kind == .param {
+		tc.insert_fn_param_binding(id, node)
+		return
+	}
+	if node.kind == .block {
+		tc.push_scope()
+		defer { tc.pop_scope() }
+	}
+	mut var_name := method_var
+	if node.kind == .comptime_for {
+		parts := node.value.split('|')
+		if parts.len == 2 && parts[1] == 'methods' { var_name = parts[0] }
+	}
+	if node.kind == .call {
+		if var_name.len > 0 && tc.comptime_static_is_method_var_call(*node, var_name) {
+			calls[int(id)] = true
+		} else if name := tc.selected_file_call_name(node) {
+			tc.collect_comptime_generic_forwarder(name, mut pending)
+		} else {
+			mut callee := tc.a.child_node(node, 0)
+			if callee.kind == .index && callee.children_count > 0 {
+				callee = tc.a.child_node(callee, 0)
+			}
+			if callee.kind == .selector && callee.value != '$' {
+				// An open generic receiver cannot yet select its concrete method.
+				// Keep candidate generic methods for eligibility and attribution;
+				// the scoped body check dispatches only the actual receiver method.
+				for _, name in tc.receiver_method_suffix_index {
+					if name != receiver_method_suffix_ambiguous
+						&& name.ends_with('.${callee.value}') {
+						module_name := tc.fn_type_modules[name] or { tc.cur_module }
+						if decl := tc.visible_mutation_fn_decl(name, module_name) {
+							if tc.fn_has_receiver_param(*tc.a.node(flat.NodeId(decl.idx))) {
+								tc.collect_comptime_generic_forwarder(name, mut pending)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_comptime_method_calls(tc.a.child(node, i), var_name, mut calls, mut pending)
+	}
+	if node.kind == .decl_assign {
+		// Local callable values shadow static declarations only after their
+		// initializer. Their types are immaterial to this declaration scan.
+		for lhs in tc.multi_assign_lhs_ids(node) {
+			binding := tc.a.node(lhs)
+			if binding.kind == .ident && binding.value != '_' {
+				tc.cur_scope.insert(binding.value, unknown_type('local binding'))
+			}
+		}
+	}
+}
+
+// collect_comptime_generic_forwarder adds the static declaration of a generic
+// callee to the reflection summary worklist.
+fn (tc &TypeChecker) collect_comptime_generic_forwarder(name string, mut pending []flat.NodeId) {
+	module_name := tc.fn_type_modules[name] or { tc.cur_module }
+	decl := tc.visible_mutation_fn_decl(name, module_name) or { return }
+	params := tc.fn_generic_params[name] or {
+		tc.infer_decl_generic_param_names(*tc.a.node(flat.NodeId(decl.idx)))
+	}
+	if params.len > 0 { pending << flat.NodeId(decl.idx) }
 }

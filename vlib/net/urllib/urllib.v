@@ -647,7 +647,7 @@ fn valid_encoded_path(s string) bool {
 		// should_escape handle the others.
 		x := s[i]
 		match x {
-			`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@` {
+			`!`, `$`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@` {
 				// ok
 			}
 			`[`, `]` {

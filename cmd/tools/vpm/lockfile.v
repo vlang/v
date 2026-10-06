@@ -260,6 +260,10 @@ fn lock_mismatch(entry LockedModule, dep string, url string) string {
 	if normalized_clone_source(entry.url) != normalized_clone_source(url) {
 		return 'records it from `${entry.url}`, not from `${url}`'
 	}
+	_, constraint := dep.rsplit_once('@') or { dep, '' }
+	if is_version_range(constraint) && !tag_satisfies_range(entry.resolved, constraint) {
+		return 'records the resolved tag `${entry.resolved}` outside `${constraint}`'
+	}
 	return ''
 }
 
@@ -280,7 +284,10 @@ fn (scope &LockScope) locked_entry(dep string, url string) ?LockedModule {
 // latest HEAD. With `--locked`, a dependency that the lockfile does not record,
 // or records under a different dependency string or source, is reported as an
 // error instead of being resolved.
-fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path string, mut scope LockScope) ! {
+fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path string, mut scope LockScope) !string {
+	if is_version_range(version) && vcs != .git {
+		return error('semantic version ranges are supported only for Git repositories')
+	}
 	if entry := scope.entry_for(dep) {
 		mismatch := lock_mismatch(entry, dep, url)
 		if mismatch != '' {
@@ -295,9 +302,12 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 			verbose_println('Cloning `${url}` at the locked revision `${entry.revision}` ...')
 			// A dependency pinned at a tag is cloned at that tag, the same as without
 			// a lockfile, so that `v update` and `v outdated` leave it there.
-			vcs.clone(url, version, tmp_path)!
+			// Ranges retain the locked tag and commit, without listing newer tags.
+			// Cloning all refs also permits a locked tag that has since been deleted.
+			clone_version := if is_version_range(version) { '' } else { version }
+			vcs.clone(url, clone_version, tmp_path)!
 			vcs.checkout(tmp_path, entry.revision)!
-			return
+			return if is_version_range(version) { entry.resolved } else { version }
 		}
 	} else if settings.is_locked && scope.active {
 		vpm_error('cannot install `${dep}` with `--locked`: `${lockfile_name}` in `${fmt_mod_path(scope.dir)}` has no entry for it.',
@@ -305,7 +315,9 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 		)
 		exit(1)
 	}
-	vcs.clone(url, version, tmp_path)!
+	resolved := vcs.resolve_version(url, version)!
+	vcs.clone(url, resolved, tmp_path)!
+	return resolved
 }
 
 // refresh_lock_entries records the updated revisions of the modules pulled by
