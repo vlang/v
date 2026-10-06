@@ -122,6 +122,11 @@ are unordered, and would quietly drop anything the decoder does not model. So:
 When installation is refused, `v mcp install` prints the entry for pasting by hand
 and exits with status 1.
 
+The registered command uses the executable named by `VEXE` when available. If that
+path is missing or is not an executable file, it tries the compiler path recorded when the
+tool was built. Directories and non-executable files are skipped. Paths are resolved
+before registration, and the `.exe` form is preferred on Windows.
+
 Nothing else on your machine is touched: the entry names the compiler that is
 running the tool, so it keeps working after `PATH` changes, and no token or
 credential is ever written.
