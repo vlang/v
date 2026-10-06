@@ -13633,7 +13633,10 @@ fn (g &FlatGen) c_typedef_cast_call_name(node flat.Node) string {
 			if callee.children_count > 0 {
 				base := g.a.child_node(callee, 0)
 				if base.kind == .ident && base.value == 'C' {
-					return callee.value
+					name := 'C.${callee.value}'
+					if name !in g.tc.fn_ret_types && name !in g.tc.fn_param_types {
+						return callee.value
+					}
 				}
 			}
 		}
