@@ -18370,14 +18370,15 @@ fn comptime_cond_has_string_operation(cond string) bool {
 		_, _, has_op := comptime_cond_split_top_level(cond, op)
 		if has_op { return true }
 	}
+	// Bare names defer through lexical/constant lookup; unknown names keep flag semantics.
 	for op in ['==', '!='] {
 		left, right, has_op := comptime_cond_split_top_level(cond, op)
 		if has_op {
 			l := comptime_cond_strip_outer_parens(left.trim_space())
 			r := comptime_cond_strip_outer_parens(right.trim_space())
 			if l.len > 0 && r.len > 0
-				&& ((l[0].is_letter() && r[0] in [`\'`, `"`])
-					|| (r[0].is_letter() && l[0] in [`\'`, `"`])) {
+				&& ((l[0].is_letter() && l.contains('.') && r[0] in [`\'`, `"`])
+					|| (r[0].is_letter() && r.contains('.') && l[0] in [`\'`, `"`])) {
 				return true
 			}
 		}

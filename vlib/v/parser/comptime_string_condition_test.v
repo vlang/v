@@ -3,6 +3,18 @@ module parser
 import os
 import v.pref
 
+fn test_fn_literal_string_bindings_do_not_defer_outer_plain_comparisons() {
+	path := os.join_path(os.vtmp_dir(), 'comptime_string_fn_literal_scope_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, "fn main() {\n f := fn () { x := 'inside'; _ = x }\n _ = f\n \$if x == 'inside' { println('wrong') } \$else { println('ok') }\n}\n")!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert !p.a.nodes.any(it.kind == .comptime_if)
+	assert p.a.nodes.any(it.kind == .string_literal && it.value == 'ok')
+	assert !p.a.nodes.any(it.kind == .string_literal && it.value == 'wrong')
+}
+
 fn test_static_value_probe_preserves_deep_expression_recovery() {
 	path := os.join_path(@VEXEROOT, 'vlib/v/parser/tests/check_undefined_variables_too_deep_nested.vv')
 	mut compiler := Parser.new(pref.new_preferences())
