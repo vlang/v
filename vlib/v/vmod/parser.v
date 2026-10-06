@@ -32,6 +32,7 @@ pub mut:
 	author       string
 	dependencies []string
 	unknown      map[string][]string
+	catalog      map[string]string
 }
 
 struct Scanner {
@@ -280,6 +281,30 @@ fn (mut p Parser) parse() !Manifest {
 						deps, idx := get_array_content(tokens, i + 1, true)!
 						mn.dependencies = deps
 						i = idx
+						continue
+					}
+					'catalog' {
+						if tokens[i + 1].typ != .lcbr {
+							return error('${err_label} value of field "catalog" must be an object, at line ${tok.line}')
+						}
+						mut catalog := map[string]string{}
+						mut j := i + 2
+						for j < tokens.len && tokens[j].typ != .rcbr {
+							if tokens[j].typ != .field_key {
+								return error('${err_label} invalid catalog entry at line ${tokens[j].line}')
+							}
+							key := tokens[j].val.trim_right(':')
+							if tokens[j + 1].typ != .str {
+								return error('${err_label} catalog value for "${key}" must be a string, at line ${tokens[j].line}')
+							}
+							catalog[key] = tokens[j + 1].val
+							j += 2
+							if j < tokens.len && tokens[j].typ == .comma {
+								j++
+							}
+						}
+						mn.catalog = catalog
+						i = j + 1
 						continue
 					}
 					else {
