@@ -93,6 +93,10 @@ The target type keeps its declaring module. A program's own sum type named `Any`
 is distinct from `json2.Any`, including through nested dynamic arrays, fixed arrays,
 and maps such as `json2.decode[[][2]Any](text)`.
 
+Every nested value requires its enclosing array's or object's closing delimiter.
+Truncated containers such as `[0` or `{"key": 123` return an end-delimiter error,
+including when a complete nested value consumes the final byte of the input.
+
 ```v
 import json2
 import time
@@ -273,6 +277,11 @@ The following list shows the possible outputs when casting a value to an incompa
 3. Casting non-string values to string (`str()`) will return the
    JSON string representation of the value.
 4. Casting non-numeric values to int/float (`int()`/`i64()`/`f32()`/`f64()`) will return zero.
+
+## Decoding errors
+
+Error previews begin within the line containing the failing position. Tabs expand
+the displayed column count without expanding byte offsets into the input string.
 
 ## Encoding using string builder instead of []u8
 

@@ -263,7 +263,12 @@ fn (mut checker Decoder) checker_error(message string) ! {
 	cutoff := character_number > max_context_length
 
 	// either start of string, last newline or a limited amount of characters
-	context_start := if cutoff { position - max_context_length } else { last_newline }
+	// Tabs increase display columns without adding bytes; never slice before the current line.
+	context_start := if cutoff {
+		int_max(last_newline, position - max_context_length)
+	} else {
+		last_newline
+	}
 
 	// print some extra characters
 	mut context_end := int_min(checker.json.len, position + max_extra_characters)
@@ -333,7 +338,12 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 	cutoff := character_number > max_context_length
 
 	// either start of string, last newline or a limited amount of characters
-	context_start := if cutoff { start - max_context_length } else { last_newline }
+	// Tabs increase display columns without adding bytes; never slice before the current line.
+	context_start := if cutoff {
+		int_max(last_newline, start - max_context_length)
+	} else {
+		last_newline
+	}
 
 	// print some extra characters
 	mut context_end := int_min(decoder.json.len, end + max_extra_characters)
