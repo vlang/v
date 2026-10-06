@@ -85,6 +85,10 @@ The target type keeps its declaring module. A program's own sum type named `Any`
 is distinct from `json2.Any`, including through nested dynamic arrays, fixed arrays,
 and maps such as `json2.decode[[][2]Any](text)`.
 
+Every nested value requires its enclosing array's or object's closing delimiter.
+Truncated containers such as `[0` or `{"key": 123` return an end-delimiter error,
+including when a complete nested value consumes the final byte of the input.
+
 ```v
 import json2
 import time
