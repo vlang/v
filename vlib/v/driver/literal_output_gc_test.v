@@ -73,6 +73,60 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 }
 
+fn test_literal_output_keeps_linux_backtrace_array_iteration_runtime() {
+	root := literal_output_gc_test_root()!
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	keys := ['VFLAGS', 'VOSARGS', 'V_C_ERROR_BUG_REPORT_DISABLED']
+	mut old_values := map[string]string{}
+	for key in keys {
+		if value := os.getenv_opt(key) {
+			old_values[key] = value
+		}
+	}
+	defer {
+		for key in keys {
+			if value := old_values[key] {
+				os.setenv(key, value, true)
+			} else {
+				os.unsetenv(key)
+			}
+		}
+	}
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
+	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
+		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
+	} else {
+		@VEXE
+	}
+	source := os.join_path(root, 'hello.v')
+	os.write_file(source, "fn main() { println('Hello, World!') }\n")!
+	flags := ['-new-compiler', '-no-retry-compilation', '-nocache', '-show-timings']
+	for arch in ['amd64', 'arm64'] {
+		c_path := os.join_path(root, 'hello_${arch}.c')
+		mut c_args := flags.clone()
+		c_args << ['-os', 'linux', '-arch', arch, '-d', 'glibc', '-o', c_path, source]
+		generated := cmdexec.run_with_timeout(vexe, c_args, 120_000)
+		assert generated.exit_code == 0, generated.output
+		output := os.read_file(c_path)!
+		assert output.contains('Array_string__join('), c_path
+		assert output.contains('array_get(a, '), c_path
+		assert output.count('array__get(array ') >= 2, c_path
+	}
+	bin_path := os.join_path(root, 'hello' + $if windows { '.exe' } $else { '' })
+	mut compile_args := flags.clone()
+	compile_args << ['-o', bin_path, source]
+	compiled := cmdexec.run_with_timeout(vexe, compile_args, 120_000)
+	assert compiled.exit_code == 0, compiled.output
+	assert !compiled.output.contains('retrying with'), compiled.output
+	run := cmdexec.run_with_timeout(bin_path, [], 15_000)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'Hello, World!', run.output
+}
+
 fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 	$if !macos {
 		return

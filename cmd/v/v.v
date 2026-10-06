@@ -712,7 +712,7 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
-	mut launch_args := args.clone()
+	mut launch_args := v1_fallback_args(args)
 	_, launched_command := find_command(args)
 	if launched_command == 'build-module' {
 		if current_root := find_vroot(os.real_path(os.executable())) {
@@ -757,6 +757,63 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	os.rm(report_state.fallback_file) or {}
 	os.rmdir_all(report_state.c_error_dir) or {}
 	exit(code)
+}
+
+// v1_fallback_args removes V3's private restart options before launching the
+// compatibility compiler, preserving option values and program arguments.
+fn v1_fallback_args(args []string) []string {
+	mut result := []string{cap: args.len}
+	mut option_value_follows := false
+	mut runs_input := false
+	mut input_seen := false
+	mut command_seen := false
+	for i, arg in args {
+		if option_value_follows {
+			result << arg
+			option_value_follows = false
+			continue
+		}
+		if arg in ['-macos-v3-internal-quiet', '-macos-v3-compat-c99',
+			'-v3-internal-parser-diagnostics-printed']
+			|| arg.starts_with('-v3-internal-implicit-tcc-warning=') {
+			continue
+		}
+		result << arg
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			// After a command, the driver treats the next non-option as profile output.
+			if command_seen && i + 1 < args.len {
+				next := args[i + 1]
+				option_value_follows = next == '-' || !next.starts_with('-')
+			}
+			continue
+		}
+		if arg == '-raw-vsh-tmp-prefix' && !input_seen {
+			runs_input = true
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if arg.starts_with('-') && arg != '-' {
+			continue
+		}
+		if !input_seen && !runs_input && arg in ['run', 'crun'] {
+			runs_input = true
+			command_seen = true
+			continue
+		}
+		if !input_seen && !runs_input && arg in ['build', 'test'] {
+			command_seen = true
+			continue
+		}
+		if runs_input || arg.ends_with('.vsh') {
+			result << args[i + 1..]
+			break
+		}
+		input_seen = true
+	}
+	return result
 }
 
 // v1_build_module_args points `build-module` at the compatibility compiler's own

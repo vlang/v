@@ -14,6 +14,68 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 	]
 }
 
+fn test_v1_fallback_drops_private_restart_options() {
+	warning := '-v3-internal-implicit-tcc-warning=warning: implicit tcc failed'
+	assert v1_fallback_args([warning, '-v3-internal-parser-diagnostics-printed',
+		'-macos-v3-internal-quiet', '-macos-v3-compat-c99', '-show-timings', '-cc', 'cc', 'main.v',
+		warning]) == ['-show-timings', '-cc', 'cc', 'main.v']
+}
+
+fn test_v1_fallback_preserves_private_option_names_in_values() {
+	for private_option in ['-v3-internal-implicit-tcc-warning=message',
+		'-v3-internal-parser-diagnostics-printed'] {
+		for option in ['-o', '-cf', '-cflags', '-ldflags', '-d'] {
+			args := [option, private_option, 'main.v']
+			assert v1_fallback_args(args) == args
+		}
+	}
+	assert v1_fallback_args(['-profile', 'profile.out', '-v3-internal-parser-diagnostics-printed',
+		'main.v']) == ['-profile', 'profile.out', 'main.v']
+}
+
+fn test_v1_fallback_preserves_private_option_names_in_program_arguments() {
+	private_args := ['-v3-internal-implicit-tcc-warning=message',
+		'-v3-internal-parser-diagnostics-printed', '-macos-v3-internal-quiet', '-macos-v3-compat-c99']
+	for prefix in [
+		['run', 'main.v'],
+		['run', 'run'],
+		['run', 'build'],
+		['run', 'test'],
+		['crun', 'crun'],
+		['crun', '-gc', 'none', 'main.v'],
+		['run', '-'],
+		['script.vsh'],
+		['-raw-vsh-tmp-prefix', 'prefix', 'script.v'],
+		['-profile', 'run', 'main.v'],
+	] {
+		mut args := prefix.clone()
+		args << private_args
+		mut restarted := ['-v3-internal-parser-diagnostics-printed']
+		restarted << args
+		assert v1_fallback_args(restarted) == args
+	}
+}
+
+fn test_v1_fallback_consumes_profile_output_after_a_command() {
+	dir := os.join_path(os.vtmp_dir(), 'fallback_profile_output_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	private_option := '-v3-internal-parser-diagnostics-printed'
+	for command in ['run', 'crun', 'build', 'test'] {
+		for option in ['-prof', '-profile'] {
+			for output in ['profile.v', 'profile.vv', 'profile.vsh', 'run', 'build', 'test', 'doc',
+				dir, '-', ''] {
+				assert v1_fallback_args([command, option, output, private_option, 'main.v']) ==
+					[command, option, output, 'main.v']
+				if command in ['run', 'crun'] {
+					assert v1_fallback_args([command, option, output, private_option, 'main.v',
+						private_option]) == [command, option, output, 'main.v', private_option]
+				}
+			}
+		}
+	}
+}
+
 fn test_external_tool_build_args_drop_non_binary_modes() {
 	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
 	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
