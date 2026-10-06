@@ -72,6 +72,7 @@ fn test_rand_uuid_v7_session() {
 		assert x[19] in [`8`, `9`, `a`, `b`]
 
 		// verify counter increase
+		assert ('0x' + x[15..18]).u64() & 0x3f == u64((i + 3) & 0x3f)
 		assert x[17] == prev_counter
 		if prev_counter == `9` {
 			prev_counter = `a`
