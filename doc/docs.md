@@ -10478,6 +10478,7 @@ In the console build command, you can use:
 * For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 Parallel C builds keep the signal-handler runtime and its saved signal actions in one unit.
+Module-cache builds keep that runtime in the program prefix; cached objects use its declarations.
 Native headers that cannot safely share state across units use a single compilation unit.
 
 To select C23 with a compiler that supports it, use

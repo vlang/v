@@ -4262,7 +4262,8 @@ mut:
 // also reports the first input that cannot be replicated into every cached module
 // object: a native source, an implementation section of a single-header library,
 // or a header that defines symbols with external linkage or keeps static storage.
-// The caches have no owner for such definitions, so those builds stay uncached.
+// Those builds stay uncached, except for the builtin signal handler whose explicit
+// owner protocol keeps its implementation in the program prefix.
 fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, check_replication bool) V3NativeInputClosure {
 	mut result := V3NativeInputClosure{}
 	if check_replication && native_inputs.implementation_define.len > 0 {
@@ -4285,7 +4286,8 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 				expansions[path] = expanded_paths.keys()
 				replicable[path] = !check_replication || (complete
 					&& !cgen.cache_native_input_is_source(path)
-					&& modulecache.c_source_is_replicable(text))
+					&& (modulecache.c_source_is_replicable(text)
+						|| v3_cache_native_input_has_program_owner(path, text, vroot)))
 			}
 			for expanded_path in expansions[path] {
 				closure[expanded_path] = true
@@ -4299,6 +4301,24 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 		result.inputs[module_name] = sorted
 	}
 	return result
+}
+
+// v3_cache_native_input_has_program_owner recognizes only the builtin runtime
+// header whose nonowner branch exposes a declaration instead of private state.
+// Keep this guard in sync if the shipped header changes its ownership protocol;
+// a marker in any other native header never grants cache ownership.
+fn v3_cache_native_input_has_program_owner(path string, source string, vroot string) bool {
+	if os.real_path(path) != os.real_path(os.join_path(vroot, 'vlib', 'builtin',
+		'segfault_handler_nix.h'))
+		|| !source.contains('#define V_PARALLEL_CC_STATIC_STORAGE_HANDLED 1') {
+		return false
+	}
+	protocol := source.split_into_lines().map(it.trim_space()).filter(it.len > 0).join('\n')
+	prototype := 'void v_install_segfault_handler(void* fallback, void* main_argv);'
+	nonowner_first := protocol.contains('#if defined(V_PARALLEL_CC) && !defined(V_PARALLEL_CC_OUT_0)\nextern ${prototype}\n#else')
+	owner_first := protocol.contains('#if !defined(V_PARALLEL_CC) || defined(V_PARALLEL_CC_OUT_0)\n')
+		&& protocol.contains('#else\n${prototype}\n#endif\n#endif')
+	return nonowner_first || owner_first
 }
 
 fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs &cgen.CacheNativeInputs, closure &V3NativeInputClosure) bool {
@@ -15286,12 +15306,12 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	program_specializations := split.modules['__v3_program_specializations'] or { '' }
 	program_support := split.modules['__v3_program_support'] or { '' }
 	program_generated_support := program_specializations + program_support + main_body
-	main_prefix := prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix, state, true), state, [
+	main_prefix := v3_cached_c_unit_source(prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix, state, true), state, [
 		'main',
-	]), cache_used_fns, program_generated_support, tc, state)
+	]), cache_used_fns, program_generated_support, tc, state), true)
 	dylib_prefix := modulecache.prune_unreferenced_static_string_definitions(main_prefix + program_specializations + program_support)
 	main_source := '#define V3CACHE_PROGRAM_UNIT 1\n' + main_prefix + program_specializations + program_support + main_body
-	main_declarations := prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(split.prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state)
+	main_declarations := v3_cached_c_unit_source(prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(split.prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state), false)
 	tcc_declarations := tcc_cached_main_source(main_declarations, main_body)
 	tcc_main := '#define V3CACHE_PROGRAM_UNIT 1\n' + tcc_declarations + main_body
 	mut object_paths := state.objects.clone()
@@ -16390,6 +16410,7 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	return [
+		'native_owner_protocol=program-prefix-v1',
 		'objective_c=${objective_c}',
 		'c_standard=${c_standard.trim_space()}',
 		'optimization=${opt_flag.trim_space()}',
@@ -16398,6 +16419,17 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 		'interfaces=${interface_impl_signature}',
 		'flags=${flags.join('\\n')}',
 	].join('\n')
+}
+
+// v3_cached_c_unit_source assigns the shipped runtime implementation to the
+// program prefix. Shared declarations and cached module objects remain nonowners.
+fn v3_cached_c_unit_source(source string, owner bool) string {
+	if owner {
+		// A combined cached program can itself be split for parallel C compilation.
+		// Its declaration header must respect the owner selected by that outer split.
+		return '#ifndef V_PARALLEL_CC\n#define V_PARALLEL_CC 1\n#define V_PARALLEL_CC_OUT_0 1\n#endif\n' + source
+	}
+	return '#undef V_PARALLEL_CC_OUT_0\n#define V_PARALLEL_CC 1\n' + source
 }
 
 fn v3_cached_object_wrapper_compile_signature(program_base string, generated_source string) string {
@@ -16478,7 +16510,7 @@ fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard s
 			os.rmdir_all(tmp_dir) or {}
 		}
 	}
-	os.write_file(tmp_source, source)!
+	os.write_file(tmp_source, v3_cached_c_unit_source(source, false))!
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	tmp_object := '${entry.object}.tmp.${unique}'
