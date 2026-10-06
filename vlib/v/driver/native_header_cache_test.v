@@ -1,6 +1,7 @@
 module driver
 
 import v.flat
+import v.cmdexec
 import v.gen.c as cgen
 import v.modulecache
 import v.pref
@@ -79,6 +80,48 @@ fn test_parallel_c_generation_splits_with_headers_shipped_with_v() {
 	assert !header.contains('#include "${helper}"')
 	assert header.contains('v_flat_payload_ptr_get')
 	assert header.contains('#include <stdio.h>')
+}
+
+fn test_parallel_c_generation_keeps_segfault_handler_state_in_owner() ! {
+	$if bsd || linux {
+		helper := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'segfault_handler_nix.h')
+		prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${helper}"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\n'
+		header, safe := v3_parallel_c_declaration_header(prefix, []string{}, @VEXEROOT)
+		assert safe
+		assert !header.contains('#include "${helper}"')
+		root := os.join_path(os.vtmp_dir(), 'parallel_segfault_header_${os.getpid()}_${time.now().unix_nano()}')
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		declarations := os.join_path(root, 'declarations.h')
+		linkage_cleanup := '\n#if defined(V_SEGFAULT_HANDLER_INSTALL_LINKAGE) || defined(V_SEGFAULT_HANDLER_SCOPE)\n#error leaked installer linkage macro\n#endif\n'
+		os.write_file(declarations, header + linkage_cleanup)!
+		runtime_header := os.join_path(root, 'runtime.h')
+		os.write_file(runtime_header, '#include "${helper}"\n' + linkage_cleanup)!
+		// Preprocess the actual split header: a prototype is sufficient in body units,
+		// while the saved signal actions and every handler helper belong to the owner.
+		non_owner := cmdexec.run('cc', ['-E', '-P', '-x', 'c', '-DV_PARALLEL_CC=1', declarations])
+		assert non_owner.exit_code == 0, non_owner.output
+		assert non_owner.output.contains('void v_install_segfault_handler(void* fallback, void* main_argv);'), non_owner.output
+		assert !non_owner.output.contains('void v_install_segfault_handler(void* fallback, void* main_argv) {'), non_owner.output
+		for name in ['v_segfault_fallback', 'v_segfault_previous', 'v_segfault_previous_consumed',
+			'v_segfault_signal_handler'] {
+			assert !non_owner.output.contains(name), non_owner.output
+		}
+		owner := cmdexec.run('cc', ['-E', '-P', '-x', 'c', '-DV_PARALLEL_CC=1',
+			'-DV_PARALLEL_CC_OUT_0=1', runtime_header])
+		assert owner.exit_code == 0, owner.output
+		assert owner.output.contains('void v_install_segfault_handler(void* fallback, void* main_argv) {'), owner.output
+		assert !owner.output.contains('static void v_install_segfault_handler('), owner.output
+		for name in ['v_segfault_fallback', 'v_segfault_previous', 'v_segfault_previous_consumed'] {
+			assert owner.output.contains(name), owner.output
+		}
+		// Monolithic builds retain the existing internal linkage.
+		monolithic := cmdexec.run('cc', ['-E', '-P', '-x', 'c', runtime_header])
+		assert monolithic.exit_code == 0, monolithic.output
+		assert monolithic.output.contains('static void v_install_segfault_handler('), monolithic.output
+	}
 }
 
 fn test_parallel_c_generation_splits_with_the_segfault_handler() {
