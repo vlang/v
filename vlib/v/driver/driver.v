@@ -20532,6 +20532,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 // resolve_imports parses the modules that the parsed code imports, wave by wave.
 // It continues `implicit_imports`, the scan of seed_implicit_imports.
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming, mut implicit_imports ImplicitImportScan, mut prepared PreparedImports) bool {
+	initial_deferred_imports := p.resolve_comptime_string_declarations()
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
@@ -20651,7 +20652,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		eager_selfhost_imports = false
 	}
 	if prefs.building_v && !prefs.selfhost && allow_parallel && !cache_state.manager.enabled
-		&& !initial_files.any(input_is_v3_compiler_entry(it)) && eager_selfhost_imports {
+		&& !initial_files.any(input_is_v3_compiler_entry(it)) && eager_selfhost_imports
+		&& initial_deferred_imports.len == 0 {
 		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root,
 			parsed_identity_dirs, mut parsed_modules, mut module_path_cache)
 		mut eager_files := []string{}
@@ -20760,15 +20762,28 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut ri_wave_ns := u64(0)
 	mut ri_waves := 0
 	mut pair_cursor := 0
+	mut had_deferred_imports := initial_deferred_imports.len > 0
 	for {
 		ri_waves++
 		ri_t0 := time.sys_mono_now()
-		scan_ids, next_pair_cursor := collect_import_scan_ids(a, node_idx, pair_cursor)
+		deferred_imports := p.resolve_comptime_string_declarations()
+		if had_deferred_imports {
+			// A parsed dependency can select imports in an earlier file's guard.
+			node_idx = 0
+			pair_cursor = 0
+			cur_file = first_file
+			cur_module = 'main'
+		}
+		had_deferred_imports = deferred_imports.len > 0
+		mut scan_ids, next_pair_cursor := collect_import_scan_ids(a, node_idx, pair_cursor)
+		if deferred_imports.len > 0 {
+			scan_ids = scan_ids.filter(int(it) !in deferred_imports)
+		}
 		pair_cursor = next_pair_cursor
 		if os.getenv('V3_VERIFY_IMPORT_IDX') != '' {
 			mut full := []i32{}
 			for i in node_idx .. a.nodes.len {
-				if a.nodes[i].kind in [.file, .module_decl, .import_decl] {
+				if a.nodes[i].kind in [.file, .module_decl, .import_decl] && i !in deferred_imports {
 					full << i
 				}
 			}

@@ -175,3 +175,56 @@ fn test_immutable_local_string_sources_in_normal_function_blocks() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'users\nposts', run.output
 }
+
+fn test_static_string_conditions_reject_runtime_shadows_of_constants() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_string_runtime_shadow_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for body in [
+		"fn check(route string) { \$if route.starts_with('con') { panic('wrong') } }\nfn main() { check('runtime') }",
+		"fn main() { mut route := 'first'; route = 'second'; \$if route.starts_with('con') { panic('wrong') } }",
+	] {
+		path := os.join_path(root, 'main.v')
+		os.write_file(path, "const route = 'constant'\n${body}\n")!
+		result := os.exec([@VEXE, '-nocache', '-gc', 'none', '-no-retry-compilation', '-o',
+			os.join_path(root, 'shadow.c'), path])
+		assert result.exit_code != 0, result.output
+		assert !result.output.contains('C compilation error'), result.output
+		assert result.output.contains('cannot evaluate `\$if` condition')
+			|| result.output.contains('is mut and may have changed'), result.output
+	}
+}
+
+fn test_scalar_import_guards_resolve_between_import_waves() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_string_import_waves_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'config'))!
+	os.mkdir_all(os.join_path(root, 'broken'))!
+	os.mkdir_all(os.join_path(root, 'route_data'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), 'Module { name: "import_waves" }')!
+	os.write_file(os.join_path(root, 'route_data/route_data.v'), 'module route_data\npub const yes = true\n')!
+	path := os.join_path(root, 'main.v')
+	saved_no_file_index := os.getenv('V3_NO_FILE_IDX')
+	defer { os.setenv('V3_NO_FILE_IDX', saved_no_file_index, true) }
+	for mode in ['parallel', 'serial', 'full_scan'] {
+		os.setenv('V3_NO_FILE_IDX', if mode == 'full_scan' { '1' } else { '' }, true)
+		mut args := [@VEXE, '-nocache', '-gc', 'none', '-no-retry-compilation']
+		if mode == 'serial' { args << '-no-parallel' }
+		args << ['-o', os.join_path(root, 'selected'), path]
+		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = false\n')!
+		os.write_file(path, "import config as cfg\n\$if cfg.enabled {\n import broken\n}\nfn main() { println('ok') }\n")!
+		for broken in ['module broken\nfn unused() { missing() }\n', 'module broken\nfn unused( { }\n'] {
+			os.write_file(os.join_path(root, 'broken/broken.v'), broken)!
+			result := os.exec(args)
+			assert result.exit_code == 0, '${mode}: ${result.output}'
+			run := os.exec([os.join_path(root, 'selected')])
+			assert run.exit_code == 0 && run.output.trim_space() == 'ok', run.output
+		}
+		os.write_file(os.join_path(root, 'config/config.v'), 'module config\npub const enabled = true\n')!
+		os.write_file(path, 'import config as cfg\n\$if cfg.enabled {\n import route_data as rd\n}\n\$if rd.yes {\n fn chosen() int { return 1 }\n} \$else {\n fn chosen() Unavailable { return missing() }\n}\nfn main() { assert chosen() == 1 }\n')!
+		result := os.exec(args)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+		run := os.exec([os.join_path(root, 'selected')])
+		assert run.exit_code == 0, run.output
+	}
+}

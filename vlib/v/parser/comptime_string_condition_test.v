@@ -96,3 +96,44 @@ fn test_guarded_imported_constants_resolve_before_consumers() {
 	assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'", p.comptime_const_values.str()
 	assert p.a.nodes.all(it.kind != .comptime_if), p.a.nodes.filter(it.kind == .comptime_if).str()
 }
+
+fn test_static_string_probes_preserve_shadowing_local_bindings() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_string_shadow_scope_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for body in [
+		"fn check(route string) { \$if route.starts_with('con') { println('wrong') } }",
+		"fn main() { mut route := 'runtime'; \$if route.starts_with('con') { println('wrong') } }",
+		"struct Values { route string }\nfn main() { main := Values{route: 'runtime'}; \$if main.route.starts_with('con') { println('wrong') } }",
+	] {
+		path := os.join_path(root, 'main.v')
+		os.write_file(path, "const route = 'constant'\n${body}\n")!
+		mut p := Parser.new(pref.new_preferences())
+		p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		assert p.a.nodes.filter(it.kind == .comptime_if).len == 1
+	}
+	path := os.join_path(root, 'immutable.v')
+	os.write_file(path, "const route = 'constant'\nfn main() { route := 'local'; \$if route.starts_with('loc') { println('selected') } \$else { println('wrong') } }\n")!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert p.a.nodes.all(it.kind != .comptime_if)
+	assert p.a.nodes.any(it.kind == .string_literal && it.value == 'selected')
+	assert !p.a.nodes.any(it.kind == .string_literal && it.value == 'wrong')
+}
+
+fn test_unresolved_scalar_import_guards_defer_only_their_imports() {
+	path := os.join_path(os.vtmp_dir(), 'comptime_string_deferred_imports_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'import config as cfg\n\$if cfg.enabled {\n import inactive\n}\n\$if string is int {\n import type_guarded\n}\n\$if threads {\n import thread_guarded\n}\n')!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	deferred := p.resolve_comptime_string_declarations()
+	assert deferred.len == 1, deferred.str()
+	for id, _ in deferred {
+		assert p.a.nodes[id].kind == .import_decl
+		assert p.a.nodes[id].value == 'inactive'
+	}
+}

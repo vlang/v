@@ -6798,6 +6798,9 @@ fn (p &Parser) comptime_value(name string) ?string {
 	if value := p.comptime_local_values[name] {
 		return value
 	}
+	if p.is_local_binding(name) {
+		return none
+	}
 	if value := p.comptime_const_values[comptime_const_value_key(p.cur_module, name)] {
 		return value
 	}
@@ -6877,6 +6880,7 @@ fn (p &Parser) comptime_selector_value(node flat.Node, depth int) ?string {
 		if comptime_value_is_string(value) { return comptime_cond_value(value).len.str() }
 	}
 	if base.kind == .ident {
+		if p.is_local_binding(base.value) { return none }
 		module_name := p.comptime_string_imports[base.value] or { base.value }
 		if value := p.comptime_const_values[comptime_const_value_key(module_name, node.value)] {
 			return value
@@ -7023,6 +7027,8 @@ fn (p &Parser) comptime_scalar_condition_literal(cond string) ?string {
 	mut probe := Parser.new(p.prefs)
 	probe.cur_module = p.cur_module
 	probe.comptime_const_values = p.comptime_const_values.clone()
+	probe.comptime_local_values = p.comptime_local_values.clone()
+	probe.local_binding_counts = p.local_binding_counts.clone()
 	probe.comptime_string_imports = p.comptime_string_imports.clone()
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file('<comptime string condition>', cond.len)
@@ -18426,19 +18432,23 @@ fn comptime_cond_has_string_operation(cond string) bool {
 
 // resolve_comptime_string_declarations resolves static declaration guards once imported constants are parsed.
 // It runs before declaration collection and does not fold unknown values or function-local bindings.
-pub fn (mut p Parser) resolve_comptime_string_declarations() {
-	if p.prefs.is_fmt || p.prefs.preserve_comptime_conditionals { return }
+// It returns imports whose scalar guards still need a dependency's constants.
+pub fn (mut p Parser) resolve_comptime_string_declarations() map[int]bool {
+	if p.prefs.is_fmt || p.prefs.preserve_comptime_conditionals { return map[int]bool{} }
 	saved_module := p.cur_module
 	saved_file := p.cur_file
 	saved_locals := p.comptime_local_values
+	saved_bindings := p.local_binding_counts
 	saved_imports := p.comptime_string_imports
 	defer {
 		p.cur_module = saved_module
 		p.cur_file = saved_file
 		p.comptime_local_values = saved_locals
+		p.local_binding_counts = saved_bindings
 		p.comptime_string_imports = saved_imports
 	}
 	p.comptime_local_values = map[string]string{}
+	p.local_binding_counts = map[string]int{}
 	// Files are parsed before their imports. Revisit consumers when a dependency
 	// publishes a constant from a newly selected declaration branch.
 	for {
@@ -18451,20 +18461,60 @@ pub fn (mut p Parser) resolve_comptime_string_declarations() {
 			for child in p.a.children_of(&node) {
 				decl := p.a.nodes[int(child)]
 				if decl.kind == .module_decl { p.cur_module = decl.value }
-				if decl.kind == .import_decl {
-					alias := if decl.typ.len > 0 {
-						decl.typ
-					} else {
-						decl.value.all_after_last('.')
-					}
-					p.comptime_string_imports[alias] = decl.value
-				}
+				p.collect_comptime_string_import_aliases(child)
 			}
 			for child in p.a.children_of(&node) {
 				if p.resolve_comptime_string_declaration(child) { changed = true }
 			}
 		}
 		if !changed { break }
+	}
+	mut deferred_imports := map[int]bool{}
+	for node in p.a.nodes {
+		if node.kind != .file || node.children_count == 0 { continue }
+		for child in p.a.children_of(&node) {
+			p.collect_deferred_comptime_string_imports(child, mut deferred_imports)
+		}
+	}
+	return deferred_imports
+}
+
+fn (mut p Parser) collect_comptime_string_import_aliases(id flat.NodeId) {
+	if int(id) < 0 { return }
+	node := p.a.nodes[int(id)]
+	if node.kind == .import_decl {
+		alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
+		p.comptime_string_imports[alias] = node.value
+	} else if node.kind == .block {
+		for child in p.a.children_of(&node) {
+			p.collect_comptime_string_import_aliases(child)
+		}
+	}
+}
+
+fn (p &Parser) collect_deferred_comptime_string_imports(id flat.NodeId, mut imports map[int]bool) {
+	if int(id) < 0 { return }
+	node := p.a.nodes[int(id)]
+	if node.kind == .comptime_if && !comptime_cond_has_type_test(node.value)
+		&& !comptime_cond_has_type_metadata(node.value)
+		&& !comptime_cond_has_builtin_threads(node.value) {
+		p.collect_comptime_branch_imports(id, mut imports)
+	} else if node.kind == .block {
+		for child in p.a.children_of(&node) {
+			p.collect_deferred_comptime_string_imports(child, mut imports)
+		}
+	}
+}
+
+fn (p &Parser) collect_comptime_branch_imports(id flat.NodeId, mut imports map[int]bool) {
+	if int(id) < 0 { return }
+	node := p.a.nodes[int(id)]
+	if node.kind == .import_decl {
+		imports[int(id)] = true
+	} else if node.kind in [.comptime_if, .block] {
+		for child in p.a.children_of(&node) {
+			p.collect_comptime_branch_imports(child, mut imports)
+		}
 	}
 }
 
