@@ -37,6 +37,9 @@ builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until V
 can compile the full builtin map.v.
 
+Methods on an alias are resolved using the receiver expression's alias, including calls on
+parameters inside a method of another alias of the same underlying type.
+
 ## Compiler dispatch
 
 On every native platform, this is the default compiler for user source and test builds. The
