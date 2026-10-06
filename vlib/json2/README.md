@@ -39,6 +39,15 @@
 
 ## Usage
 
+#### encode_append[T]
+
+`encode_append(value, mut destination, options)` appends JSON bytes to a caller-owned
+`[]u8`, preserving its prefix and reusing capacity. Call `destination.clear()` before
+encoding to replace its contents. It accepts the same options and values as `encode`.
+The destination must have exclusive access during the call, and the value being encoded
+must not refer to its storage. Finish consuming the bytes before clearing or changing them.
+Use separate buffers for concurrent workers.
+
 #### encode[T]
 
 ```v
