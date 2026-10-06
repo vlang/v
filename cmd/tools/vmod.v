@@ -211,6 +211,7 @@ fn print_help(fp &flag.FlagParser) {
 	println('')
 	println('Subcommands:')
 	println('  why MODULE   Print the chain of imports that brings MODULE into the build.')
+	println('  graph        Print the dependency graph of the project.')
 }
 
 // why prints the chain of imports that brings a module into the build, the same
@@ -233,6 +234,25 @@ fn why(module_name string, project string) ! {
 		exit(1)
 	}
 	println('(main module does not need module `${module_name}`)')
+}
+
+// graph prints the dependency graph of the project, one module per line with the
+// modules it imports indented beneath it. It is the picture `v mod why` answers one
+// question about.
+fn graph(project string) ! {
+	g := build_graph(project)!
+	root := module_name_of(project)
+	println(root)
+	print_graph(g, root, '')
+}
+
+// print_graph prints a module and its dependencies, indented by `prefix`. Modules are
+// printed once, at their first occurrence, so a diamond does not repeat a subtree.
+fn print_graph(g &Graph, name string, prefix string) {
+	for dep in g.edges[name] or { []string{} } {
+		println('${prefix}${dep}')
+		print_graph(g, dep, '${prefix}  ')
+	}
 }
 
 fn main() {
@@ -266,6 +286,9 @@ fn main() {
 				exit(1)
 			}
 			why(rest[1], project)!
+		}
+		'graph' {
+			graph(project)!
 		}
 		else {
 			eprintln('v mod: unknown subcommand `${rest[0]}`.')
