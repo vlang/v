@@ -183,6 +183,75 @@ assert.equal(e.f32_rounded_equal(), 1);
 ')
 }
 
+fn test_wasm_assignments_keep_numeric_conversions() {
+	assert_wasm_source_before_and_after_optimization('numeric_stores', '
+pub fn check(n int) bool {
+	mut x := f64(0)
+	x = n
+	return x < 1.5
+}
+pub fn promoted_float(n f32) bool {
+	mut x := f64(0)
+	x = n
+	return x < 1.5
+}
+pub fn unsigned_to_float(n u32) f64 {
+	mut x := f64(0)
+	x = f64(n)
+	return x + 0.5
+}
+pub fn branch_float(n int, flag bool) f64 {
+	mut x := f64(0)
+	if flag { x = n } else { x = 3 }
+	return x + 0.5
+}
+pub fn parallel_floats(n int) f64 {
+	mut x := f64(0)
+	mut y := f64(0)
+	x, y = n, n + 1
+	return x + y + 0.5
+}
+pub fn unsigned_to_signed(n u32) bool {
+	mut x := i64(0)
+	x = i64(n)
+	return x > 2147483647
+}
+', '
+assert.equal(e.check(1), 1);
+assert.equal(e.check(2), 0);
+assert.equal(e.check(-1), 1);
+assert.equal(e.promoted_float(1.25), 1);
+assert.equal(e.promoted_float(1.75), 0);
+assert.equal(e.unsigned_to_float(4000000000), 4000000000.5);
+assert.equal(e.branch_float(1, 1), 1.5);
+assert.equal(e.branch_float(1, 0), 3.5);
+assert.equal(e.parallel_floats(3), 7.5);
+assert.equal(e.unsigned_to_signed(4000000000), 1);
+assert.equal(e.unsigned_to_signed(1), 0);
+')
+}
+
+fn test_wasm_full_width_integer_constant_folding() {
+	assert_wasm_source_before_and_after_optimization('full_width_folding', '
+pub fn check() bool { return 9223372036854775808 == 9223372036854775809 }
+pub fn unequal() bool { return 9223372036854775808 != 9223372036854775809 }
+pub fn hex_unequal() bool { return 0x8000000000000000 != 0x8000000000000001 }
+pub fn unsigned_less() bool { return u64(9223372036854775808) < u64(9223372036854775809) }
+pub fn unsigned_difference() u64 { return u64(9223372036854775809) - u64(9223372036854775808) }
+pub fn unsigned_maximum() u64 { return 18446744073709551615 }
+pub fn minimum_equal(n i64) bool { return n == -9223372036854775808 }
+', '
+assert.equal(e.check(), 0);
+assert.equal(e.unequal(), 1);
+assert.equal(e.hex_unequal(), 1);
+assert.equal(e.unsigned_less(), 1);
+assert.equal(e.unsigned_difference(), 1n);
+assert.equal(e.unsigned_maximum(), -1n);
+assert.equal(e.minimum_equal(-9223372036854775808n), 1);
+assert.equal(e.minimum_equal(9223372036854775807n), 0);
+')
+}
+
 fn test_wasm_wide_integer_literal_operands() {
 	assert_wasm_source_before_and_after_optimization('wide_literals', '
 pub fn equal(n i64) bool { return n == 4294967296 }
@@ -275,6 +344,57 @@ assert.equal(e.macos_rss_kb(), 456n);
 assert.equal(e.linux_rss_kb(), 789n);
 assert.equal(e.sum(), 1368n);
 ')
+}
+
+fn test_wasm_user_functions_keep_other_runtime_names() {
+	assert_wasm_source_before_and_after_optimization('other_runtime_names', '
+import hash
+fn wyhash64(a u64, b u64) u64 { return a + b }
+fn wyhash(a u64, b u64) u64 { return a * 10 + b }
+fn array_new(n int) int { return n + 11 }
+fn new_map(n int) int { return n + 13 }
+fn all_after_last(n int) int { return n + 17 }
+fn prealloc_malloc(n int) int { return n + 19 }
+fn join_path(n int) int { return n + 23 }
+fn name_list(n int) int { return n + 29 }
+pub fn call_hash() u64 { return wyhash64(3, 4) }
+pub fn runtime_control() u64 {
+	return hash.wyhash64_c(3, 4)
+}
+', '
+assert.equal(e.wyhash64(3n, 4n), 7n);
+assert.equal(e.wyhash(3n, 4n), 34n);
+assert.equal(e.array_new(5), 16);
+assert.equal(e.new_map(5), 18);
+assert.equal(e.all_after_last(5), 22);
+assert.equal(e.prealloc_malloc(5), 24);
+assert.equal(e.join_path(5), 28);
+assert.equal(e.name_list(5), 34);
+assert.equal(e.call_hash(), 7n);
+assert.equal(e.runtime_control(), 725283166682890696n);
+')
+}
+
+fn test_wasm_user_hash_runtime_name_in_main() {
+	source := os.join_path(os.vtmp_dir(), 'wasm_user_hash_${os.getpid()}.v')
+	output := os.join_path(os.vtmp_dir(), 'wasm_user_hash_${os.getpid()}.wasm')
+	defer {
+		os.rm(source) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(source, 'fn wyhash64(a u64, b u64) u64 { return a + b }
+fn main() { println(wyhash64(3, 4)) }
+') or { panic(err) }
+	for production in [false, true] {
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output, source]
+		if production {
+			args.insert(1, '-prod')
+		}
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert_valid_wasm(output)
+		run_wasi_expect(output, ['7'])
+	}
 }
 
 fn test_wasm_implicit_main_imported_scalar_calls() {

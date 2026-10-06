@@ -28,9 +28,11 @@ imported functions use their qualified module name with dots replaced by double 
 An explicit `@[export: 'name']` attribute supplies the export name.
 
 Rune literals retain their full Unicode code points in expressions and global initializers.
-Integer literals retain their width until an operation or comparison selects its operand types.
-Numeric arguments convert to the declared parameter types for both direct calls and function
-values. Implicit-main scripts retain imported functions called by their top-level statements.
+Integer literals retain their width until an operation or comparison selects its operand types,
+including full-width constants in production optimization. Numeric assignments and arguments
+convert to their declared types before optimization, for both direct calls and function values.
+Implicit-main scripts retain imported functions called by their top-level statements. User
+functions retain their bodies when their names overlap synthetic runtime helpers.
 
 WebAssembly uses 32-bit pointers and target-specific SSA memory layouts. Control flow is emitted
 from SSA basic blocks, with parallel copies on phi edges. Unsupported operations produce a compiler
