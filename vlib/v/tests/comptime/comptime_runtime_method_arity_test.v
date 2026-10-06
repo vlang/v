@@ -83,6 +83,37 @@ fn test_reflected_method_omits_optional_argument() {
 	}
 }
 
+fn test_reflected_method_requires_optional_alias_argument() {
+	root := os.join_path(os.vtmp_dir(), 'optional_alias_method_arity_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for parameter in ['MaybeInt', 'NestedMaybeInt'] {
+		path := os.join_path(root, 'arity.v')
+		source := 'type MaybeInt = ?int
+type NestedMaybeInt = MaybeInt
+struct Counter {
+mut:
+  hits int
+}
+fn (mut counter Counter) touch(value ${parameter}) { _ = value; counter.hits++ }
+fn main() {
+  mut counter := Counter{}
+  \$for method in Counter.methods {
+    counter.\$method()
+  }
+  assert counter.hits == 1
+}
+'
+		os.write_file(path, source)!
+		result := os.exec([@VEXE, '-new-compiler', '-check', path])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('expected 1 arguments to method Counter.touch, but got 0'), result.output
+		os.write_file(path, source.replace('counter.\$method()', 'counter.\$method(?int(7))'))!
+		control := os.exec([@VEXE, '-new-compiler', '-gc', 'none', 'run', path])
+		assert control.exit_code == 0, control.output
+	}
+}
+
 fn dispatch_implicit_context[A](app &A, mut ctx Context, name string, args []string) {
 	$for method in A.methods {
 		if method.name == name {

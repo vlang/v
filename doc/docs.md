@@ -8473,6 +8473,9 @@ A reflected method call can pass explicit arguments followed by `...args` to sup
 parameters. The spread can be empty when the method has no remaining parameters. Explicit arguments
 before the spread still follow the method's `mut` parameter requirements.
 
+Trailing parameters declared as `?T` can be omitted from a reflected method call.
+An alias of an option type still requires an explicit argument.
+
 Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
 Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.
 

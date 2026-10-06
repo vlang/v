@@ -315,7 +315,8 @@ fn (tc &TypeChecker) comptime_static_method_min_arg_count(receiver_name string, 
 	}
 	for count > 0 {
 		typ := tc.comptime_static_method_param_type(receiver_name, method, count - 1)
-		if unalias_type(typ) is OptionType
+		// Match lowering: only a parameter written as `?T` can omit its option argument.
+		if method.param_types[count - 1].starts_with('?')
 			|| tc.params_structs[unalias_and_unwrap_pointer_type(typ).name()] {
 			count--
 			continue
