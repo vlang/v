@@ -25,6 +25,7 @@ mut:
 	sources     map[string]Module
 	tags        map[string][]string
 	candidates  map[string]Module
+	exact_refs  map[string][]string
 	paths       []string
 	prefer_lock bool
 	precise     map[string]string
@@ -233,6 +234,14 @@ fn checkout_version_tag(path string) string {
 	return if tags.len == 0 { '' } else { tags[0] }
 }
 
+fn clone_selected_modules(selected map[string]Module) map[string]Module {
+	mut result := map[string]Module{}
+	for id, m in selected {
+		result[id] = Module{ ...m, requested_aliases: m.requested_aliases.clone() }
+	}
+	return result
+}
+
 fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, requirements map[string][]Requirement, mut selector VpmInstallServerSelector, mut scope LockScope) !map[string]Module {
 	if pending.len == 0 {
 		return selected
@@ -252,13 +261,22 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 		return err
 	}
 	constraint := requirement_version(req.raw)
+	if constraint != '' && !is_version_range(constraint) && constraint !in r.exact_refs[id] {
+		r.exact_refs[id] << constraint
+	}
 	mut known := requirements.clone()
 	mut for_module := known[id].clone()
 	for_module << req
 	known[id] = for_module
-	if m := selected[id] {
+	if selected_module := selected[id] {
+		mut m := Module{ ...selected_module, requested_aliases: selected_module.requested_aliases.clone() }
 		if module_satisfies(m, constraint) {
-			return r.solve(pending[1..], selected, known, mut selector, mut scope)
+			if req.raw !in m.requested_aliases {
+				m.requested_aliases << req.raw
+			}
+			mut next_selected := clone_selected_modules(selected)
+			next_selected[id] = m
+			return r.solve(pending[1..], next_selected, known, mut selector, mut scope)
 		}
 		r.conflict(id, for_module)
 		return error(r.failure)
@@ -330,7 +348,10 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 		return error(r.failure)
 	}
 	mut tried := map[string]bool{}
-	for choice in choices {
+	mut choice_index := 0
+	for choice_index < choices.len {
+		choice := choices[choice_index]
+		choice_index++
 		key := choice.version + '\0' + choice.revision
 		if key in tried {
 			continue
@@ -349,11 +370,12 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 			m.version = checkout_satisfying_tag(m.tmp_path, constraint)
 		}
 		m.requested = req.raw
+		m.requested_aliases = [req.raw]
 		m.version_range = if is_version_range(constraint) { constraint } else { '' }
 		m.is_resolution_update = !r.prefer_lock || r.precise.len > 0
 		m.is_resolved = true
 		m.get_installed()
-		mut next_selected := selected.clone()
+		mut next_selected := clone_selected_modules(selected)
 		next_selected[id] = m
 		mut next := pending[1..].clone()
 		mut chain := req.chain.clone()
@@ -363,6 +385,15 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 		}
 		if result := r.solve(next, next_selected, known, mut selector, mut scope) {
 			return result
+		}
+		// An unconstrained choice can meet an exact ref only after another
+		// candidate's manifest introduces it. Retry those discovered refs too.
+		if forced == '' && !(settings.is_locked && scope.active) {
+			for exact in r.exact_refs[id] {
+				if !choices.any(it.version == exact && it.revision == '') {
+					choices << VersionChoice{ version: exact }
+				}
+			}
 		}
 	}
 	return error(r.failure)

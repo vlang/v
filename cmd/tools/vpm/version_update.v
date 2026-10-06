@@ -95,14 +95,16 @@ fn update_versioned_project(query []string) bool {
 				continue
 			}
 			for mut m in selected {
-				if m.requested == dep {
+				if dep in m.requested_aliases {
 					version := version_tag(m.version) or {
 						vpm_error('cannot widen `${dep}` without a semantic-version release.')
 						exit(1)
 					}
 					manifest.dependencies[i] = lockfile_module_key(dep) + '@^' + version.str()
-					m.requested = manifest.dependencies[i]
-					m.version_range = requirement_version(m.requested)
+					if m.requested == dep {
+						m.requested = manifest.dependencies[i]
+						m.version_range = requirement_version(m.requested)
+					}
 				}
 			}
 		}

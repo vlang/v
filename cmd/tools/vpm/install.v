@@ -32,10 +32,6 @@ fn vpm_install(query []string) {
 			// - without additional module arguments.
 			println('Detected v.mod file inside the project directory. Using it...')
 			manifest := vmod.from_file('./v.mod') or { panic(err) }
-			if manifest.dependencies.len == 0 {
-				println('Nothing to install.')
-				exit(0)
-			}
 			manifest.dependencies
 		} else {
 			vpm_error('specify at least one module for installation.',
@@ -53,6 +49,11 @@ fn vpm_install(query []string) {
 	if settings.is_local || query.len == 0 {
 		scope.begin()
 		scope.complete = query.len == 0
+	}
+	if dep_strings.len == 0 {
+		println('Nothing to install.')
+		scope.finish()
+		return
 	}
 
 	mut modules, parse_errors := parse_query(dep_strings, mut selector, mut scope)

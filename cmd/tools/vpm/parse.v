@@ -13,6 +13,7 @@ mut:
 	// requested is the dependency string the module was parsed from, as it is
 	// written in the `v.mod` or on the command line, including any `@version`.
 	requested            string
+	requested_aliases    []string
 	tmp_path             string
 	install_path         string
 	install_path_fmted   string

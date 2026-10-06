@@ -247,7 +247,7 @@ fn (scope &LockScope) entry_for(dep string) ?LockedModule {
 	if !scope.active {
 		return none
 	}
-	return scope.entries[lockfile_module_key(dep)]
+	return scope.entries[lockfile_module_key(dep)] or { none }
 }
 
 // lock_mismatch describes how the lock entry `entry` differs from the

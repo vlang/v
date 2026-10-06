@@ -38,8 +38,9 @@ with `--locked`, even when newer tags exist. A changed range is resolved again;
 
 Requirements for the same repository are solved together. VPM tries higher matching tags first,
 then backtracks to older releases when their dependencies conflict. A bare requirement can share
-another dependency's tagged selection. Bare-only installs still use the default branch, and exact
-Git refs remain pins. Repository URL aliases share one selection; different repositories cannot
+another dependency's tagged selection or exact Git ref, regardless of requirement order.
+Bare-only installs still use the default branch, and exact Git refs remain pins.
+Repository URL aliases share one selection; different repositories cannot
 replace each other at the same normalized installation path. Candidate checkouts are staged in
 temporary directories, and the complete graph is resolved before any installed checkout changes.
 An unsatisfiable graph reports both requirement chains and leaves installed modules and the project
@@ -68,7 +69,8 @@ v update --latest
 `--precise` selects one package version or commit and fails if it violates any requirement.
 Numeric versions can match a tag with the optional `v` prefix.
 `--latest` widens selected direct dependencies to the newest resolvable stable release, writes
-caret constraints back to `v.mod`, and records them in the lockfile. Transitive requirements still
+caret constraints back to every selected direct requirement in `v.mod`, including URL aliases,
+and records them in the lockfile. Transitive requirements still
 apply. Rewriting `v.mod` retains its fields but uses the manifest encoder's formatting.
 These options require a project. Projects without ranges retain branch-based update behavior.
 

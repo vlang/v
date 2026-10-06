@@ -3,6 +3,7 @@ module main
 import os
 import rand
 import test_utils { cmd_fail_args, cmd_ok_args }
+import v.vmod
 
 const joint_root = os.join_path(os.temp_dir(), 'vpm_joint_${rand.ulid()}')
 const joint_original_dir = os.getwd()
@@ -75,6 +76,7 @@ fn test_joint_overlapping_constraints_choose_highest_common_tag_and_alias_once()
 	joint_cli(['install'])
 	assert joint_head('overlap', 'shared') == middle
 	assert get_installed_modules_in(os.join_path(joint_root, 'overlap', 'store')) == ['shared']
+	joint_cli(['install', '--locked'])
 	// Root order does not determine the selected version.
 	joint_project('overlap_reverse', ['file://' + repo + '@>=1.0.0 <1.5.0', repo + '@^1'])!
 	joint_cli(['install'])
@@ -132,6 +134,28 @@ fn test_joint_cycles_terminate_and_exact_pins_constrain_ranges() {
 	assert get_installed_modules_in(os.join_path(joint_root, 'cycle', 'store')).len == 2
 }
 
+fn test_joint_bare_requirements_share_exact_branch_pins_in_any_order() {
+	repo := joint_repo('branch_pin', 'shared')!
+	joint_tag(repo, 'shared', 'v1.0.0', [])!
+	joint_git(repo, ['switch', '-c', 'feature'])
+	os.write_file(os.join_path(repo, 'feature.txt'), 'feature branch')!
+	joint_git(repo, ['add', 'feature.txt'])
+	joint_git(repo, ['commit', '-m', 'feature branch'])
+	feature := joint_git(repo, ['rev-parse', 'HEAD'])
+	joint_git(repo, ['switch', 'main'])
+	joint_project('branch_pin', [repo, repo + '@feature'])!
+	joint_cli(['install'])
+	assert joint_head('branch_pin', 'shared') == feature
+	joint_project('branch_pin_reverse', [repo + '@feature', repo])!
+	joint_cli(['install'])
+	assert joint_head('branch_pin_reverse', 'shared') == feature
+	parent := joint_repo('branch_pin', 'parent')!
+	joint_tag(parent, 'parent', 'v1.0.0', [repo + '@feature'])!
+	joint_project('branch_pin_transitive', [repo, parent + '@^1'])!
+	joint_cli(['install'])
+	assert joint_head('branch_pin_transitive', 'shared') == feature
+}
+
 fn test_joint_lock_preference_and_frozen_preserve_deleted_tag_revision() {
 	repo := joint_repo('locked', 'shared')!
 	old := joint_tag(repo, 'shared', 'v1.0.0', [])!
@@ -185,6 +209,32 @@ fn test_joint_latest_widens_manifest_and_records_the_new_constraint() {
 	assert os.read_file(os.join_path(project, 'v.mod'))!.contains(repo + '@^2.0.0')
 	assert read_lockfile(project)!.modules[repo].requested == repo + '@^2.0.0'
 	joint_cli(['install', '--locked'])
+}
+
+fn test_joint_latest_widens_every_alias_of_a_direct_dependency() {
+	repo := joint_repo('latest_alias', 'shared')!
+	joint_tag(repo, 'shared', 'v1.0.0', [])!
+	project := joint_project('latest_alias', [repo + '@^1', 'file://' + repo + '@^1'])!
+	joint_cli(['install'])
+	new := joint_tag(repo, 'shared', 'v2.0.0', [])!
+	joint_cli(['update', '--latest'])
+	assert joint_head('latest_alias', 'shared') == new
+	manifest := vmod.from_file(os.join_path(project, 'v.mod'))!
+	assert manifest.dependencies == [repo + '@^2.0.0', 'file://' + repo + '@^2.0.0']
+	joint_cli(['install', '--locked'])
+}
+
+fn test_joint_install_prunes_lock_when_the_last_dependency_is_removed() {
+	repo := joint_repo('empty_lock', 'shared')!
+	joint_tag(repo, 'shared', 'v1.0.0', [])!
+	project := joint_project('empty_lock', [repo + '@^1'])!
+	joint_cli(['install'])
+	before := os.read_file(lockfile_path(project))!
+	joint_project('empty_lock', [])!
+	joint_cli(['install', '--frozen'])
+	assert os.read_file(lockfile_path(project))! == before
+	joint_cli(['install'])
+	assert read_lockfile(project)!.modules.len == 0
 }
 
 fn test_joint_targeted_update_preserves_other_selections_and_local_work() {
