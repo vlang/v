@@ -15429,6 +15429,8 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	if !p.can_start_type_name()
+		|| (!p.is_translated && p.tok == .name && p.peek() != .rpar && p.is_local_binding(p.lit)
+			&& p.resolve_local_type_name(p.lit) == p.lit)
 		|| (p.tok == .name && !type_name_can_init(p.lit)
 			&& p.translated_sizeof_name_is_const(p.lit))
 		|| (p.is_translated && p.tok == .name

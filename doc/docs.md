@@ -9211,6 +9211,8 @@ println(qux)
 * `sizeof(Type)` gives the size of a type in bytes.
 * `sizeof(value)` gives the size of the value's V type, including when its storage moves to
   the heap.
+  Value expressions such as `sizeof(values[0])` and `sizeof(record.field)` use the visible
+  local or parameter, including when it shadows a module constant.
 * `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
 
 ```v
