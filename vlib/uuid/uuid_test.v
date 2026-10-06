@@ -211,3 +211,44 @@ fn test_example_compare() {
 		'ffffffff-ffff-ffff-ffff-ffffffffffff',
 	]
 }
+
+fn test_parse_checks_every_hex_position_and_byte() {
+	for position in 0 .. 32 {
+		for byte in 0 .. 256 {
+			mut bytes := 'f81d4fae7dec11d0a76500a0c91e6bf6'.bytes()
+			bytes[position] = u8(byte)
+			raw := bytes.bytestr()
+			dashed := raw[..8] + '-' + raw[8..12] + '-' + raw[12..16] + '-' + raw[16..20] + '-' + raw[20..]
+			valid := (byte >= `0` && byte <= `9`) || (byte >= `a` && byte <= `f`)
+				|| (byte >= `A` && byte <= `F`)
+			for text in [raw, dashed, '{${dashed}}', 'urn:uuid:${dashed}'] {
+				mut rejected := false
+				u := parse(text) or {
+					rejected = true
+					nil_uuid
+				}
+				assert rejected == !valid, 'position ${position}, byte ${byte}'
+				if valid {
+					assert u.str().replace('-', '') == raw.to_lower()
+				}
+			}
+		}
+	}
+}
+
+fn test_new_v7_fraction_boundaries() {
+	nanos := [u64(0), 244, 245, 999_999, 1_000_000, 1_000_245, 999_999_999]
+	fractions := [u16(0), 0, 1, 4095, 0, 1, 4095]
+	for i, nanosecond in nanos {
+		fake_secs, fake_nanos = synctest_start + 86400 + u64(i), nanosecond
+		u := new_v7_from(fake_now)
+		assert unix_ts_ms(u) == fake_secs * 1000 + nanosecond / 1_000_000
+		assert (u16(u[6] & 0x0f) << 8) | u16(u[7]) == fractions[i]
+		assert version(u) == 7 && variant(u) == 0b10
+	}
+	// The largest timestamp representable in the 48-bit millisecond field.
+	fake_secs, fake_nanos = 281_474_976_710, 655_000_000
+	u := new_v7_from(fake_now)
+	assert unix_ts_ms(u) == u64(0xffff_ffff_ffff)
+	assert version(u) == 7 && variant(u) == 0b10
+}
