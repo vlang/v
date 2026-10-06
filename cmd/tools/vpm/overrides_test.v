@@ -33,7 +33,7 @@ fn test_override_ranges_remain_constraints_for_checkout_and_locks() {
 	overrides := parse_overrides(['vsl: ^0.1.60'])!
 	request := overridden_request('vsl@old-tag', ['vsl'], overrides)
 	assert request == 'vsl@^0.1.60'
-	assert dependency_request_version(request) == '^0.1.60'
+	assert requirement_version(request) == '^0.1.60'
 	entry := LockedModule{ requested: request, resolved: 'v0.1.59', url: 'https://example.com/vsl' }
 	assert lock_mismatch(entry, request, entry.url).contains('outside')
 }

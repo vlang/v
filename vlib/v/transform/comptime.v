@@ -1767,15 +1767,15 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 	}
 	if node.kind == .selector && node.value == '\$' && node.children_count >= 2
 		&& t.comptime_method_name_expr_matches(t.a.child(&node, 1), var_name) {
-		receiver := t.clone_method_subst_scoped(t.a.child(&node, 0), var_name, method, inner_vars) or {
+		source_receiver := t.a.child(&node, 0)
+		receiver_names_type := t.comptime_method_receiver_names_type(source_receiver)
+		receiver := t.clone_method_subst_scoped(source_receiver, var_name, method, inner_vars) or {
 			return none
 		}
 		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
 		method_key := '${receiver_name}.${method.name}'
 		t.mark_fn_used(method_key)
-		receiver_node := t.a.node(receiver)
-		if receiver_node.kind == .ident && receiver_node.value.len > 0
-			&& receiver_node.value[0].is_capital() && t.var_type(receiver_node.value).len == 0 {
+		if receiver_names_type {
 			same_main_module := method.module_name in ['', 'main']
 				&& t.cur_module in ['', 'main']
 			if !method.is_pub && method.module_name != t.cur_module && !same_main_module
@@ -1790,7 +1790,7 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 				return value
 			}
 		}
-		return t.make_comptime_method_selector(receiver, method)
+		return t.make_comptime_method_selector(receiver, method, receiver_names_type)
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
@@ -1987,9 +1987,49 @@ fn (mut t Transformer) make_param_array_literal(params []ParamMeta, module_name 
 	return t.make_array_literal_typed(ids, '[]FunctionParam')
 }
 
-fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, method MethodMeta) flat.NodeId {
-	receiver_node := t.a.node(receiver)
-	if receiver_node.kind == .ident && t.raw_var_type(receiver_node.value).len == 0 {
+fn (t &Transformer) comptime_method_receiver_names_type(receiver flat.NodeId) bool {
+	if int(receiver) < 0 {
+		return false
+	}
+	node := t.a.node(receiver)
+	if node.kind != .ident || node.value.len == 0 || t.static_assoc_ident_is_value(receiver) {
+		return false
+	}
+	// A cloned local may not be registered until its declaration is lowered.
+	// Decide on the source node while its lexical binding and checked type remain available.
+	namespace_spelling := t.comptime_resolve_selective_import_type(node.value)
+	if !node.value[0].is_capital() && !types.is_builtin_type_name(namespace_spelling)
+		&& !t.is_known_type_name(namespace_spelling) {
+		return false
+	}
+	if _ := t.local_binding_before(node.value, receiver) {
+		return false
+	}
+	if !isnil(t.tc)
+		&& (types.is_builtin_type_name(namespace_spelling) || t.is_known_type_name(namespace_spelling)) {
+		mut checked_name := node.typ
+		if typ := t.tc.expr_type(receiver) {
+			checked_name = t.tc.type_name(typ)
+		}
+		if decl_type_is_usable(checked_name) && checked_name != 'void' {
+			raw_namespace := t.normalize_type_in_module(namespace_spelling, t.cur_module)
+			parsed_namespace := t.tc.type_name(t.tc.parse_resolution_type(raw_namespace))
+			namespace_name := if decl_type_is_usable(parsed_namespace) && parsed_namespace != 'void' {
+				parsed_namespace
+			} else {
+				raw_namespace
+			}
+			if type_text_without_main_locks(t.normalize_type_alias(checked_name)) !=
+				type_text_without_main_locks(t.normalize_type_alias(namespace_name)) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, method MethodMeta, receiver_names_type bool) flat.NodeId {
+	if receiver_names_type {
 		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
 		method_key := '${receiver_name}.${method.name}'
 		same_main_module := method.module_name in ['', 'main'] && t.cur_module in ['', 'main']

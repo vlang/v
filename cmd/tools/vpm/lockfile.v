@@ -53,9 +53,11 @@ mut:
 // without a project in scope keeps `active` false, and nothing is locked.
 struct LockScope {
 mut:
-	dir     string
-	active  bool
-	entries map[string]LockedModule
+	dir           string
+	active        bool
+	entries       map[string]LockedModule
+	complete      bool
+	resolved_keys []string
 }
 
 // lockfile_path returns the path of the lockfile of the project in `dir`.
@@ -130,24 +132,36 @@ pub fn (mut lf LockFile) remove(name string) {
 	lf.modules.delete(name)
 }
 
-// dir_sha256 computes the SHA256 hash of all files in `dir` recursively,
-// returning a hex-encoded digest. Files are sorted by path for determinism.
-fn dir_sha256(dir string) string {
-	mut files := os.walk_ext(dir, '')
-	files.sort()
-	mut content := []u8{}
-	for f in files {
-		if os.is_file(f) {
-			file_content := os.read_file(f) or { continue }
-			content << file_content.bytes()
+// dir_sha256 hashes package paths, file bytes and symbolic-link targets.
+// VCS metadata is excluded so independent clones of one revision have the same hash.
+// Length framing distinguishes filenames and different splits of file content.
+fn dir_sha256(dir string) !string {
+	mut digest := sha256.new()
+	files := package_hash_files(dir, '')!
+	for relative in files {
+		path := os.join_path(dir, relative)
+		name := relative.replace(os.path_separator, '/')
+		kind := if os.is_link(path) { 'link' } else { 'file' }
+		data := if kind == 'link' { os.readlink(path)!.bytes() } else { os.read_bytes(path)! }
+		digest.write('${kind}:${name.len}:${name}:${data.len}:'.bytes())!
+		digest.write(data)!
+	}
+	return digest.sum([]u8{}).hex()
+}
+
+fn package_hash_files(root string, relative string) ![]string {
+	mut files := []string{}
+	for name in os.ls(os.join_path(root, relative))!.sorted() {
+		if name in ['.git', '.hg', '.svn'] { continue }
+		child := os.join_path(relative, name)
+		path := os.join_path(root, child)
+		if !os.is_link(path) && os.is_dir(path) {
+			files << package_hash_files(root, child)!
+		} else {
+			files << child
 		}
 	}
-	sum := sha256.sum(content)
-	mut hex := ''
-	for b in sum {
-		hex += b.hex()
-	}
-	return hex
+	return files
 }
 
 // pseudo_version returns a deterministic version-like identifier of a commit,
@@ -239,17 +253,19 @@ fn (mut scope LockScope) record(m Module) {
 		resolved:  resolved
 		revision:  revision
 		url:       m.url
-		hash:      dir_sha256(m.install_path)
+		hash:      dir_sha256(m.install_path) or {
+			vpm_error(err.msg())
+			exit(1)
+		}
 	}
 	verbose_println('Locked `${m.name}` at revision `${revision}`.')
 }
 
-// finish merges the entries collected during the run into the lockfile of the
-// project in scope and writes it back, keeping the entries of modules the run
-// did not touch. It does nothing when the run is not anchored to a project, or
-// when it did not resolve any module itself.
+// finish writes the resolved graph of a complete project run, or merges entries
+// from a partial install into its existing lockfile. Frozen runs never write.
+// It does nothing when no project or resolved dependency is in scope.
 fn (mut scope LockScope) finish() {
-	if !scope.active || scope.entries.len == 0 {
+	if !scope.active || scope.entries.len == 0 || settings.is_frozen {
 		return
 	}
 	lock_path := lockfile_path(scope.dir)
@@ -257,13 +273,14 @@ fn (mut scope LockScope) finish() {
 		version: lockfile_version
 		modules: map[string]LockedModule{}
 	}
-	if os.exists(lock_path) {
+	if os.exists(lock_path) && !scope.complete {
 		lf = read_lockfile(scope.dir) or {
 			vpm_error(err.msg())
 			exit(1)
 		}
 	}
 	for name, entry in scope.entries {
+		if scope.complete && name !in scope.resolved_keys { continue }
 		lf.upsert(entry, name)
 	}
 	write_lockfile(scope.dir, lf) or {
@@ -279,7 +296,7 @@ fn (scope &LockScope) entry_for(dep string) ?LockedModule {
 	if !scope.active {
 		return none
 	}
-	return scope.entries[lockfile_module_key(dep)]
+	return scope.entries[lockfile_module_key(dep)] or { none }
 }
 
 // lock_mismatch describes how the lock entry `entry` differs from the
@@ -342,7 +359,7 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 			vcs.clone(url, clone_version, tmp_path)!
 			vcs.checkout(tmp_path, entry.revision)!
 			if entry.hash != '' {
-				actual_hash := dir_sha256(tmp_path)
+				actual_hash := dir_sha256(tmp_path)!
 				if actual_hash != entry.hash {
 					return error('content hash mismatch for `${dep}`: lockfile records `${entry.hash}`, but cloned content hashes to `${actual_hash}`')
 				}
@@ -360,37 +377,31 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 	return resolved
 }
 
-// resolve_and_lock runs the resolver on the full dependency graph and records
-// the resolved versions in the lockfile. It is called after install when any
-// module was installed with a version range, so that the lockfile reflects the
-// joint resolution rather than independent per-module selections.
-fn resolve_and_lock(mut modules []Module, _scope LockScope) {
-	mut candidates := map[string][]VersionedDeps{}
-	mut constraints := map[string][]Constraint{}
+// resolve_and_lock verifies selected candidate manifests and ranged checkout revisions
+// before installation. Parsing has already discovered the selected dependency graph;
+// choosing alternate candidates jointly belongs to the project graph resolver.
+fn resolve_and_lock(modules []Module, scope LockScope) ! {
 	for m in modules {
-		if m.version_range == '' {
-			continue
+		check_min_v(m.manifest, m.name)!
+		if m.version_range == '' { continue }
+		if !module_satisfies(m, m.version_range) {
+			return error('selected `${m.version}` for `${m.name}` does not satisfy `${m.version_range}`')
 		}
-		tags := fetch_tags(m.url) or { continue }
-		mut vds := []VersionedDeps{}
-		for tag in tags {
-			vds << VersionedDeps{ version: tag, deps: [] }
-		}
-		candidates[m.name] = vds
-		constraints[m.name] << Constraint{ required_by: 'root', range: m.version_range }
-	}
-	if candidates.len == 0 {
-		return
-	}
-	resolved := resolve_with_pubgrub(candidates, constraints) or {
-		vpm_error('failed to resolve version ranges: ${err.msg()}')
-		return
-	}
-	for name, version in resolved {
-		for mut m in modules {
-			if m.name == name {
-				m.version = version
+		if entry := scope.locked_entry(m.requested, m.url) {
+			if entry.resolved == m.version && entry.revision == head_revision(m.tmp_path) {
+				continue
 			}
+		}
+		// An exact branch may share its commit with a tag satisfying a later range.
+		selected_tag := if tag_satisfies_range(m.version, m.version_range) {
+			m.version
+		} else {
+			checkout_satisfying_tag(m.tmp_path, m.version_range)
+		}
+		result := os.exec(['git', '-C', m.tmp_path, 'rev-parse', '--verify',
+			'refs/tags/${selected_tag}^{commit}'])
+		if result.exit_code != 0 || result.output.trim_space() != head_revision(m.tmp_path) {
+			return error('candidate checkout for `${m.name}` is not at selected tag `${selected_tag}`')
 		}
 	}
 }
@@ -454,7 +465,10 @@ fn refresh_lock_entries(results []UpdateResult) {
 				resolved:  pseudo_version(head_commit_unix_ts(res.install_path), revision)
 				revision:  revision
 				url:       entry.url
-				hash:      dir_sha256(res.install_path)
+				hash:      dir_sha256(res.install_path) or {
+					vpm_error(err.msg())
+					return
+				}
 			}
 			refreshed[name] = updated
 		}

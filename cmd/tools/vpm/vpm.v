@@ -9,7 +9,8 @@ import rand
 import v.help
 import v.vmod
 
-const server_url_option_names = ['-m', '--mirror', '-server-url', '--server-url', '--server-urls']
+const value_option_names = ['-m', '--mirror', '-server-url', '--server-url', '--server-urls',
+	'--precise', '-p', '--package', '--pin', '--exclude-newer', '--minimum-release-age']
 const settings = init_settings()
 const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
@@ -78,6 +79,10 @@ fn main() {
 			vpm_why(query)
 		}
 		'vendor' {
+			if query.len != 0 {
+				vpm_error('`v vendor` takes no package arguments.')
+				exit(1)
+			}
 			vpm_vendor()
 		}
 		else {
@@ -95,7 +100,7 @@ fn parse_vpm_command(args []string) string {
 			skip_next = false
 			continue
 		}
-		if arg in server_url_option_names {
+		if arg in value_option_names {
 			skip_next = true
 			continue
 		}
@@ -115,7 +120,7 @@ fn parse_query_args(args []string, vpm_command string) []string {
 			skip_next = false
 			continue
 		}
-		if arg in server_url_option_names {
+		if arg in value_option_names {
 			skip_next = true
 			continue
 		}

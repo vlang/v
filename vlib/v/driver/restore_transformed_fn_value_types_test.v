@@ -75,6 +75,11 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 	unused_call := restored_type_node(mut a, .call, '', [unused_callee])
 	unused_body := restored_type_node(mut a, .block, '', [unused_call])
 	unused_fn := restored_type_node(mut a, .fn_decl, 'unused', [unused_body])
+	a.nodes[int(first_callee)].typ = 'fn (int) int'
+	a.nodes[int(unused_fn)].set_generic_params_and_constraints(['T'], ['Record'])
+	a.intern_node_texts_from(0)
+	canonical_nodes := a.nodes.clone()
+	canonical_text_count := a.text_values.len
 	mut tc := types.TypeChecker.new(&a)
 	integer := types.builtin_type_value('int')
 	boolean := types.builtin_type_value('bool')
@@ -107,6 +112,7 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 	})
 	assert tc.expr_type_values[int(local)] == types.Type(types.Struct{ name: 'Receiver' })
 	assert !tc.expr_type_set[int(unused_callee)]
+	assert_restoration_preserves_canonical_node_texts(&a, canonical_nodes, canonical_text_count)
 	// A second restoration observes refreshed signatures rather than retaining
 	// the previous invocation's wrapper cache.
 	tc.fn_ret_types['first.value'] = boolean
@@ -118,4 +124,18 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 		params:      [integer]
 		return_type: boolean
 	})
+	assert_restoration_preserves_canonical_node_texts(&a, canonical_nodes, canonical_text_count)
+}
+
+// Restoration keeps text owned by the AST intact while refreshing semantic
+// signatures, so the ordinary path can omit another canonicalization barrier.
+fn assert_restoration_preserves_canonical_node_texts(a &flat.FlatAst, canonical_nodes []flat.Node, canonical_text_count int) {
+	assert a.nodes == canonical_nodes
+	assert a.text_values.len == canonical_text_count
+	for i, node in a.nodes {
+		assert node.value.str == canonical_nodes[i].value.str
+		assert node.typ.str == canonical_nodes[i].typ.str
+		assert node.type_text_id() == canonical_nodes[i].type_text_id()
+		assert node.payload == canonical_nodes[i].payload
+	}
 }

@@ -6,8 +6,8 @@ import semver
 // requiring asks for that dependency. Dependency manifests supply no overrides.
 pub struct Override {
 pub:
-	name      string
-	version   string
+	name       string
+	version    string
 	requiring  string
 	constraint string
 }

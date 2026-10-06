@@ -10,17 +10,20 @@ mut:
 	url           string
 	version       string // selected tag or the requested exact VCS ref.
 	version_range string // requested semantic version range, when one was supplied.
-	// requested is the effective dependency string, after a root override when
-	// present, including its `@version`. It is also the lockfile request.
-	requested          string
-	tmp_path           string
-	install_path       string
-	install_path_fmted string
-	installed_version  string
-	is_installed       bool
-	is_external        bool
-	vcs                ?VCS
-	manifest           vmod.Manifest
+	// requested is the dependency string the module was parsed from, as it is
+	// written in the `v.mod` or on the command line, including any `@version`.
+	requested            string
+	requested_aliases    []string
+	tmp_path             string
+	install_path         string
+	install_path_fmted   string
+	installed_version    string
+	is_installed         bool
+	is_external          bool
+	is_resolution_update bool
+	is_resolved          bool
+	vcs                  ?VCS
+	manifest             vmod.Manifest
 }
 
 struct Parser {
@@ -31,7 +34,11 @@ mut:
 	search_loaded        bool
 	errors               int
 	encountered_range    bool
-	overrides            []Override
+	shallow              bool
+	quiet                bool
+	temporary_namespace  string
+	probe                bool
+	last_error           string
 }
 
 enum ModuleKind {
@@ -42,28 +49,14 @@ enum ModuleKind {
 	local
 }
 
-// parse_query resolves the modules of `query` and their dependencies. It
-// returns them together with the number of modules that failed to resolve.
-fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope, overrides []Override, requiring string) ([]Module, int) {
-	mut p := Parser{ overrides: overrides }
-	for m in query {
-		p.parse_module(m, mut selector, mut scope, requiring)
-	}
-	if p.errors > 0 && (p.errors == query.len || p.encountered_range) {
-		for m in p.modules.values() {
-			rmdir_all(m.tmp_path) or {}
-		}
-		exit(1)
-	}
-	modules := p.modules.values()
-	validate_range_destinations(modules) or {
-		for m in modules {
-			rmdir_all(m.tmp_path) or {}
-		}
+// parse_query resolves the complete dependency graph before returning install candidates.
+// It exits without installing modules if resolution fails.
+fn parse_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope) ([]Module, int) {
+	modules := resolve_module_query(query, mut selector, mut scope, true, map[string]string{}) or {
 		vpm_error(err.msg())
 		exit(1)
 	}
-	return modules, p.errors
+	return modules, 0
 }
 
 // report_module_clone_error shows range failures without requiring verbose mode.
@@ -105,7 +98,7 @@ fn (mut p Parser) lookup_registered_name_for_url(manifest_name string, ident str
 	return none
 }
 
-fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, mut scope LockScope, requiring string) {
+fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, mut scope LockScope) {
 	kind := match true {
 		m.starts_with('https://') { ModuleKind.https }
 		m.starts_with('git@') { ModuleKind.ssh }
@@ -114,7 +107,7 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 		else { ModuleKind.registered }
 	}
 
-	ident, original_version := if kind == .ssh {
+	ident, version := if kind == .ssh {
 		if m.count('@') > 1 {
 			m.all_before_last('@'), m.all_after_last('@')
 		} else {
@@ -123,10 +116,9 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 	} else {
 		m.rsplit_once('@') or { m, '' }
 	}
-	mut request := overridden_request_for_module(m, [ident], requiring, p.overrides)
-	mut version := if request == m { original_version } else { dependency_request_version(request) }
-	mut key := match kind {
-		.registered { request }
+	p.encountered_range = p.encountered_range || is_version_range(version)
+	key := match kind {
+		.registered { m }
 		.ssh { ident.replace(':', '/') + at_version(version) }
 		else { ident.all_after('//').trim_string_right('.git') + at_version(version) }
 	}
@@ -134,7 +126,9 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 	if key in p.modules {
 		return
 	}
-	println('Scanning `${m}`...')
+	if !p.quiet {
+		println('Scanning `${m}`...')
+	}
 	mut mod := if kind != ModuleKind.registered {
 		// External module. The identifier is an URL.
 		if kind == .http {
@@ -147,75 +141,37 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 		} else {
 			ident
 		}) or {
-			vpm_error(err.msg())
+			p.module_error(err.msg())
 			p.errors++
-			return
-		}
-		request = overridden_request_for_module(m, [ident, name], requiring, p.overrides)
-		version = dependency_request_version(request)
-		key = ident.all_after('//').trim_string_right('.git') + at_version(version)
-		if key in p.modules {
 			return
 		}
 		// Verify VCS. Only needed once for external modules.
 		if !p.checked_settings_vcs {
 			p.checked_settings_vcs = true
 			settings.vcs.is_executable() or {
-				vpm_error(err.msg())
+				p.module_error(err.msg())
 				exit(1)
 			}
 		}
-		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(publisher, name, version_tmp_name(version))) or {
-			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
+		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(p.temporary_namespace, publisher, name, version_tmp_name(version))) or {
+			p.module_error('failed to get temporary directory for `${ident}`.', details: err.msg())
 			p.errors++
 			return
 		}
-		// A direct repository's manifest name can differ from its basename. When
-		// no basename override matched, inspect its default manifest before
-		// resolving the request; consume no dependencies or min_v from that probe.
-		probe := p.overrides.len > 0 && request == m
-		p.encountered_range = p.encountered_range || is_version_range(version)
-		mut resolved_version := clone_initial_override_source(probe, settings.vcs, ident,
-			request, version, tmp_path, mut scope) or {
-			report_module_clone_error(ident, request, version, err.msg())
+		resolved_version := clone_module_source(settings.vcs, m, ident, version, tmp_path, mut scope) or {
+			if p.probe {
+				p.last_error = 'failed to install `${m}`: ${err.msg()}'
+			} else {
+				report_module_clone_error(ident, m, version, err.msg())
+			}
 			rmdir_all(tmp_path) or {}
 			p.errors++
 			return
 		}
-		mut manifest := vmod.from_file(os.join_path(tmp_path, 'v.mod')) or {
-			vpm_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
+		manifest := vmod.from_file(os.join_path(tmp_path, 'v.mod')) or {
+			p.module_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
 				details: err.msg()
 			)
-			rmdir_all(tmp_path) or {}
-			p.errors++
-			return
-		}
-		selected_request := overridden_request_for_module(m, [ident, name, manifest.name], requiring, p.overrides)
-		if probe || selected_request != request {
-			request = selected_request
-			version = dependency_request_version(request)
-			p.encountered_range = p.encountered_range || is_version_range(version)
-			key = ident.all_after('//').trim_string_right('.git') + at_version(version)
-			rmdir_all(tmp_path) or {}
-			if key in p.modules {
-				return
-			}
-			resolved_version = clone_module_source(settings.vcs, request, ident, version, tmp_path, mut scope) or {
-				report_module_clone_error(ident, request, version, err.msg())
-				rmdir_all(tmp_path) or {}
-				p.errors++
-				return
-			}
-			manifest = vmod.from_file(os.join_path(tmp_path, 'v.mod')) or {
-				vpm_error('failed to read selected manifest for `${request}`.', details: err.msg())
-				rmdir_all(tmp_path) or {}
-				p.errors++
-				return
-			}
-		}
-		p.encountered_range = p.encountered_range || is_version_range(version)
-		check_min_v(manifest, ident) or {
-			vpm_error(err.msg())
 			rmdir_all(tmp_path) or {}
 			p.errors++
 			return
@@ -245,21 +201,14 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 	} else {
 		// VPM registered module.
 		info := get_mod_vpm_info_with_selector(ident, mut selector) or {
-			vpm_error('failed to retrieve metadata for `${ident}`.', details: err.msg())
+			p.module_error('failed to retrieve metadata for `${ident}`.', details: err.msg())
 			p.errors++
 			return
 		}
-		request = overridden_request_for_module(m, [ident, info.name], requiring, p.overrides)
-		version = dependency_request_version(request)
-		key = request
-		if key in p.modules {
-			return
-		}
-		p.encountered_range = p.encountered_range || is_version_range(version)
 		// Verify VCS.
 		vcs := if info.vcs != '' {
 			info_vcs := vcs_from_str(info.vcs) or {
-				vpm_error('skipping `${info.name}`, since it uses an unsupported version control system `${info.vcs}`.')
+				p.module_error('skipping `${info.name}`, since it uses an unsupported version control system `${info.vcs}`.')
 				p.errors++
 				return
 			}
@@ -268,18 +217,22 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			VCS.git
 		}
 		vcs.is_executable() or {
-			vpm_error(err.msg())
+			p.module_error(err.msg())
 			p.errors++
 			return
 		}
 		mod_path := normalize_mod_path(info.name.replace('.', os.path_separator))
-		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(mod_path, version_tmp_name(version))) or {
-			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
+		tmp_path := get_tmp_path(settings.tmp_path, os.join_path(p.temporary_namespace, mod_path, version_tmp_name(version))) or {
+			p.module_error('failed to get temporary directory for `${ident}`.', details: err.msg())
 			p.errors++
 			return
 		}
-		resolved_version := clone_module_source(vcs, request, info.url, version, tmp_path, mut scope) or {
-			report_module_clone_error(ident, request, version, err.msg())
+		resolved_version := clone_module_source(vcs, m, info.url, version, tmp_path, mut scope) or {
+			if p.probe {
+				p.last_error = 'failed to install `${m}`: ${err.msg()}'
+			} else {
+				report_module_clone_error(ident, m, version, err.msg())
+			}
 			rmdir_all(tmp_path) or {}
 			p.errors++
 			return
@@ -299,12 +252,6 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 			vpm_log(@FILE_LINE, @FN, 'vpm manifest detection error: ${err}')
 			vmod.Manifest{}
 		}
-		check_min_v(manifest, info.name) or {
-			vpm_error(err.msg())
-			rmdir_all(tmp_path) or {}
-			p.errors++
-			return
-		}
 		Module{
 			name:          info.name
 			url:           info.url
@@ -317,32 +264,15 @@ fn (mut p Parser) parse_module(m string, mut selector VpmInstallServerSelector, 
 		}
 	}
 	mod.install_path_fmted = fmt_mod_path(mod.install_path)
-	mod.requested = request
+	mod.requested = m
 	mod.get_installed()
 	p.modules[key] = mod
-	if mod.manifest.dependencies.len > 0 {
+	if !p.shallow && mod.manifest.dependencies.len > 0 {
 		verbose_println('Found ${mod.manifest.dependencies.len} dependencies for `${mod.name}`: ${mod.manifest.dependencies}.')
 		for d in mod.manifest.dependencies {
-			p.parse_module(d, mut selector, mut scope, mod.name)
+			p.parse_module(d, mut selector, mut scope)
 		}
 	}
-}
-
-// A manifest-name probe must not consume or enforce the root lock request.
-fn clone_initial_override_source(probe bool, vcs VCS, ident string, request string, version string, tmp_path string, mut scope LockScope) !string {
-	if probe {
-		mut probe_scope := LockScope{}
-		return clone_module_source(vcs, ident, ident, '', tmp_path, mut probe_scope)!
-	}
-	return clone_module_source(vcs, request, ident, version, tmp_path, mut scope)!
-}
-
-fn dependency_request_version(request string) string {
-	if request.starts_with('git@') && request.count('@') == 1 {
-		return ''
-	}
-	_, version := request.rsplit_once('@') or { return '' }
-	return version
 }
 
 fn is_local_repository(query string) bool {
@@ -403,7 +333,7 @@ fn (mut m Module) get_installed() {
 	}
 	vpm_log(@FILE_LINE, @FN, 'refs: ${refs}')
 	m.is_installed = true
-	if m.version_range != '' && head_revision(m.install_path) == head_revision(m.tmp_path) {
+	if m.version != '' && head_revision(m.install_path) == head_revision(m.tmp_path) {
 		m.installed_version = m.version
 		return
 	}
@@ -512,4 +442,11 @@ fn relative_path_has_parent_segment(relative_path string) bool {
 		}
 	}
 	return false
+}
+
+// module_error retains probe failures for the final requiring chain. A rejected
+// candidate must not print an error when an older release can resolve the graph.
+fn (mut p Parser) module_error(message string, opts ErrorOptions) {
+	p.last_error = message + if opts.details == '' { '' } else { '\n' + opts.details }
+	if !p.probe { vpm_error(message, opts) }
 }

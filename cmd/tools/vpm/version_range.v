@@ -3,6 +3,8 @@ module main
 import crypto.sha256
 import os
 import semver
+import rand
+import strconv
 import time
 
 // is_version_range distinguishes explicit constraints from existing Git refs.
@@ -99,91 +101,84 @@ fn (vcs VCS) resolve_version(url string, version string) !string {
 	if version.contains_any('\0\r\n') || url.starts_with('-') {
 		return error('invalid source or version range')
 	}
-	res := os.exec(['git', 'ls-remote', '--tags', '--refs', '--', url])
-	if res.exit_code != 0 {
-		return error('failed to list version tags from `${url}`: ${res.output.trim_space()}')
+	// Validate policy before discovering tags; malformed input cannot disable filtering.
+	cutoff := if settings.exclude_newer == '' {
+		i64(0)
+	} else {
+		release_cutoff_unix(settings.exclude_newer)!
+	}
+	age := if settings.minimum_release_age == '' {
+		i64(0)
+	} else {
+		release_age_seconds(settings.minimum_release_age)!
 	}
 	mut tags := []string{}
-	for line in res.output.split_into_lines() {
-		fields := line.split('\t')
-		if fields.len == 2 && fields[1].starts_with('refs/tags/') {
-			tag := fields[1].trim_string_left('refs/tags/')
-			if settings.exclude_newer != '' {
-				tag_date := tag_commit_date(url, tag) or { continue }
-				if tag_date > settings.exclude_newer {
-					continue
-				}
+	for tag in fetch_tags(url)! {
+		version_tag(tag) or { continue }
+		if settings.exclude_newer != '' || settings.minimum_release_age != '' {
+			date := tag_commit_date(url, tag)!
+			timestamp := time.parse_rfc3339(date)!.unix()
+			if (settings.exclude_newer != '' && timestamp > cutoff)
+				|| (settings.minimum_release_age != '' && timestamp > time.now().unix() - age) {
+				continue
 			}
-			if settings.minimum_release_age != '' {
-				tag_date := tag_commit_date(url, tag) or { continue }
-				if is_tag_too_new(tag_date, settings.minimum_release_age) {
-					continue
-				}
-			}
-			tags << tag
 		}
+		tags << tag
 	}
 	selected := select_version_tag(tags, version)!
 	verbose_println('Resolved `${version}` to `${selected}` from `${url}`.')
 	return selected
 }
 
-fn is_tag_too_new(tag_date string, age string) bool {
-	mut duration := age
-	mut unit := 'h'
-	if age.ends_with('d') {
-		unit = 'd'
-		duration = age[..age.len - 1]
-	} else if age.ends_with('h') {
-		duration = age[..age.len - 1]
-	} else if age.ends_with('m') {
-		unit = 'm'
-		duration = age[..age.len - 1]
-	}
-	mut n := 0
-	for c in duration {
-		if c.is_digit() {
-			n = n * 10 + (c - `0`)
-		} else {
-			return false
+fn release_cutoff_unix(value string) !i64 {
+	input := if value.len == 10 { value + 'T00:00:00Z' } else { value }
+	parsed := time.parse_rfc3339(input) or { return error('invalid --exclude-newer date `${value}`: ${err.msg()}') }
+	return parsed.unix()
+}
+
+fn release_age_seconds(value string) !i64 {
+	if value == '' { return error('--minimum-release-age requires a duration') }
+	mut digits := value
+	mut scale := i64(3600)
+	if value[value.len - 1] in [`d`, `h`, `m`] {
+		digits = value[..value.len - 1]
+		scale = match value[value.len - 1] {
+			`d` { i64(86400) }
+			`m` { i64(60) }
+			else { i64(3600) }
 		}
 	}
-	mut threshold := time.now()
-	match unit {
-		'd' {
-			threshold = threshold.add_days(-n)
-		}
-		'm' {
-			threshold = threshold.add_seconds(-n * 60)
-		}
-		else {
-			threshold = threshold.add_seconds(-n * 3600)
-		}
+	if digits == '' || !digits.bytes().all(it.is_digit()) {
+		return error('invalid --minimum-release-age `${value}`; use hours, or a d/h/m suffix')
 	}
-	tag_time := time.parse_rfc3339(tag_date) or { return false }
-	return tag_time.unix() > threshold.unix()
+	amount := strconv.parse_int(digits, 10, 64) or { return error('invalid --minimum-release-age `${value}`: ${err.msg()}') }
+	if amount > i64(0x7fffffffffffffff) / scale {
+		return error('--minimum-release-age `${value}` is too large')
+	}
+	return amount * scale
+}
+
+fn is_tag_too_new(tag_date string, age string) !bool {
+	timestamp := time.parse_rfc3339(tag_date)!.unix()
+	return timestamp > time.now().unix() - release_age_seconds(age)!
 }
 
 fn tag_commit_date(url string, tag string) !string {
-	tmp_dir := os.join_path(os.vtmp_dir(), 'vpm_exclude_newer_${tag}')
-	os.rmdir_all(tmp_dir) or {}
-	defer {
-		os.rmdir_all(tmp_dir) or {}
-	}
-	res := os.exec(['git', 'clone', '--bare', '--filter=blob:none', '--no-checkout', '--depth=1',
-		'--branch', '${tag}', url, tmp_dir])
-	if res.exit_code != 0 {
-		return error('failed to clone tag `${tag}` from `${url}`')
-	}
+	// Each discovery owns its directory, including concurrent calls for the same tag.
+	tmp_dir := get_tmp_path(settings.tmp_path, 'tag-date-' + rand.ulid())!
+	defer { os.rmdir_all(tmp_dir) or {} }
+	VCS.git.clone(url, tag, tmp_dir)!
 	date_res := os.exec(['git', '-C', tmp_dir, 'log', '-1', '--format=%cI'])
 	if date_res.exit_code != 0 {
-		return error('failed to get date for tag `${tag}`')
+		return error('failed to get date for tag `${tag}` from `${url}`: ${date_res.output.trim_space()}')
 	}
-	return date_res.output.trim_space()
+	date := date_res.output.trim_space()
+	time.parse_rfc3339(date)!
+	return date
 }
 
-// validate_range_destinations prevents multiple selections from overwriting
-// the single-version module store. Joint constraint solving is not yet supported.
+// validate_range_destinations guards independent non-project selections from
+// overwriting the single-version module store. Project installs solve the graph jointly.
 fn validate_range_destinations(modules []Module) ! {
 	mut seen := map[string]Module{}
 	for m in modules {
@@ -198,4 +193,16 @@ fn validate_range_destinations(modules []Module) ! {
 		}
 		seen[destination] = m
 	}
+}
+
+fn release_tag_allowed(url string, tag string) !bool {
+	if settings.exclude_newer == '' && settings.minimum_release_age == '' { return true }
+	timestamp := time.parse_rfc3339(tag_commit_date(url, tag)!)!.unix()
+	if settings.exclude_newer != '' && timestamp > release_cutoff_unix(settings.exclude_newer)! {
+		return false
+	}
+	if settings.minimum_release_age != '' && timestamp > time.now().unix() - release_age_seconds(settings.minimum_release_age)! {
+		return false
+	}
+	return true
 }

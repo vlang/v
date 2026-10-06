@@ -33,6 +33,7 @@ fn pad_right(s string, n int) string {
 
 // vpm_outdated reports installed versions and project-constrained tag choices.
 fn vpm_outdated() {
+	if print_version_outdated() { return }
 	rows := get_outdated_rows()
 	if rows.len == 0 {
 		println('No modules installed.')
@@ -156,7 +157,7 @@ fn project_constraints() map[string]string {
 			} else {
 				dep.all_before_last('@').trim_space()
 			}
-			range_str := dependency_request_version(dep).trim_space()
+			range_str := requirement_version(dep).trim_space()
 			if name != '' {
 				constraints[name] = range_str
 			}

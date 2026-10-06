@@ -20,17 +20,18 @@ fn vpm_update(query []string) {
 	if settings.is_help {
 		help.print_and_exit('update')
 	}
-	if settings.is_dry_run {
-		dry_run_update(query)
+	if settings.is_locked {
+		vpm_error('`v update` changes resolution; use `v install --locked` to preserve it.')
+		exit(1)
+	}
+	if update_versioned_project(query) {
 		return
 	}
-	if settings.is_precise {
-		if settings.pin_module != '' && query.len > 0 {
-			vpm_error('--precise takes exactly one module name')
+	if settings.is_dry_run {
+		dry_run_update(query) or {
+			vpm_error(err.msg())
 			exit(1)
 		}
-		module := if settings.pin_module != '' { settings.pin_module } else { query[0] }
-		update_precise(module, settings.precise_version)
 		return
 	}
 	idents := if query.len == 0 { get_installed_modules() } else { query.clone() }
@@ -52,73 +53,6 @@ fn vpm_update(query []string) {
 	if errors > 0 {
 		exit(1)
 	}
-}
-
-fn dry_run_update(query []string) {
-	idents := if query.len == 0 { get_installed_modules() } else { query.clone() }
-	mut would_update := 0
-	for ident in idents {
-		install_path := get_path_of_existing_module(ident) or { continue }
-		if !install_path_is_in_vmodules(install_path, settings.vmodules_path) {
-			continue
-		}
-		name := import_path_of(install_path)
-		vcs := vcs_used_in_dir(install_path) or { continue }
-		if vcs != .git {
-			continue
-		}
-		os.exec_opt(['git', '-C', install_path, 'fetch', 'origin']) or { continue }
-		local_rev := head_revision(install_path)
-		remote_rev := os.exec_opt(['git', '-C', install_path, 'rev-parse', 'origin/HEAD']) or { continue }
-		if local_rev == remote_rev.output.trim_space() {
-			println('${name}: up to date')
-		} else {
-			println('${name}: would update (${local_rev[..7]} -> ${remote_rev.output.trim_space()[..7]})')
-			would_update++
-		}
-	}
-	if would_update == 0 {
-		println('All modules are up to date.')
-	}
-}
-
-fn update_precise(module string, version string) {
-	install_path := get_path_of_existing_module(module) or {
-		vpm_error('failed to find path for `${module}`.')
-		exit(1)
-	}
-	if !install_path_is_in_vmodules(install_path, settings.vmodules_path) {
-		vpm_error('refusing to update `${module}`: `${fmt_mod_path(install_path)}` is outside the modules directory.')
-		exit(1)
-	}
-	name := import_path_of(install_path)
-	if !vpm_owns_module_dir(install_path) {
-		vpm_error('refusing to update `${name}`: `${fmt_mod_path(install_path)}` was not installed by VPM.')
-		exit(1)
-	}
-	vcs := vcs_used_in_dir(install_path) or {
-		vpm_error('failed to find version control system for `${name}`.')
-		exit(1)
-	}
-	if vcs != .git {
-		vpm_error('--precise is only supported for git repositories.')
-		exit(1)
-	}
-	println('Pinning module `${name}` to `${version}` in `${fmt_mod_path(install_path)}`...')
-	os.exec_opt(['git', '-C', install_path, 'fetch', 'origin', '--tags']) or {
-		vpm_error('failed to fetch tags for module `${name}`.', details: err.msg())
-		exit(1)
-	}
-	os.exec_opt(['git', '-C', install_path, 'checkout', '--quiet', version]) or {
-		vpm_error('failed to checkout `${version}` for module `${name}`.', details: err.msg())
-		exit(1)
-	}
-	update_git_submodules(install_path) or {
-		vpm_error('failed to update submodules for module `${name}`.', details: err.msg())
-		exit(1)
-	}
-	increment_module_download_count(name, '') or { vpm_error(err.msg(), verbose: true) }
-	println('Pinned module `${name}` to `${version}`.')
 }
 
 fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
@@ -206,4 +140,46 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 		success:      true
 		install_path: install_path
 	}
+}
+
+fn dry_run_update(query []string) ! {
+	idents := if query.len == 0 { get_installed_modules() } else { query.clone() }
+	mut would_update := 0
+	for ident in idents {
+		path := precise_update_path(ident)!
+		vcs := vcs_used_in_dir(path) or { return error('no VCS for `${ident}`') }
+		if vcs != .git { return error('--dry-run is supported only for Git repositories') }
+		url := checkout_origin_url(path)
+		if url == '' { return error('no origin for `${ident}`') }
+		remote := os.exec(['git', 'ls-remote', '--', url, 'HEAD'])
+		if remote.exit_code != 0 {
+			return error('failed to discover origin HEAD for `${ident}`: ${remote.output.trim_space()}')
+		}
+		mut revision := ''
+		for line in remote.output.split_into_lines() {
+			fields := line.split('\t')
+			if fields.len == 2 && fields[1] == 'HEAD' { revision = fields[0] }
+		}
+		if revision.len != 40 { return error('origin for `${ident}` has no HEAD revision') }
+		local := head_revision(path)
+		if local.len != 40 { return error('failed to read HEAD for `${ident}`') }
+		if local == revision {
+			println('${ident}: up to date')
+		} else {
+			println('${ident}: would update (${local[..7]} -> ${revision[..7]})')
+			would_update++
+		}
+	}
+	if would_update == 0 { println('All modules are up to date.') }
+}
+
+fn precise_update_path(module string) !string {
+	path := get_path_of_existing_module(module) or { return error('failed to find path for `${module}`') }
+	if !install_path_is_in_vmodules(path, settings.vmodules_path) {
+		return error('refusing to update `${module}` outside the modules directory')
+	}
+	if !vpm_owns_module_dir(path) {
+		return error('refusing to update `${module}`: it was not installed by VPM')
+	}
+	return path
 }

@@ -11,7 +11,7 @@ without a second network request for missing file blobs. Submodules are installe
 
 ## Semantic version ranges
 
-Explicit ranges select the highest matching semantic-version Git tag:
+Explicit ranges select semantic-version Git tags satisfying the whole dependency graph:
 
 ```sh
 v install 'vsl@^0.1.47'
@@ -24,8 +24,7 @@ provided by `semver`, including caret, tilde, comparators, wildcards, hyphen
 ranges and `||`. Tags may have an optional lowercase `v` prefix. Non-version
 tags are ignored; prereleases require a matching prerelease constraint.
 Version components must fit the `int` fields of `semver.Version`.
-Malformed ranges fail with an invalid-range error. A valid range with no matching tag
-fails with a no-matching-tag error.
+If no tag satisfies the range, installation fails.
 
 Exact Git refs such as `@v1.2.3`, `@v1.2.3-rc.x`, `@1.2.3+build.x`, or `@topic.x`
 keep their existing meaning. An implicit `x` or `X` wildcard must occur in the numeric
@@ -37,79 +36,101 @@ selected tag and commit. An unchanged range reuses the locked commit, including
 with `--locked`, even when newer tags exist. A changed range is resolved again;
 `--locked` rejects changes or a locked tag outside the constraint.
 
-This is the initial range-selection layer. Different requirements targeting the
-same installation directory are rejected when a range is involved, before
-installation changes the module store. Joint constraint solving, backtracking,
-version-aware updates and dependency-version graph reporting are not yet implemented.
+Requirements for the same repository are solved together. VPM tries higher matching tags first,
+then backtracks to older releases when their dependencies conflict. A bare requirement can share
+another dependency's tagged selection or exact Git ref, regardless of requirement order.
+Bare-only installs still use the default branch, and exact Git refs remain pins.
+Repository URL aliases share one selection; different repositories cannot
+replace each other at the same normalized installation path. Candidate checkouts are staged in
+temporary directories, and the complete graph is resolved before any installed checkout changes.
+An unsatisfiable graph reports both requirement chains and leaves installed modules and the project
+lockfile untouched.
 
-## Minimum compiler versions and root overrides
+The lockfile is preferred before newer releases. `--locked` restricts resolution to recorded
+commits; `--frozen` also prevents writing the lockfile.
+Complete project resolution drops lock entries for dependencies no longer reachable.
+The lockfile format remains version 1, with an optional package-content SHA256 hash.
+Independent clones exclude VCS metadata and hash relative paths, file bytes and symlink targets.
+Hash mismatches stop locked installation before any installed checkout changes.
 
-A dependency can declare `min_v: '0.5.0'` in `v.mod`. Installation checks this
-against the running compiler before consuming that dependency's own dependencies.
-An empty requirement is allowed; an invalid version or an unmet requirement fails
-installation for both registered modules and direct repositories.
+## Updating constrained projects
 
-The root project's manifest can force a dependency ref or semantic version range:
+In a project using ranges, `v update` resolves the complete dependency graph again inside its
+existing constraints, then installs the selected releases and refreshes the lockfile. It does
+not move a range installation to the repository's default branch. A targeted update prefers
+other locked releases, but can adjust them when the updated package changes its dependencies.
+Checkouts with local Git changes or unpublished commits are still protected.
 
-```text
-Module {
-    dependencies: ['publisher.package@^1.0.0']
-    dependency_overrides: ['publisher.package: v2.0.0']
-}
+```sh
+v update
+v update -p vsl
+v update -p vsl --precise v0.1.45
+v update --latest
 ```
 
-Only the root manifest supplies overrides. Dependency manifests cannot override
-the consumer's choices. Overrides match a registered name, or a direct repository's
-basename or manifest name, and replace its requested constraint before its selected
-manifest and dependencies are read. A direct repository with a different manifest
-name may require a default-branch metadata checkout to discover that name.
-Malformed or duplicate overrides fail before installation. A selector such as
-`requiring>package: v2.0.0` applies only to the dependency edge from the named
-requiring module. A matching selector takes precedence over a global override.
-Source checkout, minimum-version checks, transitive dependencies and locks all
-use that effective request.
+`--precise` selects one package version or commit and fails if it violates any requirement.
+Numeric versions can match a tag with the optional `v` prefix.
+`--latest` widens selected direct dependencies to the newest resolvable stable release, writes
+caret constraints back to every selected direct requirement in `v.mod`, including URL aliases,
+and records them in the lockfile. Transitive requirements still
+apply. Rewriting `v.mod` retains its fields but uses the manifest encoder's formatting.
+These options require a project. Projects without ranges retain branch-based update behavior.
+`--dry-run` resolves and reports proposed versions without changing installed checkouts,
+`v.mod`, or `v.mod.lock`. For branch updates it reads the origin HEAD without fetching into
+the installed repository.
 
-The lockfile records the effective dependency request including the override,
-the selected tag and the actual commit. Reinstalling reuses that commit. Changing
-an override requires a normal install to refresh the lock; `--locked` rejects it.
-An override can intentionally select a version outside the original constraint.
+## Inspecting versions and requirements
 
-Bundled tools declare external build requirements in their own `v.mod` under
-`dev_dependencies`, for example `dev_dependencies: ['markdown']` for `vdoc`.
-The launcher reads these manifests beside its own compiler. The legacy
-`v.util.external_modules_for_tool` function remains available as a wrapper;
-`external_module_dependencies_for_tool` remains the old compatibility snapshot.
+`v why PACKAGE` shows the constraints declared by each parent and the installed version.
+Unversioned trees retain their existing display. `v mod graph` prints one flat edge per dependency,
+including versions and constraints, and marks missing packages. `v mod graph --imports`
+shows the source import tree instead, with nested imports indented and modules shown once.
+These commands work offline:
 
-## Import graph and resolver helpers
+```text
+myapp -> vsl@v0.1.47 (requires ^0.1.47)
+```
 
-`v mod graph` prints the project's import graph as an indented tree. Each module
-appears at its first occurrence; shared subtrees and import cycles are visited once.
-The graph reads import declarations, including both conditional-compilation branches.
+For projects using ranges, `v outdated` prints these columns for installed dependencies:
 
-The internal version-assignment helper checks all supplied candidate modules,
-semantic version constraints, candidate dependencies and cycles with backtracking.
-It is a foundation for joint resolution; installation still uses the range-selection
-behavior described above. The installer does not yet discover candidates for every
-version or run a joint dependency solver.
+- **Current**: the installed tag or locked revision.
+- **Upgradable**: the newest tag admitted by the currently installed graph's requirements.
+- **Resolvable**: the version selected when the complete graph is resolved again, including the
+  candidate releases' own dependency manifests.
+- **Latest**: the newest stable semantic-version tag, ignoring project constraints.
 
-## Installed version reporting
+`-` means no tagged version is available. Unlike `Current`, the other columns inspect remote
+release tags; `Resolvable` also reads candidate manifests. This command changes neither installed
+checkouts nor the lockfile. Outside constrained projects, `v outdated` reports all installed
+packages using the same columns;
+`Resolvable` there considers direct root requirements when available. Commit-based upgrade checks
+retain their previous behavior.
 
-`v outdated` lists installed modules in a table with four version columns:
+## Root metadata, release policy and vendoring
 
-| Column | Meaning |
-| --- | --- |
-| Current | The checkout's exact Git tag, or its short commit ID. |
-| Upgradable | The highest upstream release tag matching the root project's dependency request. |
-| Resolvable | Currently the same root project constraint, checked by the multi-constraint helper. |
-| Latest | The highest upstream release tag, without the project's constraint. |
+Only the root manifest supplies `dependency_overrides`. Global `package: ref` selectors apply
+throughout the graph; `parent>package: ref` selectors apply on that parent's requiring edge.
+A conditional `parent@range>package: version` selector applies when the override version
+satisfies `range`; it does not select by the parent's own version.
+A matching scoped selector takes precedence. Use `-` as the selected ref to remove an edge.
+Selected manifests are checked against their `min_v` before their dependencies are resolved.
 
-`Resolvable` does not yet include transitive constraints, overrides or candidate discovery
-for the whole dependency graph. Exact semantic-version refs are compared as exact versions;
-other Git refs cannot be compared with semantic-version tags. Prereleases require an explicit
-matching prerelease comparator, including when a dependency has no version constraint.
+Ranged selections accept `--exclude-newer` as RFC3339 or `YYYY-MM-DD` at midnight UTC,
+and `--minimum-release-age` as hours or a duration with a `d`, `h` or `m` suffix.
+Tags are dated by their commit timestamp. Invalid policy and failed discovery are errors.
+Exact refs and matching locked revisions keep their explicit meaning.
 
-`none` means no tag matches, `invalid` means the project's semantic-version range is malformed,
-and `n/a` means a value could not be obtained or a non-semantic Git ref cannot be compared.
-These states do not fall back to `Latest`. Repositories without release tags still have rows.
-Tag availability is read from the checkout's origin without moving the installed checkout.
-The existing commit-based repository checks used by `v upgrade` are unchanged.
+`v vendor` copies the complete installed dependency graph into `vendor/` at the nearest
+project root. Publication uses a complete staged copy; missing modules and existing
+vendor destinations cause an error. Set `VMODULES` to the project's absolute `vendor` path
+when compiling from that copy.
+
+Manifest `catalog: { package: 'range' }` and `workspaces: ['path/*']` metadata are
+available through `v.vmod.Manifest` and preserved by `vmod.encode`. Catalog keys may
+be quoted. Duplicate keys, malformed values and non-string workspaces are errors.
+These fields store metadata without expanding dependency aliases.
+Registry-qualified dependency keys remain distinct in lock data.
+
+The internal candidate API named `resolve_with_pubgrub` currently delegates to the consistent
+backtracking search. Dependency constraints are checked in both directions; a complete
+conflict-driven PubGrub algorithm is pending.

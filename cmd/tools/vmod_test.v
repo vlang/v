@@ -97,7 +97,7 @@ fn test_v_mod_why_needs_a_project() {
 }
 
 fn mod_graph() os.Result {
-	return os.exec([@VEXE, 'mod', 'graph'])
+	return os.exec([@VEXE, 'mod', 'graph', '--imports'])
 }
 
 // test_v_mod_graph_prints_the_dependency_graph is the picture `v mod why` answers one
@@ -315,4 +315,15 @@ fn test_v_mod_why_handles_import_cycles_and_unreachable_modules() {
 	unreachable := mod_why('orphan')
 	assert unreachable.exit_code == 0, unreachable.output
 	assert unreachable.output.trim_space() == '(main module does not need module `orphan`)', unreachable.output
+}
+
+fn test_v_mod_graph_lists_manifest_requirements_without_imports() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'v.mod'), "Module { name: 'app' dependencies: ['lib@^1.2', 'ghost@^2'] }\n")!
+	write_file(os.join_path(tfolder, 'app', 'lib', 'v.mod'), "Module { name: 'lib' version: '1.3.0' }\n")!
+	res := os.exec([@VEXE, 'mod', 'graph'])
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('app -> lib@1.3.0 (requires ^1.2)'), res.output
+	assert res.output.contains('ghost (requires ^2) (not installed)'), res.output
+	assert res.output.contains('(not installed)'), res.output
 }

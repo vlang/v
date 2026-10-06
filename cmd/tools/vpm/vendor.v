@@ -1,55 +1,61 @@
 module main
 
 import os
+import rand
 import v.help
 import v.vmod
 
 const vendor_dir = 'vendor'
 
 fn vpm_vendor() {
-	if settings.is_help {
-		help.print_and_exit('vendor')
-	}
-	project := vmod.get_cache().get_by_folder(os.getwd())
-	if project.vmod_file == '' {
-		vpm_error('no v.mod found at or above `${os.getwd()}`')
+	if settings.is_help { help.print_and_exit('vendor') }
+	vendor_project() or {
+		vpm_error(err.msg())
 		exit(1)
 	}
-	root := vmod.from_file(project.vmod_file) or { panic(err) }
-	deps := root.dependencies
-	if deps.len == 0 {
+}
+
+fn vendor_project() ! {
+	project := vmod.get_cache().get_by_folder(os.getwd())
+	if project.vmod_file == '' { return error('no v.mod found at or above `${os.getwd()}`') }
+	root := vmod.from_file(project.vmod_file)!
+	if root.dependencies.len == 0 {
 		println('No dependencies to vendor.')
 		return
 	}
-	vendor_path := os.join_path(os.getwd(), vendor_dir)
-	os.mkdir_all(vendor_path) or {
-		vpm_error('failed to create `${vendor_dir}/`: ${err.msg()}')
-		exit(1)
+	graph := build_dep_graph()!
+	vendor_path := os.join_path(project.vmod_folder, vendor_dir)
+	if os.exists(vendor_path) || os.is_link(vendor_path) {
+		return error('refusing to replace existing `${vendor_path}`; remove it explicitly before vendoring again')
 	}
-	mut vendored := 0
-	for dep in deps {
-		name := dep.all_before('@').trim_space()
-		install_path := get_path_of_existing_module(name) or {
-			vpm_error('`${name}` is not installed. Run `v install` first.')
-			exit(1)
+	mut names := map[string]string{}
+	for id, label in graph.labels {
+		if graph.absent[id] { return error('`${label}` is not installed. Run `v install` first.') }
+		if !valid_override_name(label) {
+			return error('cannot vendor invalid import path `${label}`')
 		}
-		dest := os.join_path(vendor_path, name.replace('.', os.path_separator))
-		if os.exists(dest) {
-			os.rmdir_all(dest) or {
-				vpm_error('failed to remove existing `${dest}`: ${err.msg()}')
-				exit(1)
+		if previous := names[label] {
+			if previous != id {
+				return error('multiple sources share vendor import path `${label}`')
 			}
 		}
-		os.mkdir_all(os.dir(dest)) or {
-			vpm_error('failed to create directory for `${name}`: ${err.msg()}')
-			exit(1)
-		}
-		os.cp_all(install_path, dest, false) or {
-			vpm_error('failed to vendor `${name}`: ${err.msg()}')
-			exit(1)
-		}
-		vendored++
-		println('Vendored `${name}`')
+		names[label] = id
 	}
-	println('Vendored ${vendored} module(s) to `${vendor_dir}/`.')
+	stage := get_tmp_path(project.vmod_folder, '.vpm-vendor-' + rand.ulid())!
+	os.mkdir_all(stage)!
+	defer { os.rmdir_all(stage) or {} }
+	for name in names.keys().sorted() {
+		dest := os.join_path(stage, name.replace('.', os.path_separator))
+		if !path_is_below(os.norm_path(dest), os.norm_path(stage)) {
+			return error('vendor destination escapes its staging directory')
+		}
+		os.mkdir_all(os.dir(dest))!
+		os.cp_all(names[name], dest, false)!
+	}
+	// Publish only a complete graph; every error before this point leaves vendor absent.
+	if os.exists(vendor_path) || os.is_link(vendor_path) {
+		return error('vendor destination appeared during staging')
+	}
+	os.rename(stage, vendor_path)!
+	println('Vendored ${names.len} module(s) to `${vendor_dir}/`.')
 }
