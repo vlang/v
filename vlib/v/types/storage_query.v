@@ -10,6 +10,13 @@ struct StorageQueryGuards {
 	absent  []u64
 }
 
+struct StorageQueryUnion {
+	entry_idx int
+	guard_id  u64
+	incoming  bool
+	existing  bool
+}
+
 @[heap]
 struct StorageQueryTrace {
 mut:
@@ -90,13 +97,15 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		} else {
 			StorageQueryGuards{}
 		}
-		if inherited_owner && trace.complete && trace.guards.len > 0
-			&& owner.storage_query_can_admit(storage_query_entry_bytes(cache_key, certificate) -
-				int(sizeof(u64))) {
-			if complementary := owner.storage_query_union_guard(cache_key, result, trace.guards) {
-				// Both memberships prove the same ordered result; only this new trace changes.
-				trace.guards.delete(complementary)
-				certificate = storage_query_encode_guards(trace.guards)
+		mut consensus := StorageQueryUnion{ entry_idx: -1 }
+		if inherited_owner && trace.complete && trace.guards.len > 0 {
+			if proof := owner.storage_query_union(cache_key, result, trace.guards) {
+				consensus = proof
+				if consensus.incoming {
+					// Only this complete incoming proof is propagated to the parent.
+					trace.guards.delete(consensus.guard_id)
+					certificate = storage_query_encode_guards(trace.guards)
+				}
 			}
 		}
 		mut estimated_bytes := if inherited_owner && trace.complete {
@@ -107,7 +116,12 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		// Borrow immutable map descriptors; no copied payload is mutated or freed.
 		mut retained_result := unsafe { result }
 		mut clone_result := true
-		if inherited_owner && trace.complete {
+		if consensus.entry_idx >= 0 {
+			// The equality proof also permits borrowing this result after admission stops.
+			retained_result = unsafe { owner.storage_query_results[cache_key][consensus.entry_idx].writes }
+			clone_result = false
+			estimated_bytes = storage_query_entry_bytes(cache_key, certificate)
+		} else if inherited_owner && trace.complete {
 			entry_bytes := storage_query_entry_bytes(cache_key, certificate)
 			if owner.storage_query_can_admit(entry_bytes) {
 				if shared := owner.storage_query_shared_result(cache_key, result) {
@@ -130,12 +144,19 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 		if inherited_owner && trace.complete {
 			// Only admitted memo payloads are allocated in the outer query's arena.
 			suspend_storage_query_scopes(cache.storage_query_scopes, mut states)
+			if consensus.existing {
+				owner.broaden_storage_query_entry(cache_key, consensus.entry_idx, consensus.guard_id)
+			}
 			retained := owner.cache_storage_query_result(cache_key, retained_result, trace.guards,
 				certificate, clone_result, estimated_bytes)
 			resume_storage_query_scopes(cache.storage_query_scopes, states)
 			if cached := retained {
 				unsafe { prealloc_scope_resume(scope, parent) }
 				return cached
+			}
+			if consensus.entry_idx >= 0 {
+				unsafe { prealloc_scope_resume(scope, parent) }
+				return retained_result
 			}
 		}
 		promoted := clone_storage_query_result(result)
@@ -211,7 +232,7 @@ fn storage_query_matching_index(entries []StorageQueryResult, visiting map[u64]b
 }
 
 fn storage_query_complementary_guard(left StorageQueryGuards, right map[u64]bool) ?u64 {
-	if left.present.len + left.absent.len != right.len { return none }
+	if left.present.len + left.absent.len > right.len { return none }
 	mut differences := 0
 	mut complementary := u64(0)
 	for id in left.present {
@@ -234,24 +255,101 @@ fn storage_query_complementary_guard(left StorageQueryGuards, right map[u64]bool
 	return none
 }
 
-fn (cache &VisibleMutationCache) storage_query_union_guard(key string, result map[string][]int, guards map[u64]bool) ?u64 {
+fn storage_query_existing_complementary_guard(existing StorageQueryGuards, incoming map[u64]bool) ?u64 {
+	if incoming.len > existing.present.len + existing.absent.len { return none }
+	mut found := 0
+	mut differences := 0
+	mut complementary := u64(0)
+	for id in existing.present {
+		if actual := incoming[id] {
+			found++
+			if !actual {
+				differences++
+				complementary = id
+				if differences > 1 { return none }
+			}
+		}
+	}
+	for id in existing.absent {
+		if actual := incoming[id] {
+			found++
+			if actual {
+				differences++
+				complementary = id
+				if differences > 1 { return none }
+			}
+		}
+	}
+	if found == incoming.len && differences == 1 { return complementary }
+	return none
+}
+
+fn (cache &VisibleMutationCache) storage_query_union(key string, result map[string][]int, guards map[u64]bool) ?StorageQueryUnion {
 	paths := result.keys()
-	for entry in cache.storage_query_results[key] {
-		complementary := storage_query_complementary_guard(entry.guards, guards) or { continue }
+	for entry_idx, entry in cache.storage_query_results[key] {
+		mut proof := StorageQueryUnion{ entry_idx: entry_idx }
+		if complementary := storage_query_complementary_guard(entry.guards, guards) {
+			proof = StorageQueryUnion{
+				entry_idx: entry_idx
+				guard_id:  complementary
+				incoming:  true
+				existing:  entry.guards.present.len + entry.guards.absent.len == guards.len
+			}
+		} else if complementary := storage_query_existing_complementary_guard(entry.guards,
+			guards) {
+			proof = StorageQueryUnion{
+				entry_idx: entry_idx
+				guard_id:  complementary
+				existing:  true
+			}
+		} else {
+			continue
+		}
 		if result.len != entry.writes.len { continue }
-		if paths.len == 0 { return complementary }
+		if paths.len == 0 { return proof }
 		$if prealloc {
 			scope := unsafe { prealloc_scope_begin() }
 			equal := storage_query_ordered_results_equal(paths, result, entry.writes)
 			unsafe { prealloc_scope_end(scope) }
-			if equal { return complementary }
+			if equal { return proof }
 		} $else {
 			if storage_query_ordered_results_equal(paths, result, entry.writes) {
-				return complementary
+				return proof
 			}
 		}
 	}
 	return none
+}
+
+fn storage_query_remove_guard(mut ids []u64, guard_id u64) bool {
+	for i, id in ids {
+		if id != guard_id { continue }
+		for j := i + 1; j < ids.len; j++ {
+			ids[j - 1] = ids[j]
+		}
+		// These unique ROOT buffers have no slices; keep their original capacity charged.
+		unsafe { ids.len-- }
+		return true
+	}
+	return false
+}
+
+fn (mut cache VisibleMutationCache) broaden_storage_query_entry(key string, entry_idx int, guard_id u64) bool {
+	// Borrow the existing array: replacing a map value could rehash even an existing key.
+	mut entries := unsafe { cache.storage_query_results[key] }
+	if entry_idx < 0 || entry_idx >= entries.len { return false }
+	entry := entries[entry_idx]
+	mut present := unsafe { entry.guards.present }
+	mut absent := unsafe { entry.guards.absent }
+	if !storage_query_remove_guard(mut present, guard_id)
+		&& !storage_query_remove_guard(mut absent, guard_id) {
+		return false
+	}
+	entries[entry_idx] = StorageQueryResult{
+		writes: unsafe { entry.writes }
+		guards: StorageQueryGuards{ present: unsafe { present }, absent: unsafe { absent } }
+	}
+	return true
 }
 
 fn (mut cache VisibleMutationCache) record_storage_query_certificate(guards StorageQueryGuards) {

@@ -44,9 +44,11 @@ ordered source indexes match exactly. Each entry still retains its own membershi
 shared paths and source indexes are charged once. Previously retained allocations stay charged
 until the query finishes.
 If a completed query and a retained entry prove the same ordered result under complementary
-conditions for one declaration ID, a new entry can omit it. The other conditions must match exactly.
-Previously retained entries remain immutable and charged, and lookups prefer matching entries
-with fewer conditions.
+conditions for one declaration ID, a certificate can omit it when its other conditions include
+the partner's conditions. An existing certificate can be updated even after the cache reaches
+its limits, without allocating another buffer or refunding its original charge. Retained results
+remain immutable. Parent queries use the current incoming proof, and lookups prefer matching
+entries with fewer conditions.
 
 Serial ownership checks reuse resolved call information during return analysis, as parallel
 checks do. This avoids false moved-value diagnostics from rechecking an earlier chained-call
