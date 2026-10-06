@@ -62,6 +62,10 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+`parse_format` defaults an omitted month to January. Day-only layouts such as
+`time.parse_format('31', 'DD')!` therefore accept January 31; an explicit month still
+enforces its actual length.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time
