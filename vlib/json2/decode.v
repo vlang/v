@@ -16,6 +16,7 @@ struct ValueInfo {
 mut:
 	position   int       // The position of the value in the JSON string.
 	value_kind ValueKind // The kind of the value.
+	has_escape bool      // Whether a string contains an escape sequence.
 	length     int       // The length of the value in the JSON string.
 }
 
@@ -107,6 +108,8 @@ struct Decoder {
 	json   string // json is the JSON data to be decoded.
 	strict bool   // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null values
 mut:
+	// Scratch result of check_string, copied to the corresponding ValueInfo.
+	string_has_escape bool
 	// values_info describes every value of the JSON string, in the order in which they
 	// start: an array or an object is followed by its elements, or by its keys and their
 	// values. It is one flat array, so nothing is allocated per value, and moving to
@@ -217,6 +220,7 @@ fn (mut checker Decoder) add_value(value_kind ValueKind) {
 	}
 	checker.values_info[checker.values_len].position = checker.checker_idx
 	checker.values_info[checker.values_len].value_kind = value_kind
+	checker.values_info[checker.values_len].has_escape = false
 	checker.values_len++
 }
 
@@ -1204,7 +1208,7 @@ fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
 	string_start := string_info.position + 1
 	string_end := string_info.position + string_info.length - 1
 	string_body := decoder.json[string_start..string_end]
-	if string_body.index_u8(`\\`) == -1 {
+	if !string_info.has_escape {
 		return string_body
 	}
 
