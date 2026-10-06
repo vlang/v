@@ -68,3 +68,24 @@ fn test_int_literal_casts_keep_target_and_fixed_width_overflow_checks() {
 	beyond_u64 := check_integer_cast_platform_source('fn main() { _ = int(18446744073709551616) }')
 	assert beyond_u64.errors.any(it.msg == 'value `18446744073709551616` overflows `int`')
 }
+
+fn test_int_literal_cast_overflow_warnings_follow_the_target_width() {
+	saved_bits := platform_int_bits()
+	defer {
+		set_platform_int_bits(saved_bits)
+	}
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		literals := if bits == 64 {
+			['0xffffffffffffffff', '9223372036854775808', '-9223372036854775809', '-0xffffffffffffffff']
+		} else {
+			['0xffffffff', '2147483648', '-2147483649', '-0xffffffff']
+		}
+		for literal in literals {
+			result := check_integer_cast_platform_source('fn main() { _ = int(${literal}) }')
+			assert result.errors.len == 0, '${bits}: ${literal}: ${result.errors}'
+			assert result.warnings.len == 1, '${bits}: ${literal}: ${result.warnings}'
+			assert result.warnings[0].msg == 'value `${literal}` overflows `int`, this will be considered hard error soon'
+		}
+	}
+}
