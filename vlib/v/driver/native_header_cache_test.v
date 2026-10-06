@@ -81,6 +81,15 @@ fn test_parallel_c_generation_splits_with_headers_shipped_with_v() {
 	assert header.contains('#include <stdio.h>')
 }
 
+fn test_parallel_c_generation_splits_with_the_segfault_handler() {
+	helper := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'segfault_handler_nix.h')
+	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${helper}"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\n'
+	header, safe := v3_parallel_c_declaration_header(prefix, []string{}, @VEXEROOT)
+	assert safe
+	assert !header.contains('#include "${helper}"')
+	assert header.contains('void v_install_segfault_handler(void* fallback, void* main_argv);')
+}
+
 fn test_native_dependency_list_uses_compiler_manifest_without_reading_headers() {
 	$if windows {
 		return

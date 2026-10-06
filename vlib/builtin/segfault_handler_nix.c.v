@@ -3,7 +3,7 @@ module builtin
 // The handler runs on an alternate signal stack, so that it can still report a stack
 // overflow, instead of the process dying silently. See segfault_handler_nix.h.
 $if !no_segfault_handler ?&& !freestanding && !vinix {
-	#insert "@VEXEROOT/vlib/builtin/segfault_handler_nix.h"
+	#include "@VEXEROOT/vlib/builtin/segfault_handler_nix.h"
 }
 
 fn C.v_install_segfault_handler(fallback voidptr, main_argv voidptr)
