@@ -1242,65 +1242,6 @@ fn test_a_windows_executable_keeps_its_backslashes() {
 	assert entry.contains('"command": "C:\\\\Users\\\\me\\\\v.exe"'), entry
 }
 
-fn test_server_exe_falls_back_to_the_recorded_path_when_the_env_names_nothing() {
-	// A binary run outside `v` has no VEXE, or has one that is not there. The
-	// path recorded at build time is then the best answer available, so it is
-	// tried rather than returning a path that cannot be launched.
-	original := os.getenv_opt('VEXE') or { '' }
-	os.setenv('VEXE', os.join_path(os.vtmp_dir(), 'no-such-compiler'), true)
-	defer { os.setenv('VEXE', original, true) }
-	got := server_exe()
-	assert got == os.real_path(@VEXE) || got == os.real_path(@VEXE + '.exe'), got
-}
-
-fn test_server_exe_chooses_a_regular_executable_and_keeps_platform_order() {
-	path := config_fixture('compiler_candidates', '')!
-	raw := path + '_v'
-	exe := raw + '.exe'
-	recorded := path + '_recorded.exe'
-	for candidate in [raw, exe, recorded] {
-		os.write_file(candidate, 'compiler fixture')!
-		os.chmod(candidate, 0o755)!
-	}
-	defer {
-		for candidate in [raw, exe, recorded] {
-			os.rm(candidate) or {}
-		}
-	}
-	assert server_exe_for(raw, recorded, true) == os.real_path(exe)
-	assert server_exe_for(exe, recorded, true) == os.real_path(exe)
-	$if !windows {
-		assert server_exe_for(raw, recorded, false) == os.real_path(raw)
-		os.chmod(raw, 0o600)!
-		assert server_exe_for(raw, recorded, false) == os.real_path(exe)
-	}
-	os.rm(raw)!
-	os.mkdir(raw)!
-	defer { os.rmdir(raw) or {} }
-	assert server_exe_for(raw, recorded, false) == os.real_path(exe)
-	os.rm(exe)!
-	assert server_exe_for(raw, recorded, false) == os.real_path(recorded)
-	assert server_exe_for('', recorded, false) == os.real_path(recorded)
-	assert server_exe_for(raw + '_missing', recorded + '_missing', false) == raw + '_missing'
-}
-
-fn test_server_exe_resolves_the_selected_symlink() {
-	$if windows {
-		return
-	}
-	path := config_fixture('compiler_symlink', '')!
-	executable := path + '_real'
-	link := path + '_link'
-	os.write_file(executable, 'compiler fixture')!
-	os.chmod(executable, 0o755)!
-	os.symlink(executable, link)!
-	defer {
-		os.rm(link) or {}
-		os.rm(executable) or {}
-	}
-	assert server_exe_for(link, @VEXE, false) == os.real_path(executable)
-}
-
 fn test_it_refuses_to_reorder_or_drop_an_existing_config() {
 	path := config_fixture('order', '{"zed":{"a":1},"mcp":{"duck":{"type":"local"}},"other":true}')!
 	h := Harness{
@@ -1369,8 +1310,9 @@ fn test_it_puts_the_entry_on_its_own_line_at_the_files_indentation() {
 	assert after.contains('\n    "duck": {\n      "type": "local"\n    }\n'), after
 }
 
-fn test_it_refuses_a_file_that_is_not_plain_json() {
+fn test_it_edits_a_commented_file_without_touching_the_comment() {
 	// A comment is the common case: these files are meant to be edited by hand.
+	// The edit is textual, so the comment survives it.
 	path := config_fixture('jsonc', '{\n  // my servers\n  "mcp": {}\n}\n')!
 	h := Harness{
 		name:  'test'
@@ -1378,58 +1320,12 @@ fn test_it_refuses_a_file_that_is_not_plain_json() {
 		key:   'mcp'
 	}
 	assert !is_plain_json(read_config(path)), 'a commented file must not count as plain JSON'
-	before := read_config(path)
-	// The refusal is an error, so `v mcp install` exits non-zero.
-	mut message := ''
-	write_entry(h, path, false) or { message = err.msg() }
-	assert message != '', 'a JSONC file was not refused'
-	// Nothing was written, so the comment is still there.
-	assert read_config(path) == before, 'a JSONC file was rewritten'
-	// And the refusal carries the member to paste, wrapped in the client's own
-	// key, rather than an entry that has to be wrapped by hand.
-	assert message.contains('is not plain JSON'), message
-	assert message.contains('merge'), message
-	assert message.contains('"mcp": { "vlang": '), message
-	assert message.contains('Add this member by hand'), message
-}
-
-fn test_non_plain_json_refusal_members_use_every_clients_key_and_entry_shape() {
-	mut clients := harnesses()
-	clients << Harness{ name: 'escaped', label: 'escaped', key: 'servers"\\key' }
-	for i, h in clients {
-		path := config_fixture('refusal_member_${i}', '{"other": true,}')!
-		before := read_config(path)
-		mut message := ''
-		write_entry(h, path, false) or { message = err.msg() }
-		assert message.contains('is not plain JSON'), message
-		assert message.contains('already exists, merge'), message
-		assert read_config(path) == before
-		member := message.split_into_lines().last().trim_space()
-		assert member == '${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }'
-		assert is_plain_json('{ ${member} }'), member
-	}
-}
-
-fn test_truncated_json_refusal_does_not_claim_it_contains_a_comment() {
-	path := config_fixture('truncated_refusal', '{"mcp":')!
-	h := find_harness('opencode') or { panic('opencode is missing') }
-	before := read_config(path)
-	mut message := ''
-	write_entry(h, path, false) or { message = err.msg() }
-	assert message.contains('is not plain JSON'), message
-	assert !message.contains('has comments'), message
-	assert message.contains('Add this member by hand'), message
-	assert read_config(path) == before
-}
-
-fn test_unreadable_config_refusal_does_not_suggest_pasting_a_member() {
-	path := config_fixture('directory_refusal', '')!
-	h := find_harness('opencode') or { panic('opencode is missing') }
-	mut message := ''
-	write_entry(h, os.dir(path), false) or { message = err.msg() }
-	assert message.contains('could not read'), message
-	assert !message.contains('Add this member'), message
-	assert os.is_dir(os.dir(path))
+	write_entry(h, path, false) or { panic(err) }
+	after := read_config(path)
+	// The comment is still there, and the entry sits beside it.
+	assert after.contains('// my servers'), after
+	assert is_editable(read_config(path)), after
+	assert has_entry(after, 'mcp', 'vlang'), after
 }
 
 fn test_print_gives_a_pasteable_member_when_the_key_is_absent() {
@@ -1628,6 +1524,25 @@ fn test_existing_entry_report_moves_to_the_invoked_compiler_with_shell_quoting()
 	windows := existing_entry_report_for_compiler(text, h, '/fixture/config.json', false, wanted, true)
 	assert windows.contains('to move it (PowerShell):'), windows
 	assert windows.ends_with("  & '/somewhere/My Compiler''s v\$1' mcp uninstall opencode\n  & '/somewhere/My Compiler''s v\$1' mcp install opencode"), windows
+}
+
+fn test_commented_existing_entry_reports_both_command_shapes_without_rewriting() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, argv_in_command in [false, true] {
+		shape := Harness{ ...h, argv_in_command: argv_in_command }
+		entry := shape.entry('/elsewhere/My Compiler/v', ['mcp', 'serve', '--title=one two'])
+		text := '// keep leading comment\n{"mcp":{/* keep server comment */"vlang":${entry}}}'
+		exe, command := recorded_entry(text, 'mcp') or { panic('no readable commented entry') }
+		assert exe == '/elsewhere/My Compiler/v'
+		assert command == '"/elsewhere/My Compiler/v" mcp serve "--title=one two"'
+		report := existing_entry_report_for_compiler(text, shape, '/fixture/config.json', true,
+			'/current/v', false)
+		assert report.contains('  it runs ${command}\n')
+		assert report.ends_with("  '/current/v' mcp uninstall opencode --project\n  '/current/v' mcp install opencode --project")
+		path := config_fixture('commented_existing_command_${i}', text)!
+		write_entry(shape, path, true)!
+		assert read_config(path) == text
+	}
 }
 
 fn test_existing_entry_report_leaves_unreadable_commands_alone() {
@@ -1929,27 +1844,32 @@ fn test_uninstall_reports_nothing_when_the_entry_is_absent() {
 	assert read_config(path) == '{"mcp":{"duck":{}}}', 'the file changed'
 }
 
-fn test_uninstall_leaves_a_commented_file_alone() {
+fn test_uninstall_removes_the_entry_from_a_commented_file() {
 	path := config_fixture('removejsonc', '{\n  // keep me\n  "mcp":{"vlang":{}}\n}\n')!
 	h := Harness{
 		name:  'test'
 		label: 'test'
 		key:   'mcp'
 	}
-	before := read_config(path)
-	// It is not plain JSON, so the entry cannot be located safely either.
-	assert !is_plain_json(before), 'a commented file must not count as plain JSON'
-	// The refusal is an error, so `v mcp uninstall` exits non-zero.
-	mut refused := false
-	removed := remove_entry(h, path) or {
-		refused = true
-		false
+	assert !is_plain_json(read_config(path)), 'a commented file must not count as plain JSON'
+	assert remove_entry(h, path)!, 'the entry was not removed'
+	after := read_config(path)
+	// The comment survives, and the entry is gone.
+	assert after.contains('// keep me'), after
+	assert !has_entry(after, 'mcp', 'vlang'), after
+	assert is_editable(read_config(path)), after
+}
+
+fn test_uninstall_ignores_a_commented_out_entry() {
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
 	}
-	assert refused && !removed, 'a commented file was edited'
-	assert read_config(path) == before, 'a commented file changed'
-	// A commented-out entry looks like a real one to the scan, and cutting it
-	// would take the comment marker with it and leave the next server inside
-	// the comment.
+	// A commented-out entry looks like a real one to a scan that does not skip
+	// comments, and cutting it would take the comment marker with it and leave
+	// the next server inside the comment. This scan skips comments, so the
+	// entry is not removed and the file is untouched.
 	commented := '{\n  "mcp": {\n    // "vlang": {"type": "local"},\n    "duck": {"type": "local"}\n  }\n}\n'
 	path2 := config_fixture('removecommented', commented)!
 	assert !(remove_entry(h, path2) or { false }), 'a commented-out entry was removed'
@@ -1958,6 +1878,186 @@ fn test_uninstall_leaves_a_commented_file_alone() {
 	// `v mcp uninstall --all` can pass over it.
 	path3 := config_fixture('removeunrelated', '{\n  // mine\n  "mcp": {"duck": {}}\n}\n')!
 	assert !remove_entry(h, path3)!, 'an unrelated commented file reported a removal'
+}
+
+fn test_non_plain_json_refusal_members_use_every_clients_key_and_entry_shape() {
+	mut clients := harnesses()
+	clients << Harness{ name: 'escaped', label: 'escaped', key: 'servers"\\key' }
+	for i, h in clients {
+		path := config_fixture('refusal_member_${i}', '{"other": true,}')!
+		before := read_config(path)
+		mut message := ''
+		write_entry(h, path, false) or { message = err.msg() }
+		assert message.contains('is not plain JSON'), message
+		assert message.contains('already exists, merge'), message
+		assert read_config(path) == before
+		member := message.split_into_lines().last().trim_space()
+		assert member == '${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }'
+		assert is_plain_json('{ ${member} }'), member
+	}
+}
+
+fn test_truncated_json_refusal_does_not_claim_it_contains_a_comment() {
+	path := config_fixture('truncated_refusal', '{"mcp":')!
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	before := read_config(path)
+	mut message := ''
+	write_entry(h, path, false) or { message = err.msg() }
+	assert message.contains('is not plain JSON'), message
+	assert !message.contains('has comments'), message
+	assert message.contains('Add this member by hand'), message
+	assert read_config(path) == before
+}
+
+fn test_unreadable_config_refusal_does_not_suggest_pasting_a_member() {
+	path := config_fixture('directory_refusal', '')!
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	mut message := ''
+	write_entry(h, os.dir(path), false) or { message = err.msg() }
+	assert message.contains('could not read'), message
+	assert !message.contains('Add this member'), message
+	assert os.is_dir(os.dir(path))
+}
+
+fn test_a_comment_holding_a_quote_does_not_confuse_the_scan() {
+	path := config_fixture('jsoncquote', '{\n  // use "mcp" here\n  "mcp": {}\n}\n')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path, false) or { panic(err) }
+	after := read_config(path)
+	assert has_entry(after, 'mcp', 'vlang'), after
+	assert is_editable(after), after
+}
+
+fn test_a_comment_holding_braces_does_not_change_the_depth() {
+	path := config_fixture('jsoncbrace', '{\n  // { not: real }\n  "mcp": {}\n}\n')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path, false) or { panic(err) }
+	assert has_entry(read_config(path), 'mcp', 'vlang'), read_config(path)
+}
+
+fn test_a_block_comment_is_skipped() {
+	path := config_fixture('jsoncblock', '{\n  /* a block\n     comment */\n  "mcp": {}\n}\n')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path, false) or { panic(err) }
+	assert has_entry(read_config(path), 'mcp', 'vlang'), read_config(path)
+}
+
+fn test_a_comment_between_the_colon_and_the_value_is_skipped() {
+	path := config_fixture('jsonccolon', '{"mcp": /* c */ {}}\n')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	write_entry(h, path, false) or { panic(err) }
+	assert has_entry(read_config(path), 'mcp', 'vlang'), read_config(path)
+}
+
+fn test_a_trailing_comma_is_still_refused() {
+	// Comments are edited; a trailing comma is not, because removing one is a
+	// change this tool does not make.
+	path := config_fixture('trailing', '{"mcp":{},}\n')!
+	h := Harness{
+		name:  'test'
+		label: 'test'
+		key:   'mcp'
+	}
+	mut refused := false
+	write_entry(h, path, false) or { refused = true }
+	assert refused, 'a trailing comma was not refused'
+}
+
+fn test_an_unterminated_block_comment_is_refused_without_changing_the_file() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, text in ['{} /* unfinished', '{"mcp":{"vlang":{}}} /* unfinished'] {
+		path := config_fixture('unterminated_block_${i}', text)!
+		assert !is_editable(text)
+		mut message := ''
+		write_entry(h, path, false) or { message = err.msg() }
+		assert message.len > 0
+		assert read_config(path) == text
+		mut removed := false
+		remove_entry(h, path) or { removed = true }
+		assert removed || !text.contains('vlang')
+		assert read_config(path) == text
+	}
+}
+
+fn test_install_preserves_comments_in_an_empty_server_object() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, text in ['{"mcp":{/* keep, \"quoted\" } */}}', '{"mcp":{\n// keep, \"quoted\" }\n}}'] {
+		path := config_fixture('comment_only_servers_${i}', text)!
+		write_entry(h, path, false)!
+		installed := read_config(path)
+		assert is_editable(installed), installed
+		assert has_entry(installed, 'mcp', server_id), installed
+		assert installed.contains(if i == 0 {
+			'/* keep, "quoted" } */'
+		} else {
+			'// keep, "quoted" }'
+		})
+		assert remove_entry(h, path)!
+		after := read_config(path)
+		assert is_editable(after), after
+		assert !has_entry(after, 'mcp', server_id)
+		assert after.contains(if i == 0 { '/* keep, "quoted" } */' } else { '// keep, "quoted" }' })
+	}
+}
+
+fn test_install_preserves_leading_comments_when_adding_the_root_key() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, prefix in ['// leading, "mcp"\n', '/* leading, "mcp" */\n'] {
+		text := prefix + '{"other":true}'
+		path := config_fixture('leading_comments_${i}', text)!
+		write_entry(h, path, false)!
+		after := read_config(path)
+		assert after.starts_with(prefix)
+		assert after.contains('"other":true')
+		assert is_editable(after), after
+		assert has_entry(after, 'mcp', server_id)
+	}
+}
+
+fn test_uninstall_preserves_comments_around_each_entry_separator() {
+	h := find_harness('opencode') or { panic('opencode is missing') }
+	for i, body in [
+		'"vlang":{} /* tail, */ ,"duck":{"text":"a,b"}',
+		'"duck":{}, /* before, */ "vlang":{} /* after, */',
+		'"duck":{}, /* before, */ "vlang":{} /* after, */,"goose":{}',
+		'"vlang":null /* tail, */ ,"duck":{}',
+		'"vlang":{} // tail,\n ,"duck":{}',
+	] {
+		text := '{"mcp":{${body}}}'
+		path := config_fixture('comment_separators_${i}', text)!
+		assert remove_entry(h, path)!
+		after := read_config(path)
+		assert is_editable(after), after
+		assert !has_entry(after, 'mcp', server_id)
+		assert has_entry(after, 'mcp', 'duck')
+		for comment in ['/* tail, */', '/* before, */', '/* after, */', '// tail,'] {
+			if text.contains(comment) {
+				assert after.contains(comment), after
+			}
+		}
+		if text.contains('"goose"') {
+			assert has_entry(after, 'mcp', 'goose')
+		}
+		if text.contains('"a,b"') {
+			assert after.contains('"a,b"')
+		}
+	}
 }
 
 fn test_a_string_value_equal_to_the_name_is_not_taken_for_the_entry() {
@@ -1970,4 +2070,63 @@ fn test_a_string_value_equal_to_the_name_is_not_taken_for_the_entry() {
 	assert has_entry(read_config(path), 'mcp', server_id), 'the entry after the value was missed'
 	assert remove_entry(h, path)!, 'the entry was not removed'
 	assert read_config(path) == '{"mcp":{"duck":"vlang"}}', read_config(path)
+}
+
+fn test_server_exe_falls_back_to_the_recorded_path_when_the_env_names_nothing() {
+	// A binary run outside `v` has no VEXE, or has one that is not there. The
+	// path recorded at build time is then the best answer available, so it is
+	// tried rather than returning a path that cannot be launched.
+	original := os.getenv_opt('VEXE') or { '' }
+	os.setenv('VEXE', os.join_path(os.vtmp_dir(), 'no-such-compiler'), true)
+	defer { os.setenv('VEXE', original, true) }
+	got := server_exe()
+	assert got == os.real_path(@VEXE) || got == os.real_path(@VEXE + '.exe'), got
+}
+
+fn test_server_exe_chooses_a_regular_executable_and_keeps_platform_order() {
+	path := config_fixture('compiler_candidates', '')!
+	raw := path + '_v'
+	exe := raw + '.exe'
+	recorded := path + '_recorded.exe'
+	for candidate in [raw, exe, recorded] {
+		os.write_file(candidate, 'compiler fixture')!
+		os.chmod(candidate, 0o755)!
+	}
+	defer {
+		for candidate in [raw, exe, recorded] {
+			os.rm(candidate) or {}
+		}
+	}
+	assert server_exe_for(raw, recorded, true) == os.real_path(exe)
+	assert server_exe_for(exe, recorded, true) == os.real_path(exe)
+	$if !windows {
+		assert server_exe_for(raw, recorded, false) == os.real_path(raw)
+		os.chmod(raw, 0o600)!
+		assert server_exe_for(raw, recorded, false) == os.real_path(exe)
+	}
+	os.rm(raw)!
+	os.mkdir(raw)!
+	defer { os.rmdir(raw) or {} }
+	assert server_exe_for(raw, recorded, false) == os.real_path(exe)
+	os.rm(exe)!
+	assert server_exe_for(raw, recorded, false) == os.real_path(recorded)
+	assert server_exe_for('', recorded, false) == os.real_path(recorded)
+	assert server_exe_for(raw + '_missing', recorded + '_missing', false) == raw + '_missing'
+}
+
+fn test_server_exe_resolves_the_selected_symlink() {
+	$if windows {
+		return
+	}
+	path := config_fixture('compiler_symlink', '')!
+	executable := path + '_real'
+	link := path + '_link'
+	os.write_file(executable, 'compiler fixture')!
+	os.chmod(executable, 0o755)!
+	os.symlink(executable, link)!
+	defer {
+		os.rm(link) or {}
+		os.rm(executable) or {}
+	}
+	assert server_exe_for(link, @VEXE, false) == os.real_path(executable)
 }
