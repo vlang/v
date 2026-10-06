@@ -2,6 +2,46 @@ module c
 
 import os
 
+fn comptime_router_body_with_literal_values(code string, body string) string {
+	mut literals := map[string]string{}
+	for line in code.split_into_lines() {
+		if !line.starts_with('static const string _str_') { continue }
+		name := line.all_after('static const string ').all_before(' = ')
+		assert name !in literals, name
+		literals[name] = line.all_after(' = ').trim_string_right(';')
+	}
+	mut resolved := ''
+	mut i := 0
+	for i < body.len {
+		if body[i..].starts_with('_str_')
+			&& (i == 0 || !(body[i - 1].is_letter() || body[i - 1].is_digit() || body[i - 1] == `_`)) {
+			mut end := i + 5
+			for end < body.len && body[end].is_digit() { end++ }
+			if end > i + 5 {
+				name := body[i..end]
+				assert name in literals, name
+				resolved += literals[name]
+				i = end
+				continue
+			}
+		}
+		resolved += body[i].ascii_str()
+		i++
+	}
+	return resolved
+}
+
+fn test_comptime_router_comparison_preserves_literal_contents() {
+	first := comptime_router_body_with_literal_values('static const string _str_1 = {"users", 5, 1};',
+		'string path = _str_1;')
+	renumbered := comptime_router_body_with_literal_values('static const string _str_10 = {"users", 5, 1};',
+		'string path = _str_10;')
+	changed := comptime_router_body_with_literal_values('static const string _str_10 = {"posts", 5, 1};',
+		'string path = _str_10;')
+	assert first == renumbered
+	assert first != changed
+}
+
 fn test_comptime_string_sources_emit_no_runtime_parsing_or_array() {
 	root := os.join_path(os.vtmp_dir(), 'comptime_string_sources_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -20,10 +60,13 @@ fn test_comptime_string_sources_emit_no_runtime_parsing_or_array() {
 		assert signatures.len == 1, signatures.str()
 		body := code.all_after(signatures[0] + '\n').all_before('\n}')
 		assert body.len > 0
+		// Global pool IDs depend on unrelated folded literals in other function workers.
+		// Compare the complete literal initializers and control flow instead.
+		resolved_body := comptime_router_body_with_literal_values(code, body)
 		if first_body.len > 0 {
-			assert body == first_body
+			assert resolved_body == first_body
 		} else {
-			first_body = body
+			first_body = resolved_body
 		}
 		for call in ['string__all_before(', 'string__all_after(', 'string__trim_left(', 'string__count(',
 			'string__split(', 'string__starts_with(', 'new_array', 'malloc(', 'v_malloc('] {
