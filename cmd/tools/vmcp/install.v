@@ -182,25 +182,29 @@ fn print_registrations(project bool) {
 // returns the text rather than printing it, so the wording can be asserted.
 fn print_one(h Harness, path string, project bool) string {
 	mut out := '${h.label}  (${path})\n'
+	if project && !h.has_project_scope() {
+		return out + '  (no project-level file)\n'
+	}
 	if !os.exists(path) {
-		// Nothing is there to show, so the whole file is what has to be created.
-		out += '  no config file yet; this is what would be created:\n'
-		out += '  ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }\n'
+		if h.no_create_user && !project {
+			out += '  no config file yet; the installer will not create this file.\n'
+			out += '  If preparing the configuration by hand, use this JSON:\n'
+		} else {
+			out += '  no config file yet; this is what would be created:\n'
+		}
+		out += '  { ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} } }\n'
 		return out
 	}
-	text := os.read_file(path) or { return out }
+	text := os.read_file(path) or { return out + '  could not read ${path}: ${err.msg()}\n' }
 	if has_top_level_key(text, h.key) {
 		out += '  top-level key: ${h.key}\n'
-		out += '  ${server_id}: ${entry_text(h)}\n'
+		out += '  ${json_string(server_id)}: ${entry_text(h)}\n'
 	} else {
 		// The entry alone is not something a client can read: it has to sit
 		// inside the client's own key. Print the member, which is what a reader
 		// pastes, rather than the entry, which is not.
 		out += '  no top-level ${json_string(h.key)} yet; add this member:\n'
 		out += '  ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} }\n'
-	}
-	if project && !h.has_project_scope() {
-		out += '  (no project-level file)\n'
 	}
 	return out
 }

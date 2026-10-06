@@ -51,6 +51,11 @@ v mcp uninstall --all           # remove it from every client that has it
 Naming no client writes nothing, which is what makes `--print` the default
 shape rather than a flag to remember.
 
+The printed JSON is a complete object when the file does not exist, a top-level
+member when the client's server key is absent, and a quoted server member when
+the key is already present. Read failures are reported. Printing keeps project
+scope restrictions and identifies files that the installer will not create.
+
 ### The clients
 
 | Client | User file | Project file | Key |
