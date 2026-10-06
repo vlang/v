@@ -40,7 +40,9 @@ fn (mut i TypeInterner) intern_locked(t Type, hash u64) (TypeId, Type) {
 		break
 	}
 	id := TypeId(i.types.len)
-	i.types << t
+	// Caller-owned parameter arrays and names can still change. Readers compare
+	// payloads outside the table lock, so each canonical entry must own its data.
+	i.types << clone_owned_type(t)
 	i.names << ''
 	i.buckets[key] = id
 	return id, i.types[int(id)]
