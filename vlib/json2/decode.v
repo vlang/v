@@ -94,6 +94,8 @@ pub:
 // DecodeBuffer retains token storage between decode_reuse calls. Give each
 // concurrent or reentrant decoding operation its own buffer. It never retains
 // the input or decoded values; its capacity grows with the largest token count.
+// Create independent buffers with DecodeBuffer{}; do not copy a buffer after
+// decoding has retained storage in it, including after a decoding error.
 pub struct DecodeBuffer {
 mut:
 	values_info []ValueInfo

@@ -76,6 +76,8 @@ booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects en
 token storage for the next call. It uses the same validation and decoding rules as
 `decode`. Results stay valid across reuse and errors; the buffer stores neither input
 strings nor decoded values. Each concurrent or reentrant call needs its own buffer.
+Create each independent buffer with `DecodeBuffer{}`. Do not copy a buffer after
+decoding has retained storage in it, including after an error: copies share that storage.
 Capacity follows the largest token count seen, so limit input sizes when appropriate.
 With garbage collection, assigning `DecodeBuffer{}` releases the retained allocation
 for collection when it is no longer needed.
