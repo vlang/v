@@ -7976,7 +7976,7 @@ fn defer_result_index_literal(value string) ?int {
 	if is_float_number_literal(value) {
 		return none
 	}
-	parsed := strconv.common_parse_int(value.replace('_', ''), 0, 64, true, true) or { return none }
+	parsed := strconv.common_parse_int(value.replace('_', ''), util.v_literal_parse_base(value), 64, true, true) or { return none }
 	if parsed < 0 || parsed > i64(max_i32) {
 		return none
 	}

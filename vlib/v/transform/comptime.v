@@ -2702,7 +2702,7 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 	match node.kind {
 		.int_literal {
 			clean := node.value.replace('_', '')
-			parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
+			parsed := strconv.common_parse_int(clean, util.v_literal_parse_base(clean), 64, true, true) or { return none }
 			return parsed
 		}
 		.paren, .cast_expr {
