@@ -718,6 +718,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut in_cg := 0
 	mut not_in_cg := 0
 	mut total_callees := 0
+	has_entry_main := markused_has_entry_main_indexed(a, tc)
+	auto_str_skipped_fields := if reachable_runtime_helpers || !has_entry_main {
+		markused_auto_str_skipped_fields(a)
+	} else {
+		map[string]bool{}
+	}
 	collector := CallCollector{
 		a:                                a
 		tc:                               tc
@@ -738,6 +744,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			map[string]bool{}
 		}
 		generic_type_bases:               generic_type_bases
+		auto_str_skipped_fields:          auto_str_skipped_fields
 		detect_generics:                  detect_reachable_generics
 		body_checker_edges_authoritative: use_prepared && !detect_reachable_generics
 	}
@@ -761,7 +768,6 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		eprintln('  [ttime] mu precollect      ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
 		mu_sw.restart()
 	}
-	has_entry_main := markused_has_entry_main_indexed(a, tc)
 	needs_closure_runtime := if reachable_runtime_helpers {
 		a.nodes.any(it.kind == .import_decl && it.value == 'builtin.closure'
 			&& it.typ != '__v3_builtin_closure_runtime')
@@ -777,7 +783,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	if reachable_runtime_helpers {
 		reachable_helper_scan.select_map_runtime = true
 		reachable_helper_scan.select_closure_runtime = true
-		reachable_helper_scan.auto_str_skipped_fields = markused_auto_str_skipped_fields(a)
+		reachable_helper_scan.auto_str_skipped_fields = auto_str_skipped_fields
 		if !needs_closure_runtime {
 			reachable_helper_scan.deferred_closure_mask = []bool{len: a.nodes.len}
 			for idx in tc.top_level_idx {
@@ -2186,6 +2192,8 @@ struct CallCollector {
 	// Includes scoped local declarations, which are intentionally absent from
 	// the checker's top-level generic declaration maps.
 	generic_type_bases map[string]bool
+	// Shared read-only metadata for every script stringification in this pass.
+	auto_str_skipped_fields map[string]bool
 	// Self-host builds are known not to need monomorphization, so they can omit
 	// generic-only reachability probes while preserving ordinary call collection.
 	local_ident_visibility           map[int]bool
@@ -2568,6 +2576,7 @@ mut:
 	deferred_closure_mask           []bool
 	deferred_closure_nodes          []int
 	direct_call_callees             map[int]bool
+	assignment_targets              map[int]bool
 
 	channel_stringify_cache map[string]int
 	ierror_equality_cache   map[string]int
@@ -2608,6 +2617,14 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 		scan.initialized = true
 		if scan.select_closure_runtime {
 			for call in a.nodes {
+				if call.kind in [.assign, .selector_assign, .index_assign]
+					&& call.children_count > 0 {
+					mut target := a.child(&call, 0)
+					for a.node(target).kind == .paren && a.node(target).children_count > 0 {
+						target = a.child(a.node(target), 0)
+					}
+					scan.assignment_targets[int(target)] = true
+				}
 				if call.kind == .call && call.children_count > 0 {
 					callee := a.child(&call, 0)
 					scan.direct_call_callees[int(callee)] = true
@@ -2643,14 +2660,19 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 		if scan.select_closure_runtime && !scan.closure_runtime_enqueued {
 			mut needs_closure := node.kind in [.fn_literal, .lambda_expr]
 			if node.kind == .selector && node.children_count > 0
-				&& !scan.direct_call_callees[node_idx] {
+				&& !scan.direct_call_callees[node_idx] && !scan.assignment_targets[node_idx] {
 				base := a.child_node(&node, 0)
 				if !(base.kind == .ident && (base.value in ['C', 'JS'] || base.value in imports)) {
 					needs_closure = tc.expr_is_method_value(flat.NodeId(node_idx))
 						|| base.kind in [.string_literal, .int_literal, .float_literal, .char_literal]
 					if !needs_closure {
-						// Generic receivers acquire their concrete method after markused.
-						needs_closure = tc.resolve_type(a.child(&node, 0)) is types.Unknown
+						// Enum namespaces have no receiver value. Their checked selector
+						// type distinguishes them from unresolved generic method values.
+						selector_type := tc.expr_type(flat.NodeId(node_idx)) or {
+							types.Type(types.Unknown{})
+						}
+						needs_closure = types.unalias_type(selector_type) !is types.Enum
+							&& tc.resolve_type(a.child(&node, 0)) is types.Unknown
 					}
 				}
 			}
@@ -4956,6 +4978,7 @@ fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 		selective_alias_targets:          c.selective_alias_targets
 		iface_param_gate:                 c.iface_param_gate
 		generic_type_bases:               c.generic_type_bases
+		auto_str_skipped_fields:          c.auto_str_skipped_fields
 		detect_generics:                  c.detect_generics
 		body_checker_edges_authoritative: c.body_checker_edges_authoritative
 	}
@@ -6296,6 +6319,19 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 			}
 			.string_interp {
 				calls << 'string_plus_many'
+				for i in 0 .. child.children_count {
+					mut part_id := c.a.child(child, i)
+					part := c.a.node(part_id)
+					if part.kind == .directive && part.value == 'string_interp_format'
+						&& part.children_count > 0 {
+						if part.typ == 'p' {
+							continue
+						}
+						part_id = c.a.child(part, 0)
+					}
+					c.collect_top_level_stringification_calls(part_id, cur_module, imports,
+						local_values, local_types, mut calls)
+				}
 			}
 			.assign, .selector_assign, .index_assign {
 				c.collect_assign_operator_call(child, cur_module, local_types, mut calls)
@@ -6404,6 +6440,20 @@ fn (c &CallCollector) top_level_expr_lowers_to_map_str(id flat.NodeId, cur_modul
 	return type_name.len > 0 && markused_type_name_lowers_to_map_str(type_name, c.tc)
 }
 
+// collect_top_level_stringification_calls resolves script values with their own
+// imports and local bindings, before the checker has cached their expression types.
+fn (c &CallCollector) collect_top_level_stringification_calls(id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) {
+	type_name := c.top_level_expr_type_name(id, cur_module, imports, local_values, local_types, false)
+	if type_name.len == 0 {
+		return
+	}
+	typ := c.tc.parse_canonical_type(type_name)
+	mut used := map[string]bool{}
+	mut seen := map[string]bool{}
+	enqueue_stringified_type_dependencies(typ, cur_module, c.tc, c.auto_str_skipped_fields,
+		mut used, mut calls, mut seen)
+}
+
 fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) {
 	mut resolved_call := ''
 	if resolved := c.tc.resolved_call_name(call_id) {
@@ -6427,6 +6477,8 @@ fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Nod
 		}
 		if callee.value in ['print', 'println', 'eprint', 'eprintln'] && call.children_count >= 2 {
 			arg_id := c.a.child(call, 1)
+			c.collect_top_level_stringification_calls(arg_id, cur_module, imports, local_values,
+				local_types, mut calls)
 			if c.top_level_expr_lowers_to_map_str(arg_id, cur_module, imports, local_values, local_types) {
 				calls << 'string__plus'
 			}
@@ -8740,6 +8792,71 @@ fn (c &CallCollector) typed_receiver_method_name(type_name string, method string
 		if lowered != candidate && c.is_known_fn_name(lowered) {
 			return lowered
 		}
+	}
+	return c.collection_alias_receiver_method_name(clean_type_name, method, cur_module)
+}
+
+fn (c &CallCollector) collection_alias_receiver_method_name(type_name string, method string, cur_module string) ?string {
+	mut current := type_name
+	mut owner := cur_module
+	mut aliases := []string{}
+	for _ in 0 .. 16 {
+		qualified := if current.contains('.') { current } else { qualify_fn(owner, current) }
+		alias_name := if qualified in c.tc.type_aliases {
+			qualified
+		} else if current in c.tc.type_aliases {
+			current
+		} else {
+			return none
+		}
+		if alias_name in aliases || (c.tc.type_alias_generic_params[alias_name] or { []string{} }).len > 0 {
+			return none
+		}
+		aliases << alias_name
+		owner = c.tc.type_alias_modules[alias_name] or { owner }
+		target := markused_clean_receiver_type_name(c.tc.type_aliases[alias_name])
+		if !target.starts_with('[]') && !target.starts_with('map[') {
+			current = target
+			continue
+		}
+		// Only collection aliases inherit these runtime methods. Keep each alias's
+		// own methods ahead of the element-specific and generic implementations.
+		for alias in aliases {
+			candidate := '${alias}.${method}'
+			if c.is_known_fn_name(candidate) {
+				return candidate
+			}
+			lowered := markused_c_name(candidate)
+			if lowered != candidate && c.is_known_fn_name(lowered) {
+				return lowered
+			}
+		}
+		parsed := types.unalias_type(types.unwrap_all_pointers(types.unalias_type(c.tc.parse_canonical_type(alias_name))))
+		mut candidates := []string{}
+		if parsed is types.Array {
+			candidates << markused_array_receiver_method_candidates(parsed.name(), method, owner)
+			candidates << 'array.${method}'
+		} else if parsed is types.Map {
+			generic := 'map.${method}'
+			for candidate in markused_map_receiver_method_candidates(parsed.name(), method, owner) {
+				if candidate != generic {
+					candidates << candidate
+				}
+			}
+			candidates << generic
+		} else {
+			return none
+		}
+		for candidate in candidates {
+			if c.is_known_fn_name(candidate) {
+				return candidate
+			}
+			lowered := markused_c_name(candidate)
+			if lowered != candidate && c.is_known_fn_name(lowered) {
+				return lowered
+			}
+		}
+		return none
 	}
 	return none
 }

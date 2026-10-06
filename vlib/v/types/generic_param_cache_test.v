@@ -175,3 +175,52 @@ fn test_generic_instantiation_falls_back_for_uncached_declarations() {
 		assert fallback.symbol_types == cached.symbol_types
 	}
 }
+
+fn reflected_generic_method_fixture(argument string) !&flat.FlatAst {
+	path := os.join_path(os.vtmp_dir(), 'v3_reflected_generic_method_${os.getpid()}.v')
+	os.write_file(path, 'module main
+struct Context { mut: value int }
+struct App {}
+fn (_ App) index(mut ctx &Context) {}
+fn call[A](app A, mut ptr &Context, mut val Context) {
+	\$for method in A.methods {
+		if method.name == "index" {
+			app.\$method(mut ${argument})
+		}
+	}
+}
+fn main() {
+	mut val := Context{}
+	mut ptr := &val
+	call(App{}, mut ptr, mut val)
+}
+')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	return a
+}
+
+fn test_recollect_checks_reflected_generic_arguments_again() {
+	valid := reflected_generic_method_fixture('ptr')!
+	invalid := reflected_generic_method_fixture('val')!
+	mut tc := TypeChecker.new(valid)
+	tc.collect(valid)
+	call_id := tc.fn_decl_short_name_ids['call'] or { panic('missing call declaration') }
+	tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+
+	mut fresh := TypeChecker.new(invalid)
+	fresh.collect(invalid)
+	fresh.check_semantics_opt(false)
+	assert fresh.errors.len == 1, fresh.errors.str()
+	assert fresh.errors[0].kind == .call_arg_mismatch
+
+	tc.collect(invalid)
+	assert tc.fn_decl_short_name_ids['call'] == call_id
+	tc.check_semantics_opt(false)
+	assert tc.errors.len == 1, tc.errors.str()
+	assert tc.errors[0].kind == .call_arg_mismatch
+	assert tc.errors[0].msg == fresh.errors[0].msg
+}
