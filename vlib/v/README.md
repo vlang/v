@@ -37,6 +37,9 @@ builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until V
 can compile the full builtin map.v.
 
+Generic function bodies retain nominal alias types after unsafe expressions, array indexing,
+and map iteration, so methods declared on the alias remain available.
+
 ## Compiler dispatch
 
 On every native platform, this is the default compiler for user source and test builds. The
