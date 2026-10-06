@@ -380,6 +380,9 @@ This is useful when writing small programs, "scripts", or just learning the lang
 Imports and script statements can share a line when separated by semicolons.
 For brevity, `fn main()` will be skipped in this tutorial.
 
+Scripts can print values returned by imported functions, including floating-point values,
+and interpolate them with the same formatting available inside an explicit `main` function.
+
 This means that a "hello world" program in V is as simple as
 
 ```v
@@ -3248,6 +3251,22 @@ __global:
 	f int // public and mutable both inside and outside parent module
 }
 ```
+
+Access modifiers can also be written before individual fields to preserve their declaration order:
+
+```v
+struct Record {
+	a         int
+	mut     b int
+	pub     c int
+	pub mut d int
+}
+```
+
+An inline `pub`, `mut`, or `pub mut` applies only to that field (or comma-separated field group).
+It overrides the current section for that declaration; following fields still use the section's
+modifiers. Without a section, following fields remain private and immutable.
+`v fmt` preserves inline modifiers and aligns their field types.
 
 Private fields are available only inside the same [module](#modules), any attempt
 to directly access them from another module will cause an error during compilation.
@@ -8272,8 +8291,13 @@ fn main() {
 A `$if` in a reflection loop is decided at compile time, separately for each item. Its
 condition can compare the loop variable's metadata with literals (`==`, `!=`, `<`, `>`, `<=`,
 `>=`, `in`), check types with `is`, test names with `.starts_with()`, `.ends_with()`,
-`.contains()` and `.len`, and combine those with `&&`, `||` and `!`. A condition that cannot
-be decided at compile time is usually reported as an error; use a runtime `if` for it instead:
+`.contains()` and `.len`, and combine those with `&&`, `||` and `!`.
+Pure string method chains on literal or substituted reflection strings also support
+`all_before`, `all_after`, `all_before_last`, `all_after_last`, `trim`, `trim_left`,
+`trim_right`, `trim_space`, `trim_string_left`, `trim_string_right`, `replace`,
+`to_lower`, `to_upper`, and `count`, when every argument is a string literal.
+These scalar operations also fold in ordinary expressions with literal operands, including
+constant initializers. A condition that cannot be decided at compile time is reported as an error:
 
 ```v
 struct User {
@@ -8283,8 +8307,8 @@ struct User {
 
 fn main() {
 	$for field in User.fields {
-		// A runtime `if`: `$if` cannot call methods such as `to_upper()`.
-		if field.name.to_upper() == 'AGE' {
+		// The string operation is evaluated separately for each reflected field.
+		$if field.name.to_upper() == 'AGE' {
 			println('${field.name} is the age')
 		}
 	}
@@ -8407,6 +8431,10 @@ Generic comptime method calls enforce the same mutable pointer parameter require
 as calls through a concrete receiver type, including calls forwarded through generic functions
 and methods. An explicit `mut param &T` requires a mutable `&T` variable, rather than a
 `mut param T` value parameter.
+
+A reflected method call can pass explicit arguments followed by `...args` to supply the remaining
+parameters. The spread can be empty when the method has no remaining parameters. Explicit arguments
+before the spread still follow the method's `mut` parameter requirements.
 
 Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
 Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.

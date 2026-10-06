@@ -2,6 +2,27 @@
 
 `strconv` provides functions for converting strings to numbers and numbers to strings.
 
+## Floating-point parsing
+
+On the C backend, `atof64` parses decimal numbers with an optional sign,
+decimal point, and exponent. Underscores may separate digits, as in `1_000` or `1.2_5e1_0`.
+It also accepts case-insensitive `nan`, `inf`, and `infinity`, with an optional
+sign for infinity. Whitespace, bare signs, missing digits, and misplaced
+underscores return an error.
+
+```v
+import strconv
+import math
+
+assert strconv.atof64('1_000')! == 1000.0
+assert math.is_inf(strconv.atof64('-inf')!, -1)
+assert math.is_nan(strconv.atof64('NaN')!)
+```
+
+On the C backend, `allow_extra_chars: true` permits trailing characters after a decimal number,
+for example `atof64('1.5units', allow_extra_chars: true)` returns `1.5`.
+A mantissa and any exponent must still contain digits.
+
 ## Integer formatting
 
 `format_int` and `format_uint` represent signed and unsigned integers in any radix

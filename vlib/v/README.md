@@ -153,6 +153,8 @@ compiler-tree and self-host builds stop at 9984 MiB, leaving extra sampling head
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit or 
 `-memory-limit` to set your own.
+A memory-limit failure flushes its diagnostic and immediately exits with status 1. Process-exit
+callbacks are skipped because compiler workers may still be using their allocation arenas.
 Backend type queries discard transient function smartcasts after scoped specialization,
 so generic builds with small worker counts do not retain freed map storage.
 Native compiler and `v self` builds use `-prealloc` when their target and selected C compiler

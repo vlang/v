@@ -1,4 +1,5 @@
 import strconv
+import math
 
 /**********************************************************************
 *
@@ -139,4 +140,41 @@ fn test_atof_errors() {
 	} else {
 		assert err.str() == 'extra char after number'
 	}
+}
+
+fn test_atof_special_values() {
+	for input in ['inf', '+inf', 'Inf', 'INF', 'infinity', '+Infinity', 'iNfInItY'] {
+		assert math.is_inf(strconv.atof64(input)!, 1)
+	}
+	for input in ['-inf', '-INF', '-Infinity'] {
+		assert math.is_inf(strconv.atof64(input)!, -1)
+	}
+	for input in ['nan', 'NaN', 'NAN'] {
+		assert math.is_nan(strconv.atof64(input)!)
+	}
+}
+
+fn test_atof_digit_separators() {
+	assert strconv.atof64('1_000')! == 1000
+	assert strconv.atof64('-1_234.5_6')! == -1234.56
+	assert strconv.atof64('1_0e+1_0')! == 1e11
+	assert strconv.atof64('0_0.0_1')! == 0.01
+	assert strconv.atof64('.1_2')! == 0.12
+}
+
+fn test_atof_invalid_syntax() {
+	for input in [' ', ' 1', '\t1', '\n1', '+', '-', '.', '+.', '-.', '-+1', '1e', '1e+', '1e-',
+		'.e1', '_1', '1_', '1__0', '1_.0', '1._0', '1_e1', '1e_1', '1e1_', '+nan', '-nan', 'infx',
+		'nanx', '1 2', '1\x00'] {
+		if value := strconv.atof64(input) {
+			assert false, '${input} parsed as ${value}'
+		}
+	}
+	for input in ['+', '-', '.', ' ', ' 1', '-+1', '1e', '1e-'] {
+		if value := strconv.atof64(input, allow_extra_chars: true) {
+			assert false, '${input} parsed as ${value}'
+		}
+	}
+	assert strconv.atof64('1.5units', allow_extra_chars: true)! == 1.5
+	assert strconv.atof64('-0')!.str() == '-0.0'
 }
