@@ -9,6 +9,9 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+Callable parameters and local function values in generic functions take precedence over
+module functions with the same name, including calls from closures that capture the callable.
+
 V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
 all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
 and explicit `-b js` invocations. The limited JavaScript compatibility generator remains
