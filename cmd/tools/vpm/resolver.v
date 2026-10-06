@@ -73,6 +73,38 @@ fn version_ok(cand VersionedDeps, name string, resolved map[string]string, const
 	return true
 }
 
+// select_version_tag_with_constraints returns the highest tag satisfying every
+// constraint, or an error naming the constraints that could not be met. This is the
+// joint step: `select_version_tag` answers one range, this answers all of them.
+fn select_version_tag_with_constraints(tags []string, constraints []Constraint) !string {
+	mut sorted := tags.clone()
+	sorted.sort()
+	mut selected := ''
+	mut highest := semver.Version{}
+	for tag in sorted {
+		version := version_tag(tag) or { continue }
+		mut all_satisfy := true
+		for c in constraints {
+			if !version.satisfies(c.range) {
+				all_satisfy = false
+				break
+			}
+		}
+		if all_satisfy && (selected == '' || version > highest) {
+			selected = tag
+			highest = version
+		}
+	}
+	if selected == '' {
+		mut msg := 'no version satisfies all constraints:'
+		for c in constraints {
+			msg += '\n  ${c.required_by} requires ${c.range}'
+		}
+		return error(msg)
+	}
+	return selected
+}
+
 // resolve_with_backtracking searches for a consistent assignment of versions. Modules
 // are resolved in dependency order, each from its highest version down, and when a
 // choice leads to a dead end the search backtracks to the previous module and tries
