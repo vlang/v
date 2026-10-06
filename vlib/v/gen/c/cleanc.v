@@ -24880,11 +24880,15 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 	// Numeric constant initializers use the existing const-expression text. Write
 	// them directly instead of resolving their type and copying a temporary builder
 	// for each element of a constant table.
-	if g.indent == 0 && node.kind in [.int_literal, .float_literal]
-		&& g.assert_expr_overrides.len == 0
+	if g.indent == 0 && g.assert_expr_overrides.len == 0
 		&& g.callback_target_overrides.len == 0 {
-		builder.write_string(numeric_literal_c_text(&node))
-		return
+		if node.kind in [.int_literal, .float_literal] {
+			builder.write_string(numeric_literal_c_text(&node))
+			return
+		}
+		if g.write_fixed_array_integer_literal_cast(mut builder, &node) {
+			return
+		}
 	}
 	clean_elem_type := default_init_unalias_type(elem_type)
 	if node.kind == .map_init && clean_elem_type is types.Map {
@@ -24909,6 +24913,30 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		return
 	}
 	builder.write_u8(`0`)
+}
+
+fn (g &FlatGen) write_fixed_array_integer_literal_cast(mut builder strings.Builder, node &flat.Node) bool {
+	if node.kind != .cast_expr || node.children_count != 1
+		|| g.struct_default_generic_params.len > 0
+		|| node.value !in ['i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64'] {
+		return false
+	}
+	child := g.a.child_node(node, 0)
+	if child.kind != .int_literal {
+		return false
+	}
+	value := numeric_literal_c_text(child)
+	if value.starts_with('__v_u128_make(') {
+		return false
+	}
+	// These fixed-width builtin casts have the same spelling on every target.
+	// Append the const-expression form without a type query or temporary string.
+	builder.write_string('((')
+	builder.write_string(node.value)
+	builder.write_string(')(')
+	builder.write_string(value)
+	builder.write_string('))')
+	return true
 }
 
 fn numeric_literal_c_text(node &flat.Node) string {

@@ -133,6 +133,54 @@ pub fn CastTarget(value int) int { return value }
 	}
 }
 
+fn test_generic_diagnostic_walks_share_instantiation_without_changing_notices() {
+	path := os.join_path(os.vtmp_dir(), 'v3_generic_diagnostic_walks_${os.getpid()}.v')
+	os.write_file(path, 'fn diagnostics[T](value T) T {
+	\$if T is int {
+		\$compile_error("integer specialization")
+		\$compile_warn("integer warning")
+	}
+	return value
+}
+fn main() { _ := diagnostics(1) }
+')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut original := TypeChecker.new(a)
+	original.collect(a)
+	mut shared := TypeChecker.new(a)
+	shared.collect(a)
+	mut call_id := flat.empty_node
+	for idx, node in a.nodes {
+		if node.kind == .call && node.children_count > 0
+			&& a.child_node(&node, 0).value == 'diagnostics' {
+			call_id = flat.NodeId(idx)
+			break
+		}
+	}
+	assert call_id != flat.empty_node
+	call := a.node(call_id)
+	info := CallInfo{ name: 'diagnostics' }
+	original.check_instantiated_generic_as_casts(info,
+		original.generic_compile_error_instantiation(call, info) or { panic('missing generic instance') })
+	original.check_instantiated_generic_noinit_structs(call_id, info,
+		original.generic_compile_error_instantiation(call, info) or { panic('missing generic instance') })
+	original.check_instantiated_generic_ordering_ops(call, info,
+		original.generic_compile_error_instantiation(call, info) or { panic('missing generic instance') })
+	original.check_instantiated_generic_compile_errors(call_id, call,
+		original.generic_compile_error_instantiation(call, info) or { panic('missing generic instance') })
+	original.check_instantiated_generic_compile_warnings(original.generic_compile_error_instantiation(call, info) or { panic('missing generic instance') })
+	shared.check_instantiated_generic_diagnostics(call_id, call, info)
+	assert original.errors.len == 1, original.errors.str()
+	assert original.errors[0].msg == 'integer specialization'
+	assert original.notices.any(it.msg == 'integer warning')
+	assert shared.errors == original.errors
+	assert shared.notices == original.notices
+	assert shared.generic_decl_file == original.generic_decl_file
+}
+
 fn test_generic_instantiation_falls_back_for_uncached_declarations() {
 	a := generic_param_cache_fixture()!
 	mut tc := TypeChecker.new(a)
@@ -223,4 +271,34 @@ fn test_recollect_checks_reflected_generic_arguments_again() {
 	assert tc.errors.len == 1, tc.errors.str()
 	assert tc.errors[0].kind == .call_arg_mismatch
 	assert tc.errors[0].msg == fresh.errors[0].msg
+}
+
+fn test_generic_method_metadata_routes_remain_independent() {
+	a := flat.FlatAst.new()
+	for route in 0 .. 3 {
+		mut tc := TypeChecker.new(&a)
+		name := if route == 1 { 'Alias' } else { 'Box' }
+		key := if route == 2 { 'Box[u8].read' } else { '${name}.read' }
+		tc.fn_ret_types[key] = tc.parse_type('u64')
+		if route == 0 {
+			tc.struct_generic_params['Box'] = ['T']
+		} else if route == 1 {
+			tc.type_alias_generic_params['Alias'] = ['T']
+		} else {
+			tc.register_generated_fn_param_types(key, []Type{})
+		}
+		info := tc.resolve_generic_struct_method('${name}[u8]', 'read') or { panic('missing route ${route}') }
+		assert info.name == key
+		assert info.return_type.name() == 'u64'
+	}
+}
+
+fn test_plain_signatures_and_aliases_do_not_supply_generic_parameters() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.type_aliases['Concrete'] = 'Box'
+	tc.fn_ret_types['Box.read'] = tc.parse_type('u64')
+	tc.fn_param_types['Box.read'] = []Type{}
+	assert tc.resolve_generic_struct_method('Box[u8]', 'read') == none
+	assert tc.resolve_generic_struct_method('Concrete', 'read') == none
 }

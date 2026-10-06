@@ -1966,9 +1966,61 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 	t.interface_boxed_types_frozen = true
 }
 
+// unchecked_library_box_nodes snapshots only unchecked concrete library body ranges.
+// The owning transformer builds this before scan forks lose the checker's body-selection policy.
+fn (t &Transformer) unchecked_library_box_nodes() []bool {
+	$if ownership ? {
+		return []bool{}
+	}
+	if isnil(t.tc) || !t.skip_generics || t.building_v || !t.tc.skips_library_bodies
+		|| t.tc.autofree_enabled() || t.tc.top_level_idx.len == 0
+		|| t.tc.top_level_idx_nodes_len != t.a.nodes.len {
+		return []bool{}
+	}
+	// Reflected calls can make a concrete library method reachable during lowering,
+	// after this scan has already supplied interface equality and stringifier metadata.
+	for idx in 0 .. t.a.nodes.len {
+		if t.a.nodes[idx].kind == .comptime_for {
+			_, kind := comptime_for_parts(t.a.nodes[idx].value)
+			if kind == 'methods' {
+				return []bool{}
+			}
+		}
+	}
+	mut previous := -1
+	for idx in t.tc.top_level_idx {
+		if idx <= previous || idx >= t.a.nodes.len {
+			return []bool{}
+		}
+		previous = idx
+	}
+	mut skipped := []bool{len: t.a.nodes.len}
+	mut prev := -1
+	mut file := ''
+	mut mod_name := ''
+	for idx in t.tc.top_level_idx {
+		node := t.a.nodes[idx]
+		if node.kind == .file {
+			file = node.value
+			mod_name = t.tc.file_modules[file] or { '' }
+		} else if node.kind == .module_decl {
+			mod_name = node.value
+		} else if node.kind == .fn_decl && t.tc.skips_library_body_in_file(node, file, mod_name) {
+			for child_idx in prev + 1 .. idx + 1 {
+				skipped[child_idx] = true
+			}
+		}
+		prev = idx
+	}
+	return skipped
+}
+
 fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
 	limit := if end < t.a.nodes.len { end } else { t.a.nodes.len }
 	for idx in start .. limit {
+		if idx < t.interface_boxed_skip_nodes.len && t.interface_boxed_skip_nodes[idx] {
+			continue
+		}
 		node := t.a.nodes[idx]
 		if node.kind == .file {
 			t.cur_file = node.value

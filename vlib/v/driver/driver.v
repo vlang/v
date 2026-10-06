@@ -4025,6 +4025,18 @@ fn should_scope_prealloc_cgen() bool {
 	return false
 }
 
+fn transform_scope_size_is_bounded(size usize) bool {
+	return size > 0 && size <= 64 * 1024 * 1024
+}
+
+fn transform_scope_fits_retention_budget(scope voidptr) bool {
+	$if prealloc {
+		// Transform workers have joined and the scope has been left before this query.
+		return transform_scope_size_is_bounded(unsafe { prealloc_scope_allocated_size(scope) })
+	}
+	return false
+}
+
 fn should_parallel_monomorphize() bool {
 	// Compiler executables built by TinyCC can corrupt their heap while several
 	// specialization workers merge their results. Keep that build serial until
@@ -4070,7 +4082,7 @@ fn prealloc_scope_free_for_v3(scope voidptr) {
 	}
 }
 
-// free_retained_scopes releases the stage arenas the self-host path keeps alive
+// free_retained_scopes releases the stage arenas kept alive
 // through code generation. Unmapping multi-gigabyte arenas is slow enough to be
 // worth overlapping with the C compiler, which reads only the generated file.
 fn free_retained_scopes(transform_scope voidptr, prepare_scope voidptr) {
@@ -7903,7 +7915,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 	mut cur_module := ''
 	mut stack := []flat.NodeId{cap: 256}
 	for top_idx in tc.top_level_idx {
-		top := a.nodes[top_idx]
+		top := &a.nodes[top_idx]
 		if top.kind == .file {
 			cur_module = ''
 			continue
@@ -7926,12 +7938,12 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 			if idx < 0 || idx >= a.nodes.len {
 				continue
 			}
-			node := a.nodes[idx]
+			node := &a.nodes[idx]
 			if node.kind == .call && node.children_count > 0 {
 				callee_id := a.children[node.children_start]
 				callee_idx := int(callee_id)
 				if callee_idx >= 0 && callee_idx < a.nodes.len {
-					callee := a.nodes[callee_idx]
+					callee := &a.nodes[callee_idx]
 					if callee.kind == .ident && callee.value.len > 0 {
 						mut name := tc.resolved_call_name(id) or { callee.value }
 						if name !in tc.fn_param_types || name !in tc.fn_ret_types {
@@ -7965,7 +7977,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 				base_id := a.children[node.children_start]
 				base_idx := int(base_id)
 				if base_idx >= 0 && base_idx < a.nodes.len {
-					base := a.nodes[base_idx]
+					base := &a.nodes[base_idx]
 					cname := 'C.${base.value}'
 					// A local receiver can share a name with a C function. Restore
 					// only identifiers the checker resolved as that function value.
@@ -11817,6 +11829,11 @@ pub fn run(args []string) {
 			&& !incremental_cache_hit && !generic_cache_hit && !cache_state.manager.enabled
 			&& vls_line_info == '' && !served.from_server && !served.shares_checks()
 			&& a.missing_imports.len == 0 && os.getenv('V_CHECK_LIBRARY_BODIES') != 'all'
+		// Ownership cleanup seeds depend on the complete checked-body metadata.
+		library_body_frontiers := skip_library_bodies && effective_c_compiler != 'msvc'
+			&& !ownership_mode && 'ownership' !in prefs.user_defines
+			&& 'autofree' !in prefs.user_defines
+			&& markused.can_check_library_body_frontiers(a, &pre_tc)
 		mut check_was_parallel := false
 		mut check_may_be_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {
@@ -11847,8 +11864,12 @@ pub fn run(args []string) {
 				library_files := v3_library_source_files(a, &pre_tc, prefs.vroot)
 				if library_files.len > 0 {
 					hint_sw := time.new_stopwatch()
-					reachable := pre_tc.skip_unreachable_library_bodies(library_files, markused.seeded_fn_names(),
-						os.getenv('V_CHECK_LIBRARY_BODIES') != 'late')
+					reachable := if library_body_frontiers {
+						pre_tc.skip_library_bodies_for_reachability(library_files, markused.seeded_fn_names(), false)
+					} else {
+						pre_tc.skip_unreachable_library_bodies(library_files, markused.seeded_fn_names(),
+							os.getenv('V_CHECK_LIBRARY_BODIES') != 'late')
+					}
 					if verbose {
 						eprintln('  [ttime]   ck reachable     ${f64(hint_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (${reachable})')
 					}
@@ -12184,7 +12205,7 @@ pub fn run(args []string) {
 		}
 		mut markused_scope := unsafe { nil }
 		mut markused_tc := &pre_tc
-		if scope_prealloc_markused && !generic_cache_hit {
+		if scope_prealloc_markused && !generic_cache_hit && !library_body_frontiers {
 			markused_scope = prealloc_scope_begin_for_v3()
 			markused_tc = pre_tc.fork_for_parallel_transform(a)
 			markused_tc.share_direct_dependencies_from(&pre_tc)
@@ -12216,12 +12237,20 @@ pub fn run(args []string) {
 				used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
 			}
 			uses_generics = false
+		} else if library_body_frontiers {
+			used_fns, uses_generics = markused.mark_used_checking_library_bodies(a, mut pre_tc,
+				check_may_be_parallel)
 		} else if effective_c_compiler == 'msvc' {
 			// Keep the runtime seeds that a literal-output program would drop; see
 			// `trivial_literal_output` above.
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
 		} else {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
+		}
+		if library_body_frontiers && pre_tc.errors.len > 0 {
+			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+				check_only, message_limit, skip_notices)
+			exit(1)
 		}
 		if is_prof {
 			add_v3_profile_used_fns(mut used_fns)
@@ -12241,7 +12270,7 @@ pub fn run(args []string) {
 				uses_generics = uses_generics || cache_uses_generics
 			}
 		}
-		if scope_prealloc_markused && !generic_cache_hit {
+		if scope_prealloc_markused && !generic_cache_hit && !library_body_frontiers {
 			prealloc_scope_leave_for_v3(markused_scope)
 			used_fns = clone_string_bool_map(used_fns)
 			if cache_state.manager.enabled {
@@ -12255,13 +12284,11 @@ pub fn run(args []string) {
 		if skip_library_bodies {
 			// The check found the types that markused resolves calls with, so
 			// markused can reach library functions that its first pass did not.
-			mut reached_later := 0
 			for {
 				reached := pre_tc.check_reached_library_bodies(used_fns, check_may_be_parallel)
 				if reached == 0 {
 					break
 				}
-				reached_later += reached
 				if pre_tc.errors.len > 0 {
 					print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 						check_only, message_limit, skip_notices)
@@ -12272,7 +12299,7 @@ pub fn run(args []string) {
 					effective_c_compiler == 'msvc', prefs.verbose)
 			}
 			if verbose {
-				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${reached_later} checked late (worker threads: ${a.worker_count()})')
+				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
 			}
 		}
 		mut prepared_transform := prepared_transform_thread.wait()
@@ -12457,11 +12484,20 @@ pub fn run(args []string) {
 				retained_transform_prepare_scope = unsafe { nil }
 				retained_transform_prescan_scopes = []voidptr{}
 			}
-			retain_transform_scope := retain_scope_without_regions
+			// Ordinary C builds have no semantic consumer after Cgen. Keep a bounded
+			// transform arena instead of cloning its metadata into the parent arena.
+			// Transform can uncover generic calls, so check its final used names too.
+			retain_ordinary_scope := !building_v && backend == 'c'
+				&& !cache_state.manager.enabled && !uses_generics && skip_transform_generics
+				&& !is_test_command && test_files.len == 0 && !is_checker_fixture
+				&& !is_repl && !is_vsh_input && !translated_mode && !is_shared
+				&& !is_prof && !show_test_stats
+				&& !transformed_used_fns_need_monomorphize(transform_used_fns)
+				&& transform_scope_fits_retention_budget(transform_scope)
+			retain_transform_scope := (retain_scope_without_regions || retain_ordinary_scope)
 				&& retained_transform_regions.len == 0
 			if retain_transform_scope {
-				// Cgen is the only remaining semantic consumer in this no-cache self-host
-				// path. Keep the typed transform arena alive through it instead of cloning
+				// Keep the typed transform arena alive through Cgen instead of cloning
 				// the AST/checker payloads into the parent and immediately rebuilding the
 				// same type caches in the backend.
 				retained_transform_scope = transform_scope
@@ -12773,6 +12809,9 @@ pub fn run(args []string) {
 				} else {
 					used_fns
 				})
+				// Restoration only updates checker sidecars. When transform already
+				// published every AST string, no second text-interning pass is needed.
+				texts_canonical_after_annotation = transform_texts_canonical
 			}
 		}
 		b.step('annotate types')
@@ -13584,6 +13623,12 @@ pub fn run(args []string) {
 				println('Generated C project in ${generate_c_project}')
 			}
 			b.print_report()
+			if retained_transform_scope != unsafe { nil }
+				|| retained_transform_prepare_scope != unsafe { nil } {
+				free_retained_scopes(retained_transform_scope, retained_transform_prepare_scope)
+				retained_transform_scope = unsafe { nil }
+				retained_transform_prepare_scope = unsafe { nil }
+			}
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			return
 		}

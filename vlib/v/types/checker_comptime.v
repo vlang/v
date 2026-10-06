@@ -3122,6 +3122,157 @@ fn (mut tc TypeChecker) check_map_duplicate_keys(node flat.Node) {
 	}
 }
 
+// Already-inferred numeric fixed arrays have no method values, allocation, or contextual
+// branches. Validate their literal ranges and publish the same checked expression types.
+fn (mut tc TypeChecker) check_known_numeric_const_initializer(id flat.NodeId, typ Type) bool {
+	$if ownership ? {
+		return false
+	}
+	if tc.fn_context.node_id >= 0 || tc.expected_expr_id >= 0
+		|| tc.node_is_from_translated_file(tc.a.nodes[int(id)])
+		|| !tc.known_numeric_const_initializer(id, typ) {
+		return false
+	}
+	tc.extend_node_caches(tc.a.nodes.len)
+	tc.check_known_numeric_const_array(id, typ)
+	return true
+}
+
+fn (tc &TypeChecker) known_numeric_const_initializer(id flat.NodeId, typ Type) bool {
+	if typ !is ArrayFixed {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind != .postfix || node.op != .not || node.children_count != 1
+		|| node.value == 'ragged_inferred_fixed_array' {
+		return false
+	}
+	array_id := tc.a.child(node, 0)
+	array := tc.a.node(array_id)
+	if array.kind != .array_literal || array.typ.len > 0 || array.children_count == 0
+		|| typ.len != int(array.children_count) || typ.len_expr.len > 0 {
+		return false
+	}
+	if array_type := tc.expr_type(array_id) {
+		if array_type !is Array && array_type !is ArrayFixed {
+			return false
+		}
+		array_elem := array_like_elem_type(array_type) or { return false }
+		if !semantic_types_equal(array_elem, typ.elem_type) {
+			return false
+		}
+	}
+	elem := typ.elem_type
+	if elem is ArrayFixed {
+		for i in 0 .. array.children_count {
+			if !tc.known_numeric_const_initializer(tc.a.child(array, i), elem) {
+				return false
+			}
+		}
+		return true
+	}
+	if elem !is Primitive || elem.props.has(.boolean)
+		|| (!elem.props.has(.integer) && !elem.props.has(.float))
+		|| (elem.size !in [u8(8), 16, 32, 64] && elem.size != 0) {
+		return false
+	}
+	name := elem.name()
+	target := tc.parse_type(name)
+	if target !is Primitive || target.props != elem.props || target.size != elem.size
+		|| name in tc.sum_generic_params || name in tc.interface_generic_params {
+		return false
+	}
+	for i in 0 .. array.children_count {
+		child_id := tc.a.child(array, i)
+		child := tc.a.node(child_id)
+		if child.kind == .prefix {
+			if cached := tc.expr_type(child_id) {
+				if cached !is Primitive || cached.props.has(.boolean)
+					|| (!cached.props.has(.integer) && !cached.props.has(.float)) {
+					return false
+				}
+			}
+		}
+		if child.kind in [.int_literal, .float_literal] && child.children_count == 0 {
+			if child.kind == .float_literal && !elem.props.has(.float) {
+				return false
+			}
+			if i == 0 && name != if child.kind == .int_literal { 'int' } else { 'f64' } {
+				return false
+			}
+			if cached := tc.expr_type(child_id) {
+				if cached !is Primitive || cached.props.has(.boolean)
+					|| (!cached.props.has(.integer) && !cached.props.has(.float)) {
+					return false
+				}
+			}
+			continue
+		}
+		if child.kind == .prefix && child.op in [.plus, .minus] && child.children_count == 1 {
+			literal := tc.a.child_node(child, 0)
+			if i > 0 && literal.kind in [.int_literal, .float_literal]
+				&& literal.children_count == 0
+				&& (literal.kind == .int_literal || elem.props.has(.float)) {
+				continue
+			}
+		}
+		if child.kind != .cast_expr || child.value != name || child.children_count != 1 {
+			return false
+		}
+		literal_id := tc.a.child(child, 0)
+		literal := tc.a.node(literal_id)
+		if literal.kind !in [.int_literal, .float_literal] || literal.children_count != 0 {
+			return false
+		}
+		if cached := tc.expr_type(literal_id) {
+			if cached !is Primitive || cached.props.has(.boolean)
+				|| (!cached.props.has(.integer) && !cached.props.has(.float)) {
+				return false
+			}
+		}
+		if cached := tc.expr_type(child_id) {
+			if cached !is Primitive || cached.props != elem.props || cached.size != elem.size {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn (mut tc TypeChecker) check_known_numeric_const_array(id flat.NodeId, typ Type) {
+	if typ !is ArrayFixed {
+		return
+	}
+	array_id := tc.a.child(&tc.a.nodes[int(id)], 0)
+	array := tc.a.node(array_id)
+	elem := typ.elem_type
+	for i in 0 .. array.children_count {
+		child_id := tc.a.child(array, i)
+		child := tc.a.node(child_id)
+		if elem is ArrayFixed {
+			tc.check_known_numeric_const_array(child_id, elem)
+		} else if child.kind == .cast_expr {
+			literal_id := tc.a.child(child, 0)
+			_ = tc.resolve_type(literal_id)
+			tc.check_integer_literal_cast_overflow(child_id, child, literal_id, elem)
+			tc.register_synth_type(child_id, elem)
+		} else if child.kind == .prefix {
+			tc.check_node_with_expected_context(child_id, elem)
+			_ = tc.resolve_expr(child_id, elem)
+		} else {
+			if child.kind == .int_literal {
+				tc.check_untyped_integer_literal_overflow(child_id)
+			}
+			if i > 0 {
+				tc.register_synth_type(child_id, elem)
+			}
+		}
+	}
+	array_type := tc.expr_type(array_id) or { Type(Array{ elem_type: elem }) }
+	tc.register_synth_type(array_id, array_type)
+	tc.register_synth_type(id, typ)
+}
+
 fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		if node.typ.len == 0 {
@@ -4349,6 +4500,27 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.check_node_with_expected_context(child_id, target)
 	} else {
 		tc.check_node(child_id)
+	}
+	// Canonical primitive spellings without generic declarations need only range checks.
+	// Retain literal checking above and the same integer range diagnostic below.
+	if cast_child.kind in [.int_literal, .float_literal] && cast_child.children_count == 0
+		&& target is Primitive && !target.props.has(.boolean)
+		&& !tc.node_is_from_translated_file(node) {
+		canonical_numeric_target := if target.props.has(.integer) {
+			target.size in [u8(8), 16, 32, 64]
+				|| (target.size == 0 && !target.props.has(.unsigned))
+		} else {
+			target.props.has(.float) && target.size in [u8(32), 64]
+		}
+		if canonical_numeric_target && target.name() == node.value
+			&& node.value !in tc.sum_generic_params && node.value !in tc.interface_generic_params {
+			literal_type := tc.resolve_type(child_id)
+			if literal_type is Primitive && !literal_type.props.has(.boolean)
+				&& (literal_type.props.has(.integer) || literal_type.props.has(.float)) {
+				tc.check_integer_literal_cast_overflow(id, node, child_id, target)
+				return
+			}
+		}
 	}
 	if node.value == 'any' {
 		tc.record_error(.unknown_type, 'cannot use type `any` here', id)

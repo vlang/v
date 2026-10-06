@@ -30,3 +30,8 @@ Reentry returns `false` and leaves the scope untouched while it is current, reta
 owner, or being freed. Start a new scope in that case. When finished, call
 `prealloc_scope_end(scope)` to free the scope. These functions are unsafe because callers must
 ensure no allocation from a rewound or freed scope remains in use.
+
+`prealloc_scope_allocated_size(scope)` reports the bytes in all allocation blocks owned by a
+scope, excluding allocator metadata and address gaps between blocks. It returns zero for a nil
+scope and saturates at `usize`'s maximum on overflow. This query is unsafe: no thread may add or
+remove blocks while it runs.
