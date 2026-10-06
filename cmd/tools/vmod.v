@@ -210,6 +210,7 @@ fn print_help(fp &flag.FlagParser) {
 	println(fp.usage())
 	println('')
 	println('Subcommands:')
+	println('  graph        Print versioned v.mod dependency edges.')
 	println('  why MODULE   Print the chain of imports that brings MODULE into the build.')
 }
 
@@ -259,6 +260,16 @@ fn main() {
 		exit(1)
 	}
 	match rest[0] {
+		'graph' {
+			if rest.len != 1 {
+				eprintln('v mod graph: expected no module arguments.')
+				exit(1)
+			}
+			vexe := os.getenv_opt('VEXE') or { @VEXE }
+			result := os.exec([vexe, 'why', '--graph'])
+			print(result.output)
+			exit(result.exit_code)
+		}
 		'why' {
 			if rest.len < 2 {
 				eprintln('v mod why: expected a module name.')

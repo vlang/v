@@ -46,9 +46,11 @@ mut:
 // without a project in scope keeps `active` false, and nothing is locked.
 struct LockScope {
 mut:
-	dir     string
-	active  bool
-	entries map[string]LockedModule
+	dir           string
+	active        bool
+	entries       map[string]LockedModule
+	complete      bool
+	resolved_keys []string
 }
 
 // lockfile_path returns the path of the lockfile of the project in `dir`.
@@ -210,12 +212,11 @@ fn (mut scope LockScope) record(m Module) {
 	verbose_println('Locked `${m.name}` at revision `${revision}`.')
 }
 
-// finish merges the entries collected during the run into the lockfile of the
-// project in scope and writes it back, keeping the entries of modules the run
-// did not touch. It does nothing when the run is not anchored to a project, or
-// when it did not resolve any module itself.
+// finish writes the resolved graph of a complete project run, or merges entries
+// from a partial install into its existing lockfile. Frozen runs never write.
+// It does nothing when no project or resolved dependency is in scope.
 fn (mut scope LockScope) finish() {
-	if !scope.active || scope.entries.len == 0 {
+	if !scope.active || scope.entries.len == 0 || settings.is_frozen {
 		return
 	}
 	lock_path := lockfile_path(scope.dir)
@@ -223,13 +224,14 @@ fn (mut scope LockScope) finish() {
 		version: lockfile_version
 		modules: map[string]LockedModule{}
 	}
-	if os.exists(lock_path) {
+	if os.exists(lock_path) && !scope.complete {
 		lf = read_lockfile(scope.dir) or {
 			vpm_error(err.msg())
 			exit(1)
 		}
 	}
 	for name, entry in scope.entries {
+		if scope.complete && name !in scope.resolved_keys { continue }
 		lf.upsert(entry, name)
 	}
 	write_lockfile(scope.dir, lf) or {
@@ -245,7 +247,7 @@ fn (scope &LockScope) entry_for(dep string) ?LockedModule {
 	if !scope.active {
 		return none
 	}
-	return scope.entries[lockfile_module_key(dep)]
+	return scope.entries[lockfile_module_key(dep)] or { none }
 }
 
 // lock_mismatch describes how the lock entry `entry` differs from the

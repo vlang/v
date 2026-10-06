@@ -10,6 +10,7 @@ mut:
 }
 
 fn vpm_outdated() {
+	if print_version_outdated() { return }
 	outdated := get_outdated()
 	if outdated.len > 0 {
 		println('Outdated modules:')

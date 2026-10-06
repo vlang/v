@@ -7707,6 +7707,26 @@ v outdated
 Package are up to date.
 ```
 
+### Resolving package versions
+
+Dependencies can use semantic version ranges, for example `vsl@^0.1.47` or
+`nedpals.args@>=0.4.0 <0.6.0`. VPM selects tagged releases satisfying all requirements
+for a repository and backtracks to older releases if their dependencies conflict.
+Unchanged projects prefer locked commits. `v install --frozen` uses the lock without
+writing it. Failed resolution reports the requirement chains before installing anything.
+
+In projects using ranges, `v update` resolves within existing constraints.
+`v update -p PACKAGE --precise REF` chooses one exact ref while checking every constraint.
+`v update --latest` widens direct requirements to caret constraints for the newest resolvable
+stable releases and rewrites `v.mod`. Other locked packages are preferred during targeted updates.
+Bare-only projects retain default-branch installs and branch-based updates.
+
+`v why PACKAGE` annotates each parent's version constraint; `v mod graph` prints versioned
+manifest dependency edges. Both work offline. `v outdated` reports Current, Upgradable,
+Resolvable and Latest for constrained projects: the installed version, the newest tag allowed
+by the installed graph, a fresh complete resolution, and the newest stable tag respectively.
+See [the VPM guide](../cmd/tools/vpm/README.md) for details.
+
 ### Locking dependency revisions
 
 When `v install` resolves the dependencies of a project, i.e. when it runs

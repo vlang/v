@@ -8,10 +8,15 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 // The tests in this file are fully offline: they build local git repositories
 // under `test_path` and install from those, never touching the network.
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_lockfile_test_${rand.ulid()}')
-const v_exe = os.getenv('VEXE')
+const v_exe = os.join_path(test_path, if os.user_os() == 'windows' { 'vpm.exe' } else { 'vpm' })
 
 fn testsuite_begin() {
 	test_utils.set_test_env(test_path)
+	os.mkdir_all(test_path)!
+	os.setenv('VEXE', @VEXE, true)
+	// Compile once so each isolated store tests the same VPM binary.
+	cmd_ok_args(@LOCATION, [@VEXE, '-cc', @CCOMPILER, '-gc', 'none', '-o', v_exe,
+		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 }
 
 fn testsuite_end() {
@@ -761,10 +766,10 @@ fn test_outdated_and_upgrade_see_a_locked_checkout() {
 }
 
 // Case: when one dependency of a project cannot be installed at its locked
-// revision, the others are installed, but the run fails as a whole.
+// revision, complete resolution fails before any checkout is installed.
 fn test_install_fails_when_one_of_several_locked_dependencies_fails() {
 	good_repo_path := os.join_path(test_path, 'pf_good')
-	good_head := create_local_git_module(good_repo_path, 'pf_good_pkg')
+	create_local_git_module(good_repo_path, 'pf_good_pkg')
 	bad_repo_path := os.join_path(test_path, 'pf_bad')
 	create_local_git_module(bad_repo_path, 'pf_bad_pkg')
 	project_dir := os.join_path(test_path, 'pf_proj')
@@ -793,8 +798,9 @@ fn test_install_fails_when_one_of_several_locked_dependencies_fails() {
 	test_utils.set_test_env(os.join_path(test_path, 'vpf2'))
 	res := cmd_fail_args(@LOCATION, [v_exe, 'install', '--locked'])
 	assert res.output.contains('failed to install'), res.output
-	assert git_head(os.join_path(test_path, 'vpf2', 'pf_good_pkg')) == good_head
+	assert !os.exists(os.join_path(test_path, 'vpf2', 'pf_good_pkg'))
 	assert !os.exists(os.join_path(test_path, 'vpf2', 'pf_bad_pkg'))
+	assert os.read_file(lockfile_path(project_dir)) or { panic(err) } == lock_before
 	test_utils.set_test_env(os.join_path(test_path, 'vpf3'))
 	cmd_fail_args(@LOCATION, [v_exe, 'install'])
 	assert os.read_file(lockfile_path(project_dir)) or { panic(err) } == lock_before
