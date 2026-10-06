@@ -1381,7 +1381,6 @@ fn test_print_still_names_the_key_when_it_is_there() {
 
 fn test_print_reports_a_read_error() {
 	path := config_fixture('printunreadable', '')!
-	os.rm(path)!
 	os.mkdir(path)!
 	h := Harness{ name: 'test', label: 'test', key: 'mcp' }
 	out := print_one(h, path, false)
@@ -1392,7 +1391,6 @@ fn test_print_reports_a_read_error() {
 
 fn test_print_keeps_scope_and_creation_restrictions() {
 	path := config_fixture('printnocreate', '')!
-	os.rm(path)!
 	h := Harness{ name: 'test', label: 'test', key: 'mcp', no_create_user: true }
 	user := print_one(h, path, false)
 	assert user.contains('the installer will not create this file'), user
@@ -1411,10 +1409,10 @@ fn test_server_entry_escapes_control_bytes() {
 		entry := h.entry(exe, args)
 		decoded := json.decode[map[string]json.Any](entry)!
 		if array_command {
-			assert decoded['command'].arr().map(it.str()) == [exe, ...args]
+			assert decoded['command']!.as_array().map(it.str()) == [exe, ...args]
 		} else {
-			assert decoded['command'].str() == exe
-			assert decoded['args'].arr().map(it.str()) == args
+			assert decoded['command']!.str() == exe
+			assert decoded['args']!.as_array().map(it.str()) == args
 		}
 	}
 }

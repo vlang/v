@@ -195,6 +195,9 @@ fn print_one(h Harness, path string, project bool) string {
 		out += '  { ${json_string(h.key)}: { ${json_string(server_id)}: ${entry_text(h)} } }\n'
 		return out
 	}
+	if !os.is_file(path) {
+		return out + '  could not read ${path}: not a regular file\n'
+	}
 	text := os.read_file(path) or { return out + '  could not read ${path}: ${err.msg()}\n' }
 	if has_top_level_key(text, h.key) {
 		out += '  top-level key: ${h.key}\n'
