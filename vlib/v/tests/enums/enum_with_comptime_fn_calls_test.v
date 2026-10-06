@@ -277,3 +277,84 @@ fn test_comptime_enum_division_converts_operands_before_calculating() {
 		}
 	}
 }
+
+@[comptime]
+fn enum_unsigned64_shift(a u64) u64 {
+	return a >> 1
+}
+
+@[comptime]
+fn enum_unsigned64_divide(a u64) u64 {
+	return a / 2
+}
+
+@[comptime]
+fn enum_unsigned64_modulo(a u64) u64 {
+	return a % 3
+}
+
+enum WideUnsignedComptime as u64 {
+	shifted           = enum_unsigned64_shift(0x8000000000000000)
+	divided           = enum_unsigned64_divide(0xffffffffffffffff)
+	moduloed          = enum_unsigned64_modulo(0xffffffffffffffff)
+	decimal           = enum_unsigned64_divide(010)
+	argument_shift    = enum_unsigned64_shift(u64(0x8000000000000000) >> 1)
+	argument_division = enum_unsigned64_divide(u64(0x8000000000000000) / 4)
+	argument_modulo   = enum_unsigned64_modulo(u64(0xffffffffffffffff) % 7)
+}
+
+fn test_comptime_enum_unsigned64_keeps_high_bits() {
+	assert u64(WideUnsignedComptime.shifted) == enum_unsigned64_shift(0x8000000000000000)
+	assert u64(WideUnsignedComptime.divided) == enum_unsigned64_divide(0xffffffffffffffff)
+	assert u64(WideUnsignedComptime.moduloed) == enum_unsigned64_modulo(0xffffffffffffffff)
+	assert u64(WideUnsignedComptime.decimal) == 5
+	assert u64(WideUnsignedComptime.argument_shift) == enum_unsigned64_shift(u64(0x8000000000000000) >> 1)
+	assert u64(WideUnsignedComptime.argument_division) == enum_unsigned64_divide(u64(0x8000000000000000) / 4)
+	assert u64(WideUnsignedComptime.argument_modulo) == enum_unsigned64_modulo(u64(0xffffffffffffffff) % 7)
+	$for member in WideUnsignedComptime.values {
+		$if member.name == 'shifted' {
+			assert u64(member.value) == enum_unsigned64_shift(0x8000000000000000)
+		}
+		$if member.name == 'divided' {
+			assert u64(member.value) == enum_unsigned64_divide(0xffffffffffffffff)
+		}
+		$if member.name == 'moduloed' {
+			assert u64(member.value) == enum_unsigned64_modulo(0xffffffffffffffff)
+		}
+		$if member.name == 'decimal' {
+			assert u64(member.value) == 5
+		}
+		$if member.name == 'argument_shift' {
+			assert u64(member.value) == enum_unsigned64_shift(u64(0x8000000000000000) >> 1)
+		}
+		$if member.name == 'argument_division' {
+			assert u64(member.value) == enum_unsigned64_divide(u64(0x8000000000000000) / 4)
+		}
+		$if member.name == 'argument_modulo' {
+			assert u64(member.value) == enum_unsigned64_modulo(u64(0xffffffffffffffff) % 7)
+		}
+	}
+}
+
+@[comptime]
+fn enum_passthrough_byte(a u8) u8 {
+	return a
+}
+
+enum NarrowArgumentComptime {
+	inverted = enum_passthrough_byte(~u8(128) / 2)
+	shifted  = enum_passthrough_byte(i8(-128) >>> 1)
+}
+
+fn test_comptime_enum_narrow_argument_arithmetic_matches_runtime() {
+	assert int(NarrowArgumentComptime.inverted) == int(enum_passthrough_byte(~u8(128) / 2))
+	assert int(NarrowArgumentComptime.shifted) == int(enum_passthrough_byte(i8(-128) >>> 1))
+	$for member in NarrowArgumentComptime.values {
+		$if member.name == 'inverted' {
+			assert member.value == int(enum_passthrough_byte(~u8(128) / 2))
+		}
+		$if member.name == 'shifted' {
+			assert member.value == int(enum_passthrough_byte(i8(-128) >>> 1))
+		}
+	}
+}

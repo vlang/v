@@ -1,6 +1,5 @@
 module c
 
-import strconv
 import v.flat
 import v.gen.c.naming
 import v.types
@@ -2115,8 +2114,13 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			if node.children_count < 2 {
 				return none
 			}
-			left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
-			right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+			mut left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+			mut right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+			if node.op in [.div, .mod] && !isnil(g.tc) {
+				typ := types.unalias_type(g.usable_expr_type(id)).name()
+				left = g.enum_comptime_integer_cast(left, typ)
+				right = g.enum_comptime_integer_cast(right, typ)
+			}
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
 			}
@@ -2129,14 +2133,39 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				.minus { left - right }
 				.mul { left * right }
 				.power { enum_foldable_int_power(left, right) }
-				.div { left / right }
-				.mod { left % right }
+				.div {
+					if isnil(g.tc) {
+						left / right
+					} else {
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), false)
+					}
+				}
+				.mod {
+					if isnil(g.tc) {
+						left % right
+					} else {
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), true)
+					}
+				}
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
 				.left_shift { i64(u64(left) << u64(right)) }
-				.right_shift { left >> right }
-				.right_shift_unsigned { i64(u64(left) >> u64(right)) }
+				.right_shift {
+					typ := if isnil(g.tc) {
+						''
+					} else {
+						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
+					}
+					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+				}
+				.right_shift_unsigned {
+					if isnil(g.tc) {
+						i64(u64(left) >> u64(right))
+					} else {
+						types.comptime_enum_unsigned_right_shift(left, right, types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name())
+					}
+				}
 				else { none }
 			}
 		}
@@ -2363,13 +2392,32 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 				.minus { left - right }
 				.mul { left * right }
 				.power { enum_foldable_int_power(left, right) }
-				.div { left / right }
-				.mod { left % right }
+				.div {
+					if isnil(g.tc) {
+						left / right
+					} else {
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), false)
+					}
+				}
+				.mod {
+					if isnil(g.tc) {
+						left % right
+					} else {
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), true)
+					}
+				}
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
 				.left_shift { i64(u64(left) << u64(right)) }
-				.right_shift { left >> right }
+				.right_shift {
+					typ := if isnil(g.tc) {
+						''
+					} else {
+						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
+					}
+					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+				}
 				.right_shift_unsigned {
 					if isnil(g.tc) {
 						i64(u64(left) >> u64(right))
@@ -2391,9 +2439,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 }
 
 fn enum_foldable_int_literal(value string) ?i64 {
-	clean := value.replace('_', '')
-	parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
-	return parsed
+	return types.comptime_enum_integer_literal(value)
 }
 
 @[ignore_overflow]

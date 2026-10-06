@@ -7954,7 +7954,8 @@ fn function() {
 
 // Calls to this function in enum expressions can be evaluated at compile time,
 // when all call arguments are compile-time constants. Integer parameters, casts, and
-// return values use their declared integer widths. Const initializers remain runtime calls.
+// return values use their declared integer widths. Unsigned u64 shifts and division retain
+// their high bits. Const initializers remain runtime calls.
 @[comptime]
 fn make_mask(value u32, shift u32) u32 {
 	return value << shift

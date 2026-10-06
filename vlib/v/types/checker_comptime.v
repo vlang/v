@@ -946,7 +946,7 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.int_literal {
-			if v := numeric_literal_i64(node.value) {
+			if v := comptime_enum_integer_literal(node.value) {
 				return v
 			}
 		}
@@ -1000,8 +1000,13 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 			if node.children_count < 2 {
 				return none
 			}
-			left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
-			right := tc.comptime_static_enum_field_value(tc.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			mut left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			mut right := tc.comptime_static_enum_field_value(tc.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			if node.op in [.div, .mod] {
+				typ := unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).name()
+				left = comptime_enum_integer_cast(left, typ)
+				right = comptime_enum_integer_cast(right, typ)
+			}
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
 			}
@@ -1013,11 +1018,20 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				.plus { left + right }
 				.minus { left - right }
 				.mul { left * right }
-				.div { left / right }
-				.mod { left % right }
+				.div {
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).name(), false)
+				}
+				.mod {
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).name(), true)
+				}
 				.left_shift { i64(u64(left) << right) }
-				.right_shift { left >> right }
-				.right_shift_unsigned { i64(u64(left) >> right) }
+				.right_shift {
+					typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), map[string]Type{})).name()
+					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+				}
+				.right_shift_unsigned {
+					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(&node, 0), map[string]Type{})).name())
+				}
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
@@ -1080,6 +1094,32 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		}
 	}
 	return none
+}
+
+// comptime_enum_integer_literal keeps all 64 bits of an integer literal used by enum evaluation.
+pub fn comptime_enum_integer_literal(value string) ?i64 {
+	mut clean := value.to_lower().replace('_', '')
+	for suffix in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64'] {
+		if clean.ends_with(suffix) {
+			clean = clean[..clean.len - suffix.len]
+			break
+		}
+	}
+	base := if clean.starts_with('0x') || clean.starts_with('0o') || clean.starts_with('0b') {
+		0
+	} else {
+		10
+	}
+	parsed := strconv.common_parse_uint(clean, base, 64, true, true) or { return none }
+	return i64(parsed)
+}
+
+// comptime_enum_integer_division uses unsigned arithmetic for unsigned 64-bit operands.
+pub fn comptime_enum_integer_division(left i64, right i64, typ string, remainder bool) i64 {
+	if typ in ['u64', 'usize'] {
+		return if remainder { i64(u64(left) % u64(right)) } else { i64(u64(left) / u64(right)) }
+	}
+	return if remainder { left % right } else { left / right }
 }
 
 // comptime_enum_integer_cast applies the conversion used at integer parameter/return boundaries.
@@ -1190,7 +1230,7 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 	node := tc.a.node(id)
 	match node.kind {
 		.int_literal {
-			return numeric_literal_i64(node.value)
+			return comptime_enum_integer_literal(node.value)
 		}
 		.ident {
 			if value := locals[node.value] {
@@ -1250,13 +1290,20 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 				.minus { left - right }
 				.mul { left * right }
 				.power { i64(const_int_power(int(left), int(right))) }
-				.div { left / right }
-				.mod { left % right }
+				.div {
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name(), false)
+				}
+				.mod {
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name(), true)
+				}
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
 				.left_shift { i64(u64(left) << right) }
-				.right_shift { left >> right }
+				.right_shift {
+					typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).name()
+					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+				}
 				.right_shift_unsigned {
 					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).name())
 				}
