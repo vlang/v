@@ -27095,7 +27095,7 @@ fn (t &Transformer) raw_infix_operator_decl_return_type(node flat.Node) ?string 
 
 fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?string {
 	if ret := t.tc.fn_ret_type_texts[name] {
-		raw := t.raw_call_return_type_name(ret, node)
+		raw := t.raw_call_return_type_name(t.caller_return_type_text(name, ret), node)
 		if t.raw_return_type_contains_alias(raw) {
 			return raw
 		}
@@ -27113,6 +27113,24 @@ fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?st
 		}
 	}
 	return none
+}
+
+// caller_return_type_text is the return type `ret` of the function `name`, written
+// as the current module names it. `ret` keeps the spelling of the module that declares
+// the function, where `ID` is the alias `m.ID`; in another module that bare `ID` has
+// none of the methods of `m.ID`, like its `str`. A generic function keeps its text:
+// its type parameters are resolved at the call.
+fn (t &Transformer) caller_return_type_text(name string, ret string) string {
+	decl_file := t.tc.fn_type_files[name] or { return ret }
+	decl_module := t.tc.fn_type_modules[name] or { t.tc.file_modules[decl_file] or { return ret } }
+	if decl_module == t.cur_module || name.contains('[') || name in t.tc.fn_generic_params {
+		return ret
+	}
+	resolved := t.tc.fn_signature_type(name, ret)
+	if resolved is types.Unknown || resolved is types.Void {
+		return ret
+	}
+	return resolved.name()
 }
 
 fn (t &Transformer) raw_return_type_contains_alias(typ string) bool {
