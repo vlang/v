@@ -8478,8 +8478,30 @@ fn (mut t Transformer) infer_generic_return_type_args(decl GenericFnDecl, ret st
 	}
 }
 
-fn (mut t Transformer) generic_receiver_param_names(decl GenericFnDecl) []string {
+fn (t &Transformer) declared_generic_receiver_param_names(node flat.Node, module_name string) []string {
 	mut receiver_params := []string{}
+	if t.fn_decl_receiver_is_open_generic(node, module_name) {
+		receiver := owner_name_view(node.value)
+		base, args, _ := generic_app_parts(receiver)
+		mut candidates := [base]
+		if !base.contains('.') && module_name !in ['', 'main', 'builtin'] {
+			candidates = ['${module_name}.${base}', base]
+		}
+		for candidate in candidates {
+			params := t.tc.struct_generic_params[candidate] or { continue }
+			for arg in args {
+				if arg in params && arg !in receiver_params {
+					receiver_params << arg
+				}
+			}
+			return receiver_params
+		}
+	}
+	return receiver_params
+}
+
+fn (mut t Transformer) generic_receiver_param_names(decl GenericFnDecl) []string {
+	mut receiver_params := t.declared_generic_receiver_param_names(decl.node, decl.module)
 	if decl.node.value.contains('.') {
 		receiver := decl.node.value.all_before_last('.')
 		t.collect_generic_param_names_from_type(receiver, decl.module, mut receiver_params)
@@ -9611,7 +9633,8 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		// binding over the source node's checker cache, which belongs to the shared
 		// template and can reflect a previously emitted specialization.
 		if t.cloning_generic_fn_depth > 0 && scoped_var_typ.len > 0 {
-			return t.canonical_generic_specialization_arg(scoped_var_typ)
+			return t.generic_inference_argument_type(t.canonical_generic_specialization_arg(scoped_var_typ),
+				t.node_module_or(int(id), t.cur_module))
 		}
 		if !isnil(t.tc) {
 			if checked := t.tc.expr_type(id) {
@@ -9662,6 +9685,12 @@ fn generic_inference_arg_type_usable(typ string) bool {
 
 fn (t &Transformer) generic_inference_argument_type(typ string, module_name string) string {
 	clean := typ.trim_space()
+	if t.current_specialization_has_generic_arg(clean) {
+		locked := t.lock_colliding_main_generic_type_text(clean, module_name)
+		if locked != clean {
+			return locked
+		}
+	}
 	if t.generic_type_text_contains_alias(clean, module_name) {
 		return t.generic_arg_for_call_and_decl_module(clean, module_name, module_name)
 	}
@@ -12574,6 +12603,9 @@ fn (mut t Transformer) concrete_type_name_known(name string, module_name string)
 	if types.is_builtin_type_name(name) || name in ['C', 'JS'] {
 		return true
 	}
+	if t.is_known_main_struct_type_name(name) {
+		return true
+	}
 	qname := if name.contains('.') || module_name == '' || module_name == 'main'
 		|| module_name == 'builtin' {
 		name
@@ -12697,6 +12729,16 @@ fn (mut t Transformer) generic_fn_param_names(node flat.Node, module_name string
 		clean := generic_param_name_from_decl_param(param)
 		if clean.len > 0 && clean !in names {
 			names << clean
+		}
+	}
+	if node.value.contains('.') {
+		for name in t.generic_receiver_param_names(GenericFnDecl{
+			node:   node
+			module: module_name
+		}) {
+			if name !in names {
+				names << name
+			}
 		}
 	}
 	t.collect_generic_param_names_from_type(node.value, module_name, mut names)
@@ -13618,7 +13660,7 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 fn (t &Transformer) lock_colliding_main_substitution_type_text(original string, substituted string, module_name string, generic_params []string) string {
 	source := original.trim_space()
 	concrete := substituted.trim_space()
-	if source == concrete {
+	if source == concrete && !generic_text_contains_param(source, generic_params) {
 		return concrete
 	}
 	if source in generic_params {
@@ -13826,6 +13868,13 @@ fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_nam
 	// type with no lockable bare component (e.g. `veb.Context`); return it verbatim.
 	if clean.contains('.') {
 		return clean
+	}
+	if is_generic_fn_placeholder_name(clean) {
+		if info := t.structs[clean] {
+			if info.module in ['', 'main'] {
+				return 'main.' + clean
+			}
+		}
 	}
 	// An active specialization type has caller provenance: even when both main and the
 	// callee declare this generic base, this spelling is the caller's main type. Check it
@@ -14306,7 +14355,11 @@ fn (t &Transformer) subst_comptime_type_test_operand(raw string, args []string) 
 			return substituted + '.typ'
 		}
 	}
-	return t.subst_comptime_type_operand(raw, args)
+	substituted := t.subst_comptime_type_operand(raw, args)
+	if t.current_specialization_has_generic_arg(substituted) {
+		return t.lock_colliding_main_generic_type_text(substituted, t.cur_module)
+	}
+	return substituted
 }
 
 fn (t &Transformer) comptime_type_layout(raw string, seen []string) ?ComptimeTypeLayout {
@@ -15149,12 +15202,6 @@ fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {
 		}
 		return false
 	}
-	if is_generic_fn_placeholder_name(clean) {
-		// A one-letter uppercase name is only an unresolved generic placeholder
-		// when it does not name a real declared concrete type. `Box[A]` where
-		// `struct A` exists is a concrete instantiation that must be materialized.
-		return !t.is_known_concrete_type_name(clean)
-	}
 	if clean.starts_with('&') {
 		return t.generic_arg_is_unresolved(clean[1..])
 	}
@@ -15174,6 +15221,11 @@ fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {
 				|| t.generic_arg_is_unresolved(clean[bracket_end + 1..])
 		}
 	}
+	if is_generic_fn_placeholder_name(clean) {
+		// Inspect the nominal name after its wrappers, so `[]main.T` keeps the
+		// same concrete declaration as `main.T`.
+		return !t.is_known_concrete_type_name(clean)
+	}
 	_, nested_args, ok := generic_app_parts(clean)
 	if ok {
 		for nested in nested_args {
@@ -15189,7 +15241,7 @@ fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {
 // declared concrete type (struct, sum type, enum, interface or alias), so that
 // one-letter type names like `A` are not mistaken for generic placeholders.
 fn (t &Transformer) is_known_concrete_type_name(name string) bool {
-	if t.type_name_is_declared(name) {
+	if t.type_name_is_declared(name) || t.is_known_main_struct_type_name(name) {
 		return true
 	}
 	if !name.contains('.') {
@@ -15200,6 +15252,17 @@ fn (t &Transformer) is_known_concrete_type_name(name string) bool {
 		if t.type_name_is_declared('main.${name}') {
 			return true
 		}
+	}
+	return false
+}
+
+fn (t &Transformer) is_known_main_struct_type_name(name string) bool {
+	if !name.starts_with('main.') || t.ident_is_import_alias('main') {
+		return false
+	}
+	bare := name['main.'.len..]
+	if info := t.structs[bare] {
+		return info.module in ['', 'main']
 	}
 	return false
 }
