@@ -181,8 +181,8 @@ fn storage_query_result_bytes(key string, result map[string][]int, guards map[u6
 }
 
 fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, result map[string][]int, guards map[u64]bool, clone_result bool, estimated_bytes int) ?map[string][]int {
-	if cache.storage_query_count >= 4096
-		|| cache.storage_query_bytes + estimated_bytes > 32 * 1024 * 1024 {
+	if cache.storage_query_count >= 8192
+		|| cache.storage_query_bytes + estimated_bytes > 64 * 1024 * 1024 {
 		return none
 	}
 	mut entries := cache.storage_query_results[key] or { []StorageQueryResult{} }

@@ -32,8 +32,8 @@ Ownership checking uses disposable arenas for function batches and recursive sto
 queries, so temporary snapshots and query state are released throughout large compilations,
 including compiler builds. Query results, inferred metadata, and diagnostics survive arena release.
 
-Recursive storage-source queries share a cache for one outer query. It retains at most 4,096
-completed entries and 32 MiB of estimated payload. Existing entries remain usable when a limit is
+Recursive storage-source queries share a cache for one outer query. It retains at most 8,192
+completed entries and 64 MiB of estimated payload. Existing entries remain usable when a limit is
 reached; additional results are computed without adding another cache entry. The cache and
 temporary query state are released when the outer query finishes.
 The estimate covers cache keys, paths, source indexes and guard metadata; it is separate from the

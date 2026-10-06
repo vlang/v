@@ -288,22 +288,22 @@ fn self_source(mut target Box) { target.value = target.value }
 		assert deduplicated['.value'] == [1]
 		deduplicated_sources := deduplicated['.value']
 		assert unsafe { deduplicated_sources.data == first_admitted_sources.data }
-		admission.storage_query_bytes = 8 * 1024 * 1024
+		admission.storage_query_bytes = 32 * 1024 * 1024
 		additional := admission.cache_storage_query_fixture_result('beyond_old_limit', {
 			'.value': [2]
 		}, right_false) or { panic('old byte limit still active') }
 		assert additional['.value'] == [2]
 		assert admission.storage_query_count == 3
-		assert admission.storage_query_bytes > 8 * 1024 * 1024
+		assert admission.storage_query_bytes > 32 * 1024 * 1024
 		boundary_writes := {
 			'.value': [3]
 		}
 		boundary_bytes := storage_query_result_bytes('exact_boundary', boundary_writes, left_false)
-		admission.storage_query_bytes = 32 * 1024 * 1024 - boundary_bytes
+		admission.storage_query_bytes = 64 * 1024 * 1024 - boundary_bytes
 		boundary := admission.cache_storage_query_fixture_result('exact_boundary', boundary_writes, left_false) or { panic('exact byte boundary rejected') }
 		assert boundary['.value'] == [3]
 		assert admission.storage_query_count == 4
-		assert admission.storage_query_bytes == 32 * 1024 * 1024
+		assert admission.storage_query_bytes == 64 * 1024 * 1024
 		if _ := admission.cache_storage_query_fixture_result('byte_cap', {
 			'.value': [1]
 		}, left_false) {
@@ -315,7 +315,7 @@ fn self_source(mut target Box) { target.value = target.value }
 			assert false, 'saturated byte cap reached duplicate lookup'
 		}
 		assert admission.storage_query_count == 4
-		assert admission.storage_query_bytes == 32 * 1024 * 1024
+		assert admission.storage_query_bytes == 64 * 1024 * 1024
 		assert 'byte_cap' !in admission.storage_query_results
 		cycle_id := visible_mutation_cache_id(cycle_decl, 0)
 		mut inactive := map[u64]bool{}
@@ -335,14 +335,14 @@ fn self_source(mut target Box) { target.value = target.value }
 		}
 		// Ancestors whose guards were never read do not create distinct entries.
 		assert memo_owner.storage_query_count == count_before_store + 1
-		oversized := 'x'.repeat(32 * 1024 * 1024 + 1)
+		oversized := 'x'.repeat(64 * 1024 * 1024 + 1)
 		if _ := memo_owner.cache_storage_query_fixture_result('oversized', {
 			oversized: [1]
 		}, map[u64]bool{}) {
 			assert false, 'oversized entry admitted'
 		}
 		assert memo_owner.storage_query_count == count_before_store + 1
-		for iteration in 0 .. 4096 {
+		for iteration in 0 .. 8192 {
 			memo_owner.cache_storage_query_fixture_result('bounded', {
 				'.value': [1]
 			},
@@ -350,9 +350,9 @@ fn self_source(mut target Box) { target.value = target.value }
 					u64(2_000_000 + iteration): false
 				}) or { map[string][]int{} }
 		}
-		assert memo_owner.storage_query_count == 4096
-		assert memo_owner.storage_query_results.len < 4096
-		assert memo_owner.storage_query_bytes <= 32 * 1024 * 1024
+		assert memo_owner.storage_query_count == 8192
+		assert memo_owner.storage_query_results.len < 8192
+		assert memo_owner.storage_query_bytes <= 64 * 1024 * 1024
 		// The bounded table declines new entries while the exact deferred query still succeeds.
 		mut full_context := map[u64]bool{}
 		full_result := memo_view.param_storage_writes_for_decl(deferred_decl, 0, mut full_context)
@@ -362,7 +362,7 @@ fn self_source(mut target Box) { target.value = target.value }
 		assert fallback_churn.len == 1024
 		unsafe { prealloc_scope_end(fallback_churn_scope) }
 		assert full_result['.value'] == [1]
-		assert memo_owner.storage_query_count == 4096
+		assert memo_owner.storage_query_count == 8192
 		assert memo_view.visible_mutation_cache.storage_query_results.len == 0
 		for _, entries in memo_owner.storage_query_results {
 			for entry in entries {
