@@ -91,6 +91,8 @@ Capacity follows the largest token count seen, so limit input sizes when appropr
 With garbage collection, assigning `DecodeBuffer{}` releases the retained allocation
 for collection when it is no longer needed.
 
+Struct field renaming attributes are also honored when compiling with `-autofree`.
+
 JSON object keys are decoded to the target map key type, including signed and unsigned
 integer keys. Nested maps and maps stored in struct fields follow the same conversion.
 Enum map keys, including enum type aliases, use member names as written by `encode`.

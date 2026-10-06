@@ -39,8 +39,9 @@ struct StructFieldInfo {
 }
 
 // Keep runtime attribute parsing outside the compile-time field loop. This is called only while
-// a struct type's field metadata cache is initialized.
-@[noinline]
+// a struct type's field metadata cache is initialized. The cached pointers borrow attribute
+// bytes, so autofree must not release the loop's attribute strings.
+@[manualfree; noinline]
 fn struct_field_info(field_name string, attrs []string) StructFieldInfo {
 	mut json_name_str := field_name.str
 	mut json_name_len := field_name.len
