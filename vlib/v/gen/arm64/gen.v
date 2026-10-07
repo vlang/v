@@ -874,8 +874,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 			if src_val.kind == .string_literal {
 				g.materialize_string(src_id, 8)
 				ptr_reg := g.load_val(ptr_id, 9)
-				g.emit32(asm_str(Reg(8), Reg(ptr_reg)))
-				g.emit32(asm_str_imm(Reg(10), Reg(ptr_reg), 1))
+				dest_type := g.ptr_elem_type(ptr_id)
+				if g.is_string_struct_type(dest_type) {
+					g.emit32(asm_str(Reg(8), Reg(ptr_reg)))
+					g.emit32(asm_str_imm(Reg(10), Reg(ptr_reg), 1))
+				} else {
+					g.emit_store_typed(8, ptr_reg, dest_type)
+				}
 			} else {
 				ptr_reg := g.load_val(ptr_id, 9)
 				dest_type := g.ptr_elem_type(ptr_id)
@@ -910,11 +915,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			ptr_id := instr.operands[0]
 			ptr_val := g.m.values[ptr_id]
 
-			if ptr_val.kind == .global {
-				g.emit_global_addr(8, ptr_val.name)
-				g.emit32(asm_ldr(Reg(8), Reg(8)))
-				g.store_val(8, val_id)
-			} else if ptr_val.kind == .string_literal {
+			if ptr_val.kind == .string_literal && g.is_string_struct_type(val.typ) {
 				g.materialize_string(ptr_id, 8)
 				g.store_val(8, val_id)
 				if off := g.stack_slot(val_id) {
@@ -1263,7 +1264,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 				ret_val := g.m.values[ret_id]
 				if ret_val.kind == .string_literal {
 					g.materialize_string(ret_id, 0)
-					g.emit32(asm_mov_reg(Reg(1), Reg(10)))
+					if g.is_string_struct_type(ret_val.typ) {
+						g.emit32(asm_mov_reg(Reg(1), Reg(10)))
+					}
 				} else {
 					ret_size := g.m.type_size(ret_val.typ)
 					if ret_size > 8 && g.is_value_aggregate_type(ret_val.typ) {
@@ -1425,7 +1428,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 			}
 		}
 
-		if arg_val.kind == .string_literal {
+		if arg_val.kind == .string_literal && g.is_string_struct_type(arg_val.typ) {
 			if arg_reg + 2 <= 8 {
 				g.materialize_string(arg_id, arg_reg)
 				g.emit32(asm_mov_reg(Reg(arg_reg + 1), Reg(10)))
@@ -1718,7 +1721,7 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 			continue
 		}
 		mut n_words := 1
-		if arg_val.kind == .string_literal {
+		if arg_val.kind == .string_literal && g.is_string_struct_type(arg_val.typ) {
 			n_words = 2
 		} else {
 			arg_size := g.m.type_size(arg_val.typ)
@@ -1758,7 +1761,7 @@ fn (g &Gen) c_variadic_start(instr ssa.Instruction) ?int {
 }
 
 fn (g &Gen) call_arg_word_count(value ssa.Value) int {
-	if value.kind == .string_literal {
+	if value.kind == .string_literal && g.is_string_struct_type(value.typ) {
 		return 2
 	}
 	size := g.m.type_size(value.typ)

@@ -101,7 +101,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_rand', '_srand', '_isdigit', '_isspace', '_tolower', '_toupper', '_setenv',
 	'_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',
 	'_pthread_mutex_trylock', '_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self',
-	'_pthread_create', '_pthread_join', '_pthread_attr_init', '_pthread_attr_setstacksize',
+	'_pthread_create', '_pthread_join', '_pthread_detach', '_pthread_attr_init', '_pthread_attr_setstacksize',
 	'_pthread_attr_destroy', '_pthread_key_create', '_pthread_key_delete', '_pthread_getspecific',
 	'_pthread_setspecific', '_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared',
 	'_pthread_rwlockattr_destroy', '_pthread_rwlock_init', '_pthread_rwlock_rdlock',
@@ -802,7 +802,8 @@ fn (mut l Linker) write_main_cmd(entry_off int) {
 	write_u32_le(mut l.buf, u32(lc_main))
 	write_u32_le(mut l.buf, 24)
 	write_u64_le(mut l.buf, u64(entry_off)) // entryoff (offset from __TEXT start)
-	write_u64_le(mut l.buf, 0) // stacksize
+	// Match the macOS C backend's main stack for recursive compiler passes.
+	write_u64_le(mut l.buf, 64 * 1024 * 1024) // stacksize
 }
 
 // write_uuid writes uuid output for arm64.
