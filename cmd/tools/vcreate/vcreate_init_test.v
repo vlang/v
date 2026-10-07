@@ -114,6 +114,23 @@ fn init_and_check() ! {
 	].join_lines()
 }
 
+fn test_v_init_creates_agents_md() {
+	prepare_test_path()!
+	os.exec_or_exit([os.find_abs_path_of_executable('expect') or {
+		eprintln('skipping test, since expect is missing')
+		exit(0)
+	}, os.join_path(expect_tests_path, 'init.expect'), @VEXE])
+	assert os.exists('AGENTS.md')
+	content := os.read_file('AGENTS.md') or {
+		assert false, err.str()
+		return
+	}
+	assert content.contains('# AGENTS.md - ${test_project_dir_name}')
+	assert content.contains('## Commands')
+	assert content.contains('## Layout')
+	assert content.contains('## Conventions')
+}
+
 fn prepare_test_path() ! {
 	os.rmdir_all(test_path) or {}
 	os.mkdir_all(test_path) or {}
