@@ -1,7 +1,10 @@
 module c
 
 import strings
+import os
 import v.flat
+import v.parser
+import v.pref
 import v.types
 
 fn test_fixed_array_numeric_literals_match_const_expression_emission() {
@@ -102,4 +105,86 @@ fn test_nested_fixed_array_literal_keeps_wide_alias_elements() {
 	}
 	outer_type := types.ArrayFixed{ elem_type: types.Type(inner_type), len: 2 }
 	assert g.fixed_array_initializer_string(outer, outer_type) == '{{077, 1000}, {__v_u128_make(1ULL, 0ULL), 077}}'
+}
+
+fn test_parsed_fixed_array_integer_casts_match_const_expression_emission() {
+	path := os.join_path(os.vtmp_dir(), 'fixed_array_integer_casts_${os.getpid()}.v')
+	os.write_file(path, 'type Wide = u128
+const values = [u64(0xffff_ffff_ffff_ffff), u64(0o1777777777777777777777), u64(1_000)]!
+const negatives = [i64(-1), i64(-9223372036854775807)]!
+const wide = [u128(18446744073709551616), u128(340282366920938463463374607431768211455)]!
+const aliases = [Wide(u128(18446744073709551616))]!
+const platform = [int(123), isize(123), usize(123)]!
+fn main() {}
+')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	mut g := FlatGen.new()
+	g.a = a
+	g.tc = &tc
+	mut fast_casts := 0
+	mut fallback_casts := 0
+	for i, node in a.nodes {
+		if node.kind != .cast_expr {
+			continue
+		}
+		id := flat.NodeId(i)
+		typ := tc.resolve_type(id)
+		mut direct := strings.new_builder(64)
+		if g.write_fixed_array_integer_literal_cast(mut direct, &node) {
+			fast_casts++
+			assert direct.str() == g.const_expr_to_string(id, []string{})
+		} else {
+			fallback_casts++
+		}
+		for indent in [0, 1, 3] {
+			g.indent = indent
+			expected := g.const_expr_to_string(id, []string{})
+			mut builder := strings.new_builder(64)
+			g.write_fixed_array_elem_initializer(mut builder, id, typ)
+			assert builder.str() == expected
+		}
+		g.indent = 0
+	}
+	assert fast_casts == 3
+	assert fallback_casts >= 8
+}
+
+fn test_fixed_array_integer_cast_preserves_child_overrides_and_generic_context() {
+	mut a := flat.FlatAst.new()
+	literal := a.add_val(.int_literal, '123')
+	start := a.children.len
+	a.children << literal
+	cast := a.add_node(flat.Node{
+		kind:           .cast_expr
+		value:          'u64'
+		children_start: start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for callback in [false, true] {
+		g.assert_expr_overrides.clear()
+		g.callback_target_overrides.clear()
+		if callback {
+			g.callback_target_overrides[int(literal)] = 'callback_literal'
+		} else {
+			g.assert_expr_overrides[int(literal)] = 'assert_literal'
+		}
+		expected := g.const_expr_to_string(cast, []string{})
+		assert expected.contains(if callback { 'callback_literal' } else { 'assert_literal' })
+		mut builder := strings.new_builder(64)
+		g.write_fixed_array_elem_initializer(mut builder, cast, types.Type(types.u64_))
+		assert builder.str() == expected
+	}
+	g.struct_default_generic_params = ['T']
+	mut builder := strings.new_builder(64)
+	assert !g.write_fixed_array_integer_literal_cast(mut builder, &a.nodes[int(cast)])
 }

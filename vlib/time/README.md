@@ -62,6 +62,10 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+Month and weekday names in `parse_format` may end the input. For example,
+`time.parse_format('May', 'MMMM')!` and `time.parse_format('Jul', 'MMM')!`
+return times in May and July, respectively; weekday tokens also accept a terminal name.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time

@@ -165,6 +165,28 @@ fn test_map_clone_uses_the_runtime_pointer_abi() {
 	assert false, 'missing native map clone helper'
 }
 
+fn test_native_map_stubs_replace_only_builtin_map_data_methods() ! {
+	root := os.join_path(os.vtmp_dir(), 'ssa_map_runtime_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	builtin_path := os.join_path(root, 'builtin.v')
+	user_path := os.join_path(root, 'models.v')
+	// C-only runtime dependencies are absent from the native runtime's used functions.
+	os.write_file(builtin_path, 'module builtin\nstruct VMapData {}\nfn (mut data VMapData) free() { missing_c_map_cleanup() }\n')!
+	os.write_file(user_path, 'module models\nstruct VMapData {}\nfn (mut data VMapData) free() {}\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_file(builtin_path)
+	p.parse_file(user_path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	m := build_with_used(p.a, {
+		'free':                 true
+		'models.VMapData.free': true
+	}, unsafe { nil })
+	assert !m.funcs.any(it.name == 'VMapData.free')
+	assert m.funcs.any(it.name == 'models.VMapData.free' && it.blocks.len > 0)
+	assert m.funcs.any(it.name == 'map__free' && it.blocks.len > 0)
+}
+
 fn test_native_modulecache_metadata_helper_uses_hash_fallback() {
 	a := &flat.FlatAst{}
 	m := build(a)
