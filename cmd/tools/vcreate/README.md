@@ -15,3 +15,10 @@ keep their source directly in the project directory.
 
 Use `v init --lib` for a library or `v init --web` for a web application. Without a template flag,
 the executable template is selected. Setup prompts run only when standard input is a terminal.
+
+Pass `--agents-md` to generate an optional `AGENTS.md` contributor contract, for example
+`v new --lib --agents-md my_library` or `v init --agents-md`. Without the flag, no contract is
+created. Existing contracts, including symbolic links, are preserved during initialization.
+The generated commands match the template: libraries use `v test .` and omit `v run .`.
+For an existing project with a custom source layout, the contract describes the source files
+without assuming a missing template entry file exists.
