@@ -4,8 +4,14 @@
 for example `v new --lib my_library` or `v new --web my_app`.
 
 `v init` sets up the current directory. If it already contains a valid `v.mod`, its module name
-is used in the completion message, generated library files and `.gitignore`. The manifest is
-preserved. Existing V source files are preserved; a template is generated only when none exist.
+is used in the completion message and `.gitignore`. Generated library identifiers and filenames
+replace hyphens in that name with underscores; the project name and manifest are preserved.
+If the manifest cannot be read or its name is empty, the directory name is used,
+with hyphens replaced by underscores. This fallback does not rewrite the existing manifest.
+Existing V source files are preserved; a template is generated only when none exist.
+When the library identifier differs from the project directory name, its source is generated
+in a subdirectory with that identifier so the generated tests can import it. Other libraries
+keep their source directly in the project directory.
 
 Use `v init --lib` for a library or `v init --web` for a web application. Without a template flag,
 the executable template is selected. Setup prompts run only when standard input is a terminal.

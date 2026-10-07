@@ -147,8 +147,13 @@ fn init_project(cmd Command) ! {
 			println('The directory name `${dir_name}` is invalid as a module name. The module name in `v.mod` was set to `${c.name}`')
 		}
 	} else {
+		// v.mod already exists (e.g. second `v init` run): reuse its name,
+		// so the summary message and .gitignore do not end up with an empty name.
 		if mod := vmod.from_file('v.mod') {
 			c.name = mod.name
+		}
+		if c.name == '' {
+			c.name = dir_name.replace('-', '_')
 		}
 	}
 	println('Initialising ...')
