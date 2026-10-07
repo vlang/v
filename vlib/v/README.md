@@ -655,4 +655,5 @@ Measured on macOS (Apple Silicon), warm runs. V1 built from `~/code/v5/v` (V 0.5
 
 Converting `&callback` to `voidptr`, or passing it to a `voidptr` parameter,
 addresses the storage of a function-valued variable, parameter, field or array
-element. Taking the address of a named function remains the function pointer.
+element. Comparisons with a `voidptr` operand preserve that same storage address
+in either operand order. Taking the address of a named function remains the function pointer.

@@ -7,6 +7,10 @@ mut:
 	callback AddressCallback = address_callback_five
 }
 
+struct AddressCallbackPointerHolder {
+	pointer voidptr
+}
+
 fn address_callback_five() int {
 	return 5
 }
@@ -57,4 +61,26 @@ fn test_function_field_and_array_element_storage_addresses() {
 
 fn test_named_function_address_remains_the_function_value() {
 	assert voidptr(&address_callback_five) == voidptr(address_callback_five)
+}
+
+fn test_implicit_voidptr_comparisons_keep_function_value_storage_addresses() {
+	value := AddressCallback(address_callback_five)
+	stored := AddressCallbackPointerHolder{ pointer: &value }
+	assert stored.pointer == &value
+	assert &value == stored.pointer
+	assert stored.pointer != address_callback_five
+	assert address_callback_five != stored.pointer
+	holder := AddressCallbackHolder{ callback: address_callback_five }
+	field := AddressCallbackPointerHolder{ pointer: &holder.callback }
+	assert field.pointer == &holder.callback
+	assert &holder.callback == field.pointer
+	assert field.pointer != address_callback_five
+	values := [AddressCallback(address_callback_five)]
+	element := AddressCallbackPointerHolder{ pointer: &values[0] }
+	assert element.pointer == &values[0]
+	assert &values[0] == element.pointer
+	assert element.pointer != address_callback_five
+	named := AddressCallbackPointerHolder{ pointer: &address_callback_five }
+	assert named.pointer == &address_callback_five
+	assert &address_callback_five == named.pointer
 }
