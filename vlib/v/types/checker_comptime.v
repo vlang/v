@@ -18054,6 +18054,12 @@ fn (tc &TypeChecker) expr_is_variadic_fn_value(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return false
 	}
+	if fn_type := fn_type_from_type(tc.resolve_type(id)) {
+		if fn_type.is_variadic {
+			return true
+		}
+	}
+
 	if name := tc.resolved_fn_value_name(id) {
 		return tc.fn_variadic[name] or { false }
 	}
