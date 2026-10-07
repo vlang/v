@@ -129,6 +129,7 @@ pub:
 	params      []Type
 	params_mut  []bool
 	return_type Type
+	is_variadic bool // The final array parameter accepts zero or more values.
 }
 
 // OptionType represents option type data used by types.
@@ -252,6 +253,7 @@ pub fn clone_owned_type(value Type) Type {
 			Type(FnType{
 				params:      clone_owned_types(value.params)
 				params_mut:  value.params_mut.clone()
+				is_variadic: value.is_variadic
 				return_type: clone_owned_type(value.return_type)
 			})
 		}
@@ -459,7 +461,11 @@ pub fn (t Type) name() string {
 					continue
 				}
 			}
-			s += nested_type_name(param)
+			if t.is_variadic && i == t.params.len - 1 && param is Array {
+				s += '...${nested_type_name(param.elem_type)}'
+			} else {
+				s += nested_type_name(param)
+			}
 		}
 		s += ')'
 		if t.return_type !is Void {

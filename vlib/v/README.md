@@ -24,6 +24,9 @@ module functions with the same name, including calls from closures that capture 
 Function types used as generic struct arguments retain open parameter and return types until
 instantiation, including when the generic function is declared in an imported module.
 
+Nested generic struct arguments retain the module of every type component when used as
+fields or passed to generics declared in another module.
+
 On macOS ARM64, include the native backend with `v -compile-backend arm64 self`, then use
 `v -b arm64 self x2` to rebuild the full CLI twice with that backend. The second build runs
 the compiler produced by the first build. Native self-builds disable GC and include the C
@@ -85,6 +88,9 @@ and automatic pointer stringification retains its existing prefix and nil handli
 
 Variadic spreads accept array aliases, including struct fields and aliases of other array
 aliases. Each spread contributes the array's elements to the variadic argument list.
+
+Generic function bodies retain nominal alias types after unsafe expressions, array indexing,
+and map iteration, so methods declared on the alias remain available.
 
 ## Compiler dispatch
 
@@ -433,6 +439,8 @@ header only for occupied slots. The existing set bits guard reads. `types.cached
 an immutable entry; `types.promote_cached_name()` preserves both its header and string bytes
 when a worker or transform arena is released. Text interning uses per-pass `flat.TextProbeCache`
 scratch on the stack, while canonical text remains owned by the AST.
+Callback validation retains declared variadic modes when matching a lowered array parameter,
+including callbacks nested in parameters and return types.
 After parallel transform merges its append regions, `FlatAst.discard_unused_capacity()`
 releases unused AST pages on macOS and Linux in preallocated builds. It preserves the virtual
 reservation and live nodes, so later appends keep their existing capacity.
@@ -711,3 +719,17 @@ Measured on macOS (Apple Silicon), warm runs. V1 built from `~/code/v5/v` (V 0.5
 Import aliases in type expressions are normalized to full module paths once.
 A module path can begin with the alias itself, including in nested generic heap
 initializers, without repeated expansion or compiler recursion.
+
+Function literals in constant struct initializers are lowered to callable helpers
+through address and parenthesis wrappers, including `const h = &Struct{...}`.
+
+Converting `&callback` to `voidptr`, or passing it to a `voidptr` parameter,
+addresses the storage of a function-valued variable, parameter, field or array
+element. Comparisons with a `voidptr` operand preserve that same storage address
+in either operand order. Taking the address of a named function remains the function pointer.
+
+Constant references to map literals own a heap copy of the map descriptor.
+Both populated and empty map references retain valid storage after initialization.
+
+The special lowering for `strings.Builder` applies to that module’s type.
+Types named `Builder` in other modules keep their own methods.

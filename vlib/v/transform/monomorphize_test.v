@@ -893,6 +893,9 @@ fn test_contextless_generic_struct_spec_spelling_is_skipped() {
 	assert type_text_has_unqualified_generic_arg('Map[string, Context]')
 	assert type_text_has_unqualified_generic_arg('Map[string, []Context]')
 	assert type_text_has_unqualified_generic_arg('Box[Array[Context]]')
+	assert type_text_has_unqualified_generic_arg('outer.Cell[Box[Pair[int]]]')
+	assert type_text_has_unqualified_generic_arg('outer.Cell[inner.Box[Pair[int]]]')
+	assert !type_text_has_unqualified_generic_arg('outer.Cell[inner.Box[inner.Pair[int]]]')
 	assert type_text_has_unqualified_generic_arg('Box[...Context]')
 	assert type_text_has_unqualified_generic_arg('Box[[2]Context]')
 	assert !type_text_has_unqualified_generic_arg('veb.Middleware[model.Context]')
@@ -950,6 +953,31 @@ fn test_generic_unresolved_function_type_checks_parameters_and_return() {
 	for typ in ['fn ()', 'fn () int', 'fn (string) int', 'Cell[fn () int]'] {
 		assert !t.generic_arg_is_unresolved(typ), typ
 	}
+}
+
+fn test_nested_generic_field_arguments_preserve_declaration_modules() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['outer.Cell'] = ['T']
+	tc.struct_generic_params['inner.Box'] = ['T']
+	tc.struct_generic_params['inner.Pair'] = ['T']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.normalize_field_type('T', 'outer.Cell[inner.Box[inner.Pair[int]]]') ==
+		'inner.Box[inner.Pair[int]]'
+	assert t.normalize_field_type('outer.Cell[inner.Box[inner.Pair[string]]]', 'inner.Owner') ==
+		'outer.Cell[inner.Box[inner.Pair[string]]]'
+}
+
+fn test_nested_generic_arguments_resolve_each_component_in_source_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['inner.Box'] = ['T']
+	tc.struct_generic_params['inner.Pair'] = ['T']
+	tc.structs['inner.Box'] = []types.StructField{}
+	tc.structs['inner.Pair'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.generic_struct_args_in_scope(['Box[Pair[int]]'], 'inner', 'inner.v') ==
+		['inner.Box[inner.Pair[int]]']
 }
 
 fn test_parameterized_typeof_display_preserves_source_and_caller_names() {

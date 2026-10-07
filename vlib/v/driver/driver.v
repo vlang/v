@@ -7930,7 +7930,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 		}
 		params := tc.fn_param_types[name] or { continue }
 		ret := tc.fn_ret_types[name] or { continue }
-		tc.expr_type_values[idx] = restored_fn_value_type(name, params, ret, mut fn_value_types)
+		tc.expr_type_values[idx] = restored_fn_value_type(name, params, ret, tc.fn_variadic[name] or { false }, mut fn_value_types)
 		tc.expr_type_set[idx] = true
 	}
 	mut cur_module := ''
@@ -7987,7 +7987,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						if name.len > 0 {
 							params := tc.fn_param_types[name] or { []types.Type{} }
 							if ret := tc.fn_ret_types[name] {
-								tc.expr_type_values[callee_idx] = restored_fn_value_type(name, params, ret, mut fn_value_types)
+								tc.expr_type_values[callee_idx] = restored_fn_value_type(name, params, ret, tc.fn_variadic[name] or { false }, mut fn_value_types)
 								tc.expr_type_set[callee_idx] = true
 							}
 						}
@@ -8006,7 +8006,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						&& (tc.resolved_fn_value_name(base_id) or { '' }) == cname {
 						params := tc.fn_param_types[cname] or { []types.Type{} }
 						if ret := tc.fn_ret_types[cname] {
-							tc.expr_type_values[base_idx] = restored_fn_value_type(cname, params, ret, mut fn_value_types)
+							tc.expr_type_values[base_idx] = restored_fn_value_type(cname, params, ret, tc.fn_variadic[cname] or { false }, mut fn_value_types)
 							tc.expr_type_set[base_idx] = true
 						}
 					}
@@ -8022,12 +8022,14 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 	}
 }
 
-fn restored_fn_value_type(name string, params []types.Type, ret types.Type, mut fn_value_types map[string]types.Type) types.Type {
+// restored_fn_value_type preserves the variadic tail in restored expression metadata.
+fn restored_fn_value_type(name string, params []types.Type, ret types.Type, is_variadic bool, mut fn_value_types map[string]types.Type) types.Type {
 	if cached := fn_value_types[name] {
 		return cached
 	}
 	typ := types.Type(types.FnType{
 		params:      params
+		is_variadic: is_variadic
 		return_type: ret
 	})
 	fn_value_types[name] = typ

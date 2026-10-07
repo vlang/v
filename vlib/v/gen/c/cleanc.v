@@ -13693,6 +13693,9 @@ fn (g &FlatGen) context_wants_callable() bool {
 // gen_expr_with_possible_enum_type emits expr with possible enum type output for c.
 fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected types.Type) {
 	node := g.a.nodes[int(id)]
+	if type_is_void_pointer(expected) && g.gen_voidptr_fn_value_arg(id, node) {
+		return
+	}
 	mut is_signed_numeric_literal := false
 	if node.kind == .prefix && node.op in [.minus, .plus] && node.children_count > 0 {
 		child := g.a.child_node(&node, 0)
@@ -16138,6 +16141,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			} else if node.op == .amp && child.kind == .struct_init {
 				g.gen_heap_struct_init(child)
+			} else if node.op == .amp && child.kind == .map_init {
+				// A map literal is a statement-expression value, not addressable C storage.
+				// Copy its descriptor to the heap so a constant reference survives _vinit.
+				ct := g.value_c_type(g.usable_expr_type(child_id))
+				tmp := g.tmp_name()
+				g.write('({ ${ct} ${tmp} = ')
+				g.gen_expr(child_id)
+				g.write('; (${ct}*)memdup(&${tmp}, sizeof(${ct})); })')
 			} else if node.op == .amp && child.kind == .assoc {
 				g.gen_heap_assoc_expr(child)
 			} else if node.op == .amp && child.kind == .cast_expr {
@@ -17104,6 +17115,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.gen_expr(g.a.child(node, 0))
 					g.write(')')
 				}
+			} else if type_is_void_pointer(target_type) {
+				g.write('(${ct})(')
+				if !g.gen_voidptr_fn_value_arg(cast_arg_id, cast_arg) {
+					g.gen_expr(cast_arg_id)
+				}
+				g.write(')')
 			} else if g.gen_checked_integer_cast(id, target_type, cast_arg_id, cast_arg_type, ct) {
 				return
 			} else {

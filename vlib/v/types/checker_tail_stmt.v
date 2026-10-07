@@ -9633,6 +9633,7 @@ fn (tc &TypeChecker) fn_type_from_key(key string) ?Type {
 	return Type(FnType{
 		params:      params.clone()
 		params_mut:  (tc.declaration_param_mutability[key] or { []bool{} }).clone()
+		is_variadic: tc.fn_variadic[key] or { false }
 		return_type: ret
 	})
 }
@@ -13451,6 +13452,7 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_name
 		return Type(FnType{
 			params:      params
 			params_mut:  typ.params_mut.clone()
+			is_variadic: typ.is_variadic
 			return_type: tc.substitute_generic_type(typ.return_type, args, param_names)
 		})
 	}
@@ -13554,6 +13556,7 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		return Type(FnType{
 			params:      params
 			params_mut:  typ.params_mut.clone()
+			is_variadic: typ.is_variadic
 			return_type: tc.substitute_generic_type_values(typ.return_type, args, param_names)
 		})
 	}
@@ -17206,11 +17209,13 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 	ret_str := typ[params_end + 1..].trim_left(' ')
 	mut params := []Type{}
 	mut params_mut := []bool{}
+	mut is_variadic := false
 	if params_str.trim_space().len > 0 {
 		param_parts := split_params(params_str)
 		for p in param_parts {
 			trimmed := trimmed_space(p)
 			param_type := normalize_fn_type_param_text(trimmed)
+			is_variadic = param_type.starts_with('...')
 			params << tc.parse_type(param_type)
 			params_mut << trimmed.starts_with('mut ')
 		}
@@ -17222,6 +17227,7 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 	return Type(FnType{
 		params:      params
 		params_mut:  params_mut
+		is_variadic: is_variadic
 		return_type: ret_type
 	})
 }
@@ -18789,6 +18795,7 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	mut params := []Type{}
 	mut params_mut := []bool{}
 	mut reached_params := false
+	mut is_variadic := false
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
 		if child.kind != .param {
@@ -18800,6 +18807,7 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 			continue
 		}
 		reached_params = true
+		is_variadic = child.typ.trim_space().starts_with('...')
 		params_mut << child.is_mut
 		parsed := tc.parse_type(normalize_fn_type_param_text(child.typ))
 		resolved := if child.value.len == 0 && child.typ.len > 0 && parsed is Unknown {
@@ -18814,6 +18822,7 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	return Type(FnType{
 		params:      params
 		params_mut:  params_mut
+		is_variadic: is_variadic
 		return_type: tc.parse_type(node.typ)
 	})
 }
@@ -18898,6 +18907,7 @@ fn (mut tc TypeChecker) check_generic_method_value(id flat.NodeId, node flat.Nod
 	tc.remember_resolved_call(id, info.name)
 	return Type(FnType{
 		params:      info.params[1..].clone()
+		is_variadic: info.is_variadic
 		return_type: info.return_type
 	})
 }
@@ -18960,6 +18970,7 @@ fn (tc &TypeChecker) explicit_generic_fn_value_type(node flat.Node) ?Type {
 	info := tc.explicit_generic_call_info(name, false, type_args) or { return none }
 	return Type(FnType{
 		params:      info.params.clone()
+		is_variadic: info.is_variadic
 		return_type: info.return_type
 	})
 }
