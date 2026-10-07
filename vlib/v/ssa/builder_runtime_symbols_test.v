@@ -58,6 +58,7 @@ fn source_control() int { return new_map() + array_new() + join_path() + name_li
 	assert tc.errors.len == 0, tc.errors.str()
 	tc.annotate_types()
 	m := build_with_options(a, used, &tc, BuildOptions{
+		target:         TargetData{ ptr_size: 4 }
 		exact_used_fns: true
 	})
 	for i, name in names {
@@ -155,6 +156,7 @@ pub fn check_fread() int { return 47 }
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	m := build_with_options(a, map[string]bool{}, unsafe { nil }, BuildOptions{
+		target:         TargetData{ ptr_size: 4 }
 		source_modules: {
 			path: 'example.strings'
 		}
@@ -204,6 +206,7 @@ fn new_map() int { return new_map_data() }
 	m := build_with_options(a, {
 		'new_map': true
 	}, unsafe { nil }, BuildOptions{
+		target:         TargetData{ ptr_size: 4 }
 		exact_used_fns: true
 		source_modules: source_modules
 	})

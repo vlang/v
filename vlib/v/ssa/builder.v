@@ -45,8 +45,12 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_objc_getClass', '_sel_registerName', '_objc_alloc_init', '_objc_autoreleasePoolPush',
 	'_objc_autoreleasePoolPop', '_MTLCreateSystemDefaultDevice', '_dlopen', '_dlsym']
 
-const bench_runtime_stub_names = ['bench.current_rss_kb', 'bench.macos_rss_kb', 'bench.linux_rss_kb',
-	'v.bench.current_rss_kb', 'v.bench.macos_rss_kb', 'v.bench.linux_rss_kb']
+const wasm_bench_runtime_stub_names = ['bench.current_rss_kb', 'bench.macos_rss_kb',
+	'bench.linux_rss_kb', 'v.bench.current_rss_kb', 'v.bench.macos_rss_kb', 'v.bench.linux_rss_kb']
+
+const bench_runtime_stub_names = ['current_rss_kb', 'macos_rss_kb', 'linux_rss_kb',
+	'bench.current_rss_kb', 'bench.macos_rss_kb', 'bench.linux_rss_kb', 'v.bench.current_rss_kb',
+	'v.bench.macos_rss_kb', 'v.bench.linux_rss_kb']
 
 // Builder stores state for SSA construction.
 pub struct Builder {
@@ -2803,7 +2807,12 @@ fn (mut b Builder) generate_int_zpad_passthrough_body(func_id int, value_type Ty
 
 // register_bench_runtime_stubs updates register bench runtime stubs state for ssa.
 fn (mut b Builder) register_bench_runtime_stubs() {
-	for name in bench_runtime_stub_names {
+	names := if b.m.target.ptr_size == 4 {
+		wasm_bench_runtime_stub_names
+	} else {
+		bench_runtime_stub_names
+	}
+	for name in names {
 		if id := b.register_runtime_function(name, b.i64_type, []TypeID{}) {
 			b.generate_const_i64_body(id, '0')
 		}

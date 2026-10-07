@@ -82,7 +82,9 @@ fn test_native_field_type_lookup_preserves_containers_through_pointer_receivers(
 fn test_bench_runtime_stubs_include_macos_rss_helper() {
 	assert 'bench.macos_rss_kb' in bench_runtime_stub_names
 	assert 'v.bench.macos_rss_kb' in bench_runtime_stub_names
-	assert 'macos_rss_kb' !in bench_runtime_stub_names
+	assert 'macos_rss_kb' in bench_runtime_stub_names
+	assert 'macos_rss_kb' !in wasm_bench_runtime_stub_names
+	assert wasm_bench_runtime_stub_names.all(it.contains('.'))
 	assert 'macos_peak_rss_kb' !in bench_runtime_stub_names
 	assert 'bench.macos_peak_rss_kb' !in bench_runtime_stub_names
 	b := Builder{}
@@ -101,7 +103,9 @@ fn test_bench_runtime_stubs_preserve_user_functions() {
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
-	m := build(a)
+	m := build_with_options(a, map[string]bool{}, unsafe { nil }, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
 	expected := {
 		'current_rss_kb': '17'
 		'macos_rss_kb':   '23'
@@ -154,7 +158,9 @@ fn test_rune_literals_use_rune_width() {
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
-	m := build(a)
+	m := build_with_options(a, map[string]bool{}, unsafe { nil }, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
 	expected := {
 		'unicode':         '128512'
 		'escaped_ascii':   '65'
