@@ -705,3 +705,6 @@ in either operand order. Taking the address of a named function remains the func
 
 Constant references to map literals own a heap copy of the map descriptor.
 Both populated and empty map references retain valid storage after initialization.
+
+The special lowering for `strings.Builder` applies to that module’s type.
+Types named `Builder` in other modules keep their own methods.
