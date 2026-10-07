@@ -11,9 +11,10 @@ struct VersionChoice {
 }
 
 struct Requirement {
-	raw   string
-	chain []string
-	root  bool
+	raw       string
+	chain     []string
+	root      bool
+	requiring string
 }
 
 // Resolver owns disposable checkouts. Only a successful, complete assignment is
@@ -30,21 +31,33 @@ mut:
 	prefer_lock bool
 	precise     map[string]string
 	failure     string
+	overrides   []Override
 	namespace   string
 }
 
 fn resolve_module_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope, prefer_lock bool, precise map[string]string) ![]Module {
 	namespace := os.join_path('resolver', rand.ulid())
+	mut overrides := []Override{}
+	project := vmod.get_cache().get_by_folder(os.getwd())
+	root_file := if scope.active { os.join_path(scope.dir, 'v.mod') } else { project.vmod_file }
+	mut root_name := 'command line'
+	if root_file != '' {
+		manifest := vmod.from_file(root_file)!
+		root_name = manifest.name
+		overrides = parse_overrides(manifest.unknown['dependency_overrides'] or { []string{} })!
+	}
+
 	mut r := Resolver{
 		namespace:   namespace
 		parser:      Parser{ temporary_namespace: os.join_path(namespace, 'sources'), shallow: true, quiet: settings.is_outdated, probe: true }
 		prefer_lock: prefer_lock
+		overrides:   overrides
 		precise:     precise
 	}
 	mut pending := []Requirement{}
 	root := if scope.active { os.file_name(scope.dir) } else { 'command line' }
 	for raw in query {
-		pending << Requirement{ raw: raw, chain: [root], root: true }
+		pending << Requirement{ raw: raw, chain: [root], root: true, requiring: root_name }
 	}
 	selected := r.solve(pending, map[string]Module{}, map[string][]Requirement{}, mut selector, mut scope) or {
 		r.cleanup([]Module{})
@@ -83,7 +96,7 @@ fn (mut r Resolver) source(raw string, mut selector VpmInstallServerSelector) !s
 	}
 	mut discovery := LockScope{}
 	before := r.parser.errors
-	discovery_query := if is_version_range(requirement_version(raw)) || is_git_commit_hash(requirement_version(raw)) {
+	discovery_query := if r.overrides.len > 0 || is_version_range(requirement_version(raw)) || is_git_commit_hash(requirement_version(raw)) {
 		ident
 	} else {
 		raw
@@ -242,13 +255,8 @@ fn clone_selected_modules(selected map[string]Module) map[string]Module {
 	return result
 }
 
-fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, requirements map[string][]Requirement, mut selector VpmInstallServerSelector, mut scope LockScope) !map[string]Module {
-	if pending.len == 0 {
-		return selected
-	}
-	req := pending[0]
-	if settings.is_locked && scope.active && req.root
-		&& r.aliases[lockfile_module_key(req.raw)] !in selected {
+fn (mut r Resolver) check_locked_root_request(req Requirement, selected map[string]Module, scope &LockScope) ! {
+	if settings.is_locked && scope.active && req.root && r.aliases[lockfile_module_key(req.raw)] !in selected {
 		if entry := scope.entry_for(req.raw) {
 			if entry.requested != req.raw {
 				r.failure = 'cannot install `${req.raw}` with `--locked`: ${lockfile_name} ${lock_mismatch(entry, req.raw, entry.url)}.'
@@ -256,10 +264,35 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 			}
 		}
 	}
+}
+
+fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, requirements map[string][]Requirement, mut selector VpmInstallServerSelector, mut scope LockScope) !map[string]Module {
+	if pending.len == 0 {
+		return selected
+	}
+	mut req := pending[0]
+	req = Requirement{
+		...req
+		raw: overridden_request_for_module(req.raw,
+			[lockfile_module_key(req.raw)], req.requiring, r.overrides)
+	}
+	if requirement_version(req.raw) == '-' {
+		return r.solve(pending[1..], selected, requirements, mut selector, mut scope)
+	}
+	if r.overrides.len == 0 { r.check_locked_root_request(req, selected, scope)! }
 	id := r.source(req.raw, mut selector) or {
 		r.failure = '${err.msg()}\nrequired by ${req.chain.join(' -> ')} -> ${req.raw}'
 		return err
 	}
+	req = Requirement{
+		...req
+		raw: overridden_request_for_module(req.raw,
+			[lockfile_module_key(req.raw), r.sources[id].name], req.requiring, r.overrides)
+	}
+	if requirement_version(req.raw) == '-' {
+		return r.solve(pending[1..], selected, requirements, mut selector, mut scope)
+	}
+	r.check_locked_root_request(req, selected, scope)!
 	constraint := requirement_version(req.raw)
 	if constraint != '' && !is_version_range(constraint) && constraint !in r.exact_refs[id] {
 		r.exact_refs[id] << constraint
@@ -337,6 +370,11 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 				return err
 			}
 			for tag in tags {
+				allowed := release_tag_allowed(r.sources[id].url, tag) or {
+					r.failure = 'cannot apply release policy for `${req.raw}`: ${err.msg()}'
+					return err
+				}
+				if !allowed { continue }
 				if tag_satisfies_range(tag, if constraint == '' { '*' } else { constraint }) {
 					choices << VersionChoice{ version: tag }
 				}
@@ -362,6 +400,27 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 			if choice.revision != '' { return err }
 			continue
 		}
+		check_min_v(m.manifest, m.name) or {
+			r.failure = err.msg()
+			if choice.revision != '' { return err }
+			continue
+		}
+		if choice.revision != '' {
+			if entry := scope.entry_for(req.raw) {
+				actual_hash := if entry.hash == '' {
+					''
+				} else {
+					dir_sha256(m.tmp_path) or {
+						r.failure = 'cannot verify locked `${req.raw}`: ${err.msg()}'
+						return err
+					}
+				}
+				if entry.hash != '' && actual_hash != entry.hash {
+					r.failure = 'content hash mismatch for `${req.raw}` at its locked revision'
+					return error(r.failure)
+				}
+			}
+		}
 		if !module_satisfies(m, constraint) {
 			r.conflict(id, for_module)
 			continue
@@ -381,7 +440,7 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 		mut chain := req.chain.clone()
 		chain << m.name + at_version(m.version)
 		for dep in m.manifest.dependencies {
-			next << Requirement{ raw: dep, chain: chain }
+			next << Requirement{ raw: dep, chain: chain, requiring: m.name }
 		}
 		if result := r.solve(next, next_selected, known, mut selector, mut scope) {
 			return result

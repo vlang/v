@@ -14,7 +14,7 @@ dotnet publish -c Release -r ubuntu.20.04-x64
 
 The generated executable will be in
 `/v/vnew/bench/vectors/bin/Release/net7.0/ubuntu.20.04-x64/publish/vectors`
-Its size is ~64MB . After stripping, the executable shrinks to just 11MB,
+Its size is ~64MB. After stripping, the executable shrinks to just 11MB,
 but unfortunately it also stops running after stripping :-| .
 
 ## Compiling and running the V program:

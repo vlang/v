@@ -34,6 +34,12 @@ mut:
 	// and VPM modules that specify a different VCS in their `v.mod`, the VCS is validated separately.
 	vcs    VCS
 	logger &log.Logger
+	// --dry-run reports what would be updated without making changes.
+	is_dry_run bool
+	// --exclude-newer excludes tags newer than the given date from resolution.
+	exclude_newer string
+	// --minimum-release-age excludes tags newer than the given duration from resolution.
+	minimum_release_age string
 }
 
 // local_vmodules_path returns the directory `v install --local` installs into:
@@ -81,8 +87,34 @@ fn init_settings() VpmSettings {
 		logger.set_output_path(os.join_path(cache_path, 'vpm.log'))
 	}
 
+	is_help := '-h' in opts || '--help' in opts || 'help' in cmds
+	precise := cmdline.option(args, '--precise', '')
+	package := cmdline.option(args, '-p', cmdline.option(args, '--package', cmdline.option(args, '--pin', '')))
+	if !is_help {
+		if '--precise' in opts && (precise == '' || precise.starts_with('-')) {
+			vpm_error('--precise requires a version argument')
+			exit(1)
+		}
+		if opts.any(it in ['-p', '--package', '--pin']) && (package == '' || package.starts_with('-')) {
+			vpm_error('-p/--package requires a module argument')
+			exit(1)
+		}
+		if '--exclude-newer' in opts {
+			release_cutoff_unix(cmdline.option(args, '--exclude-newer', '')) or {
+				vpm_error(err.msg())
+				exit(1)
+			}
+		}
+		if '--minimum-release-age' in opts {
+			release_age_seconds(cmdline.option(args, '--minimum-release-age', '')) or {
+				vpm_error(err.msg())
+				exit(1)
+			}
+		}
+	}
+
 	return VpmSettings{
-		is_help:               '-h' in opts || '--help' in opts || 'help' in cmds
+		is_help:               is_help
 		is_once:               '--once' in opts
 		is_adopt:              '--adopt' in opts
 		is_verbose:            '-v' in opts || '--verbose' in opts
@@ -93,8 +125,8 @@ fn init_settings() VpmSettings {
 		is_latest:             '--latest' in opts
 		is_graph:              '--graph' in opts
 		is_outdated:           'outdated' in cmds
-		precise:               cmdline.option(args, '--precise', '')
-		package:               cmdline.option(args, '-p', cmdline.option(args, '--package', ''))
+		precise:               precise
+		package:               package
 		server_urls:           get_server_urls_from_args(args)
 		mirror_urls:           get_mirror_urls_from_args(args)
 		vcs:                   if '--hg' in opts { .hg } else { .git }
@@ -103,6 +135,9 @@ fn init_settings() VpmSettings {
 		no_dl_count_increment: is_ci || is_no_inc
 		fail_on_prompt:        os.getenv('VPM_FAIL_ON_PROMPT') != ''
 		logger:                logger
+		is_dry_run:            '--dry-run' in opts
+		exclude_newer:         cmdline.option(args, '--exclude-newer', '')
+		minimum_release_age:   cmdline.option(args, '--minimum-release-age', '')
 	}
 }
 

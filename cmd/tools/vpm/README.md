@@ -49,7 +49,9 @@ lockfile untouched.
 The lockfile is preferred before newer releases. `--locked` restricts resolution to recorded
 commits; `--frozen` also prevents writing the lockfile.
 Complete project resolution drops lock entries for dependencies no longer reachable.
-The lockfile format is unchanged.
+The lockfile format remains version 1, with an optional package-content SHA256 hash.
+Independent clones exclude VCS metadata and hash relative paths, file bytes and symlink targets.
+Hash mismatches stop locked installation before any installed checkout changes.
 
 ## Updating constrained projects
 
@@ -73,12 +75,17 @@ caret constraints back to every selected direct requirement in `v.mod`, includin
 and records them in the lockfile. Transitive requirements still
 apply. Rewriting `v.mod` retains its fields but uses the manifest encoder's formatting.
 These options require a project. Projects without ranges retain branch-based update behavior.
+`--dry-run` resolves and reports proposed versions without changing installed checkouts,
+`v.mod`, or `v.mod.lock`. For branch updates it reads the origin HEAD without fetching into
+the installed repository.
 
 ## Inspecting versions and requirements
 
 `v why PACKAGE` shows the constraints declared by each parent and the installed version.
 Unversioned trees retain their existing display. `v mod graph` prints one flat edge per dependency,
-including versions and constraints, and marks missing packages. Both commands work offline:
+including versions and constraints, and marks missing packages. `v mod graph --imports`
+shows the source import tree instead, with nested imports indented and modules shown once.
+These commands work offline:
 
 ```text
 myapp -> vsl@v0.1.47 (requires ^0.1.47)
@@ -94,6 +101,36 @@ For projects using ranges, `v outdated` prints these columns for installed depen
 
 `-` means no tagged version is available. Unlike `Current`, the other columns inspect remote
 release tags; `Resolvable` also reads candidate manifests. This command changes neither installed
-checkouts nor the lockfile. Outside constrained projects, the existing branch-based report remains.
+checkouts nor the lockfile. Outside constrained projects, `v outdated` reports all installed
+packages using the same columns;
+`Resolvable` there considers direct root requirements when available. Commit-based upgrade checks
+retain their previous behavior.
 
-Additional manifest fields and coexisting major versions are separate phases of the proposal.
+## Root metadata, release policy and vendoring
+
+Only the root manifest supplies `dependency_overrides`. Global `package: ref` selectors apply
+throughout the graph; `parent>package: ref` selectors apply on that parent's requiring edge.
+A conditional `parent@range>package: version` selector applies when the override version
+satisfies `range`; it does not select by the parent's own version.
+A matching scoped selector takes precedence. Use `-` as the selected ref to remove an edge.
+Selected manifests are checked against their `min_v` before their dependencies are resolved.
+
+Ranged selections accept `--exclude-newer` as RFC3339 or `YYYY-MM-DD` at midnight UTC,
+and `--minimum-release-age` as hours or a duration with a `d`, `h` or `m` suffix.
+Tags are dated by their commit timestamp. Invalid policy and failed discovery are errors.
+Exact refs and matching locked revisions keep their explicit meaning.
+
+`v vendor` copies the complete installed dependency graph into `vendor/` at the nearest
+project root. Publication uses a complete staged copy; missing modules and existing
+vendor destinations cause an error. Set `VMODULES` to the project's absolute `vendor` path
+when compiling from that copy.
+
+Manifest `catalog: { package: 'range' }` and `workspaces: ['path/*']` metadata are
+available through `v.vmod.Manifest` and preserved by `vmod.encode`. Catalog keys may
+be quoted. Duplicate keys, malformed values and non-string workspaces are errors.
+These fields store metadata without expanding dependency aliases.
+Registry-qualified dependency keys remain distinct in lock data.
+
+The internal candidate API named `resolve_with_pubgrub` currently delegates to the consistent
+backtracking search. Dependency constraints are checked in both directions; a complete
+conflict-driven PubGrub algorithm is pending.

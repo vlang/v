@@ -53,91 +53,76 @@ pub fn utf8_len(c u8) int {
 	return b
 }
 
-// printable_len returns the number of terminal columns `s` occupies when printed. ANSI escape sequences (CSI, OSC, DCS/APC/PM, and two-byte escapes) are skipped.
+// printable_len returns the grapheme width of `s` after removing ANSI escape sequences.
+// It uses the same width rules as utf8_str_visible_length. Cursor movement and
+// control characters are not simulated as terminal operations.
 pub fn printable_len(s string) int {
-	runes := s.runes()
+	if !s.contains('\x1b') {
+		return utf8_str_visible_length(s)
+	}
+	mut visible := []u8{cap: s.len}
 	mut i := 0
-	// Skip leading escapes so the first visible rune can seed state.
-	for i < runes.len && runes[i] == `\x1b` {
-		i = skip_ansi(runes, i)
-	}
-	if i >= runes.len {
-		return 0
-	}
-	first_prop := grapheme_break_property(runes[i])
-	mut state := grapheme_state_from_rune(runes[i], first_prop)
-	mut total := 0
-	mut cluster_width := utf8_rune_visible_width(runes[i], first_prop)
-	i++
-	for i < runes.len {
-		if runes[i] == `\x1b` {
-			i = skip_ansi(runes, i)
-			continue
-		}
-		r := runes[i]
-		prop := grapheme_break_property(r)
-		if should_break_grapheme(state, r, prop) {
-			total += cluster_width
-			cluster_width = utf8_rune_visible_width(r, prop)
-			state = grapheme_state_from_rune(r, prop)
+	for i < s.len {
+		if s[i] == 0x1b {
+			i = skip_ansi(s, i)
+		} else {
+			visible << s[i]
 			i++
-			continue
 		}
-		rw := utf8_rune_visible_width(r, prop)
-		if rw > cluster_width {
-			cluster_width = rw
-		}
-		state.push(r, prop)
-		i++
 	}
-	return total + cluster_width
+	return utf8_str_visible_length(visible.bytestr())
 }
 
-// skip_ansi returns the index just past the ANSI escape sequence beginning at runes[i]
+// skip_ansi returns the index just past the ANSI escape beginning at s[i].
 @[inline]
-fn skip_ansi(runes []rune, i int) int {
+fn skip_ansi(s string, i int) int {
 	mut j := i + 1
-	if j >= runes.len {
+	if j >= s.len {
 		return j
 	}
-	match runes[j] {
+	match s[j] {
 		`[` { // CSI
 			j++
-			for j < runes.len {
-				c := runes[j]
-				if c >= 0x40 && c <= 0x7e {
+			for j < s.len {
+				if s[j] >= 0x40 && s[j] <= 0x7e {
 					return j + 1
 				}
 				j++
 			}
 			return j
 		}
-		`]` { // OSC
+		`]` { // OSC, terminated by BEL or ST
 			j++
-			for j < runes.len {
-				c := runes[j]
-				if c == 0x07 { // BEL
+			for j < s.len {
+				if s[j] == 0x07 {
 					return j + 1
 				}
-				if c == `\x1b` && j + 1 < runes.len && runes[j + 1] == `\\` {
-					return j + 2 // ST
-				}
-				j++
-			}
-			return j
-		}
-		`P`, `X`, `^`, `_` { // DCS / APC / PM
-			j++
-			for j < runes.len {
-				if runes[j] == `\x1b` && j + 1 < runes.len && runes[j + 1] == `\\` {
+				if s[j] == 0x1b && j + 1 < s.len && s[j + 1] == `\\` {
 					return j + 2
 				}
 				j++
 			}
 			return j
 		}
-		else { // two-byte escape
-			return j + 1
+		`P`, `X`, `^`, `_` { // DCS / SOS / PM / APC, terminated by ST
+			j++
+			for j < s.len {
+				if s[j] == 0x1b && j + 1 < s.len && s[j + 1] == `\\` {
+					return j + 2
+				}
+				j++
+			}
+			return j
+		}
+		else {
+			// ESC may have intermediate bytes, as in the charset selection ESC ( B.
+			for j < s.len && s[j] >= 0x20 && s[j] <= 0x2f {
+				j++
+			}
+			if j < s.len && s[j] >= 0x30 && s[j] <= 0x7e {
+				return j + 1
+			}
+			return j
 		}
 	}
 }

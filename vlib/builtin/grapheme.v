@@ -75,7 +75,7 @@ fn in_grapheme_ranges(r rune, ranges string) bool {
 }
 
 @[inline]
-pub fn grapheme_break_property(r rune) GraphemeBreakProperty {
+fn grapheme_break_property(r rune) GraphemeBreakProperty {
 	if r == `\r` {
 		return .cr
 	}
@@ -128,7 +128,7 @@ mut:
 }
 
 @[inline]
-pub fn grapheme_state_from_rune(r rune, prop GraphemeBreakProperty) GraphemeState {
+fn grapheme_state_from_rune(r rune, prop GraphemeBreakProperty) GraphemeState {
 	return GraphemeState{
 		prev_prop:                   prop
 		ri_count:                    if prop == .regional_indicator { 1 } else { 0 }
@@ -137,7 +137,7 @@ pub fn grapheme_state_from_rune(r rune, prop GraphemeBreakProperty) GraphemeStat
 }
 
 @[inline]
-pub fn (mut gs GraphemeState) push(r rune, prop GraphemeBreakProperty) {
+fn (mut gs GraphemeState) push(r rune, prop GraphemeBreakProperty) {
 	gs.prev_prop = prop
 	gs.ri_count = if prop == .regional_indicator { gs.ri_count + 1 } else { 0 }
 	if is_extended_pictographic(r) {
@@ -152,7 +152,7 @@ pub fn (mut gs GraphemeState) push(r rune, prop GraphemeBreakProperty) {
 }
 
 @[inline]
-pub fn should_break_grapheme(gs GraphemeState, r rune, prop GraphemeBreakProperty) bool {
+fn should_break_grapheme(gs GraphemeState, r rune, prop GraphemeBreakProperty) bool {
 	match gs.prev_prop {
 		.cr {
 			if prop == .lf {
@@ -202,7 +202,7 @@ pub fn should_break_grapheme(gs GraphemeState, r rune, prop GraphemeBreakPropert
 }
 
 @[inline]
-pub fn utf8_rune_visible_width(r rune, prop GraphemeBreakProperty) int {
+fn utf8_rune_visible_width(r rune, prop GraphemeBreakProperty) int {
 	if prop in [.extend, .zwj, .spacing_mark, .prepend] {
 		return 0
 	}

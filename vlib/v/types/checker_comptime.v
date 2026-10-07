@@ -1014,8 +1014,8 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []C
 }
 
 // comptime_enum_decl_field_values returns the statically evaluated values of an enum's fields.
-pub fn (tc &TypeChecker) comptime_enum_decl_field_values(enum_name string) map[string]int {
-	mut values := map[string]int{}
+pub fn (tc &TypeChecker) comptime_enum_decl_field_values(enum_name string) map[string]i64 {
+	mut values := map[string]i64{}
 	for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
 		if item.has_value {
 			values[item.name] = item.value
@@ -1047,8 +1047,8 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name st
 		}
 	}
 	mut out := []ComptimeStaticValueCase{}
-	mut field_values := map[string]int{}
-	mut next_val := 0
+	mut field_values := map[string]i64{}
+	mut next_val := i64(0)
 	for field_name in field_order {
 		mut val := next_val
 		if expr_id := field_exprs[field_name] {
@@ -1060,7 +1060,7 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name st
 		field_values[field_name] = val
 		out << ComptimeStaticValueCase{
 			name:      field_name
-			value:     if is_flag { 1 << val } else { val }
+			value:     if is_flag { i64(u64(1) << val) } else { val }
 			has_value: true
 		}
 		next_val = val + 1
@@ -1068,14 +1068,14 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name st
 	return out
 }
 
-fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return none
 	}
 	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.int_literal {
-			if v := v_int_literal_value(node.value) {
+			if v := comptime_enum_integer_literal(node.value) {
 				return v
 			}
 		}
@@ -1107,7 +1107,8 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 			if !cast_type.is_integer() {
 				return none
 			}
-			return tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)
+			value := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			return comptime_enum_integer_cast(value, cast_type.name())
 		}
 		.call {
 			return tc.comptime_static_enum_call_value(id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
@@ -1128,8 +1129,13 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 			if node.children_count < 2 {
 				return none
 			}
-			left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
-			right := tc.comptime_static_enum_field_value(tc.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			mut left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			mut right := tc.comptime_static_enum_field_value(tc.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			if node.op in [.div, .mod] {
+				typ := unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).name()
+				left = comptime_enum_integer_cast(left, typ)
+				right = comptime_enum_integer_cast(right, typ)
+			}
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
 			}
@@ -1141,15 +1147,24 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				.plus { left + right }
 				.minus { left - right }
 				.mul { left * right }
-				.div { left / right }
-				.mod { left % right }
-				.left_shift { int(u64(left) << right) }
-				.right_shift { left >> right }
-				.right_shift_unsigned { int(u64(left) >> right) }
+				.div {
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).name(), false)
+				}
+				.mod {
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).name(), true)
+				}
+				.left_shift { i64(u64(left) << right) }
+				.right_shift {
+					typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), map[string]Type{})).name()
+					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+				}
+				.right_shift_unsigned {
+					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(&node, 0), map[string]Type{})).name())
+				}
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
-				.power { const_int_power(left, right) }
+				.power { i64(const_int_power(int(left), int(right))) }
 				else { none }
 			}
 		}
@@ -1165,7 +1180,7 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 	return none
 }
 
-fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	call := tc.a.node(id)
 	if call.children_count == 0 {
 		return none
@@ -1179,7 +1194,8 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		return none
 	}
 	fn_node := tc.a.node(fn_id)
-	mut locals := map[string]int{}
+	mut locals := map[string]i64{}
+	mut local_types := map[string]Type{}
 	mut arg_idx := 1
 	for i in 0 .. fn_node.children_count {
 		param := tc.a.child_node(fn_node, i)
@@ -1190,20 +1206,82 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 			return none
 		}
 		arg_id := tc.a.child(call, arg_idx)
-		locals[param.value] = tc.comptime_static_enum_field_value(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+		arg := tc.comptime_static_enum_field_value(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+		local_types[param.value] = tc.parse_type(param.typ)
+		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(local_types[param.value]).name())
 		arg_idx++
 	}
 	for i in 0 .. fn_node.children_count {
 		stmt := tc.a.child_node(fn_node, i)
 		if stmt.kind in [.decl_assign, .assign] {
-			tc.comptime_static_enum_update_locals(stmt, mut locals, enum_module)
+			tc.comptime_static_enum_update_locals(stmt, mut locals, mut local_types, enum_module)
 			continue
 		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
-			return tc.comptime_static_enum_local_expr_value(tc.a.child(stmt, 0), locals, enum_module)
+			value := tc.comptime_static_enum_local_expr_value(tc.a.child(stmt, 0), locals, local_types, enum_module) or { return none }
+			return comptime_enum_integer_cast(value, unalias_type(tc.parse_type(fn_node.typ)).name())
 		}
 	}
 	return none
+}
+
+// comptime_enum_integer_literal keeps all 64 bits of an integer literal used by enum evaluation.
+pub fn comptime_enum_integer_literal(value string) ?i64 {
+	mut clean := value.to_lower().replace('_', '')
+	for suffix in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64'] {
+		if clean.ends_with(suffix) {
+			clean = clean[..clean.len - suffix.len]
+			break
+		}
+	}
+	base := if clean.starts_with('0x') || clean.starts_with('0o') || clean.starts_with('0b') {
+		0
+	} else {
+		10
+	}
+	parsed := strconv.common_parse_uint(clean, base, 64, true, true) or { return none }
+	return i64(parsed)
+}
+
+// comptime_enum_integer_division uses unsigned arithmetic for unsigned 64-bit operands.
+pub fn comptime_enum_integer_division(left i64, right i64, typ string, remainder bool) i64 {
+	if typ in ['u64', 'usize'] {
+		return if remainder { i64(u64(left) % u64(right)) } else { i64(u64(left) / u64(right)) }
+	}
+	return if remainder { left % right } else { left / right }
+}
+
+// comptime_enum_integer_cast applies the conversion used at integer parameter/return boundaries.
+pub fn comptime_enum_integer_cast(value i64, typ string) i64 {
+	return match typ {
+		'u8', 'byte' { i64(u8(value)) }
+		'i8' { i64(i8(value)) }
+		'u16' { i64(u16(value)) }
+		'i16' { i64(i16(value)) }
+		'u32' { i64(u32(value)) }
+		'i32' { i64(i32(value)) }
+		'int' {
+			if platform_int_bits() == 32 { i64(i32(value)) } else { value }
+		}
+		else { value }
+	}
+}
+
+// comptime_enum_unsigned_right_shift shifts the bit pattern at the operand's storage width.
+pub fn comptime_enum_unsigned_right_shift(value i64, shift i64, typ string) i64 {
+	return match typ {
+		'i8', 'u8', 'byte' { i64(u64(u8(value)) >> shift) }
+		'i16', 'u16' { i64(u64(u16(value)) >> shift) }
+		'i32', 'u32' { i64(u64(u32(value)) >> shift) }
+		'int' {
+			if platform_int_bits() == 32 {
+				i64(u64(u32(value)) >> shift)
+			} else {
+				i64(u64(value) >> shift)
+			}
+		}
+		else { i64(u64(value) >> shift) }
+	}
 }
 
 fn (tc &TypeChecker) comptime_static_enum_helper_fn_id(callee_name string, enum_module string) ?flat.NodeId {
@@ -1243,7 +1321,7 @@ fn (tc &TypeChecker) comptime_static_enum_helper_fn_id(callee_name string, enum_
 	return none
 }
 
-fn (tc &TypeChecker) comptime_static_enum_update_locals(stmt flat.Node, mut locals map[string]int, enum_module string) {
+fn (tc &TypeChecker) comptime_static_enum_update_locals(stmt flat.Node, mut locals map[string]i64, mut local_types map[string]Type, enum_module string) {
 	if stmt.children_count < 2 || stmt.children_count % 2 != 0 {
 		return
 	}
@@ -1253,78 +1331,114 @@ fn (tc &TypeChecker) comptime_static_enum_update_locals(stmt flat.Node, mut loca
 		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
 			if stmt.kind == .decl_assign || stmt.op == .assign {
 				rhs_id := tc.a.child(stmt, i + 1)
-				if value := tc.comptime_static_enum_local_expr_value(rhs_id, locals, enum_module) {
-					locals[lhs.value] = value
+				if value := tc.comptime_static_enum_local_expr_value(rhs_id, locals, local_types, enum_module) {
+					typ := if stmt.kind == .decl_assign {
+						tc.comptime_enum_local_expr_type(rhs_id, local_types)
+					} else {
+						local_types[lhs.value] or { tc.comptime_enum_local_expr_type(rhs_id, local_types) }
+					}
+					locals[lhs.value] = comptime_enum_integer_cast(value, unalias_type(typ).name())
+					local_types[lhs.value] = typ
 				} else {
 					locals.delete(lhs.value)
+					local_types.delete(lhs.value)
 				}
 			} else {
 				locals.delete(lhs.value)
+				local_types.delete(lhs.value)
 			}
 		}
 		i += 2
 	}
 }
 
-fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, locals map[string]int, enum_module string) ?int {
+fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, locals map[string]i64, local_types map[string]Type, enum_module string) ?i64 {
 	if !tc.valid_node_id(id) {
 		return none
 	}
 	node := tc.a.node(id)
 	match node.kind {
 		.int_literal {
-			return v_int_literal_value(node.value)
+			return comptime_enum_integer_literal(node.value)
 		}
 		.ident {
 			if value := locals[node.value] {
 				return value
 			}
-			return tc.const_int_value_in_module(node.value, enum_module, []string{})
+			return i64(tc.const_int_value_in_module(node.value, enum_module, []string{}) or { return none })
 		}
 		.paren, .cast_expr {
 			if node.children_count == 0 {
 				return none
 			}
-			return tc.comptime_static_enum_local_expr_value(tc.a.child(node, 0), locals, enum_module)
+			value := tc.comptime_static_enum_local_expr_value(tc.a.child(node, 0), locals, local_types, enum_module) or { return none }
+			return if node.kind == .cast_expr {
+				comptime_enum_integer_cast(value, unalias_type(tc.parse_type(node.value)).name())
+			} else {
+				value
+			}
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			value := tc.comptime_static_enum_local_expr_value(tc.a.child(node, 0), locals, enum_module) or { return none }
-			return match node.op {
+			value := tc.comptime_static_enum_local_expr_value(tc.a.child(node, 0), locals, local_types, enum_module) or { return none }
+			result := match node.op {
 				.plus { value }
 				.minus { -value }
 				.bit_not { ~value }
-				else { none }
+				else { return none }
 			}
+			// C promotes narrow integer operands for unary arithmetic.
+			typ := unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name()
+			return comptime_enum_integer_cast(result, if typ in ['i8', 'u8', 'byte', 'i16', 'u16'] {
+				'int'
+			} else {
+				typ
+			})
 		}
 		.infix {
 			if node.children_count < 2 {
 				return none
 			}
-			left := tc.comptime_static_enum_local_expr_value(tc.a.child(node, 0), locals, enum_module) or { return none }
-			right := tc.comptime_static_enum_local_expr_value(tc.a.child(node, 1), locals, enum_module) or { return none }
+			mut left := tc.comptime_static_enum_local_expr_value(tc.a.child(node, 0), locals, local_types, enum_module) or { return none }
+			mut right := tc.comptime_static_enum_local_expr_value(tc.a.child(node, 1), locals, local_types, enum_module) or { return none }
+			if node.op in [.div, .mod] {
+				// The runtime division helpers convert operands to the expression type first.
+				typ := unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name()
+				left = comptime_enum_integer_cast(left, typ)
+				right = comptime_enum_integer_cast(right, typ)
+			}
 			if (node.op in [.div, .mod] && right == 0)
 				|| (node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (right < 0
 					|| right >= 64)) {
 				return none
 			}
-			return match node.op {
+			result := match node.op {
 				.plus { left + right }
 				.minus { left - right }
 				.mul { left * right }
-				.power { const_int_power(left, right) }
-				.div { left / right }
-				.mod { left % right }
+				.power { i64(const_int_power(int(left), int(right))) }
+				.div {
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name(), false)
+				}
+				.mod {
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name(), true)
+				}
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
-				.left_shift { int(u64(left) << right) }
-				.right_shift { left >> right }
-				.right_shift_unsigned { int(u64(left) >> right) }
-				else { none }
+				.left_shift { i64(u64(left) << right) }
+				.right_shift {
+					typ := unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).name()
+					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+				}
+				.right_shift_unsigned {
+					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).name())
+				}
+				else { return none }
 			}
+			return comptime_enum_integer_cast(result, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name())
 		}
 		else {
 			return none
@@ -1332,7 +1446,48 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 	}
 }
 
-fn (tc &TypeChecker) comptime_static_enum_field_ref_value(field_ref string, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+// Helper bodies may not be checked yet when enum reflection first evaluates them.
+// Track their local types so arithmetic conversions agree with the checked backend.
+fn (tc &TypeChecker) comptime_enum_local_expr_type(id flat.NodeId, local_types map[string]Type) Type {
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		if typ := local_types[node.value] {
+			return typ
+		}
+	}
+	if node.kind == .cast_expr {
+		return tc.parse_type(node.value)
+	}
+	if node.kind in [.paren, .prefix] && node.children_count > 0 {
+		return tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)
+	}
+	if node.kind == .infix && node.op == .right_shift_unsigned && node.children_count >= 2 {
+		// Precheck annotations can still retain the signed operand type for `>>>`.
+		return unsigned_shift_result_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types))
+	}
+	if typ := tc.expr_type(id) {
+		return typ
+	}
+	if node.kind == .infix && node.children_count >= 2 {
+		left_id := tc.a.child(node, 0)
+		right_id := tc.a.child(node, 1)
+		left := tc.comptime_enum_local_expr_type(left_id, local_types)
+		right := tc.comptime_enum_local_expr_type(right_id, local_types)
+		if node.op in [.left_shift, .right_shift] {
+			return left
+		}
+		if promoted := tc.int_literal_promoted_infix_type(left_id, right_id, left, right) {
+			return promoted
+		}
+		if promoted := tc.int_literal_promoted_infix_type(right_id, left_id, right, left) {
+			return promoted
+		}
+		return infix_integer_promotion_type(left, right) or { left }
+	}
+	return builtin_int_type
+}
+
+fn (tc &TypeChecker) comptime_static_enum_field_ref_value(field_ref string, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	qualified_name := if enum_name.contains('.') || enum_module in ['', 'main', 'builtin'] {
 		enum_name
 	} else {
@@ -6095,7 +6250,7 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 	if magnitude.len == 0 {
 		return
 	}
-	bit_size := if clean_target.size == 0 { 32 } else { int(clean_target.size) }
+	bit_size := if clean_target.size == 0 { platform_int_bits() } else { int(clean_target.size) }
 	target_name := target.name()
 	radix := integer_literal_radix(magnitude)
 	if bit_size > 64 {
@@ -7310,13 +7465,20 @@ fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node fl
 
 fn (mut tc TypeChecker) check_comptime_condition_diagnostics(id flat.NodeId, node flat.Node) bool {
 	condition := comptime_condition_strip_outer_parens(trimmed_space(node.value))
+	call_root := condition.trim_left('! ').all_before('.').trim_space()
+	if condition.contains('.') && tc.lvalue_ident_is_known(call_root)
+		&& tc.ident_is_mutable_lvalue(call_root) {
+		tc.record_error_at(.condition_mismatch, '`${call_root}` is mut and may have changed since its definition', id, tc.comptime_condition_part_pos(node, call_root))
+		return true
+	}
 	for op in [' == ', ' != ', ' <= ', ' >= ', ' < ', ' > '] {
 		op_idx := comptime_condition_top_level_index(condition, op)
 		if op_idx < 0 {
 			continue
 		}
-		left := trimmed_space(condition[..op_idx])
-		if left.len == 0 || left.contains('.') {
+		left_expr := trimmed_space(condition[..op_idx])
+		left := left_expr.all_before('.').trim_space()
+		if left.len == 0 || left[0] in [`\'`, `"`] {
 			return false
 		}
 		if tc.lvalue_ident_is_known(left) {
@@ -7324,7 +7486,7 @@ fn (mut tc TypeChecker) check_comptime_condition_diagnostics(id flat.NodeId, nod
 				tc.record_error_at(.condition_mismatch, '`${left}` is mut and may have changed since its definition', id, tc.comptime_condition_part_pos(node, left))
 				return true
 			}
-			if initializer_id := tc.comptime_local_initializer(left, node) {
+			if initializer_id := tc.comptime_local_initializer(left, id) {
 				if !tc.comptime_initializer_is_static(initializer_id) {
 					tc.record_error_at(.condition_mismatch, 'definition of `${left}` is unknown at compile time', id, tc.comptime_condition_part_pos(node, left))
 					return true
@@ -7408,10 +7570,11 @@ fn (tc &TypeChecker) comptime_condition_type_is_loop_metadata(id flat.NodeId, ty
 	return false
 }
 
-fn (tc &TypeChecker) comptime_local_initializer(name string, condition flat.Node) ?flat.NodeId {
+fn (tc &TypeChecker) comptime_local_initializer(name string, condition_id flat.NodeId) ?flat.NodeId {
+	condition := tc.a.node(condition_id)
 	mut found := flat.empty_node
 	mut found_offset := -1
-	for node in tc.a.nodes {
+	for index, node in tc.a.nodes {
 		if node.kind != .decl_assign || node.children_count < 2 {
 			continue
 		}
@@ -7419,6 +7582,25 @@ fn (tc &TypeChecker) comptime_local_initializer(name string, condition flat.Node
 		if lhs.kind != .ident || lhs.value != name || lhs.pos.id != condition.pos.id
 			|| lhs.pos.offset >= condition.pos.offset || lhs.pos.offset <= found_offset {
 			continue
+		}
+		parent_id := tc.direct_parent_id(flat.NodeId(index))
+		if tc.valid_node_id(parent_id) {
+			// Source spans can be empty on function blocks; lexical ancestry is authoritative.
+			mut scope := tc.direct_parent_id(condition_id)
+			mut contains_condition := false
+			for tc.valid_node_id(scope) {
+				if scope == parent_id {
+					contains_condition = true
+					break
+				}
+				next := tc.direct_parent_id(scope)
+				if next == scope { break }
+				scope = next
+			}
+			if !contains_condition { continue }
+		}
+		if lhs.is_mut || node.is_mut {
+			return none
 		}
 		found = tc.a.child(&node, 1)
 		found_offset = lhs.pos.offset
@@ -7430,12 +7612,115 @@ fn (tc &TypeChecker) comptime_local_initializer(name string, condition flat.Node
 }
 
 fn (tc &TypeChecker) comptime_initializer_is_static(id flat.NodeId) bool {
-	if !tc.valid_node_id(id) {
+	return tc.comptime_initializer_is_static_depth(id, 0, tc.cur_module, tc.cur_file, true)
+}
+
+fn (tc &TypeChecker) comptime_initializer_is_static_depth(id flat.NodeId, depth int, module_name string, file string, allow_locals bool) bool {
+	if depth > 64 || !tc.valid_node_id(id) {
 		return false
 	}
 	node := tc.a.node(id)
-	return node.kind in [.int_literal, .float_literal, .string_literal, .char_literal, .bool_literal,
-		.enum_val, .nil_literal, .none_expr]
+	if node.kind in [.int_literal, .float_literal, .string_literal, .char_literal, .bool_literal,
+		.enum_val, .nil_literal, .none_expr] {
+		return true
+	}
+	if node.kind == .ident {
+		key := if '${module_name}.${node.value}' in tc.const_exprs {
+			'${module_name}.${node.value}'
+		} else {
+			node.value
+		}
+		if allow_locals && tc.ident_is_mutable_lvalue(node.value) {
+			owner := tc.const_modules[key] or { '' }
+			same_owner := owner == module_name || (owner in ['', 'main'] && module_name in ['',
+				'main'])
+			binding := tc.cur_scope.lookup_owner(node.value) or { return false }
+			// A foreign global's bare cache entry does not override an owner constant.
+			if key !in tc.const_exprs || !same_owner || !tc.binding_owner_is_file_scope(binding) {
+				return false
+			}
+		}
+		if allow_locals && tc.comptime_condition_type_is_loop_metadata(id, '${node.value}.name') {
+			return true
+		}
+		if allow_locals {
+			if init := tc.comptime_local_initializer(node.value, id) {
+				return tc.comptime_initializer_is_static_depth(init, depth + 1, module_name, file, true)
+			}
+		}
+		if init := tc.const_exprs[key] {
+			owner := tc.const_modules[key] or { module_name }
+			owner_file := tc.const_files[key] or { file }
+			return tc.comptime_initializer_is_static_depth(init, depth + 1, owner, owner_file, false)
+		}
+		return false
+	}
+	if node.kind == .paren && node.children_count == 1 {
+		return tc.comptime_initializer_is_static_depth(tc.a.child(node, 0), depth + 1, module_name, file, allow_locals)
+	}
+	if node.kind == .selector && node.children_count == 1 {
+		base_id := tc.a.child(node, 0)
+		base := tc.a.node(base_id)
+		if base.kind == .ident && node.value in ['name', 'arg']
+			&& tc.comptime_condition_type_is_loop_metadata(id, '${base.value}.name') {
+			return true
+		}
+		if node.value == 'len' {
+			return tc.comptime_initializer_is_static_depth(base_id, depth + 1, module_name, file, allow_locals)
+		}
+		imported_module := tc.file_imports[file_import_key(file, base.value)] or { base.value }
+		key := '${imported_module}.${node.value}'
+		if init := tc.const_exprs[key] {
+			owner := tc.const_modules[key] or { module_name }
+			owner_file := tc.const_files[key] or { file }
+			return tc.comptime_initializer_is_static_depth(init, depth + 1, owner, owner_file, false)
+		}
+		return false
+	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := tc.a.child_node(node, 0)
+		if callee.kind != .selector || callee.children_count != 1
+			|| callee.value !in ['starts_with', 'ends_with', 'contains', 'count', 'all_before',
+				'all_after', 'all_before_last', 'all_after_last', 'trim', 'trim_left', 'trim_right',
+				'trim_space', 'trim_string_left', 'trim_string_right', 'replace', 'to_lower', 'to_upper',
+				'split', 'split_any', 'fields'] {
+			return false
+		}
+		if !tc.comptime_initializer_is_static_depth(tc.a.child(callee, 0), depth + 1, module_name, file, allow_locals) {
+			return false
+		}
+		for i in 1 .. node.children_count {
+			if !tc.comptime_initializer_is_static_depth(tc.a.child(node, i), depth + 1, module_name, file, allow_locals) {
+				return false
+			}
+		}
+		return true
+	}
+	if (node.kind == .infix && node.op in [.plus, .eq, .ne, .logical_and, .logical_or])
+		|| (node.kind == .prefix && node.op == .not) || node.kind == .in_expr {
+		for child in tc.a.children_of(node) {
+			part := tc.a.node(child)
+			if node.kind == .in_expr && part.kind == .array_literal {
+				for item in tc.a.children_of(part) {
+					if !tc.comptime_initializer_is_static_depth(item, depth + 1, module_name, file, allow_locals) {
+						return false
+					}
+				}
+			} else if !tc.comptime_initializer_is_static_depth(child, depth + 1, module_name, file, allow_locals) {
+				return false
+			}
+		}
+		return true
+	}
+	if node.kind == .index && node.value == 'range' {
+		for i in 0 .. node.children_count {
+			if !tc.comptime_initializer_is_static_depth(tc.a.child(node, i), depth + 1, module_name, file, allow_locals) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 fn (tc &TypeChecker) comptime_condition_part_pos(node flat.Node, part string) token.Pos {
@@ -10764,7 +11049,8 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	clean_outer_expected := unalias_type(outer_expected)
 	clean_actual := unalias_type(actual)
-	if tc.direct_parent_kind(or_id) != .return_stmt && clean_outer_expected is OptionType
+	if tc.direct_parent_kind(or_id) != .return_stmt && !tc.or_expr_is_struct_field_value(or_id)
+		&& clean_outer_expected is OptionType
 		&& clean_actual is OptionType
 		&& tc.type_compatible(expected, clean_outer_expected.base_type)
 		&& tc.type_compatible(clean_actual.base_type, clean_outer_expected.base_type) {
@@ -10814,6 +11100,27 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	pos := tc.or_fallback_value_pos(tail_id, tail)
 	tc.record_error_at(.assignment_mismatch, message, tail_id, pos)
+}
+
+fn (tc &TypeChecker) or_expr_is_struct_field_value(id flat.NodeId) bool {
+	mut child_id := id
+	for _ in 0 .. 64 {
+		parent_id := tc.direct_parent_id(child_id)
+		if !tc.valid_node_id(parent_id) || parent_id == child_id {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .field_init {
+			return parent.children_count > 0
+				&& tc.expr_is_value_tail_of(tc.a.child(parent, 0), id)
+		}
+		if parent.kind !in [.paren, .expr_stmt, .block, .match_branch, .lock_expr, .if_expr,
+			.match_stmt, .comptime_if, .or_expr] {
+			return false
+		}
+		child_id = parent_id
+	}
+	return false
 }
 
 fn (tc &TypeChecker) or_expr_is_branch_tail(id flat.NodeId) bool {
@@ -17747,6 +18054,12 @@ fn (tc &TypeChecker) expr_is_variadic_fn_value(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return false
 	}
+	if fn_type := fn_type_from_type(tc.resolve_type(id)) {
+		if fn_type.is_variadic {
+			return true
+		}
+	}
+
 	if name := tc.resolved_fn_value_name(id) {
 		return tc.fn_variadic[name] or { false }
 	}

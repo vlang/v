@@ -109,6 +109,22 @@ fn update_versioned_project(query []string) bool {
 			}
 		}
 	}
+	resolve_and_lock(selected, scope) or {
+		for m in selected { rmdir_all(m.tmp_path) or {} }
+		vpm_error(err.msg())
+		exit(1)
+	}
+	if settings.is_dry_run {
+		for m in selected {
+			println('${m.name}: would select ${m.version}${if m.version == '' {
+				head_revision(m.tmp_path)
+			} else {
+				''
+			}}')
+			rmdir_all(m.tmp_path) or {}
+		}
+		return true
+	}
 	scope.resolved_keys = selected.map(lockfile_module_key(it.requested))
 	install_modules(selected, selector.selected_url, mut scope)
 	if settings.is_latest {

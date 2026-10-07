@@ -88,6 +88,7 @@ const external_commands = [
 	'up',
 	'update',
 	'upgrade',
+	'vendor',
 	'vet',
 	'vlib-docs',
 	'watch',
@@ -297,7 +298,7 @@ fn launch_ownership_compiler(args []string) {
 		exit(0)
 	}
 	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ['-d', 'ownership',
-		'-gc', 'none']) or {
+		'-gc', 'none', '-prealloc']) or {
 		eprintln('cannot find a writable cache for the V3 ownership compiler')
 		exit(1)
 	}
@@ -384,7 +385,7 @@ fn run_external_tool(args []string, command_index int, command string) {
 			'vcreate'
 		}
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade', 'why' {
+		'upgrade', 'why', 'vendor' {
 			'vpm'
 		}
 		'vlib-docs' {

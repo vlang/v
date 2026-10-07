@@ -73,3 +73,16 @@ fn test_printable_len_unterminated_ansi() {
 	assert printable_len('\x1b') == 0
 	assert printable_len('\x1b[') == 0
 }
+
+fn test_printable_len_ansi_intermediate_bytes() {
+	assert printable_len('\x1b(Babc') == 3
+	assert printable_len('\x1b#8abc') == 3
+	assert printable_len('abc\x1b(') == 3
+	assert printable_len('\x1b(') == 0
+}
+
+fn test_printable_len_uses_existing_string_width_rules() {
+	for text in ['a\n', '\r\n', '\t', '🇦🇺'] {
+		assert printable_len('\x1b[31m' + text + '\x1b[0m') == utf8_str_visible_length(text)
+	}
+}
