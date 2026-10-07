@@ -133,3 +133,18 @@ Call `term.show_cursor_on_exit()` before hiding the cursor to restore it when `m
 returns or `exit()` is called. This helper preserves the application's signal handlers.
 Signal termination does not run exit callbacks. Applications that need cursor cleanup
 on interruption should arrange to return from `main` or call `exit()` from normal execution.
+
+## Visible width
+
+`term.printable_len(text)` measures grapheme width after removing ANSI escape sequences,
+including color, hyperlinks, control strings and charset selection. It uses the same width
+rules as `utf8_str_visible_length(text)`. Cursor movements are skipped rather than simulated;
+control characters such as newlines and tabs retain the existing string width rules.
+Unterminated escape sequences consume the rest of the string.
+
+```v
+import term
+
+assert term.printable_len(term.red('世界')) == 4
+assert term.printable_len('n\u0303') == 1
+```

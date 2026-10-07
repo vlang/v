@@ -2,6 +2,15 @@ module arm64
 
 import v.ssa
 
+fn test_native_main_stack_matches_macos_c_backend() {
+	mut linker := Linker.new(MachOObject.new())
+	linker.write_main_cmd(4096)
+	assert read_u32_le(linker.buf, 0) == lc_main
+	assert read_u32_le(linker.buf, 8) == 4096
+	assert read_u32_le(linker.buf, 16) == 64 * 1024 * 1024
+	assert read_u32_le(linker.buf, 20) == 0
+}
+
 fn test_sparse_codegen_slots_only_store_current_function_ids() {
 	mut m := ssa.Module.new()
 	for i in 0 .. 8 {
@@ -61,6 +70,45 @@ fn test_external_global_address_uses_got_load_relocations() {
 	assert g.macho.relocs[0].type_ == arm64_reloc_got_load_page21
 	assert g.macho.relocs[1].type_ == arm64_reloc_got_load_pageoff12
 	assert read_u32_le(g.macho.text_data, 4) == asm_ldr_pageoff(Reg(8))
+}
+
+fn test_global_string_load_copies_both_words() {
+	mut m := ssa.Module.new()
+	i8_type := m.type_store.get_int(8)
+	i32_type := m.type_store.get_int(32)
+	string_type := m.type_store.get_tuple([m.type_store.get_ptr(i8_type), i32_type, i32_type])
+	global := m.add_global('message', string_type)
+	func_id := m.new_function('read_message', string_type)
+	block_id := m.add_block(func_id, 'entry')
+	result := m.add_instr(.load, block_id, string_type, [global])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[func_id])
+	g.set_stack_slot(result, -16)
+	g.gen_instr(result)
+	g.materialize_text()
+	assert g.macho.relocs.len == 2
+	assert g.macho.text_data.len == 24
+	assert read_u32_le(g.macho.text_data, 8) == asm_ldr(Reg(8), Reg(9))
+	assert read_u32_le(g.macho.text_data, 12) == asm_stur(Reg(8), fp, -16)
+	assert read_u32_le(g.macho.text_data, 16) == asm_ldr_imm(Reg(10), Reg(9), 1)
+	assert read_u32_le(g.macho.text_data, 20) == asm_stur(Reg(10), fp, -8)
+}
+
+fn test_signed_global_load_preserves_width_and_sign() {
+	mut m := ssa.Module.new()
+	i32_type := m.type_store.get_int(32)
+	global := m.add_global('number', i32_type)
+	func_id := m.new_function('read_number', i32_type)
+	block_id := m.add_block(func_id, 'entry')
+	result := m.add_instr(.load, block_id, i32_type, [global])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[func_id])
+	g.set_stack_slot(result, -8)
+	g.gen_instr(result)
+	g.materialize_text()
+	assert g.macho.relocs.len == 2
+	assert g.macho.text_data.len == 16
+	assert read_u32_le(g.macho.text_data, 8) == asm_ldrsw(Reg(8), Reg(9))
 }
 
 fn test_aggregate_bitcast_copies_every_word() {
