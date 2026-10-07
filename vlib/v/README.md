@@ -67,6 +67,9 @@ and automatic pointer stringification retains its existing prefix and nil handli
 Variadic spreads accept array aliases, including struct fields and aliases of other array
 aliases. Each spread contributes the array's elements to the variadic argument list.
 
+Generic function bodies retain nominal alias types after unsafe expressions, array indexing,
+and map iteration, so methods declared on the alias remain available.
+
 ## Compiler dispatch
 
 On every native platform, this is the default compiler for user source and test builds. The

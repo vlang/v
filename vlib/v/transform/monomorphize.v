@@ -11012,7 +11012,12 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		}
 	}
 	if node.kind == .prefix && children.len > 0 {
-		child_type := t.node_type(children[0])
+		raw_child_type := t.generic_clone_decl_alias_type(children[0])
+		child_type := if t.generic_type_text_contains_alias(raw_child_type, t.cur_module) {
+			raw_child_type
+		} else {
+			t.node_type(children[0])
+		}
 		if node.op == .mul && child_type.starts_with('&') {
 			cloned_typ = child_type[1..]
 		} else if node.op == .amp && child_type.len > 0 {
@@ -11196,6 +11201,12 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		}
 		t.validate_concrete_map_key(map_type)
 	}
+	if node.kind in [.block, .index] {
+		nominal_type := t.generic_clone_decl_alias_type(clone_id)
+		if t.generic_type_text_contains_alias(nominal_type, t.cur_module) {
+			t.set_node_typ(int(clone_id), nominal_type)
+		}
+	}
 	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		lhs := t.a.nodes[int(children[0])]
 		if lhs.kind == .ident && lhs.value.len > 0 {
@@ -11253,6 +11264,10 @@ fn (mut t Transformer) validate_concrete_map_key(map_type string) {
 // Keep a call's nominal alias when the template annotation names its storage
 // type. Concrete instance checking runs before normal declaration lowering can
 // restore that alias, including after an Option/Result call is unwrapped.
+
+// Keep an expression's nominal aliases when the template annotation names its
+// storage type. Concrete instance checking precedes normal declaration lowering,
+// so unsafe block tails, indexed elements and dereferenced containers need them too.
 fn (t &Transformer) generic_clone_decl_alias_type(id flat.NodeId) string {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return ''
@@ -11264,10 +11279,34 @@ fn (t &Transformer) generic_clone_decl_alias_type(id flat.NodeId) string {
 	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
 		return t.generic_clone_decl_alias_type(t.a.child(&node, 0))
 	}
+	if node.kind == .block && node.children_count > 0 {
+		return t.generic_clone_decl_alias_type(t.a.child(&node, node.children_count - 1))
+	}
+	if node.kind == .prefix && node.op == .mul && node.children_count == 1 {
+		pointer := t.generic_clone_decl_alias_type(t.a.child(&node, 0))
+		if pointer.starts_with('&') {
+			return pointer[1..]
+		}
+	}
+	if node.kind == .index && node.value != 'range' && node.children_count > 0
+		&& !isnil(t.tc) {
+		container := t.generic_clone_decl_alias_type(t.a.child(&node, 0))
+		clean := types.unalias_type(types.unwrap_pointer(t.tc.parse_resolution_type(container)))
+		match clean {
+			types.Array, types.ArrayFixed { return t.semantic_type_name(clean.elem_type) }
+			types.Map { return t.semantic_type_name(clean.value_type) }
+			else {}
+		}
+	}
 	if node.kind == .or_expr && node.children_count > 0 {
 		wrapped := t.generic_clone_decl_alias_type(t.a.child(&node, 0))
 		if wrapped.starts_with('?') || wrapped.starts_with('!') {
 			return wrapped[1..]
+		}
+	}
+	if raw := t.raw_var_type_for_expr(id) {
+		if t.generic_type_text_contains_alias(raw, t.cur_module) {
+			return raw
 		}
 	}
 	return ''
@@ -11295,19 +11334,23 @@ fn (mut t Transformer) seed_cloned_generic_for_in_bindings(node flat.Node, key_i
 	if int(container_id) < 0 || int(container_id) >= t.a.nodes.len {
 		return
 	}
-	iter_type := t.normalize_type_alias(t.node_type(container_id))
+	raw_iter_type := t.generic_clone_decl_alias_type(container_id)
+	iter_type := if t.generic_type_text_contains_alias(raw_iter_type, t.cur_module) {
+		raw_iter_type.trim_left('&')
+	} else {
+		t.normalize_type_alias(t.node_type(container_id))
+	}
 	if iter_type.len == 0 || t.generic_arg_is_unresolved(iter_type) {
 		return
 	}
-	map_type := t.clean_map_type(iter_type)
+	map_type := if iter_type.starts_with('map[') { iter_type } else { t.clean_map_type(iter_type) }
 	has_index := int(val_id) >= 0
 	if has_index {
 		if int(key_id) >= 0 {
 			key := t.a.nodes[int(key_id)]
 			mut key_type := 'int'
 			if map_type.starts_with('map[') {
-				map_key_type, _ := t.map_type_parts(map_type)
-				key_type = map_key_type
+				key_type = t.map_key_type(map_type)
 			}
 			t.set_node_typ(int(key_id), key_type)
 			t.set_var_type(key.value, key_type)
