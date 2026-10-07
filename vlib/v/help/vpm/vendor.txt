@@ -1,0 +1,13 @@
+Copies the installed dependency graph into the project vendor/ directory.
+
+Usage:
+  v vendor
+
+Run after v install. Both direct and transitive dependencies are copied using
+canonical import paths. All dependencies must be installed. No remote is queried.
+The nearest v.mod selects the project root, including when run in a subdirectory.
+
+Existing vendor directories and symlinks are preserved. Remove an existing vendor
+explicitly before creating a fresh copy. A failed staging copy is not published.
+
+To compile using the copy, set VMODULES to the project's absolute vendor path.

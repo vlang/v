@@ -1865,6 +1865,102 @@ fn (g &FlatGen) can_gen_direct_array_store(arr_type types.Array) bool {
 	return true
 }
 
+fn array_elem_can_use_scalar_store(elem_type types.Type) bool {
+	clean := cgen_unalias_type(elem_type)
+	return clean is types.Primitive || clean is types.Char || clean is types.Rune
+		|| clean is types.ISize || clean is types.USize || clean is types.Enum
+}
+
+// gen_scalar_array_elem_store keeps the checked store's evaluation order while
+// avoiding a byte-copy helper on the successful scalar assignment path.
+fn (mut g FlatGen) gen_scalar_array_elem_store(node flat.Node, arr_type types.Array, base_id flat.NodeId, idx_id flat.NodeId, c_elem string, is_ptr bool) bool {
+	if node.op != .assign || !array_elem_can_use_scalar_store(arr_type.elem_type)
+		|| g.array_assign_base_is_shared_value_selector(base_id) {
+		return false
+	}
+	tmp := g.tmp_count
+	g.tmp_count++
+	array_tmp := '__v3_internal_symbol_scalar_store_base_${tmp}'
+	index_tmp := '__v3_internal_symbol_scalar_store_index_${tmp}'
+	value_tmp := '__v3_internal_symbol_scalar_store_value_${tmp}'
+	g.write('{ Array* ${array_tmp} = ')
+	if !is_ptr {
+		g.write('&')
+	}
+	g.gen_expr(base_id)
+	g.write('; int ${index_tmp} = ')
+	g.gen_expr(idx_id)
+	g.write('; ${c_elem} ${value_tmp} = ')
+	g.gen_expr_with_expected_type(g.a.child(&node, 1), arr_type.elem_type)
+	g.write('; ')
+	// The RHS may change both the buffer and the length. Resolve the bounds and
+	// the destination only after it has finished, exactly as array__set does.
+	if 'no_bounds_checking' !in g.compile_defines {
+		g.write('if (${index_tmp} >= 0 && ${index_tmp} < ${array_tmp}->len) { ')
+	}
+	g.write('((${c_elem}*)${array_tmp}->data)[${index_tmp}] = ${value_tmp}; ')
+	if 'no_bounds_checking' !in g.compile_defines {
+		// Preserve the existing out-of-bounds diagnostic and panic behavior.
+		g.write('} else { array__set(${array_tmp}, ${index_tmp}, &${value_tmp}); } ')
+	}
+	g.writeln('}')
+	return true
+}
+
+// gen_scalar_array_push_call_stmt handles the scalar append calls produced by
+// transform, leaving growth, slice detachment and invalid lengths to the runtime.
+fn (mut g FlatGen) gen_scalar_array_push_call_stmt(id flat.NodeId, node flat.Node) bool {
+	if node.kind != .call || node.children_count != 3
+		|| node.value.starts_with('shared_array_push:') {
+		return false
+	}
+	target := g.call_target_name(g.a.child(&node, 0))
+	if target !in ['array_push', 'array__push'] {
+		return false
+	}
+	callee_id := g.a.child(&node, 0)
+	callee := g.a.nodes[int(callee_id)]
+	resolved := g.call_key(id, target)
+	if callee.kind != .ident || g.selector_base_is_local_value(target)
+		|| g.non_generic_fn_decl_exists_in_module(target, g.tc.cur_module)
+		|| resolved !in [target, 'builtin.${target}'] {
+		return false
+	}
+	array_id := g.a.child(&node, 1)
+	arr := array_like_type(types.unwrap_pointer(g.usable_expr_type(array_id))) or {
+		return false
+	}
+	if !array_elem_can_use_scalar_store(arr.elem_type) {
+		return false
+	}
+	value_id := g.a.child(&node, 2)
+	value := g.a.nodes[int(value_id)]
+	// The transformer has already evaluated the RHS into typed scalar storage.
+	// Only use that explicit address, rather than interpreting arbitrary voidptrs.
+	if value.kind != .prefix || value.op != .amp || value.children_count != 1 {
+		return false
+	}
+	scalar_id := g.a.child(&value, 0)
+	if !array_elem_can_use_scalar_store(g.usable_expr_type(scalar_id)) {
+		return false
+	}
+	tmp := g.tmp_count
+	g.tmp_count++
+	array_tmp := '__v3_internal_symbol_scalar_push_base_${tmp}'
+	value_tmp := '__v3_internal_symbol_scalar_push_value_${tmp}'
+	c_elem := g.value_c_type(arr.elem_type)
+	g.write('{ Array* ${array_tmp} = ')
+	g.gen_expr(array_id)
+	g.write('; ${c_elem} ${value_tmp} = ')
+	g.gen_expr_with_expected_type(scalar_id, arr.elem_type)
+	// len and cap have the same signed native-int representation: len < cap
+	// also proves that incrementing len cannot overflow that representation.
+	g.write('; if (${array_tmp}->len >= 0 && ${array_tmp}->len < ${array_tmp}->cap && !(${array_tmp}->flags & ArrayFlags__is_slice)) { ')
+	g.write('((${c_elem}*)${array_tmp}->data)[${array_tmp}->len] = ${value_tmp}; ${array_tmp}->len++; ')
+	g.writeln('} else { array_push(${array_tmp}, &${value_tmp}); } }')
+	return true
+}
+
 // gen_direct_array_elem_store writes an element store that goes straight through
 // the array data pointer, the same way an element load does, and reports whether
 // it could. Every operator takes the value lowering the bounds-checked store
@@ -2051,6 +2147,10 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				{
 					return
 				}
+			}
+			if g.gen_scalar_array_elem_store(node, arr_type, base_id, g.a.child(&lhs, 1),
+				c_elem, base_type is types.Pointer) {
+				return
 			}
 			tmp := g.tmp_count
 			g.tmp_count++

@@ -82,6 +82,139 @@ fn test_comptime_method_receiver_name_normalizes_main_qualification() {
 	assert comptime_method_receiver_matches('App', 'main.App', 'main.App', 'main', 'veb')
 }
 
+fn substitute_reflected_method_receiver(mut t Transformer, receiver flat.NodeId, method MethodMeta) flat.NodeId {
+	name := t.make_ident('method')
+	start := t.a.children.len
+	t.a.children << [receiver, name]
+	selector := t.a.add_node(flat.Node{
+		kind:           .selector
+		value:          '\$'
+		children_start: start
+		children_count: 2
+	})
+	return t.clone_method_subst_scoped(selector, 'method', method, []string{}) or {
+		panic('missing reflected method selector')
+	}
+}
+
+fn test_comptime_method_selector_keeps_unregistered_local_receivers() {
+	for binding in ['unregistered', 'checked', 'registered', 'builtin_shadow', 'checked_builtin_shadow',
+		'checked_generated_shadow'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs['Dummy'] = []types.StructField{}
+		tc.structs['generated'] = []types.StructField{}
+		tc.fn_param_types['Dummy.sample'] = [
+			types.Type(types.Struct{ name: 'Dummy' }),
+			types.Type(types.String{}),
+		]
+		tc.fn_ret_types['Dummy.sample'] = types.Type(types.int_)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		name := match binding {
+			'builtin_shadow' { 'string' }
+			'checked_builtin_shadow' { 'uint' }
+			'checked_generated_shadow' { 'generated' }
+			else { 'd' }
+		}
+		receiver := a.add_val(.ident, name)
+		if binding in ['checked', 'checked_builtin_shadow', 'checked_generated_shadow'] {
+			tc.register_synth_type(receiver, types.Type(types.Struct{ name: 'Dummy' }))
+		} else if binding in ['registered', 'builtin_shadow'] {
+			t.set_var_type(name, 'Dummy')
+		}
+		selector := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
+			name:        'sample'
+			receiver:    'Dummy'
+			module_name: 'main'
+			return_type: 'int'
+			params:      [ParamMeta{ name: 'value', typ: 'string' }]
+		})
+		node := a.node(selector)
+		assert node.kind == .selector, binding
+		assert a.child_node(node, 0).value == name
+		assert comptime_method_selector_marker in node.generic_params()
+	}
+}
+
+fn test_comptime_method_selector_preserves_type_namespace_function_values() {
+	for name in ['Dummy', 'Alias', 'T', 'string', 'generated', 'dep.Dummy', 'receiver'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs['Dummy'] = []types.StructField{}
+		tc.structs['generated'] = []types.StructField{}
+		tc.structs['dep.Dummy'] = []types.StructField{}
+		tc.structs['dep.receiver'] = []types.StructField{}
+		tc.type_aliases['Alias'] = 'Dummy'
+		tc.generated_files['generated.v'] = true
+		tc.file_selective_imports[file_import_key('generated.v', 'receiver')] = ['dep.receiver']
+		receiver_type := match name {
+			'Alias' { 'Dummy' }
+			'receiver' { 'dep.receiver' }
+			else { name }
+		}
+		method_key := '${receiver_type}.sample'
+		param_type := if name == 'string' {
+			types.Type(types.String{})
+		} else {
+			types.Type(types.Struct{ name: receiver_type })
+		}
+		tc.fn_param_types[method_key] = [param_type, types.Type(types.String{})]
+		tc.fn_ret_types[method_key] = types.Type(types.int_)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		t.cur_file = 'generated.v'
+		receiver := a.add_val(.ident, name)
+		if name != 'T' {
+			tc.register_synth_type(receiver, param_type)
+		}
+		value := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
+			name:        'sample'
+			receiver:    receiver_type
+			module_name: 'main'
+			return_type: 'int'
+			params:      [ParamMeta{ name: 'value', typ: 'string' }]
+		})
+		node := a.node(value)
+		assert node.kind == .ident, name
+		assert node.value == method_key
+		fn_type := tc.expr_type(value) or { panic('missing reflected function type') }
+		assert fn_type is types.FnType
+		if fn_type is types.FnType {
+			assert fn_type.params.len == 2
+			assert fn_type.params[0] == param_type
+		}
+	}
+}
+
+fn test_comptime_generated_type_namespace_respects_unlowered_same_type_local() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['receiver'] = []types.StructField{}
+	tc.fn_param_types['receiver.sample'] = [types.Type(types.Struct{ name: 'receiver' })]
+	tc.fn_ret_types['receiver.sample'] = types.Type(types.int_)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	value := a.add_node(flat.Node{ kind: .struct_init, typ: 'receiver' })
+	decl := t.make_decl_assign('receiver', value)
+	receiver := a.add_val(.ident, 'receiver')
+	tc.register_synth_type(receiver, types.Type(types.Struct{ name: 'receiver' }))
+	body := t.make_block([decl, receiver])
+	start := a.children.len
+	a.children << body
+	a.add_node(flat.Node{ kind: .fn_decl, value: 'run', children_start: start, children_count: 1 })
+	t.build_source_parent_index()
+	selector := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
+		name:        'sample'
+		receiver:    'receiver'
+		module_name: 'main'
+		return_type: 'int'
+	})
+	node := a.node(selector)
+	assert node.kind == .selector
+	assert a.child_node(node, 0).value == 'receiver'
+}
+
 fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{
@@ -474,13 +607,19 @@ fn test_comptime_condition_ignores_brackets_and_operators_in_string_literals() {
 	assert comptime_condition_top_level_index("'a(b' == 'x'", ' == ') == 5
 	assert comptime_condition_top_level_index("'x || y' == 'x'", '||') == -1
 	conds := {
-		"('a)b' == 'a)b')":       true
-		"'a(b' == 'a(b'":         true
-		"'x || y' == 'x'":        false
-		"'a,b' in ['a,b', 'c']":  true
-		"'a' in ['a,b', 'c']":    false
-		"'c' !in ['a,b', 'c']":   false
-		"('a]' == 'a]') && true": true
+		"('a)b' == 'a)b')":                            true
+		"'a(b' == 'a(b'":                              true
+		"'x || y' == 'x'":                             false
+		"'a,b' in ['a,b', 'c']":                       true
+		"'a' in ['a,b', 'c']":                         false
+		"'c' !in ['a,b', 'c']":                        false
+		"'get_user' !in ['x]', 'get_user']":           false
+		"'get_user' in ['x]', 'get_user']":            true
+		"'list_users' !in ['x]', 'get_user']":         true
+		"'get_user' in ['a)b', 'get_user']":           true
+		"'a,b' in ['a,b'.to_upper().to_lower(), 'c']": true
+		"'anything' in []":                            false
+		"('a]' == 'a]') && true":                      true
 	}
 	for cond, want in conds {
 		got := t.eval_field_cond(cond) or {
@@ -1028,4 +1167,43 @@ fn test_folded_condition_string_keeps_its_own_quotes() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{ a: &a }
 	assert t.eval_field_cond(expr + ' == ' + comptime_cond_string_literal(value.to_lower())) or { false }
+}
+
+fn test_unresolved_type_guard_does_not_hide_concrete_string_conditions() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.active_generic_params = ['T']
+	assert t.comptime_condition_has_unresolved_type_test('T is \$struct')
+	assert t.comptime_condition_has_unresolved_type_test('T !is int && runtime.contains("x")')
+	assert !t.comptime_condition_has_unresolved_type_test("int is int && 'abc'.repeat(1) == 'abc'")
+	assert !t.comptime_condition_has_unresolved_type_test("' is '.contains('is')")
+}
+
+fn test_scalar_constant_lookup_respects_global_owners_and_import_namespaces() {
+	mut a := flat.FlatAst.new()
+	value := a.add_val(.string_literal, 'a b')
+	mut tc := types.TypeChecker.new(&a)
+	for key, owner in {
+		'registry.value': 'registry'
+		'registry.route': 'registry'
+		'route':          'main'
+	} {
+		tc.const_types[key] = types.string_
+		tc.const_exprs[key] = value
+		tc.const_modules[key] = owner
+	}
+	tc.file_imports[file_import_key('main.v', 'registry')] = 'registry'
+	tc.file_imports[file_import_key('main.v', 'r')] = 'registry'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.globals['registry'] = 'registry.Record'
+	t.globals['registry.registry'] = 'registry.Record'
+	t.globals['route'] = 'api.Record'
+	t.globals['api.route'] = 'api.Record'
+	assert t.comptime_scalar_named_const('registry.value', 0, 'registry', 'registry.v') == none
+	assert (t.comptime_scalar_named_const('registry.route', 0, 'main', 'main.v') or { panic('import') }).value == 'a b'
+	assert (t.comptime_scalar_named_const('r.route', 0, 'main', 'main.v') or { panic('alias') }).value == 'a b'
+	assert (t.comptime_scalar_named_const('route', 0, 'main', 'main.v') or { panic('owner') }).value == 'a b'
+	assert (t.comptime_scalar_named_const('route', 0, '', 'main.v') or { panic('implicit main owner') }).value == 'a b'
+	assert t.subst_comptime_scalar_locals('registry.value == 7') == 'registry.value == 7'
 }
