@@ -7295,6 +7295,15 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		callee_id = t.a.child(&callee, 0)
 		callee = t.a.nodes[int(callee_id)]
 	}
+	if callee.kind == .ident && !callee.value.contains('.') {
+		if t.raw_var_type(callee.value).len > 0 {
+			return none
+		}
+		// Call collection runs before parameters and locals enter var_types.
+		if _ := t.local_binding_before(callee.value, callee_id) {
+			return none
+		}
+	}
 	if !isnil(t.tc) {
 		if resolved := t.tc.resolved_call_name(id) {
 			if key := t.generic_resolved_call_decl_key(resolved, callee, node, module_name, decls) {

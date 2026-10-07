@@ -18,6 +18,9 @@ Inside generic methods, callable parameters and local bindings take precedence o
 with the same name. Implicit receiver calls are resolved only when no local binding shadows
 the method name.
 
+Callable parameters and local function values in generic functions take precedence over
+module functions with the same name, including calls from closures that capture the callable.
+
 V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
 all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
 and explicit `-b js` invocations. The limited JavaScript compatibility generator remains
