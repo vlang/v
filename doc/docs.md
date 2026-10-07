@@ -5449,6 +5449,9 @@ fn main() {
 
 ### Generics
 
+Generic method calls retain the declaring modules of their type arguments when selecting
+the concrete method, including methods returning Result or Option values.
+
 Omitted fields of a generic struct use their declared defaults, including in nested structs.
 This also applies through concrete generic aliases and imported structs; defaults use the
 imports visible in the declaring file.

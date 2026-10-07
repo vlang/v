@@ -535,6 +535,7 @@ mut:
 	shared_param_index_empty       bool
 	has_shared_params              bool
 	fn_decl_mut_receivers          map[string]bool
+	specialized_method_c_names     map[string]string     // concrete declaration spelling -> selected C symbol
 	fn_decl_ret_types              map[string]types.Type // fn decl name (and qualified variants) -> return type
 	// Const dependency analysis follows helper calls. Keep declaration indexes so
 	// resolving each call does not scan the whole flattened AST.
@@ -1428,6 +1429,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_decl_shared_params:              map[string][]bool{}
 		fn_shared_params_resolved:          map[string][]bool{}
 		fn_decl_mut_receivers:              map[string]bool{}
+		specialized_method_c_names:         map[string]string{}
 		fn_decl_ret_types:                  map[string]types.Type{}
 		fn_decl_nodes_by_name:              map[string]flat.NodeId{}
 		fn_decl_nodes_by_short:             map[string]flat.NodeId{}
@@ -3060,6 +3062,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.uses_recover = g.program_uses_recover()
 	g.used_fn_names = []string{}
 	g.fn_gen_items = []FlatFnGenItem{}
+	g.specialized_method_c_names.clear()
 	g.top_level_node_ids = []i32{}
 	g.type_metadata_node_ids = []i32{}
 	g.type_metadata_nodes_ready = false
