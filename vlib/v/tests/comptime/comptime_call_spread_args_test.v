@@ -56,3 +56,31 @@ fn test_concrete_reflected_method_spread_args() {
 	dispatch_spread_concrete(app, mut ctx, 'many', ['V', '3'])
 	assert ctx.response == 'V: 3'
 }
+
+struct SpreadPointerApp {}
+
+fn (app &SpreadPointerApp) replace(mut ctx &SpreadContext) {
+	ctx = &SpreadContext{
+		response: 'replacement'
+	}
+}
+
+fn dispatch_spread_mut_pointer_generic[T](app &T, mut p &SpreadContext, args []string) {
+	$for method in T.methods {
+		$if method.name == 'replace' {
+			app.$method(mut p, ...args)
+		}
+	}
+}
+
+fn test_generic_reflected_method_spread_mut_pointer_arg() {
+	app := &SpreadPointerApp{}
+	mut p := &SpreadContext{
+		response: 'original'
+	}
+	original := p
+	dispatch_spread_mut_pointer_generic(app, mut p, []string{})
+	assert p.response == 'replacement'
+	assert original.response == 'original'
+	assert voidptr(p) != voidptr(original)
+}

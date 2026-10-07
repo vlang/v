@@ -2211,6 +2211,7 @@ pub fn (s string) str() string {
 
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == u8(`B`)
+@[markused]
 fn (s string) at(idx int) u8 {
 	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
@@ -2220,32 +2221,30 @@ fn (s string) at(idx int) u8 {
 	return unsafe { s.str[idx] }
 }
 
-$if !v3_backend ? {
-	@[markused]
-	fn (s string) at_i64(idx i64) u8 {
-		$if !no_bounds_checking {
-			if idx < 0 || idx >= i64(s.len) {
-				panic_n2('string index out of range(idx,s.len):', idx, s.len)
-			}
+@[markused]
+fn (s string) at_i64(idx i64) u8 {
+	$if !no_bounds_checking {
+		if idx < 0 || idx >= i64(s.len) {
+			panic_n2('string index out of range(idx,s.len):', idx, s.len)
 		}
-		return unsafe { s.str[int(idx)] }
 	}
+	return unsafe { s.str[int(idx)] }
+}
 
-	@[markused]
-	fn (s string) at_u64(idx u64) u8 {
-		$if !no_bounds_checking {
-			if idx >= u64(s.len) {
-				panic('string index out of range(idx,s.len): ' + idx.str() + ', ' +
-					impl_i64_to_string(s.len))
-			}
+@[markused]
+fn (s string) at_u64(idx u64) u8 {
+	$if !no_bounds_checking {
+		if idx >= u64(s.len) {
+			panic('string index out of range(idx,s.len): ' + idx.str() + ', ' +
+				impl_i64_to_string(s.len))
 		}
-		return unsafe { s.str[int(idx)] }
 	}
+	return unsafe { s.str[int(idx)] }
+}
 
-	@[markused]
-	fn (s string) at_ni(idx int) u8 {
-		return s.at(v_ni_index(idx, s.len))
-	}
+@[markused]
+fn (s string) at_ni(idx int) u8 {
+	return s.at(v_ni_index(idx, s.len))
 }
 
 // version of `at()` that is used in `a[i] or {`

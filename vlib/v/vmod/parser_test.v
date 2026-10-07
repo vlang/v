@@ -132,3 +132,35 @@ fn test_invalid_end() {
 	}
 	assert false
 }
+
+fn test_catalog_and_workspaces_are_typed_manifest_metadata() {
+	m := vmod.decode("Module { name: 'app' catalog: { foo: '^1.2.0', 'publisher.bar': '~2.0.0' }, workspaces: ['packages/*', 'tools'] }")!
+	assert m.catalog == {
+		'foo':           '^1.2.0'
+		'publisher.bar': '~2.0.0'
+	}
+	assert m.workspaces == ['packages/*', 'tools']
+	assert 'catalog' !in m.unknown && 'workspaces' !in m.unknown
+	assert vmod.decode('Module { catalog: {} workspaces: [] }')!.catalog.len == 0
+}
+
+fn test_catalog_rejects_invalid_duplicate_and_unterminated_entries() {
+	for text in ["Module { catalog: ['foo'] }", 'Module { catalog: { foo: 1 } }',
+		"Module { catalog: { foo: '^1', foo: '^2' } }", 'Module { catalog: { foo: } }',
+		"Module { catalog: { foo: '^1'; bar: '^2' } }", "Module { catalog: { foo: '^1',, bar: '^2' } }",
+		"Module { catalog: { foo: '^1'", "Module { catalog: { foo: '^1' }",
+		"Module { catalog: { 'foo' '^1' } }"] {
+		mut failed := false
+		vmod.decode(text) or { failed = true }
+		assert failed, text
+	}
+}
+
+fn test_workspaces_require_an_array_of_strings() {
+	for text in ["Module { workspaces: 'packages/*' }", 'Module { workspaces: [foo] }',
+		"Module { workspaces: [foo: '1.0.0'] }", 'Module { workspaces: [1] }'] {
+		mut failed := false
+		vmod.decode(text) or { failed = true }
+		assert failed, text
+	}
+}
