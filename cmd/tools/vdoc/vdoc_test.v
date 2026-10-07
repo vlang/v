@@ -122,41 +122,67 @@ fn test_html_highlight_escapes_html_tokens() {
 	assert highlighted.contains('<span class="token operator">&lt;</span>')
 }
 
-fn test_color_highlight_byte_as_an_identifier() {
-	assert color_highlight('byte') == 'byte'
-	assert color_highlight('byte()') == term.cyan('byte') + '()'
-	assert color_highlight('u8') == term.green('u8')
+// classify returns every token of `code` with its kind, as `raw:kind`.
+fn classify(code string) []string {
+	return highlight_tokens(code).map('${code[it.start..it.end]}:${it.typ}')
 }
 
-// The `${` and `}` that delimit an interpolation are highlighted.
-const interp_open = term.bright_magenta('$') + term.bright_magenta('{')
-const interp_close = term.bright_magenta('}')
+// The terminal and the HTML output both use `highlight_tokens`, so they highlight the same things.
+fn test_highlight_tokens_names() {
+	assert classify('int f() Foo os.') == ['int:builtin', 'f:function', '(:punctuation', '):punctuation',
+		'Foo:type_name', 'os:module_', '.:punctuation']
+}
+
+fn test_highlight_tokens_byte_as_an_identifier() {
+	assert classify('byte') == ['byte:name']
+	assert classify('byte()') == ['byte:function', '(:punctuation', '):punctuation']
+	assert classify('u8') == ['u8:builtin']
+}
+
+fn test_highlight_tokens_option_and_chan() {
+	assert classify('?int chan') == ['?:operator', 'int:builtin', 'chan:builtin']
+}
+
+fn test_highlight_tokens_string_interpolation() {
+	assert classify("'a\${x}b'") == ["'a:string", '$:string_interp', '{:string_interp', 'x:name',
+		'}:string_interp', "b':string"]
+}
+
+fn test_highlight_tokens_braces_inside_an_interpolation() {
+	assert classify("'\${Foo{}}'") == ["':string", '$:string_interp', '{:string_interp', 'Foo:type_name',
+		'{:punctuation', '}:punctuation', '}:string_interp', "':string"]
+}
+
+fn test_highlight_tokens_nested_interpolation() {
+	assert classify("'\${f('\${x}')}'") == ["':string", '$:string_interp', '{:string_interp',
+		'f:function', '(:punctuation', "':string", '$:string_interp', '{:string_interp', 'x:name',
+		'}:string_interp', "':string", '):punctuation', '}:string_interp', "':string"]
+}
+
+fn test_highlight_tokens_braces_outside_strings() {
+	assert classify('struct S {}') == ['struct:keyword', 'S:type_name', '{:punctuation', '}:punctuation']
+}
+
+// The tests below check how each output displays the kinds.
 
 fn test_color_highlight_string_interpolation() {
+	interp_open := term.bright_magenta('$') + term.bright_magenta('{')
 	assert color_highlight("':\${port}'") == term.yellow("':") + interp_open + 'port' +
-		interp_close + term.yellow("'")
+		term.bright_magenta('}') + term.yellow("'")
 }
 
-fn test_color_highlight_braces_inside_an_interpolation() {
-	assert color_highlight("'\${Foo{}}'") == term.yellow("'") + interp_open + term.green('Foo') +
-		'{}' + interp_close + term.yellow("'")
+fn test_color_highlight_option_and_chan() {
+	assert color_highlight('?int') == term.magenta('?') + term.green('int')
+	assert color_highlight('chan int') == term.green('chan') + ' ' + term.green('int')
 }
 
-fn test_color_highlight_nested_interpolation() {
-	inner := term.yellow("'b") + interp_open + 'x' + interp_close + term.yellow("'")
-	assert color_highlight("'a\${f('b\${x}')}c'") == term.yellow("'a") + interp_open +
-		term.cyan('f') + '(' + inner + ')' + interp_close + term.yellow("c'")
+fn test_html_highlight_string_interpolation() {
+	interp := '<span class="token string_interp">'
+	assert html_highlight("'\${x}'") == '<span class="token string">\'</span>${interp}$</span>${interp}{</span>x${interp}}</span><span class="token string">\'</span>'
 }
 
-fn test_color_highlight_braces_outside_strings() {
-	assert color_highlight('struct S {}') == term.bright_blue('struct') + ' ' + term.green('S') +
-		' {}'
-}
-
-fn test_html_highlight_byte_as_an_identifier() {
-	assert html_highlight('byte') == 'byte'
-	assert html_highlight('byte()').contains('<span class="token function">byte</span>')
-	assert html_highlight('u8') == '<span class="token builtin">u8</span>'
+fn test_html_highlight_leaves_names_plain() {
+	assert html_highlight('x os.Foo') == 'x os<span class="token punctuation">.</span>Foo'
 }
 
 fn test_get_readme_md_src() {
