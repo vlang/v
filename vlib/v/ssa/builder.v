@@ -8958,26 +8958,26 @@ fn (mut b Builder) build_direct_call(resolved_name string, node flat.Node) Value
 				arg_node := b.a.nodes[int(arg_id)]
 				if arg_node.kind == .ident {
 					if addr := b.vars[arg_node.value] {
-						if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+						if b.should_pass_ident_addr_for_ptr_param(addr, param_type, true) {
 							args << addr
 							continue
 						}
 					}
 				} else if arg_node.kind == .selector {
 					addr := b.build_selector_addr(arg_node)
-					if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_type, true) {
 						args << addr
 						continue
 					}
 				} else if arg_node.kind == .index {
 					addr := b.build_index_addr(arg_id, arg_node)
-					if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_type, true) {
 						args << addr
 						continue
 					}
 				} else if arg_node.kind == .prefix && arg_node.op == .mul {
 					addr := b.build_expr(b.a.child(&arg_node, 0))
-					if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_type, true) {
 						args << addr
 						continue
 					}
@@ -9716,8 +9716,22 @@ fn (mut b Builder) build_spawn_expr(node flat.Node) ValueID {
 	}
 	// The call itself belongs to the worker; its argument evaluations remain in
 	// the spawning function, where their source locals are still available.
+	call_index := b.m.blocks[call.block].instrs.index(call_value)
+	mut never_returns := false
+	if call_index + 1 < b.m.blocks[call.block].instrs.len {
+		terminator := b.m.blocks[call.block].instrs[call_index + 1]
+		if b.m.instrs[b.m.values[terminator].index].op == .unreachable {
+			// Only the transferred call's terminator belongs to the worker.
+			// Terminating argument evaluations still stop the spawning thread.
+			b.m.detach_instruction_uses(terminator)
+			b.m.blocks[call.block].instrs.delete(call_index + 1)
+			b.m.values[terminator].kind = .unknown
+			b.m.values[terminator].index = -1
+			never_returns = true
+		}
+	}
 	b.m.detach_instruction_uses(call_value)
-	b.m.blocks[call.block].instrs.delete(b.m.blocks[call.block].instrs.index(call_value))
+	b.m.blocks[call.block].instrs.delete(call_index)
 	b.m.values[call_value].kind = .unknown
 	b.m.values[call_value].index = -1
 	mut fields := []TypeID{cap: call.operands.len}
@@ -9751,7 +9765,8 @@ fn (mut b Builder) build_spawn_expr(node flat.Node) ValueID {
 	}
 	name := '__ssa_spawn_${b.m.funcs.len}'
 	trampoline_id := b.register_synthetic_function(name, ptr_i8, [ptr_i8])
-	b.generate_spawn_trampoline(trampoline_id, packet_type, call.typ, node.is_detached_spawn())
+	b.generate_spawn_trampoline(trampoline_id, packet_type, call.typ, node.is_detached_spawn(),
+		never_returns)
 	trampoline := b.m.add_value(.func_ref, ptr_i8, name, trampoline_id)
 	thread_slot := b.emit0(.alloca, b.m.type_store.get_ptr(b.u64_type))
 	// Darwin's opaque pthread_attr_t fits in this aligned reservation.
@@ -9784,7 +9799,7 @@ fn (mut b Builder) build_spawn_expr(node flat.Node) ValueID {
 	return thread_handle
 }
 
-fn (mut b Builder) generate_spawn_trampoline(func_id int, packet_type TypeID, ret_type TypeID, detached bool) {
+fn (mut b Builder) generate_spawn_trampoline(func_id int, packet_type TypeID, ret_type TypeID, detached bool, never_returns bool) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	entry := b.m.add_block(func_id, 'entry')
 	packet_raw := b.func_add_argument(func_id, ptr_i8, 'packet')
@@ -9794,8 +9809,15 @@ fn (mut b Builder) generate_spawn_trampoline(func_id int, packet_type TypeID, re
 		field := b.block_struct_field_ptr(entry, packet, packet_type, i)
 		args << b.block_instr1(.load, entry, field_type, field)
 	}
-	result := b.m.add_instr(.call_indirect, entry, ret_type, args)
 	free_ref := b.m.add_value(.func_ref, b.void_type, 'free', b.fn_ids['free'])
+	if never_returns {
+		// Arguments have been copied out of the packet before the terminating call.
+		b.block_instr2(.call, entry, b.void_type, free_ref, packet_raw)
+		b.m.add_instr(.call_indirect, entry, ret_type, args)
+		b.block_instr0(.unreachable, entry, b.void_type)
+		return
+	}
+	result := b.m.add_instr(.call_indirect, entry, ret_type, args)
 	b.block_instr2(.call, entry, b.void_type, free_ref, packet_raw)
 	if ret_type == b.void_type || detached {
 		nil_result := b.m.get_or_add_const(ptr_i8, '0')
@@ -10210,6 +10232,8 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		return b.build_map_set_call(node)
 	}
 
+	// C macros backed by V helpers retain the helper's mutable-pointer ABI.
+	allow_pointer_slot := !is_c_call || resolved_name !in b.c_fn_types
 	mut args := []ValueID{}
 	args << fn_ref
 	if resolved_name == 'error_posix' && node.children_count == 1 && param_types.len > 0 {
@@ -10223,7 +10247,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 				base_node := b.a.nodes[int(base_id)]
 				if base_node.kind == .ident {
 					if addr := b.vars[base_node.value] {
-						if b.should_pass_ident_addr_for_ptr_param(addr, param_types[0]) {
+						if b.should_pass_ident_addr_for_ptr_param(addr, param_types[0], true) {
 							args << addr
 						} else {
 							args << b.build_expr(base_id)
@@ -10233,14 +10257,14 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 					}
 				} else if base_node.kind == .selector {
 					addr := b.build_selector_addr(base_node)
-					if b.should_pass_ident_addr_for_ptr_param(addr, param_types[0]) {
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_types[0], true) {
 						args << addr
 					} else {
 						args << b.build_expr(base_id)
 					}
 				} else if base_node.kind == .index {
 					addr := b.build_index_addr(base_id, base_node)
-					if b.should_pass_ident_addr_for_ptr_param(addr, param_types[0]) {
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_types[0], true) {
 						args << addr
 					} else {
 						args << b.build_expr(base_id)
@@ -10288,41 +10312,26 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 				arg_node := b.a.nodes[int(arg_id)]
 				if arg_node.kind == .ident {
 					if addr := b.vars[arg_node.value] {
-						if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+						if b.should_pass_ident_addr_for_ptr_param(addr, param_type, allow_pointer_slot) {
 							args << addr
 							continue
 						}
 					}
 				} else if arg_node.kind == .selector {
 					addr := b.build_selector_addr(arg_node)
-					ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-					if is_c_call && b.deref_type(addr) == ptr_i8
-						&& (b.checked_expr_type_name(arg_id) == 'voidptr'
-							|| (arg_node.value == 'data' && arg_node.children_count > 0
-								&& b.call_base_is_array(b.a.child(&arg_node, 0)))) {
-						// An opaque pointer field supplies its value to C, even when its
-						// address has the same physical type as the declared parameter.
-						value := b.emit1(.load, ptr_i8, addr)
-						args << if ptr_i8 == param_type {
-							value
-						} else {
-							b.emit1(.bitcast, param_type, value)
-						}
-						continue
-					}
-					if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_type, allow_pointer_slot) {
 						args << addr
 						continue
 					}
 				} else if arg_node.kind == .index {
 					addr := b.build_index_addr(arg_id, arg_node)
-					if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_type, allow_pointer_slot) {
 						args << addr
 						continue
 					}
 				} else if arg_node.kind == .prefix && arg_node.op == .mul {
 					addr := b.build_expr(b.a.child(&arg_node, 0))
-					if b.should_pass_ident_addr_for_ptr_param(addr, param_type) {
+					if b.should_pass_ident_addr_for_ptr_param(addr, param_type, allow_pointer_slot) {
 						args << addr
 						continue
 					}
@@ -10330,7 +10339,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			}
 		}
 		args << if param_idx < param_types.len {
-			b.build_typed_call_arg(arg_id, param_types[param_idx], !is_c_call)
+			b.build_typed_call_arg(arg_id, param_types[param_idx], allow_pointer_slot)
 		} else {
 			b.build_expr(arg_id)
 		}
@@ -10449,6 +10458,12 @@ fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow
 		// Opaque byte pointers preserve explicit addresses, including the address
 		// of a pointer element passed to array_push or a C memory function.
 		return value
+	}
+	if !allow_pointer_slot && b.is_pointer_type(value_type) && b.is_pointer_type(param_type)
+		&& value_type != param_type {
+		// C converts pointer values; a deeper declared pointer type does not borrow
+		// the V local slot holding the argument.
+		return b.emit1(.bitcast, param_type, value)
 	}
 	if allow_pointer_slot && b.is_pointer_type(value_type) && b.is_pointer_type(param_type)
 		&& b.m.type_store.types[param_type].elem_type == value_type {
@@ -11488,7 +11503,7 @@ fn (b &Builder) fn_signature_has_receiver(name string, explicit_arg_count int) ?
 	return none
 }
 
-fn (b &Builder) should_pass_ident_addr_for_ptr_param(addr ValueID, param_type TypeID) bool {
+fn (b &Builder) should_pass_ident_addr_for_ptr_param(addr ValueID, param_type TypeID, allow_pointer_slot bool) bool {
 	if param_type <= 0 || param_type >= b.m.type_store.types.len {
 		return false
 	}
@@ -11496,9 +11511,9 @@ fn (b &Builder) should_pass_ident_addr_for_ptr_param(addr ValueID, param_type Ty
 	if param.kind != .ptr_t {
 		return false
 	}
-	// A mutable pointer parameter receives the caller's pointer slot. Ordinary
-	// pointer parameters receive the slot's value instead.
-	if b.value_type(addr) == param_type {
+	// V mutable pointer parameters receive the caller's pointer slot. C pointer
+	// parameters receive the slot's value, including opaque pointer conversions.
+	if allow_pointer_slot && b.value_type(addr) == param_type {
 		return true
 	}
 	arg_type := b.deref_type(addr)

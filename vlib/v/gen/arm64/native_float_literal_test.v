@@ -105,10 +105,80 @@ fn main() {
     if *unsafe { &u64(&literal) } != u64(0x3ff4000000000000) { C.exit(13) }
     if "${literal / 1000.0:.5f}" != "0.00125" { C.exit(14) }
 }
+
 ')!
 		compiled := os.exec([@VEXE, '-gc', 'none', '-nocache', '-b', 'arm64', '-o', output, path])
 		assert compiled.exit_code == 0, compiled.output
 		result := os.exec([output])
 		assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
+	}
+}
+
+fn test_native_float_formatting_matches_c_rounding_and_shortest_decimal_expansion() {
+	$if macos && arm64 {
+		path := os.join_path(os.vtmp_dir(), 'arm64_float_format_parity_${os.getpid()}.v')
+		c_output := path.all_before_last('.') + '_c'
+		native_output := path.all_before_last('.') + '_native'
+		defer {
+			os.rm(path) or {}
+			os.rm(c_output) or {}
+			os.rm(native_output) or {}
+		}
+		mut source := 'module main\nimport strconv\nimport math\nfn main() {\n'
+		mut cases := []string{}
+		precisions := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+			35, 40, 200]
+		values := ['1.25', '-1.25', '1.125', '-1.125', '2.15', '-2.15', '2.675', '0.125', '0.005',
+			'-0.005', '0.0005', '9.95', '-9.95', '9.995', '-9.995', '99.95', '999.5', '0.1',
+			'1.2345678901234567', '1e23', '-1e23', '0.0', 'math.copysign(0.0, -1.0)', 'math.inf(1)',
+			'math.inf(-1)', 'math.nan()']
+		for typ in ['f64', 'f32'] {
+			for value in values {
+				for precision in precisions {
+					expression := '${typ}(${value})'
+					format := '${expression}:.${precision}f'
+					source += "println('" + r'${' + format + "}')\n"
+					cases << format
+				}
+			}
+			for value in ['1e23', '-1e23', '1.234e23', '-1.234e23', '1e20', '1e-6', '1e-7', '1.234e-7',
+				'1e-20', '0.0', 'math.copysign(0.0, -1.0)', 'math.inf(1)', 'math.inf(-1)', 'math.nan()',
+				if typ == 'f32' { 'math.max_f32' } else { 'math.max_f64' }, if typ == 'f32' {
+					'math.smallest_non_zero_f32'
+				} else {
+					'math.smallest_non_zero_f64'
+				}] {
+				for suffix in ['', '_with_dot'] {
+					expression := 'strconv.${typ}_to_str_l${suffix}(${typ}(${value}))'
+					source += 'println(${expression})\n'
+					cases << expression
+				}
+			}
+		}
+		for value in ['0.0', 'math.copysign(0.0, -1.0)', 'math.inf(1)', 'math.inf(-1)', 'math.nan()'] {
+			source += "println('" + r'${' + value + ":.40}')\n"
+			cases << '${value}:.40'
+		}
+		source += '}\n'
+		os.write_file(path, source)!
+		for backend, output in {
+			'c':     c_output
+			'arm64': native_output
+		} {
+			compiled := os.exec(['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-gc', 'none',
+				'-nocache', '-cc', 'clang', '-b', backend, '-o', output, path])
+			assert compiled.exit_code == 0, compiled.output
+		}
+		reference := os.exec([c_output])
+		assert reference.exit_code == 0, reference.output
+		native := os.exec([native_output])
+		assert native.exit_code == 0, native.output
+		expected_lines := reference.output.split_into_lines()
+		actual_lines := native.output.split_into_lines()
+		assert actual_lines.len == cases.len, native.output
+		assert expected_lines.len == cases.len, reference.output
+		for index, expected in expected_lines {
+			assert actual_lines[index] == expected, '${cases[index]}: native=${actual_lines[index]}, C=${expected}'
+		}
 	}
 }

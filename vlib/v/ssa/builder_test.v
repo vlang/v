@@ -496,6 +496,68 @@ fn native_thread_function_calls(m &Module, f Function) []string {
 	return calls
 }
 
+fn test_native_spawn_noreturn_call_terminates_the_worker_only() {
+	m := native_thread_test_module('noreturn_spawn', 'module main
+fn C.exit(int)
+@[noreturn]
+fn stop() { C.exit(1) }
+fn main() { job := spawn stop(); job.wait() }
+', false)
+	main_function := m.funcs.filter(it.name == 'main')[0]
+	assert 'pthread_create' in native_thread_function_calls(m, main_function)
+	for block_id in main_function.blocks {
+		block := m.blocks[block_id]
+		if block.name.starts_with('thread_failed_') {
+			continue
+		}
+		for value_id in block.instrs {
+			assert m.instrs[m.values[value_id].index].op != .unreachable
+		}
+	}
+	worker := m.funcs.filter(it.name.starts_with('__ssa_spawn_'))[0]
+	instrs := m.blocks[worker.blocks[0]].instrs
+	mut checked_call := false
+	for index, value_id in instrs {
+		instruction := m.instrs[m.values[value_id].index]
+		if instruction.op == .call_indirect {
+			assert index + 1 == instrs.len - 1
+			assert m.instrs[m.values[instrs[index + 1]].index].op == .unreachable
+			checked_call = true
+		}
+	}
+	assert checked_call
+}
+
+fn test_native_c_opaque_pointer_local_supplies_its_value() {
+	m := native_thread_test_module('opaque_pointer', "module main
+fn C.strtol(&char, &&char, int) i64
+fn main() {
+    mut ends := [&char(unsafe { nil })]
+    target := ends.data
+    _ = C.strtol(c'123x', target, 10)
+}
+", false)
+	main_function := m.funcs.filter(it.name == 'main')[0]
+	mut checked_call := false
+	for block_id in main_function.blocks {
+		for value_id in m.blocks[block_id].instrs {
+			instruction := m.instrs[m.values[value_id].index]
+			if instruction.op != .call || m.values[instruction.operands[0]].name != 'strtol' {
+				continue
+			}
+			argument := m.values[instruction.operands[2]]
+			assert argument.kind == .instruction
+			cast := m.instrs[argument.index]
+			assert cast.op == .bitcast
+			loaded := m.values[cast.operands[0]]
+			assert loaded.kind == .instruction
+			assert m.instrs[loaded.index].op == .load
+			checked_call = true
+		}
+	}
+	assert checked_call
+}
+
 fn test_native_spawn_runs_aggregate_call_in_worker_and_joins_result() {
 	m := native_thread_test_module('aggregate', '
 struct Payload { first i64 second i64 third i64 }

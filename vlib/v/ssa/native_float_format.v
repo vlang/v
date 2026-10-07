@@ -5,21 +5,26 @@ fn (mut b Builder) register_native_float_format_helpers() {
 	b.register_extern('snprintf', b.i32_type, [ptr_i8, b.u64_type, ptr_i8])
 	b.register_extern('fabs', b.f64_type, [b.f64_type])
 	b.register_extern('floor', b.f64_type, [b.f64_type])
+	b.register_extern('pow', b.f64_type, [b.f64_type, b.f64_type])
 	b.register_extern('strtod', b.f64_type, [ptr_i8, b.m.type_store.get_ptr(ptr_i8)])
 	b.register_extern('atoi', b.i32_type, [ptr_i8])
 	b.register_extern('free', b.void_type, [ptr_i8])
+	decimal_id := b.register_synthetic_function('v3_float_decimal', b.str_type,
+		[b.str_type, b.i32_type, b.i32_type])
+	b.generate_native_float_decimal_body(decimal_id)
+	fixed_id := b.register_synthetic_function('v3_f64_fixed', b.str_type,
+		[b.f64_type, b.i32_type])
 	for name, format in {
-		'v3_f64_fixed':   '%.*f'
 		'v3_f64_exp':     '%.*e'
 		'v3_f64_general': '%.*g'
 	} {
-		mut params := [b.f64_type, b.i32_type]
-		if name != 'v3_f64_fixed' {
-			params << b.i32_type
-		}
+		params := [b.f64_type, b.i32_type, b.i32_type]
 		id := b.register_synthetic_function(name, b.str_type, params)
-		b.generate_native_float_format_body(id, format, name != 'v3_f64_fixed')
+		b.generate_native_float_format_body(id, format)
 	}
+	shortest_id := b.register_synthetic_function('v3_f64_shortest', b.str_type, [b.f64_type])
+	b.generate_native_shortest_float_body(shortest_id, b.f64_type, false)
+	b.generate_native_float_fixed_body(fixed_id)
 	trimmed_id := b.register_synthetic_function('v3_f64_trimmed', b.str_type,
 		[b.f64_type, b.i32_type])
 	b.generate_native_float_trimmed_body(trimmed_id)
@@ -34,58 +39,31 @@ fn (mut b Builder) register_native_float_format_helpers() {
 
 // generate_native_float_format_body uses the platform formatter with an exact
 // allocation size. The C variadic ABI carries precision and the floating value.
-fn (mut b Builder) generate_native_float_format_body(func_id int, format string, has_upper bool) {
+fn (mut b Builder) generate_native_float_format_body(func_id int, format string) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	entry := b.m.add_block(func_id, 'float_format_entry')
 	value := b.func_add_argument(func_id, b.f64_type, 'value')
 	precision := b.func_add_argument(func_id, b.i32_type, 'precision')
 	format_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(ptr_i8))
-	value_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.f64_type))
 	lower_format := b.m.add_value(.string_literal, ptr_i8, format, 0)
 	lower_pointer := b.block_instr1(.bitcast, entry, ptr_i8, lower_format)
 	b.block_instr2(.store, entry, b.void_type, lower_pointer, format_slot)
-	b.block_instr2(.store, entry, b.void_type, value, value_slot)
 	ready := b.m.add_block(func_id, 'float_format_ready')
 	zero32 := b.m.get_or_add_const(b.i32_type, '0')
-	if has_upper {
-		upper := b.func_add_argument(func_id, b.i32_type, 'upper')
-		use_upper := b.block_instr2(.ne, entry, b.i1_type, upper, zero32)
-		uppercase := b.m.add_block(func_id, 'float_format_upper')
-		b.block_instr3(.br, entry, b.void_type, use_upper, ValueID(uppercase), ValueID(ready))
-		upper_format := b.m.add_value(.string_literal, ptr_i8, format.to_upper_ascii(), 0)
-		upper_pointer := b.block_instr1(.bitcast, uppercase, ptr_i8, upper_format)
-		b.block_instr2(.store, uppercase, b.void_type, upper_pointer, format_slot)
-		b.block_instr1(.jmp, uppercase, b.void_type, ValueID(ready))
-	} else {
-		// V rounds a precision-zero fixed value away from zero at a half tie.
-		zero_float := b.m.get_or_add_const(b.f64_type, '0.0')
-		zero_precision := b.block_instr2(.eq, entry, b.i1_type, precision, zero32)
-		nonzero_value := b.block_instr2(.ne, entry, b.i1_type, value, zero_float)
-		needs_rounding := b.block_instr2(.and_, entry, b.i1_type, zero_precision, nonzero_value)
-		round := b.m.add_block(func_id, 'float_format_round')
-		negative := b.m.add_block(func_id, 'float_format_negative')
-		b.block_instr3(.br, entry, b.void_type, needs_rounding, ValueID(round), ValueID(ready))
-		fabs_ref := b.m.add_value(.func_ref, b.f64_type, 'fabs', b.fn_ids['fabs'])
-		absolute := b.block_instr2(.call, round, b.f64_type, fabs_ref, value)
-		half := b.m.get_or_add_const(b.f64_type, '0.5')
-		adjusted := b.block_instr2(.fadd, round, b.f64_type, absolute, half)
-		floor_ref := b.m.add_value(.func_ref, b.f64_type, 'floor', b.fn_ids['floor'])
-		rounded := b.block_instr2(.call, round, b.f64_type, floor_ref, adjusted)
-		b.block_instr2(.store, round, b.void_type, rounded, value_slot)
-		is_negative := b.block_instr2(.lt, round, b.i1_type, value, zero_float)
-		b.block_instr3(.br, round, b.void_type, is_negative, ValueID(negative), ValueID(ready))
-		negative_one := b.m.get_or_add_const(b.f64_type, '-1.0')
-		negative_rounded := b.block_instr2(.fmul, negative, b.f64_type, negative_one, rounded)
-		b.block_instr2(.store, negative, b.void_type, negative_rounded, value_slot)
-		b.block_instr1(.jmp, negative, b.void_type, ValueID(ready))
-	}
+	upper := b.func_add_argument(func_id, b.i32_type, 'upper')
+	use_upper := b.block_instr2(.ne, entry, b.i1_type, upper, zero32)
+	uppercase := b.m.add_block(func_id, 'float_format_upper')
+	b.block_instr3(.br, entry, b.void_type, use_upper, ValueID(uppercase), ValueID(ready))
+	upper_format := b.m.add_value(.string_literal, ptr_i8, format.to_upper_ascii(), 0)
+	upper_pointer := b.block_instr1(.bitcast, uppercase, ptr_i8, upper_format)
+	b.block_instr2(.store, uppercase, b.void_type, upper_pointer, format_slot)
+	b.block_instr1(.jmp, uppercase, b.void_type, ValueID(ready))
 	chosen_format := b.block_instr1(.load, ready, ptr_i8, format_slot)
-	formatted_value := b.block_instr1(.load, ready, b.f64_type, value_slot)
 	snprintf_ref := b.m.add_value(.func_ref, b.i32_type, 'snprintf', b.fn_ids['snprintf'])
 	nil_buffer := b.m.get_or_add_const(ptr_i8, '0')
 	zero_size := b.m.get_or_add_const(b.u64_type, '0')
 	needed := b.m.add_instr(.call, ready, b.i32_type,
-		[snprintf_ref, nil_buffer, zero_size, chosen_format, precision, formatted_value])
+		[snprintf_ref, nil_buffer, zero_size, chosen_format, precision, value])
 	has_result := b.block_instr2(.ge, ready, b.i1_type, needed, zero32)
 	allocate := b.m.add_block(func_id, 'float_format_allocate')
 	failure := b.m.add_block(func_id, 'float_format_failed')
@@ -98,9 +76,68 @@ fn (mut b Builder) generate_native_float_format_body(func_id int, format string,
 	malloc_ref := b.m.add_value(.func_ref, b.void_type, 'malloc', b.fn_ids['malloc'])
 	out := b.block_instr2(.call, allocate, ptr_i8, malloc_ref, size)
 	b.m.add_instr(.call, allocate, b.i32_type,
-		[snprintf_ref, out, size, chosen_format, precision, formatted_value])
+		[snprintf_ref, out, size, chosen_format, precision, value])
 	result := b.emit_make_string(allocate, out, len, 0)
 	b.block_instr1(.ret, allocate, b.void_type, result)
+}
+
+// Fixed interpolation follows strconv's decimal rounding, then truncates or pads
+// the shortest representation of the adjusted value rather than its binary digits.
+fn (mut b Builder) generate_native_float_fixed_body(func_id int) {
+	entry := b.m.add_block(func_id, 'float_fixed_entry')
+	value := b.func_add_argument(func_id, b.f64_type, 'value')
+	precision := b.func_add_argument(func_id, b.i32_type, 'precision')
+	bits := b.native_float_bits(entry, value)
+	mask := b.m.get_or_add_const(b.u64_type, '9218868437227405312')
+	exponent := b.block_instr2(.and_, entry, b.u64_type, bits, mask)
+	nonfinite := b.block_instr2(.eq, entry, b.i1_type, exponent, mask)
+	special := b.m.add_block(func_id, 'float_fixed_special')
+	finite := b.m.add_block(func_id, 'float_fixed_finite')
+	b.block_instr3(.br, entry, b.void_type, nonfinite, ValueID(special), ValueID(finite))
+	shortest_ref := b.m.add_value(.func_ref, b.str_type, 'v3_f64_shortest', b.fn_ids['v3_f64_shortest'])
+	special_text := b.block_instr2(.call, special, b.str_type, shortest_ref, value)
+	b.block_instr1(.ret, special, b.void_type, special_text)
+	precision_slot := b.block_instr0(.alloca, finite, b.m.type_store.get_ptr(b.i32_type))
+	b.block_instr2(.store, finite, b.void_type, precision, precision_slot)
+	zero32 := b.m.get_or_add_const(b.i32_type, '0')
+	negative_precision := b.block_instr2(.lt, finite, b.i1_type, precision, zero32)
+	default_precision := b.m.add_block(func_id, 'float_fixed_default_precision')
+	mut prepare := b.m.add_block(func_id, 'float_fixed_prepare')
+	b.block_instr3(.br, finite, b.void_type, negative_precision, ValueID(default_precision), ValueID(prepare))
+	six := b.m.get_or_add_const(b.i32_type, '6')
+	b.block_instr2(.store, default_precision, b.void_type, six, precision_slot)
+	b.block_instr1(.jmp, default_precision, b.void_type, ValueID(prepare))
+	requested := b.block_instr1(.load, prepare, b.i32_type, precision_slot)
+	max_precision := b.m.get_or_add_const(b.i32_type, '35')
+	below_max := b.block_instr2(.lt, prepare, b.i1_type, requested, max_precision)
+	clamped_ready, clamped := b.native_float_choice(func_id, prepare, b.i32_type, below_max,
+		requested, max_precision)
+	prepare = clamped_ready
+	float_precision := b.block_instr1(.sitofp, prepare, b.f64_type, clamped)
+	zero_float := b.m.get_or_add_const(b.f64_type, '0.0')
+	negative_power := b.block_instr2(.fsub, prepare, b.f64_type, zero_float, float_precision)
+	ten := b.m.get_or_add_const(b.f64_type, '10.0')
+	pow_ref := b.m.add_value(.func_ref, b.f64_type, 'pow', b.fn_ids['pow'])
+	power := b.block_instr3(.call, prepare, b.f64_type, pow_ref, ten, negative_power)
+	half := b.m.get_or_add_const(b.f64_type, '0.5')
+	rounder := b.block_instr2(.fmul, prepare, b.f64_type, half, power)
+	fabs_ref := b.m.add_value(.func_ref, b.f64_type, 'fabs', b.fn_ids['fabs'])
+	absolute := b.block_instr2(.call, prepare, b.f64_type, fabs_ref, value)
+	adjusted := b.block_instr2(.fadd, prepare, b.f64_type, absolute, rounder)
+	chosen := b.block_instr2(.call, prepare, b.str_type, shortest_ref, adjusted)
+	shift63 := b.m.get_or_add_const(b.u64_type, '63')
+	sign := b.block_instr2(.lshr, prepare, b.u64_type, bits, shift63)
+	negative := b.block_instr1(.trunc, prepare, b.i32_type, sign)
+	decimal_ref := b.m.add_value(.func_ref, b.str_type, 'v3_float_decimal', b.fn_ids['v3_float_decimal'])
+	result := b.block_instr4(.call, prepare, b.str_type, decimal_ref, chosen, requested, negative)
+	chosen_slot := b.block_instr0(.alloca, prepare, b.m.type_store.get_ptr(b.str_type))
+	b.block_instr2(.store, prepare, b.void_type, chosen, chosen_slot)
+	data_field := b.block_struct_field_ptr(prepare, chosen_slot, b.str_type, 0)
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	data := b.block_instr1(.load, prepare, ptr_i8, data_field)
+	free_ref := b.m.add_value(.func_ref, b.void_type, 'free', b.fn_ids['free'])
+	b.block_instr2(.call, prepare, b.void_type, free_ref, data)
+	b.block_instr1(.ret, prepare, b.void_type, result)
 }
 
 // generate_native_float_trimmed_body trims trailing mantissa zeros and preserves
@@ -108,9 +145,29 @@ fn (mut b Builder) generate_native_float_format_body(func_id int, format string,
 fn (mut b Builder) generate_native_float_trimmed_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
-	entry := b.m.add_block(func_id, 'float_trim_entry')
+	begin := b.m.add_block(func_id, 'float_trim_entry')
 	value := b.func_add_argument(func_id, b.f64_type, 'value')
 	precision := b.func_add_argument(func_id, b.i32_type, 'precision')
+	zero_float := b.m.get_or_add_const(b.f64_type, '0.0')
+	zero_value := b.block_instr2(.eq, begin, b.i1_type, value, zero_float)
+	zero_block := b.m.add_block(func_id, 'float_trim_zero_value')
+	entry := b.m.add_block(func_id, 'float_trim_nonzero')
+	b.block_instr3(.br, begin, b.void_type, zero_value, ValueID(zero_block), ValueID(entry))
+	bits := b.native_float_bits(zero_block, value)
+	shift63 := b.m.get_or_add_const(b.u64_type, '63')
+	sign := b.block_instr2(.lshr, zero_block, b.u64_type, bits, shift63)
+	zero_bits := b.m.get_or_add_const(b.u64_type, '0')
+	negative_zero := b.block_instr2(.ne, zero_block, b.i1_type, sign, zero_bits)
+	negative_block := b.m.add_block(func_id, 'float_trim_negative_zero')
+	positive_block := b.m.add_block(func_id, 'float_trim_positive_zero')
+	b.block_instr3(.br, zero_block, b.void_type, negative_zero, ValueID(negative_block), ValueID(positive_block))
+	for block, text in {
+		negative_block: '-0'
+		positive_block: '0'
+	} {
+		zero_text := b.m.add_value(.string_literal, b.str_type, text, 0)
+		b.block_instr1(.ret, block, b.void_type, zero_text)
+	}
 	s_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.str_type))
 	i_slot := b.block_instr0(.alloca, entry, ptr_i64)
 	dot_slot := b.block_instr0(.alloca, entry, ptr_i64)
@@ -128,9 +185,11 @@ fn (mut b Builder) generate_native_float_trimmed_body(func_id int) {
 	at_least_low := b.block_instr2(.ge, entry, b.i1_type, absolute, low)
 	below_high := b.block_instr2(.lt, entry, b.i1_type, absolute, high)
 	normal_range := b.block_instr2(.and_, entry, b.i1_type, at_least_low, below_high)
-	zero_float := b.m.get_or_add_const(b.f64_type, '0.0')
-	is_zero := b.block_instr2(.eq, entry, b.i1_type, value, zero_float)
-	use_fixed := b.block_instr2(.or_, entry, b.i1_type, normal_range, is_zero)
+	abs_bits := b.native_float_bits(entry, absolute)
+	exponent_mask := b.m.get_or_add_const(b.u64_type, '9218868437227405312')
+	exponent := b.block_instr2(.and_, entry, b.u64_type, abs_bits, exponent_mask)
+	nonfinite := b.block_instr2(.eq, entry, b.i1_type, exponent, exponent_mask)
+	use_fixed := b.block_instr2(.or_, entry, b.i1_type, normal_range, nonfinite)
 	fixed := b.m.add_block(func_id, 'float_trim_fixed')
 	exp := b.m.add_block(func_id, 'float_trim_exp')
 	adjust := b.m.add_block(func_id, 'float_trim_precision')

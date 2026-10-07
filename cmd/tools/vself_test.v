@@ -369,14 +369,22 @@ fn test_arm64_self_build_preserves_native_options_and_full_cli() {
 		assert result.output.contains('-no-memory-limit'), result.output
 		assert_vself_preserves_full_cli(result.output)
 	}
-	for extra in [[]string{}, ['-prod']] {
-		mut limited_args := ['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', '-b', 'arm64',
-			'-memory-limit', '16384', '-o', '/tmp/vself_arm64_limited_test']
-		limited_args << extra
-		limited := os.exec(limited_args)
-		assert limited.exit_code == 0, limited.output
-		assert limited.output.contains('-memory-limit 16384'), limited.output
-		assert !limited.output.contains('-no-memory-limit'), limited.output
+	for limit_flag in ['-memory-limit', '--memory-limit'] {
+		for extra in [[]string{}, ['-prod']] {
+			mut limited_args := ['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', '-b', 'arm64',
+				limit_flag, '16384', '-o', '/tmp/vself_arm64_limited_test']
+			limited_args << extra
+			limited := os.exec(limited_args)
+			assert limited.exit_code == 0, limited.output
+			assert limited.output.contains('${limit_flag} 16384'), limited.output
+			assert !limited.output.contains('-no-memory-limit'), limited.output
+			mut inherited_args := ['env', 'VFLAGS=-b arm64 ${limit_flag} 16384', 'VEXE=${noop}',
+				tool, 'self', '-o', '/tmp/vself_arm64_inherited_limit_test']
+			inherited_args << extra
+			inherited := os.exec(inherited_args)
+			assert inherited.exit_code == 0, inherited.output
+			assert !inherited.output.contains('-no-memory-limit'), inherited.output
+		}
 	}
 	vflags_result := os.exec(['env', 'VFLAGS=-b arm64', 'VEXE=${noop}', tool, 'self', '-o',
 		'/tmp/vself_arm64_vflags_test'])

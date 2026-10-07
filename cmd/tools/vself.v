@@ -70,7 +70,8 @@ fn main() {
 	}
 	effective_args = effective_self_build_args(args)
 	if !fastc_self_build && ('-prod' in effective_args || arm64_self_build)
-		&& (!arm64_self_build || '-memory-limit' !in effective_args)
+		&& (!arm64_self_build
+			|| ('-memory-limit' !in effective_args && '--memory-limit' !in effective_args))
 		&& '-no-memory-limit' !in effective_args
 		&& '--no-memory-limit' !in effective_args {
 		// Production C generation and native compiler rebuilds without allocation

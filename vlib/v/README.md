@@ -36,6 +36,8 @@ Native macOS executables use a 64 MiB main stack, matching the C backend's linke
 for recursive compiler passes.
 Runtime constant initializers run once, after their dependencies. The runtime also provides
 process capture, pthread spawning and waiting, exit callbacks, and string-formatting helpers.
+Native fixed-point interpolation follows the C backend's decimal rounding and padding policy.
+Long float conversions expand the selected shortest decimal directly, including large exponents.
 For callers building SSA directly, `ssa.BuildOptions.thread_stack_size` sets the stack size
 for spawned pthreads in bytes. Its default is 8 MiB; zero uses the pthread default.
 The native SSA backend currently uses a 32-bit `int`, including array and string header
@@ -206,8 +208,8 @@ The driver monitors compiler memory throughout the build. Ordinary builds stop a
 compiler-tree and self-host builds stop at 9984 MiB, leaving extra sampling headroom below a
 10 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
-current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit or 
-`-memory-limit` to set your own.
+current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit or
+`-memory-limit`/`--memory-limit` to set your own.
 A memory-limit failure flushes its diagnostic and immediately exits with status 1. Process-exit
 callbacks are skipped because compiler workers may still be using their allocation arenas.
 Backend type queries discard transient function smartcasts after scoped specialization,
@@ -215,7 +217,8 @@ so generic builds with small worker counts do not retain freed map storage.
 C-backend compiler and `v self` builds use `-prealloc` when their target and selected C
 compiler support it, enabling the disposable stage arenas that keep compiler self-hosting
 within that ceiling. ARM64 backend self-builds use libc allocation without these arenas.
-`v -b arm64 self` disables the default memory limit; an explicit `-memory-limit` is preserved.
+`v -b arm64 self` disables the default memory limit; an explicit `-memory-limit` or
+`--memory-limit` is preserved.
 Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.
