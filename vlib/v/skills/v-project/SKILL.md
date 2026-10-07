@@ -1,10 +1,14 @@
 ---
 name: v-project
-description: How to create and initialize a V project with `v new` and `v init`, and what each template produces. Use when starting a new project, scaffolding a module, or asked what `v new` or `v init` do. Covers the three templates, where their flags go, the v.mod prompt, and the resulting layout. Does not cover the build loop (see v-workflow), the language rules (see v-lang), or the wider command surface (see v-tools).
+description: Create V projects with v new or v init and choose a binary, library or web template.
 license: MIT
 ---
 
 # Creating a V project
+
+Use this when starting a project, scaffolding a module, or choosing a template.
+For building and testing, see `v-workflow`; for language rules, see `v-lang`; for
+other commands, see `v-tools`.
 
 Two commands, one decision: `v new` makes a directory, `v init` works in the one
 you are already in.
@@ -17,19 +21,19 @@ you are already in.
 
 Both take the same three template flags, and both create a `v.mod`.
 
-## The flags go after `new`
+## Put template flags before the project name
 
-This is the first thing that goes wrong. The template flags belong to `v new`,
-so they come after it:
+Template flags belong to the `new` or `init` subcommand. For `new`, put them
+after `new` and before the project name:
 
 ```bash
 v new myapp           # executable, the default
-v new mylib --lib     # library
-v new myapp --web     # veb web app
+v new --lib mylib     # library
+v new --web myapp     # veb web app
 ```
 
-`v new --lib myapp` fails with *"too many arguments"*: `--lib` is read as a
-second project name.
+`v new mylib --lib` fails with *"too many arguments"*: flag parsing stops at the
+project name, so the later flag is read as another argument.
 
 ## What each template makes
 
@@ -55,9 +59,10 @@ Module {
 ```
 
 Creating one starts a prompt for the description, version and license. **The
-prompt only runs when stdin is a terminal.** Piped or redirected — in CI, or
-from a script — the defaults are used and `<name>` is required. So a
-non-interactive run is:
+prompt only runs when stdin is a terminal.** With piped or redirected stdin,
+the defaults are used. A non-interactive
+`v new` requires the project name; `v init` derives it from the current directory.
+For example:
 
 ```bash
 v new myapp < /dev/null
@@ -70,13 +75,13 @@ runs as part of setup.
 
 ```bash
 cd myapp
-v run .          # build and run
+v run .          # build and run an executable or web project
 v -check .       # type-check only
 v test .         # run the tests
 ```
 
-The module name is `main` for the executable and web templates, and the project
-name for the library template, so it matches the directory the file sits in.
+The module name is `main` for executable and web templates. For a library, the
+module name is the project name.
 
 ## Resource Routing
 
@@ -88,8 +93,8 @@ name for the library template, so it matches the directory the file sits in.
 
 ```bash
 v new <name>          # executable project in <name>/
-v new <name> --lib    # library project
-v new <name> --web    # veb project
+v new --lib <name>    # library project
+v new --web <name>    # veb project
 v init                # project in the current directory
 v init --lib          # library in the current directory
 ```

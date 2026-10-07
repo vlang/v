@@ -39,10 +39,10 @@ tests/<fn>_test.v
 v.mod
 ```
 
-`<name>.v`:
+For a project named `mylib`, `mylib.v` contains:
 
-```v
-module <name>
+```v oksyntax
+module mylib
 
 // square calculates the second power of `x`
 pub fn square(x int) int {
