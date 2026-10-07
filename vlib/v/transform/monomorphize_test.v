@@ -938,3 +938,36 @@ fn test_record_monomorph_cache_spec_replaces_existing_entry() {
 	assert spec.decl_key == 'main.f'
 	assert spec.module == 'main'
 }
+
+fn test_parameterized_typeof_display_preserves_source_and_caller_names() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.active_generic_params = ['T']
+	for source, expected in {
+		'Box[T]':       'Box[other.Payload]'
+		'local.Box[T]': 'local.Box[other.Payload]'
+		'&Box[T]':      '&Box[other.Payload]'
+		'T':            'other.Payload'
+	} {
+		child := a.add_node(flat.Node{ kind: .ident, value: source })
+		start := a.children.len
+		a.children << child
+		node := flat.Node{ kind: .typeof_expr, children_start: start, children_count: 1 }
+		assert t.generic_comptime_typeof_display_name(node, ['other.Payload'],
+			'other.Payload') == expected
+	}
+}
+
+fn test_parameterized_typeof_value_display_preserves_source_names() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.active_generic_params = ['T']
+	node := flat.Node{ kind: .typeof_expr, value: 'Box[T]' }
+	assert t.generic_comptime_typeof_display_name(node, ['other.Payload'],
+		'local.Box[other.Payload]') == 'Box[other.Payload]'
+	marker := flat.Node{ kind: .typeof_expr, value: generic_type_name_marker('T') }
+	assert t.generic_comptime_typeof_display_name(marker, ['other.Payload'],
+		'other.Payload') == 'other.Payload'
+}

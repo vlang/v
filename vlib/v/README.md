@@ -1,5 +1,10 @@
 # V compiler
 
+Generic `typeof` metadata identifies parameterized types with their concrete spellings across
+modules. Local composite type expressions keep their source spelling in `.name`; transported type
+parameters retain the caller's qualified name. Nested `typeof` of a type's key, value, element, or
+index metadata preserves the reflected member's type.
+
 The default V compiler uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
