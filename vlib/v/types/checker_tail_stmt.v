@@ -15801,7 +15801,11 @@ fn type_recent_hash_slot(typ Type) (u64, int) {
 fn type_value_words(typ &Type) (u64, u64, int) {
 	words := unsafe { &u64(voidptr(typ)) }
 	w0 := unsafe { words[0] }
-	w1 := unsafe { words[1] }
+	mut w1 := unsafe { words[1] }
+	$if native ? {
+		// Native sums store each variant in its own pointer slot after the tag.
+		w1 = if w0 == 0 { u64(0) } else { unsafe { words[int(w0)] } }
+	}
 	return w0, w1, int(((w0 >> 4) ^ w1) & 2047)
 }
 
