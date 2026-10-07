@@ -17,6 +17,12 @@ not. Explicit `-building-v` builds still validate assignments, field access, and
 
 For a C compiler failure, V prints the saved output when available, without compiling
 again, before retrying. It is labeled `C compiler output from the default V compiler:`.
+Internal arguments used to restart the default compiler are removed before launching
+the compatibility compiler, so a prior implicit TCC warning cannot cause an unknown-argument error.
+Option values and arguments passed to a program remain intact during this filtering.
+
+Literal-output programs retain the array iteration helpers used by Linux backtrace formatting.
+For example, `v -show-timings examples/hello_world.v` builds without a missing `array__get` symbol.
 
 If V diagnostics were deferred while a failure marker was armed, V replays only the
 default compiler with fallback disabled to display them. This diagnostic replay is
@@ -51,6 +57,11 @@ have a failed default compilation to display.
 When a compatibility compiler must be built, V searches PATH for `make`, then `gmake`.
 On Windows it also accepts MSYS2's `mingw32-make`. Install GNU make and ensure that
 MSYS2's make executable and `sh` are on PATH: the `make v1` target uses POSIX shell recipes.
+
+The `-vls-mode` compatibility protocol suppresses successful on-demand installation progress
+so the first response contains only the requested compiler output. Installation failures still
+include the installer's output and a failing exit status. Other commands retain installation
+progress.
 
 If a build needs a missing bundled Boehm GC archive, V reports the missing library
 before invoking the C compiler. Reinstall V to restore the bundled libraries, or

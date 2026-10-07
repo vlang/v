@@ -51,6 +51,11 @@ v mcp uninstall --all           # remove it from every client that has it
 Naming no client writes nothing, which is what makes `--print` the default
 shape rather than a flag to remember.
 
+The printed JSON is a complete object when the file does not exist, a top-level
+member when the client's server key is absent, and a quoted server member when
+the key is already present. Read failures are reported. Printing keeps project
+scope restrictions and identifies files that the installer will not create.
+
 ### The clients
 
 | Client | User file | Project file | Key |
@@ -91,23 +96,40 @@ The config file is edited textually, beside the servers the client already has.
 A `json.decode`/`json.encode` round trip would reorder every key, because V maps
 are unordered, and would quietly drop anything the decoder does not model. So:
 
-- A file that is not plain JSON — comments, trailing commas — is **reported, not
-  rewritten**. These files are meant to be edited by hand, and losing a comment
-  to gain an entry is a bad trade.
+- Line comments and complete block comments around server entries are preserved during
+  textual installation and removal. Comment markers inside strings remain string values.
+- Invalid JSON, trailing commas, and unterminated block comments are reported and left
+  unchanged.
+- A valid JSON value whose top level is not an object is left untouched. The
+  error identifies the missing root object.
 - A file with no top-level key for the client is not refused: the key goes in,
   holding the entry, as the first member of the root object. A key whose value
   is not an object is reported rather than guessed at.
-- An entry that is already there is not added twice.
+- An entry that is already there stays unchanged, and installation succeeds.
+  When its command can be read, the installer prints its executable and arguments.
+  If the executable path differs from this compiler, it names this compiler and
+  suggests uninstall/install commands to move the entry. These commands keep
+  `--project` when the entry belongs to the project configuration and invoke
+  this compiler by its full path, even when `v` on `PATH` names another compiler.
+  Windows guidance uses PowerShell syntax.
 - Zed's user-level file is never created from nothing, only added to if it
   exists.
-- `v mcp uninstall` leaves a file that is not plain JSON alone too, says the
+- `v mcp uninstall` leaves a file with invalid JSON or trailing commas alone too, says the
   entry has to be removed by hand, and exits with status 1.
 - A file is never left half-written: the new text goes to a temporary file
   beside it, which then replaces it in one step. A symlinked config stays a
   symlink, and keeps its permissions.
 
-Whenever the entry is not written, `v mcp install` prints it for pasting by hand
-and exits with status 1.
+When a file cannot be parsed after removing comments, `v mcp install` leaves it unchanged
+and prints the
+client's top-level member for pasting by hand. If that key already exists, merge the
+`vlang` server member into it instead of adding a second key. Other failures report
+why the file could not be edited. Refused installations exit with status 1.
+
+The registered command uses the executable named by `VEXE` when available. If that
+path is missing or is not an executable file, it tries the compiler path recorded when the
+tool was built. Directories and non-executable files are skipped. Paths are resolved
+before registration, and the `.exe` form is preferred on Windows.
 
 Nothing else on your machine is touched: the entry names the compiler that is
 running the tool, so it keeps working after `PATH` changes, and no token or

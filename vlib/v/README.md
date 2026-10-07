@@ -1,5 +1,10 @@
 # V compiler
 
+Generic `typeof` metadata identifies parameterized types with their concrete spellings across
+modules. Local composite type expressions keep their source spelling in `.name`; transported type
+parameters retain the caller's qualified name. Nested `typeof` of a type's key, value, element, or
+index metadata preserves the reflected member's type.
+
 The default V compiler uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
@@ -8,6 +13,16 @@ backends: a direct flat-AST-to-C backend, a scanner-to-C fast path, a native
 ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
+
+Inside generic methods, callable parameters and local bindings take precedence over methods
+with the same name. Implicit receiver calls are resolved only when no local binding shadows
+the method name.
+
+Callable parameters and local function values in generic functions take precedence over
+module functions with the same name, including calls from closures that capture the callable.
+
+Function types used as generic struct arguments retain open parameter and return types until
+instantiation, including when the generic function is declared in an imported module.
 
 V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
 all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
@@ -23,9 +38,14 @@ follow their uses or appear in inactive compile-time branches. Assembly directiv
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
-global definitions. `$if` compile-time conditionals are resolved directly in the
-parser. The parser evaluates the condition, parses only the taken branch, and
-skips the other, so no AST nodes or transformer pass is needed for `$if` blocks.
+global definitions. The parser resolves platform flags and known literal `$if` conditions,
+parsing only the taken branch. String guards that depend on imported constants are resolved
+before declaration collection. Parallel file parsing retains computed constant names and defers
+their unproved guards, including guards on constants selected by earlier guards.
+Metadata reflection headers do not create runtime method references. A user module named
+`closure` can therefore be imported without requiring the compiler's closure runtime.
+Reflection values, immutable reflection locals, and generic
+type conditions retain `comptime_if` nodes until the transformer can select their branch.
 `#include` and `#flag` directives inside `$if` blocks are handled correctly: the
 scanner consumes the entire directive line as a single token, preventing the
 parser from reading past block boundaries. File selection filters out
@@ -36,6 +56,16 @@ builtin function bodies are skipped during C code generation. Maps use the
 builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until V
 can compile the full builtin map.v.
+
+Methods on an alias are resolved using the receiver expression's alias, including calls on
+parameters inside a method of another alias of the same underlying type.
+
+An explicit `.str()` call on a generic struct pointer preserves the result of its
+user-defined pointer-receiver method. Pointer interpolation still adds its reference prefix,
+and automatic pointer stringification retains its existing prefix and nil handling.
+
+Variadic spreads accept array aliases, including struct fields and aliases of other array
+aliases. Each spread contributes the array's elements to the variadic argument list.
 
 ## Compiler dispatch
 
@@ -478,8 +508,10 @@ All `vlib/builtin/` files (38 files: both `.v` and `.c.v`) are parsed first to
 collect struct, enum, type alias, interface, C function, and global definitions.
 `$if` compile-time conditionals (`$if !no_bounds_checking`,
 `$if gcboehm_opt ?`, `$if freestanding`, etc.) are resolved inline during
-parsing. The parser evaluates the condition, parses only the taken branch, and
-skips the other, so no `comptime_if` AST nodes reach the transformer or backends.
+parsing. The parser evaluates these flags, parses only the taken branch, and skips the other.
+Conditions requiring reflection, immutable reflection locals, or generic types remain in the
+AST for later evaluation. Static string declaration guards are finalized after import parsing;
+no undecided reflection string condition is silently dropped by a backend.
 
 After parsing the input file, imports are resolved recursively: the driver scans
 for `import_decl` nodes, resolves module paths, parses module `.v` and `.c.v`
@@ -499,6 +531,9 @@ instead of string-based type checks:
 `resolve_type(NodeId) Type` infers types from AST nodes. `c_type(Type) string`
 lowers to C type strings only at final emission. Lexical scopes store
 `map[string]Type` with parent-chain lookups.
+
+Pointer aliases retain their indirection when dereferenced, including aliases of
+`&map[K]V` used as the container of a `for` loop.
 
 `C.` structs and globals are recognized as extern C types and excluded from code
 generation. Function bodies from builtins are skipped during C code generation;
@@ -652,6 +687,10 @@ skipped during C code generation; C runtime functions are provided via a compact
 preamble.
 
 Measured on macOS (Apple Silicon), warm runs. V1 built from `~/code/v5/v` (V 0.5.1).
+
+Import aliases in type expressions are normalized to full module paths once.
+A module path can begin with the alias itself, including in nested generic heap
+initializers, without repeated expansion or compiler recursion.
 
 Function literals in constant struct initializers are lowered to callable helpers
 through address and parenthesis wrappers, including `const h = &Struct{...}`.

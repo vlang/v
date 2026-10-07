@@ -1182,6 +1182,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 			// into the enclosing cgen arena rather than the retained item arena.
 			g.str_lits = clone_cgen_string_list(g.str_lits)
 			g.str_lit_ids = clone_cgen_string_int_map(g.str_lit_ids)
+			g.specialized_method_c_names = clone_cgen_string_map(g.specialized_method_c_names)
 			g.fn_ptr_types = clone_cgen_string_map(g.fn_ptr_types)
 			g.used_fn_ptr_types = clone_cgen_string_bool_map(g.used_fn_ptr_types)
 			g.c_extern_refs = clone_cgen_string_bool_map(g.c_extern_refs)
@@ -2877,6 +2878,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		shared_param_index_empty:           g.shared_param_index_empty
 		has_shared_params:                  g.has_shared_params
 		fn_decl_mut_receivers:              g.fn_decl_mut_receivers
+		specialized_method_c_names:         g.specialized_method_c_names
 		fn_decl_ret_types:                  g.fn_decl_ret_types
 		non_generic_fn_names_by_module:     g.non_generic_fn_names_by_module
 		generic_fn_keys_by_short:           g.generic_fn_keys_by_short

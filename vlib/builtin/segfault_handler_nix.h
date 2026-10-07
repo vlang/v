@@ -15,6 +15,16 @@
 #if !defined(_WIN32) && !defined(V_SEGFAULT_HANDLER_NIX_H)
 #define V_SEGFAULT_HANDLER_NIX_H
 
+// Split builds keep the signal actions and their helpers in the owner unit.
+#define V_PARALLEL_CC_STATIC_STORAGE_HANDLED 1
+#if !defined(V_PARALLEL_CC) || defined(V_PARALLEL_CC_OUT_0)
+
+#if defined(V_PARALLEL_CC)
+#define V_SEGFAULT_HANDLER_SCOPE
+#else
+#define V_SEGFAULT_HANDLER_SCOPE static
+#endif
+
 #include <errno.h>
 #include <signal.h>
 #include <stddef.h>
@@ -367,7 +377,7 @@ static void v_segfault_install_signal(int sig) {
 // v_install_segfault_handler is called once, at the start of the main thread, from
 // builtin_init. `main_argv` is the argv of C's main, which the startup code
 // places above the frames of main on the initial stack.
-static void v_install_segfault_handler(void* fallback, void* main_argv) {
+V_SEGFAULT_HANDLER_SCOPE void v_install_segfault_handler(void* fallback, void* main_argv) {
 	// Sanitizers report stack overflows themselves; they are excluded at compile time.
 	int install_segv = v_segfault_save_previous(SIGSEGV, &v_segfault_previous[0]);
 	int install_bus = v_segfault_save_previous(SIGBUS, &v_segfault_previous[1]);
@@ -409,10 +419,17 @@ static void v_install_segfault_handler(void* fallback, void* main_argv) {
 
 #else
 
-static void v_install_segfault_handler(void* fallback, void* main_argv) {
+V_SEGFAULT_HANDLER_SCOPE void v_install_segfault_handler(void* fallback, void* main_argv) {
 	(void)fallback;
 	(void)main_argv;
 }
+
+#endif
+#undef V_SEGFAULT_HANDLER_SCOPE
+
+#else
+
+void v_install_segfault_handler(void* fallback, void* main_argv);
 
 #endif
 #endif

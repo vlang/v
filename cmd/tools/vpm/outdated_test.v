@@ -65,5 +65,6 @@ fn test_outdated() {
 	assert output.contains('pcre'), output
 	assert output.contains('spytheman.vtray'), output
 	assert output.contains('nedpals.args'), output
-	assert !output.contains('libsodium'), output
+	// The version table includes installed modules even when their checkout is current.
+	assert output.contains('libsodium'), output
 }
