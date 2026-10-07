@@ -1,5 +1,6 @@
 module progress
 
+import term
 import time
 
 fn test_bar_counting() {
@@ -119,7 +120,7 @@ fn test_render_never_reaches_last_column() {
 					elapsed: 83 * time.second
 					rate:    1234.5
 				}, width)
-				assert utf8_str_visible_length(line) <= width - 1
+				assert term.printable_len(line) <= width - 1
 			}
 		}
 	}
@@ -128,7 +129,7 @@ fn test_render_never_reaches_last_column() {
 fn test_render_length_zero_fills_terminal() {
 	mut b := Bar.new(100, BarOptions{ length: 0 })
 	line := b.render(Snapshot{ value: 10, max: 100, rate: 1.0 }, 80)
-	assert utf8_str_visible_length(line) == 79
+	assert term.printable_len(line) == 79
 }
 
 fn test_render_shrinks_bar_before_cutting_text() {
@@ -139,7 +140,7 @@ fn test_render_shrinks_bar_before_cutting_text() {
 	line := b.render(Snapshot{ value: 50, max: 100, rate: 1.0 }, 50)
 	assert line.starts_with('name ')
 	assert line.contains(']') // the frame survived: the bar was squeezed, not truncated
-	assert utf8_str_visible_length(line) <= 49
+	assert term.printable_len(line) <= 49
 }
 
 fn test_set_text() {

@@ -1,5 +1,6 @@
 module progress
 
+import term
 import time
 
 fn ms(n int) time.Duration {
@@ -55,7 +56,7 @@ fn test_spinner_has_no_bar_columns() {
 // is multi-byte)
 fn text_column(line string) int {
 	i := line.index('x') or { return -1 }
-	return utf8_str_visible_length(line[..i])
+	return term.printable_len(line[..i])
 }
 
 fn test_spinner_text_does_not_jitter_when_frames_differ_in_width() {
@@ -104,7 +105,7 @@ fn test_spinner_shortens_text_but_keeps_frame_and_time() {
 		show_elapsed: true
 	})
 	line := s.render(7 * time.second, false, 20)
-	assert utf8_str_visible_length(line) <= 19
+	assert term.printable_len(line) <= 19
 	assert line.starts_with('- a very')
 	assert line.contains('…')
 	assert line.ends_with(' 00:07')
@@ -120,7 +121,7 @@ fn test_spinner_never_reaches_last_column() {
 			})
 			for t in [0, 90, 180, 1000] {
 				line := s.render(ms(t), false, width)
-				assert utf8_str_visible_length(line) <= width - 1
+				assert term.printable_len(line) <= width - 1
 			}
 		}
 	}

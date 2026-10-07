@@ -1,6 +1,7 @@
 module progress
 
 import strings
+import term
 
 fn draw_to_string(s Style, f f64, cells int) string {
 	mut sb := strings.new_builder(32)
@@ -37,6 +38,6 @@ fn test_cut_to_counts_columns_not_runes() {
 	assert cut_to('abc', 10) == 'abc'
 	assert cut_to('abc', 0) == ''
 	// each emoji is two columns wide: three would be six columns
-	assert utf8_str_visible_length(cut_to('🌑🌒🌓', 5)) <= 5
-	assert utf8_str_visible_length(cut_to('🌑🌒🌓', 1)) == 0 // cannot fit even one
+	assert term.printable_len(cut_to('🌑🌒🌓', 5)) <= 5
+	assert term.printable_len(cut_to('🌑🌒🌓', 1)) == 0 // cannot fit even one
 }

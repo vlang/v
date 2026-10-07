@@ -2,6 +2,7 @@ module progress
 
 import arrays
 import math
+import term
 import time
 
 // SpinnerOptions configures one spinner. Every field is optional, and it is a
@@ -65,7 +66,7 @@ fn new_spinner(opts SpinnerOptions) &Spinner {
 	// to a common width). Strip them and let render() pad uniformly, so the gap
 	// before the text is the same for every frame set.
 	o.frames = o.frames.map(it.trim_right(' '))
-	w := math.max(utf8_str_visible_length(o.done_frame), arrays.max(o.frames.map(utf8_str_visible_length(it))) or {
+	w := math.max(term.printable_len(o.done_frame), arrays.max(o.frames.map(term.printable_len(it))) or {
 		0
 	})
 	mut s := &Spinner{
@@ -100,17 +101,17 @@ fn (s &Spinner) frame_at(elapsed_ns i64) string {
 fn (mut s Spinner) render(elapsed time.Duration, done bool, term_width int) string {
 	avail := if term_width > 1 { term_width - 1 } else { 79 }
 	glyph := if done { s.opts.done_frame } else { s.frame_at(i64(elapsed)) }
-	pad := s.frame_w - utf8_str_visible_length(glyph)
+	pad := s.frame_w - term.printable_len(glyph)
 	head := if pad > 0 { glyph + ' '.repeat(pad) } else { glyph }
 	tail := if s.opts.show_elapsed { fmt_time(elapsed, s.opts.elapsed_fmt) } else { '' }
 
 	mut text := s.get_text().trim_right(' ')
 	if text.len > 0 {
-		mut room := avail - utf8_str_visible_length(head) - 1 // the space before the text
+		mut room := avail - term.printable_len(head) - 1 // the space before the text
 		if tail.len > 0 {
-			room -= utf8_str_visible_length(tail) + 1 // the space before the time
+			room -= term.printable_len(tail) + 1 // the space before the time
 		}
-		if utf8_str_visible_length(text) > room {
+		if term.printable_len(text) > room {
 			text = if room >= 2 { cut_to(text, room - 1) + '…' } else { '' }
 		}
 	}
@@ -123,7 +124,7 @@ fn (mut s Spinner) render(elapsed time.Duration, done bool, term_width int) stri
 		line += ' ' + tail
 	}
 	line = line.trim_right(' ')
-	if utf8_str_visible_length(line) > avail {
+	if term.printable_len(line) > avail {
 		line = cut_to(line, avail)
 	}
 	return line

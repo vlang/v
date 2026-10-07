@@ -3,6 +3,7 @@ module progress
 import math
 import strings
 import sync.stdatomic
+import term
 import time
 
 // BarOptions configures one bar. Every field is optional, and it is a `@[params]`
@@ -205,14 +206,14 @@ fn (b &Bar) compose(snap Snapshot, text string, cells int) string {
 fn (mut b Bar) render(snap Snapshot, term_width int) string {
 	text := b.get_text()
 	avail := if term_width > 1 { term_width - 1 } else { 79 }
-	over := utf8_str_visible_length(b.compose(snap, text, 0))
+	over := term.printable_len(b.compose(snap, text, 0))
 	mut cells := if b.opts.length > 0 { b.opts.length } else { avail - over }
 	if over + cells > avail {
 		cells = avail - over
 	}
 	cells = math.max(cells, min_cells)
 	mut line := b.compose(snap, text, cells)
-	if utf8_str_visible_length(line) > avail {
+	if term.printable_len(line) > avail {
 		line = cut_to(line, avail)
 	}
 	return line

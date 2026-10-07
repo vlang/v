@@ -40,6 +40,8 @@
 //     SIGINT/SIGTERM hooks registered) only when a live display starts.
 module progress
 
+import term
+
 // The narrowest the bar graphic itself may be squeezed to when the terminal
 // is too small for the requested length.
 const min_cells = 4
@@ -52,13 +54,13 @@ fn cut_to(s string, n int) string {
 	if n <= 0 {
 		return ''
 	}
-	if utf8_str_visible_length(s) <= n {
+	if term.printable_len(s) <= n {
 		return s
 	}
 	mut used := 0
 	mut out := []rune{}
 	for r in s.runes() {
-		w := utf8_str_visible_length(r.str())
+		w := term.printable_len(r.str())
 		if used + w > n {
 			break
 		}
