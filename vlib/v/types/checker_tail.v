@@ -8968,6 +8968,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				name:         ''
 				params:       fn_typ.params.clone()
 				return_type:  fn_typ.return_type
+				is_variadic:  fn_typ.is_variadic
 				params_known: true
 			}
 		}
@@ -9979,6 +9980,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					name:         ''
 					params:       fn_typ.params
 					return_type:  fn_typ.return_type
+					is_variadic:  fn_typ.is_variadic
 					params_known: true
 				}
 			}
@@ -10308,7 +10310,9 @@ fn (tc &TypeChecker) current_receiver_param_method_call_info(base_id flat.NodeId
 		return none
 	}
 	base := tc.a.nodes[int(base_id)]
-	if base.kind != .ident {
+	// Only the receiver parameter can use the enclosing method's receiver type.
+	// Other parameters may be distinct aliases of the same underlying type.
+	if base.kind != .ident || !tc.current_fn_param_is_receiver(base.value) {
 		return none
 	}
 	fn_node := tc.a.nodes[tc.fn_context.node_id]
@@ -11861,19 +11865,22 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) ?VisibleMutationFnDecl {
 	cache_key := '${fallback_mod}\x01${visible_mutation_fn_lookup_name(name)}'
 	if !isnil(tc.visible_mutation_cache) {
-		cache := tc.visible_mutation_cache
-		if visible_mutation_key_is_global(cache_key) {
-			if decl := cache.global_decls[cache_key] {
+		mut cache := tc.visible_mutation_cache
+		for !isnil(cache) {
+			if visible_mutation_key_is_global(cache_key) {
+				if decl := cache.global_decls[cache_key] {
+					return decl
+				}
+			} else if decl := cache.decls[cache_key] {
 				return decl
 			}
-		} else if decl := cache.decls[cache_key] {
-			return decl
-		}
-		if cache.decl_misses[cache_key] {
-			return none
-		}
-		if cache.decl_index_ready {
-			return none
+			if cache.decl_misses[cache_key] {
+				return none
+			}
+			if cache.decl_index_ready {
+				return none
+			}
+			cache = cache.base
 		}
 	}
 	mut cur_mod := ''
@@ -12707,7 +12714,7 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	}
 }
 
-fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) map[string][]int {
+fn (tc &TypeChecker) param_storage_writes_for_decl_unscoped(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) map[string][]int {
 	target_param := tc.visible_mutation_fn_param(decl, target_param_idx) or {
 		return map[string][]int{}
 	}
@@ -12784,6 +12791,10 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 }
 
 fn (tc &TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) []int {
+	if target_param_idx == 0 && tc.visible_mutation_fn_param(decl, 1) == none {
+		// This result excludes the target itself, so no other source can remain.
+		return []int{}
+	}
 	writes := tc.param_storage_writes_for_decl(decl, target_param_idx, mut visiting)
 	mut sources := []int{}
 	for _, params in writes {
@@ -17703,6 +17714,7 @@ fn c_fixed_array_pointee_storage_type(typ Type) Type {
 			Type(FnType{
 				params:      clean.params.map(c_fixed_array_pointee_storage_type(it))
 				params_mut:  clean.params_mut
+				is_variadic: clean.is_variadic
 				return_type: c_fixed_array_pointee_storage_type(clean.return_type)
 			})
 		}
@@ -20235,6 +20247,7 @@ fn (tc &TypeChecker) method_value_type(receiver_name string, method string) ?Typ
 	return Type(FnType{
 		params:      bound_params
 		params_mut:  bound_params_mut
+		is_variadic: tc.fn_variadic[signature] or { false }
 		return_type: ret_type
 	})
 }
@@ -20328,6 +20341,7 @@ fn (tc &TypeChecker) builtin_method_value_type(base_type Type, method string) ?T
 	}
 	return Type(FnType{
 		params:      bound_params
+		is_variadic: info.is_variadic
 		return_type: info.return_type
 	})
 }

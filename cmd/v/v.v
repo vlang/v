@@ -88,6 +88,7 @@ const external_commands = [
 	'up',
 	'update',
 	'upgrade',
+	'vendor',
 	'vet',
 	'vlib-docs',
 	'watch',
@@ -297,7 +298,7 @@ fn launch_ownership_compiler(args []string) {
 		exit(0)
 	}
 	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ['-d', 'ownership',
-		'-gc', 'none']) or {
+		'-gc', 'none', '-prealloc']) or {
 		eprintln('cannot find a writable cache for the V3 ownership compiler')
 		exit(1)
 	}
@@ -384,7 +385,7 @@ fn run_external_tool(args []string, command_index int, command string) {
 			'vcreate'
 		}
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade', 'why' {
+		'upgrade', 'why', 'vendor' {
 			'vpm'
 		}
 		'vlib-docs' {
@@ -692,7 +693,7 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	if diagnostics != '' {
 		eprint(diagnostics)
 	}
-	fallback := ensure_v1_fallback(reason) or {
+	fallback := ensure_v1_fallback(reason, vls_mode) or {
 		report_v3_fallback_unavailable(args, reason, report_state, err.msg(), diagnostics != '')
 		exit(1)
 	}
@@ -1118,7 +1119,7 @@ fn json_quote(value string) string {
 	return out.str()
 }
 
-fn ensure_v1_fallback(reason string) !string {
+fn ensure_v1_fallback(reason string, quiet_install bool) !string {
 	vroot := find_vroot(os.executable()) or {
 		find_vroot(@VEXEROOT) or {
 			return error('${reason}, but the V source tree could not be found. Run `make v1` in the V source directory.')
@@ -1130,25 +1131,44 @@ fn ensure_v1_fallback(reason string) !string {
 	}
 	cache_parent := v1_fallback_cache_parent()!
 	cached_launcher := v1_fallback_cached_launcher(cache_parent)
+	mut install_output := ''
+	install_notice := '${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...'
 	if installed := resolve_v1_fallback(cached_launcher) {
 		return installed
 	} else {
 		make_command := find_make() or {
 			return error('${reason}, but no usable V ${v_version} fallback was found and make is unavailable. ${v1_fallback_make_hint()} Then run `make v1` in `${vroot}`.')
 		}
-		eprintln('${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...')
+		if !quiet_install {
+			eprintln(install_notice)
+		}
 		mut process := os.new_process(make_command)
 		process.set_args(['v1'])
 		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()), cache_parent, cached_launcher))
 		process.set_work_folder(vroot)
+		if quiet_install {
+			// Mini-VLS responses use the diagnostic stream. Keep installer progress
+			// out of that protocol, but retain it if installation fails.
+			process.set_redirect_stdio_merged()
+			process.run()
+			install_output = process.stdout_slurp()
+		}
 		process.wait()
 		code := process.code
 		process.close()
 		if code != 0 {
+			if quiet_install {
+				eprintln(install_notice)
+				eprint(install_output)
+			}
 			return error('`make v1` failed with exit code ${code}. Run it manually in `${vroot}` for more details.')
 		}
 	}
 	return resolve_installed_v1_fallback(fallback, cached_launcher) or {
+		if quiet_install {
+			eprintln(install_notice)
+			eprint(install_output)
+		}
 		return error('`make v1` completed without installing a usable V ${v_version} fallback at `${cached_launcher}`.')
 	}
 }

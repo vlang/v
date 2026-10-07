@@ -4262,7 +4262,8 @@ mut:
 // also reports the first input that cannot be replicated into every cached module
 // object: a native source, an implementation section of a single-header library,
 // or a header that defines symbols with external linkage or keeps static storage.
-// The caches have no owner for such definitions, so those builds stay uncached.
+// Those builds stay uncached, except for the builtin signal handler whose explicit
+// owner protocol keeps its implementation in the program prefix.
 fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, check_replication bool) V3NativeInputClosure {
 	mut result := V3NativeInputClosure{}
 	if check_replication && native_inputs.implementation_define.len > 0 {
@@ -4285,7 +4286,8 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 				expansions[path] = expanded_paths.keys()
 				replicable[path] = !check_replication || (complete
 					&& !cgen.cache_native_input_is_source(path)
-					&& modulecache.c_source_is_replicable(text))
+					&& (modulecache.c_source_is_replicable(text)
+						|| v3_cache_native_input_has_program_owner(path, text, vroot)))
 			}
 			for expanded_path in expansions[path] {
 				closure[expanded_path] = true
@@ -4299,6 +4301,24 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 		result.inputs[module_name] = sorted
 	}
 	return result
+}
+
+// v3_cache_native_input_has_program_owner recognizes only the builtin runtime
+// header whose nonowner branch exposes a declaration instead of private state.
+// Keep this guard in sync if the shipped header changes its ownership protocol;
+// a marker in any other native header never grants cache ownership.
+fn v3_cache_native_input_has_program_owner(path string, source string, vroot string) bool {
+	if os.real_path(path) != os.real_path(os.join_path(vroot, 'vlib', 'builtin',
+		'segfault_handler_nix.h'))
+		|| !source.contains('#define V_PARALLEL_CC_STATIC_STORAGE_HANDLED 1') {
+		return false
+	}
+	protocol := source.split_into_lines().map(it.trim_space()).filter(it.len > 0).join('\n')
+	prototype := 'void v_install_segfault_handler(void* fallback, void* main_argv);'
+	nonowner_first := protocol.contains('#if defined(V_PARALLEL_CC) && !defined(V_PARALLEL_CC_OUT_0)\nextern ${prototype}\n#else')
+	owner_first := protocol.contains('#if !defined(V_PARALLEL_CC) || defined(V_PARALLEL_CC_OUT_0)\n')
+		&& protocol.contains('#else\n${prototype}\n#endif\n#endif')
+	return nonowner_first || owner_first
 }
 
 fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, native_inputs &cgen.CacheNativeInputs, closure &V3NativeInputClosure) bool {
@@ -7909,7 +7929,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 		}
 		params := tc.fn_param_types[name] or { continue }
 		ret := tc.fn_ret_types[name] or { continue }
-		tc.expr_type_values[idx] = restored_fn_value_type(name, params, ret, mut fn_value_types)
+		tc.expr_type_values[idx] = restored_fn_value_type(name, params, ret, tc.fn_variadic[name] or { false }, mut fn_value_types)
 		tc.expr_type_set[idx] = true
 	}
 	mut cur_module := ''
@@ -7966,7 +7986,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						if name.len > 0 {
 							params := tc.fn_param_types[name] or { []types.Type{} }
 							if ret := tc.fn_ret_types[name] {
-								tc.expr_type_values[callee_idx] = restored_fn_value_type(name, params, ret, mut fn_value_types)
+								tc.expr_type_values[callee_idx] = restored_fn_value_type(name, params, ret, tc.fn_variadic[name] or { false }, mut fn_value_types)
 								tc.expr_type_set[callee_idx] = true
 							}
 						}
@@ -7985,7 +8005,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 						&& (tc.resolved_fn_value_name(base_id) or { '' }) == cname {
 						params := tc.fn_param_types[cname] or { []types.Type{} }
 						if ret := tc.fn_ret_types[cname] {
-							tc.expr_type_values[base_idx] = restored_fn_value_type(cname, params, ret, mut fn_value_types)
+							tc.expr_type_values[base_idx] = restored_fn_value_type(cname, params, ret, tc.fn_variadic[cname] or { false }, mut fn_value_types)
 							tc.expr_type_set[base_idx] = true
 						}
 					}
@@ -8001,12 +8021,14 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 	}
 }
 
-fn restored_fn_value_type(name string, params []types.Type, ret types.Type, mut fn_value_types map[string]types.Type) types.Type {
+// restored_fn_value_type preserves the variadic tail in restored expression metadata.
+fn restored_fn_value_type(name string, params []types.Type, ret types.Type, is_variadic bool, mut fn_value_types map[string]types.Type) types.Type {
 	if cached := fn_value_types[name] {
 		return cached
 	}
 	typ := types.Type(types.FnType{
 		params:      params
+		is_variadic: is_variadic
 		return_type: ret
 	})
 	fn_value_types[name] = typ
@@ -11382,6 +11404,7 @@ pub fn run(args []string) {
 			current_parallel_transform = false
 		}
 	}
+	p.resolve_comptime_string_declarations()
 	p.release_source_storage()
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)
@@ -13098,6 +13121,12 @@ pub fn run(args []string) {
 		}
 	} else {
 		// C backend (default)
+		if effective_c_compiler == 'msvc' && !c_only && !output_cross_c {
+			if msg := msvc_inline_asm_error(a, used_fns) {
+				eprintln(msg)
+				exit(1)
+			}
+		}
 		// Large generic user programs retain their transformed AST through cgen.
 		// Bounded serial batches prevent worker snapshots from overlapping that live
 		// set at the memory-limit peak; smaller programs keep the parallel fast path.
@@ -15285,12 +15314,12 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	program_specializations := split.modules['__v3_program_specializations'] or { '' }
 	program_support := split.modules['__v3_program_support'] or { '' }
 	program_generated_support := program_specializations + program_support + main_body
-	main_prefix := prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix, state, true), state, [
+	main_prefix := v3_cached_c_unit_source(prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix, state, true), state, [
 		'main',
-	]), cache_used_fns, program_generated_support, tc, state)
+	]), cache_used_fns, program_generated_support, tc, state), true)
 	dylib_prefix := modulecache.prune_unreferenced_static_string_definitions(main_prefix + program_specializations + program_support)
 	main_source := '#define V3CACHE_PROGRAM_UNIT 1\n' + main_prefix + program_specializations + program_support + main_body
-	main_declarations := prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(split.prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state)
+	main_declarations := v3_cached_c_unit_source(prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(split.prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state), false)
 	tcc_declarations := tcc_cached_main_source(main_declarations, main_body)
 	tcc_main := '#define V3CACHE_PROGRAM_UNIT 1\n' + tcc_declarations + main_body
 	mut object_paths := state.objects.clone()
@@ -16389,6 +16418,7 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	return [
+		'native_owner_protocol=program-prefix-v1',
 		'objective_c=${objective_c}',
 		'c_standard=${c_standard.trim_space()}',
 		'optimization=${opt_flag.trim_space()}',
@@ -16397,6 +16427,17 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 		'interfaces=${interface_impl_signature}',
 		'flags=${flags.join('\\n')}',
 	].join('\n')
+}
+
+// v3_cached_c_unit_source assigns the shipped runtime implementation to the
+// program prefix. Shared declarations and cached module objects remain nonowners.
+fn v3_cached_c_unit_source(source string, owner bool) string {
+	if owner {
+		// A combined cached program can itself be split for parallel C compilation.
+		// Its declaration header must respect the owner selected by that outer split.
+		return '#ifndef V_PARALLEL_CC\n#define V_PARALLEL_CC 1\n#define V_PARALLEL_CC_OUT_0 1\n#endif\n' + source
+	}
+	return '#undef V_PARALLEL_CC_OUT_0\n#define V_PARALLEL_CC 1\n' + source
 }
 
 fn v3_cached_object_wrapper_compile_signature(program_base string, generated_source string) string {
@@ -16477,7 +16518,7 @@ fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard s
 			os.rmdir_all(tmp_dir) or {}
 		}
 	}
-	os.write_file(tmp_source, source)!
+	os.write_file(tmp_source, v3_cached_c_unit_source(source, false))!
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	tmp_object := '${entry.object}.tmp.${unique}'
@@ -17633,6 +17674,74 @@ fn backend_fn_location(a &flat.FlatAst, node flat.Node) string {
 		return '${source_pos}: '
 	}
 	return ''
+}
+
+// msvc_inline_asm_error returns a located diagnostic for the first inline assembly block
+// that the C backend would emit into a translation unit compiled by `cl`. cl.exe has no GNU
+// `__asm__`, so such a block otherwise fails inside the C compiler as
+// `C4013: '__asm__' undefined`, at a line of the generated C. Like unsupported_backend_error
+// it only looks at functions that are used, so assembly in unused library code does not stop
+// a build. File-scope assembly is always emitted, so it is always reported.
+fn msvc_inline_asm_error(a &flat.FlatAst, used_fns map[string]bool) ?string {
+	mut visited := []bool{len: a.nodes.len}
+	for node in a.nodes {
+		if node.kind != .file {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			if msg := msvc_inline_asm_node_error(a, a.child(&node, i), true, mut visited) {
+				return msg
+			}
+		}
+	}
+	mut cur_module := ''
+	for idx, node in a.nodes {
+		if node.kind == .file {
+			cur_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .fn_decl || (node.generic_params().len > 0 && !a.specialized_fn_nodes[idx]) {
+			continue
+		}
+		module_name := a.specialized_fn_modules[idx] or { cur_module }
+		if !transformed_fn_is_used(node.value, module_name, used_fns) {
+			continue
+		}
+		if msg := msvc_inline_asm_node_error(a, flat.NodeId(idx), false, mut visited) {
+			return msg
+		}
+	}
+	return none
+}
+
+// msvc_inline_asm_node_error finds an inline assembly block at or below `id`. At file scope
+// (`top_level`) it only descends through blocks and `$if` branches, the way cgen emits
+// top-level assembly.
+fn msvc_inline_asm_node_error(a &flat.FlatAst, id flat.NodeId, top_level bool, mut visited []bool) ?string {
+	idx := int(id)
+	if idx < 0 || idx >= a.nodes.len || visited[idx] {
+		return none
+	}
+	node := a.nodes[idx]
+	// Declarations that sit directly in a file are not entered from here, and must not be
+	// marked as visited either: the per-function pass has to reach their bodies.
+	if top_level && node.kind !in [.asm_stmt, .block, .comptime_if] {
+		return none
+	}
+	visited[idx] = true
+	if node.kind == .asm_stmt {
+		return '${backend_node_location(a, node)}error: inline assembly is not supported when the C compiler is MSVC (cl.exe has no GNU inline assembly); guard the block with `\$if !msvc`, or link a prebuilt `.obj` instead'
+	}
+	for i in 0 .. node.children_count {
+		if msg := msvc_inline_asm_node_error(a, a.child(&node, i), top_level, mut visited) {
+			return msg
+		}
+	}
+	return none
 }
 
 fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, backend string, diagnose_aggregates bool, fallback_location string, mut visited []bool) ?string {
@@ -20581,6 +20690,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 // resolve_imports parses the modules that the parsed code imports, wave by wave.
 // It continues `implicit_imports`, the scan of seed_implicit_imports.
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming, mut implicit_imports ImplicitImportScan, mut prepared PreparedImports) bool {
+	initial_deferred_imports := p.resolve_comptime_string_declarations()
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
@@ -20700,7 +20810,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		eager_selfhost_imports = false
 	}
 	if prefs.building_v && !prefs.selfhost && allow_parallel && !cache_state.manager.enabled
-		&& !initial_files.any(input_is_v3_compiler_entry(it)) && eager_selfhost_imports {
+		&& !initial_files.any(input_is_v3_compiler_entry(it)) && eager_selfhost_imports
+		&& initial_deferred_imports.len == 0 {
 		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root,
 			parsed_identity_dirs, mut parsed_modules, mut module_path_cache)
 		mut eager_files := []string{}
@@ -20809,15 +20920,30 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut ri_wave_ns := u64(0)
 	mut ri_waves := 0
 	mut pair_cursor := 0
+	mut had_deferred_imports := initial_deferred_imports.len > 0
+	mut resolve_deferred_imports := false
 	for {
 		ri_waves++
 		ri_t0 := time.sys_mono_now()
-		scan_ids, next_pair_cursor := collect_import_scan_ids(a, node_idx, pair_cursor)
+		deferred_imports := p.resolve_comptime_string_declarations()
+		if had_deferred_imports {
+			// A parsed dependency can select imports in an earlier file's guard.
+			node_idx = 0
+			pair_cursor = 0
+			cur_file = first_file
+			cur_module = 'main'
+		}
+		had_deferred_imports = deferred_imports.len > 0
+		mut scan_ids, next_pair_cursor := collect_import_scan_ids(a, node_idx, pair_cursor)
+		if deferred_imports.len > 0 && !resolve_deferred_imports {
+			scan_ids = scan_ids.filter(int(it) !in deferred_imports)
+		}
 		pair_cursor = next_pair_cursor
 		if os.getenv('V3_VERIFY_IMPORT_IDX') != '' {
 			mut full := []i32{}
 			for i in node_idx .. a.nodes.len {
-				if a.nodes[i].kind in [.file, .module_decl, .import_decl] {
+				if a.nodes[i].kind in [.file, .module_decl, .import_decl]
+					&& (resolve_deferred_imports || i !in deferred_imports) {
 					full << i
 				}
 			}
@@ -21178,7 +21304,18 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		// wave's region starts where this one's appends begin.
 		node_idx = a.nodes.len
 		ri_wave_ns += time.sys_mono_now() - ri_t1
+		released_this_wave := resolve_deferred_imports
+		resolve_deferred_imports = false
 		if wave_files.len == 0 {
+			if deferred_imports.len > 0 && !released_this_wave {
+				// A remaining scalar guard can depend on a retained type/thread
+				// declaration selected by later stages. No further dependency can
+				// supply its value, so preserve the existing import resolution for
+				// one wave. Newly parsed modules resume normal guard filtering.
+				resolve_deferred_imports = true
+				had_deferred_imports = true
+				continue
+			}
 			if prefs.verbose {
 				ri_coll_ms := f64(ri_collision_ns) / 1e6
 				ri_wave_ms := f64(ri_wave_ns) / 1e6

@@ -3,7 +3,7 @@ import time
 import v.cmdexec
 
 fn run_show_timings_compiler(args []string) os.Result {
-	mut compiler_args := ['-new-compiler', '-nocolor']
+	mut compiler_args := ['-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-nocolor']
 	compiler_args << args
 	return cmdexec.run(@VEXE, compiler_args)
 }

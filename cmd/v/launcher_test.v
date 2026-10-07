@@ -542,8 +542,75 @@ fn test_cached_fallback_root_is_preferred_when_installed() {
 	if !os.is_executable(fallback) || !os.is_file(root_file) {
 		return
 	}
-	resolved := ensure_v1_fallback('test') or { panic(err) }
+	resolved := ensure_v1_fallback('test', false) or { panic(err) }
 	assert os.dir(resolved) == os.read_file(root_file)!.trim_space()
+}
+
+fn test_vls_fallback_installation_preserves_the_protocol() {
+	$if !windows {
+		base := os.join_path(os.vtmp_dir(), 'vls_fallback_install_${os.getpid()}')
+		os.rmdir_all(base) or {}
+		defer {
+			os.rmdir_all(base) or {}
+		}
+		for mode in ['vls', 'ordinary', 'failed', 'missing'] {
+			root := os.join_path(base, mode)
+			bin := os.join_path(root, 'bin')
+			cache := os.join_path(root, 'cache')
+			release := os.join_path(cache, 'release')
+			launcher := v1_fallback_cached_launcher(cache)
+			for directory in [bin, os.join_path(root, 'vlib', 'v'), os.dir(launcher),
+				os.join_path(release, 'vlib', 'crypto', 'subtle'),
+				os.join_path(release, 'vlib', 'json2')] {
+				os.mkdir_all(directory)!
+			}
+			os.write_file(os.join_path(root, 'GNUmakefile'), '')!
+			dispatcher := os.join_path(root, 'v')
+			os.cp(@VEXE, dispatcher)!
+			os.chmod(dispatcher, 0o755)!
+			os.write_file(launcher, '#!/bin/sh\nexit 1\n')!
+			os.chmod(launcher, 0o755)!
+			compatibility := os.join_path(release, 'v')
+			os.write_file(compatibility, '#!/bin/sh\nif [ "$1" = version ]; then\n  printf "V 0.5.2 legacy\\n"\nelse\n  printf "%s\\n" "$V1_FALLBACK_TEST_RESPONSE" >&2\nfi\n')!
+			os.chmod(compatibility, 0o755)!
+			for name in ['aliasing.v', 'comparison.v'] {
+				os.write_file(os.join_path(release, 'vlib', 'crypto', 'subtle', name), 'module subtle\n')!
+			}
+			os.write_file(os.join_path(release, 'vlib', 'json2', 'json2.v'), 'module json2\n')!
+			os.write_file(os.join_path(release, 'vlib', 'json2', v1_fallback_compatibility_marker), '${v_version}\n')!
+			make := os.join_path(bin, 'make')
+			os.write_file(make, '#!/bin/sh\nprintf "installer stdout\\n"\nprintf "installer stderr\\n" >&2\nif [ "$V1_FALLBACK_TEST_MODE" = failed ]; then exit 7; fi\nif [ "$V1_FALLBACK_TEST_MODE" != missing ]; then\n  printf "%s\\n" "$V1_FALLBACK_TEST_RELEASE" > "$V1_FALLBACK_OUTPUT.vroot"\nfi\n')!
+			os.chmod(make, 0o755)!
+			mut environment := os.environ()
+			environment['PATH'] = bin
+			environment['VFLAGS'] = ''
+			environment['VOSARGS'] = ''
+			environment['V1_FALLBACK_CACHE_DIR'] = cache
+			environment['V1_FALLBACK_TEST_MODE'] = mode
+			environment['V1_FALLBACK_TEST_RELEASE'] = release
+			environment['V1_FALLBACK_TEST_RESPONSE'] = os.join_path(release, 'source.v') + ':10:20'
+			args := if mode == 'ordinary' {
+				['-old-compiler', 'source.v']
+			} else {
+				['-vls-mode', 'source.v']
+			}
+			result := run_launcher_test_process(dispatcher, args, root, environment)
+			if mode == 'vls' {
+				assert result.exit_code == 0, result.output
+				assert result.output.trim_space() == os.join_path(os.real_path(root), 'source.v') + ':10:20', result.output
+			} else {
+				assert result.exit_code == if mode == 'ordinary' { 0 } else { 1 }, result.output
+				assert result.output.contains('running `make v1` now'), result.output
+				assert result.output.contains('installer stdout'), result.output
+				assert result.output.contains('installer stderr'), result.output
+				if mode == 'failed' {
+					assert result.output.contains('failed with exit code 7'), result.output
+				} else if mode == 'missing' {
+					assert result.output.contains('without installing a usable'), result.output
+				}
+			}
+		}
+	}
 }
 
 fn test_fallback_exit_notes_name_the_stage_v_stopped_in() {

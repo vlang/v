@@ -178,3 +178,28 @@ fn test_atof_invalid_syntax() {
 	assert strconv.atof64('1.5units', allow_extra_chars: true)! == 1.5
 	assert strconv.atof64('-0')!.str() == '-0.0'
 }
+
+fn test_atof_rounds_once_with_guard_and_sticky_bits() {
+	// Compare IEEE 754 bits directly, without parsing expected floating-point literals.
+	cases := {
+		'9007199254740993':        u64(0x4340000000000000)
+		'9007199254740995':        u64(0x4340000000000002)
+		'9007199254740997':        u64(0x4340000000000002)
+		'1e23':                    u64(0x44b52d02c7e14af6)
+		'9007199254740993.01':     u64(0x4340000000000001)
+		'9007199254740992.99':     u64(0x4340000000000000)
+		'9007199254740994.99':     u64(0x4340000000000001)
+		'18014398509481983':       u64(0x4350000000000000)
+		'2.2250738585072012e-308': u64(0x0010000000000000)
+		'2.4703282292062327e-324': u64(0x0000000000000000)
+		'2.4703282292062328e-324': u64(0x0000000000000001)
+		'1.7976931348623157e308':  u64(0x7fefffffffffffff)
+	}
+	for input, expected in cases {
+		assert math.f64_bits(strconv.atof64(input)!) == expected, input
+		assert math.f64_bits(strconv.atof64('-' + input)!) == expected | (u64(1) << 63), input
+	}
+	assert math.f64_bits(strconv.atof64('9_007_199_254_740_993')!) == u64(0x4340000000000000)
+	assert math.f64_bits(strconv.atof64('1e23 units', allow_extra_chars: true)!) ==
+		u64(0x44b52d02c7e14af6)
+}
