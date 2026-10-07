@@ -29,6 +29,7 @@ fn encode_array(mut b strings.Builder, input []string) {
 	}
 }
 
+// encode serializes manifest metadata, including catalog and workspaces.
 pub fn encode(manifest Manifest) string {
 	mut b := strings.new_builder(512)
 	b.writeln('Module {')
@@ -54,6 +55,17 @@ pub fn encode(manifest Manifest) string {
 	}
 	b.write_string('\tdependencies: ')
 	encode_array(mut b, manifest.dependencies)
+	if manifest.catalog.len > 0 {
+		b.writeln('\tcatalog: {')
+		for key in manifest.catalog.keys().sorted() {
+			b.writeln('\t\t' + quote(key) + ': ' + quote(manifest.catalog[key]))
+		}
+		b.writeln('\t}')
+	}
+	if manifest.workspaces.len > 0 {
+		b.write_string('\tworkspaces: ')
+		encode_array(mut b, manifest.workspaces)
+	}
 	for key, values in manifest.unknown {
 		b.write_string('\t')
 		b.write_string(key)
