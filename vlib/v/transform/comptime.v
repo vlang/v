@@ -2621,7 +2621,7 @@ fn (t &Transformer) comptime_enum_members(base_type string) []EnumValueMeta {
 // bit index and materialize `1 << index`.
 fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 	checked_values := if isnil(t.tc) {
-		map[string]int{}
+		map[string]i64{}
 	} else {
 		t.tc.comptime_enum_decl_field_values(enum_name)
 	}
