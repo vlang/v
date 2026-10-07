@@ -9972,6 +9972,11 @@ fn (g &FlatGen) call_target_name(id flat.NodeId) string {
 
 @[direct_array_access]
 fn (g &FlatGen) const_fn_call_target_name(node flat.Node) ?string {
+	// Parameters and local callbacks keep their lexical binding, even if another
+	// module publishes a function constant with the same name.
+	if node.kind == .ident && g.selector_base_is_local_value(node.value) {
+		return none
+	}
 	key := g.const_key_for_call_target(node) or { g.const_ref_name_from_node(node) }
 	if key.len == 0 {
 		return none
@@ -15902,6 +15907,15 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	arg_type := g.usable_expr_type(arg_id)
 	child_id := g.a.child(&arg_node, 0)
 	child_type := g.usable_expr_type(child_id)
+	child := g.a.node(child_id)
+	if child.kind == .ident && g.current_param_is_mut(child.value)
+		&& g.tc.c_type(child_type) == g.tc.c_type(expected_base) {
+		// `&value` of an implicit `mut value T` parameter is a pointer value,
+		// just as for a local T. Give the callee a temporary pointer slot.
+		ct := g.tc.c_type(expected_base)
+		g.write('&((${ct}[]){${g.local_decl_cname(child.value)}})[0]')
+		return true
+	}
 	if child_type is types.Pointer && g.tc.c_type(child_type) == g.tc.c_type(expected_base) {
 		return false
 	}
@@ -16335,7 +16349,7 @@ struct CExternForwardDecl {
 }
 
 fn (mut g FlatGen) c_extern_forward_decls() {
-	mut cur_module := ''
+	mut cur_module := 'main'
 	mut cur_file := ''
 	mut decls := map[string]CExternForwardDecl{}
 	mut names := []string{}
@@ -16369,7 +16383,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
-			cur_module = ''
+			cur_module = 'main'
 			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			continue

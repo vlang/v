@@ -3427,7 +3427,7 @@ fn (tc &TypeChecker) choose_translated_if_tail_type(id flat.NodeId, current Type
 
 fn (tc &TypeChecker) translated_integer_literal_type(id flat.NodeId) ?Type {
 	literal := (tc.integer_literal_source(id) or { return none }).replace('_', '').to_lower()
-	value, parse_error := strconv.common_parse_uint2(literal, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(literal, util.v_literal_parse_base(literal), 64)
 	if parse_error != 0 {
 		return none
 	}
@@ -6380,6 +6380,9 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	}
 	if node.value == '\$' {
 		tc.check_comptime_field_selector(id, node, '', ComptimeStaticFieldCases{})
+		return
+	}
+	if tc.check_unbound_instance_method_value(id, node) {
 		return
 	}
 	if typ := tc.enum_selector_type(&node) {
@@ -9357,6 +9360,12 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 		return none
 	}
 	base := tc.a.child_node(&node, 0)
+	// A namespace value can share a function's name; only call syntax selects
+	// that function. Keep the stored value's type and identity for bare selectors.
+	if tc.is_namespace_selector(node, base)
+		&& (tc.global_type_for_selector(node) != none || tc.const_type_for_selector(node) != none) {
+		return none
+	}
 	if base.kind == .ident {
 		if base.value == 'C' {
 			key := 'C.${node.value}'
@@ -9375,7 +9384,16 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 			}
 			return none
 		}
+		for type_name in tc.static_assoc_type_candidates(base.value) {
+			key := '${type_name}.${node.value}'
+			if tc.fn_signature_known(key) {
+				return key
+			}
+		}
 		if key := tc.static_assoc_fn_key_for_base(base.value, node.value) {
+			return key
+		}
+		if key := tc.unbound_instance_method_key(base.value, node.value) {
 			return key
 		}
 		return none
@@ -9395,9 +9413,47 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 			if static_key := tc.static_assoc_fn_key_for_base('${mod_name}.${base.value}', node.value) {
 				return static_key
 			}
+			if instance_key := tc.unbound_instance_method_key('${mod_name}.${base.value}', node.value) {
+				return instance_key
+			}
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) unbound_instance_method_key(type_name string, method string) ?string {
+	if !tc.ident_may_be_type(type_name) && !tc.type_symbol_known(type_name) {
+		return none
+	}
+	receiver := tc.parse_type(type_name)
+	for receiver_type in [receiver, unalias_and_unwrap_pointer_type(receiver)] {
+		for candidate in receiver_method_name_candidates(receiver_type, method, tc.cur_module) {
+			if tc.fn_signature_known(candidate) && !tc.fn_key_is_static_associated(candidate) {
+				return candidate
+			}
+		}
+	}
+	return none
+}
+
+fn (mut tc TypeChecker) check_unbound_instance_method_value(id flat.NodeId, node flat.Node) bool {
+	if tc.ident_is_call_callee_or_generic_base(id) {
+		return false
+	}
+	key := tc.selector_fn_value_key(node) or { return false }
+	if tc.fn_key_is_static_associated(key) || !key.contains('.') || key.starts_with('C.') {
+		return false
+	}
+	if tc.unbound_instance_method_key(key.all_before_last('.'), node.value) == none {
+		return false
+	}
+	if _ := tc.private_declaration(key) {
+		tc.record_error_at(.unknown_field, 'method `${key}` is private', id, tc.node_value_diagnostic_pos(id))
+	}
+	typ := tc.fn_type_from_key(key) or { return false }
+	tc.remember_resolved_fn_value(id, key)
+	tc.register_synth_type(id, typ)
+	return true
 }
 
 fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident string, method string) ?string {
@@ -16115,6 +16171,10 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ == '' {
 		return builtin_void_type
 	}
+	// Exact scalar spellings cannot carry wrappers or nominal type arguments.
+	if is_builtin_type_name(typ) && typ != 'array' && typ != 'map' {
+		return builtin_type_value(typ)
+	}
 	if resolved := tc.type_from_typeof_type_text(typ) {
 		return resolved
 	}
@@ -16297,7 +16357,8 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	// Inspect a nominal name only after parsing its wrappers. Otherwise the last
 	// component of `!module.M` looks generic while the complete wrapper is absent
 	// from the declared-type tables, even though `module.M` is concrete.
-	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
+	if is_generic_placeholder_type(typ)
+		&& (tc.active_generic_param(typ) || !tc.is_known_type_text(typ)) {
 		return unknown_type('generic placeholder `${typ}`')
 	}
 	qtyp := if tc.resolution_type_mode {
@@ -17387,7 +17448,8 @@ mut:
 	call_generation  u32 = 1
 	call_ids         [2048]int
 	call_generations [2048]u32
-	call_infos       [2048]CallInfo
+	// A fixed array expands every CallInfo default into a huge C initializer.
+	call_infos []CallInfo = []CallInfo{len: 2048, init: CallInfo{}}
 }
 
 // arm_body_resolve_memo (re)activates the per-item resolve memo for one work
@@ -17481,6 +17543,29 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 const narrow_integer_type_names = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32',
 	'u64', 'usize', 'rune', 'char']
 
+@[inline]
+fn narrow_integer_type_for_widening(typ Type) bool {
+	if typ is Primitive {
+		if typ.props.has(.boolean) {
+			return false
+		}
+		if typ.props.has(.integer) {
+			return typ.size in [8, 16, 32, 64] || (typ.size == 0 && !typ.props.has(.unsigned))
+		}
+		// Primitive names without an integer/float property default to `int`.
+		return !typ.props.has(.float)
+	}
+	return short_name_view(typ.name()) in narrow_integer_type_names
+}
+
+@[inline]
+fn wide_integer_type_for_widening(typ Type) bool {
+	if typ is Primitive {
+		return !typ.props.has(.boolean) && typ.props.has(.integer) && typ.size == 128
+	}
+	return short_name_view(typ.name()) in ['u128', 'i128']
+}
+
 // widen_mixed_integer_expr_type gives an arithmetic node the 128-bit type of its
 // widest operand. The type recorded for an infix in argument position is the
 // narrower operand's, while the same expression assigned to a variable gets the
@@ -17496,8 +17581,7 @@ fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Typ
 	if node.kind != .infix {
 		return typ
 	}
-	name := short_name_view(typ.name())
-	if name !in narrow_integer_type_names {
+	if !narrow_integer_type_for_widening(typ) {
 		return typ
 	}
 	if node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
@@ -17510,8 +17594,7 @@ fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Typ
 	child_limit := if shift { 1 } else { node.children_count }
 	for i in 0 .. child_limit {
 		child_type := tc.resolve_type(tc.a.child(&node, i))
-		child_name := short_name_view(child_type.name())
-		if child_name in ['u128', 'i128'] {
+		if wide_integer_type_for_widening(child_type) {
 			return child_type
 		}
 	}
@@ -19402,6 +19485,10 @@ struct GenericReceiverMethodPatternMatch {
 // signature, so the pre-transform checker accepts the call. The transformer's
 // monomorphize pass later materialises the concrete method body.
 pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method string) ?CallInfo {
+	if tc.struct_generic_params.len == 0 && tc.type_alias_generic_params.len == 0
+		&& tc.generic_receiver_method_index.len == 0 {
+		return none
+	}
 	lookup_type_name := tc.generic_struct_method_alias_target(type_name)
 	bracket := lookup_type_name.index_u8(`[`)
 	has_type_args := bracket > 0 && lookup_type_name.ends_with(']')
@@ -20487,6 +20574,12 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 			}
 		}
 		if !is_concrete_generic {
+			// Primitive receivers retain any exact declared operator above. Only
+			// named generic structs/aliases can supply the remaining fallback.
+			if receiver_type is Primitive && is_builtin_type_name(lhs_name)
+				&& !tc.primitive_infix_has_generic_receiver_candidate(lhs_name) {
+				continue
+			}
 			info := tc.resolve_generic_struct_method(lhs_name, op_name) or { continue }
 			if info.params.len > 0 && (tc.receiver_compatible(lhs, info.params[0])
 				|| tc.receiver_compatible(receiver_type, info.params[0])) {
@@ -20503,6 +20596,26 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 		}
 	}
 	return none
+}
+
+// Builtin primitive names stay unqualified in qualify_name, including the
+// alias redirect lookup. Preserve raw alias metadata and both selected-import
+// owner spellings before skipping generic_struct_method_base_candidates.
+fn (tc &TypeChecker) primitive_infix_has_generic_receiver_candidate(name string) bool {
+	if name in tc.struct_generic_params || name in tc.type_alias_generic_params
+		|| name in tc.type_aliases {
+		return true
+	}
+	if imported := tc.resolve_selective_import_type_symbol(name) {
+		if imported in tc.struct_generic_params || imported in tc.type_alias_generic_params {
+			return true
+		}
+		short := short_name_view(imported)
+		if short in tc.struct_generic_params || short in tc.type_alias_generic_params {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) infix_operator_return_type(op flat.Op, lhs Type, rhs Type) ?Type {

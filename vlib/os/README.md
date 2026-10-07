@@ -14,6 +14,17 @@ It returns an empty string when the standard input handle is invalid.
 
 ### Path helpers
 
+`is_abs_path` follows the host operating system's path conventions. On Unix,
+a leading `/` identifies an absolute path. On Windows, it accepts drive-rooted
+paths (`C:/x`), UNC paths containing a server and share (`//Host/share`), and
+paths rooted on the current drive (`/x` or `\x`). The last form depends on the
+current drive; this predicate does not promise that the path names a drive.
+A bare doubled separator (`//` or `\\`) is an incomplete UNC path and returns
+false. Both slash styles, including mixed separators, are accepted on Windows.
+
+This preserves V's rooted-path convention; it differs from Go's
+`filepath.IsAbs`, which requires a fully qualified Windows path.
+
 `os.join_path()` and `os.join_path_single()` ignore empty elements and collapse
 repeated separators between elements. For example, joining `a` with `/b` gives
 `a/b` on POSIX or `a\b` on Windows. An absolute first nonempty element keeps its
@@ -166,6 +177,7 @@ When shell syntax is required, invoke the shell explicitly with an argument arra
 A shell still interprets its script as code: use a fixed script with positional
 arguments for data, and never interpolate untrusted values into the script.
 On Windows, shell builtins and batch scripts likewise require an explicit shell.
+For example, `os.exec(['cmd', '/d', '/c', 'echo', 'hello'])` runs the `echo` builtin.
 
 ---
 
@@ -199,6 +211,10 @@ value too, while the ones built on the Win32 API (`os.mkdir`, `os.rmdir`, `os.ls
 `os.symlink` and `os.link`) report a Win32 error code. The `os.error_code_*` constants
 hold one of these codes for a condition, so prefer the predicates over comparing
 `err.code()` with them.
+
+`os.symlink` and `os.link` preserve the Windows API's error code when link creation fails,
+so duplicate targets and missing paths can be classified with these predicates.
+`os.hostname` and `os.loginname` also preserve their Win32 error codes on failure.
 
 ---
 

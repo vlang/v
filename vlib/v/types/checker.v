@@ -1007,6 +1007,8 @@ pub mut:
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
 	is_test                       bool
+	checked_comptime_method_calls map[string]bool
+	comptime_method_calls_by_decl map[int]map[int]bool
 	check_concrete_generic_bodies bool              // `-check` checks the concrete clones of the program's generics for fields and methods their types lack
 	library_instances             int               // the instances of library generics that such a check cloned
 	library_headers               int               // how many of them it cloned without their bodies (see transform.LibraryBodies)
@@ -1113,7 +1115,8 @@ pub mut:
 	declaration_attributes map[int][]string
 	type_declaration_ids   map[string][]int
 mut:
-	cache_lexical_parents bool = true
+	checked_library_body_count int
+	cache_lexical_parents      bool = true
 	// Source-validated bodies consisting solely of a known terminating call.
 	// Their lowered temporaries belong to the exempt argument expression.
 	noalloc_terminal_functions map[string]bool
@@ -1153,6 +1156,11 @@ mut:
 	// short fn name -> first declaring top-level node index, in declaration
 	// order (mirrors the expr_raw_fn_type_text scan's first-match rule).
 	fn_decl_short_name_ids map[string]int
+	// Raw and qualified names use the first matching declaration, including the
+	// main-prefixed raw aliases accepted by recursive-str helper lookup.
+	recursive_str_fn_decl_ids            map[string]int
+	recursive_str_fn_decl_index_size     int = -1
+	recursive_str_fn_decl_index_complete bool
 	// '${file id}\x00${fn name}' for every top-level fn_decl, so a per-call
 	// "does this file declare a bare fn of this name" lookup does not walk the
 	// whole top-level index.
@@ -1335,6 +1343,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		declaration_param_mutability:            map[string][]bool{}
 		strict_map_index_files:                  map[string]bool{}
 		fn_decl_short_name_ids:                  map[string]int{}
+		recursive_str_fn_decl_ids:               map[string]int{}
 		file_bare_fn_names:                      map[string]bool{}
 		file_import_alias_paths:                 map[string]string{}
 		file_import_suffix_paths:                map[string]string{}
@@ -1480,6 +1489,10 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unsupported_generics:           tc.reject_unsupported_generics
 		checker_fixture_mode:                  tc.checker_fixture_mode
 		is_test:                               tc.is_test
+		// Reflection argument caches belong to semantic checking, not lookup or
+		// transform views that may outlive the arena where those caches were made.
+		checked_comptime_method_calls:         map[string]bool{}
+		comptime_method_calls_by_decl:         map[int]map[int]bool{}
 		check_concrete_generic_bodies:         tc.check_concrete_generic_bodies
 		check_generic_bodies:                  tc.check_generic_bodies
 		module_diagnostic_root:                tc.module_diagnostic_root
@@ -1526,6 +1539,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		declaration_param_mutability:          tc.declaration_param_mutability
 		strict_map_index_files:                tc.strict_map_index_files
 		fn_decl_short_name_ids:                tc.fn_decl_short_name_ids
+		recursive_str_fn_decl_ids:             tc.recursive_str_fn_decl_ids
+		recursive_str_fn_decl_index_size:      tc.recursive_str_fn_decl_index_size
+		recursive_str_fn_decl_index_complete:  tc.recursive_str_fn_decl_index_complete
 		file_bare_fn_names:                    tc.file_bare_fn_names
 		file_import_alias_paths:               tc.file_import_alias_paths
 		file_import_suffix_paths:              tc.file_import_suffix_paths
@@ -1545,6 +1561,12 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		type_interner:                         tc.type_interner
 		symbols:                               tc.symbols
 	}
+}
+
+// reset_codegen_smartcasts discards function-local bindings before backend type queries.
+// A scoped transform can leave even an empty map in its disposable arena.
+pub fn (mut tc TypeChecker) reset_codegen_smartcasts() {
+	tc.smartcasts = map[string]Type{}
 }
 
 // fork_for_parallel_codegen returns a complete read-only semantic view with
@@ -2362,16 +2384,28 @@ fn (mut tc TypeChecker) index_declaration_param_mutability(a &flat.FlatAst, entr
 fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
 	tc.static_associated_fn_keys = map[string]bool{}
 	tc.fn_decl_short_name_ids = map[string]int{}
+	tc.recursive_str_fn_decl_ids = map[string]int{}
+	tc.recursive_str_fn_decl_index_complete = true
 	tc.file_bare_fn_names = map[string]bool{}
 	tc.index_fn_names(a, tc.top_level_idx, '')
 }
 
 fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_module string) {
 	mut module_name := start_module
+	mut recursive_str_module := start_module
+	mut recursive_str_file := ''
+	mut recursive_str_module_known := false
 	for index in entries {
 		node := a.nodes[index]
+		if node.kind == .file {
+			recursive_str_file = node.value
+			recursive_str_module_known = node.value in tc.file_modules
+			recursive_str_module = tc.file_modules[node.value] or { '' }
+		}
 		if node.kind == .module_decl {
 			module_name = node.value
+			recursive_str_module = node.value
+			recursive_str_module_known = true
 			continue
 		}
 		if node.kind !in [.fn_decl, .c_fn_decl] {
@@ -2383,6 +2417,8 @@ fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_mod
 				tc.fn_decl_short_name_ids[short_name] = index
 			}
 			tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
+			tc.index_recursive_str_fn_name(node, index, recursive_str_file, recursive_str_module,
+				recursive_str_module_known)
 		}
 		decl_name := if node.kind == .c_fn_decl && !node.value.starts_with('C.') {
 			'C.${node.value}'
@@ -2401,6 +2437,29 @@ fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_mod
 				tc.static_associated_fn_keys[qname] = is_static
 			}
 		}
+	}
+	tc.recursive_str_fn_decl_index_size = tc.top_level_idx.len
+}
+
+fn (mut tc TypeChecker) index_recursive_str_fn_name(node flat.Node, index int, file string, module_name string, module_known bool) {
+	if node.value !in tc.recursive_str_fn_decl_ids {
+		tc.recursive_str_fn_decl_ids[node.value] = index
+	}
+	main_alias := 'main.${node.value}'
+	if main_alias !in tc.recursive_str_fn_decl_ids {
+		tc.recursive_str_fn_decl_ids[main_alias] = index
+	}
+	source_file := tc.a.source_files[node.pos.id] or {
+		tc.recursive_str_fn_decl_index_complete = false
+		return
+	}
+	if source_file.name != file || !module_known {
+		tc.recursive_str_fn_decl_index_complete = false
+		return
+	}
+	qname := checker_qualified_fn_name(module_name, node.value)
+	if qname !in tc.recursive_str_fn_decl_ids {
+		tc.recursive_str_fn_decl_ids[qname] = index
 	}
 }
 
@@ -3498,6 +3557,8 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.visible_mutation_cache = new_visible_mutation_cache()
 	tc.unsafe_c_fns.clear()
 	tc.v_fn_semantic_names.clear()
+	tc.checked_comptime_method_calls.clear()
+	tc.comptime_method_calls_by_decl.clear()
 	tc.has_spawn_expr = -1
 	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
 	tc.file_scope = new_scope(unsafe { nil })
@@ -4320,6 +4381,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 			}
 			.struct_decl {
 				mut fields := []StructField{}
+				old_generic_params := tc.fn_context.generic_params
+				tc.fn_context.generic_params = node.generic_params()
 				mut field_c_abi_fns := map[string]string{}
 				mut shared_field_names := []string{}
 				mut shared_element_field_names := []string{}
@@ -4368,6 +4431,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						is_volatile: source_field_decl_is_volatile(f)
 					}
 				}
+				tc.fn_context.generic_params = old_generic_params
 				qname := tc.qualify_decl_name(node.value)
 				// A `C.` struct denotes a single external C type, but several modules may
 				// mirror it with partial or imprecise field views (e.g. `C.termios` in both
@@ -5242,9 +5306,16 @@ fn (mut tc TypeChecker) resolve_const_types_of(const_exprs map[string]flat.NodeI
 			tc.const_types[name] = fixed_type
 		}
 	}
-	for _ in 0 .. const_exprs.len {
+	// Literal numeric initializers cannot observe another declaration's type.
+	// Resolve them in the first pass only; dependent initializers still use the
+	// original fixed-point loop. This set is local to this collection invocation.
+	mut resolved_numeric := map[string]bool{}
+	for iteration in 0 .. const_exprs.len {
 		mut changed := false
 		for name, expr_id in const_exprs {
+			if iteration > 0 && resolved_numeric[name] {
+				continue
+			}
 			tc.cur_module = tc.const_modules[name] or { '' }
 			tc.cur_file = tc.const_files[name] or { '' }
 			// Const dependencies are not guaranteed to be visited in declaration order.
@@ -5256,6 +5327,10 @@ fn (mut tc TypeChecker) resolve_const_types_of(const_exprs map[string]flat.NodeI
 			new_type = tc.const_type_from_initializer(name, new_type)
 			if new_type is Unknown {
 				continue
+			}
+			if iteration == 0 && !type_contains_unknown(new_type)
+				&& independent_numeric_const_initializer(tc.a, expr_id) {
+				resolved_numeric[name] = true
 			}
 			old_type := tc.const_types[name] or { builtin_void_type }
 			if old_type.name() != new_type.name() {
@@ -9567,6 +9642,13 @@ fn (tc &TypeChecker) specialize_generic_interface_method(type_name string, info 
 // index_overload_call_info returns call metadata for the `[]` or `[]=` overload of `typ`.
 pub fn (tc &TypeChecker) index_overload_call_info(typ Type, setter bool) ?CallInfo {
 	method := if setter { '[]=' } else { '[]' }
+	// The collected suffix index includes the bare name of every receiver method,
+	// including generic declarations. A missing operator has no receiver to resolve.
+	if tc.method_suffix_prescreen && tc.top_level_idx.len > 0
+		&& method !in tc.receiver_method_suffix_index
+		&& '@${method}' !in tc.receiver_method_suffix_index {
+		return none
+	}
 	clean := unwrap_pointer(typ)
 	type_name := resolve_type_name_for_method(clean)
 	if type_name.len == 0 {
@@ -16917,7 +16999,7 @@ fn enum_backing_literal_overflows(literal string, bounds EnumBackingValueBounds)
 	if magnitude.len == 0 {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	if parse_error == -3 {
 		return true
 	}
@@ -16960,7 +17042,7 @@ fn enum_backing_literal_becomes_max(literal string, bounds EnumBackingValueBound
 	if literal[0] == `+` {
 		magnitude = literal[1..]
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	if bounds.is_unsigned {
 		return parse_error == 0 && value == enum_backing_unsigned_max(bounds.bits)
 	}
@@ -17548,7 +17630,10 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 			tc.const_types[qname] = builtin_void_type
 			tc.record_error(.unknown_ident, 'cycle in constant `${field.value}`', cycle_id)
 		}
-		tc.check_node(expr_id)
+		const_type := tc.const_types[qname] or { builtin_void_type }
+		if field.typ.len > 0 || !tc.check_known_numeric_const_initializer(expr_id, const_type) {
+			tc.check_node(expr_id)
+		}
 		if tc.resolve_type(expr_id) is MultiReturn {
 			tc.record_error_at(.assignment_mismatch, 'const declarations do not support multiple return values yet', expr_id, tc.a.nodes[int(expr_id)].pos)
 		}
@@ -18626,6 +18711,7 @@ struct ComptimeStaticValueCase {
 	param_is_mut  []bool
 	// param_is_mut_ref marks explicit `mut param &T` parameters.
 	param_is_mut_ref []bool
+	runtime_dispatch bool
 }
 
 struct ComptimeStaticValueCases {
@@ -18679,7 +18765,7 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	if tc.check_comptime_for_source_type(_id, node) {
 		return
 	}
-	source_is_type := tc.type_name_known(node.typ)
+	source_is_type := tc.type_name_known(tc.instance_type_text(node.typ))
 	source_is_value := if tc.cur_scope == unsafe { nil } {
 		false
 	} else {
@@ -19177,14 +19263,21 @@ fn (tc &TypeChecker) comptime_static_deferred_cases(source string, loop_kind str
 }
 
 fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticValueCases {
-	base_type := tc.comptime_static_for_base_type(source)
+	base_type := tc.instance_type_text(tc.comptime_static_for_base_type(source))
 	clean_type := comptime_static_unwrap_type_text(base_type)
 	generic_base, generic_args, is_generic := generic_type_application_parts(clean_type)
 	if is_generic && !tc.generic_args_are_concrete(generic_args) {
 		return ComptimeStaticValueCases{}
 	}
 	lookup_type := if is_generic { generic_base } else { clean_type }
-	struct_name := tc.comptime_static_struct_name(lookup_type) or {
+	// A forwarded main-owned type is locked as `main.Type` so an imported
+	// helper cannot rebase it. The collected main symbol still has a bare key.
+	canonical_lookup := if lookup_type.starts_with('main.') {
+		tc.parse_type(lookup_type).name()
+	} else {
+		lookup_type
+	}
+	struct_name := tc.comptime_static_struct_name(canonical_lookup) or {
 		return ComptimeStaticValueCases{}
 	}
 	generic_params := if is_generic {
@@ -20088,6 +20181,7 @@ fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Nod
 
 fn (mut tc TypeChecker) check_comptime_static_method_runtime_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	condition_id := tc.a.child(&node, 0)
+	has_metadata := tc.comptime_static_method_condition_has_metadata(condition_id, var_name)
 	mut then_cases := []ComptimeStaticValueCase{}
 	mut else_cases := []ComptimeStaticValueCase{}
 	for item in value_cases.cases {
@@ -20098,8 +20192,12 @@ fn (mut tc TypeChecker) check_comptime_static_method_runtime_if(node flat.Node, 
 				else_cases << item
 			}
 		} else {
-			then_cases << item
-			else_cases << item
+			dispatched := ComptimeStaticValueCase{
+				...item
+				runtime_dispatch: item.runtime_dispatch || has_metadata
+			}
+			then_cases << dispatched
+			else_cases << dispatched
 		}
 	}
 	tc.check_comptime_static_body(condition_id, var_name, loop_kind, field_cases, value_cases)
@@ -20152,6 +20250,23 @@ fn (tc &TypeChecker) comptime_static_method_condition_value(id flat.NodeId, var_
 			true
 		} else {
 			tc.comptime_static_method_condition_value(tc.a.child(node, 1), var_name, item)
+		}
+	}
+	if node.op !in [.eq, .ne, .lt, .le, .gt, .ge] {
+		return none
+	}
+	if left := tc.comptime_static_method_int_value(tc.a.child(node, 0), var_name, item) {
+		right := tc.comptime_static_method_int_value(tc.a.child(node, 1), var_name, item) or {
+			return none
+		}
+		return match node.op {
+			.eq { left == right }
+			.ne { left != right }
+			.lt { left < right }
+			.le { left <= right }
+			.gt { left > right }
+			.ge { left >= right }
+			else { false }
 		}
 	}
 	if node.op !in [.eq, .ne] {

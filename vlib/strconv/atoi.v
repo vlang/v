@@ -30,8 +30,9 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 	return result
 }
 
-// the first returned value contains the parsed value,
-// the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
+// common_parse_uint2 returns the parsed value as its first result.
+// Its second result is 0 on success, positive for syntax errors (including a
+// non-parseable character's index + 1), -2 for a wrong bit size, or -3 for overflow.
 @[direct_array_access]
 pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	if s == '' {
@@ -43,36 +44,25 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	mut start_index := 0
 
 	if base == 0 {
-		// Look for octal, binary and hex prefix.
+		// A leading zero implies octal unless an explicit prefix selects another base.
 		base = 10
 		if s[0] == `0` {
-			ch := if s.len > 1 { s[1] | 32 } else { `0` }
+			base = 8
 			if s.len >= 3 {
+				ch := s[1] | 32
 				if ch == `b` {
 					base = 2
-					start_index += 2
+					start_index = 2
 				} else if ch == `o` {
-					base = 8
-					start_index += 2
+					start_index = 2
 				} else if ch == `x` {
 					base = 16
-					start_index += 2
+					start_index = 2
 				}
-
-				// check for underscore after the base prefix
-				if s[start_index] == `_` {
+				// An underscore may immediately follow an explicit base prefix.
+				if start_index == 2 && s[start_index] == `_` {
 					start_index++
 				}
-			}
-			// manage leading zeros in decimal base's numbers
-			// otherwise it is an octal for C compatibility
-			// TODO: Check if this behaviour is logically right
-			else if s.len >= 2 && (s[1] >= `0` && s[1] <= `9`) {
-				base = 10
-				start_index++
-			} else {
-				base = 8
-				start_index++
 			}
 		}
 	}
@@ -81,6 +71,9 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		bit_size = int_size
 	} else if bit_size < 0 || bit_size > 64 {
 		return u64(0), -2
+	}
+	if start_index == s.len {
+		return u64(0), 1
 	}
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.

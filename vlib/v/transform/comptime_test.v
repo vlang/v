@@ -82,6 +82,139 @@ fn test_comptime_method_receiver_name_normalizes_main_qualification() {
 	assert comptime_method_receiver_matches('App', 'main.App', 'main.App', 'main', 'veb')
 }
 
+fn substitute_reflected_method_receiver(mut t Transformer, receiver flat.NodeId, method MethodMeta) flat.NodeId {
+	name := t.make_ident('method')
+	start := t.a.children.len
+	t.a.children << [receiver, name]
+	selector := t.a.add_node(flat.Node{
+		kind:           .selector
+		value:          '\$'
+		children_start: start
+		children_count: 2
+	})
+	return t.clone_method_subst_scoped(selector, 'method', method, []string{}) or {
+		panic('missing reflected method selector')
+	}
+}
+
+fn test_comptime_method_selector_keeps_unregistered_local_receivers() {
+	for binding in ['unregistered', 'checked', 'registered', 'builtin_shadow', 'checked_builtin_shadow',
+		'checked_generated_shadow'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs['Dummy'] = []types.StructField{}
+		tc.structs['generated'] = []types.StructField{}
+		tc.fn_param_types['Dummy.sample'] = [
+			types.Type(types.Struct{ name: 'Dummy' }),
+			types.Type(types.String{}),
+		]
+		tc.fn_ret_types['Dummy.sample'] = types.Type(types.int_)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		name := match binding {
+			'builtin_shadow' { 'string' }
+			'checked_builtin_shadow' { 'uint' }
+			'checked_generated_shadow' { 'generated' }
+			else { 'd' }
+		}
+		receiver := a.add_val(.ident, name)
+		if binding in ['checked', 'checked_builtin_shadow', 'checked_generated_shadow'] {
+			tc.register_synth_type(receiver, types.Type(types.Struct{ name: 'Dummy' }))
+		} else if binding in ['registered', 'builtin_shadow'] {
+			t.set_var_type(name, 'Dummy')
+		}
+		selector := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
+			name:        'sample'
+			receiver:    'Dummy'
+			module_name: 'main'
+			return_type: 'int'
+			params:      [ParamMeta{ name: 'value', typ: 'string' }]
+		})
+		node := a.node(selector)
+		assert node.kind == .selector, binding
+		assert a.child_node(node, 0).value == name
+		assert comptime_method_selector_marker in node.generic_params()
+	}
+}
+
+fn test_comptime_method_selector_preserves_type_namespace_function_values() {
+	for name in ['Dummy', 'Alias', 'T', 'string', 'generated', 'dep.Dummy', 'receiver'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs['Dummy'] = []types.StructField{}
+		tc.structs['generated'] = []types.StructField{}
+		tc.structs['dep.Dummy'] = []types.StructField{}
+		tc.structs['dep.receiver'] = []types.StructField{}
+		tc.type_aliases['Alias'] = 'Dummy'
+		tc.generated_files['generated.v'] = true
+		tc.file_selective_imports[file_import_key('generated.v', 'receiver')] = ['dep.receiver']
+		receiver_type := match name {
+			'Alias' { 'Dummy' }
+			'receiver' { 'dep.receiver' }
+			else { name }
+		}
+		method_key := '${receiver_type}.sample'
+		param_type := if name == 'string' {
+			types.Type(types.String{})
+		} else {
+			types.Type(types.Struct{ name: receiver_type })
+		}
+		tc.fn_param_types[method_key] = [param_type, types.Type(types.String{})]
+		tc.fn_ret_types[method_key] = types.Type(types.int_)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		t.cur_file = 'generated.v'
+		receiver := a.add_val(.ident, name)
+		if name != 'T' {
+			tc.register_synth_type(receiver, param_type)
+		}
+		value := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
+			name:        'sample'
+			receiver:    receiver_type
+			module_name: 'main'
+			return_type: 'int'
+			params:      [ParamMeta{ name: 'value', typ: 'string' }]
+		})
+		node := a.node(value)
+		assert node.kind == .ident, name
+		assert node.value == method_key
+		fn_type := tc.expr_type(value) or { panic('missing reflected function type') }
+		assert fn_type is types.FnType
+		if fn_type is types.FnType {
+			assert fn_type.params.len == 2
+			assert fn_type.params[0] == param_type
+		}
+	}
+}
+
+fn test_comptime_generated_type_namespace_respects_unlowered_same_type_local() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['receiver'] = []types.StructField{}
+	tc.fn_param_types['receiver.sample'] = [types.Type(types.Struct{ name: 'receiver' })]
+	tc.fn_ret_types['receiver.sample'] = types.Type(types.int_)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	value := a.add_node(flat.Node{ kind: .struct_init, typ: 'receiver' })
+	decl := t.make_decl_assign('receiver', value)
+	receiver := a.add_val(.ident, 'receiver')
+	tc.register_synth_type(receiver, types.Type(types.Struct{ name: 'receiver' }))
+	body := t.make_block([decl, receiver])
+	start := a.children.len
+	a.children << body
+	a.add_node(flat.Node{ kind: .fn_decl, value: 'run', children_start: start, children_count: 1 })
+	t.build_source_parent_index()
+	selector := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
+		name:        'sample'
+		receiver:    'receiver'
+		module_name: 'main'
+		return_type: 'int'
+	})
+	node := a.node(selector)
+	assert node.kind == .selector
+	assert a.child_node(node, 0).value == 'receiver'
+}
+
 fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{
@@ -503,8 +636,8 @@ fn test_comptime_condition_string_literal_members() {
 		"'a)b'.contains ( ')' )":        'true'
 		'"it\'s".contains ( "\'" )':     'true'
 		"'name'.contains ( 'a' + 'b' )": ''
-		"'name'.to_upper ( )":           ''
-		"'name'.to_upper ( ).len":       ''
+		"'name'.to_upper ( )":           "'NAME'"
+		"'name'.to_upper ( ).len":       '4'
 		"'name'.starts_with ( prefix )": ''
 		"name.starts_with ( 'na' )":     ''
 	}
@@ -524,9 +657,7 @@ fn test_comptime_condition_string_literal_members() {
 		}
 		assert got == want, cond
 	}
-	if _ := t.eval_field_cond("'name'.to_upper ( ).len > 3") {
-		assert false, 'a call on a call result should stay undecided'
-	}
+	assert t.eval_field_cond("'name'.to_upper ( ).len > 3") or { false }
 }
 
 fn test_comptime_condition_does_not_compare_expressions_as_text() {
@@ -534,8 +665,8 @@ fn test_comptime_condition_does_not_compare_expressions_as_text() {
 	mut t := Transformer{
 		a: &a
 	}
-	for cond in ["'name'.to_upper ( ) == 'NAME'", "'name'[0] != `n`", "'n' == 'name'.trim ( 'e' )",
-		"'name'.split ( 'a' ) in ['n']", "'name'.index ( 'a' ) < 2"] {
+	for cond in ["'name'.unsupported ( ) == 'NAME'", "'name'[0] != `n`", "'name'.split ( 'a' ) in ['n']",
+		"'name'.index ( 'a' ) < 2"] {
 		if value := t.eval_field_cond(cond) {
 			assert false, 'condition `${cond}` should stay undecided, got ${value}'
 		}
@@ -1006,4 +1137,28 @@ fn test_comptime_method_metadata_reuses_repeated_receiver_lookups() {
 		allocated := gc_heap_usage().total_bytes - before
 		assert allocated < 1024 * 1024, 'repeated method lookups allocated ${allocated} bytes'
 	}
+}
+
+fn test_comptime_string_method_chains_match_builtin_methods() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{ a: &a }
+	for cond in ["'GET /users/:id'.all_after(' ').trim_left('/').starts_with('users')",
+		"'GET /users'.all_before(' ').to_lower() == 'get'", "'a/b/c'.count('/') == 2",
+		"'  x  '.trim_space().to_upper() == 'X'",
+		"'prefix-value'.trim_string_left('prefix-') == 'value'",
+		"'value-suffix'.trim_string_right('-suffix') == 'value'",
+		"'a,b,c'.replace(',', '/').all_after_last('/') == 'c'", "'a/b/c'.all_before_last('/') == 'a/b'",
+		"'name'.trim_right('e').trim_left('n') == 'am'", "'aa'.replace('a', 'x').count('x') == 2"] {
+		assert t.eval_field_cond(cond) or { false }, cond
+	}
+}
+
+fn test_folded_condition_string_keeps_its_own_quotes() {
+	value := "'QUOTED'"
+	text := comptime_cond_string_literal(value)
+	expr := text + '.to_lower()'
+	assert comptime_cond_operand(expr) or { '' } == value.to_lower()
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{ a: &a }
+	assert t.eval_field_cond(expr + ' == ' + comptime_cond_string_literal(value.to_lower())) or { false }
 }

@@ -4,6 +4,69 @@ import v.flat
 import v.types
 import v.token
 
+fn test_fixed_array_reference_iteration_escape_uses_checked_backing_types() {
+	for source in ['foreign_const', 'stale_local', 'synthetic'] {
+		for sliced in [false, true] {
+			mut a := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&a)
+			fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+			mut t := new_transformer(mut a, &tc, map[string]bool{})
+			t.cur_module = 'main'
+			t.set_var_type('out', '[]&int')
+			first := t.make_int_literal(1)
+			second := t.make_int_literal(2)
+			array_start := a.children.len
+			a.children << [first, second]
+			array := a.add_node(flat.Node{
+				kind:           .array_literal
+				typ:            '[2]int'
+				children_start: array_start
+				children_count: 2
+			})
+			decl := t.make_decl_assign('second', array)
+			// The escape prepass runs before declaration lowering registers this local.
+			if source == 'synthetic' {
+				t.set_var_type('second', '[2]int')
+			} else {
+				tc.const_types['time.second'] = types.Type(types.int_)
+				t.collect_const_suffixes()
+				if source == 'stale_local' {
+					t.set_var_type('second', 'int')
+				}
+			}
+			// Source identifiers have checker types, without a lowered local annotation.
+			backing := a.add_val(.ident, 'second')
+			if source != 'synthetic' {
+				tc.register_synth_type(backing, fixed)
+			}
+			container := if sliced {
+				t.make_range_index(backing, t.make_int_literal(0), flat.empty_node, '[]int')
+			} else {
+				backing
+			}
+			if sliced && source != 'synthetic' {
+				tc.register_synth_type(container, types.Type(types.Array{ elem_type: types.Type(types.int_) }))
+			}
+			item := t.make_ident('item')
+			append := t.make_infix(.left_shift, t.make_ident('out'), t.make_prefix(.amp, item))
+			body := t.make_block([t.make_expr_stmt(append)])
+			loop_start := a.children.len
+			a.children << [flat.empty_node, item, container, body]
+			loop := a.add_node(flat.Node{
+				kind:           .for_in_stmt
+				op:             .amp
+				value:          '3'
+				children_start: loop_start
+				children_count: 4
+			})
+			t.mark_escaping_amp_ptrs([decl, loop])
+			assert 'item' in t.escaping_amp_sources, '${source}, sliced: ${sliced}'
+			assert 'second' in t.escaping_amp_sources, '${source}, sliced: ${sliced}'
+			assert 'time.second' !in t.escaping_amp_sources
+		}
+	}
+}
+
 fn test_plain_multi_declaration_copies_promoted_fixed_values_with_their_value_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
