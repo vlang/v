@@ -71,3 +71,18 @@ fn test_owned_field_index_survives_worker_arena_release() {
 		assert owned.field('missing') == none
 	}
 }
+
+fn test_foreign_generic_field_arguments_keep_instantiation_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['rt.Cell'] = ['T']
+	tc.structs['rt.Type'] = []types.StructField{}
+	tc.structs['ck.Type'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'ck'
+	assert t.normalize_field_type('T', 'rt.Cell[[]&Type]') == '[]&ck.Type'
+	assert t.normalize_field_type('T', 'rt.Cell[map[string]&Type]') == 'map[string]&ck.Type'
+	assert t.normalize_field_type('T', 'rt.Cell[[2]&Type]') == '[2]&ck.Type'
+	assert t.normalize_field_type('Type', 'rt.Cell[[]&Type]') == 'rt.Type'
+	assert t.normalize_field_type('T', 'rt.Cell[[]&rt.Type]') == '[]&rt.Type'
+}

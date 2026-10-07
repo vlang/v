@@ -37,6 +37,7 @@ pub mut:
 mut:
 	expand_environment bool // Process arguments are literal, including environment references on Windows
 	merge_stdio        bool // when true, redirect the child's stderr to its stdout pipe
+	reaped             bool // the child's exit status has already been collected
 }
 
 // new_process - create a new process descriptor.

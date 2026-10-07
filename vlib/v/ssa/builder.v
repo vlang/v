@@ -849,8 +849,13 @@ fn (b &Builder) struct_type_id_for_decl(name string, module_name string) TypeID 
 
 // register_consts updates register consts state for ssa.
 fn (mut b Builder) register_consts() {
-	mut cur_module := ''
+	mut cur_module := 'main'
 	for node in b.a.nodes {
+		if node.kind == .file {
+			// A script can omit its module declaration after imported module files.
+			cur_module = 'main'
+			continue
+		}
 		if node.kind == .module_decl {
 			cur_module = b.source_module_name(node)
 			continue
@@ -881,8 +886,12 @@ fn (mut b Builder) register_consts() {
 
 // register_globals updates register globals state for ssa.
 fn (mut b Builder) register_globals() {
-	mut cur_module := ''
+	mut cur_module := 'main'
 	for node in b.a.nodes {
+		if node.kind == .file {
+			cur_module = 'main'
+			continue
+		}
 		if node.kind == .module_decl {
 			cur_module = b.source_module_name(node)
 			continue

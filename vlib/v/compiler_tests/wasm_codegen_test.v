@@ -11,7 +11,8 @@ fn testsuite_begin() {
 		eprintln('> skipping v3 wasm backend tests; set V3_TEST_WASM=1 to run')
 		exit(0)
 	}
-	build := os.exec([vexe, '-gc', 'none', '-compile-backend', 'wasm', '-o', wasm_compiler, v3_src])
+	build := os.exec([vexe, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none',
+		'-compile-backend', 'wasm', '-o', wasm_compiler, v3_src])
 	assert build.exit_code == 0, build.output
 }
 
@@ -899,6 +900,21 @@ fn test_wasm_if_expression_value() {
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_ifexpr')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['10', '1', '-1', '0'])
+}
+
+fn test_wasm_moduleless_numeric_constants_before_and_after_optimization() {
+	assert_wasm_source_before_and_after_optimization('script_numeric_consts', '
+const base = 10
+const answer = base * 4 + 2
+const big = u64(9223372036854775808)
+__global result = answer - 1
+
+fn answer_value() int { return answer }
+fn big_value() u64 { return big }
+fn result_value() int { return result }
+', 'assert.equal(e.answer_value(), 42);
+assert.equal(BigInt.asUintN(64, e.big_value()), 9223372036854775808n);
+assert.equal(e.result_value(), 41);')
 }
 
 fn test_wasm_top_level_const_inlined() {

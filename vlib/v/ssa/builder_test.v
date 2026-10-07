@@ -689,3 +689,39 @@ fn test_native_enum_registration_evaluates_escaped_initializer_references() {
 		assert b.enum_value_for_type('models.Kind', field) or { -1 } == expected, field
 	}
 }
+
+fn test_wasm32_script_constants_reset_module_scope_after_imported_file() {
+	root := os.join_path(os.vtmp_dir(), 'ssa_script_consts_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	library := os.join_path(root, 'dependency.v')
+	script := os.join_path(root, 'main.v')
+	os.write_file(library, 'module dependency\nconst base = 99\n__global imported_result = base\n')!
+	os.write_file(script, 'const base = 10\nconst answer = base * 4 + 2\n__global result = answer - 1\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_file(library)
+	p.parse_file(script)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(p.a)
+	tc.enable_globals = true
+	tc.collect(p.a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	m := build_with_options(p.a, map[string]bool{}, &tc, BuildOptions{
+		target:         TargetData{ ptr_size: 4 }
+		source_modules: {
+			library: 'dependency'
+			script:  'main'
+		}
+	})
+	imported := m.globals.filter(it.name == 'dependency.imported_result')
+	assert imported.len == 1
+	assert imported[0].initial_value == 99
+	for global in m.globals {
+		if global.name == 'result' {
+			assert global.initial_value == 41
+			return
+		}
+	}
+	assert false, 'missing script result global'
+}

@@ -7057,6 +7057,7 @@ fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
 		}
 		return types.Type(types.FnType{
 			params:      params.clone()
+			is_variadic: g.fn_decl_variadic[candidate] or { false }
 			return_type: ret
 		})
 	}
@@ -7065,6 +7066,7 @@ fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
 		ret := g.tc.fn_ret_types[candidate] or { types.Type(types.void_) }
 		return types.Type(types.FnType{
 			params:      params.clone()
+			is_variadic: g.tc.fn_variadic[candidate] or { false }
 			return_type: ret
 		})
 	}
