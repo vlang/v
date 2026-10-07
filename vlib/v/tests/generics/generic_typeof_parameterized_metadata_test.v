@@ -16,3 +16,18 @@ fn test_parameterized_typeof_transported_names_match_explicit_type() {
 	assert model.outer_name[int]() == '&typeof_parameterized_model.Wrap[int]'
 	assert model.outer_name[string]() == rt.name[&model.Wrap[string]]()
 }
+
+fn nested_map_metadata_names[T]() string {
+	return '${typeof(typeof[T]().key_type).name} ${typeof(typeof[T]().value_type).name} ${typeof(typeof[T]().idx).name}'
+}
+
+fn nested_array_metadata_names[T]() string {
+	return '${typeof(typeof[T]().element_type).name} ${typeof(typeof[T]().idx).name}'
+}
+
+fn test_parameterized_typeof_nested_members_keep_their_reflected_types() {
+	assert nested_map_metadata_names[map[u8]string]() == 'u8 string int'
+	assert nested_map_metadata_names[map[string]u64]() == 'string u64 int'
+	assert nested_array_metadata_names[[]rune]() == 'rune int'
+	assert nested_array_metadata_names[[]string]() == 'string int'
+}

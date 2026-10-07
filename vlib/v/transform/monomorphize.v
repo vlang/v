@@ -11335,7 +11335,7 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []str
 	if child.kind == .selector && child.children_count > 0
 		&& child.value in ['idx', 'key_type', 'value_type', 'element_type'] {
 		base_id := t.a.child(&child, 0)
-		if concrete := t.generic_comptime_base_type(base_id, args) {
+		if concrete := t.generic_comptime_type_expr(base_id, args) {
 			if child.value == 'idx' {
 				return 'int'
 			}
