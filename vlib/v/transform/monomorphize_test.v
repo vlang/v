@@ -939,6 +939,19 @@ fn test_record_monomorph_cache_spec_replaces_existing_entry() {
 	assert spec.module == 'main'
 }
 
+fn test_generic_unresolved_function_type_checks_parameters_and_return() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	for typ in ['fn () T', 'fn (T) int', 'fn (value []T) string', 'fn (fn () T) int', 'Cell[fn () T]',
+		'fn () unknown'] {
+		assert t.generic_arg_is_unresolved(typ), typ
+	}
+	for typ in ['fn ()', 'fn () int', 'fn (string) int', 'Cell[fn () int]'] {
+		assert !t.generic_arg_is_unresolved(typ), typ
+	}
+}
+
 fn test_parameterized_typeof_display_preserves_source_and_caller_names() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

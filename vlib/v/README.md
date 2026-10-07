@@ -21,6 +21,9 @@ the method name.
 Callable parameters and local function values in generic functions take precedence over
 module functions with the same name, including calls from closures that capture the callable.
 
+Function types used as generic struct arguments retain open parameter and return types until
+instantiation, including when the generic function is declared in an imported module.
+
 V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
 all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
 and explicit `-b js` invocations. The limited JavaScript compatibility generator remains
