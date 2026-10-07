@@ -4834,6 +4834,11 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 				source.pos.end - kind.len, source.pos.end)
 		}
 	}
+	if !is_string_source {
+		// Metadata headers are stored as text; orphan selectors can otherwise
+		// look like unresolved method values to whole-AST runtime helper scans.
+		p.discard_comptime_branch(source_id)
+	}
 	if invalid_expr {
 		p.skip_block()
 		return flat.empty_node
@@ -6015,10 +6020,8 @@ fn (p &Parser) comptime_subtree_is_directives_only(id flat.NodeId) bool {
 	}
 }
 
-// discard_comptime_branch empties the branch a host-resolved top-level `$if` did
-// not take. Both branches were parsed to find out whether they only held
-// directives, and a stage that scans every AST node instead of walking the file
-// index would otherwise still find the declarations in the unused one.
+// discard_comptime_branch empties a parsed subtree that is no longer retained.
+// Whole-AST scans would otherwise still find discarded declarations or headers.
 fn (mut p Parser) discard_comptime_branch(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
