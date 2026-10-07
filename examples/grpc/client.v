@@ -41,7 +41,11 @@ fn unary(client &grpc.Client) {
 		key:   'answer'
 		value: '42'.bytes()
 	}
-	put_reply := client.unary(kv.path_put, put.encode()) or {
+	put_body := put.encode() or {
+		eprintln('put: could not encode the request: ${err}')
+		return
+	}
+	put_reply := client.unary(kv.kv_method_put, put_body) or {
 		eprintln('put failed: ${err}')
 		return
 	}
@@ -54,7 +58,11 @@ fn unary(client &grpc.Client) {
 	get := kv.GetRequest{
 		key: 'answer'
 	}
-	get_reply := client.unary(kv.path_get, get.encode()) or {
+	get_body := get.encode() or {
+		eprintln('get: could not encode the request: ${err}')
+		return
+	}
+	get_reply := client.unary(kv.kv_method_get, get_body) or {
 		eprintln('get failed: ${err}')
 		return
 	}
@@ -67,7 +75,11 @@ fn unary(client &grpc.Client) {
 	missing_req := kv.GetRequest{
 		key: 'no-such-key'
 	}
-	missing_reply := client.unary(kv.path_get, missing_req.encode()) or {
+	missing_body := missing_req.encode() or {
+		eprintln('missing: could not encode the request: ${err}')
+		return
+	}
+	missing_reply := client.unary(kv.kv_method_get, missing_body) or {
 		eprintln('get failed: ${err}')
 		return
 	}
@@ -86,13 +98,21 @@ fn server_streaming(client &grpc.Client) {
 			key:   key
 			value: key.bytes()
 		}
-		client.unary(kv.path_put, req.encode()) or {
+		put_body := req.encode() or {
+			eprintln('put: could not encode the request: ${err}')
+			return
+		}
+		client.unary(kv.kv_method_put, put_body) or {
 			eprintln('put failed: ${err}')
 			return
 		}
 	}
 	scan := kv.GetRequest{}
-	reply := client.server_stream(kv.path_scan, scan.encode()) or {
+	scan_body := scan.encode() or {
+		eprintln('scan: could not encode the request: ${err}')
+		return
+	}
+	reply := client.server_stream(kv.kv_method_scan, scan_body) or {
 		eprintln('scan failed: ${err}')
 		return
 	}
@@ -126,9 +146,12 @@ fn client_streaming(client &grpc.Client) {
 	]
 	mut framed := [][]u8{cap: msgs.len}
 	for m in msgs {
-		framed << m.encode()
+		framed << m.encode() or {
+			eprintln('put_many: could not encode a request: ${err}')
+			return
+		}
 	}
-	reply := client.client_stream(kv.path_put_many, framed) or {
+	reply := client.client_stream(kv.kv_method_put_many, framed) or {
 		eprintln('put_many failed: ${err}')
 		return
 	}
@@ -143,7 +166,11 @@ fn error_path(client &grpc.Client) {
 	bad := kv.PutRequest{
 		key: '' // the service rejects this with invalid_argument
 	}
-	if _ := client.unary(kv.path_put, bad.encode()) {
+	bad_body := bad.encode() or {
+		eprintln('could not encode the request: ${err}')
+		return
+	}
+	if _ := client.unary(kv.kv_method_put, bad_body) {
 		println('unexpected success for an empty key')
 	} else {
 		if err is grpc.StatusError {
@@ -154,7 +181,11 @@ fn error_path(client &grpc.Client) {
 	}
 
 	unknown_req := kv.GetRequest{}
-	if _ := client.unary('/kv.KV/NoSuchMethod', unknown_req.encode()) {
+	unknown_body := unknown_req.encode() or {
+		eprintln('could not encode the request: ${err}')
+		return
+	}
+	if _ := client.unary('/kv.KV/NoSuchMethod', unknown_body) {
 		println('unexpected success for an unknown method')
 	} else {
 		if err is grpc.StatusError {
@@ -170,7 +201,11 @@ fn with_a_deadline(client &grpc.Client) {
 	get := kv.GetRequest{
 		key: 'answer'
 	}
-	reply := client.unary(kv.path_get, get.encode(), grpc.timeout(2 * time.second),
+	get_body := get.encode() or {
+		eprintln('could not encode the request: ${err}')
+		return
+	}
+	reply := client.unary(kv.kv_method_get, get_body, grpc.timeout(2 * time.second),
 		grpc.header('authorization', 'Bearer demo')) or {
 		eprintln('call with a deadline failed: ${err}')
 		return

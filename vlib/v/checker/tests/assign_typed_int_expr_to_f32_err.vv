@@ -1,0 +1,17 @@
+const typed_constant = int(32)
+const untyped_constant = 32
+
+fn shadowed(untyped_constant int) f32 {
+	mut value := f32(0)
+	value = untyped_constant * 2
+	return value
+}
+
+fn main() {
+	mut my_float_32 := f32(3.2)
+	my_int := 2
+	my_float_32 = 2 * my_int
+	my_float_32 = typed_constant * 2
+	my_float_32 = untyped_constant * 2
+	println(my_float_32 + shadowed(1))
+}

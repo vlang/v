@@ -1,0 +1,14 @@
+vlib/v/checker/tests/line_directive_remapped_err.zbr:40:2: warning: unused variable: `unused`
+   40 |     unused := 1
+      |     ~~~~~~
+vlib/v/checker/tests/line_directive_remapped_err.zbr:4:10: error: undefined ident: `totl`
+    2 | for item in items
+    3 |     total = total + item.price
+    4 | print(totl)
+      |          ~~
+src/app.zbr:7:9: error: undefined ident: `missing_price`
+    7 |     return missing_price
+      |            ~~~~~~~~~~~~~
+src/app.zbr:7:9: error: cannot use `void` as type `int` in return argument
+    7 |     return missing_price
+      |            ~~~~~~~~~~~~~

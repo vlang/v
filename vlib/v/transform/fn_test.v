@@ -15,6 +15,91 @@ fn literal_binding_test_node(mut a flat.FlatAst, kind flat.NodeKind, children []
 	})
 }
 
+fn literal_string_test_call(mut a flat.FlatAst, receiver flat.NodeId, method string, args []flat.NodeId) flat.NodeId {
+	selector_start := a.begin_children()
+	a.add_child(receiver)
+	selector := a.add_node(flat.Node{
+		kind:           .selector
+		value:          method
+		typ:            'string'
+		children_start: selector_start
+		children_count: 1
+	})
+	call_start := a.begin_children()
+	a.add_child(selector)
+	for arg in args {
+		a.add_child(arg)
+	}
+	return a.add_node(flat.Node{
+		kind:           .call
+		typ:            'string'
+		children_start: call_start
+		children_count: flat.child_count(args.len + 1)
+	})
+}
+
+fn test_literal_string_call_retains_receiver_while_arguments_grow_ast() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	receiver := a.add_node(flat.Node{ kind: .string_literal, typ: 'string', value: 'abc' })
+	needle := a.add_node(flat.Node{ kind: .string_literal, typ: 'string', value: 'A' })
+	replacement := a.add_node(flat.Node{ kind: .string_literal, typ: 'string', value: 'z' })
+	lower := literal_string_test_call(mut a, needle, 'to_lower', [])
+	upper := literal_string_test_call(mut a, replacement, 'to_upper', [])
+	call := literal_string_test_call(mut a, receiver, 'replace', [lower, upper])
+	node := a.nodes[int(call)]
+	callee := *a.child_node(&node, 0)
+	capacity := a.nodes.cap
+	// The receiver is already a literal; folding its nested arguments must grow the array.
+	for a.nodes.len < capacity {
+		a.add_node(flat.Node{ kind: .empty })
+	}
+	result := t.try_fold_literal_string_call(node, callee) or {
+		assert false, 'literal call should fold'
+		return
+	}
+	assert a.nodes.cap > capacity
+	assert a.node(result).kind == .string_literal
+	assert a.node(result).value == 'Zbc'
+	assert a.node(receiver).value == 'abc'
+}
+
+fn test_call_param_type_name_memo_preserves_composites_and_module_locks() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Cell'] = StructInfo{ name: 'Cell', module: 'main' }
+	t.structs['dep.Cell'] = StructInfo{ name: 'Cell', module: 'dep' }
+	cell := types.Type(types.Struct{ name: 'Cell' })
+	compound := types.Type(types.Map{
+		key_type:   types.Type(types.String{})
+		value_type: types.Type(types.Array{
+			elem_type: types.Type(types.Pointer{ base_type: cell })
+		})
+	})
+	callback := types.Type(types.FnType{
+		params:      [compound]
+		params_mut:  [true]
+		return_type: types.Type(types.ResultType{ base_type: cell })
+	})
+	params := [types.Type(types.int_), types.Type(types.String{}), cell, compound, callback]
+	for module_name in ['main', 'dep', 'builtin', 'dep'] {
+		t.cur_module = module_name
+		t.memo_call_param_type_names = false
+		expected := t.call_param_type_names(params)
+		configure_transformer(mut t, false, true, false, false, false, unsafe { nil })
+		assert !t.building_v
+		assert t.memo_call_param_type_names
+		assert t.call_param_type_names(params) == expected
+		assert t.call_param_type_names(params) == expected
+		if module_name == 'dep' {
+			assert expected[3] == 'map[string][]&main.Cell'
+			assert expected[4].contains('main.Cell')
+		}
+	}
+}
+
 fn test_nested_fn_literal_restores_outer_binding_containers_after_growth() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -1601,4 +1686,14 @@ fn test_thread_handle_array_append_does_not_clone_result_fields() {
 	results := workers.wait()
 	assert results[0][0].values == ['first']
 	assert results[1][0].values == ['second']
+}
+
+fn test_builder_receiver_identity_includes_its_declaring_module() {
+	assert is_builder_type_name('strings.Builder', 'main')
+	assert is_builder_type_name('&strings.Builder', 'custom')
+	assert is_builder_type_name('Builder', 'strings')
+	assert is_builder_type_name('&Builder', 'strings')
+	assert !is_builder_type_name('Builder', 'main')
+	assert !is_builder_type_name('&Builder', 'custom')
+	assert !is_builder_type_name('custom.Builder', 'strings')
 }

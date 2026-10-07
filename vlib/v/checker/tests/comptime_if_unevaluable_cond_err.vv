@@ -19,7 +19,7 @@ fn main() {
 		$if method.name == 'list' {
 			hits << method.name
 		}
-		$if method.name.to_upper().len > 3 {
+		$if method.name.repeat(2).len > 3 {
 			hits << method.name
 		}
 	}

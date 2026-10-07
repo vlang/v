@@ -3,6 +3,13 @@
 `v skills list` reads the bundled catalog from the invoking compiler's source
 tree, including when the command itself runs from the tool cache.
 
+Each installed skill's status distinguishes an unchanged copy of an older bundle
+(`stale`) from a locally edited or unrecorded installation (`edited or unrecorded`).
+The status names the update command for its scope: `v skills update` refreshes a
+stale project installation, and `v skills update --global` refreshes a global one.
+Edited or unrecorded installations need `--force`, which replaces their local
+content with the bundle. Deleting an installed file also counts as a local edit.
+
 `v skills remove NAME --dry-run` reports a preview and preserves the installed
 directory and every file. The same preview option works with `--global`.
 Removal accepts one lowercase skill name made of letters, digits and hyphens.

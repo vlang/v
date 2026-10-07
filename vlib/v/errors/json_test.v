@@ -78,6 +78,31 @@ fn test_json_error_reports_the_span_of_a_position() {
 		0)) == '{"severity":"error","message":"lost"}'
 }
 
+// Like the text form, the location follows the `#line` directives of the file.
+fn test_json_error_follows_line_directives() {
+	source := 'fn main() {\n\tx := 1\n#line 3 "app.zbr"\n\tprintln(b)\n#line 9 "other.zbr"\n\t_ = x\n}\n'
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file(os.join_path(os.getwd(), 'err.v'), source.len)
+	file.index_lines(source)
+	file.add_line_directive(source.index('#line 3') or { panic('no #line 3') }, 3, 'app.zbr')
+	file.add_line_directive(source.index('#line 9') or { panic('no #line 9') }, 9, 'other.zbr')
+	a := &flat.FlatAst{
+		source_files: {
+			1: file
+		}
+	}
+	b := source.index('b)') or { panic('no b') }
+	assert json_error('error:', 'undefined ident: `b`', []string{}, a, flat.NodeId(-1),
+		token.new_span(1, b, b + 1)) == '{"file":"app.zbr","line":3,"col":10,"end_line":3,"end_col":11,"severity":"error","message":"undefined ident: `b`"}'
+	// A span that ends in another logical file stays on the line of its start.
+	assert json_error('error:', 'cut', []string{}, a, flat.NodeId(-1), token.new_span(1, b,
+		source.index('x\n}') or { panic('no x') })) == '{"file":"app.zbr","line":3,"col":10,"end_line":3,"end_col":11,"severity":"error","message":"cut"}'
+	// Before the first directive, the location is the physical one.
+	x := source.index('x') or { panic('no x') }
+	assert json_error('error:', 'unused `x`', []string{}, a, flat.NodeId(-1), token.new_span(1,
+		x, x + 1)) == '{"file":"err.v","line":2,"col":2,"end_line":2,"end_col":3,"severity":"error","message":"unused `x`"}'
+}
+
 fn test_json_error_lists_every_template_call_site() {
 	main_source := "fn main() {\n\t\$tmpl('outer.txt')\n}\n"
 	outer_source := "@{\$tmpl('inner.txt')}\n"

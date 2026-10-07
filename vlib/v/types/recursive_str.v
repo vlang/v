@@ -2,6 +2,7 @@ module types
 
 import strconv
 import v.flat
+import v.util
 
 enum RecursiveStrMutationEffect {
 	none
@@ -169,8 +170,31 @@ fn (mut tc TypeChecker) recursive_str_run_all_defer_scopes(mut env RecursiveStrE
 	}
 }
 
+// recursive_str_has_diagnostic_context excludes only contexts where every
+// visited node's diagnostic would be suppressed, including helper bodies.
+fn (tc &TypeChecker) recursive_str_has_diagnostic_context() bool {
+	if tc.valid_diagnostic_fast {
+		return false
+	}
+	if tc.diagnostic_files.len == 0 || tc.cur_file in tc.diagnostic_files {
+		return true
+	}
+	if tc.checker_fixture_mode {
+		return false
+	}
+	if tc.fn_context.node_id >= 0 && tc.fn_context.node_id < tc.a.specialized_fn_nodes.len
+		&& tc.a.specialized_fn_nodes[tc.fn_context.node_id] {
+		return true
+	}
+	if tc.current_fn_is_concrete_generic_receiver_specialization() {
+		return true
+	}
+	qname := tc.current_checked_fn_qname() or { return false }
+	return qname in tc.selected_file_called_fns
+}
+
 fn (mut tc TypeChecker) check_recursive_str_calls(fn_id flat.NodeId, node flat.Node) {
-	if !node.value.ends_with('.str') {
+	if !node.value.ends_with('.str') || !tc.recursive_str_has_diagnostic_context() {
 		return
 	}
 	mut receiver := flat.empty_node
@@ -2911,7 +2935,7 @@ fn numeric_literal_i64(value string) ?i64 {
 			break
 		}
 	}
-	parsed := strconv.parse_int(clean, 0, 64) or { return none }
+	parsed := strconv.parse_int(clean, util.v_literal_parse_base(clean), 64) or { return none }
 	return parsed
 }
 
@@ -3485,6 +3509,16 @@ fn (mut tc TypeChecker) recursive_str_apply_effect_to_target(target_id flat.Node
 }
 
 fn (tc &TypeChecker) recursive_str_fn_decl_id(name string) ?flat.NodeId {
+	if tc.recursive_str_fn_decl_index_size == tc.top_level_idx.len {
+		if idx := tc.recursive_str_fn_decl_ids[name] {
+			id := flat.NodeId(idx)
+			if tc.recursive_str_fn_decl_matches(*tc.a.node(id), name) {
+				return id
+			}
+		} else if tc.recursive_str_fn_decl_index_complete {
+			return none
+		}
+	}
 	short_name := name.all_after_last('.')
 	if idx := tc.fn_decl_short_name_ids[short_name] {
 		id := flat.NodeId(idx)

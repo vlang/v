@@ -1185,6 +1185,9 @@ fn (g &FlatGen) ierror_type_id_for_pattern(pattern string) int {
 }
 
 fn (g &FlatGen) should_emit_ierror_method(name string, qname string) bool {
+	if g.ierror_method_emit_names.len == 0 {
+		return false
+	}
 	if name in g.ierror_method_emit_names || qname in g.ierror_method_emit_names {
 		return true
 	}
@@ -1431,6 +1434,16 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		return false
 	}
 	iface := iface_type as types.Interface
+	if g.interface_expr_is_bare_nil(id) {
+		// Initializing the bitfields alone leaves the upper bytes of the pointer-sized
+		// metadata union unspecified. Keep the nil expression's block effects while
+		// clearing the entire metadata word.
+		ct := g.tc.c_type(iface)
+		g.write('(${ct}){._object = ')
+		g.gen_expr(id)
+		g.write(', ._interface_meta = NULL}')
+		return true
+	}
 	if g.is_ierror_type_name(iface.name) {
 		if s := g.ierror_from_expr_string(id) {
 			g.write(s)
@@ -1515,6 +1528,29 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	}
 	g.write('}')
 	return true
+}
+
+fn (g &FlatGen) interface_expr_is_bare_nil(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.nil_literal {
+			return true
+		}
+		.paren, .expr_stmt {
+			return node.children_count == 1
+				&& g.interface_expr_is_bare_nil(g.a.child(&node, 0))
+		}
+		.block {
+			return node.children_count > 0
+				&& g.interface_expr_is_bare_nil(g.a.child(&node, node.children_count - 1))
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut g FlatGen) gen_interface_pointer_value_expr(id flat.NodeId, expected types.Type) bool {

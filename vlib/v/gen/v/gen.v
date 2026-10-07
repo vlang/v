@@ -597,7 +597,12 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 				&& int(previous) >= 0 {
 				preserved_group_break = g.has_preserved_blank_line_between(previous, id)
 			}
-			if preserved_group_break
+			if prev == .directive && int(previous) >= 0 && is_line_directive(g.a.node(previous)) {
+				// A blank line after `#line` would move the code that the directive locates.
+				if g.source_has_blank_line_between(g.a.node(previous).pos.end, g.a.node(id).pos.offset) {
+					g.writeln('')
+				}
+			} else if preserved_group_break
 				|| (!injected_now && !both_statements && !same_unseparated_group
 					&& !source_c_group && !adjacent_consts) {
 				g.writeln('')
@@ -4037,7 +4042,13 @@ fn (mut g Gen) comptime_for(id flat.NodeId) {
 	parts := n.value.split('|')
 	loopvar := if parts.len > 0 { parts[0] } else { 'x' }
 	kind := if parts.len > 1 { parts[1] } else { 'fields' }
-	g.write('\$for ${loopvar} in ${g.type_text(n.typ)}.${kind} {')
+	g.write('\$for ${loopvar} in ')
+	if kind == 'strings' && n.children_count == 2 {
+		g.expr(g.a.child(n, 1))
+	} else {
+		g.write('${g.type_text(n.typ)}.${kind}')
+	}
+	g.write(' {')
 	g.writeln('')
 	if n.children_count > 0 {
 		blk := g.a.child_node(n, 0)
@@ -4436,7 +4447,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		gp := f.generic_params()
 		flags := if gp.len > 0 { gp[0] } else { '' }
 		access := access_label(flags)
-		if access != cur_access {
+		if !flags.contains('i') && access != cur_access {
 			// Doc comments written below `pub:` belong to the field, so only the
 			// comments before the specifier itself are emitted ahead of it.
 			if spec_end := g.access_specifier_end(g.source_end, f.pos.offset) {
@@ -4473,12 +4484,14 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		if is_embed {
 			g.write(g.type_text(f.value))
 		} else {
+			prefix := inline_field_access(flags)
+			g.write(prefix)
 			if flags.contains('v') {
 				g.write('volatile ')
 			}
 			g.write(f.value)
-			width := alignments[int(fid)] or { f.value.len }
-			g.write(' '.repeat(width - f.value.len + 1))
+			width := alignments[int(fid)] or { prefix.len + f.value.len }
+			g.write(' '.repeat(width - prefix.len - f.value.len + 1))
 			type_text := g.type_text(f.typ)
 			g.write(type_text)
 			suffix_width = type_text.len
@@ -5115,7 +5128,7 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 		} else if f.kind == .field_decl {
 			gp := f.generic_params()
 			flags := if gp.len > 0 { gp[0] } else { '' }
-			section = access_label(flags)
+			section = if flags.contains('i') { group_access } else { access_label(flags) }
 			alignable = !flags.contains('e')
 		}
 		if !alignable {
@@ -5142,10 +5155,26 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 fn (g &Gen) store_field_alignment(mut alignments map[int]int, fields []flat.NodeId) {
 	mut width := 0
 	for fid in fields {
-		width = int_max(width, g.a.node(fid).value.len)
+		f := g.a.node(fid)
+		gp := f.generic_params()
+		flags := if gp.len > 0 { gp[0] } else { '' }
+		width = int_max(width, inline_field_access(flags).len + f.value.len)
 	}
 	for fid in fields {
 		alignments[int(fid)] = width
+	}
+}
+
+// inline_field_access formats per-field access modifiers in a fixed-width prefix column.
+fn inline_field_access(flags string) string {
+	if !flags.contains('i') {
+		return ''
+	}
+	return match access_label(flags) {
+		'pub mut' { 'pub mut ' }
+		'pub' { 'pub     ' }
+		'mut' { 'mut     ' }
+		else { '' }
 	}
 }
 
@@ -5282,6 +5311,11 @@ fn (mut g Gen) global_field(fid flat.NodeId, group_pub bool, align_width int) {
 		g.writeln('')
 	}
 	g.source_end = int_max(g.source_end, f.pos.end)
+}
+
+// is_line_directive reports whether `node` is a `#line` directive.
+fn is_line_directive(node flat.Node) bool {
+	return node.kind == .directive && (node.value == 'line' || node.value.starts_with('line\t'))
 }
 
 fn (mut g Gen) directive_stmt(id flat.NodeId) {

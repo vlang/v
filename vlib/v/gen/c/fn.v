@@ -4,6 +4,7 @@ import os
 import strings
 import v.flat
 import v.gen.c.naming
+import v.token
 import v.types
 
 const builtin_map_set_fn_key = fn_decl_module_key('builtin', 'map.set')
@@ -14,6 +15,7 @@ struct TestHarnessFn {
 	c_name       string
 	ret          types.Type
 	file         string
+	failure_file string
 	failure_line int
 }
 
@@ -208,6 +210,16 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 				continue
 			}
 			emitted[qfn] = true
+			node := g.a.nodes[int(item.node_id)]
+			if node.value.contains('[') && node.value.contains('].') {
+				qualified := if item.module !in ['', 'main', 'builtin']
+					&& !node.value.starts_with('${item.module}.') {
+					'${item.module}.${node.value}'
+				} else {
+					node.value
+				}
+				g.specialized_method_c_names[qualified] = qfn
+			}
 		}
 		cost := if par_prep {
 			// The parallel exact-cost pass overwrites this value before cgen
@@ -529,17 +541,52 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		g.direct_array_access = item.direct_array_access
 		old_ignore_overflow := g.ignore_overflow
 		g.ignore_overflow = item.ignore_overflow
+		old_user_code_checks := g.user_code_checks
+		g.user_code_checks = (g.check_overflow || g.check_casts) && !item.ignore_overflow
+			&& g.file_gets_user_code_checks(item.file)
 		old_cur_fn_is_specialized := g.cur_fn_is_specialized
 		g.cur_fn_is_specialized = g.a.specialized_fn_nodes[int(item.node_id)]
 			|| g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
 		g.gen_fn_in_module(item.node_id, node, item.module, item.skip_prelude_scan)
 		g.cur_fn_is_specialized = old_cur_fn_is_specialized
+		g.user_code_checks = old_user_code_checks
 		g.ignore_overflow = old_ignore_overflow
 		g.direct_array_access = old_direct_array_access
 		if g.cache_split {
 			g.writeln('/* V3CACHE_FN_END ${cache_fn_marker_key(item.file, item.module, node.value)} */')
 		}
 	}
+}
+
+// file_gets_user_code_checks reports whether functions from `file` get the
+// `-check-overflow` negation and shift-count checks, and the `-check-casts` checks.
+// The standard library relies on V's defined semantics for these (`-x` wraps,
+// `x >> 64` is `0`, `u8(x)` truncates), so only the program's own files and
+// modules outside `vlib/` get them.
+fn (g &FlatGen) file_gets_user_code_checks(file string) bool {
+	if g.cache_program_files[file] || g.test_files[file] {
+		return true
+	}
+	if file.len == 0 || file.ends_with('.vh') {
+		// Cached module headers stand in for imported modules.
+		return false
+	}
+	for raw_path in [file, g.a.real_source_path(file)] {
+		mut path := raw_path.replace('\\', '/')
+		if g.check_scope_vlib_prefixes.len == 0 {
+			if path.contains('/vlib/') || path.starts_with('vlib/') {
+				return false
+			}
+			continue
+		}
+		if !os.is_abs_path(path) {
+			path = os.abs_path(path).replace('\\', '/')
+		}
+		if g.check_scope_vlib_prefixes.any(path.starts_with(it)) {
+			return false
+		}
+	}
+	return true
 }
 
 // file_is_cache_program_file reports whether `file`, as written or resolved,
@@ -1133,6 +1180,9 @@ fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_
 		return g.cache_program_files[file_name]
 			|| g.cache_program_files[g.a.real_source_path(file_name)]
 	}
+	if g.tc.specialized_generic_fns.len == 0 {
+		return false
+	}
 	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
 		|| g.cname(node.value) in g.tc.specialized_generic_fns
 }
@@ -1172,8 +1222,11 @@ fn (g &FlatGen) used_fn_contains_in_module(name string, module_name string) bool
 		}
 	}
 	dfn := dotted_fn_name_in_module(module_name, name)
+	if g.used_fn_contains(dfn) {
+		return true
+	}
 	qfn := g.qualified_fn_name_in_module_c(module_name, name)
-	if g.used_fn_contains(dfn) || g.used_fn_contains(qfn) {
+	if g.used_fn_contains(qfn) {
 		return true
 	}
 	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin' {
@@ -1514,8 +1567,39 @@ fn (g &FlatGen) c_fn_symbol_exists(candidate string) bool {
 	return false
 }
 
+// Concrete calls must use the symbol selected for the declaration, even when
+// checker metadata also registers a short spelling of its generic arguments.
+fn (g &FlatGen) selected_specialized_method_c_name(name string) ?string {
+	if !name.contains('].') || g.specialized_method_c_names.len == 0 {
+		return none
+	}
+	if selected := g.specialized_method_c_names[name] {
+		return selected
+	}
+	receiver := name.all_before_last('.')
+	method := name.all_after_last('.')
+	base, args, ok := g.shared_generic_app_parts(receiver)
+	if !ok || args.len == 0 { return none }
+	qualified_base := if !base.contains('.') && g.tc.cur_module !in ['', 'main', 'builtin'] {
+		'${g.tc.cur_module}.${base}'
+	} else {
+		base
+	}
+	mut canonical_args := []string{cap: args.len}
+	for arg in args {
+		resolved := g.tc.parse_type(arg)
+		if resolved is types.Unknown { return none }
+		canonical_args << resolved.name()
+	}
+	canonical := '${qualified_base}[${canonical_args.join(', ')}].${method}'
+	return g.specialized_method_c_names[canonical] or { none }
+}
+
 // direct_call_name supports direct call name handling for FlatGen.
 fn (mut g FlatGen) direct_call_name(name string) string {
+	if selected := g.selected_specialized_method_c_name(name) {
+		return selected
+	}
 	synthetic_name := c_short_name_view(name)
 	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
 		|| synthetic_name.starts_with('__v3_default_clone_') {
@@ -1672,6 +1756,9 @@ fn (g &FlatGen) enum_method_c_name_in_module_uncached(module_name string, name s
 }
 
 fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string {
+	if selected := g.selected_specialized_method_c_name(name) {
+		return selected
+	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		call_node_ref := g.a.node(id)
 		call_node := g.a.nodes[int(id)]
@@ -3608,7 +3695,8 @@ fn (g &FlatGen) expr_is_stable_for_reuse(id flat.NodeId) bool {
 			node.children_count > 0 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
 		}
 		.index {
-			node.children_count >= 2 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
+			node.children_count >= 2 && !g.assert_index_is_overloaded(node)
+				&& g.expr_is_stable_for_reuse(g.a.child(&node, 0))
 				&& g.expr_is_stable_for_reuse(g.a.child(&node, 1))
 		}
 		else {
@@ -4331,7 +4419,16 @@ fn (mut g FlatGen) spawn_wrapper_body(call_expr string, ret_ct string, post stri
 	return g.spawn_wrapper_body_with_pre(call_expr, ret_ct, '', post)
 }
 
-fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, pre string, post string) string {
+fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, user_pre string, user_post string) string {
+	mut pre := user_pre
+	mut post := user_post
+	if g.uses_thread_signal_stack() {
+		// The wrapper is the first V frame of a spawned thread. Give the thread an
+		// alternate signal stack, so that the segfault handler can still report a
+		// stack overflow. `&arg` marks the top of the thread stack, for the handler.
+		pre = 'void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); ${pre}'
+		post = '${post}__v_thread_signal_stack_leave(__v3_signal_stack); '
+	}
 	if ret_ct == 'void' || ret_ct.len == 0 {
 		return '${pre}${call_expr}; ${post}return NULL;'
 	}
@@ -5996,7 +6093,7 @@ fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, idx int) {
 			g.interface_str_lit('none')
 		}
 		g.writeln('string __test_err_msg_${idx} = ${message};')
-		g.writeln('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(test_fn.file)}", ${test_fn.failure_line}, "${c_escape(test_fn.name)}", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
+		g.writeln('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(test_fn.failure_file)}", ${test_fn.failure_line}, "${c_escape(test_fn.name)}", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
 		g.writeln('__test_failures++;')
 		g.indent--
 		g.writeln('}')
@@ -6047,13 +6144,20 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 						if !g.test_fn_matches_run_only(module_name, child.value) {
 							continue
 						}
+						failure := g.test_fn_failure_position(child_id) or {
+							token.Position{
+								filename: file_node.value
+								line:     1
+							}
+						}
 						tests << TestHarnessFn{
 							node_id:      child_id
 							name:         child.value
 							c_name:       cname
 							ret:          g.parse_node_type(&child)
 							file:         file_node.value
-							failure_line: g.test_fn_failure_line(child_id)
+							failure_file: failure.filename
+							failure_line: failure.line
 						}
 					}
 				}
@@ -6076,30 +6180,28 @@ fn (g &FlatGen) test_fn_matches_run_only(module_name string, name string) bool {
 	return false
 }
 
-fn (g &FlatGen) test_fn_failure_line(id flat.NodeId) int {
-	line := g.test_fn_propagation_line(id)
-	if line > 0 {
-		return line
+// test_fn_failure_position returns the location reported when the test function `id`
+// fails with an error that it propagates.
+fn (g &FlatGen) test_fn_failure_position(id flat.NodeId) ?token.Position {
+	if position := g.test_fn_propagation_position(id) {
+		return position
 	}
-	source_line := g.test_fn_source_failure_line(id)
-	if source_line > 0 {
-		return source_line
+	if position := g.test_fn_source_failure_position(id) {
+		return position
 	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
-		if position := g.a.source_position(g.a.nodes[int(id)].pos) {
-			return position.line
-		}
+		return g.a.source_position(g.a.nodes[int(id)].pos)
 	}
-	return 1
+	return none
 }
 
-fn (g &FlatGen) test_fn_source_failure_line(id flat.NodeId) int {
+fn (g &FlatGen) test_fn_source_failure_position(id flat.NodeId) ?token.Position {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return 0
+		return none
 	}
 	node := g.a.nodes[int(id)]
-	file := g.a.source_files[node.pos.id] or { return 0 }
-	lines := os.read_lines(file.name) or { return 0 }
+	file := g.a.source_files[node.pos.id] or { return none }
+	lines := os.read_lines(file.name) or { return none }
 	start_line := file.position(node.pos).line
 	for line_index in start_line .. lines.len {
 		trimmed := lines[line_index].trim_space()
@@ -6108,20 +6210,24 @@ fn (g &FlatGen) test_fn_source_failure_line(id flat.NodeId) int {
 		}
 		if trimmed.contains(' or {') || trimmed.contains(')!') || trimmed.contains(']!')
 			|| trimmed.ends_with('!') || trimmed.starts_with('return error(') {
-			return line_index + 1
+			filename, line := file.logical_line(line_index + 1)
+			return token.Position{
+				filename: filename
+				line:     line
+			}
 		}
 	}
-	return 0
+	return none
 }
 
-fn (g &FlatGen) test_fn_propagation_line(id flat.NodeId) int {
+fn (g &FlatGen) test_fn_propagation_position(id flat.NodeId) ?token.Position {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return 0
+		return none
 	}
 	node := g.a.nodes[int(id)]
 	if node.kind in [.or_expr, .return_stmt] {
 		if position := g.a.source_position(node.pos) {
-			return position.line
+			return position
 		}
 	}
 	for i in 0 .. node.children_count {
@@ -6133,12 +6239,11 @@ fn (g &FlatGen) test_fn_propagation_line(id flat.NodeId) int {
 		if child.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
 			continue
 		}
-		line := g.test_fn_propagation_line(child_id)
-		if line > 0 {
-			return line
+		if position := g.test_fn_propagation_position(child_id) {
+			return position
 		}
 	}
-	return 0
+	return none
 }
 
 fn (g &FlatGen) collect_test_harness_decl_ids(node flat.Node, mut ids []flat.NodeId) {
@@ -8831,7 +8936,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 							g.gen_variadic_array_args(node, i, variadic_type.elem_type)
 							break
 						}
-						arg_type := g.tc.resolve_type(arg_id)
+						arg_type := cgen_unalias_type(g.tc.resolve_type(arg_id))
 						if arg_type !is types.Array || arg_node.kind == .struct_init {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
 							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
@@ -9911,6 +10016,11 @@ fn (g &FlatGen) call_target_name(id flat.NodeId) string {
 
 @[direct_array_access]
 fn (g &FlatGen) const_fn_call_target_name(node flat.Node) ?string {
+	// Parameters and local callbacks keep their lexical binding, even if another
+	// module publishes a function constant with the same name.
+	if node.kind == .ident && g.selector_base_is_local_value(node.value) {
+		return none
+	}
 	key := g.const_key_for_call_target(node) or { g.const_ref_name_from_node(node) }
 	if key.len == 0 {
 		return none
@@ -12191,8 +12301,14 @@ fn (mut g FlatGen) callback_fn_value_type(name string) ?types.FnType {
 	} else {
 		types.Type(types.void_)
 	}
+	is_variadic := if name in g.tc.fn_param_types {
+		g.tc.fn_variadic[name] or { false }
+	} else {
+		g.fn_decl_variadic[name] or { false }
+	}
 	return types.FnType{
 		params:      params.clone()
+		is_variadic: is_variadic
 		return_type: ret
 	}
 }
@@ -14614,7 +14730,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			break
 		}
 		if variadic_idx >= 0 && arg_idx == variadic_idx && num_args == param_types.len {
-			arg_type := g.tc.resolve_type(arg_id)
+			arg_type := cgen_unalias_type(g.tc.resolve_type(arg_id))
 			// A struct literal can never itself be the variadic array; the checker
 			// propagates the expected `[]T` onto the node, masking its own type.
 			if arg_type !is types.Array || arg_node.kind == .struct_init {
@@ -14986,11 +15102,10 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 		if value_node.kind == .prefix && value_node.op == .amp {
 			operand_id, operand := g.unwrapped_fn_value_operand(g.a.child(&value_node, 0),
 				g.a.child_node(&value_node, 0))
-			// In translated C, `voidptr(&f)` of a function variable is the address of
-			// the variable, as in V1 (C translated by c2v stores `(void*)&finder` and
-			// calls through `**(finder_type*)p`). `&` on a function name is the function.
-			if g.expr_is_in_translated_file(operand_id)
-				&& g.fn_value_operand_has_storage(operand_id, operand)
+			// `voidptr(&f)` addresses the slot holding a function value, including
+			// implicit voidptr arguments such as memdup(&f, sizeof(Fn)). A function
+			// declaration has no value slot: `&named_fn` remains the function itself.
+			if g.fn_value_operand_has_storage(operand_id, operand)
 				&& g.node_is_fn_value_for_voidptr(operand_id, operand) {
 				g.write('&')
 				gen_expr_lvalue(mut g, operand_id)
@@ -15841,6 +15956,15 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	arg_type := g.usable_expr_type(arg_id)
 	child_id := g.a.child(&arg_node, 0)
 	child_type := g.usable_expr_type(child_id)
+	child := g.a.node(child_id)
+	if child.kind == .ident && g.current_param_is_mut(child.value)
+		&& g.tc.c_type(child_type) == g.tc.c_type(expected_base) {
+		// `&value` of an implicit `mut value T` parameter is a pointer value,
+		// just as for a local T. Give the callee a temporary pointer slot.
+		ct := g.tc.c_type(expected_base)
+		g.write('&((${ct}[]){${g.local_decl_cname(child.value)}})[0]')
+		return true
+	}
 	if child_type is types.Pointer && g.tc.c_type(child_type) == g.tc.c_type(expected_base) {
 		return false
 	}
@@ -16274,7 +16398,7 @@ struct CExternForwardDecl {
 }
 
 fn (mut g FlatGen) c_extern_forward_decls() {
-	mut cur_module := ''
+	mut cur_module := 'main'
 	mut cur_file := ''
 	mut decls := map[string]CExternForwardDecl{}
 	mut names := []string{}
@@ -16308,7 +16432,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
-			cur_module = ''
+			cur_module = 'main'
 			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			continue

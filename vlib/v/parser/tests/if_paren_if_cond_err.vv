@@ -1,0 +1,14 @@
+fn pick(enabled bool, other bool) int {
+	if (if enabled {
+		other
+	} else {
+		!other
+	}) {
+		return 1
+	}
+	return 0
+}
+
+fn main() {
+	println(pick(true, false))
+}

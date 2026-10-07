@@ -3,8 +3,9 @@
 `net.grpc` speaks gRPC over V's standard-library HTTP stack: the 5-byte
 length-prefixed message framing, the `grpc-status` / `grpc-message` terminal
 status, and per-call metadata. It is transport-only — messages cross the wire as
-`[]u8` — so it pairs with any protobuf codec you like, including the third-party
-[protobuf.v](https://github.com/we-be/protobuf.v) and its `vpbgen` generator.
+`[]u8` — so it pairs with any protobuf codec you like, including the bundled
+`encoding.protobuf` runtime and its `v pbgen` generator; see
+[examples/grpc](../../../examples/grpc/README.md) for a service built that way.
 
 Tracking issue: [vlang/v#5017](https://github.com/vlang/v/issues/5017).
 

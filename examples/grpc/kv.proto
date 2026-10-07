@@ -1,12 +1,11 @@
 // The schema this example implements, kept next to the code so the two can be
-// read together. The V side is hand-written in kv/codec.v; a real project would
-// instead generate it:
+// read together. kv/codec.v and kv/service.v are generated from this file; run
+// from examples/grpc, this reproduces them exactly:
 //
-//   v install protobuf.v
-//   v run cmd/vpbgen -m kv -o kv/codec_generated.v -grpc kv/service_generated.v kv.proto
+//   v pbgen -m kv -o kv/codec.v -grpc kv/service.v kv.proto
+//   v fmt -w kv/codec.v kv/service.v
 //
-// and drop kv/codec.v and kv/service.v. net.grpc itself takes `[]u8` payloads,
-// so nothing above the codec changes.
+// net.grpc itself takes `[]u8` payloads, so nothing above the codec changes.
 
 syntax = "proto3";
 

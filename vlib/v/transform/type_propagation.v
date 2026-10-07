@@ -1042,7 +1042,7 @@ fn (t &Transformer) checker_struct_field_type_name(type_name string, field_name 
 	if checker_typ := t.tc.struct_field_type_name(lookup_type, field_name) {
 		return checker_typ
 	}
-	if lookup_type.contains('.') {
+	if is_qualified_type_name_text(lookup_type) {
 		short := lookup_type.all_after_last('.')
 		if checker_typ := t.tc.struct_field_type_name(short, field_name) {
 			return checker_typ
@@ -1062,6 +1062,21 @@ fn (t &Transformer) checker_struct_field_type_name(type_name string, field_name 
 	return none
 }
 
+// is_qualified_type_name_text reports whether `text` is a module-qualified type name
+// (`mod.Type`, `a.b.Type`): only name characters and dots. A composite type such as
+// `[]mod.Type` or `map[string]mod.Type` is not, so its last segment is not its name.
+fn is_qualified_type_name_text(text string) bool {
+	if !text.contains('.') {
+		return false
+	}
+	for c in text {
+		if !(c.is_letter() || c.is_digit() || c == `_` || c == `.`) {
+			return false
+		}
+	}
+	return true
+}
+
 // lookup_struct_info_for_field resolves lookup struct info for field information for transform.
 fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name string) ?StructFieldLookup {
 	if type_name == '' || field_name == '' {
@@ -1073,7 +1088,7 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 	if is_generic_app {
 		lookup_type = base
 	}
-	if lookup_type !in t.structs && lookup_type.contains('.') {
+	if lookup_type !in t.structs && is_qualified_type_name_text(lookup_type) {
 		short_type := lookup_type.all_after_last('.')
 		if short_type in t.structs {
 			lookup_type = short_type
@@ -1168,11 +1183,14 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 	if typ.starts_with('[]') {
 		return '[]' + t.normalize_field_type_with_owner_substitution(typ[2..], owner_type, allow_owner_substitution)
 	}
+	// `?T` of an option `T` is that option, as the checker substitutes it.
 	if typ.starts_with('?') {
-		return '?' + t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		inner := t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		return if inner.starts_with('?') { inner } else { '?' + inner }
 	}
 	if typ.starts_with('!') {
-		return '!' + t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		inner := t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		return if inner.starts_with('!') { inner } else { '!' + inner }
 	}
 	if typ.starts_with('map[') {
 		bracket_end := typ.index(']') or { return t.normalize_type_alias(typ) }
@@ -1196,10 +1214,16 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 	if allow_owner_substitution && owner_is_generic_app {
 		if owner_base.len > 0 {
 			params := t.generic_struct_param_names_for_base(owner_base)
+			// Arguments belong to the instantiation site, rather than the module
+			// declaring the generic field. Qualify them before owner substitution.
+			mut qualified_args := []string{cap: owner_args.len}
+			for arg in owner_args {
+				qualified_args << t.qualify_generic_arg_for_decl_module(arg, t.cur_module)
+			}
 			substituted := if params.len > 0 {
-				substitute_generic_type_text_with_params(typ, owner_args, params)
+				substitute_generic_type_text_with_params(typ, qualified_args, params)
 			} else {
-				substitute_generic_type_text(typ, owner_args)
+				substitute_generic_type_text(typ, qualified_args)
 			}
 			if substituted != typ {
 				return t.normalize_field_type_with_owner_substitution(substituted, owner_type, false)
@@ -1218,12 +1242,7 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 		}
 		mut normalized_args := []string{cap: args.len}
 		for arg in args {
-			mut normalized_arg := t.normalize_field_type_with_owner_substitution(arg, owner_type, allow_owner_substitution)
-			if field_base.contains('.') {
-				field_mod := field_base.all_before_last('.')
-				normalized_arg = strip_field_module_prefix_from_type(normalized_arg, field_mod)
-			}
-			normalized_args << normalized_arg
+			normalized_args << t.normalize_field_type_with_owner_substitution(arg, owner_type, allow_owner_substitution)
 		}
 		return t.normalize_type_alias('${field_base}[${normalized_args.join(', ')}]')
 	}

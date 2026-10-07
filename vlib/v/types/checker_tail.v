@@ -743,7 +743,8 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 		return true
 	}
 	if op == .assign && clean_expected.is_float()
-		&& tc.assignment_integer_constant_operand(rhs_id) != none {
+		&& (tc.assignment_integer_constant_operand(rhs_id) != none
+			|| tc.is_untyped_integer_constant_expr(rhs_id)) {
 		if _ := tc.implicit_integer_constant_value(rhs_id, rhs_type) {
 			return true
 		}
@@ -781,6 +782,33 @@ fn (tc &TypeChecker) assignment_integer_constant_operand(id flat.NodeId) ?flat.N
 		current = tc.a.child(node, 0)
 	}
 	return none
+}
+
+// Arithmetic on integer literals and on the constants declared by them is still
+// untyped, like the literal it folds to: `x = 6 * tile_size` assigns to a float.
+// Casts, typed constants and variables give the expression a type of its own.
+fn (tc &TypeChecker) is_untyped_integer_constant_expr(id flat.NodeId) bool {
+	mut states := map[flat.NodeId]u8{}
+	known, has_float := tc.untyped_numeric_literal_expr_info(id, mut states)
+	return known && !has_float && !tc.expr_names_visible_local(id)
+}
+
+// expr_names_visible_local reports whether an identifier in `id` is a local or a
+// parameter, which hides a constant of the same name.
+fn (tc &TypeChecker) expr_names_visible_local(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return tc.visible_local_scope_owns_name(node.value)
+	}
+	for i in 0 .. node.children_count {
+		if tc.expr_names_visible_local(tc.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Signs and parentheses preserve literal assignment compatibility.
@@ -1308,8 +1336,10 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 		}
 		is_map_index := child.kind == .index && child.children_count > 0
 			&& unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(&child, 0)))) is Map
-		is_unsafe_map_path := tc.unsafe_depth > 0 && tc.address_path_contains_map_index(child_id)
-		if !tc.expr_can_take_address(child_id) && !is_map_index && !is_unsafe_map_path {
+		// A map value has no address to take, but it is still assignable:
+		// `m[k].field++` updates the entry, as `m[k].field += 1` does.
+		is_map_path := tc.address_path_contains_map_index(child_id)
+		if !tc.expr_can_take_address(child_id) && !is_map_index && !is_map_path {
 			source := tc.source_text_for_node(child_id)
 			tc.record_error_with_details_at(.assignment_mismatch, 'cannot ${action} `${source}` because it is non lvalue expression', child_id, tc.a.node(child_id).pos, [
 				'try rewrite this as `${source} ${rewrite_op} 1`',
@@ -5014,6 +5044,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
 		}
+		tc.check_instantiated_comptime_method_args(id, node, info)
 		if tc.valid_resolution_fast {
 			tc.check_valid_call_arg_types(id, node, info)
 			return
@@ -5048,11 +5079,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		tc.invalidate_smartcasts_after_call(node, info)
 		tc.check_os_file_raw_io_call(id, node, info)
 		tc.check_generic_call_constraints(id, node, info)
-		tc.check_instantiated_generic_as_casts(node, info)
-		tc.check_instantiated_generic_noinit_structs(id, node, info)
-		tc.check_instantiated_generic_ordering_ops(node, info)
-		tc.check_instantiated_generic_compile_errors(id, node, info)
-		tc.check_instantiated_generic_compile_warnings(node, info)
+		tc.check_instantiated_generic_diagnostics(id, node, info)
 		$if ownership ? {
 			tc.ownership_after_call(id, node, tc.builtin_copy_ownership_call_info(id, node,
 				info))
@@ -5874,8 +5901,49 @@ struct InstantiatedCompileWarning {
 	pos     token.Pos
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_compile_errors(call_id flat.NodeId, call flat.Node, info CallInfo) {
+// Reuse the immutable binding while the walks leave diagnostics unchanged.
+// An error can affect resolution of invalid expressions, so retain fresh
+// instantiation queries for the remaining walks after one is reported.
+fn (mut tc TypeChecker) check_instantiated_generic_diagnostics(call_id flat.NodeId, call flat.Node, info CallInfo) {
 	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+	error_count := tc.errors.len
+	tc.check_instantiated_generic_as_casts(info, instantiation)
+	if tc.errors.len != error_count {
+		tc.check_instantiated_generic_diagnostics_after_error(call_id, call, info, 1)
+		return
+	}
+	tc.check_instantiated_generic_noinit_structs(call_id, info, instantiation)
+	if tc.errors.len != error_count {
+		tc.check_instantiated_generic_diagnostics_after_error(call_id, call, info, 2)
+		return
+	}
+	tc.check_instantiated_generic_ordering_ops(call, info, instantiation)
+	if tc.errors.len != error_count {
+		tc.check_instantiated_generic_diagnostics_after_error(call_id, call, info, 3)
+		return
+	}
+	tc.check_instantiated_generic_compile_errors(call_id, call, instantiation)
+	if tc.errors.len != error_count {
+		tc.check_instantiated_generic_diagnostics_after_error(call_id, call, info, 4)
+		return
+	}
+	tc.check_instantiated_generic_compile_warnings(instantiation)
+}
+
+fn (mut tc TypeChecker) check_instantiated_generic_diagnostics_after_error(call_id flat.NodeId, call flat.Node, info CallInfo, first int) {
+	for index in first .. 5 {
+		instantiation := tc.generic_compile_error_instantiation(call, info) or { continue }
+		match index {
+			1 { tc.check_instantiated_generic_noinit_structs(call_id, info, instantiation) }
+			2 { tc.check_instantiated_generic_ordering_ops(call, info, instantiation) }
+			3 { tc.check_instantiated_generic_compile_errors(call_id, call, instantiation) }
+			4 { tc.check_instantiated_generic_compile_warnings(instantiation) }
+			else {}
+		}
+	}
+}
+
+fn (mut tc TypeChecker) check_instantiated_generic_compile_errors(call_id flat.NodeId, call flat.Node, instantiation GenericCompileErrorInstantiation) {
 	mut messages := []string{}
 	tc.collect_instantiated_compile_errors(instantiation.decl_id, instantiation, mut messages)
 	for message in messages {
@@ -5885,8 +5953,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_compile_errors(call_id flat.N
 	}
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_compile_warnings(call flat.Node, info CallInfo) {
-	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+fn (mut tc TypeChecker) check_instantiated_generic_compile_warnings(instantiation GenericCompileErrorInstantiation) {
 	mut warnings := []InstantiatedCompileWarning{}
 	tc.collect_instantiated_compile_warnings(instantiation.decl_id, instantiation, mut warnings)
 	for warning in warnings {
@@ -5925,7 +5992,15 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 			return none
 		}
 		for type_arg in type_args {
-			concrete_args << tc.explicit_generic_concrete_arg_text(type_arg)
+			// A forwarded explicit argument can name a type parameter of this
+			// instance, including inside a container such as `[]A`.
+			concrete := if tc.type_param_texts.len > 0 {
+				subst_generic_text(type_arg, tc.type_param_texts.values(),
+					tc.type_param_texts.keys())
+			} else {
+				type_arg
+			}
+			concrete_args << tc.explicit_generic_concrete_arg_text(concrete)
 		}
 	}
 	mut inferred := map[string]string{}
@@ -6182,8 +6257,7 @@ fn (tc &TypeChecker) instantiated_generic_decl_expr_type(id flat.NodeId, decl fl
 	return tc.substitute_generic_type(tc.resolve_type(id), instantiation.concrete_args, instantiation.generic_params)
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_as_casts(call flat.Node, info CallInfo) {
-	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+fn (mut tc TypeChecker) check_instantiated_generic_as_casts(info CallInfo, instantiation GenericCompileErrorInstantiation) {
 	fn_node := tc.a.node(instantiation.decl_id)
 	mut stack := []flat.NodeId{}
 	for i in 0 .. fn_node.children_count {
@@ -6216,8 +6290,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_as_casts(call flat.Node, info
 	}
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call_id flat.NodeId, call flat.Node, info CallInfo) {
-	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call_id flat.NodeId, info CallInfo, instantiation GenericCompileErrorInstantiation) {
 	fn_node := tc.a.node(instantiation.decl_id)
 	mut declaration_module := tc.fn_type_modules[info.name] or { '' }
 	if declaration_module.len == 0 {
@@ -6258,8 +6331,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call_id flat.N
 	}
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_ordering_ops(call flat.Node, info CallInfo) {
-	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+fn (mut tc TypeChecker) check_instantiated_generic_ordering_ops(call flat.Node, info CallInfo, instantiation GenericCompileErrorInstantiation) {
 	mut instantiations := [instantiation]
 	// The exact-output fixture path expands every sibling method for compatibility
 	// with v1. Normal compilation specializes regular methods on demand.
@@ -8896,6 +8968,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				name:         ''
 				params:       fn_typ.params.clone()
 				return_type:  fn_typ.return_type
+				is_variadic:  fn_typ.is_variadic
 				params_known: true
 			}
 		}
@@ -9907,6 +9980,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					name:         ''
 					params:       fn_typ.params
 					return_type:  fn_typ.return_type
+					is_variadic:  fn_typ.is_variadic
 					params_known: true
 				}
 			}
@@ -10236,7 +10310,9 @@ fn (tc &TypeChecker) current_receiver_param_method_call_info(base_id flat.NodeId
 		return none
 	}
 	base := tc.a.nodes[int(base_id)]
-	if base.kind != .ident {
+	// Only the receiver parameter can use the enclosing method's receiver type.
+	// Other parameters may be distinct aliases of the same underlying type.
+	if base.kind != .ident || !tc.current_fn_param_is_receiver(base.value) {
 		return none
 	}
 	fn_node := tc.a.nodes[tc.fn_context.node_id]
@@ -11789,19 +11865,22 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_n
 fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) ?VisibleMutationFnDecl {
 	cache_key := '${fallback_mod}\x01${visible_mutation_fn_lookup_name(name)}'
 	if !isnil(tc.visible_mutation_cache) {
-		cache := tc.visible_mutation_cache
-		if visible_mutation_key_is_global(cache_key) {
-			if decl := cache.global_decls[cache_key] {
+		mut cache := tc.visible_mutation_cache
+		for !isnil(cache) {
+			if visible_mutation_key_is_global(cache_key) {
+				if decl := cache.global_decls[cache_key] {
+					return decl
+				}
+			} else if decl := cache.decls[cache_key] {
 				return decl
 			}
-		} else if decl := cache.decls[cache_key] {
-			return decl
-		}
-		if cache.decl_misses[cache_key] {
-			return none
-		}
-		if cache.decl_index_ready {
-			return none
+			if cache.decl_misses[cache_key] {
+				return none
+			}
+			if cache.decl_index_ready {
+				return none
+			}
+			cache = cache.base
 		}
 	}
 	mut cur_mod := ''
@@ -12635,7 +12714,7 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	}
 }
 
-fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) map[string][]int {
+fn (tc &TypeChecker) param_storage_writes_for_decl_unscoped(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) map[string][]int {
 	target_param := tc.visible_mutation_fn_param(decl, target_param_idx) or {
 		return map[string][]int{}
 	}
@@ -12712,6 +12791,10 @@ fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, t
 }
 
 fn (tc &TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) []int {
+	if target_param_idx == 0 && tc.visible_mutation_fn_param(decl, 1) == none {
+		// This result excludes the target itself, so no other source can remain.
+		return []int{}
+	}
 	writes := tc.param_storage_writes_for_decl(decl, target_param_idx, mut visiting)
 	mut sources := []int{}
 	for _, params in writes {
@@ -13486,7 +13569,10 @@ fn (tc &TypeChecker) call_local_fn_param_is_mut(node flat.Node, param_idx int) b
 	if node.children_count == 0 {
 		return false
 	}
-	callee := tc.a.child_node(&node, 0)
+	mut callee := tc.a.child_node(&node, 0)
+	for callee.kind in [.paren, .expr_stmt] && callee.children_count > 0 {
+		callee = tc.a.child_node(callee, 0)
+	}
 	if callee.kind != .ident {
 		return false
 	}
@@ -17628,6 +17714,7 @@ fn c_fixed_array_pointee_storage_type(typ Type) Type {
 			Type(FnType{
 				params:      clean.params.map(c_fixed_array_pointee_storage_type(it))
 				params_mut:  clean.params_mut
+				is_variadic: clean.is_variadic
 				return_type: c_fixed_array_pointee_storage_type(clean.return_type)
 			})
 		}
@@ -20160,6 +20247,7 @@ fn (tc &TypeChecker) method_value_type(receiver_name string, method string) ?Typ
 	return Type(FnType{
 		params:      bound_params
 		params_mut:  bound_params_mut
+		is_variadic: tc.fn_variadic[signature] or { false }
 		return_type: ret_type
 	})
 }
@@ -20253,6 +20341,7 @@ fn (tc &TypeChecker) builtin_method_value_type(base_type Type, method string) ?T
 	}
 	return Type(FnType{
 		params:      bound_params
+		is_variadic: info.is_variadic
 		return_type: info.return_type
 	})
 }
@@ -21519,7 +21608,8 @@ fn (mut tc TypeChecker) check_valid_if_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
-// The parser requires a group when an if condition starts with another if or match.
+// The parser requires a group when an if condition starts with a match. It rejects a group
+// that starts with another if, except in translated code.
 fn (tc &TypeChecker) if_condition_starts_with_conditional(id flat.NodeId) bool {
 	mut current := id
 	for tc.valid_node_id(current) {

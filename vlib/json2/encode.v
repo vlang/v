@@ -1,6 +1,7 @@
 module json2
 
 import time
+import sync.stdatomic
 
 // EncoderOptions provides a list of options for encoding
 @[params]
@@ -40,6 +41,21 @@ pub fn encode[T](val T, config EncoderOptions) string {
 	encoder.encode_value[T](val)
 
 	return encoder.output.bytestr()
+}
+
+// encode_append appends the JSON representation of val to destination, preserving
+// its existing bytes and reusing its capacity. Clear destination before calling
+// to replace its contents. The caller owns the buffer and must not mutate it from
+// another thread during encoding or pass a value that aliases its storage.
+@[manualfree]
+pub fn encode_append[T](val T, mut destination []u8, config EncoderOptions) {
+	mut encoder := Encoder{
+		EncoderOptions: config
+		// Only this encoder accesses the caller's buffer until it is returned below.
+		output:         unsafe { destination }
+	}
+	encoder.encode_value[T](val)
+	destination = unsafe { encoder.output }
 }
 
 fn (mut encoder Encoder) encode_value[T](val T) {
@@ -182,6 +198,33 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 	}
 }
 
+// next_string_escape returns the next byte needing JSON escaping, or val.len.
+@[direct_array_access; inline]
+fn next_string_escape(val string, start int, escape_unicode bool) int {
+	mut i := start
+	for i <= val.len - 8 {
+		mut word := u64(0)
+		// The length check bounds every load; memcpy also permits unaligned strings.
+		unsafe { vmemcpy(&word, val.str + i, 8) }
+		// A byte below 0x20 leaves a high bit after subtraction and masking.
+		control := (word - u64(0x2020202020202020)) & ~word & u64(0x8080808080808080)
+		if control != 0 || word_has_byte(word, `"`) || word_has_byte(word, `\\`)
+			|| (escape_unicode && word & u64(0x8080808080808080) != 0) {
+			break
+		}
+		i += 8
+	}
+	// Locate an escape within a flagged word, or handle the final short tail.
+	for i < val.len {
+		b := val[i]
+		if b < 0x20 || b == `"` || b == `\\` || (escape_unicode && b >= 0x80) {
+			break
+		}
+		i++
+	}
+	return i
+}
+
 fn (mut encoder Encoder) encode_string(val string) {
 	encoder.output << `"`
 	mut buffer_start := 0
@@ -273,7 +316,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 					continue
 				}
 
-				buffer_end++
+				buffer_end = next_string_escape(val, buffer_end + 1, encoder.escape_unicode)
 			}
 		}
 	}
@@ -656,6 +699,8 @@ fn (mut encoder Encoder) encode_sumtype_time_variant(val time.Time, variant_name
 
 struct EncoderFieldInfo {
 	key_name string
+	// Compact ASCII keys include a leading comma, skipped for the first member.
+	compact_key string
 
 	is_skip      bool
 	is_omitempty bool
@@ -704,8 +749,15 @@ fn encoder_field_info(field_name string, attrs []string) EncoderFieldInfo {
 			key_name = json_attr
 		}
 	}
+	resolved_key := if key_name == '' { field_name } else { key_name.clone() }
+	compact_key := if !is_skip && next_string_escape(resolved_key, 0, true) == resolved_key.len {
+		',"' + resolved_key + '":'
+	} else {
+		''
+	}
 	return EncoderFieldInfo{
-		key_name:     if key_name == '' { field_name } else { key_name.clone() }
+		key_name:     resolved_key
+		compact_key:  compact_key
 		is_skip:      is_skip
 		is_omitempty: is_omitempty
 		is_required:  is_required
@@ -781,10 +833,22 @@ fn check_not_empty[T](val T) ?bool {
 @[manualfree; unsafe]
 fn (mut encoder Encoder) cached_field_infos[T]() &EncoderFieldInfoCache {
 	static cache := &EncoderFieldInfoCache(nil)
-	if cache == nil {
-		cache = &EncoderFieldInfoCache{}
-		$for field in T.fields {
-			cache.field_infos << encoder_field_info(field.name, field.attrs)
+	static initializing := u64(0)
+	static initialized := u64(0)
+	// Elect one initializer, then publish the completed immutable cache. This makes
+	// every field visible before another thread can read the immutable cache.
+	if stdatomic.load_u64(&initialized) == 0 {
+		if stdatomic.fetch_add_u64(&initializing, 1) == 0 {
+			cache = &EncoderFieldInfoCache{}
+			$for field in T.fields {
+				cache.field_infos << encoder_field_info(field.name, field.attrs)
+			}
+			stdatomic.store_u64(&initialized, 1)
+		} else {
+			// Only concurrent first use waits; warm encodes need one atomic load.
+			for stdatomic.load_u64(&initialized) == 0 {
+				time.sleep(time.microsecond)
+			}
 		}
 	}
 	return cache
@@ -844,33 +908,50 @@ fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
 	return true
 }
 
+// encode_cached_struct_key copies ordinary compact keys from immutable metadata.
+// Pretty layouts and keys requiring escaping use the existing encoder.
+fn (mut encoder Encoder) encode_cached_struct_key(is_first bool, field_info EncoderFieldInfo) bool {
+	if !encoder.prettify && field_info.compact_key.len > 0 {
+		start := if is_first { 1 } else { 0 }
+		// The cached string always contains a comma, quotes, the key, and a colon.
+		unsafe {
+			encoder.output.push_many(field_info.compact_key.str + start,
+				field_info.compact_key.len - start)
+		}
+		return false
+	}
+	return encoder.encode_object_key(is_first, field_info.key_name)
+}
+
 // encode_struct_field_key keeps the non-type-specific part of struct field
 // encoding out of the comptime field loop. Otherwise every field gets its own
 // copy of the key-collision scan and key selection code.
 @[noinline]
-fn (mut encoder Encoder) encode_struct_field_key(mut used_keys []string, old_used_keys []string, prefix string, field_info EncoderFieldInfo, is_first bool) bool {
+fn (mut encoder Encoder) encode_struct_field_key(mut used_keys []string, old_used_keys []string, prefix string, field_info EncoderFieldInfo, is_first bool, track_keys bool) bool {
 	if field_info.key_name in old_used_keys {
 		return encoder.encode_object_key(is_first, prefix + field_info.key_name)
 	}
-	used_keys << field_info.key_name
-	return encoder.encode_object_key(is_first, field_info.key_name)
+	if track_keys {
+		used_keys << field_info.key_name
+	}
+	return encoder.encode_cached_struct_key(is_first, field_info)
 }
 
 @[noinline]
 fn (mut encoder Encoder) encode_embedded_struct_field_key(mut used_keys []string, reserved_keys []string, prefix string, field_info EncoderFieldInfo, is_first bool) bool {
 	should_prefix := field_info.key_name in used_keys || field_info.key_name in reserved_keys
-	json_key := if should_prefix { prefix + field_info.key_name } else { field_info.key_name }
 	if !should_prefix {
 		used_keys << field_info.key_name
+		return encoder.encode_cached_struct_key(is_first, field_info)
 	}
-	return encoder.encode_object_key(is_first, json_key)
+	return encoder.encode_object_key(is_first, prefix + field_info.key_name)
 }
 
 // encode_struct_field writes a struct field with its key, unless the field is skipped or
 // left out as empty, and returns the new `is_first`. It is specialized per field type, so
 // all structs share it and each struct only pays for one call per field. `other_keys` are
 // the keys of the outer struct for an embedded struct field, else the keys used before.
-fn (mut encoder Encoder) encode_struct_field[F](val F, field_info EncoderFieldInfo, is_first bool, mut used_keys []string, other_keys []string, prefix string, embedded bool) bool {
+fn (mut encoder Encoder) encode_struct_field[F](val F, field_info EncoderFieldInfo, is_first bool, mut used_keys []string, other_keys []string, prefix string, embedded bool, track_keys bool) bool {
 	if !struct_field_should_encode(field_info, val) {
 		return is_first
 	}
@@ -878,7 +959,8 @@ fn (mut encoder Encoder) encode_struct_field[F](val F, field_info EncoderFieldIn
 		encoder.encode_embedded_struct_field_key(mut used_keys, other_keys, prefix, field_info,
 			is_first)
 	} else {
-		encoder.encode_struct_field_key(mut used_keys, other_keys, prefix, field_info, is_first)
+		encoder.encode_struct_field_key(mut used_keys, other_keys, prefix, field_info, is_first,
+			track_keys)
 	}
 	encoder.encode_struct_field_value(val)
 	return new_is_first
@@ -906,6 +988,13 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 	mut is_first := was_first
 	mut used_keys := old_used_keys
 	mut i := 0
+	// Only embedded children consume the keys collected by this struct.
+	mut track_keys := false
+	$for field in T.fields {
+		$if field.is_embed {
+			track_keys = true
+		}
+	}
 
 	$for field in T.fields {
 		$if !field.is_embed {
@@ -914,11 +1003,11 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 					shared field_value := unsafe { val.$(field.name) }
 					rlock field_value {
 						is_first = encoder.encode_struct_field(field_value, field_info_cache.field_infos[i],
-							is_first, mut used_keys, old_used_keys, prefix, false)
+							is_first, mut used_keys, old_used_keys, prefix, false, track_keys)
 					}
 				} $else {
 					is_first = encoder.encode_struct_field(val.$(field.name), field_info_cache.field_infos[i],
-						is_first, mut used_keys, old_used_keys, prefix, false)
+						is_first, mut used_keys, old_used_keys, prefix, false, track_keys)
 				}
 			}
 		}
@@ -979,11 +1068,11 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 					shared field_value := unsafe { val.$(field.name) }
 					rlock field_value {
 						is_first = encoder.encode_struct_field(field_value, field_info_cache.field_infos[i],
-							is_first, mut used_keys, reserved_keys, prefix, true)
+							is_first, mut used_keys, reserved_keys, prefix, true, true)
 					}
 				} $else {
 					is_first = encoder.encode_struct_field(val.$(field.name), field_info_cache.field_infos[i],
-						is_first, mut used_keys, reserved_keys, prefix, true)
+						is_first, mut used_keys, reserved_keys, prefix, true, true)
 				}
 			}
 		}

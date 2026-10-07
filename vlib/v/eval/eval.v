@@ -4,6 +4,7 @@ import os
 import strconv
 import time
 import v.flat
+import v.util
 import v.parser
 import v.pref
 import v.token as vtoken
@@ -2524,7 +2525,7 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 			return void_value()
 		}
 		.int_literal {
-			return Value(strconv.parse_int(clean_number_literal(node.value), 0, 64) or { i64(0) })
+			return Value(strconv.parse_int(clean_number_literal(node.value), util.v_literal_parse_base(node.value), 64) or { i64(0) })
 		}
 		.float_literal {
 			return Value(strconv.atof64(clean_number_literal(node.value)) or { 0.0 })
@@ -6468,7 +6469,7 @@ fn (e &Eval) sizeof_integer_expr(id flat.NodeId, module_name string, seen []flat
 	node := e.node(id)
 	match node.kind {
 		.int_literal {
-			return strconv.parse_int(clean_number_literal(node.value), 0, 64) or { return none }
+			return strconv.parse_int(clean_number_literal(node.value), util.v_literal_parse_base(node.value), 64) or { return none }
 		}
 		.ident {
 			return e.sizeof_fixed_array_len(node.value, module_name, seen)

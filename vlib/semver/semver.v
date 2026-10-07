@@ -68,6 +68,22 @@ pub fn (ver Version) satisfies(input string) bool {
 	return version_satisfies(ver, input)
 }
 
+// satisfies_or_error is satisfies, but it reports an unparseable range as an error
+// rather than as a miss, so a caller can tell a broken constraint from a genuine one.
+// satisfies keeps returning false for that case, because changing it would break
+// every caller at once and the ones that need the distinction can move over.
+pub fn (ver Version) satisfies_or_error(input string) !bool {
+	return version_satisfies_or_error(ver, input)
+}
+
+// is_valid_range reports whether input parses as a range at all. It exists so a
+// caller can reject a broken constraint before it is used, rather than discovering
+// the problem as a result that looks like a genuine miss.
+pub fn is_valid_range(input string) bool {
+	_ = parse_range(input) or { return false }
+	return true
+}
+
 // == checks if `v1` is equal to `v2`.
 pub fn (v1 Version) == (v2 Version) bool {
 	return compare_eq(v1, v2)

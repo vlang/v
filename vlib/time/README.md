@@ -62,6 +62,10 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+Month and weekday names in `parse_format` may end the input. For example,
+`time.parse_format('May', 'MMMM')!` and `time.parse_format('Jul', 'MMM')!`
+return times in May and July, respectively; weekday tokens also accept a terminal name.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time
@@ -143,19 +147,5 @@ fn main() {
 }
 ```
 
-Use a timer when a wait needs to participate in a `select`:
-
-```v
-import time
-
-timer := time.new_timer(500 * time.millisecond)
-defer {
-	timer.stop()
-}
-select {
-	fired_at := <-timer.c {
-		println('timer fired at ${fired_at}')
-	}
-	// another channel can be handled here
-}
-```
+A wait that needs to participate in a `select` uses `sync.new_timer`, which sends the
+time on a channel: see the `sync` module.

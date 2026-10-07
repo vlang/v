@@ -163,3 +163,20 @@ Available profiles:
 When migrating a workflow, keep the job's explicit install step until CI proves the
 profile is sufficient. The cache action speeds up installs; it should not hide which
 packages the workflow actually needs.
+
+## Rebuilding release binaries
+
+`Release CI` normally builds and publishes the ZIPs when a `weekly.*` or `0.*` tag is pushed.
+To recover missing assets for an existing tag, dispatch the workflow from `master` and set
+`release_tag`, for example `weekly.2026.41`. It checks out and verifies that tag, builds all
+five platform archives, and attaches them to the corresponding release. Existing assets with
+the same filenames are replaced; release descriptions, names, and prerelease status are kept.
+The publishing job runs only after every platform build succeeds, and upload errors fail it.
+
+Leaving `release_tag` empty keeps manual runs in build-only mode. Pull request runs also build
+without publishing. A branch named like a release cannot substitute for the requested tag.
+
+```sh
+# After the workflow update is merged:
+gh workflow run release_ci.yml --ref master -f release_tag=weekly.2026.41
+```

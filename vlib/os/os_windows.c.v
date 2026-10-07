@@ -650,10 +650,11 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	C.CloseHandle(proc_info.h_thread)
 	return Result{
 		output:    soutput
-		exit_code: int(exit_code)
+		exit_code: int(i32(exit_code))
 	}
 }
 
+// symlink creates a symbolic link and preserves the Win32 error code on failure.
 pub fn symlink(origin string, target string) ! {
 	// this is a temporary fix for TCC32 due to runtime error
 	// TODO: find the cause why TCC32 for Windows does not work without the compiletime option
@@ -668,7 +669,8 @@ pub fn symlink(origin string, target string) ! {
 
 		// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 		if res != 1 {
-			return error(get_error_msg(int(C.GetLastError())))
+			code := int(C.GetLastError())
+			return error_win32(code: code)
 		}
 		if !exists(target) {
 			return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
@@ -684,11 +686,13 @@ pub fn readlink(path string) !string {
 	return error('${@METHOD} not yet supported on windows')
 }
 
+// link creates a hard link and preserves the Win32 error code on failure.
 pub fn link(origin string, target string) ! {
 	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), unsafe { nil })
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {
-		return error(get_error_msg(int(C.GetLastError())))
+		code := int(C.GetLastError())
+		return error_win32(code: code)
 	}
 	if !exists(target) {
 		return error('C.CreateHardLinkW reported success, but link still does not exist')
@@ -765,22 +769,26 @@ pub fn uname() Uname {
 	}
 }
 
+// hostname returns the computer name and preserves the Win32 error code on failure.
 pub fn hostname() !string {
 	buf := [255]u16{}
 	size := u32(255)
 	res := C.GetComputerNameW(&buf[0], voidptr(&size))
 	if !res {
-		return error(get_error_msg(int(C.GetLastError())))
+		code := int(C.GetLastError())
+		return error_win32(code: code)
 	}
 	return unsafe { string_from_wide(&buf[0]) }
 }
 
+// loginname returns the user name and preserves the Win32 error code on failure.
 pub fn loginname() !string {
 	buf := [255]u16{}
 	size := u32(255)
 	res := C.GetUserNameW(&buf[0], voidptr(&size))
 	if !res {
-		return error(get_error_msg(int(C.GetLastError())))
+		code := int(C.GetLastError())
+		return error_win32(code: code)
 	}
 	return unsafe { string_from_wide(&buf[0]) }
 }
@@ -850,7 +858,8 @@ fn get_long_path(path string) !string {
 	long_path_buf := [4096]u16{}
 	res := C.GetLongPathName(input_short_path, &long_path_buf[0], sizeof(long_path_buf))
 	if res == 0 {
-		return error(get_error_msg(int(C.GetLastError())))
+		code := int(C.GetLastError())
+		return error_win32(code: code)
 	}
 	long_path := wide_ptr_to_string(&long_path_buf[0])
 	return long_path

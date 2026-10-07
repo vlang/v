@@ -10,7 +10,8 @@ const source_context_before = 2
 const source_context_after = 2
 
 fn formatted_message(kind string, message string) string {
-	return '${ansi.bold(ansi.color(kind, kind))} ${message}'
+	// Diagnostics name a sum type variant as `Expr.Count`, never by its hidden struct.
+	return '${ansi.bold(ansi.color(kind, kind))} ${flat.demangle_named_variants(message)}'
 }
 
 // formatted_error renders a compiler diagnostic with v1-compatible colors and source context.
@@ -55,8 +56,8 @@ fn append_template_call_stack(result string, kind string, a &flat.FlatAst, pos t
 	mut output := result
 	for call_pos in template_call_positions(a, pos) {
 		if call_file := a.source_files[call_pos.id] {
-			position := call_file.position(call_pos)
-			path := relative_error_path(call_file.name)
+			position := call_file.logical_position(call_pos)
+			path := relative_error_path(position.filename)
 			context_full := formatted_source_error(kind, '', call_file, call_pos)
 			context := context_full.all_after_first('\n')
 			output += '\ncalled from ${path}:${position.line}:${position.column}'
@@ -87,9 +88,12 @@ fn template_call_positions(a &flat.FlatAst, pos token.Pos) []token.Pos {
 }
 
 // formatted_source_error renders a diagnostic with v1-compatible colors for a source byte span.
+// Under a `#line` directive, the location is the logical file and line. The excerpt then
+// comes from the logical file, when it is another file that can be read, like C compilers
+// show it; otherwise it is just the source line of the span, numbered as its logical line.
 pub fn formatted_source_error(kind string, message string, file &token.File, pos token.Pos) string {
-	position := file.position(pos)
-	path := relative_error_path(file.name)
+	position := file.logical_position(pos)
+	path := relative_error_path(position.filename)
 	mut result := strings.new_builder(message.len + 256)
 	reported_column := if pos.reported_column() > 0 {
 		pos.reported_column()
@@ -98,48 +102,84 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 	}
 	location := '${path}:${position.line}:${reported_column}:'
 	result.writeln('${ansi.bold(location)} ${formatted_message(kind, message)}')
+	// The span, relative to the start of its source line. The column is the same in the
+	// logical line.
+	line_start := pos.offset - position.column + 1
+	span_start := pos.offset - line_start
+	span_end := int_max(pos.offset + 1, pos.end) - line_start
+	if file.has_line_directives() {
+		physical_line := file.find_line(pos.offset)
+		if position.filename != file.name || position.line != physical_line {
+			if position.filename != file.name {
+				if source := os.read_file(position.filename) {
+					lines := source.split_into_lines()
+					if position.line <= lines.len {
+						write_source_excerpt(mut result, kind, lines, position.line, span_start,
+							span_end)
+						return result.str().trim_right('\n')
+					}
+				}
+			}
+			source := os.read_file(file.name) or { return result.str().trim_right('\n') }
+			lines := source.split_into_lines()
+			if physical_line <= lines.len {
+				write_source_line(mut result, kind, lines[physical_line - 1], position.line, true,
+					true, span_start, span_end)
+			}
+			return result.str().trim_right('\n')
+		}
+	}
 	source := os.read_file(file.name) or { return result.str().trim_right('\n') }
 	lines := source.split_into_lines()
 	if lines.len == 0 {
 		return result.str().trim_right('\n')
 	}
-	first_line := int_max(1, position.line - source_context_before)
-	last_line := int_min(lines.len, position.line + source_context_after)
-	for line_number := first_line; line_number <= last_line; line_number++ {
-		line := lines[line_number - 1]
-		mut start_byte := 0
-		mut end_byte := 0
-		mut highlighted_line := line
-		if line_number == position.line {
-			line_start := file.line_start(position.line)
-			start_byte = int_max(0, int_min(pos.offset - line_start, line.len))
-			span_end := int_max(pos.offset + 1, pos.end)
-			end_byte = int_min(line.len, int_max(start_byte + 1, int_min(span_end - line_start,
-				line.len)))
-			highlighted_line = line[..start_byte] + ansi.color(kind, line[start_byte..end_byte]) +
-				line[end_byte..]
-		}
-		if line.len == 0 && line_number == last_line {
-			result.writeln('${line_number:5d} |')
-		} else {
-			result.writeln('${line_number:5d} | ${highlighted_line.replace('\t', '    ')}')
-		}
-		if line_number == position.line {
-			// Measure the original source, not the ANSI-wrapped text.
-			mut pointer := strings.new_builder(line.len + 8)
-			prefix := line[..start_byte].replace('\t', '    ')
-			pointer.write_string(' '.repeat(diagnostic_display_width(prefix)))
-			underline_len := int_max(1, diagnostic_display_width(line[start_byte..end_byte]))
-			underline := if underline_len > 1 {
-				'~'.repeat(underline_len)
-			} else {
-				'^'
-			}
-			pointer.write_string(ansi.bold(ansi.color(kind, underline)))
-			result.writeln('      | ${pointer.str().replace('\t', '    ')}')
-		}
-	}
+	write_source_excerpt(mut result, kind, lines, position.line, span_start, span_end)
 	return result.str().trim_right('\n')
+}
+
+// write_source_excerpt writes the lines around `target_line` of `lines`, and highlights
+// the span `span_start..span_end` (byte offsets relative to the line start) on it.
+fn write_source_excerpt(mut result strings.Builder, kind string, lines []string, target_line int, span_start int, span_end int) {
+	first_line := int_max(1, target_line - source_context_before)
+	last_line := int_min(lines.len, target_line + source_context_after)
+	for line_number := first_line; line_number <= last_line; line_number++ {
+		write_source_line(mut result, kind, lines[line_number - 1], line_number,
+			line_number == target_line, line_number == last_line, span_start, span_end)
+	}
+}
+
+// write_source_line writes the source line numbered `label` of an excerpt. On the line of
+// the diagnostic, the span `span_start..span_end` is highlighted and underlined.
+fn write_source_line(mut result strings.Builder, kind string, line string, label int, is_target bool, is_last bool, span_start int, span_end int) {
+	mut start_byte := 0
+	mut end_byte := 0
+	mut highlighted_line := line
+	if is_target {
+		start_byte = int_max(0, int_min(span_start, line.len))
+		end_byte = int_min(line.len, int_max(start_byte + 1, int_min(span_end, line.len)))
+		highlighted_line = line[..start_byte] + ansi.color(kind, line[start_byte..end_byte]) +
+			line[end_byte..]
+	}
+	if line.len == 0 && is_last {
+		result.writeln('${label:5d} |')
+	} else {
+		result.writeln('${label:5d} | ${highlighted_line.replace('\t', '    ')}')
+	}
+	if is_target {
+		// Measure the original source, not the ANSI-wrapped text.
+		mut pointer := strings.new_builder(line.len + 8)
+		prefix := line[..start_byte].replace('\t', '    ')
+		pointer.write_string(' '.repeat(diagnostic_display_width(prefix)))
+		underline_len := int_max(1, diagnostic_display_width(line[start_byte..end_byte]))
+		underline := if underline_len > 1 {
+			'~'.repeat(underline_len)
+		} else {
+			'^'
+		}
+		pointer.write_string(ansi.bold(ansi.color(kind, underline)))
+		result.writeln('      | ${pointer.str().replace('\t', '    ')}')
+	}
 }
 
 fn diagnostic_display_width(text string) int {

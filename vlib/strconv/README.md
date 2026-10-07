@@ -2,6 +2,71 @@
 
 `strconv` provides functions for converting strings to numbers and numbers to strings.
 
+## Integer parsing
+
+`parse_int` and `parse_uint` accept an explicit base from 2 to 36, or base 0
+for prefix inference: `0b` selects binary, `0o` or a bare leading `0` selects
+octal, and `0x` selects hexadecimal. Other inputs use decimal. Use base 10
+when leading zeros should remain decimal digits.
+
+```v
+import strconv
+
+assert strconv.parse_int('0777', 0, 64)! == 511
+assert strconv.parse_uint('010', 0, 64)! == 8
+assert strconv.parse_int('0777', 10, 64)! == 777
+```
+
+Digits must be valid for the selected base, so `08` and `09` fail with base 0.
+An explicit prefix, with its optional underscore separator, must be followed by digits.
+V integer literal analysis keeps bare leading zeros decimal; octal literals use `0o`.
+
+String numeric conveniences such as `.int()`, `.i64()`, `.u64()`, and their narrower variants
+also keep bare leading zeros decimal. Explicit `0b`, `0o`, and `0x` prefixes still select a base.
+Use `.parse_int(0, bits)` or `.parse_uint(0, bits)` for base-zero inference on a string.
+
+```v
+assert '010'.int() == 10
+assert '0o10'.int() == 8
+assert '010'.parse_int(0, 64)! == 8
+```
+
+## Floating-point parsing
+
+On the C backend, `atof64` parses decimal numbers with an optional sign,
+decimal point, and exponent. Underscores may separate digits, as in `1_000` or `1.2_5e1_0`.
+It also accepts case-insensitive `nan`, `inf`, and `infinity`, with an optional
+sign for infinity. Whitespace, bare signs, missing digits, and misplaced
+underscores return an error.
+Conversion retains up to 18 significant decimal digits and rounds binary halfway cases
+to the nearest value with an even significand. Subnormal results use the same rounding rule.
+
+```v
+import strconv
+import math
+
+assert strconv.atof64('1_000')! == 1000.0
+assert math.is_inf(strconv.atof64('-inf')!, -1)
+assert math.is_nan(strconv.atof64('NaN')!)
+```
+
+On the C backend, `allow_extra_chars: true` permits trailing characters after a decimal number,
+for example `atof64('1.5units', allow_extra_chars: true)` returns `1.5`.
+A mantissa and any exponent must still contain digits.
+
+## Integer formatting
+
+`format_int` and `format_uint` represent signed and unsigned integers in any radix
+from 2 to 36. Digits above 9 use lowercase letters; negative signed values keep
+a leading minus sign, including `min_i64`.
+
+```v
+import strconv
+
+assert strconv.format_int(min_i64, 16) == '-8000000000000000'
+assert strconv.format_uint(max_u64, 16) == 'ffffffffffffffff'
+```
+
 ## Buffer formatting
 
 `write_dec` and `write_dec_u` write a decimal integer into a caller-provided `[]u8`

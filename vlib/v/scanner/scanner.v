@@ -45,6 +45,12 @@ pub mut:
 	str_parent_quotes   []u8
 	str_parent_depths   []int
 	diagnostics         []Diagnostic
+	// line_directives makes the scanner record valid `#line` directives in its file.
+	// Only the scanner that reads a whole source file for the parser turns it on.
+	line_directives bool
+	// line_directive_offsets lists the offsets of the `#line` directives scanned, valid
+	// or not, so the parser can report the ones that are not between statements.
+	line_directive_offsets []int
 }
 
 // peek_byte supports peek byte handling for Scanner.
@@ -80,10 +86,11 @@ pub fn (mut s Scanner) skip_block_to(offset int) {
 	s.after_dot = false
 }
 
-// init supports init handling for Scanner.
+// init resets the scanner for src, ignoring a leading UTF-8 byte order mark.
 pub fn (mut s Scanner) init(file &token.File, src string) {
-	s.offset = 0
-	s.pos = 0
+	// Keep the original buffer and byte positions for source spans and diagnostics.
+	s.offset = if src.starts_with('\xef\xbb\xbf') { 3 } else { 0 }
+	s.pos = s.offset
 	s.lit = ''
 	s.insert_semi = false
 	s.after_dot = false
@@ -95,6 +102,8 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.str_parent_quotes = []u8{}
 	s.str_parent_depths = []int{}
 	s.diagnostics = []Diagnostic{}
+	s.line_directives = false
+	s.line_directive_offsets = []int{}
 	s.file = unsafe { file }
 	s.src = src
 }
@@ -339,6 +348,21 @@ fn (s &Scanner) char_literal_utf8_escapes_end(lead u8, offset int, content_end i
 		return offset
 	}
 	return end
+}
+
+// record_line_directive notes the offset of the `#line` directive just scanned, and
+// records it in the file when it is valid, so the lines after it report their logical
+// location. A malformed directive is reported by the parser instead.
+fn (mut s Scanner) record_line_directive() {
+	if s.lit.len > 4 && s.lit[4] !in [` `, `\t`] {
+		return
+	}
+	s.line_directive_offsets << s.pos
+	if isnil(s.file) || s.lit.len < 5 {
+		return
+	}
+	line, file := token.parse_line_directive(s.lit[5..]) or { return }
+	unsafe { s.file.add_line_directive(s.pos, line, file) }
 }
 
 // current_file returns current file data for Scanner.
@@ -673,6 +697,9 @@ pub fn (mut s Scanner) scan() token.Token {
 			}
 			s.lit = s.source_lit(start, s.offset).trim_space()
 			s.insert_semi = true
+			if s.line_directives && s.lit.starts_with('line') {
+				s.record_line_directive()
+			}
 			return .hash
 		}
 		`~` {

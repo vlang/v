@@ -1,5 +1,10 @@
 # V compiler
 
+Generic `typeof` metadata identifies parameterized types with their concrete spellings across
+modules. Local composite type expressions keep their source spelling in `.name`; transported type
+parameters retain the caller's qualified name. Nested `typeof` of a type's key, value, element, or
+index metadata preserves the reflected member's type.
+
 The default V compiler uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
@@ -9,6 +14,19 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+Inside generic methods, callable parameters and local bindings take precedence over methods
+with the same name. Implicit receiver calls are resolved only when no local binding shadows
+the method name.
+
+Callable parameters and local function values in generic functions take precedence over
+module functions with the same name, including calls from closures that capture the callable.
+
+Function types used as generic struct arguments retain open parameter and return types until
+instantiation, including when the generic function is declared in an imported module.
+
+Nested generic struct arguments retain the module of every type component when used as
+fields or passed to generics declared in another module.
+
 V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
 all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
 and explicit `-b js` invocations. The limited JavaScript compatibility generator remains
@@ -17,12 +35,20 @@ available for non-test programs. JavaScript test sources are retained for future
 The `v fmt` command uses `v.parser` and `v.gen.v`. Formatter-mode parsing retains comments,
 compile-time branches, inline assembly, SQL bodies, and literal prefixes so they round-trip
 without a legacy formatter path.
+It also preserves literals of locally declared lowercase types, including declarations that
+follow their uses or appear in inactive compile-time branches. Assembly directives such as
+`.type` do not declare V types. Normal compilation still checks the type naming rules.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
-global definitions. `$if` compile-time conditionals are resolved directly in the
-parser. The parser evaluates the condition, parses only the taken branch, and
-skips the other, so no AST nodes or transformer pass is needed for `$if` blocks.
+global definitions. The parser resolves platform flags and known literal `$if` conditions,
+parsing only the taken branch. String guards that depend on imported constants are resolved
+before declaration collection. Parallel file parsing retains computed constant names and defers
+their unproved guards, including guards on constants selected by earlier guards.
+Metadata reflection headers do not create runtime method references. A user module named
+`closure` can therefore be imported without requiring the compiler's closure runtime.
+Reflection values, immutable reflection locals, and generic
+type conditions retain `comptime_if` nodes until the transformer can select their branch.
 `#include` and `#flag` directives inside `$if` blocks are handled correctly: the
 scanner consumes the entire directive line as a single token, preventing the
 parser from reading past block boundaries. File selection filters out
@@ -33,6 +59,19 @@ builtin function bodies are skipped during C code generation. Maps use the
 builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until V
 can compile the full builtin map.v.
+
+Methods on an alias are resolved using the receiver expression's alias, including calls on
+parameters inside a method of another alias of the same underlying type.
+
+An explicit `.str()` call on a generic struct pointer preserves the result of its
+user-defined pointer-receiver method. Pointer interpolation still adds its reference prefix,
+and automatic pointer stringification retains its existing prefix and nil handling.
+
+Variadic spreads accept array aliases, including struct fields and aliases of other array
+aliases. Each spread contributes the array's elements to the variadic argument list.
+
+Generic function bodies retain nominal alias types after unsafe expressions, array indexing,
+and map iteration, so methods declared on the alias remain available.
 
 ## Compiler dispatch
 
@@ -135,6 +174,10 @@ multiple input paths. `-cc <executable>` selects the C compiler. V3 uses
 `-gc boehm_full_opt` by default and supports the V1 collector modes; compiler self-builds
 disable GC regardless of the requested mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
+When an explicit `-cc tcc` build fails, the driver retries with the platform C compiler
+and reports the first error line from tcc in its fallback warning. This retry applies to
+all tcc failures. `-show-c-output` displays the complete original diagnostics, and
+`-no-retry-compilation` disables the retry.
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
@@ -146,6 +189,10 @@ compiler-tree and self-host builds stop at 9984 MiB, leaving extra sampling head
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit or 
 `-memory-limit` to set your own.
+A memory-limit failure flushes its diagnostic and immediately exits with status 1. Process-exit
+callbacks are skipped because compiler workers may still be using their allocation arenas.
+Backend type queries discard transient function smartcasts after scoped specialization,
+so generic builds with small worker counts do not retain freed map storage.
 Native compiler and `v self` builds use `-prealloc` when their target and selected C compiler
 support it, enabling the disposable stage arenas that keep compiler self-hosting within that
 ceiling.
@@ -209,8 +256,18 @@ Production, test, shared/live, ownership/autofree, object-file, profiling/covera
 custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL modes are currently
 rejected.
 
-A conventional C-backend self-host prunes FastC along with the other optional backends. Pass
-`-compile-backend fastc` or `-all-backends` when the generated compiler should retain `-b fastc`.
+Builds of the full `cmd/v` CLI (`make`, `makev.bat`, `v self`, `v up`) keep FastC, so default V
+executables accept `-b fastc`; `-d skip_fastc` leaves it out. Portable `-cross` C (the `vc/v.c` and
+`vc/v_win.c` bootstrap snapshots) leaves it out too, because FastC's libtcc linking and Mach-O
+signing are host specific; the compiler that `make` and `makev.bat` build from a snapshot rebuilds
+`cmd/v` natively and keeps it. A standalone `vlib/v/v.v` C-backend self-host prunes FastC along
+with the other optional backends. Pass `-compile-backend fastc` or `-all-backends` when that
+compiler should retain `-b fastc`.
+
+FastC builds programs on macOS, Linux, and Windows hosts; the C step always uses the bundled
+TinyCC (`thirdparty/tcc/tcc.exe`). The FastC self-host compiler described below lowers `spawn` to
+pthreads and uses header-free C ABI tables for macOS and glibc Linux, so `-selfhost -b fastc` and
+`v self -b fastc` reject Windows targets.
 
 `-selfhost -b fastc -o v4 vlib/v/v.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v.fastcdriver` entry point and can build further FastC generations without
@@ -290,13 +347,13 @@ translation units (the shared head of typedefs, prototypes and runtime in every 
 dispatch tables and lifecycle functions only in the first, the file bodies grouped by size; the
 globals are definitions in the first unit and `extern` declarations in the others),
 `fastc_compile_c_units` compiles them with concurrent `tcc -c` processes started through
-`posix_spawn` (forking the large compiler process costs more), and one `tcc` call links the
-objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the single-file build; both
-give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign` after linking, which costs
-~50 ms per build: the drivers put a no-op `codesign` first on its PATH and ad-hoc sign the
-executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through CommonCrypto,
-patched into the file in place). The SDK path is taken from `SDKROOT` or the toolchain selected by
-`xcrun`; conventional SDK locations are used only as a fallback.
+`posix_spawn` (forking the large compiler process costs more; Windows uses `os.Process`), and one
+`tcc` call links the objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the
+single-file build; both give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign`
+after linking, which costs ~50 ms per build: the drivers put a no-op `codesign` first on its PATH
+and ad-hoc sign the executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through
+CommonCrypto, patched into the file in place). The SDK path is taken from `SDKROOT` or the
+toolchain selected by `xcrun`; conventional SDK locations are used only as a fallback.
 
 Default self-host builds content-cache the split TinyCC objects and the linked, signed executable
 under `os.vtmp_dir()`. The keys cover the exact generated units, TinyCC build, compile options, and
@@ -362,6 +419,8 @@ header only for occupied slots. The existing set bits guard reads. `types.cached
 an immutable entry; `types.promote_cached_name()` preserves both its header and string bytes
 when a worker or transform arena is released. Text interning uses per-pass `flat.TextProbeCache`
 scratch on the stack, while canonical text remains owned by the AST.
+Callback validation retains declared variadic modes when matching a lowered array parameter,
+including callbacks nested in parameters and return types.
 After parallel transform merges its append regions, `FlatAst.discard_unused_capacity()`
 releases unused AST pages on macOS and Linux in preallocated builds. It preserves the virtual
 reservation and live nodes, so later appends keep their existing capacity.
@@ -457,8 +516,10 @@ All `vlib/builtin/` files (38 files: both `.v` and `.c.v`) are parsed first to
 collect struct, enum, type alias, interface, C function, and global definitions.
 `$if` compile-time conditionals (`$if !no_bounds_checking`,
 `$if gcboehm_opt ?`, `$if freestanding`, etc.) are resolved inline during
-parsing. The parser evaluates the condition, parses only the taken branch, and
-skips the other, so no `comptime_if` AST nodes reach the transformer or backends.
+parsing. The parser evaluates these flags, parses only the taken branch, and skips the other.
+Conditions requiring reflection, immutable reflection locals, or generic types remain in the
+AST for later evaluation. Static string declaration guards are finalized after import parsing;
+no undecided reflection string condition is silently dropped by a backend.
 
 After parsing the input file, imports are resolved recursively: the driver scans
 for `import_decl` nodes, resolves module paths, parses module `.v` and `.c.v`
@@ -478,6 +539,9 @@ instead of string-based type checks:
 `resolve_type(NodeId) Type` infers types from AST nodes. `c_type(Type) string`
 lowers to C type strings only at final emission. Lexical scopes store
 `map[string]Type` with parent-chain lookups.
+
+Pointer aliases retain their indirection when dereferenced, including aliases of
+`&map[K]V` used as the container of a `for` loop.
 
 `C.` structs and globals are recognized as extern C types and excluded from code
 generation. Function bodies from builtins are skipped during C code generation;
@@ -631,3 +695,21 @@ skipped during C code generation; C runtime functions are provided via a compact
 preamble.
 
 Measured on macOS (Apple Silicon), warm runs. V1 built from `~/code/v5/v` (V 0.5.1).
+
+Import aliases in type expressions are normalized to full module paths once.
+A module path can begin with the alias itself, including in nested generic heap
+initializers, without repeated expansion or compiler recursion.
+
+Function literals in constant struct initializers are lowered to callable helpers
+through address and parenthesis wrappers, including `const h = &Struct{...}`.
+
+Converting `&callback` to `voidptr`, or passing it to a `voidptr` parameter,
+addresses the storage of a function-valued variable, parameter, field or array
+element. Comparisons with a `voidptr` operand preserve that same storage address
+in either operand order. Taking the address of a named function remains the function pointer.
+
+Constant references to map literals own a heap copy of the map descriptor.
+Both populated and empty map references retain valid storage after initialization.
+
+The special lowering for `strings.Builder` applies to that module’s type.
+Types named `Builder` in other modules keep their own methods.

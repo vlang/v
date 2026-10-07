@@ -92,6 +92,24 @@ fn main() {}
 	assert ok.exit_code == 0, ok.output
 }
 
+fn test_ownership_prescan_converges_for_long_acyclic_call_chains() {
+	v3_bin := ownership_build_v3()
+	for reverse in [false, true] {
+		mut declarations := ['struct ChainNode { name string }',
+			'fn link_0(p &ChainNode) &ChainNode { return p }']
+		for i in 1 .. 90 {
+			declarations << 'fn link_${i}(p &ChainNode) &ChainNode { return link_${i - 1}(p) }'
+		}
+		if reverse {
+			declarations.reverse_in_place()
+		}
+		declarations << 'fn main() { n := ChainNode{name: "node"}; assert link_89(&n).name == "node" }'
+		result := run_ownership_check(v3_bin, 'long_acyclic_chain_${reverse}',
+			declarations.join('\n'))
+		assert result.exit_code == 0, result.output
+	}
+}
+
 fn test_autofree_main_enum_symbols_are_namespaced() {
 	v3_bin := ownership_build_v3()
 	name := 'main_enum_namespace'

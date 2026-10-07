@@ -693,34 +693,51 @@ pub fn (s string) bool() bool {
 	return s == 'true' || s == 't' // TODO: t for pg, remove
 }
 
+// string_int_base preserves decimal leading zeros in numeric conveniences,
+// while explicit integer prefixes still select binary, octal, or hexadecimal.
+@[inline]
+fn string_int_base(s string) int {
+	start := if s.len > 0 && s[0] in [`+`, `-`] { 1 } else { 0 }
+	if s.len - start >= 2 && s[start] == `0`
+		&& s[start + 1] in [`b`, `B`, `o`, `O`, `x`, `X`] {
+		return 0
+	}
+	return 10
+}
+
 // i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) i8() i8 {
-	return i8(strconv.common_parse_int(s, 0, 8, false, false) or { 0 })
+	return i8(strconv.common_parse_int(s, string_int_base(s), 8, false, false) or { 0 })
 }
 
 // i16 returns the value of the string as i16 `'1'.i16() == i16(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) i16() i16 {
-	return i16(strconv.common_parse_int(s, 0, 16, false, false) or { 0 })
+	return i16(strconv.common_parse_int(s, string_int_base(s), 16, false, false) or { 0 })
 }
 
 // i32 returns the value of the string as i32 `'1'.i32() == i32(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) i32() i32 {
-	return i32(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
+	return i32(strconv.common_parse_int(s, string_int_base(s), 32, false, false) or { 0 })
 }
 
 // int returns the value of the string as an integer `'1'.int() == 1`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) int() int {
-	return int(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
+	return int(strconv.common_parse_int(s, string_int_base(s), 32, false, false) or { 0 })
 }
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) i64() i64 {
-	return strconv.common_parse_int(s, 0, 64, false, false) or { 0 }
+	return strconv.common_parse_int(s, string_int_base(s), 64, false, false) or { 0 }
 }
 
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
@@ -789,27 +806,31 @@ pub fn (s string) u8_array() []u8 {
 }
 
 // u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) u8() u8 {
-	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
+	return u8(strconv.common_parse_uint(s, string_int_base(s), 8, false, false) or { 0 })
 }
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) u16() u16 {
-	return u16(strconv.common_parse_uint(s, 0, 16, false, false) or { 0 })
+	return u16(strconv.common_parse_uint(s, string_int_base(s), 16, false, false) or { 0 })
 }
 
 // u32 returns the value of the string as u32 `'1'.u32() == u32(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) u32() u32 {
-	return u32(strconv.common_parse_uint(s, 0, 32, false, false) or { 0 })
+	return u32(strconv.common_parse_uint(s, string_int_base(s), 32, false, false) or { 0 })
 }
 
 // u64 returns the value of the string as u64 `'1'.u64() == u64(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) u64() u64 {
-	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
+	return strconv.common_parse_uint(s, string_int_base(s), 64, false, false) or { 0 }
 }
 
 // parse_uint is like `parse_int` but for unsigned numbers
@@ -2190,6 +2211,7 @@ pub fn (s string) str() string {
 
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == u8(`B`)
+@[markused]
 fn (s string) at(idx int) u8 {
 	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
@@ -2236,29 +2258,31 @@ fn (s string) at_with_check(idx int) ?u8 {
 	}
 }
 
-@[markused]
-fn (s string) at_with_check_i64(idx i64) ?u8 {
-	if idx < 0 || idx >= i64(s.len) {
-		return none
+$if !v3_backend ? {
+	@[markused]
+	fn (s string) at_with_check_i64(idx i64) ?u8 {
+		if idx < 0 || idx >= i64(s.len) {
+			return none
+		}
+		unsafe {
+			return s.str[int(idx)]
+		}
 	}
-	unsafe {
-		return s.str[int(idx)]
-	}
-}
 
-@[markused]
-fn (s string) at_with_check_u64(idx u64) ?u8 {
-	if idx >= u64(s.len) {
-		return none
+	@[markused]
+	fn (s string) at_with_check_u64(idx u64) ?u8 {
+		if idx >= u64(s.len) {
+			return none
+		}
+		unsafe {
+			return s.str[int(idx)]
+		}
 	}
-	unsafe {
-		return s.str[int(idx)]
-	}
-}
 
-@[markused]
-fn (s string) at_with_check_ni(idx int) ?u8 {
-	return s.at_with_check(v_ni_index(idx, s.len))
+	@[markused]
+	fn (s string) at_with_check_ni(idx int) ?u8 {
+		return s.at_with_check(v_ni_index(idx, s.len))
+	}
 }
 
 // Check if a string is an octal value. Returns 'true' if it is, or 'false' if it is not

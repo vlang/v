@@ -51,6 +51,7 @@ fn test_self_qualified_constant_name_is_generated_as_a_c_name() {
 		'module ${mod}',
 		'',
 		'fn test_qualified_const() {',
+		'\tprintln(${mod}.greeting)',
 		'\tprintln(${mod}.greeting.len)',
 		'}',
 	])
@@ -63,5 +64,18 @@ fn test_self_qualified_constant_name_is_generated_as_a_c_name() {
 	generate := os.exec([v3_bin, '-o', c_path, os.join_path(mod_dir, 'lib_test.v')])
 	assert generate.exit_code == 0, generate.output
 	generated := os.read_file(c_path) or { panic(err) }
-	assert generated.contains('${mod}__greeting.len')
+	assert generated.contains('println(${mod}__greeting);')
+	// The qualified string still reaches C, while its static length folds to a literal.
+	assert generated.contains('println(int__str(2));')
+	assert !generated.contains('${mod}__greeting.len')
+	run_path := os.join_path(os.temp_dir(), 'v3 self qualified module name run' + $if windows {
+		'.exe'
+	} $else {
+		''
+	})
+	compile := os.exec([v3_bin, '-gc', 'none', '-o', run_path, os.join_path(mod_dir, 'lib_test.v')])
+	assert compile.exit_code == 0, compile.output
+	run := os.exec([run_path])
+	assert run.exit_code == 0, run.output
+	assert run.output.replace('\r\n', '\n') == 'hi\n2\n', run.output
 }

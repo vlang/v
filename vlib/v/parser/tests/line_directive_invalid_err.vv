@@ -1,0 +1,10 @@
+fn main() {
+#line
+#line abc
+#line 0
+#line 12 src/app.zbr
+#line 12 "src/app.zbr
+#line 12 "src/app.zbr" extra
+	x := 1 #line 12
+	println(x)
+}

@@ -1,0 +1,23 @@
+@[generated]
+module main
+
+// Unlike `@[translated]`, `@[generated]` relaxes only the naming rules.
+__global zbrCounter = 0
+
+enum _zbr_ty_Color {
+	red
+	green
+}
+
+fn takeColor(c _zbr_ty_Color) int {
+	return int(c)
+}
+
+fn main() {
+	count := 1
+	count = 2
+	println(takeColor(1))
+	mut c := _zbr_ty_Color.red
+	c = c + 1
+	println('${count} ${c} ${zbrCounter}')
+}

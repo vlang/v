@@ -128,6 +128,31 @@ fn test_color_highlight_byte_as_an_identifier() {
 	assert color_highlight('u8') == term.green('u8')
 }
 
+// The `${` and `}` that delimit an interpolation are highlighted.
+const interp_open = term.bright_magenta('$') + term.bright_magenta('{')
+const interp_close = term.bright_magenta('}')
+
+fn test_color_highlight_string_interpolation() {
+	assert color_highlight("':\${port}'") == term.yellow("':") + interp_open + 'port' +
+		interp_close + term.yellow("'")
+}
+
+fn test_color_highlight_braces_inside_an_interpolation() {
+	assert color_highlight("'\${Foo{}}'") == term.yellow("'") + interp_open + term.green('Foo') +
+		'{}' + interp_close + term.yellow("'")
+}
+
+fn test_color_highlight_nested_interpolation() {
+	inner := term.yellow("'b") + interp_open + 'x' + interp_close + term.yellow("'")
+	assert color_highlight("'a\${f('b\${x}')}c'") == term.yellow("'a") + interp_open +
+		term.cyan('f') + '(' + inner + ')' + interp_close + term.yellow("c'")
+}
+
+fn test_color_highlight_braces_outside_strings() {
+	assert color_highlight('struct S {}') == term.bright_blue('struct') + ' ' + term.green('S') +
+		' {}'
+}
+
 fn test_html_highlight_byte_as_an_identifier() {
 	assert html_highlight('byte') == 'byte'
 	assert html_highlight('byte()').contains('<span class="token function">byte</span>')

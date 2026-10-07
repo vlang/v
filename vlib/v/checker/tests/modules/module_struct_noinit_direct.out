@@ -1,0 +1,34 @@
+vlib/v/checker/tests/modules/module_struct_noinit_direct/main.v:9:6: error: struct `module_struct_noinit_direct.locked.Foo` is declared with a `@[noinit]` attribute, so it cannot be initialized with `module_struct_noinit_direct.locked.Foo{}`
+    7 |     _ = locked.new_foo()
+    8 |     _ = ordinary.Foo{ digit: 5 }
+    9 |     _ = locked.Foo{}
+      |         ~~~~~~~~~~~~
+   10 |     _ = locked.Foo{ digit: 5 }
+   11 |     _ = &locked.Foo{ digit: 5 }
+vlib/v/checker/tests/modules/module_struct_noinit_direct/main.v:10:6: error: struct `module_struct_noinit_direct.locked.Foo` is declared with a `@[noinit]` attribute, so it cannot be initialized with `module_struct_noinit_direct.locked.Foo{}`
+    8 |     _ = ordinary.Foo{ digit: 5 }
+    9 |     _ = locked.Foo{}
+   10 |     _ = locked.Foo{ digit: 5 }
+      |         ~~~~~~~~~~~~~~~~~~~~~~
+   11 |     _ = &locked.Foo{ digit: 5 }
+   12 |     _ = Alias{ digit: 5 }
+vlib/v/checker/tests/modules/module_struct_noinit_direct/main.v:11:7: error: struct `module_struct_noinit_direct.locked.Foo` is declared with a `@[noinit]` attribute, so it cannot be initialized with `module_struct_noinit_direct.locked.Foo{}`
+    9 |     _ = locked.Foo{}
+   10 |     _ = locked.Foo{ digit: 5 }
+   11 |     _ = &locked.Foo{ digit: 5 }
+      |          ~~~~~~~~~~~~~~~~~~~~~~
+   12 |     _ = Alias{ digit: 5 }
+   13 |     _ = locked.Generic[int]{ digit: 5 }
+vlib/v/checker/tests/modules/module_struct_noinit_direct/main.v:12:6: error: struct `Alias` is declared with a `@[noinit]` attribute, so it cannot be initialized with `Alias{}`
+   10 |     _ = locked.Foo{ digit: 5 }
+   11 |     _ = &locked.Foo{ digit: 5 }
+   12 |     _ = Alias{ digit: 5 }
+      |         ~~~~~~~~~~~~~~~~~
+   13 |     _ = locked.Generic[int]{ digit: 5 }
+   14 | }
+vlib/v/checker/tests/modules/module_struct_noinit_direct/main.v:13:6: error: struct `module_struct_noinit_direct.locked.Generic[int]` is declared with a `@[noinit]` attribute, so it cannot be initialized with `module_struct_noinit_direct.locked.Generic[int]{}`
+   11 |     _ = &locked.Foo{ digit: 5 }
+   12 |     _ = Alias{ digit: 5 }
+   13 |     _ = locked.Generic[int]{ digit: 5 }
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   14 | }

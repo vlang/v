@@ -13,3 +13,30 @@ be forwarded as `mut unsafe { &Context(ctx) }` to a function taking `mut context
 A server's `on_connect` callback runs before its handshake response is written. Use
 `on_attached` or `on_attached_ref` to push frames after the handshake response has been written
 and the client's callbacks have been registered.
+
+## Explicit write batching
+
+`client.write_messages([]websocket.Message)` sends the supplied complete frames
+in order without waiting to collect more traffic. It uses one socket write and
+returns the wire byte count, including headers. Empty batches are a no-op.
+Control frames must be at most 125 bytes; continuation frames are not accepted.
+Close frames are not accepted; call `client.close(code, reason)` for the closing handshake.
+The entire batch is validated before any frames are sent.
+Socket writes, including pongs from the reader, are serialized per connection.
+On a write error, close the connection: a prefix may already have been sent.
+
+## Incremental server frame decoding
+
+`ServerFrameDecoder.decode(mut input)` processes masked client frames from a
+caller-owned buffer without performing socket I/O. It supports incomplete input,
+fragmented messages, interleaved controls, message limits, and protocol validation.
+See [the decoder documentation](FRAME_DECODER.md) for buffer ownership and usage.
+
+## Optional Linux reactor
+
+`new_reactor()` serves already upgraded plaintext TCP sockets on an explicit worker
+thread using epoll and eventfd. It provides bounded input/output work, cross-thread
+send handles, backpressure, deadlines, and graceful shutdown. The existing `Client`
+and `Server` APIs keep their execution model.
+See [the reactor documentation](REACTOR.md) for ownership, callbacks, and limits.
+See [text validation](FRAME_VALIDATION.md) for the ASCII fast path and Unicode fallback.
