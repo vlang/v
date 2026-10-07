@@ -16141,6 +16141,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			} else if node.op == .amp && child.kind == .struct_init {
 				g.gen_heap_struct_init(child)
+			} else if node.op == .amp && child.kind == .map_init {
+				// A map literal is a statement-expression value, not addressable C storage.
+				// Copy its descriptor to the heap so a constant reference survives _vinit.
+				ct := g.value_c_type(g.usable_expr_type(child_id))
+				tmp := g.tmp_name()
+				g.write('({ ${ct} ${tmp} = ')
+				g.gen_expr(child_id)
+				g.write('; (${ct}*)memdup(&${tmp}, sizeof(${ct})); })')
 			} else if node.op == .amp && child.kind == .assoc {
 				g.gen_heap_assoc_expr(child)
 			} else if node.op == .amp && child.kind == .cast_expr {

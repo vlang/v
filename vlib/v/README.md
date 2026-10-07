@@ -699,3 +699,6 @@ Converting `&callback` to `voidptr`, or passing it to a `voidptr` parameter,
 addresses the storage of a function-valued variable, parameter, field or array
 element. Comparisons with a `voidptr` operand preserve that same storage address
 in either operand order. Taking the address of a named function remains the function pointer.
+
+Constant references to map literals own a heap copy of the map descriptor.
+Both populated and empty map references retain valid storage after initialization.
