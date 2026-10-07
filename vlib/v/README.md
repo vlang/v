@@ -64,6 +64,9 @@ An explicit `.str()` call on a generic struct pointer preserves the result of it
 user-defined pointer-receiver method. Pointer interpolation still adds its reference prefix,
 and automatic pointer stringification retains its existing prefix and nil handling.
 
+Variadic spreads accept array aliases, including struct fields and aliases of other array
+aliases. Each spread contributes the array's elements to the variadic argument list.
+
 ## Compiler dispatch
 
 On every native platform, this is the default compiler for user source and test builds. The

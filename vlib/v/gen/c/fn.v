@@ -8936,7 +8936,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 							g.gen_variadic_array_args(node, i, variadic_type.elem_type)
 							break
 						}
-						arg_type := g.tc.resolve_type(arg_id)
+						arg_type := cgen_unalias_type(g.tc.resolve_type(arg_id))
 						if arg_type !is types.Array || arg_node.kind == .struct_init {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
 							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
@@ -14724,7 +14724,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			break
 		}
 		if variadic_idx >= 0 && arg_idx == variadic_idx && num_args == param_types.len {
-			arg_type := g.tc.resolve_type(arg_id)
+			arg_type := cgen_unalias_type(g.tc.resolve_type(arg_id))
 			// A struct literal can never itself be the variadic array; the checker
 			// propagates the expected `[]T` onto the node, masking its own type.
 			if arg_type !is types.Array || arg_node.kind == .struct_init {
