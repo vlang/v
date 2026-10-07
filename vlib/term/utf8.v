@@ -53,7 +53,6 @@ pub fn utf8_len(c u8) int {
 	return b
 }
 
-
 // printable_len returns the number of terminal columns `s` occupies when printed. ANSI escape sequences (CSI, OSC, DCS/APC/PM, and two-byte escapes) are skipped.
 pub fn printable_len(s string) int {
 	runes := s.runes()
@@ -120,7 +119,7 @@ fn skip_ansi(runes []rune, i int) int {
 				if c == 0x07 { // BEL
 					return j + 1
 				}
-				if c == `\x1b` && j+1 < runes.len && runes[j+1] == `\\` {
+				if c == `\x1b` && j + 1 < runes.len && runes[j + 1] == `\\` {
 					return j + 2 // ST
 				}
 				j++
@@ -130,7 +129,7 @@ fn skip_ansi(runes []rune, i int) int {
 		`P`, `X`, `^`, `_` { // DCS / APC / PM
 			j++
 			for j < runes.len {
-				if runes[j] == `\x1b` && j+1 < runes.len && runes[j+1] == `\\` {
+				if runes[j] == `\x1b` && j + 1 < runes.len && runes[j + 1] == `\\` {
 					return j + 2
 				}
 				j++
