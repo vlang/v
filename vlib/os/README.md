@@ -177,6 +177,7 @@ When shell syntax is required, invoke the shell explicitly with an argument arra
 A shell still interprets its script as code: use a fixed script with positional
 arguments for data, and never interpolate untrusted values into the script.
 On Windows, shell builtins and batch scripts likewise require an explicit shell.
+For example, `os.exec(['cmd', '/d', '/c', 'echo', 'hello'])` runs the `echo` builtin.
 
 ---
 
@@ -210,6 +211,10 @@ value too, while the ones built on the Win32 API (`os.mkdir`, `os.rmdir`, `os.ls
 `os.symlink` and `os.link`) report a Win32 error code. The `os.error_code_*` constants
 hold one of these codes for a condition, so prefer the predicates over comparing
 `err.code()` with them.
+
+`os.symlink` and `os.link` preserve the Windows API's error code when link creation fails,
+so duplicate targets and missing paths can be classified with these predicates.
+`os.hostname` and `os.loginname` also preserve their Win32 error codes on failure.
 
 ---
 

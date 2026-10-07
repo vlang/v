@@ -5079,11 +5079,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		tc.invalidate_smartcasts_after_call(node, info)
 		tc.check_os_file_raw_io_call(id, node, info)
 		tc.check_generic_call_constraints(id, node, info)
-		tc.check_instantiated_generic_as_casts(node, info)
-		tc.check_instantiated_generic_noinit_structs(id, node, info)
-		tc.check_instantiated_generic_ordering_ops(node, info)
-		tc.check_instantiated_generic_compile_errors(id, node, info)
-		tc.check_instantiated_generic_compile_warnings(node, info)
+		tc.check_instantiated_generic_diagnostics(id, node, info)
 		$if ownership ? {
 			tc.ownership_after_call(id, node, tc.builtin_copy_ownership_call_info(id, node,
 				info))
@@ -5905,8 +5901,49 @@ struct InstantiatedCompileWarning {
 	pos     token.Pos
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_compile_errors(call_id flat.NodeId, call flat.Node, info CallInfo) {
+// Reuse the immutable binding while the walks leave diagnostics unchanged.
+// An error can affect resolution of invalid expressions, so retain fresh
+// instantiation queries for the remaining walks after one is reported.
+fn (mut tc TypeChecker) check_instantiated_generic_diagnostics(call_id flat.NodeId, call flat.Node, info CallInfo) {
 	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+	error_count := tc.errors.len
+	tc.check_instantiated_generic_as_casts(info, instantiation)
+	if tc.errors.len != error_count {
+		tc.check_instantiated_generic_diagnostics_after_error(call_id, call, info, 1)
+		return
+	}
+	tc.check_instantiated_generic_noinit_structs(call_id, info, instantiation)
+	if tc.errors.len != error_count {
+		tc.check_instantiated_generic_diagnostics_after_error(call_id, call, info, 2)
+		return
+	}
+	tc.check_instantiated_generic_ordering_ops(call, info, instantiation)
+	if tc.errors.len != error_count {
+		tc.check_instantiated_generic_diagnostics_after_error(call_id, call, info, 3)
+		return
+	}
+	tc.check_instantiated_generic_compile_errors(call_id, call, instantiation)
+	if tc.errors.len != error_count {
+		tc.check_instantiated_generic_diagnostics_after_error(call_id, call, info, 4)
+		return
+	}
+	tc.check_instantiated_generic_compile_warnings(instantiation)
+}
+
+fn (mut tc TypeChecker) check_instantiated_generic_diagnostics_after_error(call_id flat.NodeId, call flat.Node, info CallInfo, first int) {
+	for index in first .. 5 {
+		instantiation := tc.generic_compile_error_instantiation(call, info) or { continue }
+		match index {
+			1 { tc.check_instantiated_generic_noinit_structs(call_id, info, instantiation) }
+			2 { tc.check_instantiated_generic_ordering_ops(call, info, instantiation) }
+			3 { tc.check_instantiated_generic_compile_errors(call_id, call, instantiation) }
+			4 { tc.check_instantiated_generic_compile_warnings(instantiation) }
+			else {}
+		}
+	}
+}
+
+fn (mut tc TypeChecker) check_instantiated_generic_compile_errors(call_id flat.NodeId, call flat.Node, instantiation GenericCompileErrorInstantiation) {
 	mut messages := []string{}
 	tc.collect_instantiated_compile_errors(instantiation.decl_id, instantiation, mut messages)
 	for message in messages {
@@ -5916,8 +5953,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_compile_errors(call_id flat.N
 	}
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_compile_warnings(call flat.Node, info CallInfo) {
-	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+fn (mut tc TypeChecker) check_instantiated_generic_compile_warnings(instantiation GenericCompileErrorInstantiation) {
 	mut warnings := []InstantiatedCompileWarning{}
 	tc.collect_instantiated_compile_warnings(instantiation.decl_id, instantiation, mut warnings)
 	for warning in warnings {
@@ -6221,8 +6257,7 @@ fn (tc &TypeChecker) instantiated_generic_decl_expr_type(id flat.NodeId, decl fl
 	return tc.substitute_generic_type(tc.resolve_type(id), instantiation.concrete_args, instantiation.generic_params)
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_as_casts(call flat.Node, info CallInfo) {
-	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+fn (mut tc TypeChecker) check_instantiated_generic_as_casts(info CallInfo, instantiation GenericCompileErrorInstantiation) {
 	fn_node := tc.a.node(instantiation.decl_id)
 	mut stack := []flat.NodeId{}
 	for i in 0 .. fn_node.children_count {
@@ -6255,8 +6290,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_as_casts(call flat.Node, info
 	}
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call_id flat.NodeId, call flat.Node, info CallInfo) {
-	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call_id flat.NodeId, info CallInfo, instantiation GenericCompileErrorInstantiation) {
 	fn_node := tc.a.node(instantiation.decl_id)
 	mut declaration_module := tc.fn_type_modules[info.name] or { '' }
 	if declaration_module.len == 0 {
@@ -6297,8 +6331,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call_id flat.N
 	}
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_ordering_ops(call flat.Node, info CallInfo) {
-	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+fn (mut tc TypeChecker) check_instantiated_generic_ordering_ops(call flat.Node, info CallInfo, instantiation GenericCompileErrorInstantiation) {
 	mut instantiations := [instantiation]
 	// The exact-output fixture path expands every sibling method for compatibility
 	// with v1. Normal compilation specializes regular methods on demand.

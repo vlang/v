@@ -337,6 +337,7 @@ mut:
 	default_clone_synthesized     map[string]bool
 	default_clone_expansion_stack []string
 	interface_boxed_types         map[string]bool
+	interface_boxed_skip_nodes    []bool
 	// interface_boxed_types_late records concrete boxes discovered after the
 	// source-level box index is frozen. Each transform worker owns this map, so
 	// auto-string lowering can extend its local dispatch index without mutating
@@ -3838,6 +3839,7 @@ fn (mut t Transformer) collect_interface_boxed_types_dispatch(want_parallel bool
 	if t.interface_boxed_types_done {
 		return
 	}
+	t.interface_boxed_skip_nodes = t.unchecked_library_box_nodes()
 	if !want_parallel || !t.scope_parallel_workers {
 		t.collect_interface_boxed_types()
 		return
@@ -4571,6 +4573,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 			unsafe { &t.generic_specialization_args }
 		}
 		interface_var_concrete_types:        map[string]string{}
+		interface_boxed_skip_nodes:          t.interface_boxed_skip_nodes
 		interface_boxed_types:               if t.skip_generics && t.interface_boxed_types_frozen {
 			t.interface_boxed_types
 		} else {
@@ -6553,7 +6556,11 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		typ = typ[1..]
 	} else if format != 'p' && expr_node.kind == .ident
 		&& t.string_interp_needs_value_read(expr_node.value, typ) {
-		transformed = t.make_prefix(.mul, transformed)
+		// Reading a local moved to the heap already dereferences its storage, while
+		// `typ` can still be the `&Alias` of that storage: read the value only once.
+		if !t.is_value_read_of(transformed, expr_node.value) {
+			transformed = t.make_prefix(.mul, transformed)
+		}
 		typ = typ[1..]
 	}
 	if typ.len == 0 {
@@ -6638,6 +6645,20 @@ fn (mut t Transformer) mark_string_interp_call_part_used(expr_id flat.NodeId) {
 			t.mark_fn_used_name(method_name)
 		}
 	}
+}
+
+// is_value_read_of reports whether `id` is `*name`, the value of the pointer-backed
+// local `name`.
+fn (t &Transformer) is_value_read_of(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .mul || node.children_count != 1 {
+		return false
+	}
+	operand := t.a.child_node(&node, 0)
+	return operand.kind == .ident && operand.value == name
 }
 
 fn (t &Transformer) string_interp_needs_value_read(name string, typ string) bool {
@@ -10312,9 +10333,10 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 	}
 	if header_end >= 3 {
 		container_id := t.a.child(node, 2)
-		// detect_for_in_type records the type it finds on the loop header, which is too
-		// early here: the names in scope still have the types of the previous function.
-		iter_type := for_iter_payload_type(t.comptime_normalize_type_alias_chain(t.node_type(container_id))).trim_space()
+		// Local declarations have not populated var_types yet. Prefer the checked
+		// source type so a local homonym does not resolve to a foreign constant.
+		container_type := t.checker_expr_type_name(container_id) or { t.node_type(container_id) }
+		iter_type := for_iter_payload_type(t.comptime_normalize_type_alias_chain(container_type)).trim_space()
 		reference_iteration := node.op == .amp || iter_type.starts_with('&')
 		mut backing_id := container_id
 		mut fixed_backing := t.is_fixed_array_type(iter_type.trim_left('&'))
@@ -10322,7 +10344,9 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 			range_id := t.unwrap_parens(container_id)
 			if t.is_range_index_expr(range_id) {
 				base_id := t.a.child(t.a.node(range_id), 0)
-				if t.is_fixed_array_type(t.unaliased_value_type(base_id)) {
+				checked_base_type := t.checker_expr_type_name(base_id) or { t.node_type(base_id) }
+				base_type := t.alias_str_resolved_base_type(checked_base_type.trim_left('&')).trim_left('&')
+				if t.is_fixed_array_type(base_type) {
 					backing_id = base_id
 					fixed_backing = true
 				}
@@ -20975,26 +20999,28 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			return t.transform_infix_expr(new_id, t.a.nodes[int(new_id)])
 		}
 	}
-	if str_result := t.transform_infix_string_ops(id, node) {
-		return str_result
-	}
-	if array_result := t.transform_infix_array_ops(id, node) {
-		return array_result
-	}
-	if map_result := t.transform_infix_map_ops(id, node) {
-		return map_result
-	}
-	if optional_result := t.transform_infix_optional_none_ops(id, node) {
-		return optional_result
-	}
-	if interface_result := t.transform_infix_interface_ops(id, node) {
-		return interface_result
-	}
-	if sum_result := t.transform_infix_sum_ops(id, node) {
-		return sum_result
-	}
-	if struct_result := t.transform_infix_struct_ops(id, node) {
-		return struct_result
+	if !t.checked_numeric_infix_can_skip_handlers(node) {
+		if str_result := t.transform_infix_string_ops(id, node) {
+			return str_result
+		}
+		if array_result := t.transform_infix_array_ops(id, node) {
+			return array_result
+		}
+		if map_result := t.transform_infix_map_ops(id, node) {
+			return map_result
+		}
+		if optional_result := t.transform_infix_optional_none_ops(id, node) {
+			return optional_result
+		}
+		if interface_result := t.transform_infix_interface_ops(id, node) {
+			return interface_result
+		}
+		if sum_result := t.transform_infix_sum_ops(id, node) {
+			return sum_result
+		}
+		if struct_result := t.transform_infix_struct_ops(id, node) {
+			return struct_result
+		}
 	}
 	lhs_id := t.a.children[node.children_start]
 	rhs_id := t.a.children[node.children_start + 1]
@@ -21058,6 +21084,83 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		value:          node.value
 		typ:            node.typ
 	})
+}
+
+// Checked scalar arithmetic uses the common infix lowering path. Alias
+// operators still require the type-specific dispatch, including aliases recovered
+// from the original element type of an indexed operand.
+fn (t &Transformer) checked_numeric_infix_can_skip_handlers(node flat.Node) bool {
+	if !t.skip_generics || t.building_v || t.validating_generic_spec || t.cur_fn_is_generic
+		|| t.active_generic_params.len > 0 || t.active_specialization_args.len > 0
+		|| t.smartcast_stack.len > 0 || isnil(t.tc)
+		|| node.children_count != 2 || node.op !in [.plus, .minus, .mul, .div, .mod, .eq, .ne,
+		.lt, .gt, .le, .ge, .amp, .pipe, .xor, .right_shift, .right_shift_unsigned] {
+		return false
+	}
+	lhs := t.a.child(&node, 0)
+	rhs := t.a.child(&node, 1)
+	if !t.checked_numeric_infix_operand(lhs, node.op, true) {
+		return false
+	}
+	// For these operators the first six handlers reject the operator before
+	// inspecting operands. Struct/operator dispatch then depends only on LHS.
+	if node.op in [.minus, .mul, .div, .mod, .amp, .pipe, .xor, .right_shift, .right_shift_unsigned] {
+		return true
+	}
+	return t.checked_numeric_infix_operand(rhs, node.op, false)
+}
+
+fn (t &Transformer) checked_numeric_infix_operand(id flat.NodeId, op flat.Op, is_lhs bool) bool {
+	if typ := t.tc.expr_type(id) {
+		if !checked_small_numeric_type(typ) {
+			return false
+		}
+		if !t.checked_numeric_operand_has_alias_candidates(id, typ) {
+			return true
+		}
+	} else {
+		// String comparisons/addition query both node types; the remaining
+		// operators reach the struct handler's LHS type query instead.
+		name := t.node_type(id)
+		if !is_numeric_type_name(name) || name in ['i128', 'u128'] {
+			return false
+		}
+		if !is_lhs && op !in [.eq, .ne] {
+			return true
+		}
+		// Alias dispatch reads the raw checker LHS type. Array equality also
+		// consults the raw RHS type, so a heuristic scalar must not hide it.
+		typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
+		if !checked_small_numeric_type(typ) {
+			return false
+		}
+		if !t.checked_numeric_operand_has_alias_candidates(id, typ) {
+			return true
+		}
+	}
+	if _ := t.operator_alias_type_for_operand(id, op) {
+		return false
+	}
+	return true
+}
+
+// The alias helper only has candidates from the cached semantic type, node
+// annotation/cast target, and original indexed element type. A plain primitive
+// sidecar has a builtin name, so it needs no nominal operator lookup.
+fn (t &Transformer) checked_numeric_operand_has_alias_candidates(id flat.NodeId, typ types.Type) bool {
+	if typ is types.Alias {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	return node.kind == .index
+		|| (node.typ.len > 0 && !types.is_builtin_type_name(node.typ))
+		|| (node.kind == .cast_expr && node.value.len > 0 && !types.is_builtin_type_name(node.value))
+}
+
+fn checked_small_numeric_type(typ types.Type) bool {
+	clean := types.unalias_type(typ)
+	return clean is types.Primitive && clean.size <= 64
+		&& (clean.props.has(.integer) || clean.props.has(.float))
 }
 
 fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node flat.Node, child_index int) bool {
@@ -27013,7 +27116,7 @@ fn (t &Transformer) raw_infix_operator_decl_return_type(node flat.Node) ?string 
 
 fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?string {
 	if ret := t.tc.fn_ret_type_texts[name] {
-		raw := t.raw_call_return_type_name(ret, node)
+		raw := t.raw_call_return_type_name(t.caller_return_type_text(name, ret), node)
 		if t.raw_return_type_contains_alias(raw) {
 			return raw
 		}
@@ -27031,6 +27134,24 @@ fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?st
 		}
 	}
 	return none
+}
+
+// caller_return_type_text is the return type `ret` of the function `name`, written
+// as the current module names it. `ret` keeps the spelling of the module that declares
+// the function, where `ID` is the alias `m.ID`; in another module that bare `ID` has
+// none of the methods of `m.ID`, like its `str`. A generic function keeps its text:
+// its type parameters are resolved at the call.
+fn (t &Transformer) caller_return_type_text(name string, ret string) string {
+	decl_file := t.tc.fn_type_files[name] or { return ret }
+	decl_module := t.tc.fn_type_modules[name] or { t.tc.file_modules[decl_file] or { return ret } }
+	if decl_module == t.cur_module || name.contains('[') || name in t.tc.fn_generic_params {
+		return ret
+	}
+	resolved := t.tc.fn_signature_type(name, ret)
+	if resolved is types.Unknown || resolved is types.Void {
+		return ret
+	}
+	return resolved.name()
 }
 
 fn (t &Transformer) raw_return_type_contains_alias(typ string) bool {

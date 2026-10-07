@@ -39,6 +39,8 @@ two accesses happen at the very same time. V threads run in parallel, so:
 * a race report is attributed to the test in whose code its first program stack frame is,
   as the thread that reports a race can still run after its test returned;
 * `run()` gives the threads of a test 20 ms to finish before the next test starts;
+* `test_race_wait_group_reuse` recovers the expected WaitGroup reuse panic, which parallel
+  V threads can detect despite the sleeps, so the intentional race can still be checked;
 * `test_race_as_func3` sleeps in its thread, to get the order that it needs.
 
 gcc's ThreadSanitizer instrumentation does not see the reads and writes of whole struct
