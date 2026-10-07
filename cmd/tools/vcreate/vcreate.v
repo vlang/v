@@ -4,6 +4,7 @@ module main
 
 import os
 import cli { Command, Flag }
+import v.vmod
 
 // Note: this program follows a similar convention as Rust cargo:
 // `init` creates the structure of project in the current directory,
@@ -87,6 +88,7 @@ fn main() {
 					'Sets up a V project within the current directory.',
 					'',
 					"If no `v.mod` exists, a setup prompt is started to create one with the project's metadata.",
+					'If a valid `v.mod` exists, its module name is used and the manifest is preserved.',
 					'The prompts run only when stdin is a terminal; otherwise the defaults are used.',
 					'If no `.v` file exists, a project template is generated. If the current directory is not a',
 					'git project and git is installed, `git init` will be performed during the setup.',
@@ -143,6 +145,10 @@ fn init_project(cmd Command) ! {
 		c.write_vmod()
 		if mod_dir_has_hyphens {
 			println('The directory name `${dir_name}` is invalid as a module name. The module name in `v.mod` was set to `${c.name}`')
+		}
+	} else {
+		if mod := vmod.from_file('v.mod') {
+			c.name = mod.name
 		}
 	}
 	println('Initialising ...')
