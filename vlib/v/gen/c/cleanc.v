@@ -5020,14 +5020,14 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 
 fn (mut g FlatGen) collect_c_flags_from_directives() {
 	mut cur_file := ''
-	mut cur_module := ''
+	mut cur_module := 'main'
 	mut groups := []CFlagDirectiveGroup{}
 	for node_idx in g.top_level_nodes() {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
-			cur_module = ''
+			cur_module = 'main'
 			g.note_compiler_source_file(node.value)
 			continue
 		}
@@ -5208,14 +5208,36 @@ fn c_flag_links_c_source(flag string) bool {
 		|| flag.contains('.cc') || flag.contains('.o ') || flag.ends_with('.o')
 }
 
+// c_flag_links_c_library reports whether a flag links a library by path.
+fn c_flag_links_c_library(flag string) bool {
+	mut skip_path := false
+	for raw_arg in tokenize_c_flag(c_flag_strip_hash_comment(flag)) {
+		if skip_path {
+			skip_path = false
+			continue
+		}
+		arg := raw_arg.trim('\'"')
+		skip_path = c_flag_takes_path_operand(arg)
+		if arg.starts_with('-') {
+			continue
+		}
+		if arg.ends_with('.a') || arg.ends_with('.so') || arg.ends_with('.dylib')
+			|| arg.ends_with('.lib') {
+			return true
+		}
+	}
+	return false
+}
+
 // note_c_flag_directive records the two `#flag` shapes that leave a `fn C.` symbol
 // without a header: a linked C source/object, and a user module that links a C
-// library (`-lfoo`) without including anything.
+// library by name or path without including anything.
 fn (mut g FlatGen) note_c_flag_directive(module_name string, source_file string, flag string) {
 	if source_file.len > 0 && c_flag_links_c_source(flag) {
 		g.files_linking_c_sources[source_file] = true
 	}
-	if module_name.len > 0 && flag.contains('-l') && !g.c_source_file_is_in_vlib(source_file) {
+	if module_name.len > 0 && (flag.contains('-l') || c_flag_links_c_library(flag))
+		&& !g.c_source_file_is_in_vlib(source_file) {
 		g.mods_with_c_libs[module_name] = true
 	}
 }
@@ -13633,7 +13655,10 @@ fn (g &FlatGen) c_typedef_cast_call_name(node flat.Node) string {
 			if callee.children_count > 0 {
 				base := g.a.child_node(callee, 0)
 				if base.kind == .ident && base.value == 'C' {
-					return callee.value
+					name := 'C.${callee.value}'
+					if name !in g.tc.fn_ret_types && name !in g.tc.fn_param_types {
+						return callee.value
+					}
 				}
 			}
 		}
@@ -21666,7 +21691,8 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#else')
 	g.writeln('static inline u64 _wymix(u64 a, u64 b) { u64 ha = a >> 32, hb = b >> 32, la = (u32)a, lb = (u32)b, hi, lo; u64 rh = ha * hb, rm0 = ha * lb, rm1 = hb * la, rl = la * lb, t = rl + (rm0 << 32), c = t < rl; lo = t + (rm1 << 32); c += lo < t; hi = rh + (rm0 >> 32) + (rm1 >> 32) + c; return lo ^ hi; }')
 	g.writeln('#endif')
-	g.writeln('static inline u64 wyhash64(u64 a, u64 b) { a ^= _wyp[0]; b ^= _wyp[1]; a *= 0xa0761d6478bd642full; b *= 0xe7037ed1a0b428dbull; return (a ^ (a >> 32)) ^ (b ^ (b >> 32)); }')
+	// Mix each input independently so matching one seed cannot erase the other input.
+	g.writeln('static inline u64 wyhash64(u64 a, u64 b) { return _wymix(a ^ _wyp[0], 0xa0761d6478bd642full) ^ _wymix(b ^ _wyp[1], 0xe7037ed1a0b428dbull); }')
 	// Map keys are hashed on every lookup, so this mixes a 64-bit word per step
 	// instead of a byte. Assembling the word from its bytes is defined for any
 	// alignment and any effective type of the key storage; optimizing compilers

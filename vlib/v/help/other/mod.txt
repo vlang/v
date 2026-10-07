@@ -8,6 +8,7 @@ in v.mod that no longer has anything to do with the code.
 
 Usage:
   v mod why MODULE
+  v mod graph
 
 Prints the chain of imports that brings MODULE into the build, one module per
 line, starting at the project itself:
@@ -51,3 +52,7 @@ accepted, while fields named `import` do not create dependency edges. Both
 branches of a top-level `$if` contribute their declared imports.
 Module path segments can also be V keywords, as in `import type as tp` or
 `import pkg.type as tp`, using the same names accepted by the compiler.
+
+`v mod graph` prints the dependencies declared in v.mod as flat edges, with the
+installed versions and each parent's constraints. Missing packages are marked.
+It works offline and does not resolve or install anything.

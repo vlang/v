@@ -1898,6 +1898,10 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 		&& ssa_fn_name_in_module(module_name, name) in bench_runtime_stub_names {
 		return true
 	}
+	if module_name == 'builtin' && name.starts_with('VMapData.') {
+		// The native map stubs replace the C runtime's copy-on-write implementation.
+		return true
+	}
 	if module_name == 'builtin' {
 		return name in b.c_fn_ids || b.skip_source_fn(name)
 			|| name in ['int_str', 'bool_str', 'string.int', 'string__int', 'array_slice',

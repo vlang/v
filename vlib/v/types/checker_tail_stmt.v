@@ -9360,6 +9360,12 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 		return none
 	}
 	base := tc.a.child_node(&node, 0)
+	// A namespace value can share a function's name; only call syntax selects
+	// that function. Keep the stored value's type and identity for bare selectors.
+	if tc.is_namespace_selector(node, base)
+		&& (tc.global_type_for_selector(node) != none || tc.const_type_for_selector(node) != none) {
+		return none
+	}
 	if base.kind == .ident {
 		if base.value == 'C' {
 			key := 'C.${node.value}'
@@ -16351,7 +16357,8 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	// Inspect a nominal name only after parsing its wrappers. Otherwise the last
 	// component of `!module.M` looks generic while the complete wrapper is absent
 	// from the declared-type tables, even though `module.M` is concrete.
-	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
+	if is_generic_placeholder_type(typ)
+		&& (tc.active_generic_param(typ) || !tc.is_known_type_text(typ)) {
 		return unknown_type('generic placeholder `${typ}`')
 	}
 	qtyp := if tc.resolution_type_mode {

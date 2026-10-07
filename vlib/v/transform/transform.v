@@ -6556,7 +6556,11 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		typ = typ[1..]
 	} else if format != 'p' && expr_node.kind == .ident
 		&& t.string_interp_needs_value_read(expr_node.value, typ) {
-		transformed = t.make_prefix(.mul, transformed)
+		// Reading a local moved to the heap already dereferences its storage, while
+		// `typ` can still be the `&Alias` of that storage: read the value only once.
+		if !t.is_value_read_of(transformed, expr_node.value) {
+			transformed = t.make_prefix(.mul, transformed)
+		}
 		typ = typ[1..]
 	}
 	if typ.len == 0 {
@@ -6641,6 +6645,20 @@ fn (mut t Transformer) mark_string_interp_call_part_used(expr_id flat.NodeId) {
 			t.mark_fn_used_name(method_name)
 		}
 	}
+}
+
+// is_value_read_of reports whether `id` is `*name`, the value of the pointer-backed
+// local `name`.
+fn (t &Transformer) is_value_read_of(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .mul || node.children_count != 1 {
+		return false
+	}
+	operand := t.a.child_node(&node, 0)
+	return operand.kind == .ident && operand.value == name
 }
 
 fn (t &Transformer) string_interp_needs_value_read(name string, typ string) bool {
@@ -10315,9 +10333,10 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 	}
 	if header_end >= 3 {
 		container_id := t.a.child(node, 2)
-		// detect_for_in_type records the type it finds on the loop header, which is too
-		// early here: the names in scope still have the types of the previous function.
-		iter_type := for_iter_payload_type(t.comptime_normalize_type_alias_chain(t.node_type(container_id))).trim_space()
+		// Local declarations have not populated var_types yet. Prefer the checked
+		// source type so a local homonym does not resolve to a foreign constant.
+		container_type := t.checker_expr_type_name(container_id) or { t.node_type(container_id) }
+		iter_type := for_iter_payload_type(t.comptime_normalize_type_alias_chain(container_type)).trim_space()
 		reference_iteration := node.op == .amp || iter_type.starts_with('&')
 		mut backing_id := container_id
 		mut fixed_backing := t.is_fixed_array_type(iter_type.trim_left('&'))
@@ -10325,7 +10344,9 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 			range_id := t.unwrap_parens(container_id)
 			if t.is_range_index_expr(range_id) {
 				base_id := t.a.child(t.a.node(range_id), 0)
-				if t.is_fixed_array_type(t.unaliased_value_type(base_id)) {
+				checked_base_type := t.checker_expr_type_name(base_id) or { t.node_type(base_id) }
+				base_type := t.alias_str_resolved_base_type(checked_base_type.trim_left('&')).trim_left('&')
+				if t.is_fixed_array_type(base_type) {
 					backing_id = base_id
 					fixed_backing = true
 				}
@@ -27095,7 +27116,7 @@ fn (t &Transformer) raw_infix_operator_decl_return_type(node flat.Node) ?string 
 
 fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?string {
 	if ret := t.tc.fn_ret_type_texts[name] {
-		raw := t.raw_call_return_type_name(ret, node)
+		raw := t.raw_call_return_type_name(t.caller_return_type_text(name, ret), node)
 		if t.raw_return_type_contains_alias(raw) {
 			return raw
 		}
@@ -27113,6 +27134,24 @@ fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?st
 		}
 	}
 	return none
+}
+
+// caller_return_type_text is the return type `ret` of the function `name`, written
+// as the current module names it. `ret` keeps the spelling of the module that declares
+// the function, where `ID` is the alias `m.ID`; in another module that bare `ID` has
+// none of the methods of `m.ID`, like its `str`. A generic function keeps its text:
+// its type parameters are resolved at the call.
+fn (t &Transformer) caller_return_type_text(name string, ret string) string {
+	decl_file := t.tc.fn_type_files[name] or { return ret }
+	decl_module := t.tc.fn_type_modules[name] or { t.tc.file_modules[decl_file] or { return ret } }
+	if decl_module == t.cur_module || name.contains('[') || name in t.tc.fn_generic_params {
+		return ret
+	}
+	resolved := t.tc.fn_signature_type(name, ret)
+	if resolved is types.Unknown || resolved is types.Void {
+		return ret
+	}
+	return resolved.name()
 }
 
 fn (t &Transformer) raw_return_type_contains_alias(typ string) bool {
