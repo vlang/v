@@ -32,9 +32,14 @@ follow their uses or appear in inactive compile-time branches. Assembly directiv
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
-global definitions. `$if` compile-time conditionals are resolved directly in the
-parser. The parser evaluates the condition, parses only the taken branch, and
-skips the other, so no AST nodes or transformer pass is needed for `$if` blocks.
+global definitions. The parser resolves platform flags and known literal `$if` conditions,
+parsing only the taken branch. String guards that depend on imported constants are resolved
+before declaration collection. Parallel file parsing retains computed constant names and defers
+their unproved guards, including guards on constants selected by earlier guards.
+Metadata reflection headers do not create runtime method references. A user module named
+`closure` can therefore be imported without requiring the compiler's closure runtime.
+Reflection values, immutable reflection locals, and generic
+type conditions retain `comptime_if` nodes until the transformer can select their branch.
 `#include` and `#flag` directives inside `$if` blocks are handled correctly: the
 scanner consumes the entire directive line as a single token, preventing the
 parser from reading past block boundaries. File selection filters out
@@ -490,8 +495,10 @@ All `vlib/builtin/` files (38 files: both `.v` and `.c.v`) are parsed first to
 collect struct, enum, type alias, interface, C function, and global definitions.
 `$if` compile-time conditionals (`$if !no_bounds_checking`,
 `$if gcboehm_opt ?`, `$if freestanding`, etc.) are resolved inline during
-parsing. The parser evaluates the condition, parses only the taken branch, and
-skips the other, so no `comptime_if` AST nodes reach the transformer or backends.
+parsing. The parser evaluates these flags, parses only the taken branch, and skips the other.
+Conditions requiring reflection, immutable reflection locals, or generic types remain in the
+AST for later evaluation. Static string declaration guards are finalized after import parsing;
+no undecided reflection string condition is silently dropped by a backend.
 
 After parsing the input file, imports are resolved recursively: the driver scans
 for `import_decl` nodes, resolves module paths, parses module `.v` and `.c.v`

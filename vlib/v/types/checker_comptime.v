@@ -7465,13 +7465,20 @@ fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node fl
 
 fn (mut tc TypeChecker) check_comptime_condition_diagnostics(id flat.NodeId, node flat.Node) bool {
 	condition := comptime_condition_strip_outer_parens(trimmed_space(node.value))
+	call_root := condition.trim_left('! ').all_before('.').trim_space()
+	if condition.contains('.') && tc.lvalue_ident_is_known(call_root)
+		&& tc.ident_is_mutable_lvalue(call_root) {
+		tc.record_error_at(.condition_mismatch, '`${call_root}` is mut and may have changed since its definition', id, tc.comptime_condition_part_pos(node, call_root))
+		return true
+	}
 	for op in [' == ', ' != ', ' <= ', ' >= ', ' < ', ' > '] {
 		op_idx := comptime_condition_top_level_index(condition, op)
 		if op_idx < 0 {
 			continue
 		}
-		left := trimmed_space(condition[..op_idx])
-		if left.len == 0 || left.contains('.') {
+		left_expr := trimmed_space(condition[..op_idx])
+		left := left_expr.all_before('.').trim_space()
+		if left.len == 0 || left[0] in [`\'`, `"`] {
 			return false
 		}
 		if tc.lvalue_ident_is_known(left) {
@@ -7479,7 +7486,7 @@ fn (mut tc TypeChecker) check_comptime_condition_diagnostics(id flat.NodeId, nod
 				tc.record_error_at(.condition_mismatch, '`${left}` is mut and may have changed since its definition', id, tc.comptime_condition_part_pos(node, left))
 				return true
 			}
-			if initializer_id := tc.comptime_local_initializer(left, node) {
+			if initializer_id := tc.comptime_local_initializer(left, id) {
 				if !tc.comptime_initializer_is_static(initializer_id) {
 					tc.record_error_at(.condition_mismatch, 'definition of `${left}` is unknown at compile time', id, tc.comptime_condition_part_pos(node, left))
 					return true
@@ -7563,10 +7570,11 @@ fn (tc &TypeChecker) comptime_condition_type_is_loop_metadata(id flat.NodeId, ty
 	return false
 }
 
-fn (tc &TypeChecker) comptime_local_initializer(name string, condition flat.Node) ?flat.NodeId {
+fn (tc &TypeChecker) comptime_local_initializer(name string, condition_id flat.NodeId) ?flat.NodeId {
+	condition := tc.a.node(condition_id)
 	mut found := flat.empty_node
 	mut found_offset := -1
-	for node in tc.a.nodes {
+	for index, node in tc.a.nodes {
 		if node.kind != .decl_assign || node.children_count < 2 {
 			continue
 		}
@@ -7574,6 +7582,25 @@ fn (tc &TypeChecker) comptime_local_initializer(name string, condition flat.Node
 		if lhs.kind != .ident || lhs.value != name || lhs.pos.id != condition.pos.id
 			|| lhs.pos.offset >= condition.pos.offset || lhs.pos.offset <= found_offset {
 			continue
+		}
+		parent_id := tc.direct_parent_id(flat.NodeId(index))
+		if tc.valid_node_id(parent_id) {
+			// Source spans can be empty on function blocks; lexical ancestry is authoritative.
+			mut scope := tc.direct_parent_id(condition_id)
+			mut contains_condition := false
+			for tc.valid_node_id(scope) {
+				if scope == parent_id {
+					contains_condition = true
+					break
+				}
+				next := tc.direct_parent_id(scope)
+				if next == scope { break }
+				scope = next
+			}
+			if !contains_condition { continue }
+		}
+		if lhs.is_mut || node.is_mut {
+			return none
 		}
 		found = tc.a.child(&node, 1)
 		found_offset = lhs.pos.offset
@@ -7585,12 +7612,115 @@ fn (tc &TypeChecker) comptime_local_initializer(name string, condition flat.Node
 }
 
 fn (tc &TypeChecker) comptime_initializer_is_static(id flat.NodeId) bool {
-	if !tc.valid_node_id(id) {
+	return tc.comptime_initializer_is_static_depth(id, 0, tc.cur_module, tc.cur_file, true)
+}
+
+fn (tc &TypeChecker) comptime_initializer_is_static_depth(id flat.NodeId, depth int, module_name string, file string, allow_locals bool) bool {
+	if depth > 64 || !tc.valid_node_id(id) {
 		return false
 	}
 	node := tc.a.node(id)
-	return node.kind in [.int_literal, .float_literal, .string_literal, .char_literal, .bool_literal,
-		.enum_val, .nil_literal, .none_expr]
+	if node.kind in [.int_literal, .float_literal, .string_literal, .char_literal, .bool_literal,
+		.enum_val, .nil_literal, .none_expr] {
+		return true
+	}
+	if node.kind == .ident {
+		key := if '${module_name}.${node.value}' in tc.const_exprs {
+			'${module_name}.${node.value}'
+		} else {
+			node.value
+		}
+		if allow_locals && tc.ident_is_mutable_lvalue(node.value) {
+			owner := tc.const_modules[key] or { '' }
+			same_owner := owner == module_name || (owner in ['', 'main'] && module_name in ['',
+				'main'])
+			binding := tc.cur_scope.lookup_owner(node.value) or { return false }
+			// A foreign global's bare cache entry does not override an owner constant.
+			if key !in tc.const_exprs || !same_owner || !tc.binding_owner_is_file_scope(binding) {
+				return false
+			}
+		}
+		if allow_locals && tc.comptime_condition_type_is_loop_metadata(id, '${node.value}.name') {
+			return true
+		}
+		if allow_locals {
+			if init := tc.comptime_local_initializer(node.value, id) {
+				return tc.comptime_initializer_is_static_depth(init, depth + 1, module_name, file, true)
+			}
+		}
+		if init := tc.const_exprs[key] {
+			owner := tc.const_modules[key] or { module_name }
+			owner_file := tc.const_files[key] or { file }
+			return tc.comptime_initializer_is_static_depth(init, depth + 1, owner, owner_file, false)
+		}
+		return false
+	}
+	if node.kind == .paren && node.children_count == 1 {
+		return tc.comptime_initializer_is_static_depth(tc.a.child(node, 0), depth + 1, module_name, file, allow_locals)
+	}
+	if node.kind == .selector && node.children_count == 1 {
+		base_id := tc.a.child(node, 0)
+		base := tc.a.node(base_id)
+		if base.kind == .ident && node.value in ['name', 'arg']
+			&& tc.comptime_condition_type_is_loop_metadata(id, '${base.value}.name') {
+			return true
+		}
+		if node.value == 'len' {
+			return tc.comptime_initializer_is_static_depth(base_id, depth + 1, module_name, file, allow_locals)
+		}
+		imported_module := tc.file_imports[file_import_key(file, base.value)] or { base.value }
+		key := '${imported_module}.${node.value}'
+		if init := tc.const_exprs[key] {
+			owner := tc.const_modules[key] or { module_name }
+			owner_file := tc.const_files[key] or { file }
+			return tc.comptime_initializer_is_static_depth(init, depth + 1, owner, owner_file, false)
+		}
+		return false
+	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := tc.a.child_node(node, 0)
+		if callee.kind != .selector || callee.children_count != 1
+			|| callee.value !in ['starts_with', 'ends_with', 'contains', 'count', 'all_before',
+				'all_after', 'all_before_last', 'all_after_last', 'trim', 'trim_left', 'trim_right',
+				'trim_space', 'trim_string_left', 'trim_string_right', 'replace', 'to_lower', 'to_upper',
+				'split', 'split_any', 'fields'] {
+			return false
+		}
+		if !tc.comptime_initializer_is_static_depth(tc.a.child(callee, 0), depth + 1, module_name, file, allow_locals) {
+			return false
+		}
+		for i in 1 .. node.children_count {
+			if !tc.comptime_initializer_is_static_depth(tc.a.child(node, i), depth + 1, module_name, file, allow_locals) {
+				return false
+			}
+		}
+		return true
+	}
+	if (node.kind == .infix && node.op in [.plus, .eq, .ne, .logical_and, .logical_or])
+		|| (node.kind == .prefix && node.op == .not) || node.kind == .in_expr {
+		for child in tc.a.children_of(node) {
+			part := tc.a.node(child)
+			if node.kind == .in_expr && part.kind == .array_literal {
+				for item in tc.a.children_of(part) {
+					if !tc.comptime_initializer_is_static_depth(item, depth + 1, module_name, file, allow_locals) {
+						return false
+					}
+				}
+			} else if !tc.comptime_initializer_is_static_depth(child, depth + 1, module_name, file, allow_locals) {
+				return false
+			}
+		}
+		return true
+	}
+	if node.kind == .index && node.value == 'range' {
+		for i in 0 .. node.children_count {
+			if !tc.comptime_initializer_is_static_depth(tc.a.child(node, i), depth + 1, module_name, file, allow_locals) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 fn (tc &TypeChecker) comptime_condition_part_pos(node flat.Node, part string) token.Pos {

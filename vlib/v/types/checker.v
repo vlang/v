@@ -18758,6 +18758,25 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 		return
 	}
 	body_id := tc.a.child(&node, 0)
+	if parts[1] == 'strings' && node.children_count == 2 {
+		source_id := tc.a.child(&node, 1)
+		source := tc.a.node(source_id)
+		callee := if source.kind == .call && source.children_count > 0 {
+			tc.a.child_node(source, 0)
+		} else {
+			&flat.Node{}
+		}
+		if callee.kind != .selector || callee.value !in ['split', 'split_any', 'fields']
+			|| !tc.comptime_initializer_is_static(source_id) {
+			tc.record_error_at(.condition_mismatch, '`\$for` string source must use `split`, `split_any` or `fields` on a compile-time-known string', source_id, source.pos)
+			return
+		}
+		tc.push_scope()
+		tc.cur_scope.insert(parts[0], string_)
+		tc.check_comptime_static_body(body_id, parts[0], 'strings', ComptimeStaticFieldCases{}, ComptimeStaticValueCases{})
+		tc.pop_scope()
+		return
+	}
 	if _ := tc.comptime_struct_update_id(body_id) {
 		return
 	}
