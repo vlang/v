@@ -3325,6 +3325,11 @@ Static type methods can also be used as function values by omitting the call par
 such as `make_user := User.new`. A field selector rooted in a local variable, constant, or
 global reads that value's field; it does not name a static type method.
 
+A static type method and an instance method can share a name. `User.draw(...)` calls the
+static method, while `user.draw(...)` calls the instance method. Each method has its own
+visibility: a `pub fn User.draw(...)` is accessible from other modules as
+`module_name.User.draw(...)`, even when the instance method `draw` is private.
+
 Instance methods can also be used as unbound function values, such as `f := User.register`.
 The receiver becomes the first parameter, so a mutable receiver is passed as `f(mut user)`.
 Inside a method reflection loop, `T.$method` likewise creates an unbound function value.

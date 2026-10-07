@@ -9384,14 +9384,14 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 			}
 			return none
 		}
+		if key := tc.static_assoc_fn_key_for_base(base.value, node.value) {
+			return key
+		}
 		for type_name in tc.static_assoc_type_candidates(base.value) {
 			key := '${type_name}.${node.value}'
 			if tc.fn_signature_known(key) {
 				return key
 			}
-		}
-		if key := tc.static_assoc_fn_key_for_base(base.value, node.value) {
-			return key
 		}
 		if key := tc.unbound_instance_method_key(base.value, node.value) {
 			return key
@@ -9406,12 +9406,12 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 				return none
 			}
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
+			if static_key := tc.static_assoc_fn_key_for_base('${mod_name}.${base.value}', node.value) {
+				return static_key
+			}
 			key := '${mod_name}.${base.value}.${node.value}'
 			if tc.fn_signature_known(key) {
 				return key
-			}
-			if static_key := tc.static_assoc_fn_key_for_base('${mod_name}.${base.value}', node.value) {
-				return static_key
 			}
 			if instance_key := tc.unbound_instance_method_key('${mod_name}.${base.value}', node.value) {
 				return instance_key
