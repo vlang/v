@@ -3,6 +3,28 @@ module parser
 import os
 import v.pref
 
+fn test_comptime_metadata_headers_do_not_leave_orphan_selectors() {
+	path := os.join_path(os.vtmp_dir(), 'comptime_metadata_headers_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn reflect[T]() {\n\$for item in T.fields {}\n\$for item in T.methods {}\n\$for item in T.values {}\n\$for item in T.variants {}\n\$for item in T.attributes {}\n\$for item in T.params {}\n}\nfn main() {\n\$for word in "one two".fields() { println(word) }\n}\n')!
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	loops := p.a.nodes.filter(it.kind == .comptime_for)
+	assert loops.len == 7
+	for loop in loops {
+		if loop.value == 'word|strings' {
+			assert loop.children_count == 2
+			assert p.a.child_node(&loop, 1).kind == .call
+		} else {
+			assert loop.typ == 'T'
+			assert loop.children_count == 1
+		}
+	}
+	assert !p.a.nodes.any(it.kind == .selector && it.children_count == 1
+		&& p.a.child_node(&it, 0).kind == .ident && p.a.child_node(&it, 0).value == 'T')
+}
+
 fn test_fn_literal_string_bindings_do_not_defer_outer_plain_comparisons() {
 	path := os.join_path(os.vtmp_dir(), 'comptime_string_fn_literal_scope_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
