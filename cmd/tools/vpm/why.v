@@ -14,12 +14,15 @@ import v.vmod
 // no directory, so it is identified, and shown, by the string that named it.
 struct DepGraph {
 mut:
-	deps      map[string][]string // id -> the ids of the nodes it requires
-	labels    map[string]string   // id -> the name the node is shown as
-	absent    map[string]bool     // id -> required by something, but not installed
-	ids       map[string]string   // dependency string, as written -> id
-	root_name string
-	root_deps []string // the ids of the current project's dependencies
+	deps        map[string][]string // id -> the ids of the nodes it requires
+	labels      map[string]string   // id -> the name the node is shown as
+	absent      map[string]bool     // id -> required by something, but not installed
+	ids         map[string]string   // dependency string, as written -> id
+	root_name   string
+	constraints map[string][]string // parent + NUL + child -> requested constraints
+	versions    map[string]string   // installed node -> version, from its manifest or lock
+	overrides   []Override
+	root_deps   []string // the ids of the current project's dependencies
 }
 
 // vpm_why explains why a module is in the dependency graph, or prints the whole
@@ -39,6 +42,10 @@ fn vpm_why(query []string) {
 	graph := build_dep_graph() or {
 		vpm_error(err.msg())
 		exit(1)
+	}
+	if settings.is_graph {
+		print_dependency_edges(graph)
+		return
 	}
 	if query.len == 0 {
 		print_graph(graph, '')
@@ -62,16 +69,28 @@ fn build_dep_graph() !DepGraph {
 	root := vmod.from_file(project.vmod_file)!
 	mut graph := DepGraph{
 		root_name: root.name
+		overrides: parse_overrides(root.unknown['dependency_overrides'] or { []string{} })!
 	}
 	roots := module_roots()
 	mut queue := []string{}
-	graph.root_deps = graph.node_ids(root.dependencies, roots, mut queue)
+	graph.root_deps = graph.node_ids(root.dependencies, roots, mut queue, '')
 	for i := 0; i < queue.len; i++ {
 		id := queue[i]
 		// A checkout without a v.mod is still a module (vpm accepts registered
 		// ones), so it stays a node. It just declares no dependencies of its own.
 		manifest := vmod.from_file(os.join_path(id, 'v.mod')) or { vmod.Manifest{} }
-		graph.deps[id] = graph.node_ids(manifest.dependencies, roots, mut queue)
+		tag := checkout_version_tag(id)
+		graph.versions[id] = if tag == '' { manifest.version } else { tag }
+		if lf := read_lockfile(os.dir(project.vmod_file)) {
+			for entry in lf.modules.values() {
+				if entry.revision != '' && entry.revision == head_revision(id)
+					&& normalized_clone_source(entry.url) == normalized_clone_source(checkout_origin_url(id)) {
+					graph.versions[id] = entry.resolved
+					break
+				}
+			}
+		}
+		graph.deps[id] = graph.node_ids(manifest.dependencies, roots, mut queue, id)
 	}
 	return graph
 }
@@ -79,18 +98,27 @@ fn build_dep_graph() !DepGraph {
 // node_ids maps one module's dependency strings onto node ids, adding a node the
 // first time a module is met. An installed module met for the first time is
 // queued, so that its own v.mod is read in turn.
-fn (mut g DepGraph) node_ids(raws []string, roots []string, mut queue []string) []string {
+fn (mut g DepGraph) node_ids(raws []string, roots []string, mut queue []string, parent string) []string {
 	mut ids := []string{}
-	for raw in raws {
+	for requested in raws {
+		requiring := if parent == '' { g.root_name } else { g.labels[parent] }
+		mut raw := overridden_request_for_module(requested, [lockfile_module_key(requested)], requiring, g.overrides)
+		if requirement_version(raw) == '-' { continue }
+		if resolved_root, path := resolve_existing_module(roots, raw) {
+			raw = overridden_request_for_module(raw, [lockfile_module_key(raw),
+				module_label(resolved_root, path, raw)], requiring, g.overrides)
+			if requirement_version(raw) == '-' { continue }
+		}
 		mut id := g.ids[raw] or { '' }
 		if id == '' {
 			root, path := resolve_existing_module(roots, raw) or { '', '' }
 			if path == '' {
 				// An unresolvable dependency is recorded rather than dropped: knowing
 				// that something is required but missing is the answer, not a failure.
-				id = raw
+				id = lockfile_module_key(raw)
 				g.absent[id] = true
-				g.labels[id] = raw
+				g.labels[id] = id
+				g.ids[id] = id
 			} else {
 				id = path
 				if id !in g.labels {
@@ -99,6 +127,11 @@ fn (mut g DepGraph) node_ids(raws []string, roots []string, mut queue []string) 
 				}
 			}
 			g.ids[raw] = id
+		}
+		constraint := requirement_version(raw)
+		if constraint != '' {
+			key := parent + '\0' + id
+			if constraint !in g.constraints[key] { g.constraints[key] << constraint }
 		}
 		// The same module written twice, e.g. once by name and once by URL, is one
 		// dependency rather than two.
@@ -154,7 +187,7 @@ fn print_graph(graph &DepGraph, focus string) {
 	println(graph.root_name)
 	leads_to := if focus == '' { map[string]bool{} } else { graph.nodes_leading_to(focus) }
 	on_path := map[string]bool{}
-	print_level(graph, graph.root_deps, '  ', focus, leads_to, &on_path)
+	print_level(graph, graph.root_deps, '  ', focus, leads_to, &on_path, '')
 }
 
 // print_level draws one level of the tree. With a `focus`, it leaves out the nodes
@@ -163,7 +196,7 @@ fn print_graph(graph &DepGraph, focus string) {
 // `on_path` is the cycle guard, and it is not optional: a dependency graph is
 // allowed to contain a loop, and without it a single `v why` recurses until the
 // stack gives out.
-fn print_level(graph &DepGraph, level []string, prefix string, focus string, leads_to map[string]bool, on_path &map[string]bool) {
+fn print_level(graph &DepGraph, level []string, prefix string, focus string, leads_to map[string]bool, on_path &map[string]bool, parent string) {
 	shown := if focus == '' { level } else { level.filter(it in leads_to) }
 	for i, node in shown {
 		last := i == shown.len - 1
@@ -171,7 +204,22 @@ fn print_level(graph &DepGraph, level []string, prefix string, focus string, lea
 		label := graph.labels[node] or { node }
 		missing := if graph.absent[node] { ' (not installed)' } else { '' }
 		repeat := node in *on_path
-		println('${prefix}${branch}${label}${missing}${if repeat { ' (cycle)' } else { '' }}')
+		constraints := graph.constraints[parent + '\0' + node]
+		version := graph.versions[node]
+		attribution := if constraints.len == 0 {
+			''
+		} else {
+			' (requires ${constraints.join(' & ')}${if version == '' {
+				''
+			} else {
+				', installed ${version}'
+			}})'
+		}
+		println('${prefix}${branch}${label}${attribution}${missing}${if repeat {
+			' (cycle)'
+		} else {
+			''
+		}}')
 		if repeat || node == focus {
 			continue
 		}
@@ -179,7 +227,7 @@ fn print_level(graph &DepGraph, level []string, prefix string, focus string, lea
 		next_on_path[node] = true
 		child_prefix := prefix + if last { '    ' } else { '|   ' }
 		print_level(graph, graph.deps[node] or { []string{} }, child_prefix, focus, leads_to,
-			&next_on_path)
+			&next_on_path, node)
 	}
 }
 
@@ -202,10 +250,25 @@ fn module_roots() []string {
 // an error, which is wrong here: a graph walk asks about every dependency of every
 // module it visits, and a missing one is a fact to record rather than a failure.
 fn resolve_existing_module(roots []string, mod_name string) ?(string, string) {
+	ident := lockfile_module_key(mod_name)
 	for root in roots {
-		_, path := candidate_module_path(root, mod_name)
+		_, path := candidate_module_path(root, ident)
 		if os.is_dir(path) {
 			return root, path
+		}
+		if ident.contains('://') || is_local_repository(ident) || ident.starts_with('git@') {
+			names := if os.real_path(root) == os.real_path(local_vmodules_path(os.getwd())) {
+				local_installed_modules(root)
+			} else {
+				get_installed_modules_in(root)
+			}
+			for name in names {
+				candidate := os.join_path(root, name.replace('.', os.path_separator))
+				origin := checkout_origin_url(candidate)
+				if origin != '' && normalized_clone_source(origin) == normalized_clone_source(ident) {
+					return root, os.real_path(candidate)
+				}
+			}
 		}
 	}
 	return none
@@ -219,4 +282,26 @@ fn module_label(root string, path string, raw string) string {
 		return import_path_relative_to(path, root)
 	}
 	return raw
+}
+
+// print_dependency_edges is the flat, versioned manifest graph used by v mod graph.
+fn print_dependency_edges(graph &DepGraph) {
+	print_dependency_edge_level(graph, '', graph.root_name, graph.root_deps)
+	for parent in graph.deps.keys().sorted() {
+		print_dependency_edge_level(graph, parent, graph.labels[parent], graph.deps[parent])
+	}
+}
+
+fn print_dependency_edge_level(graph &DepGraph, parent string, label string, children []string) {
+	parent_version := graph.versions[parent]
+	for child in children {
+		constraints := graph.constraints[parent + '\0' + child]
+		constraint := if constraints.len == 0 { '*' } else { constraints.join(' & ') }
+		version := graph.versions[child]
+		println('${label}${at_version(parent_version)} -> ${graph.labels[child]}${at_version(version)} (requires ${constraint})${if graph.absent[child] {
+			' (not installed)'
+		} else {
+			''
+		}}')
+	}
 }

@@ -8,10 +8,15 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 // The tests in this file are fully offline: they build local git repositories
 // under `test_path` and install from those, never touching the network.
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_lockfile_test_${rand.ulid()}')
-const v_exe = os.getenv('VEXE')
+const v_exe = os.join_path(test_path, if os.user_os() == 'windows' { 'vpm.exe' } else { 'vpm' })
 
 fn testsuite_begin() {
 	test_utils.set_test_env(test_path)
+	os.mkdir_all(test_path)!
+	os.setenv('VEXE', @VEXE, true)
+	// Compile once so each isolated store tests the same VPM binary.
+	cmd_ok_args(@LOCATION, [@VEXE, '-cc', @CCOMPILER, '-gc', 'none', '-o', v_exe,
+		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 }
 
 fn testsuite_end() {
@@ -58,6 +63,12 @@ fn write_project_vmod(project_dir string, deps []string) {
 		"Module{\n\tname: 'lockfile_project'\n\tversion: '0.0.1'\n\tdependencies: [${deps_list}]\n}\n") or {
 		panic(err)
 	}
+}
+
+// assert_outdated_row checks the installed module and all four version columns.
+fn assert_outdated_row(output string, expected []string) {
+	rows := output.split_into_lines().map(it.fields()).filter(it.len > 0 && it[0] == expected[0])
+	assert rows == [expected], output
 }
 
 // Case: `v install` in a project directory records the resolved revisions of
@@ -746,25 +757,33 @@ fn test_outdated_and_upgrade_see_a_locked_checkout() {
 	assert git_head(installed_path) == head
 	assert head_is_detached(installed_path)
 	up_to_date := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
-	assert up_to_date.output.contains('Modules are up to date.'), up_to_date.output
+	short_head := cmd_ok_args(@LOCATION, ['git', '-C', installed_path, 'rev-parse', '--short',
+		'HEAD']).output.trim_space()
+	assert_outdated_row(up_to_date.output, ['od_pkg', short_head, 'none', 'none', 'none'])
+	assert git_head(installed_path) == head
+	assert head_is_detached(installed_path)
 
 	new_head := advance_local_git_module(repo_path)
 	outdated := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
-	assert outdated.output.contains('od_pkg'), outdated.output
+	assert_outdated_row(outdated.output, ['od_pkg', short_head, 'none', 'none', 'none'])
+	assert git_head(installed_path) == head
 	cmd_ok_args(@LOCATION, [v_exe, 'upgrade'])
 	assert git_head(installed_path) == new_head
 	lf := read_lockfile(project_dir) or { panic(err) }
 	entry := lf.modules[dep] or { panic('no lock entry for `${dep}` in ${lf.modules.keys()}') }
 	assert entry.revision == new_head
 	after := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
-	assert after.output.contains('Modules are up to date.'), after.output
+	new_short_head := cmd_ok_args(@LOCATION, ['git', '-C', installed_path, 'rev-parse', '--short',
+		'HEAD']).output.trim_space()
+	assert_outdated_row(after.output, ['od_pkg', new_short_head, 'none', 'none', 'none'])
+	assert git_head(installed_path) == new_head
 }
 
 // Case: when one dependency of a project cannot be installed at its locked
-// revision, the others are installed, but the run fails as a whole.
+// revision, complete resolution fails before any checkout is installed.
 fn test_install_fails_when_one_of_several_locked_dependencies_fails() {
 	good_repo_path := os.join_path(test_path, 'pf_good')
-	good_head := create_local_git_module(good_repo_path, 'pf_good_pkg')
+	create_local_git_module(good_repo_path, 'pf_good_pkg')
 	bad_repo_path := os.join_path(test_path, 'pf_bad')
 	create_local_git_module(bad_repo_path, 'pf_bad_pkg')
 	project_dir := os.join_path(test_path, 'pf_proj')
@@ -793,8 +812,9 @@ fn test_install_fails_when_one_of_several_locked_dependencies_fails() {
 	test_utils.set_test_env(os.join_path(test_path, 'vpf2'))
 	res := cmd_fail_args(@LOCATION, [v_exe, 'install', '--locked'])
 	assert res.output.contains('failed to install'), res.output
-	assert git_head(os.join_path(test_path, 'vpf2', 'pf_good_pkg')) == good_head
+	assert !os.exists(os.join_path(test_path, 'vpf2', 'pf_good_pkg'))
 	assert !os.exists(os.join_path(test_path, 'vpf2', 'pf_bad_pkg'))
+	assert os.read_file(lockfile_path(project_dir)) or { panic(err) } == lock_before
 	test_utils.set_test_env(os.join_path(test_path, 'vpf3'))
 	cmd_fail_args(@LOCATION, [v_exe, 'install'])
 	assert os.read_file(lockfile_path(project_dir)) or { panic(err) } == lock_before
@@ -828,7 +848,9 @@ fn test_a_tag_pinned_dependency_stays_at_its_tag() {
 	installed_path := os.join_path(test_path, 'vtp2', 'tp_pkg')
 	assert git_head(installed_path) == tagged_head
 	outdated := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
-	assert outdated.output.contains('Modules are up to date.'), outdated.output
+	assert_outdated_row(outdated.output, ['tp_pkg', 'v1.0.0', 'v1.0.0', 'v1.0.0', 'v1.0.0'])
+	assert git_head(installed_path) == tagged_head
+	assert os.read_file(lockfile_path(project_dir)) or { panic(err) } == lock_before
 	// Like for a tag install without a lockfile, there is no branch to update to.
 	os.exec([v_exe, 'update', 'tp_pkg'])
 	assert git_head(installed_path) == tagged_head

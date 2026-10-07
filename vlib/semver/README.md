@@ -60,3 +60,23 @@ Prereleases require an explicit prerelease comparator with the same major, minor
 in that set. Advanced ranges keep their exclusive ceiling at the next series' `-0` boundary,
 so adding a prerelease comparator cannot admit the next series. Hyphens inside prerelease
 identifiers and wildcard letters in build metadata are literal characters.
+
+## Reporting malformed ranges
+
+`Version.satisfies(range)` returns `false` when a range cannot be parsed.
+Use `Version.satisfies_or_error(range)` to distinguish an invalid range from a valid
+range that does not match. `semver.is_valid_range(range)` checks the range syntax
+without choosing a version. An empty range is valid and matches every release version.
+It follows the normal prerelease exclusion rule described above.
+
+```v
+import semver
+
+fn main() {
+	version := semver.from('1.2.3')!
+	assert version.satisfies_or_error('^1.0.0')!
+	assert !version.satisfies_or_error('^2.0.0')!
+	assert semver.is_valid_range('')
+	assert !semver.is_valid_range('not-a-version')
+}
+```

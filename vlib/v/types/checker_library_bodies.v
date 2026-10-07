@@ -12,12 +12,14 @@ import v.gen.c.naming
 // resolves calls with the types that the check finds. Before it, the checker takes
 // every function that the program can name (library_fns_reachable_by_name), which
 // is more than it reaches. Should markused find a function that no name led to,
-// the driver has its body checked then, and runs markused again
-// (check_reached_library_bodies).
+// ordinary builds check it while following markused's reachability queue. The
+// driver retains check_reached_library_bodies as a convergence fallback for
+// compilation modes that require the complete body metadata before markused.
 //
 // The bodies of the program itself, of the modules of its project, of the runtime
 // modules that a program has for one construct (library_runtime_modules), and of
-// every generic function are always checked, as are all the declarations.
+// every generic function are always checked, as are all the declarations. Ordinary
+// reachability builds check concrete closure helpers only when markused reaches them.
 
 // skip_unreachable_library_bodies leaves the bodies of the functions in
 // `library_files` that the program cannot name unchecked, and returns how many
@@ -26,8 +28,19 @@ import v.gen.c.naming
 // body that is not checked whatever the program names, which leaves them all to
 // check_reached_library_bodies: a test of that path.
 pub fn (mut tc TypeChecker) skip_unreachable_library_bodies(library_files map[string]bool, seeded_fns []string, follow_names bool) int {
+	return tc.prepare_library_body_reachability(library_files, seeded_fns, follow_names, false)
+}
+
+// skip_library_bodies_for_reachability defers concrete implicit methods until the
+// reachability frontier checks them, keeping generic and declaration roots intact.
+pub fn (mut tc TypeChecker) skip_library_bodies_for_reachability(library_files map[string]bool, seeded_fns []string, follow_names bool) int {
+	return tc.prepare_library_body_reachability(library_files, seeded_fns, follow_names, true)
+}
+
+fn (mut tc TypeChecker) prepare_library_body_reachability(library_files map[string]bool, seeded_fns []string, follow_names bool, defer_implicit_methods bool) int {
+	tc.checked_library_body_count = 0
 	tc.library_files = library_files.clone()
-	tc.reachable_library_fns = tc.library_fns_reachable_by_name(seeded_fns, follow_names)
+	tc.reachable_library_fns = tc.library_fns_reachable_by_name(seeded_fns, follow_names, defer_implicit_methods)
 	tc.skips_library_bodies = library_files.len > 0
 	return tc.reachable_library_fns.len
 }
@@ -40,7 +53,9 @@ const library_fn_implicit_names = ['str', 'free', 'next', 'msg', 'code', 'init',
 // library_runtime_modules are the modules that a program only has for a construct
 // that the compiler lowers to calls of their functions: a closure, a channel, a
 // `shared` value, an embedded file, a checked overflow, a debugger statement. No
-// name in the program leads to those calls, so their bodies are all checked.
+// name in the program leads to those calls, so their bodies are all checked. For
+// ordinary reachability builds, markused selects concrete closure helpers from the
+// reached function literals and method values instead.
 //
 // `builtin`, `strings` and `strconv` are in every program, which calls a part of
 // them. Of those, the check takes what the program names, and what markused keeps
@@ -59,14 +74,16 @@ struct LibraryFnBody {
 // needs no types, so it can run before the check, and it errs on the side of more
 // functions: `x.len` reaches every method named `len`. The functions of
 // `seeded_fns` are reached without a name that leads to them.
-fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follow_names bool) map[string]bool {
+fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follow_names bool, defer_implicit_methods bool) map[string]bool {
 	mut reachable := map[string]bool{}
 	mut seeded_names := map[string]bool{}
+	mut seeded_full_names := map[string]bool{}
 	if follow_names {
 		for name in seeded_fns {
 			// `array.push`, `array__push` and `strconv__format_int` name functions
 			// that are declared as `push` and `format_int`.
 			seeded_names[short_name_view(name).all_after_last('__')] = true
+			seeded_full_names[name] = true
 		}
 	}
 	mut bodies := []LibraryFnBody{cap: 4096}
@@ -100,10 +117,32 @@ fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follo
 			}
 			.fn_decl {
 				short_name := short_name_view(node.value)
+				// Reachability checks concrete implicit methods before inspecting their
+				// bodies. A short-name hint would instead check every unrelated method.
+				defer_stringifier := defer_implicit_methods && is_library && node.value.contains('.')
+					&& short_name in ['str', 'free', 'next', 'msg', 'code']
+				mut seeded_stringifier := false
+				if defer_stringifier {
+					qualified := checker_qualified_fn_name(tc.cur_module, node.value)
+					seeded_stringifier = seeded_full_names[node.value]
+						|| seeded_full_names[qualified] || seeded_full_names[naming.c_name(node.value)]
+						|| seeded_full_names[naming.c_name(qualified)]
+				}
 				// The parser wraps top-level compile errors and warnings in synthetic bodies.
-				is_root := !is_library || tc.cur_module in library_runtime_modules
+				// Cgen's map prelude currently reads the expression-type markers that
+				// these bodies populate, even when the formatters themselves are unused.
+				wide_integer_stringifier := tc.cur_module == 'builtin'
+					&& node.value in ['i128.str', 'u128.str']
+				// The reachability frontier checks concrete closure helpers before
+				// collecting their body dependencies. Other modes keep all runtime bodies.
+				runtime_root := tc.cur_module in library_runtime_modules
+					&& !(defer_implicit_methods && tc.cur_module == 'closure')
+				is_root := !is_library || runtime_root
+					|| wide_integer_stringifier
 					|| short_name.starts_with('__v_top_level_compile_error_')
-					|| short_name in library_fn_implicit_names || seeded_names[short_name]
+					|| (!defer_stringifier
+						&& (short_name in library_fn_implicit_names || seeded_names[short_name]))
+					|| seeded_stringifier
 					|| !library_fn_name_is_identifier(short_name)
 					|| tc.enclosing_generic_params_by_node[i].len > 0
 					|| tc.library_fn_is_marked_root(i)
@@ -118,7 +157,9 @@ fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follo
 					}
 					continue
 				}
-				by_name[short_name] << bodies.len
+				if !defer_stringifier {
+					by_name[short_name] << bodies.len
+				}
 				bodies << LibraryFnBody{
 					fn_idx:   i
 					range_lo: range_lo
@@ -218,15 +259,33 @@ fn (tc &TypeChecker) library_fn_is_marked_root(fn_idx int) bool {
 // skips_library_body reports whether the check leaves out the body of the function
 // declaration `node`, which is in the current file and module.
 fn (tc &TypeChecker) skips_library_body(node flat.Node) bool {
-	if !tc.skips_library_bodies || !tc.library_files[tc.cur_file] {
+	return tc.skips_library_body_in_file(node, tc.cur_file, tc.cur_module)
+}
+
+// skips_library_body_in_file reports the body-skipping policy in an explicit
+// declaration context without changing the checker context used by reachability.
+pub fn (tc &TypeChecker) skips_library_body_in_file(node flat.Node, file string, module_name string) bool {
+	if node.kind != .fn_decl || !tc.skips_library_bodies || !tc.library_files[file] {
 		return false
 	}
 	if tc.reachable_library_fns[node.value]
-		|| tc.reachable_library_fns[checker_qualified_fn_name(tc.cur_module, node.value)] {
+		|| tc.reachable_library_fns[library_fn_body_key(module_name, node.value)] {
 		return false
 	}
 	// A generic body is checked for its type parameters, whoever instantiates it.
 	return tc.infer_decl_generic_param_names(node).len == 0
+}
+
+// library_fn_body_key qualifies late body checks without publishing a raw name hint.
+fn library_fn_body_key(module_name string, name string) string {
+	module_key := if module_name.len > 0 { module_name } else { 'main' }
+	return '${module_key}.${name}'
+}
+
+// library_bodies_checked_late returns the number of bodies checked after the initial check,
+// including both reachability frontiers and the convergence fallback.
+pub fn (tc &TypeChecker) library_bodies_checked_late() int {
+	return tc.checked_library_body_count
 }
 
 // skipped_library_bodies returns how many bodies the check left out so far.
@@ -301,14 +360,67 @@ fn library_fn_is_used(used map[string]bool, module string, name string) bool {
 // what check_semantics_opt was asked for: a check that had to be serial stays
 // so, and starts no worker.
 pub fn (mut tc TypeChecker) check_reached_library_bodies(used map[string]bool, parallel bool) int {
-	items := tc.library_body_items(used, true)
+	return tc.check_library_body_items(tc.library_body_items(used, true), parallel)
+}
+
+// LibraryBodyFrontier holds unchanged declaration ranges for one reachability pass.
+pub struct LibraryBodyFrontier {
+	items          []CheckWorkItem
+	by_node        map[int]int
+	node_count     int
+	top_level_size int
+}
+
+// prepare_library_body_frontier records the bodies still unchecked after the initial
+// semantic pass. Declaration order and work ranges come from the ordinary scanner.
+pub fn (mut tc TypeChecker) prepare_library_body_frontier() &LibraryBodyFrontier {
+	items := tc.library_body_items(map[string]bool{}, false)
+	mut by_node := map[int]int{}
+	for i, item in items {
+		by_node[item.fn_idx] = i
+	}
+	return &LibraryBodyFrontier{
+		items:          items
+		by_node:        by_node
+		node_count:     tc.a.nodes.len
+		top_level_size: tc.top_level_idx.len
+	}
+}
+
+// check_library_body_frontier_nodes checks the named declarations in source order.
+// A changed or incomplete snapshot returns none for the caller's ordinary fallback.
+pub fn (mut tc TypeChecker) check_library_body_frontier_nodes(frontier &LibraryBodyFrontier, node_ids []int, parallel bool) ?int {
+	if frontier.node_count != tc.a.nodes.len || frontier.top_level_size != tc.top_level_idx.len {
+		return none
+	}
+	mut indexes := []int{cap: node_ids.len}
+	for id in node_ids {
+		index := frontier.by_node[id] or { return none }
+		indexes << index
+	}
+	indexes.sort()
+	mut items := []CheckWorkItem{cap: indexes.len}
+	mut previous := -1
+	for index in indexes {
+		if index == previous {
+			continue
+		}
+		previous = index
+		item := frontier.items[index]
+		if tc.skips_library_body_in_file(tc.a.nodes[item.fn_idx], item.file, item.module) {
+			items << item
+		}
+	}
+	return tc.check_library_body_items(items, parallel)
+}
+
+fn (mut tc TypeChecker) check_library_body_items(items []CheckWorkItem, parallel bool) int {
 	if items.len == 0 {
 		return 0
 	}
 	for item in items {
 		name := tc.a.nodes[item.fn_idx].value
-		tc.reachable_library_fns[name] = true
-		tc.reachable_library_fns[checker_qualified_fn_name(item.module, name)] = true
+		tc.reachable_library_fns[library_fn_body_key(item.module, name)] = true
 	}
 	saved_file := tc.cur_file
 	saved_module := tc.cur_module
@@ -341,5 +453,6 @@ pub fn (mut tc TypeChecker) check_reached_library_bodies(used map[string]bool, p
 	tc.resolution_type_mode = true
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
+	tc.checked_library_body_count += items.len
 	return items.len
 }

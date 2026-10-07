@@ -132,7 +132,7 @@ fn test_v3_launcher_routes_compatibility_compilation_at_runtime() {
 	assert source.contains("if '-old-compiler' in args {")
 	assert source.contains("if '-new-compiler' !in args && v3_fixture_requires_compatibility_compiler(args)")
 	assert source.contains('run_with_fallback(args, args)')
-	assert source.contains('fn ensure_v1_fallback(reason string) !string')
+	assert source.contains('fn ensure_v1_fallback(reason string, quiet_install bool) !string')
 }
 
 fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {

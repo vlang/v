@@ -1193,3 +1193,20 @@ fn test_promoted_root_declared_default_recovers_generic_source() {
 	assert g.struct_default_generic_params.len == 0
 	assert g.struct_default_generic_args.len == 0
 }
+
+fn test_import_alias_canonicalization_is_idempotent_for_module_path_prefix() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.file_imports['other.v\ntsc'] = 'tsc.execute.tsc'
+	tc.file_imports['other.v\ngort'] = 'gostd.gort'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	for source in ['tsc.CompileTimes', '&tsc.CompileTimes', 'gort.Cell[tsc.CompileTimes]',
+		'map[string][]tsc.CompileTimes'] {
+		canonical := g.canonical_import_alias_type_text_in_file(source, 'other.v')
+		assert canonical.contains('tsc.execute.tsc.CompileTimes')
+		assert g.canonical_import_alias_type_text_in_file(canonical, 'other.v') == canonical
+		assert g.canonical_import_alias_type_text_in_file_uncached(canonical, 'other.v') == canonical
+	}
+}

@@ -370,7 +370,9 @@ fn test_nested_vlib_project_manifest_defines_module_identity() {
 	tc.compiler_vroot = root
 	tc.cur_file = module_file
 	tc.cur_module = 'mod1'
-	assert tc.current_file_module_source_root() or { '' } == os.real_path(project)
+	// The checker answers with '/' separated paths, os.real_path with the separators
+	// of the platform, so the expectation has to be normalised to be comparable.
+	assert tc.current_file_module_source_root() or { '' } == os.real_path(project).replace('\\', '/')
 	assert !tc.current_file_uses_nested_module_path()
 	assert tc.current_file_module_path_identity() or { '' } == 'mod1'
 }
