@@ -220,6 +220,7 @@ mut:
 	skip_generics                       bool
 	building_v                          bool
 	var_types                           []VarTypeBinding
+	comptime_scalar_locals              map[string]ComptimeStringScalar
 	var_type_indices                    map[string]int
 	var_type_cache                      &VarTypeIndexCache = unsafe { nil }
 	refined_node_types                  map[int]string
@@ -980,6 +981,7 @@ mut:
 }
 
 struct FunctionLocalState {
+	comptime_scalar_locals        map[string]ComptimeStringScalar
 	var_types                     []VarTypeBinding
 	var_type_indices              map[string]int
 	fn_value_locals               map[string]string
@@ -2739,6 +2741,7 @@ fn (mut t Transformer) reset_var_types() {
 // function body builds independent bindings and ownership metadata.
 fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 	state := FunctionLocalState{
+		comptime_scalar_locals:        t.comptime_scalar_locals
 		var_types:                     t.var_types
 		var_type_indices:              t.var_type_indices
 		fn_value_locals:               t.fn_value_locals
@@ -2752,6 +2755,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 		local_closure_field_cleanups:  t.local_closure_field_cleanups
 	}
 	t.var_types = []VarTypeBinding{}
+	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
 	t.var_type_indices = map[string]int{}
 	t.fn_value_locals = map[string]string{}
 	t.mut_param_values = map[string]bool{}
@@ -2767,6 +2771,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 
 fn (mut t Transformer) restore_function_local_state(state FunctionLocalState) {
 	t.var_types = state.var_types
+	t.comptime_scalar_locals = state.comptime_scalar_locals
 	t.var_type_indices = state.var_type_indices
 	t.fn_value_locals = state.fn_value_locals
 	t.mut_param_values = state.mut_param_values
@@ -4306,6 +4311,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		w.node_module_map_nodes = -1
 	}
 	w.var_types = []VarTypeBinding{}
+	w.comptime_scalar_locals = map[string]ComptimeStringScalar{}
 	w.var_type_indices = map[string]int{}
 	w.refined_node_types = t.refined_node_types.clone()
 	w.mut_param_values = map[string]bool{}
@@ -4440,6 +4446,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.node_module_map_cache = []u16{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
+	w.comptime_scalar_locals = map[string]ComptimeStringScalar{}
 	w.var_type_indices = map[string]int{}
 	w.mut_param_values = map[string]bool{}
 	w.fixed_array_param_values = map[string]bool{}
@@ -6026,7 +6033,8 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 				new_val := t.transform_const_or_expr(val_id, val, const_typ)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .array_init,
-				.map_init, .fn_literal, .lambda_expr, .sizeof_expr] {
+				.map_init, .fn_literal, .lambda_expr, .sizeof_expr, .selector, .index, .prefix,
+				.paren] {
 				new_val := t.transform_const_expr_no_pending(val_id)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind == .infix && val.children_count >= 2 {
@@ -6556,7 +6564,11 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		typ = typ[1..]
 	} else if format != 'p' && expr_node.kind == .ident
 		&& t.string_interp_needs_value_read(expr_node.value, typ) {
-		transformed = t.make_prefix(.mul, transformed)
+		// Reading a local moved to the heap already dereferences its storage, while
+		// `typ` can still be the `&Alias` of that storage: read the value only once.
+		if !t.is_value_read_of(transformed, expr_node.value) {
+			transformed = t.make_prefix(.mul, transformed)
+		}
 		typ = typ[1..]
 	}
 	if typ.len == 0 {
@@ -6641,6 +6653,20 @@ fn (mut t Transformer) mark_string_interp_call_part_used(expr_id flat.NodeId) {
 			t.mark_fn_used_name(method_name)
 		}
 	}
+}
+
+// is_value_read_of reports whether `id` is `*name`, the value of the pointer-backed
+// local `name`.
+fn (t &Transformer) is_value_read_of(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .mul || node.children_count != 1 {
+		return false
+	}
+	operand := t.a.child_node(&node, 0)
+	return operand.kind == .ident && operand.value == name
 }
 
 fn (t &Transformer) string_interp_needs_value_read(name string, typ string) bool {
@@ -10315,9 +10341,10 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 	}
 	if header_end >= 3 {
 		container_id := t.a.child(node, 2)
-		// detect_for_in_type records the type it finds on the loop header, which is too
-		// early here: the names in scope still have the types of the previous function.
-		iter_type := for_iter_payload_type(t.comptime_normalize_type_alias_chain(t.node_type(container_id))).trim_space()
+		// Local declarations have not populated var_types yet. Prefer the checked
+		// source type so a local homonym does not resolve to a foreign constant.
+		container_type := t.checker_expr_type_name(container_id) or { t.node_type(container_id) }
+		iter_type := for_iter_payload_type(t.comptime_normalize_type_alias_chain(container_type)).trim_space()
 		reference_iteration := node.op == .amp || iter_type.starts_with('&')
 		mut backing_id := container_id
 		mut fixed_backing := t.is_fixed_array_type(iter_type.trim_left('&'))
@@ -10325,7 +10352,9 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 			range_id := t.unwrap_parens(container_id)
 			if t.is_range_index_expr(range_id) {
 				base_id := t.a.child(t.a.node(range_id), 0)
-				if t.is_fixed_array_type(t.unaliased_value_type(base_id)) {
+				checked_base_type := t.checker_expr_type_name(base_id) or { t.node_type(base_id) }
+				base_type := t.alias_str_resolved_base_type(checked_base_type.trim_left('&')).trim_left('&')
+				if t.is_fixed_array_type(base_type) {
 					backing_id = base_id
 					fixed_backing = true
 				}
@@ -10707,6 +10736,9 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 }
 
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
+	outer_comptime_locals := t.comptime_scalar_locals
+	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
+	defer { t.comptime_scalar_locals = outer_comptime_locals }
 	if !isnil(t.selector_type_cache) {
 		t.selector_type_cache.generation++
 	}
@@ -11087,6 +11119,8 @@ fn (t &Transformer) fn_return_type_for_name(name string) ?string {
 @[direct_array_access]
 pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 	mut result := []flat.NodeId{cap: ids.len}
+	saved_comptime_locals := t.comptime_scalar_locals.clone()
+	defer { t.comptime_scalar_locals = saved_comptime_locals }
 	had_base_smartcasts := t.smartcast_stack.len > 0
 	base_smartcasts := if had_base_smartcasts {
 		t.smartcast_stack.clone()
@@ -11365,7 +11399,7 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 		return t.transform_assign_stmt(id, node)
 	}
 	if kind_id == 41 {
-		return t.transform_decl_assign_stmt(id, node)
+		return t.transform_comptime_scalar_decl(id, node)
 	}
 	if kind_id == 39 {
 		return t.transform_expr_stmt(id, node)
@@ -11410,7 +11444,7 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 			return t.transform_assign_stmt(id, node)
 		}
 		.decl_assign {
-			return t.transform_decl_assign_stmt(id, node)
+			return t.transform_comptime_scalar_decl(id, node)
 		}
 		.expr_stmt {
 			return t.transform_expr_stmt(id, node)
@@ -11618,6 +11652,14 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 	if t.shared_map_read_locks.len > 0 && t.autolock_depth == 0 {
 		if locked := t.try_autolock_shared_map_read(id) {
 			return locked
+		}
+	}
+	if !t.assert_watch.active && ((node.kind == .selector && node.value == 'len')
+		|| (node.kind == .index && node.value == 'range')
+		|| (node.kind == .infix && node.op in [.plus, .eq, .ne, .logical_and, .logical_or])
+		|| node.kind == .in_expr || (node.kind == .prefix && node.op == .not)) {
+		if scalar := t.comptime_scalar_expr(id, 0) {
+			return t.make_comptime_scalar_literal(scalar)
 		}
 	}
 	kind_id := int(node.kind)
@@ -19200,13 +19242,17 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 	defer {
 		t.restore_heaped_local_state(heaped_state)
 	}
-	take_then := t.comptime_type_condition_value(node.value) or {
+	cond := t.subst_comptime_scalar_locals(node.value)
+	take_then := t.comptime_scalar_condition_value(cond) or {
 		// Portable output (`-os cross`) keeps both branches so that the C
 		// preprocessor can pick one. They are ordinary statements and still need
 		// lowering. Conditions deferred for any other reason (a `$for` loop var, a
 		// type test) are folded after monomorphization and must stay untouched.
 		if comptime_cond_has_target_flag(node.value) {
 			return [t.lower_retained_comptime_if(node)]
+		}
+		if !t.comptime_condition_has_unresolved_type_test(cond) {
+			t.reject_unevaluated_comptime_if(_id, node, cond)
 		}
 		return [_id]
 	}
@@ -19232,9 +19278,13 @@ fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node
 	defer {
 		t.restore_heaped_local_state(heaped_state)
 	}
-	take_then := t.comptime_type_condition_value(node.value) or {
+	cond := t.subst_comptime_scalar_locals(node.value)
+	take_then := t.comptime_scalar_condition_value(cond) or {
 		if comptime_cond_has_target_flag(node.value) {
 			return t.lower_retained_comptime_if_expr(node)
+		}
+		if !t.comptime_condition_has_unresolved_type_test(cond) {
+			t.reject_unevaluated_comptime_if(id, node, cond)
 		}
 		return id
 	}
@@ -20580,13 +20630,15 @@ fn (mut t Transformer) transform_watched_assert_operand(id flat.NodeId, target_t
 	} else {
 		return none
 	}
-	t.assert_watch.active = false
+	// Keep scalar folding disabled while lowering the operands, without watching them twice.
+	saved_ids := t.assert_watch.ids
+	t.assert_watch.ids = [-1, -1]!
 	result := if target_type == '' {
 		t.transform_expr(id)
 	} else {
 		t.transform_expr_for_type(id, target_type)
 	}
-	t.assert_watch.active = true
+	t.assert_watch.ids = saved_ids
 	t.assert_watch.results[side] = int(result)
 	return result
 }
@@ -27095,7 +27147,7 @@ fn (t &Transformer) raw_infix_operator_decl_return_type(node flat.Node) ?string 
 
 fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?string {
 	if ret := t.tc.fn_ret_type_texts[name] {
-		raw := t.raw_call_return_type_name(ret, node)
+		raw := t.raw_call_return_type_name(t.caller_return_type_text(name, ret), node)
 		if t.raw_return_type_contains_alias(raw) {
 			return raw
 		}
@@ -27113,6 +27165,24 @@ fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?st
 		}
 	}
 	return none
+}
+
+// caller_return_type_text is the return type `ret` of the function `name`, written
+// as the current module names it. `ret` keeps the spelling of the module that declares
+// the function, where `ID` is the alias `m.ID`; in another module that bare `ID` has
+// none of the methods of `m.ID`, like its `str`. A generic function keeps its text:
+// its type parameters are resolved at the call.
+fn (t &Transformer) caller_return_type_text(name string, ret string) string {
+	decl_file := t.tc.fn_type_files[name] or { return ret }
+	decl_module := t.tc.fn_type_modules[name] or { t.tc.file_modules[decl_file] or { return ret } }
+	if decl_module == t.cur_module || name.contains('[') || name in t.tc.fn_generic_params {
+		return ret
+	}
+	resolved := t.tc.fn_signature_type(name, ret)
+	if resolved is types.Unknown || resolved is types.Void {
+		return ret
+	}
+	return resolved.name()
 }
 
 fn (t &Transformer) raw_return_type_contains_alias(typ string) bool {

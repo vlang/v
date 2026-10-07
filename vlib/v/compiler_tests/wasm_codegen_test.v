@@ -15,7 +15,8 @@ fn testsuite_begin() {
 fn v3_binary() string {
 	v3_bin := os.join_path(os.vtmp_dir(), 'v3_wasm_codegen_test')
 	build :=
-		os.exec([vexe, '-gc', 'none', '-compile-backend', 'wasm', '-o', v3_bin, '${v3_src}'])
+		os.exec([vexe, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none',
+			'-compile-backend', 'wasm', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -232,7 +233,7 @@ fn test_wasm_string_literal_escapes_not_double_decoded() {
 	os.write_file(src_path, src) or { panic(err) }
 	c_bin := os.join_path(os.vtmp_dir(), 'wasm_esc_c')
 	cres :=
-		os.exec([v3_bin, '-b', 'c', '-o', c_bin, src_path])
+		os.exec([v3_bin, '-b', 'c', '-cc', 'clang', '-o', c_bin, src_path])
 	assert cres.exit_code == 0, cres.output
 	cout := os.exec([c_bin])
 	assert cout.exit_code == 0, cout.output

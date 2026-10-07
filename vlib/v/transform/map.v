@@ -3547,6 +3547,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	if !map_type.starts_with('map[') {
 		return id
 	}
+	t.validate_concrete_map_key(map_type)
 	map_type = t.refine_map_init_fixed_array_value_type(node, map_type)
 	mut init_call := t.make_new_map_call(map_type)
 	if node.children_count == 0 {

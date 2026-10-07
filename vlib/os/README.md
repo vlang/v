@@ -170,6 +170,10 @@ These arguments are literal on Windows too: `%PATH%` stays `%PATH%`, and quotes
 and trailing backslashes are preserved. Expand environment variables explicitly
 with `os.getenv()` when that is intended.
 
+Call `process.wait()` before `process.close()`, including after `process.signal_kill()`.
+On POSIX systems, waiting reaps the killed child and records its signal exit status.
+Repeated waits preserve the exit status already collected by `wait()` or `is_alive()`.
+
 On Windows, `Result.exit_code` and `Process.code` interpret the child's 32-bit exit
 status as a signed value: `0x80000000` becomes `-2147483648` and `0xFFFFFFFF` becomes
 `-1`. Check `Process.status` to distinguish a completed child returning `-1` from

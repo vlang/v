@@ -675,6 +675,7 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 > [!NOTE]
 > `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
 > targets. Use `i32` or `i64` when you need a fixed width.
+> Integer literal casts to `int` are checked against the target platform's width.
 
 ### 128-bit integers
 
@@ -1218,6 +1219,10 @@ println(nums) // `[10, 5, 30]`
 
 An element can be appended to the end of an array using the push operator `<<`.
 It can also append an entire array.
+
+The C backend uses typed stores for scalar element assignments and single-element appends.
+Assignments retain bounds checking. Appends retain capacity checks and detach slice storage
+when needed. The right-hand side can grow the array before the final element address is resolved.
 
 ```v
 mut nums := [1, 2, 3]
@@ -1832,6 +1837,7 @@ m.delete('two')
 
 Maps can have keys of type string, rune, integer, float, voidptr,
 enum, or fixed arrays of those supported key types.
+Struct keys are rejected, including when a generic key parameter is instantiated with a struct.
 
 The whole map can be initialized using this short syntax:
 
@@ -3704,6 +3710,9 @@ println(sum(...b)) // output: 18
 
 ### Anonymous & higher order functions
 
+Calling a function parameter or local function variable uses that binding, even when
+another module defines a function constant with the same name.
+
 ```v
 fn sqr(n int) int {
 	return n * n
@@ -5440,6 +5449,9 @@ fn main() {
 
 ### Generics
 
+Generic method calls retain the declaring modules of their type arguments when selecting
+the concrete method, including methods returning Result or Option values.
+
 Omitted fields of a generic struct use their declared defaults, including in nested structs.
 This also applies through concrete generic aliases and imported structs; defaults use the
 imports visible in the declaring file.
@@ -5447,6 +5459,9 @@ Fixed array fields initialize each element with its specialized generic defaults
 
 Generic types brought into scope by a selective import retain their declaring module when
 passed to generic functions and methods in other modules.
+
+Type arguments retain the module where they are declared when used in a generic struct from
+another module, including arguments inside arrays, pointers, and maps.
 
 Methods called on a generic factory result retain their dependencies in the compiled program.
 
@@ -5499,6 +5514,8 @@ A later declaration using a module type with the same name resolves to that modu
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
+Inside a generic declaration, its type parameters take precedence over same-named concrete
+types. A concrete single-letter struct can still be passed as a generic type argument.
 
 Currently generic function definitions must declare their type parameters, but in
 future versions, V will infer generic type parameters from single-letter type names in
@@ -5510,6 +5527,9 @@ are resolved in the module that defines the method, so a caller type with the sa
 does not change the inferred type arguments. `typeof(call()).name` reports the concrete
 return type of an inferred generic method call.
 Inference also follows receivers obtained by unwrapping an option or propagating a result.
+
+Nested generic calls preserve reference return types when passed directly to another generic
+call, including references stored as map values.
 
 Another example:
 
@@ -7309,6 +7329,11 @@ Use `--dry-run` to preview updates. The provenance file `origin.json` must be a 
 file: installation refuses symlinks and other file types before replacing skill content.
 `v.skills.content_digest` returns an error if any requested file cannot be read.
 
+Installation stages all bundled files in a sibling directory before replacing an
+existing skill. A staging failure preserves the installed copy; a failed replacement
+attempt restores the previous directory. Existing files at the skill destination are
+refused, including with `--force`.
+
 The `v.skills.refresh_candidates` API returns separate lists of safe refreshes
 and installations held back for local changes or missing provenance. The
 `out_of_date` API only compares content and cannot distinguish these cases.
@@ -7703,6 +7728,26 @@ v outdated
 Package are up to date.
 ```
 
+### Resolving package versions
+
+Dependencies can use semantic version ranges, for example `vsl@^0.1.47` or
+`nedpals.args@>=0.4.0 <0.6.0`. VPM selects tagged releases satisfying all requirements
+for a repository and backtracks to older releases if their dependencies conflict.
+Unchanged projects prefer locked commits. `v install --frozen` uses the lock without
+writing it. Failed resolution reports the requirement chains before installing anything.
+
+In projects using ranges, `v update` resolves within existing constraints.
+`v update -p PACKAGE --precise REF` chooses one exact ref while checking every constraint.
+`v update --latest` widens direct requirements to caret constraints for the newest resolvable
+stable releases and rewrites `v.mod`. Other locked packages are preferred during targeted updates.
+Bare-only projects retain default-branch installs and branch-based updates.
+
+`v why PACKAGE` annotates each parent's version constraint; `v mod graph` prints versioned
+manifest dependency edges. Both work offline. `v outdated` reports Current, Upgradable,
+Resolvable and Latest for constrained projects: the installed version, the newest tag allowed
+by the installed graph, a fresh complete resolution, and the newest stable tag respectively.
+See [the VPM guide](../cmd/tools/vpm/README.md) for details.
+
 ### Locking dependency revisions
 
 When `v install` resolves the dependencies of a project, i.e. when it runs
@@ -7995,8 +8040,10 @@ fn inlined_function() {
 fn function() {
 }
 
-// Calls to this function in const and enum expressions can be evaluated at compile time,
-// when all call arguments are compile-time constants.
+// Calls to this function in enum expressions can be evaluated at compile time,
+// when all call arguments are compile-time constants. Integer parameters, casts, and
+// return values use their declared integer widths. Unsigned u64 shifts and division retain
+// their high bits. Const initializers remain runtime calls.
 @[comptime]
 fn make_mask(value u32, shift u32) u32 {
 	return value << shift
@@ -8295,9 +8342,30 @@ condition can compare the loop variable's metadata with literals (`==`, `!=`, `<
 Pure string method chains on literal or substituted reflection strings also support
 `all_before`, `all_after`, `all_before_last`, `all_after_last`, `trim`, `trim_left`,
 `trim_right`, `trim_space`, `trim_string_left`, `trim_string_right`, `replace`,
-`to_lower`, `to_upper`, and `count`, when every argument is a string literal.
-These scalar operations also fold in ordinary expressions with literal operands, including
-constant initializers. A condition that cannot be decided at compile time is reported as an error:
+`to_lower`, `to_upper`, and `count`, when every argument is a compile-time-known string.
+These scalar operations also fold in ordinary expressions and constant initializers. Operands
+may be literals, reflection strings, constants, or immutable locals initialized from them.
+Static string slices (`text[start..end]`) and `.len` also fold. Mutable locals stay runtime;
+using one in a compile-time condition is an error.
+
+`$for` can iterate `split`, `split_any`, or `fields` of a compile-time-known string. Each
+iteration binds its variable to a string literal in its own scope. The compiler unrolls the
+body without allocating an array or parsing the string at runtime:
+
+```v
+fn main() {
+	path := 'GET /users/:id/posts'.all_after(' ').trim_left('/')
+	$for segment in path.split('/') {
+		$if !segment.starts_with(':') {
+			println(segment)
+		}
+	}
+}
+```
+
+A source containing runtime operands or unsupported operations is an error. String arrays
+from these calls are folded only as `$for` sources. A condition that cannot be decided at
+compile time is reported as an error:
 
 ```v
 struct User {
@@ -8436,8 +8504,17 @@ A reflected method call can pass explicit arguments followed by `...args` to sup
 parameters. The spread can be empty when the method has no remaining parameters. Explicit arguments
 before the spread still follow the method's `mut` parameter requirements.
 
+Trailing parameters declared as `?T` can be omitted from a reflected method call.
+An alias of an option type still requires an explicit argument.
+
 Inside a `.methods` reflection loop, `method.args` is a runtime array of `FunctionParam` records.
 Runtime loops over slices such as `method.args[1..]` retain each parameter's `name` and `typ`.
+
+Runtime dispatch can select calls with different arities using `method.args.len` or
+`method.params.len` guards, including guards combined with runtime conditions. In these branches,
+calls incompatible with the current method's arity are omitted. Compatible calls still enforce
+mutable parameter requirements. Methods with an implicit veb context accept an explicit context
+before their declared route arguments; that inserted context is absent from `method.args` metadata.
 
 ```v
 struct Test {
@@ -9773,6 +9850,9 @@ to race conditions. There are several approaches to deal with these:
   correlated, which is acceptable considering the performance penalty that using
   synchronization primitives would represent.
 
+A global declared in the current module keeps its own type when another module
+declares a constant with the same name.
+
 ### Shadowing a global
 
 A local variable may not reuse the name of a global. A global's bare name is visible
@@ -10158,6 +10238,9 @@ Note also that they *do not have* to be complete, unlike the ones in the .h file
 Parameter names in `C.` function declarations may start with uppercase letters, as in C headers.
 The lowercase naming rule still applies to parameters of ordinary V functions.
 
+Fields of a C struct returned by value can be accessed directly on the call, for example
+`C.get_point(5).row`, without first assigning the result to a variable.
+
 
 An escaped C field name such as `@type` also matches a binding declared with the plain name `type`.
 An exact escaped V field takes precedence, including fields promoted from embedded structs.
@@ -10398,6 +10481,10 @@ will be added last (note the .a suffix):
 ```v oksyntax
 #flag /path/to/ffi.a
 ```
+When a module links a library by a path ending in `.a`, `.so`, `.dylib`, or `.lib`,
+V emits prototypes for its `fn C.` declarations if the module includes no C headers.
+When the module includes a header, the header supplies those declarations instead.
+
 If you need to reverse the order (prepend the library in the libs section of the
 C compilation line, before other libs), use:
 ```v oksyntax
@@ -10424,7 +10511,12 @@ In the console build command, you can use:
 * `-cc` to change the default C backend compiler.
 * `-cflags` to pass custom flags to the backend C compiler (passed before other C options).
 * `-ldflags` to pass custom flags to the backend C linker (passed after every other C option).
+* `-parallel-cc` to compile generated C units concurrently with a compatible C compiler.
 * For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+
+Parallel C builds keep the signal-handler runtime and its saved signal actions in one unit.
+Module-cache builds keep that runtime in the program prefix; cached objects use its declarations.
+Native headers that cannot safely share state across units use a single compilation unit.
 
 To select C23 with a compiler that supports it, use
 `v -cc gcc -cflags '-std=gnu23' program.v`. Generated C uses the standard boolean keywords
@@ -10573,6 +10665,8 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 Passing `unsafe { nil }` to a pointer parameter passes a null pointer, including pointers to
 handles that alias `voidptr`.
+Reference results of generic calls also pass the pointer value to `voidptr` parameters.
+For example, `isnil(identity[&User](unsafe { nil }))` tests the returned pointer for null.
 A mutable block that yields `&T` can pass that pointer to a `mut T` parameter,
 including generic functions and functions from imported modules.
 
@@ -11001,6 +11095,9 @@ explicitly with `%k`, `%w` and related modifiers.
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or
 constraints can still depend on the selected C compiler and target architecture.
+
+When V builds a binary with `-cc msvc`, it stops with an error at the first inline assembly block
+that the program uses. Guard such a block with `$if !msvc`.
 
 ### Whole-function assembly
 

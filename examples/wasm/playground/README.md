@@ -38,7 +38,9 @@ unsupported-operation results for the host-only functions missing from Emscripte
 not used by the playground's compilation path.
 
 Compiler diagnostics and program stdout/stderr appear in **Output**. Program stdout/stderr
-is limited to 1 MiB. Each run uses a fresh worker and compiler instance, which are discarded
+is limited to 1 MiB. Complete output lines appear while the program is running, including
+before an infinite loop. Partial lines are buffered until 4096 characters or program exit.
+Each run uses a fresh worker and compiler instance, which are discarded
 when execution finishes or stops.
 
 ## Tests
@@ -46,5 +48,6 @@ when execution finishes or stops.
 Run the browser runtime tests with Node.js:
 
 ```sh
-node examples/wasm/playground/runtime_test.mjs
+node --test examples/wasm/playground/runtime_test.mjs \
+  examples/wasm/playground/worker_output_test.mjs
 ```

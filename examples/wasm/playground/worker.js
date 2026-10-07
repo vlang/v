@@ -55,7 +55,7 @@ self.onmessage = async ({ data }) => {
 		try {
 			await runWasm(bytes, (text) => {
 				output += text;
-				if (output.length >= 4096) flush();
+				if (output.includes('\n') || output.length >= 4096) flush();
 			});
 		} finally {
 			flush();

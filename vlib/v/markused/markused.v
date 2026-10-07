@@ -5437,6 +5437,23 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			.string_interp {
 				calls << 'string_plus_many'
 			}
+			.for_in_stmt {
+				if child.value.int() == 3 && child.children_count > 2 {
+					container_id := c.a.child(child, 2)
+					type_name := c.top_level_expr_type_name(container_id, cur_module, imports,
+						local_values, local_types, true)
+					mut container_type := types.unwrap_pointer(c.tc.parse_canonical_type(type_name))
+					for container_type is types.Alias {
+						container_type = types.unwrap_pointer(container_type.base_type)
+					}
+					if container_type is types.Array {
+						// Cgen introduces array_get for iteration after markused. Literal
+						// output programs can reach these loops through the builtin runtime.
+						calls << 'array.get'
+						calls << 'array__get'
+					}
+				}
+			}
 			.index {
 				if child.value != 'range' && child.children_count >= 2 {
 					base_id := c.a.child(child, 0)

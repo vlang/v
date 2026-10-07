@@ -304,6 +304,47 @@ fn array_literal_root_calls(mut a flat.FlatAst, c &CallCollector, kind flat.Node
 	return calls
 }
 
+fn test_dynamic_array_iteration_keeps_lowered_get_helper() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Names'] = '[]string'
+	tc.type_alias_modules['Names'] = 'main'
+	tc.type_aliases['NamesPointer'] = '&[]string'
+	tc.type_alias_modules['NamesPointer'] = 'main'
+	collector := CallCollector{ a: &a, tc: &tc }
+	for type_name in ['[]string', '&[]string', 'Names', '&Names', 'NamesPointer', '&NamesPointer',
+		'[2]string', 'string', 'map[string]string'] {
+		for indexed in [false, true] {
+			for mutable in [false, true] {
+				key := a.add_val(.ident, if indexed { 'i' } else { 'val' })
+				val := if indexed { a.add_val(.ident, 'val') } else { flat.NodeId(-1) }
+				container := a.add_val(.ident, 'names')
+				loop := call_helper_node(mut a, flat.Node{
+					kind:  .for_in_stmt
+					value: '3'
+					op:    if mutable { .amp } else { .none }
+				}, [key, val, container])
+				root := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'helper' }, [
+					loop,
+				])
+				mut calls := []string{}
+				collector.collect_calls_with_locals(a.node(root), 'main', map[string]string{},
+					'', '', {
+						'names': true
+						'val':   true
+						'i':     true
+					}, {
+						'names': type_name
+					}, map[int]bool{}, mut calls)
+				expects_get := type_name in ['[]string', '&[]string', 'Names', '&Names', 'NamesPointer',
+					'&NamesPointer']
+				assert ('array.get' in calls) == expects_get, '${type_name}: ${calls}'
+				assert ('array__get' in calls) == expects_get, '${type_name}: ${calls}'
+			}
+		}
+	}
+}
+
 fn test_literal_output_gate_preserves_file_index_fallbacks() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_val(.ident, 'println')
