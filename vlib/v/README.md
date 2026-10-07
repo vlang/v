@@ -27,6 +27,8 @@ global definitions. The parser resolves platform flags and known literal `$if` c
 parsing only the taken branch. String guards that depend on imported constants are resolved
 before declaration collection. Parallel file parsing retains computed constant names and defers
 their unproved guards, including guards on constants selected by earlier guards.
+Metadata reflection headers do not create runtime method references. A user module named
+`closure` can therefore be imported without requiring the compiler's closure runtime.
 Reflection values, immutable reflection locals, and generic
 type conditions retain `comptime_if` nodes until the transformer can select their branch.
 `#include` and `#flag` directives inside `$if` blocks are handled correctly: the
