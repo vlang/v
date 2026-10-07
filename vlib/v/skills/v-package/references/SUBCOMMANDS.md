@@ -5,18 +5,19 @@ summary in `SKILL.md`.
 
 ## install
 
-`v install <module>` clones the package into the modules directory and records it
-in the project's `v.mod`. Run it in the project directory. With no `v.mod` present
-it detects that and uses the directory as the module.
+`v install <module>` installs a package into the modules directory without
+changing the project's `v.mod`. Add dependencies to that manifest explicitly.
+`v install` without package arguments installs the dependencies declared in the
+current directory's `v.mod`; it reports an error if that file is absent.
 
 ## update
 
-`v update` updates the installed packages to their latest versions.
+`v update` updates installed packages. Project version ranges constrain the
+selected releases, and a project update refreshes its `v.mod.lock`.
 
 ## upgrade
 
-`v upgrade` upgrades all outdated modules. It is `v update` applied to everything
-that has a newer version.
+`v upgrade` updates the modules reported as outdated by `v outdated`.
 
 ## outdated
 
@@ -59,6 +60,7 @@ refuses a path that is not a symlink.
 ## Checking the installed set against the compiler
 
 The subcommands are dispatched by the `v` frontend, which maps them to the `vpm`
-tool. A compiler whose tree lacks a subcommand will not have it, so compare
-`v skills list` against `ls vlib/v/skills` before concluding a subcommand is
-missing upstream.
+tool. Read `v help vpm` for the installed compiler's package command help, or
+`v help install` for installation options. A compiler whose tree lacks a
+subcommand will not provide it; skill listings describe the installed skills,
+not the package command surface.
