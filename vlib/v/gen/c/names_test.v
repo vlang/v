@@ -998,3 +998,28 @@ fn test_embed_blob_split_keeps_every_object_within_the_c_limit() {
 	parts := embed_blob_part_count(4 * 1024 * 1024 * 1024 - 1)
 	assert embed_blob_table_count(parts) * per_table >= parts
 }
+
+fn test_path_linked_libraries_keep_headerless_c_prototypes() {
+	source := '/project/bindings.c.v'
+	for flag in ['@DIR/libext.a', '/opt/libext.so', '/opt/libext.dylib', 'C:/lib/ext.lib',
+		'"/opt/library dir/libext.a"', 'linux @DIR/libext.a -lm'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', source, flag)
+		assert g.should_emit_c_extern_decl_from_file('my_ext_fn', source, 'bindings'), flag
+		// A sibling binding file can share the module's library linkage.
+		assert g.should_emit_c_extern_decl_from_file('my_ext_fn', '/project/other.c.v',
+			'bindings'), flag
+		g.note_c_include_directive('bindings', '/project/header.c.v')
+		assert !g.should_emit_c_extern_decl_from_file('my_ext_fn', source, 'bindings'), flag
+		g.note_c_include_directive('bindings', source)
+		assert !g.should_emit_c_extern_decl_from_file('my_ext_fn', source, 'bindings'), flag
+	}
+}
+
+fn test_library_path_detection_ignores_non_linker_operands() {
+	for flag in ['-I/opt/headers.a', '-I "/opt/headers.a"', '-L /opt/libraries.a',
+		'-include /opt/header.so', '-isystem /opt/headers.lib', '-DNAME=libext.a',
+		'-I /opt/include ## /opt/libext.a'] {
+		assert !c_flag_links_c_library(flag), flag
+	}
+}

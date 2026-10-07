@@ -1767,15 +1767,15 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 	}
 	if node.kind == .selector && node.value == '\$' && node.children_count >= 2
 		&& t.comptime_method_name_expr_matches(t.a.child(&node, 1), var_name) {
-		receiver := t.clone_method_subst_scoped(t.a.child(&node, 0), var_name, method, inner_vars) or {
+		source_receiver := t.a.child(&node, 0)
+		receiver_names_type := t.comptime_method_receiver_names_type(source_receiver)
+		receiver := t.clone_method_subst_scoped(source_receiver, var_name, method, inner_vars) or {
 			return none
 		}
 		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
 		method_key := '${receiver_name}.${method.name}'
 		t.mark_fn_used(method_key)
-		receiver_node := t.a.node(receiver)
-		if receiver_node.kind == .ident && receiver_node.value.len > 0
-			&& receiver_node.value[0].is_capital() && t.var_type(receiver_node.value).len == 0 {
+		if receiver_names_type {
 			same_main_module := method.module_name in ['', 'main']
 				&& t.cur_module in ['', 'main']
 			if !method.is_pub && method.module_name != t.cur_module && !same_main_module
@@ -1790,7 +1790,7 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 				return value
 			}
 		}
-		return t.make_comptime_method_selector(receiver, method)
+		return t.make_comptime_method_selector(receiver, method, receiver_names_type)
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
@@ -1987,9 +1987,49 @@ fn (mut t Transformer) make_param_array_literal(params []ParamMeta, module_name 
 	return t.make_array_literal_typed(ids, '[]FunctionParam')
 }
 
-fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, method MethodMeta) flat.NodeId {
-	receiver_node := t.a.node(receiver)
-	if receiver_node.kind == .ident && t.raw_var_type(receiver_node.value).len == 0 {
+fn (t &Transformer) comptime_method_receiver_names_type(receiver flat.NodeId) bool {
+	if int(receiver) < 0 {
+		return false
+	}
+	node := t.a.node(receiver)
+	if node.kind != .ident || node.value.len == 0 || t.static_assoc_ident_is_value(receiver) {
+		return false
+	}
+	// A cloned local may not be registered until its declaration is lowered.
+	// Decide on the source node while its lexical binding and checked type remain available.
+	namespace_spelling := t.comptime_resolve_selective_import_type(node.value)
+	if !node.value[0].is_capital() && !types.is_builtin_type_name(namespace_spelling)
+		&& !t.is_known_type_name(namespace_spelling) {
+		return false
+	}
+	if _ := t.local_binding_before(node.value, receiver) {
+		return false
+	}
+	if !isnil(t.tc)
+		&& (types.is_builtin_type_name(namespace_spelling) || t.is_known_type_name(namespace_spelling)) {
+		mut checked_name := node.typ
+		if typ := t.tc.expr_type(receiver) {
+			checked_name = t.tc.type_name(typ)
+		}
+		if decl_type_is_usable(checked_name) && checked_name != 'void' {
+			raw_namespace := t.normalize_type_in_module(namespace_spelling, t.cur_module)
+			parsed_namespace := t.tc.type_name(t.tc.parse_resolution_type(raw_namespace))
+			namespace_name := if decl_type_is_usable(parsed_namespace) && parsed_namespace != 'void' {
+				parsed_namespace
+			} else {
+				raw_namespace
+			}
+			if type_text_without_main_locks(t.normalize_type_alias(checked_name)) !=
+				type_text_without_main_locks(t.normalize_type_alias(namespace_name)) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, method MethodMeta, receiver_names_type bool) flat.NodeId {
+	if receiver_names_type {
 		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
 		method_key := '${receiver_name}.${method.name}'
 		same_main_module := method.module_name in ['', 'main'] && t.cur_module in ['', 'main']
@@ -2702,7 +2742,7 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 	match node.kind {
 		.int_literal {
 			clean := node.value.replace('_', '')
-			parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
+			parsed := strconv.common_parse_int(clean, util.v_literal_parse_base(clean), 64, true, true) or { return none }
 			return parsed
 		}
 		.paren, .cast_expr {
@@ -5679,12 +5719,12 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 // comptime_cond_operand returns a comparison operand as the text to compare: a string
 // literal without its quotes, the value of a string literal member (see
 // comptime_cond_string_member), or a plain operand (a number, name or enum value) as it
-// is. Any other expression, such as `'name'.to_upper()` or `'name'[0]`, is not its own
+// is. Any unsupported expression, such as `'name'.repeat(2)` or `'name'[0]`, is not its own
 // value, so it cannot be compared as text: none.
 fn comptime_cond_operand(operand string) ?string {
 	clean := comptime_condition_strip_outer_parens(operand.trim_space())
 	if value := comptime_cond_string_member(clean) {
-		return value
+		return comptime_unquote(value)
 	}
 	if clean.len > 0 && clean[0] in [`'`, `"`, `\``] {
 		if comptime_cond_skip_string(clean, 0) != clean.len {
@@ -5698,10 +5738,57 @@ fn comptime_cond_operand(operand string) ?string {
 	return clean
 }
 
-// comptime_cond_string_member evaluates `.len` of a string literal, or a `starts_with`,
-// `ends_with` or `contains` call on one with a string literal argument, which is what
-// `field.name.starts_with('id')` becomes after the substitution:
-// `'name'.starts_with ( 'id' )`. The result is condition text: a number, `true` or `false`.
+// ComptimeStringScalar is the literal result of a pure string operation.
+struct ComptimeStringScalar {
+	typ   string
+	value string
+}
+
+// comptime_string_scalar calls the builtin implementation on compile-time-known operands.
+fn comptime_string_scalar(receiver string, method string, args []string) ?ComptimeStringScalar {
+	if args.len == 0 {
+		value := match method {
+			'trim_space' { receiver.trim_space() }
+			'to_lower' { receiver.to_lower() }
+			'to_upper' { receiver.to_upper() }
+			else { return none }
+		}
+		return ComptimeStringScalar{'string', value}
+	}
+	if args.len == 2 && method == 'replace' {
+		return ComptimeStringScalar{'string', receiver.replace(args[0], args[1])}
+	}
+	if args.len != 1 {
+		return none
+	}
+	arg := args[0]
+	if method in ['starts_with', 'ends_with', 'contains'] {
+		value := match method {
+			'starts_with' { receiver.starts_with(arg) }
+			'ends_with' { receiver.ends_with(arg) }
+			else { receiver.contains(arg) }
+		}
+		return ComptimeStringScalar{'bool', value.str()}
+	}
+	if method == 'count' {
+		return ComptimeStringScalar{'int', receiver.count(arg).str()}
+	}
+	value := match method {
+		'all_before' { receiver.all_before(arg) }
+		'all_after' { receiver.all_after(arg) }
+		'all_before_last' { receiver.all_before_last(arg) }
+		'all_after_last' { receiver.all_after_last(arg) }
+		'trim' { receiver.trim(arg) }
+		'trim_left' { receiver.trim_left(arg) }
+		'trim_right' { receiver.trim_right(arg) }
+		'trim_string_left' { receiver.trim_string_left(arg) }
+		'trim_string_right' { receiver.trim_string_right(arg) }
+		else { return none }
+	}
+	return ComptimeStringScalar{'string', value}
+}
+
+// comptime_cond_string_member folds literal string method chains to literal condition text.
 fn comptime_cond_string_member(expr string) ?string {
 	clean := comptime_condition_strip_outer_parens(expr.trim_space())
 	if clean.len < 2 || clean[0] !in [`'`, `"`] {
@@ -5711,27 +5798,53 @@ fn comptime_cond_string_member(expr string) ?string {
 	if receiver_end >= clean.len || clean[receiver_end] != `.` {
 		return none
 	}
-	receiver := comptime_unquote(clean[..receiver_end])
-	member := clean[receiver_end + 1..].trim_space()
-	if member == 'len' {
-		return receiver.len.str()
+	mut receiver := comptime_unquote(clean[..receiver_end])
+	mut rest := clean[receiver_end..].trim_space()
+	for rest.starts_with('.') {
+		member := rest[1..].trim_space()
+		if member == 'len' {
+			return receiver.len.str()
+		}
+		paren := member.index_u8(`(`)
+		if paren < 0 {
+			return none
+		}
+		end := comptime_condition_matching_paren(member, paren)
+		if end < 0 {
+			return none
+		}
+		mut args := []string{}
+		mut arg_text := member[paren + 1..end].trim_space()
+		for arg_text.len > 0 {
+			comma := comptime_condition_top_level_index(arg_text, ',')
+			arg := (if comma < 0 { arg_text } else { arg_text[..comma] }).trim_space()
+			if arg.len < 2 || arg[0] !in [`'`, `"`] || comptime_cond_skip_string(arg, 0) != arg.len {
+				return none
+			}
+			args << comptime_unquote(arg)
+			if comma < 0 {
+				break
+			}
+			arg_text = arg_text[comma + 1..].trim_space()
+			if arg_text.len == 0 {
+				return none
+			}
+		}
+		value := comptime_string_scalar(receiver, member[..paren].trim_space(), args) or { return none }
+		rest = member[end + 1..].trim_space()
+		if rest.len == 0 {
+			return if value.typ == 'string' {
+				comptime_cond_string_literal(value.value)
+			} else {
+				value.value
+			}
+		}
+		if value.typ != 'string' {
+			return none
+		}
+		receiver = value.value
 	}
-	paren := member.index_u8(`(`)
-	if paren < 0 || comptime_condition_matching_paren(member, paren) != member.len - 1 {
-		return none
-	}
-	arg := member[paren + 1..member.len - 1].trim_space()
-	if arg.len < 2 || arg[0] !in [`'`, `"`] || comptime_cond_skip_string(arg, 0) != arg.len {
-		return none
-	}
-	value := comptime_unquote(arg)
-	result := match member[..paren].trim_space() {
-		'starts_with' { receiver.starts_with(value) }
-		'ends_with' { receiver.ends_with(value) }
-		'contains' { receiver.contains(value) }
-		else { return none }
-	}
-	return result.str()
+	return none
 }
 
 fn comptime_list_contains(list_text string, needle string) bool {

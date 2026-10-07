@@ -353,11 +353,21 @@ fn test_race_wait_group_reuse() {
 			}(p)
 		}
 		spawn fn [mut data, mut wg, done] () {
+			defer {
+				// Unlike Go's GOMAXPROCS=1 harness, parallel V threads can detect this
+				// intentional misuse before the waiter returns. Keep its race report
+				// without terminating the remaining tests or leaving done blocked.
+				if err := recover() {
+					if err != 'WaitGroup misuse: reused before previous wait() returned' {
+						panic('Unexpected panic: ${err}')
+					}
+				}
+				done <- true
+			}
 			wg.wait()
 			for p := 0; p < p_count; p++ {
 				data.v[p]++
 			}
-			done <- true
 		}()
 		time.sleep(100 * time.millisecond)
 		wg.wait()

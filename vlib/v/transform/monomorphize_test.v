@@ -99,6 +99,46 @@ fn test_generic_unresolved_type_detects_multi_return_placeholders() {
 	assert !t.generic_arg_is_unresolved('(f64, f64)')
 }
 
+fn test_collision_locked_main_struct_is_a_concrete_generic_argument() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['T'] = StructInfo{ name: 'T', module: 'main' }
+	t.structs['S'] = StructInfo{ name: 'S', module: 'foreign' }
+	t.cur_module = 'foreign'
+
+	assert !t.generic_arg_is_unresolved('main.T')
+	assert !t.generic_arg_is_unresolved('[]main.T')
+	assert t.explicit_generic_arg_is_known_type('main.T', 'foreign')
+	assert t.explicit_generic_arg_is_known_type('[]main.T', 'foreign')
+	assert t.generic_arg_is_unresolved('main.S')
+	assert !t.explicit_generic_arg_is_known_type('main.S', 'foreign')
+	assert t.generic_arg_is_unresolved('main.U')
+	assert !t.explicit_generic_arg_is_known_type('main.U', 'foreign')
+
+	tc.imports['main'] = 'other'
+	assert !t.is_known_concrete_type_name('main.T')
+	assert !t.explicit_generic_arg_is_known_type('main.T', 'foreign')
+}
+
+fn test_declared_receiver_parameters_use_the_receiver_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['Box'] = ['A']
+	tc.struct_generic_params['foreign.Box'] = ['T']
+	tc.struct_generic_params['foreign.Pair'] = ['K', 'V']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.declared_generic_receiver_param_names(flat.Node{ kind: .fn_decl, value: 'Box[T].get' },
+		'foreign') == ['T']
+	assert t.declared_generic_receiver_param_names(flat.Node{ kind: .fn_decl, value: 'Box[A].get' },
+		'foreign').len == 0
+	assert t.declared_generic_receiver_param_names(flat.Node{ kind: .fn_decl, value: 'Box[int].get' },
+		'foreign').len == 0
+	assert t.declared_generic_receiver_param_names(flat.Node{ kind: .fn_decl, value: 'Pair[K, int].get' },
+		'foreign') == ['K']
+}
+
 fn test_generic_field_type_substitutes_fixed_array_length_expr() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

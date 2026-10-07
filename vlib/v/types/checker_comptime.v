@@ -260,6 +260,72 @@ fn (tc &TypeChecker) comptime_static_expr_has_void_method_call(id flat.NodeId, v
 	return false
 }
 
+fn (tc &TypeChecker) comptime_static_method_condition_has_metadata(id flat.NodeId, var_name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .selector && node.value == '$' {
+		// The reflected callee's method binding is not a runtime metadata guard.
+		return node.children_count > 0
+			&& tc.comptime_static_method_condition_has_metadata(tc.a.child(node, 0), var_name)
+	}
+	if node.kind == .selector && node.value != '$' && node.children_count > 0 {
+		base := tc.a.child_node(node, 0)
+		if base.kind == .ident && base.value == var_name {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.comptime_static_method_condition_has_metadata(tc.a.child(node, i), var_name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) comptime_static_method_int_value(id flat.NodeId, var_name string, item ComptimeStaticValueCase) ?i64 {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.comptime_static_method_int_value(tc.a.child(node, 0), var_name, item)
+	}
+	if node.kind == .int_literal {
+		return strconv.parse_int(node.value.replace('_', ''), 0, 64) or { return none }
+	}
+	if node.kind == .selector && node.value == 'len' && node.children_count > 0 {
+		collection := tc.a.child_node(node, 0)
+		if collection.kind == .selector && collection.value in ['args', 'params']
+			&& collection.children_count > 0 {
+			base := tc.a.child_node(collection, 0)
+			if base.kind == .ident && base.value == var_name {
+				return i64(item.param_types.len)
+			}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_method_min_arg_count(receiver_name string, method ComptimeStaticValueCase) int {
+	mut count := method.param_types.len
+	if count > 0 && method.param_types[count - 1].starts_with('...') {
+		return count - 1
+	}
+	for count > 0 {
+		typ := tc.comptime_static_method_param_type(receiver_name, method, count - 1)
+		// Match lowering: only a parameter written as `?T` can omit its option argument.
+		if method.param_types[count - 1].starts_with('?')
+			|| tc.params_structs[unalias_and_unwrap_pointer_type(typ).name()] {
+			count--
+			continue
+		}
+		break
+	}
+	return count
+}
+
 fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, node flat.Node, value_cases ComptimeStaticValueCases) {
 	if !value_cases.known || value_cases.cases.len == 0 || node.children_count == 0 {
 		return
@@ -283,8 +349,38 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 	}
 	mut return_type := ''
 	for method in value_cases.cases {
-		if fixed_arg_count > method.param_types.len
-			|| (fixed_arg_count == actual_count && actual_count != method.param_types.len) {
+		method_key := tc.concrete_method_signature_key(receiver_name, method.name) or {
+			'${receiver_name}.${method.name}'
+		}
+		has_implicit_ctx := tc.fn_implicit_veb_ctx[method_key]
+		params := tc.fn_param_types[method_key] or { []Type{} }
+		mut explicit_ctx := has_implicit_ctx && fixed_arg_count == actual_count
+			&& actual_count > method.param_types.len
+		if has_implicit_ctx && fixed_arg_count > 0 && params.len > 1 {
+			first_arg := tc.call_arg_value(tc.a.child(&node, 1))
+			actual := tc.resolve_type(first_arg)
+			ctx_matches := tc.receiver_compatible(actual, params[1])
+				|| tc.type_compatible(actual, params[1])
+			if fixed_arg_count < actual_count {
+				explicit_ctx = ctx_matches
+			} else if !explicit_ctx && ctx_matches && method.param_types.len > 0 {
+				first_route_param := tc.comptime_static_method_param_type(receiver_name, method, 0)
+				explicit_ctx = !tc.receiver_compatible(actual, first_route_param)
+					&& !tc.type_compatible(actual, first_route_param)
+			}
+		}
+		param_offset := if explicit_ctx { 1 } else { 0 }
+		param_count := method.param_types.len + param_offset
+		min_count := tc.comptime_static_method_min_arg_count(receiver_name, method) + param_offset
+		is_variadic := method.param_types.len > 0
+			&& method.param_types.last().starts_with('...')
+		if (!is_variadic && fixed_arg_count > param_count)
+			|| (fixed_arg_count == actual_count && actual_count < min_count) {
+			if method.runtime_dispatch {
+				// Runtime metadata dispatch retains branches while the transformer
+				// removes calls whose argument list cannot invoke this method.
+				continue
+			}
 			mut pos := node.pos
 			if file := tc.a.source_files[node.pos.id] {
 				if source := tc.source_texts_by_file[file.name] {
@@ -297,10 +393,27 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 					}
 				}
 			}
-			tc.record_error_severity_at(.call_arg_mismatch, 'expected ${method.param_types.len} arguments to method ${receiver_name}.${method.name}, but got ${actual_count}', id, pos, 'cgen error:')
+			tc.record_error_severity_at(.call_arg_mismatch, 'expected ${param_count} arguments to method ${receiver_name}.${method.name}, but got ${actual_count}', id, pos, 'cgen error:')
 			return
 		}
+		if explicit_ctx && params.len > 1 {
+			arg_id := tc.call_arg_value(tc.a.child(&node, 1))
+			actual := tc.resolve_type(arg_id)
+			if actual !is Unknown && !tc.receiver_compatible(actual, params[1])
+				&& !tc.type_compatible(actual, params[1]) {
+				tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual.name()}` as `${call_argument_type_name(params[1])}` in argument 1 to `${receiver_name}.${method.name}`', arg_id, tc.a.node(arg_id).pos)
+				return
+			}
+			if !tc.a.node(arg_id).is_mut && !tc.disable_explicit_mutability {
+				tc.record_error_at(.call_arg_mismatch, 'method `${method.name}` parameter `ctx` is `mut`, so use `mut ${tc.source_text_for_node(arg_id)}` instead', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+				return
+			}
+		}
 		for arg_index in 0 .. fixed_arg_count {
+			param_index := arg_index - param_offset
+			if param_index < 0 {
+				continue
+			}
 			raw_arg_id := tc.a.child(&node, arg_index + 1)
 			raw_arg := tc.a.child_node(&node, arg_index + 1)
 			arg_id := tc.call_arg_value(raw_arg_id)
@@ -310,12 +423,12 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				tc.record_error_at(.call_arg_mismatch, 'to auto-expand `[]string` arguments in comptime method calls, use `...${tc.source_text_for_node(arg_id)}`', arg_id, tc.a.node(arg_id).pos)
 				return
 			}
-			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
+			if param_index < method.param_is_mut_ref.len && method.param_is_mut_ref[param_index]
 				&& !tc.a.node(arg_id).is_mut && !tc.disable_explicit_mutability {
 				expected := tc.comptime_static_method_param_type(receiver_name, method,
-					arg_index)
-				param_name := if arg_index < method.param_names.len {
-					method.param_names[arg_index]
+					param_index)
+				param_name := if param_index < method.param_names.len {
+					method.param_names[param_index]
 				} else {
 					''
 				}
@@ -334,13 +447,13 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				return
 			}
-			if arg_index < method.param_is_mut_ref.len && method.param_is_mut_ref[arg_index]
-				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len {
+			if param_index < method.param_is_mut_ref.len && method.param_is_mut_ref[param_index]
+				&& tc.a.node(arg_id).is_mut && param_index < method.param_types.len {
 				expected := tc.comptime_static_method_param_type(receiver_name, method,
-					arg_index)
+					param_index)
 				if tc.mut_pointer_slot_arg_rejected(arg_id, expected) {
-					param_name := if arg_index < method.param_names.len {
-						method.param_names[arg_index]
+					param_name := if param_index < method.param_names.len {
+						method.param_names[param_index]
 					} else {
 						''
 					}
@@ -349,12 +462,12 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 					tc.record_error_at(.call_arg_mismatch, msg, arg_id, tc.a.node(arg_id).pos)
 					return
 				}
-			} else if arg_index < method.param_is_mut.len && method.param_is_mut[arg_index]
-				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len {
+			} else if param_index < method.param_is_mut.len && method.param_is_mut[param_index]
+				&& tc.a.node(arg_id).is_mut && param_index < method.param_types.len {
 				// A `mut param T` parameter gets the address of `arg`, or the `&T`
 				// that `arg` already holds, so it has to be a `T`.
 				expected := tc.comptime_static_method_param_type(receiver_name, method,
-					arg_index)
+					param_index)
 				source := tc.mut_pointer_slot_arg_source_type(arg_id)
 				value := if source is Pointer { source.base_type } else { source }
 				if expected is Pointer && !tc.type_compatible(value, expected.base_type) {
@@ -392,6 +505,9 @@ fn (tc &TypeChecker) comptime_static_method_param_type(receiver_name string, met
 		'${receiver_name}.${method.name}'
 	}
 	params := tc.fn_param_types[method_key] or { []Type{} }
+	if tc.fn_implicit_veb_ctx[method_key] && params.len == method.param_types.len + 2 {
+		return params[arg_index + 2]
+	}
 	if params.len == method.param_types.len + 1 {
 		return params[arg_index + 1]
 	}
@@ -3122,6 +3238,157 @@ fn (mut tc TypeChecker) check_map_duplicate_keys(node flat.Node) {
 	}
 }
 
+// Already-inferred numeric fixed arrays have no method values, allocation, or contextual
+// branches. Validate their literal ranges and publish the same checked expression types.
+fn (mut tc TypeChecker) check_known_numeric_const_initializer(id flat.NodeId, typ Type) bool {
+	$if ownership ? {
+		return false
+	}
+	if tc.fn_context.node_id >= 0 || tc.expected_expr_id >= 0
+		|| tc.node_is_from_translated_file(tc.a.nodes[int(id)])
+		|| !tc.known_numeric_const_initializer(id, typ) {
+		return false
+	}
+	tc.extend_node_caches(tc.a.nodes.len)
+	tc.check_known_numeric_const_array(id, typ)
+	return true
+}
+
+fn (tc &TypeChecker) known_numeric_const_initializer(id flat.NodeId, typ Type) bool {
+	if typ !is ArrayFixed {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind != .postfix || node.op != .not || node.children_count != 1
+		|| node.value == 'ragged_inferred_fixed_array' {
+		return false
+	}
+	array_id := tc.a.child(node, 0)
+	array := tc.a.node(array_id)
+	if array.kind != .array_literal || array.typ.len > 0 || array.children_count == 0
+		|| typ.len != int(array.children_count) || typ.len_expr.len > 0 {
+		return false
+	}
+	if array_type := tc.expr_type(array_id) {
+		if array_type !is Array && array_type !is ArrayFixed {
+			return false
+		}
+		array_elem := array_like_elem_type(array_type) or { return false }
+		if !semantic_types_equal(array_elem, typ.elem_type) {
+			return false
+		}
+	}
+	elem := typ.elem_type
+	if elem is ArrayFixed {
+		for i in 0 .. array.children_count {
+			if !tc.known_numeric_const_initializer(tc.a.child(array, i), elem) {
+				return false
+			}
+		}
+		return true
+	}
+	if elem !is Primitive || elem.props.has(.boolean)
+		|| (!elem.props.has(.integer) && !elem.props.has(.float))
+		|| (elem.size !in [u8(8), 16, 32, 64] && elem.size != 0) {
+		return false
+	}
+	name := elem.name()
+	target := tc.parse_type(name)
+	if target !is Primitive || target.props != elem.props || target.size != elem.size
+		|| name in tc.sum_generic_params || name in tc.interface_generic_params {
+		return false
+	}
+	for i in 0 .. array.children_count {
+		child_id := tc.a.child(array, i)
+		child := tc.a.node(child_id)
+		if child.kind == .prefix {
+			if cached := tc.expr_type(child_id) {
+				if cached !is Primitive || cached.props.has(.boolean)
+					|| (!cached.props.has(.integer) && !cached.props.has(.float)) {
+					return false
+				}
+			}
+		}
+		if child.kind in [.int_literal, .float_literal] && child.children_count == 0 {
+			if child.kind == .float_literal && !elem.props.has(.float) {
+				return false
+			}
+			if i == 0 && name != if child.kind == .int_literal { 'int' } else { 'f64' } {
+				return false
+			}
+			if cached := tc.expr_type(child_id) {
+				if cached !is Primitive || cached.props.has(.boolean)
+					|| (!cached.props.has(.integer) && !cached.props.has(.float)) {
+					return false
+				}
+			}
+			continue
+		}
+		if child.kind == .prefix && child.op in [.plus, .minus] && child.children_count == 1 {
+			literal := tc.a.child_node(child, 0)
+			if i > 0 && literal.kind in [.int_literal, .float_literal]
+				&& literal.children_count == 0
+				&& (literal.kind == .int_literal || elem.props.has(.float)) {
+				continue
+			}
+		}
+		if child.kind != .cast_expr || child.value != name || child.children_count != 1 {
+			return false
+		}
+		literal_id := tc.a.child(child, 0)
+		literal := tc.a.node(literal_id)
+		if literal.kind !in [.int_literal, .float_literal] || literal.children_count != 0 {
+			return false
+		}
+		if cached := tc.expr_type(literal_id) {
+			if cached !is Primitive || cached.props.has(.boolean)
+				|| (!cached.props.has(.integer) && !cached.props.has(.float)) {
+				return false
+			}
+		}
+		if cached := tc.expr_type(child_id) {
+			if cached !is Primitive || cached.props != elem.props || cached.size != elem.size {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn (mut tc TypeChecker) check_known_numeric_const_array(id flat.NodeId, typ Type) {
+	if typ !is ArrayFixed {
+		return
+	}
+	array_id := tc.a.child(&tc.a.nodes[int(id)], 0)
+	array := tc.a.node(array_id)
+	elem := typ.elem_type
+	for i in 0 .. array.children_count {
+		child_id := tc.a.child(array, i)
+		child := tc.a.node(child_id)
+		if elem is ArrayFixed {
+			tc.check_known_numeric_const_array(child_id, elem)
+		} else if child.kind == .cast_expr {
+			literal_id := tc.a.child(child, 0)
+			_ = tc.resolve_type(literal_id)
+			tc.check_integer_literal_cast_overflow(child_id, child, literal_id, elem)
+			tc.register_synth_type(child_id, elem)
+		} else if child.kind == .prefix {
+			tc.check_node_with_expected_context(child_id, elem)
+			_ = tc.resolve_expr(child_id, elem)
+		} else {
+			if child.kind == .int_literal {
+				tc.check_untyped_integer_literal_overflow(child_id)
+			}
+			if i > 0 {
+				tc.register_synth_type(child_id, elem)
+			}
+		}
+	}
+	array_type := tc.expr_type(array_id) or { Type(Array{ elem_type: elem }) }
+	tc.register_synth_type(array_id, array_type)
+	tc.register_synth_type(id, typ)
+}
+
 fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		if node.typ.len == 0 {
@@ -4349,6 +4616,27 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.check_node_with_expected_context(child_id, target)
 	} else {
 		tc.check_node(child_id)
+	}
+	// Canonical primitive spellings without generic declarations need only range checks.
+	// Retain literal checking above and the same integer range diagnostic below.
+	if cast_child.kind in [.int_literal, .float_literal] && cast_child.children_count == 0
+		&& target is Primitive && !target.props.has(.boolean)
+		&& !tc.node_is_from_translated_file(node) {
+		canonical_numeric_target := if target.props.has(.integer) {
+			target.size in [u8(8), 16, 32, 64]
+				|| (target.size == 0 && !target.props.has(.unsigned))
+		} else {
+			target.props.has(.float) && target.size in [u8(32), 64]
+		}
+		if canonical_numeric_target && target.name() == node.value
+			&& node.value !in tc.sum_generic_params && node.value !in tc.interface_generic_params {
+			literal_type := tc.resolve_type(child_id)
+			if literal_type is Primitive && !literal_type.props.has(.boolean)
+				&& (literal_type.props.has(.integer) || literal_type.props.has(.float)) {
+				tc.check_integer_literal_cast_overflow(id, node, child_id, target)
+				return
+			}
+		}
 	}
 	if node.value == 'any' {
 		tc.record_error(.unknown_type, 'cannot use type `any` here', id)
@@ -5834,7 +6122,7 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 		}
 		return
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, bit_size)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), bit_size)
 	if parse_error == -3 {
 		tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
 		return
@@ -6013,7 +6301,7 @@ fn (mut tc TypeChecker) check_untyped_integer_literal_overflow(id flat.NodeId) {
 	if magnitude.len == 0 {
 		return
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	overflows := parse_error == -3 || (parse_error == 0 && is_negative && value > (u64(1) << 63))
 	if overflows {
 		tc.record_error_at(.assignment_mismatch, 'integer literal ${literal} overflows int', id, tc.a.node(id).pos)
@@ -6034,7 +6322,7 @@ fn (tc &TypeChecker) implicit_int_literal_overflows(id flat.NodeId) bool {
 	if magnitude.len == 0 {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 32)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 32)
 	if parse_error == -3 {
 		return true
 	}
@@ -6115,7 +6403,7 @@ fn integer_literal_outside_range(literal string, type_range IntegerTypeRange) bo
 	if magnitude.len == 0 {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+	value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 	if parse_error == -3 {
 		return true
 	}
@@ -6141,7 +6429,7 @@ fn integer_literal_overflows_signed_64(literal string) bool {
 	if literal.len < 2 || literal[0] != `-` {
 		return false
 	}
-	value, parse_error := strconv.common_parse_uint2(literal[1..], 0, 64)
+	value, parse_error := strconv.common_parse_uint2(literal[1..], util.v_literal_parse_base(literal[1..]), 64)
 	return parse_error == -3 || (parse_error == 0 && value > (u64(1) << 63))
 }
 
@@ -15129,7 +15417,7 @@ fn (tc &TypeChecker) for_in_range_unsigned_const_value(id flat.NodeId) ?(u64, st
 		literal = literal.replace('_', '')
 		if literal.len > 0 && literal[0] != `-` {
 			magnitude := if literal[0] == `+` { literal[1..] } else { literal }
-			value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+			value, parse_error := strconv.common_parse_uint2(magnitude, util.v_literal_parse_base(magnitude), 64)
 			if parse_error == 0 {
 				return value, value.str()
 			}

@@ -1,6 +1,7 @@
 module main
 
 import os
+import json2 as json
 
 // server_id is the name a harness shows for this server. It is the same across
 // every client, so `v mcp uninstall` can find what `v mcp install` wrote no
@@ -85,7 +86,7 @@ fn (h Harness) entry(exe string, args []string) string {
 		parts << '"args": ' + json_string_array(args)
 	}
 	for f in h.fields {
-		parts << '"${f.key}": ${f.value}'
+		parts << '${json_string(f.key)}: ${f.value}'
 	}
 	return '{${parts.join(', ')}}'
 }
@@ -93,7 +94,7 @@ fn (h Harness) entry(exe string, args []string) string {
 // json_string quotes one value through the JSON writer, so a Windows path keeps
 // its backslashes instead of turning them into escapes.
 fn json_string(value string) string {
-	return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+	return json.encode(value)
 }
 
 fn json_string_array(values []string) string {
@@ -112,6 +113,15 @@ fn json_string_array(values []string) string {
 // Each path here follows where that client itself reads its configuration. A
 // client with no project-level file here has an empty `project`, and says so
 // rather than guessing.
+//
+// The defaults follow the clients' documentation, checked 2026-10-06:
+// opencode: https://opencode.ai/docs/config/
+// Claude Code: https://code.claude.com/docs/en/mcp#scope-hierarchy-and-precedence
+// Cursor: https://cursor.com/docs/mcp#configuration-locations
+// VS Code: https://code.visualstudio.com/docs/agent-customization/mcp-servers
+// Zed: https://zed.dev/docs/ai/mcp and its paths::config_dir implementation
+// Gemini CLI: https://geminicli.com/docs/tools/mcp-server/
+// Custom profiles and client-specific path overrides may use other files.
 fn harnesses() []Harness {
 	home := os.home_dir()
 	// VS Code keeps its configuration under the platform config directory:
