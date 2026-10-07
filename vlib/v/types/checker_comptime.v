@@ -6250,7 +6250,7 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 	if magnitude.len == 0 {
 		return
 	}
-	bit_size := if clean_target.size == 0 { 32 } else { int(clean_target.size) }
+	bit_size := if clean_target.size == 0 { platform_int_bits() } else { int(clean_target.size) }
 	target_name := target.name()
 	radix := integer_literal_radix(magnitude)
 	if bit_size > 64 {

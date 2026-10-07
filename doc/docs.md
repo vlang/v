@@ -675,6 +675,7 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 > [!NOTE]
 > `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
 > targets. Use `i32` or `i64` when you need a fixed width.
+> Integer literal casts to `int` are checked against the target platform's width.
 
 ### 128-bit integers
 
