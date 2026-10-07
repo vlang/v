@@ -2246,9 +2246,10 @@ fn input_is_v3_compiler_entry(input_file string) bool {
 // `-cross` C (the `vc/v.c` bootstrap snapshots) leaves it out: FastC's libtcc linking
 // and Mach-O signing are host specific, so such a snapshot would not compile and link
 // everywhere. The compiler that `make` and `makev.bat` build from the snapshot
-// rebuilds `cmd/v` natively, which keeps FastC again.
-fn v3_compiles_fastc_by_default(input_file string, output_cross_c bool) bool {
-	return !output_cross_c && input_is_cmd_v(input_file)
+// rebuilds `cmd/v` through C, which keeps FastC again. Direct ARM64 builds leave
+// it out because their linker does not link the libtcc runtime.
+fn v3_compiles_fastc_by_default(input_file string, output_cross_c bool, backend string) bool {
+	return !output_cross_c && backend != 'arm64' && input_is_cmd_v(input_file)
 }
 
 fn input_is_cmd_v(input_file string) bool {
@@ -10292,9 +10293,10 @@ pub fn run(args []string) {
 	// `-all-backends` keeps everything; `-compile-backend <name>` opts a specific backend back
 	// in; the active `-b` target backend is always force-included.
 	// The full `cmd/v` CLI (the executable that `make`, `makev.bat`, `v self`, and `v up`
-	// produce) always keeps FastC, so `-b fastc` works in default builds; `-d skip_fastc`
-	// still removes it. Standalone `vlib/v/v.v` builds and portable `-cross` C keep pruning it.
-	mut include_fastc := all_backends || v3_compiles_fastc_by_default(input_file, output_cross_c)
+	// produce) keeps FastC when built through C; direct ARM64 builds omit its libtcc
+	// dependency. `-d skip_fastc` also removes it. Standalone `vlib/v/v.v` builds and
+	// portable `-cross` C keep pruning it.
+	mut include_fastc := all_backends || v3_compiles_fastc_by_default(input_file, output_cross_c, backend)
 	mut include_arm64 := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
@@ -13091,7 +13093,10 @@ pub fn run(args []string) {
 		$if !skip_arm64 ? {
 			// SSA + ARM64 native backend
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
-				track_uses: is_prod
+				track_uses:        is_prod
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
 			})
 			b.step('ssa build')
 			b.metric('SSA values before optimize', m.values.len, 'values')
@@ -13113,6 +13118,26 @@ pub fn run(args []string) {
 
 			g.write_and_link(bin_file)
 			b.step('link')
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			if should_run {
+				run_result := run_binary(bin_file, run_args)
+				if remove_binary_after_run {
+					os.rm(bin_file) or {}
+					if (is_debug || race) && target.os == 'macos' {
+						v3_remove_macos_debug_symbols(bin_file)
+					}
+				}
+				if run_result != 0 {
+					exit(run_result)
+				}
+				b.step('run')
+			} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
+				test_result := run_test_binary(bin_file)
+				if test_result != 0 {
+					exit(test_result)
+				}
+				b.step('test')
+			}
 		}
 	} else {
 		// C backend (default)

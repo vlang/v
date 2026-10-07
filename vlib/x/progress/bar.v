@@ -107,14 +107,22 @@ pub fn (mut b Bar) inc() {
 }
 
 // add advances the bar by `n`. Non-positive `n` is ignored. Reaching the
-// maximum completes the bar; going past it is harmless.
+// maximum completes the bar; the count saturates at max without overflowing.
 pub fn (mut b Bar) add(n i64) {
 	if n <= 0 {
 		return
 	}
-	prev := b.count.add(n) // atomic add returns the previous value
-	if prev + n >= b.max {
-		b.mark_done()
+	mut prev := b.count.load()
+	for {
+		// Compare with the remaining work before adding, so even max_i64 is safe.
+		next := if n >= b.max - prev { b.max } else { prev + n }
+		if b.count.compare_and_swap(prev, next) {
+			if next >= b.max {
+				b.mark_done()
+			}
+			return
+		}
+		prev = b.count.load()
 	}
 }
 

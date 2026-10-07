@@ -50,6 +50,7 @@ const min_cells = 4
 // display width, not runes, so double-width glyphs (emoji, CJK) are counted as
 // two and never overshoot. (string.limit() is not enough: it counts runes, so an
 // emoji line would still overflow the terminal width.)
+// A shortened line is plain text, so an escape cannot be split or left active.
 fn cut_to(s string, n int) string {
 	if n <= 0 {
 		return ''
@@ -59,7 +60,7 @@ fn cut_to(s string, n int) string {
 	}
 	mut used := 0
 	mut out := []rune{}
-	for r in s.runes() {
+	for r in plain_text(s).runes() {
 		w := term.printable_len(r.str())
 		if used + w > n {
 			break
@@ -68,4 +69,63 @@ fn cut_to(s string, n int) string {
 		out << r
 	}
 	return out.string()
+}
+
+// plain_text removes complete ANSI escapes using the same families as printable_len.
+fn plain_text(s string) string {
+	if !s.contains('\x1b') {
+		return s
+	}
+	mut out := []u8{cap: s.len}
+	mut i := 0
+	for i < s.len {
+		if s[i] == 0x1b {
+			i = ansi_end(s, i)
+		} else {
+			out << s[i]
+			i++
+		}
+	}
+	return out.bytestr()
+}
+
+// ansi_end returns the first byte after the escape beginning at i.
+fn ansi_end(s string, i int) int {
+	mut j := i + 1
+	if j >= s.len {
+		return j
+	}
+	match s[j] {
+		`[` { // CSI
+			j++
+			for j < s.len {
+				if s[j] >= 0x40 && s[j] <= 0x7e {
+					return j + 1
+				}
+				j++
+			}
+		}
+		`]`, `P`, `X`, `^`, `_` { // OSC / DCS / SOS / PM / APC
+			osc := s[j] == `]`
+			j++
+			for j < s.len {
+				if osc && s[j] == 0x07 {
+					return j + 1
+				}
+				if s[j] == 0x1b && j + 1 < s.len && s[j + 1] == `\\` {
+					return j + 2
+				}
+				j++
+			}
+		}
+		else {
+			for j < s.len && s[j] >= 0x20 && s[j] <= 0x2f {
+				j++
+			}
+			if j < s.len && s[j] >= 0x30 && s[j] <= 0x7e {
+				return j + 1
+			}
+		}
+	}
+	return j
 }

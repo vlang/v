@@ -18,6 +18,26 @@ fn test_bar_counting() {
 	assert b.is_done()
 }
 
+fn test_bar_large_increments_saturate_without_overflow() {
+	mut b := Bar.new(10)
+	b.inc()
+	b.add(max_i64)
+	assert b.value() == 10
+	assert b.is_done()
+	b.add(max_i64)
+	b.inc()
+	assert b.value() == 10
+	assert b.is_done()
+
+	mut huge := Bar.new(max_i64)
+	huge.add(max_i64 - 1)
+	assert huge.value() == max_i64 - 1
+	assert !huge.is_done()
+	huge.add(2)
+	assert huge.value() == max_i64
+	assert huge.is_done()
+}
+
 fn test_bar_set_and_finish() {
 	mut b := Bar.new(100)
 	b.set(40)

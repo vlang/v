@@ -41,3 +41,12 @@ fn test_cut_to_counts_columns_not_runes() {
 	assert term.printable_len(cut_to('🌑🌒🌓', 5)) <= 5
 	assert term.printable_len(cut_to('🌑🌒🌓', 1)) == 0 // cannot fit even one
 }
+
+fn test_cut_to_uses_plain_text_when_styled_text_is_shortened() {
+	styled := '\x1b[31mred\x1b[0m'
+	assert cut_to(styled, 3) == styled
+	assert cut_to(styled, 1) == 'r'
+	assert cut_to('\x1b(Babcdef', 3) == 'abc'
+	assert cut_to('\x1b]8;;https://example.test\x1b\\abcdef\x1b]8;;\x1b\\', 3) == 'abc'
+	assert cut_to('\x1bPignored\x1b\\abcdef', 3) == 'abc'
+}

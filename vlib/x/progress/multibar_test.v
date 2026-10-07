@@ -97,6 +97,21 @@ fn test_multibar_without_a_terminal_prints_plain_final_lines() ! {
 	assert out.contains('b 100.00% [==========] 00:00')
 }
 
+fn test_nonterminal_output_strips_styles_from_summaries_and_logs() ! {
+	out := run_group_to_file('plain_ansi', MultiBarOptions{
+		delay: ms(5)
+	}, fn (mut mb MultiBar, _ string) {
+		mb.println('\x1b[31mbefore\x1b[0m')
+		mut b := mb.add_bar(1, text: '\x1b[31mbar \x1b[0m', on_end: '\x1b[32mDONE\x1b[0m')
+		mb.start()
+		mb.println('\x1b]8;;https://example.test\x1b\\during\x1b]8;;\x1b\\')
+		b.inc()
+		mb.wait()
+		mb.println('\x1b(Bafter')
+	})!
+	assert out == 'before\nduring\nDONE\nafter\n'
+}
+
 fn test_multibar_stop_finishes_unfinished_bars() ! {
 	out := run_group_to_file('stop', MultiBarOptions{
 		delay: ms(5)

@@ -151,7 +151,8 @@ pub fn (mut g MultiBar) println(msg string) {
 		return
 	}
 	g.mu.unlock()
-	os.fd_write(g.opts.output_fd, msg + '\n')
+	line := if g.opts.force || is_interactive(g.opts.output_fd) { msg } else { plain_text(msg) }
+	os.fd_write(g.opts.output_fd, line + '\n')
 }
 
 fn (mut g MultiBar) join() {
@@ -267,7 +268,7 @@ fn (mut g MultiBar) frame() (string, bool) {
 		g.last = joined
 	} else {
 		for p in perm {
-			sb.write_string(p)
+			sb.write_string(plain_text(p))
 			sb.write_u8(`\n`)
 		}
 	}

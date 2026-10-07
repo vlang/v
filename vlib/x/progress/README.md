@@ -152,10 +152,12 @@ unit combines them: `RateUnit{ unit: 'frames', prefixes: progress.UnitPrefixList
 
 - **Output goes to stderr**, so stdout stays clean for piping.
 - **Not a terminal** (a CI log, a file, a pipe): nothing live is drawn and no escape codes are
-  written. A bar or spinner that finishes prints one summary line instead.
+  written, including any ANSI escapes in labels, completion messages, and log lines.
+  A bar or spinner that finishes prints one summary line instead.
 - **Fits the terminal.** A line never reaches the last column; the bar graphic shrinks first.
   `length: 0` fills the available width. If there are more items than terminal rows, the rest
-  are summarised as `... and N more`.
+  are summarised as `... and N more`. ANSI styling is retained on live lines that fit;
+  a shortened line is plain text to avoid splitting an escape or leaving a style active.
 - **Nothing happens at import.** The cursor is hidden, and an at-exit hook plus SIGINT/SIGTERM
   hooks are registered, only when a live display starts.
 - **Cursor and signals.** The cursor is restored on normal exit, on `exit()`, and on Ctrl+C or
@@ -171,6 +173,7 @@ unit combines them: `RateUnit{ unit: 'frames', prefixes: progress.UnitPrefixList
   terminal. If it is not enabled, the bars fall back to plain output. The terminal size is read
   from the stdout console handle.
 - **Thread-safe.** Counters are atomic, and one thread draws.
+  Increments saturate at the maximum, including very large or concurrent overshoots.
 - **Rate and ETA** use a smoothed rate (an exponential moving average), not the overall average.
   Before a rate is known they show `--.-` and `--:--`.
 
