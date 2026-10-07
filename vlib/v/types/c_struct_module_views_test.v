@@ -100,6 +100,7 @@ pub fn z_of_new_point(z i32) i32 {
 	return point.z
 }
 ')!
+	// Keep synthetic module paths in the child environment.
 	parent_vmodules := os.getenv_opt('VMODULES')
 	mut process := os.new_process(@VEXE)
 	defer { process.close() }

@@ -40,8 +40,8 @@ fn (mut i TypeInterner) intern_locked(t Type, hash u64) (TypeId, Type) {
 		break
 	}
 	id := TypeId(i.types.len)
-	// Callers can supply types with borrowed strings and arrays. Own their
-	// semantic payloads before retaining the canonical copy.
+	// Canonical entries own borrowed strings and arrays; parallel readers compare
+	// those payloads outside the table lock.
 	i.types << clone_owned_type(t)
 	i.names << ''
 	i.buckets[key] = id
