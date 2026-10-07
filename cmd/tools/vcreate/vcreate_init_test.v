@@ -32,6 +32,9 @@ fn init_and_check() ! {
 		exit(0)
 	}, os.join_path(expect_tests_path, 'init.expect'), @VEXE])
 
+	// Without `--agents-md`, no `AGENTS.md` is written.
+	assert !os.exists('AGENTS.md')
+
 	x := os.exec_or_exit([@VEXE, 'run', '.'])
 	assert x.output.trim_space() == 'Hello World!'
 
@@ -119,7 +122,7 @@ fn test_v_init_creates_agents_md() {
 	os.exec_or_exit([os.find_abs_path_of_executable('expect') or {
 		eprintln('skipping test, since expect is missing')
 		exit(0)
-	}, os.join_path(expect_tests_path, 'init.expect'), @VEXE])
+	}, os.join_path(expect_tests_path, 'init_with_agents_md.expect'), @VEXE])
 	assert os.exists('AGENTS.md')
 	content := os.read_file('AGENTS.md') or {
 		assert false, err.str()

@@ -48,6 +48,11 @@ fn main() {
 			name:        'web'
 			description: 'Use the template for a veb project.'
 		},
+		Flag{
+			flag:        .bool
+			name:        'agents-md'
+			description: 'Generate an `AGENTS.md` contributor contract for AI agents.'
+		},
 	]
 	mut cmd := Command{
 		flags:      [
@@ -72,6 +77,7 @@ fn main() {
 					'e.g. in CI) the prompts are skipped, defaults are used, and <project_name> is',
 					'required.',
 					'If git is installed, `git init` will be performed during the setup.',
+					'Pass `--agents-md` to also generate an `AGENTS.md` contributor contract.',
 				].join_lines()
 				parent:      &Command{
 					name: 'v'
@@ -90,6 +96,7 @@ fn main() {
 					'The prompts run only when stdin is a terminal; otherwise the defaults are used.',
 					'If no `.v` file exists, a project template is generated. If the current directory is not a',
 					'git project and git is installed, `git init` will be performed during the setup.',
+					'Pass `--agents-md` to also generate an `AGENTS.md` contributor contract.',
 				].join_lines()
 				parent:      &Command{
 					name: 'v'
@@ -128,7 +135,9 @@ fn new_project(cmd Command) ! {
 	c.write_vmod()
 	c.write_gitattributes()
 	c.write_editorconfig()
-	c.write_agents_md()
+	if cmd.flags.get_bool('agents-md') or { false } {
+		c.write_agents_md()
+	}
 	c.create_git_repo(c.name)
 }
 
@@ -150,7 +159,9 @@ fn init_project(cmd Command) ! {
 	c.create_files_and_directories()
 	c.write_gitattributes()
 	c.write_editorconfig()
-	c.write_agents_md()
+	if cmd.flags.get_bool('agents-md') or { false } {
+		c.write_agents_md()
+	}
 	c.create_git_repo('.')
 }
 

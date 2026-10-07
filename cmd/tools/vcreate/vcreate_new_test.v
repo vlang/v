@@ -72,6 +72,8 @@ fn test_new_with_name_arg_input() {
 	assert mod.description == ''
 	assert mod.version == '0.0.0'
 	assert mod.license == 'MIT'
+	// Without `--agents-md`, no `AGENTS.md` is written.
+	assert !os.exists(os.join_path(test_module_path, project_name, 'AGENTS.md'))
 }
 
 fn test_new_with_model_arg_input() {
@@ -101,9 +103,9 @@ fn test_new_with_model_arg_input() {
 fn test_new_creates_agents_md() {
 	prepare_test_path()!
 	project_name := 'my_agents_project'
-	cmd := '${expect_exe} ${os.join_path(expect_tests_path, 'new_with_name_arg.expect')} ${vroot} ${project_name}'
-	os.exec_opt([expect_exe, os.join_path(expect_tests_path, 'new_with_name_arg.expect'), vroot,
-		'${project_name}']) or {
+	cmd := '${expect_exe} ${os.join_path(expect_tests_path, 'new_with_agents_md_arg.expect')} ${vroot} ${project_name}'
+	os.exec_opt([expect_exe, os.join_path(expect_tests_path, 'new_with_agents_md_arg.expect'),
+		vroot, '${project_name}']) or {
 		dump(cmd)
 		assert false, err.msg()
 	}
