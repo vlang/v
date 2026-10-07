@@ -4,7 +4,79 @@ import os
 import v.flat
 import v.parser
 import v.pref
+import v.transform
 import v.types
+
+fn test_native_noreturn_calls_terminate_only_their_control_flow_edges() {
+	m := native_thread_test_module('noreturn', 'module main
+fn C.exit(int)
+@[noreturn]
+fn C.abort()
+@[noreturn]
+fn stop() { C.exit(1) }
+fn noop() {}
+fn builtin_branch(take bool) int {
+    if take { panic("stop") }
+    return 17
+}
+fn attributed_branch(take bool) int {
+    if take { stop() }
+    return 19
+}
+fn interop_branch(take bool) int {
+    if take { C.abort() }
+    return 23
+}
+fn returning_branch(take bool) int {
+    if take { noop() }
+    return 29
+}
+fn main() {}
+', false)
+	for name, callee in {
+		'builtin_branch':    'panic'
+		'attributed_branch': 'stop'
+		'interop_branch':    'abort'
+	} {
+		f := m.funcs.filter(it.name == name)[0]
+		mut checked_call := false
+		mut has_success_return := false
+		for block_id in f.blocks {
+			instrs := m.blocks[block_id].instrs
+			for index, value_id in instrs {
+				instr := m.instrs[m.values[value_id].index]
+				if instr.op == .call && m.values[instr.operands[0]].name == callee {
+					assert index + 1 < instrs.len, name
+					assert m.instrs[m.values[instrs[index + 1]].index].op == .unreachable, name
+					checked_call = true
+				}
+				if instr.op == .ret {
+					has_success_return = true
+				}
+			}
+		}
+		assert checked_call, name
+		assert has_success_return, name
+	}
+	ordinary := m.funcs.filter(it.name == 'returning_branch')[0]
+	for block_id in ordinary.blocks {
+		for value_id in m.blocks[block_id].instrs {
+			assert m.instrs[m.values[value_id].index].op != .unreachable
+		}
+	}
+}
+
+fn test_native_field_type_lookup_preserves_containers_through_pointer_receivers() {
+	b := Builder{
+		struct_field_types: {
+			'Checker.ids': 'map[string][]int'
+		}
+	}
+	for receiver in ['Checker', '&Checker', '&&Checker', 'types.Checker', '&types.Checker'] {
+		assert b.field_type_name(receiver, 'ids') == 'map[string][]int'
+	}
+	assert b.field_type_name('&Checker', 'missing') == ''
+}
 
 // test_bench_runtime_stubs_include_macos_rss_helper validates this v3 regression case.
 fn test_bench_runtime_stubs_include_macos_rss_helper() {
@@ -320,6 +392,34 @@ fn test_used_function_alias_lookups_are_precomputed() {
 	}
 }
 
+fn test_used_function_names_preserve_method_receivers() ! {
+	mut b := Builder{
+		used_fns: {
+			'C.close':         true
+			'close':           true
+			'os.File.close':   true
+			'copy_file':       true
+			'Box__copy_T_int': true
+		}
+	}
+	b.prepare_used_fn_lookups()
+	assert b.source_fn_is_used('File.close', 'os')
+	assert !b.source_fn_is_used('CommandArgs.close', 'os')
+	assert !b.source_fn_is_used('Other.close', 'another')
+	assert b.source_fn_is_used('copy_file', 'os')
+	assert b.source_fn_is_used('Box.copy_T_int', 'models')
+	path := os.join_path(os.vtmp_dir(), 'ssa_method_used_names_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'module os\nfn C.close(int) int\nstruct File {}\nstruct CommandArgs {}\nfn (mut f File) close() { C.close(-1) }\nfn (mut c CommandArgs) close() { unmarked_process_wait() }\nfn copy_file() {}\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	m := build_with_used(p.a, b.used_fns, unsafe { nil })
+	assert m.funcs.any(it.name == 'os.File.close' && it.blocks.len > 0)
+	assert m.funcs.any(it.name == 'os.copy_file' && it.blocks.len > 0)
+	assert !m.funcs.any(it.name == 'os.CommandArgs.close')
+}
+
 fn test_enum_lookup_keeps_exact_keyword_members_before_fallback() {
 	b := Builder{
 		enum_values: {
@@ -358,4 +458,232 @@ fn test_native_enum_registration_evaluates_escaped_initializer_references() {
 	} {
 		assert b.enum_value_for_type('models.Kind', field) or { -1 } == expected, field
 	}
+}
+
+fn native_thread_test_module(name string, source string, detached bool) &Module {
+	path := os.join_path(os.vtmp_dir(), 'v3_ssa_thread_${name}_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, source) or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	if detached {
+		for i, node in a.nodes {
+			if node.kind == .spawn_expr {
+				a.nodes[i].flags |= flat.node_flag_detached_spawn
+			}
+		}
+	}
+	return build_with_used(a, map[string]bool{}, tc)
+}
+
+fn native_thread_function_calls(m &Module, f Function) []string {
+	mut calls := []string{}
+	for block_id in f.blocks {
+		for value_id in m.blocks[block_id].instrs {
+			instr := m.instrs[m.values[value_id].index]
+			if instr.op == .call {
+				calls << m.values[instr.operands[0]].name
+			} else if instr.op == .call_indirect {
+				calls << '<indirect>'
+			}
+		}
+	}
+	return calls
+}
+
+fn test_native_spawn_runs_aggregate_call_in_worker_and_joins_result() {
+	m := native_thread_test_module('aggregate', '
+struct Payload { first i64 second i64 third i64 }
+fn work(value i64) Payload { return Payload{first: value, second: 8, third: 9} }
+fn main() { job := spawn work(7); payload := job.wait(); _ = payload }
+', false)
+	mut found_main := false
+	mut found_worker := false
+	for f in m.funcs {
+		if f.name == 'main' {
+			calls := native_thread_function_calls(m, f)
+			assert 'pthread_create' in calls
+			assert 'pthread_join' in calls
+			assert 'free' in calls
+			assert 'work' !in calls
+			mut loaded_payload := false
+			for block_id in f.blocks {
+				for value_id in m.blocks[block_id].instrs {
+					instr := m.instrs[m.values[value_id].index]
+					if instr.op == .load && m.type_size(instr.typ) == 24 {
+						loaded_payload = true
+					}
+				}
+			}
+			assert loaded_payload
+			found_main = true
+		} else if f.name.starts_with('__ssa_spawn_') {
+			calls := native_thread_function_calls(m, f)
+			assert calls == ['<indirect>', 'free', 'malloc']
+			assert f.params.len == 1
+			found_worker = true
+		}
+	}
+	assert found_main && found_worker
+}
+
+fn test_native_detached_spawn_detaches_and_does_not_box_result() {
+	m := native_thread_test_module('detached', '
+fn work(value i64) i64 { return value }
+fn main() { spawn work(7) }
+', true)
+	mut found_main := false
+	mut found_worker := false
+	for f in m.funcs {
+		if f.name == 'main' {
+			calls := native_thread_function_calls(m, f)
+			assert 'pthread_create' in calls
+			assert 'pthread_detach' in calls
+			assert 'work' !in calls
+			found_main = true
+		} else if f.name.starts_with('__ssa_spawn_') {
+			assert native_thread_function_calls(m, f) == ['<indirect>', 'free']
+			found_worker = true
+		}
+	}
+	assert found_main && found_worker
+}
+
+fn test_native_spawn_accepts_function_values() {
+	m := native_thread_test_module('function_value', '
+fn launch(callback fn (i64) i64) i64 {
+    job := spawn callback(7)
+    return job.wait()
+}
+', false)
+	mut found := false
+	for f in m.funcs {
+		if f.name == 'launch' {
+			calls := native_thread_function_calls(m, f)
+			assert 'pthread_create' in calls
+			assert 'pthread_join' in calls
+			assert '<indirect>' !in calls
+			found = true
+		}
+	}
+	assert found
+}
+
+fn test_native_c_array_macro_uses_helper_signature_for_pointer_receiver() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_c_array_receiver_${os.getpid()}.v')
+	defer {
+		os.rm(path) or {}
+	}
+	os.write_file(path, 'module main
+type Builder = []u8
+fn (mut b Builder) append_bytes(data &u8, count i64) {
+    C.array_push_many_ptr(&b, data, count)
+}
+fn main() {}
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	m := build(a)
+	helpers := m.funcs.filter(it.name == 'array_push_many_ptr')
+	assert helpers.len == 1
+	receiver_type := m.values[helpers[0].params[0]].typ
+	mut found := false
+	for f in m.funcs {
+		if !f.name.ends_with('Builder.append_bytes') {
+			continue
+		}
+		for block_id in f.blocks {
+			for value_id in m.blocks[block_id].instrs {
+				instr := m.instrs[m.values[value_id].index]
+				if instr.op != .call || m.values[instr.operands[0]].name != 'array_push_many_ptr' {
+					continue
+				}
+				receiver := m.values[instr.operands[1]]
+				assert receiver.typ == receiver_type
+				assert receiver.kind == .instruction
+				assert m.instrs[receiver.index].op == .load
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_native_scalar_cast_does_not_dereference_mismatched_checked_c_return() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_scalar_cast_${os.getpid()}.v')
+	defer {
+		os.rm(path) or {}
+	}
+	os.write_file(path, 'module main
+fn C.scalar() i32
+fn cast_scalar() int { return int(C.scalar()) }
+fn main() {}
+')!
+	mut preferences := pref.new_preferences()
+	preferences.backend = 'arm64'
+	mut p := parser.Parser.new(preferences)
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, tc)
+	mut checked_call := flat.NodeId(-1)
+	for i, node in a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		callee := a.node(a.child(&node, 0))
+		if callee.kind != .selector || callee.value != 'scalar' {
+			continue
+		}
+		// Duplicate C declarations can leave the checked return type wider than
+		// the ABI signature, as with sysconf in builtin and os.
+		for tc.expr_type_values.len <= i {
+			tc.expr_type_values << types.Primitive{ props: .integer, size: 64 }
+			tc.expr_type_set << false
+		}
+		tc.expr_type_values[i] = types.Primitive{ props: .integer, size: 64 }
+		tc.expr_type_set[i] = true
+		checked_call = flat.NodeId(i)
+	}
+	assert int(checked_call) >= 0
+	checked_type := tc.expr_type(checked_call) or { panic('missing checked C return type') }
+	assert checked_type.name() == 'i64'
+	mut found_cast := false
+	for node in a.nodes {
+		if node.kind == .cast_expr && node.children_count > 0
+			&& a.child(&node, 0) == checked_call {
+			found_cast = true
+		}
+	}
+	assert found_cast
+	m := build_with_used(a, map[string]bool{}, tc)
+	mut found := false
+	for f in m.funcs {
+		if f.name != 'cast_scalar' {
+			continue
+		}
+		for block_id in f.blocks {
+			for value_id in m.blocks[block_id].instrs {
+				instr := m.instrs[m.values[value_id].index]
+				if instr.op == .call {
+					assert m.values[instr.operands[0]].name in ['C.scalar', 'scalar']
+					assert m.type_size(instr.typ) == 4
+					found = true
+				}
+				if instr.op == .load {
+					assert m.type_store.types[m.values[instr.operands[0]].typ].kind == .ptr_t
+				}
+			}
+		}
+	}
+	assert found
 }

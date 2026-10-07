@@ -335,6 +335,14 @@ hello world
 `v -prod self` uses a single production build of one C unit instead of the three-pass
 PGO cycle. Use `v -prod -parallel-cc self` to compile the generated C units in parallel.
 
+On macOS ARM64, first run `v -compile-backend arm64 self` to include the native backend in
+the current compiler. Then use `v -b arm64 self` to rebuild the full compiler with the native
+ARM64 backend. `v -b arm64 self x2` replaces the compiler twice, so the second build runs the
+compiler produced by the first native build. Use `-o v_arm64` to keep the current compiler
+and write a separate executable. Native self-builds use `-gc none` and retain commands
+such as `self`, `fmt`, and `version`. The native compiler includes the C backend and leaves
+out FastC by default.
+
 ```bash
 cd examples
 v hello_world.v && ./hello_world    # or simply
