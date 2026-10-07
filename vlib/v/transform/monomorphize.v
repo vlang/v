@@ -3142,10 +3142,13 @@ fn type_text_has_unqualified_generic_arg(typ string) bool {
 		if type_text_has_unqualified_generic_arg(clean) {
 			return true
 		}
-		// Only a plain name can be an unqualified type here: anything still
-		// spelled as a container (`map[...]`, fixed arrays, qualified names) was
-		// already decided by the recursive call above.
+		// A nested application can still have a bare base (`Pair[int]`) even
+		// when all its arguments are builtin or qualified types.
 		payload := strip_type_modifier_prefixes(clean)
+		base, _, is_generic := generic_app_parts(payload)
+		if is_generic && is_plain_type_name_text(base) && !types.is_builtin_type_name(base) {
+			return true
+		}
 		if !is_plain_type_name_text(payload) || types.is_builtin_type_name(payload) {
 			continue
 		}
