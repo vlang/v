@@ -1,5 +1,6 @@
 // Translated from Go's src/runtime/race/testdata/time_test.go, see ../README.md.
 import time
+import sync
 
 struct Cell[T] {
 mut:
@@ -24,8 +25,8 @@ fn run(name string, test fn ()) {
 
 // after_func is Go's time.AfterFunc, which V's time module does not have: once a timer
 // started now fires, f runs in its own thread.
-fn after_func(d time.Duration, f fn ()) &time.Timer {
-	t := time.new_timer(d)
+fn after_func(d time.Duration, f fn ()) &sync.Timer {
+	t := sync.new_timer(d)
 	spawn fn [t, f] () {
 		_ = <-t.c
 		f()
@@ -47,7 +48,7 @@ fn test_no_race_after_func() {
 	v.v = 3
 }
 
-// Go's TestNoRaceAfterFuncReset is not translated: V's time.Timer has no reset() (and V has
+// Go's TestNoRaceAfterFuncReset is not translated: V's sync.Timer has no reset() (and V has
 // no time.AfterFunc).
 
 fn test_no_race_timer() {
@@ -59,7 +60,7 @@ fn test_no_race_timer() {
 		c <- 0
 	}
 	v.v = 2
-	t := time.new_timer(1)
+	t := sync.new_timer(1)
 	spawn fn [t, f] () {
 		_ = <-t.c
 		f()
@@ -68,7 +69,7 @@ fn test_no_race_timer() {
 	v.v = 3
 }
 
-// Go's TestNoRaceTimerReset is not translated: V's time.Timer has no reset().
+// Go's TestNoRaceTimerReset is not translated: V's sync.Timer has no reset().
 
 // Go's TestNoRaceTicker is not translated: V's time module has no Ticker.
 
