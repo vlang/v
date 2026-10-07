@@ -2,6 +2,129 @@ module parser
 
 import os
 import v.pref
+import v.workers
+
+fn test_parallel_unresolved_match_guards_do_not_publish_arm_constants() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_parallel_match_guards_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	contents := [
+		"const flag = 'GET /users'.starts_with('GET')\n",
+		"\$match flag { true { const chosen = 'yes' } \$else { const chosen = 'no' } }\n\$if chosen == 'yes' { fn selected() string { return 'yes' } } \$else { fn selected() string { return 'no' } }\n",
+		'fn padding() {}\n',
+		'fn main() { println(selected()) }\n',
+	]
+	mut paths := []string{}
+	for i, content in contents {
+		module_content := 'module main\n' + content
+		path := os.join_path(root, '${i}.v')
+		os.write_file(path, module_content + '\n'.repeat(40000 - module_content.len))!
+		paths << path
+	}
+	for parallel in [false, true] {
+		mut p := Parser.new(pref.new_preferences())
+		if parallel { p.a.worker_pool = workers.new(3) }
+		_, used_parallel := p.parse_files_dispatch(paths, parallel)
+		assert used_parallel == parallel
+		assert !p.diagnostics.any(it.severity == 'error:'), p.diagnostics.str()
+		p.resolve_comptime_string_declarations()
+		assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'"
+		assert p.a.nodes.filter(it.kind == .fn_decl && it.value == 'selected').len == 1
+	}
+}
+
+fn test_parallel_computed_constant_guards_preserve_chained_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_parallel_const_guards_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	contents := [
+		"const route_has_get_method = 'GET /users'.starts_with('GET')\n",
+		"\$if route_has_get_method { const chosen = 'yes' } \$else { const chosen = 'no' }\n",
+		"\$if chosen == 'yes' { fn selected() string { return 'yes' } } \$else { fn selected() string { return 'no' } }\n",
+		'fn main() { println(selected()) }\n',
+	]
+	mut paths := []string{}
+	for i, content in contents {
+		path := os.join_path(root, '${i}.v')
+		module_content := 'module main\n' + content
+		os.write_file(path, module_content + '\n'.repeat(40000 - module_content.len))!
+		paths << path
+	}
+	for parallel in [false, true] {
+		mut p := Parser.new(pref.new_preferences())
+		if parallel { p.a.worker_pool = workers.new(3) }
+		_, used_parallel := p.parse_files_dispatch(paths, parallel)
+		assert used_parallel == parallel
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		p.resolve_comptime_string_declarations()
+		assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'", p.comptime_const_values.str()
+		assert p.a.nodes.filter(it.kind == .fn_decl && it.value == 'selected').len == 1
+	}
+}
+
+fn test_parallel_unresolved_else_if_guards_preserve_following_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_parallel_else_if_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	contents := [
+		"const first = 'GET /users'.starts_with('POST')\n",
+		"\$if first { const chosen = 'wrong' } \$else \$if false { const inactive = 'unused' } \$else \$if true { const chosen = 'yes' } \$else { const dead = 'unused' }\nconst following = 'yes'\n",
+		"\$if chosen == 'yes' && following == 'yes' { fn selected() string { return 'yes' } } \$else { fn selected() string { return 'no' } }\n",
+		'fn main() { println(selected()) }\n',
+	]
+	mut paths := []string{}
+	for i, content in contents {
+		path := os.join_path(root, '${i}.v')
+		module_content := 'module main\n' + content
+		os.write_file(path, module_content + '\n'.repeat(40000 - module_content.len))!
+		paths << path
+	}
+	for parallel in [false, true] {
+		mut p := Parser.new(pref.new_preferences())
+		if parallel { p.a.worker_pool = workers.new(3) }
+		_, used_parallel := p.parse_files_dispatch(paths, parallel)
+		assert used_parallel == parallel
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		p.resolve_comptime_string_declarations()
+		assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'"
+		assert p.comptime_const_values[comptime_const_value_key('main', 'following')] == "'yes'"
+		assert !p.comptime_string_consts[comptime_const_value_key('main', 'inactive')]
+		assert !p.comptime_string_consts[comptime_const_value_key('main', 'dead')]
+	}
+}
+
+fn test_parallel_workers_preserve_unresolved_constant_names_for_later_batches() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_parallel_later_batch_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut paths := []string{}
+	for i in 0 .. 4 {
+		content := if i == 3 {
+			"import config\nconst route_has_get_method = config.route.starts_with('GET')\n"
+		} else {
+			'fn padding_${i}() {}\n'
+		}
+		path := os.join_path(root, '${i}.v')
+		module_content := 'module main\n' + content
+		os.write_file(path, module_content + '\n'.repeat(40000 - module_content.len))!
+		paths << path
+	}
+	mut p := Parser.new(pref.new_preferences())
+	p.a.worker_pool = workers.new(3)
+	_, used_parallel := p.parse_files_dispatch(paths, true)
+	assert used_parallel
+	assert p.comptime_string_consts[comptime_const_value_key('main', 'route_has_get_method')], p.comptime_string_consts.str()
+	consumer := os.join_path(root, 'consumer.v')
+	os.write_file(consumer, "module main\n\$if route_has_get_method { const chosen = 'yes' } \$else { const chosen = 'no' }\n")!
+	p.parse_file(consumer)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert p.a.nodes.any(it.kind == .comptime_if)
+	config := os.join_path(root, 'config.v')
+	os.write_file(config, "module config\npub const route = 'GET /users'\n")!
+	p.parse_file(config)
+	p.resolve_comptime_string_declarations()
+	assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'", p.comptime_const_values.str()
+}
 
 fn test_fn_literal_string_bindings_do_not_defer_outer_plain_comparisons() {
 	path := os.join_path(os.vtmp_dir(), 'comptime_string_fn_literal_scope_${os.getpid()}.v')

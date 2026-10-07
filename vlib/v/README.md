@@ -25,7 +25,9 @@ Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
 global definitions. The parser resolves platform flags and known literal `$if` conditions,
 parsing only the taken branch. String guards that depend on imported constants are resolved
-before declaration collection. Reflection values, immutable reflection locals, and generic
+before declaration collection. Parallel file parsing retains computed constant names and defers
+their unproved guards, including guards on constants selected by earlier guards.
+Reflection values, immutable reflection locals, and generic
 type conditions retain `comptime_if` nodes until the transformer can select their branch.
 `#include` and `#flag` directives inside `$if` blocks are handled correctly: the
 scanner consumes the entire directive line as a single token, preventing the

@@ -5016,6 +5016,11 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 		subject_is_unresolved_local.str(),
 	]
 	mut else_block := flat.empty_node
+	previous_values := if is_top_level {
+		p.comptime_const_values.clone()
+	} else {
+		map[string]string{}
+	}
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -5033,6 +5038,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 			} else {
 				p.block_stmt()
 			}
+			if is_top_level { p.defer_comptime_branch_constants(previous_values) }
 			continue
 		}
 		pattern_start := p.tok_pos
@@ -5060,6 +5066,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 		} else {
 			p.block_stmt()
 		}
+		if is_top_level { p.defer_comptime_branch_constants(previous_values) }
 	}
 	p.check(.rcbr)
 	match_kind := if branch_patterns.len > 0 && branch_patterns[0].len > 0 {

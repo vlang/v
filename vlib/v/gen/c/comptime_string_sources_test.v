@@ -2,6 +2,68 @@ module c
 
 import os
 
+fn test_parallel_computed_constant_guards_select_the_same_runtime_branch() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_parallel_guards_codegen_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for case in ['direct', 'chained', 'else_if', 'match'] {
+		guard := if case == 'else_if' {
+			"chosen == 'yes' && following == 'yes'"
+		} else if case == 'chained' {
+			"chosen == 'yes'"
+		} else {
+			'route_has_get_method'
+		}
+		contents := [
+			if case == 'else_if' {
+				"const route_has_get_method = 'GET /users'.starts_with('POST')\n"
+			} else {
+				"const route_has_get_method = 'GET /users'.starts_with('GET')\n"
+			},
+			if case == 'else_if' {
+				"\$if route_has_get_method { const chosen = 'wrong' } \$else \$if false { const inactive = 'unused' } \$else \$if true { const chosen = 'yes' } \$else { const dead = 'unused' }\nconst following = 'yes'\n"
+			} else if case == 'match' {
+				"\$match route_has_get_method { true { const chosen = 'yes' } \$else { const chosen = 'no' } }\n\$if chosen == 'yes' { fn selected() string { return 'yes' } } \$else { fn selected() string { return 'no' } }\n"
+			} else if case == 'chained' {
+				"\$if route_has_get_method { const chosen = 'yes' } \$else { const chosen = 'no' }\n"
+			} else {
+				'fn padding() {}\n'
+			},
+			if case == 'match' {
+				'fn padding() {}\n'
+			} else {
+				"\$if ${guard} { fn selected() string { return 'yes' } } \$else { fn selected() string { return 'no' } }\n"
+			},
+			'fn main() { println(selected()) }\n',
+		]
+		for i, content in contents {
+			os.write_file(os.join_path(root, '${i}.v'), content + '\n'.repeat(40000 - content.len))!
+		}
+		for serial in [false, true] {
+			binary := os.join_path(root, 'selected_${case}_${serial}')
+			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang',
+				'-gc', 'none', '-o', binary]
+			if serial { args << '-no-parallel' }
+			args << root
+			mut child := os.new_process(@VEXE)
+			child.set_args(args)
+			mut environment := os.environ()
+			environment['VJOBS'] = '4'
+			child.set_environment(environment)
+			child.set_redirect_stdio_merged()
+			child.run()
+			output := child.stdout_slurp()
+			child.wait()
+			code := child.code
+			child.close()
+			assert code == 0, output
+			result := os.exec([binary])
+			assert result.exit_code == 0, result.output
+			assert result.output.trim_space() == 'yes', '${case} ${serial}: ${result.output}'
+		}
+	}
+}
+
 fn comptime_router_body_with_literal_values(code string, body string) string {
 	mut literals := map[string]string{}
 	for line in code.split_into_lines() {
