@@ -329,6 +329,14 @@ struct DeclarationVisibility {
 @[heap]
 struct VisibleMutationCache {
 mut:
+	base                  &VisibleMutationCache = unsafe { nil }
+	storage_query         bool
+	storage_query_results map[string][]StorageQueryResult
+	storage_query_trace   &StorageQueryTrace    = unsafe { nil }
+	storage_query_owner   &VisibleMutationCache = unsafe { nil }
+	storage_query_scopes  []voidptr
+	storage_query_count   int
+	storage_query_bytes   int
 	// decls holds the module-qualified keys (`mod\x01name`) and global_decls the
 	// module-less ones (`\x01name`). The key spaces are disjoint, and keeping them
 	// apart lets collection fill both maps on separate pool lanes.
@@ -1187,11 +1195,9 @@ fn (tc &TypeChecker) timing_profile(message string) {
 }
 
 // enable_scoped_parallel_workers uses disposable prealloc arenas for parallel
-// checker helpers. Ownership checking keeps its existing long-lived workers.
+// checker helpers, including ownership snapshots and inferred metadata.
 pub fn (mut tc TypeChecker) enable_scoped_parallel_workers() {
-	$if !ownership ? {
-		tc.scope_parallel_check_workers = true
-	}
+	tc.scope_parallel_check_workers = true
 }
 
 // scoped_parallel_workers_enabled reports whether compiler stages should use
