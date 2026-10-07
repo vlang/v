@@ -1,6 +1,6 @@
 ---
 name: v-package
-description: Manage V packages: install, update, search, remove and link local modules.
+description: "Manage V packages: install, update, search, remove and link local modules."
 license: MIT
 ---
 
