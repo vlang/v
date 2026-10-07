@@ -16,6 +16,7 @@ struct ValueInfo {
 mut:
 	position   int       // The position of the value in the JSON string.
 	value_kind ValueKind // The kind of the value.
+	has_escape bool      // Whether a string contains an escape sequence.
 	length     int       // The length of the value in the JSON string.
 }
 
@@ -38,8 +39,9 @@ struct StructFieldInfo {
 }
 
 // Keep runtime attribute parsing outside the compile-time field loop. This is called only while
-// a struct type's field metadata cache is initialized.
-@[noinline]
+// a struct type's field metadata cache is initialized. The cached pointers borrow attribute
+// bytes, so autofree must not release the loop's attribute strings.
+@[manualfree; noinline]
 fn struct_field_info(field_name string, attrs []string) StructFieldInfo {
 	mut json_name_str := field_name.str
 	mut json_name_len := field_name.len
@@ -91,12 +93,24 @@ pub:
 	strict bool
 }
 
+// DecodeBuffer retains token storage between decode_reuse calls. Give each
+// concurrent or reentrant decoding operation its own buffer. It never retains
+// the input or decoded values; its capacity grows with the largest token count.
+// Create independent buffers with DecodeBuffer{}; do not copy a buffer after
+// decoding has retained storage in it, including after a decoding error.
+pub struct DecodeBuffer {
+mut:
+	values_info []ValueInfo
+}
+
 // Decoder is the internal decoding state.
 @[markused]
 struct Decoder {
 	json   string // json is the JSON data to be decoded.
 	strict bool   // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null values
 mut:
+	// Scratch result of check_string, copied to the corresponding ValueInfo.
+	string_has_escape bool
 	// values_info describes every value of the JSON string, in the order in which they
 	// start: an array or an object is followed by its elements, or by its keys and their
 	// values. It is one flat array, so nothing is allocated per value, and moving to
@@ -207,6 +221,7 @@ fn (mut checker Decoder) add_value(value_kind ValueKind) {
 	}
 	checker.values_info[checker.values_len].position = checker.checker_idx
 	checker.values_info[checker.values_len].value_kind = value_kind
+	checker.values_info[checker.values_len].has_escape = false
 	checker.values_len++
 }
 
@@ -255,7 +270,12 @@ fn (mut checker Decoder) checker_error(message string) ! {
 	cutoff := character_number > max_context_length
 
 	// either start of string, last newline or a limited amount of characters
-	context_start := if cutoff { position - max_context_length } else { last_newline }
+	// Tabs increase display columns without adding bytes; never slice before the current line.
+	context_start := if cutoff {
+		int_max(last_newline, position - max_context_length)
+	} else {
+		last_newline
+	}
 
 	// print some extra characters
 	mut context_end := int_min(checker.json.len, position + max_extra_characters)
@@ -325,7 +345,12 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 	cutoff := character_number > max_context_length
 
 	// either start of string, last newline or a limited amount of characters
-	context_start := if cutoff { start - max_context_length } else { last_newline }
+	// Tabs increase display columns without adding bytes; never slice before the current line.
+	context_start := if cutoff {
+		int_max(last_newline, start - max_context_length)
+	} else {
+		last_newline
+	}
 
 	// print some extra characters
 	mut context_end := int_min(decoder.json.len, end + max_extra_characters)
@@ -383,7 +408,37 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 
 	decoder.check_json_format()!
 	decoder.values_info.trim(decoder.values_len)
+	return decoder.decode_root[T]()
+}
 
+// decode_reuse decodes with the same options and validation as decode, reusing
+// buffer's token allocation and growing it during validation instead of counting
+// values in a separate pass. Returned values remain valid when buffer is reused,
+// including after an error. The caller must provide exclusive access to buffer.
+@[manualfree]
+pub fn decode_reuse[T](val string, mut buffer DecodeBuffer, params DecoderOptions) !T {
+	if val == '' {
+		return JsonDecodeError{
+			message:   'empty string'
+			line:      1
+			character: 1
+		}
+	}
+	mut decoder := Decoder{
+		json:        val
+		strict:      params.strict
+		// The decoder has exclusive access until the defer returns its storage.
+		values_info: unsafe { buffer.values_info }
+	}
+	defer {
+		buffer.values_info = unsafe { decoder.values_info }
+	}
+	decoder.check_json_format()!
+	decoder.values_info.trim(decoder.values_len)
+	return decoder.decode_root[T]()
+}
+
+fn (mut decoder Decoder) decode_root[T]() !T {
 	mut result := T{}
 	$if T.unaliased_typ is $array_dynamic {
 		result.clear()
@@ -1154,7 +1209,7 @@ fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
 	string_start := string_info.position + 1
 	string_end := string_info.position + string_info.length - 1
 	string_body := decoder.json[string_start..string_end]
-	if string_body.index_u8(`\\`) == -1 {
+	if !string_info.has_escape {
 		return string_body
 	}
 

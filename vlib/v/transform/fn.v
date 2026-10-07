@@ -1278,7 +1278,16 @@ fn (t &Transformer) node_enclosing_generic_params(id flat.NodeId) []string {
 		}
 		parent := t.a.node(flat.NodeId(parent_id))
 		if parent.kind in [.fn_decl, .struct_decl, .type_decl, .interface_decl, .c_fn_decl] {
-			return parent.generic_params()
+			mut params := parent.generic_params().clone()
+			if parent.kind == .fn_decl {
+				module_name := t.node_module_or(parent_id, t.cur_module)
+				for param in t.declared_generic_receiver_param_names(*parent, module_name) {
+					if param !in params {
+						params << param
+					}
+				}
+			}
+			return params
 		}
 		cursor = parent_id
 	}
@@ -3779,6 +3788,12 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		}
 	}
 	mut arg_type := t.node_type(arg_id)
+	if arg_node.kind == .call {
+		concrete_type := t.concrete_generic_call_return_type(arg_id, arg_node)
+		if concrete_type.len > 0 {
+			arg_type = concrete_type
+		}
+	}
 	if arg_type.len == 0 {
 		arg_type = t.resolve_expr_type(arg_id)
 	}
@@ -4117,7 +4132,13 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		if arg_node.kind == .char_literal && arg_node.value.starts_with('c:') {
 			return t.transform_expr(arg_id)
 		}
-		arg_type := t.node_type(arg_id)
+		mut arg_type := t.node_type(arg_id)
+		if arg_node.kind == .call {
+			concrete_type := t.concrete_generic_call_return_type(arg_id, *arg_node)
+			if concrete_type.len > 0 {
+				arg_type = concrete_type
+			}
+		}
 		clean_arg_type := t.normalize_type_alias(arg_type)
 		if clean_arg_type.len > 0 && !clean_arg_type.starts_with('&')
 			&& clean_arg_type !in ['voidptr', 'byteptr', 'charptr', 'nil'] {
@@ -4946,7 +4967,13 @@ fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node
 		t.set_node_typ(int(nil_id), param_type)
 		return nil_id
 	}
-	arg_type := t.node_type(value_id)
+	mut arg_type := t.node_type(value_id)
+	if value_node.kind == .call {
+		concrete_type := t.concrete_generic_call_return_type(value_id, value_node)
+		if concrete_type.len > 0 {
+			arg_type = concrete_type
+		}
+	}
 	if arg_type.len == 0 || arg_type == 'void' || arg_type == 'unknown'
 		|| is_pointer_like_type_name(arg_type) {
 		return none
@@ -12149,7 +12176,7 @@ fn array_method_stays_in_cgen(method string) bool {
 fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
 	return match method.len {
 		3 { method == 'pop' }
-		4 { method == 'trim' }
+		4 { method == 'last' || method == 'trim' }
 		5 { method == 'clear' }
 		else { false }
 	}

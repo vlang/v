@@ -198,9 +198,11 @@ fn (mut d DenseArray) zeros_to_end() {
 					C.memcpy(d.key(count), d.key(i), d.key_bytes)
 					C.memcpy(d.key(i), tmp_key, d.key_bytes)
 					// Swap values
-					C.memcpy(tmp_value, d.value(count), d.value_bytes)
-					C.memcpy(d.value(count), d.value(i), d.value_bytes)
-					C.memcpy(d.value(i), tmp_value, d.value_bytes)
+					if d.value_bytes != 0 {
+						C.memcpy(tmp_value, d.value(count), d.value_bytes)
+						C.memcpy(d.value(count), d.value(i), d.value_bytes)
+						C.memcpy(d.value(i), tmp_value, d.value_bytes)
+					}
 				}
 			}
 			count++
@@ -222,7 +224,9 @@ fn (mut d DenseArray) zeros_to_end() {
 		d.cap = count
 	}
 	unsafe {
-		d.values = realloc_data(d.values, d.value_bytes * old_cap, d.value_bytes * d.cap)
+		if d.value_bytes != 0 {
+			d.values = realloc_data(d.values, d.value_bytes * old_cap, d.value_bytes * d.cap)
+		}
 		d.keys = realloc_data(d.keys, d.key_bytes * old_cap, d.key_bytes * d.cap)
 	}
 }

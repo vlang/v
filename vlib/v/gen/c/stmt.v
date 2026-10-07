@@ -2771,6 +2771,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					}
 				}
 			} else {
+				if g.gen_scalar_array_push_call_stmt(child_id, child) {
+					return
+				}
 				g.track_ierror_array_push_call_alias(child)
 				if g.gen_autofree_discarded_owned_call(child_id, child) {
 					return
