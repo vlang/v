@@ -185,6 +185,14 @@ fn (mut driver SqliteDriver) reset() ! {
 	driver.conn.reset()!
 }
 
+fn (mut driver SqliteDriver) transaction(command TransactionCommand, name string) ! {
+	query := transaction_query(command, '"${name}"')
+	code := driver.conn.exec_none(query)
+	if code != sqlite.sqlite_done {
+		return driver.conn.error_message(code, query)
+	}
+}
+
 fn (mut driver SqliteDriver) close() ! {
 	driver.conn.close()!
 }
@@ -294,6 +302,10 @@ $if db_mysql ? {
 
 	fn (mut driver MysqlDriver) reset() ! {
 		driver.conn.reset()!
+	}
+
+	fn (mut driver MysqlDriver) transaction(command TransactionCommand, name string) ! {
+		driver.exec(transaction_query(command, '`${name}`'))!
 	}
 
 	fn (mut driver MysqlDriver) close() ! {
@@ -459,6 +471,23 @@ $if db_mssql ? {
 	}
 
 	fn (mut driver MssqlDriver) reset() ! {
+	}
+
+	fn (mut driver MssqlDriver) transaction(command TransactionCommand, name string) ! {
+		if name.len > 32 {
+			return error('db: mssql savepoint names must not exceed 32 characters')
+		}
+		query := match command {
+			.begin { 'BEGIN TRANSACTION' }
+			.commit { 'COMMIT TRANSACTION' }
+			.rollback { 'ROLLBACK TRANSACTION' }
+			.savepoint { 'SAVE TRANSACTION [${name}]' }
+			.rollback_to { 'ROLLBACK TRANSACTION [${name}]' }
+			.release_savepoint {
+				return error('db: mssql does not support releasing savepoints')
+			}
+		}
+		driver.exec(query)!
 	}
 
 	fn (mut driver MssqlDriver) close() ! {

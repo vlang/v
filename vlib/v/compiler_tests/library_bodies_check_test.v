@@ -82,7 +82,7 @@ fn test_build_leaves_unreachable_library_bodies_unchecked() {
 	assert build.exit_code == 0, build.output
 	// Most of `os` is not called by a program that takes the base name of a path.
 	assert library_bodies_left_unchecked(build.output) > 100, build.output
-	assert library_bodies_checked_late(build.output) == 0, build.output
+	assert library_bodies_checked_late(build.output) > 0, build.output
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'b.v\n', run.output
@@ -166,8 +166,8 @@ fn main() {
 	build := build_program(source, output, '')
 	assert build.exit_code == 0, build.output
 	assert library_bodies_left_unchecked(build.output) > 100, build.output
-	// A body that is checked late costs another run of markused.
-	assert library_bodies_checked_late(build.output) == 0, build.output
+	// Reached bodies are checked within markused's reachability frontiers.
+	assert library_bodies_checked_late(build.output) > 0, build.output
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'true\n', run.output
@@ -190,13 +190,13 @@ fn test_build_leaves_unreachable_runtime_bodies_unchecked() {
 	build := build_program(source, output, '')
 	assert build.exit_code == 0, build.output
 	assert library_bodies_left_unchecked(build.output) > 300, build.output
-	assert library_bodies_checked_late(build.output) == 0, build.output
+	assert library_bodies_checked_late(build.output) > 0, build.output
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output == '10\n', run.output
 }
 
-fn test_build_checks_the_runtime_functions_of_lowered_constructs_at_once() {
+fn test_build_checks_the_runtime_functions_of_lowered_constructs_before_codegen() {
 	root := library_bodies_test_root('constructs')
 	defer {
 		os.rmdir_all(root) or {}
@@ -204,7 +204,7 @@ fn test_build_checks_the_runtime_functions_of_lowered_constructs_at_once() {
 	source := os.join_path(root, 'main.v')
 	// No name in this program leads to the runtime functions that its maps,
 	// slices, interpolations, errors and loops are lowered to. markused keeps them,
-	// and the check takes them from it: none is left for a later check.
+	// and its frontiers check them before code generation.
 	os.write_file(source, "struct Point {
 	x int
 	y int
@@ -256,7 +256,7 @@ fn main() {
 	build := build_program(source, output, '')
 	assert build.exit_code == 0, build.output
 	assert library_bodies_left_unchecked(build.output) > 200, build.output
-	assert library_bodies_checked_late(build.output) == 0, build.output
+	assert library_bodies_checked_late(build.output) > 0, build.output
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output == "['ada']

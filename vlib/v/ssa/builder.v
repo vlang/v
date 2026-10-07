@@ -1547,6 +1547,10 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 	if module_name == 'builtin' && name in b.c_fn_ids {
 		return true
 	}
+	if module_name == 'builtin' && name.starts_with('VMapData.') {
+		// The native map stubs replace the C runtime's copy-on-write implementation.
+		return true
+	}
 	if module_name == 'ast' && name in ['Expr.name', 'SelectorExpr.name', '[]Expr.name_list'] {
 		return true
 	}
