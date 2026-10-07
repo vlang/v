@@ -16068,7 +16068,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 				if typ := g.current_param_type(child.value) {
-					if typ !is types.Pointer {
+					if cgen_unalias_type(typ) !is types.Pointer {
 						g.gen_expr(child_id)
 						return
 					}

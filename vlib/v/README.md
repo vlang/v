@@ -500,6 +500,9 @@ instead of string-based type checks:
 lowers to C type strings only at final emission. Lexical scopes store
 `map[string]Type` with parent-chain lookups.
 
+Pointer aliases retain their indirection when dereferenced, including aliases of
+`&map[K]V` used as the container of a `for` loop.
+
 `C.` structs and globals are recognized as extern C types and excluded from code
 generation. Function bodies from builtins are skipped during C code generation;
 only type and declaration information is used.
