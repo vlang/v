@@ -21,7 +21,8 @@ mut:
 	root_name   string
 	constraints map[string][]string // parent + NUL + child -> requested constraints
 	versions    map[string]string   // installed node -> version, from its manifest or lock
-	root_deps   []string            // the ids of the current project's dependencies
+	overrides   []Override
+	root_deps   []string // the ids of the current project's dependencies
 }
 
 // vpm_why explains why a module is in the dependency graph, or prints the whole
@@ -68,6 +69,7 @@ fn build_dep_graph() !DepGraph {
 	root := vmod.from_file(project.vmod_file)!
 	mut graph := DepGraph{
 		root_name: root.name
+		overrides: parse_overrides(root.unknown['dependency_overrides'] or { []string{} })!
 	}
 	roots := module_roots()
 	mut queue := []string{}
@@ -98,7 +100,15 @@ fn build_dep_graph() !DepGraph {
 // queued, so that its own v.mod is read in turn.
 fn (mut g DepGraph) node_ids(raws []string, roots []string, mut queue []string, parent string) []string {
 	mut ids := []string{}
-	for raw in raws {
+	for requested in raws {
+		requiring := if parent == '' { g.root_name } else { g.labels[parent] }
+		mut raw := overridden_request_for_module(requested, [lockfile_module_key(requested)], requiring, g.overrides)
+		if requirement_version(raw) == '-' { continue }
+		if resolved_root, path := resolve_existing_module(roots, raw) {
+			raw = overridden_request_for_module(raw, [lockfile_module_key(raw),
+				module_label(resolved_root, path, raw)], requiring, g.overrides)
+			if requirement_version(raw) == '-' { continue }
+		}
 		mut id := g.ids[raw] or { '' }
 		if id == '' {
 			root, path := resolve_existing_module(roots, raw) or { '', '' }

@@ -65,6 +65,12 @@ fn write_project_vmod(project_dir string, deps []string) {
 	}
 }
 
+// assert_outdated_row checks the installed module and all four version columns.
+fn assert_outdated_row(output string, expected []string) {
+	rows := output.split_into_lines().map(it.fields()).filter(it.len > 0 && it[0] == expected[0])
+	assert rows == [expected], output
+}
+
 // Case: `v install` in a project directory records the resolved revisions of
 // its dependencies in `v.mod.lock` next to its `v.mod`.
 fn test_install_records_resolved_revisions_in_the_lockfile() {
@@ -751,18 +757,26 @@ fn test_outdated_and_upgrade_see_a_locked_checkout() {
 	assert git_head(installed_path) == head
 	assert head_is_detached(installed_path)
 	up_to_date := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
-	assert up_to_date.output.contains('Modules are up to date.'), up_to_date.output
+	short_head := cmd_ok_args(@LOCATION, ['git', '-C', installed_path, 'rev-parse', '--short',
+		'HEAD']).output.trim_space()
+	assert_outdated_row(up_to_date.output, ['od_pkg', short_head, 'none', 'none', 'none'])
+	assert git_head(installed_path) == head
+	assert head_is_detached(installed_path)
 
 	new_head := advance_local_git_module(repo_path)
 	outdated := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
-	assert outdated.output.contains('od_pkg'), outdated.output
+	assert_outdated_row(outdated.output, ['od_pkg', short_head, 'none', 'none', 'none'])
+	assert git_head(installed_path) == head
 	cmd_ok_args(@LOCATION, [v_exe, 'upgrade'])
 	assert git_head(installed_path) == new_head
 	lf := read_lockfile(project_dir) or { panic(err) }
 	entry := lf.modules[dep] or { panic('no lock entry for `${dep}` in ${lf.modules.keys()}') }
 	assert entry.revision == new_head
 	after := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
-	assert after.output.contains('Modules are up to date.'), after.output
+	new_short_head := cmd_ok_args(@LOCATION, ['git', '-C', installed_path, 'rev-parse', '--short',
+		'HEAD']).output.trim_space()
+	assert_outdated_row(after.output, ['od_pkg', new_short_head, 'none', 'none', 'none'])
+	assert git_head(installed_path) == new_head
 }
 
 // Case: when one dependency of a project cannot be installed at its locked
@@ -834,7 +848,9 @@ fn test_a_tag_pinned_dependency_stays_at_its_tag() {
 	installed_path := os.join_path(test_path, 'vtp2', 'tp_pkg')
 	assert git_head(installed_path) == tagged_head
 	outdated := cmd_ok_args(@LOCATION, [v_exe, 'outdated'])
-	assert outdated.output.contains('Modules are up to date.'), outdated.output
+	assert_outdated_row(outdated.output, ['tp_pkg', 'v1.0.0', 'v1.0.0', 'v1.0.0', 'v1.0.0'])
+	assert git_head(installed_path) == tagged_head
+	assert os.read_file(lockfile_path(project_dir)) or { panic(err) } == lock_before
 	// Like for a tag install without a lockfile, there is no branch to update to.
 	os.exec([v_exe, 'update', 'tp_pkg'])
 	assert git_head(installed_path) == tagged_head

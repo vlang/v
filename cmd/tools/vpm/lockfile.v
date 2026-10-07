@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
+import crypto.sha256
 import json2
 import os
 import time
@@ -17,8 +18,8 @@ const lockfile_version = 1
 // the very same sources can be installed again later.
 pub struct LockedModule {
 pub:
-	// requested is the dependency string exactly as it is written in `v.mod`,
-	// including any `@version` suffix.
+	// requested is the effective dependency string, including a root override
+	// when present and any `@version` suffix.
 	requested string
 	// resolved is the selected revision: the requested tag for `@tag`
 	// installs, the version chosen by a resolver once version ranges exist,
@@ -28,11 +29,17 @@ pub:
 	revision string
 	// url is the source the module was cloned from.
 	url string
+	// hash is the SHA256 of the module's file content, used for integrity
+	// verification and content-addressable storage.
+	hash string
 }
 
 // LockFile holds the resolved revisions of the dependencies of a project.
 // The entries are keyed by the module name as written in the `v.mod`
-// dependencies, without any `@version` suffix.
+// dependencies, without any `@version` suffix. When a module is resolved
+// from a non-default registry, the key is qualified as `name@registry:version`
+// to prevent two registries serving the same name from collapsing onto one
+// entry.
 pub struct LockFile {
 pub:
 	version int
@@ -60,7 +67,10 @@ fn lockfile_path(dir string) string {
 
 // lockfile_module_key strips the `@version` suffix from the dependency string
 // `dep`, the same way vpm splits a requested version away while installing.
-// The result is the name a module is keyed under in a lockfile.
+// The result is the name a module is keyed under in a lockfile. When the
+// dependency string carries a registry qualifier (`name@registry:version`),
+// the key is qualified as `name@registry:version` to prevent two registries
+// serving the same name from collapsing onto one entry.
 fn lockfile_module_key(dep string) string {
 	if dep.starts_with('git@') {
 		if dep.count('@') > 1 {
@@ -68,7 +78,10 @@ fn lockfile_module_key(dep string) string {
 		}
 		return dep
 	}
-	ident, _ := dep.rsplit_once('@') or { dep, '' }
+	ident, version := dep.rsplit_once('@') or { dep, '' }
+	if version != '' && version.contains(':') {
+		return '${ident}@${version}'
+	}
 	return ident
 }
 
@@ -117,6 +130,38 @@ pub fn (mut lf LockFile) upsert(m LockedModule, name string) {
 // leaves the lockfile unchanged.
 pub fn (mut lf LockFile) remove(name string) {
 	lf.modules.delete(name)
+}
+
+// dir_sha256 hashes package paths, file bytes and symbolic-link targets.
+// VCS metadata is excluded so independent clones of one revision have the same hash.
+// Length framing distinguishes filenames and different splits of file content.
+fn dir_sha256(dir string) !string {
+	mut digest := sha256.new()
+	files := package_hash_files(dir, '')!
+	for relative in files {
+		path := os.join_path(dir, relative)
+		name := relative.replace(os.path_separator, '/')
+		kind := if os.is_link(path) { 'link' } else { 'file' }
+		data := if kind == 'link' { os.readlink(path)!.bytes() } else { os.read_bytes(path)! }
+		digest.write('${kind}:${name.len}:${name}:${data.len}:'.bytes())!
+		digest.write(data)!
+	}
+	return digest.sum([]u8{}).hex()
+}
+
+fn package_hash_files(root string, relative string) ![]string {
+	mut files := []string{}
+	for name in os.ls(os.join_path(root, relative))!.sorted() {
+		if name in ['.git', '.hg', '.svn'] { continue }
+		child := os.join_path(relative, name)
+		path := os.join_path(root, child)
+		if !os.is_link(path) && os.is_dir(path) {
+			files << package_hash_files(root, child)!
+		} else {
+			files << child
+		}
+	}
+	return files
 }
 
 // pseudo_version returns a deterministic version-like identifier of a commit,
@@ -208,6 +253,10 @@ fn (mut scope LockScope) record(m Module) {
 		resolved:  resolved
 		revision:  revision
 		url:       m.url
+		hash:      dir_sha256(m.install_path) or {
+			vpm_error(err.msg())
+			exit(1)
+		}
 	}
 	verbose_println('Locked `${m.name}` at revision `${revision}`.')
 }
@@ -309,6 +358,12 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 			clone_version := if is_version_range(version) { '' } else { version }
 			vcs.clone(url, clone_version, tmp_path)!
 			vcs.checkout(tmp_path, entry.revision)!
+			if entry.hash != '' {
+				actual_hash := dir_sha256(tmp_path)!
+				if actual_hash != entry.hash {
+					return error('content hash mismatch for `${dep}`: lockfile records `${entry.hash}`, but cloned content hashes to `${actual_hash}`')
+				}
+			}
 			return if is_version_range(version) { entry.resolved } else { version }
 		}
 	} else if settings.is_locked && scope.active {
@@ -320,6 +375,50 @@ fn clone_module_source(vcs VCS, dep string, url string, version string, tmp_path
 	resolved := vcs.resolve_version(url, version)!
 	vcs.clone(url, resolved, tmp_path)!
 	return resolved
+}
+
+// resolve_and_lock verifies selected candidate manifests and ranged checkout revisions
+// before installation. Parsing has already discovered the selected dependency graph;
+// choosing alternate candidates jointly belongs to the project graph resolver.
+fn resolve_and_lock(modules []Module, scope LockScope) ! {
+	for m in modules {
+		check_min_v(m.manifest, m.name)!
+		if m.version_range == '' { continue }
+		if !module_satisfies(m, m.version_range) {
+			return error('selected `${m.version}` for `${m.name}` does not satisfy `${m.version_range}`')
+		}
+		if entry := scope.locked_entry(m.requested, m.url) {
+			if entry.resolved == m.version && entry.revision == head_revision(m.tmp_path) {
+				continue
+			}
+		}
+		// An exact branch may share its commit with a tag satisfying a later range.
+		selected_tag := if tag_satisfies_range(m.version, m.version_range) {
+			m.version
+		} else {
+			checkout_satisfying_tag(m.tmp_path, m.version_range)
+		}
+		result := os.exec(['git', '-C', m.tmp_path, 'rev-parse', '--verify',
+			'refs/tags/${selected_tag}^{commit}'])
+		if result.exit_code != 0 || result.output.trim_space() != head_revision(m.tmp_path) {
+			return error('candidate checkout for `${m.name}` is not at selected tag `${selected_tag}`')
+		}
+	}
+}
+
+fn fetch_tags(url string) ![]string {
+	res := os.exec(['git', 'ls-remote', '--tags', '--refs', '--', url])
+	if res.exit_code != 0 {
+		return error('failed to list tags from `${url}`: ${res.output.trim_space()}')
+	}
+	mut tags := []string{}
+	for line in res.output.split_into_lines() {
+		fields := line.split('\t')
+		if fields.len == 2 && fields[1].starts_with('refs/tags/') {
+			tags << fields[1].trim_string_left('refs/tags/')
+		}
+	}
+	return tags
 }
 
 // refresh_lock_entries records the updated revisions of the modules pulled by
@@ -366,6 +465,10 @@ fn refresh_lock_entries(results []UpdateResult) {
 				resolved:  pseudo_version(head_commit_unix_ts(res.install_path), revision)
 				revision:  revision
 				url:       entry.url
+				hash:      dir_sha256(res.install_path) or {
+					vpm_error(err.msg())
+					return
+				}
 			}
 			refreshed[name] = updated
 		}

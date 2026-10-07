@@ -324,3 +324,117 @@ fn test_joint_distinct_sources_cannot_overwrite_one_destination() {
 	assert !os.exists(lockfile_path(project))
 	assert get_installed_modules_in(os.join_path(joint_root, 'collision', 'store')).len == 0
 }
+
+fn test_joint_locked_integrity_verification_preserves_existing_installations() {
+	repo := joint_repo('integrity', 'shared')!
+	head := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	project := joint_project('integrity', [repo + '@^1'])!
+	joint_cli(['install'])
+	mut lf := read_lockfile(project)!
+	assert lf.modules[repo].hash.len == 64
+	// Independent clones must reproduce the same package-content hash.
+	test_utils.set_test_env(os.join_path(joint_root, 'integrity', 'fresh'))
+	joint_cli(['install', '--locked'])
+	installed := os.join_path(joint_root, 'integrity', 'fresh', 'shared')
+	assert joint_git(installed, ['rev-parse', 'HEAD']) == head
+	entry := lf.modules[repo]
+	lf.modules[repo] = LockedModule{ ...entry, hash: '0'.repeat(64) }
+	write_lockfile(project, lf)!
+	before := os.read_file(lockfile_path(project))!
+	failed := cmd_fail_args(@LOCATION, [joint_tool, 'install', '--locked']).output
+	assert failed.contains('content hash mismatch'), failed
+	assert joint_git(installed, ['rev-parse', 'HEAD']) == head
+	assert os.read_file(lockfile_path(project))! == before
+}
+
+fn test_joint_dry_run_precise_and_latest_leave_checkout_manifest_and_lock_unchanged() {
+	repo := joint_repo('dry_run', 'shared')!
+	head := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	project := joint_project('dry_run', [repo + '@^1'])!
+	joint_cli(['install'])
+	joint_tag(repo, 'shared', 'v1.4.0', [])!
+	joint_tag(repo, 'shared', 'v2.0.0', [])!
+	manifest := os.read_file(os.join_path(project, 'v.mod'))!
+	lock_before := os.read_file(lockfile_path(project))!
+	for args in [['update', '--dry-run'],
+		['update', '-p', 'shared', '--precise', '1.4.0', '--dry-run'],
+		['update', '--latest', '--dry-run']] {
+		output := joint_cli(args)
+		assert output.contains('would select'), output
+		assert joint_head('dry_run', 'shared') == head
+		assert os.read_file(os.join_path(project, 'v.mod'))! == manifest
+		assert os.read_file(lockfile_path(project))! == lock_before
+	}
+}
+
+fn test_joint_vendor_copies_transitive_graph_from_project_root_and_preserves_destination() {
+	leaf := joint_repo('vendor', 'leaf')!
+	joint_tag(leaf, 'leaf', 'v1.0.0', [])!
+	parent := joint_repo('vendor', 'parent')!
+	joint_tag(parent, 'parent', 'v1.0.0', [leaf + '@^1'])!
+	project := joint_project('vendor', [parent + '@^1'])!
+	joint_cli(['install'])
+	subdir := os.join_path(project, 'subdir')
+	os.mkdir_all(subdir)!
+	os.chdir(subdir)!
+	joint_cli(['vendor'])
+	vendor := os.join_path(project, 'vendor')
+	assert os.is_file(os.join_path(vendor, 'leaf', 'v.mod'))
+	assert os.is_file(os.join_path(vendor, 'parent', 'v.mod'))
+	os.write_file(os.join_path(vendor, 'keep'), 'existing destination')!
+	failed := cmd_fail_args(@LOCATION, [joint_tool, 'vendor']).output
+	assert failed.contains('refusing to replace'), failed
+	assert os.read_file(os.join_path(vendor, 'keep'))! == 'existing destination'
+	os.rmdir_all(vendor)!
+	os.rmdir_all(os.join_path(joint_root, 'vendor', 'store', 'leaf'))!
+	missing := cmd_fail_args(@LOCATION, [joint_tool, 'vendor']).output
+	assert missing.contains('not installed'), missing
+	assert !os.exists(vendor)
+}
+
+fn test_joint_release_cutoff_filters_real_candidate_tags_and_preserves_locked_revision() {
+	repo := joint_repo('cutoff', 'shared')!
+	old_author := os.getenv('GIT_AUTHOR_DATE')
+	old_committer := os.getenv('GIT_COMMITTER_DATE')
+	defer {
+		if old_author == '' {
+			os.unsetenv('GIT_AUTHOR_DATE')
+		} else {
+			os.setenv('GIT_AUTHOR_DATE', old_author, true)
+		}
+		if old_committer == '' {
+			os.unsetenv('GIT_COMMITTER_DATE')
+		} else {
+			os.setenv('GIT_COMMITTER_DATE', old_committer, true)
+		}
+	}
+	os.setenv('GIT_AUTHOR_DATE', '2024-01-01T00:00:00Z', true)
+	os.setenv('GIT_COMMITTER_DATE', '2024-01-01T00:00:00Z', true)
+	old := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	os.setenv('GIT_AUTHOR_DATE', '2024-07-01T00:00:00Z', true)
+	os.setenv('GIT_COMMITTER_DATE', '2024-07-01T00:00:00Z', true)
+	new := joint_tag(repo, 'shared', 'v1.9.0', [])!
+	project := joint_project('cutoff', [repo + '@^1'])!
+	joint_cli(['install', '--exclude-newer', '2024-06-01'])
+	assert joint_head('cutoff', 'shared') == old
+	before := os.read_file(lockfile_path(project))!
+	joint_cli(['install', '--locked', '--exclude-newer', '2023-01-01'])
+	assert joint_head('cutoff', 'shared') == old
+	assert os.read_file(lockfile_path(project))! == before
+	joint_project('cutoff_exact', [repo + '@v1.9.0'])!
+	joint_cli(['install', '--exclude-newer', '2024-06-01'])
+	assert joint_head('cutoff_exact', 'shared') == new
+	joint_project('cutoff_invalid', [repo + '@^1'])!
+	bad := cmd_fail_args(@LOCATION, [joint_tool, 'install', '--minimum-release-age', 'bogus']).output
+	assert bad.contains('minimum-release-age'), bad
+	assert !os.exists(os.join_path(joint_root, 'cutoff_invalid', 'store', 'shared'))
+}
+
+fn test_joint_range_and_exact_branch_alias_can_share_a_tagged_commit() {
+	repo := joint_repo('branch_range', 'shared')!
+	head := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	joint_git(repo, ['branch', 'release'])
+	joint_project('branch_range', [repo + '@^1', repo + '@release'])!
+	joint_cli(['install'])
+	assert joint_head('branch_range', 'shared') == head
+}

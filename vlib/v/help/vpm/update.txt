@@ -19,3 +19,4 @@ Options:
   -v           Print more details about the update.
   -server-url  When doing network operations, use this vpm server.
                Can be given multiple times.
+  --dry-run    Report proposed selections without changing checkouts, v.mod or locks.

@@ -88,6 +88,7 @@ const external_commands = [
 	'up',
 	'update',
 	'upgrade',
+	'vendor',
 	'vet',
 	'vlib-docs',
 	'watch',
@@ -384,7 +385,7 @@ fn run_external_tool(args []string, command_index int, command string) {
 			'vcreate'
 		}
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade', 'why' {
+		'upgrade', 'why', 'vendor' {
 			'vpm'
 		}
 		'vlib-docs' {

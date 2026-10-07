@@ -62,6 +62,11 @@ fn vpm_install(query []string) {
 	// An incomplete project must not record a lockfile.
 	is_incomplete := parse_errors > 0 && scope.active
 
+	resolve_and_lock(modules, scope) or {
+		for m in modules { rmdir_all(m.tmp_path) or {} }
+		vpm_error(err.msg())
+		exit(1)
+	}
 	installed_modules := get_installed_modules()
 
 	vpm_log(@FILE_LINE, @FN, 'Queried Modules: ${modules}')
