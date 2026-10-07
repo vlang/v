@@ -11177,6 +11177,16 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		is_mut:         node.is_mut
 		flags:          flat.clone_node_flags(node, false)
 	})
+	if node.kind == .map_init && !isnil(t.tc) {
+		map_type := if cloned_value.starts_with('map[') {
+			cloned_value
+		} else if final_typ.starts_with('map[') {
+			final_typ
+		} else {
+			t.infer_map_init_entry_type(t.a.nodes[int(clone_id)])
+		}
+		t.validate_concrete_map_key(map_type)
+	}
 	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		lhs := t.a.nodes[int(children[0])]
 		if lhs.kind == .ident && lhs.value.len > 0 {
@@ -11218,6 +11228,17 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	}
 	t.generic_clone_children = t.generic_clone_children[..scratch_start]
 	return clone_id
+}
+
+fn (mut t Transformer) validate_concrete_map_key(map_type string) {
+	if isnil(t.tc) { return }
+	key_type, _ := t.map_type_parts(map_type)
+	if t.generic_arg_is_unresolved(key_type) { return }
+	resolved_key := types.unalias_type(t.tc.parse_type(key_type))
+	if resolved_key is types.Struct && resolved_key.name != 'any'
+		&& (resolved_key.name in t.tc.structs || resolved_key.name in t.structs) {
+		t.record_monomorph_error('map key type `${resolved_key.name}` not supported')
+	}
 }
 
 // Keep a call's nominal alias when the template annotation names its storage
