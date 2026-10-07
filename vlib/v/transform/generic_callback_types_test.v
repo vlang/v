@@ -172,6 +172,9 @@ fn test_specialized_callbacks_keep_alias_modes_after_semantic_resolution() {
 		['fn (atomic int)', 'fn (int)'],
 		['fn (...int)', 'fn ([]int)'],
 		['fn (fn (shared int))', 'fn (fn (int))'],
+		['fn (fn (...int))', 'fn (fn ([]int))'],
+		['fn ([]fn (...int))', 'fn ([]fn ([]int))'],
+		['fn () fn (...int)', 'fn () fn ([]int)'],
 	] {
 		alias := 'ModeCallback${idx}'
 		chain := 'ChainedCallback${idx}'

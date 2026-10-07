@@ -88,6 +88,7 @@ fn main() {
 					'Sets up a V project within the current directory.',
 					'',
 					"If no `v.mod` exists, a setup prompt is started to create one with the project's metadata.",
+					'If a valid `v.mod` exists, its module name is used and the manifest is preserved.',
 					'The prompts run only when stdin is a terminal; otherwise the defaults are used.',
 					'If no `.v` file exists, a project template is generated. If the current directory is not a',
 					'git project and git is installed, `git init` will be performed during the setup.',
@@ -152,7 +153,7 @@ fn init_project(cmd Command) ! {
 			c.name = mod.name
 		}
 		if c.name == '' {
-			c.name = dir_name
+			c.name = dir_name.replace('-', '_')
 		}
 	}
 	println('Initialising ...')

@@ -1,0 +1,26 @@
+vlib/v/parser/tests/builtin_function_redefinitions_err.vv:1:4: error: cannot redefine builtin function `dump`
+    1 | fn dump(a int, b int) int {
+      |    ~~~~
+    2 |     return a + b
+    3 | }
+vlib/v/parser/tests/builtin_function_redefinitions_err.vv:5:4: error: cannot redefine builtin function `sizeof`
+    3 | }
+    4 | 
+    5 | fn sizeof(a int, b int) int {
+      |    ~~~~~~
+    6 |     return a + b
+    7 | }
+vlib/v/parser/tests/builtin_function_redefinitions_err.vv:9:4: error: cannot redefine builtin function `typeof`
+    7 | }
+    8 | 
+    9 | fn typeof(a int, b int) int {
+      |    ~~~~~~
+   10 |     return a + b
+   11 | }
+vlib/v/parser/tests/builtin_function_redefinitions_err.vv:13:4: error: cannot redefine builtin function `isreftype`
+   11 | }
+   12 | 
+   13 | fn isreftype(a int, b int) int {
+      |    ~~~~~~~~~
+   14 |     return a + b
+   15 | }

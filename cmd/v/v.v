@@ -298,7 +298,7 @@ fn launch_ownership_compiler(args []string) {
 		exit(0)
 	}
 	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ['-d', 'ownership',
-		'-gc', 'none']) or {
+		'-gc', 'none', '-prealloc']) or {
 		eprintln('cannot find a writable cache for the V3 ownership compiler')
 		exit(1)
 	}

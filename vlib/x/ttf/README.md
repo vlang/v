@@ -235,7 +235,7 @@ It is possible to modify these parameters to obtain the desired effect on the te
 The sokol render use the bitmap render to create the text and the `gg` functions to render
 the text to the screen.
 It is simpler to use in a `gg app` than the raw bitmap render.
-Each single text rendered need its own reder to be declared, after you can modify it.
+Each single rendered text needs its own render to be declared, after which you can modify it.
 Here a simple example of the usage:
 
 ```v oksyntax
