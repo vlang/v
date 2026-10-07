@@ -1,6 +1,7 @@
 module types
 
 import os
+import v.flat
 import v.parser
 import v.pref
 
@@ -40,4 +41,25 @@ fn test_comptime_preflight_checks_named_types_in_their_own_module() {
 	assert tc.errors.len == 1, tc.errors.str()
 	assert tc.errors[0].file == first
 	assert tc.errors[0].msg == 'Item is not Sum type to use with .variants'
+}
+
+fn test_static_string_source_constant_precedes_foreign_global_and_not_local_mutation() {
+	mut a := flat.FlatAst.new()
+	value := a.add_val(.string_literal, 'a b')
+	name := a.add_val(.ident, 'route')
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	tc.const_types['route'] = string_
+	tc.const_exprs['route'] = value
+	tc.const_modules['route'] = 'main'
+	tc.global_names['route'] = true
+	tc.global_names['api.route'] = true
+	tc.file_scope.insert('route', int_)
+	tc.push_scope()
+	assert tc.ident_is_mutable_lvalue('route')
+	assert tc.comptime_initializer_is_static_depth(name, 0, 'main', 'main.v', true)
+	assert tc.comptime_initializer_is_static_depth(name, 0, '', 'main.v', true)
+	tc.fn_context.mut_local_owners['route'] = tc.cur_scope.insert_with_owner('route', string_)
+	assert !tc.comptime_initializer_is_static_depth(name, 0, 'main', 'main.v', true)
+	tc.pop_scope()
 }

@@ -28,6 +28,42 @@ Ownership inference follows function calls, including long acyclic call chains. 
 limit grows with the number of functions; if inference still does not converge, the compiler
 reports the function being analyzed instead of continuing indefinitely.
 
+Ownership checking uses disposable arenas for function batches and recursive storage-source
+queries, so temporary snapshots and query state are released throughout large compilations,
+including compiler builds. Query results, inferred metadata, and diagnostics survive arena release.
+
+Recursive storage-source queries share a cache for one outer query. It retains at most 32,768
+completed entries and 64 MiB of estimated payload. Existing entries remain usable when a limit is
+reached; additional results are computed without adding another cache entry. The cache and
+temporary query state are released when the outer query finishes.
+Membership conditions are stored as exact lists of present and absent declaration IDs. The
+estimate covers cache keys, paths, source indexes, entry and array headers, and eight bytes per
+membership condition; it is separate from the compiler's process-memory limit.
+Entries for the same declaration and parameter share a retained result when its path order and
+ordered source indexes match exactly. Each entry still retains its own membership conditions;
+shared paths and source indexes are charged once. Previously retained allocations stay charged
+until the query finishes.
+If a completed query and a retained entry prove the same ordered result under complementary
+conditions for one declaration ID, a certificate can omit it when its other conditions include
+the partner's conditions. An existing certificate can be updated even after the cache reaches
+its limits, without allocating another buffer or refunding its original charge. Retained results
+remain immutable. Parent queries use the current incoming proof, and lookups prefer matching
+entries with fewer conditions.
+The current incoming proof can repeat this step with other retained forward partners, removing
+one condition at a time. These additional steps leave retained certificates unchanged and stop
+when no further partner applies. Parent queries receive the final proved conditions.
+After that parent copy, one known equal-result entry can use the final proof when every
+condition of that proof also occurs in the entry with the same expectation.
+Filtering the existing buffers preserves their allocated capacity and cumulative charge;
+otherwise the original one-condition update remains available.
+
+Serial ownership checks reuse resolved call information during return analysis, as parallel
+checks do. This avoids false moved-value diagnostics from rechecking an earlier chained-call
+initializer after its receiver has moved in a return.
+
+If the compiler memory limit is exceeded,
+it reports the limit and exits with status 1, without running cleanup against active workers.
+
 ## Creating owned values
 
 Call `.to_owned()` on a string to create an owned copy. Copies made with `.clone()` also

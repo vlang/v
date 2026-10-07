@@ -1,5 +1,11 @@
 ## Description
 
+On the C backends, `wyhash64_c` mixes both halves of each input's 128-bit product,
+including on C compilers without a 128-bit integer type. Each input is mixed independently,
+so matching a hash seed in one half of a 128-bit map key preserves the other half's contribution.
+Upper key bits affect the low hash bits used by maps. Hash values may change between compiler
+versions and should not be persisted.
+
 `hash` provides a way to hash binary data, i.e. produce a shorter value,
 that is highly content dependent, so even slightly different content will
 produce widely different hashes.

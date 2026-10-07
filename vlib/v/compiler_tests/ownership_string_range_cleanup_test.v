@@ -94,17 +94,18 @@ fn main() {
 }
 ')!
 	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -gc none -cc clang -d trace_free ${mode} run ${os.quoted_path(source)}')
+		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-retry-compilation -no-memory-limit -nocache -ownership -gc none -cc clang -d trace_free ${mode} run ${os.quoted_path(source)}')
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 		for region, expected in {
 			'loops':        3
-			'returns':      4
+			// Literal slices fold to static strings; runtime slices still own allocations.
+			'returns':      3
 			'calls':        2
 			'reassignment': 2
 			'reslice':      2
 			'conditional':  1
 			'gated':        1
-			'literal':      1
+			'literal':      0
 			'borrowed':     0
 			'source_move':  2
 		} {
@@ -134,7 +135,7 @@ fn main() {
 }
 ')!
 		for mode in ['-no-parallel', ''] {
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
+			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-retry-compilation -no-memory-limit -nocache -ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
 			assert out.exit_code != 0, '${creation} ${mode}: ${out.output}'
 			assert out.output.contains('use of moved value: `slice`'), '${creation} ${mode}: ${out.output}'
 		}

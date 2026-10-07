@@ -333,7 +333,7 @@ hello world
 
 `v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
 `v -prod self` uses a single production build of one C unit instead of the three-pass
-PGO cycle.
+PGO cycle. Use `v -prod -parallel-cc self` to compile the generated C units in parallel.
 
 ```bash
 cd examples
