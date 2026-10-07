@@ -37,3 +37,7 @@ AST or an unindexed declaration returns `none`, so integrations can fall back to
 `check_reached_library_bodies` with the complete used-function map.
 
 Verbose builds include bodies checked by reachability frontiers in the `checked late` count.
+
+An `or` block in a struct field initializer must provide the unwrapped payload type.
+For a `?bool` field, use `input.value or { false }`; an optional fallback value is rejected.
+Direct option values can still initialize optional fields without an `or` block.
