@@ -14715,6 +14715,12 @@ fn (mut g FlatGen) const_storage_type_from_node(node flat.Node) ?types.Type {
 	if node.kind == .ident && (g.current_param_type(node.value) != none || g.cur_scope_has_local_name(node.value)) {
 		return none
 	}
+	// A module's global keeps its storage type even when another module has a
+	// uniquely named const that the short-name const lookup would otherwise find.
+	if node.kind == .ident && g.current_module_const_ref_name(node.value) == none
+		&& g.current_module_global_type_for_ident(node.value) != none {
+		return none
+	}
 	const_name := g.const_ref_name_from_node(node)
 	if const_name.len > 0 {
 		return g.const_storage_type_from_name(const_name)
