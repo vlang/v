@@ -13693,6 +13693,9 @@ fn (g &FlatGen) context_wants_callable() bool {
 // gen_expr_with_possible_enum_type emits expr with possible enum type output for c.
 fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected types.Type) {
 	node := g.a.nodes[int(id)]
+	if type_is_void_pointer(expected) && g.gen_voidptr_fn_value_arg(id, node) {
+		return
+	}
 	mut is_signed_numeric_literal := false
 	if node.kind == .prefix && node.op in [.minus, .plus] && node.children_count > 0 {
 		child := g.a.child_node(&node, 0)
@@ -17104,6 +17107,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.gen_expr(g.a.child(node, 0))
 					g.write(')')
 				}
+			} else if type_is_void_pointer(target_type) {
+				g.write('(${ct})(')
+				if !g.gen_voidptr_fn_value_arg(cast_arg_id, cast_arg) {
+					g.gen_expr(cast_arg_id)
+				}
+				g.write(')')
 			} else if g.gen_checked_integer_cast(id, target_type, cast_arg_id, cast_arg_type, ct) {
 				return
 			} else {

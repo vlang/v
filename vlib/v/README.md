@@ -694,3 +694,8 @@ initializers, without repeated expansion or compiler recursion.
 
 Function literals in constant struct initializers are lowered to callable helpers
 through address and parenthesis wrappers, including `const h = &Struct{...}`.
+
+Converting `&callback` to `voidptr`, or passing it to a `voidptr` parameter,
+addresses the storage of a function-valued variable, parameter, field or array
+element. Comparisons with a `voidptr` operand preserve that same storage address
+in either operand order. Taking the address of a named function remains the function pointer.
