@@ -13703,6 +13703,17 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 			return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate,
 				!t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
 		}
+		// Open generic methods are specialized by value stringification rather
+		// than the checker-selected call path. Keep an explicit pointer-receiver
+		// str() result unchanged while retaining the existing nil guard.
+		if !isnil(t.tc) {
+			if info := t.tc.resolve_generic_struct_method(aggregate, 'str') {
+				if t.str_method_has_pointer_receiver(info.name) {
+					return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate,
+						false, '', '&nil')
+				}
+			}
+		}
 		return t.lower_ref_str_prefixed(t.transform_expr(base_id), aggregate)
 	}
 	if clean_type.starts_with('[]') || t.is_fixed_array_type(clean_type) {

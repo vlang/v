@@ -57,6 +57,10 @@ can compile the full builtin map.v.
 Methods on an alias are resolved using the receiver expression's alias, including calls on
 parameters inside a method of another alias of the same underlying type.
 
+An explicit `.str()` call on a generic struct pointer preserves the result of its
+user-defined pointer-receiver method. Pointer interpolation still adds its reference prefix,
+and automatic pointer stringification retains its existing prefix and nil handling.
+
 ## Compiler dispatch
 
 On every native platform, this is the default compiler for user source and test builds. The
