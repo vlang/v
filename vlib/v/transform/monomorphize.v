@@ -7295,6 +7295,15 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		callee_id = t.a.child(&callee, 0)
 		callee = t.a.nodes[int(callee_id)]
 	}
+	if callee.kind == .ident && !callee.value.contains('.') {
+		if t.raw_var_type(callee.value).len > 0 {
+			return none
+		}
+		// Call collection runs before parameters and locals enter var_types.
+		if _ := t.local_binding_before(callee.value, callee_id) {
+			return none
+		}
+	}
 	if !isnil(t.tc) {
 		if resolved := t.tc.resolved_call_name(id) {
 			if key := t.generic_resolved_call_decl_key(resolved, callee, node, module_name, decls) {
@@ -10719,7 +10728,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			base := t.a.nodes[int(base_id)]
 			if base.kind == .typeof_expr {
 				if reflected := t.generic_comptime_typeof_target(base, args) {
-					return t.make_string_literal(generic_type_name_display(reflected))
+					return t.make_string_literal(t.generic_comptime_typeof_display_name(base, args, reflected))
 				}
 			}
 			if t.selector_base_is_comptime_type_value(base_id) {
@@ -10801,7 +10810,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	}
 	if node.kind == .typeof_expr {
 		if reflected := t.generic_comptime_typeof_target(node, args) {
-			return t.make_string_literal(generic_type_name_display(reflected))
+			return t.make_string_literal(t.generic_comptime_typeof_display_name(node, args, reflected))
 		}
 	}
 	if node.children_count == 0
@@ -11177,6 +11186,16 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		is_mut:         node.is_mut
 		flags:          flat.clone_node_flags(node, false)
 	})
+	if node.kind == .map_init && !isnil(t.tc) {
+		map_type := if cloned_value.starts_with('map[') {
+			cloned_value
+		} else if final_typ.starts_with('map[') {
+			final_typ
+		} else {
+			t.infer_map_init_entry_type(t.a.nodes[int(clone_id)])
+		}
+		t.validate_concrete_map_key(map_type)
+	}
 	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		lhs := t.a.nodes[int(children[0])]
 		if lhs.kind == .ident && lhs.value.len > 0 {
@@ -11218,6 +11237,17 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	}
 	t.generic_clone_children = t.generic_clone_children[..scratch_start]
 	return clone_id
+}
+
+fn (mut t Transformer) validate_concrete_map_key(map_type string) {
+	if isnil(t.tc) { return }
+	key_type, _ := t.map_type_parts(map_type)
+	if t.generic_arg_is_unresolved(key_type) { return }
+	resolved_key := types.unalias_type(t.tc.parse_type(key_type))
+	if resolved_key is types.Struct && resolved_key.name != 'any'
+		&& (resolved_key.name in t.tc.structs || resolved_key.name in t.structs) {
+		t.record_monomorph_error('map key type `${resolved_key.name}` not supported')
+	}
 }
 
 // Keep a call's nominal alias when the template annotation names its storage
@@ -11404,6 +11434,10 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []str
 			return args[idx]
 		}
 	}
+	if node.value.len > 0 && !node.value.starts_with(generic_type_name_marker_prefix)
+		&& generic_text_contains_param(node.value, t.active_generic_params) {
+		return t.resolve_substituted_type_text(t.subst_type(node.value, args))
+	}
 	if node.children_count == 0 {
 		return none
 	}
@@ -11412,7 +11446,7 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []str
 	if child.kind == .selector && child.children_count > 0
 		&& child.value in ['idx', 'key_type', 'value_type', 'element_type'] {
 		base_id := t.a.child(&child, 0)
-		if concrete := t.generic_comptime_base_type(base_id, args) {
+		if concrete := t.generic_comptime_type_expr(base_id, args) {
 			if child.value == 'idx' {
 				return 'int'
 			}
@@ -11426,6 +11460,24 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []str
 		return '&${target}'
 	}
 	return target
+}
+
+// generic_comptime_typeof_display_name retains the writing file's spelling for
+// a composite type expression, while a direct parameter keeps its caller's name.
+fn (t &Transformer) generic_comptime_typeof_display_name(node flat.Node, args []string, reflected string) string {
+	if node.value.len > 0 && !node.value.starts_with(generic_type_name_marker_prefix)
+		&& node.value !in t.active_generic_params {
+		return generic_type_name_display(t.subst_type(node.value, args))
+	}
+	if node.children_count > 0 {
+		child := t.a.child_node(&node, 0)
+		if child.kind == .ident && child.value !in t.active_generic_params
+			&& generic_text_contains_param(child.value, t.active_generic_params)
+			&& t.raw_var_type(child.value).len == 0 {
+			return generic_type_name_display(t.subst_type(child.value, args))
+		}
+	}
+	return generic_type_name_display(reflected)
 }
 
 fn (mut t Transformer) generic_comptime_type_member(raw string, member string) ?string {
@@ -11773,7 +11825,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			return ''
 		}
 		for arg in explicit {
-			call_args << t.subst_type(arg, args)
+			call_args << t.resolve_substituted_type_text(t.subst_type(arg, args))
 		}
 		// A full list spells the receiver's parameters too: the cloned receiver
 		// fixes them.

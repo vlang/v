@@ -535,6 +535,7 @@ mut:
 	shared_param_index_empty       bool
 	has_shared_params              bool
 	fn_decl_mut_receivers          map[string]bool
+	specialized_method_c_names     map[string]string     // concrete declaration spelling -> selected C symbol
 	fn_decl_ret_types              map[string]types.Type // fn decl name (and qualified variants) -> return type
 	// Const dependency analysis follows helper calls. Keep declaration indexes so
 	// resolving each call does not scan the whole flattened AST.
@@ -1428,6 +1429,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_decl_shared_params:              map[string][]bool{}
 		fn_shared_params_resolved:          map[string][]bool{}
 		fn_decl_mut_receivers:              map[string]bool{}
+		specialized_method_c_names:         map[string]string{}
 		fn_decl_ret_types:                  map[string]types.Type{}
 		fn_decl_nodes_by_name:              map[string]flat.NodeId{}
 		fn_decl_nodes_by_short:             map[string]flat.NodeId{}
@@ -3060,6 +3062,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.uses_recover = g.program_uses_recover()
 	g.used_fn_names = []string{}
 	g.fn_gen_items = []FlatFnGenItem{}
+	g.specialized_method_c_names.clear()
 	g.top_level_node_ids = []i32{}
 	g.type_metadata_node_ids = []i32{}
 	g.type_metadata_nodes_ready = false
@@ -14715,6 +14718,12 @@ fn (mut g FlatGen) const_storage_type_from_node(node flat.Node) ?types.Type {
 	if node.kind == .ident && (g.current_param_type(node.value) != none || g.cur_scope_has_local_name(node.value)) {
 		return none
 	}
+	// A module's global keeps its storage type even when another module has a
+	// uniquely named const that the short-name const lookup would otherwise find.
+	if node.kind == .ident && g.current_module_const_ref_name(node.value) == none
+		&& g.current_module_global_type_for_ident(node.value) != none {
+		return none
+	}
 	const_name := g.const_ref_name_from_node(node)
 	if const_name.len > 0 {
 		return g.const_storage_type_from_name(const_name)
@@ -16068,7 +16077,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 				if typ := g.current_param_type(child.value) {
-					if typ !is types.Pointer {
+					if cgen_unalias_type(typ) !is types.Pointer {
 						g.gen_expr(child_id)
 						return
 					}
@@ -16924,6 +16933,21 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 							g.gen_expr(g.a.child(node, 1))
 							g.write('))')
 						} else if default_init_unalias_type(base_type) is types.String {
+							if !g.direct_array_access && g.unsafe_depth == 0 {
+								index_id := g.a.child(node, 1)
+								index_type := cgen_unalias_type(g.usable_expr_type(index_id))
+								helper := match index_type.name() {
+									'i64', 'isize' { 'string__at_i64' }
+									'u8', 'u16', 'u32', 'u64', 'uint', 'usize' { 'string__at_u64' }
+									else { 'string__at' }
+								}
+								g.write('${helper}(')
+								g.gen_expr(base_id)
+								g.write(', ')
+								g.gen_expr(index_id)
+								g.write(')')
+								return
+							}
 							// Parenthesize the base: a smartcast sum variant yields a deref
 							// like `*v._string`, and `*v._string.str[i]` would bind as
 							// `*(v._string.str[i])`. `(*v._string).str[i]` is what we want.

@@ -329,6 +329,14 @@ struct DeclarationVisibility {
 @[heap]
 struct VisibleMutationCache {
 mut:
+	base                  &VisibleMutationCache = unsafe { nil }
+	storage_query         bool
+	storage_query_results map[string][]StorageQueryResult
+	storage_query_trace   &StorageQueryTrace    = unsafe { nil }
+	storage_query_owner   &VisibleMutationCache = unsafe { nil }
+	storage_query_scopes  []voidptr
+	storage_query_count   int
+	storage_query_bytes   int
 	// decls holds the module-qualified keys (`mod\x01name`) and global_decls the
 	// module-less ones (`\x01name`). The key spaces are disjoint, and keeping them
 	// apart lets collection fill both maps on separate pool lanes.
@@ -1187,11 +1195,9 @@ fn (tc &TypeChecker) timing_profile(message string) {
 }
 
 // enable_scoped_parallel_workers uses disposable prealloc arenas for parallel
-// checker helpers. Ownership checking keeps its existing long-lived workers.
+// checker helpers, including ownership snapshots and inferred metadata.
 pub fn (mut tc TypeChecker) enable_scoped_parallel_workers() {
-	$if !ownership ? {
-		tc.scope_parallel_check_workers = true
-	}
+	tc.scope_parallel_check_workers = true
 }
 
 // scoped_parallel_workers_enabled reports whether compiler stages should use
@@ -18709,7 +18715,7 @@ struct ComptimeStaticFieldCases {
 struct ComptimeStaticValueCase {
 	name          string
 	location      string
-	value         int
+	value         i64
 	has_value     bool
 	typ           string
 	return_type   string
@@ -18765,6 +18771,25 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 		return
 	}
 	body_id := tc.a.child(&node, 0)
+	if parts[1] == 'strings' && node.children_count == 2 {
+		source_id := tc.a.child(&node, 1)
+		source := tc.a.node(source_id)
+		callee := if source.kind == .call && source.children_count > 0 {
+			tc.a.child_node(source, 0)
+		} else {
+			&flat.Node{}
+		}
+		if callee.kind != .selector || callee.value !in ['split', 'split_any', 'fields']
+			|| !tc.comptime_initializer_is_static(source_id) {
+			tc.record_error_at(.condition_mismatch, '`\$for` string source must use `split`, `split_any` or `fields` on a compile-time-known string', source_id, source.pos)
+			return
+		}
+		tc.push_scope()
+		tc.cur_scope.insert(parts[0], string_)
+		tc.check_comptime_static_body(body_id, parts[0], 'strings', ComptimeStaticFieldCases{}, ComptimeStaticValueCases{})
+		tc.pop_scope()
+		return
+	}
 	if _ := tc.comptime_struct_update_id(body_id) {
 		return
 	}
