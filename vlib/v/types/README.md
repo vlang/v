@@ -38,6 +38,10 @@ AST or an unindexed declaration returns `none`, so integrations can fall back to
 
 Verbose builds include bodies checked by reachability frontiers in the `checked late` count.
 
+An `or` block in a struct field initializer must provide the unwrapped payload type.
+For a `?bool` field, use `input.value or { false }`; an optional fallback value is rejected.
+Direct option values can still initialize optional fields without an `or` block.
+
 Variadic function types keep their variadic tail when used as parameters or fields.
 For `fn (int, ...string) bool`, a call must supply the fixed `int` argument and may supply
 zero or more strings. A `fn (int, []string) bool` still requires an explicit array argument.

@@ -210,6 +210,16 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 				continue
 			}
 			emitted[qfn] = true
+			node := g.a.nodes[int(item.node_id)]
+			if node.value.contains('[') && node.value.contains('].') {
+				qualified := if item.module !in ['', 'main', 'builtin']
+					&& !node.value.starts_with('${item.module}.') {
+					'${item.module}.${node.value}'
+				} else {
+					node.value
+				}
+				g.specialized_method_c_names[qualified] = qfn
+			}
 		}
 		cost := if par_prep {
 			// The parallel exact-cost pass overwrites this value before cgen
@@ -1557,8 +1567,39 @@ fn (g &FlatGen) c_fn_symbol_exists(candidate string) bool {
 	return false
 }
 
+// Concrete calls must use the symbol selected for the declaration, even when
+// checker metadata also registers a short spelling of its generic arguments.
+fn (g &FlatGen) selected_specialized_method_c_name(name string) ?string {
+	if !name.contains('].') || g.specialized_method_c_names.len == 0 {
+		return none
+	}
+	if selected := g.specialized_method_c_names[name] {
+		return selected
+	}
+	receiver := name.all_before_last('.')
+	method := name.all_after_last('.')
+	base, args, ok := g.shared_generic_app_parts(receiver)
+	if !ok || args.len == 0 { return none }
+	qualified_base := if !base.contains('.') && g.tc.cur_module !in ['', 'main', 'builtin'] {
+		'${g.tc.cur_module}.${base}'
+	} else {
+		base
+	}
+	mut canonical_args := []string{cap: args.len}
+	for arg in args {
+		resolved := g.tc.parse_type(arg)
+		if resolved is types.Unknown { return none }
+		canonical_args << resolved.name()
+	}
+	canonical := '${qualified_base}[${canonical_args.join(', ')}].${method}'
+	return g.specialized_method_c_names[canonical] or { none }
+}
+
 // direct_call_name supports direct call name handling for FlatGen.
 fn (mut g FlatGen) direct_call_name(name string) string {
+	if selected := g.selected_specialized_method_c_name(name) {
+		return selected
+	}
 	synthetic_name := c_short_name_view(name)
 	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
 		|| synthetic_name.starts_with('__v3_default_clone_') {
@@ -1715,6 +1756,9 @@ fn (g &FlatGen) enum_method_c_name_in_module_uncached(module_name string, name s
 }
 
 fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string {
+	if selected := g.selected_specialized_method_c_name(name) {
+		return selected
+	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		call_node_ref := g.a.node(id)
 		call_node := g.a.nodes[int(id)]
@@ -8892,7 +8936,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 							g.gen_variadic_array_args(node, i, variadic_type.elem_type)
 							break
 						}
-						arg_type := g.tc.resolve_type(arg_id)
+						arg_type := cgen_unalias_type(g.tc.resolve_type(arg_id))
 						if arg_type !is types.Array || arg_node.kind == .struct_init {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
 							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
@@ -14686,7 +14730,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			break
 		}
 		if variadic_idx >= 0 && arg_idx == variadic_idx && num_args == param_types.len {
-			arg_type := g.tc.resolve_type(arg_id)
+			arg_type := cgen_unalias_type(g.tc.resolve_type(arg_id))
 			// A struct literal can never itself be the variadic array; the checker
 			// propagates the expected `[]T` onto the node, masking its own type.
 			if arg_type !is types.Array || arg_node.kind == .struct_init {
@@ -15058,11 +15102,10 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 		if value_node.kind == .prefix && value_node.op == .amp {
 			operand_id, operand := g.unwrapped_fn_value_operand(g.a.child(&value_node, 0),
 				g.a.child_node(&value_node, 0))
-			// In translated C, `voidptr(&f)` of a function variable is the address of
-			// the variable, as in V1 (C translated by c2v stores `(void*)&finder` and
-			// calls through `**(finder_type*)p`). `&` on a function name is the function.
-			if g.expr_is_in_translated_file(operand_id)
-				&& g.fn_value_operand_has_storage(operand_id, operand)
+			// `voidptr(&f)` addresses the slot holding a function value, including
+			// implicit voidptr arguments such as memdup(&f, sizeof(Fn)). A function
+			// declaration has no value slot: `&named_fn` remains the function itself.
+			if g.fn_value_operand_has_storage(operand_id, operand)
 				&& g.node_is_fn_value_for_voidptr(operand_id, operand) {
 				g.write('&')
 				gen_expr_lvalue(mut g, operand_id)

@@ -507,6 +507,9 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 		return []flat.NodeId{}
 	}
 	var_name, kind := comptime_for_parts(node.value)
+	if kind == 'strings' && node.children_count == 2 {
+		return t.expand_comptime_for_strings(id, node, var_name)
+	}
 	if kind !in ['fields', 'values', 'variants', 'methods', 'params', 'attributes'] {
 		return []flat.NodeId{}
 	}
@@ -908,7 +911,7 @@ fn (mut t Transformer) clone_attribute_subst_scoped(id flat.NodeId, var_name str
 		if comptime_cond_references_ident(node.value, var_name)
 			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if !comptime_cond_has_loop_member_ref(cond, var_name) {
-				if taken := t.eval_field_cond(cond) {
+				if taken := t.eval_reflected_string_condition(cond, node) {
 					branch_idx := if taken { 0 } else { 1 }
 					if branch_idx >= int(node.children_count) {
 						return t.make_block([]flat.NodeId{})
@@ -916,7 +919,9 @@ fn (mut t Transformer) clone_attribute_subst_scoped(id flat.NodeId, var_name str
 					return t.clone_attribute_subst_scoped(t.a.child(&node, branch_idx), var_name, attr, inner_vars)
 				}
 			}
-			t.reject_unevaluated_comptime_if(id, node, cond)
+			if !t.comptime_condition_needs_local_value(cond, node) {
+				t.reject_unevaluated_comptime_if(id, node, cond)
+			}
 		}
 		return t.clone_attribute_subst_children_with_value(node, var_name, attr, inner_vars, cond)
 	}
@@ -1187,7 +1192,7 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 		if comptime_cond_references_ident(node.value, var_name)
 			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if !comptime_cond_has_loop_member_ref(cond, var_name) {
-				if taken := t.eval_field_cond(cond) {
+				if taken := t.eval_reflected_string_condition(cond, node) {
 					branch_idx := if taken { 0 } else { 1 }
 					if branch_idx >= int(node.children_count) {
 						return none
@@ -1195,7 +1200,9 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 					return t.clone_param_subst_scoped(t.a.child(&node, branch_idx), var_name, param, inner_vars)
 				}
 			}
-			t.reject_unevaluated_comptime_if(id, node, cond)
+			if !t.comptime_condition_needs_local_value(cond, node) {
+				t.reject_unevaluated_comptime_if(id, node, cond)
+			}
 		}
 		return t.clone_param_subst_children_with_value(node, var_name, param, inner_vars, cond)
 	}
@@ -1831,7 +1838,7 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 		if comptime_cond_references_ident(node.value, var_name)
 			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if !comptime_cond_has_loop_member_ref(cond, var_name) {
-				if taken := t.eval_field_cond(cond) {
+				if taken := t.eval_reflected_string_condition(cond, node) {
 					branch_idx := if taken { 0 } else { 1 }
 					if branch_idx >= int(node.children_count) {
 						return none
@@ -1839,7 +1846,9 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 					return t.clone_method_subst_scoped(t.a.child(&node, branch_idx), var_name, method, inner_vars)
 				}
 			}
-			t.reject_unevaluated_comptime_if(id, node, cond)
+			if !t.comptime_condition_needs_local_value(cond, node) {
+				t.reject_unevaluated_comptime_if(id, node, cond)
+			}
 		}
 		return t.clone_method_subst_children_with_value(node, var_name, method, inner_vars, cond)
 	}
@@ -2622,7 +2631,7 @@ fn (t &Transformer) comptime_enum_members(base_type string) []EnumValueMeta {
 // bit index and materialize `1 << index`.
 fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 	checked_values := if isnil(t.tc) {
-		map[string]int{}
+		map[string]i64{}
 	} else {
 		t.tc.comptime_enum_decl_field_values(enum_name)
 	}
@@ -2984,7 +2993,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 		cond := t.subst_value_cond(node.value, var_name, item.name, item.value)
 		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if !comptime_cond_has_loop_member_ref(cond, var_name) {
-				if taken := t.eval_field_cond(cond) {
+				if taken := t.eval_reflected_string_condition(cond, node) {
 					branch_idx := if taken { 0 } else { 1 }
 					if branch_idx >= int(node.children_count) {
 						return none
@@ -2992,7 +3001,9 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 					return t.clone_value_subst_scoped(t.a.child(&node, branch_idx), var_name, item, inner_vars)
 				}
 			}
-			t.reject_unevaluated_comptime_if(id, node, cond)
+			if !t.comptime_condition_needs_local_value(cond, node) {
+				t.reject_unevaluated_comptime_if(id, node, cond)
+			}
 		}
 		// A nested `$for` decides the rest, with this loop's variable already substituted.
 		value = cond
@@ -3462,7 +3473,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		}
 		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if !comptime_cond_has_loop_member_ref(cond, var_name) {
-				if taken := t.eval_field_cond(cond) {
+				if taken := t.eval_reflected_string_condition(cond, node) {
 					branch_idx := if taken { 0 } else { 1 }
 					if branch_idx >= int(node.children_count) {
 						return none
@@ -3470,7 +3481,9 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 					return t.clone_variant_subst_with_smartcast(t.a.child(&node, branch_idx), var_name, item, smartcast_name, return_context, inner_vars)
 				}
 			}
-			t.reject_unevaluated_comptime_if(id, node, cond)
+			if !t.comptime_condition_needs_local_value(cond, node) {
+				t.reject_unevaluated_comptime_if(id, node, cond)
+			}
 		}
 		// A nested `$for` decides the rest, with this loop's variable already substituted.
 		comptime_cond = cond
@@ -4689,7 +4702,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if (references_var || cond != node.value || comptime_cond_is_static_literal_expr(cond))
 				&& !comptime_cond_has_loop_member_ref(cond, var_name) {
-				if taken := t.eval_field_cond(cond) {
+				if taken := t.eval_reflected_string_condition(cond, node) {
 					branch_idx := if taken { 0 } else { 1 }
 					if branch_idx >= int(node.children_count) {
 						return none
@@ -4698,7 +4711,9 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 				}
 			}
 			if references_var {
-				t.reject_unevaluated_comptime_if(id, node, cond)
+				if !t.comptime_condition_needs_local_value(cond, node) {
+					t.reject_unevaluated_comptime_if(id, node, cond)
+				}
 			}
 		}
 		return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, cond)
@@ -5680,7 +5695,21 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 				}
 			} else {
 				needle := comptime_cond_operand(needle_text) or { return none }
-				found = comptime_list_contains(list, needle)
+				if list.starts_with('[') && list.ends_with(']') {
+					mut rest := list[1..list.len - 1].trim_space()
+					for rest.len > 0 {
+						comma := comptime_condition_top_level_index(rest, ',')
+						item := if comma >= 0 { rest[..comma] } else { rest }
+						value := comptime_cond_operand(item) or { return none }
+						found = found || value == needle
+						if comma < 0 { break }
+						rest = rest[comma + 1..].trim_space()
+					}
+				} else {
+					value := comptime_cond_string_member(list) or { list }
+					if !comptime_cond_is_quoted_literal(value) { return none }
+					found = comptime_unquote(value).contains(needle)
+				}
 			}
 			return if op == ' in' { found } else { !found }
 		}
@@ -5745,48 +5774,9 @@ struct ComptimeStringScalar {
 	value string
 }
 
-// comptime_string_scalar calls the builtin implementation on compile-time-known operands.
 fn comptime_string_scalar(receiver string, method string, args []string) ?ComptimeStringScalar {
-	if args.len == 0 {
-		value := match method {
-			'trim_space' { receiver.trim_space() }
-			'to_lower' { receiver.to_lower() }
-			'to_upper' { receiver.to_upper() }
-			else { return none }
-		}
-		return ComptimeStringScalar{'string', value}
-	}
-	if args.len == 2 && method == 'replace' {
-		return ComptimeStringScalar{'string', receiver.replace(args[0], args[1])}
-	}
-	if args.len != 1 {
-		return none
-	}
-	arg := args[0]
-	if method in ['starts_with', 'ends_with', 'contains'] {
-		value := match method {
-			'starts_with' { receiver.starts_with(arg) }
-			'ends_with' { receiver.ends_with(arg) }
-			else { receiver.contains(arg) }
-		}
-		return ComptimeStringScalar{'bool', value.str()}
-	}
-	if method == 'count' {
-		return ComptimeStringScalar{'int', receiver.count(arg).str()}
-	}
-	value := match method {
-		'all_before' { receiver.all_before(arg) }
-		'all_after' { receiver.all_after(arg) }
-		'all_before_last' { receiver.all_before_last(arg) }
-		'all_after_last' { receiver.all_after_last(arg) }
-		'trim' { receiver.trim(arg) }
-		'trim_left' { receiver.trim_left(arg) }
-		'trim_right' { receiver.trim_right(arg) }
-		'trim_string_left' { receiver.trim_string_left(arg) }
-		'trim_string_right' { receiver.trim_string_right(arg) }
-		else { return none }
-	}
-	return ComptimeStringScalar{'string', value}
+	value := util.comptime_string_scalar(receiver, method, args)?
+	return ComptimeStringScalar{value.typ, value.value}
 }
 
 // comptime_cond_string_member folds literal string method chains to literal condition text.
@@ -5796,12 +5786,46 @@ fn comptime_cond_string_member(expr string) ?string {
 		return none
 	}
 	receiver_end := comptime_cond_skip_string(clean, 0)
-	if receiver_end >= clean.len || clean[receiver_end] != `.` {
+	if receiver_end >= clean.len || clean[receiver_end] !in [`.`, `[`] {
 		return none
 	}
 	mut receiver := comptime_unquote(clean[..receiver_end])
 	mut rest := clean[receiver_end..].trim_space()
-	for rest.starts_with('.') {
+	for rest.len > 0 {
+		if rest.starts_with('[') {
+			end := rest.index_u8(`]`)
+			if end < 0 {
+				return none
+			}
+			bounds := rest[1..end].split('..')
+			if bounds.len != 2 {
+				return none
+			}
+			low_text := bounds[0].trim_space()
+			high_text := bounds[1].trim_space()
+			low := if low_text == '' {
+				0
+			} else {
+				util.comptime_string_bound(low_text) or { return none }
+			}
+			high := if high_text == '' {
+				receiver.len
+			} else {
+				util.comptime_string_bound(high_text) or { return none }
+			}
+			if low < 0 || high < low || high > receiver.len {
+				return none
+			}
+			receiver = receiver[low..high]
+			rest = rest[end + 1..].trim_space()
+			if rest.len == 0 {
+				return comptime_cond_string_literal(receiver)
+			}
+			continue
+		}
+		if !rest.starts_with('.') {
+			return none
+		}
 		member := rest[1..].trim_space()
 		if member == 'len' {
 			return receiver.len.str()
@@ -5818,7 +5842,8 @@ fn comptime_cond_string_member(expr string) ?string {
 		mut arg_text := member[paren + 1..end].trim_space()
 		for arg_text.len > 0 {
 			comma := comptime_condition_top_level_index(arg_text, ',')
-			arg := (if comma < 0 { arg_text } else { arg_text[..comma] }).trim_space()
+			raw_arg := (if comma < 0 { arg_text } else { arg_text[..comma] }).trim_space()
+			arg := comptime_cond_string_member(raw_arg) or { raw_arg }
 			if arg.len < 2 || arg[0] !in [`'`, `"`] || comptime_cond_skip_string(arg, 0) != arg.len {
 				return none
 			}
@@ -5846,27 +5871,6 @@ fn comptime_cond_string_member(expr string) ?string {
 		receiver = value.value
 	}
 	return none
-}
-
-fn comptime_list_contains(list_text string, needle string) bool {
-	clean := list_text.trim_space()
-	if !clean.starts_with('[') || !clean.ends_with(']') {
-		return false
-	}
-	mut rest := clean[1..clean.len - 1]
-	for {
-		// Split on top-level commas only; a literal can contain one (`'a,b'`).
-		comma := comptime_condition_top_level_index(rest, ',')
-		part := if comma >= 0 { rest[..comma] } else { rest }
-		if comptime_unquote(part.trim_space()) == needle {
-			return true
-		}
-		if comma < 0 {
-			return false
-		}
-		rest = rest[comma + 1..]
-	}
-	return false
 }
 
 fn comptime_is_int(s string) bool {
