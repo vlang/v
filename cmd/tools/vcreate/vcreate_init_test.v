@@ -2,12 +2,12 @@
 import os
 import v.vmod
 
-const vexe = os.quoted_path(@VEXE)
+const vexe = @VEXE
 // Expect has to be installed for the test.
-const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+const expect_exe = os.find_abs_path_of_executable('expect') or {
 	eprintln('skipping test, since expect is missing')
 	exit(0)
-})
+}
 // Directory that contains the Expect scripts used in the test.
 const expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vcreate', 'tests')
 const test_project_dir_name = 'test_project'

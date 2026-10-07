@@ -1214,10 +1214,16 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 	if allow_owner_substitution && owner_is_generic_app {
 		if owner_base.len > 0 {
 			params := t.generic_struct_param_names_for_base(owner_base)
+			// Arguments belong to the instantiation site, rather than the module
+			// declaring the generic field. Qualify them before owner substitution.
+			mut qualified_args := []string{cap: owner_args.len}
+			for arg in owner_args {
+				qualified_args << t.qualify_generic_arg_for_decl_module(arg, t.cur_module)
+			}
 			substituted := if params.len > 0 {
-				substitute_generic_type_text_with_params(typ, owner_args, params)
+				substitute_generic_type_text_with_params(typ, qualified_args, params)
 			} else {
-				substitute_generic_type_text(typ, owner_args)
+				substitute_generic_type_text(typ, qualified_args)
 			}
 			if substituted != typ {
 				return t.normalize_field_type_with_owner_substitution(substituted, owner_type, false)
@@ -1236,12 +1242,7 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 		}
 		mut normalized_args := []string{cap: args.len}
 		for arg in args {
-			mut normalized_arg := t.normalize_field_type_with_owner_substitution(arg, owner_type, allow_owner_substitution)
-			if field_base.contains('.') {
-				field_mod := field_base.all_before_last('.')
-				normalized_arg = strip_field_module_prefix_from_type(normalized_arg, field_mod)
-			}
-			normalized_args << normalized_arg
+			normalized_args << t.normalize_field_type_with_owner_substitution(arg, owner_type, allow_owner_substitution)
 		}
 		return t.normalize_type_alias('${field_base}[${normalized_args.join(', ')}]')
 	}

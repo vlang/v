@@ -1687,3 +1687,13 @@ fn test_thread_handle_array_append_does_not_clone_result_fields() {
 	assert results[0][0].values == ['first']
 	assert results[1][0].values == ['second']
 }
+
+fn test_builder_receiver_identity_includes_its_declaring_module() {
+	assert is_builder_type_name('strings.Builder', 'main')
+	assert is_builder_type_name('&strings.Builder', 'custom')
+	assert is_builder_type_name('Builder', 'strings')
+	assert is_builder_type_name('&Builder', 'strings')
+	assert !is_builder_type_name('Builder', 'main')
+	assert !is_builder_type_name('&Builder', 'custom')
+	assert !is_builder_type_name('custom.Builder', 'strings')
+}

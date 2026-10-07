@@ -4,10 +4,10 @@ import v.vmod
 
 const vroot = @VEXEROOT
 // Expect has to be installed for the test.
-const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+const expect_exe = os.find_abs_path_of_executable('expect') or {
 	eprintln('skipping test, since expect is missing')
 	exit(0)
-})
+}
 // Directory that contains the Expect scripts used in the test.
 const expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vcreate', 'tests')
 // Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
