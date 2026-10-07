@@ -10308,7 +10308,9 @@ fn (tc &TypeChecker) current_receiver_param_method_call_info(base_id flat.NodeId
 		return none
 	}
 	base := tc.a.nodes[int(base_id)]
-	if base.kind != .ident {
+	// Only the receiver parameter can use the enclosing method's receiver type.
+	// Other parameters may be distinct aliases of the same underlying type.
+	if base.kind != .ident || !tc.current_fn_param_is_receiver(base.value) {
 		return none
 	}
 	fn_node := tc.a.nodes[tc.fn_context.node_id]
