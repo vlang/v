@@ -62,7 +62,9 @@ pub fn x_value() u32 {
 }
 ')!
 	os.write_file(os.join_path(root, 'outer', 'outer_test.v'), 'module outer
+import os
 fn test_value() {
+	assert os.real_path(os.getenv("VMODULES")) == os.real_path(os.dir(@DIR))
 	assert value() == 7
 	assert x_value() == 6
 }
@@ -98,17 +100,19 @@ pub fn z_of_new_point(z i32) i32 {
 	return point.z
 }
 ')!
-	// The synthetic modules are found through VMODULES. Set it in this process
-	// rather than through `env VMODULES=...`, which is not on the PATH on Windows.
-	old_vmodules := os.getenv_opt('VMODULES')
-	os.setenv('VMODULES', root, true)
-	defer {
-		if value := old_vmodules {
-			os.setenv('VMODULES', value, true)
-		} else {
-			os.unsetenv('VMODULES')
-		}
-	}
-	result := os.exec([@VEXE, '-new-compiler', 'test', os.join_path(root, 'outer', 'outer_test.v')])
-	assert result.exit_code == 0, result.output
+	// Keep synthetic module paths in the child environment.
+	parent_vmodules := os.getenv_opt('VMODULES')
+	mut process := os.new_process(@VEXE)
+	defer { process.close() }
+	process.set_args(['-new-compiler', '-no-retry-compilation', 'test',
+		os.join_path(root, 'outer', 'outer_test.v')])
+	mut environment := os.environ()
+	environment['VMODULES'] = root
+	process.set_environment(environment)
+	process.set_redirect_stdio_merged()
+	process.run()
+	output := process.stdout_slurp()
+	process.wait()
+	assert process.code == 0, '${process.err}\n${output}'
+	assert os.getenv_opt('VMODULES') == parent_vmodules
 }

@@ -122,6 +122,8 @@ mut:
 	comptime_for_vars            []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
 	comptime_method_var          string   // innermost active `$for method in Type.methods` loop variable
 	comptime_const_values        map[string]string
+	comptime_string_consts       map[string]bool
+	comptime_string_imports      map[string]string
 	comptime_local_values        map[string]string
 	imported_module_names        map[string]bool // import aliases in the current file; not captured by inlined template closures
 	named_variant_import_types   map[string]bool
@@ -1871,6 +1873,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 			pnode := p.a.nodes[int(pid)]
 			if pnode.kind == .param {
 				p.declare_local_binding(pnode.value)
+				p.forget_comptime_local_value(pnode.value)
 			}
 		}
 		if disable_body {
@@ -1933,6 +1936,11 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, interop_prefix string, name_pos int) flat.NodeId {
 	is_c_decl := interop_prefix.len > 0
 	is_static_type_method := is_method && receiver_name.len == 0 && !is_c_decl
+	if !p.prefs.is_fmt && !is_c_decl && !is_method && p.cur_module in ['', 'main']
+		&& name in ['dump', 'sizeof', 'typeof', 'isreftype'] {
+		p.record_diagnostic_span('cannot redefine builtin function `${name}`', name_pos,
+			name_pos + name.len)
+	}
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	// Capture & clear here so it applies only to this function (not nested closures
@@ -2104,6 +2112,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		pnode := p.a.nodes[int(pid)]
 		if pnode.kind == .param {
 			p.declare_local_binding(pnode.value)
+			p.forget_comptime_local_value(pnode.value)
 		}
 	}
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
@@ -3207,6 +3216,7 @@ fn (mut p Parser) const_decl() flat.NodeId {
 				} else {
 					p.expr(.lowest)
 				}
+				p.comptime_string_consts[comptime_const_value_key(p.cur_module, full_name)] = true
 				if value := p.comptime_node_value(val_id) {
 					p.comptime_const_values[comptime_const_value_key(p.cur_module, full_name)] = value
 				}
@@ -4599,7 +4609,9 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 fn (mut p Parser) record_unknown_bare_comptime_flag(cond string, cond_start int) {
 	name := cond.trim_space()
 	if name.len == 0 || name.ends_with('?') || name in ['true', 'false']
-		|| p.known_bare_comptime_flag(name) {
+		|| p.known_bare_comptime_flag(name) || p.is_local_binding(name)
+		|| p.comptime_value(name) != none
+		|| p.comptime_string_consts[comptime_const_value_key(p.cur_module, name)] {
 		return
 	}
 	for c in name {
@@ -4810,19 +4822,27 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 			dollar_pos + 1)
 		invalid_expr = true
 	}
-	mut kind_start := p.tok_pos
-	mut segs := [p.expect_name()]
-	for p.tok == .dot {
-		p.next()
-		kind_start = p.tok_pos
-		segs << p.expect_name()
+	source_id := p.control_header_expr(.lowest)
+	source := p.a.nodes[int(source_id)]
+	is_string_source := source.kind == .call
+	mut kind := 'fields'
+	mut base := p.type_expr_name(source_id)
+	if is_string_source {
+		kind = 'strings'
+		base = ''
+	} else if source.kind == .selector && source.children_count == 1 {
+		kind = source.value
+		base = p.type_expr_name(p.a.child(&source, 0))
+		if kind !in ['methods', 'fields', 'values', 'variants', 'attributes', 'params']
+			&& !p.prefs.is_fmt {
+			p.record_diagnostic_span('unknown kind `${kind}`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`',
+				source.pos.end - kind.len, source.pos.end)
+		}
 	}
-	kind := if segs.len > 1 { segs.last() } else { 'fields' }
-	base := if segs.len > 1 { segs[..segs.len - 1].join('.') } else { segs.last() }
-	if segs.len > 1 && kind !in ['methods', 'fields', 'values', 'variants', 'attributes', 'params']
-		&& !p.prefs.is_fmt {
-		p.record_diagnostic_span('unknown kind `${kind}`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`',
-			kind_start, kind_start + kind.len)
+	if !is_string_source {
+		// Metadata headers are stored as text; orphan selectors can otherwise
+		// look like unresolved method values to whole-AST runtime helper scans.
+		p.discard_comptime_branch(source_id)
 	}
 	if invalid_expr {
 		p.skip_block()
@@ -4833,19 +4853,23 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 	if kind == 'methods' {
 		p.comptime_method_var = val_var
 	}
+	p.begin_comptime_value_scope()
 	p.begin_local_binding_scope()
 	p.declare_local_binding(val_var)
+	p.forget_comptime_local_value(val_var)
 	body := p.block_stmt()
 	p.end_local_binding_scope()
+	p.end_comptime_value_scope()
 	p.comptime_method_var = previous_method_var
 	p.comptime_for_vars.pop()
-	start := p.add_children([body])
+	children := if is_string_source { [body, source_id] } else { [body] }
+	start := p.add_children(children)
 	return p.add_node(flat.Node{
 		kind:           .comptime_for
 		value:          '${val_var}|${kind}'
 		typ:            base
 		children_start: start
-		children_count: 1
+		children_count: flat.child_count(children.len)
 		pos:            p.span_to(dollar_start)
 	})
 }
@@ -4927,12 +4951,17 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 		return if taken { then_block } else { else_block }
 	}
 	if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
-		|| comptime_cond_has_builtin_threads(cond) {
+		|| comptime_cond_has_builtin_threads(cond)
+		|| p.comptime_cond_references_unresolved_local(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
 		if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
-			|| comptime_cond_has_builtin_threads(cond) {
+			|| comptime_cond_has_builtin_threads(cond)
+			|| p.comptime_cond_references_unresolved_local(cond) {
+			saved_values := p.comptime_const_values.clone()
 			then_block := p.top_level_block_stmt()
+			p.defer_comptime_branch_constants(saved_values)
 			else_block := p.parse_top_level_comptime_else()
+			p.defer_comptime_branch_constants(saved_values)
 			return p.comptime_if_node(cond, then_block, else_block)
 		}
 	}
@@ -4944,6 +4973,14 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	}
 	p.skip_comptime_block()
 	return p.parse_top_level_comptime_else()
+}
+
+// Values declared in an undecided branch must not decide later conditions during parsing.
+fn (mut p Parser) defer_comptime_branch_constants(previous map[string]string) {
+	for key, value in p.comptime_const_values {
+		if previous[key] != value { p.comptime_string_consts[key] = true }
+	}
+	p.comptime_const_values = previous.clone()
 }
 
 // parse_comptime_match desugars `$match subj { pat1 { ... } pat2, pat3 { ... } $else { ... } }`
@@ -4989,6 +5026,11 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 		subject_is_unresolved_local.str(),
 	]
 	mut else_block := flat.empty_node
+	previous_values := if is_top_level {
+		p.comptime_const_values.clone()
+	} else {
+		map[string]string{}
+	}
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -5006,6 +5048,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 			} else {
 				p.block_stmt()
 			}
+			if is_top_level { p.defer_comptime_branch_constants(previous_values) }
 			continue
 		}
 		pattern_start := p.tok_pos
@@ -5033,6 +5076,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 		} else {
 			p.block_stmt()
 		}
+		if is_top_level { p.defer_comptime_branch_constants(previous_values) }
 	}
 	p.check(.rcbr)
 	match_kind := if branch_patterns.len > 0 && branch_patterns[0].len > 0 {
@@ -5604,6 +5648,9 @@ fn (p &Parser) comptime_cond_token_text() string {
 	if tok == .dot {
 		return '.'
 	}
+	if tok == .dotdot {
+		return '..'
+	}
 	if tok == .comma {
 		return ','
 	}
@@ -5645,10 +5692,10 @@ fn comptime_cond_needs_space(prev string, cur string) bool {
 	if prev == '?' || prev == '!' || prev == '&' {
 		return false
 	}
-	if cur == '?' || cur == ']' || cur == '[' || cur == '.' || cur == ',' {
+	if cur == '?' || cur == ']' || cur == '[' || cur == '.' || cur == '..' || cur == ',' {
 		return false
 	}
-	if prev == '\$' || prev == '[' || prev == ']' || prev == '.' {
+	if prev == '\$' || prev == '[' || prev == ']' || prev == '.' || prev == '..' {
 		return false
 	}
 	return true
@@ -5753,6 +5800,9 @@ fn (p &Parser) comptime_cond_needs_loop_var(cond string) bool {
 }
 
 fn (p &Parser) comptime_cond_references_unresolved_local(cond string) bool {
+	if comptime_cond_has_string_operation(cond) {
+		return true
+	}
 	mut i := 0
 	mut quote := u8(0)
 	for i < cond.len {
@@ -5779,7 +5829,9 @@ fn (p &Parser) comptime_cond_references_unresolved_local(cond string) bool {
 				i++
 			}
 			name := cond[start..i]
-			if p.is_local_binding(name) && p.comptime_value(name) == none {
+			if (p.is_local_binding(name)
+				|| p.comptime_string_consts[comptime_const_value_key(p.cur_module, name)])
+				&& p.comptime_value(name) == none {
 				return true
 			}
 			continue
@@ -5973,10 +6025,8 @@ fn (p &Parser) comptime_subtree_is_directives_only(id flat.NodeId) bool {
 	}
 }
 
-// discard_comptime_branch empties the branch a host-resolved top-level `$if` did
-// not take. Both branches were parsed to find out whether they only held
-// directives, and a stage that scans every AST node instead of walking the file
-// index would otherwise still find the declarations in the unused one.
+// discard_comptime_branch empties a parsed subtree that is no longer retained.
+// Whole-AST scans would otherwise still find discarded declarations or headers.
 fn (mut p Parser) discard_comptime_branch(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
@@ -6675,7 +6725,8 @@ fn (p &Parser) resolve_comptime_const_values(cond string) string {
 			return p.resolve_comptime_cached_values_mode(clean, true, true)
 		}
 	}
-	return p.resolve_comptime_cached_values(clean, true)
+	resolved := p.resolve_comptime_cached_values(clean, true)
+	return p.fold_comptime_string_condition(resolved) or { resolved }
 }
 
 fn (p &Parser) resolve_comptime_cached_values(cond string, preserve_flags bool) string {
@@ -6767,6 +6818,9 @@ fn (p &Parser) comptime_value(name string) ?string {
 	if value := p.comptime_local_values[name] {
 		return value
 	}
+	if p.is_local_binding(name) {
+		return none
+	}
 	if value := p.comptime_const_values[comptime_const_value_key(p.cur_module, name)] {
 		return value
 	}
@@ -6783,7 +6837,12 @@ fn comptime_const_value_key(module_name string, name string) string {
 }
 
 fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {
-	if int(id) < 0 || int(id) >= p.a.nodes.len {
+	return p.comptime_node_value_depth(id, 0)
+}
+
+fn (p &Parser) comptime_node_value_depth(id flat.NodeId, depth int) ?string {
+	// Static-value probing must preserve parser recovery for oversized expressions.
+	if depth > max_assignment_expr_depth || int(id) < 0 || int(id) >= p.a.nodes.len {
 		return none
 	}
 	node := p.a.nodes[int(id)]
@@ -6795,26 +6854,35 @@ fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {
 			'`${node.value}`'
 		}
 		.string_literal {
-			comptime_cond_quoted_string(node.value)
+			if node.children_count == 0 { comptime_cond_quoted_string(node.value) } else { none }
 		}
 		.ident {
 			p.comptime_value(node.value)
 		}
 		.selector {
-			p.comptime_selector_value(node)
+			p.comptime_selector_value(node, depth)
 		}
 		.paren {
 			if node.children_count == 1 {
-				p.comptime_node_value(p.a.children[int(node.children_start)])
+				p.comptime_node_value_depth(p.a.children[int(node.children_start)], depth + 1)
 			} else {
 				none
 			}
 		}
 		.infix {
-			p.comptime_infix_value(node)
+			p.comptime_infix_value(node, depth)
 		}
 		.call {
-			p.comptime_join_path_value(node)
+			p.comptime_call_value(node, depth)
+		}
+		.index {
+			p.comptime_string_slice_value(node, depth)
+		}
+		.in_expr {
+			p.comptime_string_in_value(node, depth)
+		}
+		.prefix {
+			p.comptime_bool_not_value(node, depth)
 		}
 		else {
 			none
@@ -6822,11 +6890,22 @@ fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {
 	}
 }
 
-fn (p &Parser) comptime_selector_value(node flat.Node) ?string {
+fn (p &Parser) comptime_selector_value(node flat.Node, depth int) ?string {
 	if node.children_count != 1 {
 		return none
 	}
 	base := p.a.child_node(&node, 0)
+	if node.value == 'len' {
+		value := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
+		if comptime_value_is_string(value) { return comptime_cond_value(value).len.str() }
+	}
+	if base.kind == .ident {
+		if p.is_local_binding(base.value) { return none }
+		module_name := p.comptime_string_imports[base.value] or { base.value }
+		if value := p.comptime_const_values[comptime_const_value_key(module_name, node.value)] {
+			return value
+		}
+	}
 	if base.kind == .ident && base.value == 'os' {
 		return match node.value {
 			'path_separator' { comptime_cond_quoted_string(os.path_separator) }
@@ -6837,21 +6916,156 @@ fn (p &Parser) comptime_selector_value(node flat.Node) ?string {
 	return none
 }
 
-// comptime_infix_value evaluates a compile-time `a + b` string concatenation so
-// composed `const`/local path values (`const p = dir + '/' + file`) resolve like v1.
-fn (p &Parser) comptime_infix_value(node flat.Node) ?string {
-	if node.op != .plus || node.children_count != 2 {
-		return none
+fn (p &Parser) comptime_call_value(node flat.Node, depth int) ?string {
+	if value := p.comptime_string_call_value(node, depth) { return value }
+	return p.comptime_join_path_value(node, depth)
+}
+
+fn (p &Parser) comptime_bool_not_value(node flat.Node, depth int) ?string {
+	if node.op != .not || node.children_count != 1 { return none }
+	value := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
+	if value !in ['true', 'false'] { return none }
+	return (value == 'false').str()
+}
+
+fn (p &Parser) comptime_string_in_value(node flat.Node, depth int) ?string {
+	if node.children_count != 2 { return none }
+	needle := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
+	if !comptime_value_is_string(needle) { return none }
+	right := p.a.child_node(&node, 1)
+	if right.kind == .array_literal {
+		mut found := false
+		for child in p.a.children_of(right) {
+			value := p.comptime_node_value_depth(child, depth + 1)?
+			if !comptime_value_is_string(value) { return none }
+			found = found || comptime_cond_value(value) == comptime_cond_value(needle)
+		}
+		return found.str()
 	}
-	left := p.comptime_node_value(p.a.children[int(node.children_start)])?
-	right := p.comptime_node_value(p.a.children[int(node.children_start) + 1])?
-	return comptime_cond_quoted_string(comptime_cond_value(left) + comptime_cond_value(right))
+	value := p.comptime_node_value_depth(p.a.child(&node, 1), depth + 1)?
+	if !comptime_value_is_string(value) { return none }
+	return comptime_cond_value(value).contains(comptime_cond_value(needle)).str()
+}
+
+fn comptime_value_is_string(value string) bool {
+	return value.len >= 2 && value[0] in [`'`, `"`] && value[value.len - 1] == value[0]
+}
+
+// comptime_infix_value evaluates operations with proven literal operands.
+fn (p &Parser) comptime_infix_value(node flat.Node, depth int) ?string {
+	if node.children_count != 2 { return none }
+	left := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
+	right := p.comptime_node_value_depth(p.a.child(&node, 1), depth + 1)?
+	if node.op == .plus {
+		return comptime_cond_quoted_string(comptime_cond_value(left) + comptime_cond_value(right))
+	}
+	if node.op in [.logical_and, .logical_or] {
+		if left !in ['true', 'false'] || right !in ['true', 'false'] { return none }
+		return if node.op == .logical_and {
+			(left == 'true' && right == 'true').str()
+		} else {
+			(left == 'true' || right == 'true').str()
+		}
+	}
+	if comptime_value_is_string(left) && comptime_value_is_string(right) {
+		a := comptime_cond_value(left)
+		b := comptime_cond_value(right)
+		return match node.op {
+			.eq { (a == b).str() }
+			.ne { (a != b).str() }
+			.lt { (a < b).str() }
+			.le { (a <= b).str() }
+			.gt { (a > b).str() }
+			.ge { (a >= b).str() }
+			else { none }
+		}
+	}
+	if left in ['true', 'false'] && right in ['true', 'false'] {
+		return match node.op {
+			.eq { (left == right).str() }
+			.ne { (left != right).str() }
+			else { none }
+		}
+	}
+	a := strconv.parse_int(left, 0, 64) or { return none }
+	b := strconv.parse_int(right, 0, 64) or { return none }
+	return match node.op {
+		.eq { (a == b).str() }
+		.ne { (a != b).str() }
+		.lt { (a < b).str() }
+		.le { (a <= b).str() }
+		.gt { (a > b).str() }
+		.ge { (a >= b).str() }
+		else { none }
+	}
+}
+
+fn (p &Parser) comptime_string_call_value(node flat.Node, depth int) ?string {
+	if node.children_count == 0 { return none }
+	callee := p.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count != 1 { return none }
+	receiver := p.comptime_node_value_depth(p.a.child(callee, 0), depth + 1)?
+	if !comptime_value_is_string(receiver) { return none }
+	mut args := []string{}
+	for i in 1 .. node.children_count {
+		arg := p.comptime_node_value_depth(p.a.child(&node, i), depth + 1)?
+		if !comptime_value_is_string(arg) { return none }
+		args << comptime_cond_value(arg)
+	}
+	result := util.comptime_string_scalar(comptime_cond_value(receiver), callee.value, args)?
+	return if result.typ == 'string' {
+		comptime_cond_quoted_string(result.value)
+	} else {
+		result.value
+	}
+}
+
+fn (p &Parser) comptime_string_slice_value(node flat.Node, depth int) ?string {
+	if node.value != 'range' || node.children_count !in [2, 3] { return none }
+	base := p.comptime_node_value_depth(p.a.child(&node, 0), depth + 1)?
+	if !comptime_value_is_string(base) { return none }
+	value := comptime_cond_value(base)
+	low := p.comptime_node_value_depth(p.a.child(&node, 1), depth + 1)?
+	start := util.comptime_string_bound(low)?
+	mut high := value.len
+	if node.children_count == 3 {
+		bound := p.comptime_node_value_depth(p.a.child(&node, 2), depth + 1)?
+		high = util.comptime_string_bound(bound)?
+	}
+	if start < 0 || high < start || high > value.len { return none }
+	return comptime_cond_quoted_string(value[int(start)..high])
+}
+
+// Fold known string conditions before collecting declarations in their selected branch.
+// Unknown operands stay deferred; the probe neither executes calls nor mutates the source AST.
+fn (p &Parser) fold_comptime_string_condition(cond string) ?string {
+	if !comptime_cond_has_string_operation(cond) { return none }
+	return p.comptime_scalar_condition_literal(cond)
+}
+
+fn (p &Parser) comptime_scalar_condition_literal(cond string) ?string {
+	mut probe := Parser.new(p.prefs)
+	probe.cur_module = p.cur_module
+	probe.comptime_const_values = p.comptime_const_values.clone()
+	probe.comptime_local_values = p.comptime_local_values.clone()
+	probe.local_binding_counts = p.local_binding_counts.clone()
+	probe.comptime_string_imports = p.comptime_string_imports.clone()
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('<comptime string condition>', cond.len)
+	file.index_line_starts(cond)
+	probe.a.source_buffers << cond
+	probe.s.init(file, cond)
+	probe.next()
+	id := probe.expr(.lowest)
+	if probe.diagnostics.len > 0 || probe.tok !in [.eof, .semicolon] { return none }
+	value := probe.comptime_node_value(id)?
+	return if value in ['true', 'false'] { value } else { none }
 }
 
 // comptime_join_path_value evaluates a compile-time `os.join_path(...)` /
 // `os.join_path_single(...)` call so composed path constants using them resolve like
 // v1's template path resolver. Returns none for any other call or non-const argument.
-fn (p &Parser) comptime_join_path_value(node flat.Node) ?string {
+fn (p &Parser) comptime_join_path_value(node flat.Node, depth int) ?string {
 	if node.children_count < 2 {
 		return none
 	}
@@ -6865,7 +7079,7 @@ fn (p &Parser) comptime_join_path_value(node flat.Node) ?string {
 	}
 	mut parts := []string{}
 	for i in 1 .. int(node.children_count) {
-		arg_value := p.comptime_node_value(p.a.children[int(node.children_start) + i])?
+		arg_value := p.comptime_node_value_depth(p.a.children[int(node.children_start) + i], depth + 1)?
 		parts << comptime_cond_value(arg_value)
 	}
 	if parts.len == 0 {
@@ -8275,10 +8489,14 @@ fn (mut p Parser) parse_comptime_if_expr_after_if(dollar_start int) flat.NodeId 
 	// Whether `threads` is enabled depends on spawn expressions in the completed AST,
 	// so expression branches must be retained for the checker/transformer to select.
 	if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
-		|| comptime_cond_has_builtin_threads(cond) {
+		|| comptime_cond_has_builtin_threads(cond)
+		|| p.comptime_cond_needs_loop_var(cond)
+		|| p.comptime_cond_references_unresolved_local(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
 		if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
-			|| comptime_cond_has_builtin_threads(cond) {
+			|| comptime_cond_has_builtin_threads(cond)
+			|| p.comptime_cond_needs_loop_var(cond)
+			|| p.comptime_cond_references_unresolved_local(cond) {
 			then_expr := p.parse_comptime_expr_block()
 			else_expr := p.parse_comptime_else_expr()
 			return p.comptime_if_node_at(cond, then_expr, else_expr, dollar_start)
@@ -13712,10 +13930,12 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		}
 	}
 	p.check(.pipe)
+	p.begin_comptime_value_scope()
 	p.begin_local_binding_scope()
 	for param_id in lambda_params {
 		name := p.a.nodes[int(param_id)].value
 		p.declare_local_binding(name)
+		p.forget_comptime_local_value(name)
 		p.active_lambda_param_counts[name] = (p.active_lambda_param_counts[name] or { 0 }) + 1
 	}
 	lambda_body := p.lambda_body_expr()
@@ -13729,6 +13949,7 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		}
 	}
 	p.end_local_binding_scope()
+	p.end_comptime_value_scope()
 	mut ids := lambda_params.clone()
 	ids << lambda_body
 	lstart := p.add_children(ids)
@@ -15143,6 +15364,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 			pnode := p.a.nodes[int(pid)]
 			if pnode.kind == .param {
 				p.declare_local_binding(pnode.value)
+				p.forget_comptime_local_value(pnode.value)
 			}
 		}
 		// The explicit `[captures]` are in scope in the closure body just like parameters,
@@ -18177,4 +18399,221 @@ fn overload_token_name(tok token.Token) string {
 		return tok.str()
 	}
 	return ''
+}
+
+fn comptime_cond_has_string_operation(cond string) bool {
+	for op in [' !in', ' in'] {
+		_, _, has_op := comptime_cond_split_top_level(cond, op)
+		if has_op { return true }
+	}
+	// Bare names defer through lexical/constant lookup; unknown names keep flag semantics.
+	for op in ['==', '!='] {
+		left, right, has_op := comptime_cond_split_top_level(cond, op)
+		if has_op {
+			l := comptime_cond_strip_outer_parens(left.trim_space())
+			r := comptime_cond_strip_outer_parens(right.trim_space())
+			if l.len > 0 && r.len > 0
+				&& ((l[0].is_letter() && l.contains('.') && r[0] in [`\'`, `"`])
+					|| (r[0].is_letter() && r.contains('.') && l[0] in [`\'`, `"`])) {
+				return true
+			}
+		}
+	}
+	mut i := 0
+	for i < cond.len {
+		if cond[i] in [`\'`, `"`, `\``] {
+			quote := cond[i]
+			i++
+			for i < cond.len {
+				if cond[i] == `\\` {
+					i += 2
+				} else if cond[i] == quote {
+					i++
+					break
+				} else {
+					i++
+				}
+			}
+			continue
+		}
+		if cond[i] == `[` && cond[i..].contains('..') {
+			return true
+		}
+		if cond[i] == `.` && i + 1 < cond.len && cond[i + 1].is_letter() {
+			start := i + 1
+			i = start
+			for i < cond.len && (cond[i].is_letter() || cond[i] == `_`) {
+				i++
+			}
+			name := cond[start..i]
+			for i < cond.len && cond[i].is_space() {
+				i++
+			}
+			if name == 'len' || (i < cond.len && cond[i] == `(`)
+				|| (start > 1 && cond[..start - 1].trim_space().bytes().all(it.is_letter() || it.is_digit() || it == `_`) && i == cond.len) {
+				return true
+			}
+			continue
+		}
+		i++
+	}
+	return false
+}
+
+// resolve_comptime_string_declarations resolves static declaration guards once imported constants are parsed.
+// It runs before declaration collection and does not fold unknown values or function-local bindings.
+// It returns imports whose scalar guards still need a dependency's constants.
+pub fn (mut p Parser) resolve_comptime_string_declarations() map[int]bool {
+	if p.prefs.is_fmt || p.prefs.preserve_comptime_conditionals { return map[int]bool{} }
+	saved_module := p.cur_module
+	saved_file := p.cur_file
+	saved_locals := p.comptime_local_values
+	saved_bindings := p.local_binding_counts
+	saved_imports := p.comptime_string_imports
+	defer {
+		p.cur_module = saved_module
+		p.cur_file = saved_file
+		p.comptime_local_values = saved_locals
+		p.local_binding_counts = saved_bindings
+		p.comptime_string_imports = saved_imports
+	}
+	p.comptime_local_values = map[string]string{}
+	p.local_binding_counts = map[string]int{}
+	// Files are parsed before their imports. Revisit consumers when a dependency
+	// publishes a constant from a newly selected declaration branch.
+	for {
+		mut changed := false
+		for node in p.a.nodes {
+			if node.kind != .file || node.children_count == 0 { continue }
+			p.cur_file = node.value
+			p.cur_module = 'main'
+			p.comptime_string_imports = map[string]string{}
+			for child in p.a.children_of(&node) {
+				decl := p.a.nodes[int(child)]
+				if decl.kind == .module_decl { p.cur_module = decl.value }
+				p.collect_comptime_string_import_aliases(child)
+			}
+			for child in p.a.children_of(&node) {
+				values_changed, guards_changed := p.resolve_comptime_string_declaration(child)
+				changed = changed || values_changed || guards_changed
+			}
+		}
+		if !changed { break }
+	}
+	mut deferred_imports := map[int]bool{}
+	for node in p.a.nodes {
+		if node.kind != .file || node.children_count == 0 { continue }
+		for child in p.a.children_of(&node) {
+			p.collect_deferred_comptime_string_imports(child, mut deferred_imports)
+		}
+	}
+	return deferred_imports
+}
+
+fn (mut p Parser) collect_comptime_string_import_aliases(id flat.NodeId) {
+	if int(id) < 0 { return }
+	node := p.a.nodes[int(id)]
+	if node.kind == .import_decl {
+		alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
+		p.comptime_string_imports[alias] = node.value
+	} else if node.kind == .block {
+		for child in p.a.children_of(&node) {
+			p.collect_comptime_string_import_aliases(child)
+		}
+	}
+}
+
+fn (p &Parser) collect_deferred_comptime_string_imports(id flat.NodeId, mut imports map[int]bool) {
+	if int(id) < 0 { return }
+	node := p.a.nodes[int(id)]
+	if node.kind == .comptime_if && !comptime_cond_has_type_test(node.value)
+		&& !comptime_cond_has_type_metadata(node.value)
+		&& !comptime_cond_has_builtin_threads(node.value) {
+		p.collect_comptime_branch_imports(id, mut imports)
+	} else if node.kind in [.block, .comptime_if] {
+		for child in p.a.children_of(&node) {
+			p.collect_deferred_comptime_string_imports(child, mut imports)
+		}
+	}
+}
+
+fn (p &Parser) collect_comptime_branch_imports(id flat.NodeId, mut imports map[int]bool) {
+	if int(id) < 0 { return }
+	node := p.a.nodes[int(id)]
+	if node.kind == .import_decl {
+		imports[int(id)] = true
+	} else if node.kind in [.comptime_if, .block] {
+		for child in p.a.children_of(&node) {
+			p.collect_comptime_branch_imports(child, mut imports)
+		}
+	}
+}
+
+fn (mut p Parser) resolve_comptime_string_declaration(id flat.NodeId) (bool, bool) {
+	if int(id) < 0 { return false, false }
+	mut values_changed := false
+	mut guards_changed := false
+	mut node := p.a.nodes[int(id)]
+	if node.kind == .const_decl {
+		for child in p.a.children_of(&node) {
+			field := p.a.nodes[int(child)]
+			if field.kind == .const_field && field.children_count > 0 {
+				if value := p.comptime_node_value(p.a.child(&field, 0)) {
+					key := comptime_const_value_key(p.cur_module, field.value)
+					if key !in p.comptime_const_values { values_changed = true }
+					p.comptime_const_values[key] = value
+				}
+			}
+		}
+	}
+	if node.kind == .comptime_if {
+		condition := p.resolve_comptime_const_values(node.value)
+		if resolved := p.comptime_scalar_condition_literal(condition) {
+			active := if resolved == 'true' { 0 } else { 1 }
+			for i in 0 .. node.children_count {
+				if i != active { p.discard_comptime_branch(p.a.child(&node, i)) }
+			}
+			node = if active < node.children_count {
+				*p.a.child_node(&node, active)
+			} else {
+				flat.Node{}
+			}
+			p.a.nodes[int(id)] = node
+			guards_changed = true
+		} else {
+			// Retained type/reflection/thread guards still contain scalar guards.
+			// Resolve each branch in its own constant/import scope so undecided
+			// declarations cannot publish values into the surrounding file.
+			for child in p.a.children_of(&node) {
+				if p.resolve_comptime_string_declaration_scope(child) { guards_changed = true }
+			}
+		}
+	}
+	if node.kind == .block {
+		for child in p.a.children_of(&node) {
+			child_values_changed, child_guards_changed := p.resolve_comptime_string_declaration(child)
+			values_changed = values_changed || child_values_changed
+			guards_changed = guards_changed || child_guards_changed
+		}
+	}
+	return values_changed, guards_changed
+}
+
+fn (mut p Parser) resolve_comptime_string_declaration_scope(id flat.NodeId) bool {
+	saved_values := p.comptime_const_values
+	saved_imports := p.comptime_string_imports
+	p.comptime_const_values = saved_values.clone()
+	p.comptime_string_imports = saved_imports.clone()
+	defer {
+		p.comptime_const_values = saved_values
+		p.comptime_string_imports = saved_imports
+	}
+	mut changed := false
+	for {
+		p.collect_comptime_string_import_aliases(id)
+		values_changed, guards_changed := p.resolve_comptime_string_declaration(id)
+		changed = changed || guards_changed
+		if !values_changed && !guards_changed { break }
+	}
+	return changed
 }

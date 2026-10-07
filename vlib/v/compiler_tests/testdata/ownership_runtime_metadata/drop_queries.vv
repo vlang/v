@@ -1,0 +1,121 @@
+module types
+
+import v.flat
+
+fn test_ownership_drop_queries_do_not_cache_cycle_truncated_children() {
+	$if ownership ? {
+		a := flat.FlatAst.new()
+		mut tc := TypeChecker.new(&a)
+		mut state := tc.ownership_state()
+		state.drop_structs['Droppable'] = true
+		tc.structs['Droppable'] = []StructField{}
+		tc.structs['First'] = [
+			StructField{ name: 'second', typ: Struct{ name: 'Second' } },
+			StructField{ name: 'payload', typ: Struct{ name: 'Droppable' } },
+		]
+		tc.structs['Second'] = [StructField{ name: 'first', typ: Struct{ name: 'First' } }]
+		// Second first sees its ancestor First, before First visits its Drop field.
+		// The completed Second query must still find that field on its own root walk.
+		assert tc.ownership_type_requires_drop(Struct{ name: 'First' })
+		assert tc.ownership_type_requires_drop(Struct{ name: 'Second' })
+		tc.structs['PureFirst'] = [StructField{ name: 'second', typ: Struct{ name: 'PureSecond' } }]
+		tc.structs['PureSecond'] = [StructField{ name: 'first', typ: Struct{ name: 'PureFirst' } }]
+		assert !tc.ownership_type_requires_drop(Struct{ name: 'PureFirst' })
+		cached := state.drop_requirements.len
+		for _ in 0 .. 100 {
+			assert !tc.ownership_type_requires_drop(Struct{ name: 'PureFirst' })
+		}
+		assert state.drop_requirements.len == cached
+	}
+}
+
+fn test_ownership_drop_queries_distinguish_type_variants_and_generic_contexts() {
+	$if ownership ? {
+		a := flat.FlatAst.new()
+		mut tc := TypeChecker.new(&a)
+		mut state := tc.ownership_state()
+		state.drop_structs['Droppable'] = true
+		tc.structs['Droppable'] = []StructField{}
+		tc.structs['Shape'] = []StructField{}
+		assert !tc.ownership_type_requires_drop(Struct{ name: 'Shape' })
+		assert tc.ownership_type_requires_drop(Alias{
+			name:      'Shape'
+			base_type: Struct{ name: 'Droppable' }
+		})
+		cached := state.drop_requirements.len
+		tc.fn_context.generic_params = ['T']
+		assert !tc.ownership_type_requires_drop(Alias{
+			name:      'T'
+			base_type: Struct{ name: 'Shape' }
+		})
+		assert tc.ownership_type_requires_drop(Alias{
+			name:      'T'
+			base_type: Struct{ name: 'Droppable' }
+		})
+		assert state.drop_requirements.len == cached
+	}
+}
+
+fn test_ownership_drop_queries_are_invalidated_after_collection() {
+	$if ownership ? {
+		a := flat.FlatAst.new()
+		mut tc := TypeChecker.new(&a)
+		tc.ownership_state()
+		tc.structs['Collected'] = []StructField{}
+		assert !tc.ownership_type_requires_drop(Struct{ name: 'Collected' })
+		// A later collection pass discovers an implementation for the same type.
+		tc.struct_implements['Collected'] = ['Drop']
+		tc.ownership_after_collect()
+		assert tc.ownership_type_requires_drop(Struct{ name: 'Collected' })
+	}
+}
+
+fn test_ownership_drop_queries_are_private_to_the_function_and_worker() {
+	$if ownership ?&& prealloc {
+		mut a := flat.FlatAst.new()
+		fn_id := a.add_val(.fn_decl, 'next_function')
+		mut tc := TypeChecker.new(&a)
+		mut state := tc.ownership_state()
+		tc.structs['Pure'] = []StructField{}
+		assert !tc.ownership_type_requires_drop(Struct{ name: 'Pure' })
+		assert state.drop_requirements.len > 0
+		tc.ownership_begin_fn(a.node(fn_id))
+		assert state.drop_requirements.len == 0
+		tc.ownership_end_fn()
+		assert !tc.ownership_type_requires_drop(Struct{ name: 'Pure' })
+		cached := state.drop_requirements.len
+		scope := unsafe { prealloc_scope_begin() }
+		mut worker := TypeChecker.new(&a)
+		worker.ownership_fork_for_parallel_check(&tc)
+		assert worker.ownership.drop_requirements.len == 0
+		worker.structs['WorkerPure'] = []StructField{}
+		assert !worker.ownership_type_requires_drop(Struct{ name: 'WorkerPure' })
+		assert worker.ownership.drop_requirements.len > 0
+		unsafe { prealloc_scope_leave(scope) }
+		tc.ownership_merge_parallel_check_worker(&worker)
+		assert state.drop_requirements.len == cached
+		unsafe { prealloc_scope_free_after(scope) }
+		assert !tc.ownership_type_requires_drop(Struct{ name: 'Pure' })
+	}
+}
+
+fn test_ownership_drop_name_collection_keeps_all_destructors() {
+	$if ownership ? {
+		a := flat.FlatAst.new()
+		mut tc := TypeChecker.new(&a)
+		mut state := tc.ownership_state()
+		for name in ['FirstDrop', 'SecondDrop'] {
+			state.drop_structs[name] = true
+			tc.structs[name] = []StructField{}
+		}
+		tc.structs['Pair'] = [
+			StructField{ name: 'first', typ: Struct{ name: 'FirstDrop' } },
+			StructField{ name: 'second', typ: Struct{ name: 'SecondDrop' } },
+		]
+		tc.ownership_note_drop_types('pair_function', [OwnershipDropEntry{
+			type_name: 'Pair'
+		}])
+		assert state.drop_type_names['pair_function\x01FirstDrop']
+		assert state.drop_type_names['pair_function\x01SecondDrop']
+	}
+}

@@ -607,13 +607,19 @@ fn test_comptime_condition_ignores_brackets_and_operators_in_string_literals() {
 	assert comptime_condition_top_level_index("'a(b' == 'x'", ' == ') == 5
 	assert comptime_condition_top_level_index("'x || y' == 'x'", '||') == -1
 	conds := {
-		"('a)b' == 'a)b')":       true
-		"'a(b' == 'a(b'":         true
-		"'x || y' == 'x'":        false
-		"'a,b' in ['a,b', 'c']":  true
-		"'a' in ['a,b', 'c']":    false
-		"'c' !in ['a,b', 'c']":   false
-		"('a]' == 'a]') && true": true
+		"('a)b' == 'a)b')":                            true
+		"'a(b' == 'a(b'":                              true
+		"'x || y' == 'x'":                             false
+		"'a,b' in ['a,b', 'c']":                       true
+		"'a' in ['a,b', 'c']":                         false
+		"'c' !in ['a,b', 'c']":                        false
+		"'get_user' !in ['x]', 'get_user']":           false
+		"'get_user' in ['x]', 'get_user']":            true
+		"'list_users' !in ['x]', 'get_user']":         true
+		"'get_user' in ['a)b', 'get_user']":           true
+		"'a,b' in ['a,b'.to_upper().to_lower(), 'c']": true
+		"'anything' in []":                            false
+		"('a]' == 'a]') && true":                      true
 	}
 	for cond, want in conds {
 		got := t.eval_field_cond(cond) or {
@@ -1161,4 +1167,43 @@ fn test_folded_condition_string_keeps_its_own_quotes() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{ a: &a }
 	assert t.eval_field_cond(expr + ' == ' + comptime_cond_string_literal(value.to_lower())) or { false }
+}
+
+fn test_unresolved_type_guard_does_not_hide_concrete_string_conditions() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.active_generic_params = ['T']
+	assert t.comptime_condition_has_unresolved_type_test('T is \$struct')
+	assert t.comptime_condition_has_unresolved_type_test('T !is int && runtime.contains("x")')
+	assert !t.comptime_condition_has_unresolved_type_test("int is int && 'abc'.repeat(1) == 'abc'")
+	assert !t.comptime_condition_has_unresolved_type_test("' is '.contains('is')")
+}
+
+fn test_scalar_constant_lookup_respects_global_owners_and_import_namespaces() {
+	mut a := flat.FlatAst.new()
+	value := a.add_val(.string_literal, 'a b')
+	mut tc := types.TypeChecker.new(&a)
+	for key, owner in {
+		'registry.value': 'registry'
+		'registry.route': 'registry'
+		'route':          'main'
+	} {
+		tc.const_types[key] = types.string_
+		tc.const_exprs[key] = value
+		tc.const_modules[key] = owner
+	}
+	tc.file_imports[file_import_key('main.v', 'registry')] = 'registry'
+	tc.file_imports[file_import_key('main.v', 'r')] = 'registry'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.globals['registry'] = 'registry.Record'
+	t.globals['registry.registry'] = 'registry.Record'
+	t.globals['route'] = 'api.Record'
+	t.globals['api.route'] = 'api.Record'
+	assert t.comptime_scalar_named_const('registry.value', 0, 'registry', 'registry.v') == none
+	assert (t.comptime_scalar_named_const('registry.route', 0, 'main', 'main.v') or { panic('import') }).value == 'a b'
+	assert (t.comptime_scalar_named_const('r.route', 0, 'main', 'main.v') or { panic('alias') }).value == 'a b'
+	assert (t.comptime_scalar_named_const('route', 0, 'main', 'main.v') or { panic('owner') }).value == 'a b'
+	assert (t.comptime_scalar_named_const('route', 0, '', 'main.v') or { panic('implicit main owner') }).value == 'a b'
+	assert t.subst_comptime_scalar_locals('registry.value == 7') == 'registry.value == 7'
 }

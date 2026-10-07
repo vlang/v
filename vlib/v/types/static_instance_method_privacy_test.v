@@ -59,7 +59,8 @@ fn main() {
 }
 ')!
 			for flags in [[]string{}, ['-no-parallel']] {
-				result := os.exec([@VEXE, '-new-compiler', '-gc', 'none', ...flags, 'run', root])
+				result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang',
+					'-gc', 'none', ...flags, 'run', root])
 				assert result.exit_code == 0, result.output
 			}
 		}
@@ -84,7 +85,8 @@ fn main() {
 }
 ')!
 			for flags in [[]string{}, ['-no-parallel']] {
-				result := os.exec([@VEXE, '-new-compiler', ...flags, '-check', root])
+				result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'clang',
+					...flags, '-check', root])
 				assert result.exit_code != 0, result.output
 				kind := if static_public { 'method' } else { 'function' }
 				assert result.output.contains('error: ${kind} `'), result.output
