@@ -73,3 +73,25 @@ fn test_index_release_preserves_borrowed_text() {
 	index.free()
 	assert key == DottedKey(['table', 'field'])
 }
+
+fn test_key_index_reset_preserves_other_entries_and_reuses_storage() {
+	mut index := KeyIndex{}
+	first := DottedKey(['a', 'b', 'c'])
+	second := DottedKey(['a', 'd'])
+	quoted := DottedKey(['a.b', 'c'])
+	index.add(first)
+	index.add(second)
+	index.add(quoted)
+	index.reset(DottedKey(['a', 'b']))
+	assert !index.has(first)
+	assert !index.remove(first)
+	assert index.has(second)
+	assert index.has(quoted)
+	index.add(first)
+	assert index.has(first)
+	assert index.keys.len == 3
+	index.reset(DottedKey(['a']))
+	assert !index.has(first)
+	assert !index.has(second)
+	assert index.has(quoted)
+}

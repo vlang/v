@@ -1195,12 +1195,13 @@ fn (mut decoder Decoder) decode_string[T](mut val T) ! {
 fn (mut decoder Decoder) decode_string_value(string_info ValueInfo) !string {
 	string_start := string_info.position + 1
 	string_end := string_info.position + string_info.length - 1
-	string_body := decoder.json[string_start..string_end]
+	string_body := decoder.json.substr_unsafe(string_start, string_end)
 	if string_body.index_u8(`\\`) == -1 {
-		return string_body
+		return string_body.clone()
 	}
 
 	mut string_buffer := []u8{cap: string_info.length} // might be too long but most json strings don't contain many escape characters anyways
+	defer { unsafe { string_buffer.free() } }
 
 	mut buffer_index := 1
 	mut string_index := 1

@@ -12,6 +12,13 @@ fn test_path_keys_survive_parser_disposal() {
 
 fn test_nested_array_paths_preserve_table_values() {
 	inputs := [
+		'[[a]]\n[[a.b]]\nx=1\n[[a]]\n[a.b]\nx=2\n',
+		'a=[{c={d=1}},{c={d=2}}]\n[[c.e]]\nvalue=3\n',
+		'[[a]]\nc={d=1}\n[[c.e]]\nvalue=2\n',
+		'[[a]]\nc={d=1}\n[[a]]\n[a.c]\ne=2\n',
+		'[[a.b]]\nc={d=1}\n[[c.e]]\nvalue=2\n',
+		'[[a.b]]\nc={d=1}\n[[a.b]]\n[a.b.c]\ne=2\n',
+		'[[a]]\nc={d={e=1}}\n[[a]]\n[[a.c.d]]\ne=2\n',
 		'[[a.b.c]]\nx=1\n[[a.b.c]]\nx=2\n',
 		'[[a]]\nid=1\n[[a.b.c]]\nx=1\n[[a]]\nid=2\n[[a.b.c]]\nx=2\n',
 		'[["a.b".c.d]]\nx=1\n',
@@ -20,6 +27,13 @@ fn test_nested_array_paths_preserve_table_values() {
 		'[[a.b]]\nid=1\n[[a.b.c]]\nx=1\n[[a.b]]\nid=2\n[[a.b.c]]\nx=2\n',
 	]
 	expected := [
+		'{"a":[{"b":[{"x":1}]},{"b":{"x":2}}]}',
+		'{"a":[{"c":{"d":1}},{"c":{"d":2}}],"c":{"e":[{"value":3}]}}',
+		'{"a":[{"c":{"d":1}}],"c":{"e":[{"value":2}]}}',
+		'{"a":[{"c":{"d":1}},{"c":{"e":2}}]}',
+		'{"a":{"b":[{"c":{"d":1}}]},"c":{"e":[{"value":2}]}}',
+		'{"a":{"b":[{"c":{"d":1}},{"c":{"e":2}}]}}',
+		'{"a":[{"c":{"d":{"e":1}}},{"c":{"d":[{"e":2}]}}]}',
 		'{"a":{"b":{"c":[{"x":1},{"x":2}]}}}',
 		'{"a":[{"id":1,"b":{"c":[{"x":1}]}},' +
 			'{"id":2,"b":{"c":[{"x":2}]}}]}',
@@ -39,6 +53,9 @@ fn test_nested_array_paths_preserve_table_values() {
 
 fn test_nested_array_headers_reject_immutable_parents() {
 	inputs := [
+		'[[a]]\nc={d=1}\n[[a.c.e]]\nvalue=2\n',
+		'[[a.b]]\nc={d=1}\n[[a.b.c.e]]\nvalue=2\n',
+		'[[a.b]]\nc={d=1}\n[a.b.c]\ne=2\n',
 		'a = {b={}}\n[[a.b.c]]\nx=1\n',
 		'a.b = {c=[]}\n[[a.b.c]]\nx=1\n',
 		'a = [{x=1}]\n[[a.b]]\ny=2\n',

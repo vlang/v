@@ -392,6 +392,9 @@ fn (p &Parser) check_immutable(key DottedKey) ! {
 }
 
 fn (p &Parser) check_table_path(key DottedKey) ! {
+	if p.immutable.keys.len == 0 {
+		return
+	}
 	for end in 1 .. key.len + 1 {
 		prefix := DottedKey(unsafe { key[..end] })
 		p.check_immutable(prefix)!
@@ -703,7 +706,11 @@ pub fn (mut p Parser) root_table() ! {
 						if val := arr[p.last_aot_index] {
 							if val is map[string]ast.Value {
 								mut m := map[string]ast.Value{}
+								previous_key := p.root_map_key
+								p.check_table_path(dotted_key)!
+								p.root_map_key = dotted_key
 								p.table_contents(mut m)!
+								p.root_map_key = previous_key
 								unsafe {
 									mut mut_val := &val
 									if dotted_key.len == 2 {
@@ -868,7 +875,13 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 // The V map type is corresponding to a "table" in TOML.
 pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing inline table into ${ptr_str(tbl)}...')
-	defer { p.value_is_immutable = true }
+	outer_immutable := p.immutable
+	p.immutable = KeyIndex{}
+	defer {
+		p.immutable.free()
+		p.immutable = outer_immutable
+		p.value_is_immutable = true
+	}
 	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
 		p.next()!
@@ -996,6 +1009,14 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 
 	// Disallow re-declaring the key
 	p.check_explicitly_declared(dotted_key)!
+	p.check_table_path(dotted_key)!
+	p.immutable.reset(dotted_key)
+	p.explicit_declared.reset(dotted_key)
+	p.implicit_declared.reset(dotted_key)
+	p.explicit_declared_array_of_tables.reset(dotted_key)
+	previous_key := p.root_map_key
+	p.root_map_key = dotted_key
+	defer { p.root_map_key = previous_key }
 	unsafe {
 		if val := table[dotted_key_str] {
 			if val is []ast.Value {
@@ -1055,10 +1076,6 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 			' key `${dotted_key.str()}` is already declared. Unexpected redeclaration at "${p.tok.kind}" "${p.tok.lit}" in this (excerpt): "...${p.excerpt()}..."')
 	}
 
-	if !p.explicit_declared_array_of_tables.has(dotted_key) {
-		p.explicit_declared_array_of_tables.add(dotted_key)
-	}
-
 	parent_key := DottedKey(unsafe { dotted_key[..dotted_key.len - 1] })
 	mut parent := p.find_in_table(mut table, parent_key)!
 	key := dotted_key.last()
@@ -1066,6 +1083,11 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	if mut entries !is []ast.Value {
 		return error('`${dotted_key}` is not an array of tables')
 	}
+	p.immutable.reset(dotted_key)
+	p.explicit_declared.reset(dotted_key)
+	p.implicit_declared.reset(dotted_key)
+	p.explicit_declared_array_of_tables.reset(dotted_key)
+	p.explicit_declared_array_of_tables.add(dotted_key)
 	entry := p.array_table_contents(dotted_key)!
 	entries << ast.Value(entry)
 	parent[key] = entries
@@ -1078,6 +1100,9 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 
 @[autofree_bug; manualfree]
 fn (mut p Parser) array_table_contents(target_key DottedKey) !map[string]ast.Value {
+	previous_key := p.root_map_key
+	p.root_map_key = target_key
+	defer { p.root_map_key = previous_key }
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 		'parsing contents from "${p.tok.kind}" "${p.tok.lit}"')
 	mut tbl := map[string]ast.Value{}
@@ -1125,6 +1150,8 @@ fn (mut p Parser) array_table_contents(target_key DottedKey) !map[string]ast.Val
 					// Parse `[d.e.f]`
 					p.ignore_while(space_formatting)!
 					dotted_key := p.dotted_key()!
+					p.check_table_path(dotted_key)!
+					p.root_map_key = dotted_key
 					implicit_allocation_key = dotted_key[target_key.len..]
 					p.ignore_while(space_formatting)!
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
@@ -1362,18 +1389,11 @@ pub fn (mut p Parser) key_value() !(ast.Key, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
 	key := p.key()!
 	dotted_key := DottedKey([key.text])
-	p.explicit_declared.add(p.build_abs_dotted_key(dotted_key))
 	p.next()!
 	p.ignore_while(space_formatting)!
 	p.check(.assign)! // Assignment operator
 	p.ignore_while(space_formatting)!
-	value := p.value()!
-	if p.value_is_immutable {
-		if !p.immutable.has(dotted_key) {
-			p.immutable.add(p.build_abs_dotted_key(dotted_key)) // Mark the key we are assigning to as immutable
-		}
-		p.value_is_immutable = false
-	}
+	value := p.assigned_value(dotted_key)!
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. `${key} = ${value}`')
 	return key, value
 }
@@ -1384,21 +1404,28 @@ pub fn (mut p Parser) dotted_key_value() !(DottedKey, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing dotted key value pair...')
 	p.ignore_while(space_formatting)!
 	dotted_key := p.dotted_key()!
-	p.explicit_declared.add(p.build_abs_dotted_key(dotted_key))
 	p.ignore_while(space_formatting)!
 	p.check(.assign)!
 	p.ignore_while(space_formatting)!
-	value := p.value()!
-	if p.value_is_immutable {
-		if !p.immutable.has(dotted_key) {
-			p.immutable.add(p.build_abs_dotted_key(dotted_key)) // Mark the key we are assigning to as immutable
-		}
-		p.value_is_immutable = false
-	}
+	value := p.assigned_value(dotted_key)!
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 		'parsed dotted key value pair `${dotted_key} = ${value}`...')
 
 	return dotted_key, value
+}
+
+fn (mut p Parser) assigned_value(key DottedKey) !ast.Value {
+	depth := p.root_map_key.len
+	p.root_map_key << key
+	defer { p.root_map_key.trim(depth) }
+	p.check_table_path(p.root_map_key)!
+	p.explicit_declared.add(p.root_map_key)
+	value := p.value()!
+	if p.value_is_immutable {
+		p.immutable.add(p.root_map_key)
+		p.value_is_immutable = false
+	}
+	return value
 }
 
 // value parse and returns an `ast.Value` type.

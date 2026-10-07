@@ -9117,6 +9117,12 @@ fn (t &Transformer) escape_address_root_name(id flat.NodeId) ?string {
 				return t.escape_address_root_name(t.a.child(&node, 0))
 			}
 		}
+		.as_expr {
+			source := t.a.child(&node, 0)
+			if t.is_sum_type_name(t.sum_projection_source_type(source)) {
+				return t.escape_address_root_name(source)
+			}
+		}
 		.cast_expr {
 			if node.children_count == 1
 				&& t.comptime_normalize_type_alias_chain(node.value).starts_with('&') {
@@ -23132,6 +23138,13 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.children_count == 0 {
 		return id
 	}
+	if node.op == .amp {
+		child := t.a.child(&node, 0)
+		if t.sum_projection_has_temporary_storage(child) {
+			value := t.transform_expr(child)
+			return t.heap_value(value, t.node_type(value))
+		}
+	}
 	if node.op == .amp && !isnil(t.tc) {
 		child_id := t.a.child(&node, 0)
 		child := t.a.node(child_id)
@@ -23454,6 +23467,7 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			}
 			return addr
 		}
+		return t.copy_node_with_children(node, [value])
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {

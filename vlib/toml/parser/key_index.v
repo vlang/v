@@ -42,7 +42,7 @@ fn (index &KeyIndex) has(key DottedKey) bool {
 	for position > 0 {
 		entry := index.keys[position - 1]
 		if entry.matches(index.parts, key) {
-			return true
+			return entry.count > 0
 		}
 		position = entry.next
 	}
@@ -89,6 +89,9 @@ fn (mut index KeyIndex) remove(key DottedKey) bool {
 			index.keys[position - 1].count--
 			return true
 		}
+		if entry.count == 0 {
+			return false
+		}
 		if previous == 0 {
 			index.heads[code] = entry.next
 		} else {
@@ -97,6 +100,21 @@ fn (mut index KeyIndex) remove(key DottedKey) bool {
 		return true
 	}
 	return false
+}
+
+fn (mut index KeyIndex) reset(prefix DottedKey) {
+	for i, entry in index.keys {
+		if entry.count == 0 || entry.len < prefix.len {
+			continue
+		}
+		parent := IndexedKey{
+			start: entry.start
+			len:   prefix.len
+		}
+		if parent.matches(index.parts, prefix) {
+			index.keys[i].count = 0
+		}
+	}
 }
 
 fn (index &KeyIndex) has_parent(key DottedKey, root DottedKey) bool {

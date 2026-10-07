@@ -68,6 +68,21 @@ fn test_decoded_values_own_borrowed_input_fragments() {
 	assert (decoded['plain'] or { panic('missing key') }) == Any('text')
 }
 
+fn test_escaped_strings_survive_scratch_release() {
+	inputs := ['"plain"', '"line\\nend"', '"\\u4e16\\u754c"', '"\\uD83D\\uDE00"']
+	expected := ['plain', 'line\nend', '世界', '😀']
+	mut actual := []string{}
+	for input in inputs {
+		mut source := input.clone()
+		actual << decode[string](source)!
+		unsafe { source.free() }
+	}
+	for _ in 0 .. 100 {
+		assert decode[string]('"replacement\\ntext"')! == 'replacement\ntext'
+	}
+	assert actual == expected
+}
+
 fn test_encoded_output_survives_builder_release_and_reuse() {
 	item := 'text\n世界'.repeat(1024)
 	values := [item, item, item]

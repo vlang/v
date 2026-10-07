@@ -1581,11 +1581,53 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	return t.project_sum_value(new_expr, source_type, node.value)
 }
 
+fn (t &Transformer) sum_projection_source_type(id flat.NodeId) string {
+	mut typ := t.raw_expr_type_without_smartcast(id)
+	if typ.len == 0 {
+		typ = t.node_type(id)
+	}
+	typ = t.normalize_type_alias(typ)
+	for t.is_optional_type_name(typ) {
+		typ = t.normalize_type_alias(t.optional_base_type(typ))
+	}
+	return typ
+}
+
+fn (t &Transformer) sum_projection_has_temporary_storage(id flat.NodeId) bool {
+	mut current := id
+	mut projection := false
+	for {
+		node := t.a.node(current)
+		if node.kind !in [.paren, .as_expr, .selector] {
+			return projection && !t.expr_can_take_address(current)
+		}
+		source := t.a.child(node, 0)
+		indirect := match node.kind {
+			.as_expr { !t.is_sum_type_name(t.sum_projection_source_type(source)) }
+			.selector { t.normalize_type_alias(t.node_type(source)).starts_with('&') }
+			else { false }
+		}
+		if indirect {
+			return false
+		}
+		projection = projection || node.kind == .as_expr
+		current = source
+	}
+	return false
+}
+
 fn (mut t Transformer) project_sum_value(value flat.NodeId, source_type string, target string) flat.NodeId {
-	mut source := t.stable_transformed_expr_for_reuse(value, source_type, 'sum_as')
+	mut source := value
+	mut current_type := source_type
+	if !source_type.starts_with('&') && !t.is_stable_expr_for_reuse(value)
+		&& t.expr_can_take_address(value) {
+		source = t.make_prefix(.amp, value)
+		current_type = '&${source_type}'
+	}
+	source = t.stable_transformed_expr_for_reuse(source, current_type, 'sum_as')
 	sum_name := t.trim_pointer_type(source_type)
 	if t.normalize_type_alias(sum_name) == t.normalize_type_alias(target) {
-		if source_type.starts_with('&') {
+		if current_type.starts_with('&') {
 			source = t.make_prefix(.mul, source)
 			t.set_node_typ(int(source), target)
 		}
@@ -1595,7 +1637,6 @@ fn (mut t Transformer) project_sum_value(value flat.NodeId, source_type string, 
 	if path.len == 0 {
 		path = [t.resolve_variant(sum_name, target)]
 	}
-	mut current_type := source_type
 	for variant in path {
 		source = t.checked_sum_variant(source, current_type, variant)
 		current_type = variant

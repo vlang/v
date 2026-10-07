@@ -68,6 +68,118 @@ fn test_sumtype_escaping_variant_reference() {
 	assert (values[99] as InlinePair).x == 99
 }
 
+@[noinline]
+fn escaped_inline_rvalue(x int) &InlinePair {
+	return &(inline_value(x) as InlinePair)
+}
+
+@[noinline]
+fn retained_inline_rvalues() []&InlinePair {
+	mut values := []&InlinePair{}
+	for i in 0 .. 16 {
+		value := &(inline_value(i) as InlinePair)
+		values << value
+	}
+	return values
+}
+
+@[noinline]
+fn escaped_inline_field(x int) &int {
+	pair := &(inline_value(x) as InlinePair)
+	return &pair.y
+}
+
+fn test_sumtype_rvalue_projection_addresses_escape() {
+	first := escaped_inline_rvalue(41)
+	second := escaped_inline_rvalue(72)
+	field := escaped_inline_field(90)
+	values := retained_inline_rvalues()
+	assert first.x == 41
+	assert first.y == 42
+	assert second.x == 72
+	assert *field == 91
+	for i, value in values {
+		assert value.x == i
+		assert value.y == i + 1
+	}
+}
+
+fn optional_inline_value(x int) ?InlineValue {
+	return inline_value(x)
+}
+
+@[noinline]
+fn escaped_optional_inline_value(x int) &InlinePair {
+	return &(optional_inline_value(x) as InlinePair)
+}
+
+fn test_sumtype_optional_rvalue_projection_address_escapes() {
+	first := escaped_optional_inline_value(31)
+	second := escaped_optional_inline_value(51)
+	assert first.x == 31
+	assert second.x == 51
+}
+
+@[noinline]
+fn escaped_inline_local(x int) &InlinePair {
+	value := inline_value(x)
+	return &(value as InlinePair)
+}
+
+fn test_sumtype_addressed_projection_preserves_local_storage() {
+	mut value := inline_value(2)
+	reference := &(value as InlinePair)
+	if mut value is InlinePair {
+		value.x = 8
+	}
+	assert reference.x == 8
+	first := escaped_inline_local(13)
+	second := escaped_inline_local(17)
+	assert first.x == 13
+	assert second.x == 17
+}
+
+fn counted_inline_value(mut calls []int) InlineValue {
+	calls[0]++
+	return inline_value(calls[0])
+}
+
+fn counted_inline_reference(value &InlineValue, mut calls []int) &InlineValue {
+	calls[0]++
+	return value
+}
+
+fn test_sumtype_addressed_projection_evaluates_source_once() {
+	mut calls := [0]
+	first := &(counted_inline_value(mut calls) as InlinePair)
+	assert calls[0] == 1
+	assert first.x == 1
+	mut value := inline_value(7)
+	second := &(counted_inline_reference(&value, mut calls) as InlinePair)
+	assert calls[0] == 2
+	if mut value is InlinePair {
+		value.x = 9
+	}
+	assert second.x == 9
+}
+
+struct InlineHolder {
+	value InlineValue
+}
+
+fn counted_inline_holder(holder &InlineHolder, mut calls []int) &InlineHolder {
+	calls[0]++
+	return holder
+}
+
+fn test_sumtype_addressed_field_projection_evaluates_receiver_once() {
+	holder := InlineHolder{ value: inline_value(23) }
+	mut calls := [0]
+	value := &(counted_inline_holder(&holder, mut calls).value as InlinePair)
+	assert value.x == 23
+	assert calls[0] == 1
+}
+
 type InlineGeneric[T] = bool | T
 
 struct FiniteNestedGeneric {
