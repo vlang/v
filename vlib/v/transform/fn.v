@@ -1045,7 +1045,8 @@ fn (mut t Transformer) normalize_implicit_receiver_generic_call(id flat.NodeId, 
 		return id
 	}
 	callee := t.a.child_node(&node, 0)
-	if callee.kind != .ident || callee.value.contains('.') {
+	if callee.kind != .ident || callee.value.contains('.')
+		|| t.raw_var_type(callee.value).len > 0 {
 		return id
 	}
 	decls := t.cached_generic_fn_decls()
@@ -1278,7 +1279,16 @@ fn (t &Transformer) node_enclosing_generic_params(id flat.NodeId) []string {
 		}
 		parent := t.a.node(flat.NodeId(parent_id))
 		if parent.kind in [.fn_decl, .struct_decl, .type_decl, .interface_decl, .c_fn_decl] {
-			return parent.generic_params()
+			mut params := parent.generic_params().clone()
+			if parent.kind == .fn_decl {
+				module_name := t.node_module_or(parent_id, t.cur_module)
+				for param in t.declared_generic_receiver_param_names(*parent, module_name) {
+					if param !in params {
+						params << param
+					}
+				}
+			}
+			return params
 		}
 		cursor = parent_id
 	}
@@ -3768,6 +3778,12 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		}
 	}
 	mut arg_type := t.node_type(arg_id)
+	if arg_node.kind == .call {
+		concrete_type := t.concrete_generic_call_return_type(arg_id, arg_node)
+		if concrete_type.len > 0 {
+			arg_type = concrete_type
+		}
+	}
 	if arg_type.len == 0 {
 		arg_type = t.resolve_expr_type(arg_id)
 	}
@@ -4106,7 +4122,13 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		if arg_node.kind == .char_literal && arg_node.value.starts_with('c:') {
 			return t.transform_expr(arg_id)
 		}
-		arg_type := t.node_type(arg_id)
+		mut arg_type := t.node_type(arg_id)
+		if arg_node.kind == .call {
+			concrete_type := t.concrete_generic_call_return_type(arg_id, *arg_node)
+			if concrete_type.len > 0 {
+				arg_type = concrete_type
+			}
+		}
 		clean_arg_type := t.normalize_type_alias(arg_type)
 		if clean_arg_type.len > 0 && !clean_arg_type.starts_with('&')
 			&& clean_arg_type !in ['voidptr', 'byteptr', 'charptr', 'nil'] {
@@ -4935,7 +4957,13 @@ fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node
 		t.set_node_typ(int(nil_id), param_type)
 		return nil_id
 	}
-	arg_type := t.node_type(value_id)
+	mut arg_type := t.node_type(value_id)
+	if value_node.kind == .call {
+		concrete_type := t.concrete_generic_call_return_type(value_id, value_node)
+		if concrete_type.len > 0 {
+			arg_type = concrete_type
+		}
+	}
 	if arg_type.len == 0 || arg_type == 'void' || arg_type == 'unknown'
 		|| is_pointer_like_type_name(arg_type) {
 		return none
@@ -12138,7 +12166,7 @@ fn array_method_stays_in_cgen(method string) bool {
 fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
 	return match method.len {
 		3 { method == 'pop' }
-		4 { method == 'trim' }
+		4 { method == 'last' || method == 'trim' }
 		5 { method == 'clear' }
 		else { false }
 	}
@@ -17788,71 +17816,25 @@ fn (mut t Transformer) try_lower_string_method_call(node flat.Node) ?flat.NodeId
 	return t.make_call_typed('string__${method}', args, ret_type)
 }
 
-// try_fold_literal_string_call emits a literal when a pure string call has literal operands.
+// try_fold_literal_string_call emits a literal when a pure string call has static operands.
 fn (mut t Transformer) try_fold_literal_string_call(node flat.Node, callee flat.Node) ?flat.NodeId {
-	if callee.value !in ['starts_with', 'ends_with', 'contains', 'count', 'all_before', 'all_after',
-		'all_before_last', 'all_after_last', 'trim', 'trim_left', 'trim_right', 'trim_space',
-		'trim_string_left', 'trim_string_right', 'replace', 'to_lower', 'to_upper'] {
+	if callee.children_count == 0 {
 		return none
 	}
-	base_id := t.a.child(&callee, 0)
-	if t.node_type(base_id) != 'string' {
-		return none
-	}
-	// Probe without transforming nonliteral operands: falling back must not emit them twice.
-	if !t.literal_string_call_operand(base_id) {
-		return none
-	}
-	for i in 1 .. node.children_count {
-		if !t.literal_string_call_operand(t.a.child(&node, i)) {
-			return none
-		}
-	}
-	// Argument transformations can grow the AST node array, so retain a value copy.
-	base := *t.a.node(t.transform_expr(base_id))
-	if base.kind != .string_literal {
+	receiver := t.comptime_scalar_expr(t.a.child(&callee, 0), 0) or { return none }
+	if receiver.typ != 'string' {
 		return none
 	}
 	mut args := []string{}
 	for i in 1 .. node.children_count {
-		arg := t.a.node(t.transform_expr(t.a.child(&node, i)))
-		if arg.kind != .string_literal {
+		arg := t.comptime_scalar_expr(t.a.child(&node, i), 0) or { return none }
+		if arg.typ != 'string' {
 			return none
 		}
 		args << arg.value
 	}
-	value := comptime_string_scalar(base.value, callee.value, args) or { return none }
-	return match value.typ {
-		'string' { t.make_string_literal(value.value) }
-		'bool' { t.make_bool_literal(value.value == 'true') }
-		else { t.make_int_literal(value.value.int()) }
-	}
-}
-
-fn (t &Transformer) literal_string_call_operand(id flat.NodeId) bool {
-	node := t.a.node(id)
-	if node.kind == .string_literal {
-		return true
-	}
-	if node.kind != .call || node.children_count == 0 {
-		return false
-	}
-	callee := t.a.child_node(node, 0)
-	if callee.kind != .selector || callee.children_count == 0
-		|| callee.value !in ['all_before', 'all_after', 'all_before_last', 'all_after_last', 'trim',
-			'trim_left', 'trim_right', 'trim_space', 'trim_string_left', 'trim_string_right', 'replace',
-			'to_lower', 'to_upper'] {
-		return false
-	}
-	if !t.literal_string_call_operand(t.a.child(callee, 0)) {
-		return false
-	}
-	for i in 1 .. node.children_count {
-		if !t.literal_string_call_operand(t.a.child(node, i)) {
-			return false
-		}
-	}
-	return true
+	value := comptime_string_scalar(receiver.value, callee.value, args) or { return none }
+	return t.make_comptime_scalar_literal(value)
 }
 
 // lower_string_count_call builds lower string count call data for transform.

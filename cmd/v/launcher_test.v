@@ -14,6 +14,68 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 	]
 }
 
+fn test_v1_fallback_drops_private_restart_options() {
+	warning := '-v3-internal-implicit-tcc-warning=warning: implicit tcc failed'
+	assert v1_fallback_args([warning, '-v3-internal-parser-diagnostics-printed',
+		'-macos-v3-internal-quiet', '-macos-v3-compat-c99', '-show-timings', '-cc', 'cc', 'main.v',
+		warning]) == ['-show-timings', '-cc', 'cc', 'main.v']
+}
+
+fn test_v1_fallback_preserves_private_option_names_in_values() {
+	for private_option in ['-v3-internal-implicit-tcc-warning=message',
+		'-v3-internal-parser-diagnostics-printed'] {
+		for option in ['-o', '-cf', '-cflags', '-ldflags', '-d'] {
+			args := [option, private_option, 'main.v']
+			assert v1_fallback_args(args) == args
+		}
+	}
+	assert v1_fallback_args(['-profile', 'profile.out', '-v3-internal-parser-diagnostics-printed',
+		'main.v']) == ['-profile', 'profile.out', 'main.v']
+}
+
+fn test_v1_fallback_preserves_private_option_names_in_program_arguments() {
+	private_args := ['-v3-internal-implicit-tcc-warning=message',
+		'-v3-internal-parser-diagnostics-printed', '-macos-v3-internal-quiet', '-macos-v3-compat-c99']
+	for prefix in [
+		['run', 'main.v'],
+		['run', 'run'],
+		['run', 'build'],
+		['run', 'test'],
+		['crun', 'crun'],
+		['crun', '-gc', 'none', 'main.v'],
+		['run', '-'],
+		['script.vsh'],
+		['-raw-vsh-tmp-prefix', 'prefix', 'script.v'],
+		['-profile', 'run', 'main.v'],
+	] {
+		mut args := prefix.clone()
+		args << private_args
+		mut restarted := ['-v3-internal-parser-diagnostics-printed']
+		restarted << args
+		assert v1_fallback_args(restarted) == args
+	}
+}
+
+fn test_v1_fallback_consumes_profile_output_after_a_command() {
+	dir := os.join_path(os.vtmp_dir(), 'fallback_profile_output_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	private_option := '-v3-internal-parser-diagnostics-printed'
+	for command in ['run', 'crun', 'build', 'test'] {
+		for option in ['-prof', '-profile'] {
+			for output in ['profile.v', 'profile.vv', 'profile.vsh', 'run', 'build', 'test', 'doc',
+				dir, '-', ''] {
+				assert v1_fallback_args([command, option, output, private_option, 'main.v']) ==
+					[command, option, output, 'main.v']
+				if command in ['run', 'crun'] {
+					assert v1_fallback_args([command, option, output, private_option, 'main.v',
+						private_option]) == [command, option, output, 'main.v', private_option]
+				}
+			}
+		}
+	}
+}
+
 fn test_external_tool_build_args_drop_non_binary_modes() {
 	assert external_tool_build_args('vfmt', ['-cross', '-os', 'windows', '-arch', 'x64']) == []string{}
 	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == [
@@ -480,8 +542,75 @@ fn test_cached_fallback_root_is_preferred_when_installed() {
 	if !os.is_executable(fallback) || !os.is_file(root_file) {
 		return
 	}
-	resolved := ensure_v1_fallback('test') or { panic(err) }
+	resolved := ensure_v1_fallback('test', false) or { panic(err) }
 	assert os.dir(resolved) == os.read_file(root_file)!.trim_space()
+}
+
+fn test_vls_fallback_installation_preserves_the_protocol() {
+	$if !windows {
+		base := os.join_path(os.vtmp_dir(), 'vls_fallback_install_${os.getpid()}')
+		os.rmdir_all(base) or {}
+		defer {
+			os.rmdir_all(base) or {}
+		}
+		for mode in ['vls', 'ordinary', 'failed', 'missing'] {
+			root := os.join_path(base, mode)
+			bin := os.join_path(root, 'bin')
+			cache := os.join_path(root, 'cache')
+			release := os.join_path(cache, 'release')
+			launcher := v1_fallback_cached_launcher(cache)
+			for directory in [bin, os.join_path(root, 'vlib', 'v'), os.dir(launcher),
+				os.join_path(release, 'vlib', 'crypto', 'subtle'),
+				os.join_path(release, 'vlib', 'json2')] {
+				os.mkdir_all(directory)!
+			}
+			os.write_file(os.join_path(root, 'GNUmakefile'), '')!
+			dispatcher := os.join_path(root, 'v')
+			os.cp(@VEXE, dispatcher)!
+			os.chmod(dispatcher, 0o755)!
+			os.write_file(launcher, '#!/bin/sh\nexit 1\n')!
+			os.chmod(launcher, 0o755)!
+			compatibility := os.join_path(release, 'v')
+			os.write_file(compatibility, '#!/bin/sh\nif [ "$1" = version ]; then\n  printf "V 0.5.2 legacy\\n"\nelse\n  printf "%s\\n" "$V1_FALLBACK_TEST_RESPONSE" >&2\nfi\n')!
+			os.chmod(compatibility, 0o755)!
+			for name in ['aliasing.v', 'comparison.v'] {
+				os.write_file(os.join_path(release, 'vlib', 'crypto', 'subtle', name), 'module subtle\n')!
+			}
+			os.write_file(os.join_path(release, 'vlib', 'json2', 'json2.v'), 'module json2\n')!
+			os.write_file(os.join_path(release, 'vlib', 'json2', v1_fallback_compatibility_marker), '${v_version}\n')!
+			make := os.join_path(bin, 'make')
+			os.write_file(make, '#!/bin/sh\nprintf "installer stdout\\n"\nprintf "installer stderr\\n" >&2\nif [ "$V1_FALLBACK_TEST_MODE" = failed ]; then exit 7; fi\nif [ "$V1_FALLBACK_TEST_MODE" != missing ]; then\n  printf "%s\\n" "$V1_FALLBACK_TEST_RELEASE" > "$V1_FALLBACK_OUTPUT.vroot"\nfi\n')!
+			os.chmod(make, 0o755)!
+			mut environment := os.environ()
+			environment['PATH'] = bin
+			environment['VFLAGS'] = ''
+			environment['VOSARGS'] = ''
+			environment['V1_FALLBACK_CACHE_DIR'] = cache
+			environment['V1_FALLBACK_TEST_MODE'] = mode
+			environment['V1_FALLBACK_TEST_RELEASE'] = release
+			environment['V1_FALLBACK_TEST_RESPONSE'] = os.join_path(release, 'source.v') + ':10:20'
+			args := if mode == 'ordinary' {
+				['-old-compiler', 'source.v']
+			} else {
+				['-vls-mode', 'source.v']
+			}
+			result := run_launcher_test_process(dispatcher, args, root, environment)
+			if mode == 'vls' {
+				assert result.exit_code == 0, result.output
+				assert result.output.trim_space() == os.join_path(os.real_path(root), 'source.v') + ':10:20', result.output
+			} else {
+				assert result.exit_code == if mode == 'ordinary' { 0 } else { 1 }, result.output
+				assert result.output.contains('running `make v1` now'), result.output
+				assert result.output.contains('installer stdout'), result.output
+				assert result.output.contains('installer stderr'), result.output
+				if mode == 'failed' {
+					assert result.output.contains('failed with exit code 7'), result.output
+				} else if mode == 'missing' {
+					assert result.output.contains('without installing a usable'), result.output
+				}
+			}
+		}
+	}
 }
 
 fn test_fallback_exit_notes_name_the_stage_v_stopped_in() {

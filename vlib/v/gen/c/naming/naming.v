@@ -5,6 +5,7 @@ import strings
 // Keep this marker synchronized with v.flat's static type-method name codec.
 const static_type_method_name_marker = '@static@'
 const internal_symbol_c_prefix = '__v3_internal_symbol_'
+const max_c_collision_name_len = 8
 
 // reserved_words is a set (not a list) so `name in reserved_words` is an O(1)
 // hash lookup. c_name() runs on every emitted identifier, so a linear scan here
@@ -154,7 +155,9 @@ pub fn c_name(name string) string {
 		return '${internal_symbol_c_prefix}libc_${n}'
 	}
 	mut result := n
-	if n in reserved_words || n in libc_collisions || is_string_literal_symbol(n) {
+	// The collision sets contain only short names; longer identifiers cannot match.
+	if (n.len <= max_c_collision_name_len && (n in reserved_words || n in libc_collisions))
+		|| is_string_literal_symbol(n) {
 		if name.contains('@') {
 			result = '_v_${n}'
 		} else {

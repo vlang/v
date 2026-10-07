@@ -149,7 +149,10 @@ fn (mut d DenseArray) reserve(n int) {
 	d.cap = n
 	unsafe {
 		d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
-		d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+		// Zero-sized values keep the initial one-byte allocation across growth.
+		if d.value_bytes != 0 {
+			d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+		}
 		if d.deletes != 0 {
 			d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
 			vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
@@ -173,7 +176,9 @@ fn (mut d DenseArray) expand() int {
 		}
 		unsafe {
 			d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
-			d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+			if d.value_bytes != 0 {
+				d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+			}
 			if d.deletes != 0 {
 				d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
 				vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)

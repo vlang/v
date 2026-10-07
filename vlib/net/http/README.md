@@ -7,6 +7,18 @@ opt-in, HTTP/2 — over plain TCP or with TLS termination.
 For building web applications on top of it, see [`veb`](../../veb), which has its
 own server and router.
 
+## Status reason phrases
+
+`http.status_from_int(code).str()` returns the standard HTTP reason phrase, matching
+[Go's StatusText](https://go.dev/src/net/http/status.go). Unknown and unassigned codes return
+an empty string, including legacy nonstandard statuses 306 and 509. Servers retain the numeric
+status code when the reason phrase is empty, and an explicit custom reason phrase is preserved.
+
+The existing enum identifiers `checkpoint_draft` and `unordered_collection` remain available
+for compatibility. Their standard phrases are `Early Hints` (103) and `Too Early` (425).
+Status 203 uses `Non-Authoritative Information`, 207 uses `Multi-Status`, and 418 uses
+`I'm a teapot`.
+
 ## Making requests
 
 ```v ignore

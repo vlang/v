@@ -2,3 +2,9 @@ List all installed modules that need updates.
 
 Usage:
   v outdated
+
+Projects using version ranges report Current / Upgradable / Resolvable / Latest:
+Current is installed; Upgradable obeys the installed graph's requirements;
+Resolvable solves the complete graph again; Latest ignores project constraints.
+The report reads remote release tags and manifests without changing checkouts
+or v.mod.lock. Other projects retain the branch-based report.
