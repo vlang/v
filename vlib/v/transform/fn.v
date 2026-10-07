@@ -1045,7 +1045,8 @@ fn (mut t Transformer) normalize_implicit_receiver_generic_call(id flat.NodeId, 
 		return id
 	}
 	callee := t.a.child_node(&node, 0)
-	if callee.kind != .ident || callee.value.contains('.') {
+	if callee.kind != .ident || callee.value.contains('.')
+		|| t.raw_var_type(callee.value).len > 0 {
 		return id
 	}
 	decls := t.cached_generic_fn_decls()
