@@ -7303,9 +7303,15 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		if t.raw_var_type(callee.value).len > 0 {
 			return none
 		}
-		// Call collection runs before parameters and locals enter var_types.
-		if _ := t.local_binding_before(callee.value, callee_id) {
-			return none
+		// Call collection and cloning run before the callee's scope is populated.
+		// A specialization body already has its parameters and locals in var_types;
+		// walking synthesized ancestors there would repeatedly scan the whole AST.
+		// Recorded specialization names already identify generated function callees.
+		if (!t.validating_generic_spec || t.in_monomorphize_scan || t.cloning_generic_fn_depth > 0)
+			&& !t.generic_callee_is_specialization(callee.value) {
+			if _ := t.local_binding_before(callee.value, callee_id) {
+				return none
+			}
 		}
 	}
 	if !isnil(t.tc) {
