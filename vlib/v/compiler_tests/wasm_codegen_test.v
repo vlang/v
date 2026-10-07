@@ -1256,3 +1256,21 @@ const { instance: i } = await WebAssembly.instantiate(readFileSync(process.argv[
 const e = i.exports;
 process.stdout.write(`\${e.add(3, 4)} \${e.fib(10)} \${e.gcd(48, 36)}`);
 "
+
+fn test_wasm_float_unary_minus_preserves_signed_zero() {
+	assert_wasm_source_before_and_after_optimization('signed_zero_negation', '
+pub fn negative_zero64() f64 { return -0.0 }
+pub fn negative_zero32() f32 { return -f32(0.0) }
+pub fn negate64(value f64) f64 { return -value }
+pub fn negate32(value f32) f32 { return -value }
+', '
+assert.ok(Object.is(e.negative_zero64(), -0));
+assert.ok(Object.is(e.negative_zero32(), -0));
+for (const negate of [e.negate64, e.negate32]) {
+    assert.ok(Object.is(negate(0), -0));
+    assert.ok(Object.is(negate(-0), 0));
+    assert.equal(negate(17), -17);
+    assert.equal(negate(-17), 17);
+}
+')
+}

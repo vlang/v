@@ -917,10 +917,6 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 		}
 		return 0
 	}
-	if typ.fields.len > 256 {
-		cache[typ_id] = 8
-		return 8
-	}
 	if visiting[typ_id] {
 		return recursive_type_slot_size
 	}
