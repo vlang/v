@@ -691,3 +691,6 @@ Measured on macOS (Apple Silicon), warm runs. V1 built from `~/code/v5/v` (V 0.5
 Import aliases in type expressions are normalized to full module paths once.
 A module path can begin with the alias itself, including in nested generic heap
 initializers, without repeated expansion or compiler recursion.
+
+Function literals in constant struct initializers are lowered to callable helpers
+through address and parenthesis wrappers, including `const h = &Struct{...}`.
