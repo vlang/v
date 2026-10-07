@@ -383,6 +383,8 @@ header only for occupied slots. The existing set bits guard reads. `types.cached
 an immutable entry; `types.promote_cached_name()` preserves both its header and string bytes
 when a worker or transform arena is released. Text interning uses per-pass `flat.TextProbeCache`
 scratch on the stack, while canonical text remains owned by the AST.
+Callback validation retains declared variadic modes when matching a lowered array parameter,
+including callbacks nested in parameters and return types.
 After parallel transform merges its append regions, `FlatAst.discard_unused_capacity()`
 releases unused AST pages on macOS and Linux in preallocated builds. It preserves the virtual
 reservation and live nodes, so later appends keep their existing capacity.

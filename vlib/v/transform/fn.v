@@ -15704,10 +15704,11 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		if !corresponds && !isnil(t.tc) {
 			raw_type := types.unalias_type(t.tc.parse_type(raw))
 			resolved_type := types.unalias_type(t.tc.parse_type(actual_type))
-			// Semantic function names omit shared, atomic and variadic syntax.
-			// Keep the declaration's modes when the remaining payload agrees.
+			// Match the stored payload without the variadic call mode, then retain
+			// the declaration's modes for the compatibility check below.
 			corresponds = raw_type is types.FnType && resolved_type is types.FnType
-				&& raw_type.name() == resolved_type.name()
+				&& callback_type_without_variadic_modes(raw_type).name() ==
+					callback_type_without_variadic_modes(resolved_type).name()
 		}
 		if corresponds {
 			actual_callconv_type = raw
@@ -15821,6 +15822,49 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	return false
+}
+
+// callback_type_without_variadic_modes describes storage while preserving payload types and mut modes.
+fn callback_type_without_variadic_modes(typ types.Type) types.Type {
+	return match typ {
+		types.FnType {
+			mut params := []types.Type{cap: typ.params.len}
+			for param in typ.params { params << callback_type_without_variadic_modes(param) }
+			types.Type(types.FnType{
+				...typ
+				params:      params
+				return_type: callback_type_without_variadic_modes(typ.return_type)
+				is_variadic: false
+			})
+		}
+		types.Array {
+			types.Type(types.Array{ ...typ, elem_type: callback_type_without_variadic_modes(typ.elem_type) })
+		}
+		types.ArrayFixed {
+			types.Type(types.ArrayFixed{ ...typ, elem_type: callback_type_without_variadic_modes(typ.elem_type) })
+		}
+		types.Channel {
+			types.Type(types.Channel{ ...typ, elem_type: callback_type_without_variadic_modes(typ.elem_type) })
+		}
+		types.Map {
+			types.Type(types.Map{ ...typ, key_type: callback_type_without_variadic_modes(typ.key_type), value_type: callback_type_without_variadic_modes(typ.value_type) })
+		}
+		types.Pointer {
+			types.Type(types.Pointer{ ...typ, base_type: callback_type_without_variadic_modes(typ.base_type) })
+		}
+		types.OptionType {
+			types.Type(types.OptionType{ ...typ, base_type: callback_type_without_variadic_modes(typ.base_type) })
+		}
+		types.ResultType {
+			types.Type(types.ResultType{ ...typ, base_type: callback_type_without_variadic_modes(typ.base_type) })
+		}
+		types.MultiReturn {
+			mut members := []types.Type{cap: typ.types.len}
+			for member in typ.types { members << callback_type_without_variadic_modes(member) }
+			types.Type(types.MultiReturn{ ...typ, types: members })
+		}
+		else { typ }
+	}
 }
 
 fn callback_param_shared_atomic_mode(param string) string {
