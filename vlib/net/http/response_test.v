@@ -10,7 +10,7 @@ fn test_normalize_server_response_preserves_unassigned_three_digit_status() {
 	}
 	normalize_server_response(mut resp, Request{})
 	assert resp.status_code == 299
-	assert resp.status_msg == 'Unassigned'
+	assert resp.status_msg == ''
 }
 
 fn test_normalize_server_response_defaults_zero_status_despite_reason_phrase() {

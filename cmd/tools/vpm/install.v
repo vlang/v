@@ -32,10 +32,6 @@ fn vpm_install(query []string) {
 			// - without additional module arguments.
 			println('Detected v.mod file inside the project directory. Using it...')
 			manifest := vmod.from_file('./v.mod') or { panic(err) }
-			if manifest.dependencies.len == 0 {
-				println('Nothing to install.')
-				exit(0)
-			}
 			manifest.dependencies
 		} else {
 			vpm_error('specify at least one module for installation.',
@@ -52,13 +48,25 @@ fn vpm_install(query []string) {
 	mut scope := LockScope{}
 	if settings.is_local || query.len == 0 {
 		scope.begin()
+		scope.complete = query.len == 0
+	}
+	if dep_strings.len == 0 {
+		println('Nothing to install.')
+		scope.finish()
+		return
 	}
 
 	mut modules, parse_errors := parse_query(dep_strings, mut selector, mut scope)
-	// The dependencies of a project have to resolve completely. The ones that
-	// did are still installed, but the run fails, and records no lockfile.
+	scope.resolved_keys = modules.map(lockfile_module_key(it.requested))
+	// Resolution succeeds before any installed checkout is changed.
+	// An incomplete project must not record a lockfile.
 	is_incomplete := parse_errors > 0 && scope.active
 
+	resolve_and_lock(modules, scope) or {
+		for m in modules { rmdir_all(m.tmp_path) or {} }
+		vpm_error(err.msg())
+		exit(1)
+	}
 	installed_modules := get_installed_modules()
 
 	vpm_log(@FILE_LINE, @FN, 'Queried Modules: ${modules}')
@@ -101,6 +109,7 @@ fn install_modules(modules []Module, selected_server_url string, mut scope LockS
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
+		desired_revision := head_revision(m.tmp_path)
 		match m.install(mut scope) {
 			.installed {}
 			.failed {
@@ -108,6 +117,12 @@ fn install_modules(modules []Module, selected_server_url string, mut scope LockS
 				continue
 			}
 			.skipped {
+				if scope.active && desired_revision != '' && head_revision(m.install_path) != desired_revision {
+					vpm_error('`${m.name}` was not installed at the resolved revision; not recording the project lockfile.')
+					errors++
+				} else {
+					scope.record(m)
+				}
 				continue
 			}
 		}
@@ -190,10 +205,30 @@ fn (m Module) install(mut scope LockScope) InstallResult {
 		exit(1)
 	}
 	if m.is_installed {
+		if !m.is_resolution_update {
+			if entry := scope.locked_entry(m.requested, m.url) {
+				if head_revision(m.tmp_path) == entry.revision && head_revision(m.install_path) != entry.revision {
+					println('Restoring `${m.name}` to the locked revision `${entry.revision}` ...')
+					(m.vcs or { settings.vcs }).checkout(m.install_path, entry.revision) or {
+						vpm_error('failed to restore `${m.name}`: ${err.msg()}')
+						return .failed
+					}
+					scope.record(m)
+					return .skipped
+				}
+			}
+		}
+		if !settings.is_force && !m.is_resolution_update
+			&& head_revision(m.install_path) != ''
+			&& head_revision(m.install_path) == head_revision(m.tmp_path) {
+			println('Module `${m.name}${at_version(m.version)}` is already installed.')
+			scope.record(m)
+			return .skipped
+		}
 		// Case: installed, but not an explicit version. Update instead of continuing the installation,
 		// unless the lockfile of the project in scope records the module: installs honor
 		// the locked revision, and moving it forward is what `v update` is for.
-		if m.version == '' && m.installed_version == '' {
+		if m.version == '' && m.installed_version == '' && !m.is_resolved {
 			// The lock only applies while the project still asks for the
 			// dependency string and source it was recorded under; a changed one
 			// falls through to the update below and is then locked anew.
@@ -227,7 +262,8 @@ fn (m Module) install(mut scope LockScope) InstallResult {
 			return .skipped
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
-		if settings.is_force || m.confirm_install() {
+		if settings.is_force || m.is_resolution_update || (m.is_resolved && m.version == '')
+			|| m.confirm_install() {
 			if !vpm_owns_module_dir(m.install_path) {
 				vpm_error('refusing to replace `${m.name}`: `${m.install_path_fmted}` was not installed by VPM.',
 					details: not_installed_by_vpm_details()

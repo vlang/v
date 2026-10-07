@@ -34,6 +34,7 @@ fn (mut checker Decoder) check_json_format() ! {
 		`"` {
 			checker.add_value(.string)
 			checker.check_string()!
+			checker.values_info[value_idx].has_escape = checker.string_has_escape
 		}
 		`-`, `0`...`9` {
 			checker.add_value(.number)
@@ -72,11 +73,13 @@ fn (mut checker Decoder) check_json_format() ! {
 
 @[markused]
 fn (mut checker Decoder) check_string() ! {
+	checker.string_has_escape = false
 	checker.increment('string not closed')!
 
 	// check if the JSON string is a valid escape sequence
 	for checker.json[checker.checker_idx] != `"` {
 		if checker.json[checker.checker_idx] == `\\` {
+			checker.string_has_escape = true
 			checker.increment('invalid escape sequence')!
 			escaped_char := checker.json[checker.checker_idx]
 			match escaped_char {
@@ -223,13 +226,26 @@ fn (mut checker Decoder) check_null() ! {
 }
 
 @[markused]
+fn (mut checker Decoder) check_nested_value(message string) ! {
+	value_idx := checker.values_len
+	checker.check_json_format()!
+	value := checker.values_info[value_idx]
+	// A nested value cannot consume the final byte: its parent still needs a
+	// delimiter. Otherwise EOF leaves the cursor on the value's last byte and
+	// the enclosing loop may parse it again or reuse an inner closing bracket.
+	if value.length >= checker.json.len - value.position {
+		return checker.checker_error(message)
+	}
+}
+
+@[markused]
 fn (mut checker Decoder) check_array() ! {
 	checker.increment('expected array end')!
 
 	checker.skip_whitespace('expected array end')!
 
 	for checker.json[checker.checker_idx] != `]` {
-		checker.check_json_format()!
+		checker.check_nested_value('expected array end')!
 
 		checker.skip_whitespace('expected array end')!
 
@@ -267,7 +283,7 @@ fn (mut checker Decoder) check_object() ! {
 
 		checker.skip_whitespace('expected object value')!
 
-		checker.check_json_format()!
+		checker.check_nested_value('expected object end')!
 
 		checker.skip_whitespace('expected object end')!
 

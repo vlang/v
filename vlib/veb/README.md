@@ -354,6 +354,20 @@ You have direct access to query values by accessing the `query` field on your co
 You are also able to access any formdata or files that were sent
 with the request with the fields `.form` and `.files` respectively.
 
+For routes without URL parameters, arguments after `ctx` are populated by name from
+GET query values or POST form values. This also works for the `index` route at `/`.
+Missing values become empty strings, or zero values after conversion to integer or `bool`.
+
+```v ignore
+@['/forms'; post]
+pub fn (app &App) forms(mut ctx Context, value string) veb.Result {
+	return ctx.text(value)
+}
+```
+
+Posting `value=hello` as `application/x-www-form-urlencoded` to `/forms` passes `hello`
+to the handler.
+
 In the following example, visiting http://localhost:port/user?name=veb we
 will see the text `Hello veb!`. And if we access the route without the `name` parameter,
 http://localhost:port/user, we will see the text `no user was found`,

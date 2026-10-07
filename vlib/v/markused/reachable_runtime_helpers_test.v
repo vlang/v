@@ -655,3 +655,291 @@ ${body}
 		}
 	}
 }
+
+fn test_interface_dispatch_cache_waits_for_each_reached_method() {
+	_, tc := checked_runtime_helper_source('module main
+interface Reader {
+	first() int
+	second() int
+}
+struct Item {}
+fn (item Item) first() int { return 1 }
+fn (item Item) second() int { return 2 }
+fn main() {}
+')
+	mut used := map[string]bool{}
+	mut queue := []string{}
+	mut processed := map[string]bool{}
+	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
+	assert processed.len == 0
+	used['Reader.first'] = true
+	assert enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
+	assert used['Item.first']
+	assert !used['Item.second']
+	assert processed['Reader.first']
+	assert !processed['Reader.second']
+	first_len := queue.len
+	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
+	assert queue.len == first_len
+	// A later body can introduce a second abstract dispatch after the first one was cached.
+	used['Reader.second'] = true
+	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut processed)
+	assert used['Item.second']
+	assert processed['Reader.second']
+}
+
+fn test_interface_dispatch_cache_keeps_implicit_stringification_dependencies() {
+	_, tc := checked_runtime_helper_source('module main
+interface Printable {
+	kind int
+	str() string
+}
+struct Item {
+	kind int
+	value ?f64
+}
+fn main() {
+	item := Printable(Item{ value: 1.25 })
+	println(item.str())
+}
+')
+	mut used := map[string]bool{}
+	mut queue := []string{}
+	mut processed := map[string]bool{}
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
+	assert !processed['Printable.str']
+	used['Printable.str'] = true
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
+	assert processed['Printable.str']
+	assert used['f64.str']
+	assert used['strconv__f64_to_str_l']
+	first_len := queue.len
+	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut processed)
+	assert queue.len == first_len
+}
+
+fn test_source_array_helpers_follow_reached_methods_and_keep_full_modes() {
+	for reached in [false, true] {
+		call := if reached { 'extra()' } else { '' }
+		for operation in ['values.insert(0, 3)', 'values.insert(0, [3, 4])', 'values.prepend(3)',
+			'values.prepend([3, 4])', '_ := values.reverse()', '_ := values.pop_left()',
+			'values.delete(0)', 'values.delete_last()'] {
+			a, tc := checked_runtime_helper_source('module main
+fn extra() {
+	mut values := [1, 2]
+	${operation}
+}
+fn main() {
+	println(3)
+	${call}
+}
+')
+			used := mark_used(a, tc)
+			method := operation.all_after('values.').all_before('(')
+			assert used['array.${method}'] == reached, operation
+			assert used['array.insert_many'] == (reached && method in ['insert', 'prepend']), operation
+			if !reached {
+				for helper in ['insert', 'insert_many', 'prepend', 'reverse', 'pop_left', 'delete',
+					'delete_last'] {
+					assert !used['array.${helper}'], helper
+				}
+			}
+			full, _ := mark_used_with_generic_usage_full_runtime(a, tc)
+			selfhost := mark_used_without_generic_detection(a, tc)
+			cached := mark_used_for_cache(a, tc, []string{}, map[string]bool{})
+			tested := mark_used_for_tests(a, tc, ['main.v'])
+			for helper in ['insert', 'insert_many', 'prepend', 'reverse', 'pop_left', 'delete',
+				'delete_last'] {
+				assert full['array.${helper}'], helper
+				assert selfhost['array.${helper}'], helper
+				assert cached['array.${helper}'], helper
+				assert tested['array.${helper}'], helper
+			}
+		}
+	}
+}
+
+fn test_source_array_helpers_keep_top_level_batch_lowering() {
+	a, tc := checked_runtime_helper_source('module main
+mut values := [1, 2]
+values.insert(1, [3, 4])
+values.prepend([5, 6])
+println(values)
+')
+	used := mark_used(a, tc)
+	assert used['array.insert']
+	assert used['array.prepend']
+	assert used['array.insert_many']
+}
+
+fn test_source_utilities_follow_reached_methods_and_preserve_full_modes() {
+	utilities := ['string.all_before', 'string.all_before_last', 'string.all_after',
+		'string.all_after_last', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
+		'string.to_lower_ascii', 'rune.to_lower']
+	for reached in [false, true] {
+		call := if reached { 'extra()' } else { '' }
+		for utility in utilities {
+			method := utility.all_after('.')
+			a, tc := checked_runtime_helper_source('module main
+struct Item {}
+fn (item Item) ${method}() int { return 17 }
+fn extra() {
+	item := Item{}
+	println(item.${method}())
+}
+fn main() {
+	println(3)
+	${call}
+}
+')
+			used := mark_used(a, tc)
+			assert used[utility] == reached, utility
+			assert used['Item.${method}'] == reached, utility
+			if !reached {
+				for helper in utilities {
+					assert !used[helper], helper
+				}
+			}
+			full, _ := mark_used_with_generic_usage_full_runtime(a, tc)
+			selfhost := mark_used_without_generic_detection(a, tc)
+			cached := mark_used_for_cache(a, tc, []string{}, map[string]bool{})
+			tested := mark_used_for_tests(a, tc, ['main.v'])
+			for helper in utilities {
+				assert full[helper], helper
+				assert selfhost[helper], helper
+				assert cached[helper], helper
+				assert tested[helper], helper
+			}
+		}
+	}
+}
+
+fn test_source_utilities_keep_script_calls_and_field_defaults() {
+	for source in [
+		'module main
+struct Item {}
+fn (item Item) all_before() int { return 17 }
+item := Item{}
+println(item.all_before())
+',
+		'module main
+struct Item {}
+fn (item Item) all_before() int { return 17 }
+struct Wrapper {
+	value int = Item{}.all_before()
+}
+fn main() {
+	value := Wrapper{}
+	println(value.value)
+}
+',
+	] {
+		a, tc := checked_runtime_helper_source(source)
+		used := mark_used(a, tc)
+		assert used['Item.all_before'], source
+		assert used['string.all_before']
+	}
+}
+
+fn test_source_utilities_keep_bound_callbacks_and_generic_forwarding() {
+	a, tc := checked_runtime_helper_source('module main
+struct Item {}
+fn (item Item) is_capital() int { return 17 }
+fn (item Item) to_lower() int { return 19 }
+fn forwarded[T](item T) int { return item.to_lower() }
+fn main() {
+	item := Item{}
+	callback := item.is_capital
+	println(callback())
+	println(forwarded(item))
+}
+')
+	used := mark_used(a, tc)
+	assert used['Item.is_capital']
+	assert used['Item.to_lower']
+	assert used['string.is_capital']
+	assert used['u8.is_capital']
+	assert used['rune.to_lower']
+}
+
+fn test_specialization_fallback_rejects_nongeneric_prefix_matches() {
+	mut a := flat.FlatAst.new()
+	id := a.add_node(flat.Node{ kind: .fn_decl, value: 'new' })
+	info := FnDeclInfo{ node_id: id, module: 'time' }
+	declarations := {
+		'new':      [info]
+		'time.new': [info]
+	}
+	assert fn_decl_infos_for_queue_name('new_channel_st', declarations, &a, true).len == 0
+	direct := fn_decl_infos_for_queue_name('time.new', declarations, &a, true)
+	assert direct.len == 1
+	assert direct[0].node_id == id
+}
+
+fn test_specialization_fallback_keeps_generic_templates() {
+	mut a := flat.FlatAst.new()
+	id := a.add_node(flat.Node{ kind: .fn_decl, value: 'identity', payload: flat.node_payload(['T']) })
+	info := FnDeclInfo{ node_id: id, module: 'main' }
+	declarations := {
+		'identity': [info]
+	}
+	resolved := fn_decl_infos_for_queue_name('identity_T_int', declarations, &a, true)
+	assert resolved.len == 1
+	assert resolved[0].node_id == id
+	assert fn_decl_infos_for_queue_name('identity_T_int', declarations, &a, false).len == 0
+}
+
+fn test_specialization_fallback_skips_nongeneric_match_for_earlier_generic_base() {
+	mut a := flat.FlatAst.new()
+	ordinary := a.add_node(flat.Node{ kind: .fn_decl, value: 'make_value' })
+	generic := a.add_node(flat.Node{ kind: .fn_decl, value: 'make', payload: flat.node_payload(['T']) })
+	declarations := {
+		'make_value': [FnDeclInfo{ node_id: ordinary, module: 'main' }]
+		'make':       [FnDeclInfo{ node_id: generic, module: 'main' }]
+	}
+	resolved := fn_decl_infos_for_queue_name('make_value_T_int', declarations, &a, true)
+	assert resolved.len == 1
+	assert resolved[0].node_id == generic
+}
+
+fn test_specialization_fallback_keeps_mangled_generic_receiver() {
+	mut a := flat.FlatAst.new()
+	id := a.add_node(flat.Node{ kind: .fn_decl, value: 'Box[T].get' })
+	declarations := {
+		'dep__Box_T__get': [FnDeclInfo{ node_id: id, module: 'dep' }]
+	}
+	resolved := fn_decl_infos_for_queue_name('dep__Box_T_int__get', declarations, &a, true)
+	assert resolved.len == 1
+	assert resolved[0].node_id == id
+}
+
+fn test_array_conversion_helpers_follow_reachable_selectors() {
+	for method, helper in {
+		'string':  '[]rune.string'
+		'bytestr': 'Array_u8__bytestr'
+		'hex':     'Array_u8__hex'
+	} {
+		for reached in [false, true] {
+			call := if reached { 'extra()' } else { '' }
+			a, tc := checked_runtime_helper_source('module main
+struct Item {}
+fn (i Item) ${method}() int { return 1 }
+fn extra() { println(Item{}.${method}()) }
+fn main() { println(3)
+${call}
+}
+')
+			used := mark_used(a, tc)
+			assert used[helper] == reached
+			assert !used['data_to_hex_string']
+			full, _ := mark_used_with_generic_usage_full_runtime(a, tc)
+			assert full[helper]
+			assert full['data_to_hex_string']
+			cached := mark_used_for_cache(a, tc, []string{}, map[string]bool{})
+			assert cached[helper]
+			assert cached['data_to_hex_string']
+			tested := mark_used_for_tests(a, tc, ['main.v'])
+			assert tested[helper]
+		}
+	}
+}
