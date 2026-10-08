@@ -69,6 +69,10 @@ return times in May and July, respectively; weekday tokens also accept a termina
 `parse_format(s, format)` requires the format to cover the entire input, including literals.
 Unmatched trailing text or whitespace returns an error instead of parsing only a prefix.
 
+`parse_format` defaults an omitted month to January. Day-only layouts such as
+`time.parse_format('31', 'DD')!` therefore accept January 31; an explicit month still
+enforces its actual length.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time
