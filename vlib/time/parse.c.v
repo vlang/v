@@ -436,6 +436,7 @@ pub fn parse(s string) !Time {
 }
 
 // parse_format parses the string `s`, as a custom `format`, containing the following specifiers:
+// The format must cover the entire input; trailing text, including whitespace, is rejected.
 //
 // |Category| Format | Description |
 // |:-----  | :----- | :---------- |
@@ -462,6 +463,8 @@ pub fn parse(s string) !Time {
 // |        | mm     | minute, 0..59 |
 // |Second  | s      | second, 0..59 |
 // |        | ss     | second, 0..59 |
+// |AM/PM   | A      | AM or PM; hour must be 1..12 |
+// |        | a      | am or pm; hour must be 1..12 |
 pub fn parse_format(s string, format string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')

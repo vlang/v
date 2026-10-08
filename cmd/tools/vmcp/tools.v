@@ -89,12 +89,14 @@ pub fn register_all(mut server mcp.Server, ws &Workspace) ! {
 }
 
 // spec builds a read-only tool declaration.
+//
+// No `title` is set: it duplicates `name` on the wire (`title` is omitempty),
+// and every byte here is paid once per session in `tools/list`.
 fn read_only_spec(name string, description string, schema string,
 	handler ToolHandler) ToolSpec {
 	return ToolSpec{
 		tool:    mcp.Tool{
 			name:         name
-			title:        name
 			description:  description
 			input_schema: schema
 			annotations:  mcp.ToolAnnotations{
@@ -114,7 +116,6 @@ fn writing_spec(name string, description string, schema string,
 	return ToolSpec{
 		tool:    mcp.Tool{
 			name:         name
-			title:        name
 			description:  description
 			input_schema: schema
 			annotations:  mcp.ToolAnnotations{
