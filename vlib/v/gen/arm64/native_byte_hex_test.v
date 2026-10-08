@@ -2,6 +2,27 @@ module arm64
 
 import os
 
+const native_test_compiler = os.join_path(os.vtmp_dir(), 'arm64_byte_hex_compiler_${os.getpid()}')
+
+fn testsuite_end() {
+	os.rm(native_test_compiler) or {}
+}
+
+// exec_native runs a compiler command. `cmd/v` leaves the ARM64 backend out by default, so
+// when @VEXE reports that, the command runs with a compiler built here that includes it.
+fn exec_native(args []string) os.Result {
+	if !os.exists(native_test_compiler) {
+		result := os.exec(args)
+		if !result.output.contains('ARM64 support is not compiled into this executable') {
+			return result
+		}
+		bootstrap := os.exec([@VEXE, '-gc', 'none', '-d', 'skip_fastc', '-compile-backend', 'arm64',
+			'-o', native_test_compiler, os.join_path(@VEXEROOT, 'vlib', 'v', 'v.v')])
+		assert bootstrap.exit_code == 0, bootstrap.output
+	}
+	return os.exec(args.map(if it == @VEXE { native_test_compiler } else { it }))
+}
+
 fn test_native_byte_hex_and_real_sha256_tool_cache_keys() {
 	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'arm64_byte_hex_${os.getpid()}.v')
@@ -37,7 +58,8 @@ fn main() {
     C.alarm(0)
 }
 ')!
-		compiled := os.exec([@VEXE, '-gc', 'none', '-nocache', '-b', 'arm64', '-o', output, path])
+		compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'arm64', '-o', output,
+			path])
 		assert compiled.exit_code == 0, compiled.output
 		result := os.exec([output])
 		assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'

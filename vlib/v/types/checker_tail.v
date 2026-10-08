@@ -2078,7 +2078,13 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_name(name string) ?strin
 // A pointer returned through a receiver call or addressed array/string range still borrows
 // its source storage. Local value storage cannot escape its ownership scope.
 fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, visited []flat.NodeId, through_call bool, local_sources map[string]flat.NodeId) ?string {
+	return tc.returned_receiver_local_storage_with_entry_guard(id, visited, through_call, local_sources, false)
+}
+
+fn (mut tc TypeChecker) returned_receiver_local_storage_with_entry_guard(id flat.NodeId, visited []flat.NodeId, through_call bool, local_sources map[string]flat.NodeId, guarded_at_entry bool) ?string {
 	$if ownership ? {
+		if !guarded_at_entry { tc.storage_query_probe_note_unguarded_reference() }
+		if !tc.storage_query_probe_can_observe() { return none }
 		if !tc.valid_node_id(id) {
 			return none
 		}
@@ -2233,10 +2239,15 @@ fn (mut tc TypeChecker) returned_receiver_local_storage(id flat.NodeId, visited 
 // A return alias may reference a field of an aggregate argument rather than its header.
 fn (mut tc TypeChecker) returned_receiver_local_storage_source(id flat.NodeId, suffix string, visited []flat.NodeId, local_sources map[string]flat.NodeId) ?string {
 	$if ownership ? {
+		if !tc.storage_query_probe_can_observe() { return none }
 		if suffix.len == 0 {
 			return tc.returned_receiver_local_storage(id, visited, true, local_sources)
 		}
-		if !tc.valid_node_id(id) || id in visited {
+		if !tc.valid_node_id(id) {
+			return none
+		}
+		if id in visited {
+			tc.storage_query_probe_note_pruned_ancestors([int(id)])
 			return none
 		}
 		if projected := tc.ownership_aggregate_projection_expr(id, suffix) {
@@ -2325,10 +2336,15 @@ fn (mut tc TypeChecker) returned_receiver_call_source_borrows_storage(id flat.No
 // Returned wrappers and aggregates can contain the same borrowed pointers as a direct return.
 fn (mut tc TypeChecker) returned_receiver_local_storage_in_projection(id flat.NodeId, suffix string, visited []flat.NodeId, local_sources map[string]flat.NodeId) ?string {
 	$if ownership ? {
+		if !tc.storage_query_probe_can_observe() { return none }
 		if suffix.len == 0 {
 			return tc.returned_receiver_local_storage_in_value(id, visited, local_sources)
 		}
-		if !tc.valid_node_id(id) || id in visited {
+		if !tc.valid_node_id(id) {
+			return none
+		}
+		if id in visited {
+			tc.storage_query_probe_note_pruned_ancestors([int(id)])
 			return none
 		}
 		if projected := tc.ownership_aggregate_projection_expr(id, suffix) {
@@ -2387,13 +2403,29 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_projection(id flat.No
 	return none
 }
 
+// Scalar copies cannot retain their source storage. Keep wrappers conservative:
+// a Result with a scalar success type can still contain a borrowed error.
+fn returned_value_is_scalar_copy(typ Type) bool {
+	value_type := unalias_type(typ)
+	return value_type is Primitive || value_type is Char || value_type is Rune
+		|| value_type is ISize || value_type is USize || value_type is Enum
+}
+
 // Returned wrappers and aggregates can contain the same borrowed pointers as a direct return.
 fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId, visited []flat.NodeId, local_sources map[string]flat.NodeId) ?string {
 	$if ownership ? {
-		if !tc.valid_node_id(id) || id in visited {
+		if !tc.storage_query_probe_can_observe() { return none }
+		if !tc.valid_node_id(id) {
+			return none
+		}
+		if id in visited {
+			tc.storage_query_probe_note_pruned_ancestors([int(id)])
 			return none
 		}
 		mut typ := unalias_type(tc.resolve_type(id))
+		if returned_value_is_scalar_copy(typ) {
+			return none
+		}
 		for typ is OptionType || typ is ResultType {
 			typ = if typ is OptionType {
 				unalias_type(typ.base_type)
@@ -2406,7 +2438,8 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 		// Its storage is new, but references within its elements still borrow.
 		if typ is Pointer && node.kind !in [.struct_init, .assoc, .array_literal, .array_init,
 			.map_init] {
-			return tc.returned_receiver_local_storage(id, visited, false, local_sources)
+			// The value observer already pruned this exact id if it was an ancestor.
+			return tc.returned_receiver_local_storage_with_entry_guard(id, visited, false, local_sources, true)
 		}
 		mut ancestors := visited.clone()
 		ancestors << id
@@ -2505,9 +2538,15 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 			if source := local_sources[node.value] {
 				return tc.returned_receiver_local_storage_in_value(source, ancestors, local_sources)
 			}
-			for source in tc.visible_fn_local_binding_rhs_before(VisibleMutationFnDecl{ idx: tc.fn_context.node_id, mod: tc.cur_module }, node.value, id) {
-				if local := tc.returned_receiver_local_storage_in_value(source, ancestors, local_sources) {
-					return local
+			if !tc.returned_binding_history_cannot_borrow_local_storage(id, ancestors, local_sources) {
+				if !isnil(tc.storage_query_probe) {
+					tc.storage_query_probe.uncertain = true
+					return none
+				}
+				for source in tc.visible_fn_local_binding_rhs_before(VisibleMutationFnDecl{ idx: tc.fn_context.node_id, mod: tc.cur_module }, node.value, id) {
+					if local := tc.returned_receiver_local_storage_in_value(source, ancestors, local_sources) {
+						return local
+					}
 				}
 			}
 			for name, borrows in tc.ownership_state().borrowed_vars {
@@ -2530,6 +2569,67 @@ fn (mut tc TypeChecker) returned_receiver_local_storage_in_value(id flat.NodeId,
 		}
 	}
 	return none
+}
+
+// The exact history only selects sources from this superset. Prove all of them harmless
+// before querying callee write graphs, retaining the exact path whenever a borrow is possible.
+fn (tc &TypeChecker) returned_binding_history_cannot_borrow_local_storage(id flat.NodeId, visited []flat.NodeId, local_sources map[string]flat.NodeId) bool {
+	$if ownership ? {
+		fn_id := flat.NodeId(tc.fn_context.node_id)
+		if !tc.valid_node_id(id) || !tc.valid_node_id(fn_id) { return false }
+		node := tc.a.node(id)
+		if node.kind != .ident || tc.a.node(fn_id).kind !in [.fn_decl, .fn_literal, .lambda_expr] {
+			return false
+		}
+		$if prealloc {
+			scope := unsafe { prealloc_scope_begin() }
+			defer { unsafe { prealloc_scope_end(scope) } }
+			return tc.returned_binding_history_has_no_local_sources_scoped(id, visited, local_sources, scope)
+		} $else {
+			return tc.returned_binding_history_has_no_local_sources(id, visited, local_sources)
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) returned_binding_history_has_no_local_sources(id flat.NodeId, visited []flat.NodeId, local_sources map[string]flat.NodeId) bool {
+	return tc.returned_binding_history_has_no_local_sources_scoped(id, visited, local_sources, unsafe { nil })
+}
+
+fn (tc &TypeChecker) returned_binding_history_has_no_local_sources_scoped(id flat.NodeId, visited []flat.NodeId, local_sources map[string]flat.NodeId, scope voidptr) bool {
+	mut probe := tc.fork_storage_observation_view()
+	if scope != unsafe { nil } {
+		probe.storage_query_probe_scopes = tc.storage_query_probe_scopes.clone()
+		probe.storage_query_probe_scopes << scope
+	}
+	error_count := probe.errors.len
+	references_before := probe.storage_query_probe.unguarded_reference_observations
+	prunes_before := probe.storage_query_probe.prune_observations
+	if probe.storage_query_probe_cached_history(id, visited, local_sources) { return true }
+	decl := VisibleMutationFnDecl{ idx: tc.fn_context.node_id, mod: tc.cur_module }
+	sources := probe.visible_fn_local_binding_sources_before(decl, tc.a.node(id).value, id, true)
+	for source in sources {
+		if probe.errors.len != error_count || probe.storage_query_probe.recheck_requested
+			|| probe.storage_query_probe.uncertain {
+			return false
+		}
+		if !probe.valid_node_id(source) {
+			return false
+		}
+		if probe.returned_receiver_local_storage_in_value(source, visited, local_sources) != none {
+			return false
+		}
+		if probe.errors.len != error_count || probe.storage_query_probe.recheck_requested
+			|| probe.storage_query_probe.uncertain {
+			return false
+		}
+	}
+	complete := probe.errors.len == error_count && !probe.storage_query_probe.recheck_requested
+		&& !probe.storage_query_probe.uncertain
+	if complete {
+		probe.storage_query_probe_remember_history(id, visited, local_sources, probe.storage_query_probe.unguarded_reference_observations != references_before, prunes_before)
+	}
+	return complete
 }
 
 fn (tc &TypeChecker) returned_receiver_projection_type(typ Type, suffix string) ?Type {
@@ -8812,6 +8912,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 	// smartcast variant. Receiver call resolution is therefore contextual for
 	// calls on that subject and must not reuse the first variant's CallInfo.
 	context_stable := !tc.call_has_smartcast_receiver(node)
+	if context_stable && !isnil(tc.storage_query_probe) {
+		if info := tc.storage_query_probe_checked_call_info(id) { return info }
+	}
 	if context_stable && tc.memo_call_info && !isnil(memo) && memo.active && idx >= memo.lo
 		&& idx <= memo.hi {
 		slot := idx & 2047
@@ -12113,10 +12216,19 @@ fn (tc &TypeChecker) storage_local_pointer_alias_name(id flat.NodeId) ?string {
 }
 
 fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, aliases map[string][]int, target_param_idx int, mut sources []int) {
+	tc.collect_storage_source_params_in_expr(id, aliases, target_param_idx, false, mut sources)
+}
+
+fn (tc &TypeChecker) collect_storage_source_params_in_expr(id flat.NodeId, aliases map[string][]int, target_param_idx int, in_closure bool, mut sources []int) {
 	if !tc.valid_node_id(id) {
 		return
 	}
 	node := tc.a.nodes[int(id)]
+	// Joining multiple parts copies them into independent storage. A single string part
+	// can pass through unchanged, and a stored closure still retains its captured inputs.
+	if node.kind == .string_interp && node.children_count >= 2 && !in_closure {
+		return
+	}
 	if node.kind == .ident {
 		for param_idx in aliases[node.value] {
 			if param_idx !in sources {
@@ -12124,8 +12236,9 @@ fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, aliases map[s
 			}
 		}
 	}
+	closure_body := in_closure || node.kind in [.fn_decl, .fn_literal, .lambda_expr]
 	for i in 0 .. node.children_count {
-		tc.collect_storage_source_params(tc.a.child(&node, i), aliases, target_param_idx, mut sources)
+		tc.collect_storage_source_params_in_expr(tc.a.child(&node, i), aliases, target_param_idx, closure_body, mut sources)
 	}
 }
 
@@ -13023,7 +13136,7 @@ fn (tc &TypeChecker) callback_binding_arg_is_ident(id flat.NodeId, name string) 
 	return false
 }
 
-fn (tc &TypeChecker) callback_binding_call_sources(id flat.NodeId, name string) []flat.NodeId {
+fn (tc &TypeChecker) callback_binding_call_sources(id flat.NodeId, name string, potential bool) []flat.NodeId {
 	if !tc.valid_node_id(id) || name == '' {
 		return []
 	}
@@ -13050,8 +13163,30 @@ fn (tc &TypeChecker) callback_binding_call_sources(id flat.NodeId, name string) 
 		}
 	}
 	mut result := []flat.NodeId{}
+	mut probe := tc.storage_query_probe
 	for target_param_idx in target_param_idxs {
-		for source_param_idx in tc.call_param_storage_source_params(id, target_param_idx) {
+		if potential || !isnil(probe) {
+			target_param := tc.visible_mutation_fn_param(decl, target_param_idx) or {
+				if !isnil(probe) { probe.uncertain = true }
+				return [flat.empty_node]
+			}
+			if !target_param.is_mut { continue }
+			if !potential {
+				probe.uncertain = true
+				return []
+			}
+		}
+		mut source_param_idxs := []int{}
+		if potential {
+			for child_idx in 0 .. call.children_count {
+				if child_idx == 0 && !is_method { continue }
+				param_idx := child_idx - 1 + param_offset
+				if param_idx != target_param_idx { source_param_idxs << param_idx }
+			}
+		} else {
+			source_param_idxs = tc.call_param_storage_source_params(id, target_param_idx)
+		}
+		for source_param_idx in source_param_idxs {
 			mut source_id := flat.empty_node
 			if is_method && source_param_idx == 0 && callee.kind == .selector
 				&& callee.children_count > 0 {
@@ -13063,6 +13198,17 @@ fn (tc &TypeChecker) callback_binding_call_sources(id flat.NodeId, name string) 
 				}
 			}
 			if tc.valid_node_id(source_id) && source_id !in result {
+				if potential {
+					params := tc.fn_param_types[call_name]
+					if source_param_idx >= params.len { return [flat.empty_node] }
+					formal_type := unalias_type(params[source_param_idx])
+					source_type := unalias_type(tc.resolve_type(source_id))
+					// Exact and potential histories feed the observer the same raw argument.
+					// Leave unresolved types to the exact analysis.
+					if formal_type is Unknown || source_type is Unknown {
+						return [flat.empty_node]
+					}
+				}
 				result << source_id
 			}
 		}
@@ -13155,6 +13301,10 @@ fn (tc &TypeChecker) visible_binding_can_be_bypassed_by_goto(binding_pos token.P
 }
 
 fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnDecl, name string, use_id flat.NodeId) []flat.NodeId {
+	return tc.visible_fn_local_binding_sources_before(decl, name, use_id, false)
+}
+
+fn (tc &TypeChecker) visible_fn_local_binding_sources_before(decl VisibleMutationFnDecl, name string, use_id flat.NodeId, potential bool) []flat.NodeId {
 	if name == '' || !tc.valid_node_id(use_id) || decl.idx < 0 || decl.idx >= tc.a.nodes.len {
 		return []
 	}
@@ -13190,6 +13340,7 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 	mut latest_definite_offset := -1
 	mut conditional_ids := []flat.NodeId{}
 	mut conditional_offsets := []int{}
+	mut potential_ids := []flat.NodeId{}
 	for stack.len > 0 {
 		current_id := stack.pop()
 		current_conditional := stack_conditional.pop()
@@ -13211,7 +13362,9 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 				if lhs.kind == .ident && lhs.value == name && binding_scope == target_scope
 					&& lhs.pos.id == use_pos.id && lhs.pos.offset < use_pos.offset {
 					rhs_id := tc.a.child(current_node, i + 1)
-					if current_conditional
+					if potential {
+						if rhs_id !in potential_ids { potential_ids << rhs_id }
+					} else if current_conditional
 						|| tc.visible_binding_can_be_bypassed_by_goto(lhs.pos, use_pos, gotos, labels) {
 						conditional_ids << rhs_id
 						conditional_offsets << lhs.pos.offset
@@ -13225,9 +13378,13 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 		call_binding_scope := visible_binding_scope_at_offset(current_scope, current_node.pos.offset, root_scope, scope_parents, decl_offsets)
 		if current_node.kind == .call && call_binding_scope == target_scope
 			&& current_node.pos.id == use_pos.id && current_node.pos.offset < use_pos.offset {
-			call_sources := tc.callback_binding_call_sources(current_id, name)
+			call_sources := tc.callback_binding_call_sources(current_id, name, potential)
 			if call_sources.len > 0 {
-				if current_conditional
+				if potential {
+					for source_id in call_sources {
+						if source_id !in potential_ids { potential_ids << source_id }
+					}
+				} else if current_conditional
 					|| tc.visible_binding_can_be_bypassed_by_goto(current_node.pos, use_pos, gotos, labels) {
 					for source_id in call_sources {
 						conditional_ids << source_id
@@ -13251,6 +13408,7 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 			stack_scopes << current_scope
 		}
 	}
+	if potential { return potential_ids }
 	mut result := []flat.NodeId{}
 	result << latest_definite_ids
 	for i, conditional_id in conditional_ids {
@@ -16065,7 +16223,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		arg_node := tc.a.node(arg_id)
 		pointer_check_actual := if arg_node.is_mut && arg_node.kind == .ident {
-			if expected is Pointer && tc.type_compatible(actual, expected.base_type) {
+			if expected is Pointer && (tc.type_compatible(actual, expected.base_type)
+				|| (!requires_mut_pointer_slot && tc.type_compatible(actual, expected)
+					&& (tc.expr_has_interface_smartcast_reference(arg_id)
+						|| tc.expr_has_explicit_interface_smartcast_reference(arg_id)))) {
+				// A narrowed interface supplies its object pointer to `mut value T`.
+				// Explicit `mut value &T` still needs the declared pointer slot.
 				actual
 			} else {
 				tc.cur_scope.lookup(arg_node.value) or { actual }
