@@ -2553,6 +2553,7 @@ V has only one looping keyword: `for`, with several forms.
 
 This is the most common form. You can use it with an array, map or
 numeric range.
+The opening `{` of the loop body may appear on the next line after the iterable or range.
 
 ##### Array `for`
 
