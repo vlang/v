@@ -2089,6 +2089,10 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	if idx < 0 {
 		return
 	}
+	if !isnil(tc.storage_query_probe) {
+		tc.storage_query_probe.recheck_requested = true
+		return
+	}
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.checking_nodes.len {
 			if tc.checking_nodes[idx] {
