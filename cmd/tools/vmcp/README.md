@@ -6,6 +6,10 @@ editing tools; `v mcp tools` prints the available catalog.
 Tool argument schemas are JSON objects. Their descriptions preserve quotes,
 backslashes and line breaks using JSON string escaping, so `tools/list` can be
 decoded as a complete JSON response in both writable and read-only modes.
+Tools omit the optional `title` that would repeat their stable `name`.
+Tests limit raw catalogue strings to 12,000 bytes and the complete `tools/list`
+stdio response, including its newline, to 13,000 bytes. These are byte budgets;
+token counts depend on the client's model.
 
 Paths stay inside the selected workspace even when an editing request creates a
 new file. Existing symlink parents are resolved before the boundary is checked;
