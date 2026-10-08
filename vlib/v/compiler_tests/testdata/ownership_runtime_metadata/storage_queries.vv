@@ -108,7 +108,7 @@ fn assert_storage_query_result_payload_sharing() {
 			'.first': [1, 2]
 			'.last':  [3]
 		}
-		assert storage_query_ordered_results_equal(equal_writes.keys(), equal_writes, first)
+		assert storage_query_results_equal(equal_writes.keys(), equal_writes, first)
 		shared := owner.cache_storage_query_fixture_result(key, equal_writes, second_guards) or {
 			panic('shared payload rejected')
 		}
@@ -145,10 +145,12 @@ fn assert_storage_query_result_payload_sharing() {
 			'.first': [1, 2]
 		}
 		assert path_reordered.keys() != first.keys()
-		assert !storage_query_ordered_results_equal(path_reordered.keys(), path_reordered, first)
-		if _ := owner.storage_query_shared_result(key, path_reordered) {
-			assert false, 'reordered paths reused a payload'
+		assert storage_query_results_equal(path_reordered.keys(), path_reordered, first)
+		path_shared := owner.storage_query_shared_result(key, path_reordered) or {
+			panic('reordered paths did not reuse a payload')
 		}
+		path_shared_sources := path_shared['.first']
+		assert unsafe { path_shared_sources.data == first_sources.data }
 		bytes_before_reordering := owner.storage_query_bytes
 		path_variant_guards := {
 			u64(6): false
@@ -156,27 +158,51 @@ fn assert_storage_query_result_payload_sharing() {
 		path_variant := owner.cache_storage_query_fixture_result(key, path_reordered,
 			path_variant_guards) or { panic('path-order variant rejected') }
 		path_variant_sources := path_variant['.first']
-		assert unsafe { path_variant_sources.data != first_sources.data }
-		assert path_variant.keys() == path_reordered.keys()
+		assert unsafe { path_variant_sources.data == first_sources.data }
+		assert path_variant.keys() == first.keys()
 		assert owner.storage_query_bytes == bytes_before_reordering +
-			storage_query_result_bytes(key, path_reordered,
+			storage_query_entry_bytes(key,
 				storage_query_encode_guards(path_variant_guards))
+		assert owner.storage_query_count == 3
 		source_reordered := {
 			'.first': [2, 1]
 			'.last':  [3]
 		}
-		assert !storage_query_ordered_results_equal(source_reordered.keys(), source_reordered,
+		assert storage_query_results_equal(source_reordered.keys(), source_reordered,
 			first)
-		if _ := owner.storage_query_shared_result(key, source_reordered) {
-			assert false, 'reordered source indexes reused a payload'
+		source_shared := owner.storage_query_shared_result(key, source_reordered) or {
+			panic('reordered source indexes did not reuse a payload')
+		}
+		source_shared_sources := source_shared['.first']
+		assert unsafe { source_shared_sources.data == first_sources.data }
+		bytes_before_source_reordering := owner.storage_query_bytes
+		source_variant_guards := {
+			u64(3): false
 		}
 		source_variant := owner.cache_storage_query_fixture_result(key, source_reordered,
-			{
-				u64(3): false
-			}) or { panic('ordered variant rejected') }
+			source_variant_guards) or { panic('source-order variant rejected') }
 		variant_sources := source_variant['.first']
-		assert unsafe { variant_sources.data != first_sources.data }
-		assert source_variant['.first'] == [2, 1]
+		assert unsafe { variant_sources.data == first_sources.data }
+		assert source_variant['.first'] == [1, 2]
+		assert owner.storage_query_bytes == bytes_before_source_reordering +
+			storage_query_entry_bytes(key, storage_query_encode_guards(source_variant_guards))
+		assert owner.storage_query_count == 4
+		different_paths := {
+			'.other': [1, 2]
+			'.last':  [3]
+		}
+		assert !storage_query_results_equal(different_paths.keys(), different_paths, first)
+		if _ := owner.storage_query_shared_result(key, different_paths) {
+			assert false, 'different paths reused a payload'
+		}
+		different_sources := {
+			'.first': [1, 4]
+			'.last':  [3]
+		}
+		assert !storage_query_results_equal(different_sources.keys(), different_sources, first)
+		if _ := owner.storage_query_shared_result(key, different_sources) {
+			assert false, 'different source indexes reused a payload'
+		}
 		kill := {
 			'.first': []int{}
 		}
@@ -184,9 +210,9 @@ fn assert_storage_query_result_payload_sharing() {
 			'.last': []int{}
 		}
 		empty := map[string][]int{}
-		assert !storage_query_ordered_results_equal(kill.keys(), kill, empty)
-		assert !storage_query_ordered_results_equal(empty.keys(), empty, kill)
-		assert !storage_query_ordered_results_equal(kill.keys(), kill, other_kill)
+		assert !storage_query_results_equal(kill.keys(), kill, empty)
+		assert !storage_query_results_equal(empty.keys(), empty, kill)
+		assert !storage_query_results_equal(kill.keys(), kill, other_kill)
 		kill_result := owner.cache_storage_query_fixture_result('kill_payload', kill,
 			first_guards) or { panic('kill payload rejected') }
 		assert '.first' in kill_result && kill_result['.first'].len == 0
@@ -913,12 +939,24 @@ fn assert_storage_query_exact_complementary_union() {
 		assert proof.entry_idx == 0 && proof.guard_id == 0
 		assert proof.incoming && proof.existing
 		assert owner.storage_query_union('different_key', writes, right) == none
-		assert owner.storage_query_union(key, {
+		path_reordered_proof := owner.storage_query_union(key, {
 			'.last':  [3]
 			'.first': [1, 2]
+		}, right) or { panic('reordered paths rejected an exact pair') }
+		assert path_reordered_proof.entry_idx == 0 && path_reordered_proof.guard_id == 0
+		assert path_reordered_proof.incoming && path_reordered_proof.existing
+		source_reordered_proof := owner.storage_query_union(key, {
+			'.first': [2, 1]
+			'.last':  [3]
+		}, right) or { panic('reordered sources rejected an exact pair') }
+		assert source_reordered_proof.entry_idx == 0 && source_reordered_proof.guard_id == 0
+		assert source_reordered_proof.incoming && source_reordered_proof.existing
+		assert owner.storage_query_union(key, {
+			'.other': [1, 2]
+			'.last':  [3]
 		}, right) == none
 		assert owner.storage_query_union(key, {
-			'.first': [2, 1]
+			'.first': [1, 4]
 			'.last':  [3]
 		}, right) == none
 
@@ -1305,15 +1343,25 @@ fn assert_storage_query_repeated_forward_consensus() {
 			u64(3): false
 		})
 		for iteration in 0 .. 16 {
-			mut wrong_order := incoming.clone()
+			mut reordered_paths := incoming.clone()
 			assert owner.storage_query_forward_union(key, {
 				'.kill':  []int{}
 				'.first': [2, 1]
-			}, mut wrong_order) == -1
-			assert wrong_order == incoming
-			mut wrong_sources := incoming.clone()
+			}, mut reordered_paths) == 3
+			assert reordered_paths == {
+				u64(0): false
+			}
+			mut reordered_sources := incoming.clone()
 			assert owner.storage_query_forward_union(key, {
 				'.first': [1, 2]
+				'.kill':  []int{}
+			}, mut reordered_sources) == 3
+			assert reordered_sources == {
+				u64(0): false
+			}
+			mut wrong_sources := incoming.clone()
+			assert owner.storage_query_forward_union(key, {
+				'.first': [2, 4]
 				'.kill':  []int{}
 			}, mut wrong_sources) == -1
 			assert wrong_sources == incoming
