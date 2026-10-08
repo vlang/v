@@ -15328,6 +15328,9 @@ fn (tc &TypeChecker) smartcast_target_type_for_is_expr(expr_id flat.NodeId, patt
 }
 
 fn interface_smartcast_variant_type(variant_type Type) Type {
+	if unalias_type(variant_type) is Struct {
+		return Type(Pointer{ base_type: variant_type })
+	}
 	return variant_type
 }
 
