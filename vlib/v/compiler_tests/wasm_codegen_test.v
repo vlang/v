@@ -15,7 +15,8 @@ fn testsuite_begin() {
 fn v3_binary() string {
 	v3_bin := os.join_path(os.vtmp_dir(), 'v3_wasm_codegen_test')
 	build :=
-		os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
+		os.exec([vexe, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none',
+			'-compile-backend', 'wasm', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -135,6 +136,16 @@ fn test_wasm_control_flow_and_int_print() {
 	assert last_line(res.output) == '10', res.output
 }
 
+fn test_wasm_lowered_integer_print_formats() {
+	v3_bin := v3_binary()
+	// Print lowering uses dotted numeric str methods, including u64's unsigned range.
+	src := 'fn main() {\n\tfor number in 1 .. 4 {\n\t\tprintln(number * number)\n\t}\n\tprintln(i8(-8))\n\tprintln(i16(-160))\n\tprintln(i32(-320))\n\tprintln(i64(-6400000000))\n\tprintln(isize(-32))\n\tprintln(u8(255).str())\n\tprintln(u16(65535).str())\n\tprintln(u32(4294967295).str())\n\tprintln(u64(18446744073709551615))\n\tprintln(usize(4294967295).str())\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_integer_print_formats')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['1', '4', '9', '-8', '-160', '-320', '-6400000000', '-32', '255', '65535',
+		'4294967295', '18446744073709551615', '4294967295'])
+}
+
 fn test_wasm_exported_functions() {
 	v3_bin := v3_binary()
 	src := 'fn add(a int, b int) int {\n\treturn a + b\n}\n\nfn fib(n int) int {\n\tif n < 2 {\n\t\treturn n\n\t}\n\treturn fib(n - 1) + fib(n - 2)\n}\n\nfn gcd(a int, b int) int {\n\tmut x := a\n\tmut y := b\n\tfor y != 0 {\n\t\tt := y\n\t\ty = x % y\n\t\tx = t\n\t}\n\treturn x\n}\n'
@@ -222,7 +233,7 @@ fn test_wasm_string_literal_escapes_not_double_decoded() {
 	os.write_file(src_path, src) or { panic(err) }
 	c_bin := os.join_path(os.vtmp_dir(), 'wasm_esc_c')
 	cres :=
-		os.exec([v3_bin, '-b', 'c', '-o', c_bin, src_path])
+		os.exec([v3_bin, '-b', 'c', '-cc', 'clang', '-o', c_bin, src_path])
 	assert cres.exit_code == 0, cres.output
 	cout := os.exec([c_bin])
 	assert cout.exit_code == 0, cout.output
