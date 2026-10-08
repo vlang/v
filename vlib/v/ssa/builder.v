@@ -404,7 +404,7 @@ fn (mut b Builder) register_types() {
 					b.struct_field_types[cur_module + '.' + short_name + '.' + f.value] = field_type_name
 				}
 			}
-			if abi := native_c_struct_abi(node.value) {
+			if abi := native_c_struct_abi(node.value, b.m.target.ptr_size) {
 				field_names = abi.field_names.clone()
 				field_types = []TypeID{cap: abi.field_types.len}
 				for field_type in abi.field_types {
@@ -507,7 +507,15 @@ struct NativeCStructAbi {
 	field_types []string
 }
 
-fn native_c_struct_abi(struct_name string) ?NativeCStructAbi {
+fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
+	if struct_name == 'C.utsname' && pointer_size == 8 {
+		// Darwin stores five inline char[256] fields. The V declaration uses
+		// &char so selectors have C array-to-pointer semantics.
+		return NativeCStructAbi{
+			field_names: ['sysname', 'nodename', 'release', 'version', 'machine']
+			field_types: ['[256]char', '[256]char', '[256]char', '[256]char', '[256]char']
+		}
+	}
 	if struct_name == 'C.pthread_mutex_t' {
 		return NativeCStructAbi{
 			field_names: ['opaque']
@@ -12758,6 +12766,12 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 			}
 		}
 		field_ptr := b.build_selector_addr(node)
+		if b.m.target.ptr_size == 8 {
+			base_type := b.resolve_type(b.checked_expr_type_name(base_id))
+			if field := b.native_utsname_field_value(base_type, field_ptr) {
+				return field
+			}
+		}
 		return b.emit1(.load, b.deref_type(field_ptr), field_ptr)
 	}
 	base_val := b.build_expr(base_id)
@@ -12948,7 +12962,31 @@ fn (mut b Builder) load_map_len(map_ptr ValueID) ValueID {
 	return b.emit1(.load, b.i64_type, result_slot)
 }
 
+fn (mut b Builder) native_utsname_field_value(struct_typ_id TypeID, field_ptr ValueID) ?ValueID {
+	if b.m.target.ptr_size == 8 {
+		mut base_type := struct_typ_id
+		if base_type > 0 && base_type < b.m.type_store.types.len
+			&& b.m.type_store.types[base_type].kind == .ptr_t {
+			base_type = b.m.type_store.types[base_type].elem_type
+		}
+		if uname_type := b.struct_types['C.utsname'] {
+			field_type := b.deref_type(field_ptr)
+			if base_type == uname_type && field_type > 0
+				&& field_type < b.m.type_store.types.len
+				&& b.m.type_store.types[field_type].kind == .array_t {
+				// Preserve the logical &char field value: it is the inline array's
+				// address, rather than a pointer loaded from its first eight bytes.
+				return b.emit1(.bitcast, b.m.type_store.get_ptr(b.i8_type), field_ptr)
+			}
+		}
+	}
+	return none
+}
+
 fn (mut b Builder) load_selector_field(node flat.Node, struct_typ_id TypeID, field_ptr ValueID) ValueID {
+	if field := b.native_utsname_field_value(struct_typ_id, field_ptr) {
+		return field
+	}
 	field := b.emit1(.load, b.deref_type(field_ptr), field_ptr)
 	if node.typ.len == 0 || !b.sum_type_has_field(struct_typ_id, node.value) {
 		return field
