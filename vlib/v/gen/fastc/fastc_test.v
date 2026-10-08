@@ -9177,10 +9177,12 @@ pub fn run[A, B](mut app A, config Config) ! {
 			header: fastc_scan_source_header(library_source, 'library.v', prefs) or { panic(err) }
 		},
 	], map[string]string{}, prefs) or { panic(err) }
-	// Self-host generation compacts non-main C function names, so check the erased
-	// signature and the call passing `mut app` through it instead of the symbol spelling.
-	assert c_source.contains('(voidptr* app, library__Config config) {'), c_source
-	assert c_source.contains('(((voidptr *)(&(app))),'), c_source
+	// Self-host generation compacts non-main C function names. Resolve the erased
+	// definition's name so the mutable call must use that same function.
+	signature := '(voidptr* app, library__Config config) {'
+	assert c_source.contains(signature), c_source
+	erased_name := c_source.all_before(signature).all_after_last('\n').all_after_last(' ')
+	assert c_source.contains('${erased_name}(((voidptr *)(&(app))),'), c_source
 	assert c_source.contains('.value='), c_source
 	assert !c_source.contains('run[App'), c_source
 }
