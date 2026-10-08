@@ -207,8 +207,8 @@ fn main() {
 		mut isolated := tc.fork_storage_observation_view()
 		mut lookup := isolated.fork_type_parse_view(tc.cur_file, tc.cur_module)
 		mut child_observer := isolated.fork_storage_observation_view()
-		assert child_observer.ownership == isolated.ownership
-		assert child_observer.ownership != state
+		assert voidptr(child_observer.ownership) == voidptr(isolated.ownership)
+		assert voidptr(child_observer.ownership) != voidptr(state)
 		// Borrow retained descriptors so these mutations test backing-storage isolation.
 		mut loans := unsafe { lookup.ownership.borrowed_vars['probe_source'] }
 		loans[0] = BorrowInfo{ borrower: 'changed', pos: use_id }
