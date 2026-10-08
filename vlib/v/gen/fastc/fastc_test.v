@@ -9380,9 +9380,9 @@ fn main() {
 	// joins the concrete args with `_` (a struct, its method, and a function).
 	assert c_source.contains('struct Pair_mono_string_int {'), c_source
 	assert c_source.contains('string key;'), c_source
-	assert c_source.contains('int value;'), c_source
-	assert c_source.contains('Pair_mono_string_int_same(Pair_mono_string_int p, int v)'), c_source
-	assert c_source.contains('int firstof_mono_int_string(int a, string b)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} value;'), c_source
+	assert c_source.contains('Pair_mono_string_int_same(Pair_mono_string_int p, ${fastc_platform_int_c_type} v)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} firstof_mono_int_string(${fastc_platform_int_c_type} a, string b)'), c_source
 }
 
 fn test_comptime_for_fields_unrolling() {
