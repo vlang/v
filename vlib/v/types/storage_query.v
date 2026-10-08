@@ -774,6 +774,10 @@ fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, resul
 }
 
 fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
+	return tc.fork_storage_query_view_with_annotations(true)
+}
+
+fn (tc &TypeChecker) fork_storage_query_view_with_annotations(copy_annotations bool) &TypeChecker {
 	mut view := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	view.transform_signature_maps_shared = true
 	view.transform_struct_maps_shared = true
@@ -782,12 +786,16 @@ fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
 	view.fork_overlay = &TransformForkOverlay{
 		base_node_count: -1
 	}
-	if !isnil(tc.fork_overlay) {
-		view.fork_overlay.resolved_call_names = tc.fork_overlay.resolved_call_names.clone()
-		view.fork_overlay.resolved_fn_values = tc.fork_overlay.resolved_fn_values.clone()
+	if copy_annotations {
+		if !isnil(tc.fork_overlay) {
+			view.fork_overlay.resolved_call_names = tc.fork_overlay.resolved_call_names.clone()
+			view.fork_overlay.resolved_fn_values = tc.fork_overlay.resolved_fn_values.clone()
+		}
+		view.sparse_resolved_fn_values = tc.sparse_resolved_fn_values.clone()
+		view.fork_fn_value_writes = tc.fork_fn_value_writes.clone()
+		view.sparse_expr_type_values = tc.sparse_expr_type_values.clone()
+		view.sparse_resolved_call_names = tc.sparse_resolved_call_names.clone()
 	}
-	view.sparse_resolved_fn_values = tc.sparse_resolved_fn_values.clone()
-	view.fork_fn_value_writes = tc.fork_fn_value_writes.clone()
 	view.v_fn_semantic_names = tc.v_fn_semantic_names
 	view.verbose = tc.verbose
 	view.file_scope = tc.file_scope
@@ -805,8 +813,6 @@ fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
 	view.parallel_check_sparse = tc.parallel_check_sparse
 	view.check_range_lo = tc.check_range_lo
 	view.check_range_hi = tc.check_range_hi
-	view.sparse_expr_type_values = tc.sparse_expr_type_values.clone()
-	view.sparse_resolved_call_names = tc.sparse_resolved_call_names.clone()
 	mut base := tc.type_cache
 	if !isnil(base) && isnil(base.base) && base.local_fn_decl_indexed_len < tc.a.nodes.len {
 		// A base cache freezes the declaration index. Keep cold-query AST scans.
@@ -824,7 +830,9 @@ fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
 // Observation keeps the checked cache as a read-only base while new annotations stay private.
 // Any request to check a node invalidates the proof before it can change the live checker.
 fn (tc &TypeChecker) fork_storage_observation_view() &TypeChecker {
-	mut view := tc.fork_storage_query_view()
+	// The outer observer reads original annotations through read_base; cloning
+	// them here would only allocate maps that the private write sets replace.
+	mut view := tc.fork_storage_query_view_with_annotations(!isnil(tc.storage_query_probe))
 	view.storage_query_probe = if isnil(tc.storage_query_probe) {
 		&StorageQueryProbe{
 			read_base:              tc

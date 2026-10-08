@@ -187,25 +187,32 @@ fn test_visibility_index_preserves_file_context_and_builtin_aliases() {
 
 fn test_checker_type_promotion_survives_batch_arena_release() {
 	$if prealloc {
-		a := flat.FlatAst.new()
-		tc := TypeChecker.new(&a)
-		scope := unsafe { prealloc_scope_begin() }
-		borrowed := Type(FnType{
-			params:      [Type(Struct{ name: 'ScopedItem'.clone() })]
-			return_type: Type(Array{ elem_type: Type(string_) })
-		})
-		unsafe { prealloc_scope_leave(scope) }
-		first := tc.promote_check_type(borrowed)
-		second := tc.promote_check_type(borrowed)
-		if first is FnType && second is FnType {
-			assert !unsafe { prealloc_scope_owns(scope, first.params.data) }
-			assert first.params.data == second.params.data
-		} else {
-			assert false
+		for compatibility in [false, true] {
+			a := flat.FlatAst.new()
+			mut tc := TypeChecker.new(&a)
+			if compatibility { tc.type_interner = unsafe { nil } }
+			scope := unsafe { prealloc_scope_begin() }
+			borrowed := Type(FnType{
+				params:      [Type(Struct{ name: 'ScopedItem'.clone() })]
+				params_mut:  [true]
+				return_type: Type(Array{ elem_type: Type(string_) })
+			})
+			unsafe { prealloc_scope_leave(scope) }
+			first := tc.promote_check_type(borrowed)
+			second := tc.promote_check_type(borrowed)
+			if first is FnType && second is FnType {
+				assert !unsafe { prealloc_scope_owns(scope, first.params.data) }
+				assert !unsafe { prealloc_scope_owns(scope, first.params_mut.data) }
+				if !compatibility {
+					assert first.params.data == second.params.data
+				}
+			} else {
+				assert false
+			}
+			unsafe { prealloc_scope_free_after(scope) }
+			assert first.name() == 'fn(mut ScopedItem) []string'
+			assert second.name() == first.name()
 		}
-		unsafe { prealloc_scope_free_after(scope) }
-		assert first.name() == 'fn(ScopedItem) []string'
-		assert second.name() == first.name()
 	}
 }
 

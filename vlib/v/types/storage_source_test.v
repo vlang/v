@@ -82,6 +82,67 @@ fn main() { _ = make_text().view() }
 	assert tc.body_resolve_memo.types[int(receiver) - tc.body_resolve_memo.lo] == checked_type_before
 }
 
+fn test_storage_observers_preserve_annotation_reads_and_private_nested_writes() {
+	mut a := flat.FlatAst.new()
+	id := a.add_val(.ident, 'source')
+	mut tc := TypeChecker.new(&a)
+	tc.parallel_check_sparse = true
+	tc.check_range_lo = -1
+	tc.check_range_hi = -1
+	tc.sparse_expr_type_values[int(id)] = Type(bool_)
+	tc.sparse_resolved_call_names[int(id)] = 'main.original_call'
+	tc.sparse_resolved_fn_values[int(id)] = 'main.original_value'
+	tc.fork_fn_value_writes[int(id)] = 'main.original_write'
+	tc.fork_overlay = &TransformForkOverlay{
+		resolved_call_names: {
+			int(id): 'main.overlay_call'
+		}
+		resolved_fn_values:  {
+			int(id): 'main.overlay_value'
+		}
+	}
+	mut exact := tc.fork_storage_query_view()
+	mut outer := tc.fork_storage_observation_view()
+	assert exact.sparse_expr_type_values == tc.sparse_expr_type_values
+	assert exact.sparse_resolved_call_names == tc.sparse_resolved_call_names
+	assert exact.sparse_resolved_fn_values == tc.sparse_resolved_fn_values
+	assert exact.fork_fn_value_writes == tc.fork_fn_value_writes
+	assert exact.fork_overlay.resolved_call_names == tc.fork_overlay.resolved_call_names
+	assert exact.fork_overlay.resolved_fn_values == tc.fork_overlay.resolved_fn_values
+	assert outer.sparse_expr_type_values.len == 0 && outer.sparse_resolved_call_names.len == 0
+	assert outer.sparse_resolved_fn_values.len == 0 && outer.fork_fn_value_writes.len == 0
+	assert outer.fork_overlay.resolved_call_names.len == 0 && outer.fork_overlay.resolved_fn_values.len == 0
+	assert outer.cached_expr_type(id) == tc.cached_expr_type(id)
+	assert outer.cached_resolved_call(id) == tc.cached_resolved_call(id)
+	assert outer.resolved_fn_value_name(id) == tc.resolved_fn_value_name(id)
+	outer.sparse_expr_type_values[int(id)] = Type(string_)
+	outer.sparse_resolved_call_names[int(id)] = 'main.private_call'
+	outer.sparse_resolved_fn_values[int(id)] = 'main.private_value'
+	outer.fork_fn_value_writes[int(id)] = 'main.private_write'
+	outer.fork_overlay.resolved_call_names[int(id)] = 'main.private_overlay_call'
+	outer.fork_overlay.resolved_fn_values[int(id)] = 'main.private_overlay_value'
+	mut nested := outer.fork_storage_observation_view()
+	assert nested.cached_expr_type(id) == outer.cached_expr_type(id)
+	assert nested.cached_resolved_call(id) == outer.cached_resolved_call(id)
+	assert nested.resolved_fn_value_name(id) == outer.resolved_fn_value_name(id)
+	nested.sparse_expr_type_values[int(id)] = Type(int_)
+	nested.sparse_resolved_call_names[int(id)] = 'main.nested_call'
+	nested.sparse_resolved_fn_values[int(id)] = 'main.nested_value'
+	nested.fork_fn_value_writes[int(id)] = 'main.nested_write'
+	nested.fork_overlay.resolved_call_names[int(id)] = 'main.nested_overlay_call'
+	nested.fork_overlay.resolved_fn_values[int(id)] = 'main.nested_overlay_value'
+	assert outer.sparse_expr_type_values[int(id)] == Type(string_)
+	assert outer.sparse_resolved_call_names[int(id)] == 'main.private_call'
+	assert outer.sparse_resolved_fn_values[int(id)] == 'main.private_value'
+	assert outer.fork_fn_value_writes[int(id)] == 'main.private_write'
+	assert outer.fork_overlay.resolved_call_names[int(id)] == 'main.private_overlay_call'
+	assert outer.fork_overlay.resolved_fn_values[int(id)] == 'main.private_overlay_value'
+	exact.sparse_expr_type_values[int(id)] = Type(int_)
+	exact.fork_overlay.resolved_call_names[int(id)] = 'main.exact_override'
+	assert tc.sparse_expr_type_values[int(id)] == Type(bool_)
+	assert tc.fork_overlay.resolved_call_names[int(id)] == 'main.overlay_call'
+}
+
 fn test_potential_binding_sources_include_exact_conditional_and_rebound_sources() {
 	path := os.join_path(os.vtmp_dir(), 'v3_potential_binding_sources_${os.getpid()}.v')
 	os.write_file(path, '@[heap]

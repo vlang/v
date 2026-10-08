@@ -4668,10 +4668,14 @@ fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 // instance into the accumulator's arena, before releasing the batch's storage.
 // The accumulator is private to this lane (or the joined master during merge).
 fn (tc &TypeChecker) promote_check_type(typ Type) Type {
+	if isnil(tc.type_interner) {
+		return clone_owned_type(typ)
+	}
 	if canonical := tc.probe_intern_type(typ) {
 		return canonical
 	}
-	_, canonical := tc.intern_type(clone_owned_type(typ))
+	// The interner owns new payloads; a preliminary deep clone would be discarded.
+	_, canonical := tc.intern_type(typ)
 	return canonical
 }
 
