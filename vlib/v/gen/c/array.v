@@ -1927,6 +1927,10 @@ fn (mut g FlatGen) gen_scalar_array_push_call_stmt(id flat.NodeId, node flat.Nod
 		return false
 	}
 	array_id := g.a.child(&node, 1)
+	// A shared array is passed as its payload value; the call path takes its address.
+	if g.array_assign_base_is_shared_value_selector(array_id) {
+		return false
+	}
 	arr := array_like_type(types.unwrap_pointer(g.usable_expr_type(array_id))) or {
 		return false
 	}

@@ -16223,7 +16223,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		arg_node := tc.a.node(arg_id)
 		pointer_check_actual := if arg_node.is_mut && arg_node.kind == .ident {
-			if expected is Pointer && tc.type_compatible(actual, expected.base_type) {
+			if expected is Pointer && (tc.type_compatible(actual, expected.base_type)
+				|| (!requires_mut_pointer_slot && tc.type_compatible(actual, expected)
+					&& (tc.expr_has_interface_smartcast_reference(arg_id)
+						|| tc.expr_has_explicit_interface_smartcast_reference(arg_id)))) {
+				// A narrowed interface supplies its object pointer to `mut value T`.
+				// Explicit `mut value &T` still needs the declared pointer slot.
 				actual
 			} else {
 				tc.cur_scope.lookup(arg_node.value) or { actual }
