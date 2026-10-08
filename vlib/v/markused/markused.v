@@ -238,6 +238,7 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 		struct_decls:            map[string]StructDeclInfo{}
 		const_decls:             const_decls
 		const_suffixes:          const_suffixes
+		const_suffixes_complete: true
 		import_contexts:         import_contexts
 		selective_alias_targets: map[string][]string{}
 		iface_param_gate:        map[string]bool{}
@@ -773,6 +774,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		struct_decls:                     struct_decls
 		const_decls:                      const_decls
 		const_suffixes:                   const_name_suffixes
+		const_suffixes_complete:          true
 		import_contexts:                  import_contexts
 		selective_alias_targets:          if detect_reachable_generics {
 			markused_selective_alias_targets(tc)
@@ -2277,14 +2279,17 @@ fn markused_syntax_needs_closure_runtime(a &flat.FlatAst) bool {
 
 // CallCollector represents call collector data used by markused.
 struct CallCollector {
-	a               &flat.FlatAst      = unsafe { nil }
-	tc              &types.TypeChecker = unsafe { nil }
-	fn_decls        map[string]FnDeclInfo
-	fn_suffixes     map[string]bool
-	struct_decls    map[string]StructDeclInfo
-	const_decls     map[string]ConstDeclInfo
-	const_suffixes  map[string]bool
-	import_contexts []map[string]string
+	a              &flat.FlatAst      = unsafe { nil }
+	tc             &types.TypeChecker = unsafe { nil }
+	fn_decls       map[string]FnDeclInfo
+	fn_suffixes    map[string]bool
+	struct_decls   map[string]StructDeclInfo
+	const_decls    map[string]ConstDeclInfo
+	const_suffixes map[string]bool
+	// True only when the declaration scan indexed every constant/global key.
+	// Manually constructed collectors can retain the ordinary candidate lookup.
+	const_suffixes_complete bool
+	import_contexts         []map[string]string
 	// Unqualified selective-import symbol -> all known alias targets. This is
 	// global because generic detection only needs to know whether any target
 	// requires monomorphization.
@@ -3220,6 +3225,13 @@ fn enqueue_ierror_equality_dispatch_helpers(tc &types.TypeChecker, mut used map[
 }
 
 fn markused_type_equality_uses_ierror(typ types.Type, tc &types.TypeChecker, mut cache map[string]int) bool {
+	match typ {
+		types.Primitive, types.String, types.Char, types.Rune, types.ISize, types.USize,
+		types.Void, types.Nil, types.None {
+			return false
+		}
+		else {}
+	}
 	key := typ.name()
 	if cached := cache[key] {
 		return cached == 1
@@ -3307,6 +3319,13 @@ fn (mut scan RuntimeHelpersScan) enqueue_map_runtime(mut used map[string]bool, m
 }
 
 fn (mut scan RuntimeHelpersScan) type_needs_map_runtime(typ types.Type, tc &types.TypeChecker) bool {
+	match typ {
+		types.Primitive, types.String, types.Char, types.Rune, types.ISize, types.USize, types.Void,
+		types.Nil, types.None {
+			return false
+		}
+		else {}
+	}
 	key := if typ is types.Unknown { 'unknown:${typ.reason}' } else { typ.name() }
 	if cached := scan.map_type_cache[key] {
 		return cached == 1
@@ -3401,6 +3420,13 @@ fn markused_expr_stringifies_channel(tc &types.TypeChecker, id flat.NodeId, cur_
 }
 
 fn markused_type_stringifies_channel(typ types.Type, cur_module string, tc &types.TypeChecker, mut cache map[string]int) bool {
+	match typ {
+		types.Primitive, types.String, types.Char, types.Rune, types.ISize, types.USize,
+		types.Void, types.Nil, types.None {
+			return false
+		}
+		else {}
+	}
 	key := '${cur_module}\x01${typ.name()}'
 	if cached := cache[key] {
 		return cached == 1
@@ -5118,6 +5144,7 @@ fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 		struct_decls:                     c.struct_decls
 		const_decls:                      c.const_decls
 		const_suffixes:                   c.const_suffixes
+		const_suffixes_complete:          c.const_suffixes_complete
 		import_contexts:                  c.import_contexts
 		selective_alias_targets:          c.selective_alias_targets
 		iface_param_gate:                 c.iface_param_gate
@@ -5749,7 +5776,12 @@ fn (c &CallCollector) collect_initializer_refs_with_locals(node &flat.Node, cur_
 }
 
 fn (c &CallCollector) add_initializer_ref_candidates(name string, cur_module string, imports map[string]string, mut refs []string) {
-	if name.len == 0 {
+	if name.len == 0 || c.const_decls.len == 0 {
+		return
+	}
+	// Bare candidates only gain a module prefix, preserving their suffix.
+	// A complete negative index therefore avoids allocating candidate strings.
+	if c.const_suffixes_complete && name.index_u8(`.`) < 0 && !c.const_suffixes[name] {
 		return
 	}
 	for candidate in c.value_name_candidates(name, cur_module, imports) {

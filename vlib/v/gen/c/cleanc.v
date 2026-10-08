@@ -3043,7 +3043,9 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
+	g.a = a
 	effective_no_parallel := no_parallel || g.profile_file.len > 0 || g.coverage_dir.len > 0
+		|| !g.parallel_codegen_available()
 	// The preparation choices below must agree with the dispatch mode the stages
 	// actually run in: a parallel dispatch expects prepare_pre_dispatch_master,
 	// a serial one expects prepare_serial_fn_tables. Keying both off the same
@@ -3054,7 +3056,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// Counter metadata and numbering are accumulated by one serial generator.
 		g.scope_parallel_workers = false
 	}
-	g.a = a
 	// Mark-used is immutable during cgen. Sharing this potentially very large
 	// post-monomorph map matches the worker path and avoids a full-program clone
 	// at the cgen memory peak.

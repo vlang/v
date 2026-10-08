@@ -187,6 +187,8 @@ mut:
 	// defer_pre_scan_indexes routes the AST/tc-only index builders in prepare()
 	// to the overlapped pre-scan helper thread (see prepare_with_pre_scans).
 	defer_pre_scan_indexes bool
+	// Fixed-array summaries can reuse the completed parameter pre-scan cache.
+	defer_fixed_array_borrow_prep bool
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
@@ -2086,7 +2088,9 @@ fn (mut t Transformer) prepare() {
 	t.raw_return_alias_cache = &ContextBoolLookupCache{}
 	t.prepare_interface_impl_indexes()
 	t.ierror_none_type_id = t.interface_impl_type_id('IError', 'None__') or { 0 }
-	t.prepare_fixed_array_borrow_params()
+	if !t.defer_fixed_array_borrow_prep {
+		t.prepare_fixed_array_borrow_params()
+	}
 }
 
 fn (mut t Transformer) rebuild_embedded_fields_index() {
