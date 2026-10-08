@@ -13199,6 +13199,10 @@ pub fn run(args []string) {
 				}
 				b.step('test')
 			}
+		} $else {
+			eprintln('ARM64 support is not compiled into this executable')
+			eprintln('Rebuild with `v -compile-backend arm64 self` or `-all-backends`.')
+			exit(1)
 		}
 	} else {
 		// C backend (default)
