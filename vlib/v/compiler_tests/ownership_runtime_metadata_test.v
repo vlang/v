@@ -34,6 +34,7 @@ pub fn run_runtime_tests() {
 	test_ownership_drop_queries_are_invalidated_after_collection()
 	test_ownership_drop_queries_are_private_to_the_function_and_worker()
 	test_ownership_drop_name_collection_keeps_all_destructors()
+	test_ownership_observation_views_keep_parent_state_private()
 	test_ownership_results_survive_batch_arena_release()
 	test_storage_query_results_survive_nested_arena_release()
 	test_storage_query_views_keep_parent_identity_tables_private()

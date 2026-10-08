@@ -860,14 +860,12 @@ fn (mut p Parser) add_val(kind flat.NodeKind, value string) flat.NodeId {
 	return p.add_node(flat.Node{
 		kind:  kind
 		value: value
+		flags: if kind == .string_literal { string_literal_flags(value) } else { 0 }
 	})
 }
 
 fn (mut p Parser) add_val_id(kind_id int, value string) flat.NodeId {
-	return p.add_node(flat.Node{
-		kind:  flat.node_kind_from_id(kind_id)
-		value: value
-	})
+	return p.add_val(flat.node_kind_from_id(kind_id), value)
 }
 
 // span_start returns the clamped start offset of the current (not-yet-consumed)
@@ -887,10 +885,12 @@ fn (p &Parser) span_to(start int) token.Pos {
 
 // add_val_id_at builds a leaf value node with an explicit, already-captured span.
 fn (mut p Parser) add_val_id_at(kind_id int, value string, pos token.Pos) flat.NodeId {
+	kind := flat.node_kind_from_id(kind_id)
 	return p.a.add_node(flat.Node{
-		kind:  flat.node_kind_from_id(kind_id)
+		kind:  kind
 		value: value
 		pos:   pos
+		flags: if kind == .string_literal { string_literal_flags(value) } else { 0 }
 	})
 }
 
