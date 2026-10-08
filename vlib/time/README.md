@@ -73,6 +73,10 @@ Unmatched trailing text or whitespace returns an error instead of parsing only a
 `time.parse_format('31', 'DD')!` therefore accept January 31; an explicit month still
 enforces its actual length.
 
+`Time.custom_format('YYYY')` pads nonnegative years to at least four digits, so year `100`
+is written as `0100`. For nonnegative years, `YY` writes the final two year digits
+with leading zeros. Negative years retain their existing `YYYY` and `YY` representations.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time
