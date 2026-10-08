@@ -24,6 +24,7 @@ Written for AI coding agents; useful for humans too.
 * Environment-Specific Code (files and `$if`)
 * Compile-Time Code and Reflection
 * Debug
+* Compiler Performance
 * Compiler Architecture
 * Key Directories
 * Test Locations
@@ -596,6 +597,65 @@ skipped coverage in the summary.
   // builtin___option_ok/*tom51*/(&(int[]) { ... });
   ```
   Remember to remove these debug tags after fixing the issue.
+
+## Compiler Performance
+
+Use **retired CPU instructions as the primary compiler optimization metric**. On macOS arm64,
+`/usr/bin/time -l` reports `instructions retired` from hardware counters. Under matched conditions,
+this is the most reliable local measure of compiler work: it is less sensitive than elapsed time to
+CPU frequency and scheduling. Also retain elapsed time, cycles, and peak memory; fewer instructions
+do not guarantee lower latency or memory use. Compare counts on the same machine and architecture.
+
+Build a production compiler outside the measured run, then measure compilation to C:
+
+```sh
+env -u VFLAGS -u VEXE VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  ./v -prod -cc clang self || exit 1
+benchmark_out=$(mktemp -d "${TMPDIR:-/tmp}/v-perf.XXXXXX")
+env -u VFLAGS -u VEXE VJOBS=1 SOURCE_DATE_EPOCH=0 V_MACOS_V3_NO_FALLBACK=1 \
+  /usr/bin/time -l -o "$benchmark_out/time.txt" \
+  ./v -nocache -o "$benchmark_out/sha3.c" /absolute/path/to/sha3.v \
+  > "$benchmark_out/stdout.txt" 2> "$benchmark_out/stderr.txt"
+benchmark_status=$?
+printf '%s\n' "$benchmark_status" > "$benchmark_out/exit-status.txt"
+cat "$benchmark_out/time.txt"
+```
+
+Replace the source path with the fixed benchmark fixture. Read the integer on the
+`instructions retired` line. The `-prod` above optimizes the compiler itself; the timed command uses
+the normal input compilation mode. Keep input flags identical between baseline and candidate.
+`-o ...c` includes parsing, checking, transforms, and C generation, while excluding the external C
+compiler and execution of the generated program. `-check-syntax` measures a different workload;
+label it separately and verify which stages that compiler version executes. `-nocache` disables
+compiler caching; it does not flush the operating system's filesystem cache.
+`V_MACOS_V3_NO_FALLBACK=1` prevents silent legacy-compiler fallback when measuring V3 on macOS.
+
+For a baseline/candidate comparison:
+
+1. Build both compilers with the same production build recipe and C toolchain. Verify correctness,
+   diagnostics, and generated C before measuring. For a change intended to preserve output, require
+   identical C, allowing only explicitly recorded build metadata differences.
+2. Use the same host, OS, fixture, standard library, flags, environment, and filesystem placement.
+   Keep executable, source, and output paths identical between roles where possible; record any
+   remaining differences. Set `VJOBS=1` and `SOURCE_DATE_EPOCH=0`, and disable tracing/profiling.
+   Clear unintended compiler environment overrides, including `VFLAGS` and `VEXE`; record the
+   effective environment. Measure only successfully rebuilt compilers, never a stale binary.
+   Run only one benchmark process at a time, with no concurrent builds or tests.
+3. Run one warmup per role, then **ten measured pairs**, alternating baseline/candidate order:
+   AB, BA, AB, BA, and so on. Record all 22 runs, excluding both warmups from statistics.
+   Use a distinct timing/stdout/stderr log for every run and the same generated C output path.
+4. Require exit status zero and exactly one positive `instructions retired` counter in every sample.
+   Preserve failed or incomplete runs, but do not report them as a completed comparison. If the
+   counter is missing or zero, report it as unavailable; elapsed time is not an instruction count.
+5. Report each role's median, the percentage change between medians, the median paired instruction
+   difference, and how many pairs made the candidate worse. Report memory and elapsed time alongside
+   instructions. Retain all raw logs, exact commands/environment, compiler commits, binary hashes,
+   fixture hashes, and output verification so the result can be reproduced.
+
+Do not select the fastest sample or compare medians from different measurement sessions as proof of
+a small improvement. Investigate inconsistent pair results before accepting an optimization. For
+end-to-end build latency or parallel scaling, measure that workload separately with its intended
+worker count and external C compiler, and state that scope explicitly.
 
 ## Compiler Architecture
 The V compiler has the following stages, orchestrated by `v.driver`:

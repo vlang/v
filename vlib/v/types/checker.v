@@ -2037,6 +2037,10 @@ mut:
 fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 	chunk := tc.fill_direct_parent_edges_range(a, 0, a.nodes.len)
 	tc.merge_direct_parent_chunk(chunk)
+	// All parent edges are ready; replay the metadata found in the same source-order walk.
+	for idx in chunk.metadata_node_ids {
+		tc.collect_direct_parent_node_metadata(a, idx, a.nodes[idx])
+	}
 	tc.preflight_index_nodes_len = a.nodes.len
 }
 
@@ -2185,7 +2189,6 @@ fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, par
 fn (mut tc TypeChecker) build_direct_parent_index(a &flat.FlatAst) {
 	tc.init_direct_parent_index(a)
 	tc.fill_direct_parent_edges(a)
-	tc.collect_direct_parent_metadata(a)
 	tc.direct_parent_index_trusted = true
 }
 

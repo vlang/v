@@ -3,6 +3,10 @@ module c
 import v.flat
 import time
 
+fn (g &FlatGen) parallel_codegen_available() bool {
+	return false
+}
+
 fn (mut g FlatGen) refine_fn_item_costs(_ bool, _ bool) {}
 
 fn par_cgen_prep_enabled() bool {
