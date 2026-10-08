@@ -11,10 +11,11 @@ const highlight_builtin_types = ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i
 	'any']!
 
 struct ScannedToken {
-	kind  token.Token
-	start int
-	end   int
-	lit   string
+	kind                        token.Token
+	start                       int
+	end                         int
+	lit                         string
+	inside_string_interpolation bool
 }
 
 fn scan_code(code string) []ScannedToken {
@@ -26,16 +27,20 @@ fn scan_code(code string) []ScannedToken {
 	scanner_.init(file, code)
 	mut tokens := []ScannedToken{}
 	for {
+		inside_interpolation := scanner_.in_str_inter || scanner_.in_str_incomplete
+			|| scanner_.str_parent_quotes.len > 0
 		kind := scanner_.scan()
 		if kind == .eof {
 			break
 		}
 		if kind != .semicolon && scanner_.offset > scanner_.pos {
 			tokens << ScannedToken{
-				kind:  kind
-				start: scanner_.pos
-				end:   scanner_.offset
-				lit:   scanner_.lit
+				kind:                        kind
+				start:                       scanner_.pos
+				end:                         scanner_.offset
+				lit:                         scanner_.lit
+				inside_string_interpolation: inside_interpolation || scanner_.in_str_inter
+					|| scanner_.in_str_incomplete || scanner_.str_parent_quotes.len > 0
 			}
 		}
 	}
@@ -197,13 +202,30 @@ fn starts_enum_value(tokens []ScannedToken, values []bool, i int) bool {
 	}
 	// A separated enum value or branch body can precede another enum value. Whitespace before
 	// a field selector, including a newline, does not otherwise change its meaning.
-	if prev.end != dot.start && (values[i - 1] || prev.kind == .rcbr) {
+	if prev.end != dot.start && (values[i - 1]
+		|| (prev.kind == .rcbr && closes_enum_branch_body(tokens, values, i - 1))) {
 		return true
 	}
 	// After a value, it is a field, like `foo.bar`, unless the value is a type name. `C.` and
 	// `JS.` are the namespaces of foreign names instead, which are mostly types, like `C.FILE`.
 	return prev.kind == .name && is_type_name(prev.lit) && prev.lit !in ['C', 'JS']
 		&& name.lit !in highlight_reflection_fields
+}
+
+// closes_enum_branch_body distinguishes a match arm's body from a struct or match expression.
+fn closes_enum_branch_body(tokens []ScannedToken, values []bool, end int) bool {
+	mut depth := 0
+	for i := end; i >= 0; i-- {
+		if tokens[i].kind == .rcbr {
+			depth++
+		} else if tokens[i].kind == .lcbr {
+			depth--
+			if depth == 0 {
+				return i > 0 && values[i - 1]
+			}
+		}
+	}
+	return false
 }
 
 // find_attribute_words returns, for every token, whether it belongs to an attribute itself, like
@@ -215,6 +237,11 @@ fn find_attribute_words(tokens []ScannedToken) []bool {
 	mut argument_tokens := 0
 	mut paren_depth := 0
 	for i, scanned in tokens {
+		if scanned.inside_string_interpolation {
+			// A split string argument includes its expression and trailing string segment.
+			argument_tokens = 0
+			continue
+		}
 		if scanned.kind == .attribute {
 			depth = 1
 			argument_tokens = 0

@@ -247,6 +247,11 @@ fn test_highlight_tokens_attribute_arguments_keep_their_kinds() {
 	assert kind_of('@[x: false; inline]', 'false') == 'boolean'
 	assert kind_of('@[noalloc: strict]', 'strict') == 'name'
 	assert kind_of('@[x: false; inline]', 'inline') == 'attribute'
+	assert kind_of("@[x: 'use \${label}'; inline]", 'label') == 'name'
+	assert kind_of("@[x: 'use \${label}'; inline]", 'inline') == 'attribute'
+	assert kind_of("@[x: '\${a[0]}'; inline]", 'a') == 'name'
+	assert kind_of("@[x: '\${f('\${label}')}'; inline]", 'label') == 'name'
+	assert kind_of("@[x: '\${f('\${label}')}'; inline]", 'inline') == 'attribute'
 }
 
 fn test_highlight_tokens_attribute_call_arguments_keep_their_kinds() {
@@ -261,12 +266,18 @@ fn test_highlight_tokens_spaced_field_access_is_not_an_enum_value() {
 	assert kind_of('foo\n\t.bar', 'bar') == 'name'
 	assert kind_of('a[0] .bar', 'bar') == 'name'
 	assert kind_of('f()\n\t.bar', 'bar') == 'name'
+	// Inspect the last token because the struct field's name occurs twice.
+	assert classify('Item{ field: 1 } .field').last() == 'field:name'
+	assert classify('Item{ field: 1 }\n\t.field').last() == 'field:name'
+	assert classify('match x { .a { Item{} } else { Item{} } } .field').last() == 'field:name'
 }
 
 fn test_highlight_tokens_separated_enum_values() {
 	assert kind_of('match x {\n\t.a {}\n\t.b {}\n}', 'b') == 'enum_value'
 	assert kind_of('[.a .b]', 'b') == 'enum_value'
 	assert kind_of('[State.a .b]', 'b') == 'enum_value'
+	assert kind_of('match x { .a { Item{} } .b {} }', 'b') == 'enum_value'
+	assert kind_of('match x { State.a { if ok {} } .b {} }', 'b') == 'enum_value'
 }
 
 // The tests below check how each output displays the kinds.
