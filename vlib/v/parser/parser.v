@@ -686,6 +686,8 @@ fn (mut p Parser) parse_buffer(path string, stable_src string) {
 // mode), since extension checks behave exactly as in parse_into. The AST takes
 // ownership of a copy of `src`. Useful where no filesystem exists, like the
 // Emscripten build.
+// Reusing a Parser appends files to the same AST and retains earlier diagnostics,
+// like parse_file; inspect diagnostics for parser errors.
 pub fn (mut p Parser) parse_text(name string, src string) &flat.FlatAst {
 	if p.diagnostic_limit_reached {
 		return p.a

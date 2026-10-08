@@ -8,21 +8,10 @@ import v.pref
 // the formatted source, or an error when the text has parser errors. Useful
 // where no filesystem exists, like the Emscripten build.
 pub fn format_text(src string) !string {
-	mut prefs := pref.new_preferences()
-	prefs.is_fmt = true
-	prefs.preserve_comptime_conditionals = true
-	prefs.supports_inline_asm = true
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_text('main.v', src)
-	for d in p.diagnostics {
-		if d.severity == '' || d.severity == 'error:' {
-			return error('${d.file}:${d.line}:${d.column}: ${d.message}')
-		}
-	}
-	return format_with_options(a, FormatOptions{})
+	return format_text_with_options(src, FormatOptions{})
 }
 
-// format_file_text is format_text with explicit options.
+// format_text_with_options formats in-memory V source with explicit options.
 pub fn format_text_with_options(src string, options FormatOptions) !string {
 	mut prefs := pref.new_preferences()
 	prefs.is_fmt = true

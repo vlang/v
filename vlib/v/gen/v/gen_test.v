@@ -2515,3 +2515,41 @@ fn test_parse_text_matches_parse_file() {
 	a := p.parse_text('main.v', src)
 	assert format(a) == vfmt('text_matches_file_ast', src)
 }
+
+fn test_format_text_honors_options() {
+	source := "fn main() {\n\ts := 'abc'.str\n}\n"
+	assert format_text(source)! == vfmt_with_options('text_default_options', source, FormatOptions{})
+	assert format_text_with_options(source, backend: 'js')! == source
+	assert format_text_with_options(source, backend: 'js')! == vfmt_with_options('text_js_options',
+		source,
+		backend: 'js'
+	)
+	assert format_text(source)! != source
+	c_source := 'fn C.convert(value int) int\n'
+	assert format_text_with_options(c_source, is_new_int: true)! == 'fn C.convert(value i32) i32\n'
+	assert format_text_with_options(c_source, is_new_int: true)! == vfmt_with_options('text_int_options',
+		c_source,
+		is_new_int: true
+	)
+}
+
+fn test_format_text_preserves_comments_and_comptime_branches() {
+	source := 'module main\n// keep this comment\n\$if windows {\nfn selected() { println( 1 ) }\n} \$else {\nfn selected() { println( 2 ) }\n}\n'
+	output := format_text(source)!
+	assert output == vfmt('text_comptime_comments', source)
+	assert output.contains('// keep this comment')
+	assert output.contains('println(1)')
+	assert output.contains('println(2)')
+	assert format_text(output)! == output
+}
+
+fn test_format_text_recovers_after_invalid_input() {
+	format_text_with_options('fn broken( {', backend: 'js') or {
+		assert err.msg().starts_with('main.v:'), err.msg()
+		valid := 'fn main() {}\n'
+		assert format_text(valid)! == valid
+		assert format_text_with_options(valid, backend: 'js')! == valid
+		return
+	}
+	assert false, 'expected a parser error'
+}

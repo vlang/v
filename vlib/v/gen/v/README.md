@@ -2,6 +2,31 @@
 
 The V3 formatter formats source syntax without type checking.
 
+## Formatting in-memory source
+
+Use `format_text` to format a string without staging the input in a file or
+launching the formatter executable. It returns the formatted text, or a parser
+error with a `main.v:line:column` location. Comments and compile-time branches are
+preserved just as they are when formatting a file.
+
+```v
+import v.gen.v as vgen
+
+fn main() {
+	formatted := vgen.format_text('fn main(){println(1)}') or { panic(err) }
+	println(formatted)
+}
+```
+
+`format_text_with_options(src, options)` accepts the same `FormatOptions` as
+`format_with_options`, including `backend` and `is_new_int`.
+
+For callers that need the AST, `parser.Parser.parse_text(name, src)` parses an
+in-memory source and owns a copy of its bytes. Use a `.v` name, or `.vsh` for
+script mode. Inspect `Parser.diagnostics` for errors. Reusing the parser appends
+each file to the same AST and retains the diagnostics from earlier files, as
+`parse_file` does.
+
 ## String literal spelling
 
 Non-interpolated string literals retain their original source spelling for
