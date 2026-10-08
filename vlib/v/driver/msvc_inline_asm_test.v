@@ -63,8 +63,9 @@ fn test_c_output_for_msvc_keeps_the_inline_asm_block() {
 		os.rm(path) or {}
 		os.rm(c_path) or {}
 	}
-	result := cmdexec.run(os.join_path(@VMODROOT, 'v'), ['-os', 'windows', '-cc', 'msvc', '-o',
-		c_path, path])
+	// The block is `asm amd64`; without `-arch` an Apple silicon host targets Windows on arm64.
+	result := cmdexec.run(os.join_path(@VMODROOT, 'v'), ['-os', 'windows', '-arch', 'amd64', '-cc',
+		'msvc', '-o', c_path, path])
 	assert result.exit_code == 0, result.output
 	assert os.read_file(c_path)!.contains('__asm__')
 }
