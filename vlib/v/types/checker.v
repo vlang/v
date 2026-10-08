@@ -11952,13 +11952,17 @@ fn (mut tc TypeChecker) check_test_fn_signature(id flat.NodeId, node flat.Node) 
 }
 
 fn (mut tc TypeChecker) check_test_file_has_test_fn() {
-	mut has_test_file := false
 	mut has_test_fn := false
+	mut first_test_file_node := flat.NodeId(-1)
 	mut first_source_node := flat.NodeId(-1)
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
 		if node.kind == .file && is_regular_v_test_file(node.value) {
-			has_test_file = true
+			// The trailing file node has a source position even when the file
+			// contains no active declarations; the leading marker does not.
+			if int(first_test_file_node) < 0 && node.pos.is_valid() {
+				first_test_file_node = flat.NodeId(i)
+			}
 			continue
 		}
 		if node.kind != .fn_decl {
@@ -11975,11 +11979,18 @@ fn (mut tc TypeChecker) check_test_file_has_test_fn() {
 			has_test_fn = true
 		}
 	}
-	if !has_test_file || has_test_fn {
+	if int(first_test_file_node) < 0 || has_test_fn {
 		return
 	}
+	if int(first_source_node) < 0 {
+		first_source_node = first_test_file_node
+	}
 	first_node := tc.a.nodes[int(first_source_node)]
-	mut pos := tc.fn_declaration_diagnostic_pos(first_node)
+	mut pos := if first_node.kind == .fn_decl {
+		tc.fn_declaration_diagnostic_pos(first_node)
+	} else {
+		first_node.pos
+	}
 	if pos.is_valid() {
 		pos = token.new_span(pos.id, pos.offset, pos.offset + 1)
 	}
