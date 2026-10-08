@@ -46,3 +46,8 @@ Variadic function types keep their variadic tail when used as parameters or fiel
 For `fn (int, ...string) bool`, a call must supply the fixed `int` argument and may supply
 zero or more strings. A `fn (int, []string) bool` still requires an explicit array argument.
 Restoring transformed function values and reconstructing callback signatures also keep this tail.
+
+Each `_test.v` file must contain at least one active `test_` function. A file whose tests
+are all excluded by conditional compilation reports a missing-test error. When the file
+has no active function declarations, this diagnostic points to the start of the file;
+a helper-only file points to its helper function.
