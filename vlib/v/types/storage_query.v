@@ -96,7 +96,7 @@ fn (tc &TypeChecker) storage_query_probe_facts_unchanged() bool {
 	base := probe.read_base
 	if isnil(base) || tc.errors.len != probe.initial_error_count
 		|| tc.a.nodes.len != probe.initial_node_count || tc.a.children.len != probe.initial_children_count
-		|| tc.fn_context.node_id != base.fn_context.node_id || tc.cur_scope != base.cur_scope
+		|| tc.fn_context.node_id != base.fn_context.node_id || voidptr(tc.cur_scope) != voidptr(base.cur_scope)
 		|| tc.cur_file != base.cur_file || tc.cur_module != base.cur_module
 		|| tc.smartcasts != base.smartcasts || tc.expected_expr_id != base.expected_expr_id
 		|| tc.trust_checked_expr_types != base.trust_checked_expr_types

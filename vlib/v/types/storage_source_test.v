@@ -65,6 +65,13 @@ fn main() { _ = make_text().view() }
 	changed.expected_expr_id = int(outer)
 	assert changed.storage_query_probe_checked_call_info(outer) == none
 	assert changed.storage_query_probe_checked_type(receiver) == none
+	mut different_scope := tc.fork_storage_observation_view()
+	different_scope.cur_scope = &Scope{ ...tc.cur_scope }
+	assert voidptr(different_scope.cur_scope) != voidptr(tc.cur_scope)
+	assert *different_scope.cur_scope == *tc.cur_scope
+	assert !different_scope.storage_query_probe_facts_unchanged()
+	assert different_scope.storage_query_probe_checked_call_info(outer) == none
+	assert different_scope.storage_query_probe_checked_type(receiver) == none
 	mut cold := tc.fork_storage_observation_view()
 	cold.remember_expr_type(receiver, Type(String{}))
 	assert cold.storage_query_probe_checked_call_info(outer) == none
@@ -320,6 +327,11 @@ fn main() {
 	assert !exhausted_tracking.storage_query_probe_cached_history(use_id, []flat.NodeId{}, map[string]flat.NodeId{})
 	mut changed := certificates.fork_storage_query_view()
 	changed.expected_expr_id = int(use_id)
+	assert !changed.storage_query_probe_cached_history(use_id, [call_id, use_id], map[string]flat.NodeId{})
+	changed = certificates.fork_storage_query_view()
+	changed.cur_scope = &Scope{ ...tc.cur_scope }
+	assert voidptr(changed.cur_scope) != voidptr(tc.cur_scope)
+	assert *changed.cur_scope == *tc.cur_scope
 	assert !changed.storage_query_probe_cached_history(use_id, [call_id, use_id], map[string]flat.NodeId{})
 	changed = certificates.fork_storage_query_view()
 	changed.remember_expr_type(call_id, Type(String{}))
