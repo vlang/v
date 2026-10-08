@@ -131,7 +131,7 @@ fn test_storage_observers_preserve_annotation_reads_and_private_nested_writes() 
 	nested.fork_fn_value_writes[int(id)] = 'main.nested_write'
 	nested.fork_overlay.resolved_call_names[int(id)] = 'main.nested_overlay_call'
 	nested.fork_overlay.resolved_fn_values[int(id)] = 'main.nested_overlay_value'
-	assert outer.sparse_expr_type_values[int(id)] == Type(string_)
+	assert (outer.sparse_expr_type_values[int(id)] or { panic('missing private type') }) == Type(string_)
 	assert outer.sparse_resolved_call_names[int(id)] == 'main.private_call'
 	assert outer.sparse_resolved_fn_values[int(id)] == 'main.private_value'
 	assert outer.fork_fn_value_writes[int(id)] == 'main.private_write'
@@ -139,7 +139,7 @@ fn test_storage_observers_preserve_annotation_reads_and_private_nested_writes() 
 	assert outer.fork_overlay.resolved_fn_values[int(id)] == 'main.private_overlay_value'
 	exact.sparse_expr_type_values[int(id)] = Type(int_)
 	exact.fork_overlay.resolved_call_names[int(id)] = 'main.exact_override'
-	assert tc.sparse_expr_type_values[int(id)] == Type(bool_)
+	assert (tc.sparse_expr_type_values[int(id)] or { panic('missing original type') }) == Type(bool_)
 	assert tc.fork_overlay.resolved_call_names[int(id)] == 'main.overlay_call'
 }
 
