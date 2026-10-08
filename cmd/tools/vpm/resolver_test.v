@@ -541,3 +541,118 @@ fn test_joint_range_and_exact_branch_alias_can_share_a_tagged_commit() {
 	joint_cli(['install'])
 	assert joint_head('branch_range', 'shared') == head
 }
+
+fn joint_set_dev_dependencies(dir string, dependencies []string) ! {
+	path := os.join_path(dir, 'v.mod')
+	mut manifest := vmod.from_file(path)!
+	manifest.unknown['dev_dependencies'] = dependencies
+	os.write_file(path, vmod.encode(manifest))!
+}
+
+fn test_joint_root_dev_dependencies_install_and_explain_only_runtime_transitives() {
+	child := joint_repo('dev_graph', 'child')!
+	child_head := joint_tag(child, 'child', 'v1.0.0', [])!
+	tool := joint_repo('dev_graph', 'devtool')!
+	joint_tag(tool, 'devtool', 'v1.0.0', [child + '@^1'])!
+	joint_set_dev_dependencies(tool, [os.join_path(joint_root, 'missing_dev_dependency') + '@^1'])!
+	joint_git(tool, ['add', 'v.mod'])
+	joint_git(tool, ['commit', '-m', 'development requirements'])
+	joint_git(tool, ['tag', '-f', 'v1.0.0'])
+	project := joint_project('dev_graph', [])!
+	joint_set_dev_dependencies(project, [tool + '@^1'])!
+	joint_cli(['install'])
+	assert joint_head('dev_graph', 'devtool') == joint_git(tool, ['rev-parse', 'v1.0.0'])
+	assert joint_head('dev_graph', 'child') == child_head
+	assert read_lockfile(project)!.modules.len == 2
+	why := joint_cli(['why', 'devtool'])
+	assert why.contains('devtool (requires ^1, installed v1.0.0)'), why
+	graph := joint_cli(['why', '--graph'])
+	assert graph.contains('joint_app -> devtool@v1.0.0 (requires ^1)'), graph
+	assert graph.contains('devtool@v1.0.0 -> child@v1.0.0 (requires ^1)'), graph
+	assert !graph.contains('missing_dev_dependency'), graph
+}
+
+fn test_joint_root_dev_dependencies_honor_locked_frozen_and_precise_updates() {
+	repo := joint_repo('dev_locked', 'devtool')!
+	old := joint_tag(repo, 'devtool', 'v1.0.0', [])!
+	project := joint_project('dev_locked', [])!
+	joint_set_dev_dependencies(project, [repo + '@^1'])!
+	joint_cli(['install'])
+	before := os.read_file(lockfile_path(project))!
+	new := joint_tag(repo, 'devtool', 'v1.1.0', [])!
+	joint_cli(['install', '--locked'])
+	joint_cli(['install', '--frozen'])
+	assert joint_head('dev_locked', 'devtool') == old
+	assert os.read_file(lockfile_path(project))! == before
+	joint_cli(['update', '-p', 'devtool', '--precise', '1.1.0'])
+	assert joint_head('dev_locked', 'devtool') == new
+	assert read_lockfile(project)!.modules[repo].requested == repo + '@^1'
+	joint_set_dev_dependencies(project, [repo + '@^2'])!
+	locked := os.read_file(lockfile_path(project))!
+	cmd_fail_args(@LOCATION, [joint_tool, 'install', '--frozen'])
+	assert os.read_file(lockfile_path(project))! == locked
+	assert joint_head('dev_locked', 'devtool') == new
+}
+
+fn test_joint_root_dev_dependencies_report_outdated_and_widen_their_own_field() {
+	repo := joint_repo('dev_latest', 'devtool')!
+	old := joint_tag(repo, 'devtool', 'v1.0.0', [])!
+	runtime := joint_repo('dev_latest', 'runtime')!
+	runtime_old := joint_tag(runtime, 'runtime', 'v1.0.0', [])!
+	project := joint_project('dev_latest', [runtime + '@^1'])!
+	joint_set_dev_dependencies(project, [repo + '@^1'])!
+	joint_cli(['install'])
+	minor := joint_tag(repo, 'devtool', 'v1.1.0', [])!
+	major := joint_tag(repo, 'devtool', 'v2.0.0', [])!
+	joint_tag(runtime, 'runtime', 'v2.0.0', [])!
+	lock_before := os.read_file(lockfile_path(project))!
+	outdated := joint_cli(['outdated'])
+	assert outdated.contains('devtool\tv1.0.0\tv1.1.0\tv1.1.0\tv2.0.0'), outdated
+	assert joint_head('dev_latest', 'devtool') == old
+	assert os.read_file(lockfile_path(project))! == lock_before
+	joint_cli(['update', '-p', 'devtool'])
+	assert joint_head('dev_latest', 'devtool') == minor
+	manifest_before := os.read_file(os.join_path(project, 'v.mod'))!
+	updated_lock := os.read_file(lockfile_path(project))!
+	joint_cli(['update', '-p', 'devtool', '--latest', '--dry-run'])
+	assert os.read_file(os.join_path(project, 'v.mod'))! == manifest_before
+	assert os.read_file(lockfile_path(project))! == updated_lock
+	assert joint_head('dev_latest', 'devtool') == minor
+	joint_cli(['update', '-p', 'devtool', '--latest'])
+	assert joint_head('dev_latest', 'devtool') == major
+	assert joint_head('dev_latest', 'runtime') == runtime_old
+	manifest := vmod.from_file(os.join_path(project, 'v.mod'))!
+	assert manifest.dependencies == [runtime + '@^1']
+	assert manifest.unknown['dev_dependencies'] == [repo + '@^2.0.0']
+	assert read_lockfile(project)!.modules[repo].requested == repo + '@^2.0.0'
+	joint_cli(['install', '--locked'])
+}
+
+fn test_joint_regular_and_dev_constraints_are_resolved_together() {
+	repo := joint_repo('dev_conflict', 'shared')!
+	joint_tag(repo, 'shared', 'v1.0.0', [])!
+	joint_tag(repo, 'shared', 'v2.0.0', [])!
+	project := joint_project('dev_conflict', [repo + '@^1'])!
+	joint_set_dev_dependencies(project, [repo + '@^2'])!
+	output := cmd_fail_args(@LOCATION, [joint_tool, 'install']).output
+	assert output.contains('@^1') && output.contains('@^2'), output
+	assert !os.exists(os.join_path(joint_root, 'dev_conflict', 'store', 'shared'))
+	assert !os.exists(lockfile_path(project))
+}
+
+fn test_joint_removed_dev_dependencies_are_pruned_from_the_lockfile() {
+	runtime := joint_repo('dev_prune', 'runtime')!
+	joint_tag(runtime, 'runtime', 'v1.0.0', [])!
+	tool := joint_repo('dev_prune', 'devtool')!
+	joint_tag(tool, 'devtool', 'v1.0.0', [])!
+	project := joint_project('dev_prune', [runtime + '@^1'])!
+	joint_set_dev_dependencies(project, [tool + '@^1'])!
+	joint_cli(['install'])
+	assert read_lockfile(project)!.modules.len == 2
+	joint_set_dev_dependencies(project, [])!
+	joint_cli(['install'])
+	lockfile := read_lockfile(project)!
+	assert lockfile.modules.len == 1
+	assert runtime in lockfile.modules
+	assert !joint_cli(['why', '--graph']).contains('devtool')
+}

@@ -108,6 +108,12 @@ retain their previous behavior.
 
 ## Root metadata, release policy and vendoring
 
+Project commands include the root manifest's `dev_dependencies` alongside `dependencies`.
+`v install` resolves and locks both sets together, and `v update`, `v outdated`, `v why`, and
+`v mod graph` include the same requirements. Development requirements declared by dependency
+modules are excluded. `v update --latest` widens a development requirement in
+`dev_dependencies`, keeping it separate from regular requirements in `v.mod`.
+
 Only the root manifest supplies `dependency_overrides`. Global `package: ref` selectors apply
 throughout the graph; `parent>package: ref` selectors apply on that parent's requiring edge.
 A conditional `parent@range>package: version` selector applies when the override version
