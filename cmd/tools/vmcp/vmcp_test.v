@@ -131,6 +131,19 @@ fn test_every_tool_is_named_and_described() {
 	}
 }
 
+// The catalogue is sent on every `tools/list`, so its size is a per-session
+// token floor. This budget keeps descriptions and schemas from regrowing:
+// a tool that needs more words must earn them by trimming elsewhere.
+const max_catalogue_bytes = 12000
+
+fn test_tools_list_stays_within_token_budget() {
+	mut total := 0
+	for spec in tool_specs() {
+		total += spec.tool.name.len + spec.tool.description.len + spec.tool.input_schema.len
+	}
+	assert total < max_catalogue_bytes, 'tools/list catalogue is ${total} bytes, over the ${max_catalogue_bytes} byte budget'
+}
+
 // The catalogue is the whole public surface: `--read-only` drops exactly the
 // tools that write, and nothing else.
 fn test_read_only_keeps_only_the_safe_tools() {

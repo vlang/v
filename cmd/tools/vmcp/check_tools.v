@@ -11,9 +11,8 @@ import v.astjson
 fn spec_check() ToolSpec {
 	return read_only_spec('v_check',
 		'Type-check V code and return the compiler diagnostics as records with file,
-line, column, kind and message. Points at one file or one directory. This is the
-authoritative answer to "does it compile"; use it after every change instead of
-guessing. It compiles nothing and writes nothing.',
+line, column, kind and message. Points at one file or one directory. It compiles
+nothing and writes nothing.',
 		input_schema(['path'], {
 			'path':  SchemaProperty{
 				kind:        'string'
