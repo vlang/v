@@ -163,6 +163,86 @@ fn test_highlight_tokens_braces_outside_strings() {
 	assert classify('struct S {}') == ['struct:keyword', 'S:type_name', '{:punctuation', '}:punctuation']
 }
 
+// kind_of returns the kind of the first token in `code` whose text is `raw`.
+fn kind_of(code string, raw string) string {
+	for highlighted in highlight_tokens(code) {
+		if code[highlighted.start..highlighted.end] == raw {
+			return highlighted.typ.str()
+		}
+	}
+	return 'no token `${raw}`'
+}
+
+fn test_highlight_tokens_map_as_a_builtin() {
+	assert classify('map[string]int') == ['map:builtin', '[:punctuation', 'string:builtin',
+		']:punctuation', 'int:builtin']
+	// The `.map()` method is not the map type.
+	assert kind_of('a.map(it)', 'map') == 'function'
+}
+
+fn test_highlight_tokens_negated_keywords() {
+	assert classify('a in b') == ['a:name', 'in:keyword', 'b:name']
+	assert classify('a !in b') == ['a:name', '!in:keyword', 'b:name']
+	assert classify('a is B') == ['a:name', 'is:keyword', 'B:type_name']
+	assert classify('a !is B') == ['a:name', '!is:keyword', 'B:type_name']
+}
+
+fn test_highlight_tokens_comptime_dollar() {
+	assert classify('\$if x {} \$else {}') == ['$:keyword', 'if:keyword', 'x:name', '{:punctuation',
+		'}:punctuation', '$:keyword', 'else:keyword', '{:punctuation', '}:punctuation']
+}
+
+fn test_highlight_tokens_format_spec() {
+	assert classify("'\${n:5.2f}'") == ["':string", '$:string_interp', '{:string_interp', 'n:name',
+		'::string_interp', '5.2:string_interp', 'f:string_interp', '}:string_interp', "':string"]
+	assert classify("'\${x:-10}'") == ["':string", '$:string_interp', '{:string_interp', 'x:name',
+		'::string_interp', '-:string_interp', '10:string_interp', '}:string_interp', "':string"]
+	assert kind_of("'\${a[1..2]:5}'", ':') == 'string_interp'
+	// A `:` inside a nested expression is not a format spec.
+	assert kind_of("'\${f({'a': 1})}'", ':') == 'punctuation'
+	assert kind_of("'\${f(a: 1)}'", ':') == 'punctuation'
+	assert kind_of("'\${f(a: 1)}'", '1') == 'number'
+}
+
+fn test_highlight_tokens_attribute() {
+	assert classify("@[deprecated: 'use y'; inline] fn f()") == ['@[:attribute', 'deprecated:attribute',
+		'::punctuation', "'use y':string", 'inline:attribute', ']:attribute', 'fn:keyword', 'f:function',
+		'(:punctuation', '):punctuation']
+	assert classify('@[if debug]') == ['@[:attribute', 'if:attribute', 'debug:attribute', ']:attribute']
+	// An enum value in an argument is an enum value, not a word of the attribute.
+	assert classify('@[x: .bar]') == ['@[:attribute', 'x:attribute', '::punctuation', '.:enum_value',
+		'bar:enum_value', ']:attribute']
+	// An attribute ends at its `]`, so later names and brackets are classified as usual.
+	assert classify('@[x] a[0]') == ['@[:attribute', 'x:attribute', ']:attribute', 'a:name',
+		'[:punctuation', '0:number', ']:punctuation']
+}
+
+fn test_highlight_tokens_enum_value() {
+	assert classify('s = .closed') == ['s:name', '=:operator', '.:enum_value', 'closed:enum_value']
+	assert classify('f(.a, .b)') == ['f:function', '(:punctuation', '.:enum_value', 'a:enum_value',
+		',:punctuation', '.:enum_value', 'b:enum_value', '):punctuation']
+	assert kind_of('match x {\n\t.a {}\n\t.b {}\n}', 'a') == 'enum_value'
+}
+
+fn test_highlight_tokens_qualified_enum_value() {
+	assert classify('State.unknown') == ['State:type_name', '.:enum_value', 'unknown:enum_value']
+	assert kind_of('http.Method.post', 'post') == 'enum_value'
+	// A static method, compile time reflection and C or JS names are not enum values.
+	assert kind_of('Foo.new()', 'new') == 'function'
+	assert kind_of('\$for f in T.fields {}', 'fields') == 'name'
+	assert classify('C.FILE') == ['C:type_name', '.:punctuation', 'FILE:type_name']
+	assert classify('JS.foo') == ['JS:type_name', '.:punctuation', 'foo:name']
+}
+
+fn test_highlight_tokens_field_access_is_not_an_enum_value() {
+	assert classify('foo.bar') == ['foo:module_', '.:punctuation', 'bar:name']
+	assert kind_of('a[0].x', 'x') == 'name'
+	assert kind_of('f()?.x', 'x') == 'name'
+	// A method called on the next line is not an enum value either.
+	assert classify('x\n\t.map()') == ['x:module_', '.:punctuation', 'map:function', '(:punctuation',
+		'):punctuation']
+}
+
 // The tests below check how each output displays the kinds.
 
 fn test_color_highlight_string_interpolation() {
