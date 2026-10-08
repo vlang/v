@@ -35,17 +35,157 @@ fn test_ownership_value_returns_survive_repeated_storage_queries() {
 	for i in 1 .. 19 {
 		source += 'fn store${i}(mut holder Holder, value string) { store${i - 1}(mut holder, value); store${i - 1}(mut holder, value) }\n'
 	}
-	source += 'fn value() string {
+	source += 'fn value(flag bool) string {
 	mut holder := Holder{}
-	store18(mut holder, "value")
+	if flag {
+		input := "value"
+		store18(mut holder, input)
+	}
 	if text := holder.values["key"] { return text }
 	return ""
 }
-fn main() { assert value() == "value" }
+fn main() { assert value(true) == "value"; assert value(false) == "" }
 '
 	os.write_file(source_path, source)!
-	result := run_owned_storage_summary(source_path, '', '-check')
-	assert result.exit_code == 0, result.output
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_storage_summary(source_path, mode, 'run')
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+}
+
+fn test_ownership_mutable_formal_returns_ignore_independent_call_inputs() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_formal_value_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	mut source := 'struct Holder { mut: values map[string]string }\n'
+	source += 'fn store0(mut holder Holder, value string) { holder.values["key"] = value }\n'
+	for i in 1 .. 19 {
+		source += 'fn store${i}(mut holder Holder, value string) { store${i - 1}(mut holder, value); store${i - 1}(mut holder, value) }\n'
+	}
+	source += 'fn value(mut holder Holder, number int) string {
+	store18(mut holder, "\${number}")
+	if text := holder.values["key"] { return text }
+	return ""
+}
+fn main() {
+	mut holder := Holder{}
+	assert value(mut holder, 42) == "42"
+}
+'
+	os.write_file(source_path, source)!
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_storage_summary(source_path, mode, 'run')
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+}
+
+fn test_ownership_mutable_formal_history_probe_does_not_replay_chained_calls() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_formal_chained_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	os.write_file(source_path, 'struct Holder { mut: values map[string]string }
+struct Item { text string }
+fn make_item(text string) Item { return Item{text: text} }
+fn (item Item) view() string { return item.text }
+fn no_op(mut holder Holder, text string) { _ = holder; _ = text }
+fn value(mut holder Holder) string {
+	text := "consumed".to_owned()
+	no_op(mut holder, make_item(text.clone()).view())
+	holder.values["key"] = "value"
+	if result := holder.values["key"] { return result }
+	return ""
+}
+fn main() {
+	mut holder := Holder{}
+	assert value(mut holder) == "value"
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_storage_summary(source_path, mode, 'run')
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+}
+
+fn test_ownership_mutable_formal_returns_keep_earlier_local_storage_diagnostics() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_formal_borrow_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	for borrowed in ['local.reference()', 'ptr'] {
+		pointer_type := if borrowed == 'ptr' { '&&Builder' } else { '&Builder' }
+		pointer_binding := if borrowed == 'ptr' { 'ptr := &local' } else { '' }
+		os.write_file(source_path, 'struct Builder { number int }
+fn (mut builder Builder) reference() &Builder { return builder }
+struct Holder { mut: target ${pointer_type} = unsafe { nil } }
+fn store(mut holder Holder, builder ${pointer_type}) { holder.target = builder }
+fn no_op(mut holder Holder, number int) { _ = holder; _ = number }
+fn escaped(mut holder Holder) Holder {
+	mut local := Builder{number: 42}
+	${pointer_binding}
+	store(mut holder, ${borrowed})
+	no_op(mut holder, 0)
+	return holder
+}
+fn main() {
+	mut holder := Holder{}
+	_ = escaped(mut holder)
+}
+')!
+		for mode in ['-no-parallel', ''] {
+			result := run_owned_storage_summary(source_path, mode, '-check')
+			assert result.exit_code != 0, '${borrowed}: ${mode}: ${result.output}'
+			assert result.output.contains('cannot return a reference to local storage `local`'), '${borrowed}: ${mode}: ${result.output}'
+		}
+	}
+}
+
+fn test_ownership_mutable_map_sources_preserve_value_and_header_semantics() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_map_source_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	for borrowed_header in [false, true] {
+		field_type := if borrowed_header {
+			'&map[string]string = unsafe { nil }'
+		} else {
+			'map[string]string'
+		}
+		params := if borrowed_header { 'number int' } else { 'mut source map[string]string' }
+		store_body := if borrowed_header {
+			'_ = holder; _ = number'
+		} else {
+			'holder.value = source'
+		}
+		initial := if borrowed_header { 'Holder{value: &source}' } else { 'Holder{}' }
+		argument := if borrowed_header { '0' } else { 'mut source' }
+		main_body := if borrowed_header {
+			'_ = escaped()'
+		} else {
+			'assert escaped().value["key"] == "value"'
+		}
+		os.write_file(source_path, 'struct Holder { mut: value ${field_type} }
+fn store(mut holder Holder, ${params}) { ${store_body} }
+fn escaped() Holder {
+	mut source := {"key": "value"}
+	mut holder := ${initial}
+	store(mut holder, ${argument})
+	return holder
+}
+fn main() { ${main_body} }
+')!
+		for mode in ['-no-parallel', ''] {
+			command := if borrowed_header { '-check' } else { 'run' }
+			result := run_owned_storage_summary(source_path, mode, command)
+			if borrowed_header {
+				assert result.exit_code != 0, '${mode}: ${result.output}'
+				assert result.output.contains('cannot return a reference to local storage `source`'), '${mode}: ${result.output}'
+			} else {
+				assert result.exit_code == 0, '${mode}: ${result.output}'
+			}
+		}
+	}
 }
 
 fn test_ownership_copied_fields_do_not_escape_local_storage() {
@@ -66,7 +206,8 @@ struct Container {
 }
 fn number() int {
 	local := Container{number: 42}
-	return local.number
+	ptr := &local
+	return ptr.number
 }
 fn text() string {
 	local := Container{text: "copied".to_owned()}
@@ -82,11 +223,13 @@ fn fixed() [2]int {
 }
 fn optional() ?int {
 	local := Container{number: 44}
-	return local.number
+	ptr := &local
+	return ptr.number
 }
 fn result() !int {
 	local := Container{number: 45}
-	return local.number
+	ptr := &local
+	return ptr.number
 }
 fn main() {
 	assert number() == 42
@@ -98,6 +241,81 @@ fn main() {
 	assert fixed() == [6, 7]!
 	assert optional() or { panic("none") } == 44
 	assert result() or { panic(err) } == 45
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_storage_summary(source_path, mode, 'run')
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+}
+
+fn test_ownership_scalar_projections_do_not_escape_local_storage() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_scalar_projections_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+
+	source_path := os.join_path(root, 'main.v')
+	os.write_file(source_path, 'type Number = int
+enum State { ready }
+struct Scalars {
+	flag bool
+	fraction f64
+	letter rune
+	signed isize
+	unsigned usize
+	number Number
+	state State
+	values [2]int
+}
+fn flag() bool {
+	local := Scalars{flag: true}
+	ptr := &local
+	return ptr.flag
+}
+fn fraction() f64 {
+	local := Scalars{fraction: 1.5}
+	ptr := &local
+	return ptr.fraction
+}
+fn letter() rune {
+	local := Scalars{letter: rune(65)}
+	ptr := &local
+	return ptr.letter
+}
+fn signed() isize {
+	local := Scalars{signed: -2}
+	ptr := &local
+	return ptr.signed
+}
+fn unsigned() usize {
+	local := Scalars{unsigned: 3}
+	ptr := &local
+	return ptr.unsigned
+}
+fn number() Number {
+	local := Scalars{number: Number(4)}
+	ptr := &local
+	return ptr.number
+}
+fn state() State {
+	local := Scalars{state: .ready}
+	ptr := &local
+	return ptr.state
+}
+fn indexed() int {
+	local := Scalars{values: [5, 6]!}
+	ptr := &local
+	return ptr.values[1]
+}
+fn main() {
+	assert flag()
+	assert fraction() == 1.5
+	assert letter() == rune(65)
+	assert signed() == -2
+	assert unsigned() == 3
+	assert number() == Number(4)
+	assert state() == .ready
+	assert indexed() == 6
 }
 ')!
 	for mode in ['-no-parallel', ''] {
@@ -205,6 +423,36 @@ fn main() { assert escaped().target.number == 42 }
 				assert result.exit_code != 0, '${setter}: ${mode}: ${result.output}'
 				assert result.output.contains('cannot return a reference to local storage `local`'), '${setter}: ${mode}: ${result.output}'
 			}
+		}
+	}
+}
+
+fn test_ownership_local_binding_history_preserves_initial_and_rebound_borrows() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_local_binding_borrow_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	for binding in [
+		'mut holder := Holder{target: &local}',
+		'original := Holder{target: local.reference()}; mut holder := original',
+		'mut holder := Holder{target: &Builder{}}; holder = Holder{target: local.reference()}',
+	] {
+		os.write_file(source_path, 'struct Builder { mut: number int }
+fn (mut builder Builder) reference() &Builder { return builder }
+struct Holder { mut: target &Builder }
+fn no_op(mut holder Holder, number int) { _ = holder; _ = number }
+fn escaped() Holder {
+	mut local := Builder{}
+	${binding}
+	no_op(mut holder, 0)
+	return holder
+}
+fn main() { _ = escaped() }
+')!
+		for mode in ['-no-parallel', ''] {
+			result := run_owned_storage_summary(source_path, mode, '-check')
+			assert result.exit_code != 0, '${binding}: ${mode}: ${result.output}'
+			assert result.output.contains('cannot return a reference to local storage `local`'), '${binding}: ${mode}: ${result.output}'
 		}
 	}
 }
