@@ -25,6 +25,13 @@ fn constant_fold(mut m ssa.Module) bool {
 				if rhs.kind == .constant && rhs.name == 'undef' {
 					continue
 				}
+				// These folds use integer identities and parse constants as i64.
+				// Comparisons share opcodes with floats, which must retain their
+				// precision and IEEE semantics when evaluated by the backend.
+				if m.type_store.types[lhs.typ].kind != .int_t
+					|| m.type_store.types[rhs.typ].kind != .int_t {
+					continue
+				}
 
 				// Algebraic simplifications first (work even with non-constant operands):
 				// x+0, x*1, x*0, x-x, x^x, x&x, x|x, x<<0, x*2 -> x<<1, etc.
@@ -57,23 +64,36 @@ fn constant_fold(mut m ssa.Module) bool {
 				if lhs.kind != .constant || rhs.kind != .constant {
 					continue
 				}
-				l_int := lhs.name.i64()
-				r_int := rhs.name.i64()
+				l_int := integer_constant_value(m, lhs) or { continue }
+				r_int := integer_constant_value(m, rhs) or { continue }
+				if instr.op in [.shl, .ashr, .lshr]
+					&& r_int >= m.type_store.types[lhs.typ].width {
+					// Oversized shifts have target-specific behavior; preserve runtime evaluation.
+					continue
+				}
+				if instr.op in [.sdiv, .srem] && r_int == -1 {
+					width := m.type_store.types[lhs.typ].width
+					minimum := if width == 64 { min_i64 } else { -i64(u64(1) << (width - 1)) }
+					// Preserve the target's overflow behavior and avoid trapping the compiler.
+					if l_int == minimum {
+						continue
+					}
+				}
 
 				mut result := i64(0)
 				mut folded := false
 
 				match instr.op {
 					.add {
-						result = l_int + r_int
+						result = i64(u64(l_int) + u64(r_int))
 						folded = true
 					}
 					.sub {
-						result = l_int - r_int
+						result = i64(u64(l_int) - u64(r_int))
 						folded = true
 					}
 					.mul {
-						result = l_int * r_int
+						result = i64(u64(l_int) * u64(r_int))
 						folded = true
 					}
 					.sdiv {
@@ -126,7 +146,13 @@ fn constant_fold(mut m ssa.Module) bool {
 					}
 					.lshr {
 						if r_int >= 0 && r_int < 64 {
-							result = i64(u64(l_int) >> u64(r_int))
+							width := m.type_store.types[lhs.typ].width
+							bits := if width == 64 {
+								u64(l_int)
+							} else {
+								u64(l_int) & ((u64(1) << width) - 1)
+							}
+							result = i64(bits >> u64(r_int))
 							folded = true
 						}
 					}
@@ -185,6 +211,43 @@ fn constant_fold(mut m ssa.Module) bool {
 	return changed
 }
 
+// integer_constant_value preserves the full integer bit pattern, including
+// literals above max_i64, then interprets it using the operand's SSA type.
+fn integer_constant_value(m &ssa.Module, value ssa.Value) ?i64 {
+	typ := m.type_store.types[value.typ]
+	if typ.kind != .int_t || typ.width <= 0 || typ.width > 64 {
+		return none
+	}
+	mut literal := value.name.replace('_', '')
+	mut negative := false
+	if literal.starts_with('-') || literal.starts_with('+') {
+		negative = literal[0] == `-`
+		literal = literal[1..]
+	}
+	mut base := 10
+	if literal.starts_with('0x') || literal.starts_with('0X') {
+		base = 16
+		literal = literal[2..]
+	} else if literal.starts_with('0o') || literal.starts_with('0O') {
+		base = 8
+		literal = literal[2..]
+	} else if literal.starts_with('0b') || literal.starts_with('0B') {
+		base = 2
+		literal = literal[2..]
+	}
+	parsed := literal.parse_uint(base, 64) or { return none }
+	mut bits := if negative { u64(0) - parsed } else { parsed }
+	if typ.width < 64 {
+		mask := (u64(1) << typ.width) - 1
+		bits &= mask
+		// i1 represents a boolean, rather than a signed one-bit integer.
+		if !typ.is_unsigned && typ.width > 1 && bits & (u64(1) << (typ.width - 1)) != 0 {
+			bits |= ~mask
+		}
+	}
+	return i64(bits)
+}
+
 // try_algebraic_simplify implements identity/strength-reduction simplifications:
 // x+0=x, x*1=x, x*0=0, x-x=0, x^x=0, x&x=x, x|x=x, x<<0=x, x*2=x<<1, x/1=x.
 // Returns (replacement_id, needs_zero):
@@ -192,7 +255,7 @@ fn constant_fold(mut m ssa.Module) bool {
 //   repl == -2         -> rewrite as `x << 1` (caller builds the shift)
 //   needs_zero == true -> replace all uses with a fresh zero constant
 //   repl == -1         -> no simplification
-fn try_algebraic_simplify(_m &ssa.Module, val_id int, instr ssa.Instruction, lhs ssa.Value, rhs ssa.Value) (int, bool) {
+fn try_algebraic_simplify(m &ssa.Module, val_id int, instr ssa.Instruction, lhs ssa.Value, rhs ssa.Value) (int, bool) {
 	lhs_id := instr.operands[0]
 	rhs_id := instr.operands[1]
 
@@ -213,11 +276,11 @@ fn try_algebraic_simplify(_m &ssa.Module, val_id int, instr ssa.Instruction, lhs
 	mut const_is_rhs := false
 	mut other_id := 0
 	if lhs.kind == .constant && lhs.name != 'undef' {
-		const_val = lhs.name.i64()
+		const_val = integer_constant_value(m, lhs) or { return -1, false }
 		const_is_rhs = false
 		other_id = instr.operands[1]
 	} else if rhs.kind == .constant && rhs.name != 'undef' {
-		const_val = rhs.name.i64()
+		const_val = integer_constant_value(m, rhs) or { return -1, false }
 		const_is_rhs = true
 		other_id = instr.operands[0]
 	} else {

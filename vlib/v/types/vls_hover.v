@@ -1016,17 +1016,20 @@ fn (tc &TypeChecker) vls_element_type(node flat.Node) ?Type {
 fn (tc &TypeChecker) vls_fn_literal_type(literal flat.Node) Type {
 	mut params := []Type{}
 	mut params_mut := []bool{}
+	mut is_variadic := false
 	for i in 0 .. literal.children_count {
 		param := tc.a.child_node(&literal, i)
 		if param.kind != .param {
 			continue
 		}
 		params << tc.parse_type(param.typ)
+		is_variadic = param.typ.trim_space().starts_with('...')
 		params_mut << param.is_mut
 	}
 	return Type(FnType{
 		params:      params
 		params_mut:  params_mut
+		is_variadic: is_variadic
 		return_type: if literal.typ in ['', 'void'] {
 			Type(void_)
 		} else {

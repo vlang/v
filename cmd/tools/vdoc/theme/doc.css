@@ -640,7 +640,8 @@ pre {
 	color: var(--code-punctuation-text-color);
 }
 .token.number,
-.token.symbol {
+.token.symbol,
+.token.string_interp {
 	color: #702459;
 	color: var(--code-symbol-text-color);
 }

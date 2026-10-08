@@ -436,6 +436,7 @@ pub fn parse(s string) !Time {
 }
 
 // parse_format parses the string `s`, as a custom `format`, containing the following specifiers:
+// The format must cover the entire input; trailing text, including whitespace, is rejected.
 //
 // |Category| Format | Description |
 // |:-----  | :----- | :---------- |

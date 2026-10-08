@@ -62,6 +62,21 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+Month and weekday names in `parse_format` may end the input. For example,
+`time.parse_format('May', 'MMMM')!` and `time.parse_format('Jul', 'MMM')!`
+return times in May and July, respectively; weekday tokens also accept a terminal name.
+
+`parse_format(s, format)` requires the format to cover the entire input, including literals.
+Unmatched trailing text or whitespace returns an error instead of parsing only a prefix.
+
+`parse_format` defaults an omitted month to January. Day-only layouts such as
+`time.parse_format('31', 'DD')!` therefore accept January 31; an explicit month still
+enforces its actual length.
+
+`Time.custom_format('YYYY')` pads nonnegative years to at least four digits, so year `100`
+is written as `0100`. For nonnegative years, `YY` writes the final two year digits
+with leading zeros. Negative years retain their existing `YYYY` and `YY` representations.
+
 `parse_format` supports `A` for `AM`/`PM` and `a` for `am`/`pm`. Use these markers with
 an hour from `1` to `12`, for example `time.parse_format('02:30:45PM', 'hh:mm:ssA')!`
 returns hour `14`, while `12:00:00AM` returns hour `0`. Layouts without a marker retain

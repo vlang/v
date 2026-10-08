@@ -117,6 +117,19 @@ fn test_install_copies_the_bundle_and_reports_written_files() {
 	assert skills.installed(dir) == ['alpha']
 }
 
+fn test_an_install_leaves_no_temporary_directory_behind() {
+	vroot := fixture_root(['alpha'])!
+	dir := scratch_dir('atomic_clean')!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	skills.install(skill, dir, skills.InstallOptions{ force: true })!
+	// The copy is made in a sibling directory and moved over, so a failure
+	// cannot leave a half-written skill. Nothing dot-prefixed may survive
+	// beside the skill, on either side of that move.
+	for entry in os.ls(dir)! {
+		assert !entry.starts_with('.'), entry
+	}
+}
+
 fn test_install_skips_an_existing_skill_unless_forced() {
 	vroot := fixture_root(['alpha'])!
 	dir := scratch_dir('skip')!
@@ -133,6 +146,21 @@ fn test_install_skips_an_existing_skill_unless_forced() {
 	forced := skills.install(skill, dir, skills.InstallOptions{ force: true })!
 	assert !forced.skipped
 	assert os.read_file(entry)! != 'local edit\n'
+}
+
+fn test_install_refuses_a_regular_file_at_the_skill_destination() {
+	vroot := fixture_root(['alpha'])!
+	skill := skills.find(vroot, 'alpha') or { panic('alpha is missing') }
+	for force in [false, true] {
+		dir := scratch_dir('file_destination_${force}')!
+		dest := os.join_path_single(dir, 'alpha')
+		os.write_file(dest, 'local file')!
+		mut failed := false
+		skills.install(skill, dir, skills.InstallOptions{ force: force }) or { failed = true }
+		assert failed, 'an existing file must not be replaced by a skill directory'
+		assert os.read_file(dest)! == 'local file'
+		assert os.ls(dir)! == ['alpha']
+	}
 }
 
 fn test_install_dry_run_writes_nothing() {

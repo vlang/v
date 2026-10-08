@@ -4,20 +4,24 @@ const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const wasm_compiler = os.join_path(os.vtmp_dir(), 'ssa_wasm_codegen_compiler_${os.getpid()}')
 
 fn testsuite_begin() {
 	if os.getenv('V3_TEST_WASM') != '1' {
 		eprintln('> skipping v3 wasm backend tests; set V3_TEST_WASM=1 to run')
 		exit(0)
 	}
+	build := os.exec([vexe, '-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none',
+		'-compile-backend', 'wasm', '-o', wasm_compiler, v3_src])
+	assert build.exit_code == 0, build.output
+}
+
+fn testsuite_end() {
+	os.rm(wasm_compiler) or {}
 }
 
 fn v3_binary() string {
-	v3_bin := os.join_path(os.vtmp_dir(), 'v3_wasm_codegen_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+	return wasm_compiler
 }
 
 fn compile_to_wasm(v3_bin string, src string, name string) string {
@@ -26,8 +30,8 @@ fn compile_to_wasm(v3_bin string, src string, name string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	os.rm(out_path) or {}
 	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', out_path, src_path])
-	assert res.exit_code == 0, res.output
+		os.exec([v3_bin, '-enable-globals', '-b', 'wasm', '-o', out_path, src_path])
+	assert res.exit_code == 0, '${name}: ${res.output}'
 	assert os.exists(out_path), 'missing wasm output for ${name}'
 	return out_path
 }
@@ -73,15 +77,15 @@ fn run_wasi_expect(wasm string, expected []string) {
 	assert lines.len >= expected.len, res.output
 	for i, want in expected {
 		got := lines[lines.len - expected.len + i]
-		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${res.output})'
+		assert got == want, '${os.base(wasm)} line ${i}: got ${got}, want ${want} (full: ${res.output})'
 	}
 }
 
 fn test_wasm_block_scoping_preserves_outer_locals() {
 	v3_bin := v3_binary()
-	// A shadowing for-initializer and a loop-body declaration must not leak:
-	// after the loops the outer i (10) and x (1) are restored.
-	src := 'fn main() {\n\ti := 10\n\tfor i := 0; i < 1; i++ {\n\t}\n\tprintln(i)\n\tx := 1\n\tfor j := 0; j < 2; j++ {\n\t\tx := j + 2\n\t\tprintln(x)\n\t}\n\tprintln(x)\n}\n'
+	// A for-initializer and a loop-body declaration must not alter outer locals:
+	// after the loops the outer i and x remain 10 and 1.
+	src := 'fn main() {\n\ti := 10\n\tfor inner_i := 0; inner_i < 1; inner_i++ {\n\t}\n\tprintln(i)\n\tx := 1\n\tfor j := 0; j < 2; j++ {\n\t\tinner_x := j + 2\n\t\tprintln(inner_x)\n\t}\n\tprintln(x)\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_scope')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['10', '2', '3', '1'])
@@ -89,7 +93,7 @@ fn test_wasm_block_scoping_preserves_outer_locals() {
 
 fn test_wasm_narrow_integer_casts_and_arithmetic_wrap() {
 	v3_bin := v3_binary()
-	src := 'fn main() {\n\tprintln(int(i8(128)))\n\tprintln(int(u8(256)))\n\tprintln(int(u16(65536)))\n\tprintln(int(i16(32768)))\n\tmut a := u8(250)\n\ta += u8(10)\n\tprintln(int(a))\n\tmut b := i8(127)\n\tb++\n\tprintln(int(b))\n\tprintln(int(u8(200) + u8(100)))\n}\n'
+	src := 'fn main() {\n\tprintln(int(i8(i16(128))))\n\tprintln(int(u8(u16(256))))\n\tprintln(int(u16(u32(65536))))\n\tprintln(int(i16(i32(32768))))\n\tmut a := u8(250)\n\ta += u8(10)\n\tprintln(int(a))\n\tmut b := i8(127)\n\tb++\n\tprintln(int(b))\n\tprintln(int(u8(200) + u8(100)))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_narrow')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['-128', '0', '0', '-32768', '4', '-128', '44'])
@@ -121,6 +125,330 @@ fn test_wasm_hello_world() {
 	assert last_line(res.output) == 'hello world', res.output
 }
 
+fn test_wasm_implicit_main() {
+	wasm := compile_to_wasm(v3_binary(), "println('hello script')\n", 'wasm_implicit_main')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['hello script'])
+}
+
+fn assert_wasm_source_before_and_after_optimization(name string, source string, checks string) {
+	dir := os.join_path(os.vtmp_dir(), 'wasm_review_${name}_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	source_path := os.join_path(dir, 'main.v')
+	runner := os.join_path(dir, 'check.mjs')
+	os.write_file(source_path, source) or { panic(err) }
+	os.write_file(runner, "import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const bytes = readFileSync(process.argv[2]);
+assert.ok(WebAssembly.validate(bytes));
+const { instance } = await WebAssembly.instantiate(bytes, {});
+const e = instance.exports;
+${checks}
+") or { panic(err) }
+	for production in [false, true] {
+		output := os.join_path(dir, 'main_${production}.wasm')
+		mut args := [v3_binary(), '-enable-globals', '-b', 'wasm', '-o', output, source_path]
+		if production {
+			args.insert(1, '-prod')
+		}
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert_valid_wasm(output)
+		if node := node_path() {
+			execution := run_node(node, runner, output)
+			assert execution.exit_code == 0, '${name}, production=${production}: ${execution.output}'
+		}
+	}
+}
+
+fn test_wasm_float_constant_comparisons() {
+	assert_wasm_source_before_and_after_optimization('float_comparisons', '
+pub fn less() bool { return f64(1.25) < f64(1.5) }
+pub fn less_equal() bool { return f64(1.25) <= f64(1.5) }
+pub fn greater() bool { return f64(1.25) > f64(1.5) }
+pub fn greater_equal() bool { return f64(1.25) >= f64(1.5) }
+pub fn equal() bool { return f64(1.25) == f64(1.5) }
+pub fn unequal() bool { return f64(1.25) != f64(1.5) }
+pub fn f32_less() bool { return f32(-1.5) < f32(-1.25) }
+pub fn f32_rounded_equal() bool { return f32(16777216) == f32(16777217) }
+', '
+assert.equal(e.less(), 1);
+assert.equal(e.less_equal(), 1);
+assert.equal(e.greater(), 0);
+assert.equal(e.greater_equal(), 0);
+assert.equal(e.equal(), 0);
+assert.equal(e.unequal(), 1);
+assert.equal(e.f32_less(), 1);
+assert.equal(e.f32_rounded_equal(), 1);
+')
+}
+
+fn test_wasm_assignments_keep_numeric_conversions() {
+	assert_wasm_source_before_and_after_optimization('numeric_stores', '
+pub fn check(n int) bool {
+	mut x := f64(0)
+	x = n
+	return x < 1.5
+}
+pub fn promoted_float(n f32) bool {
+	mut x := f64(0)
+	x = n
+	return x < 1.5
+}
+pub fn unsigned_to_float(n u32) f64 {
+	mut x := f64(0)
+	x = f64(n)
+	return x + 0.5
+}
+pub fn branch_float(n int, flag bool) f64 {
+	mut x := f64(0)
+	if flag { x = n } else { x = 3 }
+	return x + 0.5
+}
+pub fn parallel_floats(n int) f64 {
+	mut x := f64(0)
+	mut y := f64(0)
+	x, y = n, n + 1
+	return x + y + 0.5
+}
+pub fn unsigned_to_signed(n u32) bool {
+	mut x := i64(0)
+	x = i64(n)
+	return x > 2147483647
+}
+', '
+assert.equal(e.check(1), 1);
+assert.equal(e.check(2), 0);
+assert.equal(e.check(-1), 1);
+assert.equal(e.promoted_float(1.25), 1);
+assert.equal(e.promoted_float(1.75), 0);
+assert.equal(e.unsigned_to_float(4000000000), 4000000000.5);
+assert.equal(e.branch_float(1, 1), 1.5);
+assert.equal(e.branch_float(1, 0), 3.5);
+assert.equal(e.parallel_floats(3), 7.5);
+assert.equal(e.unsigned_to_signed(4000000000), 1);
+assert.equal(e.unsigned_to_signed(1), 0);
+')
+}
+
+fn test_wasm_full_width_integer_constant_folding() {
+	assert_wasm_source_before_and_after_optimization('full_width_folding', '
+pub fn check() bool { return 9223372036854775808 == 9223372036854775809 }
+pub fn unequal() bool { return 9223372036854775808 != 9223372036854775809 }
+pub fn hex_unequal() bool { return 0x8000000000000000 != 0x8000000000000001 }
+pub fn unsigned_less() bool { return u64(9223372036854775808) < u64(9223372036854775809) }
+pub fn unsigned_difference() u64 { return u64(9223372036854775809) - u64(9223372036854775808) }
+pub fn unsigned_maximum() u64 { return 18446744073709551615 }
+pub fn minimum_equal(n i64) bool { return n == -9223372036854775808 }
+', '
+assert.equal(e.check(), 0);
+assert.equal(e.unequal(), 1);
+assert.equal(e.hex_unequal(), 1);
+assert.equal(e.unsigned_less(), 1);
+assert.equal(e.unsigned_difference(), 1n);
+assert.equal(e.unsigned_maximum(), -1n);
+assert.equal(e.minimum_equal(-9223372036854775808n), 1);
+assert.equal(e.minimum_equal(9223372036854775807n), 0);
+')
+}
+
+fn test_wasm_wide_integer_literal_operands() {
+	assert_wasm_source_before_and_after_optimization('wide_literals', '
+pub fn equal(n i64) bool { return n == 4294967296 }
+pub fn reversed_equal(n i64) bool { return 4294967296 == n }
+pub fn add(n i64) i64 { return n + 4294967296 }
+pub fn reversed_add(n i64) i64 { return 4294967296 + n }
+pub fn float_add(n f64) f64 { return n + 4294967296 }
+pub fn float_equal(n f64) bool { return n == 4294967296 }
+pub fn narrow_equal(n int) bool { return n == 4294967296 }
+pub fn narrow_less(n int) bool { return n < 4294967296 }
+pub fn narrow_negative_equal(n int) bool { return n == -4294967296 }
+pub fn narrow_unsigned_equal(n u8) bool { return n == 256 }
+pub fn unsigned_wide_equal(n u64) bool { return n == 18446744073709551615 }
+', '
+assert.equal(e.equal(4294967296n), 1);
+assert.equal(e.equal(0n), 0);
+assert.equal(e.reversed_equal(4294967296n), 1);
+assert.equal(e.reversed_equal(0n), 0);
+assert.equal(e.add(1n), 4294967297n);
+assert.equal(e.reversed_add(1n), 4294967297n);
+assert.equal(e.float_add(1), 4294967297);
+assert.equal(e.float_equal(4294967296), 1);
+assert.equal(e.float_equal(0), 0);
+assert.equal(e.narrow_equal(0), 0);
+assert.equal(e.narrow_less(0), 1);
+assert.equal(e.narrow_less(2147483647), 1);
+assert.equal(e.narrow_negative_equal(0), 0);
+assert.equal(e.narrow_unsigned_equal(0), 0);
+assert.equal(e.narrow_unsigned_equal(255), 0);
+assert.equal(e.unsigned_wide_equal(-1n), 1);
+assert.equal(e.unsigned_wide_equal(0n), 0);
+')
+}
+
+fn test_wasm_indirect_call_numeric_conversions() {
+	assert_wasm_source_before_and_after_optimization('indirect_numeric', '
+fn scale(x f64) f64 { return x * 2.0 }
+fn scale32(x f32) f32 { return x * f32(2) }
+pub fn integer_argument() f64 {
+	callback := scale
+	return callback(3)
+}
+pub fn f32_argument() f64 {
+	callback := scale
+	return callback(f32(3.5))
+}
+pub fn integer_to_f32_argument() f32 {
+	callback := scale32
+	return callback(3)
+}
+', '
+assert.equal(e.integer_argument(), 6);
+assert.equal(e.f32_argument(), 7);
+assert.equal(e.integer_to_f32_argument(), 6);
+')
+}
+
+fn test_wasm_unicode_rune_initializers_and_expressions() {
+	assert_wasm_source_before_and_after_optimization('runes', '
+__global letter = `é`
+__global ideograph = `界`
+__global emoji = `😀`
+pub fn global_letter() rune { return letter }
+pub fn global_ideograph() rune { return ideograph }
+pub fn global_emoji() rune { return emoji }
+pub fn direct_letter() rune { return `é` }
+pub fn direct_ideograph() rune { return `界` }
+pub fn direct_emoji() rune { return `😀` }
+pub fn newline() rune { return `\\n` }
+', '
+assert.equal(e.global_letter(), 233);
+assert.equal(e.global_ideograph(), 30028);
+assert.equal(e.global_emoji(), 128512);
+assert.equal(e.direct_letter(), 233);
+assert.equal(e.direct_ideograph(), 30028);
+assert.equal(e.direct_emoji(), 128512);
+assert.equal(e.newline(), 10);
+')
+}
+
+fn test_wasm_user_functions_keep_runtime_stub_names() {
+	assert_wasm_source_before_and_after_optimization('user_runtime_names', '
+fn current_rss_kb() i64 { return 123 }
+fn macos_rss_kb() i64 { return 456 }
+fn linux_rss_kb() i64 { return 789 }
+pub fn sum() i64 { return current_rss_kb() + macos_rss_kb() + linux_rss_kb() }
+', '
+assert.equal(e.current_rss_kb(), 123n);
+assert.equal(e.macos_rss_kb(), 456n);
+assert.equal(e.linux_rss_kb(), 789n);
+assert.equal(e.sum(), 1368n);
+')
+}
+
+fn test_wasm_user_functions_keep_other_runtime_names() {
+	assert_wasm_source_before_and_after_optimization('other_runtime_names', '
+import hash
+fn wyhash64(a u64, b u64) u64 { return a + b }
+fn wyhash(a u64, b u64) u64 { return a * 10 + b }
+fn array_new(n int) int { return n + 11 }
+fn new_map(n int) int { return n + 13 }
+fn all_after_last(n int) int { return n + 17 }
+fn prealloc_malloc(n int) int { return n + 19 }
+fn join_path(n int) int { return n + 23 }
+fn name_list(n int) int { return n + 29 }
+pub fn call_hash() u64 { return wyhash64(3, 4) }
+pub fn runtime_control() u64 {
+	return hash.wyhash64_c(3, 4)
+}
+', '
+assert.equal(e.wyhash64(3n, 4n), 7n);
+assert.equal(e.wyhash(3n, 4n), 34n);
+assert.equal(e.array_new(5), 16);
+assert.equal(e.new_map(5), 18);
+assert.equal(e.all_after_last(5), 22);
+assert.equal(e.prealloc_malloc(5), 24);
+assert.equal(e.join_path(5), 28);
+assert.equal(e.name_list(5), 34);
+assert.equal(e.call_hash(), 7n);
+assert.equal(e.runtime_control(), 725283166682890696n);
+')
+}
+
+fn test_wasm_user_hash_runtime_name_in_main() {
+	source := os.join_path(os.vtmp_dir(), 'wasm_user_hash_${os.getpid()}.v')
+	output := os.join_path(os.vtmp_dir(), 'wasm_user_hash_${os.getpid()}.wasm')
+	defer {
+		os.rm(source) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(source, 'fn wyhash64(a u64, b u64) u64 { return a + b }
+fn main() { println(wyhash64(3, 4)) }
+') or { panic(err) }
+	for production in [false, true] {
+		mut args := [v3_binary(), '-b', 'wasm', '-o', output, source]
+		if production {
+			args.insert(1, '-prod')
+		}
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert_valid_wasm(output)
+		run_wasi_expect(output, ['7'])
+	}
+}
+
+fn test_wasm_implicit_main_imported_scalar_calls() {
+	dir := os.join_path(os.vtmp_dir(), 'wasm_script_import_${os.getpid()}')
+	os.mkdir_all(os.join_path(dir, 'foo')) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	main_v := os.join_path(dir, 'main.v')
+	os.write_file(main_v, 'import foo as helper
+println(helper.answer())
+callback := helper.answer
+println(callback())
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'foo', 'foo.v'), 'module foo
+fn value() int { return 21 }
+pub fn answer() int { return value() * 2 }
+') or { panic(err) }
+	for production in [false, true] {
+		output := os.join_path(dir, 'main_${production}.wasm')
+		mut args := [vexe, '-b', 'wasm', '-o', output, main_v]
+		if production {
+			args.insert(1, '-prod')
+		}
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert_valid_wasm(output)
+		run_wasi_expect(output, ['42', '42'])
+	}
+}
+
+fn test_wasm_imported_function_value() {
+	dir := os.join_path(os.vtmp_dir(), 'wasm_imported_fn_value_${os.getpid()}')
+	defer { os.rmdir_all(dir) or {} }
+	os.mkdir_all(os.join_path(dir, 'foo')) or { panic(err) }
+	main_v := os.join_path(dir, 'main.v')
+	wasm := os.join_path(dir, 'main.wasm')
+	os.write_file(main_v, 'module main
+import foo as helper
+fn main() {
+	callback := helper.add
+	println(callback(35))
+}
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'foo', 'foo.v'), 'module foo
+pub fn add(value int) int {
+	return value + 7
+}
+') or { panic(err) }
+	result := os.exec([v3_binary(), '-b', 'wasm', '-o', wasm, main_v])
+	assert result.exit_code == 0, result.output
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['42'])
+}
+
 fn test_wasm_control_flow_and_int_print() {
 	v3_bin := v3_binary()
 	src := 'fn main() {\n\tmut sum := 0\n\tfor i := 0; i < 5; i++ {\n\t\tsum = sum + i\n\t}\n\tif sum > 5 {\n\t\tprintln(sum)\n\t} else {\n\t\tprintln(-1)\n\t}\n}\n'
@@ -133,6 +461,41 @@ fn test_wasm_control_flow_and_int_print() {
 	res := run_node(node, runner, wasm)
 	assert res.exit_code == 0, res.output
 	assert last_line(res.output) == '10', res.output
+}
+
+fn test_wasm_lowered_integer_print_formats() {
+	v3_bin := v3_binary()
+	// Print lowering uses dotted numeric str methods, including u64's unsigned range.
+	src := 'fn main() {\n\tfor number in 1 .. 4 {\n\t\tprintln(number * number)\n\t}\n\tprintln(i8(-8))\n\tprintln(i16(-160))\n\tprintln(i32(-320))\n\tprintln(i64(-6400000000))\n\tprintln(isize(-32))\n\tprintln(u8(255).str())\n\tprintln(u16(65535).str())\n\tprintln(u32(4294967295).str())\n\tprintln(u64(18446744073709551615))\n\tprintln(usize(4294967295).str())\n}\n'
+	wasm := compile_to_wasm(v3_bin, src, 'wasm_integer_print_formats')
+	assert_valid_wasm(wasm)
+	run_wasi_expect(wasm, ['1', '4', '9', '-8', '-160', '-320', '-6400000000', '-32', '255', '65535',
+		'4294967295', '18446744073709551615', '4294967295'])
+}
+
+fn test_wasm_production_control_flow_and_recursion() {
+	source := os.join_path(os.vtmp_dir(), 'wasm_ssa_prod_${os.getpid()}.v')
+	output := os.join_path(os.vtmp_dir(), 'wasm_ssa_prod_${os.getpid()}.wasm')
+	defer {
+		os.rm(source) or {}
+		os.rm(output) or {}
+	}
+	os.write_file(source, 'fn fib(n int) int {
+	if n < 2 { return n }
+	return fib(n - 1) + fib(n - 2)
+}
+fn main() {
+	mut a := 1
+	mut b := 2
+	for i := 0; i < 3; i++ { a, b = b, a }
+	println(a * 10 + b)
+	println(fib(10))
+}
+') or { panic(err) }
+	result := os.exec([v3_binary(), '-prod', '-b', 'wasm', '-o', output, source])
+	assert result.exit_code == 0, result.output
+	assert_valid_wasm(output)
+	run_wasi_expect(output, ['21', '55'])
 }
 
 fn test_wasm_exported_functions() {
@@ -222,7 +585,7 @@ fn test_wasm_string_literal_escapes_not_double_decoded() {
 	os.write_file(src_path, src) or { panic(err) }
 	c_bin := os.join_path(os.vtmp_dir(), 'wasm_esc_c')
 	cres :=
-		os.exec([v3_bin, '-b', 'c', '-o', c_bin, src_path])
+		os.exec([v3_bin, '-b', 'c', '-cc', 'clang', '-o', c_bin, src_path])
 	assert cres.exit_code == 0, cres.output
 	cout := os.exec([c_bin])
 	assert cout.exit_code == 0, cout.output
@@ -300,7 +663,7 @@ fn test_wasm_module_scoped_globals() {
 	out_wasm := os.join_path(dir, 'main.wasm')
 	main_v := os.join_path(dir, 'main.v')
 	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
+		os.exec([v3_bin, '-enable-globals', '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 
@@ -318,12 +681,12 @@ fn test_wasm_module_scoped_globals() {
 	}
 }
 
-fn test_wasm_for_post_uses_loop_var_not_body_shadow() {
+fn test_wasm_for_post_uses_loop_var_with_body_local() {
 	v3_bin := v3_binary()
-	// A body-local `i` must not rebind the name used by the post `i++`; the
+	// A body-local value must not replace the counter used by the post `i++`; the
 	// outer loop counter must still advance. The count/break bound keeps the
 	// test terminating even if the fix regresses (it would loop otherwise).
-	src := 'fn main() {\n\tmut i := 0\n\tmut count := 0\n\tfor ; i < 3; i++ {\n\t\ti := 10\n\t\t_ = i\n\t\tcount++\n\t\tif count > 100 {\n\t\t\tbreak\n\t\t}\n\t}\n\tprintln(i)\n\tprintln(count)\n}\n'
+	src := 'fn main() {\n\tmut i := 0\n\tmut count := 0\n\tfor ; i < 3; i++ {\n\t\tvalue := 10\n\t\t_ = value\n\t\tcount++\n\t\tif count > 100 {\n\t\t\tbreak\n\t\t}\n\t}\n\tprintln(i)\n\tprintln(count)\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_loopshadow')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['3', '3'])
@@ -352,11 +715,11 @@ fn test_wasm_imported_module_alias_call() {
 	run_wasi_expect(out_wasm, ['42', '7'])
 }
 
-fn test_wasm_shadowing_initializer_reads_outer() {
+fn test_wasm_inner_initializer_reads_outer() {
 	v3_bin := v3_binary()
-	// The inner `x := x + 1` initializer must read the outer x (5), giving 6,
+	// The inner `value := x + 1` initializer reads the outer x (5), giving 6,
 	// and the outer x is unchanged afterwards.
-	src := 'fn main() {\n\tx := 5\n\t{\n\t\tx := x + 1\n\t\tprintln(x)\n\t}\n\tprintln(x)\n}\n'
+	src := 'fn main() {\n\tx := 5\n\t{\n\t\tvalue := x + 1\n\t\tprintln(value)\n\t}\n\tprintln(x)\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_shadow_init')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['6', '5'])
@@ -419,8 +782,8 @@ fn test_wasm_import_aliases_are_file_scoped() {
 fn test_wasm_numeric_type_aliases() {
 	v3_bin := v3_binary()
 	// Scalar aliases must classify as their base type: the alias-typed function
-	// is emitted, and Byte(300) wraps to u8 (44) rather than keeping 300.
-	src := 'type Byte = u8\ntype MyInt = int\n\nfn val() Byte {\n\treturn Byte(300)\n}\n\nfn add(a MyInt, b MyInt) MyInt {\n\treturn a + b\n}\n\nfn main() {\n\tprintln(int(val()))\n\tprintln(int(add(3, 4)))\n\tmut x := Byte(250)\n\tx += Byte(10)\n\tprintln(int(x))\n}\n'
+	// is emitted, and Byte(u16(300)) wraps to u8 (44) rather than keeping 300.
+	src := 'type Byte = u8\ntype MyInt = int\n\nfn val() Byte {\n\treturn Byte(u16(300))\n}\n\nfn add(a MyInt, b MyInt) MyInt {\n\treturn a + b\n}\n\nfn main() {\n\tprintln(int(val()))\n\tprintln(int(add(3, 4)))\n\tmut x := Byte(250)\n\tx += Byte(10)\n\tprintln(int(x))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_alias_types')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['44', '7', '4'])
@@ -547,6 +910,21 @@ fn test_wasm_if_expression_value() {
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_ifexpr')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['10', '1', '-1', '0'])
+}
+
+fn test_wasm_moduleless_numeric_constants_before_and_after_optimization() {
+	assert_wasm_source_before_and_after_optimization('script_numeric_consts', '
+const base = 10
+const answer = base * 4 + 2
+const big = u64(9223372036854775808)
+__global result = answer - 1
+
+fn answer_value() int { return answer }
+fn big_value() u64 { return big }
+fn result_value() int { return result }
+', 'assert.equal(e.answer_value(), 42);
+assert.equal(BigInt.asUintN(64, e.big_value()), 9223372036854775808n);
+assert.equal(e.result_value(), 41);')
 }
 
 fn test_wasm_top_level_const_inlined() {
@@ -811,10 +1189,10 @@ fn test_wasm_global_postfix() {
 
 fn test_wasm_global_narrow_cast_initializer() {
 	v3_bin := v3_binary()
-	// An out-of-range cast initializer on an inferred narrow global must be
+	// A narrowing cast initializer on an inferred narrow global must be
 	// wrapped to the global's width at compile time, so the first read already
-	// sees the V value (u8(300)=44, i8(128)=-128, u16(70000)=4464).
-	src := '__global b = u8(300)\n__global s = i8(128)\n__global w = u16(70000)\n\nfn main() {\n\tprintln(int(b))\n\tprintln(int(s))\n\tprintln(int(w))\n}\n'
+	// sees the V value (u8(u16(300))=44, i8(i16(128))=-128, u16(u32(70000))=4464).
+	src := '__global b = u8(u16(300))\n__global s = i8(i16(128))\n__global w = u16(u32(70000))\n\nfn main() {\n\tprintln(int(b))\n\tprintln(int(s))\n\tprintln(int(w))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_narrow_init')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['44', '-128', '4464'])
@@ -833,9 +1211,9 @@ fn test_wasm_global_const_expr_initializers() {
 fn test_wasm_global_nested_cast_initializer() {
 	v3_bin := v3_binary()
 	// A nested cast initializer keeps each cast's width: the inner cast narrows
-	// before the wider outer cast, so `int(u8(300))` is 44, not 300, and a folded
+	// before the wider outer cast, so `int(u8(u16(300)))` is 44, not 300, and a folded
 	// float initializer rounds through an int cast (1.5 + 2.0 -> 3).
-	src := '__global b = int(u8(300))\n__global g = int(i8(128))\n__global h = u8(300) + u8(100)\n__global fl = 1.5 + 2.0\n\nfn main() {\n\tprintln(b)\n\tprintln(g)\n\tprintln(int(h))\n\tprintln(int(fl))\n}\n'
+	src := '__global b = int(u8(u16(300)))\n__global g = int(i8(i16(128)))\n__global h = u8(u16(300)) + u8(100)\n__global fl = 1.5 + 2.0\n\nfn main() {\n\tprintln(b)\n\tprintln(g)\n\tprintln(int(h))\n\tprintln(int(fl))\n}\n'
 	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_nested_cast')
 	assert_valid_wasm(wasm)
 	run_wasi_expect(wasm, ['44', '-128', '144', '3'])
@@ -888,3 +1266,21 @@ const { instance: i } = await WebAssembly.instantiate(readFileSync(process.argv[
 const e = i.exports;
 process.stdout.write(`\${e.add(3, 4)} \${e.fib(10)} \${e.gcd(48, 36)}`);
 "
+
+fn test_wasm_float_unary_minus_preserves_signed_zero() {
+	assert_wasm_source_before_and_after_optimization('signed_zero_negation', '
+pub fn negative_zero64() f64 { return -0.0 }
+pub fn negative_zero32() f32 { return -f32(0.0) }
+pub fn negate64(value f64) f64 { return -value }
+pub fn negate32(value f32) f32 { return -value }
+', '
+assert.ok(Object.is(e.negative_zero64(), -0));
+assert.ok(Object.is(e.negative_zero32(), -0));
+for (const negate of [e.negate64, e.negate32]) {
+    assert.ok(Object.is(negate(0), -0));
+    assert.ok(Object.is(negate(-0), 0));
+    assert.equal(negate(17), -17);
+    assert.equal(negate(-17), 17);
+}
+')
+}

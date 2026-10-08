@@ -1,5 +1,23 @@
 module naming
 
+fn test_collision_sets_fit_lookup_length_bound() {
+	for name, _ in reserved_words {
+		assert name.len <= max_c_collision_name_len
+	}
+	for name, _ in libc_collisions {
+		assert name.len <= max_c_collision_name_len
+	}
+}
+
+fn test_collision_lookup_length_boundary() {
+	assert c_name('volatile') == 'v_volatile'
+	assert c_name('volatilex') == 'volatilex'
+	assert c_name('snprintf') == 'v_snprintf'
+	assert c_name('snprintfx') == 'snprintfx'
+	assert c_name('_str_12345') == 'v__str_12345'
+	assert c_name('_str_1234x') == '_str_1234x'
+}
+
 @[manualfree]
 fn test_sanitize_dotted_name_owns_string_storage() {
 	name := '.alpha..beta.'.clone()

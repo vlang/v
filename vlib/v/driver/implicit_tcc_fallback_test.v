@@ -144,6 +144,10 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 		eprintln('skipping: no bundled or system tcc available for implicit tcc selection')
 		return
 	}
+	if pref.host_rejects_tcc_executables() {
+		eprintln('skipping: this host never selects tcc implicitly')
+		return
+	}
 	fallback := v3_platform_c_compiler_command(os.user_os())
 	os.find_abs_path_of_executable(fallback) or {
 		eprintln('skipping: no ${fallback} to fall back to')
