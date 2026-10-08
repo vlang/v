@@ -214,8 +214,8 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 }
 
 // stmts_assign_local reports whether any statement in `ids` assigns to the local `name`,
-// increments it, or passes it as a mutable argument. A use on the right of an assignment
-// counts too, which only keeps that local a runtime value.
+// increments it, or passes it as a mutable argument. Reading it, as on the right of an
+// assignment, does not count: a compile-time construct may still need its value.
 fn (t &Transformer) stmts_assign_local(ids []flat.NodeId, name string) bool {
 	for id in ids {
 		if t.node_assigns_local(id, name) {
@@ -233,21 +233,31 @@ fn (t &Transformer) node_assigns_local(id flat.NodeId, name string) bool {
 	if node.kind == .ident && node.is_mut && node.value == name {
 		return true
 	}
-	is_inc_dec := node.kind == .postfix && (node.op == .inc || node.op == .dec)
-	is_assignment := node.kind == .assign || is_inc_dec
-	for i in 0 .. node.children_count {
-		child_id := t.a.child(&node, i)
-		if is_assignment && int(child_id) >= 0 && int(child_id) < t.a.nodes.len {
-			child := t.a.nodes[int(child_id)]
-			if child.kind == .ident && child.value == name {
+	if node.kind == .assign {
+		for i in 0 .. t.multi_assign_lhs_count(node) {
+			if t.node_is_local_ident(t.multi_assign_lhs_id(node, i), name) {
 				return true
 			}
 		}
-		if t.node_assigns_local(child_id, name) {
+	} else if node.kind == .postfix && (node.op == .inc || node.op == .dec) {
+		if node.children_count > 0 && t.node_is_local_ident(t.a.child(&node, 0), name) {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.node_assigns_local(t.a.child(&node, i), name) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) node_is_local_ident(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	return node.kind == .ident && node.value == name
 }
 
 // subst_comptime_scalar_locals substitutes bare value names, leaving members, quotes and type tests alone.

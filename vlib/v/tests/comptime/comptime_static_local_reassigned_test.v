@@ -66,3 +66,62 @@ fn test_mutable_call_local_of_generic_fn_is_not_folded() {
 	assert name_after_mut_call(1) == 'changed'
 	assert count_after_mut_call('sample') == 3
 }
+
+fn string_and_count() (string, int) {
+	return 'changed', 3
+}
+
+fn name_after_multi_assign[T](sample T) string {
+	_ = sample
+	name := ''
+	other := 'kept'
+	mut count := 0
+	// `name` is a target in the second position, `other` is only read.
+	count, name = 2, other + '!'
+	if name == '' {
+		return 'none'
+	}
+	return '${name}${count}'
+}
+
+fn name_after_call_assign[T](sample T) string {
+	_ = sample
+	name := ''
+	mut count := 0
+	name, count = string_and_count()
+	if name == '' {
+		return 'none'
+	}
+	return '${name}${count}'
+}
+
+fn test_multi_assigned_local_of_generic_fn_is_not_folded() {
+	assert name_after_multi_assign(1) == 'kept!2'
+	assert name_after_call_assign('sample') == 'changed3'
+}
+
+// Reading an immutable local on the right of an assignment leaves it a compile-time value.
+fn test_local_read_by_an_assignment_stays_a_compile_time_value() {
+	source := 'a b'
+	mut copied := ''
+	copied = source
+	mut words := []string{}
+	$for word in source.fields() {
+		words << word
+	}
+	assert copied == 'a b'
+	assert words == ['a', 'b']
+
+	mut seen := []string{}
+	$for method in 'get post'.fields() {
+		current := method
+		mut last := ''
+		last = current
+		$if current == 'get' {
+			seen << 'first:' + last
+		} $else {
+			seen << 'other:' + last
+		}
+	}
+	assert seen == ['first:get', 'other:post']
+}
