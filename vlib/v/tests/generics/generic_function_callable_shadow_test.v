@@ -18,6 +18,19 @@ fn apply_closure_shadow[E, K](decode_shadow fn (E) K, value E) K {
 	return callback(value)
 }
 
+fn apply_block_shadow[T](value T, callback fn (T) T, use_callback bool) T {
+	mut result := value
+	if use_callback {
+		decode_shadow := callback
+		result = decode_shadow(result)
+	}
+	return decode_shadow(&result)
+}
+
+fn apply_nested_shadow[T](value T, callback fn (T) T) T {
+	return apply_block_shadow(value, callback, true)
+}
+
 fn test_generic_function_callable_parameter_shadows_function() {
 	assert apply_shadow[int, string](fn (value int) string {
 		return 's${value}'
@@ -42,4 +55,28 @@ fn test_generic_function_captured_callable_shadows_function() {
 fn test_generic_function_unshadowed_call_remains_supported() {
 	value := 4
 	assert decode_shadow(&value) == 4
+}
+
+fn test_generic_function_block_shadow_ends_before_nested_generic_call() {
+	assert apply_nested_shadow(4, fn (value int) int {
+		return value + 1
+	}) == 5
+	assert apply_nested_shadow('hello', fn (value string) string {
+		return value.to_upper()
+	}) == 'HELLO'
+	assert apply_block_shadow(4, fn (value int) int {
+		return value + 1
+	}, false) == 4
+}
+
+fn test_generic_function_fixed_array_local_callable_shadows_function() {
+	assert apply_local_shadow[[2]int, string](fn (values [2]int) string {
+		return '${values[0]}:${values[1]}'
+	}, [4, 5]!) == '4:5'
+}
+
+fn test_generic_function_fixed_array_block_shadow_ends_before_nested_generic_call() {
+	assert apply_nested_shadow([4, 5]!, fn (values [2]int) [2]int {
+		return [values[0] + 1, values[1] + 2]!
+	}) == [5, 7]!
 }
