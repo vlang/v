@@ -202,11 +202,49 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 		// Generated staging locals can be assigned later despite lacking `mut` flags.
 		if node.pos.is_valid() && !lhs.is_mut && !node.is_mut {
 			if scalar := value {
-				t.comptime_scalar_locals[lhs.value] = scalar
+				// So can a source local of a generic function, whose body is not checked
+				// for assignments to immutable names.
+				if !t.stmts_assign_local(t.cur_stmt_list, lhs.value) {
+					t.comptime_scalar_locals[lhs.value] = scalar
+				}
 			}
 		}
 	}
 	return result
+}
+
+// stmts_assign_local reports whether any statement in `ids` assigns to the local `name`
+// or increments it. A use on the right of an assignment counts too, which only keeps
+// that local a runtime value.
+fn (t &Transformer) stmts_assign_local(ids []flat.NodeId, name string) bool {
+	for id in ids {
+		if t.node_assigns_local(id, name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) node_assigns_local(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	is_inc_dec := node.kind == .postfix && (node.op == .inc || node.op == .dec)
+	is_assignment := node.kind == .assign || is_inc_dec
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if is_assignment && int(child_id) >= 0 && int(child_id) < t.a.nodes.len {
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .ident && child.value == name {
+				return true
+			}
+		}
+		if t.node_assigns_local(child_id, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // subst_comptime_scalar_locals substitutes bare value names, leaving members, quotes and type tests alone.

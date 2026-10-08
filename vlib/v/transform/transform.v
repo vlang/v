@@ -223,6 +223,7 @@ mut:
 	building_v                          bool
 	var_types                           []VarTypeBinding
 	comptime_scalar_locals              map[string]ComptimeStringScalar
+	cur_stmt_list                       []flat.NodeId // the statement list being transformed
 	var_type_indices                    map[string]int
 	var_type_cache                      &VarTypeIndexCache = unsafe { nil }
 	refined_node_types                  map[int]string
@@ -11134,7 +11135,12 @@ fn (t &Transformer) fn_return_type_for_name(name string) ?string {
 pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 	mut result := []flat.NodeId{cap: ids.len}
 	saved_comptime_locals := t.comptime_scalar_locals.clone()
-	defer { t.comptime_scalar_locals = saved_comptime_locals }
+	outer_stmt_list := t.cur_stmt_list
+	t.cur_stmt_list = ids
+	defer {
+		t.comptime_scalar_locals = saved_comptime_locals
+		t.cur_stmt_list = outer_stmt_list
+	}
 	had_base_smartcasts := t.smartcast_stack.len > 0
 	base_smartcasts := if had_base_smartcasts {
 		t.smartcast_stack.clone()
