@@ -62,6 +62,13 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+Month and weekday names in `parse_format` may end the input. For example,
+`time.parse_format('May', 'MMMM')!` and `time.parse_format('Jul', 'MMM')!`
+return times in May and July, respectively; weekday tokens also accept a terminal name.
+
+`parse_format(s, format)` requires the format to cover the entire input, including literals.
+Unmatched trailing text or whitespace returns an error instead of parsing only a prefix.
+
 `parse_format` defaults an omitted month to January. Day-only layouts such as
 `time.parse_format('31', 'DD')!` therefore accept January 31; an explicit month still
 enforces its actual length.

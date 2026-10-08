@@ -7,6 +7,8 @@ handling processes etc.
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
+`os.user_os()` returns `wasm32_emscripten` when compiled for Emscripten.
+
 ### Console input
 
 On Windows, `os.input()` supports both console and redirected standard input.
@@ -168,6 +170,10 @@ These arguments are literal on Windows too: `%PATH%` stays `%PATH%`, and quotes
 and trailing backslashes are preserved. Expand environment variables explicitly
 with `os.getenv()` when that is intended.
 
+Call `process.wait()` before `process.close()`, including after `process.signal_kill()`.
+On POSIX systems, waiting reaps the killed child and records its signal exit status.
+Repeated waits preserve the exit status already collected by `wait()` or `is_alive()`.
+
 On Windows, `Result.exit_code` and `Process.code` interpret the child's 32-bit exit
 status as a signed value: `0x80000000` becomes `-2147483648` and `0xFFFFFFFF` becomes
 `-1`. Check `Process.status` to distinguish a completed child returning `-1` from
@@ -177,6 +183,7 @@ When shell syntax is required, invoke the shell explicitly with an argument arra
 A shell still interprets its script as code: use a fixed script with positional
 arguments for data, and never interpolate untrusted values into the script.
 On Windows, shell builtins and batch scripts likewise require an explicit shell.
+For example, `os.exec(['cmd', '/d', '/c', 'echo', 'hello'])` runs the `echo` builtin.
 
 ---
 
@@ -210,6 +217,10 @@ value too, while the ones built on the Win32 API (`os.mkdir`, `os.rmdir`, `os.ls
 `os.symlink` and `os.link`) report a Win32 error code. The `os.error_code_*` constants
 hold one of these codes for a condition, so prefer the predicates over comparing
 `err.code()` with them.
+
+`os.symlink` and `os.link` preserve the Windows API's error code when link creation fails,
+so duplicate targets and missing paths can be classified with these predicates.
+`os.hostname` and `os.loginname` also preserve their Win32 error codes on failure.
 
 ---
 

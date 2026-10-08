@@ -2474,3 +2474,13 @@ fn test_formatter_keeps_inline_access_before_volatile() {
 	assert out.contains('pub     volatile value int'), out
 	assert vfmt('inline_access_volatile_twice', out) == out
 }
+
+fn test_formatter_keeps_comptime_string_expression_sources() {
+	source := "fn main() {\n path := 'GET /users'.all_after(' ')\n \$for segment in path.trim_left('/').split('/') { println(segment) }\n \$for word in 'alpha beta'.fields() { println(word) }\n \$for part in 'a,b;c'.split_any(',;') { println(part) }\n \$if path[1..].starts_with('users') { println(path) }\n}\n"
+	out := vfmt('comptime_string_sources', source)
+	assert out.contains("\$for segment in path.trim_left('/').split('/') {")
+	assert out.contains("\$for word in 'alpha beta'.fields() {")
+	assert out.contains("\$for part in 'a,b;c'.split_any(',;') {")
+	assert out.contains("path[1..].starts_with('users')"), out
+	assert vfmt('comptime_string_sources_twice', out) == out
+}

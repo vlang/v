@@ -8,6 +8,7 @@ pub enum ChildProcessPipeKind {
 }
 
 // signal_kill kills the process, after that it is no longer running.
+// Call wait afterward to collect its exit status and release its resources.
 pub fn (mut p Process) signal_kill() {
 	if p.status !in [.running, .stopped] {
 		return
@@ -50,7 +51,7 @@ pub fn (mut p Process) signal_continue() {
 	p.status = .running
 }
 
-// wait for a process to finish.
+// wait waits for a process to finish, including one killed with signal_kill.
 // Note: You have to call p.wait(), otherwise a finished process
 // would get to a zombie state, and its resources will not get
 // released fully, until its parent process exits.
@@ -60,7 +61,7 @@ pub fn (mut p Process) wait() {
 	if p.status == .not_started {
 		p._spawn()
 	}
-	if p.status !in [.running, .stopped] {
+	if p.status !in [.running, .stopped, .aborted] || p.reaped {
 		return
 	}
 	p._wait()
@@ -337,6 +338,7 @@ fn (mut p Process) _signal_pgkill() {
 fn (mut p Process) _wait() {
 	$if windows {
 		p.win_wait()
+		p.reaped = true
 	} $else {
 		p.unix_wait()
 	}

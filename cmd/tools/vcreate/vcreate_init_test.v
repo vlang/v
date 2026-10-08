@@ -2,12 +2,12 @@
 import os
 import v.vmod
 
-const vexe = os.quoted_path(@VEXE)
+const vexe = @VEXE
 // Expect has to be installed for the test.
-const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+const expect_exe = os.find_abs_path_of_executable('expect') or {
 	eprintln('skipping test, since expect is missing')
 	exit(0)
-})
+}
 // Directory that contains the Expect scripts used in the test.
 const expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vcreate', 'tests')
 const test_project_dir_name = 'test_project'
@@ -31,6 +31,9 @@ fn init_and_check() ! {
 		eprintln('skipping test, since expect is missing')
 		exit(0)
 	}, os.join_path(expect_tests_path, 'init.expect'), @VEXE])
+
+	// Without `--agents-md`, no `AGENTS.md` is written.
+	assert !os.exists('AGENTS.md')
 
 	x := os.exec_or_exit([@VEXE, 'run', '.'])
 	assert x.output.trim_space() == 'Hello World!'
@@ -112,6 +115,23 @@ fn init_and_check() ! {
 		'indent_style = tab',
 		'',
 	].join_lines()
+}
+
+fn test_v_init_creates_agents_md() {
+	prepare_test_path()!
+	os.exec_or_exit([os.find_abs_path_of_executable('expect') or {
+		eprintln('skipping test, since expect is missing')
+		exit(0)
+	}, os.join_path(expect_tests_path, 'init_with_agents_md.expect'), @VEXE])
+	assert os.exists('AGENTS.md')
+	content := os.read_file('AGENTS.md') or {
+		assert false, err.str()
+		return
+	}
+	assert content.contains('# AGENTS.md - ${test_project_dir_name}')
+	assert content.contains('## Commands')
+	assert content.contains('## Layout')
+	assert content.contains('## Conventions')
 }
 
 fn prepare_test_path() ! {

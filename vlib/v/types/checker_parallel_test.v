@@ -295,7 +295,7 @@ fn test_fast_file_index_collects_translated_module_attribute() {
 
 fn test_parent_metadata_replay_matches_full_scan() {
 	path := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}.v')
-	os.write_file(path, '@[translated]\nmodule main\nimport strings\n@[inline]\nfn make_builder() { mut b := strings.new_builder(10) }\n') or { panic(err) }
+	os.write_file(path, '@[translated]\nmodule main\nimport strings\n#flag -I @DIR/v3_parent_headers -D FEATURE\n#flag -isystem "@DIR/v3_parent_system" -Wall\n#flag -I @DIR/v3_parent_headers\n@[inline]\nfn make_builder() { mut b := strings.new_builder(10) }\n') or { panic(err) }
 	defer { os.rm(path) or {} }
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
@@ -316,6 +316,29 @@ fn test_parent_metadata_replay_matches_full_scan() {
 	assert split.translated_files[path]
 	assert split.strings_builder_candidates == serial.strings_builder_candidates
 	assert split.strings_builder_candidates.len == 1
+	// The ordinary serial entry must preserve real directive operands/deduplication
+	// and leave builder candidates attached to their enclosing function.
+	mut indexed := TypeChecker.new(a)
+	indexed.build_direct_parent_index(a)
+	assert indexed.declaration_attributes == serial.declaration_attributes
+	assert indexed.translated_files == serial.translated_files
+	assert indexed.strings_builder_candidates == serial.strings_builder_candidates
+	assert indexed.insert_include_dirs_by_file == serial.insert_include_dirs_by_file
+	assert indexed.insert_include_dirs_by_file[path] == [
+		os.real_path(os.join_path(os.dir(path), 'v3_parent_headers')),
+		os.real_path(os.join_path(os.dir(path), 'v3_parent_system')),
+	]
+	mut fn_index := -1
+	for idx, node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'make_builder' {
+			fn_index = idx
+			break
+		}
+	}
+	assert fn_index >= 0
+	indexed.build_file_declaration_indexes(a)
+	assert indexed.strings_builder_bindings[strings_builder_binding_key(fn_index, 'b')]
+	assert indexed.strings_builder_bindings.len == 1
 }
 
 fn test_checker_flag_include_dir_consumes_only_the_operand() {

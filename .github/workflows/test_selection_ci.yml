@@ -22,6 +22,10 @@ on:
       - '.github/workflows/test_selection_ci.yml'
   workflow_dispatch:
 
+concurrency:
+  group: test-selection-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

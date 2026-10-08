@@ -2771,6 +2771,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					}
 				}
 			} else {
+				if g.gen_scalar_array_push_call_stmt(child_id, child) {
+					return
+				}
 				g.track_ierror_array_push_call_alias(child)
 				if g.gen_autofree_discarded_owned_call(child_id, child) {
 					return
@@ -7054,6 +7057,7 @@ fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
 		}
 		return types.Type(types.FnType{
 			params:      params.clone()
+			is_variadic: g.fn_decl_variadic[candidate] or { false }
 			return_type: ret
 		})
 	}
@@ -7062,6 +7066,7 @@ fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
 		ret := g.tc.fn_ret_types[candidate] or { types.Type(types.void_) }
 		return types.Type(types.FnType{
 			params:      params.clone()
+			is_variadic: g.tc.fn_variadic[candidate] or { false }
 			return_type: ret
 		})
 	}

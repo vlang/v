@@ -1045,7 +1045,8 @@ fn (mut t Transformer) normalize_implicit_receiver_generic_call(id flat.NodeId, 
 		return id
 	}
 	callee := t.a.child_node(&node, 0)
-	if callee.kind != .ident || callee.value.contains('.') {
+	if callee.kind != .ident || callee.value.contains('.')
+		|| t.raw_var_type(callee.value).len > 0 {
 		return id
 	}
 	decls := t.cached_generic_fn_decls()
@@ -1278,7 +1279,16 @@ fn (t &Transformer) node_enclosing_generic_params(id flat.NodeId) []string {
 		}
 		parent := t.a.node(flat.NodeId(parent_id))
 		if parent.kind in [.fn_decl, .struct_decl, .type_decl, .interface_decl, .c_fn_decl] {
-			return parent.generic_params()
+			mut params := parent.generic_params().clone()
+			if parent.kind == .fn_decl {
+				module_name := t.node_module_or(parent_id, t.cur_module)
+				for param in t.declared_generic_receiver_param_names(*parent, module_name) {
+					if param !in params {
+						params << param
+					}
+				}
+			}
+			return params
 		}
 		cursor = parent_id
 	}
@@ -2466,6 +2476,12 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 		|| t.is_import_alias_ident(base_id)) {
 		return 0
 	}
+	base_type := t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(base_id)))
+	if t.receiver_selector_is_fn_field(base_type, fn_node.value) {
+		// Function-valued fields have no implicit receiver parameter.
+		return 0
+	}
+
 	if base_node.kind == .ident && base_node.value.len > 0 && base_node.value[0] >= `a`
 		&& base_node.value[0] <= `z`
 		&& t.selector_call_name_has_receiver_param(call_name, fn_node.value, params) {
@@ -2509,6 +2525,11 @@ fn (mut t Transformer) call_param_offset_for_node(call_name string, node flat.No
 		return param_offset
 	}
 	base_id := t.a.child(&selector, 0)
+	base_type := t.normalize_type_alias(t.trim_pointer_type(t.lvalue_type(base_id)))
+	if t.receiver_selector_is_fn_field(base_type, selector.value) {
+		return 0
+	}
+
 	base := t.a.nodes[int(base_id)]
 	first := types.unwrap_all_pointers(params[0])
 	base_is_lexical_module := t.selector_is_lexical_module_call(base_id, selector.value, call_name)
@@ -3768,6 +3789,12 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		}
 	}
 	mut arg_type := t.node_type(arg_id)
+	if arg_node.kind == .call {
+		concrete_type := t.concrete_generic_call_return_type(arg_id, arg_node)
+		if concrete_type.len > 0 {
+			arg_type = concrete_type
+		}
+	}
 	if arg_type.len == 0 {
 		arg_type = t.resolve_expr_type(arg_id)
 	}
@@ -4106,7 +4133,13 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		if arg_node.kind == .char_literal && arg_node.value.starts_with('c:') {
 			return t.transform_expr(arg_id)
 		}
-		arg_type := t.node_type(arg_id)
+		mut arg_type := t.node_type(arg_id)
+		if arg_node.kind == .call {
+			concrete_type := t.concrete_generic_call_return_type(arg_id, *arg_node)
+			if concrete_type.len > 0 {
+				arg_type = concrete_type
+			}
+		}
 		clean_arg_type := t.normalize_type_alias(arg_type)
 		if clean_arg_type.len > 0 && !clean_arg_type.starts_with('&')
 			&& clean_arg_type !in ['voidptr', 'byteptr', 'charptr', 'nil'] {
@@ -4935,7 +4968,13 @@ fn (mut t Transformer) transform_pointer_rvalue_arg(arg_id flat.NodeId, arg_node
 		t.set_node_typ(int(nil_id), param_type)
 		return nil_id
 	}
-	arg_type := t.node_type(value_id)
+	mut arg_type := t.node_type(value_id)
+	if value_node.kind == .call {
+		concrete_type := t.concrete_generic_call_return_type(value_id, value_node)
+		if concrete_type.len > 0 {
+			arg_type = concrete_type
+		}
+	}
 	if arg_type.len == 0 || arg_type == 'void' || arg_type == 'unknown'
 		|| is_pointer_like_type_name(arg_type) {
 		return none
@@ -5415,8 +5454,8 @@ fn (mut t Transformer) make_array_literal_typed(values []flat.NodeId, typ string
 	})
 }
 
-// stringify_expr supports stringify expr handling for Transformer.
-fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
+// stringify_expr converts an expression to text, using voidptr.str() for print arguments.
+fn (mut t Transformer) stringify_expr(expr_id flat.NodeId, for_print bool) flat.NodeId {
 	// Transforming a pointer expression can normalize `&Alias` to `&Base`. Keep the
 	// checker's source-level alias here so auto-str can still add `Alias(...)` while
 	// reading the pointee through the base representation.
@@ -5494,7 +5533,12 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 			typ = typ[1..]
 		}
 	}
-	converted := t.wrap_string_conversion(expr, typ)
+	converted := if for_print && typ in ['voidptr', 'builtin.voidptr'] {
+		t.mark_fn_used_name('voidptr.str')
+		t.make_call_typed('voidptr.str', [expr], 'string')
+	} else {
+		t.wrap_string_conversion(expr, typ)
+	}
 	if sc := smartcast {
 		// Interface payloads are exposed through their backing address while
 		// smartcasted. Preserve the reference marker used by V stringification,
@@ -12138,7 +12182,7 @@ fn array_method_stays_in_cgen(method string) bool {
 fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
 	return match method.len {
 		3 { method == 'pop' }
-		4 { method == 'trim' }
+		4 { method == 'last' || method == 'trim' }
 		5 { method == 'clear' }
 		else { false }
 	}
@@ -13420,7 +13464,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 				return t.transform_call_args(_id, node)
 			}
 			arg_id := t.a.child(&node, 1)
-			arg := t.stringify_expr(arg_id)
+			arg := t.stringify_expr(arg_id, true)
 			return t.make_call(name, [arg])
 		}
 		'panic' {
@@ -13435,7 +13479,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 					t.a.nodes[int(call)].pos = node.pos
 					return call
 				}
-				call := t.make_call('panic', [t.stringify_expr(arg_id)])
+				call := t.make_call('panic', [t.stringify_expr(arg_id, false)])
 				t.a.nodes[int(call)].pos = node.pos
 				return call
 			}
@@ -13674,6 +13718,17 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 			t.mark_fn_used_name(method_name)
 			return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate,
 				!t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
+		}
+		// Open generic methods are specialized by value stringification rather
+		// than the checker-selected call path. Keep an explicit pointer-receiver
+		// str() result unchanged while retaining the existing nil guard.
+		if !isnil(t.tc) {
+			if info := t.tc.resolve_generic_struct_method(aggregate, 'str') {
+				if t.str_method_has_pointer_receiver(info.name) {
+					return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate,
+						false, '', '&nil')
+				}
+			}
 		}
 		return t.lower_ref_str_prefixed(t.transform_expr(base_id), aggregate)
 	}
@@ -15693,10 +15748,11 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		if !corresponds && !isnil(t.tc) {
 			raw_type := types.unalias_type(t.tc.parse_type(raw))
 			resolved_type := types.unalias_type(t.tc.parse_type(actual_type))
-			// Semantic function names omit shared, atomic and variadic syntax.
-			// Keep the declaration's modes when the remaining payload agrees.
+			// Match the stored payload without the variadic call mode, then retain
+			// the declaration's modes for the compatibility check below.
 			corresponds = raw_type is types.FnType && resolved_type is types.FnType
-				&& raw_type.name() == resolved_type.name()
+				&& callback_type_without_variadic_modes(raw_type).name() ==
+					callback_type_without_variadic_modes(resolved_type).name()
 		}
 		if corresponds {
 			actual_callconv_type = raw
@@ -15810,6 +15866,49 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	return false
+}
+
+// callback_type_without_variadic_modes describes storage while preserving payload types and mut modes.
+fn callback_type_without_variadic_modes(typ types.Type) types.Type {
+	return match typ {
+		types.FnType {
+			mut params := []types.Type{cap: typ.params.len}
+			for param in typ.params { params << callback_type_without_variadic_modes(param) }
+			types.Type(types.FnType{
+				...typ
+				params:      params
+				return_type: callback_type_without_variadic_modes(typ.return_type)
+				is_variadic: false
+			})
+		}
+		types.Array {
+			types.Type(types.Array{ ...typ, elem_type: callback_type_without_variadic_modes(typ.elem_type) })
+		}
+		types.ArrayFixed {
+			types.Type(types.ArrayFixed{ ...typ, elem_type: callback_type_without_variadic_modes(typ.elem_type) })
+		}
+		types.Channel {
+			types.Type(types.Channel{ ...typ, elem_type: callback_type_without_variadic_modes(typ.elem_type) })
+		}
+		types.Map {
+			types.Type(types.Map{ ...typ, key_type: callback_type_without_variadic_modes(typ.key_type), value_type: callback_type_without_variadic_modes(typ.value_type) })
+		}
+		types.Pointer {
+			types.Type(types.Pointer{ ...typ, base_type: callback_type_without_variadic_modes(typ.base_type) })
+		}
+		types.OptionType {
+			types.Type(types.OptionType{ ...typ, base_type: callback_type_without_variadic_modes(typ.base_type) })
+		}
+		types.ResultType {
+			types.Type(types.ResultType{ ...typ, base_type: callback_type_without_variadic_modes(typ.base_type) })
+		}
+		types.MultiReturn {
+			mut members := []types.Type{cap: typ.types.len}
+			for member in typ.types { members << callback_type_without_variadic_modes(member) }
+			types.Type(types.MultiReturn{ ...typ, types: members })
+		}
+		else { typ }
+	}
 }
 
 fn callback_param_shared_atomic_mode(param string) string {
@@ -16259,14 +16358,14 @@ fn method_name_contains_mangled_open_generic_placeholder(method_name string) boo
 
 // is_builder_receiver reports whether is builder receiver applies in transform.
 fn (t &Transformer) is_builder_receiver(base_id flat.NodeId, base_type string) bool {
-	if is_builder_type_name(base_type) {
+	if is_builder_type_name(base_type, t.cur_module) {
 		return true
 	}
 	if raw_type := t.raw_var_type_for_expr(base_id) {
-		return is_builder_type_name(raw_type)
+		return is_builder_type_name(raw_type, t.cur_module)
 	}
 	if raw_field_type := t.raw_selector_field_type(base_id) {
-		return is_builder_type_name(raw_field_type)
+		return is_builder_type_name(raw_field_type, t.cur_module)
 	}
 	return false
 }
@@ -16317,13 +16416,13 @@ fn (t &Transformer) raw_selector_field_type(id flat.NodeId) ?string {
 	return raw_type
 }
 
-// is_builder_type_name reports whether is builder type name applies in transform.
-fn is_builder_type_name(typ string) bool {
+// is_builder_type_name recognizes strings.Builder, including its local spelling in strings.
+fn is_builder_type_name(typ string, module_name string) bool {
 	mut clean := typ
 	if clean.starts_with('&') {
 		clean = clean[1..]
 	}
-	return clean == 'strings.Builder' || clean == 'Builder'
+	return clean == 'strings.Builder' || (clean == 'Builder' && module_name == 'strings')
 }
 
 // resolved_call_uses_receiver_type
@@ -17627,7 +17726,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 fn (mut t Transformer) add_spread_length_guard(base flat.NodeId, needed int) {
 	len_expr := t.make_selector(base, 'len', 'int')
 	too_short := t.make_infix(.lt, len_expr, t.make_int_literal(needed))
-	count := t.stringify_expr(t.make_selector(base, 'len', 'int'))
+	count := t.stringify_expr(t.make_selector(base, 'len', 'int'), false)
 	prefix := t.make_call_typed('string__plus', [
 		t.make_string_literal('array decompose: array has '),
 		count,
@@ -17788,71 +17887,25 @@ fn (mut t Transformer) try_lower_string_method_call(node flat.Node) ?flat.NodeId
 	return t.make_call_typed('string__${method}', args, ret_type)
 }
 
-// try_fold_literal_string_call emits a literal when a pure string call has literal operands.
+// try_fold_literal_string_call emits a literal when a pure string call has static operands.
 fn (mut t Transformer) try_fold_literal_string_call(node flat.Node, callee flat.Node) ?flat.NodeId {
-	if callee.value !in ['starts_with', 'ends_with', 'contains', 'count', 'all_before', 'all_after',
-		'all_before_last', 'all_after_last', 'trim', 'trim_left', 'trim_right', 'trim_space',
-		'trim_string_left', 'trim_string_right', 'replace', 'to_lower', 'to_upper'] {
+	if callee.children_count == 0 {
 		return none
 	}
-	base_id := t.a.child(&callee, 0)
-	if t.node_type(base_id) != 'string' {
-		return none
-	}
-	// Probe without transforming nonliteral operands: falling back must not emit them twice.
-	if !t.literal_string_call_operand(base_id) {
-		return none
-	}
-	for i in 1 .. node.children_count {
-		if !t.literal_string_call_operand(t.a.child(&node, i)) {
-			return none
-		}
-	}
-	// Argument transformations can grow the AST node array, so retain a value copy.
-	base := *t.a.node(t.transform_expr(base_id))
-	if base.kind != .string_literal {
+	receiver := t.comptime_scalar_expr(t.a.child(&callee, 0), 0) or { return none }
+	if receiver.typ != 'string' {
 		return none
 	}
 	mut args := []string{}
 	for i in 1 .. node.children_count {
-		arg := t.a.node(t.transform_expr(t.a.child(&node, i)))
-		if arg.kind != .string_literal {
+		arg := t.comptime_scalar_expr(t.a.child(&node, i), 0) or { return none }
+		if arg.typ != 'string' {
 			return none
 		}
 		args << arg.value
 	}
-	value := comptime_string_scalar(base.value, callee.value, args) or { return none }
-	return match value.typ {
-		'string' { t.make_string_literal(value.value) }
-		'bool' { t.make_bool_literal(value.value == 'true') }
-		else { t.make_int_literal(value.value.int()) }
-	}
-}
-
-fn (t &Transformer) literal_string_call_operand(id flat.NodeId) bool {
-	node := t.a.node(id)
-	if node.kind == .string_literal {
-		return true
-	}
-	if node.kind != .call || node.children_count == 0 {
-		return false
-	}
-	callee := t.a.child_node(node, 0)
-	if callee.kind != .selector || callee.children_count == 0
-		|| callee.value !in ['all_before', 'all_after', 'all_before_last', 'all_after_last', 'trim',
-			'trim_left', 'trim_right', 'trim_space', 'trim_string_left', 'trim_string_right', 'replace',
-			'to_lower', 'to_upper'] {
-		return false
-	}
-	if !t.literal_string_call_operand(t.a.child(callee, 0)) {
-		return false
-	}
-	for i in 1 .. node.children_count {
-		if !t.literal_string_call_operand(t.a.child(node, i)) {
-			return false
-		}
-	}
-	return true
+	value := comptime_string_scalar(receiver.value, callee.value, args) or { return none }
+	return t.make_comptime_scalar_literal(value)
 }
 
 // lower_string_count_call builds lower string count call data for transform.
