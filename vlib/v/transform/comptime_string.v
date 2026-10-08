@@ -204,7 +204,7 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 			if scalar := value {
 				// So can a source local of a generic function, whose body is not checked
 				// for assignments to immutable names.
-				if !t.stmts_assign_local(t.cur_stmt_list, lhs.value) {
+				if !t.later_stmts_assign_local(id, lhs.value) {
 					t.comptime_scalar_locals[lhs.value] = scalar
 				}
 			}
@@ -213,12 +213,22 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 	return result
 }
 
-// stmts_assign_local reports whether any statement in `ids` assigns to the local `name`,
-// increments it, or passes it as a mutable argument. Reading it, as on the right of an
+// later_stmts_assign_local reports whether a statement that follows the declaration
+// `decl_id` in its statement list assigns to the declared local `name`, increments it, or
+// passes it as a mutable argument. Only those statements can see the binding: the same name
+// in an earlier statement belongs to another one. Reading it, as on the right of an
 // assignment, does not count: a compile-time construct may still need its value.
-fn (t &Transformer) stmts_assign_local(ids []flat.NodeId, name string) bool {
-	for id in ids {
-		if t.node_assigns_local(id, name) {
+fn (t &Transformer) later_stmts_assign_local(decl_id flat.NodeId, name string) bool {
+	ids := t.cur_stmt_list
+	mut first := 0
+	for i, id in ids {
+		if id == decl_id {
+			first = i + 1
+			break
+		}
+	}
+	for i in first .. ids.len {
+		if t.node_assigns_local(ids[i], name) {
 			return true
 		}
 	}
@@ -230,6 +240,11 @@ fn (t &Transformer) node_assigns_local(id flat.NodeId, name string) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
+	// A function literal has its own scope. A name declared there is another binding,
+	// and a captured scalar is a copy that belongs to the closure.
+	if node.kind == .fn_literal {
+		return false
+	}
 	if node.kind == .ident && node.is_mut && node.value == name {
 		return true
 	}
