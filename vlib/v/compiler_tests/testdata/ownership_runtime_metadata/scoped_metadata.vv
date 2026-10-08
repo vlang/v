@@ -2,6 +2,61 @@ module types
 
 import v.flat
 
+fn test_ownership_observation_views_keep_parent_state_private() {
+	$if ownership ?&& prealloc {
+		mut a := flat.FlatAst.new()
+		scalar_id := a.add_val(.bool_literal, 'false')
+		mut tc := TypeChecker.new(&a)
+		mut state := tc.ownership_state()
+		state.borrowed_vars['source'] = [BorrowInfo{ borrower: 'holder.target', pos: scalar_id }]
+		state.ownership_fn_return_param_descs['main.alias'] = [OwnershipReturnParamDescendant{
+			param_idx: 1
+			via:       ['main.origin']
+		}]
+		errors_before := tc.errors.clone()
+		types_before := tc.expr_type_values.clone()
+		set_before := tc.expr_type_set.clone()
+		checking_before := tc.checking_nodes.clone()
+		scope_before := tc.cur_scope.names.clone()
+		arena := unsafe { prealloc_scope_begin() }
+		mut isolated := tc.fork_storage_observation_view()
+		mut child := isolated.fork_storage_observation_view()
+		mut lookup := child.fork_type_parse_view(tc.cur_file, tc.cur_module)
+		assert voidptr(isolated.ownership) != voidptr(state)
+		assert voidptr(child.ownership) == voidptr(isolated.ownership)
+		assert voidptr(lookup.ownership) == voidptr(isolated.ownership)
+		assert voidptr(child.storage_query_probe) == voidptr(isolated.storage_query_probe)
+		assert voidptr(lookup.storage_query_probe) == voidptr(isolated.storage_query_probe)
+		// Borrow retained descriptors so writes exercise the cloned backing storage.
+		mut loans := unsafe { lookup.ownership.borrowed_vars['source'] }
+		mut via := unsafe { lookup.ownership.ownership_fn_return_param_descs['main.alias'][0].via }
+		assert unsafe { loans.data != state.borrowed_vars['source'].data }
+		assert unsafe { via.data != state.ownership_fn_return_param_descs['main.alias'][0].via.data }
+		loans[0] = BorrowInfo{ borrower: 'changed', pos: scalar_id }
+		via[0] = 'main.changed'
+		assert isolated.ownership.borrowed_vars['source'][0].borrower == 'changed'
+		assert child.ownership.ownership_fn_return_param_descs['main.alias'][0].via == ['main.changed']
+		assert state.borrowed_vars['source'][0].borrower == 'holder.target'
+		assert state.ownership_fn_return_param_descs['main.alias'][0].via == ['main.origin']
+		isolated.storage_query_probe.value_observations = storage_query_probe_max_observations - 1
+		assert isolated.returned_receiver_local_storage_in_value(scalar_id, []flat.NodeId{}, map[string]flat.NodeId{}) == none
+		assert !isolated.storage_query_probe.uncertain
+		assert child.returned_receiver_local_storage_in_value(scalar_id, []flat.NodeId{}, map[string]flat.NodeId{}) == none
+		assert lookup.storage_query_probe.uncertain
+		assert !isolated.storage_query_probe.recheck_requested
+		lookup.check_node(scalar_id)
+		assert isolated.storage_query_probe.recheck_requested
+		assert tc.storage_query_probe == unsafe { nil }
+		assert tc.errors == errors_before
+		assert tc.expr_type_values == types_before && tc.expr_type_set == set_before
+		assert tc.checking_nodes == checking_before
+		assert tc.cur_scope.names == scope_before
+		unsafe { prealloc_scope_end(arena) }
+		assert state.borrowed_vars['source'][0].borrower == 'holder.target'
+		assert state.ownership_fn_return_param_descs['main.alias'][0].via == ['main.origin']
+	}
+}
+
 fn test_ownership_results_survive_batch_arena_release() {
 	$if ownership ?&& prealloc {
 		a := flat.FlatAst.new()

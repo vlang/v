@@ -7028,7 +7028,35 @@ fn (g &FlatGen) trace_call_name(fn_node flat.Node, fn_name string, target_name s
 		|| (resolved_target_name.len == 0 && fn_node.kind !in [.ident, .selector]) {
 		return none
 	}
+	// The same holds for `value.member()` left as a selector: a builtin intrinsic
+	// such as `arr.pop()`, or an fn-valued field.
+	if resolved_target_name.len == 0 && fn_node.kind == .selector
+		&& !g.selector_names_fn_decl(fn_node) {
+		return none
+	}
 	return name
+}
+
+// selector_names_fn_decl reports whether an unresolved selector callee is
+// `module.fn` or `Type.static_fn`, rather than a member of a value.
+fn (g &FlatGen) selector_names_fn_decl(fn_node flat.Node) bool {
+	if fn_node.children_count == 0 {
+		return false
+	}
+	base := g.a.nodes[int(g.a.child(&fn_node, 0))]
+	if base.kind != .ident || base.value.len == 0 {
+		return false
+	}
+	if _ := g.local_ident_type(base.value) {
+		return false
+	}
+	if _ := g.import_alias_module(base.value) {
+		return true
+	}
+	if _ := g.static_method_fn_name(base.value, fn_node.value) {
+		return true
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_traced_call(id flat.NodeId, trace_name string) bool {
@@ -7038,6 +7066,14 @@ fn (mut g FlatGen) gen_traced_call(id flat.NodeId, trace_name string) bool {
 	}
 	if ret_type is types.Unknown {
 		return false
+	}
+	if ret_type is types.Void {
+		// declared_call_return_type also answers void for a callee it cannot find;
+		// a value-producing call must not be emitted as a void statement.
+		expr_type := g.usable_expr_type(id)
+		if expr_type !is types.Void && expr_type !is types.Unknown {
+			return false
+		}
 	}
 	if _ := array_fixed_type(ret_type) {
 		// Fixed-array calls use a generated ABI wrapper that the surrounding

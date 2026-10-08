@@ -122,7 +122,7 @@ fn main() {
 ')!
 	compiler := os.getenv_opt('VEXE') or { @VEXE }
 	mut compiled := os.exec([compiler, '-gc', 'none', '-b', 'arm64', '-o', output, path])
-	if compiled.exit_code == 0 && !os.exists(output) {
+	if compiled.output.contains('ARM64 support is not compiled into this executable') {
 		// C-only bootstrap compilers omit ARM64 dispatch; build the backend for this regression.
 		bootstrap := os.exec([compiler, '-gc', 'none', '-d', 'skip_fastc', '-compile-backend',
 			'arm64', '-o', test_compiler, os.join_path(@VEXEROOT, 'vlib', 'v', 'v.v')])
