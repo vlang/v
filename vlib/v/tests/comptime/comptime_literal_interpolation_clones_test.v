@@ -1,3 +1,6 @@
+// These tests intentionally borrow mutable fixed buffers with unsafe vstring().
+// Mutating the buffers after interpolation proves that the result copied the text.
+
 import os
 import time
 
