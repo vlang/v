@@ -467,7 +467,10 @@ configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
 the V temporary directory by default; set `V3CACHE` to select another root, or pass
 `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
 object cache. An explicit `-b c` binary build also retains the complete generated translation unit
-at `<output>.c` for codegen inspection. The benchmark output prints counts for parsed `.vh` and
+at `<output>.c` for codegen inspection. Use `-show-timings` to print elapsed time for each compiler
+stage and the total, including memory usage and cache metrics. It enables the same benchmark
+summary as `-v` without verbose compiler traces. `-silent` and generated C output to stdout
+(`-o -`) suppress the summary. The benchmark output prints counts for parsed `.vh` and
 `.v` files and their total
 line counts immediately after the parse stage, followed by each category's space-separated paths
 on one line. Paths below the current home directory use `~` as a prefix. A nonzero `.vh` count
