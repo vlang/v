@@ -128,6 +128,33 @@ fn test_joint_invalid_retractions_fail_before_publication() {
 	assert get_installed_modules_in(os.join_path(joint_root, 'retracted_invalid', 'store')).len == 0
 }
 
+fn test_joint_invalid_new_retractions_preserve_an_unchanged_lock() {
+	repo := joint_repo('retracted_invalid_lock', 'shared')!
+	head := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	project := joint_project('retracted_invalid_lock', [repo + '@^1'])!
+	joint_cli(['install'])
+	before := os.read_file(lockfile_path(project))!
+	joint_retracted_tag(repo, 'v1.1.0', ['not a version range'])!
+	joint_cli(['install'])
+	assert joint_head('retracted_invalid_lock', 'shared') == head
+	assert os.read_file(lockfile_path(project))! == before
+	failed := cmd_fail_args(@LOCATION, [joint_tool, 'update']).output
+	assert failed.contains('invalid retracted version range'), failed
+	assert joint_head('retracted_invalid_lock', 'shared') == head
+	assert os.read_file(lockfile_path(project))! == before
+}
+
+fn test_joint_all_retracted_versions_report_the_requirement_chain() {
+	repo := joint_repo('retracted_all', 'shared')!
+	joint_retracted_tag(repo, 'v1.0.0', ['*'])!
+	project := joint_project('retracted_all', [repo + '@^1'])!
+	failed := cmd_fail_args(@LOCATION, [joint_tool, 'install']).output
+	assert failed.contains('no semantic-version tag satisfies all requirements'), failed
+	assert failed.contains(repo + '@^1'), failed
+	assert !os.exists(lockfile_path(project))
+	assert get_installed_modules_in(os.join_path(joint_root, 'retracted_all', 'store')).len == 0
+}
+
 fn test_joint_retractions_allow_backtracking_past_a_manifestless_release() {
 	repo := joint_repo('retracted_manifestless', 'shared')!
 	old := joint_tag(repo, 'shared', 'v1.0.0', [])!

@@ -6,8 +6,9 @@ import rand
 import v.vmod
 
 struct VersionChoice {
-	version  string
-	revision string
+	version   string
+	revision  string
+	automatic bool
 }
 
 struct Requirement {
@@ -379,19 +380,14 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 				r.failure = 'cannot list versions for `${req.raw}`: ${err.msg()}'
 				return err
 			}
-			retractions := r.version_retractions(id) or {
-				r.failure = 'cannot read retractions for `${req.raw}`: ${err.msg()}'
-				return err
-			}
 			for tag in tags {
-				if version_is_retracted(tag, retractions) { continue }
 				allowed := release_tag_allowed(r.sources[id].url, tag) or {
 					r.failure = 'cannot apply release policy for `${req.raw}`: ${err.msg()}'
 					return err
 				}
 				if !allowed { continue }
 				if tag_satisfies_range(tag, if constraint == '' { '*' } else { constraint }) {
-					choices << VersionChoice{ version: tag }
+					choices << VersionChoice{ version: tag, automatic: true }
 				}
 			}
 		}
@@ -402,14 +398,23 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 	}
 	mut tried := map[string]bool{}
 	mut choice_index := 0
+	mut attempted := false
 	for choice_index < choices.len {
 		choice := choices[choice_index]
 		choice_index++
+		if choice.automatic {
+			retractions := r.version_retractions(id) or {
+				r.failure = 'cannot read retractions for `${req.raw}`: ${err.msg()}'
+				return err
+			}
+			if version_is_retracted(choice.version, retractions) { continue }
+		}
 		key := choice.version + '\0' + choice.revision
 		if key in tried {
 			continue
 		}
 		tried[key] = true
+		attempted = true
 		mut m := r.candidate(id, choice.version, choice.revision) or {
 			r.failure = 'failed to install `${req.raw}` at `${choice.version}`: ${err.msg()}\nrequired by ${req.chain.join(' -> ')}'
 			if choice.revision != '' { return err }
@@ -470,6 +475,7 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 			}
 		}
 	}
+	if !attempted { r.conflict(id, for_module) }
 	return error(r.failure)
 }
 
