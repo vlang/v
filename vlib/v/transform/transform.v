@@ -16830,7 +16830,7 @@ fn (mut t Transformer) try_lower_string_compound_assign(_id flat.NodeId, node fl
 		return none
 	}
 	new_rhs := if t.normalize_type_alias(t.node_type(rhs_id)) in ['char', 'rune'] {
-		t.stringify_expr(rhs_id)
+		t.stringify_expr(rhs_id, false)
 	} else {
 		t.transform_expr(rhs_id)
 	}

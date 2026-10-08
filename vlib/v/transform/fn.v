@@ -5454,8 +5454,8 @@ fn (mut t Transformer) make_array_literal_typed(values []flat.NodeId, typ string
 	})
 }
 
-// stringify_expr supports stringify expr handling for Transformer.
-fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
+// stringify_expr converts an expression to text, using voidptr.str() for print arguments.
+fn (mut t Transformer) stringify_expr(expr_id flat.NodeId, for_print bool) flat.NodeId {
 	// Transforming a pointer expression can normalize `&Alias` to `&Base`. Keep the
 	// checker's source-level alias here so auto-str can still add `Alias(...)` while
 	// reading the pointee through the base representation.
@@ -5533,7 +5533,12 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 			typ = typ[1..]
 		}
 	}
-	converted := t.wrap_string_conversion(expr, typ)
+	converted := if for_print && typ in ['voidptr', 'builtin.voidptr'] {
+		t.mark_fn_used_name('voidptr.str')
+		t.make_call_typed('voidptr.str', [expr], 'string')
+	} else {
+		t.wrap_string_conversion(expr, typ)
+	}
 	if sc := smartcast {
 		// Interface payloads are exposed through their backing address while
 		// smartcasted. Preserve the reference marker used by V stringification,
@@ -13459,7 +13464,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 				return t.transform_call_args(_id, node)
 			}
 			arg_id := t.a.child(&node, 1)
-			arg := t.stringify_expr(arg_id)
+			arg := t.stringify_expr(arg_id, true)
 			return t.make_call(name, [arg])
 		}
 		'panic' {
@@ -13474,7 +13479,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 					t.a.nodes[int(call)].pos = node.pos
 					return call
 				}
-				call := t.make_call('panic', [t.stringify_expr(arg_id)])
+				call := t.make_call('panic', [t.stringify_expr(arg_id, false)])
 				t.a.nodes[int(call)].pos = node.pos
 				return call
 			}
@@ -17721,7 +17726,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 fn (mut t Transformer) add_spread_length_guard(base flat.NodeId, needed int) {
 	len_expr := t.make_selector(base, 'len', 'int')
 	too_short := t.make_infix(.lt, len_expr, t.make_int_literal(needed))
-	count := t.stringify_expr(t.make_selector(base, 'len', 'int'))
+	count := t.stringify_expr(t.make_selector(base, 'len', 'int'), false)
 	prefix := t.make_call_typed('string__plus', [
 		t.make_string_literal('array decompose: array has '),
 		count,
