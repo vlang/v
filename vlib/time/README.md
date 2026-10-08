@@ -77,6 +77,11 @@ enforces its actual length.
 is written as `0100`. For nonnegative years, `YY` writes the final two year digits
 with leading zeros. Negative years retain their existing `YYYY` and `YY` representations.
 
+`parse_format` supports `A` for `AM`/`PM` and `a` for `am`/`pm`. Use these markers with
+an hour from `1` to `12`, for example `time.parse_format('02:30:45PM', 'hh:mm:ssA')!`
+returns hour `14`, while `12:00:00AM` returns hour `0`. Layouts without a marker retain
+their existing 24-hour behavior.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time

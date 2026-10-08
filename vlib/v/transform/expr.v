@@ -4777,9 +4777,13 @@ pub fn (mut t Transformer) make_map_init(map_type string) flat.NodeId {
 	})
 }
 
-// make_string_literal builds make string literal data for transform.
+// make_string_literal creates literal text without interpreting interpolation syntax.
 pub fn (mut t Transformer) make_string_literal(value string) flat.NodeId {
-	return t.a.add_val(.string_literal, value)
+	return t.a.add_node(flat.Node{
+		kind:  .string_literal
+		value: value
+		flags: if value.contains(r'${') { flat.node_flag_literal_interpolation_text } else { 0 }
+	})
 }
 
 // make_int_literal builds make int literal data for transform.

@@ -25,8 +25,9 @@ import v.gen.c.naming
 // `library_files` that the program cannot name unchecked, and returns how many
 // library functions it can. `seeded_fns` are the functions that markused keeps
 // without a call that leads to them. Without `follow_names` it leaves out every
-// body that is not checked whatever the program names, which leaves them all to
-// check_reached_library_bodies: a test of that path.
+// body that is not checked whatever the program names, except those that a generic
+// body names, which leaves the others to check_reached_library_bodies: a test of
+// that path.
 pub fn (mut tc TypeChecker) skip_unreachable_library_bodies(library_files map[string]bool, seeded_fns []string, follow_names bool) int {
 	return tc.prepare_library_body_reachability(library_files, seeded_fns, follow_names, false)
 }
@@ -63,9 +64,10 @@ const library_fn_implicit_names = ['str', 'free', 'next', 'msg', 'code', 'init',
 const library_runtime_modules = ['closure', 'sync', 'stdatomic', 'embed_file', 'overflow', 'debug']
 
 struct LibraryFnBody {
-	fn_idx   int
-	range_lo int
-	module   string
+	fn_idx     int
+	range_lo   int
+	module     string
+	is_generic bool
 }
 
 // library_fns_reachable_by_name returns the functions of tc.library_files that the
@@ -148,8 +150,9 @@ fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follo
 					|| tc.library_fn_is_marked_root(i)
 				if is_root {
 					root_ranges << LibraryFnBody{
-						fn_idx:   i
-						range_lo: range_lo
+						fn_idx:     i
+						range_lo:   range_lo
+						is_generic: tc.enclosing_generic_params_by_node[i].len > 0
 					}
 					if is_library {
 						reachable[node.value] = true
@@ -178,11 +181,15 @@ fn (mut tc TypeChecker) library_fns_reachable_by_name(seeded_fns []string, follo
 	}
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
-	if bodies.len == 0 || !follow_names {
+	if bodies.len == 0 {
 		return reachable
 	}
 	for root in root_ranges {
-		tc.reach_library_fns_named_in(root, by_name, mut reached, mut queue)
+		if follow_names {
+			tc.reach_library_fns_named_in(root, by_name, mut reached, mut queue)
+		} else if root.is_generic {
+			tc.reach_library_methods_named_in(root, bodies, by_name, mut reached, mut queue)
+		}
 	}
 	for queue.len > 0 {
 		body := bodies[queue.pop()]
@@ -216,6 +223,26 @@ fn (tc &TypeChecker) reach_library_fns_named_in(body LibraryFnBody, by_name map[
 		candidates := by_name[short_name] or { continue }
 		for candidate in candidates {
 			if !reached[candidate] {
+				reached[candidate] = true
+				queue << candidate
+			}
+		}
+	}
+}
+
+// reach_library_methods_named_in marks the library methods that the generic `body`
+// names in a member access as reached. A generic body calls the methods of its type
+// parameters, which have no checked type for markused to resolve before the instances
+// exist, so those are reached by name in every mode, with what their bodies name.
+fn (tc &TypeChecker) reach_library_methods_named_in(body LibraryFnBody, bodies []LibraryFnBody, by_name map[string][]int, mut reached []bool, mut queue []int) {
+	for i in body.range_lo .. body.fn_idx + 1 {
+		node := tc.a.nodes[i]
+		if node.kind != .selector || node.value.len == 0 {
+			continue
+		}
+		candidates := by_name[short_name_view(node.value)] or { continue }
+		for candidate in candidates {
+			if !reached[candidate] && tc.a.nodes[bodies[candidate].fn_idx].value.contains('.') {
 				reached[candidate] = true
 				queue << candidate
 			}
