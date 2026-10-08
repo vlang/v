@@ -1133,14 +1133,16 @@ mut:
 	lexical_parent_memo &LexicalParentMemo = unsafe { nil }
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
-	fn_context               FunctionCheckContext
-	selective_import_index   &SelectiveImportIndex    = &SelectiveImportIndex{}
-	type_cache               &TypeCache               = unsafe { nil }
-	pre_transform_type_cache &TypeCache               = unsafe { nil }
-	resolution_type_views    &ResolutionTypeViewCache = unsafe { nil }
-	visible_mutation_cache   &VisibleMutationCache    = unsafe { nil }
-	type_interner            &TypeInterner            = unsafe { nil }
-	symbols                  &SymbolInterner          = unsafe { nil }
+	fn_context                 FunctionCheckContext
+	selective_import_index     &SelectiveImportIndex    = &SelectiveImportIndex{}
+	type_cache                 &TypeCache               = unsafe { nil }
+	pre_transform_type_cache   &TypeCache               = unsafe { nil }
+	resolution_type_views      &ResolutionTypeViewCache = unsafe { nil }
+	visible_mutation_cache     &VisibleMutationCache    = unsafe { nil }
+	storage_query_probe        &StorageQueryProbe       = unsafe { nil }
+	storage_query_probe_scopes []voidptr
+	type_interner              &TypeInterner   = unsafe { nil }
+	symbols                    &SymbolInterner = unsafe { nil }
 	// direct_parent_ids maps a parsed node to the first AST node that references
 	// it as a child. It is immutable during semantic checking and shared by
 	// checker workers. Transformed or appended nodes use the scan fallback in
@@ -1564,6 +1566,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 			by_file: map[string]&TypeChecker{}
 		}
 		visible_mutation_cache:                tc.visible_mutation_cache
+		storage_query_probe:                   tc.storage_query_probe
+		storage_query_probe_scopes:            tc.storage_query_probe_scopes
 		type_interner:                         tc.type_interner
 		symbols:                               tc.symbols
 	}
@@ -9883,6 +9887,13 @@ pub fn (tc &TypeChecker) invalidate_checked_expr_type(idx int) {
 @[direct_array_access]
 fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 	idx := int(id)
+	if !isnil(tc.storage_query_probe) {
+		if typ := tc.sparse_expr_type_values[idx] { return typ }
+		if !isnil(tc.storage_query_probe.read_base) {
+			return tc.storage_query_probe.read_base.cached_expr_type(id)
+		}
+		return none
+	}
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) {
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
@@ -9902,6 +9913,16 @@ fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 @[direct_array_access]
 fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 	idx := int(id)
+	if !isnil(tc.storage_query_probe) {
+		if name := tc.sparse_resolved_call_names[idx] { return name }
+		if !isnil(tc.fork_overlay) && idx >= tc.fork_overlay.base_node_count {
+			if name := tc.fork_overlay.resolved_call_names[idx] { return name }
+		}
+		if !isnil(tc.storage_query_probe.read_base) {
+			return tc.storage_query_probe.read_base.cached_resolved_call(id)
+		}
+		return none
+	}
 	if !isnil(tc.fork_overlay) && idx >= tc.fork_overlay.base_node_count {
 		if name := tc.fork_overlay.resolved_call_names[idx] {
 			return name
@@ -10103,6 +10124,20 @@ fn (tc &TypeChecker) name_never_returns(name string) bool {
 @[direct_array_access]
 pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	idx := int(id)
+	if !isnil(tc.storage_query_probe) {
+		if name := tc.fork_fn_value_writes[idx] {
+			if name.len == 0 { return none }
+			return name
+		}
+		if !isnil(tc.fork_overlay) && idx >= tc.fork_overlay.base_node_count {
+			if name := tc.fork_overlay.resolved_fn_values[idx] { return name }
+		}
+		if name := tc.sparse_resolved_fn_values[idx] { return name }
+		if !isnil(tc.storage_query_probe.read_base) {
+			return tc.storage_query_probe.read_base.resolved_fn_value_name(id)
+		}
+		return none
+	}
 	if !isnil(tc.fork_overlay) && idx >= tc.fork_overlay.base_node_count {
 		if name := tc.fork_overlay.resolved_fn_values[idx] {
 			return name
@@ -10130,7 +10165,7 @@ pub fn (mut tc TypeChecker) set_resolved_fn_value(idx int, name string) {
 	if idx < 0 {
 		return
 	}
-	if !isnil(tc.fork_overlay) {
+	if !isnil(tc.storage_query_probe) || !isnil(tc.fork_overlay) {
 		tc.fork_fn_value_writes[idx] = name
 		return
 	}
@@ -10144,6 +10179,12 @@ pub fn (mut tc TypeChecker) set_resolved_fn_value(idx int, name string) {
 pub fn (mut tc TypeChecker) clear_resolved_fn_value(id flat.NodeId) {
 	idx := int(id)
 	if idx < 0 {
+		return
+	}
+	if !isnil(tc.storage_query_probe) {
+		if !isnil(tc.fork_overlay) { tc.fork_overlay.resolved_fn_values.delete(idx) }
+		tc.sparse_resolved_fn_values.delete(idx)
+		tc.fork_fn_value_writes[idx] = ''
 		return
 	}
 	if !isnil(tc.fork_overlay) {
@@ -10422,6 +10463,10 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	}
 	symbol_id, canonical := tc.intern_symbol(name)
 	tc.record_direct_dependency(symbol_id)
+	if !isnil(tc.storage_query_probe) {
+		tc.sparse_resolved_call_names[idx] = canonical
+		return
+	}
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_call_names.len {
 			tc.resolved_call_names[idx] = cached_name(canonical)
@@ -10492,6 +10537,10 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 	cached_typ := if kind == .infix { tc.widen_mixed_integer_expr_type(id, typ) } else { typ }
 	if should_cache_expr_type(kind, cached_typ) {
 		idx := int(id)
+		if !isnil(tc.storage_query_probe) {
+			tc.sparse_expr_type_values[idx] = cached_typ
+			return
+		}
 		if tc.parallel_check_sparse {
 			if tc.in_check_range(idx) && idx < tc.expr_type_values.len {
 				tc.expr_type_values[idx] = cached_typ
