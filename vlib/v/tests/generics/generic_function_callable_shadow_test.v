@@ -68,3 +68,15 @@ fn test_generic_function_block_shadow_ends_before_nested_generic_call() {
 		return value + 1
 	}, false) == 4
 }
+
+fn test_generic_function_fixed_array_local_callable_shadows_function() {
+	assert apply_local_shadow[[2]int, string](fn (values [2]int) string {
+		return '${values[0]}:${values[1]}'
+	}, [4, 5]!) == '4:5'
+}
+
+fn test_generic_function_fixed_array_block_shadow_ends_before_nested_generic_call() {
+	assert apply_nested_shadow([4, 5]!, fn (values [2]int) [2]int {
+		return [values[0] + 1, values[1] + 2]!
+	}) == [5, 7]!
+}
