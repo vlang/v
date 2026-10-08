@@ -2484,3 +2484,34 @@ fn test_formatter_keeps_comptime_string_expression_sources() {
 	assert out.contains("path[1..].starts_with('users')"), out
 	assert vfmt('comptime_string_sources_twice', out) == out
 }
+
+// format_text must produce byte-identical output to the file path, or a
+// filesystem-less caller (like the Emscripten build) silently diverges from
+// `v fmt`.
+fn test_format_text_matches_file_path() {
+	src := 'module main\nfn main() {\nprintln(  1+2  )\n}\n'
+	assert format_text(src)! == vfmt('text_matches_file', src)
+}
+
+fn test_format_text_is_idempotent() {
+	src := 'module main\nfn main() {\nprintln(1 + 2)\n}\n'
+	once := format_text(src)!
+	assert format_text(once)! == once
+}
+
+fn test_format_text_reports_parser_errors() {
+	format_text('module main\nfn broken( {') or {
+		assert err.msg().contains('main.v:2:12'), err.msg()
+		return
+	}
+	assert false, 'expected a parser error'
+}
+
+fn test_parse_text_matches_parse_file() {
+	src := 'module main\nfn main() {\nprintln(1)\n}\n'
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_text('main.v', src)
+	assert format(a) == vfmt('text_matches_file_ast', src)
+}
