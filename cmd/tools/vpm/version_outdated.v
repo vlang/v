@@ -32,12 +32,14 @@ fn version_outdated_rows(dir string, manifest vmod.Manifest) ![]VersionStatus {
 		origin := checkout_origin_url(path)
 		if origin == '' { continue }
 		tags := remote_version_tags(origin)!
+		retractions := latest_version_retractions(origin, tags)!
+		available_tags := tags.filter(!version_is_retracted(it, retractions))
 		mut constraints := []string{}
 		for key, values in graph.constraints {
 			if key.ends_with('\0' + path) { constraints << values }
 		}
 		mut upgradable := ''
-		for tag in tags {
+		for tag in available_tags {
 			if (constraints.len > 0 || tag_satisfies_range(tag, '*'))
 				&& constraints.all(if is_version_range(it) {
 					tag_satisfies_range(tag, it)
@@ -64,7 +66,7 @@ fn version_outdated_rows(dir string, manifest vmod.Manifest) ![]VersionStatus {
 			current:    current
 			upgradable: if upgradable == '' { '-' } else { upgradable }
 			resolvable: resolved[normalized_clone_source(origin)] or { '-' }
-			latest:     select_version_tag(tags, '*') or { '-' }
+			latest:     select_version_tag(available_tags, '*') or { '-' }
 		}
 	}
 	return rows.sorted(a.name < b.name)
