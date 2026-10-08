@@ -1723,6 +1723,11 @@ fn (mut tc TypeChecker) sort_parallel_check_errors() {
 }
 
 fn compare_type_notices(a &TypeError, b &TypeError) int {
+	$if prealloc {
+		// Comparisons return no allocated payload; recycle their temporary searches.
+		scope := unsafe { prealloc_scope_begin() }
+		defer { unsafe { prealloc_scope_end(scope) } }
+	}
 	a_is_postfix_value_warning := a.msg.ends_with('operator can only be used as a statement')
 	b_is_postfix_value_warning := b.msg.ends_with('operator can only be used as a statement')
 	if a_is_postfix_value_warning != b_is_postfix_value_warning {
@@ -1747,6 +1752,11 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	$if prealloc {
+		// Comparisons return no allocated payload; recycle their temporary searches.
+		scope := unsafe { prealloc_scope_begin() }
+		defer { unsafe { prealloc_scope_end(scope) } }
+	}
 	if a.node == b.node && a.diagnostic_order > 0 && b.diagnostic_order > 0
 		&& a.diagnostic_order != b.diagnostic_order {
 		return a.diagnostic_order - b.diagnostic_order

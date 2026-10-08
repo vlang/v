@@ -1,5 +1,10 @@
 This command compiles the given target, along with their dependencies,
 into an executable using the WebAssembly code generation backend.
+The backend emits a binary from V's SSA intermediate representation. `-prod`
+optimizes SSA before code generation. See doc/wasm.md for supported features.
+
+The standard compiler includes this backend. A standalone compiler build needs
+`-compile-backend wasm` or `-all-backends`.
 
 Usage:
   v -b wasm [-options] ['run'] <target.v|target_directory> [run options]

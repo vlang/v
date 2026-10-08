@@ -107,7 +107,7 @@ fn (mut p DateTimeParser) must_be_string_one_of(oneof []string) !string {
 
 fn (mut p DateTimeParser) must_be_valid_month() !int {
 	for v in long_months {
-		if p.current_pos_datetime + v.len < p.datetime.len && p.matches_at(v) {
+		if p.current_pos_datetime + v.len <= p.datetime.len && p.matches_at(v) {
 			p.current_pos_datetime += v.len
 			return long_months.index(v) + 1
 		}
@@ -116,7 +116,7 @@ fn (mut p DateTimeParser) must_be_valid_month() !int {
 }
 
 fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
-	if p.current_pos_datetime + 3 < p.datetime.len {
+	if p.current_pos_datetime + 3 <= p.datetime.len {
 		for m := 1; m <= long_months.len; m++ {
 			token := months_string[(m - 1) * 3..m * 3]
 			if p.matches_at(token) {
@@ -130,7 +130,7 @@ fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
 
 fn (mut p DateTimeParser) must_be_valid_week_day() !string {
 	for v in long_days {
-		if p.current_pos_datetime + v.len < p.datetime.len && p.matches_at(v) {
+		if p.current_pos_datetime + v.len <= p.datetime.len && p.matches_at(v) {
 			p.current_pos_datetime += v.len
 			return v
 		}
@@ -139,7 +139,7 @@ fn (mut p DateTimeParser) must_be_valid_week_day() !string {
 }
 
 fn (mut p DateTimeParser) must_be_valid_two_letter_week_day() !int {
-	if p.current_pos_datetime + 2 < p.datetime.len {
+	if p.current_pos_datetime + 2 <= p.datetime.len {
 		for d := 1; d <= long_days.len; d++ {
 			token := days_string[(d - 1) * 3..d * 3 - 1]
 			if p.matches_at(token) {
@@ -152,7 +152,7 @@ fn (mut p DateTimeParser) must_be_valid_two_letter_week_day() !int {
 }
 
 fn (mut p DateTimeParser) must_be_valid_three_letter_week_day() !int {
-	if p.current_pos_datetime + 3 < p.datetime.len {
+	if p.current_pos_datetime + 3 <= p.datetime.len {
 		for d := 1; d <= long_days.len; d++ {
 			token := days_string[(d - 1) * 3..d * 3]
 			if p.matches_at(token) {
@@ -380,12 +380,16 @@ fn (mut p DateTimeParser) parse() !Time {
 		}
 	}
 
+	if p.current_pos_datetime != p.datetime.len {
+		return error_invalid_time(0, 'extra text: ${p.datetime[p.current_pos_datetime..]}')
+	}
+
 	if month_ == 2 {
 		feb_days_in_year := if is_leap_year(year_) { 29 } else { 28 }
 		if day_in_month > feb_days_in_year {
 			return error_invalid_time(0, 'February has only 28 days in the given year')
 		}
-	} else if day_in_month == 31 && month_ !in [1, 3, 5, 7, 8, 10, 12] {
+	} else if day_in_month == 31 && month_ != 0 && month_ !in [1, 3, 5, 7, 8, 10, 12] {
 		month_name := Time{
 			month: month_
 		}.custom_format('MMMM')
