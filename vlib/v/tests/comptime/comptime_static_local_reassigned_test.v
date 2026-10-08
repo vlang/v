@@ -37,3 +37,32 @@ fn test_reassigned_local_of_generic_fn_is_not_folded() {
 	assert positive_count([1, -2, 3]) == 2
 	assert positive_count([-1.5]) == -1
 }
+
+fn set_generic_local[T](mut value T, next T) {
+	value = next
+}
+
+fn name_after_mut_call[T](sample T) string {
+	_ = sample
+	name := ''
+	set_generic_local(mut name, 'changed')
+	if name == '' {
+		return 'none'
+	}
+	return name
+}
+
+fn count_after_mut_call[T](sample T) int {
+	_ = sample
+	count := 0
+	set_generic_local(mut count, 3)
+	if count == 0 {
+		return -1
+	}
+	return count
+}
+
+fn test_mutable_call_local_of_generic_fn_is_not_folded() {
+	assert name_after_mut_call(1) == 'changed'
+	assert count_after_mut_call('sample') == 3
+}

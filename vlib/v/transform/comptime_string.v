@@ -213,9 +213,9 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 	return result
 }
 
-// stmts_assign_local reports whether any statement in `ids` assigns to the local `name`
-// or increments it. A use on the right of an assignment counts too, which only keeps
-// that local a runtime value.
+// stmts_assign_local reports whether any statement in `ids` assigns to the local `name`,
+// increments it, or passes it as a mutable argument. A use on the right of an assignment
+// counts too, which only keeps that local a runtime value.
 fn (t &Transformer) stmts_assign_local(ids []flat.NodeId, name string) bool {
 	for id in ids {
 		if t.node_assigns_local(id, name) {
@@ -230,6 +230,9 @@ fn (t &Transformer) node_assigns_local(id flat.NodeId, name string) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.is_mut && node.value == name {
+		return true
+	}
 	is_inc_dec := node.kind == .postfix && (node.op == .inc || node.op == .dec)
 	is_assignment := node.kind == .assign || is_inc_dec
 	for i in 0 .. node.children_count {
