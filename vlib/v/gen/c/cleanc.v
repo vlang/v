@@ -23444,8 +23444,8 @@ fn is_builtin_closure_runtime_file(file string) bool {
 // copied from a generated compound literal with `memmove`, since C arrays are
 // not assignable. Dynamic array initializers use the runtime constructors
 // directly because their normal transform requires local temporary statements.
-// `&Struct{}` is emitted as a self-contained heap allocation
-// (`(T*)memdup(&(T){...}, sizeof(T))`), so it is safe. Other initializers that
+// References to struct and map literals are emitted as self-contained heap
+// allocations, so they are safe. Other initializers that
 // need dropped temporaries are skipped, leaving the global zero/NULL.
 fn (mut g FlatGen) emit_global_inits() {
 	old_array_pointer_init := g.in_global_array_pointer_init
@@ -24013,15 +24013,14 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 	}
 	node := g.a.nodes[int(val_id)]
 	if node.kind == .prefix {
-		// `&Struct{}` becomes an inline `(T*)memdup(&(T){...}, sizeof(T))`, which is
-		// self-contained; allow it. Other prefixes (e.g. `&local`) would need a
-		// dropped temporary, so skip them.
+		// References to struct and map literals allocate their own storage inline.
+		// Other prefixes (e.g. `&local`) would need a dropped temporary, so skip them.
 		if node.op == .amp && node.children_count > 0 {
 			child_id := g.a.child(&node, 0)
 			child := g.a.nodes[int(child_id)]
 			// A global, or a field or element of one, already has storage:
 			// `__global current = &manager` needs no temporary either.
-			return child.kind == .struct_init || child.kind == .assoc
+			return child.kind in [.struct_init, .map_init, .assoc]
 				|| g.global_init_operand_is_global_place(child_id)
 		}
 		return node.children_count == 1 && g.is_safe_global_init(g.a.child(&node, 0))

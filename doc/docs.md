@@ -9816,6 +9816,9 @@ specification &ndash; as in the example [above](#atomics).
 
 An initializer for global variables must be explicitly converted to the
 desired target type. If no initializer is given a default initialization is done.
+Global map references can be initialized with empty or populated map literals, such as
+`&map[string]bool{}` or `&{'enabled': true}`. The referenced map is allocated and initialized
+before the declaring module's `init()` function runs.
 Use `const` after `__global` (or inside the `__global ( ... )` block) when the symbol
 must stay a true C-level constant. Non-extern const globals currently require an explicit
 initializer that can be emitted directly in C global scope.
