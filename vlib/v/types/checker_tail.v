@@ -9121,12 +9121,14 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			inner := tc.a.child_node(base_node, 0)
 			if inner.kind == .ident {
 				mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
+				// A type-qualified call selects the static declaration, even when an
+				// instance method has the same name with different visibility or arguments.
+				if static_name := tc.static_assoc_fn_key_for_base('${mod_name}.${base_node.value}', fn_node.value) {
+					return tc.call_info(static_name, false)
+				}
 				full_name := '${mod_name}.${base_node.value}.${fn_node.value}'
 				if full_name in tc.fn_ret_types {
 					return tc.call_info(full_name, false)
-				}
-				if static_name := tc.static_assoc_fn_key_for_base('${mod_name}.${base_node.value}', fn_node.value) {
-					return tc.call_info(static_name, false)
 				}
 				if fn_node.value == 'from_string' {
 					if enum_name := tc.resolve_enum_name('${mod_name}.${base_node.value}') {
@@ -20488,12 +20490,12 @@ fn (tc &TypeChecker) direct_call_return_type(node flat.Node) ?Type {
 		inner := tc.a.child_node(base_node, 0)
 		if inner.kind == .ident {
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
+			if static_name := tc.static_assoc_fn_key_for_base('${mod_name}.${base_node.value}', fn_node.value) {
+				return tc.fn_ret_types[static_name] or { none }
+			}
 			full_name := '${mod_name}.${base_node.value}.${fn_node.value}'
 			if typ := tc.fn_ret_types[full_name] {
 				return typ
-			}
-			if static_name := tc.static_assoc_fn_key_for_base('${mod_name}.${base_node.value}', fn_node.value) {
-				return tc.fn_ret_types[static_name] or { none }
 			}
 		}
 	}
