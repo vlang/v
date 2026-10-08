@@ -120,6 +120,11 @@ and `--minimum-release-age` as hours or a duration with a `d`, `h` or `m` suffix
 Tags are dated by their commit timestamp. Invalid policy and failed discovery are errors.
 Exact refs and matching locked revisions keep their explicit meaning.
 
+A release may declare `retracted: ['1.2.3', '>=2.0.0 <2.0.2']` in its `v.mod`.
+Automatic version selection and `v outdated` read these ranges from the latest stable
+release and exclude matching tags. Invalid retraction ranges are errors. Existing locked
+revisions, exact pins, and `--precise` selections remain reproducible, even when retracted.
+
 `v vendor` copies the complete installed dependency graph into `vendor/` at the nearest
 project root. Publication uses a complete staged copy; missing modules and existing
 vendor destinations cause an error. Set `VMODULES` to the project's absolute `vendor` path

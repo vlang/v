@@ -25,6 +25,7 @@ mut:
 	aliases     map[string]string
 	sources     map[string]Module
 	tags        map[string][]string
+	retractions map[string][]string
 	candidates  map[string]Module
 	exact_refs  map[string][]string
 	paths       []string
@@ -135,6 +136,15 @@ fn (mut r Resolver) version_tags(id string) ![]string {
 	tags := remote_version_tags(m.url)!
 	r.tags[id] = tags
 	return tags
+}
+
+fn (mut r Resolver) version_retractions(id string) ![]string {
+	if ranges := r.retractions[id] {
+		return ranges
+	}
+	ranges := latest_version_retractions(r.sources[id].url, r.version_tags(id)!)!
+	r.retractions[id] = ranges
+	return ranges
 }
 
 fn remote_version_tags(url string) ![]string {
@@ -369,7 +379,12 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 				r.failure = 'cannot list versions for `${req.raw}`: ${err.msg()}'
 				return err
 			}
+			retractions := r.version_retractions(id) or {
+				r.failure = 'cannot read retractions for `${req.raw}`: ${err.msg()}'
+				return err
+			}
 			for tag in tags {
+				if version_is_retracted(tag, retractions) { continue }
 				allowed := release_tag_allowed(r.sources[id].url, tag) or {
 					r.failure = 'cannot apply release policy for `${req.raw}`: ${err.msg()}'
 					return err

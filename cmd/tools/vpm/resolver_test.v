@@ -67,6 +67,82 @@ fn joint_cli(args []string) string {
 	return cmd_ok_args(@LOCATION, [joint_tool, ...args]).output.replace('\r\n', '\n')
 }
 
+fn joint_retracted_tag(repo string, tag string, ranges []string) ! {
+	values := ranges.map("'${it}'").join(', ')
+	os.write_file(os.join_path(repo, 'v.mod'), "Module { name: 'shared' version: '${tag.trim_string_left('v')}' retracted: [${values}] }\n")!
+	joint_git(repo, ['add', 'v.mod'])
+	joint_git(repo, ['commit', '-m', tag])
+	joint_git(repo, ['tag', tag])
+}
+
+fn test_joint_retractions_filter_resolution_and_outdated() {
+	repo := joint_repo('retracted', 'shared')!
+	old := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	joint_tag(repo, 'shared', 'v1.1.0', [])!
+	joint_retracted_tag(repo, 'v1.2.0', ['>=1.1.0 <1.3.0'])!
+	joint_project('retracted', [repo + '@^1'])!
+	joint_cli(['install'])
+	assert joint_head('retracted', 'shared') == old
+	output := joint_cli(['outdated'])
+	assert output.contains('v1.0.0\tv1.0.0\tv1.0.0\tv1.0.0'), output
+}
+
+fn test_joint_retractions_keep_locks_exact_pins_and_precise() {
+	repo := joint_repo('retracted_lock', 'shared')!
+	old := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	retracted := joint_tag(repo, 'shared', 'v1.1.0', [])!
+	project := joint_project('retracted_lock', [repo + '@^1'])!
+	joint_cli(['install'])
+	before := os.read_file(lockfile_path(project))!
+	joint_retracted_tag(repo, 'v1.2.0', ['>=1.1.0 <1.3.0'])!
+	joint_cli(['install', '--locked'])
+	assert joint_head('retracted_lock', 'shared') == retracted
+	assert os.read_file(lockfile_path(project))! == before
+	joint_cli(['update'])
+	assert joint_head('retracted_lock', 'shared') == old
+	joint_cli(['update', '-p', 'shared', '--precise', 'v1.1.0'])
+	assert joint_head('retracted_lock', 'shared') == retracted
+	joint_project('retracted_pin', [repo + '@v1.1.0'])!
+	joint_cli(['install'])
+	assert joint_head('retracted_pin', 'shared') == retracted
+}
+
+fn test_joint_retractions_read_latest_release_outside_requested_range() {
+	repo := joint_repo('retracted_major', 'shared')!
+	old := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	joint_tag(repo, 'shared', 'v1.1.0', [])!
+	joint_retracted_tag(repo, 'v2.0.0', ['1.1.0'])!
+	joint_project('retracted_major', [repo + '@^1'])!
+	joint_cli(['install'])
+	assert joint_head('retracted_major', 'shared') == old
+}
+
+fn test_joint_invalid_retractions_fail_before_publication() {
+	repo := joint_repo('retracted_invalid', 'shared')!
+	joint_tag(repo, 'shared', 'v1.0.0', [])!
+	joint_retracted_tag(repo, 'v1.1.0', ['not a version range'])!
+	project := joint_project('retracted_invalid', [repo + '@^1'])!
+	failed := cmd_fail_args(@LOCATION, [joint_tool, 'install']).output
+	assert failed.contains('invalid retracted version range'), failed
+	assert !os.exists(lockfile_path(project))
+	assert get_installed_modules_in(os.join_path(joint_root, 'retracted_invalid', 'store')).len == 0
+}
+
+fn test_joint_retractions_allow_backtracking_past_a_manifestless_release() {
+	repo := joint_repo('retracted_manifestless', 'shared')!
+	old := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	manifest := os.read_file(os.join_path(repo, 'v.mod'))!
+	joint_git(repo, ['rm', 'v.mod'])
+	joint_git(repo, ['commit', '-m', 'release without a manifest'])
+	joint_git(repo, ['tag', 'v1.1.0'])
+	os.write_file(os.join_path(repo, 'v.mod'), manifest)!
+	joint_git(repo, ['add', 'v.mod'])
+	joint_git(repo, ['commit', '-m', 'restore default branch manifest'])
+	joint_project('retracted_manifestless', [repo + '@^1'])!
+	joint_cli(['install'])
+	assert joint_head('retracted_manifestless', 'shared') == old
+}
+
 fn test_joint_overlapping_constraints_choose_highest_common_tag_and_alias_once() {
 	repo := joint_repo('overlap', 'shared')!
 	joint_tag(repo, 'shared', 'v1.0.0', [])!
