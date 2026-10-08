@@ -6571,7 +6571,10 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 		&& t.string_interp_needs_value_read(expr_node.value, typ) {
 		// Reading a local moved to the heap already dereferences its storage, while
 		// `typ` can still be the `&Alias` of that storage: read the value only once.
-		if !t.is_value_read_of(transformed, expr_node.value) {
+		// A `mut n &T` parameter is a slot for the pointer, so its `*n` is still `&T`.
+		is_mut_pointer_param := t.mut_param_values[expr_node.value]
+			&& t.var_type(expr_node.value).starts_with('&')
+		if is_mut_pointer_param || !t.is_value_read_of(transformed, expr_node.value) {
 			transformed = t.make_prefix(.mul, transformed)
 		}
 		typ = typ[1..]
