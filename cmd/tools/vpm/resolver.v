@@ -6,8 +6,9 @@ import rand
 import v.vmod
 
 struct VersionChoice {
-	version  string
-	revision string
+	version   string
+	revision  string
+	automatic bool
 }
 
 struct Requirement {
@@ -25,6 +26,7 @@ mut:
 	aliases     map[string]string
 	sources     map[string]Module
 	tags        map[string][]string
+	retractions map[string][]string
 	candidates  map[string]Module
 	exact_refs  map[string][]string
 	paths       []string
@@ -135,6 +137,15 @@ fn (mut r Resolver) version_tags(id string) ![]string {
 	tags := remote_version_tags(m.url)!
 	r.tags[id] = tags
 	return tags
+}
+
+fn (mut r Resolver) version_retractions(id string) ![]string {
+	if ranges := r.retractions[id] {
+		return ranges
+	}
+	ranges := latest_version_retractions(r.sources[id].url, r.version_tags(id)!)!
+	r.retractions[id] = ranges
+	return ranges
 }
 
 fn remote_version_tags(url string) ![]string {
@@ -376,7 +387,7 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 				}
 				if !allowed { continue }
 				if tag_satisfies_range(tag, if constraint == '' { '*' } else { constraint }) {
-					choices << VersionChoice{ version: tag }
+					choices << VersionChoice{ version: tag, automatic: true }
 				}
 			}
 		}
@@ -387,14 +398,23 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 	}
 	mut tried := map[string]bool{}
 	mut choice_index := 0
+	mut attempted := false
 	for choice_index < choices.len {
 		choice := choices[choice_index]
 		choice_index++
+		if choice.automatic {
+			retractions := r.version_retractions(id) or {
+				r.failure = 'cannot read retractions for `${req.raw}`: ${err.msg()}'
+				return err
+			}
+			if version_is_retracted(choice.version, retractions) { continue }
+		}
 		key := choice.version + '\0' + choice.revision
 		if key in tried {
 			continue
 		}
 		tried[key] = true
+		attempted = true
 		mut m := r.candidate(id, choice.version, choice.revision) or {
 			r.failure = 'failed to install `${req.raw}` at `${choice.version}`: ${err.msg()}\nrequired by ${req.chain.join(' -> ')}'
 			if choice.revision != '' { return err }
@@ -455,6 +475,7 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 			}
 		}
 	}
+	if !attempted { r.conflict(id, for_module) }
 	return error(r.failure)
 }
 

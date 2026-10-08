@@ -187,6 +187,8 @@ mut:
 	// defer_pre_scan_indexes routes the AST/tc-only index builders in prepare()
 	// to the overlapped pre-scan helper thread (see prepare_with_pre_scans).
 	defer_pre_scan_indexes bool
+	// Fixed-array summaries can reuse the completed parameter pre-scan cache.
+	defer_fixed_array_borrow_prep bool
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
@@ -249,6 +251,7 @@ mut:
 	in_call_callee                      bool
 	in_monomorphize_scan                bool
 	validating_generic_spec             bool
+	fn_body_locals_in_scope             bool
 	allow_comptime_enum_int_assign      bool
 	monomorph_errors                    []string
 	monomorph_error_seen                map[string]bool
@@ -2086,7 +2089,9 @@ fn (mut t Transformer) prepare() {
 	t.raw_return_alias_cache = &ContextBoolLookupCache{}
 	t.prepare_interface_impl_indexes()
 	t.ierror_none_type_id = t.interface_impl_type_id('IError', 'None__') or { 0 }
-	t.prepare_fixed_array_borrow_params()
+	if !t.defer_fixed_array_borrow_prep {
+		t.prepare_fixed_array_borrow_params()
+	}
 }
 
 fn (mut t Transformer) rebuild_embedded_fields_index() {
@@ -10736,6 +10741,9 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 }
 
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
+	outer_locals_in_scope := t.fn_body_locals_in_scope
+	t.fn_body_locals_in_scope = false
+	defer { t.fn_body_locals_in_scope = outer_locals_in_scope }
 	outer_comptime_locals := t.comptime_scalar_locals
 	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
 	defer { t.comptime_scalar_locals = outer_comptime_locals }
@@ -10936,6 +10944,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	}
 	param_replacements, entry_stmts := t.heap_fixed_array_view_params(fn_node, param_types)
 	mut new_body := entry_stmts.clone()
+	// Structural pre-passes need lexical lookups; statement lowering records locals
+	// in declaration order, so its live scope can resolve callable shadows directly.
+	t.fn_body_locals_in_scope = true
 	new_body << t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
 	mut new_children := []flat.NodeId{cap: int(fn_node.children_count)}

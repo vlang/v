@@ -3043,7 +3043,9 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
+	g.a = a
 	effective_no_parallel := no_parallel || g.profile_file.len > 0 || g.coverage_dir.len > 0
+		|| !g.parallel_codegen_available()
 	// The preparation choices below must agree with the dispatch mode the stages
 	// actually run in: a parallel dispatch expects prepare_pre_dispatch_master,
 	// a serial one expects prepare_serial_fn_tables. Keying both off the same
@@ -3054,7 +3056,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// Counter metadata and numbering are accumulated by one serial generator.
 		g.scope_parallel_workers = false
 	}
-	g.a = a
 	// Mark-used is immutable during cgen. Sharing this potentially very large
 	// post-monomorph map matches the worker path and avoids a full-program clone
 	// at the cgen memory peak.
@@ -23443,8 +23444,8 @@ fn is_builtin_closure_runtime_file(file string) bool {
 // copied from a generated compound literal with `memmove`, since C arrays are
 // not assignable. Dynamic array initializers use the runtime constructors
 // directly because their normal transform requires local temporary statements.
-// `&Struct{}` is emitted as a self-contained heap allocation
-// (`(T*)memdup(&(T){...}, sizeof(T))`), so it is safe. Other initializers that
+// References to struct and map literals are emitted as self-contained heap
+// allocations, so they are safe. Other initializers that
 // need dropped temporaries are skipped, leaving the global zero/NULL.
 fn (mut g FlatGen) emit_global_inits() {
 	old_array_pointer_init := g.in_global_array_pointer_init
@@ -24012,15 +24013,14 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 	}
 	node := g.a.nodes[int(val_id)]
 	if node.kind == .prefix {
-		// `&Struct{}` becomes an inline `(T*)memdup(&(T){...}, sizeof(T))`, which is
-		// self-contained; allow it. Other prefixes (e.g. `&local`) would need a
-		// dropped temporary, so skip them.
+		// References to struct and map literals allocate their own storage inline.
+		// Other prefixes (e.g. `&local`) would need a dropped temporary, so skip them.
 		if node.op == .amp && node.children_count > 0 {
 			child_id := g.a.child(&node, 0)
 			child := g.a.nodes[int(child_id)]
 			// A global, or a field or element of one, already has storage:
 			// `__global current = &manager` needs no temporary either.
-			return child.kind == .struct_init || child.kind == .assoc
+			return child.kind in [.struct_init, .map_init, .assoc]
 				|| g.global_init_operand_is_global_place(child_id)
 		}
 		return node.children_count == 1 && g.is_safe_global_init(g.a.child(&node, 0))

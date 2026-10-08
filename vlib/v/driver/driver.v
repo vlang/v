@@ -3970,7 +3970,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -9226,6 +9226,7 @@ pub fn run(args []string) {
 	mut building_v := false
 	mut ownership_mode := false
 	mut verbose := false
+	mut show_timings := false
 	mut silent := false
 	mut deferred_implicit_tcc_warning := ''
 	mut skip_notices := false
@@ -9774,11 +9775,12 @@ pub fn run(args []string) {
 		} else if args[i] == '-raw-vsh-tmp-prefix' {
 			raw_vsh_tmp_prefix = args[i + 1]
 			i += 2
-		} else if args[i] in ['-show-timings', '-usecache', '-new-generic-solver', '-progress',
-			'-use-os-system-to-run'] {
-			// v3 already reports phase metrics, suppresses C warnings, leaves
-			// explicit-output tests unrun, caches modules by default, and uses
-			// its current generic solver without a legacy selection switch.
+		} else if args[i] == '-show-timings' {
+			show_timings = true
+			i++
+		} else if args[i] in ['-usecache', '-new-generic-solver', '-progress', '-use-os-system-to-run'] {
+			// v3 caches modules by default and uses its current generic solver
+			// without a legacy selection switch.
 			// `-progress` selects a reporter in the test runner, not in the compiler.
 			// Accept the corresponding V flags for compatibility.
 			i++
@@ -10369,7 +10371,7 @@ pub fn run(args []string) {
 	}
 	mut b := bench.new()
 	driver_sw := time.new_stopwatch()
-	if !verbose || silent || c_to_stdout {
+	if !(verbose || show_timings) || silent || c_to_stdout {
 		b.set_quiet()
 	}
 	if no_memory_limit {
@@ -10453,7 +10455,7 @@ pub fn run(args []string) {
 			return
 		}
 	}
-	if verbose && !silent && !c_to_stdout && !use_implicit_tcc_semantics {
+	if (verbose || show_timings) && !silent && !c_to_stdout && !use_implicit_tcc_semantics {
 		println('=== V compiler benchmark ===')
 	}
 	if race {
@@ -11388,10 +11390,12 @@ pub fn run(args []string) {
 			return
 		}
 	}
-	if verbose && !silent && !c_to_stdout && use_implicit_tcc_semantics {
+	if (verbose || show_timings) && !silent && !c_to_stdout && use_implicit_tcc_semantics {
 		println('=== V compiler benchmark ===')
 	}
 	if only_check_syntax {
+		b.step('parse')
+		b.print_report()
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		return
 	}
@@ -11846,7 +11850,13 @@ pub fn run(args []string) {
 			&& scope_prealloc_markused && !incremental_cache_hit && !generic_cache_hit
 			&& !cache_state.manager.enabled && test_files.len == 0 && !is_checker_fixture
 			&& !trivial_literal_output && !is_vsh_input && !no_skip_unused
-		prepared_markused_thread := spawn markused.prepare_markused_declarations(a, &pre_tc, prepare_markused_overlap)
+		mut prepared_markused_threads := []thread &markused.PreparedMarkusedDecls{}
+		mut waited_markused := ?&markused.PreparedMarkusedDecls(none)
+		if prepare_markused_overlap {
+			prepared_markused_threads << spawn markused.prepare_markused_declarations(a, &pre_tc, true)
+		} else {
+			waited_markused = markused.prepare_markused_declarations(a, &pre_tc, false)
+		}
 		// A plain build of a program checks the bodies of the standard library that
 		// the program can reach, not the others (see types.skip_unreachable_library_bodies).
 		// What else needs every body checked keeps them all: a check without a build,
@@ -11925,11 +11935,10 @@ pub fn run(args []string) {
 		// the check, into the diagnostics, and the child prints what it printed.
 		// The rest of the check rewrites the tree the answers come from.
 		shares_checks := served.shares_checks()
-		mut waited_markused := ?&markused.PreparedMarkusedDecls(none)
-		if shares_checks {
+		if shares_checks && prepared_markused_threads.len > 0 {
 			// No thread of this process but the worker pools' goes into the
 			// grandchild.
-			waited_markused = prepared_markused_thread.wait()
+			waited_markused = prepared_markused_threads[0].wait()
 		}
 		if shares_checks {
 			// What the check found so far, for a client that shows it while the
@@ -11990,7 +11999,7 @@ pub fn run(args []string) {
 		mut prepared_markused := if waited := waited_markused {
 			waited
 		} else {
-			prepared_markused_thread.wait()
+			prepared_markused_threads[0].wait()
 		}
 		if verbose {
 			eprintln('  [ttime]   ck mkused wait   ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -12165,6 +12174,7 @@ pub fn run(args []string) {
 				print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture,
 					fatal_errors, check_only, message_limit, skip_notices)
 			}
+			b.print_report()
 			return
 		}
 		if cache_state.manager.enabled {
@@ -12222,7 +12232,10 @@ pub fn run(args []string) {
 		if prepare_transform_overlap {
 			transform.materialize_inferred_anonymous_structs_before_prepare(mut a, &pre_tc)
 		}
-		mut prepared_transform_thread := spawn transform.prepare_selfhost_transform(a, &pre_tc, prepare_transform_overlap)
+		mut prepared_transform_threads := []thread &transform.PreparedSelfhostTransform{}
+		if prepare_transform_overlap {
+			prepared_transform_threads << spawn transform.prepare_selfhost_transform(a, &pre_tc, true)
+		}
 		// Mark used functions (dead-code elimination). This is done before transform
 		// so the transformer can skip function bodies that the C backend will prune.
 		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
@@ -12330,7 +12343,11 @@ pub fn run(args []string) {
 				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
 			}
 		}
-		mut prepared_transform := prepared_transform_thread.wait()
+		mut prepared_transform := if prepare_transform_overlap {
+			prepared_transform_threads[0].wait()
+		} else {
+			transform.prepare_selfhost_transform(a, &pre_tc, false)
+		}
 		b.step('markused')
 		b.metric('reachable symbols', used_fns.len, 'symbols')
 		mut tfpre_sw := time.new_stopwatch()

@@ -2714,10 +2714,10 @@ fn prim_wtype(t_ types.Type) ?WType {
 }
 
 const signed_int_format_fns = ['strconv__format_int', 'int_str', 'i64_str', 'i8_str', 'i16_str',
-	'i32_str', 'isize_str']
+	'i32_str', 'isize_str', 'int.str', 'i8.str', 'i16.str', 'i32.str', 'i64.str', 'isize.str']
 
 const unsigned_int_format_fns = ['strconv__format_uint', 'u8_str', 'u16_str', 'u32_str', 'u64_str',
-	'usize_str']
+	'usize_str', 'u8.str', 'u16.str', 'u32.str', 'u64.str', 'usize.str']
 
 const bool_format_fns = ['bool.str', 'bool__str', 'bool_str']
 

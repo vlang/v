@@ -23,6 +23,16 @@ const scoped_cgen_worker_batches = 256
 const min_scoped_cgen_batch_cost = 16_384
 const flat_cgen_chunks_per_job = 32
 
+// parallel_codegen_available keeps preparation and dispatch in the same mode
+// when the compilation's pool has no workers. Standalone generators retain
+// lazy pool creation when the runtime permits multiple jobs.
+fn (g &FlatGen) parallel_codegen_available() bool {
+	if !isnil(g.a.worker_pool) {
+		return g.a.worker_pool.size() > 0
+	}
+	return runtime.nr_jobs() > 1
+}
+
 // FlatCgenChunkArgs represents flat cgen chunk args data used by c.
 struct FlatCgenChunkArgs {
 	worker         voidptr

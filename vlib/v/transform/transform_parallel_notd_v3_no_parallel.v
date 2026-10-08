@@ -3517,6 +3517,7 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		}
 		param_thread := spawn transform_param_prep_thread(voidptr(param_w))
 		t.defer_pre_scan_indexes = true
+		t.defer_fixed_array_borrow_prep = true
 		index_thread := spawn transform_pre_scan_index_thread(voidptr(t))
 		t.prepare()
 		t.add_prescan_scope(param_thread.wait())
@@ -3527,6 +3528,8 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		t.call_param_types_decl_index = param_w.call_param_types_decl_index.move()
 		t.call_param_types_index_ready = param_w.call_param_types_index_ready
 		t.call_param_types_prepared = param_w.call_param_types_prepared
+		t.defer_fixed_array_borrow_prep = false
+		t.prepare_fixed_array_borrow_params()
 	} else {
 		t.defer_pre_scan_indexes = true
 		index_thread := spawn transform_pre_scan_index_thread(voidptr(t))
