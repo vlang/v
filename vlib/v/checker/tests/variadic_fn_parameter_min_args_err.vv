@@ -1,0 +1,9 @@
+fn call_variadic(callback fn (int, ...string) int) {
+	callback()
+}
+
+fn call_fixed_array(callback fn (int, []string) int) {
+	callback(1)
+}
+
+fn main() {}

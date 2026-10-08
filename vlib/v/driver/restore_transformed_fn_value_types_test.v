@@ -45,7 +45,7 @@ fn test_restored_types_extend_unset_slots_and_preserve_sparse_signature_modes() 
 	assert tc.expr_type_values[int(existing)] == boolean && tc.expr_type_set[int(existing)]
 	assert tc.expr_type_values[int(unset)] is types.Void && !tc.expr_type_set[int(unset)]
 	assert tc.expr_type_values[int(missing)] is types.Void && !tc.expr_type_set[int(missing)]
-	expected := types.Type(types.FnType{ params: params, return_type: integer })
+	expected := types.Type(types.FnType{ params: params, is_variadic: true, return_type: integer })
 	assert tc.expr_type_values[int(first)] == expected && tc.expr_type_set[int(first)]
 	assert tc.expr_type_values[int(second)] == expected && tc.expr_type_set[int(second)]
 	// Replacing one expression slot cannot alter another restored signature.
@@ -53,6 +53,13 @@ fn test_restored_types_extend_unset_slots_and_preserve_sparse_signature_modes() 
 	assert tc.expr_type_values[int(second)] == expected
 	assert tc.fn_param_types['retain'] == params
 	assert tc.fn_variadic['retain'] && tc.mut_receiver_methods['retain']
+	assert (tc.expr_type_values[int(second)] as types.FnType).is_variadic
+	// A later restoration must observe a refreshed fixed-array signature.
+	tc.fn_variadic['retain'] = false
+	restore_transformed_fn_value_types(mut tc, &a, map[string]bool{})
+	fixed := types.Type(types.FnType{ params: params, return_type: integer })
+	assert tc.expr_type_values[int(first)] == fixed
+	assert tc.expr_type_values[int(second)] == fixed
 }
 
 fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
@@ -75,6 +82,11 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 	unused_call := restored_type_node(mut a, .call, '', [unused_callee])
 	unused_body := restored_type_node(mut a, .block, '', [unused_call])
 	unused_fn := restored_type_node(mut a, .fn_decl, 'unused', [unused_body])
+	a.nodes[int(first_callee)].typ = 'fn (int) int'
+	a.nodes[int(unused_fn)].set_generic_params_and_constraints(['T'], ['Record'])
+	a.intern_node_texts_from(0)
+	canonical_nodes := a.nodes.clone()
+	canonical_text_count := a.text_values.len
 	mut tc := types.TypeChecker.new(&a)
 	integer := types.builtin_type_value('int')
 	boolean := types.builtin_type_value('bool')
@@ -107,6 +119,7 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 	})
 	assert tc.expr_type_values[int(local)] == types.Type(types.Struct{ name: 'Receiver' })
 	assert !tc.expr_type_set[int(unused_callee)]
+	assert_restoration_preserves_canonical_node_texts(&a, canonical_nodes, canonical_text_count)
 	// A second restoration observes refreshed signatures rather than retaining
 	// the previous invocation's wrapper cache.
 	tc.fn_ret_types['first.value'] = boolean
@@ -118,4 +131,18 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 		params:      [integer]
 		return_type: boolean
 	})
+	assert_restoration_preserves_canonical_node_texts(&a, canonical_nodes, canonical_text_count)
+}
+
+// Restoration keeps text owned by the AST intact while refreshing semantic
+// signatures, so the ordinary path can omit another canonicalization barrier.
+fn assert_restoration_preserves_canonical_node_texts(a &flat.FlatAst, canonical_nodes []flat.Node, canonical_text_count int) {
+	assert a.nodes == canonical_nodes
+	assert a.text_values.len == canonical_text_count
+	for i, node in a.nodes {
+		assert node.value.str == canonical_nodes[i].value.str
+		assert node.typ.str == canonical_nodes[i].typ.str
+		assert node.type_text_id() == canonical_nodes[i].type_text_id()
+		assert node.payload == canonical_nodes[i].payload
+	}
 }

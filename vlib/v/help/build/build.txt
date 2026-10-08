@@ -320,11 +320,10 @@ NB: the build flags are shared with the run command too:
     the program.
 
   -show-timings
-    Print a summary about how long each compiler stage took, for example:
-      PARSE: 152ms
-      CHECK: 62ms
-      C GEN: 103ms
-      C tcc: 95ms
+    Print elapsed time for each compiler stage and the total compilation time.
+    Uses the same benchmark summary as -v, including memory usage and cache metrics,
+    without verbose compiler traces. -silent suppresses this summary, as does writing
+    generated C to stdout with -o -.
 
     Related to -show-timings, is the ability to compile a special instrumented
     v compiler with this command:

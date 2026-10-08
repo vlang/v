@@ -19,8 +19,8 @@ fn testsuite_begin() {
 	test_utils.set_test_env(os.join_path(range_test_path, 'build_store'))
 	os.setenv('VEXE', range_vexe, true)
 	// Compile once, so changing the isolated module store does not rebuild the tool.
-	cmd_ok_args(@LOCATION, [range_vexe, '-o', range_vpm_exe,
-		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
+	cmd_ok_args(@LOCATION, [range_vexe, '-new-compiler', '-no-retry-compilation', '-cc', 'clang',
+		'-gc', 'none', '-o', range_vpm_exe, os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 }
 
 fn testsuite_end() {
@@ -39,11 +39,23 @@ fn test_select_highest_semantic_version_tag() {
 	assert select_version_tag(tags, '1.x')! == 'v1.10.0'
 	assert select_version_tag(tags, '^0.4 || ^2')! == 'v2.0.0'
 	assert select_version_tag(tags, '>=1.11.0-beta.0 <1.11.0')! == 'v1.11.0-beta.1'
-	for constraint in ['^3.0.0', '^invalid', '>=1.0.0 <0.1.0'] {
+	for constraint in ['^3.0.0', '>=1.0.0 <0.1.0'] {
 		if tag := select_version_tag(tags, constraint) {
 			assert false, '${constraint} selected ${tag}'
 		} else {
 			assert err.msg().contains('no semantic-version tag satisfies')
+		}
+	}
+}
+
+fn test_malformed_version_ranges_have_a_distinct_error_even_without_tags() {
+	for tags in [[]string{}, ['v1.2.3']] {
+		for constraint in ['^invalid', 'not-a-range', '^', '>=1.2 nope'] {
+			if _ := select_version_tag(tags, constraint) {
+				assert false, 'malformed range ${constraint} was accepted'
+			} else {
+				assert err.msg() == 'invalid version range `${constraint}`', err.msg()
+			}
 		}
 	}
 }
@@ -69,7 +81,7 @@ fn test_range_syntax_and_temporary_names() {
 	}
 }
 
-fn test_range_destination_conflicts_use_install_paths() {
+fn test_different_source_destination_conflicts_use_install_paths() {
 	first := Module{
 		name:          'pkg'
 		requested:     'publisher.pkg@^1'
@@ -83,13 +95,13 @@ fn test_range_destination_conflicts_use_install_paths() {
 		version:      'v2.0.0'
 		install_path: os.join_path(range_test_path, 'subdir', '..', 'pkg')
 	}
-	if _ := validate_range_destinations([first, second]) {
+	if _ := validate_resolved_destinations([first, second]) {
 		assert false
 	} else {
 		assert err.msg().contains(first.requested)
 		assert err.msg().contains(second.requested)
 	}
-	validate_range_destinations([first, Module{
+	validate_resolved_destinations([first, Module{
 		install_path: os.join_path(range_test_path, 'other')
 	}])!
 }

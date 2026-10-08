@@ -99,6 +99,46 @@ fn test_generic_unresolved_type_detects_multi_return_placeholders() {
 	assert !t.generic_arg_is_unresolved('(f64, f64)')
 }
 
+fn test_collision_locked_main_struct_is_a_concrete_generic_argument() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['T'] = StructInfo{ name: 'T', module: 'main' }
+	t.structs['S'] = StructInfo{ name: 'S', module: 'foreign' }
+	t.cur_module = 'foreign'
+
+	assert !t.generic_arg_is_unresolved('main.T')
+	assert !t.generic_arg_is_unresolved('[]main.T')
+	assert t.explicit_generic_arg_is_known_type('main.T', 'foreign')
+	assert t.explicit_generic_arg_is_known_type('[]main.T', 'foreign')
+	assert t.generic_arg_is_unresolved('main.S')
+	assert !t.explicit_generic_arg_is_known_type('main.S', 'foreign')
+	assert t.generic_arg_is_unresolved('main.U')
+	assert !t.explicit_generic_arg_is_known_type('main.U', 'foreign')
+
+	tc.imports['main'] = 'other'
+	assert !t.is_known_concrete_type_name('main.T')
+	assert !t.explicit_generic_arg_is_known_type('main.T', 'foreign')
+}
+
+fn test_declared_receiver_parameters_use_the_receiver_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['Box'] = ['A']
+	tc.struct_generic_params['foreign.Box'] = ['T']
+	tc.struct_generic_params['foreign.Pair'] = ['K', 'V']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.declared_generic_receiver_param_names(flat.Node{ kind: .fn_decl, value: 'Box[T].get' },
+		'foreign') == ['T']
+	assert t.declared_generic_receiver_param_names(flat.Node{ kind: .fn_decl, value: 'Box[A].get' },
+		'foreign').len == 0
+	assert t.declared_generic_receiver_param_names(flat.Node{ kind: .fn_decl, value: 'Box[int].get' },
+		'foreign').len == 0
+	assert t.declared_generic_receiver_param_names(flat.Node{ kind: .fn_decl, value: 'Pair[K, int].get' },
+		'foreign') == ['K']
+}
+
 fn test_generic_field_type_substitutes_fixed_array_length_expr() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -853,6 +893,9 @@ fn test_contextless_generic_struct_spec_spelling_is_skipped() {
 	assert type_text_has_unqualified_generic_arg('Map[string, Context]')
 	assert type_text_has_unqualified_generic_arg('Map[string, []Context]')
 	assert type_text_has_unqualified_generic_arg('Box[Array[Context]]')
+	assert type_text_has_unqualified_generic_arg('outer.Cell[Box[Pair[int]]]')
+	assert type_text_has_unqualified_generic_arg('outer.Cell[inner.Box[Pair[int]]]')
+	assert !type_text_has_unqualified_generic_arg('outer.Cell[inner.Box[inner.Pair[int]]]')
 	assert type_text_has_unqualified_generic_arg('Box[...Context]')
 	assert type_text_has_unqualified_generic_arg('Box[[2]Context]')
 	assert !type_text_has_unqualified_generic_arg('veb.Middleware[model.Context]')
@@ -897,4 +940,75 @@ fn test_record_monomorph_cache_spec_replaces_existing_entry() {
 	assert spec.args == ['iam.Token']
 	assert spec.decl_key == 'main.f'
 	assert spec.module == 'main'
+}
+
+fn test_generic_unresolved_function_type_checks_parameters_and_return() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	for typ in ['fn () T', 'fn (T) int', 'fn (value []T) string', 'fn (fn () T) int', 'Cell[fn () T]',
+		'fn () unknown'] {
+		assert t.generic_arg_is_unresolved(typ), typ
+	}
+	for typ in ['fn ()', 'fn () int', 'fn (string) int', 'Cell[fn () int]'] {
+		assert !t.generic_arg_is_unresolved(typ), typ
+	}
+}
+
+fn test_nested_generic_field_arguments_preserve_declaration_modules() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['outer.Cell'] = ['T']
+	tc.struct_generic_params['inner.Box'] = ['T']
+	tc.struct_generic_params['inner.Pair'] = ['T']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.normalize_field_type('T', 'outer.Cell[inner.Box[inner.Pair[int]]]') ==
+		'inner.Box[inner.Pair[int]]'
+	assert t.normalize_field_type('outer.Cell[inner.Box[inner.Pair[string]]]', 'inner.Owner') ==
+		'outer.Cell[inner.Box[inner.Pair[string]]]'
+}
+
+fn test_nested_generic_arguments_resolve_each_component_in_source_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['inner.Box'] = ['T']
+	tc.struct_generic_params['inner.Pair'] = ['T']
+	tc.structs['inner.Box'] = []types.StructField{}
+	tc.structs['inner.Pair'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.generic_struct_args_in_scope(['Box[Pair[int]]'], 'inner', 'inner.v') ==
+		['inner.Box[inner.Pair[int]]']
+}
+
+fn test_parameterized_typeof_display_preserves_source_and_caller_names() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.active_generic_params = ['T']
+	for source, expected in {
+		'Box[T]':       'Box[other.Payload]'
+		'local.Box[T]': 'local.Box[other.Payload]'
+		'&Box[T]':      '&Box[other.Payload]'
+		'T':            'other.Payload'
+	} {
+		child := a.add_node(flat.Node{ kind: .ident, value: source })
+		start := a.children.len
+		a.children << child
+		node := flat.Node{ kind: .typeof_expr, children_start: start, children_count: 1 }
+		assert t.generic_comptime_typeof_display_name(node, ['other.Payload'],
+			'other.Payload') == expected
+	}
+}
+
+fn test_parameterized_typeof_value_display_preserves_source_names() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.active_generic_params = ['T']
+	node := flat.Node{ kind: .typeof_expr, value: 'Box[T]' }
+	assert t.generic_comptime_typeof_display_name(node, ['other.Payload'],
+		'local.Box[other.Payload]') == 'Box[other.Payload]'
+	marker := flat.Node{ kind: .typeof_expr, value: generic_type_name_marker('T') }
+	assert t.generic_comptime_typeof_display_name(marker, ['other.Payload'],
+		'other.Payload') == 'other.Payload'
 }

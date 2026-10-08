@@ -29,6 +29,37 @@ pub fn host_os_name() string {
 	return host_target().os
 }
 
+// first_tcc_unloadable_darwin_release is the earliest Darwin kernel release known
+// to load TCC-linked executables with corrupted globals: its dyld remaps every
+// `__DATA` page listed in the chained-fixup table from the file, and TCC lists the
+// zero-fill `__bss` pages there too (ld64 lists only the file-backed ones). Those
+// pages then hold the `__LINKEDIT` bytes that follow `__DATA` in the file, instead
+// of zeros. Observed on macOS 27.0.1 (Darwin 27.0.0); see
+// https://github.com/vlang/v/issues/29744 .
+const first_tcc_unloadable_darwin_release = 27
+
+// host_rejects_tcc_executables reports whether executables that TCC links for this
+// machine can start with corrupted global variables, so V must not pick TCC by
+// itself. An explicit `-cc tcc` is still honored.
+pub fn host_rejects_tcc_executables() bool {
+	$if macos {
+		return darwin_release_rejects_tcc_executables(os.uname().release)
+	} $else {
+		return false
+	}
+}
+
+// darwin_release_rejects_tcc_executables reports whether a Darwin kernel `release`,
+// as `uname -r` prints it, can load TCC-linked executables with corrupted globals.
+// A release that does not start with a decimal major version is not rejected.
+pub fn darwin_release_rejects_tcc_executables(release string) bool {
+	major := release.all_before('.')
+	if major == '' || !major.bytes().all(it.is_digit()) {
+		return false
+	}
+	return major.int() >= first_tcc_unloadable_darwin_release
+}
+
 // os_is_target_of reports whether this_os is one of the systems named by the OS
 // suffix target, for example `nix` names Linux and FreeBSD, but not Windows.
 pub fn os_is_target_of(this_os string, target string) bool {

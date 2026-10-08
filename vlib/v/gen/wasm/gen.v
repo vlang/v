@@ -4,11 +4,9 @@ import os
 import v.flat
 import v.types
 
-// gen.v is the v3 WebAssembly backend. Like the C backend's FlatGen it walks
-// the flat AST directly (WASM has structured control flow, so no SSA/relooping
-// is needed), and like the arm64 backend it emits a binary module. Generics,
-// strings-as-values, structs, arrays and maps are out of scope for now; the
-// backend targets the integer/float core plus WASI `print`/`println`.
+// gen.v retains the WebAssembly backend's source metadata and WASI helpers.
+// The compiler uses ssa_gen.v for instruction emission from the shared SSA IR.
+// Source metadata preserves export names and module initialization order.
 
 // Fixed low-memory scratch layout (bytes):
 //   [0..3]   nwritten result for fd_write
@@ -107,6 +105,81 @@ pub fn Gen.new(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool)
 		tc:       tc
 		used_fns: used_fns
 		mod:      Module.new()
+	}
+}
+
+// SSAConfiguration carries source-level entry points and export names into SSA code generation.
+pub struct SSAConfiguration {
+pub:
+	exports        map[string]string
+	init_fns       []string
+	main_fn        string
+	used_fns       map[string]bool
+	source_modules map[string]string
+	source_imports map[string]map[string]string
+}
+
+// ssa_configuration collects export and initialization metadata without emitting instructions.
+pub fn (mut g Gen) ssa_configuration() SSAConfiguration {
+	g.collect_imports()
+	fns := g.collect_user_fns()
+	mut exports := map[string]string{}
+	// SSA supplies its own runtime helpers. AST reachability includes C runtime
+	// implementations that are not dependencies of the selected WASM functions.
+	mut used := map[string]bool{}
+	mut module_init := map[string]string{}
+	mut main_fn := ''
+	mut source_modules := map[string]string{}
+	mut source_imports := g.file_aliases.clone()
+	mut file := ''
+	for node in g.a.nodes {
+		if node.kind == .file {
+			file = node.value
+			// Flat ASTs include a trailing file node after each file's declarations.
+			// Preserve the module recorded between the opening and closing nodes.
+			if file !in source_modules {
+				source_modules[file] = ''
+			}
+		} else if node.kind == .module_decl && node.value !in ['', 'main', 'builtin'] {
+			source_modules[file] = g.module_path_for_file(file)
+		} else if node.kind == .import_decl && node.value.len > 0 {
+			alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
+			source_imports[file][alias] = node.value
+		}
+	}
+	for f in fns {
+		key := qualified_fn_key(f.module, f.name)
+		exports[key] = g.explicit_export_fn_name(f) or { export_fn_name(f.module, f.name) }
+		used[key] = true
+		if f.name == 'main' && f.module in ['', 'main'] {
+			main_fn = key
+		} else if f.name == 'init' && f.params.len == 0 {
+			module_init[f.module] = key
+		}
+	}
+	mut init_fns := []string{}
+	mut visited := map[string]bool{}
+	g.ssa_init_order('', module_init, mut visited, mut init_fns)
+	return SSAConfiguration{
+		exports:        exports
+		init_fns:       init_fns
+		main_fn:        main_fn
+		used_fns:       used
+		source_modules: source_modules
+		source_imports: source_imports
+	}
+}
+
+fn (g &Gen) ssa_init_order(mod string, module_init map[string]string, mut visited map[string]bool, mut order []string) {
+	if visited[mod] {
+		return
+	}
+	visited[mod] = true
+	for dep in g.module_imports[mod] {
+		g.ssa_init_order(dep, module_init, mut visited, mut order)
+	}
+	if key := module_init[mod] {
+		order << key
 	}
 }
 
@@ -283,6 +356,33 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 			work << key
 		}
 	}
+	// SSA synthesizes main from executable file children. Treat its statements
+	// as roots too, using the file's imports to resolve calls and fn references.
+	mut script_keys := []string{}
+	for file_idx, file_node in g.a.nodes {
+		if file_idx < g.a.user_code_start || file_node.kind != .file
+			|| file_node.children_count == 0 {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			child_id := g.a.child(&file_node, i)
+			if int(child_id) < g.a.user_code_start {
+				continue
+			}
+			child := g.a.nodes[int(child_id)]
+			// Keep the statement kinds aligned with SSA's top_level_stmt_ids.
+			if child.kind in [.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign,
+				.for_stmt, .for_in_stmt, .if_expr, .assert_stmt, .defer_stmt, .block] {
+				g.collect_call_keys(child_id, '', file_node.value, candidates, mut script_keys)
+			}
+		}
+	}
+	for key in script_keys {
+		if key !in reached {
+			reached[key] = true
+			work << key
+		}
+	}
 	// `init` functions are entry points (run before main), like the C path's
 	// _vinit. Every imported module runs its init regardless of whether any of
 	// its other functions are called, so seed the init of main and of every
@@ -319,16 +419,24 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 	return out
 }
 
-// called_candidate_keys returns the qualified keys of the candidate functions
-// directly called inside f's body (calls to non-candidates such as intercepted
-// builtins are ignored).
+// called_candidate_keys returns the qualified keys of candidate functions called
+// or referenced inside f's body. Runtime functions outside candidates are ignored.
 fn (g &Gen) called_candidate_keys(f FnInfo, candidates map[string]FnInfo) []string {
 	mut keys := []string{}
-	g.collect_call_keys(g.a.nodes[int(f.node_id)], f.module, f.file, candidates, mut keys)
+	g.collect_call_keys(f.node_id, f.module, f.file, candidates, mut keys)
 	return keys
 }
 
-fn (g &Gen) collect_call_keys(node flat.Node, cur_mod string, cur_file string, candidates map[string]FnInfo, mut keys []string) {
+fn (g &Gen) collect_call_keys(id flat.NodeId, cur_mod string, cur_file string, candidates map[string]FnInfo, mut keys []string) {
+	node := g.a.nodes[int(id)]
+	if name := g.tc.resolved_fn_value_name(id) {
+		for key in [name, name.replace('__', '.'), qualified_fn_key(cur_mod, name)] {
+			if key in candidates {
+				keys << key
+				break
+			}
+		}
+	}
 	if node.kind == .call && node.children_count > 0 {
 		for key in g.resolve_call_keys(g.a.child_node(&node, 0), cur_mod, cur_file) {
 			if key in candidates {
@@ -340,7 +448,7 @@ fn (g &Gen) collect_call_keys(node flat.Node, cur_mod string, cur_file string, c
 	for i in 0 .. node.children_count {
 		cid := g.a.child(&node, i)
 		if int(cid) >= 0 {
-			g.collect_call_keys(g.a.nodes[int(cid)], cur_mod, cur_file, candidates, mut keys)
+			g.collect_call_keys(cid, cur_mod, cur_file, candidates, mut keys)
 		}
 	}
 }
@@ -2606,10 +2714,10 @@ fn prim_wtype(t_ types.Type) ?WType {
 }
 
 const signed_int_format_fns = ['strconv__format_int', 'int_str', 'i64_str', 'i8_str', 'i16_str',
-	'i32_str', 'isize_str']
+	'i32_str', 'isize_str', 'int.str', 'i8.str', 'i16.str', 'i32.str', 'i64.str', 'isize.str']
 
 const unsigned_int_format_fns = ['strconv__format_uint', 'u8_str', 'u16_str', 'u32_str', 'u64_str',
-	'usize_str']
+	'usize_str', 'u8.str', 'u16.str', 'u32.str', 'u64.str', 'usize.str']
 
 const bool_format_fns = ['bool.str', 'bool__str', 'bool_str']
 

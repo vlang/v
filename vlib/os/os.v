@@ -570,6 +570,9 @@ pub fn user_os() string {
 	$if vinix {
 		return 'vinix'
 	}
+	$if wasm32_emscripten {
+		return 'wasm32_emscripten'
+	}
 	if getenv('TERMUX_VERSION') != '' {
 		return 'termux'
 	}

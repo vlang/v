@@ -83,18 +83,21 @@ enum ReactorCommandKind {
 }
 
 struct ReactorCommand {
-	kind    ReactorCommandKind
-	client  &ReactorClient = unsafe { nil }
-	conn    &net.TcpConn   = unsafe { nil }
-	text    string
-	opcode  u8
-	code    int
-	timeout time.Duration
+	kind       ReactorCommandKind
+	client     &ReactorClient = unsafe { nil }
+	conn       &net.TcpConn   = unsafe { nil }
+	text       string
+	text_start int
+	text_len   int
+	opcode     u8
+	code       int
+	timeout    time.Duration
 }
 
 struct ReactorInbox {
 mut:
 	commands     []ReactorCommand
+	payloads     []u8
 	bytes        int
 	reservations int
 }
@@ -144,6 +147,7 @@ mut:
 	started        u64
 	stop_requested u64
 	inbox          shared ReactorInbox
+	payload_spare  []u8
 	sockets        map[u64]&ReactorSocket
 	dirty          []u64
 	readable       []u64
@@ -213,7 +217,16 @@ fn (mut r Reactor) post(command ReactorCommand) ! {
 		if command.kind == .attach { r.inbox.reservations++ }
 		if command.kind == .close { stdatomic.store_u64(&command.client.state, 2) }
 		was_empty := r.inbox.commands.len == 0
-		r.inbox.commands << ReactorCommand{ ...command, text: command.text.clone() }
+		start := r.inbox.payloads.len
+		if command.text.len > 0 {
+			unsafe { r.inbox.payloads.push_many(command.text.str, command.text.len) }
+		}
+		r.inbox.commands << ReactorCommand{
+			...command
+			text:       ''
+			text_start: start
+			text_len:   command.text.len
+		}
 		r.inbox.bytes += command.text.len
 		if was_empty { r.wake() }
 	}
@@ -249,7 +262,7 @@ pub fn (mut c ReactorClient) write(payload []u8, opcode OPCode) !int {
 	if opcode == .text_frame && !frame_text_valid(payload) {
 		return error('invalid text UTF-8')
 	}
-	// The owner consumes this view inline; external posting clones it.
+	// The owner consumes this view inline; external posting copies the bytes.
 	text := if payload.len == 0 { '' } else { unsafe { tos(payload.data, payload.len) } }
 	c.owner.post(ReactorCommand{ kind: .send, client: c, opcode: u8(opcode), text: text })!
 	return payload.len
@@ -517,7 +530,12 @@ fn (mut r Reactor) parse(mut socket ReactorSocket, budget int) int {
 	mut offset := 0
 	mut frames := 0
 	for frames < budget && socket.client.key in r.sockets && !socket.abort_after_flush && !socket.close_received {
-		mut input := unsafe { socket.input[offset..] }
+		if offset == socket.input.len { break }
+		// decode and on_message borrow these bytes only until delivery returns.
+		// A tracked slice would force delete_many to detach the reusable input.
+		mut input := unsafe {
+			(&u8(socket.input.data) + offset).vbytes(socket.input.len - offset)
+		}
 		frame := socket.decoder.decode(mut input)
 		if frame.kind == .need_more { break }
 		if frame.kind == .failure {
@@ -570,12 +588,34 @@ fn (mut r Reactor) remove(key u64, code int, reason string) {
 
 fn (mut r Reactor) drain_inbox() {
 	mut commands := []ReactorCommand{}
+	mut payloads := []u8{}
 	lock r.inbox {
+		if r.inbox.commands.len == 0 { return }
 		commands = r.inbox.commands
 		r.inbox.commands = []
+		payloads = r.inbox.payloads
+		r.inbox.payloads = r.payload_spare
 		r.inbox.bytes = 0
 	}
-	for command in commands { r.apply(command) }
+	for command in commands {
+		text := if command.text_len > 0 {
+			// The detached batch stays unchanged until every command is applied.
+			unsafe { (&u8(payloads.data) + command.text_start).vstring_literal_with_len(command.text_len) }
+		} else {
+			''
+		}
+		// Close reasons may outlive this batch; sends and upgrade responses are copied by apply.
+		r.apply(ReactorCommand{
+			...command
+			text: if command.kind == .close {
+				text.clone()
+			} else {
+				text
+			}
+		})
+	}
+	payloads.clear()
+	r.payload_spare = payloads
 }
 
 fn (mut r Reactor) notify_closed() {
