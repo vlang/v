@@ -80,13 +80,105 @@ fn test_native_field_type_lookup_preserves_containers_through_pointer_receivers(
 
 // test_bench_runtime_stubs_include_macos_rss_helper validates this v3 regression case.
 fn test_bench_runtime_stubs_include_macos_rss_helper() {
-	assert 'macos_rss_kb' in bench_runtime_stub_names
 	assert 'bench.macos_rss_kb' in bench_runtime_stub_names
+	assert 'v.bench.macos_rss_kb' in bench_runtime_stub_names
+	assert 'macos_rss_kb' in bench_runtime_stub_names
+	assert 'macos_rss_kb' !in wasm_bench_runtime_stub_names
+	assert wasm_bench_runtime_stub_names.all(it.contains('.'))
 	assert 'macos_peak_rss_kb' !in bench_runtime_stub_names
 	assert 'bench.macos_peak_rss_kb' !in bench_runtime_stub_names
 	b := Builder{}
-	assert b.skip_source_fn('macos_rss_kb')
-	assert b.skip_source_fn('bench.macos_rss_kb')
+	for name in ['current_rss_kb', 'macos_rss_kb', 'linux_rss_kb'] {
+		assert b.skip_source_fn_in_module(name, 'bench')
+		assert b.skip_source_fn_in_module(name, 'v.bench')
+		assert !b.skip_source_fn_in_module(name, 'main')
+		assert !b.skip_source_fn_in_module(name, 'other')
+	}
+}
+
+fn test_bench_runtime_stubs_preserve_user_functions() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_user_rss_helpers_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'module main\nfn current_rss_kb() i64 { return 17 }\nfn macos_rss_kb() i64 { return 23 }\nfn linux_rss_kb() i64 { return 31 }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	m := build_with_options(a, map[string]bool{}, unsafe { nil }, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
+	expected := {
+		'current_rss_kb': '17'
+		'macos_rss_kb':   '23'
+		'linux_rss_kb':   '31'
+	}
+	mut found := 0
+	for f in m.funcs {
+		if want := expected[f.name] {
+			assert f.blocks.len == 1
+			last := m.blocks[f.blocks[0]].instrs.last()
+			instruction := m.instrs[m.values[last].index]
+			assert instruction.op == .ret
+			assert m.values[instruction.operands[0]].name == want
+			found++
+		}
+	}
+	assert found == expected.len
+}
+
+fn test_char_literal_value_decodes_unicode_and_escapes() {
+	expected := {
+		'A':           65
+		'é':           233
+		'★':           9733
+		'😀':          128512
+		r'\x41':       65
+		r'\u0041':     65
+		r'\U0001F600': 128512
+		r'\101':       65
+		r'\0':         0
+		r'\a':         7
+		r'\b':         8
+		r'\e':         27
+		r'\f':         12
+		r'\n':         10
+		r'\r':         13
+		r'\t':         9
+		r'\v':         11
+		r'\\':         92
+	}
+	for value, want in expected {
+		assert char_literal_value(value) == want, value
+	}
+}
+
+fn test_rune_literals_use_rune_width() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_rune_literals_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn unicode() rune { return `😀` }\nfn escaped_ascii() rune { return `\\u0041` }\nfn escaped_unicode() rune { return `\\xe2\\x98\\x85` }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	m := build_with_options(a, map[string]bool{}, unsafe { nil }, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
+	expected := {
+		'unicode':         '128512'
+		'escaped_ascii':   '65'
+		'escaped_unicode': '9733'
+	}
+	mut found := 0
+	for f in m.funcs {
+		if want := expected[f.name] {
+			last := m.blocks[f.blocks[0]].instrs.last()
+			instruction := m.instrs[m.values[last].index]
+			assert instruction.op == .ret
+			value := m.values[instruction.operands[0]]
+			assert value.name == want
+			assert m.type_store.types[value.typ].width == 32
+			found++
+		}
+	}
+	assert found == expected.len
 }
 
 // test_runtime_helpers_remain_used_when_module_qualified validates this v3 regression case.
@@ -108,15 +200,15 @@ fn test_native_c_tm_uses_the_platform_abi_layout() {
 
 // test_native_task_basic_info_uses_the_platform_abi_layout validates this v3 regression case.
 fn test_native_task_basic_info_uses_the_platform_abi_layout() {
-	abi := native_c_struct_abi('C.task_basic_info') or { panic('missing task info ABI') }
+	abi := native_c_struct_abi('C.task_basic_info', 8) or { panic('missing task info ABI') }
 	assert abi.field_names[1] == 'resident_size'
 	assert abi.field_types == ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
-	assert native_c_struct_abi('C.other') == none
+	assert native_c_struct_abi('C.other', 8) == none
 }
 
 // test_native_rusage_uses_the_platform_abi_layout validates this v3 regression case.
 fn test_native_rusage_uses_the_platform_abi_layout() {
-	abi := native_c_struct_abi('C.rusage') or { panic('missing rusage ABI') }
+	abi := native_c_struct_abi('C.rusage', 8) or { panic('missing rusage ABI') }
 	assert abi.field_names[4] == 'ru_maxrss'
 	assert abi.field_types.len == 18
 	assert abi.field_types.all(it == 'i64')
@@ -132,7 +224,7 @@ fn test_native_darwin_pthread_types_use_the_platform_abi_layout() {
 		'C.pthread_condattr_t':   '[2]u64'
 	}
 	for name, field_type in expected {
-		abi := native_c_struct_abi(name) or { panic('missing ${name} ABI') }
+		abi := native_c_struct_abi(name, 8) or { panic('missing ${name} ABI') }
 		assert abi.field_names == ['opaque']
 		assert abi.field_types == [field_type]
 	}
@@ -298,6 +390,250 @@ fn test_build_can_skip_optimizer_use_lists() {
 	assert m.values.all(it.uses.len == 0)
 }
 
+fn test_wasm32_and_native_string_layouts() {
+	a := &flat.FlatAst{}
+	for pointer_size in [4, 8] {
+		m := build_with_options(a, map[string]bool{}, unsafe { nil }, BuildOptions{
+			target: TargetData{ ptr_size: pointer_size }
+		})
+		mut found := false
+		for f in m.funcs {
+			if f.name != 'println' {
+				continue
+			}
+			string_type := m.values[f.params[0]].typ
+			pointer_type := m.type_store.types[string_type].fields[0]
+			assert m.type_size(pointer_type) == pointer_size
+			assert m.type_align(pointer_type) == pointer_size
+			assert m.struct_field_offset(string_type, 1) == pointer_size
+			assert m.struct_field_offset(string_type, 2) == pointer_size + 4
+			assert m.type_size(string_type) == pointer_size + 8
+			found = true
+		}
+		assert found
+	}
+}
+
+fn test_wasm32_global_constant_initializers() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_wasm_global_initializers_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'const base = 10\n__global nested = int(u8(u16(300)))\n__global signed = int(i8(128))\n__global wrapped = int(u8(250) + u8(10))\n__global folded = base * 4 + 1\n__global half = u64(18446744073709551615) / u64(2)\n__global fractional = 1.5 + 2.0\n__global oversized64 = u64(1) << u64(64)\n__global oversized32 = u32(1) << u64(32)\n__global narrow_signed = int(i8(-1) >> u64(8))\n__global narrow_logical = int(i8(-5) >>> 1)\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
+	expected := {
+		'nested':         i64(44)
+		'signed':         i64(-128)
+		'wrapped':        i64(4)
+		'folded':         i64(41)
+		'half':           i64(9223372036854775807)
+		'oversized64':    i64(0)
+		'oversized32':    i64(0)
+		'narrow_signed':  i64(-1)
+		'narrow_logical': i64(125)
+	}
+	mut found := 0
+	for global in m.globals {
+		if value := expected[global.name] {
+			assert global.initial_value == value, global.name
+			found++
+		} else if global.name == 'fractional' {
+			assert global.initial_data == [u8(0), 0, 0, 0, 0, 0, 12, 64]
+			found++
+		}
+	}
+	assert found == expected.len + 1
+}
+
+fn test_wasm32_wide_literals_compared_with_narrow_integers() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_narrow_comparison_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn equal(value int) bool { return value == 4294967296 }\nfn lower(value int) bool { return value < 4294967296 }\nfn unsigned_byte(value u8) bool { return value == 256 }\nfn unsigned_max(value u64) bool { return value == 18446744073709551615 }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
+	expected_unsigned := {
+		'equal':         false
+		'lower':         false
+		'unsigned_byte': true
+		'unsigned_max':  true
+	}
+	mut found := 0
+	for f in m.funcs {
+		if unsigned := expected_unsigned[f.name] {
+			for block in f.blocks {
+				for value in m.blocks[block].instrs {
+					instruction := m.instrs[m.values[value].index]
+					if instruction.op !in [.eq, .lt] {
+						continue
+					}
+					for operand in instruction.operands {
+						typ := m.type_store.types[m.values[operand].typ]
+						assert typ.kind == .int_t, f.name
+						assert typ.width == 64, f.name
+						assert typ.is_unsigned == unsigned, f.name
+					}
+					found++
+				}
+			}
+		}
+	}
+	assert found == expected_unsigned.len
+}
+
+fn test_wasm32_indirect_call_numeric_parameter_types() {
+	path := os.join_path(os.vtmp_dir(), 'ssa_indirect_numeric_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'fn scale(value f64) f64 { return value * 2.0 }\nfn scale32(value f32) f32 { return value * f32(2) }\nfn integer_argument() f64 { callback := scale\nreturn callback(3) }\nfn f32_argument() f64 { callback := scale\nreturn callback(f32(3.5)) }\nfn integer_to_f32_argument() f32 { callback := scale32\nreturn callback(3) }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	// The CLI's non-generic path lowers after the local checker scopes are gone.
+	tc.trust_checked_expr_types = false
+	for node in a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		callee_id := a.child(&node, 0)
+		if a.nodes[int(callee_id)].value == 'callback' {
+			// Transformed local callees recover their signature from the binding.
+			a.nodes[int(callee_id)].typ = ''
+			tc.expr_type_set[int(callee_id)] = false
+		}
+	}
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
+	expected := {
+		'integer_argument':        64
+		'f32_argument':            64
+		'integer_to_f32_argument': 32
+	}
+	mut found := 0
+	for f in m.funcs {
+		if width := expected[f.name] {
+			for block in f.blocks {
+				for value in m.blocks[block].instrs {
+					instruction := m.instrs[m.values[value].index]
+					if instruction.op != .call_indirect {
+						continue
+					}
+					argument := m.values[instruction.operands[1]]
+					argument_type := m.type_store.types[argument.typ]
+					assert argument_type.kind == .float_t, f.name
+					assert argument_type.width == width, f.name
+					found++
+				}
+			}
+		}
+	}
+	assert found == expected.len
+}
+
+fn test_wasm32_scalar_str_methods_without_native_runtime_bodies() {
+	dir := os.join_path(os.vtmp_dir(), 'ssa_wasm_scalar_str_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	builtin_source := os.join_path(dir, 'builtin.v')
+	main_source := os.join_path(dir, 'main.v')
+	os.write_file(builtin_source, 'module builtin\nfn (value int) str() string { return "native signed" }\nfn (value u64) str() string { return "native unsigned" }\nfn (value bool) str() string { return "native boolean" }\n')!
+	os.write_file(main_source, 'module main\nstruct Named {}\nfn (value Named) str() string { return "user method" }\nfn main() {\n signed := int(-1).str()\n unsigned := u64(18446744073709551615).str()\n boolean := true.str()\n user := Named{}.str()\n wide := (-9223372036854775807).str()\n}\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_files([builtin_source, main_source])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	for transformed in [false, true] {
+		if transformed {
+			// The transformer moves method receivers into explicit call arguments.
+			for id in 0 .. a.nodes.len {
+				node := a.nodes[id]
+				if node.kind != .call || node.children_count != 1 {
+					continue
+				}
+				callee_id := a.child(&node, 0)
+				callee := a.nodes[int(callee_id)]
+				if callee.kind != .selector || callee.value != 'str' {
+					continue
+				}
+				base_id := a.child(&callee, 0)
+				base := a.nodes[int(base_id)]
+				primitive := if base.kind == .bool_literal {
+					'bool'
+				} else if base.kind == .paren {
+					'int'
+				} else {
+					base.value
+				}
+				if primitive !in ['int', 'u64', 'bool'] {
+					continue
+				}
+				a.nodes[int(callee_id)].kind = .ident
+				a.nodes[int(callee_id)].value = '${primitive}.str'
+				a.nodes[int(callee_id)].children_count = 0
+				a.nodes[id].children_start = i32(a.begin_children())
+				a.add_child(callee_id)
+				a.add_child(base_id)
+				a.nodes[id].children_count = 2
+			}
+		}
+		m := build_with_options(a, {
+			'main':      true
+			'Named.str': true
+		}, &tc, BuildOptions{
+			target:         TargetData{ ptr_size: 4 }
+			exact_used_fns: true
+		})
+		mut targets := []string{}
+		mut signed_widths := []int{}
+		for f in m.funcs {
+			assert f.name !in ['int.str', 'u64.str', 'bool.str']
+			if f.name != 'main' {
+				continue
+			}
+			for block in f.blocks {
+				for value in m.blocks[block].instrs {
+					instruction := m.instrs[m.values[value].index]
+					if instruction.op == .call {
+						target := m.values[instruction.operands[0]].name
+						targets << target
+						if target == 'int_str' {
+							signed_widths << m.type_store.types[m.values[instruction.operands[1]].typ].width
+						}
+					}
+				}
+			}
+		}
+		assert targets == ['int_str', 'strconv__format_uint', 'bool_str', 'Named.str', 'int_str']
+		assert signed_widths == [32, 64]
+	}
+}
+
 fn test_type_size_reuses_module_layout_cache() {
 	mut m := Module.new()
 	i32_type := m.type_store.get_int(32)
@@ -458,6 +794,42 @@ fn test_native_enum_registration_evaluates_escaped_initializer_references() {
 	} {
 		assert b.enum_value_for_type('models.Kind', field) or { -1 } == expected, field
 	}
+}
+
+fn test_wasm32_script_constants_reset_module_scope_after_imported_file() {
+	root := os.join_path(os.vtmp_dir(), 'ssa_script_consts_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	library := os.join_path(root, 'dependency.v')
+	script := os.join_path(root, 'main.v')
+	os.write_file(library, 'module dependency\nconst base = 99\n__global imported_result = base\n')!
+	os.write_file(script, 'const base = 10\nconst answer = base * 4 + 2\n__global result = answer - 1\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_file(library)
+	p.parse_file(script)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(p.a)
+	tc.enable_globals = true
+	tc.collect(p.a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	m := build_with_options(p.a, map[string]bool{}, &tc, BuildOptions{
+		target:         TargetData{ ptr_size: 4 }
+		source_modules: {
+			library: 'dependency'
+			script:  'main'
+		}
+	})
+	imported := m.globals.filter(it.name == 'dependency.imported_result')
+	assert imported.len == 1
+	assert imported[0].initial_value == 99
+	for global in m.globals {
+		if global.name == 'result' {
+			assert global.initial_value == 41
+			return
+		}
+	}
+	assert false, 'missing script result global'
 }
 
 fn native_thread_test_module(name string, source string, detached bool) &Module {
@@ -748,4 +1120,90 @@ fn main() {}
 		}
 	}
 	assert found
+}
+
+fn test_float_unary_minus_preserves_signed_zero_for_both_targets() ! {
+	path := os.join_path(os.vtmp_dir(), 'ssa_float_negation_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'module main
+fn negative_zero64() f64 { return -0.0 }
+fn negative_zero32() f32 { return -f32(0.0) }
+fn negate64(value f64) f64 { return -value }
+fn negate32(value f32) f32 { return -value }
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	for pointer_size in [4, 8] {
+		m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+			target: TargetData{ ptr_size: pointer_size }
+		})
+		mut found := 0
+		for f in m.funcs {
+			if f.name !in ['negative_zero64', 'negative_zero32', 'negate64', 'negate32'] {
+				continue
+			}
+			mut negation_found := false
+			for block_id in f.blocks {
+				for value in m.blocks[block_id].instrs {
+					instr := m.instrs[m.values[value].index]
+					if instr.op != .fsub { continue }
+					zero := m.values[instr.operands[0]]
+					assert zero.name == '-0.0', f.name
+					assert m.type_store.types[zero.typ].kind == .float_t, f.name
+					assert m.type_store.types[zero.typ].width == if f.name.ends_with('32') {
+						32
+					} else {
+						64
+					}, f.name
+					assert zero.typ == m.values[instr.operands[1]].typ, f.name
+					negation_found = true
+				}
+			}
+			assert negation_found, f.name
+			found++
+		}
+		assert found == 4
+	}
+}
+
+fn test_wasm32_maps_keep_source_and_runtime_helpers_separate() ! {
+	path := os.join_path(os.vtmp_dir(), 'ssa_wasm_map_names_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	os.write_file(path, 'module main
+fn map__get(value int) int { return value + 13 }
+fn lookup() int { values := {1: 7}
+return values[1] }
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		target: TargetData{ ptr_size: 4 }
+	})
+	assert !m.funcs.any(it.name in ['v3_native_map_hash_key', 'v3_native_map_index'])
+	source := m.funcs.filter(it.name == 'map__get')[0]
+	assert source.params.len == 1
+	lookup := m.funcs.filter(it.name == 'lookup')[0]
+	mut runtime_call_found := false
+	for block_id in lookup.blocks {
+		for value in m.blocks[block_id].instrs {
+			instr := m.instrs[m.values[value].index]
+			if instr.op != .call { continue }
+			callee := m.values[instr.operands[0]]
+			if !callee.name.contains('map__get') { continue }
+			assert callee.name != 'map__get'
+			assert m.funcs[callee.index].params.len == 3
+			runtime_call_found = true
+		}
+	}
+	assert runtime_call_found
 }

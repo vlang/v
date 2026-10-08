@@ -34,6 +34,9 @@ backend; FastC is omitted by default because native linking does not include lib
 The native runtime initializes globals, runtime constants, and module state before `main`.
 Native macOS executables use a 64 MiB main stack, matching the C backend's linker setting
 for recursive compiler passes.
+Native macOS `C.utsname` uses Darwin's five inline `char[256]` fields. Field expressions
+retain the declared `&char` value by returning each array's address. This ABI mapping is
+specific to the 64-bit native target and leaves WebAssembly's 32-bit layout unchanged.
 Runtime constant initializers run once, after their dependencies. The runtime also provides
 process capture, pthread spawning and waiting, exit callbacks, and string-formatting helpers.
 Native fixed-point interpolation follows the C backend's decimal rounding and padding policy.

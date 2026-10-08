@@ -2,7 +2,7 @@ module wasm
 
 // encode.v is the self-contained WebAssembly binary encoder used by the v3
 // wasm backend. It mirrors the role of the arm64 backend's asm.v + macho.v:
-// gen.v walks the flat AST and drives this module, which knows nothing about V
+// ssa_gen.v lowers SSA and drives this module, which knows nothing about V
 // and only emits raw WASM bytecode (LEB128 + sections). No external module is
 // imported, so v3 stays self-contained and self-hostable.
 
@@ -67,6 +67,7 @@ mut:
 	mem_min  int = 2
 	n_import int
 	start    int = -1
+	table    []int
 }
 
 pub fn Module.new() &Module {
@@ -145,6 +146,11 @@ pub fn (mut m Module) set_mem_min(pages int) {
 // set_start selects the zero-argument function run when the module is instantiated.
 pub fn (mut m Module) set_start(index int) {
 	m.start = index
+}
+
+// set_table installs the function references used by indirect calls.
+pub fn (mut m Module) set_table(functions []int) {
+	m.table = functions.clone()
 }
 
 // ---- LEB128 ----
@@ -256,6 +262,13 @@ pub fn (m &Module) compile() []u8 {
 		leb_u(mut fsec, u64(f.type_idx))
 	}
 	section(mut out, 0x03, fsec)
+	if m.table.len > 0 {
+		mut tabsec := []u8{}
+		leb_u(mut tabsec, 1)
+		tabsec << [u8(0x70), 0x00]
+		leb_u(mut tabsec, u64(m.table.len + 1))
+		section(mut out, 0x04, tabsec)
+	}
 
 	// memory section (5)
 	mut msec := []u8{}
@@ -291,6 +304,16 @@ pub fn (m &Module) compile() []u8 {
 		mut ssec := []u8{}
 		leb_u(mut ssec, u64(m.start))
 		section(mut out, 0x08, ssec)
+	}
+	if m.table.len > 0 {
+		mut elemsec := []u8{}
+		leb_u(mut elemsec, 1)
+		elemsec << [u8(0x00), 0x41, 0x01, 0x0b]
+		leb_u(mut elemsec, u64(m.table.len))
+		for function in m.table {
+			leb_u(mut elemsec, u64(function))
+		}
+		section(mut out, 0x09, elemsec)
 	}
 
 	// code section (10)

@@ -884,8 +884,8 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 	}
 	typ := m.type_store.types[typ_id]
 	if typ.kind in [.ptr_t, .func_t] {
-		cache[typ_id] = 8
-		return 8
+		cache[typ_id] = m.target.ptr_size
+		return m.target.ptr_size
 	}
 	if typ.width > 0 {
 		size := (typ.width + 7) / 8
@@ -1006,7 +1006,7 @@ fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 	}
 	typ := m.type_store.types[typ_id]
 	if typ.kind in [.ptr_t, .func_t] {
-		return 8
+		return m.target.ptr_size
 	}
 	if typ.alignment > 0 {
 		return typ.alignment

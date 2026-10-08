@@ -182,3 +182,48 @@ fn test_native_float_formatting_matches_c_rounding_and_shortest_decimal_expansio
 		}
 	}
 }
+
+fn test_native_float_unary_minus_preserves_zero_sign_bits() {
+	$if macos && arm64 {
+		path := os.join_path(os.vtmp_dir(), 'arm64_negative_zero_${os.getpid()}.v')
+		output := path.all_before_last('.')
+		defer {
+			os.rm(path) or {}
+			os.rm(output) or {}
+		}
+		os.write_file(path, 'module main
+fn C.exit(int)
+union Bits64 { f f64 u u64 }
+union Bits32 { f f32 u u32 }
+fn literal64() f64 { return -0.0 }
+fn literal32() f32 { return -f32(0.0) }
+fn negate64(value f64) f64 { return -value }
+fn negate32(value f32) f32 { return -value }
+fn main() {
+    literal_64 := Bits64{f: literal64()}
+    literal_32 := Bits32{f: literal32()}
+    negated_64 := Bits64{f: negate64(0.0)}
+    negated_32 := Bits32{f: negate32(f32(0.0))}
+    positive_64 := Bits64{f: negate64(literal64())}
+    positive_32 := Bits32{f: negate32(literal32())}
+    if unsafe { literal_64.u } != u64(0x8000000000000000) { C.exit(1) }
+    if unsafe { literal_32.u } != u32(0x80000000) { C.exit(2) }
+    if unsafe { negated_64.u } != u64(0x8000000000000000) { C.exit(3) }
+    if unsafe { negated_32.u } != u32(0x80000000) { C.exit(4) }
+    if unsafe { positive_64.u } != u64(0) { C.exit(5) }
+    if unsafe { positive_32.u } != u32(0) { C.exit(6) }
+    if negate64(17.0) != -17.0 || negate32(f32(-17.0)) != f32(17.0) { C.exit(7) }
+}
+')!
+		for production in [false, true] {
+			mut args := ['env', 'VFLAGS=', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler',
+				'-no-retry-compilation', '-cc', 'clang', '-gc', 'none', '-nocache', '-b', 'arm64',
+				'-o', output, path]
+			if production { args.insert(5, '-prod') }
+			compiled := os.exec(args)
+			assert compiled.exit_code == 0, compiled.output
+			result := os.exec([output])
+			assert result.exit_code == 0, 'production=${production}, exit ${result.exit_code}: ${result.output}'
+		}
+	}
+}
