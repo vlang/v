@@ -7029,6 +7029,7 @@ struct V3BundledTccProbeOptions {
 	host_target         pref.Target
 	target              pref.Target
 	bundled_tcc         string
+	host_rejects_tcc    bool // see pref.host_rejects_tcc_executables; only an explicit `-cc tcc` selects TCC
 }
 
 fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
@@ -7044,6 +7045,9 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 			options.c_compiler
 		}
 		return os.real_path(compiler_path) == os.real_path(options.bundled_tcc)
+	}
+	if options.host_rejects_tcc {
+		return false
 	}
 	if options.is_shared && !options.is_liveshared && options.target.os == 'linux' {
 		return false
@@ -7192,6 +7196,7 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	bundled_tcc_available := v3_bundled_tcc_available(options)
 	allow_system_tcc := options.backend == 'c' && !options.c_only && !options.is_prod
 		&& !options.is_c_debug && !options.race && !options.c_compiler_explicit
+		&& !options.host_rejects_tcc
 		&& !(options.is_shared && !options.is_liveshared && options.target.os == 'linux')
 		&& (!options.parallel_cc || options.target.os == 'windows')
 		&& options.target.os == options.host_target.os
@@ -10442,6 +10447,7 @@ pub fn run(args []string) {
 		host_target:         host_target
 		target:              target
 		bundled_tcc:         bundled_tcc
+		host_rejects_tcc:    pref.host_rejects_tcc_executables()
 	})
 	bundled_tcc_available := selection.bundled_tcc_available
 	implicit_tcc := selection.implicit_tcc
