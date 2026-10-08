@@ -631,7 +631,8 @@ pre {
 .namespace {
 	opacity: 0.7;
 }
-.token.comment {
+.token.comment,
+.token.attribute {
 	color: #93a1a1;
 	color: var(--code-comment-text-color);
 }
@@ -640,8 +641,8 @@ pre {
 	color: var(--code-punctuation-text-color);
 }
 .token.number,
-.token.symbol,
-.token.string_interp {
+.token.string_interp,
+.token.enum_value {
 	color: #702459;
 	color: var(--code-symbol-text-color);
 }
