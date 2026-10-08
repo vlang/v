@@ -7181,6 +7181,9 @@ An overview of the module must be placed in the first comment right after the mo
 
 To generate documentation use vdoc, for example `v doc net.http`.
 
+The ANSI and HTML formats highlight enum values, attributes, map types, compile-time keywords,
+and string interpolation format specifications.
+
 ### Newlines in Documentation Comments
 
 Comments spanning multiple lines are merged together using spaces, unless

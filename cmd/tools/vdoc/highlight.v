@@ -164,7 +164,7 @@ fn find_interpolation_parts(tokens []ScannedToken) []bool {
 fn find_enum_values(tokens []ScannedToken) []bool {
 	mut values := []bool{len: tokens.len}
 	for i in 0 .. tokens.len {
-		if starts_enum_value(tokens, i) {
+		if starts_enum_value(tokens, values, i) {
 			values[i] = true
 			values[i + 1] = true
 		}
@@ -174,7 +174,7 @@ fn find_enum_values(tokens []ScannedToken) []bool {
 
 // starts_enum_value reports whether the token at `i` is the `.` of an enum value, like `.closed`
 // in `state = .closed`, `f(.closed)` or `State.closed`.
-fn starts_enum_value(tokens []ScannedToken, i int) bool {
+fn starts_enum_value(tokens []ScannedToken, values []bool, i int) bool {
 	if tokens[i].kind != .dot || i + 1 >= tokens.len {
 		return false
 	}
@@ -192,11 +192,15 @@ fn starts_enum_value(tokens []ScannedToken, i int) bool {
 		return true
 	}
 	prev := tokens[i - 1]
-	// Not glued to a value before it, like `= .closed` or `f(.closed)`.
-	if prev.end != dot.start || prev.kind !in highlight_value_end_kinds {
+	if prev.kind !in highlight_value_end_kinds {
 		return true
 	}
-	// Glued to a value, it is a field, like `foo.bar`, unless the value is a type name. `C.` and
+	// A separated enum value or branch body can precede another enum value. Whitespace before
+	// a field selector, including a newline, does not otherwise change its meaning.
+	if prev.end != dot.start && (values[i - 1] || prev.kind == .rcbr) {
+		return true
+	}
+	// After a value, it is a field, like `foo.bar`, unless the value is a type name. `C.` and
 	// `JS.` are the namespaces of foreign names instead, which are mostly types, like `C.FILE`.
 	return prev.kind == .name && is_type_name(prev.lit) && prev.lit !in ['C', 'JS']
 		&& name.lit !in highlight_reflection_fields
@@ -208,9 +212,13 @@ fn find_attribute_words(tokens []ScannedToken) []bool {
 	mut words := []bool{len: tokens.len}
 	// The `[` depth inside an attribute, or 0 outside of one.
 	mut depth := 0
+	mut argument_tokens := 0
+	mut paren_depth := 0
 	for i, scanned in tokens {
 		if scanned.kind == .attribute {
 			depth = 1
+			argument_tokens = 0
+			paren_depth = 0
 			words[i] = true
 		} else if depth == 0 {
 			continue
@@ -219,9 +227,19 @@ fn find_attribute_words(tokens []ScannedToken) []bool {
 		} else if scanned.kind == .rsbr {
 			depth--
 			words[i] = depth == 0
+		} else if scanned.kind == .lpar {
+			paren_depth++
+		} else if scanned.kind == .rpar {
+			paren_depth--
+		} else if argument_tokens > 0 {
+			if scanned.kind != .comment {
+				argument_tokens--
+			}
+		} else if scanned.kind == .colon && depth == 1 && paren_depth == 0 {
+			argument_tokens = if i + 1 < tokens.len && tokens[i + 1].kind == .dot { 2 } else { 1 }
 		} else if scanned.kind == .name || scanned.kind.is_keyword() {
 			// The words of the attribute, like `deprecated` or `if debug`, not names in arguments.
-			words[i] = depth == 1
+			words[i] = depth == 1 && paren_depth == 0
 		}
 	}
 	return words

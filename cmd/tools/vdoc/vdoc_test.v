@@ -243,6 +243,32 @@ fn test_highlight_tokens_field_access_is_not_an_enum_value() {
 		'):punctuation']
 }
 
+fn test_highlight_tokens_attribute_arguments_keep_their_kinds() {
+	assert kind_of('@[x: false; inline]', 'false') == 'boolean'
+	assert kind_of('@[noalloc: strict]', 'strict') == 'name'
+	assert kind_of('@[x: false; inline]', 'inline') == 'attribute'
+}
+
+fn test_highlight_tokens_attribute_call_arguments_keep_their_kinds() {
+	code := "@[deprecated(msg: 'use g', after: '2999-01-01')]"
+	assert kind_of(code, 'msg') == 'name'
+	assert kind_of(code, 'after') == 'name'
+	assert kind_of(code, 'deprecated') == 'attribute'
+}
+
+fn test_highlight_tokens_spaced_field_access_is_not_an_enum_value() {
+	assert kind_of('foo .bar', 'bar') == 'name'
+	assert kind_of('foo\n\t.bar', 'bar') == 'name'
+	assert kind_of('a[0] .bar', 'bar') == 'name'
+	assert kind_of('f()\n\t.bar', 'bar') == 'name'
+}
+
+fn test_highlight_tokens_separated_enum_values() {
+	assert kind_of('match x {\n\t.a {}\n\t.b {}\n}', 'b') == 'enum_value'
+	assert kind_of('[.a .b]', 'b') == 'enum_value'
+	assert kind_of('[State.a .b]', 'b') == 'enum_value'
+}
+
 // The tests below check how each output displays the kinds.
 
 fn test_color_highlight_string_interpolation() {
@@ -256,6 +282,12 @@ fn test_color_highlight_option_and_chan() {
 	assert color_highlight('chan int') == term.green('chan') + ' ' + term.green('int')
 }
 
+fn test_color_highlight_attribute_arguments() {
+	assert color_highlight('@[x: false]') == term.gray('@[') + term.gray('x') + ': ' +
+		term.bright_magenta('false') + term.gray(']')
+	assert color_highlight('.closed') == term.bright_magenta('.') + term.bright_magenta('closed')
+}
+
 fn test_html_highlight_string_interpolation() {
 	interp := '<span class="token string_interp">'
 	assert html_highlight("'\${x}'") == '<span class="token string">\'</span>${interp}$</span>${interp}{</span>x${interp}}</span><span class="token string">\'</span>'
@@ -263,6 +295,11 @@ fn test_html_highlight_string_interpolation() {
 
 fn test_html_highlight_leaves_names_plain() {
 	assert html_highlight('x os.Foo') == 'x os<span class="token punctuation">.</span>Foo'
+}
+
+fn test_html_highlight_attribute_arguments_and_enum_values() {
+	assert html_highlight('@[x: false]') == '<span class="token attribute">@[</span><span class="token attribute">x</span><span class="token punctuation">:</span> <span class="token boolean">false</span><span class="token attribute">]</span>'
+	assert html_highlight('.closed') == '<span class="token enum_value">.</span><span class="token enum_value">closed</span>'
 }
 
 fn test_get_readme_md_src() {
