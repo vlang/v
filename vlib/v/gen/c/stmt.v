@@ -6366,6 +6366,12 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 }
 
 fn (g &FlatGen) module_c_fn_return_type(name string) ?types.Type {
+	if !name.starts_with('C.') {
+		// A bare `getenv()` inside `os` calls os.getenv, not the same-named C.getenv.
+		if _ := g.fn_decl_return_type_in_current_module(name) {
+			return none
+		}
+	}
 	raw_name := if name.starts_with('C.') { name } else { 'C.${name}' }
 	return g.tc.c_fn_module_ret_types['${g.tc.cur_module}\x01${raw_name}'] or { none }
 }
