@@ -131,17 +131,20 @@ fn test_every_tool_is_named_and_described() {
 	}
 }
 
-// The catalogue is sent on every `tools/list`, so its size is a per-session
-// token floor. This budget keeps descriptions and schemas from regrowing:
-// a tool that needs more words must earn them by trimming elsewhere.
-const max_catalogue_bytes = 12000
+// Limit the unencoded catalogue strings separately from the complete response.
+// These are UTF-8 byte budgets, not model-specific token counts.
+const max_catalogue_content_bytes = 12000
 
-fn test_tools_list_stays_within_token_budget() {
+// The current writable/read-only responses are 12,580/9,763 bytes including LF.
+// A 13,000-byte ceiling leaves 420 bytes of headroom for serialized metadata.
+const max_tools_list_response_bytes = 13000
+
+fn test_tool_catalogue_stays_within_content_byte_budget() {
 	mut total := 0
 	for spec in tool_specs() {
 		total += spec.tool.name.len + spec.tool.description.len + spec.tool.input_schema.len
 	}
-	assert total < max_catalogue_bytes, 'tools/list catalogue is ${total} bytes, over the ${max_catalogue_bytes} byte budget'
+	assert total < max_catalogue_content_bytes, 'catalogue content is ${total} bytes, over the ${max_catalogue_content_bytes} byte budget'
 }
 
 // The catalogue is the whole public surface: `--read-only` drops exactly the
@@ -995,10 +998,20 @@ fn test_tools_list_wire_schemas_are_valid_in_both_modes() {
 		assert process.code == 0, errors
 		process.close()
 		mut listed := false
-		for line in output.trim_space().split_into_lines() {
+		assert output.ends_with('\n'), output
+		for line in output.split('\n') {
+			if line == '' { continue }
 			response := json.decode[WireToolListResponse](line, strict: true)!
 			if response.id != 2 { continue }
 			listed = true
+			response_bytes := line.len + 1 // Include the stdio framing LF.
+			assert response_bytes <= max_tools_list_response_bytes, 'tools/list response is ${response_bytes} bytes, over the ${max_tools_list_response_bytes} byte budget'
+			raw_response := json.decode[map[string]json.Any](line, strict: true)!
+			raw_result := raw_response['result']!.as_map()
+			for raw_tool in raw_result['tools']!.as_array() {
+				properties := raw_tool.as_map()
+				assert 'title' !in properties, 'tools/list must omit the redundant title for ${properties['name']!.str()}'
+			}
 			expected := if read_only { 15 } else { 18 }
 			assert response.result.tools.len == expected, line
 			for tool in response.result.tools {
