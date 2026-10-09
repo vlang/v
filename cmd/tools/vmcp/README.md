@@ -19,6 +19,12 @@ AST renderings over 400,000 bytes return `ast: null`, the original byte count,
 `truncated: true`, the limit and reduction hints. Incomplete JSON trees are never
 returned; smaller trees keep their normal AST object.
 
+`v_stdlib_doc` module listings accept `limit` (default 100) and `offset` (default 0).
+Nonpositive limits use the default; negative offsets start at zero. An offset past
+the last symbol returns an empty page. `symbol_count` remains the total, while
+`returned` and `truncated` describe the page. Queries for a specific member return
+that member in full. `v_files` defaults to 500 entries and caps explicit limits at 2000.
+
 Compiler flags for `v_run`, `v_check` and `v_test_run` are placed before the
 command and target. Program arguments keep their original boundaries, including
 spaces, empty strings and shell punctuation; they are passed directly to the child.
