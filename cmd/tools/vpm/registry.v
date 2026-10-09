@@ -5,6 +5,7 @@ module main
 import crypto.sha256
 import json2
 import os
+import semver
 import time
 
 // RegistryConfig is the configuration document served at the registry root.
@@ -66,7 +67,17 @@ pub fn (mut r Registry) add_module(info ModuleInfo) {
 pub fn (r &Registry) list_versions(name string) []string {
 	entry := r.modules[name] or { return [] }
 	mut versions := entry.versions.clone()
-	versions.sort(a.version > b.version)
+	versions.sort_with_compare(fn (a &ModuleInfo, b &ModuleInfo) int {
+		va := semver.from(a.version) or { semver.Version{} }
+		vb := semver.from(b.version) or { semver.Version{} }
+		if va > vb {
+			return -1
+		}
+		if va < vb {
+			return 1
+		}
+		return 0
+	})
 	return versions.map(it.version)
 }
 
@@ -81,15 +92,25 @@ pub fn (r &Registry) get_info(name string, version string) ?ModuleInfo {
 	return none
 }
 
-// get_latest returns the latest non-yanked version of a module.
+// get_latest returns the highest non-yanked version of a module.
 pub fn (r &Registry) get_latest(name string) ?ModuleInfo {
 	entry := r.modules[name] or { return none }
-	for v in entry.versions {
-		if !v.yanked {
-			return v
-		}
+	mut candidates := entry.versions.filter(!it.yanked)
+	if candidates.len == 0 {
+		return none
 	}
-	return none
+	candidates.sort_with_compare(fn (a &ModuleInfo, b &ModuleInfo) int {
+		va := semver.from(a.version) or { semver.Version{} }
+		vb := semver.from(b.version) or { semver.Version{} }
+		if va > vb {
+			return -1
+		}
+		if va < vb {
+			return 1
+		}
+		return 0
+	})
+	return candidates[0]
 }
 
 // yank marks a version as yanked.
