@@ -6055,6 +6055,71 @@ fn demangle_formatter_local_types(typ string) string {
 	return out.str()
 }
 
+fn (mut g Gen) format_anon_aggregate_source(source string) string {
+	lines := source.split('\n')
+	if lines.len <= 1 {
+		return source
+	}
+	mut line_starts := []int{cap: lines.len}
+	mut offset := 0
+	for line in lines {
+		line_starts << offset
+		offset += line.len + 1
+	}
+	mut line_depths := []int{len: lines.len, init: g.indent}
+	mut protected_lines := []bool{len: lines.len}
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('anonymous_aggregate', source.len)
+	file.index_lines(source)
+	mut s := scanner.new_scanner(pref.new_preferences(),
+		scanner.Mode.scan_comments | scanner.Mode.skip_interpolation)
+	s.init(file, source)
+	mut line_nr := 0
+	mut depth := g.indent
+	for {
+		tok := s.scan()
+		for line_nr + 1 < lines.len && line_starts[line_nr + 1] <= s.pos {
+			line_nr++
+			line_depths[line_nr] = depth
+		}
+		if tok in [.string, .comment] {
+			// Continuation whitespace belongs to the literal or comment, not the aggregate.
+			mut continuation := line_nr + 1
+			for continuation < lines.len && line_starts[continuation] < s.offset {
+				protected_lines[continuation] = true
+				continuation++
+			}
+		} else if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+		}
+		if tok == .eof {
+			break
+		}
+	}
+	mut out := strings.new_builder(source.len)
+	out.write_string(lines[0] + '\n')
+	for i in 1 .. lines.len {
+		trimmed := lines[i].trim_left(' \t')
+		if protected_lines[i] {
+			out.write_string(lines[i])
+		} else if trimmed.len > 0 {
+			mut indent := line_depths[i]
+			section := trimmed.all_before(':').fields().join(' ')
+			if trimmed.starts_with('}') || (trimmed.contains(':') && section in ['pub', 'pub mut',
+				'pub module_mut', 'mut', '__global', 'module']) {
+				indent--
+			}
+			out.write_string('\t'.repeat(int_max(0, indent)) + trimmed)
+		}
+		if i < lines.len - 1 {
+			out.write_string('\n')
+		}
+	}
+	return out.str()
+}
+
 fn (mut g Gen) type_text(typ string) string {
 	demangled := demangle_formatter_local_types(typ)
 	mut expanded := demangled
@@ -6069,7 +6134,8 @@ fn (mut g Gen) type_text(typ string) string {
 				}
 				name := demangled[start..i]
 				if source := g.formatter_types[name] {
-					out.write_string(source.text)
+					formatted_source := g.format_anon_aggregate_source(source.text)
+					out.write_string(formatted_source)
 					g.skip_comments_in_source(source.start, source.end)
 					g.source_end = int_max(g.source_end, source.end)
 				} else {

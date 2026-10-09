@@ -4,6 +4,7 @@ codelite.md
 compiler-fallback.md
 comptime-reflection-sources.md
 docs.md
+fastc.md
 function-field-calls.md
 ierror_pointer_casts.md
 noalloc.md
@@ -14,5 +15,6 @@ single_letter_struct_results.md
 tccbin_automation.md
 translated_fixed_array_c_abi.md
 upcoming.md
+vdoctor.md
 vscode.md
 wasm.md

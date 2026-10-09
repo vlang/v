@@ -428,15 +428,10 @@ fn (mut p Parser) intern_parsed_node_texts(first_node int) {
 		p.text_type_cache)
 }
 
-// parse_into reads parse into input for parser.
-pub fn (mut p Parser) parse_into(path string) {
-	if p.diagnostic_limit_reached {
-		return
-	}
-	first_node := p.a.nodes.len
-	defer {
-		p.intern_parsed_node_texts(first_node)
-	}
+// reset_file_state clears the per-file parser state before a file is parsed.
+// Both parse_into and parse_text share it, so a file parsed from disk and the
+// same text parsed from memory produce the same AST.
+fn (mut p Parser) reset_file_state(path string) {
 	p.cur_file = path
 	p.cur_file_id = p.next_file_id
 	p.next_file_id++
@@ -500,6 +495,18 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.anonymous_struct_count = 0
 	p.sql_query_data_aliases.clear()
 	p.accepted_line_directives.clear()
+}
+
+// parse_into reads parse into input for parser.
+pub fn (mut p Parser) parse_into(path string) {
+	if p.diagnostic_limit_reached {
+		return
+	}
+	first_node := p.a.nodes.len
+	defer {
+		p.intern_parsed_node_texts(first_node)
+	}
+	p.reset_file_state(path)
 	// File marker before content so import resolver can track source files
 	marker_id := p.add_node(flat.Node{
 		kind:  .file
@@ -517,7 +524,13 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.a.file_index_incomplete = true
 		return
 	}
-	stable_src := p.a.source_buffers.last()
+	p.parse_buffer(path, p.a.source_buffers.last())
+}
+
+// parse_buffer parses source text already owned by the AST's source_buffers.
+// Scanner token strings are zero-copy views into that buffer, so it must stay
+// alive through later phases; the buffer pairing in source_buffers guarantees it.
+fn (mut p Parser) parse_buffer(path string, stable_src string) {
 	if p.keep_source_texts {
 		p.a.source_texts[p.cur_file_id] = stable_src
 	}
@@ -675,6 +688,35 @@ pub fn (mut p Parser) parse_into(path string) {
 	}
 	p.report_misplaced_line_directives()
 	p.collect_scanner_diagnostics()
+}
+
+// parse_text parses V source text held in memory, without reading a file.
+// `name` is recorded as the file name: pass a `.v` name (or `.vsh` for script
+// mode), since extension checks behave exactly as in parse_into. The AST takes
+// ownership of a copy of `src`. Useful where no filesystem exists, like the
+// Emscripten build.
+// Reusing a Parser appends files to the same AST and retains earlier diagnostics,
+// like parse_file; inspect diagnostics for parser errors.
+pub fn (mut p Parser) parse_text(name string, src string) &flat.FlatAst {
+	if p.diagnostic_limit_reached {
+		return p.a
+	}
+	first_node := p.a.nodes.len
+	defer {
+		p.intern_parsed_node_texts(first_node)
+	}
+	p.reset_file_state(name)
+	// File marker before content so import resolver can track source files
+	marker_id := p.add_node(flat.Node{
+		kind:  .file
+		value: name
+	})
+	p.a.file_node_ids << int(marker_id)
+	// Scanner token strings are zero-copy views into the source. The AST owns
+	// every source buffer so those views remain valid through later phases.
+	p.a.source_buffers << src
+	p.parse_buffer(name, p.a.source_buffers.last())
+	return p.a
 }
 
 // report_misplaced_line_directives reports the `#line` directives of the file that are
@@ -9843,6 +9885,9 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_
 		}
 	}
 
+	if p.current_token_is_newline_semicolon() && p.peek() == .lcbr {
+		p.next()
+	}
 	// The key/value loop variables are locals scoped to the loop body.
 	p.begin_local_binding_scope()
 	p.declare_local_binding_node(key_id)

@@ -70,6 +70,9 @@ v update --latest
 
 `--precise` selects one package version or commit and fails if it violates any requirement.
 Numeric versions can match a tag with the optional `v` prefix.
+Targeted updates accept any direct repository alias, including one listed only in
+`dev_dependencies`. Aliases of the same repository share the targeted selection, and
+`--precise` must still satisfy every regular and development requirement on that repository.
 `--latest` widens selected direct dependencies to the newest resolvable stable release, writes
 caret constraints back to every selected direct requirement in `v.mod`, including URL aliases,
 and records them in the lockfile. Transitive requirements still
@@ -107,6 +110,14 @@ packages using the same columns;
 retain their previous behavior.
 
 ## Root metadata, release policy and vendoring
+
+Project commands include the root manifest's `dev_dependencies` alongside `dependencies`.
+Vendoring includes development requirements and their runtime dependencies. Outdated reporting
+checks every regular and development requirement on a package, including exact version pins.
+`v install` resolves and locks both sets together; `v update`, `v outdated`, `v why`,
+`v mod graph`, and `v vendor` use the same requirements. Development requirements declared by
+dependency modules are excluded. `v update --latest` widens a development requirement in
+`dev_dependencies`, keeping it separate from regular requirements in `v.mod`.
 
 Only the root manifest supplies `dependency_overrides`. Global `package: ref` selectors apply
 throughout the graph; `parent>package: ref` selectors apply on that parent's requiring edge.
