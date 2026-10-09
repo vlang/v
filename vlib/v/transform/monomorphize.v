@@ -7303,6 +7303,14 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		if t.raw_var_type(callee.value).len > 0 {
 			return none
 		}
+	}
+	// Non-generic helpers cannot be specialized. Resolve a candidate before looking
+	// up lexical bindings: synthesized callees have no source-parent index entry,
+	// so an unnecessary lookup can scan the entire AST for every cloned helper call.
+	key := t.unshadowed_generic_call_decl_key(id, node, callee, module_name, decls) or {
+		return none
+	}
+	if callee.kind == .ident && !callee.value.contains('.') {
 		// Collection, cloning and body pre-passes run before locals enter var_types.
 		// During declaration-ordered specialization lowering, the live scope resolves
 		// shadows without repeatedly scanning the whole AST for synthesized ancestors.
@@ -7315,6 +7323,10 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 			}
 		}
 	}
+	return key
+}
+
+fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node flat.Node, callee flat.Node, module_name string, decls map[string]GenericFnDecl) ?string {
 	if !isnil(t.tc) {
 		if resolved := t.tc.resolved_call_name(id) {
 			if key := t.generic_resolved_call_decl_key(resolved, callee, node, module_name, decls) {
