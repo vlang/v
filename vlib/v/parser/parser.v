@@ -15903,7 +15903,7 @@ pub fn TranslatedSizeofShared.new() &TranslatedSizeofShared {
 
 fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
 	if isnil(p.translated_sizeof_shared) {
-		source := os.read_file(path) or { return }
+		source := p.read_source_file(path) or { return }
 		p.scan_translated_sizeof_source(source)
 		return
 	}
@@ -15927,14 +15927,14 @@ fn (mut p Parser) scan_translated_sizeof_sibling(path string) {
 		// Another worker scans it right now, or its result depended on that
 		// worker's comptime state: scan it here as well.
 		shared_files.mu.unlock()
-		source := os.read_file(path) or { return }
+		source := p.read_source_file(path) or { return }
 		p.scan_translated_sizeof_source(source)
 		return
 	}
 	mut entry := &TranslatedSizeofFile{}
 	shared_files.files[file_key] = entry
 	shared_files.mu.unlock()
-	source := os.read_file(path) or { return }
+	source := p.read_source_file(path) or { return }
 	// Scan into empty tables to learn what this file adds, then merge.
 	types := p.translated_sizeof_type_names.move()
 	consts := p.translated_sizeof_const_names.move()

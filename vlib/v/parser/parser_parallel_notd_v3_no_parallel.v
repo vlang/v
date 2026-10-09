@@ -382,6 +382,19 @@ fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
 		source_files[shifted_id] = file
 	}
 	p.a.source_files = source_files.move()
+	// The kept texts are keyed like the files they are the text of.
+	if p.a.source_texts.len > 0 {
+		mut source_texts := map[int]string{}
+		for file_id, text in p.a.source_texts {
+			shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
+				file_id + delta
+			} else {
+				file_id
+			}
+			source_texts[shifted_id] = text
+		}
+		p.a.source_texts = source_texts.move()
+	}
 	mut template_call_sites := map[int]token.Pos{}
 	for file_id, call_site in p.a.template_call_sites {
 		shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
@@ -422,7 +435,8 @@ fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool 
 	// ordered prefixes, so disabled and later declarations cannot enter their scope.
 	mut names := p.comptime_string_consts.clone()
 	for path in paths {
-		src := read_source_file_raw(path) or { continue }
+		// The same text the full parse takes: a preloaded source, or else the file.
+		src := p.read_source_file(path) or { continue }
 		mut files := token.FileSet.new()
 		file := files.add_file(path, src.len)
 		mut s := scanner.new_scanner(p.prefs, .normal)
@@ -449,7 +463,7 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 	for path in paths[start..end] {
 		// The full parse records the structured I/O diagnostic. The prepass only
 		// supplies ordered const snapshots and must not consume a failed read.
-		src := read_source_file_raw(path) or { continue }
+		src := p.read_source_file(path) or { continue }
 		if src.len == 0 {
 			continue
 		}
