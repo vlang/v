@@ -88,6 +88,113 @@ fn main() {
 	assert run.output == 'true\ntrue\n2\ntrue\ntrue\ntrue\ntrue\n3\n0\ntrue\ntrue\nok\ntrue\n2147483648\ntrue\n2147483648\ntrue\ntwo\ntrue\ntrue\ntrue\ntrue\n2\ntrue\nfalse\n97\n', run.output
 }
 
+fn test_ordinary_nested_array_membership_reads_stored_element_width() {
+	source := 'fn main() {
+	needle := [1, 2]
+	values := [[1, 3]]
+	println(needle in values)
+	println(needle !in values)
+	println(needle in [[1, 3], [1, 2]])
+	println([1] in values)
+	mut wide := 2147483647
+	wide += 1
+	wide_needle := [wide, 2]
+	wide_values := [[wide, 3]]
+	println(wide_needle in wide_values)
+	println(wide_needle in [[wide, 2]])
+}
+'
+	prefs := pref.new_preferences()
+	c_source := generate(source, 'ordinary_nested_array_membership.v', prefs) or { panic(err) }
+	for side in ['l', 'r'] {
+		assert c_source.contains('((${fastc_platform_int_c_type} *)__vf_meq_${side}.data)[__vf_meq_k]'), c_source
+	}
+	mut selfhost_prefs := pref.new_preferences()
+	selfhost_prefs.building_v = true
+	selfhost_fixture := 'fn contains_nested(needle []int, values [][]int) bool {
+	return needle in values
+}
+
+fn main() {
+	needle := [1, 2]
+	values := [[1, 3]]
+	found := contains_nested(needle, values)
+}
+'
+	selfhost_source := generate(selfhost_fixture, 'selfhost_nested_array_membership.v', selfhost_prefs) or { panic(err) }
+	for side in ['l', 'r'] {
+		assert selfhost_source.contains('((int *)__vf_meq_${side}.data)[__vf_meq_k]'), selfhost_source
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_nested_array_membership_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(bin_file, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'false\ntrue\ntrue\nfalse\nfalse\ntrue\n', run.output
+}
+
+fn test_ordinary_float_map_callbacks_use_full_key_width() {
+	source := 'type Float = f64
+type Single = f32
+
+fn main() {
+	bare := {1.0: 10, 2.0: 20}
+	println(bare.len)
+	println(bare[1.0])
+	println(bare[2.0])
+	println(3.0 in bare)
+	doubles := {Float(1.0): 10, Float(2.0): 20}
+	println(doubles.len)
+	println(doubles[Float(1.0)])
+	println(doubles[Float(2.0)])
+	println(Float(1.0) in doubles)
+	println(Float(3.0) in doubles)
+	println(Float(3.0) !in doubles)
+	println(doubles[Float(3.0)])
+	singles := {Single(1.0): 30, Single(2.0): 40}
+	println(singles.len)
+	println(singles[Single(1.0)])
+	println(singles[Single(2.0)])
+	println(Single(3.0) !in singles)
+	bare_singles := {f32(1.0): 50, f32(2.0): 60}
+	println(bare_singles.len)
+	println(bare_singles[f32(1.0)])
+	println(bare_singles[f32(2.0)])
+	println(f32(3.0) in bare_singles)
+}
+'
+	prefs := pref.new_preferences()
+	c_source := generate(source, 'ordinary_float_map_key_storage.v', prefs) or { panic(err) }
+	for key_type in ['f64', 'Float'] {
+		assert c_source.contains('builtin__new_map(sizeof(${key_type}), sizeof(${fastc_platform_int_c_type}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8,'), c_source
+	}
+	for key_type in ['f32', 'Single'] {
+		assert c_source.contains('builtin__new_map(sizeof(${key_type}), sizeof(${fastc_platform_int_c_type}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4,'), c_source
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_float_map_key_storage_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(bin_file, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == '2\n10\n20\nfalse\n2\n10\n20\ntrue\nfalse\ntrue\n0\n2\n30\n40\ntrue\n2\n50\n60\nfalse\n', run.output
+}
+
 fn test_ordinary_array_index_is_bounds_checked() {
 	prefs := pref.new_preferences()
 	for index in ['-1', '3'] {

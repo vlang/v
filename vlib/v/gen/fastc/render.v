@@ -4009,7 +4009,7 @@ fn fastc_map_runtime_functions(key_type string, pointer_bits int) (string, strin
 		'1'
 	} else if key_type in ['i16', 'u16'] {
 		'2'
-	} else if key_type in ['i64', 'u64'] {
+	} else if key_type in ['i64', 'u64', 'f64'] {
 		'8'
 	} else if key_type in ['i128', 'u128'] {
 		'16'

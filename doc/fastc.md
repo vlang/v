@@ -13,7 +13,8 @@ Ordinary programs support the following constructs:
   integers, booleans, strings, and enums.
 - `if`, `match`, loops, `break`, `continue`, function calls, and selected compile-time conditions.
 - Dynamic array literals such as `[1, 2, 3]` and `['a', 'b']`, with checked element access.
-- Map literals such as `{'a': 1}` with string or integer keys, element lookup, and `.len`.
+- Map literals such as `{'a': 1}` with string, integer, or floating point keys, element lookup,
+  and `.len`.
   Lookup of an absent key returns the value type's zero value.
 - `in` and `!in` for arrays, map keys, and substrings, including their use in boolean conditions.
 
