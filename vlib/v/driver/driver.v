@@ -10956,8 +10956,8 @@ pub fn run(args []string) {
 	if ownership_mode && 'ownership' !in builtin_defines {
 		builtin_defines << 'ownership'
 	}
-	mut builtin_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(builtin_dir,
-		builtin_defines, prefs.target))
+	mut builtin_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(builtin_dir,
+		builtin_defines, prefs.backend, prefs.target))
 	// `map.v` retains the regular-backend layout so the stable V1 fallback can
 	// compile tools against the current tree. V3 selects its pointer-sized map
 	// implementation through the internal backend define above.
@@ -15275,8 +15275,8 @@ fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, buil
 		if !os.is_dir(dir) {
 			continue
 		}
-		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
-			prefs.target)) {
+		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
+			prefs.backend, prefs.target)) {
 			key := a.record_source_path(file)
 			if seen[key] {
 				continue
@@ -16824,8 +16824,8 @@ fn collect_v3_directory_user_files_rec(mut a flat.FlatAst, module_root string, d
 }
 
 fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
-		prefs.target)) {
+	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
+		prefs.backend, prefs.target)) {
 		append_unique_file(mut a, mut files, mut seen, file)
 	}
 	if is_test_command {
@@ -16888,8 +16888,8 @@ fn expand_single_test_file_inputs(mut a flat.FlatAst, user_files []string, prefs
 
 fn same_dir_module_source_files(mut a flat.FlatAst, test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
-	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir,
-		prefs.user_defines, prefs.target))
+	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir,
+		prefs.user_defines, prefs.backend, prefs.target))
 	// A `subdirs` manifest makes several directories one source module. When a
 	// test file sits in one of those virtual directories, include
 	// the complete module instead of only its physical-directory siblings.
@@ -20530,8 +20530,8 @@ fn eager_selfhost_resolve_thread(arg voidptr) voidptr {
 	result.dir = resolve_project_or_pref_module_path(prefs, result.path, result.importing_file, result.project_root, mut local_cache)
 	if result.dir.len > 0 && os.is_dir(result.dir) {
 		result.real_dir = os.real_path(result.dir)
-		result.files = prefs.without_excluded(pref.get_v_files_from_dir_for_target(result.dir,
-			prefs.user_defines, prefs.target))
+		result.files = prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(result.dir,
+			prefs.user_defines, prefs.backend, prefs.target))
 		if result.files.len > 0 {
 			result.identity = import_module_identity_with_path_cache(prefs, result.path, result.importing_file, result.project_root, result.dir, mut local_cache)
 		}
@@ -21235,8 +21235,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			if is_bundle_warmup_import && cache_state.bundle_valid {
 				warmup_dir := prefs.get_vlib_module_path(mod_name)
-				warmup_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(warmup_dir,
-					prefs.user_defines, prefs.target))
+				warmup_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(warmup_dir,
+					prefs.user_defines, prefs.backend, prefs.target))
 				if cache_state.manager.valid_header(mod_name, warmup_files) == none {
 					// The cached bundle may have been built while a project module
 					// shadowed this optional warmup import. An actual user import was
@@ -21325,8 +21325,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
 			mod_files := if mod_dir_exists {
 				v3_directory_user_files(mut a, mod_dir, prefs, false, false) or {
-					prefs.without_excluded(pref.get_v_files_from_dir_for_target(mod_dir,
-						prefs.user_defines, prefs.target))
+					prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(mod_dir,
+						prefs.user_defines, prefs.backend, prefs.target))
 				}
 			} else {
 				[]string{}
@@ -21907,8 +21907,8 @@ fn aliased_import_module_identity(prefs &pref.Preferences, import_path string, i
 	if os.real_path(requested_dir) == os.real_path(import_dir) {
 		return none
 	}
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(import_dir,
-		prefs.user_defines, prefs.target)) {
+	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(import_dir,
+		prefs.user_defines, prefs.backend, prefs.target)) {
 		module_name := declared_module_in_file(file)
 		if module_name.len > 0 {
 			return module_name
@@ -22294,8 +22294,8 @@ fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {
 		return false
 	}
 	source_root := v3_directory_source_root(path)
-	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(source_root, prefs.user_defines,
-		prefs.target)).len > 0 {
+	if prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(source_root, prefs.user_defines,
+		prefs.backend, prefs.target)).len > 0 {
 		return true
 	}
 	// A v.mod can expose one logical module from source-only subdirectories. The
@@ -22323,8 +22323,8 @@ fn module_subdir_has_v_sources(module_root string, dir string, prefs &pref.Prefe
 	if real_dir != module_root && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
 		return false
 	}
-	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(real_dir, prefs.user_defines,
-		prefs.target)).len > 0 {
+	if prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(real_dir, prefs.user_defines,
+		prefs.backend, prefs.target)).len > 0 {
 		return true
 	}
 	entries := os.ls(real_dir) or { return false }
