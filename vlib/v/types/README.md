@@ -54,3 +54,8 @@ An interface narrowed by `if mut value is T` can be passed to a function accepti
 The function mutates the same concrete object stored in the interface.
 A `mut &T` parameter still needs a mutable pointer variable; narrowing an interface does not
 create a pointer slot that the function can reassign.
+
+Each `_test.v` file must contain at least one active `test_` function. A file whose tests
+are all excluded by conditional compilation reports a missing-test error. When the file
+has no active function declarations, this diagnostic points to the start of the file;
+a helper-only file points to its helper function.
