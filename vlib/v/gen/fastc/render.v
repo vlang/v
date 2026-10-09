@@ -497,6 +497,9 @@ fn (g &Parser) render_map_index_assignment_wrapping(left_tokens []FastcExpressio
 }
 
 fn (g &Parser) render_ordinary_collection_print_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if enum_print := g.render_enum_print_expression(tokens) {
+		return enum_print
+	}
 	close := fastc_matching_rpar(tokens, 1) or { return none }
 	if close != tokens.len - 1 {
 		return none
