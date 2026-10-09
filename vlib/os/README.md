@@ -104,6 +104,11 @@ fails or does not report a numeric version. Localized version labels are accepte
 
 ### Walking a tree
 
+On Windows, `os.rm()` clears a file's read-only attribute for deletion while preserving
+its other attributes. If removal fails, it attempts to restore the original attributes
+and reports the removal error. `os.rmdir_all()` continues after deletion errors and
+returns the first failure's message and code.
+
 `os.walk()` reports files only, and `os.walk_with_context()` reports directories
 too but cannot skip them, so neither lets you say "do not descend into this one",
 and a large tree has to be read in full. `os.walk_dir()` reports every entry,

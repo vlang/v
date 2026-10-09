@@ -340,21 +340,29 @@ fn tool_references(ws &Workspace, arguments string) string {
 // spec_stdlib_doc declares `v_stdlib_doc`.
 fn spec_stdlib_doc() ToolSpec {
 	return read_only_spec('v_stdlib_doc',
-		'Look up the documentation of a standard library module or one of its
-symbols, for example `strings` or `strings.Builder`. Use it to check a signature
-before writing a call instead of guessing.',
+		'Docs and signatures for a standard library module or symbol, e.g. `os.read_file`.',
 		input_schema(['symbol'], {
 			'symbol': SchemaProperty{
 				kind:        'string'
 				description: 'A module name such as `os`, or a\nsymbol such as `os.read_file`.'
+			}
+			'limit':  SchemaProperty{
+				kind:        'integer'
+				description: 'Symbols per page (default 100).'
+			}
+			'offset': SchemaProperty{
+				kind:        'integer'
+				description: 'Symbols to skip (default 0).'
 			}
 		}), tool_stdlib_doc)
 }
 
 // tool_stdlib_doc answers `v_stdlib_doc`.
 fn tool_stdlib_doc(ws &Workspace, arguments string) string {
-	symbol := decode_args(arguments).required_str('symbol') or {
+	args := decode_args(arguments)
+	symbol := args.required_str('symbol') or {
 		return error_json(err.msg())
 	}
-	return stdlib_doc_json(ws, symbol)
+	return stdlib_doc_json(ws, symbol, args.int('limit', stdlib_page_limit), args.int('offset',
+		0))
 }

@@ -273,30 +273,45 @@ pub fn sigint_to_signal_name(si int) string {
 }
 
 // rmdir_all recursively removes the specified directory.
+// It continues after deletion errors and returns the first error's message and code.
 pub fn rmdir_all(path string) ! {
-	mut err_msg := ''
-	mut err_code := -1
 	items := ls(path)!
+	// Report the first failure, not the last. The last is almost always the
+	// closing `rmdir(path)` on Windows, which fails with ERROR_DIR_NOT_EMPTY
+	// once any deletion above it was refused, and that message names neither
+	// the file that failed nor the reason.
+	mut failed := false
+	mut first_msg := ''
+	mut first_code := -1
 	for item in items {
 		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
 			rmdir_all(fullpath) or {
-				err_msg = err.msg()
-				err_code = err.code()
+				if !failed {
+					failed = true
+					first_msg = err.msg()
+					first_code = err.code()
+				}
 			}
 		} else {
 			rm(fullpath) or {
-				err_msg = err.msg()
-				err_code = err.code()
+				if !failed {
+					failed = true
+					first_msg = err.msg()
+					first_code = err.code()
+				}
 			}
 		}
 	}
 	rmdir(path) or {
-		err_msg = err.msg()
-		err_code = err.code()
+		if !failed {
+			failed = true
+			first_msg = err.msg()
+			first_code = err.code()
+		}
 	}
-	if err_msg != '' {
-		return error_with_code(err_msg, err_code)
+	if failed {
+		return error_with_code(first_msg, first_code)
 	}
 }
 

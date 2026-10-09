@@ -39,7 +39,7 @@ typedef void *voidptr;
 typedef unsigned char *byteptr;
 typedef char *charptr;
 typedef void *chan;
-typedef struct { void *data; int offset; int len; int cap; int flags; } array;
+typedef struct { void *data; int offset; int len; int cap; int flags; int element_size; } array;
 /* Keep these private map-header declarations in sync with builtin/map.v. */
 typedef struct {
 	int key_bytes;
@@ -2103,7 +2103,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	} else if prefs.building_v {
 		c_selfhost_preamble
 	} else {
-		c_preamble
+		c_preamble + c_collection_runtime
 	}
 	hoisted_body := fastc_partition_c_directive_ranges(body_len, body_directive_lines)
 	timer.mark('partition_directives')
