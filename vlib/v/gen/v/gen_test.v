@@ -860,6 +860,14 @@ fn test_formatter_preserves_anonymous_aggregate_types() {
 	assert vfmt('anonymous_aggregate_types_twice', out) == out
 }
 
+fn test_formatter_fixes_indented_anonymous_union() {
+	source := 'struct LaborUnion {\n\trespect_workers bool\n\tcontent         union {\nworkers []string\n\t}\n}\n'
+	out := vfmt('indented_union', source)
+	expected := 'struct LaborUnion {\n\trespect_workers bool\n\tcontent         union {\n\t\tworkers []string\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('indented_union_twice', out) == out
+}
+
 fn test_formatter_preserves_mutable_match_subjects() {
 	source := 'fn update(mut value int) {\n\tmatch mut value {\n\t\tint {\n\t\t\tvalue++\n\t\t}\n\t}\n}\n'
 	out := vfmt('mutable_match_subject', source)

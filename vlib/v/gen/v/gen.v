@@ -6055,6 +6055,32 @@ fn demangle_formatter_local_types(typ string) string {
 	return out.str()
 }
 
+fn (mut g Gen) format_anon_aggregate_source(source string) string {
+	lines := source.split('\n')
+	if lines.len <= 1 {
+		return source
+	}
+	mut out := strings.new_builder(source.len)
+	out.write_string(lines[0] + '\n')
+	mut i := 1
+	for i < lines.len {
+		line := lines[i]
+		trimmed := line.trim_left(' \t')
+		if trimmed.starts_with('}') && trimmed.len > 0 {
+			// Closing brace line: keep it at the current parent indent.
+			out.write_string('\t'.repeat(g.indent) + trimmed)
+		} else {
+			// Internal line: indent one level deeper than parent.
+			out.write_string('\t'.repeat(g.indent + 1) + trimmed)
+		}
+		if i < lines.len - 1 {
+			out.write_string('\n')
+		}
+		i++
+	}
+	return out.str()
+}
+
 fn (mut g Gen) type_text(typ string) string {
 	demangled := demangle_formatter_local_types(typ)
 	mut expanded := demangled
@@ -6069,7 +6095,8 @@ fn (mut g Gen) type_text(typ string) string {
 				}
 				name := demangled[start..i]
 				if source := g.formatter_types[name] {
-					out.write_string(source.text)
+					formatted_source := g.format_anon_aggregate_source(source.text)
+					out.write_string(formatted_source)
 					g.skip_comments_in_source(source.start, source.end)
 					g.source_end = int_max(g.source_end, source.end)
 				} else {
