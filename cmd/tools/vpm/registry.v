@@ -474,6 +474,7 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 			dl:            'https://example.com/downloads'
 			api:           'https://example.com/api'
 			auth_required: false
+			// A client learns the key used for the registry signature from this config.
 			public_key:    registry.public_key_hex()
 		})
 	}

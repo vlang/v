@@ -142,3 +142,18 @@ fn test_configuration_exposes_the_key_that_signs_the_registry() {
 	assert config.public_key == r.public_key_hex()
 	assert config.public_key != ''
 }
+
+// A client that has only the served config must be able to learn which key
+// vouches for the registry, or it cannot check `signature.sig` at all and a
+// mirror is indistinguishable from the origin it copied.
+fn test_the_config_route_names_the_vouching_key() {
+	os.unsetenv('VPM_REGISTRY_KEY')
+	r := new_demo_registry()
+	vouching_public, private := ed25519.generate_key() or {
+		assert false, 'key generation failed: ${err}'
+		return
+	}
+	os.setenv('VPM_REGISTRY_KEY', private.seed().hex(), true)
+	result := handle_request(r, 'GET', '/config.json', map[string]string{})
+	assert result.contains(vouching_public.hex()), result
+}
