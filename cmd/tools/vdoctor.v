@@ -159,8 +159,7 @@ struct CmdConfig {
 
 fn (mut a App) cmd(c CmdConfig) string {
 	x := os.exec(c.command)
-	os_kind := os.user_os()
-	if x.exit_code < 0 || x.exit_code == 127 || (os_kind == 'windows' && x.exit_code == 1) {
+	if doctor_command_is_unavailable(x, os.user_os()) {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {
@@ -173,6 +172,16 @@ fn (mut a App) cmd(c CmdConfig) string {
 		}
 	}
 	return 'Error: ${x.output}'
+}
+
+fn doctor_command_is_unavailable(x os.Result, os_kind string) bool {
+	if x.exit_code < 0 || x.exit_code == 127 || (os_kind == 'windows' && x.exit_code == 1) {
+		return true
+	}
+	// Windows reports missing executables and paths as CreateProcess errors.
+	// A tool that started successfully can also exit with 2 or 3, so keep its errors.
+	return os_kind == 'windows' && x.exit_code in [2, 3]
+		&& x.output.starts_with('exec failed (CreateProcess) with code ${x.exit_code}:')
 }
 
 fn (mut a App) line(label string, value string) {
