@@ -55,6 +55,32 @@ fn vpm_update(query []string) {
 	}
 }
 
+// detached_project_pin finds an exact project ref for the installed checkout.
+fn detached_project_pin(name string, path string) string {
+	dir := project_lockfile_dir()
+	if dir == '' {
+		return ''
+	}
+	request := project_request_for_module(project_constraints(), name, path)
+	if request != '' && !is_version_range(request) {
+		return request
+	}
+	lf := read_lockfile(dir) or { return '' }
+	origin := normalized_clone_source(checkout_origin_url(path))
+	if origin == '' {
+		return ''
+	}
+	revision := head_revision(path)
+	for entry in lf.modules.values() {
+		pin := requirement_version(entry.requested)
+		if pin != '' && !is_version_range(pin) && entry.revision == revision
+			&& normalized_clone_source(entry.url) == origin {
+			return pin
+		}
+	}
+	return ''
+}
+
 fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 	ident := pp.get_item[string](idx)
 	install_path := get_path_of_existing_module(ident) or {
@@ -87,20 +113,32 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 		return &UpdateResult{}
 	}
 	println('Updating module `${name}` in `${fmt_mod_path(install_path)}`...')
-	// Both a branch and a detached checkout are updated the same way. vpm itself
-	// leaves checkouts detached when it installs a locked revision or a tag, and
-	// a checkout that is not on a branch cannot be pulled; the fetch below
-	// records that case explicitly rather than guessing at it, and
-	// `--update-head-ok` permits it to move such a HEAD, which git otherwise
-	// refuses.
-	//
-	// The old code fetched and then checked out `origin/HEAD` for the detached
-	// case, which a shallow fetch does not reliably provide.
+	if vcs == .git {
+		reason := local_git_changes_reason(install_path)
+		if reason != '' {
+			vpm_error('refusing to update module `${name}` in `${install_path}`: ${reason}.')
+			return &UpdateResult{}
+		}
+	}
 	args := vcs_info[vcs].args
+	mut commands := args.update.clone()
+	if vcs == .git && head_is_detached(install_path) {
+		// Exact project refs stay pinned, as do their lockfile entries.
+		request := detached_project_pin(name, install_path)
+		if request != '' {
+			println('Skipping module `${name}` pinned at `${request}`.')
+			return &UpdateResult{
+				success: true
+			}
+		}
+		// A tagged or locked checkout has no branch to pull. FETCH_HEAD records
+		// the fetched default branch even when origin/HEAD is absent.
+		commands = [['fetch', '--depth', '1', 'origin', 'HEAD'], ['checkout', '--quiet', 'FETCH_HEAD']]
+	}
 	// `head_revision` is git-only and returns '' elsewhere, so this compares
 	// revisions only where revisions mean something.
 	old_revision := head_revision(install_path)
-	for update in args.update {
+	for update in commands {
 		vpm_log(@FILE_LINE, @FN, 'update command: ${update}')
 		os.exec_opt([vcs.str(), args.path, install_path, ...update]) or {
 			vpm_error('failed to update module `${name}` in `${install_path}`.',
@@ -109,11 +147,13 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 			return &UpdateResult{}
 		}
 	}
-	update_git_submodules(install_path) or {
-		vpm_error('failed to update the submodules of module `${name}` in `${install_path}`.',
-			details: err.msg()
-		)
-		return &UpdateResult{}
+	if vcs == .git {
+		update_git_submodules(install_path) or {
+			vpm_error('failed to update the submodules of module `${name}` in `${install_path}`.',
+				details: err.msg()
+			)
+			return &UpdateResult{}
+		}
 	}
 	if old_revision != '' {
 		if head_revision(install_path) == old_revision {

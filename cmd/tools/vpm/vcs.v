@@ -15,9 +15,7 @@ struct VCSInfo {
 		install  []string   @[required]
 		version  string     @[required] // flag name; passed as one `--flag=<version>` element.
 		path     string     @[required] // flag to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
-		// update is a list of whole commands, run in order. A single string
-		// cannot express the shallow update below, which needs a fetch and then
-		// a reset.
+		// update is a list of whole commands, run in order.
 		update   [][]string @[required]
 		outdated []string   @[required]
 	}
@@ -56,16 +54,9 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 			args: struct {
 				install:  git_install_args
 				version:  '--branch'
-				// Installs are shallow, so `pull` cannot be used: on a shallow
-				// clone it reports "Already up to date" and leaves HEAD exactly
-				// where it was, which makes `v update` silently do nothing. Fetch
-				// one commit and move HEAD to it instead. `--update-head-ok`
-				// permits the fetch to move the detached HEAD a tagged install
-				// leaves behind, which git otherwise rejects.
-				update: [
-					['fetch', '--depth', '1', '--update-head-ok', 'origin', 'HEAD'],
-					['reset', '--hard', 'FETCH_HEAD'],
-				]
+				// Pull the configured upstream without discarding local history.
+				// Detached checkouts use an explicit fetch/checkout in update_module.
+				update:   [['pull', '--ff-only', '--recurse-submodules']]
 				path:     '-C'
 				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
 			}

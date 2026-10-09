@@ -8,6 +8,10 @@ v install ui2
 
 Git packages include their file contents in the initial clone, so checkout can complete
 without a second network request for missing file blobs. Submodules are installed recursively.
+Git installs use shallow clones. Branch updates follow their configured upstream using a
+fast-forward pull; detached tag or lockfile checkouts outside constrained projects follow the
+origin's default branch. Updates refuse uncommitted changes or unpublished local commits.
+Exact project refs stay pinned along with their lockfile entries.
 
 ## Semantic version ranges
 
