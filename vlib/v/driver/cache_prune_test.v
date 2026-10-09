@@ -234,6 +234,60 @@ fn test_module_object_keeps_only_the_wrappers_its_code_refers_to() {
 	assert prune_foreign_program_wrappers('int plain;\n', builtin_body) == 'int plain;\n'
 }
 
+// What stays in a wrapper section whatever the code of the object refers to can
+// refer to a `static` wrapper itself. Taking that wrapper out would leave C that
+// names a function which is not there.
+fn test_module_object_keeps_the_wrappers_that_retained_items_refer_to() {
+	section := '/* V3CACHE_PROGRAM_WRAPPERS */
+static void adapter(void) { adapter_helper(); }
+static void adapter_helper(void) { main__work(); }
+static void (*handler)(void) = adapter;
+static void lonely_adapter(void) { main__other(); }
+int IShape__area(IShape* i);
+int IShape__area(IShape* i) {
+	return shape_area_adapter(i);
+}
+static int shape_area_adapter(IShape* i) { return 4; }
+static void drop_tree(main__Tree* _value);
+static void drop_tree(main__Tree* _value) { drop_tree(_value->next); }
+static void drop_list(main__List* _value);
+static void drop_list(main__List* _value) { main__free(_value); }
+/* V3CACHE_PROGRAM_WRAPPERS_END */
+'
+	declarations := 'int before;\n${section}int after;\n'
+	// The code of the module refers to one of the two cleanup helpers and to no
+	// other wrapper.
+	pruned := prune_foreign_program_wrappers(declarations, 'void clear(main__List* l) { drop_list(l); }\n')
+	// The initialized variable stays, so the wrapper it holds does, and so does
+	// the one that this wrapper calls.
+	assert pruned.contains('static void (*handler)(void) = adapter;'), pruned
+	assert pruned.contains('static void adapter(void) { adapter_helper(); }'), pruned
+	assert pruned.contains('static void adapter_helper(void) { main__work(); }'), pruned
+	// A function that is not `static` stays, with the wrapper it calls.
+	assert pruned.contains('int IShape__area(IShape* i) {\n\treturn shape_area_adapter(i);\n}'), pruned
+	assert pruned.contains('static int shape_area_adapter(IShape* i) { return 4; }'), pruned
+	// Nothing refers to these, and a function goes with the declaration that
+	// precedes its definition.
+	assert !pruned.contains('lonely_adapter'), pruned
+	assert !pruned.contains('drop_tree'), pruned
+	assert pruned.contains('static void drop_list(main__List* _value);'), pruned
+	assert pruned.contains('static void drop_list(main__List* _value) { main__free(_value); }'), pruned
+	assert pruned.starts_with('int before;\n') && pruned.ends_with('int after;\n'), pruned
+	// The retained items are what keeps the objects of this program to itself.
+	opaque := v3_opaque_program_wrappers(declarations)
+	assert opaque.contains('static void (*handler)(void) = adapter;'), opaque
+	assert opaque.contains('int IShape__area(IShape* i) {'), opaque
+	assert !opaque.contains('adapter_helper'), opaque
+	// A variable whose initializer ends like a prototype is no declaration.
+	item := v3_program_wrapper_item('static void (*handler)(void) = (adapter);', 0, 1)
+	assert !item.declares && item.function == ''
+	assert v3_static_prototype_name(item) == ''
+	assert v3_static_prototype_name(v3_program_wrapper_item('static void drop_tree(main__Tree* _value);',
+		0, 1)) == 'drop_tree'
+	assert v3_static_prototype_name(v3_program_wrapper_item('i64 Worker__value(main__Worker);',
+		0, 1)) == ''
+}
+
 fn test_cached_object_signature_ignores_prunable_program_wrappers() {
 	// A build that parses a module from its header generates none of that module's
 	// wrappers, and has to find the object that the build from source published.

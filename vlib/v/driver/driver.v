@@ -17246,15 +17246,35 @@ fn v3_program_wrapper_item(text string, first_line int, lines int) V3ProgramWrap
 			}
 		}
 	}
-	// A `typedef struct { ... } name;` has braces and still only declares.
+	// A `typedef struct { ... } name;` has braces and still only declares. A
+	// variable with an initializer does not: `static void (*f)(void) = (g);`.
 	declares := lines == 1 && text.ends_with(';') && (text.starts_with('typedef ')
-		|| (brace < 0 && (text.starts_with('extern ') || text.ends_with(');'))))
+		|| (brace < 0 && !text.contains('=')
+			&& (text.starts_with('extern ') || text.ends_with(');'))))
 	return V3ProgramWrapperItem{
 		text:       text
 		declares:   declares
 		first_line: first_line
 		lines:      lines
 	}
+}
+
+// v3_static_prototype_name returns the function that an item of a wrapper section
+// declares ahead of its definition, `static void helper(T* value);`, or `` for an
+// item that is no such declaration.
+fn v3_static_prototype_name(item V3ProgramWrapperItem) string {
+	if !item.declares || !item.text.starts_with('static ') {
+		return ''
+	}
+	open := item.text.index_u8(`(`)
+	mut start := open
+	for start > 0 && (item.text[start - 1].is_alnum() || item.text[start - 1] == `_`) {
+		start--
+	}
+	if open <= 0 || start == open {
+		return ''
+	}
+	return item.text[start..open]
 }
 
 // v3_program_wrapper_items returns the items of the wrapper sections of `lines`,
@@ -17319,6 +17339,10 @@ fn v3_opaque_program_wrappers(source string) string {
 // object is compiled with, the wrappers that the code of the object does not
 // refer to. `body` is that code. A wrapper that a kept wrapper calls stays, and
 // `__v3_callback_identity` knows the wrappers that stay.
+// What a wrapper section holds besides `static` functions and declarations stays
+// in every object (see v3_opaque_program_wrappers), and can refer to a wrapper as
+// the code does: a function that is not `static` calls one, a variable is
+// initialized with one. Those wrappers stay too.
 fn prune_foreign_program_wrappers(declarations string, body string) string {
 	if !declarations.contains(v3_program_wrappers_begin) {
 		return declarations
@@ -17326,44 +17350,63 @@ fn prune_foreign_program_wrappers(declarations string, body string) string {
 	lines := declarations.split_into_lines()
 	items := v3_program_wrapper_items(lines)
 	mut functions := map[string]int{}
+	mut prototypes := map[string][]int{}
 	mut pending := map[string]bool{}
+	mut retained := strings.new_builder(128)
 	for i, item in items {
 		if item.function.len > 0 {
 			functions[item.function] = i
 			pending[item.function] = true
+		} else if !item.declares {
+			retained.writeln(item.text)
+		} else {
+			declared := v3_static_prototype_name(item)
+			if declared.len > 0 {
+				prototypes[declared] << i
+			}
 		}
 	}
 	if pending.len == 0 {
 		return declarations
 	}
-	mut referring := body
+	mut referring := [body]
+	if retained.len > 0 {
+		referring << retained.str()
+	}
 	for pending.len > 0 {
-		references := cache_function_reference_counts(referring, pending)
 		mut added := strings.new_builder(256)
-		for name, count in references {
-			if count == 0 {
-				continue
-			}
-			pending.delete(name)
-			if name != v3_callback_identity_fn {
-				// The identity function names every wrapper; that is not a call.
-				added.writeln(items[functions[name]].text)
+		for source in referring {
+			references := cache_function_reference_counts(source, pending)
+			for name, count in references {
+				if count == 0 {
+					continue
+				}
+				pending.delete(name)
+				if name != v3_callback_identity_fn {
+					// The identity function names every wrapper; that is not a call.
+					added.writeln(items[functions[name]].text)
+				}
 			}
 		}
 		if added.len == 0 {
 			break
 		}
 		// What the wrappers kept in this round call is kept in the next one.
-		referring = added.str()
+		referring = [added.str()]
 	}
 	if pending.len == 0 {
 		return declarations
 	}
 	mut dropped_lines := map[int]bool{}
 	for name, _ in pending {
-		item := items[functions[name]]
-		for line in item.first_line .. item.first_line + item.lines {
-			dropped_lines[line] = true
+		mut dropped_items := [functions[name]]
+		// The declaration of a function ahead of its definition goes with it.
+		dropped_items << prototypes[name]
+		for index in dropped_items {
+			item := items[index]
+			for line in item.first_line .. item.first_line + item.lines {
+				dropped_lines[line] = true
+			}
 		}
 	}
 	if v3_callback_identity_fn !in pending {
