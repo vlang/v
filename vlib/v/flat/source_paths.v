@@ -53,12 +53,7 @@ fn (mut a FlatAst) resolve_listed_source_path(path string) string {
 	if attr.get_filetype() != .regular {
 		return os.real_path(path)
 	}
-	dir := path[..sep]
-	mut real_dir := a.resolved_source_dirs[dir]
-	if real_dir.len == 0 {
-		real_dir = os.real_path(dir)
-		a.resolved_source_dirs[dir] = real_dir
-	}
+	real_dir := a.record_source_path(path[..sep])
 	if real_dir.len == 0 || real_dir[0] != `/` {
 		return os.real_path(path)
 	}

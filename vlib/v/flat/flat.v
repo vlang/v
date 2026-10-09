@@ -535,10 +535,7 @@ pub mut:
 	// sets source_paths_frozen; from then on it is only read, see real_source_path.
 	resolved_source_paths map[string]string
 	source_paths_frozen   bool
-	// resolved_source_dirs maps the directories of listed sources to their resolved
-	// form, see record_listed_source_path. Only the owning thread uses it.
-	resolved_source_dirs map[string]string
-	comments             []Comment
+	comments              []Comment
 	// formatter_sources retains exact source spans or prefixes for constructs whose
 	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources      map[int]string

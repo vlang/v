@@ -206,8 +206,9 @@ fn (tc &TypeChecker) diagnostic_qualified_name(name string) ?string {
 }
 
 fn (tc &TypeChecker) diagnostic_module_name(module_name string, declaration_file string) string {
-	root := os.real_path(tc.module_diagnostic_root).replace('\\', '/').trim_right('/')
-	directory := os.real_path(os.dir(declaration_file)).replace('\\', '/').trim_right('/')
+	// The directories of the parsed sources are in the table of resolved paths.
+	root := tc.a.real_source_path(tc.module_diagnostic_root).replace('\\', '/').trim_right('/')
+	directory := tc.a.real_source_path(os.dir(declaration_file)).replace('\\', '/').trim_right('/')
 	if root == '' || directory == '' || directory == root || !directory.starts_with(root + '/') {
 		return module_name
 	}
@@ -8341,6 +8342,16 @@ pub fn (mut r ShadowFileResolver) owns_file(file string, diagnostic_root string,
 		return false
 	}
 	return shadow_roots_own_resolved_file(r.abs_path(file), r.real_path(file), diagnostic_root,
+		explicit_roots, dependency_roots)
+}
+
+// owns_resolved_file is owns_file for a file whose resolved path (os.real_path)
+// the caller already has.
+pub fn (r &ShadowFileResolver) owns_resolved_file(file string, real_file string, diagnostic_root string, explicit_roots []string, dependency_roots []string) bool {
+	if file == '' {
+		return false
+	}
+	return shadow_roots_own_resolved_file(r.abs_path(file), real_file, diagnostic_root,
 		explicit_roots, dependency_roots)
 }
 

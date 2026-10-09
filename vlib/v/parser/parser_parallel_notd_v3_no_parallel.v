@@ -146,18 +146,26 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		return p.parse_files_with_starts(paths), false
 	}
 	pdsw := time.new_stopwatch()
-	mut sizes := []i64{cap: paths.len}
-	mut total_bytes := i64(0)
-	for path in paths {
-		size := i64(os.file_size(path))
-		sizes << size
-		total_bytes += size
-	}
 	if isnil(p.a.worker_pool) {
 		p.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 	}
 	n_jobs := parse_job_count(p.a.worker_pool.size() + 1, paths.len)
-	if n_jobs <= 1 || total_bytes < min_parallel_parse_bytes {
+	if n_jobs <= 1 {
+		// One job parses the batch in order: the sizes below only split it.
+		return p.parse_files_with_starts(paths), false
+	}
+	mut sizes := []i64{cap: paths.len}
+	mut total_bytes := i64(0)
+	for path in paths {
+		size := if path in p.preloaded_sources {
+			i64(p.preloaded_sources[path].len)
+		} else {
+			i64(os.file_size(path))
+		}
+		sizes << size
+		total_bytes += size
+	}
+	if total_bytes < min_parallel_parse_bytes {
 		return p.parse_files_with_starts(paths), false
 	}
 	// More chunks than workers: the pool queue packs them dynamically, so
