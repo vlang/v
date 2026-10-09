@@ -37,6 +37,7 @@ pub fn escape(input string, config EscapeConfig) string {
 // unescape converts entities like "&lt;" to "<". By default it is the converse of `escape`.
 // If `all` is set to true, it handles named, numeric, and hex values - for example,
 // `'&apos;'`, `'&#39;'`, and `'&#x27;'` then unescape to "'".
+// Unknown entities are preserved, including a trailing `&` or unterminated name.
 pub fn unescape(input string, config UnescapeConfig) string {
 	return if config.all {
 		unescape_all(input)
@@ -57,6 +58,7 @@ fn unescape_all(input string) string {
 			for j < runes.len && runes[j] != `;` {
 				j++
 			}
+			end := if j < runes.len { j + 1 } else { j }
 			if j < runes.len && runes[i + 1] == `#` {
 				// Numeric escape sequences (e.g., &#39; or &#x27;)
 				if runes[i + 2] == `x` || runes[i + 2] == `X` {
@@ -88,10 +90,10 @@ fn unescape_all(input string) string {
 					result << v
 				} else {
 					// Leave unknown entities unchanged
-					result << runes[i..j + 1]
+					result << runes[i..end]
 				}
 			}
-			i = j + 1
+			i = end
 		} else {
 			result << runes[i]
 			i++
