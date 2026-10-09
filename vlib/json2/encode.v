@@ -416,15 +416,30 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 	} $else $if T is isize {
 		integer_val = isize(val).str()
 	} $else $if T is f32 {
-		integer_val = f32(val).str()
+		magnitude := f32_abs(val)
+		integer_val = if magnitude == 0 || (magnitude >= f32(1e-6) && magnitude < f32(1e21)) {
+			f32(val).strlong()
+		} else {
+			f32(val).str()
+		}
 	} $else $if T is f64 {
-		integer_val = f64(val).str()
+		magnitude := f64_abs(val)
+		integer_val = if magnitude == 0 || (magnitude >= 1e-6 && magnitude < 1e21) {
+			f64(val).strlong()
+		} else {
+			f64(val).str()
+		}
 	}
 	$if T is $float {
 		// JSON has no NaN or infinity, which V formats as `nan`, `+inf` and `-inf`.
 		if integer_val == 'nan' || integer_val.ends_with('inf') {
 			encoder.encode_null()
 			return
+		}
+		// JSON uses compact exponents, so `1e-07` becomes `1e-7`.
+		if integer_val.len >= 4 && integer_val[integer_val.len - 4] == `e`
+			&& integer_val[integer_val.len - 2] == `0` {
+			integer_val = integer_val[..integer_val.len - 2] + integer_val[integer_val.len - 1..]
 		}
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
 			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
