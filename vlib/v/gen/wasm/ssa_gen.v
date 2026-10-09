@@ -846,8 +846,8 @@ fn (g &SSAGen) intrinsic_name(value ssa.Value) ?string {
 		return none
 	}
 	name := g.function_name(value).trim_string_left('C.')
-	if name in ['write', 'malloc', 'calloc', 'realloc', 'free', 'memcpy', 'memmove', 'memset',
-		'exit', 'abort'] {
+	if name in ['write', 'malloc', 'calloc', 'realloc', 'memcmp', 'free', 'memcpy', 'memmove',
+		'memset', 'exit', 'abort'] {
 		return name
 	}
 	return none
@@ -966,6 +966,86 @@ fn (mut g SSAGen) emit_intrinsic(id int, instr ssa.Instruction, name string) ! {
 			g.memory_copy()
 			g.cur.end()
 			g.cur.local_get(new_l)
+			g.result(id)
+		}
+		'memcmp' {
+			// memcmp(a, b, n) as a byte loop: the result is 0 when the ranges
+			// are equal, otherwise the sign of the first differing byte. The
+			// loop condition carries both stopping rules at once -- past the
+			// end, and a difference already found -- so there is no early
+			// break and the branch depth stays at zero.
+			a_l := g.temp(.i32)
+			b_l := g.temp(.i32)
+			n_l := g.temp(.i32)
+			i_l := g.temp(.i32)
+			ca_l := g.temp(.i32)
+			cb_l := g.temp(.i32)
+			diff_l := g.temp(.i32)
+			g.intrinsic_arg(ops[1])!
+			g.cur.local_set(a_l)
+			g.intrinsic_arg(ops[2])!
+			g.cur.local_set(b_l)
+			g.intrinsic_arg(ops[3])!
+			g.cur.local_set(n_l)
+			g.cur.i32_const(0)
+			g.cur.local_set(i_l)
+			g.cur.i32_const(0)
+			g.cur.local_set(diff_l)
+			g.cur.loop_void()
+			g.cur.local_get(i_l)
+			g.cur.local_get(n_l)
+			g.cur.raw(0x49) // i32.lt_u
+			g.cur.if_void()
+			g.cur.local_get(a_l)
+			g.cur.local_get(i_l)
+			g.cur.raw(0x6a) // i32.add
+			g.cur.load(0x2d, 0, 0) // i32.load8_u
+			g.cur.local_set(ca_l)
+			g.cur.local_get(b_l)
+			g.cur.local_get(i_l)
+			g.cur.raw(0x6a)
+			g.cur.load(0x2d, 0, 0)
+			g.cur.local_set(cb_l)
+			g.cur.local_get(ca_l)
+			g.cur.local_get(cb_l)
+			g.cur.raw(0x47) // i32.ne
+			g.cur.if_void()
+			g.cur.local_get(ca_l)
+			g.cur.local_get(cb_l)
+			g.cur.raw(0x49)
+			g.cur.if_void()
+			g.cur.i32_const(-1)
+			g.cur.local_set(diff_l)
+			g.cur.else_()
+			g.cur.i32_const(1)
+			g.cur.local_set(diff_l)
+			g.cur.end()
+			g.cur.end()
+			g.cur.i32_const(1)
+			g.cur.local_get(i_l)
+			g.cur.raw(0x6a)
+			g.cur.local_set(i_l)
+			g.cur.end()
+			// Still in range, and no difference seen yet: both predicates are
+			// 0 or 1, so their product is the loop condition.
+			g.cur.local_get(i_l)
+			g.cur.local_get(n_l)
+			g.cur.raw(0x49)
+			g.cur.local_get(diff_l)
+			g.cur.i32_const(0)
+			g.cur.raw(0x46) // i32.eq
+			g.cur.raw(0x6c) // i32.mul
+			g.cur.br_if(0)
+			g.cur.end()
+			g.cur.local_get(diff_l)
+			// memcmp is registered with an i64 return shadowing C's `int`,
+			// whose upper bits are outside the ABI result. A wasm caller
+			// reads only the low 32 bits, but the value still has to carry
+			// the declared width or the local.set that stores it rejects an
+			// i32 against an i64 local.
+			if g.wtype(g.m.values[id].typ) == .i64 {
+				g.cur.raw(0xac) // i64.extend_i32_s, as coerce emits
+			}
 			g.result(id)
 		}
 		'exit', 'abort' {
