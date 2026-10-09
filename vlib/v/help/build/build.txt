@@ -74,6 +74,8 @@ NB: the build flags are shared with the run command too:
                             hosts. V executables built from `cmd/v` (`make`, `makev.bat`,
                             `v self`, `v up`) include it unless they are built with
                             `-d skip_fastc`.
+                            Supports array/map literals, checked array indexing, and `in`/`!in`.
+                            See doc/fastc.md for supported constructs and current limitations.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
     * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
     * `js_browser`        - V outputs JS source code ready for the browser.

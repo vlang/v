@@ -70,6 +70,9 @@ v update --latest
 
 `--precise` selects one package version or commit and fails if it violates any requirement.
 Numeric versions can match a tag with the optional `v` prefix.
+Targeted updates accept any direct repository alias, including one listed only in
+`dev_dependencies`. Aliases of the same repository share the targeted selection, and
+`--precise` must still satisfy every regular and development requirement on that repository.
 `--latest` widens selected direct dependencies to the newest resolvable stable release, writes
 caret constraints back to every selected direct requirement in `v.mod`, including URL aliases,
 and records them in the lockfile. Transitive requirements still
