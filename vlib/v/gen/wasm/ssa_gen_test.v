@@ -5,6 +5,7 @@ import v.parser
 import v.pref
 import v.ssa
 import v.ssa.optimize
+import v.transform
 import v.types
 
 fn ssa_wasm_test_dir(name string) string {
@@ -660,5 +661,123 @@ pub fn add(value int) int {
 assert.equal(e.invoke(3), 10);
 assert.equal(e.invoke(-7), 0);
 ')
+	}
+}
+
+// Arrays of primitive elements lower end to end on wasm: literals, init,
+// index load/store, push, slice, and for-in. The pipeline below matches the
+// driver's wasm path, including the transform pass that rewrites `<<` into a
+// push call and `[]int{}` into `__new_array_noscan`; without both, the
+// construct silently miscompiles instead of failing.
+fn test_ssa_wasm_primitive_arrays() {
+	dir := ssa_wasm_test_dir('arrays')
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'arrays.v')
+	os.write_file(source, '
+module main
+
+pub fn arr_sum() int {
+	mut total := 0
+	a := [1, 2, 3]
+	for x in a {
+		total += x
+	}
+	return total
+}
+
+pub fn arr_push_len() int {
+	mut b := []int{}
+	b << 4
+	b << 5
+	return b.len * 100 + b[0] * 10 + b[1]
+}
+
+pub fn arr_index_assign() int {
+	mut c := [10, 20, 30]
+	c[1] = 99
+	return c[0] + c[1] + c[2]
+}
+
+pub fn arr_slice_sum() int {
+	a := [1, 2, 3, 4]
+	s := a[1..3]
+	return s.len * 100 + s[0] * 10 + s[1]
+}
+
+pub fn arr_init_fill() int {
+	z := []int{len: 4, init: 7}
+	return z.len * 100 + z[0] * 10 + z[3]
+}
+
+pub fn arr_floats() int {
+	a := [1.5, 2.5]
+	mut t := 0.0
+	for x in a {
+		t += x
+	}
+	return int(t * 10)
+}
+
+pub fn arr_bools() int {
+	a := [true, false, true]
+	mut n := 0
+	for x in a {
+		if x {
+			n++
+		}
+	}
+	return n
+}
+
+pub fn arr_bytes() int {
+	a := [u8(7), u8(8)]
+	return int(a[0]) * 10 + int(a[1])
+}
+') or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	mut ta := a
+	transform.transform(mut ta, &tc)
+	exports := {
+		'arr_sum':          'arr_sum'
+		'arr_push_len':     'arr_push_len'
+		'arr_index_assign': 'arr_index_assign'
+		'arr_slice_sum':    'arr_slice_sum'
+		'arr_init_fill':    'arr_init_fill'
+		'arr_floats':       'arr_floats'
+		'arr_bools':        'arr_bools'
+		'arr_bytes':        'arr_bytes'
+	}
+	checks := '
+assert.equal(e.arr_sum(), 6);
+assert.equal(e.arr_push_len(), 245);
+assert.equal(e.arr_index_assign(), 139);
+assert.equal(e.arr_slice_sum(), 223);
+assert.equal(e.arr_init_fill(), 477);
+assert.equal(e.arr_floats(), 40);
+assert.equal(e.arr_bools(), 2);
+assert.equal(e.arr_bytes(), 78);
+'
+	for production in [false, true] {
+		mut m := ssa.build_with_options(ta, map[string]bool{}, &tc, ssa.BuildOptions{
+			target: ssa.TargetData{ ptr_size: 4 }
+		})
+		if production {
+			optimize.optimize(mut m)
+		}
+		mut g := SSAGen.new(m)
+		g.configure(exports, []string{}, '')
+		g.gen() or { panic(err) }
+		path := os.join_path(dir, 'arrays_${production}.wasm')
+		g.write(path) or { panic(err) }
+		assert_ssa_wasm_execution(path, checks)
 	}
 }

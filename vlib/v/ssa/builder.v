@@ -3055,6 +3055,18 @@ fn (mut b Builder) register_array_runtime_stubs() {
 		b.generate_array_new_body(array_new_id)
 	}
 
+	// `__new_array_noscan(len, cap, size)` is what the transformer emits for
+	// `[]T{}` with scalar elements. It takes len/cap/size where array_new
+	// takes size/len/cap, so delegate with reordered arguments.
+	mut p_noscan := []TypeID{}
+	p_noscan << b.i64_type
+	p_noscan << b.i64_type
+	p_noscan << b.i64_type
+	if array_noscan_id := b.register_runtime_function('__new_array_noscan', b.array_type,
+		p_noscan) {
+		b.generate_array_noscan_body(array_noscan_id)
+	}
+
 	mut p2 := []TypeID{}
 	p2 << b.array_type
 	p2 << b.i64_type
@@ -5664,6 +5676,18 @@ fn (mut b Builder) generate_array_new_body(func_id int) {
 	b.block_instr1(.ret, blk_fields, b.void_type, arr)
 }
 
+// generate_array_noscan_body delegates `__new_array_noscan(len, cap, size)`
+// to array_new, which takes (size, len, cap).
+fn (mut b Builder) generate_array_noscan_body(func_id int) {
+	entry := b.m.add_block(func_id, 'entry')
+	len := b.func_add_argument(func_id, b.i64_type, 'len')
+	cap := b.func_add_argument(func_id, b.i64_type, 'cap')
+	size := b.func_add_argument(func_id, b.i64_type, 'size')
+	new_ref := b.m.add_value(.func_ref, b.array_type, 'array_new', b.runtime_fn_id('array_new'))
+	res := b.block_instr4(.call, entry, b.array_type, new_ref, size, len, cap)
+	b.block_instr1(.ret, entry, b.array_type, res)
+}
+
 // generate_array_get_body supports generate array get body handling for Builder.
 fn (mut b Builder) generate_array_get_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -7849,7 +7873,11 @@ fn (mut b Builder) build_array_for_in(node flat.Node, key_id flat.NodeId, val_id
 
 	elem_type_name := b.for_in_array_elem_type_name(container_id, container_type)
 	elem_type := b.resolve_type(elem_type_name)
-	has_value_var := b.valid_node_id(val_id)
+	// A single loop variable takes the element, not the index: the parser
+	// leaves an `.empty` placeholder where the value variable would be, and
+	// valid_node_id accepts it, so check the kind explicitly. Without this,
+	// `for x in arr` binds x to the key and sums indices instead of elements.
+	has_value_var := b.valid_node_id(val_id) && b.a.nodes[int(val_id)].kind == .ident
 	key_name := b.ident_name(key_id)
 	val_name := if has_value_var { b.ident_name(val_id) } else { key_name }
 	old_key := b.save_var_binding(key_name)
@@ -8724,7 +8752,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			return b.build_struct_init(node)
 		}
 		.array_literal {
-			return b.build_array_literal(node)
+			return b.build_array_literal(id, node)
 		}
 		.array_init {
 			return b.build_array_init(node)
@@ -9044,7 +9072,7 @@ fn (mut b Builder) build_block_expr(node flat.Node) ValueID {
 	return b.build_expr(last_id)
 }
 
-fn (mut b Builder) build_array_literal(node flat.Node) ValueID {
+fn (mut b Builder) build_array_literal(id flat.NodeId, node flat.Node) ValueID {
 	if b.is_fixed_array_type_name(node.typ) {
 		mut fixed_node := node
 		fixed_node.value = node.typ
@@ -9060,6 +9088,14 @@ fn (mut b Builder) build_array_literal(node flat.Node) ValueID {
 			elem_type = b.value_type(value)
 		}
 		values << value
+	}
+	// Integer literals type wider than the array element: an untyped `1` is
+	// i64 while `[]int` holds i32. Take the width from the array type when the
+	// checker knows it, or the header stride disagrees with every reader,
+	// which all use the element type, and elements read back shifted.
+	arr_type := b.checked_expr_type_name(id)
+	if arr_type.starts_with('[]') && arr_type.len > 2 {
+		elem_type = b.resolve_type(indexed_elem_type_name(arr_type))
 	}
 	elem_size := b.m.type_size(elem_type)
 	actual_elem_size := if elem_size > 0 { elem_size } else { 8 }

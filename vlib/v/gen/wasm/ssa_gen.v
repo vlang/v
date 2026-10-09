@@ -846,7 +846,8 @@ fn (g &SSAGen) intrinsic_name(value ssa.Value) ?string {
 		return none
 	}
 	name := g.function_name(value).trim_string_left('C.')
-	if name in ['write', 'malloc', 'calloc', 'free', 'memcpy', 'memmove', 'memset', 'exit', 'abort'] {
+	if name in ['write', 'malloc', 'calloc', 'realloc', 'free', 'memcpy', 'memmove', 'memset',
+		'exit', 'abort'] {
 		return name
 	}
 	return none
@@ -940,6 +941,32 @@ fn (mut g SSAGen) emit_intrinsic(id int, instr ssa.Instruction, name string) ! {
 				g.value_as(ops[1], instr.typ)!
 				g.result(id)
 			}
+		}
+		'realloc' {
+			// realloc(ptr, size) as malloc + copy. Sound only because the
+			// bump allocator grows (zeroed) memory first and never frees:
+			// every read lands in-bounds, and a null input skips the copy
+			// (C semantics: realloc(NULL, n) == malloc(n)), leaving the
+			// allocator-zeroed buffer intact.
+			ptr_l := g.temp(.i32)
+			size_l := g.temp(.i32)
+			new_l := g.temp(.i32)
+			g.intrinsic_arg(ops[1])!
+			g.cur.local_set(ptr_l)
+			g.intrinsic_arg(ops[2])!
+			g.cur.local_set(size_l)
+			g.cur.local_get(size_l)
+			g.cur.call(g.alloc_index)
+			g.cur.local_set(new_l)
+			g.cur.local_get(ptr_l)
+			g.cur.if_void()
+			g.cur.local_get(new_l)
+			g.cur.local_get(ptr_l)
+			g.cur.local_get(size_l)
+			g.memory_copy()
+			g.cur.end()
+			g.cur.local_get(new_l)
+			g.result(id)
 		}
 		'exit', 'abort' {
 			if name == 'exit' {

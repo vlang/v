@@ -17829,6 +17829,18 @@ fn msvc_inline_asm_node_error(a &flat.FlatAst, id flat.NodeId, top_level bool, m
 	return none
 }
 
+// wasm_supported_array_elem reports whether a resolved array type name has
+// primitive elements the wasm backend lowers today. Single dimension only:
+// nested arrays need inner-header handling that does not exist yet.
+fn wasm_supported_array_elem(type_name string) bool {
+	if !type_name.starts_with('[]') || type_name.len <= 2 {
+		return false
+	}
+	elem := type_name[2..]
+	return elem in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
+		'f32', 'f64', 'bool', 'char', 'rune']
+}
+
 fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, backend string, diagnose_aggregates bool, fallback_location string, mut visited []bool) ?string {
 	idx := int(id)
 	if idx < 0 || idx >= a.nodes.len || visited[idx] {
@@ -17840,6 +17852,15 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 		mut unsupported_type := ''
 		if node.kind in [.array_literal, .array_init, .map_init, .struct_init] {
 			unsupported_type = tc.resolve_type(id).name()
+			// Dynamic arrays of primitive elements lower in the wasm backend
+			// (literals, init, index, push, slices, for-in). Anything else
+			// stays gated: maps, structs, fixed arrays, and nested arrays
+			// have no wasm lowering yet, and a silent miscompile would be
+			// worse than this error.
+			if (node.kind == .array_literal || node.kind == .array_init)
+				&& wasm_supported_array_elem(unsupported_type) {
+				unsupported_type = ''
+			}
 		} else if node.kind == .call && node.children_count > 0 {
 			callee := a.child_node(&node, 0)
 			if callee.kind == .ident && callee.value == 'new_map' {
