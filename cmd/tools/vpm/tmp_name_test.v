@@ -1,5 +1,7 @@
 module main
 
+import os
+
 // These mirror what version_range_test.v asserts about version_tmp_name, run
 // here so the clang-dependent parts of that suite cannot hide a regression.
 
@@ -31,15 +33,29 @@ fn test_distinct_ranges_still_get_distinct_components() {
 	assert version_tmp_name('>=1.0 <2.0') != version_tmp_name('>=1.0 <3.0')
 }
 
-fn test_a_long_commit_sha_is_cut_short() {
+fn test_a_long_hex_ref_is_bounded() {
 	long := '0769d565c503c3885f4b48b7a7e87648b660bf66aae632430b74e13efd5b60c4'
 	tmp := version_tmp_name(long)
 	assert tmp.len == tmp_name_length, 'a 64-character SHA produced a ${tmp.len}-character component'
-	assert tmp == '0769d565c503', tmp
-	// The cut is a prefix, so the component still identifies the commit.
-	assert long.starts_with(tmp)
+	assert tmp == version_tmp_name(long)
+}
+
+fn test_long_hex_refs_with_the_same_prefix_have_distinct_components() {
+	assert version_tmp_name('deadbeef0000aaaa') != version_tmp_name('deadbeef0000bbbb')
 }
 
 fn test_the_digest_is_stable() {
 	assert version_tmp_name('^1.0') == version_tmp_name('^1.0')
+}
+
+fn test_resolver_namespaces_keep_randomness_after_a_shared_timestamp() {
+	a := '01ARZ3NDEK0000000000000000'
+	b := '01ARZ3NDEK0000000000000001'
+	assert a[..tmp_name_length] == b[..tmp_name_length]
+	first := resolver_tmp_namespace(a)
+	second := resolver_tmp_namespace(b)
+	assert first != second
+	assert os.file_name(first).len == tmp_name_length
+	assert os.file_name(second).len == tmp_name_length
+	assert os.dir(first) == 'resolver'
 }

@@ -29,16 +29,13 @@ fn is_version_range(version string) bool {
 	return wildcard
 }
 
-// The length of the component `version_tmp_name` derives from a commit SHA.
+// The length of the digest component `version_tmp_name` derives from a Git ref.
 // A full 64-character SHA as one path component pushes a temp path over
 // `MAX_PATH` on Windows once `.git/objects/pack` sits beneath it, so it is cut
-// to a short SHA. 12 matches the `pseudo_version` convention, and git itself
-// treats a 12-character prefix as an unambiguous object name.
+// to a short digest of the complete ref rather than a prefix shared by distinct refs.
 const tmp_name_length = 12
 
-// is_hex_digest reports whether `value` is a long all-hex string, i.e. a commit
-// SHA. A tag is deliberately excluded below even when it happens to be
-// all-hex, because cutting a tag would silently merge two distinct ones.
+// is_hex_digest reports whether `value` is a long all-hex ref spelling.
 fn is_hex_digest(value string) bool {
 	if value.len < tmp_name_length {
 		return false
@@ -53,7 +50,7 @@ fn version_tmp_name(version string) string {
 		return 'range-' + sha256.hexhash(version)[0..tmp_name_length]
 	}
 	if is_hex_digest(version) {
-		return version[0..tmp_name_length]
+		return sha256.hexhash(version)[0..tmp_name_length]
 	}
 	return version
 }

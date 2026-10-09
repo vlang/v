@@ -35,6 +35,11 @@ mut:
 	namespace   string
 }
 
+// resolver_tmp_namespace keeps only random ULID characters in the short namespace.
+fn resolver_tmp_namespace(id string) string {
+	return os.join_path('resolver', id[id.len - tmp_name_length..])
+}
+
 fn resolve_module_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope, prefer_lock bool, precise map[string]string) ![]Module {
 	// The namespace separates this resolver's temp clones from any other vpm
 	// process's, so it only has to be unique among the ones running now. A
@@ -42,7 +47,7 @@ fn resolve_module_query(query []string, mut selector VpmInstallServerSelector, m
 	// path a clone is checked out into; on Windows, with `.git/objects` and a
 	// long module name underneath, it is enough to push past `MAX_PATH`. The
 	// same length is used for the other short components below.
-	namespace := os.join_path('resolver', rand.ulid()[0..tmp_name_length])
+	namespace := resolver_tmp_namespace(rand.ulid())
 	mut overrides := []Override{}
 	project := vmod.get_cache().get_by_folder(os.getwd())
 	root_file := if scope.active { os.join_path(scope.dir, 'v.mod') } else { project.vmod_file }
