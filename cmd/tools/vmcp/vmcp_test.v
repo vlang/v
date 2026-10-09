@@ -392,6 +392,111 @@ fn test_stdlib_doc_bounds_large_limits_and_offsets() {
 	assert first.contains('alpha') && !first.contains('beta'), first
 }
 
+fn test_page_diagnostics_keeps_the_head() {
+	items := [
+		Diagnostic{ path: 'a.v', line: 1, column: 1, kind: 'error', message: 'first' },
+		Diagnostic{ path: 'a.v', line: 2, column: 1, kind: 'error', message: 'second' },
+		Diagnostic{ path: 'a.v', line: 3, column: 1, kind: 'warning', message: 'third' },
+	]
+	kept, omitted := page_diagnostics(items, 2)
+	assert kept.len == 2 && omitted == 1, 'expected 2 kept and 1 omitted'
+	assert kept[0].message == 'first' && kept[1].message == 'second', 'the head must survive'
+	all, none_omitted := page_diagnostics(items, 0)
+	assert all.len == 3 && none_omitted == 0, 'max < 1 means the default, which fits'
+	empty, _ := page_diagnostics([]Diagnostic{}, 2)
+	assert empty.len == 0, 'empty stays empty'
+}
+
+fn test_check_json_pages_diagnostics_but_keeps_totals() {
+	ws := probe_workspace()
+	items := [
+		Diagnostic{ path: 'a.v', line: 1, column: 1, kind: 'error', message: 'first' },
+		Diagnostic{ path: 'a.v', line: 2, column: 1, kind: 'error', message: 'second' },
+		Diagnostic{ path: 'a.v', line: 3, column: 1, kind: 'warning', message: 'third' },
+	]
+	run := CompilerRun{
+		exit_code: 1
+		command:   'v -check a.v'
+	}
+	answer := check_json(ws, probe_path('main.v'), run, items, 2)
+	flat := replace_all(answer, '\t', '')
+	// Counts describe all three; only the array is paged.
+	assert field(flat, 'error_count') == '2', answer
+	assert field(flat, 'warning_count') == '1', answer
+	assert field(flat, 'diagnostics_omitted') == '1', answer
+	assert answer.contains('first'), answer
+	assert !answer.contains('third'), answer
+	assert answer.contains('"hint"'), answer
+}
+
+fn test_page_diagnostics_default_and_integer_bounds() {
+	mut items := []Diagnostic{}
+	for i in 0 .. max_diagnostics_default + 2 {
+		items << Diagnostic{
+			path:    'many.v'
+			line:    i + 1
+			kind:    'error'
+			message: 'diagnostic ${i}'
+		}
+	}
+	for limit in [0, -1, -2147483647 - 1] {
+		assert limit <= 0
+		kept, omitted := page_diagnostics(items, limit)
+		assert kept.len == max_diagnostics_default
+		assert omitted == 2
+		assert kept[0].message == 'diagnostic 0'
+		assert kept.last().message == 'diagnostic 99'
+	}
+	all, omitted := page_diagnostics(items, int(0x7fffffff))
+	assert all.len == items.len
+	assert omitted == 0
+}
+
+fn test_run_result_pages_diagnostics_and_reports_total_counts() {
+	ws := probe_workspace()
+	run := CompilerRun{
+		exit_code: 1
+		command:   'v run broken.v'
+		output:    'broken.v:1:1: error: first\nbroken.v:2:1: warning: second\nbroken.v:3:1: error: third\n'
+	}
+	answer := run_result_json(ws, probe_path('broken.v'), run, 1)
+	parsed := json.decode[map[string]json.Any](answer) or { panic(err) }
+	assert parsed['started']!.bool()
+	assert parsed['exit_code']!.int() == 1
+	assert !parsed['ok']!.bool()
+	assert parsed['error_count']!.int() == 2
+	assert parsed['warning_count']!.int() == 1
+	assert parsed['diagnostics_omitted']!.int() == 2
+	diagnostics := parsed['diagnostics']!.as_array()
+	assert diagnostics.len == 1
+	diagnostic := diagnostics[0].as_map()
+	assert diagnostic['message']!.str() == 'first'
+	assert parsed['output']!.str() == run.output.trim_space()
+	assert parsed['hint']!.str().contains('first 1 diagnostics')
+}
+
+fn test_run_result_without_diagnostics_or_started_child() {
+	ws := probe_workspace()
+	clean := run_result_json(ws, probe_path('main.v'), CompilerRun{
+		output: 'hello\n'
+	}, 1)
+	parsed := json.decode[map[string]json.Any](clean) or { panic(err) }
+	assert parsed['ok']!.bool()
+	assert parsed['error_count']!.int() == 0
+	assert parsed['warning_count']!.int() == 0
+	assert parsed['output']!.str() == 'hello'
+	assert 'diagnostics' !in parsed
+	assert 'hint' !in parsed
+	failed := run_result_json(ws, probe_path('main.v'), CompilerRun{
+		launch_error: 'could not launch compiler'
+	}, 1)
+	not_started := json.decode[map[string]json.Any](failed) or { panic(err) }
+	assert !not_started['started']!.bool()
+	assert 'exit_code' !in not_started
+	assert 'ok' !in not_started
+	assert 'error_count' !in not_started
+}
+
 fn test_module_path_prefers_the_project_over_an_installed_module() {
 	root := probe_root()!
 	os.mkdir_all(os.join_path(root, 'mylib'))!
@@ -495,7 +600,7 @@ fn test_a_run_that_never_started_says_so_instead_of_reporting_an_exit_code() {
 		command:      'v check main.v'
 		launch_error: 'exec failed (SetHandleInformation): The handle is invalid.'
 	}
-	answer := check_json(ws, probe_path('main.v'), run, [])
+	answer := check_json(ws, probe_path('main.v'), run, [], 0)
 	assert answer.contains('"started":\tfalse'), answer
 	assert answer.contains('could not be started'), answer
 	// An `error_count` of zero next to a non-zero exit code would read as a clean
@@ -514,7 +619,7 @@ fn test_a_run_that_did_start_reports_its_exit_code() {
 		path: 'main.v'
 		line: 1
 		kind: 'error'
-	}])
+	}], 0)
 	assert answer.contains('"started":\ttrue'), answer
 	assert answer.contains('"exit_code":\t1'), answer
 	assert answer.contains('"error_count":\t1'), answer
@@ -550,7 +655,7 @@ fn test_a_successful_version_read_is_reported_as_a_version() {
 
 fn test_a_run_that_never_started_does_not_report_a_program_result() {
 	ws := probe_workspace()
-	answer := run_json(ws, probe_path('main.v'), ['run', 'main.v'])
+	answer := run_json(ws, probe_path('main.v'), ['run', 'main.v'], 0)
 	// On a machine where the compiler does start this is a normal run; where it
 	// does not, the answer must not claim a program ran. Either way the shape is
 	// checked: `started` is present, and it is false only with an error beside it.

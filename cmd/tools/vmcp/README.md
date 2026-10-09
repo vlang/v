@@ -34,6 +34,12 @@ Their stdin is the null device: interactive reads receive EOF. Launch failures
 return an error without terminating the server, and inaccessible workspaces are
 refused before a POSIX child is started.
 
+`v_check`, `v_test_run` and `v_run` accept `max_diagnostics`, defaulting to 100.
+Zero and negative values use that default. Responses keep the first diagnostics
+and report `diagnostics_omitted` plus a hint when the array is shortened.
+`error_count` and `warning_count` describe all parsed diagnostics, including the
+omitted ones. `v_run` still returns its program output with the existing line limit.
+
 `v_format` returns parser diagnostics for malformed source and leaves the file
 untouched, including when `write: true` is requested.
 
