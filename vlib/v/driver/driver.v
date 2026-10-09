@@ -10941,6 +10941,10 @@ pub fn run(args []string) {
 		p.quick_source_sums = true
 	}
 	p.no_source_digests = !macos_v3_source_manifest
+	// The checker indexes the text of every parsed source. Hand it the text the
+	// parser read instead of letting it read each file a second time. A
+	// diagnostics server keeps its ASTs across requests, so it reads as before.
+	p.keep_source_texts = os.getenv('V_DIAGNOSTICS_SERVER') == ''
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
 	}
@@ -15267,8 +15271,9 @@ fn checker_fixture_header_exists(target string, source_file string, c_compiler s
 fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, builtin_files []string) []string {
 	mut files := builtin_files.clone()
 	mut seen := map[string]bool{}
+	// Every file here is an entry of a listed directory.
 	for file in files {
-		seen[a.record_source_path(file)] = true
+		seen[a.record_listed_source_path(file)] = true
 	}
 	for rel in ['strconv', 'strings', 'hash', os.join_path('math', 'bits')] {
 		dir := os.join_path(prefs.vroot, 'vlib', rel)
@@ -15277,7 +15282,7 @@ fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, buil
 		}
 		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
 			prefs.target)) {
-			key := a.record_source_path(file)
+			key := a.record_listed_source_path(file)
 			if seen[key] {
 				continue
 			}
@@ -16826,11 +16831,11 @@ fn collect_v3_directory_user_files_rec(mut a flat.FlatAst, module_root string, d
 fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
 	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
 		prefs.target)) {
-		append_unique_file(mut a, mut files, mut seen, file)
+		append_unique_listed_file(mut a, mut files, mut seen, file)
 	}
 	if is_test_command {
 		for file in prefs.without_excluded(pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.backend, prefs.target)) {
-			append_unique_file(mut a, mut files, mut seen, file)
+			append_unique_listed_file(mut a, mut files, mut seen, file)
 		}
 	}
 }
@@ -17056,8 +17061,25 @@ fn append_unique_file(mut a flat.FlatAst, mut files []string, mut seen map[strin
 	files << file
 }
 
+// append_unique_listed_file is append_unique_file for a file that the listing of
+// its directory returned (see flat.FlatAst.record_listed_source_path).
+fn append_unique_listed_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string) {
+	key := a.record_listed_source_path(file)
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	files << file
+}
+
 fn declared_module_in_file(path string) string {
 	content := os.read_file(path) or { return '' }
+	return declared_module_in_source(content)
+}
+
+// declared_module_in_source returns the module that the source text `content`
+// declares, or an empty string when it declares none.
+fn declared_module_in_source(content string) string {
 	mut in_block_comment := false
 	mut in_attr := false
 	mut line_start := 0
@@ -21275,7 +21297,16 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				&& !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
 				expected_module := mod_name.all_after_last('.')
 				for imported_file in mod_files {
-					declared := declared_module_in_file(imported_file)
+					// The parser is about to read the same file: keep the text for it.
+					mut imported_source_read := true
+					imported_source := os.read_file(imported_file) or {
+						imported_source_read = false
+						''
+					}
+					if imported_source_read && !already_parsed {
+						p.preload_source(imported_file, imported_source)
+					}
+					declared := declared_module_in_source(imported_source)
 					// A source file without a module declaration (including an
 					// entirely commented file) belongs to `main`.
 					declared_module := if declared.len > 0 { declared } else { 'main' }
@@ -21415,6 +21446,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			break
 		}
 		starts, wave_parallel := parse_files_dispatch_profiled(mut p, wave_files, allow_parallel, mut parse_timing)
+		p.clear_preloaded_sources()
 		was_parallel = was_parallel || wave_parallel
 		wave_end_nodes := a.nodes.len
 		for i, canon in wave_canon {

@@ -535,7 +535,10 @@ pub mut:
 	// sets source_paths_frozen; from then on it is only read, see real_source_path.
 	resolved_source_paths map[string]string
 	source_paths_frozen   bool
-	comments              []Comment
+	// resolved_source_dirs maps the directories of listed sources to their resolved
+	// form, see record_listed_source_path. Only the owning thread uses it.
+	resolved_source_dirs map[string]string
+	comments             []Comment
 	// formatter_sources retains exact source spans or prefixes for constructs whose
 	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources      map[int]string
@@ -591,6 +594,11 @@ pub mut:
 	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
 	// explicit and lets parser workers transfer ownership with their nodes.
 	source_buffers []string
+	// source_texts holds, by file id, the text of the sources that the parser read
+	// and was asked to keep (parser.Parser.keep_source_texts). A stage that needs
+	// the text of a parsed file takes it from here instead of reading the file
+	// again; a file that is not in the table is read from disk as before.
+	source_texts map[int]string
 	// text_values/text_ids own one canonical copy of every non-empty string
 	// stored in a node payload. Nodes keep string compatibility views while
 	// semantic/compiler caches can use compact TextId identities.

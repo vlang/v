@@ -193,6 +193,11 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
 		w.quick_source_sums = p.quick_source_sums
 		w.no_source_digests = p.no_source_digests
+		w.keep_source_texts = p.keep_source_texts
+		if p.preloaded_sources.len > 0 {
+			// The workers only read the table, and the texts stay with the master.
+			w.preloaded_sources = p.preloaded_sources.clone()
+		}
 		w.comptime_string_consts = prepass_const_names.clone()
 		mut chunk_bytes := i64(0)
 		for i in bounds[ci + 1] .. bounds[ci + 2] {
@@ -1022,6 +1027,9 @@ fn apply_parallel_comptime_const_decls(mut values map[string]string, decls []Com
 struct PendingSourceFile {
 	file_id int
 	file    &token.File
+	// The text of the file, when its worker kept it (Parser.keep_source_texts).
+	text     string
+	has_text bool
 }
 
 struct ParseMergeCopyArgs {
@@ -1132,9 +1140,13 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		// template parsing stores the generated V source separately from the
 		// real template file registered for diagnostic remapping.
 		for file_id, file in w.a.source_files {
+			// The text goes with the line table: both leave the worker's arena here.
+			has_text := file_id in w.a.source_texts
 			ma.pending_files << PendingSourceFile{
-				file_id: file_id
-				file:    clone_parser_source_file(file)
+				file_id:  file_id
+				file:     clone_parser_source_file(file)
+				text:     if has_text { w.a.source_texts[file_id].clone() } else { '' }
+				has_text: has_text
 			}
 		}
 	}
@@ -1393,6 +1405,9 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		// remain order-sensitive.
 		for pf in pending_files {
 			p.a.source_files[pf.file_id] = pf.file
+			if pf.has_text {
+				p.a.source_texts[pf.file_id] = pf.text
+			}
 		}
 	} else if worker_scope == unsafe { nil } {
 		for source in w.a.source_buffers {
@@ -1406,12 +1421,18 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		for file_id, file in w.a.source_files {
 			p.a.source_files[file_id] = file
 		}
+		for file_id, text in w.a.source_texts {
+			p.a.source_texts[file_id] = text
+		}
 	} else {
 		// Node and metadata text has already been promoted into the master text
 		// table. Keep only the compact line indexes needed by diagnostics and let
 		// the much larger worker source buffers die with the task arena.
 		for file_id, file in w.a.source_files {
 			p.a.source_files[file_id] = clone_parser_source_file(file)
+		}
+		for file_id, text in w.a.source_texts {
+			p.a.source_texts[file_id] = text.clone()
 		}
 	}
 	for key, value in w.comptime_const_values {

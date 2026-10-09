@@ -8701,9 +8701,13 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 			continue
 		}
 		tc.import_line_indexed_files[file_id] = true
+		// The parser may have kept the text it read (flat.FlatAst.source_texts).
+		has_source := file_id in a.source_texts
 		scans << ImportLineScan{
-			file_id: file_id
-			name:    file.name
+			file_id:    file_id
+			name:       file.name
+			has_source: has_source
+			source:     if has_source { a.source_texts[file_id] } else { '' }
 		}
 	}
 	// Reading and scanning one file does not depend on the others. The pool's
@@ -8750,6 +8754,8 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 struct ImportLineScan {
 	file_id int
 	name    string
+	// Set when `source` already holds the text of the file, so run does not read it.
+	has_source bool
 mut:
 	read   bool
 	source string
@@ -8757,7 +8763,9 @@ mut:
 }
 
 fn (mut scan ImportLineScan) run() {
-	scan.source = os.read_file(scan.name) or { return }
+	if !scan.has_source {
+		scan.source = os.read_file(scan.name) or { return }
+	}
 	scan.read = true
 	scan.lines = module_import_lines(scan.source)
 }

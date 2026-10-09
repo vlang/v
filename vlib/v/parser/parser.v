@@ -208,7 +208,13 @@ pub mut:
 	no_source_digests bool
 	// quick_source_sums records the quick_sum of each parsed source instead of
 	// its SHA-256 (see token.File.index_lines_with_quick_sum).
-	quick_source_sums          bool
+	quick_source_sums bool
+	// keep_source_texts records the text of each parsed source in
+	// FlatAst.source_texts, for the stages that would read the file again.
+	keep_source_texts bool
+	// preloaded_sources holds the text of files that the caller read already and
+	// is about to parse (see preload_source).
+	preloaded_sources          map[string]string
 	parsed_v_files             int
 	parsed_v_file_paths        []string
 	parsed_v_header_files      int
@@ -504,7 +510,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	// every source buffer so those views remain valid through later phases.
 	// The buffer is appended as it is read: appending a named string would copy
 	// the whole source first.
-	p.a.source_buffers << read_source_file_raw(path) or {
+	p.a.source_buffers << p.read_source_file(path) or {
 		p.record_diagnostic('error reading source: ${err.msg()}', 0)
 		// The trailing .file node is never added: the (marker, trailing)
 		// pairing in file_node_ids is broken for this AST.
@@ -512,6 +518,9 @@ pub fn (mut p Parser) parse_into(path string) {
 		return
 	}
 	stable_src := p.a.source_buffers.last()
+	if p.keep_source_texts {
+		p.a.source_texts[p.cur_file_id] = stable_src
+	}
 	p.has_veb_template = false
 	p.may_have_local_types = source_has_struct_or_union(stable_src)
 	p.unsupported_inline_asm_guards.clear()
@@ -1108,6 +1117,29 @@ fn scanner_diagnostic_starts_assignment(source string, start int) bool {
 // prefix as if it were the whole file.
 fn read_source_file_raw(path string) !string {
 	return os.read_file(path)
+}
+
+// read_source_file returns the text of a source that is about to be parsed: the
+// one the caller preloaded for the path, or else the contents of the file.
+fn (p &Parser) read_source_file(path string) !string {
+	if p.preloaded_sources.len > 0 && path in p.preloaded_sources {
+		return p.preloaded_sources[path]
+	}
+	return read_source_file_raw(path)
+}
+
+// preload_source hands the parser the text of a file that the caller has read
+// already, so that parsing `path` does not read the file a second time. The
+// text has to stay valid for as long as the parsed AST does.
+pub fn (mut p Parser) preload_source(path string, source string) {
+	p.preloaded_sources[path] = source
+}
+
+// clear_preloaded_sources drops the texts that preload_source recorded.
+pub fn (mut p Parser) clear_preloaded_sources() {
+	if p.preloaded_sources.len > 0 {
+		p.preloaded_sources = map[string]string{}
+	}
 }
 
 // vmod_root_for_file supports vmod root for file handling for parser.

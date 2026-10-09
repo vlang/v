@@ -19,6 +19,55 @@ pub fn (mut a FlatAst) record_source_path(path string) string {
 	return resolved
 }
 
+// record_listed_source_path is record_source_path for a path whose last
+// component is a directory entry spelled the way the listing of its directory
+// returned it. The resolved form of such a path is the resolved directory
+// followed by the entry, unless the entry is itself a link, so one os.real_path
+// per directory answers for all of its regular files.
+pub fn (mut a FlatAst) record_listed_source_path(path string) string {
+	if a.source_paths_frozen {
+		return a.real_source_path(path)
+	}
+	if resolved := a.resolved_source_paths[path] {
+		return resolved
+	}
+	resolved := a.resolve_listed_source_path(path)
+	a.resolved_source_paths[path] = resolved
+	return resolved
+}
+
+fn (mut a FlatAst) resolve_listed_source_path(path string) string {
+	$if windows {
+		return os.real_path(path)
+	}
+	sep := path.last_index_u8(`/`)
+	if sep <= 0 || sep == path.len - 1 {
+		return os.real_path(path)
+	}
+	name := path[sep + 1..]
+	if name == '.' || name == '..' {
+		return os.real_path(path)
+	}
+	// A link, or anything else that is not a plain file, resolves the slow way.
+	attr := os.lstat(path) or { return os.real_path(path) }
+	if attr.get_filetype() != .regular {
+		return os.real_path(path)
+	}
+	dir := path[..sep]
+	mut real_dir := a.resolved_source_dirs[dir]
+	if real_dir.len == 0 {
+		real_dir = os.real_path(dir)
+		a.resolved_source_dirs[dir] = real_dir
+	}
+	if real_dir.len == 0 || real_dir[0] != `/` {
+		return os.real_path(path)
+	}
+	if real_dir.len == 1 {
+		return '/' + name
+	}
+	return real_dir + '/' + name
+}
+
 // resolve_source_paths completes the table of resolved source paths with every
 // parsed source file, reusing the answers record_source_path already recorded,
 // and freezes it: nothing adds to it afterwards, including another call to
