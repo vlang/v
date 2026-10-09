@@ -222,3 +222,43 @@ fn test_registry_port_parses_the_entire_decimal_value() {
 	}
 	assert accepted.len == 0, 'invalid ports accepted: ${accepted}'
 }
+
+fn test_registry_client_fetches_the_live_server_routes() {
+	mut r := new_registry()
+	for version in ['1.0.0', '2.0.0'] {
+		r.add_module(ModuleInfo{
+			...srv_info('client', version, 'sha256:demo')
+			dependencies: {
+				'dependency': '^1.0.0'
+			}
+			features:     {
+				'default': ['net']
+			}
+		})
+	}
+	mut running := start_registry(r)!
+	defer { running.server.close() }
+	assert fetch_registry_versions(running.base, 'client')! == ['2.0.0', '1.0.0']
+	latest := fetch_registry_latest(running.base, 'client')!
+	assert latest.name == 'client'
+	assert latest.version == '2.0.0'
+	assert latest.dependencies['dependency'] == '^1.0.0'
+	assert latest.features['default'] == ['net']
+	info := fetch_registry_info(running.base, 'client', '1.0.0')!
+	assert info.version == '1.0.0'
+	assert info.checksum == 'sha256:demo'
+}
+
+fn test_registry_client_distinguishes_absent_modules_and_versions() {
+	mut r := new_registry()
+	r.add_module(srv_info('present', '1.0.0', ''))
+	mut running := start_registry(r)!
+	defer { running.server.close() }
+	assert fetch_registry_versions(running.base, 'absent')! == []string{}
+	if info := fetch_registry_latest(running.base, 'absent') {
+		assert false, 'absent module decoded as ${info}'
+	}
+	if info := fetch_registry_info(running.base, 'present', '9.0.0') {
+		assert false, 'absent version decoded as ${info}'
+	}
+}

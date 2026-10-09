@@ -51,7 +51,7 @@ fn client_demo_module() RegistryModule {
 fn test_the_client_and_server_field_names_agree() {
 	server_bytes := json2.encode(client_demo_info())
 	client_bytes := json2.encode(client_demo_module())
-	assert server_bytes == client_bytes, "the client decodes a different module than the server serves:\n served:  ${server_bytes}\n decoded: ${client_bytes}"
+	assert server_bytes == client_bytes, 'the client decodes a different module than the server serves:\n served:  ${server_bytes}\n decoded: ${client_bytes}'
 }
 
 // The literal body must be the one the server actually emits, or the test above
