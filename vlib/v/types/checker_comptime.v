@@ -8138,7 +8138,12 @@ fn comptime_condition_scalar_value(raw string) ?string {
 }
 
 fn (tc &TypeChecker) comptime_type_matches(actual string, expected string) ?bool {
-	clean_actual := tc.instance_type_text(trimmed_space(actual))
+	mut clean_actual := tc.instance_type_text(trimmed_space(actual))
+	if smartcast := tc.smartcasts[clean_actual] {
+		clean_actual = smartcast.name()
+	} else if local_type := tc.non_file_scope_type(clean_actual) {
+		clean_actual = local_type.name()
+	}
 	clean_expected := trimmed_space(expected)
 	if clean_actual.len == 0 || clean_expected.len == 0
 		|| (is_bare_generic_param(clean_actual) && !tc.type_name_known(clean_actual)) {
