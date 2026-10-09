@@ -2,11 +2,17 @@
 // Defines the API endpoints and metadata format for VPM registries.
 module main
 
+import crypto.ed25519
 import crypto.sha256
+import encoding.hex as hexcode
 import json2
 import os
 import semver
 import time
+
+const registry_key_env = 'VPM_REGISTRY_KEY'
+const registry_key_file_name = 'signing.key'
+const registry_signature_file_name = 'signature.sig'
 
 // RegistryConfig is the configuration document served at the registry root.
 // It tells clients where to find artifacts and whether authentication is required.
@@ -18,6 +24,10 @@ pub:
 	api string
 	// auth_required indicates whether all operations require authentication.
 	auth_required bool
+	// public_key is the hex-encoded ed25519 key that vouches for the metadata
+	// served by this registry. A mirror cannot be forged against it, because it
+	// holds no key of its own to sign with.
+	public_key string
 }
 
 // ModuleInfo is the metadata for one version of a module.
@@ -184,6 +194,13 @@ fn registry_index_path() string {
 	return os.join_path(registry_dir(), 'index.json')
 }
 
+// registry_key_path returns the path to the registry's signing key, kept
+// beside the index and never served. The environment variable takes
+// precedence so a registry can be signed without writing a key to disk.
+fn registry_key_path() string {
+	return os.join_path(registry_dir(), registry_key_file_name)
+}
+
 // save persists the registry to disk.
 pub fn (r &Registry) save() ! {
 	dir := registry_dir()
@@ -240,7 +257,6 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 		}
 		return json2.encode(info)
 	}
-
 	// GET /api/search?q=<query>
 	if path == '/api/search' && method == 'GET' {
 		q := query['q'] or { '' }
@@ -256,5 +272,60 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 		return json2.encode(entry)
 	}
 
+	// GET /signature.sig serves the ed25519 signature over the registry index.
+	// A client that knows the public key can tell a mirror apart from the
+	// origin, because a mirror has no key to sign with.
+	if path == '/${registry_signature_file_name}' && method == 'GET' {
+		return json2.encode(registry.signature())
+	}
+
 	return '{"error": "not found"}'
+}
+
+// signing_key loads the registry's private key seed, from `VPM_REGISTRY_KEY`
+// when set and from the key file beside the index otherwise. Both hold hex.
+fn (r &Registry) signing_key() ?ed25519.PrivateKey {
+	raw := os.getenv_opt(registry_key_env) or { os.read_file(registry_key_path()) or { return none } }
+	hex := raw.trim_space()
+	if hex == '' {
+		return none
+	}
+	seed := hexcode.decode(hex) or { return none }
+	if seed.len != ed25519.seed_size {
+		return none
+	}
+	return ed25519.new_key_from_seed(seed)
+}
+
+// public_key_hex returns the hex-encoded public key that vouches for this
+// registry, or '' when it holds no signing key.
+pub fn (r &Registry) public_key_hex() string {
+	key := r.signing_key() or { return '' }
+	return key.public_key().hex()
+}
+
+// canonical_json is the byte sequence the signature covers. It must be a pure
+// function of the registry's contents -- sorted keys, and no wall-clock time --
+// or the same registry would produce a different signature on each run.
+fn (r &Registry) canonical_json() string {
+	return r.export_json()
+}
+
+// signature signs the canonical form of the index and returns a hex-encoded
+// ed25519 signature. An unsigned registry returns '', which a client reads as
+// "this registry does not vouch for itself".
+pub fn (r &Registry) signature() string {
+	key := r.signing_key() or { return '' }
+	sig := ed25519.sign(key, r.canonical_json().bytes()) or { return '' }
+	return sig.hex()
+}
+
+// verify_signature reports whether `sig_hex` over this registry's canonical
+// form was produced by the holder of `public_key_hex`. A registry whose
+// contents were edited after signing fails, because the canonical form no
+// longer matches what was signed.
+pub fn (r &Registry) verify_signature(public_key_hex string, sig_hex string) bool {
+	public_bytes := hexcode.decode(public_key_hex) or { return false }
+	sig := hexcode.decode(sig_hex) or { return false }
+	return ed25519.verify(public_bytes, r.canonical_json().bytes(), sig) or { false }
 }
