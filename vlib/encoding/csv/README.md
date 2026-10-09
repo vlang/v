@@ -17,3 +17,6 @@ It prints:
 ['x', 'y']
 ['a', 'b', 'c']
 ```
+
+Quoted fields can span multiple lines. If the input ends before a quoted field closes,
+`read()` returns `encoding.csv: unterminated quoted field`, distinct from normal end of file.
