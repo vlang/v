@@ -233,6 +233,21 @@ fn registry_dir() string {
 	return os.join_path(os.getwd(), '.vpm-registry')
 }
 
+// artifacts_dir returns where published module archives are kept. Each is named
+// by its own version, so the index and the archive cannot drift apart on a
+// rename.
+fn artifacts_dir() string {
+	return os.join_path(registry_dir(), 'artifacts')
+}
+
+// artifact_path returns the archive holding `name` at `version`.
+// A version may hold characters that are legal in a URL but not in a file name,
+// so they are percent-encoded before it becomes a path component.
+fn artifact_path(name string, version string) string {
+	safe := version.replace('/', '%2F').replace('\\', '%5C').replace(':', '%3A')
+	return os.join_path(artifacts_dir(), name, '${safe}.zip')
+}
+
 // registry_index_path returns the path to the registry index file.
 fn registry_index_path() string {
 	return os.join_path(registry_dir(), 'index.json')
@@ -243,6 +258,48 @@ fn registry_index_path() string {
 // precedence so a registry can be signed without writing a key to disk.
 fn registry_key_path() string {
 	return os.join_path(registry_dir(), registry_key_file_name)
+}
+
+// publish records `info` and stores its archive, refusing anything whose bytes
+// do not match the checksum it claims. A registry that accepted a mismatched
+// archive would hand out sources that nobody vouched for.
+pub fn (mut r Registry) publish(info ModuleInfo, archive_path string) ! {
+	content := os.read_file(archive_path) or {
+		return error('failed to read the archive for `${info.name}`: ${err.msg()}')
+	}
+	claimed := info.checksum.trim_string_left('sha256:').trim_string_left('SHA256:')
+	actual := sha256_hex(content.bytes())
+	if claimed != '' && claimed != actual {
+		return error('the archive for `${info.name}@${info.version}` hashes to `${actual}`, but the metadata claims `${claimed}`')
+	}
+	// An already-published version is immutable: replacing it would change what
+	// an existing lockfile points at, so it is refused rather than overwritten.
+	if existing := r.get_info(info.name, info.version) {
+		if existing.checksum == info.checksum {
+			return
+		}
+		return error('`${info.name}@${info.version}` is already published; a version cannot be replaced')
+	}
+	dest := artifact_path(info.name, info.version)
+	os.mkdir_all(os.dir(dest)) or {}
+	os.write_file(dest, content) or {
+		return error('failed to store the archive for `${info.name}@${info.version}`: ${err.msg()}')
+	}
+	if claimed == '' {
+		// Nothing was claimed, so the bytes are the truth: record what they hash
+		// to rather than storing a checksum that vouches for nothing.
+		r.add_module(ModuleInfo{
+			name:         info.name
+			version:      info.version
+			description:  info.description
+			license:      info.license
+			dependencies: info.dependencies
+			checksum:     'sha256:${actual}'
+			features:     info.features
+		})
+		return
+	}
+	r.add_module(info)
 }
 
 // save persists the registry to disk.
@@ -266,10 +323,14 @@ pub fn load_registry() Registry {
 // the body, and the entity tag that lets a client revalidate the body without
 // transferring it again.
 pub struct RegistryResponse {
-pub:
+pub mut:
 	status_code int = 200
 	body        string
 	etag        string
+	// artifact_path names a file the transport should stream instead of sending
+	// `body`. An archive is not text, so it cannot be carried by the string
+	// every other endpoint returns.
+	artifact_path string
 }
 
 // serve routes a request through `handle_request` and applies HTTP caching.
@@ -277,6 +338,11 @@ pub:
 // when the client's cached copy is still current, so an unchanged index costs
 // a header exchange rather than a full retransmission.
 pub fn serve(registry Registry, method string, path string, query map[string]string, headers map[string]string) RegistryResponse {
+	// An archive is streamed, so it never has a body to hash for an entity tag
+	// and never answers a conditional request.
+	if artifact := artifact_request(registry, path) {
+		return artifact
+	}
 	body := handle_request(registry, method, path, query)
 	etag := etag_of(body)
 	if etag_matches(headers['If-None-Match'] or { '' }, etag) {
@@ -336,7 +402,45 @@ fn etag_matches(if_none_match string, etag string) bool {
 
 // handle_request routes a registry API request to the appropriate handler.
 // This is the entry point for the registry HTTP server.
-pub fn handle_request(registry Registry, method string, path string, query map[string]string) string {
+// RequestOptions carries what a mutating request sends that a plain GET does
+// not. It is a params struct so a caller that has no body can omit it.
+@[params]
+pub struct RequestOptions {
+pub:
+	// body is the JSON payload of a PUT, empty for reads.
+	body string
+}
+
+// artifact_request answers `GET /<module>/@v/<version>.zip`, the route that
+// delivers a module's sources. It is separate from `handle_request` because an
+// archive is not text: the response names a file for the transport to stream
+// rather than carrying it in the string every other endpoint returns.
+pub fn artifact_request(registry Registry, path string) ?RegistryResponse {
+	parts := path.trim_left('/').split('/')
+	if parts.len != 3 || parts[1] != '@v' || !parts[2].ends_with('.zip') {
+		return none
+	}
+	version := parts[2].trim_string_right('.zip')
+	archive := artifact_path(parts[0], version)
+	if !os.exists(archive) {
+		return none
+	}
+	// Verify what is being served against the checksum the index recorded, so a
+	// corrupted or tampered store is caught here rather than at the client.
+	if info := registry.get_info(parts[0], version) {
+		content := os.read_file(archive) or { return none }
+		actual := sha256_hex(content.bytes())
+		claimed := info.checksum.trim_string_left('sha256:')
+		if claimed != '' && claimed != actual {
+			return none
+		}
+	}
+	return RegistryResponse{
+		artifact_path: archive
+	}
+}
+
+pub fn handle_request(registry Registry, method string, path string, query map[string]string, opts RequestOptions) string {
 	parts := path.trim_left('/').split('/')
 	if parts.len == 0 {
 		return '{"error": "not found"}'
@@ -404,6 +508,9 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 		return json2.encode(registry.changes_since(since))
 	}
 
+	// GET /<module>/@v/<version>.zip streams the published archive. The bytes
+	// are verified against the checksum the index recorded before being served,
+	// so a corrupted or tampered store is caught here rather than at the client.
 	// GET /signature.sig serves the ed25519 signature over the registry index.
 	// A client that knows the public key can tell a mirror apart from the
 	// origin, because a mirror has no key to sign with.
