@@ -886,9 +886,9 @@ fn test_formatter_preserves_anonymous_aggregate_literal_and_comment_continuation
 }
 
 fn test_formatter_indents_anonymous_aggregate_access_sections() {
-	source := 'struct Holder {\nitem union {\npub:\nvalue int\nmut:\nother int\n}\n}\n'
+	source := 'struct Holder {\nitem union {\npub:\nvalue int\nmut :\nother int\nmodule:\nprivate_value int\npub  mut:\nmutable_value int\npub module_mut :\nlegacy_value int\n}\n}\n'
 	out := vfmt('anonymous_aggregate_access_sections', source)
-	expected := 'struct Holder {\n\titem union {\n\tpub:\n\t\tvalue int\n\tmut:\n\t\tother int\n\t}\n}\n'
+	expected := 'struct Holder {\n\titem union {\n\tpub:\n\t\tvalue int\n\tmut :\n\t\tother int\n\tmodule:\n\t\tprivate_value int\n\tpub  mut:\n\t\tmutable_value int\n\tpub module_mut :\n\t\tlegacy_value int\n\t}\n}\n'
 	assert out == expected, out
 	assert vfmt('anonymous_aggregate_access_sections_twice', out) == out
 }
