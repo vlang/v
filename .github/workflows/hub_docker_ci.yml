@@ -1,12 +1,29 @@
 name: hub_docker_ci
 
-### NB: avoid caching things here, since the action is rare (once per week),
+### Publishes the images for a V release tag.
+##
+### This is the only workflow triggered by a tag, and it is the reason a version
+### tag on Docker Hub can be trusted: V_REV is set from github.ref_name, so
+### thevlang/vlang:0.5.2 contains V 0.5.2 rather than whatever master was.
+### The daily nightly images are published separately, from
+### vlang/docker/.github/workflows/nightly_builds.yml, and only carry floating
+### tags (:latest, :alpine, :debian, :nix) because they track V master.
+##
+### The Dockerfiles come from vlang/docker at its default branch: there is no
+### release tagging in that repository, so a release is built with the
+### Dockerfiles as they stand.
+###
+### NB: avoid caching things here, since the action is rare (once per release),
 ### and the potential benefits are less than the complexity of debugging
 ### cache invalidation issues...
 ## Trigger on both new release tags, and on weekly tags.
 ## Allow for manual override too:
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: The V tag to build, e.g. 0.5.2
+        required: true
   push:
     tags:
       - '[0-9].[0-9]+.[0-9]+'
@@ -14,16 +31,25 @@ on:
 
 concurrency:
   group: 'hub_docker_ci-${{ github.ref }}'
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
+env:
+  # Both architectures the official images are published for.
+  PLATFORMS: linux/amd64,linux/arm64
+
 jobs:
-  publish-new-docker-images:
+  publish-release-images:
+    name: Publish ${{ matrix.os }} ${{ inputs.tag || github.ref_name }}
     strategy:
       matrix:
-        os: [debian, alpine]
+        # ubuntu is deliberately absent: :ubuntu-build and :ubuntu-base exist
+        # only because CI runs in them, and are built in vlang/docker.
+        os: [debian, alpine, nix, static]
+      # One broken variant must not stop the others being published.
+      fail-fast: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -48,37 +74,70 @@ jobs:
           docker buildx create --name gh-builder --driver docker-container --use
           docker buildx inspect --bootstrap
 
+      - name: Resolve the tag being published
+        id: tag
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag || github.ref_name }}"
+          if [ -z "$tag" ]; then
+            echo "no V tag resolved"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: generate tags conditionally
         id: gen_tags
         run: |
-          if [[ "${{ matrix.os }}" == 'debian' ]]; then
-            echo 'TAGS=thevlang/vlang:latest,thevlang/vlang:${{ matrix.os }}' >> "$GITHUB_OUTPUT"
-          else
-            echo 'TAGS=thevlang/vlang:${{ matrix.os }}' >> "$GITHUB_OUTPUT"
-          fi
+          tag="${{ steps.tag.outputs.tag }}"
+          case "${{ matrix.os }}" in
+            debian)
+              # debian is the default variant, so it owns the unqualified tags.
+              echo 'TAGS=thevlang/vlang:latest,thevlang/vlang:debian,thevlang/vlang:'"$tag"',thevlang/vlang:debian-'"$tag" >> "$GITHUB_OUTPUT"
+              ;;
+            static)
+              echo 'TAGS=thevlang/vlang:static-'"$tag" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo 'TAGS=thevlang/vlang:${{ matrix.os }},thevlang/vlang:'"${{ matrix.os }}"'-'"$tag" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         name: Build and deploy v image
         with:
           builder: gh-builder
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.PLATFORMS }}
+          # The tag being released, so the image contains exactly that version.
+          build-args: |
+            USER=thevlang
+            V_REV=${{ steps.tag.outputs.tag }}
           tags: ${{ steps.gen_tags.outputs.TAGS }}
-          file: docker/vlang/Dockerfile.${{ matrix.os }}
+          file: ${{ matrix.os == 'static' && 'docker/vlang/Dockerfile.static' || format('docker/vlang/Dockerfile.{0}', matrix.os) }}
+          labels: |
+            org.opencontainers.image.title=thevlang/vlang:${{ matrix.os }}-${{ steps.tag.outputs.tag }}
+            org.opencontainers.image.version=${{ steps.tag.outputs.tag }}
+            org.opencontainers.image.revision=${{ steps.tag.outputs.tag }}
+            org.opencontainers.image.source=https://github.com/vlang/docker
+            org.opencontainers.image.url=https://hub.docker.com/r/thevlang/vlang
+            org.opencontainers.image.licenses=MIT
           push: true
-          build-args: 'USER=thevlang'
-          ## cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache
-          ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         name: Build and deploy developer build
         with:
           builder: gh-builder
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.PLATFORMS }}
+          build-args: |
+            USER=thevlang
+            V_REV=${{ steps.tag.outputs.tag }}
           tags: thevlang/vlang:${{ matrix.os }}-dev
           file: docker/vlang/Dockerfile.${{ matrix.os }}.dev-full
+          labels: |
+            org.opencontainers.image.title=thevlang/vlang:${{ matrix.os }}-dev
+            org.opencontainers.image.version=${{ steps.tag.outputs.tag }}
+            org.opencontainers.image.revision=${{ steps.tag.outputs.tag }}
+            org.opencontainers.image.source=https://github.com/vlang/docker
+            org.opencontainers.image.licenses=MIT
           push: true
-          build-args: 'USER=thevlang'
-          ## cache-from: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache
-          ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-dev-buildcache,mode=max
