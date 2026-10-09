@@ -1281,3 +1281,46 @@ fn test_pkg_config_answer_follows_an_edited_requirement() {
 	assert !pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
 	assert fake.invocations().len == asked + 1
 }
+
+// Search permission lets pkg-config read a known package file even when the
+// directory cannot be listed. A readable directory elsewhere in the search
+// must not allow answers to persist without the unlisted packages' identities.
+fn test_pkg_config_answers_do_not_persist_for_an_unlistable_search_directory() {
+	$if windows {
+		return
+	}
+	fake := use_fake_pkg_config('pkgconfig_unlistable')
+	defer {
+		os.chmod(fake.packages, 0o700) or { panic(err) }
+		os.unsetenv('PKG_CONFIG_PATH')
+		fake.restore()
+	}
+	readable := os.join_path(fake.root, 'readable')
+	os.mkdir_all(readable) or { panic(err) }
+	os.setenv('PKG_CONFIG_PATH', readable, true)
+	executable := os.join_path(fake.root, 'bin', 'pkg-config')
+	// Settle coarse file timestamps so ordinary runs reach the directory boundary.
+	old_time := time.utc().unix() - coarse_mtime_recent_seconds - 1
+	os.utime(executable, old_time, old_time) or { panic(err) }
+	if file_metadata_signature(executable) == '' {
+		// This compiler would already avoid persistent answers without a settled
+		// executable identity, so the directory boundary needs no further guard.
+		return
+	}
+	foo := os.join_path(fake.packages, 'foo.pc')
+	dep := os.join_path(fake.packages, 'dep.pc')
+	os.write_file(foo, 'Name: foo\nRequires: dep >= 2\n') or { panic(err) }
+	os.write_file(dep, 'Name: dep\nVersion: 2\n') or { panic(err) }
+	os.chmod(fake.packages, 0o111) or { panic(err) }
+	if _ := os.ls(fake.packages) {
+		// A privileged user may still list the directory, so this permission
+		// boundary cannot be exercised by that runner.
+		return
+	}
+	assert (os.read_file(foo) or { '' }) == 'Name: foo\nRequires: dep >= 2\n'
+	assert pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	os.write_file(dep, 'Name: dep\nVersion: 1\n') or { panic(err) }
+	assert !pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().filter(it == '--exists foo').len == 2
+	assert pkg_config_state_key(fake.cache_dir) == 0
+}

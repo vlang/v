@@ -145,7 +145,15 @@ fn pkg_config_state_key(cache_dir string) u64 {
 	for dir in dirs {
 		hash = hash_bytes(hash, dir.bytes())
 		hash = hash_bytes(hash, [u8(0)])
-		mut entries := os.ls(dir) or { continue }
+		mut entries := os.ls(dir) or {
+			// A searchable directory can contain readable package files without
+			// granting permission to list them. Their identities must be known
+			// before any answer can persist across compiler processes.
+			if os.exists(dir) {
+				return 0
+			}
+			continue
+		}
 		searched++
 		entries.sort()
 		for entry in entries {
