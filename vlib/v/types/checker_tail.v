@@ -4485,8 +4485,10 @@ fn (mut tc TypeChecker) check_valid_call_preamble(id flat.NodeId, node flat.Node
 	}
 	callee_id := tc.a.child(&node, 0)
 	callee := tc.a.node(callee_id)
-	if callee.kind in [.call, .fn_literal, .lambda_expr] {
-		tc.check_node(callee_id)
+	callee_expr_id := tc.unwrap_paren_expr_id(callee_id)
+	callee_expr := tc.a.node(callee_expr_id)
+	if callee_expr.kind in [.call, .fn_literal, .lambda_expr] {
+		tc.check_node(callee_expr_id)
 	}
 	if callee.kind == .selector && callee.value.starts_with('$') && callee.value.len > 1 {
 		tc.check_dynamic_comptime_method_call(id, node, callee)
@@ -4854,8 +4856,10 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if callee.kind == .fn_literal || callee.kind == .lambda_expr {
-			tc.check_node(callee_id)
+		callee_expr_id := tc.unwrap_paren_expr_id(callee_id)
+		callee_expr := tc.a.node(callee_expr_id)
+		if callee_expr.kind in [.fn_literal, .lambda_expr] {
+			tc.check_node(callee_expr_id)
 		}
 		if callee.kind == .ident && (callee.value in tc.fn_ret_types
 			|| tc.qualify_fn_name(callee.value) in tc.fn_ret_types) {
