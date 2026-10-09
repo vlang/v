@@ -364,6 +364,34 @@ fn test_files_clamps_an_enormous_limit() {
 	assert clamp_file_limit(1) == 1
 }
 
+fn test_stdlib_doc_bounds_large_limits_and_offsets() {
+	max_limit := if sizeof(int) == 8 { int(0x7fffffffffffffff) } else { int(0x7fffffff) }
+	assert max_limit > 0
+	assert decode_args('{"limit":${max_limit}}').int('limit', 0) == max_limit
+	ws := probe_workspace()
+	dir := os.join_path(ws.project_root, 'paged')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'paged.v'), 'module paged\n\n' +
+		'// alpha is the first symbol.\npub fn alpha() {}\n\n' +
+		'// beta is the second symbol.\npub fn beta() {}\n')!
+	last := call_tool_on(ws, 'v_stdlib_doc', '{"symbol":"paged","limit":${max_limit},"offset":1}')
+	assert field(last, 'symbol_count') == '2', last
+	assert field(last, 'returned') == '1', last
+	assert field(last, 'truncated') == 'false', last
+	assert last.contains('beta'), last
+	assert !last.contains('alpha'), last
+	empty := call_tool_on(ws, 'v_stdlib_doc', '{"symbol":"paged","limit":${max_limit},"offset":${max_limit}}')
+	assert field(empty, 'symbol_count') == '2', empty
+	assert field(empty, 'returned') == '0', empty
+	assert field(empty, 'truncated') == 'false', empty
+	defaults := call_tool_on(ws, 'v_stdlib_doc', '{"symbol":"paged","limit":0,"offset":-1}')
+	assert field(defaults, 'returned') == '2', defaults
+	first := call_tool_on(ws, 'v_stdlib_doc', '{"symbol":"paged","limit":1}')
+	assert field(first, 'returned') == '1', first
+	assert field(first, 'truncated') == 'true', first
+	assert first.contains('alpha') && !first.contains('beta'), first
+}
+
 fn test_module_path_prefers_the_project_over_an_installed_module() {
 	root := probe_root()!
 	os.mkdir_all(os.join_path(root, 'mylib'))!

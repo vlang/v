@@ -242,7 +242,8 @@ fn stdlib_doc_json(ws &Workspace, symbol string, limit int, offset int) string {
 			start = docs.len
 		}
 		size := if limit < 1 { stdlib_page_limit } else { limit }
-		end := if start + size > docs.len { docs.len } else { start + size }
+		remaining := docs.len - start
+		end := if size > remaining { docs.len } else { start + size }
 		w.key('symbol_count')
 		w.number(docs.len)
 		w.key('returned')

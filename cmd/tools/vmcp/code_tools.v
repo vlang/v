@@ -340,9 +340,7 @@ fn tool_references(ws &Workspace, arguments string) string {
 // spec_stdlib_doc declares `v_stdlib_doc`.
 fn spec_stdlib_doc() ToolSpec {
 	return read_only_spec('v_stdlib_doc',
-		'Look up the documentation of a standard library module or one of its
-symbols, for example `strings` or `strings.Builder`. Use it to check a signature
-before writing a call instead of guessing.',
+		'Docs and signatures for a standard library module or symbol, e.g. `os.read_file`.',
 		input_schema(['symbol'], {
 			'symbol': SchemaProperty{
 				kind:        'string'
@@ -350,11 +348,11 @@ before writing a call instead of guessing.',
 			}
 			'limit':  SchemaProperty{
 				kind:        'integer'
-				description: 'Maximum documented symbols to list for a\nmodule query. Defaults to 100.'
+				description: 'Symbols per page (default 100).'
 			}
 			'offset': SchemaProperty{
 				kind:        'integer'
-				description: 'Documented symbols to skip before\nlisting. Defaults to 0.'
+				description: 'Symbols to skip (default 0).'
 			}
 		}), tool_stdlib_doc)
 }
