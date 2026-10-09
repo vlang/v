@@ -12,7 +12,7 @@ import v.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-53'
+const cache_format = 'v3-module-cache-54'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -25,10 +25,182 @@ const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
 const source_signature_cache_format = 'v3-source-signature-cache-9'
 
+// PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
+// process. A build validates the sources of `builtin` several times, and each
+// validation asked again. The table holds no heap memory of its own, so an answer
+// recorded inside a disposable allocation scope outlives that scope.
+struct PkgConfigProbes {
+mut:
+	len       int
+	names     [16]u64
+	available [16]bool
+}
+
+// pkg_config_exists reports whether pkg-config knows `name`. It asks pkg-config
+// at most once per process when `probes` has room for the answer, and not at
+// all when `cache_dir` holds the answer that the same pkg-config gave while its
+// search directories were as they are now (see pkg_config_answers_path).
+fn pkg_config_exists(name string, cache_dir string, probes &PkgConfigProbes) bool {
+	key := hash_bytes(u64(1469598103934665603), name.bytes()) ^ u64(name.len)
+	if !isnil(probes) {
+		for i in 0 .. probes.len {
+			if probes.names[i] == key {
+				return probes.available[i]
+			}
+		}
+	}
+	mut available := false
+	state := pkg_config_state(cache_dir)
+	if answer := pkg_config_recorded_answer(state, name) {
+		available = answer
+	} else {
+		available = os.exec(['pkg-config', '--exists', '${name}']).exit_code == 0
+		pkg_config_record_answer(state, name, available)
+	}
+	if !isnil(probes) && probes.len < 16 {
+		// The table is the one place a manager, handed around by value and by
+		// immutable reference, keeps anything that it learns.
+		mut known := unsafe { &PkgConfigProbes(voidptr(probes)) }
+		known.names[known.len] = key
+		known.available[known.len] = available
+		known.len++
+	}
+	return available
+}
+
+// PkgConfigState locates the recorded answers of one pkg-config, for one state
+// of the directories that it searches.
+struct PkgConfigState {
+	answers string   // the file of the answers; empty when they cannot be recorded
+	dirs    []string // the directories that pkg-config searches, in its order
+}
+
+// pkg_config_state identifies what the answers of `pkg-config --exists` depend
+// on: the executable, the environment variables that redirect its search, and
+// the directories it searches. Adding or removing a package changes the
+// modification time of one of those directories, which makes the answers
+// recorded so far unreachable.
+fn pkg_config_state(cache_dir string) PkgConfigState {
+	if cache_dir.len == 0 {
+		return PkgConfigState{}
+	}
+	executable := os.find_abs_path_of_executable('pkg-config') or { return PkgConfigState{} }
+	executable_identity := file_metadata_signature(os.real_path(executable))
+	if executable_identity.len == 0 {
+		return PkgConfigState{}
+	}
+	mut environment := []string{}
+	for variable in ['PKG_CONFIG_PATH', 'PKG_CONFIG_LIBDIR', 'PKG_CONFIG_SYSROOT_DIR'] {
+		environment << os.getenv(variable)
+	}
+	search_key := hash_text(executable_identity + '\x00' + environment.join('\x00'))
+	search_file := os.join_path(cache_dir, '.pkgconfig_search_${search_key}')
+	search_path := os.read_file(search_file) or {
+		result := os.exec([executable, '--variable', 'pc_path', 'pkg-config'])
+		if result.exit_code != 0 {
+			return PkgConfigState{}
+		}
+		listed := result.output.trim_space()
+		os.mkdir_all(cache_dir) or {}
+		write_atomic(search_file, listed) or {}
+		listed
+	}
+	mut dirs := []string{}
+	for listed in [environment[0], environment[1], search_path] {
+		for dir in listed.split(os.path_delimiter) {
+			if dir.len > 0 && dir !in dirs {
+				dirs << dir
+			}
+		}
+	}
+	mut identity := strings.new_builder(256)
+	mut searched := 0
+	for dir in dirs {
+		identity.write_string(dir)
+		identity.write_u8(0)
+		if os.is_dir(dir) {
+			metadata := file_metadata_signature(dir)
+			if metadata.len == 0 {
+				// Changed too recently to tell this state from the next one.
+				return PkgConfigState{}
+			}
+			identity.write_string(metadata)
+			searched++
+		}
+		identity.write_u8(0xff)
+	}
+	if searched == 0 {
+		// Not the answer of a pkg-config: nothing ties a record to its packages.
+		return PkgConfigState{}
+	}
+	return PkgConfigState{
+		answers: os.join_path(cache_dir, '.pkgconfig_answers_${search_key}_${hash_text(identity.str())}')
+		dirs:    dirs
+	}
+}
+
+// pkg_config_package_file returns the `.pc` file that describes `name` in the
+// searched directories, with its identity.
+fn pkg_config_package_file(state PkgConfigState, name string) (string, string) {
+	for dir in state.dirs {
+		path := os.join_path(dir, '${name}.pc')
+		if os.is_file(path) {
+			return path, file_metadata_signature(path)
+		}
+	}
+	return '', ''
+}
+
+fn pkg_config_recorded_answer(state PkgConfigState, name string) ?bool {
+	if state.answers.len == 0 {
+		return none
+	}
+	content := os.read_file(state.answers) or { return none }
+	for line in content.split_into_lines() {
+		parts := line.split('\t')
+		if parts.len != 4 || parts[0] != name {
+			continue
+		}
+		path, metadata := pkg_config_package_file(state, name)
+		if parts[1] == '0' && path.len == 0 {
+			return false
+		}
+		// A package that is there answers for the file that described it.
+		if parts[1] == '1' && path == parts[2] && metadata.len > 0 && metadata == parts[3] {
+			return true
+		}
+		return none
+	}
+	return none
+}
+
+fn pkg_config_record_answer(state PkgConfigState, name string, available bool) {
+	if state.answers.len == 0 || name.contains_any('\t\r\n') {
+		return
+	}
+	path, metadata := pkg_config_package_file(state, name)
+	// Record what the directories account for: a package without a file is not
+	// there, and one that is there has a file with a settled identity.
+	if available != (path.len > 0) || (available && metadata.len == 0) {
+		return
+	}
+	mut lines := []string{}
+	if content := os.read_file(state.answers) {
+		for line in content.split_into_lines() {
+			if line.len > 0 && line.all_before('\t') != name {
+				lines << line
+			}
+		}
+	}
+	lines << '${name}\t${if available { 1 } else { 0 }}\t${path}\t${metadata}'
+	write_atomic(state.answers, lines.join('\n') + '\n') or {}
+}
+
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
 	build_pseudo_values   string
 	version_pseudo_values string
+	pkg_probes            &PkgConfigProbes = unsafe { nil }
 pub:
 	dir     string
 	enabled bool
@@ -125,6 +297,7 @@ pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values 
 		salt:                  salt
 		build_pseudo_values:   build_pseudo_values
 		version_pseudo_values: version_pseudo_values
+		pkg_probes:            &PkgConfigProbes{}
 	}
 }
 
@@ -244,6 +417,11 @@ struct SourceSignatureDetails {
 }
 
 fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
+	return source_signature_details_probed(source_files, build_pseudo_values, version_pseudo_values,
+		'', unsafe { nil })
+}
+
+fn source_signature_details_probed(source_files []string, build_pseudo_values string, version_pseudo_values string, cache_dir string, probes &PkgConfigProbes) SourceSignatureDetails {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
@@ -384,7 +562,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	mut packages := pkgconfig_names.keys()
 	packages.sort()
 	for name in packages {
-		available := os.exec(['pkg-config', '--exists', '${name}']).exit_code == 0
+		available := pkg_config_exists(name, cache_dir, probes)
 		validation << 'pkg=${name}\t${if available { 1 } else { 0 }}'
 		hash = hash_bytes(hash, [u8(0xfd)])
 		hash = hash_bytes(hash, name.bytes())
@@ -633,7 +811,8 @@ fn (m &Manager) cacheable_source_signature(source_files []string) ?string {
 }
 
 fn (m &Manager) source_signature_details(source_files []string) SourceSignatureDetails {
-	return cached_source_signature_details_with_build_values(m.dir, 'module', source_files, m.build_pseudo_values, m.version_pseudo_values)
+	return cached_source_signature_details_probed(m.dir, 'module', source_files, m.build_pseudo_values,
+		m.version_pseudo_values, m.pkg_probes)
 }
 
 // cached_source_signature returns a content signature while using precise file
@@ -643,6 +822,11 @@ pub fn cached_source_signature(cache_dir string, namespace string, source_files 
 }
 
 fn cached_source_signature_details_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
+	return cached_source_signature_details_probed(cache_dir, namespace, source_files, build_pseudo_values,
+		version_pseudo_values, &PkgConfigProbes{})
+}
+
+fn cached_source_signature_details_probed(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string, probes &PkgConfigProbes) SourceSignatureDetails {
 	mut paths := source_files.map(os.real_path(it))
 	paths.sort()
 	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
@@ -650,11 +834,14 @@ fn cached_source_signature_details_with_build_values(cache_dir string, namespace
 	metadata := source_files_metadata_signature(paths)
 	if metadata.len > 0 {
 		cached := os.read_file(cache_path) or { '' }
-		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values, version_pseudo_values, paths.len) {
+		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values,
+			version_pseudo_values, paths.len, cache_dir, probes)
+		{
 			return details
 		}
 	}
-	details := source_signature_details(paths, build_pseudo_values, version_pseudo_values)
+	details := source_signature_details_probed(paths, build_pseudo_values, version_pseudo_values,
+		cache_dir, probes)
 	if details.signature.len == 0 || !details.cacheable {
 		return details
 	}
@@ -701,7 +888,7 @@ fn source_files_metadata_signature(paths []string) string {
 	return hash.hex()
 }
 
-fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string, source_count int) ?SourceSignatureDetails {
+fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string, source_count int, cache_dir string, probes &PkgConfigProbes) ?SourceSignatureDetails {
 	lines := content.split_into_lines()
 	if lines.len < 4 || lines[0] != 'format=${source_signature_cache_format}'
 		|| lines[1] != 'metadata=${metadata}' || lines.last() != 'complete=1' {
@@ -750,7 +937,7 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			if parts.len != 2 || parts[0].len == 0 {
 				return none
 			}
-			available := os.exec(['pkg-config', '--exists', '${parts[0]}']).exit_code == 0
+			available := pkg_config_exists(parts[0], cache_dir, probes)
 			if parts[1] != '${if available {
 				1
 			} else {
@@ -1311,18 +1498,22 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) ?Entry {
 	entry := m.object_entry(cache_name, source_files, compile_signature)
 	if !os.is_file(entry.object) || !os.is_file(entry.object_stamp) {
+		cache_trace_module_miss(cache_name, 'no object for these C compilation flags and interface implementations')
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
 	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
+		cache_trace_module_miss(cache_name, 'object source or dependency changed')
 		return none
 	}
 	expected := 'compile=${hash_text(compile_signature)}'
 	if !stamp.split_into_lines().any(it == expected) {
+		cache_trace_module_miss(cache_name, 'object stamp names other C compilation flags')
 		return none
 	}
 	if !object_stamp_dependencies_match(stamp, dependency_inputs) {
+		cache_trace_module_miss(cache_name, 'object was built against other dependency interfaces')
 		return none
 	}
 	return entry
@@ -5957,7 +6148,7 @@ fn generic_specialization_callee_names(tc &types.TypeChecker) map[string]bool {
 		names[name] = true
 	}
 	for name in tc.fn_param_type_texts.keys() {
-		if !name.contains('[') {
+		if !receiver_has_generic_type_args(name) {
 			continue
 		}
 		closed := generic_receiver_name_without_type_args(name)
@@ -5972,6 +6163,24 @@ fn generic_specialization_callee_names(tc &types.TypeChecker) map[string]bool {
 		}
 	}
 	return names
+}
+
+// receiver_has_generic_type_args reports whether the receiver of the method
+// `name` is an instance of a generic type, like `Stack[int].push`. The brackets
+// of an array, a fixed array or a map receiver (`[]u8.hex`, `map[string]int.x`)
+// hold no type arguments: without them the name is that of another method
+// (`u8.hex`), and each of its callers would pass for the user of a generic one.
+fn receiver_has_generic_type_args(name string) bool {
+	open := name.index_u8(`[`)
+	if open <= 0 {
+		return false
+	}
+	mut start := open
+	for start > 0 && (name[start - 1].is_alnum() || name[start - 1] == `_`) {
+		start--
+	}
+	base := name[start..open]
+	return base.len > 0 && base != 'map'
 }
 
 fn generic_receiver_name_without_type_args(name string) string {
@@ -6000,6 +6209,11 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 		return false
 	}
 	node := a.nodes[int(id)]
+	if node.kind == .import_decl {
+		// The payload of an import is the path it was spelled with, not a list of
+		// generic parameters, and a header repeats the import itself.
+		return false
+	}
 	if node.generic_params().len > 0 || fn_decl_has_generic_receiver(a, node)
 		|| declaration_contains_fn_literal(a, node)
 		|| (node.kind in [.const_decl, .struct_decl, .global_decl]
@@ -6534,7 +6748,11 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 		head = '@[params]\n${head}'
 	}
 	if node.children_count == 0 {
-		return head
+		// Only a C or JS struct may be declared without a body.
+		if node.value.starts_with('C.') || node.value.starts_with('JS.') {
+			return head
+		}
+		return '${head} {\n}'
 	}
 	mut out := strings.new_builder(256)
 	out.writeln('${head} {')

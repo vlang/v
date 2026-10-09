@@ -467,7 +467,26 @@ For C executable and library builds, v3 caches each imported module as a
 declaration-only `.vh` file and a compiled `.o` file. A module object is rebuilt
 when its source content, compiler implementation, target, or relevant build
 configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
-`math.bits` share one `builtin.o`, matching the v2 core-cache layout. Cache files live under
+`math.bits` share one `builtin.o`, matching the v2 core-cache layout.
+The system C compiler builds and links these objects, so the cache serves the builds that use
+it: `-cc clang`, `-prod`, and every build where the bundled TinyCC is not the default compiler.
+TinyCC compiles a whole small program faster than a build validates and links its cached modules;
+pass `-usecache` to let the bundled TinyCC build and link the module objects itself on macOS and
+Linux, which pays off for programs with larger imports.
+The interface of a module does not depend on the program that was built first: a module that
+imports others is cached like one that does not, a program that only prints literals still checks
+the whole modules it publishes, and the methods of array and map receivers do not pass for generic
+ones. An object is identified by the C compilation flags, by the interface implementations of the
+program and by whether the program reaches `recover()`, and not by the `static` wrappers of the
+program prefix, so a build that reads a module from its header finds the object that the build
+from source published. A program whose declarations changed therefore compiles against the cached
+`builtin.o` instead of rebuilding every module.
+Each warm build also reuses what an earlier one found out: what `pkg-config --exists` answered for
+the `$pkgconfig` conditions of the cached sources (until a `.pc` file is added to or removed from
+the directories that pkg-config searches), which headers a V-shipped C header includes and whether
+it can be replicated into every module object (until one of those headers changes), and that the
+bundled TinyCC runs and links the libraries of the program.
+Cache files live under
 the V temporary directory by default; set `V3CACHE` to select another root, or pass
 `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
 object cache. An explicit `-b c` binary build also retains the complete generated translation unit

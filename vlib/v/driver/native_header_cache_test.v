@@ -189,7 +189,7 @@ fn test_native_input_closure_tracks_nested_shipped_headers() {
 			real_outer: true
 		}
 	}
-	closure := v3_native_input_closure(&inputs, vroot, true)
+	closure := v3_native_input_closure(&inputs, vroot, true, '')
 	// An edit to the nested header has to reach the crun identity and the caches.
 	assert closure.inputs['scratch'] == [real_inner, real_outer].sorted()
 	assert closure.unassignable == ''
@@ -197,25 +197,73 @@ fn test_native_input_closure_tracks_nested_shipped_headers() {
 	// `#  include "gc_pthread_redirects.h"`.
 	for directive in ['# include', '#\tinclude', '#  include', '  #include'] {
 		os.write_file(outer, '${directive} "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
-		spaced := v3_native_input_closure(&inputs, vroot, true)
+		spaced := v3_native_input_closure(&inputs, vroot, true, '')
 		assert spaced.inputs['scratch'] == [real_inner, real_outer].sorted(), directive
 		assert spaced.unassignable == '', directive
 		os.write_file(outer, '${directive} "missing.h"\n')!
-		assert v3_native_input_closure(&inputs, vroot, true).unassignable == real_outer, directive
+		assert v3_native_input_closure(&inputs, vroot, true, '').unassignable == real_outer, directive
 	}
 	os.write_file(outer, '#include <stddef.h>\n#include "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
 	// A native source defines symbols that every cached object would duplicate.
 	real_source := os.real_path(source)
 	inputs.module_inputs['scratch'] = [real_source]
 	inputs.native_paths[real_source] = true
-	with_source := v3_native_input_closure(&inputs, vroot, true)
+	with_source := v3_native_input_closure(&inputs, vroot, true, '')
 	assert with_source.unassignable == real_source
 	assert real_inner in with_source.inputs['scratch']
 	// crun only needs the closure, not the replication check.
-	assert v3_native_input_closure(&inputs, vroot, false).unassignable == ''
+	assert v3_native_input_closure(&inputs, vroot, false, '').unassignable == ''
 	inputs.module_inputs['scratch'] = [real_outer]
 	inputs.implementation_define = 'STB_IMAGE_IMPLEMENTATION'
-	assert v3_native_input_closure(&inputs, vroot, true).unassignable == '#define STB_IMAGE_IMPLEMENTATION'
+	assert v3_native_input_closure(&inputs, vroot, true, '').unassignable == '#define STB_IMAGE_IMPLEMENTATION'
+}
+
+fn test_native_input_closure_is_recorded_until_a_header_changes() ! {
+	vroot := os.join_path(os.vtmp_dir(), 'v3_native_closure_record_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	// Only the headers that V ships are followed: those below `vlib`, among others.
+	scratch := os.join_path(vroot, 'vlib', 'scratch')
+	os.mkdir_all(scratch)!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	records := os.join_path(vroot, 'records')
+	outer := os.join_path(scratch, 'outer.h')
+	inner := os.join_path(scratch, 'inner.h')
+	os.write_file(outer, '#include "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
+	os.write_file(inner, '#pragma once\nstatic inline int inner_value(void) { return 101; }\n')!
+	real_outer := os.real_path(outer)
+	real_inner := os.real_path(inner)
+	inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'scratch': [real_outer]
+		}
+		native_paths:  {
+			real_outer: true
+		}
+	}
+	first := v3_native_input_closure(&inputs, vroot, true, records)
+	assert first.inputs['scratch'] == [real_inner, real_outer].sorted()
+	assert first.unassignable == ''
+	if modulecache.file_metadata_signature(real_inner) == '' {
+		// This file system cannot tell an edit by a file's metadata yet, so the
+		// expansion is not recorded.
+		return
+	}
+	assert (os.ls(records) or { []string{} }).len == 1
+	// The record answers for the files as they were.
+	second := v3_native_input_closure(&inputs, vroot, true, records)
+	assert second.inputs['scratch'] == first.inputs['scratch']
+	assert second.unassignable == ''
+	// A header that now defines storage is not replicable any more, and the record
+	// of its former text must not say otherwise.
+	os.write_file(inner, '#pragma once\nint inner_counter = 0;\nstatic inline int inner_value(void) { return inner_counter; }\n')!
+	changed := v3_native_input_closure(&inputs, vroot, true, records)
+	assert changed.unassignable == real_outer
+	// Without a record directory the answer is the same, and nothing is written.
+	recorded := (os.ls(records) or { []string{} }).len
+	assert v3_native_input_closure(&inputs, vroot, true, '').unassignable == real_outer
+	assert (os.ls(records) or { []string{} }).len == recorded
 }
 
 fn test_cached_native_owner_is_limited_to_the_builtin_signal_header() ! {
@@ -242,7 +290,7 @@ fn test_cached_native_owner_is_limited_to_the_builtin_signal_header() ! {
 			header: true
 		}
 	}
-	closure := v3_native_input_closure(&inputs, @VEXEROOT, true)
+	closure := v3_native_input_closure(&inputs, @VEXEROOT, true, '')
 	assert closure.unassignable == ''
 	assert header in closure.inputs['builtin']
 	mut state := V3ModuleCacheState{}
@@ -265,7 +313,7 @@ fn test_cached_native_owner_is_limited_to_the_builtin_signal_header() ! {
 			real_other: true
 		}
 	}
-	assert v3_native_input_closure(&other_inputs, root, true).unassignable == real_other
+	assert v3_native_input_closure(&other_inputs, root, true, '').unassignable == real_other
 }
 
 fn test_cached_signal_header_has_one_owner_with_shared_program_declarations() ! {

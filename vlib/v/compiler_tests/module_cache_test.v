@@ -1207,9 +1207,20 @@ fn main() {
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, second_main, second_output)
 	assert run_module_cache_binary(second_output) == '42'
+	// The object of `builtin` was compiled without the method-value wrapper of the
+	// first program, which calls a function of that program, so the second program
+	// links the same object instead of building one of its own.
 	second_builtin_objects :=
 		module_cache_object_hashes(cache_dir).keys().filter(it.starts_with('builtin_'))
-	assert second_builtin_objects.len > first_builtin_objects.len
+	assert second_builtin_objects.sorted() == first_builtin_objects.sorted()
+	builtin_sources := os.walk_ext(cache_dir, '.c').filter(os.file_name(it).starts_with('builtin_'))
+	assert builtin_sources.len > 0
+	for builtin_source in builtin_sources {
+		// The prototype of `Worker.value` and the context type of the wrapper may
+		// remain: a declaration emits nothing. The wrapper itself must be gone.
+		source := os.read_file(builtin_source) or { panic(err) }
+		assert !source.contains('_mvwrap_'), builtin_source
+	}
 }
 
 fn test_module_cache_static_inline_attributes_are_not_storage() {

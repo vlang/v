@@ -947,3 +947,158 @@ fn test_module_header_preserves_module_attributes() {
 	header := module_header(&a, &tc, 'guarded', '', map[string]string{})
 	assert header.starts_with('@[has_globals]\nmodule guarded\n'), header
 }
+
+// A module that imports another one is as much a matter of declarations as one
+// that does not. The node of an import carries the path it was spelled with in the
+// payload that holds the type parameters of a declaration, and reading that as
+// "generic" marked the header of nearly every module as one that needs its
+// sources, so a warm build parsed `builtin` and the rest of them again.
+fn test_module_header_of_importing_module_needs_no_source_bodies() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_imports_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'shapes.v')
+	os.write_file(source, 'module shapes
+
+import strings
+import math.bits as b
+
+pub struct Marker {}
+
+pub struct Square {
+pub:
+	side int
+}
+
+pub fn (s Square) area() int {
+	return s.side * s.side
+}
+
+pub fn describe(s Square) string {
+	mut out := strings.new_builder(16)
+	out.write_string(b.len_32(u32(s.area())).str())
+	return out.str()
+}
+') or {
+		panic(err)
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	tc := vtypes.TypeChecker.new(a)
+	header := module_header(a, &tc, 'shapes', '', map[string]string{})
+	assert !header.contains(source_body_marker), header
+	assert header.contains('import strings'), header
+	assert header.contains('pub fn describe(s Square) string\n'), header
+	// A struct without fields keeps its body: `struct Marker` alone does not parse.
+	assert header.contains('pub struct Marker {\n}'), header
+	header_path := os.join_path(root, 'shapes.vh')
+	os.write_file(header_path, header) or { panic(err) }
+	mut header_parser := parser.Parser.new(pref.new_preferences())
+	reparsed := header_parser.parse_file(header_path)
+	assert header_parser.diagnostics.len == 0, header_parser.diagnostics.str()
+	mut structs := []string{}
+	for node in reparsed.nodes {
+		if node.kind == .struct_decl {
+			structs << node.value
+		}
+	}
+	assert structs == ['Marker', 'Square']
+}
+
+fn test_generic_receiver_names_exclude_array_and_map_receivers() {
+	assert receiver_has_generic_type_args('Stack[int].push')
+	assert receiver_has_generic_type_args('datatypes.Stack[int].push')
+	assert receiver_has_generic_type_args('&Pair[string, int].swap')
+	// `[]u8.hex` is a method of an array, not of a generic `u8`. Stripping its
+	// brackets gives `u8.hex`, and every caller of that would be taken for the
+	// user of a generic method, its body embedded in the header for nothing.
+	assert !receiver_has_generic_type_args('[]u8.hex')
+	assert !receiver_has_generic_type_args('[]string.join')
+	assert !receiver_has_generic_type_args('[4]int.sum')
+	assert !receiver_has_generic_type_args('map[string]int.keys')
+	assert !receiver_has_generic_type_args('?[]u8.hex')
+	assert !receiver_has_generic_type_args('string.free')
+}
+
+// fake_pkg_config writes a `pkg-config` that looks up `<name>.pc` in `packages`
+// and logs each of its invocations to `log`.
+fn fake_pkg_config(dir string, packages string, log string) {
+	os.mkdir_all(dir) or { panic(err) }
+	path := os.join_path(dir, 'pkg-config')
+	os.write_file(path, '#!/bin/sh
+echo "\$@" >> "${log}"
+if [ "\$1" = "--variable" ]; then
+	echo "${packages}"
+	exit 0
+fi
+if [ "\$1" = "--exists" ] && [ -f "${packages}/\$2.pc" ]; then
+	exit 0
+fi
+exit 1
+') or {
+		panic(err)
+	}
+	os.chmod(path, 0o700) or { panic(err) }
+}
+
+fn test_pkg_config_answers_are_recorded_until_its_packages_change() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_pkgconfig_answers_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	packages := os.join_path(root, 'packages')
+	os.mkdir_all(packages) or { panic(err) }
+	log := os.join_path(root, 'invocations.log')
+	fake_pkg_config(os.join_path(root, 'bin'), packages, log)
+	old_path := os.getenv('PATH')
+	os.setenv('PATH', '${os.join_path(root, 'bin')}${os.path_delimiter}${old_path}', true)
+	old_pkg_config_path := os.getenv_opt('PKG_CONFIG_PATH')
+	os.unsetenv('PKG_CONFIG_PATH')
+	old_pkg_config_libdir := os.getenv_opt('PKG_CONFIG_LIBDIR')
+	os.unsetenv('PKG_CONFIG_LIBDIR')
+	defer {
+		os.setenv('PATH', old_path, true)
+		if value := old_pkg_config_path {
+			os.setenv('PKG_CONFIG_PATH', value, true)
+		}
+		if value := old_pkg_config_libdir {
+			os.setenv('PKG_CONFIG_LIBDIR', value, true)
+		}
+		os.rmdir_all(root) or {}
+	}
+	if file_metadata_signature(packages) == '' {
+		// The file system cannot tell one state of the directory from the next
+		// yet; pkg-config is then asked every time, as it was before.
+		return
+	}
+	cache_dir := os.join_path(root, 'cache')
+	invocations := fn [log] () []string {
+		return (os.read_file(log) or { '' }).split_into_lines()
+	}
+	// One process asks once, whatever it validates.
+	mut probes := &PkgConfigProbes{}
+	assert !pkg_config_exists('v3-absent', cache_dir, probes)
+	assert !pkg_config_exists('v3-absent', cache_dir, probes)
+	assert invocations() == ['--variable pc_path pkg-config', '--exists v3-absent']
+	// The next process reads what the same pkg-config answered.
+	assert !pkg_config_exists('v3-absent', cache_dir, &PkgConfigProbes{})
+	assert invocations().len == 2
+	// Installing the package changes its directory, and with it the answer.
+	os.write_file(os.join_path(packages, 'v3-absent.pc'), 'Name: v3-absent\n') or { panic(err) }
+	if file_metadata_signature(packages) == '' {
+		return
+	}
+	assert pkg_config_exists('v3-absent', cache_dir, &PkgConfigProbes{})
+	assert invocations().last() == '--exists v3-absent'
+	asked := invocations().len
+	assert pkg_config_exists('v3-absent', cache_dir, &PkgConfigProbes{})
+	assert invocations().len == asked
+	// Without a cache directory there is nothing to read an answer from.
+	assert pkg_config_exists('v3-absent', '', &PkgConfigProbes{})
+	assert invocations().len == asked + 1
+}
