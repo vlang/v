@@ -11750,11 +11750,22 @@ fn assign_stable_interface_type_ids(mut ids map[string]int, mut used map[int]boo
 }
 
 // interface_impl_set_signature returns the complete deterministic interface implementer set
-// that controls collision-resolved dispatch IDs for the current program.
+// that controls collision-resolved dispatch IDs for the current program: a line
+// `name=impl,impl` for every interface.
+// The module cache keys the object of a module by the interfaces that the code of that module
+// can reach, and needs two more facts for it, which follow as lines of their own:
+// `#module name=module` for an interface or an implementer whose name has no module prefix
+// (`builtin` and the program share that spelling), and `#reach impl=name,name` for the
+// interfaces among the fields of an implementer.
 pub fn (tc &TypeChecker) interface_impl_set_signature() string {
 	mut iface_names := tc.interface_names.keys()
 	iface_names.sort()
 	mut lines := []string{cap: iface_names.len}
+	mut bare_names := []string{}
+	mut impl_seen := map[string]bool{}
+	mut reach_lines := []string{}
+	mut seen := map[string]bool{}
+	mut found := map[string]bool{}
 	for iface_name in iface_names {
 		impl_names := if iface_name in ['IError', 'builtin.IError'] {
 			tc.ierror_impl_names()
@@ -11762,8 +11773,115 @@ pub fn (tc &TypeChecker) interface_impl_set_signature() string {
 			tc.interface_impl_names(iface_name)
 		}
 		lines << '${iface_name}=${impl_names.join(',')}'
+		if !impl_seen[iface_name] {
+			impl_seen[iface_name] = true
+			if !iface_name.all_before('[').contains('.') {
+				bare_names << iface_name
+			}
+		}
+		for impl_name in impl_names {
+			if impl_seen[impl_name] {
+				continue
+			}
+			impl_seen[impl_name] = true
+			if !impl_name.all_before('[').contains('.') {
+				bare_names << impl_name
+			}
+			if impl_name in tc.interface_names {
+				continue
+			}
+			seen.clear()
+			tc.collect_interfaces_in_type_structure(tc.parse_type(impl_name), mut seen, mut
+				found)
+			if found.len > 0 {
+				mut reached := found.keys()
+				reached.sort()
+				reach_lines << '#reach ${impl_name}=${reached.join(',')}'
+				found.clear()
+			}
+		}
 	}
+	bare_names.sort()
+	for name in bare_names {
+		module_name := if visibility := tc.declaration_visibility[name.all_before('[')] {
+			if visibility.module_name == '' { 'main' } else { visibility.module_name }
+		} else {
+			'?'
+		}
+		lines << '#module ${name}=${module_name}'
+	}
+	reach_lines.sort()
+	lines << reach_lines
 	return lines.join('\n')
+}
+
+// collect_interfaces_in_type_structure adds to `found` every interface that a value of
+// `typ` can hold in one of its fields, elements or variants, at any depth.
+fn (tc &TypeChecker) collect_interfaces_in_type_structure(typ Type, mut seen map[string]bool, mut found map[string]bool) {
+	match typ {
+		Alias {
+			tc.collect_interfaces_in_type_structure(typ.base_type, mut seen, mut found)
+		}
+		Pointer {
+			tc.collect_interfaces_in_type_structure(typ.base_type, mut seen, mut found)
+		}
+		OptionType {
+			tc.collect_interfaces_in_type_structure(typ.base_type, mut seen, mut found)
+		}
+		ResultType {
+			tc.collect_interfaces_in_type_structure(typ.base_type, mut seen, mut found)
+		}
+		Array {
+			tc.collect_interfaces_in_type_structure(typ.elem_type, mut seen, mut found)
+		}
+		ArrayFixed {
+			tc.collect_interfaces_in_type_structure(typ.elem_type, mut seen, mut found)
+		}
+		Channel {
+			tc.collect_interfaces_in_type_structure(typ.elem_type, mut seen, mut found)
+		}
+		Map {
+			tc.collect_interfaces_in_type_structure(typ.key_type, mut seen, mut found)
+			tc.collect_interfaces_in_type_structure(typ.value_type, mut seen, mut found)
+		}
+		MultiReturn {
+			for part in typ.types {
+				tc.collect_interfaces_in_type_structure(part, mut seen, mut found)
+			}
+		}
+		Struct {
+			if seen[typ.name] {
+				return
+			}
+			seen[typ.name] = true
+			for field in tc.struct_fields_for_type(typ.name) {
+				tc.collect_interfaces_in_type_structure(field.typ, mut seen, mut found)
+			}
+		}
+		Interface {
+			name := tc.interface_metadata_name(typ.name)
+			found[name] = true
+			if seen[name] {
+				return
+			}
+			seen[name] = true
+			for field in tc.interface_fields[name] or { []StructField{} } {
+				tc.collect_interfaces_in_type_structure(field.typ, mut seen, mut found)
+			}
+		}
+		SumType {
+			if seen[typ.name] {
+				return
+			}
+			seen[typ.name] = true
+			base := tc.sum_base_name(typ.name)
+			for variant in tc.sum_types[base] or { []string{} } {
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(typ.name, variant))
+				tc.collect_interfaces_in_type_structure(variant_type, mut seen, mut found)
+			}
+		}
+		else {}
+	}
 }
 
 // interface_concrete_method_keys returns generated interface dispatch methods and

@@ -467,7 +467,37 @@ For C executable and library builds, v3 caches each imported module as a
 declaration-only `.vh` file and a compiled `.o` file. A module object is rebuilt
 when its source content, compiler implementation, target, or relevant build
 configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
-`math.bits` share one `builtin.o`, matching the v2 core-cache layout. Cache files live under
+`math.bits` share one `builtin.o`, matching the v2 core-cache layout.
+The system C compiler builds and links these objects, so the cache serves the builds that use
+it: `-cc clang`, `-prod`, and every build where the bundled TinyCC is not the default compiler.
+TinyCC compiles a whole small program faster than a build validates and links its cached modules;
+pass `-usecache` to let the bundled TinyCC build and link the module objects itself on macOS and
+Linux, which pays off for programs with larger imports.
+The interface of a module does not depend on the program that was built first: a module that
+imports others is cached like one that does not, a program that only prints literals still checks
+the whole modules it publishes, and the methods of array and map receivers do not pass for generic
+ones. An object is identified by the C compilation flags, by whether a `defer` links a panic
+frame and by the C that is generated for the module, and not by the `static` wrappers of the
+program prefix. A `defer` links a frame when the program reaches `recover()`, and also when the
+code of one of its modules calls it: the header of a module says so, as the program can reach
+that call later through a function that the header only declares.
+A build that reads a module from its header has not generated the C of the module. It finds the
+object under the implementers of the interfaces that the code of the module can depend on: those
+that the module or one of its imports declares, and those among the fields of an implementer that
+comes from elsewhere. The interfaces of the program are none of these, so a program whose
+declarations changed compiles against the cached `builtin.o` instead of rebuilding every module.
+A program with another implementer of such an interface, most often an error type of its own,
+generates the C of its modules once more; where that C is the C of an object that is there, as
+it is for `builtin`, nothing is compiled.
+Each warm build also reuses what an earlier one found out: what `pkg-config --exists` answered for
+the `$pkgconfig` conditions of the cached sources (until a `.pc` file of the directories that
+pkg-config searches is added, removed or changed, as a package exists only while what it requires
+does), which headers a V-shipped C header includes and whether it can be replicated into every
+module object (until one of those headers changes, or one of their includes would find another
+file, be it through a symbolic link that points elsewhere now), and that the bundled TinyCC runs
+and links the libraries of the program.
+`CFLAGS` and `LDFLAGS` turn the module cache off, with `-usecache` too: no object records them.
+Cache files live under
 the V temporary directory by default; set `V3CACHE` to select another root, or pass
 `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
 object cache. An explicit `-b c` binary build also retains the complete generated translation unit

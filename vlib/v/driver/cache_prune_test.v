@@ -173,25 +173,173 @@ fn test_builtin_bundle_module_inputs_do_not_reuse_the_bundle_object() {
 		@VEXEROOT)
 }
 
-fn test_cached_object_wrapper_signature_ignores_non_wrapper_prefix_changes() {
+const test_wrapper_sections = "/* V3CACHE_PROGRAM_WRAPPERS */
+i64 Worker__value(main__Worker);
+typedef struct { main__Worker receiver; } _mvctx_1;
+static i64 _mvwrap_1(void) { _mvctx_1* ctx = (_mvctx_1*)closure_data(); return Worker__value(ctx->receiver); }
+static void* work_args_thread_wrapper(void* arg) { return work_thread_body(arg); }
+static void* work_thread_body(void* arg) { work(arg); return 0; }
+/* V3CACHE_PROGRAM_WRAPPERS_END */
+
+/* V3CACHE_PROGRAM_WRAPPERS */
+static void gc_abort_callback_adapter_7(const char* arg0) { gc_abort((char*)arg0); }
+static void drop_context_3(void* data) { context* ctx = (context*)data;
+	string__free(&ctx->name); char brace = '}';
+}
+typedef void (*__v3_callback_identity_fn)(void);
+static __v3_callback_identity_fn __v3_callback_identity(__v3_callback_identity_fn __v3_identity_candidate) {
+	if (__v3_identity_candidate == (__v3_callback_identity_fn)gc_abort_callback_adapter_7) { return (__v3_callback_identity_fn)gc_abort; }
+	if (__v3_identity_candidate == (__v3_callback_identity_fn)other_callback_adapter_9) { return (__v3_callback_identity_fn)main__other; }
+	return __v3_identity_candidate;
+}
+static void other_callback_adapter_9(int arg0) { main__other(arg0); }
+/* V3CACHE_PROGRAM_WRAPPERS_END */
+"
+
+fn test_module_object_keeps_only_the_wrappers_its_code_refers_to() {
+	declarations := 'typedef struct string string;\n${test_wrapper_sections}int after;\n'
+	// The code of `builtin` passes its own callback adapter and compares callbacks.
+	builtin_body := 'void init(void) { GC_set_abort_func(gc_abort_callback_adapter_7); bool same = __v3_callback_identity(a) == __v3_callback_identity(b); }\n'
+	pruned := prune_foreign_program_wrappers(declarations, builtin_body)
+	assert pruned.contains('static void gc_abort_callback_adapter_7('), pruned
+	// The wrappers of the program refer to its functions: an object that carried
+	// them would not link into another program.
+	assert !pruned.contains('_mvwrap_1'), pruned
+	assert !pruned.contains('work_args_thread_wrapper'), pruned
+	assert !pruned.contains('work_thread_body'), pruned
+	assert !pruned.contains('drop_context_3'), pruned
+	assert !pruned.contains('string__free(&ctx->name)'), pruned
+	assert !pruned.contains('other_callback_adapter_9'), pruned
+	assert !pruned.contains('main__other'), pruned
+	// The identity function stays, and knows the wrapper that stays.
+	assert pruned.contains('(__v3_callback_identity_fn)gc_abort_callback_adapter_7) { return'), pruned
+	assert pruned.contains('\treturn __v3_identity_candidate;\n}\n'), pruned
+	// Declarations emit nothing, and what surrounds the sections is untouched.
+	assert pruned.contains('i64 Worker__value(main__Worker);'), pruned
+	assert pruned.contains('typedef struct { main__Worker receiver; } _mvctx_1;'), pruned
+	assert pruned.starts_with('typedef struct string string;\n'), pruned
+	assert pruned.ends_with('int after;\n'), pruned
+
+	// A wrapper that a kept wrapper calls is kept with it.
+	spawning_body := 'void start(void) { pthread_create(&t, 0, work_args_thread_wrapper, args); }\n'
+	spawning := prune_foreign_program_wrappers(declarations, spawning_body)
+	assert spawning.contains('static void* work_args_thread_wrapper('), spawning
+	assert spawning.contains('static void* work_thread_body('), spawning
+	assert !spawning.contains('_mvwrap_1'), spawning
+	assert !spawning.contains('__v3_callback_identity(__v3_callback_identity_fn __v3_identity_candidate) {'), spawning
+
+	// Code that refers to every wrapper gets the declarations as they are.
+	everything := 'gc_abort_callback_adapter_7 _mvwrap_1 work_args_thread_wrapper drop_context_3 other_callback_adapter_9 __v3_callback_identity'
+	assert prune_foreign_program_wrappers(declarations, everything) == declarations
+	assert prune_foreign_program_wrappers('int plain;\n', builtin_body) == 'int plain;\n'
+}
+
+// What stays in a wrapper section whatever the code of the object refers to can
+// refer to a `static` wrapper itself. Taking that wrapper out would leave C that
+// names a function which is not there.
+fn test_module_object_keeps_the_wrappers_that_retained_items_refer_to() {
+	section := '/* V3CACHE_PROGRAM_WRAPPERS */
+static void adapter(void) { adapter_helper(); }
+static void adapter_helper(void) { main__work(); }
+static void (*handler)(void) = adapter;
+static void lonely_adapter(void) { main__other(); }
+int IShape__area(IShape* i);
+int IShape__area(IShape* i) {
+	return shape_area_adapter(i);
+}
+static int shape_area_adapter(IShape* i) { return 4; }
+static void drop_tree(main__Tree* _value);
+static void drop_tree(main__Tree* _value) { drop_tree(_value->next); }
+static void drop_list(main__List* _value);
+static void drop_list(main__List* _value) { main__free(_value); }
+/* V3CACHE_PROGRAM_WRAPPERS_END */
+'
+	declarations := 'int before;\n${section}int after;\n'
+	// The code of the module refers to one of the two cleanup helpers and to no
+	// other wrapper.
+	pruned := prune_foreign_program_wrappers(declarations, 'void clear(main__List* l) { drop_list(l); }\n')
+	// The initialized variable stays, so the wrapper it holds does, and so does
+	// the one that this wrapper calls.
+	assert pruned.contains('static void (*handler)(void) = adapter;'), pruned
+	assert pruned.contains('static void adapter(void) { adapter_helper(); }'), pruned
+	assert pruned.contains('static void adapter_helper(void) { main__work(); }'), pruned
+	// A function that is not `static` stays, with the wrapper it calls.
+	assert pruned.contains('int IShape__area(IShape* i) {\n\treturn shape_area_adapter(i);\n}'), pruned
+	assert pruned.contains('static int shape_area_adapter(IShape* i) { return 4; }'), pruned
+	// Nothing refers to these, and a function goes with the declaration that
+	// precedes its definition.
+	assert !pruned.contains('lonely_adapter'), pruned
+	assert !pruned.contains('drop_tree'), pruned
+	assert pruned.contains('static void drop_list(main__List* _value);'), pruned
+	assert pruned.contains('static void drop_list(main__List* _value) { main__free(_value); }'), pruned
+	assert pruned.starts_with('int before;\n') && pruned.ends_with('int after;\n'), pruned
+	// The retained items are what keeps the objects of this program to itself.
+	opaque := v3_opaque_program_wrappers(declarations)
+	assert opaque.contains('static void (*handler)(void) = adapter;'), opaque
+	assert opaque.contains('int IShape__area(IShape* i) {'), opaque
+	assert !opaque.contains('adapter_helper'), opaque
+	// A variable whose initializer ends like a prototype is no declaration.
+	item := v3_program_wrapper_item('static void (*handler)(void) = (adapter);', 0, 1)
+	assert !item.declares && item.function == ''
+	assert v3_static_prototype_name(item) == ''
+	assert v3_static_prototype_name(v3_program_wrapper_item('static void drop_tree(main__Tree* _value);',
+		0, 1)) == 'drop_tree'
+	assert v3_static_prototype_name(v3_program_wrapper_item('i64 Worker__value(main__Worker);',
+		0, 1)) == ''
+}
+
+fn test_cached_object_signature_ignores_prunable_program_wrappers() {
+	// A build that parses a module from its header generates none of that module's
+	// wrappers, and has to find the object that the build from source published.
 	base := 'base signature'
-	wrapper := '/* V3CACHE_PROGRAM_WRAPPERS */\nstatic void callback(void) {}\n/* V3CACHE_PROGRAM_WRAPPERS_END */'
-	raw_source := '#define NATIVE_IMPLEMENTATION\n#include "native.h"\n${wrapper}\n/* V3CACHE_BODY_BEGIN */\n'
-	prepared_source := '#define V3CACHE_PROGRAM_UNIT 1\n${wrapper}\n/* V3CACHE_BODY_BEGIN */\n'
-	assert v3_cached_object_wrapper_compile_signature(base, raw_source) == v3_cached_object_wrapper_compile_signature(base,
-		prepared_source)
-	changed_source := prepared_source.replace('callback(void)', 'other_callback(void)')
-	assert v3_cached_object_wrapper_compile_signature(base, prepared_source) != v3_cached_object_wrapper_compile_signature(base,
-		changed_source)
-	assert v3_cached_object_wrapper_compile_signature(base, 'int declaration;') == base
+	from_source := '#define V3CACHE_PROGRAM_UNIT 1\n${test_wrapper_sections}/* V3CACHE_BODY_BEGIN */\n'
+	from_header := '#define V3CACHE_PROGRAM_UNIT 1\n/* V3CACHE_BODY_BEGIN */\n'
+	assert v3_opaque_program_wrappers(from_source) == ''
+	assert v3_cached_object_program_compile_signature(base, from_source) == base
+	assert v3_cached_object_program_compile_signature(base, from_header) == base
+}
+
+fn test_cached_object_signature_keeps_unprunable_program_wrappers_apart() {
+	// What a wrapper section holds besides functions and declarations stays in
+	// every module object of the build, so those objects serve that program only.
+	base := 'base signature'
+	stateful := '/* V3CACHE_PROGRAM_WRAPPERS */\nstatic int wrapper_calls = 0;\nstatic void counted(void) { wrapper_calls++; }\n/* V3CACHE_PROGRAM_WRAPPERS_END */\n'
+	assert v3_opaque_program_wrappers(stateful) == 'static int wrapper_calls = 0;\n'
+	first := v3_cached_object_program_compile_signature(base, stateful)
+	assert first != base
+	other := v3_cached_object_program_compile_signature(base, stateful.replace('wrapper_calls = 0', 'wrapper_calls = 1'))
+	assert other != base && other != first
+	exported := '/* V3CACHE_PROGRAM_WRAPPERS */\nint IShape__area(IShape* i) {\n\treturn 0;\n}\n/* V3CACHE_PROGRAM_WRAPPERS_END */\n'
+	assert v3_cached_object_program_compile_signature(base, exported) != base
+	unfinished := '/* V3CACHE_PROGRAM_WRAPPERS */\nstatic void broken(void) {\n\tint x;\n'
+	assert v3_cached_object_program_compile_signature(base, unfinished) != base
+}
+
+fn test_cached_object_signature_covers_the_arguments_of_the_object_compiler() {
+	// The system `cc` gets none, and its objects keep the key they had.
+	plain := v3_cached_object_compile_signature(V3CachedObjectCompiler{}, 'c11', '', '',
+		'-w', []string{}, false, '')
+	assert !plain.contains('compiler_args=')
+	// TinyCC is given its resource directory and the include root of the SDK: an
+	// object compiled against another SDK is another object.
+	first_sdk := v3_cached_object_compile_signature(V3CachedObjectCompiler{
+		path: 'tcc'
+		args: ['-B/v/thirdparty/tcc/lib', '-I/sdk/26.0/usr/include']
+	}, 'c11', '', '', '-w', []string{}, false, '')
+	second_sdk := v3_cached_object_compile_signature(V3CachedObjectCompiler{
+		path: 'tcc'
+		args: ['-B/v/thirdparty/tcc/lib', '-I/sdk/26.5/usr/include']
+	}, 'c11', '', '', '-w', []string{}, false, '')
+	assert first_sdk != plain
+	assert first_sdk != second_sdk
 }
 
 fn test_cached_object_signature_keeps_panic_frame_objects_apart() {
 	base := 'base signature'
 	plain := 'int declaration;\n/* V3CACHE_BODY_BEGIN */\n'
 	with_frames := 'typedef struct v_unwind_frame {\n\tstruct v_unwind_frame* prev;\n} v_unwind_frame;\n/* V3CACHE_BODY_BEGIN */\n'
-	assert v3_cached_object_wrapper_compile_signature(base, plain) == base
-	assert v3_cached_object_wrapper_compile_signature(base, with_frames) != base
+	assert v3_cached_object_program_compile_signature(base, plain) == base
+	assert v3_cached_object_program_compile_signature(base, with_frames) != base
 }
 
 fn test_cache_function_reference_counts_scans_source_once() {
