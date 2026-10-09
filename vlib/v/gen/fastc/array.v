@@ -432,12 +432,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
 	if g.direct_array_access {
 		return FastcRenderedExpression{
-			source: '(((${element_type} *)(${array_value}).data)[${index_source}])'
+			source: '(((${g.collection_storage_type(element_type)} *)(${array_value}).data)[${index_source}])'
 			typ:    element_type
 		}
 	}
 	return FastcRenderedExpression{
-		source: '(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
+		source: '(*(${g.collection_storage_type(element_type)} *)builtin__array_get(${array_value}, ${index_source}))'
 		typ:    element_type
 	}
 }
