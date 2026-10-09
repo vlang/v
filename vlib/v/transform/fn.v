@@ -12184,6 +12184,7 @@ fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
 		3 { method == 'pop' }
 		4 { method == 'last' || method == 'trim' }
 		5 { method == 'clear' }
+		11 { method == 'delete_last' }
 		else { false }
 	}
 }
