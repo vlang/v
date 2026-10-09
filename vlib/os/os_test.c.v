@@ -1100,6 +1100,20 @@ fn test_utime() {
 	assert os.file_last_mod_unix(filename) == mtime
 }
 
+fn test_utime_on_a_directory() {
+	dirname := os.join_path(tfolder, 'test_utime_dir')
+	os.mkdir_all(dirname) or { panic(err) }
+	defer {
+		os.rmdir_all(dirname) or { panic(err) }
+	}
+	// The MSVC `_utime()` CRT call used to back os.utime() refuses a directory with
+	// "Permission denied", while the POSIX `utime()` it stands in for accepts one.
+	atime := i64(2_147_483_648)
+	mtime := i64(2_306_102_495)
+	os.utime(dirname, atime, mtime) or { panic(err) }
+	assert os.file_last_mod_unix(dirname) == mtime
+}
+
 fn test_execute() {
 	print0script := os.join_path_single(tfolder, 'print0.v')
 	// The output of the next command contains a 0 byte in the middle.

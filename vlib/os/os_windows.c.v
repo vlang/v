@@ -5,7 +5,6 @@ import encoding.utf8.validate
 
 #flag windows -l advapi32
 #include <process.h>
-#include <sys/utime.h>
 
 // path_separator is the platform specific separator string, used between the folders, and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '\\'
@@ -245,12 +244,9 @@ fn decode_windows_captured_output(raw string) string {
 	return res
 }
 
-pub struct C._utimbuf {
-	actime  i64
-	modtime i64
-}
-
-fn C._utime(&char, voidptr) i32
+// SetFileTime sets the timestamps of an already open file or directory handle.
+// See https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfiletime
+fn C.SetFileTime(hFile voidptr, lpCreationTime &Filetime, lpLastAccessTime &Filetime, lpLastWriteTime &Filetime) i32
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	$if debug {
@@ -340,10 +336,37 @@ pub fn short_path(path string) string {
 	return join_path_single(short_parent, file_name(normalized))
 }
 
+// utime changes the access and modification times of the file, or of the directory, that path names.
+// The MSVC `_utime()` CRT call, which used to back this, accepts only a regular file, while the
+// POSIX `utime()` it stands in for accepts a directory too, so the timestamps are written through a
+// handle opened with FILE_FLAG_BACKUP_SEMANTICS instead.
 pub fn utime(path string, actime i64, modtime i64) ! {
-	mut u := C._utimbuf{actime, modtime}
-	if C._utime(&char(path.str), voidptr(&u)) != 0 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	wide_path := path.to_wide()
+	defer {
+		unsafe { free(voidptr(wide_path)) }
+	}
+	handle := C.CreateFileW(wide_path, handle_write_attributes, file_share_read | file_share_write |
+		file_share_delete, nil, handle_open_existing, file_flag_backup_semantics, nil)
+	if handle == invalid_handle_value {
+		error_num := int(C.GetLastError())
+		return error_with_code(get_error_msg(error_num), error_num)
+	}
+	defer {
+		C.CloseHandle(handle)
+	}
+	atime_filetime := unix_seconds_to_filetime(actime)
+	mtime_filetime := unix_seconds_to_filetime(modtime)
+	if C.SetFileTime(handle, nil, &atime_filetime, &mtime_filetime) == 0 {
+		error_num := int(C.GetLastError())
+		return error_with_code(get_error_msg(error_num), error_num)
+	}
+}
+
+fn unix_seconds_to_filetime(seconds i64) Filetime {
+	ticks := (u64(seconds) + u64(windows_filetime_unix_epoch_seconds)) * windows_filetime_ticks_per_second
+	return Filetime{
+		dw_low_date_time:  u32(ticks & 0xFFFFFFFF)
+		dw_high_date_time: u32(ticks >> 32)
 	}
 }
 

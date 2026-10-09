@@ -9,10 +9,13 @@ const error_insufficient_buffer = 0x0082
 
 const handle_generic_read = u32(0x80000000)
 const handle_open_existing = 0x00000003
+const handle_write_attributes = 0x00000100
 
 const file_share_read = 0x01
 const file_share_write = 0x02
 const file_share_delete = 0x04
+// FILE_FLAG_BACKUP_SEMANTICS, required to open a handle to a directory
+const file_flag_backup_semantics = 0x02000000
 
 const file_notify_change_file_name = 0x01
 const file_notify_change_dir_name = 0x02
