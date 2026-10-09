@@ -830,13 +830,33 @@ fn file_has_incompatible_os_only_suffix(file string, current_os string) bool {
 
 // get_v_files_from_dir returns get v files from dir data for pref.
 pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string) []string {
-	return get_v_files_from_dir_for_target(dir, user_defines, target_from(target_os, host_arch()) or {
-		host_target()
-	})
+	return get_v_files_from_dir_for_backend_target(dir, user_defines, '', target_from(target_os,
+		host_arch()) or { host_target() })
 }
 
 // get_v_files_from_dir_for_target returns sources compatible with the complete target.
 pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target Target) []string {
+	return get_v_files_from_dir_for_backend_target(dir, user_defines, '', target)
+}
+
+// wasm_source_file_matches_backend reports whether `path` names a source of the
+// WASM backend's own file family, the counterpart of FastC's own backend
+// filter: a plain `.v` file, a `.wasm.v` file, or one of the `_nix.`/`_default.`
+// styled files the wasm target accepts anyway. Another backend's family
+// (`.c.v`, `.js.v`, `.native.v`) and a file qualified with another architecture
+// (`.arm64.v`, `.amd64.v`, `.rv64.v`) is foreign, exactly as those are foreign
+// to FastC.
+fn wasm_source_file_matches_backend(path string) bool {
+	return !path.ends_with('.c.v') && !path.ends_with('.js.v') && !path.ends_with('.native.v')
+		&& !path.ends_with('.arm64.v') && !path.ends_with('.amd64.v') && !path.ends_with('.rv64.v')
+}
+
+// get_v_files_from_dir_for_backend_target returns sources compatible with the
+// complete target and with the file family of `backend`. The empty `backend`
+// has no family of its own and keeps every candidate, which is the list the
+// callers that do not know the backend had before.
+pub fn get_v_files_from_dir_for_backend_target(dir string, user_defines []string, backend string,
+	target Target) []string {
 	if dir == '' || !os.is_dir(dir) {
 		return []string{}
 	}
@@ -861,6 +881,13 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 	for file in sorted_files {
 		if !file.ends_with('.v') || file.ends_with('.js.v')
 			|| file_name_has_marker(file, '_test.') {
+			continue
+		}
+		// A file qualified with a backend suffix belongs to the backend that
+		// spelled it, so a wasm build compiles `foo.wasm.v` instead of pulling in
+		// `foo.c.v` beside it. Every other backend keeps the one shared family it
+		// compiled before, because this branch is only taken for `wasm`.
+		if backend == 'wasm' && !wasm_source_file_matches_backend(file) {
 			continue
 		}
 		// Everything after `_d_`/`_notd_` names a compile-time define, even when
