@@ -570,6 +570,9 @@ fn test_joint_root_dev_dependencies_install_and_explain_only_runtime_transitives
 	assert graph.contains('joint_app -> devtool@v1.0.0 (requires ^1)'), graph
 	assert graph.contains('devtool@v1.0.0 -> child@v1.0.0 (requires ^1)'), graph
 	assert !graph.contains('missing_dev_dependency'), graph
+	joint_cli(['vendor'])
+	assert os.is_file(os.join_path(project, 'vendor', 'devtool', 'v.mod'))
+	assert os.is_file(os.join_path(project, 'vendor', 'child', 'v.mod'))
 }
 
 fn test_joint_root_dev_dependencies_honor_locked_frozen_and_precise_updates() {
