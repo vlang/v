@@ -17,3 +17,6 @@ It prints:
 ['x', 'y']
 ['a', 'b', 'c']
 ```
+
+The final record does not need a trailing line ending, including when the document contains
+only one record. Empty documents and comment-only input contain no records.
