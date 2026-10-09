@@ -69,6 +69,7 @@ pub fn new_reader(data string, config ReaderConfig) &Reader {
 
 // read reads a row from the CSV data.
 // If successful, the result holds an array of each column's data.
+// A closing quote must be followed by the delimiter or the end of the record.
 pub fn (mut r Reader) read() ![]string {
 	l := r.read_record()!
 	return l
@@ -203,12 +204,21 @@ fn (mut r Reader) read_record() ![]string {
 				}
 				continue
 			}
+			return &UnexpectedCharacterAfterQuoteError{}
 		}
 		if i <= -1 && fields.len == 0 {
 			return &InvalidDelimiterError{}
 		}
 	}
 	return fields
+}
+
+struct UnexpectedCharacterAfterQuoteError {
+	Error
+}
+
+fn (err UnexpectedCharacterAfterQuoteError) msg() string {
+	return 'encoding.csv: unexpected character after closing quote'
 }
 
 fn valid_delim(b u8) bool {
