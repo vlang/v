@@ -353,10 +353,9 @@ pub fn serve(registry Registry, method string, path string, query map[string]str
 			etag:        etag
 		}
 	}
-	return RegistryResponse{
-		body: body
-		etag: etag
-	}
+	mut resp := route(registry, method, path, query)
+	resp.etag = etag
+	return resp
 }
 
 // etag_of returns the entity tag for `body`: the sha256 of its bytes inside the
@@ -443,10 +442,30 @@ pub fn artifact_request(registry Registry, path string) ?RegistryResponse {
 	}
 }
 
+// not_found_body is what the router answers for anything it does not serve.
+// `route` maps exactly this body to 404, so the two halves share one contract:
+// a client tells "not found" from success by the status line rather than by
+// parsing the body. Any other error the router can produce still needs a status
+// of its own, and adding one means giving `route` the case to map it.
+const not_found_body = '{"error": "not found"}'
+
+// route answers one request through the router and gives it a status. The
+// router itself returns text; this is where that text becomes an HTTP response.
+pub fn route(registry Registry, method string, path string, query map[string]string, opts RequestOptions) RegistryResponse {
+	body := handle_request(registry, method, path, query, opts)
+	status_code := if body == not_found_body { 404 } else { 200 }
+	return RegistryResponse{
+		status_code: status_code
+		body:        body
+	}
+}
+
+// handle_request routes a registry API request to the appropriate handler.
+// This is the entry point for the registry HTTP server.
 pub fn handle_request(registry Registry, method string, path string, query map[string]string, opts RequestOptions) string {
 	parts := path.trim_left('/').split('/')
 	if parts.len == 0 {
-		return '{"error": "not found"}'
+		return not_found_body
 	}
 
 	// GET /config.json
@@ -469,7 +488,7 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 	if parts.len == 3 && parts[1] == '@v' && parts[2].ends_with('.info') && method == 'GET' {
 		version := parts[2].trim_string_right('.info')
 		info := registry.get_info(parts[0], version) or {
-			return '{"error": "not found"}'
+			return not_found_body
 		}
 		return json2.encode(info)
 	}
@@ -477,7 +496,7 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 	// GET /<module>/@latest
 	if parts.len == 2 && parts[1] == '@latest' && method == 'GET' {
 		info := registry.get_latest(parts[0]) or {
-			return '{"error": "not found"}'
+			return not_found_body
 		}
 		return json2.encode(info)
 	}
@@ -491,7 +510,7 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 	// GET /api/modules/<module>
 	if parts.len == 3 && parts[0] == 'api' && parts[1] == 'modules' && method == 'GET' {
 		entry := registry.modules[parts[2]] or {
-			return '{"error": "not found"}'
+			return not_found_body
 		}
 		return json2.encode(entry)
 	}
@@ -522,7 +541,7 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 		return json2.encode(registry.signature())
 	}
 
-	return '{"error": "not found"}'
+	return not_found_body
 }
 
 // signing_key loads the registry's private key seed, from `VPM_REGISTRY_KEY`
