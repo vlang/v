@@ -6107,8 +6107,8 @@ fn (mut g Gen) format_anon_aggregate_source(source string) string {
 		} else if trimmed.len > 0 {
 			mut indent := line_depths[i]
 			section := trimmed.all_before(':').fields().join(' ')
-			if trimmed.starts_with('}') || (trimmed.contains(':') && section in ['pub',
-				'pub mut', 'pub module_mut', 'mut', '__global', 'module']) {
+			if trimmed.starts_with('}') || (trimmed.contains(':') && section in ['pub', 'pub mut',
+				'pub module_mut', 'mut', '__global', 'module']) {
 				indent--
 			}
 			out.write_string('\t'.repeat(int_max(0, indent)) + trimmed)
