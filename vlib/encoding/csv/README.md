@@ -17,3 +17,6 @@ It prints:
 ['x', 'y']
 ['a', 'b', 'c']
 ```
+
+Unquoted fields cannot contain double quotes. Enclose a field containing quotes in double
+quotes and escape each embedded quote by doubling it; `read()` returns an error for a bare quote.
