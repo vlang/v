@@ -2303,12 +2303,13 @@ fn input_owns_builtin_bundle_module(input_file string, vroot string) bool {
 }
 
 fn input_is_legacy_diagnostic_fixture(input_file string) bool {
-	normalized := os.real_path(input_file).replace('\\', '/')
+	resolved := os.real_path(input_file)
+	normalized := resolved.replace('\\', '/')
 	if !['/vlib/v/checker/tests/', '/vlib/v/parser/tests/', '/vlib/v/scanner/tests/'].any(normalized.contains(it)) {
 		return false
 	}
 	if os.is_dir(input_file) {
-		return os.is_file(input_file + '.out')
+		return os.is_file(resolved + '.out')
 	}
 	if !input_file.ends_with('.vv') {
 		return false

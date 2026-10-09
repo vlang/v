@@ -11,6 +11,13 @@ fn test_diagnostic_module_directory_uses_the_same_fixture_mode_as_vv_files() {
 	assert !input_is_legacy_diagnostic_fixture(module_dir)
 	os.write_file(module_dir + '.out', 'expected diagnostic')!
 	assert input_is_legacy_diagnostic_fixture(module_dir)
+	assert input_is_legacy_diagnostic_fixture(module_dir + os.path_separator)
+	previous_dir := os.getwd()
+	os.chdir(module_dir)!
+	defer { os.chdir(previous_dir) or {} }
+	assert input_is_legacy_diagnostic_fixture('.')
+	assert input_is_legacy_diagnostic_fixture('.' + os.path_separator)
+	os.chdir(previous_dir)!
 
 	vv_path := os.join_path(root, 'vlib', 'v', 'checker', 'tests', 'sample.vv')
 	os.write_file(vv_path, 'fn main() {}')!
