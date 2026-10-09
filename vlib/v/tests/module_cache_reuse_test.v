@@ -524,3 +524,81 @@ fn test_ambient_c_flags_keep_a_usecache_build_out_of_the_module_cache() {
 	assert run_built(root, 'flagged') == '42'
 	assert module_objects(root) == published
 }
+
+fn test_cached_constants_keep_storage_and_dependency_initialization_in_their_modules() {
+	$if windows {
+		return
+	}
+	for flags in [['-cc', 'cc', '-enable-globals'], ['-cc', 'tcc', '-usecache', '-enable-globals']] {
+		root := new_project('module_cache_owned_consts_${flags[1]}')
+		mut saved := pin_module_cache(os.join_path(root, 'cache'))
+		saved << save_env('VMODULES')
+		os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+		defer {
+			for env in saved { env.restore() }
+			os.rmdir_all(root) or {}
+		}
+		os.mkdir_all(os.join_path(root, 'modules', 'cachebase'))!
+		os.write_file(os.join_path(root, 'modules', 'cachebase', 'cachebase.v'), 'module cachebase
+pub const values = make_values()
+pub const hidden = [1, 2, 3]
+pub const fixed = [u8(7), 8, 9]!
+pub const width = i64(3)
+pub type Number = int
+pub const aliased = Number(5)
+struct Holder { value int = make_default() }
+__global holder Holder
+pub const snapshot = holder.value
+fn make_default() int {
+	println("default initialized")
+	return 41
+}
+fn make_values() []int {
+	println("base initialized")
+	return [20, 21]
+}
+pub fn address() voidptr { return values.data }
+pub fn fresh() []int { return values.clone() }
+')!
+		os.mkdir_all(os.join_path(root, 'modules', 'cacheowned'))!
+		os.write_file(os.join_path(root, 'modules', 'cacheowned', 'cacheowned.v'), 'module cacheowned
+import cachebase
+pub const total = make_total()
+fn make_total() int {
+	println("consumer initialized")
+	return cachebase.values[0] + cachebase.values[1] + 1
+}
+pub fn result() int { return total }
+pub struct Unused { data [128]int }
+pub fn unused(value Unused) int { return value.data[0] }
+')!
+		main_file := os.join_path(root, 'main.v')
+		program := 'import cachebase
+import cacheowned
+const fresh = cachebase.fresh()
+const indirect = cachebase.hidden.clone()
+fn main() {
+	assert fresh[0] == 20
+	assert indirect[2] == 3
+	assert cachebase.values.data == cachebase.address()
+	assert cachebase.fixed[2] == 9
+	assert cachebase.snapshot == 41
+	println(cacheowned.result())
+}
+'
+		os.write_file(main_file, program)!
+		build(root, flags, main_file, 'cold')
+		assert run_built(root, 'cold') == 'default initialized\nbase initialized\nconsumer initialized\n42'
+		for i in 0 .. 2 {
+			os.write_file(main_file, program.replace('println(cacheowned.result())',
+				'width := &cachebase.width
+	assert *width == 3
+	assert cachebase.aliased == cachebase.Number(5)
+	println(cacheowned.result() + ${i + 1})') + '\nfn added_${i}() {}\n')!
+			warm := build(root, flags, main_file, 'warm')
+			assert_reused_modules(warm)
+			assert !warm.contains('regenerating it with'), warm
+			assert run_built(root, 'warm') == 'default initialized\nbase initialized\nconsumer initialized\n${43 + i}'
+		}
+	}
+}

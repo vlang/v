@@ -13631,6 +13631,7 @@ pub fn run(args []string) {
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			if cache_state.manager.enabled {
 				g.set_program_uses_recover(program_used_fns['recover'] || cache_state.calls_recover)
+				g.set_cache_const_modules(cache_state.module_sources.keys(), cache_state.parsed_from_source.keys())
 			}
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_embed_incbin(use_embed_incbin)
@@ -13708,6 +13709,7 @@ pub fn run(args []string) {
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			if cache_state.manager.enabled {
 				g.set_program_uses_recover(program_used_fns['recover'] || cache_state.calls_recover)
+				g.set_cache_const_modules(cache_state.module_sources.keys(), cache_state.parsed_from_source.keys())
 			}
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_embed_incbin(use_embed_incbin)

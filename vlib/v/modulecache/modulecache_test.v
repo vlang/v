@@ -1021,6 +1021,35 @@ fn header_of_source(root string, name string, source string) string {
 	return module_header(a, &tc, name, '', map[string]string{})
 }
 
+fn test_cached_constant_tables_are_typed_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cached_const_declarations_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := header_of_source(root, 'tables', 'module tables
+pub const data = [u64(17), 29, 41]
+pub const fixed = [u8(1), 2, 3]!
+pub const width = 3
+pub const cast_width = i64(3)
+')
+	assert header.contains('pub const data []u64'), header
+	assert header.contains('pub const fixed [3]u8'), header
+	assert header.contains('pub const width = 3'), header
+	assert header.contains('pub const cast_width = i64(3)'), header
+	assert !header.contains('29'), header
+	path := os.join_path(root, 'tables.vh')
+	os.write_file(path, header)!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := vtypes.TypeChecker.new(a)
+	tc.collect(a)
+	assert (tc.const_types['tables.data'] or { panic('missing data') }).name() == '[]u64'
+	assert (tc.const_types['tables.fixed'] or { panic('missing fixed') }) is vtypes.ArrayFixed
+	assert 'tables.data' !in tc.const_exprs
+	assert 'tables.fixed' !in tc.const_exprs
+	assert 'tables.cast_width' in tc.const_exprs
+}
+
 // A header declares the functions of a module and leaves out their code. A
 // program that reaches a `recover()` in that code cannot tell from the header,
 // and the object of the module was compiled before the program did, so the header
