@@ -342,6 +342,28 @@ fn test_stdlib_doc_reports_an_undocumented_member() {
 	assert answer.contains('"hint"'), answer
 }
 
+fn test_stdlib_doc_pages_a_large_module_listing() {
+	paged := call_tool('v_stdlib_doc', '{"symbol":"os","limit":2}')
+	assert field(replace_all(paged, '\t', ''), 'returned') == '2', paged
+	assert paged.contains('"truncated":\ttrue') || paged.contains('"truncated": true'), paged
+	assert paged.contains('"limit"'), paged
+	assert paged.contains('"hint"'), paged
+	// `symbol_count` stays the total, so the page still says how big the module is.
+	full := call_tool('v_stdlib_doc', '{"symbol":"os","limit":1000000}')
+	assert full.contains('"truncated":\tfalse') || full.contains('"truncated": false'), full
+	shifted := call_tool('v_stdlib_doc', '{"symbol":"os","limit":1,"offset":1}')
+	assert field(replace_all(shifted, '\t', ''), 'returned') == '1', shifted
+	first := call_tool('v_stdlib_doc', '{"symbol":"os","limit":1}')
+	assert shifted != first, 'offset 1 must move the page'
+}
+
+fn test_files_clamps_an_enormous_limit() {
+	assert clamp_file_limit(1000000) == 2000
+	assert clamp_file_limit(2000) == 2000
+	assert clamp_file_limit(500) == 500
+	assert clamp_file_limit(1) == 1
+}
+
 fn test_module_path_prefers_the_project_over_an_installed_module() {
 	root := probe_root()!
 	os.mkdir_all(os.join_path(root, 'mylib'))!

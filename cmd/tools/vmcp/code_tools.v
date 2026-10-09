@@ -348,13 +348,23 @@ before writing a call instead of guessing.',
 				kind:        'string'
 				description: 'A module name such as `os`, or a\nsymbol such as `os.read_file`.'
 			}
+			'limit':  SchemaProperty{
+				kind:        'integer'
+				description: 'Maximum documented symbols to list for a\nmodule query. Defaults to 100.'
+			}
+			'offset': SchemaProperty{
+				kind:        'integer'
+				description: 'Documented symbols to skip before\nlisting. Defaults to 0.'
+			}
 		}), tool_stdlib_doc)
 }
 
 // tool_stdlib_doc answers `v_stdlib_doc`.
 fn tool_stdlib_doc(ws &Workspace, arguments string) string {
-	symbol := decode_args(arguments).required_str('symbol') or {
+	args := decode_args(arguments)
+	symbol := args.required_str('symbol') or {
 		return error_json(err.msg())
 	}
-	return stdlib_doc_json(ws, symbol)
+	return stdlib_doc_json(ws, symbol, args.int('limit', stdlib_page_limit), args.int('offset',
+		0))
 }
