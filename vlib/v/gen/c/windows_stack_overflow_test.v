@@ -20,6 +20,11 @@ typedef struct { DWORD ExceptionCode; } EXCEPTION_RECORD;
 typedef struct { EXCEPTION_RECORD* ExceptionRecord; } EXCEPTION_POINTERS;
 static int mock_reservations;
 static int mock_registrations;
+static LONG (*mock_handler)(EXCEPTION_POINTERS*);
+static int mock_writes;
+static int mock_message_matches;
+static int mock_terminations;
+static unsigned mock_exit_code;
 static inline BOOL mock_stack_guarantee(PULONG size) {
 	if (*size == 64 * 1024) ++mock_reservations;
 	return 1;
@@ -29,13 +34,30 @@ static inline FARPROC GetProcAddress(void* module, const char* name) {
 	return (FARPROC)mock_stack_guarantee;
 }
 static inline void* AddVectoredExceptionHandler(ULONG first, LONG (*handler)(EXCEPTION_POINTERS*)) {
-	if (first == 1 && handler != NULL) ++mock_registrations;
+	if (first == 1 && handler != NULL) {
+		++mock_registrations;
+		mock_handler = handler;
+	}
 	return NULL;
 }
 static inline void* GetStdHandle(DWORD handle) { return NULL; }
-static inline BOOL WriteFile(void* handle, const void* buffer, DWORD size, DWORD* written, void* overlapped) { return 1; }
+static inline BOOL WriteFile(void* handle, const void* buffer, DWORD size, DWORD* written, void* overlapped) {
+	static const char expected[] = "V panic: stack overflow\n";
+	const char* message = (const char*)buffer;
+	++mock_writes;
+	mock_message_matches = size == sizeof(expected) - 1;
+	for (DWORD i = 0; mock_message_matches && i < size; ++i) {
+		if (message[i] != expected[i]) mock_message_matches = 0;
+	}
+	*written = size;
+	return 1;
+}
 static inline void* GetCurrentProcess(void) { return NULL; }
-static inline BOOL TerminateProcess(void* process, unsigned code) { return 1; }
+static inline BOOL TerminateProcess(void* process, unsigned code) {
+	++mock_terminations;
+	mock_exit_code = code;
+	return 1;
+}
 '
 
 const mock_windows_stack_overflow_program = r'
@@ -43,7 +65,20 @@ const mock_windows_stack_overflow_program = r'
 int main(void) {
 	v_install_windows_stack_overflow_handler();
 	v_windows_set_stack_guarantee();
-	return mock_reservations != 2 || mock_registrations != EXPECT_REGISTRATIONS;
+	if (mock_reservations != 2 || mock_registrations != EXPECT_REGISTRATIONS) return 1;
+	if (EXPECT_REGISTRATIONS == 1) {
+		EXCEPTION_RECORD record = {0xE0123456};
+		EXCEPTION_POINTERS exception = {&record};
+		if (mock_handler(&exception) != EXCEPTION_CONTINUE_SEARCH) return 2;
+		if (mock_writes != 0 || mock_terminations != 0) return 3;
+		record.ExceptionCode = EXCEPTION_STACK_OVERFLOW;
+		mock_handler(&exception);
+		if (mock_writes != 1 || !mock_message_matches) return 4;
+		if (mock_terminations != 1 || mock_exit_code != 1) return 5;
+	} else if (mock_handler != NULL || mock_writes != 0 || mock_terminations != 0) {
+		return 6;
+	}
+	return 0;
 }
 '
 
