@@ -860,6 +860,39 @@ fn test_formatter_preserves_anonymous_aggregate_types() {
 	assert vfmt('anonymous_aggregate_types_twice', out) == out
 }
 
+fn test_formatter_fixes_indented_anonymous_union() {
+	source := 'struct LaborUnion {\n\trespect_workers bool\n\tcontent         union {\nworkers []string\n\t}\n}\n'
+	out := vfmt('indented_union', source)
+	expected := 'struct LaborUnion {\n\trespect_workers bool\n\tcontent         union {\n\t\tworkers []string\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('indented_union_twice', out) == out
+}
+
+fn test_formatter_indents_nested_anonymous_aggregates() {
+	source := 'struct Holder {\nitem union {\nrecord struct {\nvalue int\n}\nother int\n}\n}\n'
+	out := vfmt('nested_anonymous_aggregates', source)
+	expected := 'struct Holder {\n\titem union {\n\t\trecord struct {\n\t\t\tvalue int\n\t\t}\n\t\tother int\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('nested_anonymous_aggregates_twice', out) == out
+}
+
+fn test_formatter_preserves_anonymous_aggregate_literal_and_comment_continuations() {
+	source := "struct Holder {\nitem struct {\ntext string = 'first {\n  second }\nthird'\n/* comment {\n  preserved }\n*/\n\ncount int\n}\n}\n"
+	out := vfmt('anonymous_aggregate_continuations', source)
+	assert out.contains("'first {\n  second }\nthird'"), out
+	assert out.contains('\t\t/* comment {\n  preserved }\n*/\n\n\t\tcount int'), out
+	assert !out.contains('\n\t\t\n'), out
+	assert vfmt('anonymous_aggregate_continuations_twice', out) == out
+}
+
+fn test_formatter_indents_anonymous_aggregate_access_sections() {
+	source := 'struct Holder {\nitem union {\npub:\nvalue int\nmut :\nother int\nmodule:\nprivate_value int\npub  mut:\nmutable_value int\npub module_mut :\nlegacy_value int\n}\n}\n'
+	out := vfmt('anonymous_aggregate_access_sections', source)
+	expected := 'struct Holder {\n\titem union {\n\tpub:\n\t\tvalue int\n\tmut :\n\t\tother int\n\tmodule:\n\t\tprivate_value int\n\tpub  mut:\n\t\tmutable_value int\n\tpub module_mut :\n\t\tlegacy_value int\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('anonymous_aggregate_access_sections_twice', out) == out
+}
+
 fn test_formatter_preserves_mutable_match_subjects() {
 	source := 'fn update(mut value int) {\n\tmatch mut value {\n\t\tint {\n\t\t\tvalue++\n\t\t}\n\t}\n}\n'
 	out := vfmt('mutable_match_subject', source)

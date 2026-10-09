@@ -112,7 +112,7 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 		// this declaration and read uninitialized inside its own initializer.
 		missing_value := g.map_lookup_missing_value_expression(lookup.typ)
 		return FastcRenderedExpression{
-			source: '({ Option __vf_ml = (${lookup.source}); __vf_ml.state ? ${missing_value} : *((${lookup.typ} *)__vf_ml.data); })'
+			source: '({ Option __vf_ml = (${lookup.source}); __vf_ml.state ? ${missing_value} : *((${g.collection_storage_type(lookup.typ)} *)__vf_ml.data); })'
 			typ:    lookup.typ
 		}
 	}
@@ -128,7 +128,7 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 			key_type, value_type := g.map_key_value_types(map_type) or { return none }
 			hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
 			return FastcRenderedExpression{
-				source: '(builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
+				source: '(builtin__new_map(sizeof(${g.collection_runtime_type(key_type)}), sizeof(${g.collection_runtime_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 				typ:    map_type
 			}
 		}
@@ -190,7 +190,7 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 			map_address = if map_type.ends_with('*') { map_source } else { '&${map_source}' }
 		}
 		return FastcRenderedExpression{
-			source: '({ ${key_type} __vf_k = (${key_source}); ${value_type} __vf_mv = (${value_source}); builtin__map_set((map *)${map_address}, &__vf_k, &__vf_mv); __vf_mv; })'
+			source: '({ ${g.collection_storage_type(key_type)} __vf_k = (${key_source}); ${g.collection_storage_type(value_type)} __vf_mv = (${value_source}); builtin__map_set((map *)${map_address}, &__vf_k, &__vf_mv); __vf_mv; })'
 			typ:    value_type
 		}
 	}
@@ -209,7 +209,7 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 		map_address := if map_type.ends_with('*') { map_source } else { '&${map_source}' }
 		missing_value := g.map_lookup_missing_value_expression(value_type)
 		return FastcRenderedExpression{
-			source: '({ ${key_type} __vf_k = (${key_source}); ${value_type} *__vf_map_value = (${value_type} *)builtin__map_get_check((map *)${map_address}, &__vf_k); __vf_map_value == NULL ? ${missing_value} : *__vf_map_value; })'
+			source: '({ ${g.collection_storage_type(key_type)} __vf_k = (${key_source}); ${g.collection_storage_type(value_type)} *__vf_map_value = (${g.collection_storage_type(value_type)} *)builtin__map_get_check((map *)${map_address}, &__vf_k); __vf_map_value == NULL ? ${missing_value} : *__vf_map_value; })'
 			typ:    value_type
 		}
 	}
@@ -493,6 +493,27 @@ fn (g &Parser) render_map_index_assignment_wrapping(left_tokens []FastcExpressio
 		prefix:     '({ ${key_type} __vf_k = (${key_source}); ${value_type} __vf_mv = ('
 		suffix:     '); builtin__map_set((map *)${map_address}, &__vf_k, &__vf_mv); __vf_mv; })'
 		value_type: value_type
+	}
+}
+
+fn (g &Parser) render_ordinary_collection_print_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if enum_print := g.render_enum_print_expression(tokens) {
+		return enum_print
+	}
+	close := fastc_matching_rpar(tokens, 1) or { return none }
+	if close != tokens.len - 1 {
+		return none
+	}
+	call_arguments := fastc_call_arguments(tokens, 1, close) or { return none }
+	if call_arguments.len != 1 {
+		return none
+	}
+	typ := fastc_normalize_inferred_type(g.infer_expression_type(call_arguments[0]) or { return none })
+	value := g.render_call_argument_expression(call_arguments[0], typ) or { return none }
+	function_name := if typ == 'bool' { 'v_fastc_${tokens[0].lit}_bool' } else { tokens[0].lit }
+	return FastcRenderedExpression{
+		source: '${function_name}(${value})'
+		typ:    'void'
 	}
 }
 
@@ -3412,7 +3433,7 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 		}
 		// A dynamic empty array needs a real header carrying `element_size`, otherwise a later
 		// `<<` push copies `len * 0` bytes into a NULL buffer and silently drops the elements.
-		normalized_empty_element := fastc_normalize_inferred_type(element_type)
+		normalized_empty_element := g.collection_storage_type(fastc_normalize_inferred_type(element_type))
 		return FastcRenderedExpression{
 			source: '((${array_type})builtin____new_array(0, 0, sizeof(${normalized_empty_element})))'
 			typ:    array_type
@@ -3426,7 +3447,7 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 			rendered_items << g.render_call_argument_expression(item, element_type) or { return none }
 		}
 	}
-	normalized_element := fastc_normalize_inferred_type(element_type)
+	normalized_element := g.collection_storage_type(fastc_normalize_inferred_type(element_type))
 	if is_fixed {
 		c_array_type := fastc_array_initializer_c_type(array_type)
 		w.fixed_array_types[c_array_type] = array_type
@@ -3551,7 +3572,7 @@ fn (g &Parser) render_map_literal_argument(tokens []FastcExpressionToken, expect
 	entries := fastc_map_literal_entries(tokens, 1, close) or { return none }
 	hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
 	mut statements := [
-		'map __vf_argument_map = builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn});',
+		'map __vf_argument_map = builtin__new_map(sizeof(${g.collection_runtime_type(key_type)}), sizeof(${g.collection_runtime_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn});',
 	]
 	for entry_index, entry in entries {
 		mut colon := -1
@@ -3596,8 +3617,8 @@ fn (g &Parser) render_map_literal_argument(tokens []FastcExpressionToken, expect
 		}
 		key_name := '__vf_argument_map_key_${entry_index}'
 		value_name := '__vf_argument_map_value_${entry_index}'
-		statements << '${fastc_runtime_c_type(key_type)} ${key_name} = (${key});'
-		statements << '${fastc_runtime_c_type(value_type)} ${value_name} = (${value});'
+		statements << '${g.collection_runtime_type(key_type)} ${key_name} = (${key});'
+		statements << '${g.collection_runtime_type(value_type)} ${value_name} = (${value});'
 		statements << 'builtin__map_set(&__vf_argument_map, &${key_name}, &${value_name});'
 	}
 	return FastcRenderedExpression{
@@ -3844,12 +3865,12 @@ fn (g &Parser) render_map_lookup_option_expression(tokens []FastcExpressionToken
 	}
 	if needs_receiver_temp {
 		return FastcRenderedExpression{
-			source: '({ ${map_type.trim_right('*')} __vf_map_receiver = (${map_source}); ${key_type} __vf_k = (${key_source}); ${value_type} *__vf_mv = (${value_type} *)builtin__map_get_check((map *)&(__vf_map_receiver), &__vf_k); ${option_result}; })'
+			source: '({ ${map_type.trim_right('*')} __vf_map_receiver = (${map_source}); ${g.collection_storage_type(key_type)} __vf_k = (${key_source}); ${g.collection_storage_type(value_type)} *__vf_mv = (${g.collection_storage_type(value_type)} *)builtin__map_get_check((map *)&(__vf_map_receiver), &__vf_k); ${option_result}; })'
 			typ:    option_value_type
 		}
 	}
 	return FastcRenderedExpression{
-		source: '({ ${key_type} __vf_k = (${key_source}); ${value_type} *__vf_mv = (${value_type} *)builtin__map_get_check((map *)&(${map_source}), &__vf_k); ${option_result}; })'
+		source: '({ ${g.collection_storage_type(key_type)} __vf_k = (${key_source}); ${g.collection_storage_type(value_type)} *__vf_mv = (${g.collection_storage_type(value_type)} *)builtin__map_get_check((map *)&(${map_source}), &__vf_k); ${option_result}; })'
 		typ:    option_value_type
 	}
 }
@@ -3991,7 +4012,7 @@ fn fastc_map_runtime_functions(key_type string, pointer_bits int) (string, strin
 		'1'
 	} else if key_type in ['i16', 'u16'] {
 		'2'
-	} else if key_type in ['i64', 'u64'] {
+	} else if key_type in ['i64', 'u64', 'f64'] {
 		'8'
 	} else if key_type in ['i128', 'u128'] {
 		'16'
@@ -4007,6 +4028,10 @@ fn (g &Parser) map_runtime_functions(key_type string) (string, string, string, s
 	mut resolved_type := g.underlying_alias_type(key_type)
 	if enum_key := g.underlying_enum_type_key(g.semantic_type_key(resolved_type)) {
 		resolved_type = if g.enum_flags[enum_key] { 'u64' } else { 'int' }
+	} else if !g.selfhost && key_type == 'int' {
+		// Only bare int is emitted at platform width. Enum and alias typedefs
+		// retain their declared C storage width, which the key callbacks must use.
+		resolved_type = fastc_platform_int_c_type
 	}
 	return fastc_map_runtime_functions(resolved_type, g.prefs.target.pointer_bits)
 }
@@ -4025,7 +4050,7 @@ fn (g &Parser) map_lookup_missing_value_expression(value_type string) string {
 	}
 	key_type, nested_value_type := g.map_key_value_types(map_type) or { return zero }
 	hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
-	return '(${value_type})builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(nested_value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn})'
+	return '(${value_type})builtin__new_map(sizeof(${g.collection_runtime_type(key_type)}), sizeof(${g.collection_runtime_type(nested_value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn})'
 }
 
 fn (g &Parser) render_explicit_generic_call_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
