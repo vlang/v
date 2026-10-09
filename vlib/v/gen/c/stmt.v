@@ -2237,6 +2237,8 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 				g.gen_expr_with_expected_type(select_case.value_id, elem_type)
 				g.writeln(';')
 			}
+		} else if array_fixed_type(elem_type) != none {
+			g.writeln('${ct} ${tmp} = {0};')
 		} else {
 			g.writeln('${ct} ${tmp} = (${ct}){0};')
 		}
