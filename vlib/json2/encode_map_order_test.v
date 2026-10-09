@@ -105,3 +105,27 @@ fn test_encode_map_sorts_before_escaping_keys() {
 		'a': 2
 	}, prettify: true, legacy_layout: true) == '{\n\t"a":\t2,\n\t"b":\t1\n}'
 }
+
+fn test_encode_map_preserves_owned_keys_after_reuse() {
+	first := 'a'.repeat(64) + '1'
+	second := 'b'.repeat(64) + '2'
+	third := 'c'.repeat(64) + '3'
+	mut values := map[string]int{}
+	values[first] = 0
+	values[second] = 20
+	for i in 0 .. 32 {
+		assert encode(values) == '{"${first}":${i},"${second}":20}'
+		assert values[first] == i
+		assert values[second] == 20
+		values[first] = i + 1
+	}
+	values.delete(second)
+	values[third] = 30
+	assert encode(values) == '{"${first}":32,"${third}":30}'
+	assert values[first] == 32
+	assert values[third] == 30
+	values.clear()
+	values[second] = 99
+	assert encode(values) == '{"${second}":99}'
+	assert values[second] == 99
+}
