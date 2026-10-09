@@ -357,7 +357,11 @@ pub fn (a string) clone() string {
 }
 
 // replace_once replaces the first occurrence of `rep` with the string passed in `with`.
+// An empty `rep` inserts `with` at the start of `s`.
 pub fn (s string) replace_once(rep string, with string) string {
+	if rep.len == 0 {
+		return with + s
+	}
 	idx := s.index_(rep)
 	if idx == -1 {
 		return s.clone()
