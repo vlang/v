@@ -181,6 +181,11 @@ invalid domains are omitted.
 string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 `http.parse_multipart_form` and `http.post_multipart_form` cover form bodies.
 
+`Cookie.str()` and `sanitize_cookie_value` remove invalid bytes from cookie values,
+including control characters, quotes, semicolons and backslashes. Spaces and commas
+inside the value are preserved; the sanitized value is quoted when it begins or ends
+with a space or comma.
+
 ### Windows TLS handshake compatibility
 
 On Windows, HTTPS uses Schannel first. If its handshake returns `SEC_E_INVALID_TOKEN`

@@ -246,7 +246,21 @@ const write_set_cookie_tests = [
 			name:  'complex-value'
 			value: 'a b,c;d'
 		}
-		raw:    'complex-value="a b,c;d"'
+		raw:    'complex-value=a b,cd'
+	},
+	SetCookieTestCase{
+		cookie: &http.Cookie{
+			name:  'invalid-bytes'
+			value: ' a"b\\c;'
+		}
+		raw:    'invalid-bytes=" abc"'
+	},
+	SetCookieTestCase{
+		cookie: &http.Cookie{
+			name:  'only-invalid'
+			value: '";'
+		}
+		raw:    'only-invalid='
 	},
 ]
 const add_cookies_tests = [
@@ -280,6 +294,17 @@ fn test_write_set_cookies() {
 	for _, tt in write_set_cookie_tests {
 		assert tt.cookie.str() == tt.raw
 	}
+}
+
+fn test_sanitize_cookie_value_filters_bytes_and_preserves_edge_quoting() {
+	assert http.sanitize_cookie_value('') == ''
+	assert http.sanitize_cookie_value('\x00a\tb\r\nc\x7f"\\;') == 'abc'
+	assert http.sanitize_cookie_value([u8(0), u8(0x7f), u8(0xff)].bytestr()) == ''
+	assert http.sanitize_cookie_value('a b,c') == 'a b,c'
+	assert http.sanitize_cookie_value('; a') == '" a"'
+	assert http.sanitize_cookie_value('a ;') == '"a "'
+	assert http.sanitize_cookie_value(';,a') == '",a"'
+	assert http.sanitize_cookie_value('a,;') == '"a,"'
 }
 
 fn test_cookie_ipv4_domain_boundaries() {
