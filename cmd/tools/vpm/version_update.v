@@ -4,7 +4,7 @@ import os
 import v.vmod
 
 fn project_has_ranges(manifest vmod.Manifest, dir string) bool {
-	if manifest.dependencies.any(is_version_range(requirement_version(it))) {
+	if project_dependencies(manifest).any(is_version_range(requirement_version(it))) {
 		return true
 	}
 	lf := read_lockfile(dir) or { return false }
@@ -60,7 +60,8 @@ fn update_versioned_project(query []string) bool {
 	mut scope := LockScope{}
 	scope.begin()
 	scope.complete = true
-	mut dependencies := manifest.dependencies.clone()
+	original_dependencies := project_dependencies(manifest)
+	mut dependencies := original_dependencies.clone()
 	if settings.is_latest {
 		for i, dep in dependencies {
 			ident := lockfile_module_key(dep)
@@ -91,7 +92,7 @@ fn update_versioned_project(query []string) bool {
 	mut selected := modules.clone()
 	if settings.is_latest {
 		for i, dep in dependencies {
-			if dep == manifest.dependencies[i] {
+			if dep == original_dependencies[i] {
 				continue
 			}
 			for mut m in selected {
@@ -100,9 +101,10 @@ fn update_versioned_project(query []string) bool {
 						vpm_error('cannot widen `${dep}` without a semantic-version release.')
 						exit(1)
 					}
-					manifest.dependencies[i] = lockfile_module_key(dep) + '@^' + version.str()
+					widened := lockfile_module_key(dep) + '@^' + version.str()
+					set_project_dependency(mut manifest, i, widened)
 					if m.requested == dep {
-						m.requested = manifest.dependencies[i]
+						m.requested = widened
 						m.version_range = requirement_version(m.requested)
 					}
 				}

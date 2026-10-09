@@ -140,17 +140,17 @@ pub fn (mut tx Tx) release_savepoint(name string) ! {
 }
 
 fn (mut c Conn) transaction(command TransactionCommand, name string) ! {
-	c.mu.lock()
-	defer { c.mu.unlock() }
+	c.state.mu.lock()
+	defer { c.state.mu.unlock() }
 	c.ensure_active()!
 	if command in [.savepoint, .rollback_to, .release_savepoint] && !name.is_identifier() {
 		return error('db: savepoint name must be an identifier')
 	}
-	if mut c.driver is TransactionDriver {
-		c.driver.transaction(command, name)!
+	if mut c.state.driver is TransactionDriver {
+		c.state.driver.transaction(command, name)!
 		return
 	}
-	c.driver.exec(transaction_query(command, '"${name}"'))!
+	c.state.driver.exec(transaction_query(command, '"${name}"'))!
 }
 
 // transaction_query builds SQL with an already quoted savepoint identifier.
@@ -167,14 +167,15 @@ fn transaction_query(command TransactionCommand, name string) string {
 
 // discard invalidates a checked-out handle and closes its physical connection without reset.
 fn (mut c Conn) discard() {
-	c.mu.lock()
-	if isnil(c.driver) {
-		c.mu.unlock()
+	mut state := c.state
+	state.mu.lock()
+	if isnil(state.driver) {
+		state.mu.unlock()
 		return
 	}
-	slot := PoolSlot{ driver: c.driver, created_at: c.created_at }
-	c.driver = unsafe { nil }
-	c.mu.unlock()
+	slot := PoolSlot{ driver: state.driver, created_at: c.created_at }
+	state.driver = unsafe { nil }
+	state.mu.unlock()
 	mut pool := c.pool
 	pool.discard(slot)
 }
