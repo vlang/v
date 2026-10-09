@@ -344,16 +344,16 @@ pub fn serve(registry Registry, method string, path string, query map[string]str
 			return artifact
 		}
 	}
-	body := handle_request(registry, method, path, query)
-	etag := etag_of(body)
-	if etag_matches(headers['If-None-Match'] or { '' }, etag) {
+	mut resp := route(registry, method, path, query)
+	etag := etag_of(resp.body)
+	if method == 'GET' && resp.status_code == 200
+		&& etag_matches(headers['If-None-Match'] or { '' }, etag) {
 		return RegistryResponse{
 			status_code: 304
 			body:        ''
 			etag:        etag
 		}
 	}
-	mut resp := route(registry, method, path, query)
 	resp.etag = etag
 	return resp
 }
@@ -400,8 +400,6 @@ fn etag_matches(if_none_match string, etag string) bool {
 	return false
 }
 
-// handle_request routes a registry API request to the appropriate handler.
-// This is the entry point for the registry HTTP server.
 // RequestOptions carries what a mutating request sends that a plain GET does
 // not. It is a params struct so a caller that has no body can omit it.
 @[params]
@@ -424,22 +422,26 @@ pub fn artifact_request(registry Registry, path string) ?RegistryResponse {
 	if !registry_artifact_component(parts[0]) || !registry_artifact_component(version) {
 		return none
 	}
-	info := registry.get_info(parts[0], version) or { return none }
 	archive := artifact_path(parts[0], version)
 	if !os.exists(archive) {
 		return none
 	}
-	// Verify what is being served against the checksum the index recorded, so a
-	// corrupted or tampered store is caught here rather than at the client.
+	read_registry_artifact(registry, parts[0], version, archive) or { return none }
+	return RegistryResponse{
+		artifact_path: archive
+	}
+}
+
+// read_registry_artifact verifies the exact bytes returned to an archive transport.
+fn read_registry_artifact(registry Registry, name string, version string, archive string) ?string {
+	info := registry.get_info(name, version) or { return none }
 	content := os.read_file(archive) or { return none }
 	actual := sha256_hex(content.bytes())
 	claimed := info.checksum.trim_string_left('sha256:').trim_string_left('SHA256:')
 	if claimed == '' || claimed != actual {
 		return none
 	}
-	return RegistryResponse{
-		artifact_path: archive
-	}
+	return content
 }
 
 // not_found_body is what the router answers for anything it does not serve.

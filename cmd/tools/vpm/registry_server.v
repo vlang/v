@@ -5,7 +5,7 @@ module main
 // protocol exists only as in-process functions and no registry can be stood up.
 
 import net.http
-import os
+import strconv
 
 const default_registry_port = 9090
 
@@ -31,7 +31,7 @@ fn (mut h RegistryHandler) handle(req http.Request) http.Response {
 	// Reading the whole header would mean iterating a `Header`, which is a
 	// struct of common and custom keys rather than a map.
 	mut headers := map[string]string{}
-	if tag := req.header.get_custom('If-None-Match', exact: true) {
+	if tag := req.header.get(.if_none_match) {
 		headers['If-None-Match'] = tag
 	}
 	// `url` carries the path only; a registry mounted under a prefix would need
@@ -44,10 +44,10 @@ fn (mut h RegistryHandler) handle(req http.Request) http.Response {
 	mut body := resp.body
 	mut content_type := if resp.body == '' { '' } else { 'application/json' }
 	if resp.artifact_path != '' {
-		// An archive is streamed rather than carried in a body field, so its
-		// length is not known until it is read. The client verifies the bytes
-		// against the index, the same check `artifact_request` already made.
-		body = os.read_file(resp.artifact_path) or {
+		// Recheck the bytes being sent, since the file may have changed after routing.
+		parts := normalised.trim_left('/').split('/')
+		version := parts[2].trim_string_right('.zip')
+		body = read_registry_artifact(h.registry, parts[0], version, resp.artifact_path) or {
 			return http.new_response(http.ResponseConfig{
 				status: http.Status.not_found
 				body:   '{"error": "unreadable"}'
@@ -68,10 +68,10 @@ fn (mut h RegistryHandler) handle(req http.Request) http.Response {
 	return http.new_response(conf)
 }
 
-// normalise_registry_path collapses a trailing slash and percent-decodes the
-// path, so `/%61lpha` and `/alpha/` reach the same route as `/alpha`.
+// normalise_registry_path removes trailing slashes while retaining the request path's
+// percent-encoded spelling.
 fn normalise_registry_path(path string) string {
-	mut p := path.trim_right('/')
+	p := path.trim_right('/')
 	if p == '' {
 		return '/'
 	}
@@ -93,6 +93,20 @@ fn http_status_from_code(code int) http.Status {
 	}
 }
 
+// parse_registry_port accepts a decimal TCP port without ignored suffixes.
+fn parse_registry_port(value string) !int {
+	if value == '' || !value.bytes().all(it.is_digit()) {
+		return error('`--port` needs a port number, but got `${value}`.')
+	}
+	port := strconv.atoi(value) or {
+		return error('`--port` needs a port number, but got `${value}`.')
+	}
+	if port < 1 || port > 65535 {
+		return error('`--port` needs a port number, but got `${value}`.')
+	}
+	return port
+}
+
 // vpm_registry is the `v registry` entry point. It currently serves the registry
 // described by the protocol; publishing and yanking are methods on `Registry`
 // and are reached from a script or a future subcommand.
@@ -104,7 +118,7 @@ fn vpm_registry(query []string) {
 	match query[0] {
 		'serve' {
 			mut port := default_registry_port
-			mut rest := query[1..]
+			rest := query[1..]
 			for i := 0; i < rest.len; i++ {
 				arg := rest[i]
 				if arg == '--port' || arg == '-p' {
@@ -113,12 +127,8 @@ fn vpm_registry(query []string) {
 						vpm_error('`--port` needs a value.')
 						exit(1)
 					}
-					port = rest[i].int()
-					// Anything that is not a number parses as 0, and 0 asks the
-					// operating system for a port of its choosing: the server
-					// would then answer on one nobody named.
-					if port < 1 || port > 65535 {
-						vpm_error('`--port` needs a port number, but got `${rest[i]}`.')
+					port = parse_registry_port(rest[i]) or {
+						vpm_error(err.msg())
 						exit(1)
 					}
 					continue

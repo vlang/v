@@ -14,11 +14,12 @@ and answers questions about the module versions in it: which versions exist,
 what each one declares, where its archive is, what changed since a given moment,
 what the whole set hashes to, and which signing key vouches for it. There is no
 database, no user account and no replication. Everything the server serves comes
-from `index.json` and the archives beside it, both read at startup.
+from `index.json` and the archives beside it, with metadata read at startup and archive bytes
+verified on each download.
 
 ## Status: reference implementation, not a client path
 
-**`v install` does not use this protocol, and nothing in the toolchain does.**
+**`v install` keeps its existing VCS install path.**
 
 `v install` still resolves a module through `get_mod_vpm_info` in
 `cmd/tools/vpm/common.v`, which issues `GET <server>/api/packages/<name>` and
@@ -27,21 +28,8 @@ route. Counting the call sites: `serve`, `route` and `handle_request` have no
 caller in `cmd/tools/vpm` outside `registry_server.v` and the tests, and
 `/api/packages/<name>` is not served by the router at all.
 
-`v registry` is not reachable from the `v` frontend either. `registry` is listed
-in `valid_vpm_commands` in `cmd/tools/vpm/vpm.v` and in the command list at
-`cmd/v/v.v:172`, but it is absent from `external_commands` there and, above all,
-from the list `find_command` scans at `cmd/v/v.v:349`. `main` finds the
-subcommand through `find_command`, so for `v registry serve` it returns no
-command at all, the dispatch at `cmd/v/v.v:171` is never reached, and the two
-words fall through to the compiler as input paths. `run_external_tool` has no
-`registry` arm either, so even with `find_command` fixed it would look for a
-`cmd/tools/vregistry` tool that does not exist. Measured on this checkout with
-a `v.exe` built from it:
-
-```
-$ v registry serve --port 9099
-multiple input paths are not supported: `registry` and `serve`
-```
+The compiler frontend dispatches `./v registry serve` to the VPM tool. The server is also
+available through `./v run cmd/tools/vpm registry serve` or a compiled VPM binary.
 
 ## Endpoints
 
@@ -96,7 +84,7 @@ for an archive whose file is missing or whose bytes no longer match the index.
 From the checkout root:
 
 ```
-v run cmd/tools/vpm registry serve
+./v registry serve
 ```
 
 It prints the number of modules it loaded and the address it bound:
@@ -110,8 +98,9 @@ Data is stored in `os.getwd()/.vpm-registry`, from `registry_dir()` in
 `registry.v`. That directory holds:
 
 - `index.json` — read once, at startup, by `load_registry()`.
-- `artifacts/<module>/<version>.zip` — the published archives. `/`, `\` and `:`
-  in a version are percent-encoded so it can be a file name.
+- `artifacts/<module>/<version>.zip` — the published archives. Names and versions must be
+  nonempty single path components without slashes, backslashes, colons, control separators,
+  trailing spaces or trailing dots.
 - `signing.key` — the hex ed25519 seed, read but never served.
 
 The default port is 9090 (`default_registry_port`). The server binds `:9090`,
@@ -130,14 +119,13 @@ default. `-m <url>` before `registry` is still skipped, so a mirror cannot be
 read as a registry argument.
 
 ```
-$ v run cmd/tools/vpm registry serve --port 9099
+$ ./v registry serve --port 9099
 Serving 0 module(s) on port 9099
 Listening on http://127.0.0.1:9099
 ```
 
-A value that is not a port number is refused rather than read as 0, which would
-ask the operating system for a port of its own choosing and serve on one nobody
-named.
+Ports must contain decimal digits and be from 1 to 65535. Invalid text, numeric suffixes and
+out-of-range values are rejected before the server binds a socket.
 
 ### Environment variables
 
@@ -163,11 +151,10 @@ What `publish` does:
 - reads the archive and computes its sha256;
 - when `info.checksum` is not empty, it must equal that digest once a `sha256:`
   or `SHA256:` prefix is stripped, or the call fails;
-- when `info.checksum` is empty, the digest of the bytes is recorded as
-  `sha256:<digest>`, so the entry always carries a hash that vouches for
-  something;
+- records every accepted digest spelling as `sha256:<digest>`, including an empty checksum,
+  while retaining the publication's other metadata;
 - refuses to replace a version that is already published, unless the checksum is
-  unchanged, in which case the call is a no-op and records no change;
+  unchanged after normalization, in which case the call is a no-op and records no change;
 - writes the archive to `artifacts/<module>/<version>.zip`;
 - appends a `publish` entry to the change log.
 
@@ -182,7 +169,8 @@ replacing `index.json` underneath a running server has no effect until restart.
   encoded, loaded from `VPM_REGISTRY_KEY` when set and from `signing.key`
   otherwise.
 - The signed bytes are `canonical_json()`, which is `json2.encode` of
-  `SignedIndex{ modules }`.
+  `SignedIndex{ modules }`, with module, dependency and feature map keys sorted. Version and
+  feature arrays retain their order, and serialization leaves the registry unchanged.
 - `SignedIndex` holds the module map and nothing else. **The change log is
   deliberately excluded**, because `Change.occurred_at` is wall-clock time:
   including it would make an unchanged registry produce a different signature on
@@ -203,7 +191,10 @@ replacing `index.json` underneath a running server has no effect until restart.
 
 `serve` computes the entity tag of the body it is about to return — the sha256 of
 the body, in the double quotes the HTTP grammar requires — and replies `304`
-with no body when `If-None-Match` names the same entity. `etag_matches` accepts
+with no body for a successful GET when `If-None-Match` names the same entity.
+Header names
+are case-insensitive. Conditional requests for missing metadata retain HTTP 404.
+`etag_matches` accepts
 a comma-separated list of tags, a `W/` weak prefix and `*`.
 
 Measured against `/demo/@latest`:
@@ -221,7 +212,20 @@ Two details:
   Measured: `GET /demo/@v/1.0.0.zip` returned `application/zip`, 28 bytes, and
   no `ETag` header.
 - A `404` carries an entity tag as well, since the not-found body is hashed like
-  any other body.
+  any other body, but a matching conditional request still returns 404.
+- Archive transports verify the exact bytes sent against indexed metadata, even if the file
+  changes after routing. Unknown metadata and missing or mismatched checksums refuse the archive.
+- Request paths retain their percent-encoded spelling; routing removes trailing slashes.
+
+## SPDX output
+
+The SBOM uses the [SPDX 2.3 JSON field names][spdx-schema], including `SPDXID`, `spdxVersion`,
+`downloadLocation` and `checksumValue`. Package IDs encode both name and version without collisions.
+Metadata-only packages have `filesAnalyzed: false`; an unspecified license is `NOASSERTION`.
+Checksums of successfully published archives appear in the document regardless of the submitted
+checksum spelling.
+
+[spdx-schema]: https://raw.githubusercontent.com/spdx/spdx-spec/v2.3.1/schemas/spdx-schema.json
 
 ## Not implemented yet
 
@@ -229,10 +233,6 @@ Two details:
   and `yank` and `unyank` have no caller outside the tests.
 - No code calls `publish`, and no code calls `save()`, so the tool never writes
   an index.
-- `v registry` is still not routed by the `v` frontend; the server has to be
-  started through `v run cmd/tools/vpm` or from a built binary. `registry` is
-  named in the dispatch list at `cmd/v/v.v:172`, but `find_command` at
-  `cmd/v/v.v:349` does not return it, so that dispatch is never reached.
 - `config.json` still returns fixed `https://example.com/...` values for `dl`
   and `api` and a fixed `auth_required: false`; only `public_key` comes from the
   registry's own state. No client reads the document.
@@ -242,7 +242,7 @@ Two details:
   notice when the tool is built.
 - `search` compares the query against the module name only, although its doc
   comment says name or description.
-- The SPDX `download_location` is `<dl>/<name>/<version>.zip`, which is not the
+- The SPDX `downloadLocation` is `<dl>/<name>/<version>.zip`, which is not the
   shape of the archive route `/<module>/@v/<version>.zip`.
 - The registry server enforces no authentication whatsoever.
 - Nothing consumes the change feed. `changes_since` exists for a mirror to call,

@@ -1,8 +1,10 @@
 module main
 
 import net.http
+import json2
 import os
 
+const srv_original_dir = os.getwd()
 const srv_root = os.join_path(os.vtmp_dir(), 'vpm_server_tests')
 
 fn srv_info(name string, version string, checksum string) ModuleInfo {
@@ -50,6 +52,7 @@ fn testsuite_begin() {
 }
 
 fn testsuite_end() {
+	os.chdir(srv_original_dir)!
 	os.rmdir_all(srv_root) or {}
 }
 
@@ -82,7 +85,8 @@ fn test_the_version_list_is_reachable() {
 	base := running.base
 	rsp := http.get('${base}/listed/@v/list')!
 	assert rsp.status_code == 200
-	assert rsp.body.contains('2.0.0'), rsp.body
+	assert json2.decode[[]string](rsp.body)! == ['2.0.0', '1.0.0']
+	assert rsp.header.get(.content_type) or { '' } == 'application/json'
 }
 
 // The entity tag must come back as a header, or a client cannot revalidate.
@@ -121,7 +125,7 @@ fn test_an_unknown_module_is_a_404() {
 fn test_the_archive_route_serves_the_published_bytes() {
 	mut r := new_registry()
 	archive := os.join_path(srv_root, 'c.zip')
-	content := 'the actual module sources'
+	content := [u8(0x50), 0x4b, 3, 4, 0, 0xff, 0x80, 0x0a].bytestr()
 	os.write_file(archive, content) or { panic(err) }
 	r.publish(srv_info('archived', '1.0.0', 'sha256:${sha256_hex(content.bytes())}'), archive)!
 
@@ -155,4 +159,66 @@ fn test_the_config_route_is_reachable() {
 	assert rsp.status_code == 200
 	assert rsp.body.contains('dl'), rsp.body
 	assert rsp.body.contains('public_key'), rsp.body
+}
+
+fn test_lowercase_if_none_match_revalidates_over_http() {
+	mut r := new_registry()
+	r.add_module(srv_info('lowercase', '1.0.0', ''))
+	mut running := start_registry(r)!
+	defer { running.server.close() }
+	first := http.get('${running.base}/lowercase/@latest')!
+	etag := first.header.get(.etag) or { panic('missing ETag') }
+	mut header := http.Header{}
+	header.add_custom('if-none-match', etag)!
+	assert header.render().contains('if-none-match:')
+	second := http.fetch(url: '${running.base}/lowercase/@latest', header: header)!
+	assert second.status_code == 304, second.status_code.str()
+	assert second.body == ''
+}
+
+fn test_conditional_unknown_response_stays_404_over_http() {
+	r := new_registry()
+	mut running := start_registry(r)!
+	defer { running.server.close() }
+	url := '${running.base}/unknown/@latest'
+	first := http.get(url)!
+	assert first.status_code == 404
+	etag := first.header.get(.etag) or { panic('missing ETag') }
+	mut header := http.Header{}
+	header.add(.if_none_match, etag)
+	second := http.fetch(url: url, header: header)!
+	assert second.status_code == 404, second.status_code.str()
+	assert second.body == first.body
+}
+
+fn test_archive_transport_rechecks_the_bytes_after_routing() {
+	mut r := new_registry()
+	archive := os.join_path(srv_root, 'rechecked.zip')
+	os.write_file(archive, 'verified bytes')!
+	r.publish(srv_info('rechecked', '1.0.0', ''), archive)!
+	resp := serve(r, 'GET', '/rechecked/@v/1.0.0.zip', map[string]string{}, map[string]string{})
+	assert resp.artifact_path != ''
+	content := read_registry_artifact(r, 'rechecked', '1.0.0', resp.artifact_path) or { panic('missing verified content') }
+	assert content == 'verified bytes'
+	os.write_file(resp.artifact_path, 'replaced after routing')!
+	if changed := read_registry_artifact(r, 'rechecked', '1.0.0', resp.artifact_path) {
+		assert false, 'transport accepted changed bytes: ${changed}'
+	}
+	mut h := RegistryHandler{ registry: r }
+	response := h.handle(http.Request{ method: .get, url: '/rechecked/@v/1.0.0.zip' })
+	assert response.status_code == 404
+	assert !response.body.contains('replaced after routing')
+}
+
+fn test_registry_port_parses_the_entire_decimal_value() {
+	assert parse_registry_port('1')! == 1
+	assert parse_registry_port('9090')! == 9090
+	assert parse_registry_port('65535')! == 65535
+	mut accepted := []string{}
+	for value in ['', 'bad', '0', '-1', '65536', '12345x', '12345.0', '0x2328', '9_099', '+9090'] {
+		if port := parse_registry_port(value) {
+			accepted << '${value} -> ${port}'
+		}
+	}
+	assert accepted.len == 0, 'invalid ports accepted: ${accepted}'
 }
