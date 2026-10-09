@@ -4531,7 +4531,15 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		shared_local_decl_names:             t.shared_local_decl_names
 		has_shared_decls:                    t.has_shared_decls
 		shared_field_names:                  t.shared_field_names
-		const_array_fixed_storage_cache:     t.const_array_fixed_storage_cache
+		const_array_fixed_storage_ready:     t.const_array_fixed_storage_ready
+		// A populated cache is only read, so workers can share it. A lazy cache
+		// memoizes lookup misses: sharing its buckets would let a worker insert
+		// keys owned by its scratch arena into storage that outlives the worker.
+		const_array_fixed_storage_cache:     if t.const_array_fixed_storage_ready {
+			t.const_array_fixed_storage_cache
+		} else {
+			map[string]i8{}
+		}
 		enum_types:                          t.enum_types
 		enum_backing_types:                  t.enum_backing_types
 		runtime_type_indexes:                t.runtime_type_indexes
@@ -13364,7 +13372,10 @@ fn (mut t Transformer) const_array_literal_requires_fixed_storage(key string) bo
 		return cached > 0
 	}
 	result := t.const_array_literal_requires_fixed_storage_uncached(key)
-	t.const_array_fixed_storage_cache[key] = if result { i8(1) } else { i8(-1) }
+	// A populated cache can be shared with running workers; never grow it.
+	if !t.const_array_fixed_storage_ready {
+		t.const_array_fixed_storage_cache[key] = if result { i8(1) } else { i8(-1) }
+	}
 	return result
 }
 
