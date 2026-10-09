@@ -781,3 +781,195 @@ assert.equal(e.arr_bytes(), 78);
 		assert_ssa_wasm_execution(path, checks)
 	}
 }
+
+fn test_ssa_wasm_structs_options_results() {
+	dir := ssa_wasm_test_dir('aggregates')
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'aggregates.v')
+	os.write_file(source, '
+module main
+
+struct Point {
+mut:
+	x int
+	y int
+}
+
+struct Name {
+	text string
+}
+
+struct Labelled {
+	name Name
+	id   int
+}
+
+fn make_point(a int, b int) Point {
+	return Point{
+		x: a,
+		y: b
+	}
+}
+
+fn (mut p Point) shift(dx int) {
+	p.x += dx
+}
+
+fn label() Labelled {
+	return Labelled{
+		name: Name{
+			text: "v"
+		},
+		id:   7
+	}
+}
+
+fn find(ok bool) ?int {
+	if ok {
+		return 42
+	}
+	return none
+}
+
+fn find_point(ok bool) ?Point {
+	if ok {
+		return Point{
+			x: 42,
+			y: 0
+		}
+	}
+	return none
+}
+
+fn parse(s string) !int {
+	n := s.len
+	if n == 0 {
+		return error("empty")
+	}
+	return n
+}
+
+pub fn struct_literal() int {
+	p := Point{
+		x: 3,
+		y: 4
+	}
+	return p.x * 10 + p.y
+}
+
+pub fn struct_param_and_return() int {
+	q := make_point(5, 6)
+	return q.x + q.y
+}
+
+pub fn struct_mut_method() int {
+	mut p := Point{
+		x: 1,
+		y: 0
+	}
+	p.shift(4)
+	return p.x * 10 + p.y
+}
+
+pub fn struct_equality() int {
+	a := make_point(1, 2)
+	b := make_point(1, 2)
+	c := make_point(1, 3)
+	mut r := 0
+	if a == b {
+		r += 10
+	}
+	if a == c {
+		r += 1
+	}
+	return r
+}
+
+pub fn nested_struct_and_string() int {
+	l := label()
+	return l.id * 10 + l.name.text.len
+}
+
+pub fn option_or() int {
+	a := find(true) or { -1 }
+	b := find(false) or { -2 }
+	return a * 10 + b
+}
+
+pub fn option_struct() int {
+	p := find_point(true) or { Point{
+		x: 0,
+		y: 0
+	} }
+	return p.x
+}
+
+pub fn result_ok() int {
+	return parse("abcd") or { -1 }
+}
+
+pub fn result_err() int {
+	return parse("") or { -9 }
+}
+
+pub fn option_in_and_guard() int {
+	mut total := 0
+	for i in 0 .. 3 {
+		if v := find(i > 0) {
+			total += v
+		}
+	}
+	return total
+}
+') or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	mut ta := a
+	transform.transform(mut ta, &tc)
+	exports := {
+		'struct_literal':           'struct_literal'
+		'struct_param_and_return':  'struct_param_and_return'
+		'struct_mut_method':        'struct_mut_method'
+		'struct_equality':          'struct_equality'
+		'nested_struct_and_string': 'nested_struct_and_string'
+		'option_or':                'option_or'
+		'option_struct':            'option_struct'
+		'result_ok':                'result_ok'
+		'result_err':               'result_err'
+		'option_in_and_guard':      'option_in_and_guard'
+	}
+	checks := '
+assert.equal(e.struct_literal(), 34);
+assert.equal(e.struct_param_and_return(), 11);
+assert.equal(e.struct_mut_method(), 50);
+assert.equal(e.struct_equality(), 10);
+assert.equal(e.nested_struct_and_string(), 71);
+assert.equal(e.option_or(), 418);
+assert.equal(e.option_struct(), 42);
+assert.equal(e.result_ok(), 4);
+assert.equal(e.result_err(), -9);
+assert.equal(e.option_in_and_guard(), 84);
+'
+	for production in [false, true] {
+		mut m := ssa.build_with_options(ta, map[string]bool{}, &tc, ssa.BuildOptions{
+			target: ssa.TargetData{ ptr_size: 4 }
+		})
+		if production {
+			optimize.optimize(mut m)
+		}
+		mut g := SSAGen.new(m)
+		g.configure(exports, []string{}, '')
+		g.gen() or { panic(err) }
+		path := os.join_path(dir, 'aggregates_${production}.wasm')
+		g.write(path) or { panic(err) }
+		assert_ssa_wasm_execution(path, checks)
+	}
+}

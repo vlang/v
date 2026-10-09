@@ -50,11 +50,25 @@ fn test_wasm_gate_admits_primitive_arrays() {
 	assert wasm_gate_check('module main\nfn main() {\n\tz := []int{len: 4, init: 7}\n\tprintln(z.len)\n}\n') == ''
 }
 
+// Struct literals are admitted when every field has a lowering, which is what
+// lets lesson pages with structs run client-side. The rejection direction is
+// still pinned: a struct holding a map has no field-wise wasm lowering, so it
+// must be refused rather than miscompiled.
+fn test_wasm_gate_admits_structs_with_supported_fields() {
+	assert wasm_gate_check('module main\nstruct P {\n\tx int\n\ty int\n}\nfn main() {\n\tp := P{\n\t\tx: 1,\n\t\ty: 2\n\t}\n\tprintln(p.x)\n}\n') == ''
+	assert wasm_gate_check("module main\nstruct Name {\n\ts string\n}\nstruct P {\n\tname Name\n\tn    int\n}\nfn main() {\n\tp := P{\n\t\tname: Name{\n\t\t\ts: 'a'\n\t\t},\n\t\tn:    2\n\t}\n\tprintln(p.n)\n}\n") == ''
+	// A pointer field to a supported struct. V requires a reference field to
+	// be initialized, so the literal names it explicitly.
+	assert wasm_gate_check('module main\nstruct Leaf {\n\tid int\n}\nstruct P {\n\tleaf &Leaf\n\tn    int\n}\nfn main() {\n\tp := P{\n\t\tleaf: unsafe { nil }\n\t\tn:    2\n\t}\n\tprintln(p.n)\n}\n') == ''
+}
+
 fn test_wasm_gate_rejects_maps_structs_fixed_nested() {
 	map_msg := wasm_gate_check("module main\nfn main() {\n\tm := {'a': 1}\n\tprintln(m)\n}\n")
 	assert map_msg.contains('does not support type')
-	struct_msg := wasm_gate_check('module main\nstruct P {\n\tx int\n}\nfn main() {\n\tp := P{\n\t\tx: 1\n\t}\n\tprintln(p.x)\n}\n')
-	assert struct_msg.contains('does not support type')
+	// A struct field the backend cannot lower keeps the whole literal
+	// rejected: admitting it would silently miscompile the field copy.
+	bad_field := wasm_gate_check('module main\nstruct P {\n\tm map[string]int\n}\nfn main() {\n\tp := P{}\n\tprintln(p.m)\n}\n')
+	assert bad_field.contains('does not support type'), bad_field
 	fixed_msg := wasm_gate_check('module main\nfn main() {\n\ta := [2]int[1, 2]\n\tprintln(a[0])\n}\n')
 	assert fixed_msg.contains('does not support type'), fixed_msg
 	nested_msg := wasm_gate_check('module main\nfn main() {\n\tm := [[1, 2], [3]]\n\tprintln(m[0][0])\n}\n')

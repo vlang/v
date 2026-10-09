@@ -17616,13 +17616,6 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 		diagnose_aggregates := tc.diagnostic_files.len == 0 || root_file in tc.diagnostic_files
 		fallback_location := backend_fn_location(a, node)
 		if backend == 'wasm' && diagnose_aggregates {
-			return_type := tc.parse_resolution_type(node.typ)
-			if return_type is types.OptionType {
-				return '${fallback_location}error: option types are not implemented by the V wasm backend'
-			}
-			if return_type is types.ResultType {
-				return '${fallback_location}error: result types are not implemented by the V wasm backend'
-			}
 			mut infix_visited := []bool{len: a.nodes.len}
 			if msg := unsupported_wasm_struct_infix_error(a, tc, flat.NodeId(idx), fallback_location, mut infix_visited) {
 				return msg
@@ -17709,7 +17702,8 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 		rhs_type := tc.resolve_type(a.child(&node, 1))
 		lhs_name := lhs_type.name().trim_string_left('main.')
 		rhs_name := rhs_type.name().trim_string_left('main.')
-		if lhs_name == rhs_name && lhs_name.len > 0 && lhs_name in tc.structs {
+		if lhs_name == rhs_name && lhs_name.len > 0 && lhs_name in tc.structs
+			&& !wasm_supported_struct(tc, lhs_name) {
 			operator := if node.op == .eq { '==' } else { '!=' }
 			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${lhs_name}` yet'
 		}
@@ -17719,7 +17713,8 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 		// first lowered struct literal.
 		lhs_origin := wasm_struct_origin_type(a, a.child(&node, 0))
 		rhs_origin := wasm_struct_origin_type(a, a.child(&node, 1))
-		if lhs_origin.len > 0 && lhs_origin == rhs_origin {
+		if lhs_origin.len > 0 && lhs_origin == rhs_origin
+			&& !wasm_supported_struct(tc, lhs_origin) {
 			operator := if node.op == .eq { '==' } else { '!=' }
 			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${lhs_origin}` yet'
 		}
@@ -17841,6 +17836,56 @@ fn wasm_supported_array_elem(type_name string) bool {
 		'f32', 'f64', 'bool', 'char', 'rune']
 }
 
+// wasm_supported_struct reports whether every field of the named struct has a
+// wasm lowering: a primitive, a string, a pointer (an i32 on this target), or
+// another struct that satisfies the same rule. Structs are walked recursively
+// with a depth bound, because a self-referential type through a pointer field
+// would otherwise loop the walk for ever.
+fn wasm_supported_struct(tc &types.TypeChecker, type_name string) bool {
+	return wasm_struct_fields_supported(tc, type_name, 0)
+}
+
+fn wasm_struct_fields_supported(tc &types.TypeChecker, type_name string, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	name := type_name.trim_string_left('main.@')
+	if name == '' {
+		return false
+	}
+	st := tc.structs[name] or { return false }
+	for f in st {
+		if !wasm_struct_field_supported(tc, f.typ, depth) {
+			return false
+		}
+	}
+	return true
+}
+
+fn wasm_struct_field_supported(tc &types.TypeChecker, typ types.Type, depth int) bool {
+	match typ {
+		types.Alias {
+			return wasm_struct_field_supported(tc, typ.base_type, depth)
+		}
+		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum,
+		types.String {
+			return true
+		}
+		types.Struct {
+			return wasm_struct_fields_supported(tc, typ.name, depth + 1)
+		}
+		types.Pointer {
+			// A pointer is only an i32 on this target, but the pointee still
+			// has to lower, or reading through the field would miscompile. The
+			// depth bound stops a self-referential type from looping here.
+			return wasm_struct_fields_supported(tc, typ.base_type.name(), depth + 1)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, backend string, diagnose_aggregates bool, fallback_location string, mut visited []bool) ?string {
 	idx := int(id)
 	if idx < 0 || idx >= a.nodes.len || visited[idx] {
@@ -17854,11 +17899,19 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 			unsupported_type = tc.resolve_type(id).name()
 			// Dynamic arrays of primitive elements lower in the wasm backend
 			// (literals, init, index, push, slices, for-in). Anything else
-			// stays gated: maps, structs, fixed arrays, and nested arrays
-			// have no wasm lowering yet, and a silent miscompile would be
-			// worse than this error.
+			// stays gated: maps, fixed arrays, and nested arrays have no wasm
+			// lowering yet, and a silent miscompile would be worse than this
+			// error.
 			if (node.kind == .array_literal || node.kind == .array_init)
 				&& wasm_supported_array_elem(unsupported_type) {
+				unsupported_type = ''
+			}
+			// Struct literals lower too, when every field has a lowering: the
+			// backend already copies aggregates through pointers and returns
+			// them through the sret slot. Nested structs, strings and pointers
+			// are accepted; arrays, maps, options and results as fields are
+			// not, so a struct holding one stays rejected.
+			if node.kind == .struct_init && wasm_supported_struct(tc, unsupported_type) {
 				unsupported_type = ''
 			}
 		} else if node.kind == .call && node.children_count > 0 {
