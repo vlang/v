@@ -52,16 +52,42 @@ pub mut:
 	versions []ModuleInfo
 }
 
+// Change records one edit to the registry, so that a mirror can bring its copy
+// up to date by asking only for what changed since it last looked.
+pub struct Change {
+	// module and version name the entry that changed.
+	module  string
+	version string
+	// kind is `publish` for a new or replaced version, `yank` and `unyank`
+	// for a change of resection rather than of content.
+	kind string
+	// occurred_at is the RFC3339 time the change was recorded.
+	occurred_at string
+}
+
 // Registry is the in-memory representation of a registry's contents.
 pub struct Registry {
 pub mut:
 	modules map[string]RegistryEntry
+	changes []Change
 }
 
 // new_registry creates an empty registry.
 fn new_registry() Registry {
 	return Registry{
 		modules: map[string]RegistryEntry{}
+		changes: []Change{}
+	}
+}
+
+// record_change appends one entry to the change log. The log is append-only:
+// a mirror relies on `since` only ever returning entries at or after it.
+fn (mut r Registry) record_change(kind string, module string, version string) {
+	r.changes << Change{
+		module:      module
+		version:     version
+		kind:        kind
+		occurred_at: time.utc().format_rfc3339()
 	}
 }
 
@@ -71,6 +97,7 @@ pub fn (mut r Registry) add_module(info ModuleInfo) {
 	entry.name = info.name
 	entry.versions << info
 	r.modules[info.name] = entry
+	r.record_change('publish', info.name, info.version)
 }
 
 // list_versions returns all versions of a module, sorted by semver descending.
@@ -130,6 +157,7 @@ pub fn (mut r Registry) yank(name string, version string) bool {
 		if v.version == version {
 			v.yanked = true
 			r.modules[name] = entry
+			r.record_change('yank', name, version)
 			return true
 		}
 	}
@@ -143,10 +171,26 @@ pub fn (mut r Registry) unyank(name string, version string) bool {
 		if v.version == version {
 			v.yanked = false
 			r.modules[name] = entry
+			r.record_change('unyank', name, version)
 			return true
 		}
 	}
 	return false
+}
+
+// changes_since returns the changes recorded at or after `unix_ts`, so a mirror
+// holding a copy from that moment can bring it up to date without reading the
+// whole index. An entry whose time cannot be parsed is skipped rather than
+// reported: a mirror asking for a bad `since` wants nothing, not a crash.
+pub fn (r &Registry) changes_since(unix_ts i64) []Change {
+	mut result := []Change{}
+	for c in r.changes {
+		recorded := time.parse_rfc3339(c.occurred_at) or { continue }
+		if recorded.unix() >= unix_ts {
+			result << c
+		}
+	}
+	return result
 }
 
 // search returns modules whose name or description matches the query.
@@ -344,6 +388,13 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 		return json2.encode(entry)
 	}
 
+	// GET /api/changes?since=<unix timestamp> returns only the changes a mirror
+	// needs, so bringing a copy up to date does not mean reading the index.
+	if path == '/api/changes' && method == 'GET' {
+		since := (query['since'] or { '0' }).i64()
+		return json2.encode(registry.changes_since(since))
+	}
+
 	// GET /signature.sig serves the ed25519 signature over the registry index.
 	// A client that knows the public key can tell a mirror apart from the
 	// origin, because a mirror has no key to sign with.
@@ -376,11 +427,21 @@ pub fn (r &Registry) public_key_hex() string {
 	return key.public_key().hex()
 }
 
+// SignedIndex is the part of a registry that its signature vouches for. The
+// change log is deliberately outside it: it records wall-clock times, so
+// including it would make an unchanged registry produce a different signature
+// on every run, even though the module metadata being signed has not moved.
+struct SignedIndex {
+	modules map[string]RegistryEntry
+}
+
 // canonical_json is the byte sequence the signature covers. It must be a pure
-// function of the registry's contents -- sorted keys, and no wall-clock time --
+// function of the registry's contents — sorted keys, and no wall-clock time —
 // or the same registry would produce a different signature on each run.
 fn (r &Registry) canonical_json() string {
-	return r.export_json()
+	return json2.encode(SignedIndex{
+		modules: r.modules
+	})
 }
 
 // signature signs the canonical form of the index and returns a hex-encoded
