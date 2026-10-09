@@ -7,8 +7,14 @@ import rand
 import crypto.rand as crypto_rand
 import crypto.hmac
 import crypto.sha256
+import crypto.pbkdf2
+import encoding.hex
+import strconv
 
 const max_safe_unsigned_integer = u32(4_294_967_295)
+const password_iterations = 600_000
+const max_password_iterations = 10_000_000
+const password_key_length = 32
 
 pub struct Auth[T] {
 	db T
@@ -75,19 +81,57 @@ fn generate_crypto_safe_int_u32() u32 {
 	return u32(crypto_rand.int_u64(max_safe_unsigned_integer) or { 0 })
 }
 
+// generate_salt returns 16 cryptographically random bytes encoded as hexadecimal.
+// It panics if the operating system cannot provide random bytes.
 pub fn generate_salt() string {
-	return rand.i64().str()
+	return (crypto_rand.bytes(16) or { panic(err) }).hex()
 }
 
+// hash_password generates a fresh salt and returns a self-contained password verifier.
+// Store the entire returned string; no separate salt column is needed.
+pub fn hash_password(plain_text_password string) string {
+	return hash_password_with_salt(plain_text_password, generate_salt())
+}
+
+// hash_password_with_salt derives a PBKDF2-HMAC-SHA256 password verifier with 600,000 iterations.
+// The returned string contains the format version, iteration count, salt and derived key.
+// An empty salt is replaced with a freshly generated salt.
 pub fn hash_password_with_salt(plain_text_password string, salt string) string {
-	salted_password := '${plain_text_password}${salt}'
-	return sha256.sum(salted_password.bytes()).hex().str()
+	actual_salt := if salt == '' { generate_salt() } else { salt }
+	key := pbkdf2.key(plain_text_password.bytes(), actual_salt.bytes(), password_iterations,
+		password_key_length, sha256.new()) or { panic(err) }
+	return 'pbkdf2-sha256$v1$${password_iterations}$${actual_salt.bytes().hex()}$${key.hex()}'
 }
 
+// compare_password_with_hash verifies a password using a constant-time key comparison.
+// Versioned verifiers contain their own salt; the salt argument is only used for legacy SHA256 hashes.
+// Pass an empty salt when verifying a value returned by hash_password.
 pub fn compare_password_with_hash(plain_text_password string, salt string, hashed string) bool {
-	digest := hash_password_with_salt(plain_text_password, salt)
-	// constant time comparison
-	// I know this is operating on the hex-encoded strings, but it's still constant time
-	// and better than not doing it at all
-	return hmac.equal(digest.bytes(), hashed.bytes())
+	if hashed.len == password_key_length * 2 {
+		// Preserve authentication for existing accounts until their verifier is upgraded.
+		if _ := hex.decode(hashed) {
+			digest := sha256.sum('${plain_text_password}${salt}'.bytes()).hex()
+			return hmac.equal(digest.bytes(), hashed.bytes())
+		}
+		return false
+	}
+	parts := hashed.split('$')
+	if parts.len != 5 || parts[0] != 'pbkdf2-sha256' || parts[1] != 'v1' {
+		return false
+	}
+	iterations := strconv.atoi(parts[2]) or { return false }
+	// Bound the work before deriving a key from a malformed persisted verifier.
+	if iterations < 1 || iterations > max_password_iterations || parts[2] != iterations.str()
+		|| parts[3].len == 0 || parts[3].len % 2 != 0 || parts[4].len != password_key_length * 2 {
+		return false
+	}
+	stored_salt := hex.decode(parts[3]) or { return false }
+	stored_key := hex.decode(parts[4]) or { return false }
+	if stored_salt.hex() != parts[3] || stored_key.hex() != parts[4]
+		|| stored_key.len != password_key_length {
+		return false
+	}
+	key := pbkdf2.key(plain_text_password.bytes(), stored_salt, iterations, password_key_length,
+		sha256.new()) or { return false }
+	return hmac.equal(key, stored_key)
 }

@@ -32,7 +32,6 @@ struct User {
 	id            int @[primary; sql: serial]
 	name          string
 	password_hash string
-	salt          string
 }
 
 fn main() {
@@ -51,11 +50,9 @@ fn main() {
 
 @[post]
 pub fn (mut app App) register_user(mut ctx Context, name string, password string) veb.Result {
-	salt := auth.generate_salt()
 	new_user := User{
 		name:          name
-		password_hash: auth.hash_password_with_salt(password, salt)
-		salt:          salt
+		password_hash: auth.hash_password(password)
 	}
 	user_id := sql app.db {
 		insert new_user into User
@@ -76,7 +73,7 @@ pub fn (mut app App) login_post(mut ctx Context, name string, password string) v
 		return ctx.redirect('/login')
 	}
 	// Verify user password using veb.auth
-	if !auth.compare_password_with_hash(password, user.salt, user.password_hash) {
+	if !auth.compare_password_with_hash(password, '', user.password_hash) {
 		ctx.error('Bad credentials')
 		return ctx.redirect('/login')
 	}
@@ -98,9 +95,25 @@ processes. Use a real password in the example above instead of `password: ''`.
 
 ## Security considerations
 
-`hash_password_with_salt` and its related functions use `sha256` for hashing with a single
-iteration. This is not secure for production use, and you should use a more secure hashing
-algorithm and multiple iterations.
+`hash_password` generates a fresh 16-byte salt using the operating system's cryptographic
+random source. It derives a 32-byte key using PBKDF2-HMAC-SHA256 with 600,000 iterations.
+The returned verifier stores its algorithm, format version, work factor, salt and key:
+`pbkdf2-sha256$v1$600000$<hex salt>$<hex key>`. Store the entire string in `password_hash`;
+allow enough space for the full verifier rather than limiting the column to 64 characters.
 
-See also:
-- [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+`hash_password_with_salt` retains its existing signature for applications that supply their
+own salt. It produces the same versioned format and generates a fresh salt if given an empty
+string. `compare_password_with_hash` reads the salt and work factor from versioned verifiers,
+so its salt argument can be empty for new accounts. It rejects unsupported versions and
+invalid or excessive work factors, and compares the derived keys in constant time.
+
+Existing 64-character SHA256 verifiers are still accepted with their original separate salt.
+After a successful legacy login, replace the stored verifier with `hash_password(password)`
+and persist it before discarding the old salt. Identify legacy verifiers by their 64-character
+length. Legacy verification is provided only for migration; new hashes always use PBKDF2.
+Applications remain responsible for persisting updated verifiers and limiting login attempts.
+
+The default work factor follows the PBKDF2-HMAC-SHA256 guidance in the
+[OWASP Password Storage Cheat Sheet][password-storage].
+
+[password-storage]: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
