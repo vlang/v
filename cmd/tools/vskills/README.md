@@ -3,6 +3,11 @@
 `v skills list` reads the bundled catalog from the invoking compiler's source
 tree, including when the command itself runs from the tool cache.
 
+Install only the skills the work needs, into the project that needs them:
+coding agents load installed skills into their context, so every installed
+skill costs tokens in every session. `v skills add v-lang` in one project
+beats installing the whole catalog with `--global`.
+
 Each installed skill's status distinguishes an unchanged copy of an older bundle
 (`stale`) from a locally edited or unrecorded installation (`edited or unrecorded`).
 The status names the update command for its scope: `v skills update` refreshes a
