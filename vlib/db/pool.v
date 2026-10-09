@@ -84,7 +84,7 @@ fn (mut p Pool) discard(slot PoolSlot) {
 
 fn (p &Pool) wrap(slot PoolSlot) &Conn {
 	return &Conn{
-		driver:     slot.driver
+		state:      &ConnState{ driver: slot.driver }
 		pool:       unsafe { p }
 		created_at: slot.created_at
 	}
@@ -173,15 +173,15 @@ pub fn (mut p Pool) release(conn &Conn) {
 	if isnil(conn) {
 		return
 	}
-	mut c := unsafe { conn }
-	c.mu.lock()
-	if isnil(c.driver) || c.pool != p {
-		c.mu.unlock()
+	mut state := conn.state
+	state.mu.lock()
+	if isnil(state.driver) || conn.pool != p {
+		state.mu.unlock()
 		return
 	}
-	slot := PoolSlot{ driver: c.driver, created_at: c.created_at }
-	c.driver = unsafe { nil }
-	c.mu.unlock()
+	slot := PoolSlot{ driver: state.driver, created_at: conn.created_at }
+	state.driver = unsafe { nil }
+	state.mu.unlock()
 	mut driver := slot.driver
 	driver.reset() or {
 		p.discard(slot)
