@@ -218,6 +218,78 @@ pub fn load_registry() Registry {
 	return import_json(data) or { new_registry() }
 }
 
+// RegistryResponse is one registry answer as it goes over the wire: a status,
+// the body, and the entity tag that lets a client revalidate the body without
+// transferring it again.
+pub struct RegistryResponse {
+pub:
+	status_code int = 200
+	body        string
+	etag        string
+}
+
+// serve routes a request through `handle_request` and applies HTTP caching.
+// It computes the entity tag of the answer and replies `304 Not Modified`
+// when the client's cached copy is still current, so an unchanged index costs
+// a header exchange rather than a full retransmission.
+pub fn serve(registry Registry, method string, path string, query map[string]string, headers map[string]string) RegistryResponse {
+	body := handle_request(registry, method, path, query)
+	etag := etag_of(body)
+	if etag_matches(headers['If-None-Match'] or { '' }, etag) {
+		return RegistryResponse{
+			status_code: 304
+			body:        ''
+			etag:        etag
+		}
+	}
+	return RegistryResponse{
+		body: body
+		etag: etag
+	}
+}
+
+// etag_of returns the entity tag for `body`: the sha256 of its bytes inside the
+// double quotes the HTTP grammar requires. The same body always yields the
+// same tag and a different body never does, which is what makes a client's
+// comparison meaningful.
+fn etag_of(body string) string {
+	return '"${sha256_hex(body.bytes())}"'
+}
+
+// sha256_hex is the hex digest of `data`, shared by the entity tag and by the
+// content hashes recorded for downloaded modules.
+fn sha256_hex(data []u8) string {
+	sum := sha256.sum(data)
+	mut hex := ''
+	for b in sum {
+		hex += b.hex()
+	}
+	return hex
+}
+
+// etag_matches reports whether `if_none_match` names the same entity as `etag`.
+// A client may send several tags separated by commas, may mark one with the
+// weak validator prefix `W/`, and may send `*` to ask for whatever is current.
+fn etag_matches(if_none_match string, etag string) bool {
+	candidate := if_none_match.trim_space()
+	if candidate == '' {
+		return false
+	}
+	if candidate == '*' {
+		return true
+	}
+	for raw in candidate.split(',') {
+		mut tag := raw.trim_space()
+		if tag.starts_with('W/') {
+			tag = tag.all_after('W/').trim_space()
+		}
+		if tag == etag {
+			return true
+		}
+	}
+	return false
+}
+
 // handle_request routes a registry API request to the appropriate handler.
 // This is the entry point for the registry HTTP server.
 pub fn handle_request(registry Registry, method string, path string, query map[string]string) string {
