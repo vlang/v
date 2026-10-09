@@ -1,13 +1,15 @@
 # VPM registry protocol
 
 This document covers the registry protocol on the `fix/vpm-registry-protocol`
-branch. It is implemented in three files:
+branch. It is implemented in four files:
 
 - `cmd/tools/vpm/registry.v` — routing, the metadata format, ed25519 signing,
   entity-tag caching, the change feed, and artefact storage.
 - `cmd/tools/vpm/sbom.v` — the SPDX bill of materials the registry serves.
 - `cmd/tools/vpm/registry_server.v` — the HTTP server, and the `registry`
   subcommand of the vpm tool.
+- `cmd/tools/vpm/registry_client.v` — metadata and version-list requests using the
+  registry's existing token configuration.
 
 A VPM registry, as built here, is an HTTP service that reads one directory tree
 and answers questions about the module versions in it: which versions exist,
@@ -30,6 +32,11 @@ caller in `cmd/tools/vpm` outside `registry_server.v` and the tests, and
 
 The compiler frontend dispatches `./v registry serve` to the VPM tool. The server is also
 available through `./v run cmd/tools/vpm registry serve` or a compiled VPM binary.
+
+The client helpers `fetch_registry_versions`, `fetch_registry_latest`, and
+`fetch_registry_info` read these routes and return version strings or `RegistryModule` metadata.
+An unknown module has an empty version list; absent metadata and unsuccessful HTTP responses
+return errors. These helpers do not change how `v install` resolves packages.
 
 ## Endpoints
 
