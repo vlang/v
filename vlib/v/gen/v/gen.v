@@ -6060,23 +6060,62 @@ fn (mut g Gen) format_anon_aggregate_source(source string) string {
 	if lines.len <= 1 {
 		return source
 	}
+	mut line_starts := []int{cap: lines.len}
+	mut offset := 0
+	for line in lines {
+		line_starts << offset
+		offset += line.len + 1
+	}
+	mut line_depths := []int{len: lines.len, init: g.indent}
+	mut protected_lines := []bool{len: lines.len}
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('anonymous_aggregate', source.len)
+	file.index_lines(source)
+	mut s := scanner.new_scanner(pref.new_preferences(),
+		scanner.Mode.scan_comments | scanner.Mode.skip_interpolation)
+	s.init(file, source)
+	mut line_nr := 0
+	mut depth := g.indent
+	for {
+		tok := s.scan()
+		for line_nr + 1 < lines.len && line_starts[line_nr + 1] <= s.pos {
+			line_nr++
+			line_depths[line_nr] = depth
+		}
+		if tok in [.string, .comment] {
+			// Continuation whitespace belongs to the literal or comment, not the aggregate.
+			mut continuation := line_nr + 1
+			for continuation < lines.len && line_starts[continuation] < s.offset {
+				protected_lines[continuation] = true
+				continuation++
+			}
+		} else if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+		}
+		if tok == .eof {
+			break
+		}
+	}
 	mut out := strings.new_builder(source.len)
 	out.write_string(lines[0] + '\n')
-	mut i := 1
-	for i < lines.len {
-		line := lines[i]
-		trimmed := line.trim_left(' \t')
-		if trimmed.starts_with('}') && trimmed.len > 0 {
-			// Closing brace line: keep it at the current parent indent.
-			out.write_string('\t'.repeat(g.indent) + trimmed)
-		} else {
-			// Internal line: indent one level deeper than parent.
-			out.write_string('\t'.repeat(g.indent + 1) + trimmed)
+	for i in 1 .. lines.len {
+		trimmed := lines[i].trim_left(' \t')
+		if protected_lines[i] {
+			out.write_string(lines[i])
+		} else if trimmed.len > 0 {
+			mut indent := line_depths[i]
+			if trimmed.starts_with('}') || trimmed.starts_with('pub:')
+				|| trimmed.starts_with('pub mut:') || trimmed.starts_with('mut:')
+				|| trimmed.starts_with('__global:') {
+				indent--
+			}
+			out.write_string('\t'.repeat(int_max(0, indent)) + trimmed)
 		}
 		if i < lines.len - 1 {
 			out.write_string('\n')
 		}
-		i++
 	}
 	return out.str()
 }
