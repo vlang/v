@@ -99,6 +99,8 @@ links. On Unix, it also checks ownership before reading another cache entry.
 
 Cached C builds preserve dependencies of reused modules and regenerate declarations
 and literals needed by changed program code, including fixed-array map keys.
+Warm `v run` builds retain shared and newly introduced string literals without
+duplicate C definitions.
 Programs using runtime `v.reflection` reparse original declarations to preserve
 source-file metadata while reusing eligible cached objects.
 

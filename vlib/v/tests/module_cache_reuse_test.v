@@ -68,6 +68,13 @@ fn run_built(root string, name string) string {
 	return res.output.trim_space()
 }
 
+fn run_cached_program(main_file string) string {
+	res := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-show-timings', '-no-retry-compilation',
+		'run', main_file])
+	assert res.exit_code == 0, res.output
+	return res.output
+}
+
 // parsed_source_files returns the final compilation pass's parsed `.v` count,
 // or -1 when the stage tables have no such line. A cache restart can print two.
 fn parsed_source_files(output string) int {
@@ -187,6 +194,39 @@ fn test_cached_builtin_declares_string_comparison_before_fixed_array_map_helpers
 	repeated := build(root, ['-cc', 'cc'], main_file, 'third')
 	assert_reused_modules(repeated)
 	assert run_built(root, 'third') == '3'
+}
+
+fn test_incremental_program_reuses_shared_literals_and_keeps_new_literals() {
+	$if !macos {
+		return
+	}
+	os.find_abs_path_of_executable('clang') or { return }
+	root := new_project('module_cache_reuse_incremental_literals')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'fn main() { shared := "shared"; assert shared.len == 6; println(shared); println("first") }') or {
+		panic(err)
+	}
+	cold := run_cached_program(main_file)
+	assert parsed_source_files(cold) > 1, cold
+	assert cold.contains('shared\nfirst\n'), cold
+	os.write_file(main_file, 'fn main() { shared := "shared"; assert shared.len == 6; println(shared); println("second") }') or {
+		panic(err)
+	}
+	warm := run_cached_program(main_file)
+	assert_reused_modules(warm)
+	assert warm.contains('cgen (incremental)'), warm
+	assert warm.contains('shared\nsecond\n'), warm
+	repeated := run_cached_program(main_file)
+	assert_reused_modules(repeated)
+	assert repeated.contains('cgen (cached)'), repeated
+	assert repeated.contains('shared\nsecond\n'), repeated
 }
 
 fn test_cached_os_preserves_implicit_closure_runtime_dependency() {

@@ -14274,7 +14274,11 @@ pub fn run(args []string) {
 					}
 					refreshed_incremental_body = stable_body_source
 					stable_main_source := v3_incremental_program_main_source(prepared_cache.program_prefix_source, stable_body_source)
-					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, prepared_plan_entry.source)
+					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, stable_body_source) or {
+						eprintln('error reading incremental C declarations ${incremental_tcc_declarations_path}: ${err.msg()}')
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
+					}
 					prepared_cache.main_source = stable_main_source
 					prepared_cache.tcc_main_source = stable_tcc_main_source
 					os.write_file(cc_src, stable_main_source) or {
@@ -15616,14 +15620,17 @@ fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, buil
 	return files
 }
 
-fn v3_incremental_main_source(tcc_declarations_path string, body_path string) string {
+fn v3_incremental_main_source(tcc_declarations_path string, body_source string) !string {
+	declarations := os.read_file(tcc_declarations_path)!
 	slash := [u8(92)].bytestr()
 	escaped_slash := [u8(92), 92].bytestr()
 	quote := [u8(34)].bytestr()
 	escaped_quote := [u8(92), 34].bytestr()
 	declarations_include := tcc_declarations_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	body_include := body_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${declarations_include}"\n#include "${body_include}"\n'
+	// The materialized body restores baseline literals that the declarations
+	// already own. Keep only new literals in this translation unit's body.
+	body := modulecache.without_duplicate_static_string_definitions(body_source, declarations)
+	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${declarations_include}"\n' + body
 }
 
 fn c_include_path(path string) string {
@@ -15648,7 +15655,7 @@ fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_
 	}
 	body_source := os.read_file(body_path)!
 	main_source := v3_incremental_program_main_source(cached_prefix, body_source)
-	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, body_path)
+	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, body_source)!
 	return V3PreparedModuleCache{
 		main_source:           main_source
 		tcc_main_source:       tcc_main_source

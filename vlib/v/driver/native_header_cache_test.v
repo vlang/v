@@ -449,14 +449,12 @@ fn test_cached_signal_header_has_one_owner_with_shared_program_declarations() ! 
 		owner_path := os.join_path(root, 'owner.c')
 		cached_path := os.join_path(root, 'cached.c')
 		declarations_path := os.join_path(root, 'tcc_declarations.h')
-		body_path := os.join_path(root, 'body.c')
 		incremental_path := os.join_path(root, 'incremental.c')
 		os.write_file(owner_path, owner_source)!
 		os.write_file(cached_path, v3_cached_c_unit_source(prefix + 'void (*cached_installer(void))(void*, void*) { return v_install_segfault_handler; }\n',
 			false))!
 		os.write_file(declarations_path, tcc_declarations)!
-		os.write_file(body_path, body)!
-		os.write_file(incremental_path, v3_incremental_main_source(declarations_path, body_path))!
+		os.write_file(incremental_path, v3_incremental_main_source(declarations_path, body)!)!
 		// A cached combined source may later be split for parallel compilation.
 		// The owner prelude copied into its declaration header cannot promote a body unit.
 		parallel_header, safe := v3_parallel_c_declaration_header(owner_source, []string{},
