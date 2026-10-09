@@ -4,6 +4,7 @@
 module csv
 
 import strings
+import encoding.utf8
 
 struct Writer {
 	use_crlf  bool
@@ -81,7 +82,7 @@ fn (w &Writer) field_needs_quotes(field string) bool {
 	if field.contains(w.delimiter.ascii_str()) || field.index_any('"\r\n') != -1 {
 		return true
 	}
-	return false
+	return utf8.is_space(utf8.get_rune(field, 0))
 }
 
 // str returns the writer contents
