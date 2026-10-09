@@ -84,17 +84,61 @@ fn vpm_http_post(url string, data string) !http.Response {
 	return vpm_http_request(.post, url, data)
 }
 
+// A token is read from the registry-scoped `VPM_TOKEN_<HOST>` first, so that a
+// machine holding tokens for several private registries does not leak one to
+// another, and from the unqualified `VPM_TOKEN` when only one is configured.
+const vpm_token_env_prefix = 'VPM_TOKEN_'
+
 fn vpm_http_request(method http.Method, url string, data string) !http.Response {
-	return http.fetch(
+	mut header := http.Header{}
+	token := registry_token(url)
+	if token != '' {
+		header.add_custom('Authorization', 'Bearer ${token}') or {}
+	}
+	resp := http.fetch(
 		method:                   method
 		url:                      url
 		data:                     data
+		header:                   header
 		read_timeout:             vpm_http_timeout
 		write_timeout:            vpm_http_timeout
 		max_retries:              1
 		enable_http2:             false
 		disable_connection_reuse: true
-	)
+	)!
+	require_registry_token(url, resp.status_code)!
+	return resp
+}
+
+// registry_token returns the bearer token configured for the registry that
+// serves `url`, or '' when it needs none. The host part of the url gives the
+// name of the scoped variable, so `https://vpm.example.com/a` reads
+// `VPM_TOKEN_VPM_EXAMPLE_COM`.
+fn registry_token(url string) string {
+	parsed := urllib.parse(url) or { return '' }
+	host := parsed.hostname()
+	if host == '' {
+		return os.getenv_opt('VPM_TOKEN') or { '' }
+	}
+	// An environment name may not hold `.` or `-`, so both become `_`.
+	scoped_name := '${vpm_token_env_prefix}${host.replace('.', '_').replace('-', '_').to_upper()}'
+	if scoped := os.getenv_opt(scoped_name) {
+		return scoped
+	}
+	return os.getenv_opt('VPM_TOKEN') or { '' }
+}
+
+// require_registry_token turns a 401 from a registry into an actionable error
+// that names the variable to set, instead of letting it surface as an opaque
+// transport failure. A non-401 status is not an authentication problem.
+fn require_registry_token(url string, status_code int) ! {
+	if status_code != 401 {
+		return
+	}
+	if registry_token(url) != '' {
+		return error('the registry at `${url}` rejected the configured token (401 Unauthorized).')
+	}
+	return error('the registry at `${url}` requires authentication (401 Unauthorized). Set ${vpm_token_env_prefix}<HOST> for it, for example ${vpm_token_env_prefix}VPM_EXAMPLE_COM, or VPM_TOKEN when only one private registry is used.')
 }
 
 fn get_mod_vpm_info(name string) !ModuleVpmInfo {
