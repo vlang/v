@@ -45,3 +45,23 @@ fn test_rmdir_all_removes_a_tree_with_read_only_files() {
 	}
 	assert !os.exists(os.join_path(ro_folder, 'objects'))
 }
+
+// A directory that is the working directory cannot be removed, which is a
+// deletion failure both platforms produce. Pinning `bottom` makes the walk fail
+// at `bottom` and then again at `top`; only the first of those names the entry
+// that actually could not be deleted. `rmdir_all` used to report the second,
+// which pointed at the parent instead.
+fn test_rmdir_all_reports_the_entry_that_failed_not_its_parent() {
+	top := os.join_path(ro_folder, 'top')
+	bottom := os.join_path(top, 'bottom')
+	os.mkdir_all(bottom)!
+	os.write_file(os.join_path(bottom, 'leaf'), 'x')!
+	os.chdir(bottom)!
+	os.rmdir_all(top) or {
+		os.chdir(ro_folder)!
+		assert err.msg().contains('bottom'), 'rmdir_all reported ${err.msg()}, which does not name `bottom`'
+		return
+	}
+	os.chdir(ro_folder)!
+	assert false, 'os.rmdir_all of a tree with an undeletable directory unexpectedly succeeded'
+}
