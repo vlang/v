@@ -1,6 +1,7 @@
 module c
 
 import os
+import v.modulecache
 import v.pref
 
 const mock_windows_stack_overflow_api = r'
@@ -140,6 +141,13 @@ fn test_windows_spawn_wrapper_reserves_stack_before_the_user_call() {
 	assert g.spawn_wrapper_body('recurse()', 'void', '').contains('v_windows_set_stack_guarantee();')
 	g.compile_defines << 'no_segfault_handler'
 	assert !g.spawn_wrapper_body('recurse()', 'void', '').contains('v_windows_set_stack_guarantee();')
+}
+
+fn test_windows_stack_overflow_header_is_replicable() ! {
+	header := os.read_file(os.join_path(@VEXEROOT, 'vlib', 'builtin',
+		'segfault_handler_windows.h'))!
+	assert modulecache.c_source_is_replicable(header)
+	assert !modulecache.c_source_replicated_function_has_static_storage(header)
 }
 
 fn test_windows_stack_overflow_header_and_spawned_program_compile() ! {

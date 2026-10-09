@@ -1,20 +1,21 @@
 import os
 
+// These stateless helpers can be included in every parallel C compilation unit.
 const windows_overflow_header = r'
 #include <windows.h>
 
-static LONG CALLBACK v_test_exception_handler(EXCEPTION_POINTERS* exception) {
+static inline LONG CALLBACK v_test_exception_handler(EXCEPTION_POINTERS* exception) {
 	return exception->ExceptionRecord->ExceptionCode == 0xE0123456
 		? EXCEPTION_CONTINUE_EXECUTION : EXCEPTION_CONTINUE_SEARCH;
 }
 
-static void v_test_first_chance_exception(void) {
+static inline void v_test_first_chance_exception(void) {
 	// This child exits immediately afterwards; TCC imports omit the remove API.
 	AddVectoredExceptionHandler(0, v_test_exception_handler);
 	RaiseException(0xE0123456, 0, 0, NULL);
 }
 
-static int v_test_stack_guarantee(void) {
+static inline int v_test_stack_guarantee(void) {
 	typedef BOOL (WINAPI *stack_guarantee_fn)(PULONG);
 	stack_guarantee_fn guarantee = (stack_guarantee_fn)GetProcAddress(
 		GetModuleHandleW(L"kernel32.dll"), "SetThreadStackGuarantee");
@@ -22,7 +23,7 @@ static int v_test_stack_guarantee(void) {
 	return guarantee && guarantee(&size) && size >= 64 * 1024;
 }
 
-static void v_test_disable_error_dialog(void) {
+static inline void v_test_disable_error_dialog(void) {
 	SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 }
 '
@@ -32,7 +33,7 @@ module main
 
 import os
 
-#include "@DIR/windows_overflow.h"
+#include <@DIR/windows_overflow.h>
 
 fn C.v_test_first_chance_exception()
 fn C.v_test_stack_guarantee() int

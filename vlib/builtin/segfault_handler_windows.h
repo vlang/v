@@ -27,21 +27,21 @@ static inline void v_windows_set_stack_guarantee(void) {
 }
 
 #if !defined(V_SEGFAULT_HANDLER_SANITIZED)
-static LONG CALLBACK v_windows_stack_overflow_handler(EXCEPTION_POINTERS* exception) {
+static inline LONG CALLBACK v_windows_stack_overflow_handler(EXCEPTION_POINTERS* exception) {
 	if (exception->ExceptionRecord->ExceptionCode != EXCEPTION_STACK_OVERFLOW) {
 		return EXCEPTION_CONTINUE_SEARCH;
 	}
 	// Write directly to stderr without allocation, CRT buffering, or a backtrace.
-	static const char message[] = "V panic: stack overflow\n";
 	DWORD written;
-	WriteFile(GetStdHandle(STD_ERROR_HANDLE), message, sizeof(message) - 1, &written, NULL);
+	WriteFile(GetStdHandle(STD_ERROR_HANDLE), "V panic: stack overflow\n",
+		sizeof("V panic: stack overflow\n") - 1, &written, NULL);
 	// The stack is exhausted: do not run CRT or DLL cleanup on this thread.
 	TerminateProcess(GetCurrentProcess(), 1);
 	return EXCEPTION_CONTINUE_SEARCH;
 }
 #endif
 
-static void v_install_windows_stack_overflow_handler(void) {
+static inline void v_install_windows_stack_overflow_handler(void) {
 	v_windows_set_stack_guarantee();
 #if !defined(V_SEGFAULT_HANDLER_SANITIZED)
 	// Sanitizers report stack overflows themselves; do not intercept their faults.

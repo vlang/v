@@ -10535,6 +10535,7 @@ In the console build command, you can use:
 Parallel C builds keep the signal-handler runtime and its saved signal actions in one unit.
 Module-cache builds keep that runtime in the program prefix; cached objects use its declarations.
 Native headers that cannot safely share state across units use a single compilation unit.
+The Windows stack overflow reporter supports parallel C compilation.
 
 To select C23 with a compiler that supports it, use
 `v -cc gcc -cflags '-std=gnu23' program.v`. Generated C uses the standard boolean keywords
