@@ -111,9 +111,9 @@ retain their previous behavior.
 Project commands include the root manifest's `dev_dependencies` alongside `dependencies`.
 Vendoring includes development requirements and their runtime dependencies. Outdated reporting
 checks every regular and development requirement on a package, including exact version pins.
-`v install` resolves and locks both sets together, and `v update`, `v outdated`, `v why`, and
-`v mod graph` include the same requirements. Development requirements declared by dependency
-modules are excluded. `v update --latest` widens a development requirement in
+`v install` resolves and locks both sets together; `v update`, `v outdated`, `v why`,
+`v mod graph`, and `v vendor` use the same requirements. Development requirements declared by
+dependency modules are excluded. `v update --latest` widens a development requirement in
 `dev_dependencies`, keeping it separate from regular requirements in `v.mod`.
 
 Only the root manifest supplies `dependency_overrides`. Global `package: ref` selectors apply
