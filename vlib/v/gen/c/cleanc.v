@@ -3526,6 +3526,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.fixed_array_typedefs()
 			g.optional_typedefs()
 			g.forward_decls()
+			g.cached_header_forward_decls()
+			g.fixed_array_map_key_forward_decls()
+			g.fixed_array_map_key_definitions()
 		}
 		g.gen_ownership_recursive_drop_helpers()
 		if g.incremental_fn_names.len > 0 {
@@ -3772,10 +3775,10 @@ fn (mut g FlatGen) write_parallel_cc_unit_marker() {
 }
 
 fn (mut g FlatGen) gen_pre_body_support_declarations() {
+	g.cached_header_forward_decls()
 	g.fixed_array_map_key_forward_decls()
 	g.fixed_array_map_key_definitions()
 	g.gen_ownership_recursive_drop_helpers()
-	g.cached_header_forward_decls()
 	g.interface_method_forward_decls()
 	g.shared_dup_fns()
 	if !g.skip_enum_autostr {

@@ -11726,6 +11726,12 @@ pub fn run(args []string) {
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
+	if cache_state.manager.enabled && !cache_state.force_source
+		&& cached_headers_hide_reflection_sources(a) {
+		trace_v3_cache_fallback('runtime reflection requires original declaration source locations')
+		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+		restart_v3_after_cache_invalidation()
+	}
 
 	crun_may_reuse := (is_crun || is_direct_vsh) && should_run && !explicit_output
 	native_inputs := if cache_state.manager.enabled || crun_may_reuse {
@@ -15688,6 +15694,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		return error('v3 module cache directory is unavailable')
 	}
 	split := modulecache.split_generated_c(generated_source)!
+	cache_record_closure_dependencies(split.modules, split.prefix, mut state)
 	mut parsed_modules := state.parsed_from_source.keys()
 	parsed_modules.sort()
 	mut parsed_short_module_counts := map[string]int{}
@@ -15896,6 +15903,64 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		tcc_program_declarations: tcc_declarations
 		objects:                  cache_used_object_paths(object_paths, program_used_fns, program_generated_support, tc, state)
 		newly_cached_modules:     newly_cached_modules.len
+	}
+}
+
+// cached_headers_hide_reflection_sources identifies declaration replay that
+// cannot supply each reflected function's original source file.
+fn cached_headers_hide_reflection_sources(a &flat.FlatAst) bool {
+	mut has_cached_header := false
+	for _, source_file in a.source_files {
+		if source_file.name.ends_with('.vh') {
+			has_cached_header = true
+			break
+		}
+	}
+	if !has_cached_header {
+		return false
+	}
+	for node in a.nodes {
+		if (node.kind == .import_decl && node.value == 'v.reflection')
+			|| (node.kind == .module_decl && node.value in ['reflection', 'v.reflection']) {
+			return true
+		}
+	}
+	return false
+}
+
+// cache_record_closure_dependencies preserves the runtime imports of compiled
+// bodies, which declaration-only headers cannot rediscover by scanning syntax.
+fn cache_record_closure_dependencies(bodies map[string]string, prefix string, mut state V3ModuleCacheState) {
+	closure_module := cache_state_module_name(state, 'builtin.closure') or { return }
+	for raw_name, body in bodies {
+		module_name := cache_state_module_name(state, raw_name) or { continue }
+		if module_name == closure_module || module_name !in state.headers {
+			continue
+		}
+		mut needs_closure := false
+		if _ := c_source_referenced_identifier_with_prefix(body, map[string]bool{}, 'closure__') {
+			needs_closure = true
+		} else if prefix.contains(v3_program_wrappers_begin) {
+			retained := prune_foreign_program_wrappers(modulecache.declaration_header(prefix), body)
+			for item in v3_program_wrapper_items(retained.split_into_lines()) {
+				if item.declares {
+					continue
+				}
+				if _ := c_source_referenced_identifier_with_prefix(item.text, map[string]bool{}, 'closure__') {
+					needs_closure = true
+					break
+				}
+			}
+		}
+		if !needs_closure {
+			continue
+		}
+		record_cache_module_dependency(mut state, module_name, closure_module)
+		header := state.headers[module_name]
+		if !header.split_into_lines().any(it.trim_space() == 'import builtin.closure'
+			|| it.trim_space().starts_with('import builtin.closure ')) {
+			state.headers[module_name] = header + '\nimport builtin.closure as ${closure_runtime_import_alias}\n'
+		}
 	}
 }
 

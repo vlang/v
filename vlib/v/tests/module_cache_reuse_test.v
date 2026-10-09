@@ -1,9 +1,9 @@
 import os
 
-// These tests build one program, change it, and build it again. The second build
-// has to read the modules of the program from their cached interfaces and link
-// their cached objects: it must not parse `builtin` again, and it must not find
-// that the objects were built for another program.
+// These tests build one program, change it, and build it again. Ordinary warm
+// builds read modules from cached interfaces and link cached objects without
+// parsing builtin again or treating objects as belonging to another program.
+// Runtime reflection reparses original declarations and reuses eligible objects.
 
 struct SavedEnv {
 	name    string
@@ -68,15 +68,16 @@ fn run_built(root string, name string) string {
 	return res.output.trim_space()
 }
 
-// parsed_source_files returns the number that the stage table gives for the `.v`
-// files that the build parsed, or -1 when the table has no such line.
+// parsed_source_files returns the final compilation pass's parsed `.v` count,
+// or -1 when the stage tables have no such line. A cache restart can print two.
 fn parsed_source_files(output string) int {
+	mut parsed := -1
 	for line in output.split_into_lines() {
 		if line.contains('parsed .v files') {
-			return line.all_after('parsed .v files').trim_space().all_before(' ').int()
+			parsed = line.all_after('parsed .v files').trim_space().all_before(' ').int()
 		}
 	}
-	return -1
+	return parsed
 }
 
 // assert_reused_modules checks that a build read every module from the cache.
@@ -139,6 +140,118 @@ fn test_changed_program_reuses_the_modules_cached_by_the_system_cc() {
 	warm := build(root, ['-cc', 'cc'], main_file, 'second')
 	assert_reused_modules(warm)
 	assert run_built(root, 'second') == '84'
+}
+
+fn test_cached_builtin_declares_string_comparison_before_fixed_array_map_helpers() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('module_cache_reuse_fixed_array_keys')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'fn main() {
+	mut counts := map[string]int{}
+	counts["key"] = 1
+	println(counts["key"])
+}
+') or { panic(err) }
+	cold := build(root, ['-cc', 'cc'], main_file, 'first')
+	assert parsed_source_files(cold) > 1, cold
+	assert run_built(root, 'first') == '1'
+	os.write_file(main_file, 'fn main() {
+	mut counts := map[[2]string]int{}
+	key := ["first", "second"]!
+	counts[key] = 2
+	assert counts[["first", "second"]!] == 2
+	println(counts[key])
+}
+') or { panic(err) }
+	warm := build(root, ['-cc', 'cc'], main_file, 'second')
+	assert_reused_modules(warm)
+	assert run_built(root, 'second') == '2'
+	os.write_file(main_file, 'fn main() {
+	mut counts := map[[2]string]int{}
+	key := ["another", "key"]!
+	counts[key] = 3
+	assert counts[["another", "key"]!] == 3
+	println(counts[key])
+}
+') or { panic(err) }
+	repeated := build(root, ['-cc', 'cc'], main_file, 'third')
+	assert_reused_modules(repeated)
+	assert run_built(root, 'third') == '3'
+}
+
+fn test_cached_os_preserves_implicit_closure_runtime_dependency() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('module_cache_reuse_os_closure')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'import os
+fn main() { println(os.getpid() > 0) }
+') or { panic(err) }
+	cold := build(root, ['-cc', 'cc', '-gc', 'none'], main_file, 'first')
+	assert parsed_source_files(cold) > 1, cold
+	assert run_built(root, 'first') == 'true'
+	os.write_file(main_file, 'import os
+fn positive(n int) bool { return n > 0 }
+fn main() { println(positive(os.getpid())) }
+') or { panic(err) }
+	warm := build(root, ['-cc', 'cc', '-gc', 'none'], main_file, 'second')
+	assert_reused_modules(warm)
+	assert run_built(root, 'second') == 'true'
+}
+
+fn test_cached_reflection_preserves_original_function_source_locations() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('module_cache_reuse_reflection')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'import v.reflection
+fn main() {
+	file_idx := reflection.get_funcs().filter(it.name == "all_after_last")[0].file_idx
+	println(reflection.get_string_by_idx(file_idx).ends_with("string.v"))
+}
+') or { panic(err) }
+	cold := build(root, ['-cc', 'cc'], main_file, 'first')
+	assert parsed_source_files(cold) > 1, cold
+	assert run_built(root, 'first') == 'true'
+	os.write_file(main_file, 'import v.reflection
+fn suffix() string { return "string.v" }
+fn main() {
+	file_idx := reflection.get_funcs().filter(it.name == "all_after_last")[0].file_idx
+	println(reflection.get_string_by_idx(file_idx).ends_with(suffix()))
+}
+') or { panic(err) }
+	warm := build(root, ['-cc', 'cc'], main_file, 'second')
+	assert warm.count('runtime reflection requires original declaration source locations') == 1, warm
+	assert parsed_source_files(warm) > 1, warm
+	assert run_built(root, 'second') == 'true'
 }
 
 fn test_usecache_reuses_the_modules_built_by_the_bundled_tcc() {

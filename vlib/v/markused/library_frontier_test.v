@@ -6,6 +6,34 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_mark_all_preserves_library_generic_calls_for_literal_output() {
+	root := os.join_path(os.vtmp_dir(), 'v3_mark_all_literal_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or { panic(err) } }
+	main_path := os.join_path(root, 'main.v')
+	library_path := os.join_path(root, 'dependency.v')
+	os.write_file(main_path, 'module main\nfn main() { println("hello") }\n') or { panic(err) }
+	os.write_file(library_path, 'module dependency
+fn identity[T](value T) T { return value }
+fn helper() int { return identity(42) }
+') or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([main_path, library_path])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnostic_files[main_path] = true
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	assert is_trivial_literal_output_program(a, tc.diagnostic_files)
+	ordinary, ordinary_generic := mark_used_with_generic_usage(a, &tc)
+	assert !ordinary['dependency.helper']
+	assert !ordinary_generic
+	all, all_generic := mark_all_used_with_generic_usage(a, &tc, []string{})
+	assert all['dependency.helper']
+	assert all_generic
+}
+
 fn library_frontier_source(tail_body string) (&flat.FlatAst, &types.TypeChecker) {
 	root := os.join_path(os.vtmp_dir(), 'v3_library_frontier_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }

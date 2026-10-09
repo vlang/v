@@ -3,6 +3,39 @@ module driver
 import os
 import v.pref
 
+fn test_cached_module_preserves_generated_closure_dependencies() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'os':      ['/vlib/os/os.v']
+			'closure': ['/vlib/builtin/closure/closure.v']
+			'other':   ['/vlib/other/other.v']
+		}
+		headers:        {
+			'os':      'module os\nfn execvp()\n'
+			'closure': 'module closure\nfn closure_try_destroy()\n'
+			'other':   'module other\nfn unrelated()\n'
+		}
+	}
+	cache_record_closure_dependencies({
+		'os':      'void os__execvp() { closure__closure_try_destroy(value); }'
+		'closure': 'void closure__closure_try_destroy() {}'
+		'other':   'void other__unrelated() { puts("closure__fake"); /* closure__unused */ }'
+	}, '', mut state)
+	assert state.headers['os'].contains('import builtin.closure as ${closure_runtime_import_alias}')
+	assert cache_dependency_modules(&state, ['os']) == ['closure']
+	assert !state.headers['closure'].contains('import builtin.closure')
+	assert !state.headers['other'].contains('import builtin.closure')
+	first_header := state.headers['os']
+	cache_record_closure_dependencies({
+		'os': 'void os__execvp() { closure__closure_try_destroy(value); }'
+	}, '', mut state)
+	assert state.headers['os'] == first_header
+	cache_record_closure_dependencies({
+		'other': 'void other__use() { kept_wrapper(); }'
+	}, '${v3_program_wrappers_begin}\nstatic void kept_wrapper(void) { closure__closure_data(); }\nstatic void unused_wrapper(void) { missing(); }\n${v3_program_wrappers_end}\n', mut state)
+	assert cache_dependency_modules(&state, ['other']) == ['closure']
+}
+
 fn test_module_cache_compiler_identity_changes_when_executable_changes() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_identity_${os.getpid()}')
 	os.rmdir_all(root) or {}
