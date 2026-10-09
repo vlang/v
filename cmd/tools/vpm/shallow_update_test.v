@@ -156,3 +156,45 @@ fn test_shallow_manifest_pins_stay_fixed_without_a_lockfile() {
 		assert shallow_git(installed, ['rev-parse', 'HEAD']) == tagged, result.output
 	}
 }
+
+fn shallow_project_relative_pin(case string) ! {
+	repo := shallow_repo(case)!
+	tagged := shallow_git(repo, ['rev-parse', 'HEAD'])
+	shallow_git(repo, ['tag', 'v1.0.0'])
+	app := os.getwd()
+	os.write_file(os.join_path(app, 'v.mod'), "Module { name: 'pinned_app' }\n")!
+	cmd_ok_args(@LOCATION, [shallow_tool, 'install', '--local', shallow_query(repo, 'v1.0.0')])
+	installed := os.join_path(app, 'update_pkg')
+	assert shallow_git(installed, ['rev-parse', '--is-shallow-repository']) == 'true'
+	os.rm(lockfile_path(app))!
+	shallow_commit(repo, 'main second')!
+	shallow_commit(repo, 'main third')!
+	nested := os.join_path(app, 'nested')
+	os.mkdir_all(nested)!
+	mut source := '../remote'
+	if case == 'file_relativepin' {
+		source = 'file://../remote'
+	} else if case == 'tildepin' {
+		// Reach the RAM fixture through a tilde path without changing HOME or writing there.
+		home_depth := os.home_dir().split('/').filter(it != '').len
+		source = '~/' + '../'.repeat(home_depth) + repo.trim_left('/')
+	}
+	os.write_file(os.join_path(app, 'v.mod'), "Module { name: 'pinned_app' dev_dependencies: ['${source}@v1.0.0'] }\n")!
+	os.chdir(nested)!
+	result := cmd_ok_args(@LOCATION, [shallow_tool, 'update', '--local', 'update_pkg'])
+	assert shallow_git(installed, ['rev-parse', 'HEAD']) == tagged, '${source}: ${result.output}'
+}
+
+fn test_shallow_relative_manifest_pin_uses_the_local_project_root() {
+	shallow_project_relative_pin('relativepin')!
+}
+
+fn test_shallow_relative_file_url_pin_uses_the_local_project_root() {
+	shallow_project_relative_pin('file_relativepin')!
+}
+
+fn test_shallow_tilde_manifest_pin_expands_home_before_resolving() {
+	$if !windows {
+		shallow_project_relative_pin('tildepin')!
+	}
+}

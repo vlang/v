@@ -73,8 +73,13 @@ fn detached_project_pin(name string, path string) string {
 			}
 			key := lockfile_module_key(dependency)
 			mut source := key
-			if is_local_repository(key) && !key.starts_with('file://') && !os.is_abs_path(key) {
-				source = os.join_path(dir, key)
+			if is_local_repository(key) {
+				local_path := os.expand_tilde_to_home(key.trim_string_left('file://'))
+				source = if os.is_abs_path(local_path) {
+					local_path
+				} else {
+					os.join_path(dir, local_path)
+				}
 			}
 			if key == name || (origin != '' && normalized_clone_source(source) == origin) {
 				return pin
