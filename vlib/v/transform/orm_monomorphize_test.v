@@ -20,7 +20,10 @@ fn test_orm_monomorphization_with_many_fields_finishes() {
 	mut child := os.new_process(@VEXE)
 	child.set_args(['-new-compiler', '-no-retry-compilation', '-nocache', '-o', output, input])
 	mut environment := os.environ()
+	environment.delete('VFLAGS')
+	environment.delete('VOSARGS')
 	environment['VJOBS'] = '1'
+	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
 	child.set_environment(environment)
 	child.set_redirect_stdio_merged()
 	child.run()
