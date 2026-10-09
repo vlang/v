@@ -170,3 +170,32 @@ fn main() {
 	run := os.exec([os.join_path(directory, 'evaluation_order')])
 	assert run.exit_code == 0, run.output
 }
+
+fn test_imported_generic_mutable_receivers_keep_identity_before_or_arguments() {
+	directory := os.join_path(os.vtmp_dir(), 'struct_numeric_receiver_${os.getpid()}')
+	os.mkdir_all(os.join_path(directory, 'state')) or { panic(err) }
+	defer { os.rmdir_all(directory) or {} }
+	os.write_file(os.join_path(directory, 'state', 'state.v'), 'module state
+@[heap]
+pub struct Counter[T] { pub mut: updates int value T }
+pub type Action = fn () !
+pub fn (mut counter Counter[T]) update(value T) ! { counter.updates++ counter.value = value }
+pub fn (mut counter Counter[T]) bind(source fn () !T) Action {
+    return fn [mut counter, source] [T] () ! { counter.update(source()!)! }
+}') or { panic(err) }
+	source := 'module main
+import state
+fn source() !int { return 2 }
+fn main() {
+    mut counter := &state.Counter[int]{}
+    action := counter.bind(source)
+    action()!
+    action()!
+    assert counter.updates == 2
+    assert counter.value == 2
+}'
+	result := generic_numeric_field_program(directory, 'receiver', source, false)
+	assert result.exit_code == 0, result.output
+	run := os.exec([os.join_path(directory, 'receiver')])
+	assert run.exit_code == 0, run.output
+}
