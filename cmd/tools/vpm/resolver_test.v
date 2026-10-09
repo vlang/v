@@ -549,7 +549,7 @@ fn joint_set_dev_dependencies(dir string, dependencies []string) ! {
 	os.write_file(path, vmod.encode(manifest))!
 }
 
-fn test_joint_root_dev_dependencies_install_and_explain_only_runtime_transitives() {
+fn test_joint_root_dev_dependencies_install_explain_and_vendor_only_runtime_transitives() {
 	child := joint_repo('dev_graph', 'child')!
 	child_head := joint_tag(child, 'child', 'v1.0.0', [])!
 	tool := joint_repo('dev_graph', 'devtool')!
@@ -570,6 +570,10 @@ fn test_joint_root_dev_dependencies_install_and_explain_only_runtime_transitives
 	assert graph.contains('joint_app -> devtool@v1.0.0 (requires ^1)'), graph
 	assert graph.contains('devtool@v1.0.0 -> child@v1.0.0 (requires ^1)'), graph
 	assert !graph.contains('missing_dev_dependency'), graph
+	joint_cli(['vendor'])
+	assert os.is_file(os.join_path(project, 'vendor', 'devtool', 'v.mod'))
+	assert os.is_file(os.join_path(project, 'vendor', 'child', 'v.mod'))
+	assert !os.exists(os.join_path(project, 'vendor', 'missing_dev_dependency'))
 }
 
 fn test_joint_root_dev_dependencies_honor_locked_frozen_and_precise_updates() {
