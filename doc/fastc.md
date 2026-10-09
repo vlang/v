@@ -15,6 +15,7 @@ Ordinary programs support the following constructs:
 - Dynamic array literals such as `[1, 2, 3]` and `['a', 'b']`, with checked element access.
 - Map literals such as `{'a': 1}` with string or integer keys, element lookup, and `.len`.
   Lookup of an absent key returns the value type's zero value.
+- Array and map element reads in local initializers and function arguments.
 - `in` and `!in` for arrays, map keys, and substrings, including their use in boolean conditions.
 
 For example:

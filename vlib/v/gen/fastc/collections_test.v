@@ -108,6 +108,47 @@ fn test_ordinary_array_index_is_bounds_checked() {
 	}
 }
 
+fn test_ordinary_collection_reads_inside_arithmetic_and_calls() {
+	source := "module main
+
+fn next(value int) int {
+	return value + 1
+}
+
+fn main() {
+	values := [1, 2, 3]
+	counts := {'a': 4}
+	sum := values[0] + values[1]
+	incremented := counts['a'] + 1
+	println(sum)
+	println(incremented)
+	println(values[0] + values[1])
+	println(counts['a'] + 1)
+	println(next(values[0] + counts['a']))
+	println(values[counts['a'] - 3] + counts['missing'])
+	if values[0] + counts['a'] == 5 && counts['missing'] == 0 {
+		println('ok')
+	}
+}
+"
+	prefs := pref.new_preferences()
+	c_source := generate(source, 'ordinary_collection_arithmetic.v', prefs) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'fastc_collection_arithmetic_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(bin_file, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == '3\n5\n3\n5\n6\n2\nok\n', run.output
+}
+
 fn test_ordinary_map_callbacks_match_enum_and_alias_key_storage() {
 	source := 'module main
 

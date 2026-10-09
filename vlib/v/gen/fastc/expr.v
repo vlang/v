@@ -4757,6 +4757,14 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			if array_access := g.render_array_access_expression(tokens) {
 				return array_access
 			}
+			if !has_assignment && !has_membership && !flags.has_logical {
+				if embedded_map := g.render_embedded_map_reads(tokens) {
+					return embedded_map
+				}
+				if nested_array := g.render_nested_array_access_expression(tokens, rendered_expression) {
+					return nested_array
+				}
+			}
 		}
 		if has_comparison {
 			if string_comparison := g.render_string_comparison_expression(tokens) {
