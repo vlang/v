@@ -15,7 +15,7 @@ const settings = init_settings()
 const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 const valid_vpm_commands = ['help', 'search', 'install', 'link', 'update', 'upgrade', 'outdated',
-	'list', 'remove', 'show', 'unlink', 'why', 'vendor']
+	'list', 'remove', 'show', 'unlink', 'why', 'vendor', 'registry']
 const excluded_dirs = ['.cache', 'vlib']
 
 fn main() {
@@ -84,6 +84,9 @@ fn main() {
 				exit(1)
 			}
 			vpm_vendor()
+		}
+		'registry' {
+			vpm_registry(query)
 		}
 		else {
 			// Unreachable in regular usage. V will catch unknown commands beforehand.
