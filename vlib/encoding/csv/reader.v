@@ -69,6 +69,7 @@ pub fn new_reader(data string, config ReaderConfig) &Reader {
 
 // read reads a row from the CSV data.
 // If successful, the result holds an array of each column's data.
+// An unterminated quoted field returns a parse error instead of an end-of-file error.
 pub fn (mut r Reader) read() ![]string {
 	l := r.read_record()!
 	return l
@@ -120,6 +121,14 @@ fn (mut r Reader) read_line() !string {
 	return line
 }
 
+struct UnterminatedQuotedFieldError {
+	Error
+}
+
+fn (err UnterminatedQuotedFieldError) msg() string {
+	return 'encoding.csv: unterminated quoted field'
+}
+
 fn (mut r Reader) read_record() ![]string {
 	if r.delimiter == r.comment {
 		return &CommentIsDelimiterError{}
@@ -134,7 +143,12 @@ fn (mut r Reader) read_record() ![]string {
 	mut i := -1
 	for {
 		if need_read {
-			l := r.read_line()!
+			l := r.read_line() or {
+				if keep_raw && err is EndOfFileError {
+					return &UnterminatedQuotedFieldError{}
+				}
+				return err
+			}
 			if l.len <= 0 {
 				if keep_raw {
 					line += '\n'
