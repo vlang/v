@@ -248,6 +248,12 @@ fn artifact_path(name string, version string) string {
 	return os.join_path(artifacts_dir(), name, '${safe}.zip')
 }
 
+// registry_artifact_component accepts one nonempty path component for an artifact.
+fn registry_artifact_component(value string) bool {
+	return value != '' && value !in ['.', '..'] && value.trim_right(' .') == value
+		&& !value.contains_any('/\\:\0\r\n')
+}
+
 // registry_index_path returns the path to the registry index file.
 fn registry_index_path() string {
 	return os.join_path(registry_dir(), 'index.json')
@@ -264,6 +270,9 @@ fn registry_key_path() string {
 // do not match the checksum it claims. A registry that accepted a mismatched
 // archive would hand out sources that nobody vouched for.
 pub fn (mut r Registry) publish(info ModuleInfo, archive_path string) ! {
+	if !registry_artifact_component(info.name) || !registry_artifact_component(info.version) {
+		return error('module name and version must be nonempty artifact path components')
+	}
 	content := os.read_file(archive_path) or {
 		return error('failed to read the archive for `${info.name}`: ${err.msg()}')
 	}
@@ -275,7 +284,7 @@ pub fn (mut r Registry) publish(info ModuleInfo, archive_path string) ! {
 	// An already-published version is immutable: replacing it would change what
 	// an existing lockfile points at, so it is refused rather than overwritten.
 	if existing := r.get_info(info.name, info.version) {
-		if existing.checksum == info.checksum {
+		if existing.checksum.trim_string_left('sha256:').trim_string_left('SHA256:') == actual {
 			return
 		}
 		return error('`${info.name}@${info.version}` is already published; a version cannot be replaced')
@@ -285,21 +294,11 @@ pub fn (mut r Registry) publish(info ModuleInfo, archive_path string) ! {
 	os.write_file(dest, content) or {
 		return error('failed to store the archive for `${info.name}@${info.version}`: ${err.msg()}')
 	}
-	if claimed == '' {
-		// Nothing was claimed, so the bytes are the truth: record what they hash
-		// to rather than storing a checksum that vouches for nothing.
-		r.add_module(ModuleInfo{
-			name:         info.name
-			version:      info.version
-			description:  info.description
-			license:      info.license
-			dependencies: info.dependencies
-			checksum:     'sha256:${actual}'
-			features:     info.features
-		})
-		return
-	}
-	r.add_module(info)
+	// Record verified bytes with the spelling used by downloads and SPDX consumers.
+	r.add_module(ModuleInfo{
+		...info
+		checksum: 'sha256:${actual}'
+	})
 }
 
 // save persists the registry to disk.
@@ -340,8 +339,10 @@ pub mut:
 pub fn serve(registry Registry, method string, path string, query map[string]string, headers map[string]string) RegistryResponse {
 	// An archive is streamed, so it never has a body to hash for an entity tag
 	// and never answers a conditional request.
-	if artifact := artifact_request(registry, path) {
-		return artifact
+	if method == 'GET' {
+		if artifact := artifact_request(registry, path) {
+			return artifact
+		}
 	}
 	body := handle_request(registry, method, path, query)
 	etag := etag_of(body)
@@ -421,19 +422,21 @@ pub fn artifact_request(registry Registry, path string) ?RegistryResponse {
 		return none
 	}
 	version := parts[2].trim_string_right('.zip')
+	if !registry_artifact_component(parts[0]) || !registry_artifact_component(version) {
+		return none
+	}
+	info := registry.get_info(parts[0], version) or { return none }
 	archive := artifact_path(parts[0], version)
 	if !os.exists(archive) {
 		return none
 	}
 	// Verify what is being served against the checksum the index recorded, so a
 	// corrupted or tampered store is caught here rather than at the client.
-	if info := registry.get_info(parts[0], version) {
-		content := os.read_file(archive) or { return none }
-		actual := sha256_hex(content.bytes())
-		claimed := info.checksum.trim_string_left('sha256:')
-		if claimed != '' && claimed != actual {
-			return none
-		}
+	content := os.read_file(archive) or { return none }
+	actual := sha256_hex(content.bytes())
+	claimed := info.checksum.trim_string_left('sha256:').trim_string_left('SHA256:')
+	if claimed == '' || claimed != actual {
+		return none
 	}
 	return RegistryResponse{
 		artifact_path: archive
@@ -452,6 +455,7 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 			dl:            'https://example.com/downloads'
 			api:           'https://example.com/api'
 			auth_required: false
+			public_key:    registry.public_key_hex()
 		})
 	}
 
@@ -555,8 +559,38 @@ struct SignedIndex {
 // function of the registry's contents — sorted keys, and no wall-clock time —
 // or the same registry would produce a different signature on each run.
 fn (r &Registry) canonical_json() string {
+	mut names := r.modules.keys()
+	names.sort()
+	mut modules := map[string]RegistryEntry{}
+	for name in names {
+		entry := r.modules[name] or { continue }
+		mut versions := []ModuleInfo{}
+		for info in entry.versions {
+			mut dependency_names := info.dependencies.keys()
+			dependency_names.sort()
+			mut dependencies := map[string]string{}
+			for dependency in dependency_names {
+				dependencies[dependency] = info.dependencies[dependency]
+			}
+			mut feature_names := info.features.keys()
+			feature_names.sort()
+			mut features := map[string][]string{}
+			for feature in feature_names {
+				features[feature] = info.features[feature]
+			}
+			versions << ModuleInfo{
+				...info
+				dependencies: dependencies
+				features:     features
+			}
+		}
+		modules[name] = RegistryEntry{
+			name:     entry.name
+			versions: versions
+		}
+	}
 	return json2.encode(SignedIndex{
-		modules: r.modules
+		modules: modules
 	})
 }
 

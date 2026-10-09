@@ -1,6 +1,7 @@
 module main
 
 import os
+import net.http
 
 fn testsuite_begin() {
 	os.unsetenv('VPM_TOKEN')
@@ -68,4 +69,21 @@ fn test_a_non_401_status_is_not_treated_as_an_auth_failure() {
 	require_registry_token('https://vpm.example.com/a_module', 404) or {
 		assert false, 'a 404 must not be reported as an authentication problem'
 	}
+}
+
+fn test_authenticated_redirects_stay_within_the_registry_origin() {
+	request := http.Request{
+		url:    'https://vpm.example.com/package'
+		header: http.new_header(key: .authorization, value: 'Bearer test-token')
+	}
+	vpm_registry_redirect(&request, 0, 'https://VPM.EXAMPLE.COM:443/other')!
+	for destination in ['https://other.example.com/package', 'http://vpm.example.com/package',
+		'https://vpm.example.com:8443/package'] {
+		vpm_registry_redirect(&request, 0, destination) or { continue }
+		assert false, 'authenticated redirect accepted `${destination}`'
+	}
+	public := http.Request{
+		url: 'https://vpm.example.com/package'
+	}
+	vpm_registry_redirect(&public, 0, 'https://other.example.com/package')!
 }

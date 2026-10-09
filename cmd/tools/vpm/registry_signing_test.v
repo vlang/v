@@ -1,6 +1,7 @@
 module main
 
 import crypto.ed25519
+import json2
 import os
 
 fn signing_demo_info(name string, version string) ModuleInfo {
@@ -92,4 +93,52 @@ fn test_malformed_hex_is_rejected_rather_than_trusted() {
 	// A correct-length but all-zero key is not a valid point on the curve, so
 	// verification must fail rather than panic.
 	assert !r.verify_signature('0'.repeat(ed25519.public_key_size * 2), '0'.repeat(ed25519.signature_size * 2)), 'an all-zero key and signature were accepted'
+}
+
+fn test_signatures_do_not_depend_on_nested_map_insertion_order() {
+	_, private := ed25519.generate_key()!
+	os.setenv('VPM_REGISTRY_KEY', private.seed().hex(), true)
+	mut a := new_registry()
+	mut b := new_registry()
+	for name in ['alpha', 'beta'] {
+		a.add_module(ModuleInfo{
+			...signing_demo_info(name, '1.0.0')
+			dependencies: {
+				'first':  '^1'
+				'second': '^2'
+			}
+			features:     {
+				'first':  ['one']
+				'second': ['two']
+			}
+		})
+	}
+	for name in ['beta', 'alpha'] {
+		b.add_module(ModuleInfo{
+			...signing_demo_info(name, '1.0.0')
+			dependencies: {
+				'second': '^2'
+				'first':  '^1'
+			}
+			features:     {
+				'second': ['two']
+				'first':  ['one']
+			}
+		})
+	}
+	before := json2.encode(b.modules)
+	assert a.canonical_json() == b.canonical_json()
+	assert a.signature() == b.signature()
+	assert b.verify_signature(a.public_key_hex(), a.signature())
+	assert json2.encode(b.modules) == before
+}
+
+fn test_configuration_exposes_the_key_that_signs_the_registry() {
+	_, private := ed25519.generate_key()!
+	os.setenv('VPM_REGISTRY_KEY', private.seed().hex(), true)
+	r := new_demo_registry()
+	config := json2.decode[RegistryConfig](handle_request(r, 'GET', '/config.json',
+		map[string]string{}))!
+	assert config.public_key == r.public_key_hex()
+	assert config.public_key != ''
 }
