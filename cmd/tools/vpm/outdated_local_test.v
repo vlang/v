@@ -211,6 +211,46 @@ fn test_regular_and_dev_requirements_all_constrain_outdated_rows() {
 	assert conflicting_alias.resolvable == 'none', conflicting_alias.str()
 }
 
+fn test_remote_alias_requirements_preserve_exact_pins_and_distinct_sources() {
+	os.chdir(test_path)!
+	repo := local_outdated_repo('remote_alias_origin')!
+	local_outdated_git(repo, 'commit', '-q', '--allow-empty', '-m', 'v2.0.0')
+	local_outdated_git(repo, 'tag', 'v2.0.0')
+	checkout := os.join_path(test_path, 'remote_alias_checkout')
+	cmd_ok_args(@LOCATION, ['git', 'clone', '-q', repo, checkout])
+	local_outdated_git(checkout, 'checkout', '-q', '--detach', 'v1.0.0')
+	project := os.join_path(test_path, 'remote_alias_project')
+	os.mkdir_all(project)!
+	local_outdated_git(project, 'init', '-q')
+	os.chdir(project)!
+	for aliases in [
+		['https://example.test/Owner/Repo', 'git@example.test:Owner/Repo.git'],
+		['https://example.test/Owner/Repo.git', 'https://example.test/Owner/Repo'],
+		['git@example.test:Owner/Repo.git', 'https://example.test/Owner/Repo'],
+		['ssh://git@example.test/Owner/Repo', 'https://example.test/Owner/Repo.git'],
+	] {
+		local_outdated_git(checkout, 'remote', 'set-url', 'origin', aliases[0])
+		// Only tag discovery in the project sees this rewrite; the checkout's origin
+		// retains its remote spelling. Every Git operation still uses a local fixture.
+		local_outdated_git(project, 'config', '--replace-all', 'url.${repo}.insteadOf', aliases[0])
+		os.write_file('v.mod', "Module { name: 'app' dependencies: ['lib', '${aliases[0]}'] dev_dependencies: ['${aliases[1]}@v1.0.0', 'https://example.test/Other/Repo@v2.0.0', 'https://other.test/Owner/Repo@v2.0.0', 'https://example.test:8443/Owner/Repo@v2.0.0', 'https://example.test/owner/repo@v2.0.0'] }")!
+		pinned := outdated_row('lib', checkout, project_constraints())
+		assert pinned.current == 'v1.0.0', pinned.str()
+		assert pinned.upgradable == 'v1.0.0', '${aliases}: ${pinned}'
+		assert pinned.resolvable == 'v1.0.0', '${aliases}: ${pinned}'
+		assert pinned.latest == 'v2.0.0', pinned.str()
+		os.write_file('v.mod', "Module { name: 'app' dependencies: ['${aliases[0]}@v1.0.0'] dev_dependencies: ['${aliases[1]}@v2.0.0'] }")!
+		conflict := outdated_row('lib', checkout, project_constraints())
+		assert conflict.upgradable == 'none', '${aliases}: ${conflict}'
+		assert conflict.resolvable == 'none', '${aliases}: ${conflict}'
+		os.write_file('v.mod', "Module { name: 'app' dependencies: ['${aliases[0]}'] dev_dependencies: ['${aliases[1]}@topic'] }")!
+		opaque := outdated_row('lib', checkout, project_constraints())
+		assert opaque.upgradable == 'n/a', '${aliases}: ${opaque}'
+		assert opaque.resolvable == 'n/a', '${aliases}: ${opaque}'
+		assert opaque.latest == 'v2.0.0', opaque.str()
+	}
+}
+
 fn test_existing_commit_based_upgrade_detection_handles_branch_and_detached_checkouts() {
 	os.chdir(test_path)!
 	origin := local_outdated_repo('commit_origin')!

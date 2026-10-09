@@ -116,9 +116,10 @@ fn project_requests_for_module(constraints map[string][]string, name string, pat
 	origin := os.exec(['git', '-C', path, 'remote', 'get-url', 'origin'])
 	if origin.exit_code == 0 {
 		source := origin.output.trim_space()
+		normalized_source := normalized_clone_source(source)
 		for dependency, requirements in constraints {
 			if dependency == name { continue }
-			if dependency == source {
+			if normalized_clone_source(dependency) == normalized_source {
 				requests << requirements
 			} else if is_local_repository(source) {
 				source_path := source.trim_string_left('file://')
