@@ -29,9 +29,33 @@ fn is_version_range(version string) bool {
 	return wildcard
 }
 
+// The length of the component `version_tmp_name` derives from a commit SHA.
+// A full 64-character SHA as one path component pushes a temp path over
+// `MAX_PATH` on Windows once `.git/objects/pack` sits beneath it, so it is cut
+// to a short SHA. 12 matches the `pseudo_version` convention, and git itself
+// treats a 12-character prefix as an unambiguous object name.
+const tmp_name_length = 12
+
+// is_hex_digest reports whether `value` is a long all-hex string, i.e. a commit
+// SHA. A tag is deliberately excluded below even when it happens to be
+// all-hex, because cutting a tag would silently merge two distinct ones.
+fn is_hex_digest(value string) bool {
+	if value.len < tmp_name_length {
+		return false
+	}
+	return value.bytes().all(it.is_digit() || (it >= u8(0x61) && it <= u8(0x66))
+		|| (it >= u8(0x41) && it <= u8(0x46)))
+}
+
 // version_tmp_name keeps range operators out of filesystem path components.
 fn version_tmp_name(version string) string {
-	return if is_version_range(version) { 'range-' + sha256.hexhash(version) } else { version }
+	if is_version_range(version) {
+		return 'range-' + sha256.hexhash(version)[0..tmp_name_length]
+	}
+	if is_hex_digest(version) {
+		return version[0..tmp_name_length]
+	}
+	return version
 }
 
 fn version_tag(tag string) !semver.Version {
