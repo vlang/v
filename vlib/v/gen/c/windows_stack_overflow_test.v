@@ -3,6 +3,98 @@ module c
 import os
 import v.pref
 
+const mock_windows_stack_overflow_api = r'
+#define WINAPI
+#define CALLBACK
+#define NULL ((void*)0)
+#define EXCEPTION_STACK_OVERFLOW 0xC00000FD
+#define EXCEPTION_CONTINUE_SEARCH 0
+#define STD_ERROR_HANDLE ((DWORD)-12)
+typedef unsigned long ULONG;
+typedef unsigned long DWORD;
+typedef ULONG* PULONG;
+typedef int BOOL;
+typedef long LONG;
+typedef void (*FARPROC)(void);
+typedef struct { DWORD ExceptionCode; } EXCEPTION_RECORD;
+typedef struct { EXCEPTION_RECORD* ExceptionRecord; } EXCEPTION_POINTERS;
+static int mock_reservations;
+static int mock_registrations;
+static inline BOOL mock_stack_guarantee(PULONG size) {
+	if (*size == 64 * 1024) ++mock_reservations;
+	return 1;
+}
+static inline void* GetModuleHandleW(const void* name) { return NULL; }
+static inline FARPROC GetProcAddress(void* module, const char* name) {
+	return (FARPROC)mock_stack_guarantee;
+}
+static inline void* AddVectoredExceptionHandler(ULONG first, LONG (*handler)(EXCEPTION_POINTERS*)) {
+	if (first == 1 && handler != NULL) ++mock_registrations;
+	return NULL;
+}
+static inline void* GetStdHandle(DWORD handle) { return NULL; }
+static inline BOOL WriteFile(void* handle, const void* buffer, DWORD size, DWORD* written, void* overlapped) { return 1; }
+static inline void* GetCurrentProcess(void) { return NULL; }
+static inline BOOL TerminateProcess(void* process, unsigned code) { return 1; }
+'
+
+const mock_windows_stack_overflow_program = r'
+#include "segfault_handler_windows.h"
+int main(void) {
+	v_install_windows_stack_overflow_handler();
+	v_windows_set_stack_guarantee();
+	return mock_reservations != 2 || mock_registrations != EXPECT_REGISTRATIONS;
+}
+'
+
+fn test_windows_stack_overflow_installer_leaves_sanitizers_in_control() ! {
+	cc_name := $if windows { 'gcc' } $else { 'cc' }
+	cc := os.find_abs_path_of_executable(cc_name) or { return }
+	dir := os.join_path(os.vtmp_dir(), 'windows_stack_overflow_sanitizers_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'installer.c')
+	header_dir := os.join_path(@VEXEROOT, 'vlib', 'builtin')
+	os.write_file(os.join_path(dir, 'windows.h'), mock_windows_stack_overflow_api)!
+	os.write_file(source, mock_windows_stack_overflow_program)!
+	configs := [
+		['-DEXPECT_REGISTRATIONS=1'],
+		['-DEXPECT_REGISTRATIONS=1', '-DCUSTOM_DEFINE_no_backtrace=1'],
+		['-DEXPECT_REGISTRATIONS=0', '-D__SANITIZE_ADDRESS__=1'],
+		['-DEXPECT_REGISTRATIONS=0', '-D__SANITIZE_THREAD__=1'],
+		['-DEXPECT_REGISTRATIONS=0', '-D__SANITIZE_HWADDRESS__=1'],
+		['-DEXPECT_REGISTRATIONS=0', '-D__SANITIZE_ADDRESS__=1', '-DCUSTOM_DEFINE_no_backtrace=1'],
+	]
+	for i, flags in configs {
+		binary := os.join_path(dir, 'installer_${i}.exe')
+		compiled := os.exec([cc, '-Wall', '-Werror', '-I', dir, '-I', header_dir, ...flags, source,
+			'-o', binary])
+		assert compiled.exit_code == 0, compiled.output
+		result := os.exec([binary])
+		assert result.exit_code == 0, '${flags}: ${result.output}'
+	}
+	if clang := os.find_abs_path_of_executable('clang') {
+		// Preprocess with real sanitizer features, then run the resulting installer
+		// without requiring a sanitizer runtime or a native Windows host.
+		for sanitizer in ['address', 'thread', 'memory', 'hwaddress'] {
+			feature_source := os.join_path(dir, 'installer_${sanitizer}.c')
+			preprocessed := os.join_path(dir, 'installer_${sanitizer}.i')
+			binary := os.join_path(dir, 'installer_${sanitizer}.exe')
+			os.write_file(feature_source, '#if !__has_feature(${sanitizer}_sanitizer)\n#error Expected an active Clang sanitizer feature\n#endif\n' +
+				mock_windows_stack_overflow_program)!
+			processed := os.exec([clang, '-target', 'aarch64-unknown-linux-gnu', '-E',
+				'-fsanitize=${sanitizer}', '-U__SANITIZE_ADDRESS__', '-U__SANITIZE_THREAD__',
+				'-U__SANITIZE_HWADDRESS__', '-DEXPECT_REGISTRATIONS=0', '-I', dir, '-I', header_dir,
+				feature_source, '-o', preprocessed])
+			assert processed.exit_code == 0, processed.output
+			compiled := os.exec([cc, '-Wall', '-Werror', preprocessed, '-o', binary])
+			assert compiled.exit_code == 0, compiled.output
+			result := os.exec([binary])
+			assert result.exit_code == 0, '${sanitizer}: ${result.output}'
+		}
+	}
+}
+
 fn test_windows_spawn_wrapper_reserves_stack_before_the_user_call() {
 	mut g := FlatGen.new()
 	g.set_target(pref.target_from('windows', 'amd64') or { panic(err) })

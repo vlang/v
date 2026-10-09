@@ -5,6 +5,14 @@
 
 #include <windows.h>
 
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__) || defined(__SANITIZE_HWADDRESS__)
+#define V_SEGFAULT_HANDLER_SANITIZED 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || __has_feature(memory_sanitizer) || __has_feature(hwaddress_sanitizer)
+#define V_SEGFAULT_HANDLER_SANITIZED 1
+#endif
+#endif
+
 typedef BOOL (WINAPI *v_windows_stack_guarantee_fn)(PULONG);
 
 static inline void v_windows_set_stack_guarantee(void) {
@@ -18,6 +26,7 @@ static inline void v_windows_set_stack_guarantee(void) {
 	}
 }
 
+#if !defined(V_SEGFAULT_HANDLER_SANITIZED)
 static LONG CALLBACK v_windows_stack_overflow_handler(EXCEPTION_POINTERS* exception) {
 	if (exception->ExceptionRecord->ExceptionCode != EXCEPTION_STACK_OVERFLOW) {
 		return EXCEPTION_CONTINUE_SEARCH;
@@ -30,10 +39,14 @@ static LONG CALLBACK v_windows_stack_overflow_handler(EXCEPTION_POINTERS* except
 	TerminateProcess(GetCurrentProcess(), 1);
 	return EXCEPTION_CONTINUE_SEARCH;
 }
+#endif
 
 static void v_install_windows_stack_overflow_handler(void) {
 	v_windows_set_stack_guarantee();
+#if !defined(V_SEGFAULT_HANDLER_SANITIZED)
+	// Sanitizers report stack overflows themselves; do not intercept their faults.
 	AddVectoredExceptionHandler(1, v_windows_stack_overflow_handler);
+#endif
 }
 
 #endif

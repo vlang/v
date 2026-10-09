@@ -9628,6 +9628,8 @@ On Windows, V reserves exception handling stack space for the main thread and th
 started with `spawn`. An overflow-only vectored handler writes `V panic: stack overflow` to
 stderr and terminates the process with a nonzero exit code, even with `-d no_backtrace`.
 Other exceptions continue to their existing handlers.
+Address, Thread, Memory, and HWAddress sanitizer builds leave stack overflow handling to
+the sanitizer runtime.
 
 On macOS, signal handlers installed before V starts retain precedence, including TCC's
 backtrace handlers. V reports stack overflows when the signal still has its default disposition;
