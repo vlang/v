@@ -12,11 +12,14 @@ enum VCS {
 struct VCSInfo {
 	dir  string @[required]
 	args struct {
-		install  []string @[required]
-		version  string   @[required] // flag name; passed as one `--flag=<version>` element.
-		path     string   @[required] // flag to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
-		update   string   @[required]
-		outdated []string @[required]
+		install  []string   @[required]
+		version  string     @[required] // flag name; passed as one `--flag=<version>` element.
+		path     string     @[required] // flag to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
+		// update is a list of whole commands, run in order. A single string
+		// cannot express the shallow update below, which needs a fetch and then
+		// a reset.
+		update   [][]string @[required]
+		outdated []string   @[required]
 	}
 }
 
@@ -53,7 +56,16 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 			args: struct {
 				install:  git_install_args
 				version:  '--branch'
-				update:   'pull --recurse-submodules'
+				// Installs are shallow, so `pull` cannot be used: on a shallow
+				// clone it reports "Already up to date" and leaves HEAD exactly
+				// where it was, which makes `v update` silently do nothing. Fetch
+				// one commit and move HEAD to it instead. `--update-head-ok`
+				// permits the fetch to move the detached HEAD a tagged install
+				// leaves behind, which git otherwise rejects.
+				update: [
+					['fetch', '--depth', '1', '--update-head-ok', 'origin', 'HEAD'],
+					['reset', '--hard', 'FETCH_HEAD'],
+				]
 				path:     '-C'
 				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
 			}
@@ -63,7 +75,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 			args: struct {
 				install:  ['clone']
 				version:  '--rev'
-				update:   'pull --update'
+				update:   [['pull', '--update']]
 				path:     '-R'
 				outdated: ['incoming']
 			}

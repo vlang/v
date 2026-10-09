@@ -87,75 +87,42 @@ fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 		return &UpdateResult{}
 	}
 	println('Updating module `${name}` in `${fmt_mod_path(install_path)}`...')
-	if vcs == .git && head_is_detached(install_path) {
-		// A checkout that is not on a branch cannot be pulled. vpm itself leaves
-		// checkouts detached when it installs a locked revision or a tag, so
-		// fetch and move HEAD to the default branch of the origin instead.
-		os.exec_opt(['git', '-C', install_path, 'fetch', '--depth', '1', 'origin']) or {
-			vpm_error('failed to fetch the origin of module `${name}` in `${install_path}`.',
+	// Both a branch and a detached checkout are updated the same way. vpm itself
+	// leaves checkouts detached when it installs a locked revision or a tag, and
+	// a checkout that is not on a branch cannot be pulled; the fetch below
+	// records that case explicitly rather than guessing at it, and
+	// `--update-head-ok` permits it to move such a HEAD, which git otherwise
+	// refuses.
+	//
+	// The old code fetched and then checked out `origin/HEAD` for the detached
+	// case, which a shallow fetch does not reliably provide.
+	args := vcs_info[vcs].args
+	// `head_revision` is git-only and returns '' elsewhere, so this compares
+	// revisions only where revisions mean something.
+	old_revision := head_revision(install_path)
+	for update in args.update {
+		vpm_log(@FILE_LINE, @FN, 'update command: ${update}')
+		os.exec_opt([vcs.str(), args.path, install_path, ...update]) or {
+			vpm_error('failed to update module `${name}` in `${install_path}`.',
 				details: err.msg()
 			)
 			return &UpdateResult{}
 		}
-		old_revision := head_revision(install_path)
-		os.exec_opt(['git', '-C', install_path, 'checkout', '--quiet', 'origin/HEAD']) or {
-			vpm_error('failed to checkout the default branch of the origin of module `${name}` in `${install_path}`.',
-				details: err.msg()
-			)
-			return &UpdateResult{}
-		}
-		update_git_submodules(install_path) or {
-			vpm_error('failed to update module `${name}` in `${install_path}`.', details: err.msg())
-			return &UpdateResult{}
-		}
+	}
+	update_git_submodules(install_path) or {
+		vpm_error('failed to update the submodules of module `${name}` in `${install_path}`.',
+			details: err.msg()
+		)
+		return &UpdateResult{}
+	}
+	if old_revision != '' {
 		if head_revision(install_path) == old_revision {
 			println('Skipped module `${ident}`. Already up to date.')
 		} else {
 			println('Updated module `${ident}`.')
 		}
 	} else {
-		// Installs are shallow, so `pull` cannot be used: on a shallow clone it
-		// reports "Already up to date" while HEAD has not moved at all, which
-		// makes `v update` silently do nothing. Fetch one commit and move HEAD
-		// to it instead. `--update-head-ok` is what allows the fetch to touch a
-		// detached HEAD, which is what a tagged install leaves behind.
-		if vcs == .git {
-			old_revision := head_revision(install_path)
-			fetch := os.exec_opt(['git', '-C', install_path, 'fetch', '--depth', '1', '--update-head-ok',
-				'origin', 'HEAD']) or {
-				vpm_error('failed to fetch the origin of module `${name}` in `${install_path}`.',
-					details: err.msg()
-				)
-				return &UpdateResult{}
-			}
-			vpm_log(@FILE_LINE, @FN, 'fetch output: ${fetch.output.trim_space()}')
-			os.exec_opt(['git', '-C', install_path, 'reset', '--hard', 'FETCH_HEAD']) or {
-				vpm_error('failed to move `${name}` in `${install_path}` to the fetched revision.',
-					details: err.msg()
-				)
-				return &UpdateResult{}
-			}
-			if head_revision(install_path) == old_revision {
-				println('Skipped module `${ident}`. Already up to date.')
-			} else {
-				println('Updated module `${ident}`.')
-			}
-		} else {
-			args := vcs_info[vcs].args
-			res := os.exec_opt([vcs.str(), args.path, install_path,
-				...(os.split_args(args.update) or { panic(err) })]) or {
-				vpm_error('failed to update module `${name}` in `${install_path}`.',
-					details: err.msg()
-				)
-				return &UpdateResult{}
-			}
-			vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output.trim_space()}')
-			if res.output.contains('Already up to date.') {
-				println('Skipped module `${ident}`. Already up to date.')
-			} else {
-				println('Updated module `${ident}`.')
-			}
-		}
+		println('Updated module `${ident}`.')
 	}
 	// Don't bail if the download count increment has failed.
 	increment_module_download_count(name, '') or { vpm_error(err.msg(), verbose: true) }
