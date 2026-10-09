@@ -1025,7 +1025,9 @@ fn test_generic_receiver_names_exclude_array_and_map_receivers() {
 }
 
 // fake_pkg_config writes a `pkg-config` that looks up `<name>.pc` in `packages`
-// and logs each of its invocations to `log`.
+// and logs each of its invocations to `log`. A package that requires `dep`
+// exists while `dep.pc` is at version 2, the way a real pkg-config walks the
+// requirements of a package before it says that the package is there.
 fn fake_pkg_config(dir string, packages string, log string) {
 	os.mkdir_all(dir) or { panic(err) }
 	path := os.join_path(dir, 'pkg-config')
@@ -1036,6 +1038,9 @@ if [ "\$1" = "--variable" ]; then
 	exit 0
 fi
 if [ "\$1" = "--exists" ] && [ -f "${packages}/\$2.pc" ]; then
+	if grep -q "^Requires: dep" "${packages}/\$2.pc" && ! grep -q "^Version: 2" "${packages}/dep.pc"; then
+		exit 1
+	fi
 	exit 0
 fi
 exit 1
@@ -1045,60 +1050,131 @@ exit 1
 	os.chmod(path, 0o700) or { panic(err) }
 }
 
-fn test_pkg_config_answers_are_recorded_until_its_packages_change() {
-	$if windows {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'v3_pkgconfig_answers_${os.getpid()}')
+struct FakePkgConfig {
+	root      string
+	packages  string
+	log       string
+	cache_dir string
+	saved     map[string]string
+	unset     []string
+}
+
+// use_fake_pkg_config puts a fake pkg-config first in PATH and clears the
+// variables that would redirect its search.
+fn use_fake_pkg_config(name string) FakePkgConfig {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	packages := os.join_path(root, 'packages')
 	os.mkdir_all(packages) or { panic(err) }
 	log := os.join_path(root, 'invocations.log')
 	fake_pkg_config(os.join_path(root, 'bin'), packages, log)
-	old_path := os.getenv('PATH')
-	os.setenv('PATH', '${os.join_path(root, 'bin')}${os.path_delimiter}${old_path}', true)
-	old_pkg_config_path := os.getenv_opt('PKG_CONFIG_PATH')
-	os.unsetenv('PKG_CONFIG_PATH')
-	old_pkg_config_libdir := os.getenv_opt('PKG_CONFIG_LIBDIR')
-	os.unsetenv('PKG_CONFIG_LIBDIR')
-	defer {
-		os.setenv('PATH', old_path, true)
-		if value := old_pkg_config_path {
-			os.setenv('PKG_CONFIG_PATH', value, true)
+	mut saved := map[string]string{}
+	mut unset := []string{}
+	for variable, value in os.environ() {
+		if variable == 'PATH' || variable.starts_with('PKG_CONFIG') {
+			saved[variable] = value
+			if variable != 'PATH' {
+				unset << variable
+			}
 		}
-		if value := old_pkg_config_libdir {
-			os.setenv('PKG_CONFIG_LIBDIR', value, true)
-		}
-		os.rmdir_all(root) or {}
 	}
-	if file_metadata_signature(packages) == '' {
-		// The file system cannot tell one state of the directory from the next
-		// yet; pkg-config is then asked every time, as it was before.
+	for variable in unset {
+		os.unsetenv(variable)
+	}
+	os.setenv('PATH', '${os.join_path(root, 'bin')}${os.path_delimiter}${saved['PATH']}', true)
+	return FakePkgConfig{
+		root:      root
+		packages:  packages
+		log:       log
+		cache_dir: os.join_path(root, 'cache')
+		saved:     saved
+		unset:     unset
+	}
+}
+
+fn (f FakePkgConfig) restore() {
+	for variable, value in f.saved {
+		os.setenv(variable, value, true)
+	}
+	os.rmdir_all(f.root) or {}
+}
+
+fn (f FakePkgConfig) invocations() []string {
+	return (os.read_file(f.log) or { '' }).split_into_lines()
+}
+
+// settled reports whether the file system can tell this state of a package file
+// from the next one already; pkg-config is asked every time until it can.
+fn (f FakePkgConfig) settled(name string) bool {
+	return file_metadata_signature(os.join_path(f.packages, '${name}.pc')) != ''
+}
+
+fn test_pkg_config_answers_are_recorded_until_its_packages_change() {
+	$if windows {
 		return
 	}
-	cache_dir := os.join_path(root, 'cache')
-	invocations := fn [log] () []string {
-		return (os.read_file(log) or { '' }).split_into_lines()
+	fake := use_fake_pkg_config('pkgconfig_answers')
+	defer {
+		fake.restore()
 	}
 	// One process asks once, whatever it validates.
 	mut probes := &PkgConfigProbes{}
-	assert !pkg_config_exists('v3-absent', cache_dir, probes)
-	assert !pkg_config_exists('v3-absent', cache_dir, probes)
-	assert invocations() == ['--variable pc_path pkg-config', '--exists v3-absent']
+	assert !pkg_config_exists('v3-absent', fake.cache_dir, probes)
+	assert !pkg_config_exists('v3-absent', fake.cache_dir, probes)
+	assert fake.invocations() == ['--variable pc_path pkg-config', '--exists v3-absent']
 	// The next process reads what the same pkg-config answered.
-	assert !pkg_config_exists('v3-absent', cache_dir, &PkgConfigProbes{})
-	assert invocations().len == 2
+	assert !pkg_config_exists('v3-absent', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().len == 2
 	// Installing the package changes its directory, and with it the answer.
-	os.write_file(os.join_path(packages, 'v3-absent.pc'), 'Name: v3-absent\n') or { panic(err) }
-	if file_metadata_signature(packages) == '' {
+	os.write_file(os.join_path(fake.packages, 'v3-absent.pc'), 'Name: v3-absent\n') or {
+		panic(err)
+	}
+	if !fake.settled('v3-absent') {
 		return
 	}
-	assert pkg_config_exists('v3-absent', cache_dir, &PkgConfigProbes{})
-	assert invocations().last() == '--exists v3-absent'
-	asked := invocations().len
-	assert pkg_config_exists('v3-absent', cache_dir, &PkgConfigProbes{})
-	assert invocations().len == asked
+	assert pkg_config_exists('v3-absent', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().last() == '--exists v3-absent'
+	asked := fake.invocations().len
+	assert pkg_config_exists('v3-absent', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().len == asked
 	// Without a cache directory there is nothing to read an answer from.
 	assert pkg_config_exists('v3-absent', '', &PkgConfigProbes{})
-	assert invocations().len == asked + 1
+	assert fake.invocations().len == asked + 1
+}
+
+// A package is there while what it requires is there too, in a version that it
+// accepts. Editing the file of a requirement in place changes neither the file
+// of the package nor the listing of its directory, and still changes the answer.
+fn test_pkg_config_answer_follows_an_edited_requirement() {
+	$if windows {
+		return
+	}
+	fake := use_fake_pkg_config('pkgconfig_requirement')
+	defer {
+		fake.restore()
+	}
+	os.write_file(os.join_path(fake.packages, 'foo.pc'), 'Name: foo\nRequires: dep >= 2\n') or {
+		panic(err)
+	}
+	dep := os.join_path(fake.packages, 'dep.pc')
+	os.write_file(dep, 'Name: dep\nVersion: 2\n') or { panic(err) }
+	if !fake.settled('foo') || !fake.settled('dep') {
+		return
+	}
+	assert pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	asked := fake.invocations().len
+	assert pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().len == asked
+	foo_before := file_metadata_signature(os.join_path(fake.packages, 'foo.pc'))
+	os.write_file(dep, 'Name: dep\nVersion: 1\n') or { panic(err) }
+	if !fake.settled('dep') {
+		return
+	}
+	assert file_metadata_signature(os.join_path(fake.packages, 'foo.pc')) == foo_before
+	assert !pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().last() == '--exists foo'
+	assert fake.invocations().len == asked + 1
+	// The answer for the edited requirement is recorded in its turn.
+	assert !pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().len == asked + 1
 }

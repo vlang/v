@@ -202,3 +202,41 @@ fn test_literal_only_program_publishes_whole_modules_for_other_programs() {
 	assert_reused_modules(warm)
 	assert run_built(root, 'other') == "['a', 'b', 'c'] 3 1.50"
 }
+
+// `CFLAGS` and `LDFLAGS` reach every C compilation of a build, and the key of a
+// cached module object does not cover them. A build that has them therefore stays
+// out of the module cache, with `-usecache` too: it neither links an object that
+// was compiled without those flags nor publishes one that was compiled with them.
+fn test_ambient_c_flags_keep_a_usecache_build_out_of_the_module_cache() {
+	$if windows {
+		return
+	}
+	root := new_project('module_cache_reuse_cflags')
+	mut saved := pin_module_cache(os.join_path(root, 'cache'))
+	saved << save_env('CFLAGS')
+	os.unsetenv('CFLAGS')
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, program_with_imports) or { panic(err) }
+	cached := build(root, ['-usecache'], main_file, 'cached')
+	if !cached.contains('  tcc ') || !cached.contains('C module plan') {
+		return
+	}
+	module_objects := fn [root] () []string {
+		return os.walk_ext(os.join_path(root, 'cache'), '.o').filter(it.contains('v3_module_cache_')).sorted()
+	}
+	published := module_objects()
+	assert published.len > 0
+
+	os.setenv('CFLAGS', '-DV_MODULE_CACHE_REUSE_TEST=1', true)
+	flagged := build(root, ['-usecache'], main_file, 'flagged')
+	assert !flagged.contains('C module plan'), flagged
+	assert parsed_source_files(flagged) > 1, flagged
+	assert run_built(root, 'flagged') == '42'
+	assert module_objects() == published
+}

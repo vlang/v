@@ -261,6 +261,25 @@ fn test_cached_object_signature_keeps_unprunable_program_wrappers_apart() {
 	assert v3_cached_object_program_compile_signature(base, unfinished) != base
 }
 
+fn test_cached_object_signature_covers_the_arguments_of_the_object_compiler() {
+	// The system `cc` gets none, and its objects keep the key they had.
+	plain := v3_cached_object_compile_signature(V3CachedObjectCompiler{}, 'c11', '', '',
+		'-w', []string{}, false, '')
+	assert !plain.contains('compiler_args=')
+	// TinyCC is given its resource directory and the include root of the SDK: an
+	// object compiled against another SDK is another object.
+	first_sdk := v3_cached_object_compile_signature(V3CachedObjectCompiler{
+		path: 'tcc'
+		args: ['-B/v/thirdparty/tcc/lib', '-I/sdk/26.0/usr/include']
+	}, 'c11', '', '', '-w', []string{}, false, '')
+	second_sdk := v3_cached_object_compile_signature(V3CachedObjectCompiler{
+		path: 'tcc'
+		args: ['-B/v/thirdparty/tcc/lib', '-I/sdk/26.5/usr/include']
+	}, 'c11', '', '', '-w', []string{}, false, '')
+	assert first_sdk != plain
+	assert first_sdk != second_sdk
+}
+
 fn test_cached_object_signature_keeps_panic_frame_objects_apart() {
 	base := 'base signature'
 	plain := 'int declaration;\n/* V3CACHE_BODY_BEGIN */\n'

@@ -26,20 +26,23 @@ const source_body_marker = '// v3cache: source bodies required'
 const source_signature_cache_format = 'v3-source-signature-cache-9'
 
 // PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
-// process. A build validates the sources of `builtin` several times, and each
-// validation asked again. The table holds no heap memory of its own, so an answer
-// recorded inside a disposable allocation scope outlives that scope.
+// process, and which recorded answers apply to it. A build validates the sources
+// of `builtin` several times, and each validation asked again. The table holds no
+// heap memory of its own, so what is written to it inside a disposable allocation
+// scope outlives that scope.
 struct PkgConfigProbes {
 mut:
-	len       int
-	names     [16]u64
-	available [16]bool
+	len         int
+	names       [16]u64
+	available   [16]bool
+	state_known bool
+	state_key   u64 // 0 when the answers of this pkg-config cannot be recorded
 }
 
 // pkg_config_exists reports whether pkg-config knows `name`. It asks pkg-config
 // at most once per process when `probes` has room for the answer, and not at
 // all when `cache_dir` holds the answer that the same pkg-config gave while its
-// search directories were as they are now (see pkg_config_answers_path).
+// packages were as they are now (see pkg_config_state_key).
 fn pkg_config_exists(name string, cache_dir string, probes &PkgConfigProbes) bool {
 	key := hash_bytes(u64(1469598103934665603), name.bytes()) ^ u64(name.len)
 	if !isnil(probes) {
@@ -50,12 +53,12 @@ fn pkg_config_exists(name string, cache_dir string, probes &PkgConfigProbes) boo
 		}
 	}
 	mut available := false
-	state := pkg_config_state(cache_dir)
-	if answer := pkg_config_recorded_answer(state, name) {
+	answers := pkg_config_answers_path(cache_dir, probes)
+	if answer := pkg_config_recorded_answer(answers, name) {
 		available = answer
 	} else {
 		available = os.exec(['pkg-config', '--exists', '${name}']).exit_code == 0
-		pkg_config_record_answer(state, name, available)
+		pkg_config_record_answer(answers, name, available)
 	}
 	if !isnil(probes) && probes.len < 16 {
 		// The table is the one place a manager, handed around by value and by
@@ -68,37 +71,57 @@ fn pkg_config_exists(name string, cache_dir string, probes &PkgConfigProbes) boo
 	return available
 }
 
-// PkgConfigState locates the recorded answers of one pkg-config, for one state
-// of the directories that it searches.
-struct PkgConfigState {
-	answers string   // the file of the answers; empty when they cannot be recorded
-	dirs    []string // the directories that pkg-config searches, in its order
+// pkg_config_answers_path returns the file that holds the answers recorded for
+// the present state of pkg-config, or '' when they cannot be recorded. The state
+// is worked out once per process when `probes` can keep it.
+fn pkg_config_answers_path(cache_dir string, probes &PkgConfigProbes) string {
+	if cache_dir.len == 0 {
+		return ''
+	}
+	mut state_key := u64(0)
+	if !isnil(probes) && probes.state_known {
+		state_key = probes.state_key
+	} else {
+		state_key = pkg_config_state_key(cache_dir)
+		if !isnil(probes) {
+			mut known := unsafe { &PkgConfigProbes(voidptr(probes)) }
+			known.state_known = true
+			known.state_key = state_key
+		}
+	}
+	if state_key == 0 {
+		return ''
+	}
+	return os.join_path(cache_dir, '.pkgconfig_answers_${state_key.hex()}')
 }
 
-// pkg_config_state identifies what the answers of `pkg-config --exists` depend
-// on: the executable, the environment variables that redirect its search, and
-// the directories it searches. Adding or removing a package changes the
-// modification time of one of those directories, which makes the answers
-// recorded so far unreachable.
-fn pkg_config_state(cache_dir string) PkgConfigState {
-	if cache_dir.len == 0 {
-		return PkgConfigState{}
-	}
-	executable := os.find_abs_path_of_executable('pkg-config') or { return PkgConfigState{} }
+// pkg_config_state_key identifies everything that an answer of
+// `pkg-config --exists` depends on: the executable, the environment variables
+// that steer it, and every `.pc` file of the directories that it searches. A
+// package exists when its file and the files of what it requires are there and
+// agree on their versions, so one file does not decide the answer, while a file
+// outside those directories has no part in it. Installing, removing or editing
+// any package therefore makes the answers recorded so far unreachable.
+// It returns 0 when that state cannot be told, and pkg-config is then asked.
+fn pkg_config_state_key(cache_dir string) u64 {
+	executable := os.find_abs_path_of_executable('pkg-config') or { return 0 }
 	executable_identity := file_metadata_signature(os.real_path(executable))
 	if executable_identity.len == 0 {
-		return PkgConfigState{}
+		return 0
 	}
-	mut environment := []string{}
-	for variable in ['PKG_CONFIG_PATH', 'PKG_CONFIG_LIBDIR', 'PKG_CONFIG_SYSROOT_DIR'] {
-		environment << os.getenv(variable)
+	mut steering := []string{}
+	for name, value in os.environ() {
+		if name.starts_with('PKG_CONFIG') {
+			steering << '${name}=${value}'
+		}
 	}
-	search_key := hash_text(executable_identity + '\x00' + environment.join('\x00'))
+	steering.sort()
+	search_key := hash_text(executable_identity + '\x00' + steering.join('\x00'))
 	search_file := os.join_path(cache_dir, '.pkgconfig_search_${search_key}')
 	search_path := os.read_file(search_file) or {
 		result := os.exec([executable, '--variable', 'pc_path', 'pkg-config'])
 		if result.exit_code != 0 {
-			return PkgConfigState{}
+			return 0
 		}
 		listed := result.output.trim_space()
 		os.mkdir_all(cache_dir) or {}
@@ -106,94 +129,79 @@ fn pkg_config_state(cache_dir string) PkgConfigState {
 		listed
 	}
 	mut dirs := []string{}
-	for listed in [environment[0], environment[1], search_path] {
+	for listed in [os.getenv('PKG_CONFIG_PATH'), os.getenv('PKG_CONFIG_LIBDIR'), search_path] {
 		for dir in listed.split(os.path_delimiter) {
 			if dir.len > 0 && dir !in dirs {
 				dirs << dir
 			}
 		}
 	}
-	mut identity := strings.new_builder(256)
+	mut hash := hash_bytes(u64(1469598103934665603), search_key.bytes())
 	mut searched := 0
 	for dir in dirs {
-		identity.write_string(dir)
-		identity.write_u8(0)
-		if os.is_dir(dir) {
-			metadata := file_metadata_signature(dir)
-			if metadata.len == 0 {
-				// Changed too recently to tell this state from the next one.
-				return PkgConfigState{}
+		hash = hash_bytes(hash, dir.bytes())
+		hash = hash_bytes(hash, [u8(0)])
+		mut entries := os.ls(dir) or { continue }
+		searched++
+		entries.sort()
+		for entry in entries {
+			if !entry.ends_with('.pc') {
+				continue
 			}
-			identity.write_string(metadata)
-			searched++
+			path := os.join_path(dir, entry)
+			mut metadata := file_metadata_signature(path)
+			if metadata.len == 0 {
+				if os.exists(path) {
+					// Changed too recently to tell this state from the next one.
+					return 0
+				}
+				// A link to a file that is gone: pkg-config cannot read it either.
+				metadata = 'unreadable'
+			}
+			hash = hash_bytes(hash, entry.bytes())
+			hash = hash_bytes(hash, [u8(0)])
+			hash = hash_bytes(hash, metadata.bytes())
+			hash = hash_bytes(hash, [u8(0xff)])
 		}
-		identity.write_u8(0xff)
+		hash = hash_bytes(hash, [u8(0xfe)])
 	}
 	if searched == 0 {
 		// Not the answer of a pkg-config: nothing ties a record to its packages.
-		return PkgConfigState{}
+		return 0
 	}
-	return PkgConfigState{
-		answers: os.join_path(cache_dir, '.pkgconfig_answers_${search_key}_${hash_text(identity.str())}')
-		dirs:    dirs
-	}
+	return hash
 }
 
-// pkg_config_package_file returns the `.pc` file that describes `name` in the
-// searched directories, with its identity.
-fn pkg_config_package_file(state PkgConfigState, name string) (string, string) {
-	for dir in state.dirs {
-		path := os.join_path(dir, '${name}.pc')
-		if os.is_file(path) {
-			return path, file_metadata_signature(path)
-		}
-	}
-	return '', ''
-}
-
-fn pkg_config_recorded_answer(state PkgConfigState, name string) ?bool {
-	if state.answers.len == 0 {
+fn pkg_config_recorded_answer(answers string, name string) ?bool {
+	if answers.len == 0 {
 		return none
 	}
-	content := os.read_file(state.answers) or { return none }
+	content := os.read_file(answers) or { return none }
 	for line in content.split_into_lines() {
-		parts := line.split('\t')
-		if parts.len != 4 || parts[0] != name {
-			continue
-		}
-		path, metadata := pkg_config_package_file(state, name)
-		if parts[1] == '0' && path.len == 0 {
-			return false
-		}
-		// A package that is there answers for the file that described it.
-		if parts[1] == '1' && path == parts[2] && metadata.len > 0 && metadata == parts[3] {
+		if line == '${name}\t1' {
 			return true
 		}
-		return none
+		if line == '${name}\t0' {
+			return false
+		}
 	}
 	return none
 }
 
-fn pkg_config_record_answer(state PkgConfigState, name string, available bool) {
-	if state.answers.len == 0 || name.contains_any('\t\r\n') {
-		return
-	}
-	path, metadata := pkg_config_package_file(state, name)
-	// Record what the directories account for: a package without a file is not
-	// there, and one that is there has a file with a settled identity.
-	if available != (path.len > 0) || (available && metadata.len == 0) {
+fn pkg_config_record_answer(answers string, name string, available bool) {
+	if answers.len == 0 || name.contains_any('\t\r\n') {
 		return
 	}
 	mut lines := []string{}
-	if content := os.read_file(state.answers) {
+	if content := os.read_file(answers) {
 		for line in content.split_into_lines() {
 			if line.len > 0 && line.all_before('\t') != name {
 				lines << line
 			}
 		}
 	}
-	lines << '${name}\t${if available { 1 } else { 0 }}\t${path}\t${metadata}'
-	write_atomic(state.answers, lines.join('\n') + '\n') or {}
+	lines << '${name}\t${if available { 1 } else { 0 }}'
+	write_atomic(answers, lines.join('\n') + '\n') or {}
 }
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.

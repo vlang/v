@@ -482,10 +482,12 @@ program prefix, so a build that reads a module from its header finds the object 
 from source published. A program whose declarations changed therefore compiles against the cached
 `builtin.o` instead of rebuilding every module.
 Each warm build also reuses what an earlier one found out: what `pkg-config --exists` answered for
-the `$pkgconfig` conditions of the cached sources (until a `.pc` file is added to or removed from
-the directories that pkg-config searches), which headers a V-shipped C header includes and whether
-it can be replicated into every module object (until one of those headers changes), and that the
-bundled TinyCC runs and links the libraries of the program.
+the `$pkgconfig` conditions of the cached sources (until a `.pc` file of the directories that
+pkg-config searches is added, removed or changed, as a package exists only while what it requires
+does), which headers a V-shipped C header includes and whether it can be replicated into every
+module object (until one of those headers changes, or one of their includes would find another
+file), and that the bundled TinyCC runs and links the libraries of the program.
+`CFLAGS` and `LDFLAGS` turn the module cache off, with `-usecache` too: no object records them.
 Cache files live under
 the V temporary directory by default; set `V3CACHE` to select another root, or pass
 `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the

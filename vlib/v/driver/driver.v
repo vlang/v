@@ -2611,31 +2611,37 @@ fn v3_line_is_quoted_include(line string) bool {
 	return argument.starts_with('"')
 }
 
-fn v3_parallel_local_include_path(line string, including_dir string, include_dirs []string) ?string {
-	argument := v3_include_directive_argument(line) or { return none }
+// v3_local_include_candidates returns the paths at which the file of an include
+// directive is looked up, in the order of the lookup: beside the including file
+// for a quoted include, then in each include directory. A line that is no
+// include directive has none.
+fn v3_local_include_candidates(line string, including_dir string, include_dirs []string) []string {
+	argument := v3_include_directive_argument(line) or { return []string{} }
 	quoted := argument.starts_with('"')
 	if !quoted && !argument.starts_with('<') {
-		return none
+		return []string{}
 	}
 	rest := argument[1..]
 	end := rest.index_u8(if quoted { `"` } else { `>` })
 	if end <= 0 {
-		return none
+		return []string{}
 	}
 	raw_path := rest[..end]
 	if os.is_abs_path(raw_path) {
-		if os.is_file(raw_path) {
-			return os.real_path(raw_path)
-		}
-		return none
+		return [raw_path]
 	}
-	mut search_dirs := []string{}
+	mut candidates := []string{cap: include_dirs.len + 1}
 	if quoted && including_dir.len > 0 {
-		search_dirs << including_dir
+		candidates << os.join_path_single(including_dir, raw_path)
 	}
-	search_dirs << include_dirs
-	for dir in search_dirs {
-		path := os.join_path_single(dir, raw_path)
+	for dir in include_dirs {
+		candidates << os.join_path_single(dir, raw_path)
+	}
+	return candidates
+}
+
+fn v3_parallel_local_include_path(line string, including_dir string, include_dirs []string) ?string {
+	for path in v3_local_include_candidates(line, including_dir, include_dirs) {
 		if os.is_file(path) {
 			return os.real_path(path)
 		}
@@ -4286,7 +4292,7 @@ fn v3_native_input_expansion_record(cache_dir string, path string, include_dirs 
 		return ''
 	}
 	mut hash := u64(1469598103934665603)
-	for part in ['v3-native-expansion-1', os.real_path(path), include_dirs.join('\x00'), vroot,
+	for part in ['v3-native-expansion-2', os.real_path(path), include_dirs.join('\x00'), vroot,
 		check_replication.str()] {
 		hash = c_hash_bytes(hash, part.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
@@ -4294,8 +4300,40 @@ fn v3_native_input_expansion_record(cache_dir string, path string, include_dirs 
 	return os.join_path(cache_dir, '.native_expansion_${hash.hex()}')
 }
 
+// v3_native_include_lookups returns what the include directives of the expanded
+// files found on the way to the file they chose: the candidates that were not
+// there, and the chosen files that V does not ship, which the expansion leaves to
+// the C compiler. A file that appears at one of the former, or one of the latter
+// that goes away, makes an include name another file, without a change to any
+// file of the expansion.
+fn v3_native_include_lookups(expanded_paths []string, include_dirs []string, vroot string) ([]string, []string) {
+	mut missing := map[string]bool{}
+	mut unshipped := map[string]bool{}
+	for path in expanded_paths {
+		source := os.read_file(path) or { continue }
+		including_dir := os.dir(path)
+		for line in source.split_into_lines() {
+			for candidate in v3_local_include_candidates(line, including_dir, include_dirs) {
+				if os.is_file(candidate) {
+					if !cgen.native_path_is_shipped(os.real_path(candidate), vroot) {
+						unshipped[candidate] = true
+					}
+					break
+				}
+				missing[candidate] = true
+			}
+		}
+	}
+	mut missing_paths := missing.keys()
+	missing_paths.sort()
+	mut unshipped_paths := unshipped.keys()
+	unshipped_paths.sort()
+	return missing_paths, unshipped_paths
+}
+
 // v3_recorded_native_input_expansion returns the expansion that an earlier build
-// recorded, while every file of it is unchanged.
+// recorded, while every file of it is unchanged and every include directive of
+// those files still finds the file it found then.
 fn v3_recorded_native_input_expansion(record string) ?V3NativeInputExpansion {
 	if record.len == 0 {
 		return none
@@ -4308,11 +4346,31 @@ fn v3_recorded_native_input_expansion(record string) ?V3NativeInputExpansion {
 	mut paths := []string{cap: lines.len - 1}
 	for line in lines[1..] {
 		parts := line.split('\t')
-		if parts.len != 2 || parts[1].len == 0
-			|| modulecache.file_metadata_signature(parts[0]) != parts[1] {
-			return none
+		match parts[0] {
+			'input' {
+				if parts.len != 3 || parts[2].len == 0
+					|| modulecache.file_metadata_signature(parts[1]) != parts[2] {
+					return none
+				}
+				paths << parts[1]
+			}
+			'missing' {
+				if parts.len != 2 || os.is_file(parts[1]) {
+					return none
+				}
+			}
+			'unshipped' {
+				if parts.len != 2 || !os.is_file(parts[1]) {
+					return none
+				}
+			}
+			else {
+				return none
+			}
 		}
-		paths << parts[0]
+	}
+	if paths.len == 0 {
+		return none
 	}
 	return V3NativeInputExpansion{
 		paths:      paths
@@ -4320,11 +4378,11 @@ fn v3_recorded_native_input_expansion(record string) ?V3NativeInputExpansion {
 	}
 }
 
-fn v3_record_native_input_expansion(record string, expansion V3NativeInputExpansion) {
+fn v3_record_native_input_expansion(record string, expansion V3NativeInputExpansion, include_dirs []string, vroot string) {
 	if record.len == 0 || expansion.paths.len == 0 {
 		return
 	}
-	mut out := strings.new_builder(expansion.paths.len * 128)
+	mut out := strings.new_builder(expansion.paths.len * 256)
 	out.writeln(if expansion.replicable { 'replicable=1' } else { 'replicable=0' })
 	for path in expansion.paths {
 		metadata := modulecache.file_metadata_signature(path)
@@ -4332,7 +4390,20 @@ fn v3_record_native_input_expansion(record string, expansion V3NativeInputExpans
 			// A file whose identity is not settled is read again by the next build.
 			return
 		}
-		out.writeln('${path}\t${metadata}')
+		out.writeln('input\t${path}\t${metadata}')
+	}
+	missing, unshipped := v3_native_include_lookups(expansion.paths, include_dirs, vroot)
+	for path in missing {
+		if path.contains_any('\t\r\n') {
+			return
+		}
+		out.writeln('missing\t${path}')
+	}
+	for path in unshipped {
+		if path.contains_any('\t\r\n') {
+			return
+		}
+		out.writeln('unshipped\t${path}')
 	}
 	os.mkdir_all(os.dir(record)) or { return }
 	temporary := '${record}.${os.getpid()}.${tempname.unique_token()}.tmp'
@@ -4387,7 +4458,7 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 						v3_record_native_input_expansion(record, V3NativeInputExpansion{
 							paths:      expansions[path]
 							replicable: replicable[path]
-						})
+						}, native_inputs.include_dirs, vroot)
 					}
 				}
 			}
@@ -13983,8 +14054,9 @@ pub fn run(args []string) {
 				trace_v3_cache_fallback('the bundled TinyCC cannot build and link the module objects of this program')
 				restart_v3_without_cache()
 			}
-			mut object_compiler_args := environment_c_flags.clone()
-			object_compiler_args << v3_tcc_object_compile_flags(prefs.vroot, bundled_tcc,
+			// No flags of the environment: `CFLAGS` and `LDFLAGS` turn the module
+			// cache off (see `no_cache` where they are read), so none reach an object.
+			mut object_compiler_args := v3_tcc_object_compile_flags(prefs.vroot, bundled_tcc,
 				bundled_tcc, bundled_tcc_available, prefs.normalized_target_os(), flag_plan_sdk_root)
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
 				object_compiler_args << '-bt25'
@@ -14004,7 +14076,7 @@ pub fn run(args []string) {
 			}
 			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, large_prod_c_unit, limit_large_unit_inlining, effective_tcc).join(' ')
 			warning_flags := warn_args.join(' ')
-			mut compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)
+			mut compile_signature := v3_cached_object_compile_signature(cache_state.object_compiler, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)
 			mut prepared_plan_entry := cgen_cache_entry
 			mut prepared_cache := V3PreparedModuleCache{}
 			if cgen_prepared_hit {
@@ -15628,7 +15700,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		''
 	}
 	declarations := cache_source_without_cached_native_inputs(raw_declarations, state, false)
-	compile_signature := v3_cached_object_program_compile_signature(v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, interface_impl_signature), generated_source)
+	compile_signature := v3_cached_object_program_compile_signature(v3_cached_object_compile_signature(state.object_compiler, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, interface_impl_signature), generated_source)
 	if resolve_flag_specific_cache_objects(mut state, tc.a, compile_signature) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
@@ -16753,10 +16825,10 @@ fn v_skip_space_and_comments(source string, start int) int {
 	return i
 }
 
-fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string) string {
+fn v3_cached_object_compile_signature(compiler V3CachedObjectCompiler, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string) string {
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
-	return [
+	mut signature := [
 		'native_owner_protocol=program-prefix-v1',
 		'objective_c=${objective_c}',
 		'c_standard=${c_standard.trim_space()}',
@@ -16765,7 +16837,14 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 		'warnings=${warning_flags.trim_space()}',
 		'interfaces=${interface_impl_signature}',
 		'flags=${flags.join('\\n')}',
-	].join('\n')
+	]
+	if compiler.args.len > 0 {
+		// What the object compiler is given ahead of the flags above: for TinyCC
+		// its resource directory and the include root of the SDK. The compiler
+		// itself is part of the cache configuration.
+		signature << 'compiler_args=${compiler.args.join('\\n')}'
+	}
+	return signature.join('\n')
 }
 
 // v3_cached_c_unit_source assigns the shipped runtime implementation to the

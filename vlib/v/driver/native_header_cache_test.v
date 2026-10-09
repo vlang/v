@@ -266,6 +266,61 @@ fn test_native_input_closure_is_recorded_until_a_header_changes() ! {
 	assert (os.ls(records) or { []string{} }).len == recorded
 }
 
+// An include directive names the first file that its lookup finds. A file that
+// appears earlier in that lookup changes what the header includes, without a
+// change to the header or to the file that it included until then.
+fn test_recorded_native_input_closure_follows_a_new_include_candidate() ! {
+	vroot := os.join_path(os.vtmp_dir(), 'v3_native_closure_candidates_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	scratch := os.join_path(vroot, 'vlib', 'scratch')
+	shared := os.join_path(vroot, 'vlib', 'shared')
+	os.mkdir_all(scratch)!
+	os.mkdir_all(shared)!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	records := os.join_path(vroot, 'records')
+	outer := os.join_path(scratch, 'outer.h')
+	shared_inner := os.join_path(shared, 'inner.h')
+	os.write_file(outer, '#include <stddef.h>\n#include "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
+	os.write_file(shared_inner, '#pragma once\nstatic inline int inner_value(void) { return 101; }\n')!
+	real_outer := os.real_path(outer)
+	real_shared_inner := os.real_path(shared_inner)
+	inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'scratch': [real_outer]
+		}
+		native_paths:  {
+			real_outer: true
+		}
+		include_dirs:  [os.real_path(shared)]
+	}
+	first := v3_native_input_closure(&inputs, vroot, true, records)
+	assert first.inputs['scratch'] == [real_outer, real_shared_inner].sorted()
+	assert first.unassignable == ''
+	if modulecache.file_metadata_signature(real_shared_inner) == '' {
+		return
+	}
+	assert (os.ls(records) or { []string{} }).len == 1
+	assert v3_native_input_closure(&inputs, vroot, true, records).inputs['scratch'] == first.inputs['scratch']
+	// The same name beside the including header wins the lookup of a quoted
+	// include, and this one keeps storage, so it cannot be replicated.
+	beside_inner := os.join_path(scratch, 'inner.h')
+	os.write_file(beside_inner, '#pragma once\nint inner_counter = 0;\nstatic inline int inner_value(void) { return inner_counter; }\n')!
+	real_beside_inner := os.real_path(beside_inner)
+	changed := v3_native_input_closure(&inputs, vroot, true, records)
+	assert changed.inputs['scratch'] == [real_beside_inner, real_outer].sorted()
+	assert changed.unassignable == real_outer
+	// A system header that the include directories did not hold is one that the
+	// C compiler finds; once V ships a file of that name there, it is expanded.
+	os.rm(beside_inner)!
+	assert v3_native_input_closure(&inputs, vroot, true, records).inputs['scratch'] == first.inputs['scratch']
+	shipped_stddef := os.join_path(shared, 'stddef.h')
+	os.write_file(shipped_stddef, '#pragma once\ntypedef unsigned long size_t;\n')!
+	with_stddef := v3_native_input_closure(&inputs, vroot, true, records)
+	assert os.real_path(shipped_stddef) in with_stddef.inputs['scratch']
+}
+
 fn test_cached_native_owner_is_limited_to_the_builtin_signal_header() ! {
 	header := os.real_path(os.join_path(@VEXEROOT, 'vlib', 'builtin', 'segfault_handler_nix.h'))
 	source := os.read_file(header)!
