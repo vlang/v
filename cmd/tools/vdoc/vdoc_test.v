@@ -173,6 +173,11 @@ fn kind_of(code string, raw string) string {
 	return 'no token `${raw}`'
 }
 
+// kinds_of returns the kind of every token of `code` that is `raw`.
+fn kinds_of(code string, raw string) []string {
+	return highlight_tokens(code).filter(code[it.start..it.end] == raw).map(it.typ.str())
+}
+
 fn test_highlight_tokens_map_as_a_builtin() {
 	assert classify('map[string]int') == ['map:builtin', '[:punctuation', 'string:builtin',
 		']:punctuation', 'int:builtin']
@@ -238,9 +243,87 @@ fn test_highlight_tokens_field_access_is_not_an_enum_value() {
 	assert classify('foo.bar') == ['foo:module_', '.:punctuation', 'bar:name']
 	assert kind_of('a[0].x', 'x') == 'name'
 	assert kind_of('f()?.x', 'x') == 'name'
+	// The kinds that end a value include strings, chars and numbers.
+	assert kind_of("'a'.len", 'len') == 'name'
+	assert kind_of('`a`.str()', 'str') == 'function'
+	assert kind_of('`a`.bytes', 'bytes') == 'name'
 	// A method called on the next line is not an enum value either.
-	assert classify('x\n\t.map()') == ['x:module_', '.:punctuation', 'map:function', '(:punctuation',
+	assert classify('x\n\t.map()') == ['x:name', '.:punctuation', 'map:function', '(:punctuation',
 		'):punctuation']
+}
+
+fn test_highlight_tokens_module_names() {
+	assert kind_of('os.args', 'os') == 'module_'
+	assert kind_of('fn f(r http.Request)', 'http') == 'module_'
+	assert kinds_of('import net.http\nhttp.get(url)', 'http') == ['module_', 'module_']
+	assert classify('import net.http as h') == ['import:keyword', 'net:module_', '.:punctuation',
+		'http:module_', 'as:keyword', 'h:module_']
+	assert kind_of('module demo', 'demo') == 'module_'
+	// Fields named like the keywords do not start a module path.
+	assert kind_of('struct Foo {\n\tmodule string\n}', 'string') == 'builtin'
+	assert kind_of('x := node.module\ng.f(x)', 'f') == 'function'
+	// The symbols of a selective import are no modules.
+	assert kinds_of('import os { args }\nargs.len', 'args') == ['name', 'name']
+	// A field of a field is no module.
+	assert kind_of('os.args.len', 'args') == 'name'
+}
+
+fn test_highlight_tokens_variables_are_not_module_names() {
+	assert kinds_of('a := [1]\nassert a.len == 1', 'a') == ['name', 'name']
+	assert kinds_of('mut x, y := 1, 2\ny.str()', 'y') == ['name', 'name']
+	// Only the names before `:=` are declared, not a name that ends the line before.
+	assert kinds_of('import net.http as h\nresp := h.get(url)', 'h') == ['module_', 'module_']
+	assert kinds_of('for i, item in items { item.name }', 'item') == ['name', 'name']
+	assert kinds_of('fn (s Foo) f(mut b Bar) { s.x = b.y }', 's') == ['name', 'name']
+	assert kinds_of('fn (s Foo) f(mut b Bar) { s.x = b.y }', 'b') == ['name', 'name']
+	assert kinds_of('fn (x int, y int) { y.str() }', 'y') == ['name', 'name']
+	assert kinds_of('squares := parallel.amap(xs, |x| x.sq())', 'x') == ['name', 'name']
+	assert kinds_of('const cfg = Config{}\ncfg.name', 'cfg') == ['name', 'name']
+	assert kind_of('a.map(it.len)', 'it') == 'name'
+	assert kind_of('f() or { panic(err.msg()) }', 'err') == 'name'
+	// The parameter of a closure does not hide the module before it.
+	assert kind_of('squares := parallel.amap(xs, |x| x.sq())', 'parallel') == 'module_'
+	assert kinds_of('for i, x in xs { x.y }', 'x') == ['name', 'name']
+	// A `for` condition declares no variables.
+	assert kinds_of('for os.args.len > 0 { os.args.pop() }', 'os') == ['module_', 'module_']
+	assert kinds_of('const (\n\ta = 1\n\tcfg = Config{}\n)\ncfg.name', 'cfg') == [
+		'name',
+		'name',
+	]
+	assert kinds_of('fn (s Stack[T]) peek[U](x U) { s.items }', 's') == ['name', 'name']
+	assert kinds_of('fn [x] () { x.str() }', 'x') == ['name', 'name']
+	assert kinds_of('if w is Mars { w.dust_storm() }', 'w') == ['name', 'name']
+	assert kinds_of('match w { Mars { w.dust_storm() } else {} }', 'w') == ['name', 'name']
+	assert kinds_of('x := y as Foo\ny.z', 'y') == ['name', 'name']
+}
+
+fn test_highlight_tokens_string_escapes() {
+	assert classify("'a\\nb'") == ["'a:string", '\\n:escape', "b':string"]
+	assert classify("'\\x41\\u00e9\\101\\0'") == ["':string", '\\x41:escape', '\\u00e9:escape',
+		'\\101:escape', '\\0:escape', "':string"]
+	assert classify("'\\\${x}'").filter(it.ends_with(':escape')) == ['\\$:escape']
+	assert classify("r'a\\n'") == ["r'a\\n':string"]
+	// A part after an interpolation that starts with `r` is no raw string.
+	assert classify('\'\${x}r"\\n\'').filter(it.ends_with(':escape')) == ['\\n:escape']
+	assert classify("'a\\") == ["'a:string", '\\:escape']
+}
+
+fn test_highlight_tokens_c_string() {
+	assert classify("c'hi'") == ["c'hi':string"]
+	// A char literal whose text starts like the scanner's mark for a C string.
+	assert classify('`c:`') == ['`c:`:char']
+	assert kind_of('x(`c:a`)', '`c:a`') == 'char'
+}
+
+fn test_highlight_tokens_comptime_pseudo_variable() {
+	assert kind_of('println(@FN)', '@FN') == 'keyword'
+	assert kind_of('@BUILD_TIMESTAMP.i64()', '@BUILD_TIMESTAMP') == 'keyword'
+	// A keyword used as a name, like `@type`, is not one.
+	assert kind_of('fn @lock() {}', '@lock') == 'function'
+}
+
+fn test_highlight_tokens_unclosed_attribute_ends_with_its_line() {
+	assert kind_of('@[deprecated\nfn foo() {}', 'fn') == 'keyword'
 }
 
 fn test_highlight_tokens_attribute_arguments_keep_their_kinds() {
@@ -299,13 +382,18 @@ fn test_color_highlight_attribute_arguments() {
 	assert color_highlight('.closed') == term.bright_magenta('.') + term.bright_magenta('closed')
 }
 
+fn test_color_highlight_module_names_and_escapes() {
+	assert color_highlight('os.args') == term.bold('os') + '.' + 'args'
+	assert color_highlight("'\\n'") == term.yellow("'") + term.bright_magenta('\\n') + term.yellow("'")
+}
+
 fn test_html_highlight_string_interpolation() {
 	interp := '<span class="token string_interp">'
 	assert html_highlight("'\${x}'") == '<span class="token string">\'</span>${interp}$</span>${interp}{</span>x${interp}}</span><span class="token string">\'</span>'
 }
 
-fn test_html_highlight_leaves_names_plain() {
-	assert html_highlight('x os.Foo') == 'x os<span class="token punctuation">.</span>Foo'
+fn test_html_highlight_names() {
+	assert html_highlight('x os.Foo') == 'x <span class="token module_">os</span><span class="token punctuation">.</span><span class="token type_name">Foo</span>'
 }
 
 fn test_html_highlight_attribute_arguments_and_enum_values() {
