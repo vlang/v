@@ -110,3 +110,27 @@ fn test_malformed_tags_do_not_match() {
 	assert etag_matches('not-a-tag', etag_of('body')) == false
 	assert etag_matches('"unterminated', etag_of('body')) == false
 }
+
+fn test_conditional_requests_do_not_change_not_found_status() {
+	r := new_registry()
+	for path in ['/unknown', '/unknown/@latest', '/unknown/@v/1.0.0.info'] {
+		first := serve(r, 'GET', path, map[string]string{}, map[string]string{})
+		assert first.status_code == 404
+		second := serve(r, 'GET', path, map[string]string{}, {
+			'If-None-Match': first.etag
+		})
+		assert second.status_code == 404
+		assert second.body == first.body
+	}
+}
+
+fn test_post_never_returns_not_modified() {
+	r := new_registry()
+	first := serve(r, 'POST', '/config.json', map[string]string{}, map[string]string{})
+	second := serve(r, 'POST', '/config.json', map[string]string{}, {
+		'If-None-Match': '*'
+	})
+	assert second.status_code == first.status_code
+	assert second.status_code != 304
+	assert second.body == first.body
+}

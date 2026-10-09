@@ -4,7 +4,25 @@
 
 The VPM registry protocol defines how registries communicate with VPM. It enables third-party
 registries and private registries. The reference implementation is not connected to `v install`;
-the client and transport integration remain separate work.
+the client integration remains separate work.
+
+## Running the Reference Server
+
+Run the server from the repository root:
+
+```sh
+./v registry serve --port 9090
+```
+
+The standalone tool also accepts `vpm registry serve [--port <port>]`, with `-p` as a port alias.
+Ports use decimal digits and must be from 1 to 65535; the default is 9090. The server loads
+`.vpm-registry/index.json` and artifacts from the working directory and listens on all interfaces.
+Publishing and yanking remain in-process `Registry` methods.
+
+Unknown routes return HTTP 404, including conditional requests for missing metadata.
+Successful GET metadata supports ETag revalidation with case-insensitive HTTP header names.
+Archive transports verify the exact bytes sent against recorded metadata.
+Paths retain percent-encoded spelling; the server removes trailing slashes before routing.
 
 ## Design Goals
 
