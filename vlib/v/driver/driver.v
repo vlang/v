@@ -175,6 +175,7 @@ mut:
 	no_program_declarations   bool // nothing reads the declarations of the program unit on its own: no dev dylib, no generic or incremental plan
 	force_source              bool
 	bundle_valid              bool
+	calls_recover             bool // the code of a module of this build calls `recover()`, see cache_module_calls_recover
 	module_sources            map[string][]string
 	module_import_paths       map[string]string
 	module_dependencies       map[string][]string
@@ -4292,7 +4293,7 @@ fn v3_native_input_expansion_record(cache_dir string, path string, include_dirs 
 		return ''
 	}
 	mut hash := u64(1469598103934665603)
-	for part in ['v3-native-expansion-2', os.real_path(path), include_dirs.join('\x00'), vroot,
+	for part in ['v3-native-expansion-3', os.real_path(path), include_dirs.join('\x00'), vroot,
 		check_replication.str()] {
 		hash = c_hash_bytes(hash, part.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
@@ -4302,21 +4303,22 @@ fn v3_native_input_expansion_record(cache_dir string, path string, include_dirs 
 
 // v3_native_include_lookups returns what the include directives of the expanded
 // files found on the way to the file they chose: the candidates that were not
-// there, and the chosen files that V does not ship, which the expansion leaves to
-// the C compiler. A file that appears at one of the former, or one of the latter
-// that goes away, makes an include name another file, without a change to any
-// file of the expansion.
-fn v3_native_include_lookups(expanded_paths []string, include_dirs []string, vroot string) ([]string, []string) {
+// there, and for each chosen candidate the file that it is. A candidate can be a
+// symbolic link, or lie below one, and V may ship the file or leave it to the C
+// compiler. A file that appears at one of the former, or one of the latter that
+// goes away or becomes another file, makes an include name another file without
+// a change to any file of the expansion.
+fn v3_native_include_lookups(expanded_paths []string, include_dirs []string) ([]string, map[string]string) {
 	mut missing := map[string]bool{}
-	mut unshipped := map[string]bool{}
+	mut chosen := map[string]string{}
 	for path in expanded_paths {
 		source := os.read_file(path) or { continue }
 		including_dir := os.dir(path)
 		for line in source.split_into_lines() {
 			for candidate in v3_local_include_candidates(line, including_dir, include_dirs) {
 				if os.is_file(candidate) {
-					if !cgen.native_path_is_shipped(os.real_path(candidate), vroot) {
-						unshipped[candidate] = true
+					if candidate !in chosen {
+						chosen[candidate] = os.real_path(candidate)
 					}
 					break
 				}
@@ -4326,9 +4328,7 @@ fn v3_native_include_lookups(expanded_paths []string, include_dirs []string, vro
 	}
 	mut missing_paths := missing.keys()
 	missing_paths.sort()
-	mut unshipped_paths := unshipped.keys()
-	unshipped_paths.sort()
-	return missing_paths, unshipped_paths
+	return missing_paths, chosen
 }
 
 // v3_recorded_native_input_expansion returns the expansion that an earlier build
@@ -4359,8 +4359,8 @@ fn v3_recorded_native_input_expansion(record string) ?V3NativeInputExpansion {
 					return none
 				}
 			}
-			'unshipped' {
-				if parts.len != 2 || !os.is_file(parts[1]) {
+			'chosen' {
+				if parts.len != 3 || !os.is_file(parts[1]) || os.real_path(parts[1]) != parts[2] {
 					return none
 				}
 			}
@@ -4378,7 +4378,7 @@ fn v3_recorded_native_input_expansion(record string) ?V3NativeInputExpansion {
 	}
 }
 
-fn v3_record_native_input_expansion(record string, expansion V3NativeInputExpansion, include_dirs []string, vroot string) {
+fn v3_record_native_input_expansion(record string, expansion V3NativeInputExpansion, include_dirs []string) {
 	if record.len == 0 || expansion.paths.len == 0 {
 		return
 	}
@@ -4392,18 +4392,21 @@ fn v3_record_native_input_expansion(record string, expansion V3NativeInputExpans
 		}
 		out.writeln('input\t${path}\t${metadata}')
 	}
-	missing, unshipped := v3_native_include_lookups(expansion.paths, include_dirs, vroot)
+	missing, chosen := v3_native_include_lookups(expansion.paths, include_dirs)
 	for path in missing {
 		if path.contains_any('\t\r\n') {
 			return
 		}
 		out.writeln('missing\t${path}')
 	}
-	for path in unshipped {
-		if path.contains_any('\t\r\n') {
+	mut candidates := chosen.keys()
+	candidates.sort()
+	for candidate in candidates {
+		target := chosen[candidate]
+		if candidate.contains_any('\t\r\n') || target.contains_any('\t\r\n') {
 			return
 		}
-		out.writeln('unshipped\t${path}')
+		out.writeln('chosen\t${candidate}\t${target}')
 	}
 	os.mkdir_all(os.dir(record)) or { return }
 	temporary := '${record}.${os.getpid()}.${tempname.unique_token()}.tmp'
@@ -4458,7 +4461,7 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 						v3_record_native_input_expansion(record, V3NativeInputExpansion{
 							paths:      expansions[path]
 							replicable: replicable[path]
-						}, native_inputs.include_dirs, vroot)
+						}, native_inputs.include_dirs)
 					}
 				}
 			}
@@ -11257,6 +11260,7 @@ pub fn run(args []string) {
 		if bundle_object := cache_manager.valid_object('builtin', bundle_sources) {
 			if builtin_header := cache_manager.valid_header('builtin', builtin_files) {
 				record_v3_cached_source_digests(mut cache_state, builtin_header.source_digests)
+				cache_module_calls_recover(mut cache_state, modulecache.header_calls_recover(builtin_header))
 				cache_state.bundle_valid = true
 				cache_state.objects['builtin'] = bundle_object.object
 				if modulecache.header_needs_source(builtin_header) {
@@ -12456,6 +12460,7 @@ pub fn run(args []string) {
 				header := modulecache.module_header_with_const_order(a, pre_tc, module_name, prefs.vroot, cache_state.module_import_paths, const_init_order)
 				if header.len > 0 {
 					cache_state.headers[module_name] = header
+					cache_module_calls_recover(mut cache_state, modulecache.header_text_calls_recover(header))
 				}
 			}
 			if invalidate_changed_cache_dependents(mut cache_state, a) {
@@ -13625,7 +13630,7 @@ pub fn run(args []string) {
 			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			if cache_state.manager.enabled {
-				g.set_program_uses_recover(program_used_fns['recover'])
+				g.set_program_uses_recover(program_used_fns['recover'] || cache_state.calls_recover)
 			}
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_embed_incbin(use_embed_incbin)
@@ -13702,7 +13707,7 @@ pub fn run(args []string) {
 			g.set_cache_split(cache_state.manager.enabled || use_parallel_c_compilation)
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			if cache_state.manager.enabled {
-				g.set_program_uses_recover(program_used_fns['recover'])
+				g.set_program_uses_recover(program_used_fns['recover'] || cache_state.calls_recover)
 			}
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_embed_incbin(use_embed_incbin)
@@ -16324,6 +16329,18 @@ fn cache_builtin_bundle_roots(state &V3ModuleCacheState, a &flat.FlatAst) []stri
 	}
 	roots.sort()
 	return roots
+}
+
+// cache_module_calls_recover notes that the code of a module of this build calls
+// `recover()`. A `defer` links a panic frame only in a program that reaches
+// `recover()`, and the object of a module is compiled once, for every program:
+// one that reaches the call later, through a function that the header of the
+// module only declares, links that object as it is. So every `defer` of a build
+// with such a module links a frame, whether this program reaches the call or not.
+fn cache_module_calls_recover(mut state V3ModuleCacheState, calls_recover bool) {
+	if calls_recover {
+		state.calls_recover = true
+	}
 }
 
 fn cache_state_module_name(state &V3ModuleCacheState, name string) ?string {
@@ -22149,6 +22166,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					if cache_state.bundle_valid {
 						if header := cache_state.manager.valid_header(cache_module, mod_files) {
 							record_v3_cached_source_digests(mut cache_state, header.source_digests)
+							cache_module_calls_recover(mut cache_state, modulecache.header_calls_recover(header))
 							if !modulecache.header_needs_source(header) {
 								parse_files = [header.header]
 								if mod_files.len > 0 {
@@ -22176,6 +22194,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				} else if !cache_state.force_source {
 					if cached := cache_state.manager.valid_entry_with_metadata_cache(cache_module, mod_files, mut cache_state.dependency_metadata) {
 						record_v3_cached_source_digests(mut cache_state, cached.source_digests)
+						cache_module_calls_recover(mut cache_state, modulecache.header_calls_recover(cached))
 						owned_sources_need_check := mod_files.any(types.shadow_roots_own_file(it, shadow_diagnostic_root, shadow_explicit_roots, shadow_dependency_roots))
 						if !modulecache.header_needs_source(cached) && !owned_sources_need_check {
 							parse_files = [cached.header]

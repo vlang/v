@@ -321,6 +321,68 @@ fn test_recorded_native_input_closure_follows_a_new_include_candidate() ! {
 	assert os.real_path(shipped_stddef) in with_stddef.inputs['scratch']
 }
 
+// An include directive can find a symbolic link. Pointing the link at another
+// header changes what is included, while the header it pointed at until then is
+// still there, unchanged.
+fn test_recorded_native_input_closure_follows_a_retargeted_symbolic_link() ! {
+	$if windows {
+		return
+	}
+	vroot := os.join_path(os.vtmp_dir(), 'v3_native_closure_links_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	scratch := os.join_path(vroot, 'vlib', 'scratch')
+	shared := os.join_path(vroot, 'vlib', 'shared')
+	outside := os.join_path(vroot, 'outside')
+	os.mkdir_all(scratch)!
+	os.mkdir_all(shared)!
+	os.mkdir_all(outside)!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	records := os.join_path(vroot, 'records')
+	outer := os.join_path(scratch, 'outer.h')
+	first := os.join_path(shared, 'first.h')
+	second := os.join_path(shared, 'second.h')
+	link := os.join_path(scratch, 'inner.h')
+	os.write_file(outer, '#include "inner.h"\n#include <extra.h>\nstatic inline int outer_value(void) { return inner_value(); }\n')!
+	os.write_file(first, '#pragma once\nstatic inline int inner_value(void) { return 101; }\n')!
+	os.write_file(second, '#pragma once\nstatic inline int inner_value(void) { return 202; }\n')!
+	os.symlink(first, link)!
+	// A header outside of what V ships is left to the C compiler.
+	extra := os.join_path(outside, 'extra.h')
+	os.write_file(extra, '#pragma once\n')!
+	real_outer := os.real_path(outer)
+	real_first := os.real_path(first)
+	real_second := os.real_path(second)
+	inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'scratch': [real_outer]
+		}
+		native_paths:  {
+			real_outer: true
+		}
+		include_dirs:  [os.real_path(outside)]
+	}
+	before := v3_native_input_closure(&inputs, vroot, true, records)
+	assert before.inputs['scratch'] == [real_first, real_outer].sorted()
+	if modulecache.file_metadata_signature(real_first) == '' {
+		return
+	}
+	assert (os.ls(records) or { []string{} }).len == 1
+	assert v3_native_input_closure(&inputs, vroot, true, records).inputs['scratch'] == before.inputs['scratch']
+	os.rm(link)!
+	os.symlink(second, link)!
+	retargeted := v3_native_input_closure(&inputs, vroot, true, records)
+	assert retargeted.inputs['scratch'] == [real_outer, real_second].sorted()
+	assert v3_native_input_closure(&inputs, vroot, true, records).inputs['scratch'] == retargeted.inputs['scratch']
+	// The header that the C compiler was left with becomes a link to one that V
+	// ships: it is expanded from now on.
+	os.rm(extra)!
+	os.symlink(first, extra)!
+	shipped := v3_native_input_closure(&inputs, vroot, true, records)
+	assert shipped.inputs['scratch'] == [real_first, real_outer, real_second].sorted()
+}
+
 fn test_cached_native_owner_is_limited_to_the_builtin_signal_header() ! {
 	header := os.real_path(os.join_path(@VEXEROOT, 'vlib', 'builtin', 'segfault_handler_nix.h'))
 	source := os.read_file(header)!

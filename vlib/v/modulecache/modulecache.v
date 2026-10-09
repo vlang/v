@@ -12,7 +12,7 @@ import v.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-55'
+const cache_format = 'v3-module-cache-56'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -23,6 +23,10 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
+// recover_call_marker is a line of the header of a module whose code calls
+// `recover()`. A header has the declarations of a module and not its code, so a
+// build that reads it cannot tell otherwise that the program reaches that call.
+const recover_call_marker = '// v3cache: calls recover'
 const source_signature_cache_format = 'v3-source-signature-cache-9'
 
 // PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
@@ -219,6 +223,7 @@ pub:
 pub struct Entry {
 	source_bodies       bool
 	source_bodies_known bool
+	calls_recover       bool
 pub:
 	header         string
 	object         string
@@ -1431,7 +1436,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
-	source_bodies := header_stamp_source_bodies(stamp, expected) or {
+	flags := header_stamp_flags(stamp, expected) or {
 		cache_trace_module_miss(module_name, 'source signature changed')
 		return none
 	}
@@ -1445,8 +1450,9 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	return Entry{
 		...entry
-		source_bodies:       source_bodies
+		source_bodies:       flags.source_bodies
 		source_bodies_known: true
+		calls_recover:       flags.calls_recover
 		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
@@ -1472,11 +1478,12 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
-	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
+	flags := header_stamp_flags(stamp, expected) or { return none }
 	return Entry{
 		...entry
-		source_bodies:       source_bodies
+		source_bodies:       flags.source_bodies
 		source_bodies_known: true
+		calls_recover:       flags.calls_recover
 		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
@@ -1489,6 +1496,23 @@ pub fn header_needs_source(entry Entry) bool {
 		return header.contains(source_body_marker)
 	}
 	return entry.source_bodies
+}
+
+// header_calls_recover reports whether the code of the module of a header calls
+// `recover()`. Every `defer` of a build with such a module links a panic frame:
+// the program may reach the call through a function that the header only
+// declares, and the objects of its modules were compiled before it did.
+pub fn header_calls_recover(entry Entry) bool {
+	if !entry.source_bodies_known {
+		header := os.read_file(entry.header) or { return true }
+		return header_text_calls_recover(header)
+	}
+	return entry.calls_recover
+}
+
+// header_text_calls_recover is header_calls_recover for the text of a header.
+pub fn header_text_calls_recover(header string) bool {
+	return header.contains('\n${recover_call_marker}\n')
 }
 
 // valid_object reports whether a cached object matches the supplied sources.
@@ -1912,15 +1936,39 @@ fn entry_stamp(salt string, source_hash string) string {
 }
 
 fn header_entry_stamp(salt string, source_hash string, header string) string {
-	return entry_stamp(salt, source_hash) + 'source_bodies=${int(header.contains(source_body_marker))}\n'
+	return entry_stamp(salt, source_hash) + 'source_bodies=${int(header.contains(source_body_marker))}\n' +
+		'recover=${int(header_text_calls_recover(header))}\n'
 }
 
-fn header_stamp_source_bodies(stamp string, expected_entry string) ?bool {
-	if stamp == expected_entry + 'source_bodies=0\n' {
-		return false
+// HeaderStampFlags is what the stamp of a header says about its text.
+struct HeaderStampFlags {
+	source_bodies bool
+	calls_recover bool
+}
+
+fn header_stamp_flags(stamp string, expected_entry string) ?HeaderStampFlags {
+	if !stamp.starts_with(expected_entry) {
+		return none
 	}
-	if stamp == expected_entry + 'source_bodies=1\n' {
-		return true
+	rest := stamp[expected_entry.len..]
+	if rest == 'source_bodies=0\nrecover=0\n' {
+		return HeaderStampFlags{}
+	}
+	if rest == 'source_bodies=1\nrecover=0\n' {
+		return HeaderStampFlags{
+			source_bodies: true
+		}
+	}
+	if rest == 'source_bodies=0\nrecover=1\n' {
+		return HeaderStampFlags{
+			calls_recover: true
+		}
+	}
+	if rest == 'source_bodies=1\nrecover=1\n' {
+		return HeaderStampFlags{
+			source_bodies: true
+			calls_recover: true
+		}
 	}
 	return none
 }
@@ -5043,6 +5091,7 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 	}
 	out.writeln('')
 	mut trusted_c_fns := map[string]bool{}
+	mut calls_recover := false
 	for file_node in a.nodes {
 		if file_node.kind != .file || file_node.children_count == 0
 			|| file_module_name(a, file_node) != module_name {
@@ -5056,8 +5105,15 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 				if node.kind == .c_fn_decl && node.is_mut {
 					trusted_c_fns[node.value] = true
 				}
+				if !calls_recover && node_calls_recover(a, tc, id) {
+					calls_recover = true
+				}
 			}
 		}
+	}
+	if calls_recover {
+		out.writeln(recover_call_marker)
+		out.writeln('')
 	}
 	mut seen := map[string]bool{}
 	const_replacements, const_files := module_header_const_replacements(a, module_name, const_order)
@@ -6168,6 +6224,31 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 	}
 	for i in 0 .. node.children_count {
 		if node_creates_generic_specialization(a, tc, a.child(&node, i), generic_callees) {
+			return true
+		}
+	}
+	return false
+}
+
+// node_calls_recover reports whether the code below a node calls the builtin
+// `recover()`.
+fn node_calls_recover(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return false
+	}
+	node := a.nodes[int(id)]
+	if node.kind == .call && node.children_count == 1 {
+		callee := a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value == 'recover' {
+			// A module can have a function of that name of its own.
+			name := tc.resolved_call_name(id) or { 'recover' }
+			if name in ['recover', 'builtin.recover'] {
+				return true
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if node_calls_recover(a, tc, a.child(&node, i)) {
 			return true
 		}
 	}

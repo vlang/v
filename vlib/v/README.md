@@ -476,9 +476,12 @@ Linux, which pays off for programs with larger imports.
 The interface of a module does not depend on the program that was built first: a module that
 imports others is cached like one that does not, a program that only prints literals still checks
 the whole modules it publishes, and the methods of array and map receivers do not pass for generic
-ones. An object is identified by the C compilation flags, by whether the program reaches
-`recover()` and by the C that is generated for the module, and not by the `static` wrappers of the
-program prefix. A build that reads a module from its header has not generated that C. It finds the
+ones. An object is identified by the C compilation flags, by whether a `defer` links a panic
+frame and by the C that is generated for the module, and not by the `static` wrappers of the
+program prefix. A `defer` links a frame when the program reaches `recover()`, and also when the
+code of one of its modules calls it: the header of a module says so, as the program can reach
+that call later through a function that the header only declares.
+A build that reads a module from its header has not generated the C of the module. It finds the
 object under the implementers of the interfaces that the code of the module can depend on: those
 that the module or one of its imports declares, and those among the fields of an implementer that
 comes from elsewhere. The interfaces of the program are none of these, so a program whose
@@ -491,7 +494,8 @@ the `$pkgconfig` conditions of the cached sources (until a `.pc` file of the dir
 pkg-config searches is added, removed or changed, as a package exists only while what it requires
 does), which headers a V-shipped C header includes and whether it can be replicated into every
 module object (until one of those headers changes, or one of their includes would find another
-file), and that the bundled TinyCC runs and links the libraries of the program.
+file, be it through a symbolic link that points elsewhere now), and that the bundled TinyCC runs
+and links the libraries of the program.
 `CFLAGS` and `LDFLAGS` turn the module cache off, with `-usecache` too: no object records them.
 Cache files live under
 the V temporary directory by default; set `V3CACHE` to select another root, or pass

@@ -1805,7 +1805,8 @@ pub fn (mut g FlatGen) set_cache_split(enabled bool) {
 	g.cache_split = enabled
 }
 
-// set_program_uses_recover tells whether the program itself reaches `recover()`.
+// set_program_uses_recover tells whether the program reaches `recover()`, or has a
+// cached module whose code calls it.
 // A module cache build marks every function of a module it parses from source as
 // used, `recover` among those of `builtin`, which says nothing about the program:
 // the objects of its modules would link panic frames in the build that compiles

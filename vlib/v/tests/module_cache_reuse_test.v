@@ -417,6 +417,79 @@ fn main() {
 	assert run_built(root, 'one') == 'Square 16'
 }
 
+// An installed module is read from its interface by every build after the first,
+// and the interface declares its functions without their code. The first program
+// here does not reach the function of the module that calls `recover()`; the
+// edited one does. Its `defer` has to stop the panic all the same, in an object
+// that was compiled for the first program.
+fn test_recover_in_a_cached_module_stops_a_panic_that_the_program_reaches_later() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('module_cache_reuse_recover')
+	mut saved := pin_module_cache(os.join_path(root, 'cache'))
+	saved << save_env('VMODULES')
+	os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'modules', 'guarded')) or { panic(err) }
+	os.write_file(os.join_path(root, 'modules', 'guarded', 'guarded.v'), 'module guarded
+
+pub fn checked(n int) int {
+	defer {
+		if msg := recover() {
+			println("recovered: " + msg)
+		}
+	}
+	if n > 2 {
+		panic("too big")
+	}
+	return n
+}
+
+pub fn plain(n int) int {
+	return n + 1
+}
+') or {
+		panic(err)
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'import guarded
+
+fn main() {
+	println(guarded.plain(1))
+}
+') or {
+		panic(err)
+	}
+	cold := build(root, ['-cc', 'cc'], main_file, 'first')
+	assert compiled_a_module(cold), cold
+	assert run_built(root, 'first') == '2'
+
+	os.write_file(main_file, 'import guarded
+
+fn limited(n int) int {
+	return guarded.checked(n)
+}
+
+fn main() {
+	println(guarded.plain(1))
+	println(limited(5))
+	println("after")
+}
+') or {
+		panic(err)
+	}
+	warm := build(root, ['-cc', 'cc'], main_file, 'second')
+	assert_reused_modules(warm)
+	assert run_built(root, 'second') == '2\nrecovered: too big\n0\nafter'
+}
+
 // `CFLAGS` and `LDFLAGS` reach every C compilation of a build, and the key of a
 // cached module object does not cover them. A build that has them therefore stays
 // out of the module cache, with `-usecache` too: it neither links an object that

@@ -1009,6 +1009,109 @@ pub fn describe(s Square) string {
 	assert structs == ['Marker', 'Square']
 }
 
+// header_of_source returns the header of the module `name` whose only file has
+// the text `source`.
+fn header_of_source(root string, name string, source string) string {
+	path := os.join_path(root, '${name}.v')
+	os.write_file(path, source) or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	tc := vtypes.TypeChecker.new(a)
+	return module_header(a, &tc, name, '', map[string]string{})
+}
+
+// A header declares the functions of a module and leaves out their code. A
+// program that reaches a `recover()` in that code cannot tell from the header,
+// and the object of the module was compiled before the program did, so the header
+// says that the call is there.
+fn test_module_header_says_that_the_code_of_the_module_calls_recover() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_recover_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	direct := header_of_source(root, 'guarded', 'module guarded
+
+pub fn checked(n int) int {
+	defer {
+		if msg := recover() {
+			println(msg)
+		}
+	}
+	if n > 2 {
+		panic("too big")
+	}
+	return n
+}
+')
+	assert header_text_calls_recover(direct), direct
+	assert direct.contains('pub fn checked(n int) int\n'), direct
+	assert !direct.contains('too big'), direct
+	// The call can be in a function that the header does not even declare.
+	indirect := header_of_source(root, 'wrapped', 'module wrapped
+
+fn stop() bool {
+	defer {
+		recover() or {}
+	}
+	return true
+}
+
+pub fn run() bool {
+	return stop()
+}
+')
+	assert header_text_calls_recover(indirect), indirect
+	// Nothing but a call counts: not the name of a field, nor a function that the
+	// module declares under that name and does not call.
+	plain := header_of_source(root, 'plain', 'module plain
+
+pub struct State {
+pub:
+	recover bool
+}
+
+pub fn recover_later(s State) bool {
+	return s.recover
+}
+')
+	assert !header_text_calls_recover(plain), plain
+	// A program that spells the marker in a string of its own is not a header that
+	// has the line.
+	assert !header_text_calls_recover("module quoted\n\npub const text = '${recover_call_marker}'\n")
+}
+
+// The stamp of a header answers for it in a build that does not read the header
+// itself to decide how to parse the module.
+fn test_cached_entry_keeps_the_recover_flag_of_its_header() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_recover_entry_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manager := Manager{
+		dir:        os.join_path(root, 'cache')
+		enabled:    true
+		salt:       'recover'
+		pkg_probes: &PkgConfigProbes{}
+	}
+	for name, calls in {
+		'guarded': true
+		'plain':   false
+	} {
+		source := os.join_path(root, '${name}.v')
+		os.write_file(source, 'module ${name}\n\npub fn value() int {\n\treturn 1\n}\n')!
+		marker := if calls { '${recover_call_marker}\n\n' } else { '' }
+		manager.write_header(name, [source], 'module ${name}\n\n${marker}pub fn value() int\n')!
+		entry := manager.valid_header(name, [source]) or { panic('no valid header for ${name}') }
+		assert header_calls_recover(entry) == calls, name
+		assert !header_needs_source(entry)
+	}
+}
+
 fn test_generic_receiver_names_exclude_array_and_map_receivers() {
 	assert receiver_has_generic_type_args('Stack[int].push')
 	assert receiver_has_generic_type_args('datatypes.Stack[int].push')
