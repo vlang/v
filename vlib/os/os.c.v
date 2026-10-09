@@ -38,6 +38,8 @@ fn C.feof(stream &C.FILE) i32
 
 fn C.CopyFile(&u16, &u16, bool) i32
 
+fn C.SetFileAttributesW(lpFileName &u16, dwFileAttributes u32) bool
+
 fn write_file_direct(path string, text string) ! {
 	mut f := create(path)!
 	defer {
@@ -577,10 +579,26 @@ pub fn is_readable(path string) bool {
 	}
 }
 
+// clear_read_only_attribute drops the Windows FILE_ATTRIBUTE_READONLY flag
+// from `path`, so that the file can be deleted. `_wremove` refuses to unlink a
+// read-only file on Windows, while POSIX `unlink` only needs write permission
+// on the containing directory, so git's read-only loose objects used to make
+// `rm` and `rmdir_all` fail on Windows alone.
+fn clear_read_only_attribute(path string) {
+	$if windows {
+		wpath := path.to_wide()
+		attrs := C.GetFileAttributesW(wpath)
+		if attrs != C.INVALID_FILE_ATTRIBUTES && attrs & u32(C.FILE_ATTRIBUTE_READONLY) != 0 {
+			C.SetFileAttributesW(wpath, u32(C.FILE_ATTRIBUTE_NORMAL))
+		}
+	}
+}
+
 // rm removes file in `path`.
 pub fn rm(path string) ! {
 	mut rc := 0
 	$if windows {
+		clear_read_only_attribute(path)
 		rc = C._wremove(path.to_wide())
 	} $else {
 		rc = C.remove(&char(path.str))
