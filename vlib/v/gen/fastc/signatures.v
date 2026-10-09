@@ -1429,7 +1429,7 @@ fn fastc_map_key_value_types(typ string) ?(string, string) {
 	// underscore loses the value type. Map keys are restricted to scalar V
 	// types; use that boundary and retain the complete encoded value type.
 	for key_type in ['string', 'rune', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
-		'char', 'uint', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr', 'bool'] {
+		'f32', 'f64', 'char', 'uint', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr', 'bool'] {
 		prefix := '${fastc_composite_type_part(key_type)}_'
 		if payload.starts_with(prefix) {
 			return key_type, fastc_decode_map_value_type(payload[prefix.len..])
