@@ -17,3 +17,6 @@ It prints:
 ['x', 'y']
 ['a', 'b', 'c']
 ```
+
+A closing quote must be followed immediately by the configured delimiter or the end of the
+record. `read()` returns an error when other characters, including spaces, follow a closing quote.
