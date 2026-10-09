@@ -107,3 +107,65 @@ fn test_ordinary_array_index_is_bounds_checked() {
 		os.rmdir_all(root) or {}
 	}
 }
+
+fn test_ordinary_map_callbacks_match_enum_and_alias_key_storage() {
+	source := 'module main
+
+enum Color { red green blue }
+type Shade = Color
+type Identifier = int
+type Counter = Identifier
+@[flag]
+enum Access { read write }
+
+fn main() {
+	colors := {Color.red: 10, Color.blue: 20, Color.red: 30}
+	println(Color.red in colors)
+	println(colors[Color.red])
+	println(colors[Color.blue])
+	println(colors[Color.green])
+	println(Color.green !in colors)
+	println(colors.len)
+
+	shades := {Shade(Color.red): 40, Shade(Color.blue): 50}
+	println(shades[Shade(Color.blue)])
+	println(Shade(Color.red) in shades)
+	println(Shade(Color.green) !in shades)
+
+	ids := {Identifier(1): 60, Identifier(2): 70, Identifier(1): 80}
+	println(ids[Identifier(1)])
+	println(ids[Identifier(3)])
+	println(Identifier(2) in ids)
+	println(Identifier(3) !in ids)
+	println(ids.len)
+	counters := {Counter(1): 90, Counter(2): 100}
+	println(counters[Counter(2)])
+	println(Counter(1) in counters)
+	println(Counter(3) !in counters)
+
+	permissions := {Access.read: 110, Access.write: 120}
+	println(permissions[Access.write])
+	println(Access.read in permissions)
+}
+'
+	prefs := pref.new_preferences()
+	c_source := generate(source, 'ordinary_map_key_storage.v', prefs) or { panic(err) }
+	for key_type in ['Color', 'Shade', 'Identifier', 'Counter'] {
+		assert c_source.contains('builtin__new_map(sizeof(${key_type}), sizeof(${fastc_platform_int_c_type}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4,'), c_source
+	}
+	assert c_source.contains('builtin__new_map(sizeof(Access), sizeof(${fastc_platform_int_c_type}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8,'), c_source
+	root := os.join_path(os.vtmp_dir(), 'fastc_map_key_storage_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compiled := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(bin_file, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'true\n30\n20\n0\ntrue\n2\n50\ntrue\ntrue\n80\n0\ntrue\ntrue\n2\n100\ntrue\ntrue\n120\ntrue\n', run.output
+}

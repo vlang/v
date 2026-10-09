@@ -4025,8 +4025,9 @@ fn (g &Parser) map_runtime_functions(key_type string) (string, string, string, s
 	mut resolved_type := g.underlying_alias_type(key_type)
 	if enum_key := g.underlying_enum_type_key(g.semantic_type_key(resolved_type)) {
 		resolved_type = if g.enum_flags[enum_key] { 'u64' } else { 'int' }
-	}
-	if !g.selfhost && resolved_type == 'int' {
+	} else if !g.selfhost && key_type == 'int' {
+		// Only bare int is emitted at platform width. Enum and alias typedefs
+		// retain their declared C storage width, which the key callbacks must use.
 		resolved_type = fastc_platform_int_c_type
 	}
 	return fastc_map_runtime_functions(resolved_type, g.prefs.target.pointer_bits)
