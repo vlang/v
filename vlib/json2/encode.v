@@ -90,7 +90,9 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_number(i8(val))
 	} $else $if T.unaliased_typ is i16 {
 		encoder.encode_number(i16(val))
-	} $else $if T.unaliased_typ is int || T.unaliased_typ is i32 {
+	} $else $if T.unaliased_typ is int {
+		encoder.encode_number(int(val))
+	} $else $if T.unaliased_typ is i32 {
 		encoder.encode_number(i32(val))
 	} $else $if T.unaliased_typ is i64 {
 		encoder.encode_number(i64(val))
@@ -407,7 +409,9 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 		integer_val = i8(val).str()
 	} $else $if T is i16 {
 		integer_val = i16(val).str()
-	} $else $if T is int || T is i32 {
+	} $else $if T is int {
+		integer_val = int(val).str()
+	} $else $if T is i32 {
 		integer_val = i32(val).str()
 	} $else $if T is i64 {
 		integer_val = i64(val).str()
