@@ -36,7 +36,13 @@ mut:
 }
 
 fn resolve_module_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope, prefer_lock bool, precise map[string]string) ![]Module {
-	namespace := os.join_path('resolver', rand.ulid())
+	// The namespace separates this resolver's temp clones from any other vpm
+	// process's, so it only has to be unique among the ones running now. A
+	// full ULID is 26 characters, and that length sits directly in the temp
+	// path a clone is checked out into; on Windows, with `.git/objects` and a
+	// long module name underneath, it is enough to push past `MAX_PATH`. The
+	// same length is used for the other short components below.
+	namespace := os.join_path('resolver', rand.ulid()[0..tmp_name_length])
 	mut overrides := []Override{}
 	project := vmod.get_cache().get_by_folder(os.getwd())
 	root_file := if scope.active { os.join_path(scope.dir, 'v.mod') } else { project.vmod_file }
