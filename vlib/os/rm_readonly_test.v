@@ -46,22 +46,47 @@ fn test_rmdir_all_removes_a_tree_with_read_only_files() {
 	assert !os.exists(os.join_path(ro_folder, 'objects'))
 }
 
-// A directory that is the working directory cannot be removed, which is a
-// deletion failure both platforms produce. Pinning `bottom` makes the walk fail
-// at `bottom` and then again at `top`; only the first of those names the entry
-// that actually could not be deleted. `rmdir_all` used to report the second,
-// which pointed at the parent instead.
+// Windows holds the current directory open, so its removal reports the child
+// that failed before the parent reports that it is not empty.
 fn test_rmdir_all_reports_the_entry_that_failed_not_its_parent() {
-	top := os.join_path(ro_folder, 'top')
-	bottom := os.join_path(top, 'bottom')
-	os.mkdir_all(bottom)!
-	os.write_file(os.join_path(bottom, 'leaf'), 'x')!
-	os.chdir(bottom)!
-	os.rmdir_all(top) or {
-		os.chdir(ro_folder)!
-		assert err.msg().contains('bottom'), 'rmdir_all reported ${err.msg()}, which does not name `bottom`'
-		return
+	$if windows {
+		top := os.join_path(ro_folder, 'top')
+		bottom := os.join_path(top, 'bottom')
+		os.mkdir_all(bottom)!
+		os.write_file(os.join_path(bottom, 'leaf'), 'x')!
+		previous := os.getwd()
+		os.chdir(bottom)!
+		defer {
+			os.chdir(previous) or { panic(err) }
+		}
+		os.rmdir_all(top) or {
+			assert err.msg().contains('bottom'), 'rmdir_all reported ${err.msg()}, which does not name `bottom`'
+			return
+		}
+		assert false, 'os.rmdir_all of a tree with an undeletable directory unexpectedly succeeded'
 	}
-	os.chdir(ro_folder)!
-	assert false, 'os.rmdir_all of a tree with an undeletable directory unexpectedly succeeded'
+}
+
+fn test_rmdir_all_keeps_the_first_file_deletion_error() {
+	$if !windows {
+		if os.geteuid() == 0 {
+			return
+		}
+		dir := os.join_path(ro_folder, 'cannot_remove')
+		target := os.join_path(dir, 'blocked.txt')
+		os.mkdir_all(dir)!
+		os.write_file(target, 'kept')!
+		os.chmod(dir, 0o555)!
+		defer {
+			os.chmod(dir, 0o755) or {}
+			os.rmdir_all(dir) or {}
+		}
+		os.rmdir_all(dir) or {
+			assert os.is_permission_denied(err), err.msg()
+			assert err.msg().contains(target), err.msg()
+			assert os.exists(target)
+			return
+		}
+		assert false, 'removing a file from a nonwritable directory should fail'
+	}
 }

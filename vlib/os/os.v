@@ -273,6 +273,7 @@ pub fn sigint_to_signal_name(si int) string {
 }
 
 // rmdir_all recursively removes the specified directory.
+// It continues after deletion errors and returns the first error's message and code.
 pub fn rmdir_all(path string) ! {
 	items := ls(path)!
 	// Report the first failure, not the last. The last is almost always the
