@@ -32,6 +32,28 @@ fn test_for_in_newline_body_compiles_and_runs() {
 	path := os.join_path(os.vtmp_dir(), 'for_in_newline_run_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
 	os.write_file(path, 'fn main() {\n\tmut total := 0\n\tfor value in [1, 2, 3]\n\t{\n\t\ttotal += value\n\t}\n\tassert total == 6\n}\n')!
-	result := os.exec([@VEXE, 'run', path])
-	assert result.exit_code == 0, result.output
+	mut child := os.new_process(@VEXE)
+	child.set_args(['-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none', 'run',
+		path])
+	mut environment := os.environ()
+	environment.delete('VFLAGS')
+	environment.delete('VOSARGS')
+	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+	child.set_environment(environment)
+	child.set_redirect_stdio_merged()
+	child.run()
+	defer { child.close() }
+	child.wait()
+	assert child.code == 0, child.stdout_slurp()
+}
+
+fn test_for_in_explicit_semicolon_before_body_remains_invalid() {
+	for is_fmt in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.is_fmt = is_fmt
+		mut p := Parser.new(prefs)
+		p.parse_text('for_in_explicit_semicolon.v',
+			'fn main() { for value in [1, 2, 3]; { _ = value } }')
+		assert p.diagnostics.len > 0
+	}
 }

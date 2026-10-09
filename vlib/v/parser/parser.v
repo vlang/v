@@ -9853,10 +9853,10 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_
 		}
 	}
 
-	// The key/value loop variables are locals scoped to the loop body.
-	if p.tok == .semicolon && p.peek() == .lcbr {
+	if p.current_token_is_newline_semicolon() && p.peek() == .lcbr {
 		p.next()
 	}
+	// The key/value loop variables are locals scoped to the loop body.
 	p.begin_local_binding_scope()
 	p.declare_local_binding_node(key_id)
 	p.declare_local_binding_node(val_id)
