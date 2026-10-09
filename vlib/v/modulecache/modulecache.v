@@ -12,7 +12,7 @@ import v.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-54'
+const cache_format = 'v3-module-cache-55'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -348,6 +348,37 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 		object_stamp: '${base}_${key}.o.stamp'
 		c_source:     '${base}_${key}.c'
 	}
+}
+
+// object_alias_path returns the file that names the object of a module for one set of
+// program facts that a build knows before it has generated the C of the module.
+fn (m &Manager) object_alias_path(module_name string, source_files []string, alias_signature string) string {
+	entry := m.entry(module_name, source_files)
+	return '${entry.object.all_before_last('.o')}_${hash_text(alias_signature)}.alias'
+}
+
+// object_alias returns the content key of the object that an earlier build compiled
+// or found for `alias_signature`. The key says nothing about the sources or the
+// dependencies of the module: the stamp of the object it leads to does.
+pub fn (m &Manager) object_alias(module_name string, source_files []string, alias_signature string) ?string {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	content := os.read_file(m.object_alias_path(module_name, source_files, alias_signature)) or {
+		return none
+	}
+	key := content.trim_space()
+	if key.len == 0 || key.contains_any(' \t\r\n/\\') {
+		return none
+	}
+	return key
+}
+
+// write_object_alias records that a build with `alias_signature` generates the C
+// that `content_key` identifies for this module.
+pub fn (m &Manager) write_object_alias(module_name string, source_files []string, alias_signature string, content_key string) ! {
+	write_atomic(m.object_alias_path(module_name, source_files, alias_signature), content_key +
+		'\n')!
 }
 
 // cgen_entry returns the artifact paths for one stable program source set.
@@ -1504,24 +1535,45 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 // valid_object_for_compile_signature reports whether the flag-specific object
 // matches its sources, dependency headers, and effective C compilation flags.
 pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) ?Entry {
+	return m.object_for_compile_signature(cache_name, source_files, compile_signature,
+		dependency_inputs, true)
+}
+
+// reusable_object is valid_object_for_compile_signature for a build that has the C
+// of the module and compiles it when the object is not there: nothing is missing
+// then, so nothing is traced.
+pub fn (m &Manager) reusable_object(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) ?Entry {
+	return m.object_for_compile_signature(cache_name, source_files, compile_signature,
+		dependency_inputs, false)
+}
+
+fn (m &Manager) object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string, trace bool) ?Entry {
 	entry := m.object_entry(cache_name, source_files, compile_signature)
 	if !os.is_file(entry.object) || !os.is_file(entry.object_stamp) {
-		cache_trace_module_miss(cache_name, 'no object for these C compilation flags and interface implementations')
+		if trace {
+			cache_trace_module_miss(cache_name, 'no object for these C compilation flags and this generated C')
+		}
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
 	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
-		cache_trace_module_miss(cache_name, 'object source or dependency changed')
+		if trace {
+			cache_trace_module_miss(cache_name, 'object source or dependency changed')
+		}
 		return none
 	}
 	expected := 'compile=${hash_text(compile_signature)}'
 	if !stamp.split_into_lines().any(it == expected) {
-		cache_trace_module_miss(cache_name, 'object stamp names other C compilation flags')
+		if trace {
+			cache_trace_module_miss(cache_name, 'object stamp names other C compilation flags')
+		}
 		return none
 	}
 	if !object_stamp_dependencies_match(stamp, dependency_inputs) {
-		cache_trace_module_miss(cache_name, 'object was built against other dependency interfaces')
+		if trace {
+			cache_trace_module_miss(cache_name, 'object was built against other dependency interfaces')
+		}
 		return none
 	}
 	return entry

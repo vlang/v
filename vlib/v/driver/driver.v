@@ -14076,6 +14076,9 @@ pub fn run(args []string) {
 			}
 			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, large_prod_c_unit, limit_large_unit_inlining, effective_tcc).join(' ')
 			warning_flags := warn_args.join(' ')
+			// A plan of the program is kept for the implementers of the whole
+			// program; the object of a module, for those that its code can reach.
+			object_flags_signature := v3_cached_object_compile_signature(cache_state.object_compiler, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, '')
 			mut compile_signature := v3_cached_object_compile_signature(cache_state.object_compiler, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)
 			mut prepared_plan_entry := cgen_cache_entry
 			mut prepared_cache := V3PreparedModuleCache{}
@@ -14100,9 +14103,10 @@ pub fn run(args []string) {
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
-				compile_signature = v3_cached_object_program_compile_signature(compile_signature, prefix_source)
+				program_suffix := v3_cached_object_program_signature_suffix(prefix_source)
+				compile_signature += program_suffix
 				objects := cache_state.manager.valid_cgen_prepared_objects(cgen_cache_entry, compile_signature) or {
-					if resolve_flag_specific_cache_objects(mut cache_state, a, compile_signature) {
+					if resolve_flag_specific_cache_objects(mut cache_state, a, object_flags_signature + program_suffix, parse_v3_interface_scopes(interface_impl_signature)) {
 						os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 						restart_v3_after_cache_invalidation()
 					}
@@ -14121,7 +14125,8 @@ pub fn run(args []string) {
 					exit(1)
 				}
 				object_compile_signature := compile_signature
-				compile_signature = v3_cached_object_program_compile_signature(compile_signature, generated_source)
+				generated_suffix := v3_cached_object_program_signature_suffix(generated_source)
+				compile_signature += generated_suffix
 				if generated_c_flags.len == 0 && !generic_cache_hit && !incremental_cache_hit
 					&& p.parsed_v_header_files == 0 && !cache_with_tcc {
 					cache_full_tcc_source = os.join_path_single(cc_dir, 'full.c')
@@ -14153,8 +14158,9 @@ pub fn run(args []string) {
 						// An incremental plan holds only the bodies that changed. The wrappers
 						// and the panic frames that select the cached module objects are in the
 						// prefix those objects were compiled with.
-						compile_signature = v3_cached_object_program_compile_signature(object_compile_signature, cached_prefix)
-						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file, incremental_prefix_path, incremental_tcc_declarations_path, cached_prefix, compile_signature, a, mut cache_state) or {
+						prefix_suffix := v3_cached_object_program_signature_suffix(cached_prefix)
+						compile_signature = object_compile_signature + prefix_suffix
+						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file, incremental_prefix_path, incremental_tcc_declarations_path, cached_prefix, object_flags_signature + prefix_suffix, interface_impl_signature, a, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 								cache_plan_file,
@@ -14191,7 +14197,7 @@ pub fn run(args []string) {
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
-						prepared_cache = prepare_v3_cached_generic_body(generated_source, cached_prefix, cached_declarations, cached_body, compile_signature, a, mut cache_state) or {
+						prepared_cache = prepare_v3_cached_generic_body(generated_source, cached_prefix, cached_declarations, cached_body, object_flags_signature + generated_suffix, interface_impl_signature, a, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 								cache_plan_file,
@@ -14207,7 +14213,7 @@ pub fn run(args []string) {
 						}
 					}
 				} else {
-					prepared_cache = prepare_v3_module_cache(generated_source, &cgen_used_fns, &program_used_fns, &pre_tc, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature, mut cache_state) or {
+					prepared_cache = prepare_v3_module_cache(generated_source, &cgen_used_fns, &program_used_fns, &pre_tc, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature, object_flags_signature + generated_suffix, mut cache_state) or {
 						message := err.msg()
 						if cache_with_tcc {
 							// TinyCC does not compile every module on its own. The build
@@ -15620,8 +15626,8 @@ fn v3_incremental_program_main_source(cached_prefix string, body_source string) 
 	return cached_prefix + modulecache.without_duplicate_static_string_definitions(body_source, cached_prefix)
 }
 
-fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_declarations_path string, cached_prefix string, compile_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
-	if resolve_flag_specific_cache_objects(mut state, a, compile_signature) {
+fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_declarations_path string, cached_prefix string, object_base string, interface_impl_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
+	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
 	}
@@ -15640,11 +15646,11 @@ fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_
 	}
 }
 
-fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string, cached_declarations string, cached_body string, compile_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
+fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string, cached_declarations string, cached_body string, object_base string, interface_impl_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if !state.manager.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
 	}
-	if resolve_flag_specific_cache_objects(mut state, a, compile_signature) {
+	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
 	}
@@ -15672,7 +15678,7 @@ fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string,
 	}
 }
 
-fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]bool, program_used_fns &map[string]bool, tc &types.TypeChecker, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string, mut state V3ModuleCacheState) !V3PreparedModuleCache {
+fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]bool, program_used_fns &map[string]bool, tc &types.TypeChecker, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string, object_base string, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if !state.manager.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
 	}
@@ -15685,23 +15691,13 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		parsed_short_module_counts[short_name]++
 	}
 	mut newly_cached_modules := map[string]bool{}
-	mut needs_declarations := !state.bundle_valid
-	if !needs_declarations {
-		for module_name in parsed_modules {
-			if !module_is_builtin_bundle(state, tc.a, module_name) {
-				needs_declarations = true
-				break
-			}
-		}
-	}
-	raw_declarations := if needs_declarations {
-		modulecache.declaration_header(split.prefix)
-	} else {
-		''
-	}
-	declarations := cache_source_without_cached_native_inputs(raw_declarations, state, false)
-	compile_signature := v3_cached_object_program_compile_signature(v3_cached_object_compile_signature(state.object_compiler, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, interface_impl_signature), generated_source)
-	if resolve_flag_specific_cache_objects(mut state, tc.a, compile_signature) {
+	// The declarations that a module object is compiled with. Only a module whose
+	// generated C has no object yet needs them.
+	mut raw_declarations := ''
+	mut declarations := ''
+	mut has_declarations := false
+	scopes := parse_v3_interface_scopes(interface_impl_signature)
+	if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
 	}
@@ -15729,35 +15725,70 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		tcc_main = '#define V3CACHE_PROGRAM_UNIT 1\n' + tcc_declarations + main_body
 	}
 	mut object_paths := state.objects.clone()
+	common_visible := if !state.bundle_valid || parsed_modules.len > 0 {
+		cache_common_visible_modules(state, tc.a)
+	} else {
+		[]string{}
+	}
 	if !state.bundle_valid {
-		entry := state.manager.object_entry('builtin', state.bundle_sources, compile_signature)
-		bundle_compile_scope := prealloc_scope_begin_for_v3()
-		mut bundle_body := strings.new_builder(4096)
+		bundle_roots := cache_builtin_bundle_roots(state, tc.a)
+		bundle_dependencies := cache_object_dependency_signatures(state, tc.a, bundle_roots)
 		mut split_modules := split.modules.keys()
 		split_modules.sort()
+		bundle_content_scope := prealloc_scope_begin_for_v3()
+		mut bundle_text := strings.new_builder(4096)
 		for module_name in split_modules {
 			if module_is_builtin_bundle(state, tc.a, module_name) {
-				bundle_body.write_string(split.modules[module_name])
+				bundle_text.write_string(split.modules[module_name])
 			}
 		}
-		bundle_roots := cache_builtin_bundle_roots(state, tc.a)
-		bundle_declarations := prune_cached_native_function_prototypes(raw_declarations, state, bundle_roots)
-		bundle_native := cache_source_with_cached_native_inputs(bundle_declarations, state, bundle_roots)
-		bundle_code := bundle_body.str()
-		module_source := if bundle_native.has_native {
-			'#define V3CACHE_PROGRAM_UNIT 1\n' + prune_foreign_program_wrappers(bundle_native.source, bundle_code) + '#undef V3CACHE_PROGRAM_UNIT\n' + bundle_native.remaining_includes + bundle_code
+		scoped_content := sha256.hexhash(bundle_text.str())
+		unsafe { bundle_text.free() }
+		prealloc_scope_leave_for_v3(bundle_content_scope)
+		bundle_content := scoped_content.clone()
+		prealloc_scope_free_for_v3(bundle_content_scope)
+		bundle_signature := v3_cached_object_content_signature(object_base, bundle_content)
+		// Another program, or this one before an edit, may have generated the same C
+		// for these modules. Its object is the one this C compiles to.
+		bundle_is_compiled := if _ := state.manager.reusable_object('builtin', state.bundle_sources,
+			bundle_signature, bundle_dependencies)
+		{
+			true
 		} else {
-			prune_foreign_program_wrappers(declarations, bundle_code) + bundle_code
+			false
 		}
-		compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c) or {
+		if !bundle_is_compiled {
+			if !has_declarations {
+				raw_declarations = modulecache.declaration_header(split.prefix)
+				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
+				has_declarations = true
+			}
+			bundle_compile_scope := prealloc_scope_begin_for_v3()
+			mut bundle_body := strings.new_builder(4096)
+			for module_name in split_modules {
+				if module_is_builtin_bundle(state, tc.a, module_name) {
+					bundle_body.write_string(split.modules[module_name])
+				}
+			}
+			bundle_code := bundle_body.str()
+			bundle_declarations := prune_cached_native_function_prototypes(raw_declarations, state, bundle_roots)
+			bundle_native := cache_source_with_cached_native_inputs(bundle_declarations, state, bundle_roots)
+			module_source := if bundle_native.has_native {
+				'#define V3CACHE_PROGRAM_UNIT 1\n' + prune_foreign_program_wrappers(bundle_native.source, bundle_code) + '#undef V3CACHE_PROGRAM_UNIT\n' + bundle_native.remaining_includes + bundle_code
+			} else {
+				prune_foreign_program_wrappers(declarations, bundle_code) + bundle_code
+			}
+			compile_v3_cached_object(state.object_compiler, state.manager.object_entry('builtin', state.bundle_sources, bundle_signature), module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c) or {
+				prealloc_scope_leave_for_v3(bundle_compile_scope)
+				message := err.msg().clone()
+				prealloc_scope_free_for_v3(bundle_compile_scope)
+				return error(message)
+			}
+			unsafe { bundle_body.free() }
 			prealloc_scope_leave_for_v3(bundle_compile_scope)
-			message := err.msg().clone()
 			prealloc_scope_free_for_v3(bundle_compile_scope)
-			return error(message)
 		}
-		unsafe { bundle_body.free() }
-		prealloc_scope_leave_for_v3(bundle_compile_scope)
-		prealloc_scope_free_for_v3(bundle_compile_scope)
+		entry := state.manager.object_entry('builtin', state.bundle_sources, bundle_signature)
 		for module_name, header in state.headers {
 			if !module_is_builtin_bundle(state, tc.a, module_name) {
 				continue
@@ -15766,14 +15797,16 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 				state.manager.write_header(module_name, source_files, header)!
 			}
 		}
-		bundle_dependencies := cache_object_dependency_signatures(state, tc.a, cache_builtin_bundle_roots(state,
-			tc.a))
-		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies, compile_signature)!
+		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies, bundle_signature)!
+		state.manager.write_object_alias('builtin', state.bundle_sources, v3_cached_object_alias_signature(object_base,
+			scopes, state, bundle_roots, common_visible), bundle_content)!
 		object_paths['builtin'] = entry.object
 		state.bundle_valid = true
-		for module_name in state.headers.keys() {
-			if module_is_builtin_bundle(state, tc.a, module_name) {
-				newly_cached_modules[module_name] = true
+		if !bundle_is_compiled {
+			for module_name in state.headers.keys() {
+				if module_is_builtin_bundle(state, tc.a, module_name) {
+					newly_cached_modules[module_name] = true
+				}
 			}
 		}
 	}
@@ -15783,7 +15816,6 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			continue
 		}
 		source_files := state.module_sources[module_name] or { continue }
-		entry := state.manager.object_entry(module_name, source_files, compile_signature)
 		body := split.modules[module_name] or {
 			short_name := module_name.all_after_last('.')
 			// A short split marker is a compatibility fallback for an unqualified
@@ -15795,33 +15827,54 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 				''
 			}
 		}
-		module_compile_scope := prealloc_scope_begin_for_v3()
-		module_declarations := prune_cached_native_function_prototypes(raw_declarations, state, [
-			module_name,
-		])
-		native := cache_source_with_cached_native_inputs(module_declarations, state, [
-			module_name,
-		])
-		module_source := if native.has_native {
-			'#define V3CACHE_PROGRAM_UNIT 1\n' + prune_foreign_program_wrappers(native.source, body) + '#undef V3CACHE_PROGRAM_UNIT\n' + native.remaining_includes + body
+		module_content := sha256.hexhash(body)
+		module_signature := v3_cached_object_content_signature(object_base, module_content)
+		dependencies := cache_object_dependency_signatures(state, tc.a, [module_name])
+		entry := state.manager.object_entry(module_name, source_files, module_signature)
+		module_is_compiled := if _ := state.manager.reusable_object(module_name, source_files,
+			module_signature, dependencies)
+		{
+			true
 		} else {
-			prune_foreign_program_wrappers(declarations, body) + body
+			false
 		}
-		compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c) or {
+		if !module_is_compiled {
+			if !has_declarations {
+				raw_declarations = modulecache.declaration_header(split.prefix)
+				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
+				has_declarations = true
+			}
+			module_compile_scope := prealloc_scope_begin_for_v3()
+			module_declarations := prune_cached_native_function_prototypes(raw_declarations, state, [
+				module_name,
+			])
+			native := cache_source_with_cached_native_inputs(module_declarations, state, [
+				module_name,
+			])
+			module_source := if native.has_native {
+				'#define V3CACHE_PROGRAM_UNIT 1\n' + prune_foreign_program_wrappers(native.source, body) + '#undef V3CACHE_PROGRAM_UNIT\n' + native.remaining_includes + body
+			} else {
+				prune_foreign_program_wrappers(declarations, body) + body
+			}
+			compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c) or {
+				prealloc_scope_leave_for_v3(module_compile_scope)
+				message := err.msg().clone()
+				prealloc_scope_free_for_v3(module_compile_scope)
+				return error(message)
+			}
 			prealloc_scope_leave_for_v3(module_compile_scope)
-			message := err.msg().clone()
 			prealloc_scope_free_for_v3(module_compile_scope)
-			return error(message)
 		}
-		prealloc_scope_leave_for_v3(module_compile_scope)
-		prealloc_scope_free_for_v3(module_compile_scope)
 		if header := state.headers[module_name] {
 			state.manager.write_header(module_name, source_files, header)!
 		}
-		dependencies := cache_object_dependency_signatures(state, tc.a, [module_name])
-		state.manager.write_stamp(module_name, source_files, dependencies, compile_signature)!
+		state.manager.write_stamp(module_name, source_files, dependencies, module_signature)!
+		state.manager.write_object_alias(module_name, source_files, v3_cached_object_alias_signature(object_base,
+			scopes, state, [module_name], common_visible), module_content)!
 		object_paths[module_name] = entry.object
-		newly_cached_modules[module_name] = true
+		if !module_is_compiled {
+			newly_cached_modules[module_name] = true
+		}
 	}
 
 	return V3PreparedModuleCache{
@@ -16847,6 +16900,230 @@ fn v3_cached_object_compile_signature(compiler V3CachedObjectCompiler, c_standar
 	return signature.join('\n')
 }
 
+// V3InterfaceScopes holds the interface implementers of a program, as
+// `interface_impl_set_signature()` spells them, for the question that the module
+// cache asks about them: which of these lists can the code of a module depend on?
+struct V3InterfaceScopes {
+mut:
+	signature string
+	names     []string            // the interfaces, in the order of the signature
+	owners    []string            // the module that declares each of them
+	lines     map[string]string   // interface -> `name=impl,impl`
+	impls     map[string][]string // interface -> its implementers
+	modules   map[string]string   // name without a module prefix -> declaring module
+	outside   map[string]string   // implementer -> declaring module, `` for a generic one
+	reach     map[string][]string // implementer -> the interfaces among its fields
+}
+
+fn parse_v3_interface_scopes(signature string) V3InterfaceScopes {
+	mut scopes := V3InterfaceScopes{
+		signature: signature
+	}
+	for line in signature.split_into_lines() {
+		if line.starts_with('#module ') {
+			fact := line['#module '.len..]
+			scopes.modules[fact.all_before_last('=')] = fact.all_after_last('=')
+			continue
+		}
+		if line.starts_with('#reach ') {
+			fact := line['#reach '.len..]
+			scopes.reach[fact.all_before_last('=')] = v3_split_type_names(fact.all_after_last('='))
+			continue
+		}
+		name := v3_interface_line_name(line)
+		if name.len == 0 {
+			continue
+		}
+		scopes.names << name
+		scopes.lines[name] = line
+	}
+	for name in scopes.names {
+		scopes.owners << scopes.declaring_module(name)
+		line := scopes.lines[name]
+		impls := v3_split_type_names(line[name.len + 1..])
+		scopes.impls[name] = impls
+		for impl in impls {
+			if impl !in scopes.outside {
+				// The fields of a generic implementer have the types of its arguments,
+				// which no module name stands for.
+				scopes.outside[impl] = if impl.contains('[') {
+					''
+				} else {
+					scopes.declaring_module(impl)
+				}
+			}
+		}
+	}
+	return scopes
+}
+
+// v3_interface_line_name returns the interface of a `name=impl,impl` line. The
+// name of a generic interface holds its type arguments, and those hold no `=`.
+fn v3_interface_line_name(line string) string {
+	mut depth := 0
+	for i, ch in line {
+		if ch == `[` {
+			depth++
+		} else if ch == `]` {
+			depth--
+		} else if ch == `=` && depth == 0 {
+			return line[..i]
+		}
+	}
+	return ''
+}
+
+// v3_split_type_names splits `a,b[c, d],e` at the commas that are not inside the
+// type arguments of a name.
+fn v3_split_type_names(list string) []string {
+	mut names := []string{}
+	mut depth := 0
+	mut start := 0
+	for i, ch in list {
+		if ch == `[` {
+			depth++
+		} else if ch == `]` {
+			depth--
+		} else if ch == `,` && depth == 0 {
+			if i > start {
+				names << list[start..i]
+			}
+			start = i + 1
+		}
+	}
+	if start < list.len {
+		names << list[start..]
+	}
+	return names
+}
+
+// declaring_module returns the module that declares the type `name`, as the type
+// checker names modules (`json2` for `x.json2`), or `?` when nothing says so.
+fn (scopes &V3InterfaceScopes) declaring_module(name string) string {
+	base := name.all_before('[')
+	if base.contains('.') {
+		return base.all_before_last('.')
+	}
+	return scopes.modules[name] or { '?' }
+}
+
+// module_signature returns the implementer lists that the code of a module can
+// depend on, when `visible` holds the modules whose declarations that code can
+// name: the module itself, what it imports, and what every module gets.
+//
+// Code that tells the implementers of an interface apart (to compare two values,
+// to print or to clone one, to read a field) names that interface or holds a value
+// whose type contains it. So the list of an interface that no visible module
+// declares cannot change what is generated for the module, with one exception:
+// an implementer from outside those modules brings the interfaces among its own
+// fields with it, and the code that handles the implementer handles those too.
+// `visible` therefore decides which lists start the set, and the fields of the
+// implementers that are not visible extend it.
+//
+// An interface or an implementer that the signature says too little about makes
+// the module depend on every list, as all of them did before.
+fn (scopes &V3InterfaceScopes) module_signature(visible map[string]bool) string {
+	mut in_scope := map[string]bool{}
+	mut pending := []string{cap: scopes.names.len}
+	for i, name in scopes.names {
+		owner := scopes.owners[i]
+		// The code of a module cannot name an interface of the program.
+		if owner == 'main' {
+			continue
+		}
+		if owner == '?' || visible[owner] {
+			in_scope[name] = true
+			pending << name
+		}
+	}
+	mut index := 0
+	for index < pending.len {
+		impls := scopes.impls[pending[index]]
+		index++
+		for impl in impls {
+			if impl in scopes.lines {
+				// An interface that satisfies another one is told apart by its own
+				// implementers.
+				if !in_scope[impl] {
+					in_scope[impl] = true
+					pending << impl
+				}
+				continue
+			}
+			if visible[scopes.outside[impl]] {
+				// Its fields have the types of modules that are visible as well.
+				continue
+			}
+			for reached in scopes.reach[impl] or { []string{} } {
+				if reached !in scopes.lines {
+					return scopes.signature
+				}
+				if !in_scope[reached] {
+					in_scope[reached] = true
+					pending << reached
+				}
+			}
+		}
+	}
+	mut lines := []string{cap: pending.len}
+	for name in scopes.names {
+		if in_scope[name] {
+			lines << scopes.lines[name]
+		}
+	}
+	return lines.join('\n')
+}
+
+// cache_common_visible_modules returns the modules that every cached object is
+// compiled against (see cache_object_dependency_signatures), whatever it imports.
+fn cache_common_visible_modules(state &V3ModuleCacheState, a &flat.FlatAst) []string {
+	mut modules := []string{}
+	for implicit_name in ['sync', 'v.embed_file', 'builtin.closure'] {
+		if implicit_module := cache_state_module_name(state, implicit_name) {
+			modules << implicit_module
+		}
+	}
+	modules << cache_builtin_bundle_roots(state, a)
+	return modules
+}
+
+// cache_object_visible_modules returns the modules whose declarations the code of
+// a cached object can name, under the names that the type checker gives them and
+// under their full ones: the modules of the object, their imports, and `common`,
+// the result of cache_common_visible_modules.
+fn cache_object_visible_modules(state &V3ModuleCacheState, roots []string, common []string) map[string]bool {
+	mut visible := map[string]bool{}
+	visible['builtin'] = true
+	mut modules := []string{cap: roots.len + common.len + 8}
+	for root in roots {
+		modules << cache_state_module_name(state, root) or { root }
+	}
+	modules << cache_dependency_modules(state, roots)
+	modules << common
+	for module_name in modules {
+		visible[module_name] = true
+		visible[module_name.all_after_last('.')] = true
+	}
+	return visible
+}
+
+// v3_cached_object_alias_signature is what a build knows about the object of a
+// module before it has generated the C of that module: how the object is compiled,
+// and the implementer lists that this C can depend on. A build that reads the
+// module from its header finds the object under this signature.
+fn v3_cached_object_alias_signature(object_base string, scopes &V3InterfaceScopes, state &V3ModuleCacheState, roots []string, common []string) string {
+	visible := cache_object_visible_modules(state, roots, common)
+	return '${object_base}\ninterfaces=${scopes.module_signature(visible)}'
+}
+
+// v3_cached_object_content_signature identifies a module object by how it is
+// compiled and by the C generated for the module. A build that generates the same
+// C for a module as an earlier one, for whatever program, links the object of that
+// build and compiles nothing.
+fn v3_cached_object_content_signature(object_base string, content_key string) string {
+	return '${object_base}\ncontent=${content_key}'
+}
+
 // v3_cached_c_unit_source assigns the shipped runtime implementation to the
 // program prefix. Shared declarations and cached module objects remain nonowners.
 fn v3_cached_c_unit_source(source string, owner bool) string {
@@ -16879,15 +17156,22 @@ const v3_callback_identity_fn = '__v3_callback_identity'
 // Only what the wrapper sections hold besides such prunable definitions and
 // declarations keeps the objects of that program to itself.
 fn v3_cached_object_program_compile_signature(program_base string, generated_source string) string {
-	mut signature := program_base
+	return program_base + v3_cached_object_program_signature_suffix(generated_source)
+}
+
+// v3_cached_object_program_signature_suffix is what the generated C of a program
+// adds to a signature of its module objects. It reads all of that C, so a build
+// that needs the signature of the plan and the one of the objects takes it once.
+fn v3_cached_object_program_signature_suffix(generated_source string) string {
+	mut suffix := ''
 	if generated_source.contains('typedef struct v_unwind_frame {') {
-		signature += '\npanic_frames=true'
+		suffix += '\npanic_frames=true'
 	}
 	opaque := v3_opaque_program_wrappers(generated_source)
 	if opaque.len > 0 {
-		signature += '\nprogram_wrappers=${sha256.hexhash(opaque)}'
+		suffix += '\nprogram_wrappers=${sha256.hexhash(opaque)}'
 	}
-	return signature
+	return suffix
 }
 
 // V3ProgramWrapperItem is one top-level piece of a wrapper section of generated C.
@@ -17085,7 +17369,15 @@ fn prune_foreign_program_wrappers(declarations string, body string) string {
 	return out.str()
 }
 
-fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.FlatAst, compile_signature string) bool {
+// resolve_flag_specific_cache_objects finds the object of every module that this
+// build read from its header, and reports whether one of them is missing. The
+// object of a module is named by the C generated for it, which such a build does
+// not have: an earlier build recorded it under what was known beforehand.
+fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.FlatAst, object_base string, scopes &V3InterfaceScopes) bool {
+	if state.objects.len == 0 {
+		return false
+	}
+	common := cache_common_visible_modules(state, a)
 	for object_name in state.objects.keys() {
 		roots := if object_name == 'builtin' {
 			cache_builtin_bundle_roots(state, a)
@@ -17097,8 +17389,15 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 		} else {
 			state.module_sources[object_name] or { continue }
 		}
+		alias_signature := v3_cached_object_alias_signature(object_base, scopes, state, roots, common)
+		content_key := state.manager.object_alias(object_name, source_files, alias_signature) or {
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 module cache object miss: module=${object_name} reason=no object for these C compilation flags and interface implementations')
+			}
+			return true
+		}
 		dependency_inputs := cache_object_dependency_signatures(state, a, roots)
-		if entry := state.manager.valid_object_for_compile_signature(object_name, source_files, compile_signature, dependency_inputs) {
+		if entry := state.manager.valid_object_for_compile_signature(object_name, source_files, v3_cached_object_content_signature(object_base, content_key), dependency_inputs) {
 			state.objects[object_name] = entry.object
 		} else {
 			if os.getenv('V3_CACHE_TRACE') != '' {

@@ -476,11 +476,16 @@ Linux, which pays off for programs with larger imports.
 The interface of a module does not depend on the program that was built first: a module that
 imports others is cached like one that does not, a program that only prints literals still checks
 the whole modules it publishes, and the methods of array and map receivers do not pass for generic
-ones. An object is identified by the C compilation flags, by the interface implementations of the
-program and by whether the program reaches `recover()`, and not by the `static` wrappers of the
-program prefix, so a build that reads a module from its header finds the object that the build
-from source published. A program whose declarations changed therefore compiles against the cached
-`builtin.o` instead of rebuilding every module.
+ones. An object is identified by the C compilation flags, by whether the program reaches
+`recover()` and by the C that is generated for the module, and not by the `static` wrappers of the
+program prefix. A build that reads a module from its header has not generated that C. It finds the
+object under the implementers of the interfaces that the code of the module can depend on: those
+that the module or one of its imports declares, and those among the fields of an implementer that
+comes from elsewhere. The interfaces of the program are none of these, so a program whose
+declarations changed compiles against the cached `builtin.o` instead of rebuilding every module.
+A program with another implementer of such an interface, most often an error type of its own,
+generates the C of its modules once more; where that C is the C of an object that is there, as
+it is for `builtin`, nothing is compiled.
 Each warm build also reuses what an earlier one found out: what `pkg-config --exists` answered for
 the `$pkgconfig` conditions of the cached sources (until a `.pc` file of the directories that
 pkg-config searches is added, removed or changed, as a package exists only while what it requires
