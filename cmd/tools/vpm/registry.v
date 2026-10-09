@@ -388,6 +388,15 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 		return json2.encode(entry)
 	}
 
+	// GET /sbom.spdx.json renders the software bill of materials for the
+	// registry, so a consumer can audit what it is about to install without
+	// resolving the graph itself.
+	if path == '/sbom.spdx.json' && method == 'GET' {
+		namespace := query['namespace'] or { 'https://vpm.local/spdx/vpm-registry' }
+		download_base := query['dl'] or { 'https://vpm.local/downloads' }
+		return registry.spdx_json(namespace, download_base)
+	}
+
 	// GET /api/changes?since=<unix timestamp> returns only the changes a mirror
 	// needs, so bringing a copy up to date does not mean reading the index.
 	if path == '/api/changes' && method == 'GET' {
