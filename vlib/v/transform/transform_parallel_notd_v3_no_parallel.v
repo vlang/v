@@ -1498,6 +1498,9 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	// not been warmed by the earlier function-body transform. Build it before
 	// the forks; lazy initialization from several workers corrupts the map.
 	t.prepare_parallel_call_param_types()
+	// Classify array constants on the master too, so the workers share one
+	// read-only cache instead of each rescanning the AST per constant.
+	t.precompute_const_array_fixed_storage()
 	// Reflected generic JSON bodies query loop-variable roles while every
 	// specialization is cloned. Build the immutable source-template index once
 	// on the master instead of making every worker scan the multi-million-node
@@ -1787,6 +1790,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 	// Workers treat declaration parameter metadata as immutable. Build the lazy
 	// index in the parent arena before a scoped worker can grow its backing map.
 	t.prepare_parallel_call_param_types()
+	// Classify array constants in the parent arena before forking, so every
+	// batch shares one read-only cache instead of rescanning the AST.
+	t.precompute_const_array_fixed_storage()
 	// A scoped transformer can itself be a fork whose signature tables still
 	// point at its parent's read-only base. Detach before pre-registering the
 	// batch, rather than mutating storage another worker may be reading.
