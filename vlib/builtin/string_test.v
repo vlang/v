@@ -1676,6 +1676,42 @@ fn test_index_u8() {
 	assert 'abc'.index_u8(`C`) == -1
 }
 
+fn test_index_empty_needle() {
+	for s in ['abc', '', 'é🙂', string{}] {
+		for needle in ['', string{}] {
+			assert s.contains(needle)
+			assert s.index_(needle) == 0
+			assert s.index(needle)? == 0
+		}
+	}
+	assert 'abcabc'.index('bc')? == 1
+	assert 'abc'.index('missing') == none
+	assert ''.index('a') == none
+}
+
+fn test_last_index_empty_needle() {
+	for s in ['abc', '', 'é🙂', string{}] {
+		for needle in ['', string{}] {
+			assert s.last_index(needle)? == s.len
+		}
+	}
+	assert ''.last_index('a') == none
+}
+
+fn test_empty_delimiter_helpers() {
+	for s in ['abc', '', 'é🙂'] {
+		assert s.before('') == s
+		assert s.all_before('') == s
+		assert s.all_before_last('') == s
+		assert s.all_after('') == s
+		assert s.all_after_first('') == s
+		assert s.all_after_last('') == s
+		assert s.after('') == s
+		assert s.find_between('', ']') == ''
+		assert s.find_between('[', '') == ''
+	}
+}
+
 fn test_last_index() {
 	assert 'abcabca'.last_index('ca')? == 5
 	assert 'abcabca'.last_index('ab')? == 3

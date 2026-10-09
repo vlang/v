@@ -30,6 +30,14 @@ and `u64` positions without narrowing them to `int`. An index below zero or at l
 length panics. `unsafe` indexing, `@[direct_array_access]`, and `-no-bounds-checking` retain their
 explicit unchecked behavior.
 
+### Searching for an empty string
+
+`string.index('')` and `string.index_('')` return `0`, including for an empty source string.
+`string.last_index('')` returns the source string's byte length, so `''.last_index('')` returns `0`.
+These positions mark the start and end boundaries of the string.
+The delimiter helpers `before`, `all_before`, `all_before_last`, `all_after`, `all_after_first`,
+`all_after_last`, and `after` leave the source unchanged for an empty delimiter.
+
 ### Reusing a preallocated scope
 
 With `-prealloc`, `prealloc_scope_begin()` starts a nested arena and returns its scope handle.
