@@ -2,15 +2,19 @@
 
 ## Overview
 
-The VPM registry protocol defines how registries communicate with VPM. It enables third-party registries, private registries, and a healthy ecosystem for V modules.
+The VPM registry protocol defines how registries communicate with VPM. It enables third-party
+registries and private registries. The reference implementation is not connected to `v install`;
+the client and transport integration remain separate work.
 
 ## Design Goals
 
 - **CDN-compatible**: No query parameters, just GET on predictable paths (like Go's proxy protocol)
-- **Content-addressed artifacts**: Immutable once published (like Zig's hash-as-version or Go's immutable zips)
+- **Content-addressed artifacts**: Immutable once published, like Zig's hash-as-version or Go's
+  immutable zips
 - **Scalable**: Per-file fetch, not full clone (like Cargo's sparse protocol)
 - **Signed registry**: Mirrors don't need to be trusted (like Hex's signed protobuf registry)
-- **Checksum transparency log**: Append-only Merkle tree for all published hashes (like Go's sum.golang.org)
+- **Checksum transparency log**: Append-only Merkle tree for all published hashes, like Go's
+  sum.golang.org
 - **Private registries**: Token-based authentication (like Cargo or Packagist)
 - **SBOM/SPDX output**: Supply chain security
 
@@ -30,9 +34,9 @@ The VPM registry protocol defines how registries communicate with VPM. It enable
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /config.json` | Registry configuration (dl URL, api URL, auth-required) |
+| `GET /config.json` | Registry URLs, auth requirement, and signing public key |
 
-### Authentication
+### Authentication Endpoints
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -80,16 +84,23 @@ Per-version entry (JSON):
 ## Content Addressing
 
 - Each version's source is stored as a zip file
+- Published module names and versions must each be one nonempty path component, without separators,
+  drive prefixes, `.` or `..` components, trailing dots/spaces, or NUL/line-break characters
 - The zip file's SHA-256 checksum is recorded in the metadata
+- Accepted raw, `sha256:`, `SHA256:`, and omitted checksums are stored as `sha256:<verified digest>`
 - The checksum is used for integrity verification on download
+- Artifact downloads require a recorded version and a matching, nonempty checksum; orphan files
+  are never served
 - A transparency log records all published checksums
 
 ## Registry Signing
 
 - The registry signs its metadata with a private key
-- The public key is distributed with VPM
+- `config.json` includes the registry's signing public key
 - Mirrors serve the signed metadata without needing to be trusted
 - Clients verify the signature before accepting metadata
+- Signing sorts module, dependency, and feature map keys; map insertion order does not affect the
+  signed bytes. Array order remains significant, and the change log is excluded.
 
 ## Yank/Retire Semantics
 
@@ -111,6 +122,11 @@ Per-version entry (JSON):
 - Includes all transitive dependencies
 - Includes license information
 - Includes checksums for all packages
+- JSON uses the SPDX 2.3 field names, with `filesAnalyzed: false` for registry metadata. Package IDs
+  encode both module name and version, so each package version has a distinct identifier.
+- Field names and package identifiers follow the [official SPDX JSON schema][spdx-schema].
+
+[spdx-schema]: https://github.com/spdx/spdx-spec/blob/v2.3.1/schemas/spdx-schema.json
 
 ## Change Feed
 
@@ -124,6 +140,8 @@ Per-version entry (JSON):
 - `Authorization: Bearer <token>` header
 - Tokens obtained via `POST /api/login`
 - Read endpoints can be public or require auth (configurable per registry)
+- Authenticated HTTP redirects must keep the registry's scheme, host, and effective port;
+  unauthenticated requests retain normal redirect handling
 
 ## Migration Path
 
@@ -137,7 +155,7 @@ Per-version entry (JSON):
 | Pattern | Go | Cargo | Zig | npm | Hex | Packagist |
 |---------|-----|-------|-----|-----|-----|-----------|
 | SemVer | Yes | Yes | No (hash) | Yes | Yes | Yes |
-| Content-addressed | Yes (zip) | Yes (.crate) | Yes (hash) | Yes (tarball) | Yes (tarball) | No (VCS) |
+| Content-addressed | zip | .crate | hash | tarball | tarball | No (VCS) |
 | Lockfile | go.sum | Cargo.lock | build.zig.zon | package-lock.json | mix.lock | composer.lock |
 | Checksum DB | sum.golang.org | Index cksum | N/A | dist.integrity | Signed registry | N/A |
 | Yank/Retire | No | Yes | N/A | Yes (revoke) | Yes (retire) | No |

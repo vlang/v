@@ -105,9 +105,35 @@ fn vpm_http_request(method http.Method, url string, data string) !http.Response 
 		max_retries:              1
 		enable_http2:             false
 		disable_connection_reuse: true
+		on_redirect:              vpm_registry_redirect
 	)!
 	require_registry_token(url, resp.status_code)!
 	return resp
+}
+
+// registry_http_port normalizes the default port for HTTP origin comparisons.
+fn registry_http_port(url urllib.URL) string {
+	port := url.port()
+	if port != '' {
+		return port
+	}
+	return match url.scheme.to_lower() {
+		'http' { '80' }
+		'https' { '443' }
+		else { '' }
+	}
+}
+
+// vpm_registry_redirect keeps authenticated requests within their registry origin.
+fn vpm_registry_redirect(request &http.Request, _ int, next_url string) ! {
+	request.header.get(.authorization) or { return }
+	original := urllib.parse(request.url)!
+	target := urllib.parse(next_url)!
+	if original.scheme.to_lower() != target.scheme.to_lower()
+		|| original.hostname().to_lower() != target.hostname().to_lower()
+		|| registry_http_port(original) != registry_http_port(target) {
+		return error('refusing to send a registry token to a different origin after a redirect')
+	}
 }
 
 // registry_token returns the bearer token configured for the registry that

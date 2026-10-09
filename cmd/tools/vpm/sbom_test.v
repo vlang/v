@@ -64,12 +64,30 @@ fn test_an_absent_checksum_yields_no_entry() {
 	assert doc.packages[0].checksums.len == 0
 }
 
-// SPDX element ids may not hold `.`, `/` or `:`, so a name like `my/lib` must be
+// SPDX element ids may not hold `/` or `:`, so a name like `my/lib` must be
 // rewritten or the document is not parseable by an SPDX consumer.
 fn test_an_id_with_illegal_characters_is_rewritten() {
-	assert spdx_id_for('serde') == 'SPDXRef-Package-serde'
-	assert spdx_id_for('my/lib') == 'SPDXRef-Package-my-lib'
-	assert spdx_id_for('a.b:c') == 'SPDXRef-Package-a-b-c'
+	for name in ['serde', 'my/lib', 'a.b:c'] {
+		id := spdx_id_for(name, '1.0.0')
+		assert id.starts_with('SPDXRef-Package-')
+		assert !id.contains_any('/.:')
+	}
+}
+
+fn test_package_ids_distinguish_versions_and_colliding_name_spellings() {
+	mut r := new_registry()
+	for name in ['my/lib', 'my-lib'] {
+		for version in ['1.0.0', '1.1.0'] {
+			r.add_module(sbom_demo_info(name, version, 'MIT', ''))
+		}
+	}
+	doc := r.spdx_document(sbom_namespace, sbom_download_base)
+	mut ids := map[string]bool{}
+	for package in doc.packages {
+		assert package.spdxid !in ids
+		ids[package.spdxid] = true
+	}
+	assert ids.len == 4
 }
 
 // PURL is the identifier other supply-chain tools join on.
@@ -131,4 +149,33 @@ fn test_the_sbom_endpoint_answers_json() {
 	}
 	assert doc.spdx_version == 'SPDX-2.3'
 	assert doc.packages.len == 2
+}
+
+fn test_spdx_json_uses_the_standard_field_names() {
+	r := new_sbom_demo_registry()
+	body := r.spdx_json(sbom_namespace, sbom_download_base)
+	doc := json2.decode[map[string]json2.Any](body)!
+	for key in ['SPDXID', 'spdxVersion', 'dataLicense', 'documentNamespace', 'creationInfo'] {
+		assert key in doc, body
+	}
+	assert 'spdxid' !in doc
+	assert 'spdx_version' !in doc
+	packages := doc['packages']! as []json2.Any
+	for value in packages {
+		package := value as map[string]json2.Any
+		for key in ['SPDXID', 'versionInfo', 'downloadLocation', 'licenseConcluded', 'licenseDeclared',
+			'copyrightText', 'filesAnalyzed', 'externalRefs'] {
+			assert key in package, body
+		}
+		assert !(package['filesAnalyzed']! as bool)
+		checksums := package['checksums']! as []json2.Any
+		assert 'checksumValue' in (checksums[0] as map[string]json2.Any)
+		refs := package['externalRefs']! as []json2.Any
+		for reference in refs {
+			ref := reference as map[string]json2.Any
+			for key in ['referenceCategory', 'referenceType', 'referenceLocator'] {
+				assert key in ref, body
+			}
+		}
+	}
 }

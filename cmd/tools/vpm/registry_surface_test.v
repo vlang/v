@@ -141,3 +141,102 @@ fn test_the_artifact_endpoint_refuses_a_tampered_store() {
 	os.write_file(artifact_path('alpha', '1.0.0'), 'replaced with something else') or { panic(err) }
 	assert artifact_request(r, '/alpha/@v/1.0.0.zip') == none, 'a tampered store was served rather than refused'
 }
+
+fn test_publish_rejects_artifact_paths_outside_the_store() {
+	archive := write_archive('module sources')
+	for name in ['..', '.. ', 'name.', '../outside', '..\\outside', '/outside', 'C:\\outside',
+		''] {
+		mut r := new_registry()
+		r.publish(surface_info(name, '1.0.0', ''), archive) or {
+			assert r.modules.len == 0
+			continue
+		}
+		assert false, 'unsafe module name `${name}` was published'
+	}
+	for version in ['', '..', '.. ', '1.0.0.', '../outside', '..\\outside', 'C:\\outside'] {
+		mut r := new_registry()
+		r.publish(surface_info('alpha', version, ''), archive) or {
+			assert r.modules.len == 0
+			continue
+		}
+		assert false, 'unsafe version `${version}` was published'
+	}
+}
+
+fn test_artifact_endpoint_requires_metadata_for_existing_files() {
+	r := new_registry()
+	path := artifact_path('orphan', '1.0.0')
+	os.mkdir_all(os.dir(path))!
+	os.write_file(path, 'unpublished bytes')!
+	assert artifact_request(r, '/orphan/@v/1.0.0.zip') == none
+	assert artifact_request(r, '/../@v/1.0.0.zip') == none
+}
+
+fn test_artifact_endpoint_accepts_an_uppercase_checksum_claim() {
+	mut r := new_registry()
+	archive := write_archive('module sources')
+	r.publish(surface_info('alpha', '1.0.0', 'SHA256:${sha256_hex('module sources'.bytes())}'), archive)!
+	assert artifact_request(r, '/alpha/@v/1.0.0.zip') != none
+}
+
+fn test_artifact_endpoint_requires_a_get_request() {
+	mut r := new_registry()
+	archive := write_archive('module sources')
+	r.publish(surface_info('alpha', '1.0.0', 'sha256:${sha256_hex('module sources'.bytes())}'), archive)!
+	response := serve(r, 'POST', '/alpha/@v/1.0.0.zip', map[string]string{}, map[string]string{})
+	assert response.artifact_path == ''
+}
+
+fn test_artifact_endpoint_requires_a_recorded_checksum() {
+	mut r := new_registry()
+	archive := write_archive('module sources')
+	r.publish(surface_info('alpha', '1.0.0', 'sha256:${sha256_hex('module sources'.bytes())}'), archive)!
+	r.modules['alpha'].versions[0] = surface_info('alpha', '1.0.0', '')
+	assert artifact_request(r, '/alpha/@v/1.0.0.zip') == none
+}
+
+fn test_checksumless_publish_preserves_metadata_and_can_be_retried() {
+	mut r := new_registry()
+	archive := write_archive('module sources')
+	info := ModuleInfo{
+		...surface_info('alpha', '1.0.0', '')
+		published_at: '2024-01-01T00:00:00Z'
+		yanked:       true
+	}
+	r.publish(info, archive)!
+	published := r.get_info('alpha', '1.0.0') or { panic('publication was not recorded') }
+	assert published.published_at == info.published_at
+	assert published.yanked
+	r.publish(info, archive)!
+	assert r.changes.len == 1
+}
+
+fn test_accepted_checksum_spellings_reach_spdx_and_preserve_immutability() {
+	archive := write_archive('verified sources')
+	actual := sha256_hex('verified sources'.bytes())
+	for claimed in [actual, 'SHA256:${actual}', ''] {
+		mut r := new_registry()
+		info := surface_info('normalized', '1.0.0', claimed)
+		r.publish(info, archive)!
+		document := r.spdx_document('https://example.com/spdx', 'https://example.com/downloads')
+		assert document.packages.len == 1
+		assert document.packages[0].checksums.len == 1, 'SPDX lost checksum `${claimed}`'
+		assert document.packages[0].checksums[0].algorithm == 'SHA256'
+		assert document.packages[0].checksums[0].checksum_value == actual
+		published := r.get_info('normalized', '1.0.0') or { panic('publication was not recorded') }
+		assert published.checksum == 'sha256:${actual}'
+		before := r.export_json()
+		for retry in ['', actual, 'sha256:${actual}', 'SHA256:${actual}'] {
+			r.publish(surface_info('normalized', '1.0.0', retry), archive)!
+			assert r.export_json() == before
+		}
+		replacement := write_archive('replacement sources')
+		r.publish(surface_info('normalized', '1.0.0', ''), replacement) or {
+			assert err.msg().contains('already published')
+			assert r.export_json() == before
+			assert os.read_file(artifact_path('normalized', '1.0.0'))! == 'verified sources'
+			continue
+		}
+		assert false, 'replacement bytes overwrote a published version'
+	}
+}

@@ -17,38 +17,39 @@ const spdx_data_license = 'CC0-1.0'
 // An SpdxChecksum is one digest over one package.
 struct SpdxChecksum {
 	algorithm      string
-	checksum_value string
+	checksum_value string @[json: 'checksumValue']
 }
 
 // An SpdxExternalRef points from a package at an identifier in another system,
 // such as a CPE naming a vulnerability-tracking entry.
 struct SpdxExternalRef {
-	reference_category string
-	reference_type     string
-	reference_locator  string
+	reference_category string @[json: 'referenceCategory']
+	reference_type     string @[json: 'referenceType']
+	reference_locator  string @[json: 'referenceLocator']
 }
 
 // An SpdxPackage is one module version in the bill of materials.
 struct SpdxPackage {
 	name              string
-	spdxid            string
-	version_info      string
-	download_location string
-	license_concluded string
-	license_declared  string
-	copyright_text    string
+	spdxid            string @[json: 'SPDXID']
+	version_info      string @[json: 'versionInfo']
+	download_location string @[json: 'downloadLocation']
+	license_concluded string @[json: 'licenseConcluded']
+	license_declared  string @[json: 'licenseDeclared']
+	copyright_text    string @[json: 'copyrightText']
+	files_analyzed    bool   @[json: 'filesAnalyzed']
 	checksums         []SpdxChecksum
-	external_refs     []SpdxExternalRef
+	external_refs     []SpdxExternalRef @[json: 'externalRefs']
 }
 
 // An SpdxDocument is a complete bill of materials.
 struct SpdxDocument {
-	spdx_version       string
-	data_license       string
-	spdxid             string
+	spdx_version       string @[json: 'spdxVersion']
+	data_license       string @[json: 'dataLicense']
+	spdxid             string @[json: 'SPDXID']
 	name               string
-	document_namespace string
-	creation_info      SpdxCreationInfo
+	document_namespace string           @[json: 'documentNamespace']
+	creation_info      SpdxCreationInfo @[json: 'creationInfo']
 	packages           []SpdxPackage
 }
 
@@ -57,19 +58,9 @@ struct SpdxCreationInfo {
 	creators []string
 }
 
-// spdx_id_for returns the SPDX identifier for `name`, e.g. `SPDXRef-Package-serde`.
-// A name may hold `/`, `.` or `-`, none of which are legal in an SPDX element id,
-// so anything outside the unreserved set is replaced by a dash.
-fn spdx_id_for(name string) string {
-	mut id := ''
-	for part in name.split('') {
-		id += if part in ['/', '.', ':'] {
-			'-'
-		} else {
-			part
-		}
-	}
-	return 'SPDXRef-Package-${id}'
+// spdx_id_for identifies one package version without conflating names or versions.
+fn spdx_id_for(name string, version string) string {
+	return 'SPDXRef-Package-${name.bytes().hex()}-${version.bytes().hex()}'
 }
 
 // spdx_purl is the package URL for a module version. PURL is the identifier
@@ -121,11 +112,11 @@ pub fn (r &Registry) spdx_document(namespace string, download_base string) SpdxD
 			}
 			packages << SpdxPackage{
 				name:              v.name
-				spdxid:            spdx_id_for(v.name)
+				spdxid:            spdx_id_for(v.name, v.version)
 				version_info:      v.version
 				download_location: '${download_base}/${v.name}/${v.version}.zip'
-				license_concluded: v.license
-				license_declared:  v.license
+				license_concluded: if v.license == '' { 'NOASSERTION' } else { v.license }
+				license_declared:  if v.license == '' { 'NOASSERTION' } else { v.license }
 				copyright_text:    'NOASSERTION'
 				checksums:         checksums
 				external_refs:     refs
