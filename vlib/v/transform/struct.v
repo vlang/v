@@ -1,6 +1,7 @@
 module transform
 
 import v.flat
+import v.types
 
 // transform_field_init_expr transforms transform field init expr data for transform.
 fn (mut t Transformer) transform_field_init_expr(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -136,6 +137,16 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				t.set_node_typ(int(val_id), field_type)
 			}
 			value_type := t.node_type(val_id)
+			mut numeric_field := false
+			if t.validating_generic_spec && !isnil(t.tc) {
+				expected := types.unalias_type(t.tc.parse_type(field_type))
+				numeric_field = expected.is_integer() || expected.is_float()
+			}
+			numeric_payload := if numeric_field {
+				t.or_expr_receiver_unwrapped_type(val_id) or { '' }
+			} else {
+				''
+			}
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 			fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
@@ -157,10 +168,29 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				t.wrap_sum_value(val_id, inferred_sum)
 			} else if field_type.starts_with('&') {
 				t.transform_expr_for_type(val_id, field_type)
+			} else if numeric_field {
+				// Resolve generic calls before checking their concrete result, while
+				// retaining its source type before the numeric field conversion.
+				if numeric_payload.len > 0 && !t.generic_arg_is_unresolved(numeric_payload) {
+					t.transform_expr_for_type(val_id, numeric_payload)
+				} else {
+					t.transform_expr(val_id)
+				}
 			} else if field_type.len > 0 {
 				t.transform_expr_for_type(val_id, field_type)
 			} else {
 				t.transform_expr(val_id)
+			}
+			if numeric_field {
+				actual := if numeric_payload.len > 0 && !t.generic_arg_is_unresolved(numeric_payload) {
+					numeric_payload
+				} else {
+					t.specialized_expr_type_name(new_val)
+				}
+				if actual.len > 0 && actual != 'unknown' && !t.generic_arg_is_unresolved(actual)
+					&& !t.tc.slot_value_compatible(t.tc.parse_type(actual), t.tc.parse_type(field_type)) {
+					t.tc.record_transform_error(child_id, val_node.pos, 'cannot assign to field `${field_name}`: expected `${field_type}`, not `${actual}`')
+				}
 			}
 			if !shared_interface_source && sum_field_type.len == 0 && field_type.len > 0 {
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)

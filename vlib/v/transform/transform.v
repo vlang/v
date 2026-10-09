@@ -24512,7 +24512,7 @@ fn (t &Transformer) is_value_match_or_if_operand(id flat.NodeId) bool {
 }
 
 // operand_hoists_value_branch reports whether lowering `id` as a call operand (receiver or
-// argument) can materialize a value `match`/`if` into pending_stmts — either directly, or
+// argument) can materialize a value `match`/`if`/`or` into pending_stmts — either directly, or
 // nested inside a compound expression such as an infix, cast, index, prefix, nested call or
 // composite literal (`1 + (match ...)`, `i64(match ...)`, `arr[match ...]`). The `last_branch`
 // scan uses this to detect an operand that hoists a prelude so preceding operands can be
@@ -24526,7 +24526,7 @@ fn (t &Transformer) operand_hoists_value_branch(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind in [.match_stmt, .if_expr] {
+	if node.kind in [.match_stmt, .if_expr, .or_expr] {
 		return true
 	}
 	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr] {
