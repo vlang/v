@@ -7,14 +7,20 @@ const diagnostic_v3_src = os.join_path(diagnostic_v3_dir, 'v.v')
 const diagnostic_v3_bin = os.join_path(os.temp_dir(),
 	'v3_match_and_wasm_diagnostics_${os.getpid()}')
 
+// V names the output file for us: `-o out` yields `out.exe` on Windows, so the
+// path passed to `-o` and the path that is executed are different strings.
+fn diagnostic_v3_exe() string {
+	return diagnostic_v3_bin + $if windows { '.exe' } $else { '' }
+}
+
 fn build_diagnostic_v3() string {
-	if os.is_executable(diagnostic_v3_bin) {
-		return diagnostic_v3_bin
+	if os.is_executable(diagnostic_v3_exe()) {
+		return diagnostic_v3_exe()
 	}
 	build :=
 		os.exec([diagnostic_vexe, '-gc', 'none', '-o', diagnostic_v3_bin, '${diagnostic_v3_src}'])
 	assert build.exit_code == 0, build.output
-	return diagnostic_v3_bin
+	return diagnostic_v3_exe()
 }
 
 fn test_undefined_sumtype_match_variant_stops_before_codegen() {
