@@ -1,4 +1,5 @@
 import net.http
+import time
 
 struct SetCookieTestCase {
 	cookie &http.Cookie
@@ -63,10 +64,22 @@ const write_set_cookie_tests = [
 		}
 		raw:    'cookie-6=six'
 	},
-	// SetCookieTestCase{
-	// 	cookie: &http.Cookie{name: 'cookie-7', value: 'seven', domain: '127.0.0.1'},
-	// 	raw: 'cookie-7=seven; domain=127.0.0.1'
-	// },
+	SetCookieTestCase{
+		cookie: &http.Cookie{
+			name:   'cookie-7'
+			value:  'seven'
+			domain: '127.0.0.1'
+		}
+		raw:    'cookie-7=seven; domain=127.0.0.1'
+	},
+	SetCookieTestCase{
+		cookie: &http.Cookie{
+			name:   'cookie-7b'
+			value:  'seven'
+			domain: '256.0.0.1'
+		}
+		raw:    'cookie-7b=seven'
+	},
 	SetCookieTestCase{
 		cookie: &http.Cookie{
 			name:   'cookie-8'
@@ -75,10 +88,14 @@ const write_set_cookie_tests = [
 		}
 		raw:    'cookie-8=eight'
 	},
-	// {
-	// 	cookie: &http.Cookie{name: 'cookie-9', value: 'expiring', expires: time.unix(1257894000, 0)},
-	// 	'cookie-9=expiring; Expires=Tue, 10 Nov 2009 23:00:00 GMT',
-	// },
+	SetCookieTestCase{
+		cookie: &http.Cookie{
+			name:    'cookie-9'
+			value:   'expiring'
+			expires: time.unix(1257894000)
+		}
+		raw:    'cookie-9=expiring; expires=Tue, 10 Nov 2009 23:00:00 GMT'
+	},
 	// According to IETF 6265 Section 5.1.1.5, the year cannot be less than 1601
 	// SetCookieTestCase{
 	// 	cookie: &http.Cookie{name: 'cookie-10', value: 'expiring-1601', expires: time.parse('Mon, 01 Jan 1601 01:01:01 GMT')},

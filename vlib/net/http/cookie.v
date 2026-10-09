@@ -216,17 +216,21 @@ fn valid_cookie_path_byte(b u8) bool {
 }
 
 fn valid_cookie_domain(v string) bool {
-	if is_cookie_domain_name(v) {
-		return true
+	return is_cookie_domain_name(v) || is_ipv4_literal(v)
+}
+
+fn is_ipv4_literal(s string) bool {
+	parts := s.split('.')
+	if parts.len != 4 {
+		return false
 	}
-	// TODO
-	// valid_ip := net.parse_ip(v) or {
-	// 	false
-	// }
-	// if valid_ip {
-	// 	return true
-	// }
-	return false
+	for part in parts {
+		if part.len == 0 || part.len > 3 || !part.contains_only('0123456789')
+			|| part.int() > 255 {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn is_cookie_domain_name(_s string) bool {
@@ -371,16 +375,14 @@ fn parse_cookie(line string) !Cookie {
 				c.max_age = secs
 				continue
 			}
-			// TODO: Fix this once time works better
-			// 'expires' {
-			// 	c.raw_expires = val
-			// 	mut exptime := time.parse_iso(val)
-			// 	if exptime.year == 0 {
-			// 		exptime = time.parse_iso('Mon, 02-Jan-2006 15:04:05 MST')
-			// 	}
-			// 	c.expires = exptime
-			// 	continue
-			// }
+			'expires' {
+				c.raw_expires = val
+				if exptime := time.parse_http_header_string(val) {
+					c.expires = exptime
+					continue
+				}
+				c.unparsed << parts[i]
+			}
 			'path' {
 				c.path = val
 				continue

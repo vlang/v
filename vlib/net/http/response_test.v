@@ -119,6 +119,19 @@ fn test_parse_response_with_cookies() {
 	assert response_cookie_base64[0].str().split(';')[0] == 'enctoken=${cookie_base64}'
 }
 
+fn test_parse_response_cookie_expires() {
+	content := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; Expires=Tue, 10 Nov 2009 23:00:00 GMT\r\nSet-Cookie: c=d; expires=Tue, 10-Nov-2009 23:00:00 GMT\r\nSet-Cookie: e=f; expires=bogus\r\nContent-Length: 0\r\n\r\n'
+	x := parse_response(content)!
+	cookies := x.cookies()
+	assert cookies.len == 3
+	assert cookies[0].expires.unix() == 1257894000
+	assert cookies[0].raw_expires == 'Tue, 10 Nov 2009 23:00:00 GMT'
+	assert cookies[1].expires.unix() == 1257894000
+	assert cookies[2].expires.year == 0
+	assert cookies[2].raw_expires == 'bogus'
+	assert 'expires=bogus' in cookies[2].unparsed
+}
+
 fn test_parse_response_with_weird_cookie() {
 	// weird cookies test
 	content_weird := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; ; =; aa=; =bb; cc; ==\r\nContent-Length: 3\r\n\r\nFoo'
