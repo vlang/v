@@ -192,15 +192,14 @@ fn sanitize_cookie_name(name string) string {
 // with a comma or space.
 pub fn sanitize_cookie_value(v string) string {
 	val := sanitize(valid_cookie_value_byte, v)
-	if v.len == 0 {
-		return v
+	if val.len == 0 {
+		return val
 	}
-	// Check for the existence of a space, comma or semicolon
-	if val.starts_with(' ') || v.contains(';') || val.ends_with(' ') || val.starts_with(',')
-		|| val.ends_with(',') {
-		return '"${v}"'
+	// Check for the existence of a space or comma
+	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
+		return '"${val}"'
 	}
-	return v
+	return val
 }
 
 fn sanitize_cookie_path(v string) string {

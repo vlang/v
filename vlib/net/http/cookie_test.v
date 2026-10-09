@@ -229,7 +229,21 @@ const write_set_cookie_tests = [
 			name:  'complex-value'
 			value: 'a b,c;d'
 		}
-		raw:    'complex-value="a b,c;d"'
+		raw:    'complex-value=a b,cd'
+	},
+	SetCookieTestCase{
+		cookie: &http.Cookie{
+			name:  'invalid-bytes'
+			value: ' a"b\\c;'
+		}
+		raw:    'invalid-bytes=" abc"'
+	},
+	SetCookieTestCase{
+		cookie: &http.Cookie{
+			name:  'only-invalid'
+			value: '";'
+		}
+		raw:    'only-invalid='
 	},
 ]
 const add_cookies_tests = [
