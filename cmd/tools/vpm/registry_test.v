@@ -1,6 +1,7 @@
 module main
 
 import json2
+import os
 
 fn test_new_registry_is_empty() {
 	r := new_registry()
@@ -347,6 +348,9 @@ fn test_handle_request_not_found() {
 }
 
 fn test_handle_request_config() {
+	// The key is read from the environment at request time, so it is cleared
+	// here to make the assertion about an unsigned registry deterministic.
+	os.unsetenv(registry_key_env)
 	r := new_registry()
 	result := handle_request(r, 'GET', '/config.json', map[string]string{})
 	config := json2.decode[RegistryConfig](result) or {
@@ -355,6 +359,7 @@ fn test_handle_request_config() {
 	}
 	assert config.dl != ''
 	assert config.api != ''
+	assert config.public_key == '', config.public_key
 }
 
 fn test_handle_request_search() {

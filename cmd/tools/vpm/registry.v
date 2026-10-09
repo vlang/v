@@ -471,6 +471,10 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 			dl:            'https://example.com/downloads'
 			api:           'https://example.com/api'
 			auth_required: false
+			// The signature is only checkable against the key it was made with,
+			// so a client that has never seen this registry has to be told which
+			// key that is, rather than being left to distribute it out of band.
+			public_key:    registry.public_key_hex()
 		})
 	}
 

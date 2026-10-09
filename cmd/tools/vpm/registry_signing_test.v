@@ -93,3 +93,18 @@ fn test_malformed_hex_is_rejected_rather_than_trusted() {
 	// verification must fail rather than panic.
 	assert !r.verify_signature('0'.repeat(ed25519.public_key_size * 2), '0'.repeat(ed25519.signature_size * 2)), 'an all-zero key and signature were accepted'
 }
+
+// A client that has only the served config must be able to learn which key
+// vouches for the registry, or it cannot check `signature.sig` at all and a
+// mirror is indistinguishable from the origin it copied.
+fn test_the_config_route_names_the_vouching_key() {
+	os.unsetenv('VPM_REGISTRY_KEY')
+	r := new_demo_registry()
+	vouching_public, private := ed25519.generate_key() or {
+		assert false, 'key generation failed: ${err}'
+		return
+	}
+	os.setenv('VPM_REGISTRY_KEY', private.seed().hex(), true)
+	result := handle_request(r, 'GET', '/config.json', map[string]string{})
+	assert result.contains(vouching_public.hex()), result
+}

@@ -114,6 +114,13 @@ fn vpm_registry(query []string) {
 						exit(1)
 					}
 					port = rest[i].int()
+					// Anything that is not a number parses as 0, and 0 asks the
+					// operating system for a port of its choosing: the server
+					// would then answer on one nobody named.
+					if port < 1 || port > 65535 {
+						vpm_error('`--port` needs a port number, but got `${rest[i]}`.')
+						exit(1)
+					}
 					continue
 				}
 				vpm_error('unknown `v registry serve` option `${arg}`.',
