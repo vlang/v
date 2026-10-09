@@ -69,7 +69,8 @@ The fields:
 - `/config.json` serves `dl`, `api`, `auth_required` and `public_key`. `dl` and
   `api` are the fixed strings `https://example.com/downloads` and
   `https://example.com/api`, `auth_required` is always `false`, and `public_key`
-  is always `""`.
+  is `Registry.public_key_hex()`: the registry's own key, or `""` when it holds
+  no signing key.
 - `/<module>/@v/list` returns versions sorted by semver, descending. An unknown
   module answers `200` with `[]`, not `404`.
 - `/<module>/@v/<version>.info` returns one `ModuleInfo`: name, version,
@@ -116,23 +117,27 @@ Data is stored in `os.getwd()/.vpm-registry`, from `registry_dir()` in
 The default port is 9090 (`default_registry_port`). The server binds `:9090`,
 which is every interface, although the message it prints names loopback.
 
-### The port flag does not reach the parser
+### The port flag reaches the parser
 
-Measured. `vpm_registry` looks for `--port` or `-p` in `query[1..]`, but
-`parse_query_args` in `cmd/tools/vpm/vpm.v` discards every argument beginning
-with `-` once the subcommand has been found, so no flag ever survives into
-`query`. `-p` is listed there as a value option, so its value is dropped too:
+`vpm_registry` looks for `--port` or `-p` in `query[1..]`, and `parse_query_args`
+in `cmd/tools/vpm/vpm.v` now hands it the arguments of the `registry` subcommand
+untouched. The strip it applies to every other subcommand — drop any argument
+beginning with `-`, and drop the value that follows an option that takes one —
+is right for module names and wrong here, where the only arguments are options.
+`-p` is on the shared value-option list because `v update -p <pkg>` means a
+package, so it was dropped along with its value and the port stayed at its
+default. `-m <url>` before `registry` is still skipped, so a mirror cannot be
+read as a registry argument.
 
 ```
 $ v run cmd/tools/vpm registry serve --port 9099
-error: unknown `v registry serve` option `9099`.
-
-$ v run cmd/tools/vpm registry serve -p 9099
-Serving 0 module(s) on port 9090
-Listening on http://127.0.0.1:9090
+Serving 0 module(s) on port 9099
+Listening on http://127.0.0.1:9099
 ```
 
-A non-default port cannot be selected at present.
+A value that is not a port number is refused rather than read as 0, which would
+ask the operating system for a port of its own choosing and serve on one nobody
+named.
 
 ### Environment variables
 
@@ -190,8 +195,9 @@ replacing `index.json` underneath a running server has no effect until restart.
 - An unsigned registry also reports `public_key_hex()` as `""`.
 - `verify_signature(public_key_hex, sig_hex)` is the check a client runs; it has
   no caller in the tool.
-- `/config.json` serves `public_key` as `""` even when a key is configured,
-  measured. The public key has to be distributed out of band.
+- `/config.json` serves the key as `public_key`, so a client learns which key
+  vouches for the registry from the same document that tells it where the API
+  is, rather than having to be given the key out of band.
 
 ## Caching
 
@@ -223,12 +229,13 @@ Two details:
   and `yank` and `unyank` have no caller outside the tests.
 - No code calls `publish`, and no code calls `save()`, so the tool never writes
   an index.
-- `v registry` is not routed by the `v` frontend; the server has to be started
-  through `v run cmd/tools/vpm` or from a built binary.
-- `--port` and `-p` do not reach the port parser, so the port is always 9090.
-- `config.json` returns fixed `https://example.com/...` values and
-  `auth_required: false`, is never populated from the registry's own state, and
-  no client reads it.
+- `v registry` is still not routed by the `v` frontend; the server has to be
+  started through `v run cmd/tools/vpm` or from a built binary. `registry` is
+  named in the dispatch list at `cmd/v/v.v:172`, but `find_command` at
+  `cmd/v/v.v:349` does not return it, so that dispatch is never reached.
+- `config.json` still returns fixed `https://example.com/...` values for `dl`
+  and `api` and a fixed `auth_required: false`; only `public_key` comes from the
+  registry's own state. No client reads the document.
 - `RequestOptions.body` is dead: `serve` calls `handle_request` without options,
   so no request body is routed anywhere.
 - `compute_checksum` in `registry.v` is unused; the compiler reports it as a

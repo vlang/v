@@ -123,6 +123,15 @@ fn parse_query_args(args []string, vpm_command string) []string {
 			skip_next = false
 			continue
 		}
+		// `registry` takes its own options, and the shared value-option list knows
+		// nothing about them: `-p 9090` is its port, not a package name, so neither
+		// the option nor its value may be dropped once the command is found. Every
+		// other subcommand asks for module names, where an option would be a module
+		// that cannot exist.
+		if has_found_command && vpm_command == 'registry' {
+			query << arg
+			continue
+		}
 		if arg in value_option_names {
 			skip_next = true
 			continue

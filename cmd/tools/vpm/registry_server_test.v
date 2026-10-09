@@ -154,4 +154,5 @@ fn test_the_config_route_is_reachable() {
 	rsp := http.get('${base}/config.json')!
 	assert rsp.status_code == 200
 	assert rsp.body.contains('dl'), rsp.body
+	assert rsp.body.contains('public_key'), rsp.body
 }
