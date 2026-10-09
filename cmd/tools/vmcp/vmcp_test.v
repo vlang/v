@@ -342,6 +342,43 @@ fn test_stdlib_doc_reports_an_undocumented_member() {
 	assert answer.contains('"hint"'), answer
 }
 
+fn test_page_diagnostics_keeps_the_head() {
+	items := [
+		Diagnostic{ path: 'a.v', line: 1, column: 1, kind: 'error', message: 'first' },
+		Diagnostic{ path: 'a.v', line: 2, column: 1, kind: 'error', message: 'second' },
+		Diagnostic{ path: 'a.v', line: 3, column: 1, kind: 'warning', message: 'third' },
+	]
+	kept, omitted := page_diagnostics(items, 2)
+	assert kept.len == 2 && omitted == 1, 'expected 2 kept and 1 omitted'
+	assert kept[0].message == 'first' && kept[1].message == 'second', 'the head must survive'
+	all, none_omitted := page_diagnostics(items, 0)
+	assert all.len == 3 && none_omitted == 0, 'max < 1 means the default, which fits'
+	empty, _ := page_diagnostics([]Diagnostic{}, 2)
+	assert empty.len == 0, 'empty stays empty'
+}
+
+fn test_check_json_pages_diagnostics_but_keeps_totals() {
+	ws := probe_workspace()
+	items := [
+		Diagnostic{ path: 'a.v', line: 1, column: 1, kind: 'error', message: 'first' },
+		Diagnostic{ path: 'a.v', line: 2, column: 1, kind: 'error', message: 'second' },
+		Diagnostic{ path: 'a.v', line: 3, column: 1, kind: 'warning', message: 'third' },
+	]
+	run := CompilerRun{
+		exit_code: 1
+		command:   'v -check a.v'
+	}
+	answer := check_json(ws, probe_path('main.v'), run, items, 2)
+	flat := replace_all(answer, '\t', '')
+	// Counts describe all three; only the array is paged.
+	assert field(flat, 'error_count') == '2', answer
+	assert field(flat, 'warning_count') == '1', answer
+	assert field(flat, 'diagnostics_omitted') == '1', answer
+	assert answer.contains('first'), answer
+	assert !answer.contains('third'), answer
+	assert answer.contains('"hint"'), answer
+}
+
 fn test_module_path_prefers_the_project_over_an_installed_module() {
 	root := probe_root()!
 	os.mkdir_all(os.join_path(root, 'mylib'))!
@@ -445,7 +482,7 @@ fn test_a_run_that_never_started_says_so_instead_of_reporting_an_exit_code() {
 		command:      'v check main.v'
 		launch_error: 'exec failed (SetHandleInformation): The handle is invalid.'
 	}
-	answer := check_json(ws, probe_path('main.v'), run, [])
+	answer := check_json(ws, probe_path('main.v'), run, [], 0)
 	assert answer.contains('"started":\tfalse'), answer
 	assert answer.contains('could not be started'), answer
 	// An `error_count` of zero next to a non-zero exit code would read as a clean
@@ -464,7 +501,7 @@ fn test_a_run_that_did_start_reports_its_exit_code() {
 		path: 'main.v'
 		line: 1
 		kind: 'error'
-	}])
+	}], 0)
 	assert answer.contains('"started":\ttrue'), answer
 	assert answer.contains('"exit_code":\t1'), answer
 	assert answer.contains('"error_count":\t1'), answer
@@ -500,7 +537,7 @@ fn test_a_successful_version_read_is_reported_as_a_version() {
 
 fn test_a_run_that_never_started_does_not_report_a_program_result() {
 	ws := probe_workspace()
-	answer := run_json(ws, probe_path('main.v'), ['run', 'main.v'])
+	answer := run_json(ws, probe_path('main.v'), ['run', 'main.v'], 0)
 	// On a machine where the compiler does start this is a normal run; where it
 	// does not, the answer must not claim a program ran. Either way the shape is
 	// checked: `started` is present, and it is false only with an error beside it.
