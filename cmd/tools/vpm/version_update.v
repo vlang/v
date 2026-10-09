@@ -16,6 +16,18 @@ fn project_has_ranges(manifest vmod.Manifest, dir string) bool {
 	return false
 }
 
+// project_update_source uses checkout origins only for installed module names.
+// Repository requirements retain their own identity even if a same-named
+// directory exists in the module store.
+fn project_update_source(roots []string, key string) string {
+	if key.contains('://') || is_local_repository(key) || key.starts_with('git@') {
+		return normalized_clone_source(key)
+	}
+	_, path := resolve_existing_module(roots, key) or { '', '' }
+	origin := if path == '' { '' } else { checkout_origin_url(path) }
+	return normalized_clone_source(if origin == '' { key } else { origin })
+}
+
 // project_update_changes associates a target with every direct requirement of
 // its repository before the resolver selects a version from the first alias.
 fn project_update_changes(dependencies []string, targets []string, precise string) map[string]string {
@@ -23,15 +35,11 @@ fn project_update_changes(dependencies []string, targets []string, precise strin
 	roots := module_roots()
 	for target in targets {
 		target_key := lockfile_module_key(target)
-		target_source := normalized_clone_source(target_key)
+		target_source := project_update_source(roots, target_key)
 		changes[target_key] = precise
-		_, target_path := resolve_existing_module(roots, target) or { '', '' }
 		for dependency in dependencies {
 			key := lockfile_module_key(dependency)
-			_, path := resolve_existing_module(roots, dependency) or { '', '' }
-			if key == target_key
-				|| normalized_clone_source(key) == target_source
-				|| (target_path != '' && path == target_path) {
+			if key == target_key || project_update_source(roots, key) == target_source {
 				changes[key] = precise
 			}
 		}
@@ -100,9 +108,7 @@ fn update_versioned_project(query []string) bool {
 	if settings.is_latest {
 		for i, dep in dependencies {
 			ident := lockfile_module_key(dep)
-			_, installed := resolve_existing_module(module_roots(), dep) or { '', '' }
-			name := if installed == '' { ident } else { import_path_of(installed) }
-			if targets.len == 0 || ident in changes || name in changes {
+			if targets.len == 0 || ident in changes {
 				constraint := requirement_version(dep)
 				if constraint == '' || is_version_range(constraint) || tag_satisfies_range(constraint, '*') {
 					dependencies[i] = ident + '@*'
