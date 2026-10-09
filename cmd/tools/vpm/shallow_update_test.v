@@ -139,3 +139,20 @@ fn test_shallow_local_pin_is_preserved_from_a_nested_project_folder() {
 	assert shallow_git(installed, ['rev-parse', 'HEAD']) == tagged
 	assert os.read_file(lockfile_path(app))! == before
 }
+
+fn test_shallow_manifest_pins_stay_fixed_without_a_lockfile() {
+	for field in ['dependencies', 'dev_dependencies'] {
+		case := 'manifest_' + field
+		repo := shallow_repo(case)!
+		tagged := shallow_git(repo, ['rev-parse', 'HEAD'])
+		shallow_git(repo, ['tag', 'v1.0.0'])
+		installed := shallow_install(case, repo, 'v1.0.0')
+		app := os.getwd()
+		os.write_file(os.join_path(app, 'v.mod'), "Module { name: 'pinned_app' ${field}: ['${shallow_query(repo, 'v1.0.0')}'] }\n")!
+		os.rm(lockfile_path(app)) or {}
+		shallow_commit(repo, 'main second')!
+		shallow_commit(repo, 'main third')!
+		result := cmd_ok_args(@LOCATION, [shallow_tool, 'update', 'update_pkg'])
+		assert shallow_git(installed, ['rev-parse', 'HEAD']) == tagged, result.output
+	}
+}

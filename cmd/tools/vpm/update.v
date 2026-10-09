@@ -3,6 +3,7 @@ module main
 import os
 import sync.pool
 import v.help
+import v.vmod
 
 struct UpdateSession {
 	idents []string
@@ -61,12 +62,26 @@ fn detached_project_pin(name string, path string) string {
 	if dir == '' {
 		return ''
 	}
-	request := project_request_for_module(project_constraints(), name, path)
-	if request != '' && !is_version_range(request) {
-		return request
+	origin := normalized_clone_source(checkout_origin_url(path))
+	if manifest := vmod.from_file(os.join_path(dir, 'v.mod')) {
+		mut dependencies := manifest.dependencies.clone()
+		dependencies << manifest.unknown['dev_dependencies']
+		for dependency in dependencies {
+			pin := requirement_version(dependency)
+			if pin == '' || is_version_range(pin) {
+				continue
+			}
+			key := lockfile_module_key(dependency)
+			mut source := key
+			if is_local_repository(key) && !key.starts_with('file://') && !os.is_abs_path(key) {
+				source = os.join_path(dir, key)
+			}
+			if key == name || (origin != '' && normalized_clone_source(source) == origin) {
+				return pin
+			}
+		}
 	}
 	lf := read_lockfile(dir) or { return '' }
-	origin := normalized_clone_source(checkout_origin_url(path))
 	if origin == '' {
 		return ''
 	}
