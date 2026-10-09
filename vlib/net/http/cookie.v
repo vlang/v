@@ -378,8 +378,11 @@ fn parse_cookie(line string) !Cookie {
 			'expires' {
 				c.raw_expires = val
 				if exptime := time.parse_http_header_string(val) {
-					c.expires = exptime
-					continue
+					// RFC 6265 requires cookie expiry years to be at least 1601.
+					if exptime.year >= 1601 {
+						c.expires = exptime
+						continue
+					}
 				}
 				c.unparsed << parts[i]
 			}

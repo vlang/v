@@ -281,3 +281,14 @@ fn test_write_set_cookies() {
 		assert tt.cookie.str() == tt.raw
 	}
 }
+
+fn test_cookie_ipv4_domain_boundaries() {
+	for domain in ['0.0.0.0', '127.0.0.1', '255.255.255.255'] {
+		cookie := http.Cookie{ name: 'a', value: 'b', domain: domain }
+		assert cookie.str() == 'a=b; domain=${domain}'
+	}
+	for domain in ['256.0.0.1', '127.0.0', '127.0.0.1.2', '1..2.3', '-1.2.3.4', '1234.1.1.1'] {
+		cookie := http.Cookie{ name: 'a', value: 'b', domain: domain }
+		assert cookie.str() == 'a=b'
+	}
+}
