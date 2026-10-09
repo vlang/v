@@ -6044,6 +6044,9 @@ fn main() {
 }
 ```
 
+`select` receive branches support fixed-array payloads, including fixed-array aliases, with GCC and
+Clang.
+
 The timeout branch is optional. If it is absent `select` waits for an unlimited amount of time.
 It is also possible to proceed immediately if no channel is ready in the moment `select` is called
 by adding an `else { ... }` branch. `else` and `<timeout>` are mutually exclusive.
