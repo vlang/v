@@ -9624,6 +9624,11 @@ compile time. However, in the case of a segmentation fault, the output will not 
 information, making debugging more challenging. A stack overflow (for example from unbounded
 recursion) is then also no longer reported as `V panic: stack overflow`.
 
+On Windows, V reserves exception handling stack space for the main thread and threads
+started with `spawn`. An overflow-only vectored handler writes `V panic: stack overflow` to
+stderr and terminates the process with a nonzero exit code, even with `-d no_backtrace`.
+Other exceptions continue to their existing handlers.
+
 On macOS, signal handlers installed before V starts retain precedence, including TCC's
 backtrace handlers. V reports stack overflows when the signal still has its default disposition;
 compile with `-cc clang` to use this reporter without TCC's earlier handlers.

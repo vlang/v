@@ -286,6 +286,7 @@ fn builtin_init() {
 	$if v2_native_windows_pe_minimal ? {
 		return
 	} $else {
+		install_windows_stack_overflow_handler()
 		$if gcboehm ? {
 			$if !gc_warn_on_stderr ? {
 				gc_set_warn_proc(internal_gc_warn_proc_none)
@@ -350,10 +351,9 @@ fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 			return 0
 		}
 		0xC00000FD {
-			// EXCEPTION_STACK_OVERFLOW: the filter runs on what is left of the
-			// overflowed stack, so only write the message, without a backtrace.
-			msg := c'V panic: stack overflow\n'
-			write_buf_to_fd_kernel32(2, &u8(msg), vstrlen_char(msg))
+			// The overflow-only vectored handler reports this before unwinding. If
+			// disabled, leave the depleted stack to Windows' default handling.
+			return 0
 		}
 		else {
 			eprintln('Unhandled Exception 0x' + ptr_str(e.exception_record.code) + ' at ' +

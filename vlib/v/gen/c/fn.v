@@ -4422,6 +4422,13 @@ fn (mut g FlatGen) spawn_wrapper_body(call_expr string, ret_ct string, post stri
 fn (mut g FlatGen) spawn_wrapper_body_with_pre(call_expr string, ret_ct string, user_pre string, user_post string) string {
 	mut pre := user_pre
 	mut post := user_post
+	if g.target.os == 'windows' && g.has_builtins && !g.target_libc_headers
+		&& 'no_segfault_handler' !in g.compile_defines && 'freestanding' !in g.compile_defines
+		&& 'v2_native_windows_pe_minimal' !in g.compile_defines {
+		// SetThreadStackGuarantee applies to the calling thread, so reserve space
+		// before invoking the user's spawned function as well as during main startup.
+		pre = 'v_windows_set_stack_guarantee(); ${pre}'
+	}
 	if g.uses_thread_signal_stack() {
 		// The wrapper is the first V frame of a spawned thread. Give the thread an
 		// alternate signal stack, so that the segfault handler can still report a
