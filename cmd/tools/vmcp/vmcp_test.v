@@ -379,6 +379,74 @@ fn test_check_json_pages_diagnostics_but_keeps_totals() {
 	assert answer.contains('"hint"'), answer
 }
 
+fn test_page_diagnostics_default_and_integer_bounds() {
+	mut items := []Diagnostic{}
+	for i in 0 .. max_diagnostics_default + 2 {
+		items << Diagnostic{
+			path:    'many.v'
+			line:    i + 1
+			kind:    'error'
+			message: 'diagnostic ${i}'
+		}
+	}
+	for limit in [0, -1, -2147483647 - 1] {
+		assert limit <= 0
+		kept, omitted := page_diagnostics(items, limit)
+		assert kept.len == max_diagnostics_default
+		assert omitted == 2
+		assert kept[0].message == 'diagnostic 0'
+		assert kept.last().message == 'diagnostic 99'
+	}
+	all, omitted := page_diagnostics(items, int(0x7fffffff))
+	assert all.len == items.len
+	assert omitted == 0
+}
+
+fn test_run_result_pages_diagnostics_and_reports_total_counts() {
+	ws := probe_workspace()
+	run := CompilerRun{
+		exit_code: 1
+		command:   'v run broken.v'
+		output:    'broken.v:1:1: error: first\nbroken.v:2:1: warning: second\nbroken.v:3:1: error: third\n'
+	}
+	answer := run_result_json(ws, probe_path('broken.v'), run, 1)
+	parsed := json.decode[map[string]json.Any](answer) or { panic(err) }
+	assert parsed['started']!.bool()
+	assert parsed['exit_code']!.int() == 1
+	assert !parsed['ok']!.bool()
+	assert parsed['error_count']!.int() == 2
+	assert parsed['warning_count']!.int() == 1
+	assert parsed['diagnostics_omitted']!.int() == 2
+	diagnostics := parsed['diagnostics']!.as_array()
+	assert diagnostics.len == 1
+	diagnostic := diagnostics[0].as_map()
+	assert diagnostic['message']!.str() == 'first'
+	assert parsed['output']!.str() == run.output.trim_space()
+	assert parsed['hint']!.str().contains('first 1 diagnostics')
+}
+
+fn test_run_result_without_diagnostics_or_started_child() {
+	ws := probe_workspace()
+	clean := run_result_json(ws, probe_path('main.v'), CompilerRun{
+		output: 'hello\n'
+	}, 1)
+	parsed := json.decode[map[string]json.Any](clean) or { panic(err) }
+	assert parsed['ok']!.bool()
+	assert parsed['error_count']!.int() == 0
+	assert parsed['warning_count']!.int() == 0
+	assert parsed['output']!.str() == 'hello'
+	assert 'diagnostics' !in parsed
+	assert 'hint' !in parsed
+	failed := run_result_json(ws, probe_path('main.v'), CompilerRun{
+		launch_error: 'could not launch compiler'
+	}, 1)
+	not_started := json.decode[map[string]json.Any](failed) or { panic(err) }
+	assert !not_started['started']!.bool()
+	assert 'exit_code' !in not_started
+	assert 'ok' !in not_started
+	assert 'error_count' !in not_started
+}
+
 fn test_module_path_prefers_the_project_over_an_installed_module() {
 	root := probe_root()!
 	os.mkdir_all(os.join_path(root, 'mylib'))!

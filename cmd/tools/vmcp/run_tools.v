@@ -38,7 +38,7 @@ whatever the program itself writes; it does not edit the project.',
 			}
 			'max_diagnostics': SchemaProperty{
 				kind:        'integer'
-				description: 'Maximum diagnostics to return.\nDefaults to 100; counts stay totals.'
+				description: 'Limit (100); counts stay totals.'
 			}
 		}), tool_run)
 }
@@ -104,6 +104,11 @@ fn tool_eval(ws &Workspace, arguments string) string {
 // run_json runs the compiler and renders what it produced.
 fn run_json(ws &Workspace, target string, compiler_args []string, max_diagnostics int) string {
 	run := run_compiler(ws, compiler_args)
+	return run_result_json(ws, target, run, max_diagnostics)
+}
+
+// run_result_json renders a completed run without starting another compiler.
+fn run_result_json(ws &Workspace, target string, run CompilerRun, max_diagnostics int) string {
 	mut w := astjson.Writer{}
 	w.begin_object()
 	w.key('target')
@@ -130,6 +135,10 @@ fn run_json(ws &Workspace, target string, compiler_args []string, max_diagnostic
 	w.key('output')
 	w.string(trim_output(run.output, run_output_limit))
 	items := parse_diagnostics(run.output)
+	w.key('error_count')
+	w.number(count_errors(items))
+	w.key('warning_count')
+	w.number(count_by_kind(items, 'warning'))
 	if items.len > 0 {
 		kept, omitted := page_diagnostics(items, max_diagnostics)
 		w.key_raw('diagnostics', diagnostics_json(kept))

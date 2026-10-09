@@ -24,7 +24,7 @@ nothing and writes nothing.',
 			}
 			'max_diagnostics': SchemaProperty{
 				kind:        'integer'
-				description: 'Maximum diagnostics to return.\nDefaults to 100; counts stay totals.'
+				description: 'Limit (100); counts stay totals.'
 			}
 		}), tool_check)
 }
@@ -125,7 +125,7 @@ and what the failures said. Takes the same filters as `v test`, for example a
 			}
 			'max_diagnostics': SchemaProperty{
 				kind:        'integer'
-				description: 'Maximum diagnostics to return.\nDefaults to 100; counts stay totals.'
+				description: 'Limit (100); counts stay totals.'
 			}
 		}), tool_test_run)
 }
