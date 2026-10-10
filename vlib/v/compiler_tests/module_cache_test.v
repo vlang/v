@@ -2722,11 +2722,9 @@ fn main() {
 
 fn test_cached_objects_receive_forced_include_flags() {
 	v3_bin := build_module_cache_v3()
-	root := os.join_path(os.temp_dir(), 'v3_module_cache_forced_include_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+	root := create_module_cache_shipped_project('v3_module_cache_forced_include_${os.getpid()}')
 	defer {
-		os.rmdir_all(root) or {}
+		os.rmdir_all(os.dir(os.dir(root))) or {}
 	}
 	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
 
@@ -2756,6 +2754,7 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '55'
 	first_hashes := module_cache_object_hashes(cache_dir)
+	assert first_hashes.keys().any(it.starts_with('wrapper_')), first_hashes.str()
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
@@ -7288,8 +7287,8 @@ fn main() {
 	cache_dir := os.join_path(root, 'cache')
 	first_output := os.join_path(root, 'first')
 	first :=
-		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-show-timings', '-enable-globals',
-			'-o', first_output, main_file])
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-showcc', '-show-timings',
+			'-enable-globals', '-o', first_output, main_file])
 	assert first.exit_code == 0, first.output
 	assert first.output.contains('> cc '), first.output
 	assert !first.output.contains('tcc.exe'), first.output
@@ -7297,8 +7296,8 @@ fn main() {
 
 	second_output := os.join_path(root, 'second')
 	second :=
-		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-show-timings', '-enable-globals',
-			'-o', second_output, main_file])
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-showcc', '-show-timings',
+			'-enable-globals', '-o', second_output, main_file])
 	assert second.exit_code == 0, second.output
 	assert second.output.contains('> cc '), second.output
 	assert !second.output.contains('tcc.exe'), second.output
