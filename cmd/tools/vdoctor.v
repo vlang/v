@@ -6,9 +6,8 @@ import runtime
 
 // compiled_vroot is the V root folder that the compiler resolved, when it compiled this tool:
 // `builtin`, `os` and the other modules in this executable come from its `vlib` folder.
-// The compiler picks that root by the location of the compiled sources, then by the working
-// folder, and uses the root that it was built in otherwise. It does not look at the folder
-// of its own executable, so the two can be different checkouts.
+// Root selection depends on the compiler mode: source/cwd resolution and the macOS
+// dispatcher's executable/built-in root can select different checkouts.
 const compiled_vroot = @VEXEROOT
 
 struct App {
@@ -132,7 +131,7 @@ fn (mut a App) collect_info() {
 	a.line2('Current working dir', diagnose_dir(getwd), getwd)
 	cwd_vroot := vroot_of(getwd)
 	if cwd_vroot != '' && !is_same_dir(cwd_vroot, compiled_vroot) {
-		// The sources of another V checkout are compiled with the `vlib` of that checkout.
+		// Also inspect a checkout that source/cwd module resolution can select.
 		a.report_vlib('cwd', vroot, cwd_vroot, vcurrent_hash())
 	}
 	a.line('', '')
@@ -345,7 +344,8 @@ fn (mut a App) report_vlib(label string, vexe_dir string, vlib_root string, buil
 
 // vroot_of returns the V root folder that `dir` is in: the nearest folder upwards that has
 // `vlib/builtin`. It returns '' when there is none. The compiler finds the `vlib` for the
-// sources that it compiles the same way, see `nearest_vroot_for_path` in `v.driver`.
+// sources that it compiles this way in source/cwd resolution modes; the macOS dispatcher
+// can instead retain the invoking compiler's root. See `nearest_vroot_for_path` in `v.driver`.
 fn vroot_of(dir string) string {
 	mut current := os.real_path(dir)
 	for _ in 0 .. 8 {
@@ -361,8 +361,8 @@ fn vroot_of(dir string) string {
 }
 
 // diagnose_vlib_dir tells whether `vlib_root`, the V root folder whose `vlib` the compiler
-// uses, is the folder of the V executable. A copied or moved executable keeps using the
-// `vlib` of the checkout that it was built in.
+// uses, is the folder of the V executable. A copied or moved executable can use
+// the `vlib` of the checkout that it was built in.
 fn diagnose_vlib_dir(vlib_root string, vexe_dir string) string {
 	if is_same_dir(vlib_root, vexe_dir) {
 		return 'OK'
