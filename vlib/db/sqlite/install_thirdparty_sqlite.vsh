@@ -12,21 +12,15 @@ fn should_be_ok(http_status_code int, msg string) {
 fn main() {
 	os.chdir(@VEXEROOT)!
 
-	download_page_url := 'https://sqlite.org/download.html'
-	println('> Getting ${download_page_url} ...')
-	download_page := http.get(download_page_url)!
-	should_be_ok(download_page.status_code, 'The download page of SQLite is not available now.')
-
-	dlines := download_page.body.split_into_lines()
-	amalgamation_csv := dlines.filter(|line| line.starts_with('PRODUCT,')
-		&& line.contains('amalgamation'))[0].split(',')
-	assert amalgamation_csv.len >= 4
-
-	version := amalgamation_csv[1]
-	zip_name := os.file_name(amalgamation_csv[2])
-	zip_url := 'https://sqlite.org/${amalgamation_csv[2]}'
-	url_size := amalgamation_csv[3].int()
-	url_sha3 := amalgamation_csv[4]
+	// The amalgamation is pinned, not taken as the newest one from sqlite.org:
+	// SQLite 3.54.0 uses SRWLOCK in its Windows mutex code, and the tcc Windows
+	// headers do not declare it, so `v -cc tcc` cannot build that version.
+	// Move the pin forward only after tcc builds the new amalgamation.
+	version := '3.53.4'
+	zip_name := 'sqlite-amalgamation-3530400.zip'
+	zip_url := 'https://sqlite.org/2026/${zip_name}'
+	url_size := 2946650
+	url_sha3 := '628a44cfe82c66aed1ccbbe85a562d2e33ebe64b3288981ed76285612227934e'
 	println('> Getting SQLite amalgamation version: ${version}')
 	println('>           from url: ${zip_url}')
 	println('>      expected size: ${url_size}')
