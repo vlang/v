@@ -874,6 +874,8 @@ pub:
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
+// The files of each directory come in the order of `os.ls`, which is not sorted and differs
+// between platforms and filesystems. Call `.sort()` on the result when a stable order is needed.
 // For listing only one level deep, see: `os.ls`
 pub fn walk_ext(path string, ext string, opts WalkParams) []string {
 	mut res := []string{}
@@ -902,6 +904,8 @@ fn impl_walk_ext(path string, ext string, mut out []string, opts WalkParams) {
 
 // walk traverses the given directory `path`.
 // When a file is encountered, it will call the callback `f` with current file as argument.
+// The entries of each directory are visited in the order of `os.ls`, which is not sorted and
+// differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
@@ -1063,6 +1067,8 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // For each encountered file *and* directory, it will call your `fcb` callback,
 // passing it the arbitrary `context` in its first parameter,
 // and the path to the file in its second parameter.
+// The entries of each directory are visited in the order of `os.ls`, which is not sorted and
+// differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
 // Note: walk_with_context can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
