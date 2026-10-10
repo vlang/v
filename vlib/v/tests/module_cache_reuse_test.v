@@ -611,6 +611,60 @@ fn test_ambient_c_flags_keep_a_usecache_build_out_of_the_module_cache() {
 	assert module_objects(root) == published
 }
 
+fn test_cached_constant_initializers_do_not_collide_with_user_functions() {
+	$if windows {
+		return
+	}
+	for flags in [['-cc', 'cc'], ['-cc', 'tcc', '-usecache']] {
+		root := new_project('module_cache_const_init_names_${flags[1]}')
+		mut saved := pin_module_cache(os.join_path(root, 'cache'))
+		saved << save_env('VMODULES')
+		os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+		defer {
+			for env in saved { env.restore() }
+			os.rmdir_all(root) or {}
+		}
+		os.mkdir_all(os.join_path(root, 'modules', 'cacheinit'))!
+		os.write_file(os.join_path(root, 'modules', 'cacheinit', 'cacheinit.v'), 'module cacheinit
+pub const answer = make_answer()
+fn make_answer() int {
+	println("const initialized")
+	return 42
+}
+pub fn v3_init_consts() int { return answer - 1 }
+pub fn v3_init_consts_defaults() int { return answer }
+')!
+		os.mkdir_all(os.join_path(root, 'modules', 'cachevoid'))!
+		os.write_file(os.join_path(root, 'modules', 'cachevoid', 'cachevoid.v'), 'module cachevoid
+pub fn v3_init_consts() { println("user const function") }
+pub fn v3_init_consts_defaults() { println("user defaults function") }
+')!
+		main_file := os.join_path(root, 'main.v')
+		program := 'import cacheinit
+import cachevoid
+fn main() {
+	assert cacheinit.answer == 42
+	assert cacheinit.v3_init_consts() == 41
+	assert cacheinit.v3_init_consts_defaults() == 42
+	cachevoid.v3_init_consts()
+	cachevoid.v3_init_consts_defaults()
+}
+'
+		expected := 'const initialized\nuser const function\nuser defaults function'
+		os.write_file(main_file, program)!
+		cold := build(root, flags, main_file, 'cold')
+		assert run_built(root, 'cold') == expected
+		published := module_objects(root)
+		assert published.filter(os.file_name(it).starts_with('cacheinit_')).len == 1, cold
+		assert published.filter(os.file_name(it).starts_with('cachevoid_')).len == 1, cold
+		os.write_file(main_file, program + '\nfn added() {}\n')!
+		warm := build(root, flags, main_file, 'warm')
+		assert_reused_modules(warm)
+		assert module_objects(root) == published
+		assert run_built(root, 'warm') == expected
+	}
+}
+
 fn test_cached_constants_keep_storage_and_dependency_initialization_in_their_modules() {
 	$if windows {
 		return

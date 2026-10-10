@@ -480,7 +480,8 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[s
 }
 
 fn (g &FlatGen) cache_const_init_name(owner string) string {
-	return '${g.cname(owner)}__v3_init_consts'
+	// Keep both helpers outside the module-qualified namespace of user functions.
+	return '__v3_cache_${g.cname(owner)}__init_consts'
 }
 
 fn (mut g FlatGen) emit_cache_const_init_declarations() {
