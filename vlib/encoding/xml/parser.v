@@ -43,12 +43,21 @@ fn parse_attributes(attribute_contents string) !map[string]string {
 
 	mut state := AttributeParserState.key
 	mut key_span, mut value_span := TextSpan{}, TextSpan{}
+	mut key := ''
+	// The quote that opened the current value. Only the same one closes it: the other kind is a
+	// part of the value.
+	mut quote := u8(0)
 
 	for index, ch in attribute_contents {
 		match state {
 			.key {
 				match ch {
 					`=` {
+						// Only one name can stand in front of a "=". Another one before it has no value.
+						key = attribute_contents[key_span.start..key_span.end].trim_space()
+						if key.contains_any(' \t\r\n') {
+							return valueless_attribute_error(key, attribute_contents)
+						}
 						state = AttributeParserState.eq
 					}
 					else {
@@ -64,6 +73,7 @@ fn parse_attributes(attribute_contents string) !map[string]string {
 					`'`, `"` {
 						state = AttributeParserState.value
 						value_span.start = index + 1
+						quote = ch
 					}
 					else {
 						return error('Invalid character in attribute string: "${attribute_contents}"')
@@ -72,10 +82,10 @@ fn parse_attributes(attribute_contents string) !map[string]string {
 			}
 			.value {
 				match ch {
-					`'`, `"` {
+					quote {
 						state = AttributeParserState.key
 						value_span.end = index
-						attributes[attribute_contents[key_span.start..key_span.end].trim_space()] = attribute_contents[value_span.start..value_span.end]
+						attributes[key] = attribute_contents[value_span.start..value_span.end]
 
 						key_span.start = index + 1
 						key_span.end = index + 1
@@ -89,7 +99,23 @@ fn parse_attributes(attribute_contents string) !map[string]string {
 		}
 	}
 
+	if state == .key && key_span.end > key_span.start {
+		// A name after the last value has no value either.
+		key = attribute_contents[key_span.start..key_span.end].trim_space()
+		if key != '' {
+			return valueless_attribute_error(key, attribute_contents)
+		}
+	}
+
 	return attributes
+}
+
+// valueless_attribute_error names the first attribute in `names`, which is not followed by a "=".
+// XML has no attributes without a value, and such a name would otherwise be merged into the key of
+// the next attribute.
+fn valueless_attribute_error(names string, attribute_contents string) IError {
+	name := names.split_any(' \t\r\n')[0]
+	return error('Attribute "${name}" has no value in attribute string: "${attribute_contents}"')
 }
 
 fn parse_comment(mut reader io.Reader) !XMLComment {
@@ -329,7 +355,9 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 
 	ch = next_char(mut reader, mut local_buf)!
 	if ch != `?` {
-		return Prolog{}, ch
+		// There is no XML declaration. Comments and a DOCTYPE can still come before the root node.
+		defaults := Prolog{}
+		return parse_prolog_misc(defaults.version, defaults.encoding, ch, mut reader)
 	}
 
 	ch = next_char(mut reader, mut local_buf)!
@@ -388,60 +416,65 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	version := attributes['version'] or { return error('XML declaration missing version.') }
 	encoding := attributes['encoding'] or { 'UTF-8' }
 
+	ch = next_tag_char(mut reader, mut local_buf)!
+	return parse_prolog_misc(version, encoding, ch, mut reader)
+}
+
+// next_tag_char skips to the next "<" and returns the character after it.
+fn next_tag_char(mut reader io.Reader, mut buf []u8) !u8 {
+	mut ch := next_char(mut reader, mut buf)!
+	for ch != `<` {
+		ch = next_char(mut reader, mut buf)!
+	}
+	return next_char(mut reader, mut buf)!
+}
+
+// parse_prolog_misc parses the comments and the DOCTYPE that can stand before the root node, with or
+// without an XML declaration in front of them. `first_char` is the character after the last "<"
+// that was read. The character returned with the prolog is the first one of the root node's tag.
+fn parse_prolog_misc(version string, encoding string, first_char u8, mut reader io.Reader) !(Prolog, u8) {
+	mut local_buf := [u8(0)]
+	mut ch := first_char
 	mut comments := []XMLComment{}
 	mut doctype := DocumentType{
 		name: ''
 		dtd:  ''
 	}
 	mut found_doctype := false
-	for {
-		ch = next_char(mut reader, mut local_buf)!
-		match ch {
-			` `, `\t`, `\n` {
-				continue
-			}
-			`<` {
-				// We have a comment, DOCTYPE, or root node
-				ch = next_char(mut reader, mut local_buf)!
-				match ch {
-					`!` {
-						// A comment or DOCTYPE
-						match next_char(mut reader, mut local_buf)! {
-							`-` {
-								// A comment
-								if next_char(mut reader, mut local_buf)! != `-` {
-									return error('Invalid comment.')
-								}
-								comments << parse_comment(mut reader)!
-							}
-							`D` {
-								if found_doctype {
-									return error('Duplicate DOCTYPE declaration.')
-								}
-								// <!D -> OCTYPE
-								mut doc_buf := []u8{len: 6}
-								if reader.read(mut doc_buf)! != 6 {
-									return error('Invalid DOCTYPE.')
-								}
-								if doc_buf != doctype_chars {
-									return error('Invalid DOCTYPE.')
-								}
-								found_doctype = true
-								doctype = parse_doctype(mut reader)!
-							}
-							else {
-								return error('Unsupported control sequence found in prolog.')
-							}
-						}
-					}
-					else {
-						// We have found the start of the root node
-						break
-					}
+	// "<!" starts a comment or a DOCTYPE. Anything else is the start of the root node.
+	for ch == `!` {
+		match next_char(mut reader, mut local_buf)! {
+			`-` {
+				// A comment
+				if next_char(mut reader, mut local_buf)! != `-` {
+					return error('Invalid comment.')
+				}
+				comments << parse_comment(mut reader) or {
+					return eof_error(err, 'XML Comment not closed.')
 				}
 			}
-			else {}
+			`D` {
+				if found_doctype {
+					return error('Duplicate DOCTYPE declaration.')
+				}
+				// <!D -> OCTYPE
+				mut doc_buf := []u8{len: 6}
+				if reader.read(mut doc_buf)! != 6 {
+					return error('Invalid DOCTYPE.')
+				}
+				if doc_buf != doctype_chars {
+					return error('Invalid DOCTYPE.')
+				}
+				found_doctype = true
+				doctype = parse_doctype(mut reader) or {
+					return eof_error(err, 'DOCTYPE declaration not closed.')
+				}
+			}
+			else {
+				return error('Unsupported control sequence found in prolog.')
+			}
 		}
+		ch = next_tag_char(mut reader, mut local_buf)!
 	}
 
 	return Prolog{
@@ -462,6 +495,12 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 		ch := next_char(mut reader, mut local_buf)!
 		match ch {
 			`<` {
+				// Any markup ends the text in front of it. Adding that text now keeps the children
+				// in document order, whether a node, a comment or a CDATA section follows.
+				text := inner_contents.str().trim_space()
+				if text.len > 0 {
+					children << text.replace('\r\n', '\n')
+				}
 				second_char := next_char(mut reader, mut local_buf)!
 				match second_char {
 					`!` {
@@ -472,7 +511,9 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 						}
 						if next_two == double_dash {
 							// Comment
-							comment := parse_comment(mut reader)!
+							comment := parse_comment(mut reader) or {
+								return eof_error(err, 'XML Comment not closed.')
+							}
 							children << comment
 						} else if next_two == c_tag {
 							// <![CDATA -> DATA
@@ -483,7 +524,9 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 							if cdata_buf != data_chars {
 								return error('Invalid XML. Expected "CDATA" after "<![C".')
 							}
-							cdata := parse_cdata(mut reader)!
+							cdata := parse_cdata(mut reader) or {
+								return eof_error(err, 'CDATA section not closed.')
+							}
 							children << cdata
 						} else {
 							return error('Invalid XML. Unknown control sequence: ${next_two.bytestr()}')
@@ -503,11 +546,6 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 							return error('XML node <${name}> not closed.')
 						}
 
-						collected_contents := inner_contents.str().trim_space()
-						if collected_contents.len > 0 {
-							// We have some inner text
-							children << collected_contents.replace('\r\n', '\n')
-						}
 						return XMLNode{
 							name:       name
 							attributes: attributes
@@ -522,10 +560,6 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 							} else {
 								return err
 							}
-						}
-						text := inner_contents.str().trim_space()
-						if text.len > 0 {
-							children << text.replace('\r\n', '\n')
 						}
 						children << child
 					}
@@ -545,22 +579,30 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 // opposed to the recommended static functions makes it easier to parse smaller nodes in extremely large
 // XML documents without running out of memory.
 pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
+	if first_char == `?` {
+		// "<?" starts a processing instruction, which the document tree has no node for.
+		return error('XML processing instructions are not supported.')
+	}
 	mut contents := strings.new_builder(default_string_builder_cap)
-	contents.write_u8(first_char)
 
 	mut local_buf := [u8(0)]
-	for {
-		mut ch := next_char(mut reader, mut local_buf)!
-		if ch == `>` {
-			break
-		}
+	// The first character can already be the one that closes the tag, as in "<>".
+	mut ch := first_char
+	for ch != `>` {
 		contents.write_u8(ch)
+		ch = next_char(mut reader, mut local_buf) or {
+			return eof_error(err, 'XML tag not closed. Expected ">".')
+		}
 	}
 
 	tag_contents := contents.str().trim_space()
 
 	parts := tag_contents.split_any(' \t\r\n')
-	name := parts[0].trim_right('/')
+	// An empty tag, like "<>" or "< >", has no parts.
+	name := if parts.len > 0 { parts[0].trim_right('/') } else { '' }
+	if name == '' {
+		return error('XML node is missing name.')
+	}
 
 	// Check if it is a self-closing tag
 	if tag_contents.ends_with('/') {
@@ -574,7 +616,9 @@ pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	attribute_string := tag_contents[name.len..].trim_space()
 	attributes := parse_attributes(attribute_string)!
 
-	return parse_children(name, attributes, mut reader)
+	return parse_children(name, attributes, mut reader) or {
+		return eof_error(err, 'XML node <${name}> not closed.')
+	}
 }
 
 // XMLDocument.from_string parses an XML document from a string.
@@ -598,11 +642,7 @@ pub fn XMLDocument.from_file(path string) !XMLDocument {
 // an XML document from any arbitrary source that implements that io.Reader interface.
 pub fn XMLDocument.from_reader(mut reader io.Reader) !XMLDocument {
 	prolog, first_char := parse_prolog(mut reader) or {
-		if err is os.Eof || err is io.Eof || err.msg() == 'Unexpected End Of File.' {
-			return error('XML document is empty.')
-		} else {
-			return err
-		}
+		return eof_error(err, 'XML document is empty.')
 	}
 
 	root := parse_single_node(first_char, mut reader)!
