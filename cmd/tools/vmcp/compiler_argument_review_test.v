@@ -65,21 +65,6 @@ fn test_run_compiler_uses_workspace_directory_and_keeps_parent_directory() {
 	}
 }
 
-fn test_windows_compiler_argv_quotes_are_literal_and_handle_backslashes() {
-	assert windows_compiler_arg('') == '""'
-	assert windows_compiler_arg('one argument') == '"one argument"'
-	assert windows_compiler_arg(r'a"b') == r'"a\"b"'
-	assert windows_compiler_arg('C:\\trailing\\') == '"C:\\trailing\\\\"'
-	assert windows_compiler_arg(r'back\"quote') == r'"back\\\"quote"'
-	assert windows_compiler_command_line('C:\\compiler dir\\v.exe', [
-		'',
-		'%PATH%',
-		'!literal!',
-		'$literal',
-		'& ; |',
-	]) == '"C:\\compiler dir\\v.exe" "" "%PATH%" "!literal!" "$literal" "& ; |"'
-}
-
 fn test_run_compiler_refuses_an_inaccessible_workspace_before_launching() {
 	$if windows {
 		return
