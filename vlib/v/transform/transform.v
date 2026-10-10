@@ -24932,6 +24932,14 @@ fn (mut t Transformer) transform_array_literal(id flat.NodeId, node flat.Node) f
 			return lowered
 		}
 	}
+	// Inferred anonymous elements acquire their nominal type in the shared
+	// materialization prepass. Publish the resolved container type as well;
+	// the checker annotation can still describe its earlier `struct` placeholder.
+	resolved_array_type := t.node_type(id)
+	if resolved_array_type.starts_with('[]') && !t.generic_arg_is_unresolved(resolved_array_type)
+		&& t.generic_arg_is_unresolved(node.typ) {
+		t.set_node_typ(int(id), resolved_array_type)
+	}
 	lowered := t.lower_array_literal_to_runtime(id, node)
 	if lowered != id {
 		return lowered
@@ -26968,7 +26976,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 		// before the transformer has installed the new local binding (`copy := ...`).
 		if lhs_semantic_type := t.tc.expr_type(t.a.child(node, 0)) {
 			lhs_type := t.tc.type_name(lhs_semantic_type)
-			if decl_type_is_usable(lhs_type) {
+			if decl_type_is_usable(lhs_type) && !t.generic_arg_is_unresolved(lhs_type) {
 				// The declaration type can intentionally differ from the visible
 				// smartcast of the rhs after an exiting guard or assertion.
 				return lhs_type
@@ -27003,7 +27011,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 			return rhs_authority
 		}
 	}
-	if decl_type_is_usable(node.typ) {
+	if decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
 		return node.typ
 	}
 	if node.children_count >= 2 {
