@@ -622,8 +622,8 @@ struct H3ContentLengthCase {
 // malformed (RFC 9110 §8.6: Content-Length = 1*DIGIT; RFC 9114 §4.1.2) -- it
 // must not be silently ignored, which would skip the body-length check
 // entirely. Each case asserts its OWN reason, so a later check cannot mask a
-// removed earlier one: strconv.parse_uint alone rejects 'abc' too, but accepts
-// '1_0' as 10, so the digits-only guard must be what rejects these.
+// removed earlier one: strconv.parse_uint alone rejects 'abc' and '1_0' too,
+// but as out of range, so the digits-only guard must be what rejects these.
 fn test_wait_response_rejects_malformed_or_conflicting_content_length() {
 	cases := [
 		H3ContentLengthCase{['abc'], 'invalid content-length'},
