@@ -12588,7 +12588,10 @@ pub fn run(args []string) {
 			program_used_fns = clone_string_bool_map(used_fns)
 		}
 		if cache_state.manager.enabled && !generic_cache_hit {
-			if building_v && current_parallel_transform {
+			// Cached library bodies can introduce the first generic call even when
+			// the compiler-build entry point has none. Detect that before deciding
+			// whether the specialization pass is needed.
+			if building_v && current_parallel_transform && uses_generics {
 				used_fns = markused.mark_used_for_cache_without_generic_detection(a, markused_tc, test_files, cache_state.source_body_modules)
 			} else {
 				mut cache_uses_generics := false
