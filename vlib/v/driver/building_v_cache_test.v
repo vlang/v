@@ -3,6 +3,26 @@ module driver
 import os
 
 fn test_building_v_discovers_generic_calls_in_cold_cached_library_bodies() {
+	// The module cache requires the platform cc, rather than another C compiler.
+	os.find_abs_path_of_executable('cc') or {
+		eprintln('SKIP: the compiler-build module cache regression requires cc')
+		return
+	}
+	keys := ['VFLAGS', 'VOSARGS', 'V3_CACHE_FORCE_SOURCE']
+	mut previous_environment := map[string]string{}
+	for key in keys {
+		if value := os.getenv_opt(key) { previous_environment[key] = value }
+		os.unsetenv(key)
+	}
+	defer {
+		for key in keys {
+			if value := previous_environment[key] {
+				os.setenv(key, value, true)
+			} else {
+				os.unsetenv(key)
+			}
+		}
+	}
 	root := os.join_path(os.vtmp_dir(), 'building_v_cache_generics_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
