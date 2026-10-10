@@ -145,6 +145,28 @@ find . -type f -print | LC_ALL=C sort | sed 's#^./##' | \
   zip -0 -X /path/to/v/vlib/time/tzdata/zoneinfo.zip -@
 ```
 
+`time.parse_duration(s)` parses a string such as `1h30m`, `-1.5s` or `300ms` into a
+`time.Duration`. The format is the one of Go's `time.ParseDuration`: an optional sign,
+followed by one or more decimal numbers, each with an optional fraction and a unit. The
+units are `ns`, `us` (or `µs`), `ms`, `s`, `m` and `h`; only `0` can be written without one.
+A string that is not a duration, a number without a unit, an unknown unit such as `d`, and
+a duration that does not fit in the `i64` range of nanoseconds are reported as errors:
+
+```v
+import time
+
+timeout := time.parse_duration('1h30m')!
+assert timeout == 90 * time.minute
+assert time.parse_duration('-1.5s')! == -1500 * time.millisecond
+assert time.parse_duration('2h45m30.5s')!.seconds() == 9930.5
+
+time.parse_duration('5') or { assert err.msg() == 'missing unit in duration: "5"' }
+time.parse_duration('1d') or { assert err.msg() == 'unknown unit "d" in duration: "1d"' }
+```
+
+`Duration.str()` is meant for display. For a minute or more it writes forms such as
+`1:30:00`, which are not duration strings, so `parse_duration` does not read them back.
+
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
 executed other tasks. [See](https://play.vlang.io/?query=f6c008bc34):
