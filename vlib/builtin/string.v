@@ -1414,10 +1414,13 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 }
 
 // index_ returns the position of the first character of the input string.
-// It will return `-1` if the input string can't be found.
+// It will return `-1` if the input string can't be found, or `0` for an empty input string.
 @[direct_array_access]
 pub fn (s string) index_(p string) int {
-	if p.len > s.len || p.len == 0 || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
+	if p.len == 0 {
+		return 0
+	}
+	if p.len > s.len || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
 		return -1
 	}
 	if p.len > max_direct_index_needle_len {
@@ -1448,6 +1451,7 @@ const max_direct_index_needle_len = 16
 
 // index returns the position of the first character of the first occurrence of the `needle` string in `s`.
 // It will return `none` if the `needle` string can't be found in `s`.
+// An empty needle is found at position `0`, including in an empty `s`.
 pub fn (s string) index(p string) ?int {
 	idx := s.index_(p)
 	if idx == -1 {
@@ -1457,6 +1461,7 @@ pub fn (s string) index(p string) ?int {
 }
 
 // last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+// An empty needle is found at position `s.len`, including in an empty `s`.
 @[inline]
 pub fn (s string) last_index(needle string) ?int {
 	idx := s.index_last_(needle)
@@ -1528,7 +1533,10 @@ pub fn (s string) index_any(chars string) int {
 // index_last_ returns the position of the last occurrence of the given string `p` in `s`.
 @[direct_array_access]
 fn (s string) index_last_(p string) int {
-	if p.len > s.len || p.len == 0 {
+	if p.len == 0 {
+		return s.len
+	}
+	if p.len > s.len {
 		return -1
 	}
 	mut i := s.len - p.len
@@ -1949,7 +1957,7 @@ pub fn (s string) is_title() bool {
 // Example: assert 'hey [man] how you doin'.find_between('[', ']') == 'man'
 pub fn (s string) find_between(start string, end string) string {
 	start_pos := s.index_(start)
-	if start_pos == -1 {
+	if start_pos == -1 || start.len == 0 {
 		return ''
 	}
 	// First get everything to the right of 'start'
@@ -2534,7 +2542,7 @@ pub fn (s &string) free() {
 // TODO: deprecate and remove either .before or .all_before
 pub fn (s string) before(sub string) string {
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[..pos]
@@ -2547,7 +2555,7 @@ pub fn (s string) before(sub string) string {
 pub fn (s string) all_before(sub string) string {
 	// TODO: remove dup method
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[..pos]
@@ -2559,7 +2567,7 @@ pub fn (s string) all_before(sub string) string {
 // Example: assert 'abcd'.all_before_last('.') == 'abcd'
 pub fn (s string) all_before_last(sub string) string {
 	pos := s.index_last_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[..pos]
@@ -2571,7 +2579,7 @@ pub fn (s string) all_before_last(sub string) string {
 // Example: assert 'abcd'.all_after('z') == 'abcd'
 pub fn (s string) all_after(sub string) string {
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[pos + sub.len..]
@@ -2583,7 +2591,7 @@ pub fn (s string) all_after(sub string) string {
 // Example: assert 'abcd'.all_after_last('z') == 'abcd'
 pub fn (s string) all_after_last(sub string) string {
 	pos := s.index_last_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[pos + sub.len..]
@@ -2595,7 +2603,7 @@ pub fn (s string) all_after_last(sub string) string {
 // Example: assert 'abcd'.all_after_first('z') == 'abcd'
 pub fn (s string) all_after_first(sub string) string {
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[pos + sub.len..]
