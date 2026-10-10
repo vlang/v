@@ -14,14 +14,28 @@ fn module_cache_v3_bin_path() string {
 	return os.join_path(os.temp_dir(), 'v3_module_cache_test_${os.getpid()}')
 }
 
+fn module_cache_vtmp_path() string {
+	return os.join_path(os.temp_dir(), 'v3_module_cache_vtmp_${os.getpid()}')
+}
+
+fn cleanup_module_cache_compiler() {
+	v3_bin := module_cache_v3_bin_path()
+	os.rm(v3_bin) or {}
+	os.rm(v3_bin + '.c') or {}
+}
+
 fn testsuite_begin() {
-	vtmp := os.join_path(os.temp_dir(), 'v3_module_cache_vtmp_${os.getpid()}')
+	vtmp := module_cache_vtmp_path()
 	os.rmdir_all(vtmp) or {}
 	os.mkdir_all(vtmp) or { panic(err) }
 	os.setenv('VTMP', vtmp, true)
-	v3_bin := module_cache_v3_bin_path()
-	os.rm(v3_bin) or {}
+	cleanup_module_cache_compiler()
 	_ = build_module_cache_v3()
+}
+
+fn testsuite_end() {
+	cleanup_module_cache_compiler()
+	os.rmdir_all(module_cache_vtmp_path()) or {}
 }
 
 fn build_module_cache_v3() string {
