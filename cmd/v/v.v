@@ -713,6 +713,8 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
+	// A source retry's private marker must not reach the compatibility compiler.
+	os.unsetenv('V3_INTERNAL_CACHE_FORCE_SOURCE')
 	mut launch_args := v1_fallback_args(args)
 	_, launched_command := find_command(args)
 	if launched_command == 'build-module' {

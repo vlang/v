@@ -97,6 +97,15 @@ prunes stale builds while retaining fresh builds for other flags and checkouts.
 Pruning accepts only regular metadata files opened without following symbolic
 links. On Unix, it also checks ownership before reading another cache entry.
 
+Cached C builds preserve dependencies of reused modules and regenerate declarations
+and literals needed by changed program code, including fixed-array map keys.
+Warm `v run` builds retain shared and newly introduced string literals without
+duplicate C definitions.
+Programs using runtime `v.reflection` reparse original declarations to preserve
+source-file metadata while reusing eligible cached objects.
+Retries that reparse cached module sources preserve caller values for `V3_CACHE_FORCE_SOURCE`
+at compile time and when running the program.
+
 The standard bootstrap does not build the sibling `v1_fallback` executable
 (`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
 sibling is missing, it reports that it is running `make v1`. That target reuses

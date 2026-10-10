@@ -6444,6 +6444,9 @@ fn (mut g FlatGen) register_fixed_array_map_key_type(typ types.Type) {
 fn (mut g FlatGen) fixed_array_map_key_forward_decls() {
 	for name, _ in g.fixed_array_map_key_types {
 		base := '${name}_map_key'
+		if g.cached_support_identifiers['${base}_hash'] {
+			continue
+		}
 		g.writeln('static u64 ${base}_hash(void* pkey);')
 		g.writeln('static bool ${base}_eq(void* a, void* b);')
 		g.writeln('static void ${base}_clone(void* dest, void* pkey);')
@@ -6458,6 +6461,9 @@ fn (mut g FlatGen) fixed_array_map_key_definitions() {
 	for name, info in g.fixed_array_map_key_types {
 		length := g.tc.fixed_array_len_value(info) or { info.len }
 		base := '${name}_map_key'
+		if g.cached_support_identifiers['${base}_hash'] {
+			continue
+		}
 		g.writeln('static u64 ${base}_hash(void* pkey) {')
 		g.writeln('\t${name}* key = (${name}*)pkey;')
 		g.writeln('\tu64 hash = 0;')

@@ -2488,7 +2488,7 @@ pub fn prune_unreferenced_static_string_definitions(prefix string) string {
 pub fn static_string_definitions(source string) string {
 	mut out := strings.new_builder(4096)
 	for line in source.split_into_lines() {
-		if line.starts_with('static string _v3_lit_') {
+		if _ := generated_static_string_definition_symbol(line) {
 			out.writeln(line)
 		}
 	}
@@ -2498,8 +2498,9 @@ pub fn static_string_definitions(source string) string {
 // without_duplicate_static_string_definitions removes literal storage already
 // supplied by an earlier cached C prefix while retaining new body-only literals.
 pub fn without_duplicate_static_string_definitions(source string, existing_source string) string {
-	if !source.contains('static string _v3_lit_')
-		|| !existing_source.contains('static string _v3_lit_') {
+	if !(source.contains('static string _v3_lit_') || source.contains('static const string _v3_lit_'))
+		|| !(existing_source.contains('static string _v3_lit_')
+			|| existing_source.contains('static const string _v3_lit_')) {
 		return source.clone()
 	}
 	mut existing := map[string]bool{}
@@ -2562,7 +2563,11 @@ pub fn materialize_cached_body_string_definitions(source string) string {
 
 fn generated_static_string_definition_symbol(line string) ?string {
 	clean := line.trim_space()
-	prefix := 'static string '
+	prefix := if clean.starts_with('static const string ') {
+		'static const string '
+	} else {
+		'static string '
+	}
 	if !clean.starts_with(prefix) {
 		return none
 	}

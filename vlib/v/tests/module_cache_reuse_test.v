@@ -1,9 +1,9 @@
 import os
 
-// These tests build one program, change it, and build it again. The second build
-// has to read the modules of the program from their cached interfaces and link
-// their cached objects: it must not parse `builtin` again, and it must not find
-// that the objects were built for another program.
+// These tests build one program, change it, and build it again. Ordinary warm
+// builds read modules from cached interfaces and link cached objects without
+// parsing builtin again or treating objects as belonging to another program.
+// Runtime reflection reparses original declarations and reuses eligible objects.
 
 struct SavedEnv {
 	name    string
@@ -35,12 +35,14 @@ fn (s SavedEnv) restore() {
 // pin_module_cache points the module cache at `dir`, whatever the runner exports,
 // and makes the compiler say why it does not reuse a cached module.
 fn pin_module_cache(dir string) []SavedEnv {
-	saved := ['VTMP', 'V3CACHE', 'VFLAGS', 'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_TRACE'].map(save_env(it))
+	saved := ['VTMP', 'V3CACHE', 'VFLAGS', 'V3_CACHE_FORCE_SOURCE', 'V3_INTERNAL_CACHE_FORCE_SOURCE',
+		'V3_CACHE_TRACE'].map(save_env(it))
 	os.setenv('VTMP', dir, true)
 	os.setenv('V3CACHE', dir, true)
 	os.setenv('V3_CACHE_TRACE', '1', true)
 	os.unsetenv('VFLAGS')
 	os.unsetenv('V3_CACHE_FORCE_SOURCE')
+	os.unsetenv('V3_INTERNAL_CACHE_FORCE_SOURCE')
 	return saved
 }
 
@@ -68,15 +70,23 @@ fn run_built(root string, name string) string {
 	return res.output.trim_space()
 }
 
-// parsed_source_files returns the number that the stage table gives for the `.v`
-// files that the build parsed, or -1 when the table has no such line.
+fn run_cached_program(main_file string) string {
+	res := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-show-timings', '-no-retry-compilation',
+		'run', main_file])
+	assert res.exit_code == 0, res.output
+	return res.output
+}
+
+// parsed_source_files returns the final compilation pass's parsed `.v` count,
+// or -1 when the stage tables have no such line. A cache restart can print two.
 fn parsed_source_files(output string) int {
+	mut parsed := -1
 	for line in output.split_into_lines() {
 		if line.contains('parsed .v files') {
-			return line.all_after('parsed .v files').trim_space().all_before(' ').int()
+			parsed = line.all_after('parsed .v files').trim_space().all_before(' ').int()
 		}
 	}
-	return -1
+	return parsed
 }
 
 // assert_reused_modules checks that a build read every module from the cache.
@@ -225,6 +235,201 @@ fn test_changed_program_reuses_the_modules_cached_by_the_system_cc() {
 	warm := build(root, ['-cc', 'cc'], main_file, 'second')
 	assert_reused_modules(warm)
 	assert run_built(root, 'second') == '84'
+}
+
+fn test_cached_builtin_declares_string_comparison_before_fixed_array_map_helpers() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('module_cache_reuse_fixed_array_keys')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'fn main() {
+	mut counts := map[string]int{}
+	counts["key"] = 1
+	println(counts["key"])
+}
+') or { panic(err) }
+	cold := build(root, ['-cc', 'cc'], main_file, 'first')
+	assert parsed_source_files(cold) > 1, cold
+	assert run_built(root, 'first') == '1'
+	os.write_file(main_file, 'fn main() {
+	mut counts := map[[2]string]int{}
+	key := ["first", "second"]!
+	counts[key] = 2
+	assert counts[["first", "second"]!] == 2
+	println(counts[key])
+}
+') or { panic(err) }
+	warm := build(root, ['-cc', 'cc'], main_file, 'second')
+	assert_reused_modules(warm)
+	assert run_built(root, 'second') == '2'
+	os.write_file(main_file, 'fn main() {
+	mut counts := map[[2]string]int{}
+	key := ["another", "key"]!
+	counts[key] = 3
+	assert counts[["another", "key"]!] == 3
+	println(counts[key])
+}
+') or { panic(err) }
+	repeated := build(root, ['-cc', 'cc'], main_file, 'third')
+	assert_reused_modules(repeated)
+	assert run_built(root, 'third') == '3'
+}
+
+fn test_incremental_program_reuses_shared_literals_and_keeps_new_literals() {
+	$if !macos {
+		return
+	}
+	os.find_abs_path_of_executable('clang') or { return }
+	root := new_project('module_cache_reuse_incremental_literals')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'fn main() { shared := "shared"; assert shared.len == 6; println(shared); println("first") }') or {
+		panic(err)
+	}
+	cold := run_cached_program(main_file)
+	assert parsed_source_files(cold) > 1, cold
+	assert cold.contains('shared\nfirst\n'), cold
+	os.write_file(main_file, 'fn main() { shared := "shared"; assert shared.len == 6; println(shared); println("second") }') or {
+		panic(err)
+	}
+	warm := run_cached_program(main_file)
+	assert_reused_modules(warm)
+	assert warm.contains('cgen (incremental)'), warm
+	assert warm.contains('shared\nsecond\n'), warm
+	repeated := run_cached_program(main_file)
+	assert_reused_modules(repeated)
+	assert repeated.contains('cgen (cached)'), repeated
+	assert repeated.contains('shared\nsecond\n'), repeated
+}
+
+fn test_cached_os_preserves_implicit_closure_runtime_dependency() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('module_cache_reuse_os_closure')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'import os
+fn main() { println(os.getpid() > 0) }
+') or { panic(err) }
+	cold := build(root, ['-cc', 'cc', '-gc', 'none'], main_file, 'first')
+	assert parsed_source_files(cold) > 1, cold
+	assert run_built(root, 'first') == 'true'
+	os.write_file(main_file, 'import os
+fn positive(n int) bool { return n > 0 }
+fn main() { println(positive(os.getpid())) }
+') or { panic(err) }
+	warm := build(root, ['-cc', 'cc', '-gc', 'none'], main_file, 'second')
+	assert_reused_modules(warm)
+	assert run_built(root, 'second') == 'true'
+}
+
+fn test_cached_reflection_preserves_original_function_source_locations() {
+	assert_cached_reflection_caller_environment(none)
+}
+
+fn test_cached_reflection_retry_preserves_caller_force_source_environment() {
+	assert_cached_reflection_caller_environment('caller-control')
+}
+
+fn assert_cached_reflection_caller_environment(caller_value ?string) {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('clang') or { return }
+	root := new_project('module_cache_reuse_reflection_environment')
+	mut saved := pin_module_cache(os.join_path(root, 'cache'))
+	saved << save_env('V_MODULE_CACHE_REUSE_CALLER_ENV')
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	os.setenv('V_MODULE_CACHE_REUSE_CALLER_ENV', 'caller-env', true)
+	mut expected_caller := ''
+	mut caller_present := false
+	if value := caller_value {
+		expected_caller = value
+		caller_present = true
+		os.setenv('V3_CACHE_FORCE_SOURCE', value, true)
+	}
+	expected := ['CACHE_ENV reflection=true', 'CACHE_ENV private compile=[]',
+		'CACHE_ENV private runtime=[]', 'CACHE_ENV private present=false',
+		'CACHE_ENV caller compile=[${expected_caller}]',
+		'CACHE_ENV caller runtime=[${expected_caller}]', 'CACHE_ENV caller present=${caller_present}',
+		'CACHE_ENV ordinary compile=[caller-env]', 'CACHE_ENV ordinary runtime=[caller-env]',
+		'CACHE_ENV trace compile=[1]', 'CACHE_ENV trace runtime=[1]']
+	main_file := os.join_path(root, 'main.v')
+	program := 'import os
+import v.reflection
+const private_value = \$env("V3_INTERNAL_CACHE_FORCE_SOURCE")
+const caller_value = \$env("V3_CACHE_FORCE_SOURCE")
+const ordinary_value = \$env("V_MODULE_CACHE_REUSE_CALLER_ENV")
+const trace_value = \$env("V3_CACHE_TRACE")
+fn main() {
+	file_idx := reflection.get_funcs().filter(it.name == "all_after_last")[0].file_idx
+	println("CACHE_ENV reflection=" + reflection.get_string_by_idx(file_idx).ends_with("string.v").str())
+	environment := os.environ()
+	println("CACHE_ENV private compile=[" + private_value + "]")
+	println("CACHE_ENV private runtime=[" + os.getenv("V3_INTERNAL_CACHE_FORCE_SOURCE") + "]")
+	println("CACHE_ENV private present=" + ("V3_INTERNAL_CACHE_FORCE_SOURCE" in environment).str())
+	println("CACHE_ENV caller compile=[" + caller_value + "]")
+	println("CACHE_ENV caller runtime=[" + os.getenv("V3_CACHE_FORCE_SOURCE") + "]")
+	println("CACHE_ENV caller present=" + ("V3_CACHE_FORCE_SOURCE" in environment).str())
+	println("CACHE_ENV ordinary compile=[" + ordinary_value + "]")
+	println("CACHE_ENV ordinary runtime=[" + os.getenv("V_MODULE_CACHE_REUSE_CALLER_ENV") + "]")
+	println("CACHE_ENV trace compile=[" + trace_value + "]")
+	println("CACHE_ENV trace runtime=[" + os.getenv("V3_CACHE_TRACE") + "]")
+}
+'
+	os.write_file(main_file, program) or { panic(err) }
+	cold := run_cached_program(main_file)
+	assert parsed_source_files(cold) > 1, cold
+	assert !cold.contains('runtime reflection requires original declaration source locations'), cold
+	assert cold.split_into_lines().filter(it.starts_with('CACHE_ENV ')) == expected, cold
+	objects := module_objects(root)
+	assert objects.len > 0
+	object_times := objects.map(os.file_last_mod_unix(it))
+	mut object_contents := map[string][]u8{}
+	for object in objects {
+		object_contents[object] = os.read_bytes(object) or { panic(err) }
+	}
+	changed := program.replace('fn main() {', 'fn suffix() string { return "string.v" }\nfn main() {')
+		.replace('ends_with("string.v")', 'ends_with(suffix())')
+	os.write_file(main_file, changed) or { panic(err) }
+	warm := run_cached_program(main_file)
+	assert warm.count('runtime reflection requires original declaration source locations') == 1, warm
+	assert parsed_source_files(warm) > 1, warm
+	assert warm.split_into_lines().filter(it.starts_with('CACHE_ENV ')) == expected, warm
+	assert module_objects(root) == objects
+	assert objects.map(os.file_last_mod_unix(it)) == object_times
+	for object in objects {
+		current := os.read_bytes(object) or { panic(err) }
+		assert current == object_contents[object]
+	}
 }
 
 fn test_usecache_reuses_the_modules_built_by_the_bundled_tcc() {

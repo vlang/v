@@ -136,6 +136,16 @@ static string _v3_lit_1_44bd54d473cd3d44 = {"/", 1, 1};
 	assert cleaned.contains('_v3_lit_1_44bd54d473cd3d44')
 }
 
+fn test_static_const_body_literals_are_preserved_and_deduplicated() {
+	first := 'static const string _v3_lit_1_44bd55d473cd3ef7 = {".", 1, 1};\n'
+	second := 'static const string _v3_lit_1_44bd54d473cd3d44 = {"/", 1, 1};\n'
+	source := first + second + 'void main__main(void) { println(_v3_lit_1_44bd54d473cd3d44); }\n'
+	assert static_string_definitions(source) == first + second
+	assert without_duplicate_static_string_definitions(source, first) == second + 'void main__main(void) { println(_v3_lit_1_44bd54d473cd3d44); }\n'
+	assert materialize_cached_body_string_definitions('// V3CACHE_BASELINE ' + first + second) == first + second
+	assert !prune_unreferenced_static_string_definitions(source).contains('_v3_lit_1_44bd55d473cd3ef7')
+}
+
 fn test_type_declarations_omit_functions_with_local_typedefs() {
 	source := 'typedef struct VisibleType {
 	int value;
