@@ -53,6 +53,8 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut i := 0 // main string index
 	mut p_index := 0 // parameter index
 	mut sign := false // sign flag
+	mut blank := false // ` ` flag: a blank where the sign of a non negative number would be
+	mut spec_start := 0 // index of the `%` that starts the current specifier
 	mut align := Align_text.right
 	mut len0 := -1 // forced length, if -1 free length
 	mut len1 := -1 // decimal part for floats
@@ -67,6 +69,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 	for i < str.len {
 		if status == .reset_params {
 			sign = false
+			blank = false
 			align = .right
 			len0 = -1
 			len1 = -1
@@ -91,6 +94,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 		}
 		if ch == `%` && status == .norm_char {
 			status = .field_char
+			spec_start = i
 			i++
 			continue
 		}
@@ -98,8 +102,14 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 		// single char, manage it here
 		if ch == `c` && status == .field_char {
 			v_sprintf_panic(p_index, pt.len)
-			d1 := u8(unsafe { *(&int(pt[p_index])) })
-			res.write_u8(d1)
+			// A `rune` argument is stored in 4 bytes, while a byte sized one is promoted to
+			// an `int`, that can be wider. Read only the 4 bytes, that both of them have:
+			// on a little endian target, they are the low ones of that `int`.
+			mut r := unsafe { *(&rune(pt[p_index])) }
+			if r > 0x10ffff || (r >= 0xd800 && r <= 0xdfff) {
+				r = rune(0xfffd) // not a valid code point
+			}
+			res.write_rune(r)
 			status = .reset_params
 			p_index++
 			i++
@@ -134,10 +144,14 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				align = .left
 				i++
 				continue
-			} else if ch in [`0`, ` `] {
+			} else if ch == `0` {
 				if align == .right {
 					pad_ch = ch
 				}
+				i++
+				continue
+			} else if ch == ` ` {
+				blank = true
 				i++
 				continue
 			} else if ch == `'` {
@@ -155,7 +169,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				p_index++
 				v_sprintf_panic(p_index, pt.len)
 				mut s := unsafe { *(&string(pt[p_index])) }
-				s = s[..len]
+				s = v_sprintf_str_precision(s, len)
 				p_index++
 				res.write_string(s)
 				status = .reset_params
@@ -295,6 +309,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					}
 				}
 
+				len0 = v_sprintf_blank_sign(mut res, blank && positive && !sign, len0)
 				tmp := format_dec_old(d1,
 					pad_ch:    pad_ch
 					len0:      len0
@@ -429,6 +444,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					x := unsafe { *(&f64(pt[p_index])) }
 					positive := x >= f64(0.0)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
+					len0 = v_sprintf_blank_sign(mut res, blank && positive && !sign, len0)
 					s := format_fl_old(f64(x),
 						pad_ch:    pad_ch
 						len0:      len0
@@ -456,6 +472,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					x := unsafe { *(&f64(pt[p_index])) }
 					positive := x >= f64(0.0)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
+					len0 = v_sprintf_blank_sign(mut res, blank && positive && !sign, len0)
 					s := format_es_old(f64(x),
 						pad_ch:    pad_ch
 						len0:      len0
@@ -483,6 +500,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					x := unsafe { *(&f64(pt[p_index])) }
 					positive := x >= f64(0.0)
 					mut s := ''
+					len0 = v_sprintf_blank_sign(mut res, blank && positive && !sign, len0)
 					tx := fabs(x)
 					if tx < 999_999.0 && tx >= 0.00001 {
 						// println("Here g format_fl [${tx}]")
@@ -529,7 +547,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 			// string
 			else if ch == `s` {
 				v_sprintf_panic(p_index, pt.len)
-				s1 := unsafe { *(&string(pt[p_index])) }
+				s1 := v_sprintf_str_precision(unsafe { *(&string(pt[p_index])) }, len1)
 				pad_ch = ` `
 				tmp := format_str(s1,
 					pad_ch:    pad_ch
@@ -551,6 +569,11 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 		status = .reset_params
 		p_index++
 		i++
+	}
+
+	if status != .norm_char && status != .reset_params {
+		// The format ends inside of a specifier, like a lone `%` at its end: keep that too.
+		unsafe { res.write_ptr(str.str + spec_start, str.len - spec_start) }
 	}
 
 	if p_index != pt.len {
@@ -577,6 +600,39 @@ fn fabs(x f64) f64 {
 		return 0.0
 	}
 	return x
+}
+
+// v_sprintf_blank_sign implements the ` ` flag. When `blank` is true, it writes the blank,
+// that stands where the sign of a non negative number would be. It returns the width,
+// that is left for the number itself, since that blank is a part of the field width `len0`.
+@[inline]
+fn v_sprintf_blank_sign(mut res strings.Builder, blank bool, len0 int) int {
+	if !blank {
+		return len0
+	}
+	res.write_u8(` `)
+	return len0 - 1
+}
+
+// v_sprintf_str_precision returns the first `precision` runes of `s`, for `%.3s` and `%.*s`.
+// It counts runes, and not bytes, so that it never cuts an UTF-8 sequence in the middle.
+// A negative `precision` means no limit. The result shares its memory with `s`.
+@[direct_array_access]
+fn v_sprintf_str_precision(s string, precision int) string {
+	if precision < 0 {
+		return s
+	}
+	mut n := 0
+	for _ in 0 .. precision {
+		if n >= s.len {
+			break
+		}
+		n += utf8_char_len(s[n])
+	}
+	if n >= s.len {
+		return s
+	}
+	return unsafe { tos(s.str, n) }
 }
 
 // strings.Builder version of format_fl

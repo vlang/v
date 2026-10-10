@@ -47,6 +47,7 @@ The Flags field may be zero or more (in any order) of:
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `-` (minus) | Left-align the output of this specifier. (The default is to right-align the output.)                                                                                                             |
 | `+` (plus)  | Prepends a plus for positive signed-numeric types. positive = `+`, negative = `-`. (The default doesn't prepend anything to positive numbers.)                                                   |
+| ` ` (space) | Prepends a space to a non-negative number of a signed type. (The `+` flag wins.) |
 | `0` (zero)  | When the 'width' option is specified, prepends zeros for numeric types. (The default prepends spaces.) For example, `printf("%4X",3)` produces `   3`, while `printf("%04X",3)` produces `0003`. |
 
 #### Width field
@@ -60,6 +61,13 @@ or may also be specified by a parameter when indicated by an asterisk `*`.
 For example, `v_printf("%*.s", 5, my_string)` will result in `   mystring` being printed,
 with a total width of 5 characters.
 
+#### Precision field
+
+The Precision field is a `.` followed by a number.
+For the `f`, `F`, `e` and `E` types, it is the number of digits after the decimal point.
+For the `s` type, it is the maximum number of characters of the string to output.
+It counts runes, not bytes: `v_sprintf('%.3s', 'abcdef')` is `abc`.
+
 #### Length field
 
 The Length field can be omitted or be any of:
@@ -72,6 +80,11 @@ The Length field can be omitted or be any of:
 | `ll`      | For integer types, causes `printf` to expect an `i64` or `u64` argument.   |
 |           |                                                                            |
 |           |                                                                            |
+
+For the `x` and `X` types, a negative number is printed in two's complement, like in C,
+at the width that the length field gives: 8 bits for `hh`, 16 for `h`, 64 for `l` and `ll`,
+and 32 without a length field. `v_sprintf('%x', -1)` is `ffffffff`, while
+`v_sprintf('%lx', i64(-1))` is `ffffffffffffffff`.
 
 #### Type field
 
@@ -89,6 +102,11 @@ The Type field can be any of:
 | `s`       | string                                                                                                                      |
 | `p`       | `void *` (pointer to void) in an implementation-defined format.                                                             |
 | `c`       | `char` (character).                                                                                                         |
+
+The `c` type takes a `rune`, or a byte sized value like an `u8`, and prints it as UTF-8.
+
+A specifier that the end of the format string cuts short, like a lone `%` at the end,
+is printed as it is written.
 
 ## Examples
 
