@@ -5059,10 +5059,6 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 		if node.kind != .directive || node.typ.len == 0 {
 			continue
 		}
-		if node.value == 'flag' {
-			flag, _ := c_flag_strip_start_markers(node.typ)
-			g.note_c_flag_directive(cur_module, cur_file, flag)
-		}
 		mut flags := []string{}
 		mut at_start := false
 		if node.value == 'flag' {
@@ -5072,6 +5068,20 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			flags = c_pkgconfig_flags(node.typ)
 		} else {
 			continue
+		}
+		if node.value == 'flag' {
+			// Portable C retains calls for every target. Their headerless bindings
+			// need linkage metadata even when the current host would not link them.
+			mut linkage_args := flags
+			if g.output_cross_c {
+				linkage_args, _ = c_flag_args_with_start_marker(c_directive_strip_target_prefix(node.typ),
+					g.compiler_vroot, cur_file, g.target, g.compile_values)
+			}
+			mut linkage_flags := []string{cap: linkage_args.len}
+			for flag in linkage_args {
+				linkage_flags << c_flag_quote_macro_value(flag)
+			}
+			g.note_c_flag_directive(cur_module, cur_file, linkage_flags.join(' '))
 		}
 		if flags.len > 0 {
 			groups << CFlagDirectiveGroup{
@@ -5225,26 +5235,83 @@ fn (mut g FlatGen) note_c_postinclude_directive(source_file string) {
 // the link. Such a file ships no header, so the V declaration is the only prototype
 // the translation unit can get.
 fn c_flag_links_c_source(flag string) bool {
-	return flag.contains('.c ') || flag.ends_with('.c') || flag.contains('.cpp')
-		|| flag.contains('.cc') || flag.contains('.o ') || flag.ends_with('.o')
+	return c_flag_links_file(flag, ['.c', '.cpp', '.cc', '.m', '.mm', '.o', '.obj'], true)
 }
 
 // c_flag_links_c_library reports whether a flag links a library by path.
 fn c_flag_links_c_library(flag string) bool {
+	return c_flag_links_file(flag, ['.a', '.so', '.dylib', '.lib'], false)
+}
+
+fn c_flag_links_file(flag string, extensions []string, forced_source bool) bool {
 	mut skip_path := false
+	mut next_language := false
+	mut language := ''
 	for raw_arg in tokenize_c_flag(c_flag_strip_hash_comment(flag)) {
 		if skip_path {
 			skip_path = false
 			continue
 		}
 		arg := raw_arg.trim('\'"')
+		if next_language {
+			language = arg
+			next_language = false
+			continue
+		}
+		if arg == '-x' {
+			next_language = true
+			continue
+		}
+		if arg.starts_with('-x') && arg.len > 2 {
+			language = arg[2..]
+			continue
+		}
 		skip_path = c_flag_takes_path_operand(arg)
+			|| arg in ['-F', '-D', '-U', '-iquote', '-idirafter', '-iprefix', '-iwithprefix',
+				'-iwithprefixbefore', '-isysroot', '--sysroot', '-target', '-arch', '-framework',
+				'-weak_framework', '-o', '-MF', '-MT', '-MQ']
+		if arg.starts_with('-Wl,') && c_linker_flag_links_file(arg, extensions) {
+			return true
+		}
 		if arg.starts_with('-') {
 			continue
 		}
-		if arg.ends_with('.a') || arg.ends_with('.so') || arg.ends_with('.dylib')
-			|| arg.ends_with('.lib') {
+		if forced_source && language !in ['', 'none'] && os.is_file(arg) {
 			return true
+		}
+		for extension in extensions {
+			if arg.ends_with(extension) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Linker pass-through arguments can name input objects and archives directly.
+// Search paths, output files and other option operands do not provide symbols.
+fn c_linker_flag_links_file(flag string, extensions []string) bool {
+	mut skip_operand := false
+	for arg in flag['-Wl,'.len..].split(',') {
+		if skip_operand {
+			skip_operand = false
+			continue
+		}
+		if arg in ['-rpath', '--rpath', '-rpath-link', '--rpath-link', '-R', '-L', '--library-path',
+			'-o', '--output', '-Map', '--Map', '-T', '--script', '-soname', '--soname', '-install_name',
+			'-framework', '-weak_framework', '-F', '-syslibroot', '--sysroot', '-dynamic-linker',
+			'--dynamic-linker', '-m', '-z', '-arch', '-e', '--entry', '-u', '--undefined', '-undefined',
+			'-exported_symbols_list', '-unexported_symbols_list', '-order_file'] {
+			skip_operand = true
+			continue
+		}
+		if arg.starts_with('-') {
+			continue
+		}
+		for extension in extensions {
+			if arg.ends_with(extension) {
+				return true
+			}
 		}
 	}
 	return false

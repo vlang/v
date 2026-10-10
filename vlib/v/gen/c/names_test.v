@@ -1023,3 +1023,78 @@ fn test_library_path_detection_ignores_non_linker_operands() {
 		assert !c_flag_links_c_library(flag), flag
 	}
 }
+
+fn test_native_source_paths_keep_headerless_c_prototypes() {
+	for flag in ['helper.c', 'helper.cpp', 'helper.cc', 'helper.m', 'helper.mm', 'helper.o',
+		'helper.obj', '"/project/native sources/helper.m"'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['-I /project/include.o', '-L /project/library.o', '-include api.c',
+		'-isystem /project/include.m', '-DNAME=helper.cpp', 'helper.cpp.h',
+		'-I /project/include ## ignored.o'] {
+		assert !c_flag_links_c_source(flag), flag
+	}
+}
+
+fn test_forced_native_source_language_keeps_headerless_prototypes() {
+	root := os.join_path(os.vtmp_dir(), 'forced_native_source_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	input := os.join_path(root, 'helper')
+	os.write_file(input, 'int native_api(void) { return 73; }\n') or { panic(err) }
+	quoted_input := os.quoted_path(input)
+	for flag in ['-x c ${quoted_input} -x none', '-xc ${quoted_input} -xnone'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+		g.note_c_include_directive('bindings', '/project/bindings.c.v')
+		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['${quoted_input}', '-x c -x none ${quoted_input}',
+		'-x c -include ${quoted_input} -x none', '-x c -D ${quoted_input} -x none',
+		'-x c -I ${quoted_input} -x none'] {
+		assert !c_flag_links_c_source(flag), flag
+	}
+}
+
+fn test_force_loaded_archives_keep_headerless_prototypes() {
+	for flag in ['-Wl,-force_load,/project/libnative.a',
+		'"-Wl,-force_load,/project/native files/libnative.a"'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+		g.note_c_include_directive('bindings', '/project/header.c.v')
+		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['-Wl,-rpath,/project/libnative.a', '-Wl,-force_load',
+		'-D -Wl,-force_load,/project/libnative.a', '-include /project/libnative.a'] {
+		assert !c_flag_links_c_library(flag), flag
+	}
+}
+
+fn test_linker_object_inputs_keep_headerless_prototypes() {
+	for flag in ['-Wl,/project/helper.o', '-Wl,/project/helper.obj',
+		'"-Wl,/project/native files/helper.o"', '-Wl,-rpath,/project/lib,/project/helper.o'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+		g.note_c_include_directive('bindings', '/project/bindings.c.v')
+		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['-Wl,-rpath,/project/helper.o', '-Wl,-o,/project/helper.o',
+		'-Wl,-Map,/project/helper.o', '-Wl,-T,/project/helper.o', '-Wl,-install_name,/project/helper.o',
+		'-D -Wl,/project/helper.o'] {
+		assert !c_flag_links_c_source(flag), flag
+	}
+}
