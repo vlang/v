@@ -104,6 +104,12 @@ fails or does not report a numeric version. Localized version labels are accepte
 
 ### Walking a tree
 
+`os.utime(path, actime, modtime)` changes access and modification times for files
+and directories using Unix timestamps in seconds. On Windows, it accepts Unicode
+paths and reports Win32 error codes. Timestamps must use positive `FILETIME` tick counts below
+2^63. The zero value (1601-01-01 00:00:00 UTC) is rejected because Windows treats it as
+"leave unchanged".
+
 On Windows, `os.rm()` clears a file's read-only attribute for deletion while preserving
 its other attributes. If removal fails, it attempts to restore the original attributes
 and reports the removal error. `os.rmdir_all()` continues after deletion errors and
@@ -223,7 +229,7 @@ value too, while the ones built on the Win32 API (`os.mkdir`, `os.rmdir`, `os.ls
 hold one of these codes for a condition, so prefer the predicates over comparing
 `err.code()` with them.
 
-`os.symlink` and `os.link` preserve the Windows API's error code when link creation fails,
+`os.utime`, `os.symlink` and `os.link` preserve the Windows API's error code when they fail,
 so duplicate targets and missing paths can be classified with these predicates.
 `os.hostname` and `os.loginname` also preserve their Win32 error codes on failure.
 
