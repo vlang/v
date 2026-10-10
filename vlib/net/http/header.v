@@ -433,6 +433,11 @@ pub fn (mut h Header) add(key CommonHeader, value string) {
 // add_custom appends a value to a custom header key. This function will
 // return an error if the key contains invalid header characters, and a
 // `HeaderLimitError` if the header already holds `max_headers` fields.
+// The key is rejected here because it is not checked again when the header is
+// sent: a name with a CR, LF, colon or space in it would otherwise be written
+// to the connection as it is, and could add or split header fields there.
+// To get the canonical form of a name that may be invalid, use
+// `canonical_header_key`, which never fails.
 pub fn (mut h Header) add_custom(key string, value string) ! {
 	is_valid(key)!
 	// h.data[key] << value
@@ -482,6 +487,8 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 // function will return an error if the key contains invalid header
 // characters, and a `HeaderLimitError` if the key is not present yet and
 // the header already holds `max_headers` fields.
+// As in `add_custom`, the key is rejected here because it is not checked
+// again when the header is sent.
 pub fn (mut h Header) set_custom(key string, value string) ! {
 	is_valid(key)!
 	mut set := false
@@ -869,6 +876,20 @@ fn is_token(b u8) bool {
 		33, 35...39, 42, 43, 45, 46, 48...57, 65...90, 94...122, 124, 126 { true }
 		else { false }
 	}
+}
+
+// canonical_header_key returns the canonical form of the header name `key`,
+// in the spelling that `Header.render(canonicalize: true)` writes. The name
+// can be in any case. It never fails: like Go's `http.CanonicalHeaderKey`, it
+// returns a `key` that is not a valid header name unchanged. That is an empty
+// name, or one with a byte that is not an RFC 9110 token character, such as a
+// space, `=`, a control character or a non-ASCII byte.
+// Such a name is still rejected by `Header.add_custom` and `Header.set_custom`.
+// Example: assert http.canonical_header_key('accept-ENCODING') == 'Accept-Encoding'
+// Example: assert http.canonical_header_key('x custom') == 'x custom'
+pub fn canonical_header_key(key string) string {
+	is_valid(key) or { return key }
+	return canonicalize(key.to_lower())
 }
 
 // str returns the headers string as seen in HTTP/1.1 requests.
