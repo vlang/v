@@ -103,6 +103,43 @@ fn test_reversed() {
 	assert utf8.reverse(b) == 'dlrow olleh界世好你'
 }
 
+fn test_reverse_of_one_rune_matches_longer_strings() {
+	replacement := rune(0xfffd).str()
+	assert utf8.reverse('') == ''
+	// Every one byte string is one rune: ASCII (NUL included) is kept, while a lone
+	// continuation byte, an invalid lead byte and a truncated lead byte are replaced.
+	for b in 0 .. 0x100 {
+		one := [u8(b)].bytestr()
+		expected := if b < 0x80 { one } else { replacement }
+		assert utf8.len(one) == 1
+		assert utf8.reverse(one) == expected, 'byte 0x${b:02x}'
+		assert utf8.reverse('x' + one + 'y') == 'y' + expected + 'x', 'byte 0x${b:02x}'
+	}
+	// One valid rune of 2, 3 and 4 bytes is returned unchanged.
+	for valid in ['©', '★', '🚀'] {
+		assert utf8.len(valid) == 1
+		assert utf8.reverse(valid) == valid
+		assert utf8.reverse('x' + valid + 'y') == 'y' + valid + 'x'
+	}
+	// Longer invalid sequences give one replacement rune per byte.
+	invalid_sequences := [
+		[u8(0xe4), 0xbd], // truncated 3 byte sequence
+		[u8(0xf0), 0x9f, 0x9a], // truncated 4 byte sequence
+		[u8(0xc0), 0x80], // overlong 2 byte encoding
+		[u8(0xe0), 0x80, 0x80], // overlong 3 byte encoding
+		[u8(0xf0), 0x80, 0x80, 0x80], // overlong 4 byte encoding
+		[u8(0xed), 0xa0, 0x80], // surrogate U+D800
+		[u8(0xf4), 0x90, 0x80, 0x80], // above U+10FFFF
+	]
+	for bytes in invalid_sequences {
+		invalid := bytes.bytestr()
+		expected := replacement.repeat(bytes.len)
+		assert utf8.len(invalid) == bytes.len
+		assert utf8.reverse(invalid) == expected, bytes.hex()
+		assert utf8.reverse('x' + invalid + 'y') == 'y' + expected + 'x', bytes.hex()
+	}
+}
+
 fn test_is_control() {
 	for ra in `a` .. `z` {
 		assert utf8.is_control(ra) == false

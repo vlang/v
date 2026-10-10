@@ -115,10 +115,12 @@ pub fn raw_index(s string, index int) string {
 }
 
 // reverse - returns a reversed string.
+// A byte that is not part of a valid UTF-8 sequence counts as one rune, as in `len`,
+// and is returned as U+FFFD, whatever the length of the string.
 // example: utf8.reverse('你好世界hello world') => 'dlrow olleh界世好你'.
 pub fn reverse(s string) string {
 	len_s := len(s)
-	if len_s == 0 || len_s == 1 {
+	if len_s == 0 {
 		return s.clone()
 	}
 	mut str_array := []string{}
