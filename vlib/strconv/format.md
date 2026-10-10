@@ -48,6 +48,7 @@ The Flags field may be zero or more (in any order) of:
 | `-` (minus) | Left-align the output of this specifier. (The default is to right-align the output.)                                                                                                             |
 | `+` (plus)  | Prepends a plus for positive signed-numeric types. positive = `+`, negative = `-`. (The default doesn't prepend anything to positive numbers.)                                                   |
 | `0` (zero)  | When the 'width' option is specified, prepends zeros for numeric types. (The default prepends spaces.) For example, `printf("%4X",3)` produces `   3`, while `printf("%04X",3)` produces `0003`. |
+| `#` (hash)  | Alternative form of `x`, `X`, `o` and `b`: prefixes `0x`, `0X`, `0` and `0b`. |
 
 #### Width field
 
@@ -89,6 +90,19 @@ The Type field can be any of:
 | `s`       | string                                                                                                                      |
 | `p`       | `void *` (pointer to void) in an implementation-defined format.                                                             |
 | `c`       | `char` (character).                                                                                                         |
+| `o`       | `unsigned int` as an octal number. The length field specifies its size, as for `u`. |
+| `b`       | `unsigned int` as a binary number. The length field specifies its size, as for `u`. |
+| `t`       | `bool`, as `true` or `false`.                                                       |
+| `q`       | string, as a double-quoted literal with the escape sequences of `strconv.quote`.    |
+
+`o` and `b` print a negative argument in two's complement, at the size of the length field
+(32 bits when it is omitted): `%o` of `-1` is `37777777777`, and `%hho` of `-1` is `377`.
+
+With the `#` flag, a zero value gets no prefix, like in C: `%#x` of `0` is `0`.
+When the field is padded with zeros, they follow the prefix: `%#08x` of `255` is `0x0000ff`.
+
+A specifier with any other type is written back unchanged, for example `%y`.
+It still takes one parameter, so the specifiers after it keep theirs.
 
 ## Examples
 
@@ -180,6 +194,23 @@ println(temp_s)
 
 ```
 [       7d] [       7D] [7d       ] [7D       ] [00000007d] [00000007D]
+```
+
+octal, binary, alternative form, bool, quoted string, unknown type
+
+```v
+import strconv
+
+a := 10
+ok := true
+s := 'a "b"'
+sc9 := '%o %#o %b %#b %#x [%-6t] [%10q] %y'
+temp_s := strconv.v_sprintf(sc9, a, a, a, a, a, ok, s, a)
+println(temp_s)
+```
+
+```
+12 012 1010 0b1010 0xa [true  ] [ "a \"b\""] %y
 ```
 
 floating points

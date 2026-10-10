@@ -58,6 +58,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut len1 := -1 // decimal part for floats
 	def_len1 := 6 // default value for len1
 	mut pad_ch := u8(` `) // pad char
+	mut alt := false // `#` flag, the alternative form of `x`, `X`, `o` and `b`
 
 	// prefix chars for Length field
 	mut ch1 := `0` // +1 char if present else `0`
@@ -71,6 +72,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 			len0 = -1
 			len1 = -1
 			pad_ch = ` `
+			alt = false
 			status = .norm_char
 			ch1 = `0`
 			ch2 = `0`
@@ -141,6 +143,10 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				i++
 				continue
 			} else if ch == `'` {
+				i++
+				continue
+			} else if ch == `#` {
+				alt = true
 				i++
 				continue
 			} else if ch == `.` && fc_ch1 >= `1` && fc_ch1 <= `9` {
@@ -404,6 +410,11 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					s = s.to_upper()
 					unsafe { tmp.free() }
 				}
+				if alt {
+					tmp := s
+					s = v_sprintf_alt_form(ch, s, if pad_ch == `0` { len0 } else { 0 })
+					unsafe { tmp.free() }
+				}
 
 				tmp := format_str(s,
 					pad_ch:    pad_ch
@@ -546,8 +557,108 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				i++
 				continue
 			}
+			// octal and binary, of the unsigned value that `u` prints
+			else if ch in [`o`, `b`] {
+				v_sprintf_panic(p_index, pt.len)
+				mut d1 := u64(0)
+				match ch1 {
+					// h for 16 bit unsigned int
+					// hh for 8 bit unsigned int
+					`h` {
+						x := unsafe { *(&int(pt[p_index])) }
+						if ch2 == `h` {
+							d1 = u64(u8(x))
+						} else {
+							d1 = u64(u16(x))
+						}
+					}
+					// l  u64
+					// ll u64 for now
+					`l` {
+						d1 = unsafe { *(&u64(pt[p_index])) }
+					}
+					// default int
+					else {
+						d1 = u64(u32(unsafe { *(&int(pt[p_index])) }))
+					}
+				}
+				mut s := format_uint(d1, if ch == `o` { 8 } else { 2 })
+				if alt {
+					tmp := s
+					s = v_sprintf_alt_form(ch, s, if pad_ch == `0` { len0 } else { 0 })
+					unsafe { tmp.free() }
+				}
+				tmp := format_str(s,
+					pad_ch:    pad_ch
+					len0:      len0
+					len1:      0
+					positive:  true
+					sign_flag: false
+					align:     align
+				)
+				res.write_string(tmp)
+				unsafe { tmp.free() }
+				unsafe { s.free() }
+				status = .reset_params
+				p_index++
+				i++
+				continue
+			}
+			// bool
+			else if ch == `t` {
+				v_sprintf_panic(p_index, pt.len)
+				// a `bool` argument is stored in one byte
+				b1 := unsafe { *(&u8(pt[p_index])) }
+				s1 := if b1 != 0 { 'true' } else { 'false' }
+				pad_ch = ` `
+				tmp := format_str(s1,
+					pad_ch:    pad_ch
+					len0:      len0
+					len1:      0
+					positive:  true
+					sign_flag: false
+					align:     align
+				)
+				res.write_string(tmp)
+				unsafe { tmp.free() }
+				status = .reset_params
+				p_index++
+				i++
+				continue
+			}
+			// string, as a double-quoted literal
+			else if ch == `q` {
+				v_sprintf_panic(p_index, pt.len)
+				s1 := quote(unsafe { *(&string(pt[p_index])) })
+				pad_ch = ` `
+				tmp := format_str(s1,
+					pad_ch:    pad_ch
+					len0:      len0
+					len1:      0
+					positive:  true
+					sign_flag: false
+					align:     align
+				)
+				res.write_string(tmp)
+				unsafe { tmp.free() }
+				unsafe { s1.free() }
+				status = .reset_params
+				p_index++
+				i++
+				continue
+			}
 		}
 
+		// No arm handles this verb. Write the specifier back as it is, from its `%`, instead
+		// of nothing. It still takes one argument, so the next specifiers keep theirs.
+		mut spec_i := i - 1
+		for spec_i > 0 && str[spec_i] != `%` {
+			spec_i--
+		}
+		for spec_i <= i {
+			res.write_u8(str[spec_i])
+			spec_i++
+		}
 		status = .reset_params
 		p_index++
 		i++
@@ -566,6 +677,40 @@ fn v_sprintf_panic(idx int, len int) {
 	if idx >= len {
 		panic_n2('% conversion specifiers number mismatch (expected %, given args)', idx + 1, len)
 	}
+}
+
+// v_sprintf_alt_form returns `digits`, the digits of a `%x`, `%X`, `%o` or `%b` conversion, in
+// the alternative form of the `#` flag. Like in C, a nonzero value gets the prefix `0x`, `0X`,
+// `0` or `0b`, and a zero value gets none. `zero_len` is the width of a field that is padded
+// with zeros, else 0: these zeros go after the prefix, `%#08x` of 255 is `0x0000ff`.
+@[manualfree]
+fn v_sprintf_alt_form(verb u8, digits string, zero_len int) string {
+	mut is_zero := true
+	for c in digits {
+		if c != `0` {
+			is_zero = false
+			break
+		}
+	}
+	if is_zero {
+		return digits.clone()
+	}
+	prefix := match verb {
+		`x` { '0x' }
+		`X` { '0X' }
+		`b` { '0b' }
+		else { '0' }
+	}
+	mut res := strings.new_builder(prefix.len + digits.len)
+	defer {
+		unsafe { res.free() }
+	}
+	res.write_string(prefix)
+	for _ in 0 .. zero_len - prefix.len - digits.len {
+		res.write_u8(`0`)
+	}
+	res.write_string(digits)
+	return res.str()
 }
 
 // fabs returns the absolute value of `x`. Like C's fabs(), it clears the sign of -0.0 too.
