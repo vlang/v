@@ -91,3 +91,7 @@ Unsuffixed values and `M`/`m` values use MiB; `K`/`k` use KiB and `G`/`g` use Gi
 The value must be a nonnegative integer whose converted KiB value fits in a signed 64-bit
 integer. Missing, empty, malformed, negative, and overflowing values produce a CLI error.
 An explicit zero disables the limit, as does `-no-memory-limit`.
+
+The Windows TCC backend supports `-cstrict`, including the startup code that sets the compiler's
+`VEXE` environment variable. Generated CRT calls retain explicit declarations and strict checks
+for implicit function declarations.
