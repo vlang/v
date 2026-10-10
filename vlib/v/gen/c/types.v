@@ -143,7 +143,7 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 			pointee = cgen_unalias_type(pointee.base_type)
 		}
 		if pointee is types.Struct && !pointee.name.starts_with('C.')
-			&& !types.is_builtin_type_name(pointee.name) {
+			&& !types.is_builtin_type_name(pointee.name) && !type_references_thread(pointee) {
 			pointee_ct := g.optional_payload_c_type(pointee)
 			g.optional_pointer_struct_tags[pointee_ct] = if pointee.name in g.tc.unions {
 				'union'
