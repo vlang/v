@@ -10,22 +10,6 @@ mut:
 	retries   int
 }
 
-// arg_needs_no_quoting reports whether `arg` survives a trip through the shell
-// unchanged. Everything else is quoted rather than enumerated, so a character that
-// is special on only some shells is still handled.
-fn arg_needs_no_quoting(arg string) bool {
-	if arg.len == 0 {
-		return false
-	}
-	for c in arg {
-		if c.is_alnum() || c in [`_`, `-`, `.`, `/`, `:`, `=`, `@`, `+`, `,`, `%`] {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
 // seconds_to_duration converts a fractional number of seconds, as given on the
 // command line, to a Duration. The scaling is done in floating point so that a
 // value like `--delay 0.5` keeps its sub-second part.
