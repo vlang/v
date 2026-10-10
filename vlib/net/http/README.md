@@ -48,6 +48,11 @@ resp := http.fetch(
 HTTPS requests use HTTP/1.1 by default. Set `enable_http2: true` in
 `http.fetch` or a `http.Request` to opt in to HTTP/2 when the server supports it.
 
+An HTTP/2 or HTTP/3 response with a field that can not be delivered is an error, not a
+response without that field: a field name that is not a token, or a field value with CR, LF
+or NUL, makes the response malformed, and more than `http.max_headers` fields, trailers
+included, is an `http.HeaderLimitError`.
+
 A positive `stop_copying_limit` caps the stored HTTP/1.1 or HTTP/2 response body in bytes,
 independently of response headers and network read boundaries. HTTP/1.1 preserves the full body
 for nonpositive limits. Chunked HTTP/1.1 responses count body bytes after removing chunk framing.
@@ -87,6 +92,11 @@ Set `cert` and `cert_key` to terminate TLS (PEM strings when
 serve HTTP/2: on the TLS listener it advertises ALPN `h2, http/1.1`, and on the
 plain listener it accepts prior-knowledge cleartext h2c. Either way a client
 that does not ask for HTTP/2 keeps the ordinary HTTP/1.1 path.
+
+An HTTP/2 request with a field name that is not a token, or a field value with CR, LF or
+NUL, is malformed: its stream is reset and the handler is not called. A request with more
+than `http.max_headers` fields, counting the `Host` field that `:authority` becomes, is
+answered with `431 Request Header Fields Too Large`.
 
 ## Identifying the client
 

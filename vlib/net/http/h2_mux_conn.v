@@ -82,13 +82,15 @@ const h2_conn_specific_headers = ['connection', 'keep-alive', 'proxy-connection'
 
 // h2_response_field_error returns a non-empty reason when a regular (non-pseudo)
 // received header field is malformed per RFC 9113 §8.2, or '' when it is valid.
-// Field names must be non-empty and lowercase (§8.2.1), and connection-specific
+// Field names must be non-empty lowercase tokens (§8.2.1), and connection-specific
 // fields are forbidden (§8.2.2) -- TE included: §8.2.2 exempts it only in a
 // REQUEST, so a response or trailer carrying it is malformed even as "te:
 // trailers". A malformed field makes the whole message
 // malformed (§8.1.1); the mux path resets the stream and the sync path fails the
 // request rather than delivering it. Pseudo-header validity is checked at the
 // call site (the set of valid pseudo-headers differs between headers/trailers).
+// It checks the name only; h2_response_field_with_value_error checks the value
+// as well.
 fn h2_response_field_error(name string) string {
 	if name.len == 0 {
 		return 'empty header field name'
@@ -98,11 +100,32 @@ fn h2_response_field_error(name string) string {
 			return 'uppercase header field name "${name}"'
 		}
 	}
+	// Header.add_custom refuses a name that is not a token (one with a space, a
+	// colon, a control or a non-ASCII byte): without this check the Response
+	// would be delivered without the field instead of being malformed.
+	is_valid(name) or { return 'invalid header field name "${name}"' }
 	if name in h2_conn_specific_headers {
 		return 'connection-specific header field "${name}"'
 	}
 	if name == 'te' {
 		return 'connection-specific header field "te" (TE is permitted only in requests)'
+	}
+	return ''
+}
+
+// h2_response_field_with_value_error returns a non-empty reason when a regular
+// (non-pseudo) field of a received response or trailer section is malformed, or
+// '' when it is valid: the name rules of h2_response_field_error, and a value
+// that does not contain NUL, CR or LF (RFC 9113 §8.2.1). All four received-field
+// sites (sync + mux, headers + trailers) use it, so that every field they keep
+// is one that h2_response_to_http can store in a Header.
+fn h2_response_field_with_value_error(f H2HeaderField) string {
+	reason := h2_response_field_error(f.name)
+	if reason != '' {
+		return reason
+	}
+	if h2_field_value_has_forbidden_octet(f.value) {
+		return 'forbidden NUL/CR/LF octet in value of "${f.name}"'
 	}
 	return ''
 }
@@ -114,7 +137,7 @@ fn h2_response_field_error(name string) string {
 // interim response (e.g. 103 carrying "te: trailers") would be ignored and the
 // following final response accepted. RFC 9113 §8.3: the only response
 // pseudo-header is :status, pseudo-headers MUST precede regular fields and MUST
-// NOT be duplicated; regular fields follow h2_response_field_error.
+// NOT be duplicated; regular fields follow h2_response_field_with_value_error.
 fn h2_response_headers_error(fields []H2HeaderField) string {
 	mut seen_regular := false
 	mut seen_status := false
@@ -127,7 +150,7 @@ fn h2_response_headers_error(fields []H2HeaderField) string {
 			continue
 		}
 		seen_regular = true
-		reason := h2_response_field_error(f.name)
+		reason := h2_response_field_with_value_error(f)
 		if reason != '' {
 			return reason
 		}
@@ -1754,14 +1777,14 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 	if was_headers_done {
 		for f in fields {
 			// RFC 9113 §8.1: trailers MUST NOT contain pseudo-header fields, and the
-			// §8.2 field-name rules apply as for any header block.
+			// §8.2 field rules apply as for any header block.
 			if f.name.starts_with(':') {
 				s.mu.unlock()
 				c.reset_stream(frame.stream_id, .protocol_error,
 					'malformed trailers: pseudo-header ${f.name}')
 				return
 			}
-			reason := h2_response_field_error(f.name)
+			reason := h2_response_field_with_value_error(f)
 			if reason != '' {
 				s.mu.unlock()
 				c.reset_stream(frame.stream_id, .protocol_error, 'malformed trailers: ${reason}')

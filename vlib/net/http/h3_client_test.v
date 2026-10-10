@@ -105,7 +105,7 @@ fn test_h3_response_to_http() {
 		]
 		body:    'hi'.bytes()
 	}
-	resp := h3_response_to_http(h3resp)
+	resp := h3_response_to_http(h3resp)!
 	assert resp.status_code == 200
 	assert resp.http_version == '3.0'
 	assert resp.version() == .v3_0
