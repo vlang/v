@@ -733,7 +733,7 @@ fn main() {
 
 	second_output := os.join_path(root, 'second')
 	second :=
-		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-show-timings',
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-showcc', '-cc', 'cc', '-show-timings',
 			'-enable-globals', '-o', second_output, main_file])
 	assert second.exit_code == 0, second.output
 	assert second.output.contains('check (cached)'), second.output
@@ -5139,7 +5139,7 @@ fn main() {
 	second_output := os.join_path(root, 'second')
 	second :=
 		os.exec(['env', 'V3CACHE=' + '${cache_dir}', 'V3_CACHE_DISABLE_INCREMENTAL=1', v3_bin,
-			'-o', second_output, main_file])
+			'-cc', 'cc', '-show-timings', '-enable-globals', '-o', second_output, main_file])
 	assert second.exit_code == 0, second.output
 	$if macos {
 		// The generic-program development cache is currently enabled only on macOS.
@@ -6477,13 +6477,15 @@ pub fn boxed[T](value T) Box[T] {
 	}
 }
 ')
+	// Keep selector syntax in every snapshot so the conservative closure-runtime
+	// import does not change while the generic type argument is being tested.
 	main_file := os.join_path(root, 'main.v')
 	write_module_cache_file(root, 'main.v', 'module main
 
 import generic
 
 fn value() int {
-	_ = generic.boxed[int](1)
+	_ = generic.boxed[int](1).value
 	return generic.identity[int](40)
 }
 
@@ -6501,7 +6503,7 @@ fn main() {
 import generic
 
 fn value() int {
-	_ = generic.boxed[int](1)
+	_ = generic.boxed[int](1).value
 	return generic.identity[int](41)
 }
 
@@ -6518,7 +6520,7 @@ fn main() {
 import generic
 
 fn value() int {
-	_ = generic.boxed[int](1)
+	_ = generic.boxed[int](1).value
 	return generic.identity[int](42)
 }
 
@@ -6541,7 +6543,7 @@ fn main() {
 import generic
 
 fn value() int {
-	_ = generic.boxed[int](1)
+	_ = generic.boxed[int](1).value
 	return int(generic.identity[i64](43))
 }
 
