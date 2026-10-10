@@ -2745,6 +2745,19 @@ pub fn (mut tc TypeChecker) rebuild_scoped_transform_signature_maps() {
 	tc.transform_signature_maps_changed = false
 }
 
+// promote_scoped_declaration_visibility moves declaration ownership into the
+// current arena before the scoped transform metadata is released.
+pub fn (mut tc TypeChecker) promote_scoped_declaration_visibility() {
+	mut declarations := map[string]DeclarationVisibility{}
+	for name, visibility in tc.declaration_visibility {
+		declarations[name.clone()] = DeclarationVisibility{
+			...visibility
+			module_name: visibility.module_name.clone()
+		}
+	}
+	tc.declaration_visibility = declarations.move()
+}
+
 // begin_sparse_transform_node_caches keeps source-node entries in their dense
 // checked arrays and records transform-created node metadata sparsely.
 pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches(base_nodes int) {
