@@ -186,6 +186,15 @@ including control characters, quotes, semicolons and backslashes. Spaces and com
 inside the value are preserved; the sanitized value is quoted when it begins or ends
 with a space or comma.
 
+`Header.render(canonicalize: true)` writes each field name in a canonical spelling instead of
+the stored one. A name that has a `CommonHeader` is spelled like `CommonHeader.str()`, the
+spelling of the IANA HTTP Field Name Registry for the names registered there: `ETag`, `TE`,
+`WWW-Authenticate`. Any other name gets its first letter and each letter after a `-` in upper
+case and the rest in lower case: `x-request-id` becomes `X-Request-Id`. Go's
+`textproto.CanonicalMIMEHeaderKey` applies the second rule to every name, so it has `Etag`,
+`Te` and `Www-Authenticate` instead; field names are case-insensitive (RFC 9110, section 5.1),
+so both spellings name the same field.
+
 ### Windows TLS handshake compatibility
 
 On Windows, HTTPS uses Schannel first. If its handshake returns `SEC_E_INVALID_TOKEN`

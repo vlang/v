@@ -317,7 +317,7 @@ const common_header_map = {
 	'sec-fetch-site':                      .sec_fetch_site
 	'sec-fetch-user':                      .sec_fetch_user
 	'sec-websocket-accept':                .sec_websocket_accept
-	'sec_websocket_key':                   .sec_websocket_key
+	'sec-websocket-key':                   .sec_websocket_key
 	'server':                              .server
 	'server-timing':                       .server_timing
 	'set-cookie':                          .set_cookie
@@ -689,8 +689,14 @@ pub fn (h Header) unique_keys() []string {
 @[params]
 pub struct HeaderRenderConfig {
 pub:
-	version      Version
-	coerce       bool
+	version Version
+	coerce  bool
+	// canonicalize writes each field name in its canonical spelling instead of
+	// the stored one. A name that has a `CommonHeader` is spelled like its
+	// `CommonHeader.str()`: `etag` -> `ETag`, `www-authenticate` -> `WWW-Authenticate`.
+	// Any other name gets its first letter and each letter after a `-` in upper
+	// case and the rest in lower case: `x-request-id` -> `X-Request-Id`.
+	// It has no effect with `version: .v2_0`, which writes lower case names.
 	canonicalize bool
 }
 
@@ -768,10 +774,21 @@ pub fn (h Header) join(other Header) Header {
 	return combined
 }
 
-// canonicalize canonicalizes an HTTP header key
-// Common headers are determined by the common_header_map
-// Custom headers are capitalized on the first letter and any letter after a '-'
-// NOTE: Assumes sl is lowercase, since the caller usually already has the lowercase key
+// canonicalize returns the canonical spelling of the HTTP field name `name`.
+//
+// A name in `common_header_map` is spelled like its `CommonHeader`, so that the
+// result agrees with `CommonHeader.str()`. For the names in the IANA "HTTP Field
+// Name Registry" that is the registered spelling, e.g. `ETag`, `TE`, `Expect-CT`
+// and `WWW-Authenticate` (`DNT` is the spelling of the W3C document defining it).
+//
+// Any other name gets its first letter and each letter after a `-` in upper case
+// and the rest in lower case: `x-request-id` -> `X-Request-Id`. That is the rule
+// Go's `textproto.CanonicalMIMEHeaderKey` applies to every name, which is why Go
+// has `Etag`, `Te`, `Expect-Ct`, `Www-Authenticate` and `Dnt` for the names above.
+// Field names are case-insensitive (RFC 9110, section 5.1), so both spellings
+// name the same field.
+//
+// NOTE: Assumes name is lowercase, since the caller usually already has the lowercase key
 fn canonicalize(name string) string {
 	// check if we have a common header
 	if name in common_header_map {
