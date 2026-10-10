@@ -21,6 +21,7 @@ const macos_v3_private_environment_names = [
 	'V3_CRUN_BUILD_IDENTITY',
 	'V3_INTERNAL_RESTART',
 	'V3_INTERNAL_CACHE_RECOVERY',
+	'V3_INTERNAL_CACHE_FORCE_SOURCE',
 	macos_v3_caller_vexe_env,
 	macos_v3_caller_vexe_present_env,
 	macos_v3_caller_vchild_env,

@@ -103,6 +103,8 @@ Warm `v run` builds retain shared and newly introduced string literals without
 duplicate C definitions.
 Programs using runtime `v.reflection` reparse original declarations to preserve
 source-file metadata while reusing eligible cached objects.
+Retries that reparse cached module sources preserve caller values for `V3_CACHE_FORCE_SOURCE`
+at compile time and when running the program.
 
 The standard bootstrap does not build the sibling `v1_fallback` executable
 (`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the

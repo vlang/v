@@ -35,12 +35,14 @@ fn (s SavedEnv) restore() {
 // pin_module_cache points the module cache at `dir`, whatever the runner exports,
 // and makes the compiler say why it does not reuse a cached module.
 fn pin_module_cache(dir string) []SavedEnv {
-	saved := ['VTMP', 'V3CACHE', 'VFLAGS', 'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_TRACE'].map(save_env(it))
+	saved := ['VTMP', 'V3CACHE', 'VFLAGS', 'V3_CACHE_FORCE_SOURCE', 'V3_INTERNAL_CACHE_FORCE_SOURCE',
+		'V3_CACHE_TRACE'].map(save_env(it))
 	os.setenv('VTMP', dir, true)
 	os.setenv('V3CACHE', dir, true)
 	os.setenv('V3_CACHE_TRACE', '1', true)
 	os.unsetenv('VFLAGS')
 	os.unsetenv('V3_CACHE_FORCE_SOURCE')
+	os.unsetenv('V3_INTERNAL_CACHE_FORCE_SOURCE')
 	return saved
 }
 
@@ -259,39 +261,89 @@ fn main() { println(positive(os.getpid())) }
 }
 
 fn test_cached_reflection_preserves_original_function_source_locations() {
+	assert_cached_reflection_caller_environment(none)
+}
+
+fn test_cached_reflection_retry_preserves_caller_force_source_environment() {
+	assert_cached_reflection_caller_environment('caller-control')
+}
+
+fn assert_cached_reflection_caller_environment(caller_value ?string) {
 	$if windows {
 		return
 	}
-	os.find_abs_path_of_executable('cc') or { return }
-	root := new_project('module_cache_reuse_reflection')
-	saved := pin_module_cache(os.join_path(root, 'cache'))
+	os.find_abs_path_of_executable('clang') or { return }
+	root := new_project('module_cache_reuse_reflection_environment')
+	mut saved := pin_module_cache(os.join_path(root, 'cache'))
+	saved << save_env('V_MODULE_CACHE_REUSE_CALLER_ENV')
 	defer {
 		for env in saved {
 			env.restore()
 		}
 		os.rmdir_all(root) or {}
 	}
+	os.setenv('V_MODULE_CACHE_REUSE_CALLER_ENV', 'caller-env', true)
+	mut expected_caller := ''
+	mut caller_present := false
+	if value := caller_value {
+		expected_caller = value
+		caller_present = true
+		os.setenv('V3_CACHE_FORCE_SOURCE', value, true)
+	}
+	expected := ['CACHE_ENV reflection=true', 'CACHE_ENV private compile=[]',
+		'CACHE_ENV private runtime=[]', 'CACHE_ENV private present=false',
+		'CACHE_ENV caller compile=[${expected_caller}]',
+		'CACHE_ENV caller runtime=[${expected_caller}]', 'CACHE_ENV caller present=${caller_present}',
+		'CACHE_ENV ordinary compile=[caller-env]', 'CACHE_ENV ordinary runtime=[caller-env]',
+		'CACHE_ENV trace compile=[1]', 'CACHE_ENV trace runtime=[1]']
 	main_file := os.join_path(root, 'main.v')
-	os.write_file(main_file, 'import v.reflection
+	program := 'import os
+import v.reflection
+const private_value = \$env("V3_INTERNAL_CACHE_FORCE_SOURCE")
+const caller_value = \$env("V3_CACHE_FORCE_SOURCE")
+const ordinary_value = \$env("V_MODULE_CACHE_REUSE_CALLER_ENV")
+const trace_value = \$env("V3_CACHE_TRACE")
 fn main() {
 	file_idx := reflection.get_funcs().filter(it.name == "all_after_last")[0].file_idx
-	println(reflection.get_string_by_idx(file_idx).ends_with("string.v"))
+	println("CACHE_ENV reflection=" + reflection.get_string_by_idx(file_idx).ends_with("string.v").str())
+	environment := os.environ()
+	println("CACHE_ENV private compile=[" + private_value + "]")
+	println("CACHE_ENV private runtime=[" + os.getenv("V3_INTERNAL_CACHE_FORCE_SOURCE") + "]")
+	println("CACHE_ENV private present=" + ("V3_INTERNAL_CACHE_FORCE_SOURCE" in environment).str())
+	println("CACHE_ENV caller compile=[" + caller_value + "]")
+	println("CACHE_ENV caller runtime=[" + os.getenv("V3_CACHE_FORCE_SOURCE") + "]")
+	println("CACHE_ENV caller present=" + ("V3_CACHE_FORCE_SOURCE" in environment).str())
+	println("CACHE_ENV ordinary compile=[" + ordinary_value + "]")
+	println("CACHE_ENV ordinary runtime=[" + os.getenv("V_MODULE_CACHE_REUSE_CALLER_ENV") + "]")
+	println("CACHE_ENV trace compile=[" + trace_value + "]")
+	println("CACHE_ENV trace runtime=[" + os.getenv("V3_CACHE_TRACE") + "]")
 }
-') or { panic(err) }
-	cold := build(root, ['-cc', 'cc'], main_file, 'first')
+'
+	os.write_file(main_file, program) or { panic(err) }
+	cold := run_cached_program(main_file)
 	assert parsed_source_files(cold) > 1, cold
-	assert run_built(root, 'first') == 'true'
-	os.write_file(main_file, 'import v.reflection
-fn suffix() string { return "string.v" }
-fn main() {
-	file_idx := reflection.get_funcs().filter(it.name == "all_after_last")[0].file_idx
-	println(reflection.get_string_by_idx(file_idx).ends_with(suffix()))
-}
-') or { panic(err) }
-	warm := build(root, ['-cc', 'cc'], main_file, 'second')
+	assert !cold.contains('runtime reflection requires original declaration source locations'), cold
+	assert cold.split_into_lines().filter(it.starts_with('CACHE_ENV ')) == expected, cold
+	objects := module_objects(root)
+	assert objects.len > 0
+	object_times := objects.map(os.file_last_mod_unix(it))
+	mut object_contents := map[string][]u8{}
+	for object in objects {
+		object_contents[object] = os.read_bytes(object) or { panic(err) }
+	}
+	changed := program.replace('fn main() {', 'fn suffix() string { return "string.v" }\nfn main() {')
+		.replace('ends_with("string.v")', 'ends_with(suffix())')
+	os.write_file(main_file, changed) or { panic(err) }
+	warm := run_cached_program(main_file)
 	assert warm.count('runtime reflection requires original declaration source locations') == 1, warm
 	assert parsed_source_files(warm) > 1, warm
-	assert run_built(root, 'second') == 'true'
+	assert warm.split_into_lines().filter(it.starts_with('CACHE_ENV ')) == expected, warm
+	assert module_objects(root) == objects
+	assert objects.map(os.file_last_mod_unix(it)) == object_times
+	for object in objects {
+		current := os.read_bytes(object) or { panic(err) }
+		assert current == object_contents[object]
+	}
 }
 
 fn test_usecache_reuses_the_modules_built_by_the_bundled_tcc() {

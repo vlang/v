@@ -142,6 +142,7 @@ const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
 const v3_vvmrc_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 const v3_crun_build_identity_env = 'V3_CRUN_BUILD_IDENTITY'
 const v3_internal_restart_env = 'V3_INTERNAL_RESTART'
+const v3_internal_cache_force_source_env = 'V3_INTERNAL_CACHE_FORCE_SOURCE'
 const v3_internal_parser_diagnostics_printed_flag = '-v3-internal-parser-diagnostics-printed'
 const v3_internal_implicit_tcc_warning_prefix = '-v3-internal-implicit-tcc-warning='
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
@@ -11189,6 +11190,7 @@ pub fn run(args []string) {
 		&& persistent_program_cache_enabled(cache_enabled, is_test_command
 			|| is_v3_test_file(input_file, backend, target), os.vtmp_dir())
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
+		|| os.getenv(v3_internal_cache_force_source_env) == '1'
 	mut cache_no_parallel_cgen := current_no_parallel
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
@@ -11729,7 +11731,7 @@ pub fn run(args []string) {
 	if cache_state.manager.enabled && !cache_state.force_source
 		&& cached_headers_hide_reflection_sources(a) {
 		trace_v3_cache_fallback('runtime reflection requires original declaration source locations')
-		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation()
 	}
 
@@ -14118,7 +14120,7 @@ pub fn run(args []string) {
 				compile_signature += program_suffix
 				objects := cache_state.manager.valid_cgen_prepared_objects(cgen_cache_entry, compile_signature) or {
 					if resolve_flag_specific_cache_objects(mut cache_state, a, object_flags_signature + program_suffix, parse_v3_interface_scopes(interface_impl_signature)) {
-						os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+						os.setenv(v3_internal_cache_force_source_env, '1', true)
 						restart_v3_after_cache_invalidation()
 					}
 					resolved_objects := cache_object_paths(cache_state.objects)
@@ -14163,7 +14165,7 @@ pub fn run(args []string) {
 						if prefs.target_libc_headers
 							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix, generated_source) {
 							trace_v3_cache_fallback('cached program prefix has stale target thread support')
-							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+							os.setenv(v3_internal_cache_force_source_env, '1', true)
 							restart_v3_after_cache_invalidation()
 						}
 						// An incremental plan holds only the bodies that changed. The wrappers
@@ -14195,7 +14197,7 @@ pub fn run(args []string) {
 						if prefs.target_libc_headers
 							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix, generated_source) {
 							trace_v3_cache_fallback('cached program prefix has stale target thread support')
-							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+							os.setenv(v3_internal_cache_force_source_env, '1', true)
 							restart_v3_after_cache_invalidation()
 						}
 						cached_declarations := os.read_file(generic_cache_entry.declarations) or {
@@ -15646,7 +15648,7 @@ fn v3_incremental_program_main_source(cached_prefix string, body_source string) 
 
 fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_declarations_path string, cached_prefix string, object_base string, interface_impl_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
-		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation()
 	}
 	objects := cache_object_paths(state.objects)
@@ -15669,7 +15671,7 @@ fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string,
 		return error('v3 module cache directory is unavailable')
 	}
 	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
-		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation()
 	}
 	incremental_c_function_sections(generated_source) or {
@@ -15717,7 +15719,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	mut has_declarations := false
 	scopes := parse_v3_interface_scopes(interface_impl_signature)
 	if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
-		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+		os.setenv(v3_internal_cache_force_source_env, '1', true)
 		restart_v3_after_cache_invalidation()
 	}
 	main_body := split.modules['main'] or { '' }
@@ -22294,7 +22296,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 							// A bundle is rebuilt as a unit. If one interface is stale,
 							// restart with all bundle source bodies for the replacement object.
 							if !cache_state.force_source {
-								os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+								os.setenv(v3_internal_cache_force_source_env, '1', true)
 								restart_v3_after_cache_invalidation()
 							}
 							cache_state.bundle_valid = false
