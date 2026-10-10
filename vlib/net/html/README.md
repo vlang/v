@@ -29,3 +29,7 @@ fn main() {
 ```
 
 More examples found on [`parser_test.v`](parser_test.v) and [`html_test.v`](html_test.v)
+
+Comments are omitted from the parsed tree. Text before and after comments remains in order,
+including text wrapped by hydration markers such as `<!--[-->hello<!--]-->`. Comments do not
+create empty text nodes or change the surrounding elements.
