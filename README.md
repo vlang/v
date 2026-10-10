@@ -137,6 +137,30 @@ $ make
 
 ### Docker
 
+Official images for V are published as [`thevlang/vlang`](https://hub.docker.com/r/thevlang/vlang),
+built from [`vlang/docker`](https://github.com/vlang/docker):
+
+```bash
+docker run --rm -it -v "$PWD":/src -w /src thevlang/vlang:latest
+```
+
+The published variants are:
+
+| Tag | Base | Notes |
+| --- | --- | --- |
+| `:latest`, `:debian` | Debian | the default: programs built here run on Debian, Ubuntu, Fedora |
+| `:alpine` | Alpine | musl; use this one for static executables |
+| `:nix` | `nixos/nix` | pinned nixpkgs toolchain; `nix-shell -p <pkg>` works inside |
+| `:static` | `scratch` | a static V compiler, for running already-compiled programs |
+| `:<dist>-dev` | the `-build` image | a full V checkout, for working on V itself |
+
+Both `linux/amd64` and `linux/arm64` are published. Podman reads the same
+Dockerfiles and needs no daemon, so `podman build -f ... .` works too;
+it also runs containers as your own user, so files written into a mounted
+source tree stay owned by you.
+
+To build one locally instead:
+
 ```bash
 git clone --depth=1 https://github.com/vlang/v
 cd v
