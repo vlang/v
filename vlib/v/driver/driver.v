@@ -167,6 +167,7 @@ struct V3CachedObjectCompiler {
 
 struct V3ModuleCacheState {
 	manager             modulecache.Manager
+	silent              bool
 	bundle_sources      []string
 	bundle_source_paths map[string]bool
 mut:
@@ -11229,6 +11230,7 @@ pub fn run(args []string) {
 	bundle_sources := builtin_bundle_source_files(mut p.a, prefs, builtin_files)
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
+		silent:                    silent
 		bundle_sources:            bundle_sources
 		bundle_source_paths:       module_cache_source_path_set(p.a, bundle_sources)
 		force_source:              force_cache_source
@@ -15765,6 +15767,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			false
 		}
 		if !bundle_is_compiled {
+			state.print_module_cache_notice('builtin')
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
@@ -15846,6 +15849,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			false
 		}
 		if !module_is_compiled {
+			state.print_module_cache_notice(module_name)
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
@@ -17469,6 +17473,13 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 		}
 	}
 	return false
+}
+
+fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
+	if !state.silent {
+		name := state.module_import_paths[module_name] or { module_name }
+		eprintln('Caching module ${name}...')
+	}
 }
 
 fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool) ! {

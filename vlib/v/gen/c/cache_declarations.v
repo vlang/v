@@ -91,40 +91,183 @@ fn (mut g FlatGen) emit_cache_owned_const(name string, val_id flat.NodeId, owner
 // cache_collect_declaration_refs records C identifiers, excluding comments and
 // literals, so text printed by the program cannot request an unused declaration.
 fn (mut g FlatGen) cache_collect_declaration_refs(source string) {
+	for name, _ in cache_c_identifier_refs(source) {
+		g.cache_decl_refs[name] = true
+	}
+}
+
+fn cache_c_skip_literal_or_comment(source string, start int) int {
+	mut i := start
+	if source[i] in [`"`, `'`] {
+		quote := source[i]
+		i++
+		for i < source.len && source[i] != quote {
+			if source[i] == `\\` {
+				i++
+			}
+			i++
+		}
+		return if i < source.len { i + 1 } else { source.len }
+	}
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+		i += 2
+		for i < source.len && source[i] != `\n` {
+			i++
+		}
+		return i
+	}
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+		i += 2
+		for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+			i++
+		}
+		return if i + 1 < source.len { i + 2 } else { source.len }
+	}
+	return start
+}
+
+fn cache_c_identifier_refs(source string) map[string]bool {
+	mut refs := map[string]bool{}
 	mut i := 0
 	for i < source.len {
-		if source[i] in [`"`, `'`] {
-			quote := source[i]
-			i++
-			for i < source.len && source[i] != quote {
-				if source[i] == `\\` {
-					i++
-				}
-				i++
-			}
-			i++
-		} else if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
-			i += 2
-			for i < source.len && source[i] != `\n` {
-				i++
-			}
-		} else if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
-			i += 2
-			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
-				i++
-			}
-			i += 2
+		next := cache_c_skip_literal_or_comment(source, i)
+		if next > i {
+			i = next
 		} else if c_identifier_start(source[i]) {
 			start := i
 			i++
 			for i < source.len && c_identifier_continue(source[i]) {
 				i++
 			}
-			g.cache_decl_refs[source[start..i]] = true
+			refs[source[start..i]] = true
 		} else {
 			i++
 		}
 	}
+	return refs
+}
+
+struct CacheSupportDefinition {
+	name  string
+	start int
+	end   int
+}
+
+// cache_prune_generated_support keeps inline helpers and literal storage reached
+// by a warm program. TinyCC emits unused inline bodies too, so declarations alone
+// are not enough to avoid recompiling arithmetic, sorting and formatting support.
+fn cache_prune_generated_support(source string) string {
+	inline_prefix := 'static inline '
+	mut support := []CacheSupportDefinition{}
+	mut definitions := map[string][]int{}
+	mut i := 0
+	mut depth := 0
+	for i < source.len {
+		next := cache_c_skip_literal_or_comment(source, i)
+		if next > i {
+			i = next
+			continue
+		}
+		if depth == 0 && source[i] == `s` && (i == 0 || source[i - 1] == `\n`) {
+			mut end := i
+			for end < source.len && source[end] != `\n` { end++ }
+			line := source[i..end]
+			literal_prefix := if line.starts_with('static const string _v3_lit_') {
+				'static const string '
+			} else if line.starts_with('static string _v3_lit_') {
+				'static string '
+			} else {
+				''
+			}
+			if literal_prefix.len > 0 && line.ends_with(';') {
+				mut name_end := literal_prefix.len
+				for name_end < line.len && c_identifier_continue(line[name_end]) { name_end++ }
+				if line[name_end..].trim_left(' \t').starts_with('=') {
+					name := line[literal_prefix.len..name_end]
+					definitions[name] << support.len
+					support << CacheSupportDefinition{ name: name, start: i, end: end }
+					i = end
+					continue
+				}
+			}
+			open := line.index_u8(`(`)
+			brace := line.index_u8(`{`)
+			if line.starts_with(inline_prefix) && open > 0 && brace > open {
+				mut name_start := open
+				for name_start > 0 && c_identifier_continue(line[name_start - 1]) {
+					name_start--
+				}
+				if name_start < open {
+					name := line[name_start..open]
+					mut pos := i + brace + 1
+					mut body_depth := 1
+					for pos < source.len && body_depth > 0 {
+						after := cache_c_skip_literal_or_comment(source, pos)
+						if after > pos {
+							pos = after
+							continue
+						}
+						if source[pos] == `{` { body_depth++ }
+						if source[pos] == `}` { body_depth-- }
+						pos++
+					}
+					if body_depth != 0 {
+						return source.clone()
+					}
+					definitions[name] << support.len
+					support << CacheSupportDefinition{ name: name, start: i, end: pos }
+					i = pos
+					continue
+				}
+			}
+		}
+		if source[i] == `{` { depth++ }
+		if source[i] == `}` { depth-- }
+		i++
+	}
+	if support.len == 0 {
+		return source.clone()
+	}
+	mut roots := strings.new_builder(source.len)
+	mut offset := 0
+	for definition in support {
+		roots.write_string(source[offset..definition.start])
+		offset = definition.end
+	}
+	roots.write_string(source[offset..])
+	mut refs := cache_c_identifier_refs(roots.str())
+	unsafe { roots.free() }
+	mut pending := refs.keys().filter(it in definitions)
+	mut visited := map[string]bool{}
+	for pending.len > 0 {
+		name := pending.pop()
+		if visited[name] { continue }
+		visited[name] = true
+		// A helper can have separate native and portable definitions. Keep both
+		// branches and their dependencies, leaving the preprocessor in charge.
+		for index in definitions[name] {
+			definition := support[index]
+			for dependency, _ in cache_c_identifier_refs(source[definition.start..definition.end]) {
+				if dependency in definitions && !refs[dependency] {
+					refs[dependency] = true
+					pending << dependency
+				}
+			}
+		}
+	}
+	mut out := strings.new_builder(source.len)
+	offset = 0
+	for definition in support {
+		out.write_string(source[offset..definition.start])
+		if refs[definition.name] {
+			out.write_string(source[definition.start..definition.end])
+		}
+		offset = definition.end
+	}
+	out.write_string(source[offset..])
+	result := out.str()
+	unsafe { out.free() }
+	return result
 }
 
 fn (mut g FlatGen) prepare_cache_declaration_demand(fn_code string) {

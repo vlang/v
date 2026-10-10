@@ -3759,7 +3759,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// build keeps the plain numbering and skips the pass over the whole unit.
 		if g.cache_stable_symbols {
 			source := g.sb.str()
-			result := g.rewrite_cache_string_symbols(source)
+			mut result := g.rewrite_cache_string_symbols(source)
+			if g.cache_decl_demand {
+				pruned := cache_prune_generated_support(result)
+				unsafe { result.free() }
+				result = pruned
+			}
 			unsafe {
 				source.free()
 				g.sb.free()

@@ -81,11 +81,65 @@ fn parsed_source_files(output string) int {
 
 // assert_reused_modules checks that a build read every module from the cache.
 fn assert_reused_modules(output string) {
+	assert !output.contains('Caching module '), output
 	assert !output.contains('V3 module cache miss'), output
 	assert !output.contains('V3 module cache object miss'), output
 	assert !output.contains('V3 module cache dependency miss'), output
 	assert !output.contains('V3 module cache fallback'), output
 	assert parsed_source_files(output) == 1, output
+}
+
+fn test_tcc_caches_sha3_and_only_announces_new_module_objects() {
+	$if !linux && !macos {
+		return
+	}
+	root := new_project('module_cache_tcc_sha3')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved { env.restore() }
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	program := 'import crypto.sha3
+fn main() { println(sha3.sum512([]u8{len: 100}).hex()) }
+'
+	expected := '4c6fa0ffb3e69a54ad16e0efd3d2f40991a38bcc13ade00ca0de3e3055baaf6e' +
+		'fa47cb1735476db83d180cf145e097b6dcf68dcdd131a9aa94b2a3b876921e69'
+	os.write_file(main_file, program)!
+	cold := build(root, ['-cc', 'tcc', '-usecache'], main_file, 'cold')
+	assert cold.contains('  tcc '), cold
+	assert cold.contains('Caching module crypto.sha3...'), cold
+	assert run_built(root, 'cold') == expected
+	sha_objects := module_objects(root).filter(os.file_name(it).starts_with('sha3_'))
+	assert sha_objects.len == 1, sha_objects.str()
+	object_bytes := os.read_bytes(sha_objects[0])!
+	for i in 0 .. 2 {
+		wide_checks := if i == 1 {
+			'wide := u128(1) << 100
+	assert wide / u128(3) * u128(3) + wide % u128(3) == wide
+	assert wide.str() == "1267650600228229401496703205376"
+	'
+		} else {
+			''
+		}
+		os.write_file(main_file, program.replace('println(', wide_checks + 'println(') + '\nfn added_${i}() {}\n')!
+		warm := build(root, ['-cc', 'tcc', '-usecache'], main_file, 'warm')
+		assert_reused_modules(warm)
+		assert module_objects(root).filter(os.file_name(it).starts_with('sha3_')) == sha_objects
+		assert os.read_bytes(sha_objects[0])! == object_bytes
+		assert run_built(root, 'warm') == expected
+	}
+	// A cold `run` shows progress before the program output; -silent suppresses it.
+	os.setenv('V3CACHE', os.join_path(root, 'run_cache'), true)
+	run := os.exec([@VEXE, '-cc', 'tcc', '-usecache', 'run', main_file])
+	assert run.exit_code == 0, run.output
+	assert run.output.contains('Caching module crypto.sha3...'), run.output
+	assert run.output.trim_space().ends_with(expected), run.output
+	os.setenv('V3CACHE', os.join_path(root, 'silent_cache'), true)
+	quiet := os.exec([@VEXE, '-silent', '-cc', 'tcc', '-usecache', 'run', main_file])
+	assert quiet.exit_code == 0, quiet.output
+	assert !quiet.output.contains('Caching module '), quiet.output
+	assert quiet.output.trim_space().ends_with(expected), quiet.output
 }
 
 const program_with_imports = 'import time

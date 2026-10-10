@@ -70,3 +70,58 @@ fn test_cache_signature_collection_omits_unused_function_payloads() {
 	assert 'sample__Used' in payloads, payloads.str()
 	assert 'sample__Unused' !in payloads, payloads.str()
 }
+
+fn test_cache_inline_helpers_keep_transitive_and_macro_references() {
+	source := 'static inline int leaf() { return 7; }
+static inline int called() {
+	/* } */ const char* text = "{ unused }";
+	return leaf();
+}
+static inline int unused() { return 9; }
+#define chosen() called()
+int main() { return chosen(); }
+'
+	pruned := cache_prune_generated_support(source)
+	assert pruned.contains('static inline int leaf()'), pruned
+	assert pruned.contains('static inline int called()'), pruned
+	assert !pruned.contains('static inline int unused()'), pruned
+	assert pruned.contains('"{ unused }"'), pruned
+	assert pruned.contains('#define chosen() called()'), pruned
+}
+
+fn test_cache_inline_helpers_preserve_conditional_definitions() {
+	source := 'static inline int native() { return 1; }
+static inline int portable() { return 2; }
+#ifdef NATIVE
+static inline int selected() { return native(); }
+#else
+static inline int selected() { return portable(); }
+#endif
+static inline int unused() { return 3; }
+int main() { return selected(); }
+'
+	pruned := cache_prune_generated_support(source)
+	for name in ['native', 'portable', 'selected'] {
+		assert pruned.contains('static inline int ${name}()'), pruned
+	}
+	assert !pruned.contains('static inline int unused()'), pruned
+	assert pruned.contains('#ifdef NATIVE'), pruned
+	assert pruned.contains('#else'), pruned
+	assert pruned.contains('#endif'), pruned
+}
+
+fn test_cache_generated_support_keeps_only_reached_literal_storage() {
+	source := 'static const string _v3_lit_used = {"used", 4, 1};
+static const string _v3_lit_unused = {"unused", 6, 1};
+static string _v3_lit_direct = {"direct", 6, 1};
+static inline string used() { return _v3_lit_used; }
+static inline string unused() { return _v3_lit_unused; }
+int main() { println("_v3_lit_unused"); println(_v3_lit_direct); println(used()); }
+'
+	pruned := cache_prune_generated_support(source)
+	assert pruned.contains('static const string _v3_lit_used'), pruned
+	assert pruned.contains('static string _v3_lit_direct'), pruned
+	assert !pruned.contains('static const string _v3_lit_unused'), pruned
+	assert !pruned.contains('static inline string unused()'), pruned
+	assert pruned.contains('println("_v3_lit_unused")'), pruned
+}
