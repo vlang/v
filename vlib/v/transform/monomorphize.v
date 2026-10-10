@@ -13898,7 +13898,9 @@ fn (t &Transformer) qualify_decl_module_generic_base(base string, module_name st
 	}
 	qname := '${module_name}.${clean}'
 	if qname in t.structs || qname in t.sum_types || (!isnil(t.tc)
-		&& (qname in t.tc.struct_generic_params || qname in t.tc.sum_generic_params)) {
+		&& (qname in t.tc.struct_generic_params || qname in t.tc.sum_generic_params
+			|| qname in t.tc.interface_names || qname in t.tc.interface_generic_params
+			|| qname in t.tc.type_aliases || qname in t.tc.type_alias_generic_params)) {
 		return qname
 	}
 	return clean
