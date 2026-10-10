@@ -13867,12 +13867,43 @@ fn (t &Transformer) lock_colliding_main_substitution_type_text(original string, 
 	if source_is_app && concrete_is_app && source_base == concrete_base
 		&& source_args.len == concrete_args.len {
 		mut locked_args := []string{cap: concrete_args.len}
+		mut args_locked := false
 		for i, concrete_arg in concrete_args {
-			locked_args << t.lock_colliding_main_substitution_type_text(source_args[i], concrete_arg, module_name, generic_params)
+			locked := t.lock_colliding_main_substitution_type_text(source_args[i], concrete_arg, module_name, generic_params)
+			if locked != concrete_arg.trim_space() {
+				args_locked = true
+			}
+			locked_args << locked
 		}
-		return '${concrete_base}[${locked_args.join(', ')}]'
+		// Once an argument is locked (`main.Item`), the text is a qualified semantic
+		// spelling, which codegen parses without the decl module context. A bare
+		// decl-module base (`List`) would then lose its module (`List[Item]` instead of
+		// `lib.List[Item]`), so qualify it too.
+		base := if args_locked {
+			t.qualify_decl_module_generic_base(concrete_base, module_name)
+		} else {
+			concrete_base
+		}
+		return '${base}[${locked_args.join(', ')}]'
 	}
 	return t.lock_colliding_main_generic_type_text(concrete, module_name)
+}
+
+// qualify_decl_module_generic_base qualifies a bare generic base declared in
+// `module_name` (e.g. `List` -> `lib.List`); other bases are returned unchanged.
+fn (t &Transformer) qualify_decl_module_generic_base(base string, module_name string) string {
+	clean := base.trim_space()
+	if clean.contains('.') || module_name in ['', 'main', 'builtin'] {
+		return clean
+	}
+	qname := '${module_name}.${clean}'
+	if qname in t.structs || qname in t.sum_types || (!isnil(t.tc)
+		&& (qname in t.tc.struct_generic_params || qname in t.tc.sum_generic_params
+			|| qname in t.tc.interface_names || qname in t.tc.interface_generic_params
+			|| qname in t.tc.type_aliases || qname in t.tc.type_alias_generic_params)) {
+		return qname
+	}
+	return clean
 }
 
 // lock_colliding_main_generic_type_text rewrites a bare program-module (main)
