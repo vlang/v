@@ -975,6 +975,10 @@ To use a format specifier, follow this pattern:
 
 See
 [Format Placeholder Specification](https://en.wikipedia.org/wiki/Printf_format_string#Format_placeholder_specification)
+
+Scientific float interpolation (`e`, `E`, `g`, or `G`) uses at least two exponent digits,
+without additional leading zeroes, including when a precision is specified.
+
 for more information.
 
 ```v
