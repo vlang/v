@@ -100,6 +100,11 @@ or UTC `Time` values to that location's calendar time. `load_location` searches
 that need embedded time zone data (no system zoneinfo, portable binaries) can
 import `time.tzdata`.
 
+`load_location('Local')` uses the system time zone when `TZ` is unset. On POSIX,
+setting `TZ` to an empty string selects UTC. On Windows, `os.setenv('TZ', '', true)`
+removes `TZ`, so the local location uses the system time zone. To select UTC explicitly
+on either platform, use `load_location('UTC')` or set `TZ` to the POSIX rule `UTC0`.
+
 ```v
 import time
 import time.tzdata as _
