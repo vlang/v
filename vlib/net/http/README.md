@@ -48,6 +48,11 @@ resp := http.fetch(
 HTTPS requests use HTTP/1.1 by default. Set `enable_http2: true` in
 `http.fetch` or a `http.Request` to opt in to HTTP/2 when the server supports it.
 
+Cookies given in `cookies` of `http.fetch`, or added with `Request.add_cookie`, are sent in
+one `Cookie` header as `name=value` pairs. A value goes through `sanitize_cookie_value`. A
+cookie whose name is empty or contains `;`, `=`, a space, a control character or a non-ASCII
+byte is not sent. `Request.cookie_header_value` returns the header value that is sent.
+
 A positive `stop_copying_limit` caps the stored HTTP/1.1 or HTTP/2 response body in bytes,
 independently of response headers and network read boundaries. HTTP/1.1 preserves the full body
 for nonpositive limits. Chunked HTTP/1.1 responses count body bytes after removing chunk framing.

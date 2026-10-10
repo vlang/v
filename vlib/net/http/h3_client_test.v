@@ -81,6 +81,45 @@ fn test_to_h3_request_collapses_cookies() {
 	assert cookie[0].value.contains('a=1')
 }
 
+fn test_to_h3_request_sanitizes_request_cookies() {
+	req := Request{
+		cookies: {
+			'sid':              'abc'
+			'x\r\nInjected: 1': 'v'
+			'c':                'x\r\nInjected:1'
+			'a; admin':         '1'
+			'd':                'a;admin=1'
+		}
+	}
+	mut h := new_header()
+	h.add(.cookie, 'theme=dark')
+	h3req := req.to_h3_request(.get, 'h.example', '/', '', h)
+	cookie := h3req.headers.filter(it.name == 'cookie')
+	assert cookie.len == 1
+	// The same value that the HTTP/1.1 and HTTP/2 clients send.
+	assert cookie[0].value == 'sid=abc; c=xInjected:1; d=aadmin=1; theme=dark'
+	assert cookie[0].value == req.cookie_header_value_with_header(h)
+
+	// A request whose cookies are all left out has no cookie field at all.
+	unusable := Request{
+		cookies: {
+			'x\r\nInjected: 1': 'v'
+		}
+	}
+	h3none := unusable.to_h3_request(.get, 'h.example', '/', '', new_header())
+	assert !h3none.headers.any(it.name == 'cookie')
+}
+
+fn test_to_h3_request_preserves_present_empty_cookie_field() {
+	mut h := new_header()
+	h.add(.cookie, '')
+	req := Request{}
+	h3req := req.to_h3_request(.get, 'h.example', '/', '', h)
+	cookie := h3req.headers.filter(it.name == 'cookie')
+	assert cookie.len == 1
+	assert cookie[0].value == ''
+}
+
 fn test_to_h3_request_authority_from_host_header() {
 	mut h := new_header()
 	h.add(.host, 'override.example:8443')
