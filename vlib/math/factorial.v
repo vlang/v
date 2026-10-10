@@ -1,10 +1,11 @@
 module math
 
 // factorial calculates the factorial of the provided value.
+// Non-integer values use gamma(n + 1); overflow returns positive infinity.
 pub fn factorial(n f64) f64 {
-	// For a large positive argument (n >= factorials_table.len) return max_f64
+	// The table ends at 170!, the largest finite integer factorial in f64.
 	if n >= factorials_table.len {
-		return max_f64
+		return inf(1)
 	}
 	// Otherwise return n!.
 	if n == f64(i64(n)) && n >= 0.0 {
