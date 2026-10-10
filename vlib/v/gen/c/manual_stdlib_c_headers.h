@@ -354,6 +354,7 @@ V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size
 V_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);
 V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);
 V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);
+V_CRT_LINKAGE int V_CRT_CALL _putenv_s(const char *name, const char *value);
 #endif
 #if defined(_MSC_VER) && !defined(__clang__)
 #ifndef _TRUNCATE
