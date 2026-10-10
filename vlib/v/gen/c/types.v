@@ -1322,6 +1322,12 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_contains_generic_placeholder(t.base_type)
 		}
 		types.Struct {
+			// Inferred anonymous literals are materialized during transform. Their
+			// earlier checker entry has no nominal storage type; prefer the concrete
+			// lowered annotation instead of emitting `v_struct` for its container.
+			if t.name.all_after_last('.') == 'struct' {
+				return true
+			}
 			// A stale generic-call annotation can carry the concrete C function name
 			// as a nominal type. It is not a payload type and must not create an
 			// `__v_option_<function>` typedef in the program prefix.

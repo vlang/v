@@ -1056,7 +1056,13 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 	if t.in_const_init {
 		return none
 	}
-	target_array_type := t.normalize_type_alias(target_type)
+	mut target_array_type := t.normalize_type_alias(target_type)
+	if t.generic_arg_is_unresolved(target_array_type) {
+		resolved_type := t.node_type(id)
+		if resolved_type.starts_with('[]') && !t.generic_arg_is_unresolved(resolved_type) {
+			target_array_type = resolved_type
+		}
+	}
 	checker_array_type := t.normalize_type_alias(t.raw_checker_node_type(id))
 	array_type := if target_array_type.starts_with('[]')
 		&& t.is_sum_type_name(target_array_type[2..]) {

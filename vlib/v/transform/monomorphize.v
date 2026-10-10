@@ -15282,7 +15282,10 @@ fn (t &Transformer) generic_args_have_placeholders(args []string) bool {
 
 fn (t &Transformer) generic_arg_is_unresolved(arg string) bool {
 	if t.skip_generics {
-		return false
+		// Anonymous literals still need materialization in nongeneric programs.
+		// Skipping generic specialization must not make their provisional storage
+		// type authoritative over the concrete literal type.
+		return inferred_anonymous_struct_placeholder(arg)
 	}
 	// Hot: called for every call/assign type text during body transforms, with
 	// heavy repetition (a few thousand distinct texts per build). The result is
@@ -15309,9 +15312,33 @@ fn (t &Transformer) generic_arg_is_unresolved(arg string) bool {
 	return t.generic_arg_is_unresolved_uncached(arg)
 }
 
+fn inferred_anonymous_struct_placeholder(typ string) bool {
+	clean := typ.trim_space()
+	if clean.starts_with('[]') {
+		return inferred_anonymous_struct_placeholder(clean[2..])
+	}
+	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+		return inferred_anonymous_struct_placeholder(clean[1..])
+	}
+	if clean.starts_with('map[') {
+		end := generic_matching_bracket(clean, 3)
+		if end < clean.len {
+			return inferred_anonymous_struct_placeholder(clean[4..end])
+				|| inferred_anonymous_struct_placeholder(clean[end + 1..])
+		}
+	}
+	if clean.starts_with('[') {
+		end := generic_matching_bracket(clean, 0)
+		if end < clean.len {
+			return inferred_anonymous_struct_placeholder(clean[end + 1..])
+		}
+	}
+	return clean.all_after_last('.') == 'struct'
+}
+
 fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {
 	clean := arg.trim_space()
-	if clean.len == 0 || clean.all_after_last('.') in ['unknown', 'void', 'generic'] {
+	if clean.len == 0 || clean.all_after_last('.') in ['unknown', 'void', 'generic', 'struct'] {
 		return true
 	}
 	if clean.starts_with('(') && clean.ends_with(')') {

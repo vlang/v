@@ -2002,6 +2002,9 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 		if node.kind == .array_literal && t.generic_arg_is_unresolved(resolved) {
 			elem_type := t.array_literal_elem_type(node)
 			if decl_type_is_usable(elem_type) && !t.generic_arg_is_unresolved(elem_type) {
+				if t.is_fixed_array_type(resolved) {
+					return '[${fixed_array_len_text(resolved)}]${elem_type}'
+				}
 				return '[]${elem_type}'
 			}
 		}
