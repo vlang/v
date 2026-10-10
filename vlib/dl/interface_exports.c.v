@@ -1,3 +1,4 @@
+@[has_globals]
 module dl
 
 // An interface value only carries its concrete type tag, so a program cannot
@@ -44,7 +45,7 @@ fn register_interface_exports(handle voidptr) {
 	}
 	mut table := g_dl_interface_exports
 	for table != unsafe { nil } {
-		if table.entries == entries {
+		if voidptr(table.entries) == voidptr(entries) {
 			table.refs++
 			return
 		}
@@ -65,7 +66,7 @@ fn unregister_interface_exports(handle voidptr) {
 	mut prev := &InterfaceExportTable(unsafe { nil })
 	mut table := g_dl_interface_exports
 	for table != unsafe { nil } {
-		if table.entries == entries {
+		if voidptr(table.entries) == voidptr(entries) {
 			table.refs--
 			if table.refs > 0 {
 				return
