@@ -626,6 +626,10 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	assert t.lock_colliding_main_substitution_type_text('other.Box[map[other.Key]T]', 'other.Box[map[other.Key]Context]', 'arc', [
 		'T',
 	]) == 'other.Box[map[other.Key]main.Context]'
+	// A locked argument makes the spelling qualified, so the decl-module base must be too.
+	assert t.lock_colliding_main_substitution_type_text('&Arc[T]', '&Arc[Context]', 'arc', [
+		'T',
+	]) == '&arc.Arc[main.Context]'
 }
 
 fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
