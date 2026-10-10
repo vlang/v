@@ -192,6 +192,15 @@ including control characters, quotes, semicolons and backslashes. Spaces and com
 inside the value are preserved; the sanitized value is quoted when it begins or ends
 with a space or comma.
 
+### Idle connection reuse
+
+Before reusing an idle plain TCP connection, the client checks for a server-side close.
+A closed connection is discarded before sending request bytes, so a POST can use a fresh
+connection safely. Healthy idle connections remain reusable.
+
+If a non-idempotent request fails after transmission starts, the client returns an error
+without replaying it: a missing response does not prove that the server ignored the request.
+
 ### Windows TLS handshake compatibility
 
 On Windows, HTTPS uses Schannel first. If its handshake returns `SEC_E_INVALID_TOKEN`
