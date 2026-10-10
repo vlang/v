@@ -35,17 +35,19 @@ pub fn escape(input string, config EscapeConfig) string {
 }
 
 // unescape converts entities like "&lt;" to "<". By default it is the converse of `escape`.
+// Each entity is decoded once; decoding `&amp;#34;` returns `&#34;`.
 // If `all` is set to true, it handles named, numeric, and hex values - for example,
 // `'&apos;'`, `'&#39;'`, and `'&#x27;'` then unescape to "'".
 // Unknown entities are preserved, including a trailing `&` or unterminated name.
 pub fn unescape(input string, config UnescapeConfig) string {
-	return if config.all {
-		unescape_all(input)
-	} else if config.quote {
-		input.replace_each(unescape_seq).replace_each(unescape_quote_seq)
-	} else {
-		input.replace_each(unescape_seq)
+	if config.all {
+		return unescape_all(input)
 	}
+	mut sequences := unescape_seq.clone()
+	if config.quote {
+		sequences << unescape_quote_seq
+	}
+	return input.replace_each(sequences)
 }
 
 fn unescape_all(input string) string {
