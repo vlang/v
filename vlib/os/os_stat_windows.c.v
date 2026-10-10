@@ -29,9 +29,11 @@ pub fn stat(path string) !Stat {
 			mtime: s.st_mtime
 			ctime: s.st_ctime
 		}
-		// _wstat64() returns the times as offsets from 1970-01-01 local time, so
-		// it turns anything older into -1. The Win32 FILETIMEs are absolute and
-		// reach back to 1601, so read the times back from them instead.
+		// _wstat64() converts the FILETIME to local time before turning it into a
+		// time_t, so it returns -1 for any time before 1970-01-01 local. The floor it
+		// applies therefore moves with the timezone, and on a host ahead of UTC it is
+		// not the unix epoch at all. The Win32 FILETIMEs are absolute and reach back to
+		// 1601, so read the times back from them instead.
 		if st.atime < 0 || st.mtime < 0 || st.ctime < 0 {
 			if find_data := windows_find_file_data(path) {
 				st.atime = windows_filetime_to_unix_seconds(find_data.ft_last_access_time)
