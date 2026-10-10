@@ -169,8 +169,8 @@ fn main() {
 		exit(1)
 	}
 	if command in external_commands
-		|| command in ['new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search',
-			'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
+		|| command in ['new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'registry',
+			'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
 		run_external_tool(args, command_index, command)
 		return
 	}
@@ -359,8 +359,8 @@ fn find_command(args []string) (int, string) {
 		}
 		if arg in external_commands
 			|| arg in ['version', '-version', '--version', 'help', '-h', '--help', 'get', 'interpret',
-				'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show',
-				'unlink', 'update', 'upgrade', 'vlib-docs', 'build-module'] {
+				'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'registry', 'search',
+				'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'build-module'] {
 			return i, arg
 		}
 		if !arg.starts_with('-') {
@@ -384,8 +384,8 @@ fn run_external_tool(args []string, command_index int, command string) {
 		'new', 'init' {
 			'vcreate'
 		}
-		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade', 'why', 'vendor' {
+		'install', 'link', 'list', 'outdated', 'remove', 'registry', 'search', 'show', 'unlink',
+		'update', 'upgrade', 'why', 'vendor' {
 			'vpm'
 		}
 		'vlib-docs' {
