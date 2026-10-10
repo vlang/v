@@ -2005,6 +2005,7 @@ pub struct CacheNativeInputs {
 pub mut:
 	// module_inputs maps a module (`main` for program files) to the sorted paths of
 	// the V-shipped native files and embedded resources its directives name directly.
+	// Forced headers belong to __v3_c_flags__, which every cached object depends on.
 	module_inputs map[string][]string
 	// native_paths holds the paths in module_inputs that native directives name.
 	native_paths map[string]bool
@@ -2086,6 +2087,23 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 	}
 	include_dirs := c_flag_include_dirs(include_flags)
 	mut inputs := map[string][]string{}
+	// Forced headers affect every C translation unit, including modules that do
+	// not import the module declaring the flag. Resolve them with the compiler's
+	// working directory and include search paths, then reuse the global dependency
+	// group so nested shipped headers participate in cache invalidation too.
+	for input in c_forced_include_inputs(include_flags) {
+		for path in c_include_file_paths('"${input}"', vroot, '', include_dirs) {
+			if !os.is_file(path) {
+				continue
+			}
+			resolved := os.real_path(path)
+			if c_path_is_within_roots(resolved, shipped_roots) {
+				c_add_cache_external_input(mut inputs, '__v3_c_flags__', resolved)
+				result.native_paths[resolved] = true
+			}
+			break
+		}
+	}
 	mut cur_module := ''
 	mut cur_file_is_program := false
 	mut program_file_memo := map[string]bool{}
