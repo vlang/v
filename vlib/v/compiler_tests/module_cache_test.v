@@ -2355,9 +2355,9 @@ fn test_module_cache_materializes_cached_body_string_definitions() {
 	stable_symbol := module_cache_string_symbol('stable')
 	before_symbol := module_cache_string_symbol('before')
 	after_symbol := module_cache_string_symbol('after')
-	stable_definition := 'static string ${stable_symbol} = {"stable", 6, 1};'
-	before_definition := 'static string ${before_symbol} = {"before", 6, 1};'
-	after_definition := 'static string ${after_symbol} = {"after", 5, 1};'
+	stable_definition := 'static const string ${stable_symbol} = {"stable", 6, 1};'
+	before_definition := 'static const string ${before_symbol} = {"before", 6, 1};'
+	after_definition := 'static const string ${after_symbol} = {"after", 5, 1};'
 	cached := '// V3CACHE_BASELINE ${stable_definition}\n// V3CACHE_BASELINE ${before_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${stable_symbol});\nconsume(${before_symbol});\n'
 	materialized := modulecache.materialize_cached_body_string_definitions(cached)
 	assert materialized.contains(stable_definition)
@@ -2378,8 +2378,8 @@ fn test_module_cache_materializes_cached_body_string_definitions() {
 fn test_module_cache_string_symbol_rewrite_handles_swapped_literals() {
 	alpha_symbol := module_cache_string_symbol('alpha')
 	beta_symbol := module_cache_string_symbol('beta')
-	alpha_definition := 'static string ${alpha_symbol} = {"alpha", 5, 1};'
-	beta_definition := 'static string ${beta_symbol} = {"beta", 4, 1};'
+	alpha_definition := 'static const string ${alpha_symbol} = {"alpha", 5, 1};'
+	beta_definition := 'static const string ${beta_symbol} = {"beta", 4, 1};'
 	source := '${alpha_definition}\n${beta_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${alpha_symbol});\nconsume(${beta_symbol});\n'
 	rewritten := modulecache.rewrite_cached_runtime_strings(source, ['alpha', 'beta'], [
 		'beta',
@@ -2398,8 +2398,8 @@ fn test_module_cache_string_symbol_rewrite_skips_c_string_contents() {
 	new_symbol := module_cache_string_symbol(new_value)
 	unchanged_value := old_symbol
 	unchanged_symbol := module_cache_string_symbol(unchanged_value)
-	old_definition := 'static string ${old_symbol} = {"${old_value}", ${old_value.len}, 1};'
-	unchanged_definition := 'static string ${unchanged_symbol} = {"${unchanged_value}", ${unchanged_value.len}, 1};'
+	old_definition := 'static const string ${old_symbol} = {"${old_value}", ${old_value.len}, 1};'
+	unchanged_definition := 'static const string ${unchanged_symbol} = {"${unchanged_value}", ${unchanged_value.len}, 1};'
 	source := '${old_definition}\n${unchanged_definition}\n/* ${old_symbol} */\nint ${old_symbol}_suffix;\n/* V3CACHE_BODY_BEGIN */\nconsume(${old_symbol});\nconsume(${unchanged_symbol});\n'
 	rewritten := modulecache.rewrite_cached_runtime_strings(source, [old_value, unchanged_value], [
 		new_value,
@@ -2414,7 +2414,7 @@ fn test_module_cache_string_symbol_rewrite_skips_c_string_contents() {
 
 fn test_module_cache_string_symbol_rewrite_rejects_partially_changed_duplicates() {
 	x_symbol := module_cache_string_symbol('x')
-	x_definition := 'static string ${x_symbol} = {"x", 1, 1};'
+	x_definition := 'static const string ${x_symbol} = {"x", 1, 1};'
 	source := '${x_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${x_symbol});\nconsume(${x_symbol});\n'
 	if rewritten := modulecache.rewrite_cached_runtime_strings(source, ['x', 'x'], [
 		'y',
