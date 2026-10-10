@@ -133,6 +133,16 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 	]
 }
 
+fn test_retry_runtime_args_preserve_a_command_named_retry() {
+	assert external_tool_runtime_args('retry', []string{}, ['retry', '-r', '1', '--', 'retry',
+		'argument']) == ['-r', '1', '--', 'retry', 'argument']
+	assert external_tool_runtime_args('retry', []string{}, ['retry', 'retry', 'argument']) == [
+		'retry',
+		'argument',
+	]
+	assert external_tool_runtime_args('retry', []string{}, ['retry']) == []string{}
+}
+
 fn test_formatter_backend_options_are_runtime_preferences() {
 	for flag in ['-b', '-backend'] {
 		prefix := ['-cc', 'clang', flag, 'js', '-gc', 'none']

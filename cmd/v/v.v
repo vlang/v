@@ -431,6 +431,11 @@ fn export_vtest_build_environment(vroot string, prefix_args []string) {
 }
 
 fn external_tool_runtime_args(command string, prefix_args []string, command_args []string) []string {
+	// Retry consumes the same argv as its standalone executable. The launcher owns
+	// the subcommand name, so remove it here without guessing from user arguments.
+	if command == 'retry' {
+		return command_args[1..].clone()
+	}
 	mut tool_args := []string{}
 	// `v build-tools` consumes compiler options itself and applies them to every
 	// tool in its inventory. `v self` likewise treats prefix compiler options as
