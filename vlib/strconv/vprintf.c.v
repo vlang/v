@@ -427,7 +427,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				$if !nofloat ? {
 					v_sprintf_panic(p_index, pt.len)
 					x := unsafe { *(&f64(pt[p_index])) }
-					positive := x >= f64(0.0)
+					positive := !signbit(x)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
 					s := format_fl_old(f64(x),
 						pad_ch:    pad_ch
@@ -454,7 +454,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				$if !nofloat ? {
 					v_sprintf_panic(p_index, pt.len)
 					x := unsafe { *(&f64(pt[p_index])) }
-					positive := x >= f64(0.0)
+					positive := !signbit(x)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
 					s := format_es_old(f64(x),
 						pad_ch:    pad_ch
@@ -481,10 +481,11 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				$if !nofloat ? {
 					v_sprintf_panic(p_index, pt.len)
 					x := unsafe { *(&f64(pt[p_index])) }
-					positive := x >= f64(0.0)
+					positive := !signbit(x)
 					mut s := ''
 					tx := fabs(x)
-					if tx < 999_999.0 && tx >= 0.00001 {
+					// zero has a decimal exponent of 0, so it is printed in normal notation
+					if tx == 0.0 || (tx < 999_999.0 && tx >= 0.00001) {
 						// println("Here g format_fl [${tx}]")
 						len1 = if len1 >= 0 { len1 + 1 } else { def_len1 }
 						tmp := s
