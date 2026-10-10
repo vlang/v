@@ -4,10 +4,10 @@ module strconv
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // TODO: use options, or some way to return default with error.
-// int_size is the size in bits of an int or uint value.
-// int_size = 32 << (~u32(0) >> 63)
+// int_size is the size in bits of an int value: 64 on 64-bit targets, 32 on 32-bit
+// targets and with the backends that lower `int` to 32 bits.
 // max_u64 = u64(u64(1 << 63) - 1)
-const int_size = 32
+const int_size = int(sizeof(int)) * 8
 
 @[inline]
 pub fn byte_to_lower(c u8) u8 {
