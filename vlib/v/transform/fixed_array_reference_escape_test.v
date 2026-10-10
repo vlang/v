@@ -202,6 +202,40 @@ fn test_fixed_array_reference_value_parameter_promotion_preserves_reference_abi(
 	assert entry2.len == 0
 }
 
+fn test_fixed_array_reference_pointer_field_does_not_promote_its_containing_value() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 9 })
+	coordinator := types.Type(types.Struct{ name: 'Coordinator' })
+	coordinator_ptr := types.Type(types.Pointer{ base_type: coordinator })
+	tc.structs['Coordinator'] = [types.StructField{ name: 'reasons', typ: fixed }]
+	tc.structs['Dispatch'] = [types.StructField{ name: 'coordinator', typ: coordinator_ptr }]
+	tc.trust_checked_expr_types = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('dispatch', 'Dispatch')
+	field := t.make_selector(t.make_ident('dispatch'), 'coordinator', '&Coordinator')
+	tc.register_synth_type(field, coordinator_ptr)
+	t.mark_fixed_array_reference_argument_escape(field, coordinator_ptr, map[string]bool{}, map[string][]string{}, map[string]string{}, {
+		'dispatch': true
+	})
+	assert t.escaping_fixed_array_view_sources.len == 0
+	// A pointer explicitly taken to this frame's fixed storage still promotes
+	// the original owner, rather than the pointer alias.
+	t.set_var_type('p', '&Coordinator')
+	p := t.make_ident('p')
+	tc.register_synth_type(p, coordinator_ptr)
+	t.mark_fixed_array_reference_argument_escape(p, coordinator_ptr, {
+		'p': true
+	}, {
+		'p': ['coordinator']
+	}, map[string]string{}, {
+		'coordinator': true
+		'p': true
+	})
+	assert 'coordinator' in t.escaping_fixed_array_view_sources
+	assert 'p' !in t.escaping_fixed_array_view_sources
+}
+
 fn test_fixed_array_reference_stack_pointer_projections_keep_original_root() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
