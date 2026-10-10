@@ -1,7 +1,9 @@
 module ssa
 
-// generate_native_char_string_body encodes a codepoint as one to four UTF-8 bytes.
-fn (mut b Builder) generate_native_char_string_body(func_id int) {
+// generate_char_string_body encodes a codepoint as one to four UTF-8 bytes. Both
+// the wasm stub set and the native helper set register it, because `rune.str`
+// lowers to the same call on either backing.
+fn (mut b Builder) generate_char_string_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	entry := b.m.add_block(func_id, 'char_entry')
 	code := b.func_add_argument(func_id, b.i32_type, 'code')
