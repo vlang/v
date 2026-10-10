@@ -316,6 +316,33 @@ fn test_parse_int() {
 	assert strconv.parse_int('16', 16, 0)! == 0x16
 	assert strconv.parse_int('16', 8, 0)! == 0o16
 	assert strconv.parse_int('11', 2, 0)! == 3
+	// Bit size 0 is `int`: 64 bits wide on 64-bit targets, 32 bits wide on 32-bit ones.
+	if sizeof(int) == 8 {
+		assert strconv.parse_int('5000000000', 10, 0)! == 5000000000
+		assert strconv.parse_int('-5000000000', 10, 0)! == -5000000000
+		assert strconv.parse_uint('5000000000', 10, 0)! == 5000000000
+		assert strconv.parse_int('9223372036854775807', 10, 0)! == max_i64
+		assert strconv.parse_int('-9223372036854775808', 10, 0)! == min_i64
+		assert strconv.parse_uint('18446744073709551615', 10, 0)! == max_u64
+		// One past the limits: parse_int saturates as it does for an explicit bit size,
+		// the checked variants report the overflow.
+		assert strconv.parse_int('9223372036854775808', 10, 0)! == max_i64
+		assert strconv.parse_int('-9223372036854775809', 10, 0)! == min_i64
+		assert strconv.common_parse_int('9223372036854775808', 10, 0, true, true) or { 1 } == 1
+		assert strconv.common_parse_int('-9223372036854775809', 10, 0, true, true) or { 1 } == 1
+		assert strconv.parse_uint('18446744073709551616', 10, 0) or { 1 } == 1
+	} else {
+		assert strconv.parse_int('2147483647', 10, 0)! == max_i32
+		assert strconv.parse_int('-2147483648', 10, 0)! == min_i32
+		assert strconv.parse_uint('4294967295', 10, 0)! == max_u32
+		assert strconv.parse_int('2147483648', 10, 0)! == max_i32
+		assert strconv.parse_int('-2147483649', 10, 0)! == min_i32
+		assert strconv.common_parse_int('2147483648', 10, 0, true, true) or { 1 } == 1
+		assert strconv.common_parse_int('-2147483649', 10, 0, true, true) or { 1 } == 1
+		assert strconv.parse_uint('4294967296', 10, 0) or { 1 } == 1
+		assert strconv.parse_int('5000000000', 10, 0) or { 1 } == 1
+		assert strconv.parse_uint('5000000000', 10, 0) or { 1 } == 1
+	}
 	// Different bit sizes
 	assert strconv.parse_int('127', 10, 8)! == 127
 	assert strconv.parse_int('128', 10, 8)! == 127
