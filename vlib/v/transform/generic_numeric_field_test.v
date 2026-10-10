@@ -235,3 +235,62 @@ fn main() {
 		assert result.output.contains('not `string`'), result.output
 	}
 }
+
+fn test_explicit_generic_callees_keep_type_arguments_before_fallible_arguments() {
+	directory := os.join_path(os.vtmp_dir(), 'generic_fallible_callees_${os.getpid()}')
+	os.mkdir_all(directory) or { panic(err) }
+	defer { os.rmdir_all(directory) or {} }
+	source := 'module main
+import x.json2
+struct User { name string }
+fn values() ![]int { return [2, 3] }
+fn data() !string { return \'[{"name":"Ada"}]\' }
+fn identity[T](value T) T { return value }
+fn main() {
+    assert identity[[]int](values() or { panic(err) }) == [2, 3]
+    users := json2.decode[[]User](data() or { panic(err) }) or { panic(err) }
+    assert users.len == 1
+    assert users[0].name == \'Ada\'
+}'
+	for check in [false, true] {
+		result := generic_numeric_field_program(directory, 'generic_callees', source, check)
+		assert result.exit_code == 0, result.output
+	}
+	run := os.exec([os.join_path(directory, 'generic_callees')])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_function_array_callees_keep_runtime_order_before_fallible_arguments() {
+	directory := os.join_path(os.vtmp_dir(), 'runtime_fallible_callees_${os.getpid()}')
+	os.mkdir_all(directory) or { panic(err) }
+	defer { os.rmdir_all(directory) or {} }
+	source := 'module main
+struct Trace { mut: steps []int callbacks []fn (int) int }
+fn initial(value int) int { return value + 1 }
+fn replacement(value int) int { return value + 20 }
+fn callee_index(mut trace Trace) int { trace.steps << 1 return 0 }
+fn argument(mut trace Trace) !int {
+    trace.steps << 2
+    trace.callbacks[0] = replacement
+    return 5
+}
+fn main() {
+    mut trace := Trace{callbacks: [initial]}
+    result := trace.callbacks[callee_index(mut trace)](argument(mut trace) or { panic(err) })
+    assert result == 6
+    assert trace.steps == [1, 2]
+    assert trace.callbacks[0](5) == 25
+    mut indexed := Trace{callbacks: [initial]}
+    index := 0
+    indexed_result := indexed.callbacks[index](argument(mut indexed) or { panic(err) })
+    assert indexed_result == 6
+    assert indexed.steps == [2]
+    assert indexed.callbacks[0](5) == 25
+}'
+	for check in [false, true] {
+		result := generic_numeric_field_program(directory, 'runtime_callees', source, check)
+		assert result.exit_code == 0, result.output
+	}
+	run := os.exec([os.join_path(directory, 'runtime_callees')])
+	assert run.exit_code == 0, run.output
+}

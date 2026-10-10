@@ -27878,6 +27878,16 @@ fn (t &Transformer) callee_needs_ordering_snapshot(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .index && t.generic_call_type_args_name(node).len > 0 {
+		base := t.a.child_node(&node, 0)
+		// Explicit type arguments on a free function select a compile-time
+		// specialization. Runtime function-array indexes still need a snapshot.
+		if (base.kind == .ident && t.raw_var_type(base.value).len == 0)
+			|| (base.kind == .selector && base.children_count > 0
+				&& t.call_selector_base_is_namespace(t.a.child(base, 0), base.value, '')) {
+			return false
+		}
+	}
 	if node.kind == .ident {
 		if t.is_ordering_snapshot_temp(id) {
 			return false
