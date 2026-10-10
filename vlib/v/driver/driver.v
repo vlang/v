@@ -2603,6 +2603,10 @@ fn v3_include_directive_argument(line string) ?string {
 	if !directive.starts_with('include') {
 		return none
 	}
+	if directive.len > 'include'.len && (directive['include'.len].is_letter()
+		|| directive['include'.len] == `_`) {
+		return none
+	}
 	return directive['include'.len..].trim_left(' \t')
 }
 
@@ -2685,8 +2689,12 @@ fn v3_expand_shipped_native_file(path string, include_dirs []string, vroot strin
 			if v3_line_is_quoted_include(line) {
 				complete = false
 			}
-		} else if v3_line_is_quoted_include(line) {
-			complete = false
+		} else if argument := v3_include_directive_argument(line) {
+			// A macro-expanded include cannot be resolved by this literal scanner.
+			// Leave it to the C compiler and reject an incomplete cache key.
+			if !argument.starts_with('<') {
+				complete = false
+			}
 		}
 		expanded.writeln(line)
 	}
@@ -4293,7 +4301,7 @@ fn v3_native_input_expansion_record(cache_dir string, path string, include_dirs 
 		return ''
 	}
 	mut hash := u64(1469598103934665603)
-	for part in ['v3-native-expansion-3', os.real_path(path), include_dirs.join('\x00'), vroot,
+	for part in ['v3-native-expansion-4', os.real_path(path), include_dirs.join('\x00'), vroot,
 		check_replication.str()] {
 		hash = c_hash_bytes(hash, part.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
@@ -4435,15 +4443,16 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 		mut closure := map[string]bool{}
 		for path in paths {
 			closure[path] = true
-			if !native_inputs.native_paths[path] {
+			if !native_inputs.native_paths[path] && !native_inputs.macro_paths[path] {
 				continue
 			}
+			requires_replication := check_replication && native_inputs.native_paths[path]
 			if path !in expansions {
 				// Reading a header with the headers it includes, and deciding whether
 				// its declarations can be replicated, costs more than the rest of the
 				// cache validation of a small program: keep the answer between builds.
 				record := v3_native_input_expansion_record(cache_dir, path, native_inputs.include_dirs,
-					vroot, check_replication)
+					vroot, requires_replication)
 				if recorded := v3_recorded_native_input_expansion(record) {
 					expansions[path] = recorded.paths
 					replicable[path] = recorded.replicable
@@ -4453,10 +4462,10 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 					text, complete := v3_expand_shipped_native_file(path, native_inputs.include_dirs,
 						vroot, true, mut active, mut expanded_paths)
 					expansions[path] = expanded_paths.keys()
-					replicable[path] = !check_replication || (complete
-						&& !cgen.cache_native_input_is_source(path)
-						&& (modulecache.c_source_is_replicable(text)
-							|| v3_cache_native_input_has_program_owner(path, text, vroot)))
+					replicable[path] = complete && (!requires_replication
+						|| (!cgen.cache_native_input_is_source(path)
+							&& (modulecache.c_source_is_replicable(text)
+								|| v3_cache_native_input_has_program_owner(path, text, vroot))))
 					if complete {
 						v3_record_native_input_expansion(record, V3NativeInputExpansion{
 							paths:      expansions[path]

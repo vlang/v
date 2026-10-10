@@ -2005,9 +2005,13 @@ pub struct CacheNativeInputs {
 pub mut:
 	// module_inputs maps a module (`main` for program files) to the sorted paths of
 	// the V-shipped native files and embedded resources its directives name directly.
+	// Forced headers belong to __v3_c_flags__, which every cached object depends on.
 	module_inputs map[string][]string
 	// native_paths holds the paths in module_inputs that native directives name.
 	native_paths map[string]bool
+	// macro_paths holds forced -imacros inputs. Their declarations are discarded
+	// by the C preprocessor, but their transitive files still affect cache keys.
+	macro_paths map[string]bool
 	// include_dirs are the include directories that every C flag of the build adds.
 	include_dirs []string
 	// implementation_define names the first `#define` that selects the implementation
@@ -2017,8 +2021,8 @@ pub mut:
 	user_supplied string
 }
 
-const c_native_path_flag_options = ['-isystem', '-iquote', '-idirafter', '-iframework', '-imacros',
-	'-include-pch', '-include', '--include-directory', '--include', '-I', '-F']
+const c_native_path_flag_options = ['-isystem', '-iquote', '-idirafter', '-iframework', '--imacros',
+	'-imacros', '-include-pch', '-include', '--include-directory', '--include', '-I', '-F']
 
 // cache_native_inputs classifies the native inputs of a build for the V caches.
 // Directives are attributed to the file that declares them: a V-shipped module may
@@ -2086,6 +2090,27 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 	}
 	include_dirs := c_flag_include_dirs(include_flags)
 	mut inputs := map[string][]string{}
+	// Forced headers affect every C translation unit, including modules that do
+	// not import the module declaring the flag. Resolve them with the compiler's
+	// working directory and include search paths, then reuse the global dependency
+	// group so nested shipped headers participate in cache invalidation too.
+	for input in c_forced_include_inputs(include_flags) {
+		for path in c_include_file_paths('"${input.path}"', vroot, '', include_dirs) {
+			if !os.is_file(path) {
+				continue
+			}
+			resolved := os.real_path(path)
+			if c_path_is_within_roots(resolved, shipped_roots) {
+				c_add_cache_external_input(mut inputs, '__v3_c_flags__', resolved)
+				if input.macros_only {
+					result.macro_paths[resolved] = true
+				} else {
+					result.native_paths[resolved] = true
+				}
+			}
+			break
+		}
+	}
 	mut cur_module := ''
 	mut cur_file_is_program := false
 	mut program_file_memo := map[string]bool{}
@@ -2417,33 +2442,53 @@ fn c_native_language_from_features(need_objc bool, need_cpp bool) string {
 	return 'c'
 }
 
-fn c_forced_include_inputs(flags []string) []string {
-	mut imacros_inputs := []string{}
-	mut include_inputs := []string{}
+struct CForcedIncludeInput {
+	path        string
+	macros_only bool
+}
+
+fn c_forced_include_inputs(flags []string) []CForcedIncludeInput {
+	mut imacros_inputs := []CForcedIncludeInput{}
+	mut include_inputs := []CForcedIncludeInput{}
 	mut expected_kind := ''
 	for flag in flags {
 		token := flag.trim_space()
+		mut path := ''
+		mut macros_only := false
 		if expected_kind.len > 0 {
-			if expected_kind == 'imacros' {
-				imacros_inputs << token.trim('"\'')
-			} else {
-				include_inputs << token.trim('"\'')
-			}
+			path = token
+			macros_only = expected_kind == 'imacros'
 			expected_kind = ''
+		} else {
+			if token.starts_with('-include-pch') || token.starts_with('-include-pth')
+				|| token.starts_with('--include-directory') {
+				continue
+			}
+			for option in ['--imacros', '-imacros', '--include', '-include'] {
+				if token == option {
+					expected_kind = if option.contains('imacros') { 'imacros' } else { 'include' }
+					break
+				}
+				if token.starts_with(option) {
+					path = token[option.len..]
+					// Long options accept an optional '='; short options consume
+					// every following character as the filename, including '='.
+					if option.starts_with('--') && path.starts_with('=') {
+						path = path[1..]
+					}
+					macros_only = option.contains('imacros')
+					break
+				}
+			}
+		}
+		if path.len == 0 {
 			continue
 		}
-		if token == '-imacros' {
-			expected_kind = 'imacros'
-			continue
-		}
-		if token == '-include' {
-			expected_kind = 'include'
-			continue
-		}
-		if token.starts_with('-imacros=') && token.len > '-imacros='.len {
-			imacros_inputs << token['-imacros='.len..].trim('"\'')
-		} else if token.starts_with('-include=') && token.len > '-include='.len {
-			include_inputs << token['-include='.len..].trim('"\'')
+		input := CForcedIncludeInput{ path: path.trim('"\''), macros_only: macros_only }
+		if macros_only {
+			imacros_inputs << input
+		} else {
+			include_inputs << input
 		}
 	}
 	// GCC and Clang process all `-imacros` files before all `-include` files,
@@ -11005,7 +11050,7 @@ fn c_existing_path_macro_close(text string, open_idx int) int {
 }
 
 fn c_flag_takes_path_operand(flag string) bool {
-	return flag in ['-I', '-L', '-isystem', '-include', '-imacros']
+	return flag in ['-I', '-L', '-isystem', '-include', '-imacros', '--include', '--imacros']
 }
 
 fn c_resolve_split_flag_path_token(tok string, base_dir string) string {
