@@ -160,12 +160,14 @@ pub fn (mut req Request) reset() {
 
 // add_header adds the key and value of an HTTP request header
 // To add a custom header, use add_custom_header
+// CR, LF and NUL in the value are replaced by a space, see `Header.add`
 pub fn (mut req Request) add_header(key CommonHeader, val string) {
 	req.header.add(key, val)
 }
 
 // add_custom_header adds the key and value of an HTTP request header
 // This method may fail if the key contains characters that are not permitted
+// or the value contains CR, LF or NUL
 pub fn (mut req Request) add_custom_header(key string, val string) ! {
 	return req.header.add_custom(key, val)
 }
@@ -250,6 +252,7 @@ fn (req &Request) cookie_header_value_with_header(header Header) string {
 }
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is received
+// It returns a `HeaderValueError` if `user_agent` contains CR, LF or NUL
 pub fn (req &Request) do() !Response {
 	mut rurl := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut resp := Response{}
@@ -257,6 +260,9 @@ pub fn (req &Request) do() !Response {
 	mut data := req.data
 	mut header := req.header
 	mut nredirects := 0
+	// user_agent is sent as a field value by every protocol version, and it
+	// is not stored in a Header, which keeps CR, LF and NUL out of its values.
+	check_header_value('User-Agent', req.user_agent)!
 	for {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
