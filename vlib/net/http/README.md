@@ -174,6 +174,8 @@ fn client_ip(req http.Request) string {
 `Response.cookies` parses `Expires` with `time.parse_http_header_string`. Invalid dates
 and years before 1601 remain in `Cookie.unparsed`; they do not replace a valid expiry.
 `Cookie.raw_expires` retains date text even when it cannot be parsed.
+`Cookie.str()` writes the attribute names `Path`, `Domain` and `Expires` as RFC 6265
+spells them; `Response.cookies` matches attribute names in any case.
 When serializing `Cookie`, IPv4 literals such as `127.0.0.1` are accepted as domains;
 invalid domains are omitted.
 
