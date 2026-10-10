@@ -2586,3 +2586,13 @@ fn test_format_text_recovers_after_invalid_input() {
 	}
 	assert false, 'expected a parser error'
 }
+
+fn test_formatter_multiline_parenthesized_condition_with_comments() {
+	source := "fn main() {\n one := 1\n two := 2\n three := 3\n if (one == 1 // one is one\n || two == 2) // two is two\n && three == 3 { // three is three\n println('hello')\n }\n}\n"
+	formatted := vfmt('commented_parenthesized_condition', source)
+	assert reparse_diagnostics('commented_parenthesized_condition', formatted) == 0
+	for comment in ['one is one', 'two is two', 'three is three'] {
+		assert formatted.count('// ' + comment) == 1
+	}
+	assert vfmt('commented_parenthesized_condition_again', formatted) == formatted
+}

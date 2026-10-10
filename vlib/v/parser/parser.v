@@ -12923,6 +12923,10 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			paren_start := p.span_start()
 			p.next()
 			inner := p.expr(.lowest)
+			// A newline before `)` does not terminate the grouped expression.
+			if p.current_token_is_newline_semicolon() && p.peek() == .rpar {
+				p.next()
+			}
 			p.check(.rpar)
 			pstart := p.add_child(inner)
 			return p.a.add_node(flat.Node{
