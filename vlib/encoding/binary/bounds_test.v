@@ -144,7 +144,7 @@ fn test_out_of_range_access_panics_and_exact_fit_works() {
 		os.rmdir_all(dir) or {}
 	}
 	src := os.join_path(dir, 'helper.v')
-	exe := os.join_path(dir, 'helper')
+	exe := os.join_path(dir, 'helper' + $if windows { '.exe' } $else { '' })
 	os.write_file(src, helper_source) or { panic(err) }
 	compile := os.exec([vexe, '-o', exe, src])
 	assert compile.exit_code == 0, compile.output
@@ -153,6 +153,8 @@ fn test_out_of_range_access_panics_and_exact_fit_works() {
 		if form.name.ends_with('_at') {
 			bad << [form.size, 1]
 			bad << [form.size, -1]
+			bad << [form.size, 2147483647]
+			bad << [form.size, -2147483647 - 1]
 			bad << [-1, 0]
 		} else {
 			bad << [form.size - 1, 0]
