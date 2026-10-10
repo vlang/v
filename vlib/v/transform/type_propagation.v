@@ -448,6 +448,17 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?string {
 	if node.kind == .fn_literal {
 		return t.fn_literal_type_text(node)
 	}
+	if node.kind == .ident {
+		local_type := t.var_type(node.value)
+		if local_type.len > 0 {
+			if t.is_fn_pointer_type_name(local_type) {
+				return t.normalize_type_alias(local_type)
+			}
+			// Generic parameters keep their concrete type in the local scope. A
+			// same-named function must not turn a value parameter into a callback.
+			return none
+		}
+	}
 	if typ := t.tc.expr_type(id) {
 		if name := fn_value_type_name_from_type(typ) {
 			return t.normalize_type_alias(name)
