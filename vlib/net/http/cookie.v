@@ -70,7 +70,7 @@ pub fn read_cookies(h Header, filter string) []&Cookie {
 				continue
 			}
 			mut name, mut val := part.split_once('=') or { part, '' }
-			if !is_cookie_name_valid(name) {
+			if !is_cookie_name_readable(name) {
 				continue
 			}
 			if filter != '' && filter != name {
@@ -90,7 +90,8 @@ pub fn read_cookies(h Header, filter string) []&Cookie {
 // (if only Name and Value are set) or a Set-Cookie response
 // header (if other fields are set).
 //
-// If c.name is invalid, the empty string is returned.
+// If c.name is not an RFC 9110 token (letters, digits and any of !#$%&'*+-.^_`|~),
+// the empty string is returned.
 pub fn (c &Cookie) str() string {
 	if !is_cookie_name_valid(c.name) {
 		return ''
@@ -297,7 +298,26 @@ fn parse_cookie_value(_raw string, allow_double_quote bool) !string {
 	return raw
 }
 
+// is_cookie_name_valid reports whether `name` is an RFC 9110 token, which is what
+// RFC 6265 requires of a cookie-name. `Cookie.str()` writes no other name: a
+// separator such as `;`, `,` or `=` in it would be read back as a different cookie.
 fn is_cookie_name_valid(name string) bool {
+	if name == '' {
+		return false
+	}
+	for b in name {
+		if !is_token(b) {
+			return false
+		}
+	}
+	return true
+}
+
+// is_cookie_name_readable is the looser rule for a name received in a `Cookie` or
+// `Set-Cookie` header: any visible ASCII byte. The parsers split on `;` and `=`, so
+// neither can be part of a name, and names that peers do send, such as `foo[bar]`
+// or `a:b`, are kept.
+fn is_cookie_name_readable(name string) bool {
 	if name == '' {
 		return false
 	}
@@ -318,7 +338,7 @@ fn parse_cookie(line string) !Cookie {
 	index := parts[0].index('=') or { return error('malformed cookie') }
 	name := parts[0][..index]
 	raw_value := parts[0][index + 1..]
-	if !is_cookie_name_valid(name) {
+	if !is_cookie_name_readable(name) {
 		return error('malformed cookie')
 	}
 	value := parse_cookie_value(raw_value, true) or { return error('malformed cookie') }

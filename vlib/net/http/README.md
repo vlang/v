@@ -177,6 +177,11 @@ and years before 1601 remain in `Cookie.unparsed`; they do not replace a valid e
 When serializing `Cookie`, IPv4 literals such as `127.0.0.1` are accepted as domains;
 invalid domains are omitted.
 
+`Cookie.str()` writes a cookie only when its name is an RFC 9110 token: letters, digits
+and ``!#$%&'*+-.^_`|~``. For any other name, such as one with a space, `;`, `,`, `=` or
+`[`, it returns an empty string. Reading is more lenient: `Request.cookie`,
+`Response.cookies` and `read_cookies` return any name made of visible ASCII characters.
+
 `Header` provides both `CommonHeader` enum access (`get`, `set`, `add`) and
 string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 `http.parse_multipart_form` and `http.post_multipart_form` cover form bodies.
