@@ -1,6 +1,7 @@
 module driver
 
 import os
+import time
 import v.modulecache
 
 // A build that links cached modules gives TinyCC the headers of its program unit
@@ -130,15 +131,21 @@ fn test_prelude_stamp_is_valid_while_its_inputs_are_what_they_were() {
 	header := os.join_path(root, 'a.h')
 	absent := os.join_path(root, 'b.h')
 	os.write_file(header, 'int a;\n')!
+	// A time after the header was written: the preprocessor that starts then
+	// reads the header as it is now.
+	later := time.utc().unix() + 10
 	if modulecache.file_metadata_signature(header) == '' {
 		// This file system cannot tell a later edit apart: nothing is kept for it.
-		assert v3_tcc_prelude_stamp('key', V3TccPreludeInputs{ files: [header] }) == none
+		assert v3_tcc_prelude_stamp('key', V3TccPreludeInputs{ files: [header] }, later) == none
 		return
 	}
+	// A header that was written when the preprocessor had started may not be the
+	// one that it read.
+	assert v3_tcc_prelude_stamp('key', V3TccPreludeInputs{ files: [header] }, time.utc().unix() - 10) == none
 	stamp := v3_tcc_prelude_stamp('key', V3TccPreludeInputs{
 		files:   [header]
 		missing: [absent]
-	}) or {
+	}, later) or {
 		assert false, 'a header with an identity can be recorded'
 		return
 	}

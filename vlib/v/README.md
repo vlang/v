@@ -545,11 +545,19 @@ whose program sources, module interfaces, native inputs, configuration and linke
 same restores that executable instead of checking, generating, compiling and linking again, with
 the system C compiler and with `-usecache` alike. It prints the warnings and notices of the
 program again and reports the stages as cached, the last one as `cc (cached)` or `tcc (cached)`.
-The files that the link read by path (module objects, archives, libraries, the libraries that
-`-l` finds in the `-L` directories) are compared by their metadata first, a library that appears
-earlier on that search path counts as a change, and so does a program file that was saved while
-the build that linked the executable ran. The copy in the cache is a file of its own: changing or
-removing the output changes nothing there. Builds that leave more than an executable behind run in
+The files that the link read are compared by their metadata first: the objects, archives,
+libraries and other files that the command names, also behind `-Wl,` and `-Xlinker`, and every
+name that a linker gives a library of `-l` in the directories of `-L`, of `LIBRARY_PATH`, of the
+compiler (`-print-search-dirs`, asked once for a module cache) and of the system. A library that
+appears in one of those places counts as a change, a linker script is followed to the files and
+libraries that it names, and so does a program file that was saved while the build that linked
+the executable ran. The identities of the link inputs are taken before the linker starts and
+compared again before the executable is kept, so a file that is replaced in between leaves none.
+None is kept either when the command has an input that cannot be followed: a thin archive, whose
+members are other files, a response file, a file list, or a linker script that does more than name
+its inputs. The copy in the cache is a file of its own: changing or removing the output changes
+nothing there, and an executable that is restored gets the permissions that the umask of the
+caller leaves, as a linked one does. Builds that leave more than an executable behind run in
 full: `-g`, `-cg`, `-keepc`, `-showcc`, `-show-c-output`, shared libraries, objects, profiles,
 coverage, tests, and an implicit `run` on macOS, which has its own executable cache below.
 `V3_CACHE_TRACE=1` says why an executable was not restored, and
@@ -580,8 +588,9 @@ for a unit of 113 KB. The part of the unit that includes them, up to the last `#
 kept in the module cache in preprocessed form with its macro definitions (`tcc -E -dD`), and the
 unit includes that file instead. The form is valid while the unit starts with the same text, for
 the same TinyCC and arguments, while every header that the preprocessor read is the file it was,
-and while no header has appeared where an `#include` or a `__has_include` would find it first. If
-TinyCC reports an error in a unit that uses it, the unit is compiled as it was generated.
+and while no header has appeared where an `#include` or a `__has_include` would find it first.
+Nothing is kept when a header was written after the preprocessor had started. If TinyCC reports an
+error in a unit that uses the form, the unit is compiled as it was generated.
 `V3_TCC_NO_PRELUDE_CACHE=1` turns this off, and `V3_TCC_PRELUDE_VERIFY=1` compiles both forms and
 stops when their objects differ.
 On macOS, TinyCC starts Apple's `codesign` for each executable that it links, which takes longer

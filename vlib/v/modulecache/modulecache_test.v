@@ -1384,9 +1384,14 @@ fn test_program_executable_is_restored_for_the_inputs_that_linked_it() {
 	}
 	missing := os.join_path(root, 'libabsent.a')
 	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') == none
+	object_identity := file_metadata_signature(object)
+	if object_identity == '' {
+		// This file system cannot tell a later edit apart: nothing is kept for it.
+		return
+	}
 	manager.write_program_executable([source], 'flags', dependencies, 'link', [object], [
-		missing,
-	], linked, 'notices\nof the build\n')!
+		object_identity,
+	], [missing], linked, 'notices\nof the build\n')!
 	cached := manager.valid_program_executable([source], 'flags', dependencies, 'link') or {
 		assert false, 'the executable of the same inputs is not found'
 		return
@@ -1396,6 +1401,12 @@ fn test_program_executable_is_restored_for_the_inputs_that_linked_it() {
 	assert cached.restore(restored)
 	assert os.read_file(restored)! == 'first executable'
 	assert os.is_executable(restored)
+	// The restored file has the permissions of one that a linker creates: all
+	// that the umask of the caller leaves.
+	reference := os.join_path(root, 'reference')
+	mut created := os.open_file(reference, 'w', 0o777)!
+	created.close()
+	assert os.stat(restored)!.mode & 0o777 == os.stat(reference)!.mode & 0o777
 	// The copy does not share its file with the executable that was linked.
 	os.write_file(linked, 'changed after the build')!
 	assert cached.restore(restored)
@@ -1438,8 +1449,9 @@ fn test_program_executable_follows_the_program_and_keeps_one_copy() {
 	os.mkdir_all(manager.dir)!
 	abandoned := manager.program_executable_slot([source]) + '_0123456789abcdef.exe'
 	os.write_file(abandoned, 'abandoned executable')!
-	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], []string{},
-		linked, '')!
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		file_metadata_signature(object),
+	], []string{}, linked, '')!
 	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') != none
 	assert !os.exists(abandoned)
 	assert os.walk_ext(manager.dir, '.exe').len == 1
@@ -1451,8 +1463,9 @@ fn test_program_executable_follows_the_program_and_keeps_one_copy() {
 	os.write_file(source, 'fn main() { println(1) }\n')!
 	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
 	os.write_file(linked, 'second executable')!
-	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], []string{},
-		linked, '')!
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		file_metadata_signature(object),
+	], []string{}, linked, '')!
 	second := manager.valid_program_executable([source], 'flags', no_dependencies, 'link') or {
 		assert false, 'the executable of the changed program is not found'
 		return
@@ -1476,8 +1489,9 @@ fn test_program_executable_is_not_kept_for_an_input_without_an_identity() {
 	linked := os.join_path(root, 'linked')
 	os.write_file(linked, 'executable')!
 	no_dependencies := map[string]string{}
-	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [
-		os.join_path(root, 'gone.o'),
+	gone := os.join_path(root, 'gone.o')
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [gone], [
+		'',
 	], []string{}, linked, '') or {
 		assert err.msg().contains('cannot be told apart')
 		assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
@@ -1485,6 +1499,50 @@ fn test_program_executable_is_not_kept_for_an_input_without_an_identity() {
 		return
 	}
 	assert false, 'a link input that is not there has no identity'
+}
+
+fn test_program_executable_is_not_kept_when_a_link_input_changed_during_the_link() {
+	root, manager, source, object := program_executable_fixture('program_executable_race')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	linked := os.join_path(root, 'linked')
+	os.write_file(linked, 'executable of the first object')!
+	no_dependencies := map[string]string{}
+	before := file_metadata_signature(object)
+	if before == '' {
+		return
+	}
+	absent := os.join_path(root, 'libabsent.a')
+	// The object is replaced after the linker read it, before the build records it.
+	replacement := os.join_path(root, 'replacement.o')
+	os.write_file(replacement, 'another object')!
+	os.mv(replacement, object)!
+	mut refused := false
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		before,
+	], [absent], linked, '') or {
+		assert err.msg().contains('changed while the program was linked'), err.msg()
+		refused = true
+	}
+	assert refused
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
+	// So is a library that appeared where the linker had found none.
+	os.write_file(absent, 'library')!
+	refused = false
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		file_metadata_signature(object),
+	], [absent], linked, '') or {
+		assert err.msg().contains('appeared while the program was linked'), err.msg()
+		refused = true
+	}
+	assert refused
+	// With the identities of the files that were read, the executable is kept.
+	os.rm(absent)!
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		file_metadata_signature(object),
+	], [absent], linked, '')!
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') != none
 }
 
 fn test_real_source_paths_are_resolved_once_until_they_are_frozen() {

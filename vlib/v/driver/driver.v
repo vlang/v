@@ -4327,77 +4327,20 @@ fn v3_path_is_link_input(path string) bool {
 		|| path.ends_with('.obj') || path.ends_with('.lib')
 }
 
-// v3_program_link_inputs returns the files that a link command reads by path, and
-// the paths where it would find another file if one appeared. The first are the
-// objects, archives and libraries among `args` and the archives and objects of
-// `linker_dir`, which TinyCC links without being asked to. For every `-l` library,
-// each name that a linker gives it in each `-L` directory is one or the other: a
-// library that is installed or removed there changes which file the link reads.
-fn v3_program_link_inputs(args []string, linker_dir string) ([]string, []string) {
-	mut files := map[string]bool{}
-	mut missing := map[string]bool{}
-	mut library_dirs := []string{}
-	mut libraries := []string{}
-	mut i := 0
-	for i < args.len {
-		clean := args[i].trim_space()
-		i++
-		if clean == '-L' || clean == '-l' {
-			if i < args.len {
-				operand := args[i].trim_space()
-				if clean == '-L' {
-					library_dirs << operand
-				} else {
-					libraries << operand
-				}
-				i++
-			}
-		} else if clean.starts_with('-L') {
-			library_dirs << clean[2..].trim_space()
-		} else if clean.starts_with('-l') {
-			libraries << clean[2..].trim_space()
-		} else if !clean.starts_with('-') && os.is_abs_path(clean) && v3_path_is_link_input(clean) {
-			if os.is_file(clean) {
-				files[clean] = true
-			} else {
-				missing[clean] = true
-			}
+// publish_v3_program_executable keeps the executable that this build linked for
+// the next build of the same inputs, with the notices of the program. `link` is
+// what the link read, as it was before the link started. See
+// modulecache.Manager.valid_program_executable.
+fn publish_v3_program_executable(manager &modulecache.Manager, input V3CgenCacheInput, link_signature string, link &V3ProgramLinkInputs, bin_file string, diagnostics []V3CachedTypeDiagnostic) {
+	if link.unknown.len > 0 {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 program executable not cached: ${link.unknown}')
 		}
+		return
 	}
-	for library in libraries {
-		for dir in library_dirs {
-			for suffix in ['.dylib', '.tbd', '.so', '.a'] {
-				candidate := os.join_path_single(dir, 'lib${library}${suffix}')
-				if os.is_file(candidate) {
-					files[candidate] = true
-				} else {
-					missing[candidate] = true
-				}
-			}
-		}
-	}
-	if linker_dir.len > 0 {
-		for name in os.ls(linker_dir) or { []string{} } {
-			if name.ends_with('.a') || name.ends_with('.o') {
-				files[os.join_path_single(linker_dir, name)] = true
-			}
-		}
-	}
-	mut file_list := files.keys()
-	file_list.sort()
-	mut missing_list := missing.keys()
-	missing_list.sort()
-	return file_list, missing_list
-}
-
-// publish_v3_program_executable keeps the executable that this build linked with
-// `link_args` for the next build of the same inputs, with the notices of the
-// program. See modulecache.Manager.valid_program_executable.
-fn publish_v3_program_executable(manager &modulecache.Manager, input V3CgenCacheInput, link_signature string, link_args []string, linker_dir string, bin_file string, diagnostics []V3CachedTypeDiagnostic) {
-	files, missing := v3_program_link_inputs(link_args, linker_dir)
 	manager.write_program_executable(input.source_files, input.generation_signature, input.dependency_inputs,
-		link_signature, files, missing, bin_file, encode_v3_cgen_metadata([]string{}, '', '', false,
-			diagnostics)) or {
+		link_signature, link.files, link.identities, link.missing, bin_file, encode_v3_cgen_metadata([]string{},
+			'', '', false, diagnostics)) or {
 		if os.getenv('V3_CACHE_TRACE') != '' {
 			eprintln('  V3 program executable not cached: ${err.msg()}')
 		}
@@ -14789,9 +14732,10 @@ pub fn run(args []string) {
 		mut tried_tcc := false
 		mut tcc_cache_hit := false
 		mut used_tcc := false
-		// The command that linked the executable, for the record of its link inputs.
-		mut program_link_args := []string{}
-		mut program_linker_dir := ''
+		// What the command that links the executable reads, taken before it runs:
+		// a file that changes while the linker works is not what the record of the
+		// executable would say it is.
+		mut program_link_inputs := V3ProgramLinkInputs{}
 		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language
 			&& !is_c_debug && implicit_tcc != '' {
 			tried_tcc = true
@@ -14953,6 +14897,11 @@ pub fn run(args []string) {
 			// tcc build regenerating with the platform C compiler depends on a
 			// specific missing symbol in the bundled tcc's import list, which a
 			// toolchain update can close and silently drop that coverage.
+			if program_executable_enabled && !is_shared && !is_o {
+				program_link_inputs = v3_program_link_inputs(tcc_args, tcc_resources.install_dir,
+					v3_default_link_library_dirs(&cache_state.manager, tcc_path, tcc_args.filter(it.trim_space().starts_with('-B')),
+						tcc_sdk_root))
+			}
 			result = if injected_failure := os.getenv_opt('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE') {
 				os.Result{
 					exit_code: 1
@@ -14994,13 +14943,14 @@ pub fn run(args []string) {
 			}
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
-			if used_tcc {
-				program_link_args = tcc_args.clone()
-				program_linker_dir = tcc_resources.install_dir
-			} else if pruned_declarations.count > 0 && v3_c_output_reports_source_error(result.output) {
-				cleanup_c_build_dir(cc_dir)
-				restart_v3_with_all_cached_declarations(&cache_state.manager, 'TinyCC did not compile the program',
-					v3_pruned_functions_named_in(result.output, &pruned_declarations), checker_notices_printed)
+			if !used_tcc {
+				program_link_inputs = V3ProgramLinkInputs{}
+				if pruned_declarations.count > 0 && v3_c_output_reports_source_error(result.output) {
+					cleanup_c_build_dir(cc_dir)
+					restart_v3_with_all_cached_declarations(&cache_state.manager, 'TinyCC did not compile the program',
+						v3_pruned_functions_named_in(result.output, &pruned_declarations),
+						checker_notices_printed)
+				}
 			}
 		}
 		if tried_tcc && result.exit_code != 0
@@ -15077,9 +15027,15 @@ pub fn run(args []string) {
 				if verbose || show_cc {
 					println('  > ${cmdexec.display(c_compiler, cc_args)}')
 				}
+				if program_executable_enabled {
+					program_link_inputs = v3_program_link_inputs(cc_args, '', v3_default_link_library_dirs(&cache_state.manager,
+						c_compiler, []string{}, if prefs.normalized_target_os() == 'macos' {
+							macos_sdk_root_cache.get()
+						} else {
+							''
+						}))
+				}
 				result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
-				program_link_args = cc_args.clone()
-				program_linker_dir = ''
 			}
 			if result.exit_code == v3_parallel_cc_monolithic_exit_code
 				&& result.output == v3_parallel_cc_monolithic_message {
@@ -15190,6 +15146,23 @@ Please install the corresponding development package/libraries and make sure the
 				}
 			}
 		}
+		// The executable is kept from the directory of this build, before it gets the
+		// name of the output: another build may write that name at the same moment.
+		if program_executable_enabled && program_link_inputs.taken
+			&& v3_files_keep_identities(user_files, user_file_identities)
+			&& prepare_v3_cache_external_inputs(mut cache_state, &native_inputs, &native_closure) {
+			if !program_executable_input_ready {
+				program_executable_input = v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+			}
+			// A build that took its C from the plan of an earlier one did not check
+			// the program: what that build said about it is in the plan.
+			publish_v3_program_executable(&cache_state.manager, program_executable_input, program_executable_link,
+				&program_link_inputs, staged_binary, if cgen_cache_hit {
+					cgen_cache_metadata.diagnostics
+				} else {
+					cached_checker_diagnostics
+				})
+		}
 		os.mv(staged_binary, bin_file) or {
 			eprintln('failed to finalize ${bin_file}: ${err}')
 			cleanup_c_build_dir(cc_dir)
@@ -15217,15 +15190,6 @@ Please install the corresponding development package/libraries and make sure the
 		}
 		for scope_free_thread in scope_free_threads {
 			scope_free_thread.wait()
-		}
-		if program_executable_enabled && program_link_args.len > 0
-			&& v3_files_keep_identities(user_files, user_file_identities)
-			&& prepare_v3_cache_external_inputs(mut cache_state, &native_inputs, &native_closure) {
-			if !program_executable_input_ready {
-				program_executable_input = v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
-			}
-			publish_v3_program_executable(&cache_state.manager, program_executable_input, program_executable_link,
-				program_link_args, program_linker_dir, bin_file, cached_checker_diagnostics)
 		}
 		b.step(if tcc_cache_hit {
 			'tcc (cached)'

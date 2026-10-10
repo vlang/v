@@ -2,6 +2,7 @@ module driver
 
 import os
 import strings
+import time
 import v.cmdexec
 import v.modulecache
 import v.tempname
@@ -346,13 +347,22 @@ fn v3_strip_preprocessor_line_markers(preprocessed string) string {
 	return out.str()
 }
 
-fn v3_tcc_prelude_stamp(key string, inputs V3TccPreludeInputs) ?string {
+// v3_tcc_prelude_stamp records the inputs of a preprocessed prelude. `before` is a
+// time, in seconds, from before the preprocessor started. The files that it read
+// are known only from what it printed, so their metadata is taken after it has
+// read them: a file that was written or put in place at `before` or later may not
+// be the one that was read, and nothing is recorded then.
+fn v3_tcc_prelude_stamp(key string, inputs V3TccPreludeInputs, before i64) ?string {
 	mut out := strings.new_builder(128 + inputs.files.len * 128 + inputs.missing.len * 96)
 	out.writeln('format=${v3_tcc_prelude_format}')
 	out.writeln('key=${key}')
 	for path in inputs.files {
 		metadata := modulecache.file_metadata_signature(path)
 		if metadata.len == 0 || path.contains_any('\t\n') {
+			return none
+		}
+		attributes := os.stat(path) or { return none }
+		if attributes.mtime >= before || attributes.ctime >= before {
 			return none
 		}
 		out.writeln('file=${path}\t${metadata}')
@@ -447,6 +457,8 @@ fn v3_tcc_source_with_cached_prelude(manager &modulecache.Manager, source string
 		os.rm(output_file) or {}
 	}
 	os.write_file(prelude_file, prelude) or { return none }
+	// Whole seconds, and one to spare for a file system that rounds them.
+	before_preprocessing := time.utc().unix() - 1
 	mut args := preprocess_args.clone()
 	args << ['-E', '-dD', '-o', 'prelude.i', 'prelude.c']
 	result := cmdexec.run_in(tcc_path, args, cc_dir)
@@ -462,7 +474,7 @@ fn v3_tcc_source_with_cached_prelude(manager &modulecache.Manager, source string
 		}
 	}
 	inputs := v3_tcc_prelude_inputs(preprocessed, prelude, first_dirs, later_dirs)
-	stamp := v3_tcc_prelude_stamp(key, inputs) or {
+	stamp := v3_tcc_prelude_stamp(key, inputs, before_preprocessing) or {
 		v3_trace_tcc_prelude('not kept: a header cannot be told apart from a changed one')
 		return none
 	}

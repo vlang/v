@@ -28,7 +28,7 @@ const source_body_marker = '// v3cache: source bodies required'
 // build that reads it cannot tell otherwise that the program reaches that call.
 const recover_call_marker = '// v3cache: calls recover'
 const source_signature_cache_format = 'v3-source-signature-cache-9'
-const program_executable_format = 'v3-program-executable-1'
+const program_executable_format = 'v3-program-executable-2'
 
 // PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
 // process, and which recorded answers apply to it. A build validates the sources
@@ -2105,11 +2105,12 @@ pub fn (e &ProgramExecutable) restore(destination string) bool {
 		return false
 	}
 	tmp := '${destination}.tmp.${tempname.unique_token()}'
-	os.write_file_array(tmp, bytes) or {
-		os.rm(tmp) or {}
-		return false
-	}
-	os.chmod(tmp, 0o755) or {
+	// A linker creates its output with every permission that the umask of the
+	// caller leaves: so does this, by asking for all of them.
+	mut file := os.open_file(tmp, 'w', 0o777) or { return false }
+	written := file.write(bytes) or { -1 }
+	file.close()
+	if written != bytes.len {
 		os.rm(tmp) or {}
 		return false
 	}
@@ -2122,29 +2123,41 @@ pub fn (e &ProgramExecutable) restore(destination string) bool {
 
 // write_program_executable keeps a copy of `executable`, which a build has just
 // linked, for the next build of the same inputs. `link_files` are the files that
-// the link read by path, `link_missing` the paths where it looked for a library
-// that it found further on, and `notices` what the build printed about the program,
-// in a form that the driver can print again. One executable is kept for a program
-// source set: the copy of the previous one is removed.
-pub fn (m &Manager) write_program_executable(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string, link_files []string, link_missing []string, executable string, notices string) ! {
+// the link read, `link_identities` the metadata that each of them had before the
+// link started, `link_missing` the paths where a file would have been read too if
+// it had been there, and `notices` what the build printed about the program, in a
+// form that the driver can print again. A file that is no longer what it was
+// before the link, or a path that is no longer absent, may or may not be what the
+// linker read: nothing is kept then. One executable is kept for a program source
+// set: the copy of the previous one is removed.
+pub fn (m &Manager) write_program_executable(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string, link_files []string, link_identities []string, link_missing []string, executable string, notices string) ! {
 	if !m.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
+	}
+	if link_files.len != link_identities.len {
+		return error('the link inputs have no identities')
 	}
 	slot := m.program_executable_slot(source_files)
 	identity := m.program_executable_identity(source_files, generation_signature, dependency_inputs,
 		link_signature) or { return error('the program sources cannot be cached') }
 	mut out := strings.new_builder(identity.len + 256 + link_files.len * 128 + notices.len)
 	out.write_string(identity)
-	for path in link_files {
-		metadata := file_metadata_signature(path)
+	for i, path in link_files {
+		metadata := link_identities[i]
 		if metadata.len == 0 || path.contains_any('\t\n') {
 			return error('link input ${path} cannot be told apart from a changed one')
+		}
+		if file_metadata_signature(path) != metadata {
+			return error('link input ${path} changed while the program was linked')
 		}
 		out.writeln('input=${path}\t${metadata}')
 	}
 	for path in link_missing {
 		if path.contains_any('\n') {
 			return error('library candidate ${path} cannot be recorded')
+		}
+		if os.exists(path) {
+			return error('${path} appeared while the program was linked')
 		}
 		out.writeln('missing=${path}')
 	}
@@ -2170,9 +2183,9 @@ pub fn (m &Manager) write_program_executable(source_files []string, generation_s
 	defer {
 		os.rm(tmp) or {}
 	}
-	// One read and one write: os.cp moves a file a kilobyte at a time.
+	// One read and one write: os.cp moves a file a kilobyte at a time. The copy
+	// is data: a build that restores it creates the executable anew.
 	os.write_file_array(tmp, os.read_bytes(executable)!)!
-	os.chmod(tmp, 0o755)!
 	os.mv(tmp, cached)!
 	executable_metadata := file_metadata_signature(cached)
 	if executable_metadata.len == 0 {

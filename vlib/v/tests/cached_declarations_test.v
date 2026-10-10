@@ -84,8 +84,9 @@ fn build(root string, flags []string, main_file string, name string) string {
 	return res.output
 }
 
+// run_built runs a built program and returns what it wrote to standard output.
 fn run_built(root string, name string) string {
-	res := os.exec([os.join_path(root, name)])
+	res := os.exec(['/bin/sh', '-c', 'exec "$0" 2>/dev/null', os.join_path(root, name)])
 	assert res.exit_code == 0, res.output
 	return res.output.trim_space()
 }

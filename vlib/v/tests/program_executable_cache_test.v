@@ -87,11 +87,50 @@ fn build(root string, flags []string, main_file string, name string) string {
 	return res.output
 }
 
+// run_built runs a built program and returns what it wrote to standard output.
 fn run_built(root string, name string) string {
-	res := os.exec([os.join_path(root, name)])
+	res := os.exec(['/bin/sh', '-c', 'exec "$0" 2>/dev/null', os.join_path(root, name)])
 	assert res.exit_code == 0, res.output
 	return res.output.trim_space()
 }
+
+// make_answer_library puts a static library whose `answer()` returns `value` at
+// `archive`, in place of the one that is there. A thin archive names its member
+// instead of holding it; `false` says that this `ar` makes none.
+fn make_answer_library(archive string, value int, thin bool) bool {
+	dir := os.dir(archive)
+	os.mkdir_all(dir) or { panic(err) }
+	source := os.join_path(dir, 'answer_${value}.c')
+	object := os.join_path(dir, 'answer.o')
+	os.write_file(source, 'int answer(void) { return ${value}; }\n') or { panic(err) }
+	compiled := os.exec(['cc', '-c', '-o', object, source])
+	assert compiled.exit_code == 0, compiled.output
+	if thin && os.exists(archive) {
+		// The archive stays the file that it is: only its member is built again.
+		return true
+	}
+	next := archive + '.next'
+	os.rm(next) or {}
+	kind := if thin { 'rcsT' } else { 'rcs' }
+	archived := os.exec(['ar', kind, next, object])
+	if archived.exit_code != 0 {
+		assert thin, archived.output
+		return false
+	}
+	// `T` asks BSD `ar` for something else: only GNU `ar` makes a thin archive.
+	if thin && !(os.read_file(next) or { '' }).starts_with('!<thin>\n') {
+		os.rm(next) or {}
+		return false
+	}
+	os.mv(next, archive) or { panic(err) }
+	return true
+}
+
+const answer_program = 'fn C.answer() int\n\nfn main() {\n\tprintln(C.answer())\n}\n'
+
+// A C compiler that takes a call of an undeclared function for an error is told
+// not to: the program declares `answer` to V only.
+const answer_flags = ['-cc', 'cc', '-cflags', '-Wno-error=implicit-function-declaration']
 
 // restored reports whether a build took its executable from the cache.
 fn restored(output string) bool {
@@ -385,4 +424,191 @@ fn test_run_restores_the_executable_and_keeps_its_exit_code() {
 			assert os.is_file(output)
 		}
 	}
+}
+
+fn test_libraries_of_the_link_are_inputs_of_the_executable() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	os.find_abs_path_of_executable('ar') or { return }
+	root := new_project('libraries')
+	saved := pin_module_cache(cache_dir(['-cc', 'cc']))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, answer_program)!
+
+	// An archive that an option for the linker names.
+	direct := os.join_path(root, 'direct_library', 'libanswer.a')
+	make_answer_library(direct, 41, false)
+	mut with_option := answer_flags.clone()
+	with_option << ['-ldflags', '-Wl,${direct}']
+	assert_rebuilt(build(root, with_option, main_file, 'direct'))
+	assert run_built(root, 'direct') == '41'
+	assert_restored(build(root, with_option, main_file, 'direct_same'))
+	make_answer_library(direct, 42, false)
+	replaced := build(root, with_option, main_file, 'direct_replaced')
+	assert !restored(replaced), replaced
+	assert replaced.contains('V3 program executable miss: a link input changed'), replaced
+	assert run_built(root, 'direct_replaced') == '42'
+	assert_restored(build(root, with_option, main_file, 'direct_again'))
+	assert run_built(root, 'direct_again') == '42'
+
+	// A library that the linker looks up, and one that appears before it.
+	earlier := os.join_path(root, 'earlier_libraries')
+	searched := os.join_path(root, 'searched_libraries')
+	os.mkdir_all(earlier)!
+	make_answer_library(os.join_path(searched, 'libanswer.a'), 51, false)
+	mut with_search := answer_flags.clone()
+	with_search << ['-ldflags', '-L${earlier} -L${searched} -lanswer']
+	assert_rebuilt(build(root, with_search, main_file, 'searched'))
+	assert run_built(root, 'searched') == '51'
+	assert_restored(build(root, with_search, main_file, 'searched_same'))
+	make_answer_library(os.join_path(searched, 'libanswer.a'), 52, false)
+	assert !restored(build(root, with_search, main_file, 'searched_replaced'))
+	assert run_built(root, 'searched_replaced') == '52'
+	assert_restored(build(root, with_search, main_file, 'searched_again'))
+	make_answer_library(os.join_path(earlier, 'libanswer.a'), 53, false)
+	shadowed := build(root, with_search, main_file, 'shadowed')
+	assert !restored(shadowed), shadowed
+	assert shadowed.contains('V3 program executable miss: a library appeared'), shadowed
+	assert run_built(root, 'shadowed') == '53'
+
+	// A thin archive names its members: what the link reads is another file.
+	thin := os.join_path(root, 'thin_library', 'libanswer.a')
+	if make_answer_library(thin, 61, true) {
+		mut with_thin := answer_flags.clone()
+		with_thin << ['-ldflags', '-L${os.dir(thin)} -lanswer']
+		first := build(root, with_thin, main_file, 'thin')
+		assert first.contains('is a thin archive'), first
+		assert run_built(root, 'thin') == '61'
+		make_answer_library(thin, 62, true)
+		second := build(root, with_thin, main_file, 'thin_member')
+		assert !restored(second), second
+		assert run_built(root, 'thin_member') == '62'
+	}
+}
+
+fn test_a_library_replaced_while_the_program_links_leaves_no_executable_behind() {
+	$if windows {
+		return
+	}
+	real_cc := os.find_abs_path_of_executable('cc') or { return }
+	os.find_abs_path_of_executable('ar') or { return }
+	root := new_project('link_race')
+	// A compiler that puts another library in place right after it has linked.
+	archive := os.join_path(root, 'lib', 'libanswer.a')
+	replacement := os.join_path(root, 'lib', 'libanswer.replacement')
+	make_answer_library(archive, 2, false)
+	os.mv(archive, replacement)!
+	make_answer_library(archive, 1, false)
+	bin := os.join_path(root, 'bin')
+	os.mkdir_all(bin)!
+	wrapper := os.join_path(bin, 'cc')
+	os.write_file(wrapper, '#!/bin/sh
+${os.quoted_path(real_cc)} "$@"
+status=$?
+case "$*" in
+*libanswer.a*)
+	if [ $status -eq 0 ] && [ -f "$V_LINK_RACE_REPLACEMENT" ]; then
+		mv "$V_LINK_RACE_REPLACEMENT" "$V_LINK_RACE_ARCHIVE"
+	fi;;
+esac
+exit $status
+')!
+	os.chmod(wrapper, 0o755)!
+	mut saved := pin_module_cache(os.join_path(root, 'cache'))
+	saved << [save_env('PATH'), save_env('V_LINK_RACE_REPLACEMENT'), save_env('V_LINK_RACE_ARCHIVE')]
+	os.setenv('PATH', bin + os.path_delimiter + os.getenv('PATH'), true)
+	os.setenv('V_LINK_RACE_REPLACEMENT', replacement, true)
+	os.setenv('V_LINK_RACE_ARCHIVE', archive, true)
+	defer {
+		for env in saved {
+			env.restore()
+		}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, answer_program)!
+	mut flags := answer_flags.clone()
+	flags << ['-ldflags', '-Wl,${archive}']
+	first := build(root, flags, main_file, 'first')
+	// The executable holds the library that was there when the linker read it.
+	assert run_built(root, 'first') == '1'
+	assert !os.exists(replacement)
+	assert first.contains('changed while the program was linked'), first
+	// It is not the executable of the library that is there now.
+	second := build(root, flags, main_file, 'second')
+	assert !restored(second), second
+	assert run_built(root, 'second') == '2'
+	assert_restored(build(root, flags, main_file, 'third'))
+	assert run_built(root, 'third') == '2'
+}
+
+fn test_a_restored_executable_has_the_permissions_of_a_linked_one() {
+	$if windows {
+		return
+	}
+	root := new_project('permissions')
+	for flags in cache_modes() {
+		saved := pin_module_cache(cache_dir(flags))
+		defer {
+			for env in saved {
+				env.restore()
+			}
+		}
+		main_file := os.join_path(root, 'main.v')
+		os.write_file(main_file, program)!
+		mut modes := []u32{}
+		for name in ['linked', 'restored'] {
+			output := os.join_path(root, name + flags.join(''))
+			mut command := ['/bin/sh', '-c', 'umask 077 && exec "$0" "$@"', @VEXE]
+			command << flags
+			command << ['-o', output, main_file]
+			res := os.exec(command)
+			assert res.exit_code == 0, res.output
+			assert restored(res.output) == (name == 'restored'), res.output
+			modes << os.stat(output)!.mode & 0o777
+		}
+		assert modes[0] == 0o700
+		assert modes[1] == modes[0]
+	}
+}
+
+fn test_notices_of_a_program_built_from_cached_c_are_kept_with_its_executable() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	flags := ['-cc', 'cc']
+	root := new_project('cached_c_notices')
+	saved := pin_module_cache(cache_dir(flags))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'fn main() {\n\tunused := 5\n\tprintln("done")\n}\n')!
+	// A build that shows its C compiler keeps no executable, and leaves its C.
+	mut showing := flags.clone()
+	showing << '-showcc'
+	first := build(root, showing, main_file, 'first')
+	assert !restored(first), first
+	warnings := first.count('unused variable: `unused`')
+	assert warnings > 0, first
+	// The next build takes that C, checks nothing, and keeps its executable.
+	second := build(root, flags, main_file, 'second')
+	assert !restored(second), second
+	assert second.count('unused variable: `unused`') == warnings, second
+	if !second.contains('cgen (cached)') {
+		return
+	}
+	third := build(root, flags, main_file, 'third')
+	assert_restored(third)
+	assert third.count('unused variable: `unused`') == warnings, third
+	assert run_built(root, 'third') == 'done'
 }
