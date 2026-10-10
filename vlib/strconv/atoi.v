@@ -289,7 +289,7 @@ fn atoi_common(s string, type_min i64, type_max i64) !i64 {
 	return x
 }
 
-// atoi is equivalent to parse_int(s, 10, 0), converted to type int.
+// atoi parses a decimal string into an int, rejecting values outside the i32 range.
 // It follows V scanner as much as observed.
 pub fn atoi(s string) !int {
 	return int(atoi_common(s, i64_min_int32, i64_max_int32)!)
