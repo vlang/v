@@ -246,12 +246,9 @@ pub fn (enc &Encoding) decode_string_to_string(src string) !string {
 // written or a `corrupt_input_error_msg` error.
 // New line characters (\r and \n) are ignored.
 pub fn (enc &Encoding) decode(src []u8) ![]u8 {
-	mut buf := []u8{len: src.len}
-	// mut dst := unsafe { buf }
-	// l := strip_newlines(mut dst, src)
-	// n, _ := enc.decode_(src[..l], mut dst) or {
-	// src := strip_newlines(src_)
-	n, _ := enc.decode_(src, mut buf) or { return err }
+	stripped := strip_newlines(src)
+	mut buf := []u8{len: stripped.len}
+	n, _ := enc.decode_(stripped, mut buf) or { return err }
 	return buf[..n]
 }
 
