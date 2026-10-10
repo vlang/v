@@ -61,18 +61,13 @@ fn (req &Request) to_h3_request(method Method, authority string, path string, da
 		}
 	}
 	// Cookies: the request's own cookie map plus any Cookie header values,
-	// joined into one field (RFC 9114 §4.2 also permits splitting).
-	mut cookie_parts := []string{}
-	for k, v in req.cookies {
-		cookie_parts << '${k}=${v}'
-	}
-	for cv in header.values(.cookie) {
-		cookie_parts << cv
-	}
-	if cookie_parts.len > 0 {
+	// joined into one field (RFC 9114 §4.2 also permits splitting). The value
+	// is the one the HTTP/1.1 and HTTP/2 clients send, sanitized in one place.
+	cookie_value := req.cookie_header_value_with_header(header)
+	if cookie_value != '' || header.contains(.cookie) {
 		extra << quic.QpackFieldLine{
 			name:  'cookie'
-			value: cookie_parts.join('; ')
+			value: cookie_value
 		}
 	}
 	return H3ClientRequest{
