@@ -5228,25 +5228,54 @@ fn (mut g FlatGen) note_c_postinclude_directive(source_file string) {
 // the link. Such a file ships no header, so the V declaration is the only prototype
 // the translation unit can get.
 fn c_flag_links_c_source(flag string) bool {
-	return c_flag_links_file(flag, ['.c', '.cpp', '.cc', '.m', '.mm', '.o', '.obj'])
+	return c_flag_links_file(flag, ['.c', '.cpp', '.cc', '.m', '.mm', '.o', '.obj'], true)
 }
 
 // c_flag_links_c_library reports whether a flag links a library by path.
 fn c_flag_links_c_library(flag string) bool {
-	return c_flag_links_file(flag, ['.a', '.so', '.dylib', '.lib'])
+	return c_flag_links_file(flag, ['.a', '.so', '.dylib', '.lib'], false)
 }
 
-fn c_flag_links_file(flag string, extensions []string) bool {
+fn c_flag_links_file(flag string, extensions []string, forced_source bool) bool {
 	mut skip_path := false
+	mut next_language := false
+	mut language := ''
 	for raw_arg in tokenize_c_flag(c_flag_strip_hash_comment(flag)) {
 		if skip_path {
 			skip_path = false
 			continue
 		}
 		arg := raw_arg.trim('\'"')
+		if next_language {
+			language = arg
+			next_language = false
+			continue
+		}
+		if arg == '-x' {
+			next_language = true
+			continue
+		}
+		if arg.starts_with('-x') && arg.len > 2 {
+			language = arg[2..]
+			continue
+		}
 		skip_path = c_flag_takes_path_operand(arg)
+			|| arg in ['-F', '-D', '-U', '-iquote', '-idirafter', '-iprefix', '-iwithprefix',
+				'-iwithprefixbefore', '-isysroot', '--sysroot', '-target', '-arch', '-framework',
+				'-weak_framework', '-o', '-MF', '-MT', '-MQ']
+		if !forced_source && arg.starts_with('-Wl,') {
+			parts := arg['-Wl,'.len..].split(',')
+			for i := 0; i + 1 < parts.len; i++ {
+				if parts[i] == '-force_load' && parts[i + 1].ends_with('.a') {
+					return true
+				}
+			}
+		}
 		if arg.starts_with('-') {
 			continue
+		}
+		if forced_source && language !in ['', 'none'] && os.is_file(arg) {
+			return true
 		}
 		for extension in extensions {
 			if arg.ends_with(extension) {

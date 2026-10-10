@@ -28,6 +28,37 @@ fn test_objective_c_sources_keep_c_function_prototypes() {
 	}
 }
 
+fn test_forced_c_sources_keep_c_function_prototypes() {
+	root := os.join_path(os.vtmp_dir(), 'forced_c_flag_prototypes_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'helper'),
+		'int native_flag_value(void) { return 73; }\n')!
+	compile_and_run_native_flag(root, 'forced_c', '-x c @DIR/helper -x none')
+	compile_and_run_native_flag(root, 'joined_c', '-xc @DIR/helper -xnone')
+}
+
+fn test_force_loaded_archives_keep_c_function_prototypes() {
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'force_load_flag_prototypes_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'helper.c')
+		object := os.join_path(root, 'helper.o')
+		archive := os.join_path(root, 'helper.a')
+		os.write_file(source, 'int native_flag_value(void) { return 73; }\n')!
+		compiled := os.exec(['cc', '-c', source, '-o', object])
+		assert compiled.exit_code == 0, compiled.output
+		archived := os.exec(['ar', 'rcs', archive, object])
+		assert archived.exit_code == 0, archived.output
+		compile_and_run_native_flag(root, 'force_load', '-Wl,-force_load,@DIR/helper.a')
+	}
+}
+
 fn compile_and_run_native_flag(root string, name string, flag string) {
 	source := os.join_path(root, '${name}.v')
 	output := os.join_path(root, name)
