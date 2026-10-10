@@ -56,6 +56,17 @@ pub const http_413 = http.new_response(
 	).join(headers_close)
 )
 
+// http_431 is sent before the connection is closed, since the rest of the
+// request was not read.
+const http_431 = http.new_response(
+	status: .request_header_fields_too_large
+	body:   '431 Request Header Fields Too Large'
+	header: http.new_header(http.HeaderConfig{ key: .content_type, value: 'text/plain' },
+		key:   .connection
+		value: 'close'
+	).join(headers_close)
+)
+
 pub const http_500 = http.new_response(
 	status: .internal_server_error
 	body:   '500 Internal Server Error'

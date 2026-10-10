@@ -20,6 +20,16 @@ struct RequestParams {
 
 const http_500_response = 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const http_400_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const http_431_response = 'HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+
+// request_head_error_response returns the raw response for a request head that
+// `http.parse_request_head_str` rejected.
+fn request_head_error_response(err IError) []u8 {
+	if err is http.HeaderLimitError {
+		return http_431_response
+	}
+	return http_500_response
+}
 
 // The va_scope_* helpers wrap V's -prealloc request-arena API so the append
 // handler can keep the same per-request bump-allocation behavior the legacy
@@ -195,7 +205,7 @@ fn parallel_append_handler[A, X](req fasthttp.HttpRequest, mut out []u8, worker_
 	// Parse the request head into a standard `http.Request`, then copy just the body.
 	mut req2 := http.parse_request_head_str(head) or {
 		va_scope_leave(arena)
-		out << http_500_response
+		out << request_head_error_response(err)
 		va_scope_free_after(arena)
 		ctl.should_close = true
 		return .close
