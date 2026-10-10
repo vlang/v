@@ -138,3 +138,37 @@ fn test_retry_keeps_a_quoted_argument_whole() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().ends_with('one two'), res.output
 }
+
+// `v retry` puts its own name in front of the arguments it passes on, and a direct run of
+// the compiled tool does not. The first argument has to reach the parser either way: `-r 1`
+// used to be dropped, so the default limit applied and `1` was run as the program, and
+// `--` as the first argument made the parser delete from an empty list.
+fn test_retry_binary_run_directly_keeps_its_first_argument() {
+	log.use_stdout()
+	tpath := os.join_path(os.vtmp_dir(), 'vretry direct test ${os.getpid()}')
+	os.rmdir_all(tpath) or {}
+	os.mkdir_all(tpath)!
+	defer {
+		os.rmdir_all(tpath) or {}
+	}
+	mut binary := os.join_path(tpath, 'vretry')
+	$if windows {
+		binary += '.exe'
+	}
+	build := os.exec([vexe, '-cc', @CCOMPILER, '-o', binary,
+		os.join_path(vroot, 'cmd', 'tools', 'vretry.v')])
+	assert build.exit_code == 0, build.output
+
+	first_flag := os.exec([binary, '-r', '1', '--', vexe, 'version'])
+	dump_on_ci(first_flag)
+	assert first_flag.exit_code == 0, first_flag.output
+
+	first_dashdash := os.exec([binary, '--', vexe, 'version'])
+	dump_on_ci(first_dashdash)
+	assert first_dashdash.exit_code == 0, first_dashdash.output
+
+	limit := os.exec([binary, '-r', '2', '--', 'vretry-command-that-does-not-exist'])
+	dump_on_ci(limit)
+	assert limit.exit_code != 0
+	assert limit.output.contains('exceeded maximum number of retries (2)!'), limit.output
+}
