@@ -35,6 +35,6 @@ const (
  ordinary = [5, 6]!
 )
 ')!
-	result := os.exec([@VEXE, '-b', 'c', '-cc', 'cc', 'run', source])
+	result := os.exec([@VEXE, '-b', 'c', 'run', source])
 	assert result.exit_code == 0, result.output
 }
