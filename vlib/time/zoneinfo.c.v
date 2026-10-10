@@ -91,7 +91,12 @@ pub fn (loc &Location) unix_to_local(unix_time i64) !Time {
 // in the location.
 // The returned `Time` keeps `unix` as the absolute UTC epoch instant; the
 // calendar fields are the wall time in `loc`. `is_local` stays false.
+// A `nanosecond` outside `0 .. 999_999_999` is carried into `unix_time`, as in `unix_nanosecond`.
 pub fn (loc &Location) unix_nanosecond_to_local(unix_time i64, nanosecond int) !Time {
+	if nanosecond < 0 || nanosecond >= 1_000_000_000 {
+		utc := unix_nanosecond(unix_time, nanosecond)
+		return loc.unix_nanosecond_to_local(utc.unix, utc.nanosecond)
+	}
 	zone := loc.zone_at(unix_time)!
 	local := unix_nanosecond(unix_time + i64(zone.offset), nanosecond)
 	return Time{
