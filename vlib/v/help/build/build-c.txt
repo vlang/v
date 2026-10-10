@@ -481,7 +481,8 @@ see also `v help build`.
       Set V_C_ERROR_BUG_REPORT_DISABLED=1 to disable automatic report submission.
 
    -dump-c-flags file.txt
-      Write all C flags into `file.txt`, one flag per line.
+      Write the C flags passed to the selected compiler into `file.txt`,
+      one flag per line. The monolithic bundled TCC command uses the same flag plan.
       If `file.txt` is `-`, write to stdout instead.
 
    -dump-modules file.txt

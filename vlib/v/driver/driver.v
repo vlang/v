@@ -2393,6 +2393,7 @@ struct V3CCompilerFlagOptions {
 	link_c_standard     string
 	dependencies        []string
 	warn_args           []string
+	tcc_resources       ?V3TccResourceFlags
 	vroot               string
 	target_os           string
 	target_arch         string
@@ -3573,16 +3574,21 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	mut tcc_includes := ''
 	if options.is_tcc {
-		tcc_resources := v3_tcc_resource_flags(options.vroot)
+		tcc_resources := options.tcc_resources or { v3_tcc_resource_flags(options.vroot) }
 		tcc_includes = tcc_resources.include_arg
-		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
-		before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
+		if tcc_resources.base_arg != '' {
+			before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg,
+				tcc_resources.library_arg]
+			before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
+		}
 		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
 	}
 	before_inputs << options.warn_args
-	before_inputs << '-Wno-int-conversion'
+	if '-Wno-int-conversion' !in before_inputs {
+		before_inputs << '-Wno-int-conversion'
+	}
 	if options.target_os == 'macos' && !options.is_shared && !options.is_tcc {
 		before_inputs << '-Wl,-stack_size,0x4000000'
 	}
@@ -3608,6 +3614,8 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	mut after_inputs := if options.is_o {
 		c_object_compile_flags(options.dependencies)
+	} else if options.is_tcc {
+		tcc_monolithic_dependency_flags(options.dependencies, false)
 	} else {
 		c_link_dependency_flags(options.dependencies)
 	}
@@ -13928,6 +13936,11 @@ pub fn run(args []string) {
 			}
 			shared_link_ld_flags << '-Wl,--version-script,${exports_script}'
 		}
+		planned_tcc_compiler := if explicit_tcc && c_compiler in ['tcc', 'tinyc'] && bundled_tcc_available {
+			bundled_tcc
+		} else {
+			c_compiler
+		}
 		c_flag_options := V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
 			link_ld_flags:       shared_link_ld_flags
@@ -13935,6 +13948,7 @@ pub fn run(args []string) {
 			link_c_standard:     link_c_standard
 			dependencies:        resolved_c_flags
 			warn_args:           warn_args
+			tcc_resources:       v3_tcc_resource_flags_for_compiler(prefs.vroot, planned_tcc_compiler, bundled_tcc, bundled_tcc_available)
 			vroot:               prefs.vroot
 			target_os:           prefs.normalized_target_os()
 			target_arch:         prefs.normalized_target_arch()
@@ -13997,7 +14011,11 @@ pub fn run(args []string) {
 		if dump_c_flags.len > 0 {
 			mut dump_support_flags := v3_c_source_mode_flags(needs_objective_c)
 			dump_support_flags << native_support_inputs
-			dumped_flags := c_flag_plan.all_flags(dump_support_flags)
+			dumped_flags := if effective_tcc {
+				v3_tcc_macos_framework_flags(c_flag_plan.all_flags(dump_support_flags), prefs.normalized_target_os(), flag_plan_sdk_root)
+			} else {
+				c_flag_plan.all_flags(dump_support_flags)
+			}
 			output := if dumped_flags.len > 0 {
 				dumped_flags.join('\n') + '\n'
 			} else {
@@ -14574,58 +14592,29 @@ pub fn run(args []string) {
 			} else {
 				implicit_tcc
 			}
-			tcc_resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, tcc_path, bundled_tcc, bundled_tcc_available)
-			mut tcc_args := environment_c_flags.clone()
-			if link_c_standard.len > 0 {
-				tcc_args << link_c_standard
-			}
-			if pic_flag.len > 0 {
-				tcc_args << pic_flag
-			}
-			if tcc_resources.base_arg != '' {
-				tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg,
-					tcc_resources.library_arg]
-			}
 			tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
 				macos_sdk_root_cache.get()
 			} else {
 				''
 			}
-			if tcc_resources.base_arg != '' {
-				tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
-			}
-			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
-				tcc_args << '-bt25'
-			}
-			tcc_args << warn_args
-			if is_shared {
-				tcc_args << '-shared'
-			} else if is_o {
-				tcc_args << '-c'
-			}
-			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem, windows_gui_entry_point)
 			tcc_source := if cache_full_tcc_source.len > 0 {
 				os.base(cache_full_tcc_source)
 			} else {
 				'src.c'
 			}
-			tcc_args << ['-o', cc_output_name, tcc_source]
+			mut tcc_support_inputs := []string{}
 			if cache_with_tcc && cache_state.manager.enabled {
 				// The program unit, with the objects of the modules it was split from.
-				tcc_args << cached_objects
+				tcc_support_inputs << cached_objects
 			}
 			if !is_o {
-				atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
+				atomic_s := tcc_atomic_arg(prefs, tcc_path, c_flag_plan.tcc_includes)
 				if atomic_s.len > 0 {
-					tcc_args << atomic_s
+					tcc_support_inputs << atomic_s
 				}
-				tcc_args << embed_incbin_objects
+				tcc_support_inputs << embed_incbin_objects
 			}
-			tcc_args << tcc_monolithic_dependency_flags(resolved_c_flags, is_o)
-			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
-			if !is_o {
-				tcc_args << link_ld_flags
-			}
+			mut tcc_args := c_flag_plan.compiler_args(cc_output_name, [tcc_source], tcc_support_inputs)
 			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
 				tcc_sdk_root)
 			if verbose || show_cc {
