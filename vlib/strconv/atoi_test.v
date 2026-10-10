@@ -500,3 +500,19 @@ fn test_parse_base_zero_prefix_requires_digits() {
 		assert strconv.parse_int(input, 0, 64)! == 0
 	}
 }
+
+fn test_byte_to_lower_folds_ascii_letters() {
+	assert strconv.byte_to_lower(`A`) == `a`
+	assert strconv.byte_to_lower(`Z`) == `z`
+	assert strconv.byte_to_lower(`M`) == `m`
+}
+
+fn test_byte_to_lower_leaves_already_lower_bytes_untouched() {
+	assert strconv.byte_to_lower(`a`) == `a`
+	assert strconv.byte_to_lower(`z`) == `z`
+}
+
+fn test_byte_to_lower_leaves_digits_untouched() {
+	assert strconv.byte_to_lower(`0`) == `0`
+	assert strconv.byte_to_lower(`9`) == `9`
+}
