@@ -34,3 +34,41 @@ fn test_comptime_type_conditions_use_local_field_value_types() {
 		}
 	}
 }
+
+fn test_comptime_mut_parameters_keep_semantic_types() {
+	directory := os.join_path(os.vtmp_dir(), 'comptime_mut_type_${os.getpid()}')
+	os.mkdir_all(directory)!
+	defer { os.rmdir_all(directory) or {} }
+	path := os.join_path(directory, 'main.v')
+	os.write_file(path, 'module main
+interface Named { name() string }
+struct Value {}
+fn (value Value) name() string { return "value" }
+fn inspect(mut value Named) string {
+    $if value is $pointer { $compile_error("mutable interface became pointer") }
+    $if value !is Named { $compile_error("mutable interface lost its type") }
+    return value.name()
+}
+fn inspect_pointer(mut value &Value) string {
+    $if value !is $pointer { $compile_error("explicit pointer lost its type") }
+    return value.name()
+}
+fn inspect_array(mut values []int) int {
+    $if values !is $array { $compile_error("mutable array lost its type") }
+    $if values is $pointer { $compile_error("mutable array became pointer") }
+    return values[0]
+}
+fn main() {
+    mut value := Named(Value{})
+    assert inspect(mut value) == "value"
+    mut pointer := &Value{}
+    assert inspect_pointer(mut pointer) == "value"
+    mut values := [17]
+    assert inspect_array(mut values) == 17
+}
+')!
+	checked := os.exec([@VEXE, '-b', 'c', '-check', path])
+	assert checked.exit_code == 0, checked.output
+	result := os.exec([@VEXE, '-b', 'c', 'run', path])
+	assert result.exit_code == 0, result.output
+}

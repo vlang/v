@@ -8142,7 +8142,10 @@ fn (tc &TypeChecker) comptime_type_matches(actual string, expected string) ?bool
 	if smartcast := tc.smartcasts[clean_actual] {
 		clean_actual = smartcast.name()
 	} else if local_type := tc.non_file_scope_type(clean_actual) {
-		clean_actual = local_type.name()
+		semantic_type := tc.mut_param_base_for_current_ident(clean_actual, local_type) or {
+			local_type
+		}
+		clean_actual = semantic_type.name()
 	}
 	clean_expected := trimmed_space(expected)
 	if clean_actual.len == 0 || clean_expected.len == 0
