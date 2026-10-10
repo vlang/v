@@ -69,6 +69,7 @@ pub fn new_reader(data string, config ReaderConfig) &Reader {
 
 // read reads a row from the CSV data.
 // If successful, the result holds an array of each column's data.
+// A quote in an unquoted field returns an error.
 pub fn (mut r Reader) read() ![]string {
 	l := r.read_record()!
 	return l
@@ -155,13 +156,16 @@ fn (mut r Reader) read_record() ![]string {
 			keep_raw = false
 		}
 		if line.len == 0 || line[0] != `"` { // not quoted
-			j := line.index(r.delimiter.ascii_str()) or {
-				// last
-				fields << line[..line.len]
+			j := line.index(r.delimiter.ascii_str()) or { line.len }
+			field := line[..j]
+			if field.contains('"') {
+				return &BareQuoteError{}
+			}
+			fields << field
+			if j == line.len {
 				break
 			}
 			i = j
-			fields << line[..i]
 			line = line[i + 1..]
 			continue
 		} else { // quoted
@@ -209,6 +213,14 @@ fn (mut r Reader) read_record() ![]string {
 		}
 	}
 	return fields
+}
+
+struct BareQuoteError {
+	Error
+}
+
+fn (err BareQuoteError) msg() string {
+	return 'encoding.csv: bare quote in non-quoted field'
 }
 
 fn valid_delim(b u8) bool {
