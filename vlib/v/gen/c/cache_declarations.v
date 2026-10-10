@@ -512,11 +512,11 @@ fn (mut g FlatGen) emit_cache_const_init_declarations() {
 	}
 }
 
-fn (mut g FlatGen) emit_cache_const_global_defaults() {
-	mut modules := g.cache_const_modules.keys()
-	modules.sort()
+fn (mut g FlatGen) emit_cache_const_global_defaults(modules []string) {
 	for owner in modules {
-		g.writeln('\t${g.cache_const_init_name(owner)}_defaults();')
+		if g.cache_const_modules[owner] {
+			g.writeln('\t${g.cache_const_init_name(owner)}_defaults();')
+		}
 	}
 }
 

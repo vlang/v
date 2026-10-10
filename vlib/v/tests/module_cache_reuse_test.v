@@ -797,6 +797,68 @@ fn main() {
 	}
 }
 
+fn test_cached_global_defaults_follow_module_dependency_order() {
+	$if windows {
+		return
+	}
+	for flags in [['-cc', 'cc', '-enable-globals'], ['-cc', 'tcc', '-usecache', '-enable-globals']] {
+		root := new_project('module_cache_global_defaults_${flags[1]}')
+		mut saved := pin_module_cache(os.join_path(root, 'cache'))
+		saved << save_env('VMODULES')
+		os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+		defer {
+			for env in saved { env.restore() }
+			os.rmdir_all(root) or {}
+		}
+		os.mkdir_all(os.join_path(root, 'modules', 'zbase'))!
+		os.write_file(os.join_path(root, 'modules', 'zbase', 'zbase.v'), 'module zbase
+struct BaseHolder { value int = make_default() }
+__global base_holder BaseHolder
+pub const snapshot = base_holder.value
+fn make_default() int {
+	println("base default initialized")
+	return 41
+}
+pub fn value() int { return base_holder.value }
+')!
+		os.mkdir_all(os.join_path(root, 'modules', 'auser'))!
+		os.write_file(os.join_path(root, 'modules', 'auser', 'auser.v'), 'module auser
+import zbase
+struct UserHolder { value int = make_default() }
+__global user_holder UserHolder
+pub const snapshot = user_holder.value
+fn make_default() int {
+	println("user default initialized")
+	return zbase.value() + 1
+}
+pub fn value() int { return user_holder.value }
+')!
+		main_file := os.join_path(root, 'main.v')
+		program := 'import auser
+import zbase
+fn main() {
+	assert zbase.snapshot == 41
+	assert zbase.value() == 41
+	assert auser.snapshot == 42
+	println(auser.value())
+}
+'
+		expected := 'base default initialized\nuser default initialized\n42'
+		os.write_file(main_file, program)!
+		build(root, flags, main_file, 'cold')
+		assert run_built(root, 'cold') == expected
+		published := module_objects(root)
+		assert published.filter(os.file_name(it).starts_with('zbase_')).len == 1
+		assert published.filter(os.file_name(it).starts_with('auser_')).len == 1
+		// Changing only the program forces startup code to be generated from cached interfaces.
+		os.write_file(main_file, program + '\nfn added() {}\n')!
+		warm := build(root, flags, main_file, 'warm')
+		assert_reused_modules(warm)
+		assert module_objects(root) == published
+		assert run_built(root, 'warm') == expected
+	}
+}
+
 fn test_cached_constants_keep_storage_and_dependency_initialization_in_their_modules() {
 	$if windows {
 		return

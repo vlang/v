@@ -3991,10 +3991,11 @@ fn (mut g FlatGen) gen_vinit() {
 	g.gen_embed_blob_joins()
 	mut emitted_const := []bool{len: g.const_runtime_inits.len}
 	mut emitted_runtime := []bool{len: g.runtime_inits.len}
-	g.emit_cache_const_global_defaults()
-	g.emit_const_referenced_global_defaults(mut emitted_runtime, false)
 	init_fns := g.module_init_fn_map()
-	for mod in g.ordered_startup_modules(init_fns) {
+	startup_modules := g.ordered_startup_modules(init_fns)
+	g.emit_cache_const_global_defaults(startup_modules)
+	g.emit_const_referenced_global_defaults(mut emitted_runtime, false)
+	for mod in startup_modules {
 		g.emit_runtime_inits_for_module(mod, mut emitted_const, mut emitted_runtime)
 		if init_fn := init_fns[mod] {
 			g.writeln('\t${init_fn}();')
