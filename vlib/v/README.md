@@ -470,9 +470,9 @@ configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
 `math.bits` share one `builtin.o`, matching the v2 core-cache layout.
 The system C compiler builds and links these objects, so the cache serves the builds that use
 it: `-cc clang`, `-prod`, and every build where the bundled TinyCC is not the default compiler.
-TinyCC compiles a whole small program faster than a build validates and links its cached modules;
-pass `-usecache` to let the bundled TinyCC build and link the module objects itself on macOS and
-Linux, which pays off for programs with larger imports.
+A first build with the bundled TinyCC is faster without the cache, as it compiles no module on
+its own; pass `-usecache` to let the bundled TinyCC build and link the module objects itself on
+macOS and Linux, which pays off from the second build on.
 Before compiling a new module object, the compiler prints `Caching module <name>...` to
 standard error, including during `run`. Warm builds print no cache creation notices;
 `-silent` suppresses them. This applies to SHA3 and other imported modules with TinyCC too.
@@ -540,6 +540,90 @@ executable and reports `cc (cached)`; project source, module object, C dependenc
 argument, or dylib changes invalidate it. Persistent outputs—including ordinary compilation,
 explicit `run -o` output, and `-keepc` runs—are standalone. Production, shared-library, self-host,
 explicit `-cc`, and `-nocache` builds also keep their existing direct-link behavior.
+A cached build also keeps the executable that it linked, one for each program. The next build
+whose program sources, module interfaces, native inputs, configuration and linker flags are the
+same, in the same environment of the compiler and the linker (`LIBRARY_PATH`, `CPATH`,
+`C_INCLUDE_PATH`, `LD_RUN_PATH`, `SDKROOT`, `MACOSX_DEPLOYMENT_TARGET` and the like), restores
+that executable instead of checking, generating, compiling and linking again, with
+the system C compiler and with `-usecache` alike. It prints the warnings and notices of the
+program again and reports the stages as cached, the last one as `cc (cached)` or `tcc (cached)`.
+The files that the link read are compared by their metadata first: the objects, archives,
+libraries and other files that the command names, and every name that a linker gives a library
+of `-l` in the directories of `-L`, of `LIBRARY_PATH`, of the compiler (`-print-search-dirs`,
+asked once for a module cache) and of the system. What `-Wl,` and `-Xlinker` hand to the linker
+is read as the one command that it is for the linker, so `-Wl,-L,/dir,-lname` names a directory
+and a library. A library that appears in one of those places counts as a change, and so does a
+program file that was saved while the build that linked the executable ran. A file of text
+among the inputs of the linker is a linker script, whatever its name ends with: it is followed
+to the files and libraries that it names. The identities of the link inputs are taken before the
+linker starts and compared again before the executable is kept, so a file that is replaced in
+between leaves none.
+The headers that the C compiler read for the C of the program are inputs like the files of the
+link, since a build that restores the executable does not compile that C again: TinyCC's are
+those of the preprocessed headers described below, and a compiler driver writes its own down
+while it compiles (`-MD`). A header that appears where an `#include` would find it first counts
+as a change; the driver is asked once for a module cache, a set of arguments and an environment
+where it searches (`-E -v`). No executable is kept when a header is as new as the build that
+read it, or when one command compiles more than one source, as the driver then tells the
+headers of the last one only. An object that the compiler itself keeps of the program, as the
+development builds on macOS below do, is not compiled again by a build that links either.
+None is kept either when the command has an input that cannot be followed: a thin archive, whose
+members are other files, a response file, a file list, a linker script that does more than name
+its inputs, a path that leaves the directory of the build, or an option for the linker that is
+not among those whose inputs are known (`program_link_inputs.v` lists them). The copy in the
+cache is a file of its own: changing or removing the output changes nothing there, and an
+executable that is restored gets the permissions that the umask of the caller leaves, as a
+linked one does. Builds that leave more than an executable behind run in
+full: `-g`, `-cg`, `-keepc`, `-showcc`, `-show-c-output`, shared libraries, objects, profiles,
+coverage, tests, and an implicit `run` on macOS, which has its own executable cache below.
+`V3_CACHE_TRACE=1` says why an executable was not restored, and
+`V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
+The cache resolves the path of each module source once for a build; the table of resolved paths
+is closed when the imports are resolved, before later stages read it from several threads.
+A build that reads every module from its interface gets all the functions of those modules as
+declarations, some sixteen hundred for `builtin` and what it brings along, and each stage would
+register, index and visit them. Before the stages run, such a build takes the plain functions and
+C function declarations that nothing in it names out of the AST: their code is in the objects of
+their modules. A name counts wherever the program, or a function body that an interface carries,
+spells it. Methods always stay, as a method is found through its receiver, an interface, an
+operator or `str`, and so do exported functions, those marked `@[markused]`, `init` and `cleanup`,
+the functions that mark-used seeds, and the functions that a stage of the compiler spells in a
+string literal: those of the runtime by their names (`cached_runtime_function_names`) and those
+of any other module of vlib with the name of the module, as `dl.interface_export_find`
+(`cached_module_function_names`); a test keeps both lists complete. A stage that finds no
+declaration of such a function can do something else without a word. The C generator
+checks the result: when the generated C names a function that was left out, or the C compiler
+reports an error in the program unit, the build starts again with every declaration, and records
+the function in `kept_cached_functions` of the module cache, so that later builds keep it. TinyCC
+and the system compiler get `-Werror=implicit-function-declaration` for such a unit. A build
+whose checker or transformer reports errors starts again as well, before it prints them: what an
+error says, the names that it suggests for one, can depend on the declarations that are known.
+The same executable comes out either way. Builds that keep the plans of a development build on
+macOS (`-cc cc` without `-prod`), tests, `-autofree` builds and Windows targets keep every
+declaration, and so do a program that imports `v.reflection`, which can list its functions when
+it runs, and any build with `V3_CACHE_ALL_DECLARATIONS=1`. `V3_CACHE_TRACE=1` prints
+how many were left out, and `V3_CACHE_KEEP_PROGRAM_C=<file>` keeps the unit that TinyCC compiled.
+With `-usecache`, TinyCC used to read the headers of the C library for every program unit: 3.7 MB
+for a unit of 113 KB. The part of the unit that includes them, up to the last `#include`, is now
+kept in the module cache in preprocessed form (`tcc -E -dD`), and the unit includes that file
+instead. The form is the C that the preprocessor made of the headers, followed by the macro
+definitions that it met: the C is expanded already, and must not be read with those macros
+defined, or one that names itself in what it expands to would be expanded in it again. TinyCC
+then preprocesses the form itself, and the form is used only when it comes out as it went in.
+It is not used either when the headers take a value of `__COUNTER__`, ask for the name of the
+file that is compiled or for the time, push or pop a macro, or include a file that the build
+made; the cache records that, so that the next build does not find it out again. The form is
+valid while the unit starts with the same text, for the same TinyCC, arguments, `CPATH` and
+`C_INCLUDE_PATH`, while every header that the preprocessor read is the file it was, and while
+no header has appeared where an `#include` or a `__has_include` would find it first: in a
+directory of `-I`, or of `CPATH`, which TinyCC searches right after those.
+Nothing is kept when a header was written after the preprocessor had started. If TinyCC reports an
+error in a unit that uses the form, the unit is compiled as it was generated.
+`V3_TCC_NO_PRELUDE_CACHE=1` turns this off, and `V3_TCC_PRELUDE_VERIFY=1` compiles both forms and
+stops when their objects differ.
+On macOS, TinyCC starts Apple's `codesign` for each executable that it links, which takes longer
+than TinyCC needs for a small program. The compiler gives the executable the same kind of ad-hoc
+signature itself and keeps `codesign` from running; `V3_TCC_APPLE_CODESIGN=1` restores the tool.
 When the whole-program C plan is unchanged, v3 validates it immediately after parsing and reports
 the check, mark-used, transform, type-annotation, monomorphization, and C generation stages as
 cached. This avoids semantic and lowering work whose only consumer would be the cached C plan.

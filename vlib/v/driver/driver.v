@@ -1465,6 +1465,37 @@ fn v3_cached_tcc_executable_path(manager &modulecache.Manager, source_identity s
 	return os.join_path(manager.dir, 'dev_executable_${hash.hex()}')
 }
 
+// run_v3_tcc_executable_link runs the TinyCC command that links the executable
+// `output`. On macOS TinyCC then starts Apple's `codesign`, which takes longer than
+// TinyCC needs for a small program. A no-op `codesign` stands in for it while
+// TinyCC runs, and the executable gets the same kind of ad-hoc signature in this
+// process; Apple's tool still signs a file that the signer here does not handle.
+// A driver that is built without the FastC backend has no signer, and leaves the
+// signing to TinyCC.
+fn run_v3_tcc_executable_link(tcc_path string, tcc_args []string, cc_dir string, output string) os.Result {
+	$if !skip_fastc ? {
+		if os.user_os() == 'macos' && os.getenv('V3_TCC_APPLE_CODESIGN') != '1' {
+			shim := fastc.fastc_codesign_shim_dir()
+			result := cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+			fastc.fastc_remove_codesign_shim_dir(shim)
+			if shim.dir == '' || result.exit_code != 0 || !os.is_file(output) {
+				return result
+			}
+			fastc.fastc_sign_macho_adhoc(output) or {
+				signed := cmdexec.run('codesign', ['-f', '-s', '-', output])
+				if signed.exit_code != 0 {
+					return os.Result{
+						exit_code: 1
+						output:    'could not sign ${output}: ${err.msg()}\n${signed.output}'
+					}
+				}
+			}
+			return result
+		}
+	}
+	return cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+}
+
 fn publish_v3_cached_executable(source string, destination string) {
 	tmp := '${destination}.tmp.${tempname.unique_token()}'
 	defer {
@@ -4174,7 +4205,7 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 	mut source_set := map[string]bool{}
 	mut user_source_dirs := map[string]bool{}
 	for file in user_files {
-		real_file := os.real_path(file)
+		real_file := state.manager.real_source_path(file)
 		source_set[real_file] = true
 		user_source_dirs[os.dir(real_file)] = true
 	}
@@ -4184,7 +4215,7 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 	for module_name in module_names {
 		source_files := state.module_sources[module_name]
 		entry := state.manager.entry(module_name, source_files)
-		mut source_paths := source_files.map(os.real_path(it))
+		mut source_paths := state.manager.real_source_paths(source_files)
 		source_paths.sort()
 		dependencies['module:${module_name}'] =
 			modulecache.header_signature(source_paths.join('\n'))
@@ -4262,6 +4293,59 @@ fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_di
 	// is caller-owned and is used by cache regression tests with bounded roots.
 	return cache_enabled && !test_input
 		&& (!os.base(vtmp_dir).starts_with('tsession_') || os.getenv('V3CACHE') != '')
+}
+
+// v3_program_executable_link_signature covers what decides the executable of a
+// program besides the inputs of its C plan and the configuration of the module
+// cache: the linker flags of the command line, whether TinyCC or the system
+// compiler links, the options in `build_options`, which change how the C of
+// the program is generated, compiled or linked and are no part of either, and the
+// variables of the environment that send a compiler or a linker to other files.
+fn v3_program_executable_link_signature(link_ld_flags []string, links_with_tcc bool, build_options []string) string {
+	return ['v3-program-link-2', link_ld_flags.join('\x00'), links_with_tcc.str(),
+		build_options.join('\x00'), v3_link_environment_signature()].join('\x01')
+}
+
+// v3_files_keep_identities reports whether every file still is the file that
+// `identities` describe, which is their metadata from before they were read. A file
+// that was saved while the build ran is not the one that the build parsed, and
+// neither is one whose metadata cannot tell a later edit apart.
+fn v3_files_keep_identities(files []string, identities []string) bool {
+	if files.len != identities.len {
+		return false
+	}
+	for i, file in files {
+		if identities[i].len == 0 || modulecache.file_metadata_signature(file) != identities[i] {
+			return false
+		}
+	}
+	return true
+}
+
+fn v3_path_is_link_input(path string) bool {
+	return path.ends_with('.o') || path.ends_with('.a') || path.ends_with('.dylib')
+		|| path.ends_with('.so') || path.contains('.so.') || path.ends_with('.tbd')
+		|| path.ends_with('.obj') || path.ends_with('.lib')
+}
+
+// publish_v3_program_executable keeps the executable that this build linked for
+// the next build of the same inputs, with the notices of the program. `link` is
+// what the link read, as it was before the link started. See
+// modulecache.Manager.valid_program_executable.
+fn publish_v3_program_executable(manager &modulecache.Manager, input V3CgenCacheInput, link_signature string, link &V3ProgramLinkInputs, bin_file string, diagnostics []V3CachedTypeDiagnostic) {
+	if link.unknown.len > 0 {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 program executable not cached: ${link.unknown}')
+		}
+		return
+	}
+	manager.write_program_executable(input.source_files, input.generation_signature, input.dependency_inputs,
+		link_signature, link.files, link.identities, link.missing, bin_file, encode_v3_cgen_metadata([]string{},
+			'', '', false, diagnostics)) or {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 program executable not cached: ${err.msg()}')
+		}
+	}
 }
 
 // v3_native_inputs classifies the native inputs of a build. Native headers belong
@@ -9480,6 +9564,8 @@ pub fn run(args []string) {
 	mut skip_notices := false
 	mut is_repl := false
 	mut parser_diagnostics_already_printed := false
+	mut keep_all_cached_declarations := os.getenv('V3_CACHE_ALL_DECLARATIONS') == '1'
+	mut checker_notices_already_printed := false
 	mut show_test_stats := v3_environment_show_test_stats()
 	mut warn_impure_v := false
 	mut warn_about_allocs := false
@@ -9907,6 +9993,12 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == v3_internal_parser_diagnostics_printed_flag {
 			parser_diagnostics_already_printed = true
+			i++
+		} else if args[i] == v3_internal_all_cached_declarations_flag {
+			keep_all_cached_declarations = true
+			i++
+		} else if args[i] == v3_internal_checker_notices_printed_flag {
+			checker_notices_already_printed = true
 			i++
 		} else if args[i] == '-check-overflow' {
 			check_overflow = true
@@ -11197,11 +11289,12 @@ pub fn run(args []string) {
 	if large_cold_cache_bypass {
 		trace_v3_cache_fallback('persisted large source graph bypasses cache setup')
 	}
+	persistent_program_cache := persistent_program_cache_enabled(cache_enabled, is_test_command
+		|| is_v3_test_file(input_file, backend, target), os.vtmp_dir())
 	// TinyCC compiles the program unit faster than a cached plan of it can be
-	// validated, so its builds keep only the objects and interfaces of modules.
-	program_cache_enabled := !cache_with_tcc
-		&& persistent_program_cache_enabled(cache_enabled, is_test_command
-			|| is_v3_test_file(input_file, backend, target), os.vtmp_dir())
+	// validated, so its builds keep only the objects and interfaces of modules, and
+	// the executable of the program for a build that changes nothing.
+	program_cache_enabled := !cache_with_tcc && persistent_program_cache
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	mut cache_no_parallel_cgen := current_no_parallel
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
@@ -11241,6 +11334,10 @@ pub fn run(args []string) {
 		builtin_files = builtin_files.filter(is_minimal_literal_output_builtin_file(it))
 	}
 	bundle_sources := builtin_bundle_source_files(mut p.a, prefs, builtin_files)
+	// The cache validates these sources by their resolved paths, which are known now.
+	for source in bundle_sources {
+		cache_manager.remember_source_path(source, p.a.real_source_path(source))
+	}
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
 		silent:                    silent
@@ -11457,6 +11554,13 @@ pub fn run(args []string) {
 	if prepared_imports.ready && prefs.is_test != prepared_imports.is_test {
 		rerun_as_one_shot_check('a test file came or went since the preparation', served.question)
 	}
+	// What the files of the program are before they are read: the executable of a
+	// build is only kept, or restored, for files that are those files still.
+	user_file_identities := if persistent_program_cache {
+		user_files.map(modulecache.file_metadata_signature(it))
+	} else {
+		[]string{}
+	}
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
@@ -11512,6 +11616,7 @@ pub fn run(args []string) {
 	// and inside disposable arenas. Resolve them once here, on the main thread and
 	// in the build's own arena, before any of those stages start.
 	a.resolve_source_paths()
+	cache_state.manager.freeze_source_paths()
 	resolve_imports_elapsed_us := b.current_step_time_us() - resolve_imports_started_us
 	resolve_imports_parse_us := parse_timing.header_us + parse_timing.source_us - resolve_imports_parse_started_us
 	resolve_imports_coordination_us := if resolve_imports_parse_us < resolve_imports_elapsed_us {
@@ -11828,6 +11933,83 @@ pub fn run(args []string) {
 	mut incremental_cached_body := ''
 	mut incremental_prefix_path := ''
 	mut incremental_tcc_declarations_path := ''
+	use_cached_dev_dylib := cache_state.manager.enabled && remove_binary_after_run && !is_prod
+		&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
+		&& !cache_with_tcc
+	// The executable of a program is kept with the modules that it was linked from.
+	// A build whose sources, module interfaces, native inputs, configuration and link
+	// inputs are those of the build that linked it has nothing to check, generate,
+	// compile or link: it restores that executable and prints again what the earlier
+	// build said about the program. Builds that leave more than an executable behind
+	// (debug symbols, C sources, profiles, coverage, a test report) run in full.
+	program_executable_enabled := backend == 'c' && cache_state.manager.enabled
+		&& persistent_program_cache && !c_only && !is_o && !is_shared && !is_liveshared
+		&& !is_livemain && !is_selfhost && !use_cached_dev_dylib && !is_debug && !is_c_debug
+		&& !race && !is_repl && !is_crun && !is_direct_vsh && test_files.len == 0
+		&& !is_checker_fixture && !check_only && !is_prof && profile_file.len == 0
+		&& !is_trace_calls && coverage_dir.len == 0 && dump_c_flags.len == 0 && !show_cc
+		&& !show_c_output && icon_path.len == 0 && vls_line_info == '' && !served.from_server
+		&& target.os != 'windows' && effective_c_compiler != 'msvc'
+		&& os.getenv('V3_CACHE_DISABLE_PROGRAM_EXECUTABLE') != '1'
+	mut program_compile_values := []string{cap: compile_values.len}
+	for name, value in compile_values {
+		program_compile_values << '${name}=${value}'
+	}
+	program_compile_values.sort()
+	program_executable_link := v3_program_executable_link_signature(link_ld_flags, cache_with_tcc, [
+		'strict=${is_strict}',
+		'no_std=${no_std}',
+		'gc=${gc_mode}',
+		'libc=${libc_mode}',
+		'no_preludes=${no_preludes}',
+		'explicit_mutability=${!disable_explicit_mutability}',
+		'values=${program_compile_values.join(',')}',
+	])
+	mut program_executable_input := V3CgenCacheInput{}
+	mut program_executable_input_ready := false
+	if program_executable_enabled && !cache_state.force_source
+		&& cache_state.parsed_from_source.len == 0
+		&& v3_files_keep_identities(user_files, user_file_identities)
+		&& prepare_v3_cache_external_inputs(mut cache_state, &native_inputs, &native_closure) {
+		program_executable_input = v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+		program_executable_input_ready = true
+		if cached_executable := cache_state.manager.valid_program_executable(program_executable_input.source_files,
+			program_executable_input.generation_signature, program_executable_input.dependency_inputs,
+			program_executable_link)
+		{
+			if cached_program := decode_v3_cgen_metadata(cached_executable.notices) {
+				if cached_executable.restore(bin_file) {
+					if os.getenv('V3_CACHE_TRACE') != '' {
+						eprintln('  V3 program executable restored')
+					}
+					b.step('cache lookup')
+					for stage in ['check', 'markused', 'transform', 'annotate types', 'monomorphize',
+						'cgen'] {
+						b.step('${stage} (cached)')
+					}
+					if cached_program.diagnostics.len > 0 {
+						cached_notices := restore_v3_type_diagnostics(mut a, cached_program.diagnostics)
+						print_type_diagnostics(a, cached_notices, []types.TypeError{}, false,
+							fatal_errors, false, message_limit, skip_notices)
+					}
+					b.step(if cache_with_tcc { 'tcc (cached)' } else { 'cc (cached)' })
+					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+					if should_run {
+						run_result := run_binary(bin_file, run_args)
+						if remove_binary_after_run {
+							os.rm(bin_file) or {}
+						}
+						if run_result != 0 {
+							exit(run_result)
+						}
+						b.step('run')
+					}
+					b.print_report()
+					return
+				}
+			}
+		}
+	}
 	if backend == 'c' && program_cache_enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
 		if !prepare_v3_cache_external_inputs(mut cache_state, &native_inputs,
@@ -11835,7 +12017,11 @@ pub fn run(args []string) {
 			trace_v3_cache_fallback('native C inputs require compilation without header inspection')
 			restart_v3_without_cache()
 		}
-		input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+		input := if program_executable_input_ready {
+			program_executable_input
+		} else {
+			v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+		}
 		cgen_cache_commit_exists = cache_state.manager.has_cgen_commit(input.source_files)
 		if entry := cache_state.manager.valid_cgen(input.source_files, input.generation_signature, input.dependency_inputs) {
 			metadata := os.read_file(entry.metadata) or { '' }
@@ -11993,6 +12179,30 @@ pub fn run(args []string) {
 	// per-expression types for type-dependent lowering.
 	mut ck_stage_sw := time.new_stopwatch()
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'semantic checking')
+	// A build that reads its modules from their interfaces takes the functions that
+	// nothing in it can name out of the AST, so that no stage has to look at them
+	// (see cached_declarations.v). The plans that the system compiler keeps of a
+	// development build on macOS are made of what the stages of an earlier build
+	// left, with every declaration: such a build keeps them all.
+	mut pruned_declarations := V3PrunedDeclarations{}
+	mut checker_notices_printed := false
+	if backend == 'c' && cache_state.manager.enabled && !keep_all_cached_declarations
+		&& !cache_state.force_source && cache_state.parsed_from_source.len == 0 && !cgen_cache_hit
+		&& !use_macos_dev_program_cache && !c_only && !is_o && !is_shared && !check_only
+		&& test_files.len == 0 && !is_checker_fixture && !is_repl && !is_prof
+		&& profile_file.len == 0 && !is_trace_calls && coverage_dir.len == 0 && !ownership_mode
+		&& 'ownership' !in prefs.user_defines && 'autofree' !in prefs.user_defines
+		&& vls_line_info == '' && !served.from_server && target.os != 'windows' {
+		mut kept_functions := markused.seeded_fn_names()
+		kept_functions << cached_runtime_function_names
+		kept_functions << cached_module_function_names
+		kept_functions << module_lifecycle_function_names
+		kept_functions << v3_kept_cached_functions(&cache_state.manager)
+		pruned_declarations = prune_unreferenced_cached_functions(mut a, kept_functions)
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 cached declarations: left out ${pruned_declarations.count} functions that the program does not name')
+		}
+	}
 	mut pre_tc := types.TypeChecker.new(a)
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
@@ -12316,6 +12526,8 @@ pub fn run(args []string) {
 			b.step_parallel('check', check_was_parallel)
 		}
 		if pre_tc.errors.len > 0 {
+			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+				&pruned_declarations, checker_notices_printed)
 			if is_checker_fixture {
 				fixture_used_fns, fixture_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				has_invalid_comptime_struct_update :=
@@ -12379,6 +12591,8 @@ pub fn run(args []string) {
 			pre_tc.notices.clear()
 		}
 		if pre_tc.errors.len > 0 {
+			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+				&pruned_declarations, checker_notices_printed)
 			exit(1)
 		}
 		if no_closures {
@@ -12419,6 +12633,8 @@ pub fn run(args []string) {
 		if pre_tc.has_noalloc_contracts() {
 			pre_tc.check_noalloc_contracts(false, noalloc_unsupported_modes)
 			if pre_tc.errors.len > 0 {
+				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+					&pruned_declarations, checker_notices_printed)
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 					check_only, message_limit, skip_notices)
@@ -12448,6 +12664,8 @@ pub fn run(args []string) {
 			pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
+				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+					&pruned_declarations, checker_notices_printed)
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 					check_only, message_limit, skip_notices)
 				exit(1)
@@ -12616,6 +12834,8 @@ pub fn run(args []string) {
 					break
 				}
 				if pre_tc.errors.len > 0 {
+					restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+						&pruned_declarations, checker_notices_printed)
 					print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 						check_only, message_limit, skip_notices)
 					exit(1)
@@ -12655,8 +12875,12 @@ pub fn run(args []string) {
 			if cache_state.manager.enabled {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
-			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only, message_limit, skip_notices)
+			// A build that starts again prints what it found once.
+			if !checker_notices_already_printed {
+				print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture,
+					fatal_errors, check_only, message_limit, skip_notices)
+				checker_notices_printed = true
+			}
 			for notice in pre_tc.notices {
 				if skip_notices && notice.severity in ['', 'notice:'] {
 					continue
@@ -13070,6 +13294,8 @@ pub fn run(args []string) {
 			pre_tc.refresh_rewritten_parent_index(a)
 		}
 		if transform_errors.len > 0 {
+			restart_v3_for_errors_of_pruned_build(&cache_state.manager, transform_errors,
+				&pruned_declarations, checker_notices_printed)
 			if compiler_errors.json_output() {
 				for message in transform_errors {
 					eprintln(compiler_errors.json_message('error:', message, []string{}))
@@ -13097,8 +13323,11 @@ pub fn run(args []string) {
 					is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
 				exit(1)
 			}
-			print_type_diagnostics(a, pre_tc.notices[transform_notices_start..], []types.TypeError{},
-				is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
+			if !checker_notices_already_printed {
+				print_type_diagnostics(a, pre_tc.notices[transform_notices_start..], []types.TypeError{},
+					is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
+				checker_notices_printed = true
+			}
 			checker_warning_count += pre_tc.notices.len - transform_notices_start
 			pre_tc.notices.trim(transform_notices_start)
 		}
@@ -13174,6 +13403,8 @@ pub fn run(args []string) {
 		pre_tc.notices.clear()
 	}
 	if pre_tc.errors.len > 0 {
+		restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+			&pruned_declarations, checker_notices_printed)
 		if macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
@@ -13277,10 +13508,18 @@ pub fn run(args []string) {
 			if cache_state.manager.enabled {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
-			if pre_tc.errors.len == 0
-				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit, skip_notices)
+			if pre_tc.errors.len > 0 {
+				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+					&pruned_declarations, checker_notices_printed)
+			}
+			if pre_tc.errors.len > 0
+				|| (!checker_notices_already_printed && pre_tc.errors.len == 0) {
+				if pre_tc.errors.len == 0
+					|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
+					print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture,
+						fatal_errors, check_only, message_limit, skip_notices)
+					checker_notices_printed = true
+				}
 			}
 			for notice in pre_tc.notices {
 				if skip_notices && notice.severity in ['', 'notice:'] {
@@ -13295,6 +13534,8 @@ pub fn run(args []string) {
 			pre_tc.notices.clear()
 		}
 		if pre_tc.errors.len > 0 {
+			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+				&pruned_declarations, checker_notices_printed)
 			exit(1)
 		}
 		if monomorph_errors.len > 0 {
@@ -13347,6 +13588,8 @@ pub fn run(args []string) {
 	if pre_tc.has_noalloc_contracts() {
 		pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
 		if pre_tc.errors.len > 0 {
+			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+				&pruned_declarations, checker_notices_printed)
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 				check_only, message_limit, skip_notices)
@@ -13499,9 +13742,6 @@ pub fn run(args []string) {
 			cache_no_parallel_cgen = true
 		}
 		c_standard := c_standard_flag(prefs.c99, no_std)
-		use_cached_dev_dylib := cache_state.manager.enabled && remove_binary_after_run && !is_prod
-			&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
-			&& !cache_with_tcc
 		// Long `$embed_file` payloads go into objects assembled from the bytes with
 		// `.incbin` when the link allows it and an assembler is at hand; cgen then
 		// refers to those objects instead of spelling out the bytes, see
@@ -13654,6 +13894,7 @@ pub fn run(args []string) {
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(a, user_files)
+			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
 			g.set_scope_parallel_workers(!generic_cache_hit)
@@ -13666,6 +13907,13 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
+			pruned_function_refs, pruned_functions_checked := g.referenced_pruned_cache_functions()
+			if pruned_function_refs.len > 0 || !pruned_functions_checked {
+				// The generated C calls a function whose declaration this build left out.
+				cleanup_c_build_dir(cc_dir)
+				restart_v3_with_all_cached_declarations(&cache_state.manager, 'generated C names ${pruned_function_refs}',
+					pruned_function_refs, checker_notices_printed)
+			}
 			if generated_gui_entry_point := g.generated_windows_gui_entry_point() {
 				windows_gui_entry_point = generated_gui_entry_point
 			}
@@ -13732,6 +13980,7 @@ pub fn run(args []string) {
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(a, user_files)
+			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc, cache_no_parallel_cgen, test_files) or {
@@ -13740,6 +13989,13 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
+			pruned_function_refs, pruned_functions_checked := g.referenced_pruned_cache_functions()
+			if pruned_function_refs.len > 0 || !pruned_functions_checked {
+				// The generated C calls a function whose declaration this build left out.
+				cleanup_c_build_dir(cc_dir)
+				restart_v3_with_all_cached_declarations(&cache_state.manager, 'generated C names ${pruned_function_refs}',
+					pruned_function_refs, checker_notices_printed)
+			}
 			if generated_gui_entry_point := g.generated_windows_gui_entry_point() {
 				windows_gui_entry_point = generated_gui_entry_point
 			}
@@ -14483,6 +14739,10 @@ pub fn run(args []string) {
 		mut tried_tcc := false
 		mut tcc_cache_hit := false
 		mut used_tcc := false
+		// What the command that links the executable reads, taken before it runs:
+		// a file that changes while the linker works is not what the record of the
+		// executable would say it is.
+		mut program_link_inputs := V3ProgramLinkInputs{}
 		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language
 			&& !is_c_debug && implicit_tcc != '' {
 			tried_tcc = true
@@ -14548,7 +14808,11 @@ pub fn run(args []string) {
 				}}')
 			}
 			if !tcc_cache_hit {
-				result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+				result = if is_o {
+					cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+				} else {
+					run_v3_tcc_executable_link(tcc_path, tcc_args, cc_dir, cc_out)
+				}
 				show_v3_c_compiler_output(show_c_output, tcc_path, result)
 				if result.exit_code == 0 {
 					used_tcc = true
@@ -14609,6 +14873,11 @@ pub fn run(args []string) {
 			} else {
 				'src.c'
 			}
+			if pruned_declarations.count > 0 {
+				// A call of a function that this build left out must not pass for a
+				// call of an undeclared one, which TinyCC takes to return `int`.
+				tcc_args << '-Werror=implicit-function-declaration'
+			}
 			tcc_args << ['-o', cc_output_name, tcc_source]
 			if cache_with_tcc && cache_state.manager.enabled {
 				// The program unit, with the objects of the modules it was split from.
@@ -14635,16 +14904,70 @@ pub fn run(args []string) {
 			// tcc build regenerating with the platform C compiler depends on a
 			// specific missing symbol in the bundled tcc's import list, which a
 			// toolchain update can close and silently drop that coverage.
+			if program_executable_enabled && !is_shared && !is_o {
+				program_link_inputs = v3_program_link_inputs(tcc_args, tcc_resources.install_dir,
+					v3_default_link_library_dirs(&cache_state.manager, tcc_path, tcc_args.filter(it.trim_space().starts_with('-B')),
+						tcc_sdk_root))
+			}
 			result = if injected_failure := os.getenv_opt('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE') {
 				os.Result{
 					exit_code: 1
 					output:    injected_failure
 				}
-			} else {
+			} else if is_shared || is_o {
 				cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+			} else {
+				// A build that links cached modules compiles their headers from the
+				// preprocessed form that the cache keeps.
+				mut generated_unit := ''
+				use_tcc_prelude := cache_with_tcc && cache_state.manager.enabled
+					&& tcc_source == 'src.c' && cache_state.parsed_from_source.len == 0
+					&& !is_debug && os.getenv('V3_TCC_NO_PRELUDE_CACHE') != '1'
+				// An executable that is kept is one of the headers that the unit reads:
+				// what they are is found out for it as well.
+				if use_tcc_prelude || program_link_inputs.taken {
+					unit_file := os.join_path_single(cc_dir, tcc_source)
+					unit := os.read_file(unit_file) or { '' }
+					prelude := v3_tcc_prelude(&cache_state.manager, unit, tcc_path, tcc_args,
+						tcc_source, cc_dir)
+					if unit.len == 0 {
+						program_link_inputs.unknown = 'the C of the program cannot be read'
+					}
+					program_link_inputs.add_tcc_headers(&prelude)
+					if use_tcc_prelude && prelude.unit.len > 0 {
+						if os.getenv('V3_TCC_PRELUDE_VERIFY') == '1'
+							&& !v3_tcc_units_compile_alike(tcc_path, tcc_args, tcc_source, cc_dir, unit, prelude.unit) {
+							eprintln('V3 TinyCC prelude: the preprocessed headers change the object of ${cc_src}')
+							exit(1)
+						}
+						os.write_file(cc_src, prelude.unit) or {}
+						generated_unit = unit
+					}
+				}
+				if keep_unit := os.getenv_opt('V3_CACHE_KEEP_PROGRAM_C') {
+					os.cp(cc_src, keep_unit) or {}
+				}
+				mut linked := run_v3_tcc_executable_link(tcc_path, tcc_args, cc_dir, cc_out)
+				if linked.exit_code != 0 && generated_unit.len > 0
+					&& v3_c_output_reports_source_error(linked.output) {
+					// The unit as it was generated decides what becomes of the build.
+					v3_trace_tcc_prelude('not used: ${linked.output.all_before('\n')}')
+					os.write_file(cc_src, generated_unit) or {}
+					linked = run_v3_tcc_executable_link(tcc_path, tcc_args, cc_dir, cc_out)
+				}
+				linked
 			}
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
+			if !used_tcc {
+				program_link_inputs = V3ProgramLinkInputs{}
+				if pruned_declarations.count > 0 && v3_c_output_reports_source_error(result.output) {
+					cleanup_c_build_dir(cc_dir)
+					restart_v3_with_all_cached_declarations(&cache_state.manager, 'TinyCC did not compile the program',
+						v3_pruned_functions_named_in(result.output, &pruned_declarations),
+						checker_notices_printed)
+				}
+			}
 		}
 		if tried_tcc && result.exit_code != 0
 			&& v3_recover_from_cache_failure(result.output, cc_dir) {
@@ -14693,6 +15016,9 @@ pub fn run(args []string) {
 				compiler_inputs << ['-D__TINYC__', '-Wno-implicit-function-declaration',
 					fallback_source]
 			} else {
+				if pruned_declarations.count > 0 {
+					compiler_inputs << '-Werror=implicit-function-declaration'
+				}
 				compiler_inputs << v3_c_source_inputs(fallback_source, needs_objective_c)
 			}
 			if !is_o {
@@ -14714,10 +15040,30 @@ pub fn run(args []string) {
 				if effective_c_compiler == 'msvc' {
 					cc_args = msvc_cl_args(cc_args, prefs.normalized_target_os())
 				}
+				if program_executable_enabled && v3_compiled_sources(cc_args).len == 1 {
+					// The compiler writes down the headers that it reads: they are
+					// inputs of the executable like the files of the link. It writes
+					// those of one source only.
+					cc_args << ['-MD', '-MF', v3_program_dependency_file]
+				}
 				if verbose || show_cc {
 					println('  > ${cmdexec.display(c_compiler, cc_args)}')
 				}
+				// Whole seconds, and one to spare for a file system that rounds them.
+				before_cc := time.utc().unix() - 1
+				if program_executable_enabled {
+					program_link_inputs = v3_program_link_inputs(cc_args, '', v3_default_link_library_dirs(&cache_state.manager,
+						c_compiler, v3_link_search_args(cc_args), if prefs.normalized_target_os() == 'macos' {
+							macos_sdk_root_cache.get()
+						} else {
+							''
+						}))
+				}
 				result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
+				if program_executable_enabled && result.exit_code == 0 {
+					program_link_inputs.add_compiler_headers(&cache_state.manager, c_compiler,
+						cc_args, cc_dir, os.read_file(cc_src) or { '' }, before_cc)
+				}
 			}
 			if result.exit_code == v3_parallel_cc_monolithic_exit_code
 				&& result.output == v3_parallel_cc_monolithic_message {
@@ -14738,6 +15084,12 @@ pub fn run(args []string) {
 				return
 			}
 			show_v3_c_compiler_output(show_c_output, c_compiler, result)
+			if result.exit_code != 0 && pruned_declarations.count > 0
+				&& v3_c_output_reports_source_error(result.output) {
+				cleanup_c_build_dir(cc_dir)
+				restart_v3_with_all_cached_declarations(&cache_state.manager, 'the C compiler did not compile the program',
+					v3_pruned_functions_named_in(result.output, &pruned_declarations), checker_notices_printed)
+			}
 			if result.exit_code != 0 {
 				// Before degrading to the fallback compiler: a stale cache entry
 				// is repairable, and falling back would hide it indefinitely.
@@ -14821,6 +15173,23 @@ Please install the corresponding development package/libraries and make sure the
 					exit(1)
 				}
 			}
+		}
+		// The executable is kept from the directory of this build, before it gets the
+		// name of the output: another build may write that name at the same moment.
+		if program_executable_enabled && program_link_inputs.taken
+			&& v3_files_keep_identities(user_files, user_file_identities)
+			&& prepare_v3_cache_external_inputs(mut cache_state, &native_inputs, &native_closure) {
+			if !program_executable_input_ready {
+				program_executable_input = v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
+			}
+			// A build that took its C from the plan of an earlier one did not check
+			// the program: what that build said about it is in the plan.
+			publish_v3_program_executable(&cache_state.manager, program_executable_input, program_executable_link,
+				&program_link_inputs, staged_binary, if cgen_cache_hit {
+					cgen_cache_metadata.diagnostics
+				} else {
+					cached_checker_diagnostics
+				})
 		}
 		os.mv(staged_binary, bin_file) or {
 			eprintln('failed to finalize ${bin_file}: ${err}')
@@ -16050,7 +16419,7 @@ fn cache_vlib_source_and_header_paths(state &V3ModuleCacheState) map[string]bool
 		}
 		for source_file in source_files {
 			paths[source_file] = true
-			paths[os.real_path(source_file)] = true
+			paths[state.manager.real_source_path(source_file)] = true
 		}
 		header := state.manager.entry(module_name, source_files).header
 		paths[header] = true
