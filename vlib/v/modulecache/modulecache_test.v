@@ -1353,3 +1353,166 @@ fn test_pkg_config_answers_do_not_persist_for_an_unlistable_search_directory() {
 	assert fake.invocations().filter(it == '--exists foo').len == 2
 	assert pkg_config_state_key(fake.cache_dir) == 0
 }
+
+fn program_executable_fixture(name string) (string, Manager, string, string) {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {}\n') or { panic(err) }
+	object := os.join_path(root, 'module.o')
+	os.write_file(object, 'object') or { panic(err) }
+	manager := Manager{
+		dir:          os.join_path(root, 'cache')
+		enabled:      true
+		salt:         'salt'
+		pkg_probes:   &PkgConfigProbes{}
+		source_paths: &SourcePaths{}
+	}
+	return root, manager, source, object
+}
+
+fn test_program_executable_is_restored_for_the_inputs_that_linked_it() {
+	root, manager, source, object := program_executable_fixture('program_executable')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	linked := os.join_path(root, 'linked')
+	os.write_file(linked, 'first executable')!
+	dependencies := {
+		'module:a': 'one'
+	}
+	missing := os.join_path(root, 'libabsent.a')
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') == none
+	manager.write_program_executable([source], 'flags', dependencies, 'link', [object], [
+		missing,
+	], linked, 'notices\nof the build\n')!
+	cached := manager.valid_program_executable([source], 'flags', dependencies, 'link') or {
+		assert false, 'the executable of the same inputs is not found'
+		return
+	}
+	assert cached.notices == 'notices\nof the build\n'
+	restored := os.join_path(root, 'restored')
+	assert cached.restore(restored)
+	assert os.read_file(restored)! == 'first executable'
+	assert os.is_executable(restored)
+	// The copy does not share its file with the executable that was linked.
+	os.write_file(linked, 'changed after the build')!
+	assert cached.restore(restored)
+	assert os.read_file(restored)! == 'first executable'
+
+	// Each input of the build is part of what the executable is found by.
+	assert manager.valid_program_executable([source], 'other flags', dependencies, 'link') == none
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'other link') == none
+	assert manager.valid_program_executable([source], 'flags', {
+		'module:a': 'two'
+	}, 'link') == none
+	other := Manager{
+		...manager
+		salt: 'other salt'
+	}
+	assert other.valid_program_executable([source], 'flags', dependencies, 'link') == none
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') != none
+
+	// A library that appears where the link looked for one changes the link.
+	os.write_file(missing, 'library')!
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') == none
+	os.rm(missing)!
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') != none
+
+	// So does a link input that is another file than it was.
+	os.rm(object)!
+	os.write_file(object, 'another object')!
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') == none
+}
+
+fn test_program_executable_follows_the_program_and_keeps_one_copy() {
+	root, manager, source, object := program_executable_fixture('program_executable_slot')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	linked := os.join_path(root, 'linked')
+	os.write_file(linked, 'first executable')!
+	no_dependencies := map[string]string{}
+	// A copy that no stamp commits, as an interrupted build leaves it.
+	os.mkdir_all(manager.dir)!
+	abandoned := manager.program_executable_slot([source]) + '_0123456789abcdef.exe'
+	os.write_file(abandoned, 'abandoned executable')!
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], []string{},
+		linked, '')!
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') != none
+	assert !os.exists(abandoned)
+	assert os.walk_ext(manager.dir, '.exe').len == 1
+
+	// The same program text, saved again, is the same program.
+	os.write_file(source, 'fn main() {}\n')!
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') != none
+
+	os.write_file(source, 'fn main() { println(1) }\n')!
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
+	os.write_file(linked, 'second executable')!
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], []string{},
+		linked, '')!
+	second := manager.valid_program_executable([source], 'flags', no_dependencies, 'link') or {
+		assert false, 'the executable of the changed program is not found'
+		return
+	}
+	restored := os.join_path(root, 'restored')
+	assert second.restore(restored)
+	assert os.read_file(restored)! == 'second executable'
+	assert os.walk_ext(manager.dir, '.exe').len == 1
+
+	// A copy that is not the file that was recorded is not used.
+	os.write_file(second.path, 'second executable')!
+	assert !second.restore(restored)
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
+}
+
+fn test_program_executable_is_not_kept_for_an_input_without_an_identity() {
+	root, manager, source, object := program_executable_fixture('program_executable_identity')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	linked := os.join_path(root, 'linked')
+	os.write_file(linked, 'executable')!
+	no_dependencies := map[string]string{}
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [
+		os.join_path(root, 'gone.o'),
+	], []string{}, linked, '') or {
+		assert err.msg().contains('cannot be told apart')
+		assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
+		_ = object
+		return
+	}
+	assert false, 'a link input that is not there has no identity'
+}
+
+fn test_real_source_paths_are_resolved_once_until_they_are_frozen() {
+	root, manager, source, _ := program_executable_fixture('real_source_paths')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	link := os.join_path(root, 'link.v')
+	os.symlink(source, link)!
+	assert manager.real_source_path(link) == os.real_path(source)
+	assert manager.real_source_paths([source, link]) == [os.real_path(source), os.real_path(source)]
+	// The answer of the build stays what it was while the build runs.
+	other := os.join_path(root, 'other.v')
+	os.write_file(other, 'fn other() {}\n')!
+	os.rm(link)!
+	os.symlink(other, link)!
+	assert manager.real_source_path(link) == os.real_path(source)
+	manager.remember_source_path('given.v', '/resolved/given.v')
+	assert manager.real_source_path('given.v') == '/resolved/given.v'
+	manager.freeze_source_paths()
+	// A frozen table still answers, and takes nothing new.
+	assert manager.real_source_path(link) == os.real_path(source)
+	late := os.join_path(root, 'late.v')
+	os.symlink(source, late)!
+	assert manager.real_source_path(late) == os.real_path(source)
+	os.rm(late)!
+	os.symlink(other, late)!
+	assert manager.real_source_path(late) == os.real_path(other)
+	manager.remember_source_path('late_given.v', '/resolved/late_given.v')
+	assert manager.real_source_path('late_given.v') == os.real_path('late_given.v')
+}

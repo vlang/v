@@ -470,9 +470,9 @@ configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
 `math.bits` share one `builtin.o`, matching the v2 core-cache layout.
 The system C compiler builds and links these objects, so the cache serves the builds that use
 it: `-cc clang`, `-prod`, and every build where the bundled TinyCC is not the default compiler.
-TinyCC compiles a whole small program faster than a build validates and links its cached modules;
-pass `-usecache` to let the bundled TinyCC build and link the module objects itself on macOS and
-Linux, which pays off for programs with larger imports.
+A first build with the bundled TinyCC is faster without the cache, as it compiles no module on
+its own; pass `-usecache` to let the bundled TinyCC build and link the module objects itself on
+macOS and Linux, which pays off from the second build on.
 Before compiling a new module object, the compiler prints `Caching module <name>...` to
 standard error, including during `run`. Warm builds print no cache creation notices;
 `-silent` suppresses them. This applies to SHA3 and other imported modules with TinyCC too.
@@ -540,6 +540,25 @@ executable and reports `cc (cached)`; project source, module object, C dependenc
 argument, or dylib changes invalidate it. Persistent outputs—including ordinary compilation,
 explicit `run -o` output, and `-keepc` runs—are standalone. Production, shared-library, self-host,
 explicit `-cc`, and `-nocache` builds also keep their existing direct-link behavior.
+A cached build also keeps the executable that it linked, one for each program. The next build
+whose program sources, module interfaces, native inputs, configuration and linker flags are the
+same restores that executable instead of checking, generating, compiling and linking again, with
+the system C compiler and with `-usecache` alike. It prints the warnings and notices of the
+program again and reports the stages as cached, the last one as `cc (cached)` or `tcc (cached)`.
+The files that the link read by path (module objects, archives, libraries, the libraries that
+`-l` finds in the `-L` directories) are compared by their metadata first, a library that appears
+earlier on that search path counts as a change, and so does a program file that was saved while
+the build that linked the executable ran. The copy in the cache is a file of its own: changing or
+removing the output changes nothing there. Builds that leave more than an executable behind run in
+full: `-g`, `-cg`, `-keepc`, `-showcc`, `-show-c-output`, shared libraries, objects, profiles,
+coverage, tests, and an implicit `run` on macOS, which has its own executable cache below.
+`V3_CACHE_TRACE=1` says why an executable was not restored, and
+`V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
+The cache resolves the path of each module source once for a build; the table of resolved paths
+is closed when the imports are resolved, before later stages read it from several threads.
+On macOS, TinyCC starts Apple's `codesign` for each executable that it links, which takes longer
+than TinyCC needs for a small program. The compiler gives the executable the same kind of ad-hoc
+signature itself and keeps `codesign` from running; `V3_TCC_APPLE_CODESIGN=1` restores the tool.
 When the whole-program C plan is unchanged, v3 validates it immediately after parsing and reports
 the check, mark-used, transform, type-annotation, monomorphization, and C generation stages as
 cached. This avoids semantic and lowering work whose only consumer would be the cached C plan.
