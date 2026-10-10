@@ -207,6 +207,23 @@ fn test_atof_allow_overflow_returns_infinity() {
 	}
 }
 
+fn test_atof_extra_chars_with_extreme_exponents() {
+	for input in ['1e99999999999999999999 units', '-1e99999999999999999999 units'] {
+		if value := strconv.atof64(input, allow_extra_chars: true) {
+			assert false, '${input} parsed as ${value}'
+		} else {
+			assert err.msg() == 'strconv.atof64: parsing "${input}": value out of range'
+		}
+		value := strconv.atof64(input, allow_extra_chars: true, allow_overflow: true)!
+		assert math.is_inf(value, if input[0] == `-` { -1 } else { 1 })
+	}
+	for input in ['1e-99999999999999999999 units', '0e99999999999999999999 units',
+		'0e-99999999999999999999 units'] {
+		assert math.f64_bits(strconv.atof64(input, allow_extra_chars: true)!) == strconv.double_plus_zero
+		assert math.f64_bits(strconv.atof64('-' + input, allow_extra_chars: true)!) == strconv.double_minus_zero
+	}
+}
+
 fn test_atof_infinity_spellings_are_not_an_overflow() {
 	for param in [strconv.AtoF64Param{}, strconv.AtoF64Param{
 		allow_overflow: true
