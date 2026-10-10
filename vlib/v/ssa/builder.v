@@ -3608,7 +3608,6 @@ fn (mut b Builder) generate_builder_write_string_body(func_id int, add_newline b
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
-	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
 	entry := b.m.add_block(func_id, 'entry')
 	builder_ptr := b.func_add_argument(func_id, ptr_builder, 'builder')
 	s := b.func_add_argument(func_id, b.str_type, 's')
@@ -3616,9 +3615,10 @@ fn (mut b Builder) generate_builder_write_string_body(func_id int, add_newline b
 	alloca_s := b.block_instr0(.alloca, entry, ptr_string)
 	b.block_instr2(.store, entry, b.void_type, s, alloca_s)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
-	len_off := b.m.get_or_add_const(b.i64_type, '8')
 	str_ptr_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_s, zero)
-	len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_s, len_off)
+	// The length's offset belongs to the target layout: 8 is where a 64-bit
+	// pointer puts it, and on a 4-byte pointer target that word is `is_lit`.
+	len_ptr := b.block_struct_field_ptr(entry, alloca_s, b.str_type, 1)
 	str_ptr := b.block_instr1(.load, entry, ptr_i8, str_ptr_ptr)
 	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
 	len64 := b.block_instr1(.zext, entry, b.i64_type, len32)
@@ -6631,7 +6631,6 @@ fn (mut b Builder) generate_string_all_last_body(func_id int, before bool) {
 fn (mut b Builder) generate_string_eq_body(func_id int) {
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
 	entry := b.m.add_block(func_id, 'entry')
 	param_a := b.func_add_argument(func_id, b.str_type, 'a')
 	param_b := b.func_add_argument(func_id, b.str_type, 'b')
@@ -6642,11 +6641,12 @@ fn (mut b Builder) generate_string_eq_body(func_id int) {
 	b.block_instr2(.store, entry, b.void_type, param_b, alloca_b)
 
 	zero_64 := b.m.get_or_add_const(b.i64_type, '0')
-	len_off := b.m.get_or_add_const(b.i64_type, '8')
 	a_str_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_a, zero_64)
 	b_str_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_b, zero_64)
-	a_len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_a, len_off)
-	b_len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_b, len_off)
+	// The length's offset belongs to the target layout: 8 is where a 64-bit
+	// pointer puts it, and on a 4-byte pointer target that word is `is_lit`.
+	a_len_ptr := b.block_struct_field_ptr(entry, alloca_a, b.str_type, 1)
+	b_len_ptr := b.block_struct_field_ptr(entry, alloca_b, b.str_type, 1)
 	a_str := b.block_instr1(.load, entry, ptr_i8, a_str_ptr)
 	b_str := b.block_instr1(.load, entry, ptr_i8, b_str_ptr)
 	a_len := b.block_instr1(.load, entry, b.i32_type, a_len_ptr)
@@ -6683,11 +6683,12 @@ fn (mut b Builder) generate_string_lt_body(func_id int) {
 	b.block_instr2(.store, entry, b.void_type, param_b, alloca_b)
 
 	zero_64 := b.m.get_or_add_const(b.i64_type, '0')
-	len_off := b.m.get_or_add_const(b.i64_type, '8')
 	a_str_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_a, zero_64)
 	b_str_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_b, zero_64)
-	a_len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_a, len_off)
-	b_len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_b, len_off)
+	// The length's offset belongs to the target layout: 8 is where a 64-bit
+	// pointer puts it, and on a 4-byte pointer target that word is `is_lit`.
+	a_len_ptr := b.block_struct_field_ptr(entry, alloca_a, b.str_type, 1)
+	b_len_ptr := b.block_struct_field_ptr(entry, alloca_b, b.str_type, 1)
 	a_str := b.block_instr1(.load, entry, ptr_i8, a_str_ptr)
 	b_str := b.block_instr1(.load, entry, ptr_i8, b_str_ptr)
 	a_len := b.block_instr1(.load, entry, b.i32_type, a_len_ptr)
