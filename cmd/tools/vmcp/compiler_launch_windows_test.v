@@ -2,6 +2,21 @@ module main
 
 import os
 
+fn test_windows_compiler_argv_quotes_are_literal_and_handle_backslashes() {
+	assert windows_compiler_arg('') == '""'
+	assert windows_compiler_arg('one argument') == '"one argument"'
+	assert windows_compiler_arg(r'a"b') == r'"a\"b"'
+	assert windows_compiler_arg('C:\\trailing\\') == '"C:\\trailing\\\\"'
+	assert windows_compiler_arg(r'back\"quote') == r'"back\\\"quote"'
+	assert windows_compiler_command_line('C:\\compiler dir\\v.exe', [
+		'',
+		'%PATH%',
+		'!literal!',
+		'$literal',
+		'& ; |',
+	]) == '"C:\\compiler dir\\v.exe" "" "%PATH%" "!literal!" "$literal" "& ; |"'
+}
+
 fn test_invalid_windows_executable_returns_an_error_and_the_caller_survives() {
 	root := os.join_path(os.vtmp_dir(), 'mcp invalid exe review ${os.getpid()}')
 	os.mkdir_all(root)!
