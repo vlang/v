@@ -71,7 +71,14 @@ fn windows_dangling_symlink_stat(path string) ?Stat {
 			|| find_data.dw_reserved0 != windows_io_reparse_tag_symlink {
 			return none
 		}
-		return windows_stat_from_find_data(path, find_data)
+		// windows_stat_from_find_data() derives the executable bit from
+		// os.file_ext(), which picks its path separator by whether the path
+		// holds a '/'. A mixed-separator path therefore resolves a different
+		// extension, and so a different mode, than the same path spelled with
+		// backslashes. Normalize first, as this function did before
+		// windows_find_file_data() was extracted.
+		normalized_path := path.replace('/', '\\')
+		return windows_stat_from_find_data(normalized_path, find_data)
 	}
 	return none
 }
