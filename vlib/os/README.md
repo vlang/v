@@ -40,6 +40,12 @@ the current directory, such as `./` or `././`, remains `.` instead of an empty p
 answers `.` for `C:` and the bare volume `C:` for `C:\dir`, and both of those
 name a *current* directory rather than a location in the given path.
 
+`os.dir()`, `os.base()`, `os.file_name()` and `os.split_path()` agree on what a
+separator is. `/` always is one. `\` is one on Windows, so a path may mix both
+there: `os.file_name(r'a/b\c')` is `c`. On other systems `\` is a valid file name
+character, so the same call gives `b\c`; it separates only in a path that has no
+`/` at all, which keeps a Windows style path such as `a\b\c.v` usable everywhere.
+
 `os.parent_dir()` is the walking variant. Every value it returns is safe to
 probe directly, and it returns an empty string once there is no parent left:
 
