@@ -24551,7 +24551,7 @@ fn (t &Transformer) is_value_match_or_if_operand(id flat.NodeId) bool {
 }
 
 // operand_hoists_value_branch reports whether lowering `id` as a call operand (receiver or
-// argument) can materialize a value `match`/`if` into pending_stmts — either directly, or
+// argument) can materialize a value `match`/`if`/`or` into pending_stmts — either directly, or
 // nested inside a compound expression such as an infix, cast, index, prefix, nested call or
 // composite literal (`1 + (match ...)`, `i64(match ...)`, `arr[match ...]`). The `last_branch`
 // scan uses this to detect an operand that hoists a prelude so preceding operands can be
@@ -24565,7 +24565,7 @@ fn (t &Transformer) operand_hoists_value_branch(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind in [.match_stmt, .if_expr] {
+	if node.kind in [.match_stmt, .if_expr, .or_expr] {
 		return true
 	}
 	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr] {
@@ -27917,6 +27917,16 @@ fn (t &Transformer) callee_needs_ordering_snapshot(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .index && t.generic_call_type_args_name(node).len > 0 {
+		base := t.a.child_node(&node, 0)
+		// Explicit type arguments on a free function select a compile-time
+		// specialization. Runtime function-array indexes still need a snapshot.
+		if (base.kind == .ident && t.raw_var_type(base.value).len == 0)
+			|| (base.kind == .selector && base.children_count > 0
+				&& t.call_selector_base_is_namespace(t.a.child(base, 0), base.value, '')) {
+			return false
+		}
+	}
 	if node.kind == .ident {
 		if t.is_ordering_snapshot_temp(id) {
 			return false

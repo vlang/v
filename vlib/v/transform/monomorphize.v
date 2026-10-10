@@ -6448,6 +6448,21 @@ fn (mut t Transformer) rewrite_generic_method_call(id flat.NodeId, node flat.Nod
 	t.rewrite_method_level_generic_call(id, node, decl, args)
 }
 
+fn (mut t Transformer) specialized_method_receiver_arg(receiver flat.NodeId, decl GenericFnDecl) flat.NodeId {
+	if decl.node.children_count == 0 {
+		return receiver
+	}
+	param := t.a.child_node(&decl.node, 0)
+	if !param.is_mut && !param.typ.starts_with('mut ') {
+		return receiver
+	}
+	// A method becomes a plain specialized call. Preserve the implicit mutable
+	// argument so ordering preludes stabilize its storage instead of copying it.
+	mut argument := t.a.nodes[int(receiver)]
+	argument.is_mut = true
+	return t.a.add_node(argument)
+}
+
 // rewrite_method_level_generic_call rewrites a call to a method-level generic into
 // an explicit call of the specialized function: `SpecName(receiver, args...)`. It
 // handles both the selector form (receiver inside the callee) and the
@@ -6483,7 +6498,7 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 					}
 				}
 			}
-			children << receiver_arg
+			children << t.specialized_method_receiver_arg(receiver_arg, decl)
 		}
 		mut i := 1
 		for i < node.children_count {
@@ -12080,7 +12095,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			}
 		}
 		children[0] = t.make_ident(qualified_spec)
-		children.insert(1, receiver)
+		children.insert(1, t.specialized_method_receiver_arg(receiver, decl))
 	} else {
 		children[0] = t.make_ident(qualified_spec)
 	}

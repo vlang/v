@@ -3944,7 +3944,9 @@ fn return_numeric_alias_compatible(actual Type, expected Type) bool {
 	return false
 }
 
-fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+// expr_compatible checks value-slot compatibility, including source-specific
+// rules such as numeric conversions in translated C files.
+pub fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return tc.type_compatible(actual, expected) || tc.zero_literal_can_be_pointer(expr_id, expected)
 		|| tc.translated_numeric_expr_compatible(expr_id, actual, expected)
 		|| tc.translated_char_pointer_expr_compatible(expr_id, actual, expected)
