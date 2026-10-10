@@ -45,16 +45,49 @@ struct HuffTree {
 	max_bits int
 }
 
-fn build_huff_tree(lengths []int) !HuffTree {
+// max_code_bits is the longest code a DEFLATE stream can describe (RFC 1951 §3.2.7).
+const max_code_bits = 15
+
+// CodeSet names the code that a set of code lengths describes. The three differ in
+// which incomplete sets build_huff_tree() accepts.
+enum CodeSet {
+	code_length // the code of the code length alphabet, in a dynamic block header
+	litlen      // the literal/length code
+	distance    // the distance code
+}
+
+// build_huff_tree builds the decode table for a set of code lengths (each 0..15).
+// Like zlib, it rejects a set that does not use the whole code space, with two
+// exceptions: a literal/length or distance set with a single code of one bit, and
+// a distance set with no code at all (a block of literals only, RFC 1951 §3.2.7).
+fn build_huff_tree(lengths []int, set CodeSet) !HuffTree {
 	mut max_bits := 0
+	mut used := 0 // code space the lengths take, in units of 2^-max_code_bits
 	for l in lengths {
 		if l > max_bits {
 			max_bits = l
 		}
+		if l > 0 {
+			used += 1 << (max_code_bits - l)
+		}
+	}
+	if used < (1 << max_code_bits) {
+		single_code := max_bits == 1 && set != .code_length
+		no_code := max_bits == 0 && set == .distance
+		if !single_code && !no_code {
+			name := match set {
+				.code_length { 'code length' }
+				.litlen { 'literal/length' }
+				.distance { 'distance' }
+			}
+			return error('inflate: incomplete ${name} code')
+		}
 	}
 	if max_bits == 0 {
+		// No distance code: the only entry is invalid, so that a length symbol,
+		// which needs a distance, is an error and not a code of zero bits.
 		return HuffTree{
-			table:    [u32(0)]
+			table:    [huffman.flat_invalid_entry]
 			max_bits: 0
 		}
 	}
@@ -72,12 +105,12 @@ fn build_huff_tree(lengths []int) !HuffTree {
 
 const fixed_litlen_lens = fixed_litlen_lengths()
 const fixed_dist_lens = fixed_dist_lengths()
-const fixed_ll_tree = build_fixed_huff_tree(fixed_litlen_lens, 'lit/len')
-const fixed_d_tree = build_fixed_huff_tree(fixed_dist_lens, 'distance')
+const fixed_ll_tree = build_fixed_huff_tree(fixed_litlen_lens, .litlen)
+const fixed_d_tree = build_fixed_huff_tree(fixed_dist_lens, .distance)
 
-fn build_fixed_huff_tree(lengths []int, name string) HuffTree {
-	return build_huff_tree(lengths) or {
-		panic('deflate: failed to build fixed ${name} Huffman tree: ${err}')
+fn build_fixed_huff_tree(lengths []int, set CodeSet) HuffTree {
+	return build_huff_tree(lengths, set) or {
+		panic('deflate: failed to build fixed ${set} Huffman tree: ${err}')
 	}
 }
 
@@ -137,10 +170,12 @@ fn (mut r BitReader) huff_decode(t HuffTree) !u32 {
 	}
 	idx := int(r.bits & ((u32(1) << t.max_bits) - 1))
 	entry := t.table[idx]
-	if entry == 0xffff_ffff {
+	len_ := int(entry & 0x1f)
+	// A symbol always takes at least one bit: every loop that decodes symbols
+	// relies on that to end, whatever table it is given.
+	if entry == 0xffff_ffff || len_ == 0 {
 		return error('inflate: invalid Huffman code')
 	}
-	len_ := int(entry & 0x1f)
 	if r.nbits < len_ {
 		return error('inflate: unexpected end of stream')
 	}
@@ -309,7 +344,7 @@ fn inflate_dynamic_block(mut r BitReader, mut out []u8) ! {
 	for i in 0 .. hclen {
 		cl_lens[cl_order[i]] = int(r.read_bits(3)!)
 	}
-	mut cl_tree := build_huff_tree(cl_lens)!
+	mut cl_tree := build_huff_tree(cl_lens, .code_length)!
 	defer {
 		cl_tree.free()
 	}
@@ -317,11 +352,11 @@ fn inflate_dynamic_block(mut r BitReader, mut out []u8) ! {
 	defer {
 		unsafe { all_lens.free() }
 	}
-	mut ll_tree := build_huff_tree(all_lens[..hlit])!
+	mut ll_tree := build_huff_tree(all_lens[..hlit], .litlen)!
 	defer {
 		ll_tree.free()
 	}
-	mut d_tree := build_huff_tree(all_lens[hlit..])!
+	mut d_tree := build_huff_tree(all_lens[hlit..], .distance)!
 	defer {
 		d_tree.free()
 	}
@@ -340,7 +375,7 @@ fn inflate_dynamic_block_stream(mut r BitReader, mut out []u8, cb ChunkCallback,
 	for i in 0 .. hclen {
 		cl_lens[cl_order[i]] = int(r.read_bits(3)!)
 	}
-	mut cl_tree := build_huff_tree(cl_lens)!
+	mut cl_tree := build_huff_tree(cl_lens, .code_length)!
 	defer {
 		cl_tree.free()
 	}
@@ -348,18 +383,24 @@ fn inflate_dynamic_block_stream(mut r BitReader, mut out []u8, cb ChunkCallback,
 	defer {
 		unsafe { all_lens.free() }
 	}
-	mut ll_tree := build_huff_tree(all_lens[..hlit])!
+	mut ll_tree := build_huff_tree(all_lens[..hlit], .litlen)!
 	defer {
 		ll_tree.free()
 	}
-	mut d_tree := build_huff_tree(all_lens[hlit..])!
+	mut d_tree := build_huff_tree(all_lens[hlit..], .distance)!
 	defer {
 		d_tree.free()
 	}
 	return inflate_block_stream(mut r, mut out, ll_tree, d_tree, cb, userdata, mut state)!
 }
 
+// read_dynamic_lengths reads the hlit literal/length and hdist distance code lengths
+// of a dynamic block header, and checks what does not depend on the codes they form.
 fn read_dynamic_lengths(mut r BitReader, cl_tree HuffTree, hlit int, hdist int) ![]int {
+	// The alphabets have 286 and 30 symbols; the 5-bit counts can say 288 and 32.
+	if hlit > 286 || hdist > 30 {
+		return error('inflate: too many literal/length or distance codes')
+	}
 	mut all_lens := []int{cap: hlit + hdist}
 	mut keep_all_lens := false
 	defer {
@@ -393,6 +434,15 @@ fn read_dynamic_lengths(mut r BitReader, cl_tree HuffTree, hlit int, hdist int) 
 		} else {
 			return error('inflate: bad code length symbol')
 		}
+	}
+	// A repeat must end at the last length: what runs past it would otherwise
+	// become extra distance code lengths.
+	if all_lens.len > hlit + hdist {
+		return error('inflate: code length repeat past the last length')
+	}
+	// Without a code for the end-of-block symbol the block could never end.
+	if all_lens[256] == 0 {
+		return error('inflate: missing end-of-block code')
 	}
 	keep_all_lens = true
 	return all_lens
