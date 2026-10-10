@@ -50,6 +50,157 @@ fn manual_stdlib_c_headers() string {
 	return '#ifdef sprintf\n#undef sprintf\n#endif\n#ifdef snprintf\n#undef snprintf\n#endif\n#ifdef vsnprintf\n#undef vsnprintf\n#endif\n#ifdef memcpy\n#undef memcpy\n#endif\n#ifdef memmove\n#undef memmove\n#endif\n#ifdef memset\n#undef memset\n#endif\n' + manual_c_headers_source
 }
 
+// manual_stdlib_c_headers_error reports why the embedded manual_stdlib_c_headers.h cannot be
+// used, or returns none. A truncated copy leaves a conditional directive open, which malforms
+// the C preamble of every program that uses the system libc, so the driver checks it before
+// generating any C.
+pub fn manual_stdlib_c_headers_error() ?string {
+	problem := manual_stdlib_header_problem(manual_c_headers_source)
+	if problem.len == 0 {
+		return none
+	}
+	return 'this V executable was built from an incomplete vlib/v/gen/c/manual_stdlib_c_headers.h: ${problem}.\nRestore that file with `git restore vlib/v/gen/c/manual_stdlib_c_headers.h`, then rebuild V with `make`.'
+}
+
+// uses_manual_stdlib_c_headers reports whether this program needs the embedded libc preamble.
+// It is only needed when the embedded header is damaged, before the driver starts C generation.
+pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, prefs &pref.Preferences, initial_c_flags []string) bool {
+	if prefs.target_libc_headers {
+		return false
+	}
+	mut g := FlatGen.new()
+	g.a = a
+	g.tc = tc
+	g.target = prefs.target
+	g.output_cross_c = prefs.output_cross_c
+	g.compiler_vroot = prefs.vroot
+	g.compile_values = prefs.compile_values
+	g.c99_mode = prefs.c99
+	g.c_flags = cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
+	g.c_flags << initial_c_flags
+	if g.output_cross_c {
+		g.index_cross_directive_guards()
+	}
+	mut module_name := 'main'
+	mut source_file := ''
+	mut before_import := true
+	for node_idx, node in a.nodes {
+		if node.kind == .file {
+			source_file = node.value
+			module_name = 'main'
+			before_import = true
+		} else if node.kind == .module_decl {
+			module_name = node.value
+		} else if node.kind == .import_decl {
+			before_import = false
+		} else if node.kind == .directive {
+			g.collect_c_directive_at(node_idx, module_name, node, source_file, before_import)
+		}
+	}
+	return g.c_directives_use_system_libc()
+}
+
+// manual_stdlib_header_problem checks the final newline and conditional directive nesting.
+// Comments and continued physical lines follow C preprocessing rules; this is not a C parser.
+fn manual_stdlib_header_problem(text string) string {
+	if !text.ends_with('\n') {
+		return 'the file does not end with a newline'
+	}
+	// Line splicing precedes comment removal in the C preprocessor.
+	spliced := text.replace('\\\r\n', '').replace('\\\n', '')
+	mut clean := strings.new_builder(spliced.len)
+	mut in_comment := false
+	mut in_line_comment := false
+	mut quote := u8(0)
+	mut idx := 0
+	for idx < spliced.len {
+		ch := spliced[idx]
+		next := if idx + 1 < spliced.len { spliced[idx + 1] } else { u8(0) }
+		if in_comment {
+			if ch == `*` && next == `/` {
+				in_comment = false
+				idx += 2
+				continue
+			}
+			if ch == `\n` {
+				clean.write_u8(ch)
+			}
+		} else if in_line_comment {
+			if ch == `\n` {
+				in_line_comment = false
+				clean.write_u8(ch)
+			}
+		} else if quote != 0 {
+			clean.write_u8(ch)
+			if ch == `\\` && next != 0 {
+				clean.write_u8(next)
+				idx += 2
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+		} else if ch == `/` && next in [`*`, `/`] {
+			clean.write_u8(` `)
+			in_comment = next == `*`
+			in_line_comment = next == `/`
+			idx += 2
+			continue
+		} else {
+			clean.write_u8(ch)
+			if ch in [`"`, `'`] {
+				quote = ch
+			}
+		}
+		idx++
+	}
+	if in_comment {
+		return 'unterminated block comment'
+	}
+	mut pending := []string{}
+	mut seen_else := []bool{}
+	for raw_line in clean.str().split_into_lines() {
+		line := raw_line.trim_space()
+		if !line.starts_with('#') {
+			continue
+		}
+		directive := line[1..].trim_space()
+		mut end := 0
+		for end < directive.len && (directive[end].is_letter() || directive[end] == `_`) {
+			end++
+		}
+		match directive[..end] {
+			'if', 'ifdef', 'ifndef' {
+				pending << line
+				seen_else << false
+			}
+			'else', 'elif' {
+				if pending.len == 0 {
+					return 'unmatched `${line}`'
+				}
+				if seen_else.last() {
+					return '`${line}` after `#else`'
+				}
+				if directive[..end] == 'else' {
+					seen_else[seen_else.len - 1] = true
+				}
+			}
+			'endif' {
+				if pending.len == 0 {
+					return 'unmatched `${line}`'
+				}
+				pending.delete_last()
+				seen_else.delete_last()
+			}
+			else {}
+		}
+	}
+	if pending.len > 0 {
+		return 'unterminated `${pending.last()}`'
+	}
+	return ''
+}
+
 // cached_file_import returns the module that `alias` names through the imports
 // of `file`. The checker's import tables are complete before C generation, so
 // answers, including misses, are memoized by the parts of the table's key.

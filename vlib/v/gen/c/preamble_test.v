@@ -1,7 +1,9 @@
 module c
 
+import os
 import v.flat
 import v.pref
+import v.types
 
 fn windows_preamble_test_gen() FlatGen {
 	mut g := FlatGen.new()
@@ -357,6 +359,95 @@ fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	headers := manual_stdlib_c_headers()
 	for name in ['memcpy', 'memmove', 'memset'] {
 		assert headers.contains('#ifdef ${name}\n#undef ${name}\n#endif'), name
+	}
+}
+
+fn test_manual_stdlib_header_problem_accepts_the_embedded_header() {
+	assert manual_stdlib_header_problem(manual_c_headers_source) == ''
+	assert manual_stdlib_c_headers_error() == none
+}
+
+fn test_manual_stdlib_header_problem_reports_truncated_headers() {
+	cut := manual_c_headers_source.index('};\n#endif') or { panic('no RAND_MAX enum close') }
+	assert manual_stdlib_header_problem(manual_c_headers_source[..cut]).contains('unterminated `#ifndef RAND_MAX`')
+	assert manual_stdlib_header_problem(manual_c_headers_source[..manual_c_headers_source.len - 1]).contains('newline')
+	assert manual_stdlib_header_problem('#endif\n').contains('unmatched `#endif`')
+}
+
+fn test_manual_stdlib_header_problem_follows_preprocessor_comments_and_continuations() {
+	for text in ['/*\n#if IGNORE\n*/\n', '#if(1)\n#endif/*closed*/\n',
+		'# /* comment */ if 1\n# /* comment */ endif\n', '#i\\\nf 1\n#en\\\ndif\n',
+		'// ignored \\\n#if ignored\n', 'char* comment = "/*";\n#if 1\n#endif\n',
+		'#if 1\n#elif 2\n#else\n#if 3\n#else\n#endif\n#endif\n'] {
+		assert manual_stdlib_header_problem(text) == '', text
+	}
+	assert manual_stdlib_header_problem('#if(1)\n').contains('unterminated')
+	assert manual_stdlib_header_problem('/*\n#endif\n').contains('block comment')
+	for text in ['#else\n', '#elif 1\n', '#if 1\n#else\n#else\n#endif\n', '#if 1\n#else\n#elif 2\n#endif\n'] {
+		assert manual_stdlib_header_problem(text) != '', text
+	}
+}
+
+fn test_manual_stdlib_header_usage_matches_headerless_and_target_header_modes() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+	ast.add_node(flat.Node{ kind: .module_decl, value: 'builtin' })
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<pthread.h>' })
+	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<stdio.h>' })
+	assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+	prefs.target_libc_headers = true
+	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+}
+
+fn test_manual_stdlib_header_usage_matches_include_collection() {
+	for kind in ['include', 'preinclude', 'insert'] {
+		for header in ['<stdio.h>', '"local_header.h"', 'windows <windows.h>'] {
+			mut ast := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&ast)
+			mut prefs := pref.new_preferences()
+			prefs.target = pref.host_target()
+			ast.add_node(flat.Node{ kind: .file, value: '/project/main.v' })
+			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+			ast.add_node(flat.Node{ kind: .directive, value: kind, typ: header })
+			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, []) == (header != 'windows <windows.h>'
+				|| prefs.target.os == 'windows')
+			// Portable C includes retain a preprocessor guard for the target C compiler.
+			prefs.output_cross_c = true
+			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+			prefs.target_libc_headers = true
+			assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+		}
+	}
+}
+
+fn test_manual_stdlib_header_usage_resolves_native_sources_with_cli_include_dirs() {
+	root := os.join_path(os.vtmp_dir(), 'manual_header_usage_${os.getpid()}')
+	include_dir := os.join_path(root, 'includes')
+	os.mkdir_all(include_dir)!
+	defer { os.rmdir_all(root) or {} }
+	for has_include in [false, true] {
+		source := if has_include {
+			'#include <stdio.h>\n'
+		} else {
+			'int helper(void) { return 1; }\n'
+		}
+		os.write_file(os.join_path(include_dir, 'helper.c'), source)!
+		for portable in [false, true] {
+			mut ast := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&ast)
+			mut prefs := pref.new_preferences()
+			prefs.target = pref.host_target()
+			prefs.output_cross_c = portable
+			ast.add_node(flat.Node{ kind: .file, value: os.join_path(root, 'main.v') })
+			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+			ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"helper.c"' })
+			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, ['-I', include_dir]) == (!portable
+				|| has_include)
+		}
 	}
 }
 
