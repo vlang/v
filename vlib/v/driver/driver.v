@@ -3553,7 +3553,13 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.link_c_standard.len > 0 {
 		before_inputs << options.link_c_standard
 	}
-	before_inputs << v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc)
+	optimization_flags := v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc)
+	// Standalone objects must contain machine code for a later independent link.
+	before_inputs << if options.is_o {
+		optimization_flags.filter(it != '-flto')
+	} else {
+		optimization_flags
+	}
 	if options.pic_flag.len > 0 {
 		before_inputs << options.pic_flag
 	}
@@ -4021,6 +4027,9 @@ fn c_executable_bin_file_for_target(path string, target_os string, is_shared boo
 }
 
 fn c_compiler_output_name_for_target(target_os string, is_shared bool, is_o bool) string {
+	if is_o && pref.normalized_os(target_os) == 'windows' {
+		return 'out.obj'
+	}
 	if !is_shared && !is_o && pref.normalized_os(target_os) == 'windows' {
 		return 'out.exe'
 	}
