@@ -1,5 +1,31 @@
 import os
 
+fn test_linker_object_inputs_keep_c_function_prototypes() {
+	root := os.join_path(os.vtmp_dir(), 'linker_object_flag_prototypes_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'helper.c')
+	object := os.join_path(root, 'helper.o')
+	os.write_file(source, 'int native_flag_value(void) { return 73; }\n')!
+	compiled := os.exec(['cc', '-c', source, '-o', object])
+	assert compiled.exit_code == 0, compiled.output
+	compile_and_run_native_flag(root, 'linker_object', '-Wl,@DIR/helper.o')
+}
+
+fn test_portable_c_keeps_prototypes_for_other_target_native_inputs() {
+	root := os.join_path(os.vtmp_dir(), 'portable_native_flag_prototypes_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, '#flag windows @DIR/helper.o\nfn C.portable_native_value() i32\n' +
+		'fn main() { \$if windows { println(C.portable_native_value()) } }\n')!
+	compiled := os.exec([@VEXE, '-os', 'cross', '-o', output, source])
+	assert compiled.exit_code == 0, compiled.output
+	c_source := os.read_file(output)!
+	assert c_source.contains('i32 portable_native_value(void);')
+}
+
 fn test_resolved_native_sources_keep_c_function_prototypes() {
 	root := os.join_path(os.vtmp_dir(), 'native_flag_prototypes_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'native sources'))!

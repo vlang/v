@@ -1080,3 +1080,21 @@ fn test_force_loaded_archives_keep_headerless_prototypes() {
 		assert !c_flag_links_c_library(flag), flag
 	}
 }
+
+fn test_linker_object_inputs_keep_headerless_prototypes() {
+	for flag in ['-Wl,/project/helper.o', '-Wl,/project/helper.obj',
+		'"-Wl,/project/native files/helper.o"', '-Wl,-rpath,/project/lib,/project/helper.o'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+		g.note_c_include_directive('bindings', '/project/bindings.c.v')
+		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['-Wl,-rpath,/project/helper.o', '-Wl,-o,/project/helper.o',
+		'-Wl,-Map,/project/helper.o', '-Wl,-T,/project/helper.o', '-Wl,-install_name,/project/helper.o',
+		'-D -Wl,/project/helper.o'] {
+		assert !c_flag_links_c_source(flag), flag
+	}
+}

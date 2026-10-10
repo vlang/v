@@ -5070,8 +5070,15 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			continue
 		}
 		if node.value == 'flag' {
-			mut linkage_flags := []string{cap: flags.len}
-			for flag in flags {
+			// Portable C retains calls for every target. Their headerless bindings
+			// need linkage metadata even when the current host would not link them.
+			mut linkage_args := flags
+			if g.output_cross_c {
+				linkage_args, _ = c_flag_args_with_start_marker(c_directive_strip_target_prefix(node.typ),
+					g.compiler_vroot, cur_file, g.target, g.compile_values)
+			}
+			mut linkage_flags := []string{cap: linkage_args.len}
+			for flag in linkage_args {
 				linkage_flags << c_flag_quote_macro_value(flag)
 			}
 			g.note_c_flag_directive(cur_module, cur_file, linkage_flags.join(' '))
@@ -5263,19 +5270,43 @@ fn c_flag_links_file(flag string, extensions []string, forced_source bool) bool 
 			|| arg in ['-F', '-D', '-U', '-iquote', '-idirafter', '-iprefix', '-iwithprefix',
 				'-iwithprefixbefore', '-isysroot', '--sysroot', '-target', '-arch', '-framework',
 				'-weak_framework', '-o', '-MF', '-MT', '-MQ']
-		if !forced_source && arg.starts_with('-Wl,') {
-			parts := arg['-Wl,'.len..].split(',')
-			for i := 0; i + 1 < parts.len; i++ {
-				if parts[i] == '-force_load' && parts[i + 1].ends_with('.a') {
-					return true
-				}
-			}
+		if arg.starts_with('-Wl,') && c_linker_flag_links_file(arg, extensions) {
+			return true
 		}
 		if arg.starts_with('-') {
 			continue
 		}
 		if forced_source && language !in ['', 'none'] && os.is_file(arg) {
 			return true
+		}
+		for extension in extensions {
+			if arg.ends_with(extension) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Linker pass-through arguments can name input objects and archives directly.
+// Search paths, output files and other option operands do not provide symbols.
+fn c_linker_flag_links_file(flag string, extensions []string) bool {
+	mut skip_operand := false
+	for arg in flag['-Wl,'.len..].split(',') {
+		if skip_operand {
+			skip_operand = false
+			continue
+		}
+		if arg in ['-rpath', '--rpath', '-rpath-link', '--rpath-link', '-R', '-L', '--library-path',
+			'-o', '--output', '-Map', '--Map', '-T', '--script', '-soname', '--soname', '-install_name',
+			'-framework', '-weak_framework', '-F', '-syslibroot', '--sysroot', '-dynamic-linker',
+			'--dynamic-linker', '-m', '-z', '-arch', '-e', '--entry', '-u', '--undefined', '-undefined',
+			'-exported_symbols_list', '-unexported_symbols_list', '-order_file'] {
+			skip_operand = true
+			continue
+		}
+		if arg.starts_with('-') {
+			continue
 		}
 		for extension in extensions {
 			if arg.ends_with(extension) {
