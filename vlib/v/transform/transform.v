@@ -10431,6 +10431,9 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 			if int(value_id) >= 0 {
 				binding := t.a.nodes[int(value_id)]
 				if binding.kind == .ident && binding.value.len > 0 && binding.value != '_' {
+					// Mutable fixed-array iteration binds a pointer into its backing,
+					// rather than an independently allocated pointer value.
+					amp_ptrs[binding.value] = true
 					for source in t.escape_address_sources(backing_id, amp_sources, ptr_aliases) {
 						add_escape_amp_source(mut reference_backing_sources, binding.value, source)
 					}

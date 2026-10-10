@@ -230,10 +230,42 @@ fn test_fixed_array_reference_pointer_field_does_not_promote_its_containing_valu
 		'p': ['coordinator']
 	}, map[string]string{}, {
 		'coordinator': true
-		'p': true
+		'p':           true
 	})
 	assert 'coordinator' in t.escaping_fixed_array_view_sources
 	assert 'p' !in t.escaping_fixed_array_view_sources
+}
+
+fn test_fixed_array_reference_mutable_iteration_pointer_keeps_its_backing() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+	rows_type := types.Type(types.ArrayFixed{ elem_type: fixed, len: 2 })
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	tc.fn_param_types['retain'] = [array_ref]
+	tc.fn_ret_types['retain'] = array_ref
+	tc.trust_checked_expr_types = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('rows', '[2][2]int')
+	rows := t.make_ident('rows')
+	tc.register_synth_type(rows, rows_type)
+	row := t.make_ident('row')
+	tc.register_synth_type(row, types.Type(types.Pointer{ base_type: fixed }))
+	call := t.make_call_typed('retain', [row], '&[]int')
+	t.set_resolved_call_entry(int(call), 'retain')
+	body := t.make_block([t.make_expr_stmt(call)])
+	start := a.children.len
+	a.children << [flat.empty_node, row, rows, body]
+	loop := a.add_node(flat.Node{
+		kind:           .for_in_stmt
+		op:             .amp
+		value:          '3'
+		children_start: start
+		children_count: 4
+	})
+	t.mark_escaping_amp_ptrs([loop])
+	assert 'row' in t.escaping_fixed_array_view_sources
+	assert 'rows' in t.escaping_fixed_array_view_sources
 }
 
 fn test_fixed_array_reference_stack_pointer_projections_keep_original_root() {
