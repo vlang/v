@@ -461,11 +461,16 @@ fn converter(mut pn PrepNumber) u64 {
 pub struct AtoF64Param {
 pub:
 	allow_extra_chars bool // allow extra characters after number
+	allow_overflow    bool // allow numbers too large for an f64, returning +inf or -inf for them
 }
 
 // atof64 parses a decimal string into an f64, including case-insensitive NaN
 // and signed Inf or Infinity. Underscores may separate digits. Whitespace,
 // missing mantissa or exponent digits, and other invalid syntax return errors.
+// A number whose magnitude is too large for an f64 returns a `value out of range`
+// error. Set allow_overflow to get +inf or -inf for such a number instead.
+// A number too small for an f64 is not an error: it rounds to a subnormal value
+// or to a signed zero.
 // Conversion retains up to 18 significant decimal digits and rounds binary ties to even.
 // Set allow_extra_chars to accept trailing characters after a decimal number.
 pub fn atof64(s string, param AtoF64Param) !f64 {
@@ -493,25 +498,26 @@ pub fn atof64(s string, param AtoF64Param) !f64 {
 		}
 	}
 	res_parsing, mut pn := parser(s)
+	mut bits := u64(0)
 	match res_parsing {
 		.ok {
-			res.u = converter(mut pn)
+			bits = converter(mut pn)
 		}
 		.pzero {
-			res.u = double_plus_zero
+			bits = double_plus_zero
 		}
 		.mzero {
-			res.u = double_minus_zero
+			bits = double_minus_zero
 		}
 		.pinf {
-			res.u = double_plus_infinity
+			bits = double_plus_infinity
 		}
 		.minf {
-			res.u = double_minus_infinity
+			bits = double_minus_infinity
 		}
 		.extra_char {
 			if param.allow_extra_chars {
-				res.u = converter(mut pn)
+				bits = converter(mut pn)
 			} else {
 				return error('extra char after number')
 			}
@@ -520,6 +526,12 @@ pub fn atof64(s string, param AtoF64Param) !f64 {
 			return error('not a number')
 		}
 	}
+	// The infinity spellings returned above, so infinity bits here, from the parser
+	// state or from the converter, mean that the number is too large for an f64.
+	if !param.allow_overflow && bits in [double_plus_infinity, double_minus_infinity] {
+		return error('strconv.atof64: parsing "${s}": value out of range')
+	}
+	res.u = bits
 
 	return unsafe { res.f }
 }

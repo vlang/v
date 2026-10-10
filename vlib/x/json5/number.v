@@ -79,7 +79,9 @@ pub fn (n Number) f64() f64 {
 	// V rejects `+` in numeric literals, and accepts `.5` / `5.` only after a
 	// digit has been seen, so normalize to plain `strconv`-friendly text.
 	normalized := normalize_float_text(digits)
-	value := strconv.atof64(normalized, strconv.AtoF64Param{}) or { return 0.0 }
+	value := strconv.atof64(normalized, strconv.AtoF64Param{ allow_overflow: true }) or {
+		return 0.0
+	}
 	return if negative { -value } else { value }
 }
 

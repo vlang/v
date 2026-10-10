@@ -2528,7 +2528,9 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 			return Value(strconv.parse_int(clean_number_literal(node.value), util.v_literal_parse_base(node.value), 64) or { i64(0) })
 		}
 		.float_literal {
-			return Value(strconv.atof64(clean_number_literal(node.value)) or { 0.0 })
+			return Value(strconv.atof64(clean_number_literal(node.value), allow_overflow: true) or {
+				0.0
+			})
 		}
 		.bool_literal {
 			return Value(node.value == 'true')
@@ -6579,7 +6581,7 @@ fn (e &Eval) value_as_f64(value Value) !f64 {
 		i64 { return f64(value) }
 		EnumValue { return f64(value.value) }
 		bool { return if value { 1.0 } else { 0.0 } }
-		string { return strconv.atof64(value) or { 0.0 } }
+		string { return strconv.atof64(value, allow_overflow: true) or { 0.0 } }
 		else { return error('v.eval: `${e.runtime_type_name(value)}` can not be used as float') }
 	}
 }
