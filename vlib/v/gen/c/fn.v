@@ -6093,7 +6093,7 @@ fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, idx int) {
 			g.interface_str_lit('none')
 		}
 		g.writeln('string __test_err_msg_${idx} = ${message};')
-		g.writeln('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(test_fn.failure_file)}", ${test_fn.failure_line}, "${c_escape(test_fn.name)}", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
+		g.writeln('v3_eprintf("%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(test_fn.failure_file)}", ${test_fn.failure_line}, "${c_escape(test_fn.name)}", __test_err_msg_${idx}.len, __test_err_msg_${idx}.str);')
 		g.writeln('__test_failures++;')
 		g.indent--
 		g.writeln('}')

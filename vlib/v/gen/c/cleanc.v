@@ -23603,12 +23603,27 @@ fn (mut g FlatGen) global_init_optional_c_type(name string) ?string {
 	return none
 }
 
+// test_failure_helpers emits the helpers that write the report of a failed assert or
+// test to stderr, in the order that `eprint` and `eprintln` in builtin keep: stdout and
+// stderr are flushed before the text is written, and stderr is flushed after it. stderr
+// is not unbuffered everywhere: the C runtime on Windows buffers it, when it is a pipe or
+// a file. `v3_eprintf` takes the arguments of `printf`. The flushes are in functions, so
+// that each report line in the program costs two calls, and not three inlined flushes.
 fn (mut g FlatGen) test_failure_helpers() {
+	g.writeln('static FILE* v3_eprint_begin(void) {')
+	g.writeln('\tfflush(stdout);')
+	g.writeln('\tfflush(stderr);')
+	g.writeln('\treturn stderr;')
+	g.writeln('}')
+	g.writeln('static void v3_eprint_end(void) {')
+	g.writeln('\tfflush(stderr);')
+	g.writeln('}')
+	g.writeln('#define v3_eprintf(...) do { fprintf(v3_eprint_begin(), __VA_ARGS__); v3_eprint_end(); } while (0)')
 	g.writeln('static void v3_eprint_lit(const char* s) {')
-	g.writeln('\tfprintf(stderr, "%s", s);')
+	g.writeln('\tv3_eprintf("%s", s);')
 	g.writeln('}')
 	g.writeln('static void v3_eprintln_string(string s) {')
-	g.writeln('\tfprintf(stderr, "%.*s\\n", s.len, (char*)s.str);')
+	g.writeln('\tv3_eprintf("%.*s\\n", s.len, (char*)s.str);')
 	g.writeln('}')
 	g.writeln('')
 }
