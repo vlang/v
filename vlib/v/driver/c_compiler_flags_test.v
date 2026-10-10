@@ -1793,3 +1793,24 @@ fn test_v3_host_rejecting_tcc_executables_never_selects_tcc_implicitly() {
 		c_compiler_explicit: true
 	})
 }
+
+fn test_v3_production_object_flag_plan_retains_machine_code() {
+	for compiler in ['gcc', 'clang', 'msvc', 'tinyc'] {
+		for large in [false, true] {
+			options := V3CCompilerFlagOptions{
+				is_prod:      true
+				is_o:         true
+				target_os:    'windows'
+				c_compiler:   compiler
+				large_c_unit: large
+				is_tcc:       compiler == 'tinyc'
+			}
+			plan := v3_c_compiler_flag_plan(options)
+			assert '-flto' !in plan.before_inputs
+			assert '-c' in plan.before_inputs
+			assert (if large { '-O2' } else { '-O3' }) in plan.before_inputs
+		}
+	}
+	program := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ is_prod: true })
+	assert '-flto' in program.before_inputs
+}
