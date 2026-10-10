@@ -502,6 +502,8 @@ fn ptr_win_get_error_msg(code u32) voidptr {
 }
 
 // get_error_msg return error code representation in string.
+// The line break that FormatMessageW puts at the end of a system message is not
+// part of the result.
 pub fn get_error_msg(code int) string {
 	if code < 0 { // skip negative
 		return ''
@@ -512,7 +514,8 @@ pub fn get_error_msg(code int) string {
 	}
 	msg := wide_ptr_to_string(&u16(ptr_text))
 	C.LocalFree(ptr_text)
-	return msg
+	// Only the terminating "\r\n" is removed; the text keeps its final period.
+	return msg.trim_right('\r\n')
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
