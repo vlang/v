@@ -1818,6 +1818,19 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 	}
 	base, args, is_generic_app := generic_app_parts(clean)
 	if is_generic_app {
+		// Expand the applied alias before its base: expanding only `Values` in
+		// `Values[Item]` would leave the arguments attached to its `[]T` target.
+		alias_type := if !isnil(t.tc) && !base.contains('.') && mod.len > 0
+			&& '${mod}.${base}' in t.tc.type_aliases {
+			'${mod}.${clean}'
+		} else {
+			clean
+		}
+		if !isnil(t.tc) {
+			if expanded := t.expand_generic_type_alias(alias_type) {
+				return t.normalize_type_alias(expanded)
+			}
+		}
 		mut normalized_args := []string{cap: args.len}
 		for arg in args {
 			normalized_args << t.normalize_type_in_module(arg, mod)
