@@ -179,15 +179,21 @@ fn registry_url() string {
 	return normalize_server_url(os.getenv_opt(registry_url_env) or { return '' })
 }
 
-// resolve_registry_module asks the registry at `url` for `name` and returns the
-// metadata it holds, recording in `errors` why it could not so that the caller
-// goes on to the next candidate. A registry that does not hold the module is a
-// candidate that missed, exactly like a server answering 404: the module is not
-// taken from it, and the run does not fail here.
-fn resolve_registry_module(url string, name string, mut errors []string) ?ModuleVpmInfo {
+// resolve_registry_module asks the registry at `url` for `name`, recording in
+// `errors` why it could not so that the caller goes on to the next candidate.
+// A registry that does not hold the module is a candidate that missed, exactly
+// like a server answering 404: the module is not taken from it, and the run
+// does not fail here.
+//
+// It cannot return a module. `RegistryModule` carries no repository url and no
+// vcs, and downloading an archive is not implemented, so every path records why
+// and returns. The signature is `void` rather than `?ModuleVpmInfo` because an
+// optional that can never hold a value reads as if it can: the caller's
+// `if mod := ...` documented an outcome this function never produces.
+fn resolve_registry_module(url string, name string, mut errors []string) {
 	versions := fetch_registry_versions(url, name) or {
 		errors << 'Skipping module `${name}`, since the registry at `${url}` did not list its versions: ${err.msg()}'
-		return none
+		return
 	}
 	// An unknown module answers `200` with an empty version list rather than a
 	// 404, so the empty list is a registry's way of saying it does not hold
@@ -196,7 +202,7 @@ fn resolve_registry_module(url string, name string, mut errors []string) ?Module
 	// then fail with a message naming no module.
 	if versions.len == 0 {
 		errors << 'Skipping module `${name}`, since the registry at `${url}` does not hold it.'
-		return none
+		return
 	}
 	// The list is ordered highest version first, so the first version whose
 	// metadata answers and is not yanked is the newest one this registry can
@@ -219,10 +225,10 @@ fn resolve_registry_module(url string, name string, mut errors []string) ?Module
 			err.msg()
 		}
 		errors << 'The registry at `${url}` holds `${mod.name}@${mod.version}`, but a registry module has no repository url to clone, and ${detail}.'
-		return none
+		return
 	}
 	errors << 'Skipping module `${name}`, since the registry at `${url}` lists its versions but serves no metadata for an installable one.'
-	return none
+	return
 }
 
 fn get_mod_vpm_info(name string) !ModuleVpmInfo {
@@ -250,9 +256,7 @@ fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSele
 	// leave the configuration doing nothing whenever they also hold the module.
 	registry := registry_url()
 	if registry != '' {
-		if mod := resolve_registry_module(registry, name, mut errors) {
-			return mod
-		}
+		resolve_registry_module(registry, name, mut errors)
 	}
 	for url in selector.metadata_server_urls() {
 		modurl := url + '/api/packages/${name}'
