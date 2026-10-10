@@ -248,6 +248,7 @@ mut:
 	incompatibilities map[string]map[string][]string
 }
 
+@[markused]
 fn new_partial_solution() PartialSolution {
 	return PartialSolution{
 		assignments:       map[string]string{}
@@ -290,6 +291,7 @@ fn (ps &PartialSolution) is_assigned(name string) bool {
 
 // unit_propagation processes constraints and derives new assignments.
 // When a module has only one compatible version left, it is assigned.
+@[markused]
 fn unit_propagation(candidates map[string][]VersionedDeps, constraints map[string][]Constraint, mut ps PartialSolution) !bool {
 	mut changed := true
 	for changed {
@@ -332,6 +334,7 @@ fn unit_propagation(candidates map[string][]VersionedDeps, constraints map[strin
 
 // conflict_resolution handles the case where no compatible version exists.
 // It identifies the conflicting constraints and reports them.
+@[markused]
 fn conflict_resolution(name string, candidates []VersionedDeps, constraints []Constraint, ps PartialSolution) !string {
 	mut msg := 'failed to resolve `${name}`:'
 	for c in constraints {
@@ -348,6 +351,7 @@ fn conflict_resolution(name string, candidates []VersionedDeps, constraints []Co
 // resolve_with_pubgrub preserves the candidate API while checking the complete graph.
 // Context-dependent conflict learning is not implemented yet; use the consistent
 // search instead of independently accepting incompatible dependency versions.
+@[markused]
 fn resolve_with_pubgrub(candidates map[string][]VersionedDeps, constraints map[string][]Constraint) !map[string]string {
 	return resolve_with_backtracking(candidates, constraints)!
 }

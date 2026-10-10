@@ -459,17 +459,17 @@ fn (mut cmd Command) run() ? {
 		}
 	}
 	sw := time.new_stopwatch()
-	arguments := if cmd.arguments.len > 0 {
+	cmd_args := if cmd.arguments.len > 0 {
 		cmd.arguments
 	} else {
 		os.split_args(cmd.line) or { panic(err) }
 	}
 	if cmd.runcmd == .system {
-		cmd.ecode = os.system_args(arguments)
+		cmd.ecode = os.system_args(cmd_args)
 		cmd.output = ''
 	}
 	if cmd.runcmd == .execute {
-		res := os.exec(arguments)
+		res := os.exec(cmd_args)
 		cmd.ecode = res.exit_code
 		cmd.output = res.output
 	}
