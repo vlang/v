@@ -16275,6 +16275,7 @@ fn (mut g FlatGen) forward_decls() {
 		master_c_name_cache := g.c_name_cache
 		mut master_concrete_optional_params := g.cur_concrete_optional_params.move()
 		mut master_needed_optional_types := g.needed_optional_types.move()
+		mut master_optional_pointer_struct_tags := g.optional_pointer_struct_tags.move()
 		mut master_fn_ptr_types := g.fn_ptr_types.move()
 		mut master_used_fn_ptr_types := g.used_fn_ptr_types.move()
 		scratch_scope := cgen_worker_scope_begin(true)
@@ -16290,6 +16291,7 @@ fn (mut g FlatGen) forward_decls() {
 		saved_lookup_caches := g.begin_scratch_lookup_caches()
 		g.cur_concrete_optional_params = map[string]bool{}
 		g.needed_optional_types = map[string]string{}
+		g.optional_pointer_struct_tags = map[string]string{}
 		g.fn_ptr_types = master_fn_ptr_types.clone()
 		g.used_fn_ptr_types = map[string]bool{}
 		g.forward_decl_items(items[start..end], mut forwarded_exports)
@@ -16302,6 +16304,7 @@ fn (mut g FlatGen) forward_decls() {
 		g.restore_scratch_lookup_caches(saved_lookup_caches)
 		g.cur_concrete_optional_params = master_concrete_optional_params.move()
 		g.needed_optional_types = master_needed_optional_types.move()
+		g.optional_pointer_struct_tags = master_optional_pointer_struct_tags.move()
 		g.fn_ptr_types = master_fn_ptr_types.move()
 		g.used_fn_ptr_types = master_used_fn_ptr_types.move()
 		unsafe { g.sb.write_ptr(batch_output.data, batch_output.len) }

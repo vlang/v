@@ -696,6 +696,7 @@ mut:
 	import_key_cache               &util.KeyRecentCache = unsafe { nil }
 	selective_import_key_cache     &util.KeyRecentCache = unsafe { nil }
 	needed_optional_types          map[string]string
+	optional_pointer_struct_tags   map[string]string
 	// cabi_int_out_args maps a C-call argument node to the C spelling to emit in its
 	// place (the address of a temporary C `int`), while a `&int` out-parameter is
 	// bridged by a temporary + copy-back around the wrapped call. Keyed by node id so
@@ -3315,6 +3316,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.goto_label_lock_scopes.clear()
 	g.pending_loop_label = ''
 	g.needed_optional_types.clear()
+	g.optional_pointer_struct_tags.clear()
 	g.emitted_optional_types.clear()
 	g.array_method_cache.clear()
 	g.param_types_cache.clear()

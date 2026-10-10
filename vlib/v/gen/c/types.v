@@ -137,6 +137,21 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
 	opt_name := '${prefix}_${safe_name}'
 	g.needed_optional_types[opt_name] = inner_ct
+	mut pointee := cgen_unalias_type(base_type)
+	if pointee is types.Pointer {
+		for pointee is types.Pointer {
+			pointee = cgen_unalias_type(pointee.base_type)
+		}
+		if pointee is types.Struct && !pointee.name.starts_with('C.')
+			&& !types.is_builtin_type_name(pointee.name) {
+			pointee_ct := g.optional_payload_c_type(pointee)
+			g.optional_pointer_struct_tags[pointee_ct] = if pointee.name in g.tc.unions {
+				'union'
+			} else {
+				'struct'
+			}
+		}
+	}
 	return opt_name
 }
 
@@ -879,6 +894,7 @@ fn (mut g FlatGen) optional_typedefs() {
 	// list is available. Revisit that concrete list immediately before emission so
 	// every wrapper used by forward_decls() is already defined.
 	g.collect_selected_declaration_signature_types()
+	g.optional_pointer_struct_forward_decls()
 	mut wrote := false
 	mut names := g.needed_optional_types.keys()
 	names.sort()
@@ -890,6 +906,34 @@ fn (mut g FlatGen) optional_typedefs() {
 	}
 	if wrote {
 		g.writeln('')
+	}
+}
+
+// A signature can retain a pointer Result/Option after its unused generic
+// specialization is discarded. Its pointee needs only an opaque declaration.
+fn (mut g FlatGen) optional_pointer_struct_forward_decls() {
+	mut needed := map[string]bool{}
+	for _, payload in g.needed_optional_types {
+		needed[payload.trim_right('*')] = true
+	}
+	mut declared := map[string]bool{}
+	for name in g.c_struct_decl_names() {
+		declared[g.struct_cname(name)] = true
+	}
+	for name in g.c_sum_decl_names() {
+		declared[g.cname(name)] = true
+	}
+	for name, _ in g.interfaces {
+		declared[g.cname(name)] = true
+	}
+	mut names := g.optional_pointer_struct_tags.keys()
+	names.sort()
+	for name in names {
+		if !needed[name] || name in declared || g.cached_support_has_c_type(name) {
+			continue
+		}
+		tag := g.optional_pointer_struct_tags[name]
+		g.writeln('typedef ${tag} ${name} ${name};')
 	}
 }
 
