@@ -20899,6 +20899,9 @@ fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.Nod
 	mut w := tc.fork_for_parallel_check()
 	w.valid_diagnostic_fast = false
 	w.valid_resolution_fast = false
+	// Argument validation follows imported generic forwarders too. The caller's
+	// selected-file filter applies when the reflected argument errors return below.
+	w.diagnostic_files = map[string]bool{}
 	w.cur_module = tc.fn_type_modules[info.name] or { tc.cur_module }
 	w.cur_file = tc.fn_type_files[info.name] or { tc.cur_file }
 	checked := w.check_generic_fn_body_as(fn_node, int(instantiation.decl_id), texts)
