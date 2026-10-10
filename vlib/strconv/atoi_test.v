@@ -348,6 +348,36 @@ fn test_common_parse_int_error_on_high_digit() {
 	assert strconv.common_parse_int('-9223372036854775809', 0, 64, false, false) or { 1 } == min_i64
 }
 
+fn test_parse_int_empty_string() {
+	for base in [0, 2, 10, 16] {
+		for bit_size in [0, 8, 16, 32, 64] {
+			if value := strconv.parse_int('', base, bit_size) {
+				assert false, 'parse_int("", ${base}, ${bit_size}) returned ${value} instead of an error'
+			} else {
+				assert err.msg().starts_with('common_parse_int: syntax error')
+			}
+			if value := ''.parse_int(base, bit_size) {
+				assert false, '"".parse_int(${base}, ${bit_size}) returned ${value} instead of an error'
+			}
+		}
+	}
+	// Like common_parse_uint, an empty string is an error only when the caller asks for errors.
+	assert strconv.common_parse_int('', 10, 64, false, false)! == 0
+	assert strconv.common_parse_uint('', 10, 64, false, false)! == 0
+	assert strconv.common_parse_int('', 10, 64, true, false) or { -1 } == -1
+	assert strconv.common_parse_int('', 10, 64, false, true) or { -1 } == -1
+	assert strconv.common_parse_int('', 10, 64, true, true) or { -1 } == -1
+	// A sign without digits is rejected as well.
+	assert strconv.parse_int('+', 10, 64) or { -1 } == -1
+	assert strconv.parse_int('-', 10, 64) or { -1 } == -1
+	// The builtin string conversions never fail, and keep returning 0.
+	assert ''.int() == 0
+	assert ''.i64() == 0
+	assert ''.i8() == 0
+	assert ''.i16() == 0
+	assert ''.i32() == 0
+}
+
 fn test_common_parse_uint2() {
 	mut result, mut error := strconv.common_parse_uint2('1', 10, 8)
 	assert result == 1

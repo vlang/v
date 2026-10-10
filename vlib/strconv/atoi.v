@@ -149,7 +149,10 @@ pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
 @[direct_array_access]
 pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !i64 {
 	if _s == '' {
-		// return error('parse_int: syntax error ${s}')
+		// Like common_parse_uint, report the error only when the caller asked for errors.
+		if error_on_non_digit || error_on_high_digit {
+			return error('common_parse_int: syntax error ${_s}')
+		}
 		return i64(0)
 	}
 	mut bit_size := _bit_size
