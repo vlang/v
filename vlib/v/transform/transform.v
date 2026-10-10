@@ -505,6 +505,18 @@ mut:
 	// used-set (holding `seed.time_seed_array`) cannot filter, which used to
 	// re-transform hundreds of already-transformed bodies every build.
 	transformed_fns []bool
+	// lowered_fn_bodies[i] is set, while a tree that went through the transform
+	// stage is monomorphized, when the body of the fn_decl at node id i has no
+	// lowering left: the used set named the function when monomorphization
+	// started, so the transform stage settled its body, or an earlier round of the
+	// late-used-fn-bodies pass lowered it. That pass takes the first insertion of
+	// a used-set spelling for a function that just became reachable, while a
+	// function goes by several spellings and markused records only some of them
+	// (`Tag.add_frame`, not `Tag__add_frame`): a call from a specialization got an
+	// already lowered body lowered again. It is not transformed_fns, which
+	// lower_remaining_matches_in_used_fns skips: that walk still has matches to
+	// lower in the bodies of the transform stage.
+	lowered_fn_bodies []bool
 	// Shared-base (clone-free) parallel transform: all threads operate on views
 	// of the master arrays, appending into pre-partitioned capacity regions.
 	// While base_write_intercept is set, in-place writes to base-range node
@@ -1729,7 +1741,7 @@ pub fn monomorphize_with_used_checked_config(mut a flat.FlatAst, tc &types.TypeC
 // state in `stage_scope` while promoting escaping AST payloads directly to its
 // parent arena.
 pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr) (map[string]bool, []string) {
-	result, errors, _ := monomorphize_with_used_checked_config_scoped_cached(mut a, tc, used_fns, parallel, stage_scope, []MonomorphCacheSpec{})
+	result, errors, _ := monomorphize_with_used_checked_config_scoped_cached(mut a, tc, used_fns, parallel, stage_scope, []MonomorphCacheSpec{}, false)
 	return result, errors
 }
 
@@ -1737,7 +1749,12 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 // signatures from `cached_specs` and returns the complete specialization set.
 // A restored signature rewrites current program calls normally, while its
 // unchanged dependency body can remain in the persistent compiled prefix.
-pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec) (map[string]bool, []string, []MonomorphCacheSpec) {
+// `after_transform` tells that the tree went through the transform stage, which
+// settled the body of every function that `used_fns` names: it lowered the
+// body, or, in an incremental rebuild, left it to the cached build. Only the
+// functions that a specialization makes reachable are then lowered here. A
+// check monomorphizes the tree as it was parsed and passes false.
+pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec, after_transform bool) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
 	mut t := new_transformer(mut a, tc, used_fns)
 	// Checker fixtures fully re-check every specialized body
@@ -1752,6 +1769,9 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.scope_parallel_workers = true
 	}
 	t.prepare()
+	if after_transform {
+		t.mark_used_fn_bodies_lowered()
+	}
 	// This fresh transformer does not retain the preceding source-box index.
 	// Methods first reached by comptime dispatch can still contain source-level
 	// conversions, such as `return Foo{}` from an `IFoo` getter. Collect those
@@ -1835,6 +1855,21 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	t.report_alloc_warnings()
 	t.report_unevaluated_comptime_ifs()
 	return t.used_fns, t.monomorph_errors, final_specs
+}
+
+// mark_used_fn_bodies_lowered records in lowered_fn_bodies the functions whose
+// bodies the transform stage settled before monomorphization: it transforms a
+// fn_decl exactly when the used set names it (should_transform_fn) and it has
+// no unresolved generics.
+fn (mut t Transformer) mark_used_fn_bodies_lowered() {
+	t.lowered_fn_bodies = []bool{len: t.a.nodes.len}
+	for cand in t.collect_late_scan_candidates(t.a.nodes.len) {
+		node := t.a.nodes[cand.idx]
+		if t.should_transform_fn_in_module(node, cand.module)
+			&& !t.fn_decl_has_unresolved_generics(node, cand.module) {
+			t.lowered_fn_bodies[cand.idx] = true
+		}
+	}
 }
 
 fn (mut t Transformer) release_monomorph_worker_scopes() {
@@ -5707,6 +5742,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start
 		} else if kind_id == 73 {
 			scan_module = node.value
 		} else if kind_id == 61 && !(i < t.transformed_fns.len && t.transformed_fns[i])
+			&& !(i < t.lowered_fn_bodies.len && t.lowered_fn_bodies[i])
 			&& !t.fn_decl_has_unresolved_generics(node, scan_module) {
 			candidates << LateFnCandidate{
 				idx:    i
@@ -5829,6 +5865,9 @@ fn (mut t Transformer) transform_late_candidate(ci int, mut candidates []LateFnC
 	log_start := t.used_fns_log.len
 	node_count_before := t.a.nodes.len
 	t.transform_fn_body(idx)
+	if idx < t.lowered_fn_bodies.len {
+		t.lowered_fn_bodies[idx] = true
+	}
 	for call_name in t.generated_fn_body_call_names(flat.NodeId(idx)) {
 		t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut queued)
 	}

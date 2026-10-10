@@ -2,6 +2,8 @@ module transform
 
 import os
 import v.flat
+import v.parser
+import v.pref
 import v.types
 
 fn test_node_context_cache_growth_preserves_ids_and_initializes_new_slots() {
@@ -1011,4 +1013,156 @@ fn test_parameterized_typeof_value_display_preserves_source_names() {
 	marker := flat.Node{ kind: .typeof_expr, value: generic_type_name_marker('T') }
 	assert t.generic_comptime_typeof_display_name(marker, ['other.Payload'],
 		'other.Payload') == 'other.Payload'
+}
+
+fn test_monomorphize_after_transform_keeps_lowered_fn_bodies() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_lowered_bodies_${os.getpid()}.v')
+	os.write_file(path, '@[heap]
+struct Frame {
+mut:
+	name string
+}
+
+struct Tag {
+mut:
+	others []Frame
+}
+
+fn (mut tag Tag) add_frame(frame Frame) {
+	tag.others << frame
+}
+
+fn fill[T](mut tag T) {
+	mut cur := &Frame{}
+	tag.add_frame(cur)
+}
+
+fn main() {
+	mut tag := Tag{}
+	fill[Tag](mut tag)
+}
+') or {
+		panic(err)
+	}
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	// Markused names a method by its V spelling only.
+	used := transform_with_used(mut a, &tc, {
+		'main':          true
+		'fill':          true
+		'Tag.add_frame': true
+	})
+	assert !used['Tag__add_frame']
+	mut add_frame_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'Tag.add_frame' {
+			add_frame_idx = i
+		}
+	}
+	assert add_frame_idx >= 0
+	lowered := a.nodes[add_frame_idx]
+	mono_used, errors, _ := monomorphize_with_used_checked_config_scoped_cached(mut a, &tc,
+		used, false, unsafe { nil }, []MonomorphCacheSpec{}, true)
+	assert errors.len == 0, errors.str()
+	// The call in `fill[Tag]` inserts the C spelling: that is not a new function.
+	assert mono_used['Tag__add_frame']
+	assert a.nodes[add_frame_idx].children_start == lowered.children_start
+	assert a.nodes[add_frame_idx].children_count == lowered.children_count
+}
+
+fn test_late_fn_bodies_pass_lowers_a_body_once_while_monomorphizing() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_late_bodies_${os.getpid()}.v')
+	os.write_file(path, 'struct Tag {
+mut:
+	count int
+}
+
+fn (mut tag Tag) bump() {
+	tag.count++
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	used := transform_with_used(mut a, &tc, {
+		'main': true
+	})
+	mut bump_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'Tag.bump' {
+			bump_idx = i
+		}
+	}
+	assert bump_idx >= 0
+	parsed := a.nodes[bump_idx]
+	mut t := new_transformer(mut a, &tc, used)
+	t.prepare()
+	t.mark_used_fn_bodies_lowered()
+	limit := t.a.nodes.len
+	// Nothing named the method before: its first spelling gets its body lowered.
+	t.transform_late_used_fn_bodies(['Tag__bump'], 0, 1, limit)
+	lowered := t.a.nodes[bump_idx]
+	assert lowered.children_start != parsed.children_start
+	// Its other spelling, inserted in a later round, is not another function.
+	t.transform_late_used_fn_bodies(['Tag.bump'], 0, 1, limit)
+	assert t.a.nodes[bump_idx].children_start == lowered.children_start
+}
+
+fn test_scoped_late_fn_bodies_pass_records_lowered_bodies() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_scoped_late_bodies_${os.getpid()}.v')
+	mut source := 'struct Tag {\nmut:\n\tcount int\n}\n'
+	mut names := []string{}
+	for i in 0 .. direct_late_transform_max_names + 1 {
+		source += 'fn (mut tag Tag) bump${i}() { tag.count++ }\n'
+		names << 'Tag__bump${i}'
+	}
+	source += 'fn main() {}\n'
+	os.write_file(path, source) or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	used := transform_with_used(mut a, &tc, {
+		'main': true
+	})
+	mut t := new_transformer(mut a, &tc, used)
+	t.prepare()
+	t.mark_used_fn_bodies_lowered()
+	// Monomorphization starts without the main transformer's body bookkeeping.
+	assert t.transformed_fns.len == 0
+	t.scope_parallel_workers = true
+	t.retain_worker_results = true
+	limit := t.a.nodes.len
+	// More than the direct-pass limit routes these bodies through scoped batches.
+	t.transform_late_used_fn_bodies(names, 0, names.len, limit)
+	mut lowered := map[int]int{}
+	for i in 0 .. limit {
+		node := t.a.nodes[i]
+		if node.kind == .fn_decl && node.value.starts_with('Tag.bump') {
+			assert t.lowered_fn_bodies[i], node.value
+			lowered[i] = node.children_start
+		}
+	}
+	assert lowered.len == names.len
+	// A later round discovers another spelling of a body that the batch lowered.
+	t.transform_late_used_fn_bodies(['Tag.bump0'], 0, 1, limit)
+	for idx, children_start in lowered {
+		assert t.a.nodes[idx].children_start == children_start
+	}
 }
