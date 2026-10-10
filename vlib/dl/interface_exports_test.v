@@ -28,7 +28,25 @@ pub fn read_value() int {
 	return ${value}
 }
 ')!
-	result := os.exec([@VEXE, '-b', 'c', '-shared', '-o', library, source])
+	mut arguments := [@VEXE, '-b', 'c']
+	$if windows {
+		// Windows TCC DLLs cannot be unloaded safely; keep exercising close with
+		// the compilers supported by the existing create_win_dll regression.
+		mut compiler := ''
+		for candidate in ['gcc', 'clang', 'msvc'] {
+			executable := if candidate == 'msvc' { 'cl' } else { candidate }
+			if _ := os.find_abs_path_of_executable(executable) {
+				compiler = candidate
+				break
+			}
+		}
+		if compiler.len == 0 {
+			return error('the DLL unload regression requires GCC, Clang or MSVC on Windows')
+		}
+		arguments << ['-cc', compiler]
+	}
+	arguments << ['-shared', '-o', library, source]
+	result := os.exec(arguments)
 	if result.exit_code != 0 {
 		return error(result.output)
 	}
