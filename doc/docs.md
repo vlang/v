@@ -7526,7 +7526,8 @@ has lines with 5 columns:
 1. How many times a function was called.
 2. How much time in total a function took (in ms).
 3. How much time a function took (in ms), on its own, without the calls inside it.
-   It is reliable for multithreaded programs, when tcc is not used.
+   Its nesting measurements use thread-local state when tcc is not used, but the aggregate
+   counters remain unsynchronized, so multithreaded results are approximate.
 4. How much time on average, a call to a function took (in ns).
 5. The name of the v function.
 
@@ -7580,9 +7581,10 @@ Some tips for reading the report of the compiler:
   third column. That is idle time, not work.
 - Every profiled call reads the clock twice, so for very short functions the numbers are mostly the
   cost of profiling.
-- The call counts of two profiles of the same compiler are close, but they are rarely identical.
-  When you compare two profiles, for example before and after a change, compare the average time
-  per call instead of the total times.
+- Compare profiles with the same input, compiler flags and C compiler. Read total time, call count
+  and average time per call together: reducing the number of calls can itself be an optimization,
+  which an average alone would miss. Unsynchronized counters limit comparisons of multithreaded
+  code; use a matched benchmark to verify performance changes.
 
 ## Package management
 
