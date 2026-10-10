@@ -183,8 +183,7 @@ string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 
 `Cookie.str()` and `sanitize_cookie_value` remove invalid bytes from cookie values,
 including control characters, quotes, semicolons and backslashes. Spaces and commas
-inside the value are preserved; the sanitized value is quoted when it begins or ends
-with a space or comma.
+are preserved; the sanitized value is quoted when it contains a space or comma.
 
 ### Windows TLS handshake compatibility
 
