@@ -5127,6 +5127,18 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 		substituted
 	}
 	qualified := t.qualify_specialized_signature_type_text(locked, decl)
+	if !isnil(t.tc) {
+		alias_base, _, applied_alias := generic_app_parts(qualified)
+		if applied_alias && (alias_base in t.tc.type_aliases
+			|| '${decl.module}.${alias_base}' in t.tc.type_aliases) {
+			expanded := t.normalize_type_in_module(qualified, decl.module)
+			// Array indexing needs the expanded element type. Callback aliases keep
+			// their nominal signature for the remaining specialization steps.
+			if expanded.starts_with('[]') {
+				return expanded
+			}
+		}
+	}
 	// A composite that carries a collision-locked `main.` type (e.g. `fn (main.Context)`
 	// from `fn wrap[T](cb fn (T))` specialized with a main `Context`) must not go through
 	// the parse + name() round-trip below: name() renders `main.Context` back to a bare
