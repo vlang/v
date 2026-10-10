@@ -21953,9 +21953,11 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('void* memdup(void* src, ptrdiff_t sz);')
 	g.writeln('static inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }')
+	// Integer types only: `qsort` is not stable, which only floats could show (see
+	// `array_default_sort_runtime_helper` in the transformer).
 	for sort_spec in ['int|${g.int_ct}', 'i8|signed char', 'i16|short', 'i64|long long',
 		'u8|unsigned char', 'u16|unsigned short', 'u32|unsigned', 'u64|unsigned long long',
-		'isize|ptrdiff_t', 'usize|size_t', 'f32|float', 'f64|double', 'rune|unsigned', 'char|char'] {
+		'isize|ptrdiff_t', 'usize|size_t', 'rune|unsigned', 'char|char'] {
 		sort_type := sort_spec.all_before('|')
 		c_type := sort_spec.all_after('|')
 		g.writeln('static int v3_array_sort_${sort_type}_cmp(const void* a, const void* b) { ${c_type} av = *(const ${c_type}*)a; ${c_type} bv = *(const ${c_type}*)b; return (av > bv) - (av < bv); }')

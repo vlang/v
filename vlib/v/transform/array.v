@@ -7154,13 +7154,39 @@ fn (mut t Transformer) clamp_sort_index(name string, limit string) flat.NodeId {
 	return t.make_if_with_skip_ownership_drops(t.make_infix(.gt, t.make_ident(name), t.make_ident(limit)), assign, flat.empty_node)
 }
 
+// array_default_sort_runtime_helper names the libc `qsort` helper that sorts an
+// array of `elem_type` by `<`, for the element types where its result cannot be
+// told apart from the stable merge sort.
+//
+// `qsort` is not stable, while `sort()` is documented to keep equal elements in
+// their original order. For integers, `rune` and `char` that promise cannot be
+// broken: two elements that compare equal are the same value bit for bit, so no
+// permutation of them is observable, and `<` is a total order, so there is only
+// one sorted result.
+//
+// Floats are left out on purpose. `-0.0 == 0.0` while their sign bits differ, so
+// an unstable sort visibly reorders them, and a NaN is unordered with everything,
+// which is not a consistent ordering: `qsort` left the other elements unsorted.
+// They take the merge sort, with the order of `array_sort_float_less_expr`.
 fn (t &Transformer) array_default_sort_runtime_helper(elem_type string) ?string {
 	clean := t.normalize_type_alias(elem_type)
-	if clean in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32',
-		'f64', 'rune', 'char'] {
+	if clean in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'rune',
+		'char'] {
 		return 'v3_array_sort_${clean}'
 	}
 	return none
+}
+
+// array_sort_float_less_expr builds the order of `sort()` on floats: `cur < prev`,
+// with every NaN after every other value. `<` alone is not an ordering once a
+// NaN is present, and the merge would stop moving elements across it. Two NaNs
+// are equal here, like `-0.0` and `0.0`, so the merge keeps them in their
+// original order.
+fn (mut t Transformer) array_sort_float_less_expr(cur flat.NodeId, prev flat.NodeId) flat.NodeId {
+	prev_is_nan := t.make_infix(.ne, prev, prev)
+	cur_is_number := t.make_infix(.eq, cur, cur)
+	return t.make_infix(.logical_or, t.make_infix(.lt, cur, prev), t.make_infix(.logical_and,
+		prev_is_nan, cur_is_number))
 }
 
 // make_array_compare_sort_stmt builds make array compare sort stmt data for transform.
@@ -7206,6 +7232,9 @@ fn (mut t Transformer) array_sort_less_expr(cur flat.NodeId, prev flat.NodeId, e
 	}
 	if info := t.array_sort_alias_less(elem_type, raw_elem_type) {
 		return t.struct_operator_call(info, cur, prev, 'bool')
+	}
+	if t.normalize_type_alias(elem_type) in ['f32', 'f64'] {
+		return t.array_sort_float_less_expr(cur, prev)
 	}
 	return t.make_infix(.lt, cur, prev)
 }

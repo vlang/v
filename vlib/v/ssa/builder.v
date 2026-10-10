@@ -3148,8 +3148,10 @@ fn (mut b Builder) register_array_runtime_stubs() {
 		b.generate_array_repeat_to_depth_body(array_repeat_id)
 	}
 
-	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32',
-		'f64', 'rune', 'char'] {
+	// Integer types only, like the C backend: the transformer lowers a float sort
+	// to its stable merge sort.
+	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'rune',
+		'char'] {
 		elem_type := match sort_type {
 			'int', 'rune' { b.i32_type }
 			'i8' { b.i8_type }
@@ -3158,9 +3160,7 @@ fn (mut b Builder) register_array_runtime_stubs() {
 			'u8', 'char' { b.u8_type }
 			'u16' { b.u16_type }
 			'u32' { b.u32_type }
-			'u64', 'usize' { b.u64_type }
-			'f32' { b.f32_type }
-			else { b.f64_type }
+			else { b.u64_type }
 		}
 		mut sort_params := []TypeID{}
 		sort_params << ptr_array
