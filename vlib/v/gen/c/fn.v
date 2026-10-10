@@ -1176,6 +1176,7 @@ fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_
 	}
 	synthetic_name := c_short_name_view(node.value)
 	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+		|| synthetic_name.starts_with('__v3_struct_eq_')
 		|| synthetic_name.starts_with('__v3_default_clone_') {
 		return g.cache_program_files[file_name]
 			|| g.cache_program_files[g.a.real_source_path(file_name)]
@@ -1401,6 +1402,7 @@ fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) s
 	}
 	synthetic_name := c_short_name_view(name)
 	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+		|| synthetic_name.starts_with('__v3_struct_eq_')
 		|| synthetic_name.starts_with('__v3_default_clone_') {
 		return g.cname(synthetic_name)
 	}
@@ -1438,6 +1440,7 @@ fn qualified_fn_name_in_module(module_name string, name string) string {
 	}
 	synthetic_name := c_short_name_view(name)
 	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+		|| synthetic_name.starts_with('__v3_struct_eq_')
 		|| synthetic_name.starts_with('__v3_default_clone_') {
 		return c_name(synthetic_name)
 	}
@@ -1602,6 +1605,7 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 	}
 	synthetic_name := c_short_name_view(name)
 	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+		|| synthetic_name.starts_with('__v3_struct_eq_')
 		|| synthetic_name.starts_with('__v3_default_clone_') {
 		return g.cname(synthetic_name)
 	}
@@ -1776,7 +1780,7 @@ fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string
 	// source name. Their owning module only controls cache-object placement; it
 	// must not be prepended to calls made from that same module.
 	if name.starts_with('__v3_sum_eq_') || name.starts_with('__v3_autostr_')
-		|| name.starts_with('__v3_default_clone_') {
+		|| name.starts_with('__v3_struct_eq_') || name.starts_with('__v3_default_clone_') {
 		return g.direct_call_name(name)
 	}
 	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {

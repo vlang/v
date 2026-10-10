@@ -62,13 +62,14 @@ const zeroed_stack_value_decl_marker = '__v3_zeroed_stack_value_decl'
 // sequence of disposable scoped-worker forks. Larger sets keep bounded scratch.
 const direct_late_transform_max_names = 64
 
-// SumEqRequest records where a sum type's equality helper was first requested,
+// SumEqRequest records where a sum or recursive struct equality helper was first requested,
 // so the helper body is built under that module/file resolution context. The
 // helper module can differ for program-specific generic specializations, whose
 // generated functions and helpers must stay in the main cache segment.
 pub struct SumEqRequest {
 pub:
 	sum_name      string
+	struct_name   string
 	module        string
 	file          string
 	helper_module string
@@ -326,8 +327,8 @@ mut:
 	used_fns_parent               &map[string]bool = unsafe { nil }
 	used_fns_root                 &map[string]bool = unsafe { nil }
 	comptime_reflected_params     map[string][]ParamMeta
-	// sum_eq_types records sum types whose deep-equality helper fn
-	// (__v3_sum_eq_<name>) is called somewhere, keyed by the concrete helper name with the
+	// sum_eq_types records sum and recursive struct deep-equality helpers,
+	// keyed by the concrete helper name with the
 	// module/file context of the requesting call site (type resolution inside
 	// the helper body needs that context). The helpers are synthesized
 	// serially after the (possibly parallel) transform completes.
@@ -1227,6 +1228,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 		// The AST arena is unchanged during this scan.
 		node := unsafe { &t.a.nodes[idx] }
 		if node.kind == .fn_decl && (node.value.starts_with('__v3_sum_eq_')
+			|| node.value.starts_with('__v3_struct_eq_')
 			|| node.value.starts_with('__v3_default_clone_')) {
 			synthesized_helpers << node.value
 		}
@@ -4710,6 +4712,7 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 			if scoped {
 				t.sum_eq_types[name.clone()] = SumEqRequest{
 					sum_name:      req.sum_name.clone()
+					struct_name:   req.struct_name.clone()
 					module:        req.module.clone()
 					file:          req.file.clone()
 					helper_module: req.helper_module.clone()
@@ -4871,6 +4874,7 @@ fn (mut t Transformer) clone_sum_eq_types_owned() {
 	for name, req in t.sum_eq_types {
 		cloned[name.clone()] = SumEqRequest{
 			sum_name:      req.sum_name.clone()
+			struct_name:   req.struct_name.clone()
 			module:        req.module.clone()
 			file:          req.file.clone()
 			helper_module: req.helper_module.clone()
