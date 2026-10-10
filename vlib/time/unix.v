@@ -66,11 +66,13 @@ fn calculate_date_from_day_offset(day_offset_ i64) (int, int, int) {
 	// shift from 1970-01-01 to 0000-03-01
 	day_offset += 719468 // int(days_per_400_years * 1970 / 400 - (28+31))
 
-	mut era := 0
+	// era => floor(day_offset / days_per_400_years), while `/` truncates toward zero.
+	// It is an i64, so that `era * days_per_400_years` below does not overflow a 32-bit int.
+	mut era := i64(0)
 	if day_offset >= 0 {
-		era = int(day_offset / days_per_400_years)
+		era = day_offset / days_per_400_years
 	} else {
-		era = int((day_offset - days_per_400_years - 1) / days_per_400_years)
+		era = (day_offset - (days_per_400_years - 1)) / days_per_400_years
 	}
 
 	// day_of_era => [0..146096]
