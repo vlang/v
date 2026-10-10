@@ -9496,6 +9496,12 @@ fn (g &FlatGen) global_type_for_ident(name string) ?types.Type {
 }
 
 fn (g &FlatGen) global_name_for_ident(name string) ?string {
+	if name.starts_with('main.') || name.starts_with('builtin.') {
+		bare := name.all_after('.')
+		if bare in g.global_types {
+			return bare
+		}
+	}
 	qname := qualify_name_in_module(g.tc.cur_module, name)
 	if qname != name && qname in g.global_types {
 		return qname
@@ -12258,6 +12264,9 @@ fn (g &FlatGen) direct_callback_ident_name(id flat.NodeId) ?string {
 		return g.direct_callback_ident_name(g.a.child(&node, 0))
 	}
 	if node.kind == .selector && node.children_count > 0 {
+		if g.tc.selector_value_type(node) != none {
+			return none
+		}
 		base := g.a.child_node(&node, 0)
 		if base.kind == .ident {
 			looked_up := g.tc.cur_scope.lookup(base.value) or { types.Type(types.void_) }
