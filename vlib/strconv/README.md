@@ -26,14 +26,14 @@ Bit size 0 uses the width of `int` in the selected target and backend, as given 
 `parse_int` saturates at the signed limits; `parse_uint` reports overflow as an error.
 `atoi` and `string.int()` retain their 32-bit range even on targets with a 64-bit `int`.
 
+String numeric conveniences such as `.int()`, `.i64()`, `.u64()`, and their narrower variants
+also keep bare leading zeros decimal. Explicit `0b`, `0o`, and `0x` prefixes still select a base.
+Use `.parse_int(0, bits)` or `.parse_uint(0, bits)` for base-zero inference on a string.
+
 Underscores may separate digits, as in `1_000` or `0xFF_FF`, with base 0 only: with an explicit
 base, `parse_int` and `parse_uint` return an error for them. The lower-level `common_parse_int`,
 `common_parse_uint` and `common_parse_uint2` accept the separators in every base; `.int()` and
 the other string conveniences below use them, so `'1_000'.int()` is 1000.
-
-String numeric conveniences such as `.int()`, `.i64()`, `.u64()`, and their narrower variants
-also keep bare leading zeros decimal. Explicit `0b`, `0o`, and `0x` prefixes still select a base.
-Use `.parse_int(0, bits)` or `.parse_uint(0, bits)` for base-zero inference on a string.
 
 ```v
 assert '010'.int() == 10
