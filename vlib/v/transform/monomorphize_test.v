@@ -1120,3 +1120,49 @@ fn main() {}
 	t.transform_late_used_fn_bodies(['Tag.bump'], 0, 1, limit)
 	assert t.a.nodes[bump_idx].children_start == lowered.children_start
 }
+
+fn test_scoped_late_fn_bodies_pass_records_lowered_bodies() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_scoped_late_bodies_${os.getpid()}.v')
+	mut source := 'struct Tag {\nmut:\n\tcount int\n}\n'
+	mut names := []string{}
+	for i in 0 .. direct_late_transform_max_names + 1 {
+		source += 'fn (mut tag Tag) bump${i}() { tag.count++ }\n'
+		names << 'Tag__bump${i}'
+	}
+	source += 'fn main() {}\n'
+	os.write_file(path, source) or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	used := transform_with_used(mut a, &tc, {
+		'main': true
+	})
+	mut t := new_transformer(mut a, &tc, used)
+	t.prepare()
+	t.mark_used_fn_bodies_lowered()
+	// Monomorphization starts without the main transformer's body bookkeeping.
+	assert t.transformed_fns.len == 0
+	t.scope_parallel_workers = true
+	t.retain_worker_results = true
+	limit := t.a.nodes.len
+	// More than the direct-pass limit routes these bodies through scoped batches.
+	t.transform_late_used_fn_bodies(names, 0, names.len, limit)
+	mut lowered := map[int]int{}
+	for i in 0 .. limit {
+		node := t.a.nodes[i]
+		if node.kind == .fn_decl && node.value.starts_with('Tag.bump') {
+			assert t.lowered_fn_bodies[i], node.value
+			lowered[i] = node.children_start
+		}
+	}
+	assert lowered.len == names.len
+	// A later round discovers another spelling of a body that the batch lowered.
+	t.transform_late_used_fn_bodies(['Tag.bump0'], 0, 1, limit)
+	for idx, children_start in lowered {
+		assert t.a.nodes[idx].children_start == children_start
+	}
+}

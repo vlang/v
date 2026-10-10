@@ -2615,6 +2615,9 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 			if idx >= 0 && idx < t.transformed_fns.len {
 				t.transformed_fns[idx] = true
 			}
+			if idx >= 0 && idx < t.lowered_fn_bodies.len {
+				t.lowered_fn_bodies[idx] = true
+			}
 			t.cur_file = candidates[ci].file
 			t.cur_module = candidates[ci].module
 			for call_name in t.generated_fn_body_call_names(flat.NodeId(idx)) {
