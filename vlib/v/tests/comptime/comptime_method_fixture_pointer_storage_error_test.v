@@ -7,8 +7,8 @@ fn test_checker_fixture_rejects_forwarded_mut_value_for_pointer_storage() {
 	defer { os.rmdir_all(root) or {} }
 	mut process := os.new_process(@VEXE)
 	process.set_work_folder(@VEXEROOT)
-	process.set_args(['-new-compiler', '-no-retry-compilation', '-nocache', '-checker-fixture',
-		'-b', 'c', '-prod', '-o', os.join_path(root, 'invalid'), fixture])
+	process.set_args(['-new-compiler', '-no-retry-compilation', '-nocolor', '-nocache',
+		'-checker-fixture', '-b', 'c', '-prod', '-o', os.join_path(root, 'invalid'), fixture])
 	process.set_redirect_stdio_merged()
 	process.run()
 	output := process.stdout_slurp()
