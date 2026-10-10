@@ -171,6 +171,9 @@ fn client_ip(req http.Request) string {
 ## Cookies, headers and multipart
 
 `Request.add_cookie`/`Request.cookie` and `Response.cookies` handle cookies.
+`Response.cookies` reads `Max-Age` as a decimal integer: a positive number of seconds is
+stored in `Cookie.max_age`, zero or a negative number as `-1` (delete now). Any other value
+remains in `Cookie.unparsed`, which holds only the attributes that were not read.
 `Response.cookies` parses `Expires` with `time.parse_http_header_string`. Invalid dates
 and years before 1601 remain in `Cookie.unparsed`; they do not replace a valid expiry.
 `Cookie.raw_expires` retains date text even when it cannot be parsed.
