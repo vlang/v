@@ -12183,7 +12183,7 @@ fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
 	return match method.len {
 		3 { method == 'pop' }
 		4 { method == 'last' || method == 'trim' }
-		5 { method == 'clear' }
+		5 { method == 'first' || method == 'clear' }
 		11 { method == 'delete_last' }
 		else { false }
 	}
