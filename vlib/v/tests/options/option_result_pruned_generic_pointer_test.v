@@ -59,7 +59,7 @@ fn main() {
 		main_file := os.join_path(path, 'main.v')
 		os.write_file(main_file, source) or { panic(err) }
 		for serial in [false, true] {
-			mut args := ['-b', 'c', '-cstrict', '-nocache', '-no-retry-compilation']
+			mut args := ['-b', 'c', '-cc', @CCOMPILER, '-cstrict', '-nocache', '-no-retry-compilation']
 			if serial {
 				args << '-no-parallel'
 			}
