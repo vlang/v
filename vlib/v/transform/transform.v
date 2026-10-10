@@ -19683,7 +19683,7 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 	if !local_name.contains('.') {
 		var_typ := t.var_type(local_name)
 		if var_typ.len > 0 {
-			clean_actual = if t.mut_param_values[local_name] {
+			clean_actual = if t.mut_param_values[local_name] && !t.pointer_value_rvalues[local_name] {
 				var_typ.trim_string_left('&')
 			} else {
 				var_typ
@@ -19952,7 +19952,7 @@ fn (t &Transformer) comptime_condition_actual_type(raw string) string {
 	}
 	raw_var_type := t.raw_var_type(clean)
 	if raw_var_type.len > 0 {
-		clean = if t.mut_param_values[clean] {
+		clean = if t.mut_param_values[clean] && !t.pointer_value_rvalues[clean] {
 			raw_var_type.trim_string_left('&')
 		} else {
 			raw_var_type
