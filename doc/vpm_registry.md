@@ -19,16 +19,24 @@ database, no user account and no replication. Everything the server serves comes
 from `index.json` and the archives beside it, with metadata read at startup and archive bytes
 verified on each download.
 
-## Status: reference implementation, not a client path
+## Status: an additional metadata source, not an install path
 
 **`v install` keeps its existing VCS install path.**
 
-`v install` still resolves a module through `get_mod_vpm_info` in
-`cmd/tools/vpm/common.v`, which issues `GET <server>/api/packages/<name>` and
-then clones the VCS URL named in the reply. The routes listed below are not that
-route. Counting the call sites: `serve`, `route` and `handle_request` have no
-caller in `cmd/tools/vpm` outside `registry_server.v` and the tests, and
-`/api/packages/<name>` is not served by the router at all.
+`v install` still resolves a registered module through `get_mod_vpm_info` in
+`cmd/tools/vpm/common.v`. That loop now asks the registry protocol first, from
+the one base `VPM_REGISTRY` names, and then the vpm servers exactly as it did
+before: `GET <server>/api/packages/<name>`, then a clone of the VCS url named
+in the reply. With `VPM_REGISTRY` unset, no registry route is requested at all
+and resolution behaves as it did before a registry could be configured.
+
+A registry is a metadata source and nothing more. `RegistryModule` carries no
+repository url, and nothing downloads and unpacks an archive, so a module found
+in a registry is reported rather than installed: the resolution records that the
+registry holds it, why its archive could not be located, and goes on to the
+servers. Counting the call sites: `serve`, `route` and `handle_request` still
+have no caller in `cmd/tools/vpm` outside `registry_server.v` and the tests,
+and `/api/packages/<name>` is still not served by the router at all.
 
 The compiler frontend dispatches `./v registry serve` to the VPM tool. The server is also
 available through `./v run cmd/tools/vpm registry serve` or a compiled VPM binary.
@@ -36,7 +44,18 @@ available through `./v run cmd/tools/vpm registry serve` or a compiled VPM binar
 The client helpers `fetch_registry_versions`, `fetch_registry_latest`, and
 `fetch_registry_info` read these routes and return version strings or `RegistryModule` metadata.
 An unknown module has an empty version list; absent metadata and unsuccessful HTTP responses
-return errors. These helpers do not change how `v install` resolves packages.
+return errors.
+
+### How a registry is consulted
+
+`get_mod_vpm_info_with_selector` asks `GET /<name>/@v/list` first and reads an
+empty list as "this registry does not hold the module", the way it reads a 404
+from a vpm server. That is the rule the protocol forces: an unknown module
+answers `200` with `[]` rather than a 404, so treating an empty list as a hit
+would pin the first registry that answers at all as the source of a module it
+never heard of. A non-empty list is followed by
+`GET /<name>/@v/<version>.info` for the highest listed version whose metadata
+answers and is not yanked, and then by `GET /config.json` for the archive base.
 
 ## Endpoints
 
@@ -65,7 +84,9 @@ The fields:
   `api` are the fixed strings `https://example.com/downloads` and
   `https://example.com/api`, `auth_required` is always `false`, and `public_key`
   is `Registry.public_key_hex()`: the registry's own key, or `""` when it holds
-  no signing key.
+  no signing key. `registry_archive_base` in `registry_client.v` reads `dl` for
+  the install path and refuses a base on an RFC 2606 documentation domain, which
+  is where that fixed value points.
 - `/<module>/@v/list` returns versions sorted by semver, descending. An unknown
   module answers `200` with `[]`, not `404`.
 - `/<module>/@v/<version>.info` returns one `ModuleInfo`: name, version,
@@ -139,6 +160,11 @@ out-of-range values are rejected before the server binds a socket.
 - `VPM_REGISTRY_KEY` — a hex-encoded ed25519 seed. It takes precedence over
   `signing.key`; the seed must be exactly 32 bytes or the registry is treated as
   unsigned. With neither, `signature()` returns `""`.
+- `VPM_REGISTRY` — the base url of the registry `v install` asks before the vpm
+  servers, read per resolution and normalised like a server url. Unset means
+  there is no registry, and then no registry route is requested at all. Unlike a
+  selected server, a registry is never recorded: a module found in one is
+  reported rather than installed, so there is nothing to prefer next time.
 - `VPM_TOKEN_<HOST>` and `VPM_TOKEN` — bearer tokens for **client** requests, not
   for the server. `registry_token` in `common.v` builds the scoped name from the
   host, replacing `.` and `-` with `_` and uppercasing it, so
@@ -242,7 +268,16 @@ checksum spelling.
   an index.
 - `config.json` still returns fixed `https://example.com/...` values for `dl`
   and `api` and a fixed `auth_required: false`; only `public_key` comes from the
-  registry's own state. No client reads the document.
+  registry's own state. The install path reads `dl` and refuses the placeholder,
+  but nothing configures it.
+- No archive download. A module found in a registry is reported, not installed:
+  `RegistryModule` carries no repository url, and nothing downloads and unpacks
+  the archive. The resolution names the registry, the version and the archive
+  base it would have needed, which is the difference an operator can act on.
+- `list_versions` includes yanked versions, so the client walks the list from
+  the top and takes the first version whose metadata answers and is not yanked.
+  A registry whose every version is yanked is reported as holding no installable
+  one.
 - `RequestOptions.body` is dead: `serve` calls `handle_request` without options,
   so no request body is routed anywhere.
 - `compute_checksum` in `registry.v` is unused; the compiler reports it as a

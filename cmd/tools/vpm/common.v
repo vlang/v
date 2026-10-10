@@ -32,6 +32,12 @@ const vexe = os.quoted_path(os.getenv('VEXE'))
 const home_dir = os.home_dir()
 const selected_server_url_env = 'VPM_SELECTED_SERVER_URL'
 const vpm_http_timeout = 10 * time.second
+// registry_url_env names the registry the client half of the protocol is asked
+// from. Unset means there is no registry, and that is the whole difference
+// between this and the servers below: no request for a registry route is made
+// at all, and resolution behaves exactly as it did before one could be
+// configured.
+const registry_url_env = 'VPM_REGISTRY'
 
 fn merge_server_urls(default_urls []string, custom_urls []string) []string {
 	mut server_urls := default_urls.clone()
@@ -167,6 +173,58 @@ fn require_registry_token(url string, status_code int) ! {
 	return error('the registry at `${url}` requires authentication (401 Unauthorized). Set ${vpm_token_env_prefix}<HOST> for it, for example ${vpm_token_env_prefix}VPM_EXAMPLE_COM, or VPM_TOKEN when only one private registry is used.')
 }
 
+// registry_url names the registry whose protocol is asked before the vpm
+// servers, or '' when none is configured.
+fn registry_url() string {
+	return normalize_server_url(os.getenv_opt(registry_url_env) or { return '' })
+}
+
+// resolve_registry_module asks the registry at `url` for `name` and returns the
+// metadata it holds, recording in `errors` why it could not so that the caller
+// goes on to the next candidate. A registry that does not hold the module is a
+// candidate that missed, exactly like a server answering 404: the module is not
+// taken from it, and the run does not fail here.
+fn resolve_registry_module(url string, name string, mut errors []string) ?ModuleVpmInfo {
+	versions := fetch_registry_versions(url, name) or {
+		errors << 'Skipping module `${name}`, since the registry at `${url}` did not list its versions: ${err.msg()}'
+		return none
+	}
+	// An unknown module answers `200` with an empty version list rather than a
+	// 404, so the empty list is a registry's way of saying it does not hold
+	// `name`. Reading it as a hit would pin the first registry that answers at
+	// all as the source of a module it never heard of, and the install would
+	// then fail with a message naming no module.
+	if versions.len == 0 {
+		errors << 'Skipping module `${name}`, since the registry at `${url}` does not hold it.'
+		return none
+	}
+	// The list is ordered highest version first, so the first version whose
+	// metadata answers and is not yanked is the newest one this registry can
+	// serve: a yanked version is one it withdrew, and installing one is exactly
+	// what yanking exists to prevent.
+	for version in versions {
+		mod := fetch_registry_info(url, name, version) or {
+			continue
+		}
+		if mod.yanked {
+			continue
+		}
+		// A registry module carries no repository url, and installing one means
+		// downloading and unpacking its archive, which nothing here does. Report
+		// which half of that is missing rather than clone the archive base,
+		// which is a placeholder at best and a repository never.
+		detail := if base := registry_archive_base(url) {
+			'downloading its archive from `${base}` is not implemented'
+		} else {
+			err.msg()
+		}
+		errors << 'The registry at `${url}` holds `${mod.name}@${mod.version}`, but a registry module has no repository url to clone, and ${detail}.'
+		return none
+	}
+	errors << 'Skipping module `${name}`, since the registry at `${url}` lists its versions but serves no metadata for an installable one.'
+	return none
+}
+
 fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 	mut selector := VpmInstallServerSelector{
 		candidate_urls: if settings.server_urls.len > 0 {
@@ -187,6 +245,15 @@ fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSele
 	}
 	mut errors := []string{}
 	is_initial_selection := selected_server_url(false, '') == ''
+	// The registry is asked first: an operator who points `VPM_REGISTRY` at one
+	// means for it to be consulted, and asking the public servers first would
+	// leave the configuration doing nothing whenever they also hold the module.
+	registry := registry_url()
+	if registry != '' {
+		if mod := resolve_registry_module(registry, name, mut errors) {
+			return mod
+		}
+	}
 	for url in selector.metadata_server_urls() {
 		modurl := url + '/api/packages/${name}'
 		verbose_println_more(@FILE_LINE, @FN,
