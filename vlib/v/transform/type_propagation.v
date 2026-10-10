@@ -1820,8 +1820,8 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 	if is_generic_app {
 		// Expand the applied alias before its base: expanding only `Values` in
 		// `Values[Item]` would leave the arguments attached to its `[]T` target.
-		alias_type := if !isnil(t.tc) && !base.contains('.') && mod.len > 0
-			&& '${mod}.${base}' in t.tc.type_aliases {
+		alias_type := if !base.contains('.') && mod.len > 0
+			&& t.type_authority_has('${mod}.${base}') {
 			'${mod}.${clean}'
 		} else {
 			clean

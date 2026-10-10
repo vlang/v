@@ -18389,6 +18389,11 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 fn (t &Transformer) call_return_type_name_in_module(ret_name string, node flat.Node, module_name string) string {
 	mut typ := ret_name
 	if explicit := t.explicit_generic_call_args(node, t.cur_module) {
+		// This helper substitutes one T slot. Multiple parameters need the
+		// checker's concrete expression type, rather than a comma-joined type.
+		if explicit.len != 1 {
+			return ''
+		}
 		caller_arg := t.normalize_type_in_module(explicit.join(', '), t.cur_module)
 		generic_arg := t.lock_colliding_main_generic_type_text(caller_arg, module_name)
 		if generic_arg.len > 0 {
