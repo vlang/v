@@ -4298,11 +4298,12 @@ fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_di
 // v3_program_executable_link_signature covers what decides the executable of a
 // program besides the inputs of its C plan and the configuration of the module
 // cache: the linker flags of the command line, whether TinyCC or the system
-// compiler links, and the options in `build_options`, which change how the C of
-// the program is generated, compiled or linked and are no part of either.
+// compiler links, the options in `build_options`, which change how the C of
+// the program is generated, compiled or linked and are no part of either, and the
+// variables of the environment that send a compiler or a linker to other files.
 fn v3_program_executable_link_signature(link_ld_flags []string, links_with_tcc bool, build_options []string) string {
-	return ['v3-program-link-1', link_ld_flags.join('\x00'), links_with_tcc.str(),
-		build_options.join('\x00')].join('\x01')
+	return ['v3-program-link-2', link_ld_flags.join('\x00'), links_with_tcc.str(),
+		build_options.join('\x00'), v3_link_environment_signature()].join('\x01')
 }
 
 // v3_files_keep_identities reports whether every file still is the file that
@@ -12190,6 +12191,7 @@ pub fn run(args []string) {
 		&& vls_line_info == '' && !served.from_server && target.os != 'windows' {
 		mut kept_functions := markused.seeded_fn_names()
 		kept_functions << cached_runtime_function_names
+		kept_functions << cached_module_function_names
 		kept_functions << module_lifecycle_function_names
 		kept_functions << v3_kept_cached_functions(&cache_state.manager)
 		pruned_declarations = prune_unreferenced_cached_functions(mut a, kept_functions)
@@ -14913,18 +14915,27 @@ pub fn run(args []string) {
 				// A build that links cached modules compiles their headers from the
 				// preprocessed form that the cache keeps.
 				mut generated_unit := ''
-				if cache_with_tcc && cache_state.manager.enabled && tcc_source == 'src.c'
-					&& cache_state.parsed_from_source.len == 0 && !is_debug
-					&& os.getenv('V3_TCC_NO_PRELUDE_CACHE') != '1' {
-					unit := os.read_file(cc_src) or { '' }
-					if with_prelude := v3_tcc_source_with_cached_prelude(&cache_state.manager, unit, tcc_path, tcc_args, tcc_source, cc_dir)
-					{
+				use_tcc_prelude := cache_with_tcc && cache_state.manager.enabled
+					&& tcc_source == 'src.c' && cache_state.parsed_from_source.len == 0
+					&& !is_debug && os.getenv('V3_TCC_NO_PRELUDE_CACHE') != '1'
+				// An executable that is kept is one of the headers that the unit reads:
+				// what they are is found out for it as well.
+				if use_tcc_prelude || program_link_inputs.taken {
+					unit_file := os.join_path_single(cc_dir, tcc_source)
+					unit := os.read_file(unit_file) or { '' }
+					prelude := v3_tcc_prelude(&cache_state.manager, unit, tcc_path, tcc_args,
+						tcc_source, cc_dir)
+					if unit.len == 0 {
+						program_link_inputs.unknown = 'the C of the program cannot be read'
+					}
+					program_link_inputs.add_tcc_headers(&prelude)
+					if use_tcc_prelude && prelude.unit.len > 0 {
 						if os.getenv('V3_TCC_PRELUDE_VERIFY') == '1'
-							&& !v3_tcc_units_compile_alike(tcc_path, tcc_args, tcc_source, cc_dir, unit, with_prelude) {
+							&& !v3_tcc_units_compile_alike(tcc_path, tcc_args, tcc_source, cc_dir, unit, prelude.unit) {
 							eprintln('V3 TinyCC prelude: the preprocessed headers change the object of ${cc_src}')
 							exit(1)
 						}
-						os.write_file(cc_src, with_prelude) or {}
+						os.write_file(cc_src, prelude.unit) or {}
 						generated_unit = unit
 					}
 				}
@@ -15024,18 +15035,30 @@ pub fn run(args []string) {
 				if effective_c_compiler == 'msvc' {
 					cc_args = msvc_cl_args(cc_args, prefs.normalized_target_os())
 				}
+				if program_executable_enabled && v3_compiled_sources(cc_args).len == 1 {
+					// The compiler writes down the headers that it reads: they are
+					// inputs of the executable like the files of the link. It writes
+					// those of one source only.
+					cc_args << ['-MD', '-MF', v3_program_dependency_file]
+				}
 				if verbose || show_cc {
 					println('  > ${cmdexec.display(c_compiler, cc_args)}')
 				}
+				// Whole seconds, and one to spare for a file system that rounds them.
+				before_cc := time.utc().unix() - 1
 				if program_executable_enabled {
 					program_link_inputs = v3_program_link_inputs(cc_args, '', v3_default_link_library_dirs(&cache_state.manager,
-						c_compiler, []string{}, if prefs.normalized_target_os() == 'macos' {
+						c_compiler, v3_link_search_args(cc_args), if prefs.normalized_target_os() == 'macos' {
 							macos_sdk_root_cache.get()
 						} else {
 							''
 						}))
 				}
 				result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
+				if program_executable_enabled && result.exit_code == 0 {
+					program_link_inputs.add_compiler_headers(&cache_state.manager, c_compiler,
+						cc_args, cc_dir, os.read_file(cc_src) or { '' }, before_cc)
+				}
 			}
 			if result.exit_code == v3_parallel_cc_monolithic_exit_code
 				&& result.output == v3_parallel_cc_monolithic_message {

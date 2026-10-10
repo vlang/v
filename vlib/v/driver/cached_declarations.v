@@ -19,10 +19,13 @@ import v.types
 // operators and by `str`, and none of those spells its name. A plain function is
 // reached by its name only, from the program, from a function body that an
 // interface carries, or from the code that the compiler generates. The names of
-// the first two are in the AST. Those of the third are cached_runtime_function_names
-// and the names that markused seeds, and when generated C still names a function
-// that was taken out, the build starts again with every declaration and records the
-// name, so that the next build keeps it.
+// the first two are in the AST. Those of the third are cached_runtime_function_names,
+// cached_module_function_names and the names that markused seeds, and when
+// generated C still names a function that was taken out, the build starts again
+// with every declaration and records the name, so that the next build keeps it.
+//
+// A program that asks for its functions at run time, through `v.reflection`, is
+// one where every declaration can be seen: nothing is taken out of it.
 
 // cached_runtime_function_names are the plain functions of `builtin`, of its
 // closure runtime and of `strconv`, `strings`, `hash` and `math.bits` that a stage
@@ -47,6 +50,26 @@ const cached_runtime_function_names = ['__as_cast', '__new_array', '__new_array_
 	'parser', 'print', 'println', 'ptr_str', 'quote', 'recover', 'repeat', 'string_plus_many',
 	'tos2', 'v_fixed_index', 'v_fixed_index_i64', 'v_fixed_index_u64', 'v_gettid', 'vcalloc',
 	'vgc_scan_range']
+
+// cached_module_function_names are the plain functions of the other modules of
+// vlib that a stage of the compiler spells in a string literal, with the name of
+// their module: `dl.interface_export_find`, which the generator looks for and
+// calls where a program can load a shared library, and leaves out without a word
+// where it is not declared. Every function of the same name is kept, in whatever
+// module it is. `cached_declarations_test.v` works this list out again as well.
+const cached_module_function_names = ['c.gen_expr_lvalue', 'debug.after_call_hook',
+	'debug.before_call_hook', 'dl.interface_export_find', 'driver.compare_print_notices',
+	'embed_file.join_chunks', 'json2.decode', 'json2.encode', 'math.abs', 'math.fmod', 'math.min',
+	'naming.type_name_part', 'orm.v_sql_query_data_add', 'orm.v_sql_query_data_parentheses', 'os.exists',
+	'os.exists_in_system_path', 'os.file_ext', 'os.file_name', 'os.find_abs_path_of_executable',
+	'os.getpid', 'os.is_abs_path', 'os.is_dir', 'os.is_drive_rooted', 'os.is_executable', 'os.is_file',
+	'os.is_normal_path', 'os.is_unc_path', 'os.join_path', 'os.join_path_single',
+	'os.kind_of_existing_path', 'os.ls', 'os.mkdir', 'os.mkdir_all', 'os.posix_get_error_msg',
+	'os.read_bytes', 'os.read_file', 'os.real_path', 'os.walk', 'os.win_volume_len', 'overflow.add_i8',
+	'pref.detect_vexe', 'pref.detect_vroot', 'rand.init', 'sync.channel_select',
+	'sync.channel_select_lang', 'sync.cpanic', 'sync.cpanic_errno', 'sync.new_channel_st',
+	'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now', 'time.vpc_now_darwin',
+	'types.compare_type_errors', 'types.compare_type_notices', 'veb.run_at']
 
 // module_lifecycle_function_names are the functions that a program calls for each
 // of its modules that has them, without a call in its source.
@@ -95,6 +118,19 @@ fn v3_cached_function_is_prunable(a &flat.FlatAst, node &flat.Node) bool {
 	return true
 }
 
+// v3_program_lists_its_functions reports whether a program of `a` can ask at run
+// time which functions it has: the generator fills the tables of `v.reflection`
+// from the declarations of the AST.
+fn v3_program_lists_its_functions(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind in [.module_decl, .import_decl]
+			&& (node.value == 'reflection' || node.value.ends_with('.reflection')) {
+			return true
+		}
+	}
+	return false
+}
+
 // prune_unreferenced_cached_functions takes the functions of cached interfaces that
 // nothing in `a` names, and that are not among `keep`, out of `a`: their nodes and
 // the nodes of their attributes become empty ones, which every stage passes over.
@@ -104,7 +140,7 @@ fn v3_cached_function_is_prunable(a &flat.FlatAst, node &flat.Node) bool {
 // collects declarations.
 fn prune_unreferenced_cached_functions(mut a flat.FlatAst, keep []string) V3PrunedDeclarations {
 	mut pruned := V3PrunedDeclarations{}
-	if a.cached_header_sources.len == 0 {
+	if a.cached_header_sources.len == 0 || v3_program_lists_its_functions(a) {
 		return pruned
 	}
 	// A function that is exported, or that its module marks as used, is one that

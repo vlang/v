@@ -1,4 +1,5 @@
 import os
+import time
 
 // A build that reads its modules from their cached interfaces leaves the functions
 // that the program cannot name out of its stages, and gives TinyCC the headers of
@@ -370,4 +371,265 @@ fn test_tcc_compiles_the_headers_of_a_program_from_their_preprocessed_form() {
 	once_more := build(root, flags, main_file, 'once_more')
 	assert !once_more.contains('V3 TinyCC prelude'), once_more
 	assert run_built(root, 'once_more') == program_output
+}
+
+// cpath_headers makes TinyCC and the system compiler search `dirs` for headers, and
+// returns what CPATH was.
+fn cpath_headers(dirs []string) ?string {
+	saved := os.getenv_opt('CPATH')
+	os.setenv('CPATH', dirs.join(os.path_delimiter), true)
+	return saved
+}
+
+fn restore_cpath(saved ?string) {
+	if value := saved {
+		os.setenv('CPATH', value, true)
+	} else {
+		os.unsetenv('CPATH')
+	}
+}
+
+// settle_headers waits until headers that were just written are old enough for a
+// preprocessed prelude to be kept of them: one that is as new as the preprocessor
+// run may be another file than the run read.
+fn settle_headers() {
+	time.sleep(2200 * time.millisecond)
+}
+
+fn test_preprocessed_headers_are_the_c_that_the_preprocessor_made_of_them() {
+	$if windows {
+		return
+	}
+	if !usecache_builds_with_tcc() {
+		return
+	}
+	flags := ['-usecache']
+	root := new_project('prelude_macros')
+	saved := pin_module_cache(cache_dir(flags))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+	}
+	headers := os.join_path(root, 'headers')
+	os.mkdir_all(headers)!
+	saved_cpath := cpath_headers([headers])
+	defer {
+		restore_cpath(saved_cpath)
+	}
+	// A macro that names itself in what it expands to is expanded once: the C that
+	// it left is not to be read with the macro defined.
+	header := os.join_path(headers, 'v_prelude_macro_test.h')
+	os.write_file(header, 'static int review_next(int n) { return n; }
+#define review_next(n) review_next((n) + 1)
+static inline int review_value(void) { return review_next(1); }
+')!
+	source := '#include <v_prelude_macro_test.h>\n\nfn C.review_value() int\n\nfn main() {\n\tprintln(C.review_value())\n}\n'
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, source)!
+	build(root, flags, main_file, 'cold')
+	assert run_built(root, 'cold') == '2'
+	settle_headers()
+	mut preprocessed := 0
+	for i in 0 .. 2 {
+		os.write_file(main_file, source + '\nfn added_${i}() {}\n')!
+		warm := build(root, flags, main_file, 'warm')
+		assert !warm.contains('V3 TinyCC prelude: not'), warm
+		if warm.contains('V3 TinyCC prelude: preprocessed') {
+			preprocessed++
+		}
+		assert run_built(root, 'warm') == '2'
+	}
+	assert preprocessed == 1
+	// The macro is there for the rest of the unit, as the header left it.
+	os.write_file(main_file, '#include <v_prelude_macro_test.h>\n\nfn C.review_value() int\n\nfn C.review_next(n int) int\n\nfn main() {\n\tprintln(C.review_value() + C.review_next(10))\n}\n')!
+	used := build(root, flags, main_file, 'used')
+	assert !used.contains('V3 TinyCC prelude: not'), used
+	assert run_built(root, 'used') == '13'
+
+	// A macro of the compiler that a header takes away, to use its name for
+	// something else: where the preprocessed C is read, the macro is back. Such a
+	// prelude is compiled as it is, and is not preprocessed again to find that out.
+	os.write_file(header, '#undef __STDC_HOSTED__
+static inline int __STDC_HOSTED__(void) { return 7; }
+static inline int review_value(void) { return __STDC_HOSTED__(); }
+')!
+	settle_headers()
+	os.write_file(main_file, source)!
+	unusable := build(root, flags, main_file, 'unusable')
+	assert unusable.contains('V3 TinyCC prelude: not used: its macros change the C'), unusable
+	assert run_built(root, 'unusable') == '7'
+	os.write_file(main_file, source + '\nfn added_later() {}\n')!
+	recorded := build(root, flags, main_file, 'recorded')
+	assert recorded.contains('V3 TinyCC prelude: not used: its macros change the C'), recorded
+	assert !recorded.contains('V3 TinyCC prelude: a header'), recorded
+	assert run_built(root, 'recorded') == '7'
+}
+
+fn test_preprocessed_headers_follow_a_header_that_appears_earlier_in_the_search() {
+	$if windows {
+		return
+	}
+	if !usecache_builds_with_tcc() {
+		return
+	}
+	flags := ['-usecache']
+	root := new_project('prelude_search')
+	saved := pin_module_cache(cache_dir(flags))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+	}
+	first := os.join_path(root, 'first')
+	later := os.join_path(root, 'later')
+	os.mkdir_all(first)!
+	os.mkdir_all(later)!
+	saved_cpath := cpath_headers([first, later])
+	defer {
+		restore_cpath(saved_cpath)
+	}
+	os.write_file(os.join_path(later, 'v_prelude_choice_test.h'), 'static inline int review_choice(void) { return 1; }\n')!
+	source := '#include <v_prelude_choice_test.h>\n\nfn C.review_choice() int\n\nfn main() {\n\tprintln(C.review_choice())\n}\n'
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, source)!
+	build(root, flags, main_file, 'cold')
+	assert run_built(root, 'cold') == '1'
+	settle_headers()
+	os.write_file(main_file, source + '\nfn added_0() {}\n')!
+	warm := build(root, flags, main_file, 'warm')
+	assert warm.contains('V3 TinyCC prelude: preprocessed'), warm
+	assert run_built(root, 'warm') == '1'
+	// The environment is what it was, and so is every header that was read.
+	os.write_file(os.join_path(first, 'v_prelude_choice_test.h'), 'static inline int review_choice(void) { return 2; }\n')!
+	os.write_file(main_file, source + '\nfn added_1() {}\n')!
+	shadowed := build(root, flags, main_file, 'shadowed')
+	assert shadowed.contains('V3 TinyCC prelude: a header appeared'), shadowed
+	assert run_built(root, 'shadowed') == '2'
+}
+
+fn test_functions_that_a_program_lists_at_run_time_are_all_there() {
+	$if windows {
+		return
+	}
+	// A project in a directory named `reflection` does not compile with `v.reflection`.
+	root := new_project('listed_functions')
+	for flags in cache_modes() {
+		saved := pin_module_cache(cache_dir(flags))
+		defer {
+			for env in saved {
+				env.restore()
+			}
+		}
+		modules := os.join_path(root, 'modules${flags.join('')}')
+		os.setenv('VMODULES', modules, true)
+		os.mkdir_all(os.join_path(modules, 'listed'))!
+		os.write_file(os.join_path(modules, 'listed', 'listed.v'), 'module listed
+
+pub fn marker() int {
+	return 1
+}
+
+pub fn only_listed() int {
+	return 2
+}
+')!
+		source := 'import listed
+import v.reflection
+
+fn main() {
+	assert listed.marker() == 1
+	found := reflection.get_funcs().filter(it.name == "only_listed" && it.mod_name == "listed")
+	println(found.len)
+}
+'
+		main_file := os.join_path(root, 'main.v')
+		os.write_file(main_file, source)!
+		build(root, flags, main_file, 'cold')
+		assert run_built(root, 'cold') == '1'
+		for i in 0 .. 2 {
+			os.write_file(main_file, source + '\nfn added_${i}() {}\n')!
+			warm := build(root, flags, main_file, 'warm')
+			// Nothing is left out of a program that can ask for all of it.
+			assert left_out(warm) <= 0, warm
+			assert run_built(root, 'warm') == '1'
+		}
+	}
+}
+
+fn test_a_host_of_shared_libraries_keeps_the_lookup_of_their_interfaces() {
+	// A program and a shared library of V are two runtimes in one process: see
+	// plugin_interface_shared_library_test.v, which this follows.
+	if os.user_os() != 'linux' {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('plugin_host')
+	flags := ['-cc', 'cc', '-gc', 'none', '-d', 'no_backtrace']
+	saved := pin_module_cache(cache_dir(flags))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+	}
+	plugin_file := os.join_path(root, 'plugin.v')
+	os.write_file(plugin_file, 'module main
+
+pub interface Plugin {
+	print_msg()
+}
+
+pub struct MyPlugin {}
+
+pub fn (p MyPlugin) print_msg() {
+	println("Hello, World!")
+}
+
+@[export: "create_plugin"]
+pub fn create_plugin() Plugin {
+	return MyPlugin{}
+}
+')!
+	build(root, ['-gc', 'none', '-d', 'no_backtrace', '-shared'], plugin_file, 'plugin')
+	library := os.join_path(root, 'plugin.so')
+	assert os.is_file(library)
+	source := 'module main
+
+import dl.loader
+
+pub interface Plugin {
+	print_msg()
+}
+
+type CreatePlugin = fn () Plugin
+
+const lib_path = "${library}"
+
+fn main() {
+	mut dl_loader := loader.get_or_create_dynamic_lib_loader(
+		key:   lib_path
+		paths: [lib_path]
+	) or { panic(err) }
+	defer {
+		dl_loader.unregister()
+	}
+	create_plugin_sym := dl_loader.get_sym("create_plugin") or { panic(err) }
+	create_plugin := CreatePlugin(create_plugin_sym)
+	plugin := create_plugin()
+	plugin.print_msg()
+}
+'
+	host_file := os.join_path(root, 'host.v')
+	os.write_file(host_file, source)!
+	build(root, flags, host_file, 'host')
+	assert run_built(root, 'host') == 'Hello, World!'
+	// The program names no function that finds the methods of a type of the
+	// library: the generator does, where the function is declared.
+	for i in 0 .. 2 {
+		os.write_file(host_file, source + '\nfn added_${i}() {}\n')!
+		warm := build(root, flags, host_file, 'host')
+		assert left_out(warm) > 0, warm
+		assert !started_again(warm), warm
+		assert run_built(root, 'host') == 'Hello, World!'
+	}
 }

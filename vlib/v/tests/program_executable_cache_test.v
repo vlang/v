@@ -1,4 +1,5 @@
 import os
+import time
 
 // A build that changes nothing restores the executable that the build before it
 // linked: it checks, generates, compiles and links nothing. These tests build a
@@ -124,6 +125,14 @@ fn make_answer_library(archive string, value int, thin bool) bool {
 	}
 	os.mv(next, archive) or { panic(err) }
 	return true
+}
+
+// linker_reads_scripts reports whether the linker of `cc` takes a file of text
+// among its inputs for a script that names inputs: GNU ld and LLD do.
+fn linker_reads_scripts() bool {
+	version := os.exec(['cc', '-Wl,--version'])
+	return version.exit_code == 0 && (version.output.contains('GNU ld')
+		|| version.output.contains('GNU gold') || version.output.contains('LLD'))
 }
 
 const answer_program = 'fn C.answer() int\n\nfn main() {\n\tprintln(C.answer())\n}\n'
@@ -309,7 +318,7 @@ fn test_flags_and_link_inputs_decide_whether_an_executable_is_restored() {
 		}
 		without_object := build(root, flags, main_file, 'without_object')
 		assert !restored(without_object), without_object
-		assert without_object.contains('V3 program executable miss: a link input changed'), without_object
+		assert without_object.contains('V3 program executable miss: an input of the compiler or the linker changed'), without_object
 		assert run_built(root, 'without_object') == '42'
 		assert_restored(build(root, flags, main_file, 'with_object'))
 
@@ -453,7 +462,7 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	make_answer_library(direct, 42, false)
 	replaced := build(root, with_option, main_file, 'direct_replaced')
 	assert !restored(replaced), replaced
-	assert replaced.contains('V3 program executable miss: a link input changed'), replaced
+	assert replaced.contains('V3 program executable miss: an input of the compiler or the linker changed'), replaced
 	assert run_built(root, 'direct_replaced') == '42'
 	assert_restored(build(root, with_option, main_file, 'direct_again'))
 	assert run_built(root, 'direct_again') == '42'
@@ -475,8 +484,64 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	make_answer_library(os.join_path(earlier, 'libanswer.a'), 53, false)
 	shadowed := build(root, with_search, main_file, 'shadowed')
 	assert !restored(shadowed), shadowed
-	assert shadowed.contains('V3 program executable miss: a library appeared'), shadowed
+	assert shadowed.contains('V3 program executable miss: a file appeared where the compiler or the linker looks'), shadowed
 	assert run_built(root, 'shadowed') == '53'
+
+	// A directory and a library that the linker is handed one by one.
+	forwarded := os.join_path(root, 'forwarded_libraries', 'libanswer.a')
+	make_answer_library(forwarded, 71, false)
+	mut with_forwarded := answer_flags.clone()
+	with_forwarded << ['-ldflags', '-Wl,-L,${os.dir(forwarded)},-lanswer']
+	assert_rebuilt(build(root, with_forwarded, main_file, 'forwarded'))
+	assert run_built(root, 'forwarded') == '71'
+	assert_restored(build(root, with_forwarded, main_file, 'forwarded_same'))
+	make_answer_library(forwarded, 72, false)
+	forwarded_replaced := build(root, with_forwarded, main_file, 'forwarded_replaced')
+	assert !restored(forwarded_replaced), forwarded_replaced
+	assert forwarded_replaced.contains('V3 program executable miss: an input of the compiler or the linker changed'), forwarded_replaced
+	assert run_built(root, 'forwarded_replaced') == '72'
+	assert_restored(build(root, with_forwarded, main_file, 'forwarded_again'))
+
+	// The same command links another library when the environment sends the
+	// linker to another directory, though no file is another one than it was.
+	env_first := os.join_path(root, 'env_first_libraries')
+	env_second := os.join_path(root, 'env_second_libraries')
+	make_answer_library(os.join_path(env_first, 'libanswer.a'), 81, false)
+	make_answer_library(os.join_path(env_second, 'libanswer.a'), 82, false)
+	mut with_environment := answer_flags.clone()
+	with_environment << ['-ldflags', '-lanswer']
+	saved_library_path := os.getenv_opt('LIBRARY_PATH')
+	os.setenv('LIBRARY_PATH', env_first, true)
+	assert_rebuilt(build(root, with_environment, main_file, 'env_first'))
+	assert run_built(root, 'env_first') == '81'
+	assert_restored(build(root, with_environment, main_file, 'env_first_same'))
+	os.setenv('LIBRARY_PATH', env_second, true)
+	env_changed := build(root, with_environment, main_file, 'env_second')
+	if value := saved_library_path {
+		os.setenv('LIBRARY_PATH', value, true)
+	} else {
+		os.unsetenv('LIBRARY_PATH')
+	}
+	assert !restored(env_changed), env_changed
+	assert run_built(root, 'env_second') == '82'
+
+	// A linker script names the archive that is read: its name says nothing of it.
+	if linker_reads_scripts() {
+		scripted := os.join_path(root, 'scripted_library', 'libscripted.a')
+		make_answer_library(scripted, 91, false)
+		script := os.join_path(root, 'answer.ld')
+		os.write_file(script, 'INPUT ( ${scripted} )\n')!
+		mut with_script := answer_flags.clone()
+		with_script << ['-ldflags', script]
+		assert_rebuilt(build(root, with_script, main_file, 'scripted'))
+		assert run_built(root, 'scripted') == '91'
+		assert_restored(build(root, with_script, main_file, 'scripted_same'))
+		make_answer_library(scripted, 92, false)
+		scripted_replaced := build(root, with_script, main_file, 'scripted_replaced')
+		assert !restored(scripted_replaced), scripted_replaced
+		assert run_built(root, 'scripted_replaced') == '92'
+		assert_restored(build(root, with_script, main_file, 'scripted_again'))
+	}
 
 	// A thin archive names its members: what the link reads is another file.
 	thin := os.join_path(root, 'thin_library', 'libanswer.a')
@@ -611,4 +676,80 @@ fn test_notices_of_a_program_built_from_cached_c_are_kept_with_its_executable() 
 	assert_restored(third)
 	assert third.count('unused variable: `unused`') == warnings, third
 	assert run_built(root, 'third') == 'done'
+}
+
+// built_without_the_cached_executable builds like `build`, with a build that
+// compiles and links whatever an earlier one kept, and returns what the program
+// prints.
+fn built_without_the_cached_executable(root string, flags []string, main_file string, name string) string {
+	os.setenv('V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', '1', true)
+	build(root, flags, main_file, name)
+	os.unsetenv('V3_CACHE_DISABLE_PROGRAM_EXECUTABLE')
+	return run_built(root, name)
+}
+
+fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
+	$if windows {
+		return
+	}
+	root := new_project('headers')
+	saved_cpath := os.getenv_opt('CPATH')
+	defer {
+		if value := saved_cpath {
+			os.setenv('CPATH', value, true)
+		} else {
+			os.unsetenv('CPATH')
+		}
+	}
+	for flags in cache_modes() {
+		saved := pin_module_cache(cache_dir(flags))
+		defer {
+			for env in saved {
+				env.restore()
+			}
+		}
+		first := os.join_path(root, 'first_headers${flags.join('')}')
+		later := os.join_path(root, 'later_headers${flags.join('')}')
+		os.mkdir_all(first)!
+		os.mkdir_all(later)!
+		os.setenv('CPATH', [first, later].join(os.path_delimiter), true)
+		name := 'v_executable_header_test.h'
+		os.write_file(os.join_path(later, name), 'static inline int header_answer(void) { return 1; }\n')!
+		main_file := os.join_path(root, 'main.v')
+		os.write_file(main_file, '#include <${name}>\n\nfn C.header_answer() int\n\nfn main() {\n\tprintln(C.header_answer())\n}\n')!
+		// A header that is as new as the build may be another file than the build
+		// read: an executable is kept of headers that are older.
+		time.sleep(2200 * time.millisecond)
+		assert_rebuilt(build(root, flags, main_file, 'cold'))
+		assert run_built(root, 'cold') == '1'
+		assert_restored(build(root, flags, main_file, 'same'))
+		assert run_built(root, 'same') == '1'
+
+		// The header is another file than it was. A build gives what a build that
+		// compiles and links gives: the C compiler reads the header again unless
+		// the compiler keeps what it made of the program by itself.
+		os.write_file(os.join_path(later, name), 'static inline int header_answer(void) { return 2; }\n')!
+		time.sleep(2200 * time.millisecond)
+		edited := build(root, flags, main_file, 'edited')
+		expected := built_without_the_cached_executable(root, flags, main_file, 'edited_linked')
+		assert run_built(root, 'edited') == expected, edited
+		if expected == '2' {
+			assert !restored(edited), edited
+			assert edited.contains('V3 program executable miss: an input of the compiler or the linker changed'), edited
+			assert_restored(build(root, flags, main_file, 'edited_same'))
+			assert run_built(root, 'edited_same') == '2'
+		}
+
+		// A header of the same name appears where the compiler finds it first.
+		os.write_file(os.join_path(first, name), 'static inline int header_answer(void) { return 3; }\n')!
+		time.sleep(2200 * time.millisecond)
+		shadowed := build(root, flags, main_file, 'shadowed')
+		expected_shadowed := built_without_the_cached_executable(root, flags, main_file,
+			'shadowed_linked')
+		assert run_built(root, 'shadowed') == expected_shadowed, shadowed
+		if expected_shadowed == '3' {
+			assert !restored(shadowed), shadowed
+			assert shadowed.contains('V3 program executable miss: a file appeared where the compiler or the linker looks'), shadowed
+		}
+	}
 }

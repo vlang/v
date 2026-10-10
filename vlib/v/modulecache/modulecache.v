@@ -2016,8 +2016,9 @@ fn (m &Manager) program_executable_identity(source_files []string, generation_si
 // valid_program_executable returns the executable that an earlier build linked from
 // the inputs that this build has: the same program sources, module interfaces,
 // native inputs and configuration (as for valid_cgen), the same `link_signature`,
-// and link inputs that are the files they were. The files that the link read are
-// compared by their metadata, and a path that the link looked for in vain has to be
+// and inputs of the C compiler and of the linker that are the files they were. The
+// headers that the compiler read and the files that the link read are compared by
+// their metadata, and a path where either looked for a file in vain has to be
 // absent still. Such a build has nothing left to generate, compile or link.
 pub fn (m &Manager) valid_program_executable(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string) ?ProgramExecutable {
 	if !m.enabled || source_files.len == 0 {
@@ -2043,12 +2044,12 @@ pub fn (m &Manager) valid_program_executable(source_files []string, generation_s
 		if line.starts_with('input=') {
 			path, metadata := program_executable_stamp_pair(line['input='.len..]) or { return none }
 			if file_metadata_signature(path) != metadata {
-				trace_program_executable_miss('a link input changed: ${path}')
+				trace_program_executable_miss('an input of the compiler or the linker changed: ${path}')
 				return none
 			}
 		} else if line.starts_with('missing=') {
 			if os.exists(line['missing='.len..]) {
-				trace_program_executable_miss('a library appeared: ${line['missing='.len..]}')
+				trace_program_executable_miss('a file appeared where the compiler or the linker looks: ${line['missing='.len..]}')
 				return none
 			}
 		} else if line.starts_with('executable=') {
@@ -2123,12 +2124,13 @@ pub fn (e &ProgramExecutable) restore(destination string) bool {
 
 // write_program_executable keeps a copy of `executable`, which a build has just
 // linked, for the next build of the same inputs. `link_files` are the files that
-// the link read, `link_identities` the metadata that each of them had before the
-// link started, `link_missing` the paths where a file would have been read too if
-// it had been there, and `notices` what the build printed about the program, in a
-// form that the driver can print again. A file that is no longer what it was
-// before the link, or a path that is no longer absent, may or may not be what the
-// linker read: nothing is kept then. One executable is kept for a program source
+// the C compiler and the linker read besides the C of the build: headers, objects,
+// libraries. `link_identities` is the metadata that each of them had when it was
+// read, or before, `link_missing` the paths where a file would have been read too
+// if it had been there, and `notices` what the build printed about the program, in
+// a form that the driver can print again. A file that is no longer what it was
+// then, or a path that is no longer absent, may or may not be what was read:
+// nothing is kept then. One executable is kept for a program source
 // set: the copy of the previous one is removed.
 pub fn (m &Manager) write_program_executable(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string, link_files []string, link_identities []string, link_missing []string, executable string, notices string) ! {
 	if !m.ensure_dir() {

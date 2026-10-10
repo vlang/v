@@ -1298,7 +1298,12 @@ fn test_pkg_config_answer_follows_an_edited_requirement() {
 	assert pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
 	assert fake.invocations().len == asked
 	foo_before := file_metadata_signature(os.join_path(fake.packages, 'foo.pc'))
-	os.write_file(dep, 'Name: dep\nVersion: 1\n') or { panic(err) }
+	// The edited file is a new one, as an installer leaves it: bytes of the same
+	// length that are written into a file within one step of the file system's
+	// clock leave its metadata as it was.
+	edited := dep + '.edited'
+	os.write_file(edited, 'Name: dep\nVersion: 1\n') or { panic(err) }
+	os.mv(edited, dep) or { panic(err) }
 	if !fake.settled('dep') {
 		return
 	}

@@ -189,7 +189,16 @@ fn test_functions_that_a_build_missed_are_kept_by_the_next_one() {
 // stage_literal_words returns the words that the stages of the compiler spell in
 // their string literals.
 fn stage_literal_words() map[string]bool {
+	words, _ := stage_literal_words_and_names()
+	return words
+}
+
+// stage_literal_words_and_names returns the words that the stages of the compiler
+// spell in their string literals, and the names with dots among them, as
+// `dl.interface_export_find`.
+fn stage_literal_words_and_names() (map[string]bool, map[string]bool) {
 	mut words := map[string]bool{}
+	mut names := map[string]bool{}
 	for dir in ['gen/c', 'transform', 'markused', 'types'] {
 		stage_dir := os.join_path(@VMODROOT, 'vlib', 'v', dir)
 		for file in os.ls(stage_dir) or { []string{} } {
@@ -205,6 +214,7 @@ fn stage_literal_words() map[string]bool {
 					continue
 				}
 				mut word := []u8{}
+				mut name := []u8{}
 				for i < source.len && source[i] != quote && source[i] != `\n` {
 					c := source[i]
 					if c == `\\` {
@@ -214,6 +224,10 @@ fn stage_literal_words() map[string]bool {
 							words[word.bytestr()] = true
 							word.clear()
 						}
+						if name.len > 0 {
+							names[name.bytestr()] = true
+							name.clear()
+						}
 						continue
 					}
 					if c.is_letter() || c.is_digit() || c == `_` {
@@ -222,48 +236,103 @@ fn stage_literal_words() map[string]bool {
 						words[word.bytestr()] = true
 						word.clear()
 					}
+					if c.is_letter() || c.is_digit() || c in [`_`, `.`] {
+						name << c
+					} else if name.len > 0 {
+						names[name.bytestr()] = true
+						name.clear()
+					}
 					i++
 				}
 				if word.len > 0 {
 					words[word.bytestr()] = true
 				}
+				if name.len > 0 {
+					names[name.bytestr()] = true
+				}
 				i++
 			}
 		}
 	}
-	return words
+	return words, names
+}
+
+const always_loaded_module_dirs = ['builtin', 'builtin/closure', 'strconv', 'strings', 'hash',
+	'math/bits']
+
+// plain_functions_of returns the plain functions that the sources in `module_dir`
+// declare.
+fn plain_functions_of(module_dir string) []string {
+	mut names := map[string]bool{}
+	for file in os.ls(module_dir) or { []string{} } {
+		if !file.ends_with('.v') || file.ends_with('_test.v') {
+			continue
+		}
+		for line in os.read_lines(os.join_path_single(module_dir, file)) or { []string{} } {
+			mut rest := line
+			if rest.starts_with('pub fn ') {
+				rest = rest[7..]
+			} else if rest.starts_with('fn ') {
+				rest = rest[3..]
+			} else {
+				continue
+			}
+			mut end := 0
+			for end < rest.len && (rest[end].is_letter() || rest[end].is_digit() || rest[end] == `_`) {
+				end++
+			}
+			if end > 0 && end < rest.len && rest[end] in [`(`, `[`] && !rest[0].is_capital() {
+				names[rest[..end]] = true
+			}
+		}
+	}
+	mut sorted := names.keys()
+	sorted.sort()
+	return sorted
 }
 
 // always_loaded_plain_functions returns the plain functions of the modules that
 // every program links.
 fn always_loaded_plain_functions() []string {
 	mut names := map[string]bool{}
-	for dir in ['builtin', 'builtin/closure', 'strconv', 'strings', 'hash', 'math/bits'] {
-		module_dir := os.join_path(@VMODROOT, 'vlib', dir)
-		for file in os.ls(module_dir) or { []string{} } {
-			if !file.ends_with('.v') || file.ends_with('_test.v') {
-				continue
-			}
-			for line in os.read_lines(os.join_path_single(module_dir, file)) or { []string{} } {
-				mut rest := line
-				if rest.starts_with('pub fn ') {
-					rest = rest[7..]
-				} else if rest.starts_with('fn ') {
-					rest = rest[3..]
-				} else {
-					continue
-				}
-				mut end := 0
-				for end < rest.len && (rest[end].is_letter() || rest[end].is_digit() || rest[end] == `_`) {
-					end++
-				}
-				if end > 0 && end < rest.len && rest[end] in [`(`, `[`] && !rest[0].is_capital() {
-					names[rest[..end]] = true
-				}
-			}
+	for dir in always_loaded_module_dirs {
+		for name in plain_functions_of(os.join_path(@VMODROOT, 'vlib', dir)) {
+			names[name] = true
 		}
 	}
 	mut sorted := names.keys()
+	sorted.sort()
+	return sorted
+}
+
+// module_functions_that_stages_name returns the plain functions of the other
+// modules of vlib that a stage spells with the name of their module, as
+// `module.function` or as the C name `module__function`.
+fn module_functions_that_stages_name() []string {
+	words, names := stage_literal_words_and_names()
+	vlib := os.join_path(@VMODROOT, 'vlib')
+	mut dirs := map[string]bool{}
+	for file in os.walk_ext(vlib, '.v') {
+		dirs[os.dir(file)] = true
+	}
+	mut found := map[string]bool{}
+	for dir, _ in dirs {
+		relative := dir[vlib.len + 1..]
+		if relative in always_loaded_module_dirs || relative.contains('tests')
+			|| relative.contains('testdata') {
+			continue
+		}
+		module_name := relative.replace('/', '.')
+		short_module := module_name.all_after_last('.')
+		for name in plain_functions_of(dir) {
+			if names['${short_module}.${name}'] || names['${module_name}.${name}']
+				|| words['${short_module}__${name}']
+				|| words['${module_name.replace('.', '__')}__${name}'] {
+				found['${short_module}.${name}'] = true
+			}
+		}
+	}
+	mut sorted := found.keys()
 	sorted.sort()
 	return sorted
 }
@@ -284,4 +353,36 @@ fn test_runtime_function_names_cover_what_the_stages_spell() {
 	// in a program that does not name it. Add the names to
 	// cached_runtime_function_names in cached_declarations.v.
 	assert missing == [], 'runtime functions that a stage names: ${missing}'
+}
+
+fn test_module_function_names_cover_what_the_stages_spell() {
+	functions := module_functions_that_stages_name()
+	assert 'dl.interface_export_find' in functions
+	mut missing := []string{}
+	for name in functions {
+		if name !in cached_module_function_names {
+			missing << name
+		}
+	}
+	// A stage that spells the name of a function of a module can look for its
+	// declaration, and do something else without a word where there is none. Add
+	// the names to cached_module_function_names in cached_declarations.v.
+	assert missing == [], 'functions of modules that a stage names: ${missing}'
+}
+
+fn test_a_program_that_lists_its_functions_keeps_every_declaration() {
+	mut a, root := parse_cached_interface('with_reflection')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'cachedmod.vh')
+	before := function_kinds(a, header)
+	assert before.len > 0
+	a.nodes << flat.Node{
+		kind:  .import_decl
+		value: 'v.reflection'
+	}
+	pruned := prune_unreferenced_cached_functions(mut a, []string{})
+	assert pruned.count == 0
+	assert function_kinds(a, header) == before
 }

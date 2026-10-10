@@ -119,6 +119,156 @@ fn test_program_link_inputs_follow_a_linker_script() {
 	assert v3_program_link_inputs(['-o', 'out', 'src.c', '-L${root}', '-lscripted'], '', []string{}).unknown.contains('thin archive')
 }
 
+fn test_program_link_inputs_read_what_goes_to_the_linker_as_one_command() {
+	root := link_inputs_fixture('program_link_forwarded')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	libs := os.join_path(root, 'libs')
+	os.mkdir_all(libs)!
+	archive := os.join_path(libs, 'libanswer.a')
+	os.write_file(archive, '!<arch>\nanswer')!
+	// An option and its value can each be handed over on its own.
+	for args in [
+		['-Wl,-L,${libs},-lanswer'],
+		['-Wl,-L', '-Wl,${libs}', '-Wl,-l,answer'],
+		['-Xlinker', '-L', '-Xlinker', libs, '-Xlinker', '-lanswer'],
+		['-Wl,--library-path=${libs},--library=answer'],
+		['-Wl,--library-path,${libs},--library,answer'],
+		['-Wl,-L${libs}', '-Wl,-weak-lanswer'],
+	] {
+		mut command := ['-o', 'out', 'src.c']
+		command << args
+		inputs := v3_program_link_inputs(command, '', []string{})
+		assert inputs.unknown == '', args.str()
+		assert inputs.files == [archive], args.str()
+		assert os.join_path(libs, 'libanswer.dylib') in inputs.missing, args.str()
+	}
+	// The value of an option that names no input is none, though it is a file.
+	named := v3_program_link_inputs(['-o', 'out', 'src.c', '-Wl,-soname,${archive}',
+		'-Wl,-rpath,${libs}', '-Wl,-install_name,${archive}', '-Wl,-z,now', '-Wl,-znow',
+		'-Wl,--build-id=sha1', '-Wl,-stack_size,0x4000000', '-Wl,-platform_version,macos,11.0,14.0',
+		'-Wl,--as-needed', '-Wl,-dead_strip', '-Wl,-undefined,dynamic_lookup', '-Wl,--exclude-libs,ALL',
+		'-Wl,-export_dynamic', '-Wl,-O1', '-Wl,-melf_x86_64'], '', []string{})
+	assert named.unknown == ''
+	assert named.files == []
+	// An option that is not known may read anything, and so may one that moves
+	// the place where libraries are looked for.
+	for args in [
+		['-Wl,--no-such-option'],
+		['-Wl,--sysroot=${root}'],
+		['-Wl,-syslibroot,${root}'],
+		['-Xlinker', '--made-up=1'],
+		['-Wl,-exotic,${archive}'],
+		['-Wl,@${archive}'],
+	] {
+		mut command := ['-o', 'out', 'src.c']
+		command << args
+		assert v3_program_link_inputs(command, '', []string{}).unknown.len > 0, args.str()
+	}
+	// The options of the compiler itself are many, and none of them is the linker's.
+	assert v3_program_link_inputs(['-O2', '-fwrapv', '--no-such-option', '-o', 'out', 'src.c'],
+		'', []string{}).unknown == ''
+	// A relative path is one of the directory of the build, unless it leaves it.
+	assert v3_program_link_inputs(['-o', 'out', 'src.c', 'module.o', '-Lcache', '-Wl,cache/a.o'],
+		'', []string{}).unknown == ''
+	assert v3_program_link_inputs(['-o', 'out', 'src.c', '-L../libs', '-lanswer'], '', []string{}).unknown.len > 0
+	assert v3_program_link_inputs(['-o', 'out', 'src.c', '../libs/libanswer.a'], '', []string{}).unknown.len > 0
+	assert v3_program_link_inputs(['-o', 'out', 'src.c', '-Wl,../libs/libanswer.a'], '',
+		[]string{}).unknown.len > 0
+}
+
+fn test_program_link_inputs_follow_a_linker_script_of_any_name() {
+	root := link_inputs_fixture('program_link_script_name')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	archive := os.join_path(root, 'libanswer.a')
+	os.write_file(archive, '!<arch>\nanswer')!
+	script := os.join_path(root, 'answer.ld')
+	os.write_file(script, 'INPUT ( ${archive} )\n')!
+	for args in [
+		[script],
+		['-Wl,${script}'],
+		['-Xlinker', script],
+		['-T', script],
+		['-T${script}'],
+		['-Wl,-T,${script}'],
+		['-Wl,-T${script}'],
+		['-Wl,--script=${script}'],
+	] {
+		mut command := ['-o', 'out', 'src.c']
+		command << args
+		inputs := v3_program_link_inputs(command, '', []string{})
+		assert inputs.unknown == '', args.str()
+		assert inputs.files == [archive, script].sorted(), args.str()
+	}
+	// A script that lays the program out does more than name inputs.
+	layout := os.join_path(root, 'layout.x')
+	os.write_file(layout, 'SECTIONS { . = 0x10000; }\n')!
+	assert v3_program_link_inputs(['-o', 'out', 'src.c', layout], '', []string{}).unknown.contains('linker script')
+	assert v3_program_link_inputs(['-o', 'out', 'src.c', '-Wl,-T,${layout}'], '', []string{}).unknown.contains('linker script')
+	// A list of symbols is read as it is, and a source is compiled.
+	symbols := os.join_path(root, 'symbols.txt')
+	source := os.join_path(root, 'extra.c')
+	os.write_file(symbols, '_answer\n')!
+	os.write_file(source, 'int extra(void) { return 1; }\n')!
+	plain := v3_program_link_inputs(['-o', 'out', 'src.c', source, '-Wl,--version-script=${symbols}',
+		'-exported_symbols_list', symbols, '-Wl,-exported_symbols_list,${symbols}'], '',
+		[]string{})
+	assert plain.unknown == ''
+	assert plain.files == [source, symbols].sorted()
+	// A text stub of a library names what the library exports, not other files.
+	stub := os.join_path(root, 'libstub.tbd')
+	os.write_file(stub, '--- !tapi-tbd\ntbd-version: 4\n')!
+	stubbed := v3_program_link_inputs(['-o', 'out', 'src.c', stub], '', []string{})
+	assert stubbed.unknown == '' && stubbed.files == [stub]
+}
+
+fn test_environment_of_a_link_is_part_of_what_identifies_its_executable() {
+	saved := os.getenv_opt('LIBRARY_PATH')
+	defer {
+		if value := saved {
+			os.setenv('LIBRARY_PATH', value, true)
+		} else {
+			os.unsetenv('LIBRARY_PATH')
+		}
+	}
+	signature := fn () string {
+		return v3_program_executable_link_signature(['-lanswer'], false, []string{})
+	}
+	os.setenv('LIBRARY_PATH', '/first', true)
+	first := signature()
+	assert first == signature()
+	os.setenv('LIBRARY_PATH', '/second', true)
+	assert signature() != first
+	os.setenv('LIBRARY_PATH', '/first${os.path_delimiter}/second', true)
+	ordered := signature()
+	os.setenv('LIBRARY_PATH', '/second${os.path_delimiter}/first', true)
+	assert signature() != ordered
+	os.unsetenv('LIBRARY_PATH')
+	assert signature() != first
+	// What a compiler or a linker searches or writes into its output by.
+	for name in ['LIBRARY_PATH', 'CPATH', 'C_INCLUDE_PATH', 'LD_RUN_PATH', 'SDKROOT',
+		'MACOSX_DEPLOYMENT_TARGET'] {
+		assert name in v3_link_environment_names
+	}
+}
+
+fn test_link_search_args_are_those_that_move_the_libraries_of_a_compiler() {
+	assert v3_link_search_args(['-O2', '-o', 'out', 'src.c', '--sysroot=/sdk', '-isysroot', '/sdk2',
+		'-m32', '-B/tools', '-lfoo', '-static', '-target', 'x86_64-linux-gnu', '-Wl,-s', '-I/inc']) == [
+		'--sysroot=/sdk',
+		'-isysroot',
+		'/sdk2',
+		'-m32',
+		'-B/tools',
+		'-static',
+		'-target',
+		'x86_64-linux-gnu',
+	]
+}
+
 fn test_library_search_dirs_are_read_from_what_a_compiler_prints() {
 	gcc := 'install: /usr/lib/gcc/x86_64-linux-gnu/13/\nprograms: =/usr/bin\nlibraries: =/usr/lib/gcc/x86_64-linux-gnu/13/:/usr/lib/x86_64-linux-gnu/:/lib/\n'
 	assert v3_parse_library_search_dirs(gcc) == ['/usr/lib/gcc/x86_64-linux-gnu/13/',
