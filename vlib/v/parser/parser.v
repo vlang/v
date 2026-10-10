@@ -118,6 +118,7 @@ mut:
 	defer_depth                  int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
 	defer_result_allowed         bool     // true when the active defer is guaranteed to run during function return
 	unsafe_depth                 int      // >0 while parsing an `unsafe` block body
+	defer_unsafe_depth           int      // `unsafe_depth` at the start of the innermost `defer` body
 	nested_block_depth           int      // lexical block depth below the current function body's outer scope
 	comptime_for_vars            []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
 	comptime_method_var          string   // innermost active `$for method in Type.methods` loop variable
@@ -10260,7 +10261,8 @@ fn (mut p Parser) or_block_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) unsafe_block_stmt(unsafe_start int) flat.NodeId {
-	was_nested := p.unsafe_depth > 0
+	// A `defer` body stays inside the `unsafe` blocks around it, but may still open its own.
+	was_nested := p.unsafe_depth > p.defer_unsafe_depth
 	p.unsafe_depth++
 	id := p.block_stmt()
 	p.unsafe_depth--
@@ -11101,10 +11103,10 @@ fn (mut p Parser) defer_stmt() flat.NodeId {
 	p.defer_result_allowed = outer_defer_result_allowed || mode == 'function'
 		|| (p.defer_depth == 0 && p.nested_block_depth == 0)
 	p.defer_depth++
-	outer_unsafe_depth := p.unsafe_depth
-	p.unsafe_depth = 0
+	outer_defer_unsafe_depth := p.defer_unsafe_depth
+	p.defer_unsafe_depth = p.unsafe_depth
 	body := p.block_stmt()
-	p.unsafe_depth = outer_unsafe_depth
+	p.defer_unsafe_depth = outer_defer_unsafe_depth
 	p.defer_depth--
 	p.defer_result_allowed = outer_defer_result_allowed
 	dstart := p.add_child(body)

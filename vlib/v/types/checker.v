@@ -946,6 +946,7 @@ pub mut:
 	cur_file               string
 	generic_decl_file      string // declaring file of the generic param text being inferred ('' = cur_file)
 	unsafe_depth           int
+	defer_unsafe_depth     int // `unsafe_depth` at the start of the innermost `defer` body
 	sort_comparator_depth  int
 	lock_depth             int
 	autolocked_map         string // the `shared` map locked by the operation being checked, see SharedMapAutolock

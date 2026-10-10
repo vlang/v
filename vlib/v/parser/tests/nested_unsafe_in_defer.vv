@@ -1,0 +1,14 @@
+fn main() {
+	mut a := 0
+	unsafe {
+		defer {
+			unsafe {
+				a++
+				unsafe {
+					a++
+				}
+			}
+		}
+	}
+	println(a)
+}

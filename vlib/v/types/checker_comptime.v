@@ -9389,9 +9389,6 @@ fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
-		if parent.kind == .defer_stmt {
-			return false
-		}
 		if parent.kind == .block && parent.value == 'unsafe' {
 			return true
 		}
@@ -13515,13 +13512,16 @@ fn (mut tc TypeChecker) ownership_record_or_fallback_error_return_drops(id flat.
 	}
 }
 
+// check_defer_stmt checks a `defer` body with the `unsafe` depth of the place where it is
+// written, so a `defer` nested in an `unsafe` block stays inside that block.
+// `defer_unsafe_depth` keeps an `unsafe` block written in the body from counting as nested.
 fn (mut tc TypeChecker) check_defer_stmt(node flat.Node) {
-	outer_unsafe_depth := tc.unsafe_depth
-	tc.unsafe_depth = 0
+	outer_defer_unsafe_depth := tc.defer_unsafe_depth
+	tc.defer_unsafe_depth = tc.unsafe_depth
 	for i in 0 .. node.children_count {
 		tc.check_node(tc.a.child(&node, i))
 	}
-	tc.unsafe_depth = outer_unsafe_depth
+	tc.defer_unsafe_depth = outer_defer_unsafe_depth
 }
 
 fn (mut tc TypeChecker) check_asm_stmt(id flat.NodeId, node flat.Node) {
@@ -19351,7 +19351,8 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 	if lhs.kind in [.ident, .param] && lhs.value.len > 0 {
 		if lhs.value != '_' && (tc.visible_local_scope_owns_name(lhs.value)
 			|| tc.visible_mut_param_binding_owns_name(lhs.value))
-			&& !(tc.unsafe_depth > 1 && !tc.current_local_scope_owns_name(lhs.value))
+			&& !(tc.unsafe_depth > tc.defer_unsafe_depth + 1
+				&& !tc.current_local_scope_owns_name(lhs.value))
 			&& !tc.decl_shadows_implicit_or_err(lhs_id, lhs.value) {
 			tc.record_error(.assignment_mismatch, 'redefinition of `${lhs.value}`', lhs_id)
 			return ScopeBindingOwner{}
