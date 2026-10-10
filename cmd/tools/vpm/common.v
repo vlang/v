@@ -32,6 +32,12 @@ const vexe = os.quoted_path(os.getenv('VEXE'))
 const home_dir = os.home_dir()
 const selected_server_url_env = 'VPM_SELECTED_SERVER_URL'
 const vpm_http_timeout = 10 * time.second
+// registry_url_env names the registry the client half of the protocol is asked
+// from. Unset means there is no registry, and that is the whole difference
+// between this and the servers below: no request for a registry route is made
+// at all, and resolution behaves exactly as it did before one could be
+// configured.
+const registry_url_env = 'VPM_REGISTRY'
 
 fn merge_server_urls(default_urls []string, custom_urls []string) []string {
 	mut server_urls := default_urls.clone()
@@ -84,17 +90,139 @@ fn vpm_http_post(url string, data string) !http.Response {
 	return vpm_http_request(.post, url, data)
 }
 
+// A token is read from the registry-scoped `VPM_TOKEN_<HOST>` first, so that a
+// machine holding tokens for several private registries does not leak one to
+// another, and from the unqualified `VPM_TOKEN` when only one is configured.
+const vpm_token_env_prefix = 'VPM_TOKEN_'
+
 fn vpm_http_request(method http.Method, url string, data string) !http.Response {
-	return http.fetch(
+	mut header := http.Header{}
+	token := registry_token(url)
+	if token != '' {
+		header.add_custom('Authorization', 'Bearer ${token}') or {}
+	}
+	resp := http.fetch(
 		method:                   method
 		url:                      url
 		data:                     data
+		header:                   header
 		read_timeout:             vpm_http_timeout
 		write_timeout:            vpm_http_timeout
 		max_retries:              1
 		enable_http2:             false
 		disable_connection_reuse: true
-	)
+		on_redirect:              vpm_registry_redirect
+	)!
+	require_registry_token(url, resp.status_code)!
+	return resp
+}
+
+// registry_http_port normalizes the default port for HTTP origin comparisons.
+fn registry_http_port(url urllib.URL) string {
+	port := url.port()
+	if port != '' {
+		return port
+	}
+	return match url.scheme.to_lower() {
+		'http' { '80' }
+		'https' { '443' }
+		else { '' }
+	}
+}
+
+// vpm_registry_redirect keeps authenticated requests within their registry origin.
+fn vpm_registry_redirect(request &http.Request, _ int, next_url string) ! {
+	request.header.get(.authorization) or { return }
+	original := urllib.parse(request.url)!
+	target := urllib.parse(next_url)!
+	if original.scheme.to_lower() != target.scheme.to_lower()
+		|| original.hostname().to_lower() != target.hostname().to_lower()
+		|| registry_http_port(original) != registry_http_port(target) {
+		return error('refusing to send a registry token to a different origin after a redirect')
+	}
+}
+
+// registry_token returns the bearer token configured for the registry that
+// serves `url`, or '' when it needs none. The host part of the url gives the
+// name of the scoped variable, so `https://vpm.example.com/a` reads
+// `VPM_TOKEN_VPM_EXAMPLE_COM`.
+fn registry_token(url string) string {
+	parsed := urllib.parse(url) or { return '' }
+	host := parsed.hostname()
+	if host == '' {
+		return os.getenv_opt('VPM_TOKEN') or { '' }
+	}
+	// An environment name may not hold `.` or `-`, so both become `_`.
+	scoped_name := '${vpm_token_env_prefix}${host.replace('.', '_').replace('-', '_').to_upper()}'
+	if scoped := os.getenv_opt(scoped_name) {
+		return scoped
+	}
+	return os.getenv_opt('VPM_TOKEN') or { '' }
+}
+
+// require_registry_token turns a 401 from a registry into an actionable error
+// that names the variable to set, instead of letting it surface as an opaque
+// transport failure. A non-401 status is not an authentication problem.
+fn require_registry_token(url string, status_code int) ! {
+	if status_code != 401 {
+		return
+	}
+	if registry_token(url) != '' {
+		return error('the registry at `${url}` rejected the configured token (401 Unauthorized).')
+	}
+	return error('the registry at `${url}` requires authentication (401 Unauthorized). Set ${vpm_token_env_prefix}<HOST> for it, for example ${vpm_token_env_prefix}VPM_EXAMPLE_COM, or VPM_TOKEN when only one private registry is used.')
+}
+
+// registry_url names the registry whose protocol is asked before the vpm
+// servers, or '' when none is configured.
+fn registry_url() string {
+	return normalize_server_url(os.getenv_opt(registry_url_env) or { return '' })
+}
+
+// resolve_registry_module asks the registry at `url` for `name` and returns the
+// metadata it holds, recording in `errors` why it could not so that the caller
+// goes on to the next candidate. A registry that does not hold the module is a
+// candidate that missed, exactly like a server answering 404: the module is not
+// taken from it, and the run does not fail here.
+fn resolve_registry_module(url string, name string, mut errors []string) ?ModuleVpmInfo {
+	versions := fetch_registry_versions(url, name) or {
+		errors << 'Skipping module `${name}`, since the registry at `${url}` did not list its versions: ${err.msg()}'
+		return none
+	}
+	// An unknown module answers `200` with an empty version list rather than a
+	// 404, so the empty list is a registry's way of saying it does not hold
+	// `name`. Reading it as a hit would pin the first registry that answers at
+	// all as the source of a module it never heard of, and the install would
+	// then fail with a message naming no module.
+	if versions.len == 0 {
+		errors << 'Skipping module `${name}`, since the registry at `${url}` does not hold it.'
+		return none
+	}
+	// The list is ordered highest version first, so the first version whose
+	// metadata answers and is not yanked is the newest one this registry can
+	// serve: a yanked version is one it withdrew, and installing one is exactly
+	// what yanking exists to prevent.
+	for version in versions {
+		mod := fetch_registry_info(url, name, version) or {
+			continue
+		}
+		if mod.yanked {
+			continue
+		}
+		// A registry module carries no repository url, and installing one means
+		// downloading and unpacking its archive, which nothing here does. Report
+		// which half of that is missing rather than clone the archive base,
+		// which is a placeholder at best and a repository never.
+		detail := if base := registry_archive_base(url) {
+			'downloading its archive from `${base}` is not implemented'
+		} else {
+			err.msg()
+		}
+		errors << 'The registry at `${url}` holds `${mod.name}@${mod.version}`, but a registry module has no repository url to clone, and ${detail}.'
+		return none
+	}
+	errors << 'Skipping module `${name}`, since the registry at `${url}` lists its versions but serves no metadata for an installable one.'
+	return none
 }
 
 fn get_mod_vpm_info(name string) !ModuleVpmInfo {
@@ -117,6 +245,15 @@ fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSele
 	}
 	mut errors := []string{}
 	is_initial_selection := selected_server_url(false, '') == ''
+	// The registry is asked first: an operator who points `VPM_REGISTRY` at one
+	// means for it to be consulted, and asking the public servers first would
+	// leave the configuration doing nothing whenever they also hold the module.
+	registry := registry_url()
+	if registry != '' {
+		if mod := resolve_registry_module(registry, name, mut errors) {
+			return mod
+		}
+	}
 	for url in selector.metadata_server_urls() {
 		modurl := url + '/api/packages/${name}'
 		verbose_println_more(@FILE_LINE, @FN,
