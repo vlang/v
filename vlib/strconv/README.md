@@ -21,6 +21,11 @@ Digits must be valid for the selected base, so `08` and `09` fail with base 0.
 An explicit prefix, with its optional underscore separator, must be followed by digits.
 V integer literal analysis keeps bare leading zeros decimal; octal literals use `0o`.
 
+Bit size 0 uses the width of `int` in the selected target and backend, as given by
+`sizeof(int) * 8`. Explicit bit sizes from 1 to 64 select that many bits regardless of the target.
+`parse_int` saturates at the signed limits; `parse_uint` reports overflow as an error.
+`atoi` and `string.int()` retain their 32-bit range even on targets with a 64-bit `int`.
+
 Underscores may separate digits, as in `1_000` or `0xFF_FF`, with base 0 only: with an explicit
 base, `parse_int` and `parse_uint` return an error for them. The lower-level `common_parse_int`,
 `common_parse_uint` and `common_parse_uint2` accept the separators in every base; `.int()` and
