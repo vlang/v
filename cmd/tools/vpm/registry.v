@@ -22,7 +22,9 @@ pub:
 	dl string
 	// api is the base URL for the registry API (publishing, search, etc.).
 	api string
-	// auth_required indicates whether all operations require authentication.
+	// auth_required is served in `/config.json` for a client to parse. This
+	// registry authenticates nothing: the field is hardcoded to `false` and no
+	// code reads it, so it describes no behaviour of this server.
 	auth_required bool
 	// public_key is the hex-encoded ed25519 key that vouches for the metadata
 	// served by this registry. A mirror cannot be forged against it, because it

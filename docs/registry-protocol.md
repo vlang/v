@@ -52,14 +52,13 @@ Paths retain percent-encoded spelling; the server removes trailing slashes befor
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /config.json` | Registry URLs, auth requirement, and signing public key |
+| `GET /config.json` | Registry URLs, the `auth_required` flag, and signing public key |
 
 ### Authentication Endpoints
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/login` | Obtain access token |
-| `POST /api/refresh` | Refresh access token |
+There are none. No route in this repository accepts or issues credentials, so there is nothing to
+log in to and no token to obtain from one. What the client sends, and what the server does with it,
+is described under Authentication below.
 
 ### Publishing
 
@@ -154,12 +153,32 @@ Per-version entry (JSON):
 
 ## Authentication
 
-- Token-based authentication for private registries
-- `Authorization: Bearer <token>` header
-- Tokens obtained via `POST /api/login`
-- Read endpoints can be public or require auth (configurable per registry)
-- Authenticated HTTP redirects must keep the registry's scheme, host, and effective port;
-  unauthenticated requests retain normal redirect handling
+Authentication here is entirely a **client-side** concern. The VPM client attaches a bearer token to
+its own registry requests. The registry server in this repository reads no credential and
+authenticates nothing.
+
+- `Authorization: Bearer <token>` is set by the VPM client only.
+- The token comes from `VPM_TOKEN_<HOST>`, where `<HOST>` is the registry's hostname with `.` and
+  `-` folded to `_` and uppercased, so `https://vpm.example.com/` reads
+  `VPM_TOKEN_VPM_EXAMPLE_COM`. `VPM_TOKEN` is the fallback when no scoped variable is set, and
+  covers a machine with a single private registry. `registry_token` in
+  `cmd/tools/vpm/common.v:149` builds the name; `vpm_http_request` at `common.v:98` attaches the
+  header when it is non-empty, so a registry that needs none receives no such header at all.
+- There is no login endpoint, and nothing obtains or issues a token. No route in this repository
+  accepts credentials. A token is provisioned in the environment by whoever configures it, which is
+  why it is a VPM client variable and not part of the protocol.
+- The registry server authenticates nothing. `auth_required` is a field of `RegistryConfig`
+  (`registry.v:26`) that is hardcoded to `false` (`registry.v:478`) and that no code reads, so no
+  endpoint can require a credential. It is present in `/config.json` so that a client can parse the
+  document, not because anything checks it.
+- A registry answering `401` is reported by `require_registry_token` (`common.v:166`) as an error
+  naming the variable to set, rather than as an opaque transport failure. This repository's registry
+  answers only `200`, `304` and `404`, so that path is reached against a third-party registry.
+- Authenticated HTTP redirects keep the registry's scheme, host and effective port
+  (`vpm_registry_redirect`, `common.v:133`), so `http://` and `https://` are different origins, as
+  are a default port and an explicit one. A request that would cross an origin fails rather than
+  leaking the token to the new target. Unauthenticated requests are unaffected: the check is skipped
+  when the request carries no `Authorization` header.
 
 ## Migration Path
 
