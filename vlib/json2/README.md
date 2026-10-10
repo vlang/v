@@ -75,6 +75,10 @@ fn main() {
 Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
 its integer value instead.
 
+Floats use decimal notation for zero and magnitudes from `1e-6` (inclusive) to
+`1e21` (exclusive), and scientific notation outside that range, matching Go's
+`encoding/json`. Exponents omit leading zeros, for example `1e-7`.
+
 Use `@[omitempty]` to omit empty struct fields. For boolean fields, including optional
 booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects encoding:
 `decode` still assigns an explicit empty value such as `0` or `""` from the input.

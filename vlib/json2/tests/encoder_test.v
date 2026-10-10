@@ -197,12 +197,12 @@ fn test_encode_float() {
 	// remove ending `.0`
 	assert json.encode(1.0) == '1'
 
-	// TODO: better generate `1e10` instead of `1e+10`
-	assert json.encode(1.0e+10) == '1e+10'
-	assert json.encode(1.0e10) == '1e+10'
-	assert json.encode(1.e10) == '1e+10'
+	// Floats in [1e-6, 1e21) use decimal notation, like Go's encoding/json.
+	assert json.encode(1.0e+10) == '10000000000'
+	assert json.encode(1.0e10) == '10000000000'
+	assert json.encode(1.e10) == '10000000000'
 	assert json.encode(1.0e-10) == '1e-10'
-	assert json.encode(1.1e10) == '1.1e+10'
+	assert json.encode(1.1e10) == '11000000000'
 }
 
 struct PrettifyEmptyCollectionsFixture {
