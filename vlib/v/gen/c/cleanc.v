@@ -458,6 +458,9 @@ mut:
 	cache_const_declarations       map[string]string
 	cache_decl_refs                map[string]bool
 	cache_decl_demand              bool
+	cache_pruned_fn_names          []string
+	cache_pruned_fn_modules        []string
+	cache_pruned_fn_refs           []string
 	const_init_order               []string
 	fixed_storage_consts           map[string]bool
 	global_modules                 map[string]string
@@ -3184,6 +3187,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cache_const_declarations.clear()
 	g.cache_decl_refs.clear()
 	g.cache_decl_demand = false
+	g.cache_pruned_fn_refs = []string{}
 	g.const_files.clear()
 	g.const_init_order = []string{}
 	g.fixed_storage_consts.clear()

@@ -556,6 +556,31 @@ coverage, tests, and an implicit `run` on macOS, which has its own executable ca
 `V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
 The cache resolves the path of each module source once for a build; the table of resolved paths
 is closed when the imports are resolved, before later stages read it from several threads.
+A build that reads every module from its interface gets all the functions of those modules as
+declarations, some sixteen hundred for `builtin` and what it brings along, and each stage would
+register, index and visit them. Before the stages run, such a build takes the plain functions and
+C function declarations that nothing in it names out of the AST: their code is in the objects of
+their modules. A name counts wherever the program, or a function body that an interface carries,
+spells it. Methods always stay, as a method is found through its receiver, an interface, an
+operator or `str`, and so do exported functions, those marked `@[markused]`, `init` and `cleanup`,
+the functions that mark-used seeds, and the runtime functions that a stage of the compiler spells
+in a string literal (`cached_runtime_function_names`, which a test keeps complete). The C generator
+checks the result: when the generated C names a function that was left out, or the C compiler
+reports an error in the program unit, the build starts again with every declaration, and records
+the function in `kept_cached_functions` of the module cache, so that later builds keep it. TinyCC
+and the system compiler get `-Werror=implicit-function-declaration` for such a unit. The same
+executable comes out either way. Builds that keep the plans of a development build on macOS
+(`-cc cc` without `-prod`), tests, and `-autofree` builds keep every declaration, and so does any
+build with `V3_CACHE_ALL_DECLARATIONS=1`; `V3_CACHE_TRACE=1` prints how many were left out.
+With `-usecache`, TinyCC used to read the headers of the C library for every program unit: 3.7 MB
+for a unit of 113 KB. The part of the unit that includes them, up to the last `#include`, is now
+kept in the module cache in preprocessed form with its macro definitions (`tcc -E -dD`), and the
+unit includes that file instead. The form is valid while the unit starts with the same text, for
+the same TinyCC and arguments, while every header that the preprocessor read is the file it was,
+and while no header has appeared where an `#include` or a `__has_include` would find it first. If
+TinyCC reports an error in a unit that uses it, the unit is compiled as it was generated.
+`V3_TCC_NO_PRELUDE_CACHE=1` turns this off, and `V3_TCC_PRELUDE_VERIFY=1` compiles both forms and
+stops when their objects differ.
 On macOS, TinyCC starts Apple's `codesign` for each executable that it links, which takes longer
 than TinyCC needs for a small program. The compiler gives the executable the same kind of ad-hoc
 signature itself and keeps `codesign` from running; `V3_TCC_APPLE_CODESIGN=1` restores the tool.

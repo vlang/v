@@ -9619,6 +9619,8 @@ pub fn run(args []string) {
 	mut skip_notices := false
 	mut is_repl := false
 	mut parser_diagnostics_already_printed := false
+	mut keep_all_cached_declarations := os.getenv('V3_CACHE_ALL_DECLARATIONS') == '1'
+	mut checker_notices_already_printed := false
 	mut show_test_stats := v3_environment_show_test_stats()
 	mut warn_impure_v := false
 	mut warn_about_allocs := false
@@ -10046,6 +10048,12 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == v3_internal_parser_diagnostics_printed_flag {
 			parser_diagnostics_already_printed = true
+			i++
+		} else if args[i] == v3_internal_all_cached_declarations_flag {
+			keep_all_cached_declarations = true
+			i++
+		} else if args[i] == v3_internal_checker_notices_printed_flag {
+			checker_notices_already_printed = true
 			i++
 		} else if args[i] == '-check-overflow' {
 			check_overflow = true
@@ -12223,6 +12231,29 @@ pub fn run(args []string) {
 	// per-expression types for type-dependent lowering.
 	mut ck_stage_sw := time.new_stopwatch()
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'semantic checking')
+	// A build that reads its modules from their interfaces takes the functions that
+	// nothing in it can name out of the AST, so that no stage has to look at them
+	// (see cached_declarations.v). The plans that the system compiler keeps of a
+	// development build on macOS are made of what the stages of an earlier build
+	// left, with every declaration: such a build keeps them all.
+	mut pruned_declarations := V3PrunedDeclarations{}
+	mut checker_notices_printed := false
+	if backend == 'c' && cache_state.manager.enabled && !keep_all_cached_declarations
+		&& !cache_state.force_source && cache_state.parsed_from_source.len == 0 && !cgen_cache_hit
+		&& !use_macos_dev_program_cache && !c_only && !is_o && !is_shared && !check_only
+		&& test_files.len == 0 && !is_checker_fixture && !is_repl && !is_prof
+		&& profile_file.len == 0 && !is_trace_calls && coverage_dir.len == 0 && !ownership_mode
+		&& 'ownership' !in prefs.user_defines && 'autofree' !in prefs.user_defines
+		&& vls_line_info == '' && !served.from_server && target.os != 'windows' {
+		mut kept_functions := markused.seeded_fn_names()
+		kept_functions << cached_runtime_function_names
+		kept_functions << module_lifecycle_function_names
+		kept_functions << v3_kept_cached_functions(&cache_state.manager)
+		pruned_declarations = prune_unreferenced_cached_functions(mut a, kept_functions)
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 cached declarations: left out ${pruned_declarations.count} functions that the program does not name')
+		}
+	}
 	mut pre_tc := types.TypeChecker.new(a)
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
@@ -12546,6 +12577,8 @@ pub fn run(args []string) {
 			b.step_parallel('check', check_was_parallel)
 		}
 		if pre_tc.errors.len > 0 {
+			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+				&pruned_declarations, checker_notices_printed)
 			if is_checker_fixture {
 				fixture_used_fns, fixture_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				has_invalid_comptime_struct_update :=
@@ -12609,6 +12642,8 @@ pub fn run(args []string) {
 			pre_tc.notices.clear()
 		}
 		if pre_tc.errors.len > 0 {
+			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+				&pruned_declarations, checker_notices_printed)
 			exit(1)
 		}
 		if no_closures {
@@ -12649,6 +12684,8 @@ pub fn run(args []string) {
 		if pre_tc.has_noalloc_contracts() {
 			pre_tc.check_noalloc_contracts(false, noalloc_unsupported_modes)
 			if pre_tc.errors.len > 0 {
+				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+					&pruned_declarations, checker_notices_printed)
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 					check_only, message_limit, skip_notices)
@@ -12678,6 +12715,8 @@ pub fn run(args []string) {
 			pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
+				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+					&pruned_declarations, checker_notices_printed)
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 					check_only, message_limit, skip_notices)
 				exit(1)
@@ -12846,6 +12885,8 @@ pub fn run(args []string) {
 					break
 				}
 				if pre_tc.errors.len > 0 {
+					restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+						&pruned_declarations, checker_notices_printed)
 					print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 						check_only, message_limit, skip_notices)
 					exit(1)
@@ -12885,8 +12926,12 @@ pub fn run(args []string) {
 			if cache_state.manager.enabled {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
-			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only, message_limit, skip_notices)
+			// A build that starts again prints what it found once.
+			if !checker_notices_already_printed {
+				print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture,
+					fatal_errors, check_only, message_limit, skip_notices)
+				checker_notices_printed = true
+			}
 			for notice in pre_tc.notices {
 				if skip_notices && notice.severity in ['', 'notice:'] {
 					continue
@@ -13300,6 +13345,8 @@ pub fn run(args []string) {
 			pre_tc.refresh_rewritten_parent_index(a)
 		}
 		if transform_errors.len > 0 {
+			restart_v3_for_errors_of_pruned_build(&cache_state.manager, transform_errors,
+				&pruned_declarations, checker_notices_printed)
 			if compiler_errors.json_output() {
 				for message in transform_errors {
 					eprintln(compiler_errors.json_message('error:', message, []string{}))
@@ -13327,8 +13374,11 @@ pub fn run(args []string) {
 					is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
 				exit(1)
 			}
-			print_type_diagnostics(a, pre_tc.notices[transform_notices_start..], []types.TypeError{},
-				is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
+			if !checker_notices_already_printed {
+				print_type_diagnostics(a, pre_tc.notices[transform_notices_start..], []types.TypeError{},
+					is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices)
+				checker_notices_printed = true
+			}
 			checker_warning_count += pre_tc.notices.len - transform_notices_start
 			pre_tc.notices.trim(transform_notices_start)
 		}
@@ -13404,6 +13454,8 @@ pub fn run(args []string) {
 		pre_tc.notices.clear()
 	}
 	if pre_tc.errors.len > 0 {
+		restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+			&pruned_declarations, checker_notices_printed)
 		if macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
@@ -13507,10 +13559,18 @@ pub fn run(args []string) {
 			if cache_state.manager.enabled {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
-			if pre_tc.errors.len == 0
-				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit, skip_notices)
+			if pre_tc.errors.len > 0 {
+				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+					&pruned_declarations, checker_notices_printed)
+			}
+			if pre_tc.errors.len > 0
+				|| (!checker_notices_already_printed && pre_tc.errors.len == 0) {
+				if pre_tc.errors.len == 0
+					|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
+					print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture,
+						fatal_errors, check_only, message_limit, skip_notices)
+					checker_notices_printed = true
+				}
 			}
 			for notice in pre_tc.notices {
 				if skip_notices && notice.severity in ['', 'notice:'] {
@@ -13525,6 +13585,8 @@ pub fn run(args []string) {
 			pre_tc.notices.clear()
 		}
 		if pre_tc.errors.len > 0 {
+			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+				&pruned_declarations, checker_notices_printed)
 			exit(1)
 		}
 		if monomorph_errors.len > 0 {
@@ -13577,6 +13639,8 @@ pub fn run(args []string) {
 	if pre_tc.has_noalloc_contracts() {
 		pre_tc.check_noalloc_contracts(true, noalloc_unsupported_modes)
 		if pre_tc.errors.len > 0 {
+			restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
+				&pruned_declarations, checker_notices_printed)
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
 				check_only, message_limit, skip_notices)
@@ -13880,6 +13944,7 @@ pub fn run(args []string) {
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(a, user_files)
+			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
 			g.set_scope_parallel_workers(!generic_cache_hit)
@@ -13892,6 +13957,13 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
+			pruned_function_refs, pruned_functions_checked := g.referenced_pruned_cache_functions()
+			if pruned_function_refs.len > 0 || !pruned_functions_checked {
+				// The generated C calls a function whose declaration this build left out.
+				cleanup_c_build_dir(cc_dir)
+				restart_v3_with_all_cached_declarations(&cache_state.manager, 'generated C names ${pruned_function_refs}',
+					pruned_function_refs, checker_notices_printed)
+			}
 			if generated_gui_entry_point := g.generated_windows_gui_entry_point() {
 				windows_gui_entry_point = generated_gui_entry_point
 			}
@@ -13958,6 +14030,7 @@ pub fn run(args []string) {
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(a, user_files)
+			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc, cache_no_parallel_cgen, test_files) or {
@@ -13966,6 +14039,13 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
+			pruned_function_refs, pruned_functions_checked := g.referenced_pruned_cache_functions()
+			if pruned_function_refs.len > 0 || !pruned_functions_checked {
+				// The generated C calls a function whose declaration this build left out.
+				cleanup_c_build_dir(cc_dir)
+				restart_v3_with_all_cached_declarations(&cache_state.manager, 'generated C names ${pruned_function_refs}',
+					pruned_function_refs, checker_notices_printed)
+			}
 			if generated_gui_entry_point := g.generated_windows_gui_entry_point() {
 				windows_gui_entry_point = generated_gui_entry_point
 			}
@@ -14842,6 +14922,11 @@ pub fn run(args []string) {
 			} else {
 				'src.c'
 			}
+			if pruned_declarations.count > 0 {
+				// A call of a function that this build left out must not pass for a
+				// call of an undeclared one, which TinyCC takes to return `int`.
+				tcc_args << '-Werror=implicit-function-declaration'
+			}
 			tcc_args << ['-o', cc_output_name, tcc_source]
 			if cache_with_tcc && cache_state.manager.enabled {
 				// The program unit, with the objects of the modules it was split from.
@@ -14876,13 +14961,46 @@ pub fn run(args []string) {
 			} else if is_shared || is_o {
 				cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 			} else {
-				run_v3_tcc_executable_link(tcc_path, tcc_args, cc_dir, cc_out)
+				// A build that links cached modules compiles their headers from the
+				// preprocessed form that the cache keeps.
+				mut generated_unit := ''
+				if cache_with_tcc && cache_state.manager.enabled && tcc_source == 'src.c'
+					&& cache_state.parsed_from_source.len == 0 && !is_debug
+					&& os.getenv('V3_TCC_NO_PRELUDE_CACHE') != '1' {
+					unit := os.read_file(cc_src) or { '' }
+					if with_prelude := v3_tcc_source_with_cached_prelude(&cache_state.manager, unit, tcc_path, tcc_args, tcc_source, cc_dir)
+					{
+						if os.getenv('V3_TCC_PRELUDE_VERIFY') == '1'
+							&& !v3_tcc_units_compile_alike(tcc_path, tcc_args, tcc_source, cc_dir, unit, with_prelude) {
+							eprintln('V3 TinyCC prelude: the preprocessed headers change the object of ${cc_src}')
+							exit(1)
+						}
+						os.write_file(cc_src, with_prelude) or {}
+						generated_unit = unit
+					}
+				}
+				if keep_unit := os.getenv_opt('V3_CACHE_KEEP_PROGRAM_C') {
+					os.cp(cc_src, keep_unit) or {}
+				}
+				mut linked := run_v3_tcc_executable_link(tcc_path, tcc_args, cc_dir, cc_out)
+				if linked.exit_code != 0 && generated_unit.len > 0
+					&& v3_c_output_reports_source_error(linked.output) {
+					// The unit as it was generated decides what becomes of the build.
+					v3_trace_tcc_prelude('not used: ${linked.output.all_before('\n')}')
+					os.write_file(cc_src, generated_unit) or {}
+					linked = run_v3_tcc_executable_link(tcc_path, tcc_args, cc_dir, cc_out)
+				}
+				linked
 			}
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
 			if used_tcc {
 				program_link_args = tcc_args.clone()
 				program_linker_dir = tcc_resources.install_dir
+			} else if pruned_declarations.count > 0 && v3_c_output_reports_source_error(result.output) {
+				cleanup_c_build_dir(cc_dir)
+				restart_v3_with_all_cached_declarations(&cache_state.manager, 'TinyCC did not compile the program',
+					v3_pruned_functions_named_in(result.output, &pruned_declarations), checker_notices_printed)
 			}
 		}
 		if tried_tcc && result.exit_code != 0
@@ -14932,6 +15050,9 @@ pub fn run(args []string) {
 				compiler_inputs << ['-D__TINYC__', '-Wno-implicit-function-declaration',
 					fallback_source]
 			} else {
+				if pruned_declarations.count > 0 {
+					compiler_inputs << '-Werror=implicit-function-declaration'
+				}
 				compiler_inputs << v3_c_source_inputs(fallback_source, needs_objective_c)
 			}
 			if !is_o {
@@ -14979,6 +15100,12 @@ pub fn run(args []string) {
 				return
 			}
 			show_v3_c_compiler_output(show_c_output, c_compiler, result)
+			if result.exit_code != 0 && pruned_declarations.count > 0
+				&& v3_c_output_reports_source_error(result.output) {
+				cleanup_c_build_dir(cc_dir)
+				restart_v3_with_all_cached_declarations(&cache_state.manager, 'the C compiler did not compile the program',
+					v3_pruned_functions_named_in(result.output, &pruned_declarations), checker_notices_printed)
+			}
 			if result.exit_code != 0 {
 				// Before degrading to the fallback compiler: a stale cache entry
 				// is repairable, and falling back would hide it indefinitely.
@@ -16300,7 +16427,7 @@ fn cache_vlib_source_and_header_paths(state &V3ModuleCacheState) map[string]bool
 		}
 		for source_file in source_files {
 			paths[source_file] = true
-			paths[os.real_path(source_file)] = true
+			paths[state.manager.real_source_path(source_file)] = true
 		}
 		header := state.manager.entry(module_name, source_files).header
 		paths[header] = true
