@@ -12264,6 +12264,9 @@ fn (g &FlatGen) direct_callback_ident_name(id flat.NodeId) ?string {
 		return g.direct_callback_ident_name(g.a.child(&node, 0))
 	}
 	if node.kind == .selector && node.children_count > 0 {
+		if g.tc.selector_value_type(node) != none {
+			return none
+		}
 		base := g.a.child_node(&node, 0)
 		if base.kind == .ident {
 			looked_up := g.tc.cur_scope.lookup(base.value) or { types.Type(types.void_) }

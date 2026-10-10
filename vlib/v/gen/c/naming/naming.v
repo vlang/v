@@ -398,6 +398,12 @@ pub fn local_rename(cname string) string {
 	return '${internal_symbol_c_prefix}local_${cname}'
 }
 
+// global_rename returns collision-free storage for a global sharing a callable name.
+// The internal namespace is disjoint from source names and renamed locals.
+pub fn global_rename(cname string) string {
+	return '${internal_symbol_c_prefix}global_${cname}'
+}
+
 // is_reserved_word reports whether name needs a prefix to avoid a C reserved word.
 pub fn is_reserved_word(name string) bool {
 	return name in reserved_words

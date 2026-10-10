@@ -17468,7 +17468,7 @@ fn (mut g FlatGen) gen_struct_default_global_selector(base flat.Node, field stri
 	} else {
 		qname
 	}
-	g.write(g.cname(global_name))
+	g.write(g.global_c_name(global_name))
 	if op == .arrow {
 		g.write('->')
 	} else {
@@ -23407,7 +23407,7 @@ fn (g &FlatGen) global_c_name(name string) string {
 			|| fn_decl_module_key(module_name, canonical) in g.fn_decl_ret_types {
 			// V permits a global value and a callable declaration with the same
 			// name. C has one namespace for both, so their storage must differ.
-			return '${g.cname(canonical)}__v_global'
+			return naming.global_rename(g.cname(canonical))
 		}
 	}
 	return g.cname(name)
