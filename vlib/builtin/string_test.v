@@ -253,6 +253,39 @@ fn test_rsplit_nth() {
 	assert e.rsplit_nth(',', 3).len == 3
 }
 
+// An empty delimiter must split on runes, not bytes, so a multi-byte
+// character is never torn across two parts. Every existing test of an empty
+// delimiter used ASCII, where one byte and one rune are the same thing.
+// See https://github.com/vlang/v/issues/29834 .
+fn test_split_empty_delimiter_is_rune_wise() {
+	assert 'αβγδ'.split('') == ['α', 'β', 'γ', 'δ']
+	assert '日本語'.split('') == ['日', '本', '語']
+	assert 'Ünïcödé'.split('') == ['Ü', 'n', 'ï', 'c', 'ö', 'd', 'é']
+	// ASCII is unchanged: one byte is one rune
+	assert 'ABCDEF'.split('') == ['A', 'B', 'C', 'D', 'E', 'F']
+}
+
+fn test_rsplit_empty_delimiter_is_rune_wise() {
+	assert 'αβγδ'.rsplit('') == ['δ', 'γ', 'β', 'α']
+	assert '日本語'.rsplit('') == ['語', '本', '日']
+	assert 'ABCDEF'.rsplit('') == ['F', 'E', 'D', 'C', 'B', 'A']
+}
+
+// The `nth` remainder must slot on a rune boundary, so the last part is the
+// remaining whole runes rather than a byte prefix.
+fn test_split_nth_empty_delimiter_is_rune_wise() {
+	assert 'αβγδ'.split_nth('', 2) == ['α', 'βγδ']
+	assert '日本語テキスト'.split_nth('', 3) == ['日', '本', '語テキスト']
+	// The `nth` remainder is the leading runes, not their reverse.
+	assert 'αβγδ'.rsplit_nth('', 2) == ['δ', 'αβγ']
+	// an empty string still splits to nothing
+	assert ''.split('') == []
+	assert ''.rsplit('') == []
+	// and the ASCII expectations the old tests pinned still hold
+	assert '123'.split_nth('', 2) == ['1', '23']
+	assert '123'.rsplit_nth('', 2) == ['3', '12']
+}
+
 fn test_split_nth_values() {
 	line := 'CMD=eprintln(phase=1)'
 

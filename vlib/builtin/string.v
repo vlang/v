@@ -1113,6 +1113,9 @@ pub fn (s string) split_n(delim string, n int) []string {
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
+// With an empty `delim` each part is one rune, not one byte, so a multi-byte
+// character is never split across parts; see https://github.com/vlang/v/issues/29834 .
+// Example: assert 'αβγ'.split('') == ['α', 'β', 'γ']
 @[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
@@ -1120,12 +1123,22 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	defer { unsafe { res.flags.clear(.noslices) } }
 	match delim.len {
 		0 {
-			for i, ch in s {
+			// Walk runes, keeping the byte offset of each, so a part is always a
+			// whole character and the `nth` remainder slots on a rune boundary.
+			mut i := 0
+			for i < s.len {
+				_, char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				if char_len < 1 {
+					// Should not happen for valid UTF-8, but a zero or negative
+					// step would loop for ever, so advance defensively.
+					char_len = 1
+				}
 				if nth > 0 && res.len == nth - 1 {
 					res << s[i..]
 					break
 				}
-				res << ch.ascii_str()
+				res << s[i..i + char_len]
+				i += char_len
 			}
 		}
 		1 {
@@ -1180,12 +1193,26 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	defer { unsafe { res.flags.clear(.noslices) } }
 	match delim.len {
 		0 {
-			for i := s.len - 1; i >= 0; i-- {
+			// Collect the rune boundaries forward, then walk them back, so the
+			// `nth` remainder is the leading runes rather than a byte prefix.
+			mut starts := []int{cap: 8}
+			mut ends := []int{cap: 8}
+			mut i := 0
+			for i < s.len {
+				_, char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				if char_len < 1 {
+					char_len = 1
+				}
+				starts << i
+				ends << i + char_len
+				i += char_len
+			}
+			for j := ends.len - 1; j >= 0; j-- {
 				if nth > 0 && res.len == nth - 1 {
-					res << s[..i + 1]
+					res << s[..ends[j]]
 					break
 				}
-				res << s[i].ascii_str()
+				res << s[starts[j]..ends[j]]
 			}
 		}
 		1 {
