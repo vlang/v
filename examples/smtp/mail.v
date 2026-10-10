@@ -12,6 +12,8 @@ fn main() {
 	println('')
 	mailserver := os.input('Mail server: ')
 	mailport := os.input('Mail server port: ').int()
+	tls_mode := os.input('TLS mode (implicit/starttls): ').to_lower()
+	ca_bundle := os.input('PEM CA bundle path: ')
 	println('Login')
 	username := os.input('Username: ')
 	password := os.input('Password: ')
@@ -25,6 +27,9 @@ fn main() {
 		port:     mailport
 		username: username
 		password: password
+		ssl:      tls_mode == 'implicit'
+		starttls: tls_mode == 'starttls'
+		verify:   ca_bundle
 	}
 	send_cfg := smtp.Mail{
 		to:        to

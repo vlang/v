@@ -35,17 +35,25 @@ pub:
 	attachments []Attachment
 }
 
-// Config stores the settings used to connect a new SMTP client.
+// Config stores the settings used to connect a new SMTP client. TLS
+// certificates are validated by default and require `verify` to name a PEM CA
+// bundle; set `in_memory_verification` when it contains PEM data. Credentials
+// are refused without TLS unless `allow_insecure_auth` enables cleartext auth.
+// Setting `validate` to false disables certificate chain and hostname checks.
 pub struct Config {
 pub:
-	server   string
-	port     int = 25
-	username string
-	password string
-	from     string
-	ssl      bool
-	starttls bool
-	timeout  time.Duration
+	server                 string
+	port                   int = 25
+	username               string
+	password               string
+	from                   string
+	ssl                    bool
+	starttls               bool
+	timeout                time.Duration
+	validate               bool = true
+	verify                 string
+	in_memory_verification bool
+	allow_insecure_auth    bool
 }
 
 pub struct Client {
@@ -88,10 +96,6 @@ pub:
 
 // new_client returns a new SMTP client and connects to it
 pub fn new_client(config Config) !&Client {
-	if config.ssl && config.starttls {
-		return error('Can not use both implicit SSL and STARTTLS')
-	}
-
 	mut c := &Client{
 		Config: config
 	}
@@ -99,11 +103,24 @@ pub fn new_client(config Config) !&Client {
 	return c
 }
 
+fn validate_config(config Config) ! {
+	if config.ssl && config.starttls {
+		return error('Can not use both implicit SSL and STARTTLS')
+	}
+	if (config.ssl || config.starttls) && config.validate && config.verify == '' {
+		return error('smtp: TLS certificate validation requires a CA bundle in `verify`')
+	}
+	if config.username != '' && !config.ssl && !config.starttls && !config.allow_insecure_auth {
+		return error('smtp: refusing to send credentials without TLS; set `allow_insecure_auth` to opt in')
+	}
+}
+
 // reconnect reconnects to the SMTP server if the connection was closed
 pub fn (mut c Client) reconnect() ! {
 	if c.is_open {
 		return error('Already connected to server')
 	}
+	validate_config(c.Config)!
 
 	mut conn := net.dial_tcp('${c.server}:${c.port}') or {
 		return error('Connecting to server failed')
@@ -127,7 +144,10 @@ pub fn (mut c Client) reconnect() ! {
 		c.send_starttls() or { return error('Sending STARTTLS failed') }
 	}
 
-	c.send_auth() or { return error('Authenticating to server failed') }
+	c.send_auth() or {
+		c.close_tcp_conn()
+		return error('Authenticating to server failed')
+	}
 	c.is_open = true
 }
 
@@ -178,13 +198,36 @@ pub fn (mut c Client) quit() ! {
 }
 
 fn (mut c Client) connect_ssl() ! {
-	c.ssl_conn = ssl.new_ssl_conn()!
-	c.ssl_conn.connect(mut c.conn, c.server) or {
-		return error('Connecting to server using OpenSSL failed: ${err}')
+	c.ssl_conn = ssl.new_ssl_conn(
+		validate:               c.validate
+		verify:                 c.verify
+		in_memory_verification: c.in_memory_verification
+	) or {
+		c.close_tcp_conn()
+		return error('Creating TLS connection failed: ${err}')
+	}
+	tls_hostname := normalize_tls_hostname(c.server)
+	c.ssl_conn.connect(mut c.conn, tls_hostname) or {
+		c.close_tcp_conn()
+		return error('Connecting to server using TLS failed: ${err}')
 	}
 
 	c.reader = io.new_buffered_reader(reader: c.ssl_conn)
 	c.encrypted = true
+}
+
+fn (mut c Client) close_tcp_conn() {
+	c.conn.close() or {}
+	c.reader = none
+	c.is_open = false
+	c.encrypted = false
+}
+
+fn normalize_tls_hostname(hostname string) string {
+	if hostname.len > 2 && hostname[0] == `[` && hostname[hostname.len - 1] == `]` {
+		return hostname[1..hostname.len - 1]
+	}
+	return hostname
 }
 
 // expect_reply checks if the SMTP server replied with the expected reply code
@@ -250,6 +293,9 @@ fn (mut c Client) send_starttls() ! {
 fn (mut c Client) send_auth() ! {
 	if c.username.len == 0 {
 		return
+	}
+	if !c.encrypted && !c.allow_insecure_auth {
+		return error('smtp: refusing to send credentials without TLS; set `allow_insecure_auth` to opt in')
 	}
 	mut sb := strings.new_builder(100)
 	sb.write_u8(0)
