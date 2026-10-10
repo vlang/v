@@ -158,6 +158,7 @@ fn release_age_seconds(value string) !i64 {
 	return amount * scale
 }
 
+@[markused]
 fn is_tag_too_new(tag_date string, age string) !bool {
 	timestamp := time.parse_rfc3339(tag_date)!.unix()
 	return timestamp > time.now().unix() - release_age_seconds(age)!
@@ -179,6 +180,7 @@ fn tag_commit_date(url string, tag string) !string {
 
 // validate_range_destinations guards independent non-project selections from
 // overwriting the single-version module store. Project installs solve the graph jointly.
+@[markused]
 fn validate_range_destinations(modules []Module) ! {
 	mut seen := map[string]Module{}
 	for m in modules {
