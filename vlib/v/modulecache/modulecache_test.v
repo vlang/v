@@ -136,6 +136,23 @@ static string _v3_lit_1_44bd54d473cd3d44 = {"/", 1, 1};
 	assert cleaned.contains('_v3_lit_1_44bd54d473cd3d44')
 }
 
+fn test_cached_runtime_literal_rewrite_preserves_const_storage_and_sharing() {
+	old_symbol := cached_c_string_symbol('cold')
+	new_symbol := cached_c_string_symbol('done')
+	source := 'static const string ${old_symbol} = {"cold", 4, 1};\n${c_body_begin}\nvoid main(void) { use(${old_symbol}); use(${old_symbol}); }\n'
+	rewritten := rewrite_cached_runtime_strings(source, ['cold', 'cold'], ['done', 'done']) or {
+		panic('expected both occurrences of the shared literal to be rewritten')
+	}
+	definition := 'static const string ${new_symbol} = {"done", 4, 1};'
+	assert rewritten.count(definition) == 1
+	assert !rewritten.contains('"cold"')
+	assert !rewritten.contains(old_symbol)
+	assert rewritten.contains('use(${new_symbol}); use(${new_symbol});')
+	if _ := rewrite_cached_runtime_strings(source, ['cold', 'cold'], ['done', 'cold']) {
+		assert false, 'changing one occurrence must not rewrite an unchanged shared literal'
+	}
+}
+
 fn test_type_declarations_omit_functions_with_local_typedefs() {
 	source := 'typedef struct VisibleType {
 	int value;

@@ -2353,8 +2353,8 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 			continue
 		}
 		new_symbol := cached_c_string_symbol(new_value)
-		old_definition := 'static string ${old_symbol} = {"${cached_c_escape(old_value)}", ${old_value.len}, 1};'
-		new_definition := 'static string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
+		old_definition := 'static const string ${old_symbol} = {"${cached_c_escape(old_value)}", ${old_value.len}, 1};'
+		new_definition := 'static const string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
 		if cached_source.contains(new_definition) {
 			target_definitions_present[new_symbol] = true
 		}
