@@ -35,12 +35,7 @@ fn seconds_to_duration(seconds f64) time.Duration {
 
 fn main() {
 	mut context := Context{}
-	mut args := os.args[1..].clone()
-	// `v retry` passes its own name in front of the arguments; a direct run does not. Only
-	// strip that name when it is there, so a direct run's first argument is not dropped.
-	if args.len > 0 && args[0] == 'retry' {
-		args = args[1..]
-	}
+	args := os.args[1..]
 	// dump(args)
 	mut fp := flag.new_flag_parser(args)
 	fp.application('v retry')

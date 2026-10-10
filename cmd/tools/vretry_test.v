@@ -139,10 +139,8 @@ fn test_retry_keeps_a_quoted_argument_whole() {
 	assert res.output.trim_space().ends_with('one two'), res.output
 }
 
-// `v retry` puts its own name in front of the arguments it passes on, and a direct run of
-// the compiled tool does not. The first argument has to reach the parser either way: `-r 1`
-// used to be dropped, so the default limit applied and `1` was run as the program, and
-// `--` as the first argument made the parser delete from an empty list.
+// Direct and launcher runs both pass the first user argument to the parser.
+// Cover a first flag, the vector separator, and a real command named retry.
 fn test_retry_binary_run_directly_keeps_its_first_argument() {
 	log.use_stdout()
 	tpath := os.join_path(os.vtmp_dir(), 'vretry direct test ${os.getpid()}')
@@ -171,4 +169,21 @@ fn test_retry_binary_run_directly_keeps_its_first_argument() {
 	dump_on_ci(limit)
 	assert limit.exit_code != 0
 	assert limit.output.contains('exceeded maximum number of retries (2)!'), limit.output
+
+	// A bare `retry` is a command name, including when no options precede it.
+	$if windows {
+		os.write_file(os.join_path(tpath, 'retry.cmd'), '@echo direct-retry-command:%1\r\n')!
+	} $else {
+		command := os.join_path(tpath, 'retry')
+		os.write_file(command, '#!/bin/sh\nprintf "direct-retry-command:%s\\n" "$1"\n')!
+		os.chmod(command, 0o700)!
+	}
+	old_path := os.getenv('PATH')
+	os.setenv('PATH', tpath + os.path_delimiter + old_path, true)
+	defer { os.setenv('PATH', old_path, true) }
+	for command_args in [[binary, 'retry', 'kept'], [vexe, 'retry', 'retry', 'kept']] {
+		result := os.exec(command_args)
+		assert result.exit_code == 0, result.output
+		assert result.output.trim_space() == 'direct-retry-command:kept', result.output
+	}
 }
