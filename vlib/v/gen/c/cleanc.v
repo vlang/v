@@ -5059,10 +5059,6 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 		if node.kind != .directive || node.typ.len == 0 {
 			continue
 		}
-		if node.value == 'flag' {
-			flag, _ := c_flag_strip_start_markers(node.typ)
-			g.note_c_flag_directive(cur_module, cur_file, flag)
-		}
 		mut flags := []string{}
 		mut at_start := false
 		if node.value == 'flag' {
@@ -5072,6 +5068,13 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			flags = c_pkgconfig_flags(node.typ)
 		} else {
 			continue
+		}
+		if node.value == 'flag' {
+			mut linkage_flags := []string{cap: flags.len}
+			for flag in flags {
+				linkage_flags << c_flag_quote_macro_value(flag)
+			}
+			g.note_c_flag_directive(cur_module, cur_file, linkage_flags.join(' '))
 		}
 		if flags.len > 0 {
 			groups << CFlagDirectiveGroup{
@@ -5225,12 +5228,15 @@ fn (mut g FlatGen) note_c_postinclude_directive(source_file string) {
 // the link. Such a file ships no header, so the V declaration is the only prototype
 // the translation unit can get.
 fn c_flag_links_c_source(flag string) bool {
-	return flag.contains('.c ') || flag.ends_with('.c') || flag.contains('.cpp')
-		|| flag.contains('.cc') || flag.contains('.o ') || flag.ends_with('.o')
+	return c_flag_links_file(flag, ['.c', '.cpp', '.cc', '.m', '.mm', '.o', '.obj'])
 }
 
 // c_flag_links_c_library reports whether a flag links a library by path.
 fn c_flag_links_c_library(flag string) bool {
+	return c_flag_links_file(flag, ['.a', '.so', '.dylib', '.lib'])
+}
+
+fn c_flag_links_file(flag string, extensions []string) bool {
 	mut skip_path := false
 	for raw_arg in tokenize_c_flag(c_flag_strip_hash_comment(flag)) {
 		if skip_path {
@@ -5242,9 +5248,10 @@ fn c_flag_links_c_library(flag string) bool {
 		if arg.starts_with('-') {
 			continue
 		}
-		if arg.ends_with('.a') || arg.ends_with('.so') || arg.ends_with('.dylib')
-			|| arg.ends_with('.lib') {
-			return true
+		for extension in extensions {
+			if arg.ends_with(extension) {
+				return true
+			}
 		}
 	}
 	return false

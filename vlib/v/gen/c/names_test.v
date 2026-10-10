@@ -1023,3 +1023,18 @@ fn test_library_path_detection_ignores_non_linker_operands() {
 		assert !c_flag_links_c_library(flag), flag
 	}
 }
+
+fn test_native_source_paths_keep_headerless_c_prototypes() {
+	for flag in ['helper.c', 'helper.cpp', 'helper.cc', 'helper.m', 'helper.mm', 'helper.o',
+		'helper.obj', '"/project/native sources/helper.m"'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['-I /project/include.o', '-L /project/library.o', '-include api.c',
+		'-isystem /project/include.m', '-DNAME=helper.cpp', 'helper.cpp.h',
+		'-I /project/include ## ignored.o'] {
+		assert !c_flag_links_c_source(flag), flag
+	}
+}
