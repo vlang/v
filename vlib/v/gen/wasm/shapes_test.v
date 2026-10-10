@@ -571,18 +571,21 @@ fn test_shape_float32_precision_and_width() {
 
 // ---- 3. string comparison ----
 
-// MEASURED DEFECT, left failing deliberately. String ordering is wrong in the
-// module, and both channels say so independently: the module's own println and
-// the exported call. Over 29 probed pairs the module's `<` is true exactly when
-// the first bytes differ in that direction, and false otherwise — so the length
-// tiebreak never fires and `"abc" < "abcd"` is false where native is true.
-// `==`/`!=` are unaffected (`"aXb" == "aYb"` is false, as it should be), and
-// `<=`/`>=` are spelled `!gt`/`!lt`, so they inherit the same wrong answer
-// whenever the strings share a first byte. The only lowering shared by all of
-// them is gen_memcmp (vlib/v/gen/wasm/ssa_gen.v:1044), whose loop conditions emit
-// 0x49 (i32.gt_s) where their own comments say i32.lt_u (0x48). That mismatch is
-// located, not proven: the fix belongs outside this file, and the failing
-// expectations below are the native ones, not relaxed ones.
+// MEASURED DEFECT, fixed. String ordering used to be wrong in the module, and
+// both channels said so independently: the module's own println and the exported
+// call. The wasm string is {str@0, len@4, is_lit@8}, but the generated
+// string__lt body read the length word at a hardcoded offset 8 -- the 64-bit
+// layout -- so both lengths came out as 1, min() was 1, memcmp compared byte 0
+// only and the tiebreak was 1 < 1. `<` was therefore true exactly when the first
+// bytes differed in that direction, and false otherwise, which is why the length
+// tiebreak never fired. `==`/`!=` looked right only because every case here
+// compares two literals, which the constant folder resolves without calling
+// string__eq; with a parameter on one side `"abcXef" == "abcYef"` was true.
+// vlib/v/ssa/builder.v now takes the offset from block_struct_field_ptr, which
+// is the same helper generate_print_body and generate_string_plus_body use, and
+// which resolves to offset 8 on a 64-bit pointer so no other backend changes.
+// gen_memcmp was checked and is not involved: 0x49 is i32.lt_u, as its comment
+// says, and the byte loop is sound. The expectations below are the native ones.
 const shape_source_string_compare = '
 fn mid_eq() bool { return "abcXef" == "abcXef" }
 
@@ -628,11 +631,11 @@ fn main() {
 }
 '
 
-// A KNOWN FAILURE, deliberately left red. String ordering on wasm is wrong in
-// five of the eleven cases here. Native and wasm, in the order main prints
-// them, wasm as 1/0 because a wasm guest prints a bool that way:
+// String ordering on wasm was wrong in five of the eleven cases here. This is
+// the record of that, in the order main prints them; wasm as 1/0 because an
+// exported bool comes back from node as a Number:
 //
-//	case              native  wasm
+//	case              native  wasm (before the fix)
 //	mid_eq     ==        1      1
 //	mid_ne     !=        1      1
 //	mid_lt     <         1      0   wrong
@@ -645,26 +648,28 @@ fn main() {
 //	long_vs_sht <        1      0   wrong
 //	long_ge_sht >=       0      1   wrong
 //
-// Equality is right in every case, so == and != are sound. Ordering is right
-// only where the two strings differ at index 0, which is first_diff ("b" <
-// "c"). It is wrong for mid_lt, where the difference is at index 3 ("abcXef" <
-// "abcYef"), and for every case whose strings are equal up to the shorter
-// length, where the length should break the tie and does not. long_ge_short is
-// wrong in the opposite direction, which is what falls out of `>=` being the
-// negation of `<`: if `<` is wrong the other way, `>=` is wrong too.
+// Equality was right in every case -- not because == is sound, but because both
+// operands of each case are literals, which the constant folder resolves without
+// calling string__eq. Ordering was right only where the two strings differ at
+// index 0, which is first_diff ("b" < "c"). It was wrong for mid_lt, where the
+// difference is at index 3, and for every case whose strings are equal up to the
+// shorter length, where the length should break the tie and did not.
+// long_ge_short was wrong in the opposite direction, which is what falls out of
+// `>=` being the negation of `<`.
 //
-// Where the defect is NOT: generate_string_lt_body (vlib/v/ssa/builder.v:6671)
+// Where the defect was NOT: generate_string_lt_body (vlib/v/ssa/builder.v:6671)
 // is correct as SSA. It takes min(len_a, len_b), calls memcmp over that many
 // bytes, and on a zero result returns len_a < len_b. The memcmp intrinsic
-// lowering (vlib/v/gen/wasm/ssa_gen.v:1044) is a correct byte loop that stops
-// on either the end of the range or the first difference. The corruption is
-// between those two, in how this particular block structure lowers to wasm --
-// most likely the two-block phi that selects the minimum length, since a wrong
-// minimum explains why only the first byte is ever seen as differing. That is
-// a hypothesis and it is labelled as one; it is not measured.
+// lowering (vlib/v/gen/wasm/ssa_gen.v:1044) is a correct byte loop that stops on
+// either the end of the range or the first difference -- its 0x49 comments are
+// accurate, 0x49 is i32.lt_u. Nor was it the two-block minimum, which is an
+// alloca store/load pair, not a phi: the minimum was correctly min(1, 1). The
+// lengths themselves were the 1s, read from offset 8 because 8 is a 64-bit
+// pointer's offset for the len field and wasm32's is 4, so offset 8 is is_lit.
 //
-// Do not remove this case and do not relax it to make the suite green. Fix the
-// lowering and it turns green on its own.
+// The fix is one substitution in vlib/v/ssa/builder.v; the expectations below
+// are unchanged native values, and this case is left in place as the regression
+// test for it.
 fn test_shape_string_comparisons() {
 	shape_case('string_compare', shape_source_string_compare,
 		'true\ntrue\ntrue\nfalse\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nfalse\n', '', false, [
