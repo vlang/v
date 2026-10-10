@@ -16527,8 +16527,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					imported_selector_module
 				}
 				full_qname := g.const_storage_name(imported_selector_module, node.value)
+				global := qualify_name_in_module(imported_selector_module, node.value)
 				if full_qname in g.const_vals {
 					g.write(g.const_ident_c_name(full_qname))
+				} else if global in g.global_types {
+					g.write(g.global_c_name(global))
 				} else {
 					g.write(g.cname('${short_mod}.${node.value}'))
 				}
@@ -16658,8 +16661,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.const_storage_name(mod, node.value)
 				}
+				global := qualify_name_in_module(mod, node.value)
 				if full_qname in g.const_vals {
 					g.write(g.const_ident_c_name(full_qname))
+				} else if global in g.global_types {
+					g.write(g.global_c_name(global))
 				} else {
 					g.write(g.cname('${short_mod}.${node.value}'))
 				}
@@ -23389,6 +23395,20 @@ fn (g &FlatGen) global_c_name(name string) string {
 	}
 	if name == 'byte' {
 		return g.cname('main.byte')
+	}
+	canonical := if name.starts_with('main.') { name[5..] } else { name }
+	modules := if canonical.contains('.') {
+		[canonical.all_before_last('.')]
+	} else {
+		['main', 'builtin']
+	}
+	for module_name in modules {
+		if fn_decl_module_key(module_name, canonical.all_after_last('.')) in g.fn_decl_ret_types
+			|| fn_decl_module_key(module_name, canonical) in g.fn_decl_ret_types {
+			// V permits a global value and a callable declaration with the same
+			// name. C has one namespace for both, so their storage must differ.
+			return '${g.cname(canonical)}__v_global'
+		}
 	}
 	return g.cname(name)
 }

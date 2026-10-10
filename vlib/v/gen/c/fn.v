@@ -9496,6 +9496,12 @@ fn (g &FlatGen) global_type_for_ident(name string) ?types.Type {
 }
 
 fn (g &FlatGen) global_name_for_ident(name string) ?string {
+	if name.starts_with('main.') || name.starts_with('builtin.') {
+		bare := name.all_after('.')
+		if bare in g.global_types {
+			return bare
+		}
+	}
 	qname := qualify_name_in_module(g.tc.cur_module, name)
 	if qname != name && qname in g.global_types {
 		return qname
