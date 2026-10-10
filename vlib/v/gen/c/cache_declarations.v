@@ -153,9 +153,36 @@ struct CacheSupportDefinition {
 	end   int
 }
 
+fn cache_collect_support_refs(source string, start int, end int, definitions map[string][]int, mut refs map[string]bool, mut pending []string) {
+	mut i := start
+	for i < end {
+		if source[i] in [`"`, `'`, `/`] {
+			next := cache_c_skip_literal_or_comment(source, i)
+			if next > i {
+				i = next
+				continue
+			}
+		}
+		if !c_identifier_start(source[i]) {
+			i++
+			continue
+		}
+		word_start := i
+		i++
+		for i < end && c_identifier_continue(source[i]) { i++ }
+		// These views stay inside the pruning call, while source remains alive.
+		// Only support names enter the worklist; other identifiers need no copies.
+		name := source.substr_unsafe(word_start, i)
+		if name in definitions && !refs[name] {
+			refs[name] = true
+			pending << name
+		}
+	}
+}
+
 // cache_prune_generated_support keeps inline helpers and literal storage reached
-// by a warm program. TinyCC emits unused inline bodies too, so declarations alone
-// are not enough to avoid recompiling arithmetic, sorting and formatting support.
+// by a warm program. TinyCC still tokenizes unused inline bodies, so omit
+// unreachable helpers and literal storage before sending C to the compiler.
 fn cache_prune_generated_support(source string) string {
 	inline_prefix := 'static inline '
 	mut support := []CacheSupportDefinition{}
@@ -163,15 +190,17 @@ fn cache_prune_generated_support(source string) string {
 	mut i := 0
 	mut depth := 0
 	for i < source.len {
-		next := cache_c_skip_literal_or_comment(source, i)
-		if next > i {
-			i = next
-			continue
+		if source[i] in [`"`, `'`, `/`] {
+			next := cache_c_skip_literal_or_comment(source, i)
+			if next > i {
+				i = next
+				continue
+			}
 		}
 		if depth == 0 && source[i] == `s` && (i == 0 || source[i - 1] == `\n`) {
 			mut end := i
 			for end < source.len && source[end] != `\n` { end++ }
-			line := source[i..end]
+			line := source.substr_unsafe(i, end)
 			literal_prefix := if line.starts_with('static const string _v3_lit_') {
 				'static const string '
 			} else if line.starts_with('static string _v3_lit_') {
@@ -182,8 +211,10 @@ fn cache_prune_generated_support(source string) string {
 			if literal_prefix.len > 0 && line.ends_with(';') {
 				mut name_end := literal_prefix.len
 				for name_end < line.len && c_identifier_continue(line[name_end]) { name_end++ }
-				if line[name_end..].trim_left(' \t').starts_with('=') {
-					name := line[literal_prefix.len..name_end]
+				mut value_start := name_end
+				for value_start < line.len && line[value_start] in [` `, `\t`] { value_start++ }
+				if value_start < line.len && line[value_start] == `=` {
+					name := line.substr_unsafe(literal_prefix.len, name_end)
 					definitions[name] << support.len
 					support << CacheSupportDefinition{ name: name, start: i, end: end }
 					i = end
@@ -198,14 +229,16 @@ fn cache_prune_generated_support(source string) string {
 					name_start--
 				}
 				if name_start < open {
-					name := line[name_start..open]
+					name := line.substr_unsafe(name_start, open)
 					mut pos := i + brace + 1
 					mut body_depth := 1
 					for pos < source.len && body_depth > 0 {
-						after := cache_c_skip_literal_or_comment(source, pos)
-						if after > pos {
-							pos = after
-							continue
+						if source[pos] in [`"`, `'`, `/`] {
+							after := cache_c_skip_literal_or_comment(source, pos)
+							if after > pos {
+								pos = after
+								continue
+							}
 						}
 						if source[pos] == `{` { body_depth++ }
 						if source[pos] == `}` { body_depth-- }
@@ -228,43 +261,33 @@ fn cache_prune_generated_support(source string) string {
 	if support.len == 0 {
 		return source.clone()
 	}
-	mut roots := strings.new_builder(source.len)
+	mut refs := map[string]bool{}
+	mut pending := []string{}
 	mut offset := 0
 	for definition in support {
-		roots.write_string(source[offset..definition.start])
+		cache_collect_support_refs(source, offset, definition.start, definitions, mut refs, mut pending)
 		offset = definition.end
 	}
-	roots.write_string(source[offset..])
-	mut refs := cache_c_identifier_refs(roots.str())
-	unsafe { roots.free() }
-	mut pending := refs.keys().filter(it in definitions)
-	mut visited := map[string]bool{}
+	cache_collect_support_refs(source, offset, source.len, definitions, mut refs, mut pending)
 	for pending.len > 0 {
 		name := pending.pop()
-		if visited[name] { continue }
-		visited[name] = true
 		// A helper can have separate native and portable definitions. Keep both
 		// branches and their dependencies, leaving the preprocessor in charge.
 		for index in definitions[name] {
 			definition := support[index]
-			for dependency, _ in cache_c_identifier_refs(source[definition.start..definition.end]) {
-				if dependency in definitions && !refs[dependency] {
-					refs[dependency] = true
-					pending << dependency
-				}
-			}
+			cache_collect_support_refs(source, definition.start, definition.end, definitions, mut refs, mut pending)
 		}
 	}
 	mut out := strings.new_builder(source.len)
 	offset = 0
 	for definition in support {
-		out.write_string(source[offset..definition.start])
+		out.write_string(source.substr_unsafe(offset, definition.start))
 		if refs[definition.name] {
-			out.write_string(source[definition.start..definition.end])
+			out.write_string(source.substr_unsafe(definition.start, definition.end))
 		}
 		offset = definition.end
 	}
-	out.write_string(source[offset..])
+	out.write_string(source.substr_unsafe(offset, source.len))
 	result := out.str()
 	unsafe { out.free() }
 	return result
