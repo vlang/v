@@ -11951,6 +11951,12 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			value_arg := t.a.nodes[int(value_arg_id)]
 			is_forwarded_mut_value := value_arg.kind == .ident
 				&& t.mut_value_ident_nodes[int(value_arg_id)]
+			if is_receiver && param_idx == 0 && raw_arg_type.starts_with('&')
+				&& !child.typ.starts_with('&') && !child.typ.starts_with('mut ') {
+				// A by-value receiver auto-dereferences the captured pointer. Infer
+				// its inner arguments from `Box[int]`, rather than `&Box[int]`.
+				raw_arg_type = raw_arg_type[1..]
+			}
 			if (child.is_mut || child.typ.starts_with('mut ')) && raw_arg_type.starts_with('&')
 				&& !is_forwarded_mut_value {
 				// An ordinary pointer local passed to `mut T` has V's source-level

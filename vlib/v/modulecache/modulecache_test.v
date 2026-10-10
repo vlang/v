@@ -947,3 +947,380 @@ fn test_module_header_preserves_module_attributes() {
 	header := module_header(&a, &tc, 'guarded', '', map[string]string{})
 	assert header.starts_with('@[has_globals]\nmodule guarded\n'), header
 }
+
+// A module that imports another one is as much a matter of declarations as one
+// that does not. The node of an import carries the path it was spelled with in the
+// payload that holds the type parameters of a declaration, and reading that as
+// "generic" marked the header of nearly every module as one that needs its
+// sources, so a warm build parsed `builtin` and the rest of them again.
+fn test_module_header_of_importing_module_needs_no_source_bodies() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_imports_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'shapes.v')
+	os.write_file(source, 'module shapes
+
+import strings
+import math.bits as b
+
+pub struct Marker {}
+
+pub struct Square {
+pub:
+	side int
+}
+
+pub fn (s Square) area() int {
+	return s.side * s.side
+}
+
+pub fn describe(s Square) string {
+	mut out := strings.new_builder(16)
+	out.write_string(b.len_32(u32(s.area())).str())
+	return out.str()
+}
+') or {
+		panic(err)
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	tc := vtypes.TypeChecker.new(a)
+	header := module_header(a, &tc, 'shapes', '', map[string]string{})
+	assert !header.contains(source_body_marker), header
+	assert header.contains('import strings'), header
+	assert header.contains('pub fn describe(s Square) string\n'), header
+	// A struct without fields keeps its body: `struct Marker` alone does not parse.
+	assert header.contains('pub struct Marker {\n}'), header
+	header_path := os.join_path(root, 'shapes.vh')
+	os.write_file(header_path, header) or { panic(err) }
+	mut header_parser := parser.Parser.new(pref.new_preferences())
+	reparsed := header_parser.parse_file(header_path)
+	assert header_parser.diagnostics.len == 0, header_parser.diagnostics.str()
+	mut structs := []string{}
+	for node in reparsed.nodes {
+		if node.kind == .struct_decl {
+			structs << node.value
+		}
+	}
+	assert structs == ['Marker', 'Square']
+}
+
+// header_of_source returns the header of the module `name` whose only file has
+// the text `source`.
+fn header_of_source(root string, name string, source string) string {
+	path := os.join_path(root, '${name}.v')
+	os.write_file(path, source) or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	tc := vtypes.TypeChecker.new(a)
+	return module_header(a, &tc, name, '', map[string]string{})
+}
+
+// A header declares the functions of a module and leaves out their code. A
+// program that reaches a `recover()` in that code cannot tell from the header,
+// and the object of the module was compiled before the program did, so the header
+// says that the call is there.
+fn test_module_header_says_that_the_code_of_the_module_calls_recover() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_recover_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	direct := header_of_source(root, 'guarded', 'module guarded
+
+pub fn checked(n int) int {
+	defer {
+		if msg := recover() {
+			println(msg)
+		}
+	}
+	if n > 2 {
+		panic("too big")
+	}
+	return n
+}
+')
+	assert header_text_calls_recover(direct), direct
+	assert direct.contains('pub fn checked(n int) int\n'), direct
+	assert !direct.contains('too big'), direct
+	// The call can be in a function that the header does not even declare.
+	indirect := header_of_source(root, 'wrapped', 'module wrapped
+
+fn stop() bool {
+	defer {
+		recover() or {}
+	}
+	return true
+}
+
+pub fn run() bool {
+	return stop()
+}
+')
+	assert header_text_calls_recover(indirect), indirect
+	// Nothing but a call counts: not the name of a field, nor a function that the
+	// module declares under that name and does not call.
+	plain := header_of_source(root, 'plain', 'module plain
+
+pub struct State {
+pub:
+	recover bool
+}
+
+pub fn recover_later(s State) bool {
+	return s.recover
+}
+')
+	assert !header_text_calls_recover(plain), plain
+	// A program that spells the marker in a string of its own is not a header that
+	// has the line.
+	assert !header_text_calls_recover("module quoted\n\npub const text = '${recover_call_marker}'\n")
+}
+
+// The stamp of a header answers for it in a build that does not read the header
+// itself to decide how to parse the module.
+fn test_cached_entry_keeps_the_recover_flag_of_its_header() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_recover_entry_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manager := Manager{
+		dir:        os.join_path(root, 'cache')
+		enabled:    true
+		salt:       'recover'
+		pkg_probes: &PkgConfigProbes{}
+	}
+	for name, calls in {
+		'guarded': true
+		'plain':   false
+	} {
+		source := os.join_path(root, '${name}.v')
+		os.write_file(source, 'module ${name}\n\npub fn value() int {\n\treturn 1\n}\n')!
+		marker := if calls { '${recover_call_marker}\n\n' } else { '' }
+		manager.write_header(name, [source], 'module ${name}\n\n${marker}pub fn value() int\n')!
+		entry := manager.valid_header(name, [source]) or { panic('no valid header for ${name}') }
+		assert header_calls_recover(entry) == calls, name
+		assert !header_needs_source(entry)
+	}
+}
+
+fn test_generic_receiver_names_exclude_array_and_map_receivers() {
+	assert receiver_has_generic_type_args('Stack[int].push')
+	assert receiver_has_generic_type_args('datatypes.Stack[int].push')
+	assert receiver_has_generic_type_args('&Pair[string, int].swap')
+	// `[]u8.hex` is a method of an array, not of a generic `u8`. Stripping its
+	// brackets gives `u8.hex`, and every caller of that would be taken for the
+	// user of a generic method, its body embedded in the header for nothing.
+	assert !receiver_has_generic_type_args('[]u8.hex')
+	assert !receiver_has_generic_type_args('[]string.join')
+	assert !receiver_has_generic_type_args('[4]int.sum')
+	assert !receiver_has_generic_type_args('map[string]int.keys')
+	assert !receiver_has_generic_type_args('?[]u8.hex')
+	assert !receiver_has_generic_type_args('string.free')
+}
+
+// fake_pkg_config writes a `pkg-config` that looks up `<name>.pc` in `packages`
+// and logs each of its invocations to `log`. A package that requires `dep`
+// exists while `dep.pc` is at version 2, the way a real pkg-config walks the
+// requirements of a package before it says that the package is there.
+fn fake_pkg_config(dir string, packages string, log string) {
+	os.mkdir_all(dir) or { panic(err) }
+	path := os.join_path(dir, 'pkg-config')
+	os.write_file(path, '#!/bin/sh
+echo "\$@" >> "${log}"
+if [ "\$1" = "--variable" ]; then
+	echo "${packages}"
+	exit 0
+fi
+if [ "\$1" = "--exists" ] && [ -f "${packages}/\$2.pc" ]; then
+	if grep -q "^Requires: dep" "${packages}/\$2.pc" && ! grep -q "^Version: 2" "${packages}/dep.pc"; then
+		exit 1
+	fi
+	exit 0
+fi
+exit 1
+') or {
+		panic(err)
+	}
+	os.chmod(path, 0o700) or { panic(err) }
+}
+
+struct FakePkgConfig {
+	root      string
+	packages  string
+	log       string
+	cache_dir string
+	saved     map[string]string
+	unset     []string
+}
+
+// use_fake_pkg_config puts a fake pkg-config first in PATH and clears the
+// variables that would redirect its search.
+fn use_fake_pkg_config(name string) FakePkgConfig {
+	root := os.join_path(os.vtmp_dir(), 'v3_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	packages := os.join_path(root, 'packages')
+	os.mkdir_all(packages) or { panic(err) }
+	log := os.join_path(root, 'invocations.log')
+	fake_pkg_config(os.join_path(root, 'bin'), packages, log)
+	mut saved := map[string]string{}
+	mut unset := []string{}
+	for variable, value in os.environ() {
+		if variable == 'PATH' || variable.starts_with('PKG_CONFIG') {
+			saved[variable] = value
+			if variable != 'PATH' {
+				unset << variable
+			}
+		}
+	}
+	for variable in unset {
+		os.unsetenv(variable)
+	}
+	os.setenv('PATH', '${os.join_path(root, 'bin')}${os.path_delimiter}${saved['PATH']}', true)
+	return FakePkgConfig{
+		root:      root
+		packages:  packages
+		log:       log
+		cache_dir: os.join_path(root, 'cache')
+		saved:     saved
+		unset:     unset
+	}
+}
+
+fn (f FakePkgConfig) restore() {
+	for variable, value in f.saved {
+		os.setenv(variable, value, true)
+	}
+	os.rmdir_all(f.root) or {}
+}
+
+fn (f FakePkgConfig) invocations() []string {
+	return (os.read_file(f.log) or { '' }).split_into_lines()
+}
+
+// settled reports whether the file system can tell this state of a package file
+// from the next one already; pkg-config is asked every time until it can.
+fn (f FakePkgConfig) settled(name string) bool {
+	return file_metadata_signature(os.join_path(f.packages, '${name}.pc')) != ''
+}
+
+fn test_pkg_config_answers_are_recorded_until_its_packages_change() {
+	$if windows {
+		return
+	}
+	fake := use_fake_pkg_config('pkgconfig_answers')
+	defer {
+		fake.restore()
+	}
+	// One process asks once, whatever it validates.
+	mut probes := &PkgConfigProbes{}
+	assert !pkg_config_exists('v3-absent', fake.cache_dir, probes)
+	assert !pkg_config_exists('v3-absent', fake.cache_dir, probes)
+	assert fake.invocations() == ['--variable pc_path pkg-config', '--exists v3-absent']
+	// The next process reads what the same pkg-config answered.
+	assert !pkg_config_exists('v3-absent', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().len == 2
+	// Installing the package changes its directory, and with it the answer.
+	os.write_file(os.join_path(fake.packages, 'v3-absent.pc'), 'Name: v3-absent\n') or {
+		panic(err)
+	}
+	if !fake.settled('v3-absent') {
+		return
+	}
+	assert pkg_config_exists('v3-absent', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().last() == '--exists v3-absent'
+	asked := fake.invocations().len
+	assert pkg_config_exists('v3-absent', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().len == asked
+	// Without a cache directory there is nothing to read an answer from.
+	assert pkg_config_exists('v3-absent', '', &PkgConfigProbes{})
+	assert fake.invocations().len == asked + 1
+}
+
+// A package is there while what it requires is there too, in a version that it
+// accepts. Editing the file of a requirement in place changes neither the file
+// of the package nor the listing of its directory, and still changes the answer.
+fn test_pkg_config_answer_follows_an_edited_requirement() {
+	$if windows {
+		return
+	}
+	fake := use_fake_pkg_config('pkgconfig_requirement')
+	defer {
+		fake.restore()
+	}
+	os.write_file(os.join_path(fake.packages, 'foo.pc'), 'Name: foo\nRequires: dep >= 2\n') or {
+		panic(err)
+	}
+	dep := os.join_path(fake.packages, 'dep.pc')
+	os.write_file(dep, 'Name: dep\nVersion: 2\n') or { panic(err) }
+	if !fake.settled('foo') || !fake.settled('dep') {
+		return
+	}
+	assert pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	asked := fake.invocations().len
+	assert pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().len == asked
+	foo_before := file_metadata_signature(os.join_path(fake.packages, 'foo.pc'))
+	os.write_file(dep, 'Name: dep\nVersion: 1\n') or { panic(err) }
+	if !fake.settled('dep') {
+		return
+	}
+	assert file_metadata_signature(os.join_path(fake.packages, 'foo.pc')) == foo_before
+	assert !pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().last() == '--exists foo'
+	assert fake.invocations().len == asked + 1
+	// The answer for the edited requirement is recorded in its turn.
+	assert !pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().len == asked + 1
+}
+
+// Search permission lets pkg-config read a known package file even when the
+// directory cannot be listed. A readable directory elsewhere in the search
+// must not allow answers to persist without the unlisted packages' identities.
+fn test_pkg_config_answers_do_not_persist_for_an_unlistable_search_directory() {
+	$if windows {
+		return
+	}
+	fake := use_fake_pkg_config('pkgconfig_unlistable')
+	defer {
+		os.chmod(fake.packages, 0o700) or { panic(err) }
+		os.unsetenv('PKG_CONFIG_PATH')
+		fake.restore()
+	}
+	readable := os.join_path(fake.root, 'readable')
+	os.mkdir_all(readable) or { panic(err) }
+	os.setenv('PKG_CONFIG_PATH', readable, true)
+	executable := os.join_path(fake.root, 'bin', 'pkg-config')
+	// Settle coarse file timestamps so ordinary runs reach the directory boundary.
+	old_time := time.utc().unix() - coarse_mtime_recent_seconds - 1
+	os.utime(executable, old_time, old_time) or { panic(err) }
+	if file_metadata_signature(executable) == '' {
+		// This compiler would already avoid persistent answers without a settled
+		// executable identity, so the directory boundary needs no further guard.
+		return
+	}
+	foo := os.join_path(fake.packages, 'foo.pc')
+	dep := os.join_path(fake.packages, 'dep.pc')
+	os.write_file(foo, 'Name: foo\nRequires: dep >= 2\n') or { panic(err) }
+	os.write_file(dep, 'Name: dep\nVersion: 2\n') or { panic(err) }
+	os.chmod(fake.packages, 0o111) or { panic(err) }
+	if _ := os.ls(fake.packages) {
+		// A privileged user may still list the directory, so this permission
+		// boundary cannot be exercised by that runner.
+		return
+	}
+	assert (os.read_file(foo) or { '' }) == 'Name: foo\nRequires: dep >= 2\n'
+	assert pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	os.write_file(dep, 'Name: dep\nVersion: 1\n') or { panic(err) }
+	assert !pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
+	assert fake.invocations().filter(it == '--exists foo').len == 2
+	assert pkg_config_state_key(fake.cache_dir) == 0
+}

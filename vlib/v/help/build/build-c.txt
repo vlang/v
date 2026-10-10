@@ -457,6 +457,17 @@ see also `v help build`.
    -showcc
       Prints the C command that is used to build the program.
 
+   -usecache
+      Use the module cache with the bundled TinyCC too: each imported module is
+      compiled once into an object, and later builds link those objects instead
+      of compiling the modules again. The system C compiler (`-cc clang`, `-prod`)
+      caches modules without this option. It applies to macOS and Linux.
+      A build with TinyCC that reuses its cached modules is slower than one without
+      them for a small program, and faster for one with larger imports.
+
+   -nocache, --no-cache
+      Do not use the module cache.
+
    -show-c-output
       Prints the output, that your C compiler produced, while compiling your program.
 

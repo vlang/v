@@ -18,5 +18,8 @@ It prints:
 ['a', 'b', 'c']
 ```
 
+Unquoted fields cannot contain double quotes. Enclose a field containing quotes in double
+quotes and escape each embedded quote by doubling it; `read()` returns an error for a bare quote.
+
 The final record does not need a trailing line ending, including when the document contains
 only one record. Empty documents and comment-only input contain no records.

@@ -795,8 +795,18 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 
 fn (t &Transformer) builtin_selector_type(base_type string, field_name string) ?string {
 	clean := t.trim_pointer_type(t.normalize_type_alias(base_type))
-	if field_name == 'len' && (clean == 'string' || clean.starts_with('[]')
-		|| clean.starts_with('map[') || t.is_fixed_array_type(clean)
+	if clean == 'array' || clean.starts_with('[]') {
+		// Array header fields have builtin types. Inferring them from a same-named
+		// field on an unrelated struct can turn a pointer value into an implicit
+		// reference when passing `values.data` to a V function such as vmemcpy.
+		return match field_name {
+			'data' { 'voidptr' }
+			'element_size', 'offset', 'len', 'cap' { 'int' }
+			'flags' { 'ArrayFlags' }
+			else { none }
+		}
+	}
+	if field_name == 'len' && (clean == 'string' || clean.starts_with('map[') || t.is_fixed_array_type(clean)
 		|| clean == 'chan' || clean.starts_with('chan ')) {
 		return 'int'
 	}

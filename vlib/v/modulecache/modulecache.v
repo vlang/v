@@ -12,7 +12,7 @@ import v.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-53'
+const cache_format = 'v3-module-cache-56'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -23,12 +23,204 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
+// recover_call_marker is a line of the header of a module whose code calls
+// `recover()`. A header has the declarations of a module and not its code, so a
+// build that reads it cannot tell otherwise that the program reaches that call.
+const recover_call_marker = '// v3cache: calls recover'
 const source_signature_cache_format = 'v3-source-signature-cache-9'
+
+// PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
+// process, and which recorded answers apply to it. A build validates the sources
+// of `builtin` several times, and each validation asked again. The table holds no
+// heap memory of its own, so what is written to it inside a disposable allocation
+// scope outlives that scope.
+struct PkgConfigProbes {
+mut:
+	len         int
+	names       [16]u64
+	available   [16]bool
+	state_known bool
+	state_key   u64 // 0 when the answers of this pkg-config cannot be recorded
+}
+
+// pkg_config_exists reports whether pkg-config knows `name`. It asks pkg-config
+// at most once per process when `probes` has room for the answer, and not at
+// all when `cache_dir` holds the answer that the same pkg-config gave while its
+// packages were as they are now (see pkg_config_state_key).
+fn pkg_config_exists(name string, cache_dir string, probes &PkgConfigProbes) bool {
+	key := hash_bytes(u64(1469598103934665603), name.bytes()) ^ u64(name.len)
+	if !isnil(probes) {
+		for i in 0 .. probes.len {
+			if probes.names[i] == key {
+				return probes.available[i]
+			}
+		}
+	}
+	mut available := false
+	answers := pkg_config_answers_path(cache_dir, probes)
+	if answer := pkg_config_recorded_answer(answers, name) {
+		available = answer
+	} else {
+		available = os.exec(['pkg-config', '--exists', '${name}']).exit_code == 0
+		pkg_config_record_answer(answers, name, available)
+	}
+	if !isnil(probes) && probes.len < 16 {
+		// The table is the one place a manager, handed around by value and by
+		// immutable reference, keeps anything that it learns.
+		mut known := unsafe { &PkgConfigProbes(voidptr(probes)) }
+		known.names[known.len] = key
+		known.available[known.len] = available
+		known.len++
+	}
+	return available
+}
+
+// pkg_config_answers_path returns the file that holds the answers recorded for
+// the present state of pkg-config, or '' when they cannot be recorded. The state
+// is worked out once per process when `probes` can keep it.
+fn pkg_config_answers_path(cache_dir string, probes &PkgConfigProbes) string {
+	if cache_dir.len == 0 {
+		return ''
+	}
+	mut state_key := u64(0)
+	if !isnil(probes) && probes.state_known {
+		state_key = probes.state_key
+	} else {
+		state_key = pkg_config_state_key(cache_dir)
+		if !isnil(probes) {
+			mut known := unsafe { &PkgConfigProbes(voidptr(probes)) }
+			known.state_known = true
+			known.state_key = state_key
+		}
+	}
+	if state_key == 0 {
+		return ''
+	}
+	return os.join_path(cache_dir, '.pkgconfig_answers_${state_key.hex()}')
+}
+
+// pkg_config_state_key identifies everything that an answer of
+// `pkg-config --exists` depends on: the executable, the environment variables
+// that steer it, and every `.pc` file of the directories that it searches. A
+// package exists when its file and the files of what it requires are there and
+// agree on their versions, so one file does not decide the answer, while a file
+// outside those directories has no part in it. Installing, removing or editing
+// any package therefore makes the answers recorded so far unreachable.
+// It returns 0 when that state cannot be told, and pkg-config is then asked.
+fn pkg_config_state_key(cache_dir string) u64 {
+	executable := os.find_abs_path_of_executable('pkg-config') or { return 0 }
+	executable_identity := file_metadata_signature(os.real_path(executable))
+	if executable_identity.len == 0 {
+		return 0
+	}
+	mut steering := []string{}
+	for name, value in os.environ() {
+		if name.starts_with('PKG_CONFIG') {
+			steering << '${name}=${value}'
+		}
+	}
+	steering.sort()
+	search_key := hash_text(executable_identity + '\x00' + steering.join('\x00'))
+	search_file := os.join_path(cache_dir, '.pkgconfig_search_${search_key}')
+	search_path := os.read_file(search_file) or {
+		result := os.exec([executable, '--variable', 'pc_path', 'pkg-config'])
+		if result.exit_code != 0 {
+			return 0
+		}
+		listed := result.output.trim_space()
+		os.mkdir_all(cache_dir) or {}
+		write_atomic(search_file, listed) or {}
+		listed
+	}
+	mut dirs := []string{}
+	for listed in [os.getenv('PKG_CONFIG_PATH'), os.getenv('PKG_CONFIG_LIBDIR'), search_path] {
+		for dir in listed.split(os.path_delimiter) {
+			if dir.len > 0 && dir !in dirs {
+				dirs << dir
+			}
+		}
+	}
+	mut hash := hash_bytes(u64(1469598103934665603), search_key.bytes())
+	mut searched := 0
+	for dir in dirs {
+		hash = hash_bytes(hash, dir.bytes())
+		hash = hash_bytes(hash, [u8(0)])
+		mut entries := os.ls(dir) or {
+			// A searchable directory can contain readable package files without
+			// granting permission to list them. Their identities must be known
+			// before any answer can persist across compiler processes.
+			if os.exists(dir) {
+				return 0
+			}
+			continue
+		}
+		searched++
+		entries.sort()
+		for entry in entries {
+			if !entry.ends_with('.pc') {
+				continue
+			}
+			path := os.join_path(dir, entry)
+			mut metadata := file_metadata_signature(path)
+			if metadata.len == 0 {
+				if os.exists(path) {
+					// Changed too recently to tell this state from the next one.
+					return 0
+				}
+				// A link to a file that is gone: pkg-config cannot read it either.
+				metadata = 'unreadable'
+			}
+			hash = hash_bytes(hash, entry.bytes())
+			hash = hash_bytes(hash, [u8(0)])
+			hash = hash_bytes(hash, metadata.bytes())
+			hash = hash_bytes(hash, [u8(0xff)])
+		}
+		hash = hash_bytes(hash, [u8(0xfe)])
+	}
+	if searched == 0 {
+		// Not the answer of a pkg-config: nothing ties a record to its packages.
+		return 0
+	}
+	return hash
+}
+
+fn pkg_config_recorded_answer(answers string, name string) ?bool {
+	if answers.len == 0 {
+		return none
+	}
+	content := os.read_file(answers) or { return none }
+	for line in content.split_into_lines() {
+		if line == '${name}\t1' {
+			return true
+		}
+		if line == '${name}\t0' {
+			return false
+		}
+	}
+	return none
+}
+
+fn pkg_config_record_answer(answers string, name string, available bool) {
+	if answers.len == 0 || name.contains_any('\t\r\n') {
+		return
+	}
+	mut lines := []string{}
+	if content := os.read_file(answers) {
+		for line in content.split_into_lines() {
+			if line.len > 0 && line.all_before('\t') != name {
+				lines << line
+			}
+		}
+	}
+	lines << '${name}\t${if available { 1 } else { 0 }}'
+	write_atomic(answers, lines.join('\n') + '\n') or {}
+}
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
 	build_pseudo_values   string
 	version_pseudo_values string
+	pkg_probes            &PkgConfigProbes = unsafe { nil }
 pub:
 	dir     string
 	enabled bool
@@ -39,6 +231,7 @@ pub:
 pub struct Entry {
 	source_bodies       bool
 	source_bodies_known bool
+	calls_recover       bool
 pub:
 	header         string
 	object         string
@@ -125,6 +318,7 @@ pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values 
 		salt:                  salt
 		build_pseudo_values:   build_pseudo_values
 		version_pseudo_values: version_pseudo_values
+		pkg_probes:            &PkgConfigProbes{}
 	}
 }
 
@@ -167,6 +361,37 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 		object_stamp: '${base}_${key}.o.stamp'
 		c_source:     '${base}_${key}.c'
 	}
+}
+
+// object_alias_path returns the file that names the object of a module for one set of
+// program facts that a build knows before it has generated the C of the module.
+fn (m &Manager) object_alias_path(module_name string, source_files []string, alias_signature string) string {
+	entry := m.entry(module_name, source_files)
+	return '${entry.object.all_before_last('.o')}_${hash_text(alias_signature)}.alias'
+}
+
+// object_alias returns the content key of the object that an earlier build compiled
+// or found for `alias_signature`. The key says nothing about the sources or the
+// dependencies of the module: the stamp of the object it leads to does.
+pub fn (m &Manager) object_alias(module_name string, source_files []string, alias_signature string) ?string {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	content := os.read_file(m.object_alias_path(module_name, source_files, alias_signature)) or {
+		return none
+	}
+	key := content.trim_space()
+	if key.len == 0 || key.contains_any(' \t\r\n/\\') {
+		return none
+	}
+	return key
+}
+
+// write_object_alias records that a build with `alias_signature` generates the C
+// that `content_key` identifies for this module.
+pub fn (m &Manager) write_object_alias(module_name string, source_files []string, alias_signature string, content_key string) ! {
+	write_atomic(m.object_alias_path(module_name, source_files, alias_signature), content_key +
+		'\n')!
 }
 
 // cgen_entry returns the artifact paths for one stable program source set.
@@ -244,6 +469,11 @@ struct SourceSignatureDetails {
 }
 
 fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
+	return source_signature_details_probed(source_files, build_pseudo_values, version_pseudo_values,
+		'', unsafe { nil })
+}
+
+fn source_signature_details_probed(source_files []string, build_pseudo_values string, version_pseudo_values string, cache_dir string, probes &PkgConfigProbes) SourceSignatureDetails {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
@@ -384,7 +614,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	mut packages := pkgconfig_names.keys()
 	packages.sort()
 	for name in packages {
-		available := os.exec(['pkg-config', '--exists', '${name}']).exit_code == 0
+		available := pkg_config_exists(name, cache_dir, probes)
 		validation << 'pkg=${name}\t${if available { 1 } else { 0 }}'
 		hash = hash_bytes(hash, [u8(0xfd)])
 		hash = hash_bytes(hash, name.bytes())
@@ -633,7 +863,8 @@ fn (m &Manager) cacheable_source_signature(source_files []string) ?string {
 }
 
 fn (m &Manager) source_signature_details(source_files []string) SourceSignatureDetails {
-	return cached_source_signature_details_with_build_values(m.dir, 'module', source_files, m.build_pseudo_values, m.version_pseudo_values)
+	return cached_source_signature_details_probed(m.dir, 'module', source_files, m.build_pseudo_values,
+		m.version_pseudo_values, m.pkg_probes)
 }
 
 // cached_source_signature returns a content signature while using precise file
@@ -643,6 +874,11 @@ pub fn cached_source_signature(cache_dir string, namespace string, source_files 
 }
 
 fn cached_source_signature_details_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
+	return cached_source_signature_details_probed(cache_dir, namespace, source_files, build_pseudo_values,
+		version_pseudo_values, &PkgConfigProbes{})
+}
+
+fn cached_source_signature_details_probed(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string, probes &PkgConfigProbes) SourceSignatureDetails {
 	mut paths := source_files.map(os.real_path(it))
 	paths.sort()
 	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
@@ -650,11 +886,14 @@ fn cached_source_signature_details_with_build_values(cache_dir string, namespace
 	metadata := source_files_metadata_signature(paths)
 	if metadata.len > 0 {
 		cached := os.read_file(cache_path) or { '' }
-		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values, version_pseudo_values, paths.len) {
+		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values,
+			version_pseudo_values, paths.len, cache_dir, probes)
+		{
 			return details
 		}
 	}
-	details := source_signature_details(paths, build_pseudo_values, version_pseudo_values)
+	details := source_signature_details_probed(paths, build_pseudo_values, version_pseudo_values,
+		cache_dir, probes)
 	if details.signature.len == 0 || !details.cacheable {
 		return details
 	}
@@ -701,7 +940,7 @@ fn source_files_metadata_signature(paths []string) string {
 	return hash.hex()
 }
 
-fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string, source_count int) ?SourceSignatureDetails {
+fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string, source_count int, cache_dir string, probes &PkgConfigProbes) ?SourceSignatureDetails {
 	lines := content.split_into_lines()
 	if lines.len < 4 || lines[0] != 'format=${source_signature_cache_format}'
 		|| lines[1] != 'metadata=${metadata}' || lines.last() != 'complete=1' {
@@ -750,7 +989,7 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			if parts.len != 2 || parts[0].len == 0 {
 				return none
 			}
-			available := os.exec(['pkg-config', '--exists', '${parts[0]}']).exit_code == 0
+			available := pkg_config_exists(parts[0], cache_dir, probes)
 			if parts[1] != '${if available {
 				1
 			} else {
@@ -1205,7 +1444,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
-	source_bodies := header_stamp_source_bodies(stamp, expected) or {
+	flags := header_stamp_flags(stamp, expected) or {
 		cache_trace_module_miss(module_name, 'source signature changed')
 		return none
 	}
@@ -1219,8 +1458,9 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	return Entry{
 		...entry
-		source_bodies:       source_bodies
+		source_bodies:       flags.source_bodies
 		source_bodies_known: true
+		calls_recover:       flags.calls_recover
 		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
@@ -1246,11 +1486,12 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
-	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
+	flags := header_stamp_flags(stamp, expected) or { return none }
 	return Entry{
 		...entry
-		source_bodies:       source_bodies
+		source_bodies:       flags.source_bodies
 		source_bodies_known: true
+		calls_recover:       flags.calls_recover
 		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
@@ -1263,6 +1504,23 @@ pub fn header_needs_source(entry Entry) bool {
 		return header.contains(source_body_marker)
 	}
 	return entry.source_bodies
+}
+
+// header_calls_recover reports whether the code of the module of a header calls
+// `recover()`. Every `defer` of a build with such a module links a panic frame:
+// the program may reach the call through a function that the header only
+// declares, and the objects of its modules were compiled before it did.
+pub fn header_calls_recover(entry Entry) bool {
+	if !entry.source_bodies_known {
+		header := os.read_file(entry.header) or { return true }
+		return header_text_calls_recover(header)
+	}
+	return entry.calls_recover
+}
+
+// header_text_calls_recover is header_calls_recover for the text of a header.
+pub fn header_text_calls_recover(header string) bool {
+	return header.contains('\n${recover_call_marker}\n')
 }
 
 // valid_object reports whether a cached object matches the supplied sources.
@@ -1309,20 +1567,45 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 // valid_object_for_compile_signature reports whether the flag-specific object
 // matches its sources, dependency headers, and effective C compilation flags.
 pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) ?Entry {
+	return m.object_for_compile_signature(cache_name, source_files, compile_signature,
+		dependency_inputs, true)
+}
+
+// reusable_object is valid_object_for_compile_signature for a build that has the C
+// of the module and compiles it when the object is not there: nothing is missing
+// then, so nothing is traced.
+pub fn (m &Manager) reusable_object(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) ?Entry {
+	return m.object_for_compile_signature(cache_name, source_files, compile_signature,
+		dependency_inputs, false)
+}
+
+fn (m &Manager) object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string, trace bool) ?Entry {
 	entry := m.object_entry(cache_name, source_files, compile_signature)
 	if !os.is_file(entry.object) || !os.is_file(entry.object_stamp) {
+		if trace {
+			cache_trace_module_miss(cache_name, 'no object for these C compilation flags and this generated C')
+		}
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
 	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
+		if trace {
+			cache_trace_module_miss(cache_name, 'object source or dependency changed')
+		}
 		return none
 	}
 	expected := 'compile=${hash_text(compile_signature)}'
 	if !stamp.split_into_lines().any(it == expected) {
+		if trace {
+			cache_trace_module_miss(cache_name, 'object stamp names other C compilation flags')
+		}
 		return none
 	}
 	if !object_stamp_dependencies_match(stamp, dependency_inputs) {
+		if trace {
+			cache_trace_module_miss(cache_name, 'object was built against other dependency interfaces')
+		}
 		return none
 	}
 	return entry
@@ -1661,15 +1944,39 @@ fn entry_stamp(salt string, source_hash string) string {
 }
 
 fn header_entry_stamp(salt string, source_hash string, header string) string {
-	return entry_stamp(salt, source_hash) + 'source_bodies=${int(header.contains(source_body_marker))}\n'
+	return entry_stamp(salt, source_hash) + 'source_bodies=${int(header.contains(source_body_marker))}\n' +
+		'recover=${int(header_text_calls_recover(header))}\n'
 }
 
-fn header_stamp_source_bodies(stamp string, expected_entry string) ?bool {
-	if stamp == expected_entry + 'source_bodies=0\n' {
-		return false
+// HeaderStampFlags is what the stamp of a header says about its text.
+struct HeaderStampFlags {
+	source_bodies bool
+	calls_recover bool
+}
+
+fn header_stamp_flags(stamp string, expected_entry string) ?HeaderStampFlags {
+	if !stamp.starts_with(expected_entry) {
+		return none
 	}
-	if stamp == expected_entry + 'source_bodies=1\n' {
-		return true
+	rest := stamp[expected_entry.len..]
+	if rest == 'source_bodies=0\nrecover=0\n' {
+		return HeaderStampFlags{}
+	}
+	if rest == 'source_bodies=1\nrecover=0\n' {
+		return HeaderStampFlags{
+			source_bodies: true
+		}
+	}
+	if rest == 'source_bodies=0\nrecover=1\n' {
+		return HeaderStampFlags{
+			calls_recover: true
+		}
+	}
+	if rest == 'source_bodies=1\nrecover=1\n' {
+		return HeaderStampFlags{
+			source_bodies: true
+			calls_recover: true
+		}
 	}
 	return none
 }
@@ -4792,6 +5099,7 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 	}
 	out.writeln('')
 	mut trusted_c_fns := map[string]bool{}
+	mut calls_recover := false
 	for file_node in a.nodes {
 		if file_node.kind != .file || file_node.children_count == 0
 			|| file_module_name(a, file_node) != module_name {
@@ -4805,8 +5113,15 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 				if node.kind == .c_fn_decl && node.is_mut {
 					trusted_c_fns[node.value] = true
 				}
+				if !calls_recover && node_calls_recover(a, tc, id) {
+					calls_recover = true
+				}
 			}
 		}
+	}
+	if calls_recover {
+		out.writeln(recover_call_marker)
+		out.writeln('')
 	}
 	mut seen := map[string]bool{}
 	const_replacements, const_files := module_header_const_replacements(a, module_name, const_order)
@@ -5923,6 +6238,31 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 	return false
 }
 
+// node_calls_recover reports whether the code below a node calls the builtin
+// `recover()`.
+fn node_calls_recover(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return false
+	}
+	node := a.nodes[int(id)]
+	if node.kind == .call && node.children_count == 1 {
+		callee := a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value == 'recover' {
+			// A module can have a function of that name of its own.
+			name := tc.resolved_call_name(id) or { 'recover' }
+			if name in ['recover', 'builtin.recover'] {
+				return true
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if node_calls_recover(a, tc, a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
 fn generic_call_source_name(a &flat.FlatAst, id flat.NodeId) ?string {
 	if int(id) < 0 || int(id) >= a.nodes.len {
 		return none
@@ -5957,7 +6297,7 @@ fn generic_specialization_callee_names(tc &types.TypeChecker) map[string]bool {
 		names[name] = true
 	}
 	for name in tc.fn_param_type_texts.keys() {
-		if !name.contains('[') {
+		if !receiver_has_generic_type_args(name) {
 			continue
 		}
 		closed := generic_receiver_name_without_type_args(name)
@@ -5972,6 +6312,24 @@ fn generic_specialization_callee_names(tc &types.TypeChecker) map[string]bool {
 		}
 	}
 	return names
+}
+
+// receiver_has_generic_type_args reports whether the receiver of the method
+// `name` is an instance of a generic type, like `Stack[int].push`. The brackets
+// of an array, a fixed array or a map receiver (`[]u8.hex`, `map[string]int.x`)
+// hold no type arguments: without them the name is that of another method
+// (`u8.hex`), and each of its callers would pass for the user of a generic one.
+fn receiver_has_generic_type_args(name string) bool {
+	open := name.index_u8(`[`)
+	if open <= 0 {
+		return false
+	}
+	mut start := open
+	for start > 0 && (name[start - 1].is_alnum() || name[start - 1] == `_`) {
+		start--
+	}
+	base := name[start..open]
+	return base.len > 0 && base != 'map'
 }
 
 fn generic_receiver_name_without_type_args(name string) string {
@@ -6000,6 +6358,11 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 		return false
 	}
 	node := a.nodes[int(id)]
+	if node.kind == .import_decl {
+		// The payload of an import is the path it was spelled with, not a list of
+		// generic parameters, and a header repeats the import itself.
+		return false
+	}
 	if node.generic_params().len > 0 || fn_decl_has_generic_receiver(a, node)
 		|| declaration_contains_fn_literal(a, node)
 		|| (node.kind in [.const_decl, .struct_decl, .global_decl]
@@ -6534,7 +6897,11 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 		head = '@[params]\n${head}'
 	}
 	if node.children_count == 0 {
-		return head
+		// Only a C or JS struct may be declared without a body.
+		if node.value.starts_with('C.') || node.value.starts_with('JS.') {
+			return head
+		}
+		return '${head} {\n}'
 	}
 	mut out := strings.new_builder(256)
 	out.writeln('${head} {')

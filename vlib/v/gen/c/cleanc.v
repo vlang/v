@@ -443,7 +443,9 @@ mut:
 	fn_defer_counts                map[int]string
 	defer_capture_names            []string
 	defer_capture_types            map[string]types.Type
-	uses_recover                   bool   // the program calls `recover()`, so every `defer` links a panic frame
+	uses_recover                   bool // the program calls `recover()`, so every `defer` links a panic frame
+	program_recover_known          bool // the driver said whether the program calls `recover()`, see set_program_uses_recover
+	program_recover                bool
 	cur_fn_panic_owner             bool   // the current function declared the `_v_unwind_owner` of its frames
 	cur_panic_frame                string // frame of the deferred block being emitted, which `recover()` asks for
 	interfaces                     map[string][]string
@@ -1801,6 +1803,17 @@ pub fn (mut g FlatGen) set_track_heap(enabled bool) {
 // module objects without changing regular `-o file.c` output.
 pub fn (mut g FlatGen) set_cache_split(enabled bool) {
 	g.cache_split = enabled
+}
+
+// set_program_uses_recover tells whether the program reaches `recover()`, or has a
+// cached module whose code calls it.
+// A module cache build marks every function of a module it parses from source as
+// used, `recover` among those of `builtin`, which says nothing about the program:
+// the objects of its modules would link panic frames in the build that compiles
+// `builtin`, and not in the one that reads its header.
+pub fn (mut g FlatGen) set_program_uses_recover(uses_recover bool) {
+	g.program_recover_known = true
+	g.program_recover = uses_recover
 }
 
 // set_cache_stable_symbols turns on the content-addressed renaming of generated
@@ -4031,10 +4044,10 @@ fn runtime_init_targets_global(init string, cname string) bool {
 }
 
 fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
-	mut symbols := []string{cap: g.str_lits.len}
-	for value in g.str_lits {
-		symbols << cache_string_symbol(value)
-	}
+	// This runs once per generated batch, while a batch refers to a handful of
+	// the literals: name a literal when the batch mentions it, not all of them
+	// for every batch.
+	mut symbols := []string{len: g.str_lits.len}
 	user_c_symbols := g.cache_user_c_string_symbols()
 	mut out := strings.new_builder(source.len + g.str_lits.len * 8)
 	mut i := 0
@@ -4092,6 +4105,9 @@ fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 					id = id * 10 + int(digit - `0`)
 				}
 				if id >= 0 && id < symbols.len {
+					if symbols[id].len == 0 {
+						symbols[id] = cache_string_symbol(g.str_lits[id])
+					}
 					out.write_string(symbols[id])
 					continue
 				}
@@ -4199,10 +4215,11 @@ fn cache_string_symbol(value string) string {
 // where it turned up, so that two separately generated translation units agree
 // on it. The length goes in alongside the hash, so agreeing takes more than a
 // hash collision.
+@[direct_array_access]
 fn content_symbol_suffix(value string) string {
 	mut hash := u64(1469598103934665603)
-	for c in value.bytes() {
-		hash = (hash ^ u64(c)) * u64(1099511628211)
+	for i in 0 .. value.len {
+		hash = (hash ^ u64(value[i])) * u64(1099511628211)
 	}
 	return '${value.len}_${hash.hex()}'
 }
@@ -22830,6 +22847,9 @@ fn (g &FlatGen) is_builtin_panic_state(name string) bool {
 fn (g &FlatGen) program_uses_recover() bool {
 	if g.target_libc_headers || g.target.os == 'vinix' || 'freestanding' in g.compile_defines {
 		return false
+	}
+	if g.program_recover_known {
+		return g.program_recover
 	}
 	if g.has_used_fn_filter() {
 		return g.used_fn_contains('recover')
