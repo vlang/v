@@ -182,7 +182,7 @@ fn sanitize_cookie_name(name string) string {
 }
 
 // sanitize_cookie_value removes invalid cookie bytes and quotes the sanitized value
-// when it starts or ends with a space or comma.
+// when it contains a space or comma.
 // https://tools.ietf.org/html/rfc6265#section-4.1.1
 // cookie-value      = *cookie-octet / ( DQUOTE *cookie-octet DQUOTE )
 // cookie-octet      = %x21 / %x23-2B / %x2D-3A / %x3C-5B / %x5D-7E
@@ -190,15 +190,12 @@ fn sanitize_cookie_name(name string) string {
 //           ; whitespace DQUOTE, comma, semicolon,
 //           ; and backslash
 // We loosen this as spaces and commas are common in cookie values
-// but we produce a quoted cookie-value when value starts or ends
-// with a comma or space.
+// but we produce a quoted cookie-value when value contains
+// a comma or space.
 pub fn sanitize_cookie_value(v string) string {
 	val := sanitize(valid_cookie_value_byte, v)
-	if val.len == 0 {
-		return val
-	}
-	// Quote leading or trailing spaces and commas.
-	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
+	// Quote a value that contains spaces or commas.
+	if val.contains_any(' ,') {
 		return '"${val}"'
 	}
 	return val
