@@ -81,6 +81,8 @@ mut:
 	free_compressed   bool
 	free_uncompressed bool
 pub:
+	// len is the size of what `data()` returns: the size the file had when the program
+	// was compiled, until a development build loads the file, and what it loaded after.
 	len  int
 	path string
 }
@@ -109,7 +111,9 @@ pub fn (mut ed EmbedFileData) free() {
 pub fn (original &EmbedFileData) to_string() string {
 	unsafe {
 		mut ed := &EmbedFileData(original)
-		the_copy := &u8(memdup(ed.data(), ed.len))
+		// Loading the file sets `len`, so the bytes are taken before the length is read.
+		payload := ed.data()
+		the_copy := &u8(memdup(payload, ed.len))
 		return the_copy.vstring_with_len(ed.len)
 	}
 }
@@ -117,7 +121,9 @@ pub fn (original &EmbedFileData) to_string() string {
 pub fn (original &EmbedFileData) to_bytes() []u8 {
 	unsafe {
 		mut ed := &EmbedFileData(original)
-		the_copy := memdup(ed.data(), ed.len)
+		// Loading the file sets `len`, so the bytes are taken before the length is read.
+		payload := ed.data()
+		the_copy := memdup(payload, ed.len)
 		return the_copy.vbytes(ed.len)
 	}
 }

@@ -8643,6 +8643,8 @@ The whole content of the file is embedded only in `-prod` builds (and in portabl
 the file is loaded from that path *the first time* your program calls
 `embedded_file.data()` at runtime. This keeps rebuilds cheap and lets you change
 the file in an external editor without recompiling your program.
+`embedded_file.len` is the size of the file when the program was compiled, until
+the file is loaded. After that it is the size of what was loaded.
 
 Because the stored path points to the machine the program was built on, a
 development build panics when it runs where that file does not exist, for example
