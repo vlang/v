@@ -227,6 +227,10 @@ fn wrap_getaddrinfo_error(code int) ! {
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	address, port := split_address(addr)!
 
+	if addr.len == 0 {
+		return error('net: expected a host, got an empty string')
+	}
+
 	if addr[0] == `:` {
 		match family {
 			.ip6 {
