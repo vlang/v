@@ -2,7 +2,10 @@ module driver
 
 import os
 
-fn test_parallel_cached_build_keeps_checker_metadata_until_cache_planning_finishes() {
+fn test_cached_build_discovers_generics_and_retains_checker_metadata_in_parallel() {
+	// Embedded text and bytes exercise generic calls in cached builtin bodies.
+	// Cold/warm builds with default and four workers also cover metadata ownership
+	// through cache planning, after scoped transformation and C generation finish.
 	// Module objects are cached for the default system C compiler.
 	cc := 'cc'
 	if _ := os.find_abs_path_of_executable(cc) {
