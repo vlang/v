@@ -9845,7 +9845,9 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 		return false
 	}
 	iface := clean as types.Interface
-	iface_name := g.specialized_interface_name_for_method_call(node, iface.name, fn_node.value)
+	base_id := g.a.child(fn_node, 0)
+	receiver_name := g.interface_receiver_application_name(base_id, iface.name)
+	iface_name := g.specialized_interface_name_for_method_call(node, receiver_name, fn_node.value)
 	if g.is_ierror_type_name(iface_name) {
 		return false
 	}
@@ -9860,7 +9862,6 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 	}
 	method_name := '${iface_name}.${fn_node.value}'
 	param_types := g.interface_method_param_types(method_name) or { []types.Type{} }
-	base_id := g.a.child(fn_node, 0)
 	g.write(g.cname(method_name))
 	g.write('(')
 	pointer_depth := cgen_type_pointer_depth(base_type)
@@ -9937,6 +9938,22 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 	}
 	g.write(')')
 	return true
+}
+
+// A specialized receiver annotation preserves collision-locked main arguments
+// that a semantic type name can render without its main qualifier.
+fn (g &FlatGen) interface_receiver_application_name(id flat.NodeId, fallback string) string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len { return fallback }
+	mut text := g.a.nodes[int(id)].typ.trim_space()
+	for text.starts_with('&') { text = text[1..].trim_space() }
+	base, args, is_generic := parse_shared_generic_app_parts(text)
+	if !is_generic || g.tc.interface_metadata_name(base) != g.tc.interface_metadata_name(fallback) {
+		return fallback
+	}
+	for arg in args {
+		if codegen_generic_arg_is_unresolved(arg) { return fallback }
+	}
+	return text
 }
 
 fn (g &FlatGen) specialized_interface_name_for_method_call(node flat.Node, iface_name string, method string) string {
