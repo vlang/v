@@ -2534,7 +2534,12 @@ fn publish_v3_parallel_c_cache_object(local_object string, cache_object string) 
 	os.cp(local_object, temporary_path)!
 	// Both paths are inside the cache directory, so rename cannot fall back to
 	// exposing a partially copied object across filesystems.
-	os.rename(temporary_path, cache_object)!
+	$if windows {
+		// `os.rename` cannot replace an object that another build published first.
+		windows_replace_file(temporary_path, cache_object)!
+	} $else {
+		os.rename(temporary_path, cache_object)!
+	}
 }
 
 fn v3_parallel_c_unit_source(header_path string, body string, owner bool, is_shared bool) string {
