@@ -5,7 +5,6 @@ import encoding.utf8.validate
 
 #flag windows -l advapi32
 #include <process.h>
-#include <sys/utime.h>
 
 // path_separator is the platform specific separator string, used between the folders, and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '\\'
@@ -243,11 +242,6 @@ fn decode_windows_captured_output(raw string) string {
 	res := unsafe { string_from_wide(wide) }
 	unsafe { free(wide) }
 	return res
-}
-
-pub struct C._utimbuf {
-	actime  i64
-	modtime i64
 }
 
 fn C.SetFileTime(voidptr, voidptr, voidptr, voidptr) i32
