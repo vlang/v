@@ -109,8 +109,12 @@ fn (mut r BitReader) read_bits(n int) !u32 {
 	return val
 }
 
+// align_byte drops the unread bits of the current input byte.
+// huff_decode() loads up to max_bits ahead, so whole bytes after that byte can
+// already be in `bits`; those are handed back to the input instead of dropped.
 @[inline]
 fn (mut r BitReader) align_byte() {
+	r.pos -= r.nbits >> 3
 	r.bits = 0
 	r.nbits = 0
 }
