@@ -1788,6 +1788,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	// discovered by body workers, so emit those on the master after they merge.
 	parallel_type_decls := available_jobs > 2 && g.scope_parallel_workers
 		&& !g.program_body_only && g.incremental_fn_names.len == 0 && !g.target_libc_headers
+		&& g.cache_const_modules.len == 0
 	n_jobs := flat_cgen_job_count(available_jobs, n_items, g.flat_cgen_job_limit())
 	if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 		if g.scope_parallel_workers {

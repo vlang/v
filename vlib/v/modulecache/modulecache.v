@@ -12,7 +12,7 @@ import v.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-56'
+const cache_format = 'v3-module-cache-57'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -7026,18 +7026,17 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 		mut line := field.value
 		if field.children_count > 0 {
 			expr_id := a.child(field, 0)
-			mut value := expr_text(a, expr_id)
-			expr := a.node(expr_id)
-			if expr.kind == .array_literal {
-				typ := tc.resolve_type(expr_id)
-				if typ is types.Array {
-					// Cache headers are declaration inputs. A bare const literal uses
-					// fixed storage there and disagrees with the cached object's source ABI.
-					// Preserve the checked element type too: the raw `array.clone` header
-					// signature cannot reconstruct it from every declaration-only literal.
-					value = '${cached_array_literal_type_source_name(a, expr, typ)}(${value}).clone()'
-				}
+			typ := tc.resolve_type(expr_id)
+			if typ is types.Array || typ is types.ArrayFixed || typ is types.Map
+				|| typ is types.Struct || typ is types.Pointer || typ is types.Interface
+				|| typ is types.SumType || typ is types.OptionType || typ is types.ResultType
+				|| (a.node(expr_id).kind == .call && typ !is types.FnType) {
+				// Stored constants belong to the module object. Its interface needs
+				// the checked type, not the table or the code that initializes it.
+				lines << '${line} ${cached_type_source_name(typ)}'
+				continue
 			}
+			value := expr_text(a, expr_id)
 			if value.len > 0 {
 				line += ' = ${value}'
 			} else {
@@ -7061,16 +7060,6 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 	}
 	out.write_string(')')
 	return out.str()
-}
-
-fn cached_array_literal_type_source_name(a &flat.FlatAst, expr flat.Node, typ types.Array) string {
-	if expr.children_count > 0 {
-		first := a.child_node(&expr, 0)
-		if first.kind == .struct_init && first.value.len > 0 {
-			return '[]${first.value.trim_left('?')}'
-		}
-	}
-	return cached_type_source_name(typ)
 }
 
 fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source_is_public bool) string {

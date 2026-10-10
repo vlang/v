@@ -16383,6 +16383,9 @@ fn (mut g FlatGen) cached_header_forward_decls() {
 		if node.kind != .fn_decl || !cur_file.ends_with('.vh') {
 			continue
 		}
+		if g.cache_decl_demand && !g.cache_decl_refs[g.fn_c_name_in_module(cur_module, node.value)] {
+			continue
+		}
 		if cur_module == 'builtin' && node.value == 'u8.vbytes' {
 			continue
 		}

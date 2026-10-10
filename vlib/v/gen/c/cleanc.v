@@ -452,6 +452,12 @@ mut:
 	const_vals                     map[string]flat.NodeId
 	const_modules                  map[string]string
 	const_files                    map[string]string // const name -> declaring file (for import-alias type resolution)
+	cache_const_modules            map[string]bool
+	cache_const_source_modules     map[string]bool
+	cache_const_definitions        map[string][]string
+	cache_const_declarations       map[string]string
+	cache_decl_refs                map[string]bool
+	cache_decl_demand              bool
 	const_init_order               []string
 	fixed_storage_consts           map[string]bool
 	global_modules                 map[string]string
@@ -3174,6 +3180,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.interfaces.clear()
 	g.const_vals.clear()
 	g.const_modules.clear()
+	g.cache_const_definitions.clear()
+	g.cache_const_declarations.clear()
+	g.cache_decl_refs.clear()
+	g.cache_decl_demand = false
 	g.const_files.clear()
 	g.const_init_order = []string{}
 	g.fixed_storage_consts.clear()
@@ -3505,9 +3515,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Deferring const lowering and the libc compatibility preseed only pays off
 	// when gen_fns_dispatch actually starts a declaration task; in a serial
 	// dispatch it would just move the work behind an early selection.
-	defer_parallel_support := g.scope_parallel_workers && parallel_cgen && !g.program_body_only
+	defer_parallel_support := g.scope_parallel_workers && parallel_cgen && !g.program_body_only && g.cache_const_modules.len == 0
 		&& g.incremental_fn_names.len == 0
-	mut const_code := if g.program_body_only || defer_parallel_support {
+	mut const_code := if g.program_body_only || defer_parallel_support || g.cache_const_modules.len > 0 {
 		''
 	} else {
 		g.precompute_consts()
@@ -3554,6 +3564,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { g.sb.free() }
 	g.sb = orig_sb
 	g.line_start = orig_line_start
+	if !g.program_body_only && g.cache_const_modules.len > 0 {
+		g.prepare_cache_declaration_demand(fn_code)
+		const_code = g.precompute_consts()
+		g.finish_cache_declaration_demand(const_code)
+		const_code = g.demanded_cache_constant_declarations() + const_code
+	}
 	g.timing_profile('  [ttime] cg fn_code copy    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (len: ${fn_code.len})')
 	cgsw.restart()
 	if g.program_body_only {
@@ -3694,6 +3710,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { const_code.free() }
 	if g.cache_split {
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		g.emit_cache_module_constants()
 		// `_vinit` and interface stubs depend on the complete entry program, but
 		// remain stable across function-body literal edits. Keep them with the
 		// program specialization cache instead of regenerating module globals in
@@ -3710,7 +3727,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.gen_vcleanup()
 	}
 	if g.cache_split {
-		g.interface_method_stubs()
+		if g.parallel_interface_stubs.len > 0 {
+			g.sb.write_string(g.parallel_interface_stubs)
+			unsafe { g.parallel_interface_stubs.free() }
+			g.parallel_interface_stubs = ''
+		} else {
+			g.interface_method_stubs()
+		}
 	}
 	g.timing_profile('  [ttime] cg postamble       ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sb: ${g.sb.len})')
 	cgsw.restart()
@@ -3781,7 +3804,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// build keeps the plain numbering and skips the pass over the whole unit.
 		if g.cache_stable_symbols {
 			source := g.sb.str()
-			result := g.rewrite_cache_string_symbols(source)
+			mut result := g.rewrite_cache_string_symbols(source)
+			if g.cache_decl_demand {
+				pruned := cache_prune_generated_support(result)
+				unsafe { result.free() }
+				result = pruned
+			}
 			unsafe {
 				source.free()
 				g.sb.free()
@@ -3895,6 +3923,7 @@ fn (mut g FlatGen) gen_global_declaration_block() {
 	g.builtin_abi_decls()
 	g.test_failure_helpers()
 	g.global_decls()
+	g.emit_cache_const_init_declarations()
 	g.gen_profile_support()
 	g.emit_coverage_support()
 	// Objective-C implementation files commonly use complete V structs in their
@@ -3977,7 +4006,7 @@ fn (mut g FlatGen) gen_vinit() {
 	needs_gc_init := g.needs_gc_runtime_init()
 	has_embed_joins := g.has_chunked_embed_blobs()
 	has_reflection := g.has_runtime_reflection()
-	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
+	if g.const_runtime_inits.len == 0 && g.cache_const_modules.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
 		&& g.global_inits.len == 0 && !needs_closure_init && !needs_gc_init && !has_embed_joins
 		&& !has_reflection {
 		return
@@ -4007,9 +4036,11 @@ fn (mut g FlatGen) gen_vinit() {
 	g.gen_embed_blob_joins()
 	mut emitted_const := []bool{len: g.const_runtime_inits.len}
 	mut emitted_runtime := []bool{len: g.runtime_inits.len}
-	g.emit_const_referenced_global_defaults(mut emitted_runtime)
 	init_fns := g.module_init_fn_map()
-	for mod in g.ordered_startup_modules(init_fns) {
+	startup_modules := g.ordered_startup_modules(init_fns)
+	g.emit_cache_const_global_defaults(startup_modules)
+	g.emit_const_referenced_global_defaults(mut emitted_runtime, false)
+	for mod in startup_modules {
 		g.emit_runtime_inits_for_module(mod, mut emitted_const, mut emitted_runtime)
 		if init_fn := init_fns[mod] {
 			g.writeln('\t${init_fn}();')
@@ -4054,7 +4085,7 @@ fn (mut g FlatGen) gen_vcleanup() {
 // defaults before a runtime constant that reads one of their fields. Explicit
 // global initializers keep normal module ordering because they can themselves
 // depend on runtime constants.
-fn (mut g FlatGen) emit_const_referenced_global_defaults(mut emitted_runtime []bool) {
+fn (mut g FlatGen) emit_const_referenced_global_defaults(mut emitted_runtime []bool, include_cached bool) {
 	if g.const_runtime_inits.len == 0 {
 		return
 	}
@@ -4062,6 +4093,9 @@ fn (mut g FlatGen) emit_const_referenced_global_defaults(mut emitted_runtime []b
 	// newline, so no pattern below can match across two initializers.
 	const_inits := g.const_runtime_inits.join('\n')
 	for qname in g.global_init_order {
+		if !include_cached && g.cache_const_modules[g.global_modules[qname] or { '' }] {
+			continue
+		}
 		if qname in g.global_inits {
 			continue
 		}
@@ -4748,13 +4782,18 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		if kind_id == 65 {
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(node_ref, i)
-				if node_kind_id(f) == 66 && f.children_count > 0 {
+				if node_kind_id(f) == 66 && (f.children_count > 0 || f.typ.len > 0) {
 					qname := g.const_storage_name(cur_module, f.value)
-					g.const_vals[qname] = g.a.child(f, 0)
+					value_id := if f.children_count > 0 {
+						g.a.child(f, 0)
+					} else {
+						g.a.child(node_ref, i)
+					}
+					g.const_vals[qname] = value_id
 					g.const_modules[qname] = cur_module
 					g.const_files[qname] = cur_file
 					if (cur_module.len == 0 || cur_module == 'main' || cur_module == 'builtin') && f.value !in g.const_vals {
-						g.const_vals[f.value] = g.a.child(f, 0)
+						g.const_vals[f.value] = value_id
 						g.const_modules[f.value] = cur_module
 						g.const_files[f.value] = cur_file
 					}
@@ -9815,6 +9854,9 @@ fn (g &FlatGen) module_cleanup_fn_map() map[string]string {
 
 fn (g &FlatGen) ordered_startup_modules(module_to_init map[string]string) []string {
 	mut module_order := []string{}
+	mut const_modules := g.cache_const_modules.keys()
+	const_modules.sort()
+	module_order << const_modules
 	for init_fn in g.module_init_fns {
 		mod := g.module_init_fn_modules[init_fn] or { '' }
 		if mod !in module_order {
@@ -9875,15 +9917,22 @@ fn (g &FlatGen) startup_dependency_module(dep string, startup_modules map[string
 }
 
 fn (mut g FlatGen) emit_runtime_inits_for_module(mod string, mut emitted_const []bool, mut emitted_runtime []bool) {
+	if g.cache_const_modules[mod] {
+		g.writeln('\t${g.cache_const_init_name(mod)}();')
+	}
 	for i, ri in g.const_runtime_inits {
 		if !emitted_const[i] && i < g.const_runtime_init_modules.len && g.const_runtime_init_modules[i] == mod {
-			g.writeln(ri)
+			if !g.cache_const_modules[mod] {
+				g.writeln(ri)
+			}
 			emitted_const[i] = true
 		}
 	}
 	for i, ri in g.runtime_inits {
 		if !emitted_runtime[i] && i < g.runtime_init_modules.len && g.runtime_init_modules[i] == mod {
-			g.writeln(ri)
+			if !g.cache_const_modules[mod] {
+				g.writeln(ri)
+			}
 			emitted_runtime[i] = true
 		}
 	}
@@ -23366,7 +23415,8 @@ fn (mut g FlatGen) queue_global_struct_default_init(name string, typ types.Type)
 	if name in g.global_inits {
 		return
 	}
-	if g.tc.diagnostic_files.len > 0 {
+	if g.tc.diagnostic_files.len > 0
+		&& !g.cache_const_source_modules[g.global_modules[name] or { '' }] {
 		file := g.global_files[name] or { return }
 		if file !in g.tc.diagnostic_files {
 			return
@@ -23593,6 +23643,10 @@ fn (mut g FlatGen) emit_global_inits() {
 	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
+		if g.cache_const_modules[g.global_modules[qname] or { '' }]
+			&& (g.global_files[qname] or { '' }).ends_with('.vh') {
+			continue
+		}
 		if qname in g.global_cinit_names {
 			continue
 		}
@@ -24636,6 +24690,20 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
 	qname := g.const_ident_c_name(name)
+	// C constants can be header macros, so their declarations never acquire
+	// storage in a cached V module.
+	if g.cache_const_modules[const_owner] && !name.starts_with('C.')
+		&& qname != 'builtin__error_sentinel'
+		&& default_init_unalias_type(v_type) !is types.FnType
+		&& ((v_type !is types.Primitive && v_type !is types.Enum && v_type !is types.Char
+			&& v_type !is types.Rune && v_type !is types.ISize && v_type !is types.USize)
+			|| ct == 'u8' || g.fixed_storage_consts[g.const_primary_name(name)]
+			|| g.cache_const_source_modules[const_owner]
+			|| !g.is_const_expr(val_id)) {
+		g.emit_cache_owned_const(name, val_id, const_owner, v_type, ct, qname)
+		g.tc.cur_module = old_module
+		return
+	}
 	if qname == 'builtin__error_sentinel' {
 		type_id := g.ierror_type_id_for_pattern('MessageError')
 		object_name := '${qname}__object'
